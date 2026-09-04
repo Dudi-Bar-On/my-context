@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: Six read-only commands have no tool counterpart, so an agent can reach those views only by shelling out to the terminal.
-summary_of: dc408a17106b1aea
+summary_of: 6f4751c40860c250
 scope:
   - src/mcp/tools.ts
   - src/plugin/parity.ts
@@ -21,18 +21,19 @@ tags:
   - tools
   - "plan:mcp"
   - "seq:4"
-  - "state:doing"
+  - "state:done"
 origin: human
 source_file: null
 source_anchor: null
 source_checksum: null
 valid_from: 2026-09-04
 valid_until: null
-checksum: 891ebf2c68c4489c
+checksum: 3c56f8c4e012f045
 plan: mcp
 seq: "4"
-state: doing
+state: done
 priority: "2"
+verified_on: 2026-09-04
 ---
 
 # six read-only CLI reports have no MCP tool, though nothing blocks any of them

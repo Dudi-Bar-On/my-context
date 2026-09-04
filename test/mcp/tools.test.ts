@@ -44,11 +44,13 @@ function promoteToActive(cwd: string, id: string): void {
   }
 }
 
-test('the registry exposes exactly the sixteen implemented tools', () => {
+test('the registry exposes exactly the twenty-two implemented tools', () => {
   assert.deepEqual([...TOOL_NAMES].sort(), [
-    'audit_log', 'create_item', 'doctor', 'focus_context', 'get_item', 'ingest_document',
-    'link_items', 'list_drafts', 'load_context', 'mycontext_examples', 'mycontext_help',
-    'query_items', 'ready', 'refresh_item', 'supersede_item', 'update_item',
+    'audit_log', 'create_item', 'decay_report', 'doctor', 'focus_context', 'get_item',
+    'ingest_document', 'link_items', 'list_drafts', 'list_ingest_sessions', 'list_todos',
+    'load_context', 'mycontext_examples', 'mycontext_help', 'preview_pack_import', 'query_items',
+    'ready', 'refresh_item', 'stage_rule_candidates', 'status_report', 'supersede_item',
+    'update_item',
   ]);
 });
 
@@ -1806,4 +1808,302 @@ test('the steps schema makes the offer for `procedure` and says where a runbook 
   // this schema is most likely to violate by inventing a "done" field.
   assert.match(description, /progress is never stored/);
   removeTree(cwd);
+});
+
+/* -------------------------------------------------------------------- *
+ * mcp/4 — six more read-only tools, the same shape `ready` and `doctor`
+ * were: no mutation, no origin, each wrapping the function the CLI command
+ * itself already calls.
+ * -------------------------------------------------------------------- */
+
+const NEW_READ_ONLY_TOOLS = [
+  'decay_report', 'list_ingest_sessions', 'stage_rule_candidates',
+  'preview_pack_import', 'status_report', 'list_todos',
+];
+
+/**
+ * The A7/A8 check `ready` and `doctor` got by name, extended to the six new
+ * tools rather than widened to every tool on the surface: some existing
+ * schemas (`create_item.tags`, for one) predate this pin and are not this
+ * task's to fix.
+ */
+test('every schema parameter of the six new read-only tools carries a description', () => {
+  const cwd = project();
+  for (const name of NEW_READ_ONLY_TOOLS) {
+    const tool = createRegistry(cwd).list().find((t) => t.name === name);
+    assert.ok(tool, name);
+    const properties = (tool!.inputSchema as { properties?: Record<string, unknown> }).properties ?? {};
+    for (const [key, schema] of Object.entries(properties)) {
+      const description = (schema as { description?: unknown }).description;
+      assert.equal(typeof description, 'string', `${name}.${key} has no description`);
+      assert.ok((description as string).length > 0, `${name}.${key}'s description is empty`);
+      // `stage_rule_candidates.candidates` is an array of objects — its own
+      // nested properties must carry descriptions too, or a caller learns
+      // the candidate shape only by reading source.
+      const items = (schema as { items?: { properties?: Record<string, unknown> } }).items;
+      if (items?.properties) {
+        for (const [innerKey, innerSchema] of Object.entries(items.properties)) {
+          const innerDescription = (innerSchema as { description?: unknown }).description;
+          assert.equal(
+            typeof innerDescription, 'string', `${name}.${key}[].${innerKey} has no description`,
+          );
+          assert.ok(
+            (innerDescription as string).length > 0, `${name}.${key}[].${innerKey}'s description is empty`,
+          );
+        }
+      }
+    }
+  }
+  removeTree(cwd);
+});
+
+/**
+ * **`decay_report`: the tool returns what `mycontext decay` returns for the
+ * same input.** Both call `computeDecay` (core/decay.ts) directly.
+ */
+test('decay_report: a freshly captured active normative item is cold and never injected', () => {
+  const cwd = project();
+  try {
+    assert.equal(runCli([
+      'add', 'constraint', 'Pool capped at 20', '--summary', 'A capped connection pool.', '--yes',
+    ], cwd, () => {}), 0);
+
+    const out = createRegistry(cwd).call('decay_report', {});
+    assert.match(out, /CONST-pool-capped-at-20/);
+    assert.match(out, /never injected/);
+    assert.match(out, /"cold" means:/);
+    assert.match(out, /cold \(1\)/);
+  } finally {
+    removeTree(cwd);
+  }
+});
+
+test('decay_report: an empty corpus says so rather than an empty cold list', () => {
+  const cwd = project();
+  try {
+    const out = createRegistry(cwd).call('decay_report', {});
+    assert.match(out, /nothing to report — no active normative items/);
+  } finally {
+    removeTree(cwd);
+  }
+});
+
+test('decay_report refuses a non-integer "sessions" rather than rounding it', () => {
+  const cwd = project();
+  try {
+    assert.throws(
+      () => createRegistry(cwd).call('decay_report', { sessions: 1.5 }),
+      /"sessions" must be a positive whole number/,
+    );
+  } finally {
+    removeTree(cwd);
+  }
+});
+
+/**
+ * **`list_ingest_sessions`: the tool returns what `mycontext ingest-status`
+ * returns for the same input.** Both read `listSessions`/`pendingAnchors`
+ * (ingest/session.ts) directly.
+ */
+test('list_ingest_sessions: no sessions says so', () => {
+  const cwd = project();
+  try {
+    const out = createRegistry(cwd).call('list_ingest_sessions', {});
+    assert.match(out, /no ingest sessions/);
+  } finally {
+    removeTree(cwd);
+  }
+});
+
+test('list_ingest_sessions: a session opened by ingest_document is listed, pending', () => {
+  const cwd = project();
+  try {
+    writeFileSync(
+      path.join(cwd, 'doc.md'),
+      '# Doc\n\n## One\n\nEvery deploy must pass CI before it reaches production.\n',
+      'utf8',
+    );
+    const registry = createRegistry(cwd);
+    const first = registry.call('ingest_document', { path: 'doc.md' });
+    const sessionId = first.match(/"session":\s*"([^"]+)"/)?.[1];
+    assert.ok(sessionId, `no session id found in:\n${first}`);
+
+    const out = registry.call('list_ingest_sessions', {});
+    assert.match(out, new RegExp(sessionId!.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')));
+    assert.match(out, /pending/);
+    assert.match(out, /doc\.md/);
+  } finally {
+    removeTree(cwd);
+  }
+});
+
+/**
+ * **`stage_rule_candidates`: the tool returns what `mycontext lesson-stage`
+ * returns for the same input.** Both call `stageRuleCandidates`
+ * (lesson/derive.ts) directly, and neither creates an item.
+ */
+test('stage_rule_candidates: stages a candidate on disk and creates no item', () => {
+  const cwd = project();
+  try {
+    const registry = createRegistry(cwd);
+    registry.call('create_item', { summary_omitted: true, type: 'lesson', title: 'Locks matter' });
+
+    const out = registry.call('stage_rule_candidates', {
+      lesson: 'LESSON-locks-matter',
+      candidates: [
+        { title: 'Always take the row lock first', directive: 'do', body: 'Two deploys collided without it.' },
+      ],
+    });
+    assert.match(out, /1 rule candidate\(s\) staged for LESSON-locks-matter/);
+    assert.match(out, /None of them exists as an item yet/);
+    assert.match(out, /Accept with: mycontext lesson-accept LESSON-locks-matter/);
+
+    // Nothing was created — staging writes to `.staging/`, never to `.my_context/items/`.
+    const rules = registry.call('query_items', { type: 'rule' });
+    assert.match(rules, /no items match/);
+  } finally {
+    removeTree(cwd);
+  }
+});
+
+test('stage_rule_candidates on an unknown lesson id is refused, naming the closest match', () => {
+  const cwd = project();
+  try {
+    assert.throws(
+      () => createRegistry(cwd).call('stage_rule_candidates', {
+        lesson: 'LESSON-does-not-exist', candidates: [],
+      }),
+      /no item with id/,
+    );
+  } finally {
+    removeTree(cwd);
+  }
+});
+
+/**
+ * **`preview_pack_import`: the tool stops exactly where `CLI_WITHOUT_SLASH.pack`
+ * already said a preview should — the collision report, then the command a
+ * human runs. It never calls `applyImport`.**
+ */
+test('preview_pack_import: no packs imported yet says so', () => {
+  const cwd = project();
+  try {
+    const out = createRegistry(cwd).call('preview_pack_import', {});
+    assert.match(out, /no packs have been imported/);
+  } finally {
+    removeTree(cwd);
+  }
+});
+
+test('preview_pack_import: previews an artefact and never imports it', () => {
+  const source = mkdtempSync(path.join(tmpdir(), 'myctx-tools-pack-source-'));
+  const cwd = project();
+  try {
+    assert.equal(runCli(['init'], source, () => {}), 0);
+    assert.equal(runCli([
+      'add', '--summary-omitted', 'constraint', 'Pool capped at 20', '--yes',
+    ], source, () => {}), 0);
+    const artefact = path.join(source, 'artefact');
+    assert.equal(runCli([
+      'export', '--out', artefact, '--as-pack', '--pack-name', 'acme', '--pack-version', '1.0.0',
+    ], source, () => {}), 0);
+
+    const registry = createRegistry(cwd);
+    const out = registry.call('preview_pack_import', { path: artefact });
+    assert.match(out, /pack: acme/);
+    assert.match(out, /CONST-pool-capped-at-20/);
+    assert.match(out, /Nothing was imported — this tool only previews/);
+    assert.match(out, new RegExp(`mycontext pack import ${artefact.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}`));
+
+    // Nothing actually landed: no item, and no import record.
+    assert.match(registry.call('query_items', { type: 'constraint' }), /no items match/);
+    assert.match(registry.call('preview_pack_import', {}), /no packs have been imported/);
+  } finally {
+    removeTree(cwd);
+    removeTree(source);
+  }
+});
+
+/**
+ * **`status_report`: the tool returns what `mycontext status` returns for
+ * the same input.** Both compose `runChecks`, `computeDecay`, `listSessions`
+ * and the review queue.
+ */
+test('status_report: counts items and reports the review queue', () => {
+  const cwd = project();
+  try {
+    const registry = createRegistry(cwd);
+    registry.call('create_item', { summary_omitted: true, type: 'constraint', title: 'Pool cap' });
+
+    const out = registry.call('status_report', {});
+    assert.match(out, /1 item\(s\)/);
+    assert.match(out, /review queue: 1 draft\(s\) pending review/);
+    assert.match(out, /health: 0 error\(s\)/);
+  } finally {
+    removeTree(cwd);
+  }
+});
+
+/**
+ * **`list_todos`: the tool returns what `mycontext todo` returns for the
+ * same input.** Both call `filterItems` (core/search.ts) with `type: 'todo'`.
+ */
+test('list_todos: no todos says so', () => {
+  const cwd = project();
+  try {
+    const out = createRegistry(cwd).call('list_todos', {});
+    assert.match(out, /no todo items/);
+  } finally {
+    removeTree(cwd);
+  }
+});
+
+test('list_todos: a captured todo is listed, and the rationale-tier note is printed', () => {
+  const cwd = project();
+  try {
+    assert.equal(runCli(['add', '--summary-omitted', 'todo', 'Ping the billing team about the export bug'], cwd, () => {}), 0);
+    const out = createRegistry(cwd).call('list_todos', {});
+    assert.match(out, /Ping the billing team/);
+    assert.match(out, /rationale tier/);
+  } finally {
+    removeTree(cwd);
+  }
+});
+
+test('list_todos: --tag narrows, and the "all" flag is required to include retired ones', () => {
+  const cwd = project();
+  try {
+    assert.equal(runCli(['add', '--summary-omitted', 'todo', 'Untagged one'], cwd, () => {}), 0);
+    assert.equal(runCli(['add', '--summary-omitted', 'todo', 'Tagged one', '--tags', 'billing'], cwd, () => {}), 0);
+
+    const registry = createRegistry(cwd);
+    const narrowed = registry.call('list_todos', { tag: 'billing' });
+    assert.match(narrowed, /Tagged one/);
+    assert.doesNotMatch(narrowed, /Untagged one/);
+  } finally {
+    removeTree(cwd);
+  }
+});
+
+/** Every one of the six new tools has a `TOOL_PARITY` row, and the CLI
+ * command it wraps no longer appears in `CLI_WITHOUT_TOOL` — checked here
+ * directly rather than trusted to `test/plugin/parity.test.ts`'s generic
+ * derived-set comparison alone, since that comparison would pass just as
+ * well if a tool answered the WRONG CLI command. */
+test('each of the six new tools has a TOOL_PARITY row naming its CLI command', async () => {
+  const { TOOL_PARITY, CLI_WITHOUT_TOOL } = await import('../../src/plugin/parity.ts');
+  const expected: Record<string, string> = {
+    decay_report: 'decay',
+    list_ingest_sessions: 'ingest-status',
+    stage_rule_candidates: 'lesson-stage',
+    preview_pack_import: 'pack',
+    status_report: 'status',
+    list_todos: 'todo',
+  };
+  for (const [tool, cli] of Object.entries(expected)) {
+    const row = TOOL_PARITY.find((r) => r.tool === tool);
+    assert.ok(row, `${tool} has no TOOL_PARITY row`);
+    assert.equal(row!.cli, cli, `${tool}'s TOOL_PARITY row does not claim ${cli}`);
+    assert.equal(Object.hasOwn(CLI_WITHOUT_TOOL, cli), false, `${cli} is still in CLI_WITHOUT_TOOL`);
+  }
 });

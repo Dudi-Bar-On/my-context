@@ -122,7 +122,7 @@ test('/api/packs on a workspace with no packs lists none and still answers the r
   // so they are served whether or not a pack has ever been imported here.
   assert.equal(body.artefact.protocol, 'my_context/pack@1');
   assert.equal(body.artefact.manifest, 'manifest.json');
-  assert.equal(body.carries.length, 6);
+  assert.equal(body.carries.length, 7);
 });
 
 test('an imported pack is listed with its membership joined to the corpus', () => {
@@ -192,7 +192,7 @@ test('carries is refusePackConfig\'s own verdict, key by key and word for word',
   // watchedDocs never.
   assert.equal(rows.get('categories')?.travels, true);
   assert.deepEqual(rows.get('categories')?.refusals, []);
-  for (const key of ['budgets', 'watchedDocs', 'profile', 'ui']) {
+  for (const key of ['budgets', 'watchedDocs', 'profile', 'ui', 'dispatchGate']) {
     assert.equal(rows.get(key)?.travels, false, `${key} must not travel in a pack`);
   }
 
@@ -203,12 +203,13 @@ test('carries is refusePackConfig\'s own verdict, key by key and word for word',
     assert.deepEqual(row.refusals, refusePackConfig({ [key]: {} }, ws.config), key);
   }
 
-  // The six keys are the loader's top-level set, not a subset somebody chose.
-  // `handover` joined on 2026-08-27 and produced its row with no edit to
-  // `packs-model.ts` at all, which is the property this assertion is for.
+  // The seven keys are the loader's top-level set, not a subset somebody
+  // chose. `handover` (2026-08-27) and `dispatchGate` (2026-09-04) each
+  // produced their own row with no edit to `packs-model.ts` at all, which is
+  // the property this assertion is for.
   assert.deepEqual(
     body.carries.map((r) => r.key).toSorted(),
-    ['budgets', 'categories', 'handover', 'profile', 'ui', 'watchedDocs'],
+    ['budgets', 'categories', 'dispatchGate', 'handover', 'profile', 'ui', 'watchedDocs'],
   );
 });
 

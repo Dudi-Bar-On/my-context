@@ -1,5 +1,113 @@
 # v2.0 handover — we are mid-decision. Keep deciding.
 
+## ⏭ READ THIS FIRST — 2026-09-04, late
+
+### THE ONE RULE ADOPTED TODAY, AND IT BINDS YOU
+
+**No lane is dispatched without a my_context TASK item, and no non-trivial work starts
+without one.** Owner instruction after he asked *"did you generate for all your work plans
+and tasks at mycontext?"* and the answer was no. It is recorded three ways:
+`INSTR-work-is-tracked-as-a-task-item-before-it-is-started-not` (PINNED, hard), a session
+memory, and — being built when this was written — a hook that refuses the dispatch.
+
+The habit that caused it, so you do not repeat it: **an item was filed whenever something
+was FOUND and skipped whenever something was DONE immediately.** That is backwards. A
+finding is a guess; a thing that shipped is a fact, and the corpus should record what was
+built, not only what is left. Three lanes ran untracked on 2026-09-04 before he noticed.
+
+### FIRST ACTIONS, IN ORDER
+
+1. **Check the dispatch-gate lane.** It was RUNNING when this was written, owning
+   `hooks/hooks.json`, `src/hooks/pre-tool-use.ts`, `src/core/config.ts`. Item:
+   `TASK-nothing-stops-a-subagent-being-dispatched-for-work-that-has` (`hooks/28`).
+   `git status` first.
+2. **Commit and push.** Several lanes landed and their work may be uncommitted.
+3. **Run the full gates.** `npm test` (~3 min) then `npm run test:e2e` (~13 min). Read the
+   e2e SUMMARY LINE and ISOLATE before attributing.
+4. **THE OWNER OWES THREE ANSWERS** — see *Open questions* below. Do not guess them.
+
+### WHAT LANDED, 2026-09-04
+
+Commits: `2143868` `b7e5c49` `56164fd` `a50fc84` `d9c9711` `971534f` `e47bb8f` `5515ed2`
+`b05bd6b` `82f04d8`, plus whatever the last lanes left uncommitted.
+
+- **Doctor held at 0 findings all day**, across four features landing.
+- **`agent-dispatched` and `agent-step`** — the audit log now records what each lane was FOR
+  and every tool call it made, backfilled from the lane's own transcript at `SubagentStop`.
+  Verified live, not by test alone.
+- **Six owed MCP tools** (`mcp/4`): `decay`, `ingest-status`, `lesson-stage`, `pack`,
+  `status`, `todo`. Plus `ready` and `doctor` earlier. `owed` went 11 → 2.
+- **The audit stream screen was refactored**: five columns
+  (`At · Kind · Op · Who/subject · Detail`), lane grouping with complete/running/orphan
+  states, per-filter counts, lane isolation. Verified in a real browser.
+- **The config writer** (`rulings/20`), **B10/B13/B15**, the **hook de-duplication**, and
+  **45 ambiguous citations** (a filename collision from a new `config.ts`).
+
+### OPEN QUESTIONS — ALL NEED THE OWNER, NONE ARE GUESSABLE
+
+1. **Injection budget enforcement.** MEASURED: 46,316 items injected, **12,034 SPILLED (21%)**,
+   and the most-spilled are governing items — `RULE-do-not-accept-a-test-that-passes-in-isolation`
+   spilled **278 times**, `STD-a-summary-is-one-plain-sentence` 289, `REQ-a-pinned-item-is-delivered-or-the-user-is-told-it-was-not`
+   263. **All are `severity: soft, always: false`**, competing for jit's 6,000 tokens.
+   Options put to him: normative tier outranks rationale in selection (recommended);
+   `severity: hard` guarantees delivery; or raise budgets. **He answered with new requirements
+   instead — see 2 — so this is still open.**
+2. **His actual reply, verbatim in substance:** the user looking at injections / the budget
+   simulator should be able to CHANGE things; should be able to SELECT SPILLED ITEMS and act
+   to inject them; and there should be a way to tell whether a spilled item is **currently
+   absent from the context window**, since it may already be there from an earlier injection.
+   MEASURED against the live screen: the simulator ALREADY has per-tier budget sliders and
+   "Restore the values in force". Spills are shown as **counts only, never a list**, so there
+   is nothing to select. The data for "already in context" EXISTS —
+   `select.ts`'s `carried` is *"ids already delivered INTO THE CURRENT CONTEXT WINDOW"* and
+   `seen-file.ts` records it — but no screen joins it.
+   **The blocker to specify:** there is NO command meaning "deliver this item now". `pin` is
+   permanent and prices the shared pinned tier; `focus` narrows everything else. A one-shot
+   carry does not exist, and the UI is read-only (*"CHANGE — COMPOSED, NEVER RUN"*), so any
+   action must COMPOSE a command that does not yet exist. **He must rule on what it means.**
+3. **The conversation archive** — spec AGREED at
+   `docs/superpowers/specs/2026-09-04-conversation-archive-design.md`, needs a plan, not a
+   decision.
+
+### BACKFILL STILL OWED
+
+He approved backfilling items for today's untracked work, marked done with the commits that
+carried them: the op-naming fix, the nine stale declarations, the 45 citations, the config
+writer, B10/B13/B15, the hook de-duplication, the three e2e specs given throwaway workspaces.
+**Not done yet.**
+
+### TRAPS LEARNED TODAY — each cost real time
+
+- **THE AUDIT STREAM IS A SCREEN, NOT A FILE.** The owner said "audit stream" five times and
+  I checked the JSONL every time. Everything I showed him was true and none of it answered
+  him. **Open the screen with Playwright.**
+- **A PAGE CACHES THE ES MODULE IT ALREADY IMPORTED.** The server DOES read
+  `src/ui/public/` live from disk, but a plain reload still runs the old code. Navigate to
+  `about:blank` and back, or you will report a working fix as broken.
+- **A CLOSED VOCABULARY READ BY A FROZEN SERVER LOOKS LIKE DATA CORRUPTION.** Adding an audit
+  op made a running server say *"the audit log cannot be trusted — line 18"*. Nothing was
+  wrong. Filed as `live/14`. Restart the server after adding an op.
+- **LANES THAT VERIFY WITH TARGETED TESTS LEAVE STALE DECLARATIONS.** Three lanes did it and
+  the full suite found NINE — word maps, `WRITERS`, an F2 registry, two expected-op lists.
+  **Tell every lane to run the full `npm test`.** The next lane briefed this way hit exactly
+  that failure and fixed it in the hour.
+- **MEASUREMENT BEAT REASONING EVERY TIME IT WAS TRIED, AND MY REASONING LOST.** The e2e
+  refactor I called highest-value returned **2%**. The 45 ambiguous citations I dismissed as
+  noise were real. `agent_transcript_path` I predicted was undelivered is delivered. "95% of
+  the corpus cannot reach an agent" was wrong — under `global` scope policy an UNSCOPED item
+  governs EVERY path. Ten unit failures were nine; I counted a summary header.
+
+### STATE
+
+Board: **~530 active tasks, ~411 done (78%)**. Unit **6172 tests / 6168 pass**, one deliberate
+red (`config-task-override`, blocked on field-level config, filed as `rulings/57`) and known
+load flakes (`statusline-chain`, `execute-route` — both 28/28 and 29/29 in isolation).
+`verify:citations` exit 1 at its standing condition: 21 broken source citations, 36 faults,
+0 ambiguous. The owner's UI server runs on **58888 and is HIS** — never kill or replace it.
+
+---
+
+
 ## ⏭ READ THIS FIRST — 2026-09-04
 
 **STATE: five commits are pushed (`cb1cbba..9c55076`). EVERYTHING SINCE IS UNCOMMITTED AND UNGATED.**

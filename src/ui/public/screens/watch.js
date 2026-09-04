@@ -92,14 +92,16 @@
  * `'unsafe-inline'`. Every declaration the mockup writes as an attribute is set
  * through CSSOM here, and only with logical properties.
  */
-import { dedupeKey, describeRecord, describeStreamEvent } from '/lib/viewmodel.js';
+import { dedupeKey, describeRecord, describeStreamEvent, formatDuration } from '/lib/viewmodel.js';
 // `clockOf` — the mockup's `At` column, `09:26:05`. Shared with Ask's audit
 // table and with the injection preview's `When` rather than spelled a third
 // time here: this screen's own copy reformatted anything `Date` would accept,
 // Ask's refused a stamp carrying no zone, and the two audit tables therefore
 // disagreed about the same record. `parts.js` holds the guard, the two
 // precisions and the whole argument.
-import { clockOf, el, errorNote, linkId, mono, num, screenHead, spaced } from '/screens/parts.js';
+import {
+  BOUND_CAP_TABLE, clockOf, el, errorNote, linkId, mono, num, screenHead, spaced,
+} from '/screens/parts.js';
 
 /** The mockup's pulse: 120 columns of ten seconds each, in a 900x34 box. */
 const PULSE_W = 900;
@@ -171,6 +173,66 @@ const KIND_HUE_DEFAULT = 'var(--ok)';
 const KIND_HUE_UNKNOWN = 'var(--faint)';
 
 const SVG_NS = 'http://www.w3.org/2000/svg';
+
+/**
+ * **THE LANE GROUPING — the owner's first approved refactor, and the fix for
+ * the 58%-of-the-screen row shape.**
+ *
+ * Measured on his live screen: 30 of 52 sampled rows were bare `subagent-stop`
+ * — an opaque agent id, a `type` that is wrong on 96.4% of rows, and a
+ * sentence about a seen file nobody asked about — while the `agent-dispatched`
+ * row a few lines up carried that SAME lane's purpose and its real type. The
+ * information existed and was not joined.
+ *
+ * **The join is by agent id.** `agent-dispatched`, `agent-step` and
+ * `subagent-stop` each embed it in their own `note` as `agent=<id>`
+ * (`core/audit.ts` · `HOOK_OPS`'s own comment states why: the two hook events
+ * this trio spans, `PostToolUse` and `SubagentStop`, are shared with ordinary
+ * hook rows and cannot tell a lane's rows apart from each other by event
+ * alone). `agentIdOf` is the one place that note is parsed; every renderer
+ * below calls it rather than re-deriving the pattern.
+ *
+ * **Recomputed on every `renderRows()`, never carried incrementally.** A
+ * `SubagentStop` firing backfills ~150 `agent-step` rows in one burst,
+ * timestamped with the TRANSCRIPT's own past instants rather than the arrival
+ * instant (this file's own note on `BACKLOG` above). Tracking group
+ * membership incrementally as records arrive would have to special-case that
+ * burst; deriving the groups fresh from whatever `visible()` currently holds
+ * does not, because it never depends on arrival order in the first place —
+ * only on which ids are present.
+ */
+const LANE_OPS = new Set(['agent-dispatched', 'agent-step', 'subagent-stop']);
+
+/**
+ * The join key a dispatch, a step and a stop each carry in their own `note`
+ * as `agent=<id>` — see `HOOK_OPS`'s comment in `core/audit.ts`. `null` for a
+ * note that carries none, which this build never invents a value for.
+ */
+function agentIdOf(note) {
+  if (typeof note !== 'string') return null;
+  const m = /agent=([^\s:;]+)/.exec(note);
+  return m === null ? null : m[1];
+}
+
+/** The agent id a record's OWN note carries, or `null` for a record outside `LANE_OPS`. */
+function laneIdOf(record) {
+  if (record.kind !== 'hook' || !LANE_OPS.has(record.op)) return null;
+  return agentIdOf(record.note ?? null);
+}
+
+/**
+ * `agent-dispatched`'s own note shape (`hooks/post-tool-use.ts` ·
+ * `agentDispatchNote`): `dispatched type=<type> agent=<id>[: <description>]`.
+ * Shared by the in-window group and the looked-up one, so the two cannot
+ * come to parse it differently.
+ */
+function parseDispatchNote(note) {
+  const m = /^dispatched type=(\S+) agent=\S+(?::\s(.*))?$/.exec(note ?? '');
+  return {
+    agentType: m !== null ? m[1] : '<absent>',
+    purpose: m !== null && typeof m[2] === 'string' && m[2] !== '' ? m[2] : null,
+  };
+}
 
 /**
  * This module's own unsubscribe from the shared live stream, if any.
@@ -371,7 +433,7 @@ export async function render(root, ctx) {
   const table = el('table');
   const head = el('thead');
   const headRow = el('tr');
-  for (const key of ['th.at', 'th.kind', 'th.what']) {
+  for (const key of ['th.at', 'th.kind', 'th.op', 'th.who', 'th.detail']) {
     const cell = el('th');
     cell.append(...ctx.t(key));
     headRow.append(cell);
@@ -403,6 +465,19 @@ export async function render(root, ctx) {
   const feedFault = errorNote('');
   feedFault.hidden = true;
 
+  // --- The lane isolation note ------------------------------------------------
+  //
+  // Coordinator relay, 2026-09-04: a reader can already narrow to a KIND;
+  // what was missing was narrowing to a LANE — "show me only what that lane
+  // did" — and grouping already joins the records this needs. Op-level
+  // narrowing under `hook` was raised alongside it and left for a follow-up:
+  // grouping folds most `hook` rows into their lane's one row, so a bare
+  // `hook` filter may already be narrow enough once this ships, and building
+  // a second control before measuring that would be guessing ahead of data.
+  const laneNote = spaced(el('p', 'small'));
+  laneNote.id = 'wlane';
+  laneNote.hidden = true;
+
   // --- The live region ------------------------------------------------------
   const alive = spaced(el('p', 'small'));
   alive.id = 'alive';
@@ -411,7 +486,7 @@ export async function render(root, ctx) {
   // --- The token-void note --------------------------------------------------
   const voidNote = el('p', 'small');
 
-  card.append(pulse, pulseFault, pulseNote, filters, plate, feedBound, feedFault, alive, voidNote);
+  card.append(pulse, pulseFault, pulseNote, filters, plate, laneNote, feedBound, feedFault, alive, voidNote);
 
   // ── STATE ────────────────────────────────────────────────────────────────
   /** Newest first, which is the order the mockup's own table reads in. */
@@ -446,8 +521,85 @@ export async function render(root, ctx) {
    * here. Only a backlog that reached the beginning of the log may set `true`.
    */
   let logEmpty = null;
+  /** Which lanes the reader has folded open, by agent id. Persists across re-renders. */
+  const expandedLanes = new Set();
+  /** The one lane the reader has isolated the feed to, or `null` for none. */
+  let isolatedAgent = null;
+  /**
+   * **THE LOOKUP-BEYOND-THE-WINDOW — `TASK-a-lane-backfills-more-steps-than-
+   * the-feed-window-holds-so`.**
+   *
+   * Measured on the live corpus: a lane's steps arrive in ONE burst at stop
+   * time while its dispatch was written once at start time, so any lane
+   * recording more steps than the backlog window holds is GUARANTEED to push
+   * its own dispatch out of that window — 95 steps, dispatch 88 rows back,
+   * window 50. Growing the window is not a fix: a longer lane defeats a
+   * bigger window the same way, for the same structural reason, forever.
+   *
+   * So the dispatch is looked up instead, past the window, ONCE per agent id
+   * and cached here — `null` for "looked up, not found" (this project's own
+   * corpus measures 546 of 552 agent ids with NO dispatch record at all,
+   * because the feature that writes one is newer than most of the lanes in
+   * the log; a repeated lookup for those would just repeat a miss forever).
+   * `agentId → AuditRecord | null`.
+   */
+  const resolvedDispatches = new Map();
+  /** Agent ids with a lookup in flight, so a burst of renders fires it once. */
+  const pendingLookups = new Set();
 
-  const visible = () => (selected === 'all' ? records : records.filter((r) => r.kind === selected));
+  /**
+   * Bounded the same way every other list in this app is bounded
+   * (`BOUND_CAP_TABLE`, `screens/parts.js`) — an unbounded search for one id
+   * is the window defect wearing a different shape. A miss within the bound
+   * is cached as a miss; it is not retried with a wider one.
+   */
+  function resolveDispatch(agentId) {
+    if (resolvedDispatches.has(agentId) || pendingLookups.has(agentId)) return;
+    pendingLookups.add(agentId);
+    ctx.api(`/api/ask/audit?op=agent-dispatched&limit=${BOUND_CAP_TABLE}`)
+      .then((result) => {
+        const match = (result.records ?? []).find((r) => agentIdOf(r.note ?? null) === agentId);
+        resolvedDispatches.set(agentId, match ?? null);
+      })
+      .catch(() => {
+        // The lookup itself is a courtesy, not a claim this screen depends
+        // on — its own refusal must not become a second one on top of
+        // `feedFault`'s. Cached as a miss so it is asked once, not on every
+        // render this lane is still on screen.
+        resolvedDispatches.set(agentId, null);
+      })
+      .finally(() => {
+        pendingLookups.delete(agentId);
+        renderRows();
+      });
+  }
+
+  const visible = () => {
+    let list = selected === 'all' ? records : records.filter((r) => r.kind === selected);
+    if (isolatedAgent !== null) list = list.filter((r) => laneIdOf(r) === isolatedAgent);
+    return list;
+  };
+
+  /** Shows or hides the "isolated to one lane" note, and its own clear control. */
+  function renderLaneNote() {
+    if (isolatedAgent === null) {
+      laneNote.hidden = true;
+      return;
+    }
+    laneNote.replaceChildren();
+    laneNote.append(...ctx.t('watch.laneIsolated'));
+    const clear = el('button', 'linkid m');
+    clear.type = 'button';
+    clear.append(...ctx.t('watch.laneClear'));
+    clear.addEventListener('click', () => {
+      isolatedAgent = null;
+      renderLaneNote();
+      renderRows();
+      sayShown();
+    });
+    laneNote.append(' ', clear);
+    laneNote.hidden = false;
+  }
 
   function say(key, subs) {
     alive.replaceChildren(...ctx.t(key, subs));
@@ -541,7 +693,7 @@ export async function render(root, ctx) {
   function regimeRow(described, at) {
     const row = el('tr', 'regime');
     const cell = el('td');
-    cell.colSpan = 3;
+    cell.colSpan = 5;
     const wrap = el('div', 'rw');
     const text = el('span');
     text.append(...ctx.t('watch.regime'), ' · ');
@@ -610,34 +762,128 @@ export async function render(root, ctx) {
    * is the paragraph above rather than a gate. Re-measured 2026-08-30 with the
    * rest of `plan:walk seq:92` — the refusal survived its stated cause, which
    * is what makes it worth restating rather than deleting.
+   *
+   * **The OTHER claim two paragraphs up is now wrong too, and THIS strikes
+   * it.** "A `hook` record's primary is its `hook` field — the platform
+   * event — not its `op`: the hook ops are `pre-compact`, `post-tool-use`,
+   * `deny`, and none of them is the word the mockup prints" held only because
+   * every hook op mapped ONE-TO-ONE onto a platform event. It stopped holding
+   * on 2026-09-04, when two ops were added on events already claimed by
+   * others rather than events of their own — see `HOOK_OPS`'s own comment in
+   * `core/audit.ts` for the full argument, which is deliberate reuse and not
+   * an oversight: `agent-dispatched` shares `PostToolUse` with the ordinary
+   * `post-tool-use` op (both fire on the same widened matcher), and
+   * `agent-step` shares `SubagentStop` with `subagent-stop` (both are written
+   * from the same firing, one per lane and one per tool call inside it).
+   *
+   * A row led by the EVENT cannot tell either pair apart: an `agent-step` row
+   * and a `subagent-stop` row both read bare `SubagentStop`, and an
+   * `agent-dispatched` row reads `PostToolUse` — indistinguishable from an
+   * ordinary tool-use hook, saying nothing about a dispatch. This is the
+   * defect the owner reported as "I still cannot see the new hooks and their
+   * info in the audit stream": both rows were on screen the whole time: the
+   * screen could not NAME them (confirmed live with Playwright, not reasoned
+   * about — see `e2e/watch-feed.spec.ts`).
+   *
+   * **The OP is the primary now, for every kind including `hook`.** The op is
+   * what was RECORDED, and it always names a row on its own — that is the
+   * whole reason `access`, `progress` and `mutation` already led with it two
+   * paragraphs up; `hook` was the one kind that hid it. The EVENT has not
+   * stopped being useful — `SessionStart` is genuinely the word a reader
+   * wants for an injection-ish hook row, and losing the event would only
+   * trade one blindness for another — so it still shows, as DETAIL right
+   * after the op, in parens: `agent-step (SubagentStop)`, `agent-dispatched
+   * (PostToolUse)`, `deny (PreToolUse)`. Two ops that share one event now read
+   * as two different words carrying the same parenthetical, which is the one
+   * shape that is both distinguishable at a glance and keeps the event a hook
+   * row still owes a reader.
    */
-  function whatOf(described) {
-    const box = bdi('');
+  /**
+   * **THE OP/WHO/DETAIL SPLIT — the second and third approved column, and
+   * where `whatOf`'s PRIMARY — DETAIL shape (see the struck paragraphs above)
+   * moves once the table has room to draw it in columns rather than in one
+   * sentence.**
+   *
+   * `op` was already the primary word for every kind — that argument is
+   * unchanged and is still exactly why it leads. What changes here is only
+   * WHERE the rest lands: `who` is the row's subject — an item, a lane's
+   * purpose, a check, a host — and `detail` is everything else the record
+   * carries. The already-good kinds (`injection`, `mutation`,
+   * `post-tool-use-failure`) keep the exact same WORDS this task's report
+   * promises not to touch; only their column changes.
+   *
+   * Appends into `who` and `detail` directly rather than returning nodes,
+   * because `access`'s `nonce-minted` needs BOTH filled from a field
+   * (`nonceMint`) `describeRecord` does not carry — read off the raw
+   * `record` here rather than in `lib/viewmodel.js`, which this task does not
+   * own and must not edit.
+   *
+   * `columnsFor` is the public entry: it calls `fillColumns` and then applies
+   * the ONE fallback every screen in this app already uses for a cell with
+   * nothing to say (`'—'`, bare — `ask.js`, `doctor.js`, `packs.js`, `port.js`
+   * and more all write it literally rather than through a key). Applied
+   * AFTER, in one place, so every branch below can simply leave a cell empty
+   * rather than each spelling its own dash.
+   */
+  function columnsFor(record, described, who, detail) {
+    fillColumns(record, described, who, detail);
+    if (who.childNodes.length === 0) who.append('—');
+    if (detail.childNodes.length === 0) detail.append('—');
+  }
 
-    // A hook's primary is the EVENT, falling back to the op when a record
-    // carries no `hook` field — older records, and any this reader has not met.
-    if (described.kind === 'hook' && typeof described.hook === 'string' && described.hook !== '') {
-      box.append(mono(described.hook));
-    } else {
-      box.append(mono(described.op));
+  function fillColumns(record, described, who, detail) {
+    if (described.kind === 'injection') {
+      who.append(
+        ...ctx.t('watch.delivered', { delivered: described.injected }),
+        ', ',
+        ...ctx.t('watch.spilled', { spilled: described.spilled.length }),
+      );
+      costOf(detail, described);
+      return;
     }
 
-    if (described.itemId !== null) box.append(' ', linkId(described.itemId, false));
-
-    // `access`: which check refused it, and on what route. Both come from
-    // `refusal`, which `describeRecord` now carries; before this the row could
-    // say only `ui-refused` and a reader had no way to learn why.
-    if (described.kind === 'access' && described.refusal !== null) {
-      const { check, method, route } = described.refusal;
-      if (typeof check === 'string' && check !== '') box.append(' — ', mono(check));
-      if (typeof method === 'string' && typeof route === 'string' && route !== '') {
-        box.append(' ', mono(`${method} ${route}`));
+    if (described.kind === 'access') {
+      if (described.op === 'nonce-minted') {
+        // No `note`, no `itemId`, no `refusal` — a mint carries `nonceMint`
+        // instead (`ui/security.ts` · `recordNonceMint`), and nothing copied
+        // it into `describeRecord`. This is the "no subject AT ALL" row from
+        // the owner's measurement; the host it minted for is a real field
+        // the record already carries and was never rendered.
+        const mint = record.nonceMint;
+        const host = mint !== null && mint !== undefined && typeof mint.host === 'string' && mint.host !== ''
+          ? mint.host : null;
+        if (host !== null) who.append(mono(host));
+        const origin = mint !== null && mint !== undefined
+          && typeof mint.origin === 'string' && mint.origin !== '' ? mint.origin : null;
+        if (origin !== null) detail.append(mono(origin));
+        return;
+      }
+      if (described.refusal !== null) {
+        const { check, method, route } = described.refusal;
+        if (typeof check === 'string' && check !== '') who.append(mono(check));
+        if (typeof method === 'string' && typeof route === 'string' && route !== '') {
+          detail.append(mono(`${method} ${route}`));
+        }
       }
     }
 
-    if (described.note !== null) box.append(' — ', bdi(described.note));
-    if (described.path !== null) box.append(' ', mono(described.path));
-    return [box];
+    if (described.itemId !== null) who.append(linkId(described.itemId, false));
+
+    // The hook event rides as DETAIL beside the op — the struck paragraphs
+    // above's argument for why it is not the primary, kept for every hook
+    // row this function still composes generically (a lane group and an
+    // orphan lane row are composed by their own renderers instead, below).
+    if (described.kind === 'hook' && typeof described.hook === 'string' && described.hook !== '') {
+      detail.append(mono(`(${described.hook})`));
+    }
+    if (described.note !== null) {
+      if (detail.childNodes.length > 0) detail.append(' — ');
+      detail.append(bdi(described.note));
+    }
+    if (described.path !== null) {
+      if (detail.childNodes.length > 0) detail.append(' ');
+      detail.append(mono(described.path));
+    }
   }
 
   /**
@@ -689,19 +935,200 @@ export async function render(root, ctx) {
     kindCell.append(kindChip(described.kind));
     row.append(kindCell);
 
-    const what = el('td');
-    if (described.kind === 'injection') {
-      what.append(
-        ...ctx.t('watch.delivered', { delivered: described.injected }),
-        ', ',
-        ...ctx.t('watch.spilled', { spilled: described.spilled.length }),
-      );
-      costOf(what, described);
-    } else {
-      what.append(...whatOf(described));
-    }
-    row.append(what);
+    row.append(el('td', 'm small', described.op));
+    const who = el('td');
+    const detail = el('td', 'small');
+    columnsFor(record, described, who, detail);
+    row.append(who, detail);
     return row;
+  }
+
+  /**
+   * **THE GROUP ROW — the owner's first approved refactor, drawn.**
+   *
+   * Anchored on the DISPATCH, per the hard constraint: it is the only row
+   * that carries both the lane's purpose and its real agent type. `who` is
+   * the purpose when the note carries one, the agent id otherwise — an
+   * honest fallback, never a blank. `detail` says the type, the step count,
+   * how long the lane ran (or has been running), and whether it finished —
+   * which is where the raw `subagent-stop` sentence
+   * (`delivery=finished agent=<id> type=<type>; its seen file was left in
+   * place`) ends up: SUMMARISED, never drawn a second time verbatim.
+   *
+   * **A lane still running has no `stop` — rendered as running, never as
+   * finished.** Its duration is measured to NOW rather than to a stop that
+   * has not happened, so the number on screen keeps climbing rather than
+   * freezing at the moment the group was last drawn.
+   *
+   * Returns an ARRAY of rows — the anchor, then each step when the lane is
+   * expanded — because `renderRows` appends a fragment of rows, not a tree;
+   * there is no `<tr>` that nests other `<tr>`s.
+   */
+  function laneGroupRows(dispatch, agentId, steps, stop) {
+    const at = clockOf(dispatch.at);
+    const { agentType, purpose } = parseDispatchNote(dispatch.note);
+    const expanded = expandedLanes.has(agentId);
+
+    const row = el('tr', stop === null ? 'lane running' : 'lane');
+    row.dataset.agent = agentId;
+    row.append(el('td', 'm small', at));
+
+    const kindCell = el('td');
+    const toggle = el('button', 'lanetoggle');
+    toggle.type = 'button';
+    toggle.textContent = expanded ? '▾' : '▸';
+    toggle.disabled = steps.length === 0;
+    toggle.setAttribute('aria-expanded', expanded ? 'true' : 'false');
+    toggle.setAttribute('aria-label', ctx.tFlat(expanded ? 'aria.laneCollapse' : 'aria.laneExpand'));
+    toggle.addEventListener('click', () => {
+      if (expandedLanes.has(agentId)) expandedLanes.delete(agentId);
+      else expandedLanes.add(agentId);
+      renderRows();
+    });
+    kindCell.append(toggle, kindChip('hook'));
+    row.append(kindCell);
+
+    row.append(el('td', 'm small', 'agent-dispatched'));
+
+    // The purpose (or, honestly, the bare id) IS the lane's subject, and it
+    // isolates the feed to this lane on click — the owner's second ask,
+    // relayed mid-task: "let a reader filter to one lane".
+    const who = el('td');
+    const subject = el('button', 'linkid m');
+    subject.type = 'button';
+    subject.append(bdi(purpose ?? agentId));
+    const isolated = isolatedAgent === agentId;
+    subject.setAttribute('aria-pressed', isolated ? 'true' : 'false');
+    subject.title = ctx.tFlat(isolated ? 'aria.laneClear' : 'aria.laneIsolate');
+    subject.addEventListener('click', () => {
+      isolatedAgent = isolatedAgent === agentId ? null : agentId;
+      renderLaneNote();
+      renderRows();
+      sayShown();
+    });
+    who.append(subject);
+    row.append(who);
+
+    const detail = el('td', 'small');
+    detail.append(mono(agentType), ' · ');
+    detail.append(...ctx.t('watch.laneSteps', { steps: num(steps.length) }));
+    const span = formatDuration(
+      (stop !== null ? Date.parse(stop.at) : Date.now()) - Date.parse(dispatch.at),
+    );
+    if (span !== null) detail.append(' · ', span);
+    detail.append(' · ', ...ctx.t(stop === null ? 'watch.laneRunning' : 'watch.laneFinished'));
+    row.append(detail);
+
+    const rows = [row];
+    if (expanded) for (const step of steps) rows.push(laneStepRow(step));
+    return rows;
+  }
+
+  /**
+   * One folded step, drawn only while its lane is expanded. `agent-step`'s
+   * own note shape (`hooks/subagent-stop.ts` · `transcriptSteps`):
+   * `<tool>: <subject> agent=<id>`.
+   */
+  function laneStepRow(step) {
+    const at = clockOf(step.at);
+    const m = /^(\S+): (.*) agent=\S+$/.exec(step.note ?? '');
+    const tool = m !== null ? m[1] : '<absent>';
+    const subject = m !== null ? m[2] : (step.note ?? '');
+
+    const row = el('tr', 'lanestep');
+    row.append(el('td', 'm small', at));
+    row.append(el('td'));
+    row.append(el('td', 'm small', '└ agent-step'));
+    const who = el('td');
+    who.append(mono(tool));
+    row.append(who);
+    const detail = el('td', 'small');
+    detail.append(bdi(subject));
+    row.append(detail);
+    return row;
+  }
+
+  /**
+   * **THE ORPHAN GROUP — one row per agent id even when its dispatch is not
+   * in view, fixing `TASK-a-lane-backfills-more-steps-than-the-feed-window-
+   * holds-so`.**
+   *
+   * The join this task already wrote (agent id) does not need the dispatch
+   * to fire — only the dispatch's TITLE does. So every step and stop sharing
+   * one id collapses to ONE row here exactly as `laneGroupRows` collapses an
+   * in-window lane, with the dispatch treated as a title that may be
+   * missing rather than as the thing that licenses a group to exist. 95
+   * identical `dispatch not in view` rows become one row reading 95 steps.
+   *
+   * **The honest unknown stays honest — it is just said ONCE now.** No
+   * label is invented from the steps themselves; `resolveDispatch` is the
+   * only source of a real purpose, and until it resolves (or confirms a
+   * miss) this reads the bare id, exactly as the hard constraint asks.
+   */
+  function orphanGroupRows(agentId, steps, stop) {
+    resolveDispatch(agentId);
+    const resolved = resolvedDispatches.get(agentId) ?? null;
+    const parsed = resolved !== null ? parseDispatchNote(resolved.note) : null;
+    // The anchor is whichever of this group's own records is newest —
+    // `rows` reads newest-first, so the FIRST of the steps this call was
+    // handed (the stop, when there is one, is checked first: it is the
+    // group's own most recent fact). There is no dispatch row to anchor on;
+    // that is the whole defect this function exists to survive.
+    const anchor = stop ?? steps[0];
+    const at = clockOf(anchor.at);
+    const expanded = expandedLanes.has(agentId);
+
+    const row = el('tr', stop === null ? 'lane running' : 'lane');
+    row.dataset.agent = agentId;
+    row.append(el('td', 'm small', at));
+
+    const kindCell = el('td');
+    const toggle = el('button', 'lanetoggle');
+    toggle.type = 'button';
+    toggle.textContent = expanded ? '▾' : '▸';
+    toggle.disabled = steps.length === 0;
+    toggle.setAttribute('aria-expanded', expanded ? 'true' : 'false');
+    toggle.setAttribute('aria-label', ctx.tFlat(expanded ? 'aria.laneCollapse' : 'aria.laneExpand'));
+    toggle.addEventListener('click', () => {
+      if (expandedLanes.has(agentId)) expandedLanes.delete(agentId);
+      else expandedLanes.add(agentId);
+      renderRows();
+    });
+    kindCell.append(toggle, kindChip('hook'));
+    row.append(kindCell);
+
+    row.append(el('td', 'm small', stop !== null ? 'subagent-stop' : 'agent-step'));
+
+    const who = el('td');
+    const subject = el('button', 'linkid m');
+    subject.type = 'button';
+    subject.append(bdi(parsed !== null ? parsed.purpose ?? agentId : agentId));
+    const isolated = isolatedAgent === agentId;
+    subject.setAttribute('aria-pressed', isolated ? 'true' : 'false');
+    subject.title = ctx.tFlat(isolated ? 'aria.laneClear' : 'aria.laneIsolate');
+    subject.addEventListener('click', () => {
+      isolatedAgent = isolatedAgent === agentId ? null : agentId;
+      renderLaneNote();
+      renderRows();
+      sayShown();
+    });
+    who.append(subject);
+    row.append(who);
+
+    const detail = el('td', 'small');
+    if (parsed !== null) detail.append(mono(parsed.agentType), ' · ');
+    detail.append(...ctx.t('watch.laneSteps', { steps: num(steps.length) }));
+    detail.append(' · ', ...ctx.t(stop === null ? 'watch.laneRunning' : 'watch.laneFinished'));
+    // `laneFound` once the lookup names the dispatch, `laneNotInView` while
+    // it is still unresolved OR confirmed missing — two different facts,
+    // never collapsed into one sentence: the reader now knows WHO, and it is
+    // still true that the dispatch row itself is not on screen.
+    detail.append(' · ', ...ctx.t(resolved !== null ? 'watch.laneFound' : 'watch.laneNotInView'));
+    row.append(detail);
+
+    const built = [row];
+    if (expanded) for (const step of steps) built.push(laneStepRow(step));
+    return built;
   }
 
   /**
@@ -731,7 +1158,7 @@ export async function render(root, ctx) {
   function historyBoundary() {
     const row = el('tr', 'regime');
     const cell = el('td');
-    cell.colSpan = 3;
+    cell.colSpan = 5;
     const wrap = el('div', 'rw');
     const text = el('span');
     text.append(...ctx.t('watch.historyLine'));
@@ -743,21 +1170,104 @@ export async function render(root, ctx) {
 
   function renderRows() {
     const rows = visible();
+
+    // Every dispatch currently on screen, by agent id — the group's anchor,
+    // and the ONLY thing that decides whether a step or a stop is grouped,
+    // orphaned, or (if it names no lane at all) drawn as an ordinary row.
+    // Recomputed fresh every call — see `LANE_OPS`'s own note on why this
+    // does not track membership incrementally.
+    const dispatchByAgent = new Map();
+    for (const record of rows) {
+      if (record.kind === 'hook' && record.op === 'agent-dispatched') {
+        const id = agentIdOf(record.note ?? null);
+        if (id !== null && !dispatchByAgent.has(id)) dispatchByAgent.set(id, record);
+      }
+    }
+    // Steps and stops, split into the two buckets `TASK-a-lane-backfills-
+    // more-steps-than-the-feed-window-holds-so` names: the dispatch's own
+    // (grouped under it, as before) and the ORPHAN's — an agent id `LANE_OPS`
+    // names that has NO dispatch in view. Both are keyed the same way for
+    // the same reason: a long lane's burst does not care which bucket its id
+    // lands in, and neither renderer below does either.
+    const stepsByAgent = new Map();
+    const stopByAgent = new Map();
+    const orphanStepsByAgent = new Map();
+    const orphanStopByAgent = new Map();
+    for (const record of rows) {
+      const id = laneIdOf(record);
+      if (id === null || record.op === 'agent-dispatched') continue;
+      const inView = dispatchByAgent.has(id);
+      const steps = inView ? stepsByAgent : orphanStepsByAgent;
+      const stops = inView ? stopByAgent : orphanStopByAgent;
+      if (record.op === 'agent-step') {
+        if (!steps.has(id)) steps.set(id, []);
+        steps.get(id).push(record);
+      } else if (record.op === 'subagent-stop') {
+        stops.set(id, record);
+      }
+    }
+
     const built = document.createDocumentFragment();
     // Drawn only when there is something on BOTH sides of it. A rule under
     // nothing, or over nothing, separates nothing and is one more mark for a
     // reader to account for.
     let pending = rows.some((record) => live.has(record))
       && rows.some((record) => !live.has(record));
+    // An orphan group is drawn ONCE, at the position of the first (newest)
+    // of its own records this loop reaches — never once per step, which is
+    // the defect `TASK-a-lane-backfills-...` measured as fifty identical
+    // rows for one 95-step lane.
+    const renderedOrphans = new Set();
     for (const record of rows) {
+      const id = laneIdOf(record);
+      // A step or a stop whose dispatch IS in view is drawn once, folded
+      // under that dispatch — never at its own position, and never twice.
+      if (id !== null && record.op !== 'agent-dispatched' && dispatchByAgent.has(id)) continue;
+      // An orphan's second and later record: already drawn as part of its
+      // group's one row, above, in this same loop.
+      if (id !== null && record.op !== 'agent-dispatched' && renderedOrphans.has(id)) continue;
+
       if (pending && !live.has(record)) {
         built.append(historyBoundary());
         pending = false;
+      }
+
+      if (id !== null && record.op === 'agent-dispatched') {
+        for (const groupRow of laneGroupRows(record, id, stepsByAgent.get(id) ?? [], stopByAgent.get(id) ?? null)) {
+          built.append(groupRow);
+        }
+        continue;
+      }
+      if (id !== null) {
+        renderedOrphans.add(id);
+        for (const groupRow of orphanGroupRows(id, orphanStepsByAgent.get(id) ?? [], orphanStopByAgent.get(id) ?? null)) {
+          built.append(groupRow);
+        }
+        continue;
       }
       built.append(rowFor(record));
     }
     body.replaceChildren(built);
     return rows.length;
+  }
+
+  /**
+   * The filter row's own counts, from `records` — what the feed actually
+   * holds — never from a second source that could disagree with the table
+   * beside it. Called after every `remember()` batch rather than rebuilding
+   * the whole filter row, because an `agent-step` burst can be ~150 records
+   * arriving in one firing and a full `renderFilters()` per record would
+   * rebuild eight buttons that many times over.
+   */
+  function updateFilterCounts() {
+    const counts = new Map();
+    for (const record of records) counts.set(record.kind, (counts.get(record.kind) ?? 0) + 1);
+    for (const button of filters.querySelectorAll('button[data-k]')) {
+      const kind = button.dataset.k;
+      const count = kind === 'all' ? records.length : (counts.get(kind) ?? 0);
+      const badge = button.querySelector('.cnt');
+      if (badge !== null) badge.textContent = num(count);
+    }
   }
 
   /**
@@ -768,6 +1278,16 @@ export async function render(root, ctx) {
    * nothing came back to redraw them).
    *
    * `All` is the only prose here and is the only thing keyed.
+   *
+   * **Each button also carries its own count, in `.cnt`** — the coordinator's
+   * relay of the owner's measurement: a corpus that is 62% one kind cannot be
+   * narrowed by kind alone, and a button that can never do anything (`progress`,
+   * never once fired on the measured corpus) is noise a reader learns to
+   * ignore. A count turns that zero from a mystery into a fact, without
+   * removing the button — `progress` and `focus` stay offered, correctly,
+   * because a kind that has not happened YET is not a kind that cannot.
+   * `.cnt` is the product's own count pill, already spent elsewhere (Coverage
+   * gaps, Doctor) — no new class for this task to invent.
    */
   function renderFilters() {
     filters.replaceChildren();
@@ -782,8 +1302,10 @@ export async function render(root, ctx) {
       button.setAttribute('aria-pressed', value === selected ? 'true' : 'false');
       if (literal === null) button.append(...ctx.t('watch.all'));
       else button.append(literal);
+      button.append(' ', el('span', 'cnt', '0'));
       filters.append(button);
     }
+    updateFilterCounts();
   }
 
   /**
@@ -900,6 +1422,7 @@ export async function render(root, ctx) {
       learnKinds([backlog.records[i].kind]);
     }
     feedFault.hidden = true;
+    updateFilterCounts();
     renderRows();
   }
 
@@ -959,6 +1482,7 @@ export async function render(root, ctx) {
       ));
       feedBound.hidden = false;
     }
+    updateFilterCounts();
     renderRows();
   }
 
@@ -1021,6 +1545,7 @@ export async function render(root, ctx) {
       if (described.record === null) return;
       learnKinds([described.record.kind]);
       if (remember(described.record, true)) {
+        updateFilterCounts();
         renderRows();
         sayShown();
       }

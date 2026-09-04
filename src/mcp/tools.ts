@@ -1,12 +1,17 @@
+import { existsSync, readFileSync } from 'node:fs';
 import path from 'node:path';
 import {
   AUDIT_KINDS, AUDIT_OPS, auditFailureNote, filterAudit, parseWhen, readAudit,
   type AuditFilter, type AuditKind, type AuditOp,
 } from '../core/audit.ts';
+import { RULE_DIRECTIVES } from '../core/command-flags.ts';
+import { computeDecay } from '../core/decay.ts';
 import {
   focusReportLines, isFocusActive, readFocus, setFocus, unsetFocus,
   type Focus, type FocusAxes,
 } from '../core/focus.ts';
+import { Ledger } from '../core/ledger.ts';
+import { topUpLedger } from '../core/ledger-replay.ts';
 import { summaryStalenessNote } from '../core/content-hash.ts';
 import { renderItem } from '../core/item.ts';
 import {
@@ -24,22 +29,32 @@ import {
 } from '../core/summary-gate.ts';
 import { linkItems } from '../core/relations.ts';
 import { RELATION_TYPES } from '../core/vocabulary.ts';
-import { extraFieldNames, resolveConfig, scopePolicyFor, type Config } from '../core/config.ts';
+import {
+  extraFieldNames, resolveConfig, scopePolicyFor, skippedKeyNotice, type Config,
+} from '../core/config.ts';
 import { buildInjection } from '../core/inject.ts';
 import { openRebuiltStore } from '../core/open-store.ts';
 import { loadErrorNote } from '../core/rebuild.ts';
 import { isSnapshot, readSnapshot } from '../core/reference.ts';
 import { scopeField } from '../core/render-item.ts';
 import {
-  agentRevisionNotice, itemRevisionNotice, pendingRevisions, type PendingRevision,
+  agentRevisionNotice, itemRevisionNotice, pendingRevisionLine, pendingRevisions,
+  type PendingRevision,
 } from '../core/revision.ts';
 import { filterItems, LINK_DIRECTIONS, type LinkDirection } from '../core/search.ts';
-import { reviewQueue, select } from '../core/select.ts';
+import { RETIRED_STATUSES, reviewQueue, select } from '../core/select.ts';
 import { MCP_HELP_TOPICS, enumError, missingFieldError, unknownIdError } from '../core/teach.ts';
 import type { Item, Observation, Origin, Severity, Status } from '../core/types.ts';
 import { ORIGINS } from '../core/validate.ts';
+import { VERSION } from '../core/version.ts';
 import { resolveWorkspace } from '../core/workspace.ts';
 import { exampleItem, helpTopic, toolDescriptions } from '../help/index.ts';
+import { listSessions, pendingAnchors, rejectionsForAnchor } from '../ingest/session.ts';
+import { listStaging, stageRuleCandidates } from '../lesson/derive.ts';
+import { renderCollisionReport, type CollisionReport } from '../pack/collide.ts';
+import { planImport } from '../pack/import.ts';
+import { readImportRecords } from '../pack/imported-audit.ts';
+import { readArtefact } from '../pack/reader.ts';
 import { INGEST_DOCUMENT_SCHEMA, runIngestDocument } from './tools/ingest.ts';
 import { toolResultProvenance } from './provenance.ts';
 import type { CodeIdentity } from '../core/code-identity.ts';
@@ -347,6 +362,63 @@ const READY_HELD_REASON: Record<HeldRow['reason'], string> = {
   malformed: `an unreadable "${NEEDS_FIELD}" entry`,
   blocked_without_needs: 'says blocked and names nothing',
 };
+
+/** The same hedge `mycontext decay` and `mycontext status` print, word for
+ * word — data, not the computation `computeDecay` (core/decay.ts) owns.
+ * Duplicated rather than imported for the reason every other duplication on
+ * this surface is: `cli/commands/decay.ts` and `cli/commands/status.ts`
+ * call `registerCommand` at module scope, and importing either one drags the
+ * CLI registry into this process. */
+const DECAY_COLD_CAVEAT =
+  '"cold" means: not auto-injected in the last window of sessions. It does NOT mean unused ' +
+  '— the ledger records injection, not reading or reliance, so a new item, and any item ' +
+  'consulted via get_item or the Markdown file directly, look exactly like an abandoned one here.';
+
+/** Opens the usage ledger, catches it up from the audit log best-effort, and
+ * closes it — the same three steps `cli/commands/decay.ts`'s and
+ * `cli/commands/status.ts`'s own (unexported, near-identical) helpers take,
+ * duplicated here for the same module-scope reason `DECAY_COLD_CAVEAT` is. An
+ * unreadable audit log must not take a report down; the answer is then
+ * computed from whatever the ledger already holds. */
+function readLedgerView(
+  root: string, dbPath: string, window: number,
+): { usage: ReturnType<Ledger['allUsage']>; recentlyUsed: string[]; sessionsRecorded: number } {
+  let ledger: Ledger | null = null;
+  try {
+    ledger = Ledger.open(dbPath);
+    try { topUpLedger(root, ledger); } catch { /* aggregate from what is there */ }
+    const recent = ledger.recentSessions(window);
+    return {
+      usage: ledger.allUsage(),
+      recentlyUsed: ledger.itemsUsedIn(recent),
+      sessionsRecorded: ledger.sessionCount(),
+    };
+  } catch {
+    return { usage: [], recentlyUsed: [], sessionsRecorded: 0 };
+  } finally {
+    try { ledger?.close(); } catch { /* nothing to close */ }
+  }
+}
+
+/**
+ * The workspace's own `config.json`, raw and unresolved — the same 3-line
+ * read `cli/commands/pack.ts`'s `rawWorkspaceConfig` performs, duplicated
+ * here rather than imported for the same module-scope reason every other
+ * duplication on this surface gives. `planImport` merges INTO this document,
+ * never into the resolved shape, so the plan this tool computes must be
+ * fed the same raw JSON the CLI command feeds it.
+ */
+function rawWorkspaceConfig(root: string): unknown {
+  const file = path.join(root, 'config.json');
+  if (!existsSync(file)) return {};
+  return JSON.parse(readFileSync(file, 'utf8'));
+}
+
+/** `id · type · usage` — one row of a `decay_report` bucket. */
+function decayLine(row: { id: string; type: string; title: string; useCount: number; lastUsed: string | null }): string {
+  const usage = row.lastUsed === null ? 'never injected' : `${row.useCount}x, last ${row.lastUsed.slice(0, 10)}`;
+  return `${row.id} · ${row.type} · ${row.title} · ${usage}`;
+}
 
 export interface ToolSpec {
   name: string;
@@ -1478,6 +1550,549 @@ const SPECS: ToolSpec[] = [
     // No `origin` argument, here or in the schema: applyCandidates writes as
     // 'ingest' and asserts the result is a draft. See create_item's note above.
     run: (cwd, args) => withWorkspace(cwd, (ctx) => runIngestDocument(ctx, args)),
+  },
+  {
+    /**
+     * **`mycontext decay`, mirrored — items not injected in the last window
+     * of sessions.**
+     *
+     * `CLI_WITHOUT_TOOL.decay` (plugin/parity.ts) recorded this as `owed`:
+     * read-only, no mutation, no origin check anywhere on its path. This
+     * tool calls `computeDecay` (core/decay.ts) directly — the same
+     * function `cmdDecay` composes — so a tool and the CLI can never
+     * quietly disagree about what is cold.
+     *
+     * No `limit` argument: the CLI itself never caps this list (only its
+     * detail level changes how many COLUMNS a row carries, never how many
+     * rows), and a tool that added a cap the command it mirrors does not
+     * have would be exactly the silent limit the design record warns
+     * against on `ready`. This report's rows are bounded by the corpus's own
+     * normative-and-active count, which is small on every project measured
+     * so far.
+     */
+    name: 'decay_report',
+    schema: object({
+      sessions: {
+        type: 'number',
+        description:
+          'How many of the most recent sessions define the window. Default 20 — the same ' +
+          'default `mycontext decay` uses.',
+      },
+      all: {
+        type: 'boolean',
+        description:
+          'Include warm items (injected inside the window) in the answer. Cold and ' +
+          'unrestricted items are always included; only the warm list is gated by this.',
+      },
+    }),
+    run: (cwd, args) => {
+      const ws = resolveWorkspace(cwd);
+      if (!ws.projectRoot) {
+        throw new Error(
+          `my_context: there is no .my_context workspace at or above ${cwd}. ` +
+          `Ask the user to run \`mycontext init\`.`,
+        );
+      }
+      const projectRoot = ws.projectRoot;
+      const { store, errors } = openRebuiltStore(ws, { retryOnBusy: true });
+      let items: Item[];
+      try { items = store.all(); } finally { store.close(); }
+
+      const rawSessions = args.sessions;
+      if (rawSessions !== undefined && rawSessions !== null) {
+        if (typeof rawSessions !== 'number' || !Number.isInteger(rawSessions) || rawSessions <= 0) {
+          throw new Error(
+            `my_context: "sessions" must be a positive whole number. You passed ` +
+            `${JSON.stringify(rawSessions)}.`,
+          );
+        }
+      }
+      const window = (rawSessions as number | undefined) ?? 20;
+      const includeWarm = optBool(args, 'all') ?? false;
+
+      const ledger = readLedgerView(projectRoot, ws.dbPath, window);
+      const report = computeDecay({
+        items, config: ws.config, usage: ledger.usage, recentlyUsed: ledger.recentlyUsed,
+        window, sessionsRecorded: ledger.sessionsRecorded,
+      });
+
+      if (report.cold.length === 0 && report.warm.length === 0) {
+        return 'my_context: nothing to report — no active normative items in this project yet.'
+          + loadErrorNote(errors);
+      }
+
+      const lines: string[] = [
+        `my_context decay — items not injected in the last ${report.window} session(s). ` +
+        `The ledger holds ${report.sessionsRecorded} session(s).`,
+        DECAY_COLD_CAVEAT,
+        'Do not supersede or deprecate anything on this report alone — verify real usage first.',
+      ];
+      if (report.sessionsRecorded === 0) {
+        lines.push(
+          '(no sessions recorded yet — nothing here has been measured; "cold" currently ' +
+          'means only "never injected")',
+        );
+      } else if (report.sessionsRecorded < report.window) {
+        lines.push(`(only ${report.sessionsRecorded} session(s) recorded so far, so "cold" mostly means "new")`);
+      }
+
+      lines.push('');
+      if (report.cold.length === 0) {
+        lines.push(report.warm.length > 0
+          ? 'cold: none — every active normative item was injected inside the window.'
+          : 'cold: none — no active, normative item exists yet to measure.');
+      } else {
+        lines.push(`cold (${report.cold.length}) — not auto-injected in the window; check before acting:`);
+        for (const row of report.cold) lines.push(decayLine(row));
+      }
+
+      if (report.unrestricted.length) {
+        lines.push(
+          '',
+          `unrestricted (${report.unrestricted.length}) — active and normative with no scope, ` +
+          'so they apply to every file and compete for the jit budget on every file operation. ' +
+          'Each is also counted as cold or warm above — this is a view over those rows, not a ' +
+          'fourth bucket.',
+        );
+        for (const row of report.unrestricted) lines.push(decayLine(row));
+      }
+
+      if (includeWarm && report.warm.length) {
+        lines.push('', `warm (${report.warm.length}) — injected inside the window:`);
+        for (const row of report.warm) lines.push(decayLine(row));
+      }
+
+      return lines.join('\n') + loadErrorNote(errors);
+    },
+  },
+  {
+    /**
+     * **`mycontext ingest-status`, mirrored — every ingest session and its
+     * per-anchor progress.**
+     *
+     * `CLI_WITHOUT_TOOL['ingest-status']` recorded this as `owed`: read-only
+     * over `listSessions`/`pendingAnchors` (ingest/session.ts), no mutation,
+     * no origin check. Those two functions — and `rejectionsForAnchor`,
+     * which this tool also calls — live under `src/ingest/`, not
+     * `src/cli/commands/`, so they carry none of that directory's
+     * module-scope hazard.
+     *
+     * Always the full per-anchor detail: unlike a terminal, a tool response
+     * has no column width to protect, and there is no reason to hide a
+     * session's rejections behind a `--full` a model would have no way to
+     * discover.
+     */
+    name: 'list_ingest_sessions',
+    schema: object({}),
+    run: (cwd) => {
+      const ws = resolveWorkspace(cwd);
+      if (!ws.projectRoot) {
+        throw new Error(
+          `my_context: there is no .my_context workspace at or above ${cwd}. ` +
+          `Ask the user to run \`mycontext init\`.`,
+        );
+      }
+      const sessions = listSessions(ws.projectRoot);
+      if (sessions.length === 0) {
+        return 'my_context: no ingest sessions. Start one with ingest_document.';
+      }
+
+      const unfinished = sessions.filter((s) => pendingAnchors(s).length > 0).length;
+      const rejectedTotal = sessions.reduce((n, s) => n + s.rejected.length, 0);
+      const lines: string[] = [
+        `my_context: ${sessions.length} ingest session(s), ${unfinished} unfinished.` +
+        (rejectedTotal ? ` ${rejectedTotal} candidate(s) rejected.` : ''),
+      ];
+
+      for (const session of sessions) {
+        const pending = pendingAnchors(session);
+        lines.push(
+          '',
+          `${session.id}  ${session.sourceFile}  applied ` +
+          `${session.chunks.length - pending.length}/${session.chunks.length}  ` +
+          `rejected ${session.rejected.length}`,
+        );
+        for (const chunk of session.chunks) {
+          lines.push(`  ${pending.includes(chunk.anchor) ? 'pending' : 'applied'}  ${chunk.anchor}`);
+          for (const r of rejectionsForAnchor(session, chunk.anchor)) {
+            const which = r.index >= 0 ? `candidate ${r.index}` : 'batch';
+            lines.push(`    rejected  ${which}${r.title ? ` "${r.title}"` : ''}: ${r.message}`);
+          }
+        }
+      }
+      return lines.join('\n');
+    },
+  },
+  {
+    /**
+     * **`mycontext lesson-stage`, mirrored — stage derived rule candidates
+     * for a human to accept or discard.**
+     *
+     * `CLI_WITHOUT_TOOL['lesson-stage']` recorded this as `owed`:
+     * `stageRuleCandidates` (lesson/derive.ts) writes ONLY to
+     * `.staging/<lesson>.json` — its own doc comment: "this function never
+     * calls createItem" — so nothing this tool does creates an item or
+     * crosses a trust boundary. The candidates it stages are inert until a
+     * HUMAN runs `mycontext lesson-accept`, which is the only call site of
+     * `createItem` anywhere in this module and hardcodes `origin: 'human'`
+     * with no override (see that function's own comment, and
+     * `CLI_WITHOUT_TOOL['lesson-accept']`, which stays `intended` for
+     * exactly that reason).
+     */
+    name: 'stage_rule_candidates',
+    schema: object({
+      lesson: { ...S_STRING, description: 'The LESSON item id these candidates were derived from' },
+      candidates: {
+        type: 'array',
+        description:
+          'Rule candidates to stage for approval. None of this becomes an item by itself — ' +
+          '`mycontext lesson-accept <lesson> <key>` is the only route from a staged candidate ' +
+          'to a real rule, and it is a human command.',
+        items: object({
+          title: { ...S_STRING, description: 'Max 200 characters. The rule\'s own directive' },
+          directive: { ...S_STRING, enum: [...RULE_DIRECTIVES], description: 'Whether the rule prescribes or prohibits' },
+          body: { ...S_STRING, description: 'Why it holds' },
+          scope: { ...S_STRINGS, description: 'POSIX glob(s) the rule applies to. Omit for the whole repository' },
+          severity: { ...S_STRING, enum: SEVERITIES, description: 'Defaults to "soft" when omitted' },
+        }, ['title', 'directive', 'body']),
+      },
+    }, ['lesson', 'candidates']),
+    run: (cwd, args) => withWorkspace(cwd, (ctx) => {
+      const lessonId = str(args, 'lesson', 'stage_rule_candidates');
+      const lesson = ctx.store.get(lessonId);
+      if (!lesson) throw new Error(unknownIdError(lessonId, ctx.store.all().map((i) => i.id)));
+      if (args.candidates === undefined) {
+        throw new Error(
+          'my_context: "candidates" is required. Pass [] if the lesson supports no general rule.',
+        );
+      }
+
+      const { staging, issues, dropped } = stageRuleCandidates(ctx.root, lesson, args.candidates);
+      const pending = staging.candidates.filter((c) => c.state === 'pending');
+
+      const lines: string[] = [
+        `my_context: ${pending.length} rule candidate(s) staged for ${lessonId}. None of them ` +
+        'exists as an item yet.',
+      ];
+      for (const s of pending) lines.push(`  ${s.key} · ${s.candidate.directive} · ${s.candidate.title}`);
+
+      if (dropped.length) {
+        lines.push(
+          '',
+          `${dropped.length} previously pending candidate(s) dropped — this derivation did not ` +
+          'produce them again:',
+        );
+        for (const s of dropped) lines.push(`  ${s.key} · ${s.candidate.directive} · ${s.candidate.title}`);
+      }
+
+      if (issues.length) {
+        lines.push('', `${issues.length} candidate(s) rejected:`);
+        for (const issue of issues) lines.push(`  [${issue.index}] ${issue.title ?? '(untitled)'}: ${issue.message}`);
+      }
+
+      lines.push(
+        '',
+        `Accept with: mycontext lesson-accept ${lessonId} <key> [--title "…"] [--scope "a/**,b/**"]`,
+        `Discard with: mycontext lesson-discard ${lessonId} <key>`,
+      );
+      return lines.join('\n');
+    }),
+  },
+  {
+    /**
+     * **`mycontext pack`, mirrored — but stopped where `CLI_WITHOUT_SLASH.pack`
+     * already said a tool for this should stop.**
+     *
+     * That row calls a preview — the collision report, then the import
+     * command printed for a person to run — "deliberate future work…the
+     * shape `/mycontext:lesson-stage` already uses". `CLI_WITHOUT_TOOL.pack`
+     * names the identical shape for a TOOL and stays `owed` rather than
+     * `intended` because nothing forecloses it. This is that shape and
+     * nothing more: `planImport` (pack/import.ts) is PURE — its own doc
+     * comment says so — and this tool never calls `applyImport`, the one
+     * function that writes. **A tool that can import is not what the design
+     * record asked for**, so there is no `--yes`, no `--dry-run`, and no
+     * path from this tool to a corpus mutation.
+     *
+     * With `path`, it reads and plans an import and prints the same
+     * collision report `mycontext pack import` prints before its own first
+     * confirmation, followed by the command for a HUMAN to run. Without
+     * `path`, it lists the packs already imported here (`readImportRecords`,
+     * pack/imported-audit.ts) — a plain read with no artefact to plan
+     * against at all, the other half of what `mycontext pack` answers.
+     */
+    name: 'preview_pack_import',
+    schema: object({
+      path: {
+        ...S_STRING,
+        description:
+          'A directory or .zip artefact to preview. Omit to list the packs already imported ' +
+          'into this workspace instead.',
+      },
+      name: {
+        ...S_STRING,
+        description:
+          'Override the name this workspace would file the pack under, when previewing. ' +
+          'Defaults to the manifest\'s own name; required when the artefact is a full export, ' +
+          'which carries none. Ignored when "path" is omitted.',
+      },
+    }),
+    run: (cwd, args) => withWorkspace(cwd, (ctx) => {
+      const source = optStr(args, 'path');
+      if (source === undefined) {
+        const records = readImportRecords(ctx.root);
+        if (records.length === 0) {
+          return 'my_context: no packs have been imported into this workspace. Pass "path" to ' +
+            'preview one.';
+        }
+        const lines = [`my_context: ${records.length} pack(s) imported here.`];
+        for (const r of records) {
+          lines.push(
+            `  ${r.pack} · v${r.version === '' ? '—' : r.version} · ${r.items.length} item(s) · ` +
+            `imported ${r.importedAt} · from ${r.source}`,
+          );
+        }
+        return lines.join('\n');
+      }
+
+      const origin = path.resolve(cwd, source);
+      const artefact = readArtefact(origin);
+      const plan = planImport(artefact, {
+        existing: (id) => ctx.store.get(id),
+        rawConfig: rawWorkspaceConfig(ctx.root),
+        local: ctx.config,
+      });
+
+      const override = optStr(args, 'name');
+      const name = override ?? plan.pack;
+      if (name === null || name === '') {
+        throw new Error(
+          `my_context: ${JSON.stringify(source)} is a full export and carries no pack name, so ` +
+          'there is nothing to file this preview under. Pass "name" to say what to call it. ' +
+          'Nothing was imported — this tool only previews.',
+        );
+      }
+
+      const report: CollisionReport = {
+        pack: name,
+        version: plan.version ?? '',
+        kind: plan.kind,
+        source: plan.source,
+        format: plan.format,
+        manifest: plan.manifest,
+        buckets: plan.buckets,
+        config: { merged: plan.config.merged, refused: [], untouched: plan.config.untouched },
+        history: { records: plan.history.records.length, quarantined: plan.history.unknown.length },
+        notCarried: plan.notCarried,
+        refused: [],
+        applied: false,
+        overwriteApproved: false,
+        overwritten: [],
+        loadErrors: [],
+      };
+
+      return [
+        ...renderCollisionReport(report),
+        '',
+        'Nothing was imported — this tool only previews. A person runs the import:',
+        `  mycontext pack import ${source}${override ? ` --name ${JSON.stringify(override)}` : ''}`,
+      ].join('\n');
+    }),
+  },
+  {
+    /**
+     * **`mycontext status`, mirrored — the composed dashboard.**
+     *
+     * `CLI_WITHOUT_TOOL.status` recorded this as `owed`: `cmdStatus`
+     * (cli/commands/status.ts) composes `runChecks`, `computeDecay`,
+     * `listSessions`/`listStaging` and the review/revision queues, and none
+     * of that composition writes or checks origin. This tool reaches every
+     * one of those functions directly — never through `cli/commands/status.ts`
+     * or `cli/commands/review.ts`, both of which call `registerCommand` at
+     * module scope — so its numbers cannot drift from the CLI's own.
+     */
+    name: 'status_report',
+    schema: object({}),
+    run: (cwd) => {
+      const ws = resolveWorkspace(cwd);
+      if (!ws.projectRoot) {
+        throw new Error(
+          `my_context: there is no .my_context workspace at or above ${cwd}. ` +
+          `Ask the user to run \`mycontext init\`.`,
+        );
+      }
+      const projectRoot = ws.projectRoot;
+      const { store, errors } = openRebuiltStore(ws, { retryOnBusy: true });
+      let items: Item[];
+      let queueCount: number;
+      let alwaysInQueue: number;
+      let revisions: PendingRevision[];
+      try {
+        items = store.all();
+        const queue = reviewQueue(items, null);
+        queueCount = queue.length;
+        alwaysInQueue = queue.filter((i) => i.always).length;
+        revisions = pendingRevisions({ root: projectRoot, store, config: ws.config });
+      } finally {
+        store.close();
+      }
+
+      const globalLayerDrafts = items.filter((i) => i.status === 'draft').length - queueCount;
+      const sessions = listSessions(projectRoot).filter((s) => pendingAnchors(s).length > 0);
+      const pendingRules = listStaging(projectRoot)
+        .flatMap((s) => s.candidates.filter((c) => c.state === 'pending')
+          .map((c) => ({ lesson: s.lessonId, candidate: c })));
+
+      const window = 20;
+      const ledger = readLedgerView(projectRoot, ws.dbPath, window);
+      const decay = computeDecay({
+        items, config: ws.config, usage: ledger.usage, recentlyUsed: ledger.recentlyUsed,
+        window, sessionsRecorded: ledger.sessionsRecorded,
+      });
+
+      const findings = runChecks({
+        root: projectRoot, repoRoot: path.dirname(projectRoot), dbPath: ws.dbPath, items, config: ws.config,
+      });
+      const real = findings.filter((f) => !isDoctorDisclosure(f));
+      const health = {
+        errors: real.filter((f) => f.level === 'error').length,
+        warnings: real.filter((f) => f.level === 'warn').length,
+        infos: real.filter((f) => f.level === 'info').length,
+      };
+
+      const lines: string[] = [`my_context ${VERSION}: ${items.length} item(s), profile "${ws.config.profile}"`];
+
+      const skipped = skippedKeyNotice(ws.config);
+      if (skipped !== '') lines.push('', skipped);
+
+      lines.push('', `review queue: ${queueCount} draft(s) pending review.`);
+      if (globalLayerDrafts > 0) {
+        lines.push(
+          `  ${globalLayerDrafts} further draft(s) are in the global layer and are NOT in this ` +
+          'queue — they cannot be promoted or discarded from this project.',
+        );
+      }
+      if (alwaysInQueue > 0) {
+        lines.push(
+          `  ${alwaysInQueue} of them carry \`always: true\` — promoting one pins it into ` +
+          'every session start, in full, regardless of scope.',
+        );
+      }
+
+      if (revisions.length > 0) lines.push('', pendingRevisionLine(revisions));
+
+      if (sessions.length) {
+        lines.push('', `ingest: ${sessions.length} unfinished session(s).`);
+      }
+
+      if (pendingRules.length) {
+        lines.push(
+          '',
+          `${pendingRules.length} rule candidate(s) awaiting approval. Nothing generated is ` +
+          'active until a human accepts it.',
+        );
+      }
+
+      lines.push(
+        '',
+        ledger.sessionsRecorded === 0
+          ? 'usage: no sessions recorded yet — decay reporting starts once items begin to be injected.'
+          : `usage: ${ledger.sessionsRecorded} session(s) recorded. ${decay.cold.length} normative ` +
+            `item(s) not injected in the last ${window} session(s) — not evidence they are unused, ` +
+            'only that they were not selected. See decay_report.',
+      );
+      if (decay.unrestricted.length) {
+        lines.push(
+          `  ${decay.unrestricted.length} active normative item(s) carry no scope, so they apply ` +
+          'to every file and compete for the jit budget on every file operation.',
+        );
+      }
+
+      lines.push(
+        '',
+        `health: ${health.errors} error(s), ${health.warnings} warning(s), ${health.infos} note(s) ` +
+        '— see the doctor tool for details.',
+      );
+
+      if (errors.length > 0) {
+        lines.push('', `${errors.length} corpus load error(s):`);
+        for (const e of errors) lines.push(`  ${e.file}: ${e.message}`);
+      }
+
+      return lines.join('\n');
+    },
+  },
+  {
+    /**
+     * **`mycontext todo`, mirrored — the inbox.**
+     *
+     * `CLI_WITHOUT_TOOL.todo` recorded this as `owed`: `filterItems`
+     * (core/search.ts) over todos, with no mutation and no origin check.
+     * `cmdTodo` itself is in `cli/commands/todo.ts`, which this tool never
+     * imports — every function this tool calls lives under `core/`.
+     */
+    name: 'list_todos',
+    schema: object({
+      tag: { ...S_STRING, description: 'Only todos carrying this tag' },
+      all: {
+        type: 'boolean',
+        description:
+          'Include retired (superseded/deprecated/validated) todos too. Always counted; only ' +
+          'the listing changes.',
+      },
+      limit: {
+        type: 'number',
+        description:
+          'Cap on rows returned. Default 50 — the same cap `mycontext todo` applies to its own ' +
+          'table, made explicit here rather than left silent.',
+      },
+    }),
+    run: (cwd, args) => withWorkspace(cwd, (ctx) => {
+      const tag = optStr(args, 'tag');
+      const all = optBool(args, 'all') ?? false;
+      const limit = optNum(args, 'limit', 50);
+
+      const category = Object.hasOwn(ctx.config.categories, 'todo') ? ctx.config.categories.todo : null;
+      const tier = category?.tier ?? 'normative';
+
+      const matched = filterItems(ctx.store.all(), { type: 'todo', tag }, ctx.config);
+      const retired = matched.filter((i) => RETIRED_STATUSES.has(i.status));
+      const kept = all ? matched : matched.filter((i) => !RETIRED_STATUSES.has(i.status));
+      const shown = kept.slice(0, limit);
+
+      const lines: string[] = [];
+      if (shown.length === 0) {
+        lines.push(tag === undefined ? 'my_context: no todo items.' : `my_context: no todo items tagged "${tag}".`);
+      } else {
+        lines.push(
+          `my_context: ${kept.length} todo item(s)` +
+          (kept.length > shown.length ? `, ${shown.length} shown. Raise "limit" or narrow "tag".` : '.'),
+        );
+        for (const item of shown) {
+          lines.push(`${item.id} · ${item.status} · ${item.tags.length ? item.tags.join(', ') : '(none)'} · ${item.title}`);
+        }
+      }
+
+      if (!all && retired.length > 0) {
+        lines.push(
+          '',
+          `${retired.length} retired (superseded/deprecated/validated) and not shown — pass ` +
+          '"all": true to include them.',
+        );
+      }
+
+      lines.push(
+        '',
+        tier === 'rationale'
+          ? '`todo` is on the rationale tier: a todo is never injected into a session in full, ' +
+            'and nothing forces it to `draft`, so it does not enter the review queue.'
+          : '`todo` has been retiered to the normative tier in this project\'s config: an active ' +
+            'todo IS injected in full, and an agent-authored one lands `draft` for human review, ' +
+            'so it also appears in the review queue.',
+      );
+
+      return lines.join('\n');
+    }),
   },
 ];
 

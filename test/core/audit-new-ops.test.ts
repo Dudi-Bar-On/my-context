@@ -69,7 +69,14 @@ test('each new op is appended to its own family, moving no member before it', ()
       // once on `SubagentStop`. See `HOOK_OPS`'s own comment for why it is a
       // twelfth `hook` op rather than folded into `agent-dispatched` or
       // `subagent-stop`.
-      'agent-dispatched', 'agent-step'],
+      //
+      // `agent-item-waived` (2026-09-04), appended after `agent-step` and
+      // moving nothing — the audited escape hatch on the `Agent` dispatch
+      // gate (TASK-nothing-stops-a-subagent-being-dispatched-for-work-that-
+      // has, `hooks/pre-tool-use.ts`). See `HOOK_OPS`'s own comment for why
+      // it is a `hook` op distinct from `deny`: the dispatch this row
+      // describes was NOT refused.
+      'agent-dispatched', 'agent-step', 'agent-item-waived'],
   );
 });
 

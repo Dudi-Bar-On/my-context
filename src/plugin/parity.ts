@@ -92,6 +92,36 @@ export const TOOL_PARITY: ToolParity[] = [
   { tool: 'refresh_item', cli: 'refresh', slash: 'refresh' },
   { tool: 'supersede_item', cli: 'supersede', slash: 'supersede' },
   { tool: 'update_item', cli: 'edit', slash: 'edit' },
+  { tool: 'decay_report', cli: 'decay', slash: 'decay' },
+  {
+    tool: 'list_ingest_sessions', cli: 'ingest-status', slash: null,
+    note:
+      'Answered for a user by `mycontext ingest-status`, and — per `CLI_WITHOUT_SLASH` — ' +
+      'already reported by `/mycontext:status` and by `/mycontext:ingest` on resume. A slash ' +
+      'command for the bare listing would carry nothing beyond what those two already print.',
+  },
+  // `cli: 'lesson-stage'` — an EXACT match against a real command, never the
+  // hyphen fallback — but `covered`'s hyphen rule is symmetric: it also makes
+  // `mycontext lesson` (a genuinely different command; see `lesson.ts`) read
+  // as tool-covered from here on, because `'lesson-stage'.startsWith('lesson-')`.
+  // That is a coincidence of the two commands sharing a word, not a claim that
+  // a tool wraps bare `lesson` — nothing does — but it is what
+  // `CLI_WITHOUT_TOOL`'s own derived-set test now computes, so `lesson` carries
+  // no row below. See that test's own comment on why the rule is loose on
+  // purpose.
+  { tool: 'stage_rule_candidates', cli: 'lesson-stage', slash: 'lesson-stage' },
+  {
+    tool: 'preview_pack_import', cli: 'pack', slash: null,
+    note:
+      'Answered for a user by `mycontext pack import`/`mycontext pack list`. `CLI_WITHOUT_SLASH.pack` ' +
+      'already refuses a slash command for the ACT of importing — an agent taking, on the ' +
+      'user\'s behalf, the one act two confirmations exist to keep with a person. This tool ' +
+      'never imports (it wraps the pure, non-writing half of `pack/import.ts`), but the ' +
+      'preview it prints ends in the command a human runs next, and a slash command that then ' +
+      'ran the command it had just printed would be the same act by the back door.',
+  },
+  { tool: 'status_report', cli: 'status', slash: 'status' },
+  { tool: 'list_todos', cli: 'todo', slash: 'todo' },
 ];
 
 /**
@@ -254,13 +284,6 @@ export const CLI_WITHOUT_TOOL: Record<string, ToolAbsence> = {
       'without the reading the consent is for. `CLI_WITHOUT_SLASH.config` forecloses the ' +
       'slash command on the same ground, and the recommended deny list agrees.',
   },
-  decay: {
-    disposition: 'owed',
-    reason:
-      'A read-only report (core/decay.ts) with no mutation and no origin check anywhere on ' +
-      'its path. Nothing blocks a tool; one is simply not built. Same bucket as `doctor`, ' +
-      '`ready`, `status` and `todo` — the unexamined space the board row names.',
-  },
   export: {
     disposition: 'intended',
     reason:
@@ -301,14 +324,6 @@ export const CLI_WITHOUT_TOOL: Record<string, ToolAbsence> = {
       '(`CLI_WITHOUT_SLASH`\'s note: "step 4" of `/mycontext:ingest`) — the tool never needs ' +
       'the second turn.',
   },
-  'ingest-status': {
-    disposition: 'owed',
-    reason:
-      'Read-only progress over `ingest/session.ts` (`listSessions`, `pendingAnchors`) — no ' +
-      'mutation, no origin check. `CLI_WITHOUT_SLASH` notes it is already reported by ' +
-      '`/mycontext:status` and by `/mycontext:ingest` on resume, but nothing has built the tool ' +
-      'equivalent of that read.',
-  },
   init: {
     disposition: 'intended',
     reason:
@@ -317,14 +332,6 @@ export const CLI_WITHOUT_TOOL: Record<string, ToolAbsence> = {
       'today, only `init`". Every MCP tool call runs inside `withWorkspace` (`src/mcp/tools.ts`), ' +
       'which resolves the workspace FIRST — so a tool call has no point in its lifecycle before ' +
       'a workspace exists for `init` to run in.',
-  },
-  lesson: {
-    disposition: 'owed',
-    reason:
-      'Already built for non-human callers: `mycontext lesson --agent` records `origin: ' +
-      '"agent"` on purpose (`cli/commands/lesson.ts`), with the trust boundary already solved ' +
-      'the same way `create_item` solves it. Nothing structural is missing — only the tool ' +
-      'wrapper.',
   },
   'lesson-accept': {
     disposition: 'intended',
@@ -344,29 +351,12 @@ export const CLI_WITHOUT_TOOL: Record<string, ToolAbsence> = {
       'rejects a staged candidate with no undo, and pairing it with `lesson-accept` behind one ' +
       'gate is a judgement about the pair, not a fact this file can re-derive.',
   },
-  'lesson-stage': {
-    disposition: 'owed',
-    reason:
-      'Stages derived rule candidates on disk — no item is created, no origin check anywhere ' +
-      'on its path (`stageRuleCandidates`, lesson/derive.ts). This is the command a model ' +
-      'already runs today after deriving candidates from a lesson, the same shape ' +
-      '`ingest_document` has as a tool; nothing blocks wrapping it, it simply is not built.',
-  },
   list: {
     disposition: 'owed',
     reason:
       'A plain read (`cmdList`, cli/index.ts) with no mutation and no origin check. Sits in ' +
       'the same unexamined space as `decay`/`todo`; nothing has decided whether `query_items` ' +
       'already answers it well enough to make a second tool redundant.',
-  },
-  pack: {
-    disposition: 'owed',
-    reason:
-      '`CLI_WITHOUT_SLASH.pack` already calls the slash version "deliberate future work" — a ' +
-      'preview-only command that stops before the second confirmation and prints the import ' +
-      'command for a person to run, the shape `/mycontext:lesson-stage` uses. A preview-only ' +
-      'TOOL is the same shape and is exactly as unbuilt; nothing forecloses it, so this stays ' +
-      '`owed` rather than `intended`.',
   },
   pin: {
     disposition: 'intended',
@@ -432,20 +422,6 @@ export const CLI_WITHOUT_TOOL: Record<string, ToolAbsence> = {
       'no corpus-side fact this test can re-check for that claim (it is a statement about what ' +
       'the command touches, not about a trust boundary in this codebase), so this row is NOT ' +
       'self-checking beyond the set-membership comparison below.',
-  },
-  status: {
-    disposition: 'owed',
-    reason:
-      'A read-only dashboard that composes the others (`cli/commands/status.ts` imports ' +
-      '`runChecks` from `doctor/checks.ts`, `computeDecay`, `listSessions`, the review queue): ' +
-      'counts, review queue, ingest progress, decay and health. The board row names it beside ' +
-      '`doctor`/`ready`/`decay`, and nothing in it is more blocked than they are.',
-  },
-  todo: {
-    disposition: 'owed',
-    reason:
-      'A read-only view of the inbox (`filterItems` over todos/notes, cli/commands/todo.ts). ' +
-      'No mutation, no origin check — the same unexamined-read bucket as `list`/`decay`.',
   },
   ui: {
     disposition: 'intended',

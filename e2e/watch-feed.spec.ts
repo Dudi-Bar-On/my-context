@@ -262,3 +262,282 @@ test('what arrived while you watched is drawn apart from what was already there'
     await expect(rows.nth(1)).toHaveClass(/regime/);
   });
 });
+
+/**
+ * **The root cause, proven on the live screen rather than reasoned about.**
+ *
+ * `agent-step` and `subagent-stop` share one platform event, `SubagentStop`;
+ * `agent-dispatched` reuses `PostToolUse`, the same event the ordinary
+ * `post-tool-use` op fires on. `whatOf` (`screens/watch.js`) used to lead a
+ * hook row with the EVENT, which was fine while every hook op had one to
+ * itself and stopped being fine the moment two didn't: an `agent-step` row and
+ * a `subagent-stop` row both read `SubagentStop` and nothing on screen could
+ * tell them apart, and an `agent-dispatched` row read `PostToolUse` — the same
+ * word an ordinary tool-use hook shows — with no way to see it was a dispatch.
+ *
+ * This asserts the fix at the screen: three records that would have collided
+ * or misnamed themselves under the old rendering now read as three different
+ * things, each naming its OWN op.
+ */
+test('an agent-step row, a subagent-stop row and an agent-dispatched row each name themselves', async ({ page }) => {
+  await watching(page, { buildProjection: false }, async ({ page: p, corpus }) => {
+    await expectedAtLeast(p, SEEDED);
+
+    // The marker text carries no op name — `toContainText('agent-step')` below
+    // must find that word because `whatOf` rendered the OP, not because it
+    // leaked out of this fixture's own note text.
+    recordAudit(corpus, {
+      kind: 'hook', op: 'agent-step', hook: 'SubagentStop', origin: 'agent',
+      note: 'Bash: run something (feed-marker-alpha)',
+    });
+    recordAudit(corpus, {
+      kind: 'hook', op: 'subagent-stop', hook: 'SubagentStop', origin: 'agent',
+      note: 'delivery=finished (feed-marker-bravo)',
+    });
+    recordAudit(corpus, {
+      kind: 'hook', op: 'agent-dispatched', hook: 'PostToolUse', origin: 'agent',
+      note: 'type=general-purpose (feed-marker-charlie)',
+    });
+
+    const stepRow = p.locator('#atbl tr', { hasText: 'feed-marker-alpha' });
+    const stopRow = p.locator('#atbl tr', { hasText: 'feed-marker-bravo' });
+    const dispatchRow = p.locator('#atbl tr', { hasText: 'feed-marker-charlie' });
+    await expect(stepRow).toBeVisible({ timeout: 20_000 });
+    await expect(stopRow).toBeVisible({ timeout: 20_000 });
+    await expect(dispatchRow).toBeVisible({ timeout: 20_000 });
+
+    // Two rows sharing the ONE event `SubagentStop` are told apart by their
+    // OWN op, not by the event both fired on.
+    await expect(stepRow).toContainText('agent-step');
+    await expect(stopRow).toContainText('subagent-stop');
+    const stepText = await stepRow.innerText();
+    const stopText = await stopRow.innerText();
+    if (stepText === stopText) {
+      throw new Error('an agent-step row and a subagent-stop row rendered identically');
+    }
+
+    // A dispatch reads as a dispatch, not as the ordinary `PostToolUse` tool
+    // hook it shares its event with.
+    await expect(dispatchRow).toContainText('agent-dispatched');
+
+    // The event is not lost either — see the docblock in `whatOf` for why
+    // that would trade one blindness for another.
+    await expect(stepRow).toContainText('SubagentStop');
+    await expect(stopRow).toContainText('SubagentStop');
+    await expect(dispatchRow).toContainText('PostToolUse');
+  });
+});
+
+/**
+ * **The lane grouping the owner approved: one foldable row per dispatch.**
+ *
+ * `agent-dispatched`, `agent-step` and `subagent-stop` join on `agent=<id>`,
+ * the field every one of their own notes already carries
+ * (`core/audit.ts` · `HOOK_OPS`'s comment). This is the 58%-of-the-screen
+ * shape from the owner's measurement, fixed at the render layer: the
+ * dispatch is the group's anchor because it is the only row that carries
+ * both the lane's purpose and its real agent type, its steps fold underneath
+ * it rather than scattering across the feed, and the raw `subagent-stop`
+ * sentence — `delivery=finished agent=<id> type=<type>; its seen file was
+ * left in place` — is summarised into the anchor rather than drawn again on
+ * its own.
+ */
+test('a lane groups into one foldable row, with its steps folded underneath', async ({ page }) => {
+  await watching(page, { buildProjection: false }, async ({ page: p, corpus }) => {
+    await expectedAtLeast(p, SEEDED);
+    const agentId = 'agent-lane-alpha';
+    recordAudit(corpus, {
+      kind: 'hook', op: 'agent-dispatched', hook: 'PostToolUse', origin: 'agent',
+      note: `dispatched type=general-purpose agent=${agentId}: Six owed read-only MCP tools`,
+    });
+    recordAudit(corpus, {
+      kind: 'hook', op: 'agent-step', hook: 'SubagentStop', origin: 'agent',
+      note: `Read: e2e/app.ts agent=${agentId}`,
+    });
+    recordAudit(corpus, {
+      kind: 'hook', op: 'agent-step', hook: 'SubagentStop', origin: 'agent',
+      note: `Bash: run checks agent=${agentId}`,
+    });
+    recordAudit(corpus, {
+      kind: 'hook', op: 'subagent-stop', hook: 'SubagentStop', origin: 'agent',
+      note: `delivery=finished agent=${agentId} type=general-purpose; its seen file was left in place`,
+    });
+
+    const groupRow = p.locator('#atbl tr', { hasText: 'Six owed read-only MCP tools' });
+    await expect(groupRow, 'the dispatch row is the group\'s anchor and must carry the purpose')
+      .toBeVisible({ timeout: 20_000 });
+    await expect(groupRow).toContainText('agent-dispatched');
+    await expect(groupRow).toContainText('general-purpose');
+    await expect(groupRow, 'the group must say how many steps it folds').toContainText('2');
+    await expect(groupRow, 'a stopped lane must say so').toContainText('finished');
+
+    // The steps are folded — not drawn as their own rows — until expanded.
+    await expect(
+      p.locator('#atbl tr', { hasText: 'Read: e2e/app.ts' }),
+      'a naive append-as-they-arrive would have scattered this step into its own row',
+    ).toHaveCount(0);
+
+    // The raw stop sentence never reaches the screen on its own — it is
+    // summarised into the group's own anchor instead.
+    await expect(
+      p.locator('#atbl tr', { hasText: 'its seen file was left in place' }),
+      'the meaningless raw subagent-stop row must not survive the reformat',
+    ).toHaveCount(0);
+
+    await groupRow.locator('button.lanetoggle').click();
+    // The tool and its subject land in their OWN columns (who / detail) —
+    // no colon glues them back into one string once the columns exist.
+    const stepOne = p.locator('#atbl tr', { hasText: 'e2e/app.ts' });
+    await expect(stepOne).toBeVisible();
+    await expect(stepOne).toContainText('Read');
+    const stepTwo = p.locator('#atbl tr', { hasText: 'run checks' });
+    await expect(stepTwo).toBeVisible();
+    await expect(stepTwo).toContainText('Bash');
+  });
+});
+
+/** A lane still running has no stop row, and must not be drawn as though it finished. */
+test('a lane with no stop yet renders as running, not as a group that lies about being complete', async ({ page }) => {
+  await watching(page, { buildProjection: false }, async ({ page: p, corpus }) => {
+    await expectedAtLeast(p, SEEDED);
+    // Named to NOT itself contain the word "running" — a naive substring
+    // match against the id would make this assertion pass for the wrong
+    // reason, and this fixture is deliberately built to catch that.
+    const agentId = 'agent-lane-inflight';
+    recordAudit(corpus, {
+      kind: 'hook', op: 'agent-dispatched', hook: 'PostToolUse', origin: 'agent',
+      note: `dispatched type=general-purpose agent=${agentId}: Still working on it`,
+    });
+    recordAudit(corpus, {
+      kind: 'hook', op: 'agent-step', hook: 'SubagentStop', origin: 'agent',
+      note: `Read: e2e/still-running.ts agent=${agentId}`,
+    });
+
+    const groupRow = p.locator('#atbl tr', { hasText: 'Still working on it' });
+    await expect(groupRow).toBeVisible({ timeout: 20_000 });
+    await expect(groupRow).toContainText('running');
+    await expect(groupRow).not.toContainText('finished');
+  });
+});
+
+/**
+ * When the dispatch is not in the backlog window, the screen must not invent
+ * a label for it — it shows the id and says the dispatch is not in view.
+ */
+test('a step whose dispatch is out of view names the id and says so, and invents nothing', async ({ page }) => {
+  await watching(page, { buildProjection: false }, async ({ page: p, corpus }) => {
+    await expectedAtLeast(p, SEEDED);
+    const agentId = 'agent-orphan-zulu';
+    recordAudit(corpus, {
+      kind: 'hook', op: 'agent-step', hook: 'SubagentStop', origin: 'agent',
+      note: `Read: e2e/orphan.ts agent=${agentId}`,
+    });
+
+    const row = p.locator('#atbl tr', { hasText: agentId });
+    await expect(row).toBeVisible({ timeout: 20_000 });
+    await expect(row).toContainText(/not in view/i);
+  });
+});
+
+/** The filter row's own count, from what the feed actually holds — not a second source. */
+test('a kind filter button shows how many records of that kind are on the feed', async ({ page }) => {
+  await watching(page, { buildProjection: false }, async ({ page: p }) => {
+    await expectedAtLeast(p, SEEDED);
+    const mutationButton = p.locator('#wfilters button[data-k="mutation"]');
+    await expect(mutationButton).toBeVisible({ timeout: 20_000 });
+    await expect(mutationButton).toContainText(String(SEEDED));
+  });
+});
+
+/**
+ * **`TASK-a-lane-backfills-more-steps-than-the-feed-window-holds-so`.**
+ *
+ * Measured live: a lane recording more steps than the backlog window holds
+ * is GUARANTEED to push its own dispatch out of that window — the dispatch
+ * is written once, at the lane's start; its steps arrive in one burst, at
+ * the lane's end. One real lane: 95 steps, dispatch 88 rows back, window 50.
+ *
+ * Reproduced here by seeding the corpus BEFORE the page ever opens — a live
+ * append (as the other tests in this file use) does not reproduce it, because
+ * this screen keeps everything it has seen live regardless of the window; the
+ * window only binds the ONE-SHOT `/api/ask/audit?limit=50` read a fresh page
+ * load makes, which is the read the bug report is about.
+ */
+async function watchingBuriedLane(
+  page: Page,
+  body: (fixture: { page: Page; agentId: string; corpus: string }) => Promise<void>,
+): Promise<void> {
+  const dir = mkdtempSync(path.join(tmpdir(), 'myctx-watch-feed-'));
+  const corpus = path.join(dir, DIR_NAME);
+  let harness: UiHarness | undefined;
+  try {
+    expect(runCli(['init'], dir, () => {}), 'fixture command failed: init').toBe(0);
+    // `resolveDispatch`'s own lookup reads `/api/ask/audit`, which reads the
+    // PROJECTION — so this fixture needs one built. One build here is
+    // enough: `recordAudit` has kept the projection current on every append
+    // since `plan:walk seq:28`, so every record below stays visible to that
+    // read without a second `mycontext audit` call.
+    expect(runCli(['audit'], dir, () => {}), 'fixture command failed: audit').toBe(0);
+    const agentId = 'agent-window-victim';
+    recordAudit(corpus, {
+      kind: 'hook', op: 'agent-dispatched', hook: 'PostToolUse', origin: 'agent',
+      note: `dispatched type=general-purpose agent=${agentId}: Buried by its own steps`,
+    });
+    // Push the dispatch out of the backlog window (50) — the exact
+    // structural failure the task item measured, reproduced with padding
+    // records rather than 95 real steps because the MECHANISM, not the
+    // count, is what a window of 50 has to fail on.
+    for (let i = 0; i < 55; i += 1) {
+      recordAudit(corpus, {
+        kind: 'mutation', op: 'create', origin: 'human', itemId: `RULE-pad-${i}`, fields: ['body'],
+      });
+    }
+    for (let i = 0; i < 6; i += 1) {
+      recordAudit(corpus, {
+        kind: 'hook', op: 'agent-step', hook: 'SubagentStop', origin: 'agent',
+        note: `Read: e2e/file-${i}.ts agent=${agentId}`,
+      });
+    }
+
+    harness = await startUiChild(dir);
+    const h = harness;
+    await page.goto(`http://127.0.0.1:${h.port}/#${h.nonce}`);
+    await expect(page.locator('.nav').first()).toBeVisible({ timeout: 15_000 });
+    await page.evaluate(() => { location.hash = '#/watch'; });
+    await body({ page, agentId, corpus });
+  } finally {
+    if (harness !== undefined) await harness.stop();
+    removeTree(dir);
+  }
+}
+
+test('a lane whose steps evict its own dispatch from the window still draws as ONE row, not one per step', async ({ page }) => {
+  await watchingBuriedLane(page, async ({ page: p, agentId }) => {
+    const group = p.locator(`#atbl tr[data-agent="${agentId}"]`);
+    await expect(
+      group,
+      'the six steps for this lane must collapse to one row even though the dispatch that would '
+      + 'normally anchor them is outside the backlog window',
+    ).toHaveCount(1, { timeout: 20_000 });
+    await expect(group).toContainText('6');
+
+    // And never as one row per step, which is the exact defect measured on
+    // the live corpus (fifty identical `dispatch not in view` rows).
+    await expect(p.locator('#atbl tr', { hasText: 'e2e/file-0.ts' })).toHaveCount(0);
+  });
+});
+
+test('a dispatch out of the window is looked up, and the group ends up naming the lane\'s real purpose', async ({ page }) => {
+  await watchingBuriedLane(page, async ({ page: p, agentId }) => {
+    const group = p.locator(`#atbl tr[data-agent="${agentId}"]`);
+    await expect(group).toBeVisible({ timeout: 20_000 });
+    // Playwright's `toContainText` polls — this waits out the lookup's own
+    // round trip rather than racing it.
+    await expect(
+      group,
+      'the dispatch is not in the backlog window, but it is findable — `resolveDispatch` should '
+      + 'have looked it up and the group should now carry its real purpose, not the bare id',
+    ).toContainText('Buried by its own steps', { timeout: 20_000 });
+    await expect(group).toContainText(/found beyond the window/i);
+  });
+});

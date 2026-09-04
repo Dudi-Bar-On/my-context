@@ -175,3 +175,9 @@ rebuild, silently:
 - `mycontext_help`: Read guidance on one topic: categories, scope, capture, workflow, tools, slash. Not for: item content, which query_items retrieves.
 - `mycontext_examples`: Show a complete, correct example item of a given type to copy. Not for: real project content.
 - `ingest_document`: Extract normative items from a document. Two calls: pass "path" for a chunk to extract yourself, then "session", "anchor" and "candidates". Not for: one fact — use create_item.
+- `decay_report`: List active normative items not injected in the last window of sessions, cold first. Not for: a verdict — "cold" means not recently injected, never "unused" or "wrong".
+- `list_ingest_sessions`: List every ingest session, its per-anchor progress and any rejected candidates. Not for: extracting — ingest_document.
+- `stage_rule_candidates`: Stage derived rule candidates against a lesson for a human to accept or discard. Not for: creating a rule — nothing here writes an item; only a human's `lesson-accept` does.
+- `preview_pack_import`: With "path", preview an artefact import: the collision report, then the command to run it. Without "path", list packs already imported. Not for: importing — this tool never writes.
+- `status_report`: The composed dashboard: counts, review queue, ingest progress, decay and health. Not for: detail — decay_report, list_drafts and doctor go deeper on each.
+- `list_todos`: List the inbox — items captured as `todo` — and what its tier means for them. Not for: promoting one to a real category — a human decision.

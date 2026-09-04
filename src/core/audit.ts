@@ -343,12 +343,24 @@ export type InjectionOp = (typeof INJECTION_OPS)[number];
  *
  * It is inside the break `@2` already declares, by the same argument as
  * `agent-dispatched`: no new kind, no new field, one unreleased version step.
+ *
+ * **`agent-item-waived` (2026-09-04), appended after `agent-step` and moving
+ * nothing.** `PreToolUse`'s dispatch gate
+ * (TASK-nothing-stops-a-subagent-being-dispatched-for-work-that-has,
+ * `hooks/pre-tool-use.ts`) refuses an `Agent` dispatch that names no task
+ * item this corpus has — unless the prompt states the escape hatch, `no-item:
+ * <reason>`, in which case the dispatch proceeds and the reason has to travel
+ * somewhere a reader can find it later. `deny` cannot carry it: that op means
+ * "this call did not happen", and a dispatch that used the hatch DID happen.
+ * A `hook` op rather than `mutation` for `HOOK_OPS`' own standing reason — no
+ * item moved — and inside the break `@2` already declares, one op, no new
+ * kind, no new field.
  */
 export const HOOK_OPS = [
   'pre-compact', 'post-tool-use', 'deny', 'post-tool-use-failure', 'session-end', 'post-compact',
   'file-changed', 'instructions-loaded', 'config-change', 'permission-denied', 'subagent-stop',
   'stop', 'setup', 'task-created', 'task-completed', 'prompt-expansion', 'agent-dispatched',
-  'agent-step',
+  'agent-step', 'agent-item-waived',
 ] as const;
 export type HookOp = (typeof HOOK_OPS)[number];
 
@@ -520,7 +532,7 @@ const KIND_OF: Record<AuditOp, AuditKind> = {
   'file-changed': 'hook', 'instructions-loaded': 'hook', 'config-change': 'hook',
   'permission-denied': 'hook', 'subagent-stop': 'hook', stop: 'hook', setup: 'hook',
   'task-created': 'hook', 'task-completed': 'hook', 'prompt-expansion': 'hook',
-  'agent-dispatched': 'hook', 'agent-step': 'hook',
+  'agent-dispatched': 'hook', 'agent-step': 'hook', 'agent-item-waived': 'hook',
   // Both halves of one run, and both `execution`: a reader filtering
   // `--kind execution` wants the run, not half of it.
   execute: 'execution', 'execute-done': 'execution',

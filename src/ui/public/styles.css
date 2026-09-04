@@ -2084,6 +2084,26 @@ tr.regime td{background:var(--goldbg);border-block:1px solid var(--gold);color:v
 tr.regime .ln{flex:1;block-size:1px;background:var(--gold);opacity:.45}
 tr.regime .rw{display:flex;gap:9px;align-items:center}
 
+/* ── THE LANE GROUP — a dispatch, its steps and its stop, folded to one row
+   (the owner's first approved refactor of this task; `screens/watch.js`'s
+   `laneGroupRows`). No new geometry is invented here: `.lanetoggle` is a bare
+   reset on `button` — no border, no fill, `--dim` ink — because the fold
+   glyph (▸/▾) is already legible at `.m`'s size and a bordered `.icon` box
+   would out-weigh the chip beside it in the same cell. `.lanestep` dims and
+   indents a folded-open child row so it reads as SUBORDINATE to its anchor
+   without a second boundary rule — `tr.regime` already owns the one full-width
+   rule this stylesheet draws, and a child row is not a boundary. */
+.lanetoggle{background:none;border:0;padding:0;margin-inline-end:4px;color:var(--dim);
+  font:inherit;cursor:pointer;line-height:1}
+.lanetoggle:disabled{visibility:hidden;cursor:default}
+/* No new hue for "running": the meaning-hue budget is five and none of them
+   reads as "in progress" without also reading as a state needing attention,
+   which a lane that is merely still working is not. The word "running" in
+   the detail cell (`watch.laneRunning`) carries the fact; this only keeps a
+   folded-open step legible as a CHILD of its anchor. */
+tr.lanestep td{opacity:.72}
+tr.lanestep td:nth-child(3){padding-inline-start:14px}
+
 
 /* ── CARRIED: the four-tier budget ribbon, its ghost lane, and the gate
    ladder ────────────────────────────────────────────────────────────

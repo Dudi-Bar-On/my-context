@@ -155,6 +155,12 @@ const NUMBER_WORDS: Record<number, { en: string; he: string }> = {
   14: { en: 'fourteen', he: 'ארבעה-עשר' },
   15: { en: 'fifteen', he: 'חמישה-עשר' },
   16: { en: 'sixteen', he: 'שישה-עשר' },
+  17: { en: 'seventeen', he: 'שבעה-עשר' },
+  18: { en: 'eighteen', he: 'שמונה-עשר' },
+  19: { en: 'nineteen', he: 'תשעה-עשר' },
+  20: { en: 'twenty', he: 'עשרים' },
+  21: { en: 'twenty-one', he: 'עשרים ואחד' },
+  22: { en: 'twenty-two', he: 'עשרים ושניים' },
 };
 
 test('both documents state the real number of MCP tools', () => {
@@ -171,16 +177,25 @@ test('both documents state the real number of MCP tools', () => {
   // `תשע-עשרה` ("nineteen", which the argument-hint paragraph uses twice)
   // contains the spelling for ten. The number word is captured in place, and
   // every occurrence in a document has to agree with the program.
+  // The group is `[\p{L}\s-]+?` — letters, spaces AND hyphens, non-greedy —
+  // not the plain `[\p{L}-]+` every other word-count pattern in this file
+  // uses. It has to be: every count these patterns matched before topped out
+  // in the Hebrew teens, a single hyphenated token (`שישה-עשר`), but past
+  // twenty Hebrew is two words with a space (`עשרים ושניים`), and `\s` inside
+  // the group is what lets it span that space. Non-greedy plus backtracking
+  // is what keeps it from also swallowing the literal text right after it —
+  // the engine only extends the match past the first space when the shorter
+  // one fails to satisfy the rest of the pattern.
   const PATTERNS = [
-    /<br\/>([\p{L}-]+), (?:served over stdio|מוגשים מעל stdio)"/gu,
-    /(?:calls the |קורא ל)([\p{L}-]+) (?:MCP tools|כלי ה-MCP)/gu,
-    /(?:serves|מגיש) ([\p{L}-]+) (?:of them over stdio|מהם מעל stdio)/gu,
+    /<br\/>([\p{L}\s-]+?), (?:served over stdio|מוגשים מעל stdio)"/gu,
+    /(?:calls the |קורא ל)([\p{L}\s-]+?) (?:MCP tools|כלי ה-MCP)/gu,
+    /(?:serves|מגיש) ([\p{L}\s-]+?) (?:of them over stdio|מהם מעל stdio)/gu,
     // §8's parity sentence — "Every one of the … MCP tools has a CLI command,
     // a slash command, or both". It said "twelve" in English and "thirteen" in
     // Hebrew at the same time as the three sentences above said "fourteen",
     // which is this defect at its purest: the same fact, four sentences, three
     // values, and only the sentences a pattern watched were right.
-    /(?:Every one of the |לכל אחד מ)([\p{L}-]+) (?:MCP tools|כלי\s)/gu,
+    /(?:Every one of the |לכל אחד מ)([\p{L}\s-]+?) (?:MCP tools|כלי\s)/gu,
   ];
   for (const doc of documents) {
     const expected = doc.relative === 'README.md' ? words.en : words.he;

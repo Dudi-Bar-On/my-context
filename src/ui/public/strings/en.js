@@ -408,6 +408,26 @@ export const strings = {
   'watch.all': 'All',
   'th.at': 'At',
   'th.kind': 'Kind',
+  // The op/who/detail split (plan seq: lane grouping) — `th.what` retired,
+  // three columns replace it.
+  'th.op': 'Op',
+  'th.who': 'Who / subject',
+  'th.detail': 'Detail',
+  // Lane grouping: a dispatch, its steps and its stop, joined on `agent=<id>`
+  // and folded to one row. See `watch.js`'s `laneGroupRows` for the shape.
+  'aria.laneExpand': 'Show this lane’s steps',
+  'aria.laneCollapse': 'Fold this lane’s steps',
+  'aria.laneIsolate': 'Show only this lane',
+  'aria.laneClear': 'Clear the lane filter',
+  'watch.laneSteps': '{steps} steps',
+  'watch.laneRunning': 'running',
+  'watch.laneFinished': 'finished',
+  'watch.laneNotInView': 'dispatch not in view',
+  // TASK-a-lane-backfills-more-steps-than-the-feed-window-holds-so: a
+  // dispatch looked up past the window, named but still not itself drawn.
+  'watch.laneFound': 'dispatch found beyond the window',
+  'watch.laneIsolated': 'Showing one lane only.',
+  'watch.laneClear': 'Show every lane',
   'watch.shown': '{records} records shown',
   'watch.streamWaiting': 'connected — waiting for the next record',
   'watch.streamFault': 'the stream refused to continue: {error}',

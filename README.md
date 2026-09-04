@@ -1889,7 +1889,7 @@ my_context has two surfaces over one corpus. One is for you, one is for the mode
 split is deliberate rather than historical.
 
 **You** type slash commands inside a Claude Code session, or run the `mycontext` command in
-a terminal. **The model** calls the sixteen MCP tools. Both surfaces read and write the same
+a terminal. **The model** calls the twenty-two MCP tools. Both surfaces read and write the same
 Markdown files under `.my_context/`, so an item you capture in the terminal is in the
 model's index the next time it looks, and an item the model captures shows up in
 `mycontext list` at once.
@@ -1905,7 +1905,7 @@ draft, retiring a governing item. How far that separation actually holds is
 flowchart TB
   U(["<b>You</b>"]) --> SL["<b>/mycontext:…</b><br/>88 slash commands"]
   U --> CL["<b>mycontext …</b><br/>41 CLI commands"]
-  A(["<b>Claude</b>"]) --> TL["<b>MCP tools</b><br/>sixteen, served over stdio"]
+  A(["<b>Claude</b>"]) --> TL["<b>MCP tools</b><br/>twenty-two, served over stdio"]
   SL -->|"add-* · search · link · LoadMyContext"| TL
   SL -->|"list-* · review · status · edit · query"| CL
   TL --> CO["<b>.my_context/</b><br/>one corpus of Markdown,<br/>in your repository"]
@@ -3568,7 +3568,7 @@ with a `--` comment.
 
 ### What the model calls: the MCP tools
 
-Fourteen tools, served over stdio by `src/mcp/server.ts`. The model reaches them without a
+Twenty-two tools, served over stdio by `src/mcp/server.ts`. The model reaches them without a
 shell, and every item write it makes through them is stamped as an agent write — which is
 what makes the draft rule in [section 7](#7-the-trust-boundary) enforceable at all on this
 surface.
@@ -3589,6 +3589,14 @@ surface.
 | `mycontext_examples` | show a complete example item of a given type, to copy the shape from |
 | `focus_context` | narrow what my_context injects — see [session focus](#session-focus--narrowing-what-loads) — to given tags, categories or scopes, and read back what that hides: how many items, and how many load-bearing relations are left dangling. `preview` reports without changing anything; `clear` removes the focus. It cannot hide a `severity: hard` item, and every focus change is recorded in the audit log with its origin, so a model narrowing its own context leaves a trail |
 | `ingest_document` | extract normative items from a document, in the same two-call shape as the CLI's ingest commands |
+| `ready` | list open work whose `needs` are all done, highest priority first; held work is counted and, with `held`, listed with its reason |
+| `doctor` | run the corpus self-check: index freshness, orphans, drift, dead globs, permissions, session ids |
+| `decay_report` | list active normative items not injected in the last window of sessions, cold first — a signal to check, never a verdict that something is unused |
+| `list_ingest_sessions` | list every ingest session, its per-anchor progress and any rejected candidates |
+| `stage_rule_candidates` | stage derived rule candidates against a lesson for a human to accept or discard. Writes nothing to the corpus — only `mycontext lesson-accept`, a human command, creates the rule |
+| `preview_pack_import` | with `path`, preview importing an artefact — the same collision report `mycontext pack import` prints before its own first confirmation, plus the command a human runs next. Without `path`, list the packs already imported here. Never imports anything itself |
+| `status_report` | the composed dashboard: counts, review queue, ingest progress, decay and health |
+| `list_todos` | list the inbox — items captured as `todo` — and what its tier means for them |
 
 The tool list is sorted and byte-stable across calls, which is what lets Claude Code cache
 the prompt that carries it. Every tool declares its complete argument list and refuses
@@ -6111,7 +6119,7 @@ the note, which is the price of one op rather than two.
 
 **The requirement, in the user's words:** anything the model can do through a tool, you
 should be able to do through a command. **This is now satisfied, and enforced by a test
-rather than by review.** Every one of the sixteen MCP tools has a CLI command, a slash
+rather than by review.** Every one of the twenty-two MCP tools has a CLI command, a slash
 command, or both; the map is `src/plugin/parity.ts` and `test/plugin/parity.test.ts` checks
 it against the usage banner the program prints and the files in `commands/`.
 
@@ -6416,7 +6424,7 @@ is what the word means *here* — several of them are ordinary English elsewhere
 | **item** | one captured piece of knowledge: one Markdown file, one id, one category, one status |
 | **JIT** / **just in time** | the injection tier that fires when Claude is about to read or edit a file the item applies to — one matching its scope, or any file at all if it declares none. Spelled `jit` in the budgets configuration |
 | **layer** | where an item's file lives. `.my_context/` in the project you are working in is the *project* layer; a `.my-context` directory in your home folder, when one exists, is read as a *global* layer alongside it. Project items win ties and shadow a global item of the same id — [the global layer](#the-global-layer--knowledge-that-follows-you-across-projects) |
-| **MCP** | Model Context Protocol — the interface Claude reaches tools through. my_context serves sixteen of them over stdio, and they are the model's only surface short of a shell |
+| **MCP** | Model Context Protocol — the interface Claude reaches tools through. my_context serves twenty-two of them over stdio, and they are the model's only surface short of a shell |
 | **normative** | the tier for what must hold: constraints, invariants, rules, requirements, standards, and the rest. Normative text is injected, unprompted, phrased as an instruction — which is why a human approves it first |
 | **origin** | who wrote an item: `human`, `agent` or `ingest`. The trust boundary is built on this field |
 | **pending revision** | a change to an item's title, body, tags or `extra` that an agent proposed and that has **not** been applied. The item keeps governing its current text; the proposal waits in an append-only log for `mycontext review promote-revision` or `discard-revision`. Created by the `agentEdits: "review"` policy, never by a human's edit, and never injected |
