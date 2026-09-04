@@ -1523,8 +1523,8 @@ export const strings = {
   'strip.ctx.noBridgeShort': 'no status-line bridge',
   'strip.ctx.noBridge': 'showing only what mycontext injected — that is all this number is. The status line bridge is not installed; {m:mycontext statusline install} shows what installing would change, then asks.',
   'strip.ctx.cold': 'cold session — a hypothetical has no live context number',
-  'strip.myctx': '{tokens} of it from project knowledge ({injections} injections)',
-  'strip.myctxPartial': '≥{tokens} of it from project knowledge ({injections} injections, {unrecorded} not recorded)',
+  'strip.myctx': '≈{pct}% of it from project knowledge — {tokens} tokens, {injections} injections',
+  'strip.myctxPartial': '≥{pct}% of it from project knowledge — {tokens} tokens, {injections} injections, {unrecorded} not recorded',
   'strip.myctxUnavailable': 'project-knowledge share unavailable: {error}',
   // ── THE ACCOUNT'S TWO RATE-LIMIT WINDOWS (owner ruling 2026-08-31). Read
   // off `rate_limits.five_hour` / `.seven_day` in the status-line payload this

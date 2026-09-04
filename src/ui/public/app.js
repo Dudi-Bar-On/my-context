@@ -5271,19 +5271,40 @@ function drawContext() {
         // nothing after it.
         error: view.myctxError ?? flat(table.strings, 'strip.unread'),
       }));
-    } else if (view.myctx.unrecorded > 0) {
-      tail.dataset.k = 'strip.myctxPartial';
-      tail.append(...translate(table.strings, 'strip.myctxPartial', {
-        tokens: fmtCount(view.myctx.tokens),
-        injections: String(view.myctx.injections),
-        unrecorded: String(view.myctx.unrecorded),
-      }));
     } else {
-      tail.dataset.k = 'strip.myctx';
-      tail.append(...translate(table.strings, 'strip.myctx', {
-        tokens: fmtCount(view.myctx.tokens),
-        injections: String(view.myctx.injections),
-      }));
+      // THE SAME PERCENTAGE THE TERMINAL PRINTS, from the SAME expression and
+      // the SAME rounding — `(input.myctx.tokens / win) * 100` at `decimals:
+      // 1` in `statusline-powerline.ts`'s `myctx` `usedOfMaxSegment`. Copied
+      // rather than re-derived, so the two bars cannot round one fraction of
+      // a percent two different ways (`TASK-the-web-strip-reports-the
+      // -project-knowledge-share-in-tokens`). The bar below already computes
+      // this same figure to band its colour; this is that figure, written as
+      // the number it was always banded against but never printed.
+      //
+      // `—` is this file's own measured-absence mark for a percentage it
+      // cannot compute (`strip.ctx.known`'s `pct` above uses the same glyph
+      // for the same reason) — not a zero, and reachable only if `view.size`
+      // were ever unusable while `view.state === 'known'`, which
+      // `context-occupancy.ts` does not currently produce.
+      const pct = typeof view.size === 'number' && view.size > 0
+        ? ((view.myctx.tokens / view.size) * 100).toFixed(1)
+        : '—';
+      if (view.myctx.unrecorded > 0) {
+        tail.dataset.k = 'strip.myctxPartial';
+        tail.append(...translate(table.strings, 'strip.myctxPartial', {
+          pct,
+          tokens: fmtCount(view.myctx.tokens),
+          injections: String(view.myctx.injections),
+          unrecorded: String(view.myctx.unrecorded),
+        }));
+      } else {
+        tail.dataset.k = 'strip.myctx';
+        tail.append(...translate(table.strings, 'strip.myctx', {
+          pct,
+          tokens: fmtCount(view.myctx.tokens),
+          injections: String(view.myctx.injections),
+        }));
+      }
     }
     // ── THE FIFTH BANDED FIELD, and it needs a MAXIMUM to be banded against.
     //
