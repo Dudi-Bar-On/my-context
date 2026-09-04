@@ -2,6 +2,7 @@ import { CATEGORIES } from '../../core/categories.ts';
 import { COMMAND_FLAGS } from '../../core/command-flags.ts';
 import {
   CategoryWriteRefusal, deleteCustomCategory, disableCategory,
+  setConfigField, unsetConfigListEntries, type FieldWriteResult,
 } from '../../core/config.ts';
 import { enumError } from '../../core/teach.ts';
 import type { Item } from '../../core/types.ts';
@@ -9,7 +10,7 @@ import type { Workspace } from '../../core/workspace.ts';
 import { emitLoadErrors, openMutateContext, toCliMessage } from './context.ts';
 import { outputWidth, paragraph, refuseUnknownFlag } from './format.ts';
 import {
-  hasFlag, positionals, registerCommand, type Emit,
+  csv, flag, hasFlag, positionals, registerCommand, type Emit,
 } from './registry.ts';
 import { confirmAction } from './review.ts';
 

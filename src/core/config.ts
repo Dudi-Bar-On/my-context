@@ -2031,3 +2031,293 @@ export function disableCategory(corpusDir: string, category: string): CategoryWr
   const backupPath = backupThenWrite(file, existed, next);
   return { action: 'disable', category, backupPath, wrote: true };
 }
+
+/* ═══════════════════════════════════════════════════════════════════════════
+ * `rulings/57` — FIELD-LEVEL writes, one level under `deleteCustomCategory`/
+ * `disableCategory` above.
+ *
+ * ── WHY A NEW SURFACE, RATHER THAN A THIRD VERB ON THOSE TWO ────────────────
+ *
+ * `--delete`/`--disable` act on a whole CATEGORY, named by its bare id
+ * (`rule`, `task`). Neither can touch a single FIELD, and two things this
+ * project needs done cannot be reached at category granularity at all:
+ * `dispatchGate.enabled` is not inside any category, and removing one retired
+ * name from `categories.task.extraFields` while keeping the rest of the
+ * category exactly as it is cannot be expressed as "delete the category" or
+ * "disable the category" — both throw away far more than the one stale name.
+ *
+ * ── THE SURFACE: A DOTTED PATH, A SET, AN UNSET ──────────────────────────────
+ *
+ * `setConfigField(dir, "dispatchGate.enabled", true)` writes one scalar.
+ * `unsetConfigListEntries(dir, "categories.task.extraFields", ["progress"])`
+ * removes one or more entries from a list. The path is dot-separated key
+ * names read top-down from the raw `config.json` object — `"categories.task
+ * .extraFields"` is `raw.categories.task.extraFields`, `"dispatchGate.enabled"`
+ * is `raw.dispatchGate.enabled` — the same shape a person would write reaching
+ * into the JSON by hand, because that is exactly what these two replace.
+ *
+ * `extraFields` and `updates` are refused BY NAME as `--set` targets even
+ * though `resolveConfig` would happily validate a well-formed value for
+ * either: both EXTEND the catalogue rather than replace it
+ * (`resolveConfig`'s own header on the `extraFields` merge), so writing a new
+ * value through `--set` would not do what `--set` means everywhere else in
+ * this file — the written array would still be UNIONED with the catalogue's
+ * on the next read, and a "set" that cannot make the resolved value equal to
+ * what was asked is a set in name only. `unsetConfigListEntries` is the
+ * correct tool for `extraFields`; there is no CLI writer for `updates` today.
+ *
+ * ── TYPE VALIDATION IS NOT DUPLICATED HERE ───────────────────────────────────
+ *
+ * Neither function carries a second opinion about what a valid
+ * `dispatchGate.enabled` or `categories.task.tier` is. Each builds the
+ * candidate `next` raw object and hands it to `resolveConfig` through
+ * `assertStillResolves` — the exact function `deleteCustomCategory` and
+ * `disableCategory` already call — so a bad type, an unrecognised category
+ * key, or a value `requireEnum` rejects is refused in the LOADER's own words,
+ * not a second, independently-worded validator that could disagree with it.
+ * The only checks these two functions make on their own are structural and
+ * outside `resolveConfig`'s remit entirely: is the path syntactically sound,
+ * does its top-level segment name a key R14.2 would not silently skip (see
+ * below), and — for `--unset` — is the current value actually a list.
+ *
+ * ── WHY THE TOP-LEVEL SEGMENT IS CHECKED AGAINST `TOP_LEVEL_KEYS` BY HAND ───
+ *
+ * `resolveConfig` itself would NOT catch a path whose top-level segment is
+ * nonsense: R14.2 (this file's own `resolveConfig` header) skips an unknown
+ * TOP-LEVEL key and loads the rest, deliberately, so that a config newer than
+ * this build still works. That tolerance is right for LOADING and wrong for
+ * WRITING — `mycontext config foo.bar --set true` naming a `foo` this build
+ * has never heard of must be refused, not silently accepted into a key
+ * `resolveConfig` will skip on every future read. So the one check these two
+ * functions make ahead of `resolveConfig` is exactly the gap R14.2 leaves at
+ * the top level; everything one level down is `resolveConfig`'s own refusal,
+ * unmodified.
+ * ═══════════════════════════════════════════════════════════════════════════
+ */
+
+/** `__proto__`/`constructor`/`prototype` — the three names that reach a plain
+ * object's own machinery rather than an own key of it. Every path segment is
+ * checked against this, because `withValueAtPath` below builds nested objects
+ * from caller-supplied segment names and this project has already paid for
+ * that hazard six times over (see the null-prototype note on `categories` in
+ * `resolveConfig`). */
+const DANGEROUS_PATH_SEGMENTS = new Set(['__proto__', 'constructor', 'prototype']);
+
+/**
+ * Splits and validates a dotted config field path — GRAMMAR only, shared by
+ * both functions below. Whether the path names a real setting is not decided
+ * here; that is `resolveConfig`'s job once `next` exists, via
+ * `assertStillResolves`, with the one exception documented on the header
+ * above (the top-level segment, which `resolveConfig` would not refuse).
+ */
+function requirePathSegments(path: string): string[] {
+  if (typeof path !== 'string' || path.trim() === '') {
+    throw new CategoryWriteRefusal(
+      `my_context: a config field path cannot be empty. Expected e.g. "dispatchGate.enabled" ` +
+      `or "categories.task.extraFields". Nothing was written.`,
+    );
+  }
+  const segments = path.split('.');
+  for (const segment of segments) {
+    if (segment === '') {
+      throw new CategoryWriteRefusal(
+        `my_context: "${path}" has an empty segment — a leading, trailing or doubled ".". A ` +
+        `field path is dot-separated key names, e.g. "categories.task.extraFields". Nothing ` +
+        `was written.`,
+      );
+    }
+    if (DANGEROUS_PATH_SEGMENTS.has(segment)) {
+      throw new CategoryWriteRefusal(
+        `my_context: "${path}" names "${segment}", which is refused outright — it would reach ` +
+        `a JavaScript object's own prototype rather than a config field. Nothing was written.`,
+      );
+    }
+  }
+  return segments;
+}
+
+/** The value at a dotted path inside a raw (unresolved) config object, or
+ * `undefined` when any segment along the way is absent or not an object. */
+function valueAtPath(raw: Record<string, unknown>, segments: string[]): unknown {
+  let cur: unknown = raw;
+  for (const segment of segments) {
+    if (!isObject(cur)) return undefined;
+    cur = (cur as Record<string, unknown>)[segment];
+  }
+  return cur;
+}
+
+/** `raw` with `value` written at the dotted path, creating any intermediate
+ * object the path needs and leaving every sibling key — at every level —
+ * untouched. Immutable: `raw` itself is never mutated, the same discipline
+ * `deleteCustomCategory`/`disableCategory` keep by spreading rather than
+ * assigning. Segments are trusted to have already cleared
+ * `requirePathSegments`. */
+function withValueAtPath(
+  raw: Record<string, unknown>, segments: string[], value: unknown,
+): Record<string, unknown> {
+  const [head, ...rest] = segments;
+  if (rest.length === 0) return { ...raw, [head]: value };
+  const child = isObject(raw[head]) ? (raw[head] as Record<string, unknown>) : {};
+  return { ...raw, [head]: withValueAtPath(child, rest, value) };
+}
+
+/** Refuses a path whose top-level segment R14.2 would silently skip rather
+ * than refuse — see the header's paragraph on why this one check cannot be
+ * left to `resolveConfig` itself. */
+function requireKnownTopLevelSegment(path: string, segments: string[]): void {
+  if ((TOP_LEVEL_KEYS as readonly string[]).includes(segments[0])) return;
+  throw new CategoryWriteRefusal(
+    `my_context: "${segments[0]}" is not a key this build's config.json understands. Expected ` +
+    `one of: ${TOP_LEVEL_KEYS.join(', ')}. Nothing was written — a field path that names no ` +
+    `real setting would be a typo written to disk and read back as nothing, forever, because ` +
+    `an unknown top-level key is skipped rather than refused on every future load.`,
+  );
+}
+
+/** Whether `dryRun` was requested — shared option shape for both writers. */
+export interface FieldWriteOptions {
+  /** Validate fully and report what would change, without touching disk. */
+  dryRun?: boolean;
+}
+
+/** What `setConfigField`/`unsetConfigListEntries` report back to their
+ * caller — the CLI command, which shows the before/after and the backup path
+ * before and after the confirmation gate respectively. */
+export interface FieldWriteResult {
+  action: 'set' | 'unset';
+  path: string;
+  /** The raw value at `path` before this call — `undefined` when the path was
+   * not declared at all. */
+  before: unknown;
+  /** The raw value `path` would hold (or now holds) after this call. */
+  after: unknown;
+  /** Where the pre-write copy of `config.json` was written, `null` when there
+   * was no existing file to copy, and always `null` on a dry run. */
+  backupPath: string | null;
+  /** `false` when `before` already equals `after` and nothing needed writing. */
+  wrote: boolean;
+}
+
+/**
+ * Writes one scalar value at a dotted path — `setConfigField(dir,
+ * "dispatchGate.enabled", true)`. See the section header for what this
+ * refuses and why, and for why `extraFields`/`updates` are refused outright
+ * rather than merely validated.
+ *
+ * `dryRun: true` performs every check and returns the result `wrote: true`
+ * would report, without touching disk — the CLI's blast-radius line, printed
+ * BEFORE the confirmation gate, is this call with `dryRun: true`; the write
+ * itself is the same call again, without it, made only once `--yes` or a
+ * prompt has answered. Both calls read `config.json` fresh, so a file that
+ * changed between the two is caught by the second call exactly as it would be
+ * caught by a first and only call.
+ */
+export function setConfigField(
+  corpusDir: string, path: string, value: unknown, options: FieldWriteOptions = {},
+): FieldWriteResult {
+  const segments = requirePathSegments(path);
+  requireKnownTopLevelSegment(path, segments);
+  const leaf = segments[segments.length - 1];
+  if (leaf === 'extraFields' || leaf === 'updates') {
+    throw new CategoryWriteRefusal(
+      `my_context: "${path}" is a ${leaf === 'extraFields' ? 'list' : 'nested object'} that ` +
+      `EXTENDS the catalogue's own declaration rather than replacing it, so --set cannot write ` +
+      `it — the value written would still be unioned with the catalogue's on the next read, ` +
+      `which is not what --set means anywhere else in this command. ` +
+      (leaf === 'extraFields'
+        ? 'Use --unset to remove one or more entries from it instead.'
+        : 'There is no command-line writer for "updates" today; edit config.json by hand.') +
+      ' Nothing was written.',
+    );
+  }
+
+  const { raw, file, existed } = readRawCategoryConfig(corpusDir);
+  const before = valueAtPath(raw, segments);
+  const next = withValueAtPath(raw, segments, value);
+  assertStillResolves(next, file, `setting "${path}"`);
+
+  if (JSON.stringify(before) === JSON.stringify(value)) {
+    return {
+      action: 'set', path, before, after: value, backupPath: null, wrote: false,
+    };
+  }
+  if (options.dryRun) {
+    return {
+      action: 'set', path, before, after: value, backupPath: null, wrote: true,
+    };
+  }
+  const backupPath = backupThenWrite(file, existed, next);
+  return {
+    action: 'set', path, before, after: value, backupPath, wrote: true,
+  };
+}
+
+/**
+ * Removes one or more entries from a list at a dotted path —
+ * `unsetConfigListEntries(dir, "categories.task.extraFields", ["progress",
+ * "last_change"])`. See the section header for the reasoning shared with
+ * `setConfigField`, and for `dryRun`.
+ *
+ * Refuses rather than silently no-oping when `path` is not currently
+ * declared, when it does not hold a list of strings, or when a named value is
+ * not actually in it — `INV-nothing-is-dropped-silently` applies to a request
+ * to remove something as much as to anything else: a caller who thinks they
+ * cleared a name that was never there has been told nothing true.
+ *
+ * **The ruling on the last entry:** removing the final name from a list
+ * leaves the key declared with an explicit `[]`, never deleted. The two are
+ * not always the same fact once resolved — absent `watchedDocs` resolves to
+ * the three shipped defaults, `[]` resolves to "watch nothing" — so collapsing
+ * the key on the last removal would hand a caller who asked only to remove
+ * ONE name a config that also silently reactivated whatever this build
+ * defaults absence to, for every field where that default is not empty.
+ * `extraFields` happens to resolve identically absent or empty (both extend
+ * the catalogue with nothing), so this ruling costs it nothing; it is written
+ * generally because `unsetConfigListEntries` is.
+ */
+export function unsetConfigListEntries(
+  corpusDir: string, path: string, values: string[], options: FieldWriteOptions = {},
+): FieldWriteResult {
+  const segments = requirePathSegments(path);
+  requireKnownTopLevelSegment(path, segments);
+
+  const { raw, file, existed } = readRawCategoryConfig(corpusDir);
+  const current = valueAtPath(raw, segments);
+  if (current === undefined) {
+    throw new CategoryWriteRefusal(
+      `my_context: ${file} does not declare "${path}" — there is nothing to remove ` +
+      `${values.map((v) => JSON.stringify(v)).join(', ')} from. Nothing was written.`,
+    );
+  }
+  if (!Array.isArray(current) || current.some((v) => typeof v !== 'string')) {
+    throw new CategoryWriteRefusal(
+      `my_context: "${path}" is ${JSON.stringify(current)}, not a list of strings — --unset ` +
+      `removes an entry from a list. Use --set to change a scalar. Nothing was written.`,
+    );
+  }
+  const list = current as string[];
+  const missing = values.filter((v) => !list.includes(v));
+  if (missing.length > 0) {
+    throw new CategoryWriteRefusal(
+      `my_context: "${path}" does not carry ${missing.map((v) => JSON.stringify(v)).join(', ')} ` +
+      `— there is nothing there to remove. Its current entries: ` +
+      `${list.length > 0 ? list.map((v) => JSON.stringify(v)).join(', ') : '(none)'}. Nothing ` +
+      `was written.`,
+    );
+  }
+
+  const nextList = list.filter((v) => !values.includes(v));
+  const next = withValueAtPath(raw, segments, nextList);
+  assertStillResolves(next, file, `removing ${values.join(', ')} from "${path}"`);
+
+  if (options.dryRun) {
+    return {
+      action: 'unset', path, before: current, after: nextList, backupPath: null, wrote: true,
+    };
+  }
+  const backupPath = backupThenWrite(file, existed, next);
+  return {
+    action: 'unset', path, before: current, after: nextList, backupPath, wrote: true,
+  };
+}

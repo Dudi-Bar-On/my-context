@@ -226,8 +226,17 @@ export const COMMAND_FLAGS: Record<string, FlagSpec> = {
    * single-target write. `--yes` is `review.ts`'s `confirmAction`: refused off
    * a TTY without it, so this is the same real refusal `--yes` answers on
    * `edit`/`pin`/`focus`, not a list entry — see `test/helpers/approval-boundary.ts`.
+   *
+   * `rulings/57` widened again: `config <path> --set <value>` and `config
+   * <path> --unset <value>[,<value>...]`, FIELD-level rather than category-
+   * level — `core/config.ts`'s `setConfigField`/`unsetConfigListEntries`.
+   * `<path>` reuses the SAME operand slot `--delete`/`--disable` already read
+   * a bare category name from — a bare name IS a one-segment path — so all
+   * four acts still name their target as the one positional and their VALUE,
+   * where they take one, as the flag's own argument. Exactly one of the four
+   * act flags is required, same as `--delete`/`--disable` were the only two.
    */
-  config: { allowed: ['delete', 'disable', 'yes'], values: [] },
+  config: { allowed: ['delete', 'disable', 'set', 'unset', 'yes'], values: ['set', 'unset'] },
   decay: { allowed: [...DETAIL_FLAGS, 'sessions', 'all'], values: ['sessions'] },
   doctor: { allowed: [...DETAIL_FLAGS, 'quiet'], values: [] },
   export: {
@@ -721,6 +730,23 @@ export const FLAG_DECLARATIONS: Record<string, FlagDeclarations> = {
       note: 'Set enabled: false on a category, shipped or custom. New captures under it are '
         + 'refused and its items stop being selected for injection; nothing already on disk '
         + 'is edited or deleted, and the declaration itself is kept.',
+    },
+    set: {
+      format: 'the new value, read as JSON when it parses as one and as a plain string '
+        + 'otherwise',
+      example: 'true',
+      note: 'Write one scalar field, named by the operand as a dotted path — e.g. '
+        + '`config dispatchGate.enabled --set true`. Refused when the path names no key this '
+        + 'build understands, when the value is the wrong type for it, or on a list/object '
+        + 'field ("extraFields", "updates") that EXTENDS the catalogue rather than being '
+        + 'replaced — --unset removes one entry from those instead.',
+    },
+    unset: {
+      format: 'one value, or several comma-separated, to remove from a list field',
+      example: 'progress,last_change',
+      note: 'Remove one or more entries from a list field named by the operand — e.g. '
+        + '`config categories.task.extraFields --unset progress,last_change`. Refused when any '
+        + 'named value is not currently in the list, or when the path is not a list at all.',
     },
     yes: YES,
   },
