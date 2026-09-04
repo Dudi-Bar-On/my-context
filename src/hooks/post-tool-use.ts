@@ -2,31 +2,35 @@ import path from 'node:path';
 import { recordAudit } from '../core/audit.ts';
 import { isMainEntry, managedSplit, matchesAnyGlob, relPosix, toPosix } from '../core/paths.ts';
 import { findProjectRoot, resolveWorkspace } from '../core/workspace.ts';
-import { capped, NOTE_MAX } from './observe.ts';
+import { capped, NOTE_MAX, subjectFor, SUBJECT_MAX } from './observe.ts';
 import { hookContext, readStdinAsync } from './io.ts';
 
 /**
  * Narrower than `io.ts`'s `HookInput` on purpose, and not merged with it in
- * this task: `nudgeFor` reads `tool_input.file_path` as a string, while the
- * shared interface types `tool_input` as `Record<string, unknown>` — which is
- * the right shape for `pre-tool-use.ts`, whose `extractFilePath` tries three
- * different keys. Unifying them means giving this hook that same
- * three-key lookup, which is a behaviour change (`path` and `notebook_path`
- * would start producing nudges) and belongs to whoever wants that behaviour.
+ * this task: this hook reads a handful of specific fields rather than the
+ * whole payload shape `pre-tool-use.ts`'s `extractFilePath` needs.
  *
- * `tool_input.description`, `tool_input.subagent_type` and `tool_response`
- * are the `Agent` tool's own fields — see `agentDispatchNote` below — and are
- * declared as optional siblings of `file_path` rather than in a second
- * interface, because one `PostToolUse` payload is one shape whichever tool
- * fired it; a caller reads only the keys that apply to the tool it is
- * branching on, which is exactly what both functions below do.
+ * `tool_input` is `Record<string, unknown>` — not a struct of named optional
+ * strings — because, since `hooks/33` widened this hook's matcher to
+ * `Bash|Read|Grep` alongside `Write|Edit|MultiEdit|Agent`, `agentStepNote`
+ * below has to read whichever of `SUBJECT_KEYS` (`observe.ts`) a given tool
+ * actually supplied, the same way `subagent-stop.ts`'s transcript backfill
+ * always has. Every existing narrow read (`nudgeFor`'s `file_path`,
+ * `agentDispatchNote`'s `description`/`subagent_type`) goes through
+ * `stringField` already, so this widening changes no existing behaviour.
+ *
+ * `agent_id`/`agent_type` are the two fields `hooks/33`'s probe found already
+ * on the wire, on every `PostToolUse` firing INSIDE a subagent, and absent
+ * (not merely falsy) on the parent's own tool calls — see `agentStepNote`.
  */
 export interface HookInput {
   tool_name?: string;
-  tool_input?: { file_path?: string; description?: string; subagent_type?: string };
+  tool_input?: Record<string, unknown>;
   tool_response?: { agentId?: string };
   cwd?: string;
   session_id?: string;
+  agent_id?: string;
+  agent_type?: string;
 }
 
 // NotebookEdit is deliberately excluded: `hooks.json`'s matcher
@@ -53,7 +57,7 @@ export function nudgeFor(input: HookInput, fallbackCwd: string): string {
   try {
     if (!input.tool_name || !WRITING_TOOLS.has(input.tool_name)) return '';
 
-    const filePath = input.tool_input?.file_path;
+    const filePath = stringField(input.tool_input, 'file_path');
     if (!filePath) return '';
 
     const cwd = input.cwd && input.cwd !== '' ? input.cwd : fallbackCwd;
@@ -182,6 +186,69 @@ export function agentDispatchNote(input: HookInput, fallbackCwd: string): void {
 }
 
 /**
+ * One `agent-step` row per widened-matcher tool call made INSIDE a lane, live
+ * — the change `TASK-a-lane-step-is-recorded-as-it-happens-because-the-hook`
+ * (hooks/33) asked for, and the owner's ruling that `PostToolUse` may be
+ * widened because it only observes and cannot block (see this task's own
+ * report for the full ruling).
+ *
+ * **Gated on `input.agent_id` alone.** `hooks/33`'s own probe measured this
+ * directly: `agent_id`/`agent_type` are present on every `PostToolUse` firing
+ * caused by a tool call INSIDE a subagent, and absent — not empty, absent —
+ * on the parent's own tool calls, including the parent's own `PostToolUse`
+ * for the `Agent` call that does the dispatching. So this one gate is both
+ * "this firing belongs to a lane" and "this is not the dispatch itself",
+ * with no second check needed for the second half. A nested subagent
+ * dispatching its OWN subagent still carries its own (non-empty) `agent_id`,
+ * so its `Agent` call gets a step row too — the same tool-name-agnostic
+ * treatment `transcriptSteps` already gives every `tool_use` block in a
+ * transcript, kept here for the identical reason: a schema this project does
+ * not own is not one this hook should special-case further than it has to.
+ *
+ * **Same shape as the (now retired) backfill, on purpose.**
+ * `${tool}: ${subject} agent=${agentId}`, built from `SUBJECT_KEYS`
+ * (`observe.ts`) exactly as `subagent-stop.ts`'s `transcriptSteps` built it —
+ * the watch screen's step parser (`ui/public/screens/watch.js`,
+ * `/^(\S+): (.*) agent=\S+$/`) does not care which hook wrote the row it is
+ * reading, and a second shape for the same op would be a second thing that
+ * parser has to recognise for no reason.
+ *
+ * **No `at` override.** The transcript backfill had a RECORD's own past
+ * timestamp to attach; this firing IS the moment, so `recordAudit`'s own
+ * write-time stamp is already correct and nothing here overrides it.
+ *
+ * **Never throws (`INV-hooks-fail-open`).** This runs on the PostToolUse path
+ * of a tool that, since `hooks/33`, fires on very nearly every call a lane
+ * makes; a throw or a slow path here is far more costly than it was when the
+ * matcher only covered `Write|Edit|MultiEdit|Agent`.
+ */
+export function agentStepNote(input: HookInput, fallbackCwd: string): void {
+  try {
+    const agentId = input.agent_id;
+    if (typeof agentId !== 'string' || agentId === '') return;
+
+    const cwd = input.cwd && input.cwd !== '' ? input.cwd : fallbackCwd;
+    const root = findProjectRoot(cwd);
+    if (!root) return;
+
+    const tool = input.tool_name && input.tool_name !== '' ? input.tool_name : '<absent>';
+    const subject = capped(subjectFor(input.tool_input), SUBJECT_MAX);
+    const note = capped(`${tool}: ${subject} agent=${agentId}`, NOTE_MAX);
+
+    recordAudit(root, {
+      kind: 'hook',
+      op: 'agent-step',
+      hook: 'PostToolUse',
+      ...(input.session_id === undefined ? {} : { sessionId: input.session_id }),
+      note,
+    });
+  } catch {
+    // INV-hooks-fail-open. A knowledge base that breaks a session is worse
+    // than one that says nothing.
+  }
+}
+
+/**
  * The envelope, from `io.ts`'s one builder — and the empty guard, which stays
  * here because it is this hook's rule and not the builder's. Almost every edit
  * in a session is one this hook has no opinion on; an envelope carrying an
@@ -231,6 +298,11 @@ if (isMainEntry(import.meta.filename, process.argv[1])) {
       // No stdout of its own: a dispatch row is audit-only, and there is
       // nothing here the model needs told back to it about its own dispatch.
       agentDispatchNote(parsed, process.cwd());
+      // Likewise audit-only, and likewise gated so it does nothing on the
+      // overwhelming majority of firings (every one outside a lane) — see
+      // agentStepNote's own comment for the gate and the duplication
+      // decision it is half of.
+      agentStepNote(parsed, process.cwd());
     })
     .catch(() => { /* fail open */ })
     .finally(() => { process.exitCode = 0; });

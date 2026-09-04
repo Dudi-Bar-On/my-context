@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: Steps are written live from the tool-use hook instead of only being backfilled when a lane stops.
-summary_of: 09864230d23130b8
+summary_of: 88948f14d6cee65b
 scope:
   - hooks/hooks.json
   - src/hooks/**
@@ -17,18 +17,19 @@ tags:
   - live
   - "plan:hooks"
   - "seq:33"
-  - "state:todo"
+  - "state:done"
 origin: human
 source_file: null
 source_anchor: null
 source_checksum: null
 valid_from: 2026-09-04
 valid_until: null
-checksum: 1f4b266386a5093a
+checksum: c3bc9d81c88aeb46
 plan: hooks
 seq: "33"
-state: todo
+state: done
 priority: "1"
+verified_on: 2026-09-04
 ---
 
 # a lane step is recorded as it happens, because the hook already fires and the payload already names the lane

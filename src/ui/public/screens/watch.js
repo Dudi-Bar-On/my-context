@@ -284,6 +284,21 @@ const SVG_NS = 'http://www.w3.org/2000/svg';
  * burst; deriving the groups fresh from whatever `visible()` currently holds
  * does not, because it never depends on arrival order in the first place —
  * only on which ids are present.
+ *
+ * **`subagent-stop-untyped` is deliberately NOT a member**
+ * (`TASK-a-third-of-the-audit-feed-is-stop-rows-for-things-that-were`,
+ * hooks/34). `SubagentStop` writes it for a firing that named no `agent_type`
+ * — the platform's shared "a turn ended" signal, reused for `loop_tick` and
+ * cleanup paths that were never a Task-tool dispatch (probe:
+ * `reports/probes/2026-09-04-live-steps-and-the-stop-event-that-is-not-a-
+ * lane.md`). A third of this project's own feed was such rows, each drawn as
+ * a lane with zero steps and a toggle that could never open, because there
+ * was nothing behind it to open. Leaving this op out of `LANE_OPS` means
+ * `laneIdOf` returns `null` for it — it is drawn as an ORDINARY row by
+ * `rowFor`, carrying its own explanatory note in full, rather than being
+ * folded into a lane it never was. The row is not lost; it simply stops
+ * competing for the lane shape. See `core/audit.ts`'s `HOOK_OPS` comment for
+ * the decision among the three options this task weighed.
  */
 const LANE_OPS = new Set(['agent-dispatched', 'agent-step', 'subagent-stop']);
 
@@ -301,6 +316,12 @@ const LANE_OPS = new Set(['agent-dispatched', 'agent-step', 'subagent-stop']);
  * to `hooks/hooks.json` itself. See `core/audit.ts`'s own copy for the full
  * argument — why two ops per key is not an oversight, and why `manual` is
  * deliberately absent.
+ *
+ * **`SubagentStop` lists two ops since 2026-09-04** — `subagent-stop-untyped`
+ * joins `subagent-stop`, split by whether the firing named a real
+ * `agent_type` (`core/audit.ts`'s own copy, and `HOOK_OPS`'s comment there,
+ * for the full argument). `LANE_OPS` above is the narrower set that decides
+ * what draws as a lane; this table only answers "has this hook ever fired".
  */
 export const REGISTERED_HOOK_OPS = {
   SessionStart: ['session-start', 'compact-restore'],
@@ -309,13 +330,13 @@ export const REGISTERED_HOOK_OPS = {
   SessionEnd: ['session-end'],
   PreCompact: ['pre-compact'],
   PostCompact: ['post-compact'],
-  PostToolUse: ['post-tool-use', 'agent-dispatched'],
+  PostToolUse: ['post-tool-use', 'agent-dispatched', 'agent-step'],
   PostToolUseFailure: ['post-tool-use-failure'],
   FileChanged: ['file-changed'],
   InstructionsLoaded: ['instructions-loaded'],
   ConfigChange: ['config-change'],
   PermissionDenied: ['permission-denied'],
-  SubagentStop: ['subagent-stop', 'agent-step'],
+  SubagentStop: ['subagent-stop', 'subagent-stop-untyped'],
   Stop: ['stop'],
   Setup: ['setup'],
   TaskCreated: ['task-created'],
@@ -1053,12 +1074,16 @@ export async function render(root, ctx) {
    * others rather than events of their own — see `HOOK_OPS`'s own comment in
    * `core/audit.ts` for the full argument, which is deliberate reuse and not
    * an oversight: `agent-dispatched` shares `PostToolUse` with the ordinary
-   * `post-tool-use` op (both fire on the same widened matcher), and
-   * `agent-step` shares `SubagentStop` with `subagent-stop` (both are written
-   * from the same firing, one per lane and one per tool call inside it).
+   * `post-tool-use` op (both fire on the same widened matcher), and since
+   * 2026-09-04 `agent-step` shares `PostToolUse` with both of them — three ops
+   * on one event, one per tool call as it happens.
    *
-   * A row led by the EVENT cannot tell either pair apart: an `agent-step` row
-   * and a `subagent-stop` row both read bare `SubagentStop`, and an
+   * (It shared `SubagentStop` with `subagent-stop` until then, being backfilled
+   * from the lane transcript at stop. A probe established that hooks DO fire
+   * inside a running lane and that the payload carries `agent_id`, so the step
+   * is now recorded live and `PostToolUse` is its only writer.)
+   *
+   * A row led by the EVENT cannot tell such a group apart: an
    * `agent-dispatched` row reads `PostToolUse` — indistinguishable from an
    * ordinary tool-use hook, saying nothing about a dispatch. This is the
    * defect the owner reported as "I still cannot see the new hooks and their
@@ -1073,7 +1098,7 @@ export async function render(root, ctx) {
    * stopped being useful — `SessionStart` is genuinely the word a reader
    * wants for an injection-ish hook row, and losing the event would only
    * trade one blindness for another — so it still shows, as DETAIL right
-   * after the op, in parens: `agent-step (SubagentStop)`, `agent-dispatched
+   * after the op, in parens: `agent-step (PostToolUse)`, `agent-dispatched
    * (PostToolUse)`, `deny (PreToolUse)`. Two ops that share one event now read
    * as two different words carrying the same parenthetical, which is the one
    * shape that is both distinguishable at a glance and keeps the event a hook

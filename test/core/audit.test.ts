@@ -399,11 +399,16 @@ test('no pre-existing op changed kind', () => {
     ['post-compact',
       'file-changed', 'instructions-loaded', 'config-change', 'permission-denied',
       'subagent-stop', 'stop', 'setup', 'task-created', 'task-completed', 'prompt-expansion',
-      // `agent-dispatched` (2026-09-04), `agent-step` (2026-09-04) and
-      // `agent-item-waived` (2026-09-04) end HOOK_OPS, one place before
-      // ACCESS_OPS starts in AUDIT_OPS's own spread order — see HOOK_OPS's
-      // own docblock in src/core/audit.ts for why all three are `hook` ops.
-      'agent-dispatched', 'agent-step', 'agent-item-waived',
+      // `agent-dispatched` (2026-09-04), `agent-step` (2026-09-04),
+      // `agent-item-waived` (2026-09-04) and `subagent-stop-untyped`
+      // (2026-09-04) end HOOK_OPS, one place before ACCESS_OPS starts in
+      // AUDIT_OPS's own spread order — see HOOK_OPS's own docblock in
+      // src/core/audit.ts for why all four are `hook` ops, and for
+      // `subagent-stop-untyped` specifically, why it is a SPLIT of
+      // `subagent-stop` rather than a new firing
+      // (TASK-a-third-of-the-audit-feed-is-stop-rows-for-things-that-were,
+      // hooks/34).
+      'agent-dispatched', 'agent-step', 'agent-item-waived', 'subagent-stop-untyped',
       'nonce-minted', 'execute', 'execute-done'],
   );
   assert.equal(kindOf('nonce-minted'), 'access', 'a mint is the access kind\'s second op, not a hook');

@@ -355,12 +355,62 @@ export type InjectionOp = (typeof INJECTION_OPS)[number];
  * A `hook` op rather than `mutation` for `HOOK_OPS`' own standing reason — no
  * item moved — and inside the break `@2` already declares, one op, no new
  * kind, no new field.
+ *
+ * **`subagent-stop-untyped` is the fourteenth, and it is a SPLIT of an
+ * existing op rather than a new firing** (TASK-a-third-of-the-audit-feed-is-
+ * stop-rows-for-things-that-were, hooks/34, 2026-09-04). A probe the same day
+ * (`reports/probes/2026-09-04-live-steps-and-the-stop-event-that-is-not-a-
+ * lane.md`) established that `SubagentStop` and the top-level `Stop` event
+ * are emitted by ONE shared platform generator, reused by five or more call
+ * sites — `loop_tick`, interrupted-query cleanup, and others that are not a
+ * Task-tool dispatch — and that a firing from any of those non-dispatch call
+ * sites still names `SubagentStop`, still carries an `agent_id`, and simply
+ * never carries an `agent_type`. On this project's own corpus that was 97% of
+ * every `SubagentStop` firing, each one drawn on the watch screen as a lane
+ * with zero steps and a toggle that could never open, because there was
+ * nothing behind it to open. `observeSubagentStop` (`hooks/subagent-stop.ts`)
+ * already told the two apart in its own note — `type=<absent>` — before this
+ * op existed; the decision this task actually had to make was what to DO with
+ * a fact that was already known, not how to detect it.
+ *
+ * **The three options weighed, and why the second won.** (1) Do not write the
+ * row at all — cleanest feed, but a real platform event (a turn-ended signal
+ * this project has never before had reason to distrust) would vanish with no
+ * trace, which is exactly what
+ * `STD-a-measured-zero-is-drawn-and-named-an-unmeasured-thing-is` rules out:
+ * a reader could no longer tell "this kind of turn never ends" from "we
+ * stopped recording it". (3) Keep writing it as `subagent-stop` and exclude
+ * it only where lanes are grouped — the smallest diff, but it leaves
+ * `mycontext audit --op subagent-stop` answering two different questions
+ * with one filter forever, which is the same ambiguity `agent-dispatched`'s
+ * own docblock above already refused to accept for `PostToolUse`. (2) — this
+ * one — gives the phantom its own op: the record survives, in full, with its
+ * own explanatory note; it is filtered out of lane grouping by construction,
+ * because grouping keys on `LANE_OPS` and this op is deliberately not a
+ * member of it (`ui/public/screens/watch.js`); and a reader who asks
+ * specifically for `subagent-stop` gets only real lanes from now on. **The
+ * cost, paid rather than hidden:** one more member of the closed op
+ * vocabulary (`test/core/audit-registered-hooks.test.ts`'s three completeness
+ * checks, `test/core/audit-new-ops.test.ts`'s exact-order assertion, and both
+ * copies of `REGISTERED_HOOK_OPS` — `core/audit.ts`'s own and
+ * `watch.js`'s byte-identical mirror — all had to be touched for this one
+ * op), and the hook op family is no longer in one-to-one correspondence with
+ * "one platform firing, one op" — `SubagentStop` now writes either of two,
+ * chosen by a fact the payload itself carries. Both costs are paid once, in
+ * this change; neither recurs per future SubagentStop firing.
+ *
+ * **Still `hook: 'SubagentStop'`, on every row**, exactly as `agent-dispatched`
+ * stamps `hook: 'PostToolUse'` regardless of which of its two ops fired — the
+ * hook field names the EVENT that wrote the row, not which op it chose.
+ *
+ * It is inside the break `@2` already declares, by the same argument as
+ * `agent-item-waived`: no new kind, no new field, one unreleased version step.
  */
 export const HOOK_OPS = [
   'pre-compact', 'post-tool-use', 'deny', 'post-tool-use-failure', 'session-end', 'post-compact',
   'file-changed', 'instructions-loaded', 'config-change', 'permission-denied', 'subagent-stop',
   'stop', 'setup', 'task-created', 'task-completed', 'prompt-expansion', 'agent-dispatched',
-  'agent-step', 'agent-item-waived',
+  'agent-step', 'agent-item-waived', 'subagent-stop-untyped',
 ] as const;
 export type HookOp = (typeof HOOK_OPS)[number];
 
@@ -522,8 +572,8 @@ export const AUDIT_OPS: AuditOp[] = [
  * things.** `PreToolUse` both denies (`deny`) and injects (`jit`) and, since
  * `agent-item-waived`, records a waived dispatch gate; `PostToolUse` both
  * writes the capture nudge (`post-tool-use`) and records a dispatch
- * (`agent-dispatched`); `SubagentStop` both closes a lane (`subagent-stop`)
- * and backfills its steps (`agent-step`); `SessionStart` writes `session-start`
+ * (`agent-dispatched`) and, since 2026-09-04, records a lane's steps as they
+ * happen (`agent-step`); `SessionStart` writes `session-start`
  * on an ordinary start and `compact-restore` when it is resolving a
  * compaction (`core/inject.ts` · `op: manual ? 'manual' : subagent ? 'subagent-start'` · ~898) —
  * same hook, same `hook: 'SessionStart'` stamp, different op for a different
@@ -558,6 +608,15 @@ export const AUDIT_OPS: AuditOp[] = [
  * rather than trusting them not to drift, the same mitigation this project
  * already applies to `hooks/hooks.json` itself in
  * `test/hooks/hooks-manifest.test.ts`.
+ *
+ * **`SubagentStop` lists two ops since 2026-09-04, by the same "one event,
+ * two things" rule `PostToolUse` already demonstrates above**: it writes
+ * `subagent-stop` for a firing that named a real dispatch (`agent_type`
+ * present) and `subagent-stop-untyped` for one that did not — see
+ * `HOOK_OPS`'s own comment on the split for the full argument. `watch.js`'s
+ * lane grouping keys on `LANE_OPS`, a narrower set than this table, precisely
+ * so the untyped half does not compete for the lane shape while still being
+ * counted as "seen" here.
  */
 export const REGISTERED_HOOK_OPS: Record<string, AuditOp[]> = {
   SessionStart: ['session-start', 'compact-restore'],
@@ -566,13 +625,13 @@ export const REGISTERED_HOOK_OPS: Record<string, AuditOp[]> = {
   SessionEnd: ['session-end'],
   PreCompact: ['pre-compact'],
   PostCompact: ['post-compact'],
-  PostToolUse: ['post-tool-use', 'agent-dispatched'],
+  PostToolUse: ['post-tool-use', 'agent-dispatched', 'agent-step'],
   PostToolUseFailure: ['post-tool-use-failure'],
   FileChanged: ['file-changed'],
   InstructionsLoaded: ['instructions-loaded'],
   ConfigChange: ['config-change'],
   PermissionDenied: ['permission-denied'],
-  SubagentStop: ['subagent-stop', 'agent-step'],
+  SubagentStop: ['subagent-stop', 'subagent-stop-untyped'],
   Stop: ['stop'],
   Setup: ['setup'],
   TaskCreated: ['task-created'],
@@ -607,6 +666,7 @@ const KIND_OF: Record<AuditOp, AuditKind> = {
   'permission-denied': 'hook', 'subagent-stop': 'hook', stop: 'hook', setup: 'hook',
   'task-created': 'hook', 'task-completed': 'hook', 'prompt-expansion': 'hook',
   'agent-dispatched': 'hook', 'agent-step': 'hook', 'agent-item-waived': 'hook',
+  'subagent-stop-untyped': 'hook',
   // Both halves of one run, and both `execution`: a reader filtering
   // `--kind execution` wants the run, not half of it.
   execute: 'execution', 'execute-done': 'execution',

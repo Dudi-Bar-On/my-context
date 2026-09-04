@@ -76,7 +76,15 @@ test('each new op is appended to its own family, moving no member before it', ()
       // has, `hooks/pre-tool-use.ts`). See `HOOK_OPS`'s own comment for why
       // it is a `hook` op distinct from `deny`: the dispatch this row
       // describes was NOT refused.
-      'agent-dispatched', 'agent-step', 'agent-item-waived'],
+      //
+      // `subagent-stop-untyped` (2026-09-04), appended last and moving
+      // nothing — a SPLIT of `subagent-stop` rather than a new firing: a
+      // `SubagentStop` naming no `agent_type` never described a lane, so it
+      // stops competing with real lanes for that op
+      // (TASK-a-third-of-the-audit-feed-is-stop-rows-for-things-that-were,
+      // hooks/34). See `HOOK_OPS`'s own comment for the three options
+      // weighed and why this one won.
+      'agent-dispatched', 'agent-step', 'agent-item-waived', 'subagent-stop-untyped'],
   );
 });
 

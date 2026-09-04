@@ -80,6 +80,19 @@ export interface Observation {
    * surface. The builder that sets it owns its length.
    */
   context?: string;
+  /**
+   * Overrides `ObservationSpec.op` for THIS firing only. Absent on every
+   * builder but one: `observeSubagentStop` (`hooks/subagent-stop.ts`) is the
+   * one spec whose op depends on the payload rather than on which event
+   * fired — a `SubagentStop` naming a real dispatch (`agent_type` present)
+   * writes `subagent-stop`, one that does not writes `subagent-stop-untyped`
+   * — and this field is what lets it choose without every other spec's
+   * static `op` growing a branch it does not need
+   * (`TASK-a-third-of-the-audit-feed-is-stop-rows-for-things-that-were`,
+   * hooks/34; see `HOOK_OPS`'s own comment in `core/audit.ts` for the whole
+   * argument for the split).
+   */
+  op?: HookOp;
 }
 
 export interface ObservationSpec {
@@ -110,6 +123,50 @@ export const NOTE_MAX = 320;
 export function capped(text: string, max = 96): string {
   const flat = text.replace(/\s+/gu, ' ').trim();
   return flat.length > max ? `${flat.slice(0, max - 3)}...` : flat;
+}
+
+/** The longest a plucked subject may be, before it joins the tool name and the agent id in `note`. */
+export const SUBJECT_MAX = 80;
+
+/**
+ * The one field of `tool_input` an `agent-step` row will ever carry, tried in
+ * this order and stopping at the first STRING present.
+ *
+ * **Shared between `subagent-stop.ts`'s backfill and `post-tool-use.ts`'s live
+ * writer** (TASK-a-lane-step-is-recorded-as-it-happens-because-the-hook,
+ * hooks/33) — both produce the identical `${tool}: ${subject} agent=${id}`
+ * shape, from the same closed set of keys, so this is the one place that
+ * choice is made rather than two copies drifting apart. `subagent-stop.ts`
+ * used to keep its own copy; it now imports this one.
+ *
+ * **Never the whole object.** `tool_input` carries file contents, command
+ * output and prompt text — `HOOK_OPS`' comment on `agent-step` in
+ * `core/audit.ts` names the 5,207 rows this log already deleted once for
+ * exactly that shape of noise. Every key here is chosen because it is
+ * normally SHORT and human-recognisable: `description` is a tool's own
+ * one-line summary when it supplies one (the `Agent` tool's, and increasingly
+ * `Bash`'s); the rest are the argument that names WHAT a call acted on rather
+ * than what it did with it.
+ *
+ * A tool this list does not recognise — an MCP tool, a future built-in —
+ * produces no match and falls through to `NO_SUBJECT`. That is the
+ * `INSTR-read-the-design-record...`-mandated posture for a schema this
+ * project does not own: skip what is not recognised, never guess at it.
+ */
+export const SUBJECT_KEYS = [
+  'description', 'file_path', 'notebook_path', 'command', 'pattern', 'query', 'url', 'path',
+] as const;
+
+export const NO_SUBJECT = '<no subject>';
+
+export function subjectFor(toolInput: unknown): string {
+  if (typeof toolInput !== 'object' || toolInput === null) return NO_SUBJECT;
+  const obj = toolInput as Record<string, unknown>;
+  for (const key of SUBJECT_KEYS) {
+    const value = obj[key];
+    if (typeof value === 'string' && value !== '') return value;
+  }
+  return NO_SUBJECT;
 }
 
 /**
@@ -248,7 +305,7 @@ export function observeAndRecord(
     const note = capped(observed.note, NOTE_MAX);
     recordAudit(root, {
       kind: 'hook',
-      op: spec.op,
+      op: observed.op ?? spec.op,
       hook: spec.hook,
       ...(input.session_id === undefined ? {} : { sessionId: input.session_id }),
       ...(observed.path === undefined ? {} : { path: observed.path }),

@@ -281,6 +281,24 @@ test('SubagentStop names the agent, so the SubagentStart pair can be read back',
   assert.match(row.note ?? '', /general-purpose/u);
 });
 
+test('SubagentStop with no agent_type writes subagent-stop-untyped, not subagent-stop, and says plainly why', (t) => {
+  const cwd = sandbox(t);
+  recordObservation(SUBAGENT_STOP, { session_id: SESSION, cwd, agent_id: 'agent-7' }, cwd);
+  const row = hookRows(cwd)[0];
+  // TASK-a-third-of-the-audit-feed-is-stop-rows-for-things-that-were, hooks/34:
+  // a firing with no agent_type never described a lane, so it no longer
+  // competes with real lanes for the `subagent-stop` op — see `HOOK_OPS`'s
+  // own comment in `core/audit.ts` for the decision and the three options
+  // weighed against it.
+  assert.equal(row.op, 'subagent-stop-untyped');
+  assert.equal(row.hook, 'SubagentStop', 'the event that wrote the row is unchanged by which op it chose');
+  assert.match(row.note ?? '', /type=<absent>/u);
+  assert.match(row.note ?? '', /not a named lane/u,
+    'a bare "type=<absent>" cannot be told apart from a real lane that did nothing; the note ' +
+    'must say why no agent-step rows will follow this firing ' +
+    '(TASK-the-step-backfill-produces-nothing-for-ninety-eight-percent)');
+});
+
 test('SubagentStop with no agent_id records nothing', (t) => {
   const cwd = sandbox(t);
   assert.equal(

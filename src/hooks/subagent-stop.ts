@@ -5,7 +5,8 @@ import { recordAudit } from '../core/audit.ts';
 import { isMainEntry } from '../core/paths.ts';
 import { findProjectRoot } from '../core/workspace.ts';
 import {
-  capped, NOTE_MAX, observeAndRecord, type Observation, type ObservationSpec,
+  capped, NOTE_MAX, observeAndRecord, subjectFor, SUBJECT_MAX,
+  type Observation, type ObservationSpec,
 } from './observe.ts';
 import { hookParseErrorLine, parseHookInput, readStdin, type HookInput } from './io.ts';
 
@@ -58,17 +59,59 @@ import { hookParseErrorLine, parseHookInput, readStdin, type HookInput } from '.
  * is a measured silence rather than an assumed one
  * (`reports/probes/2026-08-20-clear-and-prompt-hooks.md` §3c).
  */
+/**
+ * **`type=<absent>` is not a missing value — it names a DIFFERENT KIND of firing.**
+ *
+ * Measured on 2026-09-04 (`TASK-the-step-backfill-produces-nothing-for-ninety-eight-percent`):
+ * on the live corpus, 96%+ of `SubagentStop` firings carry no `agent_type`, and — decisively —
+ * NONE of those ids ever gets a `subagents/agent-<id>.jsonl` transcript file written for it,
+ * while every `agent_type`-carrying firing does (0 of 100 retained transcripts matched a
+ * `type=<absent>` id; all 100 matched a typed one). A live, isolated probe (a throwaway
+ * `claude -p` session under a custom `--settings`, touching nothing in this repo) confirms an
+ * ordinary Task-tool dispatch — flat or nested — always carries `agent_type` and always gets a
+ * working transcript; `recordAgentSteps` backfills it correctly when it does (traced against a
+ * real 1.7 MB transcript: 82/82 tool_use blocks recovered).
+ *
+ * Reading the platform's own build (2.1.260, static): `SubagentStop` and the top-level `Stop`
+ * event are emitted by ONE shared generator, keyed only on whether the current turn's context
+ * carries an `agentId` — `agent_type:k??""`, where `k` is whatever `.agentType` that context
+ * object happens to hold. At least five call sites reuse it, including a `"loop_tick"` turn and
+ * an interrupted-query cleanup path, none of them a Task-tool dispatch. So a `SubagentStop`
+ * firing with no `agent_type` is not this project's own dispatch losing its label — it is the
+ * platform's shared "a turn carrying an agent id ended" signal, firing for something that was
+ * never a named lane and never got a transcript to back-fill from. `recordAgentSteps` returning
+ * zero rows for it is therefore CORRECT, not a parsing failure — but a bare `type=<absent>` does
+ * not say that, and a reader (or a screen drawing "0 steps") cannot tell it apart from a real
+ * lane that simply did nothing. This note says it explicitly, so nobody has to re-derive it a
+ * fifth time.
+ *
+ * **Since 2026-09-04 the two cases also write two different OPS**
+ * (`TASK-a-third-of-the-audit-feed-is-stop-rows-for-things-that-were`,
+ * hooks/34). The note above already told them apart in PROSE; on the owner's
+ * own screen every `type=<absent>` firing still drew as an empty, unopenable
+ * lane, because the watch screen's lane grouping joins on the OP
+ * (`ui/public/screens/watch.js`'s `LANE_OPS`), not on the note's text. A
+ * typed firing keeps writing `subagent-stop`, unchanged. An untyped one now
+ * writes `subagent-stop-untyped` — still recorded, still carrying the exact
+ * same explanatory note, just no longer eligible to be grouped as a lane.
+ * See `HOOK_OPS`'s own comment in `core/audit.ts` for the three options this
+ * task weighed and why this one won.
+ */
 export function observeSubagentStop(input: HookInput): Observation | null {
   const agentId = input.agent_id;
   if (typeof agentId !== 'string' || agentId === '') return null;
 
-  const type = typeof input.agent_type === 'string' && input.agent_type !== ''
-    ? input.agent_type : '<absent>';
+  const hasType = typeof input.agent_type === 'string' && input.agent_type !== '';
+  const type = hasType ? input.agent_type! : '<absent>';
+  const typeNote = hasType
+    ? ''
+    : ' (no agent_type on this firing — not a named lane; no step backfill will be attempted)';
 
   return {
     note:
-      `delivery=finished agent=${capped(agentId, 64)} type=${capped(type, 48)}; ` +
+      `delivery=finished agent=${capped(agentId, 64)} type=${capped(type, 48)}${typeNote}; ` +
       'its seen file was left in place',
+    ...(hasType ? {} : { op: 'subagent-stop-untyped' }),
   };
 }
 
@@ -78,15 +121,47 @@ export const SUBAGENT_STOP: ObservationSpec = {
   observe: observeSubagentStop,
 };
 
-// ── `agent-step`: one row per tool call, backfilled once from the lane's own
-// transcript (TASK-the-audit-stream-cannot-say-what-a-lane-was-doing-at-a-
-// given) ─────────────────────────────────────────────────────────────────
+// ── `agent-step`: one row per tool call ─────────────────────────────────────
 //
 // See `HOOK_OPS`'s own comment in `core/audit.ts` for the whole argument —
 // why this is a `hook` op, why it joins on `agent_id` rather than the
 // transcript's internal `agentId`, and why `at` is the transcript record's
-// own timestamp. What follows is the bound and the extraction rule that
-// comment promises.
+// own timestamp when there is one. What follows is the bound and the
+// extraction rule that comment promises.
+//
+// **NO LONGER CALLED FROM THIS HOOK'S MAIN ENTRY**
+// (TASK-a-lane-step-is-recorded-as-it-happens-because-the-hook, hooks/33).
+//
+// A probe on 2026-09-04 (`reports/probes/2026-09-04-live-steps-and-the-stop-
+// event-that-is-not-a-lane.md`) measured that `PostToolUse` fires live, per
+// tool call, minutes before `SubagentStop` — and that its payload already
+// carries `agent_id`/`agent_type`. `hooks/post-tool-use.ts`'s
+// `agentStepNote` now writes this SAME `agent-step` shape from THAT firing,
+// in real time, for every widened-matcher tool call inside a lane.
+//
+// **The duplication decision, stated once, here: the live writer is the
+// ONLY writer.** The alternative this task named — "the backfill stops when
+// live rows exist" — was rejected after checking its actual cost: the only
+// way to know whether live rows already exist for an agent id is to read
+// the audit log back (`core/audit.ts`'s `readAudit` has no bounded/indexed
+// lookup by agent id), which means every `SubagentStop` firing — including
+// the ~97% that are not real lanes at all, see `observeSubagentStop` above —
+// would pay a full-log read against this hook's 3-second budget, to save a
+// write this project's own probe already proved does not happen. A
+// read-before-write race is also a second failure mode
+// (`INV-hooks-fail-open`) this hook did not have before. Reconciling on read
+// was ruled out for the same reason it is ruled out everywhere else in this
+// task: that logic lives in `core/render.ts`/`core/select.ts`/`src/ui/**`,
+// none of which this task owns.
+//
+// `recordAgentSteps` and `transcriptSteps` are kept, exported, and still
+// fully covered by `test/hooks/subagent-stop-steps.test.ts` — they are
+// correct, tested pure functions, callable directly (a future manual
+// recovery path, or a fallback a later ruling could re-wire) — they are
+// simply no longer invoked automatically, so a real `SubagentStop` firing no
+// longer produces a second copy of a step `post-tool-use.ts` already wrote
+// live. See this task's own report for the measurement that proves no
+// duplication follows from this.
 
 /**
  * The most of a transcript this hook will ever read: 8 MiB, the same
@@ -118,42 +193,6 @@ export const MAX_TRANSCRIPT_READ_BYTES = 8 * 1024 * 1024;
  * practice.
  */
 export const MAX_STEP_ROWS = 1000;
-
-/** The longest a plucked subject may be, before it joins the tool name and the agent id in `note`. */
-const SUBJECT_MAX = 80;
-
-/**
- * The one field of `tool_input` this code will ever put in a row, tried in
- * this order and stopping at the first STRING present.
- *
- * **Never the whole object.** `tool_input` carries file contents, command
- * output and prompt text — `HOOK_OPS`' comment on this op names the 5,207
- * rows this log already deleted once for exactly that shape of noise. Every
- * key here is chosen because it is normally SHORT and human-recognisable:
- * `description` is a tool's own one-line summary when it supplies one (the
- * `Agent` tool's, and increasingly `Bash`'s); the rest are the argument that
- * names WHAT a call acted on rather than what it did with it.
- *
- * A tool this list does not recognise — an MCP tool, a future built-in —
- * produces no match and falls through to `NO_SUBJECT`. That is the
- * `INSTR-read-the-design-record...`-mandated posture for a schema this
- * project does not own: skip what is not recognised, never guess at it.
- */
-const SUBJECT_KEYS = [
-  'description', 'file_path', 'notebook_path', 'command', 'pattern', 'query', 'url', 'path',
-] as const;
-
-const NO_SUBJECT = '<no subject>';
-
-function subjectFor(toolInput: unknown): string {
-  if (typeof toolInput !== 'object' || toolInput === null) return NO_SUBJECT;
-  const obj = toolInput as Record<string, unknown>;
-  for (const key of SUBJECT_KEYS) {
-    const value = obj[key];
-    if (typeof value === 'string' && value !== '') return value;
-  }
-  return NO_SUBJECT;
-}
 
 /**
  * The transcript's bytes, bounded to `MAX_TRANSCRIPT_READ_BYTES` and aligned
@@ -308,18 +347,20 @@ export function recordAgentSteps(input: HookInput, fallbackCwd: string): void {
   }
 }
 
-// Not `runObservationHook`: that shared runtime writes AT MOST ONE row per
-// firing (`observe.ts`'s header states this as the whole point of sharing
-// it), and this event now writes many. The `subagent-stop` row itself is
+// Not `runObservationHook`: `SUBAGENT_STOP`'s own `subagent-stop` row is
 // still produced through the same `observeAndRecord` every other observation
-// hook uses — nothing about ITS shape, gating or test coverage changes —
-// and the transcript backfill runs alongside it, reading stdin once for both.
+// hook uses — nothing about ITS shape, gating or test coverage changes.
+//
+// `recordAgentSteps` is deliberately NOT called here any more — see the
+// duplication-decision comment above `MAX_TRANSCRIPT_READ_BYTES`. Calling it
+// here today would write a second `agent-step` row for every step
+// `post-tool-use.ts`'s live `agentStepNote` already wrote for this same
+// lane while it ran.
 if (isMainEntry(import.meta.filename, process.argv[1])) {
   try {
     const { input, parseError } = parseHookInput(readStdin());
     if (parseError !== null) process.stderr.write(hookParseErrorLine(parseError));
     observeAndRecord(SUBAGENT_STOP, input, process.cwd());
-    recordAgentSteps(input, process.cwd());
   } catch {
     /* fail open */
   }

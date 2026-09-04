@@ -198,10 +198,12 @@ test('every registered hook command disables the experimental warning', () => {
 
 /**
  * **`PostToolUseFailure` is registered, and registered UNMATCHED** (plan Task
- * 7). `PostToolUse` carries `Write|Edit|MultiEdit` because `watchedDocs` is
- * about documents; a degradation counter is tool-agnostic, and a matcher here
- * would silently count only some of the failures while the log read as though
- * it held them all. `PreCompact` is the precedent for an unmatched event.
+ * 7). `PostToolUse` carries `Write|Edit|MultiEdit|Agent|Bash|Read|Grep` (widened
+ * `hooks/33`, 2026-09-04 — see the test below) because `watchedDocs` is about
+ * documents and `agentStepNote` is about tool calls; a degradation counter is
+ * tool-agnostic either way, and a matcher here would silently count only some
+ * of the failures while the log read as though it held them all. `PreCompact`
+ * is the precedent for an unmatched event.
  */
 test('PostToolUseFailure is registered for every tool, with the 5s bound', () => {
   const entries = MANIFEST.hooks.PostToolUseFailure;
@@ -685,6 +687,75 @@ test('post-tool-use emits the nudge envelope for a watched document', async () =
     assert.equal(parsed.hookSpecificOutput.hookEventName, 'PostToolUse');
     assert.match(parsed.hookSpecificOutput.additionalContext, /docs\/prd\/auth\.md/);
     assert.match(parsed.hookSpecificOutput.additionalContext, /create_item/);
+  } finally { removeTree(cwd); }
+});
+
+/**
+ * `agentStepNote` (TASK-a-lane-step-is-recorded-as-it-happens-because-the-
+ * hook, hooks/33), run as a real OS process — the same discipline this file's
+ * own header argues for every binary here: `test/hooks/post-tool-use.test.ts`
+ * calls the function directly, which leaves the entry guard, the async stdin
+ * reader and the exit code untested. This is the demonstration the task
+ * itself asked for in miniature: a `Bash` call, carrying `agent_id` and a
+ * `tool_input.description`, produces the terminal's own target sentence —
+ * `<tool>: <description> agent=<id>` — as a real row on disk, written by the
+ * real binary the widened `hooks.json` matcher now spawns for `Bash`.
+ */
+test('post-tool-use writes a live agent-step row for a Bash call inside a lane, as a real process', async () => {
+  const cwd = project();
+  try {
+    const result = await runHook(HOOK('post-tool-use'), JSON.stringify({
+      hook_event_name: 'PostToolUse',
+      session_id: 'sess-e2e-live-step',
+      cwd,
+      tool_name: 'Bash',
+      tool_input: {
+        command: 'npm test -- test/e2e/injected-endpoints.test.ts test/e2e/read-model.test.ts',
+        description: 'Running full injected-endpoints and read-model test suites',
+      },
+      agent_id: 'agent-e2e-live-1',
+      agent_type: 'general-purpose',
+    }), cwd);
+
+    assert.equal(result.code, 0, `stderr: ${result.stderr}`);
+    assert.equal(result.stdout, '', 'a live step is audit-only; nothing here speaks to the model');
+    assert.equal(result.stderr, '');
+
+    const records = readAudit(path.join(cwd, '.my_context')).filter((r) => r.op === 'agent-step');
+    assert.equal(records.length, 1, 'exactly one live step row for this one Bash call');
+    assert.equal(records[0].kind, 'hook');
+    assert.equal(records[0].hook, 'PostToolUse');
+    assert.equal(records[0].sessionId, 'sess-e2e-live-step');
+    assert.equal(
+      records[0].note,
+      'Bash: Running full injected-endpoints and read-model test suites agent=agent-e2e-live-1',
+      'the row must carry the description SENTENCE, not the raw command',
+    );
+    assert.equal(
+      (records[0].note ?? '').includes('injected-endpoints.test.ts test/e2e/read-model'), false,
+      'the raw command must never reach the row once a description is present',
+    );
+  } finally { removeTree(cwd); }
+});
+
+test('post-tool-use writes nothing for a Bash call with no agent_id — the parent\'s own tool use', async () => {
+  const cwd = project();
+  try {
+    const result = await runHook(HOOK('post-tool-use'), JSON.stringify({
+      hook_event_name: 'PostToolUse',
+      session_id: 'sess-e2e-live-step-parent',
+      cwd,
+      tool_name: 'Bash',
+      tool_input: { command: 'ls', description: 'List files' },
+    }), cwd);
+
+    assert.equal(result.code, 0, `stderr: ${result.stderr}`);
+    assert.equal(result.stdout, '');
+    assert.equal(result.stderr, '');
+    assert.deepEqual(
+      readAudit(path.join(cwd, '.my_context')).filter((r) => r.op === 'agent-step'), [],
+      'a PostToolUse firing with no agent_id is the PARENT session\'s own tool call, not a lane',
+    );
   } finally { removeTree(cwd); }
 });
 

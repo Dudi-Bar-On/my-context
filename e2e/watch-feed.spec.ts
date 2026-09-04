@@ -329,6 +329,51 @@ test('an agent-step row, a subagent-stop row and an agent-dispatched row each na
 });
 
 /**
+ * **The decision itself, verified in the browser** — not merely in a node
+ * test — because the owner's standing ruling is that a UI change is not
+ * fixed until it is driven as a reader would drive it
+ * (`TASK-a-third-of-the-audit-feed-is-stop-rows-for-things-that-were`,
+ * hooks/34).
+ *
+ * A `SubagentStop` firing with no `agent_type` writes `subagent-stop-untyped`
+ * rather than `subagent-stop` (`hooks/subagent-stop.ts`), and `LANE_OPS`
+ * (`screens/watch.js`) deliberately does not include it — see both files' own
+ * comments on the decision among the three options this task weighed. This
+ * asserts the two visible consequences together: the row is OUT of the lane
+ * machinery entirely (no dead, unopenable toggle), and the row is still ON
+ * SCREEN in full (this is not "do not write it at all" — the record and its
+ * explanatory note both survive).
+ */
+test('a SubagentStop firing with no agent_type draws as an ordinary row, never as a dead lane', async ({ page }) => {
+  await watching(page, { buildProjection: false }, async ({ page: p, corpus }) => {
+    await expectedAtLeast(p, SEEDED);
+    const agentId = 'agent-phantom-echo';
+    recordAudit(corpus, {
+      kind: 'hook', op: 'subagent-stop-untyped', hook: 'SubagentStop', origin: 'agent',
+      note: `delivery=finished agent=${agentId} type=<absent> (no agent_type on this firing — `
+        + 'not a named lane; no step backfill will be attempted); its seen file was left in '
+        + 'place (feed-marker-phantom)',
+    });
+
+    const row = p.locator('#atbl tr', { hasText: 'feed-marker-phantom' });
+    await expect(row).toBeVisible({ timeout: 20_000 });
+
+    // Never a lane group: no toggle that can never open, and none of the
+    // `lane`/`lane running` classes `laneGroupRows`/`orphanGroupRows` stamp.
+    await expect(row.locator('button.lanetoggle')).toHaveCount(0);
+    await expect(row).not.toHaveClass(/lane/);
+
+    // Its own op names it, distinct from a real lane's `subagent-stop` — the
+    // two must never read as the same thing on screen.
+    await expect(row).toContainText('subagent-stop-untyped');
+    await expect(row).toContainText('SubagentStop');
+
+    // The record is not discarded: its full explanatory note is still here.
+    await expect(row).toContainText('not a named lane');
+  });
+});
+
+/**
  * **The lane grouping the owner approved: one foldable row per dispatch.**
  *
  * `agent-dispatched`, `agent-step` and `subagent-stop` join on `agent=<id>`,

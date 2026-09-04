@@ -71,7 +71,7 @@
     ],
     "PostToolUse": [
       {
-        "matcher": "Write|Edit|MultiEdit|Agent",
+        "matcher": "Write|Edit|MultiEdit|Agent|Bash|Read|Grep",
         "hooks": [
           {
             "type": "command",

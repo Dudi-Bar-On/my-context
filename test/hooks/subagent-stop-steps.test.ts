@@ -16,16 +16,39 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { mkdtempSync, writeFileSync } from 'node:fs';
+import { spawn } from 'node:child_process';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { readAudit } from '../../src/core/audit.ts';
 import { resolveWorkspace } from '../../src/core/workspace.ts';
 import { observeAndRecord } from '../../src/hooks/observe.ts';
 import {
   MAX_TRANSCRIPT_READ_BYTES, recordAgentSteps, SUBAGENT_STOP, transcriptSteps,
 } from '../../src/hooks/subagent-stop.ts';
+import { agentStepNote } from '../../src/hooks/post-tool-use.ts';
 import { runCli } from '../../src/cli/index.ts';
 import { removeTree } from '../helpers/tmp.ts';
+
+const REPO_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..');
+const SUBAGENT_STOP_BINARY = path.join(REPO_ROOT, 'src', 'hooks', 'subagent-stop.ts');
+
+/** Runs the real `subagent-stop.ts` binary as an OS process, over real stdio. */
+function runSubagentStop(payload: string, cwd: string): Promise<{ code: number | null }> {
+  return new Promise((resolve, reject) => {
+    const child = spawn(
+      process.execPath, ['--disable-warning=ExperimentalWarning', SUBAGENT_STOP_BINARY],
+      { cwd, stdio: ['pipe', 'ignore', 'ignore'] },
+    );
+    const timer = setTimeout(() => {
+      child.kill('SIGKILL');
+      reject(new Error('subagent-stop.ts did not exit within 30s'));
+    }, 30_000);
+    child.on('close', (code) => { clearTimeout(timer); resolve({ code }); });
+    child.on('error', (err) => { clearTimeout(timer); reject(err); });
+    child.stdin.end(payload);
+  });
+}
 
 function box(): { root: string; dispose(): void } {
   const cwd = mkdtempSync(path.join(tmpdir(), 'myctx-agent-steps-'));
@@ -260,6 +283,77 @@ test('the agent-step rows join to the subagent-stop row on the same agent id', (
     const idOf = (note: string | undefined) => /agent=([^:\s]+)/.exec(note ?? '')?.[1];
     assert.equal(idOf(stepRow!.note), 'agent-join-42');
     assert.equal(idOf(stopRow!.note), 'agent-join-42');
+    removeTree(dir);
+  } finally { b.dispose(); }
+});
+
+/* ---------------------------------------------------------------------------
+ * The duplication proof (TASK-a-lane-step-is-recorded-as-it-happens-because-
+ * the-hook, hooks/33). The decision: the live writer (`post-tool-use.ts`'s
+ * `agentStepNote`) is the ONLY writer; the real `subagent-stop.ts` binary's
+ * main entry no longer calls `recordAgentSteps` at all. This is not asserted
+ * from the source — it is MEASURED against the real, spawned binary: a
+ * transcript that would backfill to 3 rows if the old path still ran, a lane
+ * that already wrote its 3 rows live, and a real `SubagentStop` firing for
+ * the SAME agent id and the SAME transcript in between — then the total is
+ * counted and shown to be 3, not 6.
+ * ------------------------------------------------------------------------- */
+
+test('a real SubagentStop firing adds zero rows for a lane whose steps were already written live', async () => {
+  const b = box();
+  try {
+    const dir = mkdtempSync(path.join(tmpdir(), 'myctx-noduplicate-'));
+    // A real, valid transcript the OLD backfill path would have turned into
+    // 3 more `agent-step` rows, had `recordAgentSteps` still been called from
+    // this binary's main entry.
+    const file = transcriptFile(dir, [
+      toolUseLine('Read', { file_path: 'a.ts' }, '2026-09-04T00:00:00.000Z'),
+      toolUseLine('Bash', { command: 'npm test', description: 'Run the suite' }, '2026-09-04T00:00:01.000Z'),
+      toolUseLine('Grep', { pattern: 'HOOK_OPS' }, '2026-09-04T00:00:02.000Z'),
+    ]);
+    const cwd = path.dirname(b.root);
+    const agentId = 'agent-noduplicate-1';
+
+    // 1. The lane runs: three live PostToolUse firings, exactly as
+    //    `post-tool-use.ts`'s widened matcher would produce for these three
+    //    real tool calls, while the lane is still working.
+    agentStepNote({
+      session_id: 'sess-noduplicate', cwd, tool_name: 'Read',
+      tool_input: { file_path: 'a.ts' }, agent_id: agentId,
+    }, cwd);
+    agentStepNote({
+      session_id: 'sess-noduplicate', cwd, tool_name: 'Bash',
+      tool_input: { command: 'npm test', description: 'Run the suite' }, agent_id: agentId,
+    }, cwd);
+    agentStepNote({
+      session_id: 'sess-noduplicate', cwd, tool_name: 'Grep',
+      tool_input: { pattern: 'HOOK_OPS' }, agent_id: agentId,
+    }, cwd);
+
+    const liveRows = readAudit(b.root).filter((r) => r.op === 'agent-step');
+    assert.equal(liveRows.length, 3, 'the live writer must have already recorded all three steps');
+
+    // 2. The lane ends: a real SubagentStop firing, for the SAME agent id,
+    //    with `agent_transcript_path` pointing at a transcript that DOES
+    //    contain those same three tool_use blocks (proving this is not
+    //    passing only because the transcript was unreadable).
+    const result = await runSubagentStop(JSON.stringify({
+      hook_event_name: 'SubagentStop', session_id: 'sess-noduplicate', cwd,
+      agent_id: agentId, agent_type: 'general-purpose', agent_transcript_path: file,
+      stop_hook_active: false,
+    }), cwd);
+    assert.equal(result.code, 0);
+
+    // 3. The measurement: still exactly 3 `agent-step` rows for this agent,
+    //    not 6 — and the `subagent-stop` row for the same agent id exists,
+    //    proving the binary ran and simply did not re-derive the steps.
+    const after = readAudit(b.root);
+    const stepRows = after.filter((r) => r.op === 'agent-step' && (r.note ?? '').includes(`agent=${agentId}`));
+    const stopRows = after.filter((r) => r.op === 'subagent-stop' && (r.note ?? '').includes(`agent=${agentId}`));
+    assert.equal(stepRows.length, 3,
+      'a real SubagentStop firing for a lane whose steps were already live must add ZERO agent-step rows');
+    assert.equal(stopRows.length, 1, 'the subagent-stop row itself must still be written');
+
     removeTree(dir);
   } finally { b.dispose(); }
 });

@@ -124,6 +124,25 @@ test('every registered command runs a file that exists', () => {
   }
 });
 
+/**
+ * **`PostToolUse`'s matcher, widened by owner ruling** (`TASK-a-lane-step-is-
+ * recorded-as-it-happens-because-the-hook`, hooks/33, 2026-09-04). The owner
+ * was asked directly and ruled: widen it, unguarded by any config flag — the
+ * distinction from the `PreToolUse` widening he had reverted before is that
+ * `PreToolUse` can BLOCK (`permissionDecision: 'deny'`) while `PostToolUse`
+ * only observes. `Bash`, `Read` and `Grep` are added because a probe
+ * (`reports/probes/2026-09-04-live-steps-and-the-stop-event-that-is-not-a-
+ * lane.md`) measured that those three tool names make up most of a lane's
+ * own tool calls, and the pre-widening matcher fired on none of them.
+ * `Write|Edit|MultiEdit|Agent` are unchanged — the capture nudge and the
+ * dispatch row both still need exactly what they needed before.
+ */
+test('PostToolUse is widened to Bash, Read and Grep, alongside the original four', () => {
+  const entries = manifest()['PostToolUse'];
+  assert.ok(entries && entries.length === 1, 'PostToolUse must be registered with one entry');
+  assert.equal(entries[0].matcher, 'Write|Edit|MultiEdit|Agent|Bash|Read|Grep');
+});
+
 test('every observation spec is registered, and every registration has a spec', () => {
   const registered = new Set(Object.keys(manifest()));
   for (const spec of SPECS) {

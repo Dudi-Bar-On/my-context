@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
-import { agentDispatchNote, buildOutput, nudgeFor } from '../../src/hooks/post-tool-use.ts';
+import { agentDispatchNote, agentStepNote, buildOutput, nudgeFor } from '../../src/hooks/post-tool-use.ts';
 import { readAudit, type AuditRecord } from '../../src/core/audit.ts';
 import { resolveWorkspace } from '../../src/core/workspace.ts';
 import { observeAndRecord } from '../../src/hooks/observe.ts';
@@ -325,6 +325,143 @@ test('the dispatch row is not written for a tool other than Agent', () => {
 
     const rows = auditRows(root).filter((r) => r.op === 'agent-dispatched');
     assert.equal(rows.length, 0, 'the widened matcher must not turn into an audit of every tool');
+  } finally { removeTree(cwd); }
+});
+
+/* ---------------------------------------------------------------------------
+ * agentStepNote — one row per tool call INSIDE a lane, written LIVE from this
+ * hook's own PostToolUse firing (TASK-a-lane-step-is-recorded-as-it-happens-
+ * because-the-hook, hooks/33), rather than backfilled once at SubagentStop.
+ * ------------------------------------------------------------------------- */
+
+test('a tool call carrying agent_id produces one agent-step row shaped like the transcript backfill', () => {
+  const cwd = mkdtempSync(path.join(tmpdir(), 'myctx-live-step-'));
+  runCli(['init'], cwd, () => {});
+  const root = resolveWorkspace(cwd).projectRoot!;
+  try {
+    agentStepNote({
+      session_id: 'sess-live-1',
+      cwd,
+      tool_name: 'Bash',
+      tool_input: { command: 'npm test', description: 'Run the full suite' },
+      agent_id: 'agent-live-1',
+      agent_type: 'general-purpose',
+    }, cwd);
+
+    const rows = auditRows(root).filter((r) => r.op === 'agent-step');
+    assert.equal(rows.length, 1, 'expected exactly one live step row');
+    const [row] = rows;
+    assert.equal(row.kind, 'hook');
+    assert.equal(row.hook, 'PostToolUse');
+    assert.equal(row.sessionId, 'sess-live-1');
+    assert.match(row.note ?? '', /^Bash: Run the full suite agent=agent-live-1$/,
+      'must match the same "<tool>: <subject> agent=<id>" shape the transcript backfill wrote');
+  } finally { removeTree(cwd); }
+});
+
+test('a tool call with no agent_id (the parent\'s own call) records nothing', () => {
+  const cwd = mkdtempSync(path.join(tmpdir(), 'myctx-live-step-noagent-'));
+  runCli(['init'], cwd, () => {});
+  const root = resolveWorkspace(cwd).projectRoot!;
+  try {
+    agentStepNote({
+      session_id: 'sess-live-2', cwd, tool_name: 'Bash', tool_input: { command: 'ls' },
+    }, cwd);
+    assert.deepEqual(auditRows(root).filter((r) => r.op === 'agent-step'), []);
+  } finally { removeTree(cwd); }
+});
+
+test('a tool call with no subject field falls back to <no subject> rather than the whole tool_input', () => {
+  const cwd = mkdtempSync(path.join(tmpdir(), 'myctx-live-step-nosubject-'));
+  runCli(['init'], cwd, () => {});
+  const root = resolveWorkspace(cwd).projectRoot!;
+  try {
+    agentStepNote({
+      session_id: 'sess-live-3', cwd, tool_name: 'Bash', tool_input: { timeout: 5000 },
+      agent_id: 'agent-live-3',
+    }, cwd);
+    const rows = auditRows(root).filter((r) => r.op === 'agent-step');
+    assert.equal(rows.length, 1);
+    assert.match(rows[0].note ?? '', /Bash: <no subject> agent=agent-live-3/);
+  } finally { removeTree(cwd); }
+});
+
+test('the whole tool_input is never in the row — only the short subject', () => {
+  const cwd = mkdtempSync(path.join(tmpdir(), 'myctx-live-step-huge-'));
+  runCli(['init'], cwd, () => {});
+  const root = resolveWorkspace(cwd).projectRoot!;
+  try {
+    const hugeCommand = 'echo '.padEnd(5000, 'x');
+    agentStepNote({
+      session_id: 'sess-live-4', cwd, tool_name: 'Bash', tool_input: { command: hugeCommand },
+      agent_id: 'agent-live-4',
+    }, cwd);
+    const rows = auditRows(root).filter((r) => r.op === 'agent-step');
+    assert.equal(rows.length, 1);
+    assert.ok((rows[0].note ?? '').length < 400, 'the row must not carry the whole 5000-char input');
+    assert.equal((rows[0].note ?? '').includes(hugeCommand), false);
+  } finally { removeTree(cwd); }
+});
+
+test('a malformed payload does not throw, per INV-hooks-fail-open', () => {
+  const cwd = mkdtempSync(path.join(tmpdir(), 'myctx-live-step-malformed-'));
+  runCli(['init'], cwd, () => {});
+  try {
+    assert.doesNotThrow(() => agentStepNote({
+      // @ts-expect-error -- deliberately the wrong shape; a real payload is untyped JSON.
+      tool_input: 'not an object', agent_id: 'agent-x',
+    }, cwd));
+    assert.doesNotThrow(() => agentStepNote({ agent_id: 'agent-x' }, cwd));
+    assert.doesNotThrow(() => agentStepNote({}, cwd));
+  } finally { removeTree(cwd); }
+});
+
+test('a nested subagent\'s own Agent dispatch (agent_id present) still gets a step row', () => {
+  // hooks/33's probe measured a depth-2 nested dispatch still carrying
+  // agent_id/agent_type at both levels — this is the tool-name-agnostic
+  // treatment that follows from gating on agent_id alone.
+  const cwd = mkdtempSync(path.join(tmpdir(), 'myctx-live-step-nested-'));
+  runCli(['init'], cwd, () => {});
+  const root = resolveWorkspace(cwd).projectRoot!;
+  try {
+    agentStepNote({
+      session_id: 'sess-live-5', cwd, tool_name: 'Agent',
+      tool_input: { description: 'Dispatch a nested checker', subagent_type: 'general-purpose' },
+      agent_id: 'agent-live-parent', agent_type: 'general-purpose',
+    }, cwd);
+    const rows = auditRows(root).filter((r) => r.op === 'agent-step');
+    assert.equal(rows.length, 1);
+    assert.match(rows[0].note ?? '', /^Agent: Dispatch a nested checker agent=agent-live-parent$/);
+  } finally { removeTree(cwd); }
+});
+
+test('the live step row joins to the matching subagent-stop and agent-dispatched rows on the agent id', () => {
+  const cwd = mkdtempSync(path.join(tmpdir(), 'myctx-live-step-join-'));
+  runCli(['init'], cwd, () => {});
+  const root = resolveWorkspace(cwd).projectRoot!;
+  try {
+    agentDispatchNote({
+      session_id: 'sess-live-join', cwd, tool_name: 'Agent',
+      tool_input: { description: 'Doing the joinable thing', subagent_type: 'general-purpose' },
+      tool_response: { agentId: 'agent-live-join-1' },
+    }, cwd);
+    agentStepNote({
+      session_id: 'sess-live-join', cwd, tool_name: 'Bash', tool_input: { command: 'echo hi' },
+      agent_id: 'agent-live-join-1', agent_type: 'general-purpose',
+    }, cwd);
+    observeAndRecord(SUBAGENT_STOP, {
+      session_id: 'sess-live-join', cwd, agent_id: 'agent-live-join-1', agent_type: 'general-purpose',
+    }, cwd);
+
+    const idOf = (note: string | undefined) => /agent=([^:\s]+)/.exec(note ?? '')?.[1];
+    const rows = auditRows(root);
+    const dispatchRow = rows.find((r) => r.op === 'agent-dispatched');
+    const stepRow = rows.find((r) => r.op === 'agent-step');
+    const stopRow = rows.find((r) => r.op === 'subagent-stop');
+    assert.ok(dispatchRow && stepRow && stopRow, 'all three rows of one lane must be present');
+    assert.equal(idOf(dispatchRow!.note), 'agent-live-join-1');
+    assert.equal(idOf(stepRow!.note), 'agent-live-join-1');
+    assert.equal(idOf(stopRow!.note), 'agent-live-join-1');
   } finally { removeTree(cwd); }
 });
 
