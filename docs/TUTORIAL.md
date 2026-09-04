@@ -3,7 +3,7 @@
 Every command and every block of output below was run against a fresh workspace
 while writing this page. Nothing here is illustrative.
 
-**Tested on:** my_context v1.0.0, Node 24.14.0, Windows 11, Claude Code 2.1.233.
+**Tested on:** my_context v1.0.2, Node 24.14.0, Windows 11, Claude Code 2.1.233.
 
 When you finish this page you will have a corpus of three items, you will have
 watched one of them reach Claude automatically, and you will know why the other
@@ -49,10 +49,11 @@ Confirm it loaded:
 claude plugin details mycontext@mycontext
 ```
 
-You want the four hooks — `SessionStart`, `PreToolUse`, `PreCompact`,
-`PostToolUse` — and the one MCP server. Read the counts loosely: this command
-reports commands and skills together as `Skills (67)` and prints no commands
-line at all.
+You want its own `Hooks (18)` line and a `MCP servers (1)` line — the eighteen names are
+listed and explained in [README §5's hook table](../README.md#5-using-it). Slash commands
+and the one skill are still folded into one `Skills (N)` line, so read N loosely: it moves
+the moment a command is added, and the command above is how you get today's real number
+rather than trusting this page for it.
 
 That installs the plugin — the slash commands, the hooks, the MCP server. It does not put
 `mycontext` on your PATH: that command is a separate npm package, in the same repository.
@@ -96,6 +97,7 @@ on demand.
 mycontext add constraint "Card numbers never reach the logs" \
   --scope "src/billing/**" \
   --severity hard \
+  --summary "A rule against ever writing a full card number to a log file." \
   --body "Log the last four digits and the processor's reference. A full PAN in a log file is a reportable incident, and the logs are replicated to three places we do not control."
 ```
 
@@ -123,6 +125,8 @@ title: Card numbers never reach the logs
 status: active
 severity: hard
 always: false
+summary: A rule against ever writing a full card number to a log file.
+summary_of: 4d3a38155b7d055c
 scope:
   - src/billing/**
 tags: []
@@ -130,9 +134,9 @@ origin: human
 source_file: null
 source_anchor: null
 source_checksum: null
-valid_from: 2026-08-17
+valid_from: 2026-09-04
 valid_until: null
-checksum: 74d748e0210f62e9
+checksum: bf403b3d2370f9bc
 ---
 
 # Card numbers never reach the logs
@@ -144,8 +148,10 @@ control.
 
 Plain Markdown. It diffs, it reviews, it survives the tool being uninstalled.
 
-Two fields to notice now:
+Three fields to notice now:
 
+- **`summary`** — one plain sentence for a reader who does not know this codebase. `add`
+  refuses to create an item without one (or an explicit `--summary-omitted`).
 - **`scope`** — the globs this item attaches to. Empty means every file.
 - **`origin: human`** — you wrote it. No tool lets a caller set this field, which
   is what the trust boundary is built on.
@@ -155,8 +161,8 @@ Two fields to notice now:
 ## 3. Add two more, to see the difference
 
 ```bash
-mycontext add rule "Every price is an integer of minor units" --yes
-mycontext add lesson "The sandbox declines 3DS cards at random" --yes
+mycontext add rule "Every price is an integer of minor units" --summary "Prices are stored and compared as whole minor units (cents), never fractional dollars." --yes
+mycontext add lesson "The sandbox declines 3DS cards at random" --summary "The payment sandbox randomly declines 3D Secure test cards, so a decline there does not mean the integration is broken." --yes
 ```
 
 ```console
@@ -302,7 +308,7 @@ checksum. Treat the boundary as a strong default, not a sandbox.
 
 ```console
 $ mycontext status
-my_context 1.0.0: 3 item(s), profile "standard"
+my_context 1.0.2: 3 item(s), profile "standard"
 ...
 review queue: 0 draft(s) pending review — walk it with `mycontext review`.
 

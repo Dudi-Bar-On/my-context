@@ -5,7 +5,7 @@ seen one arrive on a file touch, and you know normative from rationale.
 
 Every command and output below was executed while writing this page.
 
-**Tested on:** my_context v1.0.0, Node 24.14.0, Windows 11, Claude Code 2.1.233.
+**Tested on:** my_context v1.0.2, Node 24.14.0, Windows 11, Claude Code 2.1.233.
 
 ---
 
@@ -156,9 +156,10 @@ mycontext focus --relations # the relation types you can focus on
 
 ## 4. Budgets, and what happens when they bind
 
-Each tier has a token budget. Pinned full text is the expensive one — 8,000
-estimated tokens by default. An item that does not fit **spills whole**, and the
-spill is disclosed by id. Nothing is ever silently truncated.
+Each tier has a token budget. `restored` — the re-injection after a compaction — is the
+expensive one, at 8,000 estimated tokens by default; `pinned` and `jit` are 6,000 each,
+`continuity` is 2,000, and `index` is 1,200. An item that does not fit **spills whole**, and
+the spill is disclosed by id. Nothing is ever silently truncated.
 
 `mycontext refresh` shows you the arithmetic before writing. The run below was captured
 against the corpus this guide was written on, where a `reference` pointed at a handover
@@ -200,7 +201,7 @@ budget only if you have a reason: it is charged to every session.
 
 | Key | Effect |
 |---|---|
-| `profile` | which categories are enabled — `minimal`, `standard`, `full` |
+| `profile` | which categories are enabled — `minimal`, `standard` |
 | `categories.<name>.tier` | move a category between `normative` and `rationale` |
 | `categories.<name>.scopePolicy` | `inert` inverts what "no scope" means |
 | `categories.<name>.agentEdits` | `review` stages an agent's edit as a pending revision instead of applying it |
@@ -212,7 +213,7 @@ references eligible for the pinned tier — which is how you make a document
 re-inject itself after every compaction:
 
 ```bash
-mycontext add reference --file docs/ARCHITECTURE.md --yes
+mycontext add reference "Architecture overview" --file docs/ARCHITECTURE.md --summary "A snapshot of the system architecture document, kept as a copy so the corpus can tell when it has moved on." --yes
 mycontext pin REF-... --yes
 ```
 
@@ -469,9 +470,10 @@ them; it appears as a bare count.
 **Statuses:** `draft` · `active` · `validated` · `deprecated` · `superseded`.
 Only `active` is injected.
 
-**Hooks:** `SessionStart` (`startup|clear|resume|compact|fork`) · `PreToolUse`
-(`Read|Edit|MultiEdit|Write|NotebookEdit`) · `PreCompact` · `PostToolUse`
-(`Write|Edit|MultiEdit`).
+**Hooks:** eighteen registered events today, not four — see
+[README §5's hook table](../README.md#5-using-it) for the full list, what fires each one, and
+its timeout. This appendix used to name four by hand and went stale twice; the table in the
+README is re-derived from `hooks/hooks.json` on every test run, so it is the one to trust.
 
 **Authority:** `mycontext help <command>` prints the usage the code enforces. If
 it and the README disagree, the command is right.

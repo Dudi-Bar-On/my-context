@@ -192,21 +192,26 @@ test('`add --always` is accepted, and the topic advertises it on `add` and on `e
   );
 });
 
-test('there is no `link` command, and the topic says where relations are made', () => {
-  assert.equal(COMMANDS.has('link'), false,
-    'a `link` command now exists — the topic says it does not, and must be corrected');
-  const { code, out } = workspace((cwd) => run(['link', 'A', 'refines', 'B'], cwd));
-  assert.equal(code, 1);
-  assert.match(out, /unknown command "link"/);
+test('`link` creates a relation, and the topic says so', () => {
+  assert.equal(COMMANDS.has('link'), true,
+    'the `link` command is gone — the topic claims it exists and must be corrected');
+  const { code, out } = workspace((cwd) => {
+    run(['add', '--summary-omitted', 'constraint', 'A', '--yes'], cwd);
+    run(['add', '--summary-omitted', 'constraint', 'B', '--yes'], cwd);
+    return run(['link', 'CONST-a', 'refines', 'CONST-b'], cwd);
+  });
+  assert.equal(code, 0, out);
+  assert.match(out, /CONST-a refines CONST-b/);
 
   const text = topic();
+  assert.match(text, /`mycontext link <from> <relation> <to>` creates a relation/,
+    'the topic must name the CLI route that now records a relation');
   assert.match(text, /link_items\(from, to, relation\)/,
-    'the topic must name the route that does record a relation');
+    'the topic must still name the MCP route that does the same write');
   assert.match(text, /`create_item` does \*\*not\*\* take a `relations` argument/,
     'the second half of the same answer: the obvious guess is refused too');
   assert.match(text, /--unlink <relation> <target>/,
-    'the one relation verb the CLI does have is removal, and the topic must not claim that ' +
-    'relations are absent from the CLI entirely');
+    'the removal route must still be named, with its own gate distinguished from `link`\'s');
 });
 
 test('`supersede` without --by is refused, and the topic says --by is required', () => {

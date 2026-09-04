@@ -17,6 +17,7 @@ The exit code is the verdict, so it composes:
 | `1` | **SURVIVED** — the command passed with the guard broken. Nothing tests it. |
 | `2` | Refused, or the arguments were wrong. **Nothing was mutated.** |
 | `3` | Mutated, and the tree could not be put back. Read the message; `--restore` retries. |
+| `4` | **INCONCLUSIVE** — the command never produced a verdict (could not start, or was killed by a signal). Not a kill: re-run rather than trust it. |
 
 ## Why it exists
 

@@ -72,15 +72,20 @@ those two edits with the flag filled in. `--always=false` means "not pinned" on
 every one of them: `add` accepts it as the default it already is, and does not
 advertise it. `harden` and `soften` are the same shorthand over `--severity`.
 
-**There is no `link` command, and no command creates a relation.** Relations
-are recorded through the MCP server: `link_items(from, to, relation)` for an
-ordinary edge, and `supersede_item(id, by)` — the human's
-`mycontext supersede <id> --by <id>` — for a retirement, which writes both
-directions itself. `create_item` does **not** take a `relations` argument; it
-refuses it by name and points at those two routes. The one relation verb the
-CLI does have is destructive and does not create anything:
+**`mycontext link <from> <relation> <to>` creates a relation.** Added
+2026-09-04 so the terminal is not the one interface that cannot write one at
+all; `link_items(from, to, relation)` on the MCP server does the same write.
+Neither surface takes `--yes` for it — adding an edge crosses no trust
+boundary, the same fact that gives `link_items` no `origin` at all — so
+`link` is the one write command with no confirmation to decline.
+`supersede_item(id, by)` — the human's `mycontext supersede <id> --by <id>` —
+is the other relation write, for a retirement, which writes both directions
+itself; `create_item` does **not** take a `relations` argument, and refuses
+it by name pointing at these routes. Removal has its own spelling:
 `mycontext edit <id> --unlink <relation> <target>` removes an edge, as two
-words, repeatable. The vocabulary is closed and lives in `help("workflow")`.
+words, repeatable, under `edit`'s own gate — removing an edge CAN weaken what
+a governing item asserts, which is why it previews and confirms there and
+`link` does not. The vocabulary is closed and lives in `help("workflow")`.
 
 **`supersede` requires `--by <replacement id>`.** Supersession is a
 *replacement*, so there is no reading of it without the item that replaces —
@@ -91,7 +96,6 @@ something that nothing replaces is a different act: `mycontext edit <id>
 
 ## What this CLI cannot spell at all
 
-- **Creating a relation.** Above.
 - **An observation's tags or context.** `mycontext add … --note "<text>"`
   records a `[note]` observation and `--observation kind=text` records one
   under any other kind; both may be repeated and keep command-line order

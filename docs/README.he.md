@@ -58,7 +58,7 @@ Node 24 ומעלה, בלי תלויות זמן ריצה ובלי שלב בניי
 </div>
 
 ```bash
-mycontext add invariant "Prices are integer cents" --scope "src/billing/**" --yes
+mycontext add invariant "Prices are integer cents" --scope "src/billing/**" --summary "מחירים נשמרים כמספר שלם של סנטים בכל מקום, ולא כמספר עשרוני צף, כדי שהמרה לא תאבד חלק מסנט בשקט." --yes
 ```
 
 <div dir="rtl">
@@ -180,7 +180,7 @@ flowchart TB
 </div>
 
 ```bash
-mycontext add invariant "Prices are integer cents" --scope "src/billing/**" --yes
+mycontext add invariant "Prices are integer cents" --scope "src/billing/**" --summary "מחירים נשמרים כמספר שלם של סנטים בכל מקום, ולא כמספר עשרוני צף, כדי שהמרה לא תאבד חלק מסנט בשקט." --yes
 ```
 
 <div dir="rtl">
@@ -1891,8 +1891,8 @@ from this project — global items are read-only here. See mycontext_help("categ
 ```bash
 mkdir ~/global-context && cd ~/global-context
 mycontext init
-mycontext add rule "Write the failing test first" --yes
-mycontext add constraint "Never commit a secret" --severity hard --yes
+mycontext add rule "Write the failing test first" --summary "כתבו בדיקה שנכשלת לפני כתיבת הקוד שגורם לה לעבור — משמעת ה-TDD הרגילה." --yes
+mycontext add constraint "Never commit a secret" --severity hard --summary "סוד — אישור גישה, מפתח או טוקן — אסור לו להיכנס למאגר לעולם." --yes
 # ואז לשנות את שם התיקייה שנוצרה, אל מקומה
 mv ~/global-context/.my_context ~/.my-context
 ```
@@ -2005,7 +2005,7 @@ _1 item(s) omitted from full text for budget: CONST-postgres-pool-capped-at-20. 
 ```mermaid
 flowchart TB
   U(["<b>אתה</b>"]) --> SL["<b>/mycontext:…</b><br/>88 פקודות סלאש"]
-  U --> CL["<b>mycontext …</b><br/>42 פקודות שורת פקודה"]
+  U --> CL["<b>mycontext …</b><br/>43 פקודות שורת פקודה"]
   A(["<b>Claude</b>"]) --> TL["<b>כלי MCP</b><br/>עשרים ושניים, מוגשים מעל stdio"]
   SL -->|"add-* · search · link · LoadMyContext"| TL
   SL -->|"list-* · review · status · edit · query"| CL
@@ -2091,7 +2091,7 @@ claude plugin details mycontext@mycontext
 
 | Hook | מתי נורה | מה my_context עושה בו | `timeout` |
 |---|---|---|---|
-| <span dir="ltr">`SessionStart`</span> | סשן מתחיל, מתחדש, נוקה, או חוזר מכיווץ | בוחר ומזריק את הדרג הנעוץ ואת האינדקס, משחזר את מה שכיווץ הפיל, מנקה את המצב של חלון שהושמד, וסורק ומנקה קבצים ישנים מ-<span dir="ltr">`state/`</span> | 10 |
+| <span dir="ltr">`SessionStart`</span> | סשן מתחיל, מתחדש, נוקה, מתפצל, או חוזר מכיווץ | בוחר ומזריק את הדרג הנעוץ ואת האינדקס, משחזר את מה שכיווץ הפיל, מנקה את המצב של חלון שהושמד, וסורק ומנקה קבצים ישנים מ-<span dir="ltr">`state/`</span> | 10 |
 | <span dir="ltr">`SubagentStart`</span> | תת-סוכן משוגר | מזריק את הדרג הנעוץ ואת האינדקס לחלון הריק של התת-סוכן, ממוסגר בהסבר מאין הבלוק הגיע | 5 |
 | <span dir="ltr">`PreToolUse`</span> | לפני <span dir="ltr">`Read`, `Edit`, `MultiEdit`, `Write`</span> או <span dir="ltr">`NotebookEdit`</span> | דרג הבדיוק-בזמן, והסירוב היחיד במוצר: כתיבה ישירה לכל מקום תחת <span dir="ltr">`.my_context/`</span> נדחית, עם נימוק שנוקב במה להשתמש במקומה | 10 |
 | <span dir="ltr">`PreCompact`</span> | לפני כיווץ | רושם מה החלון החזיק, כדי שתחילת הסשן הבאה תוכל לשחזר | 10 |
@@ -2219,12 +2219,17 @@ known issue שנלכד בידי סוכן נוחת כ**טיוטה** הממתינ�
 
 **כל אחת מהן מציגה תצוגה מקדימה בכך שהיא מריצה את פקודת שורת הפקודה בלי
 <span dir="ltr">`--yes`</span> — חוץ מ-<span dir="ltr">`/mycontext:link`</span>, שכותבת דרך
-הכלי <span dir="ltr">`link_items`</span> ולכן אין לה פקודת שורת פקודה להריץ יבש.** זה מדפיס את התצוגה המקדימה האמיתית — מה הפריט, מה ישתנה,
+הכלי <span dir="ltr">`link_items`</span> ישירות, לא דרך <span dir="ltr">`mycontext link`</span>.** זה מדפיס את התצוגה המקדימה האמיתית — מה הפריט, מה ישתנה,
 ועל מה שולטים לפני ואחרי — ואז מסרב, בלי לכתוב דבר; מוצג לך הפלט הזה כפי שהודפס, ואז נמסרת
 לך אותה פקודה עם <span dir="ltr">`--yes`</span> כדי שתקליד אותה בעצמך. כך התצוגה המקדימה
 אינה פרפראזה, והאישור אינו של המודל. <span dir="ltr">`test/plugin/write-commands.test.ts`</span>
 מריצה כל אחת מההרצות היבשות האלה ומוודאת את שלושת הדברים: התצוגה המקדימה מופיעה, הפקודה
-מסרבת, והקורפוס זהה בבתים אחריה.
+מסרבת, והקורפוס זהה בבתים אחריה. <span dir="ltr">`mycontext link`</span> קיימת עכשיו
+בשורת הפקודה, אבל לתבנית של תצוגה מקדימה ואישור אין למה להיאחז שם: הפקודה אינה מקבלת
+<span dir="ltr">`--yes`</span> כלל, מפני שהוספת יחס אינה חוצה גבול אמון (ראו [גבול
+האמון](#7-גבול-האמון)) ולכן אין דבר לשער ואין דבר שהרצה יבשה הייתה מסרבת לו. זה ש-<span dir="ltr">`/mycontext:link`</span>
+קוראת ל-<span dir="ltr">`link_items`</span> ישירות אינה פער ליד שאר השורות — היא הכתיבה
+היחידה בטבלה הזו שאין לה אישור להציג תצוגה מקדימה שלו.
 
 **ללמוד ממסמך, או ממה שקרה זה עתה.** <span dir="ltr">`/mycontext:ingest`</span> עוברת על
 מסמך נתח אחד בכל פעם — Claude הוא המחלץ; אין מודל בתוך הכלי — וכל נתח מייצר טיוטות.
@@ -2298,7 +2303,7 @@ known issue שנלכד בידי סוכן נוחת כ**טיוטה** הממתינ�
 
 ### מה שאתה מריץ: שורת הפקודה
 
-42 פקודות. `mycontext help` מדפיס את אותה רשימה מהתוכנית עצמה,
+43 פקודות. `mycontext help` מדפיס את אותה רשימה מהתוכנית עצמה,
 ו-<span dir="ltr">`mycontext help <topic>`</span> מסביר אחד משבעה. ארבעה מהם הם מושגים —
 <span dir="ltr">`categories`, `scope`, `capture`, `workflow`</span> — ושלושה הם עמוד אחד לכל
 משטח הפעלה: <span dir="ltr">`cli`, `tools`, `slash`</span>, שכל אחד מהם נוצר מהרישום,
@@ -2311,6 +2316,7 @@ known issue שנלכד בידי סוכן נוחת כ**טיוטה** הממתינ�
 | `mycontext init` | יוצרת <span dir="ltr">`.my_context/`</span> בתיקייה הנוכחית. <span dir="ltr">`--pack <path>`</span> מייסדת אותה מארטיפקט שמישהו אחר כתב, בפקודה אחת — אותו ייבוא ש-<span dir="ltr">`mycontext pack import`</span> מריצה, ולכן כל מה שהיא מביאה נוחת **כטיוטות**. היא אינה שואלת דבר, מפני שהקורפוס שאליו היא מייבאת הוא זה שהיא יוצרת; חבילה שהיא מסרבת לה אינה משאירה <span dir="ltr">`.my_context/`</span> כלל. [ייסוד אחת מחבילה](#הבאת-אחת-פנימה--mycontext-pack-import) |
 | <span dir="ltr">`mycontext add <category> <title>`</span> | יוצרת פריט — <span dir="ltr">`--body`</span> או <span dir="ltr">`--file`</span>, <span dir="ltr">`--note`, `--scope`, `--tags`, `--severity`, `--yes`</span> |
 | <span dir="ltr">`mycontext edit <id>`</span> | משנה פריט — <span dir="ltr">`--title`, `--body`, `--scope`, `--tags`, `--severity`, `--always`, `--status`, `--extra key=value`, `--unlink <relation> <target>`, `--yes`</span>. השער מדורג לפי מה שהשינוי יכול לעשות: אין אישור כל עוד הפריט אינו שולט ואינו מתחיל לשלוט, ויש תצוגה מקדימה ואישור בכל מקרה אחר — כולל העריכה שהופכת טיוטה ל-<span dir="ltr">`active`</span> |
+| <span dir="ltr">`mycontext link <from> <relation> <to>`</span> | רושמת יחס מפריט אחד לפריט אחר — האיות הזה בשורת הפקודה היה קיים ל-<span dir="ltr">`link_items`</span> ולא היה קיים במסוף. בלי דגלים, ו**בלי <span dir="ltr">`--yes`</span>** בכלל: הוספת קשת אינה חוצה גבול אמון (<span dir="ltr">`link_items`</span> היא <span dir="ltr">`boundary: false`</span>, ול-<span dir="ltr">`LinkInput`</span> אין שדה <span dir="ltr">`origin`</span> כלל), כך שאין דבר לשער. הסרת קשת שומרת על האיות המסויג הקיים שלה, <span dir="ltr">`mycontext edit <id> --unlink <relation> <target>`</span> — השורה שמעל — מפני שהסרה יכולה להחליש את מה שפריט ששולט טוען, והוספה אינה יכולה |
 | <span dir="ltr">`mycontext pin <id>`</span> / <span dir="ltr">`mycontext unpin <id>`</span> | <span dir="ltr">`mycontext edit <id> --always=true`</span> ו-<span dir="ltr">`--always=false`</span>, בשם קצר יותר |
 | <span dir="ltr">`mycontext harden <id>`</span> / <span dir="ltr">`mycontext soften <id>`</span> | <span dir="ltr">`mycontext edit <id> --severity=hard`</span> ו-<span dir="ltr">`--severity=soft`</span>, בשם קצר יותר |
 | <span dir="ltr">`mycontext review promote <id>`</span> | הופכת טיוטה לפריט פעיל ששולט — <span dir="ltr">`--scope`, `--severity`, `--always`, `--yes`</span>. <span dir="ltr">`--all --pack <name>`</span> מקדמת כל טיוטה שחבילה מיובאת אחת הביאה, באישור אחד הנלקח אחרי שהקורפוס גלוי לעין; היא מסרבת למזהה ולשלושת הדגלים שהם החלטה לכל פריט, ונוקבת בכל מה שהיא מדלגת עליו |
@@ -5524,8 +5530,18 @@ my_context: created SECURI-all-admin-endpoints-require-mfa (active) at items/sec
 query`</span> שולף אותה. מכיוון שהיא נורמטיבית היא מוזרקת כשנוגעים בקובץ תחת
 <span dir="ltr">`src/admin/`</span>, ו-<span dir="ltr">`mycontext pin`</span> מכניסה אותה
 לכל סשן. הכלי `create_item` מקבל אותה ומנחית את הגרסה של הסוכן כטיוטה, בדיוק כמו בקטגוריה
-מובנית. וששת מפתחות התצורה שלכל קטגוריה — <span dir="ltr">`enabled`, `tier`, `description`,
-`prefix`, `agentEdits`, `scopePolicy`</span> — חלים עליה כולם.
+מובנית. ושמונת מפתחות התצורה שלכל קטגוריה — <span dir="ltr">`enabled`, `tier`, `description`,
+`prefix`, `agentEdits`, `scopePolicy`, `extraFields`, `updates`</span> — חלים עליה כולם.
+
+**<span dir="ltr">`updates`</span> הוא החדש מבין השמונה, וזה שהכי סביר שיצטרך משפט משלו.**
+לכל קטגוריה כבר יש קבוצת בסיס של שמות ניתנים לעריכה מהדרג שלה — <span dir="ltr">`--title`,
+`--body`, `--summary`, `--scope`, `--tags`</span> ושאר הדגלים של <span dir="ltr">`mycontext
+edit`</span>, מוצהרים פעם אחת ב-<span dir="ltr">`TIER_UPDATES`</span> ולא 29 פעמים בקטלוג.
+<span dir="ltr">`updates`</span> הוא המקום שבו קטגוריה מוסיפה שמות שהם באמת שלה, כש-`{}`
+פירושו שהיא לא מוסיפה כלום. בקטגוריה **מותאמת אישית** <span dir="ltr">`updates`</span> הוא
+ההצהרה כולה — אין רשומת קטלוג להגן עליה, כך ש"להרחיב" ו"להחליף" נוקבים באותה פעולה.
+בקטגוריה **מובנית** דריסת <span dir="ltr">`updates`</span> **מרחיבה** את ההצהרה של הקטלוג
+לפי שם ולא מחליפה אותה, אותו כיוון שבו <span dir="ltr">`extraFields`</span> מרחיבה.
 
 **המשטח היחיד שהיא אינה מקבלת בחינם הוא פקודת סלאש משלה**, וזו תכונה של האופן שבו הקבצים
 האלה נוצרים ולא של הקטגוריה שלכם: <span dir="ltr">`commands/`</span> נוצרת בזמן בניית
@@ -5965,6 +5981,28 @@ You edited docs/prd/checkout.md. If it set a new requirement, decision or constr
 הגדירו <span dir="ltr">`"watchedDocs": ["docs/rfc/**"]`</span> ואותה עריכה לא תייצר דבר,
 מפני **שהרשימה שאתה נותן מחליפה את ברירות המחדל**. היא אינה מתווספת אליהן. כתיבות בתוך
 <span dir="ltr">`.my_context/`</span> לעולם אינן מייצרות תזכורת, מה שלא יגידו ה-globs.
+
+### `handover` — פתק לסשן הבא, שמבוקש לפני שההקשר נגמר
+
+</div>
+
+```json
+{ "handover": { "path": "reports/HANDOVER.md", "thresholdPercent": 98 } }
+```
+
+<div dir="rtl">
+
+נעדר כברירת מחדל, והיעדרו אומר שהתכונה כולה **כבויה** — דבר אינו מתבקש ממך ודבר אינו נמסר. הגדירו
+את <span dir="ltr">`path`</span> לקובץ האחד (לא glob) שבו אתם מנהלים פתק handover מתמשך, וקרוב
+לסוף סשן — כברירת מחדל ב-98% מחלון ההקשר, <span dir="ltr">`thresholdPercent`</span>, 1 עד 100 —
+ה-hook <span dir="ltr">`Stop`</span> מבקש מכם, פעם אחת, לכתוב תחתיו מה עשיתם, מה הוחלט, ומה על
+הסשן הבא לעשות ראשון. <span dir="ltr">`SessionStart`</span> מוסר אז את הקטע הזה (עד
+<span dir="ltr">`budgetTokens`</span>, ברירת מחדל 1200) אחרי כיווץ ובתחילת סשן חדש שמוצא אחד כזה.
+
+הקריאה הזו של 98% אינה משהו ש-my_context מודד בעצמו: היא מגיעה מגשר שורת המצב
+(<span dir="ltr">`mycontext statusline install`</span>). בלי הגשר מותקן — או לפני שהוא הפיק
+דגימה ראשונה לסשן הזה — אין מול מה להשוות את הסף, כך שהבקשה **חוזרת בה** ואומרת זאת פעם אחת,
+ב-stderr, במקום לנחש מספר.
 
 ### globs של scope — המתג הפרטני לכל פריט
 
@@ -6592,6 +6630,24 @@ Claude Code **2.1.234** באותה שיטה — hook־גשוש תחת ריצת `
 בלי כלום. כל דבר שסופר שורות <span dir="ltr">`subagent-start`</span> סופר כל שיגור פעמיים
 אלא אם הוא קורא את ההערה, וזה המחיר של op אחד במקום שניים.
 
+### פקודת סלאש מזוהה, אך למתן שם לסשן שלה עדיין נדרש צעד ידני
+
+<span dir="ltr">`UserPromptExpansion`</span> נורה ברגע שאחת מפקודות <span dir="ltr">`/mycontext:*`</span>
+של התוסף הזה מוקלדת, והאירוע נושא <span dir="ltr">`command_name`</span> ו-<span dir="ltr">`session_id`</span>
+— כך שה-hook כותב רשומת ביקורת אחת שמתעדת אילו פקודה רצה ובאיזה סשן. **זו זיהוי, לא מתן
+שם.** ה-hook אינו קורא ל-<span dir="ltr">`mycontext session name`</span> במקומכם, ואין
+מסלול מ"בדיוק הרצתי פקודת סלאש" לשם שאפשר להקליד במקום קידומת הקסדצימלית שמדלגת על שני
+הצעדים הרגילים: <span dir="ltr">`mycontext session list`</span> כדי למצוא את הסשן, ואז
+<span dir="ltr">`mycontext session name <id> <name>`</span>, כשהמזהה מועתק ביד.
+
+זה נדחה במכוון, ולא נותר לא-גמור. הדבר היחיד שכתיבה אוטומטית הייתה עושה הוא בדיוק מה
+ש-<span dir="ltr">`mycontext session name`</span> כבר עושה במפורש, כך שהרווח הוא חיסכון
+בהעתקת מזהה ולא הפעלת משהו חדש — והמחסן שאליו היא הייתה כותבת,
+<span dir="ltr">`.my_context/state/session-names.json`</span>, הוא אותו מחסן שאיבד כתיבות
+תחת מקביליות עד השבוע הזה. כל hook כאן כתוב גם תחת האינווריאנטה שהוא לעולם אינו חוסם
+הנחיה: הוא נכשל בפתיחה. כתיבה שנכשלת בפתיחה היא כתיבה שלפעמים אינה מתרחשת, ושם סשן
+שלפעמים נקבע הוא תכונה גרועה יותר משם שתמיד מוקלד ביד.
+
 ### משטח אחד לכל פעולה
 
 **הדרישה, בלשון המשתמש:** כל מה שהמודל יכול לעשות דרך כלי, אתה אמור להיות מסוגל לעשות
@@ -6602,7 +6658,7 @@ Claude Code **2.1.234** באותה שיטה — hook־גשוש תחת ריצת `
 מדפיסה ומול הקבצים ב-<span dir="ltr">`commands/`</span>.
 
 מה שנשאר הוא אי-סימטריה בכיוון השני — פקודות בלי פקודת סלאש — והיא **מפורטת ולא מתגלה**.
-ל-16 מתוך 42 פקודות שורת הפקודה אין אחת, לכל אחת מסיבה שרשומה לידה
+ל-16 מתוך 43 פקודות שורת הפקודה אין אחת, לכל אחת מסיבה שרשומה לידה
 ב-<span dir="ltr">`CLI_WITHOUT_SLASH`</span>:
 
 - <span dir="ltr">`init`</span> ו-<span dir="ltr">`rebuild`</span> רצות לפני סשן, או מחוצה
@@ -6650,11 +6706,16 @@ Claude Code **2.1.234** באותה שיטה — hook־גשוש תחת ריצת `
   <span dir="ltr">`settings.json`</span>, שהיא החלטה על העורך של המשתמש עצמו. פקודת סלאש
   עבורה הייתה המודל מגדיר מחדש את הכלי שהוא רץ בתוכו.
 
-שתי שורות חד-צדדיות נוספות, שתיהן במכוון. ל-<span dir="ltr">`load_context`</span> אין
+שורה חד-צדדית אחת נוספת, במכוון. ל-<span dir="ltr">`load_context`</span> אין
 מקבילה בשורת הפקודה משום שהזרקה קורית אל תוך סשן וטרמינל אינו סשן — ההיעדרות היא תכונה של
-הפעולה. ל-<span dir="ltr">`link_items`</span> אין מקבילה בשורת הפקודה משום שרישום יחס מעולם
-לא היה המסלול המיוחס שנזקק לאחת; *ההסרה* הלכה לכיוון ההפוך, ו-<span dir="ltr">`mycontext
-edit --unlink`</span> קיימת בלי שום כלי מאחוריה.
+הפעולה.
+
+ל-<span dir="ltr">`link_items`</span> הייתה שורה חד-צדדית משלה, ואינה עוד: <span dir="ltr">`mycontext
+link <from> <relation> <to>`</span> נותנת לטרמינל את מקבילת שורת הפקודה שחסרה לו — סוגרת
+פער אמיתי: משתמש בטרמינל לא יכל לכתוב יחס כלל. *ההסרה* עדיין הולכת לכיוון ההפוך: אין כלי
+<span dir="ltr">`unlink_items`</span>, רק <span dir="ltr">`mycontext edit --unlink`</span>,
+משום שהסרת קשת יכולה להחליש את מה שפריט ששולט טוען, והוספה אינה יכולה — האי-סימטריה היא
+בשאלה איזו כתיבה משוערת, לא בשאלה לאיזה משטח יש פקודת שורת פקודה.
 
 ### בחירת ערך במקום לזכור אותו
 
@@ -6854,7 +6915,7 @@ edit --unlink`</span> קיימת בלי שום כלי מאחוריה.
 המצוטט בפרקים 3, 4 ו-6 הוא מה שה-hooks פולטים; שלכל פרק שתוכן העניינים מקשר אליו יש שורה
 בסיכום היכולות שבראש המסמך, או שהוא מנוי — עם נימוק — כמשהו שהמוצר אינו *עושה*; וששני
 המסמכים נושאים את אותו רצף כותרות ואת אותן דוגמאות באותו
-סדר. מתוכם, <span dir="ltr">`counts.test.ts`</span> מחשב מהתוכנית הרצה את היחס "16 מתוך 42
+סדר. מתוכם, <span dir="ltr">`counts.test.ts`</span> מחשב מהתוכנית הרצה את היחס "16 מתוך 43
 פקודות שורת הפקודה" שלמעלה ונכשל ב**שתי** השפות אם אחד מחצאיו סוטה — הוא סטה פעמיים לפני
 שהבדיקה נולדה — והוא מחשב באותה דרך גם את מניין הקבצים שבפסקה הזאת עצמה.
 <span dir="ltr">`parity.test.ts`</span> מחזיק את רצף הכותרות של הפרק הזה מול המקור האנגלי.

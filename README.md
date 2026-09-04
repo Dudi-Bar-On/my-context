@@ -22,7 +22,7 @@ through it.
 You capture a rule once, from a terminal or by asking Claude to record it:
 
 ```bash
-mycontext add invariant "Prices are integer cents" --scope "src/billing/**" --yes
+mycontext add invariant "Prices are integer cents" --scope "src/billing/**" --summary "Prices are stored as integer cents everywhere, never as floating-point dollars, so a conversion cannot silently lose a fraction of a cent." --yes
 ```
 
 The next time Claude is about to read or edit a file under `src/billing/`, that invariant
@@ -142,7 +142,7 @@ one capture, and a return path that does not depend on you remembering.
 On a Monday, in a terminal, you type this once and then forget about it:
 
 ```bash
-mycontext add invariant "Prices are integer cents" --scope "src/billing/**" --yes
+mycontext add invariant "Prices are integer cents" --scope "src/billing/**" --summary "Prices are stored as integer cents everywhere, never as floating-point dollars, so a conversion cannot silently lose a fraction of a cent." --yes
 ```
 
 A fortnight later, a session that has never heard of you or of that rule is about to edit
@@ -1800,8 +1800,8 @@ it made into the global root:
 ```bash
 mkdir ~/global-context && cd ~/global-context
 mycontext init
-mycontext add rule "Write the failing test first" --yes
-mycontext add constraint "Never commit a secret" --severity hard --yes
+mycontext add rule "Write the failing test first" --summary "Write a failing test before writing the code that makes it pass — the standard TDD discipline." --yes
+mycontext add constraint "Never commit a secret" --severity hard --summary "A secret — a credential, key or token — must never be committed to the repository." --yes
 # then rename the directory it created into place
 mv ~/global-context/.my_context ~/.my-context
 ```
@@ -1907,7 +1907,7 @@ draft, retiring a governing item. How far that separation actually holds is
 ```mermaid
 flowchart TB
   U(["<b>You</b>"]) --> SL["<b>/mycontext:…</b><br/>88 slash commands"]
-  U --> CL["<b>mycontext …</b><br/>42 CLI commands"]
+  U --> CL["<b>mycontext …</b><br/>43 CLI commands"]
   A(["<b>Claude</b>"]) --> TL["<b>MCP tools</b><br/>twenty-two, served over stdio"]
   SL -->|"add-* · search · link · LoadMyContext"| TL
   SL -->|"list-* · review · status · edit · query"| CL
@@ -1974,7 +1974,7 @@ The eighteen hooks, and what each one is for:
 
 | Hook | Fires | What my_context does with it | `timeout` |
 |---|---|---|---|
-| `SessionStart` | a session starts, resumes, is cleared, or comes back from a compaction | selects and injects the pinned tier and the index, restores what a compaction dropped, clears a destroyed window's state, and sweeps stale files out of `state/` | 10 |
+| `SessionStart` | a session starts, resumes, is cleared, is forked, or comes back from a compaction | selects and injects the pinned tier and the index, restores what a compaction dropped, clears a destroyed window's state, and sweeps stale files out of `state/` | 10 |
 | `SubagentStart` | a subagent is dispatched | injects the pinned tier and the index into the subagent's empty window, framed with an account of where the block came from | 5 |
 | `PreToolUse` | before `Read`, `Edit`, `MultiEdit`, `Write` or `NotebookEdit` | the just-in-time tier, and the one refusal in the product: a direct write anywhere under `.my_context/` is denied, with a reason naming what to use instead | 10 |
 | `PreCompact` | before a compaction | records what the window was holding, so the next session start can restore it | 10 |
@@ -2092,14 +2092,20 @@ category it will govern as — and lets it start governing. `/mycontext:inbox-pr
 itself land as a draft, which is when the first command becomes the next step.
 
 **Every one of those previews by running the CLI command without `--yes` — except
-`/mycontext:link`, which writes through the `link_items` MCP tool and so has no CLI command
-to dry-run.** That prints the
+`/mycontext:link`, which writes through the `link_items` MCP tool directly, not through
+`mycontext link`.** That prints the
 real preview — what the item is, what would change, what governs before and after — and then
 declines, writing nothing; you are shown that output as it was printed, and then handed the
 same command with `--yes` to type yourself. So the preview is not a paraphrase, and the
 confirmation is not the model's. `test/plugin/write-commands.test.ts` runs each of those
 dry runs and asserts all three things: the preview appears, the command declines, and the
-corpus is byte-identical afterwards.
+corpus is byte-identical afterwards. `mycontext link` exists on the CLI now, but the
+preview-then-confirm shape has nothing to attach to there: the command takes no `--yes`
+at all, because adding a relation crosses no trust boundary (see [The trust
+boundary](#7-the-trust-boundary)) and so there is nothing to gate and nothing a dry run
+would be declining. `/mycontext:link` calling `link_items` straight through is therefore
+not a gap next to the other rows — it is the one write in this table with no confirmation
+to preview.
 
 **Learn from a document, or from what just happened.** `/mycontext:ingest` walks a document
 one chunk at a time — Claude is the extractor; there is no model inside the tool — and each
@@ -2168,7 +2174,7 @@ listed with one. The remaining absences are in [section 8](#one-surface-for-ever
 
 ### What you run: the CLI
 
-42 commands. `mycontext help` prints the same list from the program itself, and
+43 commands. `mycontext help` prints the same list from the program itself, and
 `mycontext help <topic>` explains one of seven. Four are concepts — `categories`, `scope`,
 `capture`, `workflow` — and three are one page per invocation surface: `cli`, `tools` and
 `slash`, each generated from the registry, schema or directory it describes rather than
@@ -2181,6 +2187,7 @@ written out beside it.
 | `mycontext init` | create `.my_context/` in the current directory. `--pack <path>` founds it from an artefact somebody else wrote, in one command — the same import `mycontext pack import` runs, so everything it brings in lands **as drafts**. It asks nothing, because the corpus it is importing into is the one it is creating; a pack it refuses leaves no `.my_context/` behind at all. [Founding one from a pack](#bringing-one-in--mycontext-pack-import) |
 | `mycontext add <category> <title>` | create an item — `--body` or `--file`, `--note`, `--scope`, `--tags`, `--severity`, `--yes` |
 | `mycontext edit <id>` | change an item — `--title`, `--body`, `--scope`, `--tags`, `--severity`, `--always`, `--status`, `--extra key=value`, `--unlink <relation> <target>`, `--yes`. The gate scales with what the change can do: none while the item neither governs nor starts governing, a preview and a confirmation otherwise — including the edit that makes a draft `active` |
+| `mycontext link <from> <relation> <to>` | record a relation from one item to another — the CLI spelling `link_items` had and the terminal did not. No flags, and **no `--yes`**: adding an edge crosses no trust boundary (`link_items` is `boundary: false`, and `LinkInput` carries no `origin` at all), so there is nothing to gate. Removing an edge keeps its existing gated spelling, `mycontext edit <id> --unlink <relation> <target>` — the row above — because removing one can weaken what a governing item asserts and adding one cannot |
 | `mycontext pin <id>` / `mycontext unpin <id>` | `mycontext edit <id> --always=true` and `--always=false`, under a shorter name |
 | `mycontext harden <id>` / `mycontext soften <id>` | `mycontext edit <id> --severity=hard` and `--severity=soft`, under a shorter name |
 | `mycontext review promote <id>` | turn a draft into an active governing item — `--scope`, `--severity`, `--always`, `--yes`. `--all --pack <name>` promotes every draft one imported pack brought in, in one confirmation taken after the corpus is visible; it refuses an id and all three per-item flags, and names everything it skips |
@@ -5162,9 +5169,19 @@ way it reads a built-in's. It is listed by `mycontext list`, has a template unde
 `mycontext examples security_control`, is checked by `mycontext doctor` and is queryable by
 `mycontext query`. Because it is normative it is injected when a file under `src/admin/` is
 touched, and `mycontext pin` puts it in every session. The `create_item` tool accepts it and
-lands an agent's version as a draft, exactly as for a built-in. And the six per-category
-keys — `enabled`, `tier`, `description`, `prefix`, `agentEdits`, `scopePolicy` — all apply
-to it.
+lands an agent's version as a draft, exactly as for a built-in. And the eight per-category
+keys — `enabled`, `tier`, `description`, `prefix`, `agentEdits`, `scopePolicy`,
+`extraFields`, `updates` — all apply to it.
+
+**`updates` is the newest of the eight, and the one most likely to need a sentence of its
+own.** Every category already gets a baseline set of editable names from its tier —
+`mycontext edit`'s `--title`, `--body`, `--summary`, `--scope`, `--tags` and the rest,
+declared once in `TIER_UPDATES` rather than 29 times in the catalogue. `updates` is where a
+category adds names that are genuinely its own, `{}` meaning it adds none. On a **custom**
+category `updates` is the whole declaration — there is no catalogue entry to protect, so
+"extend" and "replace" name the same operation. On a **built-in** category an `updates`
+override **extends** the catalogue's own declaration by name rather than replacing it, the
+same direction `extraFields` extends in.
 
 **The one surface it does not get for free is a slash command of its own**, and that is a
 property of how those files are made rather than of your category: `commands/` is generated
@@ -5515,6 +5532,25 @@ You edited docs/prd/checkout.md. If it set a new requirement, decision or constr
 Set `"watchedDocs": ["docs/rfc/**"]` and the same edit produces nothing at all, because
 **the list you give replaces the defaults**. It is not added to them. Writes inside
 `.my_context/` never nudge, whatever the globs say.
+
+### `handover` — a note for the next session, asked for before the context runs out
+
+```json
+{ "handover": { "path": "reports/HANDOVER.md", "thresholdPercent": 98 } }
+```
+
+Absent by default, and absent means the whole feature is **off** — nothing is asked of you and
+nothing is delivered. Set `path` to the one file (not a glob) you keep a running handover note
+in, and near the end of a session — by default at 98% of the context window, `thresholdPercent`,
+1–100 — the `Stop` hook asks you, once, to write under it what you were doing, what you decided,
+and what the next session needs to do first. `SessionStart` then delivers that section (up to
+`budgetTokens`, default 1200) after a compaction and at the start of a fresh session that finds
+one.
+
+That 98% reading is not something my_context measures itself: it comes from the status-line
+bridge (`mycontext statusline install`). Without the bridge installed — or before it has produced
+a first sample for this session — there is nothing to compare the threshold against, so the ask
+**stands down** and says so once, on stderr, rather than guessing a number.
 
 ### Scope globs — the per-item switch
 
@@ -6121,6 +6157,25 @@ attempt with no completion for the same `agent_id` is exactly a subagent that st
 nothing. Anything counting `subagent-start` rows counts each dispatch twice unless it reads
 the note, which is the price of one op rather than two.
 
+### A slash command is recognised, but naming its session is still a manual step
+
+`UserPromptExpansion` fires the moment one of this plugin's own `/mycontext:*` commands is
+typed, and the event carries `command_name` and `session_id` — so the hook writes one audit
+row recording which command ran and in which session. **That is recognition, not naming.**
+The hook does not call `mycontext session name` for you, and there is no route from "I just
+ran a slash command" to a name you can type instead of a hex prefix that skips the two
+ordinary steps: `mycontext session list` to find the session, then
+`mycontext session name <id> <name>`, with the id copied by hand.
+
+This was declined, not left undone. The one thing an automatic write would do is exactly
+what `mycontext session name` already does explicitly, so the gain is saving a copied id
+rather than enabling something new — and the store it would write to,
+`.my_context/state/session-names.json`, is the same store that was losing writes under
+concurrency until this week. Every hook here is also written under the invariant that it
+must never block a prompt: it fails open. A write that fails open is a write that
+sometimes does not happen, and a session name that is sometimes set is a worse property
+than one that is always typed by hand.
+
 ### One surface for every operation
 
 **The requirement, in the user's words:** anything the model can do through a tool, you
@@ -6130,7 +6185,7 @@ command, or both; the map is `src/plugin/parity.ts` and `test/plugin/parity.test
 it against the usage banner the program prints and the files in `commands/`.
 
 What is left is asymmetry in the other direction — commands with no slash command — and it
-is **listed rather than discovered**. 16 of the 42 CLI commands have none, each for a reason
+is **listed rather than discovered**. 16 of the 43 CLI commands have none, each for a reason
 recorded beside it in `CLI_WITHOUT_SLASH`:
 
 - `ack` records that a **person** read a `doctor` finding and ruled on it, so a slash command
@@ -6181,11 +6236,16 @@ recorded beside it in `CLI_WITHOUT_SLASH`:
   user's own editor. A slash command for it would be the model reconfiguring the tool it is
   running inside.
 
-Two more one-sided rows, both deliberate. `load_context` has no CLI counterpart because
+One more one-sided row, deliberate. `load_context` has no CLI counterpart because
 injection happens into a session and a terminal is not one — the absence is a property of
-the act. `link_items` has no CLI counterpart because adding a relation was never the
-privileged route that needed one; its *removal* went the other way, and
-`mycontext edit --unlink` exists with no tool behind it.
+the act.
+
+`link_items` used to be the other one-sided row, and no longer is: `mycontext link
+<from> <relation> <to>` gives the terminal the CLI counterpart it lacked, closing a real
+gap — a terminal user could not write a relation at all. Its *removal* still goes the
+other way: there is no `unlink_items` tool, only `mycontext edit --unlink`, because
+removing an edge can weaken what a governing item asserts and adding one cannot — the
+asymmetry is in which write is gated, not in which surface has a CLI command.
 
 ### Choosing a value instead of remembering it
 
@@ -6386,7 +6446,7 @@ command prints; that the injected output quoted in sections 3, 4 and 6 is what t
 emit; that every section the table of contents links either has a line in the capabilities
 summary near the top or is listed, with a reason, as something the product does not *do*; and
 that both documents carry the same heading sequence and the same examples in the same order.
-Of those, `counts.test.ts` computes the "16 of the 42 CLI commands" ratio above from the
+Of those, `counts.test.ts` computes the "16 of the 43 CLI commands" ratio above from the
 running program and fails in **both** languages if either half drifts — it had drifted twice
 before the test existed — and it computes this paragraph's own file count the same way.
 `parity.test.ts` holds this section's heading sequence to the Hebrew mirror's. This paragraph

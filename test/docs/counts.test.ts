@@ -28,6 +28,7 @@ import path from 'node:path';
 import { runCli } from '../../src/cli/index.ts';
 import { TOOL_NAMES } from '../../src/mcp/tools.ts';
 import { CATEGORIES, PROFILES } from '../../src/core/categories.ts';
+import { resolveConfig } from '../../src/core/config.ts';
 import { RELATION_CLASSIFICATION } from '../../src/core/focus.ts';
 import { NOT_COUNTED, UNGATED, approvalBoundary } from '../helpers/approval-boundary.ts';
 import { removeTree } from '../helpers/tmp.ts';
@@ -295,6 +296,104 @@ test('both documents state the real category and profile counts', () => {
     total, 'the catalogue size in the two-profiles section');
   assertStated(/(?:enables all|מפעיל את כל) \*\*(\d+)\*\*/g,
     total, "the count of categories `standard` enables");
+});
+
+/**
+ * **The per-category config keys, which have now drifted twice by hand.**
+ *
+ * Both documents' "custom categories" section closes by telling a reader that
+ * every per-category key applies to a category they defined themselves, and
+ * then enumerates them. It said **six** when `extraFields` was promoted from a
+ * refused key to an accepted one (2026-08-20), and it still said six —
+ * corrected to seven by hand — when `updates` landed and made it eight. The
+ * 2026-08-22 documentation review filed the first drift as F5; the second
+ * arrived while that finding was still open, which is the argument for this
+ * test rather than a third hand correction.
+ *
+ * **Derived by asking the loader, not by reading a constant.** `CATEGORY_KEYS`
+ * in `core/config.ts` is module-private, and exporting it to be testable would
+ * be a source change made for a test's convenience. It does not need to be:
+ * the loader's own refusal enumerates the accepted keys, in order, so this
+ * probes the real refusal exactly as `cliCommandNames` above reads the real
+ * usage banner. A key added to the loader reaches this test the moment it
+ * reaches the message a user is shown.
+ *
+ * The list is compared as a SET and the count as a WORD, for the reasons the
+ * two tests either side of this one give: a count that agrees while the
+ * enumeration is short is the failure a reader trips over, because the
+ * enumeration is what they read.
+ */
+function categoryKeys(): string[] {
+  let message = '';
+  try {
+    resolveConfig({ categories: { rule: { '**not-a-key**': true } } });
+  } catch (error) {
+    message = error instanceof Error ? error.message : String(error);
+  }
+  const listed = /A category accepts: ([^.]+)\./.exec(message);
+  assert.ok(
+    listed,
+    `the category-key refusal no longer enumerates its keys where this test reads them. ` +
+    `If the message was reworded, update this parser; do not delete the assertion — this ` +
+    `list is a hand-kept copy in both documents and this is the only thing holding it to ` +
+    `the program. The message was:\n${message}`,
+  );
+  const keys = listed[1].split(',').map((key) => key.trim()).filter((key) => key !== '');
+  assert.ok(keys.length > 1, `the refusal parsed to ${keys.length} key(s); the parser is broken`);
+  return keys;
+}
+
+/**
+ * Hebrew numerals agree with their noun's gender and take the construct form
+ * in this sentence ("ושמונת מפתחות" — *and the eight keys of*), which is the
+ * same form `HOOK_WORDS` uses and NOT the absolute form `NUMBER_WORDS` uses.
+ * Getting that wrong would be a Hebrew-only defect of exactly the kind this
+ * file exists to catch.
+ */
+const CATEGORY_KEY_WORDS: Record<number, { en: string; he: string }> = {
+  6: { en: 'six', he: 'ששת' },
+  7: { en: 'seven', he: 'שבעת' },
+  8: { en: 'eight', he: 'שמונת' },
+  9: { en: 'nine', he: 'תשעת' },
+  10: { en: 'ten', he: 'עשרת' },
+};
+
+test('both documents state the per-category keys the loader actually accepts', () => {
+  const keys = categoryKeys();
+  const words = CATEGORY_KEY_WORDS[keys.length];
+  assert.ok(
+    words,
+    `the loader now accepts ${keys.length} per-category keys, which CATEGORY_KEY_WORDS does ` +
+    `not spell. Add it rather than deleting this test — this number has drifted twice ` +
+    `already. The keys are: ${keys.join(', ')}.`,
+  );
+
+  const SENTENCE: Record<string, RegExp> = {
+    'README.md': /the ([\p{L}-]+) per-category\s+keys —([\s\S]*?)—/u,
+    [path.join('docs', 'README.he.md')]: /ו(שמונת|ששת|שבעת|תשעת|עשרת) מפתחות התצורה[^—]*—([\s\S]*?)—/u,
+  };
+
+  for (const doc of documents) {
+    const expected = doc.relative === 'README.md' ? words.en : words.he;
+    const match = SENTENCE[doc.relative].exec(doc.text);
+    assert.ok(
+      match,
+      `${doc.relative} no longer carries the per-category key sentence where this test looks ` +
+      `for it. If the wording changed, update the pattern; do not delete it.`,
+    );
+    assert.equal(
+      match[1], expected,
+      `${doc.relative} counts the per-category keys as "${match[1]}"; the loader accepts ` +
+      `${keys.length} ("${expected}"): ${keys.join(', ')}.`,
+    );
+    const listed = [...match[2].matchAll(/`([a-zA-Z]+)`/g)].map((m) => m[1]).sort();
+    assert.deepEqual(
+      listed, [...keys].sort(),
+      `${doc.relative}'s enumeration of per-category keys is not what the loader accepts. A ` +
+      `count that agrees while the list is short is the failure a reader trips over, because ` +
+      `the list is what they read.`,
+    );
+  }
 });
 
 /**
