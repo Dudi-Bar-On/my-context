@@ -22,8 +22,5 @@
   "ui": {
     "enabled": true,
     "port": 58888
-  },
-  "dispatchGate": {
-    "enabled": true
   }
 }
