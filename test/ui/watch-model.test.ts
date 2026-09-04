@@ -196,18 +196,22 @@ test('/api/watch/volume: a projection nobody has built is disclosed as absent, n
 test('/api/watch/context: the share is bounded to this window, not to the session’s lifetime', () => {
   const { dir, root, done } = workspace();
   try {
-    const inject = (op: string, tokens: number): void => {
+    // A DISTINCT id per call, deliberately. `shareOf` charges each (item, tier)
+    // pair once per epoch, so a fixture that redelivered one id would measure
+    // that dedupe instead of the two bounds this test is about — and would
+    // still pass for the wrong reason if either bound broke.
+    const inject = (op: string, tokens: number, id: string): void => {
       recordAudit(root, {
         kind: 'injection', op, sessionId: 's1', hook: 'SessionStart',
-        injected: [{ id: 'RULE-a', tier: 'pinned' }], tokens,
+        injected: [{ id, tier: 'pinned' }], tokens,
       } as Parameters<typeof recordAudit>[1]);
     };
-    inject('session-start', 4000);
-    inject('subagent-start', 500000);
+    inject('session-start', 4000, 'RULE-a');
+    inject('subagent-start', 500000, 'RULE-b');
     recordAudit(root, { kind: 'hook', op: 'pre-compact', sessionId: 's1', hook: 'PreCompact' });
-    inject('compact-restore', 1500);
-    inject('jit', 700);
-    inject('subagent-start', 900000);
+    inject('compact-restore', 1500, 'RULE-c');
+    inject('jit', 700, 'RULE-d');
+    inject('subagent-start', 900000, 'RULE-e');
     buildProjection(dir);
 
     const ws = resolveWorkspace(dir);
