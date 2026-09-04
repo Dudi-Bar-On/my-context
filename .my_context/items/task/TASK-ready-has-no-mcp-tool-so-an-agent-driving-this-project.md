@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: The read-only command that lists work ready to start has no tool counterpart, so an agent using only tools cannot see what is unblocked.
-summary_of: a3c3ce40d686d713
+summary_of: f95edcda29b7340b
 scope:
   - src/mcp/tools.ts
   - src/plugin/parity.ts
@@ -17,18 +17,19 @@ tags:
   - tools
   - "plan:mcp"
   - "seq:1"
-  - "state:todo"
+  - "state:done"
 origin: human
 source_file: null
 source_anchor: null
 source_checksum: null
 valid_from: 2026-09-04
 valid_until: null
-checksum: 74ad80989b5a88ed
+checksum: ed0a52b8949a5a17
 plan: mcp
 seq: "1"
-state: todo
+state: done
 priority: "1"
+verified_on: 2026-09-04
 ---
 
 # ready has no MCP tool, so an agent driving this project through tools cannot see what work is unblocked

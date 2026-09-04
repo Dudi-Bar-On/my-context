@@ -1,7 +1,8 @@
 import path from 'node:path';
 import { recordAudit } from '../core/audit.ts';
 import { isMainEntry, managedSplit, matchesAnyGlob, relPosix, toPosix } from '../core/paths.ts';
-import { resolveWorkspace } from '../core/workspace.ts';
+import { findProjectRoot, resolveWorkspace } from '../core/workspace.ts';
+import { capped, NOTE_MAX } from './observe.ts';
 import { hookContext, readStdinAsync } from './io.ts';
 
 /**
@@ -12,20 +13,36 @@ import { hookContext, readStdinAsync } from './io.ts';
  * different keys. Unifying them means giving this hook that same
  * three-key lookup, which is a behaviour change (`path` and `notebook_path`
  * would start producing nudges) and belongs to whoever wants that behaviour.
+ *
+ * `tool_input.description`, `tool_input.subagent_type` and `tool_response`
+ * are the `Agent` tool's own fields — see `agentDispatchNote` below — and are
+ * declared as optional siblings of `file_path` rather than in a second
+ * interface, because one `PostToolUse` payload is one shape whichever tool
+ * fired it; a caller reads only the keys that apply to the tool it is
+ * branching on, which is exactly what both functions below do.
  */
 export interface HookInput {
   tool_name?: string;
-  tool_input?: { file_path?: string };
+  tool_input?: { file_path?: string; description?: string; subagent_type?: string };
+  tool_response?: { agentId?: string };
   cwd?: string;
   session_id?: string;
 }
 
 // NotebookEdit is deliberately excluded: `hooks.json`'s matcher
-// (`Write|Edit|MultiEdit`) never spawns this process for it, and its payload
-// carries the file under `notebook_path`, not `file_path` — so including it
-// here would cost a process spawn on every notebook edit for a branch that
-// can never produce a nudge. Notebooks are not what `watchedDocs` is for.
+// (`Write|Edit|MultiEdit|Agent`) never spawns this process for it, and its
+// payload carries the file under `notebook_path`, not `file_path` — so
+// including it here would cost a process spawn on every notebook edit for a
+// branch that can never produce a nudge. Notebooks are not what `watchedDocs`
+// is for.
 const WRITING_TOOLS = new Set(['Write', 'Edit', 'MultiEdit']);
+
+/** A named string field of an untyped payload object, or `null`. Never throws. */
+function stringField(obj: unknown, key: string): string | null {
+  if (typeof obj !== 'object' || obj === null) return null;
+  const value = (obj as Record<string, unknown>)[key];
+  return typeof value === 'string' && value !== '' ? value : null;
+}
 
 /**
  * The nudge text, or '' when this edit is none of our business. Returns rather
@@ -96,6 +113,75 @@ export function nudgeFor(input: HookInput, fallbackCwd: string): string {
 }
 
 /**
+ * One audit row per `Agent` dispatch — the owner's own choice, presented with
+ * the alternative and declined: NOT one row per subagent tool call.
+ * `src/core/ui-server-upkeep.ts` names the reason that alternative was never
+ * on the table: this project once deleted 5,207 rows of per-message noise
+ * from this very log for being noise.
+ *
+ * **What makes one row enough.** The dispatch title a terminal shows
+ * (`general-purpose  Grepping runChecks signature in checks.ts`) is
+ * `tool_input.description` on the **`Agent`** tool itself — never on any
+ * subagent payload, which starts a fresh context window with no memory of
+ * how it was dispatched — and `tool_response.agentId`, the join key, is on
+ * the SAME `PostToolUse` firing. One record, zero extra reads.
+ *
+ * **Never throws (`INV-hooks-fail-open`).** This runs on the PostToolUse path
+ * of a tool that fires constantly; anything here that could throw would
+ * threaten every dispatch, not just this feature.
+ *
+ * **Gated on `tool_name === 'Agent'` inside the function, not only by the
+ * caller.** `hooks.json`'s widened matcher (`Write|Edit|MultiEdit|Agent`) is
+ * the first gate, but repeating the check here is what keeps this function
+ * correct when called directly — by a test, or by a future caller that
+ * forgets the matcher exists — and it is the assertion this project asked
+ * for explicitly: a widened `PostToolUse` matcher must not silently become an
+ * audit of every tool it now sees.
+ *
+ * **A missing title still writes a row; a missing id and a missing type do
+ * too, each spelled `<absent>`** (`INV-nothing-is-dropped-silently`). Partial
+ * data about a real dispatch beats a dropped row — the same argument
+ * `subagent-stop.ts` makes for `type=<absent>` on 96.7% of its own rows.
+ *
+ * **No workspace, no record** — the log lives inside the workspace, and
+ * `findProjectRoot` (not `resolveWorkspace`) is used for the reason every
+ * other hook on this path gives at its own resolution: it never throws on a
+ * broken `config.json`, so a dispatch that happens while the config is
+ * broken is still recorded rather than lost to the one call here that could
+ * throw.
+ */
+export function agentDispatchNote(input: HookInput, fallbackCwd: string): void {
+  try {
+    if (input.tool_name !== 'Agent') return;
+
+    const cwd = input.cwd && input.cwd !== '' ? input.cwd : fallbackCwd;
+    const root = findProjectRoot(cwd);
+    if (!root) return;
+
+    const agentId = stringField(input.tool_response, 'agentId') ?? '<absent>';
+    const agentType = stringField(input.tool_input, 'subagent_type') ?? '<absent>';
+    const description = stringField(input.tool_input, 'description');
+
+    const note = capped(
+      `dispatched type=${agentType} agent=${agentId}` +
+      (description === null ? '' : `: ${description}`),
+      NOTE_MAX,
+    );
+
+    recordAudit(root, {
+      kind: 'hook',
+      op: 'agent-dispatched',
+      hook: 'PostToolUse',
+      ...(input.session_id === undefined ? {} : { sessionId: input.session_id }),
+      note,
+    });
+  } catch {
+    // INV-hooks-fail-open. A knowledge base that breaks a session is worse
+    // than one that says nothing.
+  }
+}
+
+/**
  * The envelope, from `io.ts`'s one builder — and the empty guard, which stays
  * here because it is this hook's rule and not the builder's. Almost every edit
  * in a session is one this hook has no opinion on; an envelope carrying an
@@ -142,6 +228,9 @@ if (isMainEntry(import.meta.filename, process.argv[1])) {
       }
       const line = buildOutput(nudgeFor(parsed, process.cwd()));
       if (line) process.stdout.write(line + '\n');
+      // No stdout of its own: a dispatch row is audit-only, and there is
+      // nothing here the model needs told back to it about its own dispatch.
+      agentDispatchNote(parsed, process.cwd());
     })
     .catch(() => { /* fail open */ })
     .finally(() => { process.exitCode = 0; });

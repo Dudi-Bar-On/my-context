@@ -44,11 +44,11 @@ function promoteToActive(cwd: string, id: string): void {
   }
 }
 
-test('the registry exposes exactly the fourteen implemented tools', () => {
+test('the registry exposes exactly the sixteen implemented tools', () => {
   assert.deepEqual([...TOOL_NAMES].sort(), [
-    'audit_log', 'create_item', 'focus_context', 'get_item', 'ingest_document', 'link_items',
-    'list_drafts', 'load_context', 'mycontext_examples', 'mycontext_help', 'query_items',
-    'refresh_item', 'supersede_item', 'update_item',
+    'audit_log', 'create_item', 'doctor', 'focus_context', 'get_item', 'ingest_document',
+    'link_items', 'list_drafts', 'load_context', 'mycontext_examples', 'mycontext_help',
+    'query_items', 'ready', 'refresh_item', 'supersede_item', 'update_item',
   ]);
 });
 
@@ -99,6 +99,179 @@ test('no tool schema exposes an origin field', () => {
     assert.equal(Object.hasOwn(properties, 'origin'), false, tool.name);
   }
   removeTree(cwd);
+});
+
+/**
+ * A7/A8 on this project's board were both defects of exactly this shape: a
+ * filter a caller could not learn to use without reading source. `ready` and
+ * `doctor` are new enough to check by name rather than trust to the generic
+ * pass above.
+ */
+test('every ready and doctor schema parameter carries a description', () => {
+  const cwd = project();
+  for (const name of ['ready', 'doctor']) {
+    const tool = createRegistry(cwd).list().find((t) => t.name === name);
+    assert.ok(tool, name);
+    const properties = (tool!.inputSchema as { properties?: Record<string, unknown> }).properties ?? {};
+    for (const [key, schema] of Object.entries(properties)) {
+      const description = (schema as { description?: unknown }).description;
+      assert.equal(typeof description, 'string', `${name}.${key} has no description`);
+      assert.ok((description as string).length > 0, `${name}.${key}'s description is empty`);
+    }
+  }
+  removeTree(cwd);
+});
+
+/**
+ * A task written straight to disk, the way `test/cli/ready.test.ts` builds
+ * its own fixtures — `task` ships in the default catalogue, so no config
+ * override is needed here the way that file needs one for its own reasons.
+ */
+function writeTask(cwd: string, id: string, extra: Record<string, string>, title = `task ${id}`): void {
+  const dir = path.join(cwd, '.my_context', 'items', 'task');
+  mkdirSync(dir, { recursive: true });
+  const fields = Object.entries(extra).map(([k, v]) => `${k}: "${v}"`).join('\n');
+  writeFileSync(path.join(dir, `${id}.md`), [
+    '---',
+    `id: ${id}`,
+    'type: task',
+    `title: ${title}`,
+    'status: active',
+    'severity: soft',
+    'always: false',
+    'scope: []',
+    'tags: []',
+    'origin: human',
+    fields,
+    '---',
+    '',
+    `# ${title}`,
+    '',
+  ].join('\n'), 'utf8');
+}
+
+/**
+ * **`ready`: the tool returns what the CLI returns for the same input.**
+ *
+ * The load-bearing case from `test/cli/ready.test.ts`, replayed through the
+ * tool: a blocked task whose blocker has landed is READY, and its satisfied
+ * blocker is not on the list. Both surfaces call the identical
+ * `readyReport` (core/needs.ts) — this pins that the tool actually reaches
+ * it, not a second implementation that happens to agree today.
+ */
+test('ready: a blocked task whose blocker has landed appears; the blocker itself does not', () => {
+  const cwd = project();
+  try {
+    writeTask(cwd, 'TASK-walk-7', { plan: 'walk', seq: '7', state: 'done', priority: '1' });
+    writeTask(cwd, 'TASK-walk-8', {
+      plan: 'walk', seq: '8', state: 'blocked', priority: '1', needs: 'walk/7',
+    });
+    const out = createRegistry(cwd).call('ready', {});
+    assert.match(out, /walk\/8/);
+    assert.doesNotMatch(out, /walk\/7/);
+  } finally {
+    removeTree(cwd);
+  }
+});
+
+test('ready: a held task is counted on every call and listed only with held: true', () => {
+  const cwd = project();
+  try {
+    writeTask(cwd, 'TASK-walk-7', { plan: 'walk', seq: '7', state: 'todo', priority: '1' });
+    writeTask(cwd, 'TASK-walk-8', {
+      plan: 'walk', seq: '8', state: 'blocked', priority: '1', needs: 'walk/7',
+    });
+    const registry = createRegistry(cwd);
+    const bare = registry.call('ready', {});
+    assert.doesNotMatch(bare, /walk\/8/);
+    assert.match(bare, /1 open task\(s\) held/);
+    assert.match(bare, /a blocker has not landed/);
+
+    const held = registry.call('ready', { held: true });
+    assert.match(held, /walk\/8/);
+  } finally {
+    removeTree(cwd);
+  }
+});
+
+test('ready: --plan narrowing and the limit default (50) are both reachable and documented', () => {
+  const cwd = project();
+  try {
+    writeTask(cwd, 'TASK-a', { plan: 'walk', seq: '1', state: 'todo', priority: '1' });
+    writeTask(cwd, 'TASK-b', { plan: 'port', seq: '1', state: 'todo', priority: '1' });
+    const registry = createRegistry(cwd);
+    const narrowed = registry.call('ready', { plan: 'walk' });
+    assert.match(narrowed, /walk\/1/);
+    assert.doesNotMatch(narrowed, /port\/1/);
+
+    const tool = registry.list().find((t) => t.name === 'ready')!;
+    const limitDesc = (tool.inputSchema as { properties: Record<string, { description: string }> })
+      .properties.limit.description;
+    assert.match(limitDesc, /50/, 'the default cap must be disclosed, not silent');
+  } finally {
+    removeTree(cwd);
+  }
+});
+
+test('ready: says so, rather than a bare empty list, when no category plans work', () => {
+  const cwd = project();
+  try {
+    writeFileSync(
+      path.join(cwd, '.my_context', 'config.json'),
+      JSON.stringify({ categories: { task: { enabled: false } } }, null, 2) + '\n',
+    );
+    const out = createRegistry(cwd).call('ready', {});
+    assert.match(out, /no enabled category in this project declares/);
+  } finally {
+    removeTree(cwd);
+  }
+});
+
+/**
+ * **`doctor`: the tool returns what the CLI returns for the same input.**
+ *
+ * A corpus `mycontext doctor` calls clean must read clean here too.
+ */
+test('doctor: a clean corpus reports zero findings', () => {
+  const cwd = project();
+  try {
+    const out = createRegistry(cwd).call('doctor', {});
+    assert.match(out, /0 error\(s\), 0 warning\(s\), 0 note\(s\) across 0 finding\(s\)\./);
+  } finally {
+    removeTree(cwd);
+  }
+});
+
+/**
+ * **The anti-vacuity assertion.** A `Finding` carrying `about` is a note a
+ * check makes about ITSELF, never a defect in the corpus (`Finding.about`,
+ * doctor/checks.ts) — `checkStateUnaudited`'s `state_audit_coverage` is one.
+ * A task written through the product (correct checksum, correct summary,
+ * a real `create` audit record) whose audit log is then wiped is exactly the
+ * "unmeasured set" shape that check discloses: `state_unaudited` never fires
+ * per item because nothing said the item was ever seen, so the tool must
+ * report ZERO findings while the disclosure itself is still reachable —
+ * naming its own check by code, under its own `about`, in the same string.
+ * `test/cli/doctor-disclosures.test.ts` pins the identical shape on the CLI;
+ * this is that same fact asked of the tool.
+ */
+test('doctor: a corpus with a disclosure and no finding reports ZERO findings, and the disclosure is still reachable', () => {
+  const cwd = project();
+  try {
+    assert.equal(runCli([
+      'add', 'task', 'a done task', '--summary', 'A task used to exercise the disclosure path.',
+      '--extra', 'plan=exp', '--extra', 'seq=1', '--extra', 'state=done', '--yes',
+    ], cwd, () => {}), 0);
+    rmSync(path.join(cwd, '.my_context', '.audit'), { recursive: true, force: true });
+
+    const out = createRegistry(cwd).call('doctor', {});
+    assert.match(out, /0 error\(s\), 0 warning\(s\), 0 note\(s\) across 0 finding\(s\)\./,
+      'a disclosure with no finding beside it must still read as zero findings');
+    assert.match(out, /state_audit_coverage — about the "state_unaudited" check/,
+      'the disclosure must still be reachable, under its own check name');
+  } finally {
+    removeTree(cwd);
+  }
 });
 
 test('tools are listed in a deterministic order', () => {

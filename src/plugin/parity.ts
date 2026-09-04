@@ -63,6 +63,7 @@ export const TOOL_PARITY: ToolParity[] = [
       'and went the opposite way: `mycontext edit --unlink` exists and no tool does.',
   },
   { tool: 'audit_log', cli: 'audit', slash: 'audit' },
+  { tool: 'doctor', cli: 'doctor', slash: 'doctor' },
   { tool: 'focus_context', cli: 'focus', slash: 'focus' },
   { tool: 'list_drafts', cli: 'review', slash: 'review' },
   {
@@ -87,6 +88,7 @@ export const TOOL_PARITY: ToolParity[] = [
       '`mycontext_examples`.',
   },
   { tool: 'query_items', cli: 'search', slash: 'search' },
+  { tool: 'ready', cli: 'ready', slash: 'ready' },
   { tool: 'refresh_item', cli: 'refresh', slash: 'refresh' },
   { tool: 'supersede_item', cli: 'supersede', slash: 'supersede' },
   { tool: 'update_item', cli: 'edit', slash: 'edit' },
@@ -259,16 +261,6 @@ export const CLI_WITHOUT_TOOL: Record<string, ToolAbsence> = {
       'its path. Nothing blocks a tool; one is simply not built. Same bucket as `doctor`, ' +
       '`ready`, `status` and `todo` — the unexamined space the board row names.',
   },
-  doctor: {
-    disposition: 'owed',
-    reason:
-      'Read-only diagnostic (index freshness, orphans, drift, dead globs, permissions, ' +
-      'session ids). Named in the board row itself, and another lane is adding it as a tool ' +
-      'while this row is being written — which is the expected way this entry stops being ' +
-      'true: the day that lands, `doctor` drops out of the derived "without" list and this row ' +
-      'fails the set-comparison test below until it is deleted, the same way `ready` left ' +
-      '`CLI_WITHOUT_SLASH` earlier today.',
-  },
   export: {
     disposition: 'intended',
     reason:
@@ -399,13 +391,6 @@ export const CLI_WITHOUT_TOOL: Record<string, ToolAbsence> = {
       'tool that instead took a caller-supplied SQL string would let a call reach anything the ' +
       'schema allows regardless of what `query_items`\'s own schema deliberately narrows, which ' +
       'is a wider door than this project has opened anywhere else.',
-  },
-  ready: {
-    disposition: 'owed',
-    reason:
-      'Same framing as `doctor`: a read-only report named in the board row, with another lane ' +
-      'adding the tool right now. This row is expected to be deleted the same way `ready` was ' +
-      'deleted from `CLI_WITHOUT_SLASH` earlier today, once `ready` gains a `TOOL_PARITY` row.',
   },
   rebuild: {
     disposition: 'intended',

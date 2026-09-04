@@ -10,6 +10,11 @@ import {
 import { summaryStalenessNote } from '../core/content-hash.ts';
 import { renderItem } from '../core/item.ts';
 import {
+  isWorkCategory, NEEDS_FIELD, PLAN_FIELD, readyReport, SEQ_FIELD, STATE_FIELD,
+  type HeldRow, type ReadyRow,
+} from '../core/needs.ts';
+import { checksumMigrationFindings, runChecks, type Finding } from '../doctor/checks.ts';
+import {
   createItem, supersedeItem, updateItem,
   type CreateInput, type MutationContext, type UpdateInput,
 } from '../core/mutate.ts';
@@ -303,6 +308,45 @@ function requireItem(ctx: MutationContext, id: string): Item {
   if (!item) throw new Error(unknownIdError(id, ctx.store.all().map((i) => i.id)));
   return item;
 }
+
+/**
+ * Whether `finding` is a note a check makes about ITSELF — an unmeasured span
+ * disclosed once, never a defect in the corpus — rather than an ordinary
+ * finding. See `Finding.about` (doctor/checks.ts) for the field's own
+ * contract, which this reproduces exactly: absent or `''` is not a
+ * disclosure, any other string is.
+ *
+ * **Deliberately NOT the `isDisclosure`/`partitionFindings` exported by
+ * `cli/commands/doctor.ts`, even though that module carries the identical
+ * three lines.** Importing it here would pull that module's top-level
+ * `registerCommand({name: 'doctor', ...})` call into every process that loads
+ * this file — including the MCP server, which today never loads
+ * `cli/index.ts` at all. `test/help/tools-topic.test.ts` pins that exact
+ * absence: `COMMANDS` (cli/commands/registry.ts) is empty in a process that
+ * never loaded the CLI, which is what makes `mycontext_help("cli")` refuse
+ * rather than print a partial command list built from whichever commands
+ * happened to be imported for other reasons. A one-line predicate over a
+ * public, documented field is not the computation this project's "do not
+ * reimplement" rule is protecting — `runChecks` below is, and it IS reused,
+ * directly, unchanged.
+ */
+function isDoctorDisclosure(finding: Finding): boolean {
+  return typeof finding.about === 'string' && finding.about !== '';
+}
+
+/** Presentation only, for the `ready` tool's held rows — the same four
+ * sentences `cli/commands/ready.ts`'s own `HELD_REASON` prints, kept in step
+ * by `test/mcp/tools.test.ts` rather than imported: that module writes to a
+ * terminal (`Emit`), and this tool is a string return, so nothing there is
+ * reusable as a function — only the wording is shared, and the wording is
+ * data, not the readiness computation `readyReport` (core/needs.ts) owns and
+ * this tool calls directly. */
+const READY_HELD_REASON: Record<HeldRow['reason'], string> = {
+  pending: 'a blocker has not landed',
+  unresolved: 'names a task this corpus does not have',
+  malformed: `an unreadable "${NEEDS_FIELD}" entry`,
+  blocked_without_needs: 'says blocked and names nothing',
+};
 
 export interface ToolSpec {
   name: string;
@@ -954,6 +998,226 @@ const SPECS: ToolSpec[] = [
         pendingRevisions(ctx),
       );
     }),
+  },
+  {
+    /**
+     * **`mycontext ready`, mirrored — what can be started right now.**
+     *
+     * `CLI_WITHOUT_TOOL.ready` (plugin/parity.ts) recorded this as `owed`:
+     * read-only, no mutation, no origin check anywhere on its path. This tool
+     * closes that row rather than answering the question a second way —
+     * `readyReport` (core/needs.ts) is the ONE place readiness is derived,
+     * the same call `cmdReady` (cli/commands/ready.ts) makes, so a tool and a
+     * command can never quietly disagree about what is unblocked.
+     *
+     * Nothing here is stored, exactly as the CLI's own doc comment says:
+     * readiness is `needs` plus the `state` of what it names, computed fresh
+     * on every call.
+     */
+    name: 'ready',
+    schema: object({
+      plan: {
+        ...S_STRING,
+        description: 'Only tasks whose "plan" extra field matches this, case-insensitively',
+      },
+      held: {
+        type: 'boolean',
+        description:
+          'Also list HELD work below the ready rows, each naming why it is not ready. Held work ' +
+          'is always counted, whether or not this is set.',
+      },
+      limit: {
+        type: 'number',
+        description:
+          'Cap on ready rows returned, highest priority first. Default 50 — the same cap ' +
+          '`mycontext ready` applies to its own table, made explicit here rather than left silent.',
+      },
+    }),
+    run: (cwd, args) => withWorkspace(cwd, (ctx) => {
+      const workCategories = Object.keys(ctx.config.categories)
+        .filter((name) => isWorkCategory(ctx.config, name))
+        .sort();
+      // Same disclosure `cmdReady` opens with: "nothing is ready" and "no
+      // category here plans work" are different answers, and returning the
+      // first for the second would be the silent-empty-answer failure this
+      // project has already been fixed for elsewhere on this surface.
+      if (workCategories.length === 0) {
+        return `my_context: no enabled category in this project declares "${PLAN_FIELD}", ` +
+          `"${SEQ_FIELD}" and "${STATE_FIELD}", so there is no planned work to order. See ` +
+          `mycontext_help("categories").`;
+      }
+
+      const plan = optStr(args, 'plan');
+      const includeHeld = optBool(args, 'held') ?? false;
+      const limit = optNum(args, 'limit', 50);
+
+      const report = readyReport(ctx.store.all(), ctx.config);
+      const inPlan = (row: ReadyRow | HeldRow): boolean =>
+        plan === undefined
+        || (row.item.extra[PLAN_FIELD] ?? '').toLowerCase() === plan.toLowerCase();
+      const ready = report.ready.filter(inPlan);
+      const held = report.held.filter(inPlan);
+      const shown = ready.slice(0, limit);
+
+      const taskCell = (row: ReadyRow | HeldRow): string => {
+        const p = row.item.extra[PLAN_FIELD] ?? '';
+        const s = row.item.extra[SEQ_FIELD] ?? '';
+        return p === '' || s === '' ? '(no plan/seq)' : `${p}/${s}`;
+      };
+
+      const lines: string[] = [];
+      if (shown.length === 0) {
+        lines.push(plan === undefined
+          ? 'my_context: no task is ready to start.'
+          : `my_context: no task in plan "${plan}" is ready to start.`);
+      } else {
+        lines.push(
+          `my_context: ${ready.length} ready of ${ready.length + held.length} open task(s)` +
+          (ready.length > shown.length
+            ? ` — ${shown.length} shown. Raise "limit" or narrow "plan" to see the rest.`
+            : '.'),
+        );
+        for (const row of shown) {
+          lines.push(
+            `${row.item.id} · ${taskCell(row)} · pri ${row.item.extra.priority ?? '-'} · ` +
+            `${row.reading.state} · ${row.item.title}`,
+          );
+        }
+      }
+
+      if (held.length > 0) {
+        const byReason = new Map<HeldRow['reason'], number>();
+        for (const row of held) byReason.set(row.reason, (byReason.get(row.reason) ?? 0) + 1);
+        lines.push(
+          '',
+          `${held.length} open task(s) held and not listed above: ` +
+          [...byReason].sort((a, b) => a[0].localeCompare(b[0]))
+            .map(([reason, n]) => `${n} ${READY_HELD_REASON[reason]}`).join(', ') +
+          '. Pass held: true to list the rows.',
+        );
+        if (includeHeld) {
+          for (const row of held) {
+            lines.push(
+              `${row.item.id} · ${taskCell(row)} · held: ${READY_HELD_REASON[row.reason]} · ` +
+              row.item.title,
+            );
+          }
+        }
+      }
+
+      lines.push(
+        '',
+        `Readiness is derived on every run from "${NEEDS_FIELD}" and the "${STATE_FIELD}" of ` +
+        `what it names — stored nowhere. A task with no "${NEEDS_FIELD}" is ready here because ` +
+        'nothing in the corpus says otherwise; a dependency only ever written in prose is ' +
+        'invisible to this report. mycontext doctor reports the blocked tasks that name nothing.',
+      );
+
+      return lines.join('\n');
+    }),
+  },
+  {
+    /**
+     * **`mycontext doctor`, mirrored — the self-check, read-only.**
+     *
+     * `CLI_WITHOUT_TOOL.doctor` (plugin/parity.ts) recorded this as `owed`
+     * for the same reason `ready` was: nothing on `runChecks`'s path mutates
+     * or checks origin. This tool calls `runChecks` (doctor/checks.ts)
+     * directly — the same function `cli/commands/doctor.ts` composes — so
+     * there is exactly one place corpus health is computed.
+     *
+     * **The findings/disclosures split is reproduced, not skipped.** A
+     * `Finding` carrying `about` is a note a check makes about ITSELF —
+     * what it could not measure — never a defect in the corpus (see
+     * `Finding.about`'s own doc comment). The CLI routes those out of its
+     * finding count and its exit code; this tool does the same, through
+     * `isDoctorDisclosure` above, so a corpus `mycontext doctor` calls clean
+     * is reported clean here too — a disclosure with no finding beside it
+     * must still read as ZERO findings, never as a lone unexplained note.
+     */
+    name: 'doctor',
+    schema: object({}),
+    run: (cwd) => {
+      const ws = resolveWorkspace(cwd);
+      if (!ws.projectRoot) {
+        throw new Error(
+          `my_context: there is no .my_context workspace at or above ${cwd}. ` +
+          `Ask the user to run \`mycontext init\`.`,
+        );
+      }
+      const projectRoot = ws.projectRoot;
+      const { store, errors: rawErrors } = openRebuiltStore(ws, { retryOnBusy: true });
+      let items: Item[];
+      try {
+        items = store.all();
+      } finally {
+        store.close();
+      }
+
+      // `errors` mirrors `cmdDoctor`'s own split: a checksum mismatch whose
+      // basis predates `CHECKSUM_BASIS_VERSION` is a benign migration, turned
+      // into an ordinary `warn` finding by `checksumMigrationFindings` rather
+      // than counted as a corpus load error.
+      const errors = rawErrors.filter((e) => e.kind !== 'migration');
+      const migrationFindings = checksumMigrationFindings(rawErrors);
+      const all: Finding[] = [
+        ...runChecks({
+          root: projectRoot,
+          repoRoot: path.dirname(projectRoot),
+          dbPath: ws.dbPath,
+          items,
+          config: ws.config,
+        }),
+        ...migrationFindings,
+      ];
+      const findings = all.filter((f) => !isDoctorDisclosure(f));
+      const disclosures = all.filter(isDoctorDisclosure);
+
+      const totalErrors = findings.filter((f) => f.level === 'error').length + errors.length;
+      const warnings = findings.filter((f) => f.level === 'warn').length;
+      const infos = findings.filter((f) => f.level === 'info').length;
+      const acknowledged = findings.filter((f) => f.acknowledged === true).length;
+
+      const lines: string[] = [
+        `my_context doctor: ${totalErrors} error(s), ${warnings} warning(s), ${infos} note(s) ` +
+        `across ${findings.length} finding(s).` +
+        (errors.length
+          ? ` ${errors.length} of the error(s) are corpus load errors, listed below.`
+          : ''),
+      ];
+      if (acknowledged > 0) {
+        lines.push(
+          `${acknowledged} of the finding(s) above are ACKNOWLEDGED: a person read each one ` +
+          'and ruled on it. Still reported, still counted — acknowledging distinguishes a ' +
+          'finding, it does not silence it.',
+        );
+      }
+
+      for (const f of findings) {
+        lines.push(
+          `${f.level}  ${f.code}${f.item ? `  ${f.item}` : ''}` +
+          `${f.acknowledged === true ? '  [acknowledged]' : ''}: ${f.message}`,
+        );
+      }
+
+      if (errors.length > 0) {
+        lines.push('', `${errors.length} corpus load error(s), not findings:`);
+        for (const e of errors) lines.push(`  ${e.file}: ${e.message}`);
+      }
+
+      if (disclosures.length > 0) {
+        lines.push(
+          '',
+          'notes about the checks themselves — what they could not measure, said once. These ' +
+          'are NOT findings, are not counted above, and nothing is owed on them.',
+        );
+        for (const f of disclosures) {
+          lines.push(`  ${f.code} — about the "${f.about}" check: ${f.message}`);
+        }
+      }
+
+      return lines.join('\n');
+    },
   },
   {
     name: 'load_context',

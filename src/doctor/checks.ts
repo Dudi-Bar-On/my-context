@@ -1697,42 +1697,79 @@ const VERIFIED_ON_FIELD = 'verified_on';
  *
  * **`checkStateUnaudited` faced the identical shape of problem and is the
  * model this check follows**: a fact unknowable for items that predate the
- * mechanism, solved with a birth cutoff plus one coverage disclosure rather
- * than 406 rows nobody can clear (`RULE` at the top of this file — a row only
- * an accident can clear is noise wearing work's clothes, and doctor was just
- * taken from 95 findings to zero). **Where the cutoff itself differs, and
- * why**: `checkStateUnaudited` keys its cutoff on `AuditRecord.checksumAfter`
- * — a STRUCTURAL flag already sitting on every `create` record, present the
- * moment `persist`'s write-time witness shipped and absent before it, so no
- * date has to be named at all. Nothing analogous exists for `verified_on`:
- * there is no flag on a record that means "this item's category legally
- * declared `verified_on` at the moment of this write," because that fact is
- * not about the WRITE, it is about the CATALOGUE — a fact this module has no
- * other way to read out of the log than the date it changed. So the cutoff
- * here is a literal instant instead of a derived flag, which is not a
- * different idea, only a different data source for the same one: `bornAt` is
- * to a date what `bornWitnessed` is to a boolean the log already carried.
+ * mechanism, solved with a cutoff plus one coverage disclosure rather than
+ * 406 rows nobody can clear (`RULE` at the top of this file — a row only an
+ * accident can clear is noise wearing work's clothes, and doctor was just
+ * taken from 95 findings to zero).
  *
- * **What is measured against it, and why creation rather than completion.**
- * A task is exempt when its `create` record's `at` is before this instant —
- * not when the write that moved it to `state: done` is. An item created
- * before this date was captured into a category that did not yet declare
- * `verified_on`: `unknownExtraFieldError` (core/trust.ts) would have refused
- * `--extra verified_on=…` on it at the moment it was captured, exactly as it
- * refuses any key a category does not declare. Keying on the DONE transition
- * instead would exempt nothing on this corpus today — most of the 112 tasks
- * still open right now were also created before this date, and under a
- * done-transition cutoff every one of them would still be judged the moment
- * it closes, whenever that is, using a birth date that predates the field
- * that judges it. Keying on creation draws the line where the field's own
- * legality was actually decided, and grandfathers a task exactly once, at the
- * moment it is truly impossible to fault.
+ * **Keyed on the recorded `done` TRANSITION, not on creation — reversed from
+ * this check's first ship, by owner ruling, 2026-09-04.** The first version
+ * grandfathered by the `create` record's date, and the owner named the
+ * consequence and did not like it: the ~116 tasks that existed but were not
+ * yet `done` would stay exempt FOREVER, because their `create` record
+ * predates this field and a birth date cannot un-predate itself. He asked
+ * whether `done` was even the right trigger and worried some would be
+ * *"missed forever."* The ruling: key the check on the write that actually
+ * closes the task, so a task open today and finished next month is judged by
+ * WHEN it finishes, not by when it was opened.
+ *
+ * **His worry had a real basis, and the design has to answer it rather than
+ * paper over it.** A task can reach `state: done` with no audit record ever
+ * setting it — the hand-edit bypass `checkStateUnaudited` (immediately above)
+ * already exists to catch, 27 of them measured on this corpus at the time of
+ * that check's own writing. Keying purely on "the newest write that touched
+ * `state`" would silently say nothing about exactly those items, which is
+ * the opposite of the point. **The two checks PARTITION instead**, and nobody
+ * has to trust that by assertion — it follows from a shared test: an item
+ * this check finds no recorded `state`-transition for is, by the identical
+ * predicate, the item `checkStateUnaudited` does not credit with a witnessed
+ * `state` write either. It is that check's `state_unaudited` finding, or it
+ * is inside one of that check's own coverage disclosures (`unwitnessed` or
+ * `unseen`). Either way it already has an owner, and this check saying
+ * nothing about it is not a gap — it is the other half of the same
+ * partition. Measured on the live corpus, 2026-09-04: of 413 tasks at
+ * `state: done`, precisely ZERO carry a recorded write that ever touched
+ * `state` — every one of them is `state_unaudited`'s to account for, and
+ * none is silently uncovered by both checks at once (see the report for the
+ * query that established this).
+ *
+ * **The transition timestamp, read off the same log `checkStateUnaudited`
+ * reads, by the same test.** A record's `fields` names `extra.state`
+ * (`STATE_AUDITED_FIELD`, above) when a write moved it — never what it moved
+ * it TO, because this log stores no copy of item content
+ * (`AuditRecord.fields`'s own docblock). So "the log recorded this task's
+ * done transition" cannot be verified more precisely than "the log recorded
+ * A write to `state`, on an item now `done`" — the identical resolution
+ * `checkStateUnaudited` already lives with for the same field, on the same
+ * log. `create` records carry no `fields` at all (`auditMutation`,
+ * persist.ts: "on a create everything moved, so naming fields would name all
+ * of them"), so a task minted with `--extra state=done` already set leaves no
+ * entry here — which is correct rather than a hole, because
+ * `checkStateUnaudited` already reports that exact ambiguity everywhere it
+ * can and grandfathers it everywhere it cannot, and this check must not draw
+ * a second, disagreeing conclusion about the same fact from the same log.
+ *
+ * **Going `done` → `todo` → `done` again**: nothing here can see VALUES, only
+ * that `state` moved, so this check takes the NEWEST recorded write to
+ * `state` for the item — records arrive oldest-first across every segment
+ * (`readAudit`'s own contract), so the map below is left holding the latest
+ * one by construction. That is the best-available reading and the same one
+ * `checkStateUnaudited`'s own `movedState` set makes: a task that cycles
+ * `done → todo → done` entirely through the product is judged by its LAST
+ * recorded touch, which is also the transition that actually left it
+ * `done` today. A cycle where the FINAL hop back to `done` is a hand-edit
+ * bypass with no record of its own is `checkStateUnaudited`'s question, not
+ * this one's — this check would use the timestamp of the last-recorded
+ * (earlier) product write, which is still an honest answer to "when did the
+ * product last verifiably touch this field," and the reader is not left
+ * unwarned: `checkStateUnaudited`'s own divergence machinery is what would
+ * catch the bypass itself, on the same item, under its own code.
  *
  * Set with a five-hour margin ahead of every `TASK-*` `create` record
  * measured in this repository's own audit log on 2026-09-03 (the latest at
- * `10:43:33.824Z`) and behind the moment this check was written, so the
- * corpus this ships onto grandfathers cleanly and nothing written after this
- * change is exempt by accident.
+ * `10:43:33.824Z`) and behind the moment this check was written. Unchanged by
+ * the 2026-09-04 ruling — the ruling moved WHAT is compared against this
+ * instant, not the instant itself.
  */
 export const VERIFIED_ON_INTRODUCED_AT = '2026-09-03T12:00:00.000Z';
 
@@ -1746,18 +1783,17 @@ function taskVerifiedOn(item: Item): string {
 
 /**
  * **`task.verified_on`'s only consumer.** A `done` task with nothing in
- * `verified_on` is reported — unless it was created before the field could
- * legally have carried one, in which case it is counted into a single
- * coverage disclosure and never named. See `VERIFIED_ON_INTRODUCED_AT` for
- * the cutoff and the argument for keying it on creation.
+ * `verified_on` is reported — unless the log's newest recorded write to
+ * `state` for it predates the field, in which case it is counted into a
+ * single coverage disclosure and never named; and unless the log holds NO
+ * recorded write to `state` for it at all, in which case it is
+ * `checkStateUnaudited`'s population and not reported HERE either. See
+ * `VERIFIED_ON_INTRODUCED_AT` for the cutoff and the argument for keying it
+ * on the recorded transition, and for why the two checks partition rather
+ * than overlap.
  *
  * Structured identically to `checkStateUnaudited` immediately above:
- * read-failure falls back to one `PERSON`-remedy disclosure; a `create`
- * record the log never saw at all is a SEPARATE unmeasured population from a
- * pre-cutoff birth, because "was this item created before or after the
- * cutoff" has no answer when there is no `create` record to read it from —
- * conflating the two would silently promote "unknown" to "grandfathered",
- * which is a claim about the item's age nobody measured.
+ * read-failure falls back to one `PERSON`-remedy disclosure.
  */
 export function checkTaskUnverified(root: string, items: Item[], config: Config): Finding[] {
   const closed = workItems(items, config).filter((i) => taskState(i) === DONE_STATE);
@@ -1780,54 +1816,86 @@ export function checkTaskUnverified(root: string, items: Item[], config: Config)
     }];
   }
 
-  // Oldest first across every segment (`readAudit`'s own contract), so the
-  // FIRST `create` record seen for an id is its birth — later writes never
-  // overwrite it, the same immunity-to-erosion property `checkStateUnaudited`
-  // relies on for its own `created` set.
-  const bornAt = new Map<string, string>();
+  // The recorded DONE TRANSITION per item: the newest record naming
+  // `extra.state` among the fields it moved — exactly the test
+  // `checkStateUnaudited`'s own `movedState` set uses to decide whether ANY
+  // write touched `state` through the product (`STATE_AUDITED_FIELD`,
+  // defined above this check's own docblock). Reusing that identical
+  // predicate is what makes the two checks PARTITION rather than overlap or
+  // double-count: an item this map has no entry for is, by the SAME test,
+  // the item `checkStateUnaudited` does not credit with a witnessed `state`
+  // write either — either it is one of that check's own `state_unaudited`
+  // findings, or it is inside one of that check's own coverage disclosures.
+  // Either way it already has an owner, and it is not this check's to name.
+  //
+  // A `create` record never carries `fields` (`auditMutation`, persist.ts —
+  // "on a create everything moved, so naming fields would name all of
+  // them"), so a task minted with `--extra state=done` already set leaves no
+  // entry here either. That is deliberate rather than a gap:
+  // `checkStateUnaudited` already reports that exact ambiguity ("the task
+  // was CREATED already done ... or state was written by hand") everywhere
+  // it can and grandfathers it everywhere it cannot, and this check must not
+  // draw a second, disagreeing conclusion about the same fact from the same
+  // log.
+  //
+  // Records arrive oldest-first across every segment (`readAudit`'s own
+  // contract), so a plain overwrite of the map below leaves the NEWEST
+  // matching record for each id — see the docblock on
+  // `VERIFIED_ON_INTRODUCED_AT` for what a task that goes
+  // `done` → `todo` → `done` does to this timestamp.
+  const stateTransitionAt = new Map<string, string>();
   for (const record of records) {
-    if (record.kind !== 'mutation' || record.op !== 'create') continue;
+    if (record.kind !== 'mutation') continue;
     const id = record.itemId;
     if (typeof id !== 'string' || id === '') continue;
-    if (!bornAt.has(id)) bornAt.set(id, record.at);
+    if (Array.isArray(record.fields) && record.fields.includes(STATE_AUDITED_FIELD)) {
+      stateTransitionAt.set(id, record.at);
+    }
   }
 
   const findings: Finding[] = [];
-  let unseen = 0;
+  let noTransition = 0;
   let grandfathered = 0;
   for (const item of closed) {
     if (taskVerifiedOn(item) !== '') continue;
 
-    const born = bornAt.get(item.id);
-    if (born === undefined) { unseen++; continue; }
-    if (born < VERIFIED_ON_INTRODUCED_AT) { grandfathered++; continue; }
+    const transitionAt = stateTransitionAt.get(item.id);
+    if (transitionAt === undefined) { noTransition++; continue; }
+    if (transitionAt < VERIFIED_ON_INTRODUCED_AT) { grandfathered++; continue; }
 
     findings.push({
       level: 'warn', code: 'task_unverified', item: item.id,
       remedy: ACK,
       message:
         `\`${STATE_FIELD}: ${DONE_STATE}\` closes this task, and it carries no ` +
-        `\`${VERIFIED_ON_FIELD}\`. The log's \`create\` record for this item is dated ${born}, ` +
-        `after \`${VERIFIED_ON_FIELD}\` became a field \`task\` declares — so this task could ` +
-        `always have carried one and does not. Check the work \`${STATE_FIELD}: ${DONE_STATE}\` ` +
-        `claims and, if it holds up, \`${VERIFIED_ON_EDIT_COMMAND}\` records that; ` +
-        `\`mycontext ack ${item.id} task_unverified\` records a ruling that this task does not ` +
-        `need one.`,
+        `\`${VERIFIED_ON_FIELD}\`. The log records a write that moved \`${STATE_AUDITED_FIELD}\` ` +
+        `for this item at ${transitionAt}, after \`${VERIFIED_ON_FIELD}\` became a field \`task\` ` +
+        `declares — so this task could have carried one from that moment and does not. Check the ` +
+        `work \`${STATE_FIELD}: ${DONE_STATE}\` claims and, if it holds up, ` +
+        `\`${VERIFIED_ON_EDIT_COMMAND}\` records that; \`mycontext ack ${item.id} task_unverified\` ` +
+        `records a ruling that this task does not need one.`,
     });
   }
 
-  if (unseen > 0) {
+  if (noTransition > 0) {
     findings.push({
       level: 'info', code: 'task_verification_coverage',
       about: 'task_unverified',
-      remedy: AUDIT_FILES,
+      // NOTHING, deliberately: this check has no command to offer and no
+      // ruling to ask for, because the population is not its own — see the
+      // docblock. The question "was this task's `done` ever witnessed by the
+      // product" is `checkStateUnaudited`'s, and its own findings and its own
+      // coverage disclosures (`state_audit_coverage`) are where it is
+      // actually answered.
+      remedy: NOTHING,
       message:
-        `${unseen} task(s) carry \`${STATE_FIELD}: ${DONE_STATE}\` and have no \`create\` ` +
-        `record anywhere in the audit log, so \`task_unverified\` has NOT looked at them — an ` +
-        `unmeasured set, not a clean one. An item restored from a pack, copied in without ` +
-        `\`.audit/\`, or older than the oldest segment still present leaves no trace of when it ` +
-        `was created, and a task whose birth this log cannot place must not be judged against a ` +
-        `date it might predate. \`mycontext audit --files\` names the segments that do survive.`,
+        `${noTransition} task(s) carry \`${STATE_FIELD}: ${DONE_STATE}\` and no write recorded ` +
+        `in the audit log ever moved \`${STATE_AUDITED_FIELD}\`, so \`task_unverified\` has no ` +
+        `recorded transition to measure a cutoff against and does not report them one by one. ` +
+        `That is \`state_unaudited\`'s population and not this check's: a task whose \`state\` was ` +
+        `never witnessed moving through the product is either one of that check's own findings or ` +
+        `named inside one of its own coverage disclosures, and this check must not draw a second, ` +
+        `disagreeing conclusion from the same log. Nothing is owed on this line.`,
     });
   }
 
@@ -1835,20 +1903,20 @@ export function checkTaskUnverified(root: string, items: Item[], config: Config)
     findings.push({
       level: 'info', code: 'task_verification_coverage',
       about: 'task_unverified',
-      // NOTHING: there is no command, and no ruling to ask for either — an
-      // item captured before its category declared `verified_on` could not
-      // have carried one, so `ack` on it would certify an omission that was
-      // never a choice. The set can only shrink, by turnover, as the corpus's
-      // pre-cutoff tasks are gradually superseded or replaced by ones created
-      // under the field.
+      // NOTHING: there is no command, and no ruling to ask for either — the
+      // newest write this log ever recorded moving this item's `state`
+      // predates `verified_on`, so the person who made that write had no
+      // field to set. The set can only shrink, by turnover, as these tasks
+      // are superseded, replaced, or eventually re-closed by a write the
+      // field already exists for.
       remedy: NOTHING,
       message:
-        `${grandfathered} task(s) carry \`${STATE_FIELD}: ${DONE_STATE}\` and were CREATED ` +
-        `before \`${VERIFIED_ON_FIELD}\` existed for \`task\` to declare, so \`task_unverified\` ` +
-        `does not report them one by one. That is not a clean set — nothing is asserted about ` +
-        `these items in either direction — it is a set this check cannot fault: the field these ` +
-        `items lack did not exist to be filled in at the moment each was captured. Nothing is ` +
-        `owed on this line.`,
+        `${grandfathered} task(s) carry \`${STATE_FIELD}: ${DONE_STATE}\` and the newest write ` +
+        `this log records moving \`${STATE_AUDITED_FIELD}\` for each of them predates ` +
+        `\`${VERIFIED_ON_FIELD}\`, so \`task_unverified\` does not report them one by one. That is ` +
+        `not a clean set — nothing is asserted about these items in either direction — it is a ` +
+        `set this check cannot fault: the field these items lack did not exist to be filled in at ` +
+        `the moment each was last recorded moving. Nothing is owed on this line.`,
     });
   }
   return findings;

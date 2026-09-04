@@ -167,6 +167,8 @@ rebuild, silently:
 - `get_item`: Fetch one item in full by id, as Markdown. Not for: searching — use query_items when you do not know the id.
 - `query_items`: Search and filter items by type, status, tag, relation, text or file path. Not for: fetching a known id, which get_item does directly.
 - `list_drafts`: List items awaiting human review, newest first. Not for: promoting them — only a human can do that.
+- `ready`: List open work whose `needs` are all done, highest priority first; held work is counted and, with `held`, listed with its reason. Not for: item content — get_item.
+- `doctor`: Run the corpus self-check: index freshness, orphans, drift, dead globs, permissions, session ids. Not for: notes a check makes about itself, which are disclosures, never findings.
 - `load_context`: Inject this project's pinned items and index now, as a session start does. Restored after a compaction only if the transcript still shows the ids; never rationale. Not for: searching — query_items.
 - `focus_context`: Narrow what my_context injects, to tags, categories or scopes, and report the cost: items hidden, load-bearing relations dangling. Not for: severity:hard items, never hidden.
 - `audit_log`: Read what my_context did: mutations, and injections by scope — which items at which tier, never their text. Filter by item, session, op or time. Not for: item content, which get_item retrieves.

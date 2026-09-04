@@ -3,7 +3,11 @@ import assert from 'node:assert/strict';
 import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
-import { buildOutput, nudgeFor } from '../../src/hooks/post-tool-use.ts';
+import { agentDispatchNote, buildOutput, nudgeFor } from '../../src/hooks/post-tool-use.ts';
+import { readAudit, type AuditRecord } from '../../src/core/audit.ts';
+import { resolveWorkspace } from '../../src/core/workspace.ts';
+import { observeAndRecord } from '../../src/hooks/observe.ts';
+import { SUBAGENT_STOP } from '../../src/hooks/subagent-stop.ts';
 import { runCli } from '../../src/cli/index.ts';
 import { removeTree } from '../helpers/tmp.ts';
 
@@ -218,4 +222,140 @@ test('buildOutput emits the documented hook JSON on one line', () => {
 
 test('buildOutput emits nothing for an empty nudge', () => {
   assert.equal(buildOutput(''), '');
+});
+
+/* ---------------------------------------------------------------------------
+ * agentDispatchNote — one row per Agent dispatch (V2-HANDOVER §"the
+ * agent-title hook"). The title is `tool_input.description` on the `Agent`
+ * tool, the join key is `tool_response.agentId` on the SAME payload, and the
+ * owner chose one row per dispatch over per-tool-call auditing.
+ * ------------------------------------------------------------------------- */
+
+function auditRows(root: string): AuditRecord[] {
+  return readAudit(root);
+}
+
+test('a real PostToolUse(Agent) payload produces exactly one row carrying type, description and id', () => {
+  const cwd = mkdtempSync(path.join(tmpdir(), 'myctx-dispatch-'));
+  runCli(['init'], cwd, () => {});
+  const root = resolveWorkspace(cwd).projectRoot!;
+  try {
+    // Shaped exactly as build 2.1.239's own Agent tool call: `tool_input`
+    // carries `description`, `prompt` and `subagent_type`; `tool_response`
+    // carries `agentId` — the pair V2-HANDOVER measured on the same payload.
+    agentDispatchNote({
+      session_id: 'sess-dispatch-1',
+      cwd,
+      tool_name: 'Agent',
+      // `prompt` is also on the wire for a real dispatch and is deliberately
+      // NOT part of `HookInput.tool_input`'s type — this hook never reads it,
+      // and a declared field nothing reads is a claim about the payload no
+      // test can hold up (`post-tool-use-failure.ts` states the same rule).
+      // The hand-piped verification below sends it on the raw JSON payload.
+      tool_input: {
+        description: 'Grepping runChecks signature in checks.ts',
+        subagent_type: 'general-purpose',
+      },
+      tool_response: { agentId: 'agent-real-001' },
+    }, cwd);
+
+    const rows = auditRows(root).filter((r) => r.op === 'agent-dispatched');
+    assert.equal(rows.length, 1, 'expected exactly one dispatch row');
+    const [row] = rows;
+    assert.equal(row.kind, 'hook');
+    assert.equal(row.hook, 'PostToolUse');
+    assert.equal(row.sessionId, 'sess-dispatch-1');
+    assert.match(row.note ?? '', /general-purpose/, 'the agent type is missing from the row');
+    assert.match(row.note ?? '', /agent-real-001/, 'the agent id is missing from the row');
+    assert.match(
+      row.note ?? '', /Grepping runChecks signature in checks\.ts/,
+      'the description is missing from the row',
+    );
+  } finally { removeTree(cwd); }
+});
+
+test('a payload missing the description still records the id, rather than dropping the row', () => {
+  const cwd = mkdtempSync(path.join(tmpdir(), 'myctx-dispatch-nodesc-'));
+  runCli(['init'], cwd, () => {});
+  const root = resolveWorkspace(cwd).projectRoot!;
+  try {
+    agentDispatchNote({
+      session_id: 'sess-dispatch-2',
+      cwd,
+      tool_name: 'Agent',
+      tool_input: { subagent_type: 'general-purpose' },
+      tool_response: { agentId: 'agent-no-desc' },
+    }, cwd);
+
+    const rows = auditRows(root).filter((r) => r.op === 'agent-dispatched');
+    assert.equal(rows.length, 1, 'a dropped row is worse than one missing a description');
+    assert.match(rows[0].note ?? '', /agent-no-desc/, 'the id must survive when the title does not');
+  } finally { removeTree(cwd); }
+});
+
+test('a malformed PostToolUse(Agent) payload does not throw, per INV-hooks-fail-open', () => {
+  const cwd = mkdtempSync(path.join(tmpdir(), 'myctx-dispatch-malformed-'));
+  runCli(['init'], cwd, () => {});
+  try {
+    assert.doesNotThrow(() => agentDispatchNote({
+      tool_name: 'Agent',
+      // @ts-expect-error -- deliberately the wrong shape; a real payload is untyped JSON.
+      tool_input: 'not an object',
+      // @ts-expect-error -- same.
+      tool_response: 42,
+    }, cwd));
+    assert.doesNotThrow(() => agentDispatchNote({ tool_name: 'Agent' }, cwd));
+    assert.doesNotThrow(() => agentDispatchNote({}, cwd));
+  } finally { removeTree(cwd); }
+});
+
+test('the dispatch row is not written for a tool other than Agent', () => {
+  const cwd = mkdtempSync(path.join(tmpdir(), 'myctx-dispatch-other-'));
+  runCli(['init'], cwd, () => {});
+  const root = resolveWorkspace(cwd).projectRoot!;
+  try {
+    agentDispatchNote({
+      session_id: 'sess-dispatch-3',
+      cwd,
+      tool_name: 'Write',
+      tool_input: { description: 'not an agent dispatch', subagent_type: 'general-purpose' },
+      tool_response: { agentId: 'agent-should-not-appear' },
+    }, cwd);
+    agentDispatchNote({ session_id: 'sess-dispatch-3', cwd, tool_name: 'Bash' }, cwd);
+
+    const rows = auditRows(root).filter((r) => r.op === 'agent-dispatched');
+    assert.equal(rows.length, 0, 'the widened matcher must not turn into an audit of every tool');
+  } finally { removeTree(cwd); }
+});
+
+test('the dispatch row joins to the matching subagent-stop row on the agent id', () => {
+  const cwd = mkdtempSync(path.join(tmpdir(), 'myctx-dispatch-join-'));
+  runCli(['init'], cwd, () => {});
+  const root = resolveWorkspace(cwd).projectRoot!;
+  try {
+    agentDispatchNote({
+      session_id: 'sess-join-1',
+      cwd,
+      tool_name: 'Agent',
+      tool_input: { description: 'Doing the joinable thing', subagent_type: 'general-purpose' },
+      tool_response: { agentId: 'agent-join-99' },
+    }, cwd);
+
+    observeAndRecord(SUBAGENT_STOP, {
+      session_id: 'sess-join-1', cwd, agent_id: 'agent-join-99', agent_type: 'general-purpose',
+    }, cwd);
+
+    const dispatchRow = auditRows(root).find((r) => r.op === 'agent-dispatched');
+    const stopRow = auditRows(root).find((r) => r.op === 'subagent-stop');
+    assert.ok(dispatchRow, 'no dispatch row was written');
+    assert.ok(stopRow, 'no subagent-stop row was written');
+
+    const idOf = (note: string | undefined) => /agent=([^:\s]+)/.exec(note ?? '')?.[1];
+    const dispatchId = idOf(dispatchRow!.note);
+    const stopId = idOf(stopRow!.note);
+    assert.ok(dispatchId, 'could not extract an agent id from the dispatch row');
+    assert.equal(dispatchId, 'agent-join-99');
+    assert.equal(stopId, 'agent-join-99');
+    assert.equal(dispatchId, stopId, 'the two rows do not join on the same agent id');
+  } finally { removeTree(cwd); }
 });

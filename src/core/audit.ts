@@ -249,11 +249,45 @@ export type InjectionOp = (typeof INJECTION_OPS)[number];
  * `AuditKind`, no new field on `AuditRecord`, one unreleased version step for
  * one release's vocabulary. A second bump would spend a downgrade break that
  * has not been paid back yet.
+ *
+ * **`agent-dispatched` is the eleventh, and it is a REUSE of an existing
+ * field rather than a new one.** The owner was shown a terminal line reading
+ * `general-purpose  Grepping runChecks signature in checks.ts` on every
+ * subagent dispatch and asked for it to be audited — one row per dispatch,
+ * explicitly NOT one row per subagent tool call (that path was measured and
+ * rejected: `src/core/ui-server-upkeep.ts` cites 5,207 rows of per-message
+ * noise once deleted from this very log for being noise). The title is
+ * `tool_input.description` on the **`Agent`** tool, never on any subagent
+ * payload, and `tool_response.agentId` is on the SAME `PostToolUse` firing —
+ * so one `hooks/post-tool-use.ts` write, on the widened `PostToolUse` matcher,
+ * carries both halves with zero extra file I/O.
+ *
+ * **Not folded into the existing `post-tool-use` op.** That op already means
+ * one specific thing — *a capture nudge fired on a watched document write* —
+ * and it fires rarely. A dispatch fires on every subagent, which on a busy
+ * day is over a hundred rows; filing both under one op would make
+ * `mycontext audit --op post-tool-use` answer two unrelated questions with
+ * the same filter, which is exactly the ambiguity every other op on this list
+ * is written to avoid. The two share a `hook` (`PostToolUse`) but not an op,
+ * the same way `deny` and `jit` share `PreToolUse` without sharing an op.
+ *
+ * **The join key rides in `note`, not in a new field.** `subagent-start` and
+ * `subagent-stop` already embed the agent id as `agent=<id>` inside their own
+ * `note` — see `hooks/subagent-start.ts` and `hooks/subagent-stop.ts` — and
+ * this op follows the same spelling so the three rows join on one regex
+ * rather than three different field names. A fourth `AuditRecord.agentId`
+ * field was weighed and set aside: it would need its own docblock, its own
+ * absent-vs-empty rule, and a migration note for every reader that already
+ * knows to look in `note` for the two existing rows — cost for a join that
+ * already works.
+ *
+ * It is inside the break `@2` already declares, by the same argument as the
+ * ten above it: no new kind, no new field, one unreleased version step.
  */
 export const HOOK_OPS = [
   'pre-compact', 'post-tool-use', 'deny', 'post-tool-use-failure', 'session-end', 'post-compact',
   'file-changed', 'instructions-loaded', 'config-change', 'permission-denied', 'subagent-stop',
-  'stop', 'setup', 'task-created', 'task-completed', 'prompt-expansion',
+  'stop', 'setup', 'task-created', 'task-completed', 'prompt-expansion', 'agent-dispatched',
 ] as const;
 export type HookOp = (typeof HOOK_OPS)[number];
 
@@ -425,6 +459,7 @@ const KIND_OF: Record<AuditOp, AuditKind> = {
   'file-changed': 'hook', 'instructions-loaded': 'hook', 'config-change': 'hook',
   'permission-denied': 'hook', 'subagent-stop': 'hook', stop: 'hook', setup: 'hook',
   'task-created': 'hook', 'task-completed': 'hook', 'prompt-expansion': 'hook',
+  'agent-dispatched': 'hook',
   // Both halves of one run, and both `execution`: a reader filtering
   // `--kind execution` wants the run, not half of it.
   execute: 'execution', 'execute-done': 'execution',
