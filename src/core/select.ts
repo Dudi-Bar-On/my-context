@@ -2,6 +2,7 @@ import { scopePolicyFor, type Config } from './config.ts';
 import {
   danglingEdges, isFocusActive, type Focus, type FocusAxes, type FocusReport,
 } from './focus.ts';
+import { DONE_STATE, taskState } from './needs.ts';
 import { matchesAnyGlob, normalizePosix } from './paths.ts';
 import { renderIndexLine, renderItemBlock } from './render-item.ts';
 import type { Item } from './types.ts';
@@ -534,8 +535,96 @@ function compareStrings(a: string, b: string): number {
   return a < b ? -1 : a > b ? 1 : 0;
 }
 
-/** Hard severity first, then most-recently-relevant, then id for determinism. */
+/**
+ * **The categories the owner's admission-order ruling names as GOVERNING**
+ * (2026-09-04, `TASK-the-injection-budget-drops-governing-items-and-open-
+ * work`, his own words): *"the normative tier — rule, constraint, invariant,
+ * instruction, requirement and standard"*.
+ *
+ * **A narrower set than `isNormative`, and deliberately not that predicate
+ * reused.** `ADR-normative-vs-rationale-tiers` split normative from rationale
+ * for a different question — what may be injected in full AT ALL — and
+ * `byPriority` already only ever sorts candidates that have already cleared
+ * that gate: every full-text tier is gated on `isNormative` before a
+ * candidate reaches `fitToBudget` (`jitTarget`'s callers, `injectable`,
+ * `fresh`), so within that population `isNormative` is true of everything and
+ * distinguishes nothing. Ten more categories pass `isNormative` and are NOT
+ * in this set — `pattern`, `glossary`, `non_goal`, `open_question`, `runbook`,
+ * `procedure`, `environment`, `known_issue`, `exception`, `contract` — and
+ * they keep competing exactly as before, on severity/layer/id, among
+ * themselves and against whatever this set left of the budget. Reusing
+ * `isNormative` here would have ranked all sixteen categories identically and
+ * changed nothing — which is exactly what the corpus's own measurement
+ * showed happening today: RULE/STD/REQ items, all `severity: soft`, losing an
+ * alphabetic tiebreak to other normative categories hundreds of times.
+ */
+const GOVERNING_TYPES: ReadonlySet<string> = new Set([
+  'rule', 'constraint', 'invariant', 'instruction', 'requirement', 'standard',
+]);
+
+/**
+ * **Open work — the ruling's other half**: *"tasks and plans that are NOT
+ * DONE ... open work binds what happens next as surely as a rule does, while
+ * a finished task only records."*
+ *
+ * `taskState`/`DONE_STATE` (`needs.ts`) rather than a second `item.extra.state`
+ * read: `needs.ts` already owns that field's meaning and is, like this file,
+ * pure — its own header says it imports only `Config` and `Item` as TYPES,
+ * nothing executable. A missing `state` reads as open, not as excluded —
+ * `STD-absent-vs-zero`: a task that has never recorded being done has
+ * certainly not recorded being done.
+ *
+ * **This is inert on this repository's real corpus, and that is worth saying
+ * rather than hiding.** `task` and `plan` are RATIONALE-tier categories
+ * (`categories.ts`, deliberately: *"515 open tasks arriving as 515 things a
+ * model is told to care about is exactly the failure the tier boundary exists
+ * to prevent"*), so `isNormative` already excludes them from `injectable` and
+ * therefore from `fresh` — the pinned, restored and jit tiers never see one as
+ * a candidate, ranked or not. The one tier that is NOT gated on `isNormative`
+ * is `continuity`, whose candidates are drawn from `eligible` on `i.continuity`
+ * alone (a documented gap this change does not fix — see the `select`
+ * comment above the continuity tier). So this half of `governs` has a real
+ * effect only for a task/plan item that is also marked `continuity: true`,
+ * which exists nowhere in this corpus today. It is still correct to check:
+ * `byPriority` answers one question for whatever `fitToBudget` hands it, not
+ * a different question depending on which tier is calling.
+ */
+function isOpenWork(item: Item): boolean {
+  if (item.type !== 'task' && item.type !== 'plan') return false;
+  return taskState(item) !== DONE_STATE;
+}
+
+/**
+ * Whether `item` is one the 2026-09-04 admission-order ruling puts FIRST —
+ * governs, or is open work — ahead of what merely records (notes, decisions,
+ * lessons, and finished work). The whole of `byPriority`'s new leading rank.
+ *
+ * Exported so `doctor/checks.ts` asks the exact question `select` ranks by,
+ * rather than a second implementation of two field reads — the
+ * two-spellings defect this project keeps finding and naming (`GateCode`,
+ * `RETIRED_STATUSES`, `reviewQueue`, ...).
+ */
+export function governs(item: Item): boolean {
+  return GOVERNING_TYPES.has(item.type) || isOpenWork(item);
+}
+
+/**
+ * Governing/open-work first (owner ruling 2026-09-04, see `governs`), THEN
+ * hard severity, then most-recently-relevant, then id for determinism.
+ *
+ * **Governance ranks ABOVE severity, not below it.** Every governing item the
+ * corpus's own measurement found spilling was `severity: soft` — ranking
+ * governance below severity would have left each of them losing to a `hard`
+ * `pattern` or `known_issue` exactly as before, which is not what "puts FIRST"
+ * says. The three existing keys are otherwise untouched and still decide
+ * every tie this rank does not: `select-jit-bands.test.ts`'s "within a band
+ * the existing candidate order is preserved exactly" uses only governing
+ * types (`constraint`), so this rank is a no-op there and the three-key order
+ * beneath it is unchanged.
+ */
 function byPriority(a: Item, b: Item): number {
+  const governsDiff = Number(governs(b)) - Number(governs(a));
+  if (governsDiff !== 0) return governsDiff;
   const severityDiff = SEVERITY_RANK[a.severity] - SEVERITY_RANK[b.severity];
   if (severityDiff !== 0) return severityDiff;
   const layerDiff = LAYER_RANK[a.layer] - LAYER_RANK[b.layer];

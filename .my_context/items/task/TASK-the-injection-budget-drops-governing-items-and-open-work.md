@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: What governs the project and what work is still open lose their budget contest to notes and finished tasks, hundreds of times over.
-summary_of: 2ae2c3c3fc30eac1
+summary_of: e1505288ad9edb29
 scope:
   - src/core/select.ts
   - src/doctor/checks.ts
@@ -16,18 +16,19 @@ tags:
   - budget
   - "plan:budget"
   - "seq:11"
-  - "state:todo"
+  - "state:done"
 origin: human
 source_file: null
 source_anchor: null
 source_checksum: null
 valid_from: 2026-09-04
 valid_until: null
-checksum: 057cd886002fe067
+checksum: 2177139c998a2590
 plan: budget
 seq: "11"
-state: todo
+state: done
 priority: "1"
+verified_on: 2026-09-04
 ---
 
 # the injection budget drops governing items and open work first, because nothing ranks them above what merely records

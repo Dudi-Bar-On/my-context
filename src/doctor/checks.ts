@@ -6,8 +6,9 @@ import { isAcknowledged } from '../core/acknowledge.ts';
 import {
   AUDIT_MAX_BYTES, AUDIT_REPORT_BYTES, auditDir, auditSize, readAudit, type AuditRecord,
 } from '../core/audit.ts';
+import { openProjectionReadOnlyChecked, topItems } from '../core/audit-db.ts';
 import { scopePolicyFor, skippedKeyNotice, type Config } from '../core/config.ts';
-import { isEligible, itemCost } from '../core/select.ts';
+import { governs, isEligible, itemCost } from '../core/select.ts';
 import {
   BLOCKED_STATE, buildTaskIndex, DONE_STATE, NEEDS_FIELD, readNeeds, STATE_FIELD, taskState,
   workItems,
@@ -1294,6 +1295,121 @@ export function checkAuditSize(root: string): Finding[] {
       `derived query index and is always safe to delete — it rebuilds on the next ` +
       `\`mycontext audit\`. See \`mycontext audit --files\`.`,
   }];
+}
+
+/** How many recorded spills, so far, is "repeatedly" for a governing item — the owner's own
+ *  worked examples (`RULE-do-not-accept-a-test-that-passes-in-isolation-and-fails` at 278,
+ *  `STD-a-summary-is-one-plain-sentence-for-someone-who-does-not` at 289,
+ *  `REQ-a-pinned-item-is-delivered-or-the-user-is-told-it-was-not` at 263) are two orders of
+ *  magnitude past any number a single unlucky session could produce, so a low round number is
+ *  enough to separate ordinary budget contention from a governing item the budget structurally
+ *  cannot carry. Not tuned finer than that: the finding this feeds is a DISCLOSURE (see below),
+ *  not a threshold a person is asked to trust to the token. */
+const GOVERNING_SPILL_REPEAT_THRESHOLD = 20;
+
+/** How many of the log's most-spilled items to look at before filtering to governing ones —
+ *  wide enough that a governing item does not fall out of the sample by sitting behind a
+ *  handful of heavier-spilling rationale-adjacent categories, cheap enough that the query stays
+ *  a single indexed GROUP BY (`topItems`, `core/audit-db.ts`). */
+const GOVERNING_SPILL_SAMPLE = 40;
+
+/**
+ * **A doctor line for the failure the corpus's own audit history already
+ * measured: a governing item spilling so often that the budget cannot be said
+ * to carry it, discovered by a person reading the log rather than by an
+ * assistant that broke a rule it was never shown.**
+ *
+ * Owner ruling 2026-09-04, `TASK-the-injection-budget-drops-governing-items-
+ * and-open-work`: *"Add a doctor line when a governing item spills
+ * repeatedly, so the corpus says when its budget can no longer carry its own
+ * rules rather than leaving it to be discovered."* `governs` (`select.ts`) is
+ * the same predicate `byPriority` now ranks by — this check reads the effect
+ * of that ranking on the corpus's own history, not a second opinion about
+ * which categories matter.
+ *
+ * **Why this is a DISCLOSURE (`about`, self-routed) and not a counted
+ * finding, unlike `checkContinuity`'s `continuity_overflow` beside it.** That
+ * check computes a CURRENT fact — today's continuity candidates' total cost
+ * against today's budget — fully re-derivable every run and cleared the
+ * moment the corpus or the config changes to fix it: an ordinary, actionable,
+ * countable finding. A spill COUNT read off the audit log is a different
+ * shape of fact: the log is append-only, so an item's historical spill count
+ * can only ever grow, never shrink, no matter how completely this file's own
+ * ranking change fixes the corpus going forward. A finding that counts toward
+ * the exit code would therefore be exactly the trap the rule above `interface
+ * Finding` names — *"a row that only an accident can clear is not work"* —
+ * except worse: this row could not be cleared by ANY accident either, only by
+ * the log itself eventually rotating the evidence out of reach. `about`
+ * points at this check's own code rather than at a different one (unlike
+ * `state_audit_coverage`'s `about: 'state_unaudited'`) because there is no
+ * separate primary check this is reporting the reach of — it is the whole of
+ * what this check has to say, said as a disclosure rather than as a worklist
+ * row, and `partitionFindings`/`summarize` (`cli/commands/doctor.ts`) route
+ * and exclude it from `errors`/`warnings` on that field alone, whichever
+ * `level` it carries.
+ *
+ * **`remedy: PERSON`, not `run` or `acknowledge`.** There is no catalogue
+ * command that edits `config.json`, and `PERSON`'s own docblock names exactly
+ * this case among its examples. There is also no single item to rule on:
+ * pressure on a shared budget is a fact about the CORPUS's shape against the
+ * CONFIG's numbers, not a defect in one item's content, so `acknowledge`
+ * (which anchors to one item's own record) would be the wrong tool even if
+ * this finding named an item, which — deliberately, being a disclosure rather
+ * than a worklist row — it does not.
+ *
+ * **Read-only, and silent rather than alarmed when it cannot look.**
+ * `openProjectionReadOnlyChecked` builds nothing and repairs nothing (its own
+ * docblock); a projection that has never been built (`mycontext audit` has
+ * never run here), or one that is behind or diverged from the log it derives
+ * from, is caught the same way as any other read failure and this check
+ * simply has nothing to say this run — bringing the projection current is a
+ * WRITE (`syncProjection`), and it is `mycontext audit`'s job, not doctor's,
+ * for the same separation `openProjectionReadOnlyChecked`'s own docblock
+ * draws for the web UI's read routes. `doctor` stays read-only; this
+ * secondary, optional disclosure over OPTIONAL infrastructure is not worth
+ * spending doctor's write-free guarantee on.
+ *
+ * **`topItems(db, 'spilled', N)` is not tier-scoped**, matching the CLI's own
+ * `mycontext audit --top spilled` — the query that produced the ruling's own
+ * worked examples, so this check answers the identical question rather than a
+ * narrower one that could disagree with the numbers the ruling was written
+ * against.
+ */
+export function checkGoverningSpillPressure(root: string, items: Item[], config: Config): Finding[] {
+  let db;
+  try {
+    db = openProjectionReadOnlyChecked(root);
+  } catch {
+    return [];
+  }
+  try {
+    const byId = new Map(items.map((i) => [i.id, i]));
+    const repeats = topItems(db, 'spilled', GOVERNING_SPILL_SAMPLE)
+      .filter((row) => row.count >= GOVERNING_SPILL_REPEAT_THRESHOLD)
+      .map((row) => ({ row, item: byId.get(row.label) }))
+      .filter((entry): entry is { row: typeof entry.row; item: Item } =>
+        entry.item !== undefined && isEligible(entry.item, config) && governs(entry.item));
+    if (repeats.length === 0) return [];
+
+    repeats.sort((a, b) => b.row.count - a.row.count || a.row.label.localeCompare(b.row.label));
+    const named = repeats.map((entry) => `${entry.row.label} (${entry.row.count})`).join(', ');
+
+    return [{
+      level: 'info', code: 'governing_spill_pressure',
+      about: 'governing_spill_pressure',
+      remedy: PERSON,
+      message:
+        `${repeats.length} governing item(s) — rule, constraint, invariant, instruction, ` +
+        `requirement, standard, or open task/plan work (\`select.ts\`'s \`governs\`) — have ` +
+        `each spilled at least ${GOVERNING_SPILL_REPEAT_THRESHOLD} times in the audit history ` +
+        `this projection has read so far: ${named}. A rule that spills cannot be obeyed. This ` +
+        `is a disclosure of pressure on the tier budgets, not a defect in any one item, and the ` +
+        `count can only grow — raise the relevant \`budgets.*\` figure in config.json, or ` +
+        `narrow the busiest item's \`scope\` so it competes on fewer paths.`,
+    }];
+  } finally {
+    db.close();
+  }
 }
 
 /**
@@ -3428,6 +3544,7 @@ export function runChecks(opts: {
     () => checkPermissions(opts.root, accessSync, opts.repoRoot),
     () => checkSessionIdMismatch(opts.root),
     () => checkAuditSize(opts.root),
+    () => checkGoverningSpillPressure(opts.root, opts.items, opts.config),
     () => checkStateUnaudited(opts.root, opts.items, opts.config),
     () => checkTaskUnverified(opts.root, opts.items, opts.config),
     () => checkCorpusSize(opts.items),
