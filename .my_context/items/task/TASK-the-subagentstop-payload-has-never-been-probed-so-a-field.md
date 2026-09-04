@@ -10,7 +10,7 @@ summary_of: 36907f3362eb6d22
 scope:
   - src/hooks/io.ts
   - src/hooks/subagent-stop.ts
-  - reports/probes
+  - reports/probes/**
 tags:
   - v2
   - hooks
@@ -24,7 +24,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-09-04
 valid_until: null
-checksum: 5d1eb309ffdd967a
+checksum: 6fe6d8b4a131442a
 plan: hooks
 seq: "26"
 state: todo
