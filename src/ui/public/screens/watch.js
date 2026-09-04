@@ -1,7 +1,12 @@
 /**
  * `nav.ev` — **Audit stream**, `<section data-p="watch">` in the design of
  * record. One card, in the mockup's own order: the activity pulse, its note,
- * the kind filters, the record table, the live region, the token-void note.
+ * the kind filters, the record table, the live region, the token-void note —
+ * plus the registered-hooks panel at the foot, which the mockup does not draw
+ * at all (`hooks/31`, below) and which is added rather than fitted into the
+ * mockup's order, under `DEC-the-app-is-what-is-built-the-mockup-is-history-
+ * and-a-gap`: a feature this screen gains does not have to be drawn in the
+ * design of record first.
  *
  * **The mockup's DESIGN, never its BEHAVIOUR.** The design of record writes
  * this screen as static HTML carrying `data-t` attributes and scans the
@@ -58,6 +63,11 @@
  *     `BOUND_CAP_LIST` below, and `applyStreamBacklog`.
  *   - **The budget** the token bar is drawn against is the sum of the resolved
  *     tier budgets from `GET /api/config`; see `watch.voidn`'s note below.
+ *   - **The registered-hooks panel** is `GET /api/ask/summary?report=ops` —
+ *     `summaryByOp`, unbounded by any `limit`, so it answers from the WHOLE
+ *     projection rather than sharing a budget with `agent-step` the way the
+ *     feed above does. See its own build site (`applyRegisteredHooks`, below)
+ *     for the fault this closes.
  *
  * **`/api/watch/spills`, `/api/watch/ratio` and `/api/watch/context` are NOT
  * read here, and that is the mockup's arrangement rather than an omission.**
@@ -113,6 +123,29 @@ const PULSE_GUTTER = 1.4;
 
 /** The most this feed will ever hold in memory, once backlog and live records are merged. */
 const FEED_CAP = 200;
+
+/**
+ * The bound `resolveSteps` searches within, past the feed's own window —
+ * `/api/ask/audit`'s own declared ceiling (`ask-model.ts`'s
+ * `intParam(url, 'limit', 1, 2000, 200)`), not `FEED_CAP`.
+ *
+ * **Measured wrong at `FEED_CAP` (200) on this project's own dogfooded
+ * corpus, in a browser, the moment this task's fix first shipped**: one
+ * lane's own 139-step burst was findable and its toggle came alive, but
+ * every OTHER `subagent-stop` row on screen still read "0 steps" — not
+ * because their steps do not exist, but because `SubagentStop` alone had
+ * written 10,786 records by then (`applyRegisteredHooks`' own panel, this
+ * corpus) and a 200-deep search among them reaches only the one or two
+ * newest bursts. `FEED_CAP` was the right number for the MIXED feed above,
+ * which competes six other kinds for the same budget; it undersells a
+ * lookup that competes against nothing but `agent-step` itself. Spending the
+ * endpoint's own outer limit here costs one wider read per unresolved lane,
+ * not a wider one for the feed everybody shares, and still ends in a
+ * disclosed miss rather than an unbounded scan — the endpoint refuses
+ * anything past this by construction, so it is the widest bound this lookup
+ * COULD ask for without a second endpoint.
+ */
+const STEP_LOOKUP_CAP = 2000;
 
 /**
  * How much history the screen OPENS WITH — `/api/ask/audit?limit=BACKLOG`, the
@@ -253,6 +286,42 @@ const SVG_NS = 'http://www.w3.org/2000/svg';
  * only on which ids are present.
  */
 const LANE_OPS = new Set(['agent-dispatched', 'agent-step', 'subagent-stop']);
+
+/**
+ * **Which `hooks/hooks.json` EVENT wrote each op — the registered-hooks
+ * panel's own vocabulary** (`TASK-the-audit-stream-does-not-show-every-hook-
+ * that-is-registered`, hooks/31).
+ *
+ * A DUPLICATE of `core/audit.ts`'s `REGISTERED_HOOK_OPS`, under the same
+ * name, not an import: a browser ES module cannot import that file — it pulls
+ * in `node:fs`, `node:path` and the rest of this project's server side.
+ * `test/ui/watch-registered-hooks.test.ts` holds the two to deep equality so a
+ * change on one side without the other fails a test rather than drifting in
+ * silence, the mitigation `test/hooks/hooks-manifest.test.ts` already applies
+ * to `hooks/hooks.json` itself. See `core/audit.ts`'s own copy for the full
+ * argument — why two ops per key is not an oversight, and why `manual` is
+ * deliberately absent.
+ */
+export const REGISTERED_HOOK_OPS = {
+  SessionStart: ['session-start', 'compact-restore'],
+  SubagentStart: ['subagent-start'],
+  PreToolUse: ['deny', 'jit', 'agent-item-waived'],
+  SessionEnd: ['session-end'],
+  PreCompact: ['pre-compact'],
+  PostCompact: ['post-compact'],
+  PostToolUse: ['post-tool-use', 'agent-dispatched'],
+  PostToolUseFailure: ['post-tool-use-failure'],
+  FileChanged: ['file-changed'],
+  InstructionsLoaded: ['instructions-loaded'],
+  ConfigChange: ['config-change'],
+  PermissionDenied: ['permission-denied'],
+  SubagentStop: ['subagent-stop', 'agent-step'],
+  Stop: ['stop'],
+  Setup: ['setup'],
+  TaskCreated: ['task-created'],
+  TaskCompleted: ['task-completed'],
+  UserPromptExpansion: ['prompt-expansion'],
+};
 
 /**
  * The join key a dispatch, a step and a stop each carry in their own `note`
@@ -537,7 +606,69 @@ export async function render(root, ctx) {
   // --- The token-void note --------------------------------------------------
   const voidNote = el('p', 'small');
 
-  card.append(pulse, pulseFault, pulseNote, filters, plate, laneNote, feedBound, feedFault, alive, voidNote);
+  // --- The registered hooks panel --------------------------------------------
+  //
+  // **`TASK-the-audit-stream-does-not-show-every-hook-that-is-registered`
+  // (hooks/31): the owner still did not observe every hook that has been
+  // registered, after the feed's own window was raised from 20 to `FEED_CAP`.**
+  // Measured, not guessed: the newest `FEED_CAP` rows of this repository's own
+  // live segment are 74.5% `agent-step` and 9% `subagent-stop` — a SINGLE
+  // `SubagentStop` backfill burst can be worth most of the window on its own
+  // (this file's own `BACKLOG` comment already measures that burst at up to
+  // ~150 rows) — so a registered hook that fires rarely can be genuinely IN
+  // THE LOG and still never land inside the bounded feed above between two
+  // bursts. `STD-a-measured-zero-is-drawn-and-named-an-unmeasured-thing-is`
+  // draws the line this panel exists to hold: today a hook that never fires
+  // and a hook the bounded feed crowded out look IDENTICAL — both are simply
+  // absent from the table above — and a reader cannot tell "nothing happened"
+  // from "something happened and this screen dropped it".
+  //
+  // **Answered from `/api/ask/summary?report=ops`, deliberately NOT from
+  // `records` above.** That endpoint's `summaryByOp` takes no `limit` — it
+  // reports every op the WHOLE projection holds, so a hook's row here does not
+  // share a budget with `agent-step` the way the feed's own `records` array
+  // does. It is the same projection `/api/ask/audit` already reads on this
+  // screen, so the same three states apply: `fresh` answers measured; `absent`
+  // (never built) and a refusal (behind, diverged, damaged) are both
+  // UNMEASURED — never a zero — because "no projection has read this log yet"
+  // and "the log holds nothing for this hook" are different facts.
+  //
+  // **The vocabulary is `REGISTERED_HOOK_OPS` above, not derived from data.**
+  // Every other vocabulary this screen offers is deliberately DERIVED from
+  // observed records (`learnKinds`'s own header states why: a hand-copied enum
+  // goes stale in silence). That rule cannot reach this table: the whole
+  // question is whether a REGISTERED hook has ever been observed, and a list
+  // built only from what has been observed can never name the one row that
+  // answers "never". `REGISTERED_HOOK_OPS` is hand-kept for exactly that
+  // reason, and `test/ui/watch-registered-hooks.test.ts` plus
+  // `test/core/audit-registered-hooks.test.ts` are what stop it going stale in
+  // the silence `ask.js`'s own header names as the cost of not doing this.
+  const reghSection = el('div', 'plate regh');
+  const reghHead = el('h3');
+  reghHead.append(...ctx.t('watch.regh'));
+  const reghNote = el('p', 'small');
+  reghNote.append(...ctx.t('watch.reghn', { records: num(FEED_CAP) }));
+  const reghFault = errorNote('');
+  reghFault.id = 'reghfault';
+  reghFault.hidden = true;
+  const reghTable = el('table');
+  const reghHeadEl = el('thead');
+  const reghHeadRow = el('tr');
+  for (const key of ['th.hook', 'th.status', 'th.count', 'th.last']) {
+    const cell = el('th');
+    cell.append(...ctx.t(key));
+    reghHeadRow.append(cell);
+  }
+  reghHeadEl.append(reghHeadRow);
+  const reghBody = el('tbody');
+  reghBody.id = 'reghtbl';
+  reghTable.append(reghHeadEl, reghBody);
+  reghSection.append(reghHead, reghNote, reghFault, reghTable);
+
+  card.append(
+    pulse, pulseFault, pulseNote, filters, plate, laneNote, feedBound, feedFault, alive, voidNote,
+    reghSection,
+  );
 
   // ── STATE ────────────────────────────────────────────────────────────────
   /** Newest first, which is the order the mockup's own table reads in. */
@@ -623,6 +754,105 @@ export async function render(root, ctx) {
         pendingLookups.delete(agentId);
         renderRows();
       });
+  }
+
+  /**
+   * **THE LOOKUP-BEYOND-THE-WINDOW FOR STEPS — the counterpart `resolveDispatch`
+   * above never grew, and closing that asymmetry is
+   * `TASK-expanding-a-lane-is-dead-for-every-lane-but-the-newest`'s mandatory
+   * deliverable.** A lane can recover its own HEADER from beyond the window
+   * (`resolveDispatch`) but not its own CONTENTS — measured live: the newest
+   * 200 records are 173 `agent-step` rows belonging to ONE lane, so every
+   * other lane on screen reports zero steps and its toggle draws disabled
+   * (`laneGroupRows`'s own `toggle.disabled = steps.length === 0`) whether or
+   * not that lane ever recorded any.
+   *
+   * Same shape as `resolveDispatch`, on purpose, not a different one: an
+   * in-flight guard so a burst of renders fires it once per agent id, and a
+   * negative cache so a miss within the bound is asked once and not retried
+   * wider. What differs is only the bound's WIDTH and what it is bounded BY.
+   * A dispatch is one record per lane, so `BOUND_CAP_TABLE` (50) newest
+   * `agent-dispatched` rows reaches nearly any lane's. A lane's STEPS are a
+   * burst of up to ~150 rows written in one `SubagentStop` firing (`BACKLOG`'s
+   * own comment, above, measures it), and this project's own corpus turned
+   * out to hold thousands of them — `STEP_LOOKUP_CAP`'s own docblock has the
+   * measurement that moved this off `FEED_CAP`. Filtered by `op=agent-step`
+   * and not the bare feed, for the reason this whole task exists: the newest
+   * N records of ANY kind can themselves be almost entirely one lane's
+   * burst, so a mixed-kind window would starve every OTHER lane's lookup the
+   * identical way the unbounded feed already does. Asking the endpoint for
+   * `agent-step` alone spends the budget on nothing but the kind this lookup
+   * exists to find.
+   *
+   * `agentId → AuditRecord[] | null` — `null` for "looked up, none found
+   * within the bound", exactly `resolvedDispatches`'s own shape.
+   */
+  const resolvedSteps = new Map();
+  /** Agent ids with a steps lookup in flight, so a burst of renders fires it once. */
+  const pendingStepLookups = new Set();
+
+  function resolveSteps(agentId) {
+    if (resolvedSteps.has(agentId) || pendingStepLookups.has(agentId)) return;
+    pendingStepLookups.add(agentId);
+    ctx.api(`/api/ask/audit?op=agent-step&limit=${STEP_LOOKUP_CAP}`)
+      .then((result) => {
+        const match = (result.records ?? []).filter((r) => agentIdOf(r.note ?? null) === agentId);
+        resolvedSteps.set(agentId, match.length > 0 ? match : null);
+      })
+      .catch(() => {
+        // The same courtesy `resolveDispatch` states for its own catch: this
+        // lookup's refusal must not become a second one on top of
+        // `feedFault`'s, and a miss is cached so it is asked once per lane.
+        resolvedSteps.set(agentId, null);
+      })
+      .finally(() => {
+        pendingStepLookups.delete(agentId);
+        renderRows();
+      });
+  }
+
+  /**
+   * **THE THREE-STATE READ — `STD-a-measured-zero-is-drawn-and-named-an-
+   * unmeasured-thing-is`, applied to a lane's own step count.**
+   *
+   * WINDOW steps first, unchanged: a lane whose steps are already in hand
+   * needs no lookup, and this never fires one for it. Only a lane reporting
+   * NONE in the window asks `resolveSteps` — fired from here, the render
+   * that needs the answer, exactly where `orphanGroupRows` already fires
+   * `resolveDispatch` rather than from a separate pass.
+   *
+   * `measured` is false only while nobody has looked yet or the lookup is
+   * still in flight — never once `resolvedSteps` holds an answer, whether
+   * that answer was some steps or none. A lane that genuinely has none once
+   * the lookup completes reads as a MEASURED zero, the same "0 steps"
+   * `watch.laneSteps` already draws for a lane whose zero steps were visible
+   * in the window all along; a lane nobody has asked about yet never reaches
+   * that sentence — see `stepsCell`, its one call site.
+   */
+  function effectiveSteps(agentId, windowSteps) {
+    if (windowSteps.length > 0) return { steps: windowSteps, measured: true };
+    resolveSteps(agentId);
+    if (!resolvedSteps.has(agentId)) return { steps: [], measured: false };
+    return { steps: resolvedSteps.get(agentId) ?? [], measured: true };
+  }
+
+  /**
+   * The `N steps` segment of a lane's detail cell, or the unmeasured chip in
+   * its place — the one call site `laneGroupRows` and `orphanGroupRows` both
+   * share so the two cannot draw this differently.
+   *
+   * `.chip.unmeas` with `data-g="◌"` is not invented here: it is this
+   * screen's own primitive, already spent on `applyRegisteredHooks`'
+   * `watch.reghUnmeasured` a few hundred lines below, under the same
+   * standard. Reused rather than a third convention for the same fact.
+   */
+  function stepsCell(measured, effSteps) {
+    if (measured) return ctx.t('watch.laneSteps', { steps: num(effSteps.length) });
+    const chip = el('span', 'chip unmeas');
+    chip.dataset.g = '◌';
+    chip.append(...ctx.t('watch.laneStepsUnmeasured'));
+    chip.title = ctx.tFlat('title.laneStepsUnmeasured');
+    return [chip];
   }
 
   const visible = () => {
@@ -1019,6 +1249,7 @@ export async function render(root, ctx) {
     const at = clockOf(dispatch.at);
     const { agentType, purpose } = parseDispatchNote(dispatch.note);
     const expanded = expandedLanes.has(agentId);
+    const { steps: effSteps, measured } = effectiveSteps(agentId, steps);
 
     const row = el('tr', stop === null ? 'lane running' : 'lane');
     row.dataset.agent = agentId;
@@ -1028,7 +1259,7 @@ export async function render(root, ctx) {
     const toggle = el('button', 'lanetoggle');
     toggle.type = 'button';
     toggle.textContent = expanded ? '▾' : '▸';
-    toggle.disabled = steps.length === 0;
+    toggle.disabled = effSteps.length === 0;
     toggle.setAttribute('aria-expanded', expanded ? 'true' : 'false');
     toggle.setAttribute('aria-label', ctx.tFlat(expanded ? 'aria.laneCollapse' : 'aria.laneExpand'));
     toggle.addEventListener('click', () => {
@@ -1062,7 +1293,7 @@ export async function render(root, ctx) {
 
     const detail = el('td', 'small');
     detail.append(mono(agentType), ' · ');
-    detail.append(...ctx.t('watch.laneSteps', { steps: num(steps.length) }));
+    detail.append(...stepsCell(measured, effSteps));
     const span = formatDuration(
       (stop !== null ? Date.parse(stop.at) : Date.now()) - Date.parse(dispatch.at),
     );
@@ -1071,7 +1302,7 @@ export async function render(root, ctx) {
     row.append(detail);
 
     const rows = [row];
-    if (expanded) for (const step of steps) rows.push(laneStepRow(step));
+    if (expanded) for (const step of effSteps) rows.push(laneStepRow(step));
     return rows;
   }
 
@@ -1128,6 +1359,7 @@ export async function render(root, ctx) {
     const anchor = stop ?? steps[0];
     const at = clockOf(anchor.at);
     const expanded = expandedLanes.has(agentId);
+    const { steps: effSteps, measured } = effectiveSteps(agentId, steps);
 
     const row = el('tr', stop === null ? 'lane running' : 'lane');
     row.dataset.agent = agentId;
@@ -1137,7 +1369,7 @@ export async function render(root, ctx) {
     const toggle = el('button', 'lanetoggle');
     toggle.type = 'button';
     toggle.textContent = expanded ? '▾' : '▸';
-    toggle.disabled = steps.length === 0;
+    toggle.disabled = effSteps.length === 0;
     toggle.setAttribute('aria-expanded', expanded ? 'true' : 'false');
     toggle.setAttribute('aria-label', ctx.tFlat(expanded ? 'aria.laneCollapse' : 'aria.laneExpand'));
     toggle.addEventListener('click', () => {
@@ -1168,7 +1400,7 @@ export async function render(root, ctx) {
 
     const detail = el('td', 'small');
     if (parsed !== null) detail.append(mono(parsed.agentType), ' · ');
-    detail.append(...ctx.t('watch.laneSteps', { steps: num(steps.length) }));
+    detail.append(...stepsCell(measured, effSteps));
     detail.append(' · ', ...ctx.t(stop === null ? 'watch.laneRunning' : 'watch.laneFinished'));
     // `laneFound` once the lookup names the dispatch, `laneNotInView` while
     // it is still unresolved OR confirmed missing — two different facts,
@@ -1178,7 +1410,7 @@ export async function render(root, ctx) {
     row.append(detail);
 
     const built = [row];
-    if (expanded) for (const step of steps) built.push(laneStepRow(step));
+    if (expanded) for (const step of effSteps) built.push(laneStepRow(step));
     return built;
   }
 
@@ -1462,6 +1694,87 @@ export async function render(root, ctx) {
     pulseFault.hidden = false;
   }
 
+  // ── THE REGISTERED HOOKS PANEL ───────────────────────────────────────────
+  //
+  // `hooks/31`. `report=ops` answers every op the WHOLE projection holds —
+  // `summaryByOp` takes no `limit` — so this table shares no budget with the
+  // bounded feed above and a rare hook cannot be crowded out of IT the way it
+  // can be crowded out of `records`.
+  function applyRegisteredHooks(summary) {
+    reghFault.hidden = true;
+    // `fresh` is the only state a measurement can be trusted from. `absent` —
+    // no projection has ever been built — is UNMEASURED, exactly as
+    // `applyVolume` above reads it, and never a zero: reading it as zero
+    // would report "this hook never fired" over a log this endpoint has not
+    // read.
+    const measured = summary.projectionState === 'fresh';
+    const byOp = new Map();
+    if (measured) {
+      for (const row of summary.rows ?? []) byOp.set(row.label, row);
+    }
+    const rows = Object.keys(REGISTERED_HOOK_OPS).map((hookName) => {
+      if (!measured) return { hookName, measured: false, count: 0, last: null };
+      let count = 0;
+      let last = null;
+      for (const op of REGISTERED_HOOK_OPS[hookName]) {
+        const row = byOp.get(op);
+        if (row === undefined) continue;
+        count += row.count;
+        if (row.last !== null && (last === null || row.last > last)) last = row.last;
+      }
+      return { hookName, measured: true, count, last };
+    });
+    renderRegisteredHooks(rows);
+  }
+
+  function failRegisteredHooks(error) {
+    // The projection is behind, diverged or damaged — still not the same fact
+    // as "this hook never fired", so every row is drawn UNMEASURED rather
+    // than left off the table or drawn as a zero.
+    reghFault.textContent = error.message;
+    reghFault.hidden = false;
+    renderRegisteredHooks(Object.keys(REGISTERED_HOOK_OPS).map((hookName) => (
+      { hookName, measured: false, count: 0, last: null }
+    )));
+  }
+
+  function renderRegisteredHooks(rows) {
+    const built = [];
+    for (const row of rows) {
+      const tr = el('tr');
+      const hookCell = el('td');
+      hookCell.append(mono(row.hookName));
+      const statusCell = el('td');
+      if (!row.measured) {
+        // `.chip.unmeas` — the strip's own primitive for exactly this state
+        // (`screens/doctor.js`'s `noRepairChip`, `app.js`'s `stateChip`), so a
+        // reader who has already learned that glyph elsewhere on this product
+        // reads it the same way here.
+        const chip = el('span', 'chip unmeas');
+        chip.dataset.g = '◌';
+        chip.append(...ctx.t('watch.reghUnmeasured'));
+        chip.title = ctx.tFlat('title.reghUnmeasured');
+        statusCell.append(chip);
+      } else {
+        // Neutral in both directions — `chip ok` for a measured zero as much
+        // as for a measured count, because "never fired" is frequently the
+        // CORRECT state (`SessionEnd` only fires on `/clear`) and is not a
+        // fault this chip's colour may claim.
+        const chip = el('span', 'chip ok');
+        chip.dataset.g = '●';
+        chip.append(...ctx.t(row.count === 0 ? 'watch.reghNever' : 'watch.reghSeen'));
+        statusCell.append(chip);
+      }
+      const countCell = el('td');
+      countCell.append(mono(row.measured ? num(row.count) : '—'));
+      const lastCell = el('td');
+      lastCell.append(mono(row.last !== null && row.last !== undefined ? clockOf(row.last) : '—'));
+      tr.append(hookCell, statusCell, countCell, lastCell);
+      built.push(tr);
+    }
+    reghBody.replaceChildren(...built);
+  }
+
   // ── THE BACKLOG ──────────────────────────────────────────────────────────
   //
   // Oldest-first off the wire (`filterSelect` takes the newest n in descending
@@ -1546,35 +1859,41 @@ export async function render(root, ctx) {
     }
   }
 
-  // ── THE THREE READS, IN PARALLEL AND APPLIED IN ORDER ────────────────────
+  // ── THE FOUR READS, IN PARALLEL AND APPLIED IN ORDER ─────────────────────
   //
   // **Parallel because they are independent, and because a screen that settles
-  // three times settles wrongly.** They were sequential, which cost two things.
-  // The first is plain: three local reads taken one after another is three
+  // four times settles wrongly.** They were sequential, which cost two things.
+  // The first is plain: four local reads taken one after another is four
   // round trips of blank screen where one would do. The second is what actually
   // failed — `e2e/screen-parity.spec.ts` decides a screen has finished
   // rendering when two element counts 400ms apart agree, and a screen that
-  // grows in three separate steps can sit still across that window with a fetch
+  // grows in separate steps can sit still across that window with a fetch
   // still in flight. It sampled a half-drawn Audit stream under the full
   // suite's parallel load and reported the graphic missing. One await, one
   // settle.
   //
   // APPLIED in a fixed order regardless of which resolves first: the budget
   // before the backlog, because a row's token bar is drawn against it and a
-  // bar rendered before the denominator arrived would be a different bar.
+  // bar rendered before the denominator arrived would be a different bar. The
+  // registered-hooks summary is last because nothing else on this screen reads
+  // from it.
   //
-  // `allSettled` and not `all`: these three refuse independently — a stale
-  // projection takes the pulse and the backlog while the config still answers —
-  // and `all` would discard two good answers because the third failed.
-  const [config, volume, backlog] = await Promise.allSettled([
+  // `allSettled` and not `all`: these four refuse independently — a stale
+  // projection takes the pulse, the backlog and the summary while the config
+  // still answers — and `all` would discard three good answers because the
+  // fourth failed.
+  const [config, volume, backlog, regh] = await Promise.allSettled([
     ctx.api('/api/config'),
     ctx.api(`/api/watch/volume?minutes=${PULSE_MINUTES}&bucket=${PULSE_BUCKET_SECONDS}`),
     ctx.api(`/api/ask/audit?limit=${BACKLOG}`),
+    ctx.api('/api/ask/summary?report=ops'),
   ]);
   if (config.status === 'fulfilled') applyBudget(config.value);
   else voidNote.replaceWith(errorNote(config.reason.message));
   if (volume.status === 'fulfilled') applyVolume(volume.value);
   else failVolume(volume.reason);
+  if (regh.status === 'fulfilled') applyRegisteredHooks(regh.value);
+  else failRegisteredHooks(regh.reason);
   if (backlog.status === 'fulfilled') applyBacklog(backlog.value);
   else failBacklog(backlog.reason);
   sayShown();

@@ -81,8 +81,95 @@
  * absence is worse than none.
  */
 import {
-  BOUND_CAP_TABLE, boundedList, el, errorNote, linkId, screenHead, spaced, tierChip,
+  BOUND_CAP_TABLE, boundedList, el, errorNote, linkId, num, screenHead, spaced, tierChip,
 } from '/screens/parts.js';
+
+/**
+ * **The split over REAL injections** —
+ * `TASK-the-already-in-context-split-only-appears-under-a-hand`.
+ *
+ * `screens/simulate.js` already answers ALREADY IN CONTEXT / GENUINELY ABSENT
+ * for a HYPOTHETICAL run — whatever `select()` would spill right now, under
+ * whatever budgets a reader is dragging. Measured in a browser on this
+ * repository's own corpus, that split never shows in either state a reader
+ * actually opens: cold answers 91 spills that are ALL genuinely absent,
+ * trivially, because a cold run has seen nothing; warm answers zero spills at
+ * all, because the seen gate had already removed 134 of 143 items before any
+ * tier picked candidates. It was only ever demonstrated by dragging the index
+ * budget down to 1.
+ *
+ * The owner's actual question is not hypothetical: an item that spilled from
+ * an injection that REALLY HAPPENED, and whether it is, right now, already
+ * back in this session's context or still genuinely absent from it — the
+ * question a one-shot `carry` command needs answered before spending itself on
+ * an id, or it is ornamental. `InjectedBody.spills` (`read-model.ts`) answers
+ * it, over `AuditRecord.spilled` — a real injection's own record of what it
+ * dropped — joined against the same `ctx.seen` / `ctx.continuityDelivered`
+ * this screen already reads for `lines`. This screen is the chosen host
+ * because it is already SESSION-scoped and already reads the live delivery
+ * state the split has to join against; the audit stream
+ * (`screens/watch.js`) renders injection rows too, but is a different lane's
+ * file in this plan and is not touched here.
+ *
+ * `spillSection` draws the same three states `RealSpillState`'s own doc names
+ * — measured non-empty, MEASURED ZERO, and UNMEASURED — as three different
+ * sentences, per `STD-a-measured-zero-is-drawn-and-named-an-unmeasured-thing-
+ * is`. The `◌` unmeasured chip is `doctor.js`'s and `watch.js`'s own
+ * convention (`.chip.unmeas`, `data-g="◌"`); rebuilt here rather than
+ * imported, because it is module-private to each screen in both of THOSE
+ * files too — what must not diverge is the VOCABULARY, and it does not.
+ */
+function spillSection(ctx, spills) {
+  const wrap = el('div', 'spills');
+  const heading = el('h3', 'small');
+  heading.append(...ctx.t('inj.spillsH'));
+  wrap.append(heading);
+
+  if (spills.error !== null) {
+    // UNMEASURED — the audit projection could not answer this (absent or
+    // stale/corrupt; `sessionSpillState`'s own doc has the two cases). The
+    // reason travels in `.title` rather than on screen, the same split
+    // `noRepairChip` (`doctor.js`) draws between a two-word label and a full
+    // sentence in a tooltip.
+    const p = el('p', 'small');
+    const chip = el('span', 'chip unmeas');
+    chip.dataset.g = '◌';
+    chip.append(...ctx.t('inj.spillsUnmeas'));
+    chip.title = ctx.tFlat('inj.spillsUnmeasTitle');
+    p.append(chip);
+    wrap.append(p);
+    return wrap;
+  }
+
+  if (spills.alreadyInContext.length === 0 && spills.genuinelyAbsent.length === 0) {
+    // MEASURED ZERO: this session's real injection history spilled nothing.
+    // A true answer, drawn rather than left blank.
+    const p = el('p', 'small');
+    p.append(...ctx.t('inj.spillsZero'));
+    wrap.append(p);
+    return wrap;
+  }
+
+  // `id (tier)` per entry, joined — the same plain-list shape
+  // `screens/simulate.js`'s `sim.spillHeld` / `sim.spillAbsent` already draw
+  // for the hypothetical split, so a reader who has met one has met both.
+  const idList = (rows) => rows.map((r) => `${r.id} (${r.tier})`).join(', ');
+  if (spills.alreadyInContext.length > 0) {
+    const held = el('p', 'small');
+    held.append(...ctx.t('inj.spillHeld', {
+      n: num(spills.alreadyInContext.length), ids: idList(spills.alreadyInContext),
+    }));
+    wrap.append(held);
+  }
+  if (spills.genuinelyAbsent.length > 0) {
+    const absent = el('p', 'small');
+    absent.append(...ctx.t('inj.spillAbsent', {
+      n: num(spills.genuinelyAbsent.length), ids: idList(spills.genuinelyAbsent),
+    }));
+    wrap.append(absent);
+  }
+  return wrap;
+}
 
 /**
  * This module's own unsubscribe from the shell's session listeners, if any.
@@ -147,6 +234,11 @@ export async function render(root, ctx) {
     // Which of the three states this render is in — see the note below. `null`
     // until the fetch settles, so the cold path falls through with it unset.
     let zeroKey = 'inj.noSession';
+    // `InjectedBody.spills`, or `null` when no real session was asked about —
+    // cold and no-session both fall through the block below exactly as they
+    // do for `lines`, and there is nothing truthful `spillSection` could draw
+    // about a session that was never read.
+    let spills = null;
 
     // **THREE STATES, AND UNTIL 2026-08-26 TWO OF THEM WERE THE SAME PIXELS.**
     //
@@ -251,6 +343,17 @@ export async function render(root, ctx) {
       if (!refused && data.lines.length === 0) {
         zeroKey = data.seen === 'absent' ? 'inj.noSeenFile' : 'inj.zeroLines';
       }
+      // Independent of `lines`/`zeroKey` above — a cleared window can still
+      // carry real spill history (`.audit/` survives `/clear`; `InjectedBody.
+      // spills`' own doc), and an unreadable seen file says nothing about
+      // whether the audit projection can be read. `spillSection` never draws
+      // `spills.error`'s TEXT — only whether it is non-null — so an older
+      // server that omits the field entirely falls to the same UNMEASURED
+      // drawing (`inj.spillsUnmeasTitle`) rather than a silent zero; the
+      // fallback string below exists only to make that boolean true.
+      spills = data.spills ?? {
+        alreadyInContext: [], genuinelyAbsent: [], error: 'no `spills` field in this response',
+      };
     }
 
     const note = el('p', 'small');
@@ -270,6 +373,12 @@ export async function render(root, ctx) {
       parts.push(spaced(zero));
     }
     parts.push(spaced(note));
+    // The split over REAL injections — see `spillSection`'s own header for the
+    // full reasoning. Under `note` rather than above it: `note` is about what
+    // THIS table is (the live seen file), and the spill split is a second,
+    // separate fact about the same session's audit HISTORY, not a caveat on
+    // the first. `null` only when no real session was ever asked about.
+    if (spills !== null) parts.push(spaced(spillSection(ctx, spills)));
     // One act, at the point the answer is in hand: the card never sits empty
     // waiting for a fetch, and it never holds two renders.
     card.replaceChildren(...parts);

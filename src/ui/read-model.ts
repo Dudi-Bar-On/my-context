@@ -28,15 +28,28 @@
  * 13's runtime assertion that a real corpus is byte-identical after every read
  * route has been exercised.
  *
- * **The audit PROJECTION is never opened, by either door.** `openProjection`
- * creates the audit directory (`ensureLogDir`), can `rmSync` the projection
- * and both its WAL sidecars, and runs twelve `CREATE … IF NOT EXISTS`
- * statements; `openProjectionReadOnlyChecked` (`core/audit-db.ts`) exists for
- * a reader that needs the data, and no endpoint in this module does.
+ * **The audit PROJECTION is opened by exactly one endpoint, and it is opened
+ * READ-ONLY.** `openProjection` creates the audit directory (`ensureLogDir`),
+ * can `rmSync` the projection and both its WAL sidecars, and runs twelve
+ * `CREATE … IF NOT EXISTS` statements — none of that is reachable from here,
+ * and this module never binds it. `openProjectionReadOnlyChecked`
+ * (`core/audit-db.ts`) is a reader that needs the data, and until
+ * `TASK-the-already-in-context-split-only-appears-under-a-hand` no endpoint in
+ * this module used it. `apiInjected` now does, through its own
+ * `readSessionInjectionRecords` — NOT through `watch-model.ts`'s
+ * `readProjection`, because `watch-model.ts` already imports `badRequest` /
+ * `repeatedParams` / `unknownParams` FROM this module, and a return import
+ * would be a cycle rather than a reuse. The open/close/absent-vs-stale policy
+ * is the same one `readProjection` states (there is one PLACE that policy is
+ * decided; the wording travels with this comment because the binding cannot),
+ * and `readSessionInjectionRecords`' own doc says so.
  * `/api/decay` is a LEDGER read and `/api/doctor` runs no audit-projection
- * check — `checkAuditSize` stats the JSONL segments. The three views that do
- * want `audit_item.role` joined to `audit.at` (§0.3 rows 4, 8 and 9) are
- * reported as unserved rather than approximated from what is here.
+ * check — `checkAuditSize` stats the JSONL segments. The views that want
+ * `audit_item.role` joined to `audit.at` for a WEEKLY series (§0.3 rows 4 and
+ * 8, and the item pane's sparkline at `ItemBody`'s own note) are still
+ * reported as unserved rather than approximated from what is here —
+ * `apiInjected`'s new use is a set-membership question over the SAME rows
+ * (`role = 'spilled'`), not that series, and answers no part of it.
  *
  * **With one measured exception that belongs in the same sentence, because a
  * runtime byte-identical assertion will meet it.** Opening a WAL-mode database
@@ -52,6 +65,17 @@
 import { statSync } from 'node:fs';
 import path from 'node:path';
 import { injection, type InjectionVerdict } from '../cli/commands/injection.ts';
+import type { AuditRecord } from '../core/audit.ts';
+// The read-only door, and ONLY the read-only door — `openProjection`,
+// `syncProjection` and `keepProjectionCurrent` are the writers and stay out of
+// `src/ui/` (`test/ui/no-writes.test.ts`). `ask-model.ts` and `watch-model.ts`
+// already bind the same four names for the same reason; this is the first use
+// of them in THIS module, and the header above says why it is not routed
+// through `watch-model.ts`'s own `readProjection`.
+import {
+  openProjectionReadOnlyChecked, queryProjection,
+  ProjectionAbsentError, ProjectionStaleError,
+} from '../core/audit-db.ts';
 import { scopePolicyFor } from '../core/config.ts';
 import { summaryState, type SummaryState } from '../core/content-hash.ts';
 import { resolveCarry } from '../core/continuity.ts';
@@ -74,7 +98,7 @@ import {
 import { projectionsFor } from '../core/tag-projection.ts';
 import {
   continuityFor, CONTINUITY_WINDOW_SESSION, readSeen, seenIds,
-  type JsonlFileState, type SeenLine,
+  type JsonlFileState, type SeenLine, type SeenState,
 } from '../core/seen-file.ts';
 import { Store } from '../core/store.ts';
 // The SAME reader `ui/watch-model.ts` opens a statusline sample with, bound
@@ -245,6 +269,26 @@ interface ParsedSelect {
 }
 
 /**
+ * How a `readSeen` result becomes `SelectContext.seen` / `.continuityDelivered`
+ * for one continuity WINDOW — factored out of `parseSelectQuery` so that
+ * `sessionSpillState` (below, serving `apiInjected`'s real-spill split) has one
+ * spelling of this to call rather than a second copy that could drift from the
+ * first. Neither field re-reads the disk: both come off the SAME `SeenState`
+ * the caller already read, exactly as `parseSelectQuery` did inline before this
+ * was pulled out.
+ */
+function deliveryFacts(
+  state: SeenState, window: string | null,
+): { seen: string[]; continuityDelivered: string[] } {
+  return {
+    seen: state.error === null ? seenIds(state) : [],
+    continuityDelivered: state.error === null && window !== null
+      ? [...continuityFor(state, window)]
+      : [],
+  };
+}
+
+/**
  * The shared grammar of /api/select, /api/render and /api/simulate.
  *
  * Exported for /api/config/preview (plan 2, Task 7), which takes the same
@@ -321,7 +365,6 @@ export function parseSelectQuery(
     // remains there is a replayed projection nothing in the UI updates, and
     // it would answer with a different number.
     const state = readSeen(root, session);
-    ctx.seen = state.error === null ? seenIds(state) : [];
     seenUnreadable = state.error;
 
     // The continuity tier's own dedupe, read the way `inject.ts` reads it and
@@ -338,9 +381,9 @@ export function parseSelectQuery(
     const window = event === 'compact'
       ? readSnapshotMeta(root, session)?.capturedAt ?? null
       : CONTINUITY_WINDOW_SESSION;
-    ctx.continuityDelivered = state.error === null && window !== null
-      ? [...continuityFor(state, window)]
-      : [];
+    const facts = deliveryFacts(state, window);
+    ctx.seen = facts.seen;
+    ctx.continuityDelivered = facts.continuityDelivered;
   }
 
   // Focus is the fifth narrowing input, read the way the hook reads it.
@@ -484,6 +527,85 @@ export function seenFilteredIds(items: Item[], ctx: SelectContext, config: Confi
 const BUDGET_KEYS = ['pinned', 'jit', 'restored', 'continuity', 'index'] as const;
 
 /**
+ * **Which spilled ids the agent already holds — `plan:budget seq:9`
+ * (`TASK-the-budget-simulator-counts-spills-but-never-names-them-so`), and the
+ * join it asks for and no more.**
+ *
+ * The fits table's `Spills` column was a bare number: a reader learned that
+ * three items were dropped and never which three, so there was nothing to
+ * judge and nothing to act on. Naming the ids is `selection.spilled` itself,
+ * already in every `/api/simulate` response — the missing half is telling the
+ * reader which of those ids they can safely ignore because the agent already
+ * has them, so re-prioritising one would spend budget to change nothing.
+ *
+ * **Both facts this joins already exist, and this function invents neither.**
+ * `ctx.seen` is what the session's own seen file records it was handed
+ * (`RULE-filter-seen-before-budgeting`), and `ctx.continuityDelivered` is what
+ * `select.ts`'s continuity tier treats as already delivered into the CURRENT
+ * context window — its own docstring's words, verbatim: *"Continuity ids
+ * already delivered INTO THE CURRENT CONTEXT WINDOW … deliberately NOT
+ * `seen`."* Between the two, every channel this project has for "the agent
+ * already holds this id right now" is covered; a third would be guessing.
+ *
+ * **Why a spill can be `seen` at all, when `select`'s own `fresh` filter looks
+ * like it should make that impossible.** `pinned`, `restored` and `jit` DO
+ * draw their candidates from `fresh` (`injectable` minus `seen`), so a spill
+ * from one of those three is GENUINELY ABSENT by construction — the seen gate
+ * already removed it before the tier ever saw it, and this function will
+ * correctly report every one of those ids as not-delivered. `continuity` and
+ * `index` are the two exceptions, and each is documented at its own
+ * definition in `select.ts`: continuity's candidates are drawn from `eligible`
+ * or **not seen-filtered at all**, deduped only on `continuityDelivered`
+ * (`select`'s own comment: *"It does not consult `fresh`"*); and the bounded
+ * index's candidates are `eligible.filter(isNormative)` with no `seen` term
+ * either. So an id delivered to this session ten tool-events ago — sitting in
+ * `seen`, but no longer part of THIS call's `chosenIds` because this is a
+ * fresh `select()` run — can still be offered to the index or the continuity
+ * tier, still spill from ITS budget, and still be an id the agent has held the
+ * whole time. That is exactly the case a bare spill count could not tell a
+ * reader about.
+ *
+ * **No new selection logic.** This is a set membership test over ids `select`
+ * already returned, against sets `parseSelectQuery` already read for the same
+ * call — nothing here re-derives `isNormative`, `matchesScope`, or any other
+ * rule `select.ts` owns. If a spilled id's true delivered-ness ever needed a
+ * SIXTH source beyond `seen` and `continuityDelivered`, that would belong in
+ * `select.ts` as a new field on `SelectContext`, not guessed at here.
+ *
+ * Empty by construction on `cold=1`: a brand-new session has been shown
+ * nothing and delivered nothing into any window, so nothing spilled can be
+ * already-held — every id reads GENUINELY ABSENT, which is the true answer to
+ * the hypothetical the cold question asks.
+ *
+ * **`spilled` is typed by what this function actually reads off it — the id —
+ * and nothing narrower.** It used to read `Spill[]`, `select.ts`'s own
+ * hypothetical-selection shape; `TASK-the-already-in-context-split-only-appears-
+ * under-a-hand` reuses this exact join for a REAL question — ids
+ * `AuditRecord.spilled` (`core/audit.ts`) recorded a past injection actually
+ * dropping, not ids a live `select()` run might drop under a budget a reader is
+ * dragging — and `SpilledRef` (`tier`, `reason`, optional `at`) has no `band`
+ * field to fabricate one for. Both shapes satisfy `{ id: string }[]`
+ * structurally, so widening the parameter is the whole change: every existing
+ * caller still passes a `Spill[]` unmodified, and the ONE-JOIN rule this
+ * function's whole header argues for reaches a second, real-injection caller
+ * instead of gaining a second implementation beside it.
+ */
+export function alreadyDeliveredIds(spilled: { id: string }[], ctx: SelectContext): string[] {
+  const seen = new Set(ctx.seen ?? []);
+  const delivered = new Set(ctx.continuityDelivered ?? []);
+  if (seen.size === 0 && delivered.size === 0) return [];
+  const ids = new Set<string>();
+  for (const s of spilled) {
+    if (seen.has(s.id) || delivered.has(s.id)) ids.add(s.id);
+  }
+  // Ordinal, not `sort()`'s default: `read-model.ts` inlines this compare at
+  // every id/name list it sorts (see the `retiredStatuses` and revision-log
+  // lists below) rather than naming a fourth spelling of `select.ts`'s own
+  // unexported `compareStrings`.
+  return [...ids].sort((a, b) => (a < b ? -1 : a > b ? 1 : 0));
+}
+
+/**
  * `GET /api/simulate` — the same selection under overridden budgets, priced.
  *
  * `costs` has one entry per id in `selection.full` ∪ `selection.spilled`, each
@@ -556,11 +678,17 @@ export function apiSimulate(ws: Workspace, url: URL): JsonResult {
     // computed against the SAME `ctx` the selection was — so the count on
     // screen and the selection beside it cannot be answers to two different
     // questions.
+    // **`spillDelivered` rides HERE for `seenFiltered`'s own reason** —
+    // `plan:budget seq:9`, a figure ABOUT `selection.spilled` rather than a
+    // member of it. It costs one pass over `selection.spilled`, which this
+    // call already holds, against the SAME `ctx.seen`/`ctx.continuityDelivered`
+    // the selection itself was computed from.
     return {
       status: 200,
       body: {
         selection, budgets, costs, tiersRun: tiersRun(ctx),
         seenFiltered: seenFilteredIds(items, ctx, config),
+        spillDelivered: alreadyDeliveredIds(selection.spilled, ctx),
       },
     };
   });
@@ -913,6 +1041,179 @@ function defaultSession(root: string | null, candidates: SessionSummary[]): stri
  */
 export type InjectedLine = SeenLine;
 
+/** One id `AuditRecord.spilled` names, with the LAST tier it was offered under. */
+export interface SpilledIdentity {
+  id: string;
+  tier: string;
+}
+
+/**
+ * **The split over REAL injections — `TASK-the-already-in-context-split-only-
+ * appears-under-a-hand`.**
+ *
+ * ── WHAT WAS WRONG WITH THE SPLIT THIS ONE REPLACES ─────────────────────────
+ *
+ * `apiSimulate`'s `spillDelivered` (`alreadyDeliveredIds` above) answers a
+ * HYPOTHETICAL: if `select()` ran right now under the budgets on screen, which
+ * of the ids it would spill are already held. Measured in a browser on this
+ * repository's own corpus the day the split shipped, that question is
+ * unreachable in both states a reader actually opens — cold answers 91 spills,
+ * ALL of them GENUINELY ABSENT, trivially, because a cold run has seen
+ * nothing; warm answers zero spills at all, because the seen gate had already
+ * removed 134 of 143 items before any tier picked candidates. The split was
+ * only ever demonstrated by hand-dragging a budget down to 1.
+ *
+ * The owner's actual question is not hypothetical: find items that spilled
+ * from an injection that REALLY HAPPENED, and say whether each is, right now,
+ * already back in this session's context or genuinely absent from it. Every
+ * fact that answers it already exists — `AuditRecord.spilled` (`core/audit.ts`)
+ * is what a real injection dropped, and `ctx.seen` / `ctx.continuityDelivered`
+ * (`deliveryFacts` above) are what this session actually holds right now — and
+ * joining them is the same `alreadyDeliveredIds` join `apiSimulate` already
+ * uses, over a REAL id list instead of a hypothetical one. No new selection
+ * logic; see that function's own note on why its `spilled` parameter widened
+ * to accept both.
+ *
+ * ── WHICH SURFACE, AND WHY ───────────────────────────────────────────────────
+ *
+ * `Injected now` (`screens/injected.js`), not the audit stream. Three reasons,
+ * not one: (1) it is already SESSION-SCOPED, the same scope a real spill
+ * history needs to mean anything — "already in context" is a fact about ONE
+ * session's window, not the corpus; (2) it already reads the live delivery
+ * state (`ctx.seen`) this split has to join against, so the two facts land on
+ * one screen instead of asking a reader to hold one in each hand; (3) the
+ * audit stream (`screens/watch.js`) is a DIFFERENT lane's file in this plan and
+ * is explicitly not to be touched here. `Injected now`'s own header already
+ * says what it shows and does not show — this field adds a fourth fact
+ * (history, not the live delivery `lines` already draws) rather than changing
+ * what the existing three mean.
+ *
+ * ── THE MEASURED ZERO, NAMED RATHER THAN LEFT BLANK ─────────────────────────
+ *
+ * `STD-a-measured-zero-is-drawn-and-named-an-unmeasured-thing-is`. Three
+ * outcomes, and they are different facts:
+ *
+ *   MEASURED, non-empty   `error: null` and at least one id in either list.
+ *   MEASURED ZERO         `error: null` and BOTH lists empty — this session's
+ *                          real injection history spilled nothing. A legitimate
+ *                          answer, not a blank.
+ *   UNMEASURED             `error` non-null — the audit projection was never
+ *                          built for this corpus, or could not be read. Both
+ *                          lists are `[]` here too, and a client MUST NOT read
+ *                          that as the zero above; `error` is what tells the
+ *                          two apart, the same rule `InjectedBody.seen` already
+ *                          states for `lines`.
+ */
+export interface RealSpillState {
+  /** Spilled ids that are, right now, already back in this session's context. */
+  alreadyInContext: SpilledIdentity[];
+  /** Spilled ids that are, right now, absent from every window this session holds. */
+  genuinelyAbsent: SpilledIdentity[];
+  /**
+   * Non-null only when the split above could not be measured — the audit
+   * projection is absent or stale/corrupt. `readSessionInjectionRecords`'
+   * own note has the two cases and their wording.
+   */
+  error: string | null;
+}
+
+/**
+ * The unique ids this session's real `kind: 'injection'` audit records ever
+ * spilled, each with the tier of its MOST RECENT occurrence — `records` is
+ * chronological (`queryProjection`'s own contract: oldest-first), so a later
+ * `Map#set` for the same id overwrites the earlier one and the last write
+ * standing is the newest fact, which is the one worth showing beside an
+ * absent/already-held verdict computed against the CURRENT window.
+ *
+ * `manual` injections never carry a `sessionId` (`AuditRecord.sessionId`'s own
+ * doc) and so are correctly absent from `records` already — the same exclusion
+ * `readSeen(root, session)` makes for a key nothing was ever written under.
+ */
+function realSpills(records: AuditRecord[]): SpilledIdentity[] {
+  const byId = new Map<string, string>();
+  for (const record of records) {
+    for (const entry of record.spilled ?? []) byId.set(entry.id, entry.tier);
+  }
+  return [...byId.entries()].map(([id, tier]) => ({ id, tier }));
+}
+
+/**
+ * The one door `apiInjected` opens onto the audit projection, read-only, for
+ * exactly one query — NOT `watch-model.ts`'s `readProjection`, and the module
+ * header explains why (a cycle: `watch-model.ts` already imports `badRequest`
+ * / `repeatedParams` / `unknownParams` FROM this module). The three outcomes
+ * are the same three `readProjection` states, because it is the same
+ * underlying door (`openProjectionReadOnlyChecked`) answering the same three
+ * ways, not a second policy:
+ *
+ *   `ok: true`               the projection answered; `records` may be empty.
+ *   `ok: false, state: 'absent'`   no projection file exists — never built, an
+ *                             empty state rather than a fault (the same
+ *                             reading `readProjection`'s own doc gives it).
+ *   `ok: false, error: …`     behind, corrupt, or unreadable for any other
+ *                             reason — a refusal, worded for disclosure.
+ */
+function readSessionInjectionRecords(root: string, session: string):
+  | { ok: true; records: AuditRecord[] }
+  | { ok: false; state: 'absent' }
+  | { ok: false; error: string } {
+  let db: ReturnType<typeof openProjectionReadOnlyChecked>;
+  try {
+    db = openProjectionReadOnlyChecked(root);
+  } catch (err) {
+    if (err instanceof ProjectionAbsentError) return { ok: false, state: 'absent' };
+    const detail = err instanceof Error ? err.message : String(err);
+    return { ok: false, error: `the audit projection could not be read: ${detail}` };
+  }
+  try {
+    // `kind: 'injection'` — the same six-op vocabulary `AuditRecord.spilled`
+    // can appear under; `sessionId` scopes to the one session this endpoint is
+    // already about, matching the seen-file read beside it.
+    return { ok: true, records: queryProjection(db, { sessionId: session, kind: 'injection' }) };
+  } catch (err) {
+    const detail = err instanceof Error ? err.message : String(err);
+    const state = err instanceof ProjectionStaleError ? ` (${err.state} relative to its log)` : '';
+    return { ok: false, error: `the audit projection could not be read${state}: ${detail}` };
+  } finally {
+    db.close();
+  }
+}
+
+const sortById = (a: SpilledIdentity, b: SpilledIdentity): number => (
+  a.id < b.id ? -1 : a.id > b.id ? 1 : 0
+);
+
+/**
+ * `InjectedBody.spills` — the join described on `RealSpillState` above, run
+ * for one session. `seenState` is the SAME `SeenState` `apiInjected` already
+ * read for `lines`; a second `readSeen` here would be a second question asked
+ * of the same file a moment later, free to disagree with the first.
+ */
+function sessionSpillState(root: string, session: string, seenState: SeenState): RealSpillState {
+  const read = readSessionInjectionRecords(root, session);
+  if (!read.ok) {
+    return {
+      alreadyInContext: [],
+      genuinelyAbsent: [],
+      error: 'state' in read
+        ? 'no audit projection has been built for this corpus, so this session\'s real '
+          + 'injection history cannot be read yet. Run `mycontext audit` to build it.'
+        : read.error,
+    };
+  }
+  const spilled = realSpills(read.records);
+  const facts = deliveryFacts(seenState, CONTINUITY_WINDOW_SESSION);
+  const ctx: SelectContext = {
+    event: 'session-start', seen: facts.seen, continuityDelivered: facts.continuityDelivered,
+  };
+  const delivered = new Set(alreadyDeliveredIds(spilled, ctx));
+  return {
+    alreadyInContext: spilled.filter((s) => delivered.has(s.id)).sort(sortById),
+    genuinelyAbsent: spilled.filter((s) => !delivered.has(s.id)).sort(sortById),
+    error: null,
+  };
+}
+
 export interface InjectedBody {
   lines: InjectedLine[];
   error: string | null;
@@ -952,6 +1253,16 @@ export interface InjectedBody {
    * both `read` — they found a file — and both carry a non-null `error`.
    */
   seen: JsonlFileState;
+  /**
+   * The split over REAL injections — `sessionSpillState` above, and
+   * `RealSpillState`'s own doc has the full reasoning, the surface choice and
+   * the measured-zero rule. Independent of `lines`/`error`/`seen` above: it can
+   * answer even when `lines` is empty (a cleared window can still have a
+   * spill-bearing audit history) and it can be UNMEASURED while `lines` reads
+   * fine (an absent or stale audit projection says nothing about the seen
+   * file).
+   */
+  spills: RealSpillState;
 }
 
 /**
@@ -1002,6 +1313,12 @@ export interface InjectedBody {
  * the field is this function's half. **A client that cannot yet tell them apart
  * must say UNMEASURED rather than pick one**, which is the same rule that made
  * the field necessary.
+ *
+ * `spills` is that audit log, now actually read (`sessionSpillState`,
+ * `RealSpillState`'s own doc above has the reasoning and the surface choice).
+ * It can hold real ids even where `lines` is empty and `seen` is `'absent'` —
+ * a cleared window loses the seen file and keeps `.audit/` whole, exactly the
+ * asymmetry `InjectedBody.seen`'s own note describes for `lines`.
  */
 export function apiInjected(ws: Workspace, url: URL, params: { session: string }): JsonResult {
   const bad = unknownParams(url, []);
@@ -1038,6 +1355,10 @@ export function apiInjected(ws: Workspace, url: URL, params: { session: string }
       // `state.file` — what THIS read saw, not a fresh question to the disk.
       // The reasoning, and what `read` does not promise, is on `InjectedBody.seen`.
       seen: state.file,
+      // The real-injection split. `state` — the same `SeenState` `lines` above
+      // came from — is passed rather than re-read, for the reason `InjectedBody.
+      // spills` gives.
+      spills: sessionSpillState(root, params.session, state),
     };
     return { status: 200, body };
   });

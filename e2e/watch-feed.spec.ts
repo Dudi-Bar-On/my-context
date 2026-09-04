@@ -554,6 +554,171 @@ test('a dispatch out of the window is looked up, and the group ends up naming th
   });
 });
 
+/**
+ * **`TASK-expanding-a-lane-is-dead-for-every-lane-but-the-newest`.**
+ *
+ * `watchingBuriedLane` above fixed a lane whose DISPATCH falls outside the
+ * window while its steps stay in view. This is the asymmetric twin the same
+ * task item names: a lane's HEADER survives in the window — a dispatch, or
+ * (for the orphan case) a stop when no dispatch is in view — while every one
+ * of its own `agent-step` rows does not. Measured live: the newest 200
+ * records were 173 `agent-step` rows belonging to ONE lane's burst, starving
+ * every other lane's steps out of that same shared window. Before this task,
+ * `laneGroupRows`/`orphanGroupRows` read that as `steps.length === 0` and
+ * drew a disabled toggle no reader could ever open — indistinguishable from a
+ * lane that genuinely ran zero steps.
+ *
+ * Built by writing each lane's real steps FIRST and its header LAST, with
+ * padding between them to push the steps behind the window: `effectiveSteps`
+ * / `resolveSteps` do not depend on the order a real `SubagentStop` burst
+ * happens to write in, only on whether the CURRENT window holds a lane's
+ * steps — so this reproduces the defect deterministically rather than racing
+ * a live burst's own timing, the same trade `watchingBuriedLane` already
+ * makes for the neighbouring case.
+ */
+async function watchingStarvedLanes(
+  page: Page,
+  body: (fixture: { page: Page; dispatched: string; orphaned: string }) => Promise<void>,
+  options: { delayStepsLookup?: boolean } = {},
+): Promise<void> {
+  const dir = mkdtempSync(path.join(tmpdir(), 'myctx-watch-feed-'));
+  const corpus = path.join(dir, DIR_NAME);
+  let harness: UiHarness | undefined;
+  try {
+    expect(runCli(['init'], dir, () => {}), 'fixture command failed: init').toBe(0);
+    // `resolveSteps`, like `resolveDispatch` beside it, reads `/api/ask/audit`
+    // — the PROJECTION — so this fixture needs one built up front.
+    expect(runCli(['audit'], dir, () => {}), 'fixture command failed: audit').toBe(0);
+
+    // A dispatch-anchored lane and an orphan (no dispatch ever recorded)
+    // lane, so the fix is proven on both call sites `effectiveSteps` shares.
+    const dispatched = 'agent-starved-dispatched';
+    const orphaned = 'agent-starved-orphan';
+
+    for (let i = 0; i < 3; i += 1) {
+      recordAudit(corpus, {
+        kind: 'hook', op: 'agent-step', hook: 'SubagentStop', origin: 'agent',
+        note: `Read: e2e/dispatched-file-${i}.ts agent=${dispatched}`,
+      });
+    }
+    for (let i = 0; i < 3; i += 1) {
+      recordAudit(corpus, {
+        kind: 'hook', op: 'agent-step', hook: 'SubagentStop', origin: 'agent',
+        note: `Read: e2e/orphan-file-${i}.ts agent=${orphaned}`,
+      });
+    }
+    // Push every one of those six steps behind the 200-record window
+    // (`FEED_CAP`) — comfortably past it, six steps on the near side.
+    for (let i = 0; i < 210; i += 1) {
+      recordAudit(corpus, {
+        kind: 'mutation', op: 'create', origin: 'human', itemId: `RULE-starve-${i}`, fields: ['body'],
+      });
+    }
+    recordAudit(corpus, {
+      kind: 'hook', op: 'agent-dispatched', hook: 'PostToolUse', origin: 'agent',
+      note: `dispatched type=general-purpose agent=${dispatched}: Steps evicted, header survives`,
+    });
+    recordAudit(corpus, {
+      kind: 'hook', op: 'subagent-stop', hook: 'SubagentStop', origin: 'agent',
+      note: `delivery=finished agent=${dispatched} type=general-purpose; its seen file was left in place`,
+    });
+    // No dispatch at all for the orphan lane — its stop is the only header
+    // this window can anchor on, exactly `orphanGroupRows`'s own case.
+    recordAudit(corpus, {
+      kind: 'hook', op: 'subagent-stop', hook: 'SubagentStop', origin: 'agent',
+      note: `delivery=finished agent=${orphaned} type=general-purpose; its seen file was left in place`,
+    });
+
+    harness = await startUiChild(dir);
+    const h = harness;
+    if (options.delayStepsLookup === true) {
+      // Held open just long enough for the transient "not measured yet"
+      // state to be assertable rather than raced.
+      await page.route(
+        (url) => url.pathname === '/api/ask/audit' && url.searchParams.get('op') === 'agent-step',
+        async (route) => {
+          await new Promise((resolve) => { setTimeout(resolve, 1500); });
+          await route.continue();
+        },
+      );
+    }
+    await page.goto(`http://127.0.0.1:${h.port}/#${h.nonce}`);
+    await expect(page.locator('.nav').first()).toBeVisible({ timeout: 15_000 });
+    await page.evaluate(() => { location.hash = '#/watch'; });
+    await body({ page, dispatched, orphaned });
+  } finally {
+    if (harness !== undefined) await harness.stop();
+    removeTree(dir);
+  }
+}
+
+test(
+  'a lane whose header is in view but whose own steps were crowded out fetches them on demand',
+  async ({ page }) => {
+    await watchingStarvedLanes(page, async ({ page: p, dispatched, orphaned }) => {
+      const dispatchedGroup = p.locator(`#atbl tr[data-agent="${dispatched}"]`);
+      const orphanGroup = p.locator(`#atbl tr[data-agent="${orphaned}"]`);
+      await expect(dispatchedGroup, 'the header survives the window and must still draw')
+        .toBeVisible({ timeout: 20_000 });
+      await expect(orphanGroup).toBeVisible({ timeout: 20_000 });
+
+      // THE FIX: both toggles start disabled (nothing in hand yet) and
+      // become enabled once the on-demand lookup finds real steps beyond the
+      // window — `toContainText`/`toBeEnabled` poll, so this waits out the
+      // round trip rather than racing it. Before this task both stayed
+      // disabled forever: `steps.length === 0` in the window and nothing
+      // ever asked beyond it.
+      await expect(
+        dispatchedGroup.locator('button.lanetoggle'),
+        'the toggle must become enabled once the lookup finds this lane\'s real steps',
+      ).toBeEnabled({ timeout: 20_000 });
+      await expect(orphanGroup.locator('button.lanetoggle')).toBeEnabled({ timeout: 20_000 });
+
+      // THE MEASURED COUNT, once the lookup lands: both real, not a bare
+      // zero and not a dash — the fetch found exactly what was written.
+      await expect(dispatchedGroup).toContainText('3');
+      await expect(orphanGroup).toContainText('3');
+
+      // MORE THAN ONE finished lane, each independently expandable, each
+      // showing its OWN real steps — the acceptance bar this task states in
+      // its own words, not one lane working by coincidence.
+      await dispatchedGroup.locator('button.lanetoggle').click();
+      await expect(p.locator('#atbl tr', { hasText: 'dispatched-file-0.ts' })).toBeVisible();
+      await expect(p.locator('#atbl tr', { hasText: 'dispatched-file-1.ts' })).toBeVisible();
+      await expect(p.locator('#atbl tr', { hasText: 'dispatched-file-2.ts' })).toBeVisible();
+      // The orphan lane's steps must not leak into the dispatched lane's fold.
+      await expect(p.locator('#atbl tr', { hasText: 'orphan-file-0.ts' })).toHaveCount(0);
+
+      await orphanGroup.locator('button.lanetoggle').click();
+      await expect(p.locator('#atbl tr', { hasText: 'orphan-file-0.ts' })).toBeVisible();
+      await expect(p.locator('#atbl tr', { hasText: 'orphan-file-1.ts' })).toBeVisible();
+      await expect(p.locator('#atbl tr', { hasText: 'orphan-file-2.ts' })).toBeVisible();
+    });
+  },
+);
+
+test(
+  'a starved lane names itself unmeasured, never a bare zero, before its lookup answers',
+  async ({ page }) => {
+    await watchingStarvedLanes(page, async ({ page: p, dispatched }) => {
+      const dispatchedGroup = p.locator(`#atbl tr[data-agent="${dispatched}"]`);
+      await expect(dispatchedGroup).toBeVisible({ timeout: 20_000 });
+      // `STD-a-measured-zero-is-drawn-and-named-an-unmeasured-thing-is`: a
+      // lane whose steps have not been fetched yet must read as unmeasured,
+      // never as a bare "0 steps" — the two are different facts.
+      await expect(
+        dispatchedGroup,
+        'a lane whose steps have not been fetched yet must say so, not draw a bare zero',
+      ).toContainText(/not measured/i);
+      await expect(dispatchedGroup.locator('button.lanetoggle')).toBeDisabled();
+
+      // And once the delayed lookup lands, the same row updates to the
+      // measured count rather than staying stuck on the unmeasured word.
+      await expect(dispatchedGroup).toContainText('3', { timeout: 20_000 });
+    }, { delayStepsLookup: true });
+  },
+);
+
 // --- The whole log, opened cold: TASK-the-audit-stream-shows-almost-nothing --
 //
 // The report this file is named for: 7 rows on the owner's live screen, one of
@@ -656,5 +821,113 @@ test('the opening bound is disclosed, and it is proportionate to what the log ho
     const bound = p.locator('#wbound');
     await expect(bound).toBeVisible();
     await expect(bound).toContainText(/already in the log/i);
+  });
+});
+
+/* -----------------------------------------------------------------------
+ * The registered-hooks panel — `TASK-the-audit-stream-does-not-show-every-
+ * hook-that-is-registered` (hooks/31). The owner still did not observe every
+ * hook that has been registered, after the feed's own window was raised from
+ * 20 to `FEED_CAP`: a rare hook can be genuinely IN THE LOG and still never
+ * land inside the bounded feed, crowded out by a burst of `agent-step` rows.
+ * These three specs are the disclosure that closes the gap regardless of
+ * cause — `STD-a-measured-zero-is-drawn-and-named-an-unmeasured-thing-is`,
+ * exercised on the panel `/api/ask/summary?report=ops` feeds rather than on
+ * the bounded feed above it.
+ * ---------------------------------------------------------------------- */
+
+/** One row of `#reghtbl` whose FIRST cell is exactly `hook` — never a substring match. */
+function reghRow(page: Page, hook: string) {
+  return page.locator('#reghtbl tr').filter({ has: page.locator('td').first().getByText(hook, { exact: true }) });
+}
+
+test('the registered-hooks panel: a hook that fired is a measured seen, one that never fired is a measured zero', async ({ page }) => {
+  const dir = mkdtempSync(path.join(tmpdir(), 'myctx-watch-regh-'));
+  const corpus = path.join(dir, DIR_NAME);
+  let harness: UiHarness | undefined;
+  try {
+    expect(runCli(['init'], dir, () => {}), 'fixture command failed: init').toBe(0);
+    // One `Stop` firing — a registered hook this fixture makes SEEN — and
+    // nothing at all for `Setup`, which the panel must draw as a MEASURED
+    // zero: `Setup` never fires in this corpus's whole history and the
+    // projection built below has read that history in full.
+    recordAudit(corpus, {
+      kind: 'hook', op: 'stop', hook: 'Stop', note: '(Stop) — the assistant turn ended',
+    });
+    expect(runCli(['audit'], dir, () => {}), 'fixture command failed: audit').toBe(0);
+
+    harness = await startUiChild(dir);
+    const h = harness;
+    await page.goto(`http://127.0.0.1:${h.port}/#${h.nonce}`);
+    await expect(
+      page.locator('.nav').first(),
+      'the app never rendered a rail button — it probably has no token',
+    ).toBeVisible({ timeout: 15_000 });
+    await page.evaluate(() => { location.hash = '#/watch'; });
+
+    const seenRow = reghRow(page, 'Stop');
+    await expect(seenRow, 'the panel never drew a row for the registered Stop hook')
+      .toBeVisible({ timeout: 20_000 });
+    await expect(seenRow.locator('.chip')).toHaveText('seen');
+    await expect(seenRow).toContainText('1');
+
+    const neverRow = reghRow(page, 'Setup');
+    await expect(neverRow, 'the panel never drew a row for the registered Setup hook').toBeVisible();
+    await expect(neverRow.locator('.chip')).toHaveText('never seen');
+    await expect(neverRow).toContainText('0');
+
+    // The measured zero is drawn on the SAME `.chip.ok` primitive as the seen
+    // row — neutral, because `Setup` never firing in a corpus this fixture
+    // never ran `mycontext init --pack` a second time in is the expected
+    // state and not a fault this chip's colour may claim.
+    await expect(neverRow.locator('.chip.ok')).toBeVisible();
+    await expect(neverRow.locator('.chip.unmeas')).toHaveCount(0);
+
+    await expect(page.locator('#reghfault')).toBeHidden();
+  } finally {
+    if (harness !== undefined) await harness.stop();
+    removeTree(dir);
+  }
+});
+
+test('the registered-hooks panel: an unbuilt projection draws every row UNMEASURED, never a zero', async ({ page }) => {
+  await watching(page, { buildProjection: false }, async ({ page: p }) => {
+    await expectedAtLeast(p, SEEDED);
+
+    // No projection has ever been built, so `/api/ask/summary?report=ops`
+    // answers 200 with `projectionState: 'absent'` — an empty state, not a
+    // refusal — and `reghfault` stays hidden exactly as `applyRegisteredHooks`
+    // draws no error note for `absent`, only for an actual 503.
+    await expect(p.locator('#reghfault')).toBeHidden();
+
+    const rows = p.locator('#reghtbl tr');
+    await expect(rows.first(), 'the panel drew no rows at all').toBeVisible({ timeout: 20_000 });
+    // Every row is `.chip.unmeas` — the SAME primitive `doctor.js`'s
+    // `noRepairChip` and `app.js`'s `stateChip` already use for "we have not
+    // measured this" — and NONE is `.chip.ok`, which would claim a hook has
+    // been measured never to have fired over a log this endpoint has not read.
+    await expect(rows.locator('.chip.ok')).toHaveCount(0);
+    const unmeasuredCount = await rows.locator('.chip.unmeas').count();
+    const rowCount = await rows.count();
+    expect(unmeasuredCount, 'not every registered-hooks row was drawn unmeasured').toBe(rowCount);
+  });
+});
+
+test('the registered-hooks panel: a projection BEHIND its log refuses in the server\'s words, on every row', async ({ page }) => {
+  await watching(page, { buildProjection: true, thenAppend: true }, async ({ page: p }) => {
+    await expectedAtLeast(p, SEEDED);
+
+    const fault = p.locator('#reghfault');
+    await expect(
+      fault,
+      'the projection is behind its log and the panel drew no refusal — a reader would see every '
+      + 'row silently drawn unmeasured with no explanation at all',
+    ).toBeVisible({ timeout: 20_000 });
+    await expect(fault).toContainText('mycontext audit');
+    await expect(fault).toContainText('behind');
+
+    const rows = p.locator('#reghtbl tr');
+    await expect(rows.first()).toBeVisible();
+    await expect(rows.locator('.chip.ok')).toHaveCount(0);
   });
 });

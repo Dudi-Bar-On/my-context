@@ -65,9 +65,11 @@ import { existsSync, mkdirSync, mkdtempSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { removeTree } from '../helpers/tmp.ts';
+import { appendUnprojected } from '../helpers/unprojected-audit.ts';
 import { runCli } from '../../src/cli/index.ts';
 import { resolveWorkspace, type Workspace } from '../../src/core/workspace.ts';
 import { Ledger } from '../../src/core/ledger.ts';
+import { recordAudit } from '../../src/core/audit.ts';
 import { appendSeen, seenFilePath } from '../../src/core/seen-file.ts';
 import { clearWindowState } from '../../src/core/window-state.ts';
 import {
@@ -129,6 +131,11 @@ function runSessionEnd(cwd: string, payload: Record<string, unknown>): {
     { cwd, input: JSON.stringify(payload), encoding: 'utf8' },
   );
   return { code: run.status ?? -1, stderr: run.stderr ?? '' };
+}
+
+/** Build the audit projection the way a user does — the write path a read surface may not take. */
+function buildProjection(dir: string): void {
+  assert.equal(runCli(['audit'], dir, () => {}), 0, 'fixture command failed: audit');
 }
 
 const url = (endpoint: string): URL => new URL(`http://127.0.0.1:1/api/${endpoint}`);
@@ -366,5 +373,140 @@ test('an unreadable seen file is "read" with an error, never "absent"', () => {
     assert.equal(body.seen, 'read',
       'a file that could not be trusted was still a file: calling it `absent` would tell the '
       + 'reader nothing was ever written here, which is a second false sentence');
+  } finally { f.done(); }
+});
+
+/* ══ `spills` · THE SPLIT OVER REAL INJECTIONS ═════════════════════════════
+ *
+ * `TASK-the-already-in-context-split-only-appears-under-a-hand`. Not the
+ * simulator's hypothetical `spillDelivered` (`read-model.test.ts` already
+ * pins that join in isolation) — this is the same join, run over
+ * `AuditRecord.spilled` from a real `kind: 'injection'` record, which is what
+ * makes the answer one a reader can act on rather than one a dragged budget
+ * produced.
+ */
+
+const RULE = 'RULE-always-use-posix-paths';
+const REF = 'REF-where-the-billing-rework-stands';
+
+test('spills: an id a real injection spilled and this session has never received reads GENUINELY ABSENT', () => {
+  const f = fixture();
+  try {
+    recordAudit(f.root, {
+      kind: 'injection', op: 'jit', sessionId: 's-spill', hook: 'PreToolUse', path: 'src/a.ts',
+      injected: [], spilled: [{ id: RULE, tier: 'jit', reason: 'budget exceeded (900 > 800)' }],
+    });
+    buildProjection(f.dir);
+
+    const body = injectedFor(f.ws, 's-spill');
+    assert.equal(body.spills.error, null, 'the projection is fresh: this is a measured answer');
+    assert.deepEqual(body.spills.alreadyInContext, []);
+    assert.deepEqual(body.spills.genuinelyAbsent, [{ id: RULE, tier: 'jit' }]);
+  } finally { f.done(); }
+});
+
+test('spills: an id a real injection spilled and this session\'s seen file already holds reads ALREADY IN CONTEXT', () => {
+  const f = fixture();
+  try {
+    // The spill happened on one tool event; the item was delivered to this
+    // same session by a DIFFERENT tier later on — the exact case
+    // `alreadyDeliveredIds`' own header describes: a spill is not the only
+    // thing that can be true about an id in one session's history.
+    recordAudit(f.root, {
+      kind: 'injection', op: 'jit', sessionId: 's-held', hook: 'PreToolUse', path: 'src/a.ts',
+      injected: [], spilled: [{ id: RULE, tier: 'jit', reason: 'budget exceeded (900 > 800)' }],
+    });
+    buildProjection(f.dir);
+    appendSeen(f.root, 's-held', [{ id: RULE, tier: 'pinned', at: '2026-08-05T09:00:00.000Z' }]);
+
+    const body = injectedFor(f.ws, 's-held');
+    assert.equal(body.spills.error, null);
+    assert.deepEqual(body.spills.alreadyInContext, [{ id: RULE, tier: 'jit' }]);
+    assert.deepEqual(body.spills.genuinelyAbsent, []);
+  } finally { f.done(); }
+});
+
+test('spills: no spill in this session\'s real history is a MEASURED ZERO, drawn with error: null', () => {
+  const f = fixture();
+  try {
+    // A real injection that delivered everything it offered — the ordinary
+    // case, and `STD-a-measured-zero-is-drawn-and-named-an-unmeasured-thing-is`
+    // requires this to read as a positive fact rather than as a blank.
+    recordAudit(f.root, {
+      kind: 'injection', op: 'jit', sessionId: 's-clean', hook: 'PreToolUse', path: 'src/a.ts',
+      injected: [{ id: RULE, tier: 'jit' }],
+    });
+    buildProjection(f.dir);
+
+    const body = injectedFor(f.ws, 's-clean');
+    assert.equal(body.spills.error, null, 'measured, and the measurement is zero — not unmeasured');
+    assert.deepEqual(body.spills.alreadyInContext, []);
+    assert.deepEqual(body.spills.genuinelyAbsent, []);
+  } finally { f.done(); }
+});
+
+test('spills: a session the audit log never mentions is the same measured zero, not an error', () => {
+  const f = fixture();
+  try {
+    // Only OTHER sessions in the log — `sessionId` scoping must exclude them,
+    // and a session nobody ever injected into is a true zero, not a refusal.
+    recordAudit(f.root, {
+      kind: 'injection', op: 'jit', sessionId: 's-other', hook: 'PreToolUse', path: 'src/a.ts',
+      injected: [], spilled: [{ id: RULE, tier: 'jit', reason: 'budget exceeded' }],
+    });
+    buildProjection(f.dir);
+
+    const body = injectedFor(f.ws, 's-never-injected');
+    assert.equal(body.spills.error, null);
+    assert.deepEqual(body.spills.alreadyInContext, []);
+    assert.deepEqual(body.spills.genuinelyAbsent, []);
+  } finally { f.done(); }
+});
+
+test('spills: a projection nobody has built is UNMEASURED, never drawn as the zero above', () => {
+  const f = fixture();
+  try {
+    recordAudit(f.root, {
+      kind: 'injection', op: 'jit', sessionId: 's-unbuilt', hook: 'PreToolUse', path: 'src/a.ts',
+      injected: [], spilled: [{ id: RULE, tier: 'jit', reason: 'budget exceeded' }],
+    });
+    // No `mycontext audit` — the endpoint must not build one for itself, the
+    // same rule `apiWatchVolume` holds (`test/ui/watch-model.test.ts`).
+    const body = injectedFor(f.ws, 's-unbuilt');
+    assert.notEqual(body.spills.error, null,
+      'an absent projection must be disclosed, never folded into the measured-zero shape above');
+    assert.match(String(body.spills.error), /mycontext audit/);
+    assert.deepEqual(body.spills.alreadyInContext, []);
+    assert.deepEqual(body.spills.genuinelyAbsent, []);
+    // And it must not have failed the REST of the endpoint: `lines` is a fact
+    // from a different store and answers regardless of the audit projection's
+    // state.
+    assert.equal(body.error, null);
+  } finally { f.done(); }
+});
+
+test('spills: a projection behind its log is UNMEASURED, worded for disclosure, and the rest of the body still answers', () => {
+  const f = fixture();
+  try {
+    recordAudit(f.root, { kind: 'focus', op: 'focus-set', sessionId: 's-behind', note: 'src/**' });
+    buildProjection(f.dir);
+    // A record the projection has not consumed yet — `test/helpers/
+    // unprojected-audit.ts` is the one place this shape is manufactured
+    // directly, because `recordAudit` itself keeps the projection current now.
+    appendUnprojected(f.root, {
+      kind: 'injection', op: 'jit', sessionId: 's-behind', hook: 'PreToolUse', path: 'src/a.ts',
+      injected: [], spilled: [{ id: RULE, tier: 'jit', reason: 'budget exceeded' }],
+    });
+    appendSeen(f.root, 's-behind', [{ id: REF, tier: 'pinned', at: '2026-08-05T09:00:00.000Z' }]);
+
+    const body = injectedFor(f.ws, 's-behind');
+    assert.notEqual(body.spills.error, null);
+    assert.match(String(body.spills.error), /mycontext audit/);
+    assert.deepEqual(body.spills.alreadyInContext, []);
+    assert.deepEqual(body.spills.genuinelyAbsent, []);
+    // `lines` reads straight off the seen file and does not depend on the
+    // audit projection at all — a stale projection must not take it down.
+    assert.equal(body.lines.length, 1);
+    assert.equal(body.error, null);
   } finally { f.done(); }
 });

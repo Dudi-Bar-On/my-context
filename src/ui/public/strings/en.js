@@ -334,6 +334,8 @@ export const strings = {
   'sim.budget': 'Budget',
   'sim.fits': 'Fits',
   'sim.spills': 'Spills',
+  'sim.spillHeld': '{b:ALREADY IN CONTEXT} ({n}): {mv:ids} — the agent already holds these; spending this tier’s budget on them would change nothing.',
+  'sim.spillAbsent': '{b:GENUINELY ABSENT} ({n}): {mv:ids} — never delivered this session. Raising the budget is what would actually change what arrives.',
   'sim.chipn': 'The fits column is a {b:ratio}, not a count: "{fits} of {eligible}" shows how much of what was eligible arrived; the chip flips at the boundary. The row for the tier you drag follows the slider.',
   // The ratio the fits chip draws, in the words `sim.chipn` above already
   // quotes — the mockup's own `' of '`, which used to reach the page as an
@@ -346,7 +348,7 @@ export const strings = {
   // ── The question: this session, or a brand-new one (plan:walk seq:86) ────
   // The injection preview's precedent, carried to the second screen with the
   // same defect. Warm stays the default; cold is offered and LABELLED.
-  'sim.qnote': '{b:Two questions, not two views.} Default is what the session above gets now, with the {m:seen} set it was handed. {b:Cold} answers what a brand-new window would get. Pressed control shows which one you see.',
+  'sim.qnote': '{b:Two questions, not two views.} Default is {b:cold} — what a brand-new window would get from this corpus and these budgets, unaffected by any one session’s history. The session above answers what it would get right now, with the {m:seen} set it was handed. Pressed control shows which one you see.',
   'sim.seen': '{b:Filtered before budgeting} — {n} item(s) removed at the {m:seen} gate: already delivered this session. The gate runs before any tier picks candidates, so 0 of 0 below can mean this. Ask the cold question instead.',
   'sim.seen0': 'Nothing was removed at the {m:seen} gate, so an empty tier below means nothing qualified. A cold question always reads zero — a new window has been shown nothing.',
   'sim.zeroSeen': 'everything it could have had was already delivered',
@@ -420,6 +422,14 @@ export const strings = {
   'aria.laneIsolate': 'Show only this lane',
   'aria.laneClear': 'Clear the lane filter',
   'watch.laneSteps': '{steps} steps',
+  // TASK-expanding-a-lane-is-dead-for-every-lane-but-the-newest: the
+  // on-demand steps lookup's own unmeasured state, drawn with this screen's
+  // `.chip.unmeas` primitive rather than as a bare "0 steps" — a lane whose
+  // steps have not been fetched yet must stay distinguishable from one that
+  // fetched and found none (`STD-a-measured-zero-is-drawn-and-named-an-
+  // unmeasured-thing-is`).
+  'watch.laneStepsUnmeasured': 'steps not measured yet',
+  'title.laneStepsUnmeasured': 'this lane’s steps were not in the shown window. A lookup beyond it is in flight or has not been asked for yet — a different fact from zero.',
   'watch.laneRunning': 'running',
   'watch.laneFinished': 'finished',
   'watch.laneNotInView': 'dispatch not in view',
@@ -447,6 +457,21 @@ export const strings = {
   'watch.tokensNotRecorded': 'tokens: not recorded — this record predates the field. Not zero.',
   'title.tokensNotRecorded': 'tokens not recorded',
   'watch.voidn': 'A gold bar shows cost against the {budget}-token budget. Missing {m:tokens} draws a {b:hatched void}: the field is optional on {m:AuditRecord}; records before 1.0.1 lack it.',
+  // The registered-hooks panel (hooks/31): every hook `hooks.json` registers,
+  // measured against the full audit projection rather than against this
+  // feed's own bounded window, so a hook crowded out of the {records}-record
+  // feed above by a burst of lane steps can still be told apart from one that
+  // has never fired at all.
+  'watch.regh': 'Registered hooks',
+  'watch.reghn': 'Every hook {m:hooks.json} registers, measured against the whole audit log — not against the window above, which a burst of lane steps can crowd. A {b:seen} row is a fact; a {b:never seen} row is a fact too, measured and not merely absent from the feed.',
+  'th.hook': 'Hook',
+  'th.status': 'Status',
+  'th.count': 'Count',
+  'th.last': 'Last seen',
+  'watch.reghSeen': 'seen',
+  'watch.reghNever': 'never seen',
+  'watch.reghUnmeasured': 'not measured',
+  'title.reghUnmeasured': 'the audit projection is absent or refused, so whether this hook has ever fired is not known. That is a different fact from never — see the note above the table.',
   // Ask
   'ask.h': 'Ask',
   'ask.v': 'filters, for people who do not write SQL',
@@ -564,6 +589,17 @@ export const strings = {
   // and a cleared session was told it “was read and has received nothing” about a
   // file nobody opened. Seven of nineteen live sessions were in that state.
   'inj.noSeenFile': 'No seen file was written for this session, so nothing was read here — the audit log may still record what it was given.',
+  // The split over REAL injections (`TASK-the-already-in-context-split-only-
+  // appears-under-a-hand`) — `screens/injected.js`'s `spillSection` draws
+  // these. `spillHeld`/`spillAbsent` echo `sim.spillHeld`/`sim.spillAbsent`'s
+  // own wording deliberately, so a reader who has met the hypothetical split
+  // recognises the real one.
+  'inj.spillsH': 'Spilled, and whether it is still absent',
+  'inj.spillsUnmeas': 'not measured',
+  'inj.spillsUnmeasTitle': 'The audit projection for this session’s real injection history could not be read. Run mycontext audit to build or refresh it.',
+  'inj.spillsZero': 'This session’s own injection history spilled nothing — every real injection here delivered everything it offered.',
+  'inj.spillHeld': '{b:ALREADY IN CONTEXT} ({n}): {mv:ids} — spilled from a real injection, but already delivered into this window since. Nothing to act on.',
+  'inj.spillAbsent': '{b:GENUINELY ABSENT} ({n}): {mv:ids} — spilled from a real injection and never delivered into this window since. This is what a carry would actually change.',
   // The rail's count badges. Three states, because a badge that is merely
   // absent cannot tell "nothing needs attention" from "nobody looked" —
   // STD-a-measured-zero-is-drawn-and-named-an-unmeasured-thing-is.

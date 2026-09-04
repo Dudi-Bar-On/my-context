@@ -1193,11 +1193,21 @@ test('the twenty-one ledger kinds partition into closed, data-dependent and abse
   }
 });
 
-/* ══ plan:walk seq:86 — the staircase can be asked the cold question ═════════
+/* ══ plan:walk seq:86 / plan:budget seq:12 — the staircase can be asked either
+   question, and COLD IS NOW THE ONE IT OPENS ON ═══════════════════════════════
    The screen contained the string `cold` zero times and always sent
-   `ctx.session()`, so it could only ever ask the warm question. These tests pin
-   the control and the ROUTES it changes — a segmented button that repaints
-   itself without moving the query would look identical and answer nothing. ── */
+   `ctx.session()`, so it could only ever ask the warm question — `plan:walk
+   seq:86` fixed that by building the control below. `plan:budget seq:12`
+   (2026-09-04, `TASK-the-budget-simulator-draws-no-rungs-because-the-seen-
+   gate`) flipped which side of it a reader opens on: measured against this
+   repository's own long-running session, warm-by-default made every rung of
+   every tier draw `sim.stair0seen` — 134 of 143 injectable items already
+   `seen` by one session, an answer that depends on who is asking and when.
+   Cold answers what the corpus and the budgets alone would select; warm is
+   still built, still labelled, and one press away — see `simulate.js`'s
+   `PICKED`. These tests pin the control and the ROUTES it changes — a
+   segmented button that repaints itself without moving the query would look
+   identical and answer nothing. ── */
 
 /** The question strip: the one `.segbar` whose buttons carry `data-q`. */
 function questionBar(root: FakeNode): FakeElement {
@@ -1220,15 +1230,16 @@ function recBar(root: FakeNode): FakeElement {
 /** Every `p.small` a render drew, folded to text — where this screen's prose lives. */
 const notesOf = (root: FakeNode): string[] => all(root, (n) => kindOf(n) === 'p.small').map(flatText);
 
-test('the question strip offers warm and cold, warm pressed, and names the session itself', async () => {
+test('the question strip offers warm and cold, cold pressed by default, and names the session on the warm option', async () => {
   const { root } = await draw(RICH, 'en', undefined, 'sess-1');
   const en = (await table('en')).strings;
 
   const buttons = questionBar(root).children as FakeElement[];
   assert.deepEqual(buttons.map((b) => b.dataset['q']), ['live', 'cold']);
-  // Warm is the DEFAULT and does not move. The ruling is the preview's and it
-  // carries: cold is offered and labelled, never silently substituted.
-  assert.deepEqual(buttons.map((b) => b.attributes['aria-pressed']), ['true', 'false']);
+  // Cold is the DEFAULT here (`plan:budget seq:12`, unlike the injection
+  // preview, whose default stays warm on purpose — see `PICKED`'s docstring in
+  // `simulate.js`). Warm is offered and labelled, never silently substituted.
+  assert.deepEqual(buttons.map((b) => b.attributes['aria-pressed']), ['false', 'true']);
   // The warm option is named by the session ITSELF — a value, not prose — and
   // the cold one takes the design of record's own string.
   assert.match(flatText(buttons[0]!), /sess-1/);
@@ -1244,22 +1255,33 @@ test('a shell with no session draws one button, not an inert second one', async 
   assert.deepEqual(buttons.map((b) => b.dataset['q']), ['cold']);
 });
 
-test('pressing cold moves every query to cold=1, and pressing it twice is not two fetches', async () => {
+test('the default is cold from the first fetch, before any press', async () => {
+  // Nothing clicked here — this is the render `draw()` produces on its own,
+  // which is exactly what a reader who never touches the question strip sees.
+  const { routes } = await draw(RICH, 'en', undefined, 'sess-1');
+  const sim = routes.filter((r) => r.startsWith('/api/simulate'));
+  assert.ok(sim.length > 0, 'no /api/simulate request was ever made');
+  assert.ok(sim.every((r) => r.includes('cold=1')), `a request asked warm unpressed — ${JSON.stringify(sim)}`);
+  assert.ok(sim.every((r) => !r.includes('session=sess-1')),
+    `a request carried a session before the warm button was ever pressed — ${JSON.stringify(sim)}`);
+});
+
+test('pressing warm moves every query to session=<id>, and pressing it twice is not two fetches', async () => {
   const { routes } = await draw(RICH, 'en', (root) => {
-    const cold = questionBar(root).children[1] as unknown as { onclick: () => void };
-    cold.onclick();
+    const warm = questionBar(root).children[0] as unknown as { onclick: () => void };
+    warm.onclick();
     // Idempotent: the handler returns early when the mode has not changed, so a
     // second press is not a second pair of requests for the same answer.
-    cold.onclick();
+    warm.onclick();
   }, 'sess-1');
 
   const sim = routes.filter((r) => r.startsWith('/api/simulate'));
-  assert.ok(sim.some((r) => r.includes('session=sess-1')), 'nothing was ever asked warm');
-  const cold = sim.filter((r) => r.includes('cold=1'));
-  assert.ok(cold.length >= 2, `the cold press changed no query — ${JSON.stringify(sim)}`);
+  assert.ok(sim.some((r) => r.includes('cold=1')), 'nothing was ever asked cold — the default did not fire');
+  const warm = sim.filter((r) => r.includes('session=sess-1'));
+  assert.ok(warm.length >= 2, `the warm press changed no query — ${JSON.stringify(sim)}`);
   // One `/api/simulate` pair and one sweep for the press, not two of each.
-  assert.equal(cold.filter((r) => r.startsWith('/api/simulate?')).length, 2);
-  assert.equal(cold.filter((r) => r.startsWith('/api/simulate/sweep?')).length, 1);
+  assert.equal(warm.filter((r) => r.startsWith('/api/simulate?')).length, 2);
+  assert.equal(warm.filter((r) => r.startsWith('/api/simulate/sweep?')).length, 1);
 });
 
 test('the seen gate is named, and a measured 0 of 0 says which emptiness it is', async () => {

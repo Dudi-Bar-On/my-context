@@ -38,10 +38,42 @@
  * event, only that parameter differing — `session=<id>` answered
  * `pinned 1 of 1` where `cold=1` answered `pinned 24 of 25`, and the fits table
  * drew `restored 0 of 0` and `continuity 0 of 0` while 104 items sat removed
- * one gate earlier, accounted for in no cell of it. The warm question stays the
- * DEFAULT and cold is offered, labelled, and never silently substituted; the
- * `seen` count `/api/simulate` has served since 2026-08-29 is drawn and named,
- * and a tier reading `0 of 0` says which of the two emptinesses it is.
+ * one gate earlier, accounted for in no cell of it. The `seen` count
+ * `/api/simulate` has served since 2026-08-29 is drawn and named, and a tier
+ * reading `0 of 0` says which of the two emptinesses it is.
+ *
+ * **COLD IS NOW THE DEFAULT, AND WARM IS THE ONE A READER OPTS INTO**
+ * (2026-09-04, `TASK-the-budget-simulator-draws-no-rungs-because-the-seen-
+ * gate`, `plan:budget seq:12` — narrowing the ruling above, not repealing the
+ * control it built). The owner opened this screen against the session writing
+ * this very sentence — 519 seen-file lines, 136 unique ids — and every rung of
+ * every tier drew `sim.stair0seen`: the `seen` gate had removed 134 of this
+ * corpus's 143 injectable items (measured via `/api/select?event=session-start
+ * &cold=1`: `index.normative.length + spilled[tier=index].length + full[tier
+ * =pinned|continuity].length`) before any tier picked a candidate — 93.7% of
+ * the whole pool, not a corner of it. `cold=1` answered the same request with
+ * `pinned 36 of 36`, zero spills. The message was not lying and is unchanged;
+ * `select.ts`'s own `seen` gate (`RULE-filter-seen-before-budgeting`) worked
+ * exactly as built. What was wrong is what question this SCREEN asked BY
+ * DEFAULT.
+ *
+ * A budget simulator answers *what would be selected for this path under
+ * these budgets* — a question about the corpus and the config, not about any
+ * one reader's accumulated history. Folding a live session's `seen` set into
+ * that default makes the answer depend on who is asking and when, and a
+ * session need not be unusual to make it: it only has to run long enough,
+ * which every session does if given time — this one did, and the honest
+ * default answer became *nothing*, for every tier, for anyone who opened the
+ * screen while it stayed the active session. That is not a bug in the gate;
+ * it is the gate answering a question the simulator should never have handed
+ * it by default.
+ *
+ * **The seen-aware view is not removed — it is exactly the control
+ * `plan:walk seq:86` already built**, `#simq`'s two buttons, unchanged in
+ * markup, wiring and label. A reader who wants "what would THIS session get
+ * right now, already-delivered items excluded" presses the warm button, named
+ * by the session itself, precisely as before. What moved is only which of the
+ * two is pressed before anyone touches anything — `PICKED.mode` below.
  *
  * **The budget blocks below the table are `plan:budget seq:2, 3, 4 and 6`**,
  * built in that order because each assumes the last: a recommendation that
@@ -172,11 +204,23 @@ const RESERVE = 0.25;
  * resets it to warm (a language toggle, a return to the route) is answering a
  * question they had already left.
  *
- * `'live'` is the default and stays the default. `plan:walk seq:86`'s ruling,
- * inherited from the preview: cold is a second, equally legitimate question and
- * must be reachable and LABELLED, never silently substituted.
+ * **`'cold'` is the default here — deliberately NOT the preview's default, and
+ * the two screens are allowed to disagree** (`TASK-the-budget-simulator-draws-
+ * no-rungs-because-the-seen-gate`, `plan:budget seq:12`, 2026-09-04). The
+ * preview answers "what will THIS session actually receive", so a live
+ * session's history is the question, and warm-by-default is right for it. This
+ * screen answers "what would be selected for this path under these budgets" —
+ * a question about the corpus and the config, not about one reader's `seen`
+ * file — and defaulting it to a live session's history makes the default
+ * answer depend on who is asking and when, and eventually (measured on this
+ * repository: 134 of 143 injectable items, one long-running session) on
+ * nothing at all, for every tier, forever, until someone thinks to press the
+ * other button. `plan:walk seq:86`'s control is not undone by this: cold is
+ * still a second, equally legitimate question, still reachable and LABELLED,
+ * never silently substituted — it has simply swapped places with warm as the
+ * one a reader gets before touching anything.
  */
-const PICKED = { mode: 'live' };
+const PICKED = { mode: 'cold' };
 
 /**
  * The typed range maximum, validated — or `null`, which is a REFUSAL and never
@@ -650,11 +694,17 @@ export async function render(root, ctx) {
      `cold=1` answered `full: 25, spilled: 1`, and the fits table drew
      `restored 0 of 0` and `continuity 0 of 0` with no way to ask why.
 
-     **THE DEFAULT DOES NOT MOVE.** Warm is what the session in the strip would
-     actually be given now; cold is offered, LABELLED, and never silently swapped
-     in. That ruling was taken on the preview and it carries here unchanged: a
-     reader who cannot tell which of the two they are looking at is worse off
-     than one who could only ever see the first.
+     **THE DEFAULT MOVED ONCE, AND STAYS PUT: COLD, HERE, DELIBERATELY UNLIKE
+     THE PREVIEW** (`TASK-the-budget-simulator-draws-no-rungs-because-the-seen-
+     gate`, `plan:budget seq:12`, 2026-09-04 — see `PICKED`'s own docstring for
+     the measurement). The preview answers what THIS session gets now, so warm
+     is right for it and stays its default. This screen answers what would be
+     selected under a path and a budget, a question that must not depend on
+     which session happens to be open or how long it has been running — so cold
+     is its default instead. Neither question is removed and neither is hidden:
+     both buttons are drawn, both are labelled, and the pressed one says which
+     answer is on screen — a reader who cannot tell which of the two they are
+     looking at is worse off than one who could only ever see the first.
 
      The three strings are the design of record's own — `sess.cold`,
      `sess.coldn` and `preview.qwarmn`, already declared, already on screen one
@@ -1646,6 +1696,35 @@ export async function render(root, ctx) {
     };
   }
 
+  /**
+   * **Which spilled ids of ONE tier the agent already holds, and which it
+   * genuinely does not** — `plan:budget seq:9`
+   * (`TASK-the-budget-simulator-counts-spills-but-never-names-them-so`). The
+   * `Spills` column used to be a bare number: a reader learned that three
+   * items were dropped and never which three, so there was nothing to judge
+   * and nothing to act on.
+   *
+   * Both facts this joins already exist and are simply not joined: `/api/
+   * simulate` has served `selection.spilled` (WHICH ids) since Plan 1 and now
+   * serves `spillDelivered` (`read-model.ts`'s `alreadyDeliveredIds`) beside
+   * it — the ids among those spills the session's own seen file, or the
+   * continuity tier's own delivered-into-the-window set, already records as
+   * held. No selection logic lives here: this is two `Array#filter` calls
+   * over data one response already carried.
+   *
+   * `sim` is whichever of `both.compact`/`both.tool` actually ran this tier —
+   * the same selection `countFor` reads its counts from, so a row's list and
+   * its ratio can never disagree about which answer they are describing.
+   */
+  function spillGroups(sim, name) {
+    const mine = sim.selection.spilled.filter((s) => s.tier === name).map((s) => s.id);
+    const delivered = new Set(sim.spillDelivered ?? []);
+    return {
+      already: mine.filter((id) => delivered.has(id)),
+      absent: mine.filter((id) => !delivered.has(id)),
+    };
+  }
+
   function drawTable(both) {
     tbody.replaceChildren();
     let current = null;
@@ -1713,7 +1792,34 @@ export async function render(root, ctx) {
         if (counts.spills > 0) {
           const spillChip = el('span', 'chip warn', num(counts.spills));
           spillChip.dataset.g = '▲';
-          c4.append(spillChip);
+          /* ── THE SPILLED IDS, NAMED AND MARKED ────────────────────────────
+             `plan:budget seq:9`. The chip above says HOW MANY; this disclosure
+             says WHICH ones and whether each is worth acting on — `spillGroups`
+             joins `selection.spilled` against `spillDelivered`, both already on
+             this response. Collapsed by default (`<details>`, not `<div>`):
+             a tier can spill in the hundreds on this project's own corpus
+             (`governing_spill_pressure`'s own measurement), and a list that
+             long belongs behind a disclosure, not open in every row by default. */
+          const groups = spillGroups(sim, name);
+          const spillHelp = el('details');
+          const spillSummary = el('summary');
+          spillSummary.append(spillChip);
+          spillHelp.append(spillSummary);
+          if (groups.already.length > 0) {
+            const already = el('p', 'small');
+            already.append(...ctx.t('sim.spillHeld', {
+              n: num(groups.already.length), ids: groups.already.join(', '),
+            }));
+            spillHelp.append(already);
+          }
+          if (groups.absent.length > 0) {
+            const absent = el('p', 'small');
+            absent.append(...ctx.t('sim.spillAbsent', {
+              n: num(groups.absent.length), ids: groups.absent.join(', '),
+            }));
+            spillHelp.append(absent);
+          }
+          c4.append(spillHelp);
         } else {
           c4.append(mono('0'));
         }

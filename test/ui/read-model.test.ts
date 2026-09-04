@@ -58,7 +58,7 @@ import { resolveCarry } from '../../src/core/continuity.ts';
 import { computeDecay } from '../../src/core/decay.ts';
 import { topUpLedger } from '../../src/core/ledger-replay.ts';
 import {
-  reviewQueue, select, tiersRun, type SelectContext, type Selection,
+  reviewQueue, select, tiersRun, type SelectContext, type Selection, type Spill,
 } from '../../src/core/select.ts';
 import { appendSeen, readSeen, seenFilePath, seenIds } from '../../src/core/seen-file.ts';
 import { setSessionName } from '../../src/core/session-names.ts';
@@ -69,10 +69,10 @@ import { listRepoFiles, runChecks, type Finding } from '../../src/doctor/checks.
 import { commandList, helpTopic, HELP_TOPICS } from '../../src/help/index.ts';
 import { stageIn } from '../helpers/revisions.ts';
 import {
-  apiCoverage, apiDecay, apiDoctor, apiGraph, apiHelp, apiInjected, apiItem, apiItems, apiRender,
-  apiSelect, apiSessions, apiSimulate, apiSimulateSweep, apiStatus, coverageFiles,
-  COVERAGE_FILE_LIMIT, DECAY_WINDOW_DEFAULT, GRAPH_NODE_CAP, parseSelectQuery, SESSIONS_LIMIT,
-  UI_HELP_TOPICS, withStores,
+  alreadyDeliveredIds, apiCoverage, apiDecay, apiDoctor, apiGraph, apiHelp, apiInjected, apiItem,
+  apiItems, apiRender, apiSelect, apiSessions, apiSimulate, apiSimulateSweep, apiStatus,
+  coverageFiles, COVERAGE_FILE_LIMIT, DECAY_WINDOW_DEFAULT, GRAPH_NODE_CAP, parseSelectQuery,
+  SESSIONS_LIMIT, UI_HELP_TOPICS, withStores,
   type CoverageBody, type DecayBody, type DoctorBody, type GraphBody, type HelpBody,
   type InjectedBody, type ItemBody, type ItemsBody, type SessionsBody, type StatusBody,
 } from '../../src/ui/read-model.ts';
@@ -505,6 +505,98 @@ test('/api/simulate names the tiers this event actually reaches', () => {
     assert.equal(starvedBody.selection.full.length, 0);
     assert.ok(starvedBody.tiersRun.includes('pinned'),
       'an empty track and an absent tier are different facts');
+  } finally { f.done(); }
+});
+
+// --- 3b · alreadyDeliveredIds / spillDelivered (plan:budget seq:9) ---------
+
+/**
+ * `alreadyDeliveredIds` in isolation: a pure join over synthetic `Spill[]` and
+ * `SelectContext` values, no fixture and no server. `seen` and
+ * `continuityDelivered` are the two sources the docstring names, each
+ * exercised on its own so a future edit that drops one of them fails here
+ * rather than only in the harder-to-read endpoint test below.
+ */
+test('alreadyDeliveredIds marks a spilled id delivered when seen OR continuityDelivered has it, and only those', () => {
+  const spilled: Spill[] = [
+    { id: 'RULE-a', tier: 'pinned', reason: 'x' },
+    { id: 'RULE-b', tier: 'index', reason: 'x' },
+    { id: 'RULE-c', tier: 'continuity', reason: 'x' },
+  ];
+  // Neither source set: nothing can be already-delivered, and the function
+  // must not fabricate a claim from the ids alone.
+  assert.deepEqual(alreadyDeliveredIds(spilled, { event: 'session-start' }), []);
+
+  // `seen` alone.
+  assert.deepEqual(
+    alreadyDeliveredIds(spilled, { event: 'session-start', seen: ['RULE-a'] }),
+    ['RULE-a'],
+  );
+  // `continuityDelivered` alone — the OTHER channel, and `RULE-a` staying out
+  // proves this is not silently falling back to `seen`.
+  assert.deepEqual(
+    alreadyDeliveredIds(spilled, { event: 'session-start', continuityDelivered: ['RULE-c'] }),
+    ['RULE-c'],
+  );
+  // Both at once, sorted — membership is a union, and the order is not the
+  // input order (`RULE-c` precedes `RULE-a` there).
+  assert.deepEqual(
+    alreadyDeliveredIds(spilled, {
+      event: 'session-start', seen: ['RULE-a'], continuityDelivered: ['RULE-c'],
+    }),
+    ['RULE-a', 'RULE-c'],
+  );
+  // An id in `seen`/`continuityDelivered` that never spilled contributes
+  // nothing: this answers "which SPILLED ids are already held", not "what is
+  // in `seen`" restated.
+  assert.deepEqual(
+    alreadyDeliveredIds(spilled, { event: 'session-start', seen: ['RULE-not-spilled'] }),
+    [],
+  );
+});
+
+/**
+ * The endpoint, over a REAL index-tier spill — the one case (with `continuity`)
+ * where a spilled id can legitimately be `seen`, per `alreadyDeliveredIds`'s
+ * own docstring: `pinned`/`restored`/`jit` draw from `fresh` and can never
+ * spill a `seen` id by construction, so this deliberately does not test those
+ * three — a passing assertion there would prove nothing `select.ts` does not
+ * already guarantee structurally.
+ *
+ * `RULE-always-use-posix-paths` is marked delivered through a real seen-file
+ * append (what the hook writes), `RULE-never-log-the-customer-email` is not,
+ * and an `index=1` override starves the index tier so BOTH spill — the two
+ * genuinely different answers this join must tell apart.
+ */
+test('/api/simulate\'s spillDelivered names the spilled ids the seen file already holds, and only those', () => {
+  const f = fixture();
+  try {
+    const root = f.ws.projectRoot as string;
+    assert.equal(appendSeen(root, 'sess-1', [
+      { id: 'RULE-always-use-posix-paths', tier: 'jit', at: '2026-08-20T10:00:00.000Z' },
+    ]).written, true);
+
+    const warm = apiSimulate(f.ws, url('simulate', 'event=session-start&session=sess-1&index=1'));
+    assert.equal(warm.status, 200);
+    const warmBody = warm.body as {
+      selection: { spilled: { id: string; tier: string }[] };
+      spillDelivered: string[];
+    };
+    const indexSpills = warmBody.selection.spilled.filter((s) => s.tier === 'index').map((s) => s.id);
+    assert.deepEqual(
+      indexSpills.sort(),
+      ['RULE-always-use-posix-paths', 'RULE-never-log-the-customer-email'],
+      'the fixture must actually starve the index tier for both candidates, or this test proves nothing',
+    );
+    assert.deepEqual(warmBody.spillDelivered, ['RULE-always-use-posix-paths'],
+      'only the id the seen file records should read as already delivered');
+
+    // The cold reading of the SAME starved index: nothing has been shown to a
+    // brand-new window, so nothing spilled can be already-held — every id
+    // reads GENUINELY ABSENT, by construction.
+    const cold = apiSimulate(f.ws, url('simulate', 'event=session-start&cold=1&index=1'));
+    const coldBody = cold.body as { spillDelivered: string[] };
+    assert.deepEqual(coldBody.spillDelivered, []);
   } finally { f.done(); }
 });
 
@@ -1078,7 +1170,18 @@ test('/api/session/:session/injected serves a not-projected corpus, and takes no
     // is pinned, so a field added or dropped without a decision fails here.
     const result = apiInjected(f.ws, url('session/s1/injected', ''), { session: 's1' });
     assert.equal(result.status, 200);
-    assert.deepEqual(result.body, { lines: [], error: null, seen: 'absent' });
+    const body = result.body as InjectedBody;
+    // The whole shape, still pinned: `spills` is new (`plan:budget seq:13`,
+    // `TASK-the-already-in-context-split-only-appears-under-a-hand`) and its
+    // own error is asserted by pattern rather than by exact string, because the
+    // no-audit-projection message is `readSessionInjectionRecords`' wording and
+    // this test is not the place that pins it — `injected-endpoints.test.ts` is.
+    assert.deepEqual({ ...body, spills: { ...body.spills, error: null } }, {
+      lines: [], error: null, seen: 'absent',
+      spills: { alreadyInContext: [], genuinelyAbsent: [], error: null },
+    });
+    assert.match(String(body.spills.error), /mycontext audit/,
+      'a corpus with no `.audit/db` at all is UNMEASURED, not the zero the shape above stands in for');
     assert.equal(withStores(f.ws, (_store, ledger) => ledger), null,
       'and reading it did not create the ledger tables');
 

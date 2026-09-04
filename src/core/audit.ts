@@ -507,6 +507,80 @@ export const AUDIT_OPS: AuditOp[] = [
 ];
 
 /**
+ * **Which `hooks/hooks.json` EVENT wrote each op — the inverse of the scatter
+ * across `hooks/*.ts`, gathered once** (`TASK-the-audit-stream-does-not-
+ * show-every-hook-that-is-registered`, hooks/31).
+ *
+ * The task this table answers is *"has this REGISTERED hook ever fired"*,
+ * which `HOOK_OPS` and `INJECTION_OPS` cannot answer on their own: they are
+ * flat lists of ops, and an op's OWN comment states which binary writes it in
+ * prose, not in a structure a reader can look up. This is that lookup, keyed
+ * by the platform event name exactly as `hooks/hooks.json` spells it (and as
+ * `AuditRecord.hook` spells it), each naming every op that event can produce.
+ *
+ * **Two ops per key is not an oversight; it is where one event does two
+ * things.** `PreToolUse` both denies (`deny`) and injects (`jit`) and, since
+ * `agent-item-waived`, records a waived dispatch gate; `PostToolUse` both
+ * writes the capture nudge (`post-tool-use`) and records a dispatch
+ * (`agent-dispatched`); `SubagentStop` both closes a lane (`subagent-stop`)
+ * and backfills its steps (`agent-step`); `SessionStart` writes `session-start`
+ * on an ordinary start and `compact-restore` when it is resolving a
+ * compaction (`core/inject.ts` · `op: manual ? 'manual' : subagent ? 'subagent-start'` · ~898) —
+ * same hook, same `hook: 'SessionStart'` stamp, different op for a different
+ * cause.
+ *
+ * **`manual` is deliberately absent.** It is `core/inject.ts`'s third event,
+ * the `load_context` MCP tool, and `inject.ts` omits `hook` from that record
+ * entirely (`...(manual ? {} : { hook: … })`) because no `hooks.json`
+ * registration produced it — an MCP tool call is not a hook firing, and a
+ * table that claimed one for it would blame a registration for a call the
+ * platform never dispatched. This is why the table is keyed on the platform
+ * EVENT rather than built from `AUDIT_OPS` wholesale: `AUDIT_OPS` also holds
+ * `MUTATION_OPS`, `FOCUS_OPS`, `ACCESS_OPS`, `PROGRESS_OPS` and `EXECUTION_OPS`
+ * — none of them written by a hook at all — and folding those in here would
+ * answer "was this REGISTERED" for ops no registration could ever produce.
+ *
+ * **Completeness is asserted by a test, not by this comment.**
+ * `test/core/audit-registered-hooks.test.ts` holds `Object.keys` of this table
+ * to the event names `hooks/hooks.json` registers (in both directions), and
+ * holds the union of every op listed here to exactly `HOOK_OPS` plus
+ * `INJECTION_OPS` minus `manual` — so a new op added to either list without a
+ * line here, or a hook renamed in the manifest without a line here, fails a
+ * test rather than going stale in silence, which is the fate `ask.js`'s own
+ * header records for the sibling table this project already shipped without
+ * one (`ui/public/screens/ask.js` · `**What no browser-reachable endpoint serves at all:**` · ~860).
+ *
+ * **Duplicated, not imported, into `ui/public/screens/watch.js`.** A browser
+ * ES module cannot import this file — it pulls in `node:fs`, `node:path` and
+ * the rest of this project's server-side surface — so the registered-hooks
+ * panel that reads this vocabulary keeps its own copy, under the same name,
+ * and `test/ui/watch-registered-hooks.test.ts` holds the two to deep equality
+ * rather than trusting them not to drift, the same mitigation this project
+ * already applies to `hooks/hooks.json` itself in
+ * `test/hooks/hooks-manifest.test.ts`.
+ */
+export const REGISTERED_HOOK_OPS: Record<string, AuditOp[]> = {
+  SessionStart: ['session-start', 'compact-restore'],
+  SubagentStart: ['subagent-start'],
+  PreToolUse: ['deny', 'jit', 'agent-item-waived'],
+  SessionEnd: ['session-end'],
+  PreCompact: ['pre-compact'],
+  PostCompact: ['post-compact'],
+  PostToolUse: ['post-tool-use', 'agent-dispatched'],
+  PostToolUseFailure: ['post-tool-use-failure'],
+  FileChanged: ['file-changed'],
+  InstructionsLoaded: ['instructions-loaded'],
+  ConfigChange: ['config-change'],
+  PermissionDenied: ['permission-denied'],
+  SubagentStop: ['subagent-stop', 'agent-step'],
+  Stop: ['stop'],
+  Setup: ['setup'],
+  TaskCreated: ['task-created'],
+  TaskCompleted: ['task-completed'],
+  UserPromptExpansion: ['prompt-expansion'],
+};
+
+/**
  * Appended, never inserted. The order is what the CLI's `--kind` error and the
  * MCP tool's enum show a reader, and what `ui/port-model.ts` counts against; a
  * new kind slotted into the middle would silently renumber a list users read.

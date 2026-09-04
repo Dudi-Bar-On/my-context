@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: A tier reports how many items it dropped and never which, so a reader cannot see what was lost or whether it mattered.
-summary_of: 448b98e7244f97e8
+summary_of: ec584fc152667c83
 scope:
   - src/ui/public/screens/simulate.js
   - src/ui/read-model.ts
@@ -17,18 +17,19 @@ tags:
   - budget
   - "plan:budget"
   - "seq:9"
-  - "state:todo"
+  - "state:done"
 origin: human
 source_file: null
 source_anchor: null
 source_checksum: null
 valid_from: 2026-09-04
 valid_until: null
-checksum: 2ea1c140d43b38d2
+checksum: 32115947426228d5
 plan: budget
 seq: "9"
-state: todo
+state: done
 priority: "1"
+verified_on: 2026-09-04
 ---
 
 # the budget simulator counts spills but never names them, so nothing can be acted on
