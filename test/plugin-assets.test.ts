@@ -1150,10 +1150,32 @@ test('nothing instructs hand-editing an item\'s frontmatter', () => {
  * comment reached at every raise from 4000 onwards.
  *
  * Headroom is ~50 characters, as at every previous raise.
+ *
+ * **6440 -> 6666, and the 176 characters are one more name plus one clause.**
+ * `mycontext carry <id>` shipped the same day (owner ruling
+ * `TASK-no-command-delivers-one-item-at-the-next-injection-so-a`) and lands
+ * on the boundary the moment the probe sees `carry` accept `--yes`, so the
+ * derivation that holds both READMEs' §7 table now puts sixteen commands
+ * there rather than fifteen. The set equality above is what makes the name
+ * non-optional here for the reason every previous raise records: a member
+ * this file omits is a write the model believes it may make on the user's
+ * behalf, while the generated `commands/carry.md` — if one ever ships — or
+ * this skill itself would be the only place telling it otherwise.
+ *
+ * The clause is `carry`'s own: "marks one item for the very next injection
+ * and forgets it, whether or not the line fit — a one-shot override, not a
+ * second `always: true`". It earns its place the way `config`'s did — the
+ * name alone reads like a session-scoped `session carry`, and the failure it
+ * prevents is specific: an agent that marks an id on the user's behalf, believing
+ * it a harmless read, has changed what the very next session receives. Nothing
+ * already here was trimmed to buy the space back, the same conclusion this
+ * comment reached at every raise from 4000 onwards.
+ *
+ * Headroom is ~50 characters, as at every previous raise.
  */
 test('the skill stays small enough to load into every session', () => {
   const text = read('skills', 'mycontext', 'SKILL.md');
-  assert.ok(text.length <= 6440, `SKILL.md is ${text.length} chars`);
+  assert.ok(text.length <= 6666, `SKILL.md is ${text.length} chars`);
 });
 
 /**

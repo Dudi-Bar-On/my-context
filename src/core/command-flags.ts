@@ -46,11 +46,12 @@
  * ── WHAT IS HERE, AND WHAT IS DELIBERATELY NOT ─────────────────────────────
  *
  * MEASURED 2026-08-24, corrected 2026-08-30 and again 2026-09-04 (`mycontext config`,
- * `rulings/20` widened, shipped its own separable spec), over the **41** commands the CLI
- * dispatches: 34 registered by `cli/commands/index.ts`'s column of side-effect
+ * `rulings/20` widened, shipped its own separable spec, and `mycontext carry`, the same day,
+ * a one-shot delivery override with a flat spec of its own), over the **42** commands the
+ * CLI dispatches: 35 registered by `cli/commands/index.ts`'s column of side-effect
  * imports, and 7 more registered in `cli/index.ts` itself.
  *
- *   | 37 | have a SEPARABLE flag spec — a declarative list, liftable as it is |
+ *   | 38 | have a SEPARABLE flag spec — a declarative list, liftable as it is |
  *   |  0 | read their flags INLINE where they are used, with no spec to lift  |
  *   |  1 | resists: `edit`, whose accepted set is computed per workspace      |
  *   |  3 | take no flags at all — `show`, `rebuild`, `help`                   |
@@ -76,7 +77,7 @@
  * commands named as absent, plus the keys of `COMMAND_FLAGS`, must be exactly
  * the registered set, so a command cannot arrive and be silently uncounted.
  *
- * **32** of the 37 are here. Twenty-one arrived with the first lift, and they
+ * **33** of the 38 are here. Twenty-one arrived with the first lift, and they
  * are the ones whose spec was already a declarative constant over a FLAT
  * surface — one command, one flag set. The other four arrived with
  * `plan:builder seq:1b` and came out of `src/cli/index.ts` itself — the entry
@@ -92,11 +93,18 @@
  * change, it was measured against every invocation in this repository before it
  * was made, and the entries themselves carry the measurement.
  *
- * **`mycontext config` is the thirty-second entry, and the newest** — `rulings/20` widened,
+ * **`mycontext config` is the thirty-second entry** — `rulings/20` widened,
  * shipped 2026-09-04. It is a WRITTEN entry in the last five's sense (there
  * was no command to lift a spec from; `mycontext config` did not exist before
  * it), for a category-level `config.json` writer: `--delete` on a custom
  * category, `--disable` on either kind, both behind `--yes`.
+ *
+ * **`mycontext carry` is the thirty-third entry, and the newest** — the same
+ * day, owner ruling `TASK-no-command-delivers-one-item-at-the-next-injection-
+ * so-a`: a one-shot override for a spilled item, spent at the next injection.
+ * Born here, exactly as `mycontext config` is — the command did not exist
+ * before it — and flat like the `mycontext focus` entry above: one accepted
+ * set, three forms (`<id>`, `--show`, `--clear`) split in the command body.
  *
  * All nine are named in the map below and deliberately not here, because the
  * inventory test reads a backticked command name in this header as the claim
@@ -218,6 +226,16 @@ export const COMMAND_FLAGS: Record<string, FlagSpec> = {
     ],
     values: ['since', 'until', 'item', 'session', 'kind', 'op', 'origin', 'limit', 'role'],
   },
+  /**
+   * `mycontext carry <id> [--yes]` — owner ruling 2026-09-04, a one-shot
+   * override for a spilled item, spent at the next injection. Flat, like
+   * `focus`: one command, three forms sharing one accepted set, split in the
+   * body (`cli/commands/carry.ts`) rather than in this table, for the reason
+   * `focus`'s entry above states — `--yes` answers the two forms that WRITE
+   * (marking an id, `--clear`) and is refused BY NAME on `--show`, which only
+   * reports.
+   */
+  carry: { allowed: ['show', 'clear', 'json', 'yes'], values: [] },
   /**
    * `rulings/20` widened: `config <name> --delete|--disable [--yes]`, a
    * category-level `config.json` writer. `--delete` and `--disable` are bare
@@ -718,6 +736,24 @@ export const FLAG_DECLARATIONS: Record<string, FlagDeclarations> = {
     items: { note: 'Report by ITEM rather than by record - what was touched, and how often.' },
     sessions: { note: 'Report by SESSION rather than by record.' },
     files: { note: 'Report by FILE rather than by record.' },
+  },
+  carry: {
+    show: { note: 'Print what is currently queued for the next injection, and change nothing.' },
+    clear: { note: 'Withdraw every pending mark. None of them reach the next injection.' },
+    json: DETAIL.json,
+    /**
+     * **Not the shared `YES`, for `focus`'s own reason.** "Can change what
+     * governs this project with no human in the loop" is true of marking an id
+     * and of `--clear`, and false of `--show`, which only reports — so the
+     * shared note would advertise a confirmation on the one form that has none
+     * to answer. `cli/commands/carry.ts` refuses `--yes` by name on `--show`.
+     */
+    yes: {
+      note: 'Answer the confirmation on the two forms that WRITE - marking an id, and '
+        + '`--clear`. Refused by name on `--show`, which reports and changes nothing. This is '
+        + 'the approval boundary: anything holding a shell can type it, so the forms that take '
+        + 'it decide what the very next injection delivers with no human in that later loop.',
+    },
   },
   config: {
     delete: {

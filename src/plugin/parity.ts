@@ -139,6 +139,12 @@ export const CLI_WITHOUT_SLASH: Record<string, string> = {
     'every origin but `human`, and a slash command is a model typing the command - which is ' +
     'the one caller this write exists to exclude. It is read out of `mycontext doctor` and ' +
     'typed by the person who read it.',
+  carry: 'A one-shot override of what the very next injection delivers, spent whether or not ' +
+    'the marked id is admitted — owner ruling 2026-09-04, a judgement about NOW rather than ' +
+    'forever. It exists precisely because a person looked at what spilled and decided one ' +
+    'item was required; a slash command would let a model make that same call on its own, ' +
+    'the same reason `ack` has none. It is read out of the spilled-items list and typed by ' +
+    'the person who read it.',
   config: 'Edits the config that governs what every item of a category may declare, so its ' +
     'blast radius is the corpus rather than one item — which is why it prints the number of ' +
     'items a change would touch, and copies config.json aside before writing. Both exist to ' +
@@ -265,6 +271,16 @@ export interface ToolAbsence {
  * comparison and every self-check keyed to a row below.
  */
 export const CLI_WITHOUT_TOOL: Record<string, ToolAbsence> = {
+  carry: {
+    disposition: 'intended',
+    reason:
+      'Same fact `CLI_WITHOUT_SLASH.carry` cites: it exists so a PERSON can override the ' +
+      'next injection for one item they just decided is required, not so a model can do the ' +
+      'same on its own initiative. `cli/commands/carry.ts` stamps `setBy: \'human\'` at the ' +
+      'one call site that writes the mark, unconditionally — there is no `--agent` escape ' +
+      'hatch the way `mycontext lesson` has one — and a tool call would exist only to make ' +
+      'the same judgement the command is written to keep with a person.',
+  },
   ack: {
     disposition: 'intended',
     reason:

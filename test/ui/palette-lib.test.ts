@@ -345,6 +345,11 @@ const OFF_BOUNDARY: Record<string, string> = {
 };
 
 const NOT_IN_PALETTE: Record<string, string> = {
+  carry: 'marks one item for delivery at the very next injection, then forgets it — owner ruling '
+    + '2026-09-04, `TASK-no-command-delivers-one-item-at-the-next-injection-so-a`. It shipped as a '
+    + 'CLI command with no picker source of its own in this catalogue; giving it a palette entry '
+    + 'is future work for whichever plan adds the spilled-items picker it would read its target '
+    + 'from, not an omission here.',
   'inbox-promote': 'promotes a todo or note into a normative category — a promotion, and this '
     + 'plan routes promotion through the Work screen\'s review queue where the diff is visible. '
     + 'A second, quieter promotion path in the palette is a design decision, not an omission.',
@@ -988,6 +993,10 @@ const UNCATALOGUED: Record<string, string> = {
   'procedure list': 'a read the Procedures screen already renders from `/api/procedures`.',
   'procedure show': 'a read already rendered from `/api/procedure/:id`.',
   'procedure step': 'a write, held with the other two `procedure` subcommands.',
+  carry: 'a write with no screen yet. It shipped 2026-09-04 to mark one item for the next '
+    + 'injection, and the picker it needs — the spilled-items list a reader would select from — '
+    + 'is a separate, not-yet-landed surface; there is nothing for a catalogue entry to drive '
+    + 'until that list exists to compose against.',
   query: 'a read that takes SQL. Offering a text box that composes arbitrary SQL into a command '
     + 'line is a design decision about the Composer, not a missing row.',
   ready: 'a read with no screen. Readiness is derived per run and nothing in this UI renders it.',

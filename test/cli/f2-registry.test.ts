@@ -202,6 +202,16 @@ const SETUPS: Record<string, (cwd: string) => string[]> = {
     return [constraintId(added.out)];
   },
 
+  // A real item to mark, so the write path — the one that opens
+  // `openMutateContext` to look the id up and then again to write the mark —
+  // reaches `emitLoadErrors` on the success message rather than exiting
+  // early on a missing id. `--yes` because `confirmAction` refuses off a TTY.
+  carry: (cwd) => {
+    const added = run(['add', '--summary-omitted', 'constraint', 'An item to carry for the F2 guard', '--yes'], cwd);
+    plantUnrelatedCorruptItem(cwd);
+    return [constraintId(added.out), '--yes'];
+  },
+
   // `mycontext config <name> --delete|--disable [--yes]` (`rulings/20`).
   // `--disable` rather than `--delete` because it is legal on either a shipped
   // or a custom category and needs no custom category set up first; `--yes`

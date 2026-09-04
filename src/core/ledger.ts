@@ -932,3 +932,202 @@ export function scanTextIds(text: string, knownIds: Set<string> | null): string[
   }
   return [...found].sort();
 }
+
+// --- The one-shot carry: a judgement about NOW, spent at the next injection -
+//
+// Owner ruling 2026-09-04: a person who decides a SPILLING item is required
+// right now needs a way to say so without pricing the shared `pinned` tier
+// (`always: true`, competing there forever) and without `focus` narrowing
+// everything ELSE a session receives. `mycontext carry <id>` is that third
+// option — it marks one id, and the mark is consumed the next time an
+// injection runs, whether or not the corpus was already carrying something
+// from a previous session at that moment.
+//
+// **Never accumulates into a second, invisible pin.** The two open questions
+// the item names are answered here, not left to be inferred from behaviour:
+//
+//  1. **A carry nobody spends just waits.** This file holds a small, visible
+//     queue (`mycontext carry --show` reads it back) rather than a timer or a
+//     TTL. It does not expire on its own and it does not widen on its own —
+//     the only two things that change it are a person marking another id and
+//     an injection spending the whole queue at once. So it can sit for a day
+//     with nobody starting a session, and it costs nothing while it sits: no
+//     budget, no extra tier, nothing rendered. The day an injection finally
+//     runs, it is spent — never renewed, never reinforced by simply existing.
+//  2. **Carrying an item already in context is ALLOWED, not refused.** This
+//     module has no notion of "what a given session's window currently
+//     holds" — that is a per-session fact the seen file and the ledger track,
+//     and answering it here would mean re-deriving the spilled-items list a
+//     separate surface already owns, which is exactly the parallel store this
+//     file is written not to become. Marking an id that turns out to already
+//     be delivered costs one wasted front-of-queue index line, never a wrong
+//     answer, so the safer direction is to allow it and let the reader check
+//     first — the spilled-items list is where "is this actually missing"
+//     is answered, not here.
+//
+// **Reuses the `carried` machinery `core/select.ts` already has** — the
+// cross-session carry's OWN field (`SelectContext.carried`, `IndexLine.carried`,
+// `CarriedSummary`) — rather than a fourth tier: an id marked here is handed to
+// `select` as a `carried` entry exactly as a previous session's ids are, so it
+// gets the SAME front-of-queue placement in the bounded index, the SAME
+// disclosure when it is admitted, dropped or displaces one of this session's
+// own lines, and the SAME accounting in the audit log (`tier: 'carried'`,
+// `core/inject.ts`). No second disclosure format, no second budget rule.
+//
+// **A SEPARATE small store, not a parallel `carried`.** What is new here is
+// only the QUEUE of ids a person marked — a fact `core/continuity.ts`'s
+// session-scoped carry has no field for and must not be repurposed to hold,
+// because that store is one person's standing choice of WHICH SESSION to
+// continue and this is a one-shot list of WHICH ITEMS to force, cleared the
+// moment it is used. `core/inject.ts` is what turns the two into one
+// `SelectContext.carried` value per injection.
+
+export const CARRY_ONCE_PROTOCOL = 'mycontext-carry-once/1';
+
+/** `root` is the `.my_context` directory. */
+export function carryOncePath(root: string): string {
+  return path.join(root, 'state', 'carry-once.json');
+}
+
+/** One marked id, with who marked it and when — never invented, only read back. */
+export interface CarryOnceEntry {
+  id: string;
+  setAt: string;
+  setBy: 'human' | 'agent';
+}
+
+function readCarryOnceEntries(root: string): { entries: CarryOnceEntry[]; error: string | null } {
+  let raw: string;
+  try {
+    raw = readFileSync(carryOncePath(root), 'utf8');
+  } catch (err) {
+    if ((err as NodeJS.ErrnoException).code === 'ENOENT') return { entries: [], error: null };
+    return { entries: [], error: `could not be read (${(err as Error).message})` };
+  }
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(raw);
+  } catch (err) {
+    return { entries: [], error: `is not valid JSON (${(err as Error).message})` };
+  }
+  if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) {
+    return { entries: [], error: 'is not a JSON object' };
+  }
+  const store = parsed as { protocol?: unknown; ids?: unknown };
+  if (store.protocol !== CARRY_ONCE_PROTOCOL) {
+    return { entries: [], error: `declares protocol ${JSON.stringify(store.protocol)}, not ${CARRY_ONCE_PROTOCOL}` };
+  }
+  if (!Array.isArray(store.ids)) return { entries: [], error: 'carries no usable "ids" array' };
+  const entries: CarryOnceEntry[] = [];
+  for (const row of store.ids) {
+    if (typeof row === 'object' && row !== null && typeof (row as { id?: unknown }).id === 'string') {
+      const r = row as { id: string; setAt?: unknown; setBy?: unknown };
+      entries.push({
+        id: r.id,
+        setAt: typeof r.setAt === 'string' ? r.setAt : '',
+        setBy: r.setBy === 'agent' ? 'agent' : 'human',
+      });
+    }
+  }
+  return { entries, error: null };
+}
+
+/**
+ * What is currently marked, in the order it was marked. **Never throws** — a
+ * corrupt file degrades to "nothing is carried" and says so, the same
+ * direction every state file in `state/` fails.
+ */
+export function readCarryOnce(root: string): { ids: string[]; error: string | null } {
+  try {
+    const { entries, error } = readCarryOnceEntries(root);
+    return { ids: entries.map((e) => e.id), error };
+  } catch {
+    return { ids: [], error: null };
+  }
+}
+
+let carryOnceWriteCounter = 0;
+
+function writeCarryOnceEntries(root: string, entries: CarryOnceEntry[]): { written: boolean; error: string | null } {
+  const target = carryOncePath(root);
+  const dir = path.dirname(target);
+  const tmp = `${target}.tmp-${process.pid}-${carryOnceWriteCounter++}`;
+  try {
+    mkdirSync(dir, { recursive: true });
+    // Beside the file, on every write — the same reason `continuity.ts` and
+    // `focus.ts` write one here: `state/` may have no `.gitignore` yet if
+    // nothing else has written into it in this workspace.
+    writeFileSync(path.join(dir, '.gitignore'), '*\n', 'utf8');
+    const body = `${JSON.stringify({ protocol: CARRY_ONCE_PROTOCOL, ids: entries }, null, 2)}\n`;
+    writeFileSync(tmp, body, 'utf8');
+    retryOnTransientFsError(() => renameSync(tmp, target));
+    return { written: true, error: null };
+  } catch (err) {
+    try { rmSync(tmp, { force: true }); } catch { /* best effort */ }
+    return {
+      written: false,
+      error: `the carry queue could not be written (${(err as Error).message}), so nothing was recorded.`,
+    };
+  }
+}
+
+/**
+ * Marks one id for delivery at the next injection. **Idempotent**: marking an
+ * id already in the queue changes nothing and reports `already: true` rather
+ * than moving it to the back or duplicating it — the queue is a SET of ids
+ * with the order they were first marked, not a log of every time someone
+ * asked.
+ *
+ * Does not check whether `id` names a real item — the caller (`mycontext
+ * carry`) has the store open and refuses an unknown id before this is called,
+ * the same division `setCarrySource` draws with session ids.
+ */
+export function markCarryOnce(
+  root: string, id: string, actor: 'human' | 'agent',
+): { already: boolean; written: boolean; error: string | null } {
+  const { entries } = readCarryOnceEntries(root);
+  if (entries.some((e) => e.id === id)) return { already: true, written: false, error: null };
+  const next = [...entries, { id, setAt: new Date().toISOString(), setBy: actor }];
+  const { written, error } = writeCarryOnceEntries(root, next);
+  return { already: false, written, error };
+}
+
+/**
+ * Withdraws every pending mark, for `mycontext carry --clear`. Returns the ids
+ * that WERE pending, so the command can say what it removed rather than only
+ * that it removed something.
+ */
+export function clearCarryOnce(
+  root: string,
+): { ids: string[]; written: boolean; error: string | null } {
+  const { entries } = readCarryOnceEntries(root);
+  if (entries.length === 0) return { ids: [], written: true, error: null };
+  const { written, error } = writeCarryOnceEntries(root, []);
+  return { ids: entries.map((e) => e.id), written, error };
+}
+
+/**
+ * **Read and clear in one call — the one-shot half of the contract.** The
+ * only caller is `core/inject.ts`, once per injection, and it calls this
+ * whether or not the ids it gets back end up admitted anywhere: a mark is
+ * spent by being OFFERED to `select` at the next injection, not by being
+ * delivered. `select` still decides, under budget, exactly as it does for a
+ * cross-session carry — `CarriedSummary.dropped` is how a mark that spilled
+ * anyway is disclosed, and it is disclosed exactly where a cross-session
+ * carry's drop already is, because both travel through the same `carried`
+ * field.
+ *
+ * A read that fails (corrupt file) spends nothing and reports the error
+ * rather than throwing — `INV-hooks-fail-open`: a broken carry queue must
+ * cost the carry, never the injection.
+ */
+export function spendCarryOnce(root: string): { ids: string[]; error: string | null } {
+  try {
+    const { entries, error } = readCarryOnceEntries(root);
+    if (entries.length === 0) return { ids: [], error };
+    const { error: writeError } = writeCarryOnceEntries(root, []);
+    return { ids: entries.map((e) => e.id), error: writeError ?? error };
+  } catch (err) {
+    return { ids: [], error: (err as Error).message };
+  }
+}

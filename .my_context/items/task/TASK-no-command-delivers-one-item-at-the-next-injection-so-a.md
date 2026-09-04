@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: A reader who decides a dropped item is needed has no way to send it, because the only tools are permanent or reshape everything else.
-summary_of: d05c75bff085f34b
+summary_of: 86011cf24a8ad33a
 scope:
   - src/cli/commands/**
   - src/core/ledger.ts
@@ -18,18 +18,19 @@ tags:
   - budget
   - "plan:budget"
   - "seq:10"
-  - "state:todo"
+  - "state:done"
 origin: human
 source_file: null
 source_anchor: null
 source_checksum: null
 valid_from: 2026-09-04
 valid_until: null
-checksum: 47b168e010dbc5fe
+checksum: ce27e50f5a7f47c9
 plan: budget
 seq: "10"
-state: todo
+state: done
 priority: "2"
+verified_on: 2026-09-04
 ---
 
 # no command delivers one item at the next injection, so a spilled item cannot be recovered deliberately

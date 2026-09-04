@@ -117,6 +117,9 @@ const BORN_HERE: Record<string, string> = {
   config: 'cli/commands/config.ts — the command itself is newer than this module (rulings/20 '
     + 'widened, shipped 2026-09-04), so its spec was authored here and has never lived '
     + 'anywhere else.',
+  carry: 'cli/commands/carry.ts — the command itself is newer than this module (owner ruling '
+    + '2026-09-04, a one-shot carry spent at the next injection), so its spec was authored '
+    + 'here and has never lived anywhere else.',
 };
 
 /**
