@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: An agent can be sent to do work the corpus has no record of, and only good intentions prevent it.
-summary_of: 71f8eadf21d338cc
+summary_of: 90a3ac9bec9db5bd
 scope:
   - hooks/hooks.json
   - src/hooks/pre-tool-use.ts
@@ -18,18 +18,19 @@ tags:
   - tracking
   - "plan:hooks"
   - "seq:28"
-  - "state:todo"
+  - "state:done"
 origin: human
 source_file: null
 source_anchor: null
 source_checksum: null
 valid_from: 2026-09-04
 valid_until: null
-checksum: 193b2f1c8824463a
+checksum: 78e44571690d9138
 plan: hooks
 seq: "28"
-state: todo
+state: done
 priority: "1"
+verified_on: 2026-09-04
 ---
 
 # nothing stops a subagent being dispatched for work that has no task item

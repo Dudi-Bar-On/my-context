@@ -13,11 +13,13 @@ import { appendSeen, readSeen, seenIds } from '../core/seen-file.ts';
 import { injectableTypes, select } from '../core/select.ts';
 import { Store } from '../core/store.ts';
 import type { Item } from '../core/types.ts';
+import { isUsableId } from '../core/vocabulary.ts';
 import { resolveWorkspace } from '../core/workspace.ts';
 import {
   hookParseErrorLine, ledgerKey, parseHookInput, preToolUseContext, preToolUseDeny, readStdin,
   type HookInput,
 } from './io.ts';
+import { capped, NOTE_MAX } from './observe.ts';
 
 const FILE_PATH_KEYS = ['file_path', 'path', 'notebook_path'];
 
@@ -444,6 +446,186 @@ function recordDeny(input: HookInput, cwd: string, abs: string): void {
   });
 }
 
+// ---------------------------------------------------------------------------
+// AGENT DISPATCH GATE — TASK-nothing-stops-a-subagent-being-dispatched-for-
+// work-that-has. `hooks.json`'s `PreToolUse` matcher now includes `Agent` and
+// nothing else (the note above `buildJitOutput` records why a `Bash` widening
+// was tried and reverted, and why that ruling does not reach this one: an
+// `Agent` payload is a structured tool call with a `prompt` field, not a
+// shell string with no shape a hook can decide).
+//
+// **CONFIG GATED, DEFAULT OFF** — `config.ts`'s `dispatchGate.enabled`,
+// `false` unless a workspace's own `config.json` says otherwise. Installing
+// my_context must never start refusing a project the subagents it has always
+// dispatched, so resolving this key with nobody having written it costs a
+// workspace nothing — the same argument `HandoverConfig` makes for reading a
+// file nobody asked it to read, applied here to refusing a dispatch nobody
+// asked it to refuse.
+//
+// **WHICH FIELD IS READ, AND WHY.** The `Agent` tool's payload carries both
+// `tool_input.description` — "a short (3-5 word) description of the task",
+// by the tool's own schema — and `tool_input.prompt`, the task itself. A
+// three-to-five-word label has no room to carry an id reliably; this
+// project's own dispatches write the item id inside the PROMPT, in prose,
+// exactly as the prompt that dispatched the work behind this very task did.
+// `prompt` is read; `description` is not.
+//
+// **WHAT COUNTS AS A REFERENCE.** `vocabulary.ts`'s own `ID_GRAMMAR` /
+// `isUsableId` decide the CHARACTER shape, reused rather than re-specified —
+// but that grammar alone accepts any run of letters, digits, `.`, `_` and
+// `-`, so "the", "subagent" and "well-designed" all pass it. Scanning a
+// prompt for it bare would report ordinary prose as a near-miss "item" on
+// every dispatch, which is worse than silence: a refusal quoting
+// "well-designed" as "not an id this corpus has" teaches nothing about the
+// gate it names, and is exactly the "fires on a quotation" failure a gate
+// like this has to avoid. `AGENT_ID_TOKEN` below additionally requires the
+// shape every id in this corpus already has — an ALL-CAPS run before the
+// first hyphen, which is what `makeId` (slug.ts) mints every category prefix
+// as — before a token is even asked whether it is grammar-valid.
+//
+// **EXISTENCE IS REQUIRED, MEASURED RATHER THAN ASSUMED.** A token shaped
+// like an id is not proof one exists: this corpus's own `TASK-…` grammar
+// admits a typo as easily as a real id, and catching exactly that typo is
+// the whole point of a gate that is supposed to teach something a shape
+// check cannot. Confirming existence costs one indexed primary-key lookup —
+// `Store.get`, the same class the JIT tier already opens on every tool call
+// — measured on this repository's own ~650-item, 3.7 MB index at
+// p50 3.1 ms / p95 4.0 ms / max 14.7 ms for a full
+// open-plus-two-lookups-plus-close cycle (200 runs), well inside any
+// PreToolUse budget this project has set for anything else on this path.
+// Existence checking is therefore the only mode: a well-formed id that does
+// not exist is refused exactly as an absent one is, naming the id so a typo
+// is visible rather than silently waved through.
+//
+// **FAIL OPEN, BY CONSTRUCTION RATHER THAN A LOCAL CATCH.** Nothing below
+// catches its own failure. `resolveWorkspace` can throw on a broken
+// `config.json`; `Store.openReadOnlyChecked` throws on a missing, stale or
+// corrupt index. Both are left to escape to `runPreToolUse`'s own try/catch
+// — already `INV-hooks-fail-open`'s mechanism for every other check on this
+// path — rather than caught here a second time: a corpus this cannot read
+// must never turn into a refusal, and the existing catch already gives that
+// for free. `denyReason`/`recordDeny` above are the file-write precedent
+// this follows for the deny shape and the audit row; the two differ only in
+// what they are refusing.
+// ---------------------------------------------------------------------------
+
+/**
+ * A prompt token shaped like an item id this corpus actually mints:
+ * `vocabulary.ts`'s own grammar, narrowed to the ALL-CAPS-prefix-then-hyphen
+ * shape every id here has. See the header comment above for why the bare
+ * grammar is too wide to scan prose with.
+ */
+const AGENT_ID_TOKEN = /[A-Z][A-Z0-9]{0,14}-[A-Za-z0-9._-]*[A-Za-z0-9]/g;
+
+/**
+ * The escape hatch: a phrase written deliberately into the prompt, case
+ * insensitive, the reason running to the end of its line — this project's
+ * own shape for an audited exception (`--summary-unchanged`, `ack --all`): a
+ * named phrase rather than a silent one.
+ */
+const NO_ITEM_HATCH = /no-item\s*:\s*(.+)/i;
+
+/**
+ * Every id-shaped token in `text`, deduplicated, in the order it appears.
+ * Reuses `isUsableId` rather than re-deriving its rule — the `..` exclusion
+ * in particular is not restated here.
+ */
+export function candidateItemIds(text: string): string[] {
+  const seen = new Set<string>();
+  const out: string[] = [];
+  for (const token of text.match(AGENT_ID_TOKEN) ?? []) {
+    if (seen.has(token) || !isUsableId(token)) continue;
+    seen.add(token);
+    out.push(token);
+  }
+  return out;
+}
+
+/**
+ * Whether ANY of `ids` exists in the index at `dbPath` — short-circuits on
+ * the first hit, since one real item is all a dispatch needs to proceed.
+ * Throws on a missing, stale or corrupt index; see this section's header
+ * comment for why that is deliberate rather than a gap left uncaught.
+ */
+function corpusHasAny(dbPath: string, ids: string[]): boolean {
+  if (ids.length === 0) return false;
+  const store = Store.openReadOnlyChecked(dbPath);
+  try {
+    return ids.some((id) => store.get(id) !== null);
+  } finally {
+    store.close();
+  }
+}
+
+/**
+ * The refusal text — `STD-error-message-conventions`: prefixed once, and it
+ * says both which item is missing and what to do about it.
+ */
+export function agentDenyMessage(candidates: string[]): string {
+  const hatch = 'write `no-item: <reason>` in the prompt and the dispatch proceeds with the ' +
+    'reason recorded in the audit log';
+  if (candidates.length === 0) {
+    return 'my_context: this Agent dispatch names no task item — nothing shaped like an id ' +
+      '(PREFIX-slug, e.g. TASK-<slug>) appears in the prompt, so there is no record of what ' +
+      `this work is for. Name the item this work is for in the prompt, or ${hatch}.`;
+  }
+  const named = candidates.join(', ');
+  return 'my_context: this Agent dispatch names ' +
+    (candidates.length === 1
+      ? `${named}, which is not an id this corpus has`
+      : `${named}, none of which is an id this corpus has`) +
+    ` — check for a typo (\`mycontext show <id>\`), name a real item in the prompt, or ${hatch}.`;
+}
+
+/**
+ * The verdict for an `Agent` dispatch: `''` when it proceeds with nothing
+ * recorded (the gate is off, there is no workspace, or a real item was
+ * named), or the full `preToolUseDeny` envelope when it is refused. The
+ * escape hatch and the refusal each write their own audit row before
+ * returning — the same split `denyReason`/`recordDeny` make above, for the
+ * same reason: a decision function that also has side effects is a decision
+ * a caller cannot preview.
+ */
+function agentDispatchVerdict(input: HookInput, cwd: string): string {
+  const ws = resolveWorkspace(cwd);
+  if (!ws.config.dispatchGate.enabled) return '';
+  if (!ws.projectRoot) return '';
+
+  const promptValue = input.tool_input?.prompt;
+  const prompt = typeof promptValue === 'string' ? promptValue : '';
+  const candidates = candidateItemIds(prompt);
+  if (corpusHasAny(ws.dbPath, candidates)) return '';
+
+  const hatch = NO_ITEM_HATCH.exec(prompt);
+  const reason = hatch ? hatch[1].trim() : '';
+  if (reason !== '') {
+    // `recordAudit` never throws; a failure here cannot turn an allowed
+    // dispatch into a refused one.
+    recordAudit(ws.projectRoot, {
+      kind: 'hook',
+      op: 'agent-item-waived',
+      hook: 'PreToolUse',
+      ...(input.session_id === undefined ? {} : { sessionId: input.session_id }),
+      note: capped(reason, NOTE_MAX),
+    });
+    return '';
+  }
+
+  recordAudit(ws.projectRoot, {
+    kind: 'hook',
+    op: 'deny',
+    hook: 'PreToolUse',
+    ...(input.session_id === undefined ? {} : { sessionId: input.session_id }),
+    note: capped(
+      candidates.length === 0
+        ? 'Agent dispatch refused — no task item named'
+        : `Agent dispatch refused — named ${candidates.join(', ')}, none found`,
+      NOTE_MAX,
+    ),
+  });
+  return preToolUseDeny(agentDenyMessage(candidates));
+}
+
 /** Returns the JSON to print on stdout, or '' for "no opinion". */
 export function runPreToolUse(raw: string, fallbackCwd: string): string {
   try {
@@ -460,6 +642,11 @@ export function runPreToolUse(raw: string, fallbackCwd: string): string {
     const { input, parseError } = parseHookInput(raw);
     if (parseError !== null) process.stderr.write(hookParseErrorLine(parseError));
     const cwd = input.cwd ?? fallbackCwd;
+
+    // `Agent` has no `file_path` at all, so the guard below would already
+    // treat it as "no opinion" — this branch runs first so the dispatch gate
+    // gets a chance to have one instead.
+    if (input.tool_name === 'Agent') return agentDispatchVerdict(input, cwd);
 
     const filePath = extractFilePath(input);
     if (!filePath) return '';

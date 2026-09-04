@@ -493,6 +493,42 @@ export function handoverThresholdPercent(handover: HandoverConfig): number {
   return handover.thresholdPercent ?? DEFAULT_HANDOVER_THRESHOLD_PERCENT;
 }
 
+/**
+ * Whether an `Agent` dispatch must name a task item this corpus has, or state
+ * the escape hatch instead — TASK-nothing-stops-a-subagent-being-dispatched-
+ * for-work-that-has. `src/hooks/pre-tool-use.ts` is this key's one reader; see
+ * its own header comment on the gate for what "name a task item" means and
+ * why existence is checked rather than shape alone.
+ *
+ * **DEFAULT OFF, and that is `handover`'s direction, not `ui.enabled`'s, and
+ * for the same reason `handover` gives.** `ui.enabled` may default to
+ * permitted because granting a permission nobody had withheld costs a
+ * workspace nothing. This key's one reader REFUSES a tool call it used to let
+ * through — the owner's own words, given while asking for this mechanism,
+ * were that installing my_context "should never suddenly start refusing a
+ * project the subagents it has always dispatched" — so resolving this key
+ * with nobody having turned it on must change nothing, exactly as resolving
+ * `handover` with nobody having named a document must read nothing.
+ *
+ * **An object, and not a bare `"dispatchGate": true`, for `UiConfig`'s own
+ * reason stated at its own declaration**: the first setting this gate grows
+ * that is not a yes/no — how strict the id match is, whether existence is
+ * required — would otherwise force every already-written `config.json` to
+ * change shape rather than gain a key. Nothing else is configurable today;
+ * `DISPATCH_GATE_KEYS` in `requireDispatchGate` is the one place that grows
+ * if that changes.
+ */
+export interface DispatchGateConfig {
+  enabled: boolean;
+}
+
+/**
+ * OFF. `resolveConfig({})` — every workspace that has never heard of this key
+ * — resolves here, which is the whole point: see `DispatchGateConfig`'s own
+ * doc for why the direction is `handover`'s and not `ui.enabled`'s.
+ */
+export const DEFAULT_DISPATCH_GATE: DispatchGateConfig = { enabled: false };
+
 export interface Config {
   profile: ProfileName;
   categories: Record<string, ResolvedCategory>;
@@ -508,6 +544,15 @@ export interface Config {
    * and a consumer that wants to act has to narrow the `null` away first.
    */
   handover: HandoverConfig | null;
+  /**
+   * Whether an `Agent` dispatch must name a task item — see
+   * `DispatchGateConfig` for the default and the direction it defaults in.
+   * An object rather than `HandoverConfig`'s `| null`, because unlike
+   * `handover` this key does not make the product start reading a file
+   * nobody named: `enabled: false` (the default) says the same thing `null`
+   * would, and the object shape is `ui.enabled`'s for that reason.
+   */
+  dispatchGate: DispatchGateConfig;
   /**
    * The top-level keys this build did not understand, in the order the file
    * wrote them — R14.2's half of INV-nothing-is-dropped-silently. Empty for
@@ -977,7 +1022,14 @@ export function extraFieldNames(config: Config): string[] {
  * unchanged, and the one call site that asks `.includes` of an arbitrary string
  * widens it back at the call rather than weakening the type for every reader.
  */
-export const TOP_LEVEL_KEYS = ['profile', 'categories', 'budgets', 'watchedDocs', 'ui', 'handover'] as const;
+export const TOP_LEVEL_KEYS = [
+  'profile', 'categories', 'budgets', 'watchedDocs', 'ui', 'handover',
+  // Appended 2026-09-04, moving no existing member — the same discipline
+  // `HOOK_OPS` (core/audit.ts) holds for an appended op, for the same
+  // reader-facing reason: this list's order is what the CLI's and the MCP
+  // schema's config surfaces show, derived from it rather than sorted.
+  'dispatchGate',
+] as const;
 
 /**
  * Every key the `ui` section may carry — the `CATEGORY_KEYS` shape again, and
@@ -1251,6 +1303,64 @@ function requireHandover(raw: unknown): HandoverConfig | null {
     budgetTokens: budget,
     ...(threshold === undefined ? {} : { thresholdPercent: threshold }),
   };
+}
+
+/**
+ * Every key the `dispatchGate` section may carry — the `UI_KEYS` shape again,
+ * and kept as its own list for the reason every such list in this file is:
+ * a key nobody reads used to be accepted and dropped in silence. One member
+ * today; extend this list and the check below together, the same pairing
+ * `UI_KEYS`/`requireUi` document.
+ */
+const DISPATCH_GATE_KEYS = ['enabled'];
+
+/**
+ * The `dispatchGate` section: whether an `Agent` dispatch must name a task
+ * item. See `DispatchGateConfig` for the default and the direction.
+ *
+ * Absent resolves to `DEFAULT_DISPATCH_GATE` — OFF — which is what keeps a
+ * `config.json` written before this key existed dispatching exactly as it
+ * always has. Everything else about this section is REFUSED rather than
+ * skipped, on `requireUi`'s own boundary: R14.2 makes an unknown TOP-LEVEL
+ * key survivable because the file may be newer than this build, but
+ * `dispatchGate` is a known block, and `{"dispatchGate": {"enabld": true}}`
+ * has no reading in which the user meant something this build could honour.
+ * The failure direction is one-way, same as `ui`'s: a sub-key accepted and
+ * dropped leaves a user who turned the gate ON believing it is on while
+ * every dispatch is still waved through.
+ */
+function requireDispatchGate(raw: unknown): DispatchGateConfig {
+  if (raw === undefined) return { ...DEFAULT_DISPATCH_GATE };
+  if (!isObject(raw)) {
+    throw new Error(
+      `my_context: "dispatchGate" is ${JSON.stringify(raw)}, not an object. Expected ` +
+      `{"dispatchGate": {"enabled": true}} to require a task item on every Agent dispatch, ` +
+      `or no "dispatchGate" key at all to leave dispatch ungated. Nothing was loaded — a ` +
+      `setting that cannot be acted on is refused rather than ignored.`,
+    );
+  }
+  const unknown = Object.keys(raw).filter((key) => !DISPATCH_GATE_KEYS.includes(key));
+  if (unknown.length > 0) {
+    throw new Error(
+      `my_context: dispatchGate declares ${unknown.map((k) => JSON.stringify(k)).join(', ')}, ` +
+      `which ${unknown.length === 1 ? 'is not a key' : 'are not keys'} this config ` +
+      `understands. dispatchGate accepts: ${DISPATCH_GATE_KEYS.join(', ')}. Nothing was ` +
+      `loaded — accepting the key and keeping the default would mean a user who turned the ` +
+      `gate on still has every dispatch waved through.`,
+    );
+  }
+  const gate: DispatchGateConfig = { ...DEFAULT_DISPATCH_GATE };
+  if (raw.enabled !== undefined) {
+    if (typeof raw.enabled !== 'boolean') {
+      throw new Error(
+        `my_context: dispatchGate.enabled is ${JSON.stringify(raw.enabled)}. Expected true ` +
+        `or false. Nothing was loaded — every non-boolean is truthy or falsy by accident, and ` +
+        `guessing which would decide whether an untracked dispatch is refused or let through.`,
+      );
+    }
+    gate.enabled = raw.enabled;
+  }
+  return gate;
 }
 
 const BUDGET_KEYS = Object.keys(DEFAULT_BUDGETS) as (keyof Budgets)[];
@@ -1613,6 +1723,7 @@ export function resolveConfig(raw: unknown): Config {
     // `null` when the key is absent, which is the feature switched off. See
     // `requireHandover` for why this key defaults the other way to `ui`.
     handover: requireHandover(input.handover),
+    dispatchGate: requireDispatchGate(input.dispatchGate),
     skippedKeys,
   };
 }
