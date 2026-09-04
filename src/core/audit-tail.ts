@@ -150,10 +150,15 @@ function sizeOf(file: string): number {
  * `parseAudit` a fragment and turn a bounded scan into a refusal.
  *
  * Line NUMBERS in anything `parseAudit` then throws are relative to the slice
- * rather than to the file. Stated rather than corrected: the message names the
- * file and the reason, which is what a reader acts on, and re-deriving absolute
- * line numbers would mean counting newlines from 0 — the whole cost the bound
- * exists to avoid.
+ * rather than to the file — re-deriving the absolute number would mean
+ * counting newlines from 0 on every refusal, the whole cost the bound exists
+ * to avoid, so this is still not corrected. **It is now DISCLOSED rather than
+ * silently wrong**: both call sites below pass `windowed: true` whenever
+ * `from > 0`, so `parseAudit`'s own refusal says plainly that its line number
+ * is an offset into a bounded window, not the file's own count
+ * (`TASK-a-server-older-than-the-data-on-disk-calls-the-audit-log` — the
+ * owner's false alarm read line 18 of a tail window as line 18 of a 650-line
+ * file, when the real line was 644).
  */
 function readTailSlice(file: string, from: number, end: number): string {
   if (end <= from) return '';
@@ -243,7 +248,10 @@ export class AuditTail {
       const from = Math.max(0, end - budget);
       budget -= end - from;
       const text = readTailSlice(file, from, end);
-      if (text !== '') collected.unshift(...parseAudit(text, file));
+      // `windowed: from > 0` — a read starting at byte 0 carries the file's
+      // real line numbers; one that does not is the mid-file slice this
+      // module's own header already warns about (see `parseAudit`).
+      if (text !== '') collected.unshift(...parseAudit(text, file, from > 0));
       if (from > 0) {
         reachedStart = false; // the bound cut this segment short
         break;
@@ -294,7 +302,9 @@ export class AuditTail {
       // everything in it was appended after this tail was constructed.
       const offset = this.#offsets.get(file) ?? 0;
       const { text, consumed } = readCompleteLines(file, Math.max(0, offset));
-      if (text !== '') records.push(...parseAudit(text, file));
+      // Same `windowed` rule as the backlog scan above: `offset > 0` is a
+      // mid-file read, and its line numbers are the slice's, not the file's.
+      if (text !== '') records.push(...parseAudit(text, file, offset > 0));
       this.#offsets.set(file, consumed);
     }
     return { records, resync: false };

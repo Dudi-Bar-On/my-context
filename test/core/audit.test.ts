@@ -255,6 +255,57 @@ test('an unknown op is refused by name, so a vocabulary change cannot pass unnot
   b.dispose();
 });
 
+// TASK-a-server-older-than-the-data-on-disk-calls-the-audit-log:
+// reproduces the owner's false alarm ("the audit log ... cannot be trusted —
+// line 18") and pins the fix. A row whose OWN "at" is after this reading
+// process started could not have existed when the process booted, so an
+// unrecognised op on that row is version skew — the process is the stale
+// half, not the log — and the message must say so instead of "cannot be
+// trusted". A row from BEFORE the process started still reads as a genuine
+// refusal (previous test), because this process had every chance to know
+// its vocabulary already.
+test('an unknown op on a row written AFTER this process started blames the reader, not the log', () => {
+  const b = box();
+  recordAudit(b.root, { kind: 'mutation', op: 'create', origin: 'human', itemId: 'A-a' });
+  const future = new Date(Date.now() + 60 * 60 * 1000).toISOString(); // +1h: after "now"
+  appendFileSync(
+    auditLogPath(b.root),
+    JSON.stringify({
+      protocol: AUDIT_PROTOCOL, at: future, kind: 'mutation', op: 'teleport',
+    }) + '\n',
+    'utf8',
+  );
+  assert.throws(() => readAudit(b.root), (err: Error) => {
+    // The false alarm this reproduces: readers must NOT see "cannot be trusted".
+    assert.doesNotMatch(err.message, /cannot be trusted/);
+    // The true message: names the running code as the suspect, and says to restart.
+    assert.match(err.message, /this process/i);
+    assert.match(err.message, /restart/i);
+    assert.match(err.message, /declares op "teleport"/);
+    return true;
+  });
+  b.dispose();
+});
+
+test('a row that fails validation for a reason OTHER than an unknown op/kind is still refused as damaged', () => {
+  const b = box();
+  recordAudit(b.root, { kind: 'mutation', op: 'create', origin: 'human', itemId: 'A-a' });
+  const future = new Date(Date.now() + 60 * 60 * 1000).toISOString();
+  appendFileSync(
+    auditLogPath(b.root),
+    // A well-formed, FUTURE-dated row that is missing "op" entirely is not a
+    // vocabulary question at all — the reader-is-stale reasoning must not
+    // swallow every kind of bad row, only the closed-vocabulary one.
+    JSON.stringify({ protocol: AUDIT_PROTOCOL, at: future, kind: 'mutation' }) + '\n',
+    'utf8',
+  );
+  assert.throws(() => readAudit(b.root), (err: Error) => {
+    assert.match(err.message, /cannot be trusted/);
+    return true;
+  });
+  b.dispose();
+});
+
 test('a whole-file torn write heals to an empty log rather than wedging it', () => {
   const b = box();
   mkdirSync(auditDir(b.root), { recursive: true });

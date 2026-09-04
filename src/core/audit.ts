@@ -1254,31 +1254,128 @@ export function auditSegments(root: string): string[] {
   return out;
 }
 
-function specFor(file: string) {
+/**
+ * When THIS process began — approximated from `process.uptime()` rather than
+ * the moment this module happened to be evaluated, so a late `import` of
+ * `audit.ts` still reports the process's real age. Captured once, at module
+ * evaluation, and never refreshed: `refuse` below asks "could this process
+ * have already known this row when it started", and the answer to that can
+ * only ever be about the process's ACTUAL start, not about whenever this
+ * particular check first ran.
+ */
+const READER_STARTED_AT = new Date(Date.now() - process.uptime() * 1000).toISOString();
+
+/**
+ * `specFor`'s validator refuses two structurally different things through the
+ * same `string | null` contract `JsonlLogSpec` gives every caller, and this is
+ * how the two are told apart on the way to `refuse` without widening that
+ * contract for every other log in this codebase.
+ *
+ * **Reason for existing (`TASK-a-server-older-than-the-data-on-disk-calls-the-audit-log`,
+ * reported by the owner 2026-09-04):** a running server freezes its modules at
+ * start, `AUDIT_OPS` is a CLOSED list defined in THIS file, and this file gains
+ * a member the moment a lane ships one — which happens while long-lived readers
+ * (the UI server, the MCP server) keep running the list as it stood when they
+ * booted. Two new ops landed the same day this was reported
+ * (`agent-dispatched`, `subagent-stop-untyped`), so any such reader started
+ * before either one is, right now, in exactly the state that produced the false
+ * alarm: "the audit log ... cannot be trusted — line 18", pointing at a
+ * perfectly well-formed row.
+ *
+ * **The signal, and why it is THIS one and not `code-identity.ts`'s.**
+ * `stampCodeIdentity`/`isStale()` answers the identical question — has the
+ * source this process loaded fallen behind the source now on disk — and is
+ * consulted rather than reinvented in spirit: same "compare what I loaded
+ * against what is on disk now" shape. But its own module graph plus
+ * content-hash walk is priced for a server that pays it once per minute
+ * (`server.ts`'s heartbeat) or once per request against an already-derived
+ * scope — not for a hook binary that is a FRESH PROCESS on every single tool
+ * call (`INV-hooks-fail-open`; `PostToolUse` alone now matches `Bash|Read|Grep`
+ * and this project's own probe measured 5,460 real `Bash` calls in a 100-lane
+ * sample). Paying a module-graph read on every one of those processes, for a
+ * check that is USELESS unless the closed list is stale — which is rare by
+ * construction — would be a standing latency tax for an almost-never benefit.
+ *
+ * So the signal here is cheaper and narrower, on purpose: **the row's own
+ * "at" against this process's own start.** A row an unmodified process could
+ * not yet have written when it booted is proof — not a guess — that
+ * SOMETHING newer than this process wrote it, and an op that row carries and
+ * this process's `AUDIT_OPS` does not know is the ordinary way that shows up.
+ * Zero filesystem reads: `row.at` is already in hand from `validate`, and
+ * `READER_STARTED_AT` was computed once, at module load. A row from BEFORE
+ * this process started gets no such benefit of the doubt — this process had
+ * every opportunity to already know its vocabulary — and keeps the original,
+ * strict "cannot be trusted" wording.
+ *
+ * **Only a genuinely unrecognised, PRESENT op or kind counts.** A row missing
+ * `op`/`kind` entirely (not a string at all) is a different and more basic
+ * kind of damage than "a real name this build's list does not carry", so it is
+ * never read as skew regardless of timing — see the two branches below.
+ */
+function specFor(file: string, windowed = false) {
+  // Set by `validate` for the row it just inspected, read and cleared by the
+  // very next `refuse` call for the same row — sound because `parseJsonlLog`
+  // calls the two back to back, synchronously, once per line, and JavaScript
+  // never interleaves that with another row's validation.
+  let skewCandidate = false;
+
   return {
     file,
     protocol: AUDIT_PROTOCOL,
     accepts: AUDIT_PROTOCOLS_READ,
     validate: (row: JsonlRow): string | null => {
+      skewCandidate = false;
       if (typeof row.at !== 'string') return 'is missing or mistypes "at"';
-      if (typeof row.op !== 'string' || !AUDIT_OPS.includes(row.op as AuditOp)) {
+      const writtenAfterReaderStarted = row.at > READER_STARTED_AT;
+
+      if (typeof row.op !== 'string' || row.op === '') {
         return `declares op ${JSON.stringify(row.op)}, which is not one of ${AUDIT_OPS.join(', ')}`;
       }
-      if (typeof row.kind !== 'string' || !AUDIT_KINDS.includes(row.kind as AuditKind)) {
+      if (!AUDIT_OPS.includes(row.op as AuditOp)) {
+        skewCandidate = writtenAfterReaderStarted;
+        return `declares op ${JSON.stringify(row.op)}, which is not one of ${AUDIT_OPS.join(', ')}`;
+      }
+      if (typeof row.kind !== 'string' || row.kind === '') {
+        return `declares kind ${JSON.stringify(row.kind)}, which is not one of ` +
+          `${AUDIT_KINDS.join(', ')}`;
+      }
+      if (!AUDIT_KINDS.includes(row.kind as AuditKind)) {
+        skewCandidate = writtenAfterReaderStarted;
         return `declares kind ${JSON.stringify(row.kind)}, which is not one of ` +
           `${AUDIT_KINDS.join(', ')}`;
       }
       return null;
     },
-    refuse: (line: number, reason: string): Error => new Error(
-      `my_context: the audit log at ${file} cannot be trusted — line ${line} ${reason}. ` +
-      `Refusing to read it, because a line this code skipped could be the record of a ` +
-      `mutation or an injection, and an audit trail that silently omits entries is worse ` +
-      `than one that refuses to answer. Only a damaged FINAL line is tolerated (that is what ` +
-      `a process killed mid-append leaves). Inspect the file: it is one JSON object per line, ` +
-      `each with "at", "kind" and "op" fields. Moving the damaged segment aside preserves ` +
-      `every other segment — see \`mycontext audit --files\`.`,
-    ),
+    refuse: (line: number, reason: string): Error => {
+      const skewed = skewCandidate;
+      skewCandidate = false;
+      const where = windowed
+        ? `line ${line} of the bytes just read (a bounded window into the file, ` +
+          `NOT the file's own line count — re-read the whole file, e.g. ` +
+          `\`mycontext audit --files\`, to find its real line number)`
+        : `line ${line}`;
+
+      if (skewed) {
+        return new Error(
+          `my_context: the audit log at ${file} ${where} ${reason}. This is very likely NOT a ` +
+          `damaged log: the row was written AFTER this reading process started ` +
+          `(process started ${READER_STARTED_AT}, row stamped later), so this process's own ` +
+          `copy of the closed vocabulary predates it — something newer already knows this op or ` +
+          `kind and this one does not. Restart the process reading this log (a UI or MCP server ` +
+          `holds its modules in memory until it does) so it re-reads the current vocabulary. ` +
+          `If restarting does not clear this, the row may be genuinely malformed after all.`,
+        );
+      }
+      return new Error(
+        `my_context: the audit log at ${file} cannot be trusted — ${where} ${reason}. ` +
+        `Refusing to read it, because a line this code skipped could be the record of a ` +
+        `mutation or an injection, and an audit trail that silently omits entries is worse ` +
+        `than one that refuses to answer. Only a damaged FINAL line is tolerated (that is what ` +
+        `a process killed mid-append leaves). Inspect the file: it is one JSON object per line, ` +
+        `each with "at", "kind" and "op" fields. Moving the damaged segment aside preserves ` +
+        `every other segment — see \`mycontext audit --files\`.`,
+      );
+    },
     unreadable: (err: unknown): Error => new Error(
       `my_context: could not read the audit log at ${file} ` +
       `(${err instanceof Error ? err.message : String(err)}). This is NOT the same as "nothing ` +
@@ -1459,9 +1556,23 @@ export function readAudit(root: string): AuditRecord[] {
   return out;
 }
 
-/** For a caller that already holds the bytes (a test, or a segment reader). */
-export function parseAudit(raw: string, file: string): AuditRecord[] {
-  return parseJsonlLog(raw, specFor(file)) as unknown as AuditRecord[];
+/**
+ * For a caller that already holds the bytes (a test, or a segment reader).
+ *
+ * **`windowed` — pass `true` when `raw` is a SLICE of the file rather than the
+ * whole thing** (a bounded tail scan, a `poll()` since the last offset): line
+ * numbers `parseJsonlLog` reports are always relative to `raw`, and for a
+ * slice that starts mid-file that is not the file's own line number — the
+ * owner's report read the file's real line 644 as line 18, which is the
+ * second half of the owner's false alarm
+ * (`TASK-a-server-older-than-the-data-on-disk-calls-the-audit-log`). Not
+ * corrected by re-deriving the absolute number — that means counting newlines
+ * from byte 0 on every refusal, the exact cost `audit-tail.ts` already
+ * declined to pay — but DISCLOSED, so a reader is told it is looking at a
+ * window rather than hunting the wrong line of the real file.
+ */
+export function parseAudit(raw: string, file: string, windowed = false): AuditRecord[] {
+  return parseJsonlLog(raw, specFor(file, windowed)) as unknown as AuditRecord[];
 }
 
 /**

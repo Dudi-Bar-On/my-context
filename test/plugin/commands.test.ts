@@ -15,6 +15,7 @@ import { createRegistry } from '../../src/mcp/tools.ts';
 import { commandSlug, generateCommands } from '../../src/plugin/commands.ts';
 import { removeTree } from '../helpers/tmp.ts';
 import { sandbox } from '../helpers/workspace.ts';
+import { filesToRemove, KEEP } from '../../scripts/gen-commands.ts';
 
 /**
  * THE drift guard for Task 16's command surface: the set of generated
@@ -116,6 +117,61 @@ test('two categories that would produce the same command file are refused, not s
     })),
     /both produce the command slug "non-goal"/,
   );
+});
+
+// --- The drift guard, Task 16's own reason for being IN --------------------
+//
+// Two hand-kept lists of the same set — `scripts/gen-commands.ts`'s `KEEP`
+// and this file's `HAND_WRITTEN` — is the defect class this project keeps
+// re-finding. Measured 2026-09-03: this assertion had never been written,
+// so `HAND_WRITTEN` could gain an entry `KEEP` never heard of (or the
+// reverse) and nothing here would notice until a real hand-written command
+// was deleted by `npm run gen:commands`.
+
+test('the generator\'s KEEP and this file\'s HAND_WRITTEN name exactly the same files', () => {
+  assert.deepEqual(
+    [...KEEP].sort(), [...HAND_WRITTEN].sort(),
+    'scripts/gen-commands.ts KEEP and test/plugin/commands.test.ts HAND_WRITTEN have drifted apart — ' +
+    'a file in one and not the other is either deleted by the generator or wrongly excused by the ' +
+    'parity test above',
+  );
+});
+
+test('the drift guard actually stops a deletion, proven both ways', () => {
+  // A directory holding one generated file and one hand-written one that the
+  // generator, this run, does not want to produce (e.g. a category just
+  // disabled, or — Task 16's own motivating case — a hand-written command
+  // like `session-name.md` the generator has never heard of at all).
+  const existing = ['add-rule.md', 'session-name.md'];
+  const wanted = new Set(['add-rule.md']); // this run's generator output
+
+  // WITHOUT the guard: prove the deletion actually happens. An empty `keep`
+  // is exactly what `scripts/gen-commands.ts` would be if `KEEP` (or an
+  // entry in it) did not exist — nothing here is asserting a guard fires
+  // that was never given the chance to.
+  assert.deepEqual(
+    filesToRemove(existing, wanted, new Set()), ['session-name.md'],
+    'without a guard entry, a hand-written command is deleted — this is the data-loss ' +
+    'this task exists to prevent',
+  );
+
+  // WITH the guard: the same inputs, `session-name.md` named in `keep`, and
+  // it must survive.
+  assert.deepEqual(
+    filesToRemove(existing, wanted, new Set(['session-name.md'])), [],
+    'with the guard entry present, the hand-written command must not be deleted',
+  );
+});
+
+test('every file KEEP actually names survives filesToRemove against the real generated set', () => {
+  // The integration form of the same proof, against this run's real
+  // generator output and the real `commands/` directory listing, so the
+  // guard is proven over the thing it actually protects, not only a
+  // fabricated fixture.
+  const existing = [...committedFiles(), ...KEEP];
+  const wanted = new Set(generated.map((f) => f.file));
+  const removed = filesToRemove(existing, wanted, KEEP);
+  for (const kept of KEEP) assert.equal(removed.includes(kept), false, `${kept} would be deleted`);
 });
 
 /**
