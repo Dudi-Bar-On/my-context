@@ -61,8 +61,11 @@
  *     or has fallen behind its log had nothing left to draw the feed from, and
  *     an empty live tail was read as "this corpus has no records". See
  *     `BOUND_CAP_LIST` below, and `applyStreamBacklog`.
- *   - **The budget** the token bar is drawn against is the sum of the resolved
- *     tier budgets from `GET /api/config`; see `watch.voidn`'s note below.
+ *   - **The budget** each row's token bar is drawn against is the SUM of the
+ *     resolved budgets of the tiers THAT ROW's own `injected` entries name —
+ *     `GET /api/config` resolves the per-tier map once at boot,
+ *     `budgetForRecord` sums only the tiers a given record drew from. See
+ *     `applyBudget` and `budgetForRecord`, below.
  *   - **The registered-hooks panel** is `GET /api/ask/summary?report=ops` —
  *     `summaryByOp`, unbounded by any `limit`, so it answers from the WHOLE
  *     projection rather than sharing a budget with `agent-step` the way the
@@ -712,6 +715,12 @@ export async function render(root, ctx) {
   const kinds = [];
   let selected = 'all';
   let budget = null;
+  /**
+   * The RESOLVED PER-TIER budgets (`{ pinned, jit, restored, continuity,
+   * index }`), kept alongside `budget` (their sum) so a row's bar can be
+   * measured against only the tiers IT drew from — see `budgetForRecord`.
+   */
+  let budgets = null;
   /** Once the stream has refused, nothing else will arrive and nothing reconnects. */
   let faulted = false;
   /** True once the stream's opening frame has been read — see `sayShown`. */
@@ -1144,7 +1153,7 @@ export async function render(root, ctx) {
         ', ',
         ...ctx.t('watch.spilled', { spilled: described.spilled.length }),
       );
-      costOf(detail, described);
+      costOf(detail, described, record);
       return;
     }
 
@@ -1193,8 +1202,9 @@ export async function render(root, ctx) {
   }
 
   /**
-   * The injection row's cost: a gold bar against the budget, or a hatched void
-   * where `tokens` was never written.
+   * The injection row's cost: a gold bar against the budget OF THE TIERS THIS
+   * ROW DREW FROM (`budgetForRecord`, above), or a hatched void where `tokens`
+   * was never written.
    *
    * **Absent is not zero**, which is the whole reason the void exists — the
    * field is optional on `AuditRecord` and records written before 1.0.1 never
@@ -1206,9 +1216,10 @@ export async function render(root, ctx) {
    * **With no budget there is no bar, and the number still shows.** A bar is a
    * ratio, and a ratio with an unknown denominator cannot be drawn at any
    * length — including zero. The count is known either way and is said either
-   * way.
+   * way. `record` is the raw record `budgetForRecord` reads `injected` off —
+   * `described` carries only the delivered COUNT, not the tiers.
    */
-  function costOf(cell, described) {
+  function costOf(cell, described, record) {
     if (described.tokens === 'not-recorded') {
       const voidBar = el('div', 'tokvoid');
       voidBar.title = ctx.tFlat('title.tokensNotRecorded');
@@ -1217,10 +1228,11 @@ export async function render(root, ctx) {
       cell.append(voidBar, note);
       return;
     }
-    if (budget !== null) {
+    const rowBudget = budgetForRecord(record);
+    if (rowBudget !== null) {
       const bar = el('div', 'tokbar');
-      const pct = budget > 0
-        ? Math.min(100, (described.tokens / budget) * 100)
+      const pct = rowBudget > 0
+        ? Math.min(100, (described.tokens / rowBudget) * 100)
         : (described.tokens > 0 ? 100 : 0);
       bar.style.setProperty('inline-size', `${pct}%`);
       cell.append(bar);
@@ -1674,28 +1686,69 @@ export async function render(root, ctx) {
   // the key says.
   sayShown();
 
-  // ── THE BUDGET THE TOKEN BAR IS DRAWN AGAINST ────────────────────────────
+  // ── THE BUDGET(S) THE TOKEN BAR IS DRAWN AGAINST ─────────────────────────
   //
-  // The SUM of the resolved tier budgets, because an injection's `tokens` is
-  // "the sum of the chars/4 estimates the selector charged its budgets" across
-  // every tier that ran, and no field on the record says which tiers those
-  // were. The total is therefore the only bound that is true of every
-  // injection record. The mockup writes 6,000, which is one tier's default
-  // (`core/config.ts` · `  pinned: 6000, jit: 6000, restored: 8000, continuity: 2000, index: 1200,` · ~93)
-  // and would over-fill every bar on a corpus that raised any budget. Raised in
-  // this task's report: the honest denominator is per-EVENT, and the record
-  // would have to carry which tiers ran for it to be drawn.
+  // `applyBudget` used to hold ONE number — the sum of every resolved tier
+  // budget — because an injection's `tokens` is "the sum of the chars/4
+  // estimates the selector charged its budgets" across every tier that ran,
+  // and no field on the record said which tiers those were. That made the sum
+  // the only bound true of EVERY row, at the cost this task's report named: a
+  // row that only drew on one tier was measured against every OTHER tier's
+  // budget too, drawing a bar shorter than the mockup's.
+  //
+  // `TASK-the-watch-token-bar-has-no-honest-single-denominator-and` gave the
+  // owner two ways out: derive the denominator PER ROW from the tiers named
+  // in `record.injected` (truest bar, `watch.voidn` then names no single
+  // number), or have the record carry the budget it was charged against
+  // (an append-only audit log FORMAT change, for one bar). This takes the
+  // first — it needs no log change and `InjectedRef.tier`
+  // (`core/audit.ts`) already reaches this screen unused.
+  //
+  // **`budgets` (plural) is the per-tier map itself**, kept beside `budget`
+  // (the sum, still what `watch.voidn` names below — see this task's report:
+  // that string now describes a number no bar is measured against, and needs
+  // rewording no screen file may do) so `costOf`/`budgetForRecord` below can
+  // measure each row against only the tiers ITS OWN `injected` entries name.
   function applyBudget(config) {
-    const budgets = config.resolved === null || config.resolved === undefined
+    const resolved = config.resolved === null || config.resolved === undefined
       ? null : config.resolved.budgets;
-    if (budgets === null || budgets === undefined) {
+    if (resolved === null || resolved === undefined) {
       // The loader's own words, never a paraphrase — the same treatment every
       // other endpoint refusal on this surface gets.
+      budgets = null;
       voidNote.replaceWith(errorNote(config.parseError ?? config.resolveError ?? ''));
     } else {
-      budget = Object.values(budgets).reduce((sum, value) => sum + value, 0);
+      budgets = resolved;
+      budget = Object.values(resolved).reduce((sum, value) => sum + value, 0);
       voidNote.append(...ctx.t('watch.voidn', { budget: num(budget) }));
     }
+  }
+
+  /**
+   * **The honest per-row denominator: the sum of the budgets of the tiers
+   * THIS record's `injected` entries actually name**, not the budget total no
+   * single row could ever reach.
+   *
+   * `null` — no bar drawn, the same "no budget, no bar" treatment `costOf`
+   * already gives a config that failed to resolve — when: the tier map is not
+   * loaded yet; the record names no tier at all (nothing to measure against);
+   * or it names a tier absent from the resolved map (an unmeasurable claim,
+   * never silently under-counted).
+   */
+  function budgetForRecord(record) {
+    if (budgets === null) return null;
+    const tiers = new Set();
+    for (const entry of record.injected ?? []) {
+      if (entry !== null && typeof entry.tier === 'string' && entry.tier !== '') tiers.add(entry.tier);
+    }
+    if (tiers.size === 0) return null;
+    let sum = 0;
+    for (const tier of tiers) {
+      const tierBudget = budgets[tier];
+      if (typeof tierBudget !== 'number') return null;
+      sum += tierBudget;
+    }
+    return sum;
   }
 
   // ── THE PULSE ────────────────────────────────────────────────────────────

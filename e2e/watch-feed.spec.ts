@@ -69,6 +69,7 @@ import { removeTree } from '../test/helpers/tmp.ts';
 import { startUiChild, type UiHarness } from '../test/ui/helpers.ts';
 import { runCli } from '../src/cli/index.ts';
 import { recordAudit } from '../src/core/audit.ts';
+import { DEFAULT_BUDGETS } from '../src/core/config.ts';
 import { appendUnprojected } from '../test/helpers/unprojected-audit.ts';
 import { DIR_NAME } from '../src/core/workspace.ts';
 
@@ -974,5 +975,47 @@ test('the registered-hooks panel: a projection BEHIND its log refuses in the ser
     const rows = p.locator('#reghtbl tr');
     await expect(rows.first()).toBeVisible();
     await expect(rows.locator('.chip.ok')).toHaveCount(0);
+  });
+});
+
+/**
+ * **`TASK-the-watch-token-bar-has-no-honest-single-denominator-and`, driven.**
+ *
+ * `AuditRecord.tokens` is the sum of what the selector charged across every
+ * tier a given injection actually drew from, and `record.injected` already
+ * names those tiers (`InjectedRef.tier`). The bar used to be measured against
+ * the SUM of every tier's resolved budget regardless — the only number true
+ * of every row, but not the truest one for THIS row, so a two-tier injection
+ * drew shorter than it should have.
+ *
+ * This record draws from `pinned` and `jit` only. `DEFAULT_BUDGETS` gives
+ * each 6,000, so the honest denominator is 12,000 and a 3,000-token row is a
+ * 25% bar — not ~12.9% of all five tiers' 23,200 summed together, which is
+ * what the old single denominator drew.
+ */
+test('the token bar is measured against the tiers THIS row drew from, not every tier\'s budget', async ({ page }) => {
+  await watching(page, { buildProjection: false }, async ({ page: p, corpus }) => {
+    await expectedAtLeast(p, SEEDED);
+
+    const rowBudget = DEFAULT_BUDGETS.pinned + DEFAULT_BUDGETS.jit;
+    const tokens = rowBudget / 4; // exact — no floating-point rounding to chase
+    recordAudit(corpus, {
+      kind: 'injection', op: 'jit', origin: 'agent', sessionId: 'sess-budget-row', hook: 'PreToolUse',
+      injected: [{ id: 'RULE-seed-0', tier: 'pinned' }, { id: 'RULE-seed-1', tier: 'jit' }],
+      tokens,
+    });
+
+    // The one injection record among the fixture's plain mutations — its
+    // `.tokbar` is the only one on screen, so the element itself is the
+    // locator.
+    const bar = p.locator('#atbl tr .tokbar');
+    await expect(bar, 'no injection row drew a token bar at all').toBeVisible({ timeout: 20_000 });
+
+    const inlineSize = await bar.evaluate((el) => el.style.getPropertyValue('inline-size'));
+    expect(
+      inlineSize,
+      `expected a bar measured against pinned+jit (${rowBudget}), got a width implying a `
+      + 'different denominator — most likely the sum of every tier\'s budget again',
+    ).toBe('25%');
   });
 });

@@ -6,12 +6,12 @@ status: active
 severity: soft
 always: false
 summary: That same strip is missing the part saying whether the numbers are current, and one of its three planned messages can never happen.
-summary_of: fbd27f8fb36cdabe
+summary_of: 438be88fec021aab
 scope: []
 tags:
   - "plan:ui3"
   - "seq:11x"
-  - "state:todo"
+  - "state:done"
   - v2
   - ui
 origin: human
@@ -20,10 +20,11 @@ source_anchor: null
 source_checksum: 35bb0ff7a3ee2a12
 valid_from: 2026-08-22
 valid_until: null
-checksum: e3b06841c7858c91
+checksum: b252e08e91678bf8
 plan: ui3
 seq: 11x
-state: todo
+state: done
+verified_on: 2026-09-05
 ---
 
 # the provenance bar never renders its projection group, and one of its three keyed states cannot happen here

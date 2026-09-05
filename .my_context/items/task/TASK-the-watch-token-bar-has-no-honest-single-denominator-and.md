@@ -6,12 +6,12 @@ status: active
 severity: soft
 always: false
 summary: A cost bar has nothing honest to measure each row against, so every bar is drawn against a total no row could ever reach.
-summary_of: 6bc32f73d5fd9562
+summary_of: 6a35f88f6cffd060
 scope: []
 tags:
   - "plan:ui3"
   - "seq:11x"
-  - "state:todo"
+  - "state:done"
   - v2
   - ui
 origin: human
@@ -20,10 +20,11 @@ source_anchor: null
 source_checksum: 17901470e17ecd5d
 valid_from: 2026-08-22
 valid_until: null
-checksum: ea1f35a7c63edd3a
+checksum: 521861a322301788
 plan: ui3
 seq: 11x
-state: todo
+state: done
+verified_on: 2026-09-05
 ---
 
 # the watch token bar has no honest single denominator, and watch.voidn can only name one number

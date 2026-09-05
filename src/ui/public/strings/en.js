@@ -493,7 +493,7 @@ export const strings = {
   'watch.tokens': '{tokens} estimated tokens, computed at injection time',
   'watch.tokensNotRecorded': 'tokens: not recorded — this record predates the field. Not zero.',
   'title.tokensNotRecorded': 'tokens not recorded',
-  'watch.voidn': 'A gold bar shows cost against the {budget}-token budget. Missing {m:tokens} draws a {b:hatched void}: the field is optional on {m:AuditRecord}; records before 1.0.1 lack it.',
+  'watch.voidn': 'A gold bar shows cost against the budgets of the tiers it drew from. Missing {m:tokens} draws a {b:hatched void}: the field is optional on {m:AuditRecord}; records before 1.0.1 lack it.',
   // The registered-hooks panel (hooks/31): every hook `hooks.json` registers,
   // measured against the full audit projection rather than against this
   // feed's own bounded window, so a hook crowded out of the {records}-record

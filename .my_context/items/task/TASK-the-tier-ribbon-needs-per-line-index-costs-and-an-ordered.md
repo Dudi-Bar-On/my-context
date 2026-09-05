@@ -11,7 +11,7 @@ scope: []
 tags:
   - "plan:ui1"
   - "seq:17b"
-  - "state:todo"
+  - "state:doing"
   - v2
   - ui
 origin: human
@@ -20,10 +20,10 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-08-22
 valid_until: null
-checksum: 9fd838337867ddf4
+checksum: e54963993123e8c1
 plan: ui1
 seq: 17b
-state: todo
+state: doing
 priority: "1"
 ---
 
