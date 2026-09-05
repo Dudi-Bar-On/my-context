@@ -119,15 +119,15 @@ test('/api/config/check surfaces resolveConfig refusals VERBATIM', () => {
  * now — which is not what this plan's Step 1 sketch assumed.
  *
  * Two of the three were closed in the loader itself: an invalid budget value is
- * refused by name (`core/config.ts` · `function requireBudgets(raw: unknown): Budgets {` · ~1004)
+ * refused by name (`core/config.ts` · `function requireBudgets(raw: unknown): Budgets {` · ~1377)
  * and a non-string `watchedDocs` entry is refused rather than filtered
- * (`core/config.ts` · `function requireWatchedDocs(raw: unknown): string[] {` · ~1050).
+ * (`core/config.ts` · `function requireWatchedDocs(raw: unknown): string[] {` · ~1423).
  * So they arrive as `ok: false` carrying the loader's wording, NOT as findings —
  * and this test asserts that, because a `dropped` entry for a case the loader
  * refuses would describe leniency the product no longer has.
  *
  * The third is a skip and a DISCLOSURE, not a silence: an unknown top-level key
- * is carried on the resolved config (`core/config.ts` · `  skippedKeys: string[];` · ~352)
+ * is carried on the resolved config (`core/config.ts` · `  skippedKeys: string[];` · ~575)
  * and worded once by `skippedKeyNotice`. That is the whole of `dropped`.
  */
 test('/api/config/check names the one thing the loader skips, and refuses the rest', () => {

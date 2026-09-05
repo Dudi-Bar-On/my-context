@@ -44,7 +44,7 @@
  * the very object the hash is taken over, so a field cannot appear in the
  * warning without having moved the hash and cannot move the hash without
  * appearing. `blockedBy` is derived from `UPDATE_FIELD_POLICY`
- * (`core/trust.ts` · `export const UPDATE_FIELD_POLICY = {` · ~453), whose
+ * (`core/trust.ts` · `export const UPDATE_FIELD_POLICY = {` · ~456), whose
  * `satisfies` clause already fails to compile when `UpdateInput` grows a
  * field nobody classified — so the day `observations` gains a write path,
  * this module stops calling it a blocker without anyone editing this file.

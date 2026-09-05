@@ -55,7 +55,7 @@ import { SECURITY_HEADERS } from './security.ts';
 // ledger has no kind at all, and its `(session_id, item_id, tier)` key
 // collides repeat injections inside a session, so a series drawn from it
 // undercounts by exactly those repeats — `Ledger.history()`'s own docblock
-// says so (`core/ledger.ts` · `from it undercounts by exactly the repeats the key swallowed. Which stamp` · ~465).
+// says so (`core/ledger.ts` · `from it undercounts by exactly the repeats the key swallowed. Which stamp` · ~477).
 //
 // **NOTHING HERE WRITES, AND THAT COST THE PLAN'S OWN SHAPE.** The plan routed
 // all three JSON endpoints through `openProjection` + `syncProjection`. Both
@@ -64,7 +64,7 @@ import { SECURITY_HEADERS } from './security.ts';
 // on every open, and on any failure `rmSync`s the file and both sidecars;
 // `syncProjection` inserts, and on `diverged` deletes every row first. The
 // read-only door that arrived for exactly this caller is used instead
-// (`core/audit-db.ts` · `export function openProjectionReadOnlyChecked(root: string): DatabaseSync {` · ~537),
+// (`core/audit-db.ts` · `export function openProjectionReadOnlyChecked(root: string): DatabaseSync {` · ~988),
 // and its own docblock names `/api/watch/spills` as one of the routes the
 // plan would otherwise have let delete and rebuild a database from a GET.
 //
@@ -105,7 +105,7 @@ const MAX_STREAM_BACKLOG = 500;
  * out where nothing happened would leave a reader unable to tell "no records
  * of that kind" from "this build does not know that kind" — design decision
  * 3's absence-is-not-zero rule, read in the other direction. There are SIX
- * (`core/audit.ts` · `export const AUDIT_KINDS: AuditKind[] = [` · ~339), taken
+ * (`core/audit.ts` · `export const AUDIT_KINDS: AuditKind[] = [` · ~647), taken
  * from the one declaration rather than respelled here.
  *
  * **What colour any of this is drawn in is NOT decided here and must not be.**
@@ -769,11 +769,11 @@ export function apiItemHistory(ws: Workspace, url: URL, params: { id: string }):
 // `<div class="plate" id="ratio">`). No route exposed it, so the screen could
 // not be drawn; this is that route, and it reads exactly what the note says
 // rather than inventing a second aggregate beside `topItems`
-// (`core/audit-db.ts` · `export function topItems(db: DatabaseSync, role: string | null, limit: number): SummaryRow[] {` · ~779).
+// (`core/audit-db.ts` · `export function topItems(db: DatabaseSync, role: string | null, limit: number): SummaryRow[] {` · ~1237).
 //
 // **`delivered` is the prose word and `injected` is the column value.** The
 // role literal written into `audit_item` is `injected`
-// (`core/audit-db.ts` · `insertItem.run(seq, entry.id, 'injected', entry.tier);` · ~215);
+// (`core/audit-db.ts` · `insertItem.run(seq, entry.id, 'injected', entry.tier);` · ~216);
 // every word the mockup puts in front of a reader for the same thing is
 // *delivered*. The field takes the design's word, the query takes the
 // database's, and neither is respelled to match the other.
@@ -784,7 +784,7 @@ export function apiItemHistory(ws: Workspace, url: URL, params: { id: string }):
  * `topItems` groups by item, so this bounds the number of ROWS the aggregate
  * returns rather than the number of audit records behind them, and the group
  * is served from the index that exists for it
- * (`core/audit-db.ts` · `CREATE INDEX IF NOT EXISTS idx_audit_item_id ON audit_item(item_id, role);` · ~93).
+ * (`core/audit-db.ts` · `CREATE INDEX IF NOT EXISTS idx_audit_item_id ON audit_item(item_id, role);` · ~94).
  * A corpus with more distinct items in one role than this is possible, and
  * `truncated` is what says so out loud — see `spillRatio`, where the window is
  * the whole difference between a measured zero and an unmeasured one.

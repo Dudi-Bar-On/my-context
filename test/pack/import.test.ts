@@ -419,7 +419,7 @@ test('every overwrite writes ONE update mutation record naming the moved fields'
 test('the overwrite is attributable and dated in the log — what §6n.7 can actually ask for', () => {
   // NOT "the prior content is recoverable from the log": a mutation record
   // carries the NAMES of the fields that moved and never their values
-  // (`core/persist.ts` · `export function movedFields(before: AuditedSnapshot, item: Item): string[] {` · ~162),
+  // (`core/persist.ts` · `export function movedFields(before: AuditedSnapshot, item: Item): string[] {` · ~514),
   // so nothing in `.audit/` can reconstruct the body that was replaced. The
   // recoverable-from-git half of §0 item 7 is the true half, and this asserts
   // the half the log itself supports: which item, which fields, by whom, when.

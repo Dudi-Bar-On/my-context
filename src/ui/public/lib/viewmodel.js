@@ -20,11 +20,11 @@
 // without `tokens` predates the field and means NOT RECORDED — never zero.
 // Zero is a real measurement (everything selected spilled). audit.ts pins
 // this on the field itself
-// (`core/audit.ts` · `ABSENT on records written before this field existed, and absence means` · ~366);
+// (`core/audit.ts` · `ABSENT on records written before this field existed, and absence means` · ~958);
 // this function is that contract applied to rendering, and the test pins both
 // directions.
 //
-// There are SEVEN kinds (`core/audit.ts` · `export const AUDIT_KINDS: AuditKind[] = [` · ~242),
+// There are SEVEN kinds (`core/audit.ts` · `export const AUDIT_KINDS: AuditKind[] = [` · ~647),
 // and `injected`/`spilled`/`tokens` belong to exactly one of them. The other
 // six come back with an empty spill list and a `null` token count — not
 // "not-recorded", which is a claim about a field that kind never carries.
@@ -966,7 +966,7 @@ const STREAM_EVENT_KEYS = {
 // actually shows (it recreates `audit.jsonl` at the same path, at a size that
 // need not be smaller, so nothing shrinks). The tail resets to the current
 // EOFs rather than replaying, so whatever landed in the gap is NOT coming down
-// this stream (`ui/watch-model.ts` · `if (result.resync) sseSend(res, 'resync', {});` · ~462).
+// this stream (`ui/watch-model.ts` · `if (result.resync) sseSend(res, 'resync', {});` · ~1022).
 //
 // The only way to fill that hole is to refetch the backlog through the query
 // surface, which reads the projection and is immune to the rename — so
@@ -1000,7 +1000,7 @@ export function describeStreamEvent(event, data) {
 // The shared grammar of `/api/select`, `/api/render` and `/api/simulate`,
 // built in ONE place because all three nav.inj screens send it and the server
 // parses it in one place too
-// (`ui/read-model.ts` · `export function parseSelectQuery(` · ~232).
+// (`ui/read-model.ts` · `export function parseSelectQuery(` · ~307).
 //
 // **`cold` is labelled by construction, not by remembering.** The endpoint
 // refuses a request carrying both `session` and `cold`, and refuses one
@@ -1579,7 +1579,7 @@ export function repairTally(findings) {
  *
  * It draws four rows and splits them: `title` takes a bare `<td>` wrapping a
  * `<bdi>`, while `tags` and `severity` take `<td class="m">`
- * (`docs/design/web-ui-mockup.html` · `<tr><td class="m">tags</td><td class="m">pii</td><td class="m">pii<ins>, gdpr</ins></td></tr>` · ~1938).
+ * (`docs/design/web-ui-mockup.html` · `<tr><td class="m">tags</td><td class="m">pii</td><td class="m">pii<ins>, gdpr</ins></td></tr>` · ~3285).
  * The split is prose versus token: a title and a body are sentences a human
  * wrote and reads in the page's own direction, while a tag list and an `extra`
  * key are keys and values with a direction of their own — which is what `.m`
@@ -1612,7 +1612,7 @@ export const MONO_FIELDS = new Set(['tags', 'extra']);
  *
  * `noCurrent` is the server's own word for "there is nothing to diff against"
  * — the item is gone, or the proposal names an `extra` key the item never had
- * (`src/ui/read-model-work.ts` · `// No current text to diff against (item missing, or an extra key the` · ~63).
+ * (`src/ui/read-model-work.ts` · `// No current text to diff against (item missing, or an extra key the` · ~65).
  * There is no `work.noCurrent` in either table, so nothing is worded for it:
  * the cell takes the em dash this design already uses for "no value here", the
  * same mark `status.js` draws for a count nobody measured and `doctor.js` for

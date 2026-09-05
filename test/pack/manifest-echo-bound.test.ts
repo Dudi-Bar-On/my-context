@@ -34,7 +34,7 @@
  * the message is short AND it still ends with the reason.
  *
  * The number is 256, the one this codebase already settled on for exactly this
- * job (`ui/security.ts` · `export const REFUSAL_VALUE_MAX = 256;` · ~291), and
+ * job (`ui/security.ts` · `export const REFUSAL_VALUE_MAX = 256;` · ~354), and
  * the marker is its `…`.
  */
 import { test } from 'node:test';

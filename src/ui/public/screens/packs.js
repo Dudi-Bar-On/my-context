@@ -34,7 +34,7 @@
  *
  *   - the `<bdi>` ELEMENT carries `unicode-bidi: isolate` from the HTML user-
  *     agent stylesheet, and `styles.css` carries the mockup's own rule for it
- *     (`src/ui/public/styles.css` · `bdi{unicode-bidi:isolate}` · ~265) under
+ *     (`src/ui/public/styles.css` · `bdi{unicode-bidi:isolate}` · ~420) under
  *     the heading *"Direction UNKNOWN: anything read off disk or out of the
  *     corpus"* — which is exactly what a pack name is;
  *   - the `.m` CLASS adds `direction:ltr` on top of a second
@@ -85,13 +85,13 @@
  * `refusePackConfig` itself; the mockup drew `budgets` and `watchedDocs`. One
  * row per served entry, in the order served — *"a table filtered to the rows
  * somebody had already thought of is the silent drop this project bans"*
- * (`src/ui/packs-model.ts` · `**All five keys, not the two the mockup draws.** The set is the loader's, and` · ~127).
+ * (`src/ui/packs-model.ts` · `**All five keys, not the two the mockup draws.** The set is the loader's, and` · ~123).
  *
  * The row LABEL follows the mockup's own split, which is not uniform and is
  * transcribed rather than tidied: `categories` takes the translated
  * `pk.cats` ("category configuration"), every other key takes a bare `.m` cell
  * holding the key itself
- * (`docs/design/web-ui-mockup.html` · `<tr><td class="m">watchedDocs</td><td><span class="chip warn" data-g="&#9650;" data-t="pk.never">never</span></td></tr>` · ~2234).
+ * (`docs/design/web-ui-mockup.html` · `<tr><td class="m">watchedDocs</td><td><span class="chip warn" data-g="&#9650;" data-t="pk.never">never</span></td></tr>` · ~3628).
  * A config key is not English — it is what the reader types into their own
  * `config.json` — and that is why the mockup draws three of the four as
  * literals in both languages.
@@ -289,7 +289,7 @@ export function packRows(pack) {
  *
  * Every argument is `SAFE` under `quoteArg`, so this composes byte-identical
  * to the `<code>` the design of record draws
- * (`docs/design/web-ui-mockup.html` · `<div class="cmd"><code>mycontext init --pack ../packs/regulated-industry</code>` · ~2255),
+ * (`docs/design/web-ui-mockup.html` · `<div class="cmd"><code>mycontext init --pack ../packs/regulated-industry</code>` · ~3649),
  * and the test pins it to that line read out of the mockup rather than to a
  * copy of it here.
  */

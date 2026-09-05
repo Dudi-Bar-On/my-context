@@ -96,9 +96,9 @@
  * The reachable graph from `src/ui/server.ts` DOES contain `src/core/mutate.ts`
  * today. It arrives by `read-model.ts` → `help/index.ts` → `mcp/tools.ts`:
  * `help/index.ts` builds the `tools` help topic from the MCP registry
- * (`help/index.ts` · `import { createRegistry } from '../mcp/tools.ts';` · ~15)
+ * (`help/index.ts` · `import { createRegistry } from '../mcp/tools.ts';` · ~20)
  * and `mcp/tools.ts` binds three writers
- * (`mcp/tools.ts` · `createItem, supersedeItem, updateItem,` · ~12).
+ * (`mcp/tools.ts` · `createItem, supersedeItem, updateItem,` · ~24).
  * That does NOT violate the ban, which is scoped to `src/ui/` bindings by the
  * ruling above, and no assertion here is written against it — a module-level
  * ban was rejected twice (plan §0.5) and re-adding one by the back door is not
@@ -110,7 +110,7 @@
  * of co-located writers, is that `src/cli/index.ts` is never reachable. Loading
  * it is not a co-location accident: it registers the entire mutating command
  * surface by side effect, as `help/index.ts` says in its own words —
- * (`help/index.ts` · `import src/cli/index.ts: loading it is what registers the commands.` · ~378).
+ * (`help/index.ts` · `import src/cli/index.ts: loading it is what registers the commands.` · ~383).
  */
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
@@ -429,7 +429,7 @@ const RULED_WRITES = [
  * side effect. `help/index.ts` says so in its own words — the registry "is
  * populated by side effect when `src/cli/index.ts` loads — it imports
  * `cli/commands/index.ts` AND registers the seven built-ins itself"
- * (`help/index.ts` · `AND registers the seven built-ins itself` · ~367) — and
+ * (`help/index.ts` · `AND registers the seven built-ins itself` · ~372) — and
  * `cli/commands/index.ts` is sixteen bare `import './x.ts';` statements.
  * So merely reaching it puts every writing command in the process. That is a
  * property of LOADING the module, which is exactly what an import walk can see,

@@ -126,7 +126,7 @@ const SEARCH_PARAMS = ['text', 'type', 'tag', 'path', 'status', 'relation', 'lim
 
 /**
  * The CLI's own cap, so the palette and the command answer the same question
- * by default (`cli/commands/search.ts` · `const DEFAULT_LIMIT = 50;` · ~68).
+ * by default (`cli/commands/search.ts` · `const DEFAULT_LIMIT = 50;` · ~73).
  */
 const SEARCH_DEFAULT_LIMIT = 50;
 
@@ -135,7 +135,7 @@ const SEARCH_DEFAULT_LIMIT = 50;
  * spelling.**
  *
  * The predicate behind `query_items` and `mycontext search` lives in
- * `core/search.ts` · `The corpus filter behind BOTH` · ~7 precisely so that a
+ * `core/search.ts` · `The corpus filter behind BOTH` · ~151 precisely so that a
  * surface answering "which items match this" cannot grow a private opinion.
  * The `path` filter is the instance in miniature: it goes through
  * `matchesScope`, so an item that declares NO scope is unrestricted and still
@@ -143,7 +143,7 @@ const SEARCH_DEFAULT_LIMIT = 50;
  * the corpus, which is the defect `query_items` shipped for months.
  *
  * At least one filter is required, mirroring the CLI's refusal
- * (`cli/commands/search.ts` · `At least one filter is required. To list the whole corpus, that is` · ~63):
+ * (`cli/commands/search.ts` · `At least one filter is required. To list the whole corpus, that is` · ~68):
  * an all-absent filter matches the whole corpus, which is `/api/items`, not a
  * search. Truncation is reported rather than silent — a capped 200 and a
  * complete 200 must not be the same document.
@@ -162,7 +162,7 @@ export function apiSearch(ws: Workspace, url: URL): JsonResult {
   const relation = url.searchParams.get('relation');
   const type = url.searchParams.get('type');
   // `Object.hasOwn`, not a bare index: the categories map is null-prototype
-  // (`core/config.ts` · `const categories: Record<string, ResolvedCategory> = Object.create(null);` · ~1140).
+  // (`core/config.ts` · `const categories: Record<string, ResolvedCategory> = Object.create(null);` · ~1513).
   if (type !== null && !Object.hasOwn(ws.config.categories, type)) {
     return badRequest(
       `unknown category ${JSON.stringify(type)} — this config declares: ` +
@@ -226,19 +226,19 @@ const GLOB_SAMPLE_CAP = 200;
 /**
  * `GET /api/glob?pattern=a/**,b/**` — which files a pattern being composed
  * would match. Comma-separated exactly as `--scope` takes it
- * (`cli/index.ts` · `[--scope "a/**,b/**"] [--tags "a,b"] [--severity hard|soft] ` · ~454).
+ * (`cli/index.ts` · `[--scope "a/**,b/**"] [--tags "a,b"] [--severity hard|soft] ` · ~500).
  *
  * **This is the one legitimate `matchesAnyGlob` call in the UI.** The question
  * is "which files match this pattern" — a question about a pattern, not about
  * which items govern a file. The govern question stays with
  * `matchesScope`/`injection()`, and the difference is the defect
- * `matchesScope`'s own comment names (`select.ts` · `matchesAnyGlob(path, item.scope)` · ~245):
+ * `matchesScope`'s own comment names (`select.ts` · `matchesAnyGlob(path, item.scope)` · ~554):
  * an empty scope is a restriction that is ABSENT, and `matchesAnyGlob(path, [])`
  * answers `false` for it in every scope policy.
  *
  * **A caller-supplied pattern cannot escape the workspace, structurally.** The
  * pattern never reaches the filesystem: the walk is rooted at the repository
- * and emits root-relative POSIX paths (`doctor/checks.ts` · `if (entry.isFile()) out.push(relPosix(repoRoot, path.join(dir, entry.name)));` · ~65),
+ * and emits root-relative POSIX paths (`doctor/checks.ts` · `if (entry.isFile()) out.push(relPosix(repoRoot, path.join(dir, entry.name)));` · ~329),
  * so a pattern normalizing to `../…` or to an absolute path matches no subject
  * that exists, and a sibling directory whose name merely starts with the
  * root's — the case `ui/static.ts`'s containment check is written around — is

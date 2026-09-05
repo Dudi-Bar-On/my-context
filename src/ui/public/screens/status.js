@@ -32,7 +32,7 @@
  * `core/mutate.ts` — so serving them would put the mutation surface into this
  * server's runtime import graph for the first time and turn
  * `test/ui/no-writes.test.ts` red. The endpoint reported that rather than
- * doing it (`ui/read-model.ts` · `Two rows the mockup's status screen draws and this body cannot fill.` · ~672).
+ * doing it (`ui/read-model.ts` · `Two rows the mockup's status screen draws and this body cannot fill.` · ~1530).
  *
  * **So both rows are DRAWN, with an em dash where the number would be.** Three
  * of five rows would delete two of the four queues from a screen whose only
@@ -56,7 +56,7 @@
  * that is the more useful fact.** This paragraph read "the same call
  * `injected.js` made about its joined titles" — and on 2026-08-26 the owner
  * ruled that field CUT rather than left unread
- * (`src/ui/read-model.ts` · `export type InjectedLine = SeenLine;` · ~566). It
+ * (`src/ui/read-model.ts` · `export type InjectedLine = SeenLine;` · ~1138). It
  * was costing a `SELECT` plus a `JSON.parse` of every item's whole blob on
  * every request to produce something with zero readers.
  *

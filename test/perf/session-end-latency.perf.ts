@@ -21,7 +21,7 @@
  * ms p95. A ceiling anywhere near that would not be bounding this project's
  * work: the dominant term is `rmSync` over the window's files on NTFS, and a
  * single delete stalling behind an antivirus or an indexer is a documented
- * property of this platform (`core/ledger.ts` · `SNAPSHOT_RENAME_ATTEMPTS` · ~729
+ * property of this platform (`core/ledger.ts` · `SNAPSHOT_RENAME_ATTEMPTS` · ~741
  * exists for the same class of stall on rename). A 50 ms ceiling was tried
  * first and went red at 134 and 140 ms on a loaded box with the median
  * unchanged at ~10 ms — one stalled iteration out of twenty, in the code's

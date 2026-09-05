@@ -63,7 +63,7 @@ export function teePath(root: string, sessionId: string): string | null {
  * process.
  *
  * Deliberately NOT the 30 days that
- * `core/ledger.ts` · `export const SNAPSHOT_MAX_AGE_MS` · ~780 gives
+ * `core/ledger.ts` · `export const SNAPSHOT_MAX_AGE_MS` · ~792 gives
  * `state/`: that retention protects snapshots and seen-files, which are DATA a
  * later run may still need. A tee temp file is a discarded write that no
  * reader has ever opened — `readTee` only ever opens `<session>.json` — so
@@ -76,7 +76,7 @@ export const TEE_TMP_MAX_AGE_MS = 60 * 60 * 1000;
  * optionally `-<counter>`.
  *
  * Anchored at the END rather than matching `.tmp-` anywhere in the name, which
- * is what `core/ledger.ts` · `|| entry.name.includes('.tmp-'))) continue;` · ~819
+ * is what `core/ledger.ts` · `|| entry.name.includes('.tmp-'))) continue;` · ~831
  * can afford on `state/` and this cannot: `sanitizeSessionId` accepts `.` and
  * `-`, so `run.tmp-3` is a legal session id whose real sample is named
  * `run.tmp-3.json`. A substring predicate would sweep a live session's sample
@@ -101,7 +101,7 @@ const TEE_TMP_NAME = /\.json\.tmp-\d+(?:-\d+)?$/;
  * walks `state/` only.
  *
  * A swept temp file is NOT disclosed to the caller, matching
- * `hooks/session-start.ts` · `leftover carries no such consequence, so the` · ~78:
+ * `hooks/session-start.ts` · `leftover carries no such consequence, so the` · ~177:
  * nothing ever reads one, so removing it costs a reader nothing there is to
  * say. `INV-nothing-is-dropped-silently` is about dropping what someone would
  * otherwise have received.
@@ -146,7 +146,7 @@ export function sweepStaleTeeTemps(root: string, maxAgeMs: number = TEE_TMP_MAX_
 /**
  * A per-process counter, so no two writes from this process can ever name the
  * same temp file.
- * `core/rebuild.ts` · `The temp name carries both the pid and a per-process counter` · ~373
+ * `core/rebuild.ts` · `The temp name carries both the pid and a per-process counter` · ~415
  * gives the reason, and it is what makes the cleanup below provably safe: the
  * path being removed on the failure branch cannot be a file any other writer
  * — in this process or another — has created in the meantime.
@@ -201,7 +201,7 @@ export function writeTee(
     // AFTER the sample is on disk, never before, so the reader gets its fresh
     // sample without waiting on housekeeping — the ordering, and the reason
     // for it, of
-    // `hooks/session-start.ts` · `**Why here, after the write to stdout.** The model already has its text, so` · ~49.
+    // `hooks/session-start.ts` · `**Why here, after the write to stdout.** The model already has its text, so` · ~148.
     // What keeps this from deleting a temp file some OTHER writer is about to
     // rename is not the ordering but `TEE_TMP_MAX_AGE_MS`; see there.
     //

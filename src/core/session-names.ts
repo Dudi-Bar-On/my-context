@@ -31,7 +31,7 @@ import { retryOnTransientFsError } from './rebuild.ts';
 // id is an identifier of one person's machine and one afternoon's work; a name
 // file that reached git would travel with the corpus into every checkout. The
 // `.gitignore` is written beside the store on every write for the reason
-// `core/ledger.ts` · `writeFileSync(path.join(dir, '.gitignore'), '*\n', 'utf8');` · ~752
+// `core/ledger.ts` · `writeFileSync(path.join(dir, '.gitignore'), '*\n', 'utf8');` · ~764
 // writes it beside a snapshot: `state/` may not have one yet, because nothing
 // guarantees a snapshot has ever been written in this workspace.
 //
@@ -208,7 +208,7 @@ let writeCounter = 0;
  * it already has is not a duplicate and is accepted (it re-stamps `at`).
  *
  * **Write mechanics: temp file then rename**, through
- * `core/rebuild.ts` · `export function retryOnTransientFsError<T>(fn: () => T, attempts = 5): T {` · ~205 —
+ * `core/rebuild.ts` · `export function retryOnTransientFsError<T>(fn: () => T, attempts = 5): T {` · ~247 —
  * the same shape `writeSnapshot` uses, so a reader sees the whole old store or
  * the whole new one and a Windows sharing violation on the rename is waited
  * out rather than lost.

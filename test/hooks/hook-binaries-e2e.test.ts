@@ -236,7 +236,7 @@ test('PostToolUseFailure is registered for every tool, with the 5s bound', () =>
  * pair; this one pins the number it depends on.
  *
  * The measured cost of the work being bounded is
- * `test/perf/subagent-start-latency.perf.ts` · `const CEILING_MS = perfCeiling(500);` · ~122,
+ * `test/perf/subagent-start-latency.perf.ts` · `const CEILING_MS = perfCeiling(500);` · ~17,
  * which is the in-process selection only — a cold `node` start is inside this
  * 5s and outside that measurement.
  */
@@ -1146,7 +1146,7 @@ test('the config.json mode really does reach the throw, and nothing says so', as
  * deterministically by holding the index write lock from the test process.
  * That cannot slow this hook by a millisecond: Task 10's design decision 3
  * made the subagent event skip the best-effort index refresh entirely
- * (`core/inject.ts` · `**THE SUBAGENT EVENT SKIPS THIS ENTIRELY**` · ~566), so
+ * (`core/inject.ts` · `**THE SUBAGENT EVENT SKIPS THIS ENTIRELY**` · ~725), so
  * nothing between the two records opens a database and a held lock is
  * invisible to it. The contended-open worst case the plan cites in its case
  * for `timeout: 5` (`core/store.ts` · `Worst case ~1.06s: two attempts` · ~122)
@@ -1156,7 +1156,7 @@ test('the config.json mode really does reach the throw, and nothing says so', as
  * sentinel this test plants in `config.json`: the preload replaces
  * `JSON.parse` with one that blocks the thread forever the first time it is
  * handed text containing that sentinel. The parse it stops at is
- * `resolveWorkspace`'s (`core/workspace.ts` · `raw = JSON.parse(readFileSync(configPath, 'utf8'));` · ~54),
+ * `resolveWorkspace`'s (`core/workspace.ts` · `raw = JSON.parse(readFileSync(configPath, 'utf8'));` · ~151),
  * which is the first thing `buildInjection` does — so when the child stops it
  * is provably past the attempt record and provably short of the selection.
  * The child then says so in a file, and only then does the test kill it.

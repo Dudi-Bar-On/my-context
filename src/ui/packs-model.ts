@@ -14,7 +14,7 @@
  * `test/ui/no-writes.test.ts` holds the import graph to that.
  *
  * **The one thing this screen cannot have, named rather than quietly missing.**
- * `planImport` (`pack/import.ts` · `export function planImport(artefact: Artefact, against: ImportAgainst): ImportPlan {` · ~294)
+ * `planImport` (`pack/import.ts` · `export function planImport(artefact: Artefact, against: ImportAgainst): ImportPlan {` · ~307)
  * is PURE — it opens nothing, creates nothing and stamps nothing, and it is
  * exactly the function that could answer "what would importing THIS artefact
  * do to THIS corpus": the three buckets, the config merge, the not-carried
@@ -23,7 +23,7 @@
  * (`pack/import.ts` · `  createItem, updateItem,` · ~63), so importing it puts
  * `core/mutate.ts` into the server's graph — the same refusal `read-model.ts`
  * already makes about the `cli` help topic
- * (`ui/read-model.ts` · ` * not**: it reaches \`core/mutate.ts\`, so serving that one topic would put the` · ~1700).
+ * (`ui/read-model.ts` · ` * not**: it reaches \`core/mutate.ts\`, so serving that one topic would put the` · ~3078).
  * A per-artefact preview is therefore REPORTED as unreachable rather than
  * approximated by a second bucketing written in here, which would be a copy of
  * `collide.ts`'s rule free to disagree with the one the import actually runs.
@@ -85,7 +85,7 @@ import { registerRoute, type ApiContext, type JsonResult } from './routes.ts';
  * this table; asserting it from a read model would be this file holding open a
  * property of a module it only reads. `skippedKeys` is the loader's OUTPUT
  * rather than a key a file may write
- * (`core/config.ts` · `   * The top-level keys this build did not understand, in the order the file` · ~334),
+ * (`core/config.ts` · `   * The top-level keys this build did not understand, in the order the file` · ~557),
  * and it was never a member of `TOP_LEVEL_KEYS`, so nothing has to subtract it
  * here any more.
  */
@@ -153,12 +153,12 @@ function carriesFor(local: Config): CarriesRow[] {
  * `pk.draft`, and `pk.trustn` argues the split at length — *"choosing a pack at
  * init is itself the act of trust"*. The build does not do that. There is ONE
  * import implementation behind both surfaces, its create input hard-codes the
- * status (`pack/import.ts` · ` * \`status: 'draft'\` is explicit and is NOT left to \`trustedStatus\`: that rule` · ~401), and `init`'s own
+ * status (`pack/import.ts` · ` * \`status: 'draft'\` is explicit and is NOT left to \`trustedStatus\`: that rule` · ~414), and `init`'s own
  * refusal text says so in words: *"everything a pack brings in still lands
  * `draft`, governing nothing until you promote it"*
- * (`cli/index.ts` · `    '--yes: there is no confirmation on this command to answer. \`init --pack\` creates the ' +` · ~166).
+ * (`cli/index.ts` · `    '--yes: there is no confirmation on this command to answer. \`init --pack\` creates the ' +` · ~183).
  * `mycontext pack list` prints the same sentence about every pack it lists
- * (`cli/commands/pack.ts` · `      'Everything a pack imported landed as a draft. \`mycontext review promote --all --pack '` · ~599).
+ * (`cli/commands/pack.ts` · `      'Everything a pack imported landed as a draft. \`mycontext review promote --all --pack '` · ~652).
  *
  * So this serves what the code does, and the disagreement is REPORTED rather
  * than reconciled here: a read model that echoed the mockup would be telling a
@@ -245,7 +245,7 @@ export interface PackRow {
  * an imported item carries no tag saying where it came from, deliberately: a
  * tag *"would have changed the items' content hashes, which would have made
  * every one of them `changed` against the pack it came from on the next
- * import"* (`pack/imported-audit.ts` · ` * \`review promote --all --pack <name>\` reads it. A tag would have changed the` · ~296).
+ * import"* (`pack/imported-audit.ts` · ` * \`review promote --all --pack <name>\` reads it. A tag would have changed the` · ~424).
  * The record IS the membership, and this reads the same list `review promote
  * --all --pack` reads.
  *
@@ -268,16 +268,16 @@ export interface PackRow {
  * import record"*
  * (`pack/screen.ts` · ` * every surface prints WITHOUT the item beside them — a pack list, a` · ~319)
  * — and `planImport` does run it over the MANIFEST's name and version
- * (`pack/import.ts` · `    ...screenPackMeta(manifest.name ?? '', manifest.version ?? ''),` · ~320).
+ * (`pack/import.ts` · `    ...screenPackMeta(manifest.name ?? '', manifest.version ?? ''),` · ~333).
  * But `pack import --name <text>` overrides the manifest's name AFTER the plan
- * has been screened (`cli/commands/pack.ts` · `    const name = override ?? plan.pack;` · ~493),
+ * has been screened (`cli/commands/pack.ts` · `    const name = override ?? plan.pack;` · ~541),
  * and nothing re-checks the override. Measured, not inferred: importing with
  * `--name` holding U+202E RIGHT-TO-LEFT OVERRIDE exits 0 and writes the control
  * character into `import.json`'s `pack` field verbatim, and so does a `--name`
  * holding a newline — which `refusePackName` refuses on the manifest path
  * because such a name *"is printed as ONE line ... so a newline or a carriage
  * return inside it forges a second line of a report the reader is relying on"*
- * (`pack/manifest.ts` · `    return \`${lead} ${json(v)} contains a control character. It is printed as ONE line in the \`` · ~301).
+ * (`pack/manifest.ts` · `    return \`${lead} ${json(v)} contains a control character. It is printed as ONE line in the \`` · ~306).
  * Screening on this READ path would be the wrong repair: these packs are already
  * in the corpus, and a finding here could only refuse to serve one, which hides
  * a pack instead of naming a bad name. The boundary is where the override is
@@ -316,7 +316,7 @@ export interface Dropped { where: string; message: string }
  *
  * That function *"skips rather than reports"* a directory under
  * `.audit/imported/` with no `import.json` in it
- * (`pack/imported-audit.ts` · ` * A directory with no \`import.json\` is skipped rather than reported: the` · ~344),
+ * (`pack/imported-audit.ts` · ` * A directory with no \`import.json\` is skipped rather than reported: the` · ~559),
  * and its reasoning is right for the question IT answers — the quarantine
  * directory is one such, and so is a pack directory left behind by an import
  * that failed before its record was written. Neither is a pack that was
@@ -389,7 +389,7 @@ export interface PacksBody {
  * is `readImportRecords`' ruling, in its own words: such a record *"is refused
  * rather than skipped: a pack missing from this list is a pack whose items
  * nothing would offer to promote"*
- * (`pack/imported-audit.ts` · `        + '(it may have been written by a different version). It is refused rather than skipped: '` · ~383).
+ * (`pack/imported-audit.ts` · `        + '(it may have been written by a different version). It is refused rather than skipped: '` · ~523).
  * It reaches the client as the server's 500 carrying that sentence. The
  * alternative — a field, the way `/api/config` carries `parseError` — is right
  * there and wrong here: that endpoint exists to help a user fix the file it is
@@ -427,7 +427,7 @@ export function apiPacks(ws: Workspace, url: URL): JsonResult {
       // the file as THIS request read it. There is no boot-time config left to
       // be behind — `liveWorkspace` re-resolves `config.json` once per request
       // and hands that one answer to every route
-      // (`src/ui/server.ts` · `const now = live.now();` · ~823).
+      // (`src/ui/server.ts` · `const now = live.now();` · ~1160).
       //
       // The behaviour this line always wanted is unchanged and so is the
       // reason for it: ONE config answers one page. What changed is how old

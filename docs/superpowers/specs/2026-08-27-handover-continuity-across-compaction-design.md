@@ -42,7 +42,7 @@ it into a void.
 
 **`SessionStart` is the tier that can, and it already fires on a compaction.** Its
 stdout is appended to the model's context verbatim —
-`src/hooks/session-start.ts` · `if (text) process.stdout.write(text);` · ~135 — which
+`src/hooks/session-start.ts` · `if (text) process.stdout.write(text);` · ~244 — which
 is why `src/hooks/io.ts` deliberately excludes `SessionStart` from the envelope
 union: wrapping it would deliver the JSON itself into context. Its registered matcher
 is `startup|clear|resume|compact|fork`, so the compaction case is already dispatched
@@ -65,7 +65,7 @@ hook that knows something records it, and the hook that can speak says it.
 ### 3.1 Which file
 
 A new top-level config key, `handover`, registered beside `ui` in
-`src/core/config.ts` · `export const TOP_LEVEL_KEYS = [` · ~799. The list is cited by its
+`src/core/config.ts` · `export const TOP_LEVEL_KEYS = [` · ~1025. The list is cited by its
 opening rather than in full, because a citation a NEW MEMBER breaks is a citation
 that will break again — and this key is the member that broke it.
 
@@ -118,7 +118,7 @@ key nobody would ever change.
 
 **It says so, on stderr.** A configured `handover.path` that does not resolve is a
 broken agreement, and silence is the defect this whole spec exists to answer —
-`src/hooks/io.ts` · `export function noWorkspaceLine(cwd: string): string {` · ~382
+`src/hooks/io.ts` · `export function noWorkspaceLine(cwd: string): string {` · ~388
 is the precedent and the tone. An UNCONFIGURED handover says nothing, because nothing
 was promised.
 
@@ -194,7 +194,7 @@ The design therefore does two things rather than arguing:
 | latch check | one small state read | none needed |
 
 No transcript scan, no directory walk, no network, no spawn. The 8 MB tail-read
-helper in `src/core/ledger.ts` · `const MAX_TRANSCRIPT_BYTES = 8 * 1024 * 1024;` · ~868
+helper in `src/core/ledger.ts` · `const MAX_TRANSCRIPT_BYTES = 8 * 1024 * 1024;` · ~880
 is deliberately NOT used here — it exists for `PreCompact`, which runs once, and
 putting it on a per-turn path would be the wrong trade.
 

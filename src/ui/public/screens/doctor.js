@@ -46,7 +46,7 @@
  * other half of the same pair
  * (`src/ui/public/lib/i18n.js` · `out.push(run('m', payload));` · ~71), and
  * `.m` is precisely what the stylesheet reserves for one
- * (`src/ui/public/styles.css` · `Direction KNOWN ltr: identifiers, paths, globs, commands, flags.` · ~261).
+ * (`src/ui/public/styles.css` · `Direction KNOWN ltr: identifiers, paths, globs, commands, flags.` · ~416).
  * So `messageRuns` isolates what he quoted and changes not one character of
  * what he wrote.
  *
@@ -153,7 +153,7 @@ function catalogued(id, values) {
  * `reports/V2-HANDOVER.md:437` had the design and recorded it as unbuilt:
  * *"`Finding` in `src/doctor/` must declare its own remedies, never a UI-side
  * table"*. It is built. Every check populates `Finding.remedy`
- * (`src/doctor/checks.ts` · `export type Remedy =` · ~64), and what is left here
+ * (`src/doctor/checks.ts` · `export type Remedy =` · ~190), and what is left here
  * is the resolution of a route into the shape the control takes.
  *
  * The client sends an id and a value bag and never a command (spec §3.1), which
@@ -477,7 +477,7 @@ const QUOTED_LITERAL = /"([^"\n]+)"|`([^`\n]+)`/g;
  * **The rule is the producer's own punctuation, never a guess at what looks
  * like a path.** Every message in `src/doctor/checks.ts` that embeds a value
  * wraps it in double quotes
- * (`src/doctor/checks.ts` · `scope glob "${glob}" matches no file in the repository.` · ~396)
+ * (`src/doctor/checks.ts` · `scope glob "${glob}" matches no file in the repository.` · ~754)
  * and every message that names a command wraps it in backticks. A heuristic
  * over slashes and asterisks would isolate half a sentence the first time one
  * of them writes "and/or", and it would have to be re-guessed every time a
@@ -706,7 +706,7 @@ function aboutNoteBlock(ctx, check, note) {
 /**
  * The disclosure the mockup already draws on Decay, holding the paragraph the
  * rows stopped repeating
- * (`docs/design/web-ui-mockup.html` · `<details class="help"><summary data-t="help.whyCold">` · ~2754)
+ * (`docs/design/web-ui-mockup.html` · `<details class="help"><summary data-t="help.whyCold">` · ~3168)
  * — built through the same shared `helpDisclosure` as `aboutNoteBlock` above,
  * for the same reason.
  *
@@ -740,7 +740,7 @@ function sharedNoteBlock(ctx, code, note) {
  * **The primitive is the strip's, not a fourth spelling of it.** `app.js`'s
  * `stateChip` draws `strip.unread`, `strip.unmeasured` and `screen.unread` as
  * `span.chip.unmeas` with `data-g="◌"` and the reason in a `title`
- * (`src/ui/public/app.js` · `chip.className = 'chip unmeas';` · ~1514), under
+ * (`src/ui/public/app.js` · `chip.className = 'chip unmeas';` · ~638), under
  * `STD-a-measured-zero-is-drawn-and-named-an-unmeasured-thing-is`. The same
  * shape, the same glyph, the same split of two words on screen and the sentence
  * in the title. That function is module-private to the shell and this screen
@@ -756,7 +756,7 @@ function sharedNoteBlock(ctx, code, note) {
  * **In the message cell, after the message, which is where the mockup puts a
  * badge about a row.** `<span class="prop">PROPOSED</span>` sits exactly there
  * on three of its own rows
- * (`docs/design/web-ui-mockup.html` · `repo has none of them.</span> <span class="prop">PROPOSED</span>` · ~2217).
+ * (`docs/design/web-ui-mockup.html` · `repo has none of them.</span> <span class="prop">PROPOSED</span>` · ~3129).
  * A fourth `<td>` would change the table's shape for a fact that is about the
  * finding rather than a column of its own.
  */
@@ -1023,7 +1023,7 @@ export async function render(root, ctx) {
   // carries no `'unsafe-inline'` — and with a LOGICAL property and the
   // stylesheet's own spacing token, which is the treatment `screens/parts.js`'s
   // `spaced` established for exactly this
-  // (`src/ui/public/screens/parts.js` · `e.style.setProperty('margin-block-start', '8px');` · ~55).
+  // (`src/ui/public/screens/parts.js` · `e.style.setProperty('margin-block-start', '8px');` · ~158).
   summary.style.setProperty('margin-block-end', 'var(--sp-3)');
   root.append(summary);
 

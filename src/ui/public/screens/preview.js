@@ -138,7 +138,7 @@
  *          position as a `.gap` at its real width and each spilled one is a
  *          `.gh` at its real width, in `selection.spilled`'s own order — which
  *          is the order the read model states it must be drawn in
- *          (`ui/read-model.ts` · `order the selector considered each item, tier by tier` · ~390) —
+ *          (`ui/read-model.ts` · `order the selector considered each item, tier by tier` · ~696) —
  *          but a ghost cannot yet appear BETWEEN two fills, which is the
  *          placement `preview.ribbonn` asks for. Filed.
  *
@@ -654,7 +654,7 @@ export async function render(root, ctx) {
   /**
    * The session the query actually carries — `'cold'` is `selectQuery`'s own
    * sentinel for `cold=1` and is not a session id
-   * (`lib/viewmodel.js` · `if (session === 'cold') qs.set('cold', '1');` · ~214).
+   * (`lib/viewmodel.js` · `if (session === 'cold') qs.set('cold', '1');` · ~1021).
    *
    * A shell with no sessions at all already answers `'cold'` from
    * `ctx.session()`, so the two states collapse there — correctly: there is no
@@ -742,7 +742,7 @@ export async function render(root, ctx) {
    *
    * Cached across event changes because it does not depend on the event —
    * `injection()` is asked about an item and a config, with no event in hand
-   * (`cli/commands/injection.ts` · `the question about an item it has not written yet` · ~73).
+   * (`cli/commands/injection.ts` · `the question about an item it has not written yet` · ~71).
    * The three rungs that DO move with the event come from the selection, which
    * is refetched every time.
    */
@@ -1426,7 +1426,7 @@ export async function render(root, ctx) {
    * `shown` is a COUNT, and the ids that produced it are the lines the summary
    * flags — `carried` is set to `true` on a line a previous session had and is
    * ABSENT otherwise, deliberately
-   * (`core/select.ts` · `The key is ABSENT otherwise, deliberately` · ~70). One block per
+   * (`core/select.ts` · `The key is ABSENT otherwise, deliberately` · ~203). One block per
    * arriving line, so the sentence's number and the list under it are the same
    * fact twice rather than two facts that agree today.
    *
@@ -1447,7 +1447,7 @@ export async function render(root, ctx) {
    * everywhere else in the design of record, on rail buttons and on whole
    * screens' verdicts. This block is now BUILT, and the app's own tested rule
    * is that a built feature stops advertising itself as proposed
-   * (`e2e/app-layout.spec.ts` · `the rail no longer badges watch as PROPOSED` · ~322).
+   * (`e2e/app-layout.spec.ts` · `the rail no longer badges watch as PROPOSED` · ~640).
    * Drawing it here would label a working feature a proposal.
    *
    * So the two files deliberately differ, and each is right for its own job:
@@ -1533,7 +1533,7 @@ export async function render(root, ctx) {
    *
    * **In `selection.spilled`'s own order, never sorted here.** That order is
    * the one the selector considered each item in, tier by tier
-   * (`ui/read-model.ts` · `order the selector considered each item, tier by tier` · ~390),
+   * (`ui/read-model.ts` · `order the selector considered each item, tier by tier` · ~696),
    * and it is load-bearing rather than incidental: first-fit admits greedily,
    * so `[4,9,4]` against a budget of 10 spills a different item than `[9,1,5]`
    * does. Re-sorting these rows by size or by id would draw a different
@@ -1541,7 +1541,7 @@ export async function render(root, ctx) {
    *
    * **The band is READ, not re-derived** — `Spill.band`, written inside
    * `fitToBudget` where the position is known
-   * (`core/select.ts` · `const partitioned = bands.filter(` · ~575). Comparing
+   * (`core/select.ts` · `const partitioned = bands.filter(` · ~831). Comparing
    * `item.scope.length` against the event path here would be a second
    * implementation of the selector's own partition, which is the two-spellings
    * defect `GateCode` exists to prevent. It is ABSENT wherever the candidates

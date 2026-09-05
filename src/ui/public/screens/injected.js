@@ -69,7 +69,7 @@
  *
  * **Both halves have landed.** `InjectedBody.seen` is `'read' | 'absent'`,
  * filled from `readSeen`, which is where the fact still existed
- * (`src/ui/read-model.ts` · ``      // `state.file` — what THIS read saw, not a fresh question to the disk.`` · ~966);
+ * (`src/ui/read-model.ts` · ``      // `state.file` — what THIS read saw, not a fresh question to the disk.`` · ~1451);
  * `inj.noSeenFile` is the key drafted for it and is now in both tables. The
  * rule the endpoint states for its client is followed exactly: a client that
  * cannot tell the two apart must say UNMEASURED rather than pick one, so an

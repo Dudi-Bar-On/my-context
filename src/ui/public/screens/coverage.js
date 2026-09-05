@@ -432,7 +432,7 @@ export async function render(root, ctx) {
   } else if (catEmpty.length === 0) {
     // `STD-a-measured-zero-is-drawn-and-named-an-unmeasured-thing-is` — reusing
     // the ONE `◌` primitive this product already draws for exactly this state
-    // (`screens/doctor.js` · `el('span', 'chip unmeas')` · ~775), never a
+    // (`screens/doctor.js` · `el('span', 'chip unmeas')` · ~778), never a
     // second glyph invented here.
     const zero = el('span', 'chip unmeas');
     zero.dataset.g = '◌';

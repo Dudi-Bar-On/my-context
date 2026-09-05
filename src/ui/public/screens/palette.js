@@ -27,7 +27,7 @@
  * `PALETTE`, so a flag the catalogue withholds cannot appear here by accident.
  * That is load-bearing rather than tidy: `review promote --all --pack <name>`
  * is a real flag pair, deliberately not offered, and the reason is written down
- * beside it (`test/ui/palette-lib.test.ts` · `bulk promotion: --all --pack <name> settles every draft a pack imported in one ` · ~492).
+ * beside it (`test/ui/palette-lib.test.ts` · `bulk promotion: --all --pack <name> settles every draft a pack imported in one ` · ~639).
  * A free-text "extra flags" box on this screen would put it back within one
  * keystroke of a checkbox, which is the decision that task says is the owner's
  * and not a fill-in. `offeredFlagNames()` below exists so a test can pin that
@@ -81,7 +81,7 @@
  * name is reserved for the literal field (repaint spec §3 primitive 3), a
  * different mechanism, and the two must not be confused by a shared class. The
  * mockup's own markup is `<div>`/`<div class="hit">` inside `.globtree`
- * (`docs/design/web-ui-mockup.html` · `<div class="globtree plate" id="globtree"></div>` · ~2010),
+ * (`docs/design/web-ui-mockup.html` · `<div class="globtree plate" id="globtree"></div>` · ~3361),
  * and that is what this builds.
  *
  * ── WHY THE MATCHING IS A SERVER ROUND TRIP PER KEYSTROKE ──────────────────
@@ -93,13 +93,13 @@
  * than once. `/api/glob` IS that cache, exposed, and its docblock names itself
  * the one legitimate `matchesAnyGlob` call in this UI because the question it
  * answers is about a PATTERN and not about what governs a file
- * (`src/ui/read-model-work.ts` · ` * is "which files match this pattern" — a question about a pattern, not about` · ~218).
+ * (`src/ui/read-model-work.ts` · ` * is "which files match this pattern" — a question about a pattern, not about` · ~232).
  * So the file list is fetched once with the universal pattern, the matches are
  * fetched again per (debounced) keystroke, and the only thing computed in the
  * browser is set membership — which is not a second opinion about globbing.
  *
  * **The list is capped at 200 files by the endpoint** and there is no paging
- * parameter (`src/ui/read-model-work.ts` · `const GLOB_SAMPLE_CAP = 200;` · ~210).
+ * parameter (`src/ui/read-model-work.ts` · `const GLOB_SAMPLE_CAP = 200;` · ~224).
  * On a repository larger than that, `pal.globn`'s "every file in the
  * repository" is true of the COUNT — `total` is exact — and not of the tree.
  * Reported rather than papered over: nothing here invents a row it was not
@@ -145,7 +145,7 @@
  *
  * The ui2 Task 12 reconciliation says the argv chip row is data and "when
  * built" should sit on `.plate`. The mockup's own markup for that row is a
- * bare `<p>` (`docs/design/web-ui-mockup.html` · `<p><span class="chip ok" data-g="●">mycontext</span> <span class="chip ok" data-g="●">add</span>` · ~1997),
+ * bare `<p>` (`docs/design/web-ui-mockup.html` · `<p><span class="chip ok" data-g="●">mycontext</span> <span class="chip ok" data-g="●">add</span>` · ~3348),
  * and `styles.css` is held byte-identical to it. The mockup is the appearance
  * authority, so the bare `<p>` is what ships and the disagreement is reported
  * rather than settled here. The glob tree carries `.plate` because the mockup
@@ -163,7 +163,7 @@ import { el, errorNote, num, screenHead, spaced } from '/screens/parts.js';
 
 /**
  * `mycontext help <topic>`' four topics, which are a closed vocabulary this
- * server owns (`src/ui/read-model.ts` · `export const UI_HELP_TOPICS: UiHelpTopic[] = ['categories', 'scope', 'capture', 'workflow'];` · ~1488).
+ * server owns (`src/ui/read-model.ts` · `export const UI_HELP_TOPICS: UiHelpTopic[] = ['categories', 'scope', 'capture', 'workflow'];` · ~3085).
  * There is no endpoint that lists them — `/api/help/:topic` answers one at a
  * time — so the list is spelled here, in the same order, exactly as
  * `screens/learn.js` spells it for the same reason.

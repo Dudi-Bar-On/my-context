@@ -159,7 +159,7 @@ export const strings = {
   'preview.carried': '{b:{lines} שורות אינדקס הועברו מהשיחה} {mv:session}. מוצג כאן וב‑{m:mycontext context} באופן זהה — פריט שמגיע ממקום שאינכם רואים הוא אותו פגם כמו פריט שנשמט בשקט, רק מהכיוון ההפוך.',
   // The other three clauses of the same disclosure. The ids and their reasons
   // stay together in ONE isolated LTR run: the reason is English because
-  // `core/select.ts` · `function carriedDropReason(` · ~502 is the only place
+  // `core/select.ts` · `function carriedDropReason(` · ~981 is the only place
   // it is spelled, and an English run inside Hebrew prose is read left to right
   // or it is not read at all.
   'index.carriedDropped': '{dropped} מזהים שהועברו לא קיבלו שורה: {mv:ids}.',

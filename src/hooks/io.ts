@@ -29,7 +29,7 @@ export interface HookInput {
    * `other`, both in
    * `reports/probes/2026-08-20-clear-and-prompt-hooks.md`. The list itself is
    * build 2.1.239's own payload schema, byte-identical in 2.1.237 and 2.1.238;
-   * `hooks/session-end.ts` · `export const SESSION_END_REASONS = [` · ~73
+   * `hooks/session-end.ts` · `export const SESSION_END_REASONS = [` · ~76
    * carries the quotation and is the one place that enumerates it.
    *
    * **`other` is the DEFAULT, not a residual category.** The shutdown entry

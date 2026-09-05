@@ -4,7 +4,7 @@
 
 **Goal:** Hooks never write SQLite and never require it — injections are computed from Markdown, dedupe state lives in per-session append-only files, index reads go read-only with a Markdown fallback, and the PreCompact snapshot path performs zero SQLite writes and zero blocking SQLite reads.
 
-**Architecture:** B + A + C from the design, **in that causal order**: (B) the hooks' SQLite writes move to a per-session seen file plus the audit JSONL that already records every delivery first (`src/core/inject.ts` · `// 4. AUDIT — first and durable` · ~608 before `src/core/inject.ts` · `// 5. THE SEEN-FILE APPEND` · ~799; `src/hooks/pre-tool-use.ts` · `// The audit record, before the seen-file append and independent of it:` · ~269 before `src/hooks/pre-tool-use.ts` · `appendSeen(ws.projectRoot, dedupeKey,` · ~330); (A) with no reason left to open writable, the JIT hook opens the index read-only — 0 failures in 18,300 contended read-only trials, worst case 17.2 ms [P6/P6b], vs `Store.open`'s measured 16,881 ms stall then `database is locked` under a 30 s held write lock [P4], independently reproduced at 16,914 ms [R]; (C) any read failure falls back to selecting straight from Markdown — `select` is pure (`src/core/select.ts` · `export function select(items: Item[], ctx: SelectContext, config: Config): Selection {` · ~833), `loadLayer` needs no database (`src/core/rebuild.ts` · `export function loadLayer(` · ~103), and the fallback produced selections IDENTICAL to the primary path in 5/5 executed comparisons including a tight-budget variant [R1].
+**Architecture:** B + A + C from the design, **in that causal order**: (B) the hooks' SQLite writes move to a per-session seen file plus the audit JSONL that already records every delivery first (`src/core/inject.ts` · `// 4. AUDIT — first and durable` · ~767 before `src/core/inject.ts` · `// 5. THE SEEN-FILE APPEND` · ~996; `src/hooks/pre-tool-use.ts` · `// The audit record, before the seen-file append and independent of it:` · ~351 before `src/hooks/pre-tool-use.ts` · `appendSeen(ws.projectRoot, dedupeKey,` · ~412); (A) with no reason left to open writable, the JIT hook opens the index read-only — 0 failures in 18,300 contended read-only trials, worst case 17.2 ms [P6/P6b], vs `Store.open`'s measured 16,881 ms stall then `database is locked` under a 30 s held write lock [P4], independently reproduced at 16,914 ms [R]; (C) any read failure falls back to selecting straight from Markdown — `select` is pure (`src/core/select.ts` · `export function select(items: Item[], ctx: SelectContext, config: Config): Selection {` · ~1364), `loadLayer` needs no database (`src/core/rebuild.ts` · `export function loadLayer(` · ~125), and the fallback produced selections IDENTICAL to the primary path in 5/5 executed comparisons including a tight-budget variant [R1].
 
 **Tech Stack:** TypeScript on Node 24 (type-stripping, no build step), `node:sqlite`, `node:fs`, `node --test`. Nothing added.
 
@@ -29,9 +29,9 @@ Copied verbatim from the project rules; every task's requirements implicitly inc
 ## Conditions the design carries — preserved here, stated
 
 1. **The guarantee is conditional on corpus size ≲ 10,000 items.** Measured: the Markdown fallback costs **9,903 ms at 10,000 items on a cold file cache** [R5] against the 10 s kill — and cold cache is the first fire after a reboot, exactly when the fallback is needed. At 20,000 items: 11,128 ms cold, 1,445–3,679 ms warm (`select` itself 27–50 ms) [R5]. Past the ceiling, injection degrades to E4's *disclosed* miss. Task 11 surfaces the approach to this ceiling via a `doctor` warning pinned at 5,000 items (the design's mitigation trigger, §6 risk 3).
-2. **Re-injection is the accepted failure direction — never a miss.** A duplicate is disclosed and cheap; a miss is neither. An unreadable seen file means "inject without dedupe, disclosed" (Tasks 4, 5); a projection behind its log means `decay`/`usage` inaccuracy off the hot path, healed by top-up (Tasks 6, 7). No task in this plan may convert a lag into suppression. The one pre-existing window — a seen record appended before the hook's output is confirmed delivered downstream — is not new (`ledger.recordMany` had the identical window on the JIT path Task 4 rewrote) and the file append narrows it (`src/hooks/pre-tool-use.ts` · `appendSeen(ws.projectRoot, dedupeKey,` · ~330) [review M3].
-3. **Seen files were never pruned, and sanitised filenames widened the dedupe-key equivalence classes** [review I4]. Task 3 added the pruning arm — `pruneSnapshots` had removed only `*.restore.json` and `*.tmp-*`, and now takes `*.seen.jsonl` on the same 30-day retention (`src/core/ledger.ts` · `|| entry.name.endsWith('.seen.jsonl')` · ~818) — and pinned the `sanitizeSessionId` collision (`a::b` ↔ `a__b`) in a test. The collision was then closed rather than merely documented: the tasks-3-4 review fix (`2823bc5`) suffixes a digest of the raw id and makes the sanitizer injective (`src/core/ledger.ts` · `const digest = createHash('sha256').update(sessionId, 'utf8').digest('hex').slice(0, 12);` · ~702), so the accepted worst case — shared dedupe scope, suppression within one colliding pair, recoverable, unreachable with UUID session ids — no longer has a pair to occur in, and the test records that decision instead.
-4. **The fallback's focus-report universe diverges from `activeInjectable`'s pre-filtered one** [review I3]: `store.activeInjectable(types)` pre-filters to `status='active' AND type IN (normative)` (`src/core/store.ts` · `activeInjectable(types: string[]): Item[] {` · ~532), so on the DB path `select`'s `eligibleAll` (`src/core/select.ts` · `const eligibleAll = merged.filter((i) => isEligible(i, config));` · ~836) — the base of `buildFocusReport`'s universe (`src/core/select.ts` · `? buildFocusReport(focus, eligibleAll, config, ctx.event === 'tool' ? target : null)` · ~892) — contains normative items only. Task 9's fallback applies **the same filter in JS before `select`**, not only to the tiers, and pins report-count equality between paths in a test. Injection outcomes were verified identical either way [R1]; the filter exists for the *disclosure*.
+2. **Re-injection is the accepted failure direction — never a miss.** A duplicate is disclosed and cheap; a miss is neither. An unreadable seen file means "inject without dedupe, disclosed" (Tasks 4, 5); a projection behind its log means `decay`/`usage` inaccuracy off the hot path, healed by top-up (Tasks 6, 7). No task in this plan may convert a lag into suppression. The one pre-existing window — a seen record appended before the hook's output is confirmed delivered downstream — is not new (`ledger.recordMany` had the identical window on the JIT path Task 4 rewrote) and the file append narrows it (`src/hooks/pre-tool-use.ts` · `appendSeen(ws.projectRoot, dedupeKey,` · ~412) [review M3].
+3. **Seen files were never pruned, and sanitised filenames widened the dedupe-key equivalence classes** [review I4]. Task 3 added the pruning arm — `pruneSnapshots` had removed only `*.restore.json` and `*.tmp-*`, and now takes `*.seen.jsonl` on the same 30-day retention (`src/core/ledger.ts` · `|| entry.name.endsWith('.seen.jsonl')` · ~830) — and pinned the `sanitizeSessionId` collision (`a::b` ↔ `a__b`) in a test. The collision was then closed rather than merely documented: the tasks-3-4 review fix (`2823bc5`) suffixes a digest of the raw id and makes the sanitizer injective (`src/core/ledger.ts` · `const digest = createHash('sha256').update(sessionId, 'utf8').digest('hex').slice(0, 12);` · ~714), so the accepted worst case — shared dedupe scope, suppression within one colliding pair, recoverable, unreachable with UUID session ids — no longer has a pair to occur in, and the test records that decision instead.
+4. **The fallback's focus-report universe diverges from `activeInjectable`'s pre-filtered one** [review I3]: `store.activeInjectable(types)` pre-filters to `status='active' AND type IN (normative)` (`src/core/store.ts` · `activeInjectable(types: string[]): Item[] {` · ~532), so on the DB path `select`'s `eligibleAll` (`src/core/select.ts` · `const eligibleAll = merged.filter((i) => isEligible(i, config));` · ~1367) — the base of `buildFocusReport`'s universe (`src/core/select.ts` · `? buildFocusReport(focus, eligibleAll, config, ctx.event === 'tool' ? target : null)` · ~1552) — contains normative items only. Task 9's fallback applies **the same filter in JS before `select`**, not only to the tiers, and pins report-count equality between paths in a test. Injection outcomes were verified identical either way [R1]; the filter exists for the *disclosure*.
 
 ## What is already in flight — checked, and the finding
 
@@ -40,7 +40,7 @@ The snapshot-durability fix **has landed**: `origin/fix/snapshot-rename-durabili
 - `writeSnapshot`'s rename goes through `retryOnTransientFsError` (imported into `ledger.ts` **directly from `rebuild.ts`** — no cycle) with `SNAPSHOT_RENAME_ATTEMPTS = 15`, a worst case of 20·(1+…+14) = **2,100 ms** of backoff against the 10 s kill, pinned by a budget test so neither the constant nor the backoff formula can drift. It reproduced the defect at **681/2,000** renames failing `EPERM` (the review measured 654/2,000 [R3]).
 - On final failure `buildRestoreSnapshot` discloses **twice**: an audit record (`op: 'pre-compact'`, `injected: []`, a note beginning `SNAPSHOT WRITE FAILED (…)` naming the captured-but-unpersisted counts) plus one line on stderr — with a fallback clause naming the audit error if the audit write itself fails. Exit stays 0: hooks fail open, compaction is never blocked.
 - `writeSnapshot`'s contract now states the two properties separately: atomic against concurrent readers (0 torn in 22,791 contended reads [R3]); **not** power-loss durable (no fsync — accepted and stated, since a power cut also ends the session the snapshot serves). Exactly the wording §4.4 requires.
-- A second bare rename-over-existing was fixed at `src/lesson/derive.ts` · `retryOnTransientFsError(() => renameSync(tmp, target));` · ~84 (`saveStaging`, default retry); `audit.ts`'s `rotateIfFull` rename is left bare **deliberately** (fresh target name, best-effort by design) — do not "fix" it in any later task.
+- A second bare rename-over-existing was fixed at `src/lesson/derive.ts` · `retryOnTransientFsError(() => renameSync(tmp, target));` · ~85 (`saveStaging`, default retry); `audit.ts`'s `rotateIfFull` rename is left bare **deliberately** (fresh target name, best-effort by design) — do not "fix" it in any later task.
 
 Everything §4.4 and review C1 required of this fix is present in `cd28989`; **no residue task exists for it**. Task 1 merges the branch (which also carries the e3-wave-5 consolidation commits beneath it, `6854f3f`…`d0671f2`) and verifies the property by grep and by test. Task 10, which rewrites `buildRestoreSnapshot`'s *inputs*, preserves `cd28989`'s failure-disclosure structure verbatim.
 
@@ -52,7 +52,7 @@ Task 1 folds all three in before anything else.
 
 ## Why the order is causal, not cosmetic
 
-**B must land before A.** The only reason a hook opened the index writable was that it wrote to it: the JIT hook's `ledger.recordMany` (`src/hooks/pre-tool-use.ts` · `ledger.recordMany(dedupeKey, selection.full.map((e) => e.item.id), 'jit');` · ~229 <!-- historical-citation: Task 4 removed this call; the JIT hook's dedupe write is `appendSeen` now -->) and `Ledger.open`'s schema DDL (`src/core/ledger.ts` · `db.exec(LEDGER_SCHEMA);` · ~139), and SessionStart's full `rebuild` (`src/core/inject.ts` · `store = Store.open(ws.dbPath, manual ? undefined : HOOK_OPEN_PROFILE);` · ~585 — the one writable hook open this plan left, and it is now a best-effort refresh after the selection rather than the selection's own source). If A were reordered before B, the hook would open read-only for the item query and then still need a writable connection for the ledger — the `BEGIN IMMEDIATE` stall at `src/core/store.ts` · `db.exec('BEGIN IMMEDIATE');` · ~192 (measured: 16,881 ms then `database is locked` under a 30 s hold [P4]) would not be removed, only relocated to the ledger open, and the 0.2 ms read-only figure [P4] would be a decoration on an unchanged failure. Tasks 4–5 (B) therefore precede Task 8 (A), and Task 8's first step re-verifies by grep that no hook path still opens `Ledger` or calls `Store.open` on the injection-critical path. **C lands after A** because C is the catch handler of A's open: there is no fallback branch to write until the read-only open whose failure it serves exists. Snapshot durability is independent of the ordering and already shipped (`cd28989`, consumed in Task 1).
+**B must land before A.** The only reason a hook opened the index writable was that it wrote to it: the JIT hook's `ledger.recordMany` (`src/hooks/pre-tool-use.ts` · `ledger.recordMany(dedupeKey, selection.full.map((e) => e.item.id), 'jit');` · ~229 <!-- historical-citation: Task 4 removed this call; the JIT hook's dedupe write is `appendSeen` now -->) and `Ledger.open`'s schema DDL (`src/core/ledger.ts` · `db.exec(LEDGER_SCHEMA);` · ~139), and SessionStart's full `rebuild` (`src/core/inject.ts` · `store = Store.open(ws.dbPath, manual ? undefined : HOOK_OPEN_PROFILE);` · ~744 — the one writable hook open this plan left, and it is now a best-effort refresh after the selection rather than the selection's own source). If A were reordered before B, the hook would open read-only for the item query and then still need a writable connection for the ledger — the `BEGIN IMMEDIATE` stall at `src/core/store.ts` · `db.exec('BEGIN IMMEDIATE');` · ~192 (measured: 16,881 ms then `database is locked` under a 30 s hold [P4]) would not be removed, only relocated to the ledger open, and the 0.2 ms read-only figure [P4] would be a decoration on an unchanged failure. Tasks 4–5 (B) therefore precede Task 8 (A), and Task 8's first step re-verifies by grep that no hook path still opens `Ledger` or calls `Store.open` on the injection-critical path. **C lands after A** because C is the catch handler of A's open: there is no fallback branch to write until the read-only open whose failure it serves exists. Snapshot durability is independent of the ordering and already shipped (`cd28989`, consumed in Task 1).
 
 ## File Structure
 
@@ -134,7 +134,7 @@ Expected: all clean — including `cd28989`'s pre-compact disclosure test and it
 
 ### Task 2: The per-session seen file — `src/core/seen-file.ts`
 
-The B enabler: session dedupe state moves to `state/<sanitized-key>.seen.jsonl`, one `{id, tier, at}` line per delivery, using the audit log's own append machinery (`appendJsonlLine`/`healTornTail` — `src/core/jsonl-log.ts` · `export function appendJsonlLine(` · ~192 and `src/core/jsonl-log.ts` · `export function healTornTail(file: string): void {` · ~157) — measured at 0.55 ms p95, flat from empty to 32 MiB (`src/core/audit-db.ts` · `//  1. **The hot path.** The PreToolUse hook writes a record on every tool call` · ~20, `test/perf/audit-latency.perf.ts`). Concurrent appends: 6,000/6,000 lines intact across 2 processes × 3,000 interleaved, and the heal-then-append race against a file that starts torn lost 0 records in 3,000 races [R2]; the analytical worst case is a lost seen-record → one re-injection, the accepted direction.
+The B enabler: session dedupe state moves to `state/<sanitized-key>.seen.jsonl`, one `{id, tier, at}` line per delivery, using the audit log's own append machinery (`appendJsonlLine`/`healTornTail` — `src/core/jsonl-log.ts` · `export function appendJsonlLine(` · ~192 and `src/core/jsonl-log.ts` · `export function healTornTail(file: string): void {` · ~157) — measured at 0.55 ms p95, flat from empty to 32 MiB (`src/core/audit-db.ts` · `//  1. **The hot path.** The PreToolUse hook writes a record on every tool call` · ~21, `test/perf/audit-latency.perf.ts`). Concurrent appends: 6,000/6,000 lines intact across 2 processes × 3,000 interleaved, and the heal-then-append race against a file that starts torn lost 0 records in 3,000 races [R2]; the analytical worst case is a lost seen-record → one re-injection, the accepted direction.
 
 **Files:**
 - Create: `src/core/seen-file.ts`
@@ -383,7 +383,7 @@ git commit -m "feat: per-session seen file — session dedupe state off the data
 
 ### Task 3: Seen-file lifecycle — pruning arm and the sanitization-collision pin
 
-Review I4, named in the design (§4.2): `pruneSnapshots` removed only `*.restore.json` and `*.tmp-*` (`src/core/ledger.ts` · `if (!(entry.name.endsWith('.restore.json') || entry.name.includes('.tmp-'))) continue;` · ~357 <!-- historical-citation: the filter as this task found it; Step 3 below replaced this line with the three-arm one -->), so seen files — one per session, one per subagent under E2 — would accumulate forever. The pruning pattern gains a third arm with the same 30-day retention (`SNAPSHOT_MAX_AGE_MS`, `src/core/ledger.ts` · `export const SNAPSHOT_MAX_AGE_MS = 30 * 24 * 60 * 60 * 1000;` · ~780). And `sanitizeSessionId` then folded every character outside `[A-Za-z0-9._-]` to `_` (`src/core/ledger.ts` · `const base = sessionId.replace(/[^A-Za-z0-9._-]/g, '_')` · ~701, now only the BASE of a digest-suffixed name), so E2's composed key `a::b` shared a filename with a hypothetical session `a__b` — an equivalence class the raw-string SQL key did not have. Not exploitable with UUID session ids; the collision's worst case was shared dedupe scope (suppression within the colliding pair, recoverable). Both got pinned in tests so they were decided here, not found later — and the collision was then closed outright by the tasks-3-4 review fix (`2823bc5`), which appends a digest of the raw id (`src/core/ledger.ts` · `const digest = createHash('sha256').update(sessionId, 'utf8').digest('hex').slice(0, 12);` · ~702) and makes the sanitizer injective, so the pinned test now records that decision instead of the worst case.
+Review I4, named in the design (§4.2): `pruneSnapshots` removed only `*.restore.json` and `*.tmp-*` (`src/core/ledger.ts` · `if (!(entry.name.endsWith('.restore.json') || entry.name.includes('.tmp-'))) continue;` · ~357 <!-- historical-citation: the filter as this task found it; Step 3 below replaced this line with the three-arm one -->), so seen files — one per session, one per subagent under E2 — would accumulate forever. The pruning pattern gains a third arm with the same 30-day retention (`SNAPSHOT_MAX_AGE_MS`, `src/core/ledger.ts` · `export const SNAPSHOT_MAX_AGE_MS = 30 * 24 * 60 * 60 * 1000;` · ~792). And `sanitizeSessionId` then folded every character outside `[A-Za-z0-9._-]` to `_` (`src/core/ledger.ts` · `const base = sessionId.replace(/[^A-Za-z0-9._-]/g, '_')` · ~713, now only the BASE of a digest-suffixed name), so E2's composed key `a::b` shared a filename with a hypothetical session `a__b` — an equivalence class the raw-string SQL key did not have. Not exploitable with UUID session ids; the collision's worst case was shared dedupe scope (suppression within the colliding pair, recoverable). Both got pinned in tests so they were decided here, not found later — and the collision was then closed outright by the tasks-3-4 review fix (`2823bc5`), which appends a digest of the raw id (`src/core/ledger.ts` · `const digest = createHash('sha256').update(sessionId, 'utf8').digest('hex').slice(0, 12);` · ~714) and makes the sanitizer injective, so the pinned test now records that decision instead of the worst case.
 
 **Files:**
 - Modify: `src/core/ledger.ts` (`pruneSnapshots`, line 357)
@@ -440,7 +440,7 @@ Expected: FAIL — `pruned` is 0 (the filter skips `.seen.jsonl`: `ledger.ts` ·
 - [ ] **Step 3: Implement — one line in `pruneSnapshots`**
 
 ```ts
-// `core/ledger.ts` · `export function pruneSnapshots(` · ~802 — extend the filter:
+// `core/ledger.ts` · `export function pruneSnapshots(` · ~814 — extend the filter:
     if (!(entry.name.endsWith('.restore.json')
       || entry.name.endsWith('.seen.jsonl')
       || entry.name.includes('.tmp-'))) continue;
@@ -471,7 +471,7 @@ After this task the PreToolUse hook performs **zero SQLite writes**: `Ledger.ope
 - Test: `test/hooks/pre-tool-use.test.ts`
 
 **Interfaces:**
-- Consumes: `readSeen`, `appendSeen`, `seenIds`, type `SeenState` (Task 2); `ledgerKey` (Task 1 / E2); the existing `recordAudit` ordering (audit before dedupe record, `pre-tool-use.ts` · `// The audit record, before the seen-file append and independent of it:` · ~269 before `pre-tool-use.ts` · `appendSeen(ws.projectRoot, dedupeKey,` · ~330).
+- Consumes: `readSeen`, `appendSeen`, `seenIds`, type `SeenState` (Task 2); `ledgerKey` (Task 1 / E2); the existing `recordAudit` ordering (audit before dedupe record, `pre-tool-use.ts` · `// The audit record, before the seen-file append and independent of it:` · ~351 before `pre-tool-use.ts` · `appendSeen(ws.projectRoot, dedupeKey,` · ~412).
 - Produces: `buildJitOutput` with no `Ledger` import. The seen-file line shape written here — `{ id, tier: 'jit', at: <ISO now> }` — is what Task 10's PreCompact reads back.
 
 - [ ] **Step 1: Write the failing tests**
@@ -593,9 +593,9 @@ git commit -m "feat: JIT session dedupe reads and writes the seen file, never th
 
 ### Task 5: SessionStart — Markdown-first selection, seen-file restore marker, best-effort refresh
 
-The design's §4.3: `buildInjection` reorders to `loadLayer → select → render → disclose → then best-effort index refresh`, dropped without prejudice if the lock is held. Before this task the highest-traffic injection path ran a full delete-and-reinsert `rebuild` inside one write transaction (`src/core/inject.ts` · `const opened = openRebuiltStore(ws, manual ? {} : { profile: HOOK_OPEN_PROFILE });` · ~54, `src/core/rebuild.ts` · `store.transaction(() => {` · ~452) and then re-read what it just wrote (`inject.ts` · `store.all(),` · ~163) <!-- historical-citation: this task's starting state — the open-rebuild-then-read-back path it replaced with Markdown-first selection; both quoted lines are gone from inject.ts --> — while `loadLayer` already produced the very `Item[]` the selection needs (`rebuild.ts` · `const items = preloaded?.[layer] ?? loadLayer(root, layer, errors, config);` · ~464, discarded at `rebuild.ts` · `): { loaded: number; errors: LoadError[] } {` · ~440). SessionStart *already* pays the full parse inside `rebuild`, so Markdown-first is the same cost minus the database [design §0.4, C's pricing: M1 — 28.1 ms p95 at 500 items, 245.5 ms at 2,000, 597.7 ms at 5,000, `select` itself 1.4/4.1/8.8 ms, 15 iterations per size]. The 500-item p95 was ~55 ms and did *fall*, since the write transaction left the critical path — Task 12 re-derived rather than assumed, and recorded p95 ~45.6–46.3 ms (`test/perf/session-start-latency.perf.ts` · `plain max-of-20 ~45.6–46.3ms; compact ~149.1–163.6ms. The fall in the` · ~85).
+The design's §4.3: `buildInjection` reorders to `loadLayer → select → render → disclose → then best-effort index refresh`, dropped without prejudice if the lock is held. Before this task the highest-traffic injection path ran a full delete-and-reinsert `rebuild` inside one write transaction (`src/core/inject.ts` · `const opened = openRebuiltStore(ws, manual ? {} : { profile: HOOK_OPEN_PROFILE });` · ~54, `src/core/rebuild.ts` · `store.transaction(() => {` · ~494) and then re-read what it just wrote (`inject.ts` · `store.all(),` · ~163) <!-- historical-citation: this task's starting state — the open-rebuild-then-read-back path it replaced with Markdown-first selection; both quoted lines are gone from inject.ts --> — while `loadLayer` already produced the very `Item[]` the selection needs (`rebuild.ts` · `const items = preloaded?.[layer] ?? loadLayer(root, layer, errors, config);` · ~506, discarded at `rebuild.ts` · `): { loaded: number; errors: LoadError[] } {` · ~482). SessionStart *already* pays the full parse inside `rebuild`, so Markdown-first is the same cost minus the database [design §0.4, C's pricing: M1 — 28.1 ms p95 at 500 items, 245.5 ms at 2,000, 597.7 ms at 5,000, `select` itself 1.4/4.1/8.8 ms, 15 iterations per size]. The 500-item p95 was ~55 ms and did *fall*, since the write transaction left the critical path — Task 12 re-derived rather than assumed, and recorded p95 ~45.6–46.3 ms (`test/perf/session-start-latency.perf.ts` · `plain max-of-20 ~45.6–46.3ms; compact ~149.1–163.6ms. The fall in the` · ~85).
 
-Equivalence is not asserted from purity alone: `select(loadLayer(…))` vs `select(store.all())` was executed on the 44-item dogfood corpus and was IDENTICAL in 5/5 comparisons including a shrunken pinned budget [R1]; structurally, `select` is pure and order-insensitive (`fitToBudget` sorts internally, `select.ts` · `for (const item of [...band].sort(byPriority)) {` · ~583) and `items.id` PRIMARY KEY reproduces `mergeLayers`' project-over-global resolution (`rebuild.ts` · `const LAYER_ORDER: Layer[] = ['global', 'project'];` · ~435 loads project last, into `rebuild.ts` · `store.transaction(() => {` · ~452; `select.ts` · `if (!existing || (existing.layer === 'global' && item.layer === 'project')) {` · ~677).
+Equivalence is not asserted from purity alone: `select(loadLayer(…))` vs `select(store.all())` was executed on the 44-item dogfood corpus and was IDENTICAL in 5/5 comparisons including a shrunken pinned budget [R1]; structurally, `select` is pure and order-insensitive (`fitToBudget` sorts internally, `select.ts` · `for (const item of [...band].sort(byPriority)) {` · ~839) and `items.id` PRIMARY KEY reproduces `mergeLayers`' project-over-global resolution (`rebuild.ts` · `const LAYER_ORDER: Layer[] = ['global', 'project'];` · ~477 loads project last, into `rebuild.ts` · `store.transaction(() => {` · ~494; `select.ts` · `if (!existing || (existing.layer === 'global' && item.layer === 'project')) {` · ~1190).
 
 **Files:**
 - Modify: `src/core/rebuild.ts` (`rebuild` gains an optional preloaded argument)
@@ -603,8 +603,8 @@ Equivalence is not asserted from purity alone: `select(loadLayer(…))` vs `sele
 - Test: `test/core/inject.test.ts` (or the file that currently covers `buildInjection`; `test/hooks/session-start.test.ts` for the hook surface)
 
 **Interfaces:**
-- Consumes: `loadLayer(root, layer, errors, config): Item[]` (`rebuild.ts` · `export function loadLayer(` · ~103); `readSeen`/`appendSeen`/`restoredFor` (Task 2); `readSnapshotMeta` (`ledger.ts` · `export function readSnapshotMeta(root: string, sessionId: string): SnapshotMeta | null {` · ~849); `HOOK_OPEN_PROFILE`, `isBusyError`, `Store.open(dbPath, profile)` (Task 1 / E4); `select` (`select.ts` · `export function select(items: Item[], ctx: SelectContext, config: Config): Selection {` · ~833).
-- Produces: `rebuild(store, roots, config, preloaded?: Partial<Record<Layer, Item[]>>)` — when `preloaded[layer]` is present, `rebuild` indexes those items instead of calling `loadLayer` (the caller owns parse errors; the cross-layer collision check still runs). `buildInjection` with no `Ledger` dependency; its audit `note` gains `index refresh dropped: <reason>` and `seen file unreadable; restore dedupe skipped` entries. **The restored-tier seen line carries `at = snapshot.capturedAt`** — the identity-marker semantics (`inject.ts` · `// identity-marker semantics carry over unchanged: the restored line is` · ~383, `ledger.ts` · `recordRestored(sessionId: string, itemIds: string[], at: string = new Date().toISOString()): void {` · ~378) carried into the file, which Task 2's `restoredFor` reads back.
+- Consumes: `loadLayer(root, layer, errors, config): Item[]` (`rebuild.ts` · `export function loadLayer(` · ~125); `readSeen`/`appendSeen`/`restoredFor` (Task 2); `readSnapshotMeta` (`ledger.ts` · `export function readSnapshotMeta(root: string, sessionId: string): SnapshotMeta | null {` · ~861); `HOOK_OPEN_PROFILE`, `isBusyError`, `Store.open(dbPath, profile)` (Task 1 / E4); `select` (`select.ts` · `export function select(items: Item[], ctx: SelectContext, config: Config): Selection {` · ~1364).
+- Produces: `rebuild(store, roots, config, preloaded?: Partial<Record<Layer, Item[]>>)` — when `preloaded[layer]` is present, `rebuild` indexes those items instead of calling `loadLayer` (the caller owns parse errors; the cross-layer collision check still runs). `buildInjection` with no `Ledger` dependency; its audit `note` gains `index refresh dropped: <reason>` and `seen file unreadable; restore dedupe skipped` entries. **The restored-tier seen line carries `at = snapshot.capturedAt`** — the identity-marker semantics (`inject.ts` · `// identity-marker semantics carry over unchanged: the restored line is` · ~454, `ledger.ts` · `recordRestored(sessionId: string, itemIds: string[], at: string = new Date().toISOString()): void {` · ~378) carried into the file, which Task 2's `restoredFor` reads back.
 
 - [ ] **Step 1: Write the failing tests**
 
@@ -666,7 +666,7 @@ test('a fresh workspace with NO index file still injects (first-run, C for free)
 Run: `node --test test/core/inject.test.ts`
 Expected: the held-lock test FAILS today — `Store.open` under the held lock burns `HOOK_OPEN_PROFILE`'s ~1.06 s (E4) and then `buildInjection` returns E4's disclosure line, not the injection: the injection is still missed, which is the design's §0.2 in a test.
 
-- [ ] **Step 3: Give `rebuild` the preloaded-items argument** (`src/core/rebuild.ts` · `export function rebuild(` · ~437)
+- [ ] **Step 3: Give `rebuild` the preloaded-items argument** (`src/core/rebuild.ts` · `export function rebuild(` · ~479)
 
 ```ts
 export function rebuild(
@@ -824,7 +824,7 @@ export function buildInjection(cwd: string, options: InjectionOptions = {}): str
       noteParts.push('seen file unreadable; restore dedupe skipped');
     }
     // ... indexRefs / injected / recordAudit exactly as the current code
-    // (`core/inject.ts` · `const indexRefs: InjectedRef[] = selection.index.normative.map(` · ~720), including the restored tier's `at: snapshotCapturedAt` ...
+    // (`core/inject.ts` · `const indexRefs: InjectedRef[] = selection.index.normative.map(` · ~810), including the restored tier's `at: snapshotCapturedAt` ...
 
     // 5. THE SEEN-FILE APPEND (was: ledger.record / recordRestored). The
     // restored line carries the snapshot's capturedAt — the identity marker —
@@ -864,14 +864,14 @@ git commit -m "feat: SessionStart selects from Markdown; index refresh is best-e
 
 ### Task 6: The ledger becomes the projection it is documented to be — `topUpLedger` and `mycontext audit replay-ledger`
 
-`src/core/audit.ts` · `audit log and this one opens no database: the caller (` · ~532 <!-- historical-citation: the comment as this task found it; Step 4 rewrote it to name `topUpLedger` and the subcommand --> said the replay's "caller (`mycontext audit replay-ledger`) owns the write" — **no such command existed** (design §0.5, confirmed by the review's citation audit). `ledgerRows` (`core/audit.ts` · `export function ledgerRows(records: AuditRecord[]): ReplayRow[] {` · ~906) had no production caller. This task makes the comment true: a position-tracked top-up (the pattern `audit-db.ts` already ships — the consumed-bytes row, `src/core/audit-db.ts` · `CREATE TABLE IF NOT EXISTS audit_source (` · ~97, and the offset reader beside it, since renamed from `readFrom` to `readCompleteLines`: `src/core/audit-db.ts` · `export function readCompleteLines(file: string, offset: number): { text: string; consumed: number } {` · ~184) replays audit injection records into the ledger table, run by the new CLI subcommand and (Task 7) by `decay`/`status` before they aggregate.
+`src/core/audit.ts` · `audit log and this one opens no database: the caller (` · ~532 <!-- historical-citation: the comment as this task found it; Step 4 rewrote it to name `topUpLedger` and the subcommand --> said the replay's "caller (`mycontext audit replay-ledger`) owns the write" — **no such command existed** (design §0.5, confirmed by the review's citation audit). `ledgerRows` (`core/audit.ts` · `export function ledgerRows(records: AuditRecord[]): ReplayRow[] {` · ~1729) had no production caller. This task makes the comment true: a position-tracked top-up (the pattern `audit-db.ts` already ships — the consumed-bytes row, `src/core/audit-db.ts` · `CREATE TABLE IF NOT EXISTS audit_source (` · ~98, and the offset reader beside it, since renamed from `readFrom` to `readCompleteLines`: `src/core/audit-db.ts` · `export function readCompleteLines(file: string, offset: number): { text: string; consumed: number } {` · ~185) replays audit injection records into the ledger table, run by the new CLI subcommand and (Task 7) by `decay`/`status` before they aggregate.
 
 **Files:**
 - Create: `src/core/ledger-replay.ts`
 - Modify: `src/core/ledger.ts` (LEDGER_SCHEMA gains `ledger_source`; `Ledger` gains three methods)
 - Modify: `src/core/audit-db.ts` (export `readFrom` as `readSegmentFrom`)
 - Modify: `src/cli/commands/audit.ts` (the `replay-ledger` subcommand)
-- Modify: `src/core/audit.ts` · `The ledger rows implied by the audit log, oldest first.` · ~894 (the docblock now describes a real surface — reword "The ledger rows implied by the audit log" comment to name `topUpLedger` and the CLI command as the two callers)
+- Modify: `src/core/audit.ts` · `The ledger rows implied by the audit log, oldest first.` · ~1717 (the docblock now describes a real surface — reword "The ledger rows implied by the audit log" comment to name `topUpLedger` and the CLI command as the two callers)
 - Test: `test/core/ledger-replay.test.ts`
 
 **Interfaces:**
@@ -1062,7 +1062,7 @@ In `src/cli/commands/audit.ts`, add the subcommand (follow the file's existing s
   }
 ```
 
-Finally reword the `ledgerRows` docblock (`core/audit.ts` · `The ledger rows implied by the audit log, oldest first.` · ~894) so its claim matches reality: the callers are `topUpLedger` (`core/ledger-replay.ts`) and `mycontext audit replay-ledger`.
+Finally reword the `ledgerRows` docblock (`core/audit.ts` · `The ledger rows implied by the audit log, oldest first.` · ~1717) so its claim matches reality: the callers are `topUpLedger` (`core/ledger-replay.ts`) and `mycontext audit replay-ledger`.
 
 - [ ] **Step 4: Run tests, gates**
 
@@ -1084,7 +1084,7 @@ The honest cost of B, stated in the design (§4.2 / Option B): a projection behi
 
 **Files:**
 - Modify: `src/cli/commands/decay.ts` (after `Ledger.open` — `commands/decay.ts` · `ledger = Ledger.open(ws.dbPath);` · ~127)
-- Modify: `src/cli/commands/status.ts` (after `Ledger.open` — `status.ts` · `ledger = Ledger.open(dbPath);` · ~90)
+- Modify: `src/cli/commands/status.ts` (after `Ledger.open` — `status.ts` · `ledger = Ledger.open(dbPath);` · ~91)
 - Test: `test/cli/decay.test.ts` (or this repo's existing decay test file)
 
 **Interfaces:**
@@ -1307,7 +1307,7 @@ The guarantee layer: when `openReadOnlyChecked` throws (absent file, stale schem
 - Test: `test/core/markdown-fallback.test.ts`, `test/hooks/pre-tool-use.test.ts`
 
 **Interfaces:**
-- Consumes: `loadLayer` (`rebuild.ts` · `export function loadLayer(` · ~103), `injectableTypes` (`select.ts` · `export function injectableTypes(config: Config): string[] {` · ~219), `Workspace` (`workspace.ts` · `export interface Workspace {` · ~9), `Store.openReadOnlyChecked` (Task 8).
+- Consumes: `loadLayer` (`rebuild.ts` · `export function loadLayer(` · ~125), `injectableTypes` (`select.ts` · `export function injectableTypes(config: Config): string[] {` · ~528), `Workspace` (`workspace.ts` · `export interface Workspace {` · ~9), `Store.openReadOnlyChecked` (Task 8).
 - Produces:
   - `FALLBACK_NOTE = 'my_context: served from Markdown; the index was unavailable.'` — the inline disclosure line (`INV-nothing-is-dropped-silently`)
   - `loadCorpusItems(ws: Workspace, errors?: LoadError[]): Item[]` — global then project (`LAYER_ORDER` precedence is `select`'s `mergeLayers` job)
@@ -1428,7 +1428,7 @@ export function loadCorpusItems(ws: Workspace, errors: LoadError[] = []): Item[]
  * The JS mirror of `store.activeInjectable` (`core/store.ts` · `activeInjectable(types: string[]): Item[] {` · ~532): active
  * status, enabled-normative type. Applied BEFORE select — not only to the
  * tiers — so the fallback's focus-report universe
- * (`core/select.ts` · `function buildFocusReport(` · ~928, run over eligibleAll)
+ * (`core/select.ts` · `function buildFocusReport(` · ~1206, run over eligibleAll)
  * matches the DB path's pre-filtered one.
  * A fallback that fed select the unfiltered corpus would produce identical
  * INJECTIONS [R1] but different focus-disclosure COUNTS — the
@@ -1475,7 +1475,7 @@ Then feed `candidates` to the existing `select(...)` call; append the inline dis
     }
 ```
 
-One subtlety the current code hides: `return ''` fires when nothing selected AND focus is silent (`pre-tool-use.ts` · `&& fallbackErrors.length === 0) return '';` · ~247 — the third conjunct is this task's own addition) — keep that shape, but when `fallbackReason !== null` and the selection is empty the hook still returns `''` (an empty selection from the truth is a true "nothing applies", and a disclosure with no content would be noise on every tool call in a fresh workspace).
+One subtlety the current code hides: `return ''` fires when nothing selected AND focus is silent (`pre-tool-use.ts` · `&& fallbackErrors.length === 0) return '';` · ~329 — the third conjunct is this task's own addition) — keep that shape, but when `fallbackReason !== null` and the selection is empty the hook still returns `''` (an empty selection from the truth is a true "nothing applies", and a disclosure with no content would be noise on every tool call in a fresh workspace).
 
 - [ ] **Step 5: Run tests, full gates, perf** — `npm test && npm run typecheck && npm run test:perf`. Expected: PASS; the steady-state JIT path is untouched (fallback code runs only in the catch).
 
@@ -1492,7 +1492,7 @@ git commit -m "feat: JIT falls back to Markdown when the index cannot be read, d
 
 > **REORDERED — implemented 2026-08-16, immediately after Tasks 5-6, ahead of Tasks 7-9** (coordinator ruling on the tasks 5-6 adversarial review; branch `never-miss/tasks-10-fixes`). The review EXECUTED a restore MISS in the interim state this ordering accepted: after Task 5 the ledger arm reads a table nothing writes any more (I1 — a snapshot that captured `["CONST-pc"]` before Tasks 5-6 captured `[]` after), and a dropped index refresh leaves a stale index whose `known` filter erases even the ledger-arm ids (I2). A miss is the one direction this design forbids, and Condition 2 says no task may convert a lag into suppression — so waiting four tasks was not defensible. The reorder is safe: this task's real dependency is the per-session seen file (Task 2, shipped), and the causal constraint ("the read-only open must not precede moving writes off SQLite") concerns the hooks' writes, which moved off in Tasks 4-5. Tasks 7-9 proceed after it; numbering unchanged. Two shipped deviations, both forced: `Store.openReadOnlyChecked` (Task 8) did not exist yet, so the best-effort open uses the existing `Store.openReadOnly` (Task 8 may swap it in); and the known filter is skipped not only when the index is UNAVAILABLE but also when it is EMPTY — an index that knows zero items cannot tell "deleted" from "never indexed", so filtering through it re-creates I2's erasure. Step 1's first test below expected the empty index to filter unknown ids out; that expectation was overridden, and the shipped test pins the review's exact scenario instead (an id delivered from Markdown under a held write lock survives into the snapshot, lock still held, the skip disclosed).
 
-The design's §4.4 flow, exactly: seen set from the per-session file (parent-keyed — E2's PreCompact is deliberately parent-keyed, verified in the review's attack 1), cited set from `scanTranscriptIds` unchanged, known-id filter via a best-effort read-only open **skipped when unavailable** — over-capture is safe: the restore path re-selects through `select`, and an id matching no live item selects nothing (`select.ts` · `fresh.filter((i) => restoreIds.has(i.id) && !alreadyChosen.has(i.id))` · ~872, verified in the review's citation audit). After this task PreCompact's worst case is file I/O measured in milliseconds against the 10 s kill, and the E4 question of which patience profile it should use is moot — there is no lock left to be patient for.
+The design's §4.4 flow, exactly: seen set from the per-session file (parent-keyed — E2's PreCompact is deliberately parent-keyed, verified in the review's attack 1), cited set from `scanTranscriptIds` unchanged, known-id filter via a best-effort read-only open **skipped when unavailable** — over-capture is safe: the restore path re-selects through `select`, and an id matching no live item selects nothing (`select.ts` · `fresh.filter((i) => restoreIds.has(i.id) && !alreadyChosen.has(i.id))` · ~1491, verified in the review's citation audit). After this task PreCompact's worst case is file I/O measured in milliseconds against the 10 s kill, and the E4 question of which patience profile it should use is moot — there is no lock left to be patient for.
 
 **Files:**
 - Modify: `src/hooks/pre-compact.ts` (`buildRestoreSnapshot`)
@@ -1501,7 +1501,7 @@ The design's §4.4 flow, exactly: seen set from the per-session file (parent-key
 
 **Interfaces:**
 - Consumes: `readSeen`/`seenIds` (Task 2); `Store.openReadOnlyChecked` (Task 8); `writeSnapshot` as shipped by `cd28989` (rename retried through `retryOnTransientFsError` with `SNAPSHOT_RENAME_ATTEMPTS = 15`, throws on final failure) and `cd28989`'s failure-disclosure structure in `buildRestoreSnapshot` (the `SNAPSHOT WRITE FAILED` audit record + stderr line), **preserved verbatim** — this task changes the function's *inputs*, not its failure handling.
-- Produces: `scanTranscriptIds(transcriptPath: string | null | undefined, knownIds: Set<string> | null): string[]` — `null` means "no filter: every `ID_PATTERN` match" (bounded by the 8 MB transcript tail, `ledger.ts` · `const MAX_TRANSCRIPT_BYTES = 8 * 1024 * 1024;` · ~868, and the strict id shape, `ledger.ts` · `const ID_PATTERN = /\b[A-Z][A-Z0-9]{1,11}-[a-z0-9][a-z0-9-]*\b/g;` · ~875); `buildRestoreSnapshot` with no `Ledger`, no `Store.open`, and a `note` naming a skipped filter.
+- Produces: `scanTranscriptIds(transcriptPath: string | null | undefined, knownIds: Set<string> | null): string[]` — `null` means "no filter: every `ID_PATTERN` match" (bounded by the 8 MB transcript tail, `ledger.ts` · `const MAX_TRANSCRIPT_BYTES = 8 * 1024 * 1024;` · ~880, and the strict id shape, `ledger.ts` · `const ID_PATTERN = /\b[A-Z][A-Z0-9]{1,11}-[a-z0-9][a-z0-9-]*\b/g;` · ~887); `buildRestoreSnapshot` with no `Ledger`, no `Store.open`, and a `note` naming a skipped filter.
 
 - [ ] **Step 1: Write the failing tests**
 
@@ -1537,7 +1537,7 @@ test('an UNAVAILABLE index skips the known filter: over-capture, disclosed, neve
   const result = buildRestoreSnapshot({ session_id: 'sess-pc2', cwd }, cwd);
   assert.notEqual(result, null);
   // Over-capture is the safe direction: select drops ids matching no live
-  // item at restore (`core/select.ts` · `restoreIds.has(i.id) && !alreadyChosen.has(i.id)` · ~1194).
+  // item at restore (`core/select.ts` · `restoreIds.has(i.id) && !alreadyChosen.has(i.id)` · ~1491).
   assert.deepEqual(result!.itemIds, ['CONST-a']);
   const note = readAudit(ws.projectRoot!)
     .filter((r) => r.op === 'pre-compact' && r.sessionId === 'sess-pc2').at(-1)?.note ?? '';
@@ -1564,7 +1564,7 @@ test('scanTranscriptIds with null knownIds returns every pattern match, deduped 
 
 - [ ] **Step 2: Run to verify failure** — `node --test test/hooks/pre-compact.test.ts test/core/ledger.test.ts`. Expected: FAIL — today `Store.open` under the held lock burns the patient profile toward the kill, `null` knownIds is a type error, and no skip-note exists.
 
-- [ ] **Step 3: Implement — `scanTranscriptIds` null-filter mode** (`ledger.ts` · `export function scanTranscriptIds(` · ~899):
+- [ ] **Step 3: Implement — `scanTranscriptIds` null-filter mode** (`ledger.ts` · `export function scanTranscriptIds(` · ~911):
 
 ```ts
 export function scanTranscriptIds(
@@ -1572,7 +1572,7 @@ export function scanTranscriptIds(
 ): string[] {
   // `null` = no known-id filter: the index was unavailable at capture time.
   // Over-capture is the safe direction (a snapshot id matching no live item
-  // selects nothing at restore, `core/select.ts` · `restoreIds.has(i.id) && !alreadyChosen.has(i.id)` · ~1194), and the universe is
+  // selects nothing at restore, `core/select.ts` · `restoreIds.has(i.id) && !alreadyChosen.has(i.id)` · ~1491), and the universe is
   // bounded by the 8 MB tail and the strict id shape either way.
   if (!transcriptPath || (knownIds !== null && knownIds.size === 0)) return [];
   let text: string;
@@ -1619,7 +1619,7 @@ export function buildRestoreSnapshot(
 
     // known filter ← a best-effort READ-ONLY open: 0.2 ms under a held
     // write lock [P4], 0 failures in 18,300 contended trials [P6/P6b].
-    // Unavailable → skip the filter; over-capture is safe (`core/select.ts` · `restoreIds.has(i.id) && !alreadyChosen.has(i.id)` · ~1194).
+    // Unavailable → skip the filter; over-capture is safe (`core/select.ts` · `restoreIds.has(i.id) && !alreadyChosen.has(i.id)` · ~1491).
     let known: Set<string> | null = null;
     let store: Store | null = null;
     try {
@@ -1708,11 +1708,11 @@ git commit -m "feat: PreCompact performs zero SQLite writes and zero blocking re
 The guarantee is conditional on corpus ≲ 10,000 items: the Markdown fallback measured **9,903 ms at 10,000 items cold-cache** [R5] against the 10 s kill, and cold is the first fire after a reboot — exactly when the fallback is needed. The design pins the mitigation trigger (a `loadLayer` fast-parse mode — NOT Option F, which P3 closed with 113/200 errors and 2/200 silently wrong answers) at ~5–10k and says `doctor` should warn on approach (§6 risk 3). The warning threshold is **5,000** — the low edge of the trigger band, and the largest size M1 priced warm (597.7 ms).
 
 **Files:**
-- Modify: `src/doctor/checks.ts` (new check — `checks.ts` · `export function checkCorpusSize(items: Item[]): Finding[] {` · ~733 — plus its registration in `runChecks`, `checks.ts` · `() => checkCorpusSize(opts.items),` · ~1007)
+- Modify: `src/doctor/checks.ts` (new check — `checks.ts` · `export function checkCorpusSize(items: Item[]): Finding[] {` · ~2226 — plus its registration in `runChecks`, `checks.ts` · `() => checkCorpusSize(opts.items),` · ~3937)
 - Test: `test/doctor/corpus-size.test.ts`
 
 **Interfaces:**
-- Consumes: `Finding` (`checks.ts` · `export interface Finding {` · ~14); `Item[]` already flowing into `runChecks` via `opts.items`.
+- Consumes: `Finding` (`checks.ts` · `export interface Finding {` · ~75); `Item[]` already flowing into `runChecks` via `opts.items`.
 - Produces: `checkCorpusSize(items: Item[]): Finding[]`; `export const FALLBACK_CEILING_WARN_ITEMS = 5000`.
 
 - [ ] **Step 1: Write the failing test**
@@ -1776,7 +1776,7 @@ export function checkCorpusSize(items: Item[]): Finding[] {
   }];
 }
 
-// in runChecks' array (`doctor/checks.ts` · `export function runChecks(opts: {` · ~1765), add:
+// in runChecks' array (`doctor/checks.ts` · `export function runChecks(opts: {` · ~3914), add:
     () => checkCorpusSize(opts.items),
 ```
 
@@ -1926,7 +1926,7 @@ Expected: all clean. Do not proceed on anything red.
 - §4.2 write path (seen file, identity marker, ledger-as-projection + replayer, lifecycle/pruning, collision note, accepted degradations disclosed): Tasks 2, 3, 4, 5, 6, 7. ✔
 - §4.3 SessionStart reorder, parse-once, best-effort refresh, ceiling re-derived: Tasks 5, 12. ✔
 - §4.4 PreCompact: the rename retry + failure disclosure + power-loss caveat **shipped in `cd28989`** (consumed and verified in Task 1, preserved verbatim by Task 10); zero SQLite and the over-capture-safe filter skip: Task 10; user-facing statement: Task 13. ✔
-- §0.5 false comment (`core/audit.ts` · `audit log and this one opens no database: the write is owned by` · ~897): Task 6 makes it true. ✔
+- §0.5 false comment (`core/audit.ts` · `audit log and this one opens no database: the write is owned by` · ~1720): Task 6 makes it true. ✔
 - §6 risk 3 doctor warning: Task 11. §6 risk 6 perf re-derivation: Task 12. §6 risk 7 branch union (E4, E2, `fix/snapshot-rename-durability`): Task 1 merges and grep-verifies all three. ✔
 - Review I1–I4, C1, M1–M3: C1→shipped (`cd28989`, Task 1); I1→Task 11's threshold; I2→Task 8's docblock (recovery as slow success); I3→Task 9's filter + parity test; I4→Task 3; M2→Task 5's `at: snapshotCapturedAt` carried into both the audit record and the seen line; M3→"Conditions" item 2, unchanged window acknowledged. ✔
 - Not planned, deliberately: the `loadLayer` fast-parse mitigation itself (the design pins only its *trigger*; building it now is YAGNI two orders of magnitude above the dogfood corpus — the doctor warning is the planned deliverable); fsync in `writeSnapshot` (`cd28989` chose stating the caveat over adding it, matching the design); Linux re-measurement of the read-only recovery corner (§6 risk 5 names it a known unknown for the E1 platform — it degrades to a spurious fallback fire, which C serves; recorded here so it is a decision, not a gap). Also not planned: a standalone `fs-retry.ts` extraction — an earlier draft of this plan proposed it to avoid a `ledger.ts`↔`rebuild.ts` cycle, but `cd28989` already imports `retryOnTransientFsError` from `rebuild.ts` into `ledger.ts` with no cycle, so the extraction had no remaining premise and was dropped.

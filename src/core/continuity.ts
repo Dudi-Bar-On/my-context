@@ -14,7 +14,7 @@ import { readSessionNames } from './session-names.ts';
 //
 // **WHERE THE IDS COME FROM, AND THE COST OF THAT.** They come from the source
 // session's seen file, not from the audit projection. The survey recommended
-// the projection; `core/audit.ts` · `the hook path calls this` · ~747 is why
+// the projection; `core/audit.ts` · `the hook path calls this` · ~1548 is why
 // this does not follow it — `readAudit` reads whole files and is documented as
 // off the hook path, and this read happens inside a `SessionStart` bounded at
 // 500 ms. The seen file holds the three delivery tiers, is one small file, and
@@ -23,7 +23,7 @@ import { readSessionNames } from './session-names.ts';
 // The cost, named rather than left to be discovered: **an item the source
 // session only ever saw as an INDEX LINE is not carried.** The seen file
 // records deliveries (`pinned`, `jit`, `restored`, `continuity`), and an index line is not a
-// delivery — `core/seen-file.ts` · `const TIERS = new Set<string>(['pinned', 'jit', 'restored', 'continuity']);` · ~52
+// delivery — `core/seen-file.ts` · `const TIERS = new Set<string>(['pinned', 'jit', 'restored', 'continuity']);` · ~102
 // refuses one. So what is carried is what that session actually HAD in context,
 // which is the stronger evidence anyway.
 //
@@ -139,7 +139,7 @@ export function readCarrySource(root: string): CarrySource {
  *
  * **Sibling files are excluded by the `__` in their stem**, which is what
  * `sanitizeSessionId` turns the `::` of a `session::agent` key into
- * (`core/ledger.ts` · `export function sanitizeSessionId(sessionId: string): string {` · ~699).
+ * (`core/ledger.ts` · `export function sanitizeSessionId(sessionId: string): string {` · ~711).
  * A subagent's dedupe file holds what one agent was handed, filed under a key
  * no `mycontext audit --session` query names; it is not a session anybody can
  * carry from. The residual, said rather than hidden: a session whose own id
@@ -272,7 +272,7 @@ export function resolveCarry(root: string, currentSessionId: string | null): Car
  *
  * `parentSessionId` is the `session_id` a SubagentStart payload carries, which
  * is the PARENT's — a subagent has no session id of its own
- * (`core/inject.ts` · `const subagent = options.event === 'subagent';` · ~199).
+ * (`core/inject.ts` · `const subagent = options.event === 'subagent';` · ~267).
  *
  * **Why this is a separate entry point rather than a call to `resolveCarry`.**
  * Passing that payload's id as `currentSessionId` excludes it, so the default
@@ -281,7 +281,7 @@ export function resolveCarry(root: string, currentSessionId: string | null): Car
  * in that dispatch was ever in. The owner ruled on 2026-08-22 that the parent
  * is exactly the session a child should continue. This is the same shape of
  * divergence as the `/clear` handler's `!subagent` gate
- * (`core/inject.ts` · `const clearNote = clearing && !subagent && sessionId !== undefined` · ~378),
+ * (`core/inject.ts` · `const clearNote = clearing && !subagent && sessionId !== undefined` · ~449),
  * and it is here for the same reason: on this one event the id in hand belongs
  * to somebody else.
  *

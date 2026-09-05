@@ -39,7 +39,7 @@ cannot answer *is a server running*, and it was never meant to. A second
 `mycontext ui --port 58888` today surfaces a raw bind error.
 
 **`ui.enabled` is a switch with no enforcement site.**
-`src/core/config.ts` · `const DEFAULT_UI: UiConfig = {` · ~242 was
+`src/core/config.ts` · `const DEFAULT_UI: UiConfig = {` · ~331 was
 validated, refused when malformed, rendered on the Configure screen, and consulted by
 nothing that decided anything. That stopped being true on 2026-08-27, when `mycontext ui`
 began refusing on it and `ui.port` joined it — and the citation is now cut at the opening

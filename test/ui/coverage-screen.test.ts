@@ -165,7 +165,7 @@ async function viewmodel(): Promise<ViewmodelModule> {
 /**
  * A `/api/coverage` body's `files` array, in the endpoint's own shape — one
  * entry per WALKED path, each carrying the ids that govern it
- * (`ui/read-model.ts` · `export interface CoverageBody {` · ~1197). Trees are
+ * (`ui/read-model.ts` · `export interface CoverageBody {` · ~2207). Trees are
  * built from this rather than assembled by hand, so what is measured below is
  * the roll-up the screen actually receives.
  */

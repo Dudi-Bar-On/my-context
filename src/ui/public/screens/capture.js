@@ -1,13 +1,13 @@
 /**
  * `nav.ch` — **Capture**, `<section data-p="capture">` in the design of record
- * (`docs/design/web-ui-mockup.html` · `<section data-p="capture" hidden>` · ~1967).
+ * (`docs/design/web-ui-mockup.html` · `<section data-p="capture" hidden>` · ~3321).
  *
  * Its verdict is the contract, and it is one sentence long:
  * *"shows what already governs before you add another"* (`cap.v`). `cap.sub`
  * says the same thing in the terms the spec asks for — *"Composes an `add`.
  * What it contributes over the CLI is the overlap check — the items already
  * governing this scope."*
- * (`src/ui/public/strings/en.js` · `What it contributes over the CLI is the overlap check` · ~324).
+ * (`src/ui/public/strings/en.js` · `What it contributes over the CLI is the overlap check` · ~924).
  *
  * So this screen does exactly two things, and the split between them is the
  * reason it is not a second Composer:
@@ -33,7 +33,7 @@
  * the preview. They cannot come from the server either: there is no endpoint
  * that answers "the scope the user is thinking about", and `/api/capture`
  * refuses an absent one outright rather than inventing the whole corpus
- * (`src/ui/capture-model.ts` · `scope=<glob>[,<glob>…] is required — the same comma form --scope takes. A scope that ` · ~226).
+ * (`src/ui/capture-model.ts` · `scope=<glob>[,<glob>…] is required — the same comma form --scope takes. A scope that ` · ~234).
  *
  * So four controls are drawn that the mockup does not have — a category, a
  * title, the scope, and a severity — and this is the loudest thing in this
@@ -47,9 +47,9 @@
  * **The captions are not English.** They are the CLI's own argument names,
  * appended as plain text nodes — the ruling `palette.js` already records for
  * exactly these controls
- * (`src/ui/public/screens/palette.js` · ``(`category`, `--severity`) is the CLI's word rather than a translated one and`` · ~332),
+ * (`src/ui/public/screens/palette.js` · ``(`category`, `--severity`) is the CLI's word rather than a translated one and`` · ~387),
  * built in the same shape it builds them
- * (`src/ui/public/screens/palette.js` · ``const caption = document.createTextNode(`${spec.name}${spec.required === true ? ' *' : ''}:`);`` · ~679).
+ * (`src/ui/public/screens/palette.js` · ``const caption = document.createTextNode(`${spec.name}${spec.required === true ? ' *' : ''}:`);`` · ~779).
  * No key is invented, and that is a ruling about WHAT they are rather than
  * about what a gate would allow: `category` and `--severity` are the words
  * `mycontext add` takes on a terminal, so a translated caption would name an
@@ -63,7 +63,7 @@
  * `/api/capture` deliberately serves no composed command, and says why at
  * length (`src/ui/capture-model.ts` · `**It does not compose the command.**` · ~15):
  * the argv shape is already in the catalogue, marked for this very screen
- * (`src/ui/public/lib/palette-defs.js` · `name: 'add', kind: 'write', base: ['mycontext', 'add'], overlap: true, boundary: true,` · ~61),
+ * (`src/ui/public/lib/palette-defs.js` · `name: 'add', kind: 'write', base: ['mycontext', 'add'], overlap: true, boundary: true,` · ~159),
  * and quoting is one implementation with a checker over its own bytes
  * (`src/ui/public/lib/command.js` · `Command-string composition for every composed write in the UI — the ONE` · ~1).
  * A second spelling of a quoting rule is how a shell command nobody verified
@@ -95,13 +95,13 @@
  *
  * **The tier is read, never spelled.** Every row's tier is `normative` today,
  * because `injection()` refuses anything else
- * (`src/ui/capture-model.ts` · ``so every row's tier is `'normative'` today. It is served anyway, because the`` · ~121),
+ * (`src/ui/capture-model.ts` · ``so every row's tier is `'normative'` today. It is served anyway, because the`` · ~120),
  * and it is still rendered from `row.tier`. A screen that printed the word
  * `normative` would be asserting a property it never read, and would keep
  * printing it the day the owner widened the filter. The category and the tier
  * are the corpus's own words and are not translated, which is the ruling
  * `parts.js` records for tier names
- * (`src/ui/public/screens/parts.js` · `The tier NAME is not a translated string anywhere in the mockup` · ~157).
+ * (`src/ui/public/screens/parts.js` · `The tier NAME is not a translated string anywhere in the mockup` · ~577).
  *
  * **`notGoverning` is served and is DRAWN, since 2026-08-30.** It counts the
  * scope-matched items the governing filter removed — drafts, deprecated items,
@@ -154,7 +154,7 @@ export const ADD = PALETTE.find((def) => def.name === 'add');
 
 /**
  * `palette.js`'s debounce, to the millisecond
- * (`src/ui/public/screens/palette.js` · `const GLOB_DEBOUNCE_MS = 180;` · ~148).
+ * (`src/ui/public/screens/palette.js` · `const GLOB_DEBOUNCE_MS = 180;` · ~187).
  * One glob input on two screens firing a server round trip at two different
  * rhythms would be a difference no reader could explain.
  */
@@ -165,7 +165,7 @@ const ABSENT = '—';
 
 /**
  * The endpoint's parse, character for character
- * (`src/ui/capture-model.ts` · `const patterns = (raw ?? '').split(',').map((s) => s.trim()).filter((s) => s !== '');` · ~223).
+ * (`src/ui/capture-model.ts` · `const patterns = (raw ?? '').split(',').map((s) => s.trim()).filter((s) => s !== '');` · ~231).
  *
  * It is spelled here and not only there because the screen has to know
  * whether it holds a QUESTION before it sends one: a box holding `" , "` is
@@ -197,7 +197,7 @@ export function capturePath(patterns) {
  *
  * Disabled categories are dropped for `palette.js`'s reason, which is about
  * the CLI rather than about tidiness
- * (`src/ui/public/screens/palette.js` · `A disabled category cannot receive an item, so offering it would compose` · ~245).
+ * (`src/ui/public/screens/palette.js` · `A disabled category cannot receive an item, so offering it would compose` · ~300).
  * Names are the corpus's own words and are not translated.
  */
 export function categoryOptions(config) {
@@ -246,7 +246,7 @@ export function captureCommand(values) {
 
 /**
  * One row of the mockup's table, which has exactly two cells
- * (`docs/design/web-ui-mockup.html` · `<tr><td class="m">INV-prices-are-integer-cents</td><td class="small" data-t="cap.o1">invariant, normative</td></tr>` · ~1975).
+ * (`docs/design/web-ui-mockup.html` · `<tr><td class="m">INV-prices-are-integer-cents</td><td class="small" data-t="cap.o1">invariant, normative</td></tr>` · ~3329).
  *
  * `detail` is the category and the tier in that order, which is the order both
  * `cap.o1` and `cap.o2` put them in. The comma and the space are punctuation;
@@ -301,7 +301,7 @@ export async function render(root, ctx) {
   const resolved = usable ? config.resolved : null;
   if (resolved === null || resolved === undefined) {
     // `apiConfigGet` leaves `resolved` null only after setting one of these two
-    // to a real sentence (`src/ui/read-model-config.ts` · `if (parseError === null) {` · ~143),
+    // to a real sentence (`src/ui/read-model-config.ts` · `if (parseError === null) {` · ~178),
     // so there is always the server's own wording to show and none of it is
     // invented here — `errorNote`'s standing rule.
     card.append(errorNote(usable

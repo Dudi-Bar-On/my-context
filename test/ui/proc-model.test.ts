@@ -67,7 +67,7 @@ const codes = (d: Disclosure[]): string[] => d.map((x) => x.code);
  * raises `unable to open database file`, and `server.ts` turns that into a 500.
  *
  * That is not this module's behaviour and not this module's to fix: it is
- * `ui/read-model.ts` · `export function withStores<T>(ws: Workspace, fn: (store: Store, ledger: Ledger | null) => T): T {` · ~173,
+ * `ui/read-model.ts` · `export function withStores<T>(ws: Workspace, fn: (store: Store, ledger: Ledger | null) => T): T {` · ~229,
  * inherited identically by `/api/items`, `/api/status` and every other read.
  * It is asserted HERE rather than only mentioned in a report, so that the day
  * somebody gives that path an empty state this test fails and says so.
@@ -224,7 +224,7 @@ test('a `ready` procedure discloses that it reaches nothing — the mockup says 
     try {
       const created = createItem({ root: ws.projectRoot!, store, config: ws.config }, {
         // `steps` on `CreateInput` is TEXT, never `Step[]`
-        // (`core/mutate.ts` · `  steps?: string[];` · ~97): a step is created
+        // (`core/mutate.ts` · `  steps?: string[];` · ~199): a step is created
         // unticked, because a tick is a progress record and not a field.
         type: 'procedure', title: 'Drain the queue', body: 'Proposed by an agent.',
         origin: 'agent', steps: ['Stop the writers'],

@@ -61,9 +61,9 @@ corrected below rather than left listed as known defects.
 
 | Was | Is | Class | Where |
 |---|---|---|---|
-| Whether the projection can store each record whole as `jsonb` was an open question under measurement | **Measured and shipped.** On Node 24.18 (SQLite 3.53.1) through `node:sqlite`, the projection stores the record whole as `jsonb` and indexes into it (`src/core/audit-db.ts` · ``**The record is stored whole, as `jsonb`, and queried into.**`` · ~44 on `phase-5/quality`) | An open question is re-checked against shipped code before it is carried into another pass | §5 |
+| Whether the projection can store each record whole as `jsonb` was an open question under measurement | **Measured and shipped.** On Node 24.18 (SQLite 3.53.1) through `node:sqlite`, the projection stores the record whole as `jsonb` and indexes into it (`src/core/audit-db.ts` · ``**The record is stored whole, as `jsonb`, and queried into.**`` · ~45 on `phase-5/quality`) | An open question is re-checked against shipped code before it is carried into another pass | §5 |
 | The injection-time token count needed the owner's assent, with a fallback re-scoping §4b to item counts if refused | **Decided — the owner assented.** The record carries the estimate computed at injection time; the field shipped as `tokens?: number` on `AuditRecord`; absence means 'not recorded', never zero | A decision recorded as pending is reconciled with the decision actually taken, and its dead fallback branch deleted rather than left readable | §5, §9 |
-| The record shape was pinned to scope, tier, item ids, timestamp, `session_id` and the event | **Pinned to the shipped `AuditRecord`** (`src/core/audit.ts` · `export interface AuditRecord {` · ~428), which also carries **`spilled` (id, tier, reason)** — the only record anywhere of what was selected and did not fit — plus `hook`, `path`, `note`, and a fourth **`focus`** record kind | A record shape stated in a design is the whole shipped shape, not the subset the design happens to need | §4, §5, §9 |
+| The record shape was pinned to scope, tier, item ids, timestamp, `session_id` and the event | **Pinned to the shipped `AuditRecord`** (`src/core/audit.ts` · `export interface AuditRecord {` · ~859), which also carries **`spilled` (id, tier, reason)** — the only record anywhere of what was selected and did not fit — plus `hook`, `path`, `note`, and a fourth **`focus`** record kind | A record shape stated in a design is the whole shipped shape, not the subset the design happens to need | §4, §5, §9 |
 | The projection is rebuilt from the log whenever it is stale | **Behind means catching up incrementally from the recorded position; discard-and-rebuild happens only on divergence or a schema-version change.** The constraint — staleness is never silent — is unchanged | A description of a projection's refresh distinguishes catching up from discard-and-rebuild | §4, §5, §8 |
 
 **A fifth pass applied the decisions in `2026-08-18-v2-decisions.md`**, taken on the ten-reviewer
@@ -170,9 +170,9 @@ permitted the UI to call `createItem`, `updateItem`, `supersedeItem`, `promoteRe
 
 **1. The boundary is enforced on the command *string*, so an HTTP route is outside it.** `README.md`
 §7 is explicit: *"What actually enforces it: your Bash permissions, and nothing else"*
-(`README.md` · `What actually enforces it: your Bash permissions, and nothing else` · ~5257). The
+(`README.md` · `What actually enforces it: your Bash permissions, and nothing else` · ~5880). The
 recipe it ships is **seventeen `Bash(mycontext … *)` deny rules**
-(`README.md` · `"Bash(mycontext lesson-accept *)",` · ~5363) — `lesson-accept`, `review promote`,
+(`README.md` · `"Bash(mycontext lesson-accept *)",` · ~6017) — `lesson-accept`, `review promote`,
 `review discard`, `review promote-revision`, `review discard-revision`, `procedure activate`,
 `procedure done`, `add`, `supersede`, `inbox-promote`, `refresh`, `edit`, `pin`, `unpin`, `harden`,
 `soften`, `repair`. It was fourteen when this section was written — `procedure activate`,
@@ -189,7 +189,7 @@ permission check.
 **2. `promoteRevision` launders origin.** It applies a promoted revision through `updateItem` with
 **`origin: 'human'` hardcoded**, deliberately and correctly — promotion *is* a human act, and the
 function's own comment says so
-(`src/core/revision.ts` · ``the change is applied through `updateItem` with `origin: 'human'`,`` · ~763).
+(`src/core/revision.ts` · ``the change is applied through `updateItem` with `origin: 'human'`,`` · ~792).
 `trustedStatus` (`src/core/trust.ts` · `export function trustedStatus(` · ~267) is the whole draft
 gate, and it turns on `origin !== 'human'`. Compose the two with an HTTP route and the sequence is:
 an agent stages a revision through the MCP surface, where `agentEdits: "review"` holds it as a proposal;
@@ -197,7 +197,7 @@ the agent POSTs to a promote endpoint; the proposal applies **as a human edit** 
 already governing. **The agent approves its own proposal.** And it does so with no `--yes` anywhere,
 which matters for a reason §7 states in as many words: `--yes` is not a security boundary, what it buys
 is *legibility* — *"an explicit, greppable token in the transcript"*
-(`README.md` · `an explicit, greppable token in the transcript` · ~5318). An HTTP request produces no
+(`README.md` · `an explicit, greppable token in the transcript` · ~5972). An HTTP request produces no
 such token.
 
 **3. "Reaching localhost implies having a shell" is empirically false.** Browser-automation MCP tools
@@ -214,20 +214,20 @@ any local account for the lifetime of the spawn. Not-on-disk is not the property
 
 ### The boundary, stated as it actually is
 
-Read `README.md` §7 (`README.md` · `## 7. The trust boundary` · ~5130) before implementing anything
+Read `README.md` §7 (`README.md` · `## 7. The trust boundary` · ~5753) before implementing anything
 in this document. In summary, and each clause verified in the code:
 
 - **The draft gate is `trustedStatus`
   (`src/core/trust.ts` · `export function trustedStatus(` · ~267)**: a non-human origin capturing a
   normative item is forced to `draft` regardless of what it requested, and a draft is in no injection
-  tier (`isEligible`, `src/core/select.ts` · `export function isEligible(` · ~198, plus the
+  tier (`isEligible`, `src/core/select.ts` · `export function isEligible(` · ~495, plus the
   normative-tier test in `select`).
 - **No MCP tool takes an `origin` argument.** `create_item`, `update_item` and `supersede_item` each
   stamp `agent` themselves, so an agent cannot claim to have been a human.
 - **The CLI is the human surface, and it passes `origin: 'human'`.** That is what makes it the route
   around every refusal the MCP tools make — and it is why the enforcement lives in Bash permissions.
-- **`promoteRevision` (`src/core/revision.ts` · `export function promoteRevision(` · ~783) and
-  `discardRevision` (`src/core/revision.ts` · `export function discardRevision(` · ~888) live in
+- **`promoteRevision` (`src/core/revision.ts` · `export function promoteRevision(` · ~812) and
+  `discardRevision` (`src/core/revision.ts` · `export function discardRevision(` · ~918) live in
   `revision.ts`, not `mutate.ts`**, and `promoteRevision` stamps `human`. Any test written against a
   "routes through `mutate.ts`" allow-list would fail on its own premise.
 
@@ -278,7 +278,7 @@ scan rather than by the engine.
 > **Therefore: no `/api` route accepts SQL.** The Ask screen composes its query from a **structured
 > request** — fields, operators, values, bound as parameters — and never from a client-supplied string.
 > Where any SQL text is assembled server-side, `assertSelectOnly`
-> (`cli/commands/query.ts` · `export function assertSelectOnly(sql: string): void {` · ~173) runs
+> (`cli/commands/query.ts` · `export function assertSelectOnly(sql: string): void {` · ~266) runs
 > first, exactly as `cmdQuery` does.
 
 `assertSelectOnly` is the right barrier and is **not sufficient on its own**: its own comment records
@@ -430,19 +430,19 @@ be the largest instance yet.
 
 | Question | Function | Where |
 |---|---|---|
-| What would be injected here, and what spills | `select()` | `select.ts` · `export function select(items: Item[], ctx: SelectContext, config: Config): Selection {` · ~833 |
-| Does this item govern this path | `matchesScope(item, target, config)` | `select.ts` · `export function matchesScope(item: Item, target: string, config: Config): boolean {` · ~266 |
-| Is this item eligible at all | `isEligible(item, config)` | `select.ts` · `export function isEligible(item: Item, config: Config): boolean {` · ~198 |
-| What does an empty scope mean for this category | `scopePolicyFor(config, type)` | `core/config.ts` · `export function scopePolicyFor(config: Config, type: string): ScopePolicy {` · ~179 |
-| Does an agent's edit apply or wait | `agentEditsFor(config, type)` | `core/config.ts` · `export function agentEditsFor(config: Config, type: string): AgentEdits {` · ~201 |
+| What would be injected here, and what spills | `select()` | `select.ts` · `export function select(items: Item[], ctx: SelectContext, config: Config): Selection {` · ~1364 |
+| Does this item govern this path | `matchesScope(item, target, config)` | `select.ts` · `export function matchesScope(item: Item, target: string, config: Config): boolean {` · ~575 |
+| Is this item eligible at all | `isEligible(item, config)` | `select.ts` · `export function isEligible(item: Item, config: Config): boolean {` · ~495 |
+| What does an empty scope mean for this category | `scopePolicyFor(config, type)` | `core/config.ts` · `export function scopePolicyFor(config: Config, type: string): ScopePolicy {` · ~207 |
+| Does an agent's edit apply or wait | `agentEditsFor(config, type)` | `core/config.ts` · `export function agentEditsFor(config: Config, type: string): AgentEdits {` · ~229 |
 | Is this item injected, and **on what terms** | `injection(item, config)` | `cli/commands/injection.ts` · `export function injection(` · ~84 |
-| Estimated tokens for a body | `estimateTokens()` | `select.ts` · `export function estimateTokens(text: string): number {` · ~178 |
-| **What is the active focus** | `readFocus(root)` → `FocusState` | `core/focus.ts` · `export function readFocus(root: string): FocusState {` · ~321 |
-| **Is a focus actually narrowing** | `isFocusActive(focus)` | `core/focus.ts` · `export function isFocusActive(focus: FocusAxes \| null): focus is FocusAxes {` · ~271 |
-| **What did focus hide, and how much** | `Selection.focus` → `FocusReport \| null` | `core/focus.ts` · `export interface FocusReport {` · ~237 |
-| What has this context window already been given | `readSeen(root, key)` → `seenIds(state)` | `seen-file.ts` · `export function readSeen(root: string, key: string): SeenState {` · ~123 |
-| Which key is that, for a session or a subagent | `ledgerKey(input)` | `hooks/io.ts` · `export function ledgerKey(input: HookInput): string \| null {` · ~208 |
-| Which sessions exist, most recent first | `Ledger.recentSessions(n)` | `ledger.ts` · `recentSessions(limit: number): string[] {` · ~500 |
+| Estimated tokens for a body | `estimateTokens()` | `select.ts` · `export function estimateTokens(text: string): number {` · ~475 |
+| **What is the active focus** | `readFocus(root)` → `FocusState` | `core/focus.ts` · `export function readFocus(root: string): FocusState {` · ~389 |
+| **Is a focus actually narrowing** | `isFocusActive(focus)` | `core/focus.ts` · `export function isFocusActive(focus: FocusAxes \| null): focus is FocusAxes {` · ~339 |
+| **What did focus hide, and how much** | `Selection.focus` → `FocusReport \| null` | `core/focus.ts` · `export interface FocusReport {` · ~276 |
+| What has this context window already been given | `readSeen(root, key)` → `seenIds(state)` | `seen-file.ts` · `export function readSeen(root: string, key: string): SeenState {` · ~207 |
+| Which key is that, for a session or a subagent | `ledgerKey(input)` | `hooks/io.ts` · `export function ledgerKey(input: HookInput): string \| null {` · ~214 |
+| Which sessions exist, most recent first | `Ledger.recentSessions(n)` | `ledger.ts` · `recentSessions(limit: number): string[] {` · ~512 |
 
 **Three of those rows are new in the fifth pass, and two of them replace a row that was wrong.**
 
@@ -466,7 +466,7 @@ that needed it. The UI is the third caller, not a fourth spelling.
 
 **The correction that matters most here.** The earlier version said the expensive screens were cheap
 because *"the coverage map is `matchesAnyGlob` over a file tree, not a second matcher."* That is
-precisely the defect `select.ts` documents by name (`select.ts` · `` `query_items` re-derived it as a bare `` · ~244): the `query_items` MCP tool
+precisely the defect `select.ts` documents by name (`select.ts` · `` `query_items` re-derived it as a bare `` · ~553): the `query_items` MCP tool
 re-derived scope matching as a bare `matchesAnyGlob(path, item.scope)` *"and consequently kept hiding
 unscoped items from a path query long after they had become injectable on that path."* An unscoped item
 matches every path under the default `scopePolicy` and no path under `inert`, and `matchesAnyGlob`
@@ -475,7 +475,7 @@ normative tier — via `injection()` — or drafts and rationale items would col
 which is the same class of false statement in a different medium.
 
 One caveat for the implementer, because it is a real friction rather than an oversight: **`isNormative`
-is private** to `select.ts` (`select.ts` · `function isNormative(item: Item, config: Config): boolean {` · ~204 — note the absent `export`). The UI must not copy its one-line body. Either
+is private** to `select.ts` (`select.ts` · `function isNormative(item: Item, config: Config): boolean {` · ~513 — note the absent `export`). The UI must not copy its one-line body. Either
 call `injection()`, which already encapsulates it, or export it — but not both, and never neither.
 
 ### `/api/select` — the endpoint the flagship screen rests on
@@ -485,7 +485,7 @@ selection than the hook produces, and shown a different spill set**, which is fa
 entire value is "see exactly what Claude gets".
 
 The reason is `seen`. `select()` filters already-injected items **before** budgeting
-(`select.ts` · `hardening and must not be reverted` · ~850), and the comment above it says this is
+(`select.ts` · `hardening and must not be reverted` · ~1381), and the comment above it says this is
 Plan 1's hardening and **must not be reverted**: an already-injected item must not consume budget and
 spill a fresh one in its place. Without it, every item ever injected in the session competes for budget
 again, and the items that spill are not the items that would really spill.
@@ -498,7 +498,7 @@ those inputs does not preview `select()` — it previews a different question wi
 > `SelectContext`, this endpoint gains it in the same change, and the parity test in §6 fails until it
 > does.
 
-`SelectContext` declares five (`select.ts` · `export interface SelectContext {` · ~19):
+`SelectContext` declares five (`select.ts` · `export interface SelectContext {` · ~81):
 
 | Input | Where the endpoint gets it |
 |---|---|
@@ -509,10 +509,10 @@ those inputs does not preview `select()` — it previews a different question wi
 | `focus` | `readFocus(projectRoot).focus`, exactly as the hook reads it |
 
 **`focus` is the input the third pass missed.** It is applied inside `select()` before every tier and
-before budgeting (`select.ts` · `const focus = ctx.focus ?? null;` · ~843), so omitting it previews a
+before budgeting (`select.ts` · `const focus = ctx.focus ?? null;` · ~1374), so omitting it previews a
 different delivered set *and* a different spill set — the same failure, and the same consequence, that
 `seen` had. The hook passes it as `focus: focusState.focus` from `readFocus(ws.projectRoot)`
-(`pre-tool-use.ts` · `const focusState = readFocus(ws.projectRoot);` · ~226). The response carries
+(`pre-tool-use.ts` · `const focusState = readFocus(ws.projectRoot);` · ~302). The response carries
 `Selection.focus`, the `FocusReport | null` disclosure, so the screen can say what focus hid rather
 than silently showing less.
 
@@ -520,7 +520,7 @@ than silently showing less.
 
 **How `seen` is obtained, which is no longer the ledger.** Session dedupe state lives in a
 **per-session seen file**, not in SQLite: the hook calls `readSeen(projectRoot, dedupeKey)` and passes
-`seenIds(seenState)` (`pre-tool-use.ts` · `const seenState = readSeen(ws.projectRoot, dedupeKey);` · ~210). The key is **not** the bare session id —
+`seenIds(seenState)` (`pre-tool-use.ts` · `const seenState = readSeen(ws.projectRoot, dedupeKey);` · ~286). The key is **not** the bare session id —
 
 ```ts
 export function ledgerKey(input: HookInput): string | null {
@@ -1092,7 +1092,7 @@ dropping them.
 
 There is no `mycontext config` command. `config.json` is hand-edited — the deny hook says so in the
 words it refuses with: *"Configuration changes to `.my_context/config.json` are the user's to make — ask,
-do not edit"* (`src/hooks/pre-tool-use.ts` · `to make — ask, do not edit.` · ~118). So today, changing
+do not edit"* (`src/hooks/pre-tool-use.ts` · `to make — ask, do not edit.` · ~120). So today, changing
 `scopePolicy` from `global` to `inert`, or `agentEdits` from `review` to `allow`, or a budget, means
 editing JSON and finding out what it did by living with it.
 
@@ -1173,7 +1173,7 @@ Queries were covered; the three reporting commands had no screen at all.
   findings carrying a `code` — `index_stale`, `orphan_relation`, `source_drift`, `source_missing`,
   `dead_scope`, `not_writable`, `session_id_mismatch`, `unknown_category`, `scope_policy_inert` and the
   rest — across three levels, all collapsed at the end into a single exit code
-  (`cli/commands/doctor.ts` · `export function exitCode(` · ~41). The screen groups by
+  (`cli/commands/doctor.ts` · `export function exitCode(` · ~275). The screen groups by
   `code`, keeps the three levels visually distinct, and links each finding to the item it names and to
   the command that repairs it (composed, not run). A findings list flattened to "exit 1" is exactly the
   kind of structure a terminal loses.
@@ -1375,7 +1375,7 @@ opt-in.** Installing mycontext will not take over a status line; asking for the 
 > against the version they are building on and update the version recorded here**, because the
 > alternative is a spec that ages into a false statement without anyone touching it. What this
 > repository *can* confirm is the other half: `HookInput`
-> (`src/hooks/io.ts` · `export interface HookInput {` · ~3) declares `session_id`, `transcript_path`,
+> (`src/hooks/io.ts` · `export interface HookInput {` · ~9) declares `session_id`, `transcript_path`,
 > `cwd`, `hook_event_name`, `source`, `tool_name`, `tool_input`, `agent_id`, `agent_type` and
 > `prompt_id`, and nothing resembling a token count.
 
@@ -1411,7 +1411,7 @@ is a claim about **mycontext**; the second reads as a claim about the **payload*
 is this repository's to make.
 
 - **[V] mycontext declared no prompt identifier, and now declares one it does not use.** `HookInput`
-  (`hooks/io.ts` · `export interface HookInput {` · ~3) declared `session_id`, `transcript_path`,
+  (`hooks/io.ts` · `export interface HookInput {` · ~9) declared `session_id`, `transcript_path`,
   `cwd`, `hook_event_name`, `source`, `tool_name`, `tool_input`, `agent_id` and `agent_type`. **Amended
   2026-08-21:** the v2 hooks plan's Task 5 adds `prompt_id` beside them, on a measurement of Claude
   Code 2.1.234. **The half of this bullet that carried the argument is unchanged and was re-checked:
@@ -1495,10 +1495,10 @@ recording the hook action itself.
 ### The record shape, pinned
 
 The earlier version described the injection record as *"scope, not content"*. `docs/ROADMAP.md`'s B7.1
-row (`docs/ROADMAP.md` · `the injection's scope, tier and item ids, not its content` · ~183) records
+row (`docs/ROADMAP.md` · `the injection's scope, tier and item ids, not its content` · ~184) records
 the decision as **"the injection's scope, tier and item ids, not its content"**. An earlier pass cited
 two ROADMAP rows for that wording; only B7.1 carries it — the Q3 row
-(`docs/ROADMAP.md` · `Audit log scope — mutations only, or injections too?` · ~397) records the same
+(`docs/ROADMAP.md` · `Audit log scope — mutations only, or injections too?` · ~398) records the same
 decision in the short form, *"the injection's scope, not its content"*, which is the wording this
 paragraph corrects. The spec dropped two of the three fields, and each is load-bearing:
 
@@ -1509,7 +1509,7 @@ paragraph corrects. The spec dropped two of the three fields, and each is load-b
   maintained most actively.
 
 **Pinned to the shape that shipped** (`AuditRecord`,
-`src/core/audit.ts` · `export interface AuditRecord {` · ~428, on `phase-5/quality` — build against
+`src/core/audit.ts` · `export interface AuditRecord {` · ~859, on `phase-5/quality` — build against
 the type, not this prose). Every record carries `protocol`, a UTC `at` timestamp, `kind` and `op`. An injection record adds `sessionId` (absent for `manual`, whose surface has no trustworthy
 session id — a limitation the type discloses in place), the `hook` that ran, the triggering `path` for
 PreToolUse, `injected` as (id, tier) pairs — and **`spilled` as (id, tier, reason)**. A mutation record
@@ -1528,9 +1528,9 @@ subset written before the code — omitted both:
   (`audit_item`'s `spilled` role, `src/core/audit-db.ts`). A spec pinning a shape without `spilled`
   would have had an implementer build an audit view that cannot answer it.
 - **`focus` is a fourth record kind** — `focus-set` / `focus-clear`
-  (`src/core/audit.ts` · `export const FOCUS_OPS = ['focus-set', 'focus-clear'] as const;` · ~254),
+  (`src/core/audit.ts` · `export const FOCUS_OPS = ['focus-set', 'focus-clear'] as const;` · ~428),
   and the kind list says so in its own words
-  (`src/core/audit.ts` · `It is genuinely a fourth thing, so it is a fourth kind.` · ~117) —
+  (`src/core/audit.ts` · `It is genuinely a fourth thing, so it is a fourth kind.` · ~132) —
   deliberately neither a mutation nor an injection: a focus change touches no item and injects no text,
   but it changes what every later selection injects. An audit view that streamed injections without
   focus changes would show items disappearing from a session with no visible cause, so the Watch stream
@@ -1539,7 +1539,7 @@ subset written before the code — omitted both:
 **One extension, decided with the owner's assent.** §4b's sentence needs a token count for mycontext's
 contribution. Deriving it later from the items as they are now has the same drift problem as the ids
 would. So the record carries the **estimated token count computed at injection time** (`estimateTokens`,
-`src/core/select.ts` · `export function estimateTokens(` · ~178) — the number as it was when the
+`src/core/select.ts` · `export function estimateTokens(` · ~475) — the number as it was when the
 injection happened, never re-derived from the present corpus. An earlier version wrote this as a
 proposal awaiting the owner's assent, with a fallback re-scoping §4b to item counts if refused;
 **the owner has assented**, the extension to the
@@ -1548,7 +1548,7 @@ recorded Q3 shape is a decision, and the fallback branch is dead and deleted.
 **The deferral to a branch is also spent — it merged.** This paragraph said the field's name and
 coverage *"are being settled by the implementation on the `audit-injection-token-count` branch, and
 that branch — not this spec — is where the spelling binds."* It has shipped. The field is
-**`tokens?: number`** on `AuditRecord` (`core/audit.ts` · `tokens?: number;` · ~481), and what it counts is
+**`tokens?: number`** on `AuditRecord` (`core/audit.ts` · `tokens?: number;` · ~964), and what it counts is
 pinned in its own doc comment:
 
 > It is `Selection.tokens` verbatim — the sum of the chars/4 estimates … the selector charged its
@@ -1649,7 +1649,7 @@ had already made it.** The earlier version said: *"Had audit records lived in `.
 destroyed audit history."*
 
 **`rebuild` drops `items` and nothing else.**
-`src/core/rebuild.ts` · `store.deleteByLayer(layer);` · ~458 calls `store.deleteByLayer`, which is
+`src/core/rebuild.ts` · `store.deleteByLayer(layer);` · ~500 calls `store.deleteByLayer`, which is
 `DELETE FROM items WHERE layer = ?`
 (`store.ts` · `this.#db.prepare('DELETE FROM items WHERE layer = ?').run(layer);` · ~548). The `ledger`
 table (`ledger.ts` · `injected_at TEXT NOT NULL,` · ~66) lives in the same file and **survives a rebuild
@@ -1658,7 +1658,7 @@ untouched.** The half of the claim that is true is the parenthesis: `query`
 (`cli/commands/context.ts` · `This ALWAYS rebuilds before returning the context` · ~42) do each run a
 rebuild implicitly — and it is harmless to history.
 
-**`docs/ROADMAP.md`'s C-R4 row** (`docs/ROADMAP.md` · `two bullets after the one saying` · ~214) already recorded
+**`docs/ROADMAP.md`'s C-R4 row** (`docs/ROADMAP.md` · `two bullets after the one saying` · ~215) already recorded
 the corrected fact against a README bullet that had made a related error. Restating the wrong mechanism
 here contradicted this project's own correction, in a document written after it.
 
@@ -1669,7 +1669,7 @@ here contradicted this project's own correction, in a document written after it.
   in a comment on the very branch — *"a successful clear here discards not just the disposable `items`
   cache but also whatever `ledger` rows the file held"*. It is the right behaviour: without it a corrupt
   index silences the plugin permanently. It is also unattended.
-- **The documented recovery.** `README.md` · `recreates it from the Markdown. The Markdown is the source of truth;` · ~1269 — *"Delete it and `mycontext rebuild` recreates it from the Markdown."*
+- **The documented recovery.** `README.md` · `recreates it from the Markdown. The Markdown is the source of truth;` · ~1336 — *"Delete it and `mycontext rebuild` recreates it from the Markdown."*
 
 **Correction, fifth pass: the second README quote does not exist, and its fact is now false.** This
 paragraph cited `README.md:4139` for *"delete the index and the injection history goes with it."* That
@@ -1697,7 +1697,7 @@ of this paragraph asked whether `jsonb` could let the projection store each reco
 into it, instead of shredding fields into columns and re-deciding the schema every time the record
 shape grows — and recorded that Phase 5 was measuring what `node:sqlite` on Node 24 actually supports,
 asserting no outcome. **Phase 5 shipped, and the measurement is in the shipped file**
-(`src/core/audit-db.ts` · ``**The record is stored whole, as `jsonb`, and queried into.**`` · ~44,
+(`src/core/audit-db.ts` · ``**The record is stored whole, as `jsonb`, and queried into.**`` · ~45,
 on `phase-5/quality`): on Node 24.18 (SQLite 3.53.1), `jsonb()`, `->>`, `json_each`, VIRTUAL
 generated columns over a jsonb blob and expression indexes over them all work through `node:sqlite`,
 and a representative injection record measured 452 bytes as jsonb against 546
@@ -1805,13 +1805,13 @@ test file should say so.
 |---|---|
 | The UI becomes the primary surface and the product inverts | Every screen graded against "a terminal cannot do this" in §4, exceptions named; the CLI and slash surfaces stay complete |
 | **A UI write silently voids the user's Bash deny rules** | **There are no UI writes.** No `/api` route reaches a mutating function, enforced by a static import-graph test (§6); every write is composed and pasted into a shell, so it stays a command string the deny rules can match |
-| **An agent promotes its own proposal over HTTP** | Closed by the same rule. `promoteRevision` stamps `origin: 'human'` (`revision.ts` · ``the change is applied through `updateItem` with `origin: 'human'`,`` · ~763) and would have laundered origin through any endpoint that called it; nothing calls it |
+| **An agent promotes its own proposal over HTTP** | Closed by the same rule. `promoteRevision` stamps `origin: 'human'` (`revision.ts` · ``the change is applied through `updateItem` with `origin: 'human'`,`` · ~792) and would have laundered origin through any endpoint that called it; nothing calls it |
 | DNS rebinding / CSRF | Custom-header token, no CORS, `Origin` and `Host` validated, loopback-only bind |
 | The token leaks through the browser-opening command line | The spawned URL carries a one-shot 10-second handoff nonce, not the token; the token never touches a process argument list (§3) |
 | A forgotten server left running | Idle is defined as no non-stream request for 8 hours; **an open stream is not activity**; the page heartbeats only while visible; on exit the page says so and does not reconnect (§2) |
 | Audit writes slow the hot path | Measured before committing to always-on, against the corrected budget — hit-path p95 ~20.7–22.7ms of 50ms, ~27ms remaining — and the hook appends one JSONL line rather than opening a database (§5) |
 | The audit projection answers from stale data without saying so | The projection records its log position; a query behind its log catches up first or reports that it is behind, and a diverged or version-mismatched projection is discarded and rebuilt whole (§5) |
-| **The audit view cannot name what was injected** | The record shape is pinned to scope, tier **and item ids** per `docs/ROADMAP.md` · `the injection's scope, tier and item ids, not its content` · ~183, so the view never re-derives from the present corpus (§5) |
+| **The audit view cannot name what was injected** | The record shape is pinned to scope, tier **and item ids** per `docs/ROADMAP.md` · `the injection's scope, tier and item ids, not its content` · ~184, so the view never re-derives from the present corpus (§5) |
 | **The injection preview shows a selection Claude never got** | `/api/select` takes every narrowing input `SelectContext` declares, and derives `seen` from the **per-session seen file** via `readSeen(root, ledgerKey(...))` and `seenIds` — never from `Ledger.seen`, which is a replayed projection nothing in the UI updates; a cold-session preview exists and is labelled as a different question (§3) |
 | A screen shows a context number that is wrong, stale or invented | Shown only when the bridge is installed, labelled "as of last response" with the sample's age, never interpolated, input-only, with distinct "not yet known" and "unknown" states (§4b) |
 | Installing the bridge overwrites a `statusLine` the user already configured | Opt-in, never installed as a side effect; the installer **prints the existing setting and what it would replace it with, and asks, before writing** |
@@ -1833,16 +1833,16 @@ recorded here as decisions.
 2. **Does the review queue promote over HTTP?** **No.** It renders the diff and composes
    `mycontext review promote-revision <id> --yes` for the user's own shell (§2, §4).
 3. **Which function answers "does this item govern this path"?** **`matchesScope(item, target, config)`**
-   (`select.ts` · `export function matchesScope(item: Item, target: string, config: Config): boolean {` · ~266), filtered by **`isEligible`** (`select.ts` · `export function isEligible(item: Item, config: Config): boolean {` · ~198) and the normative-tier test, which
+   (`select.ts` · `export function matchesScope(item: Item, target: string, config: Config): boolean {` · ~575), filtered by **`isEligible`** (`select.ts` · `export function isEligible(item: Item, config: Config): boolean {` · ~495) and the normative-tier test, which
    **`injection()`** (`cli/commands/injection.ts` · `export function injection(` · ~84) already composes in `select`'s own order.
-   **Not `matchesAnyGlob`** — that is a defect `select.ts` documents by name (`select.ts` · ``asks the same function. `query_items` re-derived it as a bare`` · ~244), recording that the bare form *"kept hiding unscoped items from a path query long after they had become injectable on that path"* (§3).
+   **Not `matchesAnyGlob`** — that is a defect `select.ts` documents by name (`select.ts` · ``asks the same function. `query_items` re-derived it as a bare`` · ~553), recording that the bare form *"kept hiding unscoped items from a path query long after they had become injectable on that path"* (§3).
 4. **Where does the audit log live, and what is in a record?** **JSONL is the source of truth; SQLite is
    a disposable projection that records its position in the log.** An injection record carries the
    delivered set as (id, tier) pairs, **the spilled set as (id, tier, reason)**, timestamp, `session_id`
    and the hook and path that triggered it — never item content — plus, decided with the owner's assent,
    the estimated token count computed at injection time — shipped as **`tokens?: number`**, whose
    **absence means "not recorded", never zero**. Mutations and focus changes are their
-   own record kinds; the full shape is `AuditRecord` (`core/audit.ts` · `export interface AuditRecord {` · ~428, running to `core/audit.ts` · `note?: string;` · ~492) (§5).
+   own record kinds; the full shape is `AuditRecord` (`core/audit.ts` · `export interface AuditRecord {` · ~859, running to `core/audit.ts` · `note?: string;` · ~995) (§5).
 5. **How does the UI select a session?** **One global selector**, defaulting to
    `Ledger.recentSessions(1)[0]`, listing 20, with an explicit **cold-session** option that passes no
    `seen` and is labelled as a different question. The same `session_id` keys the ledger, the audit

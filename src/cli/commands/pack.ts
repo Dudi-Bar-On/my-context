@@ -61,7 +61,7 @@ import { confirmAction, readLineSync } from './review.ts';
  * ## Why gate 5 does not go through `confirmAction` as it stands
  *
  * `confirmAction` returns true on `--yes`
- * (`cli/commands/review.ts` · `  if (hasFlag(args, 'yes')) return true;` · ~804),
+ * (`cli/commands/review.ts` · `  if (hasFlag(args, 'yes')) return true;` · ~867),
  * which is exactly right for gate 4 and exactly wrong for gate 5. §6n.7 asks
  * for an approval that is explicit and SEPARATE from choosing the pack, and
  * `--yes` is consent to the import the user described — not to replacing a
@@ -129,7 +129,7 @@ function say(out: Emit, text: string, prefix = ''): void {
  *
  * It cannot fail to parse here: `resolveWorkspace` reads and parses the same
  * file before any command is dispatched, and throws on a bad one
- * (`core/workspace.ts` · `      raw = JSON.parse(readFileSync(configPath, 'utf8'));` · ~54).
+ * (`core/workspace.ts` · `      raw = JSON.parse(readFileSync(configPath, 'utf8'));` · ~151).
  */
 function rawWorkspaceConfig(root: string): unknown {
   const file = path.join(root, WORKSPACE_CONFIG);
@@ -332,7 +332,7 @@ export function outcomeLines(
  * This is `ui/security.ts`'s field rule applied to a LIST instead of to a
  * string: bound what is shown, and mark the truncation VISIBLY so it cannot be
  * mistaken for the whole of what arrived
- * (`ui/security.ts` · `export const REFUSAL_VALUE_MAX = 256;` · ~291).
+ * (`ui/security.ts` · `export const REFUSAL_VALUE_MAX = 256;` · ~354).
  */
 const NAME_FINDING_MAX = 4;
 
@@ -358,7 +358,7 @@ const NAME_FINDING_MAX = 4;
  * only the part whose length somebody else chose.
  *
  * 256, the number this codebase already settled on for exactly this job
- * (`ui/security.ts` · `export const REFUSAL_VALUE_MAX = 256;` · ~291), and
+ * (`ui/security.ts` · `export const REFUSAL_VALUE_MAX = 256;` · ~354), and
  * comfortably above the longest value that could legally have been a name: 64
  * code points quote to at most 128 characters here, because the screen runs
  * first and has already refused every code point `JSON.stringify` would expand
@@ -403,9 +403,9 @@ interface NameRefusal {
  * ## Why the value arrives here having passed neither
  *
  * A manifest's name is refused twice before a plan exists: `parseManifest` puts
- * it through `refusePackName` (`pack/manifest.ts` · `export function refusePackName(v: unknown): string | null {` · ~314),
+ * it through `refusePackName` (`pack/manifest.ts` · `export function refusePackName(v: unknown): string | null {` · ~319),
  * and `planImport` puts it through the Unicode screen
- * (`pack/import.ts` · `    ...screenPackMeta(manifest.name ?? '', manifest.version ?? ''),` · ~320).
+ * (`pack/import.ts` · `    ...screenPackMeta(manifest.name ?? '', manifest.version ?? ''),` · ~333).
  * `--name` REPLACES that value after both have run, and the replacement is what
  * every surface prints from then on — the collision report's first line, the
  * confirmation question, the outcome sentence, `.audit/imported/<slug>/import.json`

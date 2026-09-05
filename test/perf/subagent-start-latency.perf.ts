@@ -40,7 +40,7 @@
  * helpers exist to avoid. It is a measurement, taken once, written down.
  *
  * **A fresh `agent_id` per iteration, and that is load-bearing.** The dedupe
- * key is `session_id::agent_id` (`hooks/io.ts` · `export function ledgerKey(` · ~208),
+ * key is `session_id::agent_id` (`hooks/io.ts` · `export function ledgerKey(` · ~214),
  * so a fixed agent would write one seen file on the first call and then
  * measure nineteen deduped near-empty deliveries — a number that would pass
  * while asserting nothing, the same trap the compact case in
@@ -48,11 +48,11 @@
  * session is also exactly the production shape: every dispatch is a birth,
  * with its own key and its own first seen-file append. The append is therefore
  * ON the timed path here, which is the honest shape — its worst case scales
- * with the number of delivered lines (`core/seen-file.ts` · `= 200 ms of backoff PER LINE` · ~81).
+ * with the number of delivered lines (`core/seen-file.ts` · `= 200 ms of backoff PER LINE` · ~154).
  *
  * **What this event does NOT do, so nobody reads the number as covering it:**
  * the subagent event skips the best-effort index refresh entirely
- * (`core/inject.ts` · `**THE SUBAGENT EVENT SKIPS THIS ENTIRELY**` · ~566), so
+ * (`core/inject.ts` · `**THE SUBAGENT EVENT SKIPS THIS ENTIRELY**` · ~725), so
  * it opens no database and the contended-open worst case
  * (`core/store.ts` · `Worst case ~1.06s: two attempts` · ~122) is not on this
  * path at all. A held index write lock cannot slow this hook down.

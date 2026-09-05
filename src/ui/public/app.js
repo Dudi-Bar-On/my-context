@@ -2212,7 +2212,7 @@ async function post(path, body) {
  * **Not `EventSource`.** `EventSource` sends no custom headers, and the token
  * travels in `X-Mycontext-Token` on every `/api` request (spec §2), so the
  * stream has to be a fetch and `lib/sse.js` does what `EventSource` would have
- * (`lib/sse.js` · `use EventSource: EventSource sends no custom headers, and the token travels` · ~4).
+ * (`lib/sse.js` · `use EventSource: EventSource sends no custom headers, and the token travels` · ~3).
  *
  * **It never reconnects, and neither does anything it returns.** A closed
  * stream is rendered as closed; silent reconnection would reintroduce the

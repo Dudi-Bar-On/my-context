@@ -79,12 +79,12 @@
  *
  * `/api/revisions` decorates every field with `changed` — "a human has moved
  * this very text since the proposal was staged"
- * (`ui/read-model-work.ts` · `changed: rev.changedSince.includes(field),` · ~62).
+ * (`ui/read-model-work.ts` · `changed: rev.changedSince.includes(field),` · ~64).
  * The design of record does not draw that as an annotation beside a diff. It
  * REPLACES the row's two value cells: the field name takes `td.m.stale`, which
  * carries a rule down its reading-start edge, and the two cells become
  * `work.moved` / `work.blocked`
- * (`docs/design/web-ui-mockup.html` · `<td class="m stale">body <span class="chip warn" data-g="▲">stale</span></td>` · ~2397).
+ * (`docs/design/web-ui-mockup.html` · `<td class="m stale">body <span class="chip warn" data-g="▲">stale</span></td>` · ~3286).
  *
  * That is the honest shape, not a shorter one. A stale field's proposed text
  * was written against a version that no longer exists, so drawing it against
@@ -122,7 +122,7 @@
  * ── ONE COMPOSED COMMAND PER CARD, AND WHY IT CARRIES `--revision` ────────
  *
  * `--revision` is never optional here. `commandFor` treats the flag as optional
- * (`src/ui/public/lib/palette-defs.js` · `flags: [{ name: 'revision', input: 'text' }, { name: 'force', boolean: true }, yes],` · ~158),
+ * (`src/ui/public/lib/palette-defs.js` · `flags: [{ name: 'revision', input: 'text' }, { name: 'force', boolean: true }, yes],` · ~333),
  * so a revision that arrived without one would compose a line settling
  * whichever revision the log offers first rather than the one the human just
  * read — and that is as true of the discard as of the promote, which is why the
@@ -137,7 +137,7 @@
  * `scope`, `injected`, `phrase` and `gate`. None is drawn: the design of record
  * has no column for them, and the call `status.js` already made about eight
  * served fields on its own screen governs these too
- * (`src/ui/public/screens/status.js` · `Left unread rather than promoted into columns` · ~45).
+ * (`src/ui/public/screens/status.js` · `Left unread rather than promoted into columns` · ~52).
  * They are named in this task's report rather than promoted into columns
  * nobody asked for.
  */

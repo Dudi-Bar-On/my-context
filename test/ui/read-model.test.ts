@@ -2207,7 +2207,7 @@ test('/api/coverage pages with limit and offset, and says how many paths it left
  * that cannot be searched hides the file the reader came for.
  *
  * A SUBSTRING, not a glob. `/api/glob` already owns the glob question
- * (`ui/read-model-work.ts` · `export function apiGlob(ws: Workspace, url: URL): JsonResult {` · ~239)
+ * (`ui/read-model-work.ts` · `export function apiGlob(ws: Workspace, url: URL): JsonResult {` · ~253)
  * and answers it with `matchesAnyGlob`; a second glob implementation reachable
  * from a different parameter is how two surfaces come to disagree about what
  * `src/**` means.

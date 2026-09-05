@@ -328,7 +328,7 @@ function refuseFileSet(refusal: string, items: readonly Item[]): Error {
  * sentence teaches nothing the fourth did not.
  *
  * The same call `cli/commands/pack.ts` made at the import door
- * (`cli/commands/pack.ts` · `const NAME_FINDING_MAX = 4;` · ~294), which is in
+ * (`cli/commands/pack.ts` · `const NAME_FINDING_MAX = 4;` · ~337), which is in
  * turn `ui/security.ts`'s field rule applied to a LIST instead of to a string:
  * bound what is shown, and mark the truncation VISIBLY so it cannot be
  * mistaken for the whole of what arrived.

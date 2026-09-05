@@ -216,7 +216,7 @@ export type InjectionOp = (typeof INJECTION_OPS)[number];
  * and a deletion with no record is `INV-nothing-is-dropped-silently` failing
  * at the one place it cannot be noticed later. It is also the ONLY channel that
  * event has: Claude Code echoes a `SessionEnd` hook's output to the user only
- * when the hook FAILS (`hooks/session-end.ts` · `NOTHING A SUCCESSFUL SessionEnd HOOK WRITES IS EVER SHOWN` · ~42),
+ * when the hook FAILS (`hooks/session-end.ts` · `NOTHING A SUCCESSFUL SessionEnd HOOK WRITES IS EVER SHOWN` · ~45),
  * so a hook that exits 0 — which `INV-hooks-fail-open` requires — is mute
  * everywhere else.
  *
@@ -575,7 +575,7 @@ export const AUDIT_OPS: AuditOp[] = [
  * (`agent-dispatched`) and, since 2026-09-04, records a lane's steps as they
  * happen (`agent-step`); `SessionStart` writes `session-start`
  * on an ordinary start and `compact-restore` when it is resolving a
- * compaction (`core/inject.ts` · `op: manual ? 'manual' : subagent ? 'subagent-start'` · ~898) —
+ * compaction (`core/inject.ts` · `op: manual ? 'manual' : subagent ? 'subagent-start'` · ~950) —
  * same hook, same `hook: 'SessionStart'` stamp, different op for a different
  * cause.
  *

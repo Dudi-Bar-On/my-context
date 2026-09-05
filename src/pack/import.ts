@@ -30,7 +30,7 @@
  *
  * The plan's Task 12 lists the merged config as step 3, after the creates. It
  * cannot be: `createItem` resolves an item's category out of `ctx.config`
- * (`core/mutate.ts` · `function resolveCategory(ctx: MutationContext, type: string): ResolvedCategory {` · ~131),
+ * (`core/mutate.ts` · `function resolveCategory(ctx: MutationContext, type: string): ResolvedCategory {` · ~233),
  * so a pack that DEFINES a category — the half §6n.1 restored — would have
  * every one of its items refused as an unknown type before the config that
  * declares them was ever written. So the merged config is written and adopted
@@ -50,7 +50,7 @@
  * ## Nothing in `identical` is applied
  *
  * The creator's explicit-id branch already treats identical content as a no-op
- * duplicate (`core/mutate.ts` · `      if (itemContentHash(existing) === hash) return duplicateOf(existing);` · ~429),
+ * duplicate (`core/mutate.ts` · `      if (itemContentHash(existing) === hash) return duplicateOf(existing);` · ~579),
  * so re-running an import with nothing approved is idempotent by construction
  * rather than by a flag. Those ids are still MEMBERS of the pack — they are in
  * `imported` and in the import record — because `review promote --all --pack`
@@ -275,9 +275,9 @@ function duplicateIds(items: readonly Item[]): string[] {
  * HERE from today and the pack's own history carries the original dates.
  *
  * A ticked step is reported for a harder reason. `normalizeSteps`
- * (`core/validate.ts` · `export function normalizeSteps(steps: string[]): Step[] {` · ~421)
+ * (`core/validate.ts` · `export function normalizeSteps(steps: string[]): Step[] {` · ~614)
  * sets `checked: false` on every entry, and `checked` is part of the content
- * hash (`core/content-hash.ts` · `function canonicalStep(s: Step): Step {` · ~42),
+ * hash (`core/content-hash.ts` · `function canonicalStep(s: Step): Step {` · ~43),
  * so an arriving procedure with a ticked box lands unticked AND buckets
  * `changed` against its own pack on the next import — differing in `steps`,
  * which has no write path, so it is then reported as not overwritable forever.
@@ -515,7 +515,7 @@ export function applyImport(
     // `createItem` has one path that returns an id other than the one it was
     // given: an item carrying both `source_file` and `source_anchor` whose
     // content already exists here under a different name is reported as
-    // already captured (`core/mutate.ts` · `      message: \`my_context: already captured as ${anchored.id}. Nothing changed.\`,` · ~347).
+    // already captured (`core/mutate.ts` · `      message: \`my_context: already captured as ${anchored.id}. Nothing changed.\`,` · ~467).
     // Reachable only from a full export, and refused rather than absorbed: the
     // outcome's four lists are keyed on the pack's own ids, so quietly
     // substituting one would make every count in the report describe an item

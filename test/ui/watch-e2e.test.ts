@@ -8,13 +8,13 @@
  * **The middle test is THE §2 test**, and it is the reason this file exists:
  * plan 1 built the `kind: 'stream'` slot and the dispatch that deliberately
  * does not touch the idle monitor for it
- * (`src/ui/server.ts` · `NOT idle.touch(): an open stream is not activity` · ~530),
+ * (`src/ui/server.ts` · `NOT idle.touch(): an open stream is not activity` · ~1166),
  * but shipped no stream route, so the promise was never EXECUTED. It is now.
  *
  * **How that test is built, and why it is not a third wall-clock race.**
  *
  * `test/ui/server.test.ts` already asserts the same rule in-process
- * (`test/ui/server.test.ts` · `an open stream is not activity; a json request is` · ~130),
+ * (`test/ui/server.test.ts` · `an open stream is not activity; a json request is` · ~132),
  * and it does it by MEASURING: a stream must not push the exit past
  * `IDLE + 500ms`, a control request must push it past `IDLE + 800ms`. Two
  * deadlines on a loaded machine, which is exactly why it is one of this
@@ -54,7 +54,7 @@
  * machine produce a slower run rather than a wrong verdict.
  *
  * The first test overlaps `server-e2e.test.ts`'s stream test
- * (`test/ui/server-e2e.test.ts` · `the audit stream delivers what lands after you connect` · ~790)
+ * (`test/ui/server-e2e.test.ts` · `the audit stream delivers what lands after you connect` · ~940)
  * only in its premise. That one proves a record appended after connect arrives
  * and one appended before it does not; this one proves the record's SHAPE
  * survives the wire — `spilled`, its `reason` and `tokens` — which is the half
@@ -315,7 +315,7 @@ test('the ask surface answers over HTTP behind the token gate, and a refusal no 
     });
     // The projection is built by the PRODUCT, never by the endpoint: these
     // routes open it through the read-only door
-    // (`src/ui/watch-model.ts` · `One door onto the projection for every JSON endpoint` · ~153),
+    // (`src/ui/watch-model.ts` · `One door onto the projection for every JSON endpoint` · ~196),
     // which creates nothing. A fixture that forgot this line does not get one
     // built behind its back — it gets the `absent` empty state, which the
     // no-write sweep in `server-e2e.test.ts` probes on purpose.

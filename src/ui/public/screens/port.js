@@ -20,7 +20,7 @@
  *
  * The mockup opens this section with a badge and no verdict text —
  * `<span class="verdict"><span class="prop">PROPOSED</span></span>`
- * (`docs/design/web-ui-mockup.html` · `<span class="verdict"><span class="prop">PROPOSED</span></span></div>` · ~2163)
+ * (`docs/design/web-ui-mockup.html` · `<span class="verdict"><span class="prop">PROPOSED</span></span></div>` · ~3493)
  * — and the app does not repeat it, under the owner's ruling of 2026-08-23:
  * *"leave the mockup intact, do it only in the real … when comparing to mockup
  * the proposed word is a known diff and it is ok"*
@@ -135,7 +135,7 @@ export const VERDICT_CHIP = {
  * prose the string tables carry (`port.f1`, `port.f3`), so their name cell is
  * a plain `<b>`. The middle rung has no name key in either table at all: the
  * mockup writes it as a literal `<b class="m">git bundle</b>`
- * (`docs/design/web-ui-mockup.html` · `<tr><td><b class="m">git bundle</b></td><td class="small" data-t="port.f2n">` · ~2187),
+ * (`docs/design/web-ui-mockup.html` · `<tr><td><b class="m">git bundle</b></td><td class="small" data-t="port.f2n">` · ~3581),
  * because it is a command name and a command name is not translated — the same
  * treatment `parts.js` records for tier names and `work.js` for `stale`. So
  * `label` is a literal here for exactly one rung, and `test/ui/port-screen.test.ts`
@@ -143,7 +143,7 @@ export const VERDICT_CHIP = {
  *
  * **`bundle` is served `built: false`, and this screen DRAWS it, badged.**
  * `ArtefactFormat` is a two-member union
- * (`src/pack/reader.ts` · `export type ArtefactFormat = 'dir' | 'zip';` · ~67)
+ * (`src/pack/reader.ts` · `export type ArtefactFormat = 'dir' | 'zip';` · ~66)
  * and §6n.6 dropped the rung from v2.0 rather than deferring it. Three ways to
  * render that were open (greyed, footnoted, dropped) and this is the third
  * rejected outright: dropping the row leaves a two-rung ladder under a heading
@@ -155,10 +155,10 @@ export const VERDICT_CHIP = {
  * So the row is drawn whole and carries `span.prop`, which is the design's own
  * mark for the exact state this rung is in — *"the PROPOSED badge the mockup
  * itself uses to mark a screen that is named but not yet real"*
- * (`src/ui/public/styles.css` · `.prop{font-size:10.5px;letter-spacing:.05em;color:var(--warn);border:1px solid var(--warn);` · ~442)
+ * (`src/ui/public/styles.css` · `.prop{font-size:10.5px;letter-spacing:.05em;color:var(--warn);border:1px solid var(--warn);` · ~1702)
  * — placed exactly as `config.js` places it beside the `watchedDocs` note it
  * is not built for
- * (`src/ui/public/screens/config.js` · `watchedNote.append(watchedText, ' ', el('span', 'prop', 'PROPOSED'));` · ~388).
+ * (`src/ui/public/screens/config.js` · `watchedNote.append(watchedText, ' ', el('span', 'prop', 'PROPOSED'));` · ~1866).
  *
  * Two costs, stated rather than hidden. `PROPOSED` is an unkeyed English
  * literal and stays English in the Hebrew UI, which is the same cost `work.js`
@@ -177,7 +177,7 @@ export const RUNGS = {
  * A served bucket name → the chip the mockup draws for it. The names are
  * `Buckets`' own keys, pinned to that interface at compile time by the
  * endpoint and measured against `bucketise`'s real return value by its test
- * (`test/ui/port-model.test.ts` · `assert.deepEqual(bodyOf(dir).buckets, Object.keys(bucketise([], () => null)));` · ~153).
+ * (`test/ui/port-model.test.ts` · `assert.deepEqual(bodyOf(dir).buckets, Object.keys(bucketise([], () => null)));` · ~154).
  *
  * The three chips are `ok` / `warn` / `gov`, which is a real ordering and not
  * decoration: a new item is uncontested, a same-id-different-content item is
@@ -229,7 +229,7 @@ export function rungView(format) {
  * bare `.chip`, and that is a legibility ruling this project already took:
  * unmodified `.chip` sets near-black text with no background, invisible on a
  * near-black panel, and the owner's fix on 2026-08-23 was to stop drawing it
- * (`e2e/screen-parity.spec.ts` · `// nobody can read is a label that is not there.` · ~193).
+ * (`e2e/screen-parity.spec.ts` · `// nobody can read is a label that is not there.` · ~265).
  * A name nobody can read would be a fourth bucket dropped silently.
  */
 export function bucketView(name) {
@@ -278,7 +278,7 @@ export function auditChips(history) {
  * into whatever directory the command happened to be run from is the one
  * destination nobody chose"*. The mockup's copy block shows a complete line
  * with a dated path
- * (`docs/design/web-ui-mockup.html` · `<div class="cmd"><code>mycontext export --out ../shared/context-2026-08-19</code>` · ~2202),
+ * (`docs/design/web-ui-mockup.html` · `<div class="cmd"><code>mycontext export --out ../shared/context-2026-08-19</code>` · ~3596),
  * and that path is an ILLUSTRATION. Pasting it here would hand the reader a
  * command that looks ready to run and writes somewhere they did not pick,
  * which is worse than an obviously incomplete one — the reader can see the

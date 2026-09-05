@@ -19,8 +19,8 @@
  *   |---------------------|----------------------------------------------------------|
  *   | which steps are done| `core/progress.ts` · `export function procedureProgress(records: AuditRecord[], itemId: string): Set<number> {` · ~88 |
  *   | records not read    | `core/progress.ts` · `export function unreadableProgress(records: AuditRecord[], itemId: string): number {` · ~102 |
- *   | the records         | `core/audit.ts` · `export function readAudit(root: string): AuditRecord[] {` · ~750 |
- *   | done vs abandoned   | `core/select.ts` · `export const RETIRED_STATUSES = new Set(['superseded', 'deprecated', 'validated']);` · ~397 |
+ *   | the records         | `core/audit.ts` · `export function readAudit(root: string): AuditRecord[] {` · ~1551 |
+ *   | done vs abandoned   | `core/select.ts` · `export const RETIRED_STATUSES = new Set(['superseded', 'deprecated', 'validated']);` · ~876 |
  *   | is it injected      | `cli/commands/injection.ts` · `export function injection(` · ~84 |
  *
  * **What could NOT be reused, and what was LIFTED so that it could be.**
@@ -254,7 +254,7 @@ export interface CategoryState {
   declared: boolean;
   /**
    * Whether it is switched on. `procedure` is in the `standard` profile and
-   * NOT in `minimal` (`core/categories.ts` · `  procedure:     def('procedure', 'PROC', 'normative', true,` · ~216
+   * NOT in `minimal` (`core/categories.ts` · `  procedure:     def('procedure', 'PROC', 'normative', true,` · ~220
    * and the `minimal` list beside it), so an empty list has two completely
    * different meanings and a screen must be able to tell them apart.
    */
@@ -304,7 +304,7 @@ ProcedureSummary {
  *
  * **The corpus comes from the INDEX, and the CLI reads the Markdown.** Both
  * are the merged two-layer corpus with the project layer winning
- * (`core/rebuild.ts` · `const LAYER_ORDER: Layer[] = ['global', 'project'];` · ~435),
+ * (`core/rebuild.ts` · `const LAYER_ORDER: Layer[] = ['global', 'project'];` · ~477),
  * so the answers agree — except on a corpus whose files have moved since the
  * last rebuild, where this endpoint serves the indexed text. That is plan 1's
  * design decision 1, the server reads what the hooks read, and the staleness
@@ -456,7 +456,7 @@ export function apiProcedure(ws: Workspace, url: URL, params: { id: string }): J
 
     // **The file's own `- [x]` is a SECOND place, and `pr.md` says there is
     // not one.** A step parses its checkbox out of the Markdown
-    // (`core/item.ts` · `    const step: Step = { text: m[2]!, checked: m[1] === 'x' };` · ~233),
+    // (`core/item.ts` · `    const step: Step = { text: m[2]!, checked: m[1] === 'x' };` · ~352),
     // so `item.steps[i].checked` is a STORED tick that this endpoint — like
     // `mycontext procedure show`, which overlays it away — does not serve. Not
     // serving it is right: progress is the audit log's, and a file hand-edited

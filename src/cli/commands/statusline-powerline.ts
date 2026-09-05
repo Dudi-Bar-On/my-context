@@ -132,7 +132,7 @@ export const FIELD_JOIN = ` ${FIELD_SEP} `;
  * and `npx tsc --noEmit` is a gate. A URL specifier through `import()` is what
  * lets a TypeScript file reach it, and it is also the only form that survives a
  * Windows path — the same mechanism, for the same two reasons, as
- * (`test/ui/viewmodel.test.ts` · `A URL specifier is what` · ~42).
+ * (`test/ui/viewmodel.test.ts` · `A URL specifier is what` · ~47).
  *
  * **Top-level `await`, not a lazy load.** `CommandFn` is synchronous
  * (`src/cli/commands/registry.ts` · `export type CommandFn` · ~6), so the level
@@ -680,7 +680,7 @@ function inkForUsage(level: UsageLevel | 'stale' | null): Ink {
  * The glyph each level carries, so the hue is never the only carrier.
  *
  * The same four the web strip's chip already uses
- * (`src/ui/public/app.js` · `chip.dataset.g = ` · ~2955): `●` calm, `▲`
+ * (`src/ui/public/app.js` · `chip.dataset.g = ` · ~614): `●` calm, `▲`
  * approaching, `■` at the limit, and `◌` for a state that is NOT a level —
  * stale, or unmeasurable — which is visibly not-a-verdict rather than a
  * quiet one.

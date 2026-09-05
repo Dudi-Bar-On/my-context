@@ -21,7 +21,7 @@
  *     **Plan 3 landed.** `GET /api/ask/audit` takes `since`, `until`, `kind`
  *     and `item`, and answers `AuditRecord`s carrying `injected[]` and
  *     `spilled[]` per record
- *     (`ui/ask-model.ts` · `export function apiAskAudit(ws: Workspace, url: URL): JsonResult {` · ~202).
+ *     (`ui/ask-model.ts` · `export function apiAskAudit(ws: Workspace, url: URL): JsonResult {` · ~269).
  *     That is `audit.at` with the two filters the note names, and the two
  *     roles the strip is made of. The strip is drawn from THAT, never from
  *     `/api/decay`'s `series` — approximating it from the ledger is refused by
@@ -33,7 +33,7 @@
  *     split at `window` and a `lastUsed` TIMESTAMP; the comb wants an ORDINAL
  *     IN SESSIONS, and the endpoint says so itself — *"`sessionsAgo: number |
  *     null` per row, computed where the ordering lives"*
- *     (`ui/read-model.ts` · `per row, computed where the ordering lives.** Reported, not invented — §0.3` · ~927).
+ *     (`ui/read-model.ts` · `per row, computed where the ordering lives.** Reported, not invented — §0.3` · ~1861).
  *     The ordering lives in `Ledger`, and one endpoint already publishes it:
  *     `/api/sessions`' `sessions` is `sessionSummaries(SESSIONS_LIMIT)`, whose
  *     docstring pins the agreement — *"`sessionSummaries(n).map(s =>
@@ -55,7 +55,7 @@
  *
  * ── THE ONE THING THE ORDER CANNOT REACH, AND WHY IT IS DISCLOSED ─────────
  *
- * `SESSIONS_LIMIT` is twenty (`ui/read-model.ts` · `export const SESSIONS_LIMIT = 20;` · ~483)
+ * `SESSIONS_LIMIT` is twenty (`ui/read-model.ts` · `export const SESSIONS_LIMIT = 20;` · ~1000)
  * and the comb's axis runs to sixty. An item whose newest ledger session is
  * older than the twentieth-most-recent has an ordinal this response cannot
  * name — it is *"at least twenty"* and no more than that. Such a tooth is
@@ -76,7 +76,7 @@
  * an unkeyed English literal is transcribed **only where no element can live**
  * — inside an SVG `<text>`, or in an attribute — because *"an SVG `<text>`
  * cannot hold an element, so `tFlat` is the sink here whatever the renderer
- * does"* (`screens/graph.js` · `'aria-label': 'Relation ego-graph: columns by direction, relation type on every edge',` · ~240).
+ * does"* (`screens/graph.js` · `'aria-label': 'Relation ego-graph: columns by direction, relation type on every edge',` · ~1103).
  * Everything that IS an element goes through `ctx.t()` and nothing else.
  *
  * **`#deccaveat` IS DRAWN SINCE 2026-09-05, WITH KEYS OF ITS OWN** — owner
@@ -751,7 +751,7 @@ async function drawHeat(ctx, host) {
  *
  * A date rather than a span — `parseWhen` reads `2026-08-16` as UTC midnight
  * and `89d` as this clock time 89 days back
- * (`core/audit.ts` · `const iso = /^\d{4}-\d{2}-\d{2}$/.test(raw.trim())` · ~653).
+ * (`core/audit.ts` · `const iso = /^\d{4}-\d{2}-\d{2}$/.test(raw.trim())` · ~1598).
  * The cells are UTC days, so the bound must be one too, or the oldest cell
  * would be missing whatever happened before this morning's clock time.
  */

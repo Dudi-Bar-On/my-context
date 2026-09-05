@@ -27,7 +27,7 @@ import type { HookInput } from './io.ts';
  *
  * `reason` is recorded only when it is OURS. Every denial this project issues
  * starts `my_context: `
- * (`hooks/pre-tool-use.ts` · `return 'my_context: \`.my_context/items/\` is managed by my_context. Writing the file ' +` · ~89),
+ * (`hooks/pre-tool-use.ts` · `return 'my_context: \`.my_context/items/\` is managed by my_context. Writing the file ' +` · ~91),
  * so that prefix is a reliable test, and our own sentences are ours to repeat.
  * A denial from anywhere else — the user answering no, a permission rule, a
  * sandbox — carries a message written by something else about something else,

@@ -263,7 +263,7 @@ function previewPath() {
  *
  * The key ORDER comes from the defaults object, never from a list written here:
  * `BUDGET_KEYS` is derived from `DEFAULT_BUDGETS` on the server too
- * (`src/core/config.ts` · `const BUDGET_KEYS = Object.keys(DEFAULT_BUDGETS) as (keyof Budgets)[];` · ~1252),
+ * (`src/core/config.ts` · `const BUDGET_KEYS = Object.keys(DEFAULT_BUDGETS) as (keyof Budgets)[];` · ~1366),
  * so a sixth budget appears in this table the day it is added and no second
  * spelling of the tier list has to be found and edited.
  */
@@ -1860,7 +1860,7 @@ export async function render(root, ctx) {
       // `PROPOSED` is an unkeyed literal in the design of record and the badge
       // is KEPT: the note describes `init` writing what the repository actually
       // has, and `DEFAULT_WATCHED_DOCS` is still the fixed three-path list it
-      // argues against (`src/core/config.ts` · `export const DEFAULT_WATCHED_DOCS = [` · ~117).
+      // argues against (`src/core/config.ts` · `export const DEFAULT_WATCHED_DOCS = [` · ~118).
       // The app's own rule is that a built feature drops the badge; this one is
       // not built.
       watchedNote.append(watchedText, ' ', el('span', 'prop', 'PROPOSED'));

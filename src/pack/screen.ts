@@ -269,7 +269,7 @@ function at(item: Item, field: string): string {
  * The list was written before the `procedure` category added the field
  * (`core/types.ts` · `export interface Step {` · ~51); a step's text is free
  * text a stranger wrote, `renderItem` writes it into the travelling file
- * (`core/item.ts` · `    parts.push('## Steps', ...item.steps.map(renderStep), '');` · ~427),
+ * (`core/item.ts` · `    parts.push('## Steps', ...item.steps.map(renderStep), '');` · ~819),
  * and a screen that reached every other authored field but that one would be
  * a door with a window beside it.
  */

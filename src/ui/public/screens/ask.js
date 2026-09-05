@@ -11,7 +11,7 @@
  * answer ran"*. Both are properties of the ENDPOINTS. The statement is built
  * by `corpusSelect` / `filterSelect` and travels back beside the rows it
  * produced
- * (`src/ui/ask-model.ts` · `` `sql` and `params` travel with the rows because the screen SHOWS them, `` · ~181),
+ * (`src/ui/ask-model.ts` · `` `sql` and `params` travel with the rows because the screen SHOWS them, `` · ~248),
  * so this module composes no SQL and cannot drift from what ran: it picks a
  * field, an operator and a value, sends them as query parameters, and renders
  * what came back. The pane is filled from `body.sql` and nothing else — never
@@ -24,13 +24,13 @@
  *     warns about and why the note hangs on this tab alone.
  *   - **The audit tab** is `GET /api/ask/audit` — the projection, read through
  *     the read-only door
- *     (`src/ui/watch-model.ts` · `export function readProjection<T>(root: string, read: (db: ProjectionHandle) => T): ProjectionRead<T> {` · ~166).
+ *     (`src/ui/watch-model.ts` · `export function readProjection<T>(root: string, read: (db: ProjectionHandle) => T): ProjectionRead<T> {` · ~209).
  *     Three answers reach this screen: `fresh` (it answers), `absent` (200,
  *     no records — an empty state, not a fault) and a 503 naming the state for
  *     `behind` / `diverged` / `damaged`. All three are drawn, differently.
  *   - **The four canned queries** are `GET /api/ask/summary` — `summaryByOp`,
  *     `topItems` and `sessions`, whose rows are `{ label, count, last }`
- *     (`src/core/audit-db.ts` · `export interface SummaryRow { label: string; count: number; last: string | null }` · ~764).
+ *     (`src/core/audit-db.ts` · `export interface SummaryRow { label: string; count: number; last: string | null }` · ~1222).
  *   - **The value vocabularies** are DERIVED — see `learn` below for the four
  *     sources and for what no endpoint serves.
  *
@@ -97,7 +97,7 @@
  *   5. **A sentence for a projection that is not `fresh`.** No key declares
  *      one. The server's own word is drawn as a literal chip, which is the
  *      treatment a record kind and a tier already get
- *      (`src/ui/public/screens/watch.js` · `const state = el('span', 'chip warn', String(volume.projectionState));` · ~670).
+ *      (`src/ui/public/screens/watch.js` · `const state = el('span', 'chip warn', String(volume.projectionState));` · ~1767).
  *
  * ── TWO WAYS PAST A CAP, AND THEY ANSWER DIFFERENT QUESTIONS ──────────────
  *
@@ -350,7 +350,7 @@ const BOOLEAN = [{ value: '1', label: 'true' }, { value: '0', label: 'false' }];
  * declared two-member type in `core/types.ts` and `apiAskCorpus` refuses
  * anything else, so — exactly like the booleans above — it is a shape rather
  * than a list that grows, and the mockup writes it out for the same reason
- * (`docs/design/web-ui-mockup.html` · `'ask.field.layer':['project','global'],` · ~3140).
+ * (`docs/design/web-ui-mockup.html` · `'ask.field.layer':['project','global'],` · ~5014).
  * Learning still runs over it: a third layer would simply be ADDED. Before
  * 2026-08-26 it would also have switched negation off, because the fake
  * negation needed exactly two members; a real `<>` does not care how many
@@ -512,7 +512,7 @@ export function corpusRows(rows) {
  * holds `(seq, item_id, role)` and `filterSelect`'s `item` filter reads all
  * three of them — *"the item this record is ABOUT, an item this injection
  * delivered, or an item it spilled"*
- * (`src/core/audit-db.ts` · `// Any of the three roles: the item this record is ABOUT, an item this` · ~734).
+ * (`src/core/audit-db.ts` · `// Any of the three roles: the item this record is ABOUT, an item this` · ~1192).
  * That is also what the mockup's own sample draws: two rows at one timestamp,
  * one `injected` and one `spilled`.
  *

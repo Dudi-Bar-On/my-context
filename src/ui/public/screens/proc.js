@@ -18,14 +18,14 @@
  * ── THE MOCKUP DRAWS ONE PROCEDURE. THE CORPUS HAS N ─────────────────────
  *
  * `<section data-p="proc">` draws a single card for a single sample id
- * (`docs/design/web-ui-mockup.html` · `<h3 data-t="pr.item"><span class="m v" data-v="item">` · ~2122)
+ * (`docs/design/web-ui-mockup.html` · `<h3 data-t="pr.item"><span class="m v" data-v="item">` · ~3516)
  * with no picker beside it, so zero, one and many are undecided — which is
  * why `/api/procedures` exists at all. **Decided here as: one card per
  * procedure, in the `.two` grid, in the endpoint's own id order, with the
  * static `pr.write` card last.** At exactly one procedure that is the mockup's
  * layout byte for byte; above one the grid flows, which is what a
  * `grid-template-columns:1fr 1fr` already does
- * (`src/ui/public/styles.css` · `.two{display:grid;grid-template-columns:1fr 1fr;gap:var(--sp-3)}` · ~685).
+ * (`src/ui/public/styles.css` · `.two{display:grid;grid-template-columns:1fr 1fr;gap:var(--sp-3)}` · ~2040).
  * At zero the grid holds the static card alone. **Reported, not settled** — a
  * picker, a sort control and a stage filter are all layouts the design of
  * record does not have, and `pr.` declares no string for any of them.
@@ -85,7 +85,7 @@
  * **`pr.idx` came off the `ready` row in the same edit, because half of this
  * would be worse than none.** The table said *"index line only"* against
  * `ready`; `isEligible`
- * (`src/core/select.ts` · `export function isEligible(item: Item, config: Config): boolean {` · ~198)
+ * (`src/core/select.ts` · `export function isEligible(item: Item, config: Config): boolean {` · ~495)
  * admits `active` only, so a `ready` procedure reaches neither the injected
  * block nor an index line, and the model says so in its own words — *"IT IS
  * THE MOCKUP THAT IS WRONG"*. The row carries `pr.none` and the warn chip now,
@@ -135,7 +135,7 @@
  * table can carry — so the keyed sentence gives the REASON in the reader's
  * language and the endpoint's own sentence follows it with the evidence,
  * unedited, through the same treatment this UI gives an `error`
- * (`src/ui/public/screens/parts.js` · `export function errorNote(message, ctx = globalThis.myctx) {` · ~211).
+ * (`src/ui/public/screens/parts.js` · `export function errorNote(message, ctx = globalThis.myctx) {` · ~638).
  * Nothing the server said is dropped, which is the whole reason the array
  * exists.
  *
@@ -155,7 +155,7 @@
  * contradicts the paragraph printed directly above it. `pr.md` says *"there is
  * no second place a procedure could disagree with itself"*. There is: the
  * parser stores a tick
- * (`src/core/item.ts` · `const step: Step = { text: m[2]!, checked: m[1] === 'x' };` · ~233),
+ * (`src/core/item.ts` · `const step: Step = { text: m[2]!, checked: m[1] === 'x' };` · ~352),
  * so a hand-edited `- [x]` in the Markdown is a tick the audit log knows
  * nothing about. The endpoint serves the LOG's replay in `step.checked` and
  * discloses the divergence; this screen draws the log and prints the
@@ -189,7 +189,7 @@ import { el, errorNote, mono, num, spaced } from '/screens/parts.js';
 
 /**
  * The static state table, transcribed from
- * (`docs/design/web-ui-mockup.html` · `<tr><td class="m">ready</td><td class="small" data-t="pr.s2">you approved it</td>` · ~2108)
+ * (`docs/design/web-ui-mockup.html` · `<tr><td class="m">ready</td><td class="small" data-t="pr.s2">you approved it</td>` · ~3502)
  * and DIVERGING from it in exactly two places, both recorded in this file's
  * header: the `ready` row's verdict is `pr.none` where the mockup writes
  * `pr.idx`, and there is a fifth row the mockup does not draw.
@@ -198,14 +198,14 @@ import { el, errorNote, mono, num, spaced } from '/screens/parts.js';
  * record's own choice rather than an oversight here: it writes `<td class="m">
  * proposed</td>` with no `data-t`, because these are the CLI's own vocabulary
  * — the same treatment `parts.js` gives the four tier names in `TIERCHIP`
- * (`src/ui/public/screens/parts.js` · `const TIERCHIP = {` · ~161). They stay
+ * (`src/ui/public/screens/parts.js` · `const TIERCHIP = {` · ~582). They stay
  * English in the Hebrew UI, which is a known and reported asymmetry of every
  * such literal in this UI, not a new one.
  *
  * `data-g` is set on every chip for fidelity with the mockup's markup; the
  * glyph itself is painted by `.chip.gov::before` and its siblings, so it is
  * written once, in CSS, and this attribute only ever matters to a bare `.chip`
- * (`src/ui/public/styles.css` · `.chip::before{content:attr(data-g) " ";font-family:var(--mono)}` · ~542).
+ * (`src/ui/public/styles.css` · `.chip::before{content:attr(data-g) " ";font-family:var(--mono)}` · ~1890).
  *
  * Exported so `node --test` can hold all five rows against the mockup's own
  * `<tr>`s — stage, meaning key, chip class, glyph and verdict key — without a
@@ -239,7 +239,7 @@ export const STATE_ROWS = [
  *     *"searchable, and counted in the session index, but never injected in
  *     full"* (`src/core/render-item.ts` · `export const RATIONALE_NOT_INJECTED =` · ~142).
  *     That IS `pr.idx`, *"index line only"*, `chip ok`. It is reachable here:
- *     `procedure` ships normative (`src/core/categories.ts` · `  procedure:     def('procedure', 'PROC', 'normative', true,` · ~58)
+ *     `procedure` ships normative (`src/core/categories.ts` · `  procedure:     def('procedure', 'PROC', 'normative', true,` · ~220)
  *     but a config may set the category's tier itself, and this screen must
  *     draw what the config does rather than what the catalogue defaults to.
  *   - anything else — `eligible` (not active, or the category is off) or
@@ -275,7 +275,7 @@ export function injectionChip(verdict) {
  * `inline-size` for `<i class="f">`, as a percentage string.
  *
  * The mockup hard-codes `60%` beside `3 / 5`
- * (`docs/design/web-ui-mockup.html` · `<div class="bar"><i class="f" style="inline-size:60%"></i></div>` · ~2125),
+ * (`docs/design/web-ui-mockup.html` · `<div class="bar"><i class="f" style="inline-size:60%"></i></div>` · ~3519),
  * which is the sample's own arithmetic; this computes it.
  *
  * **`total === 0` is `0%`, never `NaN%` and never `100%`.** A procedure with
@@ -284,7 +284,7 @@ export function injectionChip(verdict) {
  * `0 / 0` would report a completed run that never had a step to complete.
  *
  * **`unreadable` is NOT drawn into the bar.** `.bar` carries a second segment
- * class for exactly this shape of thing (`src/ui/public/styles.css` · `.bar i.f{background:var(--gold)} .bar i.s{background:var(--crit)}` · ~702),
+ * class for exactly this shape of thing (`src/ui/public/styles.css` · `.bar i.f{background:var(--gold)} .bar i.s{background:var(--crit)}` · ~2147),
  * and using it here would be this file inventing a graphic the design of
  * record does not draw on this screen, in a colour that means "spilled"
  * elsewhere. The count is not dropped: the server discloses it in a sentence,
@@ -310,9 +310,9 @@ export function barWidth(progress) {
  * procedure would be a settlement for a run that has not started, and against
  * a `done` one a settlement for a run already closed.
  *
- * **No `--yes`.** The CLI accepts it (`src/cli/commands/procedure.ts` · `       mycontext procedure done <id> [--yes]` · ~83)
+ * **No `--yes`.** The CLI accepts it (`src/cli/commands/procedure.ts` · `       mycontext procedure done <id> [--yes]` · ~73)
  * and the mockup composes the line without it
- * (`docs/design/web-ui-mockup.html` · `<div class="cmd"><code>mycontext procedure done PROC-migrate-money-columns-to-integer-cents</code>` · ~2151).
+ * (`docs/design/web-ui-mockup.html` · `<div class="cmd"><code>mycontext procedure done PROC-migrate-money-columns-to-integer-cents</code>` · ~3545).
  * Following the mockup is also following `pr.w3`: the confirmation prompt IS
  * the human's decision, and pre-answering it in a string handed to a clipboard
  * would compose away the one step this whole lifecycle keeps for a person.
@@ -431,14 +431,14 @@ export function disclosureMessages(groups) {
  * **`screenHead` is not called and cannot be**: it takes a verdict key, and
  * `pr.` declares none. The mockup's `.verdict` on this screen holds one thing
  * — `<span class="prop">PROPOSED</span>`
- * (`docs/design/web-ui-mockup.html` · `<span class="verdict"><span class="prop">PROPOSED</span></span></div>` · ~2099)
+ * (`docs/design/web-ui-mockup.html` · `<span class="verdict"><span class="prop">PROPOSED</span></span></div>` · ~3493)
  * — and that badge is retired: the task record says so
  * (*"the mockup's PROPOSED badge is retired as a scope marker"*), the shell
  * computes the rail's copy of it from `SCREENS` membership so it disappears
  * the moment this module is registered, and the owner has already ruled on the
  * identical case on the preview screen: *"when comparing to mockup the
  * proposed word is a known diff and it is ok"*
- * (`e2e/screen-parity.spec.ts` · `// "leave the mockup intact, do it only in the real, i need it to stay on the` · ~173).
+ * (`e2e/screen-parity.spec.ts` · `// "leave the mockup intact, do it only in the real, i need it to stay on the` · ~245).
  *
  * So the badge is not drawn — and neither is the empty box that held it. A
  * `.verdict` with nothing in it is not a verdict; it is a container claiming
@@ -555,7 +555,7 @@ function commandRow(ctx, argv) {
  *
  * **The mark is `[x]`/`[ ]` and it is the AUDIT LOG'S**, not the file's. The
  * endpoint replays progress records over the item and serves the result as
- * `step.checked` (`src/ui/proc-model.ts` · `        steps: item.steps.map((step, i) => ({ n: i + 1, text: step.text, checked: done.has(i + 1) })),` · ~514),
+ * `step.checked` (`src/ui/proc-model.ts` · `        steps: item.steps.map((step, i) => ({ n: i + 1, text: step.text, checked: done.has(i + 1) })),` · ~493),
  * so a box drawn ticked here is a recorded flip and nothing else. The file's
  * own `- [x]` is a different value that this screen never receives, and the
  * `file-ticks-are-not-progress` disclosure is what says so when the two

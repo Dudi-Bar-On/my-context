@@ -3,9 +3,9 @@
  * scope, before a second item is filed into it.**
  *
  * The screen is `<section data-p="capture">`
- * (`docs/design/web-ui-mockup.html` · `  <section data-p="capture" hidden>` · ~1969),
+ * (`docs/design/web-ui-mockup.html` · `  <section data-p="capture" hidden>` · ~3321),
  * and it states its own justification in one sentence
- * (`src/ui/public/strings/en.js` · `What it contributes over the CLI is the overlap check — the items already governing this scope.` · ~351).
+ * (`src/ui/public/strings/en.js` · `What it contributes over the CLI is the overlap check — the items already governing this scope.` · ~924).
  * That sentence is the whole contract of this file. Everything else the screen
  * draws — the heading, the note, the composed command, the warning — is
  * already owned somewhere else, and this module deliberately serves none of it.
@@ -16,7 +16,7 @@
  * `mycontext add constraint "…" --scope "src/billing/**" --severity hard`, and
  * every byte of that is already the browser's: `PALETTE`'s `add` entry carries
  * the argv shape AND an `overlap: true` marking for this very screen
- * (`src/ui/public/lib/palette-defs.js` · `name: 'add', kind: 'write', base: ['mycontext', 'add'], overlap: true, boundary: true,` · ~61),
+ * (`src/ui/public/lib/palette-defs.js` · `name: 'add', kind: 'write', base: ['mycontext', 'add'], overlap: true, boundary: true,` · ~159),
  * and the quoting is one implementation with a checker over its own bytes
  * (`src/ui/public/lib/command.js` · `Command-string composition for every composed write in the UI — the ONE` · ~1).
  * A server-side compose would be a SECOND spelling of a quoting rule whose
@@ -44,7 +44,7 @@
  * A similarity metric DOES exist in `src/ui/` now — `overlapScore`, behind
  * `POST /api/overlap` — and its own comment already says it must not reach a
  * screen until the owner rules
- * (`src/ui/read-model-work.ts` · `a ranked order must not be rendered until the owner rules` · ~282).
+ * (`src/ui/read-model-work.ts` · `a ranked order must not be rendered until the owner rules` · ~296).
  * This endpoint is the OTHER answer, the one the mockup asks for, and the two
  * must not be conflated: nothing below reads `overlapScore`, and the response
  * carries no score field for a screen to sort on by accident.
@@ -56,10 +56,10 @@
  * here with two empty axes and the scope axis filled, so the OR-within-an-axis
  * rule that makes `--scope "a/**,b/**"` mean "a or b" is the product's own line
  * rather than a re-spelling of it
- * (`src/core/select.ts` · `if (focus.scope.length > 0 && !focus.scope.some((s) => focusMatchesScope(item, s, config))) {` · ~305).
+ * (`src/core/select.ts` · `if (focus.scope.length > 0 && !focus.scope.some((s) => focusMatchesScope(item, s, config))) {` · ~614).
  *
  * `focusMatchesScope` — the per-pattern half — matches in BOTH directions on
- * purpose (`src/core/select.ts` · `export function focusMatchesScope(item: Item, value: string, config: Config): boolean {` · ~290),
+ * purpose (`src/core/select.ts` · `export function focusMatchesScope(item: Item, value: string, config: Config): boolean {` · ~599),
  * and both are needed here. Against a candidate scope of `src/billing/**`, an
  * item scoped `src/**` is found by reading the candidate as a subject, and an
  * item scoped `src/billing/api/**` is found by reading it as a pattern. A
@@ -67,7 +67,7 @@
  * the items it exists to surface, and a missed overlap is this screen's whole
  * failure mode. Unscoped items are in, for the reason `search --path` gives for
  * including them
- * (`src/cli/commands/search.ts` · `governs a file and therefore returns the UNSCOPED items too, because an item with no` · ~60):
+ * (`src/cli/commands/search.ts` · `governs a file and therefore returns the UNSCOPED items too, because an item with no` · ~63):
  * an item with no scope is unrestricted, so it governs this scope too — unless
  * the category's `scopePolicy` is `inert`, which `matchesScope` refuses on
  * every path and `injection()` reports as the `scope` gate.
@@ -75,7 +75,7 @@
  * ── AND "GOVERNING" IS `injection()`, NOT "MATCHES" ───────────────────────
  *
  * The card's heading is `Already governing {mv:scope}`
- * (`src/ui/public/strings/en.js` · `'cap.already': 'Already governing {mv:scope}',` · ~352),
+ * (`src/ui/public/strings/en.js` · `'cap.already': 'Already governing {mv:scope}',` · ~925),
  * and "a draft governs nothing" is a sentence this product prints in a dozen
  * places. So the scope match is a FILTER and not the answer: an item is listed
  * only when `injection()` also says it is injected. That is the same verdict
@@ -116,7 +116,7 @@ import { registerRoute, type ApiContext, type JsonResult } from './routes.ts';
  *
  * `tier` is the one field here that is arguably also a constant —
  * `injection()` refuses anything not normative
- * (`src/cli/commands/injection.ts` · `if (!normative) return no('tier', RATIONALE_NOT_INJECTED);` · ~111),
+ * (`src/cli/commands/injection.ts` · `if (!normative) return no('tier', RATIONALE_NOT_INJECTED);` · ~127),
  * so every row's tier is `'normative'` today. It is served anyway, because the
  * alternative is a hardcoded English word in the view, and a screen that
  * invents `normative` is a screen asserting a property it never read. Here it
@@ -185,7 +185,7 @@ const CAPTURE_PARAMS = ['scope'];
  * own `pattern` and should. `URLSearchParams.get` returns the first occurrence,
  * so `?scope=src/**&scope=test/**` would answer about `src` and discard `test`
  * behind a 200
- * (`src/ui/read-model.ts` · `parameter "${key}" was given more than once. Only the first value would be ` · ~113).
+ * (`src/ui/read-model.ts` · `parameter "${key}" was given more than once. Only the first value would be ` · ~167).
  * On an endpoint whose only parameter IS the question, that is not a nicety.
  *
  * **No cap, and therefore nothing to disclose about one.** `/api/items` serves

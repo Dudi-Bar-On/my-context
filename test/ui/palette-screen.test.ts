@@ -335,7 +335,7 @@ test('sourceLists builds the five lists and drops what cannot receive an item', 
 
 /**
  * `/api/config` really answers `resolved: null` when the file cannot be parsed
- * or resolved (`src/ui/read-model-config.ts` · `  let resolved: unknown = null;` · ~141),
+ * or resolved (`src/ui/read-model-config.ts` · `  let resolved: unknown = null;` · ~176),
  * and a composer that threw on it would take the whole screen down for a
  * config typo. Every list degrades to empty; none becomes undefined.
  */
@@ -412,7 +412,7 @@ test('a read fetches the endpoint that serves it, or navigates to the screen tha
 /**
  * An all-absent `search` composes a legal command and an ILLEGAL query, and
  * the screen fetches it anyway on purpose: `apiSearch` refuses it in words
- * that name the right question (`src/ui/read-model-work.ts` · `'at least one filter is required — an all-absent filter matches the whole corpus, ' +` · ~185),
+ * that name the right question (`src/ui/read-model-work.ts` · `'at least one filter is required — an all-absent filter matches the whole corpus, ' +` · ~187),
  * and `errorNote` shows the server's own sentence. Re-deciding that here would
  * be a second opinion about a rule the endpoint already owns — and the browser
  * has no string key of its own to say it with.

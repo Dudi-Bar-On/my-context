@@ -175,7 +175,7 @@ export const strings = {
   // `index.carriedFrom`: `preview.carried` above is that sentence, and a second
   // key for it would be a second spelling. Each clause is omitted entirely when
   // its list is empty, and the drop reasons ride inside `{mv:ids}` untranslated
-  // because `core/select.ts` · `function carriedDropReason(` · ~502 is where
+  // because `core/select.ts` · `function carriedDropReason(` · ~981 is where
   // they are spelled and no stable code exists to translate from.
   'index.carriedDropped': '{dropped} carried ids got no line: {mv:ids}.',
   'index.carriedDisplaced': "{displaced} of this session's own lines displaced to make room: {mv:ids}.",

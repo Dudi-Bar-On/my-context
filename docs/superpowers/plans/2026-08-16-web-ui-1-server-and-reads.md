@@ -103,8 +103,8 @@ own recurrence.
 | Swapping that one call is the whole of the correction | **It could not be, until `Ledger.openReadOnlyChecked` existed.** Task 8's `withStores` hands out a `Store` **and** a `Ledger`, and `Ledger` had exactly one open — a writable one that execs `LEDGER_SCHEMA` (two `CREATE TABLE IF NOT EXISTS` and two indexes) on every call, so opening a `Ledger` **is** a schema write. Changing only the `Store` call would have left a writable ledger connection creating tables in a database the read path never prepared: worse than the state it replaced. The row above was **unsatisfiable, not ignored**, until the read-only ledger door landed | A correction that renames one component's entry point is unsatisfiable until **every handle the corrected path hands out** has an equivalent door — a §0 row is checked against the code it commands, not only against the code it cites | Tasks 8–13 |
 
 **Two facts moved far enough to be worth naming, though the fact itself held:** `select()` was cited at
-`select.ts:324` and is at `select.ts` · `export function select(items: Item[], ctx: SelectContext, config: Config): Selection {` · ~833;
-`matchesScope` at `:149` and is at `select.ts` · `export function matchesScope(item: Item, target: string, config: Config): boolean {` · ~266.
+`select.ts:324` and is at `select.ts` · `export function select(items: Item[], ctx: SelectContext, config: Config): Selection {` · ~1364;
+`matchesScope` at `:149` and is at `select.ts` · `export function matchesScope(item: Item, target: string, config: Config): boolean {` · ~575.
 Both cited lines landed in unrelated blocks when this was checked: `:324` opened `reviewQueue`'s doc
 comment and `:149` sat inside `injectableTypes`. `select.ts` has grown again since, so both bare
 numbers have moved on once more — which is the argument for the fragment form, not against it.
@@ -166,18 +166,18 @@ Plan 1's read surface, in full: `/api/select`, `/api/render`, `/api/simulate` (T
 |---|---|---|---|---|---|
 | 1 | Admission staircase | `data-p="simulate"` · `#stair` · `sim.stair` | **Plan 1** | ⚠️ **partly** | The rungs are computable — `/api/simulate`'s `costs` gives every candidate cost, and one further `/api/simulate` call per rung re-runs the real selector, which is what makes the sweep *"exact, not sampled"* (`sim.stairn`). But that is **N+1 round trips** for one chart, and the rung set is derived in the browser from a rule that lives in `select.ts`. **Needs: a sweep response — the rung list and the admitted set at each rung, computed server-side in one call.** Not designed here. |
 | 2 | Threshold ladder | `data-p="simulate"` · `#ladder` · `sim.thresh`, `sim.snap` | **Plan 1** | ⚠️ **partly** | Same source as row 1, plus one thing it does not have: a rung must be marked **red when it is an eviction** — *"more budget, fewer items"* (`sim.snap`). That is a comparison between two adjacent rungs' admitted sets, so it falls out of the sweep in row 1 and out of nothing else. **Same gap, same endpoint.** |
-| 3 | Four-tier ribbon with ghost lane | `data-p="preview"` · `#ribbons` · `preview.ribbon`, `preview.ribbonn` | **Plan 1** | ⚠️ **partly** | Three of four parts are served. Admitted segments: `Selection.full` carries `tier` per entry (`core/select.ts` · `export interface SelectionEntry {` · ~55) and `/api/simulate`'s `costs` sizes them. Ghost lane: `Selection.spilled` carries `id`, `tier` and `reason` (`core/select.ts` · `export interface Spill {` · ~60), and **its array order already is the order the selector considered each item** — Task 8 must state that the order is load-bearing and must never be re-sorted client-side. **Two gaps.** (a) *"A tier this event never reaches is drawn as **absent**, hatched and named; an empty track would claim it ran and delivered nothing, which is a different fact"* — **nothing in `Selection` says which tiers ran.** It is a pure function of `ctx.event` in `select()`, so deriving it in the browser means re-implementing the selector's own dispatch — the defect Task 5 exists to prevent. **Needs: `tiersRun` on the `/api/simulate` response, from `select.ts`.** (b) The fourth track is `index`, whose admitted content is `Selection.index.normative` **lines**, not items; `costs` is per item, so **the index track has no per-line width.** `Selection.tokens`' own docstring says index lines are charged *"per-line estimates"* — **needs: those per-line figures exposed.** |
-| 4 | Spill-ratio bar | `data-p="simulate"` · `#ratio` · `sim.ratio`, `sim.ration` | **Plan 1** | ❌ **no** | The mockup names its source and it is not the ledger: *"The two numbers come from `audit_item.role` through `topItems` — already exported, already indexed, called twice"*. `topItems` exists (`core/audit-db.ts` · `export function topItems(` · ~779) and `audit_item(item_id, role)` is indexed. **Plan 1 has no audit endpoint at all** — the audit surface is plan 3's. **Needs: a delivered-vs-spilled tally over `audit_item.role`, reachable from a plan-1 screen.** Cross-plan: the view sits on plan 1's simulator and its data sits behind plan 3's boundary. |
+| 3 | Four-tier ribbon with ghost lane | `data-p="preview"` · `#ribbons` · `preview.ribbon`, `preview.ribbonn` | **Plan 1** | ⚠️ **partly** | Three of four parts are served. Admitted segments: `Selection.full` carries `tier` per entry (`core/select.ts` · `export interface SelectionEntry {` · ~155) and `/api/simulate`'s `costs` sizes them. Ghost lane: `Selection.spilled` carries `id`, `tier` and `reason` (`core/select.ts` · `export interface Spill {` · ~160), and **its array order already is the order the selector considered each item** — Task 8 must state that the order is load-bearing and must never be re-sorted client-side. **Two gaps.** (a) *"A tier this event never reaches is drawn as **absent**, hatched and named; an empty track would claim it ran and delivered nothing, which is a different fact"* — **nothing in `Selection` says which tiers ran.** It is a pure function of `ctx.event` in `select()`, so deriving it in the browser means re-implementing the selector's own dispatch — the defect Task 5 exists to prevent. **Needs: `tiersRun` on the `/api/simulate` response, from `select.ts`.** (b) The fourth track is `index`, whose admitted content is `Selection.index.normative` **lines**, not items; `costs` is per item, so **the index track has no per-line width.** `Selection.tokens`' own docstring says index lines are charged *"per-line estimates"* — **needs: those per-line figures exposed.** |
+| 4 | Spill-ratio bar | `data-p="simulate"` · `#ratio` · `sim.ratio`, `sim.ration` | **Plan 1** | ❌ **no** | The mockup names its source and it is not the ledger: *"The two numbers come from `audit_item.role` through `topItems` — already exported, already indexed, called twice"*. `topItems` exists (`core/audit-db.ts` · `export function topItems(` · ~1237) and `audit_item(item_id, role)` is indexed. **Plan 1 has no audit endpoint at all** — the audit surface is plan 3's. **Needs: a delivered-vs-spilled tally over `audit_item.role`, reachable from a plan-1 screen.** Cross-plan: the view sits on plan 1's simulator and its data sits behind plan 3's boundary. |
 | 5 | Tier fits chips | `data-p="simulate"` · `#simtbl` · `sim.fits`, `sim.chipn` | **Plan 1** | ✅ **yes** | *"The fits column is a **ratio**, not a count: '2 of 6'"*. Numerator and denominator are both in `/api/simulate`'s `selection`: fitted is `full` filtered by `tier`, eligible is that plus `spilled` filtered by the same `tier`. The chip's boundary flip is presentation. Nothing new. |
-| 6 | Token bar with a not-recorded void | `data-p="watch"` · `watch.voidn` | Plan 3 | ❌ **no** | Needs `AuditRecord.tokens`, which is **optional** (`core/audit.ts` · `tokens?: number;` · ~481) — the whole point of the view is that *"records written before 1.0.1 never had it"* and absence draws a hatched void rather than a zero-length bar. Plan 1 has no audit endpoint; plan 3's must carry `tokens` as `number \| undefined` and never coerce it to `0`. **Reported to plan 3, not designed here.** |
+| 6 | Token bar with a not-recorded void | `data-p="watch"` · `watch.voidn` | Plan 3 | ❌ **no** | Needs `AuditRecord.tokens`, which is **optional** (`core/audit.ts` · `tokens?: number;` · ~964) — the whole point of the view is that *"records written before 1.0.1 never had it"* and absence draws a hatched void rather than a zero-length bar. Plan 1 has no audit endpoint; plan 3's must carry `tokens` as `number \| undefined` and never coerce it to `0`. **Reported to plan 3, not designed here.** |
 | 7 | Recency comb | `data-p="decay"` · `#comb` · `dec.comb` | **Plan 1** | ✅ **yes** | One tooth per item, *"never bucketed"*: last-injection per item comes from `/api/decay`'s `series` (`Ledger.history()`, Task 7); warm / cold / unrestricted come from `report` (`DecayReport { window; sessionsRecorded; cold; warm; unrestricted }`); **never injected** is `/api/items` minus the ids in `series`; **pinned and cold** is that set intersected with `always` on `/api/items`. Both joins are presentation over two endpoints this plan already ships. |
 | 8 | 90-day heatstrip | `data-p="decay"` · `#heat` · `dec.heat`, `dec.heatn` | **Plan 1** | ❌ **no** | The mockup rules out this plan's source by name: *"Its source is **not** the ledger, which records deliveries only: it is `audit_item.role` joined to `audit.at`, both indexed, with the `since` / `until` filters that already ship."* `/api/decay` returns ledger deliveries, so it can draw intensity but **cannot draw the hatched spilled days**, which is the one thing the view exists for (*"the one view that separates 'quiet' from 'selected and thrown away repeatedly'"*). **Needs: a per-item, per-day delivered/spilled series over `audit_item.role` × `audit.at`, with `since`/`until`.** |
 | 9 | Per-item sparkline | item detail pane · `#panespark` · `pane.hist`, `pane.histn` | **Plan 1** (the pane is global) | ❌ **no** | Twelve weekly buckets, *"hatched where the item was **spilled** that week and grey where nothing was delivered"*. `/api/item/:id` returns `{ item, injection, usage }` and `Usage` is a **count**, not a series — and a count cannot carry the spilled state at all. **Needs: a weekly delivered/spilled series on `/api/item/:id`, from the same audit projection as row 8.** This is the sharpest one: *"the one history that belongs on **every** item rather than on a screen of its own"*, so it blocks the detail pane on every screen that links an id, not one chart. |
-| 10 | Activity pulse | `data-p="watch"` · `#pulse` · `watch.pulsen` | Plan 3 | ❌ **no** | Ten-second columns over `idx_audit_at` (`core/audit-db.ts` · `idx_audit_at` · ~73), coloured by record kind. Plan 3's stream. **Reported, not designed here.** |
+| 10 | Activity pulse | `data-p="watch"` · `#pulse` · `watch.pulsen` | Plan 3 | ❌ **no** | Ten-second columns over `idx_audit_at` (`core/audit-db.ts` · `idx_audit_at` · ~74), coloured by record kind. Plan 3's stream. **Reported, not designed here.** |
 | 11 | Regime boundary | `data-p="watch"` · `watch.sub` · `#wfilters` `data-k="focus"` | Plan 3 | ❌ **no** | *"Four record kinds — mutations, injections, hook actions and **focus** changes. A focus change is a **regime change**, drawn as a rule across the feed rather than as one row."* Plan 1 ships `readFocus` into `/api/select` (Task 8) but records nothing over time. **Reported to plan 3, which must carry the `focus` kind and a boundary marker, not a row.** |
 | 12 | Per-directory coverage magnitude | `data-p="coverage"` · `.mini` bars in `#tree` · `cov.magn` | **Plan 1** | ⚠️ **partly** | Two of three segments are served: `governed` and `ungoverned` fall out of `/api/coverage`'s `files[].governs` through Task 18's `buildTree` (`fileCount`, `governedCount`), and the count *"governed of total"* with them. **The third segment is `not examined`, and it is not served.** `/api/coverage` reports a single global `truncated: boolean`; the view needs it **per directory**, and the gaps screen prints it per path (`vendor/` — *"not examined — past the file limit"*). `gaps.note` makes it binding: *"**Not examined** is a third state, never folded into 'gap'. A file the walk did not reach is not a file nothing governs."* **Needs: `/api/coverage` to name which paths `listRepoFiles` did not reach, not merely that it stopped.** |
 | 13 | Live glob strip | `data-p="palette"` · `#globtree` · `pal.globn` | Plan 2 | ✅ **for its half** | The file list it lights is already `/api/coverage`'s `files[].path`. The matching is not plan 1's and must not become it: *"Matching goes through the same `globToRegExp` cache the selector uses, over `listRepoFiles`"* — i.e. server-side, plan 2's `/api/glob`. Recorded here only so no plan-1 screen re-implements glob matching in the browser. |
-| 14 | Ego-graph legend | `data-p="graph"` · `#ego` + `.legend` · `gr.lbear`, `gr.lref`, `gr.ldang`, `gr.note` | **Plan 1** | ⚠️ **partly** | Node states are served: `focus` (the response's `focus`), `missing`, `superseded` (via `status`), and `+N more` (`omitted`). **Edge severity is not.** The legend has three line styles — load-bearing, referential, dangling — and `/api/graph`'s edges carry `type` and `dangling` but no severity. The mockup names the function: *"`isLoadBearing` already classifies the vocabulary, so a dangling `relates_to` reads as noise and a dangling `constrains` reads as an alarm. Without that, a graph can only show breakage, never how much it matters."* It exists (`core/focus.ts` · `export function isLoadBearing(type: string): boolean {` · ~165) and is **already exported**, so the browser could call it — but the browser cannot import a `.ts` core module, and re-listing the vocabulary in `.js` is the copied-rule defect. **Needs: `loadBearing: boolean` on each edge in `/api/graph`, from `isLoadBearing`.** This is the cheapest gap in the table and the one that changes a view from decorative to diagnostic. |
+| 14 | Ego-graph legend | `data-p="graph"` · `#ego` + `.legend` · `gr.lbear`, `gr.lref`, `gr.ldang`, `gr.note` | **Plan 1** | ⚠️ **partly** | Node states are served: `focus` (the response's `focus`), `missing`, `superseded` (via `status`), and `+N more` (`omitted`). **Edge severity is not.** The legend has three line styles — load-bearing, referential, dangling — and `/api/graph`'s edges carry `type` and `dangling` but no severity. The mockup names the function: *"`isLoadBearing` already classifies the vocabulary, so a dangling `relates_to` reads as noise and a dangling `constrains` reads as an alarm. Without that, a graph can only show breakage, never how much it matters."* It exists (`core/focus.ts` · `export function isLoadBearing(type: string): boolean {` · ~204) and is **already exported**, so the browser could call it — but the browser cannot import a `.ts` core module, and re-listing the vocabulary in `.js` is the copied-rule defect. **Needs: `loadBearing: boolean` on each edge in `/api/graph`, from `isLoadBearing`.** This is the cheapest gap in the table and the one that changes a view from decorative to diagnostic. |
 | 15 | Before/after delta rows | `data-p="config"` · `#cfgdelta` · `cfg.deltan` | Plan 2 | n/a | *"Each row is the **pair**, not the direction alone."* Plan 2's `/api/config`. Recorded so plan 1's status screen does not grow a config delta ahead of it. |
 | 16 | Word-level revision diff | `data-p="work"` · `work.diffn` | Plan 2 | n/a | Real `<ins>`/`<del>` elements, per field, with the stale field refusing promote. Plan 1's contribution is Task 6's `src/core/revision-log.ts` — the read boundary plan 2 builds the diff on. Nothing further owed here. |
 | 17 | Gate ladder — the first gate that failed | `data-p="preview"` · `#gates` · `preview.why`, `preview.whyn` | **Plan 1** | ❌ **no** | **The largest gap in this plan, and it is on its flagship screen.** The view wants the six gates *"in `select()`'s own order — eligible, tier, focus, scope, seen, budget"*, with rungs above the binding one shown as passed, the binding rung carrying the diagnosis, and everything below shown as ***not reached* rather than passed**. What exists: `injection(item, config)` returns `{ phrase, injected }` and covers only the first two gates, in **English prose** — five different sentences, no code (`cli/commands/injection.ts` · `export function injection(` · ~84); and `Spill.reason` is likewise a string, and only for the budget gate. Nothing discloses focus, scope or seen per item. The mockup says so itself: *"Composing the fix needs a stable code on `injection()`; today the five causes differ only in English prose."* **Needs: a per-item gate-ladder read model returning the ordered gates with stable codes and a passed / binds / not-reached state each.** Reported. |
@@ -238,7 +238,7 @@ AND ASK THE OWNER. Do not resolve it yourself and do not pick the reading that i
    is by definition the *unauthenticated* path, so anything that can reach the port can make the log
    grow. Three things bound it and none of them is a cap: the server binds `127.0.0.1` only, it exits
    on its idle window, and `AUDIT_MAX_BYTES` rotation bounds any one **file**
-   (`core/audit.ts` · `export const AUDIT_MAX_BYTES = 8 * 1024 * 1024;` · ~586) — total growth is not
+   (`core/audit.ts` · `export const AUDIT_MAX_BYTES = 8 * 1024 * 1024;` · ~1228) — total growth is not
    bounded, and `doctor`'s `audit_log_size` check is what reports it. Whether a per-process refusal cap
    is wanted, and whether repeated identical refusals should coalesce, is the owner's call. **Recorded,
    not decided, and not silently mitigated.**
@@ -261,9 +261,9 @@ rather than a preference.
 it inside `setFocus` and `unsetFocus`; `src/core/seen-file.ts` binds `appendJsonlLine`
 (`core/seen-file.ts` · `appendJsonlLine, readJsonlFileState, type JsonlFileState, type JsonlLogSpec,` · ~5)
 and calls it inside `appendSeen`; and `src/core/audit.ts` calls `appendJsonlLine` itself
-(`core/audit.ts` · `appendJsonlLine(auditDir(root), file, record);` · ~736). But
-`readFocus` (`core/focus.ts` · `export function readFocus(root: string): FocusState {` · ~321) and
-`readSeen` (`core/seen-file.ts` · `export function readSeen(root: string, key: string): SeenState {` · ~123)
+(`core/audit.ts` · `appendJsonlLine(auditDir(root), file, record);` · ~1532). But
+`readFocus` (`core/focus.ts` · `export function readFocus(root: string): FocusState {` · ~389) and
+`readSeen` (`core/seen-file.ts` · `export function readSeen(root: string, key: string): SeenState {` · ~207)
 contain **zero write calls** — verified by reading both bodies whole, not by grepping their modules.
 Task 8 needs the first; Tasks 8 and 9 need the second and `seenIds`. So the whole-graph ban was red by
 **guilt by co-location** — a fact about which functions share a file, never a fact about whether the UI
@@ -330,12 +330,12 @@ together only because the write is bounded in a way that can be **checked** rath
   byte-identical assertion goes on proving, because **every request in its sweep is authorised** and the
   sweep already fails on any response that is not `200` or `404`.
 - It is **one append to the existing audit log**, through the same `recordAudit`
-  (`core/audit.ts` · `export function recordAudit(root: string, input: AuditInput): AuditWriteResult {` · ~720)
+  (`core/audit.ts` · `export function recordAudit(root: string, input: AuditInput): AuditWriteResult {` · ~1509)
   every other subsystem uses. No new file, no new format, no new writer.
 - It is what makes the dropped echo recoverable. Ruling 11 removed the submitted value from the string
   handed back to the sender and said where it belonged instead — *"it belongs in an audit record, not
   in a string handed back to the party that supplied it"*
-  (`ui/security.ts` · `belongs in an audit record, not in a string handed back to the` · ~242). This is
+  (`ui/security.ts` · `belongs in an audit record, not in a string handed back to the` · ~305). This is
   that record.
 
 **The shape, exactly, because a later task implements from this and not from the paragraph above.**
@@ -465,70 +465,70 @@ of asserting it.
 
 | Fact | Where verified |
 |---|---|
-| `select(items, ctx, config): Selection` | `core/select.ts` · `export function select(items: Item[], ctx: SelectContext, config: Config): Selection {` · ~833 |
-| `SelectContext` declares **five** inputs: `event`, `path?`, `seen?`, `restore?`, **`focus?`** | `core/select.ts` · `export interface SelectContext {` · ~19 |
-| `SelectEvent = 'session-start' \| 'compact' \| 'tool' \| 'manual'` | `core/select.ts` · `export type SelectEvent = 'session-start' \| 'compact' \| 'tool' \| 'manual';` · ~17 |
-| `Selection { full; index; spilled; focus; tokens }` | `core/select.ts` · `export interface Selection {` · ~144 |
-| Seen items filtered **before** budgeting; comment says "must not be reverted" | `core/select.ts` · `hardening and must not be reverted: an already-injected item must not` · ~850 |
-| Focus narrows the eligible set before every tier and before budgeting | `core/select.ts` · `const focus = ctx.focus ?? null;` · ~843 |
-| The hook reads the **per-session seen file**, not the Ledger | `hooks/pre-tool-use.ts` · `const seenState = readSeen(ws.projectRoot, dedupeKey);` · ~210 |
-| The dedupe key carries `agent_id` when present — `session_id::agent_id` for a subagent, the bare id for the parent | `hooks/io.ts` · `export function ledgerKey(input: HookInput): string \| null {` · ~208 |
-| The hook opens the index **read-only and schema-checked**, and no Ledger | `hooks/pre-tool-use.ts` · `store = Store.openReadOnlyChecked(ws.dbPath);` · ~202 |
-| The hook passes the focus it read | `hooks/pre-tool-use.ts` · `const focusState = readFocus(ws.projectRoot);` · ~226 |
-| `matchesScope(item, target, config)` | `core/select.ts` · `export function matchesScope(item: Item, target: string, config: Config): boolean {` · ~266 |
-| `isEligible(item, config)` | `core/select.ts` · `export function isEligible(item: Item, config: Config): boolean {` · ~198 |
-| `isNormative` is **private** (no `export`) | `core/select.ts` · `function isNormative(item: Item, config: Config): boolean {` · ~204 |
-| `itemCost` was **private** when this table was written — **Task 5 exported it**, and the fragment below now matches the `export`ed declaration | `core/select.ts` · `function itemCost(item: Item): number {` · ~194 |
-| `estimateTokens(text)` — chars/4 | `core/select.ts` · `export function estimateTokens(text: string): number {` · ~178 |
-| `reviewQueue(items, type?)` — takes a plain `Item[]` | `core/select.ts` · `export function reviewQueue(items: Item[], type: string \| null = null): Item[] {` · ~433 |
-| `mergeLayers(items)` exported | `core/select.ts` · `export function mergeLayers(items: Item[]): Item[] {` · ~673 |
-| `injectableTypes(config)` exported | `core/select.ts` · `export function injectableTypes(config: Config): string[] {` · ~219 |
+| `select(items, ctx, config): Selection` | `core/select.ts` · `export function select(items: Item[], ctx: SelectContext, config: Config): Selection {` · ~1364 |
+| `SelectContext` declares **five** inputs: `event`, `path?`, `seen?`, `restore?`, **`focus?`** | `core/select.ts` · `export interface SelectContext {` · ~81 |
+| `SelectEvent = 'session-start' \| 'compact' \| 'tool' \| 'manual'` | `core/select.ts` · `export type SelectEvent = 'session-start' \| 'compact' \| 'tool' \| 'manual';` · ~18 |
+| `Selection { full; index; spilled; focus; tokens }` | `core/select.ts` · `export interface Selection {` · ~425 |
+| Seen items filtered **before** budgeting; comment says "must not be reverted" | `core/select.ts` · `hardening and must not be reverted: an already-injected item must not` · ~1381 |
+| Focus narrows the eligible set before every tier and before budgeting | `core/select.ts` · `const focus = ctx.focus ?? null;` · ~1374 |
+| The hook reads the **per-session seen file**, not the Ledger | `hooks/pre-tool-use.ts` · `const seenState = readSeen(ws.projectRoot, dedupeKey);` · ~286 |
+| The dedupe key carries `agent_id` when present — `session_id::agent_id` for a subagent, the bare id for the parent | `hooks/io.ts` · `export function ledgerKey(input: HookInput): string \| null {` · ~214 |
+| The hook opens the index **read-only and schema-checked**, and no Ledger | `hooks/pre-tool-use.ts` · `store = Store.openReadOnlyChecked(ws.dbPath);` · ~278 |
+| The hook passes the focus it read | `hooks/pre-tool-use.ts` · `const focusState = readFocus(ws.projectRoot);` · ~302 |
+| `matchesScope(item, target, config)` | `core/select.ts` · `export function matchesScope(item: Item, target: string, config: Config): boolean {` · ~575 |
+| `isEligible(item, config)` | `core/select.ts` · `export function isEligible(item: Item, config: Config): boolean {` · ~495 |
+| `isNormative` is **private** (no `export`) | `core/select.ts` · `function isNormative(item: Item, config: Config): boolean {` · ~513 |
+| `itemCost` was **private** when this table was written — **Task 5 exported it**, and the fragment below now matches the `export`ed declaration | `core/select.ts` · `function itemCost(item: Item): number {` · ~491 |
+| `estimateTokens(text)` — chars/4 | `core/select.ts` · `export function estimateTokens(text: string): number {` · ~475 |
+| `reviewQueue(items, type?)` — takes a plain `Item[]` | `core/select.ts` · `export function reviewQueue(items: Item[], type: string \| null = null): Item[] {` · ~912 |
+| `mergeLayers(items)` exported | `core/select.ts` · `export function mergeLayers(items: Item[]): Item[] {` · ~1186 |
+| `injectableTypes(config)` exported | `core/select.ts` · `export function injectableTypes(config: Config): string[] {` · ~528 |
 | `injection(item, config): { phrase, injected }` | `cli/commands/injection.ts` · `export function injection(` · ~84 |
-| `scopePolicyFor(config, type)` | `core/config.ts` · `export function scopePolicyFor(config: Config, type: string): ScopePolicy {` · ~179 |
-| `agentEditsFor(config, type)` | `core/config.ts` · `export function agentEditsFor(config: Config, type: string): AgentEdits {` · ~201 |
-| `resolveConfig(raw): Config` | `core/config.ts` · `export function resolveConfig(raw: unknown): Config {` · ~1071 |
-| `Config { profile; categories; budgets; watchedDocs }` | `core/config.ts` · `export interface Config {` · ~318 |
-| `Budgets { pinned; jit; restored; index }` | `core/config.ts` · `export interface Budgets {` · ~21 |
+| `scopePolicyFor(config, type)` | `core/config.ts` · `export function scopePolicyFor(config: Config, type: string): ScopePolicy {` · ~207 |
+| `agentEditsFor(config, type)` | `core/config.ts` · `export function agentEditsFor(config: Config, type: string): AgentEdits {` · ~229 |
+| `resolveConfig(raw): Config` | `core/config.ts` · `export function resolveConfig(raw: unknown): Config {` · ~1444 |
+| `Config { profile; categories; budgets; watchedDocs }` | `core/config.ts` · `export interface Config {` · ~532 |
+| `Budgets { pinned; jit; restored; index }` | `core/config.ts` · `export interface Budgets {` · ~22 |
 | `Ledger.seen(sessionId)` — **a replayed projection, not live dedupe state** | `core/ledger.ts` · `seen(sessionId: string): string[] {` · ~391 |
-| `Ledger.recentSessions(limit)` — ties broken `session_id DESC` | `core/ledger.ts` · `recentSessions(limit: number): string[] {` · ~500 |
-| `Ledger.entries(sessionId): LedgerEntry[]` | `core/ledger.ts` · `entries(sessionId: string): LedgerEntry[] {` · ~398 |
-| `Ledger.allUsage()` | `core/ledger.ts` · `allUsage(): Usage[] {` · ~437 |
-| `Ledger.itemsUsedIn(sessionIds)` | `core/ledger.ts` · `itemsUsedIn(sessionIds: string[]): string[] {` · ~570 |
-| `Ledger.sessionCount()` | `core/ledger.ts` · `sessionCount(): number {` · ~621 |
+| `Ledger.recentSessions(limit)` — ties broken `session_id DESC` | `core/ledger.ts` · `recentSessions(limit: number): string[] {` · ~512 |
+| `Ledger.entries(sessionId): LedgerEntry[]` | `core/ledger.ts` · `entries(sessionId: string): LedgerEntry[] {` · ~410 |
+| `Ledger.allUsage()` | `core/ledger.ts` · `allUsage(): Usage[] {` · ~449 |
+| `Ledger.itemsUsedIn(sessionIds)` | `core/ledger.ts` · `itemsUsedIn(sessionIds: string[]): string[] {` · ~582 |
+| `Ledger.sessionCount()` | `core/ledger.ts` · `sessionCount(): number {` · ~633 |
 | Ledger schema: `PRIMARY KEY (session_id, item_id, tier)`, `injected_at` a value | `core/ledger.ts` · `PRIMARY KEY (session_id, item_id, tier)` · ~67 |
 | `Ledger.open` relies on a writable open having run first against the same path | `core/ledger.ts` · `static open(dbPath: string, busyTimeoutMs = 3000): Ledger {` · ~135 |
-| `readSnapshotMeta(root, sessionId)` reads a compact snapshot's item ids | `core/ledger.ts` · `export function readSnapshotMeta(root: string, sessionId: string): SnapshotMeta \| null {` · ~849 |
-| `renderSelection(selection)` renders the injected text | `core/render.ts` · `export function renderSelection(selection: Selection): string {` · ~286 |
+| `readSnapshotMeta(root, sessionId)` reads a compact snapshot's item ids | `core/ledger.ts` · `export function readSnapshotMeta(root: string, sessionId: string): SnapshotMeta \| null {` · ~861 |
+| `renderSelection(selection)` renders the injected text | `core/render.ts` · `export function renderSelection(selection: Selection): string {` · ~405 |
 | **`Store.openReadOnlyChecked(dbPath)` — what this server must use** | `core/store.ts` · `static openReadOnlyChecked(dbPath: string): Store {` · ~402 |
 | `Store.open(dbPath)` — **self-heals by deleting the file; not for a read path** | `core/store.ts` · `static open(dbPath: string, profile: OpenProfile = DEFAULT_OPEN_PROFILE, _retried = false): Store {` · ~337 |
 | `store.all()` | `core/store.ts` · `all(): Item[] {` · ~510 |
 | `store.activeInjectable(types)` | `core/store.ts` · `activeInjectable(types: string[]): Item[] {` · ~532 |
-| `assertSelectOnly(sql)` — the barrier `readOnly: true` does **not** provide | `cli/commands/query.ts` · `export function assertSelectOnly(sql: string): void {` · ~173 |
-| `resolveWorkspace(cwd): Workspace` | `core/workspace.ts` · `export function resolveWorkspace(cwd: string): Workspace {` · ~47 |
+| `assertSelectOnly(sql)` — the barrier `readOnly: true` does **not** provide | `cli/commands/query.ts` · `export function assertSelectOnly(sql: string): void {` · ~266 |
+| `resolveWorkspace(cwd): Workspace` | `core/workspace.ts` · `export function resolveWorkspace(cwd: string): Workspace {` · ~162 |
 | `Workspace { projectRoot; globalRoot; dbPath; config }` | `core/workspace.ts` · `export interface Workspace {` · ~9 |
-| `runChecks(opts): Finding[]` | `doctor/checks.ts` · `export function runChecks(opts: {` · ~994 |
-| `Finding { level; code; message; item? }` | `doctor/checks.ts` · `export interface Finding {` · ~14 |
-| `listRepoFiles(repoRoot, limit)` exported; skips `.git`, `node_modules`, … | `doctor/checks.ts` · `export function listRepoFiles(repoRoot: string, limit: number = FILE_LIMIT): string[] {` · ~74 |
+| `runChecks(opts): Finding[]` | `doctor/checks.ts` · `export function runChecks(opts: {` · ~3914 |
+| `Finding { level; code; message; item? }` | `doctor/checks.ts` · `export interface Finding {` · ~75 |
+| `listRepoFiles(repoRoot, limit)` exported; skips `.git`, `node_modules`, … | `doctor/checks.ts` · `export function listRepoFiles(repoRoot: string, limit: number = FILE_LIMIT): string[] {` · ~375 |
 | `computeDecay(input): DecayReport` | `core/decay.ts` · `export function computeDecay(input: DecayInput): DecayReport {` · ~93 |
 | `DecayReport { window; sessionsRecorded; cold; warm; unrestricted }` | `core/decay.ts` · `export interface DecayReport {` · ~24 |
-| `helpTopic(topic, config, locale?)` — **three parameters now** | `help/index.ts` · `export function helpTopic(topic: string, config: Config, locale?: HelpLocale): string {` · ~689 |
+| `helpTopic(topic, config, locale?)` — **three parameters now** | `help/index.ts` · `export function helpTopic(topic: string, config: Config, locale?: HelpLocale): string {` · ~895 |
 | `HELP_TOPICS = ['categories','scope','capture','workflow','cli','tools','slash']` — seven now. Three of them are generated: `cli` from `COMMANDS`, which needs the CLI loaded to render and refuses otherwise; `tools` from the MCP tool registry and `slash` from the committed `commands/` directory, neither of which has that precondition. The list itself lives in `core/teach.ts`, a module that imports nothing, because `mcp/tools.ts` reads it at module scope and `help/index.ts` imports `createRegistry` from `mcp/tools.ts`; `help/index.ts` re-exports it. `MCP_HELP_TOPICS` beside it is that list minus `cli`, and it is what `mycontext_help` accepts | `core/teach.ts` · `export const HELP_TOPICS: HelpTopic[] = [` · ~16 |
 | `registerCommand(def)` | `cli/commands/registry.ts` · `export function registerCommand(def: CommandDef): void {` · ~46 |
 | `CommandFn = (ws, args, out, cwd) => number` | `cli/commands/registry.ts` · `export type CommandFn = (ws: Workspace, args: string[], out: Emit, cwd: string) => number;` · ~6 |
-| CLI main sets `process.exitCode` (never `process.exit`), so a live server keeps the process alive | `cli/index.ts` · `process.exitCode = runCli(process.argv.slice(2), process.cwd(), (s) => console.log(s));` · ~1192 |
-| `createItem` | `core/mutate.ts` · `export function createItem(` · ~210 |
-| `updateItem` | `core/mutate.ts` · `export function updateItem(` · ~538 |
-| `supersedeItem` | `core/mutate.ts` · `export function supersedeItem(ctx: MutationContext, input: SupersedeInput): MutationResult {` · ~897 |
+| CLI main sets `process.exitCode` (never `process.exit`), so a live server keeps the process alive | `cli/index.ts` · `process.exitCode = runCli(process.argv.slice(2), process.cwd(), (s) => console.log(s));` · ~1614 |
+| `createItem` | `core/mutate.ts` · `export function createItem(` · ~312 |
+| `updateItem` | `core/mutate.ts` · `export function updateItem(` · ~765 |
+| `supersedeItem` | `core/mutate.ts` · `export function supersedeItem(ctx: MutationContext, input: SupersedeInput): MutationResult {` · ~1418 |
 | `linkItems` — **`relations.ts`, not `mutate.ts`** | `core/relations.ts` · `export function linkItems(ctx: MutationContext, input: LinkInput): MutationResult {` · ~74 |
-| `unlinkItems` — **`relations.ts`, not `mutate.ts`** | `core/relations.ts` · `export function unlinkItems(ctx: MutationContext, input: LinkInput): MutationResult {` · ~244 |
-| `stageRevision` | `core/revision.ts` · `export function stageRevision(` · ~577 |
-| `promoteRevision` | `core/revision.ts` · `export function promoteRevision(` · ~783 |
-| `discardRevision` | `core/revision.ts` · `export function discardRevision(` · ~888 |
+| `unlinkItems` — **`relations.ts`, not `mutate.ts`** | `core/relations.ts` · `export function unlinkItems(ctx: MutationContext, input: LinkInput): MutationResult {` · ~340 |
+| `stageRevision` | `core/revision.ts` · `export function stageRevision(` · ~606 |
+| `promoteRevision` | `core/revision.ts` · `export function promoteRevision(` · ~812 |
+| `discardRevision` | `core/revision.ts` · `export function discardRevision(` · ~918 |
 | `revision.ts` imports `updateItem` from `mutate.ts` at runtime, so importing anything from `revision.ts` pulls `mutate.ts` in | `core/revision.ts` · `import { updateItem, type MutationContext, type MutationResult } from './mutate.ts';` · ~7 |
-| `readLog(root)` — **`revision-log.ts`, not `revision.ts`**, after Task 6's extraction | `core/revision-log.ts` · `export function readLog(root: string): LogLine[] {` · ~127 |
-| `pendingRevisionCounts(revs)` — **`revision-log.ts`, not `revision.ts`**, after Task 6's extraction | `core/revision-log.ts` · `export function pendingRevisionCounts(` · ~232 |
-| `pendingRevisionLine(revs)` | `core/revision.ts` · `export function pendingRevisionLine(revs: PendingRevision[]): string {` · ~397 |
-| `Item` has **no creation timestamp** | `core/types.ts` · `export interface Item {` · ~56 |
+| `readLog(root)` — **`revision-log.ts`, not `revision.ts`**, after Task 6's extraction | `core/revision-log.ts` · `export function readLog(root: string): LogLine[] {` · ~140 |
+| `pendingRevisionCounts(revs)` — **`revision-log.ts`, not `revision.ts`**, after Task 6's extraction | `core/revision-log.ts` · `export function pendingRevisionCounts(` · ~245 |
+| `pendingRevisionLine(revs)` | `core/revision.ts` · `export function pendingRevisionLine(revs: PendingRevision[]): string {` · ~426 |
+| `Item` has **no creation timestamp** | `core/types.ts` · `export interface Item {` · ~77 |
 | `Relation { type: string; target: string }` | `core/types.ts` · `export interface Relation {` · ~28 |
 | `VERSION` is read from `package.json`, not transcribed | `core/version.ts` · `export const VERSION = parseVersion(readFileSync(MANIFEST, 'utf8'), 'package.json');` · ~75 |
 | tsconfig: `erasableSyntaxOnly` | `tsconfig.json` · `"erasableSyntaxOnly": true,` · ~10 |
@@ -564,7 +564,7 @@ shapes and tests both.
 
 ## Design decisions this plan fixes (so no implementer has to guess)
 
-1. **The server never rebuilds the index.** The hook reads the store as-is (`pre-tool-use.ts` · `Single indexed SQLite read, no rebuild, no LLM, no network (spec §6.5).` · ~122); the flagship screen's promise is "see exactly what Claude gets", so `/api/select` must read exactly what the hook reads. Staleness is not hidden: `/api/doctor` surfaces `index_stale` (`doctor/checks.ts` · `code: 'index_stale',` · ~148), and the status screen renders it.
+1. **The server never rebuilds the index.** The hook reads the store as-is (`pre-tool-use.ts` · `Single indexed SQLite read, no rebuild, no LLM, no network (spec §6.5).` · ~198); the flagship screen's promise is "see exactly what Claude gets", so `/api/select` must read exactly what the hook reads. Staleness is not hidden: `/api/doctor` surfaces `index_stale` (`doctor/checks.ts` · `code: 'index_stale',` · ~497), and the status screen renders it.
 2. **The server opens `Store` before `Ledger` on every request that needs the ledger**, for the reason documented at `src/core/ledger.ts` · ``* `schema_version` and `items` while the `ledger`/`ledger_source` tables are`` · ~94.
 3. **The import-graph test bans write SYMBOLS, not the files that contain them, and it is scoped to `src/ui/` — OWNER RULING** (Task 14 carries it in full; §0.5 records the 2026-08-20 scope amendment). The invariant is *"the UI cannot write"*, not *"the UI cannot import a file that contains a writer"*: `src/core/revision-log.ts` imports only `readJsonlFile` from `jsonl-log.ts`, which also exports three writers, and `focus.ts`/`seen-file.ts` are imported for `readFocus`/`readSeen` and likewise export writers. A module ban would need an allow-list for each, and **an allow-list was rejected** — it grows, and each entry becomes a hole nobody re-examines. The test therefore asserts: (a) the write-list symbols bound under `src/ui/` are **exactly** the one the owner ruled in — `src/ui/security.ts` binding `recordAudit` for the refusal record (§0.6) — with every binding resolved through **re-export chains** to the module that defines it (`revision.ts` re-exports `revision-log.ts`'s reads in the two-statement `import … ; export { … };` form, so this is real); the assertion is an exact set rather than an emptiness check, so a second write binding fails **and so does deleting the ruled one**; (b) no `export *` or `import * as` inside the graph, because neither leaves a per-symbol fact to check; (c) no reachable module contains `require(` or a dynamic `import(` — which is what makes the static analysis sound. Type-only imports are erased by `verbatimModuleSyntax` and are skipped. **The module ban is not lost where it mattered:** a `src/ui/` module that binds `updateItem` — directly, renamed, or laundered through a re-exporting module — trips, for the real reason rather than by filename. Importing `readLog` from `revision.ts` does **not** trip, because the resolver places it in `revision-log.ts` and a reader is not a writer; Task 6's boundary is a design rule this plan keeps (a read surface should not load `mutate.ts`), not a thing this test enforces. **Core modules the UI calls are out of scope, and that is a limitation, not a gap in the ban:** a static walk can only conclude that the UI does not *bind* a writer. **The other half is runtime and lives in Task 13's existing spawned-process E2E, not in a harness of its own** — snapshot the corpus, exercise every read route through the real HTTP surface, assert the corpus is byte-identical afterwards. That is the half that can observe a read which writes internally, the class `Store.open`'s corruption self-heal belongs to (§0, §0.5), and it is the only half that proves the invariant rather than a proxy for it. A second spawn harness would be a second thing to keep true, so it goes in `test/ui/server-e2e.test.ts` beside the security assertions.
 4. **Consequence of 3:** the status screen's pending-revisions count cannot come from `revision.ts`. Task 6 extracts the read-only log-reading half of `revision.ts` into `src/core/revision-log.ts` (no `mutate.ts` import), with `revision.ts` re-importing from it so every existing caller is untouched. This is a move, not a rewrite.
@@ -572,7 +572,7 @@ shapes and tests both.
 6. **Unknown query parameters are refused with 400**, per INV-nothing-is-dropped-silently. `/api/select?sesion=x` answering the cold question because a typo dropped the session would be this project's canonical defect in a new medium.
 7. **`/api/select` returns `select()`'s JSON serialization and nothing else** — the §6 parity test demands `assert.deepEqual(JSON.parse(body), JSON.parse(JSON.stringify(select(items, ctx, config))))`, so budget bars and rendered text come from two sibling endpoints (`/api/simulate`, `/api/render`) rather than from fields bolted onto the parity endpoint.
 8. **Per-item cost comes from `select.ts` itself.** Task 5 exports the existing private `itemCost` (spec §3's "export it — but not both, and never neither" logic, applied to the cost rule instead of copying its one-line body into the simulator).
-9. **The Learn screen's "most recent captures" cross-link uses the item file's mtime, labelled as such.** `Item` carries no creation timestamp (`types.ts` · `export interface Item {` · ~56) and the ledger records injection, not capture. File mtime is the only recency signal that exists; the label carries the condition in the same sentence.
+9. **The Learn screen's "most recent captures" cross-link uses the item file's mtime, labelled as such.** `Item` carries no creation timestamp (`types.ts` · `export interface Item {` · ~77) and the ledger records injection, not capture. File mtime is the only recency signal that exists; the label carries the condition in the same sentence.
 10. **Every string key in Tasks 17–19's illustrative code is resolved against the mockup before it is typed** (§0.2). Those samples were written against the retired ~55-key table; this pass corrected the ten screen headings and `btn.copy` to their mockup keys, and **left the rest as they stand, marked here rather than silently remapped.** Any remaining `ctx.t('…')` in a code sample below — `preview.pickFile`, `preview.spilled`, `preview.nothing`, `preview.renderedText`, `simulate.budget`, `simulate.fits`, `simulate.spills`, `injected.none`, `coverage.governs`, `coverage.wouldInject`, `coverage.gapDirs`, `coverage.emptyCategories`, `coverage.print`, `coverage.truncated`, `graph.focus`, `graph.radius`, `graph.more`, `graph.dangling`, `status.items`, `status.drafts`, `status.revisions`, `status.health`, `doctor.repair`, `decay.caveat`, `learn.corpusLinks`, `learn.recentCaptures`, `common.loading` — **is a placeholder, not a key.** Resolve each against the mockup's 329 `data-t` keys at implementation time. **Where the mockup has no counterpart, that is an open question for the owner and not a licence to add one**: the parity test in Task 1 fails on an invented key by design, and the instruction is explicit that *"if it seems obviously missing, it is a question, not a licence."* Guessing a mapping here would be inventing UI text on paper, which is the same defect as inventing it in code.
 11. **A screen the mockup draws as a chart is not shipped as a table.** Where §0.3 records that a view's data does not exist, the screen **stops and the question is escalated** — it does not render a weaker substitute. The instruction names this failure directly: *"Dropping one it does show, or quietly rendering a weaker version — a table where it draws a chart, a number where it draws a distribution, a label where it discloses a reason. This has already happened twice."* Four views on plan-1 screens are in that state (§0.3 rows 4, 8, 9, 17).
 
@@ -1594,7 +1594,7 @@ git commit -m "feat(ui): read branch/commit/upstream from .git as files, worktre
 
 ## Task 5: Export `itemCost` from `select.ts`
 
-The budget simulator must show per-item cost. The cost rule is `itemCost` (`src/core/select.ts` · `export function itemCost(item: Item): number {` · ~194) — **private when this task was written, exported since**, carrying the comment Step 3 asks for ("Exported for the UI's budget simulator (web-ui plan 1)…"), so the steps below verify a landed export rather than write one. Spec §3's instruction for `isNormative` — "either call `injection()`, which already encapsulates it, or export it — but not both, and never neither" — is the governing logic: the UI must not copy the one-line body, so the function is exported.
+The budget simulator must show per-item cost. The cost rule is `itemCost` (`src/core/select.ts` · `export function itemCost(item: Item): number {` · ~491) — **private when this task was written, exported since**, carrying the comment Step 3 asks for ("Exported for the UI's budget simulator (web-ui plan 1)…"), so the steps below verify a landed export rather than write one. Spec §3's instruction for `isNormative` — "either call `injection()`, which already encapsulates it, or export it — but not both, and never neither" — is the governing logic: the UI must not copy the one-line body, so the function is exported.
 
 **Checked against the mockup, 2026-08-20 — the two agree, and the mockup says so in its own body text.**
 `data-p="simulate"`, beneath the admission staircase (`sim.stairn`): *"The per-item costs it needs are
@@ -1606,7 +1606,7 @@ survey turned on it: `itemCost` is the single dependency that is already correct
 pass must not "simplify" it back to a copied one-liner.
 
 **Files:**
-- Modify: `src/core/select.ts` · `export function itemCost(item: Item): number {` · ~194 (add `export` to `itemCost`; update its comment) — **already carries both**
+- Modify: `src/core/select.ts` · `export function itemCost(item: Item): number {` · ~491 (add `export` to `itemCost`; update its comment) — **already carries both**
 - Test: extend `test/ui/read-model.test.ts`? No — this precedes read-model. Test: `test/core/select-itemcost.test.ts`
 
 **Interfaces:**
@@ -1691,10 +1691,10 @@ git commit -m "feat(select): export itemCost so the UI cannot re-derive the cost
 - Produces (server and plan 2 import from `src/core/revision-log.ts`; existing callers keep importing from `revision.ts`, which re-exports):
   - `REVISION_PROTOCOL: string`
   - `revisionDir(root: string): string`, `revisionLogPath(root: string): string`
-  - `readLog(root: string): LogLine[]` — exactly the shipped behaviour, now at `revision-log.ts` · `export function readLog(root: string): LogLine[] {` · ~127: ENOENT → `[]`, unreadable → throw, damaged non-final line → throw, torn final line tolerated.
+  - `readLog(root: string): LogLine[]` — exactly the shipped behaviour, now at `revision-log.ts` · `export function readLog(root: string): LogLine[] {` · ~140: ENOENT → `[]`, unreadable → throw, damaged non-final line → throw, torn final line tolerated.
   - `foldLog(lines: LogLine[])` — moved as-is, exported.
-  - `pendingRevisionSummaries(root: string): { revisionId: string; itemId: string }[]` — new thin composition: `foldLog(readLog(root))` filtered to `state === 'pending'` (the same filter `pendingRevisions` applies at `revision.ts` · `.filter((r) => r.state === 'pending')` · ~376), WITHOUT the store-touching decoration.
-  - `pendingRevisionCounts(revs: { itemId: string }[]): { revisions: number; items: number }` — moved; parameter widened from `PendingRevision[]` to the two fields it actually reads (`revision-log.ts` · `export function pendingRevisionCounts(` · ~232), so undecorated summaries and decorated revisions both satisfy it.
+  - `pendingRevisionSummaries(root: string): { revisionId: string; itemId: string }[]` — new thin composition: `foldLog(readLog(root))` filtered to `state === 'pending'` (the same filter `pendingRevisions` applies at `revision.ts` · `.filter((r) => r.state === 'pending')` · ~405), WITHOUT the store-touching decoration.
+  - `pendingRevisionCounts(revs: { itemId: string }[]): { revisions: number; items: number }` — moved; parameter widened from `PendingRevision[]` to the two fields it actually reads (`revision-log.ts` · `export function pendingRevisionCounts(` · ~245), so undecorated summaries and decorated revisions both satisfy it.
 
 - [ ] **Step 1: Establish the move set by executing, then write the failing test**
 
@@ -1853,7 +1853,7 @@ sparkline stay unserved for the reason §0.3 rows 8 and 9 already record.
   - `interface InjectionEvent { sessionId: string; itemId: string; tier: LedgerTier; injectedAt: string }` (exported from `ledger.ts`)
   - `Ledger.history(): InjectionEvent[]` — every row, ordered `injected_at, session_id, item_id` (total and repeatable).
   - `interface SessionSummary { sessionId: string; lastInjectedAt: string; itemCount: number }`
-  - `Ledger.sessionSummaries(limit: number): SessionSummary[]` — same ordering contract as `recentSessions` (`MAX(injected_at) DESC, session_id DESC`, `ledger.ts` · `recentSessions(limit: number): string[] {` · ~500), so `sessionSummaries(n).map(s => s.sessionId)` equals `recentSessions(n)` — asserted, so the picker and the default can never disagree.
+  - `Ledger.sessionSummaries(limit: number): SessionSummary[]` — same ordering contract as `recentSessions` (`MAX(injected_at) DESC, session_id DESC`, `ledger.ts` · `recentSessions(limit: number): string[] {` · ~512), so `sessionSummaries(n).map(s => s.sessionId)` equals `recentSessions(n)` — asserted, so the picker and the default can never disagree.
 
 - [ ] **Step 1: Write the failing test**
 
@@ -2048,7 +2048,7 @@ export function apiSimulate(ws: Workspace, url: URL): JsonResult;  // GET /api/s
 Query grammar (shared by the three, refused loudly on violation):
 - `event` required: `session-start | compact | tool | manual`.
 - `path` required iff `event=tool` (select ignores it otherwise — accepting it there would be accepted-and-ignored).
-- exactly one of `session=<id>` or `cold=1`. `session` → `seen: seenIds(readSeen(ws.projectRoot, session))` exactly as the hook does (`hooks/pre-tool-use.ts` · `const seenState = readSeen(ws.projectRoot, dedupeKey);` · ~210). **NOT `ledger.seen(session)`** — §0 records why: the Ledger left that path entirely, and what remains is a replayed projection nothing in the UI updates. An unreadable seen file is a **disclosed** state, never an empty one.
+- exactly one of `session=<id>` or `cold=1`. `session` → `seen: seenIds(readSeen(ws.projectRoot, session))` exactly as the hook does (`hooks/pre-tool-use.ts` · `const seenState = readSeen(ws.projectRoot, dedupeKey);` · ~286). **NOT `ledger.seen(session)`** — §0 records why: the Ledger left that path entirely, and what remains is a replayed projection nothing in the UI updates. An unreadable seen file is a **disclosed** state, never an empty one.
 - `focus`: the endpoint reads `readFocus(ws.projectRoot).focus` and passes it, and the response carries `Selection.focus`. `focus=off` passes `null` and is labelled as a different question, exactly as `cold=1` is. **Omitting it previews a different selection and a different spill set** — §0's first row.
 - `cold=1` → no `seen`, and it is the caller's job to label it (the strings table already carries `session.cold`).
 - `restore=<comma-separated ids>` allowed iff `event=compact` (spec §3: "`compact` additionally takes `restore`").
@@ -2056,7 +2056,7 @@ Query grammar (shared by the three, refused loudly on violation):
 - any other parameter → `400` naming the parameter (INV-nothing-is-dropped-silently).
 
 Response shapes:
-- `/api/select` → the JSON serialization of `select(store.all(), ctx, config)` and **nothing else** — the §6 parity test depends on it. (`store.all()` rather than `activeInjectable`: the prefilter is a perf superset, documented at `select.ts` · `Any pre-filter a caller applies must be a superset of` · ~214; `select` applies the real rules itself, and the index summary needs the unfiltered set.)
+- `/api/select` → the JSON serialization of `select(store.all(), ctx, config)` and **nothing else** — the §6 parity test depends on it. (`store.all()` rather than `activeInjectable`: the prefilter is a perf superset, documented at `select.ts` · `Any pre-filter a caller applies must be a superset of` · ~523; `select` applies the real rules itself, and the index summary needs the unfiltered set.)
 - `/api/render` → `{ text: renderSelection(selection) }` — the literal bytes a hook would inject.
 - `/api/simulate` → `{ selection, budgets, costs, tiersRun }` where `costs: { id: string; tokens: number }[]` has one entry per id in `selection.full` ∪ `selection.spilled`, each `itemCost(item)` (Task 5), and `tiersRun: ('pinned' | 'jit' | 'restored' | 'index')[]` names the tiers this event actually reached.
 
@@ -2321,7 +2321,7 @@ import type { JsonResult } from './routes.ts';
  * Ledger reads (spec §3's table). An endpoint here MAY NOT reimplement one.
  *
  * The server never rebuilds: the hook reads the store as-is
- * (`hooks/pre-tool-use.ts` · `store = Store.openReadOnlyChecked(ws.dbPath);` · ~202), and "see exactly what Claude gets" means reading
+ * (`hooks/pre-tool-use.ts` · `store = Store.openReadOnlyChecked(ws.dbPath);` · ~278), and "see exactly what Claude gets" means reading
  * exactly what the hook reads. Staleness is doctor's index_stale finding,
  * surfaced by the status screen — never silently repaired here.
  */
@@ -2546,14 +2546,14 @@ is that same replayed projection read one session at a time, so the note rules i
 reasoning. §0's first row recorded the Ledger leaving the hook's path; that fact retires **every**
 ledger read that claims to show live delivery, not only the one in `/api/select`.
 
-**The seen file carries exactly the three columns the screen draws.** `core/seen-file.ts` · `export interface SeenLine {` · ~27
+**The seen file carries exactly the three columns the screen draws.** `core/seen-file.ts` · `export interface SeenLine {` · ~44
 declares `{ id; tier; at }`, against the mockup's table headers
 `th.item` / `th.tier` / `th.when` and its `09:14:02`-shaped timestamps. Nothing has to be synthesised,
 and nothing the ledger offered is lost.
 
 **Which key, and why the bare session id.** `readSeen(root, key)` takes the dedupe key, and
 `ledgerKey(input)` yields `session_id::agent_id` for a subagent and the bare id for the parent
-(`hooks/io.ts` · `export function ledgerKey(input: HookInput): string \| null {` · ~208). The mockup
+(`hooks/io.ts` · `export function ledgerKey(input: HookInput): string \| null {` · ~214). The mockup
 fixes the choice: *"Previews are of the **parent thread**. A subagent has its own dedupe key and its
 deliveries are not folded in here"* (`sess.parent`). So `:session` is the **bare** id and this endpoint
 must not merge subagent files into it. Whether a subagent's deliveries are reachable at all is not
@@ -2716,7 +2716,7 @@ git commit -m "feat(ui): sessions read model, and injected-now from the per-sess
 - Test: extend `test/ui/read-model.test.ts`
 
 **Interfaces:**
-- Consumes: `reviewQueue` (`select.ts` · `export function reviewQueue(items: Item[], type: string | null = null): Item[] {` · ~433), `pendingRevisionSummaries`/`pendingRevisionCounts` (Task 6), `runChecks` (`doctor/checks.ts` · `export function runChecks(opts: {` · ~994), `computeDecay` (`core/decay.ts` · `export function computeDecay(input: DecayInput): DecayReport {` · ~93), `Ledger.history` (Task 7), `VERSION` (`core/version.ts`).
+- Consumes: `reviewQueue` (`select.ts` · `export function reviewQueue(items: Item[], type: string | null = null): Item[] {` · ~912), `pendingRevisionSummaries`/`pendingRevisionCounts` (Task 6), `runChecks` (`doctor/checks.ts` · `export function runChecks(opts: {` · ~3914), `computeDecay` (`core/decay.ts` · `export function computeDecay(input: DecayInput): DecayReport {` · ~93), `Ledger.history` (Task 7), `VERSION` (`core/version.ts`).
 - Produces:
   - `apiStatus(ws, url): JsonResult` — `GET /api/status` →
 
@@ -2732,9 +2732,9 @@ git commit -m "feat(ui): sessions read model, and injected-now from the per-sess
     }
     ```
 
-    Field semantics match `status --json` (`src/cli/commands/status.ts` · `emitJson(out, {` · ~230): `reviewQueue.drafts` is the **project-layer** queue via core `reviewQueue(items)` — never a raw draft tally — with `globalLayerDrafts` named beside it exactly as `status` names it (`status.ts` · `const globalLayerDrafts = items.filter((i) => i.status === 'draft').length - queueCount;` · ~184). `health` is a level tally of `runChecks` findings (a presentation count, not a rule; the rule set is `runChecks` itself). The screen is the recorded §4 exception ("kept because it is the landing screen"), and this endpoint keeps it honest by composing the same functions `status` composes.
+    Field semantics match `status --json` (`src/cli/commands/status.ts` · `emitJson(out, {` · ~231): `reviewQueue.drafts` is the **project-layer** queue via core `reviewQueue(items)` — never a raw draft tally — with `globalLayerDrafts` named beside it exactly as `status` names it (`status.ts` · `const globalLayerDrafts = items.filter((i) => i.status === 'draft').length - queueCount;` · ~185). `health` is a level tally of `runChecks` findings (a presentation count, not a rule; the rule set is `runChecks` itself). The screen is the recorded §4 exception ("kept because it is the landing screen"), and this endpoint keeps it honest by composing the same functions `status` composes.
   - `apiDoctor(ws, url): JsonResult` — `GET /api/doctor` → `{ findings: Finding[] }`, `runChecks` verbatim, unfiltered, ungrouped — grouping by `code` and composing repair commands is the client's presentation (Task 19), so no finding can be dropped between the checker and the screen.
-  - `apiDecay(ws, url): JsonResult` — `GET /api/decay?window=N` (default 20, positive integer) → `{ report: DecayReport; series: InjectionEvent[] }`. `report` is `computeDecay` fed exactly as `status.ts` · `const decay = computeDecay({` · ~204 feeds it; `series` is `Ledger.history()`. The chart's caveat text lives in the string tables and carries the window and sessions-recorded figures the chart must disclose.
+  - `apiDecay(ws, url): JsonResult` — `GET /api/decay?window=N` (default 20, positive integer) → `{ report: DecayReport; series: InjectionEvent[] }`. `report` is `computeDecay` fed exactly as `status.ts` · `const decay = computeDecay({` · ~205 feeds it; `series` is `Ledger.history()`. The chart's caveat text lives in the string tables and carries the window and sessions-recorded figures the chart must disclose.
 
 **What this serves on `data-p="decay"`, and what it does not** (§0.3 rows 7–8). The decay screen draws
 **two** charts, from **two different measurements**, and its own subtitle says so: *"The delivery
@@ -2936,7 +2936,7 @@ export function apiDecay(ws: Workspace, url: URL): JsonResult {
 }
 ```
 
-(If `computeDecay`'s `DecayInput` field names differ from this call when typechecked — the shape was read from `src/core/decay.ts` · `export interface DecayInput {` · ~60 and `status.ts` · `const decay = computeDecay({` · ~204 — follow the type, not this prose.)
+(If `computeDecay`'s `DecayInput` field names differ from this call when typechecked — the shape was read from `src/core/decay.ts` · `export interface DecayInput {` · ~60 and `status.ts` · `const decay = computeDecay({` · ~205 — follow the type, not this prose.)
 
 - [ ] **Step 4: Run the tests and see them pass**
 
@@ -2959,7 +2959,7 @@ git commit -m "feat(ui): status, doctor and decay read model"
 - Test: extend `test/ui/read-model.test.ts`
 
 **Interfaces:**
-- Consumes: `matchesScope` (`select.ts` · `export function matchesScope(item: Item, target: string, config: Config): boolean {` · ~266), `injection` (`cli/commands/injection.ts` · `export function injection(` · ~84), `listRepoFiles` (`doctor/checks.ts` · `export function listRepoFiles(repoRoot: string, limit: number = FILE_LIMIT): string[] {` · ~74), `helpTopic`/`HELP_TOPICS` (`help/index.ts`), `scopePolicyFor` (`core/config.ts` · `export function scopePolicyFor(config: Config, type: string): ScopePolicy {` · ~179), `isLoadBearing` (`core/focus.ts`), `Ledger.usage`.
+- Consumes: `matchesScope` (`select.ts` · `export function matchesScope(item: Item, target: string, config: Config): boolean {` · ~575), `injection` (`cli/commands/injection.ts` · `export function injection(` · ~84), `listRepoFiles` (`doctor/checks.ts` · `export function listRepoFiles(repoRoot: string, limit: number = FILE_LIMIT): string[] {` · ~375), `helpTopic`/`HELP_TOPICS` (`help/index.ts`), `scopePolicyFor` (`core/config.ts` · `export function scopePolicyFor(config: Config, type: string): ScopePolicy {` · ~207), `isLoadBearing` (`core/focus.ts`), `Ledger.usage`.
 - Produces:
   - `apiCoverage(ws, url): JsonResult` — `GET /api/coverage` →
 
@@ -2983,7 +2983,7 @@ git commit -m "feat(ui): status, doctor and decay read model"
     `buildTree`/`coverageGaps` (Task 18) must not infer it. **Needs: the paths `listRepoFiles` did not
     reach.** Reported to the owner.
 
-    **The rule composition §3 fixes, exactly:** an item colours a file iff `injection(item, config).injected` (which already encapsulates `isEligible`, the normative-tier test and `emptyScopeInjection` in `select`'s own order) **and** `matchesScope(item, file, config)`. **Never `matchesAnyGlob`** — that is the defect `select.ts` · ``* `matchesAnyGlob(path, item.scope)` and consequently kept hiding unscoped`` · ~245 documents by name. Pinned (`always`) items are reported separately because they govern sessions, not paths. Coverage *gaps* (directories with no governing item; empty categories) are derived client-side from `files` + `/api/status` `byCategory` — a presentation over this data, not a second matcher.
+    **The rule composition §3 fixes, exactly:** an item colours a file iff `injection(item, config).injected` (which already encapsulates `isEligible`, the normative-tier test and `emptyScopeInjection` in `select`'s own order) **and** `matchesScope(item, file, config)`. **Never `matchesAnyGlob`** — that is the defect `select.ts` · ``* `matchesAnyGlob(path, item.scope)` and consequently kept hiding unscoped`` · ~554 documents by name. Pinned (`always`) items are reported separately because they govern sessions, not paths. Coverage *gaps* (directories with no governing item; empty categories) are derived client-side from `files` + `/api/status` `byCategory` — a presentation over this data, not a second matcher.
   - `apiGraph(ws, url): JsonResult` — `GET /api/graph?focus=<id>&radius=1|2` →
 
     ```ts
@@ -3006,13 +3006,13 @@ git commit -m "feat(ui): status, doctor and decay read model"
     `isLoadBearing` already classifies the vocabulary, so a dangling `relates_to` reads as noise and a
     dangling `constrains` reads as an alarm. Without that, a graph can only show breakage, never how
     much it matters — which is why the dangling edges need no separate table."* The classifier already
-    exists and is already exported (`core/focus.ts` · `export function isLoadBearing(type: string): boolean {` · ~165);
+    exists and is already exported (`core/focus.ts` · `export function isLoadBearing(type: string): boolean {` · ~204);
     it is called **here**, server-side, because a browser `.js` module cannot import a core `.ts` module
     and re-listing the relation vocabulary in the client is the copied-rule defect Task 5 exists to
     prevent. **The node states the legend also names are already served:** `focus` (the response's own
     `focus`), `missing`, superseded (via `status`), and *"+N more"* (`omitted`).
   - `apiItems(ws, url): JsonResult` — `GET /api/items` → `{ items: { id; type; title; status; always; scope; injected; phrase }[] }` sorted by id — the link target for every screen.
-  - `apiItem(ws, url, params: { id }): JsonResult` — `GET /api/item/:id` → `{ item: Item; injection: { phrase: string; injected: boolean }; usage: Usage }` (`Ledger.usage`, `ledger.ts` · `usage(itemId: string): Usage {` · ~412). Unknown id → 404.
+  - `apiItem(ws, url, params: { id }): JsonResult` — `GET /api/item/:id` → `{ item: Item; injection: { phrase: string; injected: boolean }; usage: Usage }` (`Ledger.usage`, `ledger.ts` · `usage(itemId: string): Usage {` · ~424). Unknown id → 404.
 
     **This is the item detail pane's read, and it is short of it by one field (§0.3 row 9).** The
     mockup's `<aside class="pane" id="pane">` is the destination of every `button.linkid` on every
@@ -3028,7 +3028,7 @@ git commit -m "feat(ui): status, doctor and decay read model"
   - `apiHelp(ws, url, params: { topic }): JsonResult` — `GET /api/help/:topic` → `{ topic; markdown; corpus }` where `markdown` is `helpTopic(topic, ws.config)` and `corpus` is the §4 Learn cross-link data — the join that justifies the screen ("built without it, this screen is a documentation viewer and should be cut"):
     - `scope` topic: `{ scoped: { id; title; scope }[]; unscoped: { id; title; policy: ScopePolicy }[] }` — policy via `scopePolicyFor`, so what an empty scope means is stated per item under **this** project's config.
     - `categories` topic: `{ counts: Record<string, number>; empty: string[] }` — enabled categories with zero items.
-    - `capture` topic: `{ recent: { id; title; mtime: string }[] }` — five most recent **by file modification time** (`Item` has no creation timestamp — `types.ts` · `export interface Item {` · ~56; the label in the strings table carries that condition: `learn.recentCaptures`).
+    - `capture` topic: `{ recent: { id; title; mtime: string }[] }` — five most recent **by file modification time** (`Item` has no creation timestamp — `types.ts` · `export interface Item {` · ~77; the label in the strings table carries that condition: `learn.recentCaptures`).
     - `workflow` topic: `{ drafts: number; pendingRevisions: { revisions: number; items: number } }`.
     - Unknown topic → 404 listing `HELP_TOPICS`.
 
@@ -3156,7 +3156,7 @@ Expected: new tests FAIL.
 - [ ] **Step 3: Implement** (append to `src/ui/read-model.ts`; add imports: `matchesScope` from `select.ts`, `injection` from `../cli/commands/injection.ts`, `listRepoFiles` from `../doctor/checks.ts`, `helpTopic, HELP_TOPICS` from `../help/index.ts`, `scopePolicyFor` from `../core/config.ts`, `statSync` from `node:fs`)
 
 ```ts
-const FILE_WALK_LIMIT = 20_000; // listRepoFiles' own default bound (`doctor/checks.ts` · `const FILE_LIMIT = 20_000;` · ~52)
+const FILE_WALK_LIMIT = 20_000; // listRepoFiles' own default bound (`doctor/checks.ts` · `const FILE_LIMIT = 20_000;` · ~309)
 
 export function apiCoverage(ws: Workspace, url: URL): JsonResult {
   const bad = unknownParams(url, []);
@@ -3168,7 +3168,7 @@ export function apiCoverage(ws: Workspace, url: URL): JsonResult {
     // injection() composes isEligible + the normative-tier test +
     // emptyScopeInjection(scopePolicyFor(...)) in select's own order
     // (`cli/commands/injection.ts` · `export function injection(` · ~84). NOT matchesAnyGlob — the defect
-    // `core/select.ts` · `and consequently kept hiding unscoped` · ~398 documents by name.
+    // `core/select.ts` · `and consequently kept hiding unscoped` · ~554 documents by name.
     const decorated = items.map((item) => ({ item, verdict: injection(item, ws.config) }));
     const governing = decorated.filter((d) => d.verdict.injected && !d.item.always);
     const pinned = decorated.filter((d) => d.verdict.injected && d.item.always)
@@ -3330,7 +3330,7 @@ export function apiHelp(ws: Workspace, url: URL, params: { topic: string }): Jso
       }
       case 'capture': {
         // By file mtime, labelled as such in the UI: Item carries no creation
-        // timestamp (`core/types.ts` · `export interface Item {` · ~56), and the ledger records injection, not
+        // timestamp (`core/types.ts` · `export interface Item {` · ~77), and the ledger records injection, not
         // capture — mtime is the only recency signal that exists.
         const recent = items
           .map((i) => {
@@ -4894,7 +4894,7 @@ answer.**
 - Consumes: `startUiServer`, `OPENER_NONCE_TTL_MS`, `PRINTED_NONCE_TTL_MS` (Task 13), `registerCommand` (`registry.ts` · `export function registerCommand(def: CommandDef): void {` · ~46).
 - Produces:
   - `openBrowser(url: string, platform?: NodeJS.Platform, spawnFn?: typeof spawn): { command: string; args: string[] } | null` — returns what it spawned (for tests and for the fallback decision), `null` when the spawn failed. **This is the first `child_process` use in `src/`** — there were none before (verified by grep); zero dependencies is intact, "zero moving parts" is not, and this comment says so in the module rather than letting a reader assume it (spec §3).
-  - The `ui` command: `mycontext ui [--port N] [--no-open]`, registered via `registerCommand`. **Nothing shadows a registration any more:** `registry.ts`'s hand-kept `SHADOWED_BY_SWITCH` mirror went with the dispatch switch in Wave 5 (`cli/index.ts` · `switch shadows. With the switch gone there is exactly one dispatch path` · ~1131), so the only name check left is `registerCommand`'s own duplicate guard (`registry.ts` · `if (COMMANDS.has(def.name)) {` · ~47). The command starts the server in-process; the CLI main sets `process.exitCode` and never calls `process.exit` (`cli/index.ts` · `process.exitCode = runCli(process.argv.slice(2), process.cwd(), (s) => console.log(s));` · ~1192), so the live server keeps the event loop — and the process — alive until idle exit or Ctrl-C.
+  - The `ui` command: `mycontext ui [--port N] [--no-open]`, registered via `registerCommand`. **Nothing shadows a registration any more:** `registry.ts`'s hand-kept `SHADOWED_BY_SWITCH` mirror went with the dispatch switch in Wave 5 (`cli/index.ts` · `switch shadows. With the switch gone there is exactly one dispatch path` · ~1550), so the only name check left is `registerCommand`'s own duplicate guard (`registry.ts` · `if (COMMANDS.has(def.name)) {` · ~47). The command starts the server in-process; the CLI main sets `process.exitCode` and never calls `process.exit` (`cli/index.ts` · `process.exitCode = runCli(process.argv.slice(2), process.cwd(), (s) => console.log(s));` · ~1614), so the live server keeps the event loop — and the process — alive until idle exit or Ctrl-C.
 
 Token-channel rules, restated where they are implemented: the **spawned** URL carries a 10-second nonce (`OPENER_NONCE_TTL_MS`); the **printed** URL (`--no-open`, or fallback when the spawn fails) carries a `PRINTED_NONCE_TTL_MS` nonce; the token itself appears in neither, and never on any process command line.
 
@@ -5013,7 +5013,7 @@ function cmdUi(ws: Workspace, args: string[], out: Emit, cwd: string): number {
   const noOpen = hasFlag(args, 'no-open');
 
   // The server outlives this function: runCli returns, the CLI main sets
-  // process.exitCode without calling process.exit (`cli/index.ts` · `process.exitCode = runCli(process.argv.slice(2)` · ~1231),
+  // process.exitCode without calling process.exit (`cli/index.ts` · `process.exitCode = runCli(process.argv.slice(2)` · ~1614),
   // and the listening socket keeps the event loop alive until idle exit.
   startUiServer({ cwd, port, onExit: () => process.exit(0) })
     .then((running) => {

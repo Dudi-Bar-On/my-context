@@ -556,7 +556,7 @@ const KNOWN_GAPS: Record<string, string[]> = {
   // **EMPTY, and deliberately written down as empty.** The walk found one
   // divergence here and it produces no name: the mockup wraps two of the four
   // description cells' label runs in `<span data-t="ln.c">` / `<span
-  // data-t="ln.s">` (`docs/design/web-ui-mockup.html` · `<td class="small"><span data-t="ln.c">which are normative</span> · <span class="m">CONST-zero-runtime-dependencies</span></td>` · ~2375)
+  // data-t="ln.s">` (`docs/design/web-ui-mockup.html` · `<td class="small"><span data-t="ln.c">which are normative</span> · <span class="m">CONST-zero-runtime-dependencies</span></td>` · ~3742)
   // and `ctx.t()` returns text nodes, so `cell.append(...ctx.t(entry.key))`
   // puts the words straight into the `td` with nothing around them.
   //
@@ -565,7 +565,7 @@ const KNOWN_GAPS: Record<string, string[]> = {
   // hook and not markup the app needs, since the app translates by calling the
   // string table rather than by rewriting attributes. And bare `span` is a kind
   // this screen draws anyway: `screenHead()` puts the verdict text in one
-  // (`src/ui/public/screens/parts.js` · `const vtext = el('span');` · ~94).
+  // (`src/ui/public/screens/parts.js` · `const vtext = el('span');` · ~509).
   // This gate compares KINDS PER SCREEN, not placement, so a run that moved
   // parents was never going to be namable here. Measured 2026-08-26: probing
   // `['span']` came back stale, which is the ledger refusing the entry itself.
@@ -603,7 +603,7 @@ const KNOWN_GAPS: Record<string, string[]> = {
   ],
   // **EMPTY, and the divergence here runs the OTHER WAY: the app draws MORE.**
   // `appendLines` and `appendRuns` put a `<br>` between every diff line
-  // (`src/ui/public/screens/work.js` · `if (index > 0) parent.append(el('br'));` · ~178 and ~186)
+  // (`src/ui/public/screens/work.js` · `if (index > 0) parent.append(el('br'));` · ~293 and ~186)
   // and the mockup's three sample rows are one line each, so it never draws
   // one. That is not decoration and not an oversight — a newline TEXT NODE
   // collapses to a space in HTML, so without the `<br>` five changed lines run
@@ -706,7 +706,7 @@ const KNOWN_GAPS: Record<string, string[]> = {
   // The mockup draws exactly one `chip ok` in this section — the `ready` row's
   // *"index line only"* verdict — and that claim is FALSE of the shipped
   // product. `isEligible`
-  // (`src/core/select.ts` · `export function isEligible(item: Item, config: Config): boolean {` · ~198)
+  // (`src/core/select.ts` · `export function isEligible(item: Item, config: Config): boolean {` · ~495)
   // admits `active` only, so a `ready` procedure reaches neither the injected
   // block nor an index line; `src/ui/proc-model.ts` says *"IT IS THE MOCKUP
   // THAT IS WRONG"* in its own words and serves the correction as the
@@ -742,7 +742,7 @@ const KNOWN_GAPS: Record<string, string[]> = {
   // **EMPTY. The divergence is one CELL, and a cell is not a kind.**
   // `bucketRow` draws `<td class="small">—</td>` in the Example column where
   // the mockup puts a real id in `<td class="m">`, three rows, three em dashes
-  // (`src/ui/public/screens/port.js` · `tr.append(label, el('td', 'small', '—'));` · ~399).
+  // (`src/ui/public/screens/port.js` · `tr.append(label, el('td', 'small', '—'));` · ~427).
   //
   // **ACCEPTED.** The endpoint's own disclosure says it: *"The bucket NAMES are
   // served; the example ids beside them in the mockup are not, and cannot be."*
@@ -750,7 +750,7 @@ const KNOWN_GAPS: Record<string, string[]> = {
   // has an id to put there — the mockup's three are illustrations of an import
   // nobody ran. An em dash where the server can supply no value is the ruling
   // `status.js` already carries for its two unmeasured rows
-  // (`src/ui/public/screens/status.js` · `row.append(label, value === null ? el('td', 'small', '—') : el('td', 'm', num(value)));` · ~112),
+  // (`src/ui/public/screens/status.js` · `row.append(label, value === null ? el('td', 'small', '—') : el('td', 'm', num(value)));` · ~139),
   // and inventing an id inside a cell that reads as data would be worse than the
   // dash by exactly the amount a reader would trust it.
   //

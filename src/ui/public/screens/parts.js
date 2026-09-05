@@ -479,7 +479,7 @@ function drawnSpan(host) {
  * composite shipped able to draw only one.** Nineteen of the twenty-one screens
  * open ✅; `data-p="status"` and `data-p="learn"` open ⚠️ — a recorded
  * exception and a conditional pass, which is a different verdict and says so
- * (`docs/design/web-ui-mockup.html` · `<span class="verdict">⚠️ <span data-t="st.v">` · ~1912).
+ * (`docs/design/web-ui-mockup.html` · `<span class="verdict">⚠️ <span data-t="st.v">` · ~3259).
  * Defaulted rather than required, so the three screens already calling this
  * function are untouched.
  *
@@ -624,9 +624,9 @@ export function tierChip(tier) {
  * caller here and in `lib/command-actions.js` already had a translated screen
  * around it; threading a parameter through six of them to reach one paragraph
  * would have been six edits for one sentence. `globalThis.myctx` is what
- * `app.js` publishes (`src/ui/public/app.js` · `  window.myctx = {` · ~2556),
+ * `app.js` publishes (`src/ui/public/app.js` · `  window.myctx = {` · ~7291),
  * and it is the same shape `screens/packs.js` already relies on for `document`
- * (`src/ui/public/screens/packs.js` · `export function isolated(text, doc = globalThis.document) {` · ~192).
+ * (`src/ui/public/screens/packs.js` · `export function isolated(text, doc = globalThis.document) {` · ~204).
  * Where there is no shell — `node --test` importing this module with a
  * stand-in `document` — the message is drawn bare, which is exactly what
  * shipped before and is never worse than it.

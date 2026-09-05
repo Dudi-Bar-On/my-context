@@ -49,7 +49,7 @@ function url(pathname: string, qs = ''): URL {
 /**
  * Every kind at zero — spelled out rather than derived from `AUDIT_KINDS`, so
  * that a kind added to the vocabulary reddens this file instead of quietly
- * widening what it asserts. There are SIX (`core/audit.ts` · `export const AUDIT_KINDS: AuditKind[] = [` · ~339).
+ * widening what it asserts. There are SIX (`core/audit.ts` · `export const AUDIT_KINDS: AuditKind[] = [` · ~647).
  */
 const NO_KINDS = {
   mutation: 0, injection: 0, hook: 0, focus: 0, access: 0, progress: 0, execution: 0,

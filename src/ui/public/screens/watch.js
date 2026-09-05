@@ -48,7 +48,7 @@
  *     is the one the view-model's own resync obligation names: after a
  *     rotation the tail resets to the current EOFs, so what landed in the gap
  *     is NOT coming down the stream and only a projection read can fill it
- *     (`lib/viewmodel.js` · `The only way to fill that hole is to refetch the backlog through the query` · ~131).
+ *     (`lib/viewmodel.js` · `The only way to fill that hole is to refetch the backlog through the query` · ~971).
  *   - **The live feed** is `GET /api/watch/stream`, through `ctx.subscribeStream()`
  *     since `plan:live seq:1` — the shell opens that ONE connection and this
  *     screen asks for every record kind (`'*'`), rather than opening a fetch
@@ -83,7 +83,7 @@
  * ── THE PULSE'S COLOURS — the ruling this task was left to make ────────────
  *
  * `/api/watch/volume` ships the buckets and names no colour, deliberately
- * (`ui/watch-model.ts` · `What colour any of this is drawn in is NOT decided here and must not be.` · ~72),
+ * (`ui/watch-model.ts` · `What colour any of this is drawn in is NOT decided here and must not be.` · ~111),
  * and the task item says the ruling falls to *"whoever builds `#pulse`"*
  * because four meaning hues do not divide evenly into six record kinds.
  *
@@ -424,7 +424,7 @@ function kindChip(kind) {
  * segments are drawn in the order the endpoint declares them, which is
  * `AUDIT_KINDS`' own order — the server builds each breakdown from that one
  * declaration
- * (`ui/watch-model.ts` · `byKind: Object.fromEntries(AUDIT_KINDS.map((k) => [k, 0])) as Record<AuditKind, number>,` · ~80).
+ * (`ui/watch-model.ts` · `byKind: Object.fromEntries(AUDIT_KINDS.map((k) => [k, 0])) as Record<AuditKind, number>,` · ~123).
  *
  * Mirrored by PROJECTION for RTL, never by a transform: `scale(-1,1)` would
  * reverse the marks' own geometry too. The page direction is `<html dir>`,
@@ -1209,7 +1209,7 @@ export async function render(root, ctx) {
    * **Absent is not zero**, which is the whole reason the void exists — the
    * field is optional on `AuditRecord` and records written before 1.0.1 never
    * had it, so a zero-length bar would be a claim the record does not make
-   * (`core/audit.ts` · `ABSENT on records written before this field existed, and absence means` · ~366).
+   * (`core/audit.ts` · `ABSENT on records written before this field existed, and absence means` · ~958).
    * `describeRecord` is where that decision is made and tested; this only draws
    * the two states it returns.
    *

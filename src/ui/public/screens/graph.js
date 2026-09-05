@@ -25,7 +25,7 @@
  * `.superseded` / `.more`, backed by `--edge-3`, `--ink`, `--faint`, `--gold`
  * and `--crit` — and a class is the only form `forced-colors` can restate,
  * since SVG `stroke`/`fill`
- * (`docs/superpowers/plans/2026-08-21-web-ui-visual-repaint.md` · `are NOT force-adjusted in Chromium` · ~560).
+ * (`docs/superpowers/plans/2026-08-21-web-ui-visual-repaint.md` · `are NOT force-adjusted in Chromium` · ~735).
  * The reconciliation note asks for `--pane-edge` on a plain edge; the mockup's
  * own `.edge` rule is `stroke:var(--edge-3)` and the mockup is the design of
  * record, so `--edge-3` stands. Neither hex appears in this file, and neither

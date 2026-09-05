@@ -182,7 +182,7 @@ function json(v: unknown): string {
  * the part whose length somebody else chose.
  *
  * 256, the number this codebase already settled on for exactly this job
- * (`ui/security.ts` · `export const REFUSAL_VALUE_MAX = 256;` · ~291). It is
+ * (`ui/security.ts` · `export const REFUSAL_VALUE_MAX = 256;` · ~354). It is
  * restated here rather than imported because `src/pack/` does not depend on
  * `src/ui/`, which is the same call `cli/commands/pack.ts` made.
  */

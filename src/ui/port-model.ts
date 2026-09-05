@@ -42,7 +42,7 @@ import { registerRoute, type ApiContext, type JsonResult } from './routes.ts';
 
 /**
  * The three chips the table draws, and the whole vocabulary of them
- * (`en.js` · `'port.yes': 'travels',` · ~414, `port.filtered` and `port.no`
+ * (`en.js` · `'port.yes': 'travels',` · ~1175, `port.filtered` and `port.no`
  * beside it). A row is never assigned one directly: see `verdictOf`.
  */
 export type PortVerdict = 'travels' | 'filtered' | 'rebuilt';
@@ -113,7 +113,7 @@ export interface PortBody {
  * `buildBundle` produces one file per selected item plus the three root files
  * and has no directory walk, so it knows what it assembled and cannot know
  * what the rest of `.my_context/` holds. The CLI carries the same fact in its
- * own words and its own list (`export.ts` · `const NOT_TRAVELLING = [` · ~101),
+ * own words and its own list (`export.ts` · `const NOT_TRAVELLING = [` · ~106),
  * which is not exported — that module registers a command at import time, so
  * a read surface cannot borrow the list without loading the CLI. Two copies of
  * one fact is a defect; it is disclosed below rather than papered over, and
@@ -135,7 +135,7 @@ const verdictOf = (row: { becomes: string | null; filtered: boolean }): PortVerd
 
 /**
  * The audit kinds that travel — one, and it is `exportableHistory`'s own
- * filter (`history.ts` · `  return filterAudit(readAudit(root), { kind: 'mutation' })` · ~447).
+ * filter (`history.ts` · `  return filterAudit(readAudit(root), { kind: 'mutation' })` · ~452).
  *
  * The annotation is the pin: the day `AuditKind` stops having a `mutation`
  * member this file fails to compile, rather than serving a kind the filter no

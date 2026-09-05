@@ -75,7 +75,7 @@ worth exactly that difference, and the difference is now measured rather than mo
 
 The audit note `index refresh dropped: database locked` appeared in 3/3 locked runs and 0/3
 unlocked. It lands *while the lock is held*, because the log is JSONL beside the database rather
-than a table inside it — as `inject.ts` · `// is JSONL beside the database, so nothing that stopped the refresh can` · ~609 claims.
+than a table inside it — as `inject.ts` · `// is JSONL beside the database, so nothing that stopped the refresh can` · ~768 claims.
 
 ### 1.3 The PreCompact snapshot lands in every degraded state
 
@@ -107,7 +107,7 @@ measurable, because the failing open returns immediately.
 the final line, which an injection record never reaches.
 
 Every disclosure the JIT path can raise is a `note` on an injection record
-(`src/hooks/pre-tool-use.ts` · `const noteParts: string[] = [];` · ~280):
+(`src/hooks/pre-tool-use.ts` · `const noteParts: string[] = [];` · ~362):
 
 | Disclosure | What it tells the reader |
 |---|---|
@@ -161,8 +161,8 @@ from ids, paths and errno strings, so their longest token is unbounded:
 | full note, markdown fallback | 94 | 100 — fits, barely |
 | full note, refresh drop | 100 | 100 — zero slack |
 | full note, `dropped by the fallback (first: <file>)` | 113 | **186 — budget unreachable** |
-| full note, `cross-layer duplicate id(s):` — `inject.ts` · `cross-layer duplicate id(s):` · ~740 | 123 | **178 — budget unreachable** |
-| full note, `SNAPSHOT WRITE FAILED (<msg>)` — `pre-compact.ts` · `SNAPSHOT WRITE FAILED (${reason}).` · ~160 | 123 | **209 — budget unreachable** |
+| full note, `cross-layer duplicate id(s):` — `inject.ts` · `cross-layer duplicate id(s):` · ~917 | 123 | **178 — budget unreachable** |
+| full note, `SNAPSHOT WRITE FAILED (<msg>)` — `pre-compact.ts` · `SNAPSHOT WRITE FAILED (${reason}).` · ~234 | 123 | **209 — budget unreachable** |
 
 Three real note shapes push the floor past the point where `table()` stops narrowing at all, so
 appending them trades a silent wrong answer for the rewrap failure `list --full` exists to avoid.
@@ -189,10 +189,10 @@ rests on `seen`:
 
 | The call | The key it passes |
 |---|---|
-| `src/hooks/pre-tool-use.ts` · `recordAudit(ws.projectRoot, {` · ~302 | the raw `session_id` |
-| `src/hooks/pre-tool-use.ts` · `appendSeen(ws.projectRoot, dedupeKey, selection.full.map((e) => ({` · ~330 | `dedupeKey` — `session_id`, then `::` and `agent_id` when there is one |
+| `src/hooks/pre-tool-use.ts` · `recordAudit(ws.projectRoot, {` · ~384 | the raw `session_id` |
+| `src/hooks/pre-tool-use.ts` · `appendSeen(ws.projectRoot, dedupeKey, selection.full.map((e) => ({` · ~412 | `dedupeKey` — `session_id`, then `::` and `agent_id` when there is one |
 
-`ledgerKey` (`src/hooks/io.ts` · `export function ledgerKey(input: HookInput): string | null {` · ~208) appends `agent_id` when present, because a subagent begins with
+`ledgerKey` (`src/hooks/io.ts` · `export function ledgerKey(input: HookInput): string | null {` · ~214) appends `agent_id` when present, because a subagent begins with
 an empty context window; its docblock records the two-directional bug that motivated it. Observed
 during the live pass: eight concurrent subagents produced **eight separate seen files** alongside the
 parent's, all under one `session_id`.
@@ -206,7 +206,7 @@ Recommended amendment to §9.5: name the fourth key and its scope, so an impleme
 does not discover it. Suggested wording:
 
 > The same `session_id` keys the ledger, the audit records and the status-line tee. The **seen file
-> is keyed on `session_id` + `agent_id`** (`ledgerKey`, `io.ts` · `return input.agent_id ?` · ~210), because dedupe is per context
+> is keyed on `session_id` + `agent_id`** (`ledgerKey`, `io.ts` · `return input.agent_id ?` · ~216), because dedupe is per context
 > window rather than per session: a subagent shares the session id and starts with an empty window.
 > `/api/select` passes the parent's `seen`, so the preview is of the **parent thread**, and the
 > screen says so.
@@ -246,7 +246,7 @@ fourteen-task phase (`55ac96a`), and §1 above verifies it by execution. The com
 design artifacts (`d08cd04`) distinguishes shipped work from v2.0 work in its message, but a reader
 opening the file is told the opposite.
 
-**5.2 §0.5 of the same document** flagged that `src/core/audit.ts` · `audit log and this one opens no database: the write is owned by` · ~897 cited a
+**5.2 §0.5 of the same document** flagged that `src/core/audit.ts` · `audit log and this one opens no database: the write is owned by` · ~1720 cited a
 `mycontext audit replay-ledger` command that did not exist. It exists now — §4.2 built it. It is
 also the subject of finding `A-037` from the campaign, where the README described it as rebuilding
 the ledger whole when it tops up incrementally; corrected in `1.0.1`.

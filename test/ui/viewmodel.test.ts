@@ -282,7 +282,7 @@ test('createSseParser: CRLF and lone-CR are line terminators too', async () => {
   // Lone CR, the third terminator. The cost of holding it is exactly one frame
   // of latency at a chunk boundary, and only against a server that terminates
   // with CR alone — ours writes LF, in one place
-  // (`ui/watch-model.ts` · `function sseSend(res: ServerResponse, event: string, data: unknown): void {` · ~635).
+  // (`ui/watch-model.ts` · `function sseSend(res: ServerResponse, event: string, data: unknown): void {` · ~912).
   feed('event: record\rdata: {"op":"manual"}\r\r');
   assert.equal(seen.length, 2, 'the frame is complete, but its last byte is an ambiguous CR');
   feed(':');  // any byte that is not an LF resolves it
@@ -345,7 +345,7 @@ test('describeRecord: tokens absence is the not-recorded STATE, zero is the numb
 
 /**
  * There are SIX kinds, not four
- * (`core/audit.ts` · `export const AUDIT_KINDS: AuditKind[] = [` · ~339), and
+ * (`core/audit.ts` · `export const AUDIT_KINDS: AuditKind[] = [` · ~647), and
  * this plan's own prose says four in several places. `access` and `progress`
  * are the two that were left out, so they are the two most likely to be
  * described by a branch written for something else: both must come back with
@@ -648,7 +648,7 @@ test('sparkline: the degenerate series a real endpoint answers with', async () =
  * exists because a rotation recreates `audit.jsonl` at the same path at a size
  * that need not be smaller, so nothing shrinks. The tail resets to the current
  * EOFs rather than replaying, so what landed in the gap is NOT on this stream
- * (`ui/watch-model.ts` · `if (result.resync) sseSend(res, 'resync', {});` · ~700).
+ * (`ui/watch-model.ts` · `if (result.resync) sseSend(res, 'resync', {});` · ~1022).
  * The screen has to refetch its backlog through the query surface, which reads
  * the projection and is immune to the rename — and `refetchBacklog` is the one
  * place that obligation is written down where a test can reach it.

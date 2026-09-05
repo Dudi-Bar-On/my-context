@@ -1131,7 +1131,7 @@ function defaultSession(root: string | null, candidates: SessionSummary[]): stri
  * The NAME is kept as an alias rather than collapsed into `SeenLine` at the use
  * site, because it says something `SeenLine` does not: a line in this response
  * is one DELIVERY, not one item. `SeenLine`
- * (`src/core/seen-file.ts` · `export interface SeenLine {` · ~27) is the file
+ * (`src/core/seen-file.ts` · `export interface SeenLine {` · ~44) is the file
  * format, read by `/api/select` for a different question; anything that is ever
  * genuinely per-delivery in this response belongs here and not there.
  */

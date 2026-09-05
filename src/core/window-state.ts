@@ -56,7 +56,7 @@ export function clearWindowState(root: string, sessionId: string): string {
     // A write the product must not lose can afford ~2.1 s of backoff; both
     // callers of this function run inside a hook with a hard kill measured in
     // seconds — and the `SessionEnd` caller inside 1.5 s of platform abort it
-    // cannot raise (`hooks/session-end.ts` · `THE BUDGET IS 1,500 ms` · ~20) —
+    // cannot raise (`hooks/session-end.ts` · `THE BUDGET IS 1,500 ms` · ~23) —
     // and its worst outcome is a re-restore.
     retryOnTransientFsError(() => rmSync(snapshotPath(root, sessionId)), SEEN_CLEAR_ATTEMPTS);
     snapshotClause = 'the restore snapshot for this session was removed too';
