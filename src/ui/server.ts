@@ -84,9 +84,9 @@ import { registerProcedureRoutes } from './proc-model.ts';
 import { readGitInfo } from './git-info.ts';
 import { IDLE_MS, IdleMonitor } from './idle.ts';
 import {
-  apiCoverage, apiDecay, apiDoctor, apiGraph, apiHelp, apiInjected, apiItem, apiItems,
-  apiRender, apiSelect, apiSessions, apiSimulate, apiSimulateSweep, apiStatus, apiTags,
-  apiTutorials,
+  apiCoverage, apiDecay, apiDoc, apiDocList, apiDoctor, apiGraph, apiHelp, apiInjected, apiItem,
+  apiItems, apiRender, apiSelect, apiSessions, apiSimulate, apiSimulateSweep, apiStatus, apiTags,
+  apiTutorials, apiTutorialDoc,
 } from './read-model.ts';
 import { registerFlagRoutes } from './read-model-flags.ts';
 import { registerConfigRoutes } from './read-model-config.ts';
@@ -474,10 +474,20 @@ export function registerReadRoutes(): void {
   // `ItemSummary` carries no tags and widening it would put a 431-token
   // vocabulary on every screen that lists items.
   registerRoute('GET', '/api/tags', json(apiTags));
-  // `screens/tut.js`'s twelve EN/HE cells, computed against the two tutorial
-  // files instead of hard-coded in the module —
-  // `TASK-no-endpoint-serves-tutorial-state-so-twelve-cells-are-hard`.
+  // `screens/tut.js`'s list, one row per `docs/tutorials/manifest.json` entry
+  // — `TASK-get-api-tutorials-reads-the-manifest-and-adds-a-hebrew`
+  // (`plan:tuts seq:2`), widened from the six hard-coded rows
+  // `TASK-no-endpoint-serves-tutorial-state-so-twelve-cells-are-hard` shipped.
   registerRoute('GET', '/api/tutorials', json(apiTutorials));
+  // One tutorial's markdown, by manifest id — `TASK-get-api-doc-colon-id-
+  // serves-one-tutorial-by-manifest-id` (`plan:tuts seq:3`). NOT
+  // `/api/doc/:id`: that path already serves a wider, differently-keyed
+  // manifest (`apiDoc` below); see `apiTutorialDoc`'s own header for why this
+  // is nested under `/api/tutorials` instead of colliding with it.
+  registerRoute('GET', '/api/tutorials/:id', {
+    kind: 'json',
+    handle: (ctx) => apiTutorialDoc(ctx.ws, ctx.url, { id: ctx.params['id'] ?? '' }),
+  });
   registerRoute('GET', '/api/session/:session/injected', {
     kind: 'json',
     handle: (ctx) => apiInjected(ctx.ws, ctx.url, { session: ctx.params['session'] ?? '' }),
@@ -489,6 +499,16 @@ export function registerReadRoutes(): void {
   registerRoute('GET', '/api/help/:topic', {
     kind: 'json',
     handle: (ctx) => apiHelp(ctx.ws, ctx.url, { topic: ctx.params['topic'] ?? '' }),
+  });
+  // The Documentation screen's manifest — `docsys/4`/`docsys/5`/`docsys/6`,
+  // `plan:walk seq:25`. `/api/doc` lists every document the wide glob over
+  // `docs/`, `reports/` and `README.md` admits, with no markdown body;
+  // `/api/doc/:id` serves one, by an id looked up in that same manifest —
+  // see `read-model.ts`'s section header for the full security argument.
+  registerRoute('GET', '/api/doc', json(apiDocList));
+  registerRoute('GET', '/api/doc/:id', {
+    kind: 'json',
+    handle: (ctx) => apiDoc(ctx.ws, ctx.url, { id: ctx.params['id'] ?? '' }),
   });
 
   // Plan 2's Work read model, registered INSIDE this guarded block rather than

@@ -261,6 +261,51 @@ const KNOWN_LITERALS: { file: string; text: string; verdict: Verdict; reason: st
       + 'which is prose. A tooltip is read by a person and is translatable — `data-t-title` '
       + 'exists in the design of record for exactly this. Filed.',
   },
+  // Rung 4's event-path half (`TASK-injection-preview-rung-4-of-the-gate-
+  // ladder-can-never-be`): four sentences the read model can now measure and
+  // the string tables cannot yet carry, because `src/ui/public/strings/**` is
+  // another lane's file this task was told not to touch. Reported to the
+  // owner for centralising rather than added here — the same posture
+  // `preview.notrun`/`preview.notrunn` held before they were keyed.
+  {
+    file: 'preview.js',
+    text: 'For this file, no item’s own scope excluded it — a measured zero.',
+    verdict: 'unkeyed',
+    reason: 'The measured-zero clause for rung 4\'s event-path half, on both the ladder '
+      + '(`rungSentence`) and the `Not delivered` card (`drawSpilled`) — one sentence, two '
+      + 'sites, because a reader can land on either first. Proposed key `preview.rungscope0`; '
+      + 'proposed Hebrew: "בקובץ הזה, אף פריט לא הודר בגלל ההיקף שלו — אפס שנמדד."',
+  },
+  {
+    file: 'preview.js',
+    text: `For this file, ${HOLE} more item(s) were excluded because their own scope did not `
+      + 'match it. Named under Not delivered below.',
+    verdict: 'unkeyed',
+    reason: 'The measured-N clause on the LADDER (`rungSentence`), pointing at the card below '
+      + 'it. Proposed key `preview.rungscopen`; proposed Hebrew: "בקובץ הזה, {n} פריטים נוספים '
+      + 'הודרו מפני שההיקף שלהם לא תאם אותו. מפורטים למטה בכרטיס \'לא נמסר\'."',
+  },
+  {
+    file: 'preview.js',
+    text: `For this file, ${HOLE} more item(s) were excluded because their own scope did not `
+      + 'match it. Named below.',
+    verdict: 'unkeyed',
+    reason: 'The measured-N clause on the `Not delivered` CARD (`drawSpilled`) — shorter than '
+      + 'the ladder\'s own, because this card\'s heading already says `Not delivered`. Proposed '
+      + 'key `preview.rungscopeCard`; proposed Hebrew: "בקובץ הזה, {n} פריטים נוספים הודרו מפני '
+      + 'שההיקף שלהם לא תאם אותו. מפורטים למטה."',
+  },
+  {
+    file: 'preview.js',
+    text: `matchesScope refused it for this file: its own scope (${HOLE}) does not include it.`,
+    verdict: 'unkeyed',
+    reason: 'The ladder\'s diagnosis line when the picked rung-4 specimen is an event-path '
+      + 'refusal rather than the item-level one — `pickedItem.phrase` would otherwise print '
+      + '`injection()`\'s item-level verdict ("injected when work touches …"), which is true in '
+      + 'general and wrong for the one file the reader is looking at. Proposed key '
+      + '`preview.gScopePath`; proposed Hebrew: "matchesScope דחה אותו עבור הקובץ הזה: ההיקף '
+      + 'שלו ({scope}) אינו כולל אותו."',
+  },
   // The four ribbon hints — the range hint (two nodes), the no-spill hint, the
   // index hint and the spill hint (also two nodes) — are GONE from this ledger
   // too: `preview.rbRange`, `preview.rbFit`, `preview.rbIndex` and

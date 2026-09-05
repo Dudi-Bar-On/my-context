@@ -749,12 +749,28 @@ const READ_ROUTES = (from: { item: string; session: string | null }): Probe[] =>
   // why it is the cheapest entry on this list and still has to be on it: a
   // route nobody probes is a route nothing proves read-only.
   '/api/flags',
-  // The Tutorials screen's twelve computed cells
-  // (`TASK-no-endpoint-serves-tutorial-state-so-twelve-cells-are-hard`). It
-  // takes no parameters and reads two repository files by path, never the
-  // index or the ledger — probed here so that reading them is proven never to
+  // The Tutorials screen's list, one row per manifest entry
+  // (`TASK-get-api-tutorials-reads-the-manifest-and-adds-a-hebrew`,
+  // `plan:tuts seq:2`). It takes no parameters and reads the checked-in
+  // manifest plus, per row, two repository files by path — never the index
+  // or the ledger — probed here so that reading them is proven never to
   // write either.
   '/api/tutorials',
+  // One tutorial's markdown by manifest id (`plan:tuts seq:3`). This
+  // fixture's repository carries no `docs/tutorials/manifest.json`, so the
+  // probe exercises the "manifest could not be read" refusal path — the one
+  // place this route could be tempted to create the thing it was asked for.
+  '/api/tutorials/not-a-real-tutorial',
+  // The Documentation screen's manifest (`docsys/4`/`docsys/5`/`docsys/6`,
+  // `plan:walk seq:25`). `/api/doc` walks `docs/`, `reports/` and
+  // `README.md` on every call — this fixture's repository has none of the
+  // three, so the probe exercises the empty-manifest path, still a real walk
+  // of the fixture's repo root. `/api/doc/:id` is probed on an id the
+  // (empty) manifest cannot name, which is every id in this fixture, so it
+  // exercises the refusal path — the one place a route could be tempted to
+  // create the thing it was asked for.
+  '/api/doc',
+  '/api/doc/not-a-real-document.md',
 ];
 
 /** Does a registered path template match this concrete pathname? */

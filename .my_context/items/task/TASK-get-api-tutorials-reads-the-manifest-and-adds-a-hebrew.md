@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: The tutorials list endpoint reads the generated manifest instead of six hard-coded rows, and adds a rollup stating how many tutorials have Hebrew content.
-summary_of: 194c7fe86c1dd431
+summary_of: ad25c2d85de99aa6
 scope:
   - src/ui/read-model.ts
 tags:
@@ -16,19 +16,20 @@ tags:
   - docs
   - "plan:tuts"
   - "seq:2"
-  - "state:todo"
+  - "state:done"
 origin: human
 source_file: null
 source_anchor: null
 source_checksum: null
 valid_from: 2026-09-05
 valid_until: null
-checksum: ebe6f4bfd0b59b17
+checksum: 70272e0b9620b915
 plan: tuts
 seq: "2"
-state: todo
+state: done
 priority: "2"
 needs: tuts/1
+verified_on: 2026-09-05
 ---
 
 # GET api tutorials reads the manifest and adds a Hebrew rollup

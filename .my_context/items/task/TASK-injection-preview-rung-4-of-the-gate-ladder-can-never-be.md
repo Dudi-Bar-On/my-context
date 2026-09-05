@@ -16,17 +16,17 @@ tags:
   - api
   - "plan:walk"
   - "seq:103"
-  - "state:todo"
+  - "state:doing"
 origin: agent
 source_file: null
 source_anchor: null
 source_checksum: null
 valid_from: 2026-08-29
 valid_until: null
-checksum: 2bdf32a919b2e10a
+checksum: ea149023102bf7e1
 plan: walk
 seq: "103"
-state: todo
+state: doing
 priority: "2"
 progress: "0"
 source: "plan:walk seq:27, measured against screens/preview.js and src/core/select.ts on 2026-08-29"

@@ -15,17 +15,17 @@ tags:
   - tree-parity
   - "plan:walk"
   - "seq:88"
-  - "state:todo"
+  - "state:doing"
 origin: agent
 source_file: null
 source_anchor: null
 source_checksum: null
 valid_from: 2026-08-29
 valid_until: null
-checksum: 3f7bb99e8e1479f1
+checksum: 35a82bd449e733bc
 plan: walk
 seq: "88"
-state: todo
+state: doing
 priority: "2"
 progress: "0"
 source: "plan:walk seq:27, measured against src/ui/public/screens/learn.js on 2026-08-29"

@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: A new endpoint serves one tutorial's markdown by a manifest-assigned id, so no path from the browser ever reaches the filesystem.
-summary_of: 4fc558db3e1f14e2
+summary_of: bfc29c9c34f76ff9
 scope:
   - src/ui/server.ts
   - src/ui/read-model.ts
@@ -18,19 +18,20 @@ tags:
   - security
   - "plan:tuts"
   - "seq:3"
-  - "state:todo"
+  - "state:done"
 origin: human
 source_file: null
 source_anchor: null
 source_checksum: null
 valid_from: 2026-09-05
 valid_until: null
-checksum: 29fbcbad3481a97c
+checksum: d366e44f07f109b8
 plan: tuts
 seq: "3"
-state: todo
+state: done
 priority: "2"
 needs: tuts/1
+verified_on: 2026-09-05
 ---
 
 # GET api doc colon id serves one tutorial by manifest id

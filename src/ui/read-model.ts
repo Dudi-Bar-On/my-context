@@ -85,6 +85,12 @@ import {
   type InjectionEvent, type SessionSummary, type Usage,
 } from '../core/ledger.ts';
 import { isFocusActive, isLoadBearing, readFocus, type Focus } from '../core/focus.ts';
+// The one normalizer `jitTarget` (`core/select.ts`) applies to `ctx.path` before
+// `matchesScope` ever sees it. Not re-derived: `core/search.ts` already calls
+// `matchesScope(item, normalizePosix(filters.path), config)` the same way from
+// outside `select.ts`, which is the precedent for a second caller reaching for
+// the public path utility rather than for an unexported target-builder.
+import { normalizePosix } from '../core/paths.ts';
 import { renderSelection } from '../core/render.ts';
 import { pendingRevisionCounts, pendingRevisionSummaries } from '../core/revision-log.ts';
 import {
@@ -118,6 +124,7 @@ import { searchableRelationTypes } from '../core/search.ts';
 import { RETIRED_STATUSES } from '../core/select.ts';
 import { listRepoFiles, runChecks, type Finding } from '../doctor/checks.ts';
 import { helpTopic, HELP_TOPICS } from '../help/index.ts';
+import { loadTutorialManifest, type TutorialManifestEntry, type TutorialTier } from '../core/tutorial-manifest.ts';
 import type { Budgets, Config } from '../core/config.ts';
 import type { Item } from '../core/types.ts';
 import type { Workspace } from '../core/workspace.ts';
@@ -526,6 +533,78 @@ export function seenFilteredIds(items: Item[], ctx: SelectContext, config: Confi
     .map((i) => i.id);
 }
 
+/**
+ * **The ids `matchesScope` removed for THIS EVENT'S PATH — rung 4's per-event
+ * half, which `ItemSummary.gate` can never carry and which rode on no
+ * endpoint until now** (`TASK-injection-preview-rung-4-of-the-gate-ladder-
+ * can-never-be`).
+ *
+ * ── THE DEFECT THIS CLOSES, AND THE ONE IT DOES NOT ─────────────────────────
+ *
+ * `injection()` (`cli/commands/injection.ts`) answers the `scope` gate with no
+ * event in hand, so `ItemSummary.gate === 'scope'` can only ever mean the
+ * ITEM-LEVEL refusal — an unscoped item under `scopePolicy: 'inert'`, which
+ * `matchesScope` refuses on every path there is. A scoped item whose own
+ * globs simply miss the chosen path is a DIFFERENT refusal, decided inside the
+ * `jit` tier's `candidates = fresh.filter((i) => matchesScope(i, target,
+ * config))` (`core/select.ts`), and that refusal reached no response at all —
+ * an item this event's path excludes was absent from every field the preview
+ * could read, the exact gap `seenFilteredIds` closed for rung 5 above.
+ *
+ * This function closes the SAME gap for rung 4 and claims nothing about the
+ * item-level half: an id here is a `scope.length > 0` item whose own globs did
+ * not match `ctx.path`, never an unscoped item under `inert` (that item never
+ * reaches the `i.scope.length > 0` filter below, so it can never appear here
+ * and double-count against `ItemSummary.gate`'s own count). Two refusals, two
+ * disjoint sets, exactly as `TASK-injection-preview-rung-4…` asks: *"an
+ * unscoped item under an inert policy and a scoped item whose globs missed the
+ * path are two different refusals, and if they share a rung the sentence has
+ * to say so."*
+ *
+ * ── NOT A SECOND `matchesScope` ─────────────────────────────────────────────
+ *
+ * `matchesScope` is imported and called once, on the SAME target `jitTarget`
+ * would have built — `normalizePosix(ctx.path)`, the one normalizer the jit
+ * tier itself applies, called here the way `core/search.ts` already calls it
+ * from outside `select.ts` (see this file's `paths.ts` import). No glob logic,
+ * no scope-policy logic and no eligibility logic is restated: `mergeLayers`,
+ * `isEligible`, `focusHides` and `isNormative` are the same four imports
+ * `seenFilteredIds` already reuses, in the same order `select` applies them,
+ * so an item excluded above rung 4 (ineligible, rationale-tier, focus-hidden)
+ * never reaches the scope check here either.
+ *
+ * ── `fresh`, NOT `eligible` ─────────────────────────────────────────────────
+ *
+ * Filtered on `!seen.has(i.id)` before `matchesScope` runs, mirroring
+ * `select`'s own order for the jit tier: `fresh = injectable.filter(!seen)`
+ * runs BEFORE `candidates = fresh.filter(matchesScope)`. An item already
+ * removed at rung 5 is not offered to this check either way — `select` never
+ * asks `matchesScope` about it — so this function reports it nowhere rather
+ * than placing it on two rungs at once.
+ *
+ * Empty whenever the jit tier does not run — `ctx.event !== 'tool'` or no
+ * `ctx.path` — by construction rather than by a second reading of
+ * `tiersRun`'s own condition: `matchesScope` is asked about nothing when there
+ * is no path to ask it against, which is the state the ladder still reports as
+ * genuinely unmeasured (`preview.rungunk`) rather than as a zero.
+ */
+export function scopeExcludedIds(items: Item[], ctx: SelectContext, config: Config): string[] {
+  if (ctx.event !== 'tool' || ctx.path === undefined || ctx.path === null || ctx.path === '') {
+    return [];
+  }
+  const target = normalizePosix(ctx.path);
+  const seen = new Set(ctx.seen ?? []);
+  const focus = ctx.focus ?? null;
+  const eligibleAll = mergeLayers(items).filter((i) => isEligible(i, config));
+  const eligible = isFocusActive(focus)
+    ? eligibleAll.filter((i) => !focusHides(i, focus, config))
+    : eligibleAll;
+  const fresh = eligible.filter((i) => isNormative(i, config) && !seen.has(i.id));
+  return fresh
+    .filter((i) => i.scope.length > 0 && !matchesScope(i, target, config))
+    .map((i) => i.id);
+}
+
 const BUDGET_KEYS = ['pinned', 'jit', 'restored', 'continuity', 'index'] as const;
 
 /**
@@ -685,12 +764,21 @@ export function apiSimulate(ws: Workspace, url: URL): JsonResult {
     // member of it. It costs one pass over `selection.spilled`, which this
     // call already holds, against the SAME `ctx.seen`/`ctx.continuityDelivered`
     // the selection itself was computed from.
+    //
+    // **`scopeExcluded` rides HERE for `seenFiltered`'s own reason, a third
+    // time** (`TASK-injection-preview-rung-4-of-the-gate-ladder-can-never-be`):
+    // a figure ABOUT the selection — which ids the jit tier's own
+    // `matchesScope` refused for THIS event's path — rather than a member of
+    // it. One pass over `items`, against the SAME `ctx` the selection was
+    // computed from, so the count on the ladder's rung 4 and the selection
+    // beside it are answers to the same question.
     return {
       status: 200,
       body: {
         selection, budgets, costs, tiersRun: tiersRun(ctx),
         seenFiltered: seenFilteredIds(items, ctx, config),
         spillDelivered: alreadyDeliveredIds(selection.spilled, ctx),
+        scopeExcluded: scopeExcludedIds(items, ctx, config),
       },
     };
   });
@@ -3142,79 +3230,62 @@ export function apiHelp(ws: Workspace, url: URL, params: { topic: string }): Jso
 }
 
 /**
- * `GET /api/tutorials`'s body — the Tutorials screen's twelve EN/HE cells,
- * COMPUTED against the repository rather than copied from the design mockup.
+ * `GET /api/tutorials`'s body — one row per entry in
+ * `docs/tutorials/manifest.json` (`loadTutorialManifest`,
+ * `TASK-the-tutorial-manifest-and-the-surface-globs-it-derives-from`,
+ * `plan:tuts seq:1`), widened from the twelve hard-coded EN/HE cells this
+ * endpoint used to answer over six literal rows
+ * (`TASK-get-api-tutorials-reads-the-manifest-and-adds-a-hebrew`,
+ * `plan:tuts seq:2`).
  *
- * `TASK-no-endpoint-serves-tutorial-state-so-twelve-cells-are-hard`: no route
- * served `docs/TUTORIAL.md` or `docs/TUTORIAL-ADVANCED.md`, so
- * `screens/tut.js` hard-coded all twelve done-or-to-write states as content.
- * A hand check against the repository (recorded on that task) found five of
- * the six rows correspond to a real heading — `docs/TUTORIAL.md` itself for
- * the first, and chapters 2, 4, 8 and 6 of `docs/TUTORIAL-ADVANCED.md` for
- * four more — and the sixth, "when it did not fire", matches no heading in
- * either file. This endpoint is that check, run on every request instead of
- * once by hand, so a heading renamed or removed changes the screen instead of
- * leaving a claim nobody rechecks.
+ * **Existence, not correctness — carried forward unchanged.** `done` means
+ * the tutorial file exists and carries all four required section headings
+ * (`TUTORIAL_REQUIRED_HEADINGS` below, the four-part shape
+ * `REQ-the-ui-serves-and-browses-the-tutorials-and-the-tutorials` names: what
+ * it is for, how it works, from the CLI, from the UI); `todo` means the file
+ * exists but is missing at least one; `unmeasured` means the file itself does
+ * not exist yet, so there is nothing to check FOR.
  *
- * **Order is positional, not keyed.** The six entries below are `tu.1`
- * through `tu.6` in the mockup's own order (`docs/design/web-ui-mockup.html`'s
- * `<tbody>`), and `screens/tut.js` zips them against its own row list by
- * index. Nothing here names a `tu.` string key: this module has no business
- * knowing the UI's translation vocabulary, and the screen already owns it.
+ * **`heRollup` is the measured zero, drawn rather than hidden**
+ * (`STD-a-measured-zero-is-drawn-and-named-an-unmeasured-thing-is`). Today
+ * zero per-feature tutorial files exist at all, so every row's `en` reads
+ * `unmeasured` and `heRollup` reads `{ done: 0, total: 0 }` — a stated fact,
+ * not an absence a reader has to notice by counting `unmeasured` chips
+ * themselves. `total` counts only rows whose `en` is NOT `unmeasured`: a row
+ * cannot need a Hebrew translation of an English tutorial that does not exist
+ * yet, the same reasoning `tutorialRowState`'s Hebrew column used to apply
+ * per-row, now rolled up.
  */
 export type TutorialCellState = 'done' | 'todo' | 'unmeasured';
 
-/** One row's EN/HE state. See `apiTutorials` for how each is computed. */
-export interface TutorialRowState { en: TutorialCellState; he: TutorialCellState }
+/** One tutorial's list row: its manifest identity plus its EN/HE state. */
+export interface TutorialListRow {
+  id: string;
+  /** A job, not a feature name — R2. */
+  title: string;
+  tier: TutorialTier;
+  en: TutorialCellState;
+  he: TutorialCellState;
+}
 
-export interface TutorialsBody { tutorials: TutorialRowState[] }
+export interface TutorialsBody {
+  tutorials: TutorialListRow[];
+  heRollup: { done: number; total: number };
+}
 
 /**
- * One row's target: the EN file and the exact heading line its content lives
- * at, and the Hebrew counterpart file the `docs/README.he.md` naming
- * convention would put a translation at.
- *
- * `enFile` and `heading` are both `null` for exactly one row (the second: "the
- * model did the banned thing"). That is not "not written" — a claim about a
- * known target found empty — it is that no heading was ever named for this
- * row to check FOR, in either tutorial file. `heFile` is `null` there too, for
- * the same reason: there is nothing to name a Hebrew counterpart of.
+ * The four headings every tutorial's four-part shape requires
+ * (`REQ-the-ui-serves-and-browses-the-tutorials-and-the-tutorials`: "what it
+ * is for", "how it works", "from the CLI", "from the UI"). A gate can check
+ * for their PRESENCE, never for whether the prose under them is correct —
+ * the same distinction `apiTutorials`'s own header has carried since the
+ * first version of this endpoint.
  */
-interface TutorialTarget { enFile: string | null; heading: string | null; heFile: string | null }
-
-const TUTORIAL_TARGETS: TutorialTarget[] = [
-  // tu.1 — "first twenty minutes": the file's own title.
-  {
-    enFile: 'docs/TUTORIAL.md',
-    heading: '# my_context — the first twenty minutes',
-    heFile: 'docs/TUTORIAL.he.md',
-  },
-  // tu.2 — "when it did not fire": matches no heading in either file.
-  { enFile: null, heading: null, heFile: null },
-  // tu.3 — "scope and the empty scope": TUTORIAL-ADVANCED.md chapter 2.
-  {
-    enFile: 'docs/TUTORIAL-ADVANCED.md',
-    heading: '## 2. Scope, and the policy that inverts it',
-    heFile: 'docs/TUTORIAL-ADVANCED.he.md',
-  },
-  // tu.4 — "budgets and spill": chapter 4.
-  {
-    enFile: 'docs/TUTORIAL-ADVANCED.md',
-    heading: '## 4. Budgets, and what happens when they bind',
-    heFile: 'docs/TUTORIAL-ADVANCED.he.md',
-  },
-  // tu.5 — "review and revisions": chapter 8.
-  {
-    enFile: 'docs/TUTORIAL-ADVANCED.md',
-    heading: '## 8. Revisions and the review queue',
-    heFile: 'docs/TUTORIAL-ADVANCED.he.md',
-  },
-  // tu.6 — "ingest a document you already wrote": chapter 6.
-  {
-    enFile: 'docs/TUTORIAL-ADVANCED.md',
-    heading: '## 6. Pulling items out of a document you already have',
-    heFile: 'docs/TUTORIAL-ADVANCED.he.md',
-  },
+export const TUTORIAL_REQUIRED_HEADINGS = [
+  '## What it is for',
+  '## How it works',
+  '## From the CLI',
+  '## From the UI',
 ];
 
 /** `true` when `file` (repo-relative) exists and its text contains `needle`. */
@@ -3236,41 +3307,462 @@ function repoFileExists(repoRoot: string, file: string): boolean {
   }
 }
 
-function tutorialRowState(repoRoot: string, target: TutorialTarget): TutorialRowState {
-  return {
-    en: target.enFile === null || target.heading === null
-      ? 'unmeasured'
-      : repoFileContains(repoRoot, target.enFile, target.heading) ? 'done' : 'todo',
-    he: target.heFile === null
-      ? 'unmeasured'
-      : repoFileExists(repoRoot, target.heFile) ? 'done' : 'todo',
-  };
+/** One file's state: `unmeasured` (absent), `done` (present, all four
+ * required headings found) or `todo` (present, at least one missing). */
+function tutorialFileState(repoRoot: string, file: string): TutorialCellState {
+  if (!repoFileExists(repoRoot, file)) return 'unmeasured';
+  return TUTORIAL_REQUIRED_HEADINGS.every((h) => repoFileContains(repoRoot, file, h)) ? 'done' : 'todo';
 }
 
 /**
- * `GET /api/tutorials` — the tutorial table's twelve cells, computed. Reads no
- * item, no ledger and no config: two repository files and, per row, whether a
- * Hebrew counterpart of one of them exists at all.
+ * One manifest entry's row. `he` is computed only when `en` is measured at
+ * all — an English file that does not exist yet has no Hebrew counterpart to
+ * be `todo` about, so `he` reads `unmeasured` in that case rather than a
+ * guessed `todo`, exactly as the per-row Hebrew column read before this
+ * endpoint had a rollup to feed.
+ */
+function tutorialListRow(repoRoot: string, entry: TutorialManifestEntry): TutorialListRow {
+  const en = tutorialFileState(repoRoot, entry.enFile);
+  const he = en === 'unmeasured' ? 'unmeasured' : tutorialFileState(repoRoot, entry.heFile);
+  return { id: entry.id, title: entry.title, tier: entry.tier, en, he };
+}
+
+/**
+ * `GET /api/tutorials` — one row per manifest entry, plus the Hebrew rollup.
+ * Reads no item, no ledger and no config: the checked-in manifest, and per
+ * row, whether its EN and HE files exist and carry the four required
+ * headings.
  *
- * **No project, no repository to check a heading against.** Every cell
- * answers `unmeasured` rather than guessed when `ws.projectRoot` is `null`,
- * the same "unknown, never invented" reasoning `projectRootAfterOpen`'s
- * callers apply to a missing root — except this endpoint answers 200 instead
- * of throwing, because it needs no open index to say so.
+ * **No project, no manifest to read.** Answers an empty list rather than a
+ * guessed one when `ws.projectRoot` is `null` — the same "unknown, never
+ * invented" reasoning `apiDocList` already applies to its own manifest — and
+ * the same answer when the checked-in manifest itself cannot be parsed: a
+ * malformed `docs/tutorials/manifest.json` is a real defect, but it is this
+ * project's OWN defect to fix, not a reason to fail every other row this
+ * screen would otherwise draw correctly. Either way this endpoint answers 200
+ * instead of throwing, because it needs no open index to say so.
  */
 export function apiTutorials(ws: Workspace, url: URL): JsonResult {
   const bad = unknownParams(url, []);
   if (bad) return badRequest(bad);
+  const empty: TutorialsBody = { tutorials: [], heRollup: { done: 0, total: 0 } };
+  const projectRoot = ws.projectRoot;
+  if (projectRoot === null) return { status: 200, body: empty };
+  const repoRoot = path.dirname(projectRoot);
+  let manifest: TutorialManifestEntry[];
+  try {
+    manifest = loadTutorialManifest(repoRoot);
+  } catch {
+    return { status: 200, body: empty };
+  }
+  const tutorials = manifest.map((entry) => tutorialListRow(repoRoot, entry));
+  const heRollup = {
+    done: tutorials.filter((t) => t.he === 'done').length,
+    total: tutorials.filter((t) => t.en !== 'unmeasured').length,
+  };
+  const body: TutorialsBody = { tutorials, heRollup };
+  return { status: 200, body };
+}
+
+/**
+ * `GET /api/tutorials/:id` — one tutorial's markdown, served by manifest id.
+ * `TASK-get-api-doc-colon-id-serves-one-tutorial-by-manifest-id`
+ * (`plan:tuts seq:3`).
+ *
+ * **Not registered at `GET /api/doc/:id`, despite that task's own title.**
+ * That path already answers a WIDER, already-shipped manifest — `apiDoc`
+ * above, the `docs/`- and `reports/`-wide walk `DEC-markdown-is-served-from-
+ * a-manifest-rendered-by-one-renderer` also governs, keyed by repo-relative
+ * PATH rather than by a feature id and carrying no `lang` query param at all
+ * (a Hebrew document is a second, separate manifest entry there). Registering
+ * a second handler at the same path throws at server start
+ * (`routes.ts`'s own collision guard) rather than shadowing one silently, so
+ * this endpoint is nested under the list it belongs beside instead:
+ * `GET /api/tutorials` lists, `GET /api/tutorials/:id` reads one. The two
+ * doc systems are expected to converge on one manifest builder eventually,
+ * exactly as the design of record says of `walk/25` and this task — they do
+ * not converge inside this task, which does not touch `apiDoc`.
+ *
+ * **The same closed-set argument, applied to a different id space.** `id` is
+ * looked up as an exact key against `loadTutorialManifest`'s own entries;
+ * nothing here ever calls `path.join` with a client-supplied string. A `../`
+ * id, an absolute-path id, or any string not naming a manifest entry is all
+ * the same case to this handler: a lookup miss, answered by naming what IS
+ * served (the tutorial count and where to list them) rather than by
+ * resolving the string as a path and refusing what that resolved to.
+ *
+ * **`lang=he` never falls back to English.** An id whose Hebrew file does not
+ * exist on disk yet is refused by name, the same "no toggle that falls back"
+ * rule `STD-a-measured-zero-is-drawn-and-named-an-unmeasured-thing-is`'s
+ * sibling instruction states for this exact screen — never a silent serve of
+ * the English markdown under a Hebrew label.
+ *
+ * **Bounded, like every other read route here.** `TUTORIAL_DOC_MAX_CHARS`
+ * caps the markdown this endpoint returns; `truncated` says so rather than
+ * silently cutting a reader off mid-document
+ * (`INV-nothing-is-dropped-silently`, the same disclosure `coverageFiles` and
+ * `CoveragePage` already carry for the repository walk).
+ */
+export interface TutorialDocBody {
+  markdown: string;
+  title: string;
+  tier: TutorialTier;
+  lang: 'en' | 'he';
+  /** The bound (`TUTORIAL_DOC_MAX_CHARS`) was reached; `markdown` was cut there. */
+  truncated: boolean;
+}
+
+/** Far larger than any tutorial this project has ever shipped — a defensive
+ * bound, not a working limit, so `truncated` is expected to read `false`
+ * always in practice and to say so plainly the day it does not. */
+export const TUTORIAL_DOC_MAX_CHARS = 200_000;
+
+export function apiTutorialDoc(ws: Workspace, url: URL, params: { id: string }): JsonResult {
+  const bad = unknownParams(url, ['lang']);
+  if (bad) return badRequest(bad);
+  const langParam = url.searchParams.get('lang') ?? 'en';
+  if (langParam !== 'en' && langParam !== 'he') {
+    return badRequest(`lang must be "en" or "he" — got "${langParam}"`);
+  }
+  const lang = langParam;
+
+  const notFound = (message: string): JsonResult => ({ status: 404, body: { error: message } });
+
   const projectRoot = ws.projectRoot;
   if (projectRoot === null) {
-    const body: TutorialsBody = {
-      tutorials: TUTORIAL_TARGETS.map(() => ({ en: 'unmeasured', he: 'unmeasured' }) as TutorialRowState),
+    return notFound(`no tutorial "${params.id}" — this workspace has no project open, so no ` +
+      'tutorial manifest could be read.');
+  }
+  const repoRoot = path.dirname(projectRoot);
+  let manifest: TutorialManifestEntry[];
+  try {
+    manifest = loadTutorialManifest(repoRoot);
+  } catch (err) {
+    return notFound(`the tutorial manifest could not be read: ${err instanceof Error ? err.message : String(err)}`);
+  }
+  const entry = manifest.find((e) => e.id === params.id);
+  if (entry === undefined) {
+    return notFound(`no tutorial "${params.id}" — ${manifest.length} tutorial(s) in the manifest; ` +
+      'list them at GET /api/tutorials. The id is looked up as a key, never joined onto a path.');
+  }
+  const file = lang === 'en' ? entry.enFile : entry.heFile;
+  if (!repoFileExists(repoRoot, file)) {
+    return notFound(lang === 'he'
+      ? `tutorial "${entry.id}" has no Hebrew file yet (${file} does not exist) — read it with ` +
+        'lang=en. Never a silent fallback to English.'
+      : `tutorial "${entry.id}"'s English file does not exist yet (${file}).`);
+  }
+  let markdown: string;
+  try {
+    markdown = readFileSync(path.join(repoRoot, file), 'utf8').replaceAll('\r\n', '\n');
+  } catch (err) {
+    return notFound(`"${entry.id}" (${lang}) is in the manifest but its file could not be read: ` +
+      `${err instanceof Error ? err.message : String(err)}`);
+  }
+  const truncated = markdown.length > TUTORIAL_DOC_MAX_CHARS;
+  const body: TutorialDocBody = {
+    markdown: truncated ? markdown.slice(0, TUTORIAL_DOC_MAX_CHARS) : markdown,
+    title: entry.title,
+    tier: entry.tier,
+    lang,
+    truncated,
+  };
+  return { status: 200, body };
+}
+
+/* -------------------------------------------------------------------------- *
+ * The Documentation screen's manifest — `GET /api/doc` and `GET /api/doc/:id`
+ * (`TASK-serve-markdown-documents-to-the-ui-behind-a-decided-boundary`,
+ * `plan:walk seq:25`; consumed by `docsys/4`, `docsys/5`, `docsys/6`).
+ *
+ * **The boundary is the WIDE glob over `docs/` and `reports/`, plus
+ * `README.md` itself — not `watchedDocs` alone**
+ * (`DEC-the-documentation-system-is-hand-built-over-a-wide-glob`, answering
+ * the open question `docs/superpowers/specs/2026-09-05-documentation-screen-
+ * design.md` §"What settles this design" left for the owner). *"A
+ * documentation system that cannot show a report is not one, and most of
+ * what this project actually knows is written in reports."* `README.md` is
+ * named on top of the glob because it sits at the repository root, outside
+ * both `docs/` and `reports/`, and `REQ-the-two-readmes-are-the-base-of-a-
+ * documentation-system-that` calls it (with `docs/README.he.md`) "the base
+ * of the documentation system rather than two files a screen happens to
+ * show".
+ *
+ * **The manifest IS the allow-list, enforced by construction rather than by
+ * validating a string** — the same property `DEC-markdown-is-served-from-a-
+ * manifest-rendered-by-one-renderer` ruled for `/api/help/:topic`'s four
+ * topics, widened here. `buildDocManifest` walks the real filesystem once,
+ * with values IT produced; `apiDoc` below looks a client-supplied `id` up in
+ * the Map that walk built and NEVER joins the client string onto `repoRoot`
+ * itself. An id naming no entry is a lookup miss, not a path that was
+ * resolved and then refused — `../etc/passwd`, an absolute path, and an
+ * encoded traversal sequence are all just strings that are not a key.
+ *
+ * **Extends `listRepoFiles`/`coverageFiles` (`doctor/checks.ts`) rather than
+ * writing a second walk** — the ruling's own instruction: *"Extend the
+ * machinery that already derives README sections from the running program."*
+ * `coverageFiles` already gives a gitignore-aware, symlink-safe (a Dirent
+ * representing a symlink is neither `isDirectory()` nor `isFile()`, so
+ * `walkFiles` skips it by construction), bounded listing of every file in the
+ * repository; this filters that list down to `README.md` and every `.md`
+ * under `docs/` or `reports/` rather than re-walking the tree.
+ *
+ * **No copy, so no staleness to detect.** `docsys/4` asked for a refresh
+ * mechanism because its own design copied a document INTO the corpus and
+ * then had to disclose when the copy fell behind the source. This design
+ * never copies: `apiDoc` reads the file fresh off disk on every request, so
+ * the question "is the served copy stale" has no case where the answer is
+ * anything but "there is no copy" — a stronger guarantee than a staleness
+ * check, and simpler. Recorded here rather than discovered later.
+ */
+
+/** One ATX heading, in document order. `anchor` is a GitHub-style slug, with
+ * `-1`, `-2`, … appended to a repeated slug within the SAME document — the
+ * same disambiguation a real Markdown renderer's own anchor scheme uses, so
+ * a link written by hand against this document lands where a reader expects. */
+export interface DocHeading { ordinal: number; level: number; text: string; anchor: string }
+
+/** One manifest entry — a document a reader can pick, with no markdown body
+ * (that is `DocBody`'s addition, served only by `GET /api/doc/:id`). */
+export interface DocManifestEntry {
+  id: string;
+  title: string;
+  language: 'en' | 'he';
+  /** Whether `hebrewMirrorRelPath(id)` exists on disk. For a document whose
+   * own id already names a `.he.md` file, this is trivially `true` — see
+   * `hebrewMirrorRelPath`'s own doc for why that is the right answer rather
+   * than a degenerate one. */
+  hasHebrewMirror: boolean;
+  headings: DocHeading[];
+}
+
+/** `GET /api/doc/:id`'s body — one manifest entry, plus the markdown itself. */
+export interface DocBody extends DocManifestEntry { markdown: string }
+
+/** `GET /api/doc`'s body. `truncated` carries `coverageFiles`' own bound
+ * forward: a repository walk that stopped before finishing must say so
+ * rather than present a partial list as complete
+ * (`STD-a-measured-zero-is-drawn-and-named-an-unmeasured-thing-is`). */
+export interface DocListBody { documents: DocManifestEntry[]; truncated: boolean }
+
+/** A fenced code block's delimiter — matched loosely (no language tag
+ * capture) because only "are we inside one" matters here. Shared in shape
+ * with `screens/docs.js`'s own `FENCE`, which this module may not import:
+ * that file is a client module reaching for `document`, and this one must
+ * stay loadable by the MCP server (see `UI_HELP_TOPICS`'s own docblock). */
+const DOC_FENCE = /^\s*```/;
+
+/** An ATX heading line, `#` through `######`, requiring the one space
+ * CommonMark and `screens/docs.js`'s own `ATX` both require after the
+ * hashes. */
+const DOC_ATX = /^(#{1,6})\s+(.+?)\s*$/;
+
+/**
+ * `text` → a GitHub-style anchor slug: lower-cased, backtick/`*` markers and
+ * punctuation stripped, internal whitespace collapsed to a single hyphen.
+ * Underscores are KEPT, not stripped as an emphasis marker — GitHub's own
+ * slugger does the same, and this repository's headings depend on it:
+ * `# my_context` must slug to `my_context`, not `mycontext`. Unicode letters
+ * and digits (`\p{L}`, `\p{N}`) are kept rather than only ASCII, so a Hebrew
+ * heading slugs to Hebrew rather than to an empty string — this project
+ * ships a Hebrew document and an anchor scheme that only worked in English
+ * would be exactly the kind of English-first defect this whole system
+ * exists to stop shipping.
+ */
+function slugAnchor(text: string): string {
+  return text
+    .toLowerCase()
+    .replace(/[`*]/g, '')
+    .replace(/[^\p{L}\p{N}\s_-]/gu, '')
+    .trim()
+    .replace(/\s+/g, '-')
+    .replace(/-+/g, '-');
+}
+
+/**
+ * `markdown` → its ATX headings, in document order, with an ordinal, a
+ * level and a deduplicated anchor per heading. A line inside a fenced code
+ * block is never read as a heading — measured against `README.md` itself,
+ * whose worked example (§3, "quoted verbatim") fences a block containing
+ * four literal `###` lines that are prose about headings, not headings of
+ * this document.
+ */
+export function docHeadings(markdown: string): DocHeading[] {
+  const headings: DocHeading[] = [];
+  const seen = new Map<string, number>();
+  let inFence = false;
+  let ordinal = 0;
+  for (const line of markdown.split('\n')) {
+    if (DOC_FENCE.test(line)) { inFence = !inFence; continue; }
+    if (inFence) continue;
+    const match = DOC_ATX.exec(line);
+    if (match === null) continue;
+    ordinal += 1;
+    const text = match[2];
+    const base = slugAnchor(text);
+    const count = seen.get(base) ?? 0;
+    seen.set(base, count + 1);
+    headings.push({
+      ordinal, level: match[1].length, text, anchor: count === 0 ? base : `${base}-${count}`,
+    });
+  }
+  return headings;
+}
+
+/** The document's title: its first level-1 heading, or its filename with the
+ * extension dropped when it has none — `docs/2026-09-05-…-report.md`-shaped
+ * files under `reports/` routinely open on a `##` rather than a `#`. */
+function docTitle(relPath: string, headings: DocHeading[]): string {
+  return headings.find((h) => h.level === 1)?.text ?? path.basename(relPath, '.md');
+}
+
+/** `'he'` when `relPath`'s own name carries the `.he.md` convention this
+ * project already uses (`docs/README.he.md`, `docs/TUTORIAL.he.md` if it
+ * existed); `'en'` otherwise. Positional (English is the unmarked case)
+ * rather than a third `'en'` suffix, matching the naming convention itself. */
+function docLanguage(relPath: string): 'en' | 'he' {
+  return relPath.endsWith('.he.md') ? 'he' : 'en';
+}
+
+/**
+ * The Hebrew counterpart's repo-relative path, by the naming convention this
+ * project already uses in two places (`docs/README.he.md` beside
+ * `README.md`; `TUTORIAL_TARGETS`' own `heFile` above): the SAME directory,
+ * `.md` replaced by `.he.md` — except `README.md` itself, whose mirror is
+ * `docs/README.he.md`, a different directory, because the two READMEs are
+ * not siblings on disk.
+ *
+ * **For a document whose OWN id already ends `.he.md`, this returns the id
+ * unchanged**, so `hasHebrewMirror` reads `true` for it. That is a
+ * deliberate reading, not an accident of the regex: `docsys/6` tracks
+ * whether a reader can read THIS document's content in Hebrew, and a
+ * document already written in Hebrew answers that trivially yes — never the
+ * `false` a naive "does `X.he.he.md` exist" check would report, which would
+ * put the "to write" chip on the Hebrew document itself.
+ */
+function hebrewMirrorRelPath(relPath: string): string {
+  if (relPath === 'README.md') return 'docs/README.he.md';
+  if (relPath.endsWith('.he.md')) return relPath;
+  return relPath.replace(/\.md$/, '.he.md');
+}
+
+/** One manifest entry with its absolute path attached — the internal shape
+ * `buildDocManifest` returns. `absPath` is stripped before any HTTP response
+ * is built (`apiDocList`, `apiDoc`): it is a server-local filesystem detail,
+ * never a client-facing fact, and keeping it out of the wire shape is what
+ * makes "the id is a Map key, not a path" true of the RESPONSE too. */
+interface InternalDocEntry extends DocManifestEntry { absPath: string }
+
+/**
+ * Every document the wide glob admits, read fresh off disk. Called once per
+ * request rather than cached at server start: `docs/` and `reports/` hold a
+ * few hundred files at most (measured: see this task's own report), reading
+ * each is the same order of cost `apiTutorials` already pays on two files
+ * per request, and a manifest that is rebuilt every time is a manifest that
+ * can never itself go stale.
+ */
+export function buildDocManifest(
+  repoRoot: string,
+): { entries: InternalDocEntry[]; truncated: boolean } {
+  const { files, truncated } = coverageFiles(repoRoot);
+  const relPaths = files.filter((f) => f === 'README.md'
+    || ((f.startsWith('docs/') || f.startsWith('reports/')) && f.endsWith('.md')));
+
+  const entries = relPaths.map((relPath): InternalDocEntry => {
+    const absPath = path.join(repoRoot, ...relPath.split('/'));
+    let markdown: string;
+    try {
+      markdown = readFileSync(absPath, 'utf8').replaceAll('\r\n', '\n');
+    } catch {
+      // Listed by the walk a moment ago and gone (or unreadable) now — a race
+      // with a concurrent delete, not this endpoint's failure to report. An
+      // entry with no headings and no title beyond its filename is what a
+      // reader sees; `apiDoc` hits the same `readFileSync` and answers its
+      // own refusal if this id is opened.
+      markdown = '';
+    }
+    const headings = docHeadings(markdown);
+    const mirrorAbs = path.join(repoRoot, ...hebrewMirrorRelPath(relPath).split('/'));
+    let hasHebrewMirror = false;
+    try {
+      hasHebrewMirror = statSync(mirrorAbs).isFile();
+    } catch {
+      hasHebrewMirror = false;
+    }
+    return {
+      id: relPath,
+      title: docTitle(relPath, headings),
+      language: docLanguage(relPath),
+      hasHebrewMirror,
+      headings,
+      absPath,
     };
+  }).sort((a, b) => a.id.localeCompare(b.id));
+
+  return { entries, truncated };
+}
+
+/**
+ * `GET /api/doc` — the manifest, with no markdown body. The document picker
+ * `docsys/5` builds is drawn from this list; `GET /api/doc/:id` below is
+ * where its markdown is actually fetched, once a reader has picked one.
+ */
+export function apiDocList(ws: Workspace, url: URL): JsonResult {
+  const bad = unknownParams(url, []);
+  if (bad) return badRequest(bad);
+  const projectRoot = ws.projectRoot;
+  if (projectRoot === null) {
+    const body: DocListBody = { documents: [], truncated: false };
     return { status: 200, body };
   }
   const repoRoot = path.dirname(projectRoot);
-  const body: TutorialsBody = {
-    tutorials: TUTORIAL_TARGETS.map((target) => tutorialRowState(repoRoot, target)),
+  const { entries, truncated } = buildDocManifest(repoRoot);
+  const body: DocListBody = {
+    documents: entries.map(({ absPath: _absPath, ...entry }) => entry),
+    truncated,
   };
+  return { status: 200, body };
+}
+
+/**
+ * `GET /api/doc/:id` — one document's markdown, its heading index and
+ * whether it has a Hebrew mirror. `id` is looked up in the SAME manifest
+ * `apiDocList` serves; see this section's header for why that lookup is the
+ * whole security argument. A refusal NAMES what was refused and how many
+ * documents the manifest actually holds, the shape every other refusal on
+ * this server takes (`apiHelp`'s unreachable-topic 404 is the closest
+ * precedent).
+ */
+export function apiDoc(ws: Workspace, url: URL, params: { id: string }): JsonResult {
+  const bad = unknownParams(url, []);
+  if (bad) return badRequest(bad);
+  const notFound = (count: number): JsonResult => ({
+    status: 404,
+    body: {
+      error: `no document "${params.id}" — ${count} document(s) in the manifest; list them ` +
+        'at GET /api/doc. Nothing outside the manifest is ever read: the id is looked up as a ' +
+        'key, never joined onto a path.',
+    },
+  });
+  const projectRoot = ws.projectRoot;
+  if (projectRoot === null) return notFound(0);
+  const repoRoot = path.dirname(projectRoot);
+  const { entries } = buildDocManifest(repoRoot);
+  const found = entries.find((entry) => entry.id === params.id);
+  if (found === undefined) return notFound(entries.length);
+  let markdown: string;
+  try {
+    markdown = readFileSync(found.absPath, 'utf8').replaceAll('\r\n', '\n');
+  } catch (err) {
+    return {
+      status: 404,
+      body: {
+        error: `"${params.id}" is in the manifest but its file could not be read: ` +
+          `${err instanceof Error ? err.message : String(err)}`,
+      },
+    };
+  }
+  const { absPath: _absPath, ...rest } = found;
+  const body: DocBody = { ...rest, markdown };
   return { status: 200, body };
 }

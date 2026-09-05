@@ -1,6 +1,6 @@
 /**
- * **The two facts the injection preview could not draw**, and the screen module
- * that draws them.
+ * **The three facts the injection preview could not draw**, and the screen
+ * module that draws them.
  *
  *  1. `/api/simulate`'s `seenFiltered` — the ids `select` removed at rung 5,
  *     the `seen` gate. Until 2026-08-29 that removal rode on no response at all,
@@ -8,6 +8,14 @@
  *     gate had taken accounted for nowhere on the screen.
  *  2. `/api/injection-history` — when each item last really was delivered and
  *     last really did spill, out of the audit projection.
+ *  3. `/api/simulate`'s `scopeExcluded` — the ids the jit tier's own
+ *     `matchesScope` refused for THIS event's path, rung 4's event-path half
+ *     (`TASK-injection-preview-rung-4-of-the-gate-ladder-can-never-be`). The
+ *     same shape of gap as (1): a scoped item whose globs missed the chosen
+ *     path was absent from every response, so the ladder's `scope` rung could
+ *     count only the item-level refusal — an unscoped item under
+ *     `scopePolicy: 'inert'` — and had to call the rest of the question
+ *     "unmeasured" rather than draw a zero it never took.
  *
  * ── WHAT THIS FILE CAN AND CANNOT PROVE, SAID FIRST ───────────────────────
  *
@@ -36,9 +44,10 @@ import { recordAudit } from '../../src/core/audit.ts';
 import { readFocus } from '../../src/core/focus.ts';
 import { appendSeen, readSeen, seenIds } from '../../src/core/seen-file.ts';
 import { Store } from '../../src/core/store.ts';
-import { isNormative, select } from '../../src/core/select.ts';
+import { isNormative, matchesScope, select } from '../../src/core/select.ts';
+import { normalizePosix } from '../../src/core/paths.ts';
 import { resolveWorkspace, type Workspace } from '../../src/core/workspace.ts';
-import { apiSimulate, seenFilteredIds } from '../../src/ui/read-model.ts';
+import { apiSimulate, scopeExcludedIds, seenFilteredIds } from '../../src/ui/read-model.ts';
 import { apiInjectionHistory, HISTORY_ROW_CAP } from '../../src/ui/preview-history.ts';
 import type { Item } from '../../src/core/types.ts';
 
@@ -202,6 +211,123 @@ test('a focus that hides an item removes it from seenFiltered — rung 3 runs be
       unfocused.seenFiltered.sort(),
       'and the exported helper is what the endpoint serves, not a parallel arithmetic',
     );
+  } finally { f.done(); }
+});
+
+// --- 1b · scopeExcluded is the jit tier's own matchesScope refusal for a path
+
+/**
+ * **The identity that makes the field worth serving**, `seenFiltered`'s own
+ * shape: for every item that reaches the jit tier's candidate check at all
+ * (eligible, normative, not already seen, and carrying its own scope), being
+ * named in `scopeExcluded` is exactly failing `matchesScope` against the
+ * chosen path. The right-hand side is computed from `select.ts`'s own
+ * exported `matchesScope`, never a second glob implementation agreeing with
+ * the first today and drifting later.
+ */
+test('scopeExcluded is exactly the scoped items whose own globs missed the chosen path', () => {
+  const f = fixture();
+  try {
+    // Neither scoped rule's `src/**` glob reaches this path.
+    const qs = 'event=tool&path=docs/README.md&cold=1';
+    const body = apiSimulate(f.ws, url('simulate', qs)).body as { scopeExcluded: string[] };
+    assert.deepEqual([...body.scopeExcluded].sort(), [
+      'RULE-always-use-posix-paths', 'RULE-never-log-the-customer-email',
+    ]);
+
+    const expected = f.items
+      .filter((i) => i.status === 'active' && isNormative(i, f.ws.config) && i.scope.length > 0
+        && !matchesScope(i, normalizePosix('docs/README.md'), f.ws.config))
+      .map((i) => i.id);
+    assert.deepEqual([...body.scopeExcluded].sort(), expected.sort());
+  } finally { f.done(); }
+});
+
+/** A path the scoped items' own globs DO match excludes nothing by scope. */
+test('scopeExcluded is empty when the chosen path matches every scoped item\'s own glob', () => {
+  const f = fixture();
+  try {
+    const body = apiSimulate(f.ws, url('simulate', 'event=tool&path=src/db/orders.ts&cold=1'))
+      .body as { scopeExcluded: string[] };
+    assert.deepEqual(body.scopeExcluded, []);
+  } finally { f.done(); }
+});
+
+/**
+ * **The item-level refusal and the event-path refusal are disjoint, by
+ * construction.** `RULE-pin-me` is `always: true` with an empty scope, and
+ * `scopeExcludedIds` only ever considers `i.scope.length > 0` — so a
+ * `scopePolicy: 'inert'` corpus (this fixture's default policy is `global`,
+ * so nothing here is actually item-level-refused, but the FILTER is the
+ * thing under test) never lets an unscoped item reach the per-event check.
+ */
+test('an unscoped item never reaches the per-event scope check, whatever the path', () => {
+  const f = fixture();
+  try {
+    const body = apiSimulate(f.ws, url('simulate', 'event=tool&path=docs/README.md&cold=1'))
+      .body as { scopeExcluded: string[] };
+    assert.ok(!body.scopeExcluded.includes('RULE-pin-me'),
+      'RULE-pin-me carries no scope of its own — it cannot fail a glob it never declared, '
+      + 'and that refusal (if any) belongs to the item-level rung, not this one');
+    assert.ok(!body.scopeExcluded.includes('DEC-we-chose-sqlite'),
+      'a rationale-tier item never reaches the jit tier at all');
+  } finally { f.done(); }
+});
+
+/**
+ * **Genuinely unmeasured, not a hidden zero.** The jit tier never runs on
+ * anything but a `tool` event with a path — `select.ts`'s own `tiersRun` —
+ * so `matchesScope` is asked about nothing on a session-start, and
+ * `scopeExcluded` reports that as empty rather than pretending it measured a
+ * zero. The screen tells the two apart by reading `sim.tiersRun` rather than
+ * `scopeExcluded.length` alone (`preview.js`, `rungSentence`'s `jitRan`).
+ */
+test('scopeExcluded is empty on every event the jit tier does not run', () => {
+  const f = fixture();
+  try {
+    const body = apiSimulate(f.ws, url('simulate', 'event=session-start&cold=1')).body as
+      { scopeExcluded: string[]; tiersRun: string[] };
+    assert.deepEqual(body.scopeExcluded, []);
+    assert.ok(!body.tiersRun.includes('jit'),
+      'the jit tier must not have run, or an empty scopeExcluded here would be ambiguous '
+      + 'between "nothing failed" and "nothing was asked"');
+  } finally { f.done(); }
+});
+
+/**
+ * **Disjoint from `seenFiltered`, by the order `select` itself takes.**
+ * `fresh = injectable.filter(!seen)` runs before the jit tier's own
+ * `matchesScope` filter, so an item already removed at rung 5 is never asked
+ * about its scope at all — it cannot be reported as excluded at rung 4 too.
+ */
+test('an item already seen is filtered at rung 5 and never reaches the per-event scope check', () => {
+  const f = fixture();
+  try {
+    const root = f.ws.projectRoot!;
+    appendSeen(root, 'sess-scope', [
+      { id: 'RULE-always-use-posix-paths', tier: 'jit', at: '2026-08-20T10:00:00.000Z' },
+    ]);
+    const qs = 'event=tool&path=docs/README.md&session=sess-scope';
+    const body = apiSimulate(f.ws, url('simulate', qs)).body as
+      { scopeExcluded: string[]; seenFiltered: string[] };
+    assert.ok(body.seenFiltered.includes('RULE-always-use-posix-paths'));
+    assert.ok(!body.scopeExcluded.includes('RULE-always-use-posix-paths'),
+      'an item removed at rung 5 must not also be reported as excluded at rung 4 — the two '
+      + 'sets are disjoint, and select() never even asks matchesScope about it');
+    assert.ok(body.scopeExcluded.includes('RULE-never-log-the-customer-email'),
+      'the OTHER scoped item was not seen and still fails the per-event check');
+  } finally { f.done(); }
+});
+
+/** The exported helper is what the endpoint serves, not a parallel arithmetic. */
+test('scopeExcludedIds is the function apiSimulate actually calls', () => {
+  const f = fixture();
+  try {
+    const ctx = { event: 'tool' as const, path: 'docs/README.md', focus: null };
+    const direct = [...scopeExcludedIds(f.items, ctx, f.ws.config)].sort();
+    const body = apiSimulate(f.ws, url('simulate', 'event=tool&path=docs/README.md&cold=1'))
+      .body as { scopeExcluded: string[] };
+    assert.deepEqual(direct, [...body.scopeExcluded].sort());
   } finally { f.done(); }
 });
 

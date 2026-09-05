@@ -1,0 +1,484 @@
+[
+  {
+    "id": "capturing-an-item-and-the-categories",
+    "title": "Capture what you just decided, before you forget it",
+    "tier": "basic",
+    "cli": [],
+    "slash": [
+      "add-adr.md",
+      "add-assumption.md",
+      "add-constraint.md",
+      "add-contract.md",
+      "add-decision.md",
+      "add-edge-case.md",
+      "add-environment.md",
+      "add-exception.md",
+      "add-glossary.md",
+      "add-instruction.md",
+      "add-invariant.md",
+      "add-known-issue.md",
+      "add-lesson.md",
+      "add-measurement.md",
+      "add-non-goal.md",
+      "add-note.md",
+      "add-open-question.md",
+      "add-pattern.md",
+      "add-plan.md",
+      "add-procedure.md",
+      "add-reference.md",
+      "add-requirement.md",
+      "add-risk.md",
+      "add-rule.md",
+      "add-runbook.md",
+      "add-standard.md",
+      "add-task.md",
+      "add-todo.md",
+      "add-tradeoff.md",
+      "add.md"
+    ],
+    "screens": [
+      "capture.js"
+    ],
+    "categories": [
+      "adr",
+      "assumption",
+      "constraint",
+      "contract",
+      "decision",
+      "edge_case",
+      "environment",
+      "exception",
+      "glossary",
+      "instruction",
+      "invariant",
+      "known_issue",
+      "lesson",
+      "measurement",
+      "non_goal",
+      "note",
+      "open_question",
+      "pattern",
+      "plan",
+      "procedure",
+      "reference",
+      "requirement",
+      "risk",
+      "rule",
+      "runbook",
+      "standard",
+      "task",
+      "todo",
+      "tradeoff"
+    ],
+    "enFile": "docs/tutorials/capturing-an-item-and-the-categories.md",
+    "heFile": "docs/tutorials/capturing-an-item-and-the-categories.he.md"
+  },
+  {
+    "id": "reading-and-searching-the-corpus",
+    "title": "Find the item you're thinking of, from the CLI or the UI",
+    "tier": "basic",
+    "cli": [
+      "audit.ts",
+      "query.ts",
+      "search.ts"
+    ],
+    "slash": [
+      "audit.md",
+      "list-adr.md",
+      "list-assumption.md",
+      "list-constraint.md",
+      "list-contract.md",
+      "list-decision.md",
+      "list-edge-case.md",
+      "list-environment.md",
+      "list-exception.md",
+      "list-glossary.md",
+      "list-instruction.md",
+      "list-invariant.md",
+      "list-known-issue.md",
+      "list-lesson.md",
+      "list-measurement.md",
+      "list-non-goal.md",
+      "list-note.md",
+      "list-open-question.md",
+      "list-pattern.md",
+      "list-plan.md",
+      "list-procedure.md",
+      "list-reference.md",
+      "list-requirement.md",
+      "list-risk.md",
+      "list-rule.md",
+      "list-runbook.md",
+      "list-standard.md",
+      "list-task.md",
+      "list-todo.md",
+      "list-tradeoff.md",
+      "query.md",
+      "search.md",
+      "show.md"
+    ],
+    "screens": [
+      "ask.js"
+    ],
+    "categories": [],
+    "enFile": "docs/tutorials/reading-and-searching-the-corpus.md",
+    "heFile": "docs/tutorials/reading-and-searching-the-corpus.he.md"
+  },
+  {
+    "id": "checking-on-the-corpus",
+    "title": "Check whether your corpus is healthy, and what's ready to work on",
+    "tier": "basic",
+    "cli": [
+      "ack.ts",
+      "doctor.ts",
+      "ready.ts",
+      "status.ts"
+    ],
+    "slash": [
+      "doctor.md",
+      "ready.md",
+      "status.md"
+    ],
+    "screens": [
+      "doctor.js",
+      "status.js"
+    ],
+    "categories": [],
+    "enFile": "docs/tutorials/checking-on-the-corpus.md",
+    "heFile": "docs/tutorials/checking-on-the-corpus.he.md"
+  },
+  {
+    "id": "narrowing-a-session-focus",
+    "title": "Narrow what gets injected into this session",
+    "tier": "advanced",
+    "cli": [
+      "focus.ts"
+    ],
+    "slash": [
+      "focus.md"
+    ],
+    "screens": [
+      "palette.js"
+    ],
+    "categories": [],
+    "enFile": "docs/tutorials/narrowing-a-session-focus.md",
+    "heFile": "docs/tutorials/narrowing-a-session-focus.he.md"
+  },
+  {
+    "id": "injection-tiers",
+    "title": "See what my_context actually injected, and why",
+    "tier": "advanced",
+    "cli": [
+      "injection.ts"
+    ],
+    "slash": [],
+    "screens": [
+      "injected.js"
+    ],
+    "categories": [],
+    "enFile": "docs/tutorials/injection-tiers.md",
+    "heFile": "docs/tutorials/injection-tiers.he.md"
+  },
+  {
+    "id": "injection-preview-and-spilled-items",
+    "title": "Preview what a query would inject, and pull back what spilled",
+    "tier": "advanced",
+    "cli": [
+      "carry.ts"
+    ],
+    "slash": [],
+    "screens": [
+      "preview.js"
+    ],
+    "categories": [],
+    "enFile": "docs/tutorials/injection-preview-and-spilled-items.md",
+    "heFile": "docs/tutorials/injection-preview-and-spilled-items.he.md"
+  },
+  {
+    "id": "scope-and-coverage",
+    "title": "See which files and areas your corpus actually covers",
+    "tier": "advanced",
+    "cli": [],
+    "slash": [],
+    "screens": [
+      "coverage.js"
+    ],
+    "categories": [],
+    "enFile": "docs/tutorials/scope-and-coverage.md",
+    "heFile": "docs/tutorials/scope-and-coverage.he.md"
+  },
+  {
+    "id": "budgets-and-the-simulator",
+    "title": "Simulate a budget before you commit to it",
+    "tier": "advanced",
+    "cli": [],
+    "slash": [],
+    "screens": [
+      "simulate.js"
+    ],
+    "categories": [],
+    "enFile": "docs/tutorials/budgets-and-the-simulator.md",
+    "heFile": "docs/tutorials/budgets-and-the-simulator.he.md"
+  },
+  {
+    "id": "configuration",
+    "title": "Configure how my_context behaves for this project",
+    "tier": "advanced",
+    "cli": [
+      "config.ts"
+    ],
+    "slash": [],
+    "screens": [
+      "config.js"
+    ],
+    "categories": [],
+    "enFile": "docs/tutorials/configuration.md",
+    "heFile": "docs/tutorials/configuration.he.md"
+  },
+  {
+    "id": "revisions-and-the-review-queue",
+    "title": "Review a pending change before it governs",
+    "tier": "advanced",
+    "cli": [
+      "edit.ts",
+      "review.ts",
+      "revision-view.ts",
+      "supersede.ts"
+    ],
+    "slash": [
+      "discard.md",
+      "edit.md",
+      "harden.md",
+      "pin.md",
+      "promote.md",
+      "review.md",
+      "soften.md",
+      "supersede.md",
+      "unpin.md"
+    ],
+    "screens": [
+      "work.js"
+    ],
+    "categories": [],
+    "enFile": "docs/tutorials/revisions-and-the-review-queue.md",
+    "heFile": "docs/tutorials/revisions-and-the-review-queue.he.md"
+  },
+  {
+    "id": "template-packs",
+    "title": "Start a new project from a template pack",
+    "tier": "advanced",
+    "cli": [
+      "pack.ts"
+    ],
+    "slash": [],
+    "screens": [
+      "packs.js"
+    ],
+    "categories": [],
+    "enFile": "docs/tutorials/template-packs.md",
+    "heFile": "docs/tutorials/template-packs.he.md"
+  },
+  {
+    "id": "export-and-import-your-corpus",
+    "title": "Export your corpus, and import it somewhere else",
+    "tier": "advanced",
+    "cli": [
+      "export.ts"
+    ],
+    "slash": [],
+    "screens": [
+      "port.js"
+    ],
+    "categories": [],
+    "enFile": "docs/tutorials/export-and-import-your-corpus.md",
+    "heFile": "docs/tutorials/export-and-import-your-corpus.he.md"
+  },
+  {
+    "id": "linking-items-and-the-relations-graph",
+    "title": "Link two items, and see how your corpus connects",
+    "tier": "advanced",
+    "cli": [
+      "link.ts"
+    ],
+    "slash": [
+      "link.md",
+      "unlink.md"
+    ],
+    "screens": [
+      "graph.js"
+    ],
+    "categories": [],
+    "enFile": "docs/tutorials/linking-items-and-the-relations-graph.md",
+    "heFile": "docs/tutorials/linking-items-and-the-relations-graph.he.md"
+  },
+  {
+    "id": "ingesting-and-refreshing-from-a-source-file",
+    "title": "Pull items out of a document you already wrote",
+    "tier": "advanced",
+    "cli": [
+      "ingest.ts",
+      "refresh.ts"
+    ],
+    "slash": [
+      "ingest.md",
+      "refresh.md"
+    ],
+    "screens": [],
+    "categories": [],
+    "enFile": "docs/tutorials/ingesting-and-refreshing-from-a-source-file.md",
+    "heFile": "docs/tutorials/ingesting-and-refreshing-from-a-source-file.he.md"
+  },
+  {
+    "id": "lessons-staging-and-promotion",
+    "title": "Turn an incident into a lesson, staged before it governs",
+    "tier": "advanced",
+    "cli": [
+      "lesson.ts"
+    ],
+    "slash": [
+      "lesson-stage.md",
+      "lesson.md"
+    ],
+    "screens": [],
+    "categories": [],
+    "enFile": "docs/tutorials/lessons-staging-and-promotion.md",
+    "heFile": "docs/tutorials/lessons-staging-and-promotion.he.md"
+  },
+  {
+    "id": "the-inbox",
+    "title": "Triage quick captures out of the inbox",
+    "tier": "basic",
+    "cli": [
+      "inbox-promote.ts",
+      "todo.ts"
+    ],
+    "slash": [
+      "inbox-promote.md",
+      "todo.md"
+    ],
+    "screens": [],
+    "categories": [],
+    "enFile": "docs/tutorials/the-inbox.md",
+    "heFile": "docs/tutorials/the-inbox.he.md"
+  },
+  {
+    "id": "decay-finding-what-stopped-mattering",
+    "title": "Find what stopped mattering",
+    "tier": "advanced",
+    "cli": [
+      "decay.ts"
+    ],
+    "slash": [
+      "decay.md"
+    ],
+    "screens": [
+      "decay.js"
+    ],
+    "categories": [],
+    "enFile": "docs/tutorials/decay-finding-what-stopped-mattering.md",
+    "heFile": "docs/tutorials/decay-finding-what-stopped-mattering.he.md"
+  },
+  {
+    "id": "corpus-integrity-detecting-and-repairing-drift",
+    "title": "Detect and repair a corpus that drifted from disk",
+    "tier": "advanced",
+    "cli": [
+      "context.ts",
+      "repair.ts"
+    ],
+    "slash": [],
+    "screens": [],
+    "categories": [],
+    "enFile": "docs/tutorials/corpus-integrity-detecting-and-repairing-drift.md",
+    "heFile": "docs/tutorials/corpus-integrity-detecting-and-repairing-drift.he.md"
+  },
+  {
+    "id": "the-audit-log-live-stream",
+    "title": "Watch what my_context is doing, live",
+    "tier": "advanced",
+    "cli": [],
+    "slash": [],
+    "screens": [
+      "watch.js"
+    ],
+    "categories": [],
+    "enFile": "docs/tutorials/the-audit-log-live-stream.md",
+    "heFile": "docs/tutorials/the-audit-log-live-stream.he.md"
+  },
+  {
+    "id": "sessions-and-continuity",
+    "title": "Carry work from one session into the next",
+    "tier": "advanced",
+    "cli": [
+      "session.ts"
+    ],
+    "slash": [
+      "session-carry.md",
+      "session-name.md"
+    ],
+    "screens": [],
+    "categories": [],
+    "enFile": "docs/tutorials/sessions-and-continuity.md",
+    "heFile": "docs/tutorials/sessions-and-continuity.he.md"
+  },
+  {
+    "id": "the-status-line",
+    "title": "Show my_context state in your terminal's status line",
+    "tier": "advanced",
+    "cli": [
+      "statusline-install.ts",
+      "statusline-powerline.ts",
+      "statusline.ts"
+    ],
+    "slash": [],
+    "screens": [],
+    "categories": [],
+    "enFile": "docs/tutorials/the-status-line.md",
+    "heFile": "docs/tutorials/the-status-line.he.md"
+  },
+  {
+    "id": "procedures",
+    "title": "Write and run a procedure",
+    "tier": "advanced",
+    "cli": [
+      "procedure.ts"
+    ],
+    "slash": [
+      "procedure.md"
+    ],
+    "screens": [
+      "proc.js"
+    ],
+    "categories": [],
+    "enFile": "docs/tutorials/procedures.md",
+    "heFile": "docs/tutorials/procedures.he.md"
+  },
+  {
+    "id": "the-web-ui-itself",
+    "title": "Open and use the web UI",
+    "tier": "basic",
+    "cli": [
+      "ui.ts"
+    ],
+    "slash": [
+      "ui.md"
+    ],
+    "screens": [],
+    "categories": [],
+    "enFile": "docs/tutorials/the-web-ui-itself.md",
+    "heFile": "docs/tutorials/the-web-ui-itself.he.md"
+  },
+  {
+    "id": "loading-context-into-a-session",
+    "title": "Load this project's context at the start of a session",
+    "tier": "basic",
+    "cli": [],
+    "slash": [
+      "LoadMyContext.md"
+    ],
+    "screens": [],
+    "categories": [],
+    "enFile": "docs/tutorials/loading-context-into-a-session.md",
+    "heFile": "docs/tutorials/loading-context-into-a-session.he.md"
+  }
+]

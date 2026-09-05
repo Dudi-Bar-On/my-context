@@ -44,6 +44,16 @@
  * render that loses `i` is a dropped emphasis run rather than a translation
  * nobody has got to yet.
  *
+ * **The id shape flipped a second time on 2026-09-05, and `KNOWN_GAPS.learn`
+ * stayed `[]` through it.** The `span.m` this paragraph describes above was
+ * itself a deliberate choice made while `aside#pane` did not exist — kept
+ * once the pane shipped (`aa34358`, 2026-08-23) only because nobody came back
+ * to ask whether it still should be. `TASK-learn-the-categories-row-cannot-
+ * draw-the-cross-link-its-own` asked: Learn's two ids are now
+ * `button.linkid.m`, the shape the other seven screens draw, and the mockup
+ * moved with the screen — both sides of every assertion below changed
+ * together, so the gap stayed shut rather than reopening on one side.
+ *
  * ── HOW A BROWSER MODULE THAT IMPORTS `/screens/parts.js` IS IMPORTED ─────
  *
  * `screens/learn.js` is a plain browser ES module and its one import is
@@ -380,8 +390,8 @@ test('the screen GETs one help endpoint per topic, and touches no other part of 
 test('both languages draw the italic run — the Hebrew emphasis has landed', async () => {
   const drawn = kindsOf(learnSection());
   assert.deepEqual(drawn, [
-    'div.card.pane', 'div.phd', 'h2', 'i', 'p.psub', 'span', 'span.m', 'span.verdict',
-    'table', 'tbody', 'td.m', 'td.small', 'tr',
+    'button.linkid.m', 'div.card.pane', 'div.phd', 'h2', 'i', 'p.psub', 'span',
+    'span.chip.unmeas', 'span.verdict', 'table', 'tbody', 'td.m', 'td.small', 'tr',
   ], 'the mockup section changed shape — re-measure before touching the screen');
 
   // **The two languages differed HERE for two days, and this assertion was the
@@ -432,8 +442,13 @@ test('both languages draw the italic run — the Hebrew emphasis has landed', as
  * `direction:ltr; unicode-bidi:isolate`; without it the `·` this screen writes
  * before a cross-link resolves against the paragraph direction and lands on
  * the wrong side of the id.
+ *
+ * The cross-linked id is a `button.linkid.m` now, not a `span.m` — Learn's two
+ * ids used to be the one exception in the product; this task made them click
+ * like the other seven screens' ids do. `.m` still carries the isolation the
+ * measurement below is about; the shape carrying it changed.
  */
-test('every machine-text run carries .m — the topic names and the cross-linked ids', async () => {
+test('every machine-text run carries .m — the topic names and the clickable cross-linked ids', async () => {
   for (const lang of ['en', 'he'] as const) {
     const { root } = await renderLearn(lang);
     const elements = elementsOf(root);
@@ -446,24 +461,29 @@ test('every machine-text run carries .m — the topic names and the cross-linked
     assert.deepEqual(topicCells.map(textOf), ['categories', 'scope', 'capture', 'workflow'],
       `${lang}: the topic column is not four marked, untranslated topic names`);
 
-    // The cross-linked id: a `span.m`, the mockup's own shape, one per row
-    // whose join carries one.
-    const runs = elements.filter((node) => node.tag === 'span' && node.className === 'm');
+    // The cross-linked id: a `button.linkid.m`, the mockup's own shape now,
+    // one per row whose join carries one — and it carries the id a click on it
+    // would open, in `dataset.id`, the same contract every other screen's id
+    // button honours.
+    const runs = elements.filter((node) => node.tag === 'button' && node.className === 'linkid m');
     assert.deepEqual(runs.map(textOf), APP_CROSS_LINKS,
-      `${lang}: the corpus ids are not drawn as marked monospace runs`);
+      `${lang}: the corpus ids are not drawn as clickable marked monospace runs`);
+    assert.deepEqual(runs.map((r) => r.dataset.id), APP_CROSS_LINKS,
+      `${lang}: a cross-linked button does not carry the id a click on it would open`);
 
     // The separator is a SIBLING of the run, never inside it — the mockup's own
     // arrangement. Pulled inside, it joins the isolate and is laid out as part
     // of the identifier, which in the Hebrew page puts it at the far end of the
     // id instead of between the description and it.
     for (const run of runs) {
-      assert.equal(run.children.length, 0, 'an id run holds text and nothing else');
+      assert.equal(run.children.length, 1, 'an id button holds one text child and nothing else');
+      assert.equal(run.children[0]!.tag, '#text');
     }
     const cells = elements.filter((node) => node.tag === 'td' && node.className === 'small');
-    const linked = cells.filter((cell) => cell.children.some((c) => c.className === 'm'));
-    assert.equal(linked.length, 2, `${lang}: two of the four rows carry a cross-link`);
+    const linked = cells.filter((cell) => cell.children.some((c) => c.className === 'linkid m'));
+    assert.equal(linked.length, 2, `${lang}: two of the four rows carry a clickable cross-link`);
     for (const cell of linked) {
-      const marker = cell.children.findIndex((child) => child.className === 'm');
+      const marker = cell.children.findIndex((child) => child.className === 'linkid m');
       assert.equal(cell.children[marker - 1]!.tag, '#text');
       assert.equal(cell.children[marker - 1]!.textContent, ' · ',
         'the separator sits beside the run, unmarked and outside the isolate');
@@ -471,41 +491,51 @@ test('every machine-text run carries .m — the topic names and the cross-linked
   }
 });
 
-// ── 6. The rows with no id draw no cross-link, and no placeholder ──────────
+// ── 6. categories draws the honest unmeasured mark; workflow draws nothing ─
 
 /**
  * `categories` answers `{ counts, empty }` and `workflow` answers
  * `{ drafts, pendingRevisions }`. Neither carries an item id, and the module's
  * header says why inventing one would be a claim the response does not make.
- * The mockup DOES draw an id on its categories row
- * (`CONST-zero-runtime-dependencies`) — so this is the one place the app's
- * cross-links and the mockup's sit on different rows, and that divergence is
- * pinned here rather than left to be rediscovered.
+ * The mockup USED TO draw an invented id on its categories row
+ * (`CONST-zero-runtime-dependencies`) — the one place the app's cross-links
+ * and the mockup's sat on different rows. `TASK-learn-the-categories-row-
+ * cannot-draw-the-cross-link-its-own` closed that: the mockup now draws the
+ * same honest `◌` mark the app draws, and the two agree.
  */
-test('a row whose join carries no item id draws its description and stops', async () => {
+test('categories draws the honest ◌ mark, scope and capture draw clickable ids, workflow draws neither', async () => {
   const { root } = await renderLearn('en');
   const rows = elementsOf(root).filter((node) => node.tag === 'tr');
   assert.equal(rows.length, 4);
 
   const linkedRows = rows
-    .filter((row) => elementsOf(row).some((node) => node.className === 'm' && node.tag === 'span'))
+    .filter((row) => elementsOf(row).some((node) => node.className === 'linkid m' && node.tag === 'button'))
     .map((row) => textOf(row.children[0]!));
   assert.deepEqual(linkedRows, ['scope', 'capture']);
 
-  // The mockup's own two, for the record: they are NOT the same two.
-  const mockupLinked = [...learnSection().matchAll(/<td class="m">([a-z]+)<\/td><td class="small">/g)]
-    .map((m) => m[1]!);
-  assert.deepEqual(mockupLinked, ['categories', 'scope'],
-    'the mockup cross-links categories and scope; the endpoints carry ids for scope and capture');
+  // categories is not linked — it is MARKED, with the same `◌` primitive
+  // `coverage.js`, `doctor.js`, `watch.js` and `injected.js` already spend on
+  // "this was not measured", never a fourth convention.
+  const categoriesRow = rows.find((row) => textOf(row.children[0]!) === 'categories')!;
+  const mark = elementsOf(categoriesRow).find((n) => n.tag === 'span' && n.className === 'chip unmeas')!;
+  assert.notEqual(mark, undefined, 'categories does not draw the ◌ unmeasured chip');
+  assert.equal(mark.dataset.g, '◌');
+  assert.equal(textOf(mark), 'no single item represents this');
 
-  // No placeholder, no dash, no empty run: the unlinked rows are the description
-  // and nothing after it.
-  for (const row of rows) {
-    const topic = textOf(row.children[0]!);
-    if (topic === 'scope' || topic === 'capture') continue;
-    assert.equal(textOf(row.children[1]!).includes('·'), false,
-      `${topic} drew a separator with nothing after it`);
-  }
+  // The mockup's own linked rows agree with the app's now — the divergence
+  // this test used to pin is closed. One `<tr>` per line in the mockup source,
+  // so "does this row's line contain a linkid button" is one check per row.
+  const mockupLinked = [...learnSection().matchAll(/<tr><td class="m">([a-z]+)<\/td><td class="small">([^]*?)<\/tr>/g)]
+    .filter((m) => m[2]!.includes('class="linkid m"'))
+    .map((m) => m[1]!);
+  assert.deepEqual(mockupLinked, ['scope', 'capture'],
+    'the mockup and the endpoints now agree: scope and capture carry ids, categories does not');
+
+  // No placeholder, no dash, no empty run: workflow — the one row with no id
+  // and no claim to retract — is its description and nothing after it.
+  const workflowRow = rows.find((row) => textOf(row.children[0]!) === 'workflow')!;
+  assert.equal(textOf(workflowRow.children[1]!).includes('·'), false,
+    'workflow drew a separator with nothing after it');
 });
 
 /** An empty list, and an entry whose `id` is not a usable string, are the same answer. */
@@ -516,7 +546,7 @@ test('an empty or malformed join is not a cross-link', async () => {
     capture: { topic: 'capture', markdown: '', corpus: { recent: [{ id: '', title: 'x' }] } },
   });
   assert.deepEqual(
-    elementsOf(empty.root).filter((n) => n.tag === 'span' && n.className === 'm').map(textOf), []);
+    elementsOf(empty.root).filter((n) => n.tag === 'button' && n.className === 'linkid m').map(textOf), []);
 
   const wrong = await renderLearn('en', {
     ...HELP,
@@ -524,7 +554,7 @@ test('an empty or malformed join is not a cross-link', async () => {
     capture: { topic: 'capture', markdown: '', corpus: { recent: [{ id: 7 }] } },
   });
   assert.deepEqual(
-    elementsOf(wrong.root).filter((n) => n.tag === 'span' && n.className === 'm').map(textOf), []);
+    elementsOf(wrong.root).filter((n) => n.tag === 'button' && n.className === 'linkid m').map(textOf), []);
 });
 
 // ── 7. A refused topic replaces that row's cross-link, never the table ─────
@@ -540,9 +570,9 @@ test('a refusal is drawn per row, in the server\'s own words, and the other thre
   }
   // Still four rows: a refusal is one row's news, not the table's.
   assert.equal(elementsOf(root).filter((node) => node.tag === 'tr').length, 4);
-  // And the row that DID answer still drew its marked id.
+  // And the row that DID answer still drew its marked, clickable id.
   assert.deepEqual(
-    elementsOf(root).filter((n) => n.tag === 'span' && n.className === 'm').map(textOf),
+    elementsOf(root).filter((n) => n.tag === 'button' && n.className === 'linkid m').map(textOf),
     ['INV-prices-are-integer-cents']);
 });
 
