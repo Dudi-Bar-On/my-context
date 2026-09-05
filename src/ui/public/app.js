@@ -5129,6 +5129,14 @@ async function fillItems(count) {
     // `replaceChildren`, so the two elements can never disagree about which
     // answer they are drawing.
     if (notes !== null) notes.replaceChildren(...corpusNoteButtons(status));
+    // ── AND THE RAIL, FROM THE SAME BODY. The two badges are
+    // `doctorNoticeCount` and `reviewQueueCount` — the SAME two functions
+    // `corpusNoteButtons` just called on this same answer — so the rail costs
+    // exactly what the strip's two doors cost, which is nothing. It used to
+    // cost a second `GET /api/status`, i.e. a second full `runChecks` sweep, on
+    // every navigation; see `railCounts` for the measurement and `route()` for
+    // what that did to the screen the reader was waiting for.
+    void paintRailCounts(status);
   } catch {
     value.textContent = '—';
     label.append(document.createTextNode(' '), value);
@@ -5138,6 +5146,10 @@ async function fillItems(count) {
     // a stale count beside a `not read` item count is the fossil `walk/123`
     // named, one element along.
     if (notes !== null) notes.replaceChildren();
+    // `null`, not "go and ask": this read was REFUSED, and the rail's answer to
+    // that is `—` (unmeasured) rather than a retry the reader did not request.
+    // The `unreadState` retry above already asks for all three at once.
+    void paintRailCounts(null);
   }
 }
 
@@ -6878,19 +6890,50 @@ function handoverVerdictChip(view) {
 // boot request that only fed this badge is dropped with it.
 const RAIL_COUNTS = ['doctor', 'work'];
 
-/** `null` means NOT MEASURED, which is never the same as `0`. */
-async function railCounts() {
+/**
+ * The last counts this page actually MEASURED, so a rail that `renderNav()`
+ * has just rebuilt can be repainted without asking the server again.
+ *
+ * `{ doctor: null, work: null }` before the first answer, which `railBadge`
+ * draws as `—` and names `rail.cntNone` — the unmeasured state, not a zero.
+ */
+let railCountsLast = { doctor: null, work: null };
+
+/**
+ * `null` means NOT MEASURED, which is never the same as `0`.
+ *
+ * **`status` is the body a caller ALREADY READ, and passing it is the point.**
+ * `GET /api/status` is not a counter: it runs the whole doctor suite
+ * (`runChecks`, 28 checks over every item and every file in the repository)
+ * to fill its four `health` numbers, and that work is SYNCHRONOUS on a
+ * single-threaded server — measured 2026-09-06 against this repository at
+ * 1.9–3.0s per call, during which every other request queues behind it,
+ * `/styles.css` included (2.8ms served alone, 1,876ms served while one
+ * `/api/status` is in flight). So a second call for numbers already in hand is
+ * not a spare request; it is a second two-second stall of the whole server.
+ *
+ * `fillItems` reads this body for the strip's item count and hands it here for
+ * exactly the reason it already hands it to `corpusNoteButtons`: `health` and
+ * `reviewQueue` are in that one response, and *"the strip and the rail cannot
+ * come apart about one corpus"* is true of the cost as well as of the numbers.
+ *
+ * `undefined` means no body — fetch one. `null` means a caller's own read was
+ * REFUSED, which is not a reason to try again behind its back: the counts stay
+ * unmeasured and the rail says so.
+ */
+async function railCounts(status) {
   const counts = { doctor: null, work: null };
   try {
-    const status = await api('/api/status');
-    counts.doctor = doctorNoticeCount(status);
+    if (status === null) return counts;
+    const body = status === undefined ? await api('/api/status') : status;
+    counts.doctor = doctorNoticeCount(body);
     // BOTH queues, because the screen draws both. Reading only
     // `pendingRevisions` made the badge say 0 with a draft sitting on the
     // screen waiting for a verdict -- a badge that undercounts what its own
     // screen shows is worse than no badge, because it reads as "nothing to do
     // here" rather than as missing. `/api/status` already served
     // `reviewQueue.drafts`; nothing new is fetched.
-    counts.work = reviewQueueCount(status);
+    counts.work = reviewQueueCount(body);
   } catch { /* stays null — named as unmeasured on the rail */ }
   return counts;
 }
@@ -6911,8 +6954,13 @@ function railBadge(count) {
   return badge;
 }
 
-async function paintRailCounts() {
-  const counts = await railCounts();
+/**
+ * Draw counts already measured onto the rail. Synchronous and reads NOTHING —
+ * `renderNav()` rebuilds the rail on every route, so the badges have to be put
+ * back on every route, and putting them back is a DOM write, not a question
+ * for the server.
+ */
+function paintRailBadges(counts) {
   for (const name of RAIL_COUNTS) {
     const button = document.querySelector(`.nav[data-s="${name}"]`);
     // The rail is rebuilt on a language change, so a badge from the previous
@@ -6921,6 +6969,12 @@ async function paintRailCounts() {
     for (const stale of button.querySelectorAll('.cnt')) stale.remove();
     button.append(railBadge(counts[name]));
   }
+}
+
+/** Measure the counts (or take a body already read) and draw them. */
+async function paintRailCounts(status) {
+  railCountsLast = await railCounts(status);
+  paintRailBadges(railCountsLast);
 }
 
 function renderNav() {
@@ -7079,10 +7133,36 @@ async function route() {
   const name = Object.hasOwn(SCREENS, asked) ? asked : 'preview';
   const loader = SCREENS[name];
   renderNav();
-  // Fire-and-forget, and NEVER awaited here — see main()'s note on the bare
-  // `await` that took a whole boot down over one 401. A rail badge is the least
-  // important thing on this page; it may not be able to delay or break the rest.
-  void paintRailCounts();
+  // **THE BADGES ARE PUT BACK, NOT ASKED FOR AGAIN — and that is the whole of
+  // this screen's stall, measured 2026-09-06.**
+  //
+  // This line was `void paintRailCounts()`, one `/api/status` per navigation.
+  // `/api/status` is not a counter: it runs `runChecks` — all 28 doctor checks,
+  // over 935 items and 3,784 files — to fill four `health` numbers, and it does
+  // it SYNCHRONOUSLY on a single-threaded server. Measured here: 1.9–3.0s per
+  // call, and while one is in flight the server answers nothing else, static
+  // assets included (`/styles.css`: 2.8ms alone, 1,876ms alongside).
+  //
+  // So this line did not merely cost a request. It cost the SCREEN: `route()`
+  // awaits `loader()` on the next line, that is a `<script>` GET for
+  // `/screens/palette.js`, and it went out behind an audit that owned the event
+  // loop for two seconds — that one static file answered in 2,162ms (median of
+  // 5 cold loads) where it answers in 38ms with this line changed.
+  //
+  // The layer was identified by stubbing: a cold `#/palette` measured 4,826ms,
+  // and the SAME load with `/api/status` fulfilled from a canned body and
+  // nothing else touched measured 512ms. So 89% of the screen's wait was this
+  // endpoint, and 512ms is the true cost of the module, the four reads, the
+  // 936-option id picker, the 200-row glob tree and the paint.
+  //
+  // Nothing here needed a fresh answer. `renderNav()` above rebuilds the rail,
+  // so the badges must be REDRAWN on every route — but redrawing is a DOM
+  // write. The numbers themselves cannot move because a reader opened a
+  // different screen; they move when a record lands, which is what
+  // `CHROME_INVALIDATION.rail` (`kinds: ['mutation']`) and `noteExecuteSettled`
+  // already refetch for, and what `fillItems` now hands over from the body the
+  // strip was already reading.
+  paintRailBadges(railCountsLast);
 
   // **Every screen is a `<section data-p="NAME">`, and they STACK.**
   //
