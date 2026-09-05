@@ -7,6 +7,8 @@ severity: soft
 always: false
 summary: The order the work is being tackled in, grouped so that jobs which do not touch each other can be done at the same time.
 summary_of: 188ab3b5d8e23e32
+acknowledged:
+  - reference_no_source@98fcf52363e700e6
 scope: []
 tags:
   - v2
@@ -17,7 +19,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-08-28
 valid_until: null
-checksum: abc830bb4fb26a63
+checksum: 3090c7ef55fdf9fd
 ---
 
 # the wave map: what order the work is being done in

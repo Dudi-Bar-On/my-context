@@ -7,6 +7,8 @@ severity: soft
 always: false
 summary: Where the original drawings behind every chart live, and why the reasoning written beside them matters more than the pictures themselves.
 summary_of: a67eb295bef4d8de
+acknowledged:
+  - reference_no_source@9e13d49f6ce9fdef
 scope: []
 tags:
   - v2
@@ -18,7 +20,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-08-28
 valid_until: null
-checksum: 69bd9ccc4dd05e59
+checksum: 14839077b0b7ecda
 ---
 
 # the uiux sketches: the design source for every graphic, and it specifies degradation
