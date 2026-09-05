@@ -27,7 +27,7 @@
     "mutate": "node scripts/mutate.ts",
     "gen:commands": "node scripts/gen-commands.ts",
     "gen:tutorials": "node scripts/build-tutorial-manifest.ts",
-    "gen:docs": "node scripts/gen-doc-examples.ts",
+    "gen:docs": "node scripts/gen-doc-examples.ts && node scripts/gen-cli-ui-coverage.ts",
     "verify:citations": "node scripts/verify-citations.ts",
     "check:test-glob": "node scripts/check-test-glob.ts",
     "check:retired": "node scripts/check-retired.ts",

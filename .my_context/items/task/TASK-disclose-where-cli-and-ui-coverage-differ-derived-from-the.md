@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: Show which CLI commands have no UI equivalent, generated from the running program rather than written by hand.
-summary_of: 015ae53c44786c68
+summary_of: 94db2d71c3d3336d
 scope:
   - scripts/gen-commands.ts
   - src/cli/commands/registry.ts
@@ -18,19 +18,20 @@ tags:
   - cli
   - "plan:docsys"
   - "seq:7"
-  - "state:todo"
+  - "state:done"
 origin: human
 source_file: "C:/Users/UserC/AppData/Local/Temp/claude/D--Users-UserC-source-repos-my-context/595db3b1-a481-4553-b4c0-7248c31b2655/scratchpad/docsys/7.md"
 source_anchor: null
 source_checksum: 88d584cd8bca7b76
 valid_from: 2026-09-05
 valid_until: null
-checksum: f02d39d3c96d4074
+checksum: 4995e2d009c1694d
 plan: docsys
 seq: "7"
-state: todo
+state: done
 priority: "3"
 needs: docsys/5
+verified_on: 2026-09-05
 ---
 
 # disclose where CLI and UI coverage differ, derived from the command registry and route table

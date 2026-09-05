@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: Add tests, in the same style as the existing documentation gates, that catch a hand-edited manifest, index or coverage claim instead of a regenerated one.
-summary_of: 3db7a37039364a81
+summary_of: ab880321e680faa6
 scope:
   - test/docs/**
 tags:
@@ -15,19 +15,20 @@ tags:
   - testing
   - "plan:docsys"
   - "seq:8"
-  - "state:todo"
+  - "state:done"
 origin: human
 source_file: "C:/Users/UserC/AppData/Local/Temp/claude/D--Users-UserC-source-repos-my-context/595db3b1-a481-4553-b4c0-7248c31b2655/scratchpad/docsys/8.md"
 source_anchor: null
 source_checksum: dd81dd808bf59077
 valid_from: 2026-09-05
 valid_until: null
-checksum: 1dc8786ba23551c8
+checksum: 8aadef218573af88
 plan: docsys
 seq: "8"
-state: todo
+state: done
 priority: "3"
 needs: docsys/5,docsys/7
+verified_on: 2026-09-05
 ---
 
 # extend the documentation test family to hold the new manifest, index and coverage claims true

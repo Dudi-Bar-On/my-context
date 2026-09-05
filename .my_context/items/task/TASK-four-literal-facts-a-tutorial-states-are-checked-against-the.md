@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: Four facts tutorials state as literal values are checked against the code that would make them wrong, instead of trusted by eye.
-summary_of: e179c44ead748071
+summary_of: 09b5fe5af1001219
 acknowledged:
   - dead_scope@862ed1a6d8f27cb7
 scope:
@@ -19,19 +19,20 @@ tags:
   - drift
   - "plan:tuts"
   - "seq:6"
-  - "state:todo"
+  - "state:done"
 origin: human
 source_file: null
 source_anchor: null
 source_checksum: null
 valid_from: 2026-09-05
 valid_until: null
-checksum: fa2556ec20af5d2b
+checksum: 5676738b7e6306ec
 plan: tuts
 seq: "6"
-state: todo
+state: done
 priority: "2"
 needs: tuts/5
+verified_on: 2026-09-05
 ---
 
 # four literal facts a tutorial states are checked against the code
