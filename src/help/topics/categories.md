@@ -164,7 +164,9 @@ building may be built.
 
 A question the project has deliberately left open, recorded so the next session
 does not quietly answer it. It carries `blocks`, naming what is waiting on the
-answer.
+answer. `mycontext doctor` names every open question with a `blocks` set
+(`open_question_blocks`, informational) so the dependency is visible from the
+report, not only from this item's own prose.
 
 **Nearest neighbour: `assumption`.** An open question is undecided and must not
 be decided alone; an assumption is a premise someone has *already* acted on
@@ -267,8 +269,10 @@ options" section, what you have is a `decision` — one sentence plus its reason
 
 Something the project is already relying on as true without having checked it.
 It carries `validate_by`, the day you mean to check it by, and `validated_on`
-for when you did — both are dates for a reader, and nothing in my_context sends
-a reminder about either.
+for when you did — both are dates for a reader. `mycontext doctor` reports an
+assumption whose `validate_by` has passed with no `validated_on`
+(`assumption_overdue`); one captured before that check existed is not
+retroactively flagged.
 
 **Nearest neighbour: `risk`.** An assumption is being relied on now; a risk has
 not happened and may never. The one is verified, the other watched.
@@ -389,6 +393,14 @@ body becomes a **snapshot** of that file, and the item records `source_file` and
 `source_checksum` so `mycontext doctor` reports `source_drift` when the file has
 moved on. The item's own title and observations are for saying *why the file
 matters*, which the file itself does not say.
+
+A reference with no `source_file` at all — captured by hand, or through
+`create_item` with no source fields — is invisible to `source_drift`, which
+only examines items that already carry one: `mycontext doctor` names this
+separately (`reference_no_source`), because the category's whole point is a
+recorded origin doctor can check. The continuity item is the one deliberate
+exception (`DEC-continuity-gets-its-own-budget-and-the-item-it-holds-must-be`
+rules its `source_file` cleared on purpose) and is not reported.
 
 **It is a snapshot, not a live read, and the reason is a trust boundary.** If
 the body were read from disk when a session starts, then anything that can edit

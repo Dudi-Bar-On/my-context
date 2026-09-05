@@ -346,6 +346,7 @@ test('an ingest candidate is REJECTED for an inert severity, not thrown', () => 
       type: 'lesson',
       title: 'Retry without jitter is a thundering herd',
       body: 'Seen in production.',
+      summary: 'A retry storm without jitter overwhelmed the service it was retrying against.',
       quote: 'Retrying without jitter produced a thundering herd.',
       severity: 'hard',
     },
@@ -353,6 +354,7 @@ test('an ingest candidate is REJECTED for an inert severity, not thrown', () => 
       type: 'lesson',
       title: 'Retries need jitter',
       body: 'Seen in production.',
+      summary: 'A retry storm without jitter overwhelmed the service it was retrying against.',
       quote: 'Retrying without jitter produced a thundering herd.',
     },
   ], config, chunk);
@@ -371,6 +373,7 @@ test('a normative ingest candidate may still be hard', () => {
     type: 'rule',
     title: 'Retries carry jitter',
     body: 'Enforced in the client.',
+    summary: 'Retries must add jitter so they do not overwhelm the service they are retrying against.',
     quote: 'Retrying without jitter produced a thundering herd.',
     severity: 'hard',
   }], config, chunk);

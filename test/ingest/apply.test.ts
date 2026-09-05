@@ -12,6 +12,7 @@ import { resolveConfig } from '../../src/core/config.ts';
 import { Store } from '../../src/core/store.ts';
 import { createItem, updateItem, type MutationContext } from '../../src/core/mutate.ts';
 import { checksum } from '../../src/core/slug.ts';
+import { summaryState } from '../../src/core/content-hash.ts';
 import { removeTree } from '../helpers/tmp.ts';
 
 const DOC = `# Password policy\n\nPasswords must be at least 12 characters.\nSessions expire after 30 minutes.\n`;
@@ -30,6 +31,7 @@ function candidate(over: Record<string, unknown> = {}): Record<string, unknown> 
     type: 'requirement',
     title: 'Passwords are at least 12 characters',
     body: 'Enforced at registration and at password change.',
+    summary: 'A rule that passwords must be long enough to resist guessing.',
     quote: 'Passwords must be at least 12 characters.',
     ...over,
   };
@@ -50,6 +52,27 @@ test('a new candidate is created as a draft with full provenance', () => {
   assert.equal(item.sourceFile, 'docs/prd/auth.md');
   assert.equal(item.sourceAnchor, 'password-policy');
   assert.equal(item.sourceChecksum, session.chunks[0].checksum);
+  cleanup();
+});
+
+// --- DEC-the-document-extraction-schema-gains-a-summary-field-so: the
+// summary the extractor wrote at extraction time must reach the stored item,
+// not just the in-memory Candidate — this is the wiring the decision asked
+// for at the OTHER end of validateCandidates' new requirement. ---
+
+test('the summary the extractor wrote reaches the created item, current from the start', () => {
+  const { ctx, root, cleanup } = fixture();
+  const session = openIngestSession(root, 'docs/prd/auth.md', DOC);
+  const result = applyCandidates(ctx, session, 'password-policy', [candidate()]);
+
+  const item = ctx.store.get(result.created[0]);
+  assert.ok(item);
+  assert.equal(item.summary, 'A rule that passwords must be long enough to resist guessing.');
+  // Written alongside title/body at create time, not filled in afterwards —
+  // so it is `current`, the same as any other freshly captured item's
+  // summary, never `absent` (the state this whole task exists to close) or
+  // `unanchored`.
+  assert.equal(summaryState(item), 'current');
   cleanup();
 });
 
@@ -270,7 +293,7 @@ test('a caller that reloads the session before each chunk sees the other chunk a
 });
 
 test('candidateHash ignores whitespace and the quote, but not wording', () => {
-  const base = { type: 'requirement', title: 'A', body: 'B', quote: 'q', severity: 'soft' as const, scope: [], tags: [], observations: [], extra: {} };
+  const base = { type: 'requirement', title: 'A', body: 'B', summary: 's', quote: 'q', severity: 'soft' as const, scope: [], tags: [], observations: [], extra: {} };
   assert.equal(candidateHash(base), candidateHash({ ...base, title: '  A  ' }));
   // Re-quoting a different sentence for the same requirement is not a material
   // change — the hash deliberately excludes `quote`, and this pins that.
@@ -279,7 +302,7 @@ test('candidateHash ignores whitespace and the quote, but not wording', () => {
 });
 
 test('candidateHash is sensitive to severity — a soft-to-hard change is a material change', () => {
-  const base = { type: 'requirement', title: 'A', body: 'B', quote: 'q', severity: 'soft' as const, scope: [], tags: [], observations: [], extra: {} };
+  const base = { type: 'requirement', title: 'A', body: 'B', summary: 's', quote: 'q', severity: 'soft' as const, scope: [], tags: [], observations: [], extra: {} };
   assert.notEqual(candidateHash(base), candidateHash({ ...base, severity: 'hard' as const }));
 });
 
@@ -290,7 +313,7 @@ test('candidateHash sorts extra keys ordinally, not via localeCompare (locale-de
   // dependent sort would make the same candidate hash differently on
   // `windows-latest` vs `ubuntu-latest` if their ICU data ever disagreed.
   const base = {
-    type: 'requirement', title: 'A', body: 'B', quote: 'q', severity: 'soft' as const,
+    type: 'requirement', title: 'A', body: 'B', summary: 's', quote: 'q', severity: 'soft' as const,
     scope: [], tags: [], observations: [],
     extra: { Zebra: '1', apple: '2' },
   };
@@ -581,6 +604,7 @@ test('two items sharing a (hash-collided) content_hash dedupe deterministically 
   const probe = {
     type: 'requirement', title: 'Passwords are at least 12 characters',
     body: 'Enforced at registration and at password change.',
+    summary: 'A rule that passwords must be long enough to resist guessing.',
     quote: 'Passwords must be at least 12 characters.',
     severity: 'soft' as const, scope: [], tags: [], observations: [], extra: {},
   };

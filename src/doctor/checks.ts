@@ -2360,6 +2360,220 @@ export function checkTaskNeeds(items: Item[], config: Config): Finding[] {
 }
 
 /**
+ * **`open_question.blocks` names what is waiting, and nothing surfaced that
+ * dependency from anywhere but the item's own prose.**
+ *
+ * TASK-three-item-fields-can-be-filled-in-but-nothing-ever-reads: a field a
+ * writer can fill in and no check ever reads back is worse than an absent
+ * one, because it looks like it works. `blocks` is free text naming the work
+ * that cannot proceed until this question is answered — and until this
+ * check, the only way to learn that was to already be reading this specific
+ * item.
+ *
+ * `info`, not `warn`: a filled-in `blocks` is the category doing exactly what
+ * it is for, not a defect. The finding exists to make the dependency VISIBLE
+ * — in `mycontext doctor`'s report, alongside every other thing a reader is
+ * already being told — not to ask anyone to change anything. `ACK` all the
+ * same, because a reader who has seen it and does not need it repeated can
+ * say so; the corollary in this file's own rule is that a finding a person
+ * cannot act on is a defect in the check, and "I've seen this, stop showing
+ * it to me" is itself an action.
+ */
+export function checkOpenQuestionBlocks(items: Item[]): Finding[] {
+  const findings: Finding[] = [];
+  for (const item of items) {
+    if (item.type !== 'open_question') continue;
+    // A superseded question was settled — its own `superseded_by` says by
+    // what — so a `blocks` note from before that is history, not a live
+    // dependency, and naming it here would be exactly the stale noise this
+    // check exists to avoid adding.
+    if (item.status === 'superseded') continue;
+    const blocks = (item.extra.blocks ?? '').trim();
+    if (blocks === '') continue;
+    findings.push({
+      level: 'info', code: 'open_question_blocks', item: item.id,
+      remedy: ACK,
+      message:
+        `blocks ${JSON.stringify(blocks)} until this is answered. That dependency is recorded ` +
+        `in "blocks" and nowhere else surfaces it — this finding is what makes it visible to a ` +
+        `reader who never opens ${item.id} itself. Nothing is wrong with the item: an ` +
+        `\`open_question\` that names what it blocks is the category working as intended. ` +
+        `\`mycontext ack ${item.id} open_question_blocks\` records that the wait is known.`,
+    });
+  }
+  return findings;
+}
+
+/**
+ * **The instant this check became able to flag an overdue `assumption`.**
+ *
+ * Mirrors `VERIFIED_ON_INTRODUCED_AT` (below `checkTaskUnverified`) for the
+ * same reason: `assumption.validate_by` has been a real field since the
+ * category shipped, but nothing has ever compared it against today's date
+ * until this check exists to do it. Without a cutoff, every assumption whose
+ * deadline already passed BEFORE this check was written would surface at
+ * once — not because anyone missed a deadline the product was watching, but
+ * because the product had never watched before. That is the same "406 tasks
+ * suddenly missing a field nothing could have written yet" shape
+ * `VERIFIED_ON_INTRODUCED_AT`'s own docblock argues from, one category over.
+ *
+ * Keyed on the assumption's own CREATION, read off its `create` audit
+ * record — simpler than `checkTaskUnverified`'s transition-keyed cutoff, and
+ * deliberately so: that check was reversed onto a transition because a task
+ * can be created long before it reaches `done`, so keying on creation would
+ * exempt it forever. An assumption has no analogous later transition to key
+ * on — becoming overdue is not a write anything makes, only a calendar date
+ * passing — so the fact this check can actually ask about is when the item
+ * itself first existed, which is exactly what a `create` record answers.
+ */
+export const ASSUMPTION_OVERDUE_INTRODUCED_AT = '2026-09-05T12:00:00.000Z';
+
+/** `''` and whitespace-only both read as absent — the same convention `taskVerifiedOn` uses. */
+function assumptionField(item: Item, key: string): string {
+  return (item.extra[key] ?? '').trim();
+}
+
+/**
+ * **`assumption.validate_by` / `validated_on`'s only consumer.**
+ *
+ * An assumption whose deadline has passed with nothing recorded in
+ * `validated_on` is reported — unless it was captured before this check
+ * could have watched it (`ASSUMPTION_OVERDUE_INTRODUCED_AT`), in which case
+ * it is counted into a single coverage disclosure and never named, the same
+ * shape `checkTaskUnverified` uses for its own grandfathered population.
+ *
+ * `validate_by`/`validated_on` are read as plain `YYYY-MM-DD` strings, like
+ * every other date field this corpus stores, so ordinal string comparison
+ * against `new Date().toISOString().slice(0, 10)` is a correct date compare
+ * without parsing either side.
+ */
+export function checkAssumptionOverdue(root: string, items: Item[]): Finding[] {
+  const today = new Date().toISOString().slice(0, 10);
+  const overdue = items.filter((item) => item.type === 'assumption' && item.status !== 'superseded')
+    .filter((item) => {
+      const validateBy = assumptionField(item, 'validate_by');
+      return validateBy !== '' && validateBy < today && assumptionField(item, 'validated_on') === '';
+    });
+  if (overdue.length === 0) return [];
+
+  let records: AuditRecord[];
+  try {
+    records = readAudit(root);
+  } catch (err) {
+    return [{
+      level: 'info', code: 'assumption_overdue_coverage',
+      about: 'assumption_overdue',
+      remedy: PERSON,
+      message:
+        `${overdue.length} assumption(s) carry a \`validate_by\` date that has passed with no ` +
+        `\`validated_on\`, and none of them has been checked against the audit log, because the ` +
+        `log could not be read: ${err instanceof Error ? err.message : String(err)} That is an ` +
+        `UNMEASURED set and not a clean one. The file named in that refusal is what a person has ` +
+        `to look at first.`,
+    }];
+  }
+
+  const createdAt = new Map<string, string>();
+  for (const record of records) {
+    if (record.kind !== 'mutation' || record.op !== 'create') continue;
+    const id = record.itemId;
+    if (typeof id !== 'string' || id === '') continue;
+    // Records arrive oldest-first (`readAudit`'s own contract); an id is
+    // created once, so the first (and only) match is kept as-is rather than
+    // overwritten by anything later.
+    if (!createdAt.has(id)) createdAt.set(id, record.at);
+  }
+
+  const findings: Finding[] = [];
+  let unmeasured = 0;
+  for (const item of overdue) {
+    const at = createdAt.get(item.id);
+    // No recorded creation — a hand-written file, or one captured before this
+    // workspace began recording writes — is not evidence either way, so it is
+    // grandfathered the same as a birth date this check can prove predates it,
+    // rather than reported on a fact this log cannot establish.
+    if (at === undefined || at < ASSUMPTION_OVERDUE_INTRODUCED_AT) { unmeasured++; continue; }
+
+    findings.push({
+      level: 'warn', code: 'assumption_overdue', item: item.id,
+      remedy: ACK,
+      message:
+        `carries \`validate_by: ${assumptionField(item, 'validate_by')}\`, which has passed, ` +
+        `and no \`validated_on\`. An assumption with a missed deadline and nothing recorded is a ` +
+        `belief nobody has checked — read the premise, and either \`mycontext edit ${item.id} ` +
+        `--extra validated_on=<date>\` records that it was, or \`mycontext ack ${item.id} ` +
+        `assumption_overdue\` records a ruling that no check is needed.`,
+    });
+  }
+
+  if (unmeasured > 0) {
+    findings.push({
+      level: 'info', code: 'assumption_overdue_coverage',
+      about: 'assumption_overdue',
+      remedy: NOTHING,
+      message:
+        `${unmeasured} assumption(s) carry a passed \`validate_by\` with no \`validated_on\` and ` +
+        `were either captured before this check existed (${ASSUMPTION_OVERDUE_INTRODUCED_AT}) or ` +
+        `carry no recorded creation this log can read — so \`assumption_overdue\` cannot say ` +
+        `whether the deadline was ever one this product could have flagged. Nothing is owed on ` +
+        `this line, and this set can only shrink: every assumption created from now on is watched ` +
+        `for its whole life.`,
+    });
+  }
+
+  return findings;
+}
+
+/**
+ * **A `reference` with no `source_file` at all is invisible to every drift
+ * check this corpus has**, and the category's whole stated purpose — "a
+ * snapshot of a file, with its origin recorded so doctor reports drift" (see
+ * `mycontext_help("categories")`) — depends on one being set.
+ *
+ * `checkSourceDrift` and the snapshot half of it (`checkSnapshotDrift`) both
+ * examine only items that ALREADY carry `sourceFile`/`sourceAnchor`/
+ * `sourceChecksum` — reasonably, since drift is a question about a file
+ * that was recorded and might have changed. A `reference` minted with none of
+ * the three (by hand, or through `create_item` with no source fields) never
+ * reaches either check, and sits in the corpus looking exactly like a
+ * snapshot that has not drifted, when in fact nothing was ever recorded to
+ * compare it against.
+ *
+ * **`continuity: true` is exempt, and it is a structural exemption, not a
+ * blanket one.** `DEC-continuity-gets-its-own-budget-and-the-item-it-holds-
+ * must-be` rules that the continuity item is a POINTER PLUS A BOUNDED DIGEST,
+ * never the document itself, and that its `source_file` is DELIBERATELY
+ * cleared so `mycontext refresh` cannot silently pull an unbounded document
+ * back in — the item's own body states this in as many words. That is a
+ * cited, owner-ruled reason for this exact shape on this exact tier, not a
+ * license for any hand-authored `reference` to skip capture: a `reference`
+ * that is not on the continuity tier and carries no `source_file` gets no
+ * exemption here, and is exactly the gap this check exists to surface.
+ */
+export function checkReferenceNoSource(items: Item[]): Finding[] {
+  const findings: Finding[] = [];
+  for (const item of items) {
+    if (item.type !== 'reference') continue;
+    if (item.status === 'superseded') continue;
+    if (item.continuity) continue;
+    if (item.sourceFile !== null) continue;
+    findings.push({
+      level: 'warn', code: 'reference_no_source', item: item.id,
+      remedy: ACK,
+      message:
+        `carries no "source_file" at all, so \`mycontext doctor\` can never report drift for it ` +
+        `— a \`reference\` exists to be a snapshot of a file with its origin recorded, and one ` +
+        `with no recorded origin cannot be checked against anything. Capture it properly with ` +
+        `\`mycontext add reference "<title>" --file <path>\`, which records "source_file" and ` +
+        `"source_checksum" so drift can be reported; or, if ${item.id} is not really a copy of a ` +
+        `file, recategorize it — a reference with no source is invisible to the one check its ` +
+        `category exists to receive.`,
+    });
+  }
+  return findings;
+}
+
+/**
  * **A second `.my_context` below this one, which would shadow it.**
  *
  * `findProjectRoot` walks UP from the session's working directory and stops at
@@ -3611,6 +3825,9 @@ export function runChecks(opts: {
     () => checkCorpusSize(opts.items),
     () => checkTagProjection(opts.items, opts.config),
     () => checkTaskNeeds(opts.items, opts.config),
+    () => checkOpenQuestionBlocks(opts.items),
+    () => checkAssumptionOverdue(opts.root, opts.items),
+    () => checkReferenceNoSource(opts.items),
     () => checkNestedCorpus(opts.root, opts.repoRoot),
     () => checkForeignStore(opts.repoRoot),
   ];

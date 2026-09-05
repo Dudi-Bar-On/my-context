@@ -270,6 +270,7 @@ test('an ingest candidate with no scope is rejected under required, not thrown',
     type: 'requirement',
     title: 'Passwords are at least 12 characters',
     body: 'Enforced at registration.',
+    summary: 'A rule that passwords must be long enough to resist guessing.',
     quote: 'Passwords must be at least 12 characters.',
   }], config, chunk);
 
@@ -285,6 +286,7 @@ test('a scoped ingest candidate is accepted under required', () => {
     type: 'requirement',
     title: 'Passwords are at least 12 characters',
     body: 'Enforced at registration.',
+    summary: 'A rule that passwords must be long enough to resist guessing.',
     quote: 'Passwords must be at least 12 characters.',
     scope: ['src/auth/**'],
   }], config, chunk);

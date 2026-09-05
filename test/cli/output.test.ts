@@ -58,6 +58,7 @@ function ingestSession(cwd: string): string {
     type: 'requirement',
     title: 'Passwords are at least 12 characters',
     body: 'Enforced at registration.',
+    summary: 'A rule that passwords must be long enough to resist guessing.',
     quote: 'Passwords must be at least 12 characters.',
   }]), 'utf8');
   run([ 'ingest-apply', id, '--anchor', 'password-policy', '--file', 'c.json'], cwd);

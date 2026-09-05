@@ -227,6 +227,7 @@ test('every example a model could copy from the request text validates against v
     type: 'requirement',
     title: 'The system must support SSO.',
     body: 'SSO is required for enterprise auth compliance and is not optional.',
+    summary: 'Enterprise customers require single sign-on, so it is mandatory rather than optional.',
     quote: 'Must support SSO.',
     severity: 'hard',
     scope: ['src/auth/**'],

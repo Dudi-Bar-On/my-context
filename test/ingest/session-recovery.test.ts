@@ -213,6 +213,7 @@ function good(over: Record<string, unknown> = {}): Record<string, unknown> {
     type: 'requirement',
     title: 'Single sign-on is supported',
     body: 'Every user-facing surface authenticates through the SSO provider.',
+    summary: 'Every surface must authenticate through single sign-on rather than its own login.',
     quote: 'Must support SSO.',
     ...over,
   };

@@ -249,32 +249,49 @@ export function outcomeLines(
   out: Emit, name: string, outcome: ImportOutcome, sharedName: string | null = null,
 ): void {
   const hang = '            ';
+  // The command is never embedded in this sentence — TASK-the-shipped-pack-
+  // import-outcome-points-at-a-command-that measured `paragraph()` wrapping
+  // it in half at 100 columns for exactly the case below (`sharedName ===
+  // null`), which is the common case: a pack name long enough to push the
+  // rest of the sentence past the column budget split `mycontext review
+  // promote --all --pack <name>` across two lines, handing the reader a
+  // command that reads wrong if copied from either line alone. The rendering
+  // ruling this measurement settled — the same one already applied to the
+  // `--source` variant below and to the prefix problem in the UI — is that a
+  // command a reader may copy is emitted on its own line, never inside
+  // flowing prose, so this sentence only ever points at "the command below".
   say(out,
     `imported ${outcome.imported.length} item(s) from pack "${name}" as drafts. Nothing governs `
     + 'yet. Review them one at a time with `mycontext review`, or promote the whole pack with '
-    + `${sharedName === null ? `\`mycontext review promote --all --pack ${name}\`` : 'the command '
-      + 'below'}, which is one human act taken after the corpus is visible rather than before.`,
+    + 'the command below, which is one human act taken after the corpus is visible rather than '
+    + 'before:',
     'my_context: ');
   if (sharedName !== null) {
     say(out,
       `another pack imported here calls itself ${JSON.stringify(name)} too, and each import kept `
       + 'its own membership list — so `--pack` alone names both and promotes neither. This one is:',
       hang);
-    // Emitted whole rather than through `say`: this line is meant to be COPIED,
-    // and `paragraph` would wrap it at the terminal width and hand the reader a
-    // command broken in half. The source is printed exactly as `pack list`
-    // prints it, because that is the string `--source` is matched against.
-    out(`${hang}mycontext review promote --all --pack ${name} --source ${sharedName}`);
   }
+  // Emitted whole rather than through `say`: this line is meant to be COPIED,
+  // and `paragraph` would wrap it at the terminal width and hand the reader a
+  // command broken in half. The `--source` form is printed exactly as `pack
+  // list` prints it, because that is the string `--source` is matched
+  // against.
+  out(sharedName === null
+    ? `${hang}mycontext review promote --all --pack ${name}`
+    : `${hang}mycontext review promote --all --pack ${name} --source ${sharedName}`);
 
   if (outcome.overwritten.length > 0) {
     const n = outcome.overwritten.length;
     say(out,
       `overwrote ${n} ${n === 1 ? 'item' : 'items'} you had changed — `
       + `${nameIds(outcome.overwritten)}; ${n === 1 ? 'it is' : 'each is'} a draft now too, and `
-      + 'the previous version is in the audit log — '
-      + `\`mycontext audit --item ${outcome.overwritten[0]}\`.`,
+      + 'the previous version is in the audit log:',
       hang);
+    // Same rendering ruling as the promote command above: an item id here can
+    // run past 60 characters in a real corpus, and `say` would wrap this
+    // command across two lines exactly as measured for the promote command.
+    out(`${hang}mycontext audit --item ${outcome.overwritten[0]}`);
   }
   if (outcome.overwriteSkipped.length > 0) {
     say(out,

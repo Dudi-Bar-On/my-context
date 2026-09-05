@@ -33,6 +33,7 @@ function candidate(context: unknown): unknown {
     type: 'constraint',
     title: 'Postgres pool capped at 20',
     body: 'RDS permits 25 connections.',
+    summary: 'The connection pool is capped below what the database actually allows.',
     quote: 'The pool is capped at 20 connections.',
     observations: [observation],
   };

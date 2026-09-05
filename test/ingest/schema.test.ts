@@ -24,6 +24,7 @@ function candidate(over: Record<string, unknown> = {}): Record<string, unknown> 
     type: 'requirement',
     title: 'Passwords are at least 12 characters',
     body: 'Enforced at registration and at password change.',
+    summary: 'A rule that passwords must be long enough to resist guessing.',
     quote: 'Passwords must be at least 12 characters.',
     ...over,
   };
@@ -35,6 +36,49 @@ test('a well-formed candidate validates', () => {
   assert.equal(result.valid.length, 1);
   assert.equal(result.valid[0].type, 'requirement');
   assert.equal(result.valid[0].title, 'Passwords are at least 12 characters');
+});
+
+// --- DEC-the-document-extraction-schema-gains-a-summary-field-so: the
+// extractor writes the summary itself, at the moment it still has the
+// source document in view — the same way it writes title and body. A
+// candidate missing one is rejected here, before it ever reaches
+// createItem, rather than landing with `summary: null` (INV-a-validator-
+// that-gates-writes-must-be-a-complete-precondition-for-the-write). ---
+
+test('a well-formed candidate carries its summary through unchanged', () => {
+  const result = validateCandidates([candidate()], CONFIG, CHUNK);
+  assert.deepEqual(result.issues, []);
+  assert.equal(result.valid[0].summary, 'A rule that passwords must be long enough to resist guessing.');
+});
+
+test('a missing summary is rejected, not stored as null', () => {
+  const result = validateCandidates([candidate({ summary: undefined })], CONFIG, CHUNK);
+  assert.equal(result.valid.length, 0);
+  assert.match(result.issues[0].message, /"summary" is required/);
+});
+
+test('a blank summary is rejected the same as a missing one', () => {
+  const result = validateCandidates([candidate({ summary: '   ' })], CONFIG, CHUNK);
+  assert.equal(result.valid.length, 0);
+  assert.match(result.issues[0].message, /"summary" is required/);
+});
+
+test('a summary with a line break is rejected, aligned with the write boundary', () => {
+  const result = validateCandidates([candidate({ summary: 'Line one\nLine two' })], CONFIG, CHUNK);
+  assert.equal(result.valid.length, 0);
+  assert.match(result.issues[0].message, /"summary" contains a line break/);
+});
+
+test('an over-long summary is rejected the same way validateSummary rejects it everywhere else', () => {
+  const result = validateCandidates([candidate({ summary: 'x'.repeat(161) })], CONFIG, CHUNK);
+  assert.equal(result.valid.length, 0);
+  assert.match(result.issues[0].message, /"summary" is 161 characters/);
+});
+
+test('a summary is trimmed the same way title and body are', () => {
+  const result = validateCandidates([candidate({ summary: '  Passwords must be long enough to resist guessing.  ' })], CONFIG, CHUNK);
+  assert.deepEqual(result.issues, []);
+  assert.equal(result.valid[0].summary, 'Passwords must be long enough to resist guessing.');
 });
 
 test('a non-array payload is one issue, not a crash', () => {
@@ -247,7 +291,7 @@ test('the published schema names every required field', () => {
   // in place would permanently reorder that object for every other test
   // and every real caller in the same process.
   const required = [...(CANDIDATE_SCHEMA.items as { required: string[] }).required];
-  assert.deepEqual(required.sort(), ['body', 'quote', 'title', 'type']);
+  assert.deepEqual(required.sort(), ['body', 'quote', 'summary', 'title', 'type']);
 });
 
 test('the schema and the validator agree on exactly which fields a candidate may carry', () => {

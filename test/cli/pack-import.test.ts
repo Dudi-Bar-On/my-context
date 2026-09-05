@@ -431,6 +431,16 @@ test('--yes --overwrite-changed replaces the changed items and says which', () =
   assert.equal(itemOf(cwd, RULE_ID).body.trim(), INCOMING_BODY);
   assert.match(flat(out), /overwrote 1 item/);
   assert.match(flat(out), new RegExp(`mycontext audit --item ${RULE_ID}`));
+  // TASK-the-shipped-pack-import-outcome-points-at-a-command-that: the same
+  // rendering ruling as the promote command — this command is never embedded
+  // in the wrapped sentence above it, so it is printed whole, on its own
+  // line, exactly once, whatever the item id's length.
+  const auditCopyable = out.split('\n').filter((l) => l.includes('mycontext audit --item'));
+  assert.equal(auditCopyable.length, 1, out);
+  assert.ok(
+    auditCopyable[0].trimEnd().endsWith(`--item ${RULE_ID}`),
+    `the printed command is not on its own line, whole: ${auditCopyable[0]}`,
+  );
   // §6m.5 still holding: an overwritten item is a draft, not a governing item
   // whose text a stranger just replaced.
   assert.equal(itemOf(cwd, RULE_ID).status, 'draft');
@@ -568,7 +578,17 @@ test('two imports of packs with the same name are kept apart, and list shows bot
   const one = run(['pack', 'import', first, '--yes'], cwd);
   assert.equal(one.code, 0, one.out);
   // The first import's next step is the plain form: this name names one record.
-  assert.match(flat(one.out), /review promote --all --pack acme-security`,/);
+  assert.match(flat(one.out), /review promote --all --pack acme-security/);
+  // TASK-the-shipped-pack-import-outcome-points-at-a-command-that: the
+  // command is never embedded in the wrapped sentence above it, so it never
+  // breaks across two lines the way `flat()` alone would hide — printed
+  // whole, on its own line, exactly once.
+  const oneCopyable = one.out.split('\n').filter((l) => l.includes('review promote --all'));
+  assert.equal(oneCopyable.length, 1, one.out);
+  assert.ok(
+    oneCopyable[0].trimEnd().endsWith(`--pack ${PACK_NAME}`),
+    `the printed command is not on its own line, whole: ${oneCopyable[0]}`,
+  );
 
   const two = run(['pack', 'import', second, '--yes'], cwd);
   assert.equal(two.code, 0, two.out);

@@ -33,6 +33,7 @@ function candidate(over: Record<string, unknown> = {}): Record<string, unknown> 
     type: 'requirement',
     title: 'Passwords are at least 12 characters',
     body: 'Enforced at registration and at password change.',
+    summary: 'A rule that passwords must be long enough to resist guessing.',
     quote: 'Passwords must be at least 12 characters.',
     ...over,
   };

@@ -78,6 +78,7 @@ test('ingest-apply writes drafts and then offers the next chunk', () => {
     type: 'requirement',
     title: 'Passwords are at least 12 characters',
     body: 'Enforced at registration.',
+    summary: 'A rule that passwords must be long enough to resist guessing.',
     quote: 'Passwords must be at least 12 characters.',
   }]);
   writeFileSync(path.join(cwd, 'c.json'), payload, 'utf8');
@@ -98,7 +99,7 @@ test('ingest-apply reports issues and still keeps the good candidates', () => {
   const cwd = project();
   const id = sessionId(run(['ingest', 'docs/prd.md'], cwd).out);
   writeFileSync(path.join(cwd, 'c.json'), JSON.stringify([
-    { type: 'requirement', title: 'Good one', body: 'b', quote: 'Passwords must be at least 12 characters.' },
+    { type: 'requirement', title: 'Good one', body: 'b', summary: 'A short rule about password length.', quote: 'Passwords must be at least 12 characters.' },
     { type: 'nonsense', title: 'Bad one', body: 'b', quote: 'Passwords must be at least 12 characters.' },
   ]), 'utf8');
 

@@ -1,5 +1,6 @@
 import type { Config } from '../core/config.ts';
 import type { Chunk } from './chunk.ts';
+import { SUMMARY_MAX_CHARS } from '../core/validate.ts';
 import { CANDIDATE_SCHEMA, MAX_TITLE } from './schema.ts';
 import { pendingAnchors, type IngestSession } from './session.ts';
 
@@ -53,6 +54,7 @@ function instructionsFor(request: Omit<ExtractionRequest, 'instructions'>): stri
     'Emit a JSON array matching the "schema" field. Return [] when the chunk establishes nothing normative — that is a correct and common answer, and the common case for prose that isn\'t a spec.',
     'Every candidate MUST carry a "quote": a span copied VERBATIM from the chunk. It is checked by exact match after whitespace collapsing, and a paraphrase is rejected. This is how an invented item is caught.',
     `"title" is one declarative sentence on a SINGLE LINE, at most ${MAX_TITLE} characters — no line breaks. Put the reasoning in "body".`,
+    `Every candidate MUST carry a "summary": one plain sentence for a reader who does not know this codebase, saying what the item IS and why it matters — not how it was found. Plain words only, no ids, no file paths, no measurements, at most ${SUMMARY_MAX_CHARS} characters. Write it now, while you still have the source document in view: nothing else in this product can write it for you afterwards, and a candidate with no summary is rejected.`,
     '"body" is plain prose: no line may start with a Markdown heading ("#" through "######", e.g. "## Why") — that line and everything after it is silently dropped when the item is read back from disk. Do not structure the rationale with headings; use plain paragraphs.',
     '"scope", "tags" and "observations" must each be a JSON ARRAY — never a bare string. Scope RESTRICTS where an item applies: set it only to the directories the item actually governs, as POSIX globs such as "src/auth/**". "**", "*" and "**/*" are all rejected, because omitting "scope" already means exactly that. Omitting scope is safe and is the right answer when the item is not about particular files — it simply leaves the item unrestricted, so it applies everywhere.',
     '"severity" is "hard" (a future enforcement candidate) or "soft" (the default) — omit it to get "soft".',

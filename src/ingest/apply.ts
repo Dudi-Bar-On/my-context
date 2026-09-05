@@ -259,6 +259,11 @@ export function applyCandidates(
       type: candidate.type,
       title: candidate.title,
       body: candidate.body,
+      // DEC-the-document-extraction-schema-gains-a-summary-field-so: the
+      // extractor wrote this at extraction time, and `validateCandidates`
+      // already refused any candidate that skipped it — so this is never
+      // undefined here, and `createItem` stores it rather than `null`.
+      summary: candidate.summary,
       status: 'draft',
       origin: 'ingest',
       severity: candidate.severity,

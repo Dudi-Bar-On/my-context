@@ -1,7 +1,8 @@
 import type { Config } from '../core/config.ts';
 import { inertFieldError, scopeRequirementError, unknownExtraFieldError } from '../core/trust.ts';
 import {
-  normalizeObservations, validateBody, validateExtra, validateScope, validateTags, validateTitle,
+  normalizeObservations, normalizeSummary, SUMMARY_MAX_CHARS, validateBody, validateExtra, validateScope,
+  validateSummary, validateTags, validateTitle,
 } from '../core/validate.ts';
 import { enumError } from '../core/teach.ts';
 import { normalizeEol, type Chunk } from './chunk.ts';
@@ -18,6 +19,15 @@ export interface Candidate {
   type: string;
   title: string;
   body: string;
+  /**
+   * One plain sentence, written by the extractor while the source document
+   * is still in view — DEC-the-document-extraction-schema-gains-a-summary-
+   * field-so. Required, not optional: `apply.ts` passes it straight to
+   * `createItem`'s own `summary`, and an ingest candidate that skipped this
+   * would otherwise land with `summary: null`, invisible until doctor's
+   * `summary_absent` names it one item at a time.
+   */
+  summary: string;
   /** A verbatim span from the source chunk. The grounding check, not a quality check. */
   quote: string;
   severity: 'hard' | 'soft';
@@ -76,6 +86,17 @@ const CANDIDATE_FIELD_DEFS: { name: string; required: boolean; schema: Record<st
       description: 'The rationale: why this holds, and what breaks if it does not. Plain prose only — ' +
         'no line may start with a Markdown heading ("#" through "######", e.g. "## Why"). A heading line ' +
         'and everything after it is silently dropped when the item is read back from disk.',
+    },
+  },
+  {
+    name: 'summary', required: true, schema: {
+      type: 'string', maxLength: SUMMARY_MAX_CHARS,
+      description: `One plain sentence for a reader who does not know this codebase: what the item ` +
+        `IS and why it matters, not how it was found. Plain words only — no ids, no file paths, no ` +
+        `measurements, no project vocabulary. At most ${SUMMARY_MAX_CHARS} characters, a single line. ` +
+        `Write it now, while you still have the source document in view — this is the only chance, ` +
+        `because everything this item creates lands as an unreviewed draft and nothing else in this ` +
+        `product can write the sentence for you afterwards.`,
     },
   },
   { name: 'quote', required: true, schema: { type: 'string', description: 'A verbatim span copied from the chunk. Never paraphrase — a paraphrased quote is rejected.' } },
@@ -310,6 +331,30 @@ export function validateCandidates(raw: unknown, config: Config, chunk: Chunk): 
       return reject(messageOf(err));
     }
 
+    // DEC-the-document-extraction-schema-gains-a-summary-field-so: the
+    // extractor supplies the summary itself, at the moment it still has the
+    // source document in view. Required here — a candidate short of one is
+    // rejected before it ever reaches `apply.ts` / `createItem`, rather than
+    // silently landing with `summary: null` — so `validateCandidates` stays
+    // a complete precondition for the write it gates
+    // (INV-a-validator-that-gates-writes-must-be-a-complete-precondition-for-the-write).
+    // Normalized and validated through the SAME functions every other
+    // summary-writing surface uses (`normalizeSummary`/`validateSummary`,
+    // core/validate.ts), not a second, ingest-only copy of the rule.
+    const summary = normalizeSummary(typeof entry.summary === 'string' ? entry.summary : '');
+    if (summary === '') {
+      return reject(
+        '"summary" is required: one plain sentence, written now while the source document is ' +
+        'still in view, saying what this item IS and why it matters — not how it was found. ' +
+        'See mycontext_help("capture").',
+      );
+    }
+    try {
+      validateSummary(summary);
+    } catch (err) {
+      return reject(messageOf(err));
+    }
+
     if (typeof entry.quote !== 'string' || entry.quote.trim() === '') {
       return reject('"quote" is required: copy the verbatim sentence from the source chunk this item is drawn from.');
     }
@@ -528,7 +573,7 @@ export function validateCandidates(raw: unknown, config: Config, chunk: Chunk): 
     }
 
     valid.push({
-      type, title, body, quote,
+      type, title, body, summary, quote,
       severity,
       scope,
       tags,
