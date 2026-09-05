@@ -56,6 +56,7 @@ test('phase two stages drafts and returns the next request', () => {
       type: 'requirement',
       title: 'Passwords are at least 12 characters',
       body: 'Enforced at registration.',
+      summary: 'A rule that passwords must be long enough to resist guessing.',
       quote: 'Passwords must be at least 12 characters.',
     }],
   });

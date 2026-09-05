@@ -3,6 +3,7 @@
     "type": "constraint",
     "title": "Carts expire in 30 minutes",
     "body": "A tenant may reprice a book while a shopper decides, so an expired cart is repriced, not honoured.",
+    "summary": "An unconfirmed cart expires after thirty minutes so a stale price is never honoured.",
     "quote": "A cart that has been priced but not confirmed expires after thirty minutes.",
     "severity": "hard",
     "tags": ["checkout"]
@@ -11,6 +12,7 @@
     "type": "requirement",
     "title": "Refunds use payment intents",
     "body": "Refunding through the intent that captured the money bounds the refund by what was captured.",
+    "summary": "Refunds are issued against the original payment intent rather than as a separate bank transfer.",
     "quote": "Refunds are issued against the original Stripe payment intent rather than by bank transfer",
     "tags": ["payments"],
     "extra": { "kind": "functional" }
@@ -19,6 +21,7 @@
     "type": "non_goal",
     "title": "Guest checkout is excluded",
     "body": "Every order belongs to an account, which is what lets a tenant say where an order is.",
+    "summary": "Checkout requires an account in this release; there is no guest checkout path.",
     "quote": "Guest checkout is not in the first release."
   }
 ]

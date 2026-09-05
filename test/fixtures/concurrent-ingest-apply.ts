@@ -31,6 +31,7 @@ writeFileSync(path.join(cwd, fileName), JSON.stringify([{
   type: 'requirement',
   title,
   body,
+  summary: 'A rule that passwords must be long enough to resist guessing.',
   quote,
 }]), 'utf8');
 

@@ -3,6 +3,7 @@
     "type": "invariant",
     "title": "ISBN is unique per tenant",
     "body": "Two tenants may stock the same book, so a lookup that omits the tenant can return the wrong row.",
+    "summary": "Two tenants can stock the same book, so a catalogue lookup must scope by tenant, not by edition alone.",
     "quote": "the key that identifies an edition is not unique on its own and is always read together with the tenant it belongs to",
     "severity": "hard",
     "scope": ["src/catalogue/**"]
@@ -11,6 +12,7 @@
     "type": "constraint",
     "title": "Search pages hold 50 titles",
     "body": "A larger page makes the Postgres full-text query slow enough for a shopper to feel it.",
+    "summary": "Search result pages are capped at fifty titles so the query stays fast enough to feel instant.",
     "quote": "Search results are paginated at fifty titles per page.",
     "scope": ["src/catalogue/**"]
   }
