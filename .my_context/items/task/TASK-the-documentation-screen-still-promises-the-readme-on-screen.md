@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: Corrects a shipped screen sentence that still promises the README, three weeks after the owner ruled it should say it serves help topics instead.
-summary_of: d4f8436b8eb143bf
+summary_of: bac72b7295910b1e
 scope:
   - docs/design/web-ui-mockup.html
   - src/ui/public/strings/en.js
@@ -18,18 +18,19 @@ tags:
   - "screen:docs"
   - "plan:docsys"
   - "seq:1"
-  - "state:doing"
+  - "state:done"
 origin: human
 source_file: "C:/Users/UserC/AppData/Local/Temp/claude/D--Users-UserC-source-repos-my-context/595db3b1-a481-4553-b4c0-7248c31b2655/scratchpad/docsys/1.md"
 source_anchor: null
 source_checksum: d6934660463ba297
 valid_from: 2026-09-05
 valid_until: null
-checksum: 93ebb3afe1bff2cb
+checksum: 342fe09cfc481838
 plan: docsys
 seq: "1"
-state: doing
+state: done
 priority: "1"
+verified_on: 2026-09-05
 ---
 
 # the Documentation screen still promises the README on screen, a ruling three weeks old that was never carried into the mockup or either string table

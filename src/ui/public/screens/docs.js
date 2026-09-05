@@ -3,11 +3,11 @@
  * record. A **Contents** card beside a card that renders one section, and the
  * markdown is turned into NODES — never into an HTML string.
  *
- * ── THE ONE THING THE DESIGN ASKS FOR THAT NOTHING SERVES ──────────────────
+ * ── THE THING THE DESIGN USED TO ASK FOR THAT NOTHING SERVED ───────────────
  *
- * `dv.sub` is a promise about a document: *"The repository's own README,
- * rendered here and addressed by heading ordinal."* The spec repeats it and
- * calls the mechanism the decision
+ * `dv.sub` used to promise a document: *"The repository's own README,
+ * rendered here and addressed by heading ordinal."* The spec repeated it and
+ * called the mechanism the decision
  * (`docs/superpowers/specs/2026-08-16-web-ui-design.md` · `addressed by **heading ordinal** — so one integer gives both a deep link` · ~1327).
  *
  * **No endpoint serves the README.** The read server's whole route table is in
@@ -17,8 +17,13 @@
  * `README.md` sits at the repository root, outside `src/ui/public/`, so the
  * static handler cannot reach it either — measured, not assumed: nothing under
  * `src/ui/` names it. This screen therefore renders a `mycontext help` topic,
- * and the divergence from `dv.sub` is this task's loudest report rather than a
- * fetch invented against a route that does not exist. It is not a new
+ * which is what it has always done — `dv.sub` was the thing that disagreed.
+ * `DEC-the-documentation-screen-serves-the-help-topics-and-says-so` ruled the
+ * sentence false on 2026-08-25 (*"the screen serves `mycontext help` topics,
+ * and `dv.sub` is corrected to say so"*), and the correction did not reach the
+ * mockup or either string table for three weeks —
+ * `TASK-the-documentation-screen-still-promises-the-readme-on-screen` is what
+ * finally landed it, on 2026-09-05, in `dv.sub` and `dv.v` alike. Not a new
  * discovery: plan 1 already recorded that this screen belongs to no plan
  * (`docs/superpowers/plans/2026-08-16-web-ui-1-server-and-reads.md` · `**Documentation and Tutorials belong to no plan and are not claimed here.**` · ~214),
  * which is why nothing was ever built to feed it.
@@ -37,8 +42,8 @@
  * thing to a reader: the Contents lists five sections, and the section drawn
  * is the fourth. The mockup renders `§3` and its Contents is not interactive;
  * neither is this one, for the same reason — the design draws no control there
- * and `#/docs/4` is not a route this shell's `route()` can parse, so the "deep
- * link" half of `dv.sub` has nowhere to land. Reported, not invented.
+ * and `#/docs/4` is not a route this shell's `route()` can parse, so there is
+ * no deep link to any of the other four. Reported, not invented.
  *
  * **The heading text comes from `tFlat('dv.t4')`, and that is the one place
  * this file reaches for the flat renderer.** `dv.rendered` is `§{ordinal} —

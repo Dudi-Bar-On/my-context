@@ -35,7 +35,7 @@
  * So this file draws the table, and `renderMarkdown` is not written. See
  * `lib/viewmodel.js`'s header.
  *
- * ── THE JOIN, PER TOPIC, AND THE ONE ROW THAT LOSES ITS CROSS-LINK ────────
+ * ── THE JOIN, PER TOPIC, AND THE ONE ROW THAT HAS NO ITEM TO POINT AT ─────
  *
  * `/api/help/:topic` answers `{ topic, markdown, corpus }` with a different
  * `corpus` shape per topic, each documented on `apiHelp`. Only two of the four
@@ -44,14 +44,27 @@
  *   - `scope` → `corpus.scoped[…].id` — an item that declares one. Served.
  *   - `capture` → `corpus.recent[…].id` — served.
  *   - `categories` → `{ counts, empty }`. A tally and a list of category
- *     names. **No item id.** The mockup draws one on this row
- *     (`CONST-zero-runtime-dependencies`), and this screen cannot: an id
- *     invented from a tally would be a claim about which item demonstrates
- *     "which are normative" that nothing in the response makes. The row is
- *     drawn with its description and no cross-link, and the gap is this task's
- *     report rather than a guess.
+ *     names. **No item id.** An id invented from a tally would be a claim
+ *     about which item demonstrates "which are normative" that nothing in the
+ *     response makes — `TASK-learn-the-categories-row-cannot-draw-the-cross-
+ *     link-its-own` ruled that out by name. The mockup used to draw one here
+ *     anyway (`CONST-zero-runtime-dependencies`, invented, not served) and
+ *     that was the defect: a reader could not tell an illustrated join from a
+ *     real one. **The row now says so instead of guessing** — the ONE `◌`
+ *     primitive `STD-a-measured-zero-is-drawn-and-named-an-unmeasured-thing-is`
+ *     governs, already spent by `coverage.js`, `doctor.js`, `watch.js` and
+ *     `injected.js` for exactly this fact (a thing that was not measured,
+ *     never rendered blank), reused here rather than a fourth convention. It
+ *     is not "zero" — `counts` and `empty` are real, measured numbers, drawn
+ *     as `ln.c`'s description — it is that no SINGLE item was ever going to
+ *     answer "which one shows this is normative", so none is claimed.
  *   - `workflow` → `{ drafts, pendingRevisions }`. Two counts, no item id —
- *     and the mockup draws no cross-link on this row either, so the two agree.
+ *     and the mockup draws no cross-link and no `◌` note on this row either.
+ *     The difference from `categories` is real: `workflow` never claimed a
+ *     join and drawing an explicit "unmeasured" mark over a row nobody ever
+ *     promised one on would be inventing a *different* claim nothing asked
+ *     for. `categories` gets the mark because the mockup used to draw a join
+ *     there and that promise needed an honest retraction, not a silent one.
  *
  * **The `capture` row gains a cross-link the mockup does not draw, and takes
  * no label with it.** `apiHelp` warns that `recent` is ordered by FILE
@@ -71,15 +84,15 @@
  * the four responses and the design of record's Learn screen has nowhere to
  * put it — reported, not repurposed.
  *
- * ── HOW A VALUE IS MARKED AS MACHINE TEXT, AND WHY IT IS A `span.m` ───────
+ * ── HOW A VALUE IS MARKED AS MACHINE TEXT, AND WHY THE ID IS A BUTTON ─────
  *
  * This section marks a value as machine text in exactly two shapes, and this
  * file draws both of them:
  *
  *   - the TOPIC NAME, `<td class="m">categories</td>` — the cell itself
  *     carries the mark, four times;
- *   - the CROSS-LINKED ID, `<span class="m">INV-prices-are-integer-cents</span>`
- *     — `mono()`, twice.
+ *   - the CROSS-LINKED ID, `<button class="linkid m" data-id="…">…</button>`
+ *     — `linkId()`, twice.
  *
  * **`.m` is `direction:ltr; unicode-bidi:isolate`, not a font choice — and
  * what it buys here was MEASURED, not assumed.** Rendered into the Hebrew
@@ -100,21 +113,24 @@
  * machine-text run is therefore marked where it is DRAWN, not where somebody
  * looked at it once and it happened to be fine.
  *
- * **The id is a `span.m` and not the `button.linkid m` the rest of the app
- * draws, because that is what the design of record draws HERE.** The mockup
- * knows the `linkid` primitive — it writes one on five other sections — and
- * did not reach for it in `<section data-p="learn">`, which makes a plain run
- * the drawn intent rather than an omission. Nothing is lost by it today: the
- * item detail pane `parts.js`' `linkId()` delegates to has not been built
- * (`index.html` declares no `aside#pane`, `app.js` registers no delegated
- * click — the pane is one of the "unowned" surfaces its own header lists), so
- * every `linkId` in this app is inert. `ask` made the opposite call for
- * consistency with the other screens and still carries `span.m` in
- * `KNOWN_GAPS` for it; this screen carries the mockup's shape instead. The
- * day the pane lands, the question is worth re-asking with the owner — and on
- * the mockup, which is where the two ids would have to become buttons first.
+ * **The id is now a `button.linkid.m`, the shape every other cross-linked id
+ * in the app draws — this screen no longer carries the one exception.** It
+ * used to be a plain `span.m`, and the reason on record was current when it
+ * was written and then stopped being true without anyone coming back to
+ * update it: *"the item detail pane `parts.js`' `linkId()` delegates to has
+ * not been built … every `linkId` in this app is inert."* **It shipped 2.5
+ * hours later, the same day** (`aa34358`, 2026-08-23 — `index.html` gained
+ * `aside#pane`, `app.js` wired the delegated click). The comment above
+ * outlived the gap it described by more than two weeks before anyone
+ * noticed: `ask` already drew its ids as buttons for exactly this pane;
+ * `coverage`, `doctor`, `injected`, `preview` and `watch` do too; **Learn's
+ * two ids were the only inert ones left in the product.** `linkId(id, false)`
+ * — unsplit, matching the plain run every OTHER table-row id in the mockup
+ * draws (`docs/design/web-ui-mockup.html`'s audit and doctor tables), rather
+ * than the `idkind`/`idslug` split the mockup's carried-item card uses. Click
+ * one and `aside#pane` opens on it, the same as everywhere else.
  */
-import { el, errorNote, mono, screenHead } from '/screens/parts.js';
+import { el, errorNote, linkId, screenHead } from '/screens/parts.js';
 
 /**
  * The four topics in the mockup's own order, each with the description key it
@@ -141,6 +157,21 @@ function firstId(corpus, field) {
   if (!Array.isArray(list) || list.length === 0) return null;
   const id = list[0].id;
   return typeof id === 'string' && id !== '' ? id : null;
+}
+
+/**
+ * The `categories` row's honest reply to having no item to point at —
+ * `STD-a-measured-zero-is-drawn-and-named-an-unmeasured-thing-is`'s `◌`
+ * primitive, already spent by `coverage.js`, `doctor.js`, `watch.js` and
+ * `injected.js` for the same fact and reused here rather than a fourth
+ * convention. See this file's header for why `categories` gets this mark and
+ * `workflow` — the other topic with no item id — does not.
+ */
+function categoriesUnmeasured(ctx) {
+  const chip = el('span', 'chip unmeas');
+  chip.dataset.g = '◌';
+  chip.append(...ctx.t('ln.cUnmeasured'));
+  return chip;
 }
 
 export async function render(root, ctx) {
@@ -178,16 +209,20 @@ export async function render(root, ctx) {
       cell.append(errorNote(failure));
     } else {
       const id = firstId(body.corpus, entry.link);
-      // `mono()`, which is `<span class="m">` — the mockup's own shape for this
-      // cell, and the `unicode-bidi:isolate` that makes the id read
-      // left-to-right in Hebrew whatever its first and last characters are.
-      // See this file's header for the measurement and for why this is not the
-      // `linkId()` button the other screens draw.
-      if (id !== null) cell.append(' · ', mono(id));
-      // No `else`: a topic whose join carries no item id shows its description
-      // and stops. Drawing a placeholder there would say the corpus has
-      // nothing to demonstrate it, which is a different claim from "this
-      // endpoint does not carry one".
+      // `linkId()`, which is `<button class="linkid m">` — the shape every
+      // other cross-linked id in this app draws, reaching the same item
+      // detail pane a click on any of them opens. See this file's header for
+      // the measurement behind `.m` and for why this used to be a plain span.
+      if (id !== null) {
+        cell.append(' · ', linkId(id, false));
+      } else if (entry.topic === 'categories') {
+        // The one row that once drew an invented id and now draws the honest
+        // fact instead: no single item was ever going to answer this.
+        cell.append(' · ', categoriesUnmeasured(ctx));
+      }
+      // No further `else`: `workflow` is the other topic whose join carries no
+      // item id, and it never claimed one — drawing a mark there would invent
+      // a different claim nothing asked for. See this file's header.
     }
 
     row.append(cell);

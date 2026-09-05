@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: One row of a four-row screen cannot show the link that justifies the screen existing, because nothing in the answer names an example to point at.
-summary_of: 5178edfff97a1fec
+summary_of: 63533d9c846b2f06
 scope: []
 tags:
   - v2
@@ -15,21 +15,22 @@ tags:
   - tree-parity
   - "plan:walk"
   - "seq:88"
-  - "state:doing"
+  - "state:done"
 origin: agent
 source_file: null
 source_anchor: null
 source_checksum: null
 valid_from: 2026-08-29
 valid_until: null
-checksum: 35a82bd449e733bc
+checksum: f5cdcb108287eef5
 plan: walk
 seq: "88"
-state: doing
+state: done
 priority: "2"
 progress: "0"
 source: "plan:walk seq:27, measured against src/ui/public/screens/learn.js on 2026-08-29"
 last_change: "2026-08-29T00:00:00Z"
+verified_on: 2026-09-05
 ---
 
 # Learn: the categories row cannot draw the cross-link its own verdict is conditional on

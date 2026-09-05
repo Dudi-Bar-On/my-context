@@ -3686,9 +3686,9 @@ td.stale{box-shadow:inset 2px 0 0 var(--warn)}
   <!-- ═══ 17. Documentation ═══ -->
   <section data-p="docs" hidden>
     <div class="phd"><h2 data-t="dv.h">Documentation</h2>
-      <span class="verdict">✅ <span data-t="dv.v">cross-linked to your own corpus, which a docs site cannot do</span></span></div>
-    <p class="psub" data-t="dv.sub">The repository's own README, rendered here and addressed by heading
-      ordinal — so one integer gives both a deep link and a language switch that lands on the same section.</p>
+      <span class="verdict">✅ <span data-t="dv.v">this product's own <span class="m">mycontext help</span> topics, served and translated</span></span></div>
+    <p class="psub" data-t="dv.sub">A <span class="m">mycontext help</span> topic, rendered here — this
+      product's own built-in documentation, already served and already translated.</p>
     <div class="two">
       <div class="card pane"><h3 data-t="dv.toc">Contents</h3>
         <div class="small" style="line-height:2">
@@ -3739,9 +3739,9 @@ td.stale{box-shadow:inset 2px 0 0 var(--warn)}
       corpus that demonstrate it. That join is what a docs page cannot do.</p>
     <div class="card pane">
       <table><tbody>
-        <tr><td class="m">categories</td><td class="small"><span data-t="ln.c">which are normative</span> · <span class="m">CONST-zero-runtime-dependencies</span></td></tr>
-        <tr><td class="m">scope</td><td class="small"><span data-t="ln.s">how scope restricts</span> · <span class="m">INV-prices-are-integer-cents</span></td></tr>
-        <tr><td class="m">capture</td><td class="small" data-t="ln.p">what to write down, and when</td></tr>
+        <tr><td class="m">categories</td><td class="small"><span data-t="ln.c">which are normative</span> · <span class="chip unmeas" data-g="◌" data-t="ln.cUnmeasured">no single item represents this</span></td></tr>
+        <tr><td class="m">scope</td><td class="small"><span data-t="ln.s">how scope restricts</span> · <button class="linkid m" type="button" data-id="INV-prices-are-integer-cents">INV-prices-are-integer-cents</button></td></tr>
+        <tr><td class="m">capture</td><td class="small"><span data-t="ln.p">what to write down, and when</span> · <button class="linkid m" type="button" data-id="CONST-zero-runtime-dependencies">CONST-zero-runtime-dependencies</button></td></tr>
         <tr><td class="m">workflow</td><td class="small" data-t="ln.w">the queue, revisions, supersede</td></tr>
       </tbody></table>
     </div>
@@ -4495,8 +4495,8 @@ const HE={_dir:'rtl',_lang:'he',
  'cfg.apply':'להחיל','cfg.nocmd':'אף פקודת {m:mycontext} אינה עורכת תקציב, וגם סוכן אינו יכול — כך אומר הוו במילים האלה: {i:"שינויים ב‑{m:.my_context/config.json} הם עניינו של המשתמש — בקש, אל תערוך."} אדם יכול, מאחורי אישור שמציג כל ערך.',
  'cfg.h1':'{b:ערכו את הקובץ בעצמכם.} דבר כאן אינו כותב אותו.','cfg.h2':'{b:הקבלה:} המסך קורא את {m:config.json} מחדש בכל טעינה — או שדה {m:parseError} אם ה‑JSON נשבר.',
  'port.h':'ייצוא / ייבוא',
- 'dv.h':'תיעוד','dv.v':'מקושר לקורפוס שלכם, מה שאתר תיעוד אינו יכול',
- 'dv.sub':'ה‑README של המאגר, מוצג כאן וממוען לפי סדר הכותרת.','dv.toc':'תוכן',
+ 'dv.h':'תיעוד','dv.v':'נושאי ה־{m:mycontext help} של המוצר עצמו, מוגשים ומתורגמים',
+ 'dv.sub':'נושא {m:mycontext help} אחד, מוצג כאן — התיעוד המובנה של המוצר עצמו, כבר מוגש ומתורגם.','dv.toc':'תוכן',
  'dv.t1':'מה זה','dv.t2':'התקנה','dv.t3':'חמש הרמות','dv.t4':'היקף','dv.t7':'גבול האמון',
  'dv.parity':'מתג EN/HE מנטרל את עצמו כשמבחן הזהות אדום.','dv.rendered':'§{v:ordinal=3} — {v:heading=ארבע הרמות}',
  'dv.mdnote':'מוצג במעבד תת‑קבוצה שנכתב ביד: שום מחרוזת HTML אינה נוצרת, ולכן אין מה לחטא. HTML גולמי, תמונות וסכמות URL לא מוכרות {b:נדחים ומוצגים כדחיות}, ואינם מושמטים בשקט לעולם.',
@@ -4509,6 +4509,7 @@ const HE={_dir:'rtl',_lang:'he',
  'tu.gap':'עברית מוצגת כ"{b:לכתיבה}" ולא כמתג שהיה נופל בשקט לאנגלית.',
  'ln.h':'לימוד','ln.v':'מעבר מותנה — הקישורים לקורפוס מזכים בו','ln.sub':'ארבעת נושאי העזרה, מקושרים לפריטים בקורפוס {i:הזה}.',
  'ln.c':'אילו נורמטיביות','ln.s':'איך היקף מגביל','ln.p':'מה לתעד, ומתי','ln.w':'התור, גרסאות, החלפה',
+ 'ln.cUnmeasured':'אין פריט בודד שמייצג זאת',
  'pane.type':'סוג','pane.status':'מצב','pane.tier':'רמה','pane.scope':'היקף','pane.gov':'חל','pane.file':'קובץ',
  'pane.hist':'נמסר — שנים‑עשר שבועות',
  'pane.histn':'שנים‑עשר דליים שבועיים מהקרנת הביקורת, מקווקווים בשבוע שבו הפריט {b:נשפך} ואפורים בשבוע שבו לא נמסר דבר. זו התשובה הזולה ביותר לשאלה "האם הדבר הזה עדיין חי", וההיסטוריה היחידה ששייכת {i:לכל} פריט ולא למסך נפרד.',

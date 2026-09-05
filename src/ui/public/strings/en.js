@@ -1201,8 +1201,8 @@ export const strings = {
   'pk.theatre': '{b:What the digest does not prove.} A checksum proves files arrived intact, not that the author is trustworthy — it never gates activation. The {m:checksum} field is a 16-hex drift truncation, unused here.',
   // Documentation
   'dv.h': 'Documentation',
-  'dv.v': 'cross-linked to your own corpus, which a docs site cannot do',
-  'dv.sub': 'The README in this repository, rendered here and addressed by heading ordinal — one integer gives a deep link and a language switch to the same section.',
+  'dv.v': 'this product’s own {m:mycontext help} topics, served and translated',
+  'dv.sub': 'A {m:mycontext help} topic, rendered here — this product’s own built-in documentation, already served and already translated.',
   'dv.toc': 'Contents',
   'dv.t1': 'What this is',
   'dv.t2': 'Install',
@@ -1247,6 +1247,7 @@ export const strings = {
   'ln.s': 'how scope restricts',
   'ln.p': 'what to write down, and when',
   'ln.w': 'the queue, revisions, supersede',
+  'ln.cUnmeasured': 'no single item represents this',
   'aria.pane': 'Item detail',
   'aria.paneclose': 'Close',
   // Added 2026-08-27 for `plan:pane`. The mockup declares neither, and that is
