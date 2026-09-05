@@ -24,7 +24,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-09-04
 valid_until: null
-checksum: 70dc6d8570f9b9ae
+checksum: 35f8d2f4b018b17a
 plan: screens
 seq: "22"
 state: done
@@ -66,3 +66,6 @@ the measure that this was a simplification and not a move.
 
 Do this one LAST. The shared question mark comes first and the readability work second, or
 this card arrives in a screen that cannot yet hold it.
+
+## Relations
+- supersedes [[TASK-the-coverage-gaps-screen-is-missing-its-table]]

@@ -2,7 +2,7 @@
 id: TASK-the-coverage-gaps-screen-is-missing-its-table
 type: task
 title: the Coverage gaps screen never draws its directory row, and one listed gap is the mockup's alone
-status: active
+status: superseded
 severity: soft
 always: false
 summary: The coverage table itself is finished, but no corpus has ever had the kind of gap that makes its last row appear, so parts of it stay unseen.
@@ -15,7 +15,7 @@ scope: []
 tags:
   - "plan:screens"
   - "seq:4s"
-  - "state:todo"
+  - "state:done"
   - v2
   - ui
 origin: human
@@ -23,11 +23,11 @@ source_file: null
 source_anchor: null
 source_checksum: null
 valid_from: 2026-08-22
-valid_until: null
-checksum: 959dbe29f8ea9385
+valid_until: 2026-09-05
+checksum: fc7ab5cb8008ec4c
 plan: screens
 seq: 4s
-state: todo
+state: done
 ---
 
 # the Coverage gaps screen never draws its directory row, and one listed gap is the mockup's alone
@@ -52,3 +52,6 @@ Neither corpus holds an ungoverned directory, so the row never draws and all thr
 The fourth is not a gap in the app at all. `span.m` did not close and it moved: `lib/i18n.js` builds a `{mv:}` run as `span.m.v` -- the same monospace isolation, carrying a VALUE -- where the mockup froze one category's name into a bare `span.m`. No live corpus produces the mockup's form, and the mockup is history rather than behaviour (`DEC-the-app-is-what-is-built-the-mockup-is-history-and-a-gap`).
 
 Read the four, not the six and not the thirteen. A body that names closed gaps is how a task gets rebuilt from scratch by somebody who trusted it.
+
+## Relations
+- superseded_by [[TASK-coverage-gaps-folds-into-scope-coverage-keeping-the-one-fact]]

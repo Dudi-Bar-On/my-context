@@ -11,7 +11,7 @@ scope: []
 tags:
   - "plan:port"
   - "seq:5d"
-  - "state:todo"
+  - "state:doing"
   - v2
 origin: human
 source_file: null
@@ -19,10 +19,10 @@ source_anchor: null
 source_checksum: 63a1e1461c3c349f
 valid_from: 2026-08-23
 valid_until: null
-checksum: e2a2f09bca95930d
+checksum: e52b2c4a04b8f644
 plan: port
 seq: 5d
-state: todo
+state: doing
 ---
 
 # no endpoint serves tutorial state, so twelve cells are hard-coded in the module
