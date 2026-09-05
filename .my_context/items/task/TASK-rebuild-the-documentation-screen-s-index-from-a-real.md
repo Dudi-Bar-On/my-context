@@ -18,17 +18,17 @@ tags:
   - "screen:docs"
   - "plan:docsys"
   - "seq:5"
-  - "state:doing"
+  - "state:todo"
 origin: human
 source_file: "C:/Users/UserC/AppData/Local/Temp/claude/D--Users-UserC-source-repos-my-context/595db3b1-a481-4553-b4c0-7248c31b2655/scratchpad/docsys/5.md"
 source_anchor: null
 source_checksum: 0debf8efe7aef23c
 valid_from: 2026-09-05
 valid_until: null
-checksum: ec622ac83c91baf9
+checksum: 24bcb1eea67c4d7e
 plan: docsys
 seq: "5"
-state: doing
+state: todo
 priority: "2"
 needs: docsys/2,docsys/3,docsys/4,walk/25
 ---

@@ -11,7 +11,7 @@ scope: []
 tags:
   - "plan:builder"
   - "seq:3"
-  - "state:doing"
+  - "state:todo"
   - v2
   - ui
 origin: human
@@ -20,10 +20,10 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-08-24
 valid_until: null
-checksum: a5b0d0997e7658a0
+checksum: 5b0b8a6587fe3324
 plan: builder
 seq: "3"
-state: doing
+state: todo
 needs: builder/1, builder/2
 progress: "50"
 last_change: 2026-08-31

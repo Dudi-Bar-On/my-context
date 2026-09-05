@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: The status line adds up all delivered tokens rather than those still in the window, so the figure only grows and passes one hundred percent.
-summary_of: d15e1338d148a236
+summary_of: 0fe1ce620d05f269
 scope:
   - src/core/context-share.ts
   - src/cli/commands/statusline.ts
@@ -17,19 +17,19 @@ tags:
   - budget
   - "plan:rulings"
   - "seq:61"
-  - "state:doing"
+  - "state:done"
 origin: human
 source_file: null
 source_anchor: null
 source_checksum: null
 valid_from: 2026-09-04
 valid_until: null
-checksum: d35ca489b8c7fc10
+checksum: 0d203fa60dd20e3f
 plan: rulings
 seq: "61"
-state: doing
+state: done
 priority: "1"
-verified_on: 2026-09-04
+verified_on: 2026-09-05
 ---
 
 # myctx sums every injection ever made instead of what is resident, so it reports three hundred percent of the window

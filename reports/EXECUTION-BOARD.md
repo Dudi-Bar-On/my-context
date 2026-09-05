@@ -22,11 +22,14 @@ project ended up with two stale boards and a report nobody trusted.
 
 | | count |
 |---|---:|
-| Tasks done | **481** |
-| Open | **89** |
-| — needing the owner | **48** (46 `walk` + `port/98` + `port/99`) |
-| — lane-able | **41** |
-| In flight right now | 9 |
+| Tasks done | **493** |
+| Open | **99** |
+| — needing the owner | **47** (45 `walk` + `port/98` + `port/99`) |
+| — lane-able | **52** |
+| In flight right now | 2 |
+
+Open rose from 89 because `tuts/*` and `docsys/*` were filed after the last count,
+not because anything regressed. Twelve tasks closed in the same window.
 
 **v2.0 is every open task.** The in/out cut of 2026-09-04 proposed excluding 46; the owner
 declined it on 2026-09-05 (`DEC-v2-0-is-everything-still-open-and-the-in-out-cut-s-forty-six`).
@@ -170,13 +173,35 @@ By `RULE-1-1-with-the-mockup-and-the-owner-says-when-it-is-done`, no lane can cl
 
 | ref | count | what it is |
 |---|---:|---|
-| `walk/*` | 46 | The screen-by-screen walkthrough |
+| `walk/*` | 45 | The screen-by-screen walkthrough |
 | `port/98` | 1 | Walk every screen against the design side by side |
 | `port/99` | 1 | Point the finished screens at real data and look at each |
+
+### Rulings settled 2026-09-05, and what they released
+
+| walk | ruling | captured as |
+|---|---|---|
+| `walk/16` | The **mockup** rewords down to the shipped plain English. `work.diffn`'s "word level" is a factual error — the diff is line level | `DEC-the-mockup-rewords-down-to-the-shipped-plain-english-rather` |
+| `walk/108` | A screen with no verdict yet draws the **unmeasured mark**, never a blank badge | `DEC-a-screen-with-no-verdict-yet-draws-the-unmeasured-mark-never` |
+| `walk/0` | Help goes on controls a reader **cannot infer**, and sufficiency is judged by driving the screens afterwards — not by a count | `DEC-help-is-written-for-controls-a-reader-cannot-infer-and-the` |
+| `walk/91` | Decay's threshold is stated **on the screen** and **derived from config**, not typed as "twenty" | `DEC-the-decay-threshold-is-stated-on-the-screen-and-read-from` |
+
+`walk/138` — **new, filed 2026-09-05.** Learn cross-links a superseded item and a closed
+task, and its fourth row links nothing at all. Found by driving the live screen right
+after `walk/88` landed: the honest mark on one row exposed that the other three are not.
+The cause is the selection rule, not the four rows.
 
 ---
 
 ## Running log
+
+**2026-09-05, later.** Four walkthrough rulings taken and captured before any lane started
+(`walk/0`, `/16`, `/91`, `/108`). Landed: Documentation and Learn stopped claiming things
+already ruled false; rung 4 became countable from `select.ts`'s own predicates. Two lanes
+out on `walk/138` and on `walk/91`+`walk/16`, deliberately given disjoint file sets after
+a directory-wide `git add` swept a lane's in-progress test into someone else's commit.
+`walk/0` carries a second pass the assistant owns: build the bounded version, then drive
+the screens in a browser and report whether the coverage is actually enough.
 
 **2026-09-05.** Board rewritten to carry the whole backlog. v2.0 redefined as every open
 task. Landed: the resumed-session epoch fix (86%→33% accounting), the counts plate, path-echo

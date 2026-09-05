@@ -20,17 +20,17 @@ tags:
   - corpus
   - "plan:docsys"
   - "seq:4"
-  - "state:doing"
+  - "state:todo"
 origin: human
 source_file: "C:/Users/UserC/AppData/Local/Temp/claude/D--Users-UserC-source-repos-my-context/595db3b1-a481-4553-b4c0-7248c31b2655/scratchpad/docsys/4.md"
 source_anchor: null
 source_checksum: c28165a3afb8ea59
 valid_from: 2026-09-05
 valid_until: null
-checksum: 14b2f00f66baa850
+checksum: ca658df534950e53
 plan: docsys
 seq: "4"
-state: doing
+state: todo
 priority: "2"
 needs: docsys/2
 ---

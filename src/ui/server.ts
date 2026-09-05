@@ -613,6 +613,27 @@ const headerFirst = (v: string | string[] | undefined): string | null =>
   v === undefined ? null : Array.isArray(v) ? v[0] ?? null : v;
 
 /**
+ * Whether `host` is this machine addressing itself under a different spelling.
+ *
+ * The three a browser produces on its own: `localhost`, the IPv6 literal
+ * `[::1]`, and any `127.x.x.x`. The whole 127/8 block is loopback, not just
+ * `127.0.0.1`, and a person who typed `127.0.0.2` reached the same server.
+ *
+ * The PORT must still match exactly. A loopback name on some other port is a
+ * different server — very often another `mycontext ui` — and sending its
+ * traffic here would be this process answering for one it knows nothing
+ * about. That is the mistake `live/19` records, where a stale global record
+ * pointed a command at a stranger's server on 9778.
+ */
+function isLoopbackSpelling(host: string, port: number): boolean {
+  const cut = host.lastIndexOf(':');
+  if (cut === -1) return false;
+  if (host.slice(cut + 1) !== String(port)) return false;
+  const name = host.slice(0, cut).toLowerCase();
+  return name === 'localhost' || name === '[::1]' || /^127\.\d+\.\d+\.\d+$/.test(name);
+}
+
+/**
  * The request body, capped.
  *
  * The cap **destroys the request** rather than only rejecting the promise: a
@@ -901,6 +922,52 @@ export async function startUiServer(options: UiServerOptions): Promise<RunningUi
     // them and is answered as 404 with no body, so which refusal fired is not
     // on the wire.
     if (!url.pathname.startsWith('/api/')) {
+      // Rule 1a: this page is served at ONE origin, and every other loopback
+      // spelling is redirected to it rather than served at it.
+      //
+      // **`http://localhost:PORT/` used to load this page and then be refused
+      // every /api call it made, for the life of the tab.** `validateApiRequest`
+      // compares Host against `127.0.0.1:PORT` (security.ts), and `localhost`
+      // never matches it — so the shell loaded, looked alive, and answered 403
+      // to everything it asked for. The refusal it drew told the reader to run
+      // `mycontext ui --nonce`, which mints a credential and CANNOT help,
+      // because the failing check is `host` and not `token-missing`. A person
+      // whose browser completes `localhost:58888` was locked out permanently
+      // with nothing on screen able to tell them why, and no number of
+      // restarts or nonces would ever fix it. Reported by the owner
+      // 2026-09-05 after exactly that: four restarts, three nonces, still
+      // refused.
+      //
+      // **A REDIRECT rather than teaching the gate to accept both spellings.**
+      // The token lives in a cookie and cookies are scoped to a HOST, not to a
+      // port — the fact `/api/handoff`'s own exemption was widened for. Two
+      // accepted spellings are two cookie jars, so a reader who authenticated
+      // as `127.0.0.1` would be anonymous as `localhost`, and the lockout
+      // would come straight back wearing a different hostname. One origin is
+      // one jar.
+      //
+      // The target is built from `boundPort` and NEVER from the Host header,
+      // so this cannot be turned into an open redirect. The browser carries
+      // the fragment across a 302 by itself, so a nonce link survives the hop
+      // and the handoff still happens on the canonical origin.
+      //
+      // A Host that is not a loopback spelling is REFUSED rather than
+      // redirected. That also closes something Rule 1 left open: static ran
+      // before any Host check at all, so this server handed its own page to
+      // any hostname that resolved here, a rebinding host included.
+      const host = headerFirst(req.headers.host);
+      if (host !== `127.0.0.1:${boundPort}`) {
+        if (host !== null && isLoopbackSpelling(host, boundPort)) {
+          res.writeHead(302, {
+            ...SECURITY_HEADERS,
+            location: `http://127.0.0.1:${boundPort}${url.pathname}${url.search}`,
+          });
+          res.end();
+          return;
+        }
+        sendRefusal(res, 403);
+        return;
+      }
       const asset = serveStatic(url.pathname, PUBLIC_DIR);
       if (asset === null) { sendRefusal(res, 404); return; }
       res.writeHead(asset.status, { ...SECURITY_HEADERS, 'content-type': asset.contentType });

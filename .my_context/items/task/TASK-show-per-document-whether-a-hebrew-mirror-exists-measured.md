@@ -17,17 +17,17 @@ tags:
   - hebrew
   - "plan:docsys"
   - "seq:6"
-  - "state:doing"
+  - "state:todo"
 origin: human
 source_file: "C:/Users/UserC/AppData/Local/Temp/claude/D--Users-UserC-source-repos-my-context/595db3b1-a481-4553-b4c0-7248c31b2655/scratchpad/docsys/6.md"
 source_anchor: null
 source_checksum: 45ca428b54f90276
 valid_from: 2026-09-05
 valid_until: null
-checksum: be4e160162369f73
+checksum: 49d9f94a03766415
 plan: docsys
 seq: "6"
-state: doing
+state: todo
 priority: "3"
 needs: docsys/5
 ---

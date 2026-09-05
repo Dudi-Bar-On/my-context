@@ -13,7 +13,8 @@
     "index": 6000
   },
   "watchedDocs": [
-    "docs/**/*.md"
+    "docs/**/*.md",
+    "README.md"
   ],
   "handover": {
     "path": "reports/V2-HANDOVER.md",
