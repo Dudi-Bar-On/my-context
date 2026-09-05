@@ -67,12 +67,32 @@
  * which is why the same argument does not force the same answer here. But it is
  * the argument, and it is now a decided one rather than a shared shrug.
  *
- * **Counts sit on glass, not on a plate, and that is deliberate.**
- * `test/ui/plate-usage.test.ts` names the eighteen graphical views the plate
- * rule covers and excludes this table by name: *"Static reference tables with
- * no computed quantity … status's counts … are also outside this eighteen"*.
- * Decay's two charts are inside it (`#comb`, `#heat`); these five numbers are
- * not, because nothing here is a mark whose position or size carries meaning.
+ * **Counts now sit on a plate — RULED, 2026-09-05, on
+ * `TASK-the-status-counts-table-is-the-one-quantity-left-on-bare`.** This used
+ * to read the other way, and the argument it gave was about HUE: a bare digit
+ * carries no colour that could be misread as belonging to the wrong tier, and
+ * the failure `.plate` exists to prevent is the SAME tier reading as two
+ * colours on two halves of a screen. **That argument was sound, and it is not
+ * what got overturned.**
+ *
+ * What it never covered is CONTRAST. Measured in the browser: the table, its
+ * rows and `.card.pane` itself are all `rgba(0,0,0,0)` — fully transparent —
+ * so the digits sat on whatever the page gradient was doing at that scroll
+ * position (near-black navy at the top, light teal at the bottom), not on
+ * anything that protected them. That the numbers read fine was a fact about
+ * where this table happens to land on the page, not about a guarantee. `.plate`
+ * (`background:var(--plate)`, an opaque field — styles.css primitives §4) exists
+ * precisely so data has a CONSTANT background wherever the gradient underneath
+ * is doing. The table is wrapped in it below, the same `el('div', 'plate')` /
+ * `plate.append(table)` idiom `ask.js` uses for `qres`.
+ *
+ * `test/ui/plate-usage.test.ts` still lists eighteen graphical views by mockup
+ * id — this table carries none, because it is five static rows, not a mark
+ * whose position or size carries meaning, and joining that id-based scan would
+ * mean adding an id and a `.plate` div to the frozen design-of-record mockup,
+ * which this task does not own. Its own header explains why the exclusion
+ * sentence changed instead of the count; enforcement of the plate on THIS
+ * screen lives in `test/ui/status-screen.test.ts`, against the rendered DOM.
  */
 import { el, errorNote, num, screenHead, spaced } from '/screens/parts.js';
 
@@ -121,7 +141,14 @@ export async function render(root, ctx) {
   }
   table.append(tbody);
 
+  // Real quantity, on a constant opaque field rather than on whatever the
+  // page gradient is doing underneath — see this file's own header for the
+  // ruling and why the hue argument that used to keep this table bare is
+  // sound and unrelated.
+  const plate = el('div', 'plate');
+  plate.append(table);
+
   const note = el('p', 'small');
   note.append(...ctx.t('st.four'));
-  card.append(table, spaced(note));
+  card.append(plate, spaced(note));
 }

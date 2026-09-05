@@ -31,9 +31,34 @@
  * on purpose: a tab strip selects, it does not display a quantity, so
  * "text may float on glass" already covers it. Static reference tables with
  * no computed quantity (doctor's findings, the gaps list, injected-now,
- * work's diff, status's counts, port/packs/tut/docs/learn) are also outside
- * this eighteen — see the Task 7 report for the reasoning and for the
- * standing question of whether any of them should move too.
+ * work's diff, port/packs/tut/docs/learn) are also outside this eighteen —
+ * see the Task 7 report for the reasoning and for the standing question of
+ * whether any of them should move too.
+ *
+ * **Status's counts is NO LONGER on that list — RULED, 2026-09-05, on
+ * `TASK-the-status-counts-table-is-the-one-quantity-left-on-bare`.** The
+ * exclusion here used to rest on HUE: a bare digit carries no colour that
+ * could be misread as belonging to the wrong tier, and that argument was
+ * sound — it is not what got overturned. What it never covered is CONTRAST:
+ * measured in the browser, the table, its rows and `.card.pane` were all
+ * `rgba(0,0,0,0)`, so the digits sat on the page gradient rather than on
+ * anything that guaranteed they would read. `.plate` exists precisely to
+ * give data a constant opaque field regardless of what gradient is under it,
+ * and `screens/status.js` now wraps the table in one — see that file's own
+ * header for the fuller ruling.
+ *
+ * It still is not one of the eighteen HERE, though, and that is a mechanical
+ * fact rather than a second exception: every id above is filled by the
+ * mockup's own scripted "RESTORED GRAPHICAL VIEWS" markup, and the mockup's
+ * `<section data-p="status">` writes its counts as a literal, unscripted,
+ * UNID'd `<table>` (no `.plate` div around it either) — the frozen design of
+ * record predates this ruling and this task does not own it. Joining this
+ * file's id-based scan would mean editing that frozen mockup for an id and a
+ * wrapper this scanner requires and the real screen does not. So the plate on
+ * status's counts is checked directly against the rendered screen instead —
+ * `test/ui/status-screen.test.ts`'s "the counts table sits on a plate, not
+ * bare glass" — and the eighteen below stay eighteen: a count moved out of an
+ * exclusion list, not into this one.
  */
 import { test } from 'node:test';
 import assert from 'node:assert/strict';

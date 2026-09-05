@@ -6,12 +6,12 @@ status: active
 severity: soft
 always: false
 summary: One table of figures sits on the translucent background where every other set of numbers sits on a solid one; settle whether that is right.
-summary_of: 5b71baddf216b831
+summary_of: 3383d519b683d636
 scope: []
 tags:
   - "plan:repaint"
   - "seq:7b"
-  - "state:doing"
+  - "state:done"
   - v2
   - ui
 origin: human
@@ -20,11 +20,12 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-08-22
 valid_until: null
-checksum: c46a6a787e0aaf2b
+checksum: 8c1eba304d145a7d
 plan: repaint
 seq: 7b
-state: doing
+state: done
 priority: "2"
+verified_on: 2026-09-05
 ---
 
 # the status counts table is the one quantity left on bare glass, deliberately

@@ -581,6 +581,41 @@ test('render draws every kind the mockup draws, and the bold run among them', as
 });
 
 /* -------------------------------------------------------------------------- *
+ * 10 — the counts table sits on a plate, not bare glass.
+ *
+ * `TASK-the-status-counts-table-is-the-one-quantity-left-on-bare`, ruled
+ * 2026-09-05: the hue argument that used to keep this table off `.plate` was
+ * sound and stays true (a bare digit carries no colour to misread), but it
+ * never covered CONTRAST — the table, its rows and `.card.pane` are all
+ * transparent, so the digits sat on the page gradient, not on anything that
+ * protected them. `test/ui/plate-usage.test.ts`'s own id-based scan cannot
+ * reach this table (it carries no mockup id and joining it would mean editing
+ * the frozen design-of-record mockup), so the plate is measured here instead,
+ * against the rendered DOM this screen actually produces.
+ * -------------------------------------------------------------------------- */
+
+test('the counts table sits on a plate, not bare glass — contrast, not hue, is why', async () => {
+  const root = await draw(async () => BODY());
+  const card = root.children.find((child) => child.className === 'card pane')! as FakeElement;
+  const plate = card.children.find(
+    (child) => child.className.split(/\s+/).includes('plate'),
+  ) as FakeElement | undefined;
+  assert.ok(plate, 'the card holds no .plate — the table sits directly on the pane, which is '
+    + 'fully transparent (rgba(0,0,0,0)) and shows the page gradient through it');
+  const table = descendants(plate!).find((node) => node.tag === 'table');
+  assert.ok(table, "the card's .plate does not wrap a <table> — something else grew there");
+  // The plate must not have swallowed a row in the wrapping — five rows, same
+  // as assertion 1 measures against the mockup's own five.
+  assert.equal(rowsOf(root).length, 5, 'the plate changed the row count — it must only wrap, '
+    + 'not alter, the table assertion 1 already measures');
+  // The note stays OUTSIDE the plate — it is prose, not data, and `.plate`'s
+  // job is "text may float on glass; data may not", not the reverse.
+  const note = card.children.find((child) => child.tag === 'p')! as FakeElement;
+  assert.ok(!descendants(plate!).includes(note), 'st.four drifted inside the plate — text may '
+    + 'float on glass, the plate is only for the data');
+});
+
+/* -------------------------------------------------------------------------- *
  * 8 — a refused read, and the endpoint's own words.
  * -------------------------------------------------------------------------- */
 
