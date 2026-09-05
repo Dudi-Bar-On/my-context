@@ -549,6 +549,166 @@ export function headingSlug(text) {
     .replace(/ /g, '-');
 }
 
+/* ── NEVER A DEAD LINK ─────────────────────────────────────────────────────
+
+   `DEC-the-document-page-wears-github-styling-lists-the-readmes-and`, owner
+   ruling of 2026-09-05, in his own words: *"if the documents are refering
+   other documents get them too or do not support the link"*.
+
+   So a link inside a rendered document either OPENS what it names, or it is
+   NOT DRAWN AS A LINK — the label stays as plain text. There is no third
+   option where an anchor is drawn and clicking it does nothing, and until this
+   change that third option was the common case: `README.md`'s twelve
+   references to sibling files were emitted as `<a href="CHANGELOG.md">`, which
+   the browser resolved against `/doc.html` and the static server answered 404
+   for. A drawn link that 404s is the exact thing the ruling forbids.
+
+   FOUR OUTCOMES, and every href lands in exactly one:
+
+     1. **A document this server can open** → `/doc.html?doc=<id>`, carrying
+        the original fragment. Relative paths resolve against the CONTAINING
+        document's directory, the way GitHub resolves them, so `TUTORIAL.md`
+        inside `docs/README.he.md` means `docs/TUTORIAL.md` and `../README.md`
+        means `README.md`.
+     2. **An in-document fragment that names a heading this document actually
+        minted** → kept as written.
+     3. **An absolute URL** (`https:`, `mailto:`, and the rest of
+        `SAFE_SCHEMES`) → kept as written. It leaves this server, which is
+        what the author asked for; whether the far end answers is not
+        something this renderer can know or should pretend to.
+     4. **Everything else** — `LICENSE` (no extension, so not a document),
+        `CHANGELOG.md` (a repository file the manifest does not carry), a
+        `../..` that climbs out of the repository, a fragment naming no
+        heading, an empty href → NOT A LINK. The label is drawn as plain text
+        and the count is disclosed in the page's footer, so nothing is dropped
+        silently (`INV-nothing-is-dropped-silently`) and nothing is promised
+        that cannot be delivered.
+
+   THE OPENABLE SET IS SUPPLIED, NEVER GUESSED. `githubNodes` is handed the
+   manifest `GET /api/doc` serves — the same 190 ids that endpoint will accept
+   — so "can this open" is answered by the server's own roster and not by a
+   pattern that looks like a path. With no roster supplied (the default, and
+   what `node --test` gets) NO relative link resolves, which is the safe
+   direction: a renderer that cannot check cannot promise. */
+
+/**
+ * A repo-relative path, resolved the way GitHub resolves a link inside a file.
+ *
+ * `base` is the containing document's DIRECTORY (`''` for the repository
+ * root). A leading `/` is repository-root-relative — that is GitHub's reading
+ * of it inside a rendered README, not the web server's. `..` above the root
+ * returns `null`, because a path outside the repository is not a document.
+ *
+ * Exported and pure so the resolution is measurable without a browser and
+ * without a document.
+ */
+export function resolveDocPath(base, target) {
+  const rooted = String(target).startsWith('/');
+  const joined = rooted
+    ? String(target).slice(1)
+    : `${String(base) === '' ? '' : `${String(base)}/`}${String(target)}`;
+  const out = [];
+  for (const part of joined.split('/')) {
+    if (part === '' || part === '.') continue;
+    if (part === '..') {
+      if (out.length === 0) return null;
+      out.pop();
+      continue;
+    }
+    out.push(part);
+  }
+  return out.length === 0 ? null : out.join('/');
+}
+
+/**
+ * Every ASCII control character and the space, as `lib/sanitize.js`'s `safeUrl`
+ * strips them — `java\tscript:` and ` https:` must read as the schemes they
+ * are. Built with `new RegExp` from an escaped source string rather than
+ * written as a literal, so no control byte is ever committed INTO this file:
+ * a source line carrying a raw NUL is unreadable in a diff and unsearchable by
+ * grep, which is how a character class stops meaning what its author thought.
+ */
+const CONTROL_OR_SPACE = new RegExp('[\\u0000-\\u0020\\u007f]', 'g');
+
+/** Whether a URL names a scheme. The same reading `safeUrl` uses: a colon
+ *  after the first `/` or `?` is part of a path, not a scheme. */
+function hasScheme(value) {
+  const probe = String(value).replace(CONTROL_OR_SPACE, '').toLowerCase();
+  const colon = probe.indexOf(':');
+  if (colon === -1) return false;
+  const separator = probe.search(/[/?]/);
+  return separator === -1 || separator > colon;
+}
+
+/** A percent-encoded path, decoded — and left exactly as written when it is
+ *  not valid encoding, because a `%` a document meant literally is text. */
+function decodePath(value) {
+  try {
+    return decodeURIComponent(value);
+  } catch {
+    return value;
+  }
+}
+
+/**
+ * One href → how it is drawn, or `null` for "not a link".
+ *
+ * `where` carries the three things the decision needs and cannot infer:
+ * `base` (the containing document's directory), `openable` (a `Set` of the
+ * document ids this server will serve, or `null` for "none can be checked")
+ * and `slugs` (the heading anchors THIS document minted).
+ *
+ * Returns `{ kind, href }` — `kind` is `'document'`, `'fragment'` or
+ * `'external'` and exists so a caller can tell an internal hop from a
+ * departure without re-parsing the URL.
+ */
+export function decideLink(href, where = {}) {
+  const { base = '', openable = null, slugs = null } = where;
+  const raw = String(href ?? '').trim();
+  if (raw === '') return null;
+  const hash = raw.indexOf('#');
+  const target = hash === -1 ? raw : raw.slice(0, hash);
+  const fragment = hash === -1 ? '' : raw.slice(hash);
+  if (target === '') {
+    // An in-document jump. It is a link only if the heading it names exists —
+    // an anchor that scrolls nowhere is the dead link this ruling is about,
+    // and the slugs are known because this renderer minted them.
+    const slug = decodePath(fragment.slice(1));
+    if (slug === '' || slugs === null || !slugs.has(slug)) return null;
+    return { kind: 'fragment', href: fragment };
+  }
+  if (hasScheme(target)) return { kind: 'external', href: raw };
+  if (openable === null) return null;
+  const id = resolveDocPath(base, decodePath(target));
+  if (id === null || !openable.has(id)) return null;
+  return { kind: 'document', href: `/doc.html?doc=${encodeURIComponent(id)}${fragment}` };
+}
+
+/**
+ * Every heading anchor a document mints, in document order.
+ *
+ * A PREPASS, for the reason `taskItems` is one: the walk needs the WHOLE set
+ * before it draws the first link — a `#later-heading` reference near the top
+ * of a README points at a heading a thousand lines further down — and running
+ * the disambiguation counter twice would be two implementations of one rule.
+ * The walk consumes this list in order, so the id a heading receives and the
+ * id a link is checked against are the same string by construction.
+ */
+function headingSlugs(tokens) {
+  const seen = new Map();
+  const out = [];
+  for (let i = 0; i < tokens.length; i += 1) {
+    if (tokens[i].type !== 'heading_open') continue;
+    const source = tokens[i + 1] !== undefined && tokens[i + 1].type === 'inline'
+      ? tokens[i + 1].content : '';
+    const base = headingSlug(source);
+    const count = seen.get(base) ?? 0;
+    seen.set(base, count + 1);
+    out.push(count === 0 ? base : `${base}-${count}`);
+  }
+  return out;
+}
+
 /** The English wording for the two refusal labels this view adds, so a caller
  *  with no string table — `node --test` — draws a sentence and not a key. */
 const ENGLISH_GITHUB_REFUSAL = (key, subs = {}) => {
@@ -615,14 +775,28 @@ function alignOf(token) {
  * `doc` is injected for the reason `markdownNodes` injects it: it is the only
  * thing here that touches a document, so the whole policy is measurable under
  * `node --test` with a two-method stand-in and no browser.
+ *
+ * `where` is the link context — `{ base, openable }`, the containing
+ * document's directory and the `Set` of ids this server will serve. It is the
+ * ONE input that cannot be derived from the markdown, and omitting it is not a
+ * silent downgrade: with no roster, no relative link resolves and every one of
+ * them is drawn as plain text and counted. See "NEVER A DEAD LINK" above.
  */
-export function githubNodes(src, doc, labelFor = ENGLISH_GITHUB_REFUSAL) {
+export function githubNodes(src, doc, labelFor = ENGLISH_GITHUB_REFUSAL, where = {}) {
   const tokens = GITHUB_PARSER.parse(String(src).replaceAll('\r\n', '\n'), {});
   const tasks = taskItems(tokens);
   const refusals = [];
   const dropped = [];
   const headings = [];
-  const seenSlug = new Map();
+  // The anchors this document mints, known BEFORE the first link is drawn so a
+  // reference to a heading further down can be checked against it.
+  const minted = headingSlugs(tokens);
+  let mintedAt = 0;
+  const links = {
+    base: where.base ?? '',
+    openable: where.openable ?? null,
+    slugs: new Set(minted.filter((slug) => slug !== '')),
+  };
   const out = [];
   // Every frame records WHO opened it. A markdown close pops down to the
   // nearest markdown frame, discarding any raw tag left open inside it — which
@@ -676,7 +850,20 @@ export function githubNodes(src, doc, labelFor = ENGLISH_GITHUB_REFUSAL) {
         emit(make(doc, 'span', 'refusal', labelFor('gh.tagRefused', { tag: tok.name })));
         continue;
       }
-      const built = buildElement(doc, tok.name, tok.attrs);
+      // A raw `<a href="…">` is held to the SAME link policy as a markdown
+      // one. Without this the rule would have a hole exactly the width of the
+      // Hebrew mirror's raw-HTML style: `[x](y)` checked, `<a href="y">x</a>`
+      // not, and a dead link is dead whichever grammar wrote it. The attribute
+      // is rewritten to what the policy decided, or removed — an `<a>` with no
+      // `href` is not a link to a browser, so the label survives as text and
+      // nothing is drawn that cannot be followed.
+      const attrs = tok.name !== 'a' ? tok.attrs : tok.attrs.map((pair) => {
+        if (pair[0] !== 'href') return pair;
+        const decided = decideLink(pair[1], links);
+        return decided === null ? null : ['href', decided.href];
+      }).filter((pair) => pair !== null);
+      if (tok.name === 'a' && attrs.length < tok.attrs.length) refusals.push('link target');
+      const built = buildElement(doc, tok.name, attrs);
       for (const name of built.dropped) dropped.push(`${tok.name}@${name}`);
       emit(built.node);
       if (!VOID_TAGS.has(tok.name) && !tok.selfClosing) {
@@ -684,6 +871,17 @@ export function githubNodes(src, doc, labelFor = ENGLISH_GITHUB_REFUSAL) {
       }
     }
   };
+
+  /**
+   * Whether each open markdown link actually put a frame on the stack.
+   *
+   * A link whose target cannot be opened draws NO anchor — but its label still
+   * has to render, and its `link_close` still arrives. So the opener pushes
+   * `false` here instead of a frame, and the closer pops one element of the
+   * corresponding kind. Skipping the whole run instead would delete the label,
+   * which is the other half of what the ruling forbids.
+   */
+  const linkFrames = [];
 
   /** One `inline` token's children, against the same shared stack. */
   const inlineRun = (token) => {
@@ -735,12 +933,25 @@ export function githubNodes(src, doc, labelFor = ENGLISH_GITHUB_REFUSAL) {
           closeMd();
           break;
         case 'link_open': {
-          const built = buildElement(doc, 'a', [['href', attr(child, 'href')]]);
+          const decided = decideLink(attr(child, 'href'), links);
+          if (decided === null) {
+            // Nothing this page can open: not a document in the manifest, not
+            // a heading this document minted, not an absolute address. So NO
+            // anchor is drawn — the label renders as ordinary text and the
+            // count is disclosed. `INV-nothing-is-dropped-silently` is served
+            // by the count; the ruling is served by the absent anchor.
+            refusals.push('link target');
+            linkFrames.push(false);
+            break;
+          }
+          const built = buildElement(doc, 'a', [['href', decided.href]]);
           if (built.dropped.length > 0) {
             // The scheme is outside the allow-list. The LABEL survives, so the
             // reader is told a link was there and what it claimed to be —
             // `INV-nothing-is-dropped-silently`, and the same shape the console
-            // renderer has always used.
+            // renderer has always used. This is a SECURITY refusal and keeps
+            // its box: `javascript:` in a document is worth naming, where an
+            // ordinary unopenable path is not.
             let depth = 1;
             let end = i + 1;
             for (; end < children.length && depth > 0; end += 1) {
@@ -757,10 +968,11 @@ export function githubNodes(src, doc, labelFor = ENGLISH_GITHUB_REFUSAL) {
           if (title !== '') built.node.setAttribute('title', title);
           emit(built.node);
           stack.push({ node: built.node, name: 'a', kind: 'md' });
+          linkFrames.push(true);
           break;
         }
         case 'link_close':
-          closeMd();
+          if (linkFrames.pop() === true) closeMd();
           break;
         case 'image': {
           // GitHub RENDERS images; it serves them through its own camo proxy,
@@ -797,10 +1009,11 @@ export function githubNodes(src, doc, labelFor = ENGLISH_GITHUB_REFUSAL) {
         const node = openMd(`h${level}`);
         const source = tokens[i + 1] !== undefined && tokens[i + 1].type === 'inline'
           ? tokens[i + 1].content : '';
-        const base = headingSlug(source);
-        const count = seenSlug.get(base) ?? 0;
-        seenSlug.set(base, count + 1);
-        const slug = count === 0 ? base : `${base}-${count}`;
+        // The prepass minted this, in this order — so the id a heading gets and
+        // the id a `#…` link was checked against are the same string by
+        // construction rather than by two copies of the counter agreeing.
+        const slug = minted[mintedAt] ?? '';
+        mintedAt += 1;
         if (slug !== '') node.id = slug;
         headings.push({ level, text: source, slug });
         break;

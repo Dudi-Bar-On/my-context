@@ -24,11 +24,36 @@
  *      site started, and `X-Frame-Options: DENY` keeps this page out of a
  *      frame.
  *   3. **The disclosure.** How many constructs the GitHub allow-list refused,
- *      how many attributes it dropped, and — always, refusals or none — the
- *      sentence that says byte-identical parity with GitHub is not claimed.
+ *      how many attributes it dropped, how many links named something this
+ *      server cannot open, and — always, refusals or none — the sentence that
+ *      says byte-identical parity with GitHub is not claimed.
  *      `INV-nothing-is-dropped-silently` is why the counts are drawn even when
  *      they are zero: `STD-a-measured-zero-is-drawn-and-named-an-unmeasured-
  *      thing-is`.
+ *   4. **The roster a link is checked against.** `GET /api/doc` — the same 190
+ *      documents the Library's own list is drawn from — read in parallel with
+ *      the document itself and handed to `githubNodes` as `openable`.
+ *
+ * ── NEVER A DEAD LINK, AND WHY THE ROSTER IS READ HERE ────────────────────
+ *
+ * `DEC-the-document-page-wears-github-styling-lists-the-readmes-and`: *"if the
+ * documents are refering other documents get them too or do not support the
+ * link"*. The renderer enforces it (`decideLink` in `lib/markdown.js`), but it
+ * cannot know two things from the markdown alone, and this page supplies both:
+ *
+ *   - **`base`** — the containing document's own directory, so a relative link
+ *     resolves the way GitHub resolves it. `TUTORIAL.md` inside
+ *     `docs/README.he.md` is `docs/TUTORIAL.md`; `../README.md` is `README.md`.
+ *   - **`openable`** — every id `GET /api/doc/:id` will actually serve. The
+ *     VIEWER opens any of the 190 markdown documents in the repository, while
+ *     the Library's LIST shows only the READMEs and the tutorials. That is the
+ *     ruling's own shape: every internal reference resolves, and nothing
+ *     internal is put in front of a reader who did not follow a link to it.
+ *
+ * A roster that fails to read is NOT quietly treated as an empty one. Every
+ * relative link then falls to plain text — the safe direction, since a
+ * renderer that cannot check must not promise — and `gh.noroster` says on the
+ * page that that is what happened.
  *
  * ── WHAT IT DELIBERATELY DOES NOT DO ──────────────────────────────────────
  *
@@ -45,6 +70,34 @@
  */
 import { applyLanguage, pickLanguage, t as translate, tFlat as flat } from '/lib/i18n.js';
 import { githubNodes } from '/lib/markdown.js';
+
+/**
+ * The directory a relative link inside this document resolves against —
+ * GitHub's rule, which is the containing file's own directory.
+ *
+ * For a `?doc=` address that is the id's own dirname, since the id IS the
+ * repo-relative path. For a `?tut=` address it is not: a tutorial id is a
+ * feature key (`narrowing-a-session-focus`), not a path. Rather than write
+ * `docs/tutorials/` down here — a second copy of a fact
+ * `docs/tutorials/manifest.json` already owns, and the kind of copy that goes
+ * quietly wrong when a directory moves — the tutorial's FILE is found in the
+ * document roster this page already holds, and its dirname is the answer.
+ *
+ * Exported and pure so `node --test` can measure it without a browser, the
+ * same bargain `docAddress` and `endpointFor` make.
+ */
+export function baseDirFor(address, ids) {
+  if (address.kind === 'doc') {
+    const at = String(address.id).lastIndexOf('/');
+    return at === -1 ? '' : String(address.id).slice(0, at);
+  }
+  if (address.kind !== 'tut' || ids === null) return '';
+  const suffix = `/${address.id}${address.lang === 'he' ? '.he' : ''}.md`;
+  for (const id of ids) {
+    if (id.endsWith(suffix)) return id.slice(0, id.length - suffix.length);
+  }
+  return '';
+}
 
 /** The string table for the interface, loaded once. */
 let table = null;
@@ -142,7 +195,19 @@ async function main() {
   const stateLine = document.getElementById('docstate');
   const note = document.getElementById('docnote');
   const disclose = document.getElementById('docdisclose');
+  const linkLine = document.getElementById('doclinks');
   const parity = document.getElementById('docparity');
+
+  // **The roster, started BEFORE the document is read and awaited after it.**
+  // Two reads that need nothing from each other should not be two round trips
+  // in sequence. A refusal is caught into `null` rather than thrown: a roster
+  // this page could not read must not take the document down with it — it
+  // costs the relative links, and `gh.noroster` says so.
+  const roster = readJson('/api/doc').then((body) => (
+    body !== null && typeof body === 'object' && Array.isArray(body.documents)
+      ? new Set(body.documents.map((entry) => entry.id))
+      : null
+  )).catch(() => null);
 
   // The parity sentence is drawn BEFORE the read and never removed: it is true
   // of every document on this page, including one that fails to load, and a
@@ -213,14 +278,21 @@ async function main() {
   }
 
   if (address.kind === 'tut') {
-    const chip = document.createElement('span');
-    chip.className = 'chip ok';
-    chip.dataset.g = '●';
-    chip.append(...t('lib.tuts'));
-    stateLine.replaceChildren(chip);
+    // `.tag`, this page's own quiet outline — NOT the console's `.chip`, whose
+    // five meaning hues belong to a screen that makes verdicts. A document page
+    // that reintroduced the console's chip vocabulary would be reintroducing
+    // the console.
+    const tag = document.createElement('span');
+    tag.className = 'tag';
+    tag.append(...t('lib.tuts'));
+    stateLine.replaceChildren(tag);
   }
 
-  const rendered = githubNodes(body.markdown, document, tFlat);
+  const openable = await roster;
+  const rendered = githubNodes(body.markdown, document, tFlat, {
+    base: baseDirFor(address, openable),
+    openable,
+  });
   article.replaceChildren(...rendered.nodes);
 
   // The measured zero is DRAWN. `STD-a-measured-zero-is-drawn-and-named-an-
@@ -228,11 +300,21 @@ async function main() {
   // allow-list" is a measurement worth stating, and a page that only spoke up
   // when something was refused would leave a reader unable to tell a clean
   // document from a renderer that had stopped checking.
-  disclose.replaceChildren(...(rendered.refusals.length === 0 && rendered.dropped.length === 0
+  //
+  // **The link count is SPLIT OUT of the refusal count, and it has to be.**
+  // `gh.refused` says the refused constructs "were refused and SHOWN as
+  // refusals" — true of a tag outside the allow-list, which gets a labelled
+  // box, and false of a link whose target cannot be opened, which is drawn as
+  // ordinary text with no box at all. Counting the two together would make
+  // that sentence a lie about half of what it counted.
+  const undrawn = rendered.refusals.filter((why) => why === 'link target').length;
+  const refused = rendered.refusals.length - undrawn;
+  disclose.replaceChildren(...(refused === 0 && rendered.dropped.length === 0
     ? t('gh.clean')
-    : t('gh.refused', {
-      refused: rendered.refusals.length, dropped: rendered.dropped.length,
-    })));
+    : t('gh.refused', { refused, dropped: rendered.dropped.length })));
+  linkLine.replaceChildren(...(openable === null
+    ? t('gh.noroster')
+    : (undrawn === 0 ? t('gh.linksok') : t('gh.links', { links: undrawn }))));
 
   if (body.truncated === true) {
     const cut = document.createElement('p');

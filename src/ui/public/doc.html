@@ -1,55 +1,148 @@
 <!doctype html>
-<!-- THE STANDALONE DOCUMENT PAGE — `DEC-the-documentation-and-tutorials-
-     screens-become-one-list-and`, owner ruling 2026-09-05: "Opening one opens
-     a RENDERED page in a new browser tab. The console stops trying to be a
-     documentation site."
+<!-- THE STANDALONE DOCUMENT PAGE — `DEC-the-document-page-wears-github-styling-
+     lists-the-readmes-and`, owner ruling 2026-09-05, given after this page was
+     reviewed and found to be wearing the console's own stylesheet: a page
+     "without the style of mycontext" that "should look exactly as it is
+     displayed in github".
 
-     This is that tab. It is NOT the app shell: no rail, no header pickers, no
-     session state, no `.app` grid — a reader who opened a document wants the
-     document, and every piece of console chrome carried in here would be the
-     documentation site the ruling just retired. What it does share is the
-     stylesheet, so the dark presentation, the type scale and the `.md` reading
-     typography are the product's own and not a second set.
+     SO THIS PAGE LOADS NO `/styles.css`. Not the palette, not the type scale,
+     not the teal link, not the card system, not the nine `.woff2` faces. It
+     wears `lib/vendor/github-markdown-light.css` — the stylesheet GitHub itself
+     publishes for a rendered Markdown body, vendored and pinned in `VENDOR.md`
+     beside markdown-it and gated by `scripts/check-vendor.ts`. The article
+     carries `markdown-body`, which is the class that package's own README
+     names as its contract, at the 980px measure and 45px padding the same
+     README specifies. `<!doctype html>` above is load-bearing for the reason
+     that README's own Troubleshooting section gives: without it the browser
+     falls into quirks mode and renders table fonts wrong.
 
-     EVERY TEXT NODE IS EMPTY and filled by `doc.js` from the string tables, the
-     rule the whole product follows: no innerHTML, no authored English the א/A
-     choice cannot reach. The `lang`/`dir` on <html> below are the boot values
-     and are corrected by `applyLanguage` on the first frame.
+     WHAT REMAINS OF THIS PAGE'S OWN CHROME is a back link, a breadcrumb and a
+     footer, and the `<style>` below is all of it — deliberately about forty
+     lines of layout and two greys, so that nothing here competes with the
+     document. Its colours are lifted from the vendored sheet's own palette
+     (#ffffff canvas, #1f2328 ink, #59636e muted, #d1d9e0 rule, #0969da link),
+     which is how the chrome stays quiet without inventing a seventh hue.
+
+     THE LIGHT VARIANT, and this page was first built dark and corrected.
+     Owner, on seeing the dark one: "now it looks correct just the background is
+     dark and i want it light." The argument that produced dark — this product
+     has no light theme — governs the CONSOLE, and this page is deliberately not
+     the console; the instruction that reaches HERE is "should look exactly as
+     it is displayed in github", and GitHub renders a Markdown file light. No
+     `prefers-color-scheme` switcher either: that would hand a dark page back to
+     a reader whose OS says dark, which is what was just corrected.
+
+     The ten mermaid drawings carried the SAME conflation one layer down —
+     `scripts/gen-diagrams.ts` passed mermaid `theme: 'dark'` "because there is
+     no light theme in this product" — and were redrawn with `theme: 'default'`
+     in `37591be`. Their filenames did not move: a drawing is addressed by the
+     hash of its SOURCE, and only the rendering changed.
+
+     This is still NOT the app shell: no rail, no header pickers, no session
+     state, no `.app` grid. EVERY TEXT NODE IS EMPTY and filled by `doc.js`
+     from the string tables — no innerHTML, no authored English the א/A choice
+     cannot reach. The `lang`/`dir` on <html> are boot values, corrected by
+     `applyLanguage` on the first frame.
 
      THE ADDRESS IS A QUERY STRING, and the FRAGMENT IS THE DOCUMENT'S.
      `/doc.html?doc=<id>` and `/doc.html?tut=<id>&lang=he`, so `#the-five-tiers`
      lands on a heading exactly as it does on GitHub — the one address a reader
-     most wants to paste. -->
+     most wants to paste, and now also the address a link from one document to
+     another is written to. -->
 <html lang="en" dir="ltr">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>mycontext</title>
-  <link rel="stylesheet" href="/styles.css">
+  <link rel="stylesheet" href="/lib/vendor/github-markdown-light.css">
+  <style>
+    /* — the canvas —
+       The vendored sheet paints `.markdown-body`; the page behind it is this
+       file's job, and it is the same #ffffff so the document does not sit on a
+       rectangle of some other colour. */
+    :root{color-scheme:light}
+    html,body{margin:0;padding:0;background:#ffffff;color:#1f2328}
+    body{font:14px/1.5 -apple-system,BlinkMacSystemFont,"Segoe UI","Noto Sans",
+      Helvetica,Arial,sans-serif;-webkit-text-size-adjust:100%}
+
+    /* — the chrome: a bar, a footer, and nothing else —
+       980px is the width GitHub uses for a rendered document and the width the
+       package's README names; the bar shares it so the back link sits over the
+       document's own left edge rather than at the window's. */
+    .shell{max-width:980px;margin:0 auto;padding:16px 45px 45px}
+    .bar{display:flex;align-items:center;gap:12px;flex-wrap:wrap;
+      padding-bottom:8px;border-bottom:1px solid #d1d9e0;margin-bottom:8px;
+      font-size:12px;color:#59636e}
+    .bar a{color:#0969da;text-decoration:none}
+    .bar a:hover{text-decoration:underline}
+    .where{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;
+      white-space:nowrap;text-align:end;
+      font-family:ui-monospace,SFMono-Regular,"SF Mono",Menlo,Consolas,
+        "Liberation Mono",monospace;direction:ltr;unicode-bidi:isolate}
+    .tag{flex:0 0 auto;border:1px solid #d1d9e0;border-radius:3px;
+      padding:1px 6px;color:#59636e}
+    .note{margin:0 0 12px;font-size:12px;color:#59636e}
+    .foot{margin-top:32px;padding-top:12px;border-top:1px solid #d1d9e0;
+      font-size:12px;color:#59636e}
+    .foot p{margin:0 0 6px}
+    .foot b{color:#1f2328}
+
+    /* — the document —
+       `markdown-body` is the vendored sheet's contract. `ghdoc` carries only
+       what this project adds to it and is what `e2e/docs-bidi.spec.ts` selects.
+       The measure and padding are the package README's own numbers. */
+    .markdown-body{box-sizing:border-box;min-width:200px;max-width:980px;
+      margin:0 auto;padding:0}
+    @media (max-width:767px){
+      .shell{padding:16px 15px 15px}
+    }
+
+    /* — the two NAMED departures from GitHub, carried forward from
+         `styles.css` rather than lost with it —
+
+       1. `unicode-bidi:isolate` on inline code. GitHub does not isolate it;
+          without it `--json` inside a Hebrew sentence reorders mid-line, and
+          this project ships a Hebrew document that has already paid for that
+          defect once. Presentation only: no node, no attribute, no text
+          changes, and `e2e/docs-bidi.spec.ts` is what holds it.
+       2. The mermaid drawing is letterboxed, never blown up. An SVG whose root
+          carries `width="100%"` has no intrinsic size, so the `<img>` takes the
+          whole column and a 16px diagram label renders at 31px. 660px is the
+          tallest of the ten committed drawings' own viewBox heights, so at this
+          cap no drawing is ever scaled UP. */
+    .ghdoc code,.ghdoc pre code{direction:ltr;unicode-bidi:isolate}
+    .ghdoc figure.mermaid{margin:16px 0}
+    .ghdoc figure.mermaid img{max-height:660px;object-fit:contain}
+
+    /* A construct the GitHub allow-list refused is drawn where it happened and
+       named — `INV-nothing-is-dropped-silently`. GitHub has no such thing, so
+       it gets the one colour the vendored sheet already spends on danger. */
+    .ghdoc .refusal,.refusal{display:inline-block;vertical-align:baseline;
+      color:#cf222e;font-size:12px}
+  </style>
 </head>
-<body class="docpage">
-<div class="docshell">
+<body>
+<div class="shell">
   <!-- THE BREADCRUMB. The path IS shown here and only here: instruction 2
        ("do not display the full path file names but what they contain title")
        is about the LIST page, and GitHub itself shows a file's path above the
        document it renders. So the list is titles and the document says where
        it lives. -->
-  <header class="dochead">
-    <a class="row backrow" id="back" href="/"><span id="backtext"></span></a>
-    <div class="docwhere">
-      <span class="m" id="docpath"></span>
-      <span id="docstate"></span>
-    </div>
+  <header class="bar">
+    <a id="back" href="/"><span id="backtext"></span></a>
+    <span class="where" id="docpath"></span>
+    <span id="docstate"></span>
   </header>
-  <p class="small" id="docnote" hidden></p>
+  <p class="note" id="docnote" hidden></p>
   <!-- The rendered document. `dir` and `lang` are set by `doc.js` from the
        DOCUMENT's language, which is not the interface language: a Hebrew
        reader opening an English document reads left-to-right prose under a
-       right-to-left interface, and saying so is `tu.enonly`'s whole job. -->
-  <article class="md ghdoc" id="doc"></article>
-  <footer class="docfoot">
-    <p class="small" id="docdisclose"></p>
-    <p class="small" id="docparity"></p>
+       right-to-left interface, and saying so is `gh.enonly`'s whole job. -->
+  <article class="markdown-body ghdoc" id="doc"></article>
+  <footer class="foot">
+    <p id="docdisclose"></p>
+    <p id="doclinks"></p>
+    <p id="docparity"></p>
   </footer>
 </div>
 <script type="module" src="/doc.js"></script>

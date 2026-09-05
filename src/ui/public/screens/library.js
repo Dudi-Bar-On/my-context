@@ -13,6 +13,21 @@
  *   beside each. Opening one opens a RENDERED page in a new browser tab. The
  *   console stops trying to be a documentation site."*
  *
+ * ── AND WHAT IT LISTS WAS NARROWED THE SAME DAY ───────────────────────────
+ *
+ * `DEC-the-document-page-wears-github-styling-lists-the-readmes-and`, taken
+ * after the first build of this screen was reviewed: *"the two READMEs and the
+ * tutorials — what a reader reads — not 166 internal specs, plans and
+ * reports"*. "every document" above was read as "every markdown file the
+ * manifest carries", and 190 rows of working documents is not a library.
+ *
+ * The narrowing is of the LIST and not of the viewer, which is the ruling's
+ * own shape and the reason it costs nothing: `/doc.html` still opens any of
+ * the 190, so a link from the README to `docs/ROADMAP.md` resolves and a link
+ * from a spec to a report resolves, while nothing internal is put in front of
+ * a reader who did not follow a link to it. `lib.only` states the size of what
+ * is unlisted, on the screen.
+ *
  * So this screen READS NO MARKDOWN. It imports no renderer, draws no document
  * body, and has no reader inside it. `/doc.html` is where a document is read,
  * and it is a page of its own in a tab of its own.
@@ -64,14 +79,29 @@
 import { el, errorNote, openIcon, screenHead, spaced } from '/screens/parts.js';
 
 /**
- * How many document rows are drawn at once. 190 documents is more than one
- * card should render and far more than a reader scans, so the list is BOUNDED
- * and SAYS SO (`lib.shown`), with the filter above it as the way past the
- * bound. Not a scroll box: a bound a reader can see the size of is the
- * disclosure `INV-nothing-is-dropped-silently` asks for, and a scrollbar is
- * not one. The tutorials are 24 and are drawn whole.
+ * **The document each surface offers, and it is one document per surface.**
+ *
+ * `DEC-the-document-page-wears-github-styling-lists-the-readmes-and`, owner
+ * ruling of 2026-09-05, after this screen was found listing 190 documents:
+ * *"the two READMEs and the tutorials — what a reader reads — not 166 internal
+ * specs, plans and reports"*, and on the language: *"English console offers
+ * README.md; Hebrew console offers docs/README.he.md. Each surface offers its
+ * own document rather than one with a language switch bolted on."*
+ *
+ * So this is a map from the INTERFACE language to the document that surface
+ * offers, and it is the whole roster of the Documents card. It is written down
+ * here rather than derived because it is a RULING and not a measurement: the
+ * manifest cannot tell you which of the 190 documents a reader is meant to
+ * start from, and a rule that guessed — "everything named README" — would put
+ * a new `reports/README.md` in front of a reader the day somebody wrote one.
+ *
+ * The other 188 are not hidden, they are UNLISTED: `/doc.html` opens any id in
+ * the manifest, so every reference from one document to another still
+ * resolves. `lib.only` says so on the screen, because a list that silently
+ * dropped 188 rows would be exactly the drop
+ * `INV-nothing-is-dropped-silently` forbids.
  */
-const DOC_LIMIT = 30;
+const README_FOR = { en: 'README.md', he: 'docs/README.he.md' };
 
 /** The two tiers, in the order they are drawn, with the heading key each one
  *  carries. Taken unchanged from the screen this replaces: "basic and
@@ -234,60 +264,54 @@ function paintTutorials(ctx, host, body) {
   }
 }
 
-/** The documents half: the manifest, filtered by title and bounded. */
+/**
+ * The documents half: THIS SURFACE'S README, and the count of what is not
+ * listed.
+ *
+ * There is no filter and no `lib.shown` bound any more, and their absence is
+ * the change rather than an omission: both existed to make 190 rows navigable,
+ * and a card holding one row needs neither. What replaces them is `lib.only`,
+ * which states the size of what is NOT here — the disclosure the bound used to
+ * carry, now carried by a sentence a reader can act on.
+ *
+ * The README is LOOKED UP in the manifest rather than assumed present: if the
+ * id this surface offers is not in what the server served, the card says the
+ * roster holds nothing for it instead of drawing a row that opens a 404.
+ */
 function paintDocuments(ctx, host, list) {
   const documents = list.documents;
-
-  // **THE HEBREW NUMBER IS COUNTED, NEVER WRITTEN DOWN.** Every entry's
-  // `hasHebrewMirror` was read off the disk by the server on THIS request, so
-  // this line rises on its own the day a mirror is written.
-  const mirrors = documents.filter((entry) => entry.hasHebrewMirror).length;
-  const mirrorLine = el('p', 'small');
-  mirrorLine.append(...ctx.t('dv.hemirror', { done: mirrors, total: documents.length }));
-  host.append(mirrorLine);
-
-  const filter = el('input', 'small');
-  filter.type = 'search';
-  filter.setAttribute('placeholder', ctx.tFlat('lib.filter'));
-  filter.setAttribute('aria-label', ctx.tFlat('lib.filter'));
-  host.append(filter);
+  const wanted = README_FOR[ctx.lang] ?? README_FOR.en;
+  const entry = documents.find((row) => row.id === wanted);
 
   const rows = el('div', 'rows');
-  const shown = el('p', 'small');
-  host.append(rows, shown);
+  host.append(rows);
+  if (entry === undefined) {
+    rows.append(...ctx.t('lib.nomatch'));
+  } else {
+    rows.append(entryRow(ctx, {
+      href: docHref('doc', entry.id, entry.language === 'he' ? 'he' : 'en'),
+      title: entry.title,
+      // `hasHebrewMirror` is read off the disk by the server on THIS request,
+      // so the mark rises on its own the day a mirror is written — it is never
+      // a number written down here.
+      marks: [mirrorMark(ctx, entry.hasHebrewMirror)],
+    }));
+  }
+
+  // **THE UNLISTED ARE COUNTED, NOT HIDDEN.** `documents.length` is the whole
+  // manifest as the server just served it, so this number is measured on every
+  // paint and cannot drift from what `/doc.html` will actually open.
+  const only = el('p', 'small');
+  only.append(...ctx.t('lib.only', {
+    rest: Math.max(documents.length - (entry === undefined ? 0 : 1), 0),
+  }));
+  host.append(only);
+
   if (list.truncated === true) {
     const cut = el('p', 'small');
     cut.append(...ctx.t('dv.trunc'));
     host.append(cut);
   }
-
-  /** Redraw for the current filter. Only these two elements are rebuilt:
-   *  filtering is a reading aid, not a route, so it neither navigates nor
-   *  refetches. */
-  const paint = () => {
-    const needle = filter.value.trim().toLowerCase();
-    const matched = needle === ''
-      ? documents
-      : documents.filter((entry) => entry.title.toLowerCase().includes(needle));
-    rows.replaceChildren();
-    shown.replaceChildren();
-    if (matched.length === 0) {
-      shown.append(...ctx.t('lib.nomatch'));
-      return;
-    }
-    for (const entry of matched.slice(0, DOC_LIMIT)) {
-      rows.append(entryRow(ctx, {
-        href: docHref('doc', entry.id, entry.language === 'he' ? 'he' : 'en'),
-        title: entry.title,
-        marks: [mirrorMark(ctx, entry.hasHebrewMirror)],
-      }));
-    }
-    shown.append(...ctx.t('lib.shown', {
-      shown: Math.min(matched.length, DOC_LIMIT), total: documents.length,
-    }));
-  };
-  filter.addEventListener('input', paint);
-  paint();
 }
 
 /**

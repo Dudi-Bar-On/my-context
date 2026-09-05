@@ -1639,18 +1639,19 @@ export const strings = {
   // "to write" chip, what a ✅ means — are REUSED here rather than respelled.
   's.library': 'Library',
   'lib.h': 'Library',
-  'lib.v': 'every document and tutorial, by title, opened in its own tab',
-  'lib.sub': 'One list, not two screens. Every Markdown document under {m:docs/} and {m:reports/} plus {m:README.md} itself, and every tutorial the manifest names — each one named by its own title, never by its path.',
+  'lib.v': 'the READMEs and the tutorials, by title, opened in its own tab',
+  'lib.sub': 'One list, not two screens, and it holds what a reader reads: this project’s README and its tutorials, each named by its own title and never by its path.',
   'lib.tuts': 'Tutorials',
   'lib.docs': 'Documents',
   'lib.filter': 'Filter by title',
   'lib.shown': 'Showing {shown} of {total}. Type above to narrow the list.',
   'lib.nomatch': 'No document’s title matches that filter.',
+  'lib.only': 'This list holds the README and the tutorials. The other {rest} Markdown documents in this repository are internal specs, plans and reports — they are not listed here, and a link from one document to another still opens them in the viewer, so nothing a document refers to is out of reach.',
   'lib.newtab': 'Opening an entry opens the document {b:rendered, on its own page, in a new browser tab}. It leaves this console — so there is no deep link from here into a heading, and no cross-linking from a document back to a corpus item. That is Learn’s job.',
-  'lib.github': 'That page renders the way GitHub does: GFM tables and task lists, GitHub’s sanitized HTML allow-list, its heading anchors, and the committed Mermaid drawings.',
+  'lib.github': 'That page wears {b:github-markdown-css}, the stylesheet GitHub itself publishes for a rendered Markdown body — none of this console’s own styling reaches it. GFM tables and task lists, GitHub’s sanitized HTML allow-list, its heading anchors, and the committed Mermaid drawings.',
   // The standalone document page.
   'gh.back': '← Back to the console',
-  'gh.parity': '{b:Rendered like GitHub, not identically to it.} GitHub renders with cmark-gfm; this renders with the vendored markdown-it. The behaviour is matched — GFM, GitHub’s sanitized HTML allow-list, its heading anchors, its dark presentation, the diagrams drawn rather than printed. Byte-identical output is not claimed and cannot be.',
+  'gh.parity': '{b:Rendered like GitHub, not identically to it.} The appearance is GitHub’s own: this page wears github-markdown-css, the stylesheet GitHub publishes for rendered Markdown, and none of this product’s. The rendering is GFM — but by the vendored markdown-it, where GitHub uses cmark-gfm. So the look matches, the behaviour matches, and byte-identical output is not claimed and cannot be.',
   'gh.clean': 'Every construct in this document is inside GitHub’s allow-list. Nothing was refused and no attribute was dropped.',
   'gh.refused': '{refused} construct(s) outside GitHub’s allow-list were {b:refused and shown as refusals}, never dropped silently; {dropped} attribute(s) outside it were dropped.',
   'gh.noaddress': 'This address names neither a document nor a tutorial, so nothing was read for it. Open one from the Library.',
@@ -1659,4 +1660,10 @@ export const strings = {
   'gh.enonly': 'This document has no Hebrew text yet, so the English is shown and labelled as English — never substituted silently under a Hebrew heading.',
   'gh.tagRefused': '<{tag}> (tag refused)',
   'gh.urlRefused': '{label} (link refused)',
+  // NEVER A DEAD LINK. The measured zero is drawn too — a page that only spoke
+  // up when a link was undrawn would leave a reader unable to tell a document
+  // whose links all resolve from a renderer that had stopped checking.
+  'gh.linksok': 'Every link in this document opens what it names. A link to another document opens it here; a link to a heading lands on it.',
+  'gh.links': '{links} link(s) named something this server cannot open — a repository file that is not one of the {b:190 Markdown documents} served here, a path outside the repository, or a heading this document does not contain. Their text is drawn and their anchor is not: a link that opens nothing is worse than no link.',
+  'gh.noroster': 'The document roster could not be read, so no link from this document to another could be checked. Every one of them is drawn as plain text rather than as a link that might open nothing.',
 };

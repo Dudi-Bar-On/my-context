@@ -56,6 +56,10 @@ interface LibraryModule {
 interface DocPageModule {
   docAddress: (search: string) => { kind: string | null; id: string | null; lang: string };
   endpointFor: (address: { kind: string | null; id: string | null; lang: string }) => string | null;
+  baseDirFor: (
+    address: { kind: string | null; id: string | null; lang: string },
+    ids: Set<string> | null,
+  ) => string;
 }
 
 const library = (): Promise<LibraryModule> => browserModule<LibraryModule>('screens', 'library.js');
@@ -124,6 +128,82 @@ test('the document page reads exactly what the screen wrote, and refuses everyth
   assert.equal(docAddress('?tut=x&lang=he').lang, 'he');
 });
 
+test('a relative link resolves against the containing document\'s own directory', async () => {
+  const { baseDirFor } = await docPage();
+  // A `?doc=` id IS the repo-relative path, so its dirname is the base.
+  assert.equal(baseDirFor({ kind: 'doc', id: 'docs/README.he.md', lang: 'he' }, null), 'docs');
+  assert.equal(baseDirFor({ kind: 'doc', id: 'README.md', lang: 'en' }, null), '');
+  assert.equal(
+    baseDirFor({ kind: 'doc', id: 'docs/superpowers/specs/a.md', lang: 'en' }, null),
+    'docs/superpowers/specs');
+  // A `?tut=` id is a FEATURE KEY and not a path, so the file is found in the
+  // roster rather than assumed to live anywhere in particular.
+  const roster = new Set(['docs/tutorials/narrowing-a-session-focus.md',
+    'docs/tutorials/narrowing-a-session-focus.he.md', 'README.md']);
+  assert.equal(baseDirFor({ kind: 'tut', id: 'narrowing-a-session-focus', lang: 'en' }, roster),
+    'docs/tutorials');
+  assert.equal(baseDirFor({ kind: 'tut', id: 'narrowing-a-session-focus', lang: 'he' }, roster),
+    'docs/tutorials');
+  // A tutorial the roster does not carry, and a roster that failed to read,
+  // both fall to the repository root — which resolves nothing that is not
+  // rooted there, rather than guessing a directory.
+  assert.equal(baseDirFor({ kind: 'tut', id: 'never-written', lang: 'en' }, roster), '');
+  assert.equal(baseDirFor({ kind: 'tut', id: 'narrowing-a-session-focus', lang: 'en' }, null), '');
+});
+
+/* ══ THE PAGE WEARS GITHUB'S STYLING, NOT THIS PRODUCT'S ═══════════════════
+
+   `DEC-the-document-page-wears-github-styling-lists-the-readmes-and`: a page
+   *"without the style of mycontext"* that *"should look exactly as it is
+   displayed in github"*. Asserted on the page's own bytes, which is where the
+   decision actually lives.                                                  */
+
+test('doc.html loads github-markdown-css and NOT this product\'s stylesheet', async () => {
+  const html = readFileSync(path.join(PUBLIC, 'doc.html'), 'utf8');
+  assert.equal(html.includes('href="/styles.css"'), false,
+    'the console\'s own palette, type scale and link colour must not reach a document page');
+  assert.match(html, /<link rel="stylesheet" href="\/lib\/vendor\/github-markdown-light\.css">/,
+    'the stylesheet GitHub itself publishes for a rendered Markdown body');
+  // The class contract is the package's own, read off its README: "add a
+  // `markdown-body` class to the container of your rendered Markdown".
+  assert.match(html, /<article class="markdown-body ghdoc" id="doc">/);
+  // And the doctype the same README's Troubleshooting section names as the fix
+  // for the quirks mode that renders table fonts wrong.
+  assert.match(html, /^<!doctype html>/);
+  // LIGHT, and the page's own ground is light too — the correction of
+  // 2026-09-05: "now it looks correct just the background is dark and i want it
+  // light". A light document floating on a dark page is the defect this holds
+  // against, so the ground the chrome paints is asserted, not just the sheet.
+  assert.equal(html.includes('github-markdown-dark'), false,
+    'the dark variant was corrected away; a leftover reference would load two sheets');
+  assert.match(html, /html,body\{[^}]*background:#ffffff/);
+  assert.match(html, /:root\{color-scheme:light\}/);
+  for (const dark of ['#0d1117', '#f0f6fc', '#9198a1', '#3d444d', '#4493f8']) {
+    assert.equal(html.includes(dark), false, `${dark} is a dark-palette colour left on a light page`);
+  }
+});
+
+test('the vendored stylesheet is pinned, offline, and scoped to markdown-body', async () => {
+  const dir = path.join(PUBLIC, 'lib', 'vendor');
+  const css = readFileSync(path.join(dir, 'github-markdown-light.css'), 'utf8');
+  const manifest = readFileSync(path.join(dir, 'VENDOR.md'), 'utf8');
+  assert.match(manifest, /\| `github-markdown-light\.css` \| `github-markdown-css` \| 5\.9\.0 \|/,
+    'a vendored file carries a version and a digest, or nobody can tell what it is');
+  assert.match(css, /^\/\*light \*\//,
+    'the LIGHT variant — the package stamps which theme it generated at the top of the file');
+  // Offline, which is what `CONST-zero-runtime-dependencies` buys: the only
+  // `url()` in the file is an inline data: URI for GitHub's link octicon.
+  const urls = [...css.matchAll(/url\(\s*["']?([^"')]{0,16})/g)].map((m) => m[1]!);
+  assert.ok(urls.length > 0, 'the sheet does carry a url(), so this scan is scanning something');
+  assert.deepEqual(urls.filter((u) => !u.startsWith('data:')), [],
+    'a vendored stylesheet may not fetch anything at render time');
+  assert.equal(/@import|@font-face/.test(css), false);
+  // Every rule is scoped, so nothing it carries can reach the console.
+  const selectors = [...css.matchAll(/^([^@{}/\s][^{}]*)\{/gm)].map((m) => m[1]!.trim());
+  assert.ok(selectors.length > 100, `expected the sheet's rules, found ${selectors.length}`);
+  assert.deepEqual(selectors.filter((s) => !s.includes('markdown-body')), []);
+});
+
 /* ══ THE ROSTER, AND THE TWO PRESENTATION RULINGS ══════════════════════════ */
 
 /** A stand-in element with the members `screens/parts.js`, `lib/i18n.js` and
@@ -182,11 +262,19 @@ const flat = (nodes: FakeNode[]): FakeNode[] => {
 const textOf = (node: FakeNode): string =>
   flat([node]).filter((n) => n.children.length === 0).map((n) => n.textContent).join('');
 
-/** The roster both endpoints answer, with a path that would be unmistakable if
- *  the screen ever drew one. */
+/**
+ * The roster both endpoints answer.
+ *
+ * `injection-tiers` is here for two jobs at once: its path would be
+ * unmistakable if the screen ever drew one, and it stands for the 188
+ * documents the manifest carries and the LIST does not show
+ * (`DEC-the-document-page-wears-github-styling-lists-the-readmes-and`). It must
+ * be COUNTED by `lib.only` and drawn by nothing.
+ */
 const DOCUMENTS = [
+  { id: 'README.md', title: 'my_context', language: 'en', hasHebrewMirror: true, headings: [] },
+  { id: 'docs/README.he.md', title: 'my_context בעברית', language: 'he', hasHebrewMirror: true, headings: [] },
   { id: 'docs/tutorials/injection-tiers.md', title: 'How injection tiers decide what arrives', language: 'en', hasHebrewMirror: false, headings: [] },
-  { id: 'docs/README.he.md', title: 'my_context', language: 'he', hasHebrewMirror: true, headings: [] },
 ];
 const TUTORIALS = [
   { id: 'capturing-an-item', title: 'Capture what you just decided', tier: 'basic', en: 'done', he: 'done' },
@@ -240,13 +328,12 @@ async function paint(lang: 'en' | 'he'): Promise<FakeNode> {
 test('INSTRUCTION 2 — every entry is named by its TITLE, and no path is drawn anywhere', async () => {
   const root = await paint('en');
   const rows = flat([root]).filter((n) => n.className.includes('docrow'));
-  assert.equal(rows.length, 5, '3 tutorials + 2 documents');
+  assert.equal(rows.length, 4, '3 tutorials + this surface\'s README');
   const labels = rows.map((r) => textOf(flat([r]).find((n) => n.className === 'docname')!));
   assert.deepEqual(labels, [
     'Capture what you just decided',
     'Narrow what gets injected',
     'A tutorial nobody has written',
-    'How injection tiers decide what arrives',
     'my_context',
   ]);
   // And the path appears nowhere on the screen — not as a label, not in a
@@ -280,7 +367,7 @@ test('INSTRUCTION 3 — an entry is the .row primitive, not an ordinary link', a
 test('a row opens a NEW TAB, and one with nothing to open is not a link at all', async () => {
   const root = await paint('en');
   const live = flat([root]).filter((n) => n.tag === 'a' && n.className.includes('docrow'));
-  assert.equal(live.length, 4, 'the unmeasured tutorial is not among them');
+  assert.equal(live.length, 3, 'the unmeasured tutorial is not among them');
   for (const row of live) {
     assert.equal(row.target, '_blank', 'the ruling: "opens a RENDERED page in a new browser tab"');
     assert.equal(row.rel, 'noopener');
@@ -321,7 +408,45 @@ test('the measured EN/HE state is beside every entry — the ruling asks for it 
   // off the chips — `STD-a-measured-zero-is-drawn-and-named-an-unmeasured-
   // thing-is`.
   assert.match(textOf(root), /Hebrew: 1 of 3 written/);
-  assert.match(textOf(root), /Hebrew mirror: 1 of 2 documents/);
+});
+
+/* ══ THE LIST IS THE READMES AND THE TUTORIALS ═════════════════════════════
+
+   `DEC-the-document-page-wears-github-styling-lists-the-readmes-and`, owner
+   ruling of 2026-09-05 after this screen was found carrying 190 rows: *"the
+   two READMEs and the tutorials — what a reader reads — not 166 internal
+   specs, plans and reports"*, and *"English console offers README.md; Hebrew
+   console offers docs/README.he.md. Each surface offers its own document."*  */
+
+test('the Documents card offers THIS surface\'s README, and only it', async () => {
+  const english = flat([await paint('en')])
+    .filter((n) => n.tag === 'a' && n.className.includes('docrow'))
+    .map((n) => n.href).filter((h) => h.startsWith('/doc.html?doc='));
+  assert.deepEqual(english, ['/doc.html?doc=README.md'],
+    'the English console offers README.md — not the Hebrew mirror, and not a language switch');
+
+  const hebrew = flat([await paint('he')])
+    .filter((n) => n.tag === 'a' && n.className.includes('docrow'))
+    .map((n) => n.href).filter((h) => h.startsWith('/doc.html?doc='));
+  assert.deepEqual(hebrew, ['/doc.html?doc=docs%2FREADME.he.md&lang=he'],
+    'the Hebrew console offers docs/README.he.md — its own document, not a translated wrapper');
+});
+
+test('the documents NOT listed are counted on the screen, never silently dropped', async () => {
+  const root = await paint('en');
+  // The internal document in the roster is drawn by nothing…
+  const everything = flat([root]);
+  assert.deepEqual(
+    everything.filter((n) => textOf(n).includes('How injection tiers decide what arrives')).map((n) => n.tag),
+    [],
+    'an internal working document reached the list',
+  );
+  // …and is COUNTED, which is the difference between unlisted and dropped
+  // (`INV-nothing-is-dropped-silently`). Two of the three roster entries are
+  // not this surface's README.
+  assert.match(textOf(root), /The other 2 Markdown documents in this repository/);
+  assert.match(textOf(root), /a link from one document to another still opens them in the viewer/,
+    'and the screen says the viewer still reaches them, which is why unlisting costs nothing');
 });
 
 /* ══ THE STRINGS ═══════════════════════════════════════════════════════════ */

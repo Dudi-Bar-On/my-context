@@ -116,10 +116,19 @@ interface Rendered {
   headings: { level: number; text: string; slug: string }[];
 }
 
+/** The link context `githubNodes` cannot infer: the containing document's own
+ *  directory, and the ids this server will actually serve. */
+interface LinkWhere { base?: string; openable?: Set<string> | null }
+
 interface RendererModule {
-  githubNodes: (src: unknown, doc: FakeDoc, labelFor?: unknown) => Rendered;
+  githubNodes: (src: unknown, doc: FakeDoc, labelFor?: unknown, where?: LinkWhere) => Rendered;
   markdownNodes: (src: unknown, doc: FakeDoc) => { nodes: FakeNode[]; refusals: string[] };
   headingSlug: (text: string) => string;
+  resolveDocPath: (base: string, target: string) => string | null;
+  decideLink: (
+    href: unknown,
+    where?: { base?: string; openable?: Set<string> | null; slugs?: Set<string> | null },
+  ) => { kind: string; href: string } | null;
 }
 
 interface SanitizeModule {
@@ -166,8 +175,15 @@ const textOf = (nodes: FakeNode[]): string =>
     .map((n) => n.textContent)
     .join('');
 
-const render = async (src: string): Promise<Rendered> =>
-  (await renderer()).githubNodes(src, fakeDoc());
+const render = async (src: string, where?: LinkWhere): Promise<Rendered> =>
+  (await renderer()).githubNodes(src, fakeDoc(), undefined, where);
+
+/** The link context the DOCUMENT PAGE supplies for a real document: the whole
+ *  served manifest as the openable set, and the document's own directory as
+ *  the base a relative link resolves against. Built once per file. */
+const MANIFEST = new Set(buildDocManifest(REPO).entries.map((e) => e.id));
+const dirOf = (id: string): string => (id.includes('/') ? id.slice(0, id.lastIndexOf('/')) : '');
+const whereFor = (id: string): LinkWhere => ({ base: dirOf(id), openable: MANIFEST });
 
 /* ══ 1 — THE SECURITY PROPERTIES ═══════════════════════════════════════════ */
 
@@ -257,10 +273,17 @@ test('an entity-encoded scheme cannot slip past — what is checked is what is s
   // exactly what was checked: a relative URL with an ampersand in it.
   assert.equal(decodeEntities('javascript&colon;alert(1)'), 'javascript&colon;alert(1)');
   const named = await render('<a href="javascript&colon;alert(1)">x</a>');
+  // It carries no colon at all once `&colon;` fails to decode, so it is a
+  // RELATIVE URL with an ampersand in it — which the browser would have
+  // resolved against `/doc.html` and answered 404 for. `decideLink` looks it up
+  // in the served manifest, finds nothing, and refuses to draw an anchor:
+  // under-decoding is still cosmetic and still cannot widen what is allowed,
+  // and the dead link it used to leave behind is gone too.
   assert.equal(
-    flatten(named.nodes).find((n) => n.tag === 'a')!.attrs.href, 'javascript&colon;alert(1)',
+    flatten(named.nodes).find((n) => n.tag === 'a')!.attrs.href, undefined,
     'under-decoding is cosmetic and can never widen what is allowed',
   );
+  assert.match(textOf(named.nodes), /x/, 'and the label survives — nothing is dropped');
 });
 
 test('neither module builds markup from a string — no innerHTML, no eval, no DOMParser', () => {
@@ -444,8 +467,13 @@ test('both READMEs: the refusal noise collapses, and what is left is named', asy
   for (const file of ['README.md', 'docs/README.he.md']) {
     const src = readFileSync(path.join(REPO, ...file.split('/')), 'utf8');
     const before = markdownNodes(src, fakeDoc()).refusals;
-    const after = githubNodes(src, fakeDoc());
-    measured[file] = { before: before.length, after: after.refusals.length, left: [...new Set(after.refusals)] };
+    const after = githubNodes(src, fakeDoc(), undefined, whereFor(file));
+    // A `link target` refusal draws NOTHING on the page — the label renders as
+    // ordinary text and the count goes to the footer. It is therefore not
+    // "noise" in the sense this measurement is about, which is boxes in the
+    // reader's way, and it is counted separately below.
+    const boxes = after.refusals.filter((r) => r !== 'link target');
+    measured[file] = { before: before.length, after: boxes.length, left: [...new Set(boxes)] };
   }
 
   // The numbers the ruling was taken on: 141 English, 457 Hebrew, of which 124
@@ -483,7 +511,7 @@ test('across every served document, nothing is dropped in silence and no attribu
       markdown = readFileSync(entry.absPath, 'utf8').replaceAll('\r\n', '\n');
     } catch { continue; }
     documents += 1;
-    const out = githubNodes(markdown, fakeDoc());
+    const out = githubNodes(markdown, fakeDoc(), undefined, whereFor(entry.id));
     for (const r of out.refusals) refusalKinds.add(r);
     for (const d of out.dropped) droppedNames.add(d.split('@')[1]!);
     // Nothing anywhere in the corpus may produce a script element or an
@@ -499,6 +527,128 @@ test('across every served document, nothing is dropped in silence and no attribu
   // than counted: a new kind appearing is a thing to look at, not a number to
   // update.
   for (const kind of refusalKinds) {
-    assert.match(kind, /^(tag:|url scheme$|image src scheme$)/, `unexpected refusal kind: ${kind}`);
+    assert.match(kind, /^(tag:|url scheme$|image src scheme$|link target$)/,
+      `unexpected refusal kind: ${kind}`);
+  }
+});
+
+/* ══ 5 — NEVER A DEAD LINK ═════════════════════════════════════════════════
+
+   `DEC-the-document-page-wears-github-styling-lists-the-readmes-and`: *"if the
+   documents are refering other documents get them too or do not support the
+   link"*. A link either opens what it names or is not drawn as a link, and the
+   property that makes that checkable is that NO ANCHOR SURVIVES A RENDER
+   without a target this server can answer for.                              */
+
+test('a relative path resolves against the CONTAINING document\'s directory, as GitHub resolves it', async () => {
+  const { resolveDocPath } = await renderer();
+  assert.equal(resolveDocPath('docs', 'TUTORIAL.md'), 'docs/TUTORIAL.md');
+  assert.equal(resolveDocPath('docs', '../README.md'), 'README.md');
+  assert.equal(resolveDocPath('docs', './ROADMAP.md'), 'docs/ROADMAP.md');
+  assert.equal(resolveDocPath('', 'CHANGELOG.md'), 'CHANGELOG.md');
+  // A leading `/` is REPOSITORY-root-relative, which is GitHub's reading of it
+  // inside a rendered README — not the web server's reading.
+  assert.equal(resolveDocPath('docs/tutorials', '/README.md'), 'README.md');
+  assert.equal(resolveDocPath('docs/superpowers/specs', '../plans/a.md'),
+    'docs/superpowers/plans/a.md');
+  // Out of the repository is not a document, and says so rather than clamping
+  // to the root — a clamp would turn `../../../etc/passwd` into a lookup that
+  // could succeed.
+  assert.equal(resolveDocPath('docs', '../../elsewhere.md'), null);
+  assert.equal(resolveDocPath('', '..'), null);
+});
+
+test('every href lands in exactly one of the four outcomes, and the fourth is NOT a link', async () => {
+  const { decideLink } = await renderer();
+  const where = {
+    base: 'docs',
+    openable: new Set(['README.md', 'docs/README.he.md', 'docs/ROADMAP.md']),
+    slugs: new Set(['installing-it']),
+  };
+  // 1 — a document this server can open.
+  assert.deepEqual(decideLink('ROADMAP.md', where),
+    { kind: 'document', href: '/doc.html?doc=docs%2FROADMAP.md' });
+  assert.deepEqual(decideLink('../README.md', where),
+    { kind: 'document', href: '/doc.html?doc=README.md' });
+  // …carrying its fragment through, so a link INTO a heading of another
+  // document still lands on that heading.
+  assert.deepEqual(decideLink('../README.md#installing-it', where),
+    { kind: 'document', href: '/doc.html?doc=README.md#installing-it' });
+  // 2 — a heading this document actually minted.
+  assert.deepEqual(decideLink('#installing-it', where),
+    { kind: 'fragment', href: '#installing-it' });
+  // 3 — an absolute address. It leaves this server, which is what the author
+  // asked for.
+  assert.deepEqual(decideLink('https://example.com/x', where),
+    { kind: 'external', href: 'https://example.com/x' });
+  assert.deepEqual(decideLink('mailto:a@b.c', where),
+    { kind: 'external', href: 'mailto:a@b.c' });
+  // 4 — NOT A LINK. A repository file the manifest does not carry, a file with
+  // no extension, a path out of the repository, a heading this document does
+  // not contain, and an empty href.
+  for (const href of ['CHANGELOG.md', '../LICENSE', '../../outside.md', '#no-such-heading', '', '#']) {
+    assert.equal(decideLink(href, where), null, `${JSON.stringify(href)} must not be drawn as a link`);
+  }
+  // With NO roster nothing relative can be checked, so nothing relative is
+  // drawn. A renderer that cannot check must not promise.
+  assert.equal(decideLink('ROADMAP.md', { base: 'docs' }), null);
+});
+
+test('an unopenable link keeps its TEXT and loses its anchor — neither dead nor dropped', async () => {
+  const openable = new Set(['docs/ROADMAP.md']);
+  const out = await render(
+    'see [the roadmap](ROADMAP.md), the [licence](../LICENSE) and [the log](CHANGELOG.md)',
+    { base: 'docs', openable },
+  );
+  const anchors = flatten(out.nodes).filter((n) => n.tag === 'a');
+  assert.deepEqual(anchors.map((a) => a.attrs.href), ['/doc.html?doc=docs%2FROADMAP.md'],
+    'exactly the one link that opens something is drawn as a link');
+  // The other two are still READABLE — the sentence is intact.
+  assert.match(textOf(out.nodes), /see the roadmap, the licence and the log/);
+  assert.equal(out.refusals.filter((r) => r === 'link target').length, 2,
+    'and both are counted, so the page can disclose them');
+});
+
+test('a raw <a href> is held to the same rule as a markdown link', async () => {
+  const openable = new Set(['README.md']);
+  const out = await render('<a href="README.md">one</a> <a href="MISSING.md">two</a>',
+    { base: '', openable });
+  const anchors = flatten(out.nodes).filter((n) => n.tag === 'a');
+  assert.deepEqual(anchors.map((a) => a.attrs.href), ['/doc.html?doc=README.md', undefined],
+    'the raw anchor that names nothing keeps no href — an <a> with no href is not a link');
+  assert.match(textOf(out.nodes), /one/);
+  assert.match(textOf(out.nodes), /two/);
+});
+
+test('a `#` link is a link only where the heading exists — including one further down the page', async () => {
+  const out = await render('[up](#later) and [nowhere](#absent)\n\n## Later\n');
+  const anchors = flatten(out.nodes).filter((n) => n.tag === 'a');
+  assert.deepEqual(anchors.map((a) => a.attrs.href), ['#later'],
+    'the forward reference resolves, because the anchors are minted before the walk draws a link');
+  assert.equal(flatten(out.nodes).find((n) => n.tag === 'h2')!.id, 'later',
+    'and the id a link was checked against is the id the heading actually received');
+  assert.match(textOf(out.nodes), /up and nowhere/);
+});
+
+test('the two READMEs: the named case works, and no anchor anywhere opens nothing', async () => {
+  const { githubNodes } = await renderer();
+  for (const [file, other] of [
+    ['README.md', 'docs/README.he.md'],
+    ['docs/README.he.md', 'README.md'],
+  ] as const) {
+    const src = readFileSync(path.join(REPO, ...file.split('/')), 'utf8');
+    const out = githubNodes(src, fakeDoc(), undefined, whereFor(file));
+    const anchors = flatten(out.nodes).filter((n) => n.tag === 'a');
+    const hrefs = anchors.map((a) => a.attrs.href ?? '');
+    // THE CASE THE OWNER NAMED: README.md links to docs/README.he.md and it
+    // must work. Asserted in both directions, because the mirror links back.
+    assert.ok(hrefs.includes(`/doc.html?doc=${encodeURIComponent(other)}`),
+      `${file} must carry a working link to ${other}; it carries ${JSON.stringify([...new Set(hrefs)].filter((h) => !h.startsWith('#')))}`);
+    // And NOTHING is left that a browser would resolve against `/doc.html` and
+    // 404 on: every anchor is a fragment, a `/doc.html?doc=` address, or an
+    // absolute URL. This is the whole ruling, as one assertion.
+    const dead = hrefs.filter((h) => !(h.startsWith('#') || h.startsWith('/doc.html?doc=')
+      || /^[a-z][a-z0-9+.-]*:/i.test(h)));
+    assert.deepEqual(dead, [], `${file} drew ${dead.length} link(s) that open nothing`);
   }
 });
