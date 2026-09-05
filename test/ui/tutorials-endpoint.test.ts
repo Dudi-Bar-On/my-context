@@ -9,16 +9,16 @@
  *   1. **A fixture workspace** with its own small, hand-written manifest and
  *      tutorial files, so the arithmetic (row count, `heRollup`, the
  *      done/todo/unmeasured states) is pinned against KNOWN inputs rather
- *      than against this repository's own, still-unwritten
- *      `docs/tutorials/*.md` — content authoring is a later task
- *      (`plan:tuts seq:5`), so today every real row reads `unmeasured`.
+ *      than against this repository's own `docs/tutorials/*.md`, which move
+ *      as content is written (`plan:tuts seq:5`, `seq:7`, `seq:8`).
  *   2. **This repository itself**, proving the endpoint reads the real,
- *      checked-in manifest and answers the true — currently all-zero —
- *      Hebrew rollup, rather than only a fixture.
+ *      checked-in manifest and that its Hebrew rollup agrees with the files
+ *      actually on disk — re-derived in the test rather than pinned to a
+ *      literal count, which would go red on every tutorial written.
  */
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdirSync, mkdtempSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { runCli } from '../../src/cli/index.ts';
@@ -185,13 +185,42 @@ test('apiTutorials over this repository: reads the real, checked-in manifest', (
   assert.deepEqual(body.tutorials.map((t) => t.id).sort(), manifest.map((e) => e.id).sort());
 });
 
-test('apiTutorials over this repository: the Hebrew rollup is a measured, stated zero today', () => {
-  // No docs/tutorials/*.md exist in this repository yet (content authoring is
-  // plan:tuts seq:5, not this task) — STD-a-measured-zero-is-drawn-and-
-  // named-an-unmeasured-thing-is: the zero must be a fact this endpoint
-  // states, not an absence a reader has to notice by counting chips.
+test('apiTutorials over this repository: the Hebrew rollup is measured from the files on disk', () => {
+  // The content landed (`plan:tuts seq:5`, `seq:7`, `seq:8`), so the all-zero
+  // assertion this test used to carry is no longer the true answer. What it
+  // must keep proving is the property, not the number:
+  // STD-a-measured-zero-is-drawn-and-named-an-unmeasured-thing-is asks that
+  // the rollup be a FACT this endpoint computed from the files, and pinning a
+  // literal count would go red on every Hebrew tutorial written from now on —
+  // a test that has to be edited to stay true is not measuring anything.
+  //
+  // So the expectation is re-derived here, from the same manifest and the same
+  // four required headings, by a second implementation that shares no code
+  // with `tutorialListRow` beyond the exported heading list.
   const ws = resolveWorkspace(REPO);
+  const manifest = loadTutorialManifest(REPO);
   const body = apiTutorials(ws, url()).body as TutorialsBody;
-  assert.deepEqual(body.heRollup, { done: 0, total: 0 });
-  for (const row of body.tutorials) assert.deepEqual({ en: row.en, he: row.he }, { en: 'unmeasured', he: 'unmeasured' });
+
+  const state = (file: string): 'done' | 'todo' | 'unmeasured' => {
+    let text: string;
+    try { text = readFileSync(path.join(REPO, file), 'utf8'); } catch { return 'unmeasured'; }
+    return REQUIRED.every((h) => text.includes(h)) ? 'done' : 'todo';
+  };
+
+  let expectedDone = 0;
+  let expectedTotal = 0;
+  for (const e of manifest) {
+    const en = state(e.enFile);
+    const he = en === 'unmeasured' ? 'unmeasured' : state(e.heFile);
+    const row = body.tutorials.find((t) => t.id === e.id);
+    assert.ok(row, `no row for manifest entry ${e.id}`);
+    assert.deepEqual({ en: row.en, he: row.he }, { en, he },
+      `${e.id}: the endpoint disagrees with the files on disk`);
+    if (en !== 'unmeasured') expectedTotal += 1;
+    if (he === 'done') expectedDone += 1;
+  }
+
+  assert.deepEqual(body.heRollup, { done: expectedDone, total: expectedTotal });
+  assert.ok(body.heRollup.done <= body.heRollup.total,
+    'a rollup that claims more Hebrew tutorials than measured rows is arithmetic, not measurement');
 });

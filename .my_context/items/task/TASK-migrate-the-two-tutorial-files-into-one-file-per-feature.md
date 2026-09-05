@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: The two tutorial files split into one file per feature, each teaching that feature from both the CLI and the UI.
-summary_of: 1bf7045ffab14a89
+summary_of: 4b22d5cb245006bc
 acknowledged:
   - dead_scope@64b33da6252909f0
 scope:
@@ -19,19 +19,20 @@ tags:
   - docs
   - "plan:tuts"
   - "seq:5"
-  - "state:todo"
+  - "state:done"
 origin: human
 source_file: null
 source_anchor: null
 source_checksum: null
 valid_from: 2026-09-05
 valid_until: null
-checksum: ad8ef8d8d0750755
+checksum: bb52262c03101970
 plan: tuts
 seq: "5"
-state: todo
+state: done
 priority: "2"
 needs: tuts/1
+verified_on: 2026-09-05
 ---
 
 # migrate the two tutorial files into one file per feature

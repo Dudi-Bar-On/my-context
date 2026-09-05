@@ -18,17 +18,17 @@ tags:
   - hebrew
   - "plan:tuts"
   - "seq:8"
-  - "state:todo"
+  - "state:doing"
 origin: human
 source_file: null
 source_anchor: null
 source_checksum: null
 valid_from: 2026-09-05
 valid_until: null
-checksum: a204b7cef21c1da9
+checksum: f7f01c31074cf9b7
 plan: tuts
 seq: "8"
-state: todo
+state: doing
 priority: "2"
 needs: tuts/1
 ---
