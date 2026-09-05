@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: One step of the why-was-this-left-out explanation can never show its workings, because nothing tells the page what a chosen file path excluded.
-summary_of: 230c1808cbcf0d93
+summary_of: 7048d94f35a18250
 scope: []
 tags:
   - v2
@@ -16,20 +16,21 @@ tags:
   - api
   - "plan:walk"
   - "seq:103"
-  - "state:doing"
+  - "state:done"
 origin: agent
 source_file: null
 source_anchor: null
 source_checksum: null
 valid_from: 2026-08-29
 valid_until: null
-checksum: ea149023102bf7e1
+checksum: e403ae6247dd8349
 plan: walk
 seq: "103"
-state: doing
+state: done
 priority: "2"
 progress: "0"
 source: "plan:walk seq:27, measured against screens/preview.js and src/core/select.ts on 2026-08-29"
+verified_on: 2026-09-05
 ---
 
 # Injection preview: rung 4 of the gate ladder can never be measured, because the per-event scope refusal is on no endpoint
