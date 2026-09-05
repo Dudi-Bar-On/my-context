@@ -349,7 +349,7 @@ worth pinning down before anything is built on them.
 - **Tier** is the word for the normative/rationale split. Every category — `constraint`,
   `decision`, `rule`, `lesson`, and the rest — carries one, and you can change which
   ([section 6](#6-configuration)). Watch out for a second, unrelated use of the same word:
-  [section 4](#4-when-it-comes-back-and-what) calls its four delivery routes *injection
+  [section 4](#4-when-it-comes-back-and-what) calls its five delivery routes *injection
   tiers*. Where the difference matters below, the sentence says which is meant.
 
 The set of items in your project — everything under `.my_context/items/`, whatever its tier
@@ -388,9 +388,13 @@ the imperative. That is the point — a rule that has to be asked for is a rule 
 forgotten. But text with that reach is text that steers, so it has to be text somebody
 approved.
 
-Rationale never enters a session that way. At the start of a session it contributes a count
-— "2 decision · 1 lesson" — and nothing more. It is indexed and searchable and retrieved on
-request, but it does not arrive uninvited and it does not phrase itself as an order.
+Rationale does not enter a session that way unless you ask it to. At the start of a session
+it contributes a count — "2 decision · 1 lesson" — and nothing more. It is indexed and
+searchable and retrieved on request, and it does not phrase itself as an order. The one
+route by which it arrives in full is the one you switch on per item:
+[the continuity tier](#4-when-it-comes-back-and-what) does not consult the normative/rationale
+split, so an item you marked `continuity: true` is carried into the next session whichever
+tier it belongs to.
 
 That difference in reach is why the two tiers have different rules about who may add them.
 When Claude captures a normative item, it lands as a **draft** and governs nothing until a
@@ -1409,7 +1413,7 @@ The next section is about which of these fires when.
 
 ## 4. When it comes back, and what
 
-There are four **injection tiers** — four routes by which an item's text can reach a
+There are five **injection tiers** — five routes by which an item's text can reach a
 session. (This is the second sense of "tier"; the first, from
 [section 2](#2-the-idea), is the normative/rationale split a category carries.) Each route
 has a condition that fires it and a rule about what it contains. "Just in time" is often
@@ -1421,6 +1425,7 @@ spelled `jit`.
 | **pinned** | every session start, every subagent dispatch, and again after a compaction | every active normative item marked `always: true`, in full |
 | **just in time** | Claude is about to read or edit a file the item applies to — one matching its `scope`, or any file at all if it declares no scope | that item, in full |
 | **restored** | after a compaction | the items that were in context before it |
+| **continuity** | every session start and again after a compaction | every active item marked `continuity: true`, in full — the one tier that does not ask whether the item is normative, so a `reference` can carry it |
 | **index** | every session start, every subagent dispatch, and after a compaction | one line per remaining normative item, plus counts for the rest |
 
 ```mermaid
@@ -1844,11 +1849,13 @@ terms, 6,000 of these units is about 24,000 characters — roughly 3,700 English
 370-line document.
 
 **These are not free, and it is worth being plain about what they cost.** The tiers compose:
-a session start pays `pinned` plus `index`, up to about 7,200 estimated tokens, before you
+a session start runs `pinned`, `continuity` and `index`, up to about 9,200 estimated tokens
+if all three are full, before you
 have typed anything, and each distinct file-triggered injection pays up to `jit` on top —
 once per item per context window (each subagent is its own), since the per-session dedupe
 record never delivers the same item twice to the same window.
-Against a 200,000-token context window that opening cost is around 3.6%.
+Against a 200,000-token context window that opening ceiling is around 4.6%, and a project
+with no item marked `continuity` pays 7,200 of it, around 3.6%.
 
 They were four to twelve times smaller, and the reason they are not any more is that the small
 numbers were not saving anything: they were hiding items. Measured on this repository's own
@@ -1863,7 +1870,12 @@ injected in the window it covers, which is the supported route to retiring the o
 stopped earning their place. Lowering a budget instead leaves every item in force and spills
 the surplus into a note.
 
-Items are admitted hardest-first — `severity: hard` before `severity: soft`, then
+Items are admitted **governing-first**, and that rank sits above severity rather than below
+it: a `rule`, `constraint`, `invariant`, `instruction`, `requirement` or `standard` — and an
+unfinished `task` or `plan` — goes in before anything else, because every governing item this
+corpus measured spilling was `severity: soft` and ranking governance second would have left
+each of them losing to a `hard` `pattern`. Under that rank the order is `severity: hard`
+before `severity: soft`, then
 [project layer before global](#the-global-layer--knowledge-that-follows-you-across-projects),
 then by id so the result is deterministic.
 An item too large for the remaining space is skipped rather than ending the pass, so a
@@ -2989,6 +3001,12 @@ counts as load-bearing, so an unfamiliar edge is over-reported rather than misse
 > the project says must not be violated is not noise. The report says how many were kept for
 > that reason, so items that survive a narrowing you asked for are explained rather than
 > looking like a bug.
+>
+> **There are three exemptions, not one, and each is disclosed the same way.** An item marked
+> `always: true` is exempt for the same reason — a focus once hid six soft pinned items for
+> three days — and so is an item marked `continuity: true`, whose whole promise is that the
+> next session does not start over. The injected block prints a line for each exemption it
+> used, so none of the three is a silent survival.
 
 A hidden item is **hidden, not gone**: it is still in the corpus, still in `mycontext list`,
 still readable with `mycontext show`, still findable by `mycontext search` and by
@@ -3315,25 +3333,42 @@ workspace on `127.0.0.1`. It is loopback only — a request to bind anything els
 at startup, not a warning — and `--no-open` prints the URL instead of launching a browser,
 which is what you want when the shell is not on the machine you are reading from.
 
-**No `/api` route reaches a mutating function, and the mechanism is the reason you can
+**No `/api` READ route reaches a mutating function, and the mechanism is the reason you can
 believe that rather than a promise.** It is held by a static
 import-graph test which asserts the *exact* set of write symbols bound anywhere under
-`src/ui/` — not that the set is empty, but that it is the two the owner ruled in by name, so
-a new write fails the suite as loudly as a deleted one. Every write the UI shows you is
-**composed for pasting into your own shell**, never run: which means your Bash permission
-rules go on matching command strings, exactly as they do when you type the command yourself.
+`src/ui/` — not that the set is empty, but that it is the seven the owner ruled in by name, so
+a new write fails the suite as loudly as a deleted one. The narrower claim is the true one,
+and the narrowing is deliberate: every read module is untouched, and each write is named one
+symbol at a time in `test/ui/no-writes.test.ts`. A write the UI composes can be **copied into
+your own shell**, where your Bash permission rules match the command string exactly as they do
+when you type it yourself — or **run by the server itself, behind a confirm**, which is a
+different route with a different gate and no Bash rule in front of it.
+[The web UI can run what it composes](#the-web-ui-can-run-what-it-composes) is where that
+route is documented, and it is worth reading before you leave this port open.
 
-There is one write, and it is on the refusal path. **A request the gate refuses appends a
-single `access` record** to the audit log — `op: ui-refused` — naming the check that refused
-it and the `Host` and `Origin` that were submitted. A served read changes not one byte of
-the corpus; a refused request is recorded, because a rejected request to a local server is
-worth knowing about. Neither the token nor any part of it is in that record.
+The writes are few, and each one is on a path you can name. **A request the gate refuses
+appends a single `access` record** to the audit log — `op: ui-refused` — naming the check
+that refused it and the `Host` and `Origin` that were submitted; a nonce mint appends
+`op: nonce-minted`; and a run through `POST /api/execute` appends `op: execute` *before* the
+process starts and `op: execute-done` after it returns. A served read changes not one byte of
+the corpus. Neither the token nor any part of it is in any of those records.
 
-**The token model, in two sentences.** Each invocation mints a fresh token, which the page
-sends in a custom header on every request and which reaches neither disk nor any process
+**The token model.** Each invocation mints a fresh token, which the page
+sends in a custom header on every request and which reaches no process
 command line; what appears in the URL is a **one-shot nonce in the fragment**, traded once at
-`POST /api/handoff` for the token itself and dead thereafter. A request without the header is
-`401` before any route handler runs.
+`POST /api/handoff` for the token itself and dead thereafter. A reloaded page has already
+spent its nonce, so the same token is also set as an `HttpOnly`, `SameSite=Strict` cookie and
+the gate accepts the header **or** that cookie — an `/api` request carrying neither is `401`
+before any route handler runs, with `POST /api/handoff` and `POST /api/nonce` exempt from the
+token check alone, because they are how a caller holding no token gets one. `Host` and
+`Origin` are still checked on both.
+
+**A loopback spelling is redirected, and anything else is refused rather than served.** A
+request whose `Host` is `localhost:<port>`, `[::1]:<port>` or any `127.x.x.x:<port>` gets a
+`302` to `http://127.0.0.1:<port>` — the browser carries the fragment across the hop, so a
+nonce link survives it — while every other `Host`, a loopback name on a *different* port
+included, is refused. That is what closes the rebinding host that would otherwise be served
+this server's own page.
 
 **It is ephemeral, and by default it does not come back.** The server exits on its own after
 eight idle hours by default — `--idle-ms` moves that in either direction, bounded at a day —
@@ -5181,10 +5216,12 @@ and a `description`:**
   not covered by `test/docs/examples.test.ts`. Two reasons, both structural. The example
   harness runs every marker against one shared fixture, and declaring a custom category in
   that fixture would rewrite the generated `help categories` block above — the block whose
-  whole job is to enumerate the 24 categories the `standard` profile enables. And no CLI
-  command writes `config.json`, so a `&&`-chained marker cannot create the category inside
-  an example run either. Each block below is the real output of the command named beside
-  it, run against a scratch workspace on 2026-08-15. `npm run gen:docs` does not maintain
+  whole job is to enumerate the 29 categories the `standard` profile enables. And the one CLI
+  writer of `config.json` — `mycontext config <path> --set` — writes a single scalar and
+  refuses anything that would leave the file unable to load, so it cannot declare a category
+  (which must carry both `tier` and `description` at once) and a `&&`-chained marker cannot
+  create the category inside an example run either. Each block below is the real output of
+  the command named beside it, run against a scratch workspace on 2026-08-15. `npm run gen:docs` does not maintain
   them: if you change the wording of one of these messages, change it here too.
 -->
 
@@ -5556,9 +5593,13 @@ A budget key the config does not understand (`"pined"` for `"pinned"`), or a val
 not a finite number greater than or equal to zero, is **refused** — the config does not
 load, and the message names the valid keys. It used to be silently ignored with the
 default kept, which meant the limit you thought you raised was never in force and the only
-symptom was items quietly missing from sessions. The same applies one level up: a
-top-level key this config does not understand (`"budget"`, `"watched_docs"`) is refused by
-name rather than accepted and dropped.
+symptom was items quietly missing from sessions. One level up the answer is different, and
+deliberately so: a top-level key this config does not understand (`"budget"`,
+`"watched_docs"`) is **skipped by name and the rest of the config loads**, because a
+top-level key is also how a newer my_context arrives, and refusing the whole file for one
+would turn "this build is older than your config" into "the plugin does nothing at all".
+The skip is never silent — `mycontext doctor` raises a `config_key_skipped` warning naming
+every key it did not read, and the valid set.
 
 ### `watchedDocs` — where a nudge to capture comes from
 
@@ -5574,6 +5615,30 @@ You edited docs/prd/checkout.md. If it set a new requirement, decision or constr
 Set `"watchedDocs": ["docs/rfc/**"]` and the same edit produces nothing at all, because
 **the list you give replaces the defaults**. It is not added to them. Writes inside
 `.my_context/` never nudge, whatever the globs say.
+
+### `dispatchGate` — requiring a dispatch to name the item it is for
+
+```json
+{ "dispatchGate": { "enabled": true } }
+```
+
+**Off unless you turn it on**, and absent means off: installing my_context never starts
+refusing a project the subagents it has always dispatched. Switch it on and the `PreToolUse`
+hook reads the `prompt` of every `Agent` dispatch and looks for a token shaped like one of
+this corpus's ids — an ALL-CAPS run before the first hyphen, `TASK-<slug>` and the like. It
+reads the `prompt` and not the `description`, because a three-to-five-word label has no room
+to carry an id reliably.
+
+**A shape is not enough; the id has to exist.** Each candidate is looked up in the index, and
+a dispatch naming only ids this corpus does not have is refused with the ids it named, so a
+typo is caught rather than accepted. A dispatch naming nothing id-shaped at all is refused
+with the shape it was looking for.
+
+**There is a named escape hatch, and it is audited rather than silent.** Write
+`no-item: <reason>` anywhere in the prompt and the dispatch proceeds, with the reason written
+to the audit log as `op: agent-item-waived`. A refusal writes its own row, `op: deny`. Only
+`enabled` is accepted under this key; any other spelling is refused at load time and names
+what the key does understand.
 
 ### `handover` — a note for the next session, asked for before the context runs out
 
@@ -5844,7 +5909,8 @@ omission survived — the rules were right and the count was not.
 `focus` is one of two members that change no single item — the other is `config`, below — and
 the only one that changes what is **delivered** instead of what the corpus contains. Every
 other command here rewrites an item; `focus` rewrites what is **delivered** from the corpus —
-a focus in force hides every eligible item that does not match, in every later session, on the
+a focus in force hides every eligible item that does not match and is not exempt — hard,
+pinned or continuity — in every later session, on the
 whole workspace rather than on the session that set it. What governs and what a model is
 actually told are not the same thing, and this is the command that separates them. Two of its
 five forms take `--yes` and are what the deny rule below is written against: `--clear`, which
@@ -6013,8 +6079,10 @@ classification therefore costs ceremony, never a silent write.
 Three properties bound it, and each is checkable rather than promised. The browser sends a
 catalogue **id** and values, never a command line — the server rebuilds the arguments from
 its own catalogue and runs them with no shell, so no text anyone types becomes a command.
-The confirm mints a **single-use token bound to exactly the command it displayed**, so a
-page that never showed you a confirm cannot run anything. And every run is written to the
+The confirm route mints a **single-use token bound to exactly the command it displayed**, so
+a run that was never confirmed cannot happen **silently** — which is the property this buys,
+and it is narrower than "cannot happen at all": a local page already holding the token can
+call the confirm route without ever painting it. And every run is written to the
 audit log **before** the process starts: a run that cannot be recorded does not happen.
 
 > [!WARNING]
@@ -6056,9 +6124,10 @@ Host/Origin check.
 > lockout, accepted deliberately on 2026-08-28 rather than left undisclosed.
 > Every mint is written to the audit log regardless — `op: nonce-minted`, the submitted
 > `Host` and `Origin`, never the nonce itself — so a credential coming into existence always
-> leaves a trail, even though nothing was refused. The nonce handed out is one-shot and
-> lives thirty seconds; the exposure this residual names is the standing **ability to ask**
-> for one, not any single credential outliving its window.
+> leaves a trail, even though nothing was refused. The nonce handed out is one-shot and lives
+> thirty seconds, or ten minutes when `?ttl=printed` asks for the printed lifetime that
+> `--nonce --no-open` uses; the exposure this residual names is the standing **ability to
+> ask** for one, not any single credential outliving its window.
 
 Nothing else about the boundary moves. A token obtained this way unlocks exactly the same
 read-only `/api` surface every other token does — and, since 2026-08-27, the execute route
@@ -6114,24 +6183,14 @@ which is revised whenever a decision changes it. Read it there, where it is main
 `severity: hard` changes two things, both about selection: hard items are admitted to a
 tier's budget before soft ones, and a hard item is exempt from session focus — focus never
 hides one. **No hook, no tool and no command reads an item's severity to decide whether an
-action may proceed.** The only action a hook here ever blocks is a write into `.my_context/`
-itself. [Section 2](#2-the-idea) describes normative knowledge as what *must hold* and asks
+action may proceed.** A hook here blocks exactly two things, and neither reads severity: a
+write into `.my_context/` itself, and — only where a project has switched
+[`dispatchGate`](#dispatchgate--requiring-a-dispatch-to-name-the-item-it-is-for) on — an
+`Agent` dispatch that names no task item this corpus has.
+[Section 2](#2-the-idea) describes normative knowledge as what *must hold* and asks
 "what am I not allowed to get wrong here?", and a reader can reasonably take that
 mechanically; the `create_item` schema's "a future enforcement candidate" is the accurate reading,
 and this entry is where the gap is stated rather than implied by a hedge.
-
-### An `instruction` is not in the pinned tier
-
-`mycontext add instruction "…"` creates the item with `always: false` and an empty scope, and
-`add --scope` can set the scope, but `add` has no flag that sets `always` — `mycontext pin`
-is the only route, and it is a second step. At session start such an item contributes only its
-index line — id, type, title — and its directive text is not injected. It is not inert: an
-item with no scope is unrestricted under the default `scopePolicy`, so the text does arrive
-on the first tool call that touches a file. But a session that touches no file never sees it,
-and the design this project was built from says process directives are *inherently*
-`always: true` and live in the pinned tier, precisely because they do not depend on a path.
-Pinning is a separate act someone has to remember — `mycontext pin <id>` once it governs, or
-`mycontext review promote <id> --always` while it is still a draft.
 
 ### A subagent does not receive the session-start injection
 
@@ -6299,7 +6358,7 @@ the category selector, which is why they are generated per category rather than 
 `<type>` argument; autocomplete filters the list as you type. `/mycontext:add` takes the
 argument instead, and is not a retreat from that: naming works only for the categories the
 generator knew about, so the argument form is what remains for [a category you defined
-yourself](#categories-you-define-yourself) — which is why it is one command beside the 24
+yourself](#categories-you-define-yourself) — which is why it is one command beside the 29
 rather than in place of them. The same applies to the four
 values people set constantly: `/mycontext:pin`, `/mycontext:unpin`, `/mycontext:harden` and
 `/mycontext:soften` are `mycontext edit --always` and `--severity` under names you can find
@@ -6539,7 +6598,7 @@ is what the word means *here* — several of them are ordinary English elsewhere
 | **origin** | who wrote an item: `human`, `agent` or `ingest`. The trust boundary is built on this field |
 | **pending revision** | a change to an item's title, body, tags or `extra` that an agent proposed and that has **not** been applied. The item keeps governing its current text; the proposal waits in an append-only log for `mycontext review promote-revision` or `discard-revision`. Created by the `agentEdits: "review"` policy, never by a human's edit, and never injected |
 | **pinned** | the injection tier for items marked `always: true`: delivered in full at every session start. `mycontext add … --always` captures an item straight into it; `mycontext review promote <id> --always` puts a draft there; `mycontext pin <id>` puts a governing item there |
-| **rationale** | the tier for why the project is the way it is: decisions, ADRs, lessons, tradeoffs, assumptions, edge cases, risks. Indexed, searchable, retrievable on request — never injected uninvited |
+| **rationale** | the tier for why the project is the way it is: decisions, ADRs, lessons, tradeoffs, assumptions, edge cases, risks. Indexed, searchable, retrievable on request — never injected uninvited unless you mark the item `continuity: true`, the one tier that does not consult this split |
 | **restored** | the injection tier that fires after a compaction, re-delivering what was in context before it |
 | **scope glob** | a file-path pattern on an item, matched against the file Claude is about to touch — `src/billing/**`. `*` stays within one directory level, `**` crosses as many as it needs. Scope restricts, so no scope means the item applies to every file — unless the category's `scopePolicy` is `"inert"`, where it applies to none |
 | **severity** | `hard` or `soft`. Two effects, both on selection: hard first into a budget, and exempt from a session focus — focus never hides a `hard` item |
@@ -6547,7 +6606,7 @@ is what the word means *here* — several of them are ordinary English elsewhere
 | **spill** | what happens to an item that does not fit its tier's budget: it is skipped, and named in a note under the injection so it was never silently dropped. A smaller item behind it can still be admitted |
 | **stale** | said of a pending revision whose base text a human has changed since it was staged, in the very field it rewrites. Promoting one is refused; `--force` promotes it anyway and destroys the newer text, after showing you what it destroys |
 | **superseded** | retired in favour of a named replacement, by `mycontext supersede`. Not injected; both items record the relation, and both files stay |
-| **tier** | two different things, depending on the sentence. A *category's* tier is `normative` or `rationale` ([section 2](#2-the-idea)). An *injection* tier is one of the four delivery routes — pinned, just in time, restored, index ([section 4](#4-when-it-comes-back-and-what)) |
+| **tier** | two different things, depending on the sentence. A *category's* tier is `normative` or `rationale` ([section 2](#2-the-idea)). An *injection* tier is one of the five delivery routes — pinned, just in time, restored, continuity, index ([section 4](#4-when-it-comes-back-and-what)) |
 | **validated** | a status recording that a human affirmed an item. It is not injected — only `active` is — and it counts among the retired in the session index, but an agent cannot supersede it while it is **normative**; a validated rationale item stays supersedable, because retiring one governs nothing. `mycontext edit <id> --status validated` sets it, behind the confirmation gate; the `update_item` tool can too, subject to its own refusals |
 | **watched docs** | the globs whose edits produce a one-line nudge to capture what the edit decided. Configured under `watchedDocs`; the list you give replaces the defaults |
 
