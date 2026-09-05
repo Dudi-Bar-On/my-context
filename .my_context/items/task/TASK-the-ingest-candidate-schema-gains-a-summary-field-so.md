@@ -14,17 +14,17 @@ tags:
   - capture
   - "plan:categories"
   - "seq:24"
-  - "state:todo"
+  - "state:doing"
 origin: human
 source_file: "C:/Users/UserC/AppData/Local/Temp/claude/D--Users-UserC-source-repos-test-mycontext-plugin/9e5b6b17-c186-4c93-a0a5-775b4eccd9e7/scratchpad/ingest-summary-task-body.txt"
 source_anchor: null
 source_checksum: f731c696f93fdc2a
 valid_from: 2026-09-02
 valid_until: null
-checksum: 494a33df1fb1b6af
+checksum: 0440337c7e352701
 plan: categories
 seq: "24"
-state: todo
+state: doing
 ---
 
 # the ingest candidate schema gains a summary field, so extracted items no longer land without one

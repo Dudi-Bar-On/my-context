@@ -15,17 +15,17 @@ tags:
   - doctor
   - "plan:categories"
   - "seq:25"
-  - "state:todo"
+  - "state:doing"
 origin: human
 source_file: null
 source_anchor: null
 source_checksum: null
 valid_from: 2026-09-04
 valid_until: null
-checksum: 1a762841c6f6d5be
+checksum: 0d82929269e23a27
 plan: categories
 seq: "25"
-state: todo
+state: doing
 priority: "2"
 ---
 

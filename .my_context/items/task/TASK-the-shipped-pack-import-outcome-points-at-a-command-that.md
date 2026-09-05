@@ -11,7 +11,7 @@ scope: []
 tags:
   - "plan:export"
   - "seq:14o"
-  - "state:todo"
+  - "state:doing"
   - v2
 origin: human
 source_file: null
@@ -19,10 +19,10 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-08-21
 valid_until: null
-checksum: 0e3a3bf9065e6036
+checksum: 3e2e49631e69b58e
 plan: export
 seq: 14o
-state: todo
+state: doing
 priority: "2"
 ---
 
