@@ -14,17 +14,17 @@ tags:
   - mockup
   - "plan:walk"
   - "seq:127"
-  - "state:todo"
+  - "state:doing"
 origin: human
 source_file: null
 source_anchor: null
 source_checksum: null
 valid_from: 2026-09-02
 valid_until: null
-checksum: d09c15b6ded69760
+checksum: 4d983573ef07d749
 plan: walk
 seq: "127"
-state: todo
+state: doing
 priority: "2"
 source: "plan:walk seq:27, from the module header of screens/work.js on 2026-09-02"
 ---

@@ -14,17 +14,17 @@ tags:
   - v2
   - ui
   - "reconcile:rewritten"
-  - "state:todo"
+  - "state:doing"
 origin: human
 source_file: null
 source_anchor: null
 source_checksum: null
 valid_from: 2026-08-20
 valid_until: null
-checksum: 1cc937317bccdfec
+checksum: b82e695069415f33
 plan: ui2
 seq: "11"
-state: todo
+state: doing
 progress: "0"
 source: "my-context/docs/superpowers/plans/2026-08-16-web-ui-2-palette-and-work.md#task-11"
 last_change: "2026-08-20T00:00:00Z"
