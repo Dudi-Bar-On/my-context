@@ -749,6 +749,12 @@ const READ_ROUTES = (from: { item: string; session: string | null }): Probe[] =>
   // why it is the cheapest entry on this list and still has to be on it: a
   // route nobody probes is a route nothing proves read-only.
   '/api/flags',
+  // The Tutorials screen's twelve computed cells
+  // (`TASK-no-endpoint-serves-tutorial-state-so-twelve-cells-are-hard`). It
+  // takes no parameters and reads two repository files by path, never the
+  // index or the ledger — probed here so that reading them is proven never to
+  // write either.
+  '/api/tutorials',
 ];
 
 /** Does a registered path template match this concrete pathname? */

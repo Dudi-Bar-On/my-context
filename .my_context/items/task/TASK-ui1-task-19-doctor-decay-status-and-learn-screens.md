@@ -6,12 +6,12 @@ status: active
 severity: soft
 always: false
 summary: "Four screens: what is wrong, what has gone unused, where things stand overall, and how to learn the tool."
-summary_of: 7e15571c7e9e91d9
+summary_of: 61a1618eab7a2d7d
 scope: []
 tags:
   - "plan:ui1"
   - "seq:19"
-  - "state:todo"
+  - "state:done"
   - v2
   - ui
   - "reconcile:rewritten"
@@ -21,14 +21,15 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-08-20
 valid_until: null
-checksum: dcd425383f09810c
+checksum: 624ca264260458e6
 plan: ui1
 seq: "19"
-state: todo
+state: done
 progress: "0"
 source: "my-context/docs/superpowers/plans/2026-08-16-web-ui-1-server-and-reads.md#task-19"
 last_change: "2026-08-20T00:00:00Z"
 priority: "3"
+verified_on: 2026-09-05
 ---
 
 # ui1 task 19: Doctor, Decay, Status and Learn screens

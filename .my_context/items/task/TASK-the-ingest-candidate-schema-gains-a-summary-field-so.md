@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: Document ingestion creates items with no summary; the candidate schema needs a summary field so one is written while the source is still in view.
-summary_of: c2180569b6db25ad
+summary_of: 2fa91b1534241fbb
 scope: []
 tags:
   - ingest
@@ -14,17 +14,18 @@ tags:
   - capture
   - "plan:categories"
   - "seq:24"
-  - "state:doing"
+  - "state:done"
 origin: human
 source_file: "C:/Users/UserC/AppData/Local/Temp/claude/D--Users-UserC-source-repos-test-mycontext-plugin/9e5b6b17-c186-4c93-a0a5-775b4eccd9e7/scratchpad/ingest-summary-task-body.txt"
 source_anchor: null
 source_checksum: f731c696f93fdc2a
 valid_from: 2026-09-02
 valid_until: null
-checksum: 0440337c7e352701
+checksum: 7c08823bdea98f3c
 plan: categories
 seq: "24"
-state: doing
+state: done
+verified_on: 2026-09-05
 ---
 
 # the ingest candidate schema gains a summary field, so extracted items no longer land without one

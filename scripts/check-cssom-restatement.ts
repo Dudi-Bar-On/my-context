@@ -577,8 +577,23 @@ export function analyse(modules: Module[], css: string): Report {
         });
         continue;
       }
+      // **Scoped to UNCONDITIONAL declarations — `d.at.length === 0` — found
+      // 2026-09-05 while adding this project's print register.** A rule
+      // inside `@media print{}` (or any other feature query — reduced motion,
+      // a width breakpoint) applies only when that condition holds; a
+      // module's `el.style.setProperty(...)` applies whenever that line runs,
+      // which on screen is every time. The two are not a restatement of one
+      // another — the CONDITIONAL rule cannot make the UNCONDITIONAL write
+      // redundant, since removing the write would leave nothing set for every
+      // context the rule's own `@media` does not match. Measured: `styles.css`
+      // gained `@media print{ .pane,.card{box-shadow:none!important…} }`, and
+      // without this line `screens/palette.js`'s own on-screen
+      // `globCard.style.setProperty('box-shadow', 'none')` — unrelated to
+      // print, matching the mockup's own nested-card style — was flagged as a
+      // redundant restatement of a rule that, in truth, only ever fires at
+      // print time.
       const owned = declared.filter(
-        (d) => d.property === write.property && matches(element, d.compound),
+        (d) => d.at.length === 0 && d.property === write.property && matches(element, d.compound),
       );
       if (owned.length === 0) {
         report.unowned += 1;

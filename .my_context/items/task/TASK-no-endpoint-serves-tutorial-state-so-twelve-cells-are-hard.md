@@ -6,12 +6,12 @@ status: active
 severity: soft
 always: false
 summary: The tutorials page shows tick marks that nobody ever checked, and one of them is not true of anything.
-summary_of: 0124ad3b6d9291bf
+summary_of: 87bc064db2bc46e2
 scope: []
 tags:
   - "plan:port"
   - "seq:5d"
-  - "state:doing"
+  - "state:done"
   - v2
 origin: human
 source_file: null
@@ -19,10 +19,11 @@ source_anchor: null
 source_checksum: 63a1e1461c3c349f
 valid_from: 2026-08-23
 valid_until: null
-checksum: e52b2c4a04b8f644
+checksum: 7f03207bf60f3e8d
 plan: port
 seq: 5d
-state: doing
+state: done
+verified_on: 2026-09-05
 ---
 
 # no endpoint serves tutorial state, so twelve cells are hard-coded in the module

@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: A blocked-on pointer, an assumption's checkup date and a reference's source file can all be set on an item, and no check reads any of them back.
-summary_of: 8b382b1e9b5065a0
+summary_of: fca97e9fbb832faf
 scope:
   - src/doctor/checks.ts
 tags:
@@ -15,18 +15,19 @@ tags:
   - doctor
   - "plan:categories"
   - "seq:25"
-  - "state:doing"
+  - "state:done"
 origin: human
 source_file: null
 source_anchor: null
 source_checksum: null
 valid_from: 2026-09-04
 valid_until: null
-checksum: 0d82929269e23a27
+checksum: 79056d2e4f8c2120
 plan: categories
 seq: "25"
-state: doing
+state: done
 priority: "2"
+verified_on: 2026-09-05
 ---
 
 # three item fields can be filled in but nothing ever reads them back

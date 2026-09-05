@@ -118,6 +118,7 @@
  * classification — cold, warm, unrestricted, never, pinned-and-cold — is read
  * off `/api/decay`'s report rather than recomputed from its parts.
  */
+import { helpDisclosure } from '/lib/disclosure.js';
 import { el, errorNote, fitChart, screenHead } from '/screens/parts.js';
 
 const NS = 'http://www.w3.org/2000/svg';
@@ -246,19 +247,15 @@ export async function render(root, ctx) {
   // "cold" does and does not mean. The order is the mockup's own: heading,
   // plate, legend, then the disclosure — with `#deccaveat` between the last
   // two in the mockup and deliberately undrawn here (see the header).
-  // `<details class="help"><summary>…` is the mockup's own disclosure widget,
-  // used on four screens.
+  // Built through `lib/disclosure.js`'s `helpDisclosure` — the ONE shared `?`
+  // component `STD-a-screen-explains-itself-in-plain-words-and-depth-hides`
+  // requires, rather than this screen hand-building its own `details.help`.
   const comb = el('div', 'card pane');
   const combHead = el('h3');
   combHead.append(...ctx.t('dec.comb'));
   const combPlate = el('div', 'plate');
   combPlate.id = 'comb';
-  const help = el('details', 'help');
-  const summary = el('summary');
-  summary.append(...ctx.t('help.whyCold'));
-  const helpBox = el('div', 'helpbox');
-  helpBox.append(...ctx.t('dec.help'));
-  help.append(summary, helpBox);
+  const help = helpDisclosure(ctx, 'help.whyCold', [...ctx.t('dec.help')]);
   comb.append(combHead, combPlate, legend(ctx), help);
 
   // Card 2 — the 90-day heatstrip and the note the mockup draws under it.

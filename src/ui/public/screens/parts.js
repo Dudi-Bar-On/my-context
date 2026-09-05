@@ -483,27 +483,37 @@ function drawnSpan(host) {
  * Defaulted rather than required, so the three screens already calling this
  * function are untouched.
  *
- * **It is still an emoji, and that is the mockup's ruling rather than an
- * oversight.** The ui1 Task 19 reconciliation says the emoji verdict "is
- * replaced by the `.chip` primitive", reading repaint spec §6 — but §6's
- * subject is CATEGORY glyphs on item ids ("the id already says the kind"), and
- * it never mentions the verdict. The mockup is the appearance authority, and
- * repaint 9.2 repainted the Evidence group's six screens on 2026-08-22,
- * editing these very lines to swap `.card.gloss` for `.card.pane` — and left
- * all twenty-one `✅`/`⚠️` in place, with `.verdict` still carrying its own
- * live rule. A shipped surface that disagreed with it on two screens out of
- * twenty-one would be the fracture, not the fix. Flagged in this task's report
- * with a screenshot, because a look is what should settle it.
+ * **Nineteen of twenty-one stayed the emoji; Status did not, and this is why.**
+ * The ui1 Task 19 reconciliation said the emoji verdict "is replaced by the
+ * `.chip` primitive", reading repaint spec §6 — arguably about CATEGORY
+ * glyphs on item ids rather than the verdict, which is why this stayed an
+ * open disagreement rather than a settled one for a time (repaint 9.2,
+ * 2026-08-22, repainted `.card.gloss` to `.card.pane` on these lines and left
+ * every `✅`/`⚠️` in place). **`TASK-ui1-task-19-doctor-decay-status-and-
+ * learn-screens`'s own VERIFIED PARTIAL pass, 2026-08-26, settled it the other
+ * way**: Status specifically — not Learn, whose emoji verdict is untouched —
+ * was marked NOT MET for exactly this, in so many words: "a real verdict chip
+ * is the `.chip` primitive with a meaning hue, not an emoji." No later ruling
+ * reopened that. `verdictChip` is therefore opt-in rather than a change to
+ * `glyph`'s default: passing it swaps the emoji sibling for a `.chip` of the
+ * named hue carrying the verdict text itself, and every caller that does not
+ * pass it — nineteen screens, Learn included — is byte-for-byte unaffected.
  */
-export function screenHead(ctx, root, titleKey, verdictKey, subKey, glyph = '✅') {
+export function screenHead(ctx, root, titleKey, verdictKey, subKey, glyph = '✅', verdictChip = null) {
   const phd = el('div', 'phd');
   const h = el('h2');
   h.append(...ctx.t(titleKey));
   const verdict = el('span', 'verdict');
-  verdict.append(`${glyph} `);
-  const vtext = el('span');
-  vtext.append(...ctx.t(verdictKey));
-  verdict.append(vtext);
+  if (verdictChip === null) {
+    verdict.append(`${glyph} `);
+    const vtext = el('span');
+    vtext.append(...ctx.t(verdictKey));
+    verdict.append(vtext);
+  } else {
+    const chip = el('span', `chip ${verdictChip}`);
+    chip.append(...ctx.t(verdictKey));
+    verdict.append(chip);
+  }
   phd.append(h, verdict);
   const sub = el('p', 'psub');
   sub.append(...ctx.t(subKey));

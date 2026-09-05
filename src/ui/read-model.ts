@@ -62,7 +62,7 @@
  * not this module — and it is the difference between "no file changes" and "no
  * file appears", which Task 13 has to state rather than discover.
  */
-import { statSync } from 'node:fs';
+import { readFileSync, statSync } from 'node:fs';
 import path from 'node:path';
 import { injection, type InjectionVerdict } from '../cli/commands/injection.ts';
 import type { AuditRecord } from '../core/audit.ts';
@@ -3125,4 +3125,138 @@ export function apiHelp(ws: Workspace, url: URL, params: { topic: string }): Jso
     const body: HelpBody = { topic, markdown: helpTopic(topic, ws.config), corpus };
     return { status: 200, body };
   });
+}
+
+/**
+ * `GET /api/tutorials`'s body — the Tutorials screen's twelve EN/HE cells,
+ * COMPUTED against the repository rather than copied from the design mockup.
+ *
+ * `TASK-no-endpoint-serves-tutorial-state-so-twelve-cells-are-hard`: no route
+ * served `docs/TUTORIAL.md` or `docs/TUTORIAL-ADVANCED.md`, so
+ * `screens/tut.js` hard-coded all twelve done-or-to-write states as content.
+ * A hand check against the repository (recorded on that task) found five of
+ * the six rows correspond to a real heading — `docs/TUTORIAL.md` itself for
+ * the first, and chapters 2, 4, 8 and 6 of `docs/TUTORIAL-ADVANCED.md` for
+ * four more — and the sixth, "when it did not fire", matches no heading in
+ * either file. This endpoint is that check, run on every request instead of
+ * once by hand, so a heading renamed or removed changes the screen instead of
+ * leaving a claim nobody rechecks.
+ *
+ * **Order is positional, not keyed.** The six entries below are `tu.1`
+ * through `tu.6` in the mockup's own order (`docs/design/web-ui-mockup.html`'s
+ * `<tbody>`), and `screens/tut.js` zips them against its own row list by
+ * index. Nothing here names a `tu.` string key: this module has no business
+ * knowing the UI's translation vocabulary, and the screen already owns it.
+ */
+export type TutorialCellState = 'done' | 'todo' | 'unmeasured';
+
+/** One row's EN/HE state. See `apiTutorials` for how each is computed. */
+export interface TutorialRowState { en: TutorialCellState; he: TutorialCellState }
+
+export interface TutorialsBody { tutorials: TutorialRowState[] }
+
+/**
+ * One row's target: the EN file and the exact heading line its content lives
+ * at, and the Hebrew counterpart file the `docs/README.he.md` naming
+ * convention would put a translation at.
+ *
+ * `enFile` and `heading` are both `null` for exactly one row (the second: "the
+ * model did the banned thing"). That is not "not written" — a claim about a
+ * known target found empty — it is that no heading was ever named for this
+ * row to check FOR, in either tutorial file. `heFile` is `null` there too, for
+ * the same reason: there is nothing to name a Hebrew counterpart of.
+ */
+interface TutorialTarget { enFile: string | null; heading: string | null; heFile: string | null }
+
+const TUTORIAL_TARGETS: TutorialTarget[] = [
+  // tu.1 — "first twenty minutes": the file's own title.
+  {
+    enFile: 'docs/TUTORIAL.md',
+    heading: '# my_context — the first twenty minutes',
+    heFile: 'docs/TUTORIAL.he.md',
+  },
+  // tu.2 — "when it did not fire": matches no heading in either file.
+  { enFile: null, heading: null, heFile: null },
+  // tu.3 — "scope and the empty scope": TUTORIAL-ADVANCED.md chapter 2.
+  {
+    enFile: 'docs/TUTORIAL-ADVANCED.md',
+    heading: '## 2. Scope, and the policy that inverts it',
+    heFile: 'docs/TUTORIAL-ADVANCED.he.md',
+  },
+  // tu.4 — "budgets and spill": chapter 4.
+  {
+    enFile: 'docs/TUTORIAL-ADVANCED.md',
+    heading: '## 4. Budgets, and what happens when they bind',
+    heFile: 'docs/TUTORIAL-ADVANCED.he.md',
+  },
+  // tu.5 — "review and revisions": chapter 8.
+  {
+    enFile: 'docs/TUTORIAL-ADVANCED.md',
+    heading: '## 8. Revisions and the review queue',
+    heFile: 'docs/TUTORIAL-ADVANCED.he.md',
+  },
+  // tu.6 — "ingest a document you already wrote": chapter 6.
+  {
+    enFile: 'docs/TUTORIAL-ADVANCED.md',
+    heading: '## 6. Pulling items out of a document you already have',
+    heFile: 'docs/TUTORIAL-ADVANCED.he.md',
+  },
+];
+
+/** `true` when `file` (repo-relative) exists and its text contains `needle`. */
+function repoFileContains(repoRoot: string, file: string, needle: string): boolean {
+  try {
+    return readFileSync(path.join(repoRoot, file), 'utf8').includes(needle);
+  } catch {
+    return false;
+  }
+}
+
+/** `true` when `file` (repo-relative) exists at all. */
+function repoFileExists(repoRoot: string, file: string): boolean {
+  try {
+    readFileSync(path.join(repoRoot, file), 'utf8');
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+function tutorialRowState(repoRoot: string, target: TutorialTarget): TutorialRowState {
+  return {
+    en: target.enFile === null || target.heading === null
+      ? 'unmeasured'
+      : repoFileContains(repoRoot, target.enFile, target.heading) ? 'done' : 'todo',
+    he: target.heFile === null
+      ? 'unmeasured'
+      : repoFileExists(repoRoot, target.heFile) ? 'done' : 'todo',
+  };
+}
+
+/**
+ * `GET /api/tutorials` — the tutorial table's twelve cells, computed. Reads no
+ * item, no ledger and no config: two repository files and, per row, whether a
+ * Hebrew counterpart of one of them exists at all.
+ *
+ * **No project, no repository to check a heading against.** Every cell
+ * answers `unmeasured` rather than guessed when `ws.projectRoot` is `null`,
+ * the same "unknown, never invented" reasoning `projectRootAfterOpen`'s
+ * callers apply to a missing root — except this endpoint answers 200 instead
+ * of throwing, because it needs no open index to say so.
+ */
+export function apiTutorials(ws: Workspace, url: URL): JsonResult {
+  const bad = unknownParams(url, []);
+  if (bad) return badRequest(bad);
+  const projectRoot = ws.projectRoot;
+  if (projectRoot === null) {
+    const body: TutorialsBody = {
+      tutorials: TUTORIAL_TARGETS.map(() => ({ en: 'unmeasured', he: 'unmeasured' }) as TutorialRowState),
+    };
+    return { status: 200, body };
+  }
+  const repoRoot = path.dirname(projectRoot);
+  const body: TutorialsBody = {
+    tutorials: TUTORIAL_TARGETS.map((target) => tutorialRowState(repoRoot, target)),
+  };
+  return { status: 200, body };
 }

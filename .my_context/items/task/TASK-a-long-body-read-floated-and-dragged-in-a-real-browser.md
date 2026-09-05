@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: Have a person actually read a genuinely long item in the new floating panel, since automated checks would pass on short text and prove nothing.
-summary_of: 057430251b794571
+summary_of: fc7feb2690573108
 scope: []
 tags:
   - v2
@@ -16,19 +16,20 @@ tags:
   - docs
   - "plan:pane"
   - "seq:5"
-  - "state:todo"
+  - "state:done"
 origin: human
 source_file: null
 source_anchor: null
 source_checksum: null
 valid_from: 2026-08-27
 valid_until: null
-checksum: 2366baf0dd6a5c29
+checksum: 9c2fb12827fb52a4
 plan: pane
 seq: "5"
-state: todo
+state: done
 priority: "2"
 source: owner, 2026-08-27
+verified_on: 2026-09-05
 ---
 
 # a long body read floated and dragged, in a real browser

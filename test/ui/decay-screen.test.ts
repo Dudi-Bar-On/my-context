@@ -118,10 +118,11 @@ async function decayModule(): Promise<DecayModule> {
     rewritten += 1;
     return `${head}${pathToFileURL(path.join(PUBLIC, spec)).href}'`;
   });
-  assert.equal(rewritten, 1,
-    'expected decay.js to import one browser module (/screens/parts.js); the rewrite matched '
-    + `${rewritten}. A specifier this pattern cannot see is a module Node would resolve from the `
-    + 'drive root, and the import below would fail for a reason that reads like a missing file.');
+  assert.equal(rewritten, 2,
+    'expected decay.js to import two browser modules (/lib/disclosure.js, /screens/parts.js); '
+    + `the rewrite matched ${rewritten}. A specifier this pattern cannot see is a module Node `
+    + 'would resolve from the drive root, and the import below would fail for a reason that '
+    + 'reads like a missing file.');
   assert.ok(!/\bfrom\s+'\//.test(text),
     'a root-absolute specifier survived the rewrite — the module graph imported below would not '
     + 'be the one the browser runs');
@@ -510,6 +511,12 @@ function keysNamed(): { key: string; args: string | null }[] {
   // The legend's five entries name their keys inside a literal table, which
   // the `ctx.t('…')` pattern above cannot see.
   for (const m of decaySource.matchAll(/\['(?:i|span)', '[a-z]+', (?:null|'.'), '([^']+)'\]/g)) {
+    out.push({ key: m[1]!, args: null });
+  }
+  // `helpDisclosure(ctx, 'help.whyCold', ...)` — the summary key is the
+  // disclosure's own first argument, not a bare `ctx.t()` call, since
+  // `lib/disclosure.js` makes that call itself.
+  for (const m of decaySource.matchAll(/helpDisclosure\(ctx, '([^']+)'/g)) {
     out.push({ key: m[1]!, args: null });
   }
   return out;

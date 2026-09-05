@@ -6,12 +6,12 @@ status: active
 severity: soft
 always: false
 summary: A command tells you to run something the very same version would refuse, and prints it broken across two lines.
-summary_of: 4c813538d312dd22
+summary_of: d5233d175f554167
 scope: []
 tags:
   - "plan:export"
   - "seq:14o"
-  - "state:doing"
+  - "state:done"
   - v2
 origin: human
 source_file: null
@@ -19,11 +19,12 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-08-21
 valid_until: null
-checksum: 3e2e49631e69b58e
+checksum: 97b27e40108bdb7d
 plan: export
 seq: 14o
-state: doing
+state: done
 priority: "2"
+verified_on: 2026-09-05
 ---
 
 # the shipped pack import outcome points at a command that does not exist until task 16

@@ -86,6 +86,7 @@ import { IDLE_MS, IdleMonitor } from './idle.ts';
 import {
   apiCoverage, apiDecay, apiDoctor, apiGraph, apiHelp, apiInjected, apiItem, apiItems,
   apiRender, apiSelect, apiSessions, apiSimulate, apiSimulateSweep, apiStatus, apiTags,
+  apiTutorials,
 } from './read-model.ts';
 import { registerFlagRoutes } from './read-model-flags.ts';
 import { registerConfigRoutes } from './read-model-config.ts';
@@ -473,6 +474,10 @@ export function registerReadRoutes(): void {
   // `ItemSummary` carries no tags and widening it would put a 431-token
   // vocabulary on every screen that lists items.
   registerRoute('GET', '/api/tags', json(apiTags));
+  // `screens/tut.js`'s twelve EN/HE cells, computed against the two tutorial
+  // files instead of hard-coded in the module —
+  // `TASK-no-endpoint-serves-tutorial-state-so-twelve-cells-are-hard`.
+  registerRoute('GET', '/api/tutorials', json(apiTutorials));
   registerRoute('GET', '/api/session/:session/injected', {
     kind: 'json',
     handle: (ctx) => apiInjected(ctx.ws, ctx.url, { session: ctx.params['session'] ?? '' }),

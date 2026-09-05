@@ -202,12 +202,32 @@ function codeOnly(source: string): string {
   return source.replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/.*$/gm, '');
 }
 
-test('nothing here calls addEventListener — the disclosure is operable with no script at all', async () => {
+test('no click or keyboard handler opens or closes the disclosure — <details>/<summary> already does', async () => {
+  // **Narrowed 2026-09-05, not widened away.** The claim was ever about ONE
+  // failure mode: a second piece of script deciding open/closed and
+  // disagreeing with the native element that already decides it — which is
+  // what a `click`/`keydown`/`keyup` listener on the `<details>`/`<summary>`
+  // pair would be. `TASK-repaint-task-10-the-print-register` added a
+  // DIFFERENT listener for a DIFFERENT reason: forcing every disclosure open
+  // for a printout has nothing to do with how a reader on screen opens or
+  // closes one, and it listens for a print MEDIA CHANGE, never a click or a
+  // key. So the assertion is now specific to the failure it was written
+  // against, rather than a blanket ban on a word that this file has a second,
+  // legitimate reason to use.
   const { readFileSync } = await import('node:fs');
   const code = codeOnly(readFileSync(path.join(PUBLIC, 'lib', 'disclosure.js'), 'utf8'));
-  assert.ok(!code.includes('addEventListener'),
+  assert.ok(!/addEventListener\(\s*'(click|keydown|keyup|keypress)'/.test(code),
     'this file wires its own open/close handler — <details>/<summary> already provides one, and a '
     + 'second means the two can disagree');
+});
+
+test('the print-forced-open listener is the ONLY addEventListener here, and it never toggles a click', async () => {
+  const { readFileSync } = await import('node:fs');
+  const code = codeOnly(readFileSync(path.join(PUBLIC, 'lib', 'disclosure.js'), 'utf8'));
+  const calls = [...code.matchAll(/\.addEventListener\('([^']+)'/g)].map((m) => m[1]);
+  assert.deepEqual(calls.sort(), ['beforeprint', 'change', 'afterprint'].sort(),
+    'a new addEventListener landed in this file beyond the print-forced-open trio — read it '
+    + 'against the reasoning above before assuming it belongs');
 });
 
 test('this file writes no innerHTML and no style attribute', async () => {

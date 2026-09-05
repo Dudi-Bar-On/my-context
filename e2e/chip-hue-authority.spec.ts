@@ -86,7 +86,12 @@ import { openMockup, showScreen, expectNoFaults } from './mockup.ts';
  * `unmeas` face, `simulate` the fits/over pair, and `port` the travels/rebuilt
  * pair.
  */
-const CHIP_SCREENS = ['preview', 'simulate', 'ask', 'watch', 'work', 'port'] as const;
+// `status` joined this list 2026-09-05: `TASK-ui1-task-19-doctor-decay-status-
+// and-learn-screens`'s VERIFIED PARTIAL pass named its bare-emoji verdict
+// unmet ("a real verdict chip is the `.chip` primitive with a meaning hue,
+// not an emoji"); `screens/status.js` now draws `.chip.warn` there, so it is a
+// seventh screen this suite's own contrast/glyph/hue authority checks reach.
+const CHIP_SCREENS = ['preview', 'simulate', 'ask', 'watch', 'work', 'port', 'status'] as const;
 
 /**
  * **The register table: what each chip class means and which token it spends.**

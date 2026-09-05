@@ -517,9 +517,21 @@ test('render draws every kind the mockup draws, and the bold run among them', as
   // marker landed it would fail and the entry could come out. It did, on
   // 2026-08-25, and it has.
   assert.ok(drawn.includes('b'), 'the mockup no longer bolds a run inside st.four');
-  assert.deepEqual(drawn.filter((kind) => !built.includes(kind)), [],
+
+  // **A new, DELIBERATE entry: bare `span`.** The mockup's verdict is
+  // `<span class="verdict">⚠️ <span data-t="st.v">…</span></span>` — the
+  // inner span carries no class, which is the "span" kind this filters out
+  // below. This screen's own verdict span is now `<span class="chip warn">`
+  // (`TASK-ui1-task-19-doctor-decay-status-and-learn-screens`'s VERIFIED
+  // PARTIAL pass, 2026-08-26 — a real verdict chip, not the frozen mockup's
+  // bare span holding an emoji beside it), so the built page draws
+  // `span.chip.warn` where the mockup draws bare `span`, and never the mockup's
+  // own kind. Written down rather than silently passed over, the same
+  // treatment `b` got above while it was still a real gap.
+  assert.deepEqual(drawn.filter((kind) => !built.includes(kind) && kind !== 'span'), [],
     'a kind the mockup draws is missing from the render. This list used to hold `b` for a '
-    + 'grammar limit that no longer exists, so a name here now is a real gap.');
+    + 'grammar limit that no longer exists, and now holds only the verdict span -> chip swap '
+    + 'above — a name here beyond those two is a real gap.');
 
   // **THE OTHER DIRECTION IS NO LONGER ASSERTED — owner's ruling, 2026-09-02.**
   // *"Some app features could not appear in the mockup because they are newer
@@ -539,14 +551,25 @@ test('render draws every kind the mockup draws, and the bold run among them', as
   // "no value here" instead.
   void 'td.small';
 
-  // The verdict glyph, read out of the mockup rather than copied here. Status
-  // is one of only two screens in the rail that open ⚠️ instead of ✅ — a
-  // recorded exception, drawn.
-  const verdict = /<span class="verdict">([^<]*)</.exec(statusSection());
-  assert.ok(verdict, "the mockup's status section no longer opens with a verdict");
-  assert.ok(verdict[1]!.startsWith('⚠'), 'the design of record no longer warns here');
+  // **The verdict is a `.chip`, not the mockup's bare ⚠️ — a deliberate
+  // divergence from the frozen mockup, same ruling as the "other direction"
+  // note above ("some app features could not appear in the mockup because
+  // they are newer than it and it's ok and normal").** `TASK-ui1-task-19-
+  // doctor-decay-status-and-learn-screens`'s own VERIFIED PARTIAL pass
+  // (2026-08-26) named this screen specifically as NOT MET while the emoji
+  // stood: "a real verdict chip is the `.chip` primitive with a meaning hue,
+  // not an emoji." Status is still one of only two screens in the rail whose
+  // verdict is not a plain pass (Learn is the other, and keeps its emoji —
+  // this reconciliation named Status alone).
   const builtVerdict = descendants(root).find((n) => n.className === 'verdict')!;
-  assert.equal(builtVerdict.children[0]!.textContent, verdict[1]!);
+  const chip = builtVerdict.children[0]! as FakeElement;
+  assert.equal(chip.className, 'chip warn',
+    'the verdict must be a .chip carrying a meaning hue, not the bare glyph');
+  const en = (await table('en')).strings;
+  assert.equal(textOf(chip), en['st.v'],
+    "the chip's own text is the verdict sentence — nothing left for a sibling span to hold");
+  assert.ok(!/[⚠✅]/.test(textOf(builtVerdict)),
+    'the emoji must be gone entirely, not merely joined by the chip');
 
   // The note takes its margin through CSSOM and not a `style` attribute: the
   // server sends `style-src 'self'` with no `'unsafe-inline'`, so the mockup's

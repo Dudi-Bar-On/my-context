@@ -122,9 +122,9 @@ async function doctorModule(): Promise<DoctorModule> {
     rewritten += 1;
     return `${head}${pathToFileURL(path.join(PUBLIC, spec)).href}'`;
   });
-  assert.equal(rewritten, 5,
-    'expected doctor.js to import five browser modules (/lib/viewmodel.js, /lib/command.js, '
-    + '/lib/palette-defs.js, /lib/command-actions.js, /screens/parts.js); '
+  assert.equal(rewritten, 6,
+    'expected doctor.js to import six browser modules (/lib/viewmodel.js, /lib/command.js, '
+    + '/lib/palette-defs.js, /lib/command-actions.js, /lib/disclosure.js, /screens/parts.js); '
     + `the rewrite matched ${rewritten}. A specifier this pattern cannot see is a module Node `
     + 'would resolve from the drive root, and the import below would fail for a reason that '
     + 'reads like a missing file.');
@@ -939,6 +939,10 @@ test('every string key the Doctor screen names is declared in both tables', asyn
   }
   // `doc.notice` is named through the CARDS table, which neither pattern sees.
   for (const m of doctorSource.matchAll(/key: '([^']+)'/g)) named.add(m[1]!);
+  // `helpDisclosure(ctx, 'doc.about', ...)` / `helpDisclosure(ctx, 'doc.shared', ...)` — the
+  // summary key is the disclosure's own first argument, not a bare `ctx.t()` call, since
+  // `lib/disclosure.js` makes that call itself.
+  for (const m of doctorSource.matchAll(/helpDisclosure\(ctx, '([^']+)'/g)) named.add(m[1]!);
 
   assert.ok(named.size >= 5,
     `the scan found ${named.size} key(s) in doctor.js; the screen names five. A collapse means `
@@ -973,6 +977,10 @@ test('exactly five doc. sample sentences are declared and unplaced, by decision'
     for (const key of [m[1]!, m[2]!, m[3]!]) named.add(key);
   }
   for (const m of doctorSource.matchAll(/key: '([^']+)'/g)) named.add(m[1]!);
+  // `helpDisclosure(ctx, 'doc.about', ...)` / `helpDisclosure(ctx, 'doc.shared', ...)` — the
+  // summary key is the disclosure's own first argument, not a bare `ctx.t()` call, since
+  // `lib/disclosure.js` makes that call itself.
+  for (const m of doctorSource.matchAll(/helpDisclosure\(ctx, '([^']+)'/g)) named.add(m[1]!);
 
   const declared = Object.keys(en).filter((key) => key.startsWith('doc.')).sort();
   assert.deepEqual(declared.filter((key) => !named.has(key)),
@@ -1156,15 +1164,22 @@ test('sharedNotes groups by code, counts the rows, and keeps first-ask order', a
     'the note and the row trimming must read the same decision, or the halves stop joining');
 });
 
-test("the screen draws the shared note in the mockup's own disclosure, and keys its summary",
+test("the screen draws the shared note through the ONE shared disclosure, and keys its summary",
   () => {
-    assert.ok(/el\('details', 'help'\)/.test(doctorSource),
-      'the shared note invents a container instead of using `details.help`, the disclosure the '
-      + 'design of record already draws on Decay');
-    assert.ok(/el\('div', 'helpbox'\)/.test(doctorSource),
-      "the note body is not the mockup's `.helpbox`");
+    // `STD-a-screen-explains-itself-in-plain-words-and-depth-hides`: "a single
+    // component ... inventing a second shape for the same idea is the defect
+    // this item exists to prevent." `lib/disclosure.js`'s `helpDisclosure` is
+    // that component; this screen must call it rather than hand-build a
+    // second `details.help`/`.helpbox` pair of its own.
+    assert.ok(/helpDisclosure\(/.test(doctorSource),
+      'the shared note does not call the shared `helpDisclosure` — it is meant to be the one '
+      + 'place every screen builds a `details.help` disclosure from');
+    assert.ok(!/el\('details', ?'help'\)/.test(doctorSource),
+      'a hand-built `details.help` is back in this file — `helpDisclosure` exists exactly so '
+      + 'this screen never builds one itself');
     assert.ok(
-      /ctx\.t\('doc\.shared', \{ code: code, count: String\(note\.count\) \}\)/.test(doctorSource),
+      /helpDisclosure\(ctx, 'doc\.shared', \[.*\], \{ summarySubs: \{ code, count: String\(note\.count\) \} \}\)/
+        .test(doctorSource),
       'the summary is unkeyed, or a slot is missing — an unsupplied {slot} throws at render '
       + 'time, and a shorthand `{ code }` is invisible to the scan that checks slots are passed');
   });
@@ -1303,7 +1318,9 @@ test('the disclosure is drawn in the mockup own disclosure, keyed, with both cod
   // that mutant survived the looser assertion.
   assert.ok(/pane\.append\(aboutNoteBlock\(ctx, check, note\)\);/.test(doctorSource),
     'nothing draws the note, or it is built and dropped on the floor');
-  assert.ok(/ctx\.t\('doc\.about', \{ check: check, code: note\.code \}\)/.test(doctorSource),
+  assert.ok(
+    /helpDisclosure\(ctx, 'doc\.about', .*\{ summarySubs: \{ check, code: note\.code \} \}\)/
+      .test(doctorSource),
     'the summary is unkeyed, or a slot is missing — an unsupplied {slot} throws at render '
     + 'time, and a shorthand `{ check }` is invisible to the scan that checks slots are passed');
   assert.ok(/notes: disclosures\.length/.test(doctorSource),

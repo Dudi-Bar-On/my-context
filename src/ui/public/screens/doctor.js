@@ -107,6 +107,7 @@ import { groupFindings, repairTally } from '/lib/viewmodel.js';
 import { composeCommand } from '/lib/command.js';
 import { PALETTE, commandFor } from '/lib/palette-defs.js';
 import { commandActions } from '/lib/command-actions.js';
+import { helpDisclosure } from '/lib/disclosure.js';
 import { el, errorNote, linkId, mono, screenHead, spaced } from '/screens/parts.js';
 
 /**
@@ -686,23 +687,28 @@ export function disclosureNotes(findings, level) {
  *
  * `appendMessage` per message, not one joined string: the producer's words,
  * unedited, and each fact in its own paragraph.
+ *
+ * **Built through `helpDisclosure` (`lib/disclosure.js`), not hand-built.**
+ * `STD-a-screen-explains-itself-in-plain-words-and-depth-hides` names one
+ * component for the `?` convention rather than one per screen; this file used
+ * to build its own `details.help`/`.helpbox` pair here and a second one below
+ * (`sharedNoteBlock`), which is exactly the "second shape for the same idea"
+ * that standard calls a defect. The DOM shape is unchanged in the one-message
+ * case and slightly flatter in the multi-message case — every message used to
+ * get its own bordered `.helpbox`; now all of a check's messages share the one
+ * `helpDisclosure` opens, each as its own paragraph inside it.
  */
 function aboutNoteBlock(ctx, check, note) {
-  const box = el('details', 'help');
-  const summary = el('summary');
-  summary.append(...ctx.t('doc.about', { check: check, code: note.code }));
-  box.append(summary);
-  for (const message of note.messages) {
-    box.append(appendMessage(el('div', 'helpbox'), message));
-  }
-  return box;
+  const body = note.messages.map((message) => appendMessage(el('p'), message));
+  return helpDisclosure(ctx, 'doc.about', body, { summarySubs: { check, code: note.code } });
 }
 
 /**
- * `<details class="help"><summary>…<div class="helpbox">` — the disclosure the
- * mockup already draws on Decay, holding the paragraph the rows stopped
- * repeating
- * (`docs/design/web-ui-mockup.html` · `<details class="help"><summary data-t="help.whyCold">` · ~2754).
+ * The disclosure the mockup already draws on Decay, holding the paragraph the
+ * rows stopped repeating
+ * (`docs/design/web-ui-mockup.html` · `<details class="help"><summary data-t="help.whyCold">` · ~2754)
+ * — built through the same shared `helpDisclosure` as `aboutNoteBlock` above,
+ * for the same reason.
  *
  * Closed by default and one click from open, which is the owner's own pattern:
  * a short line on screen with the full body behind it. It is a SIBLING of the
@@ -710,11 +716,8 @@ function aboutNoteBlock(ctx, check, note) {
  * one finding, and a row spanning three columns to hold it would say otherwise.
  */
 function sharedNoteBlock(ctx, code, note) {
-  const box = el('details', 'help');
-  const summary = el('summary');
-  summary.append(...ctx.t('doc.shared', { code: code, count: String(note.count) }));
-  box.append(summary, appendMessage(el('div', 'helpbox'), note.text));
-  return box;
+  const body = appendMessage(document.createDocumentFragment(), note.text);
+  return helpDisclosure(ctx, 'doc.shared', [body], { summarySubs: { code, count: String(note.count) } });
 }
 
 /**

@@ -7,14 +7,17 @@
  * `test/ui/viewmodel.test.ts`'s own header says so in the same words: *"A
  * green run here verifies the view-models, not the pixels."* Nothing below
  * checks a pixel, a stylesheet rule, a layout, an event or anything the real
- * `Document` does that a twenty-line stand-in does not. What it does check is
- * the half of this screen that is a DECISION rather than a rendering, and on
- * this screen that half is unusually large: with no plan behind it, the
- * mockup's own markup is the entire specification, so every claim the module
- * makes about it — which six tutorials, in which order, written in which
- * language, under which keys — is a claim this file resolves against
- * `docs/design/web-ui-mockup.html` itself rather than against a copy of it
- * typed out here.
+ * `Document` does that a twenty-line stand-in does not.
+ *
+ * **What changed since this file was first written.** The screen used to hard
+ * -code its twelve EN/HE cells and read no endpoint at all —
+ * `TASK-no-endpoint-serves-tutorial-state-so-twelve-cells-are-hard` records
+ * why that was a claim nobody had checked. It now awaits `GET /api/tutorials`
+ * and draws whatever it answers; the actual computation is `read-model.ts`'s
+ * `apiTutorials`, pinned against this repository in
+ * `test/ui/tutorials-endpoint.test.ts`, not here. What is still this file's to
+ * hold is everything the mockup itself settles: which six tutorials, in which
+ * order, under which keys, and what shape each of the three cell states draws.
  *
  * ── HOW A BROWSER MODULE THAT IMPORTS `/screens/parts.js` IS IMPORTED ─────
  *
@@ -34,36 +37,36 @@
  * module (a dynamic `await import('/screens/parts.js')` inside `render()`
  * would make this file's job easier and make the screen the odd one out among
  * eleven), and it does not fake `parts.js` (the composites under test —
- * `screenHead`, `spaced` — are the mockup's shapes, and a stub of them would
- * assert this file's idea of the design rather than the shipped one). The
- * hook is in-process and each test file runs in its own process, so nothing
- * here reaches another test.
+ * `screenHead`, `spaced`, `errorNote` — are the mockup's shapes, and a stub of
+ * them would assert this file's idea of the design rather than the shipped
+ * one). The hook is in-process and each test file runs in its own process, so
+ * nothing here reaches another test.
  *
  * ── WHAT IS TESTED, AND WHY EACH ONE COULD FAIL FOR A REAL REASON ─────────
  *
- *   1. The six rows ARE the mockup's six rows — key for key, state for state,
- *      in its order. This is the assertion the screen exists to keep true.
+ *   1. `TUTORIAL_ROWS` names the mockup's six rows — key for key, in its
+ *      order. This is the CONTENT half of the screen's promise.
  *   2. The header row is the mockup's: two translated keys, then two
  *      untranslated language tags.
- *   3. `cellSpec` draws the mockup's own chip (`class="chip warn"`,
- *      `data-g="▲"`, `tu.todo`) and its own ✅, and REFUSES anything else.
+ *   3. `cellSpec` draws the mockup's own chip for `TODO` (`class="chip warn"`,
+ *      `data-g="▲"`, `tu.todo`), its own ✅ for `DONE`, the shared unmeasured
+ *      primitive for `UNMEASURED` (`class="chip unmeas"`, `data-g="◌"`,
+ *      `strip.unmeasured` — the same key and shape `doctor.js`, `watch.js` and
+ *      `app.js` already draw), and REFUSES anything else.
  *   4. Every `tu.` key the module names is declared in BOTH string tables, and
  *      the set is exactly the set the mockup's section declares — the same
  *      check `viewmodel.test.ts` runs over `app.js`, for the same reason:
  *      `t()` throws on a key it cannot find, so a typo blanks the screen.
- *   5. `render()` over a stand-in document produces every element KIND the
- *      mockup's section produces, except `b`. That is the ledger entry this
+ *      `strip.unmeasured`, the one key this screen borrows rather than owns,
+ *      is checked the same way, separately.
+ *   5. `render()`, fed the endpoint's OWN shape through a stub `ctx.api`,
+ *      produces every element KIND the mockup's section produces when the
+ *      states match the mockup's, except `b`. That is the ledger entry this
  *      task reports to `e2e/screen-parity.spec.ts`, measured here rather than
- *      asserted in prose — and it is the closest this file comes to the
- *      untested surface, so read what it is: a shape comparison over fake
- *      nodes, not a rendering. The real comparison, over a real browser and a
- *      real stylesheet, is that spec's and stays that spec's.
- *
- * The same `render()` call also pins that this screen READS NOTHING: the `ctx`
- * it is given throws from `api`, `stream`, `session`, `navigate` and `tFlat`,
- * and only `t` is real. `/api/help/:topic` serves four topics and
- * `mycontext help` knows seven; none of them is a tutorial, and the screen's
- * header explains that at length.
+ *      asserted in prose.
+ *   6. `render()` draws the `unmeasured` chip's shape when the endpoint
+ *      answers it, and draws the endpoint's own refusal message — never a
+ *      table beside it — when the call rejects.
  */
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
@@ -137,16 +140,18 @@ function element(tag: string): FakeNode & {
 
 const doc = { createElement: element, createTextNode: textNode };
 
-interface TutorialRow { title: string; job: string; en: string; he: string }
+interface TutorialRow { title: string; job: string }
+interface TutorialRowState { en: string; he: string }
 
 interface TutModule {
   DONE: string;
   TODO: string;
-  TUTORIALS: TutorialRow[];
+  UNMEASURED: string;
+  TUTORIAL_ROWS: TutorialRow[];
   HEAD_KEYS: string[];
   LANG_COLUMNS: string[];
   cellSpec: (state: string) => { kind: string; glyph: string; className?: string; key?: string };
-  render: (root: ReturnType<typeof element>, ctx: unknown) => void;
+  render: (root: ReturnType<typeof element>, ctx: unknown) => Promise<void>;
 }
 
 interface I18nModule {
@@ -215,20 +220,7 @@ function renderedKinds(root: FakeNode): string[] {
   return [...kinds].sort();
 }
 
-/** The chip the mockup draws in a "to write" cell, as attributes. */
-function mockupChip(): { className: string; glyph: string; key: string } {
-  const found = /<span class="([^"]*)" data-g="([^"]*)" data-t="([^"]*)">/.exec(tutSection());
-  assert.ok(found, 'the mockup\'s tut section no longer draws a chip');
-  return { className: found[1]!, glyph: found[2]!, key: found[3]! };
-}
-
-/**
- * The mockup's `<tbody>`, row by row, as the module's own row shape.
- *
- * A cell is `done` when it holds the bare ✅ and `todo` when it holds the
- * chip; there is no third reading, and a cell that is neither fails here
- * rather than being classified as one of the two.
- */
+/** The mockup's `<tbody>`, row by row, as `{ title, job }` KEYS. */
 function mockupRows(): TutorialRow[] {
   const section = tutSection();
   const body = section.slice(section.indexOf('<tbody>') + '<tbody>'.length, section.indexOf('</tbody>'));
@@ -236,38 +228,49 @@ function mockupRows(): TutorialRow[] {
   for (const row of body.matchAll(/<tr>([\s\S]*?)<\/tr>/g)) {
     const cells = [...row[1]!.matchAll(/<td([^>]*)>([\s\S]*?)<\/td>/g)];
     assert.equal(cells.length, 4, `a tut row has ${cells.length} cells, not four: ${row[1]!}`);
+    rows.push({ title: attr(cells[0]![1]!, 'data-t')!, job: attr(cells[1]![1]!, 'data-t')! });
+  }
+  return rows;
+}
+
+/**
+ * The mockup's `<tbody>`, row by row, as `{ en, he }` STATES — `done` for a
+ * bare ✅, `todo` for the `tu.todo` chip. Used only to feed `render()` the
+ * mockup's OWN states through a stub `ctx.api`, so the kind-parity test below
+ * measures the code against states the design of record actually draws,
+ * rather than against a state (`unmeasured`) the mockup predates.
+ */
+function mockupStates(): TutorialRowState[] {
+  const section = tutSection();
+  const body = section.slice(section.indexOf('<tbody>') + '<tbody>'.length, section.indexOf('</tbody>'));
+  const states: TutorialRowState[] = [];
+  for (const row of body.matchAll(/<tr>([\s\S]*?)<\/tr>/g)) {
+    const cells = [...row[1]!.matchAll(/<td([^>]*)>([\s\S]*?)<\/td>/g)];
     const state = (html: string): string => {
       if (html.trim() === '✅') return 'done';
       const key = attr(html, 'data-t');
       assert.equal(key, 'tu.todo', `a language cell is neither ✅ nor the tu.todo chip: ${html}`);
       return 'todo';
     };
-    rows.push({
-      title: attr(cells[0]![1]!, 'data-t')!,
-      job: attr(cells[1]![1]!, 'data-t')!,
-      en: state(cells[2]![2]!),
-      he: state(cells[3]![2]!),
-    });
+    states.push({ en: state(cells[2]![2]!), he: state(cells[3]![2]!) });
   }
-  return rows;
+  return states;
+}
+
+/** The mockup's `"to write"` chip, as attributes. */
+function mockupChip(): { className: string; glyph: string; key: string } {
+  const found = /<span class="([^"]*)" data-g="([^"]*)" data-t="([^"]*)">/.exec(tutSection());
+  assert.ok(found, 'the mockup\'s tut section no longer draws a chip');
+  return { className: found[1]!, glyph: found[2]!, key: found[3]! };
 }
 
 // ── The tests ───────────────────────────────────────────────────────────────
 
-test('the six tutorials are the mockup\'s six, in its order and with its states', async () => {
-  const { TUTORIALS } = await tut();
+test('TUTORIAL_ROWS names the mockup\'s six rows, in its order', async () => {
+  const { TUTORIAL_ROWS } = await tut();
   const drawn = mockupRows();
   assert.equal(drawn.length, 6, 'the mockup no longer draws six tutorials');
-  // deepEqual over the whole table rather than field by field: a transposed
-  // pair of jobs, a row in the wrong place and a ✅ where the mockup draws a
-  // chip are the three ways this can go wrong, and one comparison catches all
-  // three with the diff printed.
-  assert.deepEqual(TUTORIALS, drawn);
-  // Five of six Hebrew cells and one English cell read "to write" — the count
-  // the spec's §4 correction states in prose, held here as a number so that a
-  // row quietly flipped to ✅ fails even if it flipped in both files.
-  assert.equal(TUTORIALS.filter((row) => row.en === 'todo').length, 1);
-  assert.equal(TUTORIALS.filter((row) => row.he === 'todo').length, 6);
+  assert.deepEqual(TUTORIAL_ROWS, drawn);
 });
 
 test('the header row is the mockup\'s: two translated keys, then EN and HE as literals', async () => {
@@ -282,28 +285,28 @@ test('the header row is the mockup\'s: two translated keys, then EN and HE as li
     else translated.push(key);
   }
   assert.deepEqual(HEAD_KEYS, translated);
-  // The two language tags carry no `data-t` in the mockup and no key in either
-  // string table, so they stay `EN` and `HE` in the Hebrew UI. That is the
-  // design of record's ruling, pinned here so the day a key appears for them
-  // this test is what says the module may now use it.
   assert.deepEqual(LANG_COLUMNS, literals);
 });
 
-test('cellSpec draws the mockup\'s own chip and its own glyph, and refuses anything else', async () => {
-  const { DONE, TODO, cellSpec } = await tut();
+test('cellSpec draws the mockup\'s chip, the shared unmeasured primitive, and refuses anything else', async () => {
+  const { DONE, TODO, UNMEASURED, cellSpec } = await tut();
   const chip = mockupChip();
   assert.deepEqual(cellSpec(DONE), { kind: 'glyph', glyph: '✅' });
   assert.deepEqual(cellSpec(TODO), {
     kind: 'chip', className: chip.className, glyph: chip.glyph, key: chip.key,
   });
-  // The refusal is the point: a default branch here would draw a ✅ over a
-  // tutorial nobody wrote, which is a false statement about the repository
-  // rather than a rendering defect.
+  // The shared `.chip.unmeas` primitive — `doctor.js`'s, `watch.js`'s and
+  // `app.js`'s own shape, reused rather than given a fourth spelling.
+  assert.deepEqual(cellSpec(UNMEASURED), {
+    kind: 'chip', className: 'chip unmeas', glyph: '◌', key: 'strip.unmeasured',
+  });
+  // The refusal is the point: a default branch here would draw a false
+  // statement about the repository rather than fail loudly.
   assert.throws(() => cellSpec('partly'), /unknown language-cell state/);
   assert.throws(() => cellSpec(''), /unknown language-cell state/);
 });
 
-test('every string key the module names is declared in both tables, and it is the mockup\'s set', async () => {
+test('every tu. key the module names is declared in both tables, and it is the mockup\'s set', async () => {
   const source = readFileSync(path.join(PUBLIC, 'screens', 'tut.js'), 'utf8');
   // QUOTED keys only. The header comment discusses `tu.todo` and friends in
   // backticks, and a scan that read those would pass on a key the code never
@@ -311,9 +314,6 @@ test('every string key the module names is declared in both tables, and it is th
   const named = new Set([...source.matchAll(/'(tu\.[A-Za-z0-9]+)'/g)].map((m) => m[1]!));
   const drawn = new Set([...tutSection().matchAll(/data-t="(tu\.[A-Za-z0-9]+)"/g)].map((m) => m[1]!));
   assert.ok(named.size > 0, 'the module names no tu. keys at all');
-  // Both directions. A key in the mockup the module never names is a piece of
-  // the screen that was not built; a key the module names that the mockup does
-  // not declare is a key `strings-parity.test.ts` would fail on next.
   assert.deepEqual([...named].sort(), [...drawn].sort());
 
   const en = (await table('en')).strings;
@@ -322,63 +322,119 @@ test('every string key the module names is declared in both tables, and it is th
     assert.ok(Object.hasOwn(en, key), `en.js does not declare ${key}`);
     assert.ok(Object.hasOwn(he, key), `he.js does not declare ${key}`);
   }
+  // `strip.unmeasured` is `app.js`'s key, borrowed rather than owned here — so
+  // it does not match the `tu.` prefix the scan above looks for, and is
+  // checked on its own line for the same reason the others are.
+  assert.ok(Object.hasOwn(en, 'strip.unmeasured'), 'en.js does not declare strip.unmeasured');
+  assert.ok(Object.hasOwn(he, 'strip.unmeasured'), 'he.js does not declare strip.unmeasured');
 });
 
-test('render draws every kind the mockup draws, except the bold run no table can carry', async () => {
+test('render, fed the mockup\'s own states, draws every kind the mockup draws except the bold run', async () => {
   const { render } = await tut();
   const { t } = await i18n();
   const en = (await table('en')).strings;
+  const states = mockupStates();
 
-  // `t` is the only member of the contract this screen may touch: it reads no
-  // endpoint, opens no stream and navigates nowhere. The other five throw, so
-  // a future edit that reaches for one fails here with that sentence rather
-  // than silently acquiring a dependency the screen's header denies it has.
   const refuse = (name: string) => () => {
     throw new Error(`tut must not use ctx.${name}`);
   };
   const ctx = {
     t: (key: string, subs: Record<string, string | number> = {}) => t(en, key, subs, doc),
-    api: refuse('api'),
+    api: async (path: string) => {
+      assert.equal(path, '/api/tutorials');
+      return { tutorials: states };
+    },
     stream: refuse('stream'),
     session: refuse('session'),
     navigate: refuse('navigate'),
     tFlat: refuse('tFlat'),
   };
 
-  // `screens/parts.js` reaches for the GLOBAL `document` — `el()` is the
-  // mockup's own factory, argument for argument, and the mockup runs in a
-  // browser. `lib/i18n.js` takes an injected `doc` and `parts.js` does not, so
-  // the stand-in has to be installed rather than passed. Removed again
-  // immediately: a global left behind would make any later test in this
-  // process think it is in a browser.
   const globals = globalThis as unknown as { document?: unknown };
   const had = Object.hasOwn(globals, 'document');
   globals.document = doc;
   const root = element('section');
   try {
-    render(root, ctx);
+    await render(root, ctx);
   } finally {
     if (!had) delete globals.document;
   }
 
   const drawn = kindsOf(tutSection());
   const built = renderedKinds(root);
-  // **The fourth marker landed, so the filter is gone.** `b` is `tu.gap`'s
-  // bolded "to write". The run grammar had three markers and no emphasis one,
-  // so no string table could carry it; `{b:}` and `{i:}` landed 2026-08-25 and
-  // English was populated from the mockup's own markup. The previous version of
-  // this assertion said in as many words that the day a fourth marker landed it
-  // would fail and the ledger entry could come out. It did, and it has.
   assert.deepEqual(built, drawn,
-    'the render no longer draws exactly the mockup\'s kinds. This used to exclude `b` for a '
-    + 'grammar limit that no longer exists, so a difference here now is a real one.');
+    'the render no longer draws exactly the mockup\'s kinds, fed the mockup\'s own states.');
   assert.ok(drawn.includes('b'), 'the mockup no longer bolds a run inside tu.gap');
 
-  // The gap note gets its margin through CSSOM and not a `style` attribute:
-  // the server sends `style-src 'self'` with no `'unsafe-inline'`, so the
-  // mockup's own `style="margin-block-start:8px"` is the one thing on this
-  // screen that may NOT be transcribed literally.
   const card = root.children.find((child) => child.className === 'card pane')!;
   const note = card.children.find((child) => child.tag === 'p')! as ReturnType<typeof element>;
   assert.equal(note.style.declarations['margin-block-start'], '8px');
+});
+
+test('render draws the unmeasured chip\'s shape when the endpoint answers it', async () => {
+  const { render, UNMEASURED } = await tut();
+  const { t } = await i18n();
+  const en = (await table('en')).strings;
+
+  const ctx = {
+    t: (key: string, subs: Record<string, string | number> = {}) => t(en, key, subs, doc),
+    api: async () => ({
+      tutorials: Array.from({ length: 6 }, () => ({ en: UNMEASURED, he: UNMEASURED })),
+    }),
+    stream: () => { throw new Error('unused'); },
+    session: () => { throw new Error('unused'); },
+    navigate: () => { throw new Error('unused'); },
+    tFlat: () => { throw new Error('unused'); },
+  };
+
+  const globals = globalThis as unknown as { document?: unknown };
+  const had = Object.hasOwn(globals, 'document');
+  globals.document = doc;
+  const root = element('section');
+  try {
+    await render(root, ctx);
+  } finally {
+    if (!had) delete globals.document;
+  }
+
+  const card = root.children.find((c) => c.className === 'card pane')!;
+  const table_ = card.children.find((c) => c.tag === 'table')!;
+  const tbody = table_.children.find((c) => c.tag === 'tbody')!;
+  for (const row of tbody.children) {
+    for (const cell of row.children.slice(2)) {
+      const chip = cell.children[0]!;
+      assert.equal(chip.className, 'chip unmeas');
+      assert.equal(chip.dataset['g'], '◌');
+    }
+  }
+});
+
+test('render draws the endpoint\'s own refusal instead of a table, and nothing else', async () => {
+  const { render } = await tut();
+  const { t } = await i18n();
+  const en = (await table('en')).strings;
+  const ctx = {
+    t: (key: string, subs: Record<string, string | number> = {}) => t(en, key, subs, doc),
+    api: async () => { throw new Error('mycontext ui: /api/tutorials refused — corpus unreadable'); },
+    stream: () => { throw new Error('unused'); },
+    session: () => { throw new Error('unused'); },
+    navigate: () => { throw new Error('unused'); },
+    tFlat: () => { throw new Error('unused'); },
+  };
+
+  const globals = globalThis as unknown as { document?: unknown };
+  const had = Object.hasOwn(globals, 'document');
+  globals.document = doc;
+  const root = element('section');
+  try {
+    await render(root, ctx);
+  } finally {
+    if (!had) delete globals.document;
+  }
+
+  assert.equal(root.children.filter((c) => c.tag === 'table').length, 0,
+    'a refusal must not be drawn beside a table — the two are different facts');
+  const note = root.children.find((c) => c.className === 'small spill');
+  assert.ok(note, 'the endpoint\'s refusal must be drawn');
+  assert.equal(note!.textContent, 'mycontext ui: /api/tutorials refused — corpus unreadable');
 });

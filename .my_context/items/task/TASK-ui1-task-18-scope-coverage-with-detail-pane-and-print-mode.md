@@ -6,12 +6,12 @@ status: active
 severity: soft
 always: false
 summary: The screens showing which parts of the project are covered, which are not, and how things relate to one another.
-summary_of: 595fc2f0f6d3f02d
+summary_of: f9dc11a94730eae5
 scope: []
 tags:
   - "plan:ui1"
   - "seq:18"
-  - "state:todo"
+  - "state:done"
   - v2
   - ui
   - "reconcile:rewritten"
@@ -21,14 +21,15 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-08-20
 valid_until: null
-checksum: db1acf1badd83104
+checksum: d08753b6b4bd8580
 plan: ui1
 seq: "18"
-state: todo
+state: done
 progress: "0"
 source: "my-context/docs/superpowers/plans/2026-08-16-web-ui-1-server-and-reads.md#task-18"
 last_change: "2026-08-20T00:00:00Z"
 priority: "3"
+verified_on: 2026-09-05
 ---
 
 # ui1 task 18: Scope coverage with detail pane and print mode; coverage gaps; relations

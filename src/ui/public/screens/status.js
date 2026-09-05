@@ -7,10 +7,17 @@
  * the header's corpus counts lead."* The shell already routes `#/` to the
  * injection preview (`app.js`'s `route()`), so nothing here has to argue it.
  *
- * **Its verdict is ⚠️, not ✅**, and it is the only screen in `nav.ev` that is.
- * A table is what the spec accepts here rather than what it wants, and the
- * warning glyph is that concession drawn. See `screenHead` for why this is
- * still an emoji and not a `.chip`.
+ * **Its verdict is a warning, not a pass**, and it is the only screen in
+ * `nav.ev` that is. A table is what the spec accepts here rather than what it
+ * wants, and the concession is drawn as a `.chip.warn` carrying the verdict
+ * text — not the mockup's bare ⚠️ emoji. `TASK-ui1-task-19-doctor-decay-
+ * status-and-learn-screens`'s own VERIFIED PARTIAL pass (2026-08-26) named
+ * this screen specifically as unmet while the emoji stood ("a real verdict
+ * chip is the `.chip` primitive with a meaning hue, not an emoji"); see
+ * `screenHead`'s own header for the fuller history of that disagreement and
+ * why it is settled this way rather than by changing that function's
+ * default (which would move all twenty-one screens, not the one this
+ * reconciliation named).
  *
  * ── FIVE ROWS, THREE OF WHICH THIS SERVER CAN COUNT ───────────────────────
  *
@@ -71,7 +78,7 @@ import { el, errorNote, num, screenHead, spaced } from '/screens/parts.js';
 
 export async function render(root, ctx) {
   root.replaceChildren();
-  screenHead(ctx, root, 'st.h', 'st.v', 'st.sub', '⚠️');
+  screenHead(ctx, root, 'st.h', 'st.v', 'st.sub', undefined, 'warn');
 
   const card = el('div', 'card pane');
   root.append(card);

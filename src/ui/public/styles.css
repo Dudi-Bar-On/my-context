@@ -51,9 +51,21 @@
  * full view of that screen's real markup — the same deferral primitives.test.ts
  * and plate-usage.test.ts both already document for call-site-specific choices.
  *
- * No `@media print` here — Task 16 Step 4d: dark glass has no light theme to
- * fall back on, so print needs its own designed register, left to Task 10 of
- * the repaint plan.
+ * `@media print` DOES live here now — Task 16 Step 4d deliberately left it out
+ * ("dark glass has no light theme to fall back on, so print needs its own
+ * designed register, left to Task 10 of the repaint plan"), and Task 10 itself
+ * designed and approved that register — but only inside the MOCKUP
+ * (`docs/design/web-ui-mockup.html`), proved by `e2e/print.spec.ts`, which
+ * opens that file and nothing this project ships. `TASK-repaint-task-10-the-
+ * print-register` found the words above still true of THIS file on
+ * 2026-09-05 — the approved register had never been ported to the product it
+ * was designed for. It is, at the bottom of this file, adapted to this
+ * shell's own markup (`.hdr`/`.rail`/`.prov`/`.strip`/`.pop`/`#exited` rather
+ * than the mockup's stand-ins) and to this shell's simpler visibility model
+ * (a screen is hidden by the `hidden` attribute alone here, never by the
+ * mockup's own `.printing` class — see that block's own header for why no
+ * second mechanism was needed). `e2e/print-product.spec.ts` is the proof this
+ * file lacked: it opens `src/ui/public/` itself.
  *
  * LOGICAL PROPERTIES ONLY. A physical `left`/`right`/`margin-left`/
  * `text-align:left` anywhere below is a defect (spec §3) — none of the copied
@@ -2705,3 +2717,149 @@ svg.chart text.nid{font-family:var(--mono);font-size:var(--fs-chart-nid);fill:va
    above already spends --warn on the box; this spends it on the word. */
 svg.chart text.nid.more{fill:var(--warn)}
 svg.chart text.rel{font-family:var(--mono);font-size:var(--fs-chart-rel);fill:var(--dim)}
+
+/* ─── THE PRINT REGISTER — `TASK-repaint-task-10-the-print-register` ───────
+ *
+ * Ported from the approved register in `docs/design/web-ui-mockup.html`'s own
+ * `@media print{}` (measured there: printing the dark theme straight onto
+ * paper failed 246 contrast checks against 17 for the mockup's light-mode
+ * pass, and there is no light theme in this product to fall back on — so
+ * print gets its own declared colours, same as the mockup's).
+ *
+ * **Adapted, not copied byte for byte, in exactly two places.** First, class
+ * names: the mockup's stand-ins (`.hdr`/`.rail`/`.prov`/`.strip`/`.pop`/
+ * `.banner`) are this shell's REAL chrome elements, built by `app.js`
+ * (`#topbar.hdr`, `#nav.rail`, `#prov.prov`, `#strip.strip`, `#sesspop`/
+ * `#focuspop.pop.gloss.float`, `#exited.banner`) — same classes, same
+ * selectors, just no longer hypothetical. Second, and the one REAL
+ * simplification: the mockup's fix for "only the screen being printed may
+ * print" is `[data-p]{display:none!important} [data-p].printing{display:
+ * block!important}`, because on screen it also runs a crossfade that leaves
+ * two `[data-p]` elements simultaneously un-hidden for ~180ms and something
+ * has to out-rank that mid-transition state. This shell's `route()` has no
+ * such window — `for (const other of body.querySelectorAll('[data-p]'))
+ * other.hidden = other !== section` flips every section's `hidden` attribute
+ * in one synchronous pass — so the UA's own `[hidden]{display:none}` already
+ * keeps every screen but the current one off the page, in every media type,
+ * with nothing here needing to say so twice. Checked before leaving it out:
+ * no rule in this file sets `display` on `[data-p]` outside `@media screen`,
+ * so nothing competes with that default under print.
+ *
+ * **What is dropped, never printed:** the rail (navigation), the header
+ * (`.hdr` — pickers, no page content), the provenance strip and footer
+ * (`.prov`/`.strip` — status chrome, not data), any open popover (`.pop`),
+ * the exit banner, and this screen's own interactive controls that mean
+ * nothing on a static page — the coverage tree's expand/collapse toggles and
+ * its text filter (`.tree .toggle`, `.tree .filter`), neither of which the
+ * mockup had a matching primitive for. The item-detail pane (`.pane#pane`)
+ * is NOT dropped: it is content the reader opened, the same ruling
+ * `e2e/print.spec.ts` already proved for the mockup ("the thing you were
+ * reading is the thing you meant to print").
+ *
+ * **What a printout does with a tree that is collapsed on screen: nothing
+ * different.** Coverage's directory rows are hidden with the same `hidden`
+ * attribute a screen swap uses, driven by which folders the reader had open
+ * when they printed — WYSIWYG, not a silent auto-expand nobody asked for.
+ * Printing is of the page as it stands, the same rule a screenshot follows.
+ *
+ * **What a collapsed `?` does on paper: it is not collapsed — but CSS alone
+ * cannot be what makes that true.** `STD-a-screen-explains-itself-in-plain-
+ * words-and-depth-hides` puts the longer help behind a click precisely so the
+ * SCREEN can stay short; a sheet of paper has no click to give back, so
+ * content the `?` was hiding on screen must already be showing when the page
+ * is printed. The FIRST attempt here was exactly the obvious rule —
+ * `details.help > .helpbox{display:block!important}` — reasoning that a
+ * closed `<details>` hides its non-`<summary>` children the same way any
+ * other `display:none` does. **Measured, and false**: a closed `<details>`
+ * hides that content through the browser's OWN internal mechanism, not an
+ * ordinary CSS `display:none` an author rule can out-specify — the override
+ * computed `display:block` and a real, non-zero `getBoundingClientRect()`,
+ * and still painted nothing at all, in every build of Chromium this project
+ * tested against. The rule stays below anyway, as a harmless second layer for
+ * whatever engine one day DOES honour it, but it is not what makes this work.
+ *
+ * **What actually works is `lib/disclosure.js`'s own `open`-forcing
+ * listener** — the one thing a closed `<details>` truly keys its hidden state
+ * on is its own `open` IDL property, so that is what gets set, on a
+ * `matchMedia('print')` change and on `beforeprint`/`afterprint`, and
+ * restored once printing ends. See that file's header for the full
+ * reasoning; this stylesheet cannot do it alone, and this comment used to
+ * claim, wrongly, that it could.
+ *
+ * The `?` glyph itself (`summary::before`'s circled question mark) is
+ * dropped below regardless — it is an affordance for a click paper cannot
+ * receive — while the summary's own short sentence stays, and now reads as a
+ * small heading over the body it used to hide.
+ */
+@media print{
+  :root{
+    --ground:#fff;
+    --ink:#000; --dim:#000; --faint:#000;
+    --gold:#000; --ok:#000; --warn:#000; --crit:#000; --carry:#000;
+    --paper:#fff; --panel:#fff; --panel-2:#fff; --sink:#fff;
+    --rule:#000; --edge:#000; --edge-3:#000;
+    --plate:transparent;
+    --pane-gloss:none; --pane-tint:none; --pane-edge:#000; --pane-lit:none;
+    --lift:none; --rim-lit:transparent; --rim-shade:transparent;
+    --sheen-top:transparent; --sheen-bottom:transparent; --e1:none; --e3:none;
+  }
+  .hdr,.rail,.prov,.strip,.pop,.banner,.noprint{display:none!important}
+  .app,.app.pane-open{display:block;block-size:auto;grid-template-columns:none}
+  .body{overflow:visible;padding:0}
+  body{overflow:visible;background:#fff;color:#000}
+  .gloss,.gloss.float{background-image:none!important;box-shadow:none!important;
+    border:1px solid #000!important;background-color:#fff!important}
+  .card{break-inside:avoid}
+
+  /* The pane, the static card and the header all share one glass material on
+     screen; on paper that material is unrenderable, so every consumer of it
+     gets a plain hairline box instead — the same fix the mockup's own header
+     names as closing a latent print bug there (`--pane-edge` alone, at low
+     alpha, was never visible on white paper either). */
+  .pane,.card{
+    backdrop-filter:none!important;-webkit-backdrop-filter:none!important;
+    background:#fff!important;box-shadow:none!important;
+    border:1px solid #000!important;
+  }
+  /* **`:not([hidden])`, not a bare `.pane`.** The mockup's own rule is
+     unconditional (`.pane{display:block!important}`), which is safe THERE —
+     the mockup never has a closed `aside.pane#pane` in its own markup to
+     force open. This shell does: the item detail pane ships `hidden` by
+     default and only drops it once a reader opens one
+     (`index.html` · `<aside class="pane" id="pane" hidden` · ~301). Measured
+     2026-09-05 on Coverage without ever opening an item: the unconditional
+     rule outranks `[hidden]`'s own `display:none` — `!important` beats the
+     user agent's rule regardless of the attribute — and printed an empty
+     template box (`type` / `status` / `tier` / `scope` / `governs` / `file`
+     labels, a "DELIVERED — TWELVE WEEKS" section, all with nothing in them)
+     on every printout, whether or not the reader had ever opened an item.
+     Scoping the force-open to a pane that is ALREADY not hidden keeps the
+     mockup's own intent — "the thing you were reading is the thing you
+     meant to print" (`e2e/print.spec.ts`) — without inventing a second
+     empty thing to print alongside it. */
+  .pane:not([hidden]){display:block!important}
+
+  /* The plate held graphical marks on an opaque fill; `.lit` holds generated
+     text on the same token. Both lose the fill — it prints as nothing on
+     white — and keep a hairline instead. */
+  .plate,.lit{background:none!important;border:1px solid #000}
+
+  /* The chip. Never colour alone on screen, and colour is exactly what print
+     cannot carry, so on paper a chip is its glyph and its label — the
+     `::before` content survives; the border/background tint does not. */
+  .chip{background:none!important;border-color:#000!important;color:#000!important}
+
+  /* The plane's screen-only tilt is a hover/appraisal cue with no equivalent
+     on a static page; printed at an angle it reads as a rendering defect. */
+  .plane.l,.plane.r{transform:none!important}
+
+  /* The `?` convention, forced open — see this block's own header. */
+  details.help>summary::before{content:none}
+  details.help>.helpbox{display:block!important}
+
+  /* Controls that mean nothing without a pointer: Coverage's tree toggle and
+     its text filter. Dropped, never printed — see this block's own header. */
+  .tree .toggle,.tree .filter{display:none!important}
+
+  @page{margin:16mm}
+}

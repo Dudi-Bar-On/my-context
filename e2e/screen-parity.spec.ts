@@ -719,6 +719,19 @@ const KNOWN_GAPS: Record<string, string[]> = {
   // `td.small`. Measured 2026-08-26: probing `['td.m']` came back stale.
   port: [],
   packs: ['span.prop', 'span.verdict'],
+  // **`span` — the bare span the mockup wraps `st.v` in, opened 2026-09-05.**
+  // `TASK-ui1-task-19-doctor-decay-status-and-learn-screens`'s own VERIFIED
+  // PARTIAL pass (2026-08-26) named Status's emoji verdict unmet: "a real
+  // verdict chip is the `.chip` primitive with a meaning hue, not an emoji."
+  // `screens/status.js` now builds its verdict as `span.chip.warn`
+  // (`screens/parts.js`'s `screenHead`, `verdictChip` argument) instead of the
+  // mockup's bare `<span data-t="st.v">` — a deliberate divergence from the
+  // frozen mockup, same standing permission `packs`'s own `span.verdict` entry
+  // above already uses ("some app features could not appear in the mockup
+  // because they are newer than it and it's ok and normal", owner ruling
+  // 2026-09-02). `span.chip.warn` itself is not a gap — it is what the app
+  // draws instead.
+  status: ['span'],
 };
 
 /**

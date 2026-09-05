@@ -11,57 +11,40 @@
  * way `screens/learn.js` had to. What exists is the mockup, and §4's
  * correction grading the three `nav.read` screens separately
  * (`docs/superpowers/specs/2026-08-16-web-ui-design.md` · ``- **`tut` — Tutorials.** ✅ `tu.v``` · ~1338).
- * Everything below that the mockup does not settle is marked as a judgement
- * call in this task's report rather than resolved quietly here.
  *
- * ── IT READS NO ENDPOINT, AND THAT IS A MEASUREMENT, NOT AN OMISSION ──────
+ * ── IT NOW READS AN ENDPOINT, AND THE TWELVE CELLS ARE COMPUTED ───────────
  *
- * `/api/help/:topic` is the obvious candidate and it cannot serve this screen.
- * It answers **four** topics
- * (`src/ui/read-model.ts` · `export const UI_HELP_TOPICS: UiHelpTopic[] = ['categories', 'scope', 'capture', 'workflow'];` · ~1488),
- * `mycontext help` itself knows **seven**
- * (`src/core/teach.ts` · `'categories', 'scope', 'capture', 'workflow', 'cli', 'tools', 'slash',` · ~17),
- * and not one of either list is a tutorial: a request for one comes back as
- * the 404 that names what IS served
- * (`src/ui/read-model.ts` · `no help topic "${params.topic}" — topics served here:` · ~1548).
- * The rest of the read surface was read the same way — every `registerRoute`
- * in `src/ui/` — and no route serves `docs/TUTORIAL.md`,
- * `docs/TUTORIAL-ADVANCED.md` or any other file from the repository. **The two
- * tutorials the mockup replaces with six are on disk and unreachable from the
- * browser.**
+ * They used to be hard-coded — `TASK-no-endpoint-serves-tutorial-state-so-
+ * twelve-cells-are-hard`, filed because no route served `docs/TUTORIAL.md` or
+ * `docs/TUTORIAL-ADVANCED.md`, so a hand check against the repository was the
+ * only thing behind the twelve done-or-to-write cells this module drew. **A
+ * table that says done about a file nobody checked is exactly the kind of
+ * claim this project's invariants are written against.**
  *
- * So the six rows are CONTENT, and the string table is where content lives:
- * `tu.1`…`tu.6` are the titles, `tu.j1`…`tu.j6` the jobs, in the mockup's own
- * order. Transcribing them is not inventing them. Fetching a topic this screen
- * does not draw, purely so it could be said to have an endpoint, would be the
- * invention.
+ * `GET /api/tutorials` (`read-model.ts`'s `apiTutorials`) is that check, run
+ * on every request: five of the six rows are measured against a real heading
+ * in one of the two tutorial files, the sixth ("when it did not fire") names
+ * no heading to check FOR anywhere in either file, and the endpoint answers
+ * `unmeasured` for it rather than guessing `done` or `todo` — the same
+ * reasoning `STD-a-measured-zero-is-drawn-and-named-an-unmeasured-thing-is`
+ * states for a figure no call can produce. **This screen reuses that
+ * standard's own `◌` primitive** (`.chip.unmeas`, `data-g="◌"` — the same
+ * shape `doctor.js`, `watch.js` and `app.js` already draw it in) rather than
+ * inventing a fourth cell meaning.
  *
- * ── THE EN/HE COLUMNS ARE A CLAIM THIS MODULE MAKES AND CANNOT CHECK ──────
+ * The endpoint is positional, not keyed: it answers six `{en, he}` pairs in
+ * the mockup's own row order, and this module zips them against `TUTORIAL_ROWS`
+ * below by index. `read-model.ts` has no business knowing this file's
+ * translation keys, and this file already owns them.
  *
- * Five of six Hebrew cells and one English cell read **to write**; the rest
- * are ✅. Those twelve states are the mockup's, measured by whoever drew it,
- * and `TUTORIALS` below is the only place they exist in the app. Nothing on
- * this server can confirm one: there is no tutorials directory to stat, no
- * endpoint to ask, and `tu.gap` says in the mockup's own words that *"the
- * changelog already records that the tutorials have no parity test"*. **A
- * table that says ✅ about a file nobody checked is exactly the kind of claim
- * this project's invariants are written against**, and it is the loudest open
- * question in this task's report. It is drawn anyway, because the alternative
- * — twelve em dashes on a screen whose entire subject is which tutorials exist
- * — deletes the screen rather than qualifying it.
+ * ── THE EN/HE COLUMNS, WHAT THEY MEAN AND WHAT THEY DO NOT ────────────────
  *
- * **The claim was checked by hand once, against the repository, and it holds
- * — as SECTIONS, not as six documents.** `tu.1` is `docs/TUTORIAL.md`, whose
- * own title is *"my_context — the first twenty minutes"*. Four of the other
- * five are chapters of `docs/TUTORIAL-ADVANCED.md`: `tu.3` is *"2. Scope, and
- * the policy that inverts it"*, `tu.4` *"4. Budgets, and what happens when
- * they bind"*, `tu.5` *"8. Revisions and the review queue"*, `tu.6` *"6.
- * Pulling items out of a document you already have"*. `tu.2` — *the model did
- * the banned thing* — matches no heading in either file, and it is exactly the
- * one row the mockup marks **to write** in English. So the six the mockup
- * promises are a carve-up of the two that exist, five sixths written and one
- * sixth not; the ✅ is a claim about MATERIAL, and no file on disk is named
- * for any of the six. That reading is a hand check on one day, not a test.
+ * `done` means the row's designated heading is present in its file today;
+ * `todo` means the file exists and it is not; `unmeasured` means there is
+ * nothing on disk this endpoint could check. None of the three is a claim
+ * about whether the PROSE under that heading is any good — only that the
+ * section exists, which is what "a tutorial nobody checked" needed to become
+ * "a tutorial the server looked for."
  *
  * What is NOT done, on the spec's explicit instruction: *"Do not ship a toggle
  * that falls back."*
@@ -72,27 +55,8 @@
  *
  * ── WHAT THE MOCKUP DRAWS THAT THIS CANNOT ────────────────────────────────
  *
- * **Nothing, since 2026-08-25 — and this paragraph said otherwise until
- * 2026-08-30.** It recorded the one `<b>` run inside `tu.gap`
- * (`docs/design/web-ui-mockup.html` · `<b>to write</b> rather than as a language toggle` · ~2306)
- * as unbuildable, on TWO reasons, and both had expired before it was last read:
- *
- *   - *"`lib/i18n.js`'s grammar has three markers and no emphasis one"*. It has
- *     five. `{b:}` and `{i:}` landed on 2026-08-25 and they NEST, which is the
- *     whole of why that parser stopped being one regex
- *     (`src/ui/public/lib/i18n.js` · `const MARKER = /^\{(mv|m|b|i):/;` · ~35).
- *     `tu.gap` carries `{b:to write}` in both tables today, and so does the
- *     mockup's own `HE` table, so the run is drawn.
- *   - *"adding a key here would fail `strings-parity` in the direction that
- *     names it"*. That direction was dropped on 2026-08-26 by
- *     `DEC-the-app-is-what-is-built-the-mockup-is-history-and-a-gap`. No new
- *     key was needed in the end — the VALUE of an existing one was — but the
- *     citation was wrong either way, and it is the citation this screen is one
- *     of fifteen sites of (`plan:walk seq:92`).
- *
- * `TASK-the-string-grammar-has-no-bold-run-so-three-of-the-mockup` is what
- * closed the first; this screen was listed under it and nobody came back to
- * strike the line. Read the grammar, not a comment about it.
+ * Nothing, since 2026-08-25: `lib/i18n.js`'s run grammar carries `{b:}` and
+ * `{i:}` and they nest, so `tu.gap`'s bolded "to write" is drawn in full.
  *
  * **`EN` and `HE` are literals, and the mockup wrote them that way** — the two
  * `<th>` carry no `data-t`, and the string tables declare no key for either.
@@ -106,44 +70,45 @@
  * this app has no re-scanner, the א/A control reloads the page, and every
  * screen renders once per language.
  */
-import { el, screenHead, spaced } from '/screens/parts.js';
+import { el, errorNote, screenHead, spaced } from '/screens/parts.js';
 
 /**
- * The two states a language cell can be in.
+ * The three states a language cell can be in.
  *
- * `todo` is the mockup's own word — `tu.todo`, *"to write"* — and `done` is
- * the ✅ it draws opposite. Two states and no third: the mockup has no cell
- * meaning "partly", and inventing one would need a key that does not exist.
+ * `todo` is the mockup's own word — `tu.todo`, *"to write"*. `unmeasured` is
+ * not the mockup's: the design of record predates the endpoint and draws only
+ * `done` and `todo`, so there is no third cell in it to reconcile with. It
+ * exists here because the endpoint can answer it honestly and the mockup
+ * cannot be asked to draw a state it never anticipated — the same gap
+ * `STD-a-measured-zero-is-drawn-and-named-an-unmeasured-thing-is` names for
+ * every other screen that reuses `.chip.unmeas`.
  */
 export const DONE = 'done';
 export const TODO = 'todo';
+export const UNMEASURED = 'unmeasured';
 
 /**
- * The six rows, in the mockup's order, exactly as its `<tbody>` draws them
+ * The six rows' CONTENT, in the mockup's order, exactly as its `<tbody>`
+ * draws them
  * (`docs/design/web-ui-mockup.html` · `<tr><td data-t="tu.1">First twenty minutes</td>` · ~2298).
  *
- * A data table rather than six blocks of markup, so that "which tutorial is
- * written in which language" is ONE thing to read and one thing to correct on
- * the day a tutorial is written — and so `test/ui/tut-screen.test.ts` can
- * compare it against the design of record row by row, without a browser.
- *
- * `title` and `job` are KEYS, never text: `tu.1` and `tu.j1` are what the
- * mockup's `data-t` attributes name, and the English words beside them in the
- * mockup are `en.js`'s, not this file's.
+ * `title` and `job` are KEYS, never text, and this is the one place in the app
+ * that names them: `/api/tutorials` answers STATE only (see the header), so
+ * the content this array carries has nowhere else it could come from.
  */
-export const TUTORIALS = [
-  { title: 'tu.1', job: 'tu.j1', en: DONE, he: TODO },
-  { title: 'tu.2', job: 'tu.j2', en: TODO, he: TODO },
-  { title: 'tu.3', job: 'tu.j3', en: DONE, he: TODO },
-  { title: 'tu.4', job: 'tu.j4', en: DONE, he: TODO },
-  { title: 'tu.5', job: 'tu.j5', en: DONE, he: TODO },
-  { title: 'tu.6', job: 'tu.j6', en: DONE, he: TODO },
+export const TUTORIAL_ROWS = [
+  { title: 'tu.1', job: 'tu.j1' },
+  { title: 'tu.2', job: 'tu.j2' },
+  { title: 'tu.3', job: 'tu.j3' },
+  { title: 'tu.4', job: 'tu.j4' },
+  { title: 'tu.5', job: 'tu.j5' },
+  { title: 'tu.6', job: 'tu.j6' },
 ];
 
 /**
  * The two TRANSLATED column headers, in the mockup's order — the tutorial and
- * the job it answers. Exported for the same reason `TUTORIALS` is: the order
- * of the columns is the design of record's, and a test can hold it.
+ * the job it answers. Exported for the same reason `TUTORIAL_ROWS` is: the
+ * order of the columns is the design of record's, and a test can hold it.
  */
 export const HEAD_KEYS = ['tu.t', 'tu.job'];
 
@@ -152,25 +117,26 @@ export const LANG_COLUMNS = ['EN', 'HE'];
 
 /**
  * What one language cell contains, as a description rather than as DOM — the
- * one decision this screen makes, and therefore the one thing in it that a
- * test without a browser can hold.
+ * one decision this screen makes over what `/api/tutorials` answers, and
+ * therefore the one thing a test without a browser can hold.
  *
  * `done` is a bare glyph in a bare `<td>`; `todo` is `<span class="chip warn"
- * data-g="▲">` around `tu.todo`. `data-g` is transcribed from the mockup and
- * is not what paints the ▲ here: the shipped sheet draws it from the class
- * (`src/ui/public/styles.css` · `.chip.warn::before{content:"▲ "}` · ~539),
- * with `attr(data-g)` only as the base rule, for a chip carrying no meaning
- * class. It is set anyway, because `parts.js`' `tierChip` sets it and one
- * spelling of a chip is the point of that file.
+ * data-g="▲">` around `tu.todo`, transcribed from the mockup. `unmeasured` is
+ * `<span class="chip unmeas" data-g="◌">` around `strip.unmeasured` —
+ * `app.js`'s own key for the same primitive, reused rather than given a
+ * fourth spelling in a table this task may not add a key to.
  *
- * **An unknown state throws.** The alternative is a default branch drawing
- * either ✅ over a tutorial nobody wrote or a warning over one that exists,
- * and both are false statements about the repository — the same reason `t()`
- * throws on a key it cannot find rather than rendering blank.
+ * **An unknown state throws.** A default branch here would draw one of three
+ * false statements about the repository over a fourth answer the endpoint
+ * never sends — the same reason `t()` throws on a key it cannot find rather
+ * than rendering blank.
  */
 export function cellSpec(state) {
   if (state === DONE) return { kind: 'glyph', glyph: '✅' };
   if (state === TODO) return { kind: 'chip', className: 'chip warn', glyph: '▲', key: 'tu.todo' };
+  if (state === UNMEASURED) {
+    return { kind: 'chip', className: 'chip unmeas', glyph: '◌', key: 'strip.unmeasured' };
+  }
   throw new Error(`tut: unknown language-cell state: ${String(state)}`);
 }
 
@@ -187,14 +153,29 @@ function languageCell(ctx, state) {
 }
 
 /**
- * Synchronous, unlike every other screen's `render`, because there is nothing
- * to await: no endpoint answers this screen (see the header), so there is no
- * refusal to catch and `parts.js`' `errorNote` is not imported. `route()` does
- * `await mod.render(...)`, which is happy with either.
+ * Async, unlike the version of this screen that hard-coded its twelve cells:
+ * `render()` now awaits `GET /api/tutorials` before it can draw a single
+ * language cell. `route()` already does `await mod.render(...)`.
  */
-export function render(root, ctx) {
+export async function render(root, ctx) {
   root.replaceChildren();
   screenHead(ctx, root, 'tu.h', 'tu.v', 'tu.sub');
+
+  let states;
+  try {
+    const data = await ctx.api('/api/tutorials');
+    if (data === null || typeof data !== 'object' || !Array.isArray(data.tutorials)
+      || data.tutorials.length !== TUTORIAL_ROWS.length) {
+      throw new Error('tut: /api/tutorials answered without a six-row tutorials array');
+    }
+    states = data.tutorials;
+  } catch (error) {
+    // The endpoint's own words, drawn INSTEAD of the table and never beside an
+    // invented one — the same rule `screens/coverage.js` follows for its own
+    // refusal.
+    root.append(errorNote(error.message));
+    return;
+  }
 
   const card = el('div', 'card pane');
   const table = el('table');
@@ -212,7 +193,8 @@ export function render(root, ctx) {
   thead.append(headRow);
 
   const tbody = el('tbody');
-  for (const tutorial of TUTORIALS) {
+  TUTORIAL_ROWS.forEach((tutorial, i) => {
+    const state = states[i];
     const row = el('tr');
     const title = el('td');
     title.append(...ctx.t(tutorial.title));
@@ -221,9 +203,9 @@ export function render(root, ctx) {
     // to the column of titles rather than as a second list of them.
     const job = el('td', 'small');
     job.append(...ctx.t(tutorial.job));
-    row.append(title, job, languageCell(ctx, tutorial.en), languageCell(ctx, tutorial.he));
+    row.append(title, job, languageCell(ctx, state.en), languageCell(ctx, state.he));
     tbody.append(row);
-  }
+  });
 
   table.append(thead, tbody);
 

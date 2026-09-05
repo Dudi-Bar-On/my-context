@@ -6,12 +6,12 @@ status: active
 severity: soft
 always: false
 summary: Give printing its own set of colours, because putting the dark screen straight onto paper comes out nearly unreadable.
-summary_of: 647a309d0a9aa94f
+summary_of: 38fed43628c4a3fd
 scope: []
 tags:
   - "plan:repaint"
   - "seq:10"
-  - "state:todo"
+  - "state:done"
   - v2
   - ui
 origin: human
@@ -20,12 +20,13 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-08-21
 valid_until: null
-checksum: 8de28dd8a5bd632d
+checksum: 4d702850e8f756d4
 plan: repaint
 seq: "10"
-state: todo
+state: done
 priority: "1"
 source: "my-context/docs/superpowers/plans/2026-08-21-web-ui-visual-repaint.md#task-10"
+verified_on: 2026-09-05
 ---
 
 # repaint task 10: the print register
