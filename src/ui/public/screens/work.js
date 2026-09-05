@@ -148,6 +148,7 @@ import { commandActions } from '/lib/command-actions.js';
 // plan:walk seq:46. Re-exported below, because this screen's own tests and
 // the string-key scans address them through this module.
 import { fieldView, MONO_FIELDS } from '/lib/viewmodel.js';
+import { helpDisclosure } from '/lib/disclosure.js';
 import { PALETTE, commandFor } from '/lib/palette-defs.js';
 import {
   BOUND_CAP_LIST, BOUND_CAP_TABLE, boundedList, el, errorNote, mono, screenHead, spaced,
@@ -475,6 +476,15 @@ function commandState(ctx) {
  * disclosure widget, carrying the sentences that say how a paste is known to
  * have landed: run it yourself, and look for the audit record.
  *
+ * **Built through `lib/disclosure.js`'s `helpDisclosure`, not hand-built.**
+ * This was the fourth hand-rolled `<details class="help">…</details>` in
+ * `screens/` — `coverage.js`, `decay.js` and `doctor.js` had already moved
+ * onto the one shared component (`lib/disclosure.js` · "Four call sites, one
+ * shape, never factored" · ~15) — and a second shape for the same `?` is
+ * exactly the defect that factoring exists to end. Nothing about the markup
+ * changes: `helpDisclosure` builds the identical
+ * `<details class="help"><summary>…</summary><div class="helpbox">…</div></details>`.
+ *
  * **`work.h2` names the op the CHOSEN verdict will write, not a fixed one.** It
  * used to spell `op: promote-revision` as a literal, which was true of the only
  * command this screen could compose and became false the moment there were
@@ -490,24 +500,18 @@ function commandState(ctx) {
  * — and `lib/i18n.js`'s `{b:}` marker carries that now.
  */
 function landingHelp(ctx, kind, spec) {
-  const help = el('details', 'help');
-  const summary = el('summary');
-  summary.append(...ctx.t('help.land'));
-  const box = el('div', 'helpbox');
-
   const first = el('span');
   first.append(...ctx.t('work.h1'));
   const receipt = el('span');
   receipt.append(...ctx.t('work.h2', { op: spec.op }));
-  box.append(first, receipt);
+  const body = [first, receipt];
 
   if (kind === 'revision') {
     const refusal = el('span');
     refusal.append(...ctx.t('work.h3'));
-    box.append(refusal);
+    body.push(refusal);
   }
-  help.append(summary, box);
-  return help;
+  return helpDisclosure(ctx, 'help.land', body);
 }
 
 /**

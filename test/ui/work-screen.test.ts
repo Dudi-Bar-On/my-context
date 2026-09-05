@@ -109,10 +109,16 @@ async function workModule(): Promise<WorkModule> {
   // layer (`plan:walk seq:46`), so Configure and the Execute confirm can reach
   // the write preview too. This screen re-exports them, which is why the tests
   // below still address them through this module.
-  assert.equal(rewritten, 5,
-    `expected work.js to import five browser modules (/lib/command.js, /lib/command-actions.js, `
-    + `/lib/palette-defs.js, /lib/viewmodel.js, /screens/parts.js); the rewrite matched `
-    + `${rewritten}. A specifier this `
+  //
+  // SIX since 2026-09-05: `/lib/disclosure.js` joined the list when
+  // `landingHelp`'s hand-built `<details class="help">…` was moved onto the
+  // shared `helpDisclosure()` — the fourth and last hand-built call site
+  // `lib/disclosure.js`'s own header named; `coverage.js`, `decay.js` and
+  // `doctor.js` had already moved.
+  assert.equal(rewritten, 6,
+    `expected work.js to import six browser modules (/lib/command.js, /lib/command-actions.js, `
+    + `/lib/disclosure.js, /lib/palette-defs.js, /lib/viewmodel.js, /screens/parts.js); the rewrite `
+    + `matched ${rewritten}. A specifier this `
     + 'pattern cannot see is a module Node would resolve from the drive root, and the import '
     + 'below would fail for a reason that reads like a missing file.');
   assert.ok(!/\bfrom\s+'\//.test(text),
