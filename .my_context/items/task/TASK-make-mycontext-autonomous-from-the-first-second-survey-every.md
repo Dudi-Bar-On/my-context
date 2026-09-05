@@ -11,7 +11,7 @@ scope: []
 tags:
   - "plan:hooks"
   - "seq:22"
-  - "state:blocked"
+  - "state:todo"
   - v2
   - strategy
 origin: human
@@ -20,10 +20,10 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-08-22
 valid_until: null
-checksum: 060bdc42a8881155
+checksum: 6d521cffb83d40bd
 plan: hooks
 seq: "22"
-state: blocked
+state: todo
 priority: "1"
 needs: hooks/16b
 ---
