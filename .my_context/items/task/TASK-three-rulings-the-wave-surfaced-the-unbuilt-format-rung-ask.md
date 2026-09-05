@@ -6,12 +6,12 @@ status: active
 severity: soft
 always: false
 summary: "Three decisions waiting on the owner: an option that does not exist, two small drawing differences, and where two routes belong."
-summary_of: 7d0e1facd1d1fc84
+summary_of: ee7f931a33e13391
 scope: []
 tags:
   - "plan:port"
   - "seq:14"
-  - "state:todo"
+  - "state:done"
   - v2
 origin: human
 source_file: null
@@ -19,10 +19,11 @@ source_anchor: null
 source_checksum: ca42e547c1aa6c9d
 valid_from: 2026-08-23
 valid_until: null
-checksum: f53ad5ed77fb50b1
+checksum: caad6bf114a6a757
 plan: port
 seq: "14"
-state: todo
+state: done
+verified_on: 2026-09-05
 ---
 
 # three rulings the wave surfaced: the unbuilt format rung, ask's two extra kinds, and where the artefact routes belong

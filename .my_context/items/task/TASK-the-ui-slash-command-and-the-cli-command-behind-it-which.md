@@ -6,12 +6,12 @@ status: active
 severity: soft
 always: false
 summary: A command a person types to switch the web view on, and the first thing in the product allowed to edit the settings file.
-summary_of: 1b978fadcaa68f40
+summary_of: 2abbf11cf0ee3b56
 scope: []
 tags:
   - "plan:rulings"
   - "seq:20"
-  - "state:todo"
+  - "state:done"
   - v2
 origin: human
 source_file: null
@@ -19,15 +19,16 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-08-20
 valid_until: null
-checksum: 6919516c6f63a6ed
+checksum: 3c33e24e7acb6577
 plan: rulings
 seq: "20"
-state: todo
+state: done
 progress: "0"
 priority: "2"
 source: "reports/V2-HANDOVER.md#twelve-owner-rulings"
 last_change: "2026-08-20T14:14:56Z"
 needs: rulings/42
+verified_on: 2026-09-05
 ---
 
 # the ui slash command and the CLI command behind it, which write config.json

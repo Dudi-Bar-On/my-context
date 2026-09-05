@@ -11,7 +11,7 @@ scope: []
 tags:
   - "plan:repaint"
   - "seq:7b"
-  - "state:todo"
+  - "state:doing"
   - v2
   - ui
 origin: human
@@ -20,10 +20,10 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-08-22
 valid_until: null
-checksum: ee32e28c4513fe4c
+checksum: c46a6a787e0aaf2b
 plan: repaint
 seq: 7b
-state: todo
+state: doing
 priority: "2"
 ---
 

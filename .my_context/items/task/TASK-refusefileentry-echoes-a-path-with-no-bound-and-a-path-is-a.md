@@ -12,15 +12,15 @@ tags:
   - "plan:export"
   - "seq:21"
   - v2
-  - "state:todo"
+  - "state:doing"
 origin: human
 source_file: null
 source_anchor: null
 source_checksum: null
 valid_from: 2026-08-24
 valid_until: null
-checksum: 659a68edf8b5b65e
-state: todo
+checksum: bfd0595d1da20db9
+state: doing
 plan: export
 seq: "21"
 ---
