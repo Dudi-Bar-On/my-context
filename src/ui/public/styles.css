@@ -1766,6 +1766,64 @@ bdi{unicode-bidi:isolate}
   text-transform:uppercase;color:var(--dim);font-weight:700;
   display:flex;align-items:center;gap:6px}
 
+/* ─── CARD ROLES — new, not carried from the mockup. `docs/design/
+   web-ui-mockup.html` is a frozen reference since the owner's ruling of
+   2026-09-02 (`DEC-the-mockup-is-a-frozen-reference-it-is-read-never-written`)
+   and is not edited for this; a card colour system is exactly the "app runs
+   ahead of the drawing" case that ruling calls normal rather than a defect.
+
+   Owner, rejecting the Documentation/Tutorials screens as shipped:
+   "the markdown looks not to be the selected format because it looks very
+   ugly and unreadable the colors and everything… in the cards themselves a
+   different colorset could be selected."
+
+   ONE distinction, marked `data-role` rather than a class, so the composite
+   `class="card pane"` every screen-parity kind check and node test asserts
+   verbatim never changes shape — the same reason `data-f`/`data-g`/
+   `data-depth` already carry state elsewhere in this file instead of a class
+   doing double duty:
+
+     data-role="nav"      a card whose job is wayfinding — a picker, a table
+                           of contents, an index, foundational/basic material.
+     data-role="content"  a card whose job is sustained reading — a rendered
+                           document, an opened tutorial, advanced/deep
+                           material.
+
+   TWO hues, deliberately outside `DEC-the-meaning-hue-budget-is-five-gold-ok-
+   carry-crit-and-warn`. That budget is closed and gated
+   (test/ui/styles-parity.test.ts) for VERDICTS — governance, health, carried-
+   forward, critical, warning — and a card's ROLE is not a verdict; spending
+   one of the five here would dilute a meaning a reader already relies on (an
+   indigo card border reading as "this is carried" beside an actually-carried
+   chip, for one). Both are lifted from `--ground`'s own decorative blobs
+   above rather than invented — teal brightens `--ground`'s `#0f6069` corner
+   for foreground use, violet brightens its `#433580` corner the same way —
+   so the accent reads as more of this product's own background, not a second
+   palette bolted on. Hue angles (measured): --ok 142°, --carry 229°,
+   --role-nav 177°, --role-content 270° — clear of every budgeted hue by 33°
+   or more.
+
+   Contrast, measured 2026-09-05 as flat text on every dark surface a card
+   sits on: --role-nav 7.27:1 (--panel), 6.82:1 (--panel-2), 7.79:1 (--paper),
+   7.73:1 (--sink), 7.96:1 (--plate); --role-content 6.76:1, 6.34:1, 7.24:1,
+   7.18:1, 7.39:1 in the same order. Every figure clears AA (4.5:1) with
+   margin and most clear AAA (7:1) — deliberately generous, because this
+   colours a card's own heading, not fine print.
+
+   Applied as the SAME idiom `.itemsum.stale`/`.helpbox` already use for a
+   meaning-carrying accent — a border-inline-start plus a tinted label —
+   rather than a flooded background: `STD` in this file's own header is
+   "colour carries meaning, not decoration", and a reading surface that is
+   itself a wall of tinted glass for however many thousand pixels a real
+   document runs to is decoration wearing meaning's name. Two small, legible
+   signals instead: the spine you see before you start reading, and the label
+   you read first as it opens. */
+:root{--role-nav:#22b8b0; --role-content:#c084fc}
+.card[data-role="nav"]{border-inline-start:3px solid var(--role-nav)}
+.card[data-role="content"]{border-inline-start:3px solid var(--role-content)}
+.card[data-role="nav"]>h3{color:var(--role-nav)}
+.card[data-role="content"]>h3{color:var(--role-content)}
+
 /* `.pair`, again — the SECOND mockup declaration (mockup ~520-521), "the
    injection preview's two-plane scene… the composition pattern the other
    twenty screens copy": side-by-side columns for `.plane.l`/`.plane.r`. THIS
@@ -1981,6 +2039,32 @@ body>svg[aria-hidden="true"]{display:none}
    once, not a wall of warnings per row. */
 .two{display:grid;grid-template-columns:1fr 1fr;gap:var(--sp-3)}
 @media (max-width:1000px){.two{grid-template-columns:1fr}}
+
+/* `.two.align-top` — a NEW modifier, not a change to `.two` itself (coverage.js
+   also composes `.two` and is out of this task's scope; a bare selector would
+   have reached it too). Grid's default `align-items:stretch` is right for
+   coverage's tree/detail pair — both sides are meant to fill the same
+   working height — and wrong for a nav-card beside a document: a short
+   contents list stretched to match a document that can run to a 400KB
+   README leaves the nav card's own background padded out with several
+   screens of empty glass under its last row, which is the "large dead empty
+   area" the owner measured. `align-items:start` lets each column take only
+   the height its own content asks for.
+
+   The nav card then gets to DO something with the height it no longer
+   wastes: stick, so the reader keeps their place in a long document while
+   they scroll it. Scoped to `[data-role="nav"]` specifically (not the pair's
+   second child in general) so a future `.two.align-top` pairing that puts
+   the nav side second still gets the right one stuck — and scoped to
+   `.align-top` alone so `.two` on a screen that never opts in never grows a
+   sticky child by accident. `.body` (mockup ~ `grid-area:body`, this file
+   ~702) is the real scrolling ancestor — the shell hides `<body>`'s own
+   overflow — so `position:sticky` resolves against it correctly with no
+   extra wiring. Capped at 85% of the viewport rather than 100vh: the header
+   strip above `.body` is real height a full-viewport cap would run under. */
+.two.align-top{align-items:start}
+.two.align-top>[data-role="nav"]{position:sticky;inset-block-start:var(--sp-3);
+  max-block-size:85vh;overflow-y:auto}
 
 /* `[hidden]` NEEDS THIS, and its absence was silent. The user agent's
    `[hidden]{display:none}` is a UA rule, so ANY author `display` beats it —
@@ -2316,29 +2400,69 @@ tr.lanestep td:nth-child(3){padding-inline-start:14px}
   overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .rowsum.stale{color:var(--warn)}
 
-.md{font-size:var(--fs-1);line-height:1.6}
+/* ─── READING TYPOGRAPHY — rebuilt 2026-09-05 for the same UI/UX pass that
+   added the card-role system above. `.md` used to draw its own body text
+   SMALLER than the surrounding chrome (`--fs-1`, 14.5px, against the page's
+   own `--fs-2` default) and every one of h1/h2/h3 at the SAME size
+   (`--fs-2`, 16px) — a reading surface one step below its own UI and a
+   heading scale with no steps in it at all, which is a good account of why
+   the owner read it as "a dense unbroken wall of prose". Nothing below is a
+   new size — every step is one this file's own LEGACY SCALE already
+   declares (`--fs-00`…`--fs-4`); this is the scale finally being SPENT on a
+   document instead of only on chrome.
+
+   Measure is capped at 72ch — comfortable-reading upper bound, not a
+   redesign of the column: `.card` still sets its own width, so a narrow
+   two-up card is never stretched to reach 72ch, only a wide one is stopped
+   from running past it. `ch` is already logical/dir-agnostic, so this needs
+   no `[dir="rtl"]` counterpart. */
+.md{font-size:var(--fs-2);line-height:1.7;max-inline-size:72ch}
+.md>:first-child{margin-block-start:0}
+/* The mockup's own combined rule (~ web-ui-mockup.html), kept verbatim as a
+   SELECTOR — test/ui/styles-parity.test.ts's floor asserts the mockup's rule
+   set stays declared, and this is a rule the mockup declares, comma and
+   all. Its VALUES are free to move (owner's ruling, 2026-09-02) and they do:
+   every h1/h2/h3 below has equal specificity to this and comes AFTER it, so
+   the individual rules win the cascade on source order and this becomes a
+   harmless base coat under them, never the value actually painted. */
 .md h1,.md h2,.md h3{font-size:var(--fs-2);margin:var(--sp-3) 0 var(--sp-1)}
+.md h1{font-size:var(--fs-4);font-weight:680;letter-spacing:-.012em;
+  margin:var(--sp-6) 0 var(--sp-2)}
+.md h2{font-size:var(--fs-3);font-weight:650;letter-spacing:-.008em;
+  margin:var(--sp-5) 0 var(--sp-2)}
+.md h3{font-size:var(--fs-2);font-weight:620;margin:var(--sp-4) 0 var(--sp-1)}
 .md p{margin:0 0 var(--sp-2)}
 .md ul{margin:0 0 var(--sp-2);padding-inline-start:18px}
 .md pre{background:var(--sink);border:1px solid var(--rule);border-radius:var(--r-md);
-  padding:var(--sp-2);overflow-x:auto;margin:0 0 var(--sp-2)}
+  padding:var(--sp-2);line-height:1.5;overflow-x:auto;margin:0 0 var(--sp-2)}
 /* Widened 2026-08-28 with the renderer that emits them, under DEC-markdown-is-
    served-from-a-manifest-rendered-by-one-renderer. Every rule below styles a
    shape the three corpora were MEASURED to contain: 80 block quotes and 76
    ordered lists in the item corpus, 4 pipe tables in the four served help
    topics, 168 tables and 614 rules in this repository's own documents. `h4`
    is the one that existed already — `###` has always produced it and nothing
-   styled it. */
-.md h4{font-size:var(--fs-1);font-weight:700;margin:var(--sp-2) 0 var(--sp-1)}
+   styled it. Kept a step BELOW body size and coloured `--dim`, deliberately:
+   it is the deepest heading the renderer emits (`Math.min(level+1,4)` caps
+   every ATX heading at h4), so it reads as a sub-label under an h3 rather
+   than competing with it. */
+.md h4{font-size:var(--fs-1);font-weight:700;letter-spacing:.02em;color:var(--dim);
+  margin:var(--sp-3) 0 var(--sp-1)}
 .md ol{margin:0 0 var(--sp-2);padding-inline-start:22px}
 .md li{margin-block-end:2px}
+.md strong,.md b{font-weight:650;color:var(--ink)}
 .md em{font-style:italic;color:var(--ink)}
 .md blockquote{margin:0 0 var(--sp-2);padding-inline-start:var(--sp-2);
   border-inline-start:2px solid var(--edge);color:var(--dim)}
 .md blockquote :last-child{margin-block-end:0}
 .md hr{block-size:0;border:0;border-block-start:1px solid var(--rule);margin:var(--sp-3) 0}
 .md table{margin:0 0 var(--sp-2)}
-.md th,.md td{padding-inline-end:var(--sp-2)}
+.md th,.md td{padding-inline-end:var(--sp-2);padding-block:var(--sp-2)}
+/* Degrades sanely for content this renderer does not build today — an
+   embedded diagram is the case the coordinator named as coming: a raster or
+   inline `svg` any future renderer drops in place of a fenced block inherits
+   the same right-hand bound `pre` already gets, rather than overflowing the
+   card or the 72ch measure above. */
+.md img,.md svg{max-inline-size:100%;block-size:auto;border-radius:var(--r-md)}
 
 /* — the item pane's well and its label (mockup ~652-657) —
 
@@ -2796,6 +2920,7 @@ svg.chart text.rel{font-family:var(--mono);font-size:var(--fs-chart-rel);fill:va
     --ground:#fff;
     --ink:#000; --dim:#000; --faint:#000;
     --gold:#000; --ok:#000; --warn:#000; --crit:#000; --carry:#000;
+    --role-nav:#000; --role-content:#000;
     --paper:#fff; --panel:#fff; --panel-2:#fff; --sink:#fff;
     --rule:#000; --edge:#000; --edge-3:#000;
     --plate:transparent;
