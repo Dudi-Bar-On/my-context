@@ -43,13 +43,23 @@
  *   1. **A rung with zero failures must SAY zero.** Blank is the failure mode
  *      this whole family of defects has, so a rung nothing fails at draws a
  *      measured zero in words.
- *   2. **Rung 4 must not draw a zero at all.** The per-event `matchesScope`
- *      refusal is served by no endpoint, so what that gate excludes is
- *      unmeasured rather than none, and the rung says so in those words.
+ *   2. **Rung 4 must not draw a zero on an event with no path — and MUST draw
+ *      a real one on a `tool` event that has one.** Until
+ *      `TASK-injection-preview-rung-4-of-the-gate-ladder-can-never-be`, the
+ *      per-event `matchesScope` refusal was served by no endpoint at all, so
+ *      what that gate excluded stayed unmeasured on EVERY event and the rung
+ *      said so in those words unconditionally. `/api/simulate`'s
+ *      `scopeExcluded` closed that gap for the one event that can ever answer
+ *      it — `tool`, with a path chosen — so this test now asserts BOTH
+ *      states: still-unmeasured on `session-start` (the first test below,
+ *      unchanged), and measured — a real zero or a real N, kept SEPARATE from
+ *      the item-level count rather than flattened into it — on the `tool`
+ *      event the second test drives to.
  *   3. **A rung whose ids are reachable must be openable.** Rungs 1, 2 and 3
  *      list their population under the ladder; rungs 5 and 6 are already named
  *      in full under `Not delivered` and point there rather than drawing the
- *      same ids twice.
+ *      same ids twice — and rung 4's event-path half, once measured, joins
+ *      them there too.
  */
 import { test, expect } from './app.ts';
 import type { Page } from '@playwright/test';
@@ -74,10 +84,20 @@ interface Wire {
   hidden: string[];
   seenFiltered: string[];
   spilled: string[];
+  /**
+   * `sim.scopeExcluded` — the ids the jit tier's own `matchesScope` refused
+   * for THIS event's path. Rung 4's event-path half, disjoint from `hidden`
+   * (`scopeExcludedIds` filters `focusHides` itself) and never populated by
+   * `item.gate === 'scope'`, which is the OTHER, item-level refusal
+   * `expectedCounts` below still counts alone.
+   */
+  scopeExcluded: string[];
+  /** `sim.tiersRun` — whether the jit tier ran at all, read rather than guessed from `event`. */
+  tiersRun: string[];
 }
 
 /**
- * The three answers the screen composed its ladder from, fetched through the
+ * The answers the screen composed its ladder from, fetched through the
  * page's OWN door — `window.myctx.api` and `/lib/viewmodel.js`'s `selectQuery`.
  *
  * A second HTTP client in the test authenticates differently and could succeed
@@ -99,12 +119,16 @@ function wire(page: Page, event: string, path: string | null): Promise<Wire> {
     const selection = await ctx.api(`/api/select?${qs}`) as {
       focus: { hidden: string[] } | null; spilled: { id: string }[];
     };
-    const sim = await ctx.api(`/api/simulate?${qs}`) as { seenFiltered?: string[] };
+    const sim = await ctx.api(`/api/simulate?${qs}`) as {
+      seenFiltered?: string[]; scopeExcluded?: string[]; tiersRun?: string[];
+    };
     return {
       items: items.items.map((i) => ({ id: i.id, gate: i.gate })),
       hidden: selection.focus === null ? [] : selection.focus.hidden,
       seenFiltered: sim.seenFiltered ?? [],
       spilled: selection.spilled.map((s) => s.id),
+      scopeExcluded: sim.scopeExcluded ?? [],
+      tiersRun: sim.tiersRun ?? [],
     };
   }, [event, path] as const);
 }
@@ -274,7 +298,14 @@ test('every rung carries the count of items that fail there, names its specimen 
     }
     await expect(rows, `rung ${rung + 1} draws no list of its own`).toHaveCount(0);
     const sentence = (await tallies(page))[rung]!;
-    if (rung === 3) expect(sentence).toMatch(/no list of them can be drawn here/);
+    // **A pre-existing drift, fixed in passing.** `preview.rungunk`'s English
+    // was reworded (`"Not a zero, and no list of them can be drawn here."` to
+    // `"Not a zero — no list can be drawn."`) after this assertion was
+    // written and nothing caught it — `npm test` never renders this string,
+    // and this file is the only place that reads it from a live browser. On
+    // `session-start` the jit tier never runs, so rung 4 still takes this
+    // exact sentence unconditionally, unchanged by this task.
+    if (rung === 3) expect(sentence).toMatch(/Not a zero — no list can be drawn\./);
     else expect(sentence, `rung ${rung + 1} must say where its list already is`)
       .toMatch(/Not delivered/);
   }
@@ -298,18 +329,70 @@ test('the counts are re-read when the question moves', async ({ app }) => {
   expect(path, 'the fixture must offer a file to preview a tool event against').not.toBeNull();
   await page.selectOption('#pathsel', path!);
 
-  const counts = expectedCounts(await wire(page, 'tool', path));
+  const served = await wire(page, 'tool', path);
+  const counts = expectedCounts(served);
+  // **Rung 4 no longer needs the `i !== 3` exception this mapping used to
+  // carry** (`TASK-injection-preview-rung-4-of-the-gate-ladder-can-never-be`).
+  // `counts[3]` here is `expectedCounts`'s item-level count alone — it never
+  // reads `scopeExcluded` — and that is exactly what `rungSentence` now draws
+  // through the SAME `rungn`/`rung0` sentence every other rung takes on a
+  // `tool` event, because the jit tier ran: a leading digit when it is
+  // positive, none when `rung0`'s "No item fails…" is the true sentence. The
+  // event-path half is a SEPARATE clause appended after it, asserted below by
+  // its own words rather than by `drawn()`'s leading-digit regex.
+  expect(served.tiersRun, 'a tool event with a path must run the jit tier, or this test is not '
+    + 'measuring the state it claims to').toContain('jit');
   await expect
     .poll(async () => (await tallies(page)).map(drawn), {
       message: 'the ladder must report the tool event\'s own population, not the landing one',
     })
-    .toEqual(counts.map((n, i) => (n === 0 && i !== 3 ? null : n)));
+    .toEqual(counts.map((n) => (n === 0 ? null : n)));
+
+  // ── RUNG 4'S EVENT-PATH HALF, MEASURED AND NAMED ───────────────────────
+  //
+  // `served.scopeExcluded` is the SAME field the ladder's own clause and the
+  // `Not delivered` card both read — asserted against by its own count,
+  // never guessed at, so a drift in either drawer fails here.
+  const scopeSentence = (await tallies(page))[3]!;
+  expect(scopeSentence, 'rung 4 must no longer claim the event-path half is unmeasured once '
+    + 'the jit tier has actually run').not.toMatch(/unmeasured/);
+  if (served.scopeExcluded.length === 0) {
+    expect(scopeSentence, 'a measured zero is drawn as zero, not as silence')
+      .toMatch(/no item.s own scope excluded it — a measured zero/);
+  } else {
+    expect(scopeSentence, 'a measured N is named, not flattened into the item-level count')
+      .toMatch(new RegExp(`${served.scopeExcluded.length} more item\\(s\\) were excluded`));
+    // **And its ids are reachable — the defect this task closes.** Named
+    // under `Not delivered`, beside rung 5's `seenFiltered` rows, per
+    // `drawSpilled`'s own placement.
+    const scopeRows = screen(page).locator('#scopeExcludedRows .row');
+    await expect(scopeRows, 'every excluded id is a row, not just a count')
+      .toHaveCount(Math.min(served.scopeExcluded.length, BOUND_CAP_LIST));
+    const ids = await scopeRows.evaluateAll((all) => all.map((r) => r.getAttribute('data-id') ?? ''));
+    expect(new Set(ids), 'the rows name exactly the ids the endpoint served')
+      .toEqual(new Set(served.scopeExcluded.slice(0, BOUND_CAP_LIST)));
+    expect(ids.every((id) => id !== ''),
+      'every row names its item, so the shell\'s delegated handler can open the pane').toBe(true);
+    // Click through one of them — reachable means openable, not just listed.
+    // The house pattern (`preview-spilled.spec.ts`'s own "a spilled row opens
+    // the item" test): `data-id` routes through the shell's one delegated
+    // handler to `#pane`, the same path every other id-row on this screen
+    // already takes.
+    const first = scopeRows.first();
+    const openId = await first.getAttribute('data-id');
+    await first.click();
+    await expect(page.locator('#pane'),
+      'rung 4\'s event-path rows must open the pane like every other id-row on this screen')
+      .toBeVisible();
+    await expect(page.locator('#paneid')).toHaveText(openId!);
+  }
 
   // Said out loud, because a test that measured two identical answers would
   // pass while proving nothing about movement.
   const after = await tallies(page);
   console.log(`[gate ladder · tool ${path}] `
-    + `${GATES.map((g, i) => `rung ${i + 1} ${g}=${counts[i]}`).join(' · ')}`);
+    + `${GATES.map((g, i) => `rung ${i + 1} ${g}=${counts[i]}`).join(' · ')}`
+    + ` · rung 4 event-path excluded=${served.scopeExcluded.length}`);
   if (JSON.stringify(after) === JSON.stringify(landing)) {
     test.info().annotations.push({
       type: 'unmeasured',

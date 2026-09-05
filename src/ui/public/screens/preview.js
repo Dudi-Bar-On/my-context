@@ -52,6 +52,28 @@
  *     computed against the same context the selection was — the rung binds, and
  *     the `Not delivered` card names every one of them.
  *
+ *     **Rung 4's EVENT-PATH half is the sixth and last hole, and it closed
+ *     the same way** (`TASK-injection-preview-rung-4-of-the-gate-ladder-can-
+ *     never-be`). `ItemSummary.gate === 'scope'` only ever carries the
+ *     ITEM-LEVEL refusal — an unscoped item under `scopePolicy: 'inert'` —
+ *     because `injection()` answers with no event in hand; the OTHER refusal,
+ *     a scoped item whose own globs missed the chosen path, is decided inside
+ *     the jit tier's `candidates = fresh.filter((i) => matchesScope(i, target,
+ *     config))` (`core/select.ts`) and rode on no response either, for the
+ *     same reason rung 5 did not: an item that refusal drops is absent from
+ *     every field a client can read. `/api/simulate` now serves
+ *     `scopeExcluded` — `scopeExcludedIds`, `matchesScope` called once against
+ *     the SAME target the jit tier itself builds (`ui/read-model.ts`), never a
+ *     second predicate — so the two refusals bind at the same rung for two
+ *     different, disjoint reasons (`rungOf` tells them apart, and so does
+ *     `diagnosis`), the rung's tally is the item-level count and the
+ *     event-path count kept SEPARATE rather than flattened into one, and the
+ *     event-path half's ids are named under `Not delivered` beside rung 5's.
+ *     Unlike rung 5, rung 4's event-path half is genuinely unmeasured on every
+ *     event but a `tool` event with a path chosen — the jit tier is the only
+ *     one that ever asks `matchesScope` anything — and it stays named as
+ *     unmeasured (`preview.rungunk`) rather than drawn as a zero on those.
+ *
  *     **The picker holds ONE EXEMPLAR PER RUNG, and since 2026-08-28 it says
  *     so** (`preview.spec`). `/api/items` is sorted by id, so "the first item
  *     that fails this rung" is stable by construction — and stable against
@@ -263,19 +285,27 @@ const RUNG = (code) => GATES.findIndex((gate) => gate.code === code);
  *     below the ladder, in `/api/items`' own id order. Their ids are reachable
  *     (rungs 1 and 2 are `ItemSummary.gate` over the whole corpus, rung 3 is
  *     `Selection.focus.hidden`) and no other card on this screen names them.
- *   - **rungs 5 and 6** — `seen`, `budget` — are already named IN FULL under
- *     `Not delivered`: rung 6 as the spill rows with their tier and price, rung
- *     5 as the `seenFiltered` rows beneath them. They are counted here and the
- *     sentence says where the list already is. A second bounded list of the
- *     same ids would be the same fact drawn twice, and the version down there
- *     carries more of it.
- *   - **rung 4** — `scope` — is counted with its unknown NAMED, and draws no
- *     list at all. `ItemSummary.gate` says `scope` only in its item-level form
- *     (an unscoped item under `scopePolicy: "inert"`); the per-event
- *     `matchesScope` refusal is on no endpoint, so the items THAT drops are
- *     absent from the verdict rather than placed on a rung nobody served. A
- *     list here would be the measured half presented as the whole, and a bare
- *     number would be a count standing where nobody measured.
+ *   - **rungs 4, 5 and 6** — `scope`, `seen`, `budget` — are already named IN
+ *     FULL under `Not delivered`: rung 6 as the spill rows with their tier and
+ *     price, rung 5 as the `seenFiltered` rows beneath them, and rung 4's
+ *     EVENT-PATH half — `sim.scopeExcluded`, the ids `matchesScope` refused
+ *     for the chosen file, since
+ *     `TASK-injection-preview-rung-4-of-the-gate-ladder-can-never-be` closed
+ *     the endpoint gap — as the rows beneath those. They are counted here and
+ *     the sentence says where the list already is. A second bounded list of
+ *     the same ids would be the same fact drawn twice, and the version down
+ *     there carries more of it.
+ *
+ *     **Rung 4's ITEM-LEVEL half stays unlisted, and that is still correct
+ *     and not a leftover.** `ItemSummary.gate === 'scope'` means one thing
+ *     only — an unscoped item under `scopePolicy: "inert"` — and that set is
+ *     the SAME on every event; the plain `rungn`/`rung0` sentence already
+ *     says how many, and it needs no per-event id list beside it. What
+ *     changed is the OTHER half: a scoped item whose own globs missed the
+ *     chosen path used to be absent from every response and is measured now.
+ *     Whenever the jit tier has not run (every event but `tool` with a path),
+ *     that half stays exactly what it always was — unmeasured, and named as
+ *     such (`preview.rungunk`) rather than drawn as a zero or a list.
  */
 const RUNG_OPENABLE = new Set([0, 1, 2]);
 
@@ -1659,6 +1689,66 @@ export async function render(root, ctx) {
       }, { cap: BOUND_CAP_LIST, order: 'considered' });
       card.append(seenRows, seenBound);
     }
+
+    // ── RUNG 4's EVENT-PATH HALF: WHAT `matchesScope` REFUSED, NAMED ──────
+    //
+    // **The half of rung 4 that had no source until this change**
+    // (`TASK-injection-preview-rung-4-of-the-gate-ladder-can-never-be`).
+    // `sim.scopeExcluded` names the ids the jit tier's own `matchesScope`
+    // refused for THIS event's path — a SCOPED item whose own globs missed
+    // it — never the item-level refusal `own === 3` already counts on the
+    // ladder (an unscoped item under `scopePolicy: 'inert'`, which fails on
+    // every path and has nothing to do with the file above). Two refusals,
+    // named in two different places on purpose: the item-level one has no
+    // per-event population to list (it is the same set on every event, and
+    // `preview.rungunk`/`rungn`/`rung0` already say how many), and this one
+    // is the population that changes when the reader changes the file.
+    //
+    // **Only drawn when the jit tier ran**, `sim.tiersRun.includes('jit')` —
+    // read off the same field `rungSentence` above does, never re-derived
+    // from `event` a second time. On every other event this section is
+    // simply absent, matching what the ladder itself says: not a zero, a
+    // question the jit tier was never asked.
+    if (sim.tiersRun.includes('jit')) {
+      const excluded = sim.scopeExcluded ?? [];
+      const scopeLine = el('p', 'small');
+      // Not string keys yet — see `rungSentence`'s own note above and the
+      // report to the owner. The zero clause is the SAME sentence as the
+      // ladder's (this is the one place a reader needs to be told twice); the
+      // non-zero clause is shorter here on purpose — this card's own heading
+      // already says `Not delivered`, so the pointer the ladder needs does
+      // not need repeating inside the card it points at.
+      if (excluded.length === 0) {
+        scopeLine.append('For this file, no item’s own scope excluded it — a measured zero.');
+      } else {
+        scopeLine.append(`For this file, ${excluded.length} more item(s) were excluded because `
+          + 'their own scope did not match it. Named below.');
+      }
+      card.append(spaced(scopeLine));
+      if (excluded.length > 0) {
+        const scopeRows = el('div', 'rows');
+        scopeRows.id = 'scopeExcludedRows';
+        scopeRows.setAttribute('role', 'group');
+        scopeRows.setAttribute('aria-label', ctx.tFlat('aria.gatepick'));
+        const scopeBound = boundedList(ctx, scopeRows, excluded, (id) => {
+          const row = el('button', 'row');
+          row.type = 'button';
+          row.dataset.id = id;
+          row.append(idFull(id));
+          // `tier: null` — the item-level question, `whenRun`'s own words:
+          // an item `matchesScope` refused never became a jit CANDIDATE that
+          // could spill from a budget, so there is no `jit` tier record of
+          // this specific refusal to match against, only whether it was ever
+          // delivered at all.
+          whenSlot(row, 'injected', id, null);
+          return row;
+        // `considered`, matching the seen rows above: this is
+        // `matchesScope`'s own refusal order, and none of these rows was in
+        // the injection.
+        }, { cap: BOUND_CAP_LIST, order: 'considered' });
+        card.append(scopeRows, scopeBound);
+      }
+    }
     emit(card);
   }
 
@@ -1742,6 +1832,14 @@ export async function render(root, ctx) {
     // did drop there, not one this file guessed at from a session id it does
     // not have.
     const seenOut = new Set(sim.seenFiltered ?? []);
+    // **Rung 4's per-event half, which had no source until this change**
+    // (`TASK-injection-preview-rung-4-of-the-gate-ladder-can-never-be`).
+    // `sim.scopeExcluded` names the ids `matchesScope` refused for THIS
+    // event's path — a SCOPED item whose own globs missed it — computed
+    // against the same context the selection was. Empty whenever the jit
+    // tier does not run (`sim.tiersRun` omits `'jit'`), which `rungSentence`
+    // below reads rather than re-deriving.
+    const scopeOut = new Set(sim.scopeExcluded ?? []);
 
     /** The first rung this item fails, walked in ladder order. -1 if it fails none. */
     const rungOf = (item) => {
@@ -1750,11 +1848,13 @@ export async function render(root, ctx) {
       if (own === 0 || own === 1) return own;
       if (hidden.has(item.id)) return 2;
       // `ItemSummary.gate` can only ever say `scope` in its one item-level
-      // form — an unscoped item under `scopePolicy: "inert"`. The per-event
-      // `matchesScope` refusal is not on this endpoint at all, so an item this
-      // event's path does not reach is simply absent from the picker rather
-      // than being placed on a rung nobody served.
-      if (own === 3) return 3;
+      // form — an unscoped item under `scopePolicy: "inert"`. `scopeOut` is
+      // the OTHER refusal — a scoped item whose own globs missed this event's
+      // path — and the two sets are disjoint by construction (`scopeOut` only
+      // ever holds `scope.length > 0` items; `own === 3` only ever means
+      // `scope.length === 0`), so an item can bind here for exactly one
+      // reason and `diagnosis` below tells them apart.
+      if (own === 3 || scopeOut.has(item.id)) return 3;
       // Rung 5 before rung 6, which is `select`'s own order and the whole
       // reason this ladder exists: `fresh` is computed BEFORE `fitToBudget`
       // runs, so an item that is both already-delivered and unaffordable binds
@@ -1796,23 +1896,62 @@ export async function render(root, ctx) {
      * measured zero is drawn and named, and an unmeasured thing is named as
      * unmeasured rather than drawn as a zero.
      *
-     * Four sentences, and the branch order is the whole of the argument:
+     * **Rung 4 carries TWO measurements now, not one, and they are never
+     * flattened into one number** (`TASK-injection-preview-rung-4-of-the-
+     * gate-ladder-can-never-be`, `STD-a-measured-zero-is-drawn-and-named-an-
+     * unmeasured-thing-is`). `n` here is `population[3].length` — the UNION of
+     * the item-level refusal (`own === 3`) and the per-event one (`scopeOut`)
+     * — and `scopeOut.size` is subtracted back out so the two halves stay
+     * nameable on their own terms: *"0 at the item level"*, *"N excluded by
+     * the event path"* and *"not measured"* are three different sentences, and
+     * a reader must still be able to tell which one they are looking at.
      *
-     *   - **rung 4 first, whatever its number.** Its count is the item-level
-     *     half of a question whose other half no endpoint answers, so it never
-     *     takes the plain sentence and never takes the zero one — `0` there
-     *     would claim the event's path excluded nothing, which is precisely the
-     *     thing nobody measured.
-     *   - **zero next**, so a rung with no failures says so rather than going
-     *     blank.
+     *   - **rung 4's item-level half** takes the SAME plain/zero sentence
+     *     every other rung takes (`rungn`/`rung0`) — it always was a real
+     *     count, just presented through `rungunk`'s combined wording before
+     *     the event-path half existed to combine it with.
+     *   - **rung 4's event-path half** is unmeasured (and stays `rungunk`,
+     *     word for word) whenever the jit tier did not run this pass —
+     *     `sim.tiersRun` omits `'jit'` on every event but a `tool` event with
+     *     a path, read here rather than re-derived. Once it DID run, the half
+     *     is measured — a real zero or a real N, appended as its own clause —
+     *     and `scopeOut` is exactly `sim.scopeExcluded`, the ids named.
      *   - **rungs 5 and 6 name where their list already is.** Those items are
      *     drawn in full under `Not delivered`, with the tier and the price a
-     *     bare id here could not carry.
+     *     bare id here could not carry — and rung 4's event-path half, once
+     *     measured, joins them there (see `drawSpilled`).
      *   - everything else takes the plain count, and its ids are listed under
      *     the ladder.
      */
     const rungSentence = (rung, n) => {
-      if (rung === 3) return ctx.t('preview.rungunk', { n: num(n) });
+      if (rung === 3) {
+        // `sim.tiersRun` is `select.ts`'s own dispatch (`tiersRun`, exported):
+        // `'jit'` is in it only for `event === 'tool'` with a path chosen,
+        // which is exactly the one condition `scopeExcludedIds` requires to
+        // measure anything. Read, not re-derived — the same membership test
+        // `drawRibbons` already uses to tell an absent tier from an empty one.
+        const jitRan = sim.tiersRun.includes('jit');
+        const itemLevel = n - scopeOut.size;
+        if (!jitRan) return ctx.t('preview.rungunk', { n: num(itemLevel) });
+        const base = itemLevel === 0
+          ? ctx.t('preview.rung0') : ctx.t('preview.rungn', { n: num(itemLevel) });
+        // **Not a string key yet.** These two clauses report the exact figure
+        // `preview.rungunk` used to call unmeasured — reported to the owner
+        // for centralising (`KNOWN_LITERALS` in
+        // `test/ui/screen-literals.test.ts` carries the same two sentences,
+        // filed rather than hidden) rather than added to the shared tables by
+        // this lane. Wrapped in `el('span', …)` rather than handed back as a
+        // bare string: `screen-literals.test.ts`'s own header calls a whole
+        // sentence assigned to a variable and returned "a known floor" this
+        // check "must never" have — the wrapping keeps the literal a direct
+        // `el(tag,cls,TEXT)` site the census can actually see, ternary branch
+        // or not.
+        const path = scopeOut.size === 0
+          ? el('span', null, 'For this file, no item’s own scope excluded it — a measured zero.')
+          : el('span', null, `For this file, ${scopeOut.size} more item(s) were excluded `
+            + 'because their own scope did not match it. Named under Not delivered below.');
+        return [...base, ' ', path];
+      }
       if (n === 0) return ctx.t('preview.rung0');
       if (rung === 4) return ctx.t('preview.rungseen', { n: num(n) });
       if (rung === 5) return ctx.t('preview.rungspill', { n: num(n) });
@@ -1835,6 +1974,18 @@ export async function render(root, ctx) {
           parts.push(mono(`${name}: ${values.join(', ')}`));
         }
         return parts;
+      }
+      // **The event-path refusal, when the picked specimen is one.** A scoped
+      // item's OWN `phrase` is `injection()`'s item-level verdict — "injected
+      // when work touches <its own globs>" — which is TRUE in general and
+      // WRONG here: this specimen is the one whose globs missed THIS file, so
+      // printing its own phrase would show the reader a positive-sounding
+      // sentence for the item the rung just stopped. `scopeOut` is exactly
+      // how this file already tells the two rung-4 refusals apart in
+      // `rungOf`; not a string key yet, for `rungSentence`'s own reason above.
+      if (rung === 3 && scopeOut.has(pickedItem.id)) {
+        return [el('span', null, `matchesScope refused it for this file: its own scope (${
+          pickedItem.scope.join(', ')}) does not include it.`)];
       }
       // Rung 5 has no server sentence to carry: the `seen` gate produces a set,
       // not a phrase — `fresh = injectable.filter((i) => !seen.has(i.id))` — so
