@@ -233,11 +233,20 @@ const HELP: Record<string, unknown> = {
     markdown: '# Categories\n\nwhich are normative.\n',
     corpus: { counts: { CONST: 2, INV: 1 }, empty: ['DEC'] },
   },
+  // **The scope join is the defect's own shape.** `scoped` is `store.all()`
+  // order — `ORDER BY id` — so the first entry is whichever id sorts first,
+  // and on this project's live corpus that was a SUPERSEDED decision. Then a
+  // task, then an active rationale item, and only fourth an active normative
+  // one. `pickId()` has to walk past the first three to be right, and a rule
+  // that stopped at the first admissible entry would stop at the decision.
   scope: {
     topic: 'scope',
     markdown: '# Scope\n\nhow scope restricts.\n',
     corpus: {
       scoped: [
+        { id: 'DEC-focus-discloses-and-allows-rather-than-refusing-to-hide', title: 'focus discloses', scope: ['src/**'] },
+        { id: 'TASK-injection-preview-rung-4-of-the-gate-ladder-can-never-be', title: 'rung 4', scope: ['src/**'] },
+        { id: 'DEC-index-lists-only-what-is-not-already-injected', title: 'index lists', scope: ['src/**'] },
         { id: 'INV-prices-are-integer-cents', title: 'prices are integer cents', scope: ['src/**'] },
         { id: 'RULE-never-log-customer-email', title: 'never log customer email', scope: ['src/**'] },
       ],
@@ -260,8 +269,69 @@ const HELP: Record<string, unknown> = {
   },
 };
 
-/** The two rows the joins above give an id to, in the module's own order. */
+/**
+ * The two rows the joins above give an id to, in the module's own order.
+ *
+ * Both are what the SELECTION RULE returns, not what the list happens to put
+ * first: `scope`'s list opens with a superseded decision, a task and an active
+ * rationale item, and the invariant below is fourth.
+ */
 const APP_CROSS_LINKS = ['INV-prices-are-integer-cents', 'CONST-zero-runtime-dependencies'];
+
+// ── The two facts a cross-link is checked against ──────────────────────────
+
+/**
+ * `/api/items`' `items`, cut to the three fields `pickId()` reads — `id`,
+ * `type`, `status`. Every id the joins above name is here, because an id
+ * `/api/items` does not carry is one the screen cannot check and therefore
+ * does not draw; a fixture that quietly omitted one would be testing that
+ * branch by accident instead of the rule.
+ */
+const CORPUS = [
+  { id: 'ADR-markdown-plus-disposable-index', type: 'adr', status: 'active' },
+  { id: 'CONST-zero-runtime-dependencies', type: 'constraint', status: 'active' },
+  { id: 'DEC-focus-discloses-and-allows-rather-than-refusing-to-hide', type: 'decision', status: 'superseded' },
+  { id: 'DEC-index-lists-only-what-is-not-already-injected', type: 'decision', status: 'active' },
+  { id: 'INV-prices-are-integer-cents', type: 'invariant', status: 'active' },
+  { id: 'RULE-never-log-customer-email', type: 'rule', status: 'active' },
+  { id: 'TASK-injection-preview-rung-4-of-the-gate-ladder-can-never-be', type: 'task', status: 'active' },
+];
+
+/**
+ * `/api/config`'s `resolved.categories`, cut to `name` and `tier`. These are
+ * `core/categories.ts`' own tiers for the six categories the fixtures use —
+ * the screen asks the endpoint rather than carrying a list of "the normative
+ * ones", so the fixture is where the tier vocabulary is written down here.
+ */
+const TIERS = [
+  { name: 'adr', tier: 'rationale' },
+  { name: 'constraint', tier: 'normative' },
+  { name: 'decision', tier: 'rationale' },
+  { name: 'invariant', tier: 'normative' },
+  { name: 'rule', tier: 'normative' },
+  { name: 'task', tier: 'rationale' },
+];
+
+/**
+ * The two shared reads, keyed by ROUTE rather than by topic: they are asked
+ * once for the whole table, before any help endpoint, and a test that wants
+ * one of them to fail omits its key.
+ */
+const SHARED: Record<string, unknown> = {
+  '/api/items': {
+    items: CORPUS,
+    retiredStatuses: ['deprecated', 'superseded', 'validated'],
+  },
+  '/api/config': {
+    path: '/tmp/.my_context/config.json',
+    exists: true,
+    raw: {},
+    parseError: null,
+    resolveError: null,
+    resolved: { profile: 'standard', categories: TIERS },
+    servingLastGood: false,
+  },
+};
 
 interface RenderResult { root: FakeNode; asked: string[] }
 
@@ -274,6 +344,7 @@ interface RenderResult { root: FakeNode; asked: string[] }
 async function renderLearn(
   lang: 'en' | 'he',
   bodies: Record<string, unknown> = HELP,
+  shared: Record<string, unknown> = SHARED,
 ): Promise<RenderResult> {
   const { render } = await learn();
   const { t } = await i18n();
@@ -287,6 +358,14 @@ async function renderLearn(
     t: (key: string, subs: Record<string, string | number> = {}) => t(strings, key, subs, doc),
     api: async (route: string): Promise<unknown> => {
       asked.push(route);
+      // The two shared reads first, by route: they are not help topics, and a
+      // fixture that omits one is asking what the screen does when the fact a
+      // cross-link is checked against cannot be read at all.
+      if (route === '/api/items' || route === '/api/config') {
+        const body = shared[route];
+        if (body === undefined) throw new Error(`${route} is unavailable`);
+        return body;
+      }
       const topic = route.slice(route.lastIndexOf('/') + 1);
       const body = bodies[topic];
       // The endpoint's own 404 wording, close enough to matter: `errorNote`
@@ -370,7 +449,12 @@ test('every ln. key the module names is the mockup\'s, and both string tables de
 
 test('the screen GETs one help endpoint per topic, and touches no other part of the contract', async () => {
   const { asked } = await renderLearn('en');
+  // The two shared reads come FIRST and come ONCE — `status`/`type` and the
+  // category tiers are the same two facts for all four rows, and asking them
+  // per row would be up to eight requests for one answer, two of them made by
+  // rows whose join carries no id at all.
   assert.deepEqual(asked, [
+    '/api/items', '/api/config',
     '/api/help/categories', '/api/help/scope', '/api/help/capture', '/api/help/workflow',
   ]);
 });
@@ -491,51 +575,163 @@ test('every machine-text run carries .m — the topic names and the clickable cr
   }
 });
 
-// ── 6. categories draws the honest unmeasured mark; workflow draws nothing ─
+// ── 6. Every row is a named ACTIVE item or the ◌ mark. Never neither ───────
+
+/** The `<tr>`s, in the module's order. */
+function rowsOf(root: FakeNode): FakeNode[] {
+  return elementsOf(root).filter((node) => node.tag === 'tr');
+}
+
+/** The clickable id this row draws, or `null`. */
+function linkOf(row: FakeNode): string | null {
+  const button = elementsOf(row).find((n) => n.tag === 'button' && n.className === 'linkid m');
+  return button === undefined ? null : textOf(button);
+}
+
+/** The `◌` chip this row draws, or `null`. */
+function markOf(row: FakeNode): FakeNode | null {
+  return elementsOf(row).find((n) => n.tag === 'span' && n.className === 'chip unmeas') ?? null;
+}
 
 /**
- * `categories` answers `{ counts, empty }` and `workflow` answers
- * `{ drafts, pendingRevisions }`. Neither carries an item id, and the module's
- * header says why inventing one would be a claim the response does not make.
+ * **THE assertion `TASK-learn-cross-links-a-superseded-item-and-a-closed-task-
+ * and` exists for, and the one that stops this regressing quietly.**
+ *
+ * The screen's subtitle promises *"The four help topics, each linked to the
+ * items in this corpus that demonstrate it"* — a promise a subtitle makes for
+ * every row under it. So there are exactly two honest endings: a named item,
+ * or the `◌` mark saying no suitable one was found. `workflow` was ending in
+ * neither — no id, no mark, no text at all — which is the silent drop
+ * `INV-nothing-is-dropped-silently` forbids, and it is invisible to every
+ * assertion that only checks the rows that DO link.
+ *
+ * Both languages, because a mark drawn from a string table can be lost in one
+ * of them.
+ */
+test('every row ends in exactly one of two states: a named item, or the ◌ mark', async () => {
+  for (const lang of ['en', 'he'] as const) {
+    const { root } = await renderLearn(lang);
+    const rows = rowsOf(root);
+    assert.equal(rows.length, 4);
+    for (const row of rows) {
+      const topic = textOf(row.children[0]!);
+      const link = linkOf(row);
+      const mark = markOf(row);
+      assert.notEqual(link === null && mark === null, true,
+        `${lang}: the ${topic} row drew neither an item nor the ◌ mark — that is the silent drop`);
+      assert.notEqual(link !== null && mark !== null, true,
+        `${lang}: the ${topic} row drew both an item and the ◌ mark, which say opposite things`);
+      // Whichever it drew, it is introduced by the mockup's separator — the
+      // description, then ` · `, then the one run.
+      assert.equal(textOf(row.children[1]!).includes(' · '), true,
+        `${lang}: the ${topic} row lost the separator before its answer`);
+      if (mark !== null) {
+        assert.equal(mark.dataset.g, '◌');
+        assert.equal(textOf(mark) !== '', true, `${lang}: the ${topic} row's mark is unlabelled`);
+      }
+    }
+  }
+});
+
+/**
+ * Which row is in which state, against the fixtures — the four-row reading the
+ * task took off the live screen, now made in code.
+ *
  * The mockup USED TO draw an invented id on its categories row
  * (`CONST-zero-runtime-dependencies`) — the one place the app's cross-links
  * and the mockup's sat on different rows. `TASK-learn-the-categories-row-
- * cannot-draw-the-cross-link-its-own` closed that: the mockup now draws the
- * same honest `◌` mark the app draws, and the two agree.
+ * cannot-draw-the-cross-link-its-own` closed that: the mockup draws the same
+ * honest `◌` mark the app draws, and the two agree.
  */
-test('categories draws the honest ◌ mark, scope and capture draw clickable ids, workflow draws neither', async () => {
+test('categories and workflow draw the ◌ mark; scope and capture draw the item the rule picked', async () => {
   const { root } = await renderLearn('en');
-  const rows = elementsOf(root).filter((node) => node.tag === 'tr');
-  assert.equal(rows.length, 4);
+  const rows = rowsOf(root);
 
-  const linkedRows = rows
-    .filter((row) => elementsOf(row).some((node) => node.className === 'linkid m' && node.tag === 'button'))
-    .map((row) => textOf(row.children[0]!));
-  assert.deepEqual(linkedRows, ['scope', 'capture']);
+  assert.deepEqual(rows.map((row) => [textOf(row.children[0]!), linkOf(row)]), [
+    ['categories', null],
+    ['scope', 'INV-prices-are-integer-cents'],
+    ['capture', 'CONST-zero-runtime-dependencies'],
+    ['workflow', null],
+  ]);
 
-  // categories is not linked — it is MARKED, with the same `◌` primitive
+  // The two unlinked rows are MARKED, with the same `◌` primitive
   // `coverage.js`, `doctor.js`, `watch.js` and `injected.js` already spend on
-  // "this was not measured", never a fourth convention.
-  const categoriesRow = rows.find((row) => textOf(row.children[0]!) === 'categories')!;
-  const mark = elementsOf(categoriesRow).find((n) => n.tag === 'span' && n.className === 'chip unmeas')!;
-  assert.notEqual(mark, undefined, 'categories does not draw the ◌ unmeasured chip');
-  assert.equal(mark.dataset.g, '◌');
-  assert.equal(textOf(mark), 'no single item represents this');
+  // "this was not measured", never a fifth convention. `workflow` is the row
+  // that used to draw nothing here.
+  for (const topic of ['categories', 'workflow']) {
+    const row = rows.find((r) => textOf(r.children[0]!) === topic)!;
+    const mark = markOf(row);
+    assert.notEqual(mark, null, `${topic} does not draw the ◌ unmeasured chip`);
+    assert.equal(mark!.dataset.g, '◌');
+    assert.equal(textOf(mark!), 'no single item represents this');
+  }
 
-  // The mockup's own linked rows agree with the app's now — the divergence
-  // this test used to pin is closed. One `<tr>` per line in the mockup source,
-  // so "does this row's line contain a linkid button" is one check per row.
+  // The mockup's own linked rows agree with the app's — one `<tr>` per line in
+  // the mockup source, so "does this row's line contain a linkid button" is one
+  // check per row.
   const mockupLinked = [...learnSection().matchAll(/<tr><td class="m">([a-z]+)<\/td><td class="small">([^]*?)<\/tr>/g)]
     .filter((m) => m[2]!.includes('class="linkid m"'))
     .map((m) => m[1]!);
   assert.deepEqual(mockupLinked, ['scope', 'capture'],
     'the mockup and the endpoints now agree: scope and capture carry ids, categories does not');
+});
 
-  // No placeholder, no dash, no empty run: workflow — the one row with no id
-  // and no claim to retract — is its description and nothing after it.
-  const workflowRow = rows.find((row) => textOf(row.children[0]!) === 'workflow')!;
-  assert.equal(textOf(workflowRow.children[1]!).includes('·'), false,
-    'workflow drew a separator with nothing after it');
+// ── 6b. The selection rule itself, one exclusion at a time ────────────────
+
+/**
+ * **The three faults the task names, each pinned separately**, because a rule
+ * that got the right answer for one reason would still be wrong.
+ *
+ * The `scope` fixture's list is the live corpus' own shape: a superseded
+ * decision first (`ORDER BY id` put it there), then a task, then an ACTIVE
+ * rationale item, then the invariant. Every earlier candidate has to be
+ * rejected for its own reason for the fourth to be the answer.
+ */
+test('the pick skips a superseded item, skips a task, and prefers the normative tier', async () => {
+  const { root } = await renderLearn('en');
+  const scope = rowsOf(root).find((row) => textOf(row.children[0]!) === 'scope')!;
+  assert.equal(linkOf(scope), 'INV-prices-are-integer-cents',
+    'the scope row did not walk past the superseded decision, the task and the active decision');
+
+  // Each exclusion on its own, as the ONLY candidate — so a pass here cannot
+  // come from a later entry rescuing the row.
+  const only = async (id: string): Promise<string | null> => {
+    const { root: r } = await renderLearn('en', {
+      ...HELP,
+      scope: { topic: 'scope', markdown: '', corpus: { scoped: [{ id, title: 't', scope: ['src/**'] }], unscoped: [] } },
+    });
+    return linkOf(rowsOf(r).find((row) => textOf(row.children[0]!) === 'scope')!);
+  };
+  assert.equal(await only('DEC-focus-discloses-and-allows-rather-than-refusing-to-hide'), null,
+    'a superseded item was drawn as a demonstration of how scope works');
+  assert.equal(await only('TASK-injection-preview-rung-4-of-the-gate-ladder-can-never-be'), null,
+    'a task was drawn — a task is a piece of work, not a demonstration');
+  assert.equal(await only('MISSING-not-in-this-corpus'), null,
+    'an id /api/items does not carry was drawn, so neither fact about it was checked');
+  // A rationale item is not refused — it is OUTRANKED. On its own it is the
+  // best available answer and is drawn, which is why the preference has to be
+  // measured against a list rather than against one entry.
+  assert.equal(await only('DEC-index-lists-only-what-is-not-already-injected'),
+    'DEC-index-lists-only-what-is-not-already-injected');
+
+  // And a list in which nothing survives ends in the mark, not in blank space.
+  const { root: none } = await renderLearn('en', {
+    ...HELP,
+    scope: {
+      topic: 'scope',
+      markdown: '',
+      corpus: {
+        scoped: [
+          { id: 'DEC-focus-discloses-and-allows-rather-than-refusing-to-hide', title: 'a', scope: ['src/**'] },
+          { id: 'TASK-injection-preview-rung-4-of-the-gate-ladder-can-never-be', title: 'b', scope: ['src/**'] },
+        ],
+        unscoped: [],
+      },
+    },
+  });
+  const empty = rowsOf(none).find((row) => textOf(row.children[0]!) === 'scope')!;
+  assert.equal(linkOf(empty), null);
+  assert.notEqual(markOf(empty), null, 'a join whose every candidate was excluded drew blank space');
 });
 
 /** An empty list, and an entry whose `id` is not a usable string, are the same answer. */
@@ -547,6 +743,8 @@ test('an empty or malformed join is not a cross-link', async () => {
   });
   assert.deepEqual(
     elementsOf(empty.root).filter((n) => n.tag === 'button' && n.className === 'linkid m').map(textOf), []);
+  // And all four rows still end somewhere: an unusable join is the mark.
+  assert.equal(rowsOf(empty.root).filter((row) => markOf(row) !== null).length, 4);
 
   const wrong = await renderLearn('en', {
     ...HELP,
@@ -555,6 +753,33 @@ test('an empty or malformed join is not a cross-link', async () => {
   });
   assert.deepEqual(
     elementsOf(wrong.root).filter((n) => n.tag === 'button' && n.className === 'linkid m').map(textOf), []);
+  assert.equal(rowsOf(wrong.root).filter((row) => markOf(row) !== null).length, 4);
+});
+
+/**
+ * **Unverifiable is not the same as absent.** When `/api/items` or
+ * `/api/config` cannot be read, the two facts a cross-link is checked against
+ * are unknown — so a linked row draws the reason rather than an unchecked id
+ * (which is the defect) or the `◌` mark (which would claim a search was run
+ * and found nothing). The two rows whose join carries no id at all never
+ * depended on that read and are unaffected.
+ */
+test('a failed shared read costs the linked rows their id and says so — it never guesses', async () => {
+  for (const missing of ['/api/items', '/api/config']) {
+    const shared = { ...SHARED };
+    delete shared[missing];
+    const { root } = await renderLearn('en', HELP, shared);
+    const rows = rowsOf(root);
+
+    assert.deepEqual(rows.map(linkOf), [null, null, null, null],
+      `${missing} was unreadable and an unchecked id was drawn anyway`);
+    // categories and workflow are still marked; scope and capture are not —
+    // they carry the server's sentence instead.
+    assert.deepEqual(rows.map((row) => markOf(row) !== null), [true, false, false, true]);
+    const spills = elementsOf(root).filter((node) => node.className === 'small spill');
+    assert.equal(spills.length, 2);
+    for (const spill of spills) assert.match(textOf(spill), new RegExp(`${missing} is unavailable`));
+  }
 });
 
 // ── 7. A refused topic replaces that row's cross-link, never the table ─────

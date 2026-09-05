@@ -35,46 +35,95 @@
  * So this file draws the table, and `renderMarkdown` is not written. See
  * `lib/viewmodel.js`'s header.
  *
- * ── THE JOIN, PER TOPIC, AND THE ONE ROW THAT HAS NO ITEM TO POINT AT ─────
+ * ── THE JOIN, PER TOPIC, AND WHAT MAY BE DRAWN AS A DEMONSTRATION ────────
  *
  * `/api/help/:topic` answers `{ topic, markdown, corpus }` with a different
  * `corpus` shape per topic, each documented on `apiHelp`. Only two of the four
- * carry an ITEM ID:
+ * carry item ids at all:
  *
- *   - `scope` → `corpus.scoped[…].id` — an item that declares one. Served.
- *   - `capture` → `corpus.recent[…].id` — served.
+ *   - `scope` → `corpus.scoped[…]` — every item that declares one, in
+ *     `store.all()` order, which is `ORDER BY id`.
+ *   - `capture` → `corpus.recent[…]` — the five most recent by FILE
+ *     MODIFICATION TIME, the only recency signal that exists (`Item` carries
+ *     no creation timestamp).
  *   - `categories` → `{ counts, empty }`. A tally and a list of category
  *     names. **No item id.** An id invented from a tally would be a claim
  *     about which item demonstrates "which are normative" that nothing in the
  *     response makes — `TASK-learn-the-categories-row-cannot-draw-the-cross-
- *     link-its-own` ruled that out by name. The mockup used to draw one here
- *     anyway (`CONST-zero-runtime-dependencies`, invented, not served) and
- *     that was the defect: a reader could not tell an illustrated join from a
- *     real one. **The row now says so instead of guessing** — the ONE `◌`
- *     primitive `STD-a-measured-zero-is-drawn-and-named-an-unmeasured-thing-is`
- *     governs, already spent by `coverage.js`, `doctor.js`, `watch.js` and
- *     `injected.js` for exactly this fact (a thing that was not measured,
- *     never rendered blank), reused here rather than a fourth convention. It
- *     is not "zero" — `counts` and `empty` are real, measured numbers, drawn
- *     as `ln.c`'s description — it is that no SINGLE item was ever going to
- *     answer "which one shows this is normative", so none is claimed.
- *   - `workflow` → `{ drafts, pendingRevisions }`. Two counts, no item id —
- *     and the mockup draws no cross-link and no `◌` note on this row either.
- *     The difference from `categories` is real: `workflow` never claimed a
- *     join and drawing an explicit "unmeasured" mark over a row nobody ever
- *     promised one on would be inventing a *different* claim nothing asked
- *     for. `categories` gets the mark because the mockup used to draw a join
- *     there and that promise needed an honest retraction, not a silent one.
+ *     link-its-own` ruled that out by name.
+ *   - `workflow` → `{ drafts, pendingRevisions }`. Two counts, no item id.
  *
- * **The `capture` row gains a cross-link the mockup does not draw, and takes
- * no label with it.** `apiHelp` warns that `recent` is ordered by FILE
- * MODIFICATION TIME — the only recency signal that exists, since `Item` has no
- * creation timestamp — and that *"the label has to carry that condition, and
- * the mockup has no string for it"*. This row therefore claims no recency: it
- * shows one item from this corpus that was captured into it, which is what
- * `ln.p` (*"what to write down, and when"*) is illustrated by. The mtime
- * ordering decides WHICH one deterministically and is never stated on screen,
- * because there is no key to state it with.
+ * **Carrying an id is not the same as demonstrating a topic, and taking the
+ * first one was the defect** — `TASK-learn-cross-links-a-superseded-item-and-
+ * a-closed-task-and`, found 2026-09-05 by reading the live DOM. `scope`
+ * linked `DEC-focus-discloses-and-allows-rather-than-refusing-to-hide`, whose
+ * own pane says `not injected (status "superseded")`: a decision that stopped
+ * governing two days earlier, offered as the illustration of how scope works.
+ * `capture` linked a TASK, closed as done within the hour. Neither ordering
+ * above ranks how well an item TEACHES anything — `list[0]` was picking by
+ * alphabet on one row and by `touch` on the other.
+ *
+ * **So the row picks, and the two facts it picks on are not in the help
+ * response.** `corpus.scoped[…]` carries `{ id, title, scope }` and
+ * `corpus.recent[…]` carries `{ id, title, mtime }` — no status, no category.
+ * Both are read from the endpoints that own them, ONCE for the whole table
+ * rather than once per row:
+ *
+ *   - `/api/items` — `ItemSummary.status` and `.type`, for every item.
+ *   - `/api/config` — `resolved.categories[…].tier`. Which categories are
+ *     normative is CONFIG, not a property of six names spelled out in a
+ *     comment here: a project may declare a category with a tier, and a
+ *     hand-copied list of "the normative ones" in this file would be a second
+ *     authority free to drift from the first. Same argument
+ *     `ItemsBody.retiredStatuses` makes for putting a closed set on the wire.
+ *
+ * `pickId()` is then the whole rule, walked over the join's own order:
+ *
+ *   1. an id this corpus does not hold is not drawn — nothing about it can be
+ *      checked, and an unverifiable link is what this task removed;
+ *   2. `status` must be `active`. Superseded, deprecated, validated and draft
+ *      items are all excluded — the first half of the defect;
+ *   3. a `task` is never drawn. A task is a piece of work, and a finished one
+ *      demonstrates nothing about how the product is meant to be used — the
+ *      second half;
+ *   4. the NORMATIVE tier wins outright. A rule, constraint, invariant,
+ *      instruction, requirement or standard says how something works, which is
+ *      what these rows claim to illustrate; a rationale item says why a
+ *      decision was taken. So the scan runs the WHOLE list looking for a
+ *      normative candidate before it settles for a rationale one, rather than
+ *      stopping at the first merely-admissible entry;
+ *   5. and when nothing survives, the row draws the `◌` mark. Never blank.
+ *
+ * **Every one of the four rows therefore ends in exactly one of two states: a
+ * named ACTIVE item, or the `◌` unmeasured mark.** `workflow` was the row
+ * breaking that — no id, no mark, no text at all, a silent nothing a reader
+ * cannot tell from a bug, which is precisely what
+ * `INV-nothing-is-dropped-silently` exists to forbid. The mark is the ONE `◌`
+ * primitive `STD-a-measured-zero-is-drawn-and-named-an-unmeasured-thing-is`
+ * governs, already spent by `coverage.js`, `doctor.js`, `watch.js` and
+ * `injected.js` for exactly this fact (a thing that was not measured, never
+ * rendered blank), reused here rather than a fifth convention. On the
+ * `categories` row it is not "zero" — `counts` and `empty` are real, measured
+ * numbers, drawn as `ln.c`'s description — it is that no SINGLE item was ever
+ * going to answer "which one shows this is normative", so none is claimed.
+ *
+ * **The distinction this file used to draw between `categories` (marked) and
+ * `workflow` (silent) did not survive contact with the screen.** The argument
+ * on record was that `categories` had a promise to retract, because the mockup
+ * once drew an invented id there, and `workflow` never made one. But the
+ * promise is the SUBTITLE's — *"The four help topics, each linked to the items
+ * in this corpus that demonstrate it"* — and a subtitle makes its promise for
+ * every row under it. A row that answers it with nothing at all is the silent
+ * drop, not a modest abstention.
+ *
+ * **The `capture` row's cross-link takes no label with it.** `apiHelp` warns
+ * that `recent` is ordered by file modification time and that *"the label has
+ * to carry that condition, and the mockup has no string for it"*. This row
+ * therefore claims no recency: it shows one item from this corpus that was
+ * captured into it, which is what `ln.p` (*"what to write down, and when"*) is
+ * illustrated by. The mtime ordering decides which candidates are CONSIDERED,
+ * deterministically, and is never stated on screen because there is no key to
+ * state it with.
  *
  * **One id per row, because the mockup has room for one.** `scoped` and
  * `recent` are lists; the design of record shows a single id after a `·`. A
@@ -150,24 +199,115 @@ const TOPICS = [
   { topic: 'workflow', key: 'ln.w', link: null },
 ];
 
-/** The first id in a topic's list join, or `null` for an empty corpus. */
-function firstId(corpus, field) {
-  if (field === null || corpus === null || typeof corpus !== 'object') return null;
-  const list = corpus[field];
-  if (!Array.isArray(list) || list.length === 0) return null;
-  const id = list[0].id;
-  return typeof id === 'string' && id !== '' ? id : null;
+/**
+ * The tier whose items say how something WORKS, which is what these rows
+ * claim to illustrate. Compared against `/api/config`'s own answer for a
+ * category, never against a list of category names kept here.
+ */
+const NORMATIVE = 'normative';
+
+/**
+ * The one category no row ever links to, whatever its tier.
+ *
+ * A task is a piece of work. `TASK-injection-preview-rung-4-of-the-gate-
+ * ladder-can-never-be` was drawn on the `capture` row and closed as done
+ * within the hour, so the screen was teaching "what to write down, and when"
+ * from a finished piece of work. Every OTHER rationale category is admitted,
+ * but only after the whole list has been searched for a normative one.
+ */
+const NEVER_LINKED = 'task';
+
+/**
+ * The two facts a cross-link is checked against, read once for the whole
+ * table: `status` and `type` per item, and `tier` per category.
+ *
+ * Throws with the server's own sentence when either read fails or when
+ * `/api/config` answers 200 with `resolved: null` — the shape it takes when
+ * the file on disk does not load and the server is serving the last good
+ * config. Unverifiable is not the same as absent: a row that cannot check an
+ * id draws the reason (see `render()`), never the id and never the `◌` mark,
+ * which would claim a measurement nobody made.
+ */
+async function selectionIndex(ctx) {
+  const [itemsBody, configBody] = await Promise.all([
+    ctx.api('/api/items'),
+    ctx.api('/api/config'),
+  ]);
+
+  const items = new Map();
+  const served = itemsBody === null || typeof itemsBody !== 'object' ? null : itemsBody.items;
+  if (!Array.isArray(served)) throw new Error('/api/items served no items array');
+  for (const item of served) {
+    if (item !== null && typeof item === 'object' && typeof item.id === 'string') {
+      items.set(item.id, item);
+    }
+  }
+
+  const resolved = configBody === null || typeof configBody !== 'object' ? null : configBody.resolved;
+  const categories = resolved === null || typeof resolved !== 'object' ? null : resolved.categories;
+  if (!Array.isArray(categories)) {
+    // `servingLastGood`: the loader's own sentence is the only thing that says
+    // WHICH break this is, so it is what travels into the row.
+    const why = (configBody && (configBody.parseError ?? configBody.resolveError)) ?? null;
+    throw new Error(why === null
+      ? '/api/config served no resolved categories, so no tier can be read'
+      : why);
+  }
+  const tiers = new Map();
+  for (const category of categories) {
+    if (category !== null && typeof category === 'object' && typeof category.name === 'string') {
+      tiers.set(category.name, category.tier);
+    }
+  }
+
+  return { items, tiers };
 }
 
 /**
- * The `categories` row's honest reply to having no item to point at —
+ * The id this topic's join demonstrates the topic with, or `null` where none
+ * of its candidates does. The five numbered steps in this file's header are
+ * this function, in order.
+ *
+ * The whole list is walked even after an admissible rationale candidate is
+ * found, because the normative tier wins OUTRIGHT rather than by position:
+ * `scoped` is `ORDER BY id` and `recent` is `mtime`, and stopping at the first
+ * admissible entry would be picking by alphabet or by `touch` again — a
+ * quieter version of the same defect.
+ */
+function pickId(corpus, field, index) {
+  if (field === null || corpus === null || typeof corpus !== 'object') return null;
+  const list = corpus[field];
+  if (!Array.isArray(list) || list.length === 0) return null;
+
+  let rationale = null;
+  for (const entry of list) {
+    const id = entry === null || typeof entry !== 'object' ? null : entry.id;
+    if (typeof id !== 'string' || id === '') continue;
+    const item = index.items.get(id);
+    // An id `/api/items` does not carry cannot be checked for either fact, so
+    // it is not drawn. `/api/items` is EVERY item — drafts, rationale-tier
+    // items and disabled categories included — so this is a genuinely absent
+    // item and not a filter disagreeing with the join.
+    if (item === undefined) continue;
+    if (item.status !== 'active') continue;
+    if (item.type === NEVER_LINKED) continue;
+    if (index.tiers.get(item.type) === NORMATIVE) return id;
+    if (rationale === null) rationale = id;
+  }
+  return rationale;
+}
+
+/**
+ * A row's honest reply to having no item to point at —
  * `STD-a-measured-zero-is-drawn-and-named-an-unmeasured-thing-is`'s `◌`
  * primitive, already spent by `coverage.js`, `doctor.js`, `watch.js` and
- * `injected.js` for the same fact and reused here rather than a fourth
- * convention. See this file's header for why `categories` gets this mark and
- * `workflow` — the other topic with no item id — does not.
+ * `injected.js` for the same fact and reused here rather than a fifth
+ * convention. Drawn on ANY of the four rows: the two whose join carries no id
+ * at all, and either of the other two when nothing in its list survives
+ * `pickId()`. See this file's header for why `workflow` no longer draws
+ * nothing instead.
  */
-function categoriesUnmeasured(ctx) {
+function unmeasuredMark(ctx) {
   const chip = el('span', 'chip unmeas');
   chip.dataset.g = '◌';
   chip.append(...ctx.t('ln.cUnmeasured'));
@@ -184,6 +324,19 @@ export async function render(root, ctx) {
   table.append(tbody);
   card.append(table);
   root.append(card);
+
+  // ONE read of `status`, `type` and `tier` for the whole table, before the
+  // loop, because every row asks the same two questions of the same two
+  // endpoints. A per-row read would be up to eight requests to learn one fact
+  // twice, and the two rows whose join carries no id would make them for
+  // nothing.
+  let index = null;
+  let indexFailure = null;
+  try {
+    index = await selectionIndex(ctx);
+  } catch (error) {
+    indexFailure = error.message;
+  }
 
   for (const entry of TOPICS) {
     const row = el('tr');
@@ -207,22 +360,25 @@ export async function render(root, ctx) {
       // sentence is worth more than a blank cell. It replaces this row's
       // cross-link, never the whole table — the other three topics answered.
       cell.append(errorNote(failure));
+    } else if (entry.link !== null && index === null) {
+      // The shared read failed, so this row's candidates cannot be checked for
+      // status or tier. It draws the reason — never an unchecked id, and never
+      // the `◌` mark, which asserts that a search was RUN and found nothing.
+      // The two rows whose join carries no ids at all are unaffected: their
+      // answer never depended on this read.
+      cell.append(errorNote(indexFailure));
     } else {
-      const id = firstId(body.corpus, entry.link);
+      const id = pickId(body.corpus, entry.link, index);
       // `linkId()`, which is `<button class="linkid m">` — the shape every
       // other cross-linked id in this app draws, reaching the same item
       // detail pane a click on any of them opens. See this file's header for
       // the measurement behind `.m` and for why this used to be a plain span.
-      if (id !== null) {
-        cell.append(' · ', linkId(id, false));
-      } else if (entry.topic === 'categories') {
-        // The one row that once drew an invented id and now draws the honest
-        // fact instead: no single item was ever going to answer this.
-        cell.append(' · ', categoriesUnmeasured(ctx));
-      }
-      // No further `else`: `workflow` is the other topic whose join carries no
-      // item id, and it never claimed one — drawing a mark there would invent
-      // a different claim nothing asked for. See this file's header.
+      //
+      // And the `else` is the whole of what walk/138 added: EVERY row ends in
+      // one of these two states, an active named item or the honest mark. A
+      // row that drew neither is the silent drop `INV-nothing-is-dropped-
+      // silently` forbids, and `workflow` was drawing it.
+      cell.append(' · ', id !== null ? linkId(id, false) : unmeasuredMark(ctx));
     }
 
     row.append(cell);
