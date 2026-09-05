@@ -38,7 +38,7 @@ const ROOT = path.join(import.meta.dirname, '..', '..');
 const COMMAND_DIR = path.join(ROOT, 'commands');
 
 /** Hand-written and predating the generator; excluded by name, not by shape. */
-const HAND_WRITTEN = new Set(['LoadMyContext.md']);
+const HAND_WRITTEN = new Set(['LoadMyContext.md', 'session-name.md', 'session-carry.md']);
 
 function committedFiles(): string[] {
   return readdirSync(COMMAND_DIR)

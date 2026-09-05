@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: Two shortcut commands for naming a session and carrying work into the next one, and a guard so the hand-written ones are not deleted by the generator.
-summary_of: 7941945c08eb7116
+summary_of: 787a903a37bd4abe
 summary_was:
   - 2026-09-03 The shortcut commands for session and carry-over work, waiting on a measurement that only a live session can provide.
 acknowledged:
@@ -15,7 +15,7 @@ scope: []
 tags:
   - "plan:hooks"
   - "seq:16"
-  - "state:doing"
+  - "state:done"
   - v2
 origin: human
 source_file: null
@@ -23,14 +23,15 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-08-20
 valid_until: null
-checksum: 59d77a384b096114
+checksum: 88277ccd10b1e137
 plan: hooks
 seq: "16"
-state: doing
+state: done
 progress: "0"
 source: "my-context/docs/superpowers/plans/2026-08-20-v2-hooks-sessions-and-continuity.md#task-16"
 last_change: "2026-08-20T00:00:00Z"
 priority: "4"
+verified_on: 2026-09-05
 ---
 
 # hooks task 16: The slash commands

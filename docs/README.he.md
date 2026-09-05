@@ -736,6 +736,7 @@ my_context EXTRACTION REQUEST — docs/prd.md § bookstore-api-prd (chunk 1 of 3
 - Emit a JSON array matching the "schema" field. Return [] when the chunk establishes nothing normative — that is a correct and common answer, and the common case for prose that isn't a spec.
 - Every candidate MUST carry a "quote": a span copied VERBATIM from the chunk. It is checked by exact match after whitespace collapsing, and a paraphrase is rejected. This is how an invented item is caught.
 - "title" is one declarative sentence on a SINGLE LINE, at most 200 characters — no line breaks. Put the reasoning in "body".
+- Every candidate MUST carry a "summary": one plain sentence for a reader who does not know this codebase, saying what the item IS and why it matters — not how it was found. Plain words only, no ids, no file paths, no measurements, at most 160 characters. Write it now, while you still have the source document in view: nothing else in this product can write it for you afterwards, and a candidate with no summary is rejected.
 - "body" is plain prose: no line may start with a Markdown heading ("#" through "######", e.g. "## Why") — that line and everything after it is silently dropped when the item is read back from disk. Do not structure the rationale with headings; use plain paragraphs.
 - "scope", "tags" and "observations" must each be a JSON ARRAY — never a bare string. Scope RESTRICTS where an item applies: set it only to the directories the item actually governs, as POSIX globs such as "src/auth/**". "**", "*" and "**/*" are all rejected, because omitting "scope" already means exactly that. Omitting scope is safe and is the right answer when the item is not about particular files — it simply leaves the item unrestricted, so it applies everywhere.
 - "severity" is "hard" (a future enforcement candidate) or "soft" (the default) — omit it to get "soft".
@@ -962,6 +963,7 @@ built, it is meant as a boundary.
         "type",
         "title",
         "body",
+        "summary",
         "quote"
       ],
       "additionalProperties": false,
@@ -978,6 +980,11 @@ built, it is meant as a boundary.
         "body": {
           "type": "string",
           "description": "The rationale: why this holds, and what breaks if it does not. Plain prose only — no line may start with a Markdown heading (\"#\" through \"######\", e.g. \"## Why\"). A heading line and everything after it is silently dropped when the item is read back from disk."
+        },
+        "summary": {
+          "type": "string",
+          "maxLength": 160,
+          "description": "One plain sentence for a reader who does not know this codebase: what the item IS and why it matters, not how it was found. Plain words only — no ids, no file paths, no measurements, no project vocabulary. At most 160 characters, a single line. Write it now, while you still have the source document in view — this is the only chance, because everything this item creates lands as an unreviewed draft and nothing else in this product can write the sentence for you afterwards."
         },
         "quote": {
           "type": "string",
@@ -2004,7 +2011,7 @@ _1 item(s) omitted from full text for budget: CONST-postgres-pool-capped-at-20. 
 
 ```mermaid
 flowchart TB
-  U(["<b>אתה</b>"]) --> SL["<b>/mycontext:…</b><br/>88 פקודות סלאש"]
+  U(["<b>אתה</b>"]) --> SL["<b>/mycontext:…</b><br/>90 פקודות סלאש"]
   U --> CL["<b>mycontext …</b><br/>43 פקודות שורת פקודה"]
   A(["<b>Claude</b>"]) --> TL["<b>כלי MCP</b><br/>עשרים ושניים, מוגשים מעל stdio"]
   SL -->|"add-* · search · link · LoadMyContext"| TL
@@ -2192,6 +2199,19 @@ known issue שנלכד בידי סוכן נוחת כ**טיוטה** הממתינ�
 [משוחזרת רק אם](#משוחזר--אחרי-שחלון-ההקשר-מכווץ) תמונת המצב שנלקחת לפני הכיווץ עדיין מוצאת
 את המזהים שלה בתמליל, וזה המצב הרגיל אך לא מובטח.
 
+**המשכיות.** <span dir="ltr">`/mycontext:session-name`</span> ו-<span
+dir="ltr">`/mycontext:session-carry`</span> הן שתי הפקודות הכתובות ביד הנוספות, עוטפות את
+<span dir="ltr">`mycontext session name`</span> ואת <span dir="ltr">`mycontext session
+carry`</span>. אף אחת מהן אינה יכולה ליישב "הסשן הזה" בשמכם — שום משטח של שורת הפקודה אינו
+מקבל מזהה סשן כלל — כך ששתיהן מפנות תחילה אל <span dir="ltr">`mycontext session
+list`</span> כשלא נתתם מזהה, בדיוק כפי ש-<span dir="ltr">`/mycontext:edit`</span> נופלת
+לחיפוש כשלא נקבתם פריט. <span dir="ltr">`/mycontext:session-name`</span> נותנת לסשן ידית
+שאפשר להקליד במקום המזהה ההקסדצימלי שלו; <span dir="ltr">`/mycontext:session-carry`</span>
+בוחרת מאיזה סשן קודם סשן *חדש* נושא פריטים קדימה — בחירה עומדת על סשנים עתידיים, לא
+ההכרעה החד-פעמית <span dir="ltr">`mycontext carry <id>`</span> (במכוון בלי פקודת סלאש; ראו
+[פרק 8](#משטח-אחד-לכל-פעולה)). אף אחת מהן אינה כותבת רשומת ביקורת: שתיהן משנות מטא-נתון
+של סשן, לא דבר שפריטי הפרויקט הזה מצהירים.
+
 **סקירה.** <span dir="ltr">`/mycontext:review`</span> עוברת על תור הטיוטות ומדפיסה, לכל
 אחת, על מה היא תשלוט. <span dir="ltr">`/mycontext:promote`</span>
 ו-<span dir="ltr">`/mycontext:discard`</span> מיישבות אחת מהן. שלושתן נעצרות לפני המעשה
@@ -2272,8 +2292,8 @@ known issue שנלכד בידי סוכן נוחת כ**טיוטה** הממתינ�
 <div dir="rtl">
 
 יש <span dir="ltr">`add-<type>`</span> אחת ו-<span dir="ltr">`list-<type>`</span> אחת לכל
-קטגוריה **מופעלת** — 58 היום — ועוד 29 שאינן לפי קטגוריה:
-<span dir="ltr">`add`, `search`, `show`, `todo`, `ready`, `doctor`, `decay`, `query`, `status`, `audit`,
+קטגוריה **מופעלת** — 58 היום — ועוד 31 שאינן לפי קטגוריה:
+<span dir="ltr">`add`, `search`, `session-carry`, `session-name`, `show`, `todo`, `ready`, `doctor`, `decay`, `query`, `status`, `audit`,
 `focus`, `ui`, `review`, `promote`, `discard`, `procedure`, `inbox-promote`, `edit`, `pin`, `unpin`,
 `harden`,
 `soften`, `supersede`, `refresh`, `link`, `unlink`, `ingest`, `lesson`, `lesson-stage`</span>.
@@ -2282,8 +2302,12 @@ known issue שנלכד בידי סוכן נוחת כ**טיוטה** הממתינ�
 `npm run gen:commands`. בדיקה נכשלת אם הקבצים ששמורים ב-git והמחולל אינם מסכימים: קטגוריה
 מכובה אינה יכולה לשמור פקודה שתסורב אחר כך. <span dir="ltr">`add`</span> נוצרת מכלום, וזו
 כל הנקודה שלה — היא זו ששורדת קטגוריה שהמחולל מעולם לא ראה.
+<span dir="ltr">`session-carry`</span> ו-<span dir="ltr">`session-name`</span> כתובות ביד,
+בדיוק כמו <span dir="ltr">`LoadMyContext`</span>: <span dir="ltr">`KEEP`</span> של
+<span dir="ltr">`scripts/gen-commands.ts`</span> מוציא את שתיהן ממעבר המחיקה של המחולל, כך
+ש-<span dir="ltr">`npm run gen:commands`</span> משאיר אותן כמות שהן.
 
-כל 87 אלה נושאות <span dir="ltr">`disable-model-invocation: true`</span>, וזה בתוקף — הן
+כל 89 אלה נושאות <span dir="ltr">`disable-model-invocation: true`</span>, וזה בתוקף — הן
 המשטח שלך, לא של המודל. <span dir="ltr">`/mycontext:LoadMyContext`</span> היא היוצאת דופן
 היחידה, והיא הפקודה היחידה שרק קוראת.
 
@@ -2793,7 +2817,9 @@ review queue: 1 draft(s) pending review — walk it with `mycontext review`.
 1 pending revision(s) on 1 item(s) — proposed by an agent and NOT applied; the items keep their
 current text. Read them as diffs with `mycontext review revisions`.
 
-usage: no sessions recorded yet — decay reporting starts once items begin to be injected.
+usage: 1 session(s) recorded. 3 normative item(s) not injected in the last 20 session(s) — not
+evidence they are unused, only that they were not selected. See `mycontext decay`.
+  (only 1 session(s) recorded so far, so "cold" mostly means "new")
   2 active normative item(s) carry no scope, so they apply to every file and compete for the jit
   budget on every file operation.
 
@@ -2823,15 +2849,14 @@ my_context doctor: 0 error(s), 0 warning(s), 0 note(s) across 0 finding(s).
 
 <!-- example: decay --summary -->
 ```text
-my_context decay — items not injected in the last 20 session(s). The ledger holds 0 session(s).
+my_context decay — items not injected in the last 20 session(s). The ledger holds 1 session(s).
   "cold" means: not auto-injected in the last window of sessions. It does NOT mean unused — the
   ledger records injection, not reading or reliance, so a new item, and any item consulted via
   `show`, MCP `get_item`, or the Markdown file directly, look exactly like an abandoned one here.
   Do not supersede or deprecate anything on this report alone — verify real usage first.
-  (no sessions recorded yet — nothing here has been measured; "cold" currently means only "never
-  injected")
+  (only 1 session(s) recorded so far, so "cold" mostly means "new")
 
-cold 5, warm 0, of which 2 unrestricted. Rows with `mycontext decay` (default) or `--full`.
+cold 3, warm 2, of which 2 unrestricted. Rows with `mycontext decay` (default) or `--full`.
 ```
 <!-- /example -->
 
@@ -3803,7 +3828,9 @@ review queue: 1 draft(s) pending review — walk it with `mycontext review`.
 1 pending revision(s) on 1 item(s) — proposed by an agent and NOT applied; the items keep their
 current text. Read them as diffs with `mycontext review revisions`.
 
-usage: no sessions recorded yet — decay reporting starts once items begin to be injected.
+usage: 1 session(s) recorded. 3 normative item(s) not injected in the last 20 session(s) — not
+evidence they are unused, only that they were not selected. See `mycontext decay`.
+  (only 1 session(s) recorded so far, so "cold" mostly means "new")
   2 active normative item(s) carry no scope, so they apply to every file and compete for the jit
   budget on every file operation.
 
@@ -6658,7 +6685,7 @@ Claude Code **2.1.234** באותה שיטה — hook־גשוש תחת ריצת `
 מדפיסה ומול הקבצים ב-<span dir="ltr">`commands/`</span>.
 
 מה שנשאר הוא אי-סימטריה בכיוון השני — פקודות בלי פקודת סלאש — והיא **מפורטת ולא מתגלה**.
-ל-16 מתוך 43 פקודות שורת הפקודה אין אחת, לכל אחת מסיבה שרשומה לידה
+ל-15 מתוך 43 פקודות שורת הפקודה אין אחת, לכל אחת מסיבה שרשומה לידה
 ב-<span dir="ltr">`CLI_WITHOUT_SLASH`</span>:
 
 - <span dir="ltr">`init`</span> ו-<span dir="ltr">`rebuild`</span> רצות לפני סשן, או מחוצה
@@ -6685,11 +6712,6 @@ Claude Code **2.1.234** באותה שיטה — hook־גשוש תחת ריצת `
   האישור. <span dir="ltr">`/mycontext:lesson-stage`</span> מדפיסה אותן עבורך ונעצרת. פקודת
   סלאש שהייתה מריצה אחת מהן הייתה המודל מיישב כלל בשמך, וזה בדיוק המעשה שכל התהליך קיים
   כדי לשמר.
-- <span dir="ltr">`session`</span> היא טבלה שקוראים בטרמינל לפני שבוחרים סשן, <span
-  dir="ltr">`session name`</span> היא התווית שמצמידים אחרי שבחרו, ו-<span
-  dir="ltr">`session carry`</span> היא הבחירה עצמה. אף אחת מהשלוש אינה של
-  המודל: הרשימה עונה על שאלה שלמודל שרץ בתוך סשן אין, כי כבר יש לו את הסשן שהוא נמצא בו, ושתי
-  האחרות מקבלות מזהה שקוראים מתוך אותה רשימה, מפני ששום משטח של שורת הפקודה אינו מקבל מזהה כזה.
 - <span dir="ltr">`export`</span> כותבת ארטיפקט לנתיב שמחוץ לסביבת העבודה, והיעד הוא כל
   ההחלטה. פקודת סלאש אינה יכולה לבחור אותו בשמך, והנחיה שהייתה מנחשת אחד הייתה כותבת עותק
   של הקורפוס, קריא לזרים, במקום שלא נקבת בשמו.
@@ -6915,7 +6937,7 @@ link <from> <relation> <to>`</span> נותנת לטרמינל את מקבילת 
 המצוטט בפרקים 3, 4 ו-6 הוא מה שה-hooks פולטים; שלכל פרק שתוכן העניינים מקשר אליו יש שורה
 בסיכום היכולות שבראש המסמך, או שהוא מנוי — עם נימוק — כמשהו שהמוצר אינו *עושה*; וששני
 המסמכים נושאים את אותו רצף כותרות ואת אותן דוגמאות באותו
-סדר. מתוכם, <span dir="ltr">`counts.test.ts`</span> מחשב מהתוכנית הרצה את היחס "16 מתוך 43
+סדר. מתוכם, <span dir="ltr">`counts.test.ts`</span> מחשב מהתוכנית הרצה את היחס "15 מתוך 43
 פקודות שורת הפקודה" שלמעלה ונכשל ב**שתי** השפות אם אחד מחצאיו סוטה — הוא סטה פעמיים לפני
 שהבדיקה נולדה — והוא מחשב באותה דרך גם את מניין הקבצים שבפסקה הזאת עצמה.
 <span dir="ltr">`parity.test.ts`</span> מחזיק את רצף הכותרות של הפרק הזה מול המקור האנגלי.

@@ -671,6 +671,7 @@ my_context EXTRACTION REQUEST — docs/prd.md § bookstore-api-prd (chunk 1 of 3
 - Emit a JSON array matching the "schema" field. Return [] when the chunk establishes nothing normative — that is a correct and common answer, and the common case for prose that isn't a spec.
 - Every candidate MUST carry a "quote": a span copied VERBATIM from the chunk. It is checked by exact match after whitespace collapsing, and a paraphrase is rejected. This is how an invented item is caught.
 - "title" is one declarative sentence on a SINGLE LINE, at most 200 characters — no line breaks. Put the reasoning in "body".
+- Every candidate MUST carry a "summary": one plain sentence for a reader who does not know this codebase, saying what the item IS and why it matters — not how it was found. Plain words only, no ids, no file paths, no measurements, at most 160 characters. Write it now, while you still have the source document in view: nothing else in this product can write it for you afterwards, and a candidate with no summary is rejected.
 - "body" is plain prose: no line may start with a Markdown heading ("#" through "######", e.g. "## Why") — that line and everything after it is silently dropped when the item is read back from disk. Do not structure the rationale with headings; use plain paragraphs.
 - "scope", "tags" and "observations" must each be a JSON ARRAY — never a bare string. Scope RESTRICTS where an item applies: set it only to the directories the item actually governs, as POSIX globs such as "src/auth/**". "**", "*" and "**/*" are all rejected, because omitting "scope" already means exactly that. Omitting scope is safe and is the right answer when the item is not about particular files — it simply leaves the item unrestricted, so it applies everywhere.
 - "severity" is "hard" (a future enforcement candidate) or "soft" (the default) — omit it to get "soft".
@@ -897,6 +898,7 @@ built, it is meant as a boundary.
         "type",
         "title",
         "body",
+        "summary",
         "quote"
       ],
       "additionalProperties": false,
@@ -913,6 +915,11 @@ built, it is meant as a boundary.
         "body": {
           "type": "string",
           "description": "The rationale: why this holds, and what breaks if it does not. Plain prose only — no line may start with a Markdown heading (\"#\" through \"######\", e.g. \"## Why\"). A heading line and everything after it is silently dropped when the item is read back from disk."
+        },
+        "summary": {
+          "type": "string",
+          "maxLength": 160,
+          "description": "One plain sentence for a reader who does not know this codebase: what the item IS and why it matters, not how it was found. Plain words only — no ids, no file paths, no measurements, no project vocabulary. At most 160 characters, a single line. Write it now, while you still have the source document in view — this is the only chance, because everything this item creates lands as an unreviewed draft and nothing else in this product can write the sentence for you afterwards."
         },
         "quote": {
           "type": "string",
@@ -1906,7 +1913,7 @@ draft, retiring a governing item. How far that separation actually holds is
 
 ```mermaid
 flowchart TB
-  U(["<b>You</b>"]) --> SL["<b>/mycontext:…</b><br/>88 slash commands"]
+  U(["<b>You</b>"]) --> SL["<b>/mycontext:…</b><br/>90 slash commands"]
   U --> CL["<b>mycontext …</b><br/>43 CLI commands"]
   A(["<b>Claude</b>"]) --> TL["<b>MCP tools</b><br/>twenty-two, served over stdio"]
   SL -->|"add-* · search · link · LoadMyContext"| TL
@@ -2071,6 +2078,18 @@ the context, or when a compaction did not bring back what you needed — a manua
 [restored only if](#restored--after-the-context-window-is-compacted) the pre-compaction
 snapshot still finds its ids in the transcript, which is usual but not guaranteed.
 
+**Continuity.** `/mycontext:session-name` and `/mycontext:session-carry` are the other two
+hand-written commands, wrapping `mycontext session name` and `mycontext session carry`.
+Neither can resolve "this session" for you — no CLI surface is handed a session id at all
+— so both walk you to `mycontext session list` first when you have not already given one,
+the same way `/mycontext:edit` falls back to a search when you have not named an item.
+`/mycontext:session-name` gives a session a handle you can type back later instead of its
+hex id; `/mycontext:session-carry` chooses which earlier session a *new* session carries
+items forward from — a standing choice about future sessions, not the one-shot
+`mycontext carry <id>` (deliberately no slash command; see [section
+8](#one-surface-for-every-operation)). Neither writes an audit record: both change session
+metadata, not anything this project's items assert.
+
 **Review.** `/mycontext:review` walks the queue of drafts and prints, for each, what it
 would govern. `/mycontext:promote` and `/mycontext:discard` settle one. All three stop
 before the act itself: they print the exact `mycontext review promote <id>` or
@@ -2142,7 +2161,8 @@ the shell it ran in is on.
 ```
 
 There is one `add-<type>` and one `list-<type>` per **enabled** category — 58 today — plus
-the 29 that are not per-category: `add`, `search`, `show`, `todo`, `ready`, `doctor`, `decay`,
+the 31 that are not per-category: `add`, `search`, `session-carry`, `session-name`, `show`,
+`todo`, `ready`, `doctor`, `decay`,
 `query`, `status`, `audit`, `focus`, `ui`, `review`, `promote`, `discard`, `procedure`,
 `inbox-promote`,
 `edit`, `pin`, `unpin`, `harden`, `soften`, `supersede`, `refresh`, `link`, `unlink`,
@@ -2152,8 +2172,11 @@ the same resolved config `mycontext help categories` prints, by `npm run gen:com
 a test fails if the committed files and the generator disagree: a disabled category cannot
 keep a command that would then be refused. `add` is generated from nothing, which is the
 point of it — it is the one that survives a category the generator never saw.
+`session-carry` and `session-name` are hand-written, the same way `LoadMyContext` is:
+`scripts/gen-commands.ts`'s `KEEP` excludes both from the generator's own deletion pass, so
+`npm run gen:commands` leaves them alone.
 
-All 87 of those carry `disable-model-invocation: true`, and it is in effect — they are your
+All 89 of those carry `disable-model-invocation: true`, and it is in effect — they are your
 surface, not the model's. `/mycontext:LoadMyContext` is the single exception, and it is the
 one command that only reads.
 
@@ -2637,7 +2660,9 @@ review queue: 1 draft(s) pending review — walk it with `mycontext review`.
 1 pending revision(s) on 1 item(s) — proposed by an agent and NOT applied; the items keep their
 current text. Read them as diffs with `mycontext review revisions`.
 
-usage: no sessions recorded yet — decay reporting starts once items begin to be injected.
+usage: 1 session(s) recorded. 3 normative item(s) not injected in the last 20 session(s) — not
+evidence they are unused, only that they were not selected. See `mycontext decay`.
+  (only 1 session(s) recorded so far, so "cold" mostly means "new")
   2 active normative item(s) carry no scope, so they apply to every file and compete for the jit
   budget on every file operation.
 
@@ -2660,15 +2685,14 @@ or reliance, so a brand-new item and an abandoned one look identical here.
 
 <!-- example: decay --summary -->
 ```text
-my_context decay — items not injected in the last 20 session(s). The ledger holds 0 session(s).
+my_context decay — items not injected in the last 20 session(s). The ledger holds 1 session(s).
   "cold" means: not auto-injected in the last window of sessions. It does NOT mean unused — the
   ledger records injection, not reading or reliance, so a new item, and any item consulted via
   `show`, MCP `get_item`, or the Markdown file directly, look exactly like an abandoned one here.
   Do not supersede or deprecate anything on this report alone — verify real usage first.
-  (no sessions recorded yet — nothing here has been measured; "cold" currently means only "never
-  injected")
+  (only 1 session(s) recorded so far, so "cold" mostly means "new")
 
-cold 5, warm 0, of which 2 unrestricted. Rows with `mycontext decay` (default) or `--full`.
+cold 3, warm 2, of which 2 unrestricted. Rows with `mycontext decay` (default) or `--full`.
 ```
 <!-- /example -->
 
@@ -3557,7 +3581,9 @@ review queue: 1 draft(s) pending review — walk it with `mycontext review`.
 1 pending revision(s) on 1 item(s) — proposed by an agent and NOT applied; the items keep their
 current text. Read them as diffs with `mycontext review revisions`.
 
-usage: no sessions recorded yet — decay reporting starts once items begin to be injected.
+usage: 1 session(s) recorded. 3 normative item(s) not injected in the last 20 session(s) — not
+evidence they are unused, only that they were not selected. See `mycontext decay`.
+  (only 1 session(s) recorded so far, so "cold" mostly means "new")
   2 active normative item(s) carry no scope, so they apply to every file and compete for the jit
   budget on every file operation.
 
@@ -6185,7 +6211,7 @@ command, or both; the map is `src/plugin/parity.ts` and `test/plugin/parity.test
 it against the usage banner the program prints and the files in `commands/`.
 
 What is left is asymmetry in the other direction — commands with no slash command — and it
-is **listed rather than discovered**. 16 of the 43 CLI commands have none, each for a reason
+is **listed rather than discovered**. 15 of the 43 CLI commands have none, each for a reason
 recorded beside it in `CLI_WITHOUT_SLASH`:
 
 - `ack` records that a **person** read a `doctor` finding and ruled on it, so a slash command
@@ -6214,11 +6240,6 @@ recorded beside it in `CLI_WITHOUT_SLASH`:
 - `lesson-accept` and `lesson-discard` are the approval gate. `/mycontext:lesson-stage`
   prints them for you and stops. A slash command that ran either would be the model settling
   a rule on your behalf, which is the act the whole flow exists to preserve.
-- `session` is a table you read in a terminal before choosing a session; `session name` is
-  the label you attach once you have chosen, and `session carry` is the choice itself. None
-  of the three is the model's: the listing answers a question a model running inside a
-  session does not have, since it already has the session it is in, and both of the others
-  take an id read off that listing, because no CLI surface is handed one.
 - `export` writes an artefact to a path outside the workspace, and the destination is the
   whole decision. A slash command cannot choose one on your behalf, and a prompt that
   guessed would be writing a stranger-readable copy of the corpus somewhere you did not
@@ -6446,7 +6467,7 @@ command prints; that the injected output quoted in sections 3, 4 and 6 is what t
 emit; that every section the table of contents links either has a line in the capabilities
 summary near the top or is listed, with a reason, as something the product does not *do*; and
 that both documents carry the same heading sequence and the same examples in the same order.
-Of those, `counts.test.ts` computes the "16 of the 43 CLI commands" ratio above from the
+Of those, `counts.test.ts` computes the "15 of the 43 CLI commands" ratio above from the
 running program and fails in **both** languages if either half drifts — it had drifted twice
 before the test existed — and it computes this paragraph's own file count the same way.
 `parity.test.ts` holds this section's heading sequence to the Hebrew mirror's. This paragraph

@@ -25,7 +25,7 @@
  * `HAND_WRITTEN` name exactly the same files — the two must move together,
  * or the assertion is what fails, not a user's file.
  */
-export const KEEP = new Set(['LoadMyContext.md']);
+export const KEEP = new Set(['LoadMyContext.md', 'session-name.md', 'session-carry.md']);
 
 /**
  * Which of `existing` this generator would delete, given what it wants
