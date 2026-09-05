@@ -223,6 +223,66 @@ test('the print path stays affordable as the session accumulates injections', ()
   }
 });
 
+/**
+ * A transcript file at (or beyond) `core/context-share.ts`'s own
+ * `MAX_TRANSCRIPT_TAIL_BYTES` bound, with one real `isCompactSummary` line
+ * near the end — the worst case `rebuiltFromSummaryAt` is built to survive:
+ * a large, long-lived resumed session with no `pre-compact` row at all, so
+ * `myctxShare`'s third argument is consulted on every single call.
+ */
+function transcriptFixture(root: string, sessionId: string, targetBytes: number): string {
+  const file = path.join(root, `${sessionId}.jsonl`);
+  const filler = JSON.stringify({
+    type: 'assistant', sessionId, timestamp: '2026-09-01T00:00:00.000Z',
+    message: { role: 'assistant', content: 'x'.repeat(500) },
+  });
+  const lines: string[] = [];
+  let bytes = 0;
+  while (bytes < targetBytes) {
+    lines.push(filler);
+    bytes += filler.length + 1;
+  }
+  lines.push(JSON.stringify({
+    type: 'user', isCompactSummary: true, sessionId, timestamp: '2026-09-03T12:00:00.000Z',
+    message: {
+      role: 'user',
+      content: 'This session is being continued from a previous conversation that ran ' +
+        'out of context.',
+    },
+  }));
+  writeFileSync(file, `${lines.join('\n')}\n`, 'utf8');
+  return file;
+}
+
+/**
+ * **The cost `TASK-a-session-resumed-after-a-restart-is-treated-as-carrying-
+ * no`'s fix adds, measured against the SAME ceiling as the share above.**
+ * `rebuiltFromSummaryAt` is consulted only when there is no `pre-compact` row
+ * — `shareFixture` never writes one — so THIS is the branch every one of
+ * those sessions now pays on every call, and it is the one this test isolates
+ * by handing `myctxShare` a real, bounded transcript file to read.
+ */
+test('the print path stays affordable when it also has to read a transcript for a resume rebuild', () => {
+  for (const records of [10, 1000]) {
+    const root = shareFixture(records);
+    try {
+      const transcript = transcriptFixture(root, 'perf', 8 * 1024 * 1024);
+      const measured = measure(() => { myctxShare(root, 'perf', transcript); });
+      console.log(`  myctxShare+transcript, session ${String(records).padStart(5)} records  ` +
+        `p95 ${measured.toFixed(3)} ms`);
+      assert.ok(
+        measured < CEILING_MS,
+        `myctxShare cost ${measured.toFixed(3)}ms p95 over ${records} injection records PLUS an ` +
+        `8MB transcript tail read, against a ${CEILING_MS}ms ceiling. This is the branch that ` +
+        'used to return null unconditionally; a figure at this size means the tail bound in ' +
+        '`rebuiltFromSummaryAt` (core/context-share.ts) stopped being bounded.',
+      );
+    } finally {
+      removeTree(root);
+    }
+  }
+});
+
 test('the formatting itself is not where the time goes', () => {
   const sample = classifyContext(payload('perf'));
   const share = { tokens: 6200, injections: 3, unrecorded: 1 };

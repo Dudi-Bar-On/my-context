@@ -776,6 +776,84 @@ test('the myctx share counts only THIS window: since the last compaction, and ne
 });
 
 /**
+ * **DEFECT 2b: a resume that rebuilt the window from a summary, with NO
+ * `pre-compact` row to bound it.**
+ *
+ * `TASK-a-session-resumed-after-a-restart-is-treated-as-carrying-no`. Unlike
+ * the case above — a session with a real `pre-compact` row, correctly
+ * bounded — this is the case the old code called "never compacted" and gave
+ * an unbounded sum: a session resumed after a restart whose window Claude
+ * Code itself rebuilt from a compaction summary, which fires no `PreCompact`
+ * hook at all (the rebuild happens while REOPENING a transcript, not while a
+ * hook-instrumented process is running). Measured 2026-09-03 on a real
+ * session: 663,975 tokens counted as resident that were actually gone —
+ * roughly 86% of the window read against an actual roughly 33%.
+ *
+ * `myctxShare`'s own third argument — the statusLine payload's
+ * `transcript_path`, which Claude Code sends beside `session_id` on every
+ * call — is what lets it see the rebuild. This test calls it exactly the way
+ * `cmdStatusline` now does, and asserts the numbers on both sides: what the
+ * (still-supported) two-argument call sees, and what the transcript-aware
+ * three-argument call corrects it to.
+ */
+test('the myctx share stops counting pre-resume tokens once the transcript shows the window was rebuilt from a summary', () => {
+  const dir = project();
+  const root = path.join(dir, '.my_context');
+  try {
+    const inject = (op: string, sessionId: string, itemId: string, tokens: number, at?: string): void => {
+      recordAudit(root, {
+        kind: 'injection', op, sessionId, hook: 'SessionStart',
+        injected: [{ id: itemId, tier: 'pinned' }], tokens, ...(at ? { at } : {}),
+      } as Parameters<typeof recordAudit>[1]);
+    };
+
+    // ── the pre-restart history: gone after the resume rebuilt the window ──
+    inject('session-start', 's1', 'RULE-a', 400000, '2026-08-20T00:00:00.000Z');
+    inject('jit', 's1', 'RULE-b', 200000, '2026-08-20T01:00:00.000Z');
+    // No pre-compact/post-compact pair — this session was never live-compacted.
+
+    // ── the resume rebuild itself, and what the session actually holds now ──
+    const rebuiltAt = '2026-09-03T12:00:00.000Z';
+    inject('session-start', 's1', 'RULE-c', 30000, '2026-09-03T12:00:01.000Z');
+    inject('jit', 's1', 'RULE-d', 5000, '2026-09-03T12:05:00.000Z');
+
+    const transcript = path.join(dir, 's1.jsonl');
+    writeFileSync(transcript, [
+      JSON.stringify({
+        type: 'user', sessionId: 's1', timestamp: '2026-08-20T00:00:01.000Z',
+        message: { role: 'user', content: 'the pre-restart conversation' },
+      }),
+      JSON.stringify({
+        type: 'user', isCompactSummary: true, sessionId: 's1', timestamp: rebuiltAt,
+        message: {
+          role: 'user',
+          content: 'This session is being continued from a previous conversation that ran ' +
+            'out of context. The summary below covers the earlier portion of the conversation.',
+        },
+      }),
+    ].join('\n') + '\n', 'utf8');
+
+    // Before: no transcript in hand — the pre-2026-09-05 call shape — still
+    // reads the unbounded ("never compacted") sum, which is the defect.
+    assert.deepEqual(
+      myctxShare(root, 's1'),
+      { tokens: 635000, injections: 4, unrecorded: 0 },
+      'unchanged for a caller that cannot supply a transcript — no regression',
+    );
+
+    // After: the transcript-aware call sees the rebuild and bounds the sum to
+    // what the session actually holds since it happened.
+    assert.deepEqual(
+      myctxShare(root, 's1', transcript),
+      { tokens: 35000, injections: 2, unrecorded: 0 },
+      'only the two injections since the resume rebuilt the window from a summary',
+    );
+  } finally {
+    removeTree(dir);
+  }
+});
+
+/**
  * **DEFECT 3: the same items, redelivered, counted again every time.**
  *
  * Reported by the owner 2026-09-04 on his own live session: 260 injection

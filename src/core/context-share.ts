@@ -1,3 +1,4 @@
+import { closeSync, openSync, readFileSync, readSync, statSync } from 'node:fs';
 import type { DatabaseSync } from 'node:sqlite';
 import { INJECTION_OPS, type InjectionOp } from './audit.ts';
 
@@ -95,8 +96,131 @@ export interface ContextShare {
 }
 
 /**
+ * The most bytes `rebuiltFromSummaryAt` below will ever read off one
+ * transcript file, taken from the SAME bound `core/ledger.ts`'s own
+ * `readTail` already uses for the identical reason (`scanTranscriptIds`,
+ * `MAX_TRANSCRIPT_BYTES`): the file is append-only and can be large, the
+ * signal this function wants is always in the most RECENT lines, and a
+ * caller on Claude Code's per-message path cannot afford to read the whole
+ * thing. Duplicated rather than imported — `readTail` is private to
+ * `ledger.ts` and this module owns no dependency on it — but the NUMBER is
+ * kept identical on purpose, so the two tail reads agree on how much history
+ * a transcript is assumed to still carry.
+ */
+const MAX_TRANSCRIPT_TAIL_BYTES = 8 * 1024 * 1024;
+
+/**
+ * One line of the transcript JSONL format, narrowed to the three fields this
+ * module reads off it. Never the message text itself — see this module's own
+ * header on why an injection's CONTENT is out of scope everywhere in it; this
+ * is the same rule applied to a transcript line instead of an audit record.
+ */
+interface TranscriptSummaryLine {
+  isCompactSummary?: unknown;
+  timestamp?: unknown;
+  sessionId?: unknown;
+  session_id?: unknown;
+}
+
+/**
+ * The `at` of the MOST RECENT moment Claude Code itself rebuilt this
+ * session's transcript from a compaction summary, read from the transcript
+ * file rather than from anything this project wrote — or `null` when the
+ * tail this function reads carries no such moment.
+ *
+ * **What is being read, and how it was found.** Every transcript JSONL file
+ * Claude Code writes carries one synthetic line at the exact point a window
+ * is rebuilt from a summary rather than replayed verbatim: a `type: "user"`
+ * record stamped `isCompactSummary: true`, whose `message.content` opens
+ * *"This session is being continued from a previous conversation that ran
+ * out of context."* and whose own `timestamp` is the moment of the rebuild.
+ * Confirmed on two real transcripts this repository produced — this
+ * session's own (`…/595db3b1-….jsonl`, lines 3613 and 8182) and an earlier
+ * one referenced elsewhere in this module's header
+ * (`…/9e5b6b17-….jsonl`, twenty occurrences) — and, on the FIRST of those,
+ * correlated within two seconds of a `pre-compact`/`post-compact` pair this
+ * project's own audit log already held for the SAME event. That correlation
+ * is what makes this a fact about the transcript rather than a guess: the
+ * marker fires exactly when a live compaction resolves, which is the same
+ * moment `hooks/session-start.ts` writes `compact-restore` and
+ * `hooks/post-compact.ts` writes `post-compact` — this function reads the
+ * SAME fact those two hooks already react to, from the one place a session
+ * resumed after a restart can still be asked about it: the transcript file
+ * on disk, since no hook fires again for a rebuild the platform performs
+ * while REOPENING a transcript rather than while a hook-instrumented process
+ * is running against it. See this module's own report on the `TASK` that
+ * asked for this function for the evidence that such a rebuild CAN happen
+ * with no corresponding `pre-compact` row at all.
+ *
+ * **Read from the TAIL, bounded, exactly as `scanTranscriptIds` reads the
+ * same file for a different question** (`core/ledger.ts`). Scanned
+ * BACKWARDS, returning the first (most recent) match, because a session that
+ * has been resumed and rebuilt more than once in its life should be bounded
+ * by the LATEST rebuild, not an earlier one a later pre-compact might
+ * already account for.
+ *
+ * **`sessionId` is cross-checked against the line, when the line carries
+ * one**, purely as a defence against a caller handing in the wrong path — the
+ * transcript's own `sessionId`/`session_id` (both spellings are seen on real
+ * lines) must agree with the id this function was asked about, or the line is
+ * skipped. A line carrying neither field is accepted rather than rejected: an
+ * absent field is not evidence of a mismatch.
+ *
+ * Never throws. A malformed line, a path that cannot be read, or a file with
+ * no such marker in the bytes this function looked at all return `null` —
+ * indistinguishable from "no rebuild happened", which is the same
+ * conservative bound `contextEpochStart` already applies to a pre-compact
+ * lookup that finds nothing: a possible false negative bounded by the tail
+ * size, never a false positive.
+ */
+export function rebuiltFromSummaryAt(transcriptPath: string, sessionId: string): string | null {
+  let text: string;
+  try {
+    const stat = statSync(transcriptPath);
+    if (!stat.isFile() || stat.size <= 0) return null;
+    const { size } = stat;
+    if (size <= MAX_TRANSCRIPT_TAIL_BYTES) {
+      text = readFileSync(transcriptPath, 'utf8');
+    } else {
+      const fd = openSync(transcriptPath, 'r');
+      try {
+        const buffer = Buffer.alloc(MAX_TRANSCRIPT_TAIL_BYTES);
+        readSync(fd, buffer, 0, MAX_TRANSCRIPT_TAIL_BYTES, size - MAX_TRANSCRIPT_TAIL_BYTES);
+        text = buffer.toString('utf8');
+      } finally {
+        closeSync(fd);
+      }
+    }
+  } catch {
+    return null;
+  }
+
+  const lines = text.split('\n');
+  for (let i = lines.length - 1; i >= 0; i--) {
+    const line = lines[i].trim();
+    if (line === '') continue;
+    let rec: TranscriptSummaryLine;
+    try {
+      rec = JSON.parse(line) as TranscriptSummaryLine;
+    } catch {
+      continue; // the tail's own first line is routinely a truncated fragment
+    }
+    if (rec.isCompactSummary !== true || typeof rec.timestamp !== 'string') continue;
+    const lineSession =
+      typeof rec.sessionId === 'string' ? rec.sessionId
+      : typeof rec.session_id === 'string' ? rec.session_id
+      : null;
+    if (lineSession !== null && lineSession !== sessionId) continue;
+    return rec.timestamp;
+  }
+  return null;
+}
+
+/**
  * When this session's current context epoch began: the `at` of the newest
- * `pre-compact` record for it, or `null` when it has never been compacted.
+ * `pre-compact` record for it; when there is none, the `at` of the most
+ * recent compaction-summary rebuild `rebuiltFromSummaryAt` can find in an
+ * optional transcript the caller hands in; or `null` when neither exists.
  *
  * `pre-compact` and not `post-compact`, for two reasons. It is the record that
  * FIRES — `post-compact` is written on completion and a compaction can leave
@@ -105,22 +229,54 @@ export interface ContextShare {
  * finish*) — and using the earlier of the pair errs towards counting an
  * injection that may already be gone, which overstates rather than invents.
  *
- * **`null` is "never compacted", not "unknown".** A session with no
- * `pre-compact` record has held everything ever injected into it, so an
- * unbounded sum is the correct answer for it and the caller applies no `since`
- * at all. That is the one case where the old behaviour was already right.
+ * **`null` is "never compacted and never rebuilt", not "unknown".** A session
+ * with no `pre-compact` record AND no summary-rebuild marker in the
+ * transcript it was asked about has held everything ever injected into it,
+ * so an unbounded sum is the correct answer for it and the caller applies no
+ * `since` at all. That is the one case where the old behaviour was already
+ * right, and it is unchanged here.
  *
  * A `/clear` is NOT a boundary this can see: it starts a new session id, so
- * the counter starts again on its own. A session RESUMED after a restart keeps
- * its id and its transcript, and so keeps its epoch — which is correct.
+ * the counter starts again on its own.
+ *
+ * **CORRECTED, 2026-09-05**
+ * (`TASK-a-session-resumed-after-a-restart-is-treated-as-carrying-no`). The
+ * sentence this replaces claimed *"A session RESUMED after a restart keeps
+ * its id and its transcript, and so keeps its epoch — which is correct."*
+ * That is only true when the resume's transcript really IS the full prior
+ * transcript. It is FALSE when Claude Code's own resume rebuilds the window
+ * from a compaction summary instead of replaying it — measured 2026-09-03 at
+ * 663,975 tokens counted as resident that were actually gone, roughly 86% of
+ * the window read against an actual roughly 33%. `rebuiltFromSummaryAt`
+ * above is what closes that gap: it is observable, from the transcript file
+ * itself, and needs no new audit op and no hook change to read.
+ *
+ * **Consulted ONLY when no `pre-compact` row already answers the question,
+ * and that scope is deliberate, not an oversight.** A session that WAS
+ * compacted live keeps that boundary even if a LATER resume also rebuilt it
+ * from a summary — a disclosed remaining gap, not a claim of completeness
+ * (`STD-a-measured-zero-is-drawn-and-named-an-unmeasured-thing-is`), and the
+ * trade that keeps this function's cost at ONE query for every session that
+ * already has a `pre-compact` row, which is the overwhelming majority of
+ * calls on this per-message path. The transcript read only happens on the
+ * branch that used to return `null` unconditionally, so a session with no
+ * `transcriptPath` in hand behaves exactly as before.
  */
-export function contextEpochStart(db: DatabaseSync, sessionId: string): string | null {
+export function contextEpochStart(
+  db: DatabaseSync, sessionId: string, transcriptPath?: string | null,
+): string | null {
   const row = db
     .prepare(`SELECT rec ->> '$.at' AS at FROM audit
                 WHERE session_id = ? AND op = 'pre-compact'
                 ORDER BY seq DESC LIMIT 1`)
     .get(sessionId) as { at?: unknown } | undefined;
-  return typeof row?.at === 'string' ? row.at : null;
+  const preCompactAt = typeof row?.at === 'string' ? row.at : null;
+  if (preCompactAt !== null) return preCompactAt;
+  if (typeof transcriptPath === 'string' && transcriptPath !== '') {
+    const rebuiltAt = rebuiltFromSummaryAt(transcriptPath, sessionId);
+    if (rebuiltAt !== null) return rebuiltAt;
+  }
+  return null;
 }
 
 /**

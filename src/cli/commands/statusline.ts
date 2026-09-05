@@ -104,15 +104,27 @@ export function lastAudit(projectRoot: string): LastAudit {
   }
 }
 
-export function myctxShare(projectRoot: string, sessionId: string): MyctxShare {
+/**
+ * `transcriptPath` is OPTIONAL and additive — every existing two-argument
+ * call site (this file's own, and every test that predates 2026-09-05) keeps
+ * its old answer verbatim. It exists so `contextEpochStart` can be handed the
+ * one thing that lets it see a resume that rebuilt this session's window from
+ * a compaction summary: see that function's own corrected docblock
+ * (`core/context-share.ts`) for what this closes and what it deliberately
+ * does not.
+ */
+export function myctxShare(
+  projectRoot: string, sessionId: string, transcriptPath?: string | null,
+): MyctxShare {
   const db = openProjection(projectRoot);
   try {
     syncProjection(projectRoot, db);
-    // `null` — never compacted — becomes NO `since` at all rather than a
-    // sentinel date: a session that has held everything ever injected into it
-    // is correctly answered by an unbounded sum, and inventing an epoch start
-    // for it would be a bound nobody measured.
-    const epoch = contextEpochStart(db, sessionId);
+    // `null` — never compacted, and no summary-rebuild the transcript can
+    // show — becomes NO `since` at all rather than a sentinel date: a session
+    // that has held everything ever injected into it is correctly answered by
+    // an unbounded sum, and inventing an epoch start for it would be a bound
+    // nobody measured.
+    const epoch = contextEpochStart(db, sessionId, transcriptPath);
     const { sql, params } = shareSql(sessionId, epoch);
     const row = db.prepare(sql).get(...params) as {
       injections: number; tokens: number; unrecorded: number;
@@ -532,6 +544,13 @@ function cmdStatusline(ws: Workspace, args: string[], out: Emit, cwd: string): n
     cwd?: unknown;
     workspace?: { project_dir?: unknown };
     session_id?: unknown;
+    // Documented on the statusLine command's own base payload alongside
+    // `session_id` and `cwd` (`reports/…/2026-08-16-web-ui-3-watch-and-ask.md`
+    // §360, quoting the binary's own `transcript_path:vj(e.id)`). Read here
+    // ONLY to hand to `myctxShare` below — see `core/context-share.ts`'s
+    // `rebuiltFromSummaryAt` for what it is used for and why that is safe on
+    // this per-message path.
+    transcript_path?: unknown;
     model?: { display_name?: unknown; id?: unknown };
   } | null;
 
@@ -653,7 +672,8 @@ function cmdStatusline(ws: Workspace, args: string[], out: Emit, cwd: string): n
 
     if (typeof p?.session_id === 'string') {
       try {
-        myctx = myctxShare(projectRoot, p.session_id);
+        const transcriptPath = typeof p?.transcript_path === 'string' ? p.transcript_path : null;
+        myctx = myctxShare(projectRoot, p.session_id, transcriptPath);
       } catch (err) {
         myctx = null;
         myctxNote = err instanceof Error ? err.message : String(err);
