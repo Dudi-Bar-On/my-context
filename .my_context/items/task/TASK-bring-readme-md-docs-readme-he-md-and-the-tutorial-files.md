@@ -12,6 +12,7 @@ scope:
   - docs/README.he.md
   - docs/TUTORIAL.md
   - docs/TUTORIAL-ADVANCED.md
+  - docs/tutorials/**
   - src/hooks/post-tool-use.ts
 tags:
   - v2
@@ -27,7 +28,7 @@ source_anchor: null
 source_checksum: c28165a3afb8ea59
 valid_from: 2026-09-05
 valid_until: null
-checksum: 99f67239e37b0ccc
+checksum: d9b8acf2dd4cd4bb
 plan: docsys
 seq: "4"
 state: todo
