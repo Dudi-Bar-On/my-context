@@ -161,8 +161,23 @@ export function digestOf(bytes: Buffer | string): string {
 /**
  * Draws every definition in one Chromium, in order, and returns the SVG text.
  *
- * `securityLevel: 'strict'` is mermaid's own DOMPurify pass; `theme: 'dark'`
- * because there is no light theme in this product.
+ * `securityLevel: 'strict'` is mermaid's own DOMPurify pass.
+ *
+ * **`theme: 'default'` — mermaid's LIGHT theme — and the reason it is not
+ * `'dark'` is worth stating, because the wrong answer was written here first
+ * with a plausible justification.** That justification read "`theme: 'dark'`
+ * because there is no light theme in this product", which is true of the
+ * CONSOLE and false of these drawings. They are not drawn for a screen; they
+ * are drawn for the document page, which deliberately wears GitHub's own
+ * stylesheet and none of the console's — the whole reason `doc.html` does not
+ * load `styles.css`. Owner, 2026-09-05, on seeing them: "why the graphics
+ * colors are not the same as in github", and before that "the background is
+ * dark and i want it light".
+ *
+ * The same conflation put `styles.css` on the document page in the first
+ * place. The rule that this product has no light theme governs the console;
+ * it says nothing about a page built to look like GitHub, and reading it as
+ * though it did produced dark drawings on a white ground.
  *
  * **`fontFamily` is an explicit stack and NOT `'inherit'`, and that is forced
  * by the `<img>`.** A drawing is addressed as `<img src="/diagrams/x.svg">`,
@@ -209,7 +224,7 @@ async function drawAll(definitions: string[]): Promise<string[]> {
         } }).mermaid;
         mermaid.initialize({
           startOnLoad: false,
-          theme: 'dark',
+          theme: 'default',
           securityLevel: 'strict',
           fontFamily: 'system-ui, "Segoe UI", "Helvetica Neue", Arial, sans-serif',
         });
