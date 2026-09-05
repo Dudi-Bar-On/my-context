@@ -1,5 +1,87 @@
 # v2.0 handover — we are mid-decision. Keep deciding.
 
+## ⏭ READ THIS FIRST — 2026-09-05
+
+### THE BOARD IS THE PLACE NOW, NOT THIS FILE
+
+`reports/EXECUTION-BOARD.md` was rewritten today to carry **every open task** in six
+waves, and it carries the rule that keeps it true: *a newly filed task is added to the
+board at the moment it is filed.* The corpus is the truth for STATE (`mycontext ready`,
+`doctor`, the item files); the board is the truth for ORDER. Where they disagree about
+state, the corpus wins and the board is stale — fix it rather than argue with it.
+
+There were already TWO stale documents claiming that job (this one, and the wave-map
+reference dated 2026-08-28). A third would have made it worse, so the wave map now points
+at the board and keeps only the reasoning: a wave groups tasks owning **disjoint files**,
+one task per lane, **up to three lanes** — 58% of open UI tasks touch the mockup or a
+string table, so those are one serial lane. That held again today.
+
+### WHAT THE NEXT SESSION MUST DO FIRST
+
+1. **A sweep of the 46 open `walk` items was running when this was written** (agent
+   `a243db494baea8004`). It writes `reports/2026-09-05-walk-sweep.md`. **Read it before
+   touching any `walk` item.** It judges each ALREADY DONE / PARTLY / STILL OPEN / NOT
+   VERIFIED with evidence, and it was told to report anything broken that nobody has filed.
+   If the report is missing, the sweep did not finish — re-dispatch it, do not guess.
+2. **`walk/127` is deliberately left at `doing`.** The Review-queue lane confirmed line by
+   line that its work is closed by `ui2/11` (same screen, two ids) but did not close it,
+   leaving the ruling to the sweep. Close it when the sweep agrees.
+3. **`live/19` is priority 1 and it can destroy things.** `mycontext ui --nonce` fell back
+   to a stale global record twice today and handed a caller a credential for a server they
+   did not own — a lane killed a stranger's process on port 9778 believing it was its own.
+   Two halves: a liveness write that fails silently (EPERM), and a lookup that falls back to
+   a global record. **Never kill a port a `--nonce` link named without checking whose it is.**
+
+### RULINGS TAKEN TODAY — all recorded as items, none left in prose
+
+- **v2.0 is EVERY open task.** The in/out cut's 46 exclusions were declined
+  (`DEC-v2-0-is-everything-still-open-and-the-in-out-cut-s-forty-six`). Nothing was ever
+  applied to the corpus, so the exclusions lived only in that report's prose; it now says so
+  at its top. **89 open, 48 of them owner-gated.**
+- **Lanes run no git command that touches the working tree**
+  (`RULE-a-delegated-worker-runs-no-git-command-that-touches-the`, HARD). A lane ran
+  `git stash` on the shared tree while three others were writing. Lanes now cite this rule
+  unprompted. The dispatching session commits, staging by explicit path, never `-A`.
+- **Two commit-identity rules accepted** from a lesson staged since 2026-08-21 — check every
+  commit's author before merging (HARD), and name the identity a delegated worker commits
+  under. All 25 of today's commits carry the owner's identity; verified with
+  `git log --format="%an <%ae>"`.
+- **The counts table is plated** — the hue argument was sound and is NOT what was overturned;
+  contrast is. Both docblocks say so.
+- **Path echoes elide the MIDDLE**, keeping both ends and stating how much was cut.
+- **All five ASK questions settled.** Of eleven, three were already answered by earlier
+  rulings, one by its own body, one rested on a false premise, two were already implemented.
+  **The cut was honest when written and aged in two days** — that is worth knowing about any
+  document that gates a release.
+
+### THE STANDING RULE THAT MATTERS MOST
+
+**Navigate the screen and exercise its functionality in Playwright — before saying fixed,
+works, done, OR still open.** Rendering is not functioning. This applies to judging an item
+open as much as closed: reading a body and reporting "not built" without opening the screen
+is the same error in the other direction. Four times today the owner reported a symptom, it
+was explained away from code, and he was right every time — the collapse markers (a real CSS
+specificity bug), the "repository" wording (the screen's own label), doctor's `hooks/16b`
+line (a grep that missed unquoted seqs), MYCTX at 0% (a wrong root argument).
+
+### THE PATTERN WORTH CARRYING
+
+**Stale premises outnumber real defects.** `writeBlock` never existed under that name, but the
+computation shipped as `fieldView` on 2026-08-26 — so `ui2/12` and `ui2/13` waited ten days on
+a *name*, not on work. `configError` was served by `/api/meta` for a fortnight and read by
+nothing. The unbuilt format rung was already badged. `mcp/6` decided its own shape in its body.
+**Re-read an item against today's code before building it**, and say what was already true.
+
+### STATE
+
+Suite **6428 tests / 0 failures** · `tsc` 0 · doctor **0 errors, 2 acknowledged warnings**.
+Pushed through **`a18b804`**, working tree clean. UI server on 58888 (PID 22296) and the MCP
+server both restarted onto current code today; **both go stale as lanes land** — the UI server
+freezes its own modules at start while serving `public/**` live, and the MCP server says so
+itself when it drifts.
+
+---
+
 ## ⏭ READ THIS FIRST — 2026-09-04, late
 
 ### THE ONE RULE ADOPTED TODAY, AND IT BINDS YOU
