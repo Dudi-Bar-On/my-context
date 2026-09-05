@@ -761,6 +761,117 @@ export function checkDeadScopes(repoRoot: string, items: Item[], config: Config)
 }
 
 /**
+ * **Which repository files the document route can serve** — README.md, plus
+ * every `.md` under `docs/` or `reports/`.
+ *
+ * This predicate is the boundary
+ * `DEC-the-documentation-system-is-hand-built-over-a-wide-glob` ruled: *"the
+ * wider glob over docs and reports rather than `watchedDocs` alone. A
+ * documentation system that cannot show a report is not one, and most of what
+ * this project actually knows is written in reports."* `README.md` is named on
+ * top of it because it sits at the repository root, outside both directories,
+ * and `REQ-the-two-readmes-are-the-base-of-a-documentation-system-that` calls
+ * it (with `docs/README.he.md`, which `docs/` already covers) the base of the
+ * whole system.
+ *
+ * **It lives HERE, in doctor, rather than in the route that reads it**, and
+ * that is a direction decision rather than a filing accident. Two callers need
+ * the same sentence: `buildDocManifest` (`src/ui/read-model.ts`), which builds
+ * the manifest a reader picks from, and `checkWatchedDocsServable` below,
+ * which measures whether this corpus claims documents that manifest cannot
+ * reach. `read-model.ts` already imports `listRepoFiles` and `runChecks` from
+ * this module and nothing here imports from it, so putting the predicate on
+ * this side keeps that arrow pointing one way; putting it on the other would
+ * make the CLI's `doctor` load the whole UI read model to answer a question
+ * about two string prefixes.
+ *
+ * One wording, in one place, for one fact — the alternative is the recurring
+ * defect this codebase names by hand: a second copy of a rule that can drift
+ * from the first without anything failing.
+ */
+export function isServableDocPath(relPath: string): boolean {
+  if (relPath === 'README.md') return true;
+  return (relPath.startsWith('docs/') || relPath.startsWith('reports/')) && relPath.endsWith('.md');
+}
+
+/**
+ * **A document this corpus WATCHES that no reader can open**
+ * (`plan:docsys seq:4`, carrying out
+ * `REQ-a-repository-document-is-viewable-in-the-ui-only-once-it-is`).
+ *
+ * That requirement is `severity: hard` and says being in the repository does
+ * not make a document viewable — being in the CORPUS does, "reachable through
+ * `watchedDocs`". `DEC-the-documentation-system-is-hand-built-over-a-wide-glob`
+ * then decided the SERVING boundary separately, and made it wider. Two
+ * boundaries, decided eleven days apart, with nothing measuring that the
+ * narrow one still fits inside the wide one — so a `watchedDocs` entry naming
+ * a document outside `docs/`, `reports/` or `README.md` would put that
+ * document in the corpus and out of every reader's reach, silently, which is
+ * the exact failure the requirement was written about.
+ *
+ * **Today the answer is zero and that zero is measured, not assumed.**
+ * `watchedDocs` is `["docs/**\/*.md", "README.md"]` on this project as of
+ * 2026-09-05 — the owner added `README.md` to it for this task, and
+ * `docs/README.he.md` was already inside `docs/**\/*.md` — and both sides of
+ * every one of those matches are servable. The check exists so that the day a
+ * glob is widened past the route, `doctor` says so instead of the reader
+ * finding out by looking for a document that is not there.
+ *
+ * **It reports a FILE, never a glob.** A glob matching nothing at all is a
+ * different finding with a different remedy (`watched_docs_no_match`,
+ * `DEC-a-dead-watched-docs-list-earns-a-one-command-repair`, not built here);
+ * this one is only ever about a real file that a real reader would expect to
+ * be able to open.
+ *
+ * `PERSON` rather than `ACK`: the finding names no item, so there is nothing
+ * to anchor an acknowledgement to, and the fix is a `config.json` edit or a
+ * moved file — both outside my_context, exactly the shape `PERSON`'s own
+ * docblock describes.
+ *
+ * The walk is `listRepoFiles`' bounded one, so a repository big enough to
+ * truncate it gets a disclosure saying the answer is partial rather than a
+ * silent zero (`STD-a-measured-zero-is-drawn-and-named-an-unmeasured-thing-is`,
+ * and `INV-nothing-is-dropped-silently`).
+ */
+export function checkWatchedDocsServable(repoRoot: string, config: Config): Finding[] {
+  if (config.watchedDocs.length === 0) return [];
+
+  const files = listRepoFiles(repoRoot);
+  const findings: Finding[] = [];
+
+  for (const rel of files) {
+    if (!matchesAnyGlob(rel, config.watchedDocs)) continue;
+    if (isServableDocPath(rel)) continue;
+    const glob = config.watchedDocs.find((g) => matchesAnyGlob(rel, [g])) ?? '(unknown)';
+    findings.push({
+      level: 'warn', code: 'watched_doc_unserved',
+      remedy: PERSON,
+      message:
+        `"${rel}" is matched by watchedDocs glob "${glob}", so this corpus claims it as one of ` +
+        `its documents — but the document route cannot serve it, so no reader can open it in ` +
+        `the UI. That route reaches README.md and every .md under docs/ or reports/, and this ` +
+        `file is outside all three. Move the document under docs/, or drop the glob from ` +
+        `watchedDocs so the corpus stops claiming a document nobody can read. (watchedDocs also ` +
+        `drives the capture nudge in src/hooks/post-tool-use.ts, so dropping the glob also stops ` +
+        `the nudge on this file — a consequence, not a coincidence.)`,
+    });
+  }
+
+  if (files.length >= FILE_LIMIT) {
+    findings.push({
+      level: 'info', code: 'watched_doc_coverage', about: 'watched_doc_unserved',
+      remedy: NOTHING,
+      message:
+        `the repository walk stopped at its ${FILE_LIMIT}-file bound, so this check read only ` +
+        `part of the tree. Whatever it found above is real; a file it never reached could still ` +
+        `be watched and unservable, and nothing here is claiming otherwise.`,
+    });
+  }
+
+  return findings;
+}
+
+/**
  * Does gitignore `line` cover a file literally named `name` (e.g.
  * `.index.db`, `.index.db-wal`)? Handles the shapes doctor is actually
  * likely to see: a bare name, a trailing `*` (`.index.db*`), a leading `/`
@@ -3811,6 +3922,7 @@ export function runChecks(opts: {
     () => checkCitationForm(opts.repoRoot, opts.items),
     () => checkSourceDrift(opts.repoRoot, opts.items),
     () => checkDeadScopes(opts.repoRoot, opts.items, opts.config),
+    () => checkWatchedDocsServable(opts.repoRoot, opts.config),
     () => checkScopePolicy(opts.items, opts.config),
     () => checkUnknownCategory(opts.items, opts.config),
     () => checkSkippedConfigKeys(opts.config),

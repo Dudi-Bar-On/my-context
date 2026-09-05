@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: A document sitting only in the repository is not viewable in the app; bring the readmes and tutorials into the corpus with staleness made visible.
-summary_of: ecdd2b6d3f011f08
+summary_of: bf79381ffdad81c0
 scope:
   - README.md
   - docs/README.he.md
@@ -27,12 +27,12 @@ source_anchor: null
 source_checksum: c28165a3afb8ea59
 valid_from: 2026-09-05
 valid_until: null
-checksum: ca658df534950e53
+checksum: 99f67239e37b0ccc
 plan: docsys
 seq: "4"
 state: todo
 priority: "2"
-needs: docsys/2
+needs: docsys/2,tuts/5
 ---
 
 # bring README.md, docs/README.he.md and the tutorial files into the corpus, with a refresh mechanism

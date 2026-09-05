@@ -122,7 +122,7 @@ import { searchableRelationTypes } from '../core/search.ts';
 // The one authority for which statuses count as retired. Imported, then served
 // on `/api/items` — see `ItemsBody.retiredStatuses`.
 import { RETIRED_STATUSES } from '../core/select.ts';
-import { listRepoFiles, runChecks, type Finding } from '../doctor/checks.ts';
+import { isServableDocPath, listRepoFiles, runChecks, type Finding } from '../doctor/checks.ts';
 import { helpTopic, HELP_TOPICS } from '../help/index.ts';
 import { loadTutorialManifest, type TutorialManifestEntry, type TutorialTier } from '../core/tutorial-manifest.ts';
 import type { Budgets, Config } from '../core/config.ts';
@@ -3514,6 +3514,15 @@ export function apiTutorialDoc(ws: Workspace, url: URL, params: { id: string }):
  * the question "is the served copy stale" has no case where the answer is
  * anything but "there is no copy" — a stronger guarantee than a staleness
  * check, and simpler. Recorded here rather than discovered later.
+ *
+ * **And the copy was not merely unnecessary, it was unavailable** — measured
+ * when `docsys/4` came to take it
+ * (`LESSON-neither-readme-fits-in-a-snapshot-so-the-corpus-s-record-of`):
+ * `README.md` is 435,749 bytes and `docs/README.he.md` 579,601, against
+ * `SNAPSHOT_MAX_BYTES`' 262,144, so `readSnapshot` refuses both. What the
+ * corpus records of a watched document is therefore WHERE it is, never a copy
+ * of it, and `checkWatchedDocsServable` (`doctor/checks.ts`) is what keeps
+ * "watched" and "reachable through this manifest" from drifting apart.
  */
 
 /** One ATX heading, in document order. `anchor` is a GitHub-style slug, with
@@ -3665,8 +3674,13 @@ export function buildDocManifest(
   repoRoot: string,
 ): { entries: InternalDocEntry[]; truncated: boolean } {
   const { files, truncated } = coverageFiles(repoRoot);
-  const relPaths = files.filter((f) => f === 'README.md'
-    || ((f.startsWith('docs/') || f.startsWith('reports/')) && f.endsWith('.md')));
+  // The wide glob is `isServableDocPath` (`doctor/checks.ts`) and is not
+  // restated here: `checkWatchedDocsServable` has to ask the SAME question of
+  // the SAME paths — "would a reader be able to open this one" — and two
+  // spellings of one boundary is how a document ends up claimed by the corpus
+  // and unreachable in the UI without anything failing. See that predicate's
+  // own docblock for why it lives on doctor's side of the import arrow.
+  const relPaths = files.filter((f) => isServableDocPath(f));
 
   const entries = relPaths.map((relPath): InternalDocEntry => {
     const absPath = path.join(repoRoot, ...relPath.split('/'));
