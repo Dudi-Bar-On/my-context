@@ -91,6 +91,9 @@
  */
 import MarkdownIt from './vendor/markdown-it.esm.min.js';
 import { DIAGRAMS } from './diagrams.js';
+import {
+  ALLOWED_TAGS, buildElement, htmlTokens, VOID_TAGS,
+} from './sanitize.js';
 
 /** The safe URL schemes, exactly the set this renderer has always allowed. */
 const SAFE_HREF = /^(https?:|#|\.\/|\/)/;
@@ -436,4 +439,462 @@ export function mermaidBlocks(src) {
   return PARSER.parse(String(src).replaceAll('\r\n', '\n'), {})
     .filter((t) => t.type === 'fence' && String(t.info ?? '').trim().split(/\s+/)[0] === 'mermaid')
     .map((t) => t.content);
+}
+
+/* ══════════════════════════════════════════════════════════════════════════
+   THE GITHUB VIEW — a second POLICY over the same tokeniser, not a second
+   renderer.
+
+   ── WHY THERE ARE TWO POLICIES AND ONLY ONE MODULE ────────────────────────
+
+   `markdownNodes` above renders CORPUS ITEM TEXT: bodies written by agents and
+   by ingest, drawn inside the console, on a server that sends no
+   Content-Security-Policy. It refuses raw HTML outright, and that refusal is
+   the only thing standing between an agent-authored body and the page.
+   `githubNodes` below renders REPOSITORY DOCUMENTS on their own page, and its
+   policy is GitHub's, because the owner ruled on 2026-09-05 that it must be:
+   "use exactly the same renderer and viewing as it is implemented in github,
+   do not decide other way, if required ask me."
+
+   Two policies, one file, one tokeniser table, one set of node helpers — the
+   shape `DEC-markdown-is-served-from-a-manifest-rendered-by-one-renderer` asks
+   for when it says "two call sites are fine; two implementations are the
+   defect". The raw-HTML allow-list itself is `lib/sanitize.js`, split out
+   because it is security-critical, holds no markdown, and deserves to be read
+   and tested on its own.
+
+   ── WHAT "LIKE GITHUB" IS AND IS NOT ──────────────────────────────────────
+
+   BYTE-IDENTICAL PARITY IS IMPOSSIBLE AND IS NOT CLAIMED. GitHub renders with
+   cmark-gfm, a C implementation; this renders with the vendored markdown-it.
+   The ruling says so itself. What is matched is BEHAVIOUR:
+
+     - GFM: tables (with GitHub's own `align` attribute rather than
+       markdown-it's `style="text-align:…"`, which the allow-list strips
+       anyway), task lists, strikethrough, autolinks, linkified bare URLs.
+     - GitHub's sanitized HTML allow-list — `lib/sanitize.js`.
+     - HTML comments render as nothing at all, which the ruling names.
+     - Heading anchors by `headingSlug` below, the rule `test/helpers/
+       markdown.ts` calibrated against GitHub's own rendering of both READMEs.
+       One rule with two homes, held equal by `test/ui/github-render.test.ts`;
+       `slugAnchor` in `read-model.ts` is a THIRD spelling and differs, which
+       is already recorded as a defect rather than fixed here.
+     - Headings are `h1`…`h6`, not the `min(level+1, 4)` the console card uses:
+       this is a whole page, with no card heading above it to nest under.
+     - Mermaid fences are DRAWN from the committed SVGs `scripts/gen-diagrams
+       .ts` produces — the ruling's own instruction, through the same
+       `diagramNode` the console renderer uses.
+
+   ── WHAT STILL REFUSES, AND WHY THAT IS NOT A DEPARTURE ───────────────────
+
+   GitHub's sanitiser UNWRAPS an element outside its allow-list: the tag goes,
+   the text stays, and nothing tells the reader. This renderer REFUSES it by
+   name instead. That is the ruling's own instruction — "The refusal MECHANISM
+   stays for everything outside the allow-list - INV-nothing-is-dropped-
+   silently is why it exists" — and it is the one place where this project's
+   invariant is deliberately louder than GitHub.
+
+   An ATTRIBUTE outside the allow-list is COUNTED, not boxed. `docs/README.he
+   .md` carries 1,665 `dir` attributes that are all admitted; a page drawing a
+   warning per attribute would be the noise this change exists to remove. The
+   count comes back so the page can disclose it in one sentence.
+   ══════════════════════════════════════════════════════════════════════════ */
+
+/**
+ * The tokeniser for the GitHub view. `html: true` is the whole difference from
+ * `PARSER` above, and it is safe here for exactly one reason: every
+ * `html_block` and `html_inline` token it produces goes through
+ * `lib/sanitize.js`'s allow-list before a node exists. `linkify` is ON because
+ * GitHub linkifies a bare URL and this is a GitHub view; `typographer` stays
+ * off, because GitHub does not smarten quotes either.
+ */
+const GITHUB_PARSER = new MarkdownIt({
+  html: true,
+  linkify: true,
+  typographer: false,
+  breaks: false,
+});
+GITHUB_PARSER.validateLink = () => true;
+
+/**
+ * **The anchor GitHub gives a heading — the rule, not a second rule.**
+ *
+ * Copied from `test/helpers/markdown.ts`'s `headingSlug`, whose own header
+ * records that it was calibrated against GitHub's markdown API over both
+ * READMEs: with it, all 119 in-document anchors of `README.md` and all 118 of
+ * `docs/README.he.md` resolve. It is COPIED rather than imported because that
+ * helper is TypeScript under `test/` and this file is loaded by a browser with
+ * no build step (`CONST-node-24-no-build-step`) — the same bind `read-model.ts`
+ * records for its own fence rule. What keeps a copy from going quietly wrong
+ * is a gate, not a comment: `test/ui/github-render.test.ts` imports BOTH and
+ * asserts they agree on every heading of every document the manifest serves.
+ *
+ * Tag-stripping happens outside code spans only, which is the subtle half:
+ * both READMEs carry `categories.<name>.enabled` as a heading, `<name>` is
+ * literal text inside a code span, and its anchor is `categoriesnameenabled`.
+ */
+export function headingSlug(text) {
+  const flattened = String(text)
+    .split(/(`[^`]*`)/)
+    .map((part) => (
+      part.length > 1 && part.startsWith('`') && part.endsWith('`')
+        ? part.slice(1, -1)
+        : part.replace(/<[^>]*>/g, '')
+    ))
+    .join('');
+  return flattened
+    .toLowerCase()
+    .replace(/[^\p{L}\p{N}_ -]/gu, '')
+    .trim()
+    .replace(/ /g, '-');
+}
+
+/** The English wording for the two refusal labels this view adds, so a caller
+ *  with no string table — `node --test` — draws a sentence and not a key. */
+const ENGLISH_GITHUB_REFUSAL = (key, subs = {}) => {
+  if (key === 'gh.tagRefused') return `<${String(subs.tag)}> (tag refused)`;
+  if (key === 'gh.urlRefused') return `${String(subs.label)} (link refused)`;
+  return ENGLISH_REFUSAL(key, subs);
+};
+
+/** `[ ]` / `[x]` at the head of a list item — GFM's task-list marker. */
+const TASK_MARKER = /^\[([ xX])\][ \t]+/;
+
+/**
+ * The inline tokens that open a task-list item, mapped to whether the box is
+ * ticked. A PREPASS rather than a look-behind during the walk: the marker is a
+ * property of the item's FIRST inline run, and deciding it once up front keeps
+ * the walk itself free of list bookkeeping.
+ */
+function taskItems(tokens) {
+  const marked = new Map();
+  for (let i = 0; i < tokens.length; i += 1) {
+    if (tokens[i].type !== 'list_item_open') continue;
+    // The first inline run of the item, before any nested block opens one of
+    // its own. `paragraph_open` may be hidden (a tight list) or not.
+    for (let j = i + 1; j < tokens.length; j += 1) {
+      const t = tokens[j];
+      if (t.type === 'inline') {
+        const m = TASK_MARKER.exec(t.content);
+        if (m !== null) marked.set(t, m[1] !== ' ');
+        break;
+      }
+      if (t.type !== 'paragraph_open') break;
+    }
+  }
+  return marked;
+}
+
+/**
+ * markdown-it puts table alignment in a `style` attribute; GitHub puts it in
+ * `align`, which is in the allow-list and which browsers honour natively.
+ * Translating here is what makes a right-aligned column right-aligned on a
+ * page whose sanitiser — correctly — admits no `style` at all.
+ */
+function alignOf(token) {
+  for (const pair of token.attrs ?? []) {
+    if (pair[0] !== 'style') continue;
+    const m = /text-align:\s*(left|center|right)/.exec(pair[1]);
+    if (m !== null) return m[1];
+  }
+  return null;
+}
+
+/**
+ * Markdown → `{ nodes, refusals, dropped, headings }`, GitHub's way.
+ *
+ * **No HTML string is produced anywhere in this function or anything it
+ * calls.** Every node is `createElement` / `createTextNode` / `setAttribute`,
+ * and every raw tag and attribute passed `lib/sanitize.js`'s allow-list first.
+ *
+ * `refusals` is what was refused AND drawn as such; `dropped` is the attribute
+ * names silently outside the allow-list, counted for disclosure; `headings` is
+ * `{ level, text, slug }` in document order, which is what a table of contents
+ * is built from without parsing the document twice.
+ *
+ * `doc` is injected for the reason `markdownNodes` injects it: it is the only
+ * thing here that touches a document, so the whole policy is measurable under
+ * `node --test` with a two-method stand-in and no browser.
+ */
+export function githubNodes(src, doc, labelFor = ENGLISH_GITHUB_REFUSAL) {
+  const tokens = GITHUB_PARSER.parse(String(src).replaceAll('\r\n', '\n'), {});
+  const tasks = taskItems(tokens);
+  const refusals = [];
+  const dropped = [];
+  const headings = [];
+  const seenSlug = new Map();
+  const out = [];
+  // Every frame records WHO opened it. A markdown close pops down to the
+  // nearest markdown frame, discarding any raw tag left open inside it — which
+  // is what a browser does with `<p>a <b>b</p>` — and a raw close tag pops down
+  // to its own matching frame and never past a markdown one.
+  const stack = [];
+  const top = () => (stack.length === 0 ? null : stack[stack.length - 1]);
+  const emit = (node) => {
+    const frame = top();
+    if (frame === null) out.push(node); else frame.node.append(node);
+  };
+  const text = (value) => { if (value !== '') emit(doc.createTextNode(value)); };
+  const openMd = (tag) => {
+    const node = make(doc, tag, null, null);
+    emit(node);
+    stack.push({ node, name: tag, kind: 'md' });
+    return node;
+  };
+  const closeMd = () => {
+    while (stack.length > 0 && stack[stack.length - 1].kind !== 'md') stack.pop();
+    stack.pop();
+  };
+
+  /**
+   * One raw-HTML fragment, block or inline, against the SHARED stack.
+   *
+   * Shared on purpose: `<span dir="ltr">` and its `</span>` arrive as two
+   * separate `html_inline` tokens with the run between them, and a
+   * fragment-local stack could never join them. The Hebrew README is built out
+   * of 1,665 of exactly that pair.
+   */
+  const rawInto = (source) => {
+    for (const tok of htmlTokens(source)) {
+      if (tok.kind === 'text') { text(tok.text); continue; }
+      // A comment renders as nothing at all, and a doctype the same. The ruling
+      // names the first explicitly; 131 of `README.md`'s 141 refusal boxes were
+      // comments.
+      if (tok.kind === 'comment' || tok.kind === 'other') continue;
+      if (tok.kind === 'endtag') {
+        if (VOID_TAGS.has(tok.name)) continue;
+        for (let at = stack.length - 1; at >= 0; at -= 1) {
+          if (stack[at].kind === 'html' && stack[at].name === tok.name) {
+            stack.length = at;
+            break;
+          }
+        }
+        continue;
+      }
+      if (!ALLOWED_TAGS.has(tok.name)) {
+        refusals.push(`tag:${tok.name}`);
+        emit(make(doc, 'span', 'refusal', labelFor('gh.tagRefused', { tag: tok.name })));
+        continue;
+      }
+      const built = buildElement(doc, tok.name, tok.attrs);
+      for (const name of built.dropped) dropped.push(`${tok.name}@${name}`);
+      emit(built.node);
+      if (!VOID_TAGS.has(tok.name) && !tok.selfClosing) {
+        stack.push({ node: built.node, name: tok.name, kind: 'html' });
+      }
+    }
+  };
+
+  /** One `inline` token's children, against the same shared stack. */
+  const inlineRun = (token) => {
+    const children = token.children ?? [];
+    const ticked = tasks.get(token);
+    let skipMarker = ticked !== undefined;
+    if (skipMarker) {
+      // GFM's own markup for a task item, and disabled: a box a reader could
+      // tick would claim a state change this page cannot make, and GitHub
+      // disables them outside its own editor too.
+      const box = make(doc, 'input', null, null);
+      box.setAttribute('type', 'checkbox');
+      box.setAttribute('disabled', '');
+      if (ticked) box.setAttribute('checked', '');
+      emit(box);
+      text(' ');
+    }
+    for (let i = 0; i < children.length; i += 1) {
+      const child = children[i];
+      switch (child.type) {
+        case 'text': {
+          let value = child.content;
+          if (skipMarker) { value = value.replace(TASK_MARKER, ''); skipMarker = false; }
+          text(value);
+          break;
+        }
+        // GitHub does not turn a single newline into a `<br>` either; it emits
+        // the newline and the browser collapses it.
+        case 'softbreak':
+          text('\n');
+          break;
+        case 'hardbreak':
+          emit(make(doc, 'br', null, null));
+          break;
+        case 'code_inline':
+          emit(make(doc, 'code', null, child.content));
+          break;
+        // Underscore emphasis and strikethrough RENDER here, where
+        // `markdownNodes` above hands them back as text. That is not a change
+        // of mind about the corpus: CommonMark's intraword rule means
+        // `source_file` and `valid_from` are never emphasis to this tokeniser,
+        // and GitHub renders both constructs.
+        case 'em_open': openMd('em'); break;
+        case 'strong_open': openMd('strong'); break;
+        case 's_open': openMd('del'); break;
+        case 'em_close':
+        case 'strong_close':
+        case 's_close':
+          closeMd();
+          break;
+        case 'link_open': {
+          const built = buildElement(doc, 'a', [['href', attr(child, 'href')]]);
+          if (built.dropped.length > 0) {
+            // The scheme is outside the allow-list. The LABEL survives, so the
+            // reader is told a link was there and what it claimed to be —
+            // `INV-nothing-is-dropped-silently`, and the same shape the console
+            // renderer has always used.
+            let depth = 1;
+            let end = i + 1;
+            for (; end < children.length && depth > 0; end += 1) {
+              if (children[end].type === 'link_open') depth += 1;
+              if (children[end].type === 'link_close') depth -= 1;
+            }
+            refusals.push('url scheme');
+            emit(make(doc, 'span', 'refusal',
+              labelFor('gh.urlRefused', { label: plainText(children.slice(i + 1, end - 1)) })));
+            i = end - 1;
+            break;
+          }
+          const title = attr(child, 'title');
+          if (title !== '') built.node.setAttribute('title', title);
+          emit(built.node);
+          stack.push({ node: built.node, name: 'a', kind: 'md' });
+          break;
+        }
+        case 'link_close':
+          closeMd();
+          break;
+        case 'image': {
+          // GitHub RENDERS images; it serves them through its own camo proxy,
+          // which this server has no equivalent of. The residual difference is
+          // named in this change's report rather than papered over here.
+          const built = buildElement(doc, 'img', [
+            ['src', attr(child, 'src')],
+            ['alt', child.content],
+            ['title', attr(child, 'title')],
+          ]);
+          if (built.dropped.includes('src')) {
+            refusals.push('image src scheme');
+            emit(make(doc, 'span', 'refusal', labelFor('dv.imgRefused', { alt: child.content })));
+            break;
+          }
+          emit(built.node);
+          break;
+        }
+        case 'html_inline':
+          rawInto(child.content);
+          break;
+        default:
+          text(child.content ?? '');
+          break;
+      }
+    }
+  };
+
+  for (let i = 0; i < tokens.length; i += 1) {
+    const token = tokens[i];
+    switch (token.type) {
+      case 'heading_open': {
+        const level = Number(token.tag.slice(1));
+        const node = openMd(`h${level}`);
+        const source = tokens[i + 1] !== undefined && tokens[i + 1].type === 'inline'
+          ? tokens[i + 1].content : '';
+        const base = headingSlug(source);
+        const count = seenSlug.get(base) ?? 0;
+        seenSlug.set(base, count + 1);
+        const slug = count === 0 ? base : `${base}-${count}`;
+        if (slug !== '') node.id = slug;
+        headings.push({ level, text: source, slug });
+        break;
+      }
+      case 'paragraph_open':
+        if (!token.hidden) openMd('p');
+        break;
+      case 'paragraph_close':
+        if (!token.hidden) closeMd();
+        break;
+      case 'inline':
+        inlineRun(token);
+        break;
+      case 'bullet_list_open': openMd('ul'); break;
+      case 'ordered_list_open': {
+        const list = openMd('ol');
+        const start = attr(token, 'start');
+        if (start !== '') list.setAttribute('start', start);
+        break;
+      }
+      case 'list_item_open': {
+        const item = openMd('li');
+        // The item is a task item when its first inline run carries the marker;
+        // `taskItems` decided that before the walk began.
+        for (let j = i + 1; j < tokens.length; j += 1) {
+          if (tokens[j].type === 'inline') {
+            if (tasks.has(tokens[j])) item.className = 'task-list-item';
+            break;
+          }
+          if (tokens[j].type !== 'paragraph_open') break;
+        }
+        break;
+      }
+      case 'blockquote_open': openMd('blockquote'); break;
+      case 'table_open': openMd('table'); break;
+      case 'thead_open': openMd('thead'); break;
+      case 'tbody_open': openMd('tbody'); break;
+      case 'tr_open': openMd('tr'); break;
+      case 'th_open':
+      case 'td_open': {
+        const cell = openMd(token.type === 'th_open' ? 'th' : 'td');
+        const align = alignOf(token);
+        if (align !== null) cell.setAttribute('align', align);
+        break;
+      }
+      case 'heading_close':
+      case 'bullet_list_close':
+      case 'ordered_list_close':
+      case 'list_item_close':
+      case 'blockquote_close':
+      case 'table_close':
+      case 'thead_close':
+      case 'tbody_close':
+      case 'tr_close':
+      case 'th_close':
+      case 'td_close':
+        closeMd();
+        break;
+      case 'hr':
+        emit(make(doc, 'hr', null, null));
+        break;
+      case 'fence': {
+        const info = String(token.info ?? '').trim().split(/\s+/)[0];
+        if (info === 'mermaid') { emit(diagramNode(doc, token.content)); break; }
+        const pre = make(doc, 'pre', null, null);
+        const code = make(doc, 'code', null, token.content);
+        // The fence's own info string, as DATA rather than as a class: this
+        // page highlights nothing, and a `language-x` class would promise it
+        // did.
+        if (info !== '') code.setAttribute('data-lang', info);
+        pre.append(code);
+        emit(pre);
+        break;
+      }
+      case 'code_block': {
+        const pre = make(doc, 'pre', null, null);
+        pre.append(make(doc, 'code', null, token.content));
+        emit(pre);
+        break;
+      }
+      case 'html_block':
+        rawInto(token.content);
+        break;
+      default:
+        // A block token nobody enumerated. Shown with its own source rather
+        // than dropped.
+        if (token.nesting === 0 && (token.content ?? '') !== '') {
+          const pre = make(doc, 'pre', null, null);
+          pre.append(make(doc, 'code', null, token.content));
+          emit(pre);
+        }
+        break;
+    }
+  }
+
+  return { nodes: out, refusals, dropped, headings };
 }

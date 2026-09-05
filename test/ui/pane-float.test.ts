@@ -269,14 +269,19 @@ function shellElements(): FakeElement[] {
   return out;
 }
 
-/** `app.js` with its twenty-one screen routes stubbed — pane-route's rewrite. */
+/** `app.js` with its twenty screen routes stubbed — pane-route's rewrite. */
 function rewrittenAppJs(): string {
   let routes = 0;
   const rewritten = APP_JS.replace(/import\('\/screens\/([a-z]+)\.js'\)/g, () => {
     routes += 1;
     return "import('data:text/javascript,export%20async%20function%20render(){}')";
   });
-  assert.ok(routes >= 21, `expected app.js to register 21+ screen routes, rewrote ${routes}`);
+  // TWENTY, not twenty-one, since 2026-09-05: `screens/docs.js` and
+  // `screens/tut.js` were replaced by the one `screens/library.js` under
+  // `DEC-the-documentation-and-tutorials-screens-become-one-list-and`. The
+  // bound is a floor rather than an equality on purpose — it exists to catch
+  // a rewrite that silently missed routes, not to pin the roster.
+  assert.ok(routes >= 20, `expected app.js to register 20+ screen routes, rewrote ${routes}`);
   assert.doesNotMatch(rewritten, /import\('\/screens\//,
     'a screen route survived the rewrite');
   return rewritten;

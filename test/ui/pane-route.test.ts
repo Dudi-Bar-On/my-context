@@ -336,7 +336,7 @@ function shellIds(): { id: string; tag: string; hidden: boolean }[] {
   return found;
 }
 
-/* ══ app.js, WITH ITS TWENTY-ONE ROUTES STUBBED ════════════════════════════
+/* ══ app.js, WITH ITS TWENTY ROUTES STUBBED ═══════════════════════════════
  *
  * `test/ui/coverage-screen.test.ts`' pattern — "the module's own bytes are
  * read, [its specifiers are rewritten], and the result is imported as a `data:`
@@ -344,7 +344,7 @@ function shellIds(): { id: string; tag: string; hidden: boolean }[] {
  * that silently missed one would import a different module graph than the
  * browser runs."
  *
- * Here the rewrite is ONE thing only: the twenty-one DYNAMIC screen imports
+ * Here the rewrite is ONE thing only: the twenty DYNAMIC screen imports
  * inside `SCREENS` are pointed at a stub. Not to make the harness lighter —
  * because a screen's `render()` would draw a whole screen against this
  * stand-in and turn a failure about NAVIGATION into a failure about a table.
@@ -352,10 +352,12 @@ function shellIds(): { id: string; tag: string; hidden: boolean }[] {
  * screen paints is another file's test. Everything else `app.js` imports is
  * the shipped module, resolved by the hook above.
  *
- * `/screens/docs.js` is deliberately NOT stubbed where `app.js` imports it
+ * `/lib/markdown.js` is deliberately NOT stubbed where `app.js` imports it
  * STATICALLY: that import is `markdownNodes`, which the pane runs on an item
  * body, and stubbing it would hollow out the very thing the first test looks
- * at. The two are told apart by form — `import('…')` is a route, `from '…'` is
+ * at. (It was `/screens/docs.js` until the renderer moved into `lib/` on
+ * 2026-09-05, and that screen is now retired outright.) The two are told
+ * apart by form — `import('…')` is a route, `from '…'` is
  * a dependency — which is the whole reason this replacement is anchored to the
  * call form.
  */
@@ -381,7 +383,12 @@ function rewrittenAppJs(): string {
   // stripping pass: `app.js` carries regex literals containing `//`
   // (`/^#\//`), and a stripper that mangled one would break the router this
   // file exists to drive.
-  assert.ok(routes >= 21, `expected app.js to register 21+ screen routes, rewrote ${routes}`);
+  // TWENTY, not twenty-one, since 2026-09-05: `screens/docs.js` and
+  // `screens/tut.js` were replaced by the one `screens/library.js` under
+  // `DEC-the-documentation-and-tutorials-screens-become-one-list-and`. The
+  // bound is a floor rather than an equality on purpose — it exists to catch
+  // a rewrite that silently missed routes, not to pin the roster.
+  assert.ok(routes >= 20, `expected app.js to register 20+ screen routes, rewrote ${routes}`);
   assert.doesNotMatch(rewritten, /import\('\/screens\//,
     'a screen route survived the rewrite — the real screen would render against this stand-in, '
     + 'and a failure about navigation would arrive dressed as a failure about a table');

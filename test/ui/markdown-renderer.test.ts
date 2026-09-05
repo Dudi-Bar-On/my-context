@@ -1,43 +1,41 @@
 /**
- * **The Documentation screen's markdown-to-nodes half, tested in Node.**
+ * **The one console renderer, `markdownNodes`, tested in Node.**
+ *
+ * ── WHY THIS FILE IS NAMED AFTER A LIBRARY AND NOT AFTER A SCREEN ─────────
+ *
+ * It was `test/ui/docs-screen.test.ts` until 2026-09-05, and it tested two
+ * things: the Documentation screen, and the renderer that screen used to
+ * declare. `DEC-the-documentation-and-tutorials-screens-become-one-list-and`
+ * retired that screen — one console page replaces it and `screens/tut.js`,
+ * and reading happens on `/doc.html` in a new tab. The renderer did NOT go
+ * with it: `markdownNodes` still draws every corpus item body in the detail
+ * pane, under a policy that refuses raw HTML outright, and it is the only
+ * thing standing between an agent-authored body and a page on a server that
+ * sends no Content-Security-Policy.
+ *
+ * So the screen's own tests went with the screen, and every assertion about
+ * what the RENDERER produces is here, unchanged in what it asks. The three
+ * that left were: that `screens/docs.js` exported a `render`, that it
+ * hard-coded no document of its own, and that its `#/docs/:id/:anchor` hash
+ * parsed — all three about a module that no longer exists.
+ * `test/ui/library-screen.test.ts` is the replacement screen's own file, and
+ * `test/ui/github-render.test.ts` holds the SECOND policy over this same
+ * tokeniser: `githubNodes`, which renders a whole document the way GitHub
+ * does, admits GitHub's sanitized HTML allow-list, and is what `/doc.html`
+ * draws.
+ *
+ * ── THE LIMIT, UNCHANGED ─────────────────────────────────────────────────
  *
  * The limit is the one `test/ui/viewmodel.test.ts` states in its own header
- * and spec §6 states for the project: the DOM rendering in `app.js` and
+ * and spec §6 states for the project: DOM rendering in `app.js` and
  * `screens/*.js` has no test, because that would need a browser dependency
- * this project does not have. So `render()` is NOT exercised here — what is,
- * is every decision `screens/docs.js` makes that can be made without a
- * document: which element a block becomes, which runs are refused, and what
- * happens to input the subset does not understand.
- *
- * That half is testable at all because it takes its `doc` as an argument, the
- * same arrangement `lib/i18n.js`'s `t()` uses and for the same reason
- * (`src/ui/public/lib/i18n.js` · ``exists so `node --test` can pass a two-method stand-in; the browser`` · ~112).
- * Two factory methods are the entire DOM surface `markdownNodes` touches, so
- * two methods are all this file supplies.
- *
- * ── WHY THIS FILE REWRITES TWO IMPORT SPECIFIERS, AND EXACTLY TWO ────────
- *
- * `screens/docs.js` imports `'/screens/parts.js'` and `'/lib/markdown.js'` —
- * SERVER-ABSOLUTE specifiers, because the browser loads every module from the
- * UI server's own root and that is the form the shell's `SCREENS` table uses.
- * Node has no such root: it resolves `/screens/parts.js` against the parent
- * `file://` URL and looks for `D:\screens\parts.js`, which does not exist.
- *
- * So the module is read, those specifiers are replaced by the `file://` URLs
- * of the very files they name, and the result is imported as a `data:` module.
- * Nothing else is transformed, and `substitutions` below asserts that BOTH
- * rewrites happened — a renamed import, or a third one added later, fails this
- * file loudly instead of silently testing a module that no longer resolves.
- *
- * ── AND WHY THE RENDERER IS NOW IMPORTED DIRECTLY ───────────────────────
- *
- * `markdownNodes` moved out of this screen on 2026-09-05 under
- * `DEC-markdown-it-is-vendored-as-the-tokeniser-and-the-drawings`: it is
- * `src/ui/public/lib/markdown.js` now, a library with no server-absolute
- * import of its own (its tokeniser is `./vendor/markdown-it.esm.min.js`, a
- * relative specifier Node resolves unaided). So `md()` below imports that file
- * by `file://` URL and rewrites nothing. Every assertion about what the
- * renderer produces is unchanged in what it asks; only where it asks moved.
+ * this project does not have. What is testable is every decision the renderer
+ * makes that can be made without a document: which element a block becomes,
+ * which runs are refused, and what happens to input the subset does not
+ * understand. That half is testable at all because it takes its `doc` as an
+ * argument, the same arrangement `lib/i18n.js`'s `t()` uses and for the same
+ * reason. Two factory methods are the entire DOM surface `markdownNodes`
+ * touches, so two methods are all this file supplies.
  */
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
@@ -46,7 +44,6 @@ import path from 'node:path';
 import { pathToFileURL } from 'node:url';
 
 const REPO = path.join(import.meta.dirname, '..', '..');
-const SCREENS = path.join(REPO, 'src', 'ui', 'public', 'screens');
 
 /** The two-method stand-in's node. Deliberately NOT a DOM node: a field bag. */
 interface FakeNode {
@@ -62,12 +59,6 @@ interface FakeNode {
 interface FakeDoc {
   createElement: (tag: string) => FakeNode;
   createTextNode: (text: string) => FakeNode;
-}
-
-interface DocsModule {
-  render: (root: unknown, ctx: unknown) => Promise<void>;
-  /** `docsys/5`'s deep-link parse — `#/docs/:id/:anchor`, both halves optional. */
-  docAddress: (hash: string) => { id: string | null; anchor: string | null };
 }
 
 /** The renderer, which is a library now and belongs to no screen. */
@@ -124,7 +115,7 @@ function textOf(node: FakeNode): string {
   return node.children.length > 0 ? node.children.map(textOf).join('') : node.textContent;
 }
 
-let substitutions = 0;
+
 
 const PUBLIC = path.join(REPO, 'src', 'ui', 'public');
 
@@ -133,18 +124,6 @@ function served(specifier: string): string {
   return pathToFileURL(path.join(PUBLIC, ...specifier.slice(1).split('/'))).href;
 }
 
-async function docsModule(): Promise<DocsModule> {
-  const source = readFileSync(path.join(SCREENS, 'docs.js'), 'utf8');
-  let rewritten = source;
-  substitutions = 0;
-  for (const specifier of ['/screens/parts.js', '/lib/markdown.js']) {
-    const before = rewritten;
-    rewritten = rewritten.replace(`'${specifier}'`, JSON.stringify(served(specifier)));
-    if (before !== rewritten) substitutions += 1;
-  }
-  const url = `data:text/javascript;base64,${Buffer.from(rewritten, 'utf8').toString('base64')}`;
-  return (await import(url)) as DocsModule;
-}
 
 /** The renderer itself, imported the way any other library module is. */
 async function rendererModule(): Promise<RendererModule> {
@@ -157,18 +136,6 @@ async function md(src: unknown): Promise<{ nodes: FakeNode[]; refusals: string[]
   return markdownNodes(src, fakeDoc());
 }
 
-test('the screen exports the screen, the renderer is a library, and both absolute imports were rewritten', async () => {
-  const mod = await docsModule();
-  assert.equal(substitutions, 2,
-    "docs.js no longer imports '/screens/parts.js' and '/lib/markdown.js' by those exact " +
-    "specifiers — this file's rewrite is now testing an unrewritten module, or a third " +
-    'server-absolute import has been added.');
-  assert.equal(typeof mod.render, 'function', 'the screen contract is `export render(root, ctx)`');
-  assert.equal((mod as unknown as Record<string, unknown>)['markdownNodes'], undefined,
-    'the renderer moved to lib/markdown.js — a screen re-exporting it is the coupling that move undid');
-  const renderer = await rendererModule();
-  assert.equal(typeof renderer.markdownNodes, 'function');
-});
 
 test('each block form becomes the element the mockup renderer names', async () => {
   const { nodes, refusals } = await md('# One\n\na paragraph\n\n- a\n- b\n\n* c');
@@ -623,13 +590,15 @@ test('every place markdown is shown imports this renderer, and nothing builds a 
   const modules = [
     ...readdirSync(path.join(PUBLIC, 'screens')).map((f) => path.join('screens', f)),
     ...readdirSync(path.join(PUBLIC, 'lib')).map((f) => path.join('lib', f)),
-    'app.js',
+    // The two page entry points at the public root: the console shell and the
+    // standalone document page.
+    'app.js', 'doc.js',
   ].filter((f) => f.endsWith('.js') && f !== path.join('lib', 'markdown.js'));
 
   const importers: string[] = [];
   for (const relative of modules) {
     const source = readFileSync(path.join(PUBLIC, relative), 'utf8');
-    if (/import \{[^}]*markdownNodes[^}]*\} from '\/lib\/markdown\.js'/.test(source)) {
+    if (/import \{[^}]*(?:markdownNodes|githubNodes)[^}]*\} from '\/lib\/markdown\.js'/.test(source)) {
       importers.push(relative.replaceAll('\\', '/'));
     }
     // A second implementation announces itself the same way both of these did:
@@ -639,104 +608,23 @@ test('every place markdown is shown imports this renderer, and nothing builds a 
       `${relative} splits markdown into blocks itself — that is the second renderer this decision retired`);
   }
 
-  // THREE call sites, and the decision's own words are *"two call sites are
-  // fine; two implementations are the defect"* — the count was never the
-  // rule. `app.js` is the item detail pane; `screens/docs.js` is the
-  // Documentation screen, which used to hold the renderer and now imports it
-  // like everybody else; `screens/tut.js` is the tutorial reader, added by
-  // `TASK-the-tutorials-screen-gets-a-reader-not-only-a-checklist`. Each
-  // landed here exactly as this comment said it would — by adding a module to
-  // this list, not by writing a renderer.
-  assert.deepEqual(importers.sort(), ['app.js', 'screens/docs.js', 'screens/tut.js'],
+  // TWO call sites now, and the decision's own words are *"two call sites are
+  // fine; two implementations are the defect"* — the count was never the rule,
+  // and it has moved in both directions without the rule changing. It was
+  // three: `app.js`, `screens/docs.js` and `screens/tut.js`. On 2026-09-05
+  // `DEC-the-documentation-and-tutorials-screens-become-one-list-and` retired
+  // the last two and `/doc.html` took over reading a document, so the list is
+  // `app.js` (the item detail pane) and `doc.js` (the standalone page).
+  //
+  // **`doc.js` imports the OTHER export of this module**, `githubNodes` — a
+  // second POLICY over the same tokeniser, not a second implementation, and it
+  // lives in the same file for exactly that reason. The census below matches
+  // either export, so a module reaching for one of them is counted whichever
+  // it takes.
+  assert.deepEqual(importers.sort(), ['app.js', 'doc.js'],
     'the set of modules importing the renderer changed — add the new one here on purpose, '
     + 'so a screen that grew its own markdown handling cannot do it quietly');
 });
 
-/**
- * ── THE INDEX IS DERIVED NOW, AND THIS IS WHAT REPLACED THE LITERALS ───────
- *
- * What stood here asserted the five hard-coded Contents ordinals
- * (`[[1,'dv.t1'] … [7,'dv.t7']]`) and the one hard-coded `mycontext help`
- * topic beside them. `docsys/5` deleted both: the picker, the per-document
- * heading index and the document the card renders are all `GET /api/doc`'s
- * answer now. An assertion that the literals are still literals would fail for
- * the right reason exactly once and then be deleted, so it is REPLACED by
- * assertions about the property that took over — that the screen names no
- * document, no path and no heading of its own.
- */
-test('the screen hard-codes no document, no path and no heading of its own', async () => {
-  const source = readFileSync(path.join(SCREENS, 'docs.js'), 'utf8');
-  const code = source.replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '');
 
-  // The five literal Contents rows, gone. The keys survive in both string
-  // tables because the frozen mockup still declares them; nothing here reads
-  // them.
-  assert.equal(/'dv\.t\d'/.test(code), false,
-    'a dv.t* key is back in the code — the Contents rows are the manifest\'s now');
-  assert.equal(/\/api\/help\//.test(code), false,
-    'the screen is back on /api/help — its documents come from the manifest');
 
-  // The ONE document name the module may carry, and the requirement that puts
-  // it there. It is a DEFAULT for an address that names nothing, never a
-  // fallback for an address that names something.
-  const defaults = [...code.matchAll(/'((?:docs\/)?README(?:\.he)?\.md)'/g)].map((m) => m[1]!);
-  assert.deepEqual(defaults, ['README.md', 'docs/README.he.md'],
-    'the base of the documentation system per REQ-the-two-readmes-…, and nothing else');
-
-  // Every id that reaches the network is one the manifest answered: the two
-  // fetches are the bare list and one `encodeURIComponent(selected.id)`, where
-  // `selected` was found IN that list.
-  const fetches = [...code.matchAll(/ctx\.api\(([\s\S]*?)\);/g)].map((m) => m[1]!.trim());
-  assert.deepEqual(fetches, ["'/api/doc'", '`/api/doc/${encodeURIComponent(selected.id)}`'],
-    'a request built from anything but a manifest id is the boundary this screen shares with the server');
-});
-
-test('the hash parses into a document and a heading, and a bad escape refuses rather than throws', async () => {
-  const { docAddress } = await docsModule();
-  assert.deepEqual(docAddress('#/docs'), { id: null, anchor: null });
-  assert.deepEqual(docAddress('#/docs/'), { id: null, anchor: null });
-  assert.deepEqual(docAddress(''), { id: null, anchor: null });
-  // A document id is a repo-relative PATH, and it survives as ONE segment
-  // because the screen percent-encodes it — which is what lets `app.js` split
-  // the screen off at the first `/`.
-  assert.deepEqual(docAddress('#/docs/docs%2FREADME.he.md'),
-    { id: 'docs/README.he.md', anchor: null });
-  assert.deepEqual(docAddress('#/docs/README.md/the-trust-boundary'),
-    { id: 'README.md', anchor: 'the-trust-boundary' });
-  // A Hebrew anchor round-trips: `slugAnchor` keeps `\p{L}`, so this is a real
-  // address in this repository and not a hypothetical.
-  assert.deepEqual(docAddress(`#/docs/docs%2FREADME.he.md/${encodeURIComponent('מה-זה')}`),
-    { id: 'docs/README.he.md', anchor: 'מה-זה' });
-  // A malformed escape is carried through AS WRITTEN — it then misses the
-  // manifest lookup and draws `dv.noid`, which names what is served. A throw
-  // here would blank the screen for a pasted address.
-  assert.deepEqual(docAddress('#/docs/%E0%A4%A'), { id: '%E0%A4%A', anchor: null });
-});
-
-/**
- * **The screen's own keys, in both tables.** The direction `strings-parity`
- * dropped in 2026-08-26 is held per screen instead, and this is this screen's
- * instance of it: `t()` throws on a key it cannot find, so a typo blanks the
- * card.
- */
-test('every key this screen names is declared in both string tables', async () => {
-  const source = readFileSync(path.join(SCREENS, 'docs.js'), 'utf8');
-  const code = source.replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '');
-  const named = [...code.matchAll(/'((?:dv|tu)\.[A-Za-z0-9]+)'/g)].map((m) => m[1]!);
-  assert.ok(named.length > 0, 'the module names no keys at all');
-
-  const load = async (lang: string) => (await import(
-    new URL(`file://${path.join(REPO, 'src', 'ui', 'public', 'strings', `${lang}.js`).replaceAll('\\', '/')}`).href
-  ) as { strings: Record<string, string> }).strings;
-  const en = await load('en');
-  const he = await load('he');
-  for (const key of new Set(named)) {
-    assert.ok(Object.hasOwn(en, key), `en.js does not declare ${key}`);
-    assert.ok(Object.hasOwn(he, key), `he.js does not declare ${key}`);
-  }
-  // `tu.todo` is the Tutorials screen's key, BORROWED rather than owned — the
-  // `to write` chip `docsys/6` requires be reused and not reinvented. Named
-  // here so the reuse is deliberate and visible rather than a stray prefix.
-  assert.ok(named.includes('tu.todo'),
-    'the missing-mirror chip must reuse tu.todo, never a second spelling of "to write"');
-});

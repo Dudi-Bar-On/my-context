@@ -44,7 +44,7 @@
 // The task's own reasoning, restated because it is the reason this file
 // exists at all: **"nothing invalidates me" is a legal and common answer,
 // and it is indistinguishable from "nobody thought about this screen" unless
-// it is written down.** `docs`, `tut` and `port` below are the three where
+// it is written down.** `library` and `port` below are the two where
 // that is the honest entry — the code proves it per-screen in the notes
 // beneath — and the gate is what makes them readable as a decision rather
 // than an omission. Same shape as `plan:rulings seq:50`'s complaint about a
@@ -151,12 +151,11 @@
 //             header, in full).
 //   config    `/api/config` only. `hook`, for the `file-changed` reason
 //             above.
-//   docs      `/api/help/scope` — but only `body.markdown` is drawn;
-//             `screens/docs.js` says so explicitly ("`corpus` is fetched and
-//             NOT drawn... duplicating it here would put the same fact on
-//             two screens"). The prose itself is static. Nothing.
-//   tut       Reads no endpoint at all (`screens/tut.js`'s own header:
-//             "IT READS NO ENDPOINT, AND THAT IS A MEASUREMENT"). Nothing.
+//   library   `/api/doc` and `/api/tutorials`. Both walk the FILESYSTEM —
+//             the wide glob over `docs/` and `reports/`, and the tutorial
+//             manifest — and neither reads the corpus at all. No audit
+//             kind is emitted when a `.md` file appears on disk, so there
+//             is nothing for this screen to subscribe to. Nothing.
 //   capture   `/api/config` (category picker, same `hook` reasoning as
 //             palette) and `/api/capture?scope=…` (what already governs the
 //             scope — `mutation`). `mutation`, `hook`.
@@ -175,7 +174,7 @@
 //
 // ── THE THREE "NOTHING" ROWS, WRITTEN DOWN RATHER THAN LEFT ABSENT ────────
 //
-// `docs`, `tut` and `port` carry `kinds: []`, not a missing key. An empty
+// `library` and `port` carry `kinds: []`, not a missing key. An empty
 // array reads identically to "not yet declared" only if nothing enforces the
 // difference; the gate below is that enforcement — a key holding `[]` passes
 // it, an absent key does not. Their `refresh` is `'auto'` only because a
@@ -200,7 +199,7 @@
 //           `reviewQueue.drafts`, `pendingRevisions.revisions`, three fixed
 //           counts (`screens/status.js`), never a list a mutation could
 //           reorder or a form a rebuild could clear.
-//   'auto'  docs, tut, port  `kinds: []` — never triggered; see above.
+//   'auto'  library, port    `kinds: []` — never triggered; see above.
 //   'ask'   Every other screen — sixteen of them — for one of three reasons,
 //           and most for more than one: (1) an EDITABLE field or an open
 //           confirm a rebuild would wipe — `config`'s budget `<input>`s and
@@ -292,8 +291,7 @@ export const SCREEN_INVALIDATION = {
   // reader is midway through typing. See this task's report for how this was
   // verified end to end.
   config: { kinds: ['hook', 'mutation'], refresh: 'ask' },
-  docs: { kinds: [], refresh: 'auto' },
-  tut: { kinds: [], refresh: 'auto' },
+  library: { kinds: [], refresh: 'auto' },
   capture: { kinds: ['mutation', 'hook'], refresh: 'ask' },
   proc: { kinds: ['mutation', 'progress'], refresh: 'ask' },
   port: { kinds: [], refresh: 'auto' },
@@ -348,7 +346,7 @@ export const SCREEN_INVALIDATION = {
 //            five kinds are injections, focus, refusals, step ticks and
 //            command runs. Nothing this log can carry changes what this
 //            segment says, so the honest entry is `[]` — the same
-//            written-down "nothing" `docs`, `tut` and `port` carry above,
+//            written-down "nothing" `library` and `port` carry above,
 //            and the direct answer to "do not refetch what has not changed":
 //            an item write must not make the git group flicker, and with no
 //            kind declared it cannot.

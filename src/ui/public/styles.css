@@ -3001,3 +3001,165 @@ svg.chart text.rel{font-family:var(--mono);font-size:var(--fs-chart-rel);fill:va
 
   @page{margin:16mm}
 }
+
+/* ─── THE LIBRARY LIST AND THE STANDALONE DOCUMENT PAGE ────────────────────
+   `DEC-the-documentation-and-tutorials-screens-become-one-list-and`, owner
+   ruling 2026-09-05. Two surfaces, one block, because they are one feature:
+   the console page that LISTS, and the page in a new tab that READS.
+
+   ── INSTRUCTION 3, AND WHY IT IS NOT A NEW VOCABULARY ──────────────────────
+
+   "change the style of the links in the new page either use a button or other
+   way becase the link style is not looking good". An entry is therefore the
+   `.row` PRIMITIVE — the mockup's own actionable row, section 2 of the
+   primitives above, "the only primitive that moves" — which the session picker
+   and the focus dialog already spend on exactly this job. `.docrow` adds only
+   the two things `.row` cannot know, because `.row` was written for a
+   `<button>` and these are anchors (a reader expects to middle-click something
+   that opens a tab, and expects "copy link address" to work on it):
+
+     - `text-decoration:none`, which is the whole of the owner's complaint;
+     - the card-role accent as a SPINE, the same `border-inline-start` idiom
+       `.card[data-role]` above already uses, so a row reads as belonging to the
+       card it sits in rather than as a second colour system.
+
+   No new hue is introduced: `--role-nav` and `--role-content` are the two the
+   card-role system already declares, and the row simply inherits its card's.
+
+   ── THE DOCUMENT PAGE ─────────────────────────────────────────────────────
+
+   `/doc.html` has no `.app` grid, no rail and no header: it is one column on
+   the same `--ground`, reusing `.md`'s reading typography and its 72ch measure
+   — which a full page can finally hold honestly, where a two-up console card
+   never could. What is added here is only what a WHOLE document needs and a
+   card excerpt did not: `h5`/`h6` (the console renderer capped every heading
+   at `h4`; GitHub's does not, and neither does this one), GitHub's own table
+   rules, its inline-code chip, and the task-list checkbox.
+
+   `unicode-bidi:isolate` on `.ghdoc code` is a NAMED departure from GitHub,
+   recorded rather than slipped in: GitHub does not isolate inline code, and
+   without it `--json` inside a Hebrew sentence reorders mid-line. This project
+   ships a Hebrew document and has already paid for that defect once (`.m`
+   above exists for it). It is presentation only — no node, no attribute and no
+   text changes — and the ruling's "its dark presentation" is the clause it
+   sits under. */
+.docrow{text-decoration:none;font:var(--fs-2)/1.4 var(--sans);gap:var(--sp-2);
+  border-inline-start:3px solid transparent}
+.card[data-role="nav"] .docrow{border-inline-start-color:color-mix(in srgb,var(--role-nav) 55%,transparent)}
+.card[data-role="content"] .docrow{border-inline-start-color:color-mix(in srgb,var(--role-content) 55%,transparent)}
+.docrow:focus-visible{outline:2px solid var(--role-nav);outline-offset:2px}
+/* A row with nothing to open is not a link and must not look like one: no
+   pointer, no lift, no glyph. The roster still shows it, because the roster is
+   the whole roster — a tutorial the manifest names and nobody has written yet
+   is a fact, not an absence. */
+.docrow.dead{cursor:default;color:var(--dim)}
+.docrow.dead:hover{transform:none;background:transparent;border-color:transparent;
+  box-shadow:none}
+.docname{flex:1;min-inline-size:0}
+.docmarks{display:flex;align-items:center;gap:6px;flex:0 0 auto}
+.lang{font:var(--fs-00)/1 var(--mono);color:var(--dim)}
+.lang.ok{color:var(--ok)}
+
+/* — the page in the new tab — */
+body.docpage{overflow-y:auto}
+.docshell{max-inline-size:calc(72ch + 2 * var(--sp-6));margin-inline:auto;
+  padding:var(--sp-4) var(--sp-4) var(--sp-6)}
+.dochead{display:flex;align-items:center;gap:var(--sp-3);flex-wrap:wrap;
+  padding-block-end:var(--sp-2);border-block-end:1px solid var(--rule);
+  margin-block-end:var(--sp-3)}
+.backrow{inline-size:auto;flex:0 0 auto;text-decoration:none;font:var(--fs-1)/1 var(--sans)}
+.docwhere{display:flex;align-items:center;gap:var(--sp-2);flex:1;min-inline-size:0;
+  justify-content:flex-end}
+.docwhere .m{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--dim);
+  font-size:var(--fs-00)}
+.docfoot{margin-block-start:var(--sp-6);padding-block-start:var(--sp-3);
+  border-block-start:1px solid var(--rule);max-inline-size:72ch}
+.ghdoc{margin-block:0}
+/* The console renderer caps every ATX heading at h4 (`min(level+1,4)`) and the
+   `.md` rules above stop there with it. A whole page renders h1 through h6, so
+   the two the console could never emit get their step here. */
+.ghdoc h5{font-size:var(--fs-1);font-weight:700;color:var(--ink);
+  margin:var(--sp-3) 0 var(--sp-1)}
+.ghdoc h6{font-size:var(--fs-0);font-weight:700;letter-spacing:.04em;color:var(--dim);
+  margin:var(--sp-3) 0 var(--sp-1)}
+.ghdoc h4{color:var(--ink);text-transform:none}
+/* Anchored headings. The id is minted by `headingSlug`; `scroll-margin` is what
+   keeps a heading off the very top edge when the fragment jumps to it. */
+.ghdoc :is(h1,h2,h3,h4,h5,h6)[id]{scroll-margin-block-start:var(--sp-4)}
+.ghdoc code{font:var(--fs-1)/1.45 var(--mono);background:var(--sink);
+  border-radius:var(--r-sm);padding:1px 5px;direction:ltr;unicode-bidi:isolate}
+.ghdoc pre code{background:none;padding:0;font-size:inherit;border-radius:0;
+  display:block;unicode-bidi:isolate}
+.ghdoc pre{font:var(--fs-1)/1.5 var(--mono)}
+/* GitHub's table: ruled, banded, and it SCROLLS rather than pushing the
+   measure open — a wide table in a 72ch column is the one shape that would
+   otherwise break the page. */
+.ghdoc table{border-collapse:collapse;display:block;overflow-x:auto;
+  max-inline-size:100%;inline-size:max-content}
+.ghdoc th,.ghdoc td{border:1px solid var(--rule);padding:6px 13px;vertical-align:top}
+.ghdoc th{background:var(--sink);font-weight:650}
+.ghdoc tbody tr:nth-child(2n){background:rgb(255 255 255/.02)}
+/* GFM's task list: the marker is the checkbox, so the bullet goes. */
+.ghdoc li.task-list-item{list-style:none;margin-inline-start:-18px}
+.ghdoc li.task-list-item input{margin-inline-end:6px;accent-color:var(--ok)}
+/* A refused construct inside a document is a `span.refusal`, which is styled
+   above; inside a paragraph it needs to stay on the text baseline. */
+/* — the mermaid drawing, at its own size and never blown up —
+
+   A drawing is an `<img src="/diagrams/x.svg">`, and an SVG whose root carries
+   `width="100%"` has NO intrinsic size to a browser loading it that way: only
+   a `viewBox` ratio. So the `<img>` takes the whole column and the drawing
+   scales up to fill it — measured on this page at 764px against a drawing
+   whose own `max-width` is 394.65px, a 1.94x enlargement that turned 16px
+   diagram labels into 31px ones. The SVG's own `style="max-width:…"` cannot
+   save it: an image document is isolated and its root styles do not size the
+   element that embeds it.
+
+   `object-fit:contain` plus a height cap is the fix that needs nothing from
+   the generator (`scripts/gen-diagrams.ts` and its digest gate are untouched
+   by this change, deliberately — a regeneration redraws all ten files through
+   Chromium and rewrites every digest, which is not a documentation change).
+   The drawing is letterboxed inside the column at its own scale instead of
+   stretched to it.
+
+   THE CAP IS DERIVED, NOT PICKED. The ten committed drawings' own viewBox
+   heights are 222, 222, 476.5, 476.5, 502, 535, 535, 550, 634.375 and
+   659.375 — so 660px is the tallest of them, and at that cap no drawing is
+   ever scaled UP. A taller drawing added later is scaled DOWN to fit, which
+   is the safe direction: legible-but-small rather than blurred-and-huge. */
+:root{--diagram-max-h:660px}
+.md figure.mermaid img{max-block-size:var(--diagram-max-h);object-fit:contain}
+
+.ghdoc .refusal{display:inline-block;vertical-align:baseline}
+/* — the link, and it is the ONE thing this file had never styled —
+
+   There is no `a{}` rule anywhere above this line: until 2026-09-05 the only
+   anchors the product drew were `.linkid` buttons and a handful of rows, so
+   every real link fell through to the user agent's #0000EE-on-visited-purple
+   with an underline — which on `--ground` is close to unreadable, and is the
+   defect the owner reported as "the link style is not looking good". A whole
+   README is nothing BUT links, so the document page cannot inherit that.
+
+   Scoped to `.ghdoc`, deliberately, and not written as a global `a{}`: a
+   global rule would repaint `.docrow`, `.backrow` and every `.linkid` in the
+   console at the same time, which is a repaint of twenty screens hiding inside
+   a documentation change.
+
+   `--role-nav` rather than a sixth hue. The five meaning hues are budgeted and
+   gated (`DEC-the-meaning-hue-budget-is-five-gold-ok-carry-crit-and-warn`) and
+   a link is not a verdict; the card-role teal is already declared as a
+   non-verdict accent, measured at 7.27:1 on --panel and 7.96:1 on --plate, and
+   a link IS wayfinding, which is exactly what that role means. GitHub's own
+   link blue would be a seventh colour in this palette for no gain.
+
+   Underline on hover and focus only — GitHub's own behaviour. */
+.ghdoc a{color:var(--role-nav);text-decoration:none}
+.ghdoc a:hover{text-decoration:underline}
+.ghdoc a:focus-visible{outline:2px solid var(--role-nav);outline-offset:2px;border-radius:2px}
+/* `ins`/`del` are styled above as DIFF marks — a green and a red fill, for the
+   revision viewer. GFM's `~~struck~~` produces a `<del>` that means nothing of
+   the kind, so inside a document it is a plain line-through, which is what
+   GitHub draws. */
+.ghdoc del{background:none;color:inherit;text-decoration:line-through;padding:0}
+.ghdoc ins{background:none;color:inherit;text-decoration:underline;padding:0}
+

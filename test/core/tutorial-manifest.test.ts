@@ -17,7 +17,14 @@ import { loadTutorialManifest, type TutorialManifestEntry } from '../../src/core
 import { CATEGORIES } from '../../src/core/categories.ts';
 
 const REPO_ROOT = path.resolve(import.meta.dirname, '../..');
-const META_SCREENS = new Set(['parts.js', 'tut.js', 'docs.js', 'learn.js']);
+// The screens that are ABOUT the documentation system rather than about a
+// feature a tutorial could teach, plus the shared `parts.js`. `tut.js` and
+// `docs.js` were two of these until 2026-09-05, when
+// `DEC-the-documentation-and-tutorials-screens-become-one-list-and` replaced
+// both with `library.js` — which inherits the exclusion for the same reason
+// they held it: a tutorial teaching the reader how to find the tutorials is a
+// circle, not a lesson.
+const META_SCREENS = new Set(['parts.js', 'library.js', 'learn.js']);
 const PLUMBING_CLI = new Set(['index.ts', 'registry.ts', 'format.ts']);
 
 function claimMap(manifest: TutorialManifestEntry[], pick: (e: TutorialManifestEntry) => string[]): Map<string, string[]> {

@@ -9,9 +9,9 @@ summary: Four rulings taken together so the documentation and tutorial work can 
 summary_of: 6111a8fdf7ce014f
 scope:
   - docs/**
-  - src/ui/public/screens/docs.js
+  - src/ui/public/screens/library.js
+  - src/ui/public/doc.js
   - src/ui/public/screens/learn.js
-  - src/ui/public/screens/tut.js
 tags:
   - v2
   - docs
@@ -24,7 +24,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-09-05
 valid_until: null
-checksum: 1c9a6694185963ec
+checksum: be6411d3033e9e70
 ---
 
 # the documentation system is hand-built over a wide glob, Learn keeps its cross-links, and the tutorial files stay as pointers

@@ -11,7 +11,8 @@ scope:
   - README.md
   - docs/README.he.md
   - docs/**
-  - src/ui/public/screens/docs.js
+  - src/ui/public/screens/library.js
+  - src/ui/public/doc.js
   - src/ui/server.ts
 tags:
   - v2
@@ -23,7 +24,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-09-05
 valid_until: null
-checksum: 63c8e6aafeb9f0da
+checksum: 7a62fceb43bdc36e
 ---
 
 # the two readmes are the base of a documentation system that indexes and links every part of the app

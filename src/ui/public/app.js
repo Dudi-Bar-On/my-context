@@ -256,8 +256,14 @@ const SCREENS = {
   work: () => import('/screens/work.js'),
   palette: () => import('/screens/palette.js'),
   config: () => import('/screens/config.js'),
-  docs: () => import('/screens/docs.js'),
-  tut: () => import('/screens/tut.js'),
+  // ONE screen where `docs` and `tut` stood, per
+  // `DEC-the-documentation-and-tutorials-screens-become-one-list-and`
+  // (owner ruling 2026-09-05): "One console page replaces both screens."
+  // Both modules are deleted rather than left unrouted — an unreachable
+  // screen module is the thing the PROPOSED badge below exists to make
+  // visible, and a retired one should not be findable by grep as if it
+  // were still a screen. `#/docs` and `#/tut` are redirected in `route()`.
+  library: () => import('/screens/library.js'),
   // The last four, 2026-08-23. Their read models were built the day before and
   // wired in the same merge, which is what unblocked them: until then these
   // were the only four screens in the mockup with no endpoint at all behind
@@ -285,7 +291,7 @@ const NAV = [
   ['nav.inj', ['preview', 'coverage', 'simulate', 'injected']],
   ['nav.ev', ['watch', 'ask', 'doctor', 'decay', 'graph', 'status']],
   ['nav.ch', ['work', 'capture', 'palette', 'config', 'proc', 'port', 'packs']],
-  ['nav.read', ['docs', 'tut', 'learn']],
+  ['nav.read', ['library', 'learn']],
 ];
 
 let token = null;
@@ -7042,7 +7048,19 @@ async function route() {
   // categories) now lives as a card. Without this they would fall through to
   // the unknown-route case below and land on the injection preview instead,
   // which is not "one item up" and not where the fact moved to.
-  const asked = askedRaw === 'gaps' ? 'coverage' : askedRaw;
+  // `screens/docs.js` and `screens/tut.js` retired 2026-09-05 by
+  // `DEC-the-documentation-and-tutorials-screens-become-one-list-and`. A
+  // reader who still holds `#/docs`, `#/docs/<id>/<anchor>` or `#/tut/<id>`
+  // — a bookmark, a link in a report — is sent to the Library, which is
+  // where both of those screens' contents now are. The sub-path is dropped
+  // rather than translated: a document is no longer addressed in this
+  // shell's hash at all, it is a query on `/doc.html`, and inventing a
+  // translation would send a stale anchor to a page that never had it.
+  const RETIRED_TO_LIBRARY = new Set(['docs', 'tut']);
+  const asked = askedRaw === 'gaps'
+    ? 'coverage'
+    : (RETIRED_TO_LIBRARY.has(askedRaw) ? 'library' : askedRaw);
+  if (RETIRED_TO_LIBRARY.has(askedRaw)) history.replaceState(null, '', '#/library');
   if (askedRaw === 'gaps') {
     // `replaceState`, not another `location.hash =` write: the latter fires
     // `hashchange` and re-enters this whole function a second time for a

@@ -1627,4 +1627,36 @@ export const strings = {
   // it, so every refusal on every screen was unworded English at the exact
   // moment something had gone wrong.
   'err.note': 'Refused. The wording is the system’s own and is not translated: {error}',
+
+  // ── THE LIBRARY, and the standalone document page it opens ─────────────
+  // `DEC-the-documentation-and-tutorials-screens-become-one-list-and`, owner
+  // ruling 2026-09-05: one console page replaces the Documentation and
+  // Tutorials screens, lists every document and tutorial BY TITLE, and opens
+  // one RENDERED in a new browser tab. The `dv.*` and `tu.*` keys above stay
+  // declared because the frozen mockup still declares them
+  // (`DEC-the-app-is-what-is-built-the-mockup-is-history-and-a-gap`); the ones
+  // that still say something true — the mirror sentences, the tier names, the
+  // "to write" chip, what a ✅ means — are REUSED here rather than respelled.
+  's.library': 'Library',
+  'lib.h': 'Library',
+  'lib.v': 'every document and tutorial, by title, opened in its own tab',
+  'lib.sub': 'One list, not two screens. Every Markdown document under {m:docs/} and {m:reports/} plus {m:README.md} itself, and every tutorial the manifest names — each one named by its own title, never by its path.',
+  'lib.tuts': 'Tutorials',
+  'lib.docs': 'Documents',
+  'lib.filter': 'Filter by title',
+  'lib.shown': 'Showing {shown} of {total}. Type above to narrow the list.',
+  'lib.nomatch': 'No document’s title matches that filter.',
+  'lib.newtab': 'Opening an entry opens the document {b:rendered, on its own page, in a new browser tab}. It leaves this console — so there is no deep link from here into a heading, and no cross-linking from a document back to a corpus item. That is Learn’s job.',
+  'lib.github': 'That page renders the way GitHub does: GFM tables and task lists, GitHub’s sanitized HTML allow-list, its heading anchors, and the committed Mermaid drawings.',
+  // The standalone document page.
+  'gh.back': '← Back to the console',
+  'gh.parity': '{b:Rendered like GitHub, not identically to it.} GitHub renders with cmark-gfm; this renders with the vendored markdown-it. The behaviour is matched — GFM, GitHub’s sanitized HTML allow-list, its heading anchors, its dark presentation, the diagrams drawn rather than printed. Byte-identical output is not claimed and cannot be.',
+  'gh.clean': 'Every construct in this document is inside GitHub’s allow-list. Nothing was refused and no attribute was dropped.',
+  'gh.refused': '{refused} construct(s) outside GitHub’s allow-list were {b:refused and shown as refusals}, never dropped silently; {dropped} attribute(s) outside it were dropped.',
+  'gh.noaddress': 'This address names neither a document nor a tutorial, so nothing was read for it. Open one from the Library.',
+  'gh.unread': 'The server refused this read. Its own words follow, unedited.',
+  'gh.notitle': 'No document',
+  'gh.enonly': 'This document has no Hebrew text yet, so the English is shown and labelled as English — never substituted silently under a Hebrew heading.',
+  'gh.tagRefused': '<{tag}> (tag refused)',
+  'gh.urlRefused': '{label} (link refused)',
 };

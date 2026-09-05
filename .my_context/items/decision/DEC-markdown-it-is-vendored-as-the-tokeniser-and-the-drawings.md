@@ -8,7 +8,6 @@ always: false
 summary: The renderer is replaced by a small vendored library, and the diagrams are rendered ahead of time into files a test keeps in step.
 summary_of: 2c4fcba859e3207e
 scope:
-  - src/ui/public/screens/docs.js
   - src/ui/public/lib/**
   - scripts/**
   - package.json
@@ -24,7 +23,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-09-05
 valid_until: null
-checksum: a2932e77f4a854ab
+checksum: a873865e0786f266
 ---
 
 # markdown-it is vendored as the tokeniser, and the drawings ship as generated svg

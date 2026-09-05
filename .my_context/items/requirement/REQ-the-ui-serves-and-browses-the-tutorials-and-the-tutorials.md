@@ -10,7 +10,9 @@ summary_of: 0b436f48abaa3685
 scope:
   - docs/TUTORIAL.md
   - docs/TUTORIAL-ADVANCED.md
-  - src/ui/public/screens/tut.js
+  - docs/tutorials/**
+  - src/ui/public/screens/library.js
+  - src/ui/public/doc.js
   - src/ui/server.ts
 tags:
   - v2
@@ -23,7 +25,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-09-05
 valid_until: null
-checksum: 44518616febbe156
+checksum: afdabc88e8f35ee8
 ---
 
 # the ui serves and browses the tutorials, and the tutorials cover every capability from both surfaces

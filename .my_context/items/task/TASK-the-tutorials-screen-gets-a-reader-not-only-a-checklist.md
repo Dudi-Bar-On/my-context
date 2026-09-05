@@ -2,11 +2,13 @@
 id: TASK-the-tutorials-screen-gets-a-reader-not-only-a-checklist
 type: task
 title: the Tutorials screen gets a reader, not only a checklist
-status: active
+status: deprecated
 severity: soft
 always: false
-summary: The Tutorials screen gains a reader that opens one tutorial's markdown through the app's existing renderer, instead of only listing checkmarks.
-summary_of: b72f3c8ed076f403
+summary: "Cancelled unbuilt: the screen this belonged to was replaced by a list and a rendered page in a new tab."
+summary_of: b1d5c025f4c5527d
+summary_was:
+  - 2026-09-05 The Tutorials screen gains a reader that opens one tutorial's markdown through the app's existing renderer, instead of only listing checkmarks.
 scope:
   - src/ui/public/screens/tut.js
 tags:
@@ -22,8 +24,8 @@ source_file: null
 source_anchor: null
 source_checksum: null
 valid_from: 2026-09-05
-valid_until: null
-checksum: 0bd308d037c362e6
+valid_until: 2026-09-05
+checksum: 13d72832a02d453a
 plan: tuts
 seq: "4"
 state: todo
@@ -33,6 +35,18 @@ needs: tuts/2, tuts/3
 
 # the Tutorials screen gets a reader, not only a checklist
 
-Step 4 of six in docs/superpowers/plans/2026-09-05-tutorials-are-served-and-browsed.md. Needs the two endpoints, tuts/2 and tuts/3.
+CANCELLED 2026-09-05 by DEC-the-documentation-and-tutorials-screens-become-one-list-and.
+Deprecated rather than done: none of this was built.
 
-tut.js draws the widened list grouped Basic and Advanced (replacing the six-row TUTORIAL_ROWS loop, keeping the existing done/todo/unmeasured cellSpec unchanged), draws the Hebrew rollup line from heRollup, and adds a reader view: clicking a row fetches /api/doc/:id and renders it through markdownNodes imported from /screens/docs.js -- the same cross-module import app.js already performs for item bodies, so this remains the one renderer in the app rather than a second one written for this screen. A short on-screen sentence near the list states what the done chip means and does not mean, so the distinction is not left only in a code comment.
+WHAT THIS TASK WAS: the in-app tutorial reader; reading moves to a rendered page in a new tab.
+
+The owner replaced both screens with one list of titles that opens a rendered document in a new
+browser tab, after the Documentation screen was built to the wrong premise twice and the Tutorials
+screen once. This work is not deferred - the screen it belonged to no longer exists.
+
+Nothing already paid for is lost: the vendored renderer, the fence fix, the ten generated SVG
+diagrams and the reading typography all serve the full-page view instead, and serve it better.
+
+Its scope still names a deleted file. That is left as written and acknowledged rather than
+re-scoped: this item governed a screen that no longer exists, so there is no path that replaced it,
+and rewriting the glob would make the record claim it was about something else.

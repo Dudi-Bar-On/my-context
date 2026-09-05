@@ -200,7 +200,10 @@ test('the three screens format an instant through this pair and nowhere else', a
   // disagree, so the gate is not "the three agree" — it is that there are no
   // longer three. Any screen reaching for a date formatter of its own fails
   // here, on the line it was added.
-  for (const file of ['watch.js', 'ask.js', 'preview.js', 'docs.js']) {
+  // `docs.js` was the fourth until 2026-09-05, when
+  // `DEC-the-documentation-and-tutorials-screens-become-one-list-and` retired
+  // it; `library.js` is what replaced it and it is held to the same rule.
+  for (const file of ['watch.js', 'ask.js', 'preview.js', 'library.js']) {
     const source = readFileSync(path.join(screens, file), 'utf8');
     assert.equal(/toLocale(Time|Date)?String\(/.test(source), false,
       `${file} formats a date itself — import clockOf or stampOf from parts.js instead`);

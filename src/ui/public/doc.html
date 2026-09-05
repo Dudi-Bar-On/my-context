@@ -1,0 +1,57 @@
+<!doctype html>
+<!-- THE STANDALONE DOCUMENT PAGE — `DEC-the-documentation-and-tutorials-
+     screens-become-one-list-and`, owner ruling 2026-09-05: "Opening one opens
+     a RENDERED page in a new browser tab. The console stops trying to be a
+     documentation site."
+
+     This is that tab. It is NOT the app shell: no rail, no header pickers, no
+     session state, no `.app` grid — a reader who opened a document wants the
+     document, and every piece of console chrome carried in here would be the
+     documentation site the ruling just retired. What it does share is the
+     stylesheet, so the dark presentation, the type scale and the `.md` reading
+     typography are the product's own and not a second set.
+
+     EVERY TEXT NODE IS EMPTY and filled by `doc.js` from the string tables, the
+     rule the whole product follows: no innerHTML, no authored English the א/A
+     choice cannot reach. The `lang`/`dir` on <html> below are the boot values
+     and are corrected by `applyLanguage` on the first frame.
+
+     THE ADDRESS IS A QUERY STRING, and the FRAGMENT IS THE DOCUMENT'S.
+     `/doc.html?doc=<id>` and `/doc.html?tut=<id>&lang=he`, so `#the-five-tiers`
+     lands on a heading exactly as it does on GitHub — the one address a reader
+     most wants to paste. -->
+<html lang="en" dir="ltr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>mycontext</title>
+  <link rel="stylesheet" href="/styles.css">
+</head>
+<body class="docpage">
+<div class="docshell">
+  <!-- THE BREADCRUMB. The path IS shown here and only here: instruction 2
+       ("do not display the full path file names but what they contain title")
+       is about the LIST page, and GitHub itself shows a file's path above the
+       document it renders. So the list is titles and the document says where
+       it lives. -->
+  <header class="dochead">
+    <a class="row backrow" id="back" href="/"><span id="backtext"></span></a>
+    <div class="docwhere">
+      <span class="m" id="docpath"></span>
+      <span id="docstate"></span>
+    </div>
+  </header>
+  <p class="small" id="docnote" hidden></p>
+  <!-- The rendered document. `dir` and `lang` are set by `doc.js` from the
+       DOCUMENT's language, which is not the interface language: a Hebrew
+       reader opening an English document reads left-to-right prose under a
+       right-to-left interface, and saying so is `tu.enonly`'s whole job. -->
+  <article class="md ghdoc" id="doc"></article>
+  <footer class="docfoot">
+    <p class="small" id="docdisclose"></p>
+    <p class="small" id="docparity"></p>
+  </footer>
+</div>
+<script type="module" src="/doc.js"></script>
+</body>
+</html>

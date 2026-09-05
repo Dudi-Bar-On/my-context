@@ -2,7 +2,7 @@
  * The gate `plan:live seq:2` exists to build: every screen `app.js` routes
  * has an entry in `src/ui/public/lib/live-invalidation.js`'s
  * `SCREEN_INVALIDATION`, including the ones whose honest entry is "nothing
- * invalidates me". That answer is legal — `docs`, `tut` and `port` all give
+ * invalidates me". That answer is legal — `library` and `port` both give
  * it, for three different reasons named in that file's own header — and it
  * is indistinguishable from "nobody thought about this screen" unless a
  * check like this one fails the moment a routed screen has no key at all.
@@ -140,12 +140,14 @@ function missingDeclarations(
 }
 
 // 21 until `gaps` retired 2026-09-04 (`TASK-coverage-gaps-folds-into-scope-
-// coverage-keeping-the-one-fact`, seq:22), folded into `coverage`.
-test('app.js routes 20 screens (sanity — the extraction found something)', () => {
+// coverage-keeping-the-one-fact`, seq:22), folded into `coverage`; 19 since
+// 2026-09-05, when `DEC-the-documentation-and-tutorials-screens-become-one-
+// list-and` replaced `docs` and `tut` with the single `library`.
+test('app.js routes 19 screens (sanity — the extraction found something)', () => {
   const screens = routedScreens();
   assert.ok(
-    screens.length >= 20,
-    `expected 20+ routed screens, found ${screens.length}: ${screens.join(', ')}`,
+    screens.length >= 19,
+    `expected 19+ routed screens, found ${screens.length}: ${screens.join(', ')}`,
   );
 });
 
@@ -218,9 +220,14 @@ test('every entry\'s refresh is \'auto\' or \'ask\' — no third value, no omiss
   assert.deepEqual(bad, []);
 });
 
-test('the three static-content screens declare "nothing" explicitly, not by omission', async () => {
+test('the static-content screens declare "nothing" explicitly, not by omission', async () => {
   const { SCREEN_INVALIDATION } = await loadLiveInvalidation();
-  for (const screen of ['docs', 'tut', 'port']) {
+  // `docs` and `tut` were two of these three until 2026-09-05, when
+  // `DEC-the-documentation-and-tutorials-screens-become-one-list-and`
+  // replaced both with `library` — which reads two endpoints where they
+  // read one and none, and still subscribes to nothing, because both of
+  // its endpoints walk the filesystem rather than the corpus.
+  for (const screen of ['library', 'port']) {
     assert.deepEqual(
       SCREEN_INVALIDATION[screen]?.kinds, [],
       `${screen} should be the reasoned-about "nothing" case: [], not absent and not '*'`,

@@ -96,12 +96,42 @@ const BUILT = [
   // in one parallel wave. Seventeen of twenty-one now. The four still absent —
   // capture, proc, port, packs — had no endpoint at all until that same wave
   // built their read models, and are the next wave's work.
-  'ask', 'work', 'palette', 'config', 'docs', 'tut',
+  'ask', 'work', 'palette', 'config',
+  // **`docs` and `tut` LEFT this list on 2026-09-05, and their replacement did
+  // not join it.** `DEC-the-documentation-and-tutorials-screens-become-one-
+  // list-and` replaced both screens with one — `screens/library.js`, a list of
+  // every document and tutorial by title, which opens a RENDERED page in a new
+  // tab. This walk compares each screen against `[data-p="<name>"]` in the
+  // frozen mockup and FAILS LOUDLY where there is no such section; the mockup
+  // draws `docs` and `tut` and has never drawn `library`, and
+  // `DEC-the-mockup-is-a-frozen-reference-it-is-read-never-written` forbids
+  // adding one.
+  //
+  // So the Library is a screen this gate structurally CANNOT judge, which is
+  // the app running ahead of the drawing —
+  // `DEC-the-app-is-what-is-built-the-mockup-is-history-and-a-gap` calls that
+  // normal, and only mockup-ahead is a finding. It is named in
+  // `NO_MOCKUP_SECTION` below rather than left silently absent, and it is
+  // covered instead by `test/ui/library-screen.test.ts` (the roster, the
+  // addresses, the two presentation rulings) and `e2e/docs-bidi.spec.ts` (the
+  // rendered document, in a browser, in Hebrew).
   // The last four, later the same day. TWENTY-ONE OF TWENTY-ONE — this walk is
   // now the whole rail, and `plan:port seq:98`, the screen-by-screen review
   // with the owner, is no longer waiting on a screen that does not exist.
   'capture', 'proc', 'port', 'packs',
 ] as const;
+
+/**
+ * Screens the app builds that the FROZEN mockup has no section for, so this
+ * walk cannot compare them at all.
+ *
+ * Named rather than omitted, for the reason `KNOWN_GAPS` exists: a screen
+ * missing from `BUILT` reads identically to a screen nobody thought about.
+ * An entry here is a claim that the mockup does not draw this screen, and the
+ * test below proves that claim rather than trusting it — so a section added to
+ * the mockup one day fails this and forces the screen into the walk.
+ */
+const NO_MOCKUP_SECTION = ['library'] as const;
 
 /**
  * Measured on 2026-08-22 at 1568x779 against this repository's own corpus.
@@ -625,7 +655,13 @@ const KNOWN_GAPS: Record<string, string[]> = {
     'div.delta', 'div.delta.gain', 'div.delta.loss',
     'span.arrow', 'span.was', 'span.will',
   ],
-  docs: ['a', 'h4', 'pre', 'span.refusal'],
+  // **`docs` LEFT this ledger on 2026-09-05 with the screen it was about.** It
+  // held `['a', 'h4', 'pre', 'span.refusal']` — four kinds the mockup's own
+  // Documentation section never drew, because that screen rendered a markdown
+  // document inside a card and the mockup's did not. A ledger row for a screen
+  // that no longer exists is exactly the stale entry this file exists to
+  // prevent, and its replacement is not walked at all (see `NO_MOCKUP_SECTION`
+  // above), so it has no row here either.
   // ── The last four screens, landed 2026-08-23 ──────────────────────────
   // The table needs a scope the reader has TYPED — there is no route parameter
   // and no endpoint that supplies one, which is this screen's loudest open
@@ -737,6 +773,29 @@ const KNOWN_GAPS: Record<string, string[]> = {
   // draws instead.
   status: ['span'],
 };
+
+test('the screens excluded from the walk really have no mockup section', async ({ app }) => {
+  // `NO_MOCKUP_SECTION` is a claim about the design of record, so it is
+  // measured against the design of record. The day somebody draws a Library
+  // section, this fails and the screen joins `BUILT` — which is the only way
+  // an exclusion should ever end.
+  const { page } = app;
+  const mockupPage = await page.context().newPage();
+  const { MOCKUP_URL } = await import('./mockup.ts');
+  await mockupPage.goto(MOCKUP_URL);
+  await mockupPage.waitForLoadState('domcontentloaded');
+  try {
+    for (const screen of NO_MOCKUP_SECTION) {
+      const present = await mockupPage.evaluate(
+        (name) => document.querySelector(`[data-p="${name}"]`) !== null, screen);
+      expect(present,
+        `the mockup now draws [data-p="${screen}"] — remove it from NO_MOCKUP_SECTION, `
+        + 'add it to BUILT, and let the ledger judge it').toBe(false);
+    }
+  } finally {
+    await mockupPage.close();
+  }
+});
 
 /**
  * **ONE kind the APP draws that the mockup does not, on `ask`** — it was two
