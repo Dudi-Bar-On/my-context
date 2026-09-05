@@ -2,11 +2,13 @@
 id: TASK-the-mockup-catches-up-with-preview-whyn-and-work-diffn-needs
 type: task
 title: the mockup catches up with preview.whyn, and work.diffn needs a ruling
-status: active
+status: deprecated
 severity: soft
 always: false
-summary: One sentence in the design has fallen behind the app, and another needs a decision about how it shows the formatting it describes.
-summary_of: 122513c838a9916e
+summary: "Closed without being built: a later ruling makes its premise a non-issue, and its one real question was split out."
+summary_of: d77f70bc0baadaef
+summary_was:
+  - 2026-09-05 One sentence in the design has fallen behind the app, and another needs a decision about how it shows the formatting it describes.
 scope: []
 tags:
   - v2
@@ -22,8 +24,8 @@ source_file: null
 source_anchor: null
 source_checksum: null
 valid_from: 2026-08-25
-valid_until: null
-checksum: f52146b0c0d7cb40
+valid_until: 2026-09-05
+checksum: 137762fe6d0ad6a9
 plan: walk
 seq: "16"
 state: todo
@@ -34,23 +36,42 @@ verified_on: 2026-09-05
 
 # the mockup catches up with preview.whyn, and work.diffn needs a ruling
 
-Two keys the emphasis pass REFUSED to overwrite, 2026-08-25. Both are real and neither is an emphasis problem.
+CLOSED 2026-09-05 as superseded by DEC-the-mockup-is-a-frozen-reference-it-is-read-never-written.
+Status is deprecated rather than state done: nothing here was built, the premise dissolved. The
+reasoning is kept because the way this task expired is more useful than the task was.
 
-preview.whyn -- THE APP IS AHEAD. The mockup: "Composing the fix NEEDS a stable code on {m:injection()}; today the five causes differ only in English prose." en.js: "Composing the fix BINDS TO a stable code on {m:injection()}, so each cause is named by that code and not only by English prose." The app updated the sentence when the feature landed and the design of record did not. Under the ruling that more than the mockup is usually right, the MOCKUP changes.
+WHY THE FIRST HALF IS NOT A DEFECT. The item labelled it itself: preview.whyn is THE APP AHEAD OF
+THE DRAWING. The freeze ruling says in its own words that the product may run ahead of the mockup
+without that being a fault, and that only the mockup-ahead direction is a finding. So there was
+nothing to fix, and the only action this task proposed — change the mockup — is now forbidden.
 
-work.diffn -- NEEDS A RULING. The mockup demonstrates the marks inline: "additions are {m:<ins>}tinted{m:</ins>}, removals are {m:<del>}struck{m:</del>}" -- actual {m:<ins>} and {m:<del>} ELEMENTS inside the sentence, so the reader sees the treatment in the sentence describing it. en.js writes the words flat. The grammar now carries bold and italic and carries neither of these.
+AND ITS STATED BLOCKER WAS STALE WITHIN A DAY. The task says preview.whyn "cannot be reworded in
+the app because strings-parity holds the key set equal to the mockup’s data-t set in BOTH
+directions". That second direction was dropped on 2026-08-26 — the day after this was written. The
+reason it had to be a mockup task stopped being true almost immediately, and nobody re-read it.
 
-THE QUESTION FOR THE OWNER: do {m:<ins>} and {m:<del>} become run markers too? They are the same shape as {m:b:} and {m:i:} and the same argument applies -- the design of record uses them and no string table can carry them. The counter-argument is that unlike emphasis they appear ONCE, in one sentence, and a marker built for one sentence is a grammar growing by accident.
+THE QUOTED COMPARISON NO LONGER DESCRIBES EITHER FILE. It contrasts the mockup’s "NEEDS a stable
+code" with en.js’s "BINDS TO a stable code". The shipped sentence now reads "The fix maps to a
+stable code on {m:injection()}" — reworded again since. A task that quotes two strings is a task
+that expires when either one moves.
 
-Neither was touched. An emphasis pass that silently re-worded a string would be exactly the failure the refusal check exists to prevent.
+THE SECOND HALF IS ALREADY CORRECT IN THE PRODUCT. plan:rulings seq:49 was folded in here and said
+work.diffn tells the reader the diff is word-level while lineDiff is line-level. Both string tables
+now say line-level, so the screen no longer describes itself wrongly. Only the frozen drawing still
+says word-level, and a frozen reference is allowed to hold an outdated sentence. seq:49’s other
+half — watch-model.ts saying "the 15-minute idle exit" when IDLE_MS is eight hours — is gone from
+the source and from both READMEs.
 
-RECONCILED 2026-08-25 under plan:walk seq:23, against the precedence order.
+WHAT SURVIVED, and it is the only part that ever needed the owner: whether {m:<ins>} and {m:<del>}
+become run markers like {b:} and {i:}. Split into OPENQ-do-the-ins-and-del-marks-become-run-markers-
+or-is-a-marker, where it can be answered on its own terms rather than underneath two settled halves.
 
-VERDICT: STANDS, and it GAINED two things.
-
-plan:screens seq:1s-f is SUPERSEDED INTO IT and holds the reasoning this task lacks: preview.whyn cannot be reworded in the app because strings-parity holds the key set equal to the mockup s data-t set in BOTH directions, so an app-side edit fails in the INVENTED direction. The mockup has to change first. That is why this is a mockup task and not a string task.
-
-plan:rulings seq:49 carries the work.diffn half and states the stakes better: work.diffn is USER-FACING TEXT, not a comment. It tells the reader the diff is WORD-LEVEL; lineDiff is line-level. The screen describes itself wrongly to the person looking at it. seq:49 s other half -- watch-model.ts ~553 still saying "the 15-minute idle exit" when IDLE_MS became eight hours -- is a one-line fix that belongs elsewhere, and is the SAME wrong number the README carries (plan:rulings seq:48). One ruling, three unswept statements.
+HOW THIS TASK WAS MISHANDLED, recorded because the pattern is the point. It was put to the owner as
+"the mockup carries emphasis the shipped English does not — which side moves?" That is not what it
+says; its first line is "Both are real and NEITHER IS AN EMPHASIS PROBLEM". He ruled on a
+description that was wrong, a lane acted on the ruling, the edit was committed, and it was then
+reverted for an unrelated reason — the freeze — which is the only reason anyone re-read the item.
+See LESSON-a-lane-was-told-to-edit-a-file-a-standing-owner-ruling-had.
 
 ## Relations
 - supersedes [[TASK-preview-whyn-still-says-the-gate-ladder-needs-a-stable-code]]
