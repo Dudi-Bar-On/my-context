@@ -3315,16 +3315,41 @@ function tutorialFileState(repoRoot: string, file: string): TutorialCellState {
 }
 
 /**
- * One manifest entry's row. `he` is computed only when `en` is measured at
- * all — an English file that does not exist yet has no Hebrew counterpart to
- * be `todo` about, so `he` reads `unmeasured` in that case rather than a
- * guessed `todo`, exactly as the per-row Hebrew column read before this
- * endpoint had a rollup to feed.
+ * One manifest entry's row, and the three-way distinction the Hebrew column
+ * has to make.
+ *
+ * `unmeasured` and `todo` are different claims and the difference is the whole
+ * point of the column — `LESSON-on-real-data-an-absent-feature-and-a-missing-
+ * feature-look` is the same argument one screen over. Read as:
+ *
+ *   en unmeasured  -> he unmeasured. Nobody has written the English yet, so
+ *                     there is no translation to be behind on. Guessing `todo`
+ *                     here would invent a debt nobody has incurred.
+ *   en measured,   -> he TODO. The manifest names a Hebrew file, the English
+ *   he file absent    exists, and the Hebrew does not: that is a known, owed
+ *                     gap, not an unknown. This is the case that was wrong.
+ *   he file present -> `done` or `todo` on the four required headings, same
+ *                     rule as English.
+ *
+ * **It used to read `unmeasured` for the middle case**, because it delegated
+ * to `tutorialFileState`, whose `unmeasured` means only "the file is absent"
+ * and cannot know whether absence was expected. Eighteen of twenty-four rows
+ * therefore claimed the Hebrew was unmeasured when it was simply unwritten and
+ * known to be. The rollup headline was honest throughout — it counts
+ * `he === 'done'` against measured English — so the number said 6 of 24 while
+ * the chips beside it said nobody had looked. Found 2026-09-05, reported by
+ * the lane that wrote the Hebrew files and could see its own work uncounted.
  */
 function tutorialListRow(repoRoot: string, entry: TutorialManifestEntry): TutorialListRow {
   const en = tutorialFileState(repoRoot, entry.enFile);
-  const he = en === 'unmeasured' ? 'unmeasured' : tutorialFileState(repoRoot, entry.heFile);
-  return { id: entry.id, title: entry.title, tier: entry.tier, en, he };
+  const base = { id: entry.id, title: entry.title, tier: entry.tier };
+  if (en === 'unmeasured') return { ...base, en, he: 'unmeasured' };
+  // `repoFileExists` rather than `tutorialFileState`'s own absent branch: the
+  // two answer different questions, and only here is absence a debt.
+  const he: TutorialCellState = repoFileExists(repoRoot, entry.heFile)
+    ? tutorialFileState(repoRoot, entry.heFile)
+    : 'todo';
+  return { ...base, en, he };
 }
 
 /**
@@ -3554,12 +3579,36 @@ export interface DocBody extends DocManifestEntry { markdown: string }
  * (`STD-a-measured-zero-is-drawn-and-named-an-unmeasured-thing-is`). */
 export interface DocListBody { documents: DocManifestEntry[]; truncated: boolean }
 
-/** A fenced code block's delimiter — matched loosely (no language tag
- * capture) because only "are we inside one" matters here. Shared in shape
- * with `screens/docs.js`'s own `FENCE`, which this module may not import:
- * that file is a client module reaching for `document`, and this one must
- * stay loadable by the MCP server (see `UI_HELP_TOPICS`'s own docblock). */
-const DOC_FENCE = /^\s*```/;
+/**
+ * A fenced code block's delimiter, capturing the RUN of backticks and the info
+ * string, because both decide whether a fence opens or closes.
+ *
+ * **It used to capture neither, and that was a defect with a measured cost.**
+ * The old spelling was `/^\s*```/` and the reader toggled a boolean on every
+ * match, so ANY fence closed the open block — including a shorter one nested
+ * inside it. `README.md` quotes a four-backtick block inside a five-backtick
+ * one, so the outer block "closed" at the inner fence, the `# Bookstore API
+ * PRD` line inside the quotation was indexed as a README section, and the
+ * document reported 99 headings where it has 98 — with a wrong ordinal on
+ * every heading after that point. Found 2026-09-05 by `test/docs/
+ * doc-system.test.ts`, which was committed deliberately red to hold it.
+ *
+ * CommonMark's rule, and now this one: a fence closes only on a run AT LEAST
+ * as long as the one that opened it, carrying NO info string. That is exactly
+ * why a nested block cannot close its parent. The leading-space allowance is
+ * `{0,3}` rather than `\s*` for the same reason — four spaces is an indented
+ * code block, not a fence.
+ *
+ * The rule is deliberately spelled the same way as `test/helpers/markdown.ts`'s
+ * `fenceTracker`, whose own header records that it was wrong once too and that
+ * "a second copy of a subtle rule is how the first copy goes quietly wrong".
+ * This module cannot import it — that helper is test-only, and this file must
+ * stay loadable by the MCP server (see `UI_HELP_TOPICS`'s own docblock) — so
+ * the duplication is deliberate and this note is what ties the two together.
+ * `screens/docs.js`'s own `FENCE` is the third copy and carries the same bug;
+ * it is a client module reaching for `document` and cannot be imported either.
+ */
+const DOC_FENCE = /^ {0,3}(`{3,})[ \t]*(\S*)/;
 
 /** An ATX heading line, `#` through `######`, requiring the one space
  * CommonMark and `screens/docs.js`'s own `ATX` both require after the
@@ -3599,11 +3648,23 @@ function slugAnchor(text: string): string {
 export function docHeadings(markdown: string): DocHeading[] {
   const headings: DocHeading[] = [];
   const seen = new Map<string, number>();
-  let inFence = false;
+  // The LENGTH of the run that opened the current block, or null outside one —
+  // never a boolean. See `DOC_FENCE`: the length is what stops a nested,
+  // shorter fence from closing its parent.
+  let openFence: number | null = null;
   let ordinal = 0;
   for (const line of markdown.split('\n')) {
-    if (DOC_FENCE.test(line)) { inFence = !inFence; continue; }
-    if (inFence) continue;
+    const fence = DOC_FENCE.exec(line);
+    if (openFence === null) {
+      // An opening fence may carry an info string (```mermaid); a closing one
+      // may not, which is why `fence[2]` is only consulted on the way out.
+      if (fence !== null) { openFence = fence[1].length; continue; }
+    } else {
+      if (fence !== null && fence[1].length >= openFence && fence[2] === '') openFence = null;
+      // Every line inside a fence is skipped whether or not it closed one: a
+      // closing fence is not a heading either.
+      continue;
+    }
     const match = DOC_ATX.exec(line);
     if (match === null) continue;
     ordinal += 1;

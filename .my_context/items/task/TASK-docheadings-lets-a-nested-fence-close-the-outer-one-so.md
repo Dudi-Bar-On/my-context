@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: The table of contents for the main README lists a heading that belongs to a quoted example, so one entry is fake and the numbering after it is wrong.
-summary_of: d1f3e044c00b8fa6
+summary_of: d5a2837c5d03fcf7
 scope:
   - src/ui/read-model.ts
 tags:
@@ -14,13 +14,16 @@ tags:
   - docs
   - ui
   - drift
+  - "state:done"
 origin: human
 source_file: null
 source_anchor: null
 source_checksum: null
 valid_from: 2026-09-05
 valid_until: null
-checksum: 8a319154fc1f74d0
+checksum: 7a273fa59fcbfd2a
+state: done
+verified_on: 2026-09-05
 ---
 
 # docHeadings lets a nested fence close the outer one, so README.md's index carries a phantom section

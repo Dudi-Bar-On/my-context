@@ -18,7 +18,7 @@
  */
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { runCli } from '../../src/cli/index.ts';
@@ -207,11 +207,24 @@ test('apiTutorials over this repository: the Hebrew rollup is measured from the 
     return REQUIRED.every((h) => text.includes(h)) ? 'done' : 'todo';
   };
 
+  // The Hebrew column is three-way, and the middle case is the one that was
+  // wrong: an English tutorial that exists and a Hebrew file that does not is
+  // a gap the manifest already NAMES, so it is `todo` — owed — not
+  // `unmeasured`. `unmeasured` is reserved for the row where the English
+  // itself has not been written, because there is nothing to be behind on.
+  // Re-derived here rather than copied from `tutorialListRow`, and it must be
+  // derived CORRECTLY: a second implementation that repeats the first one's
+  // bug proves only that the bug is reproducible.
+  const heState = (e: { enFile: string; heFile: string }, en: string): string => {
+    if (en === 'unmeasured') return 'unmeasured';
+    return existsSync(path.join(REPO, e.heFile)) ? state(e.heFile) : 'todo';
+  };
+
   let expectedDone = 0;
   let expectedTotal = 0;
   for (const e of manifest) {
     const en = state(e.enFile);
-    const he = en === 'unmeasured' ? 'unmeasured' : state(e.heFile);
+    const he = heState(e, en);
     const row = body.tutorials.find((t) => t.id === e.id);
     assert.ok(row, `no row for manifest entry ${e.id}`);
     assert.deepEqual({ en: row.en, he: row.he }, { en, he },
