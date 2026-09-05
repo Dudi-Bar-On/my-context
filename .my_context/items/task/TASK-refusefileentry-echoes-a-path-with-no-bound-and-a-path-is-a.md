@@ -6,23 +6,24 @@ status: active
 severity: soft
 always: false
 summary: Error messages quote file paths from a stranger's file at unlimited length; shortening them needs a decision, since a cut path is useless.
-summary_of: 254e3120f1bfc185
+summary_of: 46aa93c236be76ae
 scope: []
 tags:
   - "plan:export"
   - "seq:21"
   - v2
-  - "state:doing"
+  - "state:done"
 origin: human
 source_file: null
 source_anchor: null
 source_checksum: null
 valid_from: 2026-08-24
 valid_until: null
-checksum: bfd0595d1da20db9
-state: doing
+checksum: 182faf1175220fc9
+state: done
 plan: export
 seq: "21"
+verified_on: 2026-09-05
 ---
 
 # refuseFileEntry echoes a path with no bound, and a path is a different trade

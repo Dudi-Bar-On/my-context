@@ -74,7 +74,7 @@ import { Buffer } from 'node:buffer';
 import { createHash } from 'node:crypto';
 import { VERSION } from '../core/version.ts';
 import {
-  comparePaths, refuseArtefactPaths, ITEMS_DIR, MANIFEST_NAME, PACK_PROTOCOL,
+  comparePaths, elidedEcho, refuseArtefactPaths, ITEMS_DIR, MANIFEST_NAME, PACK_PROTOCOL,
   type ArtefactKind, type ExportFile,
 } from './layout.ts';
 
@@ -430,7 +430,18 @@ export function renderManifest(m: Manifest): Buffer {
   return Buffer.from(`${JSON.stringify(canonical, null, 2)}\n`, 'utf8');
 }
 
-/** One entry of `files`, validated key by key. */
+/**
+ * One entry of `files`, validated key by key.
+ *
+ * Four of its branches quote a value with `elidedEcho` rather than plain
+ * `json`, because they are reachable from a stranger's `manifest.json` with
+ * no length rule ahead of them: an unknown key, a non-string `path`, and the
+ * `path` echoed alongside a bad `bytes` or a bad `sha256`. Measured
+ * 2026-08-24 through `parseManifest`, before the bound: 5,379 / 7,075 /
+ * (unbounded) / 5,284-ish characters. `layout.ts`'s own path rules already
+ * cap what a LEGAL path can be (`MAX_PATH_ECHO`'s doc comment has the
+ * arithmetic); this only stops an illegal one from being unbounded too.
+ */
 function refuseFileEntry(index: number, raw: unknown): string | null {
   const at = `my_context: this manifest's files[${index}]`;
   if (!isObject(raw)) {
@@ -439,25 +450,25 @@ function refuseFileEntry(index: number, raw: unknown): string | null {
   }
   for (const key of Object.keys(raw)) {
     if (!(FILE_KEYS as readonly string[]).includes(key)) {
-      return `${at} carries ${json(key)}, which is not a key a manifest entry has. An unknown key `
-        + `is refused rather than skipped: a manifest entry says what a reader must check, and a `
-        + `key this build does not act on would be a rule the author believes is in force. The `
-        + `keys are "${FILE_KEYS.join('", "')}", and a change to them is declared by the `
-        + `protocol, ${PACK_PROTOCOL}.`;
+      return `${at} carries ${elidedEcho(json(key))}, which is not a key a manifest entry has. An `
+        + `unknown key is refused rather than skipped: a manifest entry says what a reader must `
+        + `check, and a key this build does not act on would be a rule the author believes is in `
+        + `force. The keys are "${FILE_KEYS.join('", "')}", and a change to them is declared by `
+        + `the protocol, ${PACK_PROTOCOL}.`;
     }
   }
   if (typeof raw.path !== 'string') {
-    return `${at} has "path" = ${json(raw.path)}, which is not a string.`;
+    return `${at} has "path" = ${elidedEcho(json(raw.path))}, which is not a string.`;
   }
   if (!Number.isSafeInteger(raw.bytes) || (raw.bytes as number) < 0) {
-    return `${at} (${json(raw.path)}) has "bytes" = ${json(raw.bytes)}, and a file's length is a `
-      + 'whole number of bytes, not negative.';
+    return `${at} (${elidedEcho(json(raw.path))}) has "bytes" = ${json(raw.bytes)}, and a file's `
+      + 'length is a whole number of bytes, not negative.';
   }
   if (typeof raw.sha256 !== 'string' || !DIGEST.test(raw.sha256)) {
-    return `${at} (${json(raw.path)}) has "sha256" = ${json(raw.sha256)}, which is not 64 `
-      + 'lowercase hex characters. The digest is the full SHA-256 of the file bytes — truncating '
-      + 'it, or writing it in another case, produces a string this build cannot compare against '
-      + 'a digest it computes.';
+    return `${at} (${elidedEcho(json(raw.path))}) has "sha256" = ${elidedEcho(json(raw.sha256))}, `
+      + 'which is not 64 lowercase hex characters. The digest is the full SHA-256 of the file '
+      + 'bytes — truncating it, or writing it in another case, produces a string this build cannot '
+      + 'compare against a digest it computes.';
   }
   return null;
 }

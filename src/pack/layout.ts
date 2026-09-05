@@ -172,8 +172,66 @@ const DRIVE_LETTER = /^[A-Za-z]:/;
  */
 const MAX_SEGMENT_BYTES = 255;
 
+/**
+ * The most characters of an echoed PATH — or of a stranger's value quoted
+ * where a path belongs — that survive before the middle is elided.
+ *
+ * Every legal artefact path is at most three segments
+ * (`items/<category>/<file>.md`), each held to `MAX_SEGMENT_BYTES`, so the
+ * longest a path this build would ever ACCEPT can be is `items/` (6) plus two
+ * 255-byte segments plus two `/` — about 767 bytes. 1024 sits comfortably
+ * above that: a legal path never reaches this bound, and a value that does is
+ * already refused for its own separate reason (it is not the allow-list
+ * shape, or it failed some other check) — the elision only stops that
+ * refusal from also being a denial-of-service against whatever renders it.
+ *
+ * This is deliberately much lower than `manifest.ts`'s `QUOTED_VALUE_MAX`
+ * (256) applied by truncating one end: that number caps NAMES a caller
+ * chose, where the end cut away is not the one a reader needs.  A PATH is
+ * different — `TASK-refusefileentry-echoes-a-path-with-no-bound-and-a-path-is-a`
+ * is the record of that reasoning — a receiver needs both the category
+ * prefix and the filename to find the file a refusal is about, so this
+ * elides the MIDDLE and keeps both ends instead of capping either one away.
+ */
+export const MAX_PATH_ECHO = 1024;
+
+/** How many characters of each end survive once `elidedEcho` fires. */
+const PATH_ECHO_EDGE = 128;
+
+/**
+ * `text`, unchanged when it is short enough to act on; otherwise its middle
+ * elided, both ends kept, and the elision SIZED rather than left as a bare
+ * `…` — a reader who cannot tell an elided value from a short one cannot
+ * tell whether the ten characters after the marker are the real filename or
+ * the middle of one, and this project's bounds say what they held back.
+ *
+ * Takes the RENDERED text (already through `JSON.stringify` or its
+ * equivalent), not the raw value, so it bounds a non-string `path` — an
+ * array, a number, anything `manifest.ts`'s `refuseFileEntry` might have
+ * quoted — exactly as it bounds a string one: by the time something reaches
+ * here, some other check has already decided WHAT to quote, and this only
+ * decides how much of it survives. Because the surrounding quote characters
+ * (when `text` is a JSON string) sit at position 0 and at the last position,
+ * slicing around the middle leaves them exactly where they were — the result
+ * still reads as one quoted value with the elision inside it, not as two.
+ *
+ * The one piece of care taken at the cut: never split a surrogate pair,
+ * which would leave a lone surrogate in the printed message.
+ */
+export function elidedEcho(text: string): string {
+  if (text.length <= MAX_PATH_ECHO) return text;
+  let headEnd = PATH_ECHO_EDGE;
+  const headLead = text.charCodeAt(headEnd - 1);
+  if (headLead >= 0xd800 && headLead <= 0xdbff) headEnd -= 1;
+  let tailStart = text.length - PATH_ECHO_EDGE;
+  const tailLead = text.charCodeAt(tailStart);
+  if (tailLead >= 0xdc00 && tailLead <= 0xdfff) tailStart += 1;
+  const elided = tailStart - headEnd;
+  return `${text.slice(0, headEnd)}…(${elided} characters elided)…${text.slice(tailStart)}`;
+}
+
 function refusal(p: string, sentence: string): string {
-  return `my_context: artefact path ${JSON.stringify(p)} ${sentence}`;
+  return `my_context: artefact path ${elidedEcho(JSON.stringify(p))} ${sentence}`;
 }
 
 /**
