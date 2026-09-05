@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: Decide whether a documentation tool is worth a fourth dependency and a build step, or whether to extend the derivation scripts already in use.
-summary_of: a775391c55d7b485
+summary_of: 18e1468f67f77575
 scope: []
 tags:
   - v2
@@ -15,18 +15,19 @@ tags:
   - packaging
   - "plan:docsys"
   - "seq:3"
-  - "state:todo"
+  - "state:done"
 origin: human
 source_file: "C:/Users/UserC/AppData/Local/Temp/claude/D--Users-UserC-source-repos-my-context/595db3b1-a481-4553-b4c0-7248c31b2655/scratchpad/docsys/3.md"
 source_anchor: null
 source_checksum: 6af8e77d45817f0b
 valid_from: 2026-09-05
 valid_until: null
-checksum: 2ef12aa929b7f15d
+checksum: aed05e1f8b79b267
 plan: docsys
 seq: "3"
-state: todo
+state: done
 priority: "1"
+verified_on: 2026-09-05
 ---
 
 # owner ruling needed: adopt a documentation generator, or build the index and route by hand

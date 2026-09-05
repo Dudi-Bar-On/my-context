@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: Two live owner decisions name different homes for the same unbuilt document viewer; the owner needs to pick one before either can be built.
-summary_of: 080bc7c0508696c8
+summary_of: 3d226622e36a971a
 scope: []
 tags:
   - v2
@@ -17,18 +17,19 @@ tags:
   - owner-ruling
   - "plan:docsys"
   - "seq:2"
-  - "state:todo"
+  - "state:done"
 origin: human
 source_file: "C:/Users/UserC/AppData/Local/Temp/claude/D--Users-UserC-source-repos-my-context/595db3b1-a481-4553-b4c0-7248c31b2655/scratchpad/docsys/2.md"
 source_anchor: null
 source_checksum: 6885fd9424038de7
 valid_from: 2026-09-05
 valid_until: null
-checksum: 9bd1dcba5d0443e9
+checksum: 5151da5299328d76
 plan: docsys
 seq: "2"
-state: todo
+state: done
 priority: "1"
+verified_on: 2026-09-05
 ---
 
 # owner ruling needed: which screen hosts the document viewer, Coverage or Documentation
