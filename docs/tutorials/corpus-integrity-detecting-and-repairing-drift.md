@@ -107,11 +107,11 @@ finding code, ordered worst-code-first inside each card. It exists because
 the findings behind it.
 
 `repair`, `rebuild` and `refresh` sit in the **Composer**'s catalogue.
-`rebuild` is the one `kind: 'write'` entry classified *below* the trust
-boundary, spelled out rather than omitted, on the reasoning that the index is
-derived from the Markdown and rebuilding it changes nothing that governs
-anything. `repair` and `refresh` are above the boundary and get the full
-confirm.
+`rebuild` is one of only three `kind: 'write'` entries classified *below* the
+trust boundary — `ack` and `lesson-discard` are the other two — and each carries
+its reason rather than being omitted: the index is derived from the Markdown, so
+rebuilding it changes nothing that governs anything. `repair` and `refresh` are
+above the boundary and get the full confirm.
 
 **What the UI can do here that the CLI cannot.** Keep every finding visible at
 once, grouped by level and code, and move from a finding to the item it names.

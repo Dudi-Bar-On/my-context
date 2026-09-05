@@ -114,9 +114,11 @@ screen draws a staged candidate.
 ## From the UI
 
 **There is no lesson screen.** Two of the four verbs are reachable —
-`lesson-accept` and `lesson-discard` are in the **Composer**'s catalogue, both on
-the trust boundary — but you would need the lesson id and the candidate key from
-a terminal first, because nothing on screen lists them.
+`lesson-accept` and `lesson-discard` are both in the **Composer**'s catalogue,
+`lesson-accept` on the trust boundary with the field-by-field confirm and
+`lesson-discard` below it with the plain one — but you would need the lesson id
+and the candidate key from a terminal first, because nothing on screen lists
+them.
 
 What the browser does show is the result: the rule an accepted candidate created
 appears on the **Relations** screen with its `derived_from` edge back to the

@@ -54,10 +54,13 @@ other setting — `.my_context/config.json`, under `budgets`:
 }
 ```
 
-Every key is optional and any you omit keeps its default. A typo is refused
-rather than accepted and dropped in silence: `"budget"` for `"budgets"`, or a
-tier name that is not one of the five, names itself in the error and nothing is
-loaded.
+Every key is optional and any you omit keeps its default. A typo is never
+accepted and dropped in silence. A tier name that is not one of the five is
+**refused** inside the block — it names itself in the error, beside the five
+this config accepts, and nothing is loaded. A misspelling of the section itself,
+`"budget"` for `"budgets"`, is a top-level key: it is **skipped and disclosed**
+rather than read, so the budgets stay at their defaults and you are told which
+key went unread.
 
 Raise the pinned budget only if you have a reason: it is charged to every
 session forever. Scope delivers the same knowledge exactly when it is relevant,

@@ -23,7 +23,7 @@ request other than a stream, so a forgotten background tab does not hold it up;
 The port is the ephemeral one the operating system hands out, unless `ui.port`
 in `.my_context/config.json` or `--port` names one.
 
-**Twenty screens, in four rail groups**, and the group names are the product's
+**Nineteen screens, in four rail groups**, and the group names are the product's
 own claims about what each screen is for:
 
 - **Injection — what arrives**: Injection preview, Scope coverage, Budget
@@ -32,7 +32,7 @@ own claims about what each screen is for:
   Relations, Status.
 - **Change — composed, never run**: Review queue, Capture, Composer, Configure,
   Procedures, Export / import, Template packs.
-- **Read**: Documentation, Tutorials, Learn.
+- **Read**: Library, Learn.
 
 **"Composed, never run" is the rule, and the confirm is the exception to it.**
 Most write-shaped screens end at a line of shell you copy. Where the UI does run

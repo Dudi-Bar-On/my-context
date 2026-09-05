@@ -22,7 +22,7 @@ built around making sure it does.
 | State | Meaning | Injection |
 |---|---|---|
 | `proposed` | written, not approved. An agent may author one here | not injected |
-| `ready` | you approved it | index line only |
+| `ready` | you approved it | not injected, and not even an index line |
 | `active` | you initiated it | in full, every session |
 | `done` | completed | not injected |
 | `abandoned` | you stopped it, and it is `superseded` rather than finished | not injected |

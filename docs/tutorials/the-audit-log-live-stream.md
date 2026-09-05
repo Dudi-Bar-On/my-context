@@ -20,8 +20,10 @@ SQLite projection over it is disposable. Deleting the database loses nothing;
 `mycontext audit replay-ledger` tops the projection up incrementally and rebuilds
 it whole only if the log has diverged.
 
-**Six record kinds**: mutations, injections, hook actions, focus changes, access
-refusals, and progress steps.
+**Seven record kinds**: mutations, injections, hook actions, focus changes,
+access refusals, progress steps, and command executions — the last being the
+`execute` / `execute-done` pair the browser's Composer writes around a confirmed
+run.
 
 **Two axes are worth learning:**
 

@@ -43,10 +43,15 @@ governs the project, it is also the place this product is most careful.
 | `watchedDocs` | globs whose edits produce a capture nudge |
 | `ui` | whether the web UI is enabled, and a fixed port for it |
 | `handover` | which handover document this project keeps |
+| `dispatchGate` | `{"enabled": true}` to require a task item on every `Agent` dispatch |
 
-**Unknown keys are refused, not dropped.** `"budget"` for `"budgets"` names
-itself in the error and nothing is loaded — a setting that cannot be understood
-does not get to be half-applied.
+**An unknown key is never dropped in silence, but the two levels answer
+differently.** At the *top* level it is **skipped and disclosed**: `"budget"`
+for `"budgets"` is not read, and the loader carries the skip so the surface you
+are looking at names it rather than leaving you with a dead setting. Inside a
+known block — a category entry, `budgets`, `ui`, `dispatchGate` — an unknown key
+is still **refused** and nothing is loaded at all, because nothing inside a
+known block ever arrives from a newer build.
 
 **A left-out category is absent, not disabled.** Under `minimal`, the categories
 the profile does not name are not in the catalogue at all, and their items are
@@ -90,9 +95,9 @@ my_context: this category is on the rationale tier, so the item is never injecte
 
 **What the CLI can do here that the UI cannot.** Every key except `budgets`.
 `profile`, category `tier`, `scopePolicy`, `agentEdits`, `prefix`,
-`description`, `watchedDocs`, `ui` and `handover` are all hand edits or
-`mycontext config` invocations; the browser previews them and composes the
-change, but writes only budgets.
+`description`, `watchedDocs`, `ui`, `handover` and `dispatchGate` are all hand
+edits or `mycontext config` invocations; the browser previews them and composes
+the change, but writes only budgets.
 
 ## From the UI
 

@@ -23,8 +23,9 @@ set one:
 
 1. **Tags decide injection here.** Outside a focus, tags are pure metadata. The
    moment a focus is set, an item matching none of its tags is held back.
-2. **`severity: hard` is exempt.** Focus never hides a hard item, and it says so
-   rather than quietly making an exception.
+2. **Three kinds of item are exempt.** Focus never hides a `severity: hard`
+   item, a pinned (`always: true`) one, or a continuity one — and it names each
+   exempted id in a block of its own rather than quietly making the exception.
 3. **It discloses rather than refuses.** It hides what you asked it to hide and
    tells you the cost, including relations left dangling.
 4. **The preview calls the same selection the injection will**, so a preview and

@@ -30,8 +30,12 @@ prints your existing `statusLine` setting and what it would replace it with, and
 writes nothing without `--yes`. If you already have a status line, the installer
 *delegates* to it rather than replacing it, so your own line keeps working.
 
-**This is the one thing in the web-UI design that writes a file**, and it is a
-CLI command you install rather than a UI endpoint. The UI itself stays a reader.
+**The tee is a CLI command you install, not a UI endpoint**, and that is the
+point: the browser never writes this file — `mycontext statusline`, run from your
+own Claude Code settings, does. The UI is not write-free either, but its writes
+are a named, ruled set — budgets on the Configure screen, the audit rows written
+around a confirmed Composer run, and the server's own bookkeeping — and every
+read path in it is still a reader.
 
 **A failure is diagnosed in the line, not in the exit code.** A thrown error or
 a non-zero exit would make Claude Code's status line flicker or disappear
