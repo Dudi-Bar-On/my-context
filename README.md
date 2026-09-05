@@ -3392,8 +3392,8 @@ list — it is still growing, so an enumeration here would be stale before it wa
 - **evidence** — Watch and Ask (below), `doctor`, `decay`, the relations ego graph, and
   `status`;
 - **change** — Work, the Composer, Configure, capture, procedures, ports and packs;
-- **reading** — the documentation, the tutorial, and a Learn screen cross-linked to this
-  corpus.
+- **reading** — the Library, which lists every document and tutorial by title and opens one in
+  a tab of its own, and a Learn screen cross-linked to this corpus.
 
 Two claims on those screens carry their condition in the same sentence, because without it
 they are false. The preview equals the hook's selection **when it is given the same session**;
@@ -5326,8 +5326,9 @@ There was a third profile, `full`, and removing those three is what removed it. 
 "every category in the catalogue" against `standard`'s "every category the catalogue marks as
 on by default", and the whole of the difference between the two was `policy`, `postmortem`
 and `taxonomy` — so `full` was, in practice, the name for "including the three nobody should
-enable". With them gone the two names resolved to the same twenty categories, and a second
-name for the same twenty is a thing a reader has to be told means nothing.
+enable". With them gone the two names resolved to the same catalogue — twenty categories then,
+twenty-nine now — and a second name for the same set is a thing a reader has to be told means
+nothing.
 
 **A `config.json` that still says `"profile": "full"` is refused at load time**, by name,
 with the valid set and the replacement in the message; it is not resolved quietly to
@@ -5583,8 +5584,10 @@ Set `"watchedDocs": ["docs/rfc/**"]` and the same edit produces nothing at all, 
 Absent by default, and absent means the whole feature is **off** — nothing is asked of you and
 nothing is delivered. Set `path` to the one file (not a glob) you keep a running handover note
 in, and near the end of a session — by default at 98% of the context window, `thresholdPercent`,
-1–100 — the `Stop` hook asks you, once, to write under it what you were doing, what you decided,
-and what the next session needs to do first. `SessionStart` then delivers that section (up to
+1–100 — the `Stop` hook asks you to write under it what you were doing, what you decided,
+and what the next session needs to do first. It asks at most twice per context window: once when
+the threshold is crossed, and once more only if the first ask went unanswered. A window rebuilt
+by a compaction gets its own budget of two. `SessionStart` then delivers that section (up to
 `budgetTokens`, default 1200) after a compaction and at the start of a fresh session that finds
 one.
 
