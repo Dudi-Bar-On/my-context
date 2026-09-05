@@ -7,6 +7,8 @@ severity: soft
 always: false
 summary: The two tutorial files split into one file per feature, each teaching that feature from both the CLI and the UI.
 summary_of: 1bf7045ffab14a89
+acknowledged:
+  - dead_scope@64b33da6252909f0
 scope:
   - docs/tutorials/**
   - docs/TUTORIAL.md
@@ -24,7 +26,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-09-05
 valid_until: null
-checksum: fc8c3c8933d7952b
+checksum: ad8ef8d8d0750755
 plan: tuts
 seq: "5"
 state: todo

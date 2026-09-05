@@ -7,6 +7,8 @@ severity: soft
 always: false
 summary: Every tutorial gets a Hebrew file, and until it does, the screen shows that as a measured gap rather than a silent fallback to English.
 summary_of: 2efa68451d8331ff
+acknowledged:
+  - dead_scope@66c3b149409b6a5d
 scope:
   - docs/tutorials/**
 tags:
@@ -23,7 +25,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-09-05
 valid_until: null
-checksum: f2f121c517f5385d
+checksum: a204b7cef21c1da9
 plan: tuts
 seq: "8"
 state: todo

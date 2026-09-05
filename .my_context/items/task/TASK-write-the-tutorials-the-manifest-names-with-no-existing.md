@@ -7,6 +7,8 @@ severity: soft
 always: false
 summary: The tutorials the manifest names with no matching chapter today are written new, each against a real feature rather than a repository file.
 summary_of: 52612248733af264
+acknowledged:
+  - dead_scope@0ef094301bd11e3b
 scope:
   - docs/tutorials/**
 tags:
@@ -22,7 +24,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-09-05
 valid_until: null
-checksum: a676c12e3f263f28
+checksum: f46a1d144c786c83
 plan: tuts
 seq: "7"
 state: todo

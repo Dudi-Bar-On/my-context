@@ -7,6 +7,8 @@ severity: soft
 always: false
 summary: Four facts tutorials state as literal values are checked against the code that would make them wrong, instead of trusted by eye.
 summary_of: e179c44ead748071
+acknowledged:
+  - dead_scope@862ed1a6d8f27cb7
 scope:
   - test/core/**
   - docs/tutorials/**
@@ -24,7 +26,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-09-05
 valid_until: null
-checksum: 049c42118f0337b2
+checksum: fa2556ec20af5d2b
 plan: tuts
 seq: "6"
 state: todo

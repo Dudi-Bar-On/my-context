@@ -7,6 +7,8 @@ severity: soft
 always: false
 summary: A generated manifest lists which CLI commands, UI screens, slash commands and categories each tutorial covers, and a test fails when a new one goes unclaimed.
 summary_of: cbe4f8b551b902ce
+acknowledged:
+  - dead_scope@63992e5ff60c2ee3
 scope:
   - src/core/**
   - docs/tutorials/**
@@ -25,7 +27,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-09-05
 valid_until: null
-checksum: d16c1cd2e7fb0f7a
+checksum: b26b57debd81c479
 plan: tuts
 seq: "1"
 state: todo

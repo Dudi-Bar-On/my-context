@@ -10,7 +10,7 @@ summary_of: 726cf1c6732d857b
 summary_was:
   - 2026-09-05 The order the work is being tackled in, grouped so that jobs which do not touch each other can be done at the same time.
 acknowledged:
-  - reference_no_source@98fcf52363e700e6
+  - reference_no_source@0bc80f612344854a
 scope: []
 tags:
   - v2
@@ -21,7 +21,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-08-28
 valid_until: null
-checksum: bf03640594d88eee
+checksum: c7b01dadca568fdb
 ---
 
 # the wave map: what order the work is being done in
