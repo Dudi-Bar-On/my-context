@@ -1,7 +1,8 @@
 import { existsSync, readFileSync } from 'node:fs';
 import path from 'node:path';
 import {
-  AUDIT_KINDS, AUDIT_OPS, auditFailureNote, filterAudit, parseWhen, readAudit,
+  AUDIT_KINDS, AUDIT_OPS, auditFailureNote, filterAudit, kindOf, parseWhen, PROGRESS_OPS,
+  readAudit, recordAudit,
   type AuditFilter, type AuditKind, type AuditOp,
 } from '../core/audit.ts';
 import { RULE_DIRECTIVES } from '../core/command-flags.ts';
@@ -27,14 +28,16 @@ import {
   summaryAtCreateRefusal, summaryOmittedRefusal, summaryRequired, summaryRequiredAtCreate,
   summaryRequiredRefusal, summaryUnchangedRefusal,
 } from '../core/summary-gate.ts';
+import { procedureProgress, progressLine, unreadableProgress } from '../core/progress.ts';
+import { STAGES, stageOf, type Stage } from '../core/procedure-stage.ts';
 import { linkItems } from '../core/relations.ts';
 import { RELATION_TYPES } from '../core/vocabulary.ts';
 import {
   extraFieldNames, resolveConfig, scopePolicyFor, skippedKeyNotice, type Config,
 } from '../core/config.ts';
 import { buildInjection } from '../core/inject.ts';
-import { openRebuiltStore } from '../core/open-store.ts';
-import { loadErrorNote } from '../core/rebuild.ts';
+import { openRebuiltStore, rebuildRoots } from '../core/open-store.ts';
+import { loadErrorNote, loadLayer, type LoadError } from '../core/rebuild.ts';
 import { isSnapshot, readSnapshot } from '../core/reference.ts';
 import { scopeField } from '../core/render-item.ts';
 import {
@@ -42,7 +45,8 @@ import {
   type PendingRevision,
 } from '../core/revision.ts';
 import { filterItems, LINK_DIRECTIONS, type LinkDirection } from '../core/search.ts';
-import { RETIRED_STATUSES, reviewQueue, select } from '../core/select.ts';
+import { mergeLayers, RETIRED_STATUSES, reviewQueue, select } from '../core/select.ts';
+import { makeId } from '../core/slug.ts';
 import { MCP_HELP_TOPICS, enumError, missingFieldError, unknownIdError } from '../core/teach.ts';
 import type { Item, Observation, Origin, Severity, Status } from '../core/types.ts';
 import { ORIGINS } from '../core/validate.ts';
@@ -50,7 +54,9 @@ import { VERSION } from '../core/version.ts';
 import { resolveWorkspace } from '../core/workspace.ts';
 import { exampleItem, helpTopic, toolDescriptions } from '../help/index.ts';
 import { listSessions, pendingAnchors, rejectionsForAnchor } from '../ingest/session.ts';
-import { listStaging, stageRuleCandidates } from '../lesson/derive.ts';
+import {
+  buildRuleRequest, listStaging, renderRuleRequest, stageRuleCandidates,
+} from '../lesson/derive.ts';
 import { renderCollisionReport, type CollisionReport } from '../pack/collide.ts';
 import { planImport } from '../pack/import.ts';
 import { readImportRecords } from '../pack/imported-audit.ts';
@@ -1108,6 +1114,80 @@ const SPECS: ToolSpec[] = [
   },
   {
     /**
+     * **`mycontext list`, mirrored — the corpus census by category.**
+     *
+     * `CLI_WITHOUT_TOOL.list` (plugin/parity.ts) recorded this as `owed` and
+     * left one thing undecided: whether `query_items` already answers the
+     * same question well enough to make a second tool redundant. Measured
+     * directly, it does not — `query_items` returns matching ITEMS, with no
+     * grouping and no counts, so producing `mycontext list`'s per-category
+     * census through it would take one call per category plus manual
+     * tallying. This tool answers the census directly, the same way
+     * `cmdList` (cli/index.ts) does: `type => count` over every item in the
+     * corpus, no mutation, no origin check.
+     *
+     * The one real overlap is the FILTERED form: `list_items({category:
+     * 'reference'})` and `query_items({type: 'reference'})` answer the same
+     * question, and the schema description says so rather than pretend
+     * there is none.
+     */
+    name: 'list_items',
+    schema: object({
+      category: {
+        ...S_STRING,
+        description:
+          'Only this category — see mycontext_help("categories"). Omitted, this returns the ' +
+          'census below instead: every category with a count, not items. The overlap with ' +
+          'query_items is here: query_items({type}) answers the same filtered question.',
+      },
+      limit: {
+        type: 'number',
+        description: 'Caps the row list a "category" returns. Meaningless on the census, which is never capped.',
+      },
+    }),
+    run: (cwd, args) => withWorkspace(cwd, (ctx) => {
+      const category = optStr(args, 'category');
+      const items = ctx.store.all();
+
+      if (category === undefined) {
+        if (items.length === 0) return 'my_context: no items in this corpus yet.';
+        const counts = new Map<string, number>();
+        for (const item of items) counts.set(item.type, (counts.get(item.type) ?? 0) + 1);
+        const rows = [...counts]
+          .sort((a, b) => a[0].localeCompare(b[0]))
+          .map(([type, n]) => `${type} · ${n}`);
+        return [
+          `my_context: ${items.length} item(s) across ${counts.size} ` +
+          `categor${counts.size === 1 ? 'y' : 'ies'}:`,
+          '',
+          ...rows,
+        ].join('\n');
+      }
+
+      // Same refusal `cmdList` gives for a misspelled category — and the
+      // same two things it deliberately does NOT refuse: a category that
+      // exists but is disabled (items captured before it was disabled are
+      // still on disk and still findable by name), and a type absent from
+      // config but present in the corpus (a category renamed or deleted
+      // after items were captured). See the comment on `cmdList` itself.
+      const configured = Object.hasOwn(ctx.config.categories, category);
+      const inCorpus = items.some((item) => item.type === category);
+      if (!configured && !inCorpus) {
+        throw new Error(
+          enumError('category', category, Object.keys(ctx.config.categories).sort(), 'categories'),
+        );
+      }
+
+      const matched = items.filter((item) => item.type === category);
+      return listOf(
+        matched, ctx.config, optNum(args, 'limit', 20),
+        `my_context: no ${category} items.`,
+        pendingRevisions(ctx),
+      );
+    }),
+  },
+  {
+    /**
      * **`mycontext ready`, mirrored — what can be started right now.**
      *
      * `CLI_WITHOUT_TOOL.ready` (plugin/parity.ts) recorded this as `owed`:
@@ -1760,6 +1840,81 @@ const SPECS: ToolSpec[] = [
   },
   {
     /**
+     * **`mycontext lesson`, mirrored — record a lesson and request candidate
+     * rules, always as an agent.**
+     *
+     * `CLI_WITHOUT_TOOL.lesson` (plugin/parity.ts) recorded this as `owed`:
+     * nothing on `cmdLesson`'s path refuses a non-human caller, and
+     * `--agent` (cli/commands/lesson.ts:122) already solves the trust
+     * boundary honestly for the CLI case — the same reasoning `create_item`
+     * already applies. A tool call is a non-human caller BY CONSTRUCTION, so
+     * this tool never takes an `origin` argument (see `ARGUMENT_HINTS`
+     * above, `'*.origin'`) and always stamps `origin: 'agent'` itself; there
+     * is no flag-equivalent decision here, only the wiring.
+     *
+     * `subject` may already be an existing lesson's id — the same re-derive
+     * path `cmdLesson` offers — so calling this twice with the same wording
+     * re-derives the rule-derivation request rather than creating a
+     * duplicate lesson. `lesson` is rationale tier, so the created item
+     * lands `origin: agent, status: active` — honest and immediately
+     * usable, with no trust boundary bypassed, because nothing on the
+     * rationale tier is injected in the first place.
+     */
+    name: 'create_lesson',
+    schema: object({
+      subject: {
+        ...S_STRING,
+        description:
+          'What was learned, in your own words — creates a new lesson — or an existing ' +
+          'lesson\'s id, to re-derive its rule-derivation request without creating a duplicate.',
+      },
+    }, ['subject']),
+    run: (cwd, args) => withWorkspace(cwd, (ctx) => {
+      const subject = str(args, 'subject', 'create_lesson').trim();
+      if (subject === '') throw new Error(missingFieldError('subject', 'create_lesson', 'capture'));
+
+      let recorded = false;
+      let lesson: Item | null = ctx.store.get(subject);
+      if (lesson && lesson.type !== 'lesson') {
+        throw new Error(
+          `my_context: ${subject} is a ${lesson.type}, not a lesson. Rules are derived from lessons only.`,
+        );
+      }
+
+      if (!lesson) {
+        // Not an id — treat it as title text and dedupe on the id
+        // `createItem` would allocate for it, exactly as `cmdLesson` does,
+        // so calling this twice with the same wording re-derives instead
+        // of creating a second lesson.
+        const candidateId = makeId(ctx.config.categories.lesson.prefix, subject);
+        const existing = ctx.store.get(candidateId);
+        if (existing) {
+          lesson = existing;
+        } else {
+          // WHO this write claims to be — always 'agent'. See the doc
+          // comment above; never taken from the tool call.
+          const created = createItem(ctx, {
+            type: 'lesson', title: subject, status: 'active', origin: 'agent',
+          });
+          lesson = ctx.store.get(created.id) as Item;
+          recorded = true;
+        }
+      }
+
+      const lines = [
+        recorded
+          ? `my_context: lesson ${lesson.id} recorded as origin: ${lesson.origin} ` +
+            `(rationale tier — indexed, never injected).`
+          : `my_context: lesson ${lesson.id} already recorded — nothing was written by this call ` +
+            `(rationale tier — indexed, never injected). Re-deriving rules from it:`,
+        '',
+        renderRuleRequest(buildRuleRequest(lesson, ctx.config)),
+      ];
+      return lines.join('\n');
+    }),
+  },
+  {
+    /**
      * **`mycontext lesson-stage`, mirrored — stage derived rule candidates
      * for a human to accept or discard.**
      *
@@ -2128,6 +2283,194 @@ const SPECS: ToolSpec[] = [
 
       return lines.join('\n');
     }),
+  },
+  {
+    /**
+     * **`mycontext procedure`, mirrored — but only its read half.**
+     *
+     * `CLI_WITHOUT_TOOL.procedure` (plugin/parity.ts) recorded this as
+     * `owed`: a mixed command, where `list`/`show`/`step` are plain reads
+     * over the CORPUS AS MARKDOWN (`corpus`, cli/commands/procedure.ts — the
+     * same `rebuildRoots`/`loadLayer`/`mergeLayers` triple `buildInjection`
+     * uses) with no mutation and no origin check, but `activate` and `done`
+     * hardcode `origin: 'human'` on their `updateItem` calls
+     * (procedure.ts:294, :337) and must stay a human-only act — the same
+     * reasoning that gives `review` a read tool (`list_drafts`) with no
+     * tool for `review promote`. This tool's `action` enum names exactly
+     * `list`/`show`/`step`; there is no value that reaches `activate` or
+     * `done`, and none is ever added.
+     *
+     * `step` DOES write — one record appended to the audit log — but not to
+     * the item, and progress governs nothing: `commands/procedure.md`
+     * already tells an agent at a shell it may run this one for exactly
+     * that reason, and this tool draws the same line rather than a
+     * stricter one. Its `origin: 'human'` (procedure.ts:387) is unchanged;
+     * see that file's own note on the bargain this makes — it is
+     * indistinguishable from a human's own tick, and that is acceptable
+     * specifically because a tick changes what is injected, what governs,
+     * or what any other session is shown, precisely nothing.
+     *
+     * Reads the Markdown directly, through `resolveWorkspace` +
+     * `rebuildRoots`/`loadLayer`/`mergeLayers`, never `withWorkspace` (which
+     * calls `openRebuiltStore` first): the whole point of leaving
+     * `list`/`show`/`step` off the SQLite rebuild is that `step` takes no
+     * write lock, and routing this tool through the SQLite path would
+     * reintroduce exactly the lock this design avoids.
+     */
+    name: 'read_procedure',
+    schema: object({
+      action: {
+        type: 'string',
+        enum: ['list', 'show', 'step'],
+        description:
+          'Default "list" — every procedure grouped by stage. "show" and "step" need "id"; ' +
+          '"step" also needs "step". There is no "activate" or "done" here — those stay a ' +
+          'human act; see mycontext_help("workflow").',
+      },
+      id: { ...S_STRING, description: 'A procedure item id. Needed by "show" and "step"' },
+      step: {
+        type: 'number',
+        description: 'The step number to tick or un-tick, 1-based. Needed by "step" only',
+      },
+      undo: {
+        type: 'boolean',
+        description: 'Un-tick the step instead of ticking it. Only means something with "step"',
+      },
+    }),
+    run: (cwd, args) => {
+      const ws = resolveWorkspace(cwd);
+      if (!ws.projectRoot) {
+        throw new Error(
+          `my_context: there is no .my_context workspace at or above ${cwd}. ` +
+          `Ask the user to run \`mycontext init\`.`,
+        );
+      }
+      const root = ws.projectRoot;
+      const action = optEnum<'list' | 'show' | 'step'>(
+        args, 'action', ['list', 'show', 'step'], 'workflow',
+      ) ?? 'list';
+
+      const roots = rebuildRoots(ws);
+      const errors: LoadError[] = [];
+      const layered: Item[] = [];
+      if (roots.global) layered.push(...loadLayer(roots.global, 'global', errors, ws.config));
+      layered.push(...loadLayer(root, 'project', errors, ws.config));
+      const items = mergeLayers(layered);
+      const records = readAudit(root);
+
+      const categoryRefusal = (item: Item): string => {
+        const first =
+          `my_context: ${item.id} is a ${item.type}, not a procedure. ` +
+          `read_procedure acts on procedure items only — get_item(${JSON.stringify(item.id)}) reads this one.`;
+        if (item.type !== 'runbook') return first;
+        return `${first}\n` +
+          'A "runbook" is repeatable: it is performed again every time the named operation ' +
+          'comes up, so it has no lifecycle to read progress against. A "procedure" is done ' +
+          'once and then finished, which is why it is the one that carries this lifecycle. ' +
+          'This is a category error, not a feature that is coming.';
+      };
+
+      if (action === 'list') {
+        const procedures = items
+          .filter((i) => i.type === 'procedure')
+          .sort((a, b) => a.id.localeCompare(b.id));
+        if (procedures.length === 0) {
+          return 'my_context: 0 procedure(s). Capture one with create_item ' +
+            '(type: "procedure", steps: [...]).' + loadErrorNote(errors);
+        }
+        const byStage = new Map<Stage, Item[]>();
+        for (const item of procedures) {
+          const stage = stageOf(item);
+          byStage.set(stage, [...(byStage.get(stage) ?? []), item]);
+        }
+        const lines: string[] = [];
+        for (const stage of STAGES) {
+          const rows = byStage.get(stage);
+          if (!rows) continue;
+          lines.push(`${stage}:`);
+          for (const item of rows) {
+            const done = procedureProgress(records, item.id);
+            lines.push(`  ${item.id} · ${stage} · ${progressLine(done, item.steps.length)} · ${item.title}`);
+          }
+          lines.push('');
+        }
+        lines.push('note: progress is recorded per workspace, not per session — two callers on this workspace share one record set.');
+        return lines.join('\n') + loadErrorNote(errors);
+      }
+
+      if (args.id === undefined || args.id === null) {
+        throw new Error(missingFieldError('id', 'read_procedure', 'workflow'));
+      }
+      const id = optStr(args, 'id') as string;
+      const item = items.find((i) => i.id === id);
+      if (!item) throw new Error(unknownIdError(id, items.map((i) => i.id)));
+      if (item.type !== 'procedure') throw new Error(categoryRefusal(item));
+
+      if (action === 'show') {
+        const done = procedureProgress(records, item.id);
+        const unreadable = unreadableProgress(records, item.id);
+        const overlaid: Item = {
+          ...item,
+          steps: item.steps.map((s, i) => ({ ...s, checked: done.has(i + 1) })),
+        };
+        const lines = [
+          renderItem(overlaid),
+          '',
+          `progress: ${progressLine(done, item.steps.length)}`,
+          'note: every ticked box above is rendered from the audit log, not stored — the ' +
+          'Markdown on disk still reads "- [ ]" on every step, and mycontext doctor stays ' +
+          'quiet while a procedure is being worked through.',
+        ];
+        if (unreadable > 0) {
+          lines.push(
+            `note: ${unreadable} progress record(s) in this run could not be read by this ` +
+            'build and are counted in neither direction.',
+          );
+        }
+        return lines.join('\n') + loadErrorNote(errors);
+      }
+
+      // action === 'step'
+      if (item.status !== 'active') {
+        throw new Error(
+          `my_context: ${item.id} is "${item.status}", not "active", so there is no run to ` +
+          `record a step against. A human starts it with \`mycontext procedure activate ${item.id}\`.`,
+        );
+      }
+      if (args.step === undefined || args.step === null) {
+        throw new Error(missingFieldError('step', 'read_procedure', 'workflow'));
+      }
+      const n = optNum(args, 'step', 1);
+      const total = item.steps.length;
+      if (!Number.isSafeInteger(n) || n < 1 || n > total) {
+        throw new Error(total === 0
+          ? `my_context: ${item.id} declares 0 steps, so there is nothing to tick.`
+          : `my_context: ${n} is not one of this procedure's steps. ${item.id} has ${total} ` +
+            `step(s), numbered 1 to ${total}.`);
+      }
+      const undo = optBool(args, 'undo') ?? false;
+      // The op and its kind are DERIVED from `core/audit.ts`'s own vocabulary
+      // (`PROGRESS_OPS` names the two step ops; `kindOf` classifies either)
+      // rather than spelled out here — see
+      // `test/core/audit-surfaces-derive.test.ts`'s "neither surface names
+      // the new kind or its ops anywhere in its source".
+      const op = undo ? PROGRESS_OPS[1] : PROGRESS_OPS[0];
+      const kind = kindOf(op);
+      const written = recordAudit(root, {
+        kind, op, itemId: item.id, origin: 'human', note: `step ${n}`,
+      });
+      if (!written.written) {
+        throw new Error(
+          `my_context: the progress record could not be written (${written.error}), so nothing ` +
+          'was recorded. The item is untouched either way — progress never enters items/.',
+        );
+      }
+      const after = procedureProgress([...records, {
+        protocol: '', at: '', kind, op, itemId: item.id, note: `step ${n}`,
+      }], item.id);
+      return `my_context: step ${n} ${undo ? 'un-ticked' : 'ticked'} — ${progressLine(after, total)}. ` +
+        'The item file is unchanged; this is one record in the audit log.';
+    },
   },
 ];
 

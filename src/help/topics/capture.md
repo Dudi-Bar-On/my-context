@@ -181,3 +181,6 @@ rebuild, silently:
 - `preview_pack_import`: With "path", preview an artefact import: the collision report, then the command to run it. Without "path", list packs already imported. Not for: importing — this tool never writes.
 - `status_report`: The composed dashboard: counts, review queue, ingest progress, decay and health. Not for: detail — decay_report, list_drafts and doctor go deeper on each.
 - `list_todos`: List the inbox — items captured as `todo` — and what its tier means for them. Not for: promoting one to a real category — a human decision.
+- `list_items`: Census of the corpus by category — counts, not items. With `category`, lists that category's items instead. Not for: finding items by text, tag or relation — query_items.
+- `create_lesson`: Record a lesson, or re-derive from one's id, and get back the request to convert it into candidate rules. Always `origin: "agent"`. Not for: creating a rule directly.
+- `read_procedure`: List every procedure by stage, show one with its ticks overlaid, or tick/un-tick a step. Not for: activating or finishing one — those stay a human act.

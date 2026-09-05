@@ -108,8 +108,8 @@ export const TOOL_PARITY: ToolParity[] = [
   // `lesson.ts`), because `covered`'s hyphen rule could not tell a sibling
   // command from a sub-form spelled under a longer name — measured 2026-09-04
   // and fixed in `covered` itself, which now consults the command registry
-  // rather than the strings. Bare `lesson` carries its own row in
-  // `CLI_WITHOUT_TOOL` (`'owed'`) for exactly this reason: nothing wraps it.
+  // rather than the strings. Bare `lesson` now has its OWN row below
+  // (`create_lesson`), rather than being read as covered by this one.
   { tool: 'stage_rule_candidates', cli: 'lesson-stage', slash: 'lesson-stage' },
   {
     tool: 'preview_pack_import', cli: 'pack', slash: null,
@@ -123,6 +123,14 @@ export const TOOL_PARITY: ToolParity[] = [
   },
   { tool: 'status_report', cli: 'status', slash: 'status' },
   { tool: 'list_todos', cli: 'todo', slash: 'todo' },
+  // `list`'s slash counterpart is covered only under the hyphen rule — there
+  // is no bare `commands/list.md`, but `commands/list-<category>.md` is
+  // generated per category (`list-adr.md`, `list-todo.md`, …) and none of
+  // those is itself a registered CLI command, which is exactly the sub-form
+  // shape `covered`'s hyphen half exists for.
+  { tool: 'list_items', cli: 'list', slash: 'list' },
+  { tool: 'create_lesson', cli: 'lesson', slash: 'lesson' },
+  { tool: 'read_procedure', cli: 'procedure', slash: 'procedure' },
 ];
 
 /**
@@ -357,17 +365,6 @@ export const CLI_WITHOUT_TOOL: Record<string, ToolAbsence> = {
       '(`CLI_WITHOUT_SLASH`\'s note: "step 4" of `/mycontext:ingest`) — the tool never needs ' +
       'the second turn.',
   },
-  lesson: {
-    disposition: 'owed',
-    reason:
-      'Records a lesson item and prints the rule-derivation request `mycontext lesson-stage` ' +
-      '(and its tool, `stage_rule_candidates`) expects back (`buildRuleRequest`/' +
-      '`renderRuleRequest`, cli/commands/lesson.ts) — a capability `create_item` alone does not ' +
-      'have, since it never builds that request. Nothing refuses a non-human caller: `--agent` ' +
-      'stamps `origin: \'agent\'` honestly on the write, the command\'s own comment says so ' +
-      '("adds the first way to be truthful"). Sits in the same unexamined space as `list`/' +
-      '`procedure`; nobody has built a tool for it yet.',
-  },
   init: {
     disposition: 'intended',
     reason:
@@ -395,26 +392,9 @@ export const CLI_WITHOUT_TOOL: Record<string, ToolAbsence> = {
       'rejects a staged candidate with no undo, and pairing it with `lesson-accept` behind one ' +
       'gate is a judgement about the pair, not a fact this file can re-derive.',
   },
-  list: {
-    disposition: 'owed',
-    reason:
-      'A plain read (`cmdList`, cli/index.ts) with no mutation and no origin check. Sits in ' +
-      'the same unexamined space as `decay`/`todo`; nothing has decided whether `query_items` ' +
-      'already answers it well enough to make a second tool redundant.',
-  },
   pin: {
     disposition: 'intended',
     reason: 'See `harden` — the same named-entry-point-onto-`edit` fact, checked once below for all four.',
-  },
-  procedure: {
-    disposition: 'owed',
-    reason:
-      'A mixed command: `list`/`show`/`step` are plain reads, but `activate` and `done` ' +
-      '(`cli/commands/procedure.ts`) hardcode `origin: \'human\'` on their `updateItem` calls, ' +
-      'the same shape `review promote` has — and `review` still has `list_drafts` as a tool for ' +
-      'its READ half. A read-only tool over `procedure` is not blocked by anything the mutating ' +
-      'subcommands enforce; it is simply not built, so the top-level absence is `owed` even ' +
-      'though half of what the name dispatches to is not.',
   },
   query: {
     disposition: 'intended',

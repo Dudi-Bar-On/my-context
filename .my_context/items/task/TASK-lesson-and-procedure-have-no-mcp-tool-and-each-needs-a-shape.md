@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: Two more commands have no tool, and each carries a nuance about attribution or about which half is safe to expose that a bare wrapper would get wrong.
-summary_of: ffbf96f858adbcf1
+summary_of: 63fe336eb692abca
 scope:
   - src/mcp/tools.ts
   - src/plugin/parity.ts
@@ -18,18 +18,19 @@ tags:
   - tools
   - "plan:mcp"
   - "seq:6"
-  - "state:todo"
+  - "state:done"
 origin: human
 source_file: null
 source_anchor: null
 source_checksum: null
 valid_from: 2026-09-04
 valid_until: null
-checksum: 0392f9ddf244335a
+checksum: 714e238380b855ff
 plan: mcp
 seq: "6"
-state: todo
+state: done
 priority: "2"
+verified_on: 2026-09-05
 ---
 
 # lesson and procedure have no MCP tool, and each needs a shape decision plain wrapping would miss

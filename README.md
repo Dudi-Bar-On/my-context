@@ -1899,7 +1899,7 @@ my_context has two surfaces over one corpus. One is for you, one is for the mode
 split is deliberate rather than historical.
 
 **You** type slash commands inside a Claude Code session, or run the `mycontext` command in
-a terminal. **The model** calls the twenty-two MCP tools. Both surfaces read and write the same
+a terminal. **The model** calls the twenty-five MCP tools. Both surfaces read and write the same
 Markdown files under `.my_context/`, so an item you capture in the terminal is in the
 model's index the next time it looks, and an item the model captures shows up in
 `mycontext list` at once.
@@ -1915,7 +1915,7 @@ draft, retiring a governing item. How far that separation actually holds is
 flowchart TB
   U(["<b>You</b>"]) --> SL["<b>/mycontext:…</b><br/>90 slash commands"]
   U --> CL["<b>mycontext …</b><br/>43 CLI commands"]
-  A(["<b>Claude</b>"]) --> TL["<b>MCP tools</b><br/>twenty-two, served over stdio"]
+  A(["<b>Claude</b>"]) --> TL["<b>MCP tools</b><br/>twenty-five, served over stdio"]
   SL -->|"add-* · search · link · LoadMyContext"| TL
   SL -->|"list-* · review · status · edit · query"| CL
   TL --> CO["<b>.my_context/</b><br/>one corpus of Markdown,<br/>in your repository"]
@@ -3605,7 +3605,7 @@ with a `--` comment.
 
 ### What the model calls: the MCP tools
 
-Twenty-two tools, served over stdio by `src/mcp/server.ts`. The model reaches them without a
+Twenty-five tools, served over stdio by `src/mcp/server.ts`. The model reaches them without a
 shell, and every item write it makes through them is stamped as an agent write — which is
 what makes the draft rule in [section 7](#7-the-trust-boundary) enforceable at all on this
 surface.
@@ -3619,6 +3619,7 @@ surface.
 | `link_items` | record a typed relation between two items, such as `derived_from` or `constrains` |
 | `get_item` | fetch one item in full, as Markdown, when the id is already known |
 | `query_items` | search and filter by type, status, tag, relation, text or file path. This is what `/mycontext:search` calls |
+| `list_items` | the corpus census by category — counts, not items. With `category`, lists that category's items, which is the one place it overlaps with `query_items({type})` |
 | `list_drafts` | list what is waiting for human review, newest first — not to promote it, which it cannot do |
 | `audit_log` | read the [run-time audit log](#the-audit-log--what-my_context-actually-did): what has been changed in this workspace and by whom, and which items a session was shown, by scope — ids and tiers, never the injected text. Filter by item, session, op, actor or time. The argument is `actor`, not `origin`: no tool schema on this surface exposes a property named `origin`, and that pin is not worth carving an exception into for a read filter |
 | `load_context` | inject the pinned items and index now, exactly as a session start does. This is what `/mycontext:LoadMyContext` calls |
@@ -3630,10 +3631,12 @@ surface.
 | `doctor` | run the corpus self-check: index freshness, orphans, drift, dead globs, permissions, session ids |
 | `decay_report` | list active normative items not injected in the last window of sessions, cold first — a signal to check, never a verdict that something is unused |
 | `list_ingest_sessions` | list every ingest session, its per-anchor progress and any rejected candidates |
+| `create_lesson` | record a lesson, or re-derive from an existing one by id, and get back the rule-derivation request. Always stamps `origin: "agent"` — a tool call is a non-human caller by construction, so there is no argument that claims otherwise |
 | `stage_rule_candidates` | stage derived rule candidates against a lesson for a human to accept or discard. Writes nothing to the corpus — only `mycontext lesson-accept`, a human command, creates the rule |
 | `preview_pack_import` | with `path`, preview importing an artefact — the same collision report `mycontext pack import` prints before its own first confirmation, plus the command a human runs next. Without `path`, list the packs already imported here. Never imports anything itself |
 | `status_report` | the composed dashboard: counts, review queue, ingest progress, decay and health |
 | `list_todos` | list the inbox — items captured as `todo` — and what its tier means for them |
+| `read_procedure` | the read half of `mycontext procedure`: list every procedure by stage, show one with its ticks overlaid, or tick/un-tick a step. `activate` and `done` are not here — those hardcode a human origin and stay a human act, the same split `review` draws between `list_drafts` and `review promote` |
 
 The tool list is sorted and byte-stable across calls, which is what lets Claude Code cache
 the prompt that carries it. Every tool declares its complete argument list and refuses
@@ -6218,7 +6221,7 @@ than one that is always typed by hand.
 
 **The requirement, in the user's words:** anything the model can do through a tool, you
 should be able to do through a command. **This is now satisfied, and enforced by a test
-rather than by review.** Every one of the twenty-two MCP tools has a CLI command, a slash
+rather than by review.** Every one of the twenty-five MCP tools has a CLI command, a slash
 command, or both; the map is `src/plugin/parity.ts` and `test/plugin/parity.test.ts` checks
 it against the usage banner the program prints and the files in `commands/`.
 
@@ -6528,7 +6531,7 @@ is what the word means *here* — several of them are ordinary English elsewhere
 | **item** | one captured piece of knowledge: one Markdown file, one id, one category, one status |
 | **JIT** / **just in time** | the injection tier that fires when Claude is about to read or edit a file the item applies to — one matching its scope, or any file at all if it declares none. Spelled `jit` in the budgets configuration |
 | **layer** | where an item's file lives. `.my_context/` in the project you are working in is the *project* layer; a `.my-context` directory in your home folder, when one exists, is read as a *global* layer alongside it. Project items win ties and shadow a global item of the same id — [the global layer](#the-global-layer--knowledge-that-follows-you-across-projects) |
-| **MCP** | Model Context Protocol — the interface Claude reaches tools through. my_context serves twenty-two of them over stdio, and they are the model's only surface short of a shell |
+| **MCP** | Model Context Protocol — the interface Claude reaches tools through. my_context serves twenty-five of them over stdio, and they are the model's only surface short of a shell |
 | **normative** | the tier for what must hold: constraints, invariants, rules, requirements, standards, and the rest. Normative text is injected, unprompted, phrased as an instruction — which is why a human approves it first |
 | **origin** | who wrote an item: `human`, `agent` or `ingest`. The trust boundary is built on this field |
 | **pending revision** | a change to an item's title, body, tags or `extra` that an agent proposed and that has **not** been applied. The item keeps governing its current text; the proposal waits in an append-only log for `mycontext review promote-revision` or `discard-revision`. Created by the `agentEdits: "review"` policy, never by a human's edit, and never injected |
