@@ -118,6 +118,52 @@ already works once; this replaces hand-built forms with one shared component.
 | `repaint/12` | Re-derive visual expectations from what is actually drawn |
 | `port/93` | Compare real screenshots against the design for spacing, colour and size |
 
+## Wave 5b — the tutorials are served and browsed
+
+Filed 2026-09-05 from `REQ-the-ui-serves-and-browses-the-tutorials-and-the-tutorials`.
+Spec: `docs/superpowers/specs/2026-09-05-tutorials-are-served-and-browsed-design.md`.
+A tutorial is one per FEATURE, not per screen or command, with four required sections —
+what it is for, how it works, from the CLI, from the UI — the last two saying what each
+surface can and cannot do. The set is DERIVED by clustering 32 user-facing CLI commands,
+20 screens, 90 slash commands and 29 categories; a coverage test fails when a new one is
+unclaimed. Reuses `markdownNodes`; no second renderer.
+
+| ref | what it is |
+|---|---|
+| `tuts/1` | The tutorial manifest — clusters CLI, UI, slash and category surfaces, coverage-gated |
+| `tuts/2` | `GET /api/tutorials` reads the manifest, adds the Hebrew rollup |
+| `tuts/3` | `GET /api/doc/:id` — one tutorial's markdown, no client path reaches disk |
+| `tuts/4` | The Tutorials screen gains a reader, not only a checklist |
+| `tuts/5` | Migrate the two tutorial files into one file per feature |
+| `tuts/6` | Four literal facts (version, hooks, profiles, budgets) checked against the code |
+| `tuts/7` | Write the tutorials the manifest names with no existing chapter |
+| `tuts/8` | Write the Hebrew tutorial files, tracked as a measured gap until then |
+
+**What no gate can check, stated rather than implied:** whether the prose is CORRECT.
+Existence and literal drift are gated; accuracy stays a periodic human review.
+
+## Wave 5c — the documentation system
+
+Filed 2026-09-05 from `REQ-the-two-readmes-are-the-base-of-a-documentation-system-that`.
+Spec: `docs/superpowers/specs/2026-09-05-documentation-screen-design.md`.
+**`docsys/1` is free and needs no ruling: the screen currently promises, live, that it
+renders the README addressed by heading ordinal and is cross-linked to the corpus — both
+found FALSE by the owner on 2026-08-25 and never corrected in the mockup or either string
+table.** Recommendation on tooling: build without a third-party generator — one costs a
+fourth devDependency and very likely a build step, changing two constraints at once, for a
+renderer that already exists and is already trusted for CSP-safety.
+
+| ref | what it is |
+|---|---|
+| `docsys/1` | Stop the screen claiming two things the owner already ruled false |
+| `docsys/2` | **Owner ruling** — which screen hosts the document viewer |
+| `docsys/3` | **Owner ruling** — adopt a generator, or build it from existing machinery |
+| `docsys/4` | Bring the READMEs and tutorial files into the corpus |
+| `docsys/5` | Rebuild the index from a real manifest, with deep links |
+| `docsys/6` | Show per document whether a Hebrew mirror exists, measured |
+| `docsys/7` | Disclose where CLI and UI coverage differ, derived |
+| `docsys/8` | Extend the `test/docs/*` family rather than replacing it |
+
 ## Wave 6 — the owner, and nobody else
 
 By `RULE-1-1-with-the-mockup-and-the-owner-says-when-it-is-done`, no lane can close these.
