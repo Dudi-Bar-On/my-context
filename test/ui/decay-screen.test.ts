@@ -565,9 +565,10 @@ test('every dec. key the English table declares is placed by the screen', async 
   // what the five legend keys were before this screen had a legend.
   assert.deepEqual(declared.filter((key) => !named.has(key)), [],
     'these dec. keys are declared and drawn nowhere');
-  assert.equal(declared.length, 12,
-    `the English table declares ${declared.length} dec. key(s); it has been 12 since this screen `
-    + 'was written. A new one is a new sentence on this screen and needs placing.');
+  assert.equal(declared.length, 16,
+    `the English table declares ${declared.length} dec. key(s); it has been 16 since #deccaveat was drawn `
+    + 'on 2026-09-05, under the owner ruling that put the caveat on the screen. A new one is '
+    + 'a new sentence on this screen and needs placing.');
 });
 
 test('no translated string is assigned, and no style attribute is written', async () => {
@@ -665,4 +666,100 @@ test('the screen invents no class the mockup\'s own decay section does not use',
     assert.ok(css.includes(`.hstrip i.${cell}{`),
       `styles.css has no rule for .hstrip i.${cell}, so a cell wearing it draws as an empty day`);
   }
+});
+
+/* --------------------------------------------------------------------------
+ * `#deccaveat` — on the screen, and stating a threshold it did not type.
+ *
+ * Owner ruling `DEC-the-decay-threshold-is-stated-on-the-screen-and-read-from`,
+ * 2026-09-05, taken after the paragraph was confirmed ABSENT FROM THE DOM
+ * ENTIRELY: not hidden, not empty, never drawn. Two halves, and they fail for
+ * different reasons, so they are separate assertions: WHERE the sentence sits
+ * (in the reading flow, not behind the `?`), and WHERE its number comes from
+ * (the response, not the prose).
+ * -------------------------------------------------------------------------- */
+
+test('the caveat is drawn in the reading flow, between the legend and the disclosure', () => {
+  // The design of record's own id, so what a reader inspects is the element
+  // the mockup drew rather than a second paragraph that resembles it.
+  assert.match(decaySource, /caveat\.id = 'deccaveat'/,
+    "the caveat no longer carries the mockup's own #deccaveat id");
+  // ON the screen, not behind the disclosure.
+  // `STD-a-screen-explains-itself-in-plain-words-and-depth-hides` puts DEPTH
+  // behind the `?`; the unit an axis is drawn in is not depth, and a reader
+  // who never opens a disclosure would otherwise read the comb as a calendar.
+  assert.match(
+    decaySource,
+    /comb\.append\(combHead, combPlate, legend\(ctx\), caveat, help\)/,
+    'the caveat is no longer appended between the legend and the help disclosure — either it '
+    + 'moved into the disclosure, which the ruling refuses by name, or it left the card',
+  );
+  assert.ok(!/helpDisclosure\(ctx, 'help\.whyCold', \[[^\]]*caveat/.test(decaySource),
+    'the caveat has been folded into the `?` disclosure, which is the one placement the ruling '
+    + 'names and rejects');
+});
+
+test('the caveat takes its threshold from the report, never from a number written here', async () => {
+  const en = await table('en');
+  const he = await table('he');
+  // DERIVED. `report.window` is what the running server answered about —
+  // `DECAY_WINDOW_DEFAULT` unless the request named `?window=N` — so a project
+  // that changed the setting reads its own number rather than this one.
+  assert.match(decaySource, /const \{ window: windowSessions, sessionsRecorded \} = decay\.report/,
+    'the caveat no longer destructures the window and the session count off the report');
+  assert.match(
+    decaySource,
+    /ctx\.t\('dec\.caveat', \{ window: windowSessions, sessions: sessionsRecorded \}\)/,
+    "the caveat no longer substitutes the report's own two numbers into its sentence",
+  );
+  // The sentence must not SPELL the threshold. A hard-coded "twenty" is wrong
+  // — and wrong silently — for any project that changed the window, which is
+  // the ruling's whole reason for deriving it.
+  for (const language of ['en', 'he'] as const) {
+    const template = (language === 'en' ? en : he)['dec.caveat']!;
+    assert.ok(template.includes('{window}'),
+      `${language}:dec.caveat states no {window} slot, so the threshold in it is either absent `
+      + 'or typed');
+    assert.ok(template.includes('{sessions}'),
+      `${language}:dec.caveat states no {sessions} slot, so it cannot say what the ledger holds`);
+    assert.ok(!/(twenty|20|עשרים)/.test(template),
+      `${language}:dec.caveat writes the threshold into the prose (${template}) — the one thing `
+      + 'the ruling forbids, because it goes stale silently');
+  }
+  // `DECAY_WINDOW_DEFAULT` is what that slot resolves to on a corpus that asks
+  // for no window. It is imported rather than restated so this file cannot hold
+  // a second opinion about the number it is refusing to let anyone write down.
+  assert.equal(typeof DECAY_WINDOW_DEFAULT, 'number');
+  assert.ok(DECAY_WINDOW_DEFAULT > 0);
+});
+
+test('the caveat chooses its third sentence between two whole keys rather than composing one', async () => {
+  const en = await table('en');
+  const he = await table('he');
+  // Fewer sessions on the ledger than the window means "cold" is mostly
+  // saying "new". Two complete sentences, CHOSEN — not a fragment glued into
+  // a template, which would be untranslatable and invisible to the key scan
+  // above, since that scan can only see a key named as a bare literal.
+  assert.match(
+    decaySource,
+    /sessionsRecorded < windowSessions \? ctx\.t\('dec\.caveatNew'\) : ctx\.t\('dec\.caveatIn'\)/,
+    'the short-ledger branch no longer picks between dec.caveatNew and dec.caveatIn',
+  );
+  for (const key of ['dec.caveat', 'dec.caveatNew', 'dec.caveatIn', 'dec.caveatUnit']) {
+    assert.ok(key in en, `${key} is gone from the English table`);
+    assert.ok(key in he, `${key} is gone from the Hebrew table`);
+  }
+  // The unit sentence is the paragraph's punchline and is drawn
+  // unconditionally: the axis and the badge are counted in sessions whatever
+  // the ledger holds, and that is the fact the whole caveat exists to state.
+  assert.match(decaySource, /ctx\.t\('dec\.caveatUnit'\)/,
+    'the sentence that says there is no clock in this chart is no longer drawn');
+});
+
+test('the caveat is removed rather than left blank when nothing measured can be stated', () => {
+  // Two numbers off a response that did not arrive, or a corpus with no
+  // projection at all: an empty `<p class="small">` still takes its margin and
+  // reads as a rendering fault rather than as an absent measurement.
+  assert.equal(decaySource.match(/caveat\.remove\(\)/g)?.length, 2,
+    'the caveat is no longer removed on both the error path and the not-projected path');
 });

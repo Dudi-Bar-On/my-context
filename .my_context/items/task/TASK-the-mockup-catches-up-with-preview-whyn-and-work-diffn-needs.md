@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: One sentence in the design has fallen behind the app, and another needs a decision about how it shows the formatting it describes.
-summary_of: 3ccb9332dae257a8
+summary_of: 122513c838a9916e
 scope: []
 tags:
   - v2
@@ -16,19 +16,20 @@ tags:
   - tree-parity
   - "plan:walk"
   - "seq:16"
-  - "state:todo"
+  - "state:done"
 origin: human
 source_file: null
 source_anchor: null
 source_checksum: null
 valid_from: 2026-08-25
 valid_until: null
-checksum: 443c039b2d1c05bb
+checksum: 3a76f74e8864ac27
 plan: walk
 seq: "16"
-state: todo
+state: done
 priority: "2"
 source: "plan:walk seq:1"
+verified_on: 2026-09-05
 ---
 
 # the mockup catches up with preview.whyn, and work.diffn needs a ruling

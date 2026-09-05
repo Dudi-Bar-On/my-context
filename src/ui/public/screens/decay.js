@@ -79,16 +79,38 @@
  * does"* (`screens/graph.js` · `'aria-label': 'Relation ego-graph: columns by direction, relation type on every edge',` · ~240).
  * Everything that IS an element goes through `ctx.t()` and nothing else.
  *
- * **`#deccaveat` therefore stays undrawn**, and that is the same boundary
- * rather than an exception to it. It is a `<p class="small">` — a paragraph in
- * the document, where an element can live and `ctx.t()` belongs — whose three
- * sentences the mockup writes as a ternary and no table declares. Drawing it
- * as an English literal would put untranslated prose in the reading flow of a
- * bilingual screen, which is a different act from naming an axis inside a
- * picture. Raised as an open question, not resolved here: it is the sentence
- * that tells a reader "cold" means twenty SESSIONS rather than twenty days,
- * and the window and the ledger's own session count are both on the chart's
- * data already, waiting for a key with two slots.
+ * **`#deccaveat` IS DRAWN SINCE 2026-09-05, WITH KEYS OF ITS OWN** — owner
+ * ruling `DEC-the-decay-threshold-is-stated-on-the-screen-and-read-from`,
+ * taken after the paragraph was confirmed absent from the DOM entirely: not
+ * hidden, not empty, never drawn. This file used to record it as deliberately
+ * undrawn on the boundary above, because it is a `<p class="small">` — a
+ * paragraph in the document, where an element can live and `ctx.t()` belongs
+ * — whose three sentences the mockup writes as a ternary and no table
+ * declared. That reasoning was right about the boundary and wrong about the
+ * remedy: the answer to a sentence no table declares is to declare it, not to
+ * leave the one fact that makes the chart interpretable off the screen.
+ *
+ * So `dec.caveat`, `dec.caveatNew`, `dec.caveatIn` and `dec.caveatUnit` are
+ * now in BOTH tables and this screen places all four, in the mockup's own
+ * order and in the mockup's own position — between the legend and the `?`
+ * disclosure. **ON the screen rather than behind the disclosure**, and the
+ * ruling separates the two by name:
+ * `STD-a-screen-explains-itself-in-plain-words-and-depth-hides` puts DEPTH
+ * behind the `?`, and this is not depth — it is the unit the axis is drawn
+ * in. A reader who never opens a disclosure reads the chart as a calendar,
+ * and reading it wrong looks exactly like reading it right.
+ *
+ * **THE THRESHOLD IS DERIVED, NEVER TYPED.** `{window}` and `{sessions}` are
+ * `report.window` and `report.sessionsRecorded` off `/api/decay` — the window
+ * the running server actually answered about, which is `DECAY_WINDOW_DEFAULT`
+ * unless the request named `?window=N`. Prose saying "twenty" would be wrong,
+ * and wrong SILENTLY, for any project that changed the setting; the ruling
+ * cites the two READMEs found stale five times in two days as the measured
+ * reason this project derives wherever a fact CAN be derived. A caveat that
+ * lies about the threshold is worse than no caveat, because it is believed.
+ * Nothing is fetched for it: both numbers were already on `drawComb`'s own
+ * response, which is what the old note above meant by *"waiting for a key
+ * with two slots"*.
  *
  * ── THE STYLESHEET THIS SCREEN HAS, AND THE ONE LINE IT DOES NOT ──────────
  *
@@ -243,10 +265,11 @@ export async function render(root, ctx) {
   root.replaceChildren();
   screenHead(ctx, root, 'dec.h', 'dec.v', 'dec.sub');
 
-  // Card 1 — the recency comb, its legend, and the disclosure about what
-  // "cold" does and does not mean. The order is the mockup's own: heading,
-  // plate, legend, then the disclosure — with `#deccaveat` between the last
-  // two in the mockup and deliberately undrawn here (see the header).
+  // Card 1 — the recency comb, its legend, the caveat that says what "cold"
+  // counts in, and the disclosure about what "cold" does and does not mean.
+  // The order is the mockup's own: heading, plate, legend, `#deccaveat`, then
+  // the disclosure — and the caveat sits in the reading flow rather than
+  // behind the `?`, which is the owner ruling this file's header carries.
   // Built through `lib/disclosure.js`'s `helpDisclosure` — the ONE shared `?`
   // component `STD-a-screen-explains-itself-in-plain-words-and-depth-hides`
   // requires, rather than this screen hand-building its own `details.help`.
@@ -255,8 +278,14 @@ export async function render(root, ctx) {
   combHead.append(...ctx.t('dec.comb'));
   const combPlate = el('div', 'plate');
   combPlate.id = 'comb';
+  // Created here so it holds the mockup's position in the card, and FILLED in
+  // `drawComb`, which is where the two numbers it states arrive. It carries
+  // the design of record's own id, so the element a reader inspects is the
+  // element the mockup drew.
+  const caveat = el('p', 'small');
+  caveat.id = 'deccaveat';
   const help = helpDisclosure(ctx, 'help.whyCold', [...ctx.t('dec.help')]);
-  comb.append(combHead, combPlate, legend(ctx), help);
+  comb.append(combHead, combPlate, legend(ctx), caveat, help);
 
   // Card 2 — the 90-day heatstrip and the note the mockup draws under it.
   // `dec.heatn` names this card's source in its own last sentence, and the
@@ -299,7 +328,7 @@ export async function render(root, ctx) {
    * comb cannot tell the strip anything and the strip cannot tell the comb
    * anything, so neither waits on the other's refusal.
    */
-  await Promise.all([drawComb(ctx, combPlate), drawHeat(ctx, heatPlate)]);
+  await Promise.all([drawComb(ctx, combPlate, caveat), drawHeat(ctx, heatPlate)]);
 }
 
 /**
@@ -334,13 +363,17 @@ function legend(ctx) {
  * 1 · The recency comb.
  * -------------------------------------------------------------------------- */
 
-async function drawComb(ctx, host) {
+async function drawComb(ctx, host, caveat) {
   let decay;
   let sessions;
   try {
     [decay, sessions] = await Promise.all([ctx.api('/api/decay'), ctx.api('/api/sessions')]);
   } catch (error) {
     host.append(errorNote(error.message));
+    // The caveat states two numbers off the response that did not arrive, so
+    // there is nothing honest to put in it. An empty `<p>` would still take
+    // its margin, so it goes rather than sits blank under the error.
+    caveat.remove();
     return;
   }
   // `report: null` is the NOT-PROJECTED state, and the endpoint is explicit
@@ -349,7 +382,29 @@ async function drawComb(ctx, host) {
   // chart would then ring `dec.badpin`'s *"a defect signal, not decay"* around
   // every pinned item in a corpus that has simply never run. No measurement
   // happened, so no marks are drawn — the card keeps its frame and its help.
-  if (decay.report === null) return;
+  if (decay.report === null) {
+    caveat.remove();
+    return;
+  }
+
+  // ── THE CAVEAT, DERIVED AND ON THE SCREEN ────────────────────────────────
+  // `report.window` is the window the SERVER answered about, not a number
+  // written here: `DECAY_WINDOW_DEFAULT` unless the request named
+  // `?window=N`. `report.sessionsRecorded` is what the ledger actually holds.
+  // The third sentence is CHOSEN between two keys rather than composed out of
+  // fragments, so each one stays a whole sentence a translator can move words
+  // inside — and so this screen's own key scan can see both of them named.
+  const { window: windowSessions, sessionsRecorded } = decay.report;
+  caveat.append(...ctx.t('dec.caveat', { window: windowSessions, sessions: sessionsRecorded }));
+  caveat.append(' ');
+  // Fewer sessions on the ledger than the window means every item is inside
+  // it, so "cold" is mostly saying "new" — the mockup's own reading, and the
+  // one that stops a fresh corpus being read as a decayed one.
+  caveat.append(
+    ...(sessionsRecorded < windowSessions ? ctx.t('dec.caveatNew') : ctx.t('dec.caveatIn')),
+  );
+  caveat.append(' ');
+  caveat.append(...ctx.t('dec.caveatUnit'));
 
   const order = sessions.sessions.map((s) => s.sessionId);
   const { rows, unplaceable } = combRows(decay.report, decay.series, order);

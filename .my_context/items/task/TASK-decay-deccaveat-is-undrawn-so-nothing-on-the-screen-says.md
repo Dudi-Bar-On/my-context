@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: Nothing on the staleness chart says that it counts sessions rather than days, so the whole picture can be misread as a calendar.
-summary_of: f9c266d4bb3ab5cc
+summary_of: 5adc32fae89a48eb
 scope: []
 tags:
   - v2
@@ -15,21 +15,22 @@ tags:
   - tree-parity
   - "plan:walk"
   - "seq:91"
-  - "state:todo"
+  - "state:done"
 origin: agent
 source_file: null
 source_anchor: null
 source_checksum: null
 valid_from: 2026-08-29
 valid_until: null
-checksum: a5eb87f973464745
+checksum: 41aa9c06b9304b6a
 plan: walk
 seq: "91"
-state: todo
+state: done
 priority: "2"
 progress: "0"
 source: "plan:walk seq:27, measured against src/ui/public/screens/decay.js on 2026-08-29"
 last_change: "2026-08-29T00:00:00Z"
+verified_on: 2026-09-05
 ---
 
 # Decay: #deccaveat is undrawn, so nothing on the screen says that cold means twenty sessions

@@ -1,8 +1,8 @@
 /**
  * English UI string table — TRANSCRIBED from the design of record, not authored here.
  *
- * `docs/design/web-ui-mockup.html` is the UI specification. Every key below is one of its
- * 398 distinct string keys — the 382 it declares with `data-t`, the 12 accessibility
+ * `docs/design/web-ui-mockup.html` is the UI specification. All but FOUR of the keys below
+ * are one of its 398 distinct string keys — the 382 it declares with `data-t`, the 12 accessibility
  * labels it declares with `data-t-aria` and the 4 tooltips it declares with
  * `data-t-title`. Those four numbers are a READING of the file and nothing tests
  * them — `strings-parity.test.ts` derives its own count for exactly that reason. This
@@ -21,6 +21,13 @@
  * than as a permission slip. The gate's own docstring is the authority on which
  * directions exist on the day you read this; this paragraph said the opposite for
  * three days and fifteen modules quoted it rather than the gate.
+ *
+ * The four that are not are `dec.caveat`, `dec.caveatNew`, `dec.caveatIn` and
+ * `dec.caveatUnit`, added 2026-09-05 under
+ * `DEC-the-decay-threshold-is-stated-on-the-screen-and-read-from`. The mockup draws that
+ * paragraph in its own script rather than declaring a `data-t` for it, so there was no key
+ * to transcribe and the sentence was simply absent from the product. Adding one the mockup
+ * does not declare is ordinary development under the ruling named below, not an invention.
  *
  * Three brace grammars, and two of them are value slots:
  *
@@ -810,6 +817,10 @@ export const strings = {
   'dec.never': 'never injected — a kind, not a big number',
   'dec.badpin': 'pinned {b:and} cold — a defect signal, not decay',
   'dec.unres': 'unrestricted — a breadth view over cold ∪ warm, never a third bucket',
+  'dec.caveat': '"Cold" means: not injected in the last {window} sessions. This ledger holds {sessions} sessions.',
+  'dec.caveatNew': 'That is fewer than the window, so "cold" here mostly means "new".',
+  'dec.caveatIn': 'The window sits inside what the ledger can see, so the badge means what it says.',
+  'dec.caveatUnit': 'Axis and badge are both counted in sessions; there is no clock in this chart.',
   'help.whyCold': 'What "cold" does and does not mean',
   'dec.help': 'The ledger records {b:injection}, not reading or reliance. A cold item can still govern — a cold {m:always:true} item is a selection bug, not decay.',
   'dec.heat': '90-day delivery, per item — delivered against spilled',

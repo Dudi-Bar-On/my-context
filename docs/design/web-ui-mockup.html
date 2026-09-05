@@ -2520,13 +2520,22 @@ td.stale{box-shadow:inset 2px 0 0 var(--warn)}
           while your selection moves. Every item that really spilled is named under
           <b>Not delivered</b> below, in the order the selector considered it.</p>
         <div class="gladder plate" id="gates"></div>
-        <p class="small" style="margin-block-start:8px" data-t="preview.whyn">The gates in
-          <span class="m">select()</span>'s own order — eligible, tier, focus, scope, seen, budget —
-          because the <b>order is the explanation</b>: a list of six reasons is noise, and the one
-          that binds is only meaningful in the position it holds. Rungs above it passed, the rung
-          itself carries the diagnosis, and everything below is <i>not reached</i> rather than
-          passed. Composing the fix needs a stable code on <span class="m">injection()</span>; today
-          the five causes differ only in English prose.</p>
+        <!-- REWORDED DOWN to the shipped sentence, owner ruling 2026-09-05,
+             `DEC-the-mockup-rewords-down-to-the-shipped-plain-english-rather`
+             (walk/16). This paragraph used to carry two emphasised runs the
+             shipped English never had — <b>order is the explanation</b> and
+             <i>not reached</i> — and a closing clause the app had already
+             overtaken: *"Composing the fix needs a stable code on injection();
+             today the five causes differ only in English prose"*, written
+             before `GateCode` existed. The ruling: where the only difference
+             is register and the shipped words are plainer, the mockup is
+             corrected toward the product rather than obeyed into it. It is one
+             sentence and not a licence — `INSTR-the-mockup-is-the-ui-
+             specification` stands. -->
+        <p class="small" style="margin-block-start:8px" data-t="preview.whyn">Gates run in order:
+          eligible, tier, focus, scope, seen, budget — as <span class="m">select()</span> uses them.
+          The first to fail is the answer: above passed, below never reached. The fix maps to a
+          stable code on <span class="m">injection()</span>.</p>
       </div>
     </div>
 
@@ -2573,9 +2582,10 @@ td.stale{box-shadow:inset 2px 0 0 var(--warn)}
          rebuilt by script. The drop REASONS ride untranslated inside that same
          isolated run, because
          `core/select.ts` · `function carriedDropReason(` · ~502
-         is their one spelling and there is no stable code to translate from —
-         the same thing `preview.whyn` says the five gate causes are waiting
-         for, one screen along. -->
+         is their one spelling and there is no stable code to translate from.
+         The gate causes were in the same position and are no longer: `GateCode`
+         landed, `preview.whyn` says the fix maps to it, and this run is now the
+         last untranslatable one of the pair. -->
     <p class="small" style="margin-block:6px 0" data-t="index.carriedDropped"><span class="v" data-v="dropped">2</span> carried
       ids got no line: <span class="m v" data-v="ids">INV-prices-are-integer-cents (delivered in full this
       session), STD-money-never-float (over the index budget)</span>.</p>
@@ -2592,10 +2602,11 @@ td.stale{box-shadow:inset 2px 0 0 var(--warn)}
          got a bar.
 
          A DESIGN CHANGE, not a parity gap, and it does not overturn
-         `preview.whyn` beside it. That note argues against listing six
-         REASONS — a closed vocabulary whose order carries the meaning — and it
-         is right. This lists ITEMS: the reader's own data, different every
-         run, and the count is the answer to "was my budget too small".
+         `preview.whyn` beside it. That note argues that the ORDER is the
+         explanation — *"the first to fail is the answer"* — rather than a list
+         of six REASONS, a closed vocabulary whose order carries the meaning,
+         and it is right. This lists ITEMS: the reader's own data, different
+         every run, and the count is the answer to "was my budget too small".
 
          WHOLE, NOT PER-TIER. The ribbon splits spills five ways because a
          ghost has to be sized against its own tier's budget; `Selection.spilled`
@@ -3287,8 +3298,14 @@ td.stale{box-shadow:inset 2px 0 0 var(--warn)}
           <td class="small" data-t="work.moved">changed since staging</td>
           <td class="small" data-t="work.blocked">promote refuses until re-based</td></tr>
       </tbody></table>
+      <!-- `word-level` was WRONG, not ornate: `lineDiff` (core/revision-diff.ts)
+           is a line-level LCS and is the only diff in `src/`, so this paragraph
+           described the screen to its reader incorrectly. Corrected 2026-09-05
+           on the same pass as preview.whyn above, under
+           `DEC-the-mockup-rewords-down-to-the-shipped-plain-english-rather`.
+           The <b> run STAYS: a fact was wrong here, the register was not. -->
       <p class="small" style="margin-block-start:8px" data-t="work.diffn">The proposed column is a
-        <b>word-level</b> diff, not a second paragraph to compare by eye: additions are
+        <b>line-level</b> diff, not a second paragraph to compare by eye: additions are
         <ins>tinted</ins>, removals are <del>struck</del>, and both are real
         <span class="m">&lt;ins&gt;</span> and <span class="m">&lt;del&gt;</span> elements, so a
         screen reader announces the change without any added ARIA. The stale field carries a rule
@@ -4396,7 +4413,7 @@ const HE={_dir:'rtl',_lang:'he',
  'preview.spill':'לא נמסר — כל פריט שנשפך, וכמה הוא עלה',
  'preview.spec':'הרצועה מחזיקה {b:דגימה} אחת לכל שער — הפריט הראשון לפי מזהה שנכשל בו — ולכן היא עומדת במקומה בזמן שהבחירה שלכם משתנה. כל פריט שנשפך באמת מופיע בשמו תחת {b:לא נמסר} למטה, בסדר שבו הבורר שקל אותו.',
  'preview.spilln':'שורה אחת לכל פריט ב‑{m:Selection.spilled}, {b:בשלמותה על פני כל הרמות שהאירוע הזה הריץ} — לא הפיצול לפי רמה של הסרט — בסדר המועמדים של הבורר עצמו, וזה נושא משמעות: first-fit מקבל בחמדנות, ולכן אותן שלוש עלויות בסדר אחר שופכות פריט אחר. {b:band} מופיע היכן שהרמה הציעה את מועמדיה ביותר מרצועה אחת: באירוע כלי רצועה 1 היא הפריטים שהגלובים שלהם נוקבים בנתיב הזה ורצועה 2 היא הפריטים שמתאימים רק מפני שאין להם היקף כלל, כך שפריט בעל היקף שדוחק פריט חסר היקף נראה לעין ולא נותר מסתורי. שורת אינדקס מציגה {b:—} במקום עלות: רמת האינדקס מקבלת שורות, ועלות לשורה אינה נחשפת בשום נקודת קצה, ולכן המספר נעדר ולא מומצא.',
- 'preview.whyn':'השערים בסדר של {m:select()} עצמו — כשירות, רמה, מיקוד, היקף, נראו, תקציב — כי {b:הסדר הוא ההסבר}: רשימה של שש סיבות היא רעש, והסיבה הכובלת נושאת משמעות רק במקום שהיא תופסת. השלבים שמעליה עברו, השלב עצמו נושא את האבחנה, וכל מה שמתחתיו {i:לא נבדק כלל} ולא עבר. הרכבת התיקון דורשת קוד יציב ב‑{m:injection()}; היום חמש הסיבות נבדלות רק בניסוח האנגלי.',
+ 'preview.whyn':'השערים רצים לפי הסדר שבו {m:select()} משתמש בהם — כשירות, רמה, מיקוד, היקף, נראו, תקציב. הראשון שנכשל הוא התשובה: מעליו עברו, מתחתיו לא נבדק כלל. התיקון ממופה לקוד יציב ב‑{m:injection()}.',
  'help.more':'מה מכריע כאן','help.land':'איך תדעו שזה עבד',
  'help.whyTree':'למה אלה אינם בעץ',
  'help.whyBudget':'למה העלאת תקציב עלולה להסיר פריט',
@@ -4475,7 +4492,7 @@ const HE={_dir:'rtl',_lang:'he',
  'work.h':'תור סקירה','work.v':'ההפרש הוא היכולת; האישור הוא הדבקה','work.sub':'התיישנות לפי שדה. דבר כאן אינו כותב.',
  'work.field':'שדה','work.now':'בתוקף','work.prop':'מוצע','work.moved':'השתנה מאז ההעמדה',
  'work.blocked':'הקידום מסרב עד לבסיס מחדש','work.state':'הועתק, טרם נצפתה נחיתה',
- 'work.diffn':'עמודת המוצע היא הפרש {b:ברמת המילה}, לא פסקה שנייה להשוואה בעין: תוספות נצבעות, מחיקות נמחקות בקו, ושתיהן אלמנטים אמיתיים {m:<ins>} ו‑{m:<del>} — כך שקורא מסך מכריז על השינוי בלי שום ARIA נוסף. השדה המיושן נושא קו בקצה תחילת הקריאה שלו — ההיסט הפיזי היחיד בגיליון, והמראה שלו נכתב לצדו במקום להתגלות מאוחר יותר.',
+ 'work.diffn':'עמודת המוצע היא הפרש {b:ברמת השורה}, לא פסקה שנייה להשוואה בעין: תוספות נצבעות, מחיקות נמחקות בקו, ושתיהן אלמנטים אמיתיים {m:<ins>} ו‑{m:<del>} — כך שקורא מסך מכריז על השינוי בלי שום ARIA נוסף. השדה המיושן נושא קו בקצה תחילת הקריאה שלו — ההיסט הפיזי היחיד בגיליון, והמראה שלו נכתב לצדו במקום להתגלות מאוחר יותר.',
  'work.h1':'{b:הריצו במעטפת שלכם.} הכלי הזה לעולם אינו כותב.','work.h2':'{b:הקבלה:} רשומת ביקורת עם {m:op: promote-revision}.',
  'work.h3':'{b:אם הגוף זז קודם}, הקידום מסרב ונוקב בשני הערכים — הסירוב הוא המוצר עובד.',
  'state.armed':'דרוך','cap.h':'תיעוד','cap.v':'מראה מה כבר חל לפני שמוסיפים עוד',

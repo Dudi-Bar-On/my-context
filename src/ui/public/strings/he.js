@@ -1,8 +1,8 @@
 /**
  * Hebrew UI string table — TRANSCRIBED from the design of record, not authored here.
  *
- * `docs/design/web-ui-mockup.html` is the UI specification. Every key below is one of its
- * 398 distinct string keys — the 382 it declares with `data-t`, the 12 accessibility
+ * `docs/design/web-ui-mockup.html` is the UI specification. All but FOUR of the keys below
+ * are one of its 398 distinct string keys — the 382 it declares with `data-t`, the 12 accessibility
  * labels it declares with `data-t-aria` and the 4 tooltips it declares with
  * `data-t-title`. Those four numbers are a READING of the file and nothing tests
  * them — `strings-parity.test.ts` derives its own count for exactly that reason. This
@@ -21,6 +21,13 @@
  * than as a permission slip. The gate's own docstring is the authority on which
  * directions exist on the day you read this; this paragraph said the opposite for
  * three days and fifteen modules quoted it rather than the gate.
+ *
+ * The four that are not are `dec.caveat`, `dec.caveatNew`, `dec.caveatIn` and
+ * `dec.caveatUnit`, added 2026-09-05 under
+ * `DEC-the-decay-threshold-is-stated-on-the-screen-and-read-from`. The mockup draws that
+ * paragraph in its own script rather than declaring a `data-t` for it, so there was no key
+ * to transcribe and the sentence was simply absent from the product. Adding one the mockup
+ * does not declare is ordinary development under the ruling named below, not an invention.
  *
  * Three brace grammars, and two of them are value slots:
  *
@@ -509,6 +516,10 @@ export const strings = {
   'dec.never': 'מעולם לא הוזרק — סוג, לא מספר גדול',
   'dec.badpin': 'מוצמד {b:וגם} קר — סימן לתקלה, לא דעיכה',
   'dec.unres': 'ללא הגבלה — מבט רוחב על קר ∪ חם, ולעולם לא דלי שלישי',
+  'dec.caveat': '"קר" פירושו: לא הוזרק ב‑{window} השיחות האחרונות. הפנקס מחזיק {sessions} שיחות.',
+  'dec.caveatNew': 'זה פחות מהחלון, ולכן "קר" כאן פירושו בעיקר "חדש".',
+  'dec.caveatIn': 'החלון נמצא בתוך מה שהפנקס רואה, ולכן התווית אומרת את מה שהיא אומרת.',
+  'dec.caveatUnit': 'הציר והתווית נספרים שניהם בשיחות; אין כאן שעון.',
   'help.whyCold': 'מה "קר" אומר ומה אינו אומר',
   'dec.help': 'הפנקס מתעד {b:הזרקה}, לא קריאה או הסתמכות. פריט {m:always:true} קר הוא באג בבחירה, לא דעיכה.',
   'dec.heat': 'מסירה ל‑90 יום, לפי פריט — נמסר מול נשפך',

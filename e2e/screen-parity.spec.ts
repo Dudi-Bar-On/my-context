@@ -200,13 +200,17 @@ const KNOWN_GAPS: Record<string, string[]> = {
   // spill, a focus and a seen item makes both this entry and seven of watch's
   // measurable against the CODE instead of against the day.
   //
-  // **`i` is the one real gap, and it is not this screen's to close.** The
-  // mockup italicises one run inside a translated string — `everything below
-  // is <i>not reached</i> rather than passed`, in `preview.whyn` — and
-  // `lib/i18n.js`'s run grammar has three markers (`{m:}`, `{mv:}`, `{name}`)
-  // and no emphasis marker, so no string table can carry one. Identical in
-  // kind to watch's `b`, and tracked with it under
-  // TASK-the-string-grammar-has-no-bold-run-so-three-of-the-mockup.
+  // **`i` WAS the one real gap here and is CLOSED since 2026-09-05, so its
+  // ledger entry is gone.** The mockup italicised one run inside a translated
+  // string — `everything below is <i>not reached</i> rather than passed`, in
+  // `preview.whyn` — and that was the only `<i>` in the whole
+  // `[data-p="preview"]` section. It closed from the MOCKUP's side rather than
+  // the app's: owner ruling
+  // `DEC-the-mockup-rewords-down-to-the-shipped-plain-english-rather` (walk/16)
+  // reworded that paragraph down to the shipped plain English, which never
+  // carried the emphasis, so there is no longer an italic run for the app to
+  // be missing. Deleting the entry is the required edit — this ledger can only
+  // shrink, and a closed gap that keeps its entry fails the stale check below.
   // `span.prop` is an ACCEPTED DIVERGENCE, not a gap. Owner ruling 2026-08-23:
   // "leave the mockup intact, do it only in the real, i need it to stay on the
   // mockup for history, when comparing to mockup the proposed word is a known
@@ -287,7 +291,7 @@ const KNOWN_GAPS: Record<string, string[]> = {
   // so the tier delivers and the segment draws. The matching
   // `if (track.segs === 0) continue;` guard in `e2e/app-layout.spec.ts` came
   // out in the same change, for the same reason.
-  preview: ['i', 'span.chip', 'span.prop'],
+  preview: ['span.chip', 'span.prop'],
   coverage: [
     'button', 'button.linkid.m', 'div.mini', 'i', 'i.g', 'i.u', 'i.x',
     'span.covn', 'span.nm', 'table', 'tbody', 'td', 'th', 'thead', 'tr',
