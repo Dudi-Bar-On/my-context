@@ -58,698 +58,362 @@
  * English the two agree exactly: the served document's first heading IS
  * `# Scope`.
  *
- * ── THE RENDERER, WHICH IS A SECURITY DECISION AS MUCH AS A RENDERING ONE ──
+ * ── THE RENDERER LIVES IN `lib/markdown.js` NOW, AND WHY IT MOVED ─────────
  *
- * `dv.mdnote` is the specification and it is drawn on the screen it describes:
- * *"Rendered by a hand-written subset renderer: no HTML string is ever
- * produced, so there is nothing to sanitise. Raw HTML, images and unknown URL
- * schemes are refused and shown as refusals, not silently dropped."*
- *
- * `markdownNodes` below is the mockup's own renderer, branch for branch
- * (`docs/design/web-ui-mockup.html` · `/* ── R1: a subset markdown renderer that never builds an HTML string ──────` · ~3196),
- * with two deliberate differences, both named here because neither is
- * decoration:
- *
- *   1. **Images are refused.** The mockup's own script does NOT refuse them:
- *      its inline pattern matches `[alt](url)` inside `![alt](url)` and leaves
- *      the `!` behind as text, so an image renders as a link with a stray
- *      exclamation mark. `dv.mdnote` — a string this screen draws — says
- *      images are refused. Where the mockup's SCRIPT and the mockup's own
- *      on-screen SENTENCE disagree, the sentence wins: a screen that claims a
- *      refusal it does not perform is worse than either behaviour. Flagged in
- *      this task's report.
- *   2. **`\r\n` is normalised to `\n` before the source is split into lines.**
- *      The repository pins `*.md text eol=lf` in `.gitattributes` and the topic
- *      files on disk carry zero `\r` (measured), so this changes nothing for
- *      what is served today — it is here for the corpus text this same
- *      renderer is now pointed at, on the platform this project is developed
- *      on.
- *
- * ── HOW WIDE THE SUBSET IS, AND WHY IT STOPS WHERE IT DOES ────────────────
- *
- * Widened 2026-08-28 under `DEC-markdown-is-served-from-a-manifest-rendered-by-
- * one-renderer`, whose rule for the width was *measure the corpus, do not guess
- * at it.* Three corpora were counted, because ONE renderer serves all three:
- * 644 item bodies under `.my_context/items`, the four `mycontext help` topics
- * this screen actually serves, and the 58 markdown documents under `reports/`
- * and `docs/` that the document route will serve next.
- *
- * **In, because the corpus uses it** (documents containing it, per corpus —
- * items / help / documents):
- *
- *   - **block quote** — 80 blocks / 12.5%, 25%, 39.7%. By VOLUME it is the
- *     headline: 2,885 quoted lines are 34.6% of every non-blank line in the
- *     item corpus, and 715 bare `>` lines inside them are precisely what put a
- *     `>` in the middle of the owner's sentence. Recursive, because 39 of those
- *     80 quotes hold a bullet list, 27 hold a heading and 10 hold an ordered
- *     list.
- *   - **ordered list** — 5.8%, 25%, 65.5%. **Nested lists** — 2.7%, 0%, 25.9%.
- *     **A list under a lead line** — 47 blocks, 0, 130 — a shape blank-line
- *     splitting cannot see at all.
- *   - **pipe table** — 0.5%, 75%, 56.9%. Rare in the items and unavoidable
- *     everywhere else: the `scope` topic on THIS screen has two.
- *   - **horizontal rule** — 0.3%, 0%, 89.7%. **`####`+ headings** — 0%, 0%,
- *     10.3%. **Indented code** — 2.5%, 0%, 6.9%, and it emits the `<pre>` the
- *     design already draws.
- *   - **`*emphasis*`** — 818 runs in the items, 74 in the help topics, 7,371 in
- *     the documents.
- *   - **setext headings** — **zero in all three**, both underline forms. Built
- *     only because the ruling names them in the floor, and said so here so the
- *     next reader does not mistake them for evidence of use.
- *
- * **Out, because the corpus does not use it, counted over all 706 documents:**
- * `_underscore emphasis_` 1 — and `_` is inside an identifier on nearly every
- * page, so a branch for it would corrupt real text to serve one run; task-list
- * checkboxes 2; reference links 4; footnotes 5; bare-URL autolinking 4;
- * strikethrough 1; hard line breaks 3; closed ATX (`## x ##`) 0; backslash
- * escapes — the matches are Windows paths, not escapes. Markdown **images** are
- * 0 in the items and 2 in the documents and stay REFUSED rather than rendered,
- * which is `dv.mdnote`'s own promise.
- *
- * **One shape is recognised and deliberately not honoured: table column
- * alignment.** `:--`/`--:` needs an inline `text-align` that `style-src 'self'`
- * forbids, and the design of record draws no alignment class. A table renders
- * as a table, start-aligned. Reported rather than silently dropped.
- *
- * **The inline cost this header used to report is CLOSED, and it was closed by
- * nesting rather than by re-ordering the alternation.** "Code spans win" is a
- * TIE-BREAK, not a priority: a regex takes the leftmost match, so `**`x`**`
- * used to be a bold run whose payload kept its backticks as literal text and
- * lost `.m` — and with `.m` went the `unicode-bidi:isolate` that makes a flag
- * or a path read correctly inside RTL prose. The served `scope` topic writes
- * exactly that twice, in the bullet list under *"When an empty scope means
- * something else"*, so both occurrences were on screen the first time anyone
- * opened Documentation. An emphasis payload now runs through the inline pass
- * again, so the code span inside it is a real `.m` run; the ALTERNATION is
- * untouched, so a code span still swallows a `**` at the same index. Why that
- * way round is measured and argued at `INLINE` below.
- *
- * **`.md` still styles an `h1` this renderer never emits, and `h4` now has a
- * rule.** The heading branch builds `h{min(level + 1, 4)}` — `#` becomes `h2`,
- * `##` becomes `h3`, `###` and everything deeper become `h4` — so
- * `.md h1,.md h2,.md h3` styles a tag that cannot appear. That half is left
- * alone (deleting a rule is a design change with no measurable gain); the half
- * that MATTERED is closed, because `h4` is what the served `scope` topic and
- * every document heading actually produce and nothing styled it. `.md h4` was
- * added to the mockup and to `styles.css` together, byte-identical, with
- * `test/ui/styles-parity.test.ts` extended to hold them so.
- *
- * **No `<bdi>`, and that is the R1 rule applied rather than skipped.** The
- * mockup's own comment on this CSS family says *"Corpus text sits in an inset
- * well with `<bdi>`; the product's own words are never inside one"*
- * (`docs/design/web-ui-mockup.html` · `rendered markdown. Corpus text sits in an inset well with <bdi>;` · ~648).
- * A `mycontext help` topic is the product's own words — it is the same prose
- * `mycontext help scope` prints on a terminal — so it is drawn bare, exactly
- * as `<div class="md" id="mdout">` is drawn bare in the design of record. The
- * well-and-`<bdi>` treatment belongs to the item detail pane, which has its
- * own key for saying so (`pane.well`), and to no part of this screen.
- *
- * **The three refusal labels are KEYED — `dv.imgRefused`, `dv.linkRefused`,
- * `dv.htmlRefused` — and until 2026-08-30 they were not.** The mockup
- * hard-codes them in its own script, in English and in Hebrew, under no
- * `data-t`, and this comment said declaring a key for them "would fail
- * `strings-parity` in the direction that names it". That direction was dropped
- * on 2026-08-26 by `DEC-the-app-is-what-is-built-the-mockup-is-history-and-a-gap`;
- * the gate has one mockup-facing check today and its docstring says which. So
- * `dv.mdnote`'s promise — *"refused and shown as refusals"* — is now kept in
- * the reader's language rather than in English under `א`.
- *
- * What is still NOT translated, and correctly: the alt text and the link
- * label inside those sentences. They are the DOCUMENT's words, not the
- * product's, and they are substituted into the key rather than replaced by it.
- * The mockup's trailing `refused: …` summary is still not drawn — it is a
- * second telling of refusals already shown inline. `markdownNodes` still
- * RETURNS the list, so nothing is lost to a caller and the test can assert on
- * it.
+ * `markdownNodes` was declared in THIS file and imported out of it by `app.js`
+ * and `screens/tut.js` — a shared renderer living inside one screen, so two of
+ * its three callers reached across a screen boundary to get it. On 2026-09-05
+ * `DEC-markdown-it-is-vendored-as-the-tokeniser-and-the-drawings` replaced its
+ * hand-written scanner with a vendored markdown-it used as a tokeniser only,
+ * and the move out of this screen came with it. Every argument about what the
+ * renderer refuses, what it hands back as text, and why no HTML string is ever
+ * produced now lives in that module's own header; this screen imports it and
+ * passes `ctx.tFlat` as the labeller.
  *
  * **`markdownNodes` takes the labeller, not `ctx`.** `label(key, subs)` is a
  * flat-string function — `ctx.tFlat`, in the browser — because a refusal label
  * is `textContent` on a `span.refusal` and an attribute-shaped sink cannot
- * hold the elements `t()` builds
- * (`src/ui/public/lib/i18n.js` · `export function tFlat(strings, key, subs = {}) {` · ~168).
- * It defaults to the English wording so `node --test` can keep passing a
- * two-method `doc` and nothing else, which is the same bargain `doc` itself
- * makes — and so a caller that forgets it fails no differently than before.
+ * hold the elements `t()` builds. It defaults to the English wording so
+ * `node --test` can keep passing a two-method `doc` and nothing else.
  */
 import { el, errorNote, screenHead, spaced } from '/screens/parts.js';
+import { markdownNodes } from '/lib/markdown.js';
 
 /**
- * The mockup's Contents card, ordinal for ordinal and key for key. The
- * ordinals are literals rather than `index + 1` on purpose: the design of
- * record jumps from 4 to 7, which is the whole point of addressing a document
- * by heading ordinal instead of by list position.
+ * ── THE CONTENTS CARD WAS FIVE LITERALS UNTIL 2026-09-05, AND IS NOW DERIVED ─
+ *
+ * What stood here was the mockup's own Contents list, transcribed:
+ *
+ *     const CONTENTS = [{ ordinal: 1, key: 'dv.t1' }, … { ordinal: 7, key: 'dv.t7' }];
+ *     const RENDERED = { topic: 'scope', entry: CONTENTS[3] };
+ *
+ * Five hand-picked headings, of which exactly one named something the server
+ * could serve, beside one hard-coded `mycontext help` topic. It was honest
+ * about being that — the header above says so at length — and it was still a
+ * table of contents nobody derived from a document.
+ *
+ * `TASK-rebuild-the-documentation-screen-s-index-from-a-real` (`docsys/5`) and
+ * `TASK-show-per-document-whether-a-hebrew-mirror-exists-measured` (`docsys/6`)
+ * replace both with `GET /api/doc`: a document picker over the whole manifest,
+ * each document's own ATX headings as its index, and `hasHebrewMirror` per
+ * document read off the disk by the server on every request. The five `dv.t*`
+ * keys stay in both string tables because the frozen mockup still declares
+ * them (`DEC-the-app-is-what-is-built-the-mockup-is-history-and-a-gap`);
+ * nothing here reads them any more.
+ *
+ * **`README.md` is the default because the requirement names it**, not because
+ * it is first alphabetically: `REQ-the-two-readmes-are-the-base-of-a-documentation-system-that`
+ * calls it and `docs/README.he.md` *"the base of the documentation system"*. In
+ * the Hebrew UI the Hebrew README opens instead — a real Hebrew document, so
+ * this is a DEFAULT and not the silent English fallback §4 forbids. A reader
+ * who deep-links to a specific document always gets that document.
  */
-const CONTENTS = [
-  { ordinal: 1, key: 'dv.t1' },
-  { ordinal: 2, key: 'dv.t2' },
-  { ordinal: 3, key: 'dv.t3' },
-  { ordinal: 4, key: 'dv.t4' },
-  { ordinal: 7, key: 'dv.t7' },
-];
+const DEFAULT_DOC = { en: 'README.md', he: 'docs/README.he.md' };
 
 /**
- * The one Contents entry that names a reachable document. `ordinal` and `key`
- * are read out of `CONTENTS` rather than repeated, so the card's title can
- * never drift from the row it points at.
+ * How many rows the picker draws at once. The manifest is 158 documents in
+ * this repository today and grows with every report written, which is more
+ * than one card should render and far more than a reader scans — so the list
+ * is BOUNDED and says so (`dv.shown`), with the filter above it as the way
+ * past the bound. Not a scroll box: a bound a reader can see the size of is
+ * the disclosure `INV-nothing-is-dropped-silently` asks for, and a scrollbar
+ * is not one.
  */
-const RENDERED = { topic: 'scope', entry: CONTENTS[3] };
-
-/** The safe URL schemes, exactly the mockup's set: http(s), fragment, relative. */
-const SAFE_HREF = /^(https?:|#|\.\/|\/)/;
+const PICKER_LIMIT = 30;
 
 /**
- * The five inline runs, in the mockup's own order with the image alternative
- * and single-asterisk emphasis added.
+ * The `{ id, anchor }` a hash addresses, both `null` where it names neither.
  *
- * **The order is a TIE-BREAK, not a priority, and saying so is the point.**
- * A regex takes the LEFTMOST match; the alternation only decides which branch
- * wins when two could start at the same index. So code first means a link or a
- * bold run written INSIDE backticks is not re-parsed — a backtick-wrapped
- * `**x**` is one `.m` run carrying its asterisks as text. Measured in
- * `test/ui/docs-screen.test.ts`, both ways.
+ * `#/docs` is the screen; `#/docs/<id>` is one document; `#/docs/<id>/<anchor>`
+ * is one heading inside it — the deep link the design of record asks for in
+ * those words. A document id is a repo-relative PATH and carries `/`, so the
+ * screen writes it `encodeURIComponent`'d into one segment; splitting on `/`
+ * here is therefore correct and is the same split `app.js`'s `screenFromHash`
+ * makes to pick the module.
  *
- * **AND THE OTHER NESTING IS A REAL NESTING, WHICH IS A DIFFERENT QUESTION
- * FROM PRECEDENCE.** `**`x`**` starts with `**`, so leftmost gives it to the
- * bold branch — and until 2026-08-31 that branch set `textContent`, so the
- * payload kept its backticks as literal text and lost `.m`, and with `.m` the
- * `unicode-bidi:isolate` that keeps a path or a `--flag` from reordering
- * mid-sentence on the Hebrew page. `.m` is not decoration here: `styles.css`
- * reserves it for *"Direction KNOWN ltr: identifiers, paths, globs, commands,
- * flags"*, and `e2e/bidi.spec.ts` exists because that reordering was measured.
- *
- * The emphasis branches therefore RE-ENTER `inlineNodes` on their payload. The
- * alternation is not touched, and that choice is measured rather than
- * preferred. Swapping precedence so a code span could win from inside a bold
- * run would change what a code span PROTECTS, and the corpus says what that
- * costs: the inverse shape — a bold run written inside a code span, which must
- * stay literal — occurs 2,659 times across the 137 documents under `docs/` and
- * `reports/`, 27 times in the item corpus and 4 times in the four help topics.
- * The swap is not free; the nesting is. Counted the same way, the shape this
- * fixes — a code span inside an emphasis run — occurs 69 times in the help
- * topics (7 of the 8 files), 157 times in 76 item bodies, and 1,768 times in
- * the documents.
- *
- * Nesting brings the other inline branches inside an emphasis run with it, and
- * that blast radius was counted too: a LINK inside a bold run appears 6 times
- * in the documents and zero times in the items or the help topics, and a
- * markdown IMAGE inside one appears zero times anywhere — so no refusal starts
- * being drawn where a reader was previously shown plain text.
- *
- * The image alternative is what makes `![a](b)` a refusal rather than a link:
- * it starts one character earlier than the link alternative inside the same
- * text, so leftmost picks it. The mockup's own pattern has no such branch,
- * which is why its `!` is left behind as stray text — see this file's header.
- *
- * **`*emphasis*` is last, and its payload may not begin or end with a space.**
- * Order settles nothing between it and `**bold**`: a leftmost match at the
- * first `*` of `**x**` can only be the bold alternative, because the emphasis
- * one requires a non-asterisk immediately after its opener. The space rule is
- * what keeps a GLOB out — `src/* and lib/*` has a space after the first `*`, so
- * no run opens there, and `src/**` never closes. Measured across the three
- * corpora this renderer serves: 818 emphasis runs in the item corpus, 74 in
- * the four help topics, 7,371 in this repository's own documents, against zero
- * markdown images and one `_underscore_` run in all three combined.
+ * Exported and taking the hash as an ARGUMENT so `node --test` can measure the
+ * parse without a browser — the same bargain `markdownNodes` makes with `doc`.
+ * A malformed percent-escape is returned as written and then misses the
+ * manifest lookup, which draws `dv.noid`: the refusal names what IS served,
+ * exactly as the server's own would.
  */
-const INLINE = /(`[^`]+`)|(!\[[^\]]*\]\([^)]*\))|(\[[^\]]+\]\([^)]+\))|(\*\*[^*]+\*\*)|(\*[^*\s](?:[^*]*[^*\s])?\*)/g;
-
-/**
- * The BLOCK openers, one constant each, because the scanner below tests a
- * single LINE against them in three different places — to open a block, to
- * stop a paragraph, and to stop a block quote's lazy continuation — and shared
- * constants are the only way those three can never disagree.
- */
-const FENCE = /^\s*```/;
-const ATX = /^#{1,6}\s/;
-const QUOTE = /^\s*>/;
-/** `---`, `***`, `___` alone on a line. Tested BEFORE `BULLET`, which `* * *` would match. */
-const HRULE = /^ {0,3}(-{3,}|\*{3,}|_{3,})\s*$/;
-/** A setext underline. `=` is level 1, `-` is level 2 — CommonMark's own split. */
-const SETEXT = /^ {0,3}(={2,}|-{2,})\s*$/;
-const BULLET = /^(\s*)[-*+][ \t]+/;
-const ORDERED = /^(\s*)\d+[.)][ \t]+/;
-const RAW_HTML = /^<[a-z!]/i;
-const INDENTED = /^(    |\t)/;
-
-/** `el()`'s job, but against an injected `doc` — this half must run in Node. */
-function make(doc, tag, cls, text) {
-  const node = doc.createElement(tag);
-  if (cls) node.className = cls;
-  if (text !== undefined && text !== null) node.textContent = text;
-  return node;
-}
-
-/**
- * A refused BLOCK: the label as a `.refusal`, and the block's own source in a
- * `<pre>` beneath it. The source is shown rather than swallowed because that
- * is the difference between a refusal and a drop — `INV-nothing-is-dropped-silently`
- * is the invariant `dv.mdnote` is quoting.
- */
-function refusalBlock(doc, label, source) {
-  const wrap = doc.createElement('div');
-  wrap.append(make(doc, 'span', 'refusal', label), make(doc, 'pre', null, source));
-  return wrap;
-}
-
-/**
- * An emphasis run, with its payload PARSED rather than pasted in as text.
- *
- * This is the whole of the nesting fix: `**`--flag`**` is a `<b>` holding a
- * real `span.m`, so the isolation survives a bold run in Hebrew prose. The
- * recursion terminates because the payload is strictly shorter than the match
- * that produced it — `**` and `*` are both consumed — and it cannot re-enter
- * on the same text.
- */
-function emphasisNode(doc, tag, payload, refusals, labelFor) {
-  const node = make(doc, tag, null, null);
-  node.append(...inlineNodes(payload, refusals, doc, labelFor));
-  return node;
-}
-
-/**
- * One line of markdown to nodes. `refusals` is an out-parameter, the mockup's
- * own arrangement: an inline refusal has to be both drawn where it happened
- * AND counted for the caller, and threading a second return value through the
- * block loop for it would say nothing extra.
- */
-function inlineNodes(text, refusals, doc, labelFor) {
-  const out = [];
-  let last = 0;
-  INLINE.lastIndex = 0;
-  for (let m = INLINE.exec(text); m !== null; m = INLINE.exec(text)) {
-    // Where THIS match ends, read off `m` before any nested pass runs.
-    // `INLINE` is one module-level `g` regex and the emphasis branches below
-    // re-enter this function with it, which leaves the SHARED `lastIndex`
-    // wherever the inner scan stopped — zero, since an inner scan always runs
-    // to the end. Restoring it below is what lets one scanner serve a
-    // recursive parse; reading `INLINE.lastIndex` here instead would resume
-    // the outer scan from the start of the line and never terminate.
-    const end = m.index + m[0].length;
-    if (m.index > last) out.push(doc.createTextNode(text.slice(last, m.index)));
-    if (m[1] !== undefined) {
-      // `.m` — monospace, `direction:ltr`, `unicode-bidi:isolate`. A path or a
-      // flag inside RTL prose reads left-to-right or it reads wrong.
-      out.push(make(doc, 'span', 'm', m[1].slice(1, -1)));
-    } else if (m[2] !== undefined) {
-      // An image. Refused per `dv.mdnote`, and the alt text is kept: it is the
-      // only thing about the image the reader can be told without fetching it.
-      const alt = m[2].slice(2, m[2].indexOf(']'));
-      refusals.push('image');
-      out.push(make(doc, 'span', 'refusal', labelFor('dv.imgRefused', { alt })));
-    } else if (m[3] !== undefined) {
-      const cut = m[3].indexOf('](');
-      const label = m[3].slice(1, cut);
-      const href = m[3].slice(cut + 2, -1);
-      if (SAFE_HREF.test(href)) {
-        const anchor = make(doc, 'a', null, label);
-        anchor.setAttribute('href', href);
-        out.push(anchor);
-      } else {
-        // `javascript:`, `data:`, `mailto:` and everything else nobody
-        // enumerated. The LABEL survives, so the reader knows a link was there
-        // and what it claimed to be.
-        refusals.push('url scheme');
-        out.push(make(doc, 'span', 'refusal', labelFor('dv.linkRefused', { label })));
-      }
-    } else if (m[4] !== undefined) {
-      out.push(emphasisNode(doc, 'b', m[4].slice(2, -2), refusals, labelFor));
-    } else {
-      out.push(emphasisNode(doc, 'em', m[5].slice(1, -1), refusals, labelFor));
+export function docAddress(hash) {
+  const asked = String(hash ?? '').replace(/^#\//, '');
+  const parts = asked.split('/');
+  const decode = (raw) => {
+    try {
+      return decodeURIComponent(raw);
+    } catch {
+      return raw;
     }
-    last = end;
-    INLINE.lastIndex = end;
+  };
+  if (parts[0] !== 'docs' || parts.length < 2 || parts[1] === '') {
+    return { id: null, anchor: null };
   }
-  if (last < text.length) out.push(doc.createTextNode(text.slice(last)));
-  return out;
+  return {
+    id: decode(parts[1]),
+    anchor: parts.length > 2 && parts[2] !== '' ? decode(parts[2]) : null,
+  };
+}
+
+/** `location.hash`, or `''` where there is no `location` — `node --test`. */
+function currentHash() {
+  return typeof location === 'undefined' ? '' : location.hash;
+}
+
+/** The hash that opens one document, optionally at one heading. */
+function docHash(id, anchor) {
+  const base = `#/docs/${encodeURIComponent(id)}`;
+  return anchor === undefined || anchor === null ? base : `${base}/${encodeURIComponent(anchor)}`;
 }
 
 /**
- * Does this line OPEN a block of its own? Used to stop a paragraph, to stop a
- * wrapped list item, and to stop a block quote's lazy continuation.
+ * A heading's text, reduced to what BOTH sides of the join can agree on.
  *
- * `INDENTED` and `RAW_HTML` are deliberately absent, and both omissions are
- * CommonMark's own rules rather than shortcuts. Indented code cannot interrupt
- * a paragraph — the only reading that does not eat the second line of every
- * hanging-indent sentence in the corpus. Neither can a generic HTML tag, and
- * that one is measured: the `workflow` help topic wraps a sentence onto a line
- * beginning `<the answer>)`, which with `RAW_HTML` in this list was refused as
- * a raw HTML block, deleting half a paragraph the old block-splitting renderer
- * had shown correctly.
+ * The server's `docHeadings` records a heading's SOURCE text — backticks,
+ * asterisks and all — while `markdownNodes` has already turned those into
+ * `<span class="m">` and `<b>` by the time a rendered heading has a
+ * `textContent`. So `## The \`--json\` flag` is two different strings on the
+ * two sides and neither is wrong. Stripping the two markers is what makes them
+ * comparable, and comparing TEXT rather than counting positions is what keeps
+ * the anchors right when the two parsers disagree about a line — the server
+ * reads no fences inside an indented block, this renderer does, and neither is
+ * going to be taught the other's grammar for the sake of an id.
  */
-function startsBlock(line) {
-  return FENCE.test(line) || ATX.test(line) || QUOTE.test(line) || HRULE.test(line)
-    || BULLET.test(line) || ORDERED.test(line);
+function headingKey(text) {
+  return String(text).replace(/[`*]/g, '').trim();
 }
 
 /**
- * A GitHub pipe-table delimiter row — `|---|---|`, `|:--|--:|`, `---|---`.
+ * Give every rendered heading the server's own anchor, so `#/docs/:id/:anchor`
+ * has something to land on.
  *
- * **Alignment is recognised and NOT carried onto the cells.** `style-src
- * 'self'` forbids the inline `text-align` a per-column alignment needs, and the
- * design of record draws no alignment class, so honouring it would be this file
- * inventing a shape the mockup does not have. A table still renders as a table,
- * start-aligned like every other in this product. Reported, not silently
- * dropped.
+ * Walks the rendered nodes and the manifest's heading list together, in
+ * document order, matching on `headingKey` and never assigning the same anchor
+ * twice. A heading the server did not report (one this renderer found and it
+ * did not) simply gets no id — it is not addressable, which is honest, and it
+ * does not push every heading after it onto the wrong anchor.
  */
-function isTableDelimiter(line) {
-  return line.includes('|') && line.includes('-') && /^[\s|:-]+$/.test(line);
-}
-
-/** `| a | b |` → `['a', 'b']`. The outer pipes are optional, as in GFM. */
-function tableCells(line) {
-  let row = line.trim();
-  if (row.startsWith('|')) row = row.slice(1);
-  if (row.endsWith('|')) row = row.slice(0, -1);
-  return row.split('|').map((cell) => cell.trim());
-}
-
-/** The header row, its delimiter, and every `|`-bearing line after them. */
-function tableNodes(lines, start, refusals, doc, labelFor) {
-  const table = doc.createElement('table');
-  const head = doc.createElement('thead');
-  const headRow = doc.createElement('tr');
-  for (const cell of tableCells(lines[start])) {
-    const th = doc.createElement('th');
-    th.append(...inlineNodes(cell, refusals, doc, labelFor));
-    headRow.append(th);
-  }
-  head.append(headRow);
-  const body = doc.createElement('tbody');
-  let i = start + 2;
-  for (; i < lines.length && lines[i].trim() !== '' && lines[i].includes('|'); i += 1) {
-    const row = doc.createElement('tr');
-    for (const cell of tableCells(lines[i])) {
-      const td = doc.createElement('td');
-      td.append(...inlineNodes(cell, refusals, doc, labelFor));
-      row.append(td);
-    }
-    body.append(row);
-  }
-  table.append(head, body);
-  return [table, i];
-}
-
-/**
- * A list, and the index after it. `<ul>` or `<ol>` by the first marker; a
- * DEEPER marker opens a nested list on the item above it; a SHALLOWER one ends
- * this list and hands the line back to the caller.
- *
- * **A blank line ends the list**, rather than opening a loose one. That is what
- * the block-splitting renderer this replaces already did, it is what
- * `test/ui/docs-screen.test.ts` pins for `- a\n- b\n\n* c` — two lists, because
- * a changed marker after a blank line is how the corpus writes a second one —
- * and a loose list would need the `.md li p` rule the design of record does not
- * draw.
- */
-function listNodes(lines, start, refusals, doc, labelFor) {
-  const opener = (line) => BULLET.exec(line) ?? ORDERED.exec(line);
-  const indent = opener(lines[start])[1].length;
-  const list = doc.createElement(ORDERED.test(lines[start]) ? 'ol' : 'ul');
-  let item = null;
-  let i = start;
-  while (i < lines.length && lines[i].trim() !== '') {
-    const marker = opener(lines[i]);
-    if (marker === null || marker[1].length < indent) break;
-    if (marker[1].length > indent) {
-      // A nested list hangs off the item above it. With no item above it — a
-      // block that opens already indented — the list itself is the only home,
-      // which is the same reading `blocks()` gives an orphaned continuation.
-      const [nested, next] = listNodes(lines, i, refusals, doc, labelFor);
-      (item ?? list).append(nested);
-      i = next;
-      continue;
-    }
-    item = doc.createElement('li');
-    item.append(...inlineNodes(lines[i].slice(marker[0].length), refusals, doc, labelFor));
-    list.append(item);
-    i += 1;
-    // A wrapped item: a line that is neither blank, nor a marker, nor the start
-    // of some other block. Joined with a space, because the newline it replaces
-    // was never meant to be seen.
-    while (i < lines.length && lines[i].trim() !== ''
-      && opener(lines[i]) === null && !startsBlock(lines[i])) {
-      item.append(doc.createTextNode(' '), ...inlineNodes(lines[i].trim(), refusals, doc, labelFor));
-      i += 1;
-    }
-  }
-  return [list, i];
-}
-
-/**
- * **Lines → block nodes, and the whole of the renderer.** It recurses exactly
- * once per nesting level, through `<blockquote>` and through a nested list,
- * which is why a quote can hold a heading, a list or another quote without any
- * branch here knowing it is inside one.
- *
- * **It scans LINES rather than splitting on `/\n{2,}/`, and that change is the
- * defect more than any single branch is.** Blank-line splitting cannot see a
- * fenced block that contains a blank line — its closing fence lands in a
- * different block and both halves render as prose — and it cannot see a list
- * that follows a lead sentence with no blank line between them: 47 such blocks
- * in the item corpus, 130 in this repository's documents, every one of them
- * printing its own `-` markers inside a paragraph.
- */
-function blocks(lines, refusals, doc, labelFor) {
-  const out = [];
-  let i = 0;
-  while (i < lines.length) {
-    const line = lines[i];
-    if (line.trim() === '') { i += 1; continue; }
-
-    // A fence is TEXT, all of it, and it is scanned to its CLOSING fence rather
-    // than to the next blank line: no inline pass runs inside, so a backtick or
-    // a bracket in a transcript stays what it was written as.
-    if (FENCE.test(line)) {
-      const inner = [];
-      i += 1;
-      for (; i < lines.length && !FENCE.test(lines[i]); i += 1) inner.push(lines[i]);
-      if (i < lines.length) i += 1;
-      out.push(make(doc, 'pre', null, inner.length === 0 ? '' : `${inner.join('\n')}\n`));
-      continue;
-    }
-
-    // An indented code block, and it is tested BEFORE raw HTML on purpose: the
-    // one `<bash-input>` line in the item corpus sits inside a four-space
-    // transcript, where it is a quoted terminal and not a document trying to
-    // inject an element.
-    if (INDENTED.test(line)) {
-      const inner = [];
-      while (i < lines.length && (INDENTED.test(lines[i]) || lines[i].trim() === '')) {
-        if (lines[i].trim() === '') {
-          let ahead = i;
-          while (ahead < lines.length && lines[ahead].trim() === '') ahead += 1;
-          if (ahead >= lines.length || !INDENTED.test(lines[ahead])) break;
-          inner.push('');
-          i = ahead;
-          continue;
+function assignAnchors(nodes, headings) {
+  const remaining = [...headings];
+  const walk = (list) => {
+    for (const node of list) {
+      if (/^h[1-6]$/.test(node.tagName === undefined ? '' : node.tagName.toLowerCase())) {
+        const key = headingKey(node.textContent);
+        const at = remaining.findIndex((h) => headingKey(h.text) === key);
+        if (at !== -1) {
+          node.id = remaining[at].anchor;
+          remaining.splice(0, at + 1);
         }
-        inner.push(lines[i].replace(INDENTED, ''));
-        i += 1;
+        continue;
       }
-      out.push(make(doc, 'pre', null, `${inner.join('\n')}\n`));
-      continue;
+      if (node.children !== undefined) walk([...node.children]);
     }
+  };
+  walk([...nodes]);
+}
 
-    // Raw HTML, unconditionally. `<!--` and `<script` are the same decision,
-    // and both are shown rather than parsed.
-    if (RAW_HTML.test(line)) {
-      const inner = [];
-      for (; i < lines.length && lines[i].trim() !== ''; i += 1) inner.push(lines[i]);
-      refusals.push('raw HTML');
-      out.push(refusalBlock(doc, 'raw HTML block refused', inner.join('\n')));
-      continue;
-    }
-
-    // Before `BULLET`, which would otherwise open a list on `* * *`.
-    if (HRULE.test(line)) {
-      out.push(doc.createElement('hr'));
-      i += 1;
-      continue;
-    }
-
-    // `#` → h2 … `#####` → h4. The cap is the mockup's own `min(level + 1, 4)`;
-    // what changed is the OPENER, from `#{1,3}` to `#{1,6}`, so that `####`
-    // stops falling through to a paragraph printing its own hashes. Measured at
-    // 24 blocks in 6 of this repository's documents, and zero in the items.
-    if (ATX.test(line)) {
-      const level = line.match(/^#+/)[0].length;
-      const heading = doc.createElement(`h${Math.min(level + 1, 4)}`);
-      heading.append(...inlineNodes(line.replace(/^#+\s*/, ''), refusals, doc, labelFor));
-      out.push(heading);
-      i += 1;
-      continue;
-    }
-
-    // A block quote, and the branch this task was filed for. The `>` and ONE
-    // following space come off every line, and what is left goes back through
-    // this same function — so the 39 quotes in the item corpus that hold a
-    // bullet list, the 27 that hold a heading and the 10 that hold an ordered
-    // list all render as what they are.
-    //
-    // The 715 bare `>` lines are what the owner was actually seeing: a blank
-    // line INSIDE a quote, which blank-line splitting could not tell from the
-    // end of one, so the marker landed mid-sentence as prose.
-    if (QUOTE.test(line)) {
-      const inner = [];
-      while (i < lines.length && (QUOTE.test(lines[i])
-        || (inner.length > 0 && lines[i].trim() !== '' && !startsBlock(lines[i])))) {
-        inner.push(lines[i].replace(/^\s*>[ \t]?/, ''));
-        i += 1;
-      }
-      const quote = doc.createElement('blockquote');
-      quote.append(...blocks(inner, refusals, doc, labelFor));
-      out.push(quote);
-      continue;
-    }
-
-    // A pipe table is recognised by its DELIMITER row, never by a `|` alone: a
-    // sentence containing a pipe is prose, and the row under the header is the
-    // only thing that says otherwise.
-    if (line.includes('|') && i + 1 < lines.length && isTableDelimiter(lines[i + 1])) {
-      const [table, next] = tableNodes(lines, i, refusals, doc, labelFor);
-      out.push(table);
-      i = next;
-      continue;
-    }
-
-    if (BULLET.test(line) || ORDERED.test(line)) {
-      const [list, next] = listNodes(lines, i, refusals, doc, labelFor);
-      out.push(list);
-      i = next;
-      continue;
-    }
-
-    // A setext heading. Measured at ZERO across all three corpora — 641 item
-    // bodies, 4 help topics, 58 documents, both underline forms — and built
-    // anyway because the ruling names it in the floor. It is safe to build at
-    // zero for the same reason it is worth little: a `-` underline directly
-    // under prose never occurs, so the 624 standalone `---` rules, which all
-    // sit after a blank line, cannot be taken for one.
-    if (i + 1 < lines.length && SETEXT.test(lines[i + 1])) {
-      const heading = doc.createElement(lines[i + 1].trim().startsWith('=') ? 'h2' : 'h3');
-      heading.append(...inlineNodes(line.trim(), refusals, doc, labelFor));
-      out.push(heading);
-      i += 2;
-      continue;
-    }
-
-    const para = [];
-    for (; i < lines.length && lines[i].trim() !== '' && !startsBlock(lines[i]); i += 1) {
-      para.push(lines[i]);
-    }
-    const paragraph = doc.createElement('p');
-    paragraph.append(...inlineNodes(para.join('\n'), refusals, doc, labelFor));
-    out.push(paragraph);
+/** ✅ where a Hebrew mirror exists, and the Tutorials screen's own `to write`
+ * chip where it does not — reused rather than reinvented, per `docsys/6`, and
+ * never a blank cell. The `title` carries the sentence, because a bare glyph
+ * beside a path is not a statement anyone can read. */
+function mirrorMark(ctx, hasMirror) {
+  if (hasMirror) {
+    const yes = el('span', null, '✅');
+    yes.title = ctx.tFlat('dv.heyes');
+    return yes;
   }
-  return out;
+  const chip = el('span', 'chip warn');
+  chip.dataset.g = '▲';
+  chip.title = ctx.tFlat('dv.heno');
+  chip.append(...ctx.t('tu.todo'));
+  return chip;
 }
 
 /**
- * The labeller of last resort: the three refusal sentences as `en.js` declares
- * them, spelled once here so a caller with no string table — `node --test`
- * passing a two-method `doc` — draws exactly what shipped before the keys
- * existed, rather than a key name or a blank.
+ * The Documentation screen: a document picker built from the server's
+ * manifest, that document's own headings as its index, and its markdown.
  *
- * It is a FALLBACK and not the source of truth. The browser passes
- * `ctx.tFlat`, so a Hebrew reader sees Hebrew; this exists so the pure half of
- * this file stays runnable with nothing but a `doc`, which is the whole reason
- * that half is testable at all.
+ * **Nothing here ever names a path.** The picker's rows carry ids the server
+ * just answered; the address bar's id is looked up in that same list before a
+ * single byte is fetched, so an id that is not in the manifest causes no
+ * request at all. That is the client half of the property
+ * `DEC-markdown-is-served-from-a-manifest-rendered-by-one-renderer` rules on
+ * the server: *"The client never sends a path."*
  */
-const ENGLISH_REFUSAL = (key, subs = {}) => {
-  if (key === 'dv.imgRefused') return `${subs.alt} (image refused)`;
-  if (key === 'dv.linkRefused') return `${subs.label} (link refused)`;
-  return 'raw HTML block refused';
-};
-
-/**
- * Markdown → `{ nodes, refusals }`. **No HTML string is produced anywhere in
- * this function**, which is the whole of `dv.mdnote`'s security argument: a
- * renderer with no string stage has no sanitiser to get wrong.
- *
- * `doc` is injected for the same reason `lib/i18n.js`'s `t()` takes one — it
- * is the only thing here that touches the document, so `node --test` can pass
- * a two-method stand-in and this logic is testable without a browser
- * (`test/ui/docs-screen.test.ts`).
- *
- * `src` is coerced with `String()` rather than type-checked away: a body that
- * arrived as something other than a string is a fact about the endpoint, and
- * rendering its coercion puts that fact on the screen instead of blanking the
- * card.
- */
-export function markdownNodes(src, doc, labelFor = ENGLISH_REFUSAL) {
-  const refusals = [];
-  const nodes = blocks(
-    String(src).replaceAll('\r\n', '\n').split('\n'), refusals, doc, labelFor);
-  return { nodes, refusals };
-}
-
 export async function render(root, ctx) {
   root.replaceChildren();
   screenHead(ctx, root, 'dv.h', 'dv.v', 'dv.sub');
 
-  const two = el('div', 'two');
+  // `align-top` and `data-role` are the CSS expert's card-role system
+  // (styles.css, "CARD ROLES" — 2026-09-05 UI/UX pass): the picker/index card
+  // is `nav` (wayfinding), the document card is `content` (the reading
+  // surface). Structure and classes only, per that task's scope — this
+  // screen's OWN shape (a picker over every corpus document) is the design
+  // the owner has since rejected (`DEC-the-documentation-screen-is-a-help-
+  // system-built-from-the`) and is expected to change under a later task;
+  // the role system underneath is not screen-specific and survives that
+  // rebuild.
+  const two = el('div', 'two align-top');
   root.append(two);
 
-  // ── Contents ────────────────────────────────────────────────────────────
   const toc = el('div', 'card pane');
+  toc.dataset.role = 'nav';
+  const card = el('div', 'card pane');
+  card.dataset.role = 'content';
+  // Both cards are in the DOM before the fetch, so the screen's composition is
+  // the same shape whether the read answers, refuses or is still in flight —
+  // and a refusal lands inside the card that would have held it, instead of
+  // replacing the screen.
+  two.append(toc, card);
+
+  let list;
+  try {
+    list = await ctx.api('/api/doc');
+    if (list === null || typeof list !== 'object' || !Array.isArray(list.documents)) {
+      throw new Error('docs: /api/doc answered without a documents array');
+    }
+  } catch (error) {
+    toc.append(errorNote(error.message));
+    return;
+  }
+
+  const documents = list.documents;
+  const asked = docAddress(currentHash());
+  const byId = (id) => documents.find((entry) => entry.id === id);
+  // The address wins where it names a real document; otherwise the requirement's
+  // own base document, per language; otherwise whatever the manifest has first.
+  const selected = (asked.id === null ? undefined : byId(asked.id))
+    ?? (asked.id === null
+      ? (byId(DEFAULT_DOC[ctx.lang === 'he' ? 'he' : 'en']) ?? byId(DEFAULT_DOC.en) ?? documents[0])
+      : undefined);
+
+  // ── Contents: the picker, the measured mirror count, the heading index ──
   const tocHead = el('h3');
   tocHead.append(...ctx.t('dv.toc'));
-  // The mockup's `style="line-height:2"`, through CSSOM. The server sends
-  // `style-src 'self'` with no `'unsafe-inline'`, so a `style` attribute is
-  // forbidden here and is not in the mockup — the same trade `spaced()` makes.
-  const list = el('div', 'small');
-  list.style.setProperty('line-height', '2');
-  for (const entry of CONTENTS) {
-    const row = el('div');
-    const label = el('span');
-    label.append(...ctx.t(entry.key));
-    // `<div>1 · <span …>` — the ordinal, U+00B7 between two spaces, then the
-    // label. The mockup's own row, and the separator is a text node beside the
-    // span rather than inside it: a translated element's children are replaced
-    // wholesale from the string table, which knows nothing of a glyph someone
-    // nested in one. Same arrangement, same reason, as `screenHead`'s ✅.
-    row.append(`${entry.ordinal} · `, label);
-    list.append(row);
-  }
-  const parity = el('p', 'small');
-  parity.append(...ctx.t('dv.parity'));
-  toc.append(tocHead, list, spaced(parity));
+  toc.append(tocHead);
 
-  // ── The rendered section ────────────────────────────────────────────────
-  const card = el('div', 'card pane');
+  // **THE HEBREW NUMBER IS COUNTED, NEVER WRITTEN DOWN** (`docsys/6`). Every
+  // entry's `hasHebrewMirror` was read off the disk by the server on THIS
+  // request, so this line rises on its own the day a mirror is written and
+  // nothing in this file changes.
+  const mirrors = documents.filter((entry) => entry.hasHebrewMirror).length;
+  const mirrorLine = el('p', 'small');
+  mirrorLine.append(...ctx.t('dv.hemirror', { done: mirrors, total: documents.length }));
+  toc.append(mirrorLine);
+
+  const filter = el('input', 'small');
+  filter.type = 'search';
+  filter.setAttribute('placeholder', ctx.tFlat('dv.filter'));
+  filter.setAttribute('aria-label', ctx.tFlat('dv.filter'));
+  toc.append(filter);
+
+  const rows = el('div', 'small');
+  const shown = el('p', 'small');
+  toc.append(rows, shown);
+  if (list.truncated === true) {
+    const cut = el('p', 'small');
+    cut.append(...ctx.t('dv.trunc'));
+    toc.append(cut);
+  }
+
+  /** Redraw the picker for the current filter. Only these two elements are
+   * rebuilt: filtering is a reading aid, not a route, so it neither navigates
+   * nor refetches. */
+  const paintRows = () => {
+    const needle = filter.value.trim().toLowerCase();
+    const matched = needle === ''
+      ? documents
+      : documents.filter((entry) => entry.id.toLowerCase().includes(needle)
+        || entry.title.toLowerCase().includes(needle));
+    rows.replaceChildren();
+    shown.replaceChildren();
+    if (matched.length === 0) {
+      shown.append(...ctx.t('dv.nomatch'));
+      return;
+    }
+    for (const entry of matched.slice(0, PICKER_LIMIT)) {
+      const row = el('div');
+      const link = el('a', 'm', entry.id);
+      link.href = docHash(entry.id);
+      if (selected !== undefined && entry.id === selected.id) {
+        link.setAttribute('aria-current', 'true');
+      }
+      row.append(link, ' ', mirrorMark(ctx, entry.hasHebrewMirror));
+      rows.append(row);
+    }
+    shown.append(...ctx.t('dv.shown', {
+      shown: Math.min(matched.length, PICKER_LIMIT), total: documents.length,
+    }));
+  };
+  filter.addEventListener('input', paintRows);
+  paintRows();
+
+  // ── The document ────────────────────────────────────────────────────────
   const head = el('h3');
-  head.append(...ctx.t('dv.rendered', {
-    ordinal: RENDERED.entry.ordinal,
-    heading: ctx.tFlat(RENDERED.entry.key),
-  }));
   const md = el('div', 'md');
   md.id = 'mdout';
   const mdnote = el('p', 'small');
   mdnote.append(...ctx.t('dv.mdnote'));
-  card.append(head, md, spaced(mdnote));
 
-  // Both cards are in the DOM before the fetch, so the screen's composition is
-  // the same shape whether the read answers, refuses or is still in flight —
-  // and a refusal lands inside the card that would have held the prose,
-  // instead of replacing the screen.
-  two.append(toc, card);
+  if (selected === undefined) {
+    head.append(...ctx.t('dv.nodoc'));
+    const why = el('p', 'small');
+    why.append(...ctx.t(asked.id === null ? 'dv.pick' : 'dv.noid'));
+    card.append(head, why, md, spaced(mdnote));
+    return;
+  }
+
+  head.textContent = selected.title;
+  const ident = el('p', 'small');
+  ident.append(el('span', 'm', selected.id), ' ', mirrorMark(ctx, selected.hasHebrewMirror));
+  card.append(head, ident, md, spaced(mdnote));
+
+  // The selected document's OWN index, under the picker — the derived
+  // replacement for the five literal rows this card used to draw.
+  const indexHead = el('p', 'small');
+  indexHead.append(...ctx.t('dv.inthis'));
+  toc.append(spaced(indexHead));
+  if (selected.headings.length === 0) {
+    const none = el('p', 'small');
+    none.append(...ctx.t('dv.nohead'));
+    toc.append(none);
+  } else {
+    const index = el('div', 'small');
+    for (const heading of selected.headings) {
+      const row = el('div');
+      const link = el('a', null, heading.text);
+      link.href = docHash(selected.id, heading.anchor);
+      // The ordinal, U+00B7 between two spaces, then the heading — the
+      // mockup's own row shape, kept while its content became derived.
+      row.append(`${heading.ordinal} · `, link);
+      index.append(row);
+    }
+    toc.append(index);
+  }
+
+  const parity = el('p', 'small');
+  parity.append(...ctx.t('dv.parity'));
+  toc.append(spaced(parity));
 
   let body;
   try {
-    body = await ctx.api(`/api/help/${encodeURIComponent(RENDERED.topic)}`);
+    body = await ctx.api(`/api/doc/${encodeURIComponent(selected.id)}`);
   } catch (error) {
-    // The endpoint's own words. `/api/help/:topic`'s 404 distinguishes "not a
-    // topic at all" from "a `mycontext help` topic this screen does not join",
-    // and that sentence is worth more than an empty `.md`.
+    // The endpoint's own words — its 404 names how many documents ARE in the
+    // manifest, which is worth more than an empty `.md`.
     md.append(errorNote(error.message));
     return;
   }
 
-  // `corpus` is fetched and NOT drawn, exactly as `learn.js` reports of
-  // `markdown` on the other side of the same endpoint
-  // (`src/ui/public/screens/learn.js` · ``**`markdown` is fetched and not drawn.**`` · ~70).
-  // `<section data-p="docs">` has one card for prose and nowhere to put a
-  // scoped/unscoped split; the join is the Learn screen's whole subject and
-  // duplicating it here would put the same fact on two screens with nothing
-  // holding them equal.
-  md.append(...markdownNodes(body.markdown, document, ctx.tFlat).nodes);
+  const { nodes } = markdownNodes(body.markdown, document, ctx.tFlat);
+  assignAnchors(nodes, Array.isArray(body.headings) ? body.headings : []);
+  md.append(...nodes);
+
+  if (asked.anchor !== null) {
+    const target = md.querySelector === undefined ? null : md.querySelector(`[id="${CSS.escape(asked.anchor)}"]`);
+    if (target !== null && typeof target.scrollIntoView === 'function') {
+      target.scrollIntoView({ block: 'start' });
+    }
+  }
 }

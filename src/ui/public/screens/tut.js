@@ -28,8 +28,8 @@
  *
  * ── THE RENDERER IS BORROWED, NOT WRITTEN ────────────────────────────────
  *
- * `markdownNodes` is imported from `/screens/docs.js` — the same cross-module
- * import `app.js` already performs for item bodies, and the reason
+ * `markdownNodes` is imported from `/lib/markdown.js` — the shared renderer
+ * `app.js` already imports for item bodies, and the reason
  * `DEC-markdown-is-served-from-a-manifest-rendered-by-one-renderer` gives:
  * *"Two call sites are fine; two implementations are the defect."* This screen
  * is the third call site and it adds no renderer, no HTML string and no
@@ -72,7 +72,7 @@
  * screen renders once per language.
  */
 import { el, errorNote, screenHead, spaced } from '/screens/parts.js';
-import { markdownNodes } from '/screens/docs.js';
+import { markdownNodes } from '/lib/markdown.js';
 
 /**
  * The three states a language cell can be in.

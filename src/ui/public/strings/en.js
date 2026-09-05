@@ -1212,8 +1212,14 @@ export const strings = {
   'pk.theatre': '{b:What the digest does not prove.} A checksum proves files arrived intact, not that the author is trustworthy — it never gates activation. The {m:checksum} field is a 16-hex drift truncation, unused here.',
   // Documentation
   'dv.h': 'Documentation',
-  'dv.v': 'this product’s own {m:mycontext help} topics, served and translated',
-  'dv.sub': 'A {m:mycontext help} topic, rendered here — this product’s own built-in documentation, already served and already translated.',
+  // Rewritten 2026-09-05 (`docsys/5`). The screen used to render exactly one
+  // `mycontext help` topic and these two sentences said so; it now draws the
+  // server's own document manifest, so they say THAT instead. A verdict and a
+  // subtitle describing a data source the screen no longer reads is the same
+  // defect `TASK-the-documentation-screen-still-promises-the-readme-on-screen`
+  // was filed for, pointing the other way.
+  'dv.v': 'the repository’s own documents, indexed from the server’s manifest and read here',
+  'dv.sub': 'Every Markdown document under {m:docs/} and {m:reports/}, plus {m:README.md} itself — listed from the server’s own manifest and opened by id. The browser never sends a path.',
   'dv.toc': 'Contents',
   'dv.t1': 'What this is',
   'dv.t2': 'Install',
@@ -1222,7 +1228,7 @@ export const strings = {
   'dv.t7': 'The trust boundary',
   'dv.parity': 'The EN/HE switch self-disables when the parity test is red — a mirror that has drifted is worse than none.',
   'dv.rendered': '§{ordinal} — {heading}',
-  'dv.mdnote': 'A hand-written subset renderer produces no HTML string, so nothing needs sanitising. Raw HTML, images and unknown URL schemes are {b:refused and shown as refusals}, never dropped silently.',
+  'dv.mdnote': 'A vendored tokeniser hands over tokens, never an HTML string, so nothing needs sanitising. Raw HTML, images and unknown URL schemes are {b:refused and shown as refusals}, never dropped silently.',
   // The three refusals `dv.mdnote` promises, worded. The mockup builds them
   // inside its own script and keys none of them; drawn from here they are the
   // renderer's words in the reader's language, and the alt text and the link
@@ -1230,12 +1236,45 @@ export const strings = {
   'dv.imgRefused': '{alt} (image refused)',
   'dv.linkRefused': '{label} (link refused)',
   'dv.htmlRefused': 'raw HTML block refused',
+  // ── The derived index, the picker and the measured Hebrew mirror ────────
+  // `docsys/5` (the index is the manifest's, not five literals) and `docsys/6`
+  // (whether a Hebrew mirror exists is READ OFF DISK, per document, and never
+  // written down here). Every number in these sentences arrives as a
+  // substitution from `GET /api/doc`; not one of them is a literal.
+  'dv.docs': 'Documents',
+  'dv.filter': 'Filter by path',
+  'dv.shown': 'Showing {shown} of {total}. Type above to narrow the list.',
+  'dv.nomatch': 'No document matches that filter.',
+  'dv.hemirror': 'Hebrew mirror: {done} of {total} documents have one, measured on disk on every read.',
+  'dv.heyes': 'a Hebrew mirror of this document exists',
+  'dv.heno': 'no Hebrew mirror of this document exists yet',
+  'dv.inthis': 'In this document',
+  'dv.nohead': 'This document declares no headings.',
+  'dv.nodoc': 'No document selected',
+  'dv.pick': 'Pick a document from the list to read it here.',
+  'dv.trunc': 'The repository walk stopped at its bound, so this list is incomplete and says so rather than presenting itself as the whole.',
+  'dv.noid': 'This address names no document in the manifest, so nothing was read for it. The list beside this card is everything that is served.',
   // Tutorials
   'tu.h': 'Tutorials',
   'tu.v': 'each one titled with a job, not a feature',
-  'tu.sub': 'Six replacing two. Every transcript is a generated block, so a tutorial cannot teach a flag that no longer exists without a test going red.',
+  // Rewritten 2026-09-05 (`tuts/4`): "six replacing two" was the count the
+  // screen hard-coded, and the roster is the manifest's now — 24 today, a
+  // number this sentence therefore refuses to state.
+  'tu.sub': 'One tutorial per feature, read in place. The roster is {m:docs/tutorials/manifest.json}; the EN and HE columns are measured against the files on disk on every read.',
   'tu.t': 'Tutorial',
   'tu.job': 'The job it answers',
+  // ── The manifest-driven list, the rollup and the reader (`tuts/4`) ──────
+  'tu.id': 'Manifest id',
+  'tu.basic': 'Basic',
+  'tu.adv': 'Advanced',
+  'tu.rollup': 'Hebrew: {done} of {total} written, measured on disk.',
+  'tu.donemeans': '{b:✅ means the file exists and carries all four required sections} — what it is for, how it works, from the CLI, from the UI. It is not a claim that the prose under them is any good.',
+  'tu.unwritten': 'A tutorial with no file yet is not a link, because there is nothing to open.',
+  'tu.back': 'All tutorials',
+  'tu.enonly': 'This tutorial has no Hebrew file yet, so the English text is shown and labelled as English — never substituted silently under a Hebrew heading.',
+  'tu.trunc': 'This tutorial is longer than one read serves, and was cut at that bound rather than trailing off.',
+  'tu.none': 'The manifest names no tutorial at all.',
+  'tu.noid': 'This address names no tutorial in the manifest, so nothing was read for it.',
   'tu.1': 'First twenty minutes',
   'tu.j1': 'I have just installed this',
   'tu.todo': 'to write',

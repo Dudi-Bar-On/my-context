@@ -432,10 +432,32 @@ test('every ln. key the module names is the mockup\'s, and both string tables de
   const named = new Set([...SOURCE.matchAll(/'(ln\.[A-Za-z0-9]+)'/g)].map((m) => m[1]!));
   const drawn = new Set([...learnSection().matchAll(/data-t="(ln\.[A-Za-z0-9]+)"/g)].map((m) => m[1]!));
   assert.ok(named.size > 0, 'the module names no ln. keys at all');
-  // Both directions. A key in the mockup the module never names is a piece of
-  // the screen that was not built; a key the module names that the mockup does
-  // not declare is a key `strings-parity.test.ts` would fail on next.
-  assert.deepEqual([...named].sort(), [...drawn].sort());
+  // ONE direction, and which one is an owner ruling rather than a convenience.
+  //
+  // `DEC-the-mockup-is-a-frozen-reference-it-is-read-never-written` (2026-09-02)
+  // says the drawing is read and never written, and that the product may run
+  // AHEAD of it without that being a fault — only the mockup-ahead direction is
+  // a finding. So:
+  //
+  //   a key the MOCKUP declares that the module never names  -> a piece of the
+  //     screen that was drawn and not built. Still a defect. Still asserted.
+  //   a key the MODULE names that the mockup does not declare -> the app ahead
+  //     of a frozen drawing. Not a fault, and asserting it would forbid the
+  //     screen from ever gaining a string again without editing a file the
+  //     owner has forbidden anyone to edit.
+  //
+  // This test used to assert equality, and it went red the moment the mockup
+  // was restored to its frozen state on 2026-09-05: `ln.cUnmeasured` is real,
+  // shipped, translated in both tables, and drawn by the screen — it is simply
+  // newer than the drawing. The equality was asserting the wrong thing, and
+  // the freeze is what makes that visible.
+  //
+  // The other half of the old comment was already false: the "app string with
+  // no mockup entry" direction was dropped from `strings-parity.test.ts` on
+  // 2026-08-26, so nothing downstream fails on it either.
+  const missing = [...drawn].filter((key) => !named.has(key)).sort();
+  assert.deepEqual(missing, [],
+    'the mockup declares these ln. keys and the module names none of them — drawn but not built');
 
   const en = (await table('en')).strings;
   const he = (await table('he')).strings;
@@ -472,11 +494,23 @@ test('the screen GETs one help endpoint per topic, and touches no other part of 
  * fails, and the failure names it.
  */
 test('both languages draw the italic run — the Hebrew emphasis has landed', async () => {
+  // **A tripwire on a FROZEN file, not a parity assertion.** The mockup is read
+  // and never written (`DEC-the-mockup-is-a-frozen-reference-it-is-read-never-
+  // written`), so this list should now never change again: if it does, someone
+  // wrote to a file the owner has forbidden anyone to write to, and that is
+  // what this assertion catches.
+  //
+  // Two kinds here are DELIBERATELY behind the app and must stay that way. The
+  // screen draws `button.linkid.m` where the drawing has `span.m`, and draws a
+  // `span.chip.unmeas` the drawing has no equivalent for at all — both landed
+  // with `walk/88` on 2026-09-05. Under the freeze the app running ahead is not
+  // a fault, so those two belong in the app-side assertions below and not in
+  // this list. This list is what the DRAWING says.
   const drawn = kindsOf(learnSection());
   assert.deepEqual(drawn, [
-    'button.linkid.m', 'div.card.pane', 'div.phd', 'h2', 'i', 'p.psub', 'span',
-    'span.chip.unmeas', 'span.verdict', 'table', 'tbody', 'td.m', 'td.small', 'tr',
-  ], 'the mockup section changed shape — re-measure before touching the screen');
+    'div.card.pane', 'div.phd', 'h2', 'i', 'p.psub', 'span',
+    'span.m', 'span.verdict', 'table', 'tbody', 'td.m', 'td.small', 'tr',
+  ], 'the frozen mockup section changed shape — it is read-only, so this should be impossible');
 
   // **The two languages differed HERE for two days, and this assertion was the
   // record of the debt. It is now the record of the debt being PAID.** `i` is
@@ -492,16 +526,41 @@ test('both languages draw the italic run — the Hebrew emphasis has landed', as
   // from the owner. He released the 57 placements on 2026-08-27 and they were
   // written into `he.js` the same day, `ln.sub` among them.
   //
-  // So BOTH branches expect the mockup's full list now, italic included. If the
-  // Hebrew branch loses `i` again, an emphasis run has been dropped from the
-  // Hebrew table — that is a regression, not a pending translation.
+  // So BOTH branches expect the SCREEN's full list, italic included — the
+  // screen's own, not the drawing's. They differ by exactly what `walk/88`
+  // changed on 2026-09-05: the ids became `button.linkid.m` where the drawing
+  // still shows an inert `span.m`, and the unmeasured rows gained a
+  // `span.chip.unmeas` the drawing has no equivalent for. The mockup is frozen
+  // and the app may run ahead of it, so those belong here and not in the
+  // tripwire above.
+  //
+  // Note this is an UPGRADE and not an addition: `span.m` did not survive
+  // alongside the button, it became the button. So a plain superset check
+  // against the drawing would read the substitution as a missing kind and go
+  // red on correct work — which is why the two lists are stated separately and
+  // neither is derived from the other.
+  //
+  // What both branches still hold is `i`: if the Hebrew branch loses it, an
+  // emphasis run has been dropped from the Hebrew table — that is a regression,
+  // not a pending translation.
+  const built = [
+    'button.linkid.m', 'div.card.pane', 'div.phd', 'h2', 'i', 'p.psub', 'span',
+    'span.chip.unmeas', 'span.verdict', 'table', 'tbody', 'td.m', 'td.small', 'tr',
+  ];
   const { root: enRoot } = await renderLearn('en');
-  assert.deepEqual(renderedKinds(enRoot), drawn,
-    'the English render no longer draws exactly the mockup\'s kinds, italic included');
+  assert.deepEqual(renderedKinds(enRoot), built,
+    'the English render no longer draws the screen\'s own kinds, italic included');
   const { root: heRoot } = await renderLearn('he');
-  assert.deepEqual(renderedKinds(heRoot), drawn,
+  assert.deepEqual(renderedKinds(heRoot), built,
     'the Hebrew render no longer draws the italic run. `ln.sub` carries `{i:}` in he.js as of '
     + '2026-08-27; losing it is a dropped emphasis run, not unfinished work.');
+  // The one kind the drawing has and the screen does not, stated rather than
+  // asserted away: `span.m`, which BECAME `button.linkid.m`. Naming it here is
+  // what stops the next reader from "fixing" the difference in the wrong
+  // direction — by editing a frozen file, or by demoting a working button back
+  // to inert text.
+  assert.deepEqual(drawn.filter((kind) => !built.includes(kind)), ['span.m'],
+    'the drawing and the screen now differ by something other than the walk/88 upgrade');
 
   // And the italic really is in `ln.sub`, in BOTH tables: it is carried in the
   // string values, never in the screen, so neither language can drift from the
@@ -666,14 +725,22 @@ test('categories and workflow draw the ◌ mark; scope and capture draw the item
     assert.equal(textOf(mark!), 'no single item represents this');
   }
 
-  // The mockup's own linked rows agree with the app's — one `<tr>` per line in
-  // the mockup source, so "does this row's line contain a linkid button" is one
-  // check per row.
+  // **The drawing carries no clickable ids at all, and that is the expected
+  // state rather than a disagreement.** It renders every id as an inert
+  // `span.m`; the screen renders `button.linkid.m`, which is what every other
+  // id on every other screen is, and what `walk/88` landed on 2026-09-05.
+  //
+  // The mockup is frozen (`DEC-the-mockup-is-a-frozen-reference-it-is-read-
+  // never-written`) and the app is allowed to run ahead of it, so this asserts
+  // the FREEZE — the drawing still has no `linkid` in this section — rather
+  // than a parity that would now demand editing a read-only file. Which rows
+  // carry an id, and which id, is asserted above against the real endpoints,
+  // where that fact actually lives.
   const mockupLinked = [...learnSection().matchAll(/<tr><td class="m">([a-z]+)<\/td><td class="small">([^]*?)<\/tr>/g)]
     .filter((m) => m[2]!.includes('class="linkid m"'))
     .map((m) => m[1]!);
-  assert.deepEqual(mockupLinked, ['scope', 'capture'],
-    'the mockup and the endpoints now agree: scope and capture carry ids, categories does not');
+  assert.deepEqual(mockupLinked, [],
+    'the frozen mockup grew a linkid button — it is read-only, so this should be impossible');
 });
 
 // ── 6b. The selection rule itself, one exclusion at a time ────────────────

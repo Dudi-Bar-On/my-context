@@ -2463,6 +2463,19 @@ tr.lanestep td:nth-child(3){padding-inline-start:14px}
    the same right-hand bound `pre` already gets, rather than overflowing the
    card or the 72ch measure above. */
 .md img,.md svg{max-inline-size:100%;block-size:auto;border-radius:var(--r-md)}
+/* — the ONE rule the vendored-tokeniser change needed, and it is a reset —
+
+   A ```mermaid fence renders as `<figure class="mermaid">` holding an `<img>`
+   pointed at a committed SVG (`scripts/gen-diagrams.ts`). The UA default for
+   `figure` is `margin:1em 40px`, which would indent all ten drawings by 40px
+   inside a 72ch measure and give them a top margin nothing else in `.md` has.
+   This puts a figure on the same block rhythm as `.md p` and centres a drawing
+   narrower than the column. Nothing else was added to this file: `.md img`
+   above already bounds a drawing to the measure, and it was written in
+   anticipation of exactly this ("an embedded diagram is the case the
+   coordinator named as coming"). */
+.md figure{margin:0 0 var(--sp-2)}
+.md figure.mermaid img{display:block;margin-inline:auto}
 
 /* — the item pane's well and its label (mockup ~652-657) —
 

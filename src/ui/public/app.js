@@ -164,13 +164,14 @@ import { applyLanguage, pickLanguage, t as translate, tFlat as flat } from '/lib
 // widths, what a keystroke does) is testable without a browser, and only the
 // wiring below is not.
 import { installPaneResize } from '/lib/pane-resize.js';
-// The ONE markdown renderer. The Docs screen owns it because Docs was the
-// first screen that needed one; the item pane is the second, and a second
-// implementation of "turn corpus text into nodes safely" is the last thing
-// this product should grow — that renderer is already the thing
+// The ONE markdown renderer. It lived inside the Docs screen until 2026-09-05,
+// because Docs was the first screen that needed one; it is a library now, since
+// the item pane and the tutorial reader are the second and third callers and a
+// second implementation of "turn corpus text into nodes safely" is the last
+// thing this product should grow — that renderer is already the thing
 // `e2e/runs.spec.ts` points at when it asserts the page SHOWS a script tag
 // rather than running one.
-import { markdownNodes } from '/screens/docs.js';
+import { markdownNodes } from '/lib/markdown.js';
 // The strip's context group. `contextStrip()` is the decision table for the
 // five states §4b names and the three project-knowledge answers beside them —
 // written, tested (`test/ui/viewmodel.test.ts`) and, until 2026-08-29, called
@@ -6958,11 +6959,44 @@ function renderNav() {
         // and announces itself as unavailable, and carries no click handler.
         button.setAttribute('aria-disabled', 'true');
       }
-      if (location.hash === `#/${name}`) button.setAttribute('aria-current', 'page');
+      // `screenFromHash`, not `location.hash === '#/name'`: since 2026-09-05 a
+      // hash may carry the screen's OWN sub-path after the screen name
+      // (`#/docs/<id>/<anchor>`), and an equality test would drop the rail
+      // highlight the moment a reader opened a document — the rail would say
+      // no screen is current while a screen is plainly on the page.
+      if (screenFromHash(location.hash) === name) button.setAttribute('aria-current', 'page');
       group.append(button);
     }
     nav.append(group);
   }
+}
+
+/**
+ * **The screen a hash names — its FIRST path segment, and nothing after it.**
+ *
+ * Until 2026-09-05 a hash was the whole screen name and nothing else, so
+ * `route()` compared the whole string against `SCREENS` and `renderNav()`
+ * compared it against `#/${name}`. Two screens now address a DOCUMENT in the
+ * hash — `#/docs/<id>/<anchor>` and `#/tut/<id>`, the deep link
+ * `docs/superpowers/specs/2026-09-05-documentation-screen-design.md` §2 asks
+ * for — and under the old reading every one of those addresses was an unknown
+ * route that rendered the injection preview instead. The screen half of a deep
+ * link cannot be the screen's own business: the shell is what picks the module.
+ *
+ * **The segment after the screen is NOT parsed here, deliberately.** This
+ * function answers one question — which module — and the rest of the hash is
+ * read by that module, which is the only code that knows what its own ids
+ * mean. `screens/docs.js` looks its id up in the manifest the server just
+ * answered; nothing in this shell ever resolves one.
+ *
+ * A document id contains `/` (it is a repo-relative path), so the screens
+ * `encodeURIComponent` it into ONE segment. That keeps this split at the first
+ * `/` correct without this function knowing anything about ids.
+ */
+function screenFromHash(hash) {
+  const asked = (String(hash).replace(/^#\//, '') || 'preview');
+  const cut = asked.indexOf('/');
+  return cut === -1 ? asked : asked.slice(0, cut);
 }
 
 async function route() {
@@ -6999,7 +7033,7 @@ async function route() {
   // event=session-start on the most recent session, rendering with no
   // input. NOT 'status' — that screen is built by Task 19 and deferred to
   // wave 3 ("Corrected 2026-08-20", plan Task 16 note).
-  const askedRaw = (location.hash.replace(/^#\//, '') || 'preview');
+  const askedRaw = screenFromHash(location.hash);
   // `screens/gaps.js` retired 2026-09-04 (`TASK-coverage-gaps-folds-into-
   // scope-coverage-keeping-the-one-fact`, seq:22): the rail button is gone,
   // but a reader who still has `#/gaps` from before that — a bookmark, a

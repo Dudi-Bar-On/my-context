@@ -71,6 +71,11 @@ jobs:
       # you nothing about whether the tasks agree with it.
       - run: npm run check:retired
       - run: npm run check:text-files
+      # A vendored file is committed third-party code, and the one thing it may
+      # never be is edited in place. This recomputes every digest in
+      # src/ui/public/lib/vendor/VENDOR.md and re-scans for fetch/eval, so a
+      # patched or silently upgraded asset is red here rather than a surprise.
+      - run: npm run check:vendor
       - run: npm run typecheck
       - run: npm test
       - run: npm run test:perf

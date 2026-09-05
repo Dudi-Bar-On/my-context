@@ -27,16 +27,18 @@
     "mutate": "node scripts/mutate.ts",
     "gen:commands": "node scripts/gen-commands.ts",
     "gen:tutorials": "node scripts/build-tutorial-manifest.ts",
-    "gen:docs": "node scripts/gen-doc-examples.ts && node scripts/gen-cli-ui-coverage.ts",
+    "gen:docs": "node scripts/gen-doc-examples.ts && node scripts/gen-cli-ui-coverage.ts && node scripts/gen-diagrams.ts",
     "verify:citations": "node scripts/verify-citations.ts",
     "check:test-glob": "node scripts/check-test-glob.ts",
     "check:retired": "node scripts/check-retired.ts",
     "check:text-files": "node scripts/check-text-files.ts",
+    "check:vendor": "node scripts/check-vendor.ts",
     "check:needs-cycles": "node scripts/check-needs-cycles.ts"
   },
   "devDependencies": {
     "@playwright/test": "^1.62.1",
     "@types/node": "^24.0.0",
+    "mermaid": "11.17.2",
     "typescript": "^5.8.2"
   }
 }
