@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: Three comments that had gone false are fixed; what is left is that a broken settings file is disclosed on one screen only.
-summary_of: 2c565d8d5fb63af8
+summary_of: 74edec456df6043a
 summary_was:
   - 2026-09-03 Three explanatory comments give reasons that have since stopped being true, which is worse than never having written them.
 acknowledged:
@@ -18,19 +18,20 @@ tags:
   - live
   - "plan:live"
   - "seq:13"
-  - "state:todo"
+  - "state:done"
 origin: human
 source_file: null
 source_anchor: null
 source_checksum: null
 valid_from: 2026-08-28
 valid_until: null
-checksum: f8ca32bcfe508b4e
+checksum: 6455d1a77a289aa3
 plan: live
 seq: "13"
-state: todo
+state: done
 priority: "1"
 source: "plan:live seq:8's out-of-lane findings, 2026-08-28"
+verified_on: 2026-09-05
 ---
 
 # three comments now argue from a premise that is false, and the config break is disclosed on one screen

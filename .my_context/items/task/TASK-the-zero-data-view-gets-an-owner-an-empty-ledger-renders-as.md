@@ -6,12 +6,12 @@ status: active
 severity: soft
 always: false
 summary: When the history has never been summarised, say so and name the command that builds it, instead of showing what looks like nothing.
-summary_of: f2d2ce9bcafdd473
+summary_of: e791c01ffb2b807f
 scope: []
 tags:
   - "plan:rulings"
   - "seq:26"
-  - "state:todo"
+  - "state:done"
   - v2
   - ui
 origin: human
@@ -20,14 +20,15 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-08-20
 valid_until: null
-checksum: 05d33167a92bd748
+checksum: 8047bd5ce649b269
 plan: rulings
 seq: "26"
-state: todo
+state: done
 progress: "0"
 priority: "2"
 source: "reports/V2-HANDOVER.md#twelve-owner-rulings"
 last_change: "2026-08-20T14:15:21Z"
+verified_on: 2026-09-05
 ---
 
 # the not-projected view gets an owner: a missing ledger projection renders as its own state, not as the null state

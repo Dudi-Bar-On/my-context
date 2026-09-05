@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: The page can load newer code than the server it talks to, so a feature that works looks broken and nothing says why.
-summary_of: 785442b90e97aef0
+summary_of: 83387744aa6e3542
 scope: []
 tags:
   - v2
@@ -14,19 +14,20 @@ tags:
   - live
   - "plan:live"
   - "seq:12"
-  - "state:todo"
+  - "state:done"
 origin: human
 source_file: null
 source_anchor: null
 source_checksum: null
 valid_from: 2026-08-28
 valid_until: null
-checksum: 127ac734ac207b2b
+checksum: cf262c643a48d019
 plan: live
 seq: "12"
-state: todo
+state: done
 priority: "1"
 source: owner, 2026-08-28
+verified_on: 2026-09-05
 ---
 
 # the browser can run newer code than its own server, and nothing says so

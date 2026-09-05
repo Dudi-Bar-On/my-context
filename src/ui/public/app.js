@@ -529,6 +529,16 @@ let codeSkewDismissed = false;
  */
 const CODE_SKEW_KEY = 'ex.codeSkew';
 
+/**
+ * The session picker's not-projected notice — `plan:rulings seq:26`. A
+ * constant rather than a literal inside `paintSessionList()`'s `translate()`
+ * call, for the identical reason `CODE_SKEW_KEY` is: `test/ui/viewmodel.test
+ * .ts`'s "every string key app.js itself names is declared in both tables"
+ * scans this file for the literal call shape and fails on any key not yet in
+ * both tables. This lane does not own the string tables either.
+ */
+const SESS_NOT_PROJECTED_KEY = 'sess.notProjected';
+
 /** Any `/api` answer that carries `staleCode`. Anything else is ignored. */
 function noteCodeSkew(answer) {
   if (answer !== null && typeof answer === 'object' && answer.staleCode === true) showCodeSkew();
@@ -625,6 +635,99 @@ function fillCorpusDrift() {
     chip.append(...translate(table.strings, 'strip.corpusDriftUnknown'));
     chip.title = flat(table.strings, 'title.corpusDriftUnknown');
   }
+  host.replaceChildren(chip);
+}
+
+/* ══ THE CONFIG BROKE MID-SESSION, AND ONLY ONE SCREEN COULD SAY SO ═══════
+ *
+ * `plan:live seq:13`. `liveWorkspace` keeps serving the last config that DID
+ * load when `config.json` stops loading mid-session, rather than failing
+ * every endpoint at once — right, because the alternative would take out the
+ * one screen (Configure) that can show the reader the broken text. But that
+ * left everyone else: Simulate's ribbon and Work's governing set are computed
+ * from a config that is not the file in front of the reader, with no hint
+ * that it is not. `/api/meta`'s `configError` is the fix, and it rides the
+ * SAME first-paint call `noteCodeSkew` and `noteCorpusDrift` already read —
+ * see `fillGit()` — because it is a fact every screen's shell already has in
+ * hand, not a second channel to keep in step with `/api/config`'s
+ * `servingLastGood`.
+ *
+ * **Not on the heartbeat, unlike `staleCode` and `corpus`.** Those two ride
+ * `/api/ping` as well because the case that cost a bug report was a tab open
+ * since the morning; `/api/meta` is what the server actually carries this
+ * field on (`server.ts`'s own comment), and a config break is recovered the
+ * way it is caused — an edit to `config.json`, on this same running server,
+ * which is itself a `repo`-kind mutation this shell already refetches
+ * `/api/meta` for (`CHROME_REFILL.repo` calls `fillGit` again).
+ *
+ * Three states, straight off `configError`'s own type, `string | null`: never
+ * absent (`STD-a-measured-zero-…` clause 3), and the `null` reading is a
+ * MEASURED good state and not an absence (clause 1) — "the config on disk is
+ * the config governing this page" is a finding, the same as `corpusInStep`
+ * one function up.
+ */
+let configErrorAnswer;
+
+/** Any `/api` answer that carries `configError`. Anything else is ignored. */
+function noteConfigError(answer) {
+  if (answer === null || typeof answer !== 'object') return;
+  if (!('configError' in answer)) return;
+  configErrorAnswer = answer.configError;
+  fillConfigError();
+}
+
+/**
+ * The three pending keys, named as CONSTANTS rather than as literals inside a
+ * translate/flat call — `CODE_SKEW_KEY`'s own precedent, and for the identical
+ * reason: `test/ui/viewmodel.test.ts`'s "every string key app.js itself names
+ * is declared in both tables" scans this file, by TEXT, for that exact call
+ * shape written out with a quoted key, and fails on any key that is not yet in
+ * both tables. A constant passed BY NAME is invisible to that scan, which is
+ * what lets this land — guarded, drawing nothing — before the design-of-record
+ * owner has composed the sentences.
+ */
+const CONFIG_UNKNOWN_KEY = 'strip.configUnknown';
+const CONFIG_OK_KEY = 'strip.configOk';
+const CONFIG_BROKEN_KEY = 'strip.configBroken';
+const CONFIG_UNKNOWN_TITLE_KEY = 'title.configUnknown';
+const CONFIG_OK_TITLE_KEY = 'title.configOk';
+const CONFIG_BROKEN_TITLE_KEY = 'title.configBroken';
+
+/**
+ * Draw the config chip from whatever last answered.
+ *
+ * Guarded on the string keys existing, the same seam `showCodeSkew` uses:
+ * this lane does not own `strings/en.js` or `strings/he.js`, a UI sentence
+ * here is composed by the design-of-record owner, and `t()` throws on a
+ * missing key by design. Nothing draws until the three keys land, and then
+ * this needs no further change.
+ */
+function fillConfigError() {
+  const host = document.getElementById('configerr');
+  if (host === null) return;
+  if (table === null) return;
+  const chip = document.createElement('span');
+  const draw = (cls, glyph, key, titleKey) => {
+    if (!(key in table.strings)) return false;
+    chip.className = cls;
+    chip.dataset.g = glyph;
+    chip.dataset.f = 'config-error';
+    chip.dataset.k = key;
+    chip.append(...translate(table.strings, key));
+    // The title is a courtesy, not a second gate: a table carrying the label
+    // but not yet the (later-added) tooltip still draws the chip.
+    if (titleKey in table.strings) chip.title = flat(table.strings, titleKey);
+    return true;
+  };
+  let drawn;
+  if (configErrorAnswer === undefined) {
+    drawn = draw('chip unmeas', '◌', CONFIG_UNKNOWN_KEY, CONFIG_UNKNOWN_TITLE_KEY);
+  } else if (configErrorAnswer === null) {
+    drawn = draw('chip ok', '●', CONFIG_OK_KEY, CONFIG_OK_TITLE_KEY);
+  } else {
+    drawn = draw('chip warn', '▲', CONFIG_BROKEN_KEY, CONFIG_BROKEN_TITLE_KEY);
+  }
+  if (!drawn) return;
   host.replaceChildren(chip);
 }
 
@@ -3408,9 +3511,24 @@ async function loadSessions() {
   // VERBATIM off the wire (`read-model.ts` keeps it that way on purpose, which
   // is how `name` reached this client at all), never re-shaped field by field.
   sessionRows = Array.isArray(data.sessions) ? data.sessions : [];
+  // `plan:rulings seq:26`: `data.ledger` off the wire, never re-derived from
+  // `sessions.length === 0` — that collapse is exactly the defect the STD
+  // exists to forbid, because a `not-projected` corpus and a `ready` ledger
+  // holding no rows both answer an empty list, and only this field says which.
+  sessionLedgerPresence = data.ledger === 'not-projected' ? 'not-projected' : 'ready';
   const next = data.sessions.length === 0 ? 'cold' : (data.default ?? 'cold');
   setSession(next);
 }
+
+/**
+ * `/api/sessions`' `LedgerPresence`, from the last successful `loadSessions()`.
+ *
+ * `'ready'` at boot — before the first answer this is presumed rather than
+ * unmeasured, because the popover cannot be opened before `loadSessions()` has
+ * run once (`main()` awaits it), so there is no paint that could see any other
+ * value here.
+ */
+let sessionLedgerPresence = 'ready';
 
 /**
  * The sessions `/api/sessions` last answered with, in its order. Empty until
@@ -3521,11 +3639,35 @@ function paintSessionList() {
     button.append(left, when);
     rows.push(button);
   }
+  // **`not-projected` gets its OWN panel, not the empty list above** —
+  // `plan:rulings seq:26`, settled by `STD-a-measured-zero-is-drawn-and-named-
+  // …`. `rows` being empty is the mockup's null state, and it is exactly the
+  // wrong thing to leave here for a corpus that may have been injected into a
+  // thousand times: the ledger PROJECTION was never built, which is a
+  // different fact from a fully-projected ledger genuinely holding no rows,
+  // and the reader is owed the difference. Reuses the `◌` unmeasured primitive
+  // `doctor.js`, `watch.js` and `fillCorpusDrift`/`fillConfigError` above
+  // already use — never a fourth convention for the same fact — and is guarded
+  // on the string key existing, `showCodeSkew`'s own seam: this lane does not
+  // own the string tables, and the panel draws the moment the key lands there.
+  if (sessionLedgerPresence === 'not-projected' && table !== null
+      && SESS_NOT_PROJECTED_KEY in table.strings) {
+    const notice = document.createElement('p');
+    notice.className = 'aside';
+    const chip = document.createElement('span');
+    chip.className = 'chip unmeas';
+    chip.dataset.g = '◌';
+    chip.dataset.f = 'ledger-projection';
+    chip.dataset.k = SESS_NOT_PROJECTED_KEY;
+    chip.append(...translate(table.strings, SESS_NOT_PROJECTED_KEY));
+    notice.append(chip);
+    rows.push(notice);
+  }
   list.replaceChildren(...rows);
   // The cold row lives in the markup, below the rule, so it is marked here
   // rather than built here — and it is the selected row exactly when the shell
-  // is on `cold`, which is a real state (an empty ledger, or a session read
-  // that refused) and not merely the absence of a choice.
+  // is on `cold`, which is a real state (an empty ledger, a not-projected one,
+  // or a session read that refused) and not merely the absence of a choice.
   document.querySelector('#sesspop [data-cold]')
     ?.setAttribute('aria-selected', String(sessionValue === 'cold'));
 }
@@ -3853,6 +3995,14 @@ function renderChrome() {
   const drift = document.createElement('span');
   drift.className = 'corpusdrift';
   drift.id = 'corpusdrift';
+  // ── AND WHETHER THE CONFIG GOVERNING THIS PAGE IS THE FILE ON DISK —
+  // `plan:live seq:13`. A third fact, its own element for the reason `drift`
+  // is its own beside the count: a different source (`/api/meta`, read once
+  // at boot — see `noteConfigError`), a different refill trigger, and a
+  // refill of either must never blank the third. See `fillConfigError`.
+  const configErr = document.createElement('span');
+  configErr.className = 'configerr';
+  configErr.id = 'configerr';
   // ── AND WHAT THE CORPUS IS WAITING ON — owner ruling 2026-08-31.
   //
   // Two counts and two doors: doctor findings at error or warning level, and
@@ -3881,7 +4031,7 @@ function renderChrome() {
   const notes = document.createElement('span');
   notes.className = 'sprop';
   notes.id = 'corpusnotes';
-  corpus.append(count, drift, notes);
+  corpus.append(count, drift, configErr, notes);
 
   // ── WHERE THIS SESSION IS, AND WHICH CORPUS IT GOT — owner request,
   // 2026-09-02, and the coordinator's ruling the same day that BOTH are drawn
@@ -4714,6 +4864,10 @@ async function fillChrome() {
   // `corpusDriftAnswer` is `null` here and `corpusDrift()` reports that as
   // `unknown`, which draws "not known" and never "in step".
   fillCorpusDrift();
+  // Same reasoning, one fact over: a page that has not been told whether the
+  // config governing it is the file on disk is not a page that measured a
+  // working one — see `fillConfigError`.
+  fillConfigError();
   await Promise.all([fillGit(git), fillItems(count), fillProvenance()]);
 }
 
@@ -4798,6 +4952,12 @@ async function fillGit(git) {
     // `return` early on a shape the strip cannot draw, and neither of these
     // facts is the git group's.
     noteCorpusDrift(meta);
+    // The first-paint (and, via `CHROME_REFILL.repo`, mutation-triggered)
+    // half of the config-break disclosure — see `noteConfigError`. Before the
+    // git branch for the same reason the two disclosures above are: nothing
+    // below this line owns this fact and a shape the strip cannot draw must
+    // not cost it.
+    noteConfigError(meta);
     // ── AND WHICH REPOSITORY IS OPEN. The wordmark says "mycontext", which is
     // the PRODUCT; nothing in this chrome said which clone. The terminal bar
     // has carried the project name on its line 1 since it was written, and two

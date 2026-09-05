@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: The screen where a person accepts or rejects proposed changes, seeing the difference side by side before approving anything.
-summary_of: 5f3c85e6e9dab7b2
+summary_of: 7d967ee37731a18a
 scope: []
 tags:
   - v2
@@ -14,19 +14,20 @@ tags:
   - mockup
   - "plan:walk"
   - "seq:127"
-  - "state:doing"
+  - "state:done"
 origin: human
 source_file: null
 source_anchor: null
 source_checksum: null
 valid_from: 2026-09-02
 valid_until: null
-checksum: 4d983573ef07d749
+checksum: eb54713e861a8576
 plan: walk
 seq: "127"
-state: doing
+state: done
 priority: "2"
 source: "plan:walk seq:27, from the module header of screens/work.js on 2026-09-02"
+verified_on: 2026-09-05
 ---
 
 # Review queue: what the screen is, and what implemented means for it

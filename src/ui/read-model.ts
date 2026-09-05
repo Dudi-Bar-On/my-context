@@ -202,15 +202,17 @@ export function repeatedParams(url: URL): string | null {
  * cuts both ways, and reporting damage as an empty ledger is the same failure
  * as refusing a fresh corpus.
  *
- * **OPEN QUESTION for the owner, recorded rather than decided:** what each
- * screen renders when `ledger` is null — the mockup's zero-data view, an
- * explicit "nothing has been injected in this corpus yet", or a per-screen
- * mixture. Every caller that USES the ledger argument inherits it. That is a
- * product decision about ten screens, and this function does not settle it; it
+ * **SETTLED by `STD-a-measured-zero-is-drawn-and-named-an-unmeasured-thing-is`,
+ * `plan:rulings seq:26`'s re-decision.** This paragraph used to record the
+ * question as open and said the owner had ruled the null renders as the
+ * mockup's zero-data view — true when it was written, and now exactly
+ * backwards. The ruling is the opposite: `not-projected` renders as its OWN
+ * panel, never as the mockup's null state, because the null state means
+ * "nothing here" and a corpus injected into a thousand times with no ledger
+ * TABLE would be making that claim falsely. Every caller that USES the ledger
+ * argument inherits `LedgerPresence` for exactly this reason — this function
  * only guarantees the state ARRIVES at the caller distinguishable from both an
- * empty result and a fault. The owner has since ruled the null renders as the
- * mockup's zero-data view; WHICH zero-data view is still unanswered for the
- * session picker, whose mockup has none.
+ * empty result and a fault; which panel draws it is each screen's to build.
  *
  * `withStores` is where the three outcomes are decided, so it is where they
  * are proved. Carrying one of them into a response body is the CALLER's job
@@ -880,15 +882,21 @@ export function apiSimulateSweep(ws: Workspace, url: URL): JsonResult {
  * was ever injected**; the injections live in `.audit/` and the seen files,
  * and only `topUpLedger` turns them into this table. That distinction dies at the JSON boundary
  * unless something says which one happened: `{ default: null, sessions: [] }`
- * is equally what an initialised ledger holding no rows produces. The owner
- * ruled that both render as the mockup's zero-data view; rendering alike is
+ * is equally what an initialised ledger holding no rows produces. **SETTLED,
+ * and the opposite of how this paragraph used to read**: the two must NOT
+ * render alike — `STD-a-measured-zero-is-drawn-and-named-an-unmeasured-thing-is`,
+ * ruled after `plan:rulings seq:26`'s re-decision — because rendering alike is
  * not being alike, and `INV-nothing-is-dropped-silently` is about the second.
  *
- * **This is a machine field, not a screen.** What a client DRAWS for
- * `not-projected` is the mockup's business, and the mockup's zero-data
- * toggle (`#empty`) swaps only the coverage screen — it has no zero-data view
- * for the session picker at all. Recorded as an open question for the owner;
- * answering it here would be inventing a screen.
+ * **This is a machine field, and a screen carrying `LedgerPresence` owes it a
+ * distinct panel.** `not-projected` renders as its OWN state — the history
+ * exists but has not been projected, and the panel names the command that
+ * builds it (`mycontext status`) — never as the mockup's zero-data view, which
+ * asserts "nothing here" and would be lying about a corpus injected into a
+ * thousand times. The mockup's own `#empty` toggle only ever swapped the
+ * coverage screen and has no view for this state anywhere; every other screen
+ * that carries this field draws its own, in script, the way this shell already
+ * builds every string it draws.
  */
 export type LedgerPresence = 'ready' | 'not-projected';
 
@@ -1723,10 +1731,16 @@ export interface DecayBody {
  * reason `/api/sessions`' `sessions` does: the array is the answer's shape,
  * `ledger` is its provenance, and only one of them can carry provenance.
  *
- * **WHICH zero-data view the decay screen draws for `report: null` is an open
- * question for the owner.** The mockup's `∅` toggle swaps the coverage screen
- * and nothing else, and `data-p="decay"` has no empty state at all — the same
- * gap `/api/sessions` recorded for the session picker.
+ * **WHICH view the decay screen draws for `report: null` is no longer open —
+ * `STD-a-measured-zero-is-drawn-and-named-an-unmeasured-thing-is` settled it,
+ * the same as it settled `/api/sessions`' identical gap.** Not the mockup's
+ * `∅` toggle, which swaps the coverage screen and nothing else and has no
+ * empty state for `data-p="decay"` at all — `not-projected` is its own panel,
+ * naming `mycontext status` (or `mycontext decay`) as the command that builds
+ * the projection. `drawComb`'s current `if (decay.report === null) return;`
+ * leaves the card silent rather than drawing that panel — a gap this endpoint
+ * records rather than fixes, for the reason `apiDecay`'s own header gives:
+ * `screens/decay.js` is another lane's file.
  *
  * ## `series` is `Ledger.history()`, and it is NOT the comb's source
  *

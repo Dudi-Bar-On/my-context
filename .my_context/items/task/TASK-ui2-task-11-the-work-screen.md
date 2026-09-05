@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: The screen showing proposed changes that are waiting on a person, field by field.
-summary_of: f409a602124b9db7
+summary_of: e608e759cc086fb5
 scope: []
 tags:
   - "plan:ui2"
@@ -14,21 +14,22 @@ tags:
   - v2
   - ui
   - "reconcile:rewritten"
-  - "state:doing"
+  - "state:done"
 origin: human
 source_file: null
 source_anchor: null
 source_checksum: null
 valid_from: 2026-08-20
 valid_until: null
-checksum: b82e695069415f33
+checksum: 2cc9984e0978c830
 plan: ui2
 seq: "11"
-state: doing
+state: done
 progress: "0"
 source: "my-context/docs/superpowers/plans/2026-08-16-web-ui-2-palette-and-work.md#task-11"
 last_change: "2026-08-20T00:00:00Z"
 priority: "3"
+verified_on: 2026-09-05
 ---
 
 # ui2 task 11: The Work screen
