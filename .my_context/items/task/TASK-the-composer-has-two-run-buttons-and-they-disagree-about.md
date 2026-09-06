@@ -1,12 +1,14 @@
 ---
 id: TASK-the-composer-has-two-run-buttons-and-they-disagree-about
 type: task
-title: the composer has two run buttons and they disagree about what a command means
+title: Run is removed from the composer, and Execute is the only verb
 status: active
 severity: soft
 always: false
-summary: Two ways of running the same composed command on one screen return different answers.
-summary_of: c94836ee164b6838
+summary: The command builder loses the older of its two run buttons, so the two can never disagree again.
+summary_of: e61eaf0b1a62f604
+summary_was:
+  - 2026-09-06 Two ways of running the same composed command on one screen return different answers.
 scope:
   - src/ui/public/lib/palette-defs.js
   - src/ui/read-model.ts
@@ -23,42 +25,43 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-09-06
 valid_until: null
-checksum: 442a820e137f3395
+checksum: a243799c6498a568
 plan: builder
 seq: "15"
 state: todo
 priority: "2"
 ---
 
-# the composer has two run buttons and they disagree about what a command means
+# Run is removed from the composer, and Execute is the only verb
 
-Found 2026-09-06 by the D20/D21 lane while proving the owner’s own acceptance case, and NOT
-absorbed into that task on purpose - it is a different defect that happened to be underneath it.
+RE-CUT 2026-09-06 by owner ruling. The task was "reconcile two run buttons that disagree"; it is
+now "remove the older one". See `DEC-run-is-removed-execute-is-the-only-way-to-run-what-the`.
 
-MEASURED. Composing `mycontext list rule` in the Composer and pressing RUN calls
-`endpoint: () => ‘/api/items’`, which ignores `values.category` entirely - and `apiItems` accepts
-no query parameters at all (`unknownParams(url, [])`), so there is nowhere for the category to go
-even if it were passed. The screen answers 965 rows of every type, captioned "965 rows", beneath a
-composed line that says `mycontext list rule`.
+HE ASKED THE QUESTION NOBODY HAD: "why do we need run? because after execute we get run it so maybe
+the run actually not required?" Measured, and he was right. `readTarget` arrived in `e5696b9` when
+the console was read-only and could not run anything; Execute arrived later in `3702b1a`. Run
+covers ~6 read entries, Execute covers 29, and every entry with Run also has Execute. Run is the
+older mechanism kept past the arrival of its replacement.
 
-The EXECUTE path - the real CLI - correctly returns 56 rules.
+WHAT TO REMOVE, and the shape is the point: `readTarget`, the `endpoint` and `screen` fields on the
+catalogue entries that carry them, the Run control, `pal.run` and its Hebrew twin, and whatever
+result-rendering exists ONLY for the fetch path. `resultRows` is shared with Execute’s own
+rendering - check before deleting rather than after.
 
-SO THE SCREEN DISAGREES WITH ITSELF, and that is worse than either answer being wrong alone. A
-reader who presses Run is shown a result that does not match the command written directly above it,
-and nothing on the screen says the two buttons mean different things.
+WHAT MUST SURVIVE: clicking an id in a result opens the item pane. `builder/13` made that work for
+BOTH the structured cell and the text output, and the text path is the one that remains. If the
+structured path was the only one tested anywhere, the test moves rather than dies.
 
-WHY THIS MATTERS BEYOND ONE FLAG. The owner’s standing bar for the Composer is that "a test passes
-only after execute and run it returns correct results". Run is one of the two things that sentence
-names, and for at least one entry it returns a correct-LOOKING result for a different question.
-D12 (`builder/11`) is the exhaustive test of this surface and has never been dispatched; this is a
-sample of what it would find, discovered by accident rather than by the plan.
+THE THREE DEFECTS THIS CLOSES BY CONSTRUCTION, none of which needs its own fix afterwards:
+  - `mycontext list rule` answered 966 rows of every type where the CLI answers 52.
+  - `mycontext help slash` navigated to a screen drawing 4 of the 7 topics its own picker offers.
+  - `pal.run` and `exec.btn` were BOTH `הרצה` - two adjacent buttons, identical Hebrew label. The
+    owner chose `הצגה` for Run before this ruling; that choice is MOOT and must not be applied.
 
-TWO SHAPES, and the choice is a ruling rather than a fix: `/api/items` grows the query parameters
-the composed command implies, or Run refuses for any entry whose composed flags it cannot honour.
-The second is smaller and more honest; the first is what a reader expects. Neither should be chosen
-by whoever happens to be in the file.
+AND THE GLOB HEADER, carried from the original item and still true: its comment claims a 200-file
+cap, which IS real - 200 rows drawn of 1,298 counted. A previous lane misread the count line and
+called the comment stale. The genuinely stale figure beside it (a walk measured at 690, now ~1,298)
+was already corrected. Nothing further is owed here; this paragraph exists so it is not re-found.
 
-ALSO FOUND IN THE SAME PASS, unrelated and much smaller: the glob tester’s own header says the
-endpoint caps at 200 files (`GLOB_SAMPLE_CAP = 200`), and this repo measured 1,298 of 1,298 with
-every row drawn. A comment that is wrong about a cap is the kind of stale claim this project
-measures in days.
+BOTH LANGUAGES, and the removal is where a string table goes stale silently: a key deleted from one
+and left in the other passes every visual check.
