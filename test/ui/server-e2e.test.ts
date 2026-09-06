@@ -749,6 +749,19 @@ const READ_ROUTES = (from: { item: string; session: string | null }): Probe[] =>
   // why it is the cheapest entry on this list and still has to be on it: a
   // route nobody probes is a route nothing proves read-only.
   '/api/flags',
+  // plan:builder seq:4. The parse-without-executing gate, and the one probe on
+  // this list whose subject is a COMMAND — so it is sent an argv that resolves
+  // to a real one, `mycontext review promote --yes` included, rather than a
+  // body that bounces off the 400. That matters twice over here: the sweep
+  // proves the route writes nothing, and the argv it is handed is a command
+  // that plainly WOULD write if anything ran it. A route that answered by
+  // running would leave a promoted draft in the corpus, and the byte-identical
+  // assertion this whole file is built on is what would catch it.
+  {
+    path: '/api/command/check',
+    method: 'POST',
+    body: { argv: ['mycontext', 'review', 'promote', 'RULE-x', '--yes'] },
+  },
   // plan:library seq:1. The Library's command-line card: the picker's roster,
   // and one subject at a time. Two probes rather than one, and the second is a
   // CONCRETE address rather than a template, because the parameterised route is

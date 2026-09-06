@@ -97,6 +97,7 @@ import {
   apiSimulateSweep, apiStatus, apiTags, apiTutorials, apiTutorialDoc,
 } from './read-model.ts';
 import { registerCliHelpRoutes } from './read-model-cli-help.ts';
+import { registerCommandRoutes } from './read-model-command.ts';
 import { registerFlagRoutes } from './read-model-flags.ts';
 import { registerConfigRoutes } from './read-model-config.ts';
 import { registerWorkRoutes } from './read-model-work.ts';
@@ -582,6 +583,14 @@ export function registerReadRoutes(): void {
   // reasons as the two calls above for registering it here rather than beside
   // the server start.
   registerFlagRoutes();
+  // plan:builder seq:4. `POST /api/command/check` — the same tables again,
+  // asked the other question: not "what does this command take" but "would the
+  // parser accept THIS line". It is a POST because a composed argv is a body,
+  // and it is on this read-only server because it ANSWERS rather than acts:
+  // nothing in its import graph can start a process, and
+  // `test/ui/command-check.test.ts` holds it to that. Registered here for the
+  // same two reasons as the calls above.
+  registerCommandRoutes();
   // plan:library seq:1. The same two tables again, plus the help topics, the
   // MCP tool schemas and the committed slash-command files — served SUBJECT BY
   // SUBJECT rather than all at once, because the Library's picker asks about
