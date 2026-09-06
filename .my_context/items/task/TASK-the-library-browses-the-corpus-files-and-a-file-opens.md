@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: A reader walks the corpus as a nested folder tree, drilling into a folder and back out, and opens a file rendered in its own tab.
-summary_of: a8b003fb87457896
+summary_of: 4f4717779c6cf198
 summary_was:
   - 2026-09-06 A reader walks the corpus as a folder tree, reusing the tree control the coverage screen already has, and opens a file rendered in its own tab.
   - 2026-09-06 A reader can walk the corpus as folders and files and open any one of them formatted the way the documents already are.
@@ -22,18 +22,19 @@ tags:
   - docs
   - "plan:library"
   - "seq:2"
-  - "state:todo"
+  - "state:done"
 origin: human
 source_file: null
 source_anchor: null
 source_checksum: null
 valid_from: 2026-09-06
 valid_until: null
-checksum: 0dbf1099ca8599bc
+checksum: 3851bed331ab423f
 plan: library
 seq: "2"
-state: todo
+state: done
 priority: "3"
+verified_on: 2026-09-06
 ---
 
 # the library browses the corpus files, and a file opens rendered in its own tab

@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: Three ways to tell the system you want to wrap up now, all reaching the same single decision underneath.
-summary_of: df52f2c33b50dfa4
+summary_of: 089f742ec92dab55
 scope:
   - src/core/handover-ask.ts
   - src/cli/**
@@ -19,18 +19,19 @@ tags:
   - mcp
   - "plan:handover"
   - "seq:14"
-  - "state:todo"
+  - "state:done"
 origin: human
 source_file: null
 source_anchor: null
 source_checksum: null
 valid_from: 2026-09-06
 valid_until: null
-checksum: 1dc65ca0e38b196f
+checksum: 5319526de5e98fad
 plan: handover
 seq: "14"
-state: todo
+state: done
 priority: "2"
+verified_on: 2026-09-06
 ---
 
 # a handover is asked for on demand from the CLI, a slash command and an MCP tool

@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: A reader can look up any command or flag and get a plain explanation and a worked example without leaving the console.
-summary_of: 8d7a9b18afeb77ed
+summary_of: b6e41ce84361283f
 scope:
   - src/ui/public/screens/library.js
   - src/help/**
@@ -18,18 +18,19 @@ tags:
   - docs
   - "plan:library"
   - "seq:1"
-  - "state:todo"
+  - "state:done"
 origin: human
 source_file: null
 source_anchor: null
 source_checksum: null
 valid_from: 2026-09-06
 valid_until: null
-checksum: 9400b9070be54bd5
+checksum: 5d8192d4908be141
 plan: library
 seq: "1"
-state: todo
+state: done
 priority: "3"
+verified_on: 2026-09-06
 ---
 
 # the library explains the command line: every switch, parameter and option, with examples
