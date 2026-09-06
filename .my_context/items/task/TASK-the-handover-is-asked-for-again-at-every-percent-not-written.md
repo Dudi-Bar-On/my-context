@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: The handover is requested once and then never again while the window fills for hours, so it describes work that stopped being current.
-summary_of: d923188f16749702
+summary_of: 283f62336645a4cf
 scope:
   - src/hooks/stop.ts
   - src/core/handover-ask.ts
@@ -17,18 +17,19 @@ tags:
   - hooks
   - "plan:handover"
   - "seq:12"
-  - "state:todo"
+  - "state:done"
 origin: human
 source_file: null
 source_anchor: null
 source_checksum: null
 valid_from: 2026-09-06
 valid_until: null
-checksum: cb84ff7430713a57
+checksum: 5265f14d4650e41a
 plan: handover
 seq: "12"
-state: todo
+state: done
 priority: "1"
+verified_on: 2026-09-06
 ---
 
 # the handover is asked for again at every percent, not written once and left to go stale
