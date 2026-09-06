@@ -706,7 +706,21 @@ export async function render(root, ctx) {
   docs.dataset.role = 'content';
   // Both cards are in the DOM before either fetch, so the screen's composition
   // is the same shape whether a read answers, refuses or is still in flight.
-  two.append(tuts, docs);
+  //
+  // The right-hand side is a STACK rather than a single card, owner request
+  // 2026-09-06. Measured before changing it: Documents is ~204px tall beside a
+  // Tutorials roster that runs to ~749px, so 545px of the right column was
+  // dead while three cards sat full-width underneath it.
+  //
+  // The nav card stays a DIRECT child of `.two` deliberately —
+  // `.two.align-top>[data-role="nav"]` is the selector that makes it sticky,
+  // and wrapping the other side leaves that untouched. `.libcol` carries
+  // `min-inline-size:0` for the reason this screen already learned once: a
+  // grid child's default minimum is its content, and the flag tables in the
+  // command-line card are wide.
+  const side = el('div', 'libcol');
+  side.append(docs);
+  two.append(tuts, side);
 
   const tutHead = el('h3');
   tutHead.append(...ctx.t('lib.tuts'));
@@ -772,7 +786,7 @@ export async function render(root, ctx) {
   const like = el('p', 'small');
   like.append(...ctx.t('lib.github'));
   notes.append(tab, spaced(like));
-  root.append(notes);
+  side.append(notes);
 
   /**
    * **The command-line half** —
@@ -792,5 +806,5 @@ export async function render(root, ctx) {
    * reads and a reader looking for a tutorial should not wait on the flag
    * tables to arrive.
    */
-  await paintCliHelp(ctx, root);
+  await paintCliHelp(ctx, side);
 }

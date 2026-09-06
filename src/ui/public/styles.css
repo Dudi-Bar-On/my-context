@@ -2071,6 +2071,19 @@ body>svg[aria-hidden="true"]{display:none}
 .two{display:grid;grid-template-columns:1fr 1fr;gap:var(--sp-3)}
 @media (max-width:1000px){.two{grid-template-columns:1fr}}
 
+/* `.libcol` — one column of `.two` holding a STACK of cards rather than one
+   card. Owner request 2026-09-06: the Library's Documents card is ~204px tall
+   beside a ~749px Tutorials roster, so the right column was 545px of dead
+   space while three cards queued full-width below it.
+
+   `min-inline-size:0` is the load-bearing declaration, not the flex. A grid
+   item's automatic minimum size is its MIN-CONTENT, so a child that cannot
+   wrap — the flag tables and pasted example lines in the command-line card —
+   pushes the track wider than its `1fr` share and the page grows a horizontal
+   scrollbar. This screen has now been bitten by that twice, once by a 942-
+   option `<select>` and once by a 600-character example line. */
+.libcol{display:flex;flex-direction:column;gap:var(--sp-3);min-inline-size:0}
+
 /* `.two.align-top` — a NEW modifier, not a change to `.two` itself (coverage.js
    also composes `.two` and is out of this task's scope; a bare selector would
    have reached it too). Grid's default `align-items:stretch` is right for
