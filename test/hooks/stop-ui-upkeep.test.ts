@@ -501,3 +501,45 @@ test('a stale stand-down says which stand-down it was, in the note and on stderr
     'the two stand-downs make opposite claims about whether anything is serving the port, and ' +
     'the log recorded them identically');
 });
+
+/* ---------------------------------------------------------------------------
+ * `plan:governance seq:4` — the discarded state write reaches the log.
+ *
+ * `core/ui-server-upkeep.ts` still throws a failed state write away on purpose,
+ * and these tests do not ask it to stop. What they hold is the half the item
+ * actually disputed: that the failure was invisible. The row `Stop` was already
+ * writing for that turn is where it becomes visible, and counting the rows that
+ * carry the clause is how a person tells three a day from three thousand.
+ * ------------------------------------------------------------------------- */
+
+test('a discarded state write is written into the row Stop was already writing', () => {
+  const sb = sandbox({ port: PORT });
+  const note = runStop(sb, { did: 'spawned', port: PORT, stateWriteDiscarded: true })
+    .rows[0].note ?? '';
+
+  // Both clauses: the act happened AND its record was lost. Reporting only one
+  // of them would be a row that either hides a spawn or hides why the next call
+  // may spawn again.
+  assert.match(note, new RegExp(`started on port ${PORT}`, 'u'));
+  assert.match(note, /could not record its own state/u);
+  assert.match(note, /ui-server-upkeep\.json/u,
+    'the clause has to NAME the file, because the rate is read by counting these rows and a ' +
+    'sentence nobody can grep for is the invisibility this replaced');
+});
+
+test('the clause rides a QUIET turn too — where nearly every discard actually happens', () => {
+  const sb = sandbox({ port: PORT });
+  const quiet = runStop(sb, { did: 'nothing', why: 'alive', stateWriteDiscarded: true })
+    .rows[0].note ?? '';
+  assert.match(quiet, /could not record its own state/u,
+    'an `alive` turn reports nothing by design, and that is exactly the turn a discarded write ' +
+    'is most likely to happen on — a clause that only rode along with a spawn would miss almost ' +
+    'all of them');
+
+  // And the ordinary quiet turn is untouched: no clause, no noise, on a hook
+  // that fires at the end of every assistant turn.
+  const clean = sandbox({ port: PORT });
+  const ordinary = runStop(clean, { did: 'nothing', why: 'alive' }).rows[0].note ?? '';
+  assert.doesNotMatch(ordinary, /could not record/u);
+  assert.match(ordinary, /the assistant turn ended/u, 'the row lost what it has always said');
+});

@@ -82,7 +82,9 @@
  * whose cause never resolves still needs a person.
  */
 import { spawn } from 'node:child_process';
-import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs';
+import {
+  existsSync, mkdirSync, readFileSync, renameSync, rmSync, writeFileSync,
+} from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import type { Config } from './config.ts';
@@ -187,7 +189,7 @@ const STATE_FILE = 'ui-server-upkeep.json';
  * assistant turn, is the chattiness this module has refused since it was
  * written. It is a field in the state file, not a line.
  */
-export type Upkeep =
+export type Upkeep = (
   | {
     did: 'nothing';
     why:
@@ -196,7 +198,27 @@ export type Upkeep =
   }
   | { did: 'spawned'; port: number }
   | { did: 'restarted'; port: number }
-  | { did: 'stood-down'; why: 'spawn' | 'stale'; failures: number };
+  | { did: 'stood-down'; why: 'spawn' | 'stale'; failures: number }
+) & {
+  /**
+   * **Set, and set to `true`, exactly when this call's state write was
+   * discarded** — `plan:governance seq:4`. Absent otherwise, including on the
+   * paths that attempt no write at all.
+   *
+   * It is a report of an event rather than a measurement of a quantity, which
+   * is why absent is a complete answer here where `STD-absent-vs-zero` would
+   * demand a number elsewhere: at most one write happens per call, so the fact
+   * is binary, and every path that could have produced it goes through
+   * `recorded`. The rate this is really about is recovered by COUNTING the
+   * audit rows that carry the clause, which is a thing a person can do and the
+   * temp-file litter it replaces was not.
+   *
+   * On a discarded write the act above still happened — a server really was
+   * spawned or restarted — and only the RECORD of it was lost. That is why this
+   * is a field beside the act and not a fifth `did`.
+   */
+  stateWriteDiscarded?: true;
+};
 
 /**
  * **What the last call concluded, written into the state file so that a reader
@@ -496,17 +518,83 @@ function readState(root: string): UpkeepState {
  * A failure is discarded because there is nobody to tell and nothing better to
  * do: the next call reads `FRESH`, which is one extra spawn attempt at worst,
  * still behind the floor as soon as one write succeeds.
+ *
+ * ── WHAT `plan:governance seq:4` CHANGED, AND WHAT IT DELIBERATELY DID NOT ──
+ *
+ * **Not the discard.** The paragraph above is the design and it is still the
+ * design: a lost write costs one extra spawn attempt and the floor is restored
+ * by the next write that lands. Nothing here retries, blocks, throws or tells
+ * the model.
+ *
+ * **What changed is that the failure stops being invisible**, which is the
+ * whole of that item. Two things were wrong with the silence:
+ *
+ *  1. **The temp file was left behind.** MEASURED 2026-09-06: nine orphaned
+ *     `ui-server-upkeep.json.tmp-<pid>` files, every pid dead, the oldest three
+ *     days old, all 209-224 bytes — which is a COMPLETE state document, so what
+ *     failed was the `renameSync` and not the write. (A rename over a target
+ *     another process has open is the ordinary way that happens on Windows.)
+ *     They are unlinked here now, on the one path that knows the temp's name.
+ *  2. **Nothing counted them.** The answer is the return value: `false` travels
+ *     to the caller, which is `upkeepUiServer`, which puts it in the `Upkeep`
+ *     it returns, which `hooks/stop.ts` writes into the audit row it was
+ *     already writing for that turn. No new file, no new write, and the log is
+ *     where a RATE can be read — three a day is litter, three thousand is a
+ *     floor that has stopped holding and a server being respawned far more
+ *     often than once a minute, and until now those two looked identical from
+ *     outside.
+ *
+ * **Why the count cannot live in the state file**, which is the obvious place
+ * and is the wrong one: the file whose write just failed is the file that would
+ * have to record it, and every process here writes it at most once — so a
+ * counter kept in memory dies with the hook process that saw the failure, and a
+ * counter kept in the file is a counter the failure prevented from being
+ * written. The audit row is the nearest durable sink that is not the casualty.
+ *
+ * The unlink is itself wrapped and its own failure is discarded, for this
+ * function's standing reason. A temp that cannot be removed is exactly the
+ * litter that was there before, which is a state this code already survived.
  */
-function writeState(root: string, state: UpkeepState): void {
+function writeState(root: string, state: UpkeepState): boolean {
+  const target = upkeepStatePath(root);
+  // Named OUTSIDE the `try`, because the failure path needs it: the whole point
+  // is that a discarded write must not leave the file it half-finished behind.
+  const tmp = `${target}.tmp-${process.pid}`;
   try {
-    const target = upkeepStatePath(root);
     mkdirSync(path.dirname(target), { recursive: true });
-    const tmp = `${target}.tmp-${process.pid}`;
     writeFileSync(tmp, `${JSON.stringify(state, null, 2)}\n`, 'utf8');
     renameSync(tmp, target);
+    return true;
   } catch {
     /* a clock that could not be written is one the next call re-derives */
+    try {
+      // `force` so the commonest failure — `mkdirSync` refusing, with no temp
+      // ever created — is not itself an error to swallow twice.
+      rmSync(tmp, { force: true });
+    } catch { /* the litter this is here to prevent, and it was survivable */ }
+    return false;
   }
+}
+
+/**
+ * **One write, one result, and the result says whether the write landed** —
+ * `plan:governance seq:4`.
+ *
+ * Every writing path in this module is the same two lines: record the state,
+ * then return what the call amounted to. They are paired here so that no path
+ * can report an outcome while quietly having failed to record it — which is
+ * exactly what all of them did until 2026-09-07, and what made a discarded
+ * write invisible even to the row being written about the same turn.
+ *
+ * `stateWriteDiscarded` is set only when the write was discarded, and its
+ * absence is a MEASURED no rather than an unmeasured one: every result that
+ * comes through here knows the answer, and the results that do not come through
+ * here (`off`, `disabled`, the probe floor) attempted no write at all — an
+ * absence they already carry unambiguously in `why`, exactly as `UpkeepOutcome`
+ * argues for the state file's own missing values.
+ */
+function recorded(root: string, state: UpkeepState, result: Upkeep): Upkeep {
+  return writeState(root, state) ? result : { ...result, stateWriteDiscarded: true };
 }
 
 /**
@@ -674,7 +762,7 @@ function recordServerSeen(
   root: string, next: UpkeepState, seen: 'alive' | 'port-already-serving',
 ): Upkeep {
   const lifted = next.stoodDown;
-  writeState(root, {
+  return recorded(root, {
     ...next,
     // The counter resets on a SUCCESSFUL PROBE, not on a successful spawn:
     // spawning proves nothing (see `Upkeep`), and a server that came back is
@@ -683,8 +771,7 @@ function recordServerSeen(
     consecutiveSpawnFailures: 0,
     stoodDown: false,
     lastOutcome: lifted ? 'stood-down-lifted' : seen,
-  });
-  return { did: 'nothing', why: lifted ? 'stood-down-lifted' : seen };
+  }, { did: 'nothing', why: lifted ? 'stood-down-lifted' : seen });
 }
 
 /**
@@ -747,8 +834,8 @@ function restartStaleServer(
   // running, so a server that comes back FRESH still lifts this through
   // `recordServerSeen`.
   if (next.stoodDown) {
-    writeState(root, { ...next, lastOutcome: 'stood-down' });
-    return { did: 'nothing', why: 'stood-down' };
+    return recorded(
+      root, { ...next, lastOutcome: 'stood-down' }, { did: 'nothing', why: 'stood-down' });
   }
 
   if (next.spawnPending) {
@@ -756,8 +843,11 @@ function restartStaleServer(
     next.consecutiveSpawnFailures += 1;
     next.lastOutcome = 'restart-failed';
     if (next.consecutiveSpawnFailures >= MAX_CONSECUTIVE_SPAWN_FAILURES) {
-      writeState(root, { ...next, stoodDown: true, lastOutcome: 'stood-down-stale' });
-      return { did: 'stood-down', why: 'stale', failures: next.consecutiveSpawnFailures };
+      return recorded(
+        root,
+        { ...next, stoodDown: true, lastOutcome: 'stood-down-stale' },
+        { did: 'stood-down', why: 'stale', failures: next.consecutiveSpawnFailures },
+      );
     }
   }
 
@@ -766,8 +856,8 @@ function restartStaleServer(
   // storm this floor exists to prevent, bought for a page that is merely out of
   // date rather than absent.
   if (!due(next.lastSpawnAt, now, SPAWN_INTERVAL_MS)) {
-    writeState(root, { ...next, lastOutcome: 'too-soon' });
-    return { did: 'nothing', why: 'too-soon' };
+    return recorded(
+      root, { ...next, lastOutcome: 'too-soon' }, { did: 'nothing', why: 'too-soon' });
   }
 
   // Stop, then start. The old process holds the port, so a spawn without the
@@ -775,10 +865,11 @@ function restartStaleServer(
   // occupancy check below where it is.
   stopServer(server.pid, deps.killFn ?? process.kill);
   startServer(port, deps.spawnFn ?? spawn, server.workspace);
-  writeState(root, {
-    ...next, lastSpawnAt: now, spawnPending: true, lastOutcome: 'restarted-stale',
-  });
-  return { did: 'restarted', port };
+  return recorded(
+    root,
+    { ...next, lastSpawnAt: now, spawnPending: true, lastOutcome: 'restarted-stale' },
+    { did: 'restarted', port },
+  );
 }
 
 /**
@@ -913,8 +1004,8 @@ export async function upkeepUiServer(
   // discloses on the latter, and it is emitted on exactly one call — the one
   // that gives up, below.
   if (next.stoodDown) {
-    writeState(root, { ...next, lastOutcome: 'stood-down' });
-    return { did: 'nothing', why: 'stood-down' };
+    return recorded(
+      root, { ...next, lastOutcome: 'stood-down' }, { did: 'nothing', why: 'stood-down' });
   }
 
   // A spawn is judged HERE and nowhere else. `spawn` not throwing says only
@@ -929,8 +1020,11 @@ export async function upkeepUiServer(
     next.consecutiveSpawnFailures += 1;
     next.lastOutcome = 'spawn-failed';
     if (next.consecutiveSpawnFailures >= MAX_CONSECUTIVE_SPAWN_FAILURES) {
-      writeState(root, { ...next, stoodDown: true, lastOutcome: 'stood-down' });
-      return { did: 'stood-down', why: 'spawn', failures: next.consecutiveSpawnFailures };
+      return recorded(
+        root,
+        { ...next, stoodDown: true, lastOutcome: 'stood-down' },
+        { did: 'stood-down', why: 'spawn', failures: next.consecutiveSpawnFailures },
+      );
     }
   }
 
@@ -943,11 +1037,14 @@ export async function upkeepUiServer(
     // failure it would hide is already counted in `consecutiveSpawnFailures`,
     // and `lastOutcome` answers "what did the LAST call decide", not "what is
     // the worst thing that has happened".
-    writeState(root, { ...next, lastOutcome: 'too-soon' });
-    return { did: 'nothing', why: 'too-soon' };
+    return recorded(
+      root, { ...next, lastOutcome: 'too-soon' }, { did: 'nothing', why: 'too-soon' });
   }
 
   startServer(port, deps.spawnFn ?? spawn);
-  writeState(root, { ...next, lastSpawnAt: now, spawnPending: true, lastOutcome: 'spawned' });
-  return { did: 'spawned', port };
+  return recorded(
+    root,
+    { ...next, lastSpawnAt: now, spawnPending: true, lastOutcome: 'spawned' },
+    { did: 'spawned', port },
+  );
 }

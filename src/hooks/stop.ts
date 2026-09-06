@@ -1,4 +1,4 @@
-import { handoverThresholdPercent } from '../core/config.ts';
+import { handoverAskMuted, handoverThresholdPercent } from '../core/config.ts';
 import {
   occupancyStandDownLine, readOccupancy, type UnmeasurableWhy,
 } from '../core/context-occupancy.ts';
@@ -259,6 +259,12 @@ function standDownOnce(root: string, sessionId: string, why: UnmeasurableWhy): v
  *     file reads at all — and so that it stays silent on stderr too: a
  *     mechanism nobody configured promised nothing, so it has nothing to
  *     disclose and no business asking anyone to install a status-line bridge.
+ *  2b. **The ask is MUTED** — `thresholdPercent: "never"`, `plan:handover
+ *     seq:11`. A third state of the threshold rather than a switch beside it,
+ *     and it silences THIS gate only: the handover is still delivered, and a
+ *     person can still ask for one on demand. It sits with gate 2 because it
+ *     buys gate 2's two properties — no further file reads, and nothing said on
+ *     stderr about a mechanism the user has switched off.
  *  3. **No measurement.** Stand down, once, and never guess.
  *  4. **Below the threshold.** `>=`, so an exact crossing counts; a threshold
  *     nobody can land on is a threshold with an off-by-one in it.
@@ -319,6 +325,27 @@ function handoverAsk(
   const handover = handoverConfigAt(root);
   if (handover === null) return null;
 
+  // ── GATE 2b: THE ASK IS MUTED — `plan:handover seq:11` ────────────────────
+  //
+  // `thresholdPercent: "never"`, and this is the one place in the product that
+  // acts on it. It sits with gate 2 rather than beside the threshold comparison
+  // below for gate 2's own reasons, both of which apply unchanged: a workspace
+  // that has muted the ask does no occupancy read, writes no latch and — the
+  // half that would otherwise be a defect — never writes the stand-down line,
+  // which asks the user to go and install a status-line bridge for a mechanism
+  // they have just switched off.
+  //
+  // **What is NOT gated here, and it is the constraint the whole third state is
+  // shaped around.** The DELIVERY is untouched: the continuity tier still hands
+  // the marked section to a new session, because nothing in that path reads a
+  // threshold. And the ON-DEMAND ask is untouched: `askHandoverNow` does not
+  // call `handoverAskMuted` and must not, so a person who muted the automatic
+  // ask can still type `mycontext handover ask` and get exactly the ask they
+  // asked for. That asymmetry is the item's load-bearing sentence — a person
+  // asking explicitly is not the thing being muted — and it only holds while
+  // this gate lives in `Stop` rather than in `core/handover-ask.ts`.
+  if (handoverAskMuted(handover)) return null;
+
   const occupancy = readOccupancy(root, sessionId);
   if (occupancy.state !== 'known') {
     standDownOnce(root, sessionId, occupancy.why);
@@ -329,6 +356,12 @@ function handoverAsk(
   // means the user never chose one, and 98 is what an unchosen threshold means
   // (`core/config.ts` argues both halves where they are declared).
   const threshold = handoverThresholdPercent(handover);
+  // `null` is the MUTE and nothing else, and gate 2b above has already returned
+  // on it. This line is the compiler being shown that rather than a second gate:
+  // `handoverThresholdPercent` answers `number | null` precisely so that no
+  // caller can compare a threshold that does not exist with `<`, and a hook that
+  // silently fell back to 98 here would ask a user who wrote `"never"`.
+  if (threshold === null) return null;
   if (occupancy.percent < threshold) return null;
 
   // The whole percent this reading belongs to, clamped at 100 and `null` for a
@@ -455,6 +488,11 @@ function askParagraph(
  */
 export function upkeepNote(upkeep: Upkeep | null): string {
   if (upkeep === null) return '';
+  return actClause(upkeep) + discardedWriteClause(upkeep);
+}
+
+/** What the upkeep DID, or `''` — the clause `upkeepNote` has always written. */
+function actClause(upkeep: Upkeep): string {
   if (upkeep.did === 'spawned') {
     return `; no UI server was answering, so one was started on port ${upkeep.port}`;
   }
@@ -469,6 +507,38 @@ export function upkeepNote(upkeep: Upkeep | null): string {
     return `; the UI server upkeep stood down after ${after}`;
   }
   return '';
+}
+
+/**
+ * **A state write the upkeep threw away, said out loud once** —
+ * `plan:governance seq:4`.
+ *
+ * The discard is deliberate and stays deliberate: `writeState` explains why a
+ * lost clock costs one extra spawn attempt and nothing more. What that item
+ * disputed is that it was INVISIBLE — nothing counted it, and the only trace
+ * was an orphaned temp file in a gitignored directory nobody reads. Nine of
+ * them accumulated over three days without anyone noticing, and the reason that
+ * matters is the RATE: three a day is a healthy mechanism, three thousand is a
+ * spawn floor that has stopped holding, and from outside the two looked
+ * identical.
+ *
+ * **It appends even when `actClause` is empty**, which is the ordinary case: the
+ * turns where a write is discarded are overwhelmingly `alive` and `too-soon`
+ * turns, and a clause that only rode along with a spawn would miss almost all of
+ * them. That is a departure from `upkeepNote`'s rule that only what HAPPENED is
+ * reported, and it is within the rule rather than against it — a failed write is
+ * something that happened, it is rare (three rows a day on the measurement
+ * above), and if it ever stops being rare that is the alarm this exists to ring.
+ *
+ * The file is NAMED so that the sentence can be counted mechanically: the rate
+ * is recovered by counting the rows that carry it, which is what nothing could
+ * do while the only record was a file count.
+ */
+function discardedWriteClause(upkeep: Upkeep): string {
+  if (upkeep.stateWriteDiscarded !== true) return '';
+  return '; the UI server upkeep could not record its own state this turn — the write to '
+    + 'state/ui-server-upkeep.json was discarded by design, so the next call re-derives its '
+    + 'clocks and may spawn one more time than the floor would have allowed';
 }
 
 export function observeStop(

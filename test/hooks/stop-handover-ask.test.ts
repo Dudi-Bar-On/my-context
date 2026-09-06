@@ -45,7 +45,9 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { runCli } from '../../src/cli/index.ts';
 import { readAudit, type AuditRecord } from '../../src/core/audit.ts';
-import { readLatch } from '../../src/core/handover-ask.ts';
+import {
+  handoverConfigAt, latchPath, readLatch, NO_LATCH,
+} from '../../src/core/handover-ask.ts';
 import { CONTEXT_SAMPLE_FRESH_MS } from '../../src/core/context-occupancy.ts';
 import { writeTee } from '../../src/core/statusline-tee.ts';
 import { resolveWorkspace } from '../../src/core/workspace.ts';
@@ -98,7 +100,9 @@ let sessionCounter = 0;
  */
 function sandbox(options: {
   handoverPath?: string | null;
-  thresholdPercent?: number;
+  /** `'never'` is the MUTE — `plan:handover seq:11`, and the reason this is not
+   * simply `number`. */
+  thresholdPercent?: number | 'never';
 } = {}): Sandbox {
   const cwd = mkdtempSync(path.join(tmpdir(), 'myctx-stop-ask-'));
   roots.push(cwd);
@@ -537,7 +541,7 @@ test('lowering the threshold mid-session can ask again; raising it cannot', () =
 });
 
 /** Rewrites just `handover.thresholdPercent`, leaving the rest of the config alone. */
-function retarget(sb: Sandbox, thresholdPercent: number): void {
+function retarget(sb: Sandbox, thresholdPercent: number | 'never'): void {
   const file = path.join(sb.root, 'config.json');
   const raw = JSON.parse(readFileSync(file, 'utf8')) as { handover?: Record<string, unknown> };
   raw.handover = { ...raw.handover, thresholdPercent };
@@ -727,4 +731,71 @@ test('a workspace with no handover key still records the turn', () => {
 test('an observation that sets no context writes no envelope at all', () => {
   const sb = sandbox({ handoverPath: null });
   assert.equal(runStop(sb, { percent: 99 }).stdout, '');
+});
+
+/* ---------------------------------------------------------------------------
+ * `plan:handover seq:11` — the ask MUTED, and the delivery kept.
+ *
+ * `thresholdPercent: "never"` is a person saying *deliver this handover, never
+ * ask me for it*. Until it existed the only off switch removed the `handover`
+ * key, which also removes the injection they wanted to keep.
+ *
+ * Two claims are held here and the second is the one that could rot silently:
+ * `Stop` says nothing at any occupancy, and it says nothing WITHOUT having
+ * turned the mechanism off — unmute the same session and the very next turn
+ * asks. A gate written one line too far up (before the config read, say, or by
+ * making `handoverConfigAt` return `null`) would pass the first assertion and
+ * fail the second, and would have quietly disabled the delivery too.
+ * ------------------------------------------------------------------------- */
+
+test('with the ask muted, Stop is silent at every occupancy and latches nothing', () => {
+  const sb = sandbox({ thresholdPercent: 'never' });
+  for (const percent of [40, 98, 99.9, 100]) {
+    const turn = runStop(sb, { percent });
+    assert.equal(turn.stdout, '',
+      `Stop asked at ${percent}% with the ask muted. "never" is the one value that promises ` +
+      'it will not, and a mute that fires at the top of the window is worse than no mute');
+    assert.equal(turn.stderr, '',
+      'the muted path spoke to the user. A person who switched the ask off must not then be ' +
+      'asked to install a status-line bridge for it');
+  }
+  // NOTHING was written for this session: no ask, no percent, no stand-down.
+  // The latch is the record every other surface reads, so a mute that still
+  // stamped one would put an ask on the strip that never happened.
+  assert.deepEqual(readLatch(sb.root, sb.session), NO_LATCH);
+  assert.equal(existsSync(latchPath(sb.root, sb.session)), false);
+  // And the turn is still recorded, exactly as on every other silent turn.
+  assert.equal(stopRows(runStop(sb, { percent: 99 })).length, 5);
+});
+
+test('the mute is the ONLY thing silencing it — unmuted, the same session is asked', () => {
+  const sb = sandbox({ thresholdPercent: 'never' });
+  assert.equal(runStop(sb, { percent: 99 }).stdout, '', 'muted');
+
+  retarget(sb, 98);
+  const asked = askedText(runStop(sb, { percent: 99 }));
+  assert.ok(asked, 'unmuting did not restore the ask, so the mute had switched the mechanism ' +
+    'off rather than quieting it');
+  assert.match(asked, /reports\/H\.md/u);
+  assert.equal(readLatch(sb.root, sb.session).askedAtPercent, 99);
+
+  // And back again, on the same session and the same window: the next whole
+  // percent would have earned another ask, and the mute takes it away.
+  retarget(sb, 'never');
+  assert.equal(runStop(sb, { percent: 100 }).stdout, '',
+    'a session already asked once kept asking after being muted');
+});
+
+test('a muted workspace still has its handover CONFIGURED — the delivery is untouched', () => {
+  const sb = sandbox({ thresholdPercent: 'never' });
+  const handover = handoverConfigAt(sb.root);
+  // The half of the feature the mute must not reach. `select()` and the
+  // continuity tier read `path`, `marker` and `budgetTokens` and never a
+  // threshold, so what pins the delivery here is that the block is still THERE
+  // and complete — `handoverConfigAt` returning `null` is the whole feature off,
+  // which is precisely the switch this state exists to avoid needing.
+  assert.ok(handover, 'the mute switched the whole handover off');
+  assert.equal(handover.path, 'reports/H.md');
+  assert.equal(handover.thresholdPercent, 'never');
+  assert.equal(handover.budgetTokens, 1200);
 });

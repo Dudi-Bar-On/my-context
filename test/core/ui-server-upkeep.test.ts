@@ -1189,3 +1189,113 @@ test('a workspace that is no longer there is not passed to spawn', async () => {
     await close();
   }
 });
+
+/* ---------------------------------------------------------------------------
+ * `plan:governance seq:4` — A DISCARDED STATE WRITE IS COUNTED, AND LEAVES
+ * NOTHING BEHIND.
+ *
+ * `writeState` writes `<target>.tmp-<pid>` and renames it, inside a try/catch
+ * that discards failures on purpose — a lost clock costs one extra spawn
+ * attempt and the floor is restored by the next write that lands. THAT DESIGN
+ * IS NOT WHAT THESE TESTS DISPUTE and nothing below asks the write to be
+ * retried, awaited or thrown.
+ *
+ * What they hold is the two things the item found wrong with the SILENCE:
+ * nothing counted the failures, and the temp file was left where it fell —
+ * measured 2026-09-06 as nine orphans, every pid dead, the oldest three days
+ * old, all of them 209-224 bytes, which is a complete state document and
+ * therefore a failed RENAME rather than a failed write.
+ *
+ * **The fixture reproduces exactly that failure**: a DIRECTORY where the state
+ * file goes. The temp write succeeds and the rename cannot, on every platform,
+ * without a permission bit that Windows would ignore.
+ * ------------------------------------------------------------------------- */
+
+/** Makes the state file unwritable-over by putting a directory in its place. */
+function blockTheStateFile(sb: Sandbox): void {
+  mkdirSync(upkeepStatePath(sb.root), { recursive: true });
+}
+
+/** Every `ui-server-upkeep.json.tmp-*` left in the state directory. */
+function orphanTemps(sb: Sandbox): string[] {
+  return readdirSync(sb.stateDir).filter((name) => name.includes('.tmp-'));
+}
+
+test('a discarded state write is REPORTED, and the act it belongs to still happened', async () => {
+  const sb = sandbox();
+  blockTheStateFile(sb);
+  const spawner = fakeSpawn();
+
+  const result = await upkeepUiServer(sb.root, CONFIGURED, NOW, {
+    globalRoot: sb.globalRoot, spawnFn: spawner.fn, portAcceptsFn: NOTHING_ON_THE_PORT,
+  });
+
+  // The act is unchanged — a server really was started — and the flag says only
+  // that the RECORD of it was lost. A discard that suppressed the spawn would be
+  // a different and much worse change than the one this item asked for.
+  assert.equal(result.did, 'spawned');
+  assert.equal(spawner.calls.length, 1, 'the spawn was skipped because a write failed');
+  assert.equal(result.stateWriteDiscarded, true,
+    'the write was discarded and the result said nothing about it, which is the whole defect: ' +
+    'a rate nobody can read looks exactly like a mechanism that is healthy');
+});
+
+test('the temp file a discarded write leaves is UNLINKED, so nothing accumulates', async () => {
+  const sb = sandbox();
+  blockTheStateFile(sb);
+  const spawner = fakeSpawn();
+
+  for (let i = 0; i < 3; i += 1) {
+    // Three probe intervals apart, so each call genuinely reaches a write rather
+    // than being refused by the probe floor. Each one fails the same way.
+    const at = NOW + i * (PROBE_FLOOR_MS + 1_000);
+    const result = await upkeepUiServer(sb.root, CONFIGURED, at, {
+      globalRoot: sb.globalRoot, spawnFn: spawner.fn, portAcceptsFn: NOTHING_ON_THE_PORT,
+    });
+    assert.equal(result.stateWriteDiscarded, true, `call ${i} did not report its discard`);
+  }
+
+  assert.deepEqual(orphanTemps(sb), [],
+    'a failed write left its temp file behind. Three days of that produced nine orphans and ' +
+    'no other trace of anything being wrong, which is the litter half of this item');
+});
+
+test('a write that LANDS reports nothing, and leaves no temp file either', async () => {
+  const sb = sandbox();
+  const spawner = fakeSpawn();
+  const result = await upkeepUiServer(sb.root, CONFIGURED, NOW, {
+    globalRoot: sb.globalRoot, spawnFn: spawner.fn, portAcceptsFn: NOTHING_ON_THE_PORT,
+  });
+
+  assert.deepEqual(result, { did: 'spawned', port: PORT },
+    'the ordinary path grew a field. Absence is what says the write landed, and every reader ' +
+    'of this result — including three existing assertions in this file — reads it that way');
+  assert.equal(Object.hasOwn(result, 'stateWriteDiscarded'), false);
+  assert.deepEqual(orphanTemps(sb), []);
+  // And the state really is on disk, which is what makes the assertion above a
+  // statement about the write rather than about the flag.
+  assert.equal(
+    (JSON.parse(readFileSync(upkeepStatePath(sb.root), 'utf8')) as { lastOutcome: string })
+      .lastOutcome,
+    'spawned');
+});
+
+test('a discard on a QUIET turn is reported too — the common case, and the one that counts', async () => {
+  const sb = sandbox();
+  blockTheStateFile(sb);
+  const close = await serverAt(sb.globalRoot);
+  try {
+    // A server is answering, so the call does nothing at all except record that
+    // it looked. Those turns are almost all of them, and a report that only rode
+    // along with a spawn would miss nearly every failure there is.
+    const result = await upkeepUiServer(sb.root, CONFIGURED, NOW, {
+      globalRoot: sb.globalRoot, spawnFn: fakeSpawn().fn, portAcceptsFn: NOTHING_ON_THE_PORT,
+      freshnessFn: async () => 'fresh',
+    });
+    assert.equal(result.did, 'nothing');
+    assert.equal(result.stateWriteDiscarded, true);
+    assert.deepEqual(orphanTemps(sb), []);
+  } finally {
+    await close();
+  }
+});

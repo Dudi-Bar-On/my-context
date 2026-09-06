@@ -1947,6 +1947,10 @@ export const ASK_GLYPH = '◆';
  *                                              reader would never go and check
  *   not-asked `first ask at 85%`               a measured not-yet, with the
  *                                              percent it starts at
+ *   not-asked `asked on demand only`           the ask is MUTED
+ *   (no thr.)                                  (`thresholdPercent: "never"`),
+ *                                              so there is no first ask to
+ *                                              name and no not-yet to report
  *
  * `off` draws NOTHING here, and that is the one place this block declines to
  * name an absence. The strip says `no handover configured` because it is a
@@ -1981,12 +1985,23 @@ export function handoverSegment(
   if (ask.verdict === 'not-asked') {
     // The threshold is what makes this a MEASURED not-yet rather than an
     // absence: it names the percent the first ask fires at, so the reader
-    // knows what has not happened and when it will. A `not-asked` with no
-    // threshold cannot happen — the verdict requires a configured handover —
-    // and if it ever did, the words alone are still true.
+    // knows what has not happened and when it will.
+    //
+    // **A `not-asked` with NO threshold is the muted ask, and since
+    // `plan:handover seq:11` it is the only way to reach that branch.** The
+    // verdict requires a configured handover, so the feature is on and the
+    // handover is being delivered; `handoverThresholdPercent` answers `null`
+    // for `thresholdPercent: "never"` and for nothing else. That is a different
+    // fact from a not-yet and it must not wear its words: `first ask at 98%`
+    // here would promise a first ask that is never coming, which is the strip
+    // reading as a threshold nobody has crossed yet — the exact misreading the
+    // third state was required to prevent. The ask that CAN still happen is a
+    // person typing `mycontext handover ask`, and that is what the words say.
     return {
       ...base,
-      text: threshold === null ? 'not yet asked' : `first ask at ${fmtThreshold(threshold)}%`,
+      text: threshold === null
+        ? 'asked on demand only'
+        : `first ask at ${fmtThreshold(threshold)}%`,
       ink: INK.carry,
     };
   }

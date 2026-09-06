@@ -82,7 +82,12 @@ let counter = 0;
  * a fixture that drops the rest of a real `config.json` is testing a shape no
  * user has.
  */
-function sandbox(options: { handoverPath?: string | null } = {}): Sandbox {
+function sandbox(options: {
+  handoverPath?: string | null;
+  /** `'never'` mutes the AUTOMATIC ask — `plan:handover seq:11`. Nothing in this
+   * file may be silenced by it, which is what the last pair of tests holds. */
+  thresholdPercent?: number | 'never';
+} = {}): Sandbox {
   const cwd = mkdtempSync(path.join(tmpdir(), 'myctx-ondemand-'));
   roots.push(cwd);
   runCli(['init'], cwd, () => {});
@@ -93,8 +98,11 @@ function sandbox(options: { handoverPath?: string | null } = {}): Sandbox {
   if (handoverPath !== null) {
     const file = path.join(root, 'config.json');
     const raw = JSON.parse(readFileSync(file, 'utf8')) as Record<string, unknown>;
-    writeFileSync(
-      file, JSON.stringify({ ...raw, handover: { path: handoverPath } }, null, 2), 'utf8');
+    const handover: Record<string, unknown> = { path: handoverPath };
+    if (options.thresholdPercent !== undefined) {
+      handover.thresholdPercent = options.thresholdPercent;
+    }
+    writeFileSync(file, JSON.stringify({ ...raw, handover }, null, 2), 'utf8');
   }
 
   counter += 1;
@@ -534,4 +542,52 @@ test('the latch a request writes is under the ROOT it was given, and nowhere els
     'the ask wrote outside the root it was handed. `root` is an argument and the latch path ' +
     'is derived from it, so no session id — however real — can reach another corpus.',
   );
+});
+
+/* ---------------------------------------------------------------------------
+ * `plan:handover seq:11` — THE MUTE DOES NOT REACH HERE.
+ *
+ * `thresholdPercent: "never"` switches off the ask `Stop` makes on its own.
+ * This command is the other kind: a person typed it. The two are separated by
+ * where the gate lives — `hooks/stop.ts` — and this is the pair of tests that
+ * keeps it there, because moving it into `askHandoverNow` would look like
+ * tidying and would take away the last way to get an ask on purpose, leaving
+ * "remove the handover key" as the only off switch again, which is the defect.
+ * ------------------------------------------------------------------------- */
+
+test('an ask asked for BY A PERSON is delivered even with the automatic ask muted', () => {
+  const sb = sandbox({ thresholdPercent: 'never' });
+  tee(sb, sb.session, 41.5);
+  const result = askHandoverNow(sb.root, { env: { CLAUDE_CODE_SESSION_ID: sb.session } });
+  assert.equal(result.verdict, 'asked',
+    'the mute silenced a person asking in their own words. It mutes the THRESHOLD, and a ' +
+    'person is not a threshold');
+  assert.equal(result.percent, 41.5);
+  assert.equal(readLatch(sb.root, sb.session).askedAtPercent, 41);
+  // Through the CLI too, since that is the surface a person actually reaches.
+  const sb2 = sandbox({ thresholdPercent: 'never' });
+  tee(sb2, sb2.session, 41.5);
+  const { code, out } = cli(sb2, ['ask']);
+  assert.equal(code, 0);
+  assert.match(out, /asked at 41%/u);
+});
+
+test('before any ask, a muted workspace says so — `not-asked`, and never will be by itself', () => {
+  const sb = sandbox({ thresholdPercent: 'never' });
+  const check = checkHandoverAsk(sb.root, handoverConfigAt(sb.root), sb.session);
+  // The VERDICT is unchanged: no ask went out, which is exactly what
+  // `not-asked` means, and a sixth verdict would have gone into five call sites
+  // for a fact none of them decides. What carries the difference is the note,
+  // which is the field every audit row and endpoint already prints.
+  assert.equal(check.verdict, 'not-asked');
+  assert.match(check.note, /muted/u);
+  assert.match(check.note, /on demand/u,
+    'a reader told the ask is muted must also be told what is left — otherwise the sentence ' +
+    'reads as the whole feature being off, which is the state this one exists to be unlike');
+
+  // And with a threshold, the sentence stays what it was: a not-YET.
+  const armed = sandbox();
+  const plain = checkHandoverAsk(armed.root, handoverConfigAt(armed.root), armed.session);
+  assert.equal(plain.verdict, 'not-asked');
+  assert.doesNotMatch(plain.note, /muted/u);
 });

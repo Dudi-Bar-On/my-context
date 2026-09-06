@@ -1,7 +1,7 @@
 import { mkdirSync, readdirSync, readFileSync, statSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import { readAudit } from './audit.ts';
-import type { Config, HandoverConfig } from './config.ts';
+import { handoverAskMuted, type Config, type HandoverConfig } from './config.ts';
 import { readOccupancy, type UnmeasurableWhy } from './context-occupancy.ts';
 import { sanitizeSessionId } from './ledger.ts';
 import { resolveWorkspace } from './workspace.ts';
@@ -661,7 +661,20 @@ export function checkHandoverAsk(
       path: handover.path,
       askedAt: null,
       writtenAt: null,
-      note: `${handover.path} is configured but this session was never asked to update it`,
+      // **The verdict is unchanged by a MUTED ask and the NOTE is not**
+      // (`plan:handover seq:11`). `not-asked` is still exactly true — no ask
+      // went out — and widening `HandoverAskVerdict` for the mute would put a
+      // sixth value into five call sites for a fact none of them decides, which
+      // is the shape `seq:14` already refused once. What the mute does change is
+      // what a reader should expect NEXT: with a threshold, the silence is a
+      // not-yet; with `"never"`, no automatic ask is coming and only a person
+      // typing the command will produce one. That is a clause, and a clause is
+      // what this field is for.
+      note: handoverAskMuted(handover)
+        ? `${handover.path} is configured but this session was never asked to update it, and `
+          + 'the automatic ask is muted (handover.thresholdPercent: "never") — it will be asked '
+          + 'for only on demand'
+        : `${handover.path} is configured but this session was never asked to update it`,
     };
   }
 
@@ -1113,6 +1126,16 @@ export interface AskHandoverOptions {
  *  - It does not consult the threshold. *At whatever the occupancy currently
  *    is* is the ruling, in as many words, and a threshold gate here would
  *    reinstate the wait the command exists to end.
+ *  - **It does not consult the MUTE either, and that is load bearing rather
+ *    than incidental** (`plan:handover seq:11`, 2026-09-07). A
+ *    `thresholdPercent: "never"` mutes the AUTOMATIC ask — the one `Stop`
+ *    makes on its own, on a turn nobody asked about — and this function is the
+ *    other kind: a person typed a command. Refusing them here would mean the
+ *    mute had removed the only remaining way to get an ask on purpose, which
+ *    would make it an off switch for the feature rather than for the nagging,
+ *    and that is the switch that already exists (remove the `handover` key).
+ *    The gate is in `hooks/stop.ts` and belongs nowhere else; `handoverAskMuted`
+ *    is deliberately not called below.
  *  - It does not consult `askedAtPercent`. `Stop`'s progress gate exists to
  *    stop a PER-TURN hook nagging; a person typing a command is not a hook, and
  *    refusing them because the same whole percent was already asked at would be

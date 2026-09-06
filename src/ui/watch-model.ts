@@ -313,11 +313,22 @@ export interface WatchContextBody {
    * ever promised). Collapsing `off` into `not-asked` would make the strip say
    * "the threshold has not been crossed" about a feature that has no threshold.
    *
-   * `thresholdPercent` is `null` EXACTLY when the feature is off, and is
-   * otherwise `handoverThresholdPercent(handover)` — the one place
-   * `core/config.ts` applies its 98 default. The strip derives its occupancy
-   * bands from this number; it may not carry a constant of its own, and with
-   * the feature off there is no ask to name a band against.
+   * `thresholdPercent` is `handoverThresholdPercent(handover)` — the one place
+   * `core/config.ts` applies its 98 default — and it is `null` when there is no
+   * percent at which an ask fires. That is TWO states since
+   * `plan:handover seq:11`: the feature off (no `handover` key), and the
+   * automatic ask MUTED (`thresholdPercent: "never"`, which keeps delivering
+   * the handover and never asks for it). The strip derives its occupancy bands
+   * from this number and may not carry a constant of its own; a `null` means
+   * there is no ask to name a band against, whichever of the two produced it.
+   *
+   * **The two are told apart by `verdict`, not by this field**: a muted ask
+   * reports `not-asked` (the feature is on, the handover is being delivered,
+   * and no ask has gone out), while a feature that is off reports `off`. A
+   * renderer that says "the threshold has not been crossed" for a `not-asked`
+   * with a `null` threshold is describing a threshold that does not exist —
+   * `src/cli/commands/statusline-powerline.ts` says `asked on demand only`
+   * there, and the browser strip has not yet been given the same sentence.
    */
   handover: {
     verdict: HandoverAskVerdict;
@@ -531,9 +542,10 @@ export function apiWatchContext(ws: Workspace, url: URL): JsonResult {
     askedAt: ask.askedAt,
     writtenAt: ask.writtenAt,
     // The default is applied HERE and only here, by the function `config.ts`
-    // names as its single site. `null` when the feature is off, because a
-    // threshold for an ask that will never fire is a number with no meaning,
-    // and the strip must not colour against one.
+    // names as its single site. `null` when the feature is off AND when the
+    // automatic ask is muted, because a threshold for an ask that will never
+    // fire is a number with no meaning, and the strip must not colour against
+    // one. `handoverThresholdPercent` answers `null` for the mute itself.
     thresholdPercent: handoverConfig === null ? null : handoverThresholdPercent(handoverConfig),
     // `null` with the feature OFF for `thresholdPercent`'s reason: a percent
     // an ask fired at, for a feature that never asks, would be a number about

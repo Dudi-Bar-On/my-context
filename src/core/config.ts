@@ -431,8 +431,39 @@ export interface HandoverConfig {
    * `strictNullChecks`, so a consumer that forgets the default does not
    * silently end up with a threshold every turn crosses — it does not compile.
    * `handoverThresholdPercent` below is the single place the default is applied.
+   *
+   * ── THE THIRD STATE: `"never"` — `plan:handover seq:11` ────────────────────
+   *
+   * `HANDOVER_ASK_NEVER`, and it is *deliver this handover, never ask me for
+   * it*. Until 2026-09-07 the only way to stop the automatic ask was to remove
+   * the `handover` key, which also removes the DELIVERY — the two halves of the
+   * feature are independent (the marked section is injected on the continuity
+   * tier; the ask fires from `Stop` at this threshold) and one switch governed
+   * both. A person who maintains their handover by hand had to choose between
+   * an unwanted ask and no continuity at all.
+   *
+   * **In this field rather than beside it**, because a fourth sub-key would
+   * make two settings that can contradict each other — `thresholdPercent: 90`
+   * with `askEnabled: false` has no reading — while a value here cannot: a
+   * threshold is either a number the window crosses or the word that says
+   * nothing crosses it. The item filing this defect reached the same conclusion
+   * from the other end, that *absent* and *chosen* are already two facts this
+   * field keeps apart, and asked-never is a third.
+   *
+   * **`"never"` and not `0`, not `101`, not `Infinity`.** All three of those
+   * are numbers the arithmetic would silently reinterpret, and 100 in
+   * particular is the accidental workaround this state exists to replace: it
+   * does not fire today only because Claude Code auto-compacts at ~99.75%, so
+   * an off switch spelled `100` is an off switch that depends on a number
+   * nobody in this project controls.
+   *
+   * **What it does NOT switch off.** The DELIVERY (`core/select.ts` and the
+   * continuity tier are untouched by this value), and the ON-DEMAND ask —
+   * `handover ask` / `askHandoverNow`, which is a person asking in their own
+   * words and is not the thing being muted. The gate lives in `hooks/stop.ts`,
+   * which is the only caller that asks automatically.
    */
-  thresholdPercent?: number;
+  thresholdPercent?: number | 'never';
 }
 
 /**
@@ -477,8 +508,35 @@ export const DEFAULT_HANDOVER_BUDGET_TOKENS = 1200;
 export const DEFAULT_HANDOVER_THRESHOLD_PERCENT = 98;
 
 /**
- * The threshold this handover is actually held to — the ONE place
- * `DEFAULT_HANDOVER_THRESHOLD_PERCENT` is applied.
+ * The word `thresholdPercent` takes instead of a number when the automatic ask
+ * is to be MUTED and the delivery kept — `plan:handover seq:11`, argued in full
+ * on `HandoverConfig.thresholdPercent`.
+ *
+ * A constant rather than a bare literal at each site so that the spelling is
+ * decided once: this value travels from a `config.json` a person typed, through
+ * `requireHandover`'s refusal message, into `handoverAskMuted`, and a second
+ * spelling of it would be a mute that half the product honours.
+ */
+export const HANDOVER_ASK_NEVER = 'never';
+
+/**
+ * Whether the AUTOMATIC ask is muted — `thresholdPercent: "never"`.
+ *
+ * Its one enforcement point is `hooks/stop.ts`, deliberately: `Stop` is the
+ * only surface that asks without being asked, and it is therefore the only
+ * surface a mute may silence. `askHandoverNow` does NOT call this and must not
+ * — a person typing `mycontext handover ask` is not the thing being muted, and
+ * a mute that also refused them would take away the one way left to get an ask
+ * on purpose (`plan:handover seq:14`'s ruling, which this must not undo).
+ */
+export function handoverAskMuted(handover: HandoverConfig): boolean {
+  return handover.thresholdPercent === HANDOVER_ASK_NEVER;
+}
+
+/**
+ * The threshold this handover is actually held to, or `null` when there is no
+ * threshold to be held to — the ONE place `DEFAULT_HANDOVER_THRESHOLD_PERCENT`
+ * is applied.
  *
  * A function rather than a value on the resolved config, for the reason argued
  * on `HandoverConfig.thresholdPercent`: the config records what the user chose,
@@ -488,9 +546,21 @@ export const DEFAULT_HANDOVER_THRESHOLD_PERCENT = 98;
  * second copy is a second chance to be silently wrong*, and here the silently
  * wrong copy would be a `?? 0` that asks for a handover on the first turn of
  * every session.
+ *
+ * **`null` for a MUTED ask, and it is the same kind of answer this function
+ * already gives for a missing one** — there is no percent at which the ask
+ * fires, so there is no number to hand back and none is invented. Returning 98
+ * for a mute would have every reader of a threshold report a first ask that is
+ * never coming: the powerline strip prints `first ask at 98%` from exactly this
+ * value, and the occupancy bands are coloured against it. `number | null`
+ * cannot be compared with `<` under `strictNullChecks`, so a consumer that
+ * forgets the mute does not silently ask anyway — it does not compile, which is
+ * the same safety the optional field above buys for the unchosen case.
  */
-export function handoverThresholdPercent(handover: HandoverConfig): number {
-  return handover.thresholdPercent ?? DEFAULT_HANDOVER_THRESHOLD_PERCENT;
+export function handoverThresholdPercent(handover: HandoverConfig): number | null {
+  if (handoverAskMuted(handover)) return null;
+  const chosen = handover.thresholdPercent;
+  return typeof chosen === 'number' ? chosen : DEFAULT_HANDOVER_THRESHOLD_PERCENT;
 }
 
 /**
@@ -1282,19 +1352,33 @@ function requireHandover(raw: unknown): HandoverConfig | null {
   // the argument is on `HandoverConfig.thresholdPercent` — the number this is
   // eventually meant to be set from is a measurement, and `NaN`/`Infinity` are
   // excluded by the finiteness check rather than by rounding.
-  let threshold: number | undefined;
+  //
+  // `"never"` is the ONE non-number this accepts, and it is accepted here
+  // rather than reinterpreted anywhere later: it is the third state
+  // `HandoverConfig.thresholdPercent` argues for — mute the automatic ask, keep
+  // the delivery — and every other string is refused with the numbers, naming
+  // it, because a user who wrote `"off"`, `"none"` or `"no"` meant this and a
+  // config that dropped their word would leave them asked on every crossing
+  // while their file says otherwise.
+  let threshold: number | 'never' | undefined;
   if (raw.thresholdPercent !== undefined) {
     const chosen = raw.thresholdPercent;
-    if (typeof chosen !== 'number' || !Number.isFinite(chosen) || chosen < 1 || chosen > 100) {
+    const muted = chosen === HANDOVER_ASK_NEVER;
+    if (
+      !muted
+      && (typeof chosen !== 'number' || !Number.isFinite(chosen) || chosen < 1 || chosen > 100)
+    ) {
       throw new Error(
         `my_context: handover.thresholdPercent is ${JSON.stringify(raw.thresholdPercent)}. ` +
         `Expected how full the context window must be before the handover is asked for, as a ` +
         `percentage between 1 and 100; the default is ${DEFAULT_HANDOVER_THRESHOLD_PERCENT}. ` +
-        `Nothing was loaded — a threshold outside that range is either crossed on every turn ` +
-        `or on none, and both of those read as a working configuration.`,
+        `The one other accepted value is ${JSON.stringify(HANDOVER_ASK_NEVER)}, which mutes ` +
+        `the automatic ask and still delivers the handover. Nothing was loaded — a threshold ` +
+        `outside that range is either crossed on every turn or on none, and both of those ` +
+        `read as a working configuration.`,
       );
     }
-    threshold = chosen;
+    threshold = muted ? HANDOVER_ASK_NEVER : chosen as number;
   }
 
   return {
