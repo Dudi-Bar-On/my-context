@@ -2,22 +2,29 @@
  * **The ask budget belongs to a WINDOW, not to a session** — plan `handover`
  * seq:10, the owner's ruling of 2026-08-29.
  *
- * `MAX_ASKS` is 2 and the latch is stored per session. Those were the same
- * thing until a compaction and after one they are not: the session continues
- * with the latch it had, so a session that had spent both asks was never asked
- * about the window the compaction had just refilled — which is exactly the
- * window a handover exists to serve. `seq:10` recorded the choice as a
- * question, the owner answered it *per window*, and this file is what holds the
- * answer in place.
+ * The ask budget is bounded per window and the latch is stored per session.
+ * Those were the same thing until a compaction and after one they are not: the
+ * session continues with the latch it had, so a session that had spent its asks
+ * was never asked about the window the compaction had just refilled — which is
+ * exactly the window a handover exists to serve. `seq:10` recorded the choice as
+ * a question, the owner answered it *per window*, and this file is what holds
+ * the answer in place.
+ *
+ * **What the budget IS changed under this file on 2026-09-06 and what it
+ * BELONGS TO did not.** `seq:12` replaced `MAX_ASKS = 2` with one ask per whole
+ * percent of occupancy (`askStep`), so the assertions below count asks across
+ * two percentages instead of two turns at one. Every claim this file makes is
+ * otherwise the claim it made before: the reset is what these tests are about,
+ * and a reset that stopped returning the new arming field would fail them.
  *
  * **What it pins:**
  *
- *  - A second context window gets its own two asks, and the first of them is a
+ *  - A second context window is armed from nothing, and its first ask is a
  *    FIRST ask — not a repeat naming an ask that belonged to a window nobody
  *    can read any more.
- *  - The bound survives the change. Two per window, never three, and the reset
- *    is idempotent per compaction: one compaction returns the budget once,
- *    however many times `PostCompact` fires for it.
+ *  - The bound survives the change. One ask per whole percent, never two, and
+ *    the reset is idempotent per compaction: one compaction returns the budget
+ *    once, however many times `PostCompact` fires for it.
  *  - **The window is the continuity tier's window.** The marker stamped on the
  *    latch is byte-identical to the `capturedAt` of the snapshot `restoredFor`
  *    and `continuityFor` compare against (`plan:live seq:9`). Two mechanisms
@@ -230,37 +237,40 @@ function writeHandover(sb: Sandbox): void {
  * its budget and the refilled window, the one the whole feature exists to
  * serve, was the one window it could never be asked about.
  */
-test('a second context window gets its own two asks', () => {
+test('a second context window is armed from nothing and earns its own asks', () => {
   const sb = sandbox();
 
-  const first = askedText(runStop(sb, 99));
+  const first = askedText(runStop(sb, 98.4));
   assert.ok(first !== null, 'the first crossing did not ask');
-  assert.doesNotMatch(first, /second and LAST/u, 'the first ask announced itself as a repeat');
+  assert.doesNotMatch(first, /NOT been written/u, 'the first ask announced itself as a repeat');
 
-  const second = askedText(runStop(sb, 99));
-  assert.ok(second !== null, 'the ignored ask was not repeated');
-  assert.match(second, /second and LAST/u);
+  const second = askedText(runStop(sb, 99.2));
+  assert.ok(second !== null, 'the ignored ask was not repeated at the next percent');
+  assert.match(second, /NOT been written/u);
 
   assert.equal(runStop(sb, 99.9), '',
-    'the budget was not spent — this window was asked a THIRD time');
+    'this window was asked twice inside one percent — the bound is one ask per whole percent');
 
   const compaction = compact(sb);
   assert.equal(compaction.outcome?.askBudget, 'reset');
 
-  const third = askedText(runStop(sb, 99));
+  // The percentages start over from the threshold, exactly as the readings of a
+  // rebuilt window do: the compaction emptied the window, so the occupancy the
+  // status line reports after it is low again and climbs again.
+  const third = askedText(runStop(sb, 98.4));
   assert.ok(third !== null,
     'the window the compaction rebuilt was never asked about, which is the window a handover ' +
     'exists to serve — this is the whole of the defect seq:10 closes');
-  assert.doesNotMatch(third, /second and LAST/u,
+  assert.doesNotMatch(third, /NOT been written/u,
     'the new window\'s FIRST ask named an ask belonging to a window nobody can read any more');
 
-  const fourth = askedText(runStop(sb, 99));
-  assert.ok(fourth !== null, 'the new window was not allowed its second ask');
-  assert.match(fourth, /second and LAST/u);
+  const fourth = askedText(runStop(sb, 99.2));
+  assert.ok(fourth !== null, 'the new window was not asked at the percent it grew into');
+  assert.match(fourth, /NOT been written/u);
 
   assert.equal(runStop(sb, 99.9), '',
-    'the bound did not survive the change: two per window, never three. A hook that nags is ' +
-    'a hook that gets uninstalled.');
+    'the bound did not survive the change: one ask per whole percent, never two. A hook that ' +
+    'nags is a hook that gets uninstalled.');
 });
 
 /**
@@ -271,11 +281,12 @@ test('a second context window gets its own two asks', () => {
  */
 test('the compaction returns the count itself, not just the arming state', () => {
   const sb = sandbox();
-  runStop(sb, 99);
-  runStop(sb, 99);
+  runStop(sb, 98.4);
+  runStop(sb, 99.2);
   const spent = readLatch(sb.root, sb.session);
   assert.equal(spent.asks, 2);
   assert.ok(spent.askedAt !== null);
+  assert.equal(spent.askedAtPercent, 99);
 
   compact(sb);
   const returned = readLatch(sb.root, sb.session);
@@ -284,6 +295,11 @@ test('the compaction returns the count itself, not just the arming state', () =>
     'an ask belonging to the destroyed window survived it, so the new window\'s first ask ' +
     'would be judged against a file written for a different one');
   assert.equal(returned.askedAtThreshold, null);
+  // The field seq:12 made load-bearing, and the one this reset would now be
+  // useless without: a surviving `askedAtPercent: 99` would mean the rebuilt
+  // window could not earn an ask until it reached 100, which is the silence
+  // this whole file exists to prevent.
+  assert.equal(returned.askedAtPercent, null, 'the percent last asked at survived the window');
   assert.equal(returned.satisfied, false);
 });
 
@@ -326,11 +342,11 @@ test('the latch window IS the snapshot capturedAt the continuity tier compares a
  */
 test('one compaction returns the budget once, however many times PostCompact fires', () => {
   const sb = sandbox();
-  runStop(sb, 99);
-  runStop(sb, 99);
+  runStop(sb, 98.4);
+  runStop(sb, 99.2);
   compact(sb);
 
-  assert.notEqual(runStop(sb, 99), '', 'the new window was not asked');
+  assert.notEqual(runStop(sb, 98.4), '', 'the new window was not asked');
   assert.equal(readLatch(sb.root, sb.session).asks, 1);
 
   // The SAME compaction, fired again: no new PreCompact, so the snapshot and
@@ -339,9 +355,12 @@ test('one compaction returns the budget once, however many times PostCompact fir
   assert.equal(again.outcome?.askBudget, 'same-window');
   assert.equal(readLatch(sb.root, sb.session).asks, 1,
     'a re-fired PostCompact handed back a budget this window had already begun to spend');
+  assert.equal(readLatch(sb.root, sb.session).askedAtPercent, 98,
+    'the re-firing re-armed the percent, so this window could be asked at 98 all over again');
 
-  assert.notEqual(runStop(sb, 99), '', 'the second ask of this window was refused');
-  assert.equal(runStop(sb, 99.9), '', 'a third ask reached the window through the repeat firing');
+  assert.equal(runStop(sb, 98.9), '',
+    'the repeat firing let a second ask through inside a percent already asked at');
+  assert.notEqual(runStop(sb, 99.2), '', 'the next percent of this window was refused');
 });
 
 /**
@@ -356,8 +375,8 @@ test('one compaction returns the budget once, however many times PostCompact fir
  */
 test('a compaction with nothing to return still brings the window stamp forward', () => {
   const sb = sandbox();
-  runStop(sb, 99);
-  runStop(sb, 99);
+  runStop(sb, 98.4);
+  runStop(sb, 99.2);
   compact(sb);
 
   // A second compaction, with the budget already back and unspent: there is
@@ -367,7 +386,7 @@ test('a compaction with nothing to return still brings the window stamp forward'
   assert.equal(readLatch(sb.root, sb.session).window, second.capturedAt,
     'the latch kept a marker naming a window that had already been destroyed');
 
-  assert.notEqual(runStop(sb, 99), '', 'the second window was not asked');
+  assert.notEqual(runStop(sb, 98.4), '', 'the second window was not asked');
   assert.equal(readLatch(sb.root, sb.session).asks, 1);
 
   const refired = compact(sb, { snapshot: false });
@@ -393,13 +412,17 @@ test('a compaction with nothing to return still brings the window stamp forward'
  */
 test('a compaction with no snapshot returns nothing, and says so', () => {
   const sb = sandbox();
-  runStop(sb, 99);
-  runStop(sb, 99);
-  assert.equal(runStop(sb, 99.9), '', 'the budget was not spent before the compaction');
+  runStop(sb, 98.4);
+  runStop(sb, 99.2);
+  assert.equal(runStop(sb, 99.9), '', 'a percent already asked at was asked at again');
 
   const compaction = compact(sb, { snapshot: false });
   assert.equal(compaction.outcome?.askBudget, 'no-identity');
   assert.equal(readLatch(sb.root, sb.session).asks, 2, 'the budget was returned blind');
+  // The observable for "the budget stands" is now the ARMING state rather than
+  // a spent counter: a reset would have cleared `askedAtPercent`, and 99.9
+  // would then be a percent nobody had asked at and would speak.
+  assert.equal(readLatch(sb.root, sb.session).askedAtPercent, 99);
   assert.equal(runStop(sb, 99.9), '',
     'a compaction that left no snapshot handed out a fresh budget anyway — with no identity ' +
     'nothing bounds how often that can happen');
@@ -448,12 +471,21 @@ test('the five verdicts keep their meanings across a reset', () => {
 });
 
 /**
- * An ask that was ACTED ON is still never repeated inside the window that
+ * An ask that was ACTED ON is still never repeated inside the PERCENT that
  * answered it. The reset returns a budget to a NEW window; it does not re-arm
  * the one whose handover was just written, which is the loop the latch exists
  * to prevent.
+ *
+ * **Rewritten in the title only, and the assertions stand as they were.** This
+ * used to say "inside its own window", which was true while `satisfied`
+ * silenced the rest of the window; `seq:12` narrowed that silence to one whole
+ * percent, and 99.0 and 99.9 were always the same percent — so what this test
+ * actually pinned all along is the half of the old rule that survives. Where
+ * the two rules differ is a percent LATER, and that is
+ * `stop-handover-ask.test.ts`'s "a whole percent crossed re-arms an ask that
+ * was already acted on".
  */
-test('a satisfied ask is not re-armed inside its own window', () => {
+test('a satisfied ask is not re-armed inside the percent that answered it', () => {
   const sb = sandbox();
   runStop(sb, 99);
   writeHandover(sb);
@@ -518,8 +550,8 @@ test('a session that was never asked writes no latch, and no compaction gives it
  */
 test('the post-compact row records the reset and names the window', () => {
   const sb = sandbox();
-  runStop(sb, 99);
-  runStop(sb, 99);
+  runStop(sb, 98.4);
+  runStop(sb, 99.2);
 
   const compaction = compact(sb);
   const note = lastRow(sb, 'post-compact').note ?? '';

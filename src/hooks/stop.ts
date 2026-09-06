@@ -3,8 +3,8 @@ import {
   occupancyStandDownLine, readOccupancy, type UnmeasurableWhy,
 } from '../core/context-occupancy.ts';
 import {
-  checkHandoverAsk, handoverConfigAt, MAX_ASKS, readLatch, workspaceConfigAt, writeLatch,
-  type AskLatch,
+  askStep, checkHandoverAsk, handoverConfigAt, readLatch, workspaceConfigAt, writeLatch,
+  type AskLatch, type HandoverAskVerdict,
 } from '../core/handover-ask.ts';
 import { isMainEntry } from '../core/paths.ts';
 import {
@@ -75,19 +75,23 @@ import {
  *     for nothing else. The emptiness stands for every other use, and a second
  *     use needs its own decision — `observe.ts`'s `SPEAKS` map is the gate that
  *     keeps the other five unfilled envelopes unfillable by accident.
- *  2. **At most TWICE per session**, latched on disk before the ask is
- *     returned. A blind second ask arrives after the model has just written the
- *     handover, and then again next turn, and the turn after: a per-turn hook
- *     that repeats is not a verbose feature, it is a session that cannot
- *     finish. This is the most expensive bug the design can ship and the latch
- *     is the only thing standing between it and the product.
+ *  2. **At most once per WHOLE PERCENT of occupancy**, latched on disk before
+ *     the ask is returned. A blind repeat arrives after the model has just
+ *     written the handover, and then again next turn, and the turn after: a
+ *     per-turn hook that repeats is not a verbose feature, it is a session that
+ *     cannot finish. This is the most expensive bug the design can ship and the
+ *     latch is the only thing standing between it and the product.
  *
- *     `seq:9` raised the bound from one to two and paid for the raise with a
- *     measurement rather than an argument: the second ask is delivered ONLY
- *     when `checkHandoverAsk` has compared the handover's mtime against the
- *     first ask and found the file untouched, and it names the first ask when
- *     it goes. There is no third under any circumstances — the audit row is the
- *     accountability story for the ones that went unanswered.
+ *     `seq:9` raised the bound from one ask to two and paid for the raise with
+ *     a measurement rather than an argument. `seq:12` REPLACED the count with a
+ *     percentage step, on the owner's instruction of 2026-09-06 and on this
+ *     corpus's own measurements: two asks and then silence left the handover
+ *     describing the window as it was at 85% while it filled to 99.9% over the
+ *     next two hours and thirty-nine minutes. The bound is still a bound — the
+ *     same whole percent is never asked at twice, and a window can produce at
+ *     most `100 - threshold` asks — but what earns the next one is ten thousand
+ *     tokens of new work rather than a turn having passed. `askStep` carries
+ *     the argument and the instruction verbatim.
  *  3. **It never blocks and it never guesses.** The whole path is one config
  *     read, one small tee read, one small latch read and pure comparisons. No
  *     transcript scan, no directory walk, no spawn — spec §5 — because the
@@ -153,29 +157,71 @@ function askText(handoverPath: string, percent: number): string {
 }
 
 /**
- * The SECOND ask, and the last one there will ever be.
+ * The ask that follows one the model was measured to have IGNORED.
  *
- * It exists at all only because the first one can be shown to have failed:
- * `checkHandoverAsk` compared the handover's mtime against the moment the first
- * ask went out and found the file untouched. Repeating an ask you cannot verify
- * is nagging; repeating one you have measured as unanswered is the mechanism
+ * It exists at all only because the earlier one can be shown to have failed:
+ * `checkHandoverAsk` compared the handover's mtime against the moment that ask
+ * went out and found the file untouched. Repeating an ask you cannot verify is
+ * nagging; repeating one you have measured as unanswered is the mechanism
  * working.
  *
- * **It NAMES the first ask, and that is a requirement rather than a courtesy.**
- * A second paragraph that reads identically to the first is indistinguishable
- * from a hook that lost its latch, which is the most expensive bug this design
- * can ship — so the text has to say, in the model's own context, that this is a
- * repeat and why. Saying *the last time* is the other half: an instruction that
- * might come again is one a model can reasonably defer.
+ * **It NAMES the ask it follows, and that is a requirement rather than a
+ * courtesy.** A paragraph that reads identically to the last one is
+ * indistinguishable from a hook that lost its latch, which is the most
+ * expensive bug this design can ship — so the text has to say, in the model's
+ * own context, that this is a repeat and why.
+ *
+ * **What it no longer says is *the last time*, and that is `seq:12`.** It said
+ * so because `MAX_ASKS` was 2 and it was true; with the bound now a percentage
+ * step it would be a lie, and a deadline a model discovers was false is worth
+ * less than no deadline at all. The urgency it carried is carried instead by
+ * the fact that is still true on every one of these turns: this turn is the one
+ * you have, because the next percent may be the compaction.
  */
 function repeatAskText(
-  handoverPath: string, percent: number, firstAskedAt: string | null,
+  handoverPath: string, percent: number, previousAskedAt: string | null,
 ): string {
   return (
     `The context window is ${percent.toFixed(1)}% full and ${handoverPath} has NOT been ` +
     'written since you were asked to update it' +
-    (firstAskedAt === null ? '' : ` at ${firstAskedAt}`) +
-    '. This is the second and LAST time you will be asked. Update it NOW: what you were ' +
+    (previousAskedAt === null ? '' : ` at ${previousAskedAt}`) +
+    '. Update it NOW: what you were doing, what you decided and why, and what the next ' +
+    'session must do first. You have this turn. Nothing else carries across.'
+  );
+}
+
+/**
+ * The ask at a percent the window has GROWN into, when the handover was in fact
+ * brought up to date last time.
+ *
+ * This is the paragraph `seq:12` exists to deliver and the one the old design
+ * could not: the handover is not missing, it is BEHIND — it describes the
+ * window as it stood a percent ago, and a percent of a 1M window is roughly ten
+ * thousand tokens of work it does not mention.
+ *
+ * **It says the file was written and it still asks**, in that order, because
+ * the alternative reads as a hook that forgot. A model told to update a
+ * document it knows it just wrote will reasonably conclude the mechanism is
+ * broken and start ignoring it, and an instruction a model has learned to
+ * ignore is worse than one that never arrives.
+ */
+function stepAskText(
+  handoverPath: string, percent: number, step: number, lastPercent: number | null,
+  verified: boolean,
+): string {
+  // `step`, never `percent.toFixed(0)`: rounding would report 86.7% as having
+  // passed 87, which is a percent the window has not reached and a number the
+  // latch does not hold. The whole percent is `askStep`'s to decide and it is
+  // passed in rather than recomputed here, so the paragraph and the latch can
+  // never disagree about which step this ask belongs to.
+  return (
+    `The context window is ${percent.toFixed(1)}% full — it has passed ${step}%, and ` +
+    `${handoverPath} was last asked for` +
+    (lastPercent === null ? '' : ` at ${lastPercent}%`) + '. ' +
+    (verified
+      ? 'You updated it then, so it is now a whole percent behind: '
+      : 'Whether it was updated then could not be verified: ') +
+    'everything you have done since is not in it. Bring it up to date NOW — what you were ' +
     'doing, what you decided and why, and what the next session must do first. You have ' +
     'this turn. Nothing else carries across.'
   );
@@ -216,31 +262,40 @@ function standDownOnce(root: string, sessionId: string, why: UnmeasurableWhy): v
  *  3. **No measurement.** Stand down, once, and never guess.
  *  4. **Below the threshold.** `>=`, so an exact crossing counts; a threshold
  *     nobody can land on is a threshold with an off-by-one in it.
- *  5. **The budget of asks is spent.** `MAX_ASKS`, and it is checked before
- *     anything is stat'ed: a session that has been asked twice does no work at
- *     all on any later turn.
- *  6. **The last ask was answered.** The latch says so outright once a
- *     verification has come back `acted-on`, so the ordinary post-ask turn
- *     costs one latch read and nothing else.
- *  7. **The last ask has not been answered YET, and cannot be shown to have
- *     failed.** `checkHandoverAsk` compares the handover's mtime against
- *     `askedAt` — see `core/handover-ask.ts`. `unverifiable` is silence: an
- *     accusation nothing supports is the same defect as a guarantee nothing
- *     supports.
+ *  5. **No PROGRESS since the last ask.** The whole percent this occupancy
+ *     falls in is the one already asked at, and the threshold has not been
+ *     lowered — so there is nothing new to ask about. A pure comparison against
+ *     two numbers the latch already carries, and it is what keeps the ordinary
+ *     post-ask turn at one latch read and no filesystem work at all.
+ *  6. **Which ask this is.** Only turns that are ABOUT to ask get here, so the
+ *     `stat` runs at most once per whole percent rather than once per turn.
+ *     `checkHandoverAsk` compares the handover's mtime against `askedAt` — see
+ *     `core/handover-ask.ts` — and its verdict chooses the paragraph, never
+ *     whether to speak: `ignored` names the ask that went unanswered,
+ *     `acted-on` says the file is a percent behind, and `unverifiable` says
+ *     neither, because an accusation nothing supports is the same defect as a
+ *     guarantee nothing supports.
  *
- * ── WHAT `seq:9` CHANGED, AND WHAT IT DID NOT ──────────────────────────────
+ * ── WHAT `seq:12` CHANGED, AND WHAT IT DID NOT ─────────────────────────────
  *
- * The latch used to mean *asked*. It now means *asked and NOT YET SATISFIED*,
- * which is the whole of `DEC-the-ask-and-the-writing-are-two-turns-apart-so-a-
- * flag-is`: an ask that can be shown to have been ignored may be repeated,
- * because repeating it is only dangerous when you cannot tell. It is still
- * bounded, and the bound is what makes it safe — `MAX_ASKS` is 2, the second
- * ask NAMES the first, and there is no third.
+ * `seq:9` made the latch mean *asked and NOT YET SATISFIED*, and `satisfied`
+ * then silenced the mechanism for the rest of the window. That is the defect
+ * the owner ruled on: measured on this corpus, an ask answered at 85.1% was
+ * followed by two hours and thirty-nine minutes in which the window filled to
+ * 99.9% and nothing asked again, and the audit row for all of it said
+ * `acted-on`. **`acted-on` proves ordering, not currency.**
  *
- * **The threshold rule survives intact and is now the only re-arm that is not
- * about failure.** Lowering `thresholdPercent` mid-session is a user saying
- * *ask me sooner than that*, and it re-arms even a satisfied latch — inside the
- * budget. Raising it is not a request for anything and re-arms nothing.
+ * So the suppression is now `askedAtPercent` and it lasts exactly one whole
+ * percent. What did NOT change: an ask that was answered is never repeated
+ * about the SAME state — that was `MAX_ASKS`'s real argument and gate 5 keeps
+ * it — and a window still cannot produce more asks than there are percentage
+ * points between the threshold and 100.
+ *
+ * **The threshold rule survives intact.** Lowering `thresholdPercent`
+ * mid-session is a user saying *ask me sooner than that*, and it re-arms even
+ * inside a percent already asked at. Raising it is not a request for anything
+ * and re-arms nothing. That asymmetry is computed BEFORE gate 5 so that a user
+ * who moves the target is answered on the turn they move it.
  *
  * Never throws: every filesystem call below is already wrapped, and
  * `readOccupancy` is documented as never throwing. That matters here more than
@@ -250,7 +305,14 @@ function standDownOnce(root: string, sessionId: string, why: UnmeasurableWhy): v
  */
 function handoverAsk(
   input: HookInput, root: string,
-): { percent: number; text: string; repeat: boolean } | null {
+): {
+  percent: number;
+  text: string;
+  /** The verdict on the ask this one follows, or `null` for a window's first. */
+  previous: HandoverAskVerdict | null;
+  /** When the ask this one follows went out, or `null` for a window's first. */
+  previousAskedAt: string | null;
+} | null {
   const sessionId = input.session_id;
   if (typeof sessionId !== 'string' || sessionId === '') return null;
 
@@ -269,65 +331,99 @@ function handoverAsk(
   const threshold = handoverThresholdPercent(handover);
   if (occupancy.percent < threshold) return null;
 
-  const latch = readLatch(root, sessionId);
-  // The bound, first, and before any filesystem work beyond the latch itself.
-  // A session that has spent its two asks is finished with this mechanism and
-  // must not pay a `stat` per turn to keep discovering that.
-  if (latch.asks >= MAX_ASKS) return null;
+  // The whole percent this reading belongs to, clamped at 100 and `null` for a
+  // reading that is not a number — see `askStep`, which carries the owner's
+  // instruction and the reason a non-finite reading must never read as "not yet
+  // asked at this step".
+  const step = askStep(occupancy.percent);
+  if (step === null) return null;
 
-  let base: AskLatch = latch;
-  let repeat = false;
-  if (latch.askedAtThreshold !== null) {
-    // Lowering is an instruction; raising is not. Unchanged from seq:6, and it
-    // is deliberately computed BEFORE the verification so that a satisfied
-    // latch can still be re-armed by a user who moved the target.
-    const lowered = threshold < latch.askedAtThreshold;
-    if (latch.satisfied) {
-      if (!lowered) return null;
-    } else {
-      const check = checkHandoverAsk(root, handover, sessionId);
-      if (check.verdict === 'acted-on') {
-        // Written even though nothing is asked on this turn: it is what makes
-        // every later turn of this session cost one latch read instead of a
-        // latch read and a `stat`. A failed write costs a repeat of this same
-        // check next turn, which is why it is not gated on.
-        base = { ...latch, satisfied: true };
-        writeLatch(root, sessionId, base);
-        if (!lowered) return null;
-      } else if (check.verdict !== 'ignored') {
-        // `unverifiable`. Silence — see the gate list above.
-        return null;
-      } else {
-        repeat = true;
-      }
-    }
-  }
+  const latch = readLatch(root, sessionId);
+
+  // Lowering is an instruction; raising is not. Unchanged from seq:6, and it is
+  // deliberately computed BEFORE the progress gate so that a user who moves the
+  // target is answered on the turn they move it, inside a percent already asked
+  // at.
+  const lowered = latch.askedAtThreshold !== null && threshold < latch.askedAtThreshold;
+
+  // THE BOUND, and it is the whole of seq:12. A percent already asked at is the
+  // same state, and asking twice about the same state teaches nothing — which
+  // is what `MAX_ASKS` was really defending. A percent the window has GROWN
+  // into is new work, and it is what earns the next ask.
+  //
+  // First, and before any filesystem work beyond the latch itself: this is the
+  // gate that runs on every turn of a full window, so it is two comparisons
+  // against numbers already in hand and never a `stat`.
+  if (latch.askedAtPercent !== null && step <= latch.askedAtPercent && !lowered) return null;
+
+  // Gate 6. Reached only on a turn that is about to ask, so the comparison
+  // costs one inode read per whole percent rather than one per turn. The
+  // verdict chooses the PARAGRAPH and never whether to speak — the ask has
+  // already been earned by progress, and a window that grew a percent is a
+  // window whose handover is behind whatever the last ask came to.
+  const previous: HandoverAskVerdict | null = latch.askedAt === null
+    ? null
+    : checkHandoverAsk(root, handover, sessionId).verdict;
+
+  // Recorded even though the ask below is about to supersede it. It is the only
+  // durable record that the ask made at `latch.askedAt` was answered, and if
+  // the write below fails it is the state the next turn reads — which is the
+  // same reason `seq:9` wrote it here and did not gate on the write.
+  if (previous === 'acted-on') writeLatch(root, sessionId, { ...latch, satisfied: true });
 
   // Latched BEFORE the ask is returned, never after. The caller writes the
   // envelope and the audit row afterwards and either of those can fail; if the
   // latch were taken last, a failure between here and there would leave the
   // session armed and the model asked, which is the loop.
   //
-  // `satisfied` goes back to `false` because a new ask is a new thing to
-  // satisfy, and `askedAt` is stamped here — the same instant the ask becomes
-  // real — so that no write that happened BEFORE this moment can be mistaken
-  // for a response to it.
+  // `satisfied` is `false` for the ask now going out, because a new ask is a
+  // new thing to satisfy. `askedAt` is stamped here — the same instant the ask
+  // becomes real — so that no write that happened BEFORE this moment can be
+  // mistaken for a response to it, and `askedAtPercent` is the percent that
+  // has now been spoken for.
   const next: AskLatch = {
-    ...base,
+    ...latch,
     askedAtThreshold: threshold,
+    askedAtPercent: step,
     askedAt: new Date().toISOString(),
-    asks: base.asks + 1,
+    asks: latch.asks + 1,
     satisfied: false,
   };
   if (!writeLatch(root, sessionId, next)) return null;
 
   return {
     percent: occupancy.percent,
-    repeat,
-    text: repeat
-      ? repeatAskText(handover.path, occupancy.percent, latch.askedAt)
-      : askText(handover.path, occupancy.percent),
+    previous,
+    previousAskedAt: latch.askedAt,
+    text: askParagraph(handover.path, occupancy.percent, step, latch, previous),
   };
+}
+
+/**
+ * Which of the three paragraphs this ask is, and it is decided by the verdict
+ * on the ask before it rather than by a counter.
+ *
+ * The first ask of a window says what the mechanism has always said. After
+ * that, the model is told the truth about the document it is being asked to
+ * write again — untouched, a percent behind, or in a state that could not be
+ * read — because an instruction that ignores what the model knows it just did
+ * is one it learns to ignore back.
+ *
+ * `off` and `not-asked` cannot reach here (the handover is configured and
+ * `askedAt` was non-null), and they fall to the first paragraph rather than to
+ * a `default` that would read as a fourth case nobody wrote.
+ */
+function askParagraph(
+  handoverPath: string, percent: number, step: number, latch: AskLatch,
+  previous: HandoverAskVerdict | null,
+): string {
+  if (previous === 'ignored') return repeatAskText(handoverPath, percent, latch.askedAt);
+  if (previous === 'acted-on' || previous === 'unverifiable') {
+    return stepAskText(
+      handoverPath, percent, step, latch.askedAtPercent, previous === 'acted-on',
+    );
+  }
+  return askText(handoverPath, percent);
 }
 
 /**
@@ -395,19 +491,48 @@ export function observeStop(
   // so without this a session that was asked and one that was not are
   // indistinguishable afterwards — and the percentage is what makes the row
   // answer the question §4.4 exists to settle.
+  //
   // A repeat says so IN THE ROW, not only in the model's context. An ask that
   // was ignored and an ask that was acted on have to be distinguishable in the
-  // log without reading the handover — that is the whole of `seq:9`'s DONE
-  // WHEN — and this row is where `Stop` can say it: the second ask exists only
-  // because the first was measured to have failed.
+  // log without reading the handover — that is `seq:9`'s DONE WHEN — and with
+  // `seq:12` a window now carries up to fifteen asks instead of two, so the row
+  // has to say WHICH ask each verdict belongs to as well. `askVerdictClause`
+  // names the previous ask by its own timestamp for exactly that: without it,
+  // "the previous ask went unanswered" in a run of fifteen rows would be a
+  // sentence no reader could attach to anything.
   return ask === null
     ? { note: base }
     : {
-        note: `${base}; asked${ask.repeat ? ' a SECOND time' : ''} for a handover update at ` +
+        note: `${base}; asked${ask.previous === null ? '' : ' AGAIN'} for a handover update at ` +
           `${ask.percent.toFixed(1)}% occupancy` +
-          (ask.repeat ? ' — the first ask went unanswered and this is the last one' : ''),
+          askVerdictClause(ask.previous, ask.previousAskedAt),
         context: ask.text,
       };
+}
+
+/**
+ * What the row says about the ask this one FOLLOWS, or `''` for a window's
+ * first ask, which follows nothing.
+ *
+ * Three verdicts can reach it and they are kept apart on the row for the reason
+ * `HandoverAskVerdict` keeps them apart at all: `ignored` is an accusation,
+ * `acted-on` is the mechanism working, and `unverifiable` is a comparison that
+ * could not be made. Collapsing the third into the first would put an
+ * accusation in the log that nothing supports.
+ */
+function askVerdictClause(
+  previous: HandoverAskVerdict | null, previousAskedAt: string | null,
+): string {
+  if (previous === null) return '';
+  const which = previousAskedAt === null ? 'the previous ask' : `the ask at ${previousAskedAt}`;
+  if (previous === 'ignored') return ` — ${which} went unanswered`;
+  if (previous === 'acted-on') {
+    return ` — ${which} was acted on, and the window has grown a whole percent since`;
+  }
+  if (previous === 'unverifiable') {
+    return ` — whether ${which} was acted on could not be determined`;
+  }
+  return '';
 }
 
 /**

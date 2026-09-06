@@ -384,7 +384,12 @@ test('a projection version this build does not read is refused, in EITHER direct
   built(root);
   const file = auditDbPath(root);
 
-  for (const stamped of ['2', '0']) {
+  // One either side of `PROJECTION_VERSION`, which is 2. These are literals
+  // rather than arithmetic on an import because the point of the test is that
+  // the door refuses a version it does not know, and a test that recomputed
+  // the boundary from the same constant the door reads would agree with a
+  // typo in it. They move by hand when the version does.
+  for (const stamped of ['3', '1']) {
     const db = new DatabaseSync(file);
     db.exec(`UPDATE audit_meta SET value = '${stamped}' WHERE key = 'version'`);
     db.close();
@@ -504,7 +509,7 @@ test('the read door contains no write, and openProjection contains every one of 
   const writes: [string, RegExp][] = [
     ['rmSync — the discard that deletes the database and both sidecars', /rmSync/],
     ['ensureLogDir — creating the .audit directory', /ensureLogDir/],
-    ['exec(SCHEMA) — four CREATE TABLE and six CREATE INDEX', /SCHEMA/],
+    ['exec(SCHEMA) — four CREATE TABLE and eight CREATE INDEX', /SCHEMA/],
     ['journal_mode — a write to the database header', /journal_mode/],
     // `busy_timeout` used to be listed here, on the reasoning that a read-only
     // connection takes no write lock and so has nothing to wait for. It was

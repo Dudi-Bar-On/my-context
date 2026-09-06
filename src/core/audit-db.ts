@@ -54,8 +54,18 @@ import { ensureLogDir } from './jsonl-log.ts';
 // schema every time the vocabulary moves, which for a log meant to be kept
 // indefinitely is the wrong trade.
 
-/** Bumped when the schema below changes; a mismatch discards and rebuilds. */
-const PROJECTION_VERSION = 1;
+/**
+ * Bumped when the schema below changes; a mismatch discards and rebuilds.
+ *
+ * **2 — `idx_audit_seq_at` and `idx_audit_item_role`** (2026-09-06). Two
+ * indexes, no table shape change, so nothing about a v1 projection's CONTENT
+ * is wrong; the bump is here because `topItems` now names
+ * `idx_audit_seq_at` in an `INDEXED BY` clause and a projection without that
+ * index cannot answer the query at all. Tolerating v1 would turn the doctor
+ * check that calls it from a disclosure into a `check_failed`. The version is
+ * what makes "the read door accepted it" mean "the index is there".
+ */
+const PROJECTION_VERSION = 2;
 
 const SCHEMA = `
 CREATE TABLE IF NOT EXISTS audit (
@@ -77,6 +87,30 @@ CREATE INDEX IF NOT EXISTS idx_audit_kind    ON audit(kind);
 CREATE INDEX IF NOT EXISTS idx_audit_item    ON audit(item_id);
 CREATE INDEX IF NOT EXISTS idx_audit_session ON audit(session_id);
 
+-- \`at\` for a KNOWN seq, without touching the row it is generated from.
+--
+-- Every other index above answers "which records match this value". This one
+-- answers the opposite question, and it exists because \`at\` is VIRTUAL: the
+-- value is not stored, so reading it means fetching the record's \`rec\` blob
+-- from the table and running \`->> '$.at'\` over it. That is fine for the tens
+-- of rows a filtered read returns and ruinous for a join that touches tens of
+-- thousands: measured on this corpus (24,342 records, 103,301 \`audit_item\`
+-- rows), \`topItems(db, 'spilled', 40)\` spent 145-190 ms, of which ~12 ms was
+-- the rowid seek and the remaining ~150 ms was fetching and decoding 22,738
+-- \`rec\` blobs for nothing but their timestamp. Materialising \`at\` beside
+-- \`seq\` in an index makes the same join read 7-8 ms, and the unfiltered form
+-- (\`mycontext audit --top\`, no role) 890 ms -> 30 ms.
+--
+-- **\`topItems\` names this index with \`INDEXED BY\`, and has to.** The planner
+-- costs a lookup on the INTEGER PRIMARY KEY as cheaper than one on any index
+-- and has no way to know that this table's columns are expensive to read, so
+-- with the index merely PRESENT it still chose the rowid and the query did not
+-- move (measured, both plans recorded on that function). That is why the index
+-- is paired with a bump of \`PROJECTION_VERSION\`: a projection this build
+-- accepts is one this build created, so the index is there for the clause that
+-- names it.
+CREATE INDEX IF NOT EXISTS idx_audit_seq_at ON audit(seq, at);
+
 -- One row per (record, item) mention, so "everything that happened to this
 -- item" is an indexed lookup rather than a scan with json_each in the
 -- predicate. \`role\` distinguishes the three ways a record can name an item,
@@ -92,6 +126,21 @@ CREATE TABLE IF NOT EXISTS audit_item (
 ) WITHOUT ROWID;
 
 CREATE INDEX IF NOT EXISTS idx_audit_item_id ON audit_item(item_id, role);
+
+-- The same two columns the other way round, because the two questions are not
+-- the same question. \`idx_audit_item_id\` leads with \`item_id\`, so
+-- "everything that happened to THIS item" seeks; "every item with THIS role"
+-- cannot, and scans all 103,301 rows of the covering index instead. Both
+-- \`topItems\` calls in the product filter by role and never by item, and this
+-- index turns their plan from \`SCAN i USING COVERING INDEX idx_audit_item_id\`
+-- into \`SEARCH i USING COVERING INDEX idx_audit_item_role (role=?)\`.
+--
+-- It is the SMALLER half of the fix and the more expensive one to keep: with
+-- \`idx_audit_seq_at\` in place it takes the spilled query from ~12 ms to
+-- ~8 ms, and it costs an index entry per \`audit_item\` row — 4.6 of them per
+-- audit record, against one for \`idx_audit_seq_at\` — which is 1.6 MiB on this
+-- corpus. Kept because \`role\` is the only way either caller ever asks.
+CREATE INDEX IF NOT EXISTS idx_audit_item_role ON audit_item(role, item_id);
 
 -- How much of each segment this projection has consumed. Staleness is the
 -- comparison between this and the files on disk — see \`projectionState\`.
@@ -830,7 +879,7 @@ export class ProjectionStaleError extends Error {
  * **Why a second door and not the existing one.** `openProjection` writes,
  * unconditionally and then some. `new DatabaseSync(file)` CREATES the file
  * when it is missing; `PRAGMA journal_mode = WAL` writes the header;
- * `db.exec(SCHEMA)` runs four `CREATE TABLE IF NOT EXISTS` and six
+ * `db.exec(SCHEMA)` runs four `CREATE TABLE IF NOT EXISTS` and eight
  * `CREATE INDEX IF NOT EXISTS` on every single open. And on a version mismatch
  * or any failure it calls `discard()`, which `rmSync`s the database and both
  * sidecars and builds a new one. Web-UI plan 3 routes `/api/ask/audit`,
@@ -892,8 +941,19 @@ export class ProjectionStaleError extends Error {
  *     because it is already pure — its own docblock says so — and it is the
  *     same comparison `syncProjection` makes before deciding what to write.
  *
- * **What it does NOT verify, said rather than implied.** Not the six indexes:
- * a missing one costs speed, not correctness. Not the `WITHOUT ROWID` clauses
+ * **What it does NOT verify, said rather than implied.** Not the eight
+ * indexes: a missing one costs speed, not correctness — with ONE exception,
+ * named here rather than left to be discovered. `topItems` names
+ * `idx_audit_seq_at` in an `INDEXED BY` clause (see its docblock for the
+ * 145 ms -> 8 ms that buys), so a projection missing THAT index cannot prepare
+ * that one statement and raises `no such index`. It is not checked here
+ * anyway, and the reason is that the version now covers it: `PROJECTION_VERSION`
+ * was bumped when the index was added, this door refuses any other version,
+ * and the only door that hands out a projection stamped with this one is
+ * `openProjection`, which runs `SCHEMA` — every `CREATE INDEX IF NOT EXISTS`
+ * included — on every open. A hand-dropped index is the residual gap, it
+ * surfaces as a thrown error rather than a wrong answer, and it heals on the
+ * next `mycontext audit`. Not the `WITHOUT ROWID` clauses
  * or the primary keys — load-bearing for what `insertRecords` may write, not
  * for whether these reads answer. Not column types, which SQLite does not
  * enforce. Not that any `rec` blob is valid jsonb: a projection holding
@@ -1233,14 +1293,54 @@ export function summaryByOp(db: DatabaseSync, filter: AuditFilter = {}): Summary
   return [...byOp.values()].sort((a, b) => b.count - a.count || a.label.localeCompare(b.label));
 }
 
-/** Which items this log has seen the most of, in either direction. */
+/**
+ * Which items this log has seen the most of, in either direction.
+ *
+ * ── WHY THE JOIN NAMES ITS INDEX ───────────────────────────────────────────
+ *
+ * `INDEXED BY idx_audit_seq_at` is not a micro-optimisation and it is not
+ * belt-and-braces over a planner that would have got there anyway. It was
+ * measured, and the measurement is the whole reason the clause is here:
+ *
+ * | plan                                              | spilled, 40 |
+ * | ------------------------------------------------- | ----------- |
+ * | `SEARCH a USING INTEGER PRIMARY KEY (rowid=?)`     | 145-190 ms  |
+ * | `SEARCH a USING INDEX idx_audit_seq_at (seq=?)`    | 7-8 ms      |
+ *
+ * Both rows are the SAME database with the SAME indexes present. Adding
+ * `idx_audit_seq_at` and leaving the planner to choose changed nothing at all:
+ * it still costs a rowid lookup as the cheapest way to reach a row and has no
+ * notion that `audit.at` is a VIRTUAL generated column, so every one of the
+ * 22,738 matching rows had its ~680-byte `rec` blob fetched and jsonb-decoded
+ * to produce a timestamp the index already holds. Naming the index is the only
+ * way to say "the row is not wanted, only `at`".
+ *
+ * **The cost of naming it: a projection without that index cannot prepare this
+ * statement at all** — SQLite raises `no such index` rather than falling back.
+ * That is deliberate, and it is why `PROJECTION_VERSION` was bumped alongside
+ * the index rather than relying on `CREATE INDEX IF NOT EXISTS` to backfill
+ * quietly: every door that hands out a projection either creates the schema
+ * itself (`openProjection`, which runs `SCHEMA` on every single open) or
+ * refuses a version it does not know (`openProjectionReadOnlyChecked`,
+ * `openProjectionForUpkeep`). An index dropped by hand out of an otherwise
+ * healthy projection is the one reachable gap, and it closes on the next
+ * `openProjection` — which is `mycontext audit`, `mycontext status` and the UI
+ * server, so within one command.
+ *
+ * `MAX(a.at)` is kept exactly as it was rather than being replaced with the
+ * `at` of `MAX(seq)`, which would be one lookup instead of a join. Those two
+ * are the same answer only while no two appenders' clocks disagree, and this
+ * log is written by concurrent hooks in separate processes. The join is what
+ * makes `last` mean "the latest timestamp recorded", not "the timestamp on the
+ * latest row".
+ */
 export function topItems(db: DatabaseSync, role: string | null, limit: number): SummaryRow[] {
   const sql = role === null
     ? `SELECT i.item_id AS label, COUNT(*) AS n, MAX(a.at) AS last
-       FROM audit_item i JOIN audit a ON a.seq = i.seq
+       FROM audit_item i JOIN audit a INDEXED BY idx_audit_seq_at ON a.seq = i.seq
        GROUP BY i.item_id ORDER BY n DESC, label ASC LIMIT ?`
     : `SELECT i.item_id AS label, COUNT(*) AS n, MAX(a.at) AS last
-       FROM audit_item i JOIN audit a ON a.seq = i.seq
+       FROM audit_item i JOIN audit a INDEXED BY idx_audit_seq_at ON a.seq = i.seq
        WHERE i.role = ? GROUP BY i.item_id ORDER BY n DESC, label ASC LIMIT ?`;
   const params: (string | number)[] = role === null ? [limit] : [role, limit];
   const rows = db.prepare(sql).all(...params) as

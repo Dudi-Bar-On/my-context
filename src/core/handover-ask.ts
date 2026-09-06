@@ -51,9 +51,17 @@ import { resolveWorkspace } from './workspace.ts';
  * The latch is stored per SESSION and the ask budget it holds belongs to a
  * WINDOW. Those were the same thing until a compaction, and after one they are
  * not: the session continues with the latch it had, so a session that had spent
- * both asks was never asked about the window the compaction had just refilled —
+ * its asks was never asked about the window the compaction had just refilled —
  * which is the window a handover exists to serve. The owner ruled on 2026-08-29
- * that each rebuilt window gets its own two asks.
+ * that each rebuilt window gets its own budget.
+ *
+ * ── WHAT THE BUDGET *IS*, SINCE `plan:handover seq:12` ─────────────────────
+ *
+ * A count of two asks per window until 2026-09-06, and a PERCENTAGE STEP after
+ * it. `askStep` and `AskLatch.askedAtPercent` carry the new rule and the owner's
+ * instruction is quoted where the old constant used to be declared. What
+ * `resetAsksForWindow` returns is unchanged in kind: whatever arms the next ask,
+ * cleared, so the rebuilt window starts from nothing.
  *
  * `resetAsksForWindow` is that ruling, and the window it is handed is the
  * continuity tier's, not one of ours. See its docstring, and `AskLatch.window`.
@@ -62,7 +70,7 @@ import { resolveWorkspace } from './workspace.ts';
 /**
  * Everything remembered about one session's handover ask. One small JSON file
  * in `state/`, beside the seen file and the restore snapshot — this is where
- * per-session hook state lives, and a second location for seven fields would be
+ * per-session hook state lives, and a second location for eight fields would be
  * a second directory for `mycontext status` and every cleanup path to learn.
  *
  * **`sanitizeSessionId` is `ledger.ts`'s, deliberately, not
@@ -96,6 +104,30 @@ export interface AskLatch {
    */
   askedAtThreshold: number | null;
   /**
+   * The WHOLE PERCENT of occupancy the most recent ask was delivered at — 85
+   * for an ask made at 85.1% — or `null` for a window that has never been
+   * asked. `plan:handover seq:12`, and the field the owner's instruction of
+   * 2026-09-06 turns on.
+   *
+   * **This is what makes an ask re-arm on progress rather than on a turn
+   * passing.** `AskLatch` used to say only THAT it had asked, so `satisfied`
+   * silenced the mechanism for the rest of the window: the handover was written
+   * once at the threshold and the window then filled for hours with nothing
+   * asking again — measured on this corpus at 1h 24m, 2h 39m and 3h 06m of
+   * staleness across three consecutive days, every row of them reporting
+   * `acted-on`. `acted-on` proves ORDERING, not currency.
+   *
+   * The WHOLE percent and not the reading, for `askedAtThreshold`'s reason
+   * turned the other way round: storing the float would re-arm on every higher
+   * reading, which is every turn after the first, and a per-turn hook that
+   * repeats is a session that cannot finish. Storing the whole number makes the
+   * unit of re-arming a unit of WORK — on a 1M window one percent is roughly ten
+   * thousand tokens the current handover does not describe.
+   *
+   * Written through `askStep`, so it is never above 100 and never a fraction.
+   */
+  askedAtPercent: number | null;
+  /**
    * WALL CLOCK of the most recent ask, ISO-8601, or `null` for a session that
    * has never been asked. The whole of what `plan:handover seq:9` adds here.
    *
@@ -108,12 +140,18 @@ export interface AskLatch {
    */
   askedAt: string | null;
   /**
-   * How many asks this session has been delivered. Bounded by `MAX_ASKS`.
+   * How many asks this window has been delivered.
    *
-   * `DEC-the-ask-and-the-writing-are-two-turns-apart-so-a-flag-is`: *a third
-   * would be nagging, and a hook that nags is a hook that gets uninstalled*.
-   * The count is what makes the bound a bound rather than an emergent property
-   * of the other six fields.
+   * **It no longer bounds anything, and that is `seq:12`'s doing.** It was the
+   * bound — `MAX_ASKS` was 2 and this field was checked against it — until the
+   * owner replaced a count with a progress step; `askedAtPercent` is the bound
+   * now, and the ceiling on this number is emergent rather than declared: at
+   * most one ask per whole percent from the threshold to 100.
+   *
+   * It is kept because it is the only field that says HOW MUCH this window was
+   * asked, and `resetAsksForWindow`'s audit note reports it — *"(N ask(s) spent
+   * in the window this compaction destroyed)"* is a sentence about a count and
+   * there is nothing else to compute it from.
    */
   asks: number;
   /**
@@ -143,15 +181,25 @@ export interface AskLatch {
   /**
    * Whether the most recent ask has been VERIFIED as acted on.
    *
-   * This is the field that changes what the latch means. It used to mean
-   * "asked"; with this it means "asked and NOT YET SATISFIED", which is what
-   * makes a second ask safe: an ask that was ignored can be repeated, and an
-   * ask that was answered cannot.
+   * This is the field that changed what the latch meant at `seq:9`. It used to
+   * mean "asked"; with that it meant "asked and NOT YET SATISFIED", which is
+   * what made a second ask safe: an ask that was ignored can be repeated, and
+   * an ask that was answered cannot.
    *
-   * It is also what keeps the per-turn cost at zero on the ordinary path. Once
-   * a verification comes back `acted-on` it is written here, so every later turn
-   * of that session answers from the latch it already reads and never stats the
-   * handover again.
+   * **`seq:12` took its gate away and left it its record.** Suppressing until
+   * the handover is written is exactly what produced the measured staleness —
+   * the ask was answered once at 85% and the window then filled to 99.9% with
+   * nothing asking again — so what suppresses now is `askedAtPercent`, and it
+   * suppresses only until the next whole percent. This field is still written
+   * by the verification on an ask turn, and it is still what
+   * `resetAsksForWindow` clears, so the latch on disk still says whether the
+   * ask it names was answered.
+   *
+   * Whether a field that no longer gates anything should survive at all is a
+   * real question and it is deliberately NOT answered here: three hooks read
+   * this file format and `resetAsksForWindow` names this field in its contract,
+   * so removing it is a change to two things the owner's instruction did not
+   * rule on. Reported, not taken.
    */
   satisfied: boolean;
   /** Whether the occupancy stand-down line has already been shown this session. */
@@ -171,18 +219,59 @@ export interface AskLatch {
 }
 
 /**
- * At most two asks per session, ever.
+ * The highest whole percent an ask can be earned at. A window is full at 100
+ * and there is nothing above it to make progress into.
  *
- * The first is the mechanism. The second exists only because the first can be
- * verified to have failed, and it names the first when it goes out. There is no
- * third: the audit row is the accountability story for the ones that went
- * unanswered, and a per-turn hook that keeps asking is a session that cannot
- * finish.
+ * It is a CLAMP and not a refusal: an occupancy reading of 101.4 is a window
+ * that is full, not a reading to throw away, and folding it onto 100 is what
+ * keeps the number of asks bounded whatever arithmetic the platform sends. The
+ * alternative — trusting the reading — would let a bad divisor turn a bounded
+ * mechanism into one that asks on every turn forever.
  */
-export const MAX_ASKS = 2;
+export const ASK_CEILING_PERCENT = 100;
+
+/**
+ * **The whole percent an ask at this occupancy belongs to**, or `null` for a
+ * reading that is not a number at all. This replaces `MAX_ASKS`.
+ *
+ * ── THE INSTRUCTION IT IMPLEMENTS, VERBATIM (owner, 2026-09-06) ────────────
+ *
+ * > *"when handover file is triggerd at 85%, every change up till the context
+ * > window is 100% occupy, i mean when the percentage increasing by 1%, you
+ * > should always trigger the handover update to stay as much updated as we
+ * > could before compaction or new session start."*
+ *
+ * ── WHY THIS REPLACES THE COUNT RATHER THAN RAISING IT ─────────────────────
+ *
+ * `MAX_ASKS` was 2 and it existed to stop NAGGING: two asks and then silence,
+ * because *a third would be nagging, and a hook that nags is a hook that gets
+ * uninstalled* (`DEC-the-ask-and-the-writing-are-two-turns-apart-so-a-flag-is`).
+ * That argument is about asking again about the SAME STATE, and it still holds
+ * — the same whole percent is asked at once and never twice.
+ *
+ * A percentage step is not the same state. On a 1M window one percent is
+ * roughly ten thousand tokens of work the standing handover does not describe,
+ * so an ask at 86 is a different ask from the one at 85 and it is earned by
+ * that work rather than by a turn having passed. The bound is therefore still a
+ * bound and still small: from a threshold of 85 it is fifteen further asks to
+ * 100, from the default 98 it is two, and no session can produce more than
+ * `100 - threshold` of them per window however long it runs.
+ *
+ * `Math.floor`, so 85.1 and 85.9 are one step and not two; percentages arrive
+ * as floats and the owner's unit is the whole number. `null` for a non-finite
+ * reading, which nothing observed produces — `classifyContext` divides by a
+ * window size it has already checked is above zero — and which must not be
+ * allowed to mean "a step nobody has asked at yet" if it ever does: that would
+ * be an ask on every turn, the one failure this mechanism cannot ship.
+ */
+export function askStep(percent: number): number | null {
+  if (!Number.isFinite(percent)) return null;
+  return Math.min(ASK_CEILING_PERCENT, Math.floor(percent));
+}
 
 export const NO_LATCH: AskLatch = {
   askedAtThreshold: null,
+  askedAtPercent: null,
   askedAt: null,
   asks: 0,
   window: null,
@@ -222,6 +311,18 @@ export function readLatch(root: string, sessionId: string): AskLatch {
       : null;
     return {
       askedAtThreshold,
+      // Absent-is-not-zero again, and again resolved in the direction that
+      // costs an ask rather than spends one. A latch written before `seq:12`
+      // carries a threshold and no percent, and reading that as `null` would
+      // say "this window has never been asked" about a window that has — so
+      // the next `Stop` would ask immediately, on no progress at all. The
+      // threshold it was asked at is the lowest percent it can have been asked
+      // at (`Stop` gate 4 is `>=`), so that is what it is read as: the worst
+      // case is one ask fewer, at the one upgrade boundary this can happen at.
+      askedAtPercent: typeof value.askedAtPercent === 'number'
+          && Number.isFinite(value.askedAtPercent)
+        ? askStep(value.askedAtPercent)
+        : (askedAtThreshold === null ? null : askStep(askedAtThreshold)),
       askedAt: typeof value.askedAt === 'string' && value.askedAt !== '' ? value.askedAt : null,
       asks: typeof value.asks === 'number' && Number.isFinite(value.asks)
         ? value.asks
@@ -248,7 +349,7 @@ export function readLatch(root: string, sessionId: string): AskLatch {
  *
  * A plain `writeFileSync`, not the atomic write-and-rename `ledger.ts` uses for
  * the restore snapshot. The trade is different in both directions: this file is
- * seven small fields written by one process per turn, so a torn write costs one
+ * eight small fields written by one process per turn, so a torn write costs one
  * re-ask or one re-disclosure, while the snapshot is a whole context window
  * whose loss is unrecoverable. And `Stop` is the hook with the tightest timeout
  * of the ten, so a rename retry budget measured in seconds is a budget it does
@@ -277,7 +378,8 @@ export function writeLatch(root: string, sessionId: string, latch: AskLatch): bo
  *                      budget ONCE, not once per firing.
  *  - `no-identity`   — the compaction left no snapshot, so the rebuilt window
  *                      cannot be told from the one before it. The budget stands.
- *  - `reset`         — the budget was returned. The new window has its own two.
+ *  - `reset`         — the budget was returned. The new window is armed from
+ *                      nothing, so its first step earns its first ask.
  *  - `unwritable`    — the latch would not persist, so the budget stands. A
  *                      reset that cannot record itself is a reset that happens
  *                      again on the next firing, which is `writeLatch`'s rule.
@@ -298,10 +400,11 @@ export interface AskWindowReset {
  * the owner's ruling of 2026-08-29: the ask is a per-WINDOW obligation, not a
  * per-session courtesy.
  *
- * The defect it closes: `MAX_ASKS` is 2 and the latch lives with the SESSION,
- * so a session that had spent both asks was never asked again — including about
- * the window a compaction had just refilled, which is precisely the window a
- * handover exists to serve.
+ * The defect it closes: the budget was bounded per session (`MAX_ASKS` was 2,
+ * and since `seq:12` it is a percentage step) while the latch lives with the
+ * SESSION, so a session that had spent its asks was never asked again —
+ * including about the window a compaction had just refilled, which is precisely
+ * the window a handover exists to serve.
  *
  * ── WHERE THE WINDOW COMES FROM, AND WHY IT IS NOT DECIDED HERE ────────────
  *
@@ -325,7 +428,7 @@ export interface AskWindowReset {
  * the two are the same decision applied to opposite costs. Continuity's failure
  * is a session that starts over with nothing, so it re-sends; the ask's failure
  * is a hook that nags, and *a hook that nags is a hook that gets uninstalled*
- * (`MAX_ASKS`). Resetting without identity would also be unbounded in a way
+ * (`askStep`). Resetting without identity would also be unbounded in a way
  * resetting with it is not: with a marker the reset is idempotent per
  * compaction, and without one nothing could tell a second firing from a second
  * window. This module already states its tie-break — *the worst case is one ask
@@ -334,9 +437,10 @@ export interface AskWindowReset {
  *
  * ── WHAT IS RETURNED AND WHAT IS DELIBERATELY KEPT ─────────────────────────
  *
- * Returned: `asks`, `askedAtThreshold`, `askedAt` and `satisfied` — the whole
- * arming state, because leaving any of them would leave the new window unable
- * to be asked. `satisfied` alone would silence it (gate 6 in `hooks/stop.ts`),
+ * Returned: `asks`, `askedAtThreshold`, `askedAtPercent`, `askedAt` and
+ * `satisfied` — the whole arming state, because leaving any of them would leave
+ * the new window unable to be asked. `askedAtPercent` alone would silence it
+ * up to the percent the destroyed window reached (gate 5 in `hooks/stop.ts`),
  * and a surviving `askedAtThreshold` would make the new window's first ask a
  * REPEAT that names an ask belonging to a window that no longer exists.
  *
@@ -381,7 +485,7 @@ export interface AskWindowReset {
 /**
  * Whether a latch carries nothing at all — which is what `readLatch` returns
  * for an absent file and for an unreadable one alike. Written as a comparison
- * against `NO_LATCH` rather than a field list so a seventh field cannot be
+ * against `NO_LATCH` rather than a field list so an eighth field cannot be
  * forgotten here: this is the only place that asks the question.
  */
 function isPristine(latch: AskLatch): boolean {
@@ -397,7 +501,8 @@ export function resetAsksForWindow(
   // FIRST, and it is what keeps `state/` exactly as clean as it is today: a
   // workspace with no `handover` key, or one that never crosses the threshold,
   // has no latch file and must not acquire one because it was compacted.
-  if (latch.asks === 0 && latch.askedAt === null && latch.askedAtThreshold === null) {
+  if (latch.asks === 0 && latch.askedAt === null && latch.askedAtThreshold === null
+    && latch.askedAtPercent === null) {
     // The stamp is still brought forward, so that `window` always names the
     // window the latch's state belongs to and `same-window` above means what it
     // says. Without it, a compaction that found nothing to return would leave a
@@ -434,6 +539,12 @@ export function resetAsksForWindow(
   const next: AskLatch = {
     ...latch,
     askedAtThreshold: null,
+    // Returned with the rest of the arming state, and it is the field that
+    // MATTERS now: leaving it would hand the rebuilt window a latch saying it
+    // had already been asked at 99, and nothing below 100 would ever earn a
+    // step again — the new window, the one a handover exists to serve, would be
+    // silent for exactly the reason `seq:12` exists to end.
+    askedAtPercent: null,
     askedAt: null,
     asks: 0,
     window,

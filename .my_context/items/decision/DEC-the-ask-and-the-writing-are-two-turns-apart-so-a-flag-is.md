@@ -2,11 +2,13 @@
 id: DEC-the-ask-and-the-writing-are-two-turns-apart-so-a-flag-is
 type: decision
 title: the ask and the writing are two turns apart, so a flag is what tells them apart
-status: active
+status: deprecated
 severity: soft
 always: false
-summary: When the tool asks for a note to be written, it records when it asked, so it can later tell whether the note was written or the request was quietly ignored.
-summary_of: e410e1902973f843
+summary: "Superseded: the two-ask bound assumed the window stops changing between asks, and measurement showed it does not."
+summary_of: 390d37bca7855800
+summary_was:
+  - 2026-09-06 When the tool asks for a note to be written, it records when it asked, so it can later tell whether the note was written or the request was quietly ignored.
 scope: []
 tags:
   - v2
@@ -19,27 +21,30 @@ source_file: null
 source_anchor: null
 source_checksum: null
 valid_from: 2026-08-27
-valid_until: null
-checksum: f430dc97fc5ba49e
+valid_until: 2026-09-06
+checksum: d966420ffb55bed8
 ---
 
 # the ask and the writing are two turns apart, so a flag is what tells them apart
 
-OWNER DESIGN NOTE, 2026-08-27: "if you need to update handover triggered by a hook, and because the hook has timeout, you can do it async and maybe checking if it is already completed using for example a flag before compacting or clear".
+SUPERSEDED 2026-09-06 by the owner instruction recorded in
+TASK-the-handover-is-asked-for-again-at-every-percent-not-written, and by the change that landed
+the same day. Kept rather than rewritten, because what it decided and why it was reversed are both
+worth reading.
 
-IT NAMES A HOLE THE DESIGN HAD. `Stop` asks the model to update the handover at the threshold and latches so it asks only once. NOTHING VERIFIED THAT THE MODEL DID IT. A model that ignores the ask, or a compaction that fires mid-turn, leaves a stale handover and an audit row saying an ask went out -- which reads like the mechanism worked.
+WHAT IT SAID: the ask is bounded at two per context window - "at most twice... there is no third" -
+on the reasoning that a third ask about the same state teaches nothing and a mechanism that nags is
+one people learn to ignore. That reasoning was sound and is not what changed.
 
-WHY A HOOK CANNOT JUST DO IT. The writer is the MODEL, not the hook: a handover is prose about what was decided and why, and no hook can produce that. So the two halves are inherently a turn or more apart, and `Stop`'s 3-second timeout is not a budget the work could ever fit in anyway. The mechanism is asynchronous by construction, and the owner's flag is how the two halves RENDEZVOUS.
+WHAT CHANGED IS THE PREMISE. The bound assumed the state does not move between asks. It does. The
+audit log measured handovers written at 85% and then carried 2h39m, 1h24m and 3h06m to windows that
+died at 99.9%, 96.1% and 96.6% - every row reporting acted-on, because acted-on proves ORDERING and
+not currency. A percentage step is not the same state: one percent of a 1M window is roughly ten
+thousand tokens the standing handover does not describe.
 
-THE FLAG IS NOT A CLAIM, IT IS A COMPARISON. The latch already records `askedAtThreshold`; adding the wall-clock `askedAt` lets `PreCompact` -- which runs BEFORE the compaction, on a 10-second timeout, and already resolves the handover -- compare the file's mtime against it:
+SO THE BOUND IS NOW PROGRESS-BASED rather than count-based: one ask per whole percent crossed, from
+the threshold to 100 - naturally capped at sixteen, each one earned by real growth rather than by a
+turn passing. MAX_ASKS is gone and askStep replaced it.
 
-  - written after the ask  -> the ask was ACTED ON
-  - not written           -> the ask was IGNORED, and that is a fact worth having
-
-That is a measurement rather than a belief, which is the same move that settled the threshold question: measure the thing, not its proxy.
-
-WHAT IT UNLOCKS, and this is worth more than the check itself. The latch today says "asked once per threshold crossing". With the flag it can say "asked, and NOT YET SATISFIED" -- so an ignored ask can be repeated, which is correct while the window is still filling and is impossible to do safely without knowing the first one failed. Bounded: at most two asks, and the second one SAYS the first was ignored. A third would be nagging, and a hook that nags is a hook that gets uninstalled.
-
-WHERE ELSE IT APPLIES: `SessionEnd` with `reason: 'clear'` is the other boundary that destroys a window, and it gets the same check. `PostCompact` is too late to matter -- it can only report.
-
-AND THE SECOND READING OF "ASYNC", recorded because it is a real technique this project has not needed yet: a hook that genuinely must do slow work can spawn it DETACHED and unref it, the way `plan:upkeep seq:5` spawns the UI server. That is not what the handover needs -- its slow part is a model turn, not a process -- but the day a hook does need it, the shape is already ruled in.
+The anti-nagging instinct survives intact in the new shape: an ask never repeats INSIDE the percent
+it was made in, which is the thing this decision was actually protecting.

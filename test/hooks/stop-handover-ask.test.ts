@@ -348,60 +348,134 @@ test('the row says the ask was made, and at what', () => {
  * test writes the handover the way a model would and then insists on silence
  * for the rest of the session, at any occupancy.
  */
-test('an ask that was ACTED ON is never repeated, at any occupancy', () => {
+test('an ask that was ACTED ON is never repeated INSIDE the percent that answered it', () => {
   const sb = sandbox({ thresholdPercent: 98 });
   assert.notEqual(runStop(sb, { percent: 99 }).stdout, '', 'the first crossing did not ask');
   writeHandover(sb, 'after');
 
   assert.equal(runStop(sb, { percent: 99 }).stdout, '',
     'Stop asked again for a handover that had just been written. This is the loop the latch ' +
-    'exists to prevent, and measuring the file is what makes the second ask safe elsewhere.');
+    'exists to prevent, and it is the half of the old rule seq:12 keeps: the same state is ' +
+    'asked about once.');
   assert.equal(runStop(sb, { percent: 99.9 }).stdout, '',
-    'a HIGHER occupancy after the ask re-armed it — the latch is per session, not per reading');
+    'a HIGHER READING inside the same whole percent re-armed the ask. 99.0 and 99.9 are one ' +
+    'step, not two — the latch stores the whole number for exactly this reason, because a ' +
+    'float would re-arm on every turn after the first');
 });
 
 /**
- * **The whole of seq:9 in one test.** The ask is verified, not assumed: a
- * handover that was never written means the ask was IGNORED, and an ignored ask
- * may be repeated exactly once. The bound is what makes the repeat safe — *a
- * third would be nagging, and a hook that nags is a hook that gets uninstalled*.
+ * **THE OWNER'S RULING OF 2026-09-06, AND THE ASSERTION THE OLD RULE FAILED.**
+ *
+ * The test above used to end *"never repeated, AT ANY OCCUPANCY"*, and this
+ * corpus measured what that cost three days running: an ask answered at 85.1%
+ * and then two hours and thirty-nine minutes in which the window filled to
+ * 99.9% with nothing asking again. Every audit row said `acted-on`, and
+ * `acted-on` proves ORDERING — some process touched the file after the ask —
+ * never CURRENCY.
+ *
+ * > *"when handover file is triggerd at 85%, every change up till the context
+ * > window is 100% occupy, i mean when the percentage increasing by 1%, you
+ * > should always trigger the handover update"*
+ *
+ * So a handover that WAS written is asked for again the moment the window grows
+ * a whole percent, because a percent of a 1M window is roughly ten thousand
+ * tokens the document it just wrote does not describe. The paragraph says so
+ * rather than pretending the file is missing — a model told to update something
+ * it knows it just wrote is a model that learns to ignore the mechanism.
  */
-test('an ask that was IGNORED is repeated exactly once, and the second names the first', () => {
-  const sb = sandbox({ thresholdPercent: 98 });
-  const first = askedText(runStop(sb, { percent: 99 }));
-  assert.ok(first !== null, 'the first crossing did not ask');
-  const askedAt = readLatch(sb.root, sb.session).askedAt;
-  assert.ok(askedAt !== null, 'the latch recorded no wall clock for the ask');
+test('a whole percent crossed re-arms an ask that was already acted on', () => {
+  const sb = sandbox({ thresholdPercent: 85 });
+  assert.notEqual(runStop(sb, { percent: 85.1 }).stdout, '', 'the threshold did not ask');
+  writeHandover(sb, 'after');
 
-  const second = askedText(runStop(sb, { percent: 99 }));
-  assert.ok(second !== null,
-    'the handover was never written and Stop said nothing more about it — which is exactly ' +
-    'the silence seq:9 exists to end');
-  // It NAMES the first. A repeat that reads identically to the original is
-  // indistinguishable from a hook that lost its latch.
-  assert.match(second, new RegExp(askedAt.replace(/[.*+?^${}()|[\]\\]/gu, '\\$&'), 'u'));
-  assert.match(second, /NOT been written/u);
-  assert.match(second, /second and LAST/u);
+  assert.equal(runStop(sb, { percent: 85.9 }).stdout, '',
+    'the same whole percent asked twice — 85.1 and 85.9 are the same state');
 
-  assert.equal(runStop(sb, { percent: 99.9 }).stdout, '',
-    'Stop asked a THIRD time. There is no third: the audit row is the accountability story ' +
-    'for the asks that went unanswered.');
+  const next = askedText(runStop(sb, { percent: 86.7 }));
+  assert.ok(next !== null,
+    'the window grew a whole percent past a handover that was written at 85 and nothing asked ' +
+    'again. That is the defect the owner ruled on, measured here at up to 3h 06m of staleness');
+  assert.match(next, /86\.7/u);
+  assert.match(next, /85%/u, 'the ask does not say what the handover is behind');
+  // The step is FLOORED and not rounded, and the paragraph takes the same
+  // number the latch stores rather than recomputing it: 86.7 has passed 86, and
+  // telling the model it has passed 87 would name a percent the window has not
+  // reached and a step nothing has been asked at.
+  assert.match(next, /passed 86%/u);
+  assert.doesNotMatch(next, /87/u, 'the paragraph rounded the step up');
+  assert.equal(readLatch(sb.root, sb.session).askedAtPercent, 86);
+  assert.doesNotMatch(next, /NOT been written/u,
+    'a handover that WAS written was accused of not existing — the verdict chooses the ' +
+    'paragraph, and an accusation nothing supports is the defect this file already pins twice');
 });
+
+/**
+ * **The whole of seq:9, re-timed by seq:12.** The ask is verified, not assumed:
+ * a handover that was never written means the ask was IGNORED, and an ignored
+ * ask may be repeated — the repeat is safe because it is MEASURED rather than
+ * blind, and that half is untouched.
+ *
+ * **What was rewritten, and why.** This test used to assert *"repeated exactly
+ * once"* and *"there is no third"*, both at one occupancy, because the bound
+ * was `MAX_ASKS = 2` and a second turn at the same percent spent the budget.
+ * That is the rule the owner replaced. The bound is now a percentage step, so
+ * the assertions move to where the bound actually is: the SAME percent is
+ * silent however many turns pass in it, and the NEXT percent earns the repeat.
+ * A test that simply dropped the bound would be worse than one pinning the
+ * wrong bound, so both halves are still here — one silence and one ask.
+ */
+test('an ignored ask is repeated at the next percent, never inside the one it was made in',
+  () => {
+    const sb = sandbox({ thresholdPercent: 98 });
+    const first = askedText(runStop(sb, { percent: 98.4 }));
+    assert.ok(first !== null, 'the first crossing did not ask');
+    const askedAt = readLatch(sb.root, sb.session).askedAt;
+    assert.ok(askedAt !== null, 'the latch recorded no wall clock for the ask');
+
+    assert.equal(runStop(sb, { percent: 98.9 }).stdout, '',
+      'Stop asked twice inside one percent. Nothing had changed but a turn passing, and a ' +
+      'per-turn hook that repeats on no new work is a session that cannot finish');
+
+    const second = askedText(runStop(sb, { percent: 99.2 }));
+    assert.ok(second !== null,
+      'the handover was never written, the window grew a whole percent, and Stop said nothing ' +
+      'more about it — which is exactly the silence seq:9 and seq:12 both exist to end');
+    // It NAMES the ask it follows. A repeat that reads identically to the
+    // original is indistinguishable from a hook that lost its latch.
+    assert.match(second, new RegExp(askedAt.replace(/[.*+?^${}()|[\]\\]/gu, '\\$&'), 'u'));
+    assert.match(second, /NOT been written/u);
+    assert.doesNotMatch(second, /second and LAST/u,
+      'the ask still promises it is the last one. With the bound a percentage step that is a ' +
+      'lie, and a deadline a model discovers was false is worth less than no deadline at all');
+
+    assert.equal(runStop(sb, { percent: 99.9 }).stdout, '',
+      'a third ask arrived inside a percent already asked at — the bound is one ask per whole ' +
+      'percent, and it is the thing this mechanism cannot lose');
+  });
 
 /**
  * The two asks are distinguishable in the LOG, without reading the handover —
  * `seq:9`'s DONE WHEN, on the channel that survives the session.
  */
-test('the row says which ask this was, and that the first went unanswered', () => {
+test('the row says which ask this was, and what became of the one before it', () => {
   const sb = sandbox({ thresholdPercent: 98 });
-  const first = stopRows(runStop(sb, { percent: 99 })).at(-1);
+  const first = stopRows(runStop(sb, { percent: 98.4 })).at(-1);
   assert.ok(first, 'no row for the first ask');
-  assert.doesNotMatch(first.note ?? '', /SECOND/u);
+  assert.doesNotMatch(first.note ?? '', /AGAIN/u);
+  const askedAt = readLatch(sb.root, sb.session).askedAt;
+  assert.ok(askedAt !== null);
 
-  const second = stopRows(runStop(sb, { percent: 99 })).at(-1);
+  const second = stopRows(runStop(sb, { percent: 99.2 })).at(-1);
   assert.ok(second, 'no row for the second ask');
-  assert.match(second.note ?? '', /SECOND time/u);
+  assert.match(second.note ?? '', /asked AGAIN/u);
   assert.match(second.note ?? '', /went unanswered/u);
+  // `SECOND time` used to be enough to say which ask this was, because there
+  // were only ever two. A window now carries up to fifteen, so the row has to
+  // NAME the ask its verdict belongs to — otherwise "the previous ask went
+  // unanswered", repeated down a column of rows, attaches to nothing.
+  assert.ok((second.note ?? '').includes(askedAt),
+    'the row does not say WHICH ask went unanswered, so the log can no longer answer "was ' +
+    'this ask acted on"');
 });
 
 /**
@@ -412,10 +486,20 @@ test('the row says which ask this was, and that the first went unanswered', () =
  */
 test('a handover last written BEFORE the ask does not count as answering it', () => {
   const sb = sandbox({ thresholdPercent: 98 });
-  assert.notEqual(runStop(sb, { percent: 99 }).stdout, '');
+  assert.notEqual(runStop(sb, { percent: 98.4 }).stdout, '');
   writeHandover(sb, 'before');
-  assert.notEqual(runStop(sb, { percent: 99 }).stdout, '',
-    'a file whose last write predates the ask was accepted as an answer to it');
+
+  // Rewritten for seq:12, and the observable moved rather than the rule. The
+  // comparison used to decide WHETHER a second ask went out; now progress
+  // decides that and the comparison decides WHICH PARAGRAPH goes out. So the
+  // assertion is on the words: a file whose last write predates the ask is
+  // still an ask that was ignored, and it is still told so.
+  const next = askedText(runStop(sb, { percent: 99.2 }));
+  assert.ok(next !== null, 'the window grew a whole percent and nothing asked');
+  assert.match(next, /NOT been written/u,
+    'a file whose last write predates the ask was accepted as an answer to it — without the ' +
+    'strict `>`, any project that keeps a handover at all reads as having answered every ask ' +
+    'it ever ignored');
 });
 
 /** The latch is per SESSION, not per workspace: a second session asks for itself. */
@@ -480,6 +564,84 @@ function writeHandover(sb: Sandbox, when: 'before' | 'after'): void {
   const at = new Date(Date.parse(askedAt) + (when === 'after' ? 2_000 : -2_000));
   utimesSync(file, at, at);
 }
+
+/* ---------------------------------------------------------------------------
+ * The bound, now that it is progress rather than a count — `seq:12`.
+ *
+ * `MAX_ASKS` was 2 and it was checked against a counter, so the whole bound
+ * lived in one comparison and one number. It now lives in the relationship
+ * between two numbers — the whole percent last asked at, and the whole percent
+ * the window is in — and these three tests are what hold that relationship in
+ * place: a step earns exactly one ask, a percent that repeats earns none, and
+ * nothing above 100 earns anything at all.
+ * ------------------------------------------------------------------------- */
+
+/**
+ * **The sequence the owner's instruction is really about.** Four turns, three
+ * distinct percentages: 85, 86, 86, 87. Three asks go out and the repeated 86
+ * is the one turn that is silent — which is to say the ask re-arms exactly
+ * twice after the first, once per percent of new work, and not once per turn.
+ *
+ * Both halves fail loudly if the rule is got wrong in either direction: a
+ * mechanism still bounded by a count would go quiet after 86 and never reach
+ * 87, and one that re-armed on the READING rather than the whole percent would
+ * speak on the second 86 as well.
+ */
+test('85 -> 86 -> 86 -> 87 asks at each new percent, and stays silent on the repeated one', () => {
+  const sb = sandbox({ thresholdPercent: 85 });
+  const spoke = [85.2, 86.1, 86.7, 87.3].map(
+    (percent) => runStop(sb, { percent }).stdout !== '');
+
+  assert.deepEqual(spoke, [true, true, false, true],
+    'the ask did not follow the percentage. Expected one ask at 85, one at 86, silence on the ' +
+    'second reading inside 86, and one at 87');
+  assert.equal(readLatch(sb.root, sb.session).asks, 3, 'the latch counted the wrong number');
+  assert.equal(readLatch(sb.root, sb.session).askedAtPercent, 87,
+    'the latch does not carry the whole percent it last asked at, which is the only thing ' +
+    'that makes `satisfied` suppress until the next step rather than for the rest of the window');
+});
+
+/**
+ * **The cap is emergent, and this is what says what it comes to.** Nothing
+ * declares fifteen or sixteen anywhere; the number falls out of there being
+ * that many whole percentage points between the owner's threshold and a full
+ * window. From 85 that is the first ask plus fifteen more, and the last of them
+ * lands at 100 because `askStep` clamps there.
+ *
+ * It is a bound worth pinning precisely because it is emergent: the failure it
+ * would catch is not "one ask too many" but a per-turn hook that asks forever,
+ * which is the most expensive bug this design can ship.
+ */
+test('a window filled from the threshold to 100 produces exactly one ask per whole percent',
+  () => {
+    const sb = sandbox({ thresholdPercent: 85 });
+    let asked = 0;
+    // Half-percent steps, so every whole percent is READ twice and may only be
+    // ASKED at once — thirty-one turns for sixteen asks.
+    for (let percent = 85; percent <= 100; percent += 0.5) {
+      if (runStop(sb, { percent }).stdout !== '') asked += 1;
+    }
+    assert.equal(asked, 16,
+      'a window from 85 to 100 no longer produces one ask per whole percent — 85 through 100 ' +
+      'is sixteen: the first, and the fifteen the owner\'s instruction earns');
+    assert.equal(readLatch(sb.root, sb.session).asks, 16);
+  });
+
+/**
+ * A reading above 100 is a full window, not sixteen more chances to speak.
+ * `askStep` clamps rather than refuses — 100.4 IS a window worth asking about —
+ * and the clamp is what keeps the mechanism bounded whatever arithmetic arrives
+ * from the platform. Without it a bad divisor upstream turns a bounded hook
+ * into one that asks on every turn for the rest of the session.
+ */
+test('an occupancy above 100 is clamped, so a full window cannot keep earning asks', () => {
+  const sb = sandbox({ thresholdPercent: 98 });
+  assert.notEqual(runStop(sb, { percent: 100.4 }).stdout, '', 'a full window was not asked');
+  assert.equal(readLatch(sb.root, sb.session).askedAtPercent, 100,
+    'the latch recorded a percent above 100, so every higher reading is a fresh step');
+  assert.equal(runStop(sb, { percent: 101.9 }).stdout, '', '101 was treated as a new percent');
+  assert.equal(runStop(sb, { percent: 250 }).stdout, '', 'a nonsense reading earned an ask');
+});
 
 /* ---------------------------------------------------------------------------
  * Standing down — the path most likely to actually run.
