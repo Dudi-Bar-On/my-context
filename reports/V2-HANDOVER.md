@@ -1,5 +1,78 @@
 # v2.0 handover — we are mid-decision. Keep deciding.
 
+## ⏭ READ THIS FIRST — 2026-09-06, at 92%
+
+Supersedes the 90% and 85% sections below. Same plan; two more decisions landed.
+
+### TWO LANES IN FLIGHT
+
+1. **D7 — the audit projection index** · `src/core/audit-db.ts`, `src/doctor/checks.ts`
+2. **The wa-tree vendoring** · `src/ui/public/lib/vendor/**`, `scripts/check-vendor.ts`
+
+Do not dispatch into either. Everything else is committed.
+
+### D14 LANDED, and the bug it found matters more than the feature
+
+The handover now re-asks at **every whole percent** from the threshold to 100 —
+sixteen at most, `MAX_ASKS` replaced by `askStep`, `askedAtPercent` on the latch, and
+the verification now choosing **which paragraph** rather than whether to speak.
+
+**Gate 4 compared `percent < threshold` with a bare less-than, and `NaN < 85` is false** —
+so a non-finite occupancy reading fell THROUGH to the ask. Under the old count bound that
+cost two asks. Under a per-percent bound it would have asked **every turn, forever**. The
+instruction would have turned a dormant bug into a permanent one. `askStep` returning
+`null` closes it.
+
+`DEC-the-ask-and-the-writing-are-two-turns-apart-so-a-flag-is` is **deprecated, not
+rewritten**: it said "at most twice… there is no third", and it was not wrong about
+nagging — it was wrong about the premise, that the window stops changing between asks. The
+instinct survives: an ask never repeats INSIDE the percent it was made in.
+
+### THE TREE COMPONENT IS CHOSEN: `<wa-tree>`, Web Awesome 3.12.0
+
+MIT, **26 files / 89,648 B** (+2.62 % of `src/ui/public/`). Shoelace continued — Shoelace's
+own site says it is sunset and points here. Measured, not read off a README: full APG keys
+with **←/→ swapping under `dir="rtl"`**, **zero hard-coded colours and zero
+`prefers-color-scheme`** (10 `--wa-*` tokens we define, so no light theme to fight), 0
+off-origin requests, 1,020 items in 156 ms.
+
+**Vendor the 26-file closure, NOT the documented barrels** — the barrels pull `wa-icon`,
+which calls `fetch(url, {mode:"cors"})`. We supply our own inline SVG chevrons and give up
+`wa-icon`, `wa-spinner`, `wa-checkbox`.
+
+**Owner ruling on the gate:** `check-vendor.ts` walks subdirectories and allows a relative
+import **only** when it resolves to another pinned file; bare specifiers still refused; and
+**`FORBIDDEN` gets no relaxing** — if the vendored set trips one, STOP and report rather
+than widening the list to pass.
+
+Rejected with reasons on the record: **simple-treeview** renders flat sibling divs with
+`paddingLeft` — literally the shape the owner rejected — with **zero** `role`/`aria-`/
+`tabindex`/`keydown`, last released 2021. **Syncfusion** and **DHTMLX** commercial by their
+own licence files. The **W3C APG reference** was tempting at 14 KB and zero deps but needs
+editing to fit, and a vendored file never gets edited. My own dispatch was wrong about Plain
+Tree (I conflated it with `bs-treeview`); it fails because its repository 404s.
+
+### D12's CORPUS QUESTION IS SETTLED — scratch, and it runs ALONE
+
+Retire-after-the-fact is contamination with a label on it: superseding leaves the item, the
+relation, the mutation records and the audit rows permanently, and `rebuild`/`repair`/
+`config` have **no inverse at all**, so a half-failed run leaves debris nothing can undo.
+`DEC-the-composer-tests-run-against-a-scratch-corpus-alone-and`.
+
+### NEXT SESSION, FIRST THREE THINGS
+
+1. `reports/2026-09-06-PLAN.md` — D1–D14 is the running order.
+2. Wait for the two lanes; commit separately; **verify in a browser before believing any UI
+   claim** — four of my briefs were factually wrong today and every lane was right to check.
+3. **`library/2` is still blocked on the boundary ruling the owner already gave:** widen
+   `isServableDocPath` to serve `.my_context/items/**` AND fix `REQ-a-repository-document-
+   is-viewable-in-the-ui-only-once-it-is`, which is `severity: hard` and says the opposite
+   of what the product does. Found twice, stepped over twice. Not yet dispatched.
+
+Still on the owner, blocking nothing: **D8** (two disjoint RTL conventions), **D9**
+(`<ins>`/`<del>` markers), **D6** (deferred), and **43 `walk` items**.
+
+
 ## ⏭ READ THIS FIRST — 2026-09-06, at 90%
 
 Supersedes the 85% section below it. Same plan, more decided.
