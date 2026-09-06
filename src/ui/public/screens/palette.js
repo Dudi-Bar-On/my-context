@@ -105,6 +105,21 @@
  * Reported rather than papered over: nothing here invents a row it was not
  * sent, and nothing here re-walks the repository to fill one in.
  *
+ * **THIS REPOSITORY IS ALREADY LARGER THAN THAT, so the sentence above is the
+ * state of the screen and not a hypothesis about a bigger repository.**
+ * Measured in the browser 2026-09-06 under `plan:builder seq:15`: the tester
+ * arrives reading `1,298 / 1,298` over a tree of exactly **200 rows**, all lit.
+ * The count tracks the repository and moves with it — it was 690 when the line
+ * below was written — so the durable half of this measurement is the 200, which
+ * is the constant, and the fact that it has been the smaller number for a long
+ * time. Both numbers on screen are honest — `total` and the denominator are the
+ * walk's own — and the reader is nonetheless shown 200 files while the line
+ * above them counts thirteen hundred. Nothing on the screen says so, because the
+ * sentence that would say so is a ninth `pal.` key and therefore new product
+ * copy (see "WHAT THIS SCREEN COULD NOT SAY, FOR WANT OF A KEY" below). The
+ * count line is what the previous measurement of this file misread as proof
+ * that the cap was gone; the cap is real, and it is the ROWS it bounds.
+ *
  * ── WHAT THIS SCREEN COULD NOT SAY, FOR WANT OF A KEY ──────────────────────
  *
  * The string tables carry exactly eight `pal.` keys and no more. This
@@ -947,7 +962,9 @@ export async function render(root, ctx) {
   // on every command change and would otherwise wipe it on the first one.
   let files = [];
   // The repository's SIZE, which is not `files.length`: measured against this
-  // repository the walk answers `total: 690` and sends 200 of them. The
+  // repository the walk answers `total: 1299` and sends 200 of them
+  // (2026-09-06, `plan:builder seq:15`; it read 690 when this line was written
+  // and the gap between the two is the only reason the number is dated). The
   // denominator has to be the number of files that exist, or "177 / 200" would
   // report a search of the window as a search of the corpus.
   let fileTotal = 0;
