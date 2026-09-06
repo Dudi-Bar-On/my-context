@@ -356,6 +356,24 @@ export function readyReport(items: Item[], config: Config): ReadyReport {
   for (const item of workItems(items, config)) {
     const state = taskState(item);
     if (state === DONE_STATE) continue;
+    // **A cancelled task is not work, and `state` cannot say so.** The four
+    // states are `todo|doing|blocked|done`, so a task abandoned before it was
+    // built has no state to move to: `done` would claim it shipped, and it
+    // never did. What records the cancellation is `status: deprecated`, and
+    // until now this loop did not read it — `workItems` filters `superseded`
+    // alone, so six deprecated tasks were being offered as ready work on this
+    // corpus (`docsys/5`, `/6`, `/9`, `/10`, `walk/16`, `tuts/4`), and the
+    // count said "2 ready of 2 open" for a plan holding one real task.
+    //
+    // Found 2026-09-06 by a worker that read its own cancelled task back out
+    // of `ready` and said so. The defect is this report's, not the author's:
+    // asking every author to also move a state that cannot express the fact is
+    // the held-by-convention failure this project keeps paying for.
+    //
+    // `deprecated` only, deliberately. `draft` and `validated` are workable
+    // states of a live task; `superseded` is already gone above. Deprecated is
+    // the one that means "this is not to be done".
+    if (item.status === 'deprecated') continue;
     const reading = readNeeds(item, index);
     const row: ReadyRow = { item, reading };
 
