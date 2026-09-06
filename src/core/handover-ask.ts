@@ -1619,8 +1619,18 @@ function windowBeganBecause(source: string): string {
  * it was written in has ended" is true of every delivery this can reach,
  * including the two verdicts where no number could be had.
  *
- * `''` is never returned: this is only called when a handover block is actually
- * being delivered, and there is no delivery for which nothing true can be said.
+ * **`''` IS returned, for `no-ask` alone** — owner ruling 2026-09-07, and this
+ * sentence used to say the opposite. Every other verdict carries a
+ * MEASUREMENT: a percentage and the gap to the write, an unanswered ask, or a
+ * write time that could not be read. `no-ask` carries none, so the only thing
+ * it could say is that the window ended — which is true of every delivery this
+ * function can reach, and so tells a reader nothing they did not already know
+ * from a handover being delivered at all.
+ *
+ * It is also the COMMON case, which is what decided it rather than taste: the
+ * latch is reset when a window is rebuilt, so a corpus sitting below its
+ * threshold reads `askedAtPercent: null` on every session start. The line
+ * would have spent ~95 tokens every time to warn about nothing measurable.
  */
 export function endedWindowLine(check: HandoverWindowCheck): string {
   const began = windowBeganBecause(check.source);
@@ -1653,8 +1663,23 @@ export function endedWindowLine(check: HandoverWindowCheck): string {
       + `is that it was written before this window — ${began} — ${historical}._\n`;
   }
 
-  return '_READ THIS AS HISTORY. How full the context window was when this was written is NOT '
-    + 'recorded — no handover ask carrying a percentage is stamped in `.my_context/state/`, and '
-    + 'no number is invented for it here. What is certain is that it was written before this '
-    + `window — ${began} — ${historical}._\n`;
+  // `no-ask` is SILENT, owner ruling 2026-09-07.
+  //
+  // It is the one verdict with no number behind it: nothing in `state/` records
+  // an ask carrying a percentage, so the line could say only that the window
+  // ended — which is true, and true of every delivery this function can reach,
+  // and therefore carries no information a reader did not already have from the
+  // fact that a handover is being delivered at all.
+  //
+  // It is also the COMMON case rather than the rare one, which is what decided
+  // it: a latch is reset the moment a window is rebuilt, so a corpus sitting
+  // below its threshold has `askedAtPercent: null` on every session. Spending
+  // ~95 tokens per session start to say "this is from before now" is a cost
+  // paid every time to warn about nothing measurable.
+  //
+  // The three verdicts that DO carry a measurement still speak. Silence here is
+  // not the absence of a warning; it is the absence of anything to warn about,
+  // and `''` is distinguishable from an unwritten branch because
+  // `endedWindowLine` is total over the union and every other arm returns text.
+  return '';
 }

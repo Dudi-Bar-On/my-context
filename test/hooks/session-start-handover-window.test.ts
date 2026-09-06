@@ -173,14 +173,23 @@ test('no recorded ask: the percentage is refused, never defaulted', (t) => {
   writeHandover(cwd);
   const run = runHook(cwd, 'startup');
 
-  assert.match(run.stdout, /How full the context window was when this was written is NOT recorded/);
-  assert.match(run.stdout, /no number is invented for it here/,
-    'a wrong percentage is worse than no sentence, because the sentence would be believed');
+  // SILENT, owner ruling 2026-09-07. This test used to require the sentence
+  // that named the absence; it now requires the absence of the sentence.
+  //
+  // `no-ask` is the only verdict with no measurement behind it, and it is the
+  // COMMON one — the latch is reset when a window is rebuilt, so a corpus below
+  // its threshold reads `askedAtPercent: null` on every session start. All the
+  // line could have said is that the window ended, which is true of every
+  // delivery this path can reach and so tells a reader nothing new.
+  assert.doesNotMatch(run.stdout, /READ THIS AS HISTORY/,
+    'the no-ask verdict says nothing: there is no measurement to report');
   assert.doesNotMatch(run.stdout, /\d+% of a context window/, 'nothing may be quoted as a reading');
-  // The load-bearing claim survives the missing number, because it rests on the
-  // EVENT and not on a measurement.
-  assert.match(run.stdout, /it was written before this window — this one has just started/);
-  assert.match(run.stdout, /is a claim about a session that is OVER/);
+
+  // The handover ITSELF is still delivered — silence is the absence of a
+  // warning, never the absence of the block it would have warned about. This is
+  // the assertion that keeps a future "simplification" from dropping both.
+  assert.match(run.stdout, /handover/i,
+    'the block is still delivered; only the warning about it is withheld');
 });
 
 test('a latch with an ask and no percent is not quoted — it is a pre-seq:12 file', (t) => {
@@ -199,7 +208,13 @@ test('a latch with an ask and no percent is not quoted — it is a pre-seq:12 fi
   // That back-fill is right for deciding whether to ask again and wrong for
   // quoting as "the occupancy it was written at", so this path must not quote it.
   assert.doesNotMatch(run.stdout, /85% of a context window/);
-  assert.match(run.stdout, /is NOT recorded/);
+  // Such a file yields `no-ask`, which is silent since 2026-09-07. The
+  // load-bearing assertion is the one ABOVE — that 85 is never quoted — because
+  // 85 is a THRESHOLD the latch was back-filled from, not an occupancy anything
+  // measured. Quoting it would understate staleness, which is the one direction
+  // a warning about staleness must never take.
+  assert.doesNotMatch(run.stdout, /READ THIS AS HISTORY/,
+    'no percentage was recorded, so there is nothing to say and nothing is said');
 });
 
 test('a latch whose filename is not a lower-case id is still found by the scan', (t) => {
