@@ -38,10 +38,11 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
   CommandRefusal, boundaryOf, catalogueEntries, catalogueIds, resolveCommand,
+  runnableIds, runnableOf,
 } from '../../src/ui/execute-catalogue.ts';
 
-test('every catalogue entry is resolvable by id — no entry is unreachable', () => {
-  const ids = catalogueIds();
+test('every RUNNABLE catalogue entry is resolvable by id — no entry is unreachable', () => {
+  const ids = runnableIds();
   assert.ok(ids.length > 0);
   assert.ok(ids.includes('add'));
   assert.ok(ids.includes('doctor'));
@@ -160,4 +161,124 @@ test('EVERY catalogue entry declares the key, so an omission still means "unclas
     'a catalogue entry declares no boundary. It will get the STRONGER confirm, which is the '
     + 'safe direction — but say which it is, with the reason, rather than leaving the next '
     + 'reader to infer it from a missing key.');
+});
+
+
+/* -------------------------------------------------------------------------- *
+ * `runnable` — drawing a form and letting this server run it are two things.
+ *
+ * Owner ruling D2, 2026-09-06 (`reports/2026-09-06-PLAN.md`), on the finding in
+ * `docs/superpowers/specs/2026-09-06-composer-architecture-review.md` §2b:
+ * membership in `PALETTE` used to be the whole execution licence, so giving a
+ * command a checked argument shape granted it `POST /api/execute` in the same
+ * edit.
+ * -------------------------------------------------------------------------- */
+
+/**
+ * **The fail-safe, and it points the OPPOSITE way from `boundary`'s.**
+ *
+ * An entry that says nothing about `boundary` gets the stronger confirm, which
+ * costs a reader ceremony. An entry that says nothing about `runnable` gets
+ * nothing at all, because the cost of the other direction is a command nobody
+ * licensed. The owner's own words for the rule: *a mistake should withhold
+ * execution, never grant it.*
+ */
+test('an entry that declares no runnable is NOT runnable', () => {
+  assert.equal(runnableOf({}), false);
+  assert.equal(runnableOf({ runnable: undefined }), false);
+  assert.equal(runnableOf({ runnable: false }), false);
+  assert.equal(runnableOf({ runnable: true }), true);
+});
+
+test('EVERY catalogue entry declares the key, so an omission still means "unlicensed"', () => {
+  // The same argument as the `boundary` test above and a sharper consequence: a
+  // default only carries information while omissions are rare, and here an
+  // omission silently removes a button rather than adding ceremony. Every entry
+  // that could execute before this field existed was marked `runnable: true` in
+  // the pass that added it, which is what keeps the omission meaningful.
+  const unflagged = catalogueEntries()
+    .filter((def) => (def as { runnable?: boolean }).runnable === undefined)
+    .map((d) => d.name);
+  assert.deepEqual(unflagged, [],
+    'a catalogue entry declares no runnable. It will be refused execution, which is the safe '
+    + 'direction — but say so, with the reason, rather than leaving the next reader to infer a '
+    + 'withheld button from a missing key.');
+});
+
+/**
+ * **The executable set, written out.**
+ *
+ * These are exactly the ids `POST /api/execute` would run on 2026-09-05, the day
+ * before `runnable` existed, when the set was `[...BY_ID.keys()]` and therefore
+ * every entry in the catalogue. The list is transcribed rather than derived on
+ * purpose — a derived assertion would follow the catalogue wherever it went, and
+ * the one property this test exists for is that MOVING A COMMAND INTO THE
+ * CATALOGUE DID NOT GRANT IT EXECUTION.
+ *
+ * A new row here is a real grant and must be an owner ruling
+ * (`OPENQ-the-three-proposed-screens-hold-the-only-command-blocks-in` is the
+ * open one). A row that disappears is a command that quietly lost its button.
+ */
+const EXECUTABLE_BEFORE_RUNNABLE = [
+  'ack', 'add', 'config', 'edit', 'focus',
+  'pin', 'unpin', 'harden', 'soften', 'supersede', 'refresh', 'repair',
+  'lesson-accept', 'lesson-discard',
+  'review promote', 'review discard', 'review promote-revision', 'review discard-revision',
+  'rebuild',
+  'status', 'doctor', 'decay', 'review revisions', 'help', 'list', 'show', 'search',
+];
+
+test('the executable set is exactly what it was before the flag existed', () => {
+  assert.deepEqual([...runnableIds()].sort(), [...EXECUTABLE_BEFORE_RUNNABLE].sort());
+  assert.equal(runnableIds().length, 27, 'the count moved; say which ruling moved it');
+});
+
+test('the catalogue is WIDER than the executable set, and the difference is named', () => {
+  const composedOnly = catalogueIds().filter((id) => !runnableIds().includes(id)).sort();
+  assert.deepEqual(composedOnly, ['audit', 'init', 'procedure done'],
+    'the set of commands this catalogue composes and refuses to run has changed. That is a '
+    + 'decision about the approval boundary either way: a command leaving this list gained '
+    + 'Execute, and a command joining it lost one.');
+});
+
+/**
+ * **Refused at `resolveCommand`, so BOTH routes are stopped by one check.**
+ *
+ * The confirm `GET` and the execute `POST` both resolve through this function.
+ * Refusing here rather than at the POST is what stops a confirm dialog being
+ * rendered for a command that can never run — a question with no answer, and a
+ * button that teaches a reader it works.
+ */
+test('a catalogued command that is not runnable is REFUSED, in words a reader can act on', () => {
+  for (const id of ['audit', 'init', 'procedure done']) {
+    assert.throws(() => resolveCommand(id, {}), CommandRefusal, id);
+    let message = '';
+    try { resolveCommand(id, {}); } catch (error) { message = (error as Error).message; }
+    // The id, so the reader knows which of several blocks on a screen refused.
+    assert.ok(message.includes(id), `the refusal does not name ${id}`);
+    // The FIELD, so the reason is checkable rather than atmospheric.
+    assert.ok(message.includes('runnable: false'), `${id}: the refusal does not name the field`);
+    // And what to do instead. A refusal a reader cannot act on is a 404 with
+    // better prose, which is the thing this ruling was meant to stop shipping.
+    assert.ok(message.includes('your own shell'), `${id}: the refusal offers no way forward`);
+    // NOT the uncatalogued refusal: the catalogue knows this command and just
+    // composed the line on screen. Saying it had never heard of it would be a
+    // lie the reader can see through, standing next to the command.
+    assert.ok(!message.includes('is in the catalogue'), `${id}: refused as if it were unknown`);
+  }
+});
+
+test('a non-runnable id is refused BEFORE its values are read, so the answer never varies', () => {
+  // A caller who sends garbage to a command that cannot run must get the same
+  // sentence as one who sends a perfect value bag: any other behaviour makes the
+  // refusal a probe for what the entry declares.
+  const bad = (): string => {
+    try { resolveCommand('init', { nonsense: 1, another: '\u202E' }); } catch (e) { return (e as Error).message; }
+    return 'no refusal';
+  };
+  const good = (): string => {
+    try { resolveCommand('init', { pack: '../packs/x' }); } catch (e) { return (e as Error).message; }
+    return 'no refusal';
+  };
+  assert.equal(bad(), good());
 });

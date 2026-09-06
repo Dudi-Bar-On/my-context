@@ -955,6 +955,12 @@ export const strings = {
   'pal.noRows': 'no rows matched',
   'pal.truncated': 'capped at {rows} rows — more matched; raise the limit to see them',
   'pal.incomplete': 'Required inputs are missing — fill them in to compose a command.',
+  // Owner ruling D2, 2026-09-06: being in the catalogue draws a form; running is
+  // a second licence (`runnable`). Three entries carry it as `false`, so the
+  // Composer draws Copy alone for them — this is the sentence that says why,
+  // where the missing Execute button would have been. It reports a DECISION,
+  // not a failure, which is why it shares no wording with `pal.block`.
+  'pal.copyOnly': '{b:Copy only.} This command composes here and runs in your own shell — nothing has failed, and nothing has licensed it to run from this page.',
   // Execute — the one Copy-and-Execute control (lib/command-actions.js).
   //
   // The RESIDUAL is deliberately not a key here. `src/ui/execute.ts` spells it

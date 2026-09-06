@@ -105,9 +105,10 @@ async function procModule(): Promise<ProcModule> {
     rewritten += 1;
     return `${head}${pathToFileURL(path.join(PUBLIC, spec)).href}'`;
   });
-  assert.equal(rewritten, 3,
-    `expected proc.js to import three browser modules (the command composer and the shared DOM `
-    + `parts); the rewrite matched ${rewritten}. A specifier this pattern cannot see is a module `
+  assert.equal(rewritten, 4,
+    `expected proc.js to import four browser modules (the command composer, the shared `
+    + `Copy-and-Execute control, the command catalogue and the shared DOM parts); the rewrite `
+    + `matched ${rewritten}. A specifier this pattern cannot see is a module `
     + 'Node would resolve from the drive root, and the import below would fail for a reason that '
     + 'reads like a missing file.');
   assert.ok(!/\bfrom\s+'\//.test(text),
@@ -466,30 +467,41 @@ test('doneCommand is exactly what doneArgv composes to, at every stage', async (
 });
 
 /**
- * **`mycontext procedure` is not in the command catalogue at all, so the
- * settlement line gets Copy and no Execute — and that is the correct outcome.**
+ * **The settlement line gets Copy and no Execute, and since 2026-09-06 that is a
+ * RULING rather than an absence.**
  *
- * The screen already recorded the fact and its consequence: *"the command
- * catalogue declares no `procedure` entry at all … the argv is written here,
- * once, and reported: the catalogue is where a flag set gets verified against
- * the real parser, and a command composed outside it has had no such check."*
- * An unverified argv is exactly what must not be handed an Execute button — the
- * client sends an id and the server rebuilds from the catalogue, so an id the
- * catalogue does not have has nothing to rebuild.
+ * This test used to assert the catalogue held no `procedure` entry at all, and
+ * the screen's own words were its reason: *"the catalogue is where a flag set
+ * gets verified against the real parser, and a command composed outside it has
+ * had no such check"*. That was true, and it was never a decision — the review
+ * of 2026-09-06 (§2c) found this screen had no Execute button because of which
+ * FILE its argv literal lived in.
  *
- * There is a second reason, and it is this screen's own: `pr.w3` — *"active →
- * done stays yours"* — is why the composed line carries no `--yes`. The
- * confirmation prompt IS the human's decision, and it lives in their shell.
+ * Owner ruling D2 split the two licences the catalogue conflated. `procedure
+ * done` is an entry now, so the argv IS checked against the real parser; the
+ * entry carries `runnable: false`, so the server refuses the id and the screen
+ * passes none. What this test asserts is therefore the same outcome from a
+ * stated cause: the entry exists, it is not runnable, and the screen honours it.
+ *
+ * The second reason is unchanged and is this screen's own: `pr.w3` — *"active →
+ * done stays yours"*. Whether it survives an Execute button is
+ * `OPENQ-the-three-proposed-screens-hold-the-only-command-blocks-in`, an owner
+ * question — and flipping this entry's `runnable` is now the whole of answering
+ * it, which is what makes this test the tripwire rather than the obstacle.
  */
-test('the settlement line names no catalogue id, because the catalogue has no procedure', async () => {
+test('the settlement line names no catalogue id, because its entry is not runnable', async () => {
   const defs = await import(pathToFileURL(path.join(PUBLIC, 'lib', 'palette-defs.js')).href) as {
-    PALETTE: { name: string }[];
+    PALETTE: { name: string; runnable?: boolean }[];
   };
-  assert.equal(defs.PALETTE.find((def) => def.name.startsWith('procedure')), undefined,
-    'the catalogue gained a `procedure` entry — this screen must now decide whether pr.w3 '
-    + 'survives an Execute button beside a line that deliberately carries no --yes');
+  const done = defs.PALETTE.find((def) => def.name === 'procedure done');
+  assert.ok(done, 'the catalogue lost its `procedure done` entry — the argv this screen composes '
+    + 'is unchecked against the real parser again');
+  assert.equal(done!.runnable, false,
+    'the `procedure done` entry became runnable. That is the Execute grant pr.w3 and '
+    + 'OPENQ-the-three-proposed-screens-hold-the-only-command-blocks-in reserve for the owner, '
+    + 'and it must arrive as his ruling rather than as a field somebody flipped in passing');
   assert.ok(/commandActions\(\{[\s\S]{0,200}?id: null/.test(procSource),
-    'the screen no longer passes a null id; a command outside the catalogue must not offer '
+    'the screen no longer passes a null id; an entry the server will not run must not offer '
     + 'Execute');
 });
 

@@ -122,7 +122,7 @@
  * ── ONE COMPOSED COMMAND PER CARD, AND WHY IT CARRIES `--revision` ────────
  *
  * `--revision` is never optional here. `commandFor` treats the flag as optional
- * (`src/ui/public/lib/palette-defs.js` · `flags: [{ name: 'revision', input: 'text' }, { name: 'force', boolean: true }, yes],` · ~333),
+ * (`src/ui/public/lib/palette-defs.js` · `flags: [{ name: 'revision', input: 'text' }, { name: 'force', boolean: true }, yes],` · ~449),
  * so a revision that arrived without one would compose a line settling
  * whichever revision the log offers first rather than the one the human just
  * read — and that is as true of the discard as of the promote, which is why the

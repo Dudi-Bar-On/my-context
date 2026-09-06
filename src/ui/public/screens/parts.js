@@ -626,7 +626,7 @@ export function tierChip(tier) {
  * would have been six edits for one sentence. `globalThis.myctx` is what
  * `app.js` publishes (`src/ui/public/app.js` · `  window.myctx = {` · ~7291),
  * and it is the same shape `screens/packs.js` already relies on for `document`
- * (`src/ui/public/screens/packs.js` · `export function isolated(text, doc = globalThis.document) {` · ~204).
+ * (`src/ui/public/screens/packs.js` · `export function isolated(text, doc = globalThis.document) {` · ~205).
  * Where there is no shell — `node --test` importing this module with a
  * stand-in `document` — the message is drawn bare, which is exactly what
  * shipped before and is never worse than it.

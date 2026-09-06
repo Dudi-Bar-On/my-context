@@ -829,9 +829,14 @@ test('a repair names the catalogue entry it IS, and null where the catalogue has
     repairFor({ code: 'source_drift', item: 'RULE-a', remedy: REFRESH('RULE-a') })?.values,
     { id: 'RULE-a', yes: true },
   );
+  // `route: 'copy'` carries its own argv and names no id, which was the only
+  // shape available while `PALETTE` had no `audit` entry. It has one since owner
+  // ruling D2 (2026-09-06), marked `runnable: false` — so the id would resolve to
+  // null here either way, and the outcome this pins is unchanged while its reason
+  // moved from an absence to a decision.
   assert.equal(repairFor({ code: 'audit_log_size', remedy: REMEDY.AUDIT_FILES })?.id, null,
-    'mycontext audit is not in the catalogue; naming an id it does not have would make the '
-    + 'confirm render a DIFFERENT command from the one the code above it shows');
+    'mycontext audit is composed and never run from this UI; naming an id the server refuses '
+    + 'would draw an Execute button whose only outcome is that refusal');
 
   for (const finding of [
     { code: 'index_stale', item: 'RULE-a', remedy: REMEDY.REBUILD },

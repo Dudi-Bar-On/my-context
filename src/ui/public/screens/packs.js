@@ -182,6 +182,7 @@
  */
 import { composeCommand } from '/lib/command.js';
 import { commandActions } from '/lib/command-actions.js';
+import { PALETTE, commandFor } from '/lib/palette-defs.js';
 import {
   BOUND_CAP_TABLE, boundedList, el, errorNote, idFull, mono, num, spaced,
 } from '/screens/parts.js';
@@ -292,8 +293,20 @@ export function packRows(pack) {
  * (`docs/design/web-ui-mockup.html` · `<div class="cmd"><code>mycontext init --pack ../packs/regulated-industry</code>` · ~3649),
  * and the test pins it to that line read out of the mockup rather than to a
  * copy of it here.
+ *
+ * **The ARGV is the catalogue's as of 2026-09-06, and only the path is this
+ * screen's.** This constant used to be a literal array — the second of the
+ * three the composer review (§2c) measured, none of which had ever been fed to
+ * the real argument parser that every other command in this UI is checked
+ * against. `PALETTE` carries an `init` entry now, so `--pack` is verified as a
+ * flag the command really takes and `mycontext init --pack <path>` is verified
+ * as a line it really parses. What did not move is the PATH: it is the
+ * mockup's own example, it belongs to this card, and the catalogue has no
+ * business holding one workspace's sample argument.
  */
-export const IMPORT_ARGV = ['mycontext', 'init', '--pack', '../packs/regulated-industry'];
+const INIT = PALETTE.find((def) => def.name === 'init');
+
+export const IMPORT_ARGV = commandFor(INIT, { pack: '../packs/regulated-industry' });
 
 export function importCommand() {
   return composeCommand(IMPORT_ARGV);
@@ -311,13 +324,15 @@ export function importCommand() {
  * confirm is the security boundary.
  *
  * **`id: null`, and this screen is one of the two places that is the ANSWER
- * rather than a shortfall.** `mycontext init` is not in the command catalogue —
- * it is the command that is run before there is a workspace for this UI to be
- * served from, so there was never anything for the catalogue to carry — and the
- * client sends a catalogue id, never a command. With no id there is nothing for
- * the server to rebuild, so the control draws Copy alone. Weighed against
- * passing the nearest id to get an Execute button, which is exactly how a
- * different command ships behind a confirm that looks right.
+ * rather than a shortfall.** The catalogue now carries `init` — it has to, or
+ * the argv above could not be composed from it — and the entry carries
+ * `runnable: false`, so this control's id stays null and the server refuses the
+ * id besides. The reason is the one this screen always gave and it is unchanged
+ * by the entry: `mycontext init` is the command run BEFORE there is a workspace
+ * for this UI to be served from, and its effect is on a corpus that is not this
+ * one. Weighed against passing the id now that one exists, to get an Execute
+ * button — which is exactly how a command ships behind a confirm that looks
+ * right, and is the side effect owner ruling D2 exists to prevent.
  *
  * A fragment rather than a wrapping `<div>`: `.cmd` is the mockup's element and
  * `.cmdactions` is the control's own, and a classless container between them is

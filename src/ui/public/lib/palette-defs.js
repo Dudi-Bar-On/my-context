@@ -61,6 +61,47 @@
 // (`DEC-doctor-gets-a-bulk-settlement-overturning-the-no-bulk-ruling`), so the
 // paragraph above stands unchanged and this one sits beside it.
 
+// ── `runnable`: DRAWING A FORM AND LETTING THE SERVER RUN IT ARE TWO ─────
+//
+// Owner ruling 2026-09-06 (decision D2, `reports/2026-09-06-PLAN.md`), on the
+// finding `docs/superpowers/specs/2026-09-06-composer-architecture-review.md`
+// §2b states: **membership in this list used to be the whole execution
+// licence.** `src/ui/execute-catalogue.ts` built its lookup from `PALETTE` and
+// resolved anything it found, so adding an entry — for no reason but that a
+// screen wanted the flag set checked against the real parser — handed that
+// command `POST /api/execute` in the same edit. The review measured the
+// consequence on the three commands below: they were unrunnable from this app
+// only because of which FILE their argv literal happened to live in.
+//
+// So the two facts are now two fields:
+//
+//   * being in `PALETTE` licenses a FORM — the Composer draws controls for the
+//     entry and composes an argv a reader can read and copy;
+//   * `runnable: true` licenses EXECUTION — the server rebuilds the argv and
+//     runs it behind the confirm, and the screen offers the button.
+//
+// **AN ENTRY WITH NO `runnable` KEY IS NOT RUNNABLE.** That is the fail-safe,
+// and it points the opposite way from `boundary`'s on purpose: a forgotten
+// `boundary` costs a reader ceremony, while a forgotten `runnable` would cost
+// them a command they never licensed. The owner's words: *a mistake should
+// withhold execution, never grant it.*
+//
+// For that default to keep meaning "nobody has ruled on this yet", every entry
+// that could already execute on 2026-09-06 carries `runnable: true` EXPLICITLY
+// — all twenty-seven of them, marked in the same pass that added the field, so
+// that nothing changed about what any of them can do. The three added beside
+// them carry `runnable: false`, which is not a verdict either: whether each of
+// them earns Execute is
+// `OPENQ-the-three-proposed-screens-hold-the-only-command-blocks-in`, an owner
+// question, and `false` is what this catalogue says while it is unanswered.
+//
+// Both sides read the field. `execute-catalogue.ts` refuses to resolve a
+// non-runnable id at all, so neither the confirm nor the run can reach it; and
+// `screens/palette.js` passes `id: null` to `commandActions` for one, so the
+// Composer draws Copy alone rather than a button whose only outcome is a
+// refusal. Neither is a substitute for the other — the screen's is courtesy,
+// the server's is the boundary.
+
 /** `--yes`, spelled once. On the approval boundary it is SHOWN, never implied. */
 const yes = { name: 'yes', boolean: true };
 
@@ -141,7 +182,7 @@ export const PALETTE = [
     // off this screen. Both trios' reasons are written down in
     // `FLAGS_NOT_OFFERED` in `test/ui/palette-lib.test.ts`, so a withheld flag
     // is a decision on the record rather than an omission.
-    name: 'ack', kind: 'write', base: ['mycontext', 'ack'], boundary: false,
+    name: 'ack', kind: 'write', base: ['mycontext', 'ack'], boundary: false, runnable: true,
     args: [
       { name: 'id', source: 'items', required: true, notWith: 'all' },
       { name: 'finding', input: 'text', required: true, notWith: 'all' },
@@ -156,7 +197,7 @@ export const PALETTE = [
     ],
   },
   {
-    name: 'add', kind: 'write', base: ['mycontext', 'add'], overlap: true, boundary: true,
+    name: 'add', kind: 'write', base: ['mycontext', 'add'], overlap: true, boundary: true, runnable: true,
     args: [
       { name: 'category', source: 'categories', required: true },
       { name: 'title', input: 'text', required: true },
@@ -195,7 +236,7 @@ export const PALETTE = [
     // — the sweep in `test/ui/palette-lib.test.ts` exercises one flag at a
     // time, which is also the only combination a reader building one command
     // would ever want.
-    name: 'config', kind: 'write', base: ['mycontext', 'config'], boundary: true,
+    name: 'config', kind: 'write', base: ['mycontext', 'config'], boundary: true, runnable: true,
     args: [{ name: 'category', source: 'categories', required: true }],
     flags: [
       { name: 'delete', boolean: true },
@@ -204,7 +245,7 @@ export const PALETTE = [
     ],
   },
   {
-    name: 'edit', kind: 'write', base: ['mycontext', 'edit'], boundary: true,
+    name: 'edit', kind: 'write', base: ['mycontext', 'edit'], boundary: true, runnable: true,
     args: [{ name: 'id', source: 'items', required: true }],
     flags: [
       { name: 'title', input: 'text' }, { name: 'body', input: 'textarea' },
@@ -258,7 +299,7 @@ export const PALETTE = [
     // revisions and topics — a def naming a source `sourceLists` cannot build
     // would draw a permanently empty picker. The focus dialog's own tag list
     // (`app.js`) is where that picker lives.
-    name: 'focus', kind: 'write', base: ['mycontext', 'focus'], boundary: true,
+    name: 'focus', kind: 'write', base: ['mycontext', 'focus'], boundary: true, runnable: true,
     args: [],
     flags: [
       { name: 'tag', input: 'text' },
@@ -268,12 +309,51 @@ export const PALETTE = [
       yes,
     ],
   },
-  { name: 'pin', kind: 'write', base: ['mycontext', 'pin'], boundary: true, args: [{ name: 'id', source: 'items', required: true }], flags: [yes] },
-  { name: 'unpin', kind: 'write', base: ['mycontext', 'unpin'], boundary: true, args: [{ name: 'id', source: 'items', required: true }], flags: [yes] },
-  { name: 'harden', kind: 'write', base: ['mycontext', 'harden'], boundary: true, args: [{ name: 'id', source: 'items', required: true }], flags: [yes] },
-  { name: 'soften', kind: 'write', base: ['mycontext', 'soften'], boundary: true, args: [{ name: 'id', source: 'items', required: true }], flags: [yes] },
   {
-    name: 'supersede', kind: 'write', base: ['mycontext', 'supersede'], boundary: true,
+    // **`mycontext init --pack <path>` — found a workspace from a template pack.**
+    //
+    // Moved here 2026-09-06 from `screens/packs.js`, which held it as
+    // `IMPORT_ARGV`, a module-level literal array. That array was never checked
+    // against the real argument parser: every other command this UI composes is
+    // swept by `test/ui/palette-lib.test.ts` against the CLI that will read it,
+    // and this one was invisible to that sweep for no better reason than where
+    // it was written. The literal is gone; `packs.js` composes through
+    // `commandFor` now, so the line the mockup draws and the line this file
+    // composes are one computation rather than two that agree today.
+    //
+    // **`runnable: false`, and here that is close to permanent.** The screen's
+    // own words are the argument and they survive the entry:
+    // *"`mycontext init` is the command that is run BEFORE there is a workspace
+    // for this UI to be served out of"*. Its effect is not on this corpus — it
+    // founds a new one wherever `--pack`'s path names, from an artefact this
+    // project did not write — and
+    // `OPENQ-the-three-proposed-screens-hold-the-only-command-blocks-in` already
+    // recommends it stay Copy-only. That recommendation is still the owner's to
+    // take; `false` is what this file says until he does.
+    //
+    // **`boundary: false`, derived and not chosen.** `mycontext init` accepts no
+    // `--yes` (`COMMAND_FLAGS.init` allows exactly `--pack`), so
+    // `approvalBoundary()` puts it below the line — which is why it needs a row
+    // in `OFF_BOUNDARY` in `test/ui/palette-lib.test.ts` rather than a deny
+    // rule. The marking costs nothing today: an entry that cannot run never
+    // reaches a confirm to size.
+    //
+    // `--pack` is `required`, which the CLI itself insists on: a bare
+    // `mycontext init` is a legal command, but it is not the one this entry is
+    // for, and the flag's own refusal says there is deliberately no default
+    // ("an import is a stranger's corpus arriving in yours"). `input: 'text'`
+    // and not a picker: the value is a path on disk outside this workspace, and
+    // every picker source here is corpus data.
+    name: 'init', kind: 'write', base: ['mycontext', 'init'], boundary: false, runnable: false,
+    args: [],
+    flags: [{ name: 'pack', input: 'text', required: true }],
+  },
+  { name: 'pin', kind: 'write', base: ['mycontext', 'pin'], boundary: true, runnable: true, args: [{ name: 'id', source: 'items', required: true }], flags: [yes] },
+  { name: 'unpin', kind: 'write', base: ['mycontext', 'unpin'], boundary: true, runnable: true, args: [{ name: 'id', source: 'items', required: true }], flags: [yes] },
+  { name: 'harden', kind: 'write', base: ['mycontext', 'harden'], boundary: true, runnable: true, args: [{ name: 'id', source: 'items', required: true }], flags: [yes] },
+  { name: 'soften', kind: 'write', base: ['mycontext', 'soften'], boundary: true, runnable: true, args: [{ name: 'id', source: 'items', required: true }], flags: [yes] },
+  {
+    name: 'supersede', kind: 'write', base: ['mycontext', 'supersede'], boundary: true, runnable: true,
     args: [{ name: 'id', source: 'items', required: true }],
     flags: [
       { name: 'by', source: 'items', required: true },
@@ -281,15 +361,15 @@ export const PALETTE = [
       yes,
     ],
   },
-  { name: 'refresh', kind: 'write', base: ['mycontext', 'refresh'], boundary: true, args: [{ name: 'id', source: 'items', required: true }], flags: [yes] },
-  { name: 'repair', kind: 'write', base: ['mycontext', 'repair'], boundary: true, args: [], flags: [yes] },
+  { name: 'refresh', kind: 'write', base: ['mycontext', 'refresh'], boundary: true, runnable: true, args: [{ name: 'id', source: 'items', required: true }], flags: [yes] },
+  { name: 'repair', kind: 'write', base: ['mycontext', 'repair'], boundary: true, runnable: true, args: [], flags: [yes] },
   {
     // The one member of the approval boundary with NO gate to show. It creates
     // an `active` rule with no `--yes` and no prompt of any kind (§3, §7), so
     // there is no token for a human to withhold — `ungated` is how the screen
     // is told to say that instead of rendering a checkbox that does not exist.
     name: 'lesson-accept', kind: 'write', base: ['mycontext', 'lesson-accept'],
-    boundary: true, ungated: true,
+    boundary: true, runnable: true, ungated: true,
     args: [{ name: 'id', input: 'text', required: true }, { name: 'key', input: 'text', required: true }],
     flags: [
       { name: 'title', input: 'text' }, { name: 'scope', input: 'glob' },
@@ -310,12 +390,48 @@ export const PALETTE = [
     // the entry that separates them: it is the first, not the second. The
     // stronger confirm shows a field-by-field diff of what changes, and there
     // are no fields here to show.
-    name: 'lesson-discard', kind: 'write', base: ['mycontext', 'lesson-discard'], boundary: false,
+    name: 'lesson-discard', kind: 'write', base: ['mycontext', 'lesson-discard'], boundary: false, runnable: true,
     args: [{ name: 'id', input: 'text', required: true }, { name: 'key', input: 'text', required: true }],
     flags: [],
   },
   {
-    name: 'review promote', kind: 'write', base: ['mycontext', 'review', 'promote'], boundary: true,
+    // **`mycontext procedure done <id> [--yes]` — retire an active procedure.**
+    //
+    // Moved here 2026-09-06 from `screens/proc.js`'s `doneArgv`, which built the
+    // array per render. `proc.js` said what that cost, in its own words: *"the
+    // catalogue is where a flag set gets verified against the real parser, and a
+    // command composed outside it has had no such check"*. It has one now.
+    //
+    // **`runnable: false` is not the ruling `pr.w3` takes.** `pr.w3` reserves
+    // the DECISION — *"active → done stays yours"* — and the review's §2c(3)
+    // found that the owner cannot press a button to take it from this app at
+    // all, for a reason that turned out to be an accident of which file the argv
+    // lived in rather than a considered posture. Whether this entry earns
+    // Execute is
+    // `OPENQ-the-three-proposed-screens-hold-the-only-command-blocks-in`, and it
+    // is his; `false` is what this file says while the question is open, because
+    // the alternative — granting Execute as a side effect of moving a literal —
+    // is the exact thing that question exists to prevent.
+    //
+    // **`boundary: true` and `--yes` offered, both DERIVED.**
+    // `SUBCOMMANDS`' `done: { allowed: ['yes'] }` (`cli/commands/procedure.ts`)
+    // is what puts the command string `procedure done` on the boundary, and
+    // `test/ui/palette-lib.test.ts` requires an entry on it to SHOW the flag.
+    // Offering it answers nobody's prompt: `commandFor` emits `--yes` only when
+    // the checkbox is ticked, and `proc.js` composes this entry with an empty
+    // value bag, so the line that screen draws is byte-identical to the one it
+    // drew before this entry existed.
+    //
+    // `source: 'items'` because a procedure IS an item and `/api/items` is the
+    // only list the Composer fetches; there is no procedures-only picker source,
+    // and inventing one is a Composer change this entry does not make.
+    name: 'procedure done', kind: 'write', base: ['mycontext', 'procedure', 'done'],
+    boundary: true, runnable: false,
+    args: [{ name: 'id', source: 'items', required: true }],
+    flags: [yes],
+  },
+  {
+    name: 'review promote', kind: 'write', base: ['mycontext', 'review', 'promote'], boundary: true, runnable: true,
     args: [{ name: 'id', source: 'drafts', required: true }],
     flags: [
       { name: 'scope', input: 'glob' }, { name: 'always', boolean: true },
@@ -323,18 +439,18 @@ export const PALETTE = [
     ],
   },
   {
-    name: 'review discard', kind: 'write', base: ['mycontext', 'review', 'discard'], boundary: true,
+    name: 'review discard', kind: 'write', base: ['mycontext', 'review', 'discard'], boundary: true, runnable: true,
     args: [{ name: 'id', source: 'drafts', required: true }], flags: [yes],
   },
   {
     name: 'review promote-revision', kind: 'write', base: ['mycontext', 'review', 'promote-revision'],
-    boundary: true,
+    boundary: true, runnable: true,
     args: [{ name: 'id', source: 'revisions', required: true }],
     flags: [{ name: 'revision', input: 'text' }, { name: 'force', boolean: true }, yes],
   },
   {
     name: 'review discard-revision', kind: 'write', base: ['mycontext', 'review', 'discard-revision'],
-    boundary: true,
+    boundary: true, runnable: true,
     args: [{ name: 'id', source: 'revisions', required: true }],
     flags: [{ name: 'revision', input: 'text' }, { name: 'reason', input: 'text' }, yes],
   },
@@ -346,7 +462,7 @@ export const PALETTE = [
   // Markdown, so rebuilding it changes nothing that governs anything. It is
   // the one `kind: 'write'` entry below the boundary, and it is spelled out
   // rather than omitted so that an omission keeps meaning "not classified".
-  { name: 'rebuild', kind: 'write', base: ['mycontext', 'rebuild'], boundary: false, args: [], flags: [] },
+  { name: 'rebuild', kind: 'write', base: ['mycontext', 'rebuild'], boundary: false, runnable: true, args: [], flags: [] },
 
   // --- reads: executed by the UI -----------------------------------------
   //
@@ -356,26 +472,26 @@ export const PALETTE = [
   // command that changes what governs the project — too much ceremony, which
   // is the safe direction to fail in but is still wrong. Spelling it out is
   // what keeps an omission meaning "nobody has classified this yet".
-  { name: 'status', kind: 'read', base: ['mycontext', 'status'], boundary: false, args: [], flags: [], screen: '#/status' },
-  { name: 'doctor', kind: 'read', base: ['mycontext', 'doctor'], boundary: false, args: [], flags: [], screen: '#/doctor' },
-  { name: 'decay', kind: 'read', base: ['mycontext', 'decay'], boundary: false, args: [], flags: [], screen: '#/decay' },
-  { name: 'review revisions', kind: 'read', base: ['mycontext', 'review', 'revisions'], boundary: false, args: [], flags: [], screen: '#/work' },
+  { name: 'status', kind: 'read', base: ['mycontext', 'status'], boundary: false, runnable: true, args: [], flags: [], screen: '#/status' },
+  { name: 'doctor', kind: 'read', base: ['mycontext', 'doctor'], boundary: false, runnable: true, args: [], flags: [], screen: '#/doctor' },
+  { name: 'decay', kind: 'read', base: ['mycontext', 'decay'], boundary: false, runnable: true, args: [], flags: [], screen: '#/decay' },
+  { name: 'review revisions', kind: 'read', base: ['mycontext', 'review', 'revisions'], boundary: false, runnable: true, args: [], flags: [], screen: '#/work' },
   {
-    name: 'help', kind: 'read', base: ['mycontext', 'help'], boundary: false,
+    name: 'help', kind: 'read', base: ['mycontext', 'help'], boundary: false, runnable: true,
     args: [{ name: 'topic', source: 'topics' }], flags: [], screen: '#/learn',
   },
   {
-    name: 'list', kind: 'read', base: ['mycontext', 'list'], boundary: false,
+    name: 'list', kind: 'read', base: ['mycontext', 'list'], boundary: false, runnable: true,
     args: [{ name: 'category', source: 'categories' }], flags: [],
     endpoint: () => '/api/items',
   },
   {
-    name: 'show', kind: 'read', base: ['mycontext', 'show'], boundary: false,
+    name: 'show', kind: 'read', base: ['mycontext', 'show'], boundary: false, runnable: true,
     args: [{ name: 'id', source: 'items', required: true }], flags: [],
     endpoint: (values) => `/api/item/${encodeURIComponent(values.id)}`,
   },
   {
-    name: 'search', kind: 'read', base: ['mycontext', 'search'], boundary: false,
+    name: 'search', kind: 'read', base: ['mycontext', 'search'], boundary: false, runnable: true,
     args: [],
     flags: [
       { name: 'text', input: 'text' }, { name: 'type', source: 'categories' },
@@ -391,7 +507,63 @@ export const PALETTE = [
       return `/api/search?${qs.toString()}`;
     },
   },
+
+  // --- the read that is COPIED rather than executed -----------------------
+  {
+    // **`mycontext audit --files` — where the run-time audit log actually is.**
+    //
+    // The third argv moved into this file on 2026-09-06. Doctor's
+    // `audit_log_size` finding declares it as its own remedy
+    // (`src/doctor/checks.ts` · `AUDIT_FILES`), and until this entry existed
+    // there was nothing in this catalogue for that declaration to name — which
+    // is why the remedy carries `route: 'copy'` and its own array. This entry
+    // does not take that array away from the check: a finding declaring its own
+    // remedy is `reports/V2-HANDOVER.md`'s design and it stays. What it ends is
+    // the REASON two files gave for the null id, which was *"`PALETTE` carries
+    // no `audit` entry"* — an absence rather than a decision.
+    //
+    // **A read with NO `screen` and NO `endpoint`, which every other read here
+    // has.** That is not an omission: there is no `/api/audit`, and the audit
+    // log reaches this UI through the Watch and Ask read models, which answer
+    // different questions. A read this browser cannot execute is a command to
+    // COPY — and `runnable: false` is now the field that says so, on both sides
+    // at once: `readTarget` gives the Composer no Run button, and
+    // `execute-catalogue.ts` gives the server nothing to run. The two tests that
+    // required every read to name a screen or an endpoint now require *a run
+    // target or `runnable: false`*, which is the same rule with its third state
+    // named instead of unrepresentable.
+    //
+    // **Only `--files` is offered, of the twelve flags the command accepts.**
+    // `audit`'s query surface (`--since`, `--item`, `--role`, `--limit` …) is a
+    // Composer design nobody has scoped, and this entry exists to hold ONE argv
+    // as data rather than to draw a query builder. Every read in this catalogue
+    // is partial in this way — `status`, `doctor` and `decay` accept the four
+    // detail flags and offer none — and the probe in
+    // `test/ui/palette-lib.test.ts` that would fail an under-advertised flag set
+    // runs over `kind: 'write'` only. That gap is real, it is older than this
+    // entry, and closing it is `builder/3`'s bidirectional test rather than this.
+    name: 'audit', kind: 'read', base: ['mycontext', 'audit'], boundary: false, runnable: false,
+    args: [],
+    flags: [{ name: 'files', boolean: true }],
+  },
 ];
+
+/**
+ * **May this entry RUN, as opposed to merely be drawn?** The second of the two
+ * licences the header above splits apart.
+ *
+ * `=== true`, never `!== false`: an entry that says nothing has been licensed
+ * by nobody. Exported so that the screens read the same sentence the server
+ * does — `src/ui/execute-catalogue.ts` states the identical rule as
+ * `runnableOf`, in its own file, because a browser module and a Node module
+ * cannot share one function across this boundary and the server must never
+ * depend on the client for a permission. Two spellings of one rule is a cost
+ * this file already pays for `boundaryOf`; what is NOT paid twice is the DATA,
+ * which is this catalogue and is read by both.
+ */
+export function runnableFor(def) {
+  return def.runnable === true;
+}
 
 /**
  * The argv for a def and its collected values. Missing required input throws

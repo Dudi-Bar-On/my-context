@@ -40,7 +40,7 @@ import { composeCommand } from './command.js';
 // that into an argv is the catalogue's own `commandFor`. Composing the line
 // here by hand instead would be a second composer whose output the server's
 // rebuild could silently disagree with.
-import { PALETTE, commandFor } from './palette-defs.js';
+import { PALETTE, commandFor, runnableFor } from './palette-defs.js';
 
 export function describeRecord(record) {
   const injection = record.kind === 'injection';
@@ -1416,9 +1416,12 @@ export function groupFindings(findings) {
  *    through the CATALOGUE'S OWN `commandFor`, which is the same function
  *    `src/ui/execute-catalogue.ts` rebuilds the argv with on the server. The
  *    line shown and the argv run are one computation, not two that agree today.
- *  - `copy` -> the explicit argv, for the one remedy the catalogue declares no
- *    entry for (`audit --files`). `commandActions` draws Copy alone for a null
- *    id, and that is the correct outcome rather than a gap to work around.
+ *  - `copy` -> the explicit argv the remedy carries. `audit --files` is the one
+ *    remedy that takes this route, and since owner ruling D2 (2026-09-06) the
+ *    catalogue DOES carry an `audit` entry — marked `runnable: false`, so the
+ *    id would resolve to null here anyway. The route stays because a finding
+ *    declaring its own argv is the design of record; what it no longer means is
+ *    "the catalogue has never heard of this command".
  *  - `acknowledge` -> `mycontext ack <item> <code>`, composed from the FINDING'S
  *    OWN two fields. The remedy carries neither, deliberately: a copy of an id
  *    inside the remedy could disagree with the id on the finding it is attached
@@ -1466,8 +1469,13 @@ export function repairArgvFor(finding) {
   if (remedy === null || remedy === undefined) return null;
   if (remedy.route === 'copy') return { id: null, values: {}, argv: remedy.argv };
   if (remedy.route === 'run') {
+    // A catalogue entry the server will not RUN is composed with a null id, so
+    // the control draws Copy alone rather than an Execute button that can only
+    // be refused. Held equal to `screens/doctor.js`' `catalogued` by
+    // `test/ui/doctor-screen.test.ts`, which is why the rule is spelled in both
+    // rather than shared: two surfaces, one measurement.
     return {
-      id: remedy.command,
+      id: runnable(remedy.command) ? remedy.command : null,
       values: remedy.values,
       argv: composed(remedy.command, remedy.values),
     };
@@ -1489,6 +1497,17 @@ export function repairArgvFor(finding) {
     return { id: 'ack', values, argv: composed('ack', values) };
   }
   return null;
+}
+
+/**
+ * Whether the SERVER will run this catalogue id — the second licence an entry
+ * carries since owner ruling D2 (2026-09-06). A name the catalogue does not
+ * have is not runnable either; `composed` is the function that fails loudly
+ * about it, and doing it twice would report one bug as two.
+ */
+function runnable(name) {
+  const def = CATALOGUE.get(name);
+  return def !== undefined && runnableFor(def);
 }
 
 /** The argv a catalogue entry composes for a value bag, or a loud failure. */

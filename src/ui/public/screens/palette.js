@@ -27,7 +27,7 @@
  * `PALETTE`, so a flag the catalogue withholds cannot appear here by accident.
  * That is load-bearing rather than tidy: `review promote --all --pack <name>`
  * is a real flag pair, deliberately not offered, and the reason is written down
- * beside it (`test/ui/palette-lib.test.ts` · `bulk promotion: --all --pack <name> settles every draft a pack imported in one ` · ~639).
+ * beside it (`test/ui/palette-lib.test.ts` · `bulk promotion: --all --pack <name> settles every draft a pack imported in one ` · ~694).
  * A free-text "extra flags" box on this screen would put it back within one
  * keystroke of a checkbox, which is the decision that task says is the owner's
  * and not a fill-in. `offeredFlagNames()` below exists so a test can pin that
@@ -158,7 +158,7 @@ import { composeCommand } from '/lib/command.js';
 // adding Execute to each of them would have been nine chances to get the
 // confirm wrong — the confirm being the security boundary (§6.3).
 import { commandActions } from '/lib/command-actions.js';
-import { PALETTE, commandFor } from '/lib/palette-defs.js';
+import { PALETTE, commandFor, runnableFor } from '/lib/palette-defs.js';
 import { el, errorNote, num, screenHead, spaced } from '/screens/parts.js';
 
 /**
@@ -675,7 +675,33 @@ export async function render(root, ctx) {
     // the same measurement — a paste reaches a SHELL, where `$(…)` substitutes,
     // while an execution reaches `execFile` with an argv array, where it is an
     // ordinary literal.
-    cmdBox.append(commandActions({ argv, id: def.name, values, ctx, copyBlocked: blocked }));
+    // **`id` is the entry's name only if the entry may RUN, and this line is
+    // where the Composer stopped being the widest door in the product.**
+    //
+    // It read `id: def.name` for every def, which was correct for exactly as
+    // long as membership in `PALETTE` was itself the execution licence. Owner
+    // ruling D2 (2026-09-06) split the two, so three entries now compose here
+    // and run nowhere; passing their name would draw an Execute button whose
+    // only possible outcome is the server's refusal, which is a worse answer
+    // than no button. `commandActions` needs no change to do this — a null id
+    // has always meant Copy alone, and it has always been an ASSERTION rather
+    // than a shortfall ("Nothing composed outside the catalogue may run").
+    //
+    // This is courtesy, not the boundary. `execute-catalogue.ts` refuses the
+    // same ids on the server, and it would refuse them if this line were wrong.
+    const runnable = runnableFor(def);
+    cmdBox.append(commandActions({
+      argv, id: runnable ? def.name : null, values, ctx, copyBlocked: blocked,
+    }));
+    if (!runnable) {
+      // Said once, where the missing button would be. A reader who has just
+      // composed a correct command and been given one control instead of two is
+      // owed the reason, and "this one is yours to run" is a different sentence
+      // from every refusal in this UI — nothing failed.
+      const note = el('p', 'small');
+      note.append(...ctx.t('pal.copyOnly'));
+      cmdBox.append(note);
+    }
 
     if (def.kind === 'write') {
       // **`cap.warn` is no longer drawn here, and that is §6.1 rather than an

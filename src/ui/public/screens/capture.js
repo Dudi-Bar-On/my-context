@@ -49,7 +49,7 @@
  * exactly these controls
  * (`src/ui/public/screens/palette.js` · ``(`category`, `--severity`) is the CLI's word rather than a translated one and`` · ~387),
  * built in the same shape it builds them
- * (`src/ui/public/screens/palette.js` · ``const caption = document.createTextNode(`${spec.name}${spec.required === true ? ' *' : ''}:`);`` · ~779).
+ * (`src/ui/public/screens/palette.js` · ``const caption = document.createTextNode(`${spec.name}${spec.required === true ? ' *' : ''}:`);`` · ~805).
  * No key is invented, and that is a ruling about WHAT they are rather than
  * about what a gate would allow: `category` and `--severity` are the words
  * `mycontext add` takes on a terminal, so a translated caption would name an
@@ -63,7 +63,7 @@
  * `/api/capture` deliberately serves no composed command, and says why at
  * length (`src/ui/capture-model.ts` · `**It does not compose the command.**` · ~15):
  * the argv shape is already in the catalogue, marked for this very screen
- * (`src/ui/public/lib/palette-defs.js` · `name: 'add', kind: 'write', base: ['mycontext', 'add'], overlap: true, boundary: true,` · ~159),
+ * (`src/ui/public/lib/palette-defs.js` · `name: 'add', kind: 'write', base: ['mycontext', 'add'], overlap: true, boundary: true,` · ~200),
  * and quoting is one implementation with a checker over its own bytes
  * (`src/ui/public/lib/command.js` · `Command-string composition for every composed write in the UI — the ONE` · ~1).
  * A second spelling of a quoting rule is how a shell command nobody verified

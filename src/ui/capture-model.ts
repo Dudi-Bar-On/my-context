@@ -16,7 +16,7 @@
  * `mycontext add constraint "…" --scope "src/billing/**" --severity hard`, and
  * every byte of that is already the browser's: `PALETTE`'s `add` entry carries
  * the argv shape AND an `overlap: true` marking for this very screen
- * (`src/ui/public/lib/palette-defs.js` · `name: 'add', kind: 'write', base: ['mycontext', 'add'], overlap: true, boundary: true,` · ~159),
+ * (`src/ui/public/lib/palette-defs.js` · `name: 'add', kind: 'write', base: ['mycontext', 'add'], overlap: true, boundary: true,` · ~200),
  * and the quoting is one implementation with a checker over its own bytes
  * (`src/ui/public/lib/command.js` · `Command-string composition for every composed write in the UI — the ONE` · ~1).
  * A server-side compose would be a SECOND spelling of a quoting rule whose

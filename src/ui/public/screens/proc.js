@@ -185,6 +185,7 @@
  */
 import { composeCommand } from '/lib/command.js';
 import { commandActions } from '/lib/command-actions.js';
+import { PALETTE, commandFor } from '/lib/palette-defs.js';
 import { el, errorNote, mono, num, spaced } from '/screens/parts.js';
 
 /**
@@ -301,6 +302,16 @@ export function barWidth(progress) {
 }
 
 /**
+ * **The catalogue entry this screen composes**, resolved once at module load.
+ *
+ * A `find` per render over thirty entries would be nothing measurable; it is
+ * hoisted because the LOOKUP FAILING is a load-time fact — an entry renamed out
+ * from under this screen should break here, loudly, rather than turn every
+ * procedure card into a refusal at render time.
+ */
+const DONE = PALETTE.find((def) => def.name === 'procedure done');
+
+/**
  * The one line this screen composes, or `null` when there is nothing to
  * compose — never a guess.
  *
@@ -323,16 +334,25 @@ export function barWidth(progress) {
  * cannot do without — and the caller draws the refusal where the block would
  * have been.
  *
- * **The command catalogue declares no `procedure` entry at all** — `PALETTE`
- * in `lib/palette-defs.js` has none — so unlike Work this screen cannot look
- * its argv up by name. The argv is written here, once, and reported: the
- * catalogue is where a flag set gets verified against the real parser, and a
- * command composed outside it has had no such check.
+ * **The argv is the CATALOGUE'S now, and the paragraph that stood here said
+ * why it had to be.** Until 2026-09-06 this function returned a literal array
+ * and reported the cost in its own words: *"the catalogue is where a flag set
+ * gets verified against the real parser, and a command composed outside it has
+ * had no such check"*. `PALETTE` carries a `procedure done` entry as of owner
+ * ruling D2, so the check exists — `test/ui/palette-lib.test.ts` now composes
+ * this command and feeds it to the real parser like every other — and this
+ * function looks its argv up by name the way Work always did.
+ *
+ * **Composed with an EMPTY value bag beyond the id, which is `pr.w3` unchanged.**
+ * The entry offers `--yes` because the parser accepts it and the catalogue's
+ * test requires a boundary entry to show its gate; `commandFor` emits the flag
+ * only when the value bag carries `yes: true`, and this one never does. The
+ * line this screen draws is byte-identical to the literal it replaces.
  */
 export function doneArgv(procedure) {
   if (procedure === null || typeof procedure !== 'object') return null;
   if (procedure.stage !== 'active') return null;
-  return ['mycontext', 'procedure', 'done', procedure.id];
+  return commandFor(DONE, { id: procedure.id });
 }
 
 /**
@@ -527,19 +547,23 @@ function commandRow(ctx, argv) {
   // appended and the caller's catch draws the refusal where the block would
   // have been — the behaviour this screen has always had.
   box.append(el('code', null, composeCommand(argv)));
-  // **`id: null` — Copy alone, and it is the answer twice over.**
+  // **`id: null` — Copy alone, and the reason is now a RULING rather than an
+  // absence.**
   //
-  // `PALETTE` declares no `procedure` entry at all, which this file already
-  // records above `doneArgv`: the catalogue is where a flag set is verified
-  // against the real argument parser, and this argv has had no such check. The
-  // client sends an id and the server rebuilds argv from the catalogue, so an
-  // id the catalogue does not have has nothing to rebuild — and an unverified
-  // argv is the last thing that should be handed an Execute button.
+  // The first reason this comment used to give was that `PALETTE` declared no
+  // `procedure` entry, so there was nothing for the server to rebuild. That is
+  // no longer true and it was never a decision: the review of 2026-09-06 (§2c)
+  // found that this screen's Execute button was missing because of which FILE
+  // the argv literal lived in. The entry exists now and carries
+  // `runnable: false`, which says the same thing on purpose instead of by
+  // accident — and says it on the server too, where `resolveCommand` refuses
+  // the id outright.
   //
-  // The second reason is `pr.w3`, *"active → done stays yours"*: the composed
-  // line carries no `--yes` because the confirmation prompt IS the human's
-  // decision. Weighed against composing `--yes` and offering Execute, which
-  // would answer that prompt on their behalf in the same edit.
+  // The second reason is unchanged and is the one that outlives the entry:
+  // `pr.w3`, *"active → done stays yours"*. Whether this command earns Execute
+  // is `OPENQ-the-three-proposed-screens-hold-the-only-command-blocks-in`, an
+  // owner question, and flipping `runnable` is how it gets answered — one
+  // field, in the catalogue, rather than a restructure of this screen.
   block.append(box, commandActions({ argv, id: null, values: {}, ctx }));
   return block;
 }

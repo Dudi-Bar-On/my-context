@@ -105,7 +105,7 @@
  */
 import { groupFindings, repairTally } from '/lib/viewmodel.js';
 import { composeCommand } from '/lib/command.js';
-import { PALETTE, commandFor } from '/lib/palette-defs.js';
+import { PALETTE, commandFor, runnableFor } from '/lib/palette-defs.js';
 import { commandActions } from '/lib/command-actions.js';
 import { helpDisclosure } from '/lib/disclosure.js';
 import { el, errorNote, linkId, mono, screenHead, spaced } from '/screens/parts.js';
@@ -136,7 +136,12 @@ function catalogued(id, values) {
     // than degrading into a Copy-only control that looks deliberate.
     throw new Error(`doctor: the command catalogue declares no "${id}"`);
   }
-  return { id, values, argv: commandFor(def, values) };
+  // **A command the catalogue will not RUN is composed with a null id**, so this
+  // screen draws Copy alone for it rather than an Execute button whose only
+  // outcome is the server's refusal. No remedy names a non-runnable entry
+  // today, and this line is what keeps that a fact about the DATA rather than a
+  // thing the next person adding a remedy has to remember (owner ruling D2).
+  return { id: runnableFor(def) ? id : null, values, argv: commandFor(def, values) };
 }
 
 /**
@@ -161,12 +166,16 @@ function catalogued(id, values) {
  * composed by the CATALOGUE'S OWN `commandFor` — the same function
  * `src/ui/execute-catalogue.ts` resolves with on the server.
  *
- * **`audit --files` names NO id, and that is deliberate.** `PALETTE` carries no
- * `audit` entry, so there is nothing for the server to rebuild;
- * `commandActions` draws Copy alone for a null id, and that is the correct
- * outcome rather than a gap to work around. The check declares that as
- * `route: 'copy'` and carries the argv itself; naming a nearby id instead would
- * put a different command behind a confirm that looked right.
+ * **`audit --files` names NO id, and that is deliberate.** It used to be
+ * deliberate for a weaker reason — `PALETTE` carried no `audit` entry, so there
+ * was nothing for the server to rebuild — and owner ruling D2 (2026-09-06)
+ * replaced the absence with a decision: the entry exists now and carries
+ * `runnable: false`, so the server refuses the id and this screen never names
+ * it. The check still declares the remedy as `route: 'copy'` with its own argv,
+ * which is `reports/V2-HANDOVER.md`'s design and stays; repointing it at the
+ * catalogue id is a one-line change in `src/doctor/checks.ts` that changes
+ * nothing a reader can see, because a non-runnable id resolves to a null id
+ * here either way.
  *
  * **`source_drift` carries `yes: true`, and without it the command cannot run.**
  * Owner-reported 2026-08-28, twice, from this screen:
@@ -477,7 +486,7 @@ const QUOTED_LITERAL = /"([^"\n]+)"|`([^`\n]+)`/g;
  * **The rule is the producer's own punctuation, never a guess at what looks
  * like a path.** Every message in `src/doctor/checks.ts` that embeds a value
  * wraps it in double quotes
- * (`src/doctor/checks.ts` · `scope glob "${glob}" matches no file in the repository.` · ~754)
+ * (`src/doctor/checks.ts` · `scope glob "${glob}" matches no file in the repository.` · ~793)
  * and every message that names a command wraps it in backticks. A heuristic
  * over slashes and asterisks would isolate half a sentence the first time one
  * of them writes "and/or", and it would have to be re-guessed every time a

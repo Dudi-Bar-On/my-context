@@ -270,6 +270,14 @@ interface Def {
    */
   flagsNotOffered?: Field[];
   boundary?: boolean; ungated?: boolean;
+  /**
+   * Whether the SERVER will run the entry, as opposed to draw a form for it —
+   * owner ruling D2, 2026-09-06. Optional in the TYPE and mandatory in the
+   * FILE: `execute-catalogue.ts` reads an absent field as "not runnable", and
+   * `test/ui/execute-catalogue.test.ts` requires every entry to state it, for
+   * the same reason `boundary` is stated on every entry.
+   */
+  runnable?: boolean;
   screen?: string; endpoint?: (values: Record<string, string>) => string;
 }
 interface DefsModule { PALETTE: Def[]; commandFor: (def: Def, values: Record<string, unknown>) => string[] }
@@ -342,6 +350,12 @@ const OFF_BOUNDARY: Record<string, string> = {
     + 'list — and it is still COMPOSED rather than executed, like every other write here.',
   'lesson-discard': 'rejects a staged rule candidate. It settles a decision but creates no '
     + 'governing item, and it is absent from the shipped deny recipe.',
+  init: 'founds a workspace. It accepts no --yes (COMMAND_FLAGS.init allows exactly --pack), so '
+    + 'the derivation puts it below the line and no deny rule matches it — which is consistent '
+    + 'rather than alarming: the act it performs is not on THIS corpus at all, it creates a new '
+    + 'one at the path --pack names. Its gate is not a permission and not a confirm, it is '
+    + '`runnable: false` on the entry itself: the catalogue composes the line and this server '
+    + 'refuses to run it (owner ruling D2, 2026-09-06).',
 };
 
 const NOT_IN_PALETTE: Record<string, string> = {
@@ -357,8 +371,15 @@ const NOT_IN_PALETTE: Record<string, string> = {
     + 'sources (items, categories, files, revisions, drafts, topics); there is no file-path '
     + 'picker and plan 2 gives packs no screen.',
   'procedure activate': 'procedure state, which plan 2 gives no screen and no picker source.',
-  'procedure done': 'procedure state, which plan 2 gives no screen and no picker source.',
 };
+
+// `procedure done` stood in NOT_IN_PALETTE until 2026-09-06 and its row said
+// "procedure state, which plan 2 gives no screen and no picker source". Both
+// halves were answered by the entry rather than by a new screen: the Procedures
+// screen HAS composed this command all along (it held the argv as a literal),
+// and the picker source is `items`, because a procedure is an item. The entry is
+// on the boundary and offers `--yes`, both derived; what it does NOT have is
+// Execute, which is `runnable: false` and an open question with the owner.
 
 /** The command string a permission rule is written against: `base` less `mycontext`. */
 const commandString = (def: Def): string => def.base.slice(1).join(' ');
@@ -438,14 +459,37 @@ test('the boundary markings and the --yes flags are the ones the parser gives', 
   assert.deepEqual(ungated, Object.keys(UNGATED), 'the ungated member is not the one the derivation names');
 });
 
-test('every read def names a screen or an endpoint — a read the UI cannot execute is not listed', async () => {
+/**
+ * **A read either runs here or is a command to copy, and now it can say which.**
+ *
+ * This test read "every read names a screen or an endpoint", and its reason was
+ * exactly right: a read the UI cannot execute is not a read, it is a command to
+ * copy — and until 2026-09-06 the catalogue had no way to SAY "a command to
+ * copy", so such an entry could only be an accident. `runnable: false` is that
+ * third state (owner ruling D2), and it withholds both halves of running at
+ * once: `readTarget` gives the Composer no Run button, and `resolveCommand`
+ * gives the server nothing to run.
+ *
+ * So the rule is unchanged in force and wider by one legal shape: a read with
+ * neither a screen nor an endpoint is a fault UNLESS it declares that it does
+ * not run. `audit` is the entry that needs it, and the reason is in its own
+ * comment: there is no `/api/audit`.
+ */
+test('every read runs somewhere, or declares that it does not run at all', async () => {
   const { PALETTE } = await defs();
-  for (const def of PALETTE.filter((d) => d.kind === 'read')) {
+  const reads = PALETTE.filter((d) => d.kind === 'read');
+  for (const def of reads) {
     assert.ok(
-      typeof def.screen === 'string' || typeof def.endpoint === 'function',
-      `${def.name} is a read with no execution path`,
+      typeof def.screen === 'string' || typeof def.endpoint === 'function' || def.runnable === false,
+      `${def.name} is a read with no execution path and no declaration that it has none`,
     );
   }
+  // Anti-vacuity, both ways: the loop must have seen a read that DOES run, or
+  // the widened clause would be excusing the whole set.
+  assert.ok(
+    reads.some((d) => typeof d.screen === 'string' || typeof d.endpoint === 'function'),
+    'no read names a screen or an endpoint; the check above is passing over nothing',
+  );
 });
 
 test('every def names a command string the CLI registry actually has', async () => {
@@ -518,8 +562,19 @@ function workspace(): { run: (argv: string[]) => string; dispose: () => void } {
   return { run, dispose: () => removeTree(dir) };
 }
 
+/**
+ * Whether the CLI refused this flag, read off the sentence it printed.
+ *
+ * Two shared spellings and one command's own. `mycontext init` does not use the
+ * shared refusal — it says *"init takes one flag, --pack <path>, and "--x" was
+ * passed. Nothing was created"* — and without the third clause the probe below
+ * would file `init` as a command whose flags it cannot reach, which is a written
+ * excuse for a check that could simply be made to work. The clause is keyed on
+ * the flag name, so it cannot match a sentence about a different argument.
+ */
 const refuses = (text: string, flag: string): boolean =>
-  text.includes(`unknown flag "${flag}"`) || text.includes(`unknown option "${flag}"`);
+  text.includes(`unknown flag "${flag}"`) || text.includes(`unknown option "${flag}"`)
+  || text.includes(`"${flag}" was passed`);
 
 /**
  * Commands whose flag surface this probe cannot reach, each with the reason —
@@ -901,32 +956,34 @@ test('every argv the catalogue composes is one the real parser accepts', async (
 /**
  * Command strings the catalogue WITHHOLDS, as a decision rather than a backlog.
  *
- * These three are the ones `plan:walk seq:108` measured. Of seven
- * `commandActions` call sites, five pass a catalogue id and get Execute; `proc`,
- * `port` and `packs` pass `id: null` and get Copy alone — and each of those
- * three screens gives the SAME first reason in its own words: the command it
- * composes is not in the catalogue, the client sends an id and never a command,
- * so there is nothing for the server to rebuild and nothing to execute.
+ * **This list held three rows until 2026-09-06, and the reason it now holds one
+ * is the point of owner ruling D2.** The three were the ones `plan:walk seq:108`
+ * measured: of seven `commandActions` call sites, five passed a catalogue id and
+ * got Execute while `proc`, `port` and `packs` passed `id: null` and got Copy
+ * alone — and each of those three screens gave the SAME first reason in its own
+ * words, that the command it composes is not in the catalogue, so there is
+ * nothing for the server to rebuild.
  *
- * Adding these entries would therefore hand Execute to three screens as a side
- * effect of a coverage exercise. That is a decision about the approval boundary
- * and it is an open question with the owner, so it is not taken here. Each row
- * carries the screen's OWN second reason too, because two of the three survive
- * the catalogue gaining an entry and would still have to be answered.
+ * That reason was true and it was not a decision. Being in `PALETTE` was the
+ * whole execution licence, so cataloguing one of these commands — for no reason
+ * but to get its flag set checked against the real parser — would have handed
+ * its screen Execute in the same edit. The catalogue now carries two fields
+ * where it carried one: membership draws a FORM, and `runnable: true` licenses
+ * EXECUTION. `procedure done` and `init` are therefore catalogued with
+ * `runnable: false`, which withholds exactly what was being withheld before and
+ * withholds nothing else — their rows moved into `palette-defs.js`, beside the
+ * entries, where the reason sits with the data it governs.
+ *
+ * `export` stays here because its absence is not about Execute at all: there is
+ * no entry to write. Its argv is filled in by the SERVER from a real export dry
+ * run rather than composed from a picker, which the 2026-09-06 composer review
+ * (§4) recommends leaving exactly as it is.
  */
 const WITHHELD: Record<string, string> = {
-  'procedure done': 'proc.js composes this and passes `id: null`. Its second reason outlives a '
-    + 'catalogue entry: the composed line carries no `--yes` because the confirmation prompt IS '
-    + 'the human\'s decision ("active -> done stays yours"), and offering Execute would answer '
-    + 'that prompt on their behalf.',
   export: 'port.js composes this and passes `id: null`. Its second reason outlives a catalogue '
     + 'entry too: the composed line is deliberately one argument short — `--out` arrives with no '
     + 'destination, because the CLI refuses to default one — so an Execute button on it could '
     + 'only refuse, or write somewhere the reader did not pick.',
-  init: 'packs.js composes `init --pack <path>` and passes `id: null`. Here the omission is the '
-    + 'ANSWER rather than a shortfall, in that screen\'s own words: `init` is the command run '
-    + 'BEFORE there is a workspace for this UI to be served from, so there was never anything '
-    + 'for the catalogue to carry.',
 };
 
 /**
@@ -955,9 +1012,13 @@ const UNCATALOGUED: Record<string, string> = {
   // person settles its finding — so the entry is in `PALETTE` and the row is
   // deleted rather than left standing over the opposite. `e2e/doctor-repairless.spec.ts`
   // is the browser test the row asked for.
-  audit: 'a read with no execution path in this UI. `/api/audit` does not exist; the audit log '
-    + 'reaches the browser through the Watch and Ask read models, which answer different '
-    + 'questions.',
+  // `audit` stood here until 2026-09-06, and its row was true in every word: "a
+  // read with no execution path in this UI". What changed is that a read with no
+  // execution path is now REPRESENTABLE — `runnable: false` says the entry is
+  // composed and copied and never run, on the server and on the screen at once —
+  // so the argv Doctor's `audit_log_size` remedy had been carrying as a literal
+  // since it shipped is data in `PALETTE` like every other. `/api/audit` still
+  // does not exist and this entry does not ask for one.
   examples: 'a read whose answer is an example item and its updatable surface. `mycontext help` '
     + 'is catalogued and reaches `#/learn`; this one has no screen of its own.',
   // `focus` stood here until 2026-09-04, and the design decision its row asked
@@ -994,13 +1055,20 @@ const UNCATALOGUED: Record<string, string> = {
     + 'refuses a relation outside the vocabulary, and every other closed set this catalogue '
     + 'offers is a picker, not a text box a reader can mistype.',
   'pack import': 'a write on the approval boundary. `packs.js` already composes it, and its '
-    + 'entry is straightforward; it is held with `init`, which the same screen composes, so that '
-    + 'the two are settled together.',
+    + 'entry is straightforward. It was held with `init`, which the same screen composes, so that '
+    + 'the two would be settled together; `init` landed on 2026-09-06 as a `runnable: false` '
+    + 'entry, and this one did not follow it because nothing composes `pack import` today — it '
+    + 'has no argv in any screen to move, so an entry for it would be new surface rather than a '
+    + 'literal made honest.',
   'pack list': 'a read the Packs screen already renders from `/api/packs`, so the entry would be '
     + 'a second route to a page that exists.',
-  'procedure activate': 'a write the Procedures screen composes. Held with `procedure done`, '
-    + 'which is WITHHELD: settling one subcommand of a screen\'s pair and not the other is how a '
-    + 'screen ends up with Execute on half its buttons.',
+  'procedure activate': 'a write the Procedures screen composes. It was held with '
+    + '`procedure done` because settling one subcommand of a screen\'s pair and not the other is '
+    + 'how a screen ends up with Execute on half its buttons — and that argument is answered '
+    + 'rather than broken by what landed on 2026-09-06: `procedure done` is catalogued with '
+    + '`runnable: false`, so NEITHER subcommand has Execute and the pair is still even. This one '
+    + 'is not catalogued because the screen does not compose it: there is no literal argv to '
+    + 'move, and an entry would be new surface.',
   'procedure list': 'a read the Procedures screen already renders from `/api/procedures`.',
   'procedure show': 'a read already rendered from `/api/procedure/:id`.',
   'procedure step': 'a write, held with the other two `procedure` subcommands.',
@@ -1066,16 +1134,22 @@ test('every command string is catalogued or named as a gap, in BOTH directions',
 });
 
 /**
- * The three WITHHELD rows are about a specific, measured consequence, so the
- * consequence is asserted rather than described: each is composed by a screen
- * that passes `id: null`, and each of those screens says so in its own source.
+ * **The three screens still pass `id: null`, and after 2026-09-06 that is worth
+ * MORE than it was, not less.**
  *
- * If somebody catalogues one of them, the row above fails first. If somebody
- * changes a screen to pass an id, this fails — which is the Execute grant the
- * owner has an open question about, arriving as a red test rather than as a
- * button.
+ * The consequence used to be implied by the catalogue: no entry, no id, no
+ * Execute. Two of these three screens now compose from a real catalogue entry,
+ * so the id is available to pass and the only thing stopping it is that the
+ * entry says `runnable: false` and the screen honours it. This test is what
+ * makes that honouring a checked fact rather than a habit: if somebody changes a
+ * screen to pass an id, it fails — which is the Execute grant the owner has an
+ * open question about, arriving as a red test rather than as a button.
+ *
+ * It is the client half of a rule the server enforces independently
+ * (`resolveCommand` refuses a non-runnable id outright), and neither is a
+ * substitute for the other: this one is about what a reader is OFFERED.
  */
-test('the three withheld commands are still composed with no catalogue id', () => {
+test('the three screens that compose without Execute still pass no catalogue id', () => {
   const screens = path.resolve(import.meta.dirname, '../../src/ui/public/screens');
   for (const screen of ['proc.js', 'port.js', 'packs.js']) {
     const text = readFileSync(path.join(screens, screen), 'utf8');

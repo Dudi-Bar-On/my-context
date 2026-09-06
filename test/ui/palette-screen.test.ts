@@ -86,6 +86,8 @@ interface PaletteDef {
   overlap?: boolean;
   boundary?: boolean;
   ungated?: boolean;
+  /** Whether the server will RUN it — owner ruling D2, 2026-09-06. */
+  runnable?: boolean;
   screen?: string;
   endpoint?: (values: Record<string, string>) => string;
 }
@@ -218,6 +220,12 @@ test('no ordinary composition is blocked', async () => {
     // command and one values bag cannot hold two fields of one name; both are
     // filled here so the composition this sweep tests is the whole entry.
     finding: 'body_disagrees_with_meta', code: 'body_disagrees_with_meta', clear: true,
+    // `init --pack <path>`, which arrived with the entry on 2026-09-06. It is
+    // the only value in this bag that is a PATH rather than corpus text, and it
+    // is the mockup's own example rather than an invention: the point of the
+    // sweep is that ordinary values do not trip the shell-substitution refusal,
+    // and `../packs/regulated-industry` is what a reader of that card copies.
+    pack: '../packs/regulated-industry',
   };
   const blocked = PALETTE.filter((def) => copyBlocked(commandFor(def, values))).map((d) => d.name);
   assert.deepEqual(blocked, []);
@@ -245,11 +253,28 @@ test('the controls a def offers are exactly its catalogue entry, args before fla
       [...def.args.map((a) => a.name), ...def.flags.map((f) => f.name)],
       `${def.name}: the form must draw the catalogue's controls, in composition order`);
   }
+  // **The withheld pair is `--all` and `--pack` ON A PROMOTION**, and the scan
+  // has to say so now that a second, unrelated `--pack` exists.
+  // `init --pack <path>` is the path of an artefact to found a NEW workspace
+  // from — no promotion, no queue, nothing bulk about it — and it arrived in the
+  // catalogue on 2026-09-06 with `runnable: false`, so it is not even a control
+  // that runs. Excluding it by name rather than by loosening the endsWith test:
+  // a flag named here is a decision on the record, and the next `--pack` to
+  // appear will have to be argued the same way instead of arriving under an
+  // exemption somebody widened once.
+  const NOT_THE_BULK_PAIR = ['init --pack'];
   const widened = PALETTE
     .flatMap((def) => offeredFlagNames(def).map((flag) => `${def.name} --${flag}`))
-    .filter((entry) => entry.endsWith(' --all') || entry.endsWith(' --pack'));
+    .filter((entry) => entry.endsWith(' --all') || entry.endsWith(' --pack'))
+    .filter((entry) => !NOT_THE_BULK_PAIR.includes(entry));
   assert.deepEqual(widened, [],
     'bulk promotion is an owner ruling (plan:ui2 seq:10p), not a control this screen adds');
+  // The exemption is re-verified, so one that stops being true fails here rather
+  // than quietly excusing a flag that HAS become the bulk pair.
+  const offered = PALETTE.flatMap((def) => offeredFlagNames(def).map((f) => `${def.name} --${f}`));
+  assert.deepEqual(NOT_THE_BULK_PAIR.filter((entry) => !offered.includes(entry)), [],
+    'an exempted flag is no longer offered at all. Drop the row rather than leaving a written '
+    + 'reason for something that is not there.');
 });
 
 test('missingRequired names the empty required inputs and nothing else', async () => {
@@ -376,19 +401,32 @@ test('revisionFor names the revision behind a picked item, or null', async () =>
  * thing the screen does with a composed write is show it and copy it. Derived
  * over the whole catalogue, so a def that changed kind is caught here.
  */
-test('no write has a run target, and every read has exactly one', async () => {
+test('no write has a run target, and every read that runs has exactly one', async () => {
   const { PALETTE } = await defs();
   const { readTarget } = await screen();
   const values = { id: 'RULE-x', category: 'rule', topic: 'scope', text: 'cents' };
+  let ran = 0;
   for (const def of PALETTE) {
     const target = readTarget(def, values);
     if (def.kind === 'write') {
       assert.equal(target, null, `${def.name} is a write — it is composed and copied, never run`);
       continue;
     }
+    // **The third shape, added by owner ruling D2 on 2026-09-06.** A read marked
+    // `runnable: false` is a command to COPY — `audit --files` is the one, and
+    // there is no `/api/audit` for it to fetch and no screen to navigate to. The
+    // Composer draws no Run button for it, which is this `null` reaching the
+    // screen, and `palette-lib.test.ts` holds the catalogue to declaring it.
+    if (def.runnable === false) {
+      assert.equal(target, null,
+        `${def.name} declares it does not run, so the Composer must offer nothing that runs it`);
+      continue;
+    }
     assert.notEqual(target, null, `${def.name} is a read with nothing to run`);
     assert.ok(target!.kind === 'fetch' || target!.kind === 'navigate');
+    ran += 1;
   }
+  assert.ok(ran > 0, 'no read has a run target at all; the assertion above ran over nothing');
 });
 
 test('a read fetches the endpoint that serves it, or navigates to the screen that renders it', async () => {

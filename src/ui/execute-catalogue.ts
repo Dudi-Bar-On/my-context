@@ -63,6 +63,32 @@ interface CommandDef {
   name: string;
   base: string[];
   boundary?: boolean;
+  /**
+   * **Whether this server may RUN the entry, as opposed to merely describe it.**
+   *
+   * Until 2026-09-06 there was no such field and no such distinction: the map
+   * below was built from `PALETTE` and `resolveCommand` resolved whatever it
+   * found, so being in the catalogue at all WAS the execution licence. The
+   * consequence, measured in
+   * `docs/superpowers/specs/2026-09-06-composer-architecture-review.md` §2b, was
+   * that three commands could not be given a checked argument shape without
+   * being handed `POST /api/execute` in the same edit — and one of them is
+   * `procedure done`, the act this product reserves for its owner in its own
+   * printed words. Owner ruling D2 (`reports/2026-09-06-PLAN.md`) split the two.
+   *
+   * **UNDEFINED MEANS NOT RUNNABLE**, which is the opposite default from
+   * `boundary` directly above, deliberately. A forgotten `boundary` costs a
+   * reader ceremony they did not need; a forgotten `runnable` would cost them a
+   * command nobody licensed. The owner's own words for the rule: *a mistake
+   * should withhold execution, never grant it.*
+   *
+   * That default is only honest because the twenty-seven entries that could
+   * already execute were all marked `runnable: true` explicitly in the same
+   * pass — see the header of `public/lib/palette-defs.js` — so an omission
+   * still means "nobody has ruled on this", exactly as an omitted `boundary`
+   * does.
+   */
+  runnable?: boolean;
   args?: FieldSpec[];
   flags?: FieldSpec[];
   /**
@@ -150,9 +176,39 @@ const BY_ID = new Map<string, CommandDef>(PALETTE.map((def) => [def.name, def]))
  * subcommand spellings (`review promote-revision`). The browser sends the
  * `name` verbatim, so neither side normalises and there is no spelling that
  * exists on one side only.
+ *
+ * **This is NOT the executable set, and it used to be.** Every id here can be
+ * DESCRIBED — a form drawn for it, an argv composed and shown — and only the
+ * subset `runnableIds()` returns can be run. Reading this list as a licence is
+ * the exact conflation owner ruling D2 ended; `resolveCommand` refuses the
+ * difference.
  */
 export function catalogueIds(): string[] {
   return [...BY_ID.keys()];
+}
+
+/**
+ * Which of an entry's two licences is being asked about: may this RUN.
+ *
+ * `=== true` and not `!== false`, and the asymmetry with `boundaryOf` below is
+ * the whole point — see `runnable` on `CommandDef`. An entry that says nothing
+ * has not been licensed by anybody, and this function is where that sentence is
+ * enforced rather than remembered.
+ */
+export function runnableOf(def: { runnable?: boolean }): boolean {
+  return def.runnable === true;
+}
+
+/**
+ * **The executable set: every id this server will run, and no other.**
+ *
+ * Named as a function rather than left implicit in `resolveCommand` because
+ * "what can this server run" is a question a test, an audit and a reader all
+ * have to be able to ask in one call. `test/ui/execute-catalogue.test.ts` pins
+ * it to the twenty-seven names that were executable before the flag existed.
+ */
+export function runnableIds(): string[] {
+  return [...BY_ID.values()].filter(runnableOf).map((def) => def.name);
 }
 
 /**
@@ -197,6 +253,25 @@ export function resolveCommand(id: string, values: Record<string, unknown>): Res
   const def = BY_ID.get(id);
   if (def === undefined) {
     throw new CommandRefusal(`no command named "${readable(String(id))}" is in the catalogue`);
+  }
+
+  // **The second licence, and it is refused BEFORE anything is composed.**
+  //
+  // Both routes that reach this function — the confirm GET and the execute POST
+  // — are stopped here, which is deliberate: a confirm dialog for a command
+  // that can never run is a question with no answer, and rendering one would
+  // teach a reader that the button works. The refusal is a `CommandRefusal`, so
+  // it arrives as a 400 carrying this sentence rather than as the 404 an
+  // uncatalogued id gets, and the difference is the thing worth reading: the
+  // catalogue KNOWS this command, it composed the line on screen, and it is
+  // declining to be the one that runs it.
+  if (!runnableOf(def)) {
+    throw new CommandRefusal(
+      `${id} is composed here and is not run here. Its catalogue entry is marked `
+      + `runnable: false, which is this project's way of saying nobody has licensed this `
+      + `command to execute from the browser — not that it failed. The line shown beside `
+      + `this message is the whole command: copy it and run it in your own shell.`,
+    );
   }
 
   // The body is parsed JSON from a request. `Object.keys(null)` throws, and a

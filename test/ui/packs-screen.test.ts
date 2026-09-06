@@ -44,9 +44,10 @@
  * ── HOW A BROWSER MODULE IS LOADED HERE ───────────────────────────────────
  *
  * `screens/packs.js` imports by the specifiers the BROWSER resolves —
- * `/lib/command.js` and `/screens/parts.js` — which Node resolves from the
- * drive root. So the module's bytes are read, both root-absolute specifiers are
- * rewritten to `file://` URLs, and the result is imported as a `data:` module.
+ * `/lib/command.js`, `/lib/command-actions.js`, `/lib/palette-defs.js` and
+ * `/screens/parts.js` — which Node resolves from the drive root. So the
+ * module's bytes are read, every root-absolute specifier is rewritten to a
+ * `file://` URL, and the result is imported as a `data:` module.
  * The rewrite is COUNTED and the result re-checked for a surviving `/`
  * specifier, because a rewrite that silently missed one would import a
  * different module graph than the browser runs — the only way this file could
@@ -123,9 +124,9 @@ async function packsModule(): Promise<PacksModule> {
     rewritten += 1;
     return `${head}${pathToFileURL(path.join(PUBLIC, spec)).href}'`;
   });
-  assert.equal(rewritten, 3,
-    `expected packs.js to import three browser modules (/lib/command.js, `
-    + `/lib/command-actions.js, /screens/parts.js); the `
+  assert.equal(rewritten, 4,
+    `expected packs.js to import four browser modules (/lib/command.js, `
+    + `/lib/command-actions.js, /lib/palette-defs.js, /screens/parts.js); the `
     + `rewrite matched ${rewritten}. A specifier this pattern cannot see is a module Node would `
     + 'resolve from the drive root, and the import below would fail for a reason that reads like '
     + 'a missing file.');
@@ -414,31 +415,45 @@ test('importCommand goes through the one quoting implementation', async () => {
  * -------------------------------------------------------------------------- */
 
 /**
- * **`mycontext init` is not in the command catalogue, so this line gets Copy
- * and no Execute — and that is the correct outcome, not a gap.**
+ * **This line gets Copy and no Execute, and since 2026-09-06 the reason is a
+ * RULING rather than an absence.**
  *
- * The client sends a catalogue ID and never a command (spec §3.1); the server
- * rebuilds argv from the same catalogue the browser composed from. A line the
- * catalogue cannot name has nothing to rebuild, so `commandActions` draws Copy
- * alone for a null id. Passing a nearby id to get an Execute button would put a
- * DIFFERENT command behind a confirm that looked right, which is the whole
- * hazard this screen-by-screen adoption exists to avoid.
+ * The test used to assert the catalogue held no `init` entry, and its reason was
+ * sound while it lasted: the client sends a catalogue id and never a command
+ * (spec §3.1), so a line the catalogue cannot name has nothing for the server to
+ * rebuild. But that made "no Execute" a consequence of a MISSING ROW, which is
+ * also why the argv on this card had never once been checked against the real
+ * argument parser that every other command in this UI is swept against.
  *
- * `init` is also the one command in this product that is run BEFORE there is a
- * workspace for a UI to be served from, so there was never anything for the
- * catalogue to carry.
+ * Owner ruling D2 split the catalogue's two licences: membership draws a FORM,
+ * and `runnable: true` licenses EXECUTION. `init` is an entry now — so
+ * `IMPORT_ARGV` is composed by `commandFor` and `--pack` is verified — and it
+ * carries `runnable: false`, so `resolveCommand` refuses the id outright and
+ * this screen passes none.
+ *
+ * The screen's own reason is unchanged and outlives the entry: `mycontext init`
+ * is run BEFORE there is a workspace for a UI to be served out of, and its
+ * effect is on a corpus that is not this one.
+ * `OPENQ-the-three-proposed-screens-hold-the-only-command-blocks-in`
+ * recommends it stay Copy-only permanently; that is the owner's to take, and
+ * this test is the tripwire until he does.
  */
-test('the import line names no catalogue id, because the catalogue has no init', async () => {
+test('the import line names no catalogue id, because its entry is not runnable', async () => {
   const { IMPORT_ARGV } = await packsModule();
   const defs = await import(pathToFileURL(path.join(PUBLIC, 'lib', 'palette-defs.js')).href) as {
-    PALETTE: { name: string }[];
+    PALETTE: { name: string; runnable?: boolean }[];
   };
   assert.equal(IMPORT_ARGV[1], 'init');
-  assert.equal(defs.PALETTE.find((def) => def.name === 'init'), undefined,
-    'the catalogue gained an `init` entry — this screen must now pass that id rather than null, '
-    + 'and the reasoning in its commandRow docstring has moved');
+  const init = defs.PALETTE.find((def) => def.name === 'init');
+  assert.ok(init, 'the catalogue lost its `init` entry — the argv this card composes is unchecked '
+    + 'against the real parser again');
+  assert.equal(init!.runnable, false,
+    'the `init` entry became runnable. `init --pack` reads an artefact this project did not '
+    + 'write and founds a corpus wherever the path names; granting it Execute is an owner '
+    + 'ruling (OPENQ-the-three-proposed-screens-hold-the-only-command-blocks-in), never a field '
+    + 'flipped in passing');
   assert.ok(/commandActions\(\{[\s\S]{0,200}?id: null/.test(packsCode),
-    'the screen no longer passes a null id; a command outside the catalogue must not offer '
+    'the screen no longer passes a null id; an entry the server will not run must not offer '
     + 'Execute');
 });
 
