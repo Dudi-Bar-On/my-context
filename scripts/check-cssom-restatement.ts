@@ -184,11 +184,36 @@ export interface Report {
 
 /* ── reading the tree ─────────────────────────────────────────────────────── */
 
+/**
+ * **`lib/vendor/` is not scanned, and the reason is the checker's own claim.**
+ *
+ * What this file asserts is that no module OF OURS restates, through the CSSOM,
+ * a declaration `styles.css` already owns for a selector that element matches.
+ * All three halves of that fail over a vendored component:
+ *
+ *   - it is not ours, and the one repair this checker offers — "delete the
+ *     write" — is the one thing `VENDOR.md` says a vendored file never gets;
+ *   - its writes land inside its own SHADOW ROOT, which no selector in
+ *     `styles.css` can reach, so there is no rule for them to restate. Web
+ *     Awesome's `wa-tree-item` sets `--indent` on itself per nesting level:
+ *     a value that exists only once the DOM has been walked, and the exact
+ *     shape this file calls `dynamic` and passes;
+ *   - and it is already gated, harder, by `scripts/check-vendor.ts` — byte
+ *     count, SHA-256, a closed import graph and the `FORBIDDEN` scan.
+ *
+ * Scanning it produced one `unjudged` entry, which is the worst of both
+ * outcomes: a hole reported against a file nobody may edit. Excluded by
+ * DIRECTORY rather than by silencing the finding, so the exclusion is visible
+ * here and the checker keeps reporting every hole it has in code we write.
+ */
+const NOT_OURS = 'vendor';
+
 function walk(dir: string, out: string[]): void {
   for (const entry of readdirSync(dir, { withFileTypes: true }).sort((a, b) => a.name.localeCompare(b.name))) {
     const full = path.join(dir, entry.name);
-    if (entry.isDirectory()) walk(full, out);
-    else if (entry.name.endsWith('.js')) out.push(full);
+    if (entry.isDirectory()) {
+      if (entry.name !== NOT_OURS) walk(full, out);
+    } else if (entry.name.endsWith('.js')) out.push(full);
   }
 }
 

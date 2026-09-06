@@ -2972,6 +2972,52 @@ svg.chart text.rel{font-family:var(--mono);font-size:var(--fs-chart-rel);fill:va
  * receive — while the summary's own short sentence stays, and now reads as a
  * small heading over the body it used to hide.
  */
+/* ─── <wa-tree> — the vendored file tree, wearing this palette ────────────
+   Web Awesome 3.12.0, vendored at src/ui/public/lib/vendor/webawesome/ and
+   reached through lib/wa-tree.js. Its ENTIRE visual surface is the ten custom
+   properties below: the vendored closure carries zero hard-coded colours (no
+   hex, no rgb(), no hsl(), no white/black) and zero prefers-color-scheme
+   queries, which is why it could be adopted into a dark-only product without
+   a theme to fight. Web Awesome defines these ten in
+   dist/styles/themes/default.css (16,773 B); THAT FILE IS NOT VENDORED, and
+   this block replaces it — ten lines instead of a second palette.
+
+   Scoped to the element rather than :root on purpose. These names belong to
+   somebody else's vocabulary; declaring them globally would put a second
+   token namespace on every screen, and this way nothing outside a <wa-tree>
+   can read or collide with one. Custom properties inherit into shadow DOM, so
+   the component sees them from here.
+
+   Every value is a token this product already owns. --wa-color-text-quiet
+   takes --dim rather than --faint deliberately: a tree row is body-sized, and
+   --faint is large-text-only by the rule scripts/check-faint-usage.ts
+   enforces. The focus ring is the product's own — 2px solid var(--gold),
+   offset 2px — the same pair .panegrip:focus-visible spends above, so a
+   focused tree row looks like every other focused thing here.
+
+   The tree's own CSS is logical-property-only (margin-inline-end,
+   border-inline-start, inset-inline-start) and its chevron direction is
+   computed from localize.dir(), so dir="rtl" needs nothing added here. */
+wa-tree{
+  --wa-color-text-normal: var(--ink);
+  --wa-color-text-quiet: var(--dim);
+  --wa-color-surface-border: var(--rule);
+  --wa-color-brand-fill-loud: var(--carry);
+  --wa-color-neutral-fill-quiet: var(--panel-2);
+  --wa-focus-ring: 2px solid var(--gold);
+  --wa-focus-ring-offset: 2px;
+  --wa-form-control-value-line-height: 1.5;
+  --wa-transition-easing: var(--ease);
+  --wa-transition-normal: var(--dur-nav);
+  font-family: var(--sans);
+  font-size: var(--fs-1);
+}
+/* The chevron is OURS: wa-icon is not in the vendored closure (it fetches),
+   so lib/wa-tree.js documents that a caller slots its own <svg>. A slotted
+   SVG does not mirror itself the way wa-icon did, so it is flipped here —
+   the one thing giving up wa-icon costs, and it costs one rule. */
+[dir="rtl"] wa-tree svg.wa-chev{transform:scaleX(-1)}
+
 @media print{
   :root{
     --ground:#fff;
