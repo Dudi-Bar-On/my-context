@@ -1,5 +1,63 @@
 # v2.0 handover — we are mid-decision. Keep deciding.
 
+## ⏭ READ THIS FIRST — 2026-09-06, at 93%
+
+Supersedes every section below it. One new task since 92%, and it is dispatched.
+
+### THREE LANES IN FLIGHT — do not dispatch into their files
+
+1. **D7 — audit projection index** · `src/core/audit-db.ts`, `src/doctor/checks.ts`
+2. **wa-tree vendoring + gate widening** · `src/ui/public/lib/vendor/**`, `scripts/check-vendor.ts`
+3. **D15 — the ASK display** · `src/cli/commands/statusline*.ts`, both string tables, `watch-model.ts`
+
+Everything else is committed. 3 unpushed at the time of writing.
+
+### D15, NEW AND DISPATCHED: the ASK says "handover due" and could say what is true
+
+The owner asked for it to be more informative once D14 was working. Looking properly found
+**two defects, not one thin label**:
+
+**`strip.hoActed` reads "handover written {age} ago", and `{age}` is the measure that hid
+the bug.** Age is a proxy for currency. The review measured three windows reporting
+`acted-on` while the handover was 2h39m / 1h24m / 3h06m behind — written at 85% and carried
+to 99.9%, 96.1%, 96.6%. "Written 3h ago" teaches the wrong thing twice: that something
+happened, and that TIME is the unit. **The unit is percent.**
+
+**And the status line is stale by construction.** `ASK <bar> 34% (28.5 / 85) +56.5` is
+progress toward THE ask, and since D14 there is no such thing — there are up to sixteen. A
+bar that fills once and then means nothing for the remaining fifteen percent reads as
+FINISHED, which is the opposite of true.
+
+Two guards written into the brief: the strip **keeps two questions in two fields with two
+colours** (`title.fillOk` says "Two questions, two fields" in its own words — not to be
+merged for space), and every string lands in **both** tables.
+
+### THE ONE PIECE OF DECIDED WORK NOBODY HAS DISPATCHED
+
+**`library/2` is blocked on a ruling the owner already gave.** Widen `isServableDocPath` to
+serve `.my_context/items/**` — it currently admits only `README.md` and `docs/`/`reports/`
+markdown — **and** fix `REQ-a-repository-document-is-viewable-in-the-ui-only-once-it-is`,
+which is `severity: hard` and says *"The UI serves the corpus; it does not serve the
+checkout"* while the product does exactly the opposite. Found twice, stepped over twice, and
+now ruled. **Dispatch this when a lane frees up.**
+
+Also not dispatched: **D13a** (`library/1`, the CLI help browser) and **D11** (`builder/10`),
+which D10 released.
+
+### NEXT SESSION, FIRST THREE THINGS
+
+1. `reports/2026-09-06-PLAN.md` — D1–D15 is the running order.
+2. Wait for the three lanes; commit each separately; **verify in a browser before believing
+   any UI claim.** Four of my briefs were factually wrong today and every lane was right to
+   check; two more of my own measurements were artifacts.
+3. Dispatch the `library/2` boundary work above.
+
+Still on the owner, blocking nothing: **D8** (two disjoint RTL conventions — 343 RLM + 246
+non-breaking hyphens in the tutorials vs 1,860 `dir=` attributes in the Hebrew README,
+disjoint), **D9** (`<ins>`/`<del>` run markers), **D6** (deferred; the citation gate still
+exits 1 on 21 `BARE` faults, 20 in one closed campaign plan), and **43 `walk` items**.
+
+
 ## ⏭ READ THIS FIRST — 2026-09-06, at 92%
 
 Supersedes the 90% and 85% sections below. Same plan; two more decisions landed.
