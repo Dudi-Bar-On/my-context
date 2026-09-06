@@ -1,5 +1,73 @@
 # v2.0 handover — we are mid-decision. Keep deciding.
 
+## ⏭ READ THIS FIRST — 2026-09-06, at 95%
+
+Supersedes every section below.
+
+### TWO LANES IN FLIGHT
+
+1. **wa-tree vendoring + gate widening** · `src/ui/public/lib/vendor/webawesome/**`, `scripts/check-vendor.ts`
+2. **D15 — the ASK display** · `src/cli/commands/statusline*.ts`, both string tables, `watch-model.ts`
+
+`test/ui/cssom-restatement.test.ts` currently fails on the untracked
+`vendor/webawesome/` from lane 1. Expected while it runs; not a defect.
+
+### D7 LANDED, and it proved my diagnosis wrong on the half that mattered
+
+The `(role, item_id)` index does let the join seek — and on its own moved 190 ms to
+**175 ms**. A 10% win on a defect that was 90% elsewhere: exactly the "looks fixed and is
+not" outcome, arriving one step later than expected.
+
+**The real cost was that `audit.at` is a VIRTUAL generated column** (`rec ->> '$.at'`), so
+`MAX(a.at)` fetched and jsonb-decoded a ~680-byte blob for each of 22,738 rows. Grouped
+count alone 0.9 ms · with the join 12 ms · with `MAX(a.at)` **145–190 ms**. And adding the
+second index while letting the planner choose changed **nothing** — it still preferred the
+rowid lookup, having no notion that this table's columns are expensive to READ. The clause
+had to be named with `INDEXED BY`.
+
+    topItems('spilled')          169-202 ms -> 9-13 ms
+    checkGoverningSpillPressure  190-222 ms -> 13-18 ms
+    topItems(null) audit --top   866-925 ms -> 29-54 ms   <- user-facing, not the task
+    share of runChecks                  ~30% -> ~3%
+
+Projection version 1 → 2. The bump is load-bearing: `INDEXED BY` means a projection without
+the index cannot PREPARE the statement, so the version is what makes "the read door opened"
+mean "the index is there". Write cost measured, not waved away: +7 µs per record at p50
+against a 55 µs insert, and 1.6 MiB.
+
+### I SWEPT A LANE'S WORK INTO THE WRONG COMMIT, and it was mine
+
+`2b00ec2` is titled about the handover and contains D7's half-finished `audit-db.ts`
+(+116) and its test. **I used a bare `git add -A` with three lanes running** — after
+spending the day telling lanes not to touch git. Nothing was lost; the history is simply
+wrong about which commit did what, and the correction is written into the follow-up commit
+rather than rewritten into the past.
+
+**Third cross-lane collision today. Rule for the next session: stage explicit paths, never
+`-A`, while any lane is running.**
+
+### THREE THINGS RULED AND NOT DISPATCHED — start here
+
+1. **`library/2`'s boundary work.** Widen `isServableDocPath` to serve
+   `.my_context/items/**`, and fix `REQ-a-repository-document-is-viewable-in-the-ui-only-
+   once-it-is` (`severity: hard`), which says *"The UI serves the corpus; it does not serve
+   the checkout"* while the product does the opposite. Found twice, stepped over twice.
+2. **D13a / `library/1`** — the CLI help browser. Close first: **9 of 43 commands declare
+   no flags** in `COMMAND_FLAGS`.
+3. **D11 / `builder/10`** — three more Composer fields plus the combobox ruling.
+
+`builder/3` and `builder/4` are also ready. Composer: **3 ready of 7 open**.
+
+### NEXT SESSION, FIRST THREE THINGS
+
+1. `reports/2026-09-06-PLAN.md` — D1–D15 is the running order.
+2. Wait for the two lanes; **stage explicit paths**; verify in a browser AND check the item
+   state before believing any "done" — `handover/12` was `todo` while merged and green.
+3. Dispatch the three above, `library/2` first.
+
+Still on the owner, blocking nothing: **D8**, **D9**, **D6** (deferred), **43 `walk`**.
+
+
 ## ⏭ READ THIS FIRST — 2026-09-06, at 94%
 
 Supersedes every section below. Nothing new was decided since 93%; what changed is
