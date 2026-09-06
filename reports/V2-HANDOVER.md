@@ -1,5 +1,74 @@
 # v2.0 handover — we are mid-decision. Keep deciding.
 
+## ⏭ READ THIS FIRST — 2026-09-06, at 96%
+
+Supersedes every section below.
+
+### A NEW STANDING RULE THAT CHANGES HOW YOU WORK
+
+**`RULE-a-commit-is-not-finished-until-it-is-on-the-remote`** — owner instruction: *every
+time you commit, also merge if required and push.* This **overrules** the earlier default of
+holding pushes until asked. He watches this repository on GitHub and asked why it said nine
+hours old while 17 commits sat local.
+
+Guards inside it: merge-if-required **never** means force; a conflict is stop-and-report, not
+a resolution improvised to make a push succeed; verify by fetching afterwards rather than
+trusting the command. **It does not reach a delegated worker** — a worker still runs no git
+command that writes.
+
+And the consequence learned today: **stage explicit paths, never `git add -A`, while a lane
+is running.** Pushing more often means committing more often, and a bare `-A` swept lane work
+into the wrong commit three times on 2026-09-06 — once by me.
+
+### TWO LANES IN FLIGHT
+
+1. **wa-tree vendoring + gate widening** · `vendor/webawesome/**`, `scripts/check-vendor.ts`,
+   `scripts/check-cssom-restatement.ts`
+2. **D15 — the ASK display** · `statusline*.ts`, both string tables, `app.js`, `viewmodel.js`,
+   `e2e/strip.spec.ts`
+
+**Neither has reported. Do not commit either as done until it does and you have verified it.**
+
+### D15's WEB HALF IS WRITTEN AND THE OWNER COULD NOT SEE IT
+
+He reported the status line looking good and the web strip unchanged. It is not unchanged —
+`curl /strings/en.js` returns the new text. **He was looking at a cached page**: `app.js`
+(+220) and `viewmodel.js` (+144) changed too, and the page caches imported ES modules, so a
+reload re-runs the old ones. The status line is a fresh process per invocation; the browser
+is not. **`about:blank` and back, never F5.** Expect this question again.
+
+The new strings, percent-based rather than age-based:
+
+    strip.hoActed     handover current at {nowPct}
+    strip.hoBehind    handover written at {askedPct}, window now {nowPct}
+    strip.hoIgnored   handover asked at {askedPct}, not written
+    strip.hoNotAsked  no handover ask yet — first at {threshold}%
+
+`hoBehind` is the one that answers the defect: the old text said "written 3h ago", and **age
+is the measure that hid three windows of staleness**.
+
+### THREE THINGS RULED AND NOT DISPATCHED — start here
+
+1. **`library/2`'s boundary work** — widen `isServableDocPath` to serve
+   `.my_context/items/**`, and fix `REQ-a-repository-document-is-viewable-in-the-ui-only-
+   once-it-is` (`severity: hard`), which says the opposite of what the product does. Found
+   twice, stepped over twice.
+2. **D13a / `library/1`** — CLI help browser. Close first: **9 of 43 commands declare no
+   flags** in `COMMAND_FLAGS`.
+3. **D11 / `builder/10`** — three more Composer fields plus the combobox ruling.
+
+`builder/3` and `builder/4` are ready too. Composer: **3 ready of 7 open**.
+
+### NEXT SESSION, FIRST THREE THINGS
+
+1. `reports/2026-09-06-PLAN.md` — D1–D15 is the running order.
+2. Wait for the two lanes; stage explicit paths; **verify in a browser AND check the item
+   state** — `handover/12` was `todo` while merged and green.
+3. Dispatch the three above, `library/2` first. Then commit **and push** — that is now a rule.
+
+Still on the owner, blocking nothing: **D8**, **D9**, **D6** (deferred), **43 `walk`**.
+
+
 ## ⏭ READ THIS FIRST — 2026-09-06, at 95%
 
 Supersedes every section below.
