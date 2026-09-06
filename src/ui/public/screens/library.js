@@ -210,13 +210,24 @@ function entryRow(ctx, { href, title, marks }) {
   return row;
 }
 
-/** The tutorials half: one card per tier, in the manifest's own order. */
-function paintTutorials(ctx, host, body) {
+/**
+ * The tutorials half: one card per tier, in the manifest's own order.
+ *
+ * `fixed` is where the count line goes and `host` is where the roster goes.
+ * They are the same element unless a caller separates them — owner request
+ * 2026-09-06, refining the heading fix: "also do not scroll the line below
+ * the tutorials title that shows the amount of tutorials".
+ *
+ * It defaults to `host` rather than being required so that every existing
+ * caller and test keeps its three-argument shape and its current behaviour;
+ * only the Library screen, which owns the scrolling box, passes a fourth.
+ */
+function paintTutorials(ctx, host, body, fixed = host) {
   const rollup = el('p', 'small');
   rollup.append(...ctx.t('tu.rollup', {
     done: body.heRollup.done, total: body.heRollup.total,
   }));
-  host.append(rollup);
+  fixed.append(rollup);
 
   if (body.tutorials.length === 0) {
     const none = el('p', 'small');
@@ -740,6 +751,11 @@ export async function render(root, ctx) {
   const tutHead = el('h3');
   tutHead.append(...ctx.t('lib.tuts'));
   tuts.append(tutHead);
+  // What stays above the scroller: the heading, and the count line that says
+  // how many Hebrew tutorials are written. Both answer "what am I looking at",
+  // and both were scrolling away from the reader who most needed them.
+  const tutFixed = el('div');
+  tuts.append(tutFixed);
   const tutScroll = el('div', 'cardscroll');
   tuts.append(tutScroll);
   const docHead = el('h3');
@@ -806,7 +822,7 @@ export async function render(root, ctx) {
   // note sat outside it would put the failure above a heading that promises a
   // roster, and the reader would scroll an empty box looking for the reason.
   if (tutBody instanceof Error) tutScroll.append(errorNote(tutBody.message));
-  else paintTutorials(ctx, tutScroll, tutBody);
+  else paintTutorials(ctx, tutScroll, tutBody, tutFixed);
   if (docBody instanceof Error) docs.append(errorNote(docBody.message));
   else paintDocuments(ctx, docs, docBody);
   if (corpusBody instanceof Error) files.append(errorNote(corpusBody.message));
