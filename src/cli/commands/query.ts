@@ -258,7 +258,7 @@ function strip(sql: string): string {
  * Note what that screen does NOT hand this function: a VALUE. It composes its
  * statement server-side from a closed set of field names and binds every value
  * the caller typed as a parameter (`ui/ask-model.ts` · `export function corpusSelect(f: CorpusFilter): { sql: string; params: (string | number)[] } {` · ~111
- * and `core/audit-db.ts` · `export function filterSelect(filter: AuditFilter): { sql: string; params: (string | number)[] } {` · ~1178),
+ * and `core/audit-db.ts` · `export function filterSelect(filter: AuditFilter): { sql: string; params: (string | number)[] } {` · ~1238),
  * so a keyword inside a value never reaches this text at all. What is left for
  * this scan to judge is the STATEMENT — which is why judging a bare IDENTIFIER
  * as a write was answering a question the boundary had already answered.

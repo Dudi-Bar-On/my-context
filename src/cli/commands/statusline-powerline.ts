@@ -158,6 +158,23 @@ interface BandModule {
   fillLevel: (pct: unknown, ageMs: unknown) => string | null;
   /** How far the ask is, in points of the window — `threshold - pct`. */
   askHeadroom: (pct: unknown, threshold: unknown) => number | null;
+  /**
+   * **The four `plan:handover seq:13` derivations**, and they come across this
+   * bridge for the reason every other number here does: the strip draws the
+   * same percent pair beside the same words, and an arithmetic written twice
+   * is how two surfaces come to disagree about one handover.
+   *
+   * `askStepOf` is the browser's twin of `core/handover-ask.ts`'s `askStep`
+   * and is pinned against it by test; the terminal takes it from HERE rather
+   * than importing the core one, so that whichever number the strip draws is
+   * the number this bar draws.
+   */
+  askStepOf: (pct: unknown) => number | null;
+  asksLeft: (pct: unknown) => number | null;
+  handoverLag: (askedAtPercent: unknown, pct: unknown) => number | null;
+  askSeries: (pct: unknown, threshold: unknown) => {
+    span: number; spent: number; percent: number; toFull: number;
+  } | null;
   CONTEXT_FILL_WARN_PERCENT: number;
   CONTEXT_FILL_CRIT_PERCENT: number;
   CONTEXT_SAMPLE_FRESH_MS: number;
@@ -209,7 +226,12 @@ async function loadBands(): Promise<BandModule | null> {
         // `viewmodel.js` that predates them is refused as a SHAPE rather than
         // answering `undefined` three calls later, in the middle of a field.
         || typeof mod.wallStamp !== 'function' || typeof mod.relDir !== 'function'
-        || typeof mod.corpusDir !== 'function') {
+        || typeof mod.corpusDir !== 'function'
+        // And the `seq:13` arrivals, for the third time and the same reason: a
+        // `viewmodel.js` that predates the ask series is refused as a SHAPE
+        // rather than answering `undefined` in the middle of the ask block.
+        || typeof mod.askStepOf !== 'function' || typeof mod.asksLeft !== 'function'
+        || typeof mod.handoverLag !== 'function' || typeof mod.askSeries !== 'function') {
       return null;
     }
     return mod as BandModule;
@@ -287,6 +309,39 @@ export function headroomFor(percent: number, threshold: number | null): number |
   if (BANDS === null) return null;
   const headroom = BANDS.askHeadroom(percent, threshold);
   return typeof headroom === 'number' && Number.isFinite(headroom) ? headroom : null;
+}
+
+/**
+ * The four `seq:13` derivations, each a thin pass-through so that this file
+ * has no arithmetic of its own to disagree with the strip's.
+ *
+ * `null` for every reason the shared module gives one, and additionally when
+ * it did not load at all — a browser asset that has been moved is a reason to
+ * lose a FIGURE, never a reason to invent one from remembered numbers.
+ */
+export function askStepOf(percent: number | null): number | null {
+  if (BANDS === null) return null;
+  const step = BANDS.askStepOf(percent);
+  return typeof step === 'number' && Number.isFinite(step) ? step : null;
+}
+
+export function asksLeftAt(percent: number | null): number | null {
+  if (BANDS === null) return null;
+  const left = BANDS.asksLeft(percent);
+  return typeof left === 'number' && Number.isFinite(left) ? left : null;
+}
+
+export function handoverLagOf(askedAtPercent: number | null, percent: number | null): number | null {
+  if (BANDS === null) return null;
+  const lag = BANDS.handoverLag(askedAtPercent, percent);
+  return typeof lag === 'number' && Number.isFinite(lag) ? lag : null;
+}
+
+export function askSeriesOf(
+  percent: number, threshold: number | null,
+): { span: number; spent: number; percent: number; toFull: number } | null {
+  if (BANDS === null) return null;
+  return BANDS.askSeries(percent, threshold);
 }
 
 /**
@@ -1664,6 +1719,54 @@ export function askSegment(occ: OccupancyView, threshold: number | null): Segmen
   // one answer, and a second comparison here would be a second chance to
   // disagree with the strip about it.
   if (level === 'crit') {
+    // ── PAST THE ASK THE BAR RE-ORIGINS ON THE THRESHOLD — `plan:handover
+    //    seq:13`, and it is the fix for a field that was STALE BY CONSTRUCTION.
+    //
+    // `seq:12` made the ask a SERIES: it re-arms on every whole percent from
+    // the threshold to 100, so a threshold of 85 earns up to sixteen of them.
+    // A words-only block from 85 to 100 says the same three words for the last
+    // fifteen points of the window — the fifteen points where the asks
+    // actually happen — and a reader who saw `handover due` at 85 and again at
+    // 99 learned nothing from the second one.
+    //
+    // So the measurement continues instead of stopping: `askSeries` measures
+    // the SAME window from the threshold rather than from zero, and the bar
+    // fills from the ask to full. It is not the context figure wearing a
+    // second label — at 96.3% with T=85 this reads 75% and the window reads
+    // 96.3% — and the band it earns escalates with it, which is what the flat
+    // `carry` could not do.
+    //
+    // **The words survive as the NAME**, `ASK DUE`, which is the one part of a
+    // field a narrow terminal never shortens away separately: the owner's
+    // 2026-09-01 ruling was that past the ask *the action is the point*, and
+    // the action is still said — it has moved to the label, where it is said
+    // on every one of the sixteen steps rather than instead of them. What
+    // BECAME of the ask is the `handover-verdict` block beside this.
+    const series = askSeriesOf(occ.percent, threshold);
+    if (series !== null) {
+      return usedOfMaxSegment({
+        field: 'ask',
+        qualifier: ' DUE',
+        percent: series.percent,
+        // Points of the window, exactly as the sub-threshold form's counts
+        // are: `spent` of the `span` between the ask and full. One decimal on
+        // the numerator because it is the figure that MOVES; the span is a
+        // whole number of points because the threshold is read as configured.
+        counts: `(${series.spent.toFixed(1)} / ${series.span})`,
+        decimals: 0,
+        // The same `·+` the sub-threshold form spends, and deliberately the
+        // same MEANING: points of the window to the next boundary. Below the
+        // ask that boundary is the ask; past it there is nothing above but
+        // full, so it counts to 100.
+        suffix: ` ·+${series.toFull.toFixed(1)}`,
+        give: GIVE.handoverDue,
+        ageMs: occ.ageMs,
+      });
+    }
+    // The floor, and it is the block this field drew before `seq:13`: a
+    // threshold at or above the ceiling leaves no series to draw a proportion
+    // over, and the shared module not loading leaves no arithmetic at all.
+    // Losing the words as well as the figure would be the wrong trade.
     return {
       // **`--carry`, not gold, since 2026-09-01.** Gold moved wholly to the
       // `caution` band (`LEVEL_INK`), and one hue on two adjacent jobs is a

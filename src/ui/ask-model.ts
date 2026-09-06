@@ -15,7 +15,7 @@ import { readProjection } from './watch-model.ts';
 // The builder's promise is that the SQL on screen IS the SQL that ran. For
 // audit queries that is `filterSelect` — extracted from `queryProjection` so
 // display and execution share one spelling
-// (`core/audit-db.ts` · `export function filterSelect(filter: AuditFilter): { sql: string; params: (string | number)[] } {` · ~1178).
+// (`core/audit-db.ts` · `export function filterSelect(filter: AuditFilter): { sql: string; params: (string | number)[] } {` · ~1238).
 // For corpus queries it is `corpusSelect` below, executed through a read-only
 // `Store` with BIND PARAMETERS — never inlined values.
 //

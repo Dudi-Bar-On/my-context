@@ -30,7 +30,7 @@
  *     `behind` / `diverged` / `damaged`. All three are drawn, differently.
  *   - **The four canned queries** are `GET /api/ask/summary` — `summaryByOp`,
  *     `topItems` and `sessions`, whose rows are `{ label, count, last }`
- *     (`src/core/audit-db.ts` · `export interface SummaryRow { label: string; count: number; last: string | null }` · ~1222).
+ *     (`src/core/audit-db.ts` · `export interface SummaryRow { label: string; count: number; last: string | null }` · ~1282).
  *   - **The value vocabularies** are DERIVED — see `learn` below for the four
  *     sources and for what no endpoint serves.
  *
@@ -512,7 +512,7 @@ export function corpusRows(rows) {
  * holds `(seq, item_id, role)` and `filterSelect`'s `item` filter reads all
  * three of them — *"the item this record is ABOUT, an item this injection
  * delivered, or an item it spilled"*
- * (`src/core/audit-db.ts` · `// Any of the three roles: the item this record is ABOUT, an item this` · ~1192).
+ * (`src/core/audit-db.ts` · `// Any of the three roles: the item this record is ABOUT, an item this` · ~1252).
  * That is also what the mockup's own sample draws: two rows at one timestamp,
  * one `injected` and one `spilled`.
  *

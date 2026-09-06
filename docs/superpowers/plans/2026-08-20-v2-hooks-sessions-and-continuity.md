@@ -270,7 +270,7 @@ says "establish by executing" instead of asserting it.
 
 | Fact | Where verified |
 |---|---|
-| Session enumeration over the audit projection, most recent first | `core/audit-db.ts` · `export function sessions(db: DatabaseSync, limit: number): SummaryRow[] {` · ~1252 |
+| Session enumeration over the audit projection, most recent first | `core/audit-db.ts` · `export function sessions(db: DatabaseSync, limit: number): SummaryRow[] {` · ~1352 |
 | …and the same answer without a projection | `cli/commands/audit.ts` · `function sessionsWithoutDb(list: AuditRecord[]): SummaryRow[] {` · ~504 |
 | …already printed to users today | `cli/commands/audit.ts` · `my_context: sessions this log has recorded (most recent ` · ~433 |
 | A third enumeration over the ledger projection | `core/ledger.ts` · `recentSessions(limit: number): string[] {` · ~512 |
@@ -1791,7 +1791,7 @@ git commit -m "feat(sessions): a workspace-scoped session-name store, keyed by e
 - Modify: `src/cli/commands/index.ts`
 
 **Interfaces:**
-- Consumes: `core/audit-db.ts` · `export function sessions(db: DatabaseSync, limit: number): SummaryRow[] {` · ~1252,
+- Consumes: `core/audit-db.ts` · `export function sessions(db: DatabaseSync, limit: number): SummaryRow[] {` · ~1352,
   its no-database sibling `cli/commands/audit.ts` · `function sessionsWithoutDb(list: AuditRecord[]): SummaryRow[] {` · ~504,
   and `readSessionNames` (Task 13).
 - Produces: one registered command `session`, with subcommand dispatch, via

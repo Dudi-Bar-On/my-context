@@ -149,7 +149,7 @@ Nine items. Two are mechanical (the code says something different from the surve
 | …and are written by | `core/rebuild.ts` · `export function writeItem(root: string, item: Item, options?: WriteItemOptions): string {` · ~441 |
 | …read back by | `core/rebuild.ts` · `export function loadLayer(` · ~125 |
 | `.audit/` is here | `core/audit.ts` · `export function auditDir(root: string): string {` · ~1196 |
-| `.audit/audit.db` is a derived projection | `core/audit-db.ts` · `  return path.join(auditDir(root), 'audit.db');` · ~111 |
+| `.audit/audit.db` is a derived projection | `core/audit-db.ts` · `  return path.join(auditDir(root), 'audit.db');` · ~160 |
 | `state/focus.json` — per machine | `core/focus.ts` · `  return path.join(root, 'state', 'focus.json');` · ~354 |
 | `.revisions/` — **holds discarded proposal text** | `core/revision-log.ts` · `export function revisionDir(root: string): string {` · ~108 and `core/revision.ts` · `revision log, which is its store.` · ~939 |
 | `.ingest/` exists | `ingest/session.ts` · `  return path.join(root, '.ingest');` · ~93 |

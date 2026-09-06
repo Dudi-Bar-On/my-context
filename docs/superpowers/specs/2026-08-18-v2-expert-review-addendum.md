@@ -405,7 +405,7 @@ consumers **[R]** — it has since left `revision.ts` for
 `core/revision-log.ts` · `export function changedFields(changes: RevisionChanges): RevisionField[] {` · ~394,
 re-exported from `revision.ts` so no importer notices; `readFrom` was already exported — as
 `readSegmentFrom` when this was written, and as
-`core/audit-db.ts` · `export function readCompleteLines(file: string, offset: number): { text: string; consumed: number } {` · ~185 since **[R]**;
+`core/audit-db.ts` · `export function readCompleteLines(file: string, offset: number): { text: string; consumed: number } {` · ~234 since **[R]**;
 `trustedStatus` lives in
 `core/trust.ts` · `export function trustedStatus(origin: Origin, tier: Tier, requested: Status): Status {` · ~267,
 not in `mutate.ts` — the spec's §2 cites it as `mutate.ts:376` twice.

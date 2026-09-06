@@ -1224,7 +1224,7 @@ slash command supplies the current id automatically because the hook knows it. T
 ### ✅ Session enumeration is already shipped — §6c and §6d are cheaper than assumed
 
 Three implementations already exist: `sessions(db, limit)` over the projection's generated
-`session_id` column (`audit-db.ts` · `export function sessions(db: DatabaseSync, limit: number): SummaryRow[] {` · ~1252), `sessionsWithoutDb` from raw JSONL (`commands/audit.ts` · `function sessionsWithoutDb(list: AuditRecord[]): SummaryRow[] {` · ~504), and
+`session_id` column (`audit-db.ts` · `export function sessions(db: DatabaseSync, limit: number): SummaryRow[] {` · ~1352), `sessionsWithoutDb` from raw JSONL (`commands/audit.ts` · `function sessionsWithoutDb(list: AuditRecord[]): SummaryRow[] {` · ~504), and
 `recentSessions` (`ledger.ts` · `recentSessions(limit: number): string[] {` · ~512). **`mycontext audit --sessions` already prints the list today.**
 "What that session had" is equally derivable — `itemsUsedIn` (`ledger.ts` · `itemsUsedIn(sessionIds: string[]): string[] {` · ~582).
 

@@ -64,7 +64,7 @@ import { SECURITY_HEADERS } from './security.ts';
 // on every open, and on any failure `rmSync`s the file and both sidecars;
 // `syncProjection` inserts, and on `diverged` deletes every row first. The
 // read-only door that arrived for exactly this caller is used instead
-// (`core/audit-db.ts` · `export function openProjectionReadOnlyChecked(root: string): DatabaseSync {` · ~988),
+// (`core/audit-db.ts` · `export function openProjectionReadOnlyChecked(root: string): DatabaseSync {` · ~1048),
 // and its own docblock names `/api/watch/spills` as one of the routes the
 // plan would otherwise have let delete and rebuild a database from a GET.
 //
@@ -769,11 +769,11 @@ export function apiItemHistory(ws: Workspace, url: URL, params: { id: string }):
 // `<div class="plate" id="ratio">`). No route exposed it, so the screen could
 // not be drawn; this is that route, and it reads exactly what the note says
 // rather than inventing a second aggregate beside `topItems`
-// (`core/audit-db.ts` · `export function topItems(db: DatabaseSync, role: string | null, limit: number): SummaryRow[] {` · ~1237).
+// (`core/audit-db.ts` · `export function topItems(db: DatabaseSync, role: string | null, limit: number): SummaryRow[] {` · ~1337).
 //
 // **`delivered` is the prose word and `injected` is the column value.** The
 // role literal written into `audit_item` is `injected`
-// (`core/audit-db.ts` · `insertItem.run(seq, entry.id, 'injected', entry.tier);` · ~216);
+// (`core/audit-db.ts` · `insertItem.run(seq, entry.id, 'injected', entry.tier);` · ~265);
 // every word the mockup puts in front of a reader for the same thing is
 // *delivered*. The field takes the design's word, the query takes the
 // database's, and neither is respelled to match the other.
@@ -784,7 +784,7 @@ export function apiItemHistory(ws: Workspace, url: URL, params: { id: string }):
  * `topItems` groups by item, so this bounds the number of ROWS the aggregate
  * returns rather than the number of audit records behind them, and the group
  * is served from the index that exists for it
- * (`core/audit-db.ts` · `CREATE INDEX IF NOT EXISTS idx_audit_item_id ON audit_item(item_id, role);` · ~94).
+ * (`core/audit-db.ts` · `CREATE INDEX IF NOT EXISTS idx_audit_item_id ON audit_item(item_id, role);` · ~128).
  * A corpus with more distinct items in one role than this is possible, and
  * `truncated` is what says so out loud — see `spillRatio`, where the window is
  * the whole difference between a measured zero and an unmeasured one.

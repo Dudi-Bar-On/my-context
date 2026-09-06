@@ -320,7 +320,7 @@ write is that reason.
 - **The ledger table stays, as the projection it is already documented to be**, maintained off
   the hot path: non-hook writers top it up from the audit log via
   `ledgerRows`, using the same position-tracking pattern `audit-db.ts` already ships
-  (`src/core/audit-db.ts` · `CREATE TABLE IF NOT EXISTS audit_source (` · ~98). This also builds
+  (`src/core/audit-db.ts` · `CREATE TABLE IF NOT EXISTS audit_source (` · ~147). This also builds
   the `replay-ledger` surface §0.5 found missing — it exists now
   (`src/cli/commands/audit.ts` · `if (args[0] === 'replay-ledger') {` · ~309), reached by
   `status`, `decay` and `audit replay-ledger` rather than by `rebuild` or the mutation paths.
@@ -511,7 +511,7 @@ resolveWorkspace
 - **The ledger table** becomes what `audit.ts` already says it is — a derived projection
   (`src/core/audit.ts` · `ledger STAYS, as a derived cache, and is rebuildable from here.` · ~1664)
   — and gains the missing replayer: a top-up step (audit-log position tracking per
-  `src/core/audit-db.ts` · `CREATE TABLE IF NOT EXISTS audit_source (` · ~98) run before an
+  `src/core/audit-db.ts` · `CREATE TABLE IF NOT EXISTS audit_source (` · ~147) run before an
   aggregate is read. Shipped as `topUpLedger`, called by `status`, `decay` and `audit
   replay-ledger` — not, in the end, by `rebuild` or the mutation paths. §0.5's false comment is
   corrected by making it true.
