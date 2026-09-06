@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: Both surfaces describe the handover in a unit that hides how far behind it is, and neither says that more requests are coming.
-summary_of: 70652c6ef149962c
+summary_of: 851a6de43f92c5c4
 scope:
   - src/cli/commands/statusline.ts
   - src/ui/public/strings/en.js
@@ -26,12 +26,13 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-09-06
 valid_until: null
-checksum: c559c9b9e4780f29
+checksum: 00f816900c3dddc8
 plan: handover
 seq: "13"
 state: done
 priority: "2"
 needs: handover/12
+verified_on: 2026-09-06
 ---
 
 # the ask says "handover due" and could say what is actually true of it
