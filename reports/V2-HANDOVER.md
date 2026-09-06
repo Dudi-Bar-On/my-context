@@ -1,3 +1,42 @@
+## ⏭ READ THIS FIRST — 2026-09-06, paused by the owner mid-session
+
+He stopped to leave. This is not a threshold handover: the window was around
+20%, far below 85. It is written because he is going, which is exactly the
+case `handover/14` shipped today.
+
+**THE TREE IS NOT CLEAN AND THAT IS EXPECTED.** A lane is running on
+`builder/13` (D20 — ids in composer results open the item pane) and
+`builder/14` (D21 — the results card names the command that ran). Its work
+will be sitting uncommitted in `src/ui/public/`. **Do not `git add -A` and do
+not tidy it.** Verify it in a browser first, then commit it. Three commits
+were polluted exactly this way on 2026-09-05 and 2026-09-06.
+
+**EVERYTHING ELSE IS COMMITTED AND PUSHED**, verified at zero unpushed after
+every commit today.
+
+**FIRST THREE THINGS NEXT SESSION**
+
+1. The D20/D21 lane will have reported. Its acceptance test is the owner's own
+   gesture and it is the only thing that counts: execute `list` with `rule` in
+   the Composer, click a returned id, the pane opens on that item. Drive it —
+   a lane's report is a claim, never evidence.
+2. Answer him on `builder/11` (D12). He asked directly whether the exhaustive
+   Composer testing had been implemented and run, and the answer was no. He
+   was weighing re-cutting it to run against what is built rather than waiting
+   on all six dependencies. That question is open and it is his.
+3. `builder/3` is ready and undispatched, and it is the systematic form of a
+   question he asked today: does the Composer catalogue cover every command
+   and every parameter, checked in both directions rather than asserted.
+
+**ON HIM, BLOCKING NOTHING:** D6, D8, D9, D16, D17, the `key` field ruling that
+holds `builder/10`, and `OPENQ-help-takes-a-topic-and-not-a-command`.
+
+**A WARNING ABOUT THIS FILE, EARNED TODAY.** It carried a wrong instruction
+about `isServableDocPath` six times and a lane nearly built it. `npm run
+check:handover` now exists: zero dangling pointers is gated, and anything
+carried into three or more blocks with its work still open is reported. Run
+it. The top carried line is the defect, not the summary.
+
 # v2.0 handover — we are mid-decision. Keep deciding.
 
 ## ⏭ READ THIS FIRST — 2026-09-06, at 96%
