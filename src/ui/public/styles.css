@@ -2506,11 +2506,32 @@ tr.lanestep td:nth-child(3){padding-inline-start:14px}
    the individual rules win the cascade on source order and this becomes a
    harmless base coat under them, never the value actually painted. */
 .md h1,.md h2,.md h3{font-size:var(--fs-2);margin:var(--sp-3) 0 var(--sp-1)}
+/* Refined 2026-09-06 after reading a help topic on screen. Three measured
+   faults, not a taste pass:
+
+   1. `h3` was WEIGHT 620 while `.md strong` is 650 — so a bold phrase inside
+      a paragraph was drawn heavier than the section heading above it, and the
+      hierarchy read backwards. `h3` is also the same 16px as body text, so
+      weight was the only signal it had and it was losing. Now 700, above
+      `strong` and unambiguous.
+   2. `h1` and `h2` separated their sections by MARGIN alone. In `help
+      workflow` — 1 h2, 5 h3, 18 paragraphs — sections ran together. A
+      hairline under the two top levels is GitHub's own convention, and
+      /doc.html already serves this project's documents in github-markdown-css
+      by the owner's ruling, so this makes the console agree with the viewer
+      rather than inventing a third look.
+   3. Both fixes are structural, and no new colour is invented for headings:
+      `--ink` is already the brightest ink this palette has, so a heading
+      cannot be made to stand out by tinting it — only by weight, space and
+      rule. The one colour added is on `th`, below, where there was none. */
 .md h1{font-size:var(--fs-4);font-weight:680;letter-spacing:-.012em;
-  margin:var(--sp-6) 0 var(--sp-2)}
+  margin:var(--sp-6) 0 var(--sp-3);padding-block-end:var(--sp-2);
+  border-block-end:1px solid var(--rule)}
 .md h2{font-size:var(--fs-3);font-weight:650;letter-spacing:-.008em;
+  margin:var(--sp-6) 0 var(--sp-3);padding-block-end:var(--sp-1);
+  border-block-end:1px solid var(--rule)}
+.md h3{font-size:var(--fs-2);font-weight:700;letter-spacing:-.004em;
   margin:var(--sp-5) 0 var(--sp-2)}
-.md h3{font-size:var(--fs-2);font-weight:620;margin:var(--sp-4) 0 var(--sp-1)}
 .md p{margin:0 0 var(--sp-2)}
 .md ul{margin:0 0 var(--sp-2);padding-inline-start:18px}
 .md pre{background:var(--sink);border:1px solid var(--rule);border-radius:var(--r-md);
@@ -2537,6 +2558,15 @@ tr.lanestep td:nth-child(3){padding-inline-start:14px}
 .md hr{block-size:0;border:0;border-block-start:1px solid var(--rule);margin:var(--sp-3) 0}
 .md table{margin:0 0 var(--sp-2)}
 .md th,.md td{padding-inline-end:var(--sp-2);padding-block:var(--sp-2)}
+/* A header row that looked exactly like a body row. `help workflow`'s
+   RELATION / MEANING table drew its two column names in body ink at body
+   weight with nothing under them, so the first data row was indistinguishable
+   from the header. `--dim` plus a rule is the same treatment `.md h4` already
+   spends on a minor heading, which is what a column name is.
+   `text-align:start` rather than `left` — this renders under `dir="rtl"`. */
+.md th{color:var(--dim);font-weight:650;text-align:start;
+  border-block-end:1px solid var(--rule)}
+.md tbody tr+tr td{border-block-start:1px solid var(--rule)}
 /* Degrades sanely for content this renderer does not build today — an
    embedded diagram is the case the coordinator named as coming: a raster or
    inline `svg` any future renderer drops in place of a fenced block inherits
