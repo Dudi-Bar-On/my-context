@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: Every tutorial gets a Hebrew file, and until it does, the screen shows that as a measured gap rather than a silent fallback to English.
-summary_of: 2efa68451d8331ff
+summary_of: cb8a47aa28ee38d2
 acknowledged:
   - dead_scope@66c3b149409b6a5d
 scope:
@@ -18,19 +18,20 @@ tags:
   - hebrew
   - "plan:tuts"
   - "seq:8"
-  - "state:doing"
+  - "state:done"
 origin: human
 source_file: null
 source_anchor: null
 source_checksum: null
 valid_from: 2026-09-05
 valid_until: null
-checksum: f7f01c31074cf9b7
+checksum: 0e9ebe229c661bcb
 plan: tuts
 seq: "8"
-state: doing
+state: done
 priority: "2"
 needs: tuts/1
+verified_on: 2026-09-06
 ---
 
 # write the Hebrew tutorial files, tracked as a measured gap until then
