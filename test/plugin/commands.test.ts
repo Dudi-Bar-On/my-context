@@ -186,7 +186,7 @@ test('every file KEEP actually names survives filesToRemove against the real gen
  */
 const GENERIC = [
   'add.md', 'audit.md', 'decay.md', 'discard.md', 'doctor.md', 'edit.md', 'harden.md',
-  'inbox-promote.md', 'ingest.md',
+  'handover.md', 'inbox-promote.md', 'ingest.md',
   'focus.md', 'lesson-stage.md', 'lesson.md', 'link.md', 'pin.md', 'procedure.md', 'promote.md',
   'query.md', 'ready.md',
   'refresh.md', 'review.md', 'search.md', 'show.md', 'soften.md', 'status.md',

@@ -131,6 +131,14 @@ export const TOOL_PARITY: ToolParity[] = [
   { tool: 'list_items', cli: 'list', slash: 'list' },
   { tool: 'create_lesson', cli: 'lesson', slash: 'lesson' },
   { tool: 'read_procedure', cli: 'procedure', slash: 'procedure' },
+  // All three surfaces, and that is the owner's ruling of 2026-09-06 rather
+  // than a default: *"i want you to implement all 3 ways: a cli command, a
+  // slash command and a MCP tool, all should trigger handover update on
+  // demand."* So there is no absence to record here and no note to write —
+  // `mycontext handover ask`, `/mycontext:handover` and this tool are three
+  // entry points onto `askHandoverNow`, which decides everything all three
+  // report.
+  { tool: 'ask_handover', cli: 'handover', slash: 'handover' },
 ];
 
 /**

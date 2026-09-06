@@ -91,7 +91,24 @@ For a single item rather than a session's whole seen set, `mycontext carry <id>`
 is the one-shot override described in *Preview what a query would inject, and
 pull back what spilled*.
 
-**The slash commands.** `/mycontext:session-name` and `/mycontext:session-carry`.
+**Asking for the handover before you are ready to stop.** The handover note is the
+other half of continuity: a session writes it, the next one is delivered it. It is
+normally asked for automatically when the context window crosses
+`handover.thresholdPercent`, but you do not have to wait for that — if you are
+about to compact or start fresh, ask for it now:
+
+```bash
+mycontext handover ask                    # ask THIS session, at whatever it holds
+```
+
+It asks the session it is running in, so it only works from inside Claude Code —
+from a plain terminal it refuses and says so. It refuses too when it cannot read
+how full the window is (no percentage is guessed), and when this session still has
+subagents running, which it names so you can choose between waiting for them and
+going ahead with `--anyway`.
+
+**The slash commands.** `/mycontext:session-name`, `/mycontext:session-carry` and
+`/mycontext:handover`.
 
 **What the CLI can do here that the UI cannot.** All of it. Neither `session`
 nor `carry` is in the browser's command catalogue, and no screen names or

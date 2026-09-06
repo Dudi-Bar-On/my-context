@@ -52,6 +52,7 @@ const browserModule = async <T>(...segments: string[]): Promise<T> =>
 interface LibraryModule {
   render: (root: unknown, ctx: unknown) => Promise<void>;
   docHref: (kind: string, id: string, lang: string) => string;
+  corpusHref: (id: string) => string;
 }
 interface DocPageModule {
   docAddress: (search: string) => { kind: string | null; id: string | null; lang: string };
@@ -59,6 +60,7 @@ interface DocPageModule {
   baseDirFor: (
     address: { kind: string | null; id: string | null; lang: string },
     ids: Set<string> | null,
+    served?: string,
   ) => string;
 }
 
@@ -276,6 +278,25 @@ const DOCUMENTS = [
   { id: 'docs/README.he.md', title: 'my_context בעברית', language: 'he', hasHebrewMirror: true, headings: [] },
   { id: 'docs/tutorials/injection-tiers.md', title: 'How injection tiers decide what arrives', language: 'en', hasHebrewMirror: false, headings: [] },
 ];
+/**
+ * The corpus roster the file browser is drawn from.
+ *
+ * Deliberately shaped so three separate claims can be measured off one
+ * fixture: `items/` holds THREE folders and no loose file (so the tree's top
+ * level is exactly three rows); `items/task/` holds a file AND a folder (so
+ * the roll-up counts both); and `CORPUS_INDEXED` is one higher than the
+ * roster, standing for an index row the served boundary refused — the
+ * disclosure the card draws whether or not it has anything to report.
+ */
+const CORPUS_FILES = [
+  'items/adr/ADR-build-rather-than-adopt.md',
+  'items/decision/DEC-a-first-decision.md',
+  'items/decision/DEC-a-second-decision.md',
+  'items/task/TASK-a-loose-task.md',
+  'items/task/plan/TASK-a-nested-task.md',
+];
+const CORPUS_INDEXED = CORPUS_FILES.length + 1;
+
 const TUTORIALS = [
   { id: 'capturing-an-item', title: 'Capture what you just decided', tier: 'basic', en: 'done', he: 'done' },
   { id: 'narrowing-a-session-focus', title: 'Narrow what gets injected', tier: 'advanced', en: 'done', he: 'todo' },
@@ -308,6 +329,11 @@ async function paint(lang: 'en' | 'he'): Promise<FakeNode> {
         return { tutorials: TUTORIALS, heRollup: { done: 1, total: 3 } };
       }
       if (url === '/api/doc') return { documents: DOCUMENTS, truncated: false };
+      if (url === '/api/corpus') {
+        return {
+          root: '.my_context', files: CORPUS_FILES, indexed: CORPUS_INDEXED, truncated: false,
+        };
+      }
       throw new Error(`unexpected read: ${url}`);
     },
   };
@@ -522,4 +548,120 @@ test('the two screens this replaces are GONE, and their addresses land on the Li
   // falling through to the injection preview.
   assert.match(app, /RETIRED_TO_LIBRARY = new Set\(\['docs', 'tut'\]\)/);
   assert.match(app, /RETIRED_TO_LIBRARY\.has\(askedRaw\) \? 'library' : askedRaw/);
+});
+
+
+/* ══ THE CORPUS FILE BROWSER ═══════════════════════════════════════════════
+ *
+ * `TASK-the-library-browses-the-corpus-files-and-a-file-opens` (`library/2`).
+ * What is measurable without a browser is the SHAPE the screen builds — the
+ * nesting, the addresses, the counts, the breadcrumb — and that is what is
+ * held here. Whether `<wa-tree>` upgrades, whether a chevron expands in place
+ * and a name descends, and whether the whole thing mirrors under `dir="rtl"`
+ * are browser facts and live in `e2e/corpus-tree.spec.ts`.
+ */
+
+test('the corpus address is a THIRD key, not a third value of doc=', async () => {
+  const { corpusHref } = await library();
+  assert.equal(corpusHref('items/task/TASK-x.md'), '/doc.html?corpus=items%2Ftask%2FTASK-x.md');
+  // An id carrying the query grammar cannot escape its own value.
+  assert.equal(corpusHref('items/a b&c=d.md'), '/doc.html?corpus=items%2Fa%20b%26c%3Dd.md');
+  assert.doesNotMatch(corpusHref('items/x.md'), /#/, 'the fragment is never written here');
+});
+
+test('the document page reads the corpus address, and asks the corpus route for it', async () => {
+  const { docAddress, endpointFor, baseDirFor } = await docPage();
+  const address = docAddress('?corpus=items%2Ftask%2FTASK-x.md');
+  assert.deepEqual(address, { kind: 'corpus', id: 'items/task/TASK-x.md', lang: 'en' });
+  assert.equal(endpointFor(address), '/api/corpus/items%2Ftask%2FTASK-x.md');
+  // `doc=` still wins where both are written, because it is read first — the
+  // point is only that the two keys never mean the same thing.
+  assert.equal(docAddress('?doc=README.md&corpus=items/x.md').kind, 'doc');
+  // The base is rooted in the WORKSPACE, so no relative link inside an item
+  // body can ever resolve onto a repository document the viewer would open.
+  assert.equal(
+    baseDirFor(address, null, '.my_context/items/task/TASK-x.md'),
+    '.my_context/items/task',
+  );
+});
+
+test('the tree is NESTED and BOUNDED — only the current folder is built', async () => {
+  const root = await paint('en');
+  const items = flat([root]).filter((n) => n.tag === 'wa-tree-item');
+  // `items/` holds three folders in the fixture, and nothing below them is in
+  // the DOM: every folder carries `lazy`, so its children are built the first
+  // time it is opened and not before. Five files, three elements — which is
+  // the bound, measured rather than promised.
+  assert.equal(items.length, 3, 'the tree built rows for folders nobody has opened');
+  assert.deepEqual(items.map((n) => n.dataset['kind']), ['dir', 'dir', 'dir']);
+  assert.deepEqual(items.map((n) => n.dataset['path']),
+    ['items/adr', 'items/decision', 'items/task']);
+  for (const item of items) {
+    assert.equal((item as unknown as { lazy?: boolean }).lazy, true,
+      `${item.dataset['path']} is not lazy, so its whole subtree is in the DOM`);
+  }
+  const tree = flat([root]).find((n) => n.tag === 'wa-tree');
+  assert.notEqual(tree, undefined, 'no <wa-tree> was built');
+  assert.equal(tree!.attrs['selection'], 'single',
+    'selection must be "single": under "leaf" a folder click EXPANDS, which would collide '
+    + 'with the chevron and leave descend with no gesture of its own');
+  // The chevron pair is slotted on the TREE, once, and cloned onto every item
+  // by the component — `wa-icon` is not vendored, so a caller slots its own.
+  const slots = tree!.children.filter((n) => n.tag === 'svg').map((n) => n.attrs['slot']);
+  assert.deepEqual(slots, ['expand-icon', 'collapse-icon']);
+});
+
+test('a folder says how many files are under it, before a reader opens it', async () => {
+  const root = await paint('en');
+  const items = flat([root]).filter((n) => n.tag === 'wa-tree-item');
+  const counts = items.map((item) =>
+    textOf(flat([item]).find((n) => n.className === 'wa-count')!));
+  // adr: 1, decision: 2, task: 2 (one loose, one nested) — `buildTree`'s own
+  // roll-up, not a number this screen counts a second time.
+  assert.deepEqual(counts, ['1', '2', '2']);
+});
+
+test('the breadcrumb names the corpus root and does not link to where you already are', async () => {
+  const root = await paint('en');
+  const bar = flat([root]).find((n) => n.className === 'crumbs');
+  assert.notEqual(bar, undefined, 'no breadcrumb was drawn');
+  // At the corpus root there is exactly one crumb, and it is TEXT: a control
+  // that navigates to where you already stand is a control that does nothing.
+  assert.deepEqual(bar!.children.map((n) => n.tag), ['span']);
+  assert.equal(bar!.children[0]!.className, 'crumb here');
+  assert.equal(textOf(bar!.children[0]!), '.my_context/items');
+});
+
+test('the card states what the boundary refused, whether or not it refused anything', async () => {
+  const root = await paint('en');
+  const text = textOf(root);
+  // `CORPUS_INDEXED` is one higher than the roster, so the sentence has a real
+  // number to carry — and it is drawn on a corpus where that number is zero too.
+  assert.match(text, new RegExp(`${CORPUS_INDEXED - CORPUS_FILES.length} of the ${CORPUS_INDEXED}`));
+  // And the count of what is HERE, which is what makes the tree's three rows
+  // legible as three folders rather than as three of something.
+  assert.match(text, /3 folders and 0 files/);
+  assert.match(text, new RegExp(`${CORPUS_FILES.length} files altogether`));
+});
+
+test('INSTRUCTION 2 reaches the new card too — a label is a segment, never a whole path', async () => {
+  const root = await paint('en');
+  const labels = flat([root]).filter((n) => n.className === 'wa-name').map(textOf);
+  assert.deepEqual(labels, ['adr/', 'decision/', 'task/'],
+    'a tree label is a path segment, never a whole path');
+  for (const file of CORPUS_FILES) {
+    assert.equal(textOf(root).includes(file), false, `the whole path ${file} was drawn as text`);
+  }
+});
+
+test('every string the corpus card names is declared in BOTH tables', async () => {
+  const source = readFileSync(path.join(PUBLIC, 'screens', 'library.js'), 'utf8');
+  const en = (await table('en')).strings;
+  const he = (await table('he')).strings;
+  const named = [...source.matchAll(/\bt(?:Flat)?\(\s*'(lib\.files[\w.]*)'/g)].map((m) => m[1]!);
+  assert.ok(named.length >= 6, `expected the corpus card's keys, found ${named.length}`);
+  for (const key of new Set(named)) {
+    assert.ok(key in en, `${key} is missing from en`);
+    assert.ok(key in he, `${key} is missing from he`);
+  }
 });

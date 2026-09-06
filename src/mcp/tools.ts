@@ -6,6 +6,7 @@ import {
   type AuditFilter, type AuditKind, type AuditOp,
 } from '../core/audit.ts';
 import { RULE_DIRECTIVES } from '../core/command-flags.ts';
+import { askHandoverNow } from '../core/handover-ask.ts';
 import { computeDecay } from '../core/decay.ts';
 import {
   focusReportLines, isFocusActive, readFocus, setFocus, unsetFocus,
@@ -2470,6 +2471,83 @@ const SPECS: ToolSpec[] = [
       }], item.id);
       return `my_context: step ${n} ${undo ? 'un-ticked' : 'ticked'} — ${progressLine(after, total)}. ` +
         'The item file is unchanged; this is one record in the audit log.';
+    },
+  },
+  /**
+   * **`ask_handover` — the third entry point onto one implementation.**
+   *
+   * Owner ruling 2026-09-06, in as many words: *a cli command, a slash command
+   * and a MCP tool, all should trigger handover update on demand*. Every
+   * decision this makes is `core/handover-ask.ts`'s `askHandoverNow` —
+   * `cli/commands/handover.ts` calls the identical function and renders the
+   * identical fields. Nothing about session identity, occupancy or any refusal
+   * is decided here, and that is the ruling's own requirement: the three
+   * surfaces are entry points, not implementations.
+   *
+   * **It takes no session argument, and that is the owner's second ruling of
+   * the same day**: the ask may only be made from inside a Claude Code session,
+   * so there is no id to pass and no hatch to pass it through. This server is
+   * inside one by construction — Claude Code launches a stdio MCP server with
+   * `CLAUDE_CODE_SESSION_ID` in its environment (measured on 2.1.260, in the
+   * binary's own launch path) — so the ordinary case needs nothing.
+   *
+   * **The one case that is not ordinary, stated rather than papered over:** a
+   * long-lived server outlives a `/clear`, and Claude Code re-stamps the
+   * variable in its OWN process rather than in an already-running child, so
+   * this server can hold the id of a conversation that has ended. Nothing
+   * special-cases it because nothing has to — an ended session has no current
+   * context sample, so the ask is refused for want of an occupancy rather than
+   * stamped against a dead latch. The recovery is the CLI, run by the assistant
+   * in a shell that was started after the reset.
+   */
+  {
+    name: 'ask_handover',
+    schema: object({
+      anyway: {
+        type: 'boolean',
+        description:
+          'Ask even though this session has lanes still running, or even though whether it ' +
+          'has could not be read. Only pass it when the USER has said to: the disclosure ' +
+          'names what is running so they can choose between waiting and proceeding.',
+      },
+    }),
+    run: (cwd, args) => {
+      const ws = resolveWorkspace(cwd);
+      if (!ws.projectRoot) {
+        throw new Error(
+          `my_context: there is no .my_context workspace at or above ${cwd}. ` +
+          'Ask the user to run `mycontext init`.',
+        );
+      }
+      const result = askHandoverNow(ws.projectRoot, { anyway: optBool(args, 'anyway') ?? false });
+
+      if (result.verdict === 'asked') {
+        // The paragraph FIRST, because it is an instruction and the rest is
+        // provenance. `checkHandoverAsk` decides later whether it was acted on,
+        // by the same mtime comparison every other ask is judged by.
+        return `${result.ask}\n\nmy_context: ${result.note}. Recorded against session ` +
+          `${result.sessionId}.`;
+      }
+      if (result.verdict === 'work-in-flight') {
+        const lanes = result.running.map((lane) =>
+          `  - ${lane.agentId}${lane.type === null ? '' : ` [${lane.type}]`}: ` +
+          `${lane.what ?? '(no description on the dispatch row)'} — dispatched ` +
+          `${lane.dispatchedAt}, last step ${lane.lastStepAt ?? '—'}`).join('\n');
+        return `my_context: ${result.note}.\n${lanes}\n\n` +
+          'Tell the user what is running and let THEM choose: wait for those lanes to ' +
+          'finish, stop them in Claude Code (my_context has no control that ends a lane), ' +
+          'or say to proceed — in which case call this again with anyway: true. Do not ' +
+          'choose for them, and do not ask again without their answer.';
+      }
+      if (result.verdict === 'outside-session') {
+        // Reachable from a server Claude Code did not start — a hand-run one,
+        // or a test harness. Say what it means rather than inviting a retry:
+        // there is no argument that would change the answer.
+        return `my_context: ${result.note}. This server was started without a Claude Code ` +
+          'session id in its environment, so there is no session to ask. Nothing you can pass ' +
+          'to this tool changes that.';
+      }
+      return `my_context: ${result.note}.`;
     },
   },
 ];

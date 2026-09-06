@@ -636,10 +636,27 @@ bdi{unicode-bidi:isolate}
    2026-09-06), and a second declaration is how two boxes for one kind of value
    come to look different. Same specificity as `.pop .tagin`, so nothing about
    the dialog moves. */
-.pop .tagin,.card .tagin{font-family:var(--mono);font-size:var(--fs-1);inline-size:100%;
+/* `.card .suggin` — the `suggest` box (owner ruling D11, 2026-09-06) — joins
+   this SELECTOR LIST rather than getting a block of its own, because it is the
+   same kind of control for the same reason: a doctor code and a pack path are
+   machine values taken by hand and must read left-to-right inside a Hebrew
+   page. Only its WIDTH differs, and it is overridden one rule down rather than
+   by restating the other nine declarations. */
+.pop .tagin,.card .tagin,.card .suggin{font-family:var(--mono);font-size:var(--fs-1);inline-size:100%;
   padding-block:4px;padding-inline:6px;background:var(--sink);color:var(--ink);
   border:1px solid var(--edge-3);border-radius:var(--r-md);
   direction:ltr;unicode-bidi:isolate}
+/* The one declaration a `suggest` box does not share, FOUND BY LOOKING AT IT
+   rather than reasoned about: `label.small` is inline, so a 100%-wide control
+   wraps to a line of its own and leaves its caption stranded beside the
+   PREVIOUS field's control — `ack` drew "id *: [select] finding *:" on one line
+   with the box under both of them. The tags box may be full width because in
+   the dialog it comes from it is the only control on its line; on a form of
+   five it is not. `min(320px,100%)` is `.globin`'s own width (~2563), which is
+   the other box on this screen in exactly this position, rather than a new
+   number. `min-inline-size:0` for `label.small select`'s reason two thousand
+   lines down: nothing upstream may float a floor under this box either. */
+.card .suggin{inline-size:min(320px,100%);min-inline-size:0}
 /* — #focuspop's TAG PICKER (REQ-the-focus-dialog-offers-the-tags-it-could) —
    Rules the mockup does not declare, allowed for the reason stated directly
    above: `17e7482` unpinned styles-parity to a COVERAGE FLOOR.
@@ -3150,6 +3167,54 @@ wa-tree{
 .lang{font:var(--fs-00)/1 var(--mono);color:var(--dim)}
 .lang.ok{color:var(--ok)}
 
+/* — the corpus file browser —
+   `TASK-the-library-browses-the-corpus-files-and-a-file-opens`. The TREE
+   itself is painted by the `wa-tree{}` token block further up this sheet and
+   by nothing here; what follows is the frame around it, the trail above it,
+   and the two spans the tree's own items carry.
+
+   THE FRAME IS THE SCALE BOUND, and it is the lesson the 942-option `<select>`
+   taught at ~3,900px: a control that cannot shrink below its content makes the
+   PAGE the thing that grows. `items/task/` holds 618 files on this corpus, so
+   the deepest folder is bounded by a scroll rather than by hope.
+   `overscroll-behavior:contain` stops a wheel that reaches the end of the tree
+   from carrying on down the page underneath it.
+
+   EVERY LENGTH IS LOGICAL, so the whole block mirrors under dir="rtl" with no
+   second rule — the same property the `.tree` vocabulary was built on. */
+.corpustree{border:1px solid var(--pane-edge);border-radius:var(--r-lg);
+  background:var(--plate);padding:var(--sp-2) var(--sp-3);
+  max-block-size:26rem;overflow:auto;overscroll-behavior:contain}
+/* The trail back out, in the shape `/doc.html` already draws a document's own
+   path: quiet, monospaced, and the place you are is TEXT rather than a control
+   that would navigate to where you already stand. */
+.crumbs{display:flex;flex-wrap:wrap;align-items:center;
+  margin-block:var(--sp-2);font:var(--fs-0)/1.6 var(--mono)}
+.crumb{color:var(--dim);background:none;border:0;padding:0;
+  font:inherit;text-align:start}
+button.crumb{cursor:pointer;text-decoration:underline;text-underline-offset:2px}
+button.crumb:hover{color:var(--ink)}
+button.crumb:focus-visible{outline:2px solid var(--gold);outline-offset:2px;
+  border-radius:var(--r-sm)}
+.crumb.here{color:var(--ink)}
+/* The separator is a pseudo-element rather than a node, and it is ISOLATED:
+   a bare "/" between two names reorders under dir="rtl" for the same Unicode
+   reason the `<bdi>` around every path segment exists. */
+.crumbs>*+*{padding-inline-start:calc(var(--sp-3) + 2px);position:relative}
+.crumbs>*+*::before{content:"/";position:absolute;inset-inline-start:var(--sp-1);
+  color:var(--dim);direction:ltr;unicode-bidi:isolate}
+/* Inside a tree item. A FILE's label is a real anchor so a middle-click and a
+   "copy link address" work, and it takes the row's own colour rather than a
+   link hue — the row is already the affordance, which is instruction 3's whole
+   complaint about link styling, one screen up. */
+wa-tree a.wa-file{color:inherit;text-decoration:none}
+wa-tree a.wa-file:hover{text-decoration:underline;text-underline-offset:2px}
+wa-tree .wa-name{overflow-wrap:anywhere}
+/* How many files are under a folder, so a reader can tell a folder of three
+   from a folder of six hundred BEFORE opening it. */
+wa-tree .wa-count{margin-inline-start:var(--sp-2);color:var(--dim);
+  font:var(--fs-00)/1 var(--mono)}
+
 /* — the page in the new tab — */
 body.docpage{overflow-y:auto}
 .docshell{max-inline-size:calc(72ch + 2 * var(--sp-6));margin-inline:auto;
@@ -3253,3 +3318,64 @@ body.docpage{overflow-y:auto}
 .ghdoc del{background:none;color:inherit;text-decoration:line-through;padding:0}
 .ghdoc ins{background:none;color:inherit;text-decoration:underline;padding:0}
 
+
+/* ── THE LIBRARY'S COMMAND-LINE CARD (plan:library seq:1) ──────────────────
+   `screens/cli-help.js`. Four rules, and each one is a bound rather than a
+   look: the card reuses `.card.pane`, `h3`, `.small`, `.welllabel`, the bare
+   `table`/`th`/`td` rules and `.m` exactly as every other screen does, so
+   there is no new vocabulary here to keep consistent with anything.
+
+   THE SELECT NEEDS NO RULE OF ITS OWN, and that is the point of building it
+   with `capture.js`'s `labelled()` shape. `label.small select` (~2594) already
+   caps the box at 260px with an ellipsis, which is the fix for the 2,559px of
+   horizontal overflow a 942-option picker put into `main` on 2026-09-04: a
+   select's shrink-to-fit never goes below its widest OPTION, because option
+   text does not wrap, so min-content equals max-content and only an explicit
+   bound helps. This picker's widest option is a slash-command label — far
+   under that cap — but it is reached by the same rule either way, which is
+   what stops the next long name from being a regression.
+
+   `.transcript` is generated command output. `pre` is already monospace and
+   already forced to `direction:ltr` under `[dir="rtl"]` (~433), which is what
+   makes a terminal transcript read correctly on the Hebrew console: the bytes
+   are English and a right-to-left paragraph direction would reorder the box
+   drawing. What is added is the BOX — the same `--sink` ground and `--rule`
+   border `.md pre` (~2450) already wears — plus the horizontal scroll a wide
+   table needs. `overflow-x:auto` on the block and not on the card, so a 100-
+   column table scrolls inside its own box and never widens the page.
+
+   `.topicbody` bounds the tall ones. `mycontext help categories` prints some
+   39,000 characters; unbounded, one option in the picker would make the page
+   several screens long and push everything under it out of reach. 60vh, so the
+   picker that chose it stays on screen while it is read.
+
+   `.flagtable` gets column proportions and nothing else. The switch column is
+   monospace names, the takes column is short, and the meaning is prose that
+   should get the rest — without this the browser gives a 200-character note
+   the same width as `--yes`. */
+/* `contain:inline-size` is the load-bearing declaration on this card, and it
+   is here because the failure it prevents was MEASURED rather than imagined.
+   `main.body` is a grid with ONE auto track, so the track sizes to its item's
+   max-content — and this pane renders arbitrary generated command output. On
+   2026-09-06, `mycontext add`'s worked example (one 600-character marker) laid
+   its `span.m` out at 2,321px, the track resolved to 2,696px against a 1,403px
+   viewport, and the whole page gained 1,325px of horizontal overflow. That is
+   the same defect the 942-option `<select>` produced in September and it
+   arrived through prose instead of through a control.
+   Containment says the box's inline size is computed WITHOUT regard to its
+   contents, which is the only bound that holds for content this card does not
+   author: a `ch` cap (`.md`'s 72ch) is a reading measure and would squeeze the
+   flag tables, and `overflow-wrap` cannot help a `<pre>` whose min-content is
+   its longest line. What overflows now scrolls inside its own box below. */
+.clihdetail{margin-block-start:var(--sp-2);contain:inline-size}
+/* One worked example's command line. It SCROLLS and does not wrap: a shell
+   command broken mid-flag is one a reader cannot copy. */
+.excmd{overflow-x:auto;white-space:nowrap}
+.transcript{background:var(--sink);border:1px solid var(--rule);border-radius:var(--r-md);
+  padding:var(--sp-2);overflow-x:auto;margin-block:var(--sp-1) var(--sp-2)}
+.topicbody{max-block-size:60vh;overflow-y:auto;white-space:pre-wrap}
+.flagtable{margin-block:var(--sp-1) var(--sp-3);table-layout:fixed}
+.flagtable td:first-child,.flagtable th:first-child{inline-size:22%}
+.flagtable td:nth-child(2),.flagtable th:nth-child(2){inline-size:26%}
+.flagtable td{overflow-wrap:anywhere}
+.flagtable td p{margin-block:4px 0}

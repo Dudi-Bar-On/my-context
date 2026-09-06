@@ -86,10 +86,27 @@ import { githubNodes } from '/lib/markdown.js';
  * Exported and pure so `node --test` can measure it without a browser, the
  * same bargain `docAddress` and `endpointFor` make.
  */
-export function baseDirFor(address, ids) {
+export function baseDirFor(address, ids, served) {
   if (address.kind === 'doc') {
     const at = String(address.id).lastIndexOf('/');
     return at === -1 ? '' : String(address.id).slice(0, at);
+  }
+  // A CORPUS file's own directory is inside the WORKSPACE, and `served` is
+  // where the server says the file lives — `.my_context/items/task/X.md`. The
+  // dirname of that is the base, and it is deliberately not `''`: an empty
+  // base would resolve a link written `report.md` inside an item body against
+  // the REPOSITORY root, where `openable` might genuinely hold something of
+  // that name, and the page would then open a different file than the one the
+  // link meant. Rooted in the workspace instead, no relative target can ever
+  // be in `openable` — that roster holds `docs/`, `reports/` and `README.md`
+  // and nothing under `.my_context/` — so every relative link falls to plain
+  // text and `gh.links` counts it on the page. That is the safe direction and
+  // the one `DEC-the-document-page-wears-github-styling-lists-the-readmes-and`
+  // asks for: "get them too or do not support the link".
+  if (address.kind === 'corpus') {
+    const where = typeof served === 'string' ? served : String(address.id);
+    const at = where.lastIndexOf('/');
+    return at === -1 ? where : where.slice(0, at);
   }
   if (address.kind !== 'tut' || ids === null) return '';
   const suffix = `/${address.id}${address.lang === 'he' ? '.he' : ''}.md`;
@@ -129,6 +146,12 @@ export function docAddress(search) {
   if (doc !== null && doc !== '') return { kind: 'doc', id: doc, lang };
   const tut = params.get('tut');
   if (tut !== null && tut !== '') return { kind: 'tut', id: tut, lang };
+  // A THIRD key rather than a third value of `doc=`, and the reason is the
+  // rooting: a document id is a REPOSITORY-relative path, a corpus file id is
+  // WORKSPACE-relative, and one key carrying both would be two rootings under
+  // one name — the ambiguity that only ever shows up as the wrong file.
+  const corpus = params.get('corpus');
+  if (corpus !== null && corpus !== '') return { kind: 'corpus', id: corpus, lang };
   return { kind: null, id: null, lang };
 }
 
@@ -136,6 +159,7 @@ export function docAddress(search) {
  *  segment, because a document id is a repo-relative path and carries `/`. */
 export function endpointFor(address) {
   if (address.kind === 'doc') return `/api/doc/${encodeURIComponent(address.id)}`;
+  if (address.kind === 'corpus') return `/api/corpus/${encodeURIComponent(address.id)}`;
   if (address.kind === 'tut') {
     const base = `/api/tutorials/${encodeURIComponent(address.id)}`;
     return address.lang === 'he' ? `${base}?lang=he` : base;
@@ -277,6 +301,25 @@ async function main() {
     note.replaceChildren(...t('gh.enonly'));
   }
 
+  // The path the SERVER says this file lives at, which for a corpus file is
+  // not the id: the id is workspace-relative (`items/task/X.md`) and a reader
+  // wants to see where that is (`.my_context/items/task/X.md`). Set after the
+  // read, over the id this page drew before it.
+  if (address.kind === 'corpus' && typeof body.path === 'string' && body.path !== '') {
+    pathLine.textContent = body.path;
+  }
+
+  if (address.kind === 'corpus') {
+    // The same quiet outline the tutorial tag uses below, saying which of the
+    // two things this page can render a reader is looking at. A corpus FILE
+    // and a repository DOCUMENT render identically and are not the same
+    // artefact, and the page should not leave that to be inferred from a path.
+    const tag = document.createElement('span');
+    tag.className = 'tag';
+    tag.append(...t('gh.corpustag'));
+    stateLine.replaceChildren(tag);
+  }
+
   if (address.kind === 'tut') {
     // `.tag`, this page's own quiet outline — NOT the console's `.chip`, whose
     // five meaning hues belong to a screen that makes verdicts. A document page
@@ -290,10 +333,41 @@ async function main() {
 
   const openable = await roster;
   const rendered = githubNodes(body.markdown, document, tFlat, {
-    base: baseDirFor(address, openable),
+    base: baseDirFor(address, openable, body.path),
     openable,
   });
-  article.replaceChildren(...rendered.nodes);
+
+  // **THE FRONTMATTER IS SERVED AND DRAWN, NOT STRIPPED**, and that is the
+  // whole difference between this page and the item pane in the console. The
+  // pane renders an item FROM THE INDEX, every field already parsed; this page
+  // shows the file, and a file's `---` block is part of what is written in it.
+  //
+  // It is drawn as PREFORMATTED TEXT rather than pushed through the Markdown
+  // renderer, because YAML through a Markdown renderer is not a rendering of
+  // this file: `---` alone is a thematic break, and the closing fence turns
+  // the line above it into a setext `<h2>`. `apiCorpusFile` therefore carries
+  // the two halves separately and this composes them — nothing is dropped to
+  // get there, and `bytes` on the same body is the number that says so.
+  //
+  // A real `<details>`, for `lib/disclosure.js`'s own recorded reason: it is
+  // keyboard-reachable and toggleable BY CONSTRUCTION with no script. `open`
+  // by default, because a reader who opened a file to see what is in it should
+  // not have to ask twice.
+  const front = [];
+  if (address.kind === 'corpus' && typeof body.frontmatter === 'string') {
+    const box = document.createElement('details');
+    box.className = 'frontmatter';
+    box.open = true;
+    const summary = document.createElement('summary');
+    summary.append(...t('gh.front'));
+    const pre = document.createElement('pre');
+    const code = document.createElement('code');
+    code.textContent = body.frontmatter;
+    pre.append(code);
+    box.append(summary, pre);
+    front.push(box);
+  }
+  article.replaceChildren(...front, ...rendered.nodes);
 
   // The measured zero is DRAWN. `STD-a-measured-zero-is-drawn-and-named-an-
   // unmeasured-thing-is`: "no construct in this document is outside GitHub's

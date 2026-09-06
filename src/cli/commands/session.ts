@@ -1,4 +1,5 @@
 import { sessions, type SummaryRow } from '../../core/audit-db.ts';
+import { SUBCOMMAND_FLAGS } from '../../core/command-flags.ts';
 import {
   readCarrySource, resolveCarry, SESSION_SHORT_ID, setCarrySource,
 } from '../../core/continuity.ts';
@@ -47,11 +48,7 @@ const USAGE = `usage: mycontext session [list] [--json]
  * `name`, which writes, is exactly the swallow `unknownFlag` exists to stop:
  * it would look like a request for machine-readable output and be discarded.
  */
-const SESSION_FLAGS: Record<string, { allowed: string[]; values: string[] }> = {
-  list: { allowed: ['json'], values: [] },
-  name: { allowed: [], values: [] },
-  carry: { allowed: ['none', 'show'], values: [] },
-};
+const SESSION_FLAGS = SUBCOMMAND_FLAGS['session'];
 
 /**
  * How many characters of a session id fit a label.

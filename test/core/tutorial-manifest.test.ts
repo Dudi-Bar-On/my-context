@@ -24,7 +24,19 @@ const REPO_ROOT = path.resolve(import.meta.dirname, '../..');
 // both with `library.js` — which inherits the exclusion for the same reason
 // they held it: a tutorial teaching the reader how to find the tutorials is a
 // circle, not a lesson.
-const META_SCREENS = new Set(['parts.js', 'library.js', 'learn.js']);
+// `cli-help.js` joined them on 2026-09-06 (`plan:library seq:1`): it is the
+// Library's command-line card, a second module of that same page, and a
+// tutorial about the screen that explains the CLI is the same circle.
+//
+// **This set is written twice and the two had drifted.** The generator's copy
+// (`scripts/build-tutorial-manifest.ts`) still named `tut.js` and `docs.js` and
+// did not name `library.js`, four weeks after those files stopped existing —
+// so `npm run gen:tutorials` and this test disagreed about which screens are
+// exempt, and only this half was ever run. Both are corrected; the duplication
+// itself is left, because the generator may not import a test and this test
+// deliberately does not import the generator (that is the independence the file
+// header argues for).
+const META_SCREENS = new Set(['parts.js', 'library.js', 'cli-help.js', 'learn.js']);
 const PLUMBING_CLI = new Set(['index.ts', 'registry.ts', 'format.ts']);
 
 function claimMap(manifest: TutorialManifestEntry[], pick: (e: TutorialManifestEntry) => string[]): Map<string, string[]> {

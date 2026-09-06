@@ -1,4 +1,5 @@
 import { readSync } from 'node:fs';
+import { SUBCOMMAND_FLAGS } from '../../core/command-flags.ts';
 import { renderItem } from '../../core/item.ts';
 import { updateItem, type MutationContext, type UpdateInput } from '../../core/mutate.ts';
 import { inertFieldError } from '../../core/trust.ts';
@@ -72,18 +73,7 @@ const REVISION_SUBCOMMANDS = ['revisions', 'promote-revision', 'discard-revision
  * counts among the six reporting commands; the other three get the same
  * treatment because there is no reason for them not to.
  */
-const REVIEW_FLAGS: Record<string, { allowed: string[]; values: string[] }> = {
-  list: { allowed: [...DETAIL_FLAGS, 'type'], values: ['type'] },
-  show: { allowed: [], values: [] },
-  promote: {
-    allowed: ['scope', 'severity', 'always', 'yes', 'all', 'pack', 'source'],
-    values: ['scope', 'severity', 'pack', 'source'],
-  },
-  discard: { allowed: ['yes'], values: [] },
-  revisions: { allowed: [...DETAIL_FLAGS], values: [] },
-  'promote-revision': { allowed: ['revision', 'force', 'yes'], values: ['revision'] },
-  'discard-revision': { allowed: ['revision', 'reason', 'yes'], values: ['revision', 'reason'] },
-};
+const REVIEW_FLAGS = SUBCOMMAND_FLAGS['review'];
 
 const USAGE = `usage: mycontext review [list] [--type <category>] ${DETAIL_USAGE}
        mycontext review show <id>

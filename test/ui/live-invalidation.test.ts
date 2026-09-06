@@ -220,19 +220,45 @@ test('every entry\'s refresh is \'auto\' or \'ask\' — no third value, no omiss
   assert.deepEqual(bad, []);
 });
 
-test('the static-content screens declare "nothing" explicitly, not by omission', async () => {
+test('the static-content screen declares "nothing" explicitly, not by omission', async () => {
   const { SCREEN_INVALIDATION } = await loadLiveInvalidation();
-  // `docs` and `tut` were two of these three until 2026-09-05, when
+  // `docs` and `tut` were two of these until 2026-09-05, when
   // `DEC-the-documentation-and-tutorials-screens-become-one-list-and`
-  // replaced both with `library` — which reads two endpoints where they
-  // read one and none, and still subscribes to nothing, because both of
-  // its endpoints walk the filesystem rather than the corpus.
-  for (const screen of ['library', 'port']) {
-    assert.deepEqual(
-      SCREEN_INVALIDATION[screen]?.kinds, [],
-      `${screen} should be the reasoned-about "nothing" case: [], not absent and not '*'`,
-    );
-  }
+  // replaced both with `library`. `library` was the third until 2026-09-06,
+  // when the corpus file browser gave it `/api/corpus` — a roster read off
+  // the INDEX rather than off the filesystem, which every `mutation` op
+  // moves. It is asserted as a corpus reader below rather than dropped from
+  // this file: a row moving off `[]` is a claim about what a screen reads,
+  // and this file is where that claim is held.
+  assert.deepEqual(
+    SCREEN_INVALIDATION['port']?.kinds, [],
+    "port should be the reasoned-about \"nothing\" case: [], not absent and not '*'",
+  );
+});
+
+/**
+ * **`library` stopped being a "nothing" row on 2026-09-06, and the move is
+ * asserted rather than merely written down** (`library/2`).
+ *
+ * Its two original endpoints walk the FILESYSTEM — the wide glob over `docs/`
+ * and `reports/`, and the tutorial manifest — and no audit kind is emitted
+ * when a `.md` file appears on disk, which is why the row was `[]`. The corpus
+ * file browser's `/api/corpus` is not like them: its roster is the index's own
+ * `file_path` column for the project layer, so a `create`, `promote`,
+ * `discard` or `supersede` adds or removes a row the file tree draws. A
+ * screen listing corpus files that did not notice a captured item is exactly
+ * the staleness `SCREEN_INVALIDATION` exists to end.
+ *
+ * `refresh: 'ask'` and not `'auto'`, for `DEC-a-refresh-keeps-the-reader-s-
+ * place-or-it-asks`: the browser holds reader state a wholesale re-render
+ * destroys — which folder they descended into, which folders they expanded —
+ * and `app.js`'s generic live refresh restores `#screen`'s scrollTop and
+ * nothing else.
+ */
+test('library reads the corpus through /api/corpus, so it subscribes to mutation and ASKS', async () => {
+  const { SCREEN_INVALIDATION } = await loadLiveInvalidation();
+  assert.deepEqual(SCREEN_INVALIDATION['library']?.kinds, ['mutation']);
+  assert.equal(SCREEN_INVALIDATION['library']?.refresh, 'ask');
 });
 
 test('watch and ask — the two screens whose subject IS the audit log — carry \'*\'', async () => {

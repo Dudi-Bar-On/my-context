@@ -76,6 +76,13 @@ interface ArgSpec {
   source?: string;
   options?: string[];
   input?: string;
+  /**
+   * The field whose value narrows THIS field's suggestion list — owner ruling
+   * D11, 2026-09-06. One entry has it: `ack`'s `finding`, narrowed by the `id`
+   * beside it, because `cmdAck` takes the codes doctor reports on that item as
+   * the vocabulary and refuses every other.
+   */
+  dependsOn?: string;
 }
 interface PaletteDef {
   name: string;
@@ -91,7 +98,13 @@ interface PaletteDef {
   screen?: string;
   endpoint?: (values: Record<string, string>) => string;
 }
-interface Option { value: string; label: string; revision?: string }
+interface Option {
+  value: string; label: string; revision?: string;
+  /** What a `<datalist>` row shows beside the value — owner ruling D11. */
+  hint?: string;
+  /** The item a `finding` row belongs to, which is what `dependsOn` filters on. */
+  item?: string;
+}
 interface Sources {
   items: Option[]; categories: Option[]; drafts: Option[];
   revisions: Option[]; topics: Option[];
@@ -109,6 +122,12 @@ interface ScreenModule {
   offeredFlagNames: (def: PaletteDef) => string[];
   missingRequired: (def: PaletteDef, values: Record<string, unknown>) => string[];
   pickerOptions: (spec: ArgSpec, sources: Sources) => Option[] | null;
+  /** The same list, narrowed by whatever `spec.dependsOn` names — D11. */
+  narrowedOptions: (spec: ArgSpec, sources: Sources, values: Record<string, unknown>)
+    => Option[] | null;
+  findingOptions: (body: unknown) => Option[];
+  packOptions: (body: unknown) => Option[];
+  suggestListId: (name: string) => string;
   sourceLists: (bodies: Record<string, unknown>) => Sources;
   revisionFor: (sources: Sources, itemId: string | undefined) => string | null;
   readTarget: (def: PaletteDef, values: Record<string, string>)
@@ -339,6 +358,125 @@ test('pickerOptions is a list for a source or a vocabulary, and null otherwise',
   const unfillable = [...named].filter((s) => !Object.hasOwn(sources, s)).sort();
   assert.deepEqual(unfillable, [],
     'a def naming a source the screen cannot build would draw a permanently empty picker');
+});
+
+/* ── D11: the three fields that got a suggestion list, and the one that did not ── */
+
+test('findingOptions keeps what ack can rule on and drops what it cannot', async () => {
+  const { findingOptions } = await screen();
+  const options = findingOptions({
+    findings: [
+      { level: 'warn', code: 'citation_form', message: 'm', item: 'RULE-a' },
+      // A repeat of one (item, code) pair is ONE acknowledgement, not two.
+      { level: 'warn', code: 'citation_form', message: 'another message', item: 'RULE-a' },
+      // Acknowledged is a MARK and not a filter: `--clear` needs this code.
+      { level: 'error', code: 'task_unverified', message: 'm', item: 'RULE-a', acknowledged: true },
+      { level: 'info', code: 'summary_absent', message: 'm', item: 'DEC-b' },
+      // A NOTE ABOUT A CHECK. `ack` has nothing to record against one.
+      { level: 'info', code: 'state_audit_coverage', message: 'm', about: 'state_unaudited' },
+      // No item — a finding about the workspace, which `ack <id>` cannot name.
+      { level: 'warn', code: 'index_stale', message: 'm' },
+    ],
+  });
+  assert.deepEqual(options, [
+    { value: 'citation_form', label: 'citation_form · warn', hint: 'warn', item: 'RULE-a' },
+    { value: 'task_unverified', label: 'task_unverified · error', hint: 'error', item: 'RULE-a' },
+    { value: 'summary_absent', label: 'summary_absent · info', hint: 'info', item: 'DEC-b' },
+  ]);
+  // A body that did not arrive is an empty list, never a throw: the box takes
+  // whatever is typed into it either way.
+  for (const body of [null, undefined, {}, { findings: 'no' }]) {
+    assert.deepEqual(findingOptions(body), []);
+  }
+});
+
+test('narrowedOptions offers only the codes doctor reports on the chosen item', async () => {
+  const { narrowedOptions, findingOptions, sourceLists } = await screen();
+  const sources = sourceLists({});
+  sources['findings'] = findingOptions({
+    findings: [
+      { level: 'warn', code: 'citation_form', message: 'm', item: 'RULE-a' },
+      { level: 'error', code: 'task_unverified', message: 'm', item: 'RULE-a' },
+      { level: 'info', code: 'summary_absent', message: 'm', item: 'DEC-b' },
+    ],
+  });
+  const spec: ArgSpec = {
+    name: 'finding', input: 'suggest', source: 'findings', dependsOn: 'id', required: true,
+  };
+  assert.deepEqual(narrowedOptions(spec, sources, { id: 'RULE-a' })?.map((o) => o.value),
+    ['citation_form', 'task_unverified']);
+  assert.deepEqual(narrowedOptions(spec, sources, { id: 'DEC-b' })?.map((o) => o.value),
+    ['summary_absent']);
+  // An item doctor reports nothing on offers nothing — and `ack` would refuse
+  // every code in the corpus for it, so an unnarrowed list would be worse.
+  assert.deepEqual(narrowedOptions(spec, sources, { id: 'RULE-clean' }), []);
+  // NOT YET NARROWED IS EMPTY, NOT EVERYTHING. Offering all three before an id
+  // is chosen would offer two the command will refuse whichever id follows.
+  assert.deepEqual(narrowedOptions(spec, sources, {}), []);
+  assert.deepEqual(narrowedOptions(spec, sources, { id: '' }), []);
+  // A spec with no dependency is untouched, so this is a narrowing and not a
+  // second picker rule.
+  assert.deepEqual(
+    narrowedOptions({ name: 'severity', options: ['hard', 'soft'] }, sources, {}),
+    [{ value: 'hard', label: 'hard' }, { value: 'soft', label: 'soft' }]);
+  assert.equal(narrowedOptions({ name: 'title', input: 'text' }, sources, {}), null);
+});
+
+test('packOptions offers the paths imports were typed as, once each', async () => {
+  const { packOptions } = await screen();
+  assert.deepEqual(packOptions({
+    packs: [
+      { name: 'regulated', source: '../packs/regulated-industry' },
+      // Two membership records can name one path — one suggestion, not two.
+      { name: 'regulated', source: '../packs/regulated-industry' },
+      { name: '', source: '/srv/packs/other.zip' },
+      // `--pack` takes a PATH; a record with none has nothing to suggest.
+      { name: 'nameless' },
+    ],
+  }), [
+    {
+      value: '../packs/regulated-industry',
+      label: '../packs/regulated-industry · regulated',
+      hint: 'regulated',
+    },
+    { value: '/srv/packs/other.zip', label: '/srv/packs/other.zip', hint: '' },
+  ]);
+  // Measured on this repository 2026-09-06: `/api/packs` answers `packs: []`
+  // here. An empty suggestion list is the box that was there before, which is
+  // why this field could gain one without a ruling about the empty case.
+  for (const body of [null, undefined, {}, { packs: [] }]) {
+    assert.deepEqual(packOptions(body), []);
+  }
+});
+
+test('every suggest field names a source this screen fills, and its own list id', async () => {
+  const { PALETTE } = await defs();
+  const { sourceLists, suggestListId } = await screen();
+  const sources = sourceLists({});
+  const suggests = PALETTE.flatMap((def) =>
+    [...def.args, ...def.flags]
+      .filter((spec) => spec.input === 'suggest')
+      .map((spec) => ({ def: def.name, spec })));
+  // The three D11 fields, or as many of them as have landed. `key` on
+  // `lesson-accept`/`lesson-discard` is deliberately NOT here: nothing serves a
+  // staged lesson, because `listStaging` lives in `lesson/derive.ts` which
+  // value-imports `createItem` from `core/mutate.ts` — the boundary
+  // `src/ui/read-model.ts` already refused `st.staged` over.
+  assert.deepEqual(suggests.map((s) => `${s.def} ${s.spec.name}`),
+    ['ack finding', 'init pack']);
+  for (const { def, spec } of suggests) {
+    assert.equal(typeof spec.source, 'string', `${def} ${spec.name} has no source`);
+    assert.ok(Object.hasOwn(sources, spec.source!),
+      `${def} ${spec.name} names a source this screen cannot build`);
+    // A dependency must name a field of the SAME def, or it can never be met.
+    if (spec.dependsOn !== undefined) {
+      const entry = PALETTE.find((d) => d.name === def)!;
+      const siblings = [...entry.args, ...entry.flags].map((s) => s.name);
+      assert.ok(siblings.includes(spec.dependsOn),
+        `${def} ${spec.name} depends on ${spec.dependsOn}, which the def does not offer`);
+    }
+  }
+  assert.equal(suggestListId('finding'), 'sugg-finding');
 });
 
 test('sourceLists builds the five lists and drops what cannot receive an item', async () => {

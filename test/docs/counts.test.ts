@@ -165,6 +165,7 @@ const NUMBER_WORDS: Record<number, { en: string; he: string }> = {
   23: { en: 'twenty-three', he: 'עשרים ושלושה' },
   24: { en: 'twenty-four', he: 'עשרים וארבעה' },
   25: { en: 'twenty-five', he: 'עשרים וחמישה' },
+  26: { en: 'twenty-six', he: 'עשרים ושישה' },
 };
 
 test('both documents state the real number of MCP tools', () => {

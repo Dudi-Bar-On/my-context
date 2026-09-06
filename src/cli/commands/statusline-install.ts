@@ -2,6 +2,7 @@ import { mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { homedir } from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { SUBCOMMAND_FLAGS } from '../../core/command-flags.ts';
 import { normalizePosix } from '../../core/paths.ts';
 import type { Workspace } from '../../core/workspace.ts';
 import { refuseUnknownFlag } from './format.ts';
@@ -134,8 +135,11 @@ const RELOCATION_NOTE =
   'run `mycontext statusline uninstall --yes` from the OLD location first (or from the new one, ' +
   'which restores the same saved copy) and install again.';
 
-const FLAGS = ['yes', 'settings'];
-const VALUE_FLAGS = ['settings'];
+// Both subcommands are handed the identical record, which is why the lifted
+// entry (`core/command-flags.ts` · `SUBCOMMAND_FLAGS`) writes it twice and this
+// module reads one of the two. `install` rather than `uninstall` for no reason
+// beyond alphabetical order; the test that probes the lift asserts they agree.
+const { allowed: FLAGS, values: VALUE_FLAGS } = SUBCOMMAND_FLAGS['statusline']['install'];
 
 const USAGE =
   'usage: mycontext statusline install   [--settings <path>] [--yes]\n' +

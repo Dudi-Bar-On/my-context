@@ -1,4 +1,5 @@
 import { readAudit, recordAudit, type AuditRecord } from '../../core/audit.ts';
+import { SUBCOMMAND_FLAGS } from '../../core/command-flags.ts';
 import { renderItem } from '../../core/item.ts';
 import { updateItem } from '../../core/mutate.ts';
 import { rebuildRoots } from '../../core/open-store.ts';
@@ -59,13 +60,7 @@ export const SUBCOMMANDS = ['list', 'show', 'activate', 'done', 'step'] as const
  * silent swallow `unknownFlag` exists to stop on a command whose other half
  * mutates.
  */
-const PROCEDURE_FLAGS: Record<string, { allowed: string[]; values: string[] }> = {
-  list: { allowed: [], values: [] },
-  show: { allowed: [], values: [] },
-  activate: { allowed: ['yes'], values: [] },
-  done: { allowed: ['yes'], values: [] },
-  step: { allowed: ['undo'], values: [] },
-};
+const PROCEDURE_FLAGS = SUBCOMMAND_FLAGS['procedure'];
 
 const USAGE = `usage: mycontext procedure [list]
        mycontext procedure show <id>

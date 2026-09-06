@@ -76,7 +76,16 @@
  * wayfinding, where a reader starts), Documents is `content` (violet — the
  * reading surface).
  */
+import { paintCliHelp } from '/screens/cli-help.js';
 import { el, errorNote, openIcon, screenHead, spaced } from '/screens/parts.js';
+// The DATA half of the Coverage tree, and only the data half: `buildTree`
+// takes a flat file list, knows nothing about scope, and returns a genuinely
+// nested structure. `treeRows` — which flattens that structure back into a
+// linear array of depth-carrying rows — is deliberately not imported; see the
+// corpus browser's own section header for why.
+import { buildTree } from '/lib/viewmodel.js';
+// `/lib/wa-tree.js` is imported by `registerTree()` below, DYNAMICALLY and
+// once, rather than statically here — see that function for the reason.
 
 /**
  * **The document each surface offers, and it is one document per surface.**
@@ -314,10 +323,375 @@ function paintDocuments(ctx, host, list) {
   }
 }
 
+/* ══ THE CORPUS FILE BROWSER ═══════════════════════════════════════════════
+ *
+ * `TASK-the-library-browses-the-corpus-files-and-a-file-opens`, owner
+ * requirement 2026-09-06: *"a reader walks the corpus as a nested folder tree,
+ * drilling into a folder and back out, and opens a file rendered in its own
+ * tab."*
+ *
+ * ── WHICH QUESTION THIS ANSWERS, SO IT IS NOT A SECOND ITEM PANE ─────────
+ *
+ * Clicking an id anywhere in this console opens `aside#pane` with that item's
+ * summary, scope, tier, body and provenance — rendered FROM THE INDEX, every
+ * field already parsed. This browser shows the MARKDOWN ON DISK, frontmatter
+ * and all. "Where does this file live, and what is actually written in it" is
+ * a different question from "what does the corpus hold about this item", and
+ * the two surfaces are kept apart on purpose: this one lists no summaries,
+ * draws no tier chips and joins nothing, and the pane opens no files.
+ *
+ * ── THE CONTROL IS EXTERNAL, BY OWNER RULING ─────────────────────────────
+ *
+ * *"for the tree control use an external component, choose the best one"* —
+ * owner, 2026-09-06, given after the item's own body had argued for reusing
+ * `treeRows` and the flat `.tree` markup the Coverage screen draws. So this is
+ * the vendored `<wa-tree>` (Web Awesome 3.12.0, `lib/wa-tree.js`), and the
+ * markup is GENUINELY NESTED: a collapsed folder hides its subtree BY
+ * CONTAINMENT, which is the defect class the flat version already paid for
+ * once (`.tree .row[hidden]{display:none}` written to beat `display:flex` at
+ * equal specificity, reported as broken collapse markers, explained away as
+ * stale cached code, and a real CSS specificity fault the whole time).
+ *
+ * `buildTree` IS still reused, and only for the data: it takes a flat file
+ * list, knows nothing about scope, and returns a genuinely nested structure.
+ * `treeRows` — the half that flattens that structure back to a linear array of
+ * depth-carrying rows — is the half deliberately left behind.
+ *
+ * ── WHAT A CLICK ON A FOLDER DOES, WHICH THE ITEM ASKS TO BE DECIDED ─────
+ *
+ * *"it cannot silently do both: expand in place, or descend into it, with the
+ * other on a separate affordance."* Both are wanted and both are here, on two
+ * affordances the component already distinguishes and neither of them invented:
+ *
+ *   - **The CHEVRON expands the folder in place.** `<wa-tree>`'s own
+ *     `handleClick` tests for its expand button before anything else, and
+ *     ArrowRight / ArrowLeft (swapped under `dir="rtl"`) do the same from the
+ *     keyboard. Nothing here overrides it.
+ *   - **The NAME descends into it**, re-rooting the tree at that folder. Under
+ *     `selection="single"` selecting an item does not expand it, so the two
+ *     gestures cannot collide, and Enter or Space on a focused folder is the
+ *     keyboard spelling of the same act.
+ *   - **The BREADCRUMB comes back out**, following `/doc.html`'s own precedent
+ *     for a path shown above a document rather than inventing a second one.
+ *
+ * ── AND THE SCALE IS BOUNDED FROM THE START ──────────────────────────────
+ *
+ * 951 files in fifteen category folders on this corpus (2026-09-06). Three
+ * bounds, none of them added after somebody noticed:
+ *
+ *   1. **Re-rooting.** Only the CURRENT folder's children are drawn as
+ *      top-level items. The corpus root draws fifteen.
+ *   2. **`lazy`.** A folder's children are built the first time it is
+ *      expanded, not before, so an unopened folder costs one element rather
+ *      than its whole subtree. (`lib/wa-tree.js` records that `wa-spinner` is
+ *      not vendored; nothing is drawn for the loading moment because the
+ *      children are appended synchronously inside the event and there is no
+ *      moment to draw.)
+ *   3. **A scrolling frame.** `.corpustree` has a `max-block-size`, so the
+ *      widest, deepest folder cannot make the page grow without limit — the
+ *      lesson the 942-option `<select>` taught at ~3,900 px.
+ */
+
 /**
- * The screen. Both endpoints are read before either card is drawn, and each
+ * Register `<wa-tree>` and `<wa-tree-item>`, once, and only where there is a
+ * custom-element registry to register them into.
+ *
+ * **Importing the shim IS the registration** — each vendored chunk ends in Web
+ * Awesome's own `customElement` decorator, which calls
+ * `customElements.define` itself — so there is nothing to call and nothing to
+ * bind, and this returns the import's own promise rather than a value.
+ *
+ * **Why it is dynamic and guarded rather than a static import at the top of
+ * this file.** The vendored closure touches `document`, `HTMLElement` and
+ * `customElements` at MODULE EVALUATION time, so a static import makes this
+ * whole screen module unloadable outside a browser — measured, not assumed:
+ * importing `screens/library.js` under `node --test` with a static
+ * `import '/lib/wa-tree.js'` throws `ReferenceError: document is not defined`
+ * before a single line of this file runs. That would have taken
+ * `test/ui/library-screen.test.ts` with it — every assertion in it, including
+ * the ones about the two owner instructions this screen was rebuilt for — for
+ * a component none of them exercise.
+ *
+ * So the guard buys the same bargain every parse in this app makes: the
+ * SHAPE of the tree (its nesting, its addresses, its counts, its breadcrumb)
+ * stays measurable without a browser, and the component itself is driven in
+ * Playwright, where it is the only place it can honestly be driven anyway.
+ * Nothing is skipped silently in a browser: `customElements` is defined in
+ * every one this console runs in, and `e2e/corpus-tree.spec.ts` asserts the
+ * elements actually upgraded.
+ */
+let registration = null;
+function registerTree() {
+  if (registration === null) {
+    registration = typeof customElements === 'undefined'
+      ? Promise.resolve(null)
+      : import('/lib/wa-tree.js');
+  }
+  return registration;
+}
+
+/** The chevron path, byte-identical to `tree-proof.html`'s — that page is the
+ *  worked example and this is the second consumer, so the glyph is the same
+ *  glyph rather than a second drawing of one. */
+const CHEV_PATH = 'M4.5 2.5 8 6l-3.5 3.5';
+
+const SVG_NS = 'http://www.w3.org/2000/svg';
+
+/**
+ * One slotted chevron.
+ *
+ * **Both slots carry the SAME glyph, and that is what the component expects**
+ * — `wa-tree-item` rotates the expand button itself (90deg expanded, -90deg
+ * expanded under `dir="rtl"`). Drawing an already-turned glyph for the
+ * collapse slot double-counts that rotation, which `tree-proof.html` records
+ * as the defect its first draft shipped. `wa-chev` is what the RTL flip rule
+ * in `styles.css` keys on.
+ */
+function chevron(slot) {
+  const svg = document.createElementNS(SVG_NS, 'svg');
+  svg.setAttribute('slot', slot);
+  svg.setAttribute('class', 'wa-chev');
+  svg.setAttribute('part', 'chev');
+  svg.setAttribute('width', '12');
+  svg.setAttribute('height', '12');
+  svg.setAttribute('viewBox', '0 0 12 12');
+  svg.setAttribute('fill', 'none');
+  svg.setAttribute('aria-hidden', 'true');
+  const path = document.createElementNS(SVG_NS, 'path');
+  path.setAttribute('d', CHEV_PATH);
+  path.setAttribute('stroke', 'currentColor');
+  path.setAttribute('stroke-width', '1.5');
+  path.setAttribute('stroke-linecap', 'round');
+  path.setAttribute('stroke-linejoin', 'round');
+  svg.append(path);
+  return svg;
+}
+
+/**
+ * The address of one corpus file's rendered page.
+ *
+ * A third key beside `doc=` and `tut=`, not a third value of `doc=`: a
+ * document id is a REPOSITORY-relative path and a corpus file id is
+ * WORKSPACE-relative, so one key holding both would be two rootings under one
+ * name. `doc.js`'s `docAddress` is the only reader of these and this is the
+ * only writer.
+ *
+ * Exported and pure so `node --test` can measure it without a browser — the
+ * same bargain `docHref` above makes.
+ */
+export function corpusHref(id) {
+  return `/doc.html?corpus=${encodeURIComponent(id)}`;
+}
+
+/**
+ * A `<bdi>` around every path segment, and it is LOAD-BEARING rather than
+ * decoration: a folder label ending in `/` renders as `/adr` under `dir="rtl"`
+ * without it — a Unicode bidi effect on the trailing slash, recorded in the
+ * tree evaluation's §6.7 after it showed up in the RTL rehearsal.
+ */
+function segment(text) {
+  return el('bdi', 'wa-name', text);
+}
+
+/** One node of the nested tree as a `<wa-tree-item>`.
+ *
+ *  A FILE's label is a real `<a>`, so a middle-click and a "copy link address"
+ *  work the way a reader expects of something that opens a tab — the same
+ *  reasoning `.docrow` records above. `tabIndex = -1` keeps it out of the tab
+ *  order, because `<wa-tree>` is a roving-focus widget and a focusable anchor
+ *  inside every row would make Tab walk 618 stops instead of one.
+ *
+ *  A FOLDER carries `lazy`, so its children are built on first expand, and a
+ *  count so a reader can tell a folder of three from a folder of six hundred
+ *  before opening it. */
+function treeItem(node) {
+  const item = document.createElement('wa-tree-item');
+  const isDir = node.children.length > 0;
+  item.dataset.kind = isDir ? 'dir' : 'file';
+  item.dataset.path = node.path;
+  if (isDir) {
+    item.lazy = true;
+    const count = el('span', 'wa-count', String(node.fileCount));
+    item.append(segment(`${node.name}/`), count);
+    return item;
+  }
+  const link = el('a', 'wa-file');
+  link.href = corpusHref(node.path);
+  link.target = '_blank';
+  link.rel = 'noopener';
+  link.tabIndex = -1;
+  link.append(segment(node.name));
+  item.append(link);
+  return item;
+}
+
+/** Every directory node of a built tree, by path — what a lazy expand and a
+ *  breadcrumb jump both look their target up in. Built once per fetch. */
+function indexNodes(root) {
+  const byPath = new Map([['', root]]);
+  const walk = (node) => {
+    for (const child of node.children) {
+      if (child.children.length > 0) {
+        byPath.set(child.path, child);
+        walk(child);
+      }
+    }
+  };
+  walk(root);
+  return byPath;
+}
+
+/** The breadcrumb: the corpus root, then one crumb per folder descended into.
+ *  The LAST crumb is the current location and is drawn as text rather than a
+ *  button — a control that navigates to where you already are is a control
+ *  that does nothing, and this page has no reason to draw one. */
+function crumbs(root, location) {
+  const parts = location === '' ? [] : location.split('/');
+  const out = [{ label: `${root}/${parts[0] ?? ''}`, path: parts[0] ?? '' }];
+  for (let i = 1; i < parts.length; i += 1) {
+    out.push({ label: parts[i], path: parts.slice(0, i + 1).join('/') });
+  }
+  return out;
+}
+
+/**
+ * The browser, drawn for one location and redrawn wholesale when the reader
+ * descends or climbs.
+ *
+ * Redrawn rather than mutated on purpose: the expanded/collapsed state of the
+ * folders under the OLD location means nothing under the new one, so carrying
+ * it across would be carrying a fact that had stopped being about anything.
+ */
+function paintCorpusAt(ctx, host, state) {
+  host.replaceChildren();
+
+  const bar = el('nav', 'crumbs');
+  bar.setAttribute('aria-label', ctx.tFlat('lib.filesbread'));
+  for (const crumb of crumbs(state.root, state.location)) {
+    // **THE `<bdi>` IS LOAD-BEARING HERE TOO, and it was found by looking at
+    // the picture rather than by reasoning.** The first crumb is
+    // `.my_context/items`, and a string that STARTS with a dot renders as
+    // `my_context/items.` under `dir="rtl"` without isolation — the same
+    // Unicode effect `tree-proof.html` records for a folder label that ends
+    // with a slash, at the other end of the string. Caught in the RTL
+    // screenshot on 2026-09-06, after every assertion in
+    // `e2e/corpus-tree.spec.ts` had passed.
+    if (crumb.path === state.location) {
+      const here = el('span', 'crumb here');
+      here.append(el('bdi', '', crumb.label));
+      bar.append(here);
+      continue;
+    }
+    const up = el('button', 'crumb');
+    up.type = 'button';
+    up.append(el('bdi', '', crumb.label));
+    up.addEventListener('click', () => {
+      paintCorpusAt(ctx, host, { ...state, location: crumb.path });
+    });
+    bar.append(up);
+  }
+  host.append(bar);
+
+  const node = state.byPath.get(state.location);
+  if (node === undefined || node.children.length === 0) {
+    const none = el('p', 'small');
+    none.append(...ctx.t('lib.filesnone'));
+    host.append(none);
+    return;
+  }
+
+  const frame = el('div', 'corpustree');
+  const tree = document.createElement('wa-tree');
+  tree.setAttribute('selection', 'single');
+  tree.setAttribute('aria-label', ctx.tFlat('lib.filestree'));
+  tree.append(chevron('expand-icon'), chevron('collapse-icon'));
+  for (const child of node.children) tree.append(treeItem(child));
+
+  // A folder's children, built the first time it is opened. `lazy = false`
+  // afterwards, which is what tells the component the load it asked for has
+  // answered — it then runs its own expand animation.
+  tree.addEventListener('wa-lazy-load', (event) => {
+    const item = event.target;
+    if (item === null || item.dataset === undefined) return;
+    const found = state.byPath.get(item.dataset.path ?? '');
+    if (found !== undefined) for (const child of found.children) item.append(treeItem(child));
+    item.lazy = false;
+  });
+
+  // Selecting a FOLDER descends into it. Selecting a file does nothing here:
+  // the file's own anchor is what opens it, and a second opener on the same
+  // gesture would open two tabs.
+  tree.addEventListener('wa-selection-change', (event) => {
+    const picked = event.detail?.selection?.[0];
+    if (picked === undefined || picked.dataset?.kind !== 'dir') return;
+    paintCorpusAt(ctx, host, { ...state, location: picked.dataset.path ?? state.location });
+  });
+
+  // Enter and Space on a FILE, which the anchor cannot receive: focus lives on
+  // the `<wa-tree-item>`, so the component's own key handling selects the row
+  // and never reaches the link inside it. `<wa-tree>`'s handler runs first and
+  // does not stop propagation, so this listener sees the same key.
+  tree.addEventListener('keydown', (event) => {
+    if (event.key !== 'Enter' && event.key !== ' ') return;
+    const active = document.activeElement;
+    if (active === null || active.dataset?.kind !== 'file') return;
+    const link = active.querySelector('a.wa-file');
+    if (link !== null) link.click();
+  });
+
+  frame.append(tree);
+  host.append(frame);
+
+  const here = el('p', 'small');
+  here.append(...ctx.t('lib.filescount', {
+    dirs: node.children.filter((child) => child.children.length > 0).length,
+    files: node.children.filter((child) => child.children.length === 0).length,
+    total: state.total,
+  }));
+  host.append(here);
+}
+
+/**
+ * The corpus card: one read of `/api/corpus`, then the tree.
+ *
+ * The two DISCLOSURES are drawn whether or not they have anything to report,
+ * for `STD-a-measured-zero-is-drawn-and-named-an-unmeasured-thing-is`: how
+ * many index rows the served boundary refused, and whether the roster was cut
+ * at its bound. A screen that only spoke up when something was dropped would
+ * leave a reader unable to tell a complete corpus from a check that had
+ * stopped running.
+ */
+async function paintCorpus(ctx, host, body) {
+  await registerTree();
+  const root = typeof body.root === 'string' && body.root !== '' ? body.root : '.my_context';
+  const tree = buildTree(body.files.map((path) => ({ path, governs: [] })));
+  const byPath = indexNodes(tree);
+
+  const surface = el('div');
+  host.append(surface);
+  paintCorpusAt(ctx, surface, {
+    root, byPath, location: 'items', total: body.files.length,
+  });
+
+  const refused = el('p', 'small');
+  refused.append(...ctx.t('lib.filesrefused', {
+    refused: Math.max(body.indexed - body.files.length, 0),
+    indexed: body.indexed,
+  }));
+  host.append(refused);
+
+  if (body.truncated === true) {
+    const cut = el('p', 'small');
+    cut.append(...ctx.t('lib.filestrunc'));
+    host.append(cut);
+  }
+}
+
+/**
+ * The screen. All three endpoints are read before any card is drawn, and each
  * card holds its own refusal: a Tutorials endpoint that refuses must not take
- * the Documents list down with it, and the reverse.
+ * the Documents list down with it, the reverse, and neither may take the
+ * corpus browser down with them.
  */
 export async function render(root, ctx) {
   root.replaceChildren();
@@ -341,7 +715,23 @@ export async function render(root, ctx) {
   docHead.append(...ctx.t('lib.docs'));
   docs.append(docHead);
 
-  const [tutBody, docBody] = await Promise.all([
+  // The corpus browser gets a card of its own at FULL WIDTH rather than a
+  // third column: a file tree is a tall control that wants its own measure,
+  // and `.two` is a two-column grid the mockup's own card system defines.
+  // `data-role` is deliberately absent — the two card roles this screen
+  // already spends are `nav` (wayfinding) and `content` (the reading surface),
+  // and a file browser is neither; inventing a third hue for it would be
+  // extending the card-role system, which the ruling that established it asks
+  // not to be done casually.
+  const files = el('div', 'card pane');
+  root.append(files);
+  const filesHead = el('h3');
+  filesHead.append(...ctx.t('lib.files'));
+  const filesSub = el('p', 'small');
+  filesSub.append(...ctx.t('lib.filessub'));
+  files.append(filesHead, filesSub);
+
+  const [tutBody, docBody, corpusBody] = await Promise.all([
     ctx.api('/api/tutorials').then((b) => {
       if (b === null || typeof b !== 'object' || !Array.isArray(b.tutorials)
         || b.heRollup === null || typeof b.heRollup !== 'object'
@@ -356,12 +746,21 @@ export async function render(root, ctx) {
       }
       return b;
     }).catch((error) => error),
+    ctx.api('/api/corpus').then((b) => {
+      if (b === null || typeof b !== 'object' || !Array.isArray(b.files)
+        || typeof b.indexed !== 'number') {
+        throw new Error('library: /api/corpus answered without a files array and an indexed count');
+      }
+      return b;
+    }).catch((error) => error),
   ]);
 
   if (tutBody instanceof Error) tuts.append(errorNote(tutBody.message));
   else paintTutorials(ctx, tuts, tutBody);
   if (docBody instanceof Error) docs.append(errorNote(docBody.message));
   else paintDocuments(ctx, docs, docBody);
+  if (corpusBody instanceof Error) files.append(errorNote(corpusBody.message));
+  else await paintCorpus(ctx, files, corpusBody);
 
   // What opening a row does, and how the page it opens renders — said on the
   // screen rather than only in this file's header, because a reader of the
@@ -374,4 +773,24 @@ export async function render(root, ctx) {
   like.append(...ctx.t('lib.github'));
   notes.append(tab, spaced(like));
   root.append(notes);
+
+  /**
+   * **The command-line half** —
+   * `TASK-the-library-explains-the-command-line-every-switch-parameter`, owner
+   * requirement 2026-09-06. It is a whole card of its own in
+   * `screens/cli-help.js`, appended here and given nothing but the root to
+   * append to, so the two halves of this screen own no element in common.
+   *
+   * That is deliberate and it is about MERGES rather than tidiness: this
+   * screen is being widened by more than one lane at once, and a card that
+   * builds itself inside a function of its own is a card that can be added,
+   * moved or removed without touching a line of the roster above it. The shell
+   * — `screenHead`, the two-column grid, the notes card — is untouched by this
+   * addition.
+   *
+   * Awaited LAST, after both rosters are painted, because it makes its own two
+   * reads and a reader looking for a tutorial should not wait on the flag
+   * tables to arrive.
+   */
+  await paintCliHelp(ctx, root);
 }

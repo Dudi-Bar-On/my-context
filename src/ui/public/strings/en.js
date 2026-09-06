@@ -978,6 +978,22 @@ export const strings = {
   // Named, never offered: my_context generates these from a field and refuses a
   // hand-written one, so a checkbox here would compose an error message.
   'pal.tagproj': 'Not offered here: {mv:prefixes}. my_context generates those from a field and refuses a hand-written one, so set the field instead — {mv:cmds}.',
+  // The `suggest` box's note (owner ruling D11, 2026-09-06). FIVE keys because
+  // a `<datalist>` is invisible until the box is focused, so an empty list, an
+  // outstanding read, a refused read and a dependency nobody has answered yet
+  // are one silence without a sentence to tell them apart — the argument
+  // `pal.tagpicking`/`pal.tagpickerr` already make one control along.
+  //
+  // Every one of them ends by saying the box still works. That is not
+  // reassurance, it is the ruling: `ack --clear` takes a code doctor no longer
+  // reports and `init --pack` takes any path, so the list is a suggestion and
+  // never the vocabulary, and a reader who thinks otherwise will not try.
+  'pal.sugg': '{n} from this corpus — pick one, or type any other value the command accepts.',
+  'pal.suggidle': 'Suggestions from this corpus load when you use this box. Typing works without them.',
+  'pal.suggreading': 'Reading what this corpus can offer…',
+  'pal.suggn': 'This corpus has nothing to offer here. Type the value — the command composes either way.',
+  'pal.suggneed': 'Choose {mv:field} first: what can be offered here depends on it. Typing works either way.',
+  'pal.suggerr': 'The list could not be read, so nothing is offered. Type the value instead — the command composes either way.',
   // Execute — the one Copy-and-Execute control (lib/command-actions.js).
   //
   // The RESIDUAL is deliberately not a key here. `src/ui/execute.ts` spells it
@@ -1679,8 +1695,61 @@ export const strings = {
   'lib.only': 'This list holds the README and the tutorials. The other {rest} Markdown documents in this repository are internal specs, plans and reports — they are not listed here, and a link from one document to another still opens them in the viewer, so nothing a document refers to is out of reach.',
   'lib.newtab': 'Opening an entry opens the document {b:rendered, on its own page, in a new browser tab}. It leaves this console — so there is no deep link from here into a heading, and no cross-linking from a document back to a corpus item. That is Learn’s job.',
   'lib.github': 'That page wears {b:github-markdown-css}, the stylesheet GitHub itself publishes for a rendered Markdown body — none of this console’s own styling reaches it. GFM tables and task lists, GitHub’s sanitized HTML allow-list, its heading anchors, and the committed Mermaid drawings.',
+
+  // ── plan:library seq:1 — the Library's command-line card ──────────────
+  // Every key here labels a CONTROL or a COLUMN. Not one of them names a
+  // command, a flag or a count: those all arrive from `/api/cli-help`, which
+  // reads them out of the tables the CLI itself parses with.
+  'clih.h': 'The command line',
+  'clih.sub': 'Every switch, parameter and option the CLI takes, explained in plain words. Pick one subject rather than scrolling: a command, a slash command, a tool, or a help topic.',
+  'clih.counts': '{commands} commands, {slash} slash commands, {tools} tools and {topics} help topics. {flags} switches are explained here, counted on this request rather than written down.',
+  'clih.pick': 'Ask for help on',
+  'clih.choose': 'Choose a subject…',
+  'clih.gcmd': 'Commands — mycontext …',
+  'clih.gslash': 'Slash commands — /mycontext:…',
+  'clih.gtool': 'MCP tools',
+  'clih.gtopic': 'Help topics — mycontext help …',
+  'clih.nopick': 'Nothing is selected yet. Choose a subject above and its full reference appears here.',
+  'clih.withheld': 'One help topic is missing on purpose. {m:mycontext help cli} prints the command registry, which only the CLI itself fills, and this console is read-only — loading that part of the program here would put every write into a server that must never have one. Every flag that topic lists is on this page already, one command at a time. The topic itself reads in a terminal.',
+  'clih.cflag': 'switch',
+  'clih.carg': 'argument',
+  'clih.ctakes': 'takes',
+  'clih.cmeans': 'what it does',
+  'clih.oneof': 'one of: ',
+  'clih.eg': '— for example',
+  'clih.bare': 'nothing — it is a switch, not a value',
+  'clih.ask': 'The legal values here come from this project’s own {source}, so they are not a fixed list. Your config decides them.',
+  'clih.noflags': 'This command takes no switch at all. That is the whole of its surface — everything it needs is typed after the command itself.',
+  'clih.subs': 'This command is split into subcommands, and they do not all take the same switches. Each one is listed with its own.',
+  'clih.subnoflags': 'Takes no switch.',
+  'clih.dynamic': 'This is the one command whose switches are decided by {b:your project}. The list below was computed from this workspace’s config on this request, so a project that declares different fields sees a different list.',
+  'clih.declared': '{n} of these are added by this project’s own categories',
+  'clih.ex': 'Worked examples',
+  'clih.exnone': 'No example on this page demonstrates this command yet. Nothing is written by hand here, so an example appears when one is generated — never before.',
+  'clih.exhow': 'Every example above is real output. It was produced by running the command against a fixed sample project, and a test re-runs the same command and fails if the text ever stops matching.',
+  'clih.noargs': 'This tool takes no arguments at all.',
+  'clih.req': 'required',
+  'clih.slashmodel': 'Claude may run this one itself. It is the only command file that allows it.',
+  'clih.slashuser': 'This one is yours to type. The command file tells Claude Code not to invoke it on its own.',
+  'clih.topichow': 'This is the text {mv:cmd} prints in a terminal, exactly as it prints it.',
   // The standalone document page.
+  // ── THE CORPUS FILE BROWSER ────────────────────────────────────────────
+  // `TASK-the-library-browses-the-corpus-files-and-a-file-opens`, owner
+  // requirement 2026-09-06, with the served-path ruling of the same day. The
+  // sentences below carry the one distinction the screen must not leave to be
+  // inferred: clicking an id anywhere else in this console draws an item FROM
+  // THE INDEX, and this browser shows the FILE ON DISK, frontmatter and all.
+  'lib.files': 'Corpus files',
+  'lib.filessub': 'The Markdown this project’s corpus is actually made of, as folders and files. Opening one opens the file {b:rendered, on its own page, in a new browser tab}, frontmatter and all — which is what makes this different from clicking an id anywhere else in this console: that draws an item from the index, and this shows the file on disk. Click a folder’s name to go into it, the chevron beside it to open it where it sits, and the trail above the tree to come back out.',
+  'lib.filesbread': 'Where you are in the corpus',
+  'lib.filestree': 'Corpus folders and files',
+  'lib.filesnone': 'There is nothing to browse here — this corpus holds no files at this location.',
+  'lib.filescount': 'This folder holds {dirs} folders and {files} files. The corpus holds {total} files altogether.',
+  'lib.filesrefused': '{refused} of the {indexed} rows in this corpus’s index name a path outside the corpus’s own items directory, and are not listed here. Only Markdown under items/ is ever served.',
+  'lib.filestrunc': 'The roster stopped at its bound, so the tree above is part of this corpus and not all of it.',
   'gh.back': '← Back to the console',
+  'gh.front': 'Frontmatter, as written in the file',
+  'gh.corpustag': 'Corpus file',
   'gh.parity': '{b:Rendered like GitHub, not identically to it.} The appearance is GitHub’s own: this page wears github-markdown-css, the stylesheet GitHub publishes for rendered Markdown, and none of this product’s. The rendering is GFM — but by the vendored markdown-it, where GitHub uses cmark-gfm. So the look matches, the behaviour matches, and byte-identical output is not claimed and cannot be.',
   'gh.clean': 'Every construct in this document is inside GitHub’s allow-list. Nothing was refused and no attribute was dropped.',
   'gh.refused': '{refused} construct(s) outside GitHub’s allow-list were {b:refused and shown as refusals}, never dropped silently; {dropped} attribute(s) outside it were dropped.',

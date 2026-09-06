@@ -749,6 +749,16 @@ const READ_ROUTES = (from: { item: string; session: string | null }): Probe[] =>
   // why it is the cheapest entry on this list and still has to be on it: a
   // route nobody probes is a route nothing proves read-only.
   '/api/flags',
+  // plan:library seq:1. The Library's command-line card: the picker's roster,
+  // and one subject at a time. Two probes rather than one, and the second is a
+  // CONCRETE address rather than a template, because the parameterised route is
+  // the one that could open something — it does not, and this is what proves
+  // it. `command/edit` is the probe deliberately chosen: it is the only subject
+  // whose answer is COMPUTED from this workspace's config rather than read out
+  // of a static table, so it exercises the one code path here that touches a
+  // workspace at all.
+  '/api/cli-help',
+  '/api/cli-help/command/edit',
   // The Tutorials screen's list, one row per manifest entry
   // (`TASK-get-api-tutorials-reads-the-manifest-and-adds-a-hebrew`,
   // `plan:tuts seq:2`). It takes no parameters and reads the checked-in
@@ -771,6 +781,15 @@ const READ_ROUTES = (from: { item: string; session: string | null }): Probe[] =>
   // create the thing it was asked for.
   '/api/doc',
   '/api/doc/not-a-real-document.md',
+  // The corpus file browser (`library/2`, and the owner's served-path ruling
+  // of 2026-09-06). `/api/corpus` reads ONE indexed column of the item store
+  // and no file at all; `/api/corpus/:id` is probed on an id no corpus can
+  // hold — this fixture's items are real, so the roster is non-empty and the
+  // refusal is the roster's own lookup miss rather than an empty-map
+  // accident. That is the one place this pair could be tempted to create the
+  // thing it was asked for.
+  '/api/corpus',
+  '/api/corpus/items%2Ftask%2Fnot-a-real-item.md',
 ];
 
 /** Does a registered path template match this concrete pathname? */

@@ -239,6 +239,38 @@
  * unchanged and now stated: **it walks what it can resolve BY FRAGMENT.** A
  * tree whose citations carry no fragment is out of scope until they do.
  *
+ * **AND THE SIXTH TREE THIS REFUSES FOR THE SAME REASON: THE HANDOVER.**
+ *
+ * `reports/V2-HANDOVER.md` is the one document in this project where a claim
+ * can point at code and never be compared to it, and it earned the attention:
+ * it carried the instruction *"widen `isServableDocPath` to serve
+ * `.my_context/items/**`"* across six compactions while `SKIP_DIRS`
+ * (`src/doctor/checks.ts`) made it impossible, and a lane that followed it
+ * faithfully would have shipped a feature that served nothing and passed every
+ * gate. Adding it to `DOC_FILES` looks like the whole fix.
+ *
+ * Measured before doing it, 2026-09-06, over all 2,831 lines:
+ *
+ *       0  citations in the checked `file` · `fragment` · `~line` form
+ *     137  `·` characters, none of them standing where a citation separator
+ *          stands, so zero would raise `UNREAD`
+ *       2  bare `file.ts:123` pointers, both in prose rather than in a
+ *          language-tagged fence, so zero would raise `BARE`
+ *
+ * **The refusal is not fear of adding red to a gate that is already red.** The
+ * run would be entirely green. Pointed at the handover today this walks 2,831
+ * lines, raises no fault, and checks ZERO claims — the appearance of coverage,
+ * in the words two paragraphs up, over the very document whose unchecked
+ * claims prompted the question. The handover does not
+ * speak this form; it speaks the project's own pointers, 100 `plan/seq` lane
+ * references and 63 item ids, which resolve against the corpus rather than
+ * against a fragment. Those are checked by `scripts/check-handover.ts`
+ * (`npm run check:handover`), which is the instrument this notation is not.
+ *
+ * Recorded here rather than only in that script so that the next person to
+ * notice the gap finds the measurement instead of re-taking it, exactly as the
+ * `.my_context/items/` paragraph above does.
+ *
  * Zero dependencies, no build step, erasable syntax only — the same
  * constraints as `src/`.
  *

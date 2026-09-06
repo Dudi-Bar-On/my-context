@@ -8,6 +8,7 @@ import {
 import {
   applyImport, planImport, type ImportOutcome, type ImportPlan,
 } from '../../pack/import.ts';
+import { SUBCOMMAND_FLAGS } from '../../core/command-flags.ts';
 import { readImportRecords, type ImportRecord } from '../../pack/imported-audit.ts';
 import { refusePackName } from '../../pack/manifest.ts';
 import { readArtefact } from '../../pack/reader.ts';
@@ -88,14 +89,16 @@ import { confirmAction, readLineSync } from './review.ts';
 /** The subcommands this command accepts — the single source for every list. */
 export const SUBCOMMANDS = ['import', 'list'] as const;
 
-/** The flags each subcommand accepts, and the value-taking subset. */
-const PACK_FLAGS: Record<string, { allowed: string[]; values: string[] }> = {
-  import: {
-    allowed: ['name', 'dry-run', 'json', 'yes', 'overwrite-changed'],
-    values: ['name'],
-  },
-  list: { allowed: ['json'], values: [] },
-};
+/**
+ * The flags each subcommand accepts, and the value-taking subset — read from
+ * `core/command-flags.ts` rather than declared here (`plan:library seq:1`).
+ *
+ * It moved for the reason every other spec in that module moved: a read
+ * surface may not import this file (it reaches `core/mutate.ts`), so a screen
+ * that wanted to say what `pack import` takes had to write the list down a
+ * second time. The binding stays so that every use below is unmoved.
+ */
+const PACK_FLAGS = SUBCOMMAND_FLAGS['pack'];
 
 /** Every value flag any subcommand takes, for the one `positionals` call. */
 const VALUE_FLAGS = [...new Set(Object.values(PACK_FLAGS).flatMap((f) => f.values))];

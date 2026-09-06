@@ -33,7 +33,8 @@
     "check:retired": "node scripts/check-retired.ts",
     "check:text-files": "node scripts/check-text-files.ts",
     "check:vendor": "node scripts/check-vendor.ts",
-    "check:needs-cycles": "node scripts/check-needs-cycles.ts"
+    "check:needs-cycles": "node scripts/check-needs-cycles.ts",
+    "check:handover": "node scripts/check-handover.ts"
   },
   "devDependencies": {
     "@playwright/test": "^1.62.1",

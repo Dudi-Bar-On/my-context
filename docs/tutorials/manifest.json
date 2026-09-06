@@ -410,9 +410,11 @@
     "title": "Carry work from one session into the next",
     "tier": "advanced",
     "cli": [
+      "handover.ts",
       "session.ts"
     ],
     "slash": [
+      "handover.md",
       "session-carry.md",
       "session-name.md"
     ],

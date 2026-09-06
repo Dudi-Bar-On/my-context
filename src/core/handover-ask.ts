@@ -1,6 +1,8 @@
 import { mkdirSync, readFileSync, statSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
+import { readAudit } from './audit.ts';
 import type { Config, HandoverConfig } from './config.ts';
+import { readOccupancy, type UnmeasurableWhy } from './context-occupancy.ts';
 import { sanitizeSessionId } from './ledger.ts';
 import { resolveWorkspace } from './workspace.ts';
 
@@ -796,4 +798,454 @@ export function workspaceConfigAt(root: string): Config | null {
 /** `workspaceConfigAt`, narrowed to the one key three hooks want out of it. */
 export function handoverConfigAt(root: string): HandoverConfig | null {
   return workspaceConfigAt(root)?.handover ?? null;
+}
+
+// ─── plan:handover seq:14 — the SAME ask, asked for on demand ───────────────
+//
+// `DEC-a-handover-can-be-asked-for-on-demand-and-the-ask-is-the`, owner ruling
+// 2026-09-06: a person who wants to compact or start a new session before the
+// threshold can say so, and what they get is the ask `Stop` already fires, at
+// whatever the occupancy currently is.
+//
+// **Shape (a) — a command that ASKS — and not (b) a sixth verdict.** The
+// reported defect is that a handover written by hand at 40% reports
+// `not-asked`: `checkHandoverAsk` returns on a null `askedAt` before it ever
+// stats the file, so a person who prepared early is told nothing is prepared.
+// (b) would have described that fact by widening `HandoverAskVerdict`, which
+// five call sites read. (a) closes it by making the missing half exist: fire an
+// ask, and every downstream reader — the strip, the watch screen, `PreCompact`,
+// `SessionEnd`, `Stop`'s own paragraph chooser — works unchanged, because the
+// mechanism only ever knew about asks. `checkHandoverAsk` above is untouched by
+// this section, and that is the point of it.
+//
+// **Three surfaces, one implementation.** A CLI command
+// (`cli/commands/handover.ts`) and an MCP tool (`mcp/tools.ts`) both call
+// `askHandoverNow` and render what it returns; the slash command
+// (`commands/handover.md`) names the CLI. Every decision below — which session
+// this is, what the occupancy is, and each of the refusals — happens here,
+// once. A surface that re-derived any of it is the drift this project measures
+// in days.
+
+/**
+ * **One lane this session dispatched that has not been seen to stop.**
+ *
+ * `agent-dispatched` opens it, `subagent-stop` closes it, and `agent-step`
+ * dates it — the three ops `ui/public/screens/watch.js` already joins as
+ * `LANE_OPS`, joined here by the same `agent=<id>` key their notes already
+ * carry (`core/audit.ts` argues at length why the id rides in `note` rather
+ * than in a field of its own). Nothing new is recorded to answer this: the
+ * rows are already there.
+ */
+export interface RunningLane {
+  agentId: string;
+  /** The agent type the dispatch row named, or `null` when it named none. */
+  type: string | null;
+  /** The dispatch's own one-line description, or `null` when it carried none. */
+  what: string | null;
+  /** When the dispatch row was written, ISO-8601. */
+  dispatchedAt: string;
+  /**
+   * The most recent `agent-step` for this lane, ISO-8601, or `null` when no
+   * step has been recorded for it yet.
+   *
+   * `null` is drawn as an em dash and never as a time: an absent last step
+   * means nothing has been observed since the dispatch, which is not the same
+   * as the lane having last acted at the moment it was dispatched.
+   */
+  lastStepAt: string | null;
+}
+
+/** `agent=<id>`, the one join key all three lane ops embed in their own note. */
+const LANE_AGENT = /\bagent=([A-Za-z0-9_]+)/;
+
+/**
+ * **What this session has in flight**, oldest dispatch first — or `null` when
+ * the audit log could not be read.
+ *
+ * `null` is not an empty list and the two must never be collapsed:
+ * `STD-a-measured-zero-is-drawn-and-named-an-unmeasured-thing-is` is the whole
+ * of it, and here it is load-bearing rather than cosmetic — a caller that read
+ * an unreadable log as "nothing is running" would proceed silently through the
+ * one gate the owner asked for by name.
+ *
+ * **Scoped to ONE session, and that is what keeps a fossil out.** A dispatch
+ * whose lane died without a `SubagentStop` never gets its closing row and would
+ * otherwise read as running forever: this repository's own log carries one such
+ * row from 2026-09-04 (`agent=agent_MINE_01`, a hand-made probe). Scoping to
+ * the session that is asking drops every fossil belonging to a session that has
+ * ended — a lane of the CURRENT session that died mid-flight is still reported,
+ * and is reported with the dates that let a person recognise it, rather than
+ * with a liveness verdict nobody measured.
+ *
+ * Never throws. `readAudit` refuses a damaged log rather than skipping the line
+ * (`core/audit.ts`), and that refusal lands here as `null`.
+ */
+export function runningLanes(root: string, sessionId: string): RunningLane[] | null {
+  let records;
+  try {
+    records = readAudit(root);
+  } catch {
+    return null;
+  }
+  const open = new Map<string, RunningLane>();
+  const stopped = new Set<string>();
+  const lastStep = new Map<string, string>();
+  for (const record of records) {
+    if (record.kind !== 'hook' || record.sessionId !== sessionId) continue;
+    const note = record.note ?? '';
+    const found = LANE_AGENT.exec(note);
+    if (found === null) continue;
+    const agentId = found[1];
+    if (record.op === 'agent-dispatched') {
+      // `dispatched type=<type> agent=<id>: <description>` —
+      // `hooks/post-tool-use.ts`. Both halves are read as optional even though
+      // the writer supplies both today: a note this cannot parse yields `null`,
+      // which the surfaces draw as an em dash, rather than a lane silently
+      // dropped from a list whose whole job is to be complete.
+      const type = /\btype=(\S+)/.exec(note);
+      const key = `agent=${agentId}: `;
+      const colon = note.indexOf(key);
+      open.set(agentId, {
+        agentId,
+        type: type === null || type[1] === '<absent>' ? null : type[1],
+        what: colon === -1 ? null : note.slice(colon + key.length),
+        dispatchedAt: record.at,
+        lastStepAt: null,
+      });
+    } else if (record.op === 'subagent-stop') {
+      stopped.add(agentId);
+    } else if (record.op === 'agent-step') {
+      lastStep.set(agentId, record.at);
+    }
+  }
+  return [...open.values()]
+    .filter((lane) => !stopped.has(lane.agentId))
+    .map((lane) => ({ ...lane, lastStepAt: lastStep.get(lane.agentId) ?? null }))
+    .sort((a, b) => a.dispatchedAt.localeCompare(b.dispatchedAt));
+}
+
+/**
+ * **Is this running inside a Claude Code session, and which one?** `null` when
+ * it is not — and that answer is a REFUSAL, not a problem to solve.
+ *
+ * Owner ruling 2026-09-06, in as many words: *"another thing we cant do is to
+ * allow this action only if it is done from inside claude code app and not
+ * elsewere."* The ask tells THE SESSION YOU ARE IN to write its handover, so
+ * outside a session there is nothing the request could mean. There is
+ * deliberately no `--session <id>` to name one with: an escape hatch would turn
+ * the ruling into a suggestion, and a mistyped id succeeds silently against
+ * another session's latch.
+ *
+ * ── WHAT THE SIGNAL IS, AND EXACTLY HOW STRONG IT IS ───────────────────────
+ *
+ * `CLAUDE_CODE_SESSION_ID`, and it is a STATEMENT by the only party that knows.
+ * **Measured, not assumed, on Claude Code 2.1.260** — the build on this
+ * machine, `~/.local/share/claude/versions/2.1.260`:
+ *
+ *  - it is present in the environment of a Bash tool call (observed directly);
+ *  - the binary's own stdio-MCP launch path spells the child environment
+ *    `{...env, CLAUDE_PROJECT_DIR, CLAUDE_CODE_SESSION_ID: Y(), CLAUDECODE: '1'}`
+ *    at two call sites, so a plugin's MCP server is handed it too.
+ *
+ * So all three surfaces are covered by one signal: the MCP tool has it because
+ * the server was started with it, the slash command has it because it runs the
+ * CLI through a tool call, and the CLI has it when — and only when — something
+ * inside a session started it. A terminal a person opened themselves has
+ * nothing, which is the refusal the ruling asks for.
+ *
+ * **It is not an authentication boundary, and this comment will not pretend
+ * otherwise.** An environment variable can be set by hand, and so can the file
+ * the check below leans on. What the pair buys is honesty rather than
+ * enforcement: `askHandoverNow` requires, on top of this, that the named
+ * session have a CURRENT context sample in this corpus's own bridge — a file
+ * `mycontext statusline` writes from the payload Claude Code hands it on every
+ * assistant message, fresh within `CONTEXT_SAMPLE_FRESH_MS`. Forging that is no
+ * longer "export a variable": it is fabricating a live status-line sample for a
+ * session id, in this corpus, within the last fifteen minutes. Anyone holding a
+ * shell in this repository can still do it, and nothing available here is
+ * stronger — Claude Code signs nothing, the MCP transport carries no session
+ * identity, and the plugin shares no secret with it. The check stops the case
+ * the ruling is about (a command run somewhere it cannot mean anything) and it
+ * does not stop a determined forger.
+ *
+ * **What this deliberately no longer does.** An earlier shape resolved "the
+ * live session" by scanning `.my_context/.statusline/` for the one session with
+ * a readable sample. That is gone. It was a derivation rather than a guess and
+ * it still answered the wrong question: it would have let the command run from
+ * a plain terminal whenever exactly one session happened to be warm, which is
+ * precisely what the ruling forbids.
+ */
+export function sessionFromEnvironment(env: Record<string, string | undefined>): string | null {
+  const id = env.CLAUDE_CODE_SESSION_ID;
+  return typeof id === 'string' && id !== '' ? id : null;
+}
+
+/**
+ * What became of one on-demand ask.
+ *
+ *  - `off`            — no handover is configured, so there is nothing to ask
+ *                       for. The same distinction `checkHandoverAsk` draws
+ *                       between `off` and `not-asked`: nobody configured this.
+ *  - `outside-session` — this is not running inside a Claude Code session, so
+ *                       there is no session to ask. Owner ruling 2026-09-06,
+ *                       and it is a refusal by DESIGN rather than a failure to
+ *                       resolve something: the ask tells the session you are in
+ *                       to write its handover, and outside one the request has
+ *                       no referent. There is no id to supply instead.
+ *  - `no-occupancy`   — the session is known and how full its window is is not.
+ *                       The ask stamps `askedAtPercent`, and the whole value of
+ *                       `seq:12` is that this number is TRUE — so an occupancy
+ *                       that cannot be read is a refusal, never a default to
+ *                       the threshold, to zero, or to the last value seen.
+ *  - `work-in-flight` — this session has lanes running. Not a verdict on
+ *                       whether asking is wise: the owner's ruling of
+ *                       2026-09-06 is that the PERSON chooses, so this names
+ *                       what is running and stops. `anyway` proceeds past it.
+ *  - `work-unknown`   — the audit log could not be read, so whether anything is
+ *                       running is UNMEASURED. Refused for the reason a
+ *                       measured zero and an unmeasured one are never drawn
+ *                       alike: "nothing is running" is a claim, and this one
+ *                       could not be made. `anyway` proceeds past it too.
+ *  - `unwritable`     — the latch would not persist. `writeLatch`'s standing
+ *                       rule, unchanged: an ask that cannot record itself is
+ *                       not delivered, because the record is what every reader
+ *                       compares against.
+ *  - `asked`          — the ask went out. `ask` carries the paragraph.
+ */
+export type OnDemandAskVerdict =
+  | 'off' | 'outside-session' | 'no-occupancy' | 'work-in-flight' | 'work-unknown'
+  | 'unwritable' | 'asked';
+
+export interface OnDemandAsk {
+  verdict: OnDemandAskVerdict;
+  /** The session the ask was made for, or `null` outside a Claude Code session. */
+  sessionId: string | null;
+  /** The handover AS CONFIGURED, repo-relative, or `null` when the feature is off. */
+  path: string | null;
+  /**
+   * The occupancy the ask was stamped at, or `null` when it could not be read.
+   *
+   * `null` and not `0`, and no branch below supplies a number it did not
+   * measure — `Occupancy` has no `percent` field at all on its unmeasurable
+   * branch precisely so that no caller can write `percent ?? 0` and turn
+   * "never measured" into "empty".
+   */
+  percent: number | null;
+  /** The whole percent the ask belongs to (`askStep`), or `null` with `percent`. */
+  step: number | null;
+  /** When the ask went out, ISO-8601, or `null` for every refusal. */
+  askedAt: string | null;
+  /** Why the occupancy could not be read. Only on `no-occupancy`. */
+  why: UnmeasurableWhy | null;
+  /** What this session has in flight. Only on `work-in-flight`. */
+  running: RunningLane[];
+  /** The paragraph the model must act on, or `''` for every refusal. */
+  ask: string;
+  /** One clause for a human. Never empty, for any verdict. */
+  note: string;
+}
+
+/**
+ * **The paragraph an on-demand ask delivers, and why it is a fourth rather than
+ * one of `Stop`'s three.**
+ *
+ * `hooks/stop.ts` has three, chosen by the verdict on the ask before this one,
+ * and every one of them is written for an occasion this is not: a window that
+ * has crossed a threshold or grown a percent into one. Read at 41% they are
+ * false in their first clause — "before the compaction", "you have this turn" —
+ * and a model told something it can see is untrue learns to discount the next
+ * thing it is told. So this says the true thing instead: a PERSON asked, the
+ * occupancy is whatever it is, and the reason the turn matters is that they are
+ * about to end the window on purpose.
+ *
+ * The occupancy is stated to one decimal exactly as `Stop`'s are, and it is the
+ * READING rather than the step, because the step is the latch's unit and the
+ * reading is what the person is looking at.
+ */
+export function onDemandAskText(handoverPath: string, percent: number): string {
+  return (
+    `Update ${handoverPath} NOW. This was asked for on demand, by the person working with ` +
+    `you — not by a threshold: the context window is ${percent.toFixed(1)}% full and they ` +
+    'intend to compact or start a new session shortly. Write what you were doing, what you ' +
+    'decided and why, and what the next session must do first. You have this turn. Nothing ' +
+    'else carries across.'
+  );
+}
+
+export interface AskHandoverOptions {
+  /**
+   * The environment `CLAUDE_CODE_SESSION_ID` is read from. Injected so a test
+   * pins it rather than inheriting the machine it happens to run on.
+   *
+   * There is no `sessionId` option beside it, and the absence is the ruling:
+   * naming a session by hand is exactly what the owner ruled out on
+   * 2026-09-06 — see `sessionFromEnvironment`.
+   */
+  env?: Record<string, string | undefined>;
+  /** Proceed past `work-in-flight` and `work-unknown`. Never past the other refusals. */
+  anyway?: boolean;
+  /** The instant the ask is stamped at. Injected so a test can pin it. */
+  now?: Date;
+}
+
+/**
+ * **Fire the ask, or say exactly why not.** Never throws, for any filesystem
+ * outcome: every call below is already wrapped where it is declared.
+ *
+ * `root` is the `.my_context` DIRECTORY, the same argument `checkHandoverAsk`
+ * takes and for the same reason — the latch hangs off it and the handover is
+ * resolved against its parent.
+ *
+ * **What it deliberately does NOT do.**
+ *
+ *  - It does not consult the threshold. *At whatever the occupancy currently
+ *    is* is the ruling, in as many words, and a threshold gate here would
+ *    reinstate the wait the command exists to end.
+ *  - It does not consult `askedAtPercent`. `Stop`'s progress gate exists to
+ *    stop a PER-TURN hook nagging; a person typing a command is not a hook, and
+ *    refusing them because the same whole percent was already asked at would be
+ *    the mechanism arguing with the only party it serves.
+ *  - It does not claim `askedAtThreshold`. That field records the threshold an
+ *    ask was DELIVERED AT, and this ask was delivered at no threshold at all —
+ *    so it is carried forward untouched, which leaves `Stop`'s
+ *    lowered-threshold re-arming reading exactly what it read before.
+ *  - It does not stat the handover. That is `checkHandoverAsk`'s question, and
+ *    it is asked AFTER an ask exists, which is the whole shape of the fix.
+ */
+export function askHandoverNow(root: string, options: AskHandoverOptions = {}): OnDemandAsk {
+  const base = {
+    sessionId: null, path: null, percent: null, step: null, askedAt: null,
+    why: null, running: [], ask: '',
+  };
+
+  const handover = handoverConfigAt(root);
+  if (handover === null) {
+    return {
+      ...base,
+      verdict: 'off',
+      note: 'no handover is configured, so there is nothing to ask for — set `handover.path` ' +
+        'in .my_context/config.json first',
+    };
+  }
+
+  // THE RULING, and it is the first gate after the feature switch: this may
+  // only be asked from inside a Claude Code session. Not an ambiguity to
+  // resolve and not a default to fall back from — outside a session the
+  // request has no referent at all.
+  const sessionId = sessionFromEnvironment(options.env ?? process.env);
+  if (sessionId === null) {
+    return {
+      ...base,
+      verdict: 'outside-session',
+      path: handover.path,
+      note: 'refused — no Claude Code session. This asks the session you are in to write its ' +
+        'handover, so it can only be run from inside Claude Code. Nothing was written',
+    };
+  }
+
+  const occupancy = readOccupancy(root, sessionId);
+  if (occupancy.state !== 'known') {
+    return {
+      ...base,
+      verdict: 'no-occupancy',
+      sessionId,
+      path: handover.path,
+      why: occupancy.why,
+      note: `how full ${sessionId}'s context window is could not be read, so the ask ` +
+        'has no true percent to stamp. Nothing was asked for, and no number was invented for it',
+    };
+  }
+
+  // `askStep` and never `Math.round`: the whole percent is the latch's unit and
+  // it is decided in one place, so the paragraph and the latch can never
+  // disagree about which step this ask belongs to. `null` is a non-finite
+  // reading, which nothing observed produces and which must not be allowed to
+  // mean "a step nobody has asked at yet".
+  const step = askStep(occupancy.percent);
+  if (step === null) {
+    return {
+      ...base,
+      verdict: 'no-occupancy',
+      sessionId,
+      path: handover.path,
+      why: 'unknown-shape',
+      note: `${sessionId}'s context sample reported a percentage that is not a finite ` +
+        'number, so there is no whole percent to stamp the ask at. Nothing was asked for',
+    };
+  }
+
+  if (options.anyway !== true) {
+    const lanes = runningLanes(root, sessionId);
+    if (lanes === null) {
+      return {
+        ...base,
+        verdict: 'work-unknown',
+        sessionId,
+        path: handover.path,
+        percent: occupancy.percent,
+        step,
+        note: 'the audit log could not be read, so whether this session has work in flight is ' +
+          'unmeasured — not zero. Nothing was asked for',
+      };
+    }
+    if (lanes.length > 0) {
+      return {
+        ...base,
+        verdict: 'work-in-flight',
+        sessionId,
+        path: handover.path,
+        percent: occupancy.percent,
+        step,
+        running: lanes,
+        note: `${lanes.length} lane(s) this session dispatched are still running. Nothing was ` +
+          'asked for: a handover written now describes work that is still moving',
+      };
+    }
+  }
+
+  const latch = readLatch(root, sessionId);
+  const askedAt = (options.now ?? new Date()).toISOString();
+  // Latched BEFORE the paragraph is returned, and the paragraph is withheld
+  // when the write fails — `writeLatch`'s rule, which `Stop` obeys too: an ask
+  // the mechanism cannot remember making is an ask nothing can ever report as
+  // answered, so the next reading would say `not-asked` about a model that had
+  // already been told to write.
+  //
+  // `askedAtThreshold` is carried forward and NOT set: see the header above.
+  // `satisfied` is false because a new ask is a new thing to satisfy, and
+  // `asks` counts this one, exactly as `Stop`'s does.
+  if (!writeLatch(root, sessionId, {
+    ...latch,
+    askedAtPercent: step,
+    askedAt,
+    asks: latch.asks + 1,
+    satisfied: false,
+  })) {
+    return {
+      ...base,
+      verdict: 'unwritable',
+      sessionId,
+      path: handover.path,
+      percent: occupancy.percent,
+      step,
+      note: `the ask could not be recorded at ${latchPath(root, sessionId)}, so it was ` +
+        'not made: nothing would be able to tell later whether it had been answered',
+    };
+  }
+
+  return {
+    ...base,
+    verdict: 'asked',
+    sessionId,
+    path: handover.path,
+    percent: occupancy.percent,
+    step,
+    askedAt,
+    ask: onDemandAskText(handover.path, occupancy.percent),
+    // The owner's own shape for the success line: the percent, the path, and
+    // what happens next. The STEP and not the reading, because the step is what
+    // the latch now holds and therefore what any later reader will find there.
+    note: `handover asked at ${step}% — ${handover.path}, and the assistant is asked to write ` +
+      `it on its next turn (latch stamped askedAtPercent=${step})`,
+  };
 }

@@ -620,7 +620,16 @@ export function relationTable(
  * rather than a fabricated path so that the value is at least a real
  * directory if that ever changes.
  */
-function toolDefinitions(): ToolDefinition[] {
+/**
+ * Exported since `plan:library seq:1`, alongside `slashCommands` below, for a
+ * reason neither had before: `GET /api/cli-help` answers per-TOOL and
+ * per-SLASH-COMMAND questions, and the Library screen is the caller. Rendering
+ * `toolReference()` and handing a screen 25 tools glued into one Markdown
+ * string would have made it parse this file's prose back apart — so the read
+ * surface takes the same list this file renders from, and the page and the
+ * topic cannot disagree about what exists.
+ */
+export function toolDefinitions(): ToolDefinition[] {
   return createRegistry(TOPIC_DIR).list();
 }
 
@@ -751,7 +760,7 @@ export interface SlashCommand { name: string; description: string; modelInvocabl
  * complete-looking-and-wrong answer the `cli` topic's refusal exists to
  * prevent, and this topic must not be the thing that causes it.
  */
-function slashCommands(): SlashCommand[] {
+export function slashCommands(): SlashCommand[] {
   let files: string[];
   try {
     files = readdirSync(COMMANDS_DIR).filter((f) => f.endsWith('.md'));

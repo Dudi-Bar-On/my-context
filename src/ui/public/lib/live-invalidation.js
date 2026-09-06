@@ -151,11 +151,21 @@
 //             header, in full).
 //   config    `/api/config` only. `hook`, for the `file-changed` reason
 //             above.
-//   library   `/api/doc` and `/api/tutorials`. Both walk the FILESYSTEM —
-//             the wide glob over `docs/` and `reports/`, and the tutorial
-//             manifest — and neither reads the corpus at all. No audit
-//             kind is emitted when a `.md` file appears on disk, so there
-//             is nothing for this screen to subscribe to. Nothing.
+//   library   `/api/doc` and `/api/tutorials` walk the FILESYSTEM — the wide
+//             glob over `docs/` and `reports/`, and the tutorial manifest —
+//             and no audit kind is emitted when a `.md` file appears on disk,
+//             so those two subscribe to nothing. **`/api/corpus` is different
+//             and moved this row off `[]` on 2026-09-06** (`library/2`): its
+//             roster is the INDEX's own `file_path` column for the project
+//             layer, so every `create`, `promote`, `discard` and `supersede`
+//             adds or removes a row the file tree draws — `mutation` ops, one
+//             for one. A screen listing corpus files that did not notice a
+//             captured item would be the staleness this table exists to end.
+//             `refresh: 'ask'` and not `'auto'`, for `DEC-a-refresh-keeps-the-
+//             reader-s-place-or-it-asks`: the browser holds reader state a
+//             wholesale re-render destroys — which folder they descended into
+//             and which folders they expanded — and `app.js`'s generic live
+//             refresh restores `#screen`'s scrollTop and nothing else.
 //   capture   `/api/config` (category picker, same `hook` reasoning as
 //             palette) and `/api/capture?scope=…` (what already governs the
 //             scope — `mutation`). `mutation`, `hook`.
@@ -172,15 +182,17 @@
 //             pack import runs through `createItem`/`updateItem`, both
 //             `mutation` ops. `mutation`.
 //
-// ── THE THREE "NOTHING" ROWS, WRITTEN DOWN RATHER THAN LEFT ABSENT ────────
+// ── THE "NOTHING" ROWS, WRITTEN DOWN RATHER THAN LEFT ABSENT ─────────────
 //
-// `library` and `port` carry `kinds: []`, not a missing key. An empty
+// `port` carries `kinds: []`, not a missing key. (`library` did too until
+// 2026-09-06, when `/api/corpus` gave it a corpus read; its row above records
+// the move rather than leaving the change to be inferred from a diff.) An empty
 // array reads identically to "not yet declared" only if nothing enforces the
 // difference; the gate below is that enforcement — a key holding `[]` passes
-// it, an absent key does not. Their `refresh` is `'auto'` only because a
+// it, an absent key does not. Its `refresh` is `'auto'` only because a
 // value has to be SOMETHING and the gate below requires the real shape on
 // every row; with `kinds: []` nothing ever arrives to act on, so the value is
-// inert by construction, not a claim that re-rendering these three is safe.
+// inert by construction, not a claim that re-rendering it is safe.
 //
 // ── HOW `refresh` WAS DERIVED — read what the screen HOLDS, not only what
 //    it shows, because the risk `'auto'` cannot take is losing STATE a
@@ -291,7 +303,7 @@ export const SCREEN_INVALIDATION = {
   // reader is midway through typing. See this task's report for how this was
   // verified end to end.
   config: { kinds: ['hook', 'mutation'], refresh: 'ask' },
-  library: { kinds: [], refresh: 'auto' },
+  library: { kinds: ['mutation'], refresh: 'ask' },
   capture: { kinds: ['mutation', 'hook'], refresh: 'ask' },
   proc: { kinds: ['mutation', 'progress'], refresh: 'ask' },
   port: { kinds: [], refresh: 'auto' },

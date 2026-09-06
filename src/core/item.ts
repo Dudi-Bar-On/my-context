@@ -437,21 +437,53 @@ function parseRelations(lines: string[]): Relation[] {
   return out;
 }
 
+/**
+ * **Where the `---` fence ends** — the SPLIT, and deliberately not a parse.
+ *
+ * `parseItem` below wants the two halves so it can hand the first to
+ * `parseFrontmatter` and read the second as an item body. The corpus file
+ * VIEWER (`apiCorpusFile`, `src/ui/read-model.ts`) wants the same two halves
+ * for a different reason entirely: it serves the file as it is written, and
+ * YAML pushed through a Markdown renderer is not a rendering of that file —
+ * `---\nid: X\n---` is a thematic break, then a setext `<h2>` made out of the
+ * fence's own closing line. So the frontmatter is carried separately and drawn
+ * as preformatted text, and nothing is dropped to get there.
+ *
+ * It is exported so that those two callers share ONE spelling of "where does
+ * the frontmatter end". A second regex in the read model would be the recurring
+ * defect this codebase names by hand: two copies of one rule, either of which
+ * can drift without anything failing.
+ *
+ * `null` when there is no fence at all. Every caller decides for itself what
+ * that means — `parseItem` refuses the file, the viewer serves the whole text
+ * as the body — because those are genuinely different answers.
+ *
+ * The `\r` normalisation happens HERE rather than at each caller, for the
+ * reason `parseItem` already gave: the global constraint is LF everywhere, and
+ * a CRLF- or lone-CR-authored file must not leak a `\r` into anything
+ * downstream.
+ */
+export function splitFrontmatter(text: string): { frontmatter: string; body: string } | null {
+  const normalized = text.replace(/\r\n?/g, '\n');
+  const match = DELIM.exec(normalized);
+  if (!match) return null;
+  return { frontmatter: match[1], body: normalized.slice(match[0].length) };
+}
+
 export function parseItem(text: string, filePath: string, layer: Layer): Item {
   // Normalize once, up front: the global constraint is LF everywhere, so a
   // CRLF- OR lone-CR- (classic Mac) authored file must never let a `\r`
   // survive into `item.body` (or anywhere else) only to be re-emitted
-  // verbatim by renderItem.
-  const normalized = text.replace(/\r\n?/g, '\n');
-
-  const match = DELIM.exec(normalized);
-  if (!match) {
+  // verbatim by renderItem. `splitFrontmatter` is where that normalisation
+  // now happens, so that the viewer which shares the split shares it too.
+  const split = splitFrontmatter(text);
+  if (!split) {
     throw new Error('no --- frontmatter block found.');
   }
 
-  const rawBlock = match[1];
+  const rawBlock = split.frontmatter;
   const fm = parseFrontmatter(rawBlock);
-  const body = normalized.slice(match[0].length);
+  const body = split.body;
   const { prose, sections } = splitSections(body);
 
   // A second `## Steps` section cannot be represented: `splitSections` keeps

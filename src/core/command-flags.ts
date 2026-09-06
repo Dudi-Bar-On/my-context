@@ -45,14 +45,15 @@
  *
  * ── WHAT IS HERE, AND WHAT IS DELIBERATELY NOT ─────────────────────────────
  *
- * MEASURED 2026-08-24, corrected 2026-08-30 and again 2026-09-04 (`mycontext config`,
+ * MEASURED 2026-08-24, corrected 2026-08-30, again 2026-09-04 (`mycontext config`,
  * `rulings/20` widened, shipped its own separable spec; `mycontext carry`, the same day, a
  * one-shot delivery override with a flat spec of its own; and `mycontext link`, the same day
- * again, the CLI spelling `link_items` had and the terminal did not), over the **43** commands
- * the CLI dispatches: 36 registered by `cli/commands/index.ts`'s column of side-effect
+ * again, the CLI spelling `link_items` had and the terminal did not), and again 2026-09-06
+ * (`mycontext handover`, the ask on demand — `plan:handover seq:14`), over the **44** commands
+ * the CLI dispatches: 37 registered by `cli/commands/index.ts`'s column of side-effect
  * imports, and 7 more registered in `cli/index.ts` itself.
  *
- *   | 39 | have a SEPARABLE flag spec — a declarative list, liftable as it is |
+ *   | 40 | have a SEPARABLE flag spec — a declarative list, liftable as it is |
  *   |  0 | read their flags INLINE where they are used, with no spec to lift  |
  *   |  1 | resists: `edit`, whose accepted set is computed per workspace      |
  *   |  3 | take no flags at all — `show`, `rebuild`, `help`                   |
@@ -78,7 +79,7 @@
  * commands named as absent, plus the keys of `COMMAND_FLAGS`, must be exactly
  * the registered set, so a command cannot arrive and be silently uncounted.
  *
- * **34** of the 39 are here. Twenty-one arrived with the first lift, and they
+ * **35** of the 40 are here. Twenty-one arrived with the first lift, and they
  * are the ones whose spec was already a declarative constant over a FLAT
  * surface — one command, one flag set. The other four arrived with
  * `plan:builder seq:1b` and came out of `src/cli/index.ts` itself — the entry
@@ -107,7 +108,19 @@
  * like the `mycontext focus` entry above: one accepted set, three forms
  * (`<id>`, `--show`, `--clear`) split in the command body.
  *
- * **`mycontext link` is the thirty-fourth entry, and the newest** — the same
+ * **`mycontext handover` is the thirty-fifth entry, and the newest** —
+ * 2026-09-06, owner ruling: the handover can be asked for ON DEMAND, from a
+ * CLI command, a slash command and an MCP tool, at whatever the context window
+ * currently holds. Born here, as the three above it were; flat, the way
+ * `mycontext carry` and `mycontext focus` are, with the VERB in the positional
+ * slot so that the opposite control the same ruling defers — keeping the
+ * handover injected while turning the automatic ask off — lands as a second
+ * verb rather than as a second command.
+ * No `--yes`: it writes one per-session file under `state/` and nothing that
+ * governs this project, so putting it on the approval boundary would publish a
+ * deny rule for a command that changes nothing.
+ *
+ * **`mycontext link` is the thirty-fourth entry** — the same
  * day again, owner instruction "support relation using the cli too":
  * `link_items` (the MCP tool) had a CLI counterpart nowhere, so the terminal
  * could not write a relation at all. Born here — there was no `mycontext link`
@@ -121,13 +134,17 @@
  * that its spec is ABSENT. What is absent is recorded rather than left to be
  * discovered:
  *
- *   - **`pack`, `procedure`, `review`, `session`, `statusline`** keep their
- *     specs, because those are keyed by SUBCOMMAND (`review promote`, `pack
- *     import`). Lifting them means deciding the key space of this map — a
- *     command STRING rather than a command NAME — and that is the decision the
- *     requirement above will make once, for the selects and the placeholders
- *     as well as the check. Their records are already this exact shape, so the
- *     move is mechanical the day that key is chosen.
+ *   - **`pack`, `procedure`, `review`, `session`, `statusline`** are keyed by
+ *     SUBCOMMAND (`review promote`, `pack import`), so they are not entries in
+ *     THIS map and never will be. They kept their specs in their own modules
+ *     until `plan:library seq:1`, on the grounds that lifting them meant
+ *     deciding the key space here — a command STRING rather than a command
+ *     NAME. That is no longer the choice on offer: they were lifted into
+ *     `SUBCOMMAND_FLAGS` at the foot of this file, a SECOND map whose keys
+ *     nest command → subcommand, leaving this one's key space exactly as it
+ *     was. The section header there argues the shape; what matters here is
+ *     that a read surface can now name every switch of all five without
+ *     importing a module that writes.
  *   - **`edit`** cannot be a static entry at all: its accepted set is
  *     `[...ALLOWED, ...declaredFlags(ws.config)]`, computed per workspace from
  *     the flags this project's categories declare. A read surface can only
@@ -302,6 +319,40 @@ export const COMMAND_FLAGS: Record<string, FlagSpec> = {
     allowed: ['tag', 'category', 'scope', 'clear', 'show', 'preview', 'relations', 'json', 'yes'],
     values: ['tag', 'category', 'scope'],
   },
+  /**
+   * `mycontext handover ask [--anyway] [--json]` — owner
+   * ruling 2026-09-06, the handover asked for ON DEMAND rather than at the
+   * threshold (`DEC-a-handover-can-be-asked-for-on-demand-and-the-ask-is-the`).
+   *
+   * FLAT, like `carry` and `focus` above: the verb is a POSITIONAL and every
+   * form shares one accepted set, split in `cli/commands/handover.ts`. It is
+   * not a `SUBCOMMAND_FLAGS` entry because that map is for commands whose
+   * subcommands take DIFFERENT flags — `pack import` against `pack export` —
+   * and these would not. `handover/11` (keeping the handover injected while
+   * turning the automatic ask off) is the second verb this shape is holding
+   * room for, and it lands as two more branches in the body rather than as a
+   * second key space here.
+   *
+   * **There is no `--session <id>`, and the absence is the design.** Owner
+   * ruling 2026-09-06: the ask may only be made from inside a Claude Code
+   * session, which the command establishes from `CLAUDE_CODE_SESSION_ID` in its
+   * own environment. A flag to name one by hand would turn that ruling into a
+   * suggestion, and a mistyped id would succeed — silently, against another
+   * session's latch. So the flat set is two switches and no value flag at all.
+   *
+   * **No `--yes`, and that is a claim about the approval boundary rather than
+   * an omission.** This writes ONE per-session file under `state/` — the same
+   * ask latch `Stop` writes on its own every turn — and touches no item, no
+   * relation and no config. `test/helpers/approval-boundary.ts` derives its
+   * membership by asking which commands accept `--yes`, and a `--yes` here
+   * would put a command that changes nothing governing onto the deny list four
+   * surfaces publish.
+   *
+   * `--anyway` is not a confirmation in that sense either: it answers the
+   * disclosure that this session has lanes still running (owner ruling, same
+   * day) by saying the person has chosen to proceed.
+   */
+  handover: { allowed: ['anyway', 'json'], values: [] },
   'inbox-promote': { allowed: ['to', 'title', 'yes'], values: ['to', 'title'] },
   'ingest-status': { allowed: DETAIL_FLAGS, values: [] },
   /**
@@ -884,6 +935,15 @@ export const FLAG_DECLARATIONS: Record<string, FlagDeclarations> = {
         + 'session receives with no human in the loop.',
     },
   },
+  handover: {
+    anyway: {
+      note: 'Ask even though this session has lanes still running, or even though whether it '
+        + 'has could not be read. Without it the lanes are named and nothing is asked for - the '
+        + 'choice between waiting and proceeding is the person\'s, and this flag is how they '
+        + 'make it. It is not an approval gate: nothing here changes what governs the project.',
+    },
+    json: DETAIL.json,
+  },
   'inbox-promote': {
     to: { ...CATEGORY, note: `The category the note or todo becomes an item in. ${CATEGORY.note}` },
     title: {
@@ -1172,3 +1232,285 @@ export const FLAG_DECLARATIONS: Record<string, FlagDeclarations> = {
   },
   'lesson-discard': {},
 };
+
+/* -------------------------------------------------------------------------- *
+ * plan:library seq:1 — THE FIVE SUBCOMMAND-KEYED SPECS, AND THE THREE THAT
+ * TAKE NOTHING.
+ * -------------------------------------------------------------------------- */
+
+/**
+ * **The other nine commands, and why "every switch" needed them.**
+ *
+ * `COMMAND_FLAGS` above holds 34 of the 43 commands the CLI dispatches. The
+ * header names the other nine and says why each is absent, and a reader who
+ * only wanted to know whether a command had been FORGOTTEN was already
+ * answered: `test/cli/command-flags.test.ts`'s inventory refuses a command
+ * that is in neither the map nor the paragraph. None of the nine was an
+ * omission.
+ *
+ * What the paragraph could not do is HAND the nine to a read surface, and
+ * `TASK-the-library-explains-the-command-line-every-switch-parameter` asks for
+ * exactly that — every switch, parameter and option of every command, on a
+ * screen, derived rather than typed. Five of the nine genuinely take flags:
+ * `pack`, `procedure`, `review`, `session` and `statusline`. Their specs lived
+ * in `cli/commands/*.ts`, which import `updateItem` and `stageRevision`, so
+ * `test/ui/no-writes.test.ts` put them out of a read surface's reach as
+ * completely as the twenty-one this module already holds — and a Library
+ * screen that skipped them would have advertised "every switch" over 34 of the
+ * 39 flag-taking commands.
+ *
+ * ── THE KEY SPACE, WHICH IS THE DECISION THE HEADER DEFERRED ───────────────
+ *
+ * The header above says lifting these "means deciding the key space of this
+ * map — a command STRING rather than a command NAME". That decision is taken
+ * here, and it is taken by NOT widening the existing one: `COMMAND_FLAGS`' key
+ * space is untouched, and these arrive as a SECOND map keyed command name →
+ * subcommand name → spec. Two reasons, and both are properties rather than
+ * taste.
+ *
+ * A flat record keyed `'review promote'` would have made `COMMAND_FLAGS` a map
+ * whose keys are sometimes commands and sometimes command strings, and every
+ * existing consumer — `flagReference` (src/help/index.ts), `apiFlags`
+ * (src/ui/read-model-flags.ts), `test/ui/palette-lib.test.ts` — walks it as if
+ * a key were a command name. Widening that key space silently would have
+ * changed what each of them renders without one of them being edited.
+ *
+ * And the NESTING is a fact about these commands rather than an encoding
+ * choice: `review list` and `review promote` accept different flags, and the
+ * parser is handed one subcommand's record at a time (`cli/commands/review.ts`
+ * · `const { allowed, values } = REVIEW_FLAGS[subcommand];`). A flattened key
+ * would have to be split apart again by every consumer that wanted to ask
+ * "what does `review` take", which is the question a selection box asks.
+ *
+ * `statusline` is the exception that shows the shape is right. Its flags are
+ * FLAT — `install` and `uninstall` are handed the identical record by
+ * `refuseUnknownFlag` — so it is written with both subcommands carrying that
+ * record rather than being given a sixth shape, and the bare form (`mycontext
+ * statusline`, the status-line bridge that reads a JSON payload on stdin)
+ * takes no flags at all and is not a key.
+ *
+ * ── THIS IS A MOVE, AND THE MODULES IMPORT IT BACK ────────────────────────
+ *
+ * Each of the five now reads its spec from here rather than declaring one, for
+ * the reason this whole module exists: a list written down twice will disagree
+ * eventually, and the first thing a Library screen would have proved is which
+ * copy was stale. The records are the ones those modules held, unchanged —
+ * `test/cli/command-flags.test.ts` probes every one of them against the REAL
+ * parser, subcommand by subcommand, so a flag that survived the move by name
+ * but not in behaviour fails there rather than on a screen.
+ */
+export const SUBCOMMAND_FLAGS: Record<string, Record<string, FlagSpec>> = {
+  /** `cli/commands/pack.ts`. `import` is the whole surface; `list` reports. */
+  pack: {
+    import: { allowed: ['name', 'dry-run', 'json', 'yes', 'overwrite-changed'], values: ['name'] },
+    list: { allowed: ['json'], values: [] },
+  },
+  /**
+   * `cli/commands/procedure.ts`. Two of the five take `--yes` and one takes
+   * `--undo`; `list` and `show` take nothing, and the empty records are the
+   * fact rather than an omission — a subcommand missing from this map would be
+   * one the parser refuses every flag on for a different reason.
+   */
+  procedure: {
+    list: { allowed: [], values: [] },
+    show: { allowed: [], values: [] },
+    activate: { allowed: ['yes'], values: [] },
+    done: { allowed: ['yes'], values: [] },
+    step: { allowed: ['undo'], values: [] },
+  },
+  /** `cli/commands/review.ts` — the widest of the five, and the only one whose
+   *  subcommands disagree about the DETAIL levels as well as about the rest. */
+  review: {
+    list: { allowed: [...DETAIL_FLAGS, 'type'], values: ['type'] },
+    show: { allowed: [], values: [] },
+    promote: {
+      allowed: ['scope', 'severity', 'always', 'yes', 'all', 'pack', 'source'],
+      values: ['scope', 'severity', 'pack', 'source'],
+    },
+    discard: { allowed: ['yes'], values: [] },
+    revisions: { allowed: [...DETAIL_FLAGS], values: [] },
+    'promote-revision': { allowed: ['revision', 'force', 'yes'], values: ['revision'] },
+    'discard-revision': {
+      allowed: ['revision', 'reason', 'yes'], values: ['revision', 'reason'],
+    },
+  },
+  /** `cli/commands/session.ts`. `carry`'s two switches are bare. */
+  session: {
+    list: { allowed: ['json'], values: [] },
+    name: { allowed: [], values: [] },
+    carry: { allowed: ['none', 'show'], values: [] },
+  },
+  /**
+   * `cli/commands/statusline-install.ts` — flat, as its own `FLAGS` /
+   * `VALUE_FLAGS` pair already was.
+   */
+  statusline: {
+    install: { allowed: ['yes', 'settings'], values: ['settings'] },
+    uninstall: { allowed: ['yes', 'settings'], values: ['settings'] },
+  },
+};
+
+/**
+ * What each subcommand-keyed flag MEANS, keyed by COMMAND — not by subcommand.
+ *
+ * The nesting stops one level higher than `SUBCOMMAND_FLAGS`' does, and that
+ * is a claim rather than a convenience: within one command a flag name means
+ * one thing. `review list --json` and `review revisions --json` are the same
+ * switch over two reports; `pack import --json` and `pack list --json` the
+ * same over two. A per-subcommand note would be the same sentence written
+ * seven times for `review`, and seven sentences drift into seven answers.
+ *
+ * Across commands it is the opposite, and `--pack` is why both halves of that
+ * claim are needed: on `review promote` it NAMES the import whose drafts are
+ * being settled, and there is no other command where it means that. So the key
+ * is the command, and `test/cli/command-flags.test.ts` requires this to cover
+ * the UNION of every subcommand's `allowed`, in both directions — a flag the
+ * parser takes with nothing said about it is the state this declaration layer
+ * exists to end, and a note for a flag no subcommand accepts documents syntax
+ * that comes back `unknown option`.
+ */
+export const SUBCOMMAND_FLAG_DECLARATIONS: Record<string, FlagDeclarations> = {
+  pack: {
+    name: {
+      format: 'one plain name for the import', example: 'acme-security-baseline',
+      note: 'What this import is called afterwards. It is the handle `mycontext pack list` '
+        + 'prints and the one `review promote --all --pack <name>` takes, so it is worth '
+        + 'choosing: without it the pack is named after the file it came from.',
+    },
+    'dry-run': {
+      note: 'Read the pack and report exactly what WOULD be staged, writing nothing. It is '
+        + 'the form to run first: an import stages drafts, and a draft is a thing somebody '
+        + 'then has to read.',
+    },
+    json: DETAIL.json,
+    yes: YES,
+    'overwrite-changed': {
+      note: 'Re-import over items this project has since EDITED, discarding those local '
+        + 'changes. Without it a changed item is left exactly as it is and reported as '
+        + 'skipped, which is the safe half of the same act.',
+    },
+  },
+  procedure: {
+    yes: YES,
+    undo: {
+      note: 'Mark the step NOT done rather than done. The same subcommand in the other '
+        + 'direction, so a step ticked by mistake is one flag away from being unticked.',
+    },
+  },
+  review: {
+    ...DETAIL,
+    type: {
+      ...CATEGORY,
+      note: 'Only drafts of this category. Which names are legal depends on the profile and '
+        + 'on `categories` in config.json; `mycontext help categories` prints the resolved set.',
+    },
+    scope: {
+      format: 'comma-separated path globs', example: 'src/api/**,migrations/**',
+      note: 'The paths the promoted item attaches to, replacing whatever the draft proposed. '
+        + 'An item with no scope is offered everywhere, which is the right answer for a '
+        + 'project-wide rule and the wrong one for a rule about one directory.',
+    },
+    severity: {
+      values: SEVERITIES,
+      note: 'How hard the promoted item binds. It is set at promotion because the draft was '
+        + 'written by whoever exported the pack, and how hard a rule binds here is this '
+        + 'project’s call rather than theirs.',
+    },
+    always: {
+      note: 'Promote the item as ALWAYS-injected: delivered to every session regardless of '
+        + 'what files are in play. It is the most expensive thing one flag can do to a '
+        + 'context budget, so it is opt-in per item and never inherited from a pack.',
+    },
+    all: {
+      note: 'Settle every draft ONE import staged, in one confirmation. It needs --pack and '
+        + 'takes no item id: the licence a bulk promotion can be given is for a NAMED, '
+        + 'BOUNDED set, never for "every draft in this corpus".',
+    },
+    pack: {
+      format: 'the name of an import, as `mycontext pack list` prints it',
+      example: 'acme-security-baseline',
+      note: 'Which import --all is ruling on. It is what BOUNDS the bulk act, so it is '
+        + 'required rather than defaulted.',
+    },
+    source: {
+      format: 'the path the pack was imported from', example: './packs/acme.json',
+      note: 'Which import is meant when two of them call themselves the same thing. Needed '
+        + 'only then, and refused rather than ignored when the name is already unambiguous.',
+    },
+    revision: {
+      format: 'a revision id as `mycontext review revisions` prints it',
+      example: 'REV-8f21c0a4',
+      note: 'Which staged revision of the item to rule on. Without it the command rules on '
+        + 'the only pending one and refuses when there is more than one, rather than picking.',
+    },
+    force: {
+      note: 'Apply the revision even though the item has MOVED since the revision was staged. '
+        + 'Without it a revision written against an older body is refused, because applying '
+        + 'it would silently undo whatever changed in between.',
+    },
+    reason: {
+      format: 'one plain sentence',
+      example: 'Superseded by the wider rule in RULE-no-pii-in-logs',
+      note: 'Why the revision was discarded, recorded with the discard. A discard with no '
+        + 'reason is a decision nobody can re-read afterwards.',
+    },
+    yes: YES,
+  },
+  session: {
+    json: DETAIL.json,
+    none: {
+      note: 'Clear this session’s carry mark: nothing is carried into the next session. '
+        + 'The opposite of naming one, and a flag rather than a value so it cannot be '
+        + 'confused with a session literally named "none".',
+    },
+    show: {
+      note: 'Print what is currently set to carry, and change nothing. The read half of the '
+        + 'same subcommand.',
+    },
+  },
+  statusline: {
+    settings: {
+      format: 'a path to a settings.json', example: '~/.claude/settings.json',
+      note: 'The settings file to read and write. Omit it for Claude Code’s own, which '
+        + 'is what install and uninstall both mean by default.',
+    },
+    yes: {
+      note: 'Apply the change printed above; without it nothing is written and the command is '
+        + 'a preview. The same approval boundary every other write wears, over a file that '
+        + 'is not this project’s.',
+    },
+  },
+};
+
+/**
+ * The three registered commands that accept NO flag at all.
+ *
+ * Written as data rather than left in the header's prose, because "takes no
+ * flags" is an answer a Library screen has to be able to GIVE. A command
+ * absent from every map on this page is indistinguishable, to a reader and to
+ * a screen, from a command nobody got round to declaring — and that ambiguity
+ * is the exact question `plan:library seq:1` was told to close before it built
+ * anything. The absence is the fact; this is the fact written down.
+ *
+ * `test/cli/command-flags.test.ts` probes each of them against the real parser
+ * with a sentinel flag and requires a refusal, so a command that grows a flag
+ * cannot quietly stay on this list.
+ */
+export const FLAGLESS_COMMANDS: string[] = ['help', 'rebuild', 'show'];
+
+/**
+ * The commands whose accepted set is computed per WORKSPACE, and can therefore
+ * never be a static entry on this page.
+ *
+ * One member, `edit`, and it has been the one member since `core/edit-flags.ts`
+ * was written: its `allowed` is `[...EDIT_FLAGS.allowed, ...declaredEditFlags(
+ * config)]`, so a project declaring `state` on `task` accepts `--state` and a
+ * project that does not, does not. `GET /api/flags` already answers for it by
+ * being HANDED the workspace (`src/ui/read-model-flags.ts`), which is the only
+ * way anything can.
+ *
+ * An array rather than a constant, for `apiFlags`' own reason: the day a
+ * second command grows a declared flag, the surfaces that render this should
+ * widen without a new shape being invented for them.
+ */
+export const DYNAMIC_FLAG_COMMANDS: string[] = ['edit'];

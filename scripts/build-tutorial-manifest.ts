@@ -43,8 +43,33 @@ export const SLASH_DIR = 'commands';
 /** Files in `src/cli/commands/` that register no user-facing verb of their own. */
 export const PLUMBING_CLI = new Set(['index.ts', 'registry.ts', 'format.ts']);
 
-/** Screens that read and browse the tutorials themselves — never a tutorial subject. */
-export const META_SCREENS = new Set(['parts.js', 'tut.js', 'docs.js', 'learn.js']);
+/**
+ * Screens that read and browse the documentation themselves — never a tutorial
+ * subject.
+ *
+ * `docs.js` and `tut.js` were two of these and are GONE:
+ * `DEC-the-documentation-and-tutorials-screens-become-one-list-and`, owner
+ * ruling 2026-09-05, replaced both with one console page. This set was not
+ * updated with them, so `library.js` — the page that replaced them, and which
+ * is the same kind of thing they were — has been claimed by no cluster and
+ * excluded by nothing since that day. `test/core/tutorial-manifest.test.ts`
+ * asserts in a LOOP, so the first unclaimed file masks the rest, and the two
+ * dead names are what kept `library.js` from being the first.
+ *
+ * Corrected here (`plan:library seq:1`), which is the change that surfaced it:
+ * `cli-help.js` is the Library's command-line card, a second module of that
+ * same page, and it landed alphabetically ahead of `library.js` and failed in
+ * its place. Both are meta for exactly the reason `docs.js` and `tut.js` were
+ * — a screen whose subject is the documentation is not itself a feature a
+ * tutorial teaches — and the dead names are removed rather than left as two
+ * entries nothing can ever match.
+ *
+ * The manifest itself is unchanged by this: a META screen is filtered out
+ * before coverage is computed and was never an entry.
+ */
+export const META_SCREENS = new Set([
+  'parts.js', 'learn.js', 'library.js', 'cli-help.js',
+]);
 
 /**
  * One cluster before its derived slash entries (the per-category and

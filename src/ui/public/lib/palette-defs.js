@@ -182,10 +182,33 @@ export const PALETTE = [
     // off this screen. Both trios' reasons are written down in
     // `FLAGS_NOT_OFFERED` in `test/ui/palette-lib.test.ts`, so a withheld flag
     // is a decision on the record rather than an omission.
+    //
+    // **`finding` is `input: 'suggest'` and its list DEPENDS ON `id`** (owner
+    // ruling D11, 2026-09-06). `cmdAck` takes the codes doctor reports on THAT
+    // item as the vocabulary and refuses anything else — *"a typo would
+    // otherwise write a permanent entry for a code no check emits"*
+    // (`src/cli/commands/ack.ts`) — so the honest list here is not the eleven
+    // codes this corpus reports anywhere, it is the one or two it reports on
+    // the item the reader just picked. `dependsOn` is that fact in the data;
+    // `narrowedOptions` in `screens/palette.js` is what reads it. Measured on
+    // this corpus 2026-09-06: 61 findings, 56 of them on an item, over 55
+    // distinct items, 1-2 codes each.
+    //
+    // **And it stays a BOX, not a `<select>`, for a reason the flag itself
+    // gives.** `--clear` is exempt from that vocabulary (`ack.ts`: `if (!clear
+    // && !reported.includes(code))`), because withdrawing a ruling whose check
+    // was renamed or retired is exactly the case `reportState`'s "orphaned"
+    // paragraph exists to fix. A closed picker would take that away. So the
+    // suggestion list is offered THROUGH the box, the same shape and the same
+    // reason as `--tags`: what is ticked is written into the line you can also
+    // type, and neither can surprise the other.
     name: 'ack', kind: 'write', base: ['mycontext', 'ack'], boundary: false, runnable: true,
     args: [
       { name: 'id', source: 'items', required: true, notWith: 'all' },
-      { name: 'finding', input: 'text', required: true, notWith: 'all' },
+      {
+        name: 'finding', input: 'suggest', source: 'findings', dependsOn: 'id',
+        required: true, notWith: 'all',
+      },
     ],
     flags: [
       { name: 'clear', boolean: true },
@@ -360,12 +383,28 @@ export const PALETTE = [
     // `--pack` is `required`, which the CLI itself insists on: a bare
     // `mycontext init` is a legal command, but it is not the one this entry is
     // for, and the flag's own refusal says there is deliberately no default
-    // ("an import is a stranger's corpus arriving in yours"). `input: 'text'`
-    // and not a picker: the value is a path on disk outside this workspace, and
-    // every picker source here is corpus data.
+    // ("an import is a stranger's corpus arriving in yours").
+    //
+    // **It was `input: 'text'` with the reason *"the value is a path on disk
+    // outside this workspace, and every picker source here is corpus data"*,
+    // and that reason was right about a `<select>` and wrong about the field.**
+    // Owner ruling D11, 2026-09-06. `/api/packs` carries `PackRow.source` —
+    // *"the path as the importer typed it, recorded verbatim"* — for every pack
+    // this workspace has imported, so there IS derived data here: not "packs
+    // available on disk", which nothing in this product enumerates, but the
+    // artefact locations this corpus was actually founded and fed from. That is
+    // the honest domain and the aside beside the box says so in those words.
+    //
+    // **`suggest` and not a picker, and the difference is the whole point.**
+    // The list is a HINT, never the vocabulary: `--pack` takes any path, this
+    // corpus reports zero imports today (measured 2026-09-06: `/api/packs`
+    // answers `packs: []` here), and a `<select>` over an empty list is a
+    // control that has taken the box away and given nothing back. A box with no
+    // suggestions is exactly the box that was here before, which is why this
+    // cannot regress and why the empty case needed no ruling of its own.
     name: 'init', kind: 'write', base: ['mycontext', 'init'], boundary: false, runnable: false,
     args: [],
-    flags: [{ name: 'pack', input: 'text', required: true }],
+    flags: [{ name: 'pack', input: 'suggest', source: 'packs', required: true }],
   },
   { name: 'pin', kind: 'write', base: ['mycontext', 'pin'], boundary: true, runnable: true, args: [{ name: 'id', source: 'items', required: true }], flags: [yes] },
   { name: 'unpin', kind: 'write', base: ['mycontext', 'unpin'], boundary: true, runnable: true, args: [{ name: 'id', source: 'items', required: true }], flags: [yes] },
@@ -387,6 +426,31 @@ export const PALETTE = [
     // an `active` rule with no `--yes` and no prompt of any kind (§3, §7), so
     // there is no token for a human to withhold — `ungated` is how the screen
     // is told to say that instead of rendering a checkbox that does not exist.
+    // ── `key` IS THE ONE FIELD D11 ASKED FOR AND COULD NOT BUILD ───────────
+    //
+    // The ruling's own words were that these are *"the staged lesson's own
+    // keys — already fetched for the `id` picker sitting next to it, so the
+    // data is on the page already"*. Measured 2026-09-06: neither half is
+    // true. `id` here is `input: 'text'` — there is no picker sitting next to
+    // it — and NO endpoint in this server carries a staged lesson at all. Five
+    // staging files exist on this corpus (`.my_context/.staging/*.json`, each
+    // `{ lessonId, candidates: [{ key, candidate }] }`) and nothing serves
+    // them.
+    //
+    // **The obstacle is not an oversight, it is the read/write boundary.**
+    // `listStaging` lives in `src/lesson/derive.ts`, which value-imports
+    // `createItem` from `core/mutate.ts`. `src/ui/read-model.ts` already
+    // refused the same read for the same reason, about `st.staged` on the
+    // status screen: *"serving `st.staged` would put the mutation surface into
+    // this server's runtime import graph for the first time. That is a decision
+    // about the boundary §0.5 is the owner's ruling on, not a field to add on
+    // the way past."* `test/ui/no-writes.test.ts` is the gate that means it.
+    //
+    // So the box stays, and the question of whether the read half of
+    // `derive.ts` may be split out into a module the UI can import is filed as
+    // an open question rather than answered by a lane. Nothing here is undone
+    // when it is answered: `input: 'suggest', source: 'lessonKeys',
+    // dependsOn: 'id'` is the whole change, exactly as `finding` above.
     name: 'lesson-accept', kind: 'write', base: ['mycontext', 'lesson-accept'],
     boundary: true, runnable: true, ungated: true,
     args: [{ name: 'id', input: 'text', required: true }, { name: 'key', input: 'text', required: true }],
@@ -409,6 +473,9 @@ export const PALETTE = [
     // the entry that separates them: it is the first, not the second. The
     // stronger confirm shows a field-by-field diff of what changes, and there
     // are no fields here to show.
+    // `key` is a box here for the reason written out on `lesson-accept` above:
+    // the staged candidates it would offer are behind `derive.ts`'s import of
+    // `core/mutate.ts`, and nothing serves them.
     name: 'lesson-discard', kind: 'write', base: ['mycontext', 'lesson-discard'], boundary: false, runnable: true,
     args: [{ name: 'id', input: 'text', required: true }, { name: 'key', input: 'text', required: true }],
     flags: [],

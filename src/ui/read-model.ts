@@ -62,7 +62,7 @@
  * not this module — and it is the difference between "no file changes" and "no
  * file appears", which Task 13 has to state rather than discover.
  */
-import { readFileSync, statSync } from 'node:fs';
+import { readFileSync, realpathSync, statSync } from 'node:fs';
 import path from 'node:path';
 import { injection, type InjectionVerdict } from '../cli/commands/injection.ts';
 import type { AuditRecord } from '../core/audit.ts';
@@ -107,6 +107,9 @@ import {
   type JsonlFileState, type SeenLine, type SeenState,
 } from '../core/seen-file.ts';
 import { Store } from '../core/store.ts';
+// The frontmatter fence, split once and shared — see `splitFrontmatter` for
+// why the corpus file viewer needs the same two halves `parseItem` needs.
+import { splitFrontmatter } from '../core/item.ts';
 // The SAME reader `ui/watch-model.ts` opens a statusline sample with, bound
 // here for the one question `apiSessions` asks of it: does this session have a
 // sample at all. A second `existsSync` on a path this module spelled itself
@@ -122,7 +125,9 @@ import { searchableRelationTypes } from '../core/search.ts';
 // The one authority for which statuses count as retired. Imported, then served
 // on `/api/items` — see `ItemsBody.retiredStatuses`.
 import { RETIRED_STATUSES } from '../core/select.ts';
-import { isServableDocPath, listRepoFiles, runChecks, type Finding } from '../doctor/checks.ts';
+import {
+  isCorpusFilePath, isServableDocPath, listRepoFiles, runChecks, type Finding,
+} from '../doctor/checks.ts';
 import { helpTopic, HELP_TOPICS } from '../help/index.ts';
 import { loadTutorialManifest, type TutorialManifestEntry, type TutorialTier } from '../core/tutorial-manifest.ts';
 import type { Budgets, Config } from '../core/config.ts';
@@ -3865,5 +3870,280 @@ export function apiDoc(ws: Workspace, url: URL, params: { id: string }): JsonRes
   }
   const { absPath: _absPath, ...rest } = found;
   const body: DocBody = { ...rest, markdown };
+  return { status: 200, body };
+}
+
+/* ══ THE CORPUS FILE BROWSER ═══════════════════════════════════════════════
+ *
+ * `TASK-the-library-browses-the-corpus-files-and-a-file-opens`, owner
+ * requirement 2026-09-06, and the boundary ruling of the same day recorded as
+ * `DEC-the-ui-serves-the-corpus-through-its-own-route-rather-than`.
+ *
+ * ── THE QUESTION THESE TWO ROUTES ANSWER, AND THE ONE THEY DO NOT ─────────
+ *
+ * **"What is actually written in that file."** `/api/item/:id` already answers
+ * a different question — what the INDEX holds about an item, which is the
+ * shape `aside#pane` draws: summary, scope, tier, body, provenance, injection
+ * and usage, every field already parsed and every projection already applied.
+ * These two routes answer the question the index cannot: the Markdown on disk,
+ * frontmatter and all, as a person wrote it. Two artefacts, two questions; a
+ * reader comparing what an item SAYS with what its file CONTAINS is the case
+ * neither one alone can serve.
+ *
+ * ── WHY THIS IS A SECOND ROUTE AND NOT A WIDER `/api/doc` ────────────────
+ *
+ * The owner ruled the corpus reachable on 2026-09-06. The shape is a separate
+ * route, and three measurements rather than a preference decided it:
+ *
+ *   1. **Widening `isServableDocPath` would have served nothing.**
+ *      `buildDocManifest` sources its paths from `coverageFiles` ->
+ *      `listRepoFiles`, which drops every path with a `.my_context` segment
+ *      (`SKIP_DIRS`, deliberately, since 2026-09-04). The predicate would have
+ *      been asked about no corpus path, ever, and the feature would have
+ *      shipped serving nothing while looking done.
+ *   2. **The roster is keyed differently.** A document id is a REPOSITORY-
+ *      relative path; a corpus file id is WORKSPACE-relative. One manifest
+ *      holding both would carry two rootings under one key space, which is the
+ *      kind of ambiguity that only ever shows up as the wrong file.
+ *   3. **The cost is not the same cost.** `buildDocManifest` READS every file
+ *      it lists, on every request, to derive headings and stat a Hebrew
+ *      mirror: 190 files today. Folding 950 item files into it would make
+ *      1,140 reads and 1,140 stats the price of drawing the Library's README
+ *      row. `apiCorpusList` reads NO file at all — the roster is one indexed
+ *      SQL column — and `apiCorpusFile` reads exactly the one file asked for.
+ *
+ * ── THE SECURITY ARGUMENT, IN FULL ───────────────────────────────────────
+ *
+ * **The roster is the INDEX, not a directory walk.** `items.file_path` for the
+ * PROJECT layer is what the corpus is; nothing enumerates the filesystem here,
+ * so there is no walk to escape from. The `layer = 'project'` clause is
+ * load-bearing rather than tidy: a GLOBAL item's `file_path` is relative to
+ * `globalRoot`, which is the user's home workspace and not this repository at
+ * all, so serving one would hand out a file from outside the project under an
+ * id that looks repo-local.
+ *
+ * **An id is a key, never a path.** `apiCorpusFile` looks its id up in that
+ * roster and refuses anything not in it — the same argument `apiDoc` makes,
+ * and the reason `..`, an absolute path, a percent-encoded traversal and a
+ * Windows-separator path are all simply ABSENT from the key space rather than
+ * defended against one spelling at a time.
+ *
+ * **`isCorpusFilePath` guards the row, not the request.** The index is a
+ * SQLite file some other process wrote. A row claiming
+ * `file_path: ../../../.ssh/id_rsa` would otherwise become a servable key
+ * purely by being in the table, so every path is put through the predicate on
+ * the way INTO the roster. See its own docblock in `doctor/checks.ts`.
+ *
+ * **And the realpath is verified before the read.** The two guards above are
+ * about the id; this one is about the FILE. A symlink at
+ * `items/note/NOTE-x.md` pointing anywhere outside `items/` is a legal entry
+ * in this index — `rebuild`'s walk follows symlinks — so the resolved target
+ * is required to sit under the resolved `items/` directory, and a file that
+ * escapes is refused with a message saying it escaped rather than pretending
+ * it is missing.
+ *
+ * **Only Markdown, and the whole of it.** `isCorpusFilePath` admits `.md`
+ * under `items/` and nothing else, so `state/` (the index and the audit
+ * databases) and `config.json` are outside the roster by construction.
+ *
+ * ── WHAT IS NOW REACHABLE THAT WAS NOT ───────────────────────────────────
+ *
+ * Every `.md` file under `.my_context/items/` that this project's own index
+ * holds — 950 on this repository on 2026-09-06 — read by a browser that
+ * already holds the session token. Nothing else in `.my_context/` becomes
+ * reachable: not `config.json`, not `state/`, not `.audit/`. Nothing outside
+ * `.my_context/` changes at all; `isServableDocPath` is untouched and
+ * `/api/doc` serves the same documents it served yesterday.
+ *
+ * The honest residual, said out loud rather than left to be discovered: an
+ * item's Markdown is now readable in a browser tab by anyone holding the UI
+ * token, and item bodies are where this project writes its most detailed
+ * reasoning. That is what the owner asked for, and it is the same corpus
+ * `/api/items`, `/api/item/:id`, `/api/render` and `/api/search` already serve
+ * to the same holder of the same token — the CONTENT was already reachable;
+ * what is new is that it is now reachable AS THE FILE, frontmatter included.
+ */
+
+/** How many corpus files one roster carries before it is cut and says so —
+ *  the same bound `COVERAGE_FILE_LIMIT` sets on the repository walk, for the
+ *  same reason: a corpus large enough to reach it gets a disclosure rather
+ *  than a silently short list (`INV-nothing-is-dropped-silently`). */
+export const CORPUS_FILE_LIMIT = 20_000;
+
+/** `GET /api/corpus`' body. */
+export interface CorpusListBody {
+  /** What the tree's root is called — the workspace directory's own name,
+   *  read off `projectRoot` rather than written down, so a workspace found at
+   *  `.my-context` is not drawn under a name it does not have. */
+  root: string;
+  /** Corpus-root-relative POSIX paths, sorted, one per servable file. */
+  files: string[];
+  /** How many project-layer rows the index held BEFORE `isCorpusFilePath`
+   *  filtered them. `indexed - files.length` is what the boundary refused,
+   *  and the Library states it rather than letting the difference vanish. */
+  indexed: number;
+  /** The roster hit `CORPUS_FILE_LIMIT` and is short. */
+  truncated: boolean;
+}
+
+/** `GET /api/corpus/:id`' body. */
+export interface CorpusFileBody {
+  /** The id this was asked for — corpus-root-relative. */
+  id: string;
+  /** Where the file lives from the workspace's point of view, which is what
+   *  the document page's breadcrumb shows. */
+  path: string;
+  /** The raw `---` block, WITHOUT its fences, or `null` where the file has
+   *  none. Carried apart from the body because YAML pushed through a Markdown
+   *  renderer is not a rendering of this file — see `splitFrontmatter`. */
+  frontmatter: string | null;
+  /** Everything after the frontmatter fence, as Markdown. */
+  markdown: string;
+  /** The whole file's size in bytes, frontmatter included — the one number
+   *  that says the two halves above are the whole of it. */
+  bytes: number;
+}
+
+/**
+ * Every corpus file this server will serve, off the index and off nothing
+ * else. Rebuilt per request rather than cached, for `buildDocManifest`'s own
+ * reason: a roster rebuilt every time is a roster that can never itself go
+ * stale.
+ */
+function corpusRoster(
+  ws: Workspace,
+): { files: string[]; roster: Set<string>; indexed: number; truncated: boolean } {
+  if (ws.projectRoot === null) {
+    return { files: [], roster: new Set(), indexed: 0, truncated: false };
+  }
+  return withStores(ws, (store) => {
+    const rows = store.raw(
+      "SELECT file_path FROM items WHERE layer = 'project' ORDER BY file_path",
+    );
+    const roster = new Set<string>();
+    for (const row of rows) {
+      if (roster.size >= CORPUS_FILE_LIMIT) break;
+      const rel = row['file_path'];
+      if (typeof rel !== 'string') continue;
+      if (!isCorpusFilePath(rel)) continue;
+      roster.add(rel);
+    }
+    return {
+      files: [...roster].sort(),
+      roster,
+      indexed: rows.length,
+      truncated: rows.length > CORPUS_FILE_LIMIT,
+    };
+  });
+}
+
+/**
+ * `GET /api/corpus` — the roster the file tree is drawn from, with no file
+ * content at all. `GET /api/corpus/:id` below is where one file's Markdown is
+ * fetched, once a reader has picked it.
+ *
+ * No `limit`/`offset` pair, unlike `/api/coverage`: this answer is one string
+ * per file (~52 kB for 950 of them) and the tree needs the WHOLE shape to say
+ * how many files sit under a folder before that folder is opened. Paging it
+ * would make "how many files are under `items/task/`" a question no page of
+ * the answer could settle.
+ */
+export function apiCorpusList(ws: Workspace, url: URL): JsonResult {
+  const bad = unknownParams(url, []);
+  if (bad) return badRequest(bad);
+  const { files, indexed, truncated } = corpusRoster(ws);
+  const body: CorpusListBody = {
+    root: ws.projectRoot === null ? '' : path.basename(ws.projectRoot),
+    files,
+    indexed,
+    truncated,
+  };
+  return { status: 200, body };
+}
+
+/**
+ * `GET /api/corpus/:id` — one corpus file, split into its frontmatter and its
+ * body, and nothing interpreted beyond that split.
+ *
+ * The refusal NAMES what was refused and how many files the roster holds — the
+ * shape `apiDoc` and `apiHelp` already take — and the one refusal that is NOT
+ * a plain "no such file" is the symlink escape, which says so, because a file
+ * that resolves outside the corpus is a fact about the corpus rather than a
+ * missing id.
+ */
+export function apiCorpusFile(ws: Workspace, url: URL, params: { id: string }): JsonResult {
+  const bad = unknownParams(url, []);
+  if (bad) return badRequest(bad);
+  const { roster } = corpusRoster(ws);
+  const notFound = (): JsonResult => ({
+    status: 404,
+    body: {
+      error: `no corpus file "${params.id}" — ${roster.size} file(s) in this corpus; list them ` +
+        'at GET /api/corpus. Nothing outside that roster is ever read: the id is looked up as a ' +
+        'key, never joined onto a path.',
+    },
+  });
+  const projectRoot = ws.projectRoot;
+  if (projectRoot === null) return notFound();
+  if (!roster.has(params.id)) return notFound();
+
+  // The id came out of the roster a line ago, so this join can only produce a
+  // path under the workspace. The realpath check below is about the FILE the
+  // path lands on, which the id cannot speak for: `rebuild`'s walk follows
+  // symlinks, so a symlinked item is a legal member of this corpus and its
+  // target is the thing that has to be inside it.
+  const absPath = path.join(projectRoot, ...params.id.split('/'));
+  const itemsDir = path.join(projectRoot, 'items');
+  let real: string;
+  let realItems: string;
+  try {
+    realItems = realpathSync(itemsDir);
+    real = realpathSync(absPath);
+  } catch (err) {
+    return {
+      status: 404,
+      body: {
+        error: `"${params.id}" is in this corpus's index but its file could not be resolved: ` +
+          `${err instanceof Error ? err.message : String(err)}`,
+      },
+    };
+  }
+  if (real !== realItems && !real.startsWith(realItems + path.sep)) {
+    return {
+      status: 404,
+      body: {
+        error: `"${params.id}" is in this corpus's index but resolves outside the corpus's own ` +
+          'items directory — a symlink pointing out of the workspace. It is refused rather than ' +
+          'read: this route serves the corpus, and a file that is not in it is not one of its ' +
+          'files however it came to be listed.',
+      },
+    };
+  }
+
+  let text: string;
+  try {
+    text = readFileSync(real, 'utf8');
+  } catch (err) {
+    return {
+      status: 404,
+      body: {
+        error: `"${params.id}" is in this corpus's index but its file could not be read: ` +
+          `${err instanceof Error ? err.message : String(err)}`,
+      },
+    };
+  }
+  const split = splitFrontmatter(text);
+  const body: CorpusFileBody = {
+    id: params.id,
+    path: `${path.basename(projectRoot)}/${params.id}`,
+    // A file with no fence is served WHOLE as the body rather than refused.
+    // `parseItem` refuses it — it cannot make an item out of it — but this
+    // route is not making an item, it is showing a file, and the one file in
+    // a corpus that fails to parse is precisely the one somebody needs to
+    // look at.
+    frontmatter: split === null ? null : split.frontmatter,
+    markdown: split === null ? text.replace(/\r\n?/g, '\n') : split.body,
+    bytes: Buffer.byteLength(text, 'utf8'),
+  };
   return { status: 200, body };
 }

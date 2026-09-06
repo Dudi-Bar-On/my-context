@@ -70,6 +70,16 @@ const ALLOWED_NONZERO = new Set([
   // every one of which lands synchronously, before a socket is bound — are
   // covered in test/ui/open.test.ts.
   'ui',
+  // `handover` is registered and has no F2 behaviour to pin, for two reasons
+  // that are each sufficient. It never opens the index — it reads the config,
+  // the status-line tee, the audit log and one file under `state/`, and touches
+  // no item — so there is no rebuild in this call whose load errors it could
+  // report or swallow, which is what F2 is about. And in a workspace `project()`
+  // has just created there IS no handover configured, so its only possible
+  // answer is the `off` refusal, and a refusal that exited 0 would be the
+  // defect. Its own answers are covered in test/cli/handover-ask.test.ts, which
+  // exercises every verdict against a temporary root.
+  'handover',
 ]);
 
 function project(): string {

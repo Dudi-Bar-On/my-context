@@ -92,10 +92,11 @@ import { registerProcedureRoutes } from './proc-model.ts';
 import { readGitInfo } from './git-info.ts';
 import { IDLE_MS, IdleMonitor } from './idle.ts';
 import {
-  apiCoverage, apiDecay, apiDoc, apiDocList, apiDoctor, apiGraph, apiHelp, apiInjected, apiItem,
-  apiItems, apiRender, apiSelect, apiSessions, apiSimulate, apiSimulateSweep, apiStatus, apiTags,
-  apiTutorials, apiTutorialDoc,
+  apiCorpusFile, apiCorpusList, apiCoverage, apiDecay, apiDoc, apiDocList, apiDoctor, apiGraph,
+  apiHelp, apiInjected, apiItem, apiItems, apiRender, apiSelect, apiSessions, apiSimulate,
+  apiSimulateSweep, apiStatus, apiTags, apiTutorials, apiTutorialDoc,
 } from './read-model.ts';
+import { registerCliHelpRoutes } from './read-model-cli-help.ts';
 import { registerFlagRoutes } from './read-model-flags.ts';
 import { registerConfigRoutes } from './read-model-config.ts';
 import { registerWorkRoutes } from './read-model-work.ts';
@@ -546,6 +547,20 @@ export function registerReadRoutes(): void {
     kind: 'json',
     handle: (ctx) => apiDoc(ctx.ws, ctx.url, { id: ctx.params['id'] ?? '' }),
   });
+  // The CORPUS file browser — `library/2`, and the owner's served-path ruling
+  // of 2026-09-06 recorded as `DEC-the-ui-serves-the-corpus-through-its-own-
+  // route-rather-than-by`. A SECOND pair beside `/api/doc` rather than a wider
+  // version of it: these serve `.my_context/items/**` off the INDEX's own
+  // `file_path` column, rooted at the workspace, while `/api/doc` serves
+  // `docs/`, `reports/` and `README.md` off a repository walk, rooted at the
+  // repository. Two roots, two rosters, two questions — see the read model's
+  // own section header for why folding them into one manifest would have
+  // served nothing and cost 1,140 file reads a request.
+  registerRoute('GET', '/api/corpus', json(apiCorpusList));
+  registerRoute('GET', '/api/corpus/:id', {
+    kind: 'json',
+    handle: (ctx) => apiCorpusFile(ctx.ws, ctx.url, { id: ctx.params['id'] ?? '' }),
+  });
 
   // Plan 2's Work read model, registered INSIDE this guarded block rather than
   // beside the call to it in `startUiServer`. Two reasons, and both are
@@ -567,6 +582,13 @@ export function registerReadRoutes(): void {
   // reasons as the two calls above for registering it here rather than beside
   // the server start.
   registerFlagRoutes();
+  // plan:library seq:1. The same two tables again, plus the help topics, the
+  // MCP tool schemas and the committed slash-command files — served SUBJECT BY
+  // SUBJECT rather than all at once, because the Library's picker asks about
+  // one command at a time and a screen that fetched all four surfaces to draw
+  // one row would be paying for 43 commands to show `mycontext add`. Registered
+  // here for the same two reasons as the calls above.
+  registerCliHelpRoutes();
   // The injection preview's When column: `audit_item.role` joined to
   // `audit.at`, one query, its own route so that a projection which is behind
   // costs the preview its timestamps and never its selection. Registered here

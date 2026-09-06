@@ -47,8 +47,9 @@ import path from 'node:path';
 import { runCli } from '../../src/cli/index.ts';
 import { COMMANDS } from '../../src/cli/commands/registry.ts';
 import {
-  ARTEFACT_FORMATS, AUDIT_ROLES, COMMAND_FLAGS, DETAIL_FLAGS, FLAG_DECLARATIONS,
-  RULE_DIRECTIVES,
+  ARTEFACT_FORMATS, AUDIT_ROLES, COMMAND_FLAGS, DETAIL_FLAGS, DYNAMIC_FLAG_COMMANDS,
+  FLAGLESS_COMMANDS, FLAG_DECLARATIONS, RULE_DIRECTIVES, SUBCOMMAND_FLAGS,
+  SUBCOMMAND_FLAG_DECLARATIONS,
 } from '../../src/core/command-flags.ts';
 import { AUDIT_KINDS, AUDIT_OPS } from '../../src/core/audit.ts';
 import { LINK_DIRECTIONS } from '../../src/core/search.ts';
@@ -123,6 +124,9 @@ const BORN_HERE: Record<string, string> = {
   link: 'cli/commands/link.ts — the command itself is newer than this module (owner '
     + 'instruction, 2026-09-04, "support relation using the cli too"; `link_items` had no CLI '
     + 'counterpart before it), so its spec was authored here and has never lived anywhere else.',
+  handover: 'cli/commands/handover.ts — the command itself is newer than this module (owner '
+    + 'ruling 2026-09-06, the handover asked for on demand from three surfaces), so its spec '
+    + 'was authored here and has never lived anywhere else.',
 };
 
 /**
@@ -768,6 +772,280 @@ test('a declared vocabulary is the one the running CLI enforces, member for memb
       'a declared vocabulary and the vocabulary the command enforces are not the same set. A ' +
       'select built from this declaration would offer a value the CLI refuses, or hide one it ' +
       'takes.',
+    );
+  } finally { removeTree(dir); }
+});
+
+// ─── plan:library seq:1 — the other nine, and the partition that holds ──────
+
+/**
+ * **What this section adds, and the question it exists to close.**
+ *
+ * `TASK-the-library-explains-the-command-line-every-switch-parameter` asks for
+ * every switch of every command on a screen, and it gates itself on a
+ * measurement: 34 of the 43 registered commands have an entry in
+ * `COMMAND_FLAGS`, and until it is known whether the other nine take no flags
+ * or were simply never declared, "every switch explained" is not a claim
+ * anybody can make.
+ *
+ * The header's inventory (above) already refused a command that was in neither
+ * the map nor the paragraph, so no command was ever missing outright. What it
+ * did not do is say WHICH KIND of absence each one is, in a form anything but
+ * a reader could use. That is now four disjoint records, and this section
+ * holds them to the same standard the map is held to:
+ *
+ *   `COMMAND_FLAGS`         34 — a flat spec, one command one flag set
+ *   `SUBCOMMAND_FLAGS`       5 — keyed by subcommand, lifted here
+ *   `FLAGLESS_COMMANDS`      3 — take no flag at all, PROVED against the parser
+ *   `DYNAMIC_FLAG_COMMANDS`  1 — computed per workspace; `edit`, and only `edit`
+ *                          ─────
+ *                             43
+ *
+ * The partition is the assertion that matters. A count can be right while the
+ * enumeration is short, and four records can each be individually true while
+ * a command falls between them — so they are required to cover the registry
+ * exactly, with no overlap and nothing left over. A command that arrives and
+ * lands in none of the four fails here, which is the same guarantee the
+ * header's inventory gives and the reason this is a test rather than a
+ * paragraph.
+ */
+test('the four flag-surface records partition the registry exactly', () => {
+  const groups: [string, string[]][] = [
+    ['COMMAND_FLAGS', Object.keys(COMMAND_FLAGS)],
+    ['SUBCOMMAND_FLAGS', Object.keys(SUBCOMMAND_FLAGS)],
+    ['FLAGLESS_COMMANDS', FLAGLESS_COMMANDS],
+    ['DYNAMIC_FLAG_COMMANDS', DYNAMIC_FLAG_COMMANDS],
+  ];
+  const all = groups.flatMap(([, names]) => names);
+  assert.equal(
+    new Set(all).size, all.length,
+    'a command is named in two of the four flag-surface records. They make incompatible ' +
+    'claims — "has a flat spec", "is keyed by subcommand", "takes no flags" and "is computed ' +
+    'per workspace" cannot both be true of one command, and a screen reading them in a ' +
+    'different order would render a different answer.',
+  );
+  assert.deepEqual(
+    [...all].sort(), [...COMMANDS.keys()].sort(),
+    'the four records and the registry disagree about what commands exist. Every registered ' +
+    'command belongs to exactly one of them: that is what lets a read surface answer "what ' +
+    'does this command take" for all 43 without importing src/cli/index.ts.',
+  );
+});
+
+test('every subcommand spec keeps `values` a subset of `allowed`', () => {
+  for (const [name, subcommands] of Object.entries(SUBCOMMAND_FLAGS)) {
+    for (const [sub, spec] of Object.entries(subcommands)) {
+      const stray = spec.values.filter((v) => !spec.allowed.includes(v));
+      assert.deepEqual(
+        stray, [],
+        `${name} ${sub}: --${stray.join(', --')} takes a value and is not accepted. ` +
+        '`unknownFlag` and `positionals` would then disagree about which token is a value.',
+      );
+    }
+  }
+});
+
+/**
+ * `statusline`'s two subcommands are written as two records holding the same
+ * thing, and `statusline-install.ts` destructures ONE of them for the pair it
+ * hands `refuseUnknownFlag`. That is only sound while they agree, and "they
+ * obviously agree, look at them" is how a copy starts drifting — so it is
+ * asserted rather than looked at.
+ */
+test('statusline install and uninstall are handed the same accepted set', () => {
+  assert.deepEqual(
+    SUBCOMMAND_FLAGS['statusline']['install'],
+    SUBCOMMAND_FLAGS['statusline']['uninstall'],
+    'statusline install and uninstall no longer accept the same flags, and the module reads ' +
+    'the `install` record for both. Give the command a real per-subcommand parse before ' +
+    'letting these two differ.',
+  );
+});
+
+/**
+ * The declaration layer over the lifted specs, held exactly as
+ * `FLAG_DECLARATIONS` is held over `COMMAND_FLAGS`: both directions, over the
+ * UNION of every subcommand's accepted set.
+ *
+ * A flag the parser takes and nothing describes is the state the owner named
+ * on 2026-08-24 — a user who "does not know what is the correct format what is
+ * legal and what is not" — and it is the state a Library screen would put back
+ * on the page as a bare row with an empty explanation column. A note for a
+ * flag no subcommand accepts is the opposite defect and the more expensive
+ * one: it documents syntax that comes back `unknown option`.
+ */
+test('every subcommand flag is declared, and every declaration names a real flag', () => {
+  const problems: string[] = [];
+  for (const [name, subcommands] of Object.entries(SUBCOMMAND_FLAGS)) {
+    const declared = SUBCOMMAND_FLAG_DECLARATIONS[name];
+    if (declared === undefined) {
+      problems.push(`${name}: has lifted specs and no declarations at all`);
+      continue;
+    }
+    const accepted = new Set(Object.values(subcommands).flatMap((spec) => spec.allowed));
+    for (const flag of accepted) {
+      if (!Object.hasOwn(declared, flag)) problems.push(`${name} --${flag}: accepted, undeclared`);
+    }
+    for (const flag of Object.keys(declared)) {
+      if (!accepted.has(flag)) problems.push(`${name} --${flag}: declared, refused`);
+    }
+  }
+  for (const name of Object.keys(SUBCOMMAND_FLAG_DECLARATIONS)) {
+    if (!Object.hasOwn(SUBCOMMAND_FLAGS, name)) {
+      problems.push(`${name}: has declarations and no lifted spec`);
+    }
+  }
+  assert.deepEqual(
+    problems, [],
+    'SUBCOMMAND_FLAGS and SUBCOMMAND_FLAG_DECLARATIONS disagree. They are one key space with ' +
+    'two halves — what the parser takes, and what a person reads about it — and a screen ' +
+    'built on them renders whichever half is wrong.',
+  );
+});
+
+/**
+ * A value-taking flag has to say what may go in it, or the control it drives
+ * is a text box wearing a description. The same assertion `FLAG_DECLARATIONS`
+ * carries, restated over the lifted half rather than assumed to have travelled
+ * with it.
+ */
+test('a subcommand flag that takes a value declares its values OR a format and an example', () => {
+  const problems: string[] = [];
+  for (const [name, subcommands] of Object.entries(SUBCOMMAND_FLAGS)) {
+    const takesValue = new Set(Object.values(subcommands).flatMap((spec) => spec.values));
+    for (const flag of takesValue) {
+      const decl = SUBCOMMAND_FLAG_DECLARATIONS[name]?.[flag];
+      if (decl === undefined) continue; // named by the coverage test above
+      const closed = decl.values !== undefined && decl.values.length > 0;
+      const open = decl.format !== undefined && decl.example !== undefined;
+      if (!closed && !open) problems.push(`${name} --${flag}`);
+    }
+  }
+  assert.deepEqual(
+    problems, [],
+    'these flags consume the next token and declare neither a legal set nor a format with an ' +
+    'example, so nothing can tell a user what to type into them.',
+  );
+});
+
+/**
+ * **The lifted subcommand specs, against the real parser.**
+ *
+ * Same probe as assertion 1 above and for the same reason — a hand-copied list
+ * that agrees with nothing is the defect being removed — with one difference
+ * that is forced by the shape: the subcommand is part of the command line, so
+ * every probe is `[command, subcommand, --flag=x, SENTINEL]`.
+ *
+ * The sentinel is still what keeps this affordable. `review promote` and `pack
+ * import` do real work; the unknown-flag check reports the FIRST name it does
+ * not recognise, so an accepted flag is followed by a refusal on the sentinel
+ * and no command body is ever entered.
+ */
+test('every lifted subcommand flag is one the real CLI accepts, and a sentinel is refused', () => {
+  const dir = mkdtempSync(path.join(tmpdir(), 'myctx-subflags-'));
+  try {
+    assert.equal(runCli(['init'], dir, () => {}), 0, 'the probe workspace did not initialize');
+    const run = (argv: string[]): string => {
+      const lines: string[] = [];
+      try { runCli(argv, dir, (s) => lines.push(s)); }
+      catch (err) { lines.push(`THREW: ${(err as Error).message}`); }
+      return lines.join('\n');
+    };
+
+    const problems: string[] = [];
+    for (const [name, subcommands] of Object.entries(SUBCOMMAND_FLAGS)) {
+      for (const [sub, spec] of Object.entries(subcommands)) {
+        if (!refuses(run([name, sub, SENTINEL]), SENTINEL)) {
+          problems.push(`${name} ${sub}: does not refuse the sentinel, so this probe is blind`);
+          continue;
+        }
+        for (const flag of spec.allowed) {
+          const answer = run([name, sub, `--${flag}=x`, SENTINEL]);
+          if (refuses(answer, `--${flag}`)) {
+            problems.push(`${name} ${sub}: the lifted spec advertises --${flag}, refused by the CLI`);
+          } else if (!refuses(answer, SENTINEL)) {
+            problems.push(`${name} ${sub}: --${flag} probe reached neither refusal — unreadable`);
+          }
+        }
+      }
+    }
+    assert.deepEqual(
+      problems, [],
+      'a lifted subcommand spec and the real parser disagree. The spec is what the command ' +
+      'itself now parses with, so a disagreement here means the move changed behaviour.',
+    );
+  } finally { removeTree(dir); }
+});
+
+/**
+ * **"Takes no flags" is a claim about the parser, so it is asked of the
+ * parser — and the answer, measured, is not the one the array's name suggests.**
+ *
+ * `FLAGLESS_COMMANDS` is the one record here that asserts an ABSENCE, and an
+ * absence written down is exactly the kind of fact that goes quietly false:
+ * the day `mycontext show` grows `--json`, nothing about the three names in
+ * that array changes and a Library screen goes on printing "this command takes
+ * no flags" over a flag it takes.
+ *
+ * So each of the three was probed with a sentinel flag (2026-09-06,
+ * `plan:library seq:1`), and **none of them refuses it as a flag**, because
+ * none of them calls `refuseUnknownFlag` at all. What they do instead splits
+ * two ways, and the split is the fact this record now carries:
+ *
+ *   - `show` and `help` take an OPERAND, and the sentinel lands in that slot.
+ *     Both then refuse it, in their own words — "no item with id
+ *     \"--zzz…\"", and the topic enum error. The refusal is real and a user
+ *     sees it; it is simply about the wrong thing.
+ *   - `rebuild` takes nothing at all, so the sentinel is **silently dropped**:
+ *     `mycontext rebuild --zzz-not-a-flag` prints "indexed N item(s)" and
+ *     exits 0. That is the exact shape `plan:builder seq:1c` removed from five
+ *     other commands — "a command with nothing to disagree with cannot be
+ *     checked" — and it survives here because `rebuild` was never in that
+ *     five. It is recorded rather than fixed: giving `rebuild` a parser is a
+ *     behaviour change, and this lane was told to close the measurement
+ *     question, not to widen the CLI.
+ *
+ * The disposition is asserted in BOTH directions. `rebuild` starting to refuse
+ * is as much a change as `show` starting to swallow, and either one makes what
+ * the Library screen says about these three wrong.
+ */
+const FLAGLESS_DISPOSITION: Record<string, 'operand' | 'swallowed'> = {
+  help: 'operand',
+  rebuild: 'swallowed',
+  show: 'operand',
+};
+
+test('the flagless commands dispose of an unknown flag exactly as recorded', () => {
+  assert.deepEqual(
+    Object.keys(FLAGLESS_DISPOSITION).sort(), [...FLAGLESS_COMMANDS].sort(),
+    'a command was added to or removed from FLAGLESS_COMMANDS without saying what it does '
+    + 'with a token it does not understand — which is the whole question this record answers.',
+  );
+  const dir = mkdtempSync(path.join(tmpdir(), 'myctx-noflags-'));
+  try {
+    assert.equal(runCli(['init'], dir, () => {}), 0, 'the probe workspace did not initialize');
+    const observed: Record<string, string> = {};
+    for (const name of FLAGLESS_COMMANDS) {
+      const lines: string[] = [];
+      let code = 0;
+      try { code = runCli([name, SENTINEL], dir, (s) => lines.push(s)); }
+      catch (err) { lines.push(`THREW: ${(err as Error).message}`); }
+      const text = lines.join('\n');
+      // Refusing it AS A FLAG would mean the command had grown a real parser,
+      // which is a third disposition and deliberately has no spelling here: it
+      // would mean the command belongs in a spec and not on this list.
+      assert.ok(
+        !refuses(text, SENTINEL),
+        `${name} now refuses an unknown FLAG. It has grown a flag surface, so it needs an `
+        + 'entry in COMMAND_FLAGS rather than a place on FLAGLESS_COMMANDS.',
+      );
+      observed[name] = text.includes(SENTINEL) && code !== 0 ? 'operand' : 'swallowed';
+    }
+    assert.deepEqual(
+      observed, FLAGLESS_DISPOSITION,
+      'one of the three commands that take no flags has changed what it does with a token it '
+      + 'does not understand. The Library screen states this per command, so a change here is '
+      + 'a change to what a reader is told.',
     );
   } finally { removeTree(dir); }
 });

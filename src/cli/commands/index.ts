@@ -11,6 +11,7 @@ import './doctor.ts';
 import './edit.ts';
 import './export.ts';
 import './focus.ts';
+import './handover.ts';
 import './inbox-promote.ts';
 import './ingest.ts';
 import './lesson.ts';

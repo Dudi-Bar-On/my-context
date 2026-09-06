@@ -198,6 +198,55 @@ export const EVERY_FILE = '**';
 const GLOB_DEBOUNCE_MS = 180;
 
 /**
+ * **The picker sources that are fetched WHEN A FIELD ASKS FOR THEM, and never
+ * on the way in** (owner ruling D11, 2026-09-06).
+ *
+ * The five reads in `render()` are paid by every visitor to this screen, and
+ * that is right for the five: `id`, `category`, the draft queue, the pending
+ * revisions and the two closed vocabularies are between them the pickers of
+ * most of the catalogue. These two are not.
+ *
+ * **`/api/doctor` is the reason this mechanism exists rather than a sixth
+ * await.** Measured on this repository 2026-09-06, three runs each, warm:
+ *
+ *     /api/config          2 / 2 / 1 ms
+ *     /api/meta           18 / 18 / 15 ms
+ *     /api/packs          18 / 17 / 15 ms
+ *     /api/review-queue   21 / 20 / 20 ms
+ *     /api/revisions      22 / 19 / 21 ms
+ *     /api/tags           47 / 40 / 38 ms
+ *     /api/items          74 / 47 / 54 ms
+ *     /api/doctor       1011 / 743 / 650 ms
+ *
+ * It runs the whole check suite — that is what it is — and it is 13-20x the
+ * next most expensive read on this screen. `ack` is one of twenty-seven
+ * entries. Paying the better part of a second to compose `mycontext list` is
+ * not a cost this screen may hide inside a `Promise.all`, and a slower corpus
+ * makes it worse rather than better.
+ *
+ * `/api/packs` is cheap and rides the same path anyway, because *"the reason
+ * this one is fetched early"* would then be a rule with one exception, and one
+ * exception is how a rule stops being read.
+ *
+ * ── AND "WHEN A FIELD ASKS" IS NOT "WHEN A FIELD IS DRAWN" ────────────────
+ *
+ * The first build of this fired on `build()`, which is worse than it sounds and
+ * was caught by the browser rather than by reasoning: `ack` is `PALETTE[0]` and
+ * therefore the def this screen ARRIVES on, so a read fetched when its control
+ * is drawn is a read every visitor to the Composer pays — the whole cost the
+ * paragraph above refuses, moved one function along and hidden.
+ *
+ * So the trigger is USE, and use has two unambiguous forms: the reader puts the
+ * cursor in the box, or the reader fills the field this one is narrowed by.
+ * Landing on `#/palette` and reading the argv chips is neither, and costs
+ * nothing.
+ */
+const LAZY = {
+  findings: { path: '/api/doctor', options: (body) => findingOptions(body) },
+  packs: { path: '/api/packs', options: (body) => packOptions(body) },
+};
+
+/**
  * **The two characters a double-quoted POSIX word still expands.**
  *
  * `quoteArg` wraps an unsafe value in `"…"` and escapes backslash and quote.
@@ -285,6 +334,114 @@ export function pickerOptions(spec, sources) {
 }
 
 /**
+ * The option list for one control **given what the rest of the form holds**.
+ *
+ * `pickerOptions` answers *what could this field ever offer*; this answers
+ * *what may it offer right now*, and the two differ for exactly one reason:
+ * `spec.dependsOn` names another field whose value narrows this one. `ack`'s
+ * `finding` is the case that needed it — `cmdAck` takes the codes doctor
+ * reports on THE CHOSEN ITEM as the vocabulary and refuses any other, so a list
+ * of every code this corpus reports anywhere would be a list whose majority the
+ * command will refuse. Measured 2026-09-06: 6 distinct codes across 55 items,
+ * and 1-2 on any one of them.
+ *
+ * **Empty and "not narrowed yet" are the same list and a different sentence.**
+ * With no dependency value there is nothing to narrow BY, and offering the
+ * unnarrowed list would be offering the wrong thing rather than nothing — so
+ * this returns `[]` and `paintSuggest` says which of the two it is drawing.
+ * That is `sourceLists`' own rule about an absent body, applied one level down:
+ * an empty list and a plausible-but-wrong one are not the same failure, and
+ * only the first is visible to the reader.
+ *
+ * A row carries its dependency under `item` — the same shape `revisions` uses
+ * to carry `revision` beside its value, and for the same reason: one list
+ * cannot be filtered by a fact it did not bring with it.
+ */
+export function narrowedOptions(spec, sources, values) {
+  const options = pickerOptions(spec, sources);
+  if (options === null) return null;
+  if (typeof spec.dependsOn !== 'string') return options;
+  const on = values[spec.dependsOn];
+  if (on === undefined || on === '') return [];
+  return options.filter((option) => option.item === on);
+}
+
+/**
+ * `/api/doctor`'s findings as `finding` options: one row per (item, code).
+ *
+ * **Three kinds of row are dropped, each for a reason the endpoint states
+ * about itself.** A row carrying `about` is *"a NOTE ABOUT A CHECK, not a
+ * finding about the corpus"* (`doctor/checks.ts`) — five of the sixty-one here
+ * — and `ack` has nothing to record against one. A row with no `item` is a
+ * finding about the workspace rather than about something `ack <id>` can name.
+ * And a repeat of one (item, code) pair is one acknowledgement, not two: the
+ * ruling is recorded per item per code, so two rows would offer the same
+ * command twice. Measured on this corpus: 61 findings, 5 notes, 56 on an item,
+ * 56 distinct pairs — so the de-duplication changes nothing today and is here
+ * because `runChecks` is free to emit two messages under one code tomorrow.
+ *
+ * **An acknowledged finding is still offered**, because the mark is not a
+ * filter — `--clear` withdraws a ruling and needs the same code the ruling was
+ * made under. The level rides along as the hint so the box can say which kind
+ * of thing is being settled without a second read.
+ */
+export function findingOptions(body) {
+  const findings = body !== null && body !== undefined && Array.isArray(body.findings)
+    ? body.findings : [];
+  const seen = new Set();
+  const out = [];
+  for (const finding of findings) {
+    if (finding === null || typeof finding !== 'object') continue;
+    if (typeof finding.about === 'string') continue;
+    if (typeof finding.item !== 'string' || finding.item === '') continue;
+    if (typeof finding.code !== 'string' || finding.code === '') continue;
+    const pair = `${finding.item} ${finding.code}`;
+    if (seen.has(pair)) continue;
+    seen.add(pair);
+    out.push({
+      value: finding.code,
+      label: `${finding.code} · ${finding.level}`,
+      hint: typeof finding.level === 'string' ? finding.level : '',
+      item: finding.item,
+    });
+  }
+  return out;
+}
+
+/**
+ * `/api/packs`' records as `init --pack` options: the artefact LOCATIONS this
+ * workspace has imported from, de-duplicated, in the order the records file
+ * them.
+ *
+ * `PackRow.source` and not `name`: `--pack` takes a path and a name is not one.
+ * The endpoint's own words for that field are *"the path as the importer typed
+ * it, recorded verbatim"*, which is exactly the string a second `init` would
+ * need. The name rides as the hint, because a reader choosing between two
+ * paths is choosing between two packs and the path alone may not say which.
+ *
+ * Two records CAN name one path — a pack re-imported after a change is two
+ * membership records — and that is one suggestion, not two.
+ */
+export function packOptions(body) {
+  const packs = body !== null && body !== undefined && Array.isArray(body.packs) ? body.packs : [];
+  const seen = new Set();
+  const out = [];
+  for (const pack of packs) {
+    if (pack === null || typeof pack !== 'object') continue;
+    if (typeof pack.source !== 'string' || pack.source === '') continue;
+    if (seen.has(pack.source)) continue;
+    seen.add(pack.source);
+    const name = typeof pack.name === 'string' ? pack.name : '';
+    out.push({
+      value: pack.source,
+      label: name === '' ? pack.source : `${pack.source} · ${name}`,
+      hint: name,
+    });
+  }
+  return out;
+}
+
+/**
  * The seven picker sources, from the five read bodies that carry them.
  *
  * **Three of them are CLOSED VOCABULARIES and not one of them is spelled here**
@@ -341,6 +498,17 @@ export function sourceLists(bodies) {
     topics: served(bodies.meta, 'helpTopics'),
     statuses: served(bodies.meta, 'statuses'),
     relations: served(bodies.items, 'relationTypes'),
+    // The two ON-DEMAND sources (owner ruling D11, 2026-09-06). They are built
+    // here so this function is still the one place a source list is spelled,
+    // and they are normally EMPTY here because their bodies are not among the
+    // five `render()` awaits — see `LAZY` below for why `/api/doctor` in
+    // particular cannot be a sixth: it answers in 650-1,011 ms on this corpus
+    // against 15-74 ms for every other read, because it runs the whole check
+    // suite, and no reader who is composing `mycontext list` should pay for it.
+    // `render()` assigns over these when the fetch a `suggest` control started
+    // actually lands.
+    findings: findingOptions(bodies.doctor),
+    packs: packOptions(bodies.packs),
   };
 }
 
@@ -519,12 +687,68 @@ function optionEl(value, label) {
 }
 
 /**
+ * The `id` of the `<datalist>` a `suggest` control reads, from the field's own
+ * name. One form is on screen at a time and `controlSpecs` cannot repeat a
+ * name within it — `commandFor` reads one values bag, so two fields of one name
+ * could not be composed at all — so this is unique by construction rather than
+ * by a counter.
+ */
+export function suggestListId(name) {
+  return `sugg-${name}`;
+}
+
+/**
  * The control for one arg or flag. A picker where the catalogue names a source
  * or a closed vocabulary, a checkbox for a boolean switch, a textarea for a
  * body, a text input otherwise — and `input.globin` for a `glob`, which is the
  * glob tester's own input rather than a second box saying the same thing.
+ *
+ * ── **`input: 'suggest'` IS A BOX WITH A LIST**, and it is the D11 answer to
+ * "picker or free text" (owner ruling 2026-09-06).
+ *
+ * `<input list>` + `<datalist>` rather than a `<select>` or a hand-written
+ * widget, and the three reasons are the three constraints the ruling set:
+ *
+ *   - **The escape hatch survives.** Every field that got one has a value the
+ *     command accepts and the list cannot know: `ack --clear` withdraws a
+ *     ruling whose code doctor no longer reports, and `init --pack` takes any
+ *     path on disk. A `<select>` would have composed a narrower command than
+ *     the CLI accepts. This is the `--tags` box's rule — *"the box is the
+ *     model; what the reader picks is written into the line they can also
+ *     type"* — reached by a control the browser draws instead of by a
+ *     checkbox list this file draws.
+ *   - **Keyboard and RTL are the browser's, not ours.** A `<div role=
+ *     "combobox">` owes arrow/Home/End/type-ahead, `aria-activedescendant`,
+ *     and a popup that opens on the correct side under `dir="rtl"`. This owes
+ *     none of them: it is an `<input>`, so it is in the tab order, and the
+ *     suggestion popup is UA chrome that already follows the document's
+ *     direction.
+ *   - **It cannot reproduce the width defect.** `label.small select` is capped
+ *     at 260px in `styles.css` because a select's min-content IS its
+ *     max-content — a 942-option picker opened the page to 3,902px. An
+ *     `<input>` has no such floor: its box is its box and the suggestions are
+ *     drawn in a popup outside the layout entirely.
+ *
+ * `.suggin` JOINS `.tagin`'s selector list in `styles.css` rather than getting
+ * a rule of its own. Its own rule says what that treatment is for — *"the other
+ * place this product takes a machine value by hand: mono, LTR and ISOLATED, so
+ * it reads left-to-right inside a Hebrew page"* — and a doctor code and a pack
+ * path are exactly that. One declaration differs and is overridden beside it:
+ * the width, because `label.small` is inline and a full-width control strands
+ * its own caption on the line above. That was found by looking at the rendered
+ * screen and not by reading the rule.
  */
 function controlFor(spec, sources, onChange) {
+  if (spec.input === 'suggest') {
+    const box = document.createElement('input');
+    box.className = 'suggin';
+    box.spellcheck = false;
+    box.autocomplete = 'off';
+    box.setAttribute('list', suggestListId(spec.name));
+    if (spec.required === true) box.required = true;
+    box.addEventListener('input', onChange);
+    return box;
+  }
   const options = pickerOptions(spec, sources);
   if (options !== null) {
     const select = document.createElement('select');
@@ -630,6 +854,24 @@ export async function render(root, ctx) {
    */
   let tagVocabulary = null;
   let tagVocabularyError = null;
+
+  /**
+   * What each `LAZY` source is doing right now: absent (nobody has asked),
+   * `'reading'`, `'ready'`, or the `Error` the read failed with.
+   *
+   * **Three states and not two, for `tagVocabulary`'s own reason**, one level
+   * along: "not asked yet", "asked and still outstanding" and "this corpus has
+   * none" are three different facts about an empty suggestion list, and a
+   * reader who cannot tell them apart cannot tell a slow server from a clean
+   * corpus. `paintSuggest` draws a different sentence for each.
+   *
+   * The fetch is started ONCE per source per visit to the screen and the
+   * answer is kept for the rest of it. A `<select>` rebuilt on every command
+   * switch is what the architecture review flagged as the cost that grows with
+   * the corpus; re-running a 650 ms check suite on every switch would be the
+   * same mistake with a bigger constant.
+   */
+  const lazyState = new Map();
 
   // --- the command picker, and the form the chosen def declares -------------
 
@@ -865,6 +1107,95 @@ export async function render(root, ctx) {
     return values;
   }
 
+  /* ── the suggestion lists behind the `suggest` boxes ───────────────────── */
+
+  /** One per `input: 'suggest'` control this form drew: its `<datalist>` and note. */
+  let suggestEntries = [];
+
+  /**
+   * Ask for a lazy source, once. Tolerant, like `/api/tags` and unlike the five
+   * fatal reads: a `suggest` box takes whatever is typed into it either way, so
+   * a refused read costs the reader the suggestions and says so — it must not
+   * cost them the command.
+   */
+  function startLazy(source) {
+    if (typeof source !== 'string' || LAZY[source] === undefined) return;
+    if (lazyState.has(source)) return;
+    lazyState.set(source, 'reading');
+    void (async () => {
+      try {
+        const body = await ctx.api(LAZY[source].path);
+        sources[source] = LAZY[source].options(body);
+        lazyState.set(source, 'ready');
+      } catch (error) {
+        sources[source] = [];
+        lazyState.set(source, error);
+      }
+      if (root.isConnected) paintSuggest();
+    })();
+  }
+
+  /**
+   * Refill every `<datalist>` on the form from the source as it stands now, and
+   * say in words what the reader is being offered.
+   *
+   * **The note is not decoration.** A `<datalist>` is invisible: an empty one
+   * and a full one look identical until the box is focused, so without a
+   * sentence beside it "nothing is offered" and "the read failed" and "pick the
+   * item first" are one silence. That is `pal.tagpickerr`/`pal.tagpicking`'s
+   * argument about the tag picker, and it is stronger here because the tag
+   * picker at least draws its own emptiness.
+   *
+   * Called from `recompose()`, which runs on every change to any control —
+   * including the `id` a `dependsOn` field is narrowed by, which is the whole
+   * reason it is refilled rather than built once in `build()`.
+   */
+  function paintSuggest(values) {
+    if (suggestEntries.length === 0) return;
+    const held = values === undefined ? currentValues() : values;
+    for (const entry of suggestEntries) {
+      const options = narrowedOptions(entry.spec, sources, held) ?? [];
+      // **Rebuilt only when the LIST changed, not on every keystroke.**
+      // `recompose()` runs on every `input` event, and this function runs from
+      // it; replacing the `<option>` children of a `<datalist>` whose popup is
+      // open is a repaint the reader sees under the cursor they are typing at.
+      // The signature is the values themselves rather than a length — a
+      // dependency change can swap one code for another without changing the
+      // count — and the join is safe because a doctor code and a pack path
+      // cannot contain a newline.
+      const drawn = options.map((option) => option.value).join('\n');
+      if (entry.drawn !== drawn) {
+        entry.drawn = drawn;
+        entry.list.replaceChildren(...options.map((option) => optionEl(option.value, option.hint ?? '')));
+      }
+      const note = (key, subs) => entry.note.replaceChildren(...ctx.t(key, subs));
+      // **The unanswered dependency is checked FIRST, before the read's own
+      // state**, because it is the only one of the six the reader can act on:
+      // "choose the id" is an instruction and "still reading" is an apology.
+      // It is also what keeps the fetch honest — with no id there is nothing to
+      // narrow by, so a `finding` list would be empty however the read went.
+      const on = entry.spec.dependsOn;
+      if (typeof on === 'string') {
+        if (held[on] === undefined || held[on] === '') { note('pal.suggneed', { field: on }); continue; }
+        // Filling the dependency IS asking for the list, and it is the ONLY
+        // ask this function makes. A field with no dependency has nothing to
+        // fill, so for it every paint would be an ask and the read would be
+        // eager again wearing a lazy function's name — which is exactly the
+        // defect the browser caught the first time. Its ask is the `focus`
+        // handler in `build()` and nothing else. Read AFTER the ask, so the
+        // paint that starts the fetch is the paint that says "reading" rather
+        // than one repaint behind it.
+        startLazy(entry.spec.source);
+      }
+      const state = lazyState.get(entry.spec.source);
+      if (state instanceof Error) { note('pal.suggerr'); continue; }
+      if (state === 'reading') { note('pal.suggreading'); continue; }
+      if (state === undefined) { note('pal.suggidle'); continue; }
+      if (options.length > 0) { note('pal.sugg', { n: num(options.length) }); continue; }
+      note('pal.suggn');
+    }
+  }
+
   function recompose() {
     const def = PALETTE.find((candidate) => candidate.name === picker.value);
     const values = currentValues();
@@ -876,6 +1207,12 @@ export async function render(root, ctx) {
     // would leave a hand-typed tag unticked until the command happened to
     // compose, which is the disagreement `markFocusPicks` exists to rule out.
     markTagPicks();
+
+    // Same paragraph, same reason, for the suggestion lists: `ack`'s `finding`
+    // is narrowed BY the `id` beside it, so the list has to follow the id on
+    // the paint the id changed on — including a paint that ends early because
+    // `finding` itself is still empty, which is every paint until it is filled.
+    paintSuggest(values);
 
     // A revisions pick names an ITEM; `--revision` is what makes the pasted
     // line settle the revision the human read rather than the oldest. Filled
@@ -1059,6 +1396,11 @@ export async function render(root, ctx) {
     // Cleared before the loop, not after: a def with no `tags` field must leave
     // no picker host from the def before it, and `markTagPicks` reads this.
     tagsEntry = null;
+    // Same rule for the suggestion lists, and the same failure it prevents: a
+    // `<datalist>` left over from the previous def is a list still attached to
+    // an element `form.replaceChildren()` has already detached, and
+    // `paintSuggest` would keep filling it forever.
+    suggestEntries = [];
 
     for (const spec of controlSpecs(def)) {
       const control = controlFor(spec, sources, () => {
@@ -1080,6 +1422,27 @@ export async function render(root, ctx) {
         tagsEntry = { control, host };
         form.append(host);
         paintTagPicker();
+      }
+      // The same shape for a `suggest` box: the list the browser offers, and a
+      // sentence under it saying what is in the list. The `<datalist>` is not
+      // drawn — every UA styles it `display:none` — so its position in the form
+      // is arbitrary and it is put beside the note it belongs to rather than at
+      // the end, where a later reader would have to work out which box owns it.
+      if (spec.input === 'suggest') {
+        const list = document.createElement('datalist');
+        list.id = suggestListId(spec.name);
+        const note = el('p', 'aside');
+        form.append(list, note);
+        suggestEntries.push({ spec, list, note, drawn: null });
+        // **The cursor arriving in the box is the reader asking for the list**,
+        // and it is deliberately not `build()` doing the asking: `ack` is the
+        // def this screen arrives on, so a fetch started when the control is
+        // DRAWN is a fetch every visitor pays. `focus` and not `click`, so a
+        // reader who tabs here gets the same list a reader who clicks does.
+        control.addEventListener('focus', () => {
+          startLazy(spec.source);
+          paintSuggest();
+        });
       }
     }
 

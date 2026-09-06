@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: The notes handed from one session to the next are held to the same standard as everything else written down here.
-summary_of: a1ebd523b22050ab
+summary_of: a9de712ea9eff374
 scope:
   - scripts/verify-citations.ts
   - src/hooks/session-start.ts
@@ -17,18 +17,19 @@ tags:
   - quality
   - "plan:handover"
   - "seq:15"
-  - "state:todo"
+  - "state:done"
 origin: human
 source_file: null
 source_anchor: null
 source_checksum: null
 valid_from: 2026-09-06
 valid_until: null
-checksum: 83da07680e691a1c
+checksum: fafb706fe6527fd0
 plan: handover
 seq: "15"
-state: todo
+state: done
 priority: "1"
+verified_on: 2026-09-06
 ---
 
 # the handover is checked for truth, not only for currency

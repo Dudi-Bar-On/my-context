@@ -14,7 +14,7 @@ import {
   workItems,
 } from '../core/needs.ts';
 import { droppedBodyText } from '../core/item.ts';
-import { globToRegExp, matchesAnyGlob, relPosix } from '../core/paths.ts';
+import { globToRegExp, matchesAnyGlob, normalizePosix, relPosix } from '../core/paths.ts';
 import { summaryState } from '../core/content-hash.ts';
 import { isSnapshot, snapshotText } from '../core/reference.ts';
 import { RATIONALE_NOT_INJECTED } from '../core/render-item.ts';
@@ -834,6 +834,62 @@ export function checkDeadScopes(repoRoot: string, items: Item[], config: Config)
 export function isServableDocPath(relPath: string): boolean {
   if (relPath === 'README.md') return true;
   return (relPath.startsWith('docs/') || relPath.startsWith('reports/')) && relPath.endsWith('.md');
+}
+
+/**
+ * **Which CORPUS files the file browser can serve** — every `.md` under the
+ * workspace's own `items/` directory, and nothing else.
+ *
+ * ── IT IS THE OTHER BOUNDARY, NOT A WIDENING OF THE ONE ABOVE ─────────────
+ *
+ * `isServableDocPath` answers a question about the CHECKOUT: repo-relative
+ * paths, rooted at the repository. This one answers a question about the
+ * CORPUS: paths relative to `.my_context/`, rooted at the workspace. They are
+ * two different roots and two different rosters, and the owner ruling of
+ * 2026-09-06 (recorded as `DEC-the-ui-serves-the-corpus-through-its-own-route`)
+ * is that the corpus becomes reachable by ADDING this one rather than by
+ * loosening that one.
+ *
+ * **Widening `isServableDocPath` would not have worked anyway, and that is a
+ * measurement rather than a preference.** `buildDocManifest` sources its paths
+ * from `coverageFiles` → `listRepoFiles`, and `listRepoFiles` drops every path
+ * carrying a `.my_context` segment through `SKIP_DIRS` — deliberately, since
+ * 2026-09-04, so the workspace's own storage is not drawn as project content.
+ * A predicate that admitted `.my_context/items/**` would therefore have been
+ * asked about no such path, ever, and the feature would have shipped serving
+ * nothing while looking done.
+ *
+ * ── WHAT THIS PREDICATE IS ACTUALLY FOR ──────────────────────────────────
+ *
+ * The roster it filters is the INDEX's own `file_path` column, not a directory
+ * walk, so an id can never be joined onto a path and no traversal is reachable
+ * through the request at all (`apiCorpusFile`, `src/ui/read-model.ts`). This
+ * predicate guards the OTHER direction: the index is a SQLite file on disk that
+ * a process other than this one wrote, so a row claiming
+ * `file_path: ../../../../etc/shadow` must not become a servable id merely
+ * because it was in the table. Every clause below is therefore about a hostile
+ * row rather than about a tidy one:
+ *
+ *   - it must be exactly its own POSIX normalisation, so `./`, a trailing `/`
+ *     and any `..` that `normalizePosix` would resolve are all refused rather
+ *     than quietly rewritten into something servable;
+ *   - it must sit under `items/`, which is the only directory `loadLayer`
+ *     reads and therefore the only one that can be called the corpus;
+ *   - it must end `.md`, because the corpus is Markdown and `state/` holds
+ *     databases nobody should be handed;
+ *   - and no segment may be empty, `.` or `..`, which catches a Windows-style
+ *     `items\..\..` that POSIX normalisation leaves alone.
+ *
+ * It lives beside `isServableDocPath` for that predicate's own stated reason —
+ * one wording, in one place, for one fact — and so that a reader asking "what
+ * can this server hand out" finds both answers side by side instead of one
+ * here and one in the read model.
+ */
+export function isCorpusFilePath(relPath: string): boolean {
+  if (relPath !== normalizePosix(relPath)) return false;
+  if (!relPath.startsWith('items/')) return false;
+  if (!relPath.endsWith('.md')) return false;
+  return relPath.split('/').every((segment) => segment !== '' && segment !== '.' && segment !== '..');
 }
 
 /**

@@ -184,3 +184,4 @@ rebuild, silently:
 - `list_items`: Census of the corpus by category — counts, not items. With `category`, lists that category's items instead. Not for: finding items by text, tag or relation — query_items.
 - `create_lesson`: Record a lesson, or re-derive from one's id, and get back the request to convert it into candidate rules. Always `origin: "agent"`. Not for: creating a rule directly.
 - `read_procedure`: List every procedure by stage, show one with its ticks overlaid, or tick/un-tick a step. Not for: activating or finishing one — those stay a human act.
+- `ask_handover`: Ask for the handover NOW, at whatever the context window currently holds, instead of waiting for the threshold. Not for: writing it — the ask reaches you, and you write the file.

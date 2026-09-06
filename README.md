@@ -1911,7 +1911,7 @@ my_context has two surfaces over one corpus. One is for you, one is for the mode
 split is deliberate rather than historical.
 
 **You** type slash commands inside a Claude Code session, or run the `mycontext` command in
-a terminal. **The model** calls the twenty-five MCP tools. Both surfaces read and write the same
+a terminal. **The model** calls the twenty-six MCP tools. Both surfaces read and write the same
 Markdown files under `.my_context/`, so an item you capture in the terminal is in the
 model's index the next time it looks, and an item the model captures shows up in
 `mycontext list` at once.
@@ -1925,9 +1925,9 @@ draft, retiring a governing item. How far that separation actually holds is
 
 ```mermaid
 flowchart TB
-  U(["<b>You</b>"]) --> SL["<b>/mycontext:…</b><br/>90 slash commands"]
-  U --> CL["<b>mycontext …</b><br/>43 CLI commands"]
-  A(["<b>Claude</b>"]) --> TL["<b>MCP tools</b><br/>twenty-five, served over stdio"]
+  U(["<b>You</b>"]) --> SL["<b>/mycontext:…</b><br/>91 slash commands"]
+  U --> CL["<b>mycontext …</b><br/>44 CLI commands"]
+  A(["<b>Claude</b>"]) --> TL["<b>MCP tools</b><br/>twenty-six, served over stdio"]
   SL -->|"add-* · search · link · LoadMyContext"| TL
   SL -->|"list-* · review · status · edit · query"| CL
   TL --> CO["<b>.my_context/</b><br/>one corpus of Markdown,<br/>in your repository"]
@@ -2161,6 +2161,10 @@ focus](#session-focus--narrowing-what-loads) — and reports what that hides.
 `mycontext ui` is a server, so it does not return, and it opens a browser on whatever machine
 the shell it ran in is on.
 
+`/mycontext:handover` asks for the handover note now, at whatever the context window
+currently holds, instead of waiting for the threshold — and when it cannot say which session
+it is in, how full that window is, or whether this session still has lanes running, it says
+so and asks for nothing.
 ```
 /mycontext:search           connection pool
 /mycontext:list-decision    --full
@@ -2173,12 +2177,12 @@ the shell it ran in is on.
 ```
 
 There is one `add-<type>` and one `list-<type>` per **enabled** category — 58 today — plus
-the 31 that are not per-category: `add`, `search`, `session-carry`, `session-name`, `show`,
+the 32 that are not per-category: `add`, `search`, `session-carry`, `session-name`, `show`,
 `todo`, `ready`, `doctor`, `decay`,
 `query`, `status`, `audit`, `focus`, `ui`, `review`, `promote`, `discard`, `procedure`,
 `inbox-promote`,
 `edit`, `pin`, `unpin`, `harden`, `soften`, `supersede`, `refresh`, `link`, `unlink`,
-`ingest`, `lesson` and `lesson-stage`.
+`handover`, `ingest`, `lesson` and `lesson-stage`.
 The per-category pairs are generated from
 the same resolved config `mycontext help categories` prints, by `npm run gen:commands`, and
 a test fails if the committed files and the generator disagree: a disabled category cannot
@@ -2188,7 +2192,7 @@ point of it — it is the one that survives a category the generator never saw.
 `scripts/gen-commands.ts`'s `KEEP` excludes both from the generator's own deletion pass, so
 `npm run gen:commands` leaves them alone.
 
-All 89 of those carry `disable-model-invocation: true`, and it is in effect — they are your
+All 90 of those carry `disable-model-invocation: true`, and it is in effect — they are your
 surface, not the model's. `/mycontext:LoadMyContext` is the single exception, and it is the
 one command that only reads.
 
@@ -2209,7 +2213,7 @@ listed with one. The remaining absences are in [section 8](#one-surface-for-ever
 
 ### What you run: the CLI
 
-43 commands. `mycontext help` prints the same list from the program itself, and
+44 commands. `mycontext help` prints the same list from the program itself, and
 `mycontext help <topic>` explains one of seven. Four are concepts — `categories`, `scope`,
 `capture`, `workflow` — and three are one page per invocation surface: `cli`, `tools` and
 `slash`, each generated from the registry, schema or directory it describes rather than
@@ -2621,6 +2625,7 @@ moves no count of what governs.
 | `mycontext session name <id> <name>` | give one session a handle you can type instead of a hex prefix. **The id is explicit and never guessed** — no CLI surface is handed a session id at all — and a prefix is accepted only while it picks out exactly one of the sessions `mycontext session list` shows: a prefix that matches two is refused with both named, never resolved to one of them, because a name that landed on the wrong session looks exactly like one that landed on the right one. An id this log has never seen is refused too, since it is a typo and accepting it would put an entry in the store nothing can reach. Nothing about the name is quietly fixed up: one that is empty, over 64 characters, carries a newline, or is already held by another session is **refused** rather than trimmed or renumbered, and the refusal names the session holding it. It writes no audit record — naming is session metadata, it changes nothing about what governs this project, and it puts no text in front of a model. The names live in `.my_context/state/session-names.json`, gitignored generated state like everything else under `state/`, because a session id identifies one machine and one afternoon and has no business travelling with the corpus. Unlike the dedupe files beside it, that store is **not** swept at 30 days: a name outlives the session it describes on purpose, since it is the only human-readable handle on an entry the audit log still carries |
 | `mycontext session carry <id>` | choose which session a new one carries forward from — its index lines arrive marked and hoisted to the front of this session's index ([the carry](#the-index--so-nothing-is-invisible)). `--none` carries nothing, and is a state of its own rather than a return to the default; `--show` reads back what a new session would carry today and whether that is a choice or the default. An id the listing marks not `carryable` is refused rather than stored. Like `session name`, the id is explicit and never guessed — **the CLI is handed no session id at all**, because it runs in a terminal rather than inside a session |
 | `mycontext carry <id>` | mark **one item** for the very next injection, then forget it — a judgement about now, not `session carry`'s standing choice of which session to continue and not `pin`'s forever. It reuses the same front-of-queue index disclosure, and is spent the moment the next injection runs, whether or not the line was admitted under budget; a mark nobody spends simply waits, visible any time with `--show`, and never widens on its own. Marking an item already in your context costs nothing but a wasted line — this command has no way to know what one session's window currently holds, so it does not refuse on your behalf. `--clear` withdraws the whole pending queue |
+| `mycontext handover ask` | ask for the handover note **now**, at whatever the context window currently holds, instead of waiting for the `handover.thresholdPercent` the `Stop` hook watches. It fires the same ask that hook fires, so every reader of it is unchanged — the status line, the audit trail, and the mtime comparison that decides whether it was acted on. It can only be run from **inside a Claude Code session** — it asks the session you are in to write its handover, so outside one there is nothing to ask, and there is deliberately no flag that names a session by hand. It **refuses rather than guesses** otherwise too, and each refusal names what could not be established and says that nothing was written: when it cannot read how full that window is — no percentage is invented, and the message says whether the status-line bridge is missing, silent or stale; and when this session still has lanes running, which it names one by one, so the choice between waiting, stopping them yourself and going ahead with `--anyway` is yours. Nothing here writes the note, and nothing here stops a lane: my_context has no control that ends a subagent |
 | `mycontext ui` | the read-only web UI, served on `127.0.0.1` — `--port N`, `--no-open` to print the URL instead of opening a browser, and `--idle-ms N` to move the window before an untouched server exits. Loopback only: it refuses to start on any other address rather than warning. The page trades a one-shot URL fragment nonce for a token that reaches neither disk nor a process command line, and the server exits on its own after eight idle hours by default. [The web UI](#the-web-ui--mycontext-ui) describes the screens and what none of them can do |
 | `mycontext statusline` | the opt-in bridge to Claude Code's status line, and the only thing here that writes outside `.my_context/`. `mycontext statusline install` prints the `statusLine` setting you have now and exactly what would replace it, and writes **nothing** without `--yes`; `--settings <path>` chooses the file, defaulting to Claude Code's own (`CLAUDE_CONFIG_DIR`, else `~/.claude/settings.json`). Once installed, `mycontext statusline` runs on every assistant message: it prints the model, the context in use and how much of that came from project knowledge, and tees Claude Code's payload to a per-session file the web UI reads. `mycontext statusline uninstall --yes` puts the replaced setting back — the whole file is saved, not just the key, so an unchanged file is restored **byte for byte**, and one you have edited since keeps your edit and gets only its `statusLine` back. It refuses outright when the `statusLine` in the file is no longer this bridge, because a setting you made after installing is not ours to overwrite on the way out. [The status line bridge](#the-status-line-bridge-opt-in) |
 
@@ -3640,7 +3645,7 @@ with a `--` comment.
 
 ### What the model calls: the MCP tools
 
-Twenty-five tools, served over stdio by `src/mcp/server.ts`. The model reaches them without a
+Twenty-six tools, served over stdio by `src/mcp/server.ts`. The model reaches them without a
 shell, and every item write it makes through them is stamped as an agent write — which is
 what makes the draft rule in [section 7](#7-the-trust-boundary) enforceable at all on this
 surface.
@@ -3671,6 +3676,7 @@ surface.
 | `preview_pack_import` | with `path`, preview importing an artefact — the same collision report `mycontext pack import` prints before its own first confirmation, plus the command a human runs next. Without `path`, list the packs already imported here. Never imports anything itself |
 | `status_report` | the composed dashboard: counts, review queue, ingest progress, decay and health |
 | `list_todos` | list the inbox — items captured as `todo` — and what its tier means for them |
+| `ask_handover` | ask for the handover note **now**, at whatever the context window currently holds, instead of waiting for `handover.thresholdPercent`. It fires the same ask the `Stop` hook fires, so nothing downstream changes: the comparison that decides whether it was acted on is the same one. It refuses rather than guesses — when this server was not started by Claude Code and so answers for no session, when it cannot read how full that window is (no percentage is invented), and when the session still has lanes running, which it names so the person can choose between waiting and going ahead with `anyway` |
 | `read_procedure` | the read half of `mycontext procedure`: list every procedure by stage, show one with its ticks overlaid, or tick/un-tick a step. `activate` and `done` are not here — those hardcode a human origin and stay a human act, the same split `review` draws between `list_drafts` and `review promote` |
 
 The tool list is sorted and byte-stable across calls, which is what lets Claude Code cache
@@ -6283,12 +6289,12 @@ than one that is always typed by hand.
 
 **The requirement, in the user's words:** anything the model can do through a tool, you
 should be able to do through a command. **This is now satisfied, and enforced by a test
-rather than by review.** Every one of the twenty-five MCP tools has a CLI command, a slash
+rather than by review.** Every one of the twenty-six MCP tools has a CLI command, a slash
 command, or both; the map is `src/plugin/parity.ts` and `test/plugin/parity.test.ts` checks
 it against the usage banner the program prints and the files in `commands/`.
 
 What is left is asymmetry in the other direction — commands with no slash command — and it
-is **listed rather than discovered**. 15 of the 43 CLI commands have none, each for a reason
+is **listed rather than discovered**. 15 of the 44 CLI commands have none, each for a reason
 recorded beside it in `CLI_WITHOUT_SLASH`:
 
 - `ack` records that a **person** read a `doctor` finding and ruled on it, so a slash command
@@ -6544,7 +6550,7 @@ command prints; that the injected output quoted in sections 3, 4 and 6 is what t
 emit; that every section the table of contents links either has a line in the capabilities
 summary near the top or is listed, with a reason, as something the product does not *do*; and
 that both documents carry the same heading sequence and the same examples in the same order.
-Of those, `counts.test.ts` computes the "15 of the 43 CLI commands" ratio above from the
+Of those, `counts.test.ts` computes the "15 of the 44 CLI commands" ratio above from the
 running program and fails in **both** languages if either half drifts — it had drifted twice
 before the test existed — and it computes this paragraph's own file count the same way.
 `parity.test.ts` holds this section's heading sequence to the Hebrew mirror's. This paragraph
@@ -6593,7 +6599,7 @@ is what the word means *here* — several of them are ordinary English elsewhere
 | **item** | one captured piece of knowledge: one Markdown file, one id, one category, one status |
 | **JIT** / **just in time** | the injection tier that fires when Claude is about to read or edit a file the item applies to — one matching its scope, or any file at all if it declares none. Spelled `jit` in the budgets configuration |
 | **layer** | where an item's file lives. `.my_context/` in the project you are working in is the *project* layer; a `.my-context` directory in your home folder, when one exists, is read as a *global* layer alongside it. Project items win ties and shadow a global item of the same id — [the global layer](#the-global-layer--knowledge-that-follows-you-across-projects) |
-| **MCP** | Model Context Protocol — the interface Claude reaches tools through. my_context serves twenty-five of them over stdio, and they are the model's only surface short of a shell |
+| **MCP** | Model Context Protocol — the interface Claude reaches tools through. my_context serves twenty-six of them over stdio, and they are the model's only surface short of a shell |
 | **normative** | the tier for what must hold: constraints, invariants, rules, requirements, standards, and the rest. Normative text is injected, unprompted, phrased as an instruction — which is why a human approves it first |
 | **origin** | who wrote an item: `human`, `agent` or `ingest`. The trust boundary is built on this field |
 | **pending revision** | a change to an item's title, body, tags or `extra` that an agent proposed and that has **not** been applied. The item keeps governing its current text; the proposal waits in an append-only log for `mycontext review promote-revision` or `discard-revision`. Created by the `agentEdits: "review"` policy, never by a human's edit, and never injected |

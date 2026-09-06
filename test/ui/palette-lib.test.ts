@@ -1031,6 +1031,14 @@ const UNCATALOGUED: Record<string, string> = {
   // axis with a picker source this screen already fills. The reports are named
   // in `FLAGS_NOT_OFFERED` above rather than composed, so the row is deleted
   // rather than left standing over the opposite.
+  handover: 'a write the Composer must NOT compose, and the one row here that is closed by a '
+    + 'ruling rather than open for want of wiring. Owner ruling 2026-09-06: `mycontext handover '
+    + 'ask` may only be run from inside a Claude Code session, which it establishes from '
+    + 'CLAUDE_CODE_SESSION_ID in its own environment. A line composed in a browser and pasted '
+    + 'into a terminal is by definition run outside one, so the entry would compose a command '
+    + 'whose only possible answer is the refusal — and there is deliberately no `--session` to '
+    + 'offer instead. This row does not become an entry when the Composer gains a picker; it '
+    + 'becomes one only if that ruling changes.',
   'inbox-promote': 'a write on the approval boundary, and a straightforward entry. It is here '
     + 'rather than in the catalogue only because closing it changes the Composer picker.',
   ingest: 'a read that prints an extraction request for a model to answer. Its output is a '
