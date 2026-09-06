@@ -1,4 +1,4 @@
-import { mkdirSync, readFileSync, statSync, writeFileSync } from 'node:fs';
+import { mkdirSync, readdirSync, readFileSync, statSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import { readAudit } from './audit.ts';
 import type { Config, HandoverConfig } from './config.ts';
@@ -282,8 +282,20 @@ export const NO_LATCH: AskLatch = {
   disclosedIgnored: false,
 };
 
+/**
+ * The filename suffix every latch in `state/` carries.
+ *
+ * A CONSTANT rather than a literal in `latchPath`, because there is now a
+ * second reader that finds latches by NAME instead of by session id
+ * (`lastRecordedAsk`), and the two spellings drifting apart would not fail:
+ * the finder would simply stop finding anything, and a mechanism that reports
+ * "no ask was ever recorded" about a corpus full of them is the reassuring
+ * wrong answer this file argues against everywhere else.
+ */
+export const ASK_LATCH_SUFFIX = '.handover-ask.json';
+
 export function latchPath(root: string, sessionId: string): string {
-  return path.join(root, 'state', `${sanitizeSessionId(sessionId)}.handover-ask.json`);
+  return path.join(root, 'state', `${sanitizeSessionId(sessionId)}${ASK_LATCH_SUFFIX}`);
 }
 
 /**
@@ -1248,4 +1260,401 @@ export function askHandoverNow(root: string, options: AskHandoverOptions = {}): 
     note: `handover asked at ${step}% — ${handover.path}, and the assistant is asked to write ` +
       `it on its next turn (latch stamped askedAtPercent=${step})`,
   };
+}
+
+// --- The READ path: a handover delivered out of a window that has ended ------
+//
+// `plan:handover seq:17`, owner ruling 2026-09-06. Everything above this line
+// belongs to the ASK — the write path, which runs at high occupancy in a
+// session with almost no room left. NOTHING BELOW THIS LINE RUNS THERE. It is
+// reached from `hooks/session-start.ts` only, once per session, after the
+// handover block has already been built, and it adds no obligation of any kind
+// to whoever writes the document. That constraint outranks this feature and is
+// the reason the split is marked here rather than left to be noticed.
+//
+// ── WHAT IS MEASURED, AND WHAT IS DELIBERATELY NOT ─────────────────────────
+//
+// The ruling says the block should state that it is being read into a window
+// at a low percentage while it was written at a high one. **The second
+// percentage is not measurable at `SessionStart`, and inventing it is the one
+// failure this line cannot survive** — a wrong percentage here is worse than no
+// sentence, because the sentence would be believed. Measured 2026-09-06 against
+// this corpus:
+//
+//   readOccupancy(root, <a session id that has not been seen before>)
+//     -> { state: 'unmeasurable', why: 'no-sample' }
+//
+// which is EVERY new session: `startup` and `fork` mint an id, and
+// `hooks/session-end.ts` records that `/clear` mints one too. The status-line
+// bridge writes one sample per assistant message, and at `SessionStart` this
+// window has had none.
+//
+// The `compact` source is worse than unmeasurable and it is worse in the
+// direction that lies. It keeps its session id, so the tee IS readable — and
+// what it holds is the reading from just before the compaction, stamped seconds
+// ago and therefore FRESH by `CONTEXT_SAMPLE_FRESH_MS`. Reading it would report
+// the destroyed window's 96% as this window's occupancy and conclude that
+// nothing was stale, at the exact moment the warning matters most. That is
+// `plan:walk seq:123`'s fossil with a live timestamp, and no freshness gate can
+// catch it, because the sample is not old — it is about a different window.
+//
+// So the read side is not measured at all. It does not need to be: the four
+// sources `HANDOVER_SOURCES` admits are, by that constant's own documented
+// rule, exactly the ones that ARRIVE WITH AN EMPTY CONTEXT WINDOW — `resume`,
+// the one source that keeps its window, is excluded there and never reaches
+// this code. "This window has just begun" is therefore a fact of the event
+// rather than a reading off a file, which is a stronger claim than any
+// percentage would have been.
+//
+// ── WHY THE ORDERING MAKES THE WRITE PERCENTAGE AVAILABLE AT ALL ───────────
+//
+// `resetAsksForWindow` nulls `askedAtPercent` after every compaction, so it
+// would be reasonable to expect it gone by the time the block is delivered. It
+// is not: `hooks/post-compact.ts` records, from a trace of build 2.1.239, that
+// `SessionStart(source: 'compact')` fires FIRST and `PostCompact` second on all
+// three compaction paths. The latch this reads still carries the destroyed
+// window's last ask. On the other three sources the writing session's latch
+// survives in `state/` under ITS id — `core/window-state.ts` does not remove it
+// — which is what `lastRecordedAsk` goes looking for.
+
+/**
+ * One ask, as some session actually recorded it. Both numbers are nullable in
+ * `AskLatch` and neither is nullable here: this type exists to be the thing a
+ * caller may quote, so a latch that carries half an ask is not one.
+ */
+export interface RecordedAsk {
+  /** The session whose latch holds it. */
+  sessionId: string;
+  /** ISO-8601, `AskLatch.askedAt` verbatim. */
+  askedAt: string;
+  /** `AskLatch.askedAtPercent` verbatim — a whole percent, written by `askStep`. */
+  askedAtPercent: number;
+}
+
+/**
+ * **The most recent ask this corpus has a record of**, or `null` when it has
+ * none at all.
+ *
+ * `sessionId`'s own latch is consulted FIRST and wins outright when it carries
+ * an ask, because that attribution is certain: the ask and the delivery belong
+ * to one session. That is the `compact` path, where the window that wrote the
+ * handover and the window reading it are the same session and the latch is
+ * still intact (see the note above on hook ordering).
+ *
+ * Only when it carries none does this scan. `startup`, `clear` and `fork` all
+ * mint a new id, so this session's latch is a fresh `NO_LATCH` and the ask that
+ * matters is under the previous session's name — a name nothing here knows. The
+ * scan is over FILENAMES in `state/`, matched on `ASK_LATCH_SUFFIX`, and the
+ * winner is the greatest `askedAt`. Ties are impossible in practice and are
+ * broken by the first one read, which is arbitrary and is stated rather than
+ * hidden.
+ *
+ * **Never throws.** `readdirSync` on an absent or unreadable `state/` is the
+ * ordinary case for a workspace that has never been asked, and it is a `null`
+ * result, not a failure — `INV-hooks-fail-open`, on a hook whose stdout is the
+ * model's context.
+ */
+export function lastRecordedAsk(root: string, sessionId: string | null): RecordedAsk | null {
+  if (sessionId !== null && sessionId !== '') {
+    const own = recordedAskIn(latchPath(root, sessionId), sessionId);
+    if (own !== null) return own;
+  }
+
+  const dir = path.join(root, 'state');
+  let names: string[];
+  try {
+    names = readdirSync(dir);
+  } catch {
+    return null;
+  }
+
+  let best: RecordedAsk | null = null;
+  let bestMs = Number.NEGATIVE_INFINITY;
+  for (const name of names) {
+    if (!name.endsWith(ASK_LATCH_SUFFIX)) continue;
+    const id = name.slice(0, -ASK_LATCH_SUFFIX.length);
+    if (id === '') continue;
+    // **The file is opened by the NAME `readdirSync` returned, never by
+    // `latchPath(root, id)`.** `sanitizeSessionId` is not idempotent: it passes
+    // a lower-case id through and FOLDS everything else to
+    // `<base>-<12 hex of sha256>`, so feeding an already-folded filename back
+    // through it appends a second digest and names a file that does not exist.
+    // Claude Code's ids are lower-case UUIDs, so the round trip would look
+    // correct for years and then quietly report "no ask was ever recorded" for
+    // one whose id had a capital in it — the reassuring wrong answer, in a
+    // sentence built to be believed.
+    const ask = recordedAskIn(path.join(dir, name), id);
+    if (ask === null) continue;
+    const ms = Date.parse(ask.askedAt);
+    if (ms <= bestMs) continue;
+    bestMs = ms;
+    best = ask;
+  }
+  return best;
+}
+
+/**
+ * One latch file read as an ask, or `null` for every file that is not one.
+ *
+ * **`file` is a path and not a session id**, because its two callers hold
+ * different things and only one of them holds an id `latchPath` may be given —
+ * see the note at the scan loop above. `sessionId` is carried through for the
+ * record only; on the scan path it is `state/`'s NAME for the session, which is
+ * `sanitizeSessionId`'s output rather than the id Claude Code issued.
+ *
+ * **`readLatch` is deliberately NOT used here, and the reason is a measured
+ * defect rather than a preference.** `readLatch` BACK-FILLS `askedAtPercent`
+ * from `askedAtThreshold` for a latch written before `seq:12`, and that
+ * back-fill is correct for what it was written for — deciding whether the next
+ * ask is earned, where the threshold is the lowest percent the ask can have
+ * gone out at and reading it low costs one ask. Quoting it HERE would be a
+ * different act: the sentence would say an ask "went out at 85%" when 85 is a
+ * floor, which understates the staleness in the one direction a warning must
+ * never understate. Caught by
+ * `test/hooks/session-start-handover-window.test.ts` — the first draft of this
+ * function went through `readLatch` and the test failed on exactly that 85.
+ *
+ * So the raw field is required to be PRESENT. A latch that carries an ask and
+ * no percentage yields nothing, and the caller then says the occupancy is not
+ * recorded, which is true.
+ *
+ * The stamp must also PARSE. An `askedAt` that does not is dropped rather than
+ * ordered last: it cannot be compared against the handover's mtime either, so
+ * its percentage would be a number with no position in time beside it. That is
+ * why `RecordedAsk` can be relied on downstream to carry a comparable date.
+ */
+function recordedAskIn(file: string, sessionId: string): RecordedAsk | null {
+  let value: Record<string, unknown>;
+  try {
+    const raw = JSON.parse(readFileSync(file, 'utf8')) as unknown;
+    if (raw === null || typeof raw !== 'object') return null;
+    value = raw as Record<string, unknown>;
+  } catch {
+    return null;
+  }
+  if (typeof value.askedAtPercent !== 'number' || !Number.isFinite(value.askedAtPercent)) {
+    return null;
+  }
+  const percent = askStep(value.askedAtPercent);
+  if (percent === null) return null;
+  const askedAt = typeof value.askedAt === 'string' ? value.askedAt : '';
+  if (askedAt === '' || !Number.isFinite(Date.parse(askedAt))) return null;
+  return { sessionId, askedAt, askedAtPercent: percent };
+}
+
+/**
+ * What can honestly be said about the window a delivered handover came out of.
+ *
+ *  - `ended`          — an ask is recorded and the file was written AFTER it, so
+ *                       the occupancy that ask went out at can be quoted beside
+ *                       the gap to the write.
+ *  - `ask-unanswered` — the most recent recorded ask is NEWER than the file.
+ *                       `checkHandoverAsk`'s `ignored`, seen from the reading
+ *                       end: this is not merely a report from a window that
+ *                       ended, it is missing that window's last stretch.
+ *  - `no-ask`         — nothing in `state/` records an ask with a percentage, so
+ *                       the occupancy it was written at is NOT KNOWN. Said
+ *                       plainly and never defaulted — see `no-occupancy` in
+ *                       `OnDemandAskVerdict` for the same refusal on the write
+ *                       side.
+ *  - `unreadable`     — the handover's own mtime could not be examined, so
+ *                       nothing can be ordered against anything. Kept apart from
+ *                       `no-ask` for `unverifiable`'s reason: a comparison that
+ *                       could not be made is not a comparison that came out
+ *                       empty.
+ *
+ * Every one of the four still says the load-bearing thing, because that one
+ * does not depend on a measurement at all: this window has just begun, so the
+ * one the handover was written in has ended.
+ */
+export type HandoverWindowVerdict = 'ended' | 'ask-unanswered' | 'no-ask' | 'unreadable';
+
+export interface HandoverWindowCheck {
+  verdict: HandoverWindowVerdict;
+  /** The occupancy the quoted ask went out at, or `null` when none is recorded. */
+  percent: number | null;
+  /** ISO-8601 of that ask, or `null`. */
+  askedAt: string | null;
+  /** ISO-8601 of the handover's last write, or `null` when it could not be read. */
+  writtenAt: string | null;
+  /**
+   * Milliseconds between the ask and the write. Positive on both verdicts that
+   * carry it, because it is a DISTANCE and the verdict already says which way
+   * round they fall: on `ended` it is how long AFTER the ask the file was
+   * written, on `ask-unanswered` how long BEFORE the ask it was last written.
+   * `null` whenever either end is unknown.
+   *
+   * It is never the interval from the ask to NOW, which is the reading the
+   * `ask-unanswered` sentence originally implied. `now` is not an input to this
+   * function and inventing it from the clock here would put a second
+   * unmeasured number in a line whose whole value is that its numbers are
+   * measured.
+   */
+  gapMs: number | null;
+  /** The `SessionStart` source that began this window, verbatim. */
+  source: string;
+}
+
+/**
+ * **The comparison, on the READ path.** Never throws, for any filesystem
+ * outcome.
+ *
+ * `root` is the `.my_context` DIRECTORY and the handover is resolved against
+ * its PARENT — `checkHandoverAsk`'s argument and `checkHandoverAsk`'s trap,
+ * stated once there and not restated here.
+ *
+ * `statSync` and never `readHandover`: the caller has already read and bounded
+ * the document, and re-parsing it to learn its mtime would double the one cost
+ * this path has. The CONTENT is not judged here either, for the reason the
+ * header of this file gives — a document this code disliked is not a document
+ * it may accuse.
+ */
+export function checkHandoverWindow(
+  root: string, handover: HandoverConfig, sessionId: string | null, source: string,
+): HandoverWindowCheck {
+  const base = { percent: null, askedAt: null, writtenAt: null, gapMs: null, source };
+
+  let writtenMs: number | null = null;
+  try {
+    const stat = statSync(path.resolve(path.dirname(root), handover.path), {
+      throwIfNoEntry: false,
+    });
+    if (stat !== undefined && stat.isFile()) writtenMs = stat.mtimeMs;
+  } catch {
+    writtenMs = null;
+  }
+  if (writtenMs === null) return { ...base, verdict: 'unreadable' };
+  const writtenAt = new Date(writtenMs).toISOString();
+
+  const ask = lastRecordedAsk(root, sessionId);
+  if (ask === null) return { ...base, verdict: 'no-ask', writtenAt };
+
+  // No `Number.isFinite` guard on this: `recordedAskIn` refuses a stamp that
+  // will not parse, so a `RecordedAsk` in hand is one that can be ordered. A
+  // guard that can never fire would claim otherwise, which is the objection
+  // `readOccupancy` makes to a `try` around three calls that cannot throw.
+  const askedMs = Date.parse(ask.askedAt);
+
+  // Strictly `>`, `checkHandoverAsk`'s comparison and its argument: the ask is
+  // delivered at the END of a turn and the writing happens in the next one, so
+  // a real response is milliseconds to minutes later and never simultaneous.
+  return writtenMs > askedMs
+    ? {
+        verdict: 'ended',
+        percent: ask.askedAtPercent,
+        askedAt: ask.askedAt,
+        writtenAt,
+        gapMs: writtenMs - askedMs,
+        source,
+      }
+    : {
+        verdict: 'ask-unanswered',
+        percent: ask.askedAtPercent,
+        askedAt: ask.askedAt,
+        writtenAt,
+        gapMs: askedMs - writtenMs,
+        source,
+      };
+}
+
+/**
+ * A duration in the `d`/`h`/`m` vocabulary the audit query language already
+ * uses for relative time (`core/audit.ts`, the `{ d, h, m }` table its `-2h`
+ * filters parse against). One unit and never two: this appears inside a
+ * sentence about staleness, where the question is an order of magnitude and a
+ * second unit would buy precision nobody acts on.
+ *
+ * Under a minute is `less than a minute` rather than `0m`, because `0m` reads
+ * as a measurement that failed.
+ */
+function coarseDuration(ms: number): string {
+  if (ms < 60_000) return 'less than a minute';
+  if (ms < 3_600_000) return `${Math.floor(ms / 60_000)}m`;
+  if (ms < 86_400_000) return `${Math.floor(ms / 3_600_000)}h`;
+  return `${Math.floor(ms / 86_400_000)}d`;
+}
+
+/**
+ * How a `SessionStart` source reads in a sentence a person did not write.
+ *
+ * The four are `HANDOVER_SOURCES`', and nothing else can arrive: that constant
+ * is a closed Set for a stated reason, and an unknown source never reaches this
+ * code. The fallback clause is still written, because a Set membership test in
+ * another module is not a type, and a template hole reading `undefined` in
+ * model-facing text is the kind of defect that survives review.
+ */
+function windowBeganBecause(source: string): string {
+  if (source === 'compact') return 'a compaction just rebuilt this one';
+  if (source === 'clear') return 'a /clear just started this one';
+  if (source === 'fork') return 'this one was just forked';
+  if (source === 'startup') return 'this one has just started';
+  return 'this one has just begun';
+}
+
+/**
+ * **The sentence, as the model receives it** — appended to the handover block
+ * on stdout, which is the one hook stream Claude Code puts into context
+ * verbatim.
+ *
+ * ── WHY IT IS WORDED THE WAY IT IS ─────────────────────────────────────────
+ *
+ * The ruling is that the wording is the whole value, and the failure it names
+ * is specific: on 2026-09-06 a lane died and a handover written twenty minutes
+ * earlier still said it was running; the owner corrected it by hand. So this
+ * does not say "old" and it does not stop at "stale" — those are adjectives a
+ * reader discounts. It says which CLAUSES are historical, in the words a
+ * handover actually uses to make them: *currently*, *still running*, *waiting
+ * on*, *in flight*.
+ *
+ * **It states the record and never an inference.** "The last ask recorded
+ * before it was written went out at 96%, 3m earlier" is a fact about two
+ * timestamps and a stored number. "It was written at 96%" is a conclusion, and
+ * it is wrong for a file somebody hand-edited three days after an ask — which
+ * is a real shape here, because `reports/V2-HANDOVER.md` is edited by hand.
+ * The gap is printed so that a reader can discount the percentage themselves,
+ * which is what makes the line safe at every gap instead of only at short ones.
+ *
+ * **The claim that carries the weight needs no measurement.** `HANDOVER_SOURCES`
+ * admits only the four sources that arrive with an EMPTY window, so "the window
+ * it was written in has ended" is true of every delivery this can reach,
+ * including the two verdicts where no number could be had.
+ *
+ * `''` is never returned: this is only called when a handover block is actually
+ * being delivered, and there is no delivery for which nothing true can be said.
+ */
+export function endedWindowLine(check: HandoverWindowCheck): string {
+  const began = windowBeganBecause(check.source);
+  const historical = 'so every "currently", "still running", "in flight" and "waiting on" '
+    + 'above is a claim about a session that is OVER';
+
+  if (check.verdict === 'ended' && check.percent !== null && check.gapMs !== null) {
+    return '_READ THIS AS HISTORY. The last handover ask recorded before this file was written '
+      + `went out at ${check.percent}% of a context window, ${coarseDuration(check.gapMs)} before `
+      + `the write. That window has ENDED — ${began} — ${historical}. Verify each one against `
+      + 'the repository before you act on it._\n';
+  }
+
+  if (check.verdict === 'ask-unanswered' && check.percent !== null && check.gapMs !== null) {
+    // The gap is stated as what it MEASURES — the last write to the ask — and
+    // never as "not written in the Nh since", which would name a different
+    // interval (the ask to now) that this function was not given and does not
+    // hold. One wrong interval in a sentence built to be believed is the same
+    // defect as one wrong percentage.
+    return '_READ THIS AS HISTORY, AND AS INCOMPLETE. A handover update was asked for at '
+      + `${check.percent}% of a context window, and this file was last written `
+      + `${coarseDuration(check.gapMs)} BEFORE that ask and not since — so whatever provoked the `
+      + `ask is not in it. That window has ENDED — ${began} — ${historical}, and its last `
+      + 'stretch was never written down at all._\n';
+  }
+
+  if (check.verdict === 'unreadable') {
+    return '_READ THIS AS HISTORY. When this file was last written could not be read, so how far '
+      + 'into its window it was written is not stated here and is not guessed. What is certain '
+      + `is that it was written before this window — ${began} — ${historical}._\n`;
+  }
+
+  return '_READ THIS AS HISTORY. How full the context window was when this was written is NOT '
+    + 'recorded — no handover ask carrying a percentage is stamped in `.my_context/state/`, and '
+    + 'no number is invented for it here. What is certain is that it was written before this '
+    + `window — ${began} — ${historical}._\n`;
 }

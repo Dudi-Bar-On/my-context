@@ -1,4 +1,5 @@
 import path from 'node:path';
+import { checkHandoverWindow, endedWindowLine } from '../core/handover-ask.ts';
 import { handoverBlock, readHandover } from '../core/handover.ts';
 import { buildInjectionResult, type Injection } from '../core/inject.ts';
 import { pruneSnapshots } from '../core/ledger.ts';
@@ -93,6 +94,13 @@ const HANDOVER_SOURCES = new Set(['startup', 'clear', 'compact', 'fork']);
  * defect the whole feature exists to answer (`noWorkspaceLine` is the precedent
  * and the tone). `off` goes nowhere at all, because nothing was promised.
  *
+ * **A DELIVERED handover carries one more line than it used to**, and that is
+ * the whole of `plan:handover seq:17` on this side: the block is followed by
+ * `endedWindowLine`, which says that what is above it was written in a context
+ * window that has since ended. It is on the `read` branch only — nothing is
+ * asserted about a handover that was never delivered — and it is appended after
+ * the block is built, so nothing on the WRITE path is touched by it.
+ *
  * **RAW TEXT, never an envelope.** `hooks/io.ts` deliberately excludes
  * `SessionStart` from `HookEventName`, so there is no envelope to build here;
  * wrapping this stream would deliver the JSON itself into the window instead of
@@ -105,7 +113,9 @@ const HANDOVER_SOURCES = new Set(['startup', 'clear', 'compact', 'fork']);
  * about to be written: a broken config is a reason to deliver no handover, not
  * a reason to deliver nothing (`INV-hooks-fail-open`).
  */
-function handoverAppendix(cwd: string, source: string | undefined): string {
+function handoverAppendix(
+  cwd: string, source: string | undefined, sessionId: string | undefined,
+): string {
   if (!HANDOVER_SOURCES.has(source ?? '')) return '';
   try {
     const ws = resolveWorkspace(cwd);
@@ -121,7 +131,12 @@ function handoverAppendix(cwd: string, source: string | undefined): string {
     // the disclosure would be indistinguishable from a genuinely broken
     // agreement. `path.dirname(ws.projectRoot)` is the spelling five other call
     // sites already use for the repository root.
-    const read = readHandover(path.dirname(ws.projectRoot), ws.config.handover);
+    // Bound to a local rather than read twice, so that the `read` state below
+    // NARROWS it: `readHandover` answers `off` for a `null` config, so a `read`
+    // state already proves there is one — but only to a reader, and the
+    // staleness check takes a `HandoverConfig` and not a nullable.
+    const handover = ws.config.handover;
+    const read = readHandover(path.dirname(ws.projectRoot), handover);
     if (read.state === 'missing') {
       // The line is built by `handoverBlock` rather than written out here, so
       // that the missing case cannot be forgotten at the one call site that
@@ -130,7 +145,32 @@ function handoverAppendix(cwd: string, source: string | undefined): string {
       process.stderr.write(handoverBlock(read));
       return '';
     }
-    return read.state === 'read' ? handoverBlock(read) : '';
+    if (read.state !== 'read' || handover === null) return '';
+    // **THE STALENESS ASSERTION, AT THE MOMENT OF CONSUMPTION** — `plan:handover
+    // seq:17`, owner ruling 2026-09-06. It is appended HERE, after the block is
+    // built, and it is the only thing on this side that changed: a handover is
+    // written at high occupancy by an assistant with almost no room left, and
+    // nothing about this may make that writing harder. It fails like a linter,
+    // after the fact, on the READ path only.
+    //
+    // Why this event rather than `doctor` or a schedule: `SessionStart` is the
+    // one moment a stale handover is about to be BELIEVED, it fires once per
+    // session, and `askedAtPercent` is SESSION state in a latch that dies with
+    // the session — a corpus check reading it would go red or green for reasons
+    // no commit caused.
+    //
+    // `input.session_id` is passed rather than resolved, because the latch is
+    // keyed on the id THIS hook was handed; `core/handover-ask.ts` says what it
+    // does when that id has no latch, which is every source but `compact`.
+    //
+    // Inside the same `try` as the read above, so `INV-hooks-fail-open` covers
+    // it — and `endedWindowLine` never throws in any case, because every
+    // filesystem outcome it can meet is already swallowed where it is declared.
+    const block = handoverBlock(read);
+    const ended = endedWindowLine(
+      checkHandoverWindow(ws.projectRoot, handover, sessionId ?? null, source ?? ''),
+    );
+    return `${block}\n${ended}`;
   } catch {
     /* Never a reason to fail — or to shorten — a session start. */
     return '';
@@ -239,7 +279,7 @@ if (isMainEntry(import.meta.filename, process.argv[1])) {
     // verbatim with the `load_context` MCP tool and SubagentStart — neither of
     // which is crossing a compaction boundary, and neither of which should
     // start delivering a handover because this hook needed one.
-    const handover = handoverAppendix(cwd, input.source);
+    const handover = handoverAppendix(cwd, input.source, input.session_id);
     const text = handover === '' ? corpus : `${corpus}${corpus === '' ? '' : '\n'}${handover}`;
     if (text) process.stdout.write(text);
     // **AFTER the injection reaches stdout, and the order is deliberate.** This
