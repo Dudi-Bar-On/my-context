@@ -1,5 +1,65 @@
 # v2.0 handover — we are mid-decision. Keep deciding.
 
+## ⏭ READ THIS FIRST — 2026-09-06, at 94%
+
+Supersedes every section below. Nothing new was decided since 93%; what changed is
+that the picture was read back, and reading it back found a gap.
+
+### THREE LANES IN FLIGHT — do not dispatch into their files
+
+1. **D7 — audit projection index** · `src/core/audit-db.ts`, `src/doctor/checks.ts`
+2. **wa-tree vendoring + gate widening** · `src/ui/public/lib/vendor/**`, `scripts/check-vendor.ts`
+3. **D15 — the ASK display** · `src/cli/commands/statusline*.ts`, both string tables, `watch-model.ts`
+
+### THREE THINGS ARE RULED AND NOT DISPATCHED. Start here when a lane frees.
+
+1. **`library/2`'s boundary work.** Widen `isServableDocPath` to serve
+   `.my_context/items/**` — it admits only `README.md` and `docs/`/`reports/` markdown —
+   **and** fix `REQ-a-repository-document-is-viewable-in-the-ui-only-once-it-is`,
+   `severity: hard`, which says *"The UI serves the corpus; it does not serve the
+   checkout"* while the product does exactly the opposite. **Found twice, stepped over
+   twice, now ruled.** This blocks the whole file-explorer feature.
+2. **D13a / `library/1`** — the CLI help browser. Gap to close first: **9 of the 43
+   commands declare no flags** in `COMMAND_FLAGS`, so "every switch explained" is not
+   reachable until it is known whether they take none or were never declared.
+3. **D11 / `builder/10`** — three more Composer fields plus the combobox ruling. D10
+   released it.
+
+`builder/3` and `builder/4` are also ready. Composer stands at **3 ready of 7 open**.
+
+### A BOOKKEEPING GAP WORTH KNOWING ABOUT
+
+`handover/12` (D14) was **`state: todo` while the work was merged and green**. The lane
+built it, ran the gates, reported in full — and never moved the item. Found by reading the
+plan back, not by anything failing. **A lane finishing is not the item closing; check the
+state yourself.** This is the second bookkeeping defect of the day: eleven items were also
+filed with projected values as TAGS rather than fields, which meant `needs:` was not
+enforced and D11/D12 were not actually held.
+
+### D14 IS DONE AND YOU ARE WATCHING IT WORK
+
+The 85 → 90 → 92 → 93 → 94 handover updates are the mechanism firing. `MAX_ASKS` is gone,
+`askStep` re-arms on every whole percent, `askedAtPercent` is on the latch, 16 asks max.
+Merged as `b851acc`, 68 tests, full suite 6557/0.
+
+**D15 is rewriting what it SAYS**, because two things are wrong: `strip.hoActed` reports
+`{age}`, the proxy that hid the staleness bug across three windows, and the status line's
+`ASK <bar> 34% (28.5 / 85)` is progress toward THE ask — which no longer exists. A bar that
+fills once and then means nothing for fifteen percent reads as FINISHED.
+
+### NEXT SESSION, FIRST THREE THINGS
+
+1. `reports/2026-09-06-PLAN.md` — D1–D15 is the running order.
+2. Wait for the three lanes; commit each separately; **verify in a browser, and check the
+   item state, before believing any lane's "done"**.
+3. Dispatch the three ruled-and-waiting items above, `library/2` first.
+
+Still on the owner, blocking nothing: **D8** (343 RLM + 246 non-breaking hyphens in the
+tutorials vs 1,860 `dir=` attributes in the Hebrew README — disjoint), **D9**
+(`<ins>`/`<del>` markers), **D6** (deferred; gate still exits 1 on 21 `BARE` faults), and
+**43 `walk` items**.
+
+
 ## ⏭ READ THIS FIRST — 2026-09-06, at 93%
 
 Supersedes every section below it. One new task since 92%, and it is dispatched.
