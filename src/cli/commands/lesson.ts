@@ -4,9 +4,15 @@ import { makeId } from '../../core/slug.ts';
 import type { Item } from '../../core/types.ts';
 import type { Workspace } from '../../core/workspace.ts';
 import {
-  acceptStagedRule, buildRuleRequest, discardStagedRule, loadStaging,
-  renderRuleRequest, stageRuleCandidates, type LessonStaging, type RuleCandidate,
+  acceptStagedRule, buildRuleRequest, discardStagedRule,
+  renderRuleRequest, stageRuleCandidates,
 } from '../../lesson/derive.ts';
+// The READ half, from the module that imports nothing which writes
+// (`DEC-the-read-half-of-lesson-derive-ts-is-split-out-so-a-read`). This
+// command needs both halves, so it names both — what it must not do is reach
+// the read through the write, which is what a re-export from `derive.ts` would
+// have let every other caller do.
+import { loadStaging, type LessonStaging, type RuleCandidate } from '../../lesson/staging.ts';
 import { scopePolicyFor } from '../../core/config.ts';
 import { scopeField } from '../../core/render-item.ts';
 import { emitLoadErrors, openMutateContext, readPayload, toCliMessage } from './context.ts';

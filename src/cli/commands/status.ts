@@ -10,7 +10,7 @@ import { VERSION } from '../../core/version.ts';
 import type { Workspace } from '../../core/workspace.ts';
 import { runChecks } from '../../doctor/checks.ts';
 import { listSessions, pendingAnchors } from '../../ingest/session.ts';
-import { listStaging } from '../../lesson/derive.ts';
+import { listStaging } from '../../lesson/staging.ts';
 import { summarize } from './doctor.ts';
 import type { PendingRevision } from '../../core/revision.ts';
 import {

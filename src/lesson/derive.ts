@@ -1,4 +1,4 @@
-import { existsSync, mkdirSync, readdirSync, readFileSync, renameSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, renameSync, rmSync, writeFileSync } from 'node:fs';
 import { retryOnTransientFsError } from '../core/rebuild.ts';
 import path from 'node:path';
 import { RULE_DIRECTIVES } from '../core/command-flags.ts';
@@ -7,61 +7,28 @@ import { createItem, type MutationContext } from '../core/mutate.ts';
 import { checksum, makeId } from '../core/slug.ts';
 import type { Item } from '../core/types.ts';
 import type { ValidationIssue } from '../ingest/schema.ts';
+/**
+ * **The read half lives in `./staging.ts` and is NOT re-exported from here.**
+ *
+ * Owner ruling `DEC-the-read-half-of-lesson-derive-ts-is-split-out-so-a-read`:
+ * this module value-imports `createItem` from `core/mutate.ts`, so anything
+ * that imports THIS file drags the mutation surface into its runtime graph —
+ * which is why `src/ui/read-model.ts` refused to serve `st.staged` and why
+ * `palette-defs.js` could not give `lesson-accept --key` a picker. The ruling
+ * names the two ways that fix can be faked, and a re-export is one of them: it
+ * would leave every caller's import graph exactly as it was.
+ *
+ * So these come in for this file's OWN use, and every other caller — the CLI,
+ * the MCP server, `src/ui/read-model-staging.ts` — imports them from
+ * `lesson/staging.ts` directly. `test/ui/staging-endpoint.test.ts` fails if a
+ * re-export puts them back on this module's surface.
+ */
+import {
+  isObject, loadStaging, stagingDir, stagingFile, STAGING_PROTOCOL,
+  type LessonStaging, type RuleCandidate, type StagedRule,
+} from './staging.ts';
 
 export const RULE_REQUEST_PROTOCOL = 'my_context/rule-derivation-request@1';
-export const STAGING_PROTOCOL = 'my_context/lesson-staging@1';
-
-export interface RuleCandidate {
-  title: string;
-  directive: 'do' | 'dont';
-  body: string;
-  scope: string[];
-  severity: 'hard' | 'soft';
-}
-
-export interface StagedRule {
-  /** Stable handle used by `mycontext lesson-accept`. */
-  key: string;
-  candidate: RuleCandidate;
-  state: 'pending' | 'accepted' | 'discarded';
-  ruleId: string | null;
-}
-
-export interface LessonStaging {
-  protocol: string;
-  lessonId: string;
-  createdAt: string;
-  candidates: StagedRule[];
-}
-
-export function stagingDir(root: string): string {
-  return path.join(root, '.staging');
-}
-
-/**
- * A lesson id becomes both a JSON filename (`stagingFile`, below) and a
- * relation target written into a rule's frontmatter (`acceptStagedRule`).
- * Task 9 takes this id from argv, so an id containing a path separator
- * (`/` or `\`) would let `stagingFile` read or write outside `.staging/` —
- * the same class of hazard `validateRelationTarget` (core/validate.ts) guards for
- * relation targets in general, checked here at the one place this module
- * turns an id into a filesystem path. Note: this pattern allows `.` and
- * therefore allows a lone `..` segment — harmless here only because there is
- * no path separator alongside it for `..` to act on (`stagingFile` always
- * appends it as one whole `${lessonId}.json` filename component, never a
- * directory segment), not because the pattern itself excludes it.
- */
-const LESSON_ID_RE = /^[A-Za-z0-9._-]+$/;
-
-function stagingFile(root: string, lessonId: string): string {
-  if (!LESSON_ID_RE.test(lessonId)) {
-    throw new Error(
-      `my_context: "${lessonId}" is not a valid lesson id — only letters, digits, ".", "_" and ` +
-      `"-" are allowed, so it cannot safely be used as a staging file name.`,
-    );
-  }
-  return path.join(stagingDir(root), `${lessonId}.json`);
-}
 
 function ensureDir(root: string): string {
   const dir = stagingDir(root);
@@ -91,90 +58,6 @@ export function saveStaging(root: string, staging: LessonStaging): string {
 }
 
 /**
- * Reads `.staging/<lessonId>.json`.
- *
- * Returns `null` for exactly ONE case — the file does not exist — and THROWS
- * for a file that exists but cannot be trusted (unparseable JSON, a
- * non-object payload, a wrong/garbled `protocol`, a `lessonId` field that
- * disagrees with the filename, or a `candidates` field that is not an
- * array). Collapsing those two outcomes into one `null` was a real defect:
- * `stageRuleCandidates` read `null` as "nothing here yet" and OVERWROTE a
- * corrupt file, which meant a candidate a human had already discarded came
- * back `pending` and acceptable; `lesson-accept` read the same `null` as
- * "nothing staged" and told the user to run `lesson-stage`, i.e. steered
- * them into that overwrite. A corrupt staging file is working state a human
- * has to look at, so every caller now has to handle it as its own case.
- *
- * The thrown messages deliberately name the file's path rather than
- * suggesting a re-stage: `stageRuleCandidates` refuses on the same condition,
- * so "re-run lesson-stage to regenerate it" would not be true of what this
- * code does.
- *
- * What this does NOT check is provenance. A hand-written
- * `.staging/<realLessonId>.json` with the right protocol and a matching
- * `lessonId` is indistinguishable from a real one and is accepted. The
- * staging directory is unauthenticated working state; this function only
- * checks the SHAPE the rest of this module depends on.
- */
-export function loadStaging(root: string, lessonId: string): LessonStaging | null {
-  const file = stagingFile(root, lessonId);
-  if (!existsSync(file)) return null;
-
-  const corrupt = (reason: string): Error => new Error(
-    `my_context: the staging file for ${lessonId} cannot be trusted — ${reason}. Refusing to read or ` +
-    `overwrite it, because it may record candidates a human already accepted or discarded. Inspect ` +
-    `${file} and delete it if it is genuinely junk, then re-stage.`,
-  );
-
-  let parsed: unknown;
-  try {
-    parsed = JSON.parse(readFileSync(file, 'utf8'));
-  } catch (err) {
-    throw corrupt(`it is not valid JSON (${err instanceof Error ? err.message : String(err)})`);
-  }
-
-  if (!isObject(parsed)) {
-    throw corrupt(`its top level is ${parsed === null ? 'null' : Array.isArray(parsed) ? 'an array' : `a ${typeof parsed}`}, not an object`);
-  }
-
-  const staging = parsed as unknown as LessonStaging;
-  if (staging.protocol !== STAGING_PROTOCOL) {
-    throw corrupt(
-      `its protocol is ${JSON.stringify(staging.protocol)}, expected ${JSON.stringify(STAGING_PROTOCOL)} ` +
-      `(it may be from an incompatible version)`,
-    );
-  }
-
-  // `saveStaging` derives the FILENAME from `staging.lessonId`, and every
-  // legitimate write path (`stageRuleCandidates`) sets that field to the
-  // same lesson it was called with — so on a normal, untampered file the two
-  // always agree. They can disagree only if something wrote (or rewrote) the
-  // file directly rather than through this module's own save path: a file
-  // literally named `<lessonId>.json` whose CONTENTS name a different
-  // lesson. Without this check, `acceptStagedRule` below would create the
-  // rule and write its `derived_from` relation using whichever lesson id it
-  // trusted, while persisting the resulting `accepted` state to a FILE NAMED
-  // AFTER THE OTHER ONE (`saveStaging` uses `staging.lessonId` for the
-  // filename) — leaving the file this function was asked to load still
-  // `pending`, so a second accept against the same key would silently
-  // succeed again.
-  if (staging.lessonId !== lessonId) {
-    throw new Error(
-      `my_context: the staging file for "${lessonId}" names a different lesson internally ` +
-      `(${JSON.stringify(staging.lessonId)}) than its filename (${JSON.stringify(lessonId)}). Refusing to ` +
-      `trust it — this file may have been copied from another lesson's staging or edited by hand. ` +
-      `Inspect ${file} and delete it if it is genuinely junk, then re-stage.`,
-    );
-  }
-
-  if (!Array.isArray(staging.candidates)) {
-    throw corrupt(`its "candidates" field is ${JSON.stringify(staging.candidates)}, not an array`);
-  }
-
-  return staging;
-}
-
-/**
  * The internal loader `acceptStagedRule`/`discardStagedRule` use — never a
  * caller-supplied `LessonStaging` value (see those functions' doc comments
  * for why that distinction is load-bearing). Adds "the file is absent" to
@@ -190,26 +73,6 @@ function loadOrThrowStaging(root: string, lessonId: string): LessonStaging {
     );
   }
   return staging;
-}
-
-export function listStaging(root: string): LessonStaging[] {
-  let names: string[];
-  try {
-    names = readdirSync(stagingDir(root)).filter((n) => n.endsWith('.json'));
-  } catch {
-    return [];
-  }
-
-  const out: LessonStaging[] = [];
-  for (const name of names) {
-    try {
-      const parsed = JSON.parse(readFileSync(path.join(stagingDir(root), name), 'utf8')) as LessonStaging;
-      if (parsed.protocol === STAGING_PROTOCOL) out.push(parsed);
-    } catch {
-      // Working state, not knowledge. Skip.
-    }
-  }
-  return out.sort((a, b) => a.lessonId.localeCompare(b.lessonId));
 }
 
 export const RULE_CANDIDATE_SCHEMA: Record<string, unknown> = {
@@ -263,10 +126,6 @@ export function renderRuleRequest(request: Record<string, unknown>): string {
     '```',
   ];
   return lines.join('\n').replace(/\r/g, '') + '\n';
-}
-
-function isObject(v: unknown): v is Record<string, unknown> {
-  return typeof v === 'object' && v !== null && !Array.isArray(v);
 }
 
 /**

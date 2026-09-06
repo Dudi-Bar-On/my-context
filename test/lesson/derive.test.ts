@@ -5,9 +5,11 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 import {
   buildRuleRequest, renderRuleRequest, validateRuleCandidates, stageRuleCandidates,
-  acceptStagedRule, discardStagedRule, loadStaging, listStaging, stagingDir, saveStaging,
-  STAGING_PROTOCOL, type LessonStaging,
+  acceptStagedRule, discardStagedRule, saveStaging,
 } from '../../src/lesson/derive.ts';
+import {
+  loadStaging, listStaging, stagingDir, STAGING_PROTOCOL, type LessonStaging,
+} from '../../src/lesson/staging.ts';
 import { resolveConfig } from '../../src/core/config.ts';
 import { Store } from '../../src/core/store.ts';
 import { createItem, type MutationContext } from '../../src/core/mutate.ts';
@@ -231,7 +233,7 @@ test('an edit at acceptance time is honoured', () => {
 test('an edit cannot smuggle in a bare scope glob or an invalid directive', () => {
   const { ctx, root, lesson, cleanup } = fixture();
   const { staging } = stageRuleCandidates(root, lesson, [candidate()]);
-  const badEdits = { scope: ['**'], directive: 'maybe' } as unknown as Partial<import('../../src/lesson/derive.ts').RuleCandidate>;
+  const badEdits = { scope: ['**'], directive: 'maybe' } as unknown as Partial<import('../../src/lesson/staging.ts').RuleCandidate>;
   assert.throws(
     () => acceptStagedRule(ctx, root, lesson.id, staging.candidates[0].key, badEdits),
     /too broad|"do".*"dont"/i,

@@ -5,10 +5,12 @@ import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import {
-  acceptStagedRule, discardStagedRule, listStaging, loadStaging, saveStaging,
-  stageRuleCandidates, stagingDir, validateRuleCandidates,
-  STAGING_PROTOCOL, type LessonStaging,
+  acceptStagedRule, discardStagedRule, saveStaging,
+  stageRuleCandidates, validateRuleCandidates,
 } from '../../src/lesson/derive.ts';
+import {
+  listStaging, loadStaging, stagingDir, STAGING_PROTOCOL, type LessonStaging,
+} from '../../src/lesson/staging.ts';
 import { resolveConfig } from '../../src/core/config.ts';
 import { Store } from '../../src/core/store.ts';
 import { createItem, type MutationContext } from '../../src/core/mutate.ts';

@@ -98,7 +98,7 @@
  * `help/index.ts` builds the `tools` help topic from the MCP registry
  * (`help/index.ts` · `import { createRegistry } from '../mcp/tools.ts';` · ~20)
  * and `mcp/tools.ts` binds three writers
- * (`mcp/tools.ts` · `createItem, supersedeItem, updateItem,` · ~24).
+ * (`mcp/tools.ts` · `createItem, supersedeItem, updateItem,` · ~25).
  * That does NOT violate the ban, which is scoped to `src/ui/` bindings by the
  * ruling above, and no assertion here is written against it — a module-level
  * ban was rejected twice (plan §0.5) and re-adding one by the back door is not

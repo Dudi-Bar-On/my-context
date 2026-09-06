@@ -56,8 +56,9 @@ import { resolveWorkspace } from '../core/workspace.ts';
 import { exampleItem, helpTopic, toolDescriptions } from '../help/index.ts';
 import { listSessions, pendingAnchors, rejectionsForAnchor } from '../ingest/session.ts';
 import {
-  buildRuleRequest, listStaging, renderRuleRequest, stageRuleCandidates,
+  buildRuleRequest, renderRuleRequest, stageRuleCandidates,
 } from '../lesson/derive.ts';
+import { listStaging } from '../lesson/staging.ts';
 import { renderCollisionReport, type CollisionReport } from '../pack/collide.ts';
 import { planImport } from '../pack/import.ts';
 import { readImportRecords } from '../pack/imported-audit.ts';
