@@ -432,6 +432,139 @@ export function askHeadroom(pct, threshold) {
   return threshold - pct;
 }
 
+/* ══ THE ASK IS SIXTEEN STEPS, NOT ONE — `plan:handover seq:13` ══════════
+ *
+ * `seq:12` (D14) replaced `MAX_ASKS` with a PROGRESS STEP: the handover ask
+ * re-arms on every whole percent of occupancy crossed from the threshold to
+ * full, so a threshold of 85 earns up to sixteen asks in one window and the
+ * default 98 earns three. `core/handover-ask.ts`'s `askStep` is the rule and
+ * `AskLatch.askedAtPercent` is the record of where the last one fired.
+ *
+ * Both surfaces have to say what that now makes sayable, and neither may
+ * compute it its own way — the four functions below are the ONE spelling of
+ * that arithmetic, declared here beside `occupancyBands` and `askHeadroom` for
+ * the reason those two are: `cli/commands/statusline-powerline.ts` reaches
+ * this module through an `import()` bridge, so the terminal and the browser
+ * subtract with the same code rather than with two copies that agree until
+ * somebody edits one.
+ *
+ * `askStepOf` is the browser-side TWIN of `core/handover-ask.ts`'s `askStep`,
+ * not a second opinion: the hook decides when to ask and this only reads the
+ * number back, and `test/ui/viewmodel.test.ts` sweeps the two against each
+ * other across the whole range so a divergence fails a test rather than
+ * putting two percentages on two bars. It is a copy for the reason
+ * `formatDuration` is one — the hooks must not pay a dynamic import and this
+ * module must stay loadable in a browser — and it is pinned for the same
+ * reason too.
+ */
+
+/**
+ * The highest whole percent an ask can be earned at, and the ceiling every
+ * count below is measured against. `core/handover-ask.ts`'s
+ * `ASK_CEILING_PERCENT`, restated here and pinned by test.
+ */
+export const ASK_CEILING_PERCENT = 100;
+
+/**
+ * **The whole percent an ask at this occupancy belongs to** — `Math.floor`,
+ * clamped at the ceiling — or `null` for a reading that is not a number.
+ *
+ * The WHOLE percent, because that is the unit the mechanism re-arms in: 85.1
+ * and 85.9 are one step and not two, and a surface that drew the float would
+ * be reporting a step the latch does not hold.
+ */
+export function askStepOf(pct) {
+  if (typeof pct !== 'number' || !Number.isFinite(pct)) return null;
+  return Math.min(ASK_CEILING_PERCENT, Math.floor(pct));
+}
+
+/**
+ * **How many further asks this window can still earn**, counting the whole
+ * percents above the one it is in: `100 - step`.
+ *
+ * A window at 96.3% has four left (97, 98, 99, 100). A window at 100 has ZERO
+ * and that zero is drawn rather than hidden
+ * (`STD-a-measured-zero-is-drawn-and-named-an-unmeasured-thing-is`) — "no more
+ * asks are coming" is exactly as worth saying as "four are".
+ *
+ * It counts what the MECHANISM can still ask, not what it will: an ask fires
+ * on a `Stop` that lands inside a percent, and a window that jumps two points
+ * in one turn earns one ask rather than two. So this is an upper bound and the
+ * copy that spends it says "left", never "will".
+ */
+export function asksLeft(pct) {
+  const step = askStepOf(pct);
+  return step === null ? null : ASK_CEILING_PERCENT - step;
+}
+
+/**
+ * **HOW FAR BEHIND THE STANDING HANDOVER IS, IN PERCENT** — the number that
+ * replaces `{age}`, and the whole point of `seq:13`.
+ *
+ * `askStepOf(pct) - askedAtPercent`: the whole percents the window has grown
+ * since the ask the standing handover answers. AGE was the measure that hid
+ * the defect — three windows reported `acted-on` while the handover was 2h39m,
+ * 1h24m and 3h06m behind, written at 85% and carried to 99.9%, 96.1% and
+ * 96.6% — because age says that something happened, not that it is current.
+ * A percentage point of a 1M window is roughly ten thousand tokens the
+ * handover does not describe, and that is a unit a reader can act on.
+ *
+ * **SIGNED, and the negative case is real rather than defensive.** A `/clear`
+ * destroys a window and `core/window-state.ts` deliberately does not remove
+ * the latch (see `AskLatch`'s header), so a fresh window can read a latch that
+ * fired at 96% while the occupancy is 12%. Clamping that to zero would draw
+ * "current at 96%" over a window at 12% — a confident lie. It is returned
+ * negative so the caller can say NOT KNOWN instead.
+ *
+ * `null` when either number is missing: a window never asked in, or a reading
+ * with no percentage.
+ */
+export function handoverLag(askedAtPercent, pct) {
+  const asked = askStepOf(askedAtPercent);
+  const step = askStepOf(pct);
+  if (asked === null || step === null) return null;
+  return step - asked;
+}
+
+/**
+ * **THE ASK AS A SERIES RATHER THAN AN EVENT** — the fix for a bar that filled
+ * once and then meant nothing.
+ *
+ * Below the threshold the ask field is progress TOWARD the first ask
+ * (`askHeadroom`, `(28.5 / 85)`), and that is still right. At and past it that
+ * denominator is spent: the bar sits over-full, the headroom sticks at `+0.0`,
+ * and a full bar reads as FINISHED for the last fifteen points of the window —
+ * which is the opposite of true, because that is exactly where the asks are.
+ *
+ * So past the threshold the field re-origins on the threshold and runs to the
+ * ceiling: `spent` of `span` points, where `span` is `100 - threshold` — the
+ * fifteen points a threshold of 85 leaves, the two a default 98 leaves. The
+ * bar therefore STARTS at the ask and fills as the window does, and `toFull`
+ * is the distance still to go.
+ *
+ * **It is not the window figure wearing a second label.** `pct / 100` would be
+ * the context block's own number printed twice; this is measured from the
+ * threshold, so at 96.3% with T=85 it reads 75% where the window reads 96.3%,
+ * and the two say different things.
+ *
+ * `null` when there is no series to draw: no reading, no configured ask, or a
+ * threshold at or above the ceiling — a zero-width span has no proportion and
+ * the caller keeps the words instead of inventing one.
+ */
+export function askSeries(pct, threshold) {
+  if (typeof pct !== 'number' || !Number.isFinite(pct)) return null;
+  if (typeof threshold !== 'number' || !Number.isFinite(threshold)) return null;
+  if (threshold >= ASK_CEILING_PERCENT) return null;
+  const span = ASK_CEILING_PERCENT - threshold;
+  const spent = Math.max(0, Math.min(span, pct - threshold));
+  return {
+    span,
+    spent,
+    percent: (spent / span) * 100,
+    toFull: Math.max(0, ASK_CEILING_PERCENT - pct),
+  };
+}
+
 /**
  * **How old a context sample may be and still be levelled.**
  *
@@ -895,7 +1028,10 @@ function identityOf(body) {
 function handoverOf(body) {
   const h = body === null || body === undefined ? null : body.handover;
   if (h === null || h === undefined || typeof h !== 'object') {
-    return { verdict: null, path: null, askedAt: null, writtenAt: null, threshold: null };
+    return {
+      verdict: null, path: null, askedAt: null, writtenAt: null,
+      threshold: null, askedAtPercent: null,
+    };
   }
   return {
     verdict: typeof h.verdict === 'string' ? h.verdict : null,
@@ -903,6 +1039,12 @@ function handoverOf(body) {
     askedAt: h.askedAt ?? null,
     writtenAt: h.writtenAt ?? null,
     threshold: typeof h.thresholdPercent === 'number' ? h.thresholdPercent : null,
+    // `plan:handover seq:13`. Read as defensively as every other field here,
+    // and `null` rather than 0 for a server that predates it: a percent an ask
+    // fired at is not zero because nobody sent one, and a strip that drew `0%`
+    // there would report a window that had never been asked as having been
+    // asked at the very bottom of itself.
+    askedAtPercent: typeof h.askedAtPercent === 'number' ? h.askedAtPercent : null,
   };
 }
 
@@ -966,7 +1108,7 @@ const STREAM_EVENT_KEYS = {
 // actually shows (it recreates `audit.jsonl` at the same path, at a size that
 // need not be smaller, so nothing shrinks). The tail resets to the current
 // EOFs rather than replaying, so whatever landed in the gap is NOT coming down
-// this stream (`ui/watch-model.ts` · `if (result.resync) sseSend(res, 'resync', {});` · ~1022).
+// this stream (`ui/watch-model.ts` · `if (result.resync) sseSend(res, 'resync', {});` · ~1054).
 //
 // The only way to fill that hole is to refetch the backlog through the query
 // surface, which reads the projection and is immune to the rename — so

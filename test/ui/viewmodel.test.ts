@@ -130,6 +130,14 @@ interface ViewModelModule {
   };
   /** `plan:walk seq:117` — which band a live figure falls in, or `'stale'`, or nothing. */
   occupancyLevel: (pct: unknown, threshold: unknown, ageMs: unknown) => string | null;
+  /** `plan:handover seq:13` — the ask as a SERIES of up to sixteen, not one event. */
+  ASK_CEILING_PERCENT: number;
+  askStepOf: (pct: unknown) => number | null;
+  asksLeft: (pct: unknown) => number | null;
+  handoverLag: (askedAtPercent: unknown, pct: unknown) => number | null;
+  askSeries: (pct: unknown, threshold: unknown) => {
+    span: number; spent: number; percent: number; toFull: number;
+  } | null;
   OCCUPANCY_WARN_FRACTION: number;
   CONTEXT_SAMPLE_FRESH_MS: number;
   /** `plan:walk seq:4` — the three states `measureCorpusDrift`'s answer can be in. */
@@ -282,7 +290,7 @@ test('createSseParser: CRLF and lone-CR are line terminators too', async () => {
   // Lone CR, the third terminator. The cost of holding it is exactly one frame
   // of latency at a chunk boundary, and only against a server that terminates
   // with CR alone — ours writes LF, in one place
-  // (`ui/watch-model.ts` · `function sseSend(res: ServerResponse, event: string, data: unknown): void {` · ~912).
+  // (`ui/watch-model.ts` · `function sseSend(res: ServerResponse, event: string, data: unknown): void {` · ~944).
   feed('event: record\rdata: {"op":"manual"}\r\r');
   assert.equal(seen.length, 2, 'the frame is complete, but its last byte is an ambiguous CR');
   feed(':');  // any byte that is not an LF resolves it
@@ -415,6 +423,111 @@ test('occupancyBands are a fraction of the threshold, not a remembered pair of n
   assert.equal(occupancyBands(null), null);
   assert.equal(occupancyBands(undefined), null);
   assert.equal(occupancyBands(Number.NaN), null);
+});
+
+/* ══ THE ASK IS SIXTEEN STEPS, NOT ONE — `plan:handover seq:13` ══════════ */
+
+/**
+ * **`askStepOf` is pinned against the HOOK's own rule, not merely to itself.**
+ *
+ * `core/handover-ask.ts`'s `askStep` decides which whole percent an ask belongs
+ * to and therefore when the next one is earned. `viewmodel.js` carries a twin
+ * so that a browser — which cannot import a Node module, and must not pay a
+ * dynamic import on a render path — can read the same number back. Two
+ * implementations of one rule is this project's most repeated defect, so the
+ * copy is allowed only with a sweep that proves them equal, which is exactly
+ * the arrangement `test/ui/duration-parity.test.ts` already makes for
+ * `formatDuration`.
+ *
+ * Swept across the whole range and past both ends, including the fractions the
+ * float readings actually arrive as: 85.0 and 85.9 must be ONE step, because a
+ * surface that showed two would report an ask the latch does not hold.
+ */
+test('the browser askStep is the hook askStep, at every percent and past both ends', async () => {
+  const { askStepOf, ASK_CEILING_PERCENT } = await vm();
+  const { askStep, ASK_CEILING_PERCENT: CORE_CEILING } = await import(
+    '../../src/core/handover-ask.ts'
+  );
+  assert.equal(ASK_CEILING_PERCENT, CORE_CEILING, 'two ceilings would be two bounds');
+  for (let whole = -5; whole <= 105; whole += 1) {
+    for (const frac of [0, 0.1, 0.5, 0.9, 0.999]) {
+      const pct = whole + frac;
+      assert.equal(askStepOf(pct), askStep(pct), `the two disagree at ${pct}`);
+    }
+  }
+  // A reading that is not a number is not a step nobody has asked at yet — in
+  // the hook that would be an ask on every turn, and on a bar it would be a
+  // percentage invented by the renderer.
+  for (const bad of [null, undefined, Number.NaN, 'x', {}]) {
+    assert.equal(askStepOf(bad), null);
+  }
+});
+
+/**
+ * **How many asks are still to come, and the zero that is drawn rather than
+ * hidden.**
+ */
+test('asksLeft counts the whole percents above the one the window is in', async () => {
+  const { asksLeft } = await vm();
+  assert.equal(asksLeft(85), 15, 'from the first ask of a 85-threshold window, fifteen more');
+  assert.equal(asksLeft(96.3), 4, '97, 98, 99 and 100');
+  assert.equal(asksLeft(99.9), 1);
+  // A MEASURED zero (`STD-a-measured-zero-is-drawn-and-named-an-unmeasured-
+  // thing-is`): "no more are coming" is worth exactly what "four are" is.
+  assert.equal(asksLeft(100), 0);
+  assert.equal(asksLeft(140), 0, 'clamped, never negative — a full window is full');
+  assert.equal(asksLeft(null), null);
+});
+
+/**
+ * **THE NUMBER THAT REPLACES `{age}`**, and the sign that keeps it honest.
+ */
+test('handoverLag is whole percents, signed, and null when either half is missing', async () => {
+  const { handoverLag } = await vm();
+  // The measured failure, in its own numbers: written for the 85% ask and
+  // carried to 99.9%. Age said "3h ago" and read as current; percent says
+  // fourteen points of work the handover does not describe.
+  assert.equal(handoverLag(85, 99.9), 14);
+  assert.equal(handoverLag(96, 96.4), 0, 'the same whole percent is not behind');
+  assert.equal(handoverLag(96, 96.9), 0, 'and a fraction does not make it so');
+  assert.equal(handoverLag(96, 97.0), 1, 'a whole percent crossed does');
+  // NEGATIVE and not clamped: a `/clear` destroys a window and the latch
+  // outlives it, so a fresh window can read a percent above its own. Clamping
+  // would draw "current at 96%" over a window at 12% — a confident lie.
+  assert.ok(handoverLag(96, 12)! < 0);
+  assert.equal(handoverLag(null, 96), null, 'never asked, nothing to be behind');
+  assert.equal(handoverLag(85, null), null, 'no reading, nothing to be behind BY');
+});
+
+/**
+ * **THE SERIES, which is what stops the ask bar reading as finished.**
+ *
+ * Below the threshold the ask field is progress toward the first ask and that
+ * is unchanged. At and past it the old denominator is spent — the bar sat
+ * over-full and the headroom stuck at `+0.0` for the last fifteen points of the
+ * window, which is precisely where the asks are.
+ */
+test('askSeries re-origins on the threshold and runs to full', async () => {
+  const { askSeries } = await vm();
+  assert.deepEqual(askSeries(85, 85), { span: 15, spent: 0, percent: 0, toFull: 15 });
+  const mid = askSeries(96.3, 85)!;
+  assert.equal(mid.span, 15);
+  assert.ok(Math.abs(mid.spent - 11.3) < 1e-9);
+  assert.ok(Math.abs(mid.percent - 75.333) < 0.01);
+  assert.ok(Math.abs(mid.toFull - 3.7) < 1e-9);
+  // NOT the window figure wearing a second label: at 96.3% the window reads
+  // 96.3 and this reads 75. Two numbers, two questions.
+  assert.notEqual(Math.round(mid.percent), Math.round(96.3));
+  // The default threshold leaves a two-point span and three asks (98, 99, 100).
+  assert.deepEqual(askSeries(98, 98), { span: 2, spent: 0, percent: 0, toFull: 2 });
+  assert.equal(askSeries(100, 98)!.percent, 100);
+  assert.equal(askSeries(104, 98)!.toFull, 0, 'clamped at both ends');
+  assert.equal(askSeries(104, 98)!.spent, 2);
+  // No series to draw a proportion over: no reading, no configured ask, or a
+  // threshold with no room above it.
+  assert.equal(askSeries(null, 85), null);
+  assert.equal(askSeries(90, null), null);
+  assert.equal(askSeries(100, 100), null, 'a zero-width span has no proportion');
 });
 
 /**
@@ -648,7 +761,7 @@ test('sparkline: the degenerate series a real endpoint answers with', async () =
  * exists because a rotation recreates `audit.jsonl` at the same path at a size
  * that need not be smaller, so nothing shrinks. The tail resets to the current
  * EOFs rather than replaying, so what landed in the gap is NOT on this stream
- * (`ui/watch-model.ts` · `if (result.resync) sseSend(res, 'resync', {});` · ~1022).
+ * (`ui/watch-model.ts` · `if (result.resync) sseSend(res, 'resync', {});` · ~1054).
  * The screen has to refetch its backlog through the query surface, which reads
  * the projection and is immune to the rename — and `refetchBacklog` is the one
  * place that obligation is written down where a test can reach it.

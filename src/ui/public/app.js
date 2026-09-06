@@ -190,6 +190,12 @@ import {
   CONTEXT_FILL_CRIT_PERCENT, CONTEXT_FILL_WARN_PERCENT, CONTEXT_SAMPLE_FRESH_MS,
   askHeadroom, contextStrip, corpusDrift, fillLevel, fmtCount, formatAge, formatDuration,
   occupancyBands, occupancyLevel, usageBar, usageLevelOf,
+  // ── AND THE FOUR THE HANDOVER FIELDS ARE DRAWN WITH (`plan:handover
+  //    seq:13`). The ask is a SERIES since `seq:12` — one per whole percent
+  //    from the threshold to full — and these are the one spelling of that
+  //    arithmetic, shared with the terminal through the same bridge the bands
+  //    travel on. Nothing here floors, subtracts or counts a percent itself.
+  askSeries, askStepOf, asksLeft, handoverLag,
   // ── AND THE THREE THE 2026-09-02 FIELDS ARE DRAWN WITH.
   //
   // `wallStamp` is the wall clock's ONE spelling and `relDir`/`corpusDir`
@@ -5648,7 +5654,6 @@ function askHeadroomChip(view) {
   chip.className = 'chip askfig';
   chip.dataset.f = 'ask';
   chip.dataset.g = '◆';
-  chip.dataset.k = 'strip.ctxAsk';
   // ── THE SAME ELEMENTS IN THE SAME ORDER AS THE TERMINAL ──────────────────
   //
   // Owner, 2026-09-01: *"ASK, handover does not display the percentage as it is
@@ -5666,30 +5671,64 @@ function askHeadroomChip(view) {
   // because its numerator is percentage POINTS of the window rather than
   // tokens; `fmtCount` is for the token counts. That distinction is the
   // terminal lane's and is reused rather than re-derived.
-  chip.append(...translate(table.strings, 'strip.ctxAsk', {
-    // Used-of-THRESHOLD: how far along the way to the ask this window is.
-    askPct: ((view.pct / threshold) * 100).toFixed(0),
-    // The window's own figure, at the one decimal the ctx field uses.
-    pct: view.pct.toFixed(1),
-    // The threshold reads as configured — `85`, not `85.0` — while the
-    // DISTANCE always carries its decimal, because it is the figure that moves
-    // and a gap showing `+3` for anything from 2.5 to 3.5 hides the last
-    // message before the ask. The same two rules the terminal block follows.
-    threshold: Number.isInteger(threshold) ? String(threshold) : threshold.toFixed(1),
-    headroom: headroom.toFixed(1),
-  }));
-  chip.title = flat(table.strings, 'strip.ctxAsk', {
-    askPct: ((view.pct / threshold) * 100).toFixed(0),
-    pct: view.pct.toFixed(1),
-    threshold: Number.isInteger(threshold) ? String(threshold) : threshold.toFixed(1),
-    headroom: headroom.toFixed(1),
-  });
-  // Banded as used-of-THRESHOLD, exactly as the terminal bands it: the maximum
-  // is the ask and the used figure is the window's own percentage, both in
-  // percentage points of the window. Past the ask this chip is already `null`
-  // above and `handoverVerdictChip` says the words instead — so no bar and no
-  // signed figure can ever appear beside "handover due".
-  bandUsage(chip, (view.pct / threshold) * 100, 'strip.grp.ask');
+  // ── PAST THE ASK THE FIELD RE-ORIGINS ON THE THRESHOLD — `plan:handover
+  //    seq:13`, and it is the fix for a field that was STALE BY CONSTRUCTION.
+  //
+  // Until now this drew `(96.0 / 85)` past the threshold: a bar pinned at ten
+  // filled cells, a proportion over 100, and a headroom clamped at `+0.0` for
+  // the last fifteen points of the window. A bar that fills once and then does
+  // not move reads as FINISHED — which is the opposite of true, because
+  // `seq:12` put up to sixteen asks in exactly that stretch.
+  //
+  // So past the threshold the same field measures the SERIES instead: `spent`
+  // of the `span` between the ask and full, so the bar starts at the ask and
+  // fills as the window does, and the trailing figure counts to 100 rather
+  // than sitting at zero. It is not the context figure wearing a second label
+  // — at 96.3% with T=85 this reads 75% where the window reads 96.3%.
+  //
+  // Two keys and not one interpolated string, because the two states are two
+  // sentences with different denominators and a translator must be able to see
+  // which is which. `askSeries` is the shared module's; the terminal's
+  // `askSegment` calls the same function for the same block.
+  const series = level === 'crit' ? askSeries(view.pct, threshold) : null;
+  const key = series === null ? 'strip.ctxAsk' : 'strip.ctxAskDue';
+  const subs = series === null
+    ? {
+        // Used-of-THRESHOLD: how far along the way to the ask this window is.
+        askPct: ((view.pct / threshold) * 100).toFixed(0),
+        // The window's own figure, at the one decimal the ctx field uses.
+        pct: view.pct.toFixed(1),
+        // The threshold reads as configured — `85`, not `85.0` — while the
+        // DISTANCE always carries its decimal, because it is the figure that
+        // moves and a gap showing `+3` for anything from 2.5 to 3.5 hides the
+        // last message before the ask. The same two rules the terminal follows.
+        threshold: Number.isInteger(threshold) ? String(threshold) : threshold.toFixed(1),
+        headroom: headroom.toFixed(1),
+      }
+    : {
+        // Used-of-SERIES: how far through the sixteen steps this window is.
+        askPct: series.percent.toFixed(0),
+        // Points of the window spent since the ask, of the points there are.
+        // One decimal on the numerator because it is the figure that moves;
+        // the span is whole points, because the threshold is read as
+        // configured.
+        spent: series.spent.toFixed(1),
+        span: String(series.span),
+        // What is left of the window, in the same `+n.n` shape and the same
+        // unit the sub-threshold form's headroom carries: points to the next
+        // boundary. Below the ask that boundary is the ask; past it there is
+        // nothing above but full.
+        toFull: series.toFull.toFixed(1),
+      };
+  chip.dataset.k = key;
+  chip.append(...translate(table.strings, key, subs));
+  chip.title = flat(table.strings, key, subs);
+  // Banded on whichever proportion the field is drawing, so the colour and the
+  // number can never be about two different maxima. Below the ask that is
+  // used-of-THRESHOLD, exactly as the terminal bands it; past it, used-of-
+  // SERIES — which is what finally lets this field escalate across the last
+  // fifteen points instead of sitting pinned at critical from 85 to 100.
+  bandUsage(chip, series === null ? (view.pct / threshold) * 100 : series.percent, 'strip.grp.ask');
   return chip;
 }
 
@@ -6575,14 +6614,45 @@ function handoverProximityChip(view) {
   chip.dataset.g = '\u25c6';
   // One decimal place: at the configured threshold of 85 the warn band opens at
   // 76.5, and rounding it to 77 would print a boundary the code does not use.
-  const subs = { warn: bands.warn.toFixed(1), threshold: String(threshold) };
+  //
+  // ── AND THE TWO NUMBERS THAT MAKE THIS FIELD WORTH READING — `plan:handover
+  //    seq:13`, owner instruction: the strip *"currently shows handover due and
+  //    in my opinion should be more informative"*.
+  //
+  // `handover due` was written when the ask was ONE EVENT. `seq:12` made it a
+  // series — one ask per whole percent from the threshold to full, up to
+  // sixteen of them — and three words that are identical at 85% and at 99%
+  // tell a reader nothing about which of the sixteen they are in or how many
+  // are still coming. So the chip names the STEP it is due at and how many
+  // remain, and the warn state below it announces the shape before it starts,
+  // which is what stops the second ask reading as a malfunction.
+  //
+  // `askStepOf` and `asksLeft` are the shared module's, never a `Math.floor`
+  // written here: the terminal draws the same two numbers off the same two
+  // functions, and the hook that decides when to ask uses the rule they are
+  // pinned against.
+  //
+  // `0 asks left` at 100% is DRAWN rather than hidden
+  // (`STD-a-measured-zero-is-drawn-and-named-an-unmeasured-thing-is`) — "no
+  // more are coming" is worth exactly what "four are" is worth.
+  const step = askStepOf(view.pct);
+  const left = asksLeft(view.pct);
+  const subs = {
+    warn: bands.warn.toFixed(1),
+    threshold: String(threshold),
+    // `—` is this product's mark for a value nothing measured. Unreachable
+    // here — the level is `warn` or `crit`, so `view.pct` is a finite number —
+    // and present so that a future caller cannot make this print `null%`.
+    step: step === null ? '—' : String(step),
+    left: left === null ? '—' : String(left),
+  };
   if (level === 'crit') {
     chip.dataset.k = 'strip.ctxCrit';
-    chip.append(...translate(table.strings, 'strip.ctxCrit'));
+    chip.append(...translate(table.strings, 'strip.ctxCrit', subs));
     chip.title = flat(table.strings, 'title.ctxCrit', subs);
   } else {
     chip.dataset.k = 'strip.ctxWarn';
-    chip.append(...translate(table.strings, 'strip.ctxWarn'));
+    chip.append(...translate(table.strings, 'strip.ctxWarn', subs));
     chip.title = flat(table.strings, 'title.ctxWarn', subs);
   }
   return chip;
@@ -6805,40 +6875,110 @@ function handoverVerdictChip(view) {
   const h = view.handover;
   if (h.verdict === null) return null;
   const chip = document.createElement('span');
+  // ── THE PERCENT PAIR, AND THE STALENESS REFUSAL THAT GUARDS IT —
+  //    `plan:handover seq:13`.
+  //
+  // Only a KNOWN and FRESH reading may stand on the right of the pair. A
+  // fossil measured against a live latch would print `now 62%` about a window
+  // that has been at 96% for hours — the exact class of defect this block is
+  // being rewritten to end, reintroduced one field along. `fillLevel` and not
+  // `occupancyLevel` for the refusal, because it needs no threshold: this chip
+  // is drawn in states where the handover feature is off, and a staleness rule
+  // that depended on a configured ask would silently stop applying there.
+  const ageMs = view.receivedAt === null
+    ? null
+    : Math.max(0, Date.now() - Date.parse(view.receivedAt));
+  const live = view.state === 'known' && fillLevel(view.pct, ageMs) !== 'stale'
+    ? view.pct
+    : null;
+  // The whole percent the window is in now, and how far the standing handover
+  // is behind it. Both from the shared module, so the terminal's HANDOVER
+  // block and this chip cannot answer one subtraction two ways.
+  const step = askStepOf(live);
+  const lag = handoverLag(h.askedAtPercent, live);
+  const left = asksLeft(live);
   const subs = {
     path: h.path ?? '—',
     asked: h.askedAt ?? '—',
     written: h.writtenAt ?? '—',
     threshold: h.threshold === null ? '—' : String(h.threshold),
+    // **THE `%` RIDES INSIDE THE SUBSTITUTION, never after it in the
+    // sentence.** A missing number draws this product's own em dash for an
+    // unmeasured value, and `—%` would be a unit on an absence — which reads
+    // as a measurement that came out blank rather than as one nobody took.
+    askedPct: h.askedAtPercent === null ? '—' : `${h.askedAtPercent}%`,
+    nowPct: step === null ? '—' : `${step}%`,
+    lagPct: lag === null ? '—' : `${Math.abs(lag)}%`,
+    left: left === null ? '—' : String(left),
   };
   // The same reasoning as the rate-limit verdict above, and the same owner
   // ruling: `handover written 13h ago` measured 24px. Set once here rather
   // than in each branch, so a verdict added later cannot miss it.
   chip.dataset.f = 'handover-verdict';
   if (h.verdict === 'acted-on') {
-    chip.className = 'chip ok';
-    chip.dataset.g = '●';
-    chip.dataset.k = 'strip.hoActed';
-    // WHEN, computed from `writtenAt` at RENDER time so it ticks — the same
-    // treatment, and for the same reason, as the "as of … ago" on the context
-    // sentence one element back. A handover written eight hours ago and one
-    // written eight seconds ago are different answers to "is it current".
-    const writtenMs = h.writtenAt === null ? NaN : Date.parse(h.writtenAt);
-    chip.append(...translate(table.strings, 'strip.hoActed', {
-      age: Number.isFinite(writtenMs) ? formatAge(Math.max(0, Date.now() - writtenMs)) : '—',
-    }));
-    chip.title = flat(table.strings, 'title.hoActed', subs);
+    // ── FOUR STATES WHERE THERE USED TO BE ONE, AND THE ONE WAS THE DEFECT.
+    //
+    // `handover written {age} ago` said that something HAPPENED, in a unit
+    // that cannot say whether it is still true. Three windows on this corpus
+    // reported `acted-on` while the handover was 2h39m, 1h24m and 3h06m behind
+    // — written at 85% and carried to 99.9%, 96.1% and 96.6% — and every one
+    // of them would have drawn a confident green chip here.
+    //
+    // `acted-on` proves ORDERING: the file moved after the ask. Whether it is
+    // CURRENT is the ask's percent against the window's, and that comparison
+    // has four honest outcomes rather than one.
+    if (lag === null) {
+      // Asked and answered, and nothing live to measure it against — a cold
+      // session, no bridge, or a sample too old to place. `--carry`, the
+      // continuity hue, and NOT the green: green would claim currency from a
+      // comparison that was never made.
+      chip.className = 'chip carry';
+      chip.dataset.g = '◇';
+      chip.dataset.k = 'strip.hoAnswered';
+      chip.append(...translate(table.strings, 'strip.hoAnswered', subs));
+      chip.title = flat(table.strings, 'title.hoAnswered', subs);
+    } else if (lag < 0) {
+      // The latch OUTLIVED ITS WINDOW. A `/clear` destroys a context window
+      // and `core/window-state.ts` deliberately does not remove the latch
+      // (`AskLatch`'s own header carries the argument), so a fresh window can
+      // read a percent above its own. Drawn as NOT KNOWN, never as `current at
+      // 96%` over a window at 12%.
+      chip.className = 'chip unmeas';
+      chip.dataset.g = '◌';
+      chip.dataset.k = 'strip.hoPriorWindow';
+      chip.append(...translate(table.strings, 'strip.hoPriorWindow', subs));
+      chip.title = flat(table.strings, 'title.hoPriorWindow', subs);
+    } else if (lag === 0) {
+      // The ask it answers is the percent the window is in. This is the only
+      // state that earns the green, and it now earns it on a comparison
+      // instead of on an ordering.
+      chip.className = 'chip ok';
+      chip.dataset.g = '●';
+      chip.dataset.k = 'strip.hoActed';
+      chip.append(...translate(table.strings, 'strip.hoActed', subs));
+      chip.title = flat(table.strings, 'title.hoActed', subs);
+    } else {
+      // BEHIND — written, and describing a smaller window than the one it is
+      // in. `warn` and not `crit`: behind is not missing, and spending the
+      // loudest hue here would leave nothing louder for the ask that was
+      // ignored outright.
+      chip.className = 'chip warn';
+      chip.dataset.g = '▲';
+      chip.dataset.k = 'strip.hoBehind';
+      chip.append(...translate(table.strings, 'strip.hoBehind', subs));
+      chip.title = flat(table.strings, 'title.hoBehind', subs);
+    }
   } else if (h.verdict === 'ignored') {
     chip.className = 'chip crit';
     chip.dataset.g = '■';
     chip.dataset.k = 'strip.hoIgnored';
-    chip.append(...translate(table.strings, 'strip.hoIgnored'));
+    chip.append(...translate(table.strings, 'strip.hoIgnored', subs));
     chip.title = flat(table.strings, 'title.hoIgnored', subs);
   } else if (h.verdict === 'not-asked') {
     chip.className = 'chip carry';
     chip.dataset.g = '◇';
     chip.dataset.k = 'strip.hoNotAsked';
-    chip.append(...translate(table.strings, 'strip.hoNotAsked'));
+    chip.append(...translate(table.strings, 'strip.hoNotAsked', subs));
     chip.title = flat(table.strings, 'title.hoNotAsked', subs);
   } else if (h.verdict === 'off') {
     chip.className = 'chip unmeas';

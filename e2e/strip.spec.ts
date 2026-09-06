@@ -169,6 +169,9 @@ const HANDOVER = (verdict: string, extra: Record<string, unknown> = {}) => ({
   askedAt: null,
   writtenAt: null,
   thresholdPercent: verdict === 'off' ? null : 98,
+  // `plan:handover seq:13`. `null` is a window never asked in, which is what
+  // most of these fixtures are; the states that turn on it set it explicitly.
+  askedAtPercent: null,
   ...extra,
 });
 
@@ -227,16 +230,24 @@ const SCENARIOS: readonly Scenario[] = [
     },
   },
   {
-    name: 'differs from upstream, project-knowledge partial, NEARING the ask, handover acted on',
+    name: 'differs from upstream, project-knowledge partial, NEARING the ask, handover BEHIND',
     git: { branch: 'main', commit: '7f3a91c9d2', upstream: 'differs' },
     items: 0,
     corpus: { drifted: true, aheadByMs: 240_000, scanned: 12, truncated: false },
     context: {
       session: 's', sample: KNOWN_SAMPLE('known', 182000, 200000, 91.0),
       mycontext: { tokens: 6200, injections: 3, unrecorded: 1 }, mycontextError: null,
+      // ── AND IT IS BEHIND, which is the state `seq:13` exists for. The ask
+      //    it answers fired at 85% and this window is at 91%: six points of
+      //    work the standing handover does not describe. Under the old copy
+      //    this drew a confident green `handover written 2h ago` — the exact
+      //    shape three real windows wore while running 2h39m, 1h24m and 3h06m
+      //    behind, because age says something happened and only percent says
+      //    whether it is still true.
       handover: HANDOVER('acted-on', {
         askedAt: new Date(Date.now() - 7_200_000).toISOString(),
         writtenAt: new Date(Date.now() - 7_000_000).toISOString(),
+        askedAtPercent: 85,
       }),
       // The seven-day window inside the warn band. **Banded by `fillLevel`
       // since 2026-09-01, not by `occupancyLevel`** — the ABSOLUTE bands, 60
@@ -316,6 +327,26 @@ const SCENARIOS: readonly Scenario[] = [
     git: null,
     items: 4,
     context: { session: 's', sample: null, mycontext: null, mycontextError: 'no projection' },
+  },
+  {
+    // ── THE HANDOVER'S GOOD HALF, and it is a state that has to be EARNED
+    //    since `plan:handover seq:13`: the ask this handover answers fired at
+    //    23% and the window is still in that same whole percent, so there is
+    //    no measured work it does not describe. `acted-on` alone no longer
+    //    buys the green — that is what `handover written 2h ago` used to draw
+    //    over three windows that were hours behind.
+    name: 'the handover answers the very percent the window is in — CURRENT',
+    git: { branch: 'main', commit: '7f3a91c9d2', upstream: 'in-sync' },
+    items: 43,
+    context: {
+      session: 's', sample: KNOWN_SAMPLE('known', 47000, 200000, 23.5),
+      mycontext: { tokens: 6200, injections: 3, unrecorded: 0 }, mycontextError: null,
+      handover: HANDOVER('acted-on', {
+        askedAt: new Date(Date.now() - 600_000).toISOString(),
+        writtenAt: new Date(Date.now() - 500_000).toISOString(),
+        askedAtPercent: 23,
+      }),
+    },
   },
   {
     name: 'a cold session has no live context number',
@@ -1385,17 +1416,84 @@ test('a context sample too old to be current is drawn without a level', async ({
  * it — different key, different word, different hue.
  */
 const VERDICTS: readonly { verdict: string; key: string; extra?: Record<string, unknown> }[] = [
+  // The sample every boot below carries reads 23.5%, so an ask recorded at 23
+  // is the SAME whole percent the window is in — which is the only state that
+  // earns the green since `plan:handover seq:13`. `acted-on` alone proves
+  // ORDERING (the file moved after the ask); currency is the two percents.
   { verdict: 'acted-on', key: 'strip.hoActed', extra: {
     askedAt: new Date(Date.now() - 7_200_000).toISOString(),
     writtenAt: new Date(Date.now() - 7_000_000).toISOString(),
+    askedAtPercent: 23,
   } },
   { verdict: 'ignored', key: 'strip.hoIgnored', extra: {
     askedAt: new Date(Date.now() - 600_000).toISOString(),
+    askedAtPercent: 23,
   } },
   { verdict: 'not-asked', key: 'strip.hoNotAsked' },
   { verdict: 'off', key: 'strip.hoOff' },
   { verdict: 'unverifiable', key: 'strip.hoUnknown' },
 ];
+
+/**
+ * **THE THREE STATES `acted-on` SPLIT INTO** — `plan:handover seq:13`.
+ *
+ * One `acted-on` chip used to cover all of them and say `handover written 2h
+ * ago` for every one. They are different facts and only one of them is good
+ * news, so they are drawn as three keys in three hues.
+ *
+ * Driven against the same 23.5% sample, so the only thing that varies between
+ * them is the percent the ask fired at — which is the point.
+ */
+const ACTED_STATES: readonly { name: string; key: string; askedAtPercent: number | null }[] = [
+  { name: 'current — the ask it answers is this very percent', key: 'strip.hoActed', askedAtPercent: 23 },
+  { name: 'behind — written at 18%, and the window is at 23%', key: 'strip.hoBehind', askedAtPercent: 18 },
+  { name: 'above this window — a latch that outlived a /clear', key: 'strip.hoPriorWindow', askedAtPercent: 96 },
+];
+
+test('an acted-on handover is drawn CURRENT, BEHIND or NOT KNOWN, never all three alike',
+  async ({ app }) => {
+    const { page } = app;
+    const seen = new Map<string, { colour: string; text: string }>();
+    for (const { name, key, askedAtPercent } of ACTED_STATES) {
+      await boot(page, {
+        name: `handover ${name}`,
+        git: { branch: 'main', commit: '7f3a91c9d2', upstream: 'in-sync' },
+        items: 43,
+        context: {
+          session: 's', sample: KNOWN_SAMPLE('known', 47000, 200000, 23.5),
+          mycontext: { tokens: 6200, injections: 3, unrecorded: 0 }, mycontextError: null,
+          handover: HANDOVER('acted-on', {
+            askedAt: new Date(Date.now() - 7_200_000).toISOString(),
+            writtenAt: new Date(Date.now() - 7_000_000).toISOString(),
+            askedAtPercent,
+          }),
+        },
+      });
+      const m = await page.evaluate((k) => {
+        const el = document.querySelector(`#ctx [data-k="${k}"]`);
+        return el === null
+          ? { found: false, colour: '', text: '' }
+          : {
+            found: true,
+            colour: getComputedStyle(el).color,
+            text: (el.textContent ?? '').trim(),
+          };
+      }, key);
+      expect(m.found, `${name}: one acted-on verdict must not stand for three states`).toBe(true);
+      // THE UNIT IS PERCENT. This is the whole instruction: `{age}` said that
+      // something happened, and only a percentage says whether it still holds.
+      expect(m.text, `${name}: the chip must carry the percent, not an age`).toMatch(/\d+%/);
+      seen.set(key, m);
+    }
+    // Current and behind must not read alike, in EITHER channel: a reader who
+    // is six points behind and one who is not must be able to tell without
+    // measuring the colour.
+    expect(seen.get('strip.hoActed')!.text).not.toBe(seen.get('strip.hoBehind')!.text);
+    expect(seen.get('strip.hoActed')!.colour).not.toBe(seen.get('strip.hoBehind')!.colour);
+    // And "behind" is not "not known": a latch above this window is a
+    // comparison between two different windows, which is not a comparison.
+    expect(seen.get('strip.hoPriorWindow')!.text).not.toBe(seen.get('strip.hoBehind')!.text);
+  });
 
 test('the strip draws the handover verdict it is SERVED, in every state', async ({ app }) => {
   const { page } = app;
@@ -1445,32 +1543,47 @@ test('the strip draws the handover verdict it is SERVED, in every state', async 
 });
 
 /**
- * **`acted-on` carries WHEN**, because the value of the state is knowing the
- * handover is CURRENT — not that something happened to it once. Computed from
- * the served `writtenAt` at render time, so it ticks, exactly as the "as of …
- * ago" on the context sentence beside it does.
+ * **`acted-on` carries the PERCENT PAIR, and no longer an age** —
+ * `plan:handover seq:13`, superseding *"the acted-on verdict says when the
+ * handover was written"*.
+ *
+ * The old assertion pinned `2h` and it passed on every one of the three
+ * windows this task exists because of: `acted-on`, `written 2h ago`, and 2h39m
+ * of undescribed work inside it. Age is a proxy for currency and it is the
+ * proxy that failed. The percent the ask fired at, against the percent the
+ * window is at, IS the currency — so that is what is pinned, and the age is
+ * asserted GONE rather than merely unused.
  */
-test('the acted-on verdict says when the handover was written', async ({ app }) => {
-  const { page } = app;
-  await boot(page, {
-    name: 'handover acted on two hours ago',
-    git: { branch: 'main', commit: '7f3a91c9d2', upstream: 'in-sync' },
-    items: 43,
-    context: {
-      session: 's', sample: KNOWN_SAMPLE('known', 47000, 200000, 23.5),
-      mycontext: { tokens: 6200, injections: 3, unrecorded: 0 }, mycontextError: null,
-      handover: HANDOVER('acted-on', {
-        askedAt: new Date(Date.now() - 7_400_000).toISOString(),
-        writtenAt: new Date(Date.now() - 7_200_000).toISOString(),
-      }),
-    },
+test('the acted-on verdict says which percent the handover answers, not how old it is',
+  async ({ app }) => {
+    const { page } = app;
+    await boot(page, {
+      name: 'handover answering the 18% ask in a window at 23%',
+      git: { branch: 'main', commit: '7f3a91c9d2', upstream: 'in-sync' },
+      items: 43,
+      context: {
+        session: 's', sample: KNOWN_SAMPLE('known', 47000, 200000, 23.5),
+        mycontext: { tokens: 6200, injections: 3, unrecorded: 0 }, mycontextError: null,
+        handover: HANDOVER('acted-on', {
+          askedAt: new Date(Date.now() - 7_400_000).toISOString(),
+          writtenAt: new Date(Date.now() - 7_200_000).toISOString(),
+          askedAtPercent: 18,
+        }),
+      },
+    });
+    const chip = page.locator('#ctx [data-k="strip.hoBehind"]');
+    await expect(
+      chip,
+      'a handover written for 18% of a window that is now at 23% is BEHIND, and the two numbers '
+      + 'that caused it are what a reader can act on',
+    ).toContainText('18%');
+    await expect(chip).toContainText('23%');
+    await expect(
+      chip,
+      'the age is not merely unused here, it is gone: "written 2h ago" is the sentence that read '
+      + 'as current on three windows that were hours behind',
+    ).not.toContainText('2h');
   });
-  await expect(
-    page.locator('#ctx [data-k="strip.hoActed"]'),
-    'the handover is only useful if the reader can tell whether it is current, and "2h" is what '
-    + 'says so',
-  ).toContainText('2h');
-});
 
 /* ══ THE CORPUS DRIFT CHIP — THREE STATES, AND THE THIRD IS NOT "NO" ═════ */
 

@@ -6,6 +6,10 @@ import {
   type ModelModes, type RateLimit,
 } from '../../core/statusline-tee.ts';
 import type { CorpusResolution } from '../../core/corpus-identity.ts';
+// The verdict UNION only, and a `type` import so nothing of the latch's
+// machinery is dragged onto this per-message path: `core/handover-ask.ts`
+// decides what became of an ask and this file renders the answer.
+import type { HandoverAskVerdict } from '../../core/handover-ask.ts';
 import { DIR_NAME } from '../../core/workspace.ts';
 
 // --- The status line, as powerline blocks -----------------------------------
@@ -95,6 +99,17 @@ export const FIELD_NAME: Record<string, string> = {
   'session-name': 'SESSION',
   focus: 'FOCUS',
   ask: 'ASK',
+  /**
+   * **WHAT BECAME OF THE ASK, as against how far it is** — `plan:handover
+   * seq:13`. `ASK` is the measurement and this is the verdict on the document
+   * the measurement is about, which is the same division the strip has drawn
+   * since `plan:walk seq:118`: `data-f="ask"` is a bar, `data-f="handover-
+   * verdict"` is a sentence about the file.
+   *
+   * Named for the FILE and not for the ask, because the two blocks would
+   * otherwise both be called ASK and neither would be named.
+   */
+  'handover-verdict': 'HANDOVER',
   context: 'WINDOW',
   'rate-7d': '7D',
   'rate-5h': '5H',
@@ -1189,6 +1204,15 @@ export interface PowerlineInput {
   occupancy: OccupancyView;
   /** `handoverThresholdPercent`, or `null` when the handover feature is off. */
   threshold: number | null;
+  /**
+   * **WHAT BECAME OF THIS SESSION'S HANDOVER ASK, AND THE PERCENT IT FIRED
+   * AT** — `plan:handover seq:13`. See `handoverSegment`.
+   *
+   * `null` where the question could not be asked at all: no corpus, or no
+   * session key to look a latch up by. That is NOT `verdict: 'off'`, which is
+   * a measured "nobody configured this".
+   */
+  handoverAsk: HandoverAskView | null;
   /** The two windows Claude Code reports, either or both absent. */
   fiveHour: RateLimit | null;
   sevenDay: RateLimit | null;
@@ -1319,9 +1343,17 @@ export interface PowerlineInput {
 export const NO_EXTRAS: Pick<
   PowerlineInput,
   'modes' | 'fiveHour' | 'sevenDay' | 'costUsd' | 'elapsedMs' | 'warmPercent' | 'sessionName'
-  | 'cwd' | 'projectDir'
+  | 'cwd' | 'projectDir' | 'handoverAsk'
 > = {
   modes: { effort: null, thinking: null, fastMode: null, exceeds200k: null },
+  /**
+   * **`null` is "the question could not be asked", never "the feature is
+   * off"** — `plan:handover seq:13`. A caller with no corpus and no session
+   * key has no latch to read and no verdict to render, and `handoverSegment`
+   * draws nothing for it. The feature being SWITCHED OFF is a measurement, and
+   * it arrives as `verdict: 'off'` on a real view.
+   */
+  handoverAsk: null,
   fiveHour: null,
   sevenDay: null,
   costUsd: null,
@@ -1367,6 +1399,19 @@ export const GIVE = {
   branch: 40,
   model: 50,
   handoverDue: 60,
+  /**
+   * **Ranked immediately below the ask it is about** — `plan:handover seq:13`.
+   *
+   * The two are one subject and this is the half that can be recovered
+   * elsewhere: the strip draws the same verdict, and the model is told it in
+   * words on the ask turn itself. The MEASUREMENT is the half a reader has
+   * nowhere else to get, so a terminal too narrow for both keeps the bar.
+   *
+   * Below `model` and above `notes` for that reason and no other: it is worth
+   * more than a note about why another field is missing, and less than the
+   * name of the thing you are talking to.
+   */
+  handoverVerdict: 70,
   notes: 80,
   sevenDay: 90,
   fiveHour: 92,
@@ -1743,6 +1788,7 @@ export function askSegment(occ: OccupancyView, threshold: number | null): Segmen
     // on every one of the sixteen steps rather than instead of them. What
     // BECAME of the ask is the `handover-verdict` block beside this.
     const series = askSeriesOf(occ.percent, threshold);
+    const left = asksLeftAt(occ.percent);
     if (series !== null) {
       return usedOfMaxSegment({
         field: 'ask',
@@ -1758,7 +1804,18 @@ export function askSegment(occ: OccupancyView, threshold: number | null): Segmen
         // same MEANING: points of the window to the next boundary. Below the
         // ask that boundary is the ask; past it there is nothing above but
         // full, so it counts to 100.
-        suffix: ` ·+${series.toFull.toFixed(1)}`,
+        //
+        // **And then the count of asks still to come**, which is the fact that
+        // stops the next one being a surprise. Two qualifiers on one `·` rail,
+        // in two units that cannot be confused: `+3.7` is POINTS of window and
+        // `4 left` is a count of ASKS — one per whole percent above the one
+        // this window is in. It is an upper bound and the word is chosen to
+        // say so: an ask fires on a `Stop` that lands inside a percent, and a
+        // window that jumps two points in one turn earns one ask, not two.
+        // `0 left` is drawn rather than hidden — "no more are coming" is worth
+        // exactly as much as "four are".
+        suffix: ` ·+${series.toFull.toFixed(1)}${
+          left === null ? '' : ` ·${left} left`}`,
         give: GIVE.handoverDue,
         ageMs: occ.ageMs,
       });
@@ -1782,8 +1839,9 @@ export function askSegment(occ: OccupancyView, threshold: number | null): Segmen
     };
   }
 
-  // The threshold reads as CONFIGURED — `85`, not `85.0`.
-  const ask = Number.isInteger(threshold) ? String(threshold) : threshold.toFixed(1);
+  // The threshold reads as CONFIGURED — `85`, not `85.0`. `fmtThreshold` is
+  // that one rule, shared with `handoverSegment` rather than written twice.
+  const ask = fmtThreshold(threshold);
   // **THE ASK AS USED-OF-MAXIMUM.** The maximum is the threshold and the used
   // figure is the window's own percentage — both already in percentage points
   // of the window — so `(65.0 / 85)` reads in the same units as the ctx figure
@@ -1844,6 +1902,144 @@ export function askSegment(occ: OccupancyView, threshold: number | null): Segmen
 
 /** The ask marker. Gold, and never one of the fill glyphs. */
 export const ASK_GLYPH = '◆';
+
+/**
+ * **WHAT BECAME OF THE STANDING HANDOVER, MEASURED IN PERCENT** — the block
+ * this bar did not have, and the one `plan:handover seq:12` made sayable.
+ *
+ * SERVED, never derived here. `core/handover-ask.ts` owns the verdict — its
+ * own header calls the comparison the whole feature, *the flag is not a claim,
+ * it is a comparison* — and `AskLatch.askedAtPercent` owns the percent the
+ * last ask fired at. This block reads both and subtracts; it decides nothing.
+ *
+ * ── WHY PERCENT AND NOT AGE ────────────────────────────────────────────────
+ *
+ * The strip said `handover written 3h ago` and the terminal said nothing at
+ * all. Age is a proxy for currency and it is the measure that HID the defect:
+ * three windows reported `acted-on` with the handover 2h39m, 1h24m and 3h06m
+ * behind — written at 85% and carried to 99.9%, 96.1% and 96.6%. "Written 3h
+ * ago" teaches a reader the wrong thing twice, that something happened and
+ * that time is the unit. The unit is percent, because a percent of the window
+ * is a quantity of work the handover does not describe.
+ *
+ * So the sentence is the PAIR — the percent the standing handover answers and
+ * the percent the window is at now — and the staleness is visible as the two
+ * numbers that caused it rather than as an interval that hides them.
+ *
+ * ── THE STATES, AND WHY NONE OF THEM IS A GUESS ────────────────────────────
+ *
+ *   lag 0     `current at 96%`                 the ask this answers is the
+ *                                              percent the window is in
+ *   lag > 0   `written at 85%, now 96%`        eleven points of work it does
+ *                                              not mention — warn, not crit:
+ *                                              behind is not missing
+ *   lag < 0   `answers 96%, window since reset` the latch outlived its window.
+ *                                              A `/clear` destroys a window and
+ *                                              `core/window-state.ts` does not
+ *                                              remove the latch (`AskLatch`'s
+ *                                              header says why), so a fresh
+ *                                              window can read a percent above
+ *                                              its own. NOT KNOWN, never a
+ *                                              confident `current at 96%`.
+ *   lag null  `answers the 85% ask`            asked, and no live reading to
+ *                                              measure it against
+ *   ignored   `asked at 96%, not written`      the loud one, and the one a
+ *                                              reader would never go and check
+ *   not-asked `first ask at 85%`               a measured not-yet, with the
+ *                                              percent it starts at
+ *
+ * `off` draws NOTHING here, and that is the one place this block declines to
+ * name an absence. The strip says `no handover configured` because it is a
+ * page a person opens; this is a line redrawn on every assistant message, and
+ * a sentence that is identical forever is furniture rather than information —
+ * the same argument `askSegment` already makes for returning `null` with no
+ * threshold configured, one block along.
+ *
+ * `null` also for an ask block that was never read, which is not `off`: "the
+ * feature is switched off" is something this command measured, and "the latch
+ * could not be read" is not.
+ */
+export interface HandoverAskView {
+  verdict: HandoverAskVerdict;
+  /**
+   * `AskLatch.askedAtPercent` — the whole percent the most recent ask fired
+   * at, already normalised through `askStep`, or `null` for a window that has
+   * never been asked.
+   */
+  askedAtPercent: number | null;
+}
+
+export function handoverSegment(
+  ask: HandoverAskView | null, occ: OccupancyView, threshold: number | null,
+): Segment | null {
+  if (ask === null || ask.verdict === 'off') return null;
+  const base = { label: FIELD_NAME['handover-verdict'], give: GIVE.handoverVerdict, field: 'handover-verdict' as const };
+
+  if (ask.verdict === 'unverifiable') {
+    return { ...base, text: 'state not known', ink: INK.neutral };
+  }
+  if (ask.verdict === 'not-asked') {
+    // The threshold is what makes this a MEASURED not-yet rather than an
+    // absence: it names the percent the first ask fires at, so the reader
+    // knows what has not happened and when it will. A `not-asked` with no
+    // threshold cannot happen — the verdict requires a configured handover —
+    // and if it ever did, the words alone are still true.
+    return {
+      ...base,
+      text: threshold === null ? 'not yet asked' : `first ask at ${fmtThreshold(threshold)}%`,
+      ink: INK.carry,
+    };
+  }
+
+  // Only a KNOWN and current reading may stand on the right of the pair. A
+  // fossil measured against a live latch would print a percentage that has not
+  // been true for hours, which is the exact defect this block exists to end —
+  // so the same staleness refusal `askSegment` applies is applied here.
+  const live = occ.state === 'known' && levelFor(occ.percent, threshold, occ.ageMs) !== 'stale'
+    ? occ.percent
+    : null;
+  const asked = ask.askedAtPercent;
+  const lag = handoverLagOf(asked, live);
+  const nowStep = askStepOf(live);
+
+  if (ask.verdict === 'ignored') {
+    return {
+      ...base,
+      text: asked === null
+        ? 'asked and not written'
+        : `asked at ${asked}%, not written`,
+      // The loudest hue in the budget, for `handoverVerdictChip`'s reason: the
+      // ask went out, the file did not move, and nothing else on either bar
+      // would ever say so.
+      ink: INK.crit, bold: true,
+    };
+  }
+
+  // `acted-on` from here down.
+  if (lag === null) {
+    return {
+      ...base,
+      text: asked === null ? 'written after the ask' : `answers the ${asked}% ask`,
+      ink: INK.carry,
+    };
+  }
+  if (lag < 0) {
+    return { ...base, text: `answers ${asked}%, above this window`, ink: INK.neutral };
+  }
+  if (lag === 0) {
+    return { ...base, text: `current at ${nowStep}%`, ink: INK.ok };
+  }
+  return {
+    ...base,
+    text: `written at ${asked}%, now ${nowStep}%`,
+    ink: INK.warn,
+  };
+}
+
+/** A threshold reads as CONFIGURED — `85`, not `85.0`. One spelling, three sites. */
+function fmtThreshold(threshold: number): string {
+  return Number.isInteger(threshold) ? String(threshold) : threshold.toFixed(1);
+}
 
 /** The model block, with the modes that are not the ordinary case folded in. */
 export function modelSegment(model: string | null, modes: ModelModes): Segment | null {
@@ -2044,6 +2240,13 @@ export function buildLines(input: PowerlineInput, now: number = Date.now()): Sta
   // block between them would be read as belonging to neither.
   const ask = askSegment(input.occupancy, input.threshold);
   if (ask !== null) window.push(ask);
+  // Immediately after the ask and BEFORE the window figure, because it is the
+  // ask's own second half: how far the ask is, then what became of the last
+  // one, then how full the window is. Putting it after the context figure
+  // would separate the two blocks that share a subject with the one that does
+  // not — the mistake the comment above warns about, one field along.
+  const handover = handoverSegment(input.handoverAsk, input.occupancy, input.threshold);
+  if (handover !== null) window.push(handover);
   window.push(contextSegment(input.occupancy));
 
   // **Written as a table so each window's FIELD ID is a `field:` property.**

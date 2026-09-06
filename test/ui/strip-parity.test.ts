@@ -129,6 +129,12 @@ const FULL: PowerlineInput = {
   focus: 'plan:walk seq:118',
   occupancy: { state: 'known', percent: 25.1, ageMs: 1000, usedTokens: Math.round((25.1) * 10_000), windowSize: 1_000_000 },
   threshold: 85,
+  // A MEASURED not-yet: the handover is configured and this window has not
+  // reached the first ask, which is the state that draws `HANDOVER first ask
+  // at 85%`. `NOTED` below carries the other half — an ask already answered,
+  // a percent behind — so the two fixtures between them reach both shapes
+  // `handoverSegment` has for a live reading.
+  handoverAsk: { verdict: 'not-asked', askedAtPercent: null },
   fiveHour: { usedPercent: 16, resetsAt: 1_800_000_000 },
   sevenDay: { usedPercent: 49, resetsAt: 1_800_000_000 },
   costUsd: 4.62,
@@ -165,6 +171,9 @@ const NOTED: PowerlineInput = {
   // two notes do: one payload cannot be in two states at once, and the pair is
   // what reaches both.
   cwd: '/repo/test_mycontext_plugin/my-context',
+  // The ask answered at 20% while the window has grown to 25% — the pair the
+  // whole of `seq:13` is about, and the state `{age}` used to hide.
+  handoverAsk: { verdict: 'acted-on', askedAtPercent: 20 },
   corpus: {
     root: '/repo/test_mycontext_plugin/my-context/.my_context',
     overridden: false,

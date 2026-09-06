@@ -2,9 +2,10 @@ import { spawnSync } from 'node:child_process';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { openProjection, syncProjection } from '../../core/audit-db.ts';
-import { handoverThresholdPercent } from '../../core/config.ts';
+import { handoverThresholdPercent, type HandoverConfig } from '../../core/config.ts';
 import { readOccupancy } from '../../core/context-occupancy.ts';
 import { describeFocus, isFocusActive, readFocus } from '../../core/focus.ts';
+import { checkHandoverAsk, readLatch } from '../../core/handover-ask.ts';
 import {
   contextEpochStart, newestAuditRow, shareOf, shareSql,
 } from '../../core/context-share.ts';
@@ -18,7 +19,8 @@ import { registerCommand, type Emit } from './registry.ts';
 import { cmdStatuslineInstall, cmdStatuslineUninstall, delegateFor } from './statusline-install.ts';
 import {
   buildLines, buildSegments, colourAllowed, gitBranch, payloadExtras, renderPowerline,
-  renderStatusLine, type LastAudit, type OccupancyView, type PowerlineInput,
+  renderStatusLine, type HandoverAskView, type LastAudit, type OccupancyView,
+  type PowerlineInput,
 } from './statusline-powerline.ts';
 
 // --- The status line bridge (spec §4b) --------------------------------------
@@ -574,9 +576,16 @@ function cmdStatusline(ws: Workspace, args: string[], out: Emit, cwd: string): n
   // zero — there is no ask, so there is no band to name, and the block draws
   // neutral rather than a guessed green.
   let threshold: number | null = null;
+  // The handover as CONFIGURED, kept alongside the threshold derived from it,
+  // because `checkHandoverAsk` needs the whole block: the ask's verdict is a
+  // comparison against the file at `handover.path`, and a threshold on its own
+  // cannot name a file. `null` is the feature-off case and `checkHandoverAsk`
+  // reports it as `off` rather than being skipped for it.
+  let handoverConfig: HandoverConfig | null = null;
   try {
     const sessionWs = resolveWorkspace(sessionCwd);
     projectRoot = sessionWs.projectRoot;
+    handoverConfig = sessionWs.config.handover;
     threshold =
       sessionWs.config.handover === null ? null
       : handoverThresholdPercent(sessionWs.config.handover);
@@ -663,6 +672,38 @@ function cmdStatusline(ws: Workspace, args: string[], out: Emit, cwd: string): n
     focus = isFocusActive(state.focus) ? describeFocus(state.focus) : null;
   }
 
+  // ── WHAT BECAME OF THIS SESSION'S HANDOVER ASK — `plan:handover seq:13`.
+  //
+  // **Read, never decided.** `checkHandoverAsk` owns the comparison between
+  // the latch's `askedAt` and the handover file's mtime, and `readLatch` owns
+  // the percent the last ask fired at. This command renders both and re-judges
+  // neither — a second opinion about whether a handover is current is exactly
+  // the two-spellings defect this project has paid for repeatedly, and here it
+  // would put one verdict on the terminal and another in the browser.
+  //
+  // **What it costs on a per-message path, MEASURED before it shipped** —
+  // p50 0.645 ms / p95 0.951 ms over 400 runs against this repository's own
+  // corpus and live latch, for the pair together. That is two `readFileSync`
+  // of one small JSON latch plus one `statSync` of the handover, against a bar
+  // that already pays p95 26.6 ms for `myctxShare` and opens SQLite to do it.
+  // The second read buys `askedAtPercent` without changing
+  // `HandoverAskCheck`'s shape, which three hooks and one endpoint depend on.
+  //
+  // **Never throws**: `checkHandoverAsk`'s own docstring is emphatic about it
+  // for every filesystem outcome, and `readLatch` answers `NO_LATCH` for
+  // anything it cannot read. So there is no `try` here and this cannot cost
+  // the line the fields above it.
+  //
+  // `null` when there is no corpus or no session key — the question could not
+  // be asked, which is not the same fact as the feature being off.
+  let handoverAsk: HandoverAskView | null = null;
+  if (projectRoot !== null && typeof p?.session_id === 'string') {
+    handoverAsk = {
+      verdict: checkHandoverAsk(projectRoot, handoverConfig, p.session_id).verdict,
+      askedAtPercent: readLatch(projectRoot, p.session_id).askedAtPercent,
+    };
+  }
+
   if (projectRoot !== null) {
     // FIRST, and before the delegate is so much as looked up. Rule 1 above:
     // the sample is what this command is for, and it is not allowed to depend
@@ -722,6 +763,7 @@ function cmdStatusline(ws: Workspace, args: string[], out: Emit, cwd: string): n
       branch: gitBranch(sessionCwd),
       occupancy,
       threshold,
+      handoverAsk,
       myctx,
       focus,
       lastAudit: audit,

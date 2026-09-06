@@ -25,7 +25,7 @@
  */
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
+import { readdirSync, readFileSync } from 'node:fs';
 import path from 'node:path';
 
 const REPO = path.join(import.meta.dirname, '..', '..');
@@ -233,6 +233,77 @@ test('the value slots match key for key, so no substitution silently misses', as
     if (a.length !== b.length || a.some((s, i) => s !== b[i])) mismatched.push({ key, en: a, he: b });
   }
   assert.deepEqual(mismatched, [], 'value slots differ between the two tables');
+});
+
+/**
+ * **A SENTENCE THAT GREW A SLOT AND A CALL SITE THAT DID NOT PASS ONE** —
+ * added `plan:handover seq:13`, after making exactly this mistake.
+ *
+ * `t()` THROWS on a missing substitution, deliberately: a sentence that
+ * silently printed `{step}` on screen would be worse. But the throw happens in
+ * a DOM builder, at render time, in one state — so the way it is discovered is
+ * a blank strip in a browser, and the way it is NOT discovered is any test that
+ * does not drive that state. `strip.ctxCrit` gained a `{step}` here and the
+ * chip that draws it kept its bare two-argument call; the whole context strip
+ * went blank at every fill past the handover threshold, which is the one fill
+ * where it matters most.
+ *
+ * The scan is deliberately narrow, and narrow is what makes it trustworthy: it
+ * matches only calls written with NO substitution argument at all, and asserts
+ * the key they name has no slots. A call that passes an object is not read
+ * here — whether that object is complete is what `e2e/strip.spec.ts` drives
+ * state by state — but a call that passes NOTHING is a static, decidable
+ * question, and it is the shape a slot added later breaks first.
+ *
+ * `slots()` is `lib/i18n.js`'s own parser, imported rather than re-described,
+ * for the reason its own docstring gives: eight test files each grew a copy of
+ * that regex and all eight read `{b:` as a substitution the day emphasis
+ * landed. A grammar with nine parsers has eight chances to disagree.
+ */
+test('every substitution-less translate() names a sentence that has no slots', async () => {
+  const en = await table('en');
+  const i18n = await import(
+    new URL(`file://${path.join(REPO, 'src', 'ui', 'public', 'lib', 'i18n.js')
+      .replaceAll('\\', '/')}`).href
+  ) as { slots: (template: string) => string[] };
+
+  const roots = [path.join(REPO, 'src', 'ui', 'public')];
+  const files: string[] = [];
+  const walk = (dir: string): void => {
+    for (const entry of readdirSync(dir, { withFileTypes: true })) {
+      const full = path.join(dir, entry.name);
+      // `vendor/` is third-party bytes this project does not author and does
+      // not translate — `scripts/check-vendor.ts` owns what is allowed in
+      // there, and a parity test reading it would be reporting on somebody
+      // else's file.
+      if (entry.isDirectory()) { if (entry.name !== 'vendor') walk(full); }
+      else if (entry.name.endsWith('.js')) files.push(full);
+    }
+  };
+  for (const root of roots) walk(root);
+  assert.ok(files.length > 5, `the scan found ${files.length} browser modules — too few to be `
+    + 'reading the tree at all, and an empty scan passes this test while checking nothing');
+
+  const offenders: string[] = [];
+  let sites = 0;
+  for (const file of files) {
+    const source = readFileSync(file, 'utf8');
+    for (const m of source.matchAll(
+      /(?:translate|t|tFlat|flat)\(\s*(?:table\.)?strings\s*,\s*'([A-Za-z0-9._]+)'\s*\)/g,
+    )) {
+      sites += 1;
+      const key = m[1]!;
+      const value = en.strings[key];
+      const where = `${path.relative(REPO, file).replaceAll('\\', '/')}: ${key}`;
+      if (typeof value !== 'string') { offenders.push(`${where} — not in the tables`); continue; }
+      const needed = i18n.slots(value);
+      if (needed.length > 0) offenders.push(`${where} — needs {${needed.join('}, {')}}`);
+    }
+  }
+  assert.ok(sites > 10, `the regex matched ${sites} call sites — too few to be reading the code`);
+  assert.deepEqual(offenders, [],
+    'these call sites pass no substitutions and name a sentence that has slots, so t() throws the '
+    + 'moment that branch is drawn — pass the subs object, never widen this assertion');
 });
 
 test('each table declares its direction and language', async () => {

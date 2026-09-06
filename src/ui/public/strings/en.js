@@ -1411,6 +1411,7 @@ export const strings = {
   // marker that is gold at every fill has stopped meaning anything by the time
   // it is needed.
   'strip.ctxAsk': '{askPct}% ({pct} / {threshold}) ·+{headroom}',
+  'strip.ctxAskDue': '{askPct}% ({spent} / {span}) ·+{toFull}',
   'strip.log': 'last {mv:op}, {age} ago',
   'strip.logQuiet': 'last {mv:op}, {age} ago',
   'strip.logEmpty': 'nothing recorded yet',
@@ -1522,14 +1523,14 @@ export const strings = {
   // all: the reassurance state that used to sit there — `strip.ctxOk`, "well
   // below the handover ask" — was cut in the same pass that cut `strip.inSync`,
   // and for the same reason. It fired in the common case and changed nothing.
-  'strip.ctxWarn': 'handover near',
-  'strip.ctxCrit': '{b:handover due}',
+  'strip.ctxWarn': 'handover ask at {threshold}%, then every 1%',
+  'strip.ctxCrit': '{b:handover due at {step}%} · {left} asks left',
   'strip.ctxLevelStale': 'too old to place',
   'title.fillOk': 'This window is below {fillWarn}% full. These bands are ABSOLUTE — {fillWarn} and {fillCrit} — and are not the handover threshold: this chip answers how much room is left, and the gold marker beside it answers whether the handover ask has fired. Two questions, two fields.',
   'title.fillWarn': 'This window is at or past {fillWarn}% full and below {fillCrit}%. These bands are ABSOLUTE and do not move when the handover threshold moves — a full window and a fired ask are different facts, and this chip is only about the first.',
   'title.fillCrit': 'This window is at or past {fillCrit}% full. These bands are ABSOLUTE and do not move when the handover threshold moves. With no gold marker beside it, this says the window is nearly full and the handover ask has NOT yet fired.',
-  'title.ctxWarn': 'This window is at or past {warn}% and has not yet reached {threshold}%, where the handover ask fires. This is the room there is to act in — finish a thought, capture a lesson, write the handover deliberately. Claude Code compacts automatically at about 99.75%, so once the ask has gone out under two points of the window are left.',
-  'title.ctxCrit': 'This window is at or past {threshold}%, the threshold the handover ask fires at. Claude Code compacts automatically at about 99.75%, so what remains past this point is under two per cent of the window.',
+  'title.ctxWarn': 'This window is at or past {warn}% and has not yet reached {threshold}%, where the first handover ask fires. This is the room there is to act in — finish a thought, capture a lesson, write the handover deliberately. The ask is not a single event: from {threshold}% it repeats at every whole percent up to 100, so what happens at the threshold is the start of a series rather than a deadline. Claude Code compacts automatically at about 99.75%.',
+  'title.ctxCrit': 'This window is at or past {threshold}%, where the handover ask fires, and it is now in the {step}% step. The ask re-arms on every whole percent from {threshold} to 100, so {left} more can still be earned before the window is full — one per percent, and on a 1M window one percent is roughly ten thousand tokens the standing handover does not yet describe. Claude Code compacts automatically at about 99.75%.',
   'title.ctxLevelStale': 'This reading is more than fifteen minutes old, so it is shown WITHOUT a level. The status-line bridge rewrites it on every response, so a sample this old is not describing the window in front of you — and a fossil in a confident colour is worse than an uncoloured number.',
   // ── WHAT BECAME OF THE HANDOVER ASK (plan:walk seq:118) ───────────────
   // The verdict is computed by `core/handover-ask.ts` against the handover
@@ -1538,14 +1539,20 @@ export const strings = {
   // file was not written — and it is the one a reader would never think to
   // check for, so it is drawn in the loudest hue the budget has rather than
   // as a quieter `acted on`.
-  'strip.hoActed': 'handover written {age} ago',
-  'strip.hoIgnored': 'handover asked for and not written',
-  'strip.hoNotAsked': 'handover not yet asked',
+  'strip.hoActed': 'handover current at {nowPct}',
+  'strip.hoBehind': 'handover written at {askedPct}, window now {nowPct}',
+  'strip.hoAnswered': 'handover answers the {askedPct} ask',
+  'strip.hoPriorWindow': 'handover answers {askedPct}, above this window',
+  'strip.hoIgnored': 'handover asked at {askedPct}, not written',
+  'strip.hoNotAsked': 'no handover ask yet — first at {threshold}%',
   'strip.hoOff': 'no handover configured',
   'strip.hoUnknown': 'handover state not known',
-  'title.hoActed': 'The handover ask went out at {asked} and {path} was written at {written}, after it. The comparison is the whole flag: this is not a claim that an ask was sent, it is the observation that the file moved afterwards.',
-  'title.hoIgnored': 'The handover ask went out at {asked} and {path} has not been written since. The window this session is holding will be compacted or cleared with nothing carried across it. Nothing is broken and nothing will say so on its own — which is exactly why this is drawn.',
-  'title.hoNotAsked': 'A handover is configured at {path} and this session has not crossed the {threshold}% threshold, so it has never been asked to update it. A measured not-yet, not an absence.',
+  'title.hoActed': 'The ask this handover answers fired at {askedPct} of the window, and the window is still in that same whole percent — so there is no measured work it does not describe. {path} was written at {written}, after the ask at {asked}; the comparison is the whole flag, not a claim that an ask was sent. The unit is PERCENT and not age, because a handover written three hours ago can be current and one written ten minutes ago can be six percent behind.',
+  'title.hoBehind': '{path} was written in answer to the ask at {askedPct}, and the window has grown to {nowPct} since — {lagPct} of it that the standing handover does not describe. On a 1M window that is roughly ten thousand tokens per percent. This is the state that used to read "written 3h ago" and pass for current: three handovers on this corpus reported acted-on while running 2h39m, 1h24m and 3h06m behind, because age says that something happened and only percent says whether it is still true.',
+  'title.hoAnswered': 'The ask at {askedPct} was answered — {path} was written at {written}, after the ask at {asked}. How far the window has moved since is NOT known here: there is no live context reading to measure it against, so this says what the handover covers and stops, rather than colouring it as current on a comparison nobody made.',
+  'title.hoPriorWindow': 'The recorded ask fired at {askedPct}, which is above the window being measured now. A /clear destroys a context window and the ask latch deliberately outlives it, so this handover answers a window that is gone. Drawn as not known and never as current: a comparison between two different windows is not a comparison.',
+  'title.hoIgnored': 'The handover ask fired at {askedPct} of the window, at {asked}, and {path} has not been written since. The window this session is holding will be compacted or cleared with nothing carried across it. Nothing is broken and nothing will say so on its own — which is exactly why this is drawn.',
+  'title.hoNotAsked': 'A handover is configured at {path} and this window has not reached {threshold}%, where the first ask fires — so it has never been asked to update it. From there the ask repeats at every whole percent to 100, so what is coming is a series rather than one moment. A measured not-yet, not an absence.',
   'title.hoOff': 'No handover is configured for this corpus, so none was ever promised and none was ever asked for. That is a different fact from a handover that was asked for and not written, and it is drawn rather than left blank.',
   'title.hoUnknown': 'An ask was recorded but the comparison could not be made — the handover could not be examined, or the recorded time will not parse. This is "not known", never an accusation: a charge nothing supports is the same defect as a guarantee nothing supports.',
   'strip.unread': 'not read',

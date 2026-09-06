@@ -262,8 +262,15 @@ test('statusLineText renders each state without ever inventing a number', () => 
   assert.equal(at(93.4), barsAt(head, [
     `ASK ${LEVEL_ICON.critical} ▰▰▰▰▰▰▰▰▰▰ 95% (93.4 / 98) ·+4.6`,
     `WINDOW ${LEVEL_ICON.critical} ▰▰▰▰▰▰▰▰▰▱ 93.4% (934.0k / 1.0M)`]));
+  // ── AND PAST THE ASK IT KEEPS MEASURING, `plan:handover seq:13`. It read
+  //    `ASK ◆ handover due` at every fill from 98 to 100, which is one
+  //    sentence over the whole stretch where the asks actually happen — and
+  //    since `seq:12` there are three of them at this threshold, not one. The
+  //    maximum re-origins on the threshold: 1.2 of the 2 points to full are
+  //    spent, 0.8 remain, and one more whole percent can still earn an ask.
+  //    The action is still said, in the field's NAME.
   assert.equal(at(99.2), barsAt(head, [
-    'ASK ◆ handover due',
+    `ASK DUE ${LEVEL_ICON.caution} ▰▰▰▰▰▰▱▱▱▱ 60% (1.2 / 2) ·+0.8 ·1 left`,
     `WINDOW ${LEVEL_ICON.critical} ▰▰▰▰▰▰▰▰▰▰ 99.2% (992.0k / 1.0M)`]));
 
   // The reasons `readOccupancy` keeps apart stay apart here. Collapsing them

@@ -19,9 +19,10 @@ import { readFileSync } from 'node:fs';
 import path from 'node:path';
 import {
   BAR_CELLS, BAR_EMPTY, BAR_FILL, LEVEL_ICON, LEVEL_INK, PALETTE, usageBands,
-  askSegment, buildLines, buildSegments, contextSegment, displayWidth, fmtCount, rateLimitSegment,
+  askSegment, buildLines, buildSegments, contextSegment, displayWidth, fmtCount,
+  handoverSegment, rateLimitSegment,
   renderPowerline, renderStatusLine, usageBar, usageLevelOf, usedOfMaxSegment,
-  type OccupancyView, type PowerlineInput, type Segment, type UsageLevel,
+  type HandoverAskView, type OccupancyView, type PowerlineInput, type Segment, type UsageLevel,
 } from '../../src/cli/commands/statusline-powerline.ts';
 import { NO_BLINK_ENV, ONE_LINE_ENV, statusLineText } from '../../src/cli/commands/statusline.ts';
 
@@ -221,13 +222,25 @@ test('the four levels use four EXISTING tokens — no sixth hue was invented', (
 
 test('the ask marker is no longer gold, because gold became the caution band', () => {
   // Owner ruling, 2026-09-01: one hue, one job. Gold went wholly to `caution`
-  // and the `◆ ask` marker moved to `--carry`, so the two are not the same
-  // colour one block apart on the same row.
+  // and the `◆ ask` marker left it, so the two are not the same colour one
+  // block apart on the same row.
   assert.equal(LEVEL_INK.caution.fg, PALETTE['gold']?.fg, 'caution is gold');
   const due = askSegment(occ(90), 85);
-  assert.match(due?.text ?? '', /handover due/);
-  assert.equal(due?.ink.fg, PALETTE['carry']?.fg, 'the ask marker is --carry');
-  assert.notEqual(due?.ink.fg, PALETTE['gold']?.fg, 'and it is NOT gold any more');
+  // ── SUPERSEDED SHAPE, `plan:handover seq:13` ────────────────────────────
+  // The block past the ask was `◆ handover due` in `--carry`. Since `seq:12`
+  // the ask is a SERIES — one per whole percent from the threshold to 100 —
+  // and a words-only block said the same three words for fifteen points of
+  // the window while up to sixteen asks went out inside it. The measurement
+  // now continues past the threshold, re-origined on it, so this block takes
+  // its BAND's ink like every other used-of-maximum field. The rule this
+  // assertion protects is unchanged and is the only one it ever protected:
+  // whatever hue the ask block wears, it is never gold.
+  assert.equal(due?.label, 'ASK DUE', 'the words moved to the name, they did not vanish');
+  assert.notEqual(due?.ink.fg, PALETTE['gold']?.fg, 'and it is NOT gold');
+  // At 90% of a 85-threshold window the series is a third spent, which is
+  // `safe` — so the ink is the calm band and NOT a permanent alarm. That is
+  // the escalation a flat `--carry` could not do.
+  assert.equal(due?.ink.fg, LEVEL_INK.safe.fg);
 });
 
 /* ══ THE TREATMENT, ON EVERY USED-OF-MAXIMUM FIELD ════════════════════════ */
@@ -242,7 +255,7 @@ function usedOfMaxBlocks(input: PowerlineInput): Segment[] {
 const INPUT: PowerlineInput = {
   model: 'Opus 5', modes: { effort: null, thinking: null, fastMode: null, exceeds200k: null },
   project: 'my-context', branch: 'main', sessionName: null, focus: null,
-  occupancy: occ(65), threshold: 85,
+  occupancy: occ(65), threshold: 85, handoverAsk: null,
   fiveHour: { usedPercent: 72, resetsAt: null },
   sevenDay: { usedPercent: 88, resetsAt: null },
   costUsd: null,
@@ -322,16 +335,43 @@ test('myctx is banded against the window, and says nothing when there is no wind
   assert.equal(bare?.text, '≈264.5k', 'no window, no percentage — and no invented one');
 });
 
-test('past the ask the words take over, and the figure never runs to 104%', () => {
-  // Owner ruling, 2026-09-01: *past the ask the number stops being the point,
-  // the action is.* Banded and barred up to the threshold, words at it.
+test('past the ask the bar re-origins on the threshold and keeps moving', () => {
+  // ── SUPERSEDES 'past the ask the words take over' — `plan:handover seq:13`.
+  //
+  // The 2026-09-01 ruling was that *past the ask the number stops being the
+  // point, the action is*, and that was right while the ask was ONE EVENT.
+  // `seq:12` made it a series of up to sixteen, one per whole percent from the
+  // threshold to full — so a words-only block said an identical sentence at
+  // 85% and at 99%, over exactly the stretch where every ask happens, and a
+  // bar frozen at ten filled cells read as FINISHED. The action did not lose
+  // its place: it is the field's NAME now (`ASK DUE`), which is said on all
+  // sixteen steps instead of instead of them.
+  //
+  // What this test now pins is that the measurement CONTINUES, and that it is
+  // measured from the threshold rather than from zero — so it is not the
+  // window figure beside it wearing a second label.
   const below = askSegment(occ(75), 85);
   assert.match(below?.text ?? '', new RegExp(`[${BAR_FILL}${BAR_EMPTY}]{${BAR_CELLS}}`));
+  assert.equal(below?.label, 'ASK');
+
+  const seen: string[] = [];
   for (const pct of [85, 88, 99]) {
     const at = askSegment(occ(pct), 85);
-    assert.equal(at?.text, '◆ handover due', `${pct}% should be words, not a bar`);
-    assert.ok(!/%/.test(at?.text ?? ''), 'and it carries no percentage at all');
+    assert.equal(at?.label, 'ASK DUE', `${pct}% still says the action, in the name`);
+    assert.match(at?.text ?? '', new RegExp(`[${BAR_FILL}${BAR_EMPTY}]{${BAR_CELLS}}`),
+      `${pct}% should still carry a bar — a field that stops measuring reads as finished`);
+    // Measured from the THRESHOLD: at 85 the series is untouched, so the
+    // proportion is 0 and not 100. A `(85.0 / 85)` here would be the old
+    // over-full block, and a `85%` would be the window figure duplicated.
+    assert.match(at?.text ?? '', /\(\d+\.\d \/ 15\)/, 'the maximum is the span to full');
+    seen.push(at?.text ?? '');
   }
+  assert.equal(new Set(seen).size, seen.length,
+    'the block said the same thing at three different fills — which is the defect');
+  assert.match(seen[0]!, /\(0\.0 \/ 15\) ·\+15\.0 ·15 left/,
+    'at the threshold nothing of the series is spent and every ask is still to come');
+  assert.match(seen[2]!, /\(14\.0 \/ 15\) ·\+1\.0 ·1 left/,
+    'at 99% one point and one ask are left');
 });
 
 test('a fossil keeps its number and loses its verdict', () => {
@@ -530,15 +570,103 @@ test('the gap SHRINKS as the window fills — a figure that did not move would b
   }
 });
 
-test('past the ask the WORD stands alone — no negative gap, no +0.0 beside it', () => {
-  // Two answers to one question is the failure this avoids: the words say the
-  // ask has fired, and a `+0.0` or a `-3.0` printed next to them would invite
-  // the reader to act on a number that is spent.
+test('past the ask the gap counts to FULL, and is never negative or spent', () => {
+  // ── SUPERSEDES 'past the ask the WORD stands alone' — `plan:handover
+  //    seq:13`, and the thing it was protecting is what changed.
+  //
+  // The old block printed no figure past the ask because the only figure it
+  // had was `threshold - pct`, which is negative there — and a `-3.0` beside
+  // "handover due" invites a reader to act on a number that is spent. The
+  // answer was to drop the figure; `seq:13`'s answer is to measure the right
+  // distance instead. Past the ask the next boundary is FULL, so the gap
+  // counts to 100 and shrinks all the way there. Never negative, never stuck.
+  let previous = Number.POSITIVE_INFINITY;
   for (const pct of [85, 85.1, 90, 99.9]) {
     const seg = askSegment(occ(pct), 85);
-    assert.equal(seg?.text, '◆ handover due', `at ${pct}% the block is words`);
-    assert.ok(!/[+-]\d/.test(seg?.text ?? ''), 'and it carries no signed figure at all');
+    const gap = /·\+(\d+\.\d)/.exec(seg?.text ?? '');
+    assert.ok(gap !== null, `at ${pct}% the block still answers a distance`);
+    const value = Number(gap[1]);
+    assert.equal(value, Number((100 - pct).toFixed(1)), 'the distance is to full');
+    assert.ok(value < previous, `the gap did not shrink at ${pct}%`);
+    previous = value;
+    assert.ok(!/-\d/.test(seg?.text ?? ''), 'and it is never a negative figure');
   }
+});
+
+/* ══ THE HANDOVER VERDICT, IN PERCENT — `plan:handover seq:13` ═══════════ */
+
+/**
+ * **The block the terminal did not have, and the unit the strip had wrong.**
+ *
+ * The strip said `handover written 3h ago` and this bar said nothing at all.
+ * Age is a proxy for currency and it is the proxy that failed: three windows on
+ * this corpus reported `acted-on` while the handover was 2h39m, 1h24m and 3h06m
+ * behind — written at 85% and carried to 99.9%, 96.1% and 96.6%. Every
+ * assertion below is about the pair of PERCENTAGES that replaces it.
+ */
+const ASK = (verdict: HandoverAskView['verdict'], askedAtPercent: number | null = null)
+  : HandoverAskView => ({ verdict, askedAtPercent });
+
+test('the handover block says which percent the handover answers and which we are at', () => {
+  // CURRENT: the ask it answers is the whole percent the window is in. The
+  // only state that earns the calm hue, and it earns it on a COMPARISON rather
+  // than on the ordering `acted-on` proves.
+  const current = handoverSegment(ASK('acted-on', 96), occ(96.4), 85);
+  assert.equal(current?.label, 'HANDOVER');
+  assert.equal(current?.text, 'current at 96%');
+  assert.equal(current?.ink.fg, PALETTE['ok']?.fg);
+
+  // BEHIND: the pair, and the staleness is the two numbers that caused it.
+  const behind = handoverSegment(ASK('acted-on', 85), occ(99.9), 85);
+  assert.equal(behind?.text, 'written at 85%, now 99%');
+  assert.equal(behind?.ink.fg, PALETTE['warn']?.fg);
+  // `warn` and not `crit`: behind is not missing, and the loudest hue is owed
+  // to the ask that went unanswered.
+  assert.notEqual(behind?.ink.fg, PALETTE['crit']?.fg);
+
+  // IGNORED, the state a reader would never think to check for.
+  const ignored = handoverSegment(ASK('ignored', 96), occ(96.4), 85);
+  assert.equal(ignored?.text, 'asked at 96%, not written');
+  assert.equal(ignored?.ink.fg, PALETTE['crit']?.fg);
+  assert.equal(ignored?.bold, true);
+
+  // NOT ASKED is a measured not-yet, and it names the percent it starts at.
+  assert.equal(handoverSegment(ASK('not-asked'), occ(20), 85)?.text, 'first ask at 85%');
+  // A threshold that is not a whole number keeps its decimal, exactly as the
+  // ask block's own count pair does.
+  assert.equal(handoverSegment(ASK('not-asked'), occ(20), 92.5)?.text, 'first ask at 92.5%');
+});
+
+test('the handover block refuses a comparison it cannot honestly make', () => {
+  // NO LIVE READING: asked and answered, and nothing to measure it against.
+  // Never the calm hue — that would claim currency from a comparison nobody
+  // made.
+  const cold = handoverSegment(ASK('acted-on', 85), { state: 'unmeasurable', why: 'no-sample' }, 85);
+  assert.equal(cold?.text, 'answers the 85% ask');
+  assert.notEqual(cold?.ink.fg, PALETTE['ok']?.fg);
+
+  // A FOSSIL is not a reading either. Same refusal, and it matters more: a
+  // stale percentage measured against a live latch would print a confident
+  // number about a window that has not existed for hours.
+  const fossil = handoverSegment(ASK('acted-on', 85), occ(90, 48 * 60 * 60 * 1000), 85);
+  assert.equal(fossil?.text, 'answers the 85% ask');
+
+  // A LATCH ABOVE THIS WINDOW. A `/clear` destroys a context window and the
+  // latch deliberately outlives it, so a fresh window can read a percent above
+  // its own. Drawn as not known, never as `current at 96%` over a window at 12%.
+  const prior = handoverSegment(ASK('acted-on', 96), occ(12), 85);
+  assert.equal(prior?.text, 'answers 96%, above this window');
+  assert.equal(prior?.ink.fg, PALETTE['neutral']?.fg);
+
+  // UNVERIFIABLE is never folded into ignored: a charge nothing supports is
+  // the same defect as a guarantee nothing supports.
+  assert.equal(handoverSegment(ASK('unverifiable', 90), occ(96), 85)?.text, 'state not known');
+
+  // `off` draws NOTHING on a line redrawn on every assistant message — a
+  // sentence that is identical forever is furniture. `null` is not `off`: the
+  // question could not be asked at all.
+  assert.equal(handoverSegment(ASK('off'), occ(96), null), null);
+  assert.equal(handoverSegment(null, occ(96), 85), null);
 });
 
 test('the gap is silent where the whole block is — no ask, and no current reading', () => {

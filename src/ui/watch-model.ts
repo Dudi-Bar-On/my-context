@@ -30,7 +30,7 @@ import {
 // and are named as writers in `test/ui/no-writes.test.ts`.
 import { describeFocus, isFocusActive, readFocus } from '../core/focus.ts';
 import path from 'node:path';
-import { checkHandoverAsk, type HandoverAskVerdict } from '../core/handover-ask.ts';
+import { checkHandoverAsk, readLatch, type HandoverAskVerdict } from '../core/handover-ask.ts';
 // The ONE place the 98 default is applied (`core/config.ts`). The occupancy
 // bands the strip colours with are named against this number and are derived
 // from it in the client, so it travels beside the sample rather than being
@@ -329,6 +329,27 @@ export interface WatchContextBody {
     writtenAt: string | null;
     /** The threshold the ask fires at, or `null` when the feature is off. */
     thresholdPercent: number | null;
+    /**
+     * **THE WHOLE PERCENT OF OCCUPANCY THE MOST RECENT ASK FIRED AT**, or
+     * `null` for a window that has never been asked — `AskLatch.askedAtPercent`,
+     * carried verbatim (`plan:handover seq:13`).
+     *
+     * It is what makes the strip able to say something worth reading. Until
+     * `seq:12` the mechanism knew only THAT an ask had gone out and whether the
+     * file had moved since, so the only currency the strip could offer was
+     * `written {age} ago` — and age is the measure that HID the defect: three
+     * windows reported `acted-on` while the handover was 2h39m, 1h24m and
+     * 3h06m behind, written at 85% and carried to 99.9%, 96.1% and 96.6%. With
+     * this number the browser can subtract the occupancy it already has and
+     * draw the staleness in the unit that caused it.
+     *
+     * SERVED and not derivable in the browser: it is a field of a file on
+     * disk, written by `Stop` through `askStep`, and a page can read no file.
+     * Already normalised — never a fraction, never above 100 — because
+     * `readLatch` puts every value it returns through `askStep`, so no surface
+     * has to decide what a percent means.
+     */
+    askedAtPercent: number | null;
   };
   /**
    * **The account's own two rate-limit windows** (owner ruling 2026-08-31).
@@ -497,6 +518,13 @@ export function apiWatchContext(ws: Workspace, url: URL): JsonResult {
   // the check itself reports as `off`.
   const handoverConfig = ws.config.handover;
   const ask = checkHandoverAsk(root, handoverConfig, session);
+  // The latch itself, for the ONE field the verdict does not carry. Read
+  // separately rather than by widening `HandoverAskCheck`, whose shape three
+  // hooks and this endpoint already depend on — an additive field there would
+  // be a change to a contract this task was told to read and not re-decide.
+  // `readLatch` never throws and answers `NO_LATCH` for anything it cannot
+  // read, so this costs one small `readFileSync` and no error path.
+  const latch = readLatch(root, session);
   const handover = {
     verdict: ask.verdict,
     path: ask.path,
@@ -507,6 +535,10 @@ export function apiWatchContext(ws: Workspace, url: URL): JsonResult {
     // threshold for an ask that will never fire is a number with no meaning,
     // and the strip must not colour against one.
     thresholdPercent: handoverConfig === null ? null : handoverThresholdPercent(handoverConfig),
+    // `null` with the feature OFF for `thresholdPercent`'s reason: a percent
+    // an ask fired at, for a feature that never asks, would be a number about
+    // a window nobody measured. Otherwise straight off the latch.
+    askedAtPercent: handoverConfig === null ? null : latch.askedAtPercent,
   };
   // Read off the payload `readTee` already opened, beside the context window
   // and never in place of it. `tee === null` is the no-sample state and answers

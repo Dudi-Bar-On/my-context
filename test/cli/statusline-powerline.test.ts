@@ -26,7 +26,7 @@ import { removeTree } from '../helpers/tmp.ts';
 import {
   ASK_GLYPH, FIELD_JOIN, FIELD_SEP,
   DEFAULT_EFFORT, ELLIPSIS_SEGMENT, GIVE, LEVEL_GLYPH, LEVEL_SOURCE, NO_EXTRAS,
-  PALETTE, LEVEL_ICON, usageBar, usageLevelOf,
+  PALETTE, LEVEL_ICON, LEVEL_INK, usageBar, usageLevelOf,
   absoluteFillLevel, askSegment, bandsAreDerived, bandsFor, buildSegments, colourAllowed,
   fillBands,
   contextSegment, displayWidth, fitSegments, freshMs, gitBranch, levelFor, modelSegment,
@@ -338,10 +338,32 @@ test('the handover scale answers the distance as a number, at every fill', () =>
         + `(${pct.toFixed(1)} / ${ask})`
         + ` ·+${(threshold - pct).toFixed(1)}`;
     };
+    // ── AND THE SHAPE PAST THE ASK, `plan:handover seq:13` ────────────────
+    // The maximum re-origins on the threshold: `spent` of the `span` to full,
+    // so the bar starts at the ask and fills as the window does rather than
+    // sitting over-full for the last fifteen points. `·+` still means points
+    // to the next boundary — which past the ask is FULL — and `·n left` is the
+    // count of whole percents that can still earn an ask.
+    const dueShape = (pct: number): string => {
+      const span = 100 - threshold;
+      const spent = Math.max(0, Math.min(span, pct - threshold));
+      const proportion = (spent / span) * 100;
+      const icon = LEVEL_ICON[usageLevelOf(proportion)!];
+      const lead = icon === '' ? '' : `${icon} `;
+      return `${lead}${usageBar(proportion)} ${proportion.toFixed(0)}% `
+        + `(${spent.toFixed(1)} / ${span})`
+        + ` ·+${(100 - pct).toFixed(1)} ·${100 - Math.floor(pct)} left`;
+    };
     assert.equal(marker(below, threshold)?.text, shape(below));
     assert.equal(marker(bands.warn, threshold)?.text, shape(bands.warn));
-    // AT the ask the words take over, and they are still the owner's words.
-    assert.equal(marker(bands.crit, threshold)?.text, `${ASK_GLYPH} handover due`);
+    // AT the ask the series OPENS: nothing of it is spent, and every one of
+    // its steps is still to come. The owner's words are still said — they are
+    // the field's name now, which is where a narrow terminal cannot drop them
+    // separately from the figure they qualify.
+    assert.equal(marker(bands.crit, threshold)?.text, dueShape(bands.crit));
+    assert.equal(marker(bands.crit, threshold)?.label, 'ASK DUE');
+    assert.equal(marker(threshold + (100 - threshold) / 2, threshold)?.text,
+      dueShape(threshold + (100 - threshold) / 2), 'and it keeps measuring past it');
 
     // The DISTANCE still shrinks as the window fills and is still carried by a
     // figure — it is now the count pair and the proportion that carry it, and
@@ -358,7 +380,13 @@ test('the handover scale answers the distance as a number, at every fill', () =>
     // used-of-max field, and `--carry` once the ask has fired. What is
     // unchanged is the rule the old assertion protected: the urgency is
     // carried by WORDS and WEIGHT at the last step, never by a second hue.
-    assert.equal(marker(bands.crit, threshold)?.ink.fg, PALETTE['carry']?.fg);
+    //
+    // `seq:13`: past the ask this is a used-of-max field like every other one,
+    // so it takes its BAND's ink there too — which at the threshold itself is
+    // the calm band, because none of the series is spent yet. It was a flat
+    // `--carry` from 85 to 100, which could not tell the first of sixteen asks
+    // from the last.
+    assert.equal(marker(bands.crit, threshold)?.ink.fg, LEVEL_INK.safe.fg);
     assert.notEqual(marker(bands.crit, threshold)?.ink.fg, PALETTE['gold']?.fg);
     // `below` sits a tenth of a point under the approach band, which as a
     // PROPORTION of the threshold is 89.9% — `critical` on the used-of-max
@@ -366,11 +394,15 @@ test('the handover scale answers the distance as a number, at every fill', () =>
     // assertion was protecting is that bold is EARNED rather than worn at
     // every fill, and that is asserted on a genuinely calm figure instead.
     assert.notEqual(marker(threshold * 0.3, threshold)?.bold, true);
-    assert.equal(marker(bands.crit, threshold)?.bold, true);
-    // The marker glyph survives on the one state that still spends words on
-    // itself; below the ask the block's identity is its LABEL, which is the
-    // same job done by the same means as every other used-of-max field.
-    assert.ok(marker(bands.crit, threshold)?.text.startsWith(ASK_GLYPH));
+    // AND IT IS EARNED PAST THE ASK TOO, `seq:13`: bold now arrives when the
+    // SERIES is critical rather than the instant the threshold is crossed. A
+    // block that was bold for the last fifteen points of every window was a
+    // weight that had stopped meaning anything by the time it mattered.
+    assert.notEqual(marker(bands.crit, threshold)?.bold, true);
+    assert.equal(marker(threshold + (100 - threshold) * 0.9, threshold)?.bold, true);
+    // The block's identity is its LABEL at every fill now — the same job done
+    // by the same means as every other used-of-max field — and past the ask
+    // the label also carries the action.
     for (const pct of [below, bands.warn]) {
       assert.equal(marker(pct, threshold)?.label, 'ASK');
     }
@@ -381,7 +413,10 @@ test('the handover scale answers the distance as a number, at every fill', () =>
   // the owner picked: far below the ask, nearly at it, and past it.
   assert.equal(marker(25.1, 85)?.text, '▰▰▰▱▱▱▱▱▱▱ 30% (25.1 / 85) ·+59.9');
   assert.equal(marker(81.8, 85)?.text, '💀 ▰▰▰▰▰▰▰▰▰▰ 96% (81.8 / 85) ·+3.2');
-  assert.equal(marker(91.0, 85)?.text, '◆ handover due');
+  // Past the ask, and `seq:13`: six of the fifteen points between the ask and
+  // full are spent, nine remain, and nine further asks can still be earned.
+  assert.equal(marker(91.0, 85)?.text, '▰▰▰▰▱▱▱▱▱▱ 40% (6.0 / 15) ·+9.0 ·9 left');
+  assert.equal(marker(91.0, 85)?.label, 'ASK DUE');
 
   // THE EARLIER RULING'S EXAMPLE, still true and still worth pinning: the ask
   // is a different question from the fill. At 98 the ask is 18 points away
@@ -1306,6 +1341,7 @@ test('the whole bar, from a real payload shape, with every group present', () =>
     branch: 'campaign/my-context-test',
     occupancy: { state: 'known', percent: 42, ageMs: 0, usedTokens: Math.round((42) * 10_000), windowSize: 1_000_000 },
     threshold: THRESHOLD,
+    handoverAsk: null,
     myctx: { tokens: 6200, injections: 3, unrecorded: 0 },
     focus: null,
     lastAudit: null,
@@ -1394,6 +1430,7 @@ test('the line gives itself up in the order the owner ranked, not by width', () 
     branch: 'campaign/my-context-test',
     occupancy: { state: 'known', percent: 42, ageMs: 0, usedTokens: Math.round((42) * 10_000), windowSize: 1_000_000 },
     threshold: THRESHOLD,
+    handoverAsk: null,
     myctx: { tokens: 6200, injections: 3, unrecorded: 0 },
     focus: null,
     lastAudit: null,
