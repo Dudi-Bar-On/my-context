@@ -2,7 +2,7 @@
 id: OPENQ-may-the-read-half-of-lesson-derive-ts-be-split-out-so-the
 type: open_question
 title: may the read half of lesson/derive.ts be split out so the composer can offer a staged lesson's keys
-status: active
+status: deprecated
 severity: soft
 always: false
 summary: "The one D11 field that could not be built: nothing serves a staged lesson, because listStaging sits behind core/mutate.ts."
@@ -21,8 +21,8 @@ source_file: null
 source_anchor: null
 source_checksum: null
 valid_from: 2026-09-06
-valid_until: null
-checksum: d9570f6feaeec0c1
+valid_until: 2026-09-06
+checksum: 412767d62ace0682
 ---
 
 # may the read half of lesson/derive.ts be split out so the composer can offer a staged lesson's keys

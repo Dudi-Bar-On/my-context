@@ -2,7 +2,7 @@
 id: OPENQ-nothing-triggers-a-handover-on-demand-and-a-handover-written
 type: open_question
 title: nothing triggers a handover on demand, and a handover written early reports as never written
-status: active
+status: deprecated
 severity: soft
 always: false
 summary: A person who prepares a summary before the system asks for one is told none exists.
@@ -20,8 +20,8 @@ source_file: null
 source_anchor: null
 source_checksum: null
 valid_from: 2026-09-06
-valid_until: null
-checksum: 9ec19cd41015d176
+valid_until: 2026-09-06
+checksum: 77150e61912ef235
 ---
 
 # nothing triggers a handover on demand, and a handover written early reports as never written

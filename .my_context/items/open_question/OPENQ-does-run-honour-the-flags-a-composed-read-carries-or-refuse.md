@@ -2,7 +2,7 @@
 id: OPENQ-does-run-honour-the-flags-a-composed-read-carries-or-refuse
 type: open_question
 title: does Run honour the flags a composed read carries, or refuse the reads it cannot honour
-status: active
+status: deprecated
 severity: soft
 always: false
 summary: Two buttons on one screen answer the same written command differently, and which one should change is a decision for the owner.
@@ -20,8 +20,8 @@ source_file: null
 source_anchor: null
 source_checksum: null
 valid_from: 2026-09-06
-valid_until: null
-checksum: 038c652e29712383
+valid_until: 2026-09-06
+checksum: c16ff8e95bad8744
 ---
 
 # does Run honour the flags a composed read carries, or refuse the reads it cannot honour

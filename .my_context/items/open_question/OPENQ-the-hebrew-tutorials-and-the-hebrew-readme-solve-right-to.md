@@ -2,7 +2,7 @@
 id: OPENQ-the-hebrew-tutorials-and-the-hebrew-readme-solve-right-to
 type: open_question
 title: the hebrew tutorials and the hebrew readme solve right-to-left two entirely different ways
-status: active
+status: deprecated
 severity: soft
 always: false
 summary: The two Hebrew document families use completely different mechanisms to keep code readable inside Hebrew prose, and nothing says which is intended.
@@ -20,8 +20,8 @@ source_file: null
 source_anchor: null
 source_checksum: null
 valid_from: 2026-09-06
-valid_until: null
-checksum: dace4ec6717ce357
+valid_until: 2026-09-06
+checksum: 09e0f191fbb2dba7
 ---
 
 # the hebrew tutorials and the hebrew readme solve right-to-left two entirely different ways

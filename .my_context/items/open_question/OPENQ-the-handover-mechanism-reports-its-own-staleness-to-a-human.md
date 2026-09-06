@@ -2,7 +2,7 @@
 id: OPENQ-the-handover-mechanism-reports-its-own-staleness-to-a-human
 type: open_question
 title: the handover mechanism reports its own staleness to a human and to no gate
-status: active
+status: deprecated
 severity: soft
 always: false
 summary: Nothing fails when the handover file falls behind the context window; the only signal is a strip a person has to be looking at.
@@ -19,8 +19,8 @@ source_file: null
 source_anchor: null
 source_checksum: null
 valid_from: 2026-09-06
-valid_until: null
-checksum: 6a9c3f942f370a63
+valid_until: 2026-09-06
+checksum: ed8017ddcc099e17
 ---
 
 # the handover mechanism reports its own staleness to a human and to no gate

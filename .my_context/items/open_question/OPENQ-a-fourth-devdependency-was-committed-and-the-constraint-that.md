@@ -2,7 +2,7 @@
 id: OPENQ-a-fourth-devdependency-was-committed-and-the-constraint-that
 type: open_question
 title: a fourth devDependency was committed, and the constraint that forbids it still says there are three
-status: active
+status: deprecated
 severity: soft
 always: false
 summary: package.json carries four devDependencies while CONST-zero-runtime-dependencies enumerates three and says a fourth must be ruled on, not committed.
@@ -18,8 +18,8 @@ source_file: null
 source_anchor: null
 source_checksum: null
 valid_from: 2026-09-06
-valid_until: null
-checksum: b4b4177b02f41709
+valid_until: 2026-09-06
+checksum: c71452dcac6bc8fe
 ---
 
 # a fourth devDependency was committed, and the constraint that forbids it still says there are three

@@ -2,7 +2,7 @@
 id: OPENQ-does-the-id-picker-gain-a-searchable-box-and-is-web-awesome
 type: open_question
 title: does the id picker gain a searchable box, and is web awesome's select even the thing that would do it
-status: active
+status: deprecated
 severity: soft
 always: false
 summary: "The long-domain ruling D11 held: four options costed, and the vendored one measured out on capability rather than on cost."
@@ -20,8 +20,8 @@ source_file: null
 source_anchor: null
 source_checksum: null
 valid_from: 2026-09-06
-valid_until: null
-checksum: 8f1f3aa20c16f0e9
+valid_until: 2026-09-06
+checksum: d1c242ea02e842c0
 ---
 
 # does the id picker gain a searchable box, and is web awesome's select even the thing that would do it
