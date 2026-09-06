@@ -1,5 +1,78 @@
 # v2.0 handover — we are mid-decision. Keep deciding.
 
+## ⏭ READ THIS FIRST — 2026-09-06, at 90%
+
+Supersedes the 85% section below it. Same plan, more decided.
+
+### THREE LANES ARE IN FLIGHT. Do not dispatch a fourth into their files.
+
+1. **D14 — handover re-asks at every percent** · `src/hooks/stop.ts`, `src/core/handover-ask.ts`
+2. **D13b — tree component evaluation** · writes only a spec, no code
+3. **D7 — the audit projection index** · `src/core/audit-db.ts`, `src/doctor/checks.ts`
+
+### DECIDED SINCE 85%, and the reasoning matters more than the verdict
+
+**D12 runs against a SCRATCH corpus, alone.** The owner offered two shapes and asked me to
+choose, with one constraint: keep the corpus and the development process uncontaminated.
+Retire-after-the-fact is not clean — superseding leaves the item, the relation, the mutation
+records and the audit rows in the corpus **permanently**. And some of it cannot be retired at
+all: `rebuild`, `repair` and `config` have no inverse, so a half-failed run leaves debris
+nothing can undo. **His safeguard is promoted to a requirement: D12 RUNS ALONE**, no other
+lane in flight. Recorded as `DEC-the-composer-tests-run-against-a-scratch-corpus-alone-and`.
+Honest cost, also recorded: a defect that only appears at 936 items will not appear in a
+fresh workspace.
+
+**D13b — widen the served set AND fix the requirement that contradicts it.**
+`isServableDocPath` admits only `README.md` and `docs/`/`reports/` markdown, so
+`.my_context/items/**` cannot be opened at all — while `REQ-a-repository-document-is-
+viewable-in-the-ui-only-once-it-is` (**severity: hard**) says *"The UI serves the corpus; it
+does not serve the checkout"*. The product does the exact opposite. Found twice, stepped over
+twice; the owner ruled to resolve it on the record this time.
+
+**And a clarification that prevents a real misreading**, recorded as
+`DEC-the-corpus-file-explorer-is-not-the-document-browser-that`: the corpus document browser
+rejected on 2026-09-05 (a picker over 190 documents beside the README rendering) is **not**
+what `library/2` is. *"Which file is where, and what is written in it"* is a different
+question from *"which documents exist"*. Five items were cancelled for being that browser;
+without this note the new requirement reads as re-opening a settled decision.
+
+**The tree control is an EXTERNAL component — the owner chose, "choose the best one".** The
+evaluation lane must pick one; do not build one. Ten rules gate it, and three will do most of
+the eliminating: no build step, vendorable-and-offline, and no transitive UI dependencies
+(Plain Tree wants Bootstrap and Font Awesome). Nested markup, not a flattened row list. It is
+also allowed to conclude that **nothing clears the bar**, naming the rule each fails.
+
+**D7 — add the `(role, item_id)` index.** `topItems` filters on `role` while
+`idx_audit_item_id` leads with `item_id`, so the join cannot seek. It is a projection schema
+change behind a version check, so the rebuild path must actually fire, and the query plan must
+be shown to change — an index the planner declines to use looks fixed and is not.
+
+### D10 LANDED, and its three findings outlive the feature
+
+Four Composer fields now derive their lists. But: the `status` "contradiction" is not one —
+`search --status` takes five including `superseded` (verified: 25 items) while `edit --status`
+takes four and refuses it. `RELATION_TYPES` alone would have re-created a defect fixed twice
+here: it is a **write** gate excluding `superseded_by`, yet 25 items carry that edge. And the
+projected half of `/api/tags` must not be offered on `--tags` because `--tags` is a **write** —
+which is exactly the rule I broke eleven times filing items.
+
+### THE TRAP THAT KEEPS CATCHING ME, in one line
+
+**A projected field set with `--tags` is not enforced.** Use `--extra key=value`. `needs` is
+**comma-separated**; a space-separated list is silently "an unreadable needs entry", and the
+projected TAG shows only the FIRST value while the field holds all of them — so read
+`ready --held`, never the tag, to know whether a dependency is real.
+
+### NEXT SESSION, FIRST THREE THINGS
+
+1. Read `reports/2026-09-06-PLAN.md` — the D1–D14 table is the running order.
+2. Wait for the three lanes; commit each separately; verify in a browser before believing any
+   UI claim.
+3. Still on the owner and blocking nothing: **D8** (two disjoint RTL conventions), **D9**
+   (`<ins>`/`<del>` markers), **D6** (deferred by him — the citation gate still exits 1 on 21
+   `BARE` faults), and **43 `walk` items**.
+
+
 ## ⏭ READ THIS FIRST — 2026-09-06
 
 ### THE RUNNING ORDER IS `reports/2026-09-06-PLAN.md`
