@@ -2,7 +2,7 @@
 id: OPENQ-do-the-ins-and-del-marks-become-run-markers-or-is-a-marker
 type: open_question
 title: do the ins and del marks become run markers, or is a marker for one sentence a grammar growing by accident
-status: active
+status: deprecated
 severity: soft
 always: false
 summary: One sentence describes a visual treatment instead of performing it, and fixing that would add a marker used nowhere else.
@@ -22,8 +22,8 @@ source_file: null
 source_anchor: null
 source_checksum: null
 valid_from: 2026-09-05
-valid_until: null
-checksum: 3280388d7ba0d326
+valid_until: 2026-09-06
+checksum: f224a6df6d88781e
 ---
 
 # do the ins and del marks become run markers, or is a marker for one sentence a grammar growing by accident
