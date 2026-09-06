@@ -1,6 +1,6 @@
 ---
 description: Capture a exception in this project's knowledge base
-argument-hint: "[the exception in one sentence]"
+argument-hint: "[the exception in one sentence — A scoped, dated carve-out from a named normative item, and the reason it was granted]"
 disable-model-invocation: true
 ---
 

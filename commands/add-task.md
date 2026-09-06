@@ -1,6 +1,6 @@
 ---
 description: Capture a task in this project's knowledge base
-argument-hint: "[the task in one sentence]"
+argument-hint: "[the task in one sentence — A unit of planned work, tracked to completion]"
 disable-model-invocation: true
 ---
 

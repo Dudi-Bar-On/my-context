@@ -1,6 +1,6 @@
 ---
 description: Capture a reference in this project's knowledge base
-argument-hint: "[which file, and why it matters]"
+argument-hint: "[which file, and why it matters — A snapshot of a file, with its origin recorded so doctor reports drift]"
 disable-model-invocation: true
 ---
 

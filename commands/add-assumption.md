@@ -1,6 +1,6 @@
 ---
 description: Capture a assumption in this project's knowledge base
-argument-hint: "[the assumption in one sentence]"
+argument-hint: "[the assumption in one sentence — Unverified premise plus validation deadline]"
 disable-model-invocation: true
 ---
 

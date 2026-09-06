@@ -1,6 +1,6 @@
 ---
 description: Capture a pattern in this project's knowledge base
-argument-hint: "[the pattern in one sentence]"
+argument-hint: "[the pattern in one sentence — Reusable solution, or an anti-pattern to avoid]"
 disable-model-invocation: true
 ---
 

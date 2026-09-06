@@ -1,6 +1,6 @@
 ---
 description: Capture a todo in this project's knowledge base
-argument-hint: "[the todo in one sentence]"
+argument-hint: "[the todo in one sentence — Something to build or fix later, captured the moment it occurs to you]"
 disable-model-invocation: true
 ---
 

@@ -1,6 +1,6 @@
 ---
 description: Capture a contract in this project's knowledge base
-argument-hint: "[the contract in one sentence]"
+argument-hint: "[the contract in one sentence — A surface other parties depend on, and what changing it costs]"
 disable-model-invocation: true
 ---
 

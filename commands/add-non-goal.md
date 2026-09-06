@@ -1,6 +1,6 @@
 ---
 description: Capture a non_goal in this project's knowledge base
-argument-hint: "[the non-goal in one sentence]"
+argument-hint: "[the non-goal in one sentence — Explicit prohibition on building something]"
 disable-model-invocation: true
 ---
 

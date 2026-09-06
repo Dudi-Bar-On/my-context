@@ -1,6 +1,6 @@
 ---
 description: Capture a measurement in this project's knowledge base
-argument-hint: "[the measurement in one sentence]"
+argument-hint: "[the measurement in one sentence — A number, how it was obtained and when, so a later reader can tell whether it still holds]"
 disable-model-invocation: true
 ---
 

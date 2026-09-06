@@ -1,6 +1,6 @@
 ---
 description: Capture a rule in this project's knowledge base
-argument-hint: "[the rule in one sentence]"
+argument-hint: "[the rule in one sentence — A do/dont directive]"
 disable-model-invocation: true
 ---
 

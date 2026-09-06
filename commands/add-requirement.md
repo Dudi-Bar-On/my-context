@@ -1,6 +1,6 @@
 ---
 description: Capture a requirement in this project's knowledge base
-argument-hint: "[the requirement in one sentence]"
+argument-hint: "[the requirement in one sentence — What must be built]"
 disable-model-invocation: true
 ---
 

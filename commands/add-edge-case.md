@@ -1,6 +1,6 @@
 ---
 description: Capture a edge_case in this project's knowledge base
-argument-hint: "[the edge-case in one sentence]"
+argument-hint: "[the edge-case in one sentence — Boundary condition; frequently worth promoting]"
 disable-model-invocation: true
 ---
 

@@ -130,6 +130,34 @@ export interface FlagView {
   note: string;
 }
 
+/**
+ * **The confirmation flag, by the one name every command spells it.**
+ *
+ * `command-flags.ts` declares a shared `YES` and hangs it off eleven commands
+ * and ten subcommands under this key; `edit-flags.ts` and `review.ts` reach
+ * the same gate. Named once here so the rule below is stated in one place
+ * rather than matched on a string in two.
+ */
+export const CONFIRM_FLAG = 'yes';
+
+/**
+ * What the `--yes` row says on THIS card and nowhere else, appended to the
+ * declaration's own note rather than replacing it.
+ *
+ * It is a sentence about the page, not about the command, which is why it is
+ * not in `command-flags.ts`: a terminal's `mycontext help` prints no composed
+ * line and would be telling a reader about something that is not in front of
+ * them. And it is here rather than in the "Left off this line" list because
+ * every reason in that list names a record about the CLI — this one names a
+ * property of the surface, and the row for the switch is where a reader
+ * looking the switch up is already looking. `INV-nothing-is-dropped-silently`
+ * is satisfied on the screen, not only in the JSON.
+ */
+export const CONFIRM_HELD_BACK_NOTE =
+  ' The composed example below leaves this switch off on purpose: it sits beside a Copy button '
+  + 'and would run against your own corpus, so it shows you the confirmation instead of '
+  + 'skipping it. Add --yes yourself when you mean to.';
+
 /** One subcommand's own row set — `review promote` and `review list` differ. */
 export interface SubcommandView { subcommand: string; flags: FlagView[] }
 
@@ -171,6 +199,22 @@ function flagView(command: string, flag: string, spec: FlagSpec, decl?: FlagDecl
 /** Every flag of one spec, in the order the spec accepts them. */
 function flagViews(command: string, spec: FlagSpec, declared: FlagDeclarations): FlagView[] {
   return spec.allowed.map((flag) => flagView(command, flag, spec, declared[flag]));
+}
+
+/**
+ * The `--yes` row, told that the line below it was composed without it.
+ *
+ * Only where the composer actually held it back: on `carry --show` the flag is
+ * refused beside something already on the line, that refusal is the CLI's own
+ * and is already named under the example, and a second sentence claiming the
+ * page chose to leave it off would be this card taking credit for the parser's
+ * rule.
+ */
+function withConfirmNote(flags: FlagView[], line: WorkedLine | undefined): FlagView[] {
+  if (line?.confirmHeldBack !== true) return flags;
+  return flags.map((row) => (row.flag === CONFIRM_FLAG
+    ? { ...row, note: row.note + CONFIRM_HELD_BACK_NOTE }
+    : row));
 }
 
 /**
@@ -480,12 +524,22 @@ export interface CategoryView {
  * **`plan:library seq:3`: a capture command told you its shape and never what
  * belonged in it.**
  *
- * MEASURED across all 91 hints: 30 are CIRCULAR — the 29 `add-<category>` files
- * plus `add` itself — every one generated from one template, `[the <category>
- * in one sentence]`, which states the SHAPE and names the category back at the
- * reader. 32 are flag lists mirroring the CLI and need nothing. 10 are
- * hand-written and good, and they are the proof that the template is the
- * problem rather than the format.
+ * MEASURED across all 91 hints when this was written: 30 were CIRCULAR — the 29
+ * `add-<category>` files plus `add` itself — every one generated from one
+ * template, `[the <category> in one sentence]`, which states the SHAPE and
+ * names the category back at the reader. 32 are flag lists mirroring the CLI
+ * and need nothing. 10 are hand-written and good, and they are the proof that
+ * the template is the problem rather than the format.
+ *
+ * **29 of those 30 are no longer circular**, and this section is why they were
+ * ever drawn here: owner ruling 2026-09-07 took the same description into the
+ * generated hint itself (`hintDefinition`, `src/plugin/commands.ts`), so
+ * `/mycontext:add-constraint` now reads `[the constraint in one sentence —
+ * Non-negotiable limit: budget, stack, regulation, SLA]` on the terminal's own
+ * input line. `add` itself is the one that stays circular and must: it names no
+ * category, it TAKES one, so there is no description to generate into it.
+ * Nothing below changes — this card still draws the description in its own
+ * section, because the card is where a reader who is not mid-command looks.
  *
  * The missing sentence already exists and is already generated. Every category
  * carries its own description in the resolved config — *"constraint:
@@ -496,10 +550,8 @@ export interface CategoryView {
  * is what `mycontext examples <category> --short` prints.
  *
  * **Nothing here is typed.** 29 hand-written example sentences are the drift
- * this project measures in days. The second half of that item — improving the
- * GENERATED hint template in `src/plugin/commands.ts` — writes a new sentence
- * into 29 committed files and is product copy, so it is not this module's to
- * make and is not made.
+ * this project measures in days — which is equally why the hint half was done
+ * in the generator and not by editing 29 committed files by hand.
  */
 function categoryView(name: string, ws: Workspace): CategoryView | null {
   const prefix = name.startsWith('add-') ? 'add-' : name.startsWith('list-') ? 'list-' : null;
@@ -555,6 +607,17 @@ export interface WorkedLine {
   omitted: {
     flag: string; reason: 'group' | 'combination' | 'arity' | 'refused'; with?: string;
   }[];
+  /**
+   * **`--yes` was declared, was legal here, and this card held it back anyway**
+   * — the one flag left off for a reason that is not a record about the CLI.
+   * See `CONFIRM_FLAG` below. `true` only where the flag would otherwise have
+   * been spent: a `--yes` already refused beside something on the line keeps
+   * that reason in `omitted`, because that fact is the CLI's and outranks this
+   * card's own rule. Nothing is dropped silently — where this is `true` the
+   * `--yes` ROW in the table above says so in its own note, which is where a
+   * reader looking up the switch is already looking.
+   */
+  confirmHeldBack?: boolean;
   /** `POST /api/command/check`'s own verdict on this exact argv. */
   ok: boolean;
   error?: string;
@@ -677,6 +740,7 @@ function workedLine(
   const omitted: WorkedLine['omitted'] = [];
   const slots = positionalSlots(command);
   const combinations = fieldCombinations(command);
+  let confirmHeldBack = false;
 
   for (const slot of slots ?? []) {
     if (slot.options !== undefined && slot.options.length > 0) {
@@ -769,6 +833,30 @@ function workedLine(
       if (took !== undefined) { omitted.push({ flag, reason: 'group', with: `--${took}` }); continue; }
       spent.set(decl.group, flag);
     }
+    // ── `--yes`, AND THE ONE FLAG THIS CARD DECLINES TO SPEND ──────────────
+    // Owner ruling 2026-09-07, `TASK-a-copyable-example-of-a-write-leaves-the-
+    // confirmation-in-place`. Every other exclusion above is a record ABOUT
+    // THE CLI — a declared group, a declared refusal, the catalogue's own
+    // pairing, an arity nothing gives a value for. This one is not: `--yes` is
+    // legal on every line it is reached on, and it is left off because of what
+    // this SURFACE is.
+    //
+    // The README's generated blocks keep it and must: `scripts/gen-doc-
+    // examples.ts` RUNS them against a committed fixture and pastes true
+    // stdout, so the flag is what makes them reproducible, and a README is a
+    // place a reader READS. This card is a place a reader COPIES FROM — the
+    // line sits beside a Copy button and runs against their own corpus — so
+    // with `--yes` on it the first thing a new reader ever ran would be a
+    // write that skipped a preview they had not yet learned exists.
+    //
+    // It costs the example nothing. `--yes` carries no value and demonstrates
+    // no format; the table above still explains it in full, which is what
+    // "every switch explained" was ever about.
+    //
+    // LAST, deliberately: a `--yes` already excluded above keeps the CLI's own
+    // reason in `omitted`, because that is a fact about the command and this
+    // is a fact about the page.
+    if (flag === CONFIRM_FLAG) { confirmHeldBack = true; continue; }
     if (!spec.values.includes(flag)) { argv.push(`--${flag}`); continue; }
     // A value-taking flag with neither a vocabulary nor an example is
     // undrawable, and `test/cli/command-flags.test.ts` forbids one in both key
@@ -789,6 +877,7 @@ function workedLine(
     catalogued: slots !== null,
     ok: verdict.ok,
   };
+  if (confirmHeldBack) line.confirmHeldBack = true;
   if (!verdict.ok && verdict.error !== undefined) line.error = verdict.error;
   return line;
 }
@@ -918,14 +1007,23 @@ function commandDetail(ws: Workspace, name: string): JsonResult {
   if (surface === 'flat') {
     return {
       status: 200,
-      body: { ...base, flags: flagViews(name, COMMAND_FLAGS[name], FLAG_DECLARATIONS[name]) },
+      body: {
+        ...base,
+        flags: withConfirmNote(
+          flagViews(name, COMMAND_FLAGS[name], FLAG_DECLARATIONS[name]), base.worked[0],
+        ),
+      },
     };
   }
   if (surface === 'subcommand') {
     const declared = SUBCOMMAND_FLAG_DECLARATIONS[name];
+    // Same `Object.entries` walk `workedLines` makes, so row *i* of one is the
+    // line of row *i* of the other — `review promote` holds `--yes` back and
+    // `review list` never had it, and the note must land on the first only.
     const subcommands: SubcommandView[] = Object.entries(SUBCOMMAND_FLAGS[name])
-      .map(([subcommand, spec]) => ({
-        subcommand, flags: flagViews(`${name} ${subcommand}`, spec, declared),
+      .map(([subcommand, spec], i) => ({
+        subcommand,
+        flags: withConfirmNote(flagViews(`${name} ${subcommand}`, spec, declared), base.worked[i]),
       }));
     return { status: 200, body: { ...base, subcommands } };
   }
@@ -938,7 +1036,10 @@ function commandDetail(ws: Workspace, name: string): JsonResult {
       status: 200,
       body: {
         ...base,
-        flags: flagViews(name, { allowed: edit.allowed, values: edit.values }, edit.flags),
+        flags: withConfirmNote(
+          flagViews(name, { allowed: edit.allowed, values: edit.values }, edit.flags),
+          base.worked[0],
+        ),
         declared: edit.declared,
       },
     };

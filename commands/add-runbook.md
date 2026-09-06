@@ -1,6 +1,6 @@
 ---
 description: Capture a runbook in this project's knowledge base
-argument-hint: "[the runbook in one sentence]"
+argument-hint: "[the runbook in one sentence — The steps for a named operation, in the order they must be taken]"
 disable-model-invocation: true
 ---
 

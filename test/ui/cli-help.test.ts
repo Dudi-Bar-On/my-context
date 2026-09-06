@@ -49,6 +49,7 @@ import { exampleItemTitle, slashCommands, toolDefinitions } from '../../src/help
 import { checkCommand } from '../../src/ui/read-model-command.ts';
 import {
   apiCliHelp, apiCliHelpSubject, commandNames, commandSummaries, exampleIndex,
+  CONFIRM_FLAG, CONFIRM_HELD_BACK_NOTE,
 } from '../../src/ui/read-model-cli-help.ts';
 
 const REPO = path.join(import.meta.dirname, '..', '..');
@@ -98,20 +99,28 @@ test('the picker offers exactly the commands the CLI dispatches — the gate thi
 });
 
 /**
- * The nine that have no entry in `COMMAND_FLAGS`, named rather than counted.
+ * The ten that have no entry in `COMMAND_FLAGS`, named rather than counted.
  *
  * The task's own measurement — "34 of the 43 commands declare flags in
  * COMMAND_FLAGS; nine do not" — was the gate, and the answer is that none of
- * the nine was an omission: five are keyed by subcommand, three take no flag,
+ * the nine was an omission: five were keyed by subcommand, three take no flag,
  * and one is computed per workspace. This asserts the SPLIT, so the day one of
  * them moves between records the change is deliberate rather than noticed
  * later on a screen.
+ *
+ * `conversation` made it ten on 2026-09-07 (`plan:archive seq:1`), joining the
+ * subcommand-keyed group — `rebuild` writes the conversation index and `list`
+ * reads it, and they take different flags, which is exactly the condition that
+ * puts a command in `SUBCOMMAND_FLAGS` rather than here. The list is EXTENDED
+ * rather than loosened: the assertion is still an equality, so the next
+ * arrival fails here too and is accounted for deliberately.
  */
-test('the nine commands with no flat flag spec are exactly the ones the other records hold', () => {
+test('the ten commands with no flat flag spec are exactly the ones the other records hold', () => {
   const withoutFlat = [...COMMANDS.keys()].filter((n) => !Object.hasOwn(COMMAND_FLAGS, n)).sort();
   assert.deepEqual(withoutFlat, [
-    'edit', 'help', 'pack', 'procedure', 'rebuild', 'review', 'session', 'show', 'statusline',
-  ], 'the nine are the measurement this task gated itself on; a different nine is a different task');
+    'conversation', 'edit', 'help', 'pack', 'procedure', 'rebuild', 'review', 'session',
+    'show', 'statusline',
+  ], 'the ten are the measurement this task gated itself on; a different ten is a different task');
 
   const surfaces: Record<string, string> = {};
   for (const name of withoutFlat) {
@@ -120,6 +129,7 @@ test('the nine commands with no flat flag spec are exactly the ones the other re
     surfaces[name] = body.surface;
   }
   assert.deepEqual(surfaces, {
+    conversation: 'subcommand',
     edit: 'dynamic',
     help: 'none',
     pack: 'subcommand',
@@ -471,6 +481,67 @@ test('every composed worked line is accepted by the CLI\'s own parser', () => {
   // Not a constant: one line per flat command and one per subcommand, counted
   // by walking what the route served.
   assert.ok(lines >= commandNames().length, 'every command contributed at least one line');
+});
+
+/**
+ * **Owner ruling 2026-09-07, `TASK-a-copyable-example-of-a-write-leaves-the-
+ * confirmation-in-place`: no line this card composes carries `--yes`.**
+ *
+ * The distinction is the SURFACE, not the flag. The README's blocks keep it and
+ * must — `scripts/gen-doc-examples.ts` RUNS them against a committed fixture
+ * and pastes true stdout, and a README is a place a reader READS. This card
+ * sits beside a Copy button, and the line a reader takes from it runs against
+ * their own corpus: with `--yes` on it, the first thing a new reader ever ran
+ * would be a write that skipped a preview they had not yet learned exists.
+ *
+ * Both halves are asserted, because either alone would be a different defect:
+ * the flag is off every line, AND nothing is dropped silently — the `--yes` ROW
+ * in the table says the line below was composed without it, on every command
+ * where the composer actually held it back. Where the CLI itself already
+ * refused the flag (`carry --show`) the CLI's reason stays in `omitted` and the
+ * card claims no credit for it.
+ */
+test('no composed worked line carries --yes, and every held-back row says so', () => {
+  let held = 0;
+  let carried = 0;
+  for (const name of commandNames()) {
+    const body = subject('command', name) as {
+      worked: { command: string; argv: string[]; confirmHeldBack?: boolean }[];
+      flags?: { flag: string; note: string }[];
+      subcommands?: { subcommand: string; flags: { flag: string; note: string }[] }[];
+    };
+    const rowSets = body.subcommands !== undefined
+      ? body.subcommands.map((s) => s.flags)
+      : [body.flags ?? []];
+    for (const [i, line] of body.worked.entries()) {
+      assert.equal(
+        line.argv.includes(`--${CONFIRM_FLAG}`), false,
+        `${line.command} — a line beside a Copy button must not skip the confirmation`,
+      );
+      if (line.confirmHeldBack !== true) continue;
+      held += 1;
+      const row = (rowSets[i] ?? []).find((f) => f.flag === CONFIRM_FLAG);
+      assert.ok(row !== undefined, `mycontext ${name}: --yes was held back and has no row`);
+      assert.ok(
+        row.note.endsWith(CONFIRM_HELD_BACK_NOTE),
+        `mycontext ${name}: --yes was left off the line and the row above it does not say so `
+        + '(INV-nothing-is-dropped-silently).',
+      );
+    }
+    for (const rows of rowSets) {
+      for (const row of rows) {
+        if (row.flag !== CONFIRM_FLAG) continue;
+        if (row.note.endsWith(CONFIRM_HELD_BACK_NOTE)) carried += 1;
+      }
+    }
+  }
+  assert.ok(held > 0, 'no command held --yes back at all, so this test proved nothing');
+  assert.equal(carried, held, 'the note lands on exactly the rows whose line lost the flag');
+
+  // The README is the other surface and is NOT changed: its blocks are run
+  // output, and the flag is part of what makes them reproducible.
+  const readme = readFileSync(path.join(REPO, 'README.md'), 'utf8');
+  assert.ok(readme.includes('--yes'), 'the generated README examples still carry it');
 });
 
 /**

@@ -1,6 +1,6 @@
 ---
 description: Capture a constraint in this project's knowledge base
-argument-hint: "[the constraint in one sentence]"
+argument-hint: "[the constraint in one sentence — Non-negotiable limit: budget, stack, regulation, SLA]"
 disable-model-invocation: true
 ---
 

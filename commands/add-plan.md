@@ -1,6 +1,6 @@
 ---
 description: Capture a plan in this project's knowledge base
-argument-hint: "[the plan in one sentence]"
+argument-hint: "[the plan in one sentence — A named body of work: its goal, the order it is taken in, and the condition that finishes it]"
 disable-model-invocation: true
 ---
 

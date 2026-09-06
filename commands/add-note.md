@@ -1,6 +1,6 @@
 ---
 description: Capture a note in this project's knowledge base
-argument-hint: "[the note in one sentence]"
+argument-hint: "[the note in one sentence — Anything that arose during development and must not be lost]"
 disable-model-invocation: true
 ---
 

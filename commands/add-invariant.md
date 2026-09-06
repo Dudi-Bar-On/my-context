@@ -1,6 +1,6 @@
 ---
 description: Capture a invariant in this project's knowledge base
-argument-hint: "[the invariant in one sentence]"
+argument-hint: "[the invariant in one sentence — Condition that must always hold during execution]"
 disable-model-invocation: true
 ---
 

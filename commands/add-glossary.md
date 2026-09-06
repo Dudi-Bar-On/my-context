@@ -1,6 +1,6 @@
 ---
 description: Capture a glossary in this project's knowledge base
-argument-hint: "[the glossary in one sentence]"
+argument-hint: "[the glossary in one sentence — Ubiquitous language: the agreed term, and terms not to use]"
 disable-model-invocation: true
 ---
 

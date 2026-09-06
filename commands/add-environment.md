@@ -1,6 +1,6 @@
 ---
 description: Capture a environment in this project's knowledge base
-argument-hint: "[the environment in one sentence]"
+argument-hint: "[the environment in one sentence — How the environments differ: what production does that local does not]"
 disable-model-invocation: true
 ---
 

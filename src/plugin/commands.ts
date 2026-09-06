@@ -116,6 +116,51 @@ function frontmatter(description: string, argumentHint: string): string {
 const CLI = 'node "${CLAUDE_PLUGIN_ROOT}/src/cli/index.ts"';
 
 /**
+ * **The category's own definition, as it goes into an `argument-hint`.**
+ *
+ * Owner ruling 2026-09-07, `TASK-the-capture-hints-carry-the-category-
+ * definition-generated`: every `add-<category>` hint read `[the <category> in
+ * one sentence]`, which names the category back at the reader and tells them
+ * nothing. The definition has been in `src/core/categories.ts` all along, and
+ * `plan:library seq:3` already put it on the Library's help card — but the
+ * hint is what Claude Code shows INLINE while somebody is typing
+ * `/mycontext:add-constraint` in a terminal, where no card is visible and the
+ * reader is mid-thought. That is the moment the answer is needed, and it is
+ * the moment that had nothing.
+ *
+ * Nothing here is authored. Twenty-nine hand-written sentences would go stale
+ * the first time a `description` changed, and `test/plugin/commands.test.ts`
+ * compares the committed files byte-for-byte with this generator, so a
+ * description edited in `categories.ts` and not regenerated fails there.
+ *
+ * ── THE SHORTENING RULE, STATED ONCE ──────────────────────────────────────
+ *
+ * **A hint is placeholder text on a prompt line, so its length is a real
+ * constraint** — and a `description` is written for a help table, where it may
+ * run on. Measured over this project's 29 enabled categories on 2026-09-07:
+ * whole descriptions compose hints of 48–171 characters, median 87, and the
+ * one outlier is `task`, whose description is TWO sentences — a definition and
+ * then a note about where its fields live.
+ *
+ * So the rule is: **the hint carries the description's FIRST SENTENCE — the
+ * definition — and not the elaboration that follows it.** It is a rule about
+ * what a definition IS, not a character budget, which is why it is stated here
+ * and applied to all 29 rather than to the one that is too long: a truncation
+ * at N characters would cut a definition mid-word, and picking which
+ * categories to trim by hand is the drift this generator exists to prevent.
+ * It changes exactly one hint today (`task`, 171 → 100) and leaves 28 whole;
+ * the longest that remains is `measurement` at 125.
+ *
+ * A sentence end is a period followed by whitespace, and the trailing period
+ * of a one-sentence description is dropped so the hint closes on the word and
+ * not on punctuation — which is also the form the ruling wrote it in.
+ */
+export function hintDefinition(description: string): string {
+  const first = /^(.*?\.)\s/.exec(description);
+  return (first?.[1] ?? description).replace(/\.$/, '');
+}
+
+/**
  * The one category whose capture is not a `create_item` call, because its
  * body is not text a caller supplies: `reference` snapshots a FILE, and the
  * only surface that reads a file is `mycontext add … --file`.
@@ -156,7 +201,13 @@ function addReferenceCommand(category: ResolvedCategory): CommandFile {
     file: `add-${commandSlug(category.name)}.md`,
     content: `${frontmatter(
       `Capture a ${category.name} in this project's knowledge base`,
-      '[which file, and why it matters]',
+      // The one capture whose first half is not "in one sentence", because a
+      // reference's body is a FILE and the ask really is which one. The
+      // definition is carried all the same: the reason the other 28 gained it
+      // — a reader mid-thought in a terminal with no card in front of them —
+      // is not weaker here, and this is the category whose name says least
+      // about what it holds.
+      `[which file, and why it matters — ${hintDefinition(category.description)}]`,
     )}
 Capture a **${category.name}** — ${category.description} — in this project's my_context
 knowledge base.
@@ -234,7 +285,7 @@ shell, landing active exactly as the tool does.`;
     file: `add-${slug}.md`,
     content: `${frontmatter(
       `Capture a ${category.name} in this project's knowledge base`,
-      `[the ${slug} in one sentence]`,
+      `[the ${slug} in one sentence — ${hintDefinition(category.description)}]`,
     )}
 Capture a **${category.name}** — ${category.description} — in this project's my_context
 knowledge base.

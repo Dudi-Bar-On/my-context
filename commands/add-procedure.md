@@ -1,6 +1,6 @@
 ---
 description: Capture a procedure in this project's knowledge base
-argument-hint: "[the procedure in one sentence]"
+argument-hint: "[the procedure in one sentence — An ordered operation performed once and then finished; a repeatable one is a runbook]"
 disable-model-invocation: true
 ---
 

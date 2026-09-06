@@ -12,7 +12,7 @@ import { resolveConfig } from '../../src/core/config.ts';
 import { parseFrontmatter } from '../../src/core/frontmatter.ts';
 import { resolveWorkspace } from '../../src/core/workspace.ts';
 import { createRegistry } from '../../src/mcp/tools.ts';
-import { commandSlug, generateCommands } from '../../src/plugin/commands.ts';
+import { commandSlug, generateCommands, hintDefinition } from '../../src/plugin/commands.ts';
 import { removeTree } from '../helpers/tmp.ts';
 import { sandbox } from '../helpers/workspace.ts';
 import { filesToRemove, KEEP } from '../../scripts/gen-commands.ts';
@@ -493,6 +493,92 @@ test('every command file has frontmatter that PARSES, and is user-only', () => {
     assert.equal(typeof fm['argument-hint'], 'string', `${file}: argument-hint must be a string`);
     assert.ok((fm['argument-hint'] as string).length > 0, `${file}: argument-hint is empty`);
   }
+});
+
+/**
+ * **Owner ruling 2026-09-07, `TASK-the-capture-hints-carry-the-category-
+ * definition-generated`: the hint says what the category IS.**
+ *
+ * `argument-hint` is what Claude Code shows inline on the input line while
+ * somebody types `/mycontext:add-constraint` — no help card is on the screen
+ * and the reader is mid-thought. Every one of the 29 read `[the <category> in
+ * one sentence]`, which names the category back at them.
+ *
+ * This asserts the thing that must stay true rather than the sentences, which
+ * are the generator's: each `add-` hint CONTAINS its own category's definition
+ * as `categories.ts` states it, under the shortening rule `hintDefinition`
+ * documents. A description edited in `categories.ts` therefore reaches the
+ * hint or fails here, and 29 hand-written sentences cannot creep in.
+ *
+ * `add.md` is deliberately not among them: it takes a category rather than
+ * naming one, so there is no description to generate into it. `list-*` is out
+ * of scope by the same ruling — those hints are flag lists mirroring the CLI.
+ */
+test('every add-<category> hint carries the category\'s own definition', () => {
+  const byName = new Map(Object.values(config.categories).map((c) => [c.name, c]));
+  let checked = 0;
+  for (const file of committedFiles()) {
+    if (!file.startsWith('add-')) continue;
+    const name = [...byName.keys()].find((n) => `add-${commandSlug(n)}.md` === file);
+    assert.ok(name !== undefined, `${file}: no enabled category answers for this file`);
+    const category = byName.get(name)!;
+    const hint = parseFrontmatter(frontmatterBlock(file, read(file)))['argument-hint'] as string;
+    const definition = hintDefinition(category.description);
+    assert.ok(
+      hint.includes(definition),
+      `${file}: the hint is "${hint}" and says nothing about what a ${name} is. It must carry `
+      + `"${definition}" — the description in src/core/categories.ts, which is where a reader `
+      + 'mid-command has no other way to see it.',
+    );
+    assert.ok(hint.startsWith('[') && hint.endsWith(']'), `${file}: the hint keeps its brackets`);
+    checked += 1;
+  }
+  assert.equal(checked, enabled.length, 'every enabled category contributed an add- hint');
+
+  // The generic `add`, which is the one capture command that names no category.
+  const generic = parseFrontmatter(frontmatterBlock('add.md', read('add.md')))['argument-hint'];
+  assert.match(generic as string, /^\[category\]/, 'add takes a category rather than naming one');
+});
+
+/**
+ * The shortening rule, asserted as a rule rather than re-typed per category.
+ *
+ * A hint renders inline on a prompt line, so its length is a real constraint,
+ * and a `description` is written for a help table where it may run on. The
+ * rule `hintDefinition` states is: the hint carries the description's FIRST
+ * sentence — the definition — not the elaboration after it. Measured on this
+ * project's 29 on 2026-09-07: whole descriptions composed hints of 48-171
+ * characters (median 87); the rule changes exactly one, `task` (171 -> 100),
+ * and the longest that remains is `measurement` at 125.
+ *
+ * The figures are DERIVED here, not pinned, because a new category is allowed
+ * to move them. What is pinned is that the rule is the only thing shortening
+ * anything: a hint whose definition is not literally the description's first
+ * sentence means somebody trimmed one by hand.
+ */
+test('the hint carries the description\'s first sentence, nothing trimmed by hand', () => {
+  assert.equal(hintDefinition('What must be built'), 'What must be built', 'one sentence, kept');
+  assert.equal(hintDefinition('One. Two.'), 'One', 'the elaboration after the first stop is cut');
+  assert.equal(hintDefinition('Ends in a stop.'), 'Ends in a stop', 'the trailing stop goes');
+  assert.equal(
+    hintDefinition('A limit: budget, stack; and so on'), 'A limit: budget, stack; and so on',
+    'a colon or a semicolon is not a sentence end',
+  );
+
+  const lengths: number[] = [];
+  for (const file of committedFiles()) {
+    if (!file.startsWith('add-')) continue;
+    const hint = parseFrontmatter(frontmatterBlock(file, read(file)))['argument-hint'] as string;
+    lengths.push(hint.length);
+  }
+  const longest = Math.max(...lengths);
+  assert.ok(
+    longest <= 140,
+    `the longest add- hint is ${longest} characters, and it is placeholder text on a terminal `
+    + 'input line. Either a category description grew past what a prompt line can carry, or the '
+    + 'first-sentence rule in hintDefinition stopped being enough — state the new rule there '
+    + 'rather than trimming one description by hand.',
+  );
 });
 
 test('a generated hint or description containing YAML syntax still parses', () => {

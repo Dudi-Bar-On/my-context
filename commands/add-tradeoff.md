@@ -1,6 +1,6 @@
 ---
 description: Capture a tradeoff in this project's knowledge base
-argument-hint: "[the tradeoff in one sentence]"
+argument-hint: "[the tradeoff in one sentence — What was sacrificed for what]"
 disable-model-invocation: true
 ---
 

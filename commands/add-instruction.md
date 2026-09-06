@@ -1,6 +1,6 @@
 ---
 description: Capture a instruction in this project's knowledge base
-argument-hint: "[the instruction in one sentence]"
+argument-hint: "[the instruction in one sentence — Governs the agent's process, not the artifact]"
 disable-model-invocation: true
 ---
 

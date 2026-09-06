@@ -1,6 +1,6 @@
 ---
 description: Capture a known_issue in this project's knowledge base
-argument-hint: "[the known-issue in one sentence]"
+argument-hint: "[the known-issue in one sentence — Broken, flaky or a dead end right now; do not spend effort on it]"
 disable-model-invocation: true
 ---
 
