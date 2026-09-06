@@ -162,15 +162,6 @@ import { PALETTE, commandFor, runnableFor } from '/lib/palette-defs.js';
 import { el, errorNote, num, screenHead, spaced } from '/screens/parts.js';
 
 /**
- * `mycontext help <topic>`' four topics, which are a closed vocabulary this
- * server owns (`src/ui/read-model.ts` · `export const UI_HELP_TOPICS: UiHelpTopic[] = ['categories', 'scope', 'capture', 'workflow'];` · ~3085).
- * There is no endpoint that lists them — `/api/help/:topic` answers one at a
- * time — so the list is spelled here, in the same order, exactly as
- * `screens/learn.js` spells it for the same reason.
- */
-const HELP_TOPICS = ['categories', 'scope', 'capture', 'workflow'];
-
-/**
  * The pattern that matches every file the walk reached. `globToRegExp` turns a
  * trailing `**` into `.+` (`src/core/paths.ts` · `if (last) { re += '.+'; return; }` · ~58),
  * so this is the repository, not a sample of it — which is precisely the tree
@@ -182,6 +173,26 @@ const HELP_TOPICS = ['categories', 'scope', 'capture', 'workflow'];
  * screen when it does, which is the whole point of drawing argv as chips.
  */
 export const EVERY_FILE = '**';
+
+/**
+ * THE LIST OF HELP TOPICS THAT USED TO LIVE HERE, AND WHY IT DOES NOT.
+ *
+ * `const HELP_TOPICS = ['categories', 'scope', 'capture', 'workflow']` stood at
+ * this spot, keyed off `UI_HELP_TOPICS` — the four topics the LEARN SCREEN
+ * renders a corpus join for. That is not the list `mycontext help` accepts.
+ * `core/teach.ts` has declared SEVEN since `cli`, `tools` and `slash` landed,
+ * so this screen could not compose three commands that work, and nothing could
+ * see it: the spelled four agreed with the server list it was checked against,
+ * and the server list was the wrong one.
+ *
+ * That is this project's recurring defect in miniature — the command catalogue
+ * said "38 commands" and was right on 2026-08-24 — and the fix is the one
+ * `GraphBody.relationTypes` and `ItemsBody.retiredStatuses` already use: the
+ * declaring module serves its own list, and this screen reads it. `/api/meta`
+ * carries `helpTopics` and `statuses`, `/api/items` carries `relationTypes`,
+ * and `sourceLists` below turns the three into pickers. Nothing closed is
+ * spelled in this file any more.
+ */
 
 /** How long a keystroke waits before the tester asks the server. */
 const GLOB_DEBOUNCE_MS = 180;
@@ -274,7 +285,18 @@ export function pickerOptions(spec, sources) {
 }
 
 /**
- * The five picker sources, from the four read bodies that carry them.
+ * The seven picker sources, from the five read bodies that carry them.
+ *
+ * **Three of them are CLOSED VOCABULARIES and not one of them is spelled here**
+ * (owner ruling D10, 2026-09-06). `topics` is `core/teach.ts`' `HELP_TOPICS`,
+ * `statuses` is `core/validate.ts`' `STATUSES`, and `relations` is
+ * `searchableRelationTypes` — the closed relation vocabulary plus whatever
+ * types this corpus actually carries, which is the list a READ filter must
+ * accept and is why it rides `/api/items` rather than `/api/meta`. Each
+ * travels on the wire from the module that declares it, for the reason
+ * `GraphBody.relationTypes` states about itself: a browser module cannot
+ * import a core one, and the wire is the only route from the one authority to
+ * the one consumer that does not create a second copy.
  *
  * **Labels are built here and never translated.** An id, a category name, a
  * draft title and a revision id are the corpus's own words — the same ruling
@@ -295,6 +317,13 @@ export function sourceLists(bodies) {
   const drafts = bodies.queue && Array.isArray(bodies.queue.drafts) ? bodies.queue.drafts : [];
   const revisions = bodies.revisions && Array.isArray(bodies.revisions.revisions)
     ? bodies.revisions.revisions : [];
+  // A body that did not arrive degrades to an EMPTY picker, never to a spelled
+  // fallback: an empty select and a wrong-but-plausible one are not the same
+  // failure, and only the first is visible to the reader.
+  const served = (body, field) =>
+    (body !== null && body !== undefined && Array.isArray(body[field]) ? body[field] : [])
+      .filter((value) => typeof value === 'string' && value !== '')
+      .map((value) => ({ value, label: value }));
   return {
     items: items.map((item) => ({ value: item.id, label: `${item.id} — ${item.title}` })),
     // A disabled category cannot receive an item, so offering it would compose
@@ -305,7 +334,95 @@ export function sourceLists(bodies) {
     revisions: revisions.map((r) => ({
       value: r.itemId, label: `${r.itemId} · ${r.revisionId}`, revision: r.revisionId,
     })),
-    topics: HELP_TOPICS.map((topic) => ({ value: topic, label: topic })),
+    // The three served vocabularies, in the order the module that declares each
+    // one authored it. NOT sorted here: `RELATION_TYPES`' authored order is what
+    // every refusal message and every other select in this product shows, and
+    // `HELP_TOPICS` is "the order `mycontext help` lists them" in its own words.
+    topics: served(bodies.meta, 'helpTopics'),
+    statuses: served(bodies.meta, 'statuses'),
+    relations: served(bodies.items, 'relationTypes'),
+  };
+}
+
+/* ── the tag box, which is a LIST and therefore not a picker source ───────── */
+
+/**
+ * **The tags a `--tags` box names, in the order it names them.**
+ *
+ * `tags` takes a COMMA-SEPARATED LIST, and that single fact is why it gets a
+ * different control from the six sources above: `pickerOptions` feeds a
+ * `<select>`, a select emits one value, and a control that composed `--tags v2`
+ * where the reader ticked three would be a regression wearing a convenience's
+ * clothes. So the box stays, exactly as `#focustags` does in the focus dialog,
+ * and the checkboxes are derived FROM it.
+ *
+ * Lifted from `app.js`' `tagsInBox()` in behaviour and not in code: that one
+ * reads one hard-coded element id, this one is given a value, and a shared
+ * helper would have to live in `lib/` and be imported by a dialog that is
+ * deliberately import-free until its popover is opened.
+ */
+export function tagsInValue(value) {
+  return String(value ?? '').split(',').map((tag) => tag.trim()).filter((tag) => tag !== '');
+}
+
+/**
+ * The box's value for a list of tags.
+ *
+ * **Joined with `,` and NO SPACE, deliberately.** That is what `--tags` takes
+ * and it is what keeps the composed line inside `quoteArg`'s safe set
+ * (`ui/public/lib/command.js` · `const SAFE = /^[A-Za-z0-9@%_+=:,.\/\-]+$/;` · ~24):
+ * a space would quote the whole argument, which is correct and noisier to read
+ * for no gain. `setTagsInBox` in `app.js` states the same rule for the same
+ * reason. De-duplicated, because ticking a tag the reader already typed must
+ * not compose it twice.
+ */
+export function joinTags(tags) {
+  return [...new Set(tags)].join(',');
+}
+
+/**
+ * The box's new value when one checkbox is ticked or unticked.
+ *
+ * ADDED to the end and REMOVED in place — the reader's own order is kept,
+ * because the box is a line they can also type into and reordering it under
+ * their cursor is the screen taking a step they did not ask for.
+ */
+export function withTag(value, tag, on) {
+  const held = tagsInValue(value);
+  return joinTags(on ? [...held, tag] : held.filter((held_) => held_ !== tag));
+}
+
+/**
+ * **Which half of `/api/tags` this screen may offer, and which half it may only
+ * NAME.**
+ *
+ * The endpoint serves the two classes already split — free-form and projected —
+ * derived from the categories' own `projectsTo` declarations. The focus dialog
+ * offers both, because a focus is a READ and a projected tag is a perfectly
+ * good thing to filter on. `--tags` is a WRITE, and there the two classes are
+ * not alike at all: `handWrittenProjectionError` (core/tag-projection.ts) makes
+ * `mycontext edit <id> --tags plan:builder` a REFUSAL, naming the command that
+ * does work. A checkbox that composed it would be a control whose only outcome
+ * is an error message.
+ *
+ * So the free half becomes checkboxes and the projected half becomes one
+ * sentence naming the prefixes and the commands that set them — drawn rather
+ * than dropped, because "this screen cannot offer these" and "this corpus has
+ * none of these" must not render as the same absence.
+ *
+ * `null` when there is nothing to say, so the caller draws no empty aside.
+ */
+export function projectedAside(vocabulary) {
+  const groups = vocabulary !== null && vocabulary !== undefined
+    && Array.isArray(vocabulary.projected) ? vocabulary.projected : [];
+  if (groups.length === 0) return null;
+  const commands = new Set();
+  for (const group of groups) {
+    for (const command of Array.isArray(group.commands) ? group.commands : []) commands.add(command);
+  }
+  return {
+    prefixes: groups.map((group) => `${group.prefix}:`).join(' '),
+    cmds: [...commands].join(' · '),
   };
 }
 
@@ -436,6 +553,17 @@ function controlFor(spec, sources, onChange) {
     control.setAttribute('aria-describedby', 'globcount');
     control.value = EVERY_FILE;
   }
+  // `.tagin` is the treatment `#focustags` already carries and `.globin` before
+  // it: mono, LTR and bidi-ISOLATED, because a comma-separated tag list is a
+  // machine value and must read left-to-right inside a Hebrew page without
+  // reordering the words around it. The picker that fills it is built in
+  // `build()` below rather than here — this function returns ONE control, and
+  // `valueOf` reads exactly this element, which is what keeps the box the model.
+  if (spec.input === 'tags') {
+    control.className = 'tagin';
+    control.spellcheck = false;
+    control.autocomplete = 'off';
+  }
   if (spec.required === true) control.required = true;
   control.addEventListener('input', onChange);
   return control;
@@ -454,26 +582,54 @@ export async function render(root, ctx) {
   const card = el('div', 'card pane');
   root.append(card);
 
-  // Four reads, because the pickers are real: ids, the resolved categories,
-  // the draft queue and the pending revisions are all corpus facts. One
+  // FIVE reads, because the pickers are real: ids, the resolved categories, the
+  // draft queue and the pending revisions are all corpus facts, and `/api/meta`
+  // is the two closed vocabularies this screen used to spell into itself. One
   // failure takes the screen, in the server's own words — the same treatment
   // `status.js` and `gaps.js` give a refused read, and for the same reason: a
-  // composer drawn over four empty pickers and a corpus with nothing in it are
+  // composer drawn over empty pickers and a corpus with nothing in it are
   // different facts and must not share a rendering.
+  //
+  // `/api/meta` earns its place in the fatal set rather than being tacked on
+  // beside the tolerant reads below: it costs no corpus walk (it answers from
+  // module-level declarations, a git call and two stat sweeps), it is the read
+  // every other screen already makes, and a Composer whose `--status` and
+  // `topic` selects were silently empty would offer a reader two controls that
+  // look like a corpus with no statuses in it.
   let bodies;
   try {
-    const [items, config, queue, revisions] = await Promise.all([
+    const [items, config, queue, revisions, meta] = await Promise.all([
       ctx.api('/api/items'),
       ctx.api('/api/config'),
       ctx.api('/api/review-queue'),
       ctx.api('/api/revisions'),
+      ctx.api('/api/meta'),
     ]);
-    bodies = { items, config, queue, revisions };
+    bodies = { items, config, queue, revisions, meta };
   } catch (error) {
     card.append(errorNote(error.message));
     return;
   }
   const sources = sourceLists(bodies);
+
+  /**
+   * The tag vocabulary `/api/tags` last answered, or `null` before it answers.
+   *
+   * **`null` and `{ free: [], projected: [] }` are different states and both
+   * are drawn**, which is the obligation `app.js`' focus picker records and
+   * this one inherits: the first says "not read yet", the second says "this
+   * corpus has no tags", and one empty box would be indistinguishable from
+   * either. That is only an honest distinction if the read is allowed to be
+   * outstanding while the form draws — so it is started here and NOT awaited,
+   * and `paintTagPicker` runs again when it lands.
+   *
+   * **Tolerant, unlike the five above.** Composing `mycontext add --tags` does
+   * not depend on knowing which tags exist; the box takes anything typed into
+   * it either way. A refused read costs the reader the checkboxes and says so,
+   * exactly as `globError` costs them the file tree.
+   */
+  let tagVocabulary = null;
+  let tagVocabularyError = null;
 
   // --- the command picker, and the form the chosen def declares -------------
 
@@ -595,6 +751,107 @@ export async function render(root, ctx) {
     }, GLOB_DEBOUNCE_MS);
   }
 
+  /* ── THE TAG PICKER, and the one rule that makes it safe ─────────────────
+   *
+   * Owner ruling D10, 2026-09-06, and it follows the focus dialog because the
+   * owner named that dialog as the shape: **the composed line stays the source
+   * of truth.** `markTagPicks()` derives every checkbox FROM the box on every
+   * paint and never the reverse, so a tag typed by hand ticks its box, a tag
+   * deleted by hand unticks it, and a redraw cannot disagree with the argv this
+   * screen is showing. `app.js`' `markFocusPicks()` states the same rule.
+   *
+   * It also keeps the escape hatch a picker alone would take away: a tag no
+   * item carries yet cannot be ticked, and can still be typed.
+   */
+
+  /** The `input: 'tags'` control this form drew, and its picker host, or null. */
+  let tagsEntry = null;
+
+  /** Tick every box the box's own list names. Derived, never remembered. */
+  function markTagPicks() {
+    if (tagsEntry === null) return;
+    const chosen = new Set(tagsInValue(tagsEntry.control.value));
+    for (const box of tagsEntry.host.querySelectorAll('input[type="checkbox"][data-tag]')) {
+      box.checked = chosen.has(box.dataset.tag);
+    }
+  }
+
+  /** One free-form tag as a checkbox, with the number of items carrying it. */
+  function tagRow(count) {
+    const row = el('label', 'tagpick');
+    const box = document.createElement('input');
+    box.type = 'checkbox';
+    box.dataset.tag = count.tag;
+    // `change` and not `click`: a checkbox reached by keyboard fires no click on
+    // some platforms and always fires change. The handler writes the BOX and
+    // then recomposes; `recompose()` re-marks from the box, so this element's
+    // own `checked` is overwritten by the value it just produced rather than
+    // being trusted as state of its own.
+    box.addEventListener('change', () => {
+      tagsEntry.control.value = withTag(tagsEntry.control.value, count.tag, box.checked);
+      recompose();
+    });
+    const name = el('span', 'tagname');
+    name.textContent = count.tag;
+    const number = el('span', 'tagn');
+    number.textContent = num(count.items);
+    // The corpus's own count, in the corpus's own words. The focus dialog's
+    // tooltip additionally names how many items a FOCUS on the tag would
+    // inject; that number is about an injection and there is no injection here,
+    // so the sentence stops where the fact stops.
+    row.title = ctx.tFlat('pal.tagn', { items: num(count.items), tag: count.tag });
+    row.append(box, name, number);
+    return row;
+  }
+
+  function paintTagPicker() {
+    if (tagsEntry === null) return;
+    const aside = (key, subs) => {
+      const note = el('p', 'aside');
+      note.append(...ctx.t(key, subs));
+      return note;
+    };
+    if (tagVocabularyError !== null) {
+      tagsEntry.host.replaceChildren(aside('pal.tagpickerr'));
+      return;
+    }
+    if (tagVocabulary === null) {
+      tagsEntry.host.replaceChildren(aside('pal.tagpicking'));
+      return;
+    }
+    const free = Array.isArray(tagVocabulary.free) ? tagVocabulary.free : [];
+    const eligible = typeof tagVocabulary.eligible === 'number' ? tagVocabulary.eligible : 0;
+    const nodes = [];
+    if (free.length === 0) {
+      nodes.push(aside('pal.tagpickn'));
+    } else {
+      nodes.push(aside('pal.tagfree', { n: num(free.length), eligible: num(eligible) }));
+      const list = el('div', 'tagpicks');
+      list.append(...free.map(tagRow));
+      nodes.push(list);
+    }
+    // The projected half, NAMED rather than offered — see `projectedAside`.
+    const projected = projectedAside(tagVocabulary);
+    if (projected !== null) nodes.push(aside('pal.tagproj', projected));
+    tagsEntry.host.replaceChildren(...nodes);
+    markTagPicks();
+  }
+
+  // Started, not awaited. See `tagVocabulary` above for why the outstanding
+  // state has to be reachable, and `readFocusVocabulary` in `app.js` for the
+  // reason a failed read is KEPT and drawn rather than swallowed into an empty
+  // list nobody can tell from a corpus with no tags.
+  void (async () => {
+    try {
+      tagVocabulary = await ctx.api('/api/tags');
+      tagVocabularyError = null;
+    } catch (error) {
+      tagVocabulary = null;
+      tagVocabularyError = error;
+    }
+    if (root.isConnected) paintTagPicker();
+  })();
+
   // --- building one def's form, and recomposing on every change ------------
 
   const controls = new Map();
@@ -611,6 +868,14 @@ export async function render(root, ctx) {
   function recompose() {
     const def = PALETTE.find((candidate) => candidate.name === picker.value);
     const values = currentValues();
+
+    // **Every paint, and before any of the early returns below.** The tag
+    // checkboxes are DERIVED from the box, so they are re-marked whenever this
+    // screen re-reads it — including on a paint that ends early because a
+    // required input is still empty. Marking them only on the complete path
+    // would leave a hand-typed tag unticked until the command happened to
+    // compose, which is the disagreement `markFocusPicks` exists to rule out.
+    markTagPicks();
 
     // A revisions pick names an ITEM; `--revision` is what makes the pasted
     // line settle the revision the human read rather than the oldest. Filled
@@ -791,6 +1056,9 @@ export async function render(root, ctx) {
     form.replaceChildren();
     controls.clear();
     let globControl = null;
+    // Cleared before the loop, not after: a def with no `tags` field must leave
+    // no picker host from the def before it, and `markTagPicks` reads this.
+    tagsEntry = null;
 
     for (const spec of controlSpecs(def)) {
       const control = controlFor(spec, sources, () => {
@@ -804,6 +1072,15 @@ export async function render(root, ctx) {
       }
       const caption = document.createTextNode(`${spec.name}${spec.required === true ? ' *' : ''}:`);
       form.append(labelled([caption], control));
+      // The picker sits UNDER its box rather than replacing it, because the box
+      // is the model: what the reader ticks is written into the line they can
+      // also type, and both are on screen at once so neither can be a surprise.
+      if (spec.input === 'tags') {
+        const host = el('div', 'tagpicker');
+        tagsEntry = { control, host };
+        form.append(host);
+        paintTagPicker();
+      }
     }
 
     // The tester always draws, exactly as the mockup always draws it. When the

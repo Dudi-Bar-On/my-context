@@ -214,7 +214,15 @@ export const PALETTE = [
       { name: 'note', input: 'text' }, { name: 'observation', input: 'text' },
       { name: 'step', input: 'text' },
       { name: 'summary', input: 'text' },
-      { name: 'scope', input: 'glob' }, { name: 'tags', input: 'text' },
+      { name: 'scope', input: 'glob' },
+      // `input: 'tags'` — a COMMA-SEPARATED LIST with a picker over the tags
+      // this corpus already carries (owner ruling D10, 2026-09-06). It stays
+      // an input rather than becoming a `source`, and that is the whole design:
+      // `--tags` takes many values where every `source` picker emits one, and
+      // a control that composed `--tags v2` where the reader ticked three
+      // would be a regression wearing a convenience's clothes. The box is the
+      // model; see `screens/palette.js`' tag picker.
+      { name: 'tags', input: 'tags' },
       { name: 'severity', options: ['hard', 'soft'] },
       { name: 'valid-from', input: 'text' }, { name: 'extra', input: 'text' },
       yes,
@@ -249,7 +257,14 @@ export const PALETTE = [
     args: [{ name: 'id', source: 'items', required: true }],
     flags: [
       { name: 'title', input: 'text' }, { name: 'body', input: 'textarea' },
-      { name: 'scope', input: 'glob' }, { name: 'tags', input: 'text' },
+      { name: 'scope', input: 'glob' },
+      // `input: 'tags'`, for `add`'s reason one entry up — and here the
+      // catalogue's picker is doing a second job. `edit --tags` REFUSES a
+      // hand-written projected tag outright (`handWrittenProjectionError`,
+      // core/tag-projection.ts, called from `cli/commands/edit.ts`), so the
+      // Composer offers the FREE-FORM half of `/api/tags` and names the other
+      // half rather than drawing a control that composes a refusal.
+      { name: 'tags', input: 'tags' },
       { name: 'severity', options: ['hard', 'soft'] },
       // `--always[=false]`: a switch with an explicit false, so it must be
       // composed JOINED. Space-separated is a refusal, not a synonym.
@@ -294,11 +309,15 @@ export const PALETTE = [
     // `test/ui/palette-lib.test.ts`, which is where `review promote --all
     // --pack`'s reason already lives.
     //
-    // `--tag` is `input: 'text'` rather than a picker: the flag help names a
-    // `tags` source, and this screen fills items, categories, drafts,
-    // revisions and topics — a def naming a source `sourceLists` cannot build
-    // would draw a permanently empty picker. The focus dialog's own tag list
-    // (`app.js`) is where that picker lives.
+    // `--tag` is `input: 'text'` and stays that way, though the reason it gives
+    // has changed. It used to be that this screen could fill no `tags` source
+    // at all; since owner ruling D10 (2026-09-06) it reads `/api/tags` and
+    // draws a tag picker for `add`/`edit --tags`. What is different here is the
+    // FLAG: `--tag` on `focus` is a READ filter, so a projected tag is a
+    // legitimate thing to pick, and the control that already offers BOTH halves
+    // correctly is the focus dialog's own (`app.js`). Giving the Composer a
+    // second, narrower control for the same flag is a decision about which
+    // surface owns focus, and it is not this ruling's.
     name: 'focus', kind: 'write', base: ['mycontext', 'focus'], boundary: true, runnable: true,
     args: [],
     flags: [
@@ -496,7 +515,22 @@ export const PALETTE = [
     flags: [
       { name: 'text', input: 'text' }, { name: 'type', source: 'categories' },
       { name: 'tag', input: 'text' }, { name: 'path', input: 'text' },
-      { name: 'status', input: 'text' }, { name: 'relation', input: 'text' },
+      // **Two closed domains that were text boxes** — owner ruling D10,
+      // 2026-09-06. `search --status` is checked against `STATUSES`
+      // (`cli/commands/search.ts`) and `--relation` against what the corpus can
+      // hold; both lists now travel on the wire, `statuses` on `/api/meta` and
+      // `relations` on `/api/items`, so neither is spelled in any browser file.
+      //
+      // **`--status` here has FIVE values and `edit --status` has four**, and
+      // the two are not a contradiction: `edit-flags.ts` writes
+      // `STATUSES.filter((s) => s !== 'superseded')` because only `mycontext
+      // supersede` may move an item into that state, while a SEARCH over it is
+      // an ordinary question — 25 items in this corpus carry it, measured
+      // 2026-09-06, and every one of them was unreachable from here. So the four
+      // stay spelled on `edit` (it is a subset the flag itself declares) and
+      // the five are derived here.
+      { name: 'status', source: 'statuses' },
+      { name: 'relation', source: 'relations' },
       { name: 'limit', input: 'text' },
     ],
     endpoint: (values) => {

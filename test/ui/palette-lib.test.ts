@@ -1044,16 +1044,17 @@ const UNCATALOGUED: Record<string, string> = {
     + 'Composer\'s gap is one reviewed change rather than nine.',
   'lesson-stage': 'a write whose payload is a FILE or stdin — see `ingest-apply`.',
   link: 'a write with two item positionals (`from`, `to`) and a closed relation vocabulary in '
-    + 'the third. The item pickers already exist (`source: "items"`), but the relation itself '
-    + 'has no picker source: `palette.js` resolves exactly five sources (items, categories, '
-    + 'drafts, revisions, topics) read from four fetch bodies, and `search --relation` is '
-    + '`input: "text"` rather than a picker for the same reason. `RELATION_TYPES` '
-    + '(`core/vocabulary.ts`) would be a sixth source, and wiring one is a change to '
-    + '`palette.js` and `sourceLists` — a screen change this lane does not make, since '
-    + '`src/ui/public/screens/**` was a live lane the day `link` shipped. Composing the third '
-    + 'argument as free text would defeat the point of a catalogue entry: the CLI already '
-    + 'refuses a relation outside the vocabulary, and every other closed set this catalogue '
-    + 'offers is a picker, not a text box a reader can mistype.',
+    + 'the third. **Its stated blocker is gone, and this row now names a different one.** It '
+    + 'read that the relation had no picker source, that `palette.js` resolved exactly five of '
+    + 'them and that `search --relation` was `input: "text"` for the same reason. Owner ruling '
+    + 'D10 (2026-09-06) closed that: `/api/items` serves `relationTypes` — '
+    + '`searchableRelationTypes` (core/search.ts), the closed vocabulary plus whatever this '
+    + 'corpus carries — and `search --relation` is `source: "relations"` now. What keeps `link` '
+    + 'out is what the picker would have to be: a WRITE gate is `RELATION_TYPES` alone, and the '
+    + 'served list is deliberately WIDER because a read filter must accept `superseded_by`, '
+    + 'which `linkItems` refuses outright. Offering the read list on a write would compose a '
+    + 'command the CLI rejects, and narrowing it needs a second served vocabulary — a decision '
+    + 'about which list this catalogue offers, not a wiring gap.',
   'pack import': 'a write on the approval boundary. `packs.js` already composes it, and its '
     + 'entry is straightforward. It was held with `init`, which the same screen composes, so that '
     + 'the two would be settled together; `init` landed on 2026-09-06 as a `runnable: false` '

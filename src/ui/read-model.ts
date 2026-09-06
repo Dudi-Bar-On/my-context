@@ -2674,6 +2674,29 @@ export interface ItemsBody {
    * Sorted, so two identical corpora serve identical bytes.
    */
   retiredStatuses: string[];
+  /**
+   * **What `--relation` may ASK about, served so the Composer can offer a
+   * picker without owning a copy** — owner ruling D10, 2026-09-06
+   * (`TASK-four-composer-fields-have-a-closed-domain-and-still-ask-you`).
+   *
+   * `screens/palette.js` drew `mycontext search --relation` as a free text box
+   * because no source it could fill carried the vocabulary — the reason is
+   * written down in `FLAGS_NOT_OFFERED` in `test/ui/palette-lib.test.ts`, under
+   * `link`. This is the source, and it rides `/api/items` rather than
+   * `/api/meta` for one reason: it is not `RELATION_TYPES`.
+   *
+   * `RELATION_TYPES` is a WRITE GATE and `superseded_by` is kept out of it so
+   * it cannot be forged through `linkItems`. A READ filter that offered only
+   * the gate would refuse a question about an edge type the corpus really
+   * carries — measured on this corpus, nine items carry `superseded_by` — and
+   * `apiGraph` and `mycontext search --relation` have each already been fixed
+   * for exactly that defect. `searchableRelationTypes` is the ONE
+   * implementation all three now share: the closed vocabulary first, in its
+   * authored order, then any type on disk it does not name, sorted. Answering
+   * it needs the corpus, which is why it is on the endpoint that already walks
+   * it and already counts every item's relations.
+   */
+  relationTypes: string[];
 }
 
 /**
@@ -2707,6 +2730,9 @@ export function apiItems(ws: Workspace, url: URL): JsonResult {
         .map((item) => itemSummary(item, ws.config, degree.get(item.id) ?? { degree: 0, kinds: [] }))
         .sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0)),
       retiredStatuses: [...RETIRED_STATUSES].sort(),
+      // The same call `apiGraph` makes and the same call `mycontext search`
+      // makes — not a third spelling of the rule. See `ItemsBody`.
+      relationTypes: searchableRelationTypes(items),
     };
     return { status: 200, body };
   });

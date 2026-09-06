@@ -70,6 +70,14 @@ import { AUDIT_KINDS, AUDIT_OPS, type RefusalCheck } from '../core/audit.ts';
 import { readOccupancy, type Occupancy } from '../core/context-occupancy.ts';
 import { measureCorpusDrift } from '../core/corpus-drift.ts';
 import { isMainEntry } from '../core/paths.ts';
+// The two closed vocabularies `/api/meta` now serves, each imported from the
+// module that DECLARES it rather than restated here. `core/teach.ts` imports
+// nothing at all — it is a leaf precisely so a module-scope reader cannot
+// enter a cycle — and `core/validate.ts` is the module that enforces
+// `STATUSES`, which is the same rule `core/command-flags.ts` follows when it
+// builds `--status`' own declaration from it.
+import { HELP_TOPICS } from '../core/teach.ts';
+import { STATUSES } from '../core/validate.ts';
 import { VERSION } from '../core/version.ts';
 import { liveWorkspace, repositoryRoot, type Workspace } from '../core/workspace.ts';
 import { registerAskRoutes } from './ask-model.ts';
@@ -452,6 +460,34 @@ export function registerReadRoutes(): void {
         // the way the mockup's hand-copied one already had once.
         auditKinds: AUDIT_KINDS,
         auditOps: AUDIT_OPS,
+        // **Two more closed vocabularies, for the Composer's selection lists**
+        // (owner ruling D10, 2026-09-06 ·
+        // `TASK-four-composer-fields-have-a-closed-domain-and-still-ask-you`).
+        //
+        // The same argument `auditKinds` records, one field over. The Composer
+        // draws `mycontext search --status <status>` and `mycontext help
+        // <topic>`, both of which take a CLOSED set the CLI already refuses
+        // outside of — and until this line a browser module could reach neither
+        // set. `screens/palette.js` therefore spelled the help topics into
+        // itself as a four-element array, which is the hand-copied vocabulary
+        // this project measures drifting in days: `HELP_TOPICS` has had SEVEN
+        // members since `cli`, `tools` and `slash` landed, so the Composer
+        // could not compose three real commands.
+        //
+        // Read straight off the declaring modules. `STATUSES` is
+        // `core/validate.ts`'s, the list `validateItem` enforces and
+        // `search.ts` checks `--status` against; `HELP_TOPICS` is
+        // `core/teach.ts`'s, the list `mycontext help` lists and
+        // `help/index.ts` refuses outside of. A member added to either reaches
+        // the Composer with no UI edit, which is the property being bought.
+        //
+        // **`UI_HELP_TOPICS` is a different list and is deliberately not this
+        // one.** That one is the four topics the LEARN SCREEN renders a corpus
+        // join for, keyed off the mockup; this one is what `mycontext help`
+        // ACCEPTS. A composer that offered the screen's four would refuse to
+        // compose `mycontext help cli`, a command that works.
+        statuses: STATUSES,
+        helpTopics: HELP_TOPICS,
       },
     }),
   });

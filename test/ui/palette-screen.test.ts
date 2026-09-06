@@ -95,6 +95,8 @@ interface Option { value: string; label: string; revision?: string }
 interface Sources {
   items: Option[]; categories: Option[]; drafts: Option[];
   revisions: Option[]; topics: Option[];
+  /** Served by `/api/meta` and `/api/items` — owner ruling D10, 2026-09-06. */
+  statuses: Option[]; relations: Option[];
   [source: string]: Option[];
 }
 interface ScreenModule {
@@ -113,6 +115,11 @@ interface ScreenModule {
     => { kind: 'fetch'; path: string } | { kind: 'navigate'; hash: string } | null;
   resultRows: (body: unknown) => { rows: { id: string }[]; total: number; truncated: boolean };
   globRows: (files: string[], matched: string[]) => { path: string; hit: boolean }[];
+  /** The `--tags` box, which is a LIST and therefore not a picker source. */
+  tagsInValue: (value: unknown) => string[];
+  joinTags: (tags: string[]) => string;
+  withTag: (value: string, tag: string, on: boolean) => string;
+  projectedAside: (vocabulary: unknown) => { prefixes: string; cmds: string } | null;
   render: unknown;
 }
 interface DefsModule { PALETTE: PaletteDef[]; commandFor: (def: PaletteDef, values: Record<string, unknown>) => string[] }
@@ -375,14 +382,156 @@ test('sourceLists survives an unresolvable config and absent bodies', async () =
 });
 
 /**
- * The four help topics are a closed vocabulary the SERVER owns. Spelling them
- * in a browser module is a copy, and a copy that drifts hands the user
- * `mycontext help <topic>` for a topic the endpoint refuses — so the copy is
- * derived against the original here rather than trusted.
+ * **THE THREE CLOSED VOCABULARIES ARE NO LONGER SPELLED IN THE BROWSER, AND
+ * THIS IS THE TEST THAT USED TO SAY THEY WERE.**
+ *
+ * It read `sourceLists({}).topics` and compared it against `UI_HELP_TOPICS`,
+ * and it passed for as long as it existed while being wrong: `UI_HELP_TOPICS`
+ * is the four topics the LEARN SCREEN renders a corpus join for, and
+ * `mycontext help` has accepted SEVEN since `cli`, `tools` and `slash` landed.
+ * A copy checked against the wrong original is a copy nothing was checking.
+ *
+ * So `screens/palette.js` spells nothing now — `/api/meta` serves `helpTopics`
+ * (`core/teach.ts`) and `statuses` (`core/validate.ts`), `/api/items` serves
+ * `relationTypes` (`searchableRelationTypes`) — and what is decidable here is
+ * that the screen carries the served list THROUGH, in the server's own order,
+ * and degrades to an empty picker rather than to a fallback of its own.
+ * `test/ui/read-model.test.ts` and `test/ui/server.test.ts` hold the endpoints
+ * against the declaring modules, which is where that comparison belongs.
  */
-test('the help topics offered are the server\'s own four, in its order', async () => {
+test('the three served vocabularies are carried through in the server\'s order', async () => {
   const { sourceLists } = await screen();
-  assert.deepEqual(sourceLists({}).topics.map((o) => o.value), [...UI_HELP_TOPICS]);
+  const sources = sourceLists({
+    meta: { helpTopics: ['categories', 'cli', 'slash'], statuses: ['active', 'superseded'] },
+    items: { items: [], relationTypes: ['derived_from', 'superseded_by'] },
+  });
+  assert.deepEqual(sources.topics, [
+    { value: 'categories', label: 'categories' },
+    { value: 'cli', label: 'cli' },
+    { value: 'slash', label: 'slash' },
+  ]);
+  assert.deepEqual(sources.statuses.map((o) => o.value), ['active', 'superseded']);
+  assert.deepEqual(sources.relations.map((o) => o.value), ['derived_from', 'superseded_by']);
+});
+
+/**
+ * A body that did not arrive must leave an EMPTY picker rather than a plausible
+ * one. `UI_HELP_TOPICS` is imported here for exactly one purpose now: to state
+ * that the screen no longer answers with it — a spelled fallback would be the
+ * copy this change removed, reintroduced as a default.
+ */
+test('a vocabulary the server did not send is an empty picker, never a fallback', async () => {
+  const { sourceLists } = await screen();
+  for (const bodies of [{}, { meta: null }, { meta: {} }, { items: {} }]) {
+    const sources = sourceLists(bodies);
+    for (const key of ['topics', 'statuses', 'relations']) {
+      assert.deepEqual(sources[key], [], `${key} must degrade to an empty picker`);
+    }
+  }
+  assert.notDeepEqual(sourceLists({}).topics.map((o) => o.value), [...UI_HELP_TOPICS]);
+});
+
+/* ── the `--tags` box: a LIST, and the picker that writes into it ─────────── */
+
+/**
+ * **`--tags` takes MANY values, and that is why it is not a `source`.**
+ *
+ * Every picker above emits one value into a `<select>`. A control that composed
+ * `--tags v2` where the reader ticked three would be a regression wearing a
+ * convenience's clothes — the task that ordered this picker says so in those
+ * words — so the box stays and the checkboxes are derived from it.
+ */
+test('the tag box round-trips a list, joined with no space', async () => {
+  const { tagsInValue, joinTags, withTag } = await screen();
+
+  assert.deepEqual(tagsInValue('v2,ui, composer '), ['v2', 'ui', 'composer']);
+  // The states a half-typed line passes through: an empty box, a trailing
+  // comma, a doubled one. None of them may compose an empty argument.
+  assert.deepEqual(tagsInValue(''), []);
+  assert.deepEqual(tagsInValue(undefined), []);
+  assert.deepEqual(tagsInValue('v2,,ui,'), ['v2', 'ui']);
+
+  // No space after the comma, deliberately: a space would push the value out of
+  // `quoteArg`'s safe set and quote the whole line for no gain.
+  assert.equal(joinTags(['v2', 'ui']), 'v2,ui');
+  assert.ok(!joinTags(['v2', 'ui']).includes(' '));
+  // Ticking a tag the reader already typed must not compose it twice.
+  assert.equal(joinTags(['v2', 'ui', 'v2']), 'v2,ui');
+
+  // Added at the END and removed IN PLACE — the reader's own order survives.
+  assert.equal(withTag('v2,ui', 'composer', true), 'v2,ui,composer');
+  assert.equal(withTag('v2,ui,composer', 'ui', false), 'v2,composer');
+  assert.equal(withTag('', 'v2', true), 'v2');
+  assert.equal(withTag('v2', 'v2', false), '');
+  // Unticking something the box never held is a no-op, not a rewrite.
+  assert.equal(withTag('v2,ui', 'gone', false), 'v2,ui');
+});
+
+/**
+ * **The projected half of `/api/tags` is NAMED, never offered.**
+ *
+ * The focus dialog offers both halves, because a focus is a READ and filtering
+ * on `plan:builder` is a perfectly good question. `--tags` is a WRITE, and
+ * `handWrittenProjectionError` (core/tag-projection.ts) makes `mycontext edit
+ * <id> --tags plan:builder` a refusal that names the command which does work.
+ * A checkbox composing that would be a control whose only outcome is an error.
+ *
+ * So the aside exists exactly when there is something to say, and `null`
+ * otherwise — an empty sentence under an empty list is the "blank is a failure"
+ * defect this project has a standard about.
+ */
+test('projectedAside names the prefixes and their commands, or nothing', async () => {
+  const { projectedAside } = await screen();
+  assert.equal(projectedAside(null), null);
+  assert.equal(projectedAside({ free: [], projected: [] }), null);
+  assert.deepEqual(
+    projectedAside({
+      projected: [
+        { prefix: 'plan', commands: ['mycontext edit <id> --plan <value>'], options: [] },
+        { prefix: 'state', commands: ['mycontext edit <id> --state <value>'], options: [] },
+      ],
+    }),
+    {
+      prefixes: 'plan: state:',
+      cmds: 'mycontext edit <id> --plan <value> · mycontext edit <id> --state <value>',
+    },
+  );
+  // A command declared by two prefixes is named once: the sentence lists what a
+  // reader would type, and typing it twice is not two facts.
+  assert.deepEqual(
+    projectedAside({
+      projected: [
+        { prefix: 'plan', commands: ['mycontext edit <id> --plan <value>'] },
+        { prefix: 'seq', commands: ['mycontext edit <id> --plan <value>'] },
+      ],
+    })?.cmds,
+    'mycontext edit <id> --plan <value>',
+  );
+});
+
+/**
+ * The catalogue and the screen have to agree about which field is the LIST.
+ * Derived from `PALETTE` rather than named here, so a third `--tags` field
+ * added later is covered without an edit — and so a field that stops being
+ * `input: 'tags'` fails here rather than silently losing its picker.
+ */
+test('every tags field the catalogue declares is the list-shaped control', async () => {
+  const { PALETTE } = await defs();
+  const tagFields = PALETTE.flatMap((def) =>
+    [...def.args, ...def.flags].filter((spec) => spec.name === 'tags'));
+  assert.ok(tagFields.length > 0, 'the catalogue must still offer --tags somewhere');
+  for (const spec of tagFields) {
+    assert.equal(spec.input, 'tags',
+      '--tags takes a comma-separated LIST; a source picker would emit one value');
+    assert.equal(spec.source, undefined);
+    assert.equal(spec.options, undefined);
+  }
+  // And `pickerOptions` must still refuse it a `<select>`, which is the
+  // mechanism rather than the intention.
+  const { pickerOptions, sourceLists } = await screen();
+  for (const spec of tagFields) {
+    assert.equal(pickerOptions(spec, sourceLists({})), null);
+  }
 });
 
 test('revisionFor names the revision behind a picked item, or null', async () => {

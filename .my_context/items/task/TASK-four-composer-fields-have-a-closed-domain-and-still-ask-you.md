@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: Four inputs on the command builder could offer the answers the product already knows, instead of a blank box.
-summary_of: e0c42d4c57b5a286
+summary_of: 3fdf0c779354c85d
 scope:
   - src/ui/public/lib/palette-defs.js
   - src/ui/public/screens/palette.js
@@ -16,7 +16,7 @@ tags:
   - composer
   - "plan:builder"
   - "seq:9"
-  - "state:todo"
+  - "state:done"
   - "priority:2"
 origin: human
 source_file: null
@@ -24,11 +24,12 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-09-06
 valid_until: null
-checksum: 5d8ff933e1ecd4c6
+checksum: 6b647b4a9764668f
 plan: builder
 seq: "9"
-state: todo
+state: done
 priority: "2"
+verified_on: 2026-09-06
 ---
 
 # four composer fields have a closed domain and still ask you to type it

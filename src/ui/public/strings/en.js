@@ -961,6 +961,23 @@ export const strings = {
   // where the missing Execute button would have been. It reports a DECISION,
   // not a failure, which is why it shares no wording with `pal.block`.
   'pal.copyOnly': '{b:Copy only.} This command composes here and runs in your own shell — nothing has failed, and nothing has licensed it to run from this page.',
+  // The Composer's tag picker — owner ruling D10, 2026-09-06
+  // (`TASK-four-composer-fields-have-a-closed-domain-and-still-ask-you`).
+  //
+  // Six keys of its own rather than a reuse of the focus dialog's ten. The two
+  // pickers share a SHAPE and not a sentence: a focus is a read and its copy
+  // talks about which items get injected, while `--tags` is a write and its
+  // copy has to talk about what the command will set. `pal.run`/`ask.run` is
+  // the precedent — two screens that shared one key, so an edit meant for one
+  // silently changed the other.
+  'pal.tagpicking': 'Reading the tags in this corpus…',
+  'pal.tagpickerr': 'The tags could not be read, so none are offered. Type them instead — the command above composes either way.',
+  'pal.tagpickn': 'This corpus carries no free-form tags yet, so there is nothing to pick. Type one and this item gets the first.',
+  'pal.tagfree': 'Tags people wrote — {n} across {eligible} items. Tick any number; they compose as one {m:--tags} value, comma-separated.',
+  'pal.tagn': '{items} item(s) carry {tag}.',
+  // Named, never offered: my_context generates these from a field and refuses a
+  // hand-written one, so a checkbox here would compose an error message.
+  'pal.tagproj': 'Not offered here: {mv:prefixes}. my_context generates those from a field and refuses a hand-written one, so set the field instead — {mv:cmds}.',
   // Execute — the one Copy-and-Execute control (lib/command-actions.js).
   //
   // The RESIDUAL is deliberately not a key here. `src/ui/execute.ts` spells it
