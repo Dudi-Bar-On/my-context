@@ -1,5 +1,79 @@
 # v2.0 handover — we are mid-decision. Keep deciding.
 
+## ⏭ READ THIS FIRST — 2026-09-06
+
+### THE RUNNING ORDER IS `reports/2026-09-06-PLAN.md`
+
+The board still carries every open task. On top of it sits a **numbered decision plan,
+D1–D13**, which is how the owner chose to work today: *decide, then dispatch, one subject
+at a time, so we could control them.* Read that file before doing anything. Its table is
+the current state; this section is why.
+
+**Done today:** D1 doctor perf (`checkDeadScopes` 622→24 ms, `runChecks` halved) · D2 the
+`runnable` flag (a command can now be composed without being licensed to run; executable
+set unchanged at 27 and pinned) · D3 a cancelled dependency is discharged · D4 `builder/7`
+re-cut · D5 the 24 Hebrew tutorials · plus §2 CLOSED (`docsys/4`), the Composer horizontal
+scrollbar, and `ready` no longer offering cancelled work.
+
+**Running when this was written:** D10 only — four Composer fields gaining pickers
+(`builder/9`).
+
+**Waiting on the owner:** D6 the citation gate's 21 `BARE` faults (this is what still
+makes the gate exit 1; documents themselves are clean, 0 moved / 0 broken) · D7 the audit
+projection index · D8 the two disjoint RTL conventions · D9 `<ins>`/`<del>` markers ·
+**D12's scratch-corpus question, which is a prerequisite rather than a detail** · and D13's
+boundary ruling.
+
+### THE THING TO GET RIGHT NEXT: D13's tree control
+
+The owner asked twice, and the second time to correct me. `library/2` is a corpus file
+browser, and he wants **a special UI control/component for the tree** — not the flattened
+row list `treeRows()` produces, and, on his latest word, **not simply a reuse of the
+coverage screen's rendering either**. He has already ruled once (`DEC-an-external-
+documentation-tool-may-be-embedded`) that an outside component may be brought in **even at
+the cost of a dependency**, so ASK WHICH HE MEANS before building: a purpose-built nested
+component, or an embedded third-party explorer. Do not decide it by reading the code.
+
+Two things that stay true whichever he picks: the tree must be **genuinely nested**, because
+a flat list is why collapse needed `.tree .row[hidden]{display:none}` to beat `display:flex`
+at equal specificity — a bug he reported and I explained away as stale cached code. And it
+must **drill down and back up**, which forces one explicit decision: what a click on a
+folder does, since it cannot silently both expand and descend.
+
+### WHAT I GOT WRONG TODAY, because the pattern matters more than the instances
+
+**Four of my briefs to lanes were wrong, and each lane was right to check.** I said no
+tutorial named the deleted screens (one did). I measured "245 ms of server time" that was
+six unauthenticated 401s. I attributed 320–399 ms to `checkCitationForm` when it was
+`checkBodyTruncation` and was pure OS page-cache warm-up. I told a lane the Hebrew files
+wrap identifiers in `<span dir="ltr">` when they contain **zero** `dir=` attributes.
+
+**And my own measurement of the Composer stall was an artifact**: I waited for three
+`<select>`s on a screen that draws two, and my regex matched `not read yet` forever because
+the id picker carries an option for the task titled *"a screen shows the words not read yet
+for over a second"*. It was matching the data it searched.
+
+**The lesson, and it is the useful part:** state a lead AS a lead. Every one of these was
+caught because the brief said the leads were mine and might be wrong. Keep writing them
+that way.
+
+**Two more of mine:** I filed eleven items with `plan:`/`seq:`/`state:`/`needs:` as
+hand-written tags with no backing field — which meant `needs: builder/9` was not enforced
+and D11/D12 were **not actually held**. Use `--extra key=value`, never `--tags`, for
+projected fields. And I left `docs/README.he.md` out of a commit whose English half I had
+just pushed, recreating the exact English/Hebrew drift the day's work had closed.
+
+### STANDING FACTS THAT COST TIME IF FORGOTTEN
+
+`localhost` now redirects to `127.0.0.1` — but the gate compares Host, so always use
+`127.0.0.1:58888`. The page caches ES modules: `about:blank` and back, never a reload.
+`public/**` serves live; `src/ui/*.ts` is frozen at server start, and **`ui-server-upkeep`
+restarts the server itself when its code goes stale** — three "outages" today were that,
+recorded as `restarted-stale`. Never restart it yourself. The mockup is frozen: read,
+never written. And a worker ran `git checkout -- .` yesterday, silently reverting three
+corpus edits while reporting nothing was lost — `live/20` exists to make that impossible.
+
+
 ## ⏭ READ THIS FIRST — 2026-09-05
 
 ### THE BOARD IS THE PLACE NOW, NOT THIS FILE
