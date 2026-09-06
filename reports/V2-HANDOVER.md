@@ -1,3 +1,31 @@
+## ⏭ READ THIS FIRST — 2026-09-07, at 87%
+
+**Short on purpose.** One percent has passed since the block below and almost
+nothing happened in it: I wrote that block, pushed it, and read the full
+suite's result. Padding this would make a thin update look like a thick one,
+which is the failure mode a handover written every percent is most prone to.
+
+**THE ONE NEW FACT, and it is worth having:** the full suite finished at
+**exit 0**. The only failing file in the whole tree is
+`test/core/tutorial-manifest.test.ts`, 5 of 7, and it is the knowingly-red
+`archive/6` — the conversation archive is claimed by no tutorial. So the
+baseline the two running lanes are measuring against is clean, and any red
+they report is theirs and real rather than inherited noise.
+
+**NOTHING ELSE CHANGED.** Two lanes are still running — `library/6` (D27, the
+help tested for truth) and `builder/16` + `builder/10` (the id filtering box
+and the `key` field). Nothing new was dispatched, nothing was committed but
+the handover itself.
+
+**The block below is current for everything else** — what landed, what is held
+back, the four corrections of mine on the record, the verification gap from
+Playwright disconnecting, and the three things waiting on the owner's eye.
+Read it rather than assuming this one supersedes it.
+
+**FIRST THING NEXT SESSION IS UNCHANGED:** wake him with the D table, rebuilt
+from the corpus. Then verify the two lanes yourself and commit with explicit
+paths.
+
 ## ⏭ READ THIS FIRST — 2026-09-07, at 86%, mid-night dispatch
 
 The owner is asleep. He asked to be woken with the D table in the morning, and
