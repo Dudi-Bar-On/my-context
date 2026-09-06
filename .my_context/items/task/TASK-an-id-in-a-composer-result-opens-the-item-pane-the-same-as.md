@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: Anything the command builder prints that names a stored item can be opened and read in place.
-summary_of: 33063491d99cefa0
+summary_of: 535b3ae405adc73f
 scope:
   - src/ui/public/screens/palette.js
   - src/ui/public/app.js
@@ -16,18 +16,19 @@ tags:
   - composer
   - "plan:builder"
   - "seq:13"
-  - "state:todo"
+  - "state:done"
 origin: human
 source_file: null
 source_anchor: null
 source_checksum: null
 valid_from: 2026-09-06
 valid_until: null
-checksum: 81a2b6aa8b0bc223
+checksum: a014261cba829e93
 plan: builder
 seq: "13"
-state: todo
+state: done
 priority: "2"
+verified_on: 2026-09-06
 ---
 
 # an id in a composer result opens the item pane, the same as an id anywhere else

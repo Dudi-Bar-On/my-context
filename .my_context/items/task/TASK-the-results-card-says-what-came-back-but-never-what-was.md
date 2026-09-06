@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: A person reading an answer on the command builder cannot see which command produced it.
-summary_of: c4a869e2ce1b7137
+summary_of: 7b3b132f6965c5f3
 scope:
   - src/ui/public/screens/palette.js
 tags:
@@ -15,18 +15,19 @@ tags:
   - composer
   - "plan:builder"
   - "seq:14"
-  - "state:todo"
+  - "state:done"
 origin: human
 source_file: null
 source_anchor: null
 source_checksum: null
 valid_from: 2026-09-06
 valid_until: null
-checksum: 25c3b1dc085b37f6
+checksum: 9f38cdaf9fe8bf5d
 plan: builder
 seq: "14"
-state: todo
+state: done
 priority: "2"
+verified_on: 2026-09-06
 ---
 
 # the results card says what came back but never what was asked
