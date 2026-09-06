@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: Every kind of help entry is laid out the same way, and asking about a shortcut tells you as much as asking about the command behind it.
-summary_of: 17329bd1510cf384
+summary_of: 815724c1bc153948
 scope:
   - src/ui/read-model-cli-help.ts
   - src/ui/public/screens/cli-help.js
@@ -23,7 +23,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-09-06
 valid_until: null
-checksum: ff3d20cee55785d3
+checksum: d9eb9379e8dea140
 plan: library
 seq: "5"
 state: todo
