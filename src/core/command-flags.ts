@@ -657,6 +657,63 @@ export interface FlagDeclaration {
    * per-workspace. A name, never the values — see the header.
    */
   source?: 'categories' | 'items' | 'tags' | 'plans' | 'sessions';
+  /**
+   * **The exclusivity group: at most one member of a group belongs on one
+   * command line.**
+   *
+   * Added 2026-09-06 for `plan:library seq:4`, which needs to COMPOSE a worked
+   * line out of these declarations and found that it could not: the item's own
+   * words are *"`--full|--short|--summary` are mutually exclusive by
+   * construction, and the declarations say so in PROSE rather than in data. So
+   * either exclusivity becomes declared, or the composer picks one member per
+   * group by a rule it can state."* This is the first half of that choice, and
+   * it is the half that removes a guess rather than dressing one up: a
+   * composer that read `--body` and `--file` off the same command and spent
+   * both would draw a line the CLI refuses, and a composer that inferred the
+   * exclusion by finding the words "mutually exclusive" in `note` would be
+   * keyword-matching prose and calling the result data.
+   *
+   * **It is declared only where this file already states the fact in its own
+   * words**, each read individually rather than grepped:
+   *
+   *   - `detail` — `DETAIL` below is ONE constant holding four ways to ask for
+   *     the same report. Declaring the group on the constant declares it for
+   *     every one of the twelve commands that spread `DETAIL_FLAGS`, which is
+   *     the property that makes this data rather than twelve copies of it.
+   *   - `add`'s `body`/`file` — "Mutually exclusive with --file, which is
+   *     refused rather than resolved by precedence."
+   *   - `ui`'s `nonce`/`port`/`idle-ms` — "Mutually exclusive with --port and
+   *     --idle-ms, which this command refuses rather than silently ignores."
+   *   - `config`'s `delete`/`disable`/`set`/`unset` — the spec's own comment:
+   *     "Exactly one of the four act flags is required."
+   *
+   * **The absence of a group is not a claim that two flags combine.** Where a
+   * command splits its forms in its body and this file does not say so —
+   * `carry`'s `--show`/`--clear`, `focus`'s five forms — nothing is declared
+   * here, because declaring it would be this module asserting a refusal it
+   * has not read. What a composer does with an undeclared surface is the
+   * composer's rule to state, and `read-model-cli-help.ts` states it.
+   */
+  group?: string;
+  /**
+   * Flags this one is REFUSED BESIDE, and `'<operand>'` where what it is
+   * refused beside is the command's positional.
+   *
+   * The asymmetric half of `group`, and it exists because the two facts are
+   * genuinely different. A group says *these are alternatives* and any member
+   * may stand alone; this says *this flag cannot stand beside those*, which is
+   * what several commands in this CLI actually declare about `--yes`: it
+   * answers the forms that WRITE and is refused BY NAME on the forms that only
+   * report. `carry`'s own note — "Refused by name on --show, which reports and
+   * changes nothing" — and `focus`'s — "refused by name on --show, --preview
+   * and --relations" — are the two, said here in data so a composer stops
+   * having to read them as prose.
+   *
+   * `'<operand>'` is the third case and the only one that is not a flag:
+   * `review promote --all` "needs --pack and takes no item id", so a line that
+   * already carries the draft id may not also carry `--all`.
+   */
+  refusedWith?: readonly string[];
   /** One line a person reads, beside the control or in the help. */
   note: string;
 }
@@ -669,10 +726,13 @@ export type FlagDeclarations = Readonly<Record<string, FlagDeclaration>>;
  * a value — so none carries a format, and that absence is the fact.
  */
 const DETAIL: FlagDeclarations = {
-  full: { note: 'Every field of every row, bodies included.' },
-  short: { note: 'Four to six lines per row - the form both READMEs print.' },
-  summary: { note: 'Counts only. No rows.' },
-  json: { note: 'One JSON document instead of a table, for a program to read.' },
+  full: { group: 'detail', note: 'Every field of every row, bodies included.' },
+  short: { group: 'detail', note: 'Four to six lines per row - the form both READMEs print.' },
+  summary: { group: 'detail', note: 'Counts only. No rows.' },
+  json: {
+    group: 'detail',
+    note: 'One JSON document instead of a table, for a program to read.',
+  },
 };
 
 /** `--limit`, wherever it caps a report. */
@@ -805,8 +865,18 @@ export const FLAG_DECLARATIONS: Record<string, FlagDeclarations> = {
     files: { note: 'Report by FILE rather than by record.' },
   },
   carry: {
-    show: { note: 'Print what is currently queued for the next injection, and change nothing.' },
-    clear: { note: 'Withdraw every pending mark. None of them reach the next injection.' },
+    // Two of the three FORMS this command splits into in its body, each said
+    // here in its own words: one reports and changes nothing, the other
+    // withdraws every mark. `--yes` below is "refused by name on --show",
+    // which is the same split stated a third time.
+    show: {
+      group: 'carry-form',
+      note: 'Print what is currently queued for the next injection, and change nothing.',
+    },
+    clear: {
+      group: 'carry-form',
+      note: 'Withdraw every pending mark. None of them reach the next injection.',
+    },
     json: DETAIL.json,
     /**
      * **Not the shared `YES`, for `focus`'s own reason.** "Can change what
@@ -816,6 +886,7 @@ export const FLAG_DECLARATIONS: Record<string, FlagDeclarations> = {
      * to answer. `cli/commands/carry.ts` refuses `--yes` by name on `--show`.
      */
     yes: {
+      refusedWith: ['show'],
       note: 'Answer the confirmation on the two forms that WRITE - marking an id, and '
         + '`--clear`. Refused by name on `--show`, which reports and changes nothing. This is '
         + 'the approval boundary: anything holding a shell can type it, so the forms that take '
@@ -824,17 +895,20 @@ export const FLAG_DECLARATIONS: Record<string, FlagDeclarations> = {
   },
   config: {
     delete: {
+      group: 'act',
       note: 'Remove a CUSTOM category\'s declaration from config.json. Refused by name on a '
         + 'shipped category: it is resolved from the catalogue no matter what config.json '
         + 'says, so removing its entry would report a delete that changed nothing. --disable '
         + 'is the one that does something there.',
     },
     disable: {
+      group: 'act',
       note: 'Set enabled: false on a category, shipped or custom. New captures under it are '
         + 'refused and its items stop being selected for injection; nothing already on disk '
         + 'is edited or deleted, and the declaration itself is kept.',
     },
     set: {
+      group: 'act',
       format: 'the new value, read as JSON when it parses as one and as a plain string '
         + 'otherwise',
       example: 'true',
@@ -845,6 +919,7 @@ export const FLAG_DECLARATIONS: Record<string, FlagDeclarations> = {
         + 'replaced — --unset removes one entry from those instead.',
     },
     unset: {
+      group: 'act',
       format: 'one value, or several comma-separated, to remove from a list field',
       example: 'progress,last_change',
       note: 'Remove one or more entries from a list field named by the operand — e.g. '
@@ -906,10 +981,20 @@ export const FLAG_DECLARATIONS: Record<string, FlagDeclarations> = {
       format: 'comma-separated path globs', example: 'src/**,docs/*.md',
       note: 'Narrow injection to items whose own scope overlaps these paths.',
     },
-    clear: { note: 'Remove the focus entirely; injection goes back to the whole corpus.' },
-    show: { note: 'Print the focus in force, and change nothing.' },
-    preview: { note: 'Print what this focus WOULD inject, without setting it.' },
+    // The four FORMS this command splits into, each said here in its own words
+    // and enumerated once more by `--yes` below, which names three of them as
+    // the ones it is refused on. One line does one of them.
+    clear: {
+      group: 'focus-form',
+      note: 'Remove the focus entirely; injection goes back to the whole corpus.',
+    },
+    show: { group: 'focus-form', note: 'Print the focus in force, and change nothing.' },
+    preview: {
+      group: 'focus-form',
+      note: 'Print what this focus WOULD inject, without setting it.',
+    },
     relations: {
+      group: 'focus-form',
       note: 'Pull in items related to the matched ones, not only the ones that match.',
     },
     json: DETAIL.json,
@@ -928,6 +1013,7 @@ export const FLAG_DECLARATIONS: Record<string, FlagDeclarations> = {
      * `cli/commands/focus.ts`, which refuses the flag by name on the reads.
      */
     yes: {
+      refusedWith: ['show', 'preview', 'relations'],
       note: 'Answer the confirmation on the two forms that WRITE - `--clear`, and setting an '
         + 'axis. It is refused by name on `--show`, `--preview` and `--relations`, which change '
         + 'nothing and have no confirmation to answer. This is the approval boundary: anything '
@@ -1036,17 +1122,20 @@ export const FLAG_DECLARATIONS: Record<string, FlagDeclarations> = {
   },
   ui: {
     port: {
+      group: 'ui-mode',
       format: 'a TCP port number', example: '58888',
       note: 'Where to listen on 127.0.0.1. Omit it to take the first free port.',
     },
     'no-open': { note: 'Do not launch a browser; print the URL instead.' },
     'idle-ms': {
+      group: 'ui-mode',
       format: 'a whole number of milliseconds', example: '28800000',
       note: 'How long the server may sit unused before it exits. The default is eight hours '
         + '(28800000) and the ceiling is a day; a working day, so a server started in the '
         + 'morning is still there in the afternoon.',
     },
     nonce: {
+      group: 'ui-mode',
       note: 'Ask a server already running for a fresh one-shot credential, and open your '
         + 'browser with it — nothing else runs. Combine with --no-open to print the URL '
         + 'instead, for a human who has to carry the link rather than a browser about to open '
@@ -1061,12 +1150,14 @@ export const FLAG_DECLARATIONS: Record<string, FlagDeclarations> = {
   soften: { yes: YES },
   add: {
     body: {
+      group: 'body-source',
       format: 'prose - the whole body of the item',
       example: 'Secrets in logs outlive the incident.',
       note: 'What the item says. Mutually exclusive with --file, which is refused rather than '
         + 'resolved by precedence.',
     },
     file: {
+      group: 'body-source',
       format: 'a path inside this repository', example: 'docs/prd.md',
       note: 'The body is a SNAPSHOT of that file, and the item records where it came from, so '
         + '`mycontext doctor` reports it when the two diverge.',
@@ -1148,12 +1239,18 @@ export const FLAG_DECLARATIONS: Record<string, FlagDeclarations> = {
     // and a hint on `edit` naming a flag `edit` refuses is worse than none.
     summary: {
       ...SUMMARY_FLAG,
+      // `--summary-omitted`'s own declaration below: "it is refused beside
+      // `--summary`". Stated on `add`'s copy rather than on `SUMMARY_FLAG`
+      // itself, because the shared constant is also `edit`'s and `edit`'s
+      // counterpart flag is a different one (`--summary-unchanged`).
+      group: 'summary-source',
       note: `${SUMMARY_FLAG.note} A capture must carry one, or say \`--summary-omitted\` in `
         + 'so many words: an item created without a summary can never afterwards be asked '
         + 'for one, because every check that would ask compares a summary against the text '
         + 'it was written against and an absent one has neither.',
     },
     'summary-omitted': {
+      group: 'summary-source',
       note: 'Say that this item is being captured with NO summary, and that it is deliberate. '
         + 'A capture without one is otherwise refused, because an item born with no summary can '
         + 'never afterwards be required to have one - `mycontext doctor` reports it as '
@@ -1422,6 +1519,7 @@ export const SUBCOMMAND_FLAG_DECLARATIONS: Record<string, FlagDeclarations> = {
         + 'context budget, so it is opt-in per item and never inherited from a pack.',
     },
     all: {
+      refusedWith: ['<operand>'],
       note: 'Settle every draft ONE import staged, in one confirmation. It needs --pack and '
         + 'takes no item id: the licence a bulk promotion can be given is for a NAMED, '
         + 'BOUNDED set, never for "every draft in this corpus".',
@@ -1459,11 +1557,13 @@ export const SUBCOMMAND_FLAG_DECLARATIONS: Record<string, FlagDeclarations> = {
   session: {
     json: DETAIL.json,
     none: {
+      group: 'carry-form',
       note: 'Clear this session’s carry mark: nothing is carried into the next session. '
         + 'The opposite of naming one, and a flag rather than a value so it cannot be '
         + 'confused with a session literally named "none".',
     },
     show: {
+      group: 'carry-form',
       note: 'Print what is currently set to carry, and change nothing. The read half of the '
         + 'same subcommand.',
     },

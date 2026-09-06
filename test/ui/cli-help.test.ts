@@ -39,14 +39,16 @@ import { pathToFileURL } from 'node:url';
 import { COMMANDS } from '../../src/cli/commands/registry.ts';
 import '../../src/cli/index.ts';
 import {
-  COMMAND_FLAGS, FLAGLESS_COMMANDS, SUBCOMMAND_FLAGS,
+  COMMAND_FLAGS, FLAGLESS_COMMANDS, FLAG_DECLARATIONS, SUBCOMMAND_FLAGS,
+  SUBCOMMAND_FLAG_DECLARATIONS,
 } from '../../src/core/command-flags.ts';
 import { collectExamples, splitPipeline } from '../../src/core/doc-examples.ts';
 import { HELP_TOPICS, MCP_HELP_TOPICS } from '../../src/core/teach.ts';
 import { resolveWorkspace } from '../../src/core/workspace.ts';
-import { slashCommands, toolDefinitions } from '../../src/help/index.ts';
+import { exampleItemTitle, slashCommands, toolDefinitions } from '../../src/help/index.ts';
+import { checkCommand } from '../../src/ui/read-model-command.ts';
 import {
-  apiCliHelp, apiCliHelpSubject, commandNames, exampleIndex,
+  apiCliHelp, apiCliHelpSubject, commandNames, commandSummaries, exampleIndex,
 } from '../../src/ui/read-model-cli-help.ts';
 
 const REPO = path.join(import.meta.dirname, '..', '..');
@@ -72,6 +74,13 @@ const browserModule = async <T>(...segments: string[]): Promise<T> =>
  */
 const ws = resolveWorkspace(REPO);
 const NO_PARAMS = new URL('http://127.0.0.1/api/cli-help');
+
+/** One subject's body, through the route, so nothing below reads past it. */
+const subject = (kind: string, id: string): Record<string, unknown> => {
+  const answer = apiCliHelpSubject(ws, NO_PARAMS, { kind, id });
+  assert.equal(answer.status, 200, `${kind}/${id} did not answer 200`);
+  return answer.body as Record<string, unknown>;
+};
 
 /* ══ 1. EVERY COMMAND, AND WHICH RECORD ANSWERS FOR IT ═════════════════════ */
 
@@ -403,4 +412,224 @@ test('the card holds no command name, flag name or roster of its own', () => {
     + 'or slash commands — every one of those is measured on the request instead.',
   );
   assert.ok(FLAGLESS_COMMANDS.length > 0, 'the flagless record is what the `none` surface means');
+});
+
+/* ══ 8. THE SKELETON, AND WHAT EACH KIND FILLS (plan:library seq:3, 4, 5) ═══ */
+
+/**
+ * `what it is` was the section a COMMAND did not have, while a tool and a
+ * shortcut both did — the summary lives on the CLI's registry, which this
+ * server may not load. It is read out of the generated coverage document
+ * instead, and this is the test that the parse survives the document's own
+ * escaping: `mycontext add`'s summary contains three `|` characters, escaped as
+ * `\|`, and the first parse read the first of them as the end of the column.
+ */
+test('every command says what it is, and the one summary with pipes in it survives', () => {
+  const summaries = commandSummaries(
+    readFileSync(path.join(REPO, 'docs', 'cli-ui-coverage.md'), 'utf8').replaceAll('\r\n', '\n'),
+  );
+  const missing = commandNames().filter((name) => !summaries.has(name));
+  assert.deepEqual(missing, [], 'the coverage table is generated from the registry itself');
+
+  const add = summaries.get('add') ?? '';
+  assert.match(add, /--body\|--file/, 'the escaped pipe is restored, not treated as a column end');
+  assert.match(add, /--yes\)$/, 'and the cell is taken whole rather than truncated at it');
+
+  for (const name of commandNames()) {
+    const body = subject('command', name) as { what: string | null };
+    assert.equal(body.what, summaries.get(name), `${name}'s sentence is the document's`);
+  }
+});
+
+/**
+ * **The `plan:library seq:4` gate, and the whole reason that item waited on
+ * `builder/4`.** A generated example the product's own checker refuses is a
+ * defect the moment it is drawn, so every line this card can serve is put
+ * through `checkCommand` — the function `POST /api/command/check` answers with,
+ * which walks argv using the CLI's own `unknownFlag`.
+ *
+ * It sweeps every command rather than a sample, because the composer is
+ * data-driven: the line that breaks will be the one a declaration changed
+ * under, and a sample is exactly what would miss it.
+ */
+test('every composed worked line is accepted by the CLI\'s own parser', () => {
+  let lines = 0;
+  for (const name of commandNames()) {
+    const body = subject('command', name) as { worked: { command: string; argv: string[]; ok: boolean; error?: string }[] };
+    assert.ok(body.worked.length > 0, `${name} composes no line at all`);
+    for (const line of body.worked) {
+      lines += 1;
+      assert.equal(line.argv[0], 'mycontext', 'the checker is handed the whole line');
+      const verdict = checkCommand(ws, line.argv);
+      assert.equal(
+        verdict.ok, true,
+        `the card would draw a line the CLI refuses: ${line.command} — ${verdict.error ?? ''}`,
+      );
+      assert.equal(line.ok, true, 'and the endpoint reports the same verdict it took');
+    }
+  }
+  // Not a constant: one line per flat command and one per subcommand, counted
+  // by walking what the route served.
+  assert.ok(lines >= commandNames().length, 'every command contributed at least one line');
+});
+
+/**
+ * "All the parameters" is not satisfiable, and this is the half of that ruling
+ * that became DATA. A composed line carrying two members of one declared group
+ * is the invalid line the item predicted; the ones left off are named with the
+ * flag that took the slot, because `INV-nothing-is-dropped-silently` applies to
+ * a switch a reader can see in the table above and not on the line below it.
+ */
+test('no composed line spends two members of one declared exclusivity group', () => {
+  const groupsOf = (declared: Record<string, { group?: string }>): Map<string, string> => {
+    const out = new Map<string, string>();
+    for (const [flag, decl] of Object.entries(declared)) {
+      if (decl.group !== undefined) out.set(flag, decl.group);
+    }
+    return out;
+  };
+  const check = (line: { argv: string[]; omitted: { flag: string }[] }, declared: Record<string, { group?: string }>, where: string): void => {
+    const groups = groupsOf(declared);
+    const seen = new Map<string, string>();
+    for (const word of line.argv) {
+      if (!word.startsWith('--')) continue;
+      const flag = word.slice(2);
+      const group = groups.get(flag);
+      if (group === undefined) continue;
+      const already = seen.get(group);
+      assert.equal(already, undefined, `${where}: --${flag} and --${already} are both "${group}"`);
+      seen.set(group, flag);
+    }
+    // And the ones that lost the slot are on the record rather than vanished.
+    for (const [flag, group] of groups) {
+      if (line.argv.includes(`--${flag}`)) continue;
+      if (!seen.has(group)) continue;
+      assert.ok(
+        line.omitted.some((off) => off.flag === flag),
+        `${where}: --${flag} was dropped for its group and never named`,
+      );
+    }
+  };
+
+  for (const name of Object.keys(COMMAND_FLAGS)) {
+    const body = subject('command', name) as { worked: { argv: string[]; omitted: { flag: string }[] }[] };
+    for (const line of body.worked) check(line, FLAG_DECLARATIONS[name], `mycontext ${name}`);
+  }
+  for (const [name, subs] of Object.entries(SUBCOMMAND_FLAGS)) {
+    const body = subject('command', name) as { worked: { argv: string[]; omitted: { flag: string }[] }[] };
+    for (const [i, line] of body.worked.entries()) {
+      check(line, SUBCOMMAND_FLAG_DECLARATIONS[name], `mycontext ${name} ${Object.keys(subs)[i]}`);
+    }
+  }
+});
+
+/**
+ * Positionals are not flags, and a flags-only example omits the only thing
+ * three commands take. This asserts the half that IS declared and the half that
+ * is not, in the same test, because the two must not read alike on the screen.
+ */
+test('a command whose operands are declared spends them; one whose are not says so', () => {
+  const show = subject('command', 'show') as { worked: { command: string; asks: string[]; catalogued: boolean }[] };
+  assert.equal(show.worked[0]?.command, 'mycontext show <id>', 'show takes no flag and one operand');
+  assert.deepEqual(show.worked[0]?.asks, ['id'], 'and the operand names the reader\'s own corpus');
+
+  const add = subject('command', 'add') as { worked: { command: string; catalogued: boolean }[] };
+  assert.match(
+    add.worked[0]?.command ?? '', /^mycontext add \w+ "/,
+    'add spends a real category and a generated title, not two angle-bracket slots',
+  );
+
+  const todo = subject('command', 'todo') as { worked: { catalogued: boolean }[] };
+  assert.equal(todo.worked[0]?.catalogued, false, 'the catalogue declares no operand for todo');
+});
+
+/**
+ * **Owner, asked to be explicit: "i ment all the slash commands not only the
+ * six."** Every shortcut carries a link to the subject that documents what it
+ * runs, and the target is a subject this endpoint actually serves — a link to
+ * something the picker has no option for would be worse than none.
+ */
+test('all 91 slash commands name a subject they run, and every target is served', () => {
+  const index = apiCliHelp(ws).body as { subjects: { kind: string; id: string }[] };
+  const served = new Set(index.subjects.map((s) => `${s.kind}/${s.id}`));
+  const slash = index.subjects.filter((s) => s.kind === 'slash');
+  assert.equal(slash.length, slashCommands().length);
+
+  let several = 0;
+  for (const row of slash) {
+    const body = subject('slash', row.id) as { runs: { kind: string; id: string; paths: string[] }[] };
+    assert.ok(body.runs.length > 0, `/${row.id} names nothing it runs`);
+    if (body.runs.length > 1) several += 1;
+    for (const run of body.runs) {
+      assert.ok(served.has(`${run.kind}/${run.id}`), `/${row.id} points at an unserved ${run.kind}/${run.id}`);
+      assert.ok(run.paths.length > 0, `/${row.id}'s ${run.id} link names no invocation`);
+    }
+  }
+  assert.ok(several > 0, 'the several-target case is real and is what the rule exists for');
+});
+
+/**
+ * The rule itself, on the five files that decide it — and the first invocation
+ * is not the answer in three of them.
+ */
+test('the shortcut\'s own name promotes one target, and where it names none, none is promoted', () => {
+  const runs = (id: string): { id: string; kind: string; paths: string[]; named: boolean }[] =>
+    (subject('slash', id) as { runs: { id: string; kind: string; paths: string[]; named: boolean }[] }).runs;
+
+  // `/discard` runs `review list` FIRST and is about `review discard`.
+  const discard = runs('discard');
+  assert.deepEqual(discard.map((r) => r.id), ['review']);
+  assert.equal(discard[0]?.named, true, 'the last segment of the path matched the name');
+  assert.equal(discard[0]?.paths[0], 'review discard', 'and it leads its own row');
+  assert.ok(discard[0]?.paths.includes('review list'), 'without the others being dropped');
+
+  // `session-carry` is `session carry` with a hyphen for the space.
+  assert.equal(runs('session-carry')[0]?.paths[0], 'session carry');
+
+  // `add-known-issue` is `add known_issue`: the first segment carries it.
+  const addKnown = runs('add-known-issue');
+  assert.equal(addKnown[0]?.id, 'add');
+  assert.equal(addKnown[0]?.named, true);
+
+  // `/unlink` runs `show` and then `edit`, and its name matches neither. Two
+  // honest links, and nothing promoted — the case the item explicitly allows.
+  const unlink = runs('unlink');
+  assert.deepEqual(unlink.map((r) => r.id), ['show', 'edit']);
+  assert.deepEqual(unlink.map((r) => r.named), [false, false]);
+
+  // **The correction that only reading the file could make.** `mycontext link`
+  // exists and shares the name; the FILE calls the `link_items` MCP tool, and
+  // a name-matching cross-reference would have sent a reader to the wrong one.
+  const link = runs('link');
+  assert.deepEqual(link.map((r) => `${r.kind}/${r.id}`), ['tool/link_items']);
+});
+
+/**
+ * `plan:library seq:3`: the hint states the SHAPE and names the category back
+ * at the reader. The sentence it is missing is the category's own, resolved
+ * from THIS project's config, and the worked value is the generated specimen —
+ * neither is written down here or anywhere else.
+ */
+test('every add- and list- shortcut carries its category\'s own words, and add- a real title', () => {
+  const index = apiCliHelp(ws).body as { subjects: { kind: string; id: string }[] };
+  const perCategory = index.subjects
+    .filter((s) => s.kind === 'slash' && (s.id.startsWith('add-') || s.id.startsWith('list-')));
+  assert.ok(perCategory.length > 0);
+
+  for (const row of perCategory) {
+    const body = subject('slash', row.id) as { category: { category: string; description: string; example?: string } | null };
+    assert.notEqual(body.category, null, `/${row.id} names a category and carries nothing about it`);
+    const resolved = ws.config.categories[body.category?.category ?? ''];
+    assert.equal(body.category?.description, resolved?.description, 'the description is the config\'s');
+    assert.notEqual(body.category?.description, '', 'and it is not empty');
+    if (!row.id.startsWith('add-')) continue;
+    assert.equal(
+      body.category?.example, exampleItemTitle(resolved?.name ?? '', ws.config),
+      'the example is what `mycontext examples <category> --short` answers, not a sentence typed here',
+    );
+  }
+
+  // A shortcut whose name carries no category says so by carrying nothing,
+  // rather than by carrying an empty one.
+  assert.equal((subject('slash', 'audit') as { category: unknown }).category, null);
 });

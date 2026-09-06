@@ -723,8 +723,16 @@ export function toolParityNotes(rows = TOOL_PARITY): string {
  * The `slash` topic's two generated sections.
  * -------------------------------------------------------------------------- */
 
-/** Where the committed plugin command files live: `<repo>/commands`. */
-const COMMANDS_DIR = path.join(import.meta.dirname, '..', '..', 'commands');
+/**
+ * Where the committed plugin command files live: `<repo>/commands`.
+ *
+ * Exported since `plan:library seq:5`, for the reason `slashCommands` states
+ * about the directory itself: it IS the surface. The Library's command-line
+ * card derives what each shortcut RUNS from the invocations inside these
+ * files, and a second spelling of this path in `src/ui/` would be a second
+ * answer to where the product's commands live.
+ */
+export const COMMANDS_DIR = path.join(import.meta.dirname, '..', '..', 'commands');
 
 /**
  * One command file as this topic reads it: the name a user types, the
@@ -1366,6 +1374,28 @@ function seedFor(category: ResolvedCategory): Seed {
 /** A complete, correct item of the given type, rendered exactly as it is stored. */
 export function exampleItem(type: string, config: Config): string {
   return renderItem(exampleItemOf(type, config));
+}
+
+/**
+ * The specimen's TITLE alone — one real, generated sentence of the kind this
+ * category holds.
+ *
+ * `plan:library seq:3`'s whole argument in one function. The help for
+ * `/mycontext:add-rule` says `[the rule in one sentence]`, which names the
+ * category back at the reader and shows them nothing; the sentence they are
+ * missing already exists, because `mycontext examples rule --short` answers
+ * with `Never log request bodies on auth endpoints` and has for every one of
+ * the shipped categories since the seeds were written.
+ *
+ * It exists rather than the caller parsing `title:` out of `exampleItemShort`
+ * for the reason `exampleItemOf` is shared between the two renderings above:
+ * a second way of getting at the same specimen is a second thing that can
+ * come to disagree about which specimen it is. A category the config does not
+ * know throws, exactly as `exampleItem` does, so a caller cannot quietly
+ * receive a title for a category that is not there.
+ */
+export function exampleItemTitle(type: string, config: Config): string {
+  return exampleItemOf(type, config).title;
 }
 
 /**

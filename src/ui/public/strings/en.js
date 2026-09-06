@@ -1740,6 +1740,21 @@ export const strings = {
   'clih.slashmodel': 'Claude may run this one itself. It is the only command file that allows it.',
   'clih.slashuser': 'This one is yours to type. The command file tells Claude Code not to invoke it on its own.',
   'clih.topichow': 'This is the text {mv:cmd} prints in a terminal, exactly as it prints it.',
+  'clih.s1': 'What it is',
+  'clih.s2': 'What it takes',
+  'clih.s3': 'Where it runs',
+  'clih.runs': 'Runs:',
+  'clih.catwhat': 'A {mv:name} is:',
+  'clih.composed': 'Composed from what it declares',
+  'clih.composedhow': 'The line above was built on this request out of the same declarations the table shows, and the values in it are the ones each switch declares. Where a command says two switches cannot appear together, one of them is on the line and the other is named below it. The line was then put through the same parser the CLI refuses with, and it was accepted.',
+  'clih.exran': 'Run against a sample project',
+  'clih.asks': 'What is written in angle brackets names something in your own project — an id, a draft, a finding — so there is no value here that would be right in every repository.',
+  'clih.nopos': 'What this command takes before its switches is not written down anywhere this page can read, so the line above is switches only and may be short of an operand.',
+  'clih.omitted': 'Left off this line:',
+  'clih.omgroup': '{mv:with} already fills that slot.',
+  'clih.omrefused': 'it is refused beside {mv:with}.',
+  'clih.omcomb': 'it is paired with {mv:with}, which this line does not carry that way.',
+  'clih.omarity': 'it takes two operands, and nothing declares a value for either.',
   // The standalone document page.
   // ── THE CORPUS FILE BROWSER ────────────────────────────────────────────
   // `TASK-the-library-browses-the-corpus-files-and-a-file-opens`, owner

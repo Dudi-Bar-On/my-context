@@ -83,6 +83,46 @@ function optionEl(value, label) {
 }
 
 /**
+ * One section heading of THE SKELETON — `plan:library seq:5`.
+ *
+ * The four sections are the same four in the same order for every kind of
+ * subject: what it is; what it takes; where it runs or who may invoke it; a
+ * worked example. **What is standardised is that order, not the table.** A
+ * section is drawn when the subject HAS one and is absent when it does not,
+ * because a `topic` given a flag table, or a shortcut given a one-row table
+ * reading "the draft id", would be the same defect this is fixing — an absence
+ * dressed as data.
+ *
+ * `p.welllabel` is the class the examples heading and the subcommand headings
+ * on this card already use, so the skeleton is drawn in a hierarchy the screen
+ * already has rather than in one invented for it.
+ */
+function section(ctx, host, key) {
+  const heading = el('p', 'welllabel');
+  heading.append(...ctx.t(key));
+  host.append(heading);
+}
+
+/**
+ * A link from one subject to another, drawn as `button.crumb` — the console's
+ * existing text-link affordance, already styled with an underline, a hover and
+ * a focus ring, so this needs no rule of its own in `styles.css`.
+ *
+ * It changes the PICKER rather than painting the pane behind its back: the
+ * select is the address of this card, and a link that swapped the detail
+ * without moving the control would leave the two disagreeing about which
+ * subject is on screen. Dispatching `change` is what makes one code path draw
+ * every subject however it was reached.
+ */
+function subjectLink(ctx, kind, id, label, goto) {
+  const link = el('button', 'crumb');
+  link.type = 'button';
+  link.append(mono(label));
+  link.addEventListener('click', () => { goto(kind, id); });
+  return link;
+}
+
+/**
  * The address of one subject. Both halves are encoded: a slash-command name is
  * `[a-z0-9-]+` today, and encoding it is what keeps that from being a rule this
  * file quietly depends on.
@@ -167,7 +207,7 @@ function flagTable(ctx, flags) {
  *  it produced. Never edited here — see this file's header. */
 function paintExamples(ctx, host, examples) {
   const heading = el('p', 'welllabel');
-  heading.append(...ctx.t('clih.ex'));
+  heading.append(...ctx.t('clih.exran'));
   host.append(heading);
 
   if (examples.length === 0) {
@@ -187,6 +227,14 @@ function paintExamples(ctx, host, examples) {
     // wrapping, because a shell command broken across lines mid-flag is a
     // command a reader cannot copy.
     const line = el('p', 'small excmd');
+    // **`dir` is set, and a screenshot in Hebrew is what found it.** `.excmd`
+    // scrolls, and a scroll container inherits the page's direction: under
+    // `dir="rtl"` its origin is the RIGHT edge, so a Hebrew reader opened
+    // `mycontext audit` and was shown `… --items --sessions --files` — the TAIL
+    // of the line — with the command's own name off-screen to the left. The
+    // text inside is a shell command and is left-to-right in both languages, so
+    // the container is told so rather than the layout being worked around.
+    line.dir = 'ltr';
     line.append(mono(example.command));
     host.append(line);
     host.append(el('pre', 'm transcript', example.output));
@@ -197,12 +245,107 @@ function paintExamples(ctx, host, examples) {
 }
 
 /**
+ * **The composed line — `plan:library seq:4`.**
+ *
+ * Owner request 2026-09-06: below the syntax, *"a comprehensive example that
+ * will use most if not all the parameters and will show actual values, so a
+ * date would show how a date looks."* Every switch on this card already
+ * declared its format and one legal value and the table already drew both; what
+ * a reader never saw was them USED TOGETHER, because the transcripts below come
+ * from the README and the README demonstrates a minority of the commands.
+ *
+ * Nothing here is written. The line is composed by the endpoint out of the same
+ * declarations the table above renders, and it is then put through the CLI's own
+ * argument parser (`POST /api/command/check`'s function) before it is served —
+ * so a line this screen draws is a line that parser accepted. A line it refused
+ * would arrive with `ok: false` and is drawn as the refusal instead, because a
+ * generated example the product's own checker will not take is a defect the
+ * moment it is drawn, not something to render and hope about.
+ *
+ * `.excmd` for the same measured reason the transcript command lines use it: a
+ * composed `add` line is ~450 characters, and a `span.m` that long laid out at
+ * 2,321px on this card on 2026-09-06 and put 1,325px of horizontal overflow on
+ * the page. It scrolls rather than wrapping, because a shell command broken
+ * mid-flag is a command nobody can copy.
+ */
+function paintWorked(ctx, host, worked) {
+  if (!Array.isArray(worked) || worked.length === 0) return;
+  const heading = el('p', 'welllabel');
+  heading.append(...ctx.t('clih.composed'));
+  host.append(heading);
+
+  for (const line of worked) {
+    if (line.ok !== true) {
+      // The composer produced something the CLI's parser refuses. Saying so is
+      // the only honest thing this screen can do with it — drawing it would
+      // teach a line that does not run, and dropping it silently would hide a
+      // defect in the thing that produced it.
+      host.append(errorNote(line.error ?? line.command));
+      continue;
+    }
+    const shown = el('p', 'small excmd');
+    // See `paintExamples` — an RTL scroll container opens at its right edge and
+    // showed a Hebrew reader the end of the command instead of its name.
+    shown.dir = 'ltr';
+    shown.append(mono(line.command));
+    host.append(shown);
+
+    if (Array.isArray(line.asks) && line.asks.length > 0) {
+      const asks = el('p', 'small');
+      asks.append(...ctx.t('clih.asks'));
+      host.append(asks);
+    }
+    if (line.catalogued === false) {
+      const none = el('p', 'small');
+      none.append(...ctx.t('clih.nopos'));
+      host.append(none);
+    }
+    if (Array.isArray(line.omitted) && line.omitted.length > 0) {
+      const left = el('p', 'small');
+      left.append(...ctx.t('clih.omitted'));
+      host.append(left);
+      const list = el('ul', 'small');
+      for (const off of line.omitted) {
+        const row = el('li');
+        row.append(mono(`--${off.flag}`), ' — ');
+        // The reason is the endpoint's, and each of the four names a record
+        // rather than a judgement: a declared group, a declared refusal, the
+        // Composer catalogue's own pairing, or an arity no value exists for.
+        const key = off.reason === 'group' ? 'clih.omgroup'
+          : off.reason === 'refused' ? 'clih.omrefused'
+            : off.reason === 'combination' ? 'clih.omcomb' : 'clih.omarity';
+        row.append(...ctx.t(key, { with: off.with ?? '' }));
+        list.append(row);
+      }
+      host.append(list);
+    }
+  }
+  const how = el('p', 'small');
+  how.append(...ctx.t('clih.composedhow'));
+  host.append(spaced(how));
+}
+
+/**
  * One command. Four shapes, and the shape is `surface` — the endpoint's own
  * word for WHICH of the four records holds this command's flags, which is the
  * question `plan:library seq:1` had to answer before "every switch explained"
  * was a claim anybody could make.
  */
 function paintCommand(ctx, host, body) {
+  // §1 — what it is. Until `plan:library seq:5` a command was the one kind of
+  // subject on this card with no such sentence at all, while a tool and a
+  // shortcut both had one: the summary lives on the CLI's own registry, which a
+  // read-only server may not load. It is served now, read out of the generated
+  // coverage document — see `read-model-cli-help.ts`. `null` means that
+  // document could not be read, and nothing is drawn rather than a blank line.
+  if (typeof body.what === 'string' && body.what !== '') {
+    section(ctx, host, 'clih.s1');
+    const what = el('p', 'small');
+    what.append(body.what);
+    host.append(what);
+  }
+
+  section(ctx, host, 'clih.s2');
   if (body.surface === 'none') {
     const none = el('p', 'small');
     none.append(...ctx.t('clih.noflags'));
@@ -242,15 +385,22 @@ function paintCommand(ctx, host, body) {
     const table = flagTable(ctx, body.flags);
     if (table !== null) host.append(table);
   }
+  // §4 — a worked example. The composed line first because every command has
+  // one, then the transcripts, which are RUN rather than merely checked and are
+  // therefore the stronger evidence where they exist at all.
+  section(ctx, host, 'clih.ex');
+  paintWorked(ctx, host, body.worked ?? []);
   paintExamples(ctx, host, body.examples ?? []);
 }
 
 /** One MCP tool: its description and its schema's own arguments. */
 function paintTool(ctx, host, body) {
+  section(ctx, host, 'clih.s1');
   const summary = el('p', 'small');
   summary.append(body.description);
   host.append(summary);
 
+  section(ctx, host, 'clih.s2');
   if (body.args.length === 0) {
     const none = el('p', 'small');
     none.append(...ctx.t('clih.noargs'));
@@ -295,24 +445,60 @@ function paintTool(ctx, host, body) {
   host.append(table);
 }
 
-/** One slash command: what its file declares, and who may type it. */
-function paintSlash(ctx, host, body) {
+/**
+ * **One slash command, read in the same four sections as everything else.**
+ *
+ * MEASURED before this was written: a `slash` subject was THREE `p.small`
+ * sentences, no table, no example and no way onward, while `command` and
+ * `tool` shared one table across two sources with nothing in common. `slash`
+ * was the outlier and this is the repair.
+ *
+ * ── WHAT DOES *NOT* CHANGE, AND WHY IT MUST NOT ──────────────────────────
+ *
+ * The hint is still shown VERBATIM. It is one string written for a person —
+ * `[category] [the item in one sentence]` — and splitting it on brackets would
+ * invent a structure the source does not have. **A one-row table reading "the
+ * draft id" is the defect, not the fix**: it dresses an absence as data, which
+ * is the same fault as a shortcut with nothing to show. Where a hint is all
+ * there is, the hint is what is drawn — beside a link to the subject that has
+ * more.
+ *
+ * ── WHAT IS ADDED ────────────────────────────────────────────────────────
+ *
+ * §1 grows the CATEGORY the shortcut's name carries, in the category's own
+ * words, with one real generated title of that kind (`plan:library seq:3`).
+ * `/mycontext:add-rule` said `[the rule in one sentence]` and named the
+ * category back at the reader; what a person needs at that moment is what
+ * distinguishes a rule from an invariant, and every category has carried that
+ * sentence in `src/core/categories.ts` all along.
+ *
+ * §3 grows the CROSS-REFERENCE. Owner, asked to be explicit: *"i ment all the
+ * slash commands not only the six."* Every shortcut names at least one subject
+ * that documents what it runs, derived from the invocations inside its own
+ * file, so the reference cannot drift from what the shortcut really does. Where
+ * a file names several, ALL of them are drawn in the order it runs them — the
+ * first invocation is not the answer and neither is a guess between them.
+ */
+function paintSlash(ctx, host, body, goto) {
+  section(ctx, host, 'clih.s1');
   const summary = el('p', 'small');
   summary.append(body.description);
   host.append(summary);
 
-  // What it takes. Owner review 2026-09-06: "most if not all the slash
-  // commands does not shows parameters like the cli commands does" — and they
-  // did not, though 90 of the 91 files had declared it since they were
-  // generated. The hint is Claude Code's own `argument-hint` spelling, so it
-  // is shown VERBATIM rather than parsed into a flag table: it is one string
-  // written for a person, and splitting it on brackets would invent a
-  // structure the source does not have.
-  //
-  // `mono` for the same reason the flag names are mono — it is literal text a
-  // reader types — and the absence is NAMED rather than left blank, because
-  // "takes no argument" and "nobody wrote it down" are different facts and
-  // `LoadMyContext` is genuinely the first.
+  const category = body.category ?? null;
+  if (category !== null) {
+    const what = el('p', 'small');
+    what.append(...ctx.t('clih.catwhat', { name: category.category }), ' ', category.description);
+    host.append(what);
+  }
+
+  section(ctx, host, 'clih.s2');
+  // Owner review 2026-09-06: "most if not all the slash commands does not shows
+  // parameters like the cli commands does" — and they did not, though 90 of the
+  // 91 files had declared it since they were generated. `mono` for the reason
+  // the flag names are mono: it is literal text a reader types. The absence is
+  // NAMED rather than left blank, because "takes no argument" and "nobody wrote
+  // it down" are different facts and `LoadMyContext` is genuinely the first.
   const takes = el('p', 'small');
   if (typeof body.argumentHint === 'string' && body.argumentHint !== '') {
     takes.append(...ctx.t('clih.slashargs'), ' ', mono(body.argumentHint));
@@ -321,9 +507,42 @@ function paintSlash(ctx, host, body) {
   }
   host.append(takes);
 
+  // The generated specimen — what `mycontext examples <category> --short`
+  // answers, never a sentence written here. 29 hand-written examples are the
+  // drift this project measures in days.
+  if (category !== null && typeof category.example === 'string' && category.example !== '') {
+    const eg = el('p', 'small');
+    eg.append(...ctx.t('clih.eg'), ' ', mono(category.example));
+    host.append(eg);
+  }
+
+  section(ctx, host, 'clih.s3');
   const who = el('p', 'small');
   who.append(...ctx.t(body.modelInvocable === true ? 'clih.slashmodel' : 'clih.slashuser'));
-  host.append(spaced(who));
+  host.append(who);
+
+  const runs = Array.isArray(body.runs) ? body.runs : [];
+  if (runs.length > 0) {
+    const line = el('p', 'small');
+    line.append(...ctx.t('clih.runs'));
+    for (const [i, run] of runs.entries()) {
+      line.append(i === 0 ? ' ' : ', ');
+      line.append(subjectLink(ctx, run.kind, run.id, run.label, goto));
+      // The exact invocations behind the link, where they are not simply the
+      // subject's own name: `/discard` runs `review discard`, `review list` and
+      // `review show`, and all three are one subject on this card.
+      const paths = Array.isArray(run.paths) ? run.paths : [];
+      const detail = paths.filter((p) => `mycontext ${p}` !== run.label && p !== run.label);
+      if (detail.length === 0) continue;
+      line.append(' (');
+      for (const [j, p] of detail.entries()) {
+        if (j > 0) line.append(', ');
+        line.append(mono(p));
+      }
+      line.append(')');
+    }
+    host.append(spaced(line));
+  }
 }
 
 /**
@@ -347,6 +566,10 @@ function paintSlash(ctx, host, body) {
  * which is what makes it safe on text this screen did not author.
  */
 function paintTopic(ctx, host, body) {
+  // A topic fills the first section and no other, and that is the point: it IS
+  // a document. Forcing it to grow a "what it takes" table would be the defect
+  // this skeleton exists to remove, in the opposite direction.
+  section(ctx, host, 'clih.s1');
   const how = el('p', 'small');
   how.append(...ctx.t('clih.topichow', { cmd: body.label }));
   host.append(how);
@@ -364,7 +587,7 @@ function paintTopic(ctx, host, body) {
  * the ANSWERS as well: two reads in flight settle in whatever order the server
  * chooses, and without it the slower of the two would paint last.
  */
-async function paintSubject(ctx, pane, subject, seq, current) {
+async function paintSubject(ctx, pane, subject, seq, current, goto) {
   pane.replaceChildren();
   if (subject === null) {
     const hint = el('p', 'small');
@@ -391,7 +614,7 @@ async function paintSubject(ctx, pane, subject, seq, current) {
   }
   if (subject.kind === 'command') paintCommand(ctx, pane, body);
   else if (subject.kind === 'tool') paintTool(ctx, pane, body);
-  else if (subject.kind === 'slash') paintSlash(ctx, pane, body);
+  else if (subject.kind === 'slash') paintSlash(ctx, pane, body, goto);
   else paintTopic(ctx, pane, body);
 }
 
@@ -459,6 +682,24 @@ export async function paintCliHelp(ctx, host) {
 
   let seq = 0;
   const current = () => seq;
+  /**
+   * Follow a cross-reference by MOVING THE PICKER, so the control and the pane
+   * cannot come to disagree about which subject is on screen — and so that a
+   * reader who arrived at `mycontext review` through `/mycontext:discard` can
+   * see where they are and go back the way any other reader would.
+   *
+   * A target the endpoint does not serve is ignored rather than painted as an
+   * error: `select.value = …` on a value no option carries silently sets '',
+   * which would blank the card. The roster is the endpoint's own, so this is
+   * unreachable today and is guarded because a link is worth less than a
+   * screen.
+   */
+  const goto = (kind, id) => {
+    const value = `${kind}/${id}`;
+    if (!index.subjects.some((s) => `${s.kind}/${s.id}` === value)) return;
+    select.value = value;
+    select.dispatchEvent(new Event('change'));
+  };
   select.addEventListener('change', () => {
     seq += 1;
     const value = select.value;
@@ -469,7 +710,7 @@ export async function paintCliHelp(ctx, host) {
     const row = subject === null
       ? null
       : index.subjects.find((s) => s.kind === subject.kind && s.id === subject.id) ?? null;
-    void paintSubject(ctx, pane, row, seq, current);
+    void paintSubject(ctx, pane, row, seq, current, goto);
   });
-  await paintSubject(ctx, pane, null, seq, current);
+  await paintSubject(ctx, pane, null, seq, current, goto);
 }
