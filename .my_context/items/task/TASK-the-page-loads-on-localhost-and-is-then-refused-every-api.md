@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: Opening the console by its most natural hostname served a working-looking page that could never fetch anything, and no nonce or restart could fix it.
-summary_of: ad3a0dc35e32ce1b
+summary_of: 84391fcaeb9e9200
 scope:
   - src/ui/server.ts
 tags:
@@ -22,7 +22,9 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-09-05
 valid_until: null
-checksum: 2d63df2e640c1fc5
+checksum: c084a08ed9ef53c4
+state: done
+verified_on: 2026-09-05
 ---
 
 # the page loads on localhost and is then refused every API call for the life of the tab

@@ -23,9 +23,11 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-09-05
 valid_until: null
-checksum: 763fd01cfcdfb47a
+checksum: c9f4f8d3fb9243c4
 state: done
 verified_on: 2026-09-05
+plan: walk
+seq: "138"
 ---
 
 # Learn cross-links a superseded item and a closed task, and its fourth row links nothing at all

@@ -23,7 +23,10 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-09-05
 valid_until: null
-checksum: 5865d12bebb8d74c
+checksum: 7a43797e2e4ac224
+plan: live
+seq: "20"
+state: todo
 ---
 
 # a delegated worker can still run a git command that rewrites the shared tree, and the rule alone has not stopped it

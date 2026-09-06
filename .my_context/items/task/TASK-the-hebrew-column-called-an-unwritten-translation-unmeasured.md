@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: Eighteen tutorial rows said nobody had looked at the Hebrew, when in fact the file was simply not written yet and was known to be owed.
-summary_of: 334f0821c7dd1400
+summary_of: 236b2ce8ddedd0e0
 scope:
   - src/ui/read-model.ts
 tags:
@@ -23,7 +23,9 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-09-05
 valid_until: null
-checksum: 33f2bcda8550feea
+checksum: 903838e2fb2d4a87
+state: done
+verified_on: 2026-09-05
 ---
 
 # the hebrew column called an unwritten translation unmeasured when the manifest already named it

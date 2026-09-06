@@ -207,7 +207,7 @@ Nine items. Two are mechanical (the code says something different from the surve
 | `Status` has five members and gains none here | `core/types.ts` · `export type Status = 'active' \| 'draft' \| 'superseded' \| 'deprecated' \| 'validated';` · ~2 |
 | Promotion is one `updateItem` with `origin: 'human'` | `cli/commands/review.ts` · `const patch: UpdateInput = { id: item.id, status: 'active', origin: 'human' };` · ~1131 |
 | The draft queue definition the bulk promote must not widen | `core/select.ts` · `export function reviewQueue(items: Item[], type: string \| null = null): Item[] {` · ~912 |
-| A stranger's `sourceFile` would make `doctor` **error** on every imported item | `doctor/checks.ts` · `        level: 'error', code: 'source_missing', item: item.id,` · ~578 |
+| A stranger's `sourceFile` would make `doctor` **error** on every imported item | `doctor/checks.ts` · `        level: 'error', code: 'source_missing', item: item.id,` · ~581 |
 
 ### Config — what may be written, and what is refused by name
 

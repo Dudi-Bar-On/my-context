@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: "Nothing on the command builder is taken on trust: every input is tested by running the command and checking what it actually did."
-summary_of: bc34236ee6e6134c
+summary_of: 8ed2c55ce560f61c
 summary_was:
   - "2026-09-06 Nothing on the command builder is taken on trust: a plan is written for the whole surface, executed, and every failure fixed until it passes."
 scope:
@@ -30,7 +30,12 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-09-06
 valid_until: null
-checksum: 621506344652bf2d
+checksum: 809331acd453271a
+plan: builder
+seq: "11"
+state: todo
+priority: "3"
+needs: builder/9
 ---
 
 # the composer is tested as a user would use it, every field, every value, every combination

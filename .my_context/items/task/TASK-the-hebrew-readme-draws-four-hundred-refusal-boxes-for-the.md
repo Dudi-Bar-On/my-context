@@ -28,7 +28,10 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-09-05
 valid_until: 2026-09-05
-checksum: 64268ef6b601a325
+checksum: f092c82beaa809a1
+plan: docsys
+seq: "10"
+state: todo
 ---
 
 # the hebrew readme draws four hundred refusal boxes for the markup that makes it hebrew

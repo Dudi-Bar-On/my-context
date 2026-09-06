@@ -20,6 +20,9 @@ import { isSnapshot, snapshotText } from '../core/reference.ts';
 import { RATIONALE_NOT_INJECTED } from '../core/render-item.ts';
 import { checksum } from '../core/slug.ts';
 import { projectionMismatches, updatesFor } from '../core/tag-projection.ts';
+import {
+  loadTutorialManifest, TUTORIAL_MANIFEST_PATH, type TutorialManifestEntry,
+} from '../core/tutorial-manifest.ts';
 import { SUMMARY_MAX_CHARS } from '../core/validate.ts';
 import type { Item } from '../core/types.ts';
 import { chunkDocument } from '../ingest/chunk.ts';
@@ -908,6 +911,119 @@ export function checkWatchedDocsServable(repoRoot: string, config: Config): Find
   }
 
   return findings;
+}
+
+/**
+ * **A tutorial file the corpus watches and serves that the tutorial ROSTER
+ * does not name** (`plan:docsys seq:4`, the tutorial half, carrying out
+ * `REQ-a-repository-document-is-viewable-in-the-ui-only-once-it-is` and
+ * `REQ-the-two-readmes-are-the-base-of-a-documentation-system-that`).
+ *
+ * **Why this exists at all, when the READMEs needed nothing like it.**
+ * `LESSON-neither-readme-fits-in-a-snapshot-so-the-corpus-s-record-of` settled
+ * that the corpus's record of a watched document is the pair (`watchedDocs`
+ * membership, a manifest entry served fresh off disk) and never a copy, so
+ * there is nothing that can be silently stale. `checkWatchedDocsServable`
+ * above binds the two halves of that pair together. For the READMEs that is
+ * the whole story: two files, two boundaries, both measured.
+ *
+ * The tutorials have a THIRD boundary the READMEs do not, and it IS a copy:
+ * `docs/tutorials/manifest.json` is a checked-in, DERIVED roster
+ * (`scripts/build-tutorial-manifest.ts`, run by hand via
+ * `npm run gen:tutorials`). Its drift against the four SURFACES it clusters is
+ * already gated — `test/core/tutorial-manifest.test.ts` globs those surfaces
+ * itself and fails when a file is claimed twice or not at all. Its drift
+ * against the FILE ROSTER was gated by nothing, in the one direction that is
+ * silent:
+ *
+ *  - A manifest entry naming a file that is not there is DISCLOSED already:
+ *    `apiTutorials` draws that row `unmeasured` (English) or `todo` (Hebrew),
+ *    and `heRollup.total` excludes it. A reader sees the gap. Not reported
+ *    here — a second, quieter copy of a fact the screen already draws is how
+ *    the two come to disagree.
+ *  - A tutorial file on disk that NO entry names is silent in every surface at
+ *    once. `watchedDocs`' `docs/**\/*.md` claims it, `isServableDocPath` will
+ *    serve it at `GET /api/doc/:id`, the capture nudge fires on editing it —
+ *    and the Tutorials screen never lists it, `heRollup` never counts it, and
+ *    `test/docs/tutorial-facts.test.ts` never reads it, because that gate
+ *    derives its document set from this same manifest. Its version string, its
+ *    hook roster and its budget numbers can then go stale forever with nothing
+ *    saying so, while the screen beside it reports the set complete. That is a
+ *    stale claim served silently, which is exactly what
+ *    `REQ-the-two-readmes-are-the-base-of-a-documentation-system-that` asks to
+ *    be made VISIBLE rather than merely unlikely.
+ *
+ * **Today the answer is zero and that zero is measured, not assumed** — 48
+ * files on disk under `docs/tutorials/`, 24 entries naming 48 files, and the
+ * two sets are equal (2026-09-06). `STD-a-measured-zero-is-drawn-and-named-an-
+ * unmeasured-thing-is`: the check exists so that the day the two diverge,
+ * `doctor` says which file, instead of a reader discovering it by counting
+ * rows.
+ *
+ * **Silent on a project that has no tutorial system**, which is nearly every
+ * project this plugin is installed into: no `docs/tutorials/manifest.json`, no
+ * roster claim, no finding. A manifest that EXISTS and cannot be parsed is a
+ * different matter and is reported, because `apiTutorials` catches that same
+ * failure and answers an empty list — a blank Tutorials screen with no
+ * explanation is the unmeasured-drawn-as-zero this codebase forbids.
+ *
+ * **One directory read, never a repository walk.** The question is about one
+ * directory's contents, `checkDeadScopes` and `checkWatchedDocsServable`
+ * already pay for the bounded walk twice, and `doctor` runs on every
+ * `/api/status`.
+ *
+ * `PERSON` rather than `ACK`: the finding names no item, and the fix is
+ * `npm run gen:tutorials` or a moved file — both outside my_context.
+ */
+export function checkTutorialRoster(repoRoot: string): Finding[] {
+  const manifestAbs = path.join(repoRoot, ...TUTORIAL_MANIFEST_PATH.split('/'));
+  if (!existsSync(manifestAbs)) return [];
+
+  let entries: TutorialManifestEntry[];
+  try {
+    entries = loadTutorialManifest(repoRoot);
+  } catch (err) {
+    return [{
+      level: 'warn', code: 'tutorial_roster_unreadable',
+      remedy: PERSON,
+      message:
+        `${TUTORIAL_MANIFEST_PATH} exists but cannot be read as a tutorial roster: ` +
+        `${err instanceof Error ? err.message : String(err)}. GET /api/tutorials catches this ` +
+        `same failure and answers an empty list, so the Tutorials screen draws nothing and says ` +
+        `nothing — this line is the only place that discrepancy is stated. Fix the file, or ` +
+        `regenerate it with \`npm run gen:tutorials\`.`,
+    }];
+  }
+
+  // The directory is `manifest.json`'s own, never a second literal: the roster
+  // and the files it rosters live together by construction, and two spellings
+  // of one path is how a check comes to measure a directory nothing writes to.
+  const dir = TUTORIAL_MANIFEST_PATH.split('/').slice(0, -1).join('/');
+  let onDisk: string[];
+  try {
+    onDisk = readdirSync(path.join(repoRoot, ...dir.split('/')), { recursive: true, withFileTypes: true })
+      .filter((e) => e.isFile() && e.name.endsWith('.md'))
+      .map((e) => relPosix(repoRoot, path.join(e.parentPath, e.name)));
+  } catch {
+    // The roster exists and its own directory does not, or cannot be read.
+    // Every entry then names an absent file, which `apiTutorials` already
+    // draws row by row — nothing to add here that the screen does not say.
+    return [];
+  }
+
+  const named = new Set(entries.flatMap((e) => [e.enFile, e.heFile]));
+  return onDisk.filter((rel) => !named.has(rel)).sort().map((rel): Finding => ({
+    level: 'warn', code: 'tutorial_unlisted',
+    remedy: PERSON,
+    message:
+      `"${rel}" is a tutorial file that no entry in ${TUTORIAL_MANIFEST_PATH} names. The corpus ` +
+      `watches it and GET /api/doc/${rel} will serve it, but the Tutorials screen does not list ` +
+      `it, the Hebrew rollup does not count it, and test/docs/tutorial-facts.test.ts does not ` +
+      `check its version, hook, profile or budget claims — that gate reads the manifest, so an ` +
+      `unlisted tutorial's facts can go stale with nothing failing. Run ` +
+      `\`npm run gen:tutorials\` to re-derive the roster, or move the file out of ${dir}/ if it ` +
+      `is not a tutorial.`,
+  }));
 }
 
 /**
@@ -4010,6 +4126,7 @@ export function runChecks(opts: {
     () => checkSourceDrift(opts.repoRoot, opts.items),
     () => checkDeadScopes(opts.repoRoot, opts.items, opts.config),
     () => checkWatchedDocsServable(opts.repoRoot, opts.config),
+    () => checkTutorialRoster(opts.repoRoot),
     () => checkScopePolicy(opts.items, opts.config),
     () => checkUnknownCategory(opts.items, opts.config),
     () => checkSkippedConfigKeys(opts.config),

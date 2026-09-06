@@ -24,7 +24,10 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-09-05
 valid_until: null
-checksum: e418d5c1f49fce05
+checksum: a70ef1007771b01a
+plan: walk
+seq: "139"
+state: todo
 ---
 
 # a screen shows the words not read yet for over a second while it is reading, and sets no busy state

@@ -933,7 +933,7 @@ The palette's read execution of `mycontext search`, and its live glob tester.
 - Test: extend `test/ui/read-model-work.test.ts`
 
 **Interfaces:**
-- Consumes: `filterItems` (`core/search.ts` · `export function filterItems(items: Item[], filters: ItemFilters, config: Config): Item[] {` · ~235), `anyFilterSet` (`core/search.ts` · `export function anyFilterSet(filters: ItemFilters): boolean {` · ~272), `matchesAnyGlob` (`core/paths.ts` · `export function matchesAnyGlob(subject: string, patterns: string[]): boolean {` · ~70), `listRepoFiles` (`doctor/checks.ts` · `export function listRepoFiles(repoRoot: string, limit: number = FILE_LIMIT): string[] {` · ~375), `injection`.
+- Consumes: `filterItems` (`core/search.ts` · `export function filterItems(items: Item[], filters: ItemFilters, config: Config): Item[] {` · ~235), `anyFilterSet` (`core/search.ts` · `export function anyFilterSet(filters: ItemFilters): boolean {` · ~272), `matchesAnyGlob` (`core/paths.ts` · `export function matchesAnyGlob(subject: string, patterns: string[]): boolean {` · ~70), `listRepoFiles` (`doctor/checks.ts` · `export function listRepoFiles(repoRoot: string, limit: number = FILE_LIMIT): string[] {` · ~378), `injection`.
 - Produces:
   - `apiSearch(ws, url): JsonResult` — `GET /api/search?text=&type=&tag=&path=&status=&relation=&limit=` → `{ items: { id; type; title; status; always; scope; injected; phrase }[]; total: number; truncated: boolean }`. The predicate is `filterItems` — the ONE filter behind `query_items` and `mycontext search` (`core/search.ts` · `The corpus filter behind BOTH` · ~151); this endpoint is its third caller, not a fourth spelling. At least one filter required (`anyFilterSet`, mirroring `cli/commands/search.ts` · `At least one filter is required. To list the whole corpus, that is` · ~68); default limit 50 (`cli/commands/search.ts` · `const DEFAULT_LIMIT = 50;` · ~73), truncation reported, never silent; `status`/`relation` validated against the mirrored enum lists below; `type` validated against `Object.keys(ws.config.categories)` (`Object.hasOwn`-safe: the map is null-prototype, `core/config.ts` · `const categories: Record<string, ResolvedCategory> = Object.create(null);` · ~1513).
   - `apiGlob(ws, url): JsonResult` — `GET /api/glob?pattern=a/**,b/**` → `{ patterns: string[]; total: number; sample: string[]; fileWalkTruncated: boolean }`. `pattern` is comma-separated exactly as `--scope` takes it (`cli/index.ts` · `[--scope "a/**,b/**"] [--tags "a,b"] ` · ~500); matching is `matchesAnyGlob(file, patterns)` over `listRepoFiles(repoRoot)`; `sample` is the first 200 matches with `total` the real count. **This is the one legitimate `matchesAnyGlob` call in the UI**: the question is "which files match this pattern" — a question about a pattern the user is composing, not about which items govern a file. The govern question stays with `matchesScope`/`injection()` (the defect `matchesScope`'s own comment names — `select.ts` · `matchesAnyGlob(path, item.scope)` · ~554), and the module comment says so at the call site.
@@ -1122,7 +1122,7 @@ export function apiGlob(ws: Workspace, url: URL): JsonResult {
       patterns,
       total: matches.length,
       sample: matches.slice(0, GLOB_SAMPLE_CAP),
-      fileWalkTruncated: files.length >= 20_000, // listRepoFiles' own bound (`doctor/checks.ts` · `const FILE_LIMIT = 20_000;` · ~309)
+      fileWalkTruncated: files.length >= 20_000, // listRepoFiles' own bound (`doctor/checks.ts` · `const FILE_LIMIT = 20_000;` · ~312)
     },
   };
 }

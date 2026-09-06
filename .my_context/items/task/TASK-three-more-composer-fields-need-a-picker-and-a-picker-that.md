@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: The remaining list-backed inputs depend on a decision about how a long list is presented at all.
-summary_of: f25225ae5c68819a
+summary_of: 261768844838c2d9
 scope:
   - src/ui/public/lib/palette-defs.js
   - src/ui/public/screens/palette.js
@@ -25,7 +25,12 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-09-06
 valid_until: null
-checksum: 1854a9d626dbf2b1
+checksum: 4451204c7d0d94a6
+plan: builder
+seq: "10"
+state: todo
+priority: "3"
+needs: builder/9
 ---
 
 # three more composer fields need a picker, and a picker that can hold nine hundred entries

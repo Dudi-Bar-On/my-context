@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: The command that answers what to work on was listing tasks that had been abandoned, and no author could have prevented it.
-summary_of: 131ee81fc6f9caf1
+summary_of: e8683c43820e5f47
 scope:
   - src/core/needs.ts
 tags:
@@ -21,7 +21,9 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-09-06
 valid_until: null
-checksum: 58e6bfe81ffea620
+checksum: be415bd9e6b6d50d
+state: done
+verified_on: 2026-09-06
 ---
 
 # mycontext ready offered six cancelled tasks as work, because it never read status

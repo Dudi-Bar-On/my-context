@@ -1712,7 +1712,7 @@ The guarantee is conditional on corpus ≲ 10,000 items: the Markdown fallback m
 - Test: `test/doctor/corpus-size.test.ts`
 
 **Interfaces:**
-- Consumes: `Finding` (`checks.ts` · `export interface Finding {` · ~75); `Item[]` already flowing into `runChecks` via `opts.items`.
+- Consumes: `Finding` (`checks.ts` · `export interface Finding {` · ~78); `Item[]` already flowing into `runChecks` via `opts.items`.
 - Produces: `checkCorpusSize(items: Item[]): Finding[]`; `export const FALLBACK_CEILING_WARN_ITEMS = 5000`.
 
 - [ ] **Step 1: Write the failing test**

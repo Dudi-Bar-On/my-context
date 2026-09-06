@@ -27,7 +27,10 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-09-05
 valid_until: 2026-09-05
-checksum: 726f7f975410532b
+checksum: d4fd39fbb228cf06
+plan: docsys
+seq: "9"
+state: todo
 ---
 
 # build the help system the documentation screen was ruled to be, from the two readmes

@@ -238,7 +238,7 @@ const GLOB_SAMPLE_CAP = 200;
  *
  * **A caller-supplied pattern cannot escape the workspace, structurally.** The
  * pattern never reaches the filesystem: the walk is rooted at the repository
- * and emits root-relative POSIX paths (`doctor/checks.ts` · `if (entry.isFile()) out.push(relPosix(repoRoot, path.join(dir, entry.name)));` · ~329),
+ * and emits root-relative POSIX paths (`doctor/checks.ts` · `if (entry.isFile()) out.push(relPosix(repoRoot, path.join(dir, entry.name)));` · ~332),
  * so a pattern normalizing to `../…` or to an absolute path matches no subject
  * that exists, and a sibling directory whose name merely starts with the
  * root's — the case `ui/static.ts`'s containment check is written around — is

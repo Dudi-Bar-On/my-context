@@ -158,7 +158,7 @@ function catalogued(id, values) {
  * `reports/V2-HANDOVER.md:437` had the design and recorded it as unbuilt:
  * *"`Finding` in `src/doctor/` must declare its own remedies, never a UI-side
  * table"*. It is built. Every check populates `Finding.remedy`
- * (`src/doctor/checks.ts` · `export type Remedy =` · ~190), and what is left here
+ * (`src/doctor/checks.ts` · `export type Remedy =` · ~193), and what is left here
  * is the resolution of a route into the shape the control takes.
  *
  * The client sends an id and a value bag and never a command (spec §3.1), which
@@ -486,7 +486,7 @@ const QUOTED_LITERAL = /"([^"\n]+)"|`([^`\n]+)`/g;
  * **The rule is the producer's own punctuation, never a guess at what looks
  * like a path.** Every message in `src/doctor/checks.ts` that embeds a value
  * wraps it in double quotes
- * (`src/doctor/checks.ts` · `scope glob "${glob}" matches no file in the repository.` · ~793)
+ * (`src/doctor/checks.ts` · `scope glob "${glob}" matches no file in the repository.` · ~796)
  * and every message that names a command wraps it in backticks. A heuristic
  * over slashes and asterisks would isolate half a sentence the first time one
  * of them writes "and/or", and it would have to be re-guessed every time a

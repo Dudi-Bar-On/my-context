@@ -24,7 +24,11 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-09-06
 valid_until: null
-checksum: 29487cdd93ce399e
+checksum: 5d8ff933e1ecd4c6
+plan: builder
+seq: "9"
+state: todo
+priority: "2"
 ---
 
 # four composer fields have a closed domain and still ask you to type it
