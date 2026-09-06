@@ -153,7 +153,7 @@ Nine items. Two are mechanical (the code says something different from the surve
 | `state/focus.json` — per machine | `core/focus.ts` · `  return path.join(root, 'state', 'focus.json');` · ~354 |
 | `.revisions/` — **holds discarded proposal text** | `core/revision-log.ts` · `export function revisionDir(root: string): string {` · ~108 and `core/revision.ts` · `revision log, which is its store.` · ~939 |
 | `.ingest/` exists | `ingest/session.ts` · `  return path.join(root, '.ingest');` · ~93 |
-| `.staging/` exists | `lesson/derive.ts` · `  return path.join(root, '.staging');` · ~38 |
+| `.staging/` exists | `lesson/staging.ts` · `  return path.join(root, '.staging');` · ~66 |
 | The index is a WAL SQLite file, hence three on-disk files | `core/store.ts` · `    db.exec('PRAGMA journal_mode = WAL;');` · ~155 |
 | The index rebuilds from Markdown unconditionally | `core/open-store.ts` · `export function openRebuiltStore(ws: Workspace, options: OpenStoreOptions = {}): OpenedStore {` · ~75 |
 
@@ -244,7 +244,7 @@ Nine items. Two are mechanical (the code says something different from the surve
 | Flag readers | `cli/commands/registry.ts` · `export function flag(args: string[], name: string): string \| null {` · ~193, `cli/commands/registry.ts` · `export function listFlag(args: string[], name: string): string[] \| null {` · ~211, `cli/commands/registry.ts` · `export function hasFlag(args: string[], name: string): boolean {` · ~299, `cli/commands/registry.ts` · `export function positionals(args: string[], valueFlags: string[]): string[] {` · ~304 |
 | The confirmation gate, and the non-interactive refusal | `cli/commands/review.ts` · `export function confirmAction(` · ~860 |
 | Subcommand dispatch to imitate for `pack` | `cli/commands/review.ts` · `export const SUBCOMMANDS = [` · ~40 |
-| …and its per-subcommand flag table | `cli/commands/review.ts` · `const REVIEW_FLAGS: Record<string, { allowed: string[]; values: string[] }> = {` · ~75 |
+| …and its per-subcommand flag table, since LIFTED out of the command | `core/command-flags.ts` · `export const SUBCOMMAND_FLAGS: Record<string, Record<string, FlagSpec>> = {` · ~1399, bound at `cli/commands/review.ts` · `const REVIEW_FLAGS = SUBCOMMAND_FLAGS['review'];` · ~76 |
 | Mutating corpus access, always rebuilt | `cli/commands/context.ts` · `export function openMutateContext(ws: Workspace): { ctx: MutationContext; errors: LoadError[] } {` · ~67 |
 | Load errors reported on every path | `cli/commands/context.ts` · `export function emitLoadErrors(errors: LoadError[], out: Emit): void {` · ~15 |
 | One `my_context:` line, never a stack trace | `cli/commands/context.ts` · `export function toCliMessage(err: unknown): string {` · ~29 |

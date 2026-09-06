@@ -431,8 +431,8 @@ Every claim above was taken from one of these, and each was fetched or executed 
 **Web** — https://shoelace.style/ (sunset notice) · https://webawesome.com/docs/components/tree/ ·
 https://dhtmlx.com/docs/products/dhtmlxTree/ (pricing and GPL v2) ·
 https://www.w3.org/WAI/ARIA/apg/patterns/treeview/examples/treeview-1a/ and its
-`tree.js` / `treeitem.js` / `treeitemClick.js` / `tree.css` ·
-https://www.cssscript.com/best-tree-view/ · https://www.cssscript.com/hierarchical-data-plain-tree/
+`tree.js` / `treeitem.js` / `treeitemClick.js` / `tree.css`
+· https://www.cssscript.com/best-tree-view/ · https://www.cssscript.com/hierarchical-data-plain-tree/
 (links `github.com/metadream/plain-tree`, which returns 404) ·
 https://github.com/petrbroz/simple-treeview.
 

@@ -471,8 +471,8 @@ banner.
 
 **Highlighters** — https://registry.npmjs.org/highlight.js (11.12.0, **BSD-3-Clause**) ·
 `@highlightjs/cdn-assets@11.12.0`: `es/highlight.min.js` 129,152 B, `styles/github-dark.min.css`
-1,315 B, 36 grammars, real ESM, `element.innerHTML = result.value` in `highlightElement` ·
-https://registry.npmjs.org/prismjs (1.30.0, MIT, published 2025-03-10; `dist-tags` is
+1,315 B, 36 grammars, real ESM, `element.innerHTML = result.value` in `highlightElement`
+· https://registry.npmjs.org/prismjs (1.30.0, MIT, published 2025-03-10; `dist-tags` is
 `{"latest":"1.30.0"}` only) · https://github.com/orgs/PrismJS/discussions/3531 (v2: no date, no
 release, security PRs only) · https://registry.npmjs.org/shiki (4.4.3, MIT) ·
 https://shiki.style/guide/bundles ("Full bundle 6.4 MB (minified), 1.2 MB (gzip)"; web bundle
