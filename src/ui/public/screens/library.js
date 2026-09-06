@@ -782,11 +782,29 @@ export async function render(root, ctx) {
   // card now has a wrapper. That is deliberate: sticky earns its keep beside a
   // long document, not above a card the reader is meant to scroll to.
   //
-  // `data-role` stays deliberately absent here — the two roles this screen
-  // spends are `nav` (wayfinding) and `content` (the reading surface), and a
-  // file browser is neither; a third hue would extend the card-role system,
-  // which the ruling that established it asks not to be done casually.
+  // `data-role="nav"`, corrected 2026-09-06 after the owner asked why this
+  // card had no accent when Tutorials beside it does.
+  //
+  // It was left roleless on the reasoning that a file browser is neither
+  // wayfinding nor a reading surface, and that a third hue would extend the
+  // card-role system the ruling asks not to be extended casually. Re-reading
+  // that system's own definition settles it the other way and needs no third
+  // hue: `nav` is "a card whose job is wayfinding — a picker, a table of
+  // contents, an index". A corpus file tree is precisely a picker, and the
+  // thing it is NOT is the reading surface — that is `/doc.html`, in its own
+  // tab, which is where a file actually opens.
+  //
+  // Two consequences, both wanted. The card gains the teal spine and heading
+  // that every other wayfinding card on this screen already has, so the left
+  // column reads as one kind of thing. And `.card[data-role="nav"] .docrow`
+  // tints this card's own rows to match, which it draws four of.
+  //
+  // It does NOT become sticky: `.two.align-top>[data-role="nav"]` is a
+  // direct-child selector and this card sits inside `.libcol`. That is the
+  // rule that caused the overlap he reported earlier, and it stays out of
+  // reach by construction rather than by luck.
   const files = el('div', 'card pane');
+  files.dataset.role = 'nav';
   main.append(files);
   const filesHead = el('h3');
   filesHead.append(...ctx.t('lib.files'));

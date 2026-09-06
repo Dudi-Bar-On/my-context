@@ -1010,6 +1010,12 @@ export const strings = {
   'exec.go': 'Run it',
   'exec.cancel': 'Cancel',
   'exec.changes': 'What changes — in force, then proposed',
+  // The command that produced everything under it. Owner request 2026-09-06:
+  // the card drew `exec.exit` and `exec.said` — both about the ANSWER — and
+  // nothing named the QUESTION. It is the argv that RAN and never the line
+  // currently composed, which is why `lib/command-actions.js` draws it from
+  // the same string it stamped on the region as `data-cmdkey`.
+  'exec.ran': 'What was run',
   'exec.exit': 'exit {code}',
   'exec.noexit': 'the command did not exit under observation',
   // The label over the command's own output. Owner, 2026-09-03: the run
@@ -1683,8 +1689,8 @@ export const strings = {
   // (`DEC-the-app-is-what-is-built-the-mockup-is-history-and-a-gap`); the ones
   // that still say something true — the mirror sentences, the tier names, the
   // "to write" chip, what a ✅ means — are REUSED here rather than respelled.
-  's.library': 'Library',
-  'lib.h': 'Library',
+  's.library': 'Help',
+  'lib.h': 'Help',
   'lib.v': 'the READMEs and the tutorials, by title, opened in its own tab',
   'lib.sub': 'One list, not two screens, and it holds what a reader reads: this project’s README and its tutorials, each named by its own title and never by its path.',
   'lib.tuts': 'Tutorials',
@@ -1729,6 +1735,8 @@ export const strings = {
   'clih.exhow': 'Every example above is real output. It was produced by running the command against a fixed sample project, and a test re-runs the same command and fails if the text ever stops matching.',
   'clih.noargs': 'This tool takes no arguments at all.',
   'clih.req': 'required',
+  'clih.slashargs': 'Takes:',
+  'clih.slashnoargs': 'Takes no argument.',
   'clih.slashmodel': 'Claude may run this one itself. It is the only command file that allows it.',
   'clih.slashuser': 'This one is yours to type. The command file tells Claude Code not to invoke it on its own.',
   'clih.topichow': 'This is the text {mv:cmd} prints in a terminal, exactly as it prints it.',
