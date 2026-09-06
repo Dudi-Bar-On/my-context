@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: A background component quietly gives up on recording what it did, and the only evidence is a stray file nobody looks at.
-summary_of: 7fdf61dc6c9417ef
+summary_of: 6912332d677ec2a4
 scope:
   - src/core/ui-server-upkeep.ts
 tags:
@@ -15,18 +15,19 @@ tags:
   - observability
   - "plan:governance"
   - "seq:4"
-  - "state:todo"
+  - "state:done"
 origin: human
 source_file: null
 source_anchor: null
 source_checksum: null
 valid_from: 2026-09-06
 valid_until: null
-checksum: 7fe3ca2153bfbbb4
+checksum: 61558ef59e2b942e
 plan: governance
 seq: "4"
-state: todo
+state: done
 priority: "3"
+verified_on: 2026-09-07
 ---
 
 # the upkeep discards a failed state write by design, and nothing counts how often that happens

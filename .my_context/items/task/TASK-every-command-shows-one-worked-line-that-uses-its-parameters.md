@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: Each command gets a full example built from what its own options declare, so nobody has to guess a format.
-summary_of: 553a13c2ad0c84fe
+summary_of: 995e17d3ba963790
 scope:
   - src/ui/read-model-cli-help.ts
   - src/ui/public/screens/cli-help.js
@@ -18,19 +18,20 @@ tags:
   - cli
   - "plan:library"
   - "seq:4"
-  - "state:todo"
+  - "state:done"
 origin: human
 source_file: null
 source_anchor: null
 source_checksum: null
 valid_from: 2026-09-06
 valid_until: null
-checksum: fdd8bc23ae876711
+checksum: c6d645dd8a381edd
 plan: library
 seq: "4"
-state: todo
+state: done
 priority: "2"
 needs: builder/4
+verified_on: 2026-09-07
 ---
 
 # every command shows one worked line that uses its parameters, with real values

@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: Notes written near the end of one session say plainly, when delivered, that their running commentary is history.
-summary_of: 8c6ab6afee89dbe1
+summary_of: 820f1a03550ac2ad
 scope:
   - src/hooks/session-start.ts
   - src/core/handover-ask.ts
@@ -15,18 +15,19 @@ tags:
   - handover
   - "plan:handover"
   - "seq:17"
-  - "state:todo"
+  - "state:done"
 origin: human
 source_file: null
 source_anchor: null
 source_checksum: null
 valid_from: 2026-09-06
 valid_until: null
-checksum: 31aa53f051e6a8cb
+checksum: e6f0b81cec84ecad
 plan: handover
 seq: "17"
-state: todo
+state: done
 priority: "2"
+verified_on: 2026-09-07
 ---
 
 # the handover says so when it is being read from a window that has ended

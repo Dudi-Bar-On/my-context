@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: The list of build-time tools this project allows is enforced by a test rather than by someone noticing.
-summary_of: 324555c6153ae3b5
+summary_of: 290faa475b65ddad
 scope:
   - package.json
   - scripts/**
@@ -17,18 +17,19 @@ tags:
   - packaging
   - "plan:governance"
   - "seq:5"
-  - "state:todo"
+  - "state:done"
 origin: human
 source_file: null
 source_anchor: null
 source_checksum: null
 valid_from: 2026-09-06
 valid_until: null
-checksum: 6dab8df8942348c1
+checksum: 9e0374098f5b5134
 plan: governance
 seq: "5"
-state: todo
+state: done
 priority: "2"
+verified_on: 2026-09-07
 ---
 
 # the enumerated devDependencies become a check instead of a sentence review keeps missing

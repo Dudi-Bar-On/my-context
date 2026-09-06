@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: One row per session, built by scanning the transcripts on disk and rebuildable from them at any time.
-summary_of: 1db04e3e4a079257
+summary_of: 0ecb489fb0fe5b5d
 scope:
   - src/core/**
   - src/cli/commands/**
@@ -16,18 +16,19 @@ tags:
   - ui
   - "plan:archive"
   - "seq:1"
-  - "state:todo"
+  - "state:done"
 origin: human
 source_file: null
 source_anchor: null
 source_checksum: null
 valid_from: 2026-09-05
 valid_until: null
-checksum: b9200c9be987d7d6
+checksum: 82517d11a44f9f84
 plan: archive
 seq: "1"
-state: todo
+state: done
 priority: "1"
+verified_on: 2026-09-07
 ---
 
 # the conversation index and the scanner that rebuilds it from disk

@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: An example someone copies from the help does not skip the step that shows them what it is about to do.
-summary_of: e316a43f42a00470
+summary_of: cb433ba129943bbd
 scope:
   - src/ui/read-model-cli-help.ts
 tags:
@@ -16,18 +16,19 @@ tags:
   - safety
   - "plan:library"
   - "seq:7"
-  - "state:todo"
+  - "state:done"
 origin: human
 source_file: null
 source_anchor: null
 source_checksum: null
 valid_from: 2026-09-06
 valid_until: null
-checksum: 94f8084a348b862a
+checksum: 277b9debf85765f0
 plan: library
 seq: "7"
-state: todo
+state: done
 priority: "2"
+verified_on: 2026-09-07
 ---
 
 # a copyable example of a write leaves the confirmation in place

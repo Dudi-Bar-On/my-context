@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: The help for capturing an item says how long it should be, but not what kind of thing it is.
-summary_of: fc06230e90d26803
+summary_of: bcd379c6c7f7bdd3
 scope:
   - src/ui/read-model-cli-help.ts
   - src/ui/public/screens/cli-help.js
@@ -18,18 +18,19 @@ tags:
   - slash
   - "plan:library"
   - "seq:3"
-  - "state:todo"
+  - "state:done"
 origin: human
 source_file: null
 source_anchor: null
 source_checksum: null
 valid_from: 2026-09-06
 valid_until: null
-checksum: b22f8c3f11a4f86c
+checksum: 321b0415294a634c
 plan: library
 seq: "3"
-state: todo
+state: done
 priority: "2"
+verified_on: 2026-09-07
 ---
 
 # a capture command tells you its shape and never what belongs in it

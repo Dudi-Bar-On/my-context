@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: The only way to stop being asked for handover notes is to switch off the whole feature, including the delivery people want to keep.
-summary_of: 5a548f58d87dc6e3
+summary_of: 4ba682c9e0de88de
 scope: []
 tags:
   - v2
@@ -14,19 +14,20 @@ tags:
   - handover
   - "plan:handover"
   - "seq:11"
-  - "state:todo"
+  - "state:done"
 origin: human
 source_file: "C:/Users/UserC/AppData/Local/Temp/hoswitch.md"
 source_anchor: null
 source_checksum: 1d833eab11587893
 valid_from: 2026-08-31
 valid_until: null
-checksum: 88ceea72d3e17ec3
+checksum: f90a53ac931ef23a
 plan: handover
 seq: "11"
-state: todo
+state: done
 priority: "2"
 source: owner suggestion, 2026-08-31
+verified_on: 2026-09-07
 ---
 
 # there is no way to keep the handover injected while turning the automatic ask off

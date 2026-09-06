@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: The screen that lists conversations and renders one, with prompts distinguished from answers.
-summary_of: 512cc4daee46ad77
+summary_of: 5bb7ccdf3bcdc206
 scope:
   - src/ui/public/screens/**
   - src/ui/public/strings/**
@@ -16,18 +16,19 @@ tags:
   - ui
   - "plan:archive"
   - "seq:3"
-  - "state:todo"
+  - "state:done"
 origin: human
 source_file: null
 source_anchor: null
 source_checksum: null
 valid_from: 2026-09-05
 valid_until: null
-checksum: 1ba4b2b62073e634
+checksum: 454b14ea57cfc52d
 plan: archive
 seq: "3"
-state: todo
+state: done
 priority: "2"
+verified_on: 2026-09-07
 ---
 
 # the conversation screen: a list, then a transcript, then folding and search

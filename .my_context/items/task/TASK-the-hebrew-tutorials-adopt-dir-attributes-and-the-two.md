@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: Both Hebrew document families keep code readable the same way, so a reader and a writer meet one convention.
-summary_of: 9437673e8468dcc3
+summary_of: 8585453f2aedf102
 scope:
   - docs/tutorials/**
   - scripts/**
@@ -16,18 +16,19 @@ tags:
   - rtl
   - "plan:docsys"
   - "seq:12"
-  - "state:todo"
+  - "state:done"
 origin: human
 source_file: null
 source_anchor: null
 source_checksum: null
 valid_from: 2026-09-06
 valid_until: null
-checksum: d8982cf568bd7f2a
+checksum: c937b3094275c4f1
 plan: docsys
 seq: "12"
-state: todo
+state: done
 priority: "3"
+verified_on: 2026-09-07
 ---
 
 # the Hebrew tutorials adopt dir attributes, and the two families stop disagreeing

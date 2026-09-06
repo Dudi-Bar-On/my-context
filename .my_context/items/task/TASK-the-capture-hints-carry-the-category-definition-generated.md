@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: Typing a capture shortcut in the terminal now says what that kind of item is, not just how long it should be.
-summary_of: 5c2ca295cf3e2bac
+summary_of: cef8e1ce98b4a41e
 scope:
   - src/plugin/commands.ts
   - commands/**
@@ -16,18 +16,19 @@ tags:
   - help
   - "plan:library"
   - "seq:8"
-  - "state:todo"
+  - "state:done"
 origin: human
 source_file: null
 source_anchor: null
 source_checksum: null
 valid_from: 2026-09-06
 valid_until: null
-checksum: 44a9b794a451453a
+checksum: f3f06622825d46d9
 plan: library
 seq: "8"
-state: todo
+state: done
 priority: "2"
+verified_on: 2026-09-07
 ---
 
 # the capture hints carry the category definition, generated into all twenty-nine

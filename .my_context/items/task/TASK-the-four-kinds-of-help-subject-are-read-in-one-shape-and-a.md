@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: Every kind of help entry is laid out the same way, and asking about a shortcut tells you as much as asking about the command behind it.
-summary_of: 815724c1bc153948
+summary_of: 65e5450e4667fa74
 scope:
   - src/ui/read-model-cli-help.ts
   - src/ui/public/screens/cli-help.js
@@ -16,18 +16,19 @@ tags:
   - help
   - "plan:library"
   - "seq:5"
-  - "state:todo"
+  - "state:done"
 origin: human
 source_file: null
 source_anchor: null
 source_checksum: null
 valid_from: 2026-09-06
 valid_until: null
-checksum: d9eb9379e8dea140
+checksum: 53a865875257f6dd
 plan: library
 seq: "5"
-state: todo
+state: done
 priority: "2"
+verified_on: 2026-09-07
 ---
 
 # the four kinds of help subject are read in one shape, and a slash command carries its parameters too

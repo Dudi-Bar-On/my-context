@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: The command builder loses the older of its two run buttons, so the two can never disagree again.
-summary_of: e61eaf0b1a62f604
+summary_of: b0d8cf56c8531a66
 summary_was:
   - 2026-09-06 Two ways of running the same composed command on one screen return different answers.
 scope:
@@ -18,18 +18,19 @@ tags:
   - composer
   - "plan:builder"
   - "seq:15"
-  - "state:todo"
+  - "state:done"
 origin: human
 source_file: null
 source_anchor: null
 source_checksum: null
 valid_from: 2026-09-06
 valid_until: null
-checksum: a243799c6498a568
+checksum: 9d1cf2532a9bc28f
 plan: builder
 seq: "15"
-state: todo
+state: done
 priority: "2"
+verified_on: 2026-09-07
 ---
 
 # Run is removed from the composer, and Execute is the only verb

@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: The archive becomes reachable over HTTP, bounded and read-only, before any screen is drawn.
-summary_of: dd15ee910d1b63bd
+summary_of: 214483d7840d70ea
 scope:
   - src/ui/server.ts
   - src/ui/read-model.ts
@@ -16,18 +16,19 @@ tags:
   - ui
   - "plan:archive"
   - "seq:2"
-  - "state:todo"
+  - "state:done"
 origin: human
 source_file: null
 source_anchor: null
 source_checksum: null
 valid_from: 2026-09-05
 valid_until: null
-checksum: b2ce6706bc3064de
+checksum: 448d9b7eebb5e49d
 plan: archive
 seq: "2"
-state: todo
+state: done
 priority: "1"
+verified_on: 2026-09-07
 ---
 
 # two read-only endpoints serve the conversation list and one transcript

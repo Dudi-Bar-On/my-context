@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: Most citations in the corpus no longer point where they say, and five broken ones keep the gate failing.
-summary_of: 9d32201bc00d6fe1
+summary_of: fb713d0464902216
 scope:
   - scripts/**
   - docs/superpowers/**
@@ -16,18 +16,19 @@ tags:
   - tooling
   - "plan:rulings"
   - "seq:64"
-  - "state:todo"
+  - "state:done"
 origin: human
 source_file: null
 source_anchor: null
 source_checksum: null
 valid_from: 2026-09-05
 valid_until: null
-checksum: 3afa5d273ec2bada
+checksum: 9e5c6724313b99e8
 plan: rulings
 seq: "64"
-state: todo
+state: done
 priority: "2"
+verified_on: 2026-09-07
 ---
 
 # the citation gate is red and cannot be used to gate anything else until it is cleared
