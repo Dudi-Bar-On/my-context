@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: "Nothing on the command builder is taken on trust: every input is tested by running the command and checking what it actually did."
-summary_of: e1c12876cb13ff49
+summary_of: 71811f52218a7ea8
 summary_was:
   - "2026-09-06 Nothing on the command builder is taken on trust: a plan is written for the whole surface, executed, and every failure fixed until it passes."
 scope:
@@ -30,57 +30,75 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-09-06
 valid_until: null
-checksum: 4ffea2a11ead82d3
+checksum: 266530ad17691669
 plan: builder
 seq: "11"
 state: todo
 priority: "3"
-needs: builder/3,builder/4,builder/5,builder/6,builder/8,builder/10
+needs: builder/3,builder/4,builder/5,builder/6,builder/8,builder/15
 ---
 
 # the composer is tested as a user would use it, every field, every value, every combination
 
-Owner ruling 2026-09-06 (plan D12). Dispatched only AFTER every other Composer task is complete -
-builder/9 (D10), builder/10 (D11), and builder/4, /5, /6, /8.
+Owner ruling 2026-09-06 (plan D12), RE-CUT the same day after the Composer changed under it.
 
-HIS INSTRUCTION, and the word that governs it is EVERYTHING: the tools plan the tests, test every
-single feature and input of the Composer - all fields, all values, all combinations - nothing
-skipped. Then the plan is executed, and failures are fixed with systematic debugging until every
-test passes.
+HIS INSTRUCTION, unchanged and still governing: the tools plan the tests, test every single feature
+and input of the Composer - all fields, all values, all combinations - nothing skipped. Then the
+plan is executed and failures are fixed by systematic debugging until every test passes.
 
-AND THE BAR FOR PASSING, added by the owner the same day and it raises the whole task: a test
-passes only once the command has been EXECUTED and RETURNED THE CORRECT RESULT. A composed line
-that looks right is not a passing test. What the command does when it runs is the assertion.
+AND THE BAR HE SET, which is the sentence that decides what "passes" means: a test passes only once
+the command has been EXECUTED and has RETURNED THE CORRECT RESULT. A composed line that looks right
+is not a passing test.
 
-THAT TURNS THIS INTO A TASK THAT MUTATES, and the consequences have to be settled before it is
-dispatched rather than discovered by it:
+WHY THIS WAS RE-CUT. The original was written on 2026-09-06 morning and its every number is now
+stale, and one of its assumptions turned out to be false.
 
-  - 19 of the 30 catalogue entries are writes. Running them for real changes a corpus.
-  - The owner’s standing rule is that tests run against the CURRENT corpus because this project
-    dogfoods itself, and an exception must be approved by him first. Executing `add`, `edit`,
-    `supersede` and `rebuild` against the live corpus to prove a screen works is exactly the case
-    that rule was written for. THE SCRATCH-CORPUS QUESTION IS HIS, and it is a prerequisite.
-  - Three entries are `runnable: false` by ruling - `init`, `audit`, `procedure done`. For those,
-    the correct result IS the refusal, and a test that executes them successfully is a security
-    regression rather than a pass.
-  - 16 of the 27 runnable entries sit on the approval boundary, so executing them exercises the
-    confirm-and-nonce path as well as the command. That path is the product’s own gate and must
-    not be bypassed to make a test convenient.
+  THE SURFACE MOVED. D10 gave four fields pickers; D11 landed two of three suggest inputs; D20 made
+  every id in a result open the item pane; D21 put the executed command above its own output. The
+  original's "30 entries, 89 fields, 21 pickers, 8 option sets, 60 free-text" is a snapshot of a
+  screen that no longer exists. RE-MEASURE FIRST and put the numbers in the report; do not inherit
+  a single figure from this item, including the ones written here.
 
-THE SURFACE, measured 2026-09-06: 30 catalogue entries, 89 fields. 21 sourced pickers, 8 fixed
-option sets, 60 free-text inputs. The id picker carries 938 options.
+  THE TWO RUN PATHS DISAGREE, and this is the real reason for the re-cut. `builder/15` measured it:
+  composing `mycontext list rule` and pressing RUN calls `/api/items`, which ignores the category
+  and accepts no query parameters at all, so the screen answers 965 rows of every type under a
+  composed line that says `list rule`. EXECUTE, the real CLI, returns 56. The owner's bar names
+  BOTH verbs - "execute and run" - so this task must test BOTH PATHS AND ASSERT THEY AGREE. The
+  original never said so, because nobody knew they could differ.
 
-WHAT "EVERY COMBINATION" HAS TO MEAN, because taken literally it is unbounded and an unbounded
-plan is not a plan. Every field exercised on every command that carries it; every fixed option
-chosen; both branches of every boolean; required-missing and required-present for each; and for
-free text the values that have bitten this product before - a value with a space, a quote, a shell
-metacharacter, a leading hyphen, an empty string, a very long string, and a right-to-left string
-in a left-to-right field. The combinatorial part is pairs that INTERACT, not the cross product of
-all 89.
+  Consequently `builder/15` is now a prerequisite rather than a finding this task would rediscover.
+  Testing against a known disagreement would fail on the first entry and tell nobody anything new.
 
-AND IT IS TESTED AS A USER, not as a module. Driven in a browser, in both languages, clicking what
-a person clicks. A screen that renders correctly and does nothing when used is the defect this
-rule exists for.
+WHAT "EVERY COMBINATION" HAS TO MEAN, unchanged because it is still right: taken literally it is
+unbounded and an unbounded plan is not a plan. Every field exercised on every command that carries
+it; every fixed option chosen; both branches of every boolean; required-missing and required-present
+for each; and for free text the values that have bitten this product before - a value with a space,
+a quote, a shell metacharacter, a leading hyphen, an empty string, a very long string, and a
+right-to-left string in a left-to-right field. The combinatorial part is pairs that INTERACT, never
+the cross product of every field.
 
-FIXING IS PART OF THE TASK, not a follow-up: failures are traced to a root cause before a change
-is made, one fix at a time, each measured.
+THE COMPOSED LINE IS STILL AN ASSERTION, and now it is not the only one. What the screen produces
+for a non-runnable entry is text a person pastes into a shell, so quoting is still the failure mode
+that matters most there. But for a runnable entry there are now three things to check and they can
+disagree: the composed line, what RUN answers, and what EXECUTE answers.
+
+THE REFUSALS ARE PART OF THE SURFACE, not an edge of it. For every entry marked `runnable: false`
+the CORRECT RESULT IS THE REFUSAL, and a test that succeeds in executing one is a security
+regression rather than a pass. Entries that sit on the approval boundary exercise the
+confirm-and-nonce path, which must not be bypassed to make a test convenient.
+
+AND IT IS TESTED AS A USER, not as a module: driven in a browser, in both languages, clicking what a
+person clicks. A screen that renders correctly and does nothing when used is the defect this rule
+exists for. Three separate lanes found real defects this week by LOOKING AT A SCREENSHOT after every
+assertion had passed - a chevron pointing the wrong way, a leading dot migrating under RTL, and an
+output table shredded by a flex container. Assertions are necessary and have repeatedly been
+insufficient.
+
+FIXING IS PART OF THE TASK, not a follow-up: failures are traced to a root cause before a change is
+made, one fix at a time, each measured.
+
+THE CORPUS QUESTION IS A PREREQUISITE AND NOT A DETAIL. Roughly two thirds of the runnable entries
+are writes, so executing them mutates a corpus. The standing rule is that tests run against the
+current corpus and an exception needs the owner's approval FIRST. `e2e/execute.spec.ts` already
+isolates write tests into their own workspace and is the precedent to follow rather than a new
+mechanism to invent.
