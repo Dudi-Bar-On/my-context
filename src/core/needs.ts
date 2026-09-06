@@ -183,10 +183,16 @@ export function taskState(item: Item): string {
  *
  * Superseded is the one status that means "this was replaced": counting a
  * replaced task as an unmet dependency would hold its successor's dependents
- * back forever. `deprecated` is deliberately NOT excluded here — it is retired
- * without a replacement, so a task waiting on one is waiting on something that
- * will never land, and that is a fact the reader should see rather than one
- * this module should hide.
+ * back forever. `deprecated` is deliberately NOT excluded HERE either, and the
+ * reason has changed — read `refStatus` below before changing this line.
+ *
+ * The original reasoning was that a task waiting on something retired without a
+ * replacement is a fact the reader should see rather than one this module hides.
+ * That instinct is right and the mechanism was wrong: holding the dependent is
+ * not how the fact gets seen — `doctor`'s `needs_unresolved` is. Owner ruling
+ * 2026-09-06 discharges the wait in `refStatus` while the reference keeps
+ * resolving here, so the target stays visible, addressable and reportable
+ * instead of vanishing out of the index and reading as a typo.
  */
 export function workItems(items: Item[], config: Config): Item[] {
   return items.filter((i) => i.status !== 'superseded' && isWorkCategory(config, i.type));
@@ -226,10 +232,38 @@ export function buildTaskIndex(items: Item[], config: Config): Map<string, Item[
  */
 export type RefStatus = 'satisfied' | 'pending' | 'unresolved';
 
+/**
+ * **A cancelled dependency is discharged, not pending** — owner ruling
+ * 2026-09-06, and it reverses the reasoning `workItems` above still carries for
+ * its own, different question.
+ *
+ * A task retired with `status: deprecated` will never land, so a dependent
+ * waiting for it waits forever. Counting it as `pending` holds live work
+ * hostage to work somebody decided not to do.
+ *
+ * **Discharged here rather than removed from the index, and the difference is
+ * the whole of it.** Dropping deprecated tasks out of `buildTaskIndex` looks
+ * like the simpler fix and does not work: the reference stops resolving, so it
+ * becomes `unresolved`, and `readyReport` holds an unresolved row exactly as it
+ * holds a pending one. The dependent stays stuck under a different label. The
+ * wait is only actually over if the reference RESOLVES and is judged met.
+ *
+ * Nothing goes quiet. `unresolved` still means "nothing answers to that name",
+ * and `doctor`'s `needs_unresolved` (`checks.ts` ~2461) still names every such
+ * reference — so a typo or an unwritten plan is reported exactly as before.
+ * What changed is only the case where the target EXISTS and was cancelled,
+ * which no longer reads as "not landed yet".
+ *
+ * Measured when the ruling was taken: three tasks name `needs: docsys/5`, which
+ * is deprecated. None was held by it — two are done and the third is itself
+ * cancelled — so this changed nothing observable on the day it landed, which is
+ * the safest moment to make it true.
+ */
 export function refStatus(ref: string, index: Map<string, Item[]>): RefStatus {
   const matches = index.get(ref);
   if (matches === undefined || matches.length === 0) return 'unresolved';
-  return matches.every((i) => taskState(i) === DONE_STATE) ? 'satisfied' : 'pending';
+  const met = (i: Item): boolean => taskState(i) === DONE_STATE || i.status === 'deprecated';
+  return matches.every(met) ? 'satisfied' : 'pending';
 }
 
 /** One work item's dependencies, resolved against the corpus. */
