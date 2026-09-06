@@ -4,12 +4,19 @@ He stopped to leave. This is not a threshold handover: the window was around
 20%, far below 85. It is written because he is going, which is exactly the
 case `handover/14` shipped today.
 
-**THE TREE IS NOT CLEAN AND THAT IS EXPECTED.** A lane is running on
+**THE TREE IS NOT CLEAN, AND THE REASON CHANGED AFTER THIS WAS WRITTEN.** A lane was running on
 `builder/13` (D20 — ids in composer results open the item pane) and
 `builder/14` (D21 — the results card names the command that ran). Its work
-will be sitting uncommitted in `src/ui/public/`. **Do not `git add -A` and do
+was sitting uncommitted in `src/ui/public/`. **Do not `git add -A` and do
 not tidy it.** Verify it in a browser first, then commit it. Three commits
 were polluted exactly this way on 2026-09-05 and 2026-09-06.
+
+**CORRECTION, same session:** that lane STALLED and died — no progress for
+600 seconds, watchdog did not recover. It never reported. What it left is
+PARTIAL: 6 files, +304 lines, tsc clean, palette 42/42, strings parity 8/8
+with `exec.ran` keyed in both languages. Coherent, unverified, unfinished.
+It is NOT ready to commit and it is NOT abandoned rubbish either — read the
+diff before deciding.
 
 **EVERYTHING ELSE IS COMMITTED AND PUSHED**, verified at zero unpushed after
 every commit today.
