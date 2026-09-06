@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: A background component quietly gives up on recording what it did, and the only evidence is a stray file nobody looks at.
-summary_of: 4026c3d1221fdccb
+summary_of: 7fdf61dc6c9417ef
 scope:
   - src/core/ui-server-upkeep.ts
 tags:
@@ -22,7 +22,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-09-06
 valid_until: null
-checksum: a7ea7d7807b2a494
+checksum: 7fe3ca2153bfbbb4
 plan: governance
 seq: "4"
 state: todo
@@ -54,11 +54,22 @@ has stopped holding and a server being respawned far more often than once a minu
 exactly the same from outside, because the only difference is a number of files in an ignored
 directory that nobody counts.
 
-CORROBORATING, and it is why this is worth more than a tidy-up: at the moment of writing, the live
-state read `"spawnPending": true, "consecutiveSpawnFailures": 1, "lastOutcome": "restarted-stale"`
-while the server was demonstrably answering 200 on 58888. A record that says a spawn is pending and
-has failed once, describing a server that is up, is what a discarded write looks like from the
-outside.
+THE PARAGRAPH THAT STOOD HERE WAS WRONG, AND IS CORRECTED RATHER THAN DELETED.
+
+It cited live state reading `spawnPending: true, consecutiveSpawnFailures: 1,
+lastOutcome: restarted-stale` beside a server answering 200, and called that "what a discarded
+write looks like from the outside". It is not. Reading `restartStaleServer`: when a stale answer
+arrives with a restart still unjudged, it increments the counter to 1, sets `restart-failed`, and
+then - below the threshold and past the five-minute floor - restarts again and writes exactly
+`{spawnPending: true, consecutiveSpawnFailures: 1, lastOutcome: restarted-stale}`, with the server
+up precisely BECAUSE it was just restarted. No lost write is required to produce that triple, and
+the lane implementing this item observed the identical triple on 2026-09-06T22:20:55Z with 58888
+answering 200.
+
+I wrote that paragraph from a snapshot I did not trace through the code, and it would have sent a
+reader looking for a defect that was not there. THE ORPHANED TEMP FILES ARE THE REAL EVIDENCE and
+they stand on their own: nine of them, every PID dead, oldest three days old, each 209-224 bytes -
+complete documents, which is what says the RENAME failed rather than the write.
 
 WHY THIS MATTERS TO THE OWNER SPECIFICALLY: the server on 58888 is his, and "never restart it" is a
 standing instruction to every lane. The upkeep is the one component licensed to restart it, and its
