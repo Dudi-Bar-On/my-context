@@ -724,9 +724,24 @@ export async function render(root, ctx) {
   side.append(docs);
   two.append(main, side);
 
+  // The heading stays put and only the roster scrolls, owner request
+  // 2026-09-06: "do not scroll the title Tutorials, only the basic and
+  // advanced sections below it".
+  //
+  // So the `<h3>` is a child of the CARD and everything else goes into a
+  // scroller beside it. The previous shape put the title inside the scrolling
+  // box, so a reader who scrolled to ADVANCED lost the only label saying what
+  // they were looking at.
+  //
+  // This is NOT the sticky nav coming back. That was `position:sticky` on the
+  // whole card, which pinned it over the corpus tree in the same column and is
+  // what he asked me to remove an hour ago. This scrolls a box inside a card
+  // that is itself in normal flow, so nothing can overlap anything.
   const tutHead = el('h3');
   tutHead.append(...ctx.t('lib.tuts'));
   tuts.append(tutHead);
+  const tutScroll = el('div', 'cardscroll');
+  tuts.append(tutScroll);
   const docHead = el('h3');
   docHead.append(...ctx.t('lib.docs'));
   docs.append(docHead);
@@ -787,8 +802,11 @@ export async function render(root, ctx) {
     }).catch((error) => error),
   ]);
 
-  if (tutBody instanceof Error) tuts.append(errorNote(tutBody.message));
-  else paintTutorials(ctx, tuts, tutBody);
+  // Both halves go into the scroller, refusal included: a card whose error
+  // note sat outside it would put the failure above a heading that promises a
+  // roster, and the reader would scroll an empty box looking for the reason.
+  if (tutBody instanceof Error) tutScroll.append(errorNote(tutBody.message));
+  else paintTutorials(ctx, tutScroll, tutBody);
   if (docBody instanceof Error) docs.append(errorNote(docBody.message));
   else paintDocuments(ctx, docs, docBody);
   if (corpusBody instanceof Error) files.append(errorNote(corpusBody.message));

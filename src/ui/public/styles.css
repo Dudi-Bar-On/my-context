@@ -2084,6 +2084,22 @@ body>svg[aria-hidden="true"]{display:none}
    option `<select>` and once by a 600-character example line. */
 .libcol{display:flex;flex-direction:column;gap:var(--sp-3);min-inline-size:0}
 
+/* `.cardscroll` — the scrolling BODY of a card whose heading must stay put.
+   Owner request 2026-09-06: "do not scroll the title Tutorials, only the
+   basic and advanced sections below it". The heading is a sibling of this
+   box, not a child, so it cannot travel.
+
+   This is not the sticky nav returning. That was `position:sticky` on the
+   whole card, which pinned it over the corpus tree sharing its column; this
+   is an ordinary scroller inside a card that stays in normal flow, so no
+   sibling can be overlapped.
+
+   `overscroll-behavior:contain` stops a reader who reaches the end of the
+   roster from carrying on and scrolling the page underneath — the gesture
+   that makes a nested scroller feel broken. */
+.cardscroll{max-block-size:64vh;overflow-y:auto;overscroll-behavior:contain;
+  min-inline-size:0}
+
 /* `.two.align-top` — a NEW modifier, not a change to `.two` itself (coverage.js
    also composes `.two` and is out of this task's scope; a bare selector would
    have reached it too). Grid's default `align-items:stretch` is right for
@@ -2181,6 +2197,26 @@ table.diff{margin-block:var(--sp-2)}
 .diff caption{text-align:start;font-size:var(--fs-0);color:var(--dim);
   padding-block-end:var(--sp-1)}
 .execresult{flex-basis:100%;font-size:var(--fs-0)}
+/* An id INSIDE the machine's own text — `saidNodes`' `<pre class="lit">`, where
+   the command's stdout is a table whose columns line up by CHARACTER COUNT.
+   `TASK-an-id-in-a-composer-result-opens-the-item-pane-the-same-as` names
+   alignment as the thing not to break, so this rule may change COLOUR and
+   nothing else: `font:inherit` keeps the `<pre>`'s own face and size (this is
+   deliberately NOT `.linkid`, which carries `.m` at `font-size:.87em` and
+   `display:inline-flex`), and `display:inline` keeps the id in the text flow
+   rather than making it an atomic inline box.
+
+   TWO SELECTORS, ONE BODY, AND BOTH ARE LOAD-BEARING. `.cmdactions .idrun`
+   outranks `.cmdactions button` (~2155), which would otherwise give it a
+   border, a background, a radius, padding and `font-size:var(--fs-0)`. The
+   bare `.idrun` is for the same node AFTER the shell has re-homed it: on a
+   redraw that removed the control it was run from, `app.js`'
+   `attachExecuteOutcome` prepends `.execresult` to the top of the SECTION,
+   outside any `.cmdactions`, where only the global `button{font:inherit;
+   color:inherit}` and the UA's own button chrome would reach it. */
+.idrun,.cmdactions .idrun{display:inline;background:none;border:0;padding:0;margin:0;
+  font:inherit;color:var(--gold);cursor:pointer;text-align:inherit;unicode-bidi:isolate}
+.idrun:hover,.idrun:focus-visible{text-decoration:underline}
 .exitcode{font-family:var(--mono);color:var(--ok)}
 .exitcode.bad{color:var(--crit)}
 
