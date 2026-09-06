@@ -174,7 +174,12 @@ import { composeCommand } from '/lib/command.js';
 // confirm wrong — the confirm being the security boundary (§6.3).
 import { commandActions } from '/lib/command-actions.js';
 import { PALETTE, commandFor, runnableFor } from '/lib/palette-defs.js';
-import { el, errorNote, linkId, num, screenHead, spaced } from '/screens/parts.js';
+// `linkId` was imported here until 2026-09-07 and is not any more: its one
+// caller was the id cell of Run's structured result table. The Composer still
+// links every id it shows — through `lib/command-actions.js`' own `idMark`,
+// which is `button.idrun` rather than `button.linkid` for the metrics reason
+// that file states, over the `itemIds` set built below.
+import { el, errorNote, num, screenHead, spaced } from '/screens/parts.js';
 
 /**
  * The pattern that matches every file the walk reached. `globToRegExp` turns a
@@ -616,40 +621,40 @@ export function revisionFor(sources, itemId) {
 }
 
 /**
- * What running a READ means for this def: fetch the endpoint that serves the
- * answer, or navigate to the screen that renders it. A write has neither, and
- * gets `null` — there is no third branch here, and that is the composed-not-
- * executed rule expressed as a shape rather than as a check.
+ * ── `readTarget` AND `resultRows` STOOD HERE, AND THEY ARE GONE ────────────
+ *
+ * `readTarget(def, values)` answered *"what running a READ means for this
+ * def"* — fetch the `endpoint` that serves an equivalent answer, or navigate
+ * to the `screen` that renders one — and the Run button below the composed
+ * command was built only where it returned non-null. `resultRows(body)` was
+ * the rendering half, turning the two answered body shapes (`{ items }` from
+ * `/api/items` and `/api/search`, `{ item }` from `/api/item/:id`) into rows,
+ * a total and a truncation mark.
+ *
+ * Removed 2026-09-07 by owner ruling
+ * (`DEC-run-is-removed-execute-is-the-only-way-to-run-what-the`), which asked
+ * the question nobody had: *"why do we need run? after execute we get run it,
+ * so maybe run is not required?"*
+ *
+ * **Neither is a loss of a capability, because Run never ran anything.** It
+ * predates Execute: it arrived in `e5696b9` when this console was read-only,
+ * and `3702b1a` gave the Composer a button that runs the real command. Every
+ * entry that offered Run also offered Execute, so the screen was asking the
+ * reader to choose between the CLI's answer and a browser endpoint's
+ * approximation of it — and on two entries the approximation had gone wrong.
+ *
+ * **What it cost to remove, stated rather than glossed.** Run drew STRUCTURED
+ * rows from JSON; Execute shows the CLI's own ASCII table. That is a real
+ * change in presentation, and it is affordable for one reason only: `builder/13`
+ * made ids clickable in BOTH, so the gesture a reader actually uses — click an
+ * id, the item pane opens — survives on the path that remains. It is
+ * `lib/command-actions.js`' `idRuns`/`idMark` that carries it now, over the
+ * `ids` set this file still builds and still passes (`itemIds`, below).
+ *
+ * `resultRows` had ONE caller, which was the fetch branch here — it is not
+ * shared with Execute's rendering, which lives in `lib/command-actions.js` and
+ * never imported it. Verified before deleting rather than after.
  */
-export function readTarget(def, values) {
-  if (def.kind !== 'read') return null;
-  if (typeof def.endpoint === 'function') return { kind: 'fetch', path: def.endpoint(values) };
-  if (typeof def.screen === 'string') return { kind: 'navigate', hash: def.screen };
-  return null;
-}
-
-/**
- * The rows a read answered, from the two body shapes the read defs reach:
- * `/api/items` and `/api/search` answer `{ items }`, `/api/item/:id` answers
- * `{ item }`. `total` is the endpoint's own when it sends one — a search that
- * matched 300 and returned 50 must not report 50 — and `truncated` is carried
- * rather than inferred, for the reason `apiSearch` states about itself: a
- * capped answer and a complete one must not be the same document.
- */
-export function resultRows(body) {
-  if (body !== null && typeof body === 'object' && Array.isArray(body.items)) {
-    return {
-      rows: body.items,
-      total: typeof body.total === 'number' ? body.total : body.items.length,
-      truncated: body.truncated === true,
-    };
-  }
-  if (body !== null && typeof body === 'object'
-    && body.item !== null && typeof body.item === 'object' && typeof body.item.id === 'string') {
-    return { rows: [body.item], total: 1, truncated: false };
-  }
-  return { rows: [], total: 0, truncated: false };
-}
 
 /** The file tree with the matched paths lit. Set membership, never a glob. */
 export function globRows(files, matched) {
@@ -1348,106 +1353,31 @@ export async function render(root, ctx) {
       cmdBox.append(note);
     }
 
-    if (def.kind === 'write') {
-      // **`cap.warn` is no longer drawn here, and that is §6.1 rather than an
-      // omission.** It says *"This is a write. Run it in your own shell."* —
-      // which was true of every write this UI composed until 2026-08-26, and is
-      // now false beside a button that runs it. The owner's ruling widened §3.2
-      // so that boundary-crossing commands execute behind the STRONGER confirm
-      // rather than being refused, and a sentence telling the reader the
-      // opposite of what the control beside it does is worse than no sentence.
-      // The key was kept in both tables for Capture, which composed and copied
-      // only. That ended on 2026-08-27: `plan:execute seq:6c` gave Capture
-      // Execute too, so the sentence is false on the last screen that drew it
-      // and `cap.warn` is gone from both tables, from the mockup and from both
-      // stylesheets along with `p.cmdnote`, its only element.
-      return;
-    }
-
-    const target = readTarget(def, values);
-    if (target === null) return;
-    // **The read action is a THIRD sibling of Copy and Execute, and it is drawn
-    // in the same container for a reason the owner reported on 2026-08-27:**
-    // this button was appended to `cmdBox`, which is a classless `<div>`, and
-    // the only global button rule is `button{font:inherit;color:inherit}` — it
-    // takes the app's LIGHT colour and sets NO background, so the button fell
-    // back to the UA's own near-white button face and rendered as light text on
-    // white. It was invisible, and only for READS, because `run` exists only
-    // where `readTarget` is non-null. `.cmdactions` carries its own background,
-    // which is also what makes the shared control safe to drop into seven
-    // different containers.
-    const runRow = el('div', 'cmdactions');
-    const run = el('button');
-    run.type = 'button';
-    // **`pal.run`, not the Ask screen's `ask.run`.** Both used to read "Run",
-    // and both still do — but they were the SAME key, so an edit meant for
-    // one screen would have silently changed the other, and no test in this
-    // project would have noticed: the key sets would still match and both
-    // screens would still render a string. `TASK-the-six-palette-keys-the-plan-declares-and-neither-table`
-    // names the general risk; this is the fix, key by key.
-    run.append(...ctx.t('pal.run'));
-    const results = el('div');
-    run.addEventListener('click', async () => {
-      if (target.kind === 'navigate') {
-        ctx.navigate(target.hash);
-        return;
-      }
-      results.replaceChildren();
-      let body;
-      try {
-        body = await ctx.api(target.path);
-      } catch (error) {
-        // A read this screen composed and the server refused — an all-absent
-        // `search`, say, which `apiSearch` answers by naming `/api/items` as
-        // the question actually being asked. Its words, not a paraphrase.
-        results.append(errorNote(error.message));
-        return;
-      }
-      const answer = resultRows(body);
-      const table = el('table');
-      const caption = el('caption');
-      caption.append(...ctx.t(answer.rows.length === 0 ? 'pal.noRows' : 'pal.rows', { rows: num(answer.total) }));
-      const thead = el('thead');
-      const headRow = el('tr');
-      const th = el('th');
-      th.append(...ctx.t('pal.item'));
-      headRow.append(th);
-      thead.append(headRow);
-      const tbody = el('tbody');
-      for (const row of answer.rows) {
-        const tr = el('tr');
-        // **The id OPENS**, and this is population 1 of
-        // `TASK-an-id-in-a-composer-result-opens-the-item-pane-the-same-as`:
-        // exact, because `row.id` is a FIELD of the object the cell is built
-        // from and not a string parsed out of anything. `linkId()` is the shape
-        // every other screen's id already wears — `button.linkid` carrying
-        // `data-id`, which `app.js`' one delegated document listener
-        // (`installItemPane`) already answers. Nothing is wired here: the
-        // Composer simply stopped being the one screen that drew an id as inert
-        // text. `split: false` because a result row is a list of ids rather
-        // than the carried-item card the `.idkind`/`.idslug` split was drawn
-        // for, which is the same call `ask.js`, `doctor.js` and `coverage.js`
-        // make in the same position.
-        //
-        // The `<td class="m">` stays and the button goes INSIDE it: the cell's
-        // own kind is what `e2e/screen-parity.spec.ts` compares, and dropping
-        // `.m` from it to let the button carry the mono face would delete a
-        // kind the design of record draws.
-        const cell = el('td', 'm');
-        cell.append(typeof row.id === 'string' && row.id !== '' ? linkId(row.id, false) : '—');
-        tr.append(cell);
-        tbody.append(tr);
-      }
-      table.append(caption, thead, tbody);
-      results.append(table);
-      if (answer.truncated) {
-        const capped = el('p', 'small');
-        capped.append(...ctx.t('pal.truncated', { rows: num(answer.rows.length) }));
-        results.append(capped);
-      }
-    });
-    runRow.append(run);
-    cmdBox.append(runRow, results);
+    // **AND NOTHING AFTER THIS LINE, WHICH IS THE POINT OF THE SCREEN NOW.**
+    // A composed command gets Copy, and Execute where the entry is licensed to
+    // run. There is no per-kind branch left below: a `read` and a `write` are
+    // drawn by the same three statements above, because the only thing that
+    // ever distinguished them here was the Run button reads carried and writes
+    // did not (`DEC-run-is-removed-execute-is-the-only-way-to-run-what-the`).
+    //
+    // Two sentences that used to be drawn in this position, kept because both
+    // are answers to "why is there no note here":
+    //
+    //   `cap.warn` — *"This is a write. Run it in your own shell."* True of
+    //   every write this UI composed until 2026-08-26 and false the moment a
+    //   button beside it ran one. The owner's ruling widened §3.2 so that
+    //   boundary-crossing commands execute behind the STRONGER confirm rather
+    //   than being refused, and a sentence contradicting the control next to it
+    //   is worse than no sentence. It was kept for Capture, which composed and
+    //   copied only, until `plan:execute seq:6c` gave Capture Execute too — and
+    //   is now gone from both tables, from the mockup and from both stylesheets
+    //   along with `p.cmdnote`, its only element.
+    //
+    //   `pal.run` — the Run button's label, and `pal.item`, `pal.rows`,
+    //   `pal.noRows` and `pal.truncated`, the caption and header of the table it
+    //   drew. All five removed from `en.js` and `he.js` on 2026-09-07, together,
+    //   because a key dropped from one table and left in the other passes every
+    //   visual check there is; `strings-parity` is what actually proves it.
   }
 
   function build() {

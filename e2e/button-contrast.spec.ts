@@ -289,8 +289,10 @@ test('every button drawn on a command-composing screen can be read', async ({ ap
   // The composed state FIRST, because it is the one the owner reported and the
   // one a plain walk cannot reach.
   await composeOnPalette(page);
+  let composedControls = 0;
   for (const b of await buttonsOn(page, 'palette', { alreadyThere: true })) {
     seen += 1;
+    if (b.container.startsWith('div.cmdactions')) composedControls += 1;
     const bar = b.disabled ? MIN_RATIO_DISABLED : MIN_RATIO;
     if (b.ratio < bar) {
       failures.push(
@@ -298,8 +300,31 @@ test('every button drawn on a command-composing screen can be read', async ({ ap
         + `(${b.color} on ${b.background}${b.disabled ? ', disabled' : ''}), needs ${bar}:1`);
     }
   }
-  expect(seen, 'the composed Composer drew no buttons at all — the compose step did not take')
-    .toBeGreaterThan(2);
+  // **THE CONTROLS, NOT A HEADCOUNT — and the number moved on 2026-09-07.**
+  //
+  // This read `expect(seen).toBeGreaterThan(2)`, and 2 was the right floor for
+  // exactly as long as a composed READ drew THREE controls: Copy, Execute, and
+  // Run. Run is removed
+  // (`DEC-run-is-removed-execute-is-the-only-way-to-run-what-the`), so `doctor`
+  // — the command `composeOnPalette` drives, chosen because it takes no
+  // arguments — now composes two, and the guard failed on a screen that was
+  // working. That is the guard doing its job; it is not a reason to relax it
+  // into `> 0`.
+  //
+  // So it counts the two CONTROLS instead of every button on the page. `seen`
+  // includes whatever chrome the section carries (a Refresh chip, a picker's
+  // neighbours), which is why a bare total could drift up while the controls
+  // this gate exists for went missing. `div.cmdactions` is the container that
+  // carries the composed command's actions, and it is also the class whose
+  // background made the owner's original defect visible — a classless button
+  // outside it takes the UA button face. Counting by container therefore names
+  // the same thing the failure message below names, and stays language-neutral:
+  // these labels are "Copy"/"Execute" in English and "העתקה"/"הרצה" in Hebrew.
+  expect(composedControls,
+    'the composed Composer drew fewer than its two controls (Copy and Execute, inside '
+    + '`div.cmdactions`) — either the compose step did not take, or a control this gate is '
+    + 'pointed at has stopped being drawn and the walk below is measuring nothing.')
+    .toBeGreaterThanOrEqual(2);
 
   for (const screen of SCREENS) {
     for (const b of await buttonsOn(page, screen)) {

@@ -281,13 +281,22 @@ export function resolveCommand(id: string, values: Record<string, unknown>): Res
     throw new CommandRefusal(`${id}: values must be an object of named arguments`);
   }
 
-  // `endpoint` entries (`list`, `show`, `search`) are NOT a separate case. They
-  // carry a `base` like every other entry; `endpoint` is only how the BROWSER
-  // answers a read without running anything, and the server never calls it. So
-  // a query resolves to the same CLI invocation a person could type, which is
-  // what §6.1 means by "everything in the catalogue runs". Treating them as
-  // unresolvable would make the catalogue mean two different things depending
-  // on which side read it — the one outcome this module exists to prevent.
+  // **A READ RESOLVES EXACTLY LIKE A WRITE, and as of 2026-09-07 there is no
+  // longer anything that could suggest otherwise.**
+  //
+  // This paragraph used to argue that `list`, `show` and `search` were not a
+  // separate case despite carrying an `endpoint` — a browser-side field that
+  // answered a read without running anything, which the server never called.
+  // That field is gone from the catalogue along with `screen` and the Composer's
+  // Run button (`DEC-run-is-removed-execute-is-the-only-way-to-run-what-the`),
+  // so every entry now offers this module one `base` and nothing else.
+  //
+  // The rule it was defending is unchanged and is why the note stays: a query
+  // resolves to the same CLI invocation a person could type, which is what §6.1
+  // means by "everything in the catalogue runs". A catalogue that meant two
+  // different things depending on which side read it is the one outcome this
+  // module exists to prevent — and it is now unrepresentable rather than merely
+  // argued against.
   const args = def.args ?? [];
   // Every field the entry can COMPOSE, which is not the same set as the fields
   // one screen may OFFER; see `flagsNotOffered` on `CommandDef`. In `commandFor`'s

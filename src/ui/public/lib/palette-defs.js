@@ -1,8 +1,33 @@
 // The command catalogue (spec §4, Work: "build a command from selections and
 // inputs, with real pickers and a live glob tester"). Write commands are
 // COMPOSED AND COPIED with the on-screen note — per spec §2 the only treatment
-// of a write anywhere in this UI. Read commands EXECUTE: they navigate to the
-// screen that renders the answer, or fetch the endpoint that serves it.
+// of a write anywhere in this UI. Read commands EXECUTE, through the one verb
+// every other entry uses.
+//
+// ── THE SECOND RUN TARGET THAT USED TO LIVE ON THESE ENTRIES ───────────────
+//
+// Eight reads carried an `endpoint` (`list`, `show`, `search`) or a `screen`
+// (`status`, `doctor`, `decay`, `review revisions`, `help`), and
+// `screens/palette.js`' `readTarget` turned either into a second button — Run —
+// beside Execute. Removed 2026-09-07 by owner ruling
+// (`DEC-run-is-removed-execute-is-the-only-way-to-run-what-the`).
+//
+// It was not a second feature. `readTarget` arrived in `e5696b9`, when this
+// console was strictly READ-ONLY and could not run a command at all, so Run
+// fetched an endpoint serving an EQUIVALENT answer. Execute arrived later in
+// `3702b1a` and runs the real command. Re-measured 2026-09-07 on this
+// catalogue: 8 entries had a Run target, 27 have Execute, and EVERY entry with
+// Run also had Execute — Run was the older mechanism kept past the arrival of
+// the thing that replaced it, and its approximation had drifted into being
+// wrong (`mycontext list rule` fetched `/api/items`, which ignores the
+// category argument entirely and answered 980 rows of every type where the CLI
+// answers 52; `mycontext help slash` navigated to `#/learn`, which draws the
+// four topics `UI_HELP_TOPICS` names of the seven `core/teach.ts` accepts).
+//
+// Removal rather than repair is the point of the ruling: patching `list` and
+// `help` fixes two instances of a class, and deleting the field deletes the
+// class. No entry added later can reintroduce the split, and
+// `test/ui/palette-lib.test.ts` fails this file if one tries.
 //
 // ── WHY THIS FILE IS A LIST AT ALL, AND WHAT STOPS IT GOING STALE ──────────
 //
@@ -558,23 +583,21 @@ export const PALETTE = [
   // command that changes what governs the project — too much ceremony, which
   // is the safe direction to fail in but is still wrong. Spelling it out is
   // what keeps an omission meaning "nobody has classified this yet".
-  { name: 'status', kind: 'read', base: ['mycontext', 'status'], boundary: false, runnable: true, args: [], flags: [], screen: '#/status' },
-  { name: 'doctor', kind: 'read', base: ['mycontext', 'doctor'], boundary: false, runnable: true, args: [], flags: [], screen: '#/doctor' },
-  { name: 'decay', kind: 'read', base: ['mycontext', 'decay'], boundary: false, runnable: true, args: [], flags: [], screen: '#/decay' },
-  { name: 'review revisions', kind: 'read', base: ['mycontext', 'review', 'revisions'], boundary: false, runnable: true, args: [], flags: [], screen: '#/work' },
+  { name: 'status', kind: 'read', base: ['mycontext', 'status'], boundary: false, runnable: true, args: [], flags: [] },
+  { name: 'doctor', kind: 'read', base: ['mycontext', 'doctor'], boundary: false, runnable: true, args: [], flags: [] },
+  { name: 'decay', kind: 'read', base: ['mycontext', 'decay'], boundary: false, runnable: true, args: [], flags: [] },
+  { name: 'review revisions', kind: 'read', base: ['mycontext', 'review', 'revisions'], boundary: false, runnable: true, args: [], flags: [] },
   {
     name: 'help', kind: 'read', base: ['mycontext', 'help'], boundary: false, runnable: true,
-    args: [{ name: 'topic', source: 'topics' }], flags: [], screen: '#/learn',
+    args: [{ name: 'topic', source: 'topics' }], flags: [],
   },
   {
     name: 'list', kind: 'read', base: ['mycontext', 'list'], boundary: false, runnable: true,
     args: [{ name: 'category', source: 'categories' }], flags: [],
-    endpoint: () => '/api/items',
   },
   {
     name: 'show', kind: 'read', base: ['mycontext', 'show'], boundary: false, runnable: true,
     args: [{ name: 'id', source: 'items', required: true }], flags: [],
-    endpoint: (values) => `/api/item/${encodeURIComponent(values.id)}`,
   },
   {
     name: 'search', kind: 'read', base: ['mycontext', 'search'], boundary: false, runnable: true,
@@ -600,13 +623,6 @@ export const PALETTE = [
       { name: 'relation', source: 'relations' },
       { name: 'limit', input: 'text' },
     ],
-    endpoint: (values) => {
-      const qs = new URLSearchParams();
-      for (const key of ['text', 'type', 'tag', 'path', 'status', 'relation', 'limit']) {
-        if (values[key]) qs.set(key, values[key]);
-      }
-      return `/api/search?${qs.toString()}`;
-    },
   },
 
   // --- the read that is COPIED rather than executed -----------------------
@@ -623,16 +639,19 @@ export const PALETTE = [
     // the REASON two files gave for the null id, which was *"`PALETTE` carries
     // no `audit` entry"* — an absence rather than a decision.
     //
-    // **A read with NO `screen` and NO `endpoint`, which every other read here
-    // has.** That is not an omission: there is no `/api/audit`, and the audit
-    // log reaches this UI through the Watch and Ask read models, which answer
-    // different questions. A read this browser cannot execute is a command to
-    // COPY — and `runnable: false` is now the field that says so, on both sides
-    // at once: `readTarget` gives the Composer no Run button, and
-    // `execute-catalogue.ts` gives the server nothing to run. The two tests that
-    // required every read to name a screen or an endpoint now require *a run
-    // target or `runnable: false`*, which is the same rule with its third state
-    // named instead of unrepresentable.
+    // **`runnable: false`, and since 2026-09-07 that is the WHOLE of it.**
+    //
+    // This entry used to be the read with no `screen` and no `endpoint` where
+    // every other read had one, and the paragraph here argued that the absence
+    // was a decision rather than an omission. Run is gone
+    // (`DEC-run-is-removed-execute-is-the-only-way-to-run-what-the`), so no read
+    // carries either field any more and there is no absence left to explain.
+    // What survives is the reason this entry cannot run AT ALL: the audit log
+    // reaches this UI through the Watch and Ask read models, which answer
+    // different questions, and `mycontext audit --files` is a command to COPY.
+    // `runnable: false` says exactly that, and `execute-catalogue.ts` gives the
+    // server nothing to run — one licence now, checked in one place, instead of
+    // two that could disagree.
     //
     // **Only `--files` is offered, of the twelve flags the command accepts.**
     // `audit`'s query surface (`--since`, `--item`, `--role`, `--limit` …) is a

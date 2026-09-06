@@ -7,9 +7,15 @@
  * depend on. So `render()` is not called here and nothing below asserts a
  * pixel. What IS decidable is everything `render()` asks before it touches the
  * document: which argv element blocks a copy, which controls a def offers,
- * which picker list fills them, what running a read means, and which rows a
- * read's answer holds. Those are exported from `screens/palette.js` for
- * exactly this reason, and a green run here verifies them and nothing more.
+ * which picker list fills them, and which files a glob pattern lights. Those
+ * are exported from `screens/palette.js` for exactly this reason, and a green
+ * run here verifies them and nothing more.
+ *
+ * Two more used to be on that list — "what running a read means, and which rows
+ * a read's answer holds", which were `readTarget` and `resultRows`. Both were
+ * the Run button and both are gone (2026-09-07,
+ * `DEC-run-is-removed-execute-is-the-only-way-to-run-what-the`); the block
+ * where their tests stood says what replaced them.
  *
  * ── HOW A NODE TEST IMPORTS A BROWSER SCREEN MODULE ───────────────────────
  *
@@ -64,9 +70,9 @@ function importedSpecifiers(source: string): string[] {
  * it reasons over. Hand-written rather than inferred, so this file states the
  * screen's published interface and a drift fails here instead of at a call
  * site in a module nobody type-checks. `PaletteDef` is deliberately looser
- * than `palette-defs.js`' real entries — `endpoint` takes a value bag and the
- * bag is `Record<string, unknown>` — because a test that had to know the exact
- * value union could not pass it a wrong one.
+ * than `palette-defs.js`' real entries — a value bag is `Record<string,
+ * unknown>` — because a test that had to know the exact value union could not
+ * pass it a wrong one.
  */
 interface ArgSpec {
   name: string;
@@ -93,10 +99,13 @@ interface PaletteDef {
   overlap?: boolean;
   boundary?: boolean;
   ungated?: boolean;
-  /** Whether the server will RUN it — owner ruling D2, 2026-09-06. */
+  /**
+   * Whether the server will RUN it — owner ruling D2, 2026-09-06, and since
+   * 2026-09-07 the ONLY licence there is. `screen` and `endpoint` stood beside
+   * it here; they were the second run target and are removed from the catalogue
+   * entirely. `test/ui/palette-lib.test.ts` owns keeping them out.
+   */
   runnable?: boolean;
-  screen?: string;
-  endpoint?: (values: Record<string, string>) => string;
 }
 interface Option {
   value: string; label: string; revision?: string;
@@ -130,9 +139,9 @@ interface ScreenModule {
   suggestListId: (name: string) => string;
   sourceLists: (bodies: Record<string, unknown>) => Sources;
   revisionFor: (sources: Sources, itemId: string | undefined) => string | null;
-  readTarget: (def: PaletteDef, values: Record<string, string>)
-    => { kind: 'fetch'; path: string } | { kind: 'navigate'; hash: string } | null;
-  resultRows: (body: unknown) => { rows: { id: string }[]; total: number; truncated: boolean };
+  // `readTarget` and `resultRows` were exported here until 2026-09-07. Both
+  // belonged to the Run button and went with it —
+  // `DEC-run-is-removed-execute-is-the-only-way-to-run-what-the`.
   globRows: (files: string[], matched: string[]) => { path: string; hit: boolean }[];
   /** The `--tags` box, which is a LIST and therefore not a picker source. */
   tagsInValue: (value: unknown) => string[];
@@ -680,92 +689,36 @@ test('revisionFor names the revision behind a picked item, or null', async () =>
   assert.equal(revisionFor(sources, undefined), null);
 });
 
-/* ── reads execute, writes never do ─────────────────────────────────────── */
+/* -- reads execute, writes never do: THERE IS NOTHING LEFT TO SPLIT ------- *
 
-/**
- * **Spec §2 as a shape rather than as a check.** `readTarget` has no branch
- * that could hand a write anywhere to go: a write returns `null`, and the only
- * thing the screen does with a composed write is show it and copy it. Derived
- * over the whole catalogue, so a def that changed kind is caught here.
+ * Four tests stood here and all four are gone as of 2026-09-07.
+ *
+ * Three of them exercised `readTarget(def, values)` — "no write has a run
+ * target, and every read that runs has exactly one", "a read fetches the
+ * endpoint that serves it, or navigates to the screen that renders it", and
+ * "an all-absent search still composes a path, for the endpoint to refuse".
+ * The fourth pinned `resultRows`, which turned the answered body into rows.
+ * Both functions were the Composer's Run button, removed by owner ruling
+ * (`DEC-run-is-removed-execute-is-the-only-way-to-run-what-the`).
+ *
+ * **The RULE those tests defended did not go with them, and it is not orphaned.**
+ * It was spec §2 — a write is composed and copied, never run from this page —
+ * expressed as a shape: `readTarget` had no branch that could hand a write
+ * anywhere to go. That rule now lives on `runnable`, which is a single licence
+ * checked in two places: `test/ui/palette-lib.test.ts` ("no entry carries a
+ * second way to run", plus the boundary and `--yes` derivations) and
+ * `test/ui/execute-catalogue.test.ts`, which is the SERVER's copy and the one
+ * that actually refuses. One verb, one licence, one thing to prove per entry
+ * instead of two plus their agreement.
+ *
+ * Nothing MOVED here, and that is a finding rather than an omission: the
+ * structured result table Run drew had no test of its own anywhere in this
+ * suite — not its rows, not its caption, and not the id cell `builder/13`
+ * made clickable. The id gesture that survives is the TEXT one, and it is
+ * tested where it lives: `test/ui/command-actions.test.ts` pins `idRuns`
+ * against a real index and `button.idrun`'s metrics, and `e2e/item-pane
+ * .spec.ts` drives the pane it opens.
  */
-test('no write has a run target, and every read that runs has exactly one', async () => {
-  const { PALETTE } = await defs();
-  const { readTarget } = await screen();
-  const values = { id: 'RULE-x', category: 'rule', topic: 'scope', text: 'cents' };
-  let ran = 0;
-  for (const def of PALETTE) {
-    const target = readTarget(def, values);
-    if (def.kind === 'write') {
-      assert.equal(target, null, `${def.name} is a write — it is composed and copied, never run`);
-      continue;
-    }
-    // **The third shape, added by owner ruling D2 on 2026-09-06.** A read marked
-    // `runnable: false` is a command to COPY — `audit --files` is the one, and
-    // there is no `/api/audit` for it to fetch and no screen to navigate to. The
-    // Composer draws no Run button for it, which is this `null` reaching the
-    // screen, and `palette-lib.test.ts` holds the catalogue to declaring it.
-    if (def.runnable === false) {
-      assert.equal(target, null,
-        `${def.name} declares it does not run, so the Composer must offer nothing that runs it`);
-      continue;
-    }
-    assert.notEqual(target, null, `${def.name} is a read with nothing to run`);
-    assert.ok(target!.kind === 'fetch' || target!.kind === 'navigate');
-    ran += 1;
-  }
-  assert.ok(ran > 0, 'no read has a run target at all; the assertion above ran over nothing');
-});
-
-test('a read fetches the endpoint that serves it, or navigates to the screen that renders it', async () => {
-  const { PALETTE } = await defs();
-  const { readTarget } = await screen();
-  const find = (name: string): PaletteDef => PALETTE.find((d) => d.name === name)!;
-  assert.deepEqual(readTarget(find('status'), {}), { kind: 'navigate', hash: '#/status' });
-  assert.deepEqual(readTarget(find('list'), {}), { kind: 'fetch', path: '/api/items' });
-  assert.deepEqual(readTarget(find('show'), { id: 'RULE-x' }),
-    { kind: 'fetch', path: '/api/item/RULE-x' });
-  // An id with a character a URL would eat is encoded by the catalogue, not
-  // pasted — the endpoint reads one path segment and must receive one.
-  assert.deepEqual(readTarget(find('show'), { id: 'RULE-a/b' }),
-    { kind: 'fetch', path: '/api/item/RULE-a%2Fb' });
-  assert.deepEqual(readTarget(find('search'), { text: 'integer cents', limit: '10' }),
-    { kind: 'fetch', path: '/api/search?text=integer+cents&limit=10' });
-  // `help` carries a screen and no endpoint: the answer is already rendered.
-  assert.deepEqual(readTarget(find('help'), { topic: 'scope' }), { kind: 'navigate', hash: '#/learn' });
-});
-
-/**
- * An all-absent `search` composes a legal command and an ILLEGAL query, and
- * the screen fetches it anyway on purpose: `apiSearch` refuses it in words
- * that name the right question (`src/ui/read-model-work.ts` · `'at least one filter is required — an all-absent filter matches the whole corpus, ' +` · ~187),
- * and `errorNote` shows the server's own sentence. Re-deciding that here would
- * be a second opinion about a rule the endpoint already owns — and the browser
- * has no string key of its own to say it with.
- */
-test('an all-absent search still composes a path, for the endpoint to refuse', async () => {
-  const { PALETTE } = await defs();
-  const { readTarget } = await screen();
-  assert.deepEqual(readTarget(PALETTE.find((d) => d.name === 'search')!, {}),
-    { kind: 'fetch', path: '/api/search?' });
-});
-
-test('resultRows reads both answered shapes and carries the endpoint\'s own total', async () => {
-  const { resultRows } = await screen();
-  assert.deepEqual(
-    resultRows({ items: [{ id: 'a' }, { id: 'b' }], total: 275, truncated: true }),
-    { rows: [{ id: 'a' }, { id: 'b' }], total: 275, truncated: true });
-  // `/api/items` sends no `total`; the rows are the whole answer.
-  assert.deepEqual(resultRows({ items: [{ id: 'a' }] }),
-    { rows: [{ id: 'a' }], total: 1, truncated: false });
-  assert.deepEqual(resultRows({ item: { id: 'RULE-x' }, injection: {} }),
-    { rows: [{ id: 'RULE-x' }], total: 1, truncated: false });
-  // Empty is a real answer and is not a truncation.
-  assert.deepEqual(resultRows({ items: [], total: 0, truncated: false }),
-    { rows: [], total: 0, truncated: false });
-  for (const junk of [null, undefined, 42, 'items', { ok: true }, { item: null }]) {
-    assert.deepEqual(resultRows(junk), { rows: [], total: 0, truncated: false });
-  }
-});
 
 /* ── the glob tester ─────────────────────────────────────────────────────── */
 

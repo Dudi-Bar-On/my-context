@@ -278,6 +278,15 @@ interface Def {
    * the same reason `boundary` is stated on every entry.
    */
   runnable?: boolean;
+  /**
+   * **Declared here so a test can prove they are ABSENT.** These were the
+   * Composer's Run button — navigate to a screen, or fetch an endpoint — and
+   * both are removed from every entry as of 2026-09-07
+   * (`DEC-run-is-removed-execute-is-the-only-way-to-run-what-the`). The fields
+   * stay in this interface and nowhere else, because 'no entry carries a second
+   * way to run' below has to READ them to fail on one, and a property TypeScript
+   * does not know about cannot be read at all.
+   */
   screen?: string; endpoint?: (values: Record<string, string>) => string;
 }
 interface DefsModule { PALETTE: Def[]; commandFor: (def: Def, values: Record<string, unknown>) => string[] }
@@ -460,35 +469,55 @@ test('the boundary markings and the --yes flags are the ones the parser gives', 
 });
 
 /**
- * **A read either runs here or is a command to copy, and now it can say which.**
+ * **THERE IS ONE WAY TO RUN A COMPOSED COMMAND, AND THIS IS THE GATE THAT
+ * KEEPS IT THAT WAY.**
  *
- * This test read "every read names a screen or an endpoint", and its reason was
- * exactly right: a read the UI cannot execute is not a read, it is a command to
- * copy — and until 2026-09-06 the catalogue had no way to SAY "a command to
- * copy", so such an entry could only be an accident. `runnable: false` is that
- * third state (owner ruling D2), and it withholds both halves of running at
- * once: `readTarget` gives the Composer no Run button, and `resolveCommand`
- * gives the server nothing to run.
+ * This test used to read *"every read runs somewhere, or declares that it does
+ * not run at all"* — where "runs somewhere" meant `screen` (navigate to the
+ * page that renders an equivalent answer) or `endpoint` (fetch JSON that serves
+ * one), the two fields behind the Composer's Run button. Owner ruling
+ * 2026-09-07 removed Run outright
+ * (`DEC-run-is-removed-execute-is-the-only-way-to-run-what-the`), so the
+ * assertion is INVERTED rather than deleted: those fields must not come back.
  *
- * So the rule is unchanged in force and wider by one legal shape: a read with
- * neither a screen nor an endpoint is a fault UNLESS it declares that it does
- * not run. `audit` is the entry that needs it, and the reason is in its own
- * comment: there is no `/api/audit`.
+ * **Why a gate at all, when the fields are simply gone.** Because the defect
+ * was never the two entries that had drifted; it was that the catalogue COULD
+ * carry a second answer at all. `mycontext list rule` fetched `/api/items`,
+ * which takes no category and answered 980 rows of every type where the CLI
+ * answers 52 (measured 2026-09-07); `mycontext help slash` navigated to
+ * `#/learn`, which draws the four topics `UI_HELP_TOPICS` names of the seven
+ * `core/teach.ts` accepts. Both are entries somebody added correctly and the
+ * world moved under. A tenth entry would drift the same way, and the only fix
+ * that scales is that there is nothing left to drift FROM.
+ *
+ * `runnable` is now the whole story, and `execute-catalogue.ts` states the same
+ * rule server-side, so a licence this file gets wrong is refused there anyway.
  */
-test('every read runs somewhere, or declares that it does not run at all', async () => {
+test('no entry carries a second way to run — Execute is the only verb', async () => {
   const { PALETTE } = await defs();
+  const relics = PALETTE
+    .filter((d) => d.screen !== undefined || d.endpoint !== undefined)
+    .map((d) => `${d.name} carries ${d.screen !== undefined ? 'screen' : 'endpoint'}`);
+  assert.deepEqual(
+    relics, [],
+    'a def names a screen to navigate to or an endpoint to fetch. Those were the Composer\'s '
+    + 'Run button, removed 2026-09-07: a read now runs the REAL command through Execute like '
+    + 'every other entry, or declares runnable: false and is a command to copy. Adding either '
+    + 'field back gives one composed command two answers that can disagree.',
+  );
+  // Anti-vacuity: the loop must have run over a real catalogue, and over reads
+  // in particular — they are the only kind that ever carried these fields.
   const reads = PALETTE.filter((d) => d.kind === 'read');
-  for (const def of reads) {
-    assert.ok(
-      typeof def.screen === 'string' || typeof def.endpoint === 'function' || def.runnable === false,
-      `${def.name} is a read with no execution path and no declaration that it has none`,
-    );
-  }
-  // Anti-vacuity, both ways: the loop must have seen a read that DOES run, or
-  // the widened clause would be excusing the whole set.
+  assert.ok(reads.length > 5, `only ${reads.length} reads in the catalogue; the derivation is broken`);
+  // And the third state stays representable and stays USED: a read this browser
+  // cannot execute at all is `runnable: false`, which is `audit --files`.
   assert.ok(
-    reads.some((d) => typeof d.screen === 'string' || typeof d.endpoint === 'function'),
-    'no read names a screen or an endpoint; the check above is passing over nothing',
+    reads.some((d) => d.runnable === false),
+    'no read declares runnable: false; the copy-only state has stopped being exercised',
+  );
+  assert.ok(
+    reads.some((d) => d.runnable === true),
+    'no read is runnable; the assertion above would be excusing the whole set',
   );
 });
 
@@ -670,8 +699,8 @@ const FLAGS_NOT_OFFERED: Record<string, Record<string, string>> = {
       + 'in one composed line at all. The focus dialog (`app.js`) already draws this form, and '
       + '`focusCommandId` returns null for it permanently, which is the same ruling reaching '
       + 'the screen: Copy, never Execute. When the palette offers a focus report it belongs as '
-      + 'its own `kind: read` entry with a screen, the way every other read here is listed, and '
-      + 'this row must move rather than stand over the opposite.',
+      + 'its own `kind: read` entry, the way every other read here is listed, and this row must '
+      + 'move rather than stand over the opposite.',
     preview: '--preview reports what a focus WOULD hide and sets nothing. It refuses `--yes` by '
       + 'name for the reason above, so it cannot be composed beside the flag this boundary entry '
       + 'carries. It is also the one form whose whole value is being read before a person '
