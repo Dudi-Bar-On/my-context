@@ -448,6 +448,12 @@ export function apiCliHelpSubject(
       kind, id: slash.name, label: `/mycontext:${slash.name}`,
       description: slash.description,
       modelInvocable: slash.modelInvocable,
+      // Owner review 2026-09-06: a slash command showed no parameters while a
+      // CLI command showed every flag. The hint was declared in 90 of the 91
+      // committed files all along and simply never read. `null` is carried
+      // through rather than flattened to '' so the screen can say "takes no
+      // argument" where that is the measured truth.
+      argumentHint: slash.argumentHint,
     },
   };
 }

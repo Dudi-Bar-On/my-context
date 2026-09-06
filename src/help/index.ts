@@ -735,7 +735,25 @@ const COMMANDS_DIR = path.join(import.meta.dirname, '..', '..', 'commands');
  * needs to render these sections from a list it controls, and no test may
  * write into `commands/`.
  */
-export interface SlashCommand { name: string; description: string; modelInvocable: boolean }
+export interface SlashCommand {
+  name: string;
+  description: string;
+  modelInvocable: boolean;
+  /**
+   * What the command takes, in Claude Code's own `argument-hint` spelling —
+   * `"[category] [the item in one sentence]"` — or `null` where the file
+   * declares none.
+   *
+   * Added 2026-09-06, owner review of the Library's command-line card: "most
+   * if not all the slash commands does not shows parameters like the cli
+   * commands does". The hint was already there and simply unread — 90 of the
+   * 91 committed files declare it. `null` is a MEASURED absence rather than a
+   * default: `LoadMyContext` takes no argument and says so by omission, and a
+   * reader is owed the difference between "takes nothing" and "nobody wrote
+   * it down".
+   */
+  argumentHint: string | null;
+}
 
 /**
  * Every slash command this plugin ships, read from the committed
@@ -779,6 +797,12 @@ export function slashCommands(): SlashCommand[] {
       // this reads the absence as permission rather than treating an
       // unannotated file as if it carried the flag.
       modelInvocable: data['disable-model-invocation'] !== true,
+      // Read, not defaulted: an empty or non-string hint becomes `null` so a
+      // reader can be told "takes no argument" instead of being shown a blank
+      // where a parameter list should be.
+      argumentHint: typeof data['argument-hint'] === 'string' && data['argument-hint'].trim() !== ''
+        ? data['argument-hint'].trim()
+        : null,
     };
   });
 }

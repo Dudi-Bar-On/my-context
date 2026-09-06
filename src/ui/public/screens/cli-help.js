@@ -300,6 +300,27 @@ function paintSlash(ctx, host, body) {
   const summary = el('p', 'small');
   summary.append(body.description);
   host.append(summary);
+
+  // What it takes. Owner review 2026-09-06: "most if not all the slash
+  // commands does not shows parameters like the cli commands does" — and they
+  // did not, though 90 of the 91 files had declared it since they were
+  // generated. The hint is Claude Code's own `argument-hint` spelling, so it
+  // is shown VERBATIM rather than parsed into a flag table: it is one string
+  // written for a person, and splitting it on brackets would invent a
+  // structure the source does not have.
+  //
+  // `mono` for the same reason the flag names are mono — it is literal text a
+  // reader types — and the absence is NAMED rather than left blank, because
+  // "takes no argument" and "nobody wrote it down" are different facts and
+  // `LoadMyContext` is genuinely the first.
+  const takes = el('p', 'small');
+  if (typeof body.argumentHint === 'string' && body.argumentHint !== '') {
+    takes.append(...ctx.t('clih.slashargs'), ' ', mono(body.argumentHint));
+  } else {
+    takes.append(...ctx.t('clih.slashnoargs'));
+  }
+  host.append(takes);
+
   const who = el('p', 'small');
   who.append(...ctx.t(body.modelInvocable === true ? 'clih.slashmodel' : 'clih.slashuser'));
   host.append(spaced(who));

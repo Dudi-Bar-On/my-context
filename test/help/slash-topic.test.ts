@@ -65,9 +65,9 @@ function descriptionOf(file: string): string {
 
 test('the command list is generated from what it is given, not written into slash.md', () => {
   const rendered = slashCommandList([
-    { name: 'zzz-probe', description: 'a command invented by this test', modelInvocable: false },
-    { name: 'add-zzz-probe', description: 'invented', modelInvocable: false },
-    { name: 'list-zzz-probe', description: 'invented', modelInvocable: false },
+    { name: 'zzz-probe', description: 'a command invented by this test', modelInvocable: false, argumentHint: null },
+    { name: 'add-zzz-probe', description: 'invented', modelInvocable: false, argumentHint: null },
+    { name: 'list-zzz-probe', description: 'invented', modelInvocable: false, argumentHint: null },
   ]);
   assert.match(rendered, /- `\/mycontext:zzz-probe` — a command invented by this test/);
   assert.match(rendered, /`\/mycontext:add-<type>` — 1 of them/,
@@ -217,11 +217,11 @@ test('exactly one command file is model-invocable, and the topic names that one'
   // Not vacuous: the renderer really does read the flag rather than hardcoding
   // the answer.
   assert.equal(
-    slashModelInvocable([{ name: 'zzz-probe', description: 'x', modelInvocable: true }]),
+    slashModelInvocable([{ name: 'zzz-probe', description: 'x', modelInvocable: true, argumentHint: null }]),
     '`/mycontext:zzz-probe`',
   );
   assert.match(
-    slashModelInvocable([{ name: 'zzz-probe', description: 'x', modelInvocable: false }]),
+    slashModelInvocable([{ name: 'zzz-probe', description: 'x', modelInvocable: false, argumentHint: null }]),
     /^None\./,
   );
 });
