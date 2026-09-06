@@ -3,7 +3,7 @@
 כל פקודה וכל בלוק פלט בעמוד הזה הורצו מול סביבת עבודה נקייה בזמן הכתיבה. אין כאן
 שום דבר להמחשה בלבד.
 
-**נבדק על:** my_context v1.0.2, ‏Node 24, ‏Windows 11.
+**נבדק על:** my_context v1.0.2, <span dir="ltr">Node 24, Windows 11</span>.
 
 הערה על הכותרות: ארבע הכותרות הנדרשות מופיעות כאן באנגלית לצד העברית, מפני שבדיקת
 הקיום של המוצר מחפשת בדיוק את המחרוזות האנגליות. הטקסט עצמו מתורגם, לא מסוכם.
@@ -19,7 +19,7 @@
 
 ## How it works — איך זה עובד
 
-‏`.my_context/config.json` הוא קטן, וכל מפתח בו הוא רשות:
+<span dir="ltr">`.my_context/config.json`</span> הוא קטן, וכל מפתח בו הוא רשות:
 
 ```json
 {
@@ -37,7 +37,7 @@
 | מפתח | השפעה |
 |---|---|
 | `profile` | איזה קטלוג קטגוריות חל — `minimal` (8 קטגוריות) או `standard` (כל 29) |
-| `categories.<name>.tier` | להעביר קטגוריה בין `normative` ל‑`rationale` |
+| `categories.<name>.tier` | להעביר קטגוריה בין `normative` ל-`rationale` |
 | `categories.<name>.scopePolicy` | `global`, `required` או `inert` — מה שהיקף ריק אומר |
 | `categories.<name>.agentEdits` | `allow`, או `review` כדי להעמיד עריכה של סוכן כשינוי ממתין |
 | `categories.<name>.prefix` / `.description` | תחילית המזהה, ולמה הקטגוריה נועדה |
@@ -48,29 +48,29 @@
 | `dispatchGate` | `{"enabled": true}` כדי לדרוש פריט משימה בכל שיגור `Agent` |
 
 **מפתח לא מוכר לעולם אינו נזרק בשקט, אבל שתי הרמות עונות אחרת.** ברמה ה*עליונה*
-הוא **מדולג ומוצהר**: ‏`"budget"` במקום `"budgets"` אינו נקרא, והטוען נושא את
+הוא **מדולג ומוצהר**: <span dir="ltr">`"budget"`</span> במקום `"budgets"` אינו נקרא, והטוען נושא את
 הדילוג הלאה כך שהמשטח שאתה מסתכל בו נוקב בו בשמו במקום להשאיר אותך עם הגדרה מתה.
-בתוך בלוק מוכר — כניסת קטגוריה, ‏`budgets`, ‏`ui`, ‏`dispatchGate` — מפתח לא מוכר
+בתוך בלוק מוכר — כניסת קטגוריה, <span dir="ltr">`budgets`, `ui`, `dispatchGate`</span> — מפתח לא מוכר
 עדיין **נדחה** ושום דבר אינו נטען כלל, מפני ששום דבר בתוך בלוק מוכר אינו מגיע
 מבנייה חדשה יותר.
 
 **קטגוריה שהושמטה היא נעדרת, לא מושבתת.** תחת `minimal`, הקטגוריות שהפרופיל אינו
 נוקב בשמן אינן בקטלוג כלל, והפריטים שלהן אינם מוזרקים בשום מקום.
 
-**מעבר שכבה הוא הידית הגדולה.** העברת `reference` ל‑`normative` הופכת מסמכי
+**מעבר שכבה הוא הידית הגדולה.** העברת `reference` ל-`normative` הופכת מסמכי
 reference לכשירים לשכבת pinned — וכך גורמים למסמך להזריק את עצמו מחדש אחרי כל
-כיווץ. נסה להצמיד אחד *לפני* מעבר השכבה והוא יסרב, ‏exit 1, ויסביר ש‑`always:
+כיווץ. נסה להצמיד אחד *לפני* מעבר השכבה והוא יסרב, <span dir="ltr">exit 1</span>, ויסביר ש-`always:
 true` מבקש את שכבת pinned, ששכבת pinned מקבלת רק פריטים נורמטיביים, ושדבר לא
 שונה.
 
-**‏`config.json` מוגן מפני כלי הקבצים של Claude אך אינו נושא checksum**, ולכן
+**`config.json` מוגן מפני כלי הקבצים של Claude אך אינו נושא checksum**, ולכן
 `doctor` אינו יכול לזהות עריכה ידנית שלו כפי שהוא מזהה פריט שחובל בו. הסירוב של
 ההוק אומר זאת מילה במילה: *changes to `.my_context/config.json` are the user's to
 make — ask, do not edit.*
 
 ## From the CLI — מהשורה
 
-‏`mycontext config` צר יותר מהקובץ. הוא עושה שני דברים:
+`mycontext config` צר יותר מהקובץ. הוא עושה שני דברים:
 
 ```bash
 mycontext config <category> --disable [--yes]   # קטגוריה שנשלחה עם המוצר, מכובה
@@ -92,24 +92,24 @@ mycontext config <path> --unset [--yes]
 my_context: this category is on the rationale tier, so the item is never injected in full and costs the injection budget nothing. It is stored, searchable, and counted in the session index. Retiering the category to "normative" in config changes that — and changes what governs this project — see README, "reference".
 ```
 
-**מה שהשורה יודעת לעשות כאן והממשק לא.** כל מפתח מלבד `budgets`. ‏`profile`,
-‏`tier` של קטגוריה, ‏`scopePolicy`, ‏`agentEdits`, ‏`prefix`, ‏`description`,
-‏`watchedDocs`, ‏`ui`, ‏`handover` ו‑`dispatchGate` הם כולם עריכות ידניות או
+**מה שהשורה יודעת לעשות כאן והממשק לא.** כל מפתח מלבד `budgets`. <span dir="ltr">`profile`,
+`tier`</span> של קטגוריה, <span dir="ltr">`scopePolicy`, `agentEdits`, `prefix`, `description`,
+`watchedDocs`, `ui`, `handover`</span> ו-`dispatchGate` הם כולם עריכות ידניות או
 הפעלות של `mycontext config`; הדפדפן מציג אותם בתצוגה מקדימה ומרכיב את השינוי,
 אבל כותב תקציבים בלבד.
 
 ## From the UI — מהממשק
 
-מסך **ההגדרות** (‏`nav.ch`) נושא את הטענה החזקה ביותר במוצר הזה: *ה"טרמינל אינו
+מסך **ההגדרות** (`nav.ch`) נושא את הטענה החזקה ביותר במוצר הזה: *ה"טרמינל אינו
 יכול לעשות את זה" החזק ביותר*. כותרת המשנה שלו מסבירה למה — *כל שינוי מוצג
-בתצוגה מקדימה כ‑diff, נבדק מול אותו `resolveConfig` שקורא אותו.*
+בתצוגה מקדימה כ-diff, נבדק מול אותו `resolveConfig` שקורא אותו.*
 
 חלונית אחת לכל נושא הגדרה — פרופיל, תקציבים, קטגוריות, מסמכים במעקב — וכל חלונית
 מציגה שלושה דברים:
 
 - **מה משתנה**, כזוג: הערך הישן מחוק בקו, הערך החדש מודגש, גוון לפי כיוון. שבב
-  ‏`+1` בודד מאבד את הזיווג, ולכן זה אינו מצויר כך.
-- **רדיוס הפגיעה**, שהוא צבע המסגרת והספירה: כמה מהמאגר מפסיק לעבוד. ‏`inert` הוא
+  <span dir="ltr">`+1`</span> בודד מאבד את הזיווג, ולכן זה אינו מצויר כך.
+- **רדיוס הפגיעה**, שהוא צבע המסגרת והספירה: כמה מהמאגר מפסיק לעבוד. `inert` הוא
   האפשרות ההרסנית ביותר, והפריטים **נקובים בשם, לא מוערכים** — המסך מריץ את אותו
   `select` שההוק מריץ, פעמיים על אותם פריטים, ומדווח על ההפרש.
 - **"אין שינוי" מדוד** כשאין: *"שום דבר אינו מתחיל או מפסיק לשלוט, המסירה אינה
@@ -117,7 +117,7 @@ my_context: this category is on the rationale tier, so the item is never injecte
 
 **תקציבים הם הערך האחד שנכתב כאן**, מעבר לאישור שמציג כל ערך, והמסך קורא מחדש את
 `config.json` מהדיסק בכל טעינה — כך שחזרה אליו מציגה את הערך החדש, או שגיאת פרסור
-אם ה‑JSON נשבר.
+אם ה-JSON נשבר.
 
 אם `config.json` אינו ניתן לפרסור או אינו ניתן לפתרון, המסך אומר מי מהשניים קרה
 ומדפיס את ההודעה של הטוען עצמו במקום כשל גנרי.
