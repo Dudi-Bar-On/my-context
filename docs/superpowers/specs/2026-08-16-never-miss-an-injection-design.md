@@ -687,7 +687,7 @@ conditions the chosen options carry, which is what conditions are for.
    checksum verification and body parsing on the fallback path; NOT Option F, which P3
    closed) is pinned to ~5–10k items, and `doctor` warns as a corpus approaches it — shipped at
    the low edge of that band
-   (`src/doctor/checks.ts` · `export const FALLBACK_CEILING_WARN_ITEMS = 5000;` · ~2219).
+   (`src/doctor/checks.ts` · `export const FALLBACK_CEILING_WARN_ITEMS = 5000;` · ~2258).
 4. **Antivirus interference is documented-elsewhere, not cleared — and it can no longer be
    parked as documentation-only, because §4.4 is where it lands.** Defender's real-time
    protection is off on the measurement machine, so no probe could exhibit or refute the
