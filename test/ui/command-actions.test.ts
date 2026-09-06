@@ -315,9 +315,11 @@ interface I18nModule {
 interface ActionsModule {
   commandActions: (spec: {
     argv: string[]; id: string | null; values?: Record<string, unknown>;
-    ctx: unknown; copyBlocked?: boolean; onCopied?: () => void;
+    ctx: unknown; copyBlocked?: boolean; onCopied?: () => void; ids?: Set<string>;
   }) => FakeElement;
   CONFIRM_ID_ARG: string;
+  /** The recogniser behind the linkified ids in a command's own output. */
+  idRuns: (line: unknown, known: unknown) => { text: string; id: string | null }[];
 }
 
 const browserModule = async <T>(...segments: string[]): Promise<T> =>
@@ -466,7 +468,7 @@ const RULE_X = {
 
 async function draw(spec: {
   argv: string[]; id: string | null; values?: Record<string, unknown>; copyBlocked?: boolean;
-  onCopied?: () => void;
+  onCopied?: () => void; ids?: Set<string>;
 }, wiring: Wiring = {}): Promise<{ root: FakeElement; calls: Call[]; said: Said[] }> {
   const { commandActions } = await browserModule<ActionsModule>('lib', 'command-actions.js');
   const { ctx, calls, said } = await wire(wiring);
@@ -1224,4 +1226,163 @@ test('every string key this control names is declared in both tables, with its s
   }
   assert.deepEqual(missing, [], 'a key in one table and not the other fails strings-parity');
   assert.deepEqual(unsupplied, [], 'a missing substitution puts braces on the screen');
+});
+
+/* -------------------------------------------------------------------------- *
+ * The question, above the answer — `TASK-the-results-card-says-what-came-back`.
+ * -------------------------------------------------------------------------- */
+
+test('the card names the command that RAN, and it is the same string the region is keyed on', async () => {
+  const { root } = await draw(
+    { argv: ['mycontext', 'list', 'rule'], id: 'list' },
+    {
+      confirm: { ...DOCTOR_CONFIRM, id: 'list', argv: ['list', 'rule'] },
+      outcome: { id: 'list', argv: ['list', 'rule'], exitCode: 0, durationMs: 9, stdout: 'ok', stderr: '' },
+    },
+  );
+  await click(findButton(root, EXEC));
+  await click(findOne(root, 'button.go'));
+
+  const result = findOne(root, 'div.execresult');
+  // The label, from the table rather than from a literal here.
+  const en = (await browserModule<{ strings: Record<string, string> }>('strings', 'en.js')).strings;
+  assert.match(textOf(result), new RegExp(en['exec.ran']!),
+    'the card drew exit code and stdout — both about the ANSWER — and nothing named the QUESTION');
+
+  const line = findAll(result, (node) => node.tag === 'code');
+  assert.equal(line.length, 1, 'exactly one command line in the result region');
+  assert.equal(textOf(line[0]!), 'mycontext list rule');
+
+  // **THE GUARANTEE, ASSERTED AS ONE FACT AND NOT TWO.** `data-cmdkey` is what
+  // `app.js`' `executeOutcomeHome` re-homes this region by: it is only ever put
+  // back on a control composing the IDENTICAL line. So a card whose drawn
+  // command equals its own key cannot be shown beside a command it did not run,
+  // however far the composed line has moved on since.
+  assert.equal(result.dataset['cmdkey'], textOf(line[0]!),
+    'the line the card draws IS the identity the shell carries the card under');
+});
+
+test('the command is drawn plainly, not as safe/unsafe argv chips', async () => {
+  // The chips carry a judgement about COMPOSING — that a paste reaches a shell
+  // where `$(…)` is live. This command reached `execFile` with an argv array,
+  // where it is a literal, and it has already run. A red ✕ over a run that
+  // exited 0 would warn about a hazard that never existed.
+  const { root } = await draw(
+    { argv: ['mycontext', 'search', '--text', 'cost in $USD'], id: 'search', copyBlocked: true },
+    {
+      confirm: { ...DOCTOR_CONFIRM, id: 'search', argv: ['search', '--text', 'cost in $USD'] },
+      outcome: { id: 'search', argv: ['search'], exitCode: 0, durationMs: 4, stdout: 'none', stderr: '' },
+    },
+  );
+  await click(findButton(root, EXEC));
+  await click(findOne(root, 'button.go'));
+
+  const result = findOne(root, 'div.execresult');
+  assert.deepEqual(
+    renderedKinds(result).filter((kind) => kind.includes('chip')), [],
+    'no chip vocabulary in the result region',
+  );
+  assert.ok(renderedKinds(result).includes('div.cmd'),
+    'the confirm above already draws an argv this way; the card reuses that shape');
+});
+
+/* -------------------------------------------------------------------------- *
+ * An id in the output opens the pane — `TASK-an-id-in-a-composer-result-opens`.
+ * -------------------------------------------------------------------------- */
+
+test('idRuns links a token only when the INDEX holds it — never because it looks like an id', async () => {
+  const { idRuns } = await browserModule<ActionsModule>('lib', 'command-actions.js');
+  const known = new Set(['RULE-x', 'TASK-foo', 'TASK-foo-bar']);
+
+  assert.deepEqual(idRuns('see RULE-x now', known), [
+    { text: 'see ', id: null },
+    { text: 'RULE-x', id: 'RULE-x' },
+    { text: ' now', id: null },
+  ]);
+
+  // The failure mode the task names: a string that merely LOOKS like an id.
+  // 29 categories mean the prefixes are derived and never typed, so shape
+  // decides nothing here — only membership does.
+  assert.deepEqual(idRuns('see RULE-nope now', known), [{ text: 'see RULE-nope now', id: null }],
+    'an id-shaped string the corpus does not hold stays text: a pane that opens on nothing is '
+    + 'worse than a word that was never a link');
+  assert.deepEqual(idRuns('CONST-node-24-no-build-step', known),
+    [{ text: 'CONST-node-24-no-build-step', id: null }],
+    'a real id of a corpus this page has not read is a MISS, and a miss degrades to plain text');
+
+  // Maximal runs: a shorter id that is a prefix of a longer one cannot steal it.
+  assert.deepEqual(idRuns('TASK-foo-bar', known), [{ text: 'TASK-foo-bar', id: 'TASK-foo-bar' }]);
+  assert.deepEqual(idRuns('TASK-foo', known), [{ text: 'TASK-foo', id: 'TASK-foo' }]);
+
+  // Punctuation ends a token, so an id in prose is still recognised.
+  assert.deepEqual(idRuns('mycontext show RULE-x.', known), [
+    { text: 'mycontext show ', id: null },
+    { text: 'RULE-x', id: 'RULE-x' },
+    { text: '.', id: null },
+  ]);
+
+  // And the two ways it is asked for nothing.
+  assert.deepEqual(idRuns('RULE-x', new Set()), [{ text: 'RULE-x', id: null }]);
+  assert.deepEqual(idRuns('RULE-x', undefined), [{ text: 'RULE-x', id: null }]);
+  assert.deepEqual(idRuns(42, new Set(['RULE-x'])), []);
+});
+
+test('an id the command PRINTED carries data-id, so the shell\'s one listener opens the pane', async () => {
+  const { root } = await draw(
+    {
+      argv: ['mycontext', 'list', 'rule'], id: 'list',
+      ids: new Set(['RULE-x']),
+    },
+    {
+      confirm: { ...DOCTOR_CONFIRM, id: 'list', argv: ['list', 'rule'] },
+      outcome: {
+        id: 'list', argv: ['list', 'rule'], exitCode: 0, durationMs: 9,
+        stdout: '| RULE-x       | rule |\n| RULE-absent  | rule |', stderr: '',
+      },
+    },
+  );
+  await click(findButton(root, EXEC));
+  await click(findOne(root, 'button.go'));
+
+  const result = findOne(root, 'div.execresult');
+  const marks = findAll(result, (node) => kindOf(node) === 'button.idrun') as FakeElement[];
+  assert.equal(marks.length, 1, 'the known id is a link and the unknown one is not');
+  assert.equal(marks[0]!.dataset['id'], 'RULE-x',
+    'nothing is wired here: app.js installItemPane() delegates from the document on [data-id]');
+  assert.equal(marks[0]!.type, 'button',
+    'a real button, so the gesture is reachable from a keyboard like every other id');
+
+  // The alignment constraint, asserted as the class it depends on rather than
+  // as pixels: `.linkid` carries `.m` (font-size .87em) and `display:inline-flex`,
+  // which would shrink an id out of a monospace column that lines up by
+  // character count. `.idrun` changes colour and nothing else.
+  const kinds = renderedKinds(result);
+  assert.ok(!kinds.some((kind) => kind.includes('linkid')),
+    'not linkId(): its .m font-size would break the column alignment of the table it sits in');
+
+  // And the isolation `argvChip` states the reason for: this page is dir="rtl"
+  // in Hebrew and an id reorders around neighbouring punctuation without it.
+  assert.equal(childKinds(marks[0]!).join(''), 'bdi');
+
+  // Whitespace is content in here, so the surviving text must be byte-exact.
+  assert.equal(textOf(findOne(result, 'pre.lit')),
+    '| RULE-x       | rule |\n| RULE-absent  | rule |');
+});
+
+test('a screen that passes no index gets the output it always got — no links, no change', async () => {
+  const { root } = await draw(
+    { argv: ['mycontext', 'doctor'], id: 'doctor' },
+    {
+      confirm: DOCTOR_CONFIRM,
+      outcome: { id: 'doctor', argv: ['doctor'], exitCode: 0, durationMs: 9, stdout: 'RULE-x is fine', stderr: '' },
+    },
+  );
+  await click(findButton(root, EXEC));
+  await click(findOne(root, 'button.go'));
+
+  const result = findOne(root, 'div.execresult');
+  assert.deepEqual(findAll(result, (node) => kindOf(node) === 'button.idrun'), [],
+    'only a screen that has already read the corpus\'s ids may resolve one; the others are '
+    + 'unchanged, and widening this is one argument at each call site');
+  assert.equal(textOf(findOne(result, 'pre.lit')), 'RULE-x is fine');
 });

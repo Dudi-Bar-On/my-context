@@ -159,7 +159,7 @@ import { composeCommand } from '/lib/command.js';
 // confirm wrong — the confirm being the security boundary (§6.3).
 import { commandActions } from '/lib/command-actions.js';
 import { PALETTE, commandFor, runnableFor } from '/lib/palette-defs.js';
-import { el, errorNote, num, screenHead, spaced } from '/screens/parts.js';
+import { el, errorNote, linkId, num, screenHead, spaced } from '/screens/parts.js';
 
 /**
  * The pattern that matches every file the walk reached. `globToRegExp` turns a
@@ -837,6 +837,29 @@ export async function render(root, ctx) {
   const sources = sourceLists(bodies);
 
   /**
+   * **The corpus's whole id list, as a set, built ONCE per visit to this
+   * screen** — the index an executed command's TEXT output is resolved against
+   * (`TASK-an-id-in-a-composer-result-opens-the-item-pane-the-same-as`,
+   * population 2, where the id is prose in an ASCII table rather than a field
+   * on a row).
+   *
+   * `sources.items` is `/api/items`' whole answer — every item, sorted by id,
+   * uncapped, and accepting no filter — which `render()` has already fetched
+   * above to build this screen's pickers. So the recogniser costs no request:
+   * the Composer is the one screen in this product that has already paid for
+   * the corpus's id list, and that is why the set is handed to the shared
+   * Copy-and-Execute control from here rather than invented inside it.
+   *
+   * **Hoisted out of `recompose()` deliberately.** That function runs on every
+   * `input` event, and rebuilding a 965-element set per keystroke would be a
+   * cost that grows with the corpus for an answer that cannot change while the
+   * screen is up. An id the executed command itself CREATES is therefore not in
+   * it and degrades to plain text — which is the direction the task asks a miss
+   * to fall in, and the next render re-reads `/api/items` anyway.
+   */
+  const itemIds = new Set(sources.items.map((option) => option.value));
+
+  /**
    * The tag vocabulary `/api/tags` last answered, or `null` before it answers.
    *
    * **`null` and `{ free: [], projected: [] }` are different states and both
@@ -1293,7 +1316,10 @@ export async function render(root, ctx) {
     // same ids on the server, and it would refuse them if this line were wrong.
     const runnable = runnableFor(def);
     cmdBox.append(commandActions({
+      // `ids` is the index an executed command's TEXT output is resolved
+      // against — see `itemIds` above for what it is and why it is built once.
       argv, id: runnable ? def.name : null, values, ctx, copyBlocked: blocked,
+      ids: itemIds,
     }));
     if (!runnable) {
       // Said once, where the missing button would be. A reader who has just
@@ -1373,7 +1399,26 @@ export async function render(root, ctx) {
       const tbody = el('tbody');
       for (const row of answer.rows) {
         const tr = el('tr');
-        tr.append(el('td', 'm', row.id));
+        // **The id OPENS**, and this is population 1 of
+        // `TASK-an-id-in-a-composer-result-opens-the-item-pane-the-same-as`:
+        // exact, because `row.id` is a FIELD of the object the cell is built
+        // from and not a string parsed out of anything. `linkId()` is the shape
+        // every other screen's id already wears — `button.linkid` carrying
+        // `data-id`, which `app.js`' one delegated document listener
+        // (`installItemPane`) already answers. Nothing is wired here: the
+        // Composer simply stopped being the one screen that drew an id as inert
+        // text. `split: false` because a result row is a list of ids rather
+        // than the carried-item card the `.idkind`/`.idslug` split was drawn
+        // for, which is the same call `ask.js`, `doctor.js` and `coverage.js`
+        // make in the same position.
+        //
+        // The `<td class="m">` stays and the button goes INSIDE it: the cell's
+        // own kind is what `e2e/screen-parity.spec.ts` compares, and dropping
+        // `.m` from it to let the button carry the mono face would delete a
+        // kind the design of record draws.
+        const cell = el('td', 'm');
+        cell.append(typeof row.id === 'string' && row.id !== '' ? linkId(row.id, false) : '—');
+        tr.append(cell);
         tbody.append(tr);
       }
       table.append(caption, thead, tbody);

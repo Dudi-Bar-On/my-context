@@ -281,9 +281,31 @@ function valueCell(isMono, fill) {
  * is not focused, or by a browser with no clipboard at all, and a state
  * flipped on click would say "copied" for every one of those.
  */
-export function commandActions({ argv, id, values = {}, ctx, copyBlocked = false, onCopied }) {
+export function commandActions({ argv, id, values = {}, ctx, copyBlocked = false, onCopied, ids }) {
   const root = el('div', 'cmdactions');
   const composed = composeCommand(argv);
+
+  /**
+   * **The ids this screen has already read, so an id the command PRINTS can be
+   * opened** — `TASK-an-id-in-a-composer-result-opens-the-item-pane-the-same-as`,
+   * population 2.
+   *
+   * A `Set` and not a matcher: recognising an id in prose is the whole hard
+   * part of that task, and the only honest recogniser is the INDEX. There are
+   * 29 categories, so the id prefixes are a derived set and never a typed one;
+   * a regex that decided what "looks like an id" would be a second opinion
+   * about the corpus's own naming, and its mistakes would open a pane on
+   * nothing — which the task names as worse than a word that was never a link.
+   * So a token becomes a link only when it is EQUAL to an id this browser has
+   * already been served, and every other token stays text.
+   *
+   * **Absent by default, and that is not a shortfall.** A screen that has not
+   * read the corpus's ids passes nothing and its output renders exactly as it
+   * did before; only the Composer, which already fetches `/api/items` to build
+   * its pickers, has the index to spend. Widening this is one argument at each
+   * of the other call sites and no change here.
+   */
+  const known = ids instanceof Set ? ids : new Set(ids ?? []);
 
   /**
    * **THE CONTROL'S OWN IDENTITY, so the outcome of a run can be put back ON
@@ -610,7 +632,7 @@ export function commandActions({ argv, id, values = {}, ctx, copyBlocked = false
         ctx.executeSettled?.(result);
         return;
       }
-      report(ctx, say, outcome);
+      report(ctx, say, outcome, composed, known);
       // ── **AND THE SCREEN IT WAS RUN ON REDRAWS** — `plan:walk seq:120`,
       // owner report 2026-08-31: an item settled from the Review queue stayed
       // in the queue and the rail's gold count never moved.
@@ -693,10 +715,64 @@ export function commandActions({ argv, id, values = {}, ctx, copyBlocked = false
  * So stderr is untouched by this change. The defect was never that stderr was
  * hidden; it was that stdout was never shown.
  */
-function report(ctx, say, outcome) {
+function report(ctx, say, outcome, ran, known) {
   const exitCode = outcome?.exitCode;
   const clean = exitCode === 0;
   const nodes = [];
+
+  /**
+   * ── AND THE QUESTION, ABOVE THE ANSWER ────────────────────────────────────
+   *
+   * `TASK-the-results-card-says-what-came-back-but-never-what-was`. Everything
+   * below this block describes what came back — an exit code, what the command
+   * printed, what it refused with. None of it names what was ASKED, and the
+   * owner asked to see the command beside its results.
+   *
+   * **IT IS THE ARGV THAT RAN, AND IT CANNOT BE ANYTHING ELSE.** `ran` is
+   * `composed` from this control's own closure — `composeCommand(argv)` for the
+   * argv this control was BUILT with — which is the same string it stamped on
+   * itself and on this region as `data-cmdkey`. That is what makes the guarantee
+   * structural rather than a matter of care:
+   *
+   *   - The Composer rebuilds its Copy/Execute control on every keystroke
+   *     (`recompose()` opens with `cmdBox.replaceChildren()`), so a reader who
+   *     edits a field after running gets a NEW control with a NEW argv. This
+   *     node is not that control's; it is the old one's, detached and carried
+   *     by the shell.
+   *   - `app.js`' `executeOutcomeHome` re-homes the carried node ONLY onto a
+   *     control whose `data-cmdkey` equals this node's — that is, onto a control
+   *     composing the identical line. When the composed line has moved on, there
+   *     is no match and the outcome goes to the top of the section instead.
+   *
+   * So the sentence this line draws and the place this region is allowed to sit
+   * are the SAME fact, and a card showing the live composed line beside a stale
+   * result — the failure the task calls "provenance while being a guess" — has
+   * nowhere to come from.
+   *
+   * **Plainer than the argv chips, deliberately**, which is the one design
+   * choice the task left open. `argvChips`/`argvChip` mark an element `.crit`
+   * with a `✕` when it carries `$` or a backtick, and that judgement is about
+   * COMPOSING: a chip is warning that a PASTE reaches a shell where the
+   * substitution is live. This command did not reach a shell — it reached
+   * `execFile` with an argv array, where the same characters are ordinary
+   * literals — and it has already run. A red ✕ over a run that exited 0 would
+   * be a warning about a hazard that never existed. So it is drawn as the
+   * confirm above already draws the server's own argv: `div.cmd > code`, which
+   * `styles.css` ~417 already gives `direction:ltr;unicode-bidi:isolate`, the
+   * isolation `argvChip`'s `<bdi>` comment asks for and for the same reason —
+   * this page is `dir="rtl"` in Hebrew and a path or a glob reorders around
+   * neighbouring punctuation without it.
+   *
+   * `textContent` through `el()`, never markup: an argv element is text this
+   * app did not author, exactly like the stdout below it.
+   */
+  if (typeof ran === 'string' && ran !== '') {
+    const label = el('p', 'small');
+    label.append(...ctx.t('exec.ran'));
+    const box = el('div', 'cmd');
+    box.append(el('code', null, ran));
+    nodes.push(label, box);
+  }
 
   const code = el('span', clean ? 'exitcode' : 'exitcode bad');
   if (typeof exitCode === 'number') code.append(...ctx.t('exec.exit', { code: String(exitCode) }));
@@ -707,7 +783,7 @@ function report(ctx, say, outcome) {
   // is the answer to "what did that do", and a reader stops at the first thing
   // that answers it. Drawn on every ending, clean or not — a command that
   // printed a sentence and then exited 1 printed that sentence on purpose.
-  nodes.push(...saidNodes(ctx, outcome?.stdout));
+  nodes.push(...saidNodes(ctx, outcome?.stdout, known));
 
   if (typeof outcome?.error === 'string' && outcome.error !== '') {
     nodes.push(errorNote(outcome.error));
@@ -790,7 +866,7 @@ function report(ctx, say, outcome) {
  * newline on every line, so the block does not end in a fabricated blank one;
  * `i` is the index within the drawn window, which is exactly the right question.
  */
-function saidNodes(ctx, stdout) {
+function saidNodes(ctx, stdout, known) {
   const text = typeof stdout === 'string' ? stdout : '';
   // Trailing whitespace only: the final newline is the stream's terminator
   // rather than a line the command wrote. Leading and interior blank lines are
@@ -809,13 +885,166 @@ function saidNodes(ctx, stdout) {
   // `\r\n` is what a Windows child writes and `\n` is what the page draws; the
   // carriage return is a line TERMINATOR, not a character of the line, and
   // leaving it in renders as a stray glyph in some fonts.
+  /**
+   * **ONE ELEMENT BETWEEN THE `<pre>` AND ITS TEXT, AND IT IS NOT TIDINESS —
+   * IT IS THE ONLY THING THAT LETS AN ID BE A LINK IN HERE.**
+   *
+   * `.lit` is `display:flex;flex-direction:column;gap:8px` (`styles.css` ~367),
+   * because the primitive it names is a stack of `.blk` blocks in the injection
+   * preview. That was invisible while this field held nothing but text nodes:
+   * a contiguous run of text in a flex container is ONE anonymous flex item, so
+   * the whole output rendered as a single block and looked exactly like a
+   * `<pre>`.
+   *
+   * The moment a line contains an element, that stops being true. Each
+   * `button.idrun` becomes a REAL flex item — blockified to `display:block`,
+   * stretched to the full width of the field — and the text on either side of
+   * it becomes two more anonymous items, all stacked vertically with an 8px
+   * gap. Measured in Chrome 2026-09-06 on `mycontext list rule`: the id column
+   * of a 67-character ASCII table was thrown onto its own full-width line, the
+   * `│ rule │ active │` remainder onto the next, and the table was unreadable.
+   * `display:inline` on the button cannot help — blockification of a flex item
+   * happens after the cascade. Every assertion passed; the screenshot is what
+   * caught it.
+   *
+   * So the field gets exactly ONE child, and everything the command printed
+   * goes inside it. That is layout-neutral by construction — one flex item is
+   * what this field always had, and `gap` between one item and nothing is
+   * nothing — and inside it the buttons and the text are ordinary inline boxes
+   * again. `white-space` and `overflow-wrap` are inherited properties, so the
+   * three declarations set on the `<pre>` above still govern in here.
+   *
+   * `boundedList` is given the FLOW as its host rather than the field, because
+   * it owns its host's children — it re-paints them on every step and on "show
+   * all" — and a host that is the `<pre>` itself would put the rows back as
+   * flex items on the first press of a stepper.
+   */
+  const flow = el('span');
+  field.append(flow);
+
   const lines = said.split('\n').map((line) => line.replace(/\r$/u, ''));
   const bound = boundedList(
-    ctx, field, lines,
-    (line, i) => document.createTextNode(i === 0 ? line : `\n${line}`),
+    ctx, flow, lines,
+    // **A LINE IS NOW A `<span>` AND NO LONGER A BARE TEXT NODE**, because a
+    // line that names an item is several nodes — text, a `button.idrun`, text —
+    // and `boundedList` takes exactly one node per item.
+    //
+    // The old comment's warning still holds and is still honoured: *"an empty
+    // element has no height, so a per-line `<div>` would silently swallow every
+    // blank line the command printed"*. A `<span>` is INLINE and the newline is
+    // its own content rather than a box it fails to be, so a blank line under
+    // `pre-wrap` is still a blank line. A block element here would swallow it,
+    // and so would a document fragment — which is the other obvious shape, and
+    // is not used because it also has to exist in the stand-in `document` every
+    // unit test in this project builds.
+    //
+    // `i === 0` rather than a trailing newline, unchanged: `i` is the index
+    // within the DRAWN window, so the block never opens with a fabricated blank
+    // line and never ends in one.
+    (line, i) => {
+      const row = el('span');
+      if (i !== 0) row.append('\n');
+      for (const run of idRuns(line, known)) {
+        row.append(run.id === null ? run.text : idMark(run.id));
+      }
+      return row;
+    },
     { cap: BOUND_CAP_LIST, order: 'position' },
   );
   return [label, field, bound];
+}
+
+/**
+ * **One line of command output cut into the ids it names and the text between
+ * them** — the recognition half of
+ * `TASK-an-id-in-a-composer-result-opens-the-item-pane-the-same-as`.
+ *
+ * ── WHY THIS IS NOT A REGEX FOR "SOMETHING THAT LOOKS LIKE AN ID" ─────────
+ *
+ * The task states the problem exactly: there are 29 categories, so the id
+ * prefixes are a DERIVED set and never a typed one, and *"a string that merely
+ * LOOKS like an id is the failure mode"*. Every shape-based rule this file
+ * could carry — `^[A-Z]+-`, a spelled prefix list, a length bound — would be a
+ * second and silently-stale copy of a fact the corpus already owns, and its
+ * mistakes are paid for by the reader as a pane that opens on nothing.
+ *
+ * So the shape decides nothing. `[A-Za-z0-9_-]+` is a TOKENISER and not a
+ * matcher: it says where a word begins and ends, and the word is a link only
+ * when `known.has(token)` — string equality against ids this browser was
+ * actually served. Measured on this corpus 2026-09-06: 965 ids, every one of
+ * them inside that character class, so no real id is split by the scan.
+ *
+ * **Both directions, and only one of them can happen.** A FALSE POSITIVE would
+ * need the corpus to hold an item whose id equals an ordinary word in the
+ * output — and if it did, the link would open that item, which is a true
+ * statement rather than a wrong one. A FALSE NEGATIVE is the ordinary miss: an
+ * item created by the very command whose output this is, or one added after
+ * this page read the index. It renders as plain text, which is the degradation
+ * the task asks for in those words.
+ *
+ * **Maximal runs, so a prefix cannot steal a longer id.** `TASK-foo` and
+ * `TASK-foo-bar` both being ids does not make the first a link inside the
+ * second: `-` is inside the class, so the tokeniser hands over `TASK-foo-bar`
+ * whole and only that whole token is looked up.
+ *
+ * Punctuation ends a token, so `mycontext show RULE-x.` links `RULE-x` and
+ * leaves the full stop as text.
+ *
+ * Returns `[{ text, id }]`, `id` being `null` for a plain run — an ARRAY and
+ * not nodes, so the rule is testable without a DOM.
+ */
+export function idRuns(line, known) {
+  const runs = [];
+  if (typeof line !== 'string') return runs;
+  const has = typeof known?.has === 'function' ? (token) => known.has(token) === true : () => false;
+  let at = 0;
+  for (const match of line.matchAll(/[A-Za-z0-9_-]+/gu)) {
+    const token = match[0];
+    if (!has(token)) continue;
+    if (match.index > at) runs.push({ text: line.slice(at, match.index), id: null });
+    runs.push({ text: token, id: token });
+    at = match.index + token.length;
+  }
+  if (at < line.length) runs.push({ text: line.slice(at), id: null });
+  return runs;
+}
+
+/**
+ * A recognised id inside the machine's own text — clickable, and metrically
+ * identical to the characters it replaced.
+ *
+ * **NOT `parts.js`' `linkId()`, and the difference is the point.** That one is
+ * `button.linkid.m`: `.m` is `font-size:.87em` and `.linkid` is
+ * `display:inline-flex`, both right in a table cell and both wrong inside a
+ * `<pre>` whose columns line up by CHARACTER COUNT. An id drawn .87em smaller
+ * than the row above it takes the whole table's alignment with it, which the
+ * task names as the third thing not to break. `.idrun` therefore changes
+ * COLOUR and nothing else — `font:inherit`, `display:inline`, no border, no
+ * padding, no margin — and it restates that reset under `.cmdactions .idrun`
+ * too, because `.cmdactions button` would otherwise give it a border, a
+ * background and `font-size:var(--fs-0)`.
+ *
+ * `data-id` is the entire wiring. `app.js`' `installItemPane()` registers ONE
+ * delegated listener on `document` matching `event.target.closest('[data-id]')`
+ * and calls `openPane(id)`, so this element needs no handler, no import and no
+ * export. And `openPane` already refuses readably on an id the index does not
+ * hold: it keeps the id on screen — the one thing known to be true — puts the
+ * endpoint's own sentence where the title goes, and dashes the six rows.
+ *
+ * `<bdi>` around the text for `argvChip`'s stated reason: this page is
+ * `dir="rtl"` in Hebrew and an id reorders around neighbouring punctuation
+ * without isolation. `<bdi>` is `display:inline` and costs no metrics. A real
+ * `<button type="button">` rather than a `<span>`, so the gesture is reachable
+ * from a keyboard exactly as every other id in this product is.
+ */
+function idMark(id) {
+  const button = el('button', 'idrun');
+  button.type = 'button';
+  button.dataset.id = id;
+  const bdi = document.createElement('bdi');
+  bdi.textContent = id;
+  button.append(bdi);
+  return button;
 }
 
 /** A thrown thing as the sentence it carries — the platform's words, unedited. */

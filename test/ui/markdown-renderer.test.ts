@@ -621,7 +621,16 @@ test('every place markdown is shown imports this renderer, and nothing builds a 
   // lives in the same file for exactly that reason. The census below matches
   // either export, so a module reaching for one of them is counted whichever
   // it takes.
-  assert.deepEqual(importers.sort(), ['app.js', 'doc.js'],
+  // `screens/cli-help.js` joined on 2026-09-06, owner request: "they are
+  // already markdown, just render them as such and not as simple print text".
+  // A help topic was drawn as `<pre class="m transcript">`, so a reader saw
+  // `##` where a heading belonged. It takes `markdownNodes` — the same export
+  // the item pane takes — and this ledger is exactly the gate that should have
+  // been consulted before adding it rather than after: the import was written
+  // first and this line second, which is the wrong order and is recorded as
+  // such. It is a THIRD CALLER of the one renderer, never a second renderer,
+  // which is the distinction this test exists to hold.
+  assert.deepEqual(importers.sort(), ['app.js', 'doc.js', 'screens/cli-help.js'],
     'the set of modules importing the renderer changed — add the new one here on purpose, '
     + 'so a screen that grew its own markdown handling cannot do it quietly');
 });
