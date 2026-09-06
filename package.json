@@ -34,7 +34,8 @@
     "check:text-files": "node scripts/check-text-files.ts",
     "check:vendor": "node scripts/check-vendor.ts",
     "check:needs-cycles": "node scripts/check-needs-cycles.ts",
-    "check:handover": "node scripts/check-handover.ts"
+    "check:handover": "node scripts/check-handover.ts",
+    "check:dependencies": "node scripts/check-dependency-budget.ts"
   },
   "devDependencies": {
     "@playwright/test": "^1.62.1",
