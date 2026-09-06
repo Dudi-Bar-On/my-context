@@ -6,12 +6,12 @@ status: active
 severity: soft
 always: false
 summary: A way for the page to ask whether a command it has composed would be accepted, using the real checker, without ever running it.
-summary_of: 3222900708f457df
+summary_of: 7862685ab51b276c
 scope: []
 tags:
   - "plan:builder"
   - "seq:4"
-  - "state:todo"
+  - "state:done"
   - v2
   - ui
 origin: human
@@ -20,11 +20,12 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-08-24
 valid_until: null
-checksum: b593711e168e0955
+checksum: 592218959b885514
 plan: builder
 seq: "4"
-state: todo
+state: done
 needs: builder/1, builder/1b
+verified_on: 2026-09-06
 ---
 
 # POST /api/command/check parses a composed command without executing it

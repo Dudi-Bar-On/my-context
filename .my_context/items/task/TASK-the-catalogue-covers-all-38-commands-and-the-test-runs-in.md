@@ -6,14 +6,14 @@ status: active
 severity: soft
 always: false
 summary: Describe every command the tool has, counting them from the generated list rather than from a number typed by hand, and check the description both ways.
-summary_of: 107697ab1146895c
+summary_of: 68fc3759877b976f
 summary_was:
   - 2026-09-06 Describe every command the tool has, not just the ones the screens use, and check that description against reality in both directions.
 scope: []
 tags:
   - "plan:builder"
   - "seq:3"
-  - "state:todo"
+  - "state:done"
   - v2
   - ui
 origin: human
@@ -22,13 +22,14 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-08-24
 valid_until: null
-checksum: 9e9bd843f35184cb
+checksum: 2b0c4452cb4ae9a5
 plan: builder
 seq: "3"
-state: todo
+state: done
 needs: builder/1, builder/2
 progress: "50"
 last_change: 2026-08-31
+verified_on: 2026-09-06
 ---
 
 # the catalogue covers every command the generated coverage document counts, and the test runs in BOTH directions
