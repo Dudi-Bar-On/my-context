@@ -542,7 +542,7 @@ test('the two screens this replaces are GONE, and their addresses land on the Li
   const app = readFileSync(path.join(PUBLIC, 'app.js'), 'utf8');
   assert.doesNotMatch(app, /import\('\/screens\/(docs|tut)\.js'\)/);
   assert.match(app, /import\('\/screens\/library\.js'\)/);
-  assert.match(app, /\['nav\.read', \['library', 'learn'\]\]/);
+  assert.match(app, /\['nav\.read', \['conversations', 'library', 'learn'\]\]/);
   // A reader who still holds `#/docs`, `#/docs/<id>/<anchor>` or `#/tut/<id>`
   // — a bookmark, a link in a report — is sent to the Library rather than
   // falling through to the injection preview.

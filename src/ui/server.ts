@@ -98,6 +98,8 @@ import {
 } from './read-model.ts';
 import { registerCliHelpRoutes } from './read-model-cli-help.ts';
 import { registerCommandRoutes } from './read-model-command.ts';
+import { registerConversationRoutes } from './read-model-conversations.ts';
+import { registerStagingRoutes } from './read-model-staging.ts';
 import { registerFlagRoutes } from './read-model-flags.ts';
 import { registerConfigRoutes } from './read-model-config.ts';
 import { registerWorkRoutes } from './read-model-work.ts';
@@ -591,6 +593,25 @@ export function registerReadRoutes(): void {
   // `test/ui/command-check.test.ts` holds it to that. Registered here for the
   // same two reasons as the calls above.
   registerCommandRoutes();
+  // Owner ruling `DEC-the-read-half-of-lesson-derive-ts-is-split-out-so-a-read`.
+  // `GET /api/staging` — the rule candidates waiting for a human. It is its own
+  // module for the same reason `registerCommandRoutes` above is: the read it
+  // performs used to be impossible from this server at all, because
+  // `listStaging` lived beside `createItem`, and the module it now reads from
+  // (`lesson/staging.ts`) imports nothing which writes.
+  // `test/ui/staging-endpoint.test.ts` holds it to that. Registered here for
+  // the same two reasons as the calls above.
+  registerStagingRoutes();
+  // `plan:archive seq:2` — `GET /api/conversations` and
+  // `GET /api/conversations/:id`, the conversation archive read in place and
+  // bounded. Its own module for `registerStagingRoutes` above's reason: the
+  // graph it needs is `core/conversation-index.ts`, which imports no project
+  // module at all, and routing it through `read-model.ts` would put
+  // `node:child_process` behind it via `doctor/checks.ts`. It binds only
+  // `openReadOnlyChecked`, so it cannot create the index it reads — the CLI
+  // does that. `test/ui/conversations-endpoint.test.ts` holds it to both.
+  // Registered here for the same two reasons as the calls above.
+  registerConversationRoutes();
   // plan:library seq:1. The same two tables again, plus the help topics, the
   // MCP tool schemas and the committed slash-command files — served SUBJECT BY
   // SUBJECT rather than all at once, because the Library's picker asks about

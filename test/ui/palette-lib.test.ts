@@ -1056,6 +1056,25 @@ const WITHHELD: Record<string, string> = {
  * browser test that drives it.
  */
 const UNCATALOGUED: Record<string, string> = {
+  // `plan:archive seq:1`, landed 2026-09-07. Both halves of `conversation` are
+  // catalogue-able and neither is catalogued YET, which is a not-yet rather
+  // than a decision — so they are here and not in WITHHELD.
+  //
+  // `rebuild` is the one the Conversations screen most wants: the screen
+  // already COMPOSES it in the never-scanned state, as a line to copy, which
+  // is the same shape a `PALETTE` def would give it with an Execute behind it.
+  // Cataloguing it is a small piece of work that belongs with the palette
+  // rather than with the archive, and it was left to that lane deliberately:
+  // `palette-defs.js` was being edited by another lane the night this landed,
+  // and a def added from here would have collided with it.
+  'conversation rebuild': 'the archive scanner, composed by the Conversations screen already '
+    + 'but not yet a catalogue entry. It is a write, so it needs a def with an Execute behind '
+    + 'it rather than the copy-only line the screen draws today.',
+  'conversation list': 'the terminal spelling of what the Conversations screen shows. A def '
+    + 'would compose a read whose answer is already on the screen the reader is looking at, '
+    + 'which is the reason `todo` gives a few rows down; it is here rather than withheld '
+    + 'because the '
+    + 'screen is new and whether that judgement holds has not been taken.',
   // `ack` stood here until 2026-09-03 and its row named the condition that
   // closed it: "a control that composed a usable line would have to be driven
   // by the doctor read model rather than by a flag declaration". `Finding.remedy`

@@ -762,6 +762,17 @@ const READ_ROUTES = (from: { item: string; session: string | null }): Probe[] =>
     method: 'POST',
     body: { argv: ['mycontext', 'review', 'promote', 'RULE-x', '--yes'] },
   },
+  // Owner ruling `DEC-the-read-half-of-lesson-derive-ts-is-split-out-so-a-read`.
+  // `GET /api/staging` reads `.my_context/.staging/*.json` — working state
+  // rather than the corpus, and the ONE thing on this list this sweep would not
+  // otherwise notice, because the byte-identical assertion covers the corpus.
+  // It earns its place for the reason the route exists at all: the read used to
+  // be impossible from this server because `listStaging` sat beside
+  // `createItem`, and a route that acquired the write surface again would be
+  // able to accept a staged rule from a GET. This fixture stages nothing, so
+  // the probe exercises the empty-directory answer — which is the branch a
+  // reader most needs to be a 200 rather than an error.
+  '/api/staging',
   // plan:library seq:1. The Library's command-line card: the picker's roster,
   // and one subject at a time. Two probes rather than one, and the second is a
   // CONCRETE address rather than a template, because the parameterised route is
@@ -803,6 +814,16 @@ const READ_ROUTES = (from: { item: string; session: string | null }): Probe[] =>
   // thing it was asked for.
   '/api/corpus',
   '/api/corpus/items%2Ftask%2Fnot-a-real-item.md',
+  // `plan:archive seq:2`. THE PAIR THIS SWEEP MATTERS MOST FOR: the only way
+  // the conversation index can exist is a CLI write, so a read model tempted
+  // to "helpfully" build one would create `.index.db` tables inside the
+  // snapshot below and redden it. The list answers 200 with `indexed: false`
+  // on a corpus nobody has scanned — a state, not a 400, which this sweep
+  // would refuse — and the transcript route is probed on a session id no
+  // index can hold, so it takes the 404 the sweep accepts.
+  '/api/conversations',
+  '/api/conversations?limit=5&offset=0',
+  '/api/conversations/not-a-real-session-id',
 ];
 
 /** Does a registered path template match this concrete pathname? */

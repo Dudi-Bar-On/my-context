@@ -49,11 +49,13 @@
  * `rulings/20` widened, shipped its own separable spec; `mycontext carry`, the same day, a
  * one-shot delivery override with a flat spec of its own; and `mycontext link`, the same day
  * again, the CLI spelling `link_items` had and the terminal did not), and again 2026-09-06
- * (`mycontext handover`, the ask on demand — `plan:handover seq:14`), over the **44** commands
- * the CLI dispatches: 37 registered by `cli/commands/index.ts`'s column of side-effect
+ * (`mycontext handover`, the ask on demand — `plan:handover seq:14`), and again 2026-09-07
+ * (`mycontext conversation`, the archive's index and scanner — `plan:archive seq:1`),
+ * over the **45** commands
+ * the CLI dispatches: 38 registered by `cli/commands/index.ts`'s column of side-effect
  * imports, and 7 more registered in `cli/index.ts` itself.
  *
- *   | 40 | have a SEPARABLE flag spec — a declarative list, liftable as it is |
+ *   | 41 | have a SEPARABLE flag spec — a declarative list, liftable as it is |
  *   |  0 | read their flags INLINE where they are used, with no spec to lift  |
  *   |  1 | resists: `edit`, whose accepted set is computed per workspace      |
  *   |  3 | take no flags at all — `show`, `rebuild`, `help`                   |
@@ -79,7 +81,7 @@
  * commands named as absent, plus the keys of `COMMAND_FLAGS`, must be exactly
  * the registered set, so a command cannot arrive and be silently uncounted.
  *
- * **35** of the 40 are here. Twenty-one arrived with the first lift, and they
+ * **35** of the 41 are here. Twenty-one arrived with the first lift, and they
  * are the ones whose spec was already a declarative constant over a FLAT
  * surface — one command, one flag set. The other four arrived with
  * `plan:builder seq:1b` and came out of `src/cli/index.ts` itself — the entry
@@ -134,7 +136,7 @@
  * that its spec is ABSENT. What is absent is recorded rather than left to be
  * discovered:
  *
- *   - **`pack`, `procedure`, `review`, `session`, `statusline`** are keyed by
+ *   - **`conversation`, `pack`, `procedure`, `review`, `session`, `statusline`** are keyed by
  *     SUBCOMMAND (`review promote`, `pack import`), so they are not entries in
  *     THIS map and never will be. They kept their specs in their own modules
  *     until `plan:library seq:1`, on the grounds that lifting them meant
@@ -1397,6 +1399,17 @@ export const FLAG_DECLARATIONS: Record<string, FlagDeclarations> = {
  * but not in behaviour fails there rather than on a screen.
  */
 export const SUBCOMMAND_FLAGS: Record<string, Record<string, FlagSpec>> = {
+  /**
+   * `cli/commands/conversation.ts` (`plan:archive seq:1`). `rebuild` writes the
+   * index and `list` reads it, so they take different flags: `--full` on the
+   * reader would be a switch with nothing to do, and `--limit` on the writer
+   * would look like a bound on the scan, which is `MAX_SCAN_BYTES` and not a
+   * row count.
+   */
+  conversation: {
+    rebuild: { allowed: ['full', 'json'], values: [] },
+    list: { allowed: ['limit', 'json'], values: ['limit'] },
+  },
   /** `cli/commands/pack.ts`. `import` is the whole surface; `list` reports. */
   pack: {
     import: { allowed: ['name', 'dry-run', 'json', 'yes', 'overwrite-changed'], values: ['name'] },
@@ -1467,6 +1480,20 @@ export const SUBCOMMAND_FLAGS: Record<string, Record<string, FlagSpec>> = {
  * that comes back `unknown option`.
  */
 export const SUBCOMMAND_FLAG_DECLARATIONS: Record<string, FlagDeclarations> = {
+  conversation: {
+    json: DETAIL.json,
+    full: {
+      note: 'Re-read every transcript instead of only those whose size or mtime has changed '
+        + 'since the last scan. Both forms end at the same rows; this one pays for the '
+        + 'guarantee rather than inferring it from the file not having moved.',
+    },
+    limit: {
+      format: 'a positive whole number of rows', example: '50',
+      note: 'How many indexed conversations to print. The rest are counted and named as not '
+        + 'shown rather than left out silently, so raising it can only reveal rows the '
+        + 'previous run already told you were there.',
+    },
+  },
   pack: {
     name: {
       format: 'one plain name for the import', example: 'acme-security-baseline',

@@ -3458,3 +3458,28 @@ body.docpage{overflow-y:auto}
 .flagtable td:nth-child(2),.flagtable th:nth-child(2){inline-size:26%}
 .flagtable td{overflow-wrap:anywhere}
 .flagtable td p{margin-block:4px 0}
+
+/* ── The conversation archive (plan:archive seq:3) ──────────────────────────
+   Logical properties throughout, so the border accent that marks a turn moves
+   to the right edge under `dir="rtl"` without a second rule. The accent is
+   never the only mark: every turn also carries a chip with a glyph and a keyed
+   word, because this app is bilingual and themed and colour is not the only
+   channel available. */
+.convrow{flex-direction:column;align-items:stretch;gap:4px}
+.convhead{font-weight:600}
+.convmeta{margin-block:0}
+.convcmd{overflow-x:auto;white-space:nowrap;margin-block-start:var(--sp-1)}
+.convlist{display:flex;flex-direction:column;gap:var(--sp-2);margin-block-start:var(--sp-2)}
+.convrec{border-inline-start:3px solid var(--rule);padding-inline-start:var(--sp-2)}
+.convrec.kind-prompt{border-inline-start-color:var(--gold)}
+.convrec.kind-answer{border-inline-start-color:var(--ok)}
+.convrec.kind-machinery{border-inline-start-color:var(--rule)}
+.convrecmeta{margin-block:0 4px}
+/* A transcript is arbitrary text nobody here authored: it wraps at whitespace,
+   breaks a word that has none, and scrolls inside its own box rather than
+   giving the page horizontal overflow — the bound `.clihdetail` above records
+   the reason for. */
+.convtext{white-space:pre-wrap;overflow-wrap:anywhere;max-block-size:40vh;overflow-y:auto}
+.convfold>summary{cursor:pointer;font-size:var(--fs-0);color:var(--dim)}
+.convback{inline-size:auto;margin-block-end:var(--sp-2)}
+.convtitle{font-weight:600}

@@ -384,6 +384,26 @@ test('src/ has not grown a home-directory reach the sandbox line does not cover'
   const reaches = new Map<string, string>([
     [path.join('src', 'core', 'workspace.ts'), "path.join(homedir(), '.my-context')"],
     [path.join('src', 'cli', 'commands', 'statusline-install.ts'), "path.join(homedir(), '.claude')"],
+    // `plan:archive seq:1`. The conversation archive resolves
+    // `~/.claude/projects` to find the transcripts Claude Code writes, and
+    // honours `CLAUDE_CONFIG_DIR` exactly as `claudeSettingsPath` above does.
+    //
+    // **It is enumerated here and NOT added to `WATCHED_TARGETS`, and the
+    // reason is a measurement rather than a judgement.** The reach is
+    // READ-ONLY — `core/conversation-index.ts` opens transcripts `'r'` and
+    // never creates, writes or removes anything under that directory; the
+    // index it builds lives in the workspace's own `.index.db`. Watching it
+    // would mean fingerprinting a tree that measured **643 MB across 1,563
+    // files for one project on this machine**, twice per test file, which is
+    // not a cost this suite can carry for a directory nothing writes to.
+    //
+    // What that leaves uncovered, stated rather than discovered: a FUTURE
+    // change that wrote under `~/.claude/projects` would not be caught here.
+    // If one is ever proposed, this row is where the trade has to be reopened
+    // — and the read-only property is itself checked, by
+    // `test/ui/conversations-endpoint.test.ts`' import-graph walk and by
+    // `no-bare-rmsync`.
+    [path.join('src', 'core', 'conversation-index.ts'), "path.join(homedir(), '.claude')"],
   ]);
   for (const [file, expression] of reaches) {
     assert.ok(

@@ -1926,7 +1926,7 @@ draft, retiring a governing item. How far that separation actually holds is
 ```mermaid
 flowchart TB
   U(["<b>You</b>"]) --> SL["<b>/mycontext:…</b><br/>91 slash commands"]
-  U --> CL["<b>mycontext …</b><br/>44 CLI commands"]
+  U --> CL["<b>mycontext …</b><br/>45 CLI commands"]
   A(["<b>Claude</b>"]) --> TL["<b>MCP tools</b><br/>twenty-six, served over stdio"]
   SL -->|"add-* · search · link · LoadMyContext"| TL
   SL -->|"list-* · review · status · edit · query"| CL
@@ -2213,7 +2213,7 @@ listed with one. The remaining absences are in [section 8](#one-surface-for-ever
 
 ### What you run: the CLI
 
-44 commands. `mycontext help` prints the same list from the program itself, and
+45 commands. `mycontext help` prints the same list from the program itself, and
 `mycontext help <topic>` explains one of seven. Four are concepts — `categories`, `scope`,
 `capture`, `workflow` — and three are one page per invocation surface: `cli`, `tools` and
 `slash`, each generated from the registry, schema or directory it describes rather than
@@ -2621,6 +2621,7 @@ moves no count of what governs.
 | `mycontext decay` | items that have not been injected lately |
 | `mycontext audit` | the run-time log: every mutation, and every injection by scope |
 | `mycontext focus` | narrow what gets injected, and report what that hides |
+| `mycontext conversation [rebuild\|list]` | the **conversation archive**: index the transcripts Claude Code has already written for this project, and list what the index holds. Nothing is recorded and nothing is copied — the transcripts are read where the harness put them, and the index is one row per session that a rebuild reconstructs entirely from disk, so losing it costs time and never knowledge. `rebuild` re-reads only transcripts whose size or mtime has moved; `--full` re-reads them all. `list` prints the sessions newest first with the counts of what a person asked and what the model answered — **not** a count of `message.role`, which would report every tool result as something you typed. A transcript longer than the scan cap is indexed with its counts marked as floors rather than silently short. Browsing and reading one is the [Conversations screen](#the-web-ui--mycontext-ui); this command is what fills the index for it, because the web UI never writes. `--limit`, `--json` |
 | `mycontext session [list]` | the sessions this workspace has recorded, most recent first: the full id, its first eight characters, the name you gave it (**empty** when you gave it none — nothing is derived on your behalf), how many records the log holds for it, when it last did anything, and whether anything of it is still `carryable`. That last column is the one to read before choosing a session: carrying reads the source session's dedupe state out of `state/`, which is swept at 30 days, so a session this log still names can have nothing left. `--json` |
 | `mycontext session name <id> <name>` | give one session a handle you can type instead of a hex prefix. **The id is explicit and never guessed** — no CLI surface is handed a session id at all — and a prefix is accepted only while it picks out exactly one of the sessions `mycontext session list` shows: a prefix that matches two is refused with both named, never resolved to one of them, because a name that landed on the wrong session looks exactly like one that landed on the right one. An id this log has never seen is refused too, since it is a typo and accepting it would put an entry in the store nothing can reach. Nothing about the name is quietly fixed up: one that is empty, over 64 characters, carries a newline, or is already held by another session is **refused** rather than trimmed or renumbered, and the refusal names the session holding it. It writes no audit record — naming is session metadata, it changes nothing about what governs this project, and it puts no text in front of a model. The names live in `.my_context/state/session-names.json`, gitignored generated state like everything else under `state/`, because a session id identifies one machine and one afternoon and has no business travelling with the corpus. Unlike the dedupe files beside it, that store is **not** swept at 30 days: a name outlives the session it describes on purpose, since it is the only human-readable handle on an entry the audit log still carries |
 | `mycontext session carry <id>` | choose which session a new one carries forward from — its index lines arrive marked and hoisted to the front of this session's index ([the carry](#the-index--so-nothing-is-invisible)). `--none` carries nothing, and is a state of its own rather than a return to the default; `--show` reads back what a new session would carry today and whether that is a choice or the default. An id the listing marks not `carryable` is refused rather than stored. Like `session name`, the id is explicit and never guessed — **the CLI is handed no session id at all**, because it runs in a terminal rather than inside a session |
@@ -6294,7 +6295,7 @@ command, or both; the map is `src/plugin/parity.ts` and `test/plugin/parity.test
 it against the usage banner the program prints and the files in `commands/`.
 
 What is left is asymmetry in the other direction — commands with no slash command — and it
-is **listed rather than discovered**. 15 of the 44 CLI commands have none, each for a reason
+is **listed rather than discovered**. 16 of the 45 CLI commands have none, each for a reason
 recorded beside it in `CLI_WITHOUT_SLASH`:
 
 - `ack` records that a **person** read a `doctor` finding and ruled on it, so a slash command
@@ -6306,6 +6307,11 @@ recorded beside it in `CLI_WITHOUT_SLASH`:
   next injection and forgets it, whether or not the line was admitted — a slash command or a
   tool would let a model make that call for itself, which is exactly the choice this command
   exists to keep with you.
+- `conversation` indexes and lists the transcripts Claude Code has already written on disk.
+  A model has no use for it — the conversation it would be asking about is the one it is
+  having — and the browsing it exists to serve was ruled a web feature, on the
+  Conversations screen. The person who runs `mycontext conversation rebuild` is filling
+  the index before opening that screen, because the web UI never writes.
 - `init` and `rebuild` run before, or outside, a session that could carry a slash command.
 - `repair` is on the recommended deny list, and its preview is a page of consequences a
   person has to read. A slash command for it would be a prompt whose only honest content is
@@ -6550,7 +6556,7 @@ command prints; that the injected output quoted in sections 3, 4 and 6 is what t
 emit; that every section the table of contents links either has a line in the capabilities
 summary near the top or is listed, with a reason, as something the product does not *do*; and
 that both documents carry the same heading sequence and the same examples in the same order.
-Of those, `counts.test.ts` computes the "15 of the 44 CLI commands" ratio above from the
+Of those, `counts.test.ts` computes the "16 of the 45 CLI commands" ratio above from the
 running program and fails in **both** languages if either half drifts — it had drifted twice
 before the test existed — and it computes this paragraph's own file count the same way.
 `parity.test.ts` holds this section's heading sequence to the Hebrew mirror's. This paragraph

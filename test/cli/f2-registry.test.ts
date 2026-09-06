@@ -162,6 +162,11 @@ const DOES_NOT_REBUILD = new Set([
   // item index, so a corrupt item file cannot reach its answer and there is
   // nothing for it to disclose, exactly as for `audit`.
   'session',
+  // `conversation` reads the CONVERSATION index — its own table in
+  // `.index.db`, filled from the harness's transcripts — and never opens the
+  // ITEM index at all. A corrupt item file cannot reach its answer, so there
+  // is nothing for it to disclose, exactly as for `audit` and `session`.
+  'conversation',
   // `help` and `examples` render documentation from the resolved config and
   // the built-in topics; neither ever opens the item index, so a corrupt
   // item file cannot reach their output. Registered since Wave 5, covered
@@ -216,6 +221,16 @@ const SETUPS: Record<string, (cwd: string) => string[]> = {
   // `openMutateContext` to look the id up and then again to write the mark —
   // reaches `emitLoadErrors` on the success message rather than exiting
   // early on a missing id. `--yes` because `confirmAction` refuses off a TTY.
+  // `conversation list` reads a corpus that has an unrelated corrupt item and
+  // must still exit 0 — the F2 rule. `list` rather than `rebuild` because the
+  // read half is the one that opens the index and could be tempted to fail on
+  // a load error that has nothing to do with it; and because a corpus with no
+  // conversation index yet is the interesting case, exercising the
+  // never-scanned branch rather than a happy path.
+  conversation: (cwd) => {
+    plantUnrelatedCorruptItem(cwd);
+    return ['list'];
+  },
   carry: (cwd) => {
     const added = run(['add', '--summary-omitted', 'constraint', 'An item to carry for the F2 guard', '--yes'], cwd);
     plantUnrelatedCorruptItem(cwd);

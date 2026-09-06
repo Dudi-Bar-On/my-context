@@ -303,6 +303,12 @@ export const SCREEN_INVALIDATION = {
   // reader is midway through typing. See this task's report for how this was
   // verified end to end.
   config: { kinds: ['hook', 'mutation'], refresh: 'ask' },
+  // The conversation archive is filled by `mycontext conversation rebuild`, a
+  // CLI write over transcripts this shell never sees an event for: no
+  // `mutation`, `hook`, `injection` or `focus` this table knows about changes
+  // what it holds. An empty `kinds` is therefore the measurement rather than an
+  // omission — `port` beside it is empty for the same reason.
+  conversations: { kinds: [], refresh: 'auto' },
   library: { kinds: ['mutation'], refresh: 'ask' },
   capture: { kinds: ['mutation', 'hook'], refresh: 'ask' },
   proc: { kinds: ['mutation', 'progress'], refresh: 'ask' },

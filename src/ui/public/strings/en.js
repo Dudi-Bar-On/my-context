@@ -153,6 +153,39 @@ export const strings = {
   's.docs': 'Documentation',
   's.tut': 'Tutorials',
   's.learn': 'Learn',
+  's.conversations': 'Conversations',
+
+  // The conversation archive — plan:archive seq:3
+  'conv.h': 'Conversations',
+  'conv.v': 'read, never recorded',
+  'conv.sub': 'Every session Claude Code has written for this project, read where it lies. Pick one to read it. Prompts, answers and machinery are marked apart.',
+  'conv.card': 'Sessions',
+  'conv.help.summary': 'Where these come from',
+  'conv.help.body': 'Claude Code already writes every session to a file on your disk. This screen reads those files where they are and never copies them, so nothing here enters your repository. A session your machine has deleted is gone from here too — that is the cost of not copying. The list is built by {m:mycontext conversation rebuild}, which you run in a terminal: this app only reads.',
+  'conv.lookedIn': 'Read from',
+  'conv.neverScanned': 'Nothing has been scanned yet. Run this once, then reload:',
+  'conv.none': 'No sessions found — the scan ran and the folder above held none.',
+  'conv.untitled': 'Untitled session',
+  'conv.titleByModel': '(named by the model)',
+  'conv.counts': '{prompts} asked · {answers} answered · {machinery} tool steps',
+  'conv.exported': 'Exported copy',
+  'conv.pruned': 'File deleted',
+  'conv.scanCapped': 'Counts are a minimum',
+  'conv.missingSome': '{n} of these no longer have a file on disk. Their counts are what the last scan saw.',
+  'conv.back': 'Back to all sessions',
+  'conv.prunedBody': 'The file for this session is no longer on disk, so there is nothing to read. What is shown above is what the last scan recorded.',
+  'conv.kind.prompt': 'You asked',
+  'conv.kind.answer': 'Claude answered',
+  'conv.kind.machinery': 'Tool step',
+  'conv.unreadable': 'Could not be read',
+  'conv.foldedChars': '{chars} characters — click to open',
+  'conv.window': 'Showing entries {from}–{to} of {total}.',
+  'conv.walkCapped': 'This session is longer than one page will read. {bytes} bytes were read; there is more after this.',
+  'conv.textCap': 'A single entry longer than {cap} characters is shown up to there and says so.',
+  'conv.textCut': 'Shown: {shown} of {total} characters. The rest is in the file.',
+  'conv.filter': 'Find in this session',
+  'conv.showingAll': 'Showing all {total} entries on this page.',
+  'conv.showingMatch': '{shown} of the {total} entries on this page match.',
   // Injection preview
   'preview.h': 'Injection preview',
   'preview.v': 'exactly what Claude gets',
@@ -941,19 +974,27 @@ export const strings = {
   'pal.globn': 'Every file in the repository, matches {b:lit as you type}. A bare count — "{matches} files" — cannot be inspected: an empty and a near-empty result look the same until you see which files. Uses the {m:globToRegExp} cache, over {m:listRepoFiles}.',
   'pal.globDead': 'An item scoped to this pattern would govern nothing — it matches no file in '
     + 'the repository. {m:doctor} reports that as {m:dead_scope}.',
-  // The Composer's own six keys — `TASK-the-six-palette-keys-the-plan-declares-and-neither-table`.
-  // `pal.run`, `pal.item`, `pal.rows`, `pal.noRows` and `pal.truncated` replace
-  // this screen's borrowing of `ask.run` / `th.item` / `ask.rows` / `ask.noRows`
-  // / `ask.truncated` — editing one of those for the Ask screen would silently
-  // have changed this one too, and no test would have noticed. `pal.incomplete`
-  // is new: the sentence "Required inputs are missing" used to be `aria-invalid`
-  // and nothing else, so a sighted reader saw an empty command box and no
-  // reason for it.
-  'pal.run': 'Run',
-  'pal.item': 'Item',
-  'pal.rows': '{rows} rows',
-  'pal.noRows': 'no rows matched',
-  'pal.truncated': 'capped at {rows} rows — more matched; raise the limit to see them',
+  // The Composer's own keys — `TASK-the-six-palette-keys-the-plan-declares-and-neither-table`.
+  // There were SIX. Five of them are gone as of 2026-09-07: `pal.run` was the
+  // Run button's label and `pal.item` / `pal.rows` / `pal.noRows` /
+  // `pal.truncated` were the header, caption and cap note of the table Run drew
+  // from a JSON endpoint. Run itself is removed
+  // (`DEC-run-is-removed-execute-is-the-only-way-to-run-what-the`), so all five
+  // are keys nothing renders.
+  //
+  // **The reason those six existed is not undone by deleting five of them**, and
+  // it is worth keeping: this screen used to BORROW `ask.run` / `th.item` /
+  // `ask.rows` / `ask.noRows` / `ask.truncated`, so an edit meant for the Ask
+  // screen would silently have changed the Composer and no test would have
+  // noticed. That is still the rule for every key below.
+  //
+  // Removed from `he.js` in the same edit, which is the half that goes wrong
+  // silently: a key dropped from one table and left in the other renders
+  // nowhere, looks like nothing, and only `strings-parity` sees it.
+  //
+  // `pal.incomplete` is the survivor: "Required inputs are missing" used to be
+  // `aria-invalid` and nothing else, so a sighted reader saw an empty command
+  // box and no reason for it.
   'pal.incomplete': 'Required inputs are missing — fill them in to compose a command.',
   // Owner ruling D2, 2026-09-06: being in the catalogue draws a form; running is
   // a second licence (`runnable`). Three entries carry it as `false`, so the
@@ -967,9 +1008,11 @@ export const strings = {
   // Six keys of its own rather than a reuse of the focus dialog's ten. The two
   // pickers share a SHAPE and not a sentence: a focus is a read and its copy
   // talks about which items get injected, while `--tags` is a write and its
-  // copy has to talk about what the command will set. `pal.run`/`ask.run` is
-  // the precedent — two screens that shared one key, so an edit meant for one
-  // silently changed the other.
+  // copy has to talk about what the command will set. The precedent is the one
+  // the block above records — this screen borrowing `ask.run` / `th.item` /
+  // `ask.rows` for controls of its own, so an edit meant for the Ask screen
+  // silently changed the Composer. (Those particular keys are gone with Run;
+  // the argument they are cited for is about SHARING a key, not about them.)
   'pal.tagpicking': 'Reading the tags in this corpus…',
   'pal.tagpickerr': 'The tags could not be read, so none are offered. Type them instead — the command above composes either way.',
   'pal.tagpickn': 'This corpus carries no free-form tags yet, so there is nothing to pick. Type one and this item gets the first.',

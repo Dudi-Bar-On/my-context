@@ -162,6 +162,12 @@ export const CLI_WITHOUT_SLASH: Record<string, string> = {
     'item was required; a slash command would let a model make that same call on its own, ' +
     'the same reason `ack` has none. It is read out of the spilled-items list and typed by ' +
     'the person who read it.',
+  conversation: 'Reads the transcripts Claude Code has already written on disk and indexes ' +
+    'them; it is the scanner behind the ARCHIVE, not a corpus operation. A model has no use ' +
+    'for it — the conversation it would be asking about is the one it is having — and the ' +
+    'browsing it exists to serve was ruled a web feature by the owner, on the Conversations ' +
+    'screen. The one caller who benefits is a person filling the index before opening that ' +
+    'screen.',
   config: 'Edits the config that governs what every item of a category may declare, so its ' +
     'blast radius is the corpus rather than one item — which is why it prints the number of ' +
     'items a change would touch, and copies config.json aside before writing. Both exist to ' +
@@ -322,6 +328,17 @@ export const CLI_WITHOUT_TOOL: Record<string, ToolAbsence> = {
       '`human`, unconditionally — there is no `--agent` escape hatch here the way `mycontext ' +
       'lesson` has one. A tool call IS a non-human caller by construction, so a tool for `ack` ' +
       'would exist only to be refused on every call.',
+  },
+  conversation: {
+    disposition: 'intended',
+    reason:
+      'It indexes and reads the conversation transcripts the harness writes, which is a ' +
+      'retrieval question a PERSON asks and not one an agent does: an agent asking what was ' +
+      'said in a past session ' +
+      'is asking for context the corpus is supposed to carry, and answering it from raw ' +
+      'transcripts would route around every tier and budget this product has. The read half is ' +
+      'served to the browser instead, at GET /api/conversations, where a person is doing the ' +
+      'looking.',
   },
   config: {
     disposition: 'intended',

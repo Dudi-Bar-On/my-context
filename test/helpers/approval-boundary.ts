@@ -40,6 +40,7 @@ import path from 'node:path';
 import { runCli } from '../../src/cli/index.ts';
 import { COMMANDS } from '../../src/cli/commands/registry.ts';
 import { NAMED_ENTRY_POINTS } from '../../src/cli/commands/edit.ts';
+import { SUBCOMMANDS as CONVERSATION_SUBCOMMANDS } from '../../src/cli/commands/conversation.ts';
 import { SUBCOMMANDS as PACK_SUBCOMMANDS } from '../../src/cli/commands/pack.ts';
 import { SUBCOMMANDS as PROCEDURE_SUBCOMMANDS } from '../../src/cli/commands/procedure.ts';
 import { SUBCOMMANDS as REVIEW_SUBCOMMANDS } from '../../src/cli/commands/review.ts';
@@ -261,6 +262,7 @@ const SUBCOMMAND_GROUP = /^\[([a-z][\w-]*(?:\|[a-z][\w-]*)+)\]$/;
  * failure saying so.
  */
 const DECLARED_SUBCOMMANDS: Record<string, readonly string[]> = {
+  conversation: CONVERSATION_SUBCOMMANDS,
   pack: PACK_SUBCOMMANDS,
   procedure: PROCEDURE_SUBCOMMANDS,
   review: REVIEW_SUBCOMMANDS,

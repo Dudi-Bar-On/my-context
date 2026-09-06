@@ -635,6 +635,19 @@ test('the handover block says which percent the handover answers and which we ar
   // A threshold that is not a whole number keeps its decimal, exactly as the
   // ask block's own count pair does.
   assert.equal(handoverSegment(ASK('not-asked'), occ(20), 92.5)?.text, 'first ask at 92.5%');
+
+  // NOT ASKED WITH NO THRESHOLD is the MUTED ask — `plan:handover seq:11`,
+  // `thresholdPercent: "never"`, which `handoverThresholdPercent` answers `null`
+  // for and for nothing else. The verdict is the same word and the fact is the
+  // opposite one: not a first ask that has not arrived yet, but a first ask that
+  // is not coming. Naming a percent here would be the strip promising an ask the
+  // config has switched off, which is what this state was filed to prevent.
+  assert.equal(
+    handoverSegment(ASK('not-asked'), occ(20), null)?.text, 'asked on demand only');
+  assert.equal(
+    handoverSegment(ASK('not-asked'), occ(99.4), null)?.text, 'asked on demand only',
+    'the muted words must not change with the occupancy — there is no threshold for a high ' +
+    'reading to be measured against, which is the whole of what the mute means');
 });
 
 test('the handover block refuses a comparison it cannot honestly make', () => {

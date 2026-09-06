@@ -269,6 +269,7 @@ const SCREENS = {
   // screen module is the thing the PROPOSED badge below exists to make
   // visible, and a retired one should not be findable by grep as if it
   // were still a screen. `#/docs` and `#/tut` are redirected in `route()`.
+  conversations: () => import('/screens/conversations.js'),
   library: () => import('/screens/library.js'),
   // The last four, 2026-08-23. Their read models were built the day before and
   // wired in the same merge, which is what unblocked them: until then these
@@ -297,7 +298,7 @@ const NAV = [
   ['nav.inj', ['preview', 'coverage', 'simulate', 'injected']],
   ['nav.ev', ['watch', 'ask', 'doctor', 'decay', 'graph', 'status']],
   ['nav.ch', ['work', 'capture', 'palette', 'config', 'proc', 'port', 'packs']],
-  ['nav.read', ['library', 'learn']],
+  ['nav.read', ['conversations', 'library', 'learn']],
 ];
 
 let token = null;
