@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: Anything the command builder prints that names a stored item can be opened and read in place.
-summary_of: 79bb133622391b39
+summary_of: 33063491d99cefa0
 scope:
   - src/ui/public/screens/palette.js
   - src/ui/public/app.js
@@ -23,7 +23,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-09-06
 valid_until: null
-checksum: 1c8b10b85489d741
+checksum: 81a2b6aa8b0bc223
 plan: builder
 seq: "13"
 state: todo
@@ -77,3 +77,19 @@ readably. A pane that opens empty is worse than a word that was never a link.
 
 OUT OF SCOPE: a REF (`builder/10`, a plan and a seq) is not an id and `openPane` does not take one.
 If refs should be clickable too that is a second task - name it, do not absorb it.
+
+THE OWNER’S OWN ACCEPTANCE CASE, given 2026-09-06 and verified the same day. He ran the `list`
+entry, chose `rule`, and got a list of rule ids - "which is classic and simple to use for getting
+item details by asking it from the pane".
+
+That case is measured and it is population 1 exactly:
+
+  `list` is PALETTE entry `name: ‘list’, kind: ‘read’, runnable: true`, so it executes for real.
+  `mycontext list rule --json` answers `{ items: [ { id: ‘RULE-…’, type, status, title, origin,
+  layer, severity, always, scope, tags, sourceFile, filePath, … } ] }` - `items` is exactly the
+  key `resultRows` already destructures, and `id` is already a string field on every row.
+
+So for this case there is NOTHING TO PARSE. The row object carrying the id is the same object the
+table cell is built from. This is the acceptance test: execute `list` with `rule` in the Composer,
+click a returned id, and the pane opens on that item. If that does not work, nothing else in this
+task matters.
