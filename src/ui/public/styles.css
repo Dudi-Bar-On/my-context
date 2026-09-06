@@ -631,7 +631,12 @@ bdi{unicode-bidi:isolate}
    around it. Full-width here rather than 320px — the dialog is 400px and the
    box is the only control on its line. */
 .pop label{display:block;margin-block-end:4px;color:var(--dim)}
-.pop .tagin{font-family:var(--mono);font-size:var(--fs-1);inline-size:100%;
+/* `.card .tagin` rides the SAME rule rather than a copy of it — the Composer's
+   `--tags` box is the same control in a second place (owner ruling D10,
+   2026-09-06), and a second declaration is how two boxes for one kind of value
+   come to look different. Same specificity as `.pop .tagin`, so nothing about
+   the dialog moves. */
+.pop .tagin,.card .tagin{font-family:var(--mono);font-size:var(--fs-1);inline-size:100%;
   padding-block:4px;padding-inline:6px;background:var(--sink);color:var(--ink);
   border:1px solid var(--edge-3);border-radius:var(--r-md);
   direction:ltr;unicode-bidi:isolate}
@@ -655,14 +660,23 @@ bdi{unicode-bidi:isolate}
    control with it — measured in Chrome at the suite's own pinned viewport.
    `#sesspop` needs none of this; its one list already scrolls (~356). */
 #focuspop{max-block-size:calc(100dvh - 54px);overflow-y:auto}
-.pop .tagpicks{max-block-size:150px;overflow-y:auto;border:1px solid var(--rule);
+/* **`.tagpicker` is the Composer's host for the same four rules** (owner ruling
+   D10, 2026-09-06). Added to each selector list rather than declared again:
+   this corpus carries 200-odd free-form tags and the Composer's card scrolls no
+   better than a 400px popover does, so the bounded, scrolling list is the same
+   answer to the same measurement. Same specificity as the `.pop` form, so the
+   focus dialog does not move by a pixel. */
+.pop .tagpicks,.tagpicker .tagpicks{max-block-size:150px;overflow-y:auto;border:1px solid var(--rule);
   border-radius:var(--r-md);padding:4px;margin-block:4px}
-.pop .tagpick{display:flex;align-items:center;gap:6px;padding:2px 4px;
+.pop .tagpick,.tagpicker .tagpick{display:flex;align-items:center;gap:6px;padding:2px 4px;
   border-radius:var(--r-sm);font-size:var(--fs-0);cursor:pointer}
-.pop .tagpick:hover{background:var(--sink)}
-.pop .tagname{font-family:var(--mono);color:var(--ink);flex:1 1 auto;min-inline-size:0;
+.pop .tagpick:hover,.tagpicker .tagpick:hover{background:var(--sink)}
+.pop .tagname,.tagpicker .tagname{font-family:var(--mono);color:var(--ink);flex:1 1 auto;min-inline-size:0;
   direction:ltr;unicode-bidi:isolate;overflow-wrap:anywhere}
-.pop .tagn{color:var(--dim);font-variant-numeric:tabular-nums;flex:0 0 auto}
+.pop .tagn,.tagpicker .tagn{color:var(--dim);font-variant-numeric:tabular-nums;flex:0 0 auto}
+/* The picker sits under its own box, so it needs the gap the form's labels get
+   between rows and nothing else. */
+.tagpicker{margin-block:4px 8px}
 /* One row per projected prefix: a label the width of its own words, and a
    select taking the rest. `min-inline-size:0` so a 217-option `seq:` select
    cannot widen the dialog to its longest option. */
@@ -2549,6 +2563,36 @@ tr.lanestep td:nth-child(3){padding-inline-start:14px}
 .globin{font-family:var(--mono);font-size:var(--fs-1);inline-size:min(320px,100%);
   padding-block:4px;padding-inline:6px;background:var(--sink);color:var(--ink);
   border:1px solid var(--edge-3);border-radius:var(--r-md);direction:ltr}
+
+/* — a field picker sizes to its widest OPTION, not to its box, and drags four
+   ancestors open behind it: measured live on #/palette, a 942-option id
+   picker (`ID — Title`, 3,902px) pushed `label.small`, its wrapping `div`,
+   `.card.pane` and `section` all to 3,930px, and put `main`'s scrollWidth at
+   3,962px against a 1,403px clientWidth — 2,559px of horizontal overflow,
+   216 elements wider than `main`. A `<select>` with no explicit width is
+   shrink-to-fit, and for a select shrink-to-fit never goes below the box's
+   own content — an option's text does not wrap, so min-content equals
+   max-content and there is nothing here for `min-inline-size:0` alone to
+   free up; a flex `min-width:auto` floor is not what is happening; bounding
+   the box is what stops it either way. Same vocabulary `#corpusnotes .linkid`
+   (~963) already spends on a value that outgrows its box: min-inline-size:0
+   so nothing upstream can still float a floor under it, max-inline-size for
+   the actual bound, and overflow/text-overflow/white-space so the SELECTED
+   option's own text ellipsises instead of forcing the box wider. 260px
+   matches `.filter`'s own cap (~2199) rather than inventing a new number.
+
+   SCOPED to `label.small select` — the one DOM shape only `palette.js`'s and
+   `capture.js`'s own `labelled()` build, the select nested INSIDE the label
+   rather than beside it with a `for` — so this reaches every field picker on
+   the Composer (the 942-option id picker, `category`, `severity`) and
+   Capture's `category`/`severity`, and nothing on Ask, Watch, Graph, Preview
+   or Configure: those screens' selects sit as a SIBLING of a
+   `label.htmlFor`-linked label, or carry no label at all, never a child of
+   one, so this selector does not reach them. The Composer's own 30-option
+   command picker measures 204px unclipped, under the 260px cap, so it is
+   unchanged by this rule. */
+label.small select{min-inline-size:0;max-inline-size:260px;overflow:hidden;
+  text-overflow:ellipsis;white-space:nowrap}
 
 /* — per-field staleness on the work screen’s table (mockup ~1006-1007) — */
 td.stale{box-shadow:inset 2px 0 0 var(--warn)}
