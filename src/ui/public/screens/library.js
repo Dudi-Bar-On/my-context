@@ -718,9 +718,11 @@ export async function render(root, ctx) {
   // `min-inline-size:0` for the reason this screen already learned once: a
   // grid child's default minimum is its content, and the flag tables in the
   // command-line card are wide.
+  const main = el('div', 'libcol');
+  main.append(tuts);
   const side = el('div', 'libcol');
   side.append(docs);
-  two.append(tuts, side);
+  two.append(main, side);
 
   const tutHead = el('h3');
   tutHead.append(...ctx.t('lib.tuts'));
@@ -729,23 +731,32 @@ export async function render(root, ctx) {
   docHead.append(...ctx.t('lib.docs'));
   docs.append(docHead);
 
-  // The corpus browser is the THIRD child of `.two`, owner request 2026-09-06:
-  // "the CORPUS FILES explorer could use the same width as the Tutorials
-  // card". With two `1fr` columns and three children, auto-placement puts it
-  // at column 1 / row 2 — directly under Tutorials and exactly its width —
-  // and it costs no CSS at all.
+  // The corpus browser stacks UNDER Tutorials in the left column, at exactly
+  // its width. Owner request 2026-09-06, in two steps: first "the same width
+  // as the Tutorials card", then — after seeing it — "it just scrolls and
+  // overlaps the tutorial card while it should sit below it, the same as you
+  // did in the documents column".
   //
-  // It is appended to `two` rather than wrapped alongside Tutorials in a
-  // `.libcol`, and that is the whole reason this is three appends instead of a
-  // second stack: `.two.align-top>[data-role="nav"]` makes Tutorials sticky by
-  // DIRECT-CHILD selector, so wrapping it would silently unstick it.
+  // BOTH COLUMNS ARE NOW `.libcol` STACKS, and that symmetry is the fix rather
+  // than a tidy-up. Placing this card at column 1 / row 2 of the grid put it
+  // in a different grid area from Tutorials, and Tutorials is
+  // `position:sticky` with `max-block-size:85vh` and its own `overflow-y` —
+  // so it pinned itself over the tree as the page scrolled. Inside one flex
+  // column there is no sticky and no second scroller: the tree simply follows
+  // the roster, which is what he asked for and what the right column already
+  // did.
   //
-  // `data-role` stays deliberately absent — the two roles this screen spends
-  // are `nav` (wayfinding) and `content` (the reading surface), and a file
-  // browser is neither; a third hue would extend the card-role system, which
-  // the ruling that established it asks not to be done casually.
+  // Tutorials stops being sticky as a CONSEQUENCE, because
+  // `.two.align-top>[data-role="nav"]` is a direct-child selector and the nav
+  // card now has a wrapper. That is deliberate: sticky earns its keep beside a
+  // long document, not above a card the reader is meant to scroll to.
+  //
+  // `data-role` stays deliberately absent here — the two roles this screen
+  // spends are `nav` (wayfinding) and `content` (the reading surface), and a
+  // file browser is neither; a third hue would extend the card-role system,
+  // which the ruling that established it asks not to be done casually.
   const files = el('div', 'card pane');
-  two.append(files);
+  main.append(files);
   const filesHead = el('h3');
   filesHead.append(...ctx.t('lib.files'));
   const filesSub = el('p', 'small');
