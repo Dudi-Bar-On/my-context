@@ -57,6 +57,7 @@
  * the group MEMBERSHIP comes from the endpoint's own `kind`.
  */
 import { el, errorNote, mono, spaced } from '/screens/parts.js';
+import { markdownNodes } from '/lib/markdown.js';
 
 /** The kinds, in the order their groups are drawn. Order only — never a roster:
  *  every option in every group comes from the endpoint's `subjects`. */
@@ -304,13 +305,33 @@ function paintSlash(ctx, host, body) {
   host.append(spaced(who));
 }
 
-/** One help topic, as the transcript the terminal prints. See the header for
- *  why this is not rendered Markdown. */
+/**
+ * One help topic, RENDERED as the Markdown it already is.
+ *
+ * Owner request 2026-09-06: "they are already markdown, just render them as
+ * such and not as simple print text". It was a `<pre class="m transcript">`
+ * until then, on the reasoning that a topic is what the terminal prints — but
+ * `src/help/topics/*.md` are Markdown files with headings, lists and fenced
+ * code, and a `<pre>` showed the reader the `##` rather than the heading.
+ *
+ * `markdownNodes` is THE renderer — the same one the item pane and `/doc.html`
+ * use, lifted out of the Docs screen on 2026-09-05 precisely so a second one
+ * never gets written. `.md` is the console's own body-text class, so a topic
+ * now reads like an item body rather than like a paste.
+ *
+ * Two things borrowed from `app.js`'s call site rather than rediscovered: it
+ * answers `{ nodes, refusals }`, so spreading the return value bare throws
+ * AFTER the surrounding card is built and silently keeps the previous
+ * subject's text — spread `.nodes`; and it produces NO HTML string anywhere,
+ * which is what makes it safe on text this screen did not author.
+ */
 function paintTopic(ctx, host, body) {
   const how = el('p', 'small');
   how.append(...ctx.t('clih.topichow', { cmd: body.label }));
   host.append(how);
-  host.append(el('pre', 'm transcript topicbody', body.markdown));
+  const topic = el('div', 'md topicbody');
+  topic.append(...markdownNodes(body.markdown ?? '', document).nodes);
+  host.append(topic);
 }
 
 /**

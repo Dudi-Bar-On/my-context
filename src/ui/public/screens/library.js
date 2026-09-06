@@ -729,16 +729,23 @@ export async function render(root, ctx) {
   docHead.append(...ctx.t('lib.docs'));
   docs.append(docHead);
 
-  // The corpus browser gets a card of its own at FULL WIDTH rather than a
-  // third column: a file tree is a tall control that wants its own measure,
-  // and `.two` is a two-column grid the mockup's own card system defines.
-  // `data-role` is deliberately absent — the two card roles this screen
-  // already spends are `nav` (wayfinding) and `content` (the reading surface),
-  // and a file browser is neither; inventing a third hue for it would be
-  // extending the card-role system, which the ruling that established it asks
-  // not to be done casually.
+  // The corpus browser is the THIRD child of `.two`, owner request 2026-09-06:
+  // "the CORPUS FILES explorer could use the same width as the Tutorials
+  // card". With two `1fr` columns and three children, auto-placement puts it
+  // at column 1 / row 2 — directly under Tutorials and exactly its width —
+  // and it costs no CSS at all.
+  //
+  // It is appended to `two` rather than wrapped alongside Tutorials in a
+  // `.libcol`, and that is the whole reason this is three appends instead of a
+  // second stack: `.two.align-top>[data-role="nav"]` makes Tutorials sticky by
+  // DIRECT-CHILD selector, so wrapping it would silently unstick it.
+  //
+  // `data-role` stays deliberately absent — the two roles this screen spends
+  // are `nav` (wayfinding) and `content` (the reading surface), and a file
+  // browser is neither; a third hue would extend the card-role system, which
+  // the ruling that established it asks not to be done casually.
   const files = el('div', 'card pane');
-  root.append(files);
+  two.append(files);
   const filesHead = el('h3');
   filesHead.append(...ctx.t('lib.files'));
   const filesSub = el('p', 'small');
