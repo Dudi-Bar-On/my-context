@@ -381,9 +381,53 @@ export function controlFor(spec, sources, onChange, options = {}) {
   return control;
 }
 
-/** What one control currently holds, in `commandFor`'s vocabulary. */
+/**
+ * **The pattern that means "no scope", and it is a VALUE the reader can type
+ * as well as the glob tester's opening seed.**
+ *
+ * `screens/palette.js` seeds its tester with this so the screen arrives showing
+ * a lit tree, and re-exports this constant as `EVERY_FILE` so the two cannot
+ * drift apart.
+ */
+export const UNSCOPED_GLOB = '**';
+
+/**
+ * What one control currently holds, in `commandFor`'s vocabulary.
+ *
+ * ── WHY A GLOB OF `**` IS *NO VALUE* ──────────────────────────────────────
+ *
+ * Measured 2026-09-07 (`plan:builder seq:11`, the write half) by executing
+ * every runnable entry the catalogue licenses. `screens/palette.js` seeds the
+ * glob tester with `**` so the tree arrives lit, and that seeded value flowed
+ * into `--scope` on every entry carrying a glob field. TWO of the nineteen
+ * runnable writes could not be run AT ALL from the screen's own opening state:
+ *
+ *   * `mycontext focus --clear --scope "**"` — *"--clear takes no axes, and you
+ *     passed some. Clearing and setting in one command has two readings."*
+ *     `--clear` is one of the five controls `focus` offers, and every line it
+ *     composed carried an axis nobody had typed.
+ *   * `mycontext lesson-accept <id> <key> --scope "**"` — *"scope glob `**`
+ *     matches the whole repository, which is what omitting `scope` already
+ *     does. Name real directories, or omit `scope`."*
+ *
+ * Both exit 1, and `src/ui/execute-effect.ts` refuses the confirm for a dry run
+ * that exits non-zero — correctly — so neither could reach `Run it`. The three
+ * entries where the CLI DOES take it were not harmless either: `add`, `edit`
+ * and `review promote` were writing `scope: ["**"]` onto items whose author
+ * had scoped nothing.
+ *
+ * The fix is the product's own sentence, applied one level up: a bare `**` IS
+ * omitting, so it is read here as omitting. The tester keeps its seed and the
+ * screen looks exactly as it did — `testGlob` reads `control.value` directly
+ * and is untouched — and a reader who deliberately types `**` gets what the
+ * CLI says that means. It is done HERE, in the one place a form is read, so
+ * the line the browser draws and the values the confirm is asked with are the
+ * same bag: `command-actions.js` sends `values` to `/api/execute`, and a rule
+ * applied on only one of the two derivations would make them disagree.
+ */
 export function valueOf(control, spec) {
   if (spec.boolean === true) return control.checked === true ? true : undefined;
+  if (spec.input === 'glob' && control.value.trim() === UNSCOPED_GLOB) return undefined;
   return control.value === '' ? undefined : control.value;
 }
 

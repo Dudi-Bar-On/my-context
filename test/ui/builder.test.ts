@@ -68,6 +68,10 @@ interface BuilderModule {
     => { value: string; label: string }[] | null;
   suggestListId: (name: string) => string;
   formatOf: (spec: ArgSpec) => string | null;
+  UNSCOPED_GLOB: string;
+  valueOf: (control: { value?: string; checked?: boolean }, spec: ArgSpec) => unknown;
+  readValues: (controls: Map<string, { control: { value?: string; checked?: boolean }; spec: ArgSpec }>)
+    => Record<string, unknown>;
 }
 
 const publicUrl = (relative: string): string =>
@@ -706,4 +710,67 @@ test('the echo isolates the id and infers the direction of the title', async () 
     'the item title is appended without a <bdi>, so a Hebrew title renders inside an LTR run');
   assert.ok(/node\.hidden = true/.test(body),
     'an empty box still draws an echo — a paragraph reading "Chosen:" with nothing after it');
+});
+
+/**
+ * **A GLOB OF `**` IS NO SCOPE, and this is the unit half of a defect that was
+ * only visible by running the command.**
+ *
+ * `screens/palette.js` seeds the glob tester with `EVERY_FILE` so the screen
+ * arrives showing a lit tree, and until 2026-09-07 that seeded value flowed
+ * into `--scope` on every entry that carries a glob field. Measured by
+ * executing every runnable write (`plan:builder seq:11`), TWO of them could not
+ * be run from the screen's own opening state at all, and both refusals are the
+ * CLI being right:
+ *
+ *     mycontext focus --clear --scope "**"      → "--clear takes no axes"
+ *     mycontext lesson-accept <id> <key> --scope "**"
+ *                                               → "scope glob \"**\" matches the
+ *                                                  whole repository, which is
+ *                                                  what omitting scope already
+ *                                                  does"
+ *
+ * The second refusal is also the ARGUMENT for the rule: the product itself says
+ * a bare `**` and an omitted `--scope` mean the same thing, so `valueOf` reads
+ * it as the omission. The browser half is `e2e/composer-write-execute.spec.ts`,
+ * which puts the box back to `**` before `focus --clear` and could not reach
+ * `Run it` without this.
+ */
+test('a glob control holding the universal pattern composes no value at all', async () => {
+  const { UNSCOPED_GLOB, valueOf, readValues } = await builder();
+  const glob: ArgSpec = { name: 'scope', input: 'glob' };
+  const text: ArgSpec = { name: 'title', input: 'text' };
+
+  assert.equal(UNSCOPED_GLOB, '**', 'the constant the tester opens on has moved');
+  assert.equal(valueOf({ value: UNSCOPED_GLOB }, glob), undefined,
+    'the seeded universal pattern must read as no scope');
+  assert.equal(valueOf({ value: `  ${UNSCOPED_GLOB}  ` }, glob), undefined,
+    'and so must the same pattern with the whitespace a reader leaves around it');
+  assert.equal(valueOf({ value: 'src/ui/**' }, glob), 'src/ui/**',
+    'a REAL glob is still a value — the rule must not swallow the field');
+  assert.equal(valueOf({ value: UNSCOPED_GLOB }, text), UNSCOPED_GLOB,
+    'the rule is about `input: "glob"` only; a text box holding "**" is a value');
+
+  const controls = new Map([
+    ['scope', { control: { value: UNSCOPED_GLOB }, spec: glob }],
+    ['title', { control: { value: 'Two words' }, spec: text }],
+  ]);
+  assert.deepEqual(readValues(controls), { title: 'Two words' },
+    'the bag the browser composes from AND sends to /api/execute must agree, so the rule '
+    + 'belongs in the one place a form is read');
+});
+
+/**
+ * The screen re-exports the builder's constant rather than spelling `'**'` a
+ * second time. Two copies of this string would let the tester open on one
+ * pattern while `valueOf` treated a different one as the omission, which is the
+ * silent half of the defect above.
+ */
+test('the palette screen takes its universal pattern FROM the builder', async () => {
+  const screenSource = readFileSync(path.join(PUBLIC, 'screens', 'palette.js'), 'utf8');
+  assert.match(screenSource, /export const EVERY_FILE = UNSCOPED_GLOB;/,
+    'EVERY_FILE is spelled independently again — the tester\'s seed and the pattern `valueOf` '
+    + 'reads as "no scope" must be one string');
+  assert.match(screenSource, /UNSCOPED_GLOB,?\s*\n?\s*\}\s*from\s*'\/lib\/builder\.js'/,
+    'and it must be imported from the builder rather than redeclared');
 });

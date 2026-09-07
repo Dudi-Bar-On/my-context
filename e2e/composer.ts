@@ -322,6 +322,16 @@ export async function currentValues(
       continue;
     }
     const value = await control.inputValue();
+    // **`valueOf`'s glob rule, mirrored** (`src/ui/public/lib/builder.js`): a
+    // glob box holding the bare universal pattern is read as NO SCOPE, because
+    // the CLI says a `**` scope "is what omitting scope already does" — and
+    // because the tester's opening seed is that pattern, so a line composed
+    // from it would otherwise carry a `--scope` nobody typed, which is what
+    // made `focus --clear` and `lesson-accept` unrunnable from this screen.
+    // Restated here rather than imported because this function reads Playwright
+    // LOCATORS where `valueOf` reads DOM elements; `test/ui/builder.test.ts`
+    // pins the product's half and this comment names it.
+    if (kindOf(spec) === 'glob' && value.trim() === '**') continue;
     if (value !== '') values[spec.name] = value;
   }
   return values;

@@ -1375,21 +1375,38 @@ export function acknowledgeFinding(ctx: MutationContext, input: AcknowledgeInput
 
   persist(ctx, item);
   const audited = auditMutation(ctx, 'update', origin, item.id, { fields: ['acknowledged'] });
-  const what = on
-    ? (before === 'lapsed'
-      ? `re-acknowledged "${input.code}" (the previous ruling had lapsed — the item's content ` +
-        `had moved under it)`
-      : `acknowledged "${input.code}"`)
-    : `withdrew the acknowledgement of "${input.code}"`;
+  /**
+   * **THE SENTENCE AFTER THE VERB DEPENDS ON THE VERB, and it used not to.**
+   *
+   * One trailing sentence was appended to BOTH outcomes: *"The finding is still
+   * reported and still counted — it is reported as acknowledged. Editing the
+   * item's content lapses this, and the finding is open again."* On `--clear`
+   * every clause of that is false — the acknowledgement was just withdrawn, so
+   * the finding is reported as OPEN, and there is nothing left for an edit to
+   * lapse. A withdrawal that reports itself as an acknowledgement is the
+   * failure `STD-a-refusal-names-what-would-make-it-succeed`'s neighbour rule
+   * exists for: a message that contradicts the act it just performed.
+   *
+   * Found 2026-09-07 by EXECUTING `ack --clear` from the Composer and reading
+   * what came back (`plan:builder seq:11`, the write half), which is the whole
+   * argument for that item's bar — the composed line was right, the exit code
+   * was 0, and the sentence was wrong.
+   */
+  const said = on
+    ? `${before === 'lapsed'
+      ? `re-acknowledged "${input.code}" (the previous ruling had lapsed — the item's content `
+        + 'had moved under it)'
+      : `acknowledged "${input.code}"`}`
+      + '. The finding is still reported and still counted — it is reported as acknowledged. '
+      + "Editing the item's content lapses this, and the finding is open again."
+    : `withdrew the acknowledgement of "${input.code}". The finding is reported as OPEN again `
+      + 'from here; it was never silenced, and nothing about the item itself changed.';
   return {
     id: item.id,
     created: false,
     status: item.status,
     filePath: item.filePath,
-    message:
-      `my_context: ${item.id} ${what}. The finding is still reported and still counted — it is ` +
-      `reported as acknowledged. Editing the item's content lapses this, and the finding is ` +
-      `open again.${audited}`,
+    message: `my_context: ${item.id} ${said}${audited}`,
   };
 }
 

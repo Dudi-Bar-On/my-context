@@ -385,6 +385,23 @@ test('init --pack offers the artefact locations this workspace imported from', a
   expect(idle.note.length, 'an unasked list must still say what it is').toBeGreaterThan(0);
 
   await page.locator(`${PALETTE} input[list="sugg-pack"]`).focus();
+  /**
+   * **WAIT ON THE NOTE, NOT ONLY ON THE COUNT — and the difference only shows
+   * when this corpus has no packs, which is the case it is in today.**
+   *
+   * `served.length` is 0 here, and the option count is 0 BEFORE the lazy read
+   * has been made as well as after it: the poll below was therefore satisfied
+   * by the un-asked state and the assertions ran against a box still drawing
+   * `pal.suggreading` — *"Reading what this corpus can offer…"*. Measured
+   * 2026-09-07: the test passed on an idle machine and failed on both browser
+   * projects on a loaded one, which is the shape of a race and not of a
+   * regression. So the wait is now for the READ to have finished — the note is
+   * no longer the pending sentence — and the count is asserted afterwards.
+   */
+  await expect
+    .poll(async () => /Reading what this corpus|קורא/i.test((await suggest(page, 'pack')).note),
+      DOCTOR_WAIT)
+    .toBe(false);
   await expect.poll(async () => (await suggest(page, 'pack')).options.length, DOCTOR_WAIT)
     .toBe(served.length);
   const box = await suggest(page, 'pack');

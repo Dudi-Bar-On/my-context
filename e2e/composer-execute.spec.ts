@@ -47,9 +47,13 @@ import { execFileSync } from 'node:child_process';
 import { cpSync, mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
-import { test as base, expect, type Locator, type Page } from '@playwright/test';
+import { test as base, expect } from '@playwright/test';
 import { CORPUS } from './app.ts';
 import { startUiChild, type UiHarness } from '../test/ui/helpers.ts';
+import { throwawayHome } from './throwaway-home.ts';
+import {
+  normalise, openApp, openConfirm, outcome, outcomeFor, runIt,
+} from './composer-run.ts';
 import { snapshot, worthCopying } from '../src/ui/execute-effect.ts';
 import { DIR_NAME } from '../src/core/workspace.ts';
 import { CATEGORIES } from '../src/core/categories.ts';
@@ -61,7 +65,7 @@ import {
   openComposer, setValue, settled, specsOf,
 } from './composer.ts';
 
-interface Workspace { root: string; myContextDir: string }
+interface Workspace { root: string; myContextDir: string; env: NodeJS.ProcessEnv }
 
 /**
  * A disposable copy of the live corpus, indexed. `worthCopying` (skip `.audit`
@@ -70,12 +74,19 @@ interface Workspace { root: string; myContextDir: string }
  * the server's read routes open the index `openReadOnlyChecked`, which cannot
  * CREATE a database that does not exist — `e2e/execute.spec.ts` measured every
  * SQLite-backed route answering `unable to open database file` without it.
+ *
+ * **AND A THROWAWAY HOME, which is the second store and was not isolated.**
+ * The copy above isolates the CORPUS; `~/.my-context` is a different directory,
+ * shared by every corpus on the machine, and `core/open-store.ts` folds it in
+ * as the global layer whenever it exists. `e2e/throwaway-home.ts` carries the
+ * measurement and the reason the environment is handed to the spawn rather than
+ * set on this process.
  */
 function makeWorkspace(): Workspace {
   const root = mkdtempSync(path.join(tmpdir(), 'myctx-d12-'));
   cpSync(CORPUS, root, { recursive: true, filter: worthCopying });
   execFileSync(process.execPath, [CLI, 'rebuild'], { cwd: root, encoding: 'utf8', stdio: 'pipe' });
-  return { root, myContextDir: path.join(root, DIR_NAME) };
+  return { root, myContextDir: path.join(root, DIR_NAME), env: throwawayHome(root).env };
 }
 
 /** The CLI's own answer to an argv, in the workspace under test. THE ORACLE. */
@@ -89,15 +100,6 @@ function cli(root: string, argv: readonly string[]): { code: number; out: string
     const e = error as { status?: number; stdout?: string };
     return { code: e.status ?? -1, out: e.stdout ?? '' };
   }
-}
-
-/**
- * Two texts compared as a person compares two terminal outputs: trailing
- * whitespace and blank-line runs do not carry meaning, and the UI renders
- * stdout into a `<pre>` through `textContent`.
- */
-function normalise(text: string): string {
-  return text.replace(/\r\n/g, '\n').split('\n').map((l) => l.trimEnd()).join('\n').trim();
 }
 
 /** An id this workspace's own files carry — never a hard-coded one. */
@@ -152,134 +154,6 @@ function firstUnpinnedItemId(dir: string): string {
   );
 }
 
-/** Open the app on a server of our own, authenticated the way a person is. */
-async function openApp(page: Page, h: UiHarness): Promise<void> {
-  await page.goto(`http://127.0.0.1:${h.port}/#${h.nonce}`);
-  await expect(
-    page.locator('.nav').first(),
-    'the isolated server never rendered a rail button — it probably has no token',
-  ).toBeVisible({ timeout: 20_000 });
-  const skew = page.locator('#exited:not([hidden])');
-  if (await skew.isVisible().catch(() => false)) {
-    await skew.getByRole('button', { name: 'OK', exact: true }).click().catch(() => {});
-  }
-}
-
-/**
- * **THE OUTCOME REGION FOR ONE COMPOSED LINE, and never for the line before it.**
- *
- * `.execresult` cannot be reached with `.first()`, and that is a property of
- * the product rather than a quirk of the selector. `app.js`' own
- * `attachExecuteOutcome` CARRIES the outcome node across the redraw its run
- * caused, and re-homes it onto a control whose `data-cmdkey` matches; when the
- * composed line has moved on there is no match and the outcome goes to the TOP
- * OF THE SECTION instead, deliberately, so a reader is not left hunting for
- * what their click did. So after running `status` and then choosing `doctor`,
- * the palette section holds `status`'s outcome above `doctor`'s form — and a
- * `.first()` reads the wrong run. This test asserted `mycontext status` where
- * it had composed `mycontext doctor` and was right to fail.
- *
- * `data-cmdkey` is `commandActions`' own identity for a control — the composed
- * line — and is stamped on the result region for exactly this. Selecting by it
- * is asking for the outcome of THIS command by the product's own name for it.
- */
-function outcomeFor(page: Page, line: string): Locator {
-  return page.locator(`${PAL} .execresult[data-cmdkey="${line.replace(/"/g, '\\"')}"]`);
-}
-
-/**
- * Press Execute and wait for the confirm — or for the reason there is not one.
- *
- * The wait races the confirm against the result region's own error note, so a
- * refused confirm GET fails in the SERVER'S words within seconds instead of
- * timing out in ninety and saying only "hidden".
- */
-async function openConfirm(page: Page, what: string): Promise<Locator> {
-  const actions = page.locator(`${CMD} .cmdactions`).first();
-  await expect(actions, `${what}: a command control is on screen to press`).toHaveCount(1);
-  await actions.getByRole('button', { name: 'Execute', exact: true }).click();
-  const confirm = actions.locator('.confirm');
-  // Polled only while the control is still WORKING; the assertion is made once,
-  // afterwards. `expect.poll(...).toBe('open')` keeps polling a settled refusal
-  // until the timeout, which is how a confirm refused in one second reported
-  // itself as three and a half minutes of nothing.
-  let state = 'waiting';
-  await expect
-    .poll(async () => {
-      state = await readState();
-      return state === 'waiting' ? 'waiting' : 'settled';
-    }, {
-      timeout: 180_000,
-      intervals: [200, 500, 1000, 2000],
-      message: `${what}: the confirm neither opened nor said why. The confirm GET derives the `
-        + 'effect by copying the corpus to a scratch directory and running the command there '
-        + '(`src/ui/execute-effect.ts`), which costs real seconds.',
-    })
-    .toBe('settled');
-  expect(state, `${what}: the confirm must open`).toBe('open');
-  return confirm;
-
-  async function readState(): Promise<string> {
-    {
-      if (await confirm.isVisible().catch(() => false)) return 'open';
-      // **Everything the control is saying, not just the shape this test hoped
-      // for.** The first version of this wait watched only `.spill`, and when
-      // the confirm did not open it reported "hidden" and nothing else — three
-      // tests spent 3.5 minutes each arriving at a message that named no cause.
-      // The result region is a live region the product fills with the reason,
-      // so the reason is what the failure should carry.
-      const said = (await actions.locator('.execresult').textContent().catch(() => '')) ?? '';
-      // `exec.checking` is the pending sentence the control draws while the
-      // derivation runs, so it is a WAIT and not an answer. Anything else in
-      // this region is the reason there will be no confirm.
-      if (said.trim() === '' || /Checking|בודק|נבדק/.test(said)) return 'waiting';
-      return `the control says: ${said.trim().slice(0, 500)}`;
-    }
-  }
-}
-
-/** Press Execute, answer the confirm, and settle. THE NONCE PATH, NOT BYPASSED. */
-async function runIt(page: Page, line: string, what: string): Promise<void> {
-  // **The confirm is NOT bypassed**, which is the item's own instruction about
-  // the approval boundary: "Entries that sit on the approval boundary exercise
-  // the confirm-and-nonce path, which must not be bypassed to make a test
-  // convenient." The nonce is minted by the GET that renders this, and spending
-  // it is the only way to reach the run.
-  const confirm = await openConfirm(page, what);
-  await confirm.getByRole('button', { name: 'Run it', exact: true }).click();
-  await expect(outcomeFor(page, line).locator('.exitcode'), `${what}: an outcome arrives`)
-    .toBeVisible({ timeout: 180_000 });
-}
-
-/**
- * What the outcome region says: the exit code it drew, and what the command
- * printed — ALL of what it printed, which takes a click.
- *
- * **The output is BOUNDED, and that is a feature rather than truncation.**
- * `saidNodes` hands the command's lines to `boundedList` with `BOUND_CAP_LIST`,
- * so a long answer is drawn as an opening window under a "Show all N" control.
- * Comparing the drawn window to the CLI's whole stdout reports a difference
- * that is not one: `mycontext show <id>` lost its entire body and every
- * observation, sixteen lines, and looked like the UI dropping output.
- *
- * So this presses the control, which is what a reader does and which also makes
- * the affordance itself part of what is under test — a "Show all" that did not
- * show all would fail the comparison below rather than passing quietly.
- */
-async function outcome(page: Page, line: string): Promise<{ code: number; out: string; ran: string }> {
-  const region = outcomeFor(page, line);
-  const codeText = (await region.locator('.exitcode').first().textContent()) ?? '';
-  const code = Number(/(-?\d+)/.exec(codeText)?.[1] ?? 'NaN');
-  const showAll = region.getByRole('button', { name: /^Show all |^הצג את כל / });
-  if (await showAll.count() > 0 && await showAll.first().isVisible().catch(() => false)) {
-    await showAll.first().click();
-  }
-  const said = region.locator('pre.lit');
-  const out = await said.count() > 0 ? ((await said.first().textContent()) ?? '') : '';
-  const ran = (await region.locator('.cmd code').first().textContent()) ?? '';
-  return { code, out, ran };
-}
-
 /* ══ 1 — READS, RUN, AND CHECKED AGAINST THE CLI ══════════════════════════ */
 
 base('every read the catalogue licenses runs, and answers exactly what the CLI answers',
@@ -288,7 +162,7 @@ base('every read the catalogue licenses runs, and answers exactly what the CLI a
     const ws = makeWorkspace();
     let harness: UiHarness | undefined;
     try {
-      harness = await startUiChild(ws.root);
+      harness = await startUiChild(ws.root, [], ws.env);
       await openApp(page, harness);
       await openComposer(page);
 
@@ -401,7 +275,7 @@ base('the browser composes an argv and the server rebuilds it, and the two agree
     const ws = makeWorkspace();
     let harness: UiHarness | undefined;
     try {
-      harness = await startUiChild(ws.root);
+      harness = await startUiChild(ws.root, [], ws.env);
       await openApp(page, harness);
       await openComposer(page);
       const itemId = firstUnpinnedItemId(ws.myContextDir);
@@ -492,7 +366,7 @@ base('a boundary write runs behind the confirm, and the corpus says what it did'
     const ws = makeWorkspace();
     let harness: UiHarness | undefined;
     try {
-      harness = await startUiChild(ws.root);
+      harness = await startUiChild(ws.root, [], ws.env);
       await openApp(page, harness);
       await openComposer(page);
       const itemId = firstUnpinnedItemId(ws.myContextDir);
@@ -554,7 +428,7 @@ base('a value the Composer refuses to COPY still executes as a literal, and is s
     const ws = makeWorkspace();
     let harness: UiHarness | undefined;
     try {
-      harness = await startUiChild(ws.root);
+      harness = await startUiChild(ws.root, [], ws.env);
       await openApp(page, harness);
       await openComposer(page);
 
@@ -684,7 +558,7 @@ base('the four review entries, on a corpus that has a draft and a revision to na
       seedQueues(ws);
       execFileSync(process.execPath, [CLI, 'rebuild'],
         { cwd: ws.root, encoding: 'utf8', stdio: 'pipe' });
-      harness = await startUiChild(ws.root);
+      harness = await startUiChild(ws.root, [], ws.env);
       await openApp(page, harness);
       await openComposer(page);
 

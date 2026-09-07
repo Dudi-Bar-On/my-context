@@ -187,6 +187,7 @@ import {
   CHECK_REFUSED, captionFor, commandChecker, commandHelp, controlFor, controlSpecs,
   echoLine, emptyPickerNote, labelled, markRefusal, markRequired, missingRequired,
   optionEl, paintCommand, paintEcho, pickerOptions, readValues, suggestListId,
+  UNSCOPED_GLOB,
 } from '/lib/builder.js';
 export { controlSpecs, missingRequired, pickerOptions, suggestListId };
 // `/lib/command.js` and `/lib/command-actions.js` were imported HERE until
@@ -212,12 +213,25 @@ import { el, errorNote, num, screenHead, spaced } from '/screens/parts.js';
  * so this is the repository, not a sample of it — which is precisely the tree
  * `pal.globn` describes. It is also the tester's opening value, so the screen
  * arrives showing what the mockup's arrives showing: a lit tree rather than an
- * empty box. A seeded pattern DOES flow into the composed argv when the chosen
- * command takes a `--scope`, exactly as the mockup's seeded `src/billing/**`
- * flows into its own chip row — and it is the most visible argument on the
- * screen when it does, which is the whole point of drawing argv as chips.
+ * empty box.
+ *
+ * **THE SEED NO LONGER FLOWS INTO `--scope`, AND THAT SENTENCE USED TO SAY THE
+ * OPPOSITE.** It said the seeded pattern DOES flow into the composed argv,
+ * "exactly as the mockup's seeded `src/billing/**` flows into its own chip
+ * row" — and the mockup's seed is a REAL directory glob, which is the half of
+ * the analogy that does not carry. Measured 2026-09-07 by executing every
+ * runnable write: `focus --clear` and `lesson-accept` are both REFUSED BY THE
+ * CLI when a bare `**` rides along, so neither could be run from this screen's
+ * opening state at all. `valueOf` (`lib/builder.js`) now reads a glob of `**`
+ * as no scope, on the CLI's own ground that it "is what omitting scope already
+ * does" — the whole argument is written there. The box still shows it, the
+ * tester still tests it, and a reader who wants a scope still types one.
+ *
+ * Re-exported FROM the builder rather than spelled twice: the constant the
+ * tester opens on and the constant the reader is read as omitting must be one
+ * string, or the fix above holds only until somebody changes one of them.
  */
-export const EVERY_FILE = '**';
+export const EVERY_FILE = UNSCOPED_GLOB;
 
 /**
  * THE LIST OF HELP TOPICS THAT USED TO LIVE HERE, AND WHY IT DOES NOT.

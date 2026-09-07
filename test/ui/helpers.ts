@@ -72,9 +72,22 @@ export interface UiHarness {
  * bounded number of attempts. Callers see no difference — the same `UiHarness`,
  * the same rejection on a bad command line — except that the port they are
  * given is one the browser will actually connect to.
+ *
+ * **`env` overrides the child's environment, and the case it exists for is
+ * `HOME`.** `GLOBAL_DIR` is `path.join(homedir(), '.my-context')` computed once
+ * at module load (`src/core/workspace.ts`), and `homedir()` reads `HOME` first
+ * and `USERPROFILE` on Windows — so the only place either can be changed for a
+ * server is BEFORE it is spawned. `test/docs/injection.test.ts`' `runHook`
+ * established the shape and the reason: a maintainer with a global corpus would
+ * otherwise have their own items folded into every assertion. Passed through to
+ * the spawn rather than set on this process, because a test process that
+ * mutated its own `HOME` would still be too late for every `src/` module it had
+ * already imported.
  */
-export function startUiChild(cwd: string, extraArgs: string[] = []): Promise<UiHarness> {
-  return startOnSafePort(() => spawnUiChild(cwd, ['--port', '0', ...extraArgs]));
+export function startUiChild(
+  cwd: string, extraArgs: string[] = [], env?: NodeJS.ProcessEnv,
+): Promise<UiHarness> {
+  return startOnSafePort(() => spawnUiChild(cwd, ['--port', '0', ...extraArgs], env));
 }
 
 /**
@@ -84,8 +97,10 @@ export function startUiChild(cwd: string, extraArgs: string[] = []): Promise<UiH
  * demonstrate the retry against real sockets instead of only against a fake.
  * `startUiChild` is the entry point for everyone else.
  */
-export function spawnUiChild(cwd: string, args: string[]): Promise<UiHarness> {
-  const child = spawn(process.execPath, [SERVER, ...args], { cwd });
+export function spawnUiChild(
+  cwd: string, args: string[], env?: NodeJS.ProcessEnv,
+): Promise<UiHarness> {
+  const child = spawn(process.execPath, [SERVER, ...args], env === undefined ? { cwd } : { cwd, env });
   child.stdout.setEncoding('utf8');
   child.stderr.setEncoding('utf8');
   return new Promise((resolve, reject) => {
