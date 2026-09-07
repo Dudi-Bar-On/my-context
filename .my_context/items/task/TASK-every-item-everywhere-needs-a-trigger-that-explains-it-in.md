@@ -5,9 +5,10 @@ title: every item everywhere needs a trigger that explains it in one place, and 
 status: active
 severity: soft
 always: false
-summary: Every item can be opened to a short plain-language explanation, written ahead of time and stored with it, which says so when it is missing or out of date.
-summary_of: 9f7033162d0dce3b
+summary: Four places where an item is shown without the one-line explanation of what it is.
+summary_of: 7342611b737d7fc0
 summary_was:
+  - 2026-09-07 Every item can be opened to a short plain-language explanation, written ahead of time and stored with it, which says so when it is missing or out of date.
   - 2026-09-01 Every item gets a short plain-language explanation, written in advance and stored with it, so anyone can tell what it is at a glance.
 scope: []
 tags:
@@ -21,10 +22,10 @@ tags:
 origin: human
 source_file: "C:/Users/UserC/AppData/Local/Temp/explain.md"
 source_anchor: null
-source_checksum: 04ec375a500dd750
+source_checksum: null
 valid_from: 2026-08-31
 valid_until: null
-checksum: 425a8cecd1085c93
+checksum: 2df51f1603cf55c8
 plan: walk
 seq: "119"
 state: todo
@@ -64,3 +65,12 @@ source: owner ruling, 2026-08-31
 > **Done when**
 >
 > Every id-bearing surface reaches a summary through one implementation; the graph and the ribbon are each either covered or named as out of scope with a reason; a missing summary is drawn and named rather than blank; a stale one says so; and a browser test drives the trigger from at least three different screens to prove the single implementation genuinely reaches them.
+
+RE-CUT 2026-09-07 by owner ruling (plan:walk seq:140, option A). What follows narrows this
+item; everything above it is the record of why.
+
+RE-CUT TO THE FOUR GAPS ONLY. The rest of the surface already carries the trigger.
+
+AND ONE CONTRADICTION INSIDE THIS ITEM STILL NEEDS THE OWNER’S RULING - it is named in this item’s row
+in reports/2026-09-07-walk-review.md and is NOT resolved by this re-cut. Do not start the four gaps
+assuming it away.

@@ -5,8 +5,10 @@ title: one doctor message does two jobs so 58000 characters of the same paragrap
 status: active
 severity: soft
 always: false
-summary: The health report repeats the same long explanation with every finding, so the page is almost all one paragraph and tells you nothing.
-summary_of: 6259b0d69f81e4c7
+summary: One long explanation is written once and read by both the screen and the terminal, instead of only one of them showing it.
+summary_of: 3a4d44e3536b93df
+summary_was:
+  - 2026-09-07 The health report repeats the same long explanation with every finding, so the page is almost all one paragraph and tells you nothing.
 acknowledged:
   - body_disagrees_with_meta@9acbb023e1537a53
   - citation_form@9acbb023e1537a53
@@ -25,7 +27,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-08-31
 valid_until: null
-checksum: b8681ce4ebdadbd0
+checksum: 9b02aa012a428e46
 plan: walk
 seq: "122"
 state: todo
@@ -78,3 +80,12 @@ source: owner report, 2026-08-31
 > **Done when**
 >
 > The per-item message is the finding alone; the explanation is drawn once per code group and remains reachable; no code repeats more than a sentence of shared text across its findings; and the total characters on a screen showing 61 findings is measured before and after.
+
+RE-CUT 2026-09-07 by owner ruling (plan:walk seq:140, option A). What follows narrows this
+item; everything above it is the record of why.
+
+SURVIVES, and it is now the whole item: lift sharedTail into a module that BOTH src/ui/public/screens/
+doctor.js and src/cli/commands/doctor.ts read.
+
+THE CUT IS ALREADY PROVEN - what is missing is the second reader. The terminal currently gets none of
+it, which is the half nobody noticed while the screen looked correct.

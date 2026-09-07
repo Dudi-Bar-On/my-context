@@ -5,8 +5,10 @@ title: the simulator opens on the tier that shows nothing, and div.at needs a be
 status: active
 severity: soft
 always: false
-summary: The budget screen opens on the one setting that can show nothing, so both of its main features start blank with no explanation.
-summary_of: b4a45fe4ec20bf8f
+summary: The simulator opens on a tier that shows something, and a test pins that behaviour so it cannot silently change.
+summary_of: 384f676f52f161c7
+summary_was:
+  - 2026-09-07 The budget screen opens on the one setting that can show nothing, so both of its main features start blank with no explanation.
 scope: []
 tags:
   - v2
@@ -21,7 +23,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-08-28
 valid_until: null
-checksum: 0115c25f980c0e15
+checksum: 4ab47cef7b974c03
 plan: walk
 seq: "59"
 state: todo
@@ -58,3 +60,12 @@ source: "found restoring the parity ledger after seq:7, 2026-08-28"
 > ## Done when
 >
 > The opening-tier question is decided and recorded; if the screen stays on `jit`, it says what it needs and how to give it; a browser test selects a tier with rungs, asserts the `at` highlight is on the last rung at or below the slider, and asserts it MOVES when the slider moves; and `div.at` leaves `KNOWN_GAPS.simulate` only when that test exists.
+
+RE-CUT 2026-09-07 by owner ruling (plan:walk seq:140, option A). What follows narrows this
+item; everything above it is the record of why.
+
+SURVIVES, all three: the opening-tier decision, the ladder’s own missing-path sentence, and the
+behaviour test for div.at.
+
+THE TEST IS CHEAP AND IS THE POINT: e2e/simulate-range.spec.ts already drives the pinned tier and the
+slider, so the assertion has a home. div.at cannot leave the ledger without it.

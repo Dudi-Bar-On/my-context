@@ -5,8 +5,10 @@ title: "proc: scatter the disclosures back beside the cards they qualify"
 status: active
 severity: soft
 always: false
-summary: Move each footnote back beside the card it is about, instead of piling them all together at the bottom of the screen.
-summary_of: 2c0d91ee31dfc069
+summary: Each explanation sits beside the thing it explains, instead of all of them being collected at the foot of the page.
+summary_of: 4db99976f711cc19
+summary_was:
+  - 2026-09-07 Move each footnote back beside the card it is about, instead of piling them all together at the bottom of the screen.
 scope: []
 tags:
   - v2
@@ -22,7 +24,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-08-24
 valid_until: null
-checksum: b00a3bdd4f47c68c
+checksum: e3a98f1029950a72
 plan: walk
 seq: "2"
 state: todo
@@ -41,3 +43,19 @@ WHAT THE WORK IS: each disclosure goes back beside the card it is about. The gen
 READ THE COMMENT BEFORE CHANGING THE CODE. The function s header argues for the collected card and the argument is not silly; the ruling narrows it rather than rejecting it. It also warns that the card carries no `<h3>` because `pr.` declares no heading for one, and that inventing a heading here fails strings-parity in the direction that names it. Whatever survives at the foot inherits that constraint.
 
 The deduplication logic above it is load-bearing and separate: disclosures are deduped BY MESSAGE and not by code, deliberately, so that two procedures producing two different sentences under one code both survive. Scattering the cards must not quietly become deduping by code.
+
+RE-CUT 2026-09-07 by owner ruling (plan:walk seq:140, option A). What follows narrows this
+item; everything above it is the record of why.
+
+STRUCK: the tree-parity rationale, and the no-<h3> constraint.
+The rationale died with the mockup freeze - app-ahead-of-mockup is NORMAL and must never fail a gate,
+a review or a report - and the <h3> clause died with the bidirectional strings check on 2026-08-26.
+The card has carried its heading since 2026-08-30 anyway.
+
+SURVIVES, and it is the whole item now: DEC-a-disclosure-sits-beside-the-card-it-qualifies is active
+and unreversed. Each disclosure goes beside the card it qualifies; only the screen-wide sentence may
+stay at the foot.
+
+AND THE SCREEN IS NOT FIXED, however it looks: render() still hands EVERY deduped message to the one
+foot card, so a second disclosure would pile there beside the first. This corpus serves exactly one,
+which is why a live sweep called it fixed.

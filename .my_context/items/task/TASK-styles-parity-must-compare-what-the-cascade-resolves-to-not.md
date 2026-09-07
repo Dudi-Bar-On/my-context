@@ -5,8 +5,10 @@ title: styles-parity must compare what the cascade RESOLVES to, not just the blo
 status: active
 severity: soft
 always: false
-summary: The styling check compares rules but not their order, so two identical files can still draw differently; make it check what actually wins.
-summary_of: 6d810a2103d8168b
+summary: The style check compares what the browser actually applies, and keeps protecting rules that no longer belong to anything.
+summary_of: e1a0d8449b5c7c48
+summary_was:
+  - 2026-09-07 The styling check compares rules but not their order, so two identical files can still draw differently; make it check what actually wins.
 scope: []
 tags:
   - v2
@@ -23,7 +25,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-08-25
 valid_until: null
-checksum: b1f56e3d2b5ee2c5
+checksum: 38449a48db302aa4
 plan: walk
 seq: "15"
 state: todo
@@ -42,3 +44,15 @@ WHAT THE CHECK MUST DO, and the second half is the hard and necessary half:
 STEP 2 IS NOT OPTIONAL AND HERE IS THE EVIDENCE. A first screen doing only step 1 reported 111 pairs. `.banner` and `.cnt` are in it, both declaring `color`, and no element carries both classes; they will never collide. Shipping that number as a defect count would be the same failure this whole review has been about -- a measurement reported as a finding.
 
 THE FIX FOR AN INSTANCE IS ORDER, NOT SPECIFICITY. Raising `.pulse svg` to `.pulse svg.chart` would win regardless of order and would ALSO break styles-parity s byte-identity with the mockup, which is a gate worth keeping. Move the rule instead, and leave a comment saying why it is not with its component -- this fix already did, because the next person to tidy it back would restore the defect.
+
+RE-CUT 2026-09-07 by owner ruling (plan:walk seq:140, option A). What follows narrows this
+item; everything above it is the record of why.
+
+STRUCK: the "order, not specificity" prescription. It only held while byte-identity between mockup and
+app was the standard, and the freeze ended that.
+
+SURVIVES: steps 1 and 2, as the freeze ruling’s NAMED orphan protection - the freeze relies on
+something still noticing a rule that has stopped applying to anything.
+
+AND STEP 2 IS THE DESIGN QUESTION, which is why this is unsized: comparing what the cascade RESOLVES
+to needs a rendered DOM, not a parse of the blocks. Settle that before estimating.

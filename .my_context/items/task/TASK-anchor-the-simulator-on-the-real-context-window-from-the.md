@@ -5,8 +5,10 @@ title: anchor the simulator on the real context window, from the status line
 status: active
 severity: soft
 always: false
-summary: Show the room actually left in the conversation on the what-fits chart, so the setting stops being an abstract number, and say when it is unknown.
-summary_of: 32e3b037b0bb372f
+summary: The simulator’s staircase says how much room is left, read from the real window rather than a typed number.
+summary_of: 1734d4eb1d188c3d
+summary_was:
+  - 2026-09-07 Show the room actually left in the conversation on the what-fits chart, so the setting stops being an abstract number, and say when it is unknown.
 scope: []
 tags:
   - v2
@@ -22,7 +24,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-08-24
 valid_until: null
-checksum: 13a462a552f86aea
+checksum: 02414889220dc47e
 plan: walk
 seq: "8"
 state: todo
@@ -45,3 +47,11 @@ THREE HONESTY CONSTRAINTS, and each one is a rule this project already enforces:
 3. A tier budget and free window space are DIFFERENT UNITS OF DECISION. The budget asks how much to spend on a tier; free space says what that budget could be. The marker informs the slider and must not quietly become it.
 
 Unblocked 2026-08-28: plan:walk seq:7 landed (commit 3a096ff) and its gates are green — typecheck clean, 5061 unit tests, the four static gates, and the browser suite once div.at was restored to the parity ledger.
+
+RE-CUT 2026-09-07 by owner ruling (plan:walk seq:140, option A). What follows narrows this
+item; everything above it is the record of why.
+
+CLOSED HALF: "anchor it and say when it is unknown", against plan:budget seq:3 and seq:4, which
+answered it.
+
+SURVIVES: the free-space line on the staircase, and only that.

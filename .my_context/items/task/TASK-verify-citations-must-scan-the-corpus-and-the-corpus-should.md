@@ -5,8 +5,10 @@ title: "verify:citations must scan the corpus, and the corpus should cite by anc
 status: active
 severity: soft
 always: false
-summary: The reference checker has three known blind spots; settle by rule what it covers, and stop pointing at line numbers that rot.
-summary_of: b66a400190cff392
+summary: References in the knowledge base point at a place that keeps its name, rather than a line number that moves.
+summary_of: 77bb970e95f840de
+summary_was:
+  - 2026-09-07 The reference checker has three known blind spots; settle by rule what it covers, and stop pointing at line numbers that rot.
 scope: []
 tags:
   - v2
@@ -22,7 +24,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-08-25
 valid_until: null
-checksum: 14b5291d132f7fda
+checksum: 37b34e1ee488c0b4
 plan: walk
 seq: "30"
 state: todo
@@ -53,3 +55,17 @@ AND IT OVERLAPS FOUR OPEN TASKS IN plan:rulings -- `33c` (about thirty bare cita
 Found by `plan:live seq:7`, whose two edited files were both invisible to the gate; it resolved its citations by hand instead. The irony is worth recording: `live-invalidation.js` exists because a hand-kept list drifts, and its own citations are held to no gate.
 
 Whatever this task settles about scanning the corpus should settle this too, or say why not — a citation gate whose blind spot includes every file a UI change touches is a gate that passes most confidently where it checks least.
+
+RE-CUT 2026-09-07 by owner ruling (plan:walk seq:140, option A). What follows narrows this
+item; everything above it is the record of why.
+
+CLOSED HALF: the gate half, against the standard and the rule that now cover it.
+
+SURVIVES: the corpus residue - normalise the 31 pointers that still cite by line, and stop the writer
+emitting file:line in the first place.
+
+AND IT HAS A NEW ALLY FILED THE SAME DAY:
+RULE-a-citation-names-an-item-by-id-never-a-report-by-line-number, taken after two citations in
+src/doctor/checks.ts were found pointing at lines that had held something else for days. The handover
+is PREPENDED to, so every line number into it rots on the next write. This item is the cleanup that
+rule implies.

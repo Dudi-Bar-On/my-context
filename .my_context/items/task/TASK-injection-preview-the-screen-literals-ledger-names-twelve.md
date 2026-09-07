@@ -5,8 +5,10 @@ title: "Injection preview: the screen-literals ledger names twelve unkeyed sente
 status: active
 severity: soft
 always: false
-summary: Twelve sentences are recorded as untranslated and as already reported, and nothing was ever reported; most of them sit on the main screen.
-summary_of: d966db5a50bde68b
+summary: Three sentences on the preview screen are still only in English and need their Hebrew written.
+summary_of: 7e35a6e80dc30c76
+summary_was:
+  - 2026-09-07 Twelve sentences are recorded as untranslated and as already reported, and nothing was ever reported; most of them sit on the main screen.
 scope: []
 tags:
   - v2
@@ -24,7 +26,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-08-29
 valid_until: null
-checksum: 80f20ab937d0bd48
+checksum: 31f169712f4860eb
 plan: walk
 seq: "102"
 state: todo
@@ -53,3 +55,12 @@ AND ONE IS A PAIR THAT MUST MOVE TOGETHER: `not reached -- <q>` substitutes `GAT
 THE GATE THAT WAS CITED AS FORBIDDING THESE KEYS STOPPED FORBIDDING THEM ON 2026-08-26 -- see plan:walk seq:92, which this task waits on. `screens/preview.js` is the file that discovered that, and it keyed exactly two sentences before its bound ran out. These are the rest.
 
 FINISH BY REMOVING THE ENTRIES, not by editing the reasons. A ledger that keeps an entry for a keyed string fails in the departed direction, which is the half that stops it becoming a graveyard.
+
+RE-CUT 2026-09-07 by owner ruling (plan:walk seq:140, option A). What follows narrows this
+item; everything above it is the record of why.
+
+RETIRED: nine of the twelve, against plan:walk seq:92 and the keys it added.
+
+SURVIVES: three preview sentences - the help.p1 tail, the "path - none" slot, and the ghost tooltip.
+These need HEBREW WRITTEN, not a gate lifted. That distinction is the whole remainder: the ledger
+called them "Filed" and nothing had been filed.

@@ -5,8 +5,10 @@ title: "nothing translated the shell markup: ten data-t labels were English on t
 status: active
 severity: soft
 always: false
-summary: Ten labels stayed in English on the Hebrew page for months; the fix is in, but nothing yet stops it happening again.
-summary_of: e1441ec870530d81
+summary: A test that catches English text left in the interface where a translation should be.
+summary_of: adb844dd7eee9781
+summary_was:
+  - 2026-09-07 Ten labels stayed in English on the Hebrew page for months; the fix is in, but nothing yet stops it happening again.
 acknowledged:
   - body_disagrees_with_meta@ac65ef6e0e6f5d91
 scope: []
@@ -24,7 +26,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-08-25
 valid_until: null
-checksum: 29bcb41ac07bbfc4
+checksum: 78c87a6e162e8230
 plan: walk
 seq: "43"
 state: todo
@@ -47,3 +49,12 @@ THE FIX: `applyStatic(document)` at boot, filling every `[data-t]` from the tabl
 WHY THIS ITEM EXISTS AT ALL, since the defect is fixed: the fix was made in passing while building something else, and it deserves a TEST rather than a comment. WHAT TO ADD: an assertion that after boot in Hebrew, no `[data-t]` element in the shell still holds its authored English -- the same shape as the existing per-screen Hebrew assertions, pointed at the shell instead of at a screen. Without it the next element authored with English seed text and a `data-t` regresses silently, exactly as these ten did.
 
 AND CHECK THE MOCKUP S OWN SCANNER while there: it has one, and the app deliberately does not copy its behaviour ("Take the mockup s DESIGN, never its BEHAVIOUR"). The two now agree on the outcome; they should be verified to agree on the SET of elements they translate.
+
+RE-CUT 2026-09-07 by owner ruling (plan:walk seq:140, option A). What follows narrows this
+item; everything above it is the record of why.
+
+RETIRED HALF: the defect itself, against app.js:7448 - the ten labels are translated today.
+
+SURVIVES: the TEST half, and it is the reason the item exists. Ten seeded-English nodes are a live
+regression surface with NO GATE on them: nothing fails if they revert. A fix with no test is a defect
+waiting for its second appearance.

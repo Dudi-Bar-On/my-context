@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: The health screen cannot tell a problem a command could fix from one that needs judgement, so each finding should say which it is.
-summary_of: 862a69fc74215f3d
+summary_of: d0be193ff9c6cd3d
 scope: []
 tags:
   - v2
@@ -15,17 +15,17 @@ tags:
   - walk
   - "plan:walk"
   - "seq:121"
-  - "state:todo"
+  - "state:done"
 origin: human
 source_file: "C:/Users/UserC/AppData/Local/Temp/doctorfix.md"
 source_anchor: null
-source_checksum: 6bc63bb46fb300ba
+source_checksum: null
 valid_from: 2026-08-31
 valid_until: null
-checksum: b2855af5fa11513b
+checksum: 72bf64c9d77ac739
 plan: walk
 seq: "121"
-state: todo
+state: done
 priority: "1"
 source: owner ruling, 2026-08-31
 ---
@@ -68,3 +68,17 @@ source: owner ruling, 2026-08-31
 > **Done when**
 >
 > `Finding` carries `fix`; findings with a mechanism offer Execute through the catalogue; findings without one state why in a keyed sentence in both tables; no bulk control exists; and a browser test drives one fixable finding to green and asserts the unfixable one offers no control and says why.
+
+CLOSED 2026-09-07 by owner ruling (plan:walk seq:140, option A): close it, striking the two withdrawn
+clauses by name. Nothing here is open work.
+
+STRUCK 1 - the no-bulk-fix clause, SUPERSEDED by DEC-doctor-gets-a-bulk-settlement, which overturned it
+by id. The body currently reads as a live prohibition against code that has already shipped, which is
+worse than being merely stale.
+
+STRUCK 2 - the load-bearing measurement has expired underneath it. Its case rests on citation_form
+being 60 of 61 findings. Today it is 5 of 63, and the dominant code is state_unaudited at 38 - which
+src/doctor/checks.ts itself calls "noise wearing work’s clothes".
+
+The distinction the item asked for - a finding a command could clear versus one nothing can - is
+otherwise already drawn.

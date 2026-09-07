@@ -5,8 +5,10 @@ title: no screen has hover or click help, and most buttons carry none at all
 status: active
 severity: soft
 always: false
-summary: Add short hover and click help to buttons and other controls across the app screens, following the pattern the status strip already uses.
-summary_of: 7dc613e2247fc4fe
+summary: Go through every screen and add the short explanations a reader cannot work out from the control itself.
+summary_of: d708110bb983fd85
+summary_was:
+  - 2026-09-07 Add short hover and click help to buttons and other controls across the app screens, following the pattern the status strip already uses.
 scope: []
 tags:
   - "plan:walk"
@@ -14,10 +16,10 @@ tags:
 origin: human
 source_file: "C:/Users/UserC/AppData/Local/Temp/claude/D--Users-UserC-source-repos-test-mycontext-plugin/9e5b6b17-c186-4c93-a0a5-775b4eccd9e7/scratchpad/task-body.txt"
 source_anchor: null
-source_checksum: d305818acc0665ed
+source_checksum: null
 valid_from: 2026-09-02
 valid_until: null
-checksum: 0ddfd614809b70ce
+checksum: 875f6f5903621326
 plan: walk
 state: todo
 ---
@@ -43,3 +45,20 @@ state: todo
 > The relationship to mycontext help: the CLI and MCP already carry topic help. A hover that duplicates a help topic is a second copy that will drift from it. Decide whether screen help should point into the help system rather than restate it.
 >
 > Scope: buttons are the starting point, not the boundary, per the owner's "not limited too." Selects, the tag input, chips that filter, the session and focus dialogs, and the strip fields already covered are all candidates. This task does not enumerate all ~35 controls; it names the method for finding them (grep el('button', ...) and equivalent control constructors per screen, per the counts above) and the quality bar above, and leaves the per-control text to the doing.
+
+RE-CUT 2026-09-07 by owner ruling (plan:walk seq:140, option A). What follows narrows this
+item; everything above it is the record of why.
+
+THE DECIDE HALF IS SETTLED AND MUST NOT BE RE-OPENED. The standard exists: help goes on controls a
+reader CANNOT INFER, and sufficiency is judged by driving the screens afterwards rather than by a count.
+
+RE-CUT AS THE APPLICATION PASS: 42 untitled buttons and thirteen screens with no help at all. That is
+unbuilt, and it is what this item now means.
+
+DISPATCH IT AFTER plan:screens seq:23, which consolidates the hand-built disclosures onto
+lib/disclosure.js - so the pass has ONE mechanism to reach for instead of adding a forty-third
+hand-built one.
+
+AND THIS ITEM HAS NO seq FIELD - the only plan:walk item without one, which is why `mycontext ready`
+prints it as "(no plan/seq)" while an owner decision refers to it as walk/0. Worth fixing when it is
+next touched.

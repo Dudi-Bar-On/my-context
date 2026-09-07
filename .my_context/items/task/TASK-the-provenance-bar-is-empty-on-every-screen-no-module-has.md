@@ -5,8 +5,10 @@ title: "the provenance bar is empty on every screen: no module has ever filled p
 status: active
 severity: soft
 always: false
-summary: A strip built to explain what qualifies the numbers you are looking at is blank on every screen, because nothing ever fills it.
-summary_of: 18f81c2cf3a3e739
+summary: Decide what the provenance strip is for before any screen writes into it, then fill the two parts that still have nobody.
+summary_of: 9daf0ce37cc092b2
+summary_was:
+  - 2026-09-07 A strip built to explain what qualifies the numbers you are looking at is blank on every screen, because nothing ever fills it.
 scope: []
 tags:
   - v2
@@ -22,7 +24,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-08-25
 valid_until: null
-checksum: f5230f476ea57821
+checksum: b6b2169b73018c68
 plan: walk
 seq: "39"
 state: todo
@@ -46,3 +48,15 @@ WHAT HAS A TASK AND WHAT DOES NOT. `plan:ui3 seq:11x` covers ONE of the three pa
 THE ORDER MATTERS. Decide what the bar is FOR before filling it, because "one home for every qualification" is a contract and three screens each appending their own sentence is how it becomes a second subtitle. The mockup s own three are the model: each names a LIMIT on the numbers above it, not a description of them.
 
 AND IT IS SHELL WORK, NOT SCREEN WORK -- the bar outlives any one screen, so a screen module creating it was correctly refused. It belongs with `plan:walk seq:29` (the strip s context group) and `plan:walk seq:31` (the missing aria-live region): three tasks, one function, `renderChrome()`. Do them in one sitting.
+
+RE-CUT 2026-09-07 by owner ruling (plan:walk seq:140, option A). What follows narrows this
+item; everything above it is the record of why.
+
+OVERTAKEN THIRD: the projection part, by fillProvenance().
+
+SURVIVES: the other two parts - "preview of <session>" and the token-recording caveat - which have no
+filler and no task pointing at them.
+
+AND THE ORDER IS THE ITEM’S OWN INSTRUCTION: decide what #provparts IS FOR before any screen writes
+into it. Its "three tasks, one sitting" clause is obsolete - both siblings have shipped - so the
+surviving half is re-filed alone. Unsized on purpose: the contract is the design question.

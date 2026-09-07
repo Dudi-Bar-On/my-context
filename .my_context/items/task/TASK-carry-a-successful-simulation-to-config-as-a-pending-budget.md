@@ -5,8 +5,10 @@ title: carry a successful simulation to config as a pending budget change
 status: active
 severity: soft
 always: false
-summary: After trying out a setting and liking the result, carry it straight to the settings screen as a proposed change instead of retyping it.
-summary_of: ccc7df48f3090d58
+summary: A budget you tried out successfully can be carried straight into the settings screen instead of being retyped.
+summary_of: da27bd01c23675af
+summary_was:
+  - 2026-09-07 After trying out a setting and liking the result, carry it straight to the settings screen as a proposed change instead of retyping it.
 scope: []
 tags:
   - v2
@@ -24,7 +26,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-08-25
 valid_until: null
-checksum: cf0553b86b7393aa
+checksum: a2024cfa1ee31c60
 plan: walk
 seq: "14"
 state: todo
@@ -52,3 +54,14 @@ THE UPGRADE PATH IS ALREADY BUILT, if this bites: `POST /api/config/preview` tak
 Depends on plan:walk seq:7 (the staircase, so there is a rung to pick), seq:10 (the delta plate, which is where a carried change lands) and seq:13 (the composer this is part of).
 
 UNBLOCKED 2026-08-25 by DEC-claude-drafts-the-mockup-and-the-owner-approves. It still follows seq:13, because a budget cannot be carried INTO a composer that does not exist.
+
+RE-CUT 2026-09-07 by owner ruling (plan:walk seq:140, option A). What follows narrows this
+item; everything above it is the record of why.
+
+RETIRED HALF: the pending-patch / accumulate / copy-patch machinery.
+
+SURVIVES: the simulate-side carry, RE-AIMED at Configure’s budget field. Keep the gate that it may
+only happen after a simulation SUCCEEDED - that was the point of the item.
+
+ONE QUESTION FOR THE OWNER BEFORE BUILDING: is the URL carry still wanted, now that nothing has to
+survive a paste?

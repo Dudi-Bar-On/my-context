@@ -5,8 +5,10 @@ title: "Configure: the three sentences that tell a reader their config is broken
 status: active
 severity: soft
 always: false
-summary: The messages telling someone their settings file is broken appear only in English, on a screen that is otherwise blank and otherwise translated.
-summary_of: d4a6b6afb6ac3d78
+summary: When part of a configuration file is ignored, the screen says so, because nothing else will tell the reader.
+summary_of: d44d0aca53d1655a
+summary_was:
+  - 2026-09-07 The messages telling someone their settings file is broken appear only in English, on a screen that is otherwise blank and otherwise translated.
 scope: []
 tags:
   - v2
@@ -23,7 +25,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-08-29
 valid_until: null
-checksum: f7a4aaecbf123e57
+checksum: d2dbb7b7df221a7c
 plan: walk
 seq: "105"
 state: todo
@@ -50,3 +52,12 @@ THAT REASON EXPIRED ON 2026-08-26. See plan:walk seq:92, which this task waits o
 WHY THIS SITE IS WORSE THAN THE OTHER UNKEYED-STRING SITES. On the first two the screen draws NOTHING ELSE -- it renders the note and returns. So a Hebrew reader whose `config.json` is broken gets one English sentence on an otherwise empty screen, on the screen whose whole claim is that a terminal cannot do this. And the third is the notice a requirement compels this surface to print; printing it in a language the reader may not have is close enough to not printing it to be worth saying out loud.
 
 THE HONEST SHAPE OF THE FIX, because the loader's message is composed at run time from paths and key names and cannot be translated by a lookup -- this is the same problem `screens/doctor.js` solved for `Finding.message`: key the FRAME, not the text. A `cfg.` key that says "this configuration file could not be parsed" with the loader's own sentence rendered beneath it, unedited, the way `messageRuns` keeps the checker's words and isolates only what he delimited. Do NOT translate the loader's sentence, and do not paraphrase it: it names the file and the character position, and those are what the reader has to act on.
+
+RE-CUT 2026-09-07 by owner ruling (plan:walk seq:140, option A). What follows narrows this
+item; everything above it is the record of why.
+
+CLOSED: the parseError and resolveError two-thirds.
+
+SURVIVES: skippedNotice, and it survives for a reason worth keeping - it is the one notice
+src/ui/read-model-config.ts COMPELS this surface to print. A surface that shows config to a human and
+does not print it is lying by omission about what the file actually did.
