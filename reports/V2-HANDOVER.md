@@ -1,3 +1,49 @@
+## ⏭ READ THIS FIRST — 2026-09-07, at 96%. A REAL FINDING, NOT YET FILED.
+
+**FILE THIS FIRST. It is the most valuable thing on this page and it exists
+only here.**
+
+He asked why a superseded item reached my reasoning, and suspected supersession
+was too weak — that retired items should be moved out of the corpus. **Measured,
+and the mechanism is the opposite:**
+
+- The retired item was **NEVER INJECTED** — 0 mentions in this session's
+  SessionStart output.
+- **Injection already filters retired items** — `RETIRED_STATUSES` in
+  `src/core/select.ts` covers superseded, deprecated and validated.
+- **What carried it was a LIVE COMMENT** in `e2e/app.ts` citing
+  `DEC-the-ui-is-developed-against-a-simulated-corpus-until-the` as current.
+
+**So moving retired items out would NOT have helped** — the comment would still
+say what it says, and deleting the item would leave it citing something that no
+longer exists, which is less recoverable rather than more.
+
+**THE GAP, MEASURED:** 2,427 item citations in `src`/`e2e`/`test`/`scripts`.
+54 retired items. **31 citations name a retired item.** Among them
+`src/core/handover-ask.ts`, `src/core/focus.ts`, `src/core/render.ts`,
+`src/doctor/checks.ts`, `src/cli/index.ts`.
+
+`verify-citations` already proves a citation points at REAL CODE. **Nobody
+checks the inverse: that a cited ITEM is still in force.** So 31 comments in
+live source speak with a retired item's authority, and one of them cost a
+morning.
+
+**THE FIX, and it should be REPORTED not GATED:** a check walking item ids in
+source, naming any that resolve to `superseded` or `deprecated`. 31 findings
+would be a wall, and such a comment is often correct AS HISTORY — "this was
+ruled X, then superseded by Y". What it must do is make the reader see the
+retirement without looking it up, which is exactly what I failed to do.
+The measuring script is at `scratchpad/cite.mjs`.
+
+**HE WAS ASKED** whether to file it now or first thing next session, and has
+not answered. **File it either way — do not let it die with this window.**
+
+**EVERYTHING ELSE IS UNCHANGED AND THE BLOCKS BELOW HOLD.** `e2e/cli-help.spec.ts`
+is 14/14 and committed. `port/100` retires `.demo-corpus`. 545 of 640 done,
+doctor 0 errors, nothing unpushed. **The remaining chain is one item wide:**
+`builder/5` → `/6` and `/8` → `builder/11` (D12) → `docsys/11` (D28), and he
+has not yet answered whether to dispatch `builder/5`.
+
 ## ⏭ READ THIS FIRST — 2026-09-07, at 95%. THE RETRACTION BELOW IS RESOLVED.
 
 **`e2e/cli-help.spec.ts` IS 14/14 AND COMMITTED.** It was a race: `choose`
