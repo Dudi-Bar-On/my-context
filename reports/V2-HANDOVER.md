@@ -1,3 +1,96 @@
+## ⏭ READ THIS FIRST — 2026-09-07 evening, PAUSED ON HIS WORD. TREE CLEAN, HEAD GREEN.
+
+**No lane is running. 0 unpushed. `check:handover` exit 0, `tsc` clean.**
+He asked to pause when possible and this is a real safe point, not a
+convenient one: HEAD was RED for part of this evening and is green again.
+
+### THE D NUMBERS NOW HAVE A HOME, AND IT IS PINNED
+
+`REF-the-d-numbers-what-each-one-means-and-which-are-only` is `always: true`,
+so my_context delivers the map every session. **Until today it existed in NO
+FILE AT ALL** — it lived in conversation, which is compacted, and in handover
+blocks, which are superseded. The rule says a D is stable forever and never
+reused; nothing stored them, so nothing could enforce it.
+
+**D29–D35 are RATIFIED** (he said "save D persistent"): D29 `governance/6` ·
+D30 `port/100` · D31 `walk/140` · D32 `walk/141` · D33 `contra/1-3` ·
+D34 `restore/1-2` · D35 `basis/1-2`.
+
+**The obligation: assigning a D number and writing it there are ONE ACT.**
+
+### HIS 45 WALK RULINGS ARE APPLIED IN FULL
+
+He read the decision sheet for 32 minutes and chose **A — the recommendation —
+on every row**. `plan:walk` open fell **44 → 32**: 8 closed, 7 retired each
+naming a successor, 14 re-cut to a narrower item, 16 standing as real work.
+
+**Two he must still answer**, both written into their items so they cannot be
+lost: `walk/119` still contains a contradiction ("do not start the four gaps
+assuming it away"), and `walk/0` **has no `seq` field at all** — the only
+`plan:walk` item without one.
+
+### WHAT LANDED THIS EVENING
+
+**D12 is DONE for reads and writes.** All 17 remaining runnable write entries
+executed through Execute → `Run it`, nonce never bypassed, each compared to the
+real CLI and read back off disk. It found **two product defects nothing else
+could have**: the glob tester seeded `**` into `--scope`, making two writes
+impossible from the screen's opening state and silently stamping `scope:["**"]`
+on three others; and `ack --clear` reported a withdrawal as an acknowledgement.
+**The composed line was right, the exit code was 0, and the sentence was wrong**
+— which is the whole argument for his bar.
+
+**`handover/18`** — retiring items on his ruling made `check-handover` call four
+pointers DANGLING. Wrong verdict: a retired item EXISTS. Third tier **RETIRED**,
+reported never gated, naming the successor by following `superseded_by` to the
+end. DANGLING keeps its exit code, pinned by a test that plants an invented
+`plan/seq` and asserts exit 1.
+
+### ON HIM, AND NOTHING ELSE IS
+
+**THE COMPOSER FORGETS WHAT YOU WERE COMPOSING THE MOMENT YOU EXECUTE.** The
+write triggers a live refresh, `render()` rebuilds the `<select>`, and a fresh
+one opens on entry #1 — chosen entry and every filled field gone.
+`composer-bidi.spec.ts` found the same root cause on the language toggle and
+declined it as a shell design question. It sits between
+`RULE-a-screen-shows-the-new-state-after-the-reader-acts-on-it` and
+`DEC-a-refresh-keeps-the-reader-s-place-or-it-asks`. **Not fixed on purpose.**
+
+### THE QUEUE HE ORDERED: "one by one until all of them 100% done"
+
+Dispatch strictly serially, verify each here before committing:
+
+1. `basis/1` → `basis/2` (D35)
+2. `contra/1` → `/2` → `/3` (D33)
+3. `restore/1` → `restore/2` (D34)
+4. `library/6` (D27 — the TRUTH half; the drawing half landed)
+5. `port/100` + `port/99` (D30)
+6. `walk/141` (D32 — released now D12 is done)
+7. `docsys/11` (D28 — needs D12 and D27)
+
+Then the 16 `walk` STANDS items, ~11 working days, plus four needing a design
+sitting first: `walk/11`, `walk/15`, `walk/39`, `walk/66`.
+
+**He offered speed and I held his line:** `basis`, `contra`, `restore` and
+`port` touch disjoint files and would parallelise to ~4 hours, but he said one
+by one. Ask before widening it.
+
+### KNOWN RED, NEITHER MINE NOR NEW
+
+`tutorial-manifest` ×2 — `conversation.ts` and `conversations.js` are claimed by
+no tutorial, from `205a14e`. That is `archive/6`, filed and open. Everything
+else that fails in a full run passes in isolation (load flakes,
+`KNOWN-four-timing-sensitive-tests-each-went-red-once-under-load`).
+
+### A HABIT THAT PAID OFF ALL DAY, KEEP IT
+
+Every brief said **my leads may be wrong and I want the contradiction
+reported**. Today lanes corrected me on: which entries had actually been
+executed, what was leaking into the global root, how many pointers were
+dangling, whether `RETIRED_STATUSES` and `workItems` are complements, and
+whether 23-vs-49 fixtures reproduced. **Not one of those would have surfaced
+from a brief written as instructions.**
+
 ## ⏭ READ THIS FIRST — 2026-09-07, PAUSED ON HIS WORD. NO LANE RUNNING, TREE CLEAN.
 
 **He asked to pause at a safe point and this is one:** working tree clean, 0
