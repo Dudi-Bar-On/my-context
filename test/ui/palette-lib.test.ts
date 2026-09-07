@@ -1326,3 +1326,188 @@ test('the three screens that compose without Execute still pass no catalogue id'
     );
   }
 });
+
+/* ── builder/16: the refusal MOVED to the CLI, and here is the proof ─────── */
+
+/**
+ * **EVERY `items`-SOURCED FIELD STILL NAMES SOMETHING THE CLI REFUSES TO
+ * INVENT.**
+ *
+ * On 2026-09-07 the `id` picker stopped being a `<select>`. The owner's ruling
+ * (`TASK-a-long-picker-becomes-a-filtering-box-and-the-id-field-stops`) chose
+ * `<input list>` + `<datalist>` for three measured reasons — it filters as you
+ * type, its popup is UA chrome that already follows `dir="rtl"`, and it has no
+ * min-content floor, so it cannot reproduce the 3,902px page a 942-option
+ * `<select>` produced — and it took ONE cost knowingly:
+ *
+ *   > a datalist SUGGESTS, it does not CONSTRAIN. Today the id picker can only
+ *   > name an item that exists; after this a typo composes a line naming
+ *   > nothing. That is acceptable because the command itself refuses an id that
+ *   > does not exist — the refusal MOVES from the control to the CLI rather
+ *   > than disappearing. It must not be allowed to disappear: whatever lands
+ *   > should prove in a test that the refusal still happens.
+ *
+ * This is that proof, and it is made the only way it can be made honestly: by
+ * running the REAL CLI, in a real workspace, with the id the composer can now
+ * produce and the picker could not. A green run here means the constraint the
+ * `<select>` used to carry is still enforced somewhere a person will meet it.
+ *
+ * **Derived from the catalogue, one case per FIELD.** Eleven fields across ten
+ * entries take an item id — `supersede`'s `--by` is one of them and is the
+ * reason this iterates fields rather than commands — so a twelfth added later
+ * is proved without editing this test, and a field that stops being refused
+ * fails here by name.
+ *
+ * **Each case makes exactly one value wrong.** Every other item field in the
+ * argv is filled with an item that really exists in the probe workspace, so
+ * `supersede --by <missing>` is not answered by `supersede <missing>`'s
+ * refusal arriving first. The exit code AND the sentence are both checked: a
+ * command that printed a complaint and returned 0 would be a script's silent
+ * success, which is the failure this is really about.
+ */
+test('every id a suggest box can now invent is one the CLI refuses', async () => {
+  const { PALETTE, commandFor } = await defs();
+  const dir = mkdtempSync(path.join(tmpdir(), 'myctx-idrefusal-'));
+  try {
+    assert.equal(runCli(['init'], dir, () => {}), 0, 'the probe workspace did not initialize');
+    const run = (argv: string[]): { code: number; out: string } => {
+      const lines: string[] = [];
+      let code = -1;
+      try {
+        code = runCli(argv, dir, (s) => lines.push(s));
+      } catch (err) {
+        lines.push(`THREW: ${(err as Error).message}`);
+      }
+      return { code, out: lines.join('\n') };
+    };
+
+    // A REAL item, so that "the id does not exist" is the only thing wrong
+    // with each argv below. `--summary` and `--yes` are the two things `add`
+    // insists on; both refusals are its own and neither is this test's
+    // subject.
+    const created = run(['add', 'rule', 'A real rule the id probe can name',
+      '--body', 'Body.', '--scope', 'src/**',
+      '--summary', 'One plain sentence so add does not refuse the capture.', '--yes']);
+    assert.equal(created.code, 0, `the probe could not create an item: ${created.out}`);
+    const real = (created.out.match(/RULE-[a-z0-9-]+/) ?? [])[0];
+    assert.ok(real !== undefined, `the probe could not read back the id it created: ${created.out}`);
+
+    const MISSING = 'RULE-no-item-in-this-workspace-carries-this-id';
+    const idFields = PALETTE.flatMap((def) =>
+      [...def.args, ...def.flags]
+        .filter((field) => field.source === 'items')
+        .map((field) => ({ def, field })));
+    assert.equal(idFields.length, 11,
+      'the number of item-id fields moved; re-read the ruling before changing this number');
+
+    const accepted: string[] = [];
+    for (const { def, field } of idFields) {
+      const values: Record<string, unknown> = {};
+      // Every required field filled, and every OTHER item field filled with
+      // the id that exists.
+      for (const spec of [...def.args, ...def.flags]) {
+        if (spec.source === 'items') {
+          values[spec.name] = spec.name === field.name ? MISSING : real;
+          continue;
+        }
+        if (spec.required !== true) continue;
+        values[spec.name] = sample(spec);
+      }
+      // `--yes` wherever it is offered: a command that stopped at its own
+      // confirmation prompt would exit non-zero for a reason that has nothing
+      // to do with the id, and this test would pass without proving anything.
+      if (def.flags.some((f) => f.name === 'yes')) values['yes'] = true;
+      // **AN ARGV THAT IS ONLY AN ID IS NOT ALWAYS A COMMAND**, and `edit`
+      // found it: `mycontext edit <id> --yes` refuses with *"nothing to edit —
+      // no field was named"* and never reaches the id at all. That is a real
+      // refusal and a correct one, but it is not THIS refusal, and a probe
+      // that accepted it would report the id being checked when it was not. So
+      // a def with nothing but its ids gets its first free-text flag filled —
+      // one flag, never two, so a mutually exclusive pair (`add --body` /
+      // `--file`) cannot be composed together.
+      const flagged = def.flags.some((f) => f.name !== 'yes' && values[f.name] !== undefined);
+      if (!flagged) {
+        const first = def.flags.find((f) => f.input === 'text' && f.name !== 'yes');
+        if (first !== undefined) values[first.name] = sample(first);
+      }
+
+      const argv = commandFor(def, values);
+      const { code, out } = run(argv.slice(1));
+      const named = out.includes(MISSING);
+      if (code === 0 || !named) {
+        accepted.push(
+          `${def.name} ${field.name}: exit ${code}`
+          + `${named ? '' : ', and the id is not named in what it printed'}`
+          + `\n    ${argv.join(' ')}\n    ${out.split('\n')[0] ?? '(silence)'}`,
+        );
+      }
+    }
+
+    assert.deepEqual(accepted, [],
+      'a Composer field can now compose an id that does not exist, and the command it composes '
+      + 'does not refuse it. The `<select>` that used to make this impossible was removed on the '
+      + 'stated grounds that the CLI still refuses — so this is that grant being spent, not a '
+      + 'test to relax.');
+
+    // Aliveness: the same probe must PASS a real id, or "everything is
+    // refused" would be indistinguishable from "everything is broken".
+    const control = run(['show', real]);
+    assert.equal(control.code, 0, `the probe refuses a real id too: ${control.out}`);
+  } finally {
+    removeTree(dir);
+  }
+});
+
+/**
+ * **The same proof for the two fields that are not item ids** — the staged
+ * lesson and its key, wired to `GET /api/staging` on 2026-09-07 (builder/10).
+ *
+ * Both boxes suggest and neither constrains, exactly like the `id` boxes above,
+ * so both refusals have to live in `lesson-accept`/`lesson-discard`. They do,
+ * and the sentence names the commands that would stage what is missing. Nothing
+ * here is a regression guard on a picker that existed: these fields were
+ * `input: 'text'` until the endpoint landed, so the refusal was ALWAYS the CLI's
+ * — what this pins is that wiring a list beside them did not quietly move it.
+ */
+test('an invented lesson id and an invented key are both refused', async () => {
+  const { PALETTE, commandFor } = await defs();
+  const dir = mkdtempSync(path.join(tmpdir(), 'myctx-lessonrefusal-'));
+  try {
+    assert.equal(runCli(['init'], dir, () => {}), 0, 'the probe workspace did not initialize');
+    const run = (argv: string[]): { code: number; out: string } => {
+      const lines: string[] = [];
+      let code = -1;
+      try {
+        code = runCli(argv, dir, (s) => lines.push(s));
+      } catch (err) {
+        lines.push(`THREW: ${(err as Error).message}`);
+      }
+      return { code, out: lines.join('\n') };
+    };
+
+    const staged = PALETTE.filter((def) =>
+      def.args.some((field) => field.source === 'stagingLessons'));
+    assert.deepEqual(staged.map((d) => d.name), ['lesson-accept', 'lesson-discard']);
+
+    for (const def of staged) {
+      const argv = commandFor(def, {
+        id: 'LESSON-nothing-in-this-workspace-staged-this', key: 'no-such-key',
+      });
+      const { code, out } = run(argv.slice(1));
+      assert.notEqual(code, 0, `${def.name} accepted a lesson id with no staging: ${out}`);
+      // **TWO SENTENCES FOR ONE CONDITION, and this is where that is on the
+      // record.** `cmdLessonAccept` guards `loadStaging` itself and prints
+      // *"nothing staged for <id>. Run `mycontext lesson <id>` then `mycontext
+      // lesson-stage <id> --stdin` …"*; `lesson-discard` has no such guard and
+      // surfaces `loadOrThrowStaging`'s throw instead — *"no staged rule
+      // candidates found for <id>. Run `mycontext lesson <id>` to derive
+      // candidates first"*, which names only the first of the two steps. Both
+      // refuse, which is what the `suggest` box depends on; the wording is a
+      // difference this test declines to hide behind a loose regex.
+      assert.match(out, /nothing staged for|no staged rule candidates found for/,
+        `${def.name} refused, but not for the reason the box's escape hatch relies on: ${out}`);
+    }
+  } finally {
+    removeTree(dir);
+  }
+});

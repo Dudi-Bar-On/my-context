@@ -229,7 +229,7 @@ export const PALETTE = [
     // type, and neither can surprise the other.
     name: 'ack', kind: 'write', base: ['mycontext', 'ack'], boundary: false, runnable: true,
     args: [
-      { name: 'id', source: 'items', required: true, notWith: 'all' },
+      { name: 'id', input: 'suggest', source: 'items', required: true, notWith: 'all' },
       {
         name: 'finding', input: 'suggest', source: 'findings', dependsOn: 'id',
         required: true, notWith: 'all',
@@ -302,7 +302,7 @@ export const PALETTE = [
   },
   {
     name: 'edit', kind: 'write', base: ['mycontext', 'edit'], boundary: true, runnable: true,
-    args: [{ name: 'id', source: 'items', required: true }],
+    args: [{ name: 'id', input: 'suggest', source: 'items', required: true }],
     flags: [
       { name: 'title', input: 'text' }, { name: 'body', input: 'textarea' },
       { name: 'scope', input: 'glob' },
@@ -431,20 +431,20 @@ export const PALETTE = [
     args: [],
     flags: [{ name: 'pack', input: 'suggest', source: 'packs', required: true }],
   },
-  { name: 'pin', kind: 'write', base: ['mycontext', 'pin'], boundary: true, runnable: true, args: [{ name: 'id', source: 'items', required: true }], flags: [yes] },
-  { name: 'unpin', kind: 'write', base: ['mycontext', 'unpin'], boundary: true, runnable: true, args: [{ name: 'id', source: 'items', required: true }], flags: [yes] },
-  { name: 'harden', kind: 'write', base: ['mycontext', 'harden'], boundary: true, runnable: true, args: [{ name: 'id', source: 'items', required: true }], flags: [yes] },
-  { name: 'soften', kind: 'write', base: ['mycontext', 'soften'], boundary: true, runnable: true, args: [{ name: 'id', source: 'items', required: true }], flags: [yes] },
+  { name: 'pin', kind: 'write', base: ['mycontext', 'pin'], boundary: true, runnable: true, args: [{ name: 'id', input: 'suggest', source: 'items', required: true }], flags: [yes] },
+  { name: 'unpin', kind: 'write', base: ['mycontext', 'unpin'], boundary: true, runnable: true, args: [{ name: 'id', input: 'suggest', source: 'items', required: true }], flags: [yes] },
+  { name: 'harden', kind: 'write', base: ['mycontext', 'harden'], boundary: true, runnable: true, args: [{ name: 'id', input: 'suggest', source: 'items', required: true }], flags: [yes] },
+  { name: 'soften', kind: 'write', base: ['mycontext', 'soften'], boundary: true, runnable: true, args: [{ name: 'id', input: 'suggest', source: 'items', required: true }], flags: [yes] },
   {
     name: 'supersede', kind: 'write', base: ['mycontext', 'supersede'], boundary: true, runnable: true,
-    args: [{ name: 'id', source: 'items', required: true }],
+    args: [{ name: 'id', input: 'suggest', source: 'items', required: true }],
     flags: [
-      { name: 'by', source: 'items', required: true },
+      { name: 'by', input: 'suggest', source: 'items', required: true },
       { name: 'reason', input: 'text' },
       yes,
     ],
   },
-  { name: 'refresh', kind: 'write', base: ['mycontext', 'refresh'], boundary: true, runnable: true, args: [{ name: 'id', source: 'items', required: true }], flags: [yes] },
+  { name: 'refresh', kind: 'write', base: ['mycontext', 'refresh'], boundary: true, runnable: true, args: [{ name: 'id', input: 'suggest', source: 'items', required: true }], flags: [yes] },
   { name: 'repair', kind: 'write', base: ['mycontext', 'repair'], boundary: true, runnable: true, args: [], flags: [yes] },
   {
     // The one member of the approval boundary with NO gate to show. It creates
@@ -455,30 +455,60 @@ export const PALETTE = [
     //
     // The ruling's own words were that these are *"the staged lesson's own
     // keys — already fetched for the `id` picker sitting next to it, so the
-    // data is on the page already"*. Measured 2026-09-06: neither half is
-    // true. `id` here is `input: 'text'` — there is no picker sitting next to
-    // it — and NO endpoint in this server carries a staged lesson at all. Five
-    // staging files exist on this corpus (`.my_context/.staging/*.json`, each
-    // `{ lessonId, candidates: [{ key, candidate }] }`) and nothing serves
-    // them.
+    // data is on the page already"*. Measured 2026-09-06, NEITHER half was
+    // true: `id` was `input: 'text'` with no picker beside it, and no endpoint
+    // in this server carried a staged lesson at all. The obstacle was the
+    // read/write boundary — `listStaging` lived in `src/lesson/derive.ts`,
+    // which value-imports `createItem` from `core/mutate.ts`, and
+    // `test/ui/no-writes.test.ts` is the gate that means it.
     //
-    // **The obstacle is not an oversight, it is the read/write boundary.**
-    // `listStaging` lives in `src/lesson/derive.ts`, which value-imports
-    // `createItem` from `core/mutate.ts`. `src/ui/read-model.ts` already
-    // refused the same read for the same reason, about `st.staged` on the
-    // status screen: *"serving `st.staged` would put the mutation surface into
-    // this server's runtime import graph for the first time. That is a decision
-    // about the boundary §0.5 is the owner's ruling on, not a field to add on
-    // the way past."* `test/ui/no-writes.test.ts` is the gate that means it.
+    // **Both halves are true now, and neither is true the way the ruling
+    // guessed.** The read half was split out into `src/lesson/staging.ts` and
+    // `GET /api/staging` serves it (2026-09-07,
+    // `DEC-the-read-half-of-lesson-derive-ts-is-split-out-so-a-read`), so
+    // there are TWO sources here and not one: `stagingLessons` (one row per
+    // staging file) is the `id` vocabulary, and `stagingKeys` (one row per
+    // (lesson, key), each carrying its own `lessonId`) is the `key`
+    // vocabulary, narrowed by `dependsOn: 'id'` exactly as `ack`'s `finding`
+    // is. Both ride ONE fetch — see `LAZY` in `screens/palette.js`, where two
+    // sources sharing a path is one read.
     //
-    // So the box stays, and the question of whether the read half of
-    // `derive.ts` may be split out into a module the UI can import is filed as
-    // an open question rather than answered by a lane. Nothing here is undone
-    // when it is answered: `input: 'suggest', source: 'lessonKeys',
-    // dependsOn: 'id'` is the whole change, exactly as `finding` above.
+    // ── `offers` IS THE FIELD THIS ENTRY NEEDED AND `finding` DID NOT ──────
+    //
+    // A staged candidate has a `state`, and BOTH commands refuse most of them:
+    // `cmdLessonAccept` refuses `discarded` (*"was discarded and cannot be
+    // accepted"*) and `accepted` (*"was already accepted as <ruleId>"*), and
+    // `discardStagedRule` refuses `accepted` (*"Supersede or deprecate
+    // <ruleId> instead"*). So the only state either command will take is
+    // `pending`, and that is what `offers: { state: 'pending' }` says — the
+    // same ruling `sourceLists` already makes about a DISABLED category:
+    // offering it would compose a command the CLI refuses.
+    //
+    // **And that filter is why `offersNote` exists.** Measured on this corpus
+    // 2026-09-07: five staging files, eleven candidates, ALL ELEVEN
+    // `accepted` — zero pending, zero discarded. A list filtered to what
+    // either command takes therefore offers NOTHING here today, and an empty
+    // `<datalist>` with the generic "this corpus has nothing to offer" beside
+    // it says the same thing a BROKEN ENDPOINT would say. `offersNote` names
+    // the sentence for that case instead: the candidates exist, they have all
+    // been ruled on, and the reason the box is empty is a fact about the
+    // corpus rather than a fault. `paintSuggest` reaches for it only when the
+    // dependency is answered and the unfiltered list is non-empty, so it
+    // cannot be shown for a lesson id that has no staging at all.
+    //
+    // Neither field is a VOCABULARY, for the reason every `suggest` box on
+    // this screen exists: the CLI refuses an unknown lesson id (*"nothing
+    // staged for <id>"*) and an unknown key (*"staging for <id> has no
+    // candidate"*), so the refusal lives where it can see the disk.
     name: 'lesson-accept', kind: 'write', base: ['mycontext', 'lesson-accept'],
     boundary: true, runnable: true, ungated: true,
-    args: [{ name: 'id', input: 'text', required: true }, { name: 'key', input: 'text', required: true }],
+    args: [
+      { name: 'id', input: 'suggest', source: 'stagingLessons', required: true },
+      {
+        name: 'key', input: 'suggest', source: 'stagingKeys', dependsOn: 'id',
+        offers: { state: 'pending' }, offersNote: 'pal.suggruled', required: true,
+      },
+    ],
     flags: [
       { name: 'title', input: 'text' }, { name: 'scope', input: 'glob' },
       { name: 'severity', options: ['hard', 'soft'] },
@@ -498,11 +528,22 @@ export const PALETTE = [
     // the entry that separates them: it is the first, not the second. The
     // stronger confirm shows a field-by-field diff of what changes, and there
     // are no fields here to show.
-    // `key` is a box here for the reason written out on `lesson-accept` above:
-    // the staged candidates it would offer are behind `derive.ts`'s import of
-    // `core/mutate.ts`, and nothing serves them.
+    // `id` and `key` carry the same two sources and the same `offers` filter
+    // as `lesson-accept` above, where the whole argument is written out. The
+    // filter is the SAME here even though the two commands' refusals are not
+    // identical — `discardStagedRule` refuses only `accepted`, so an already
+    // `discarded` candidate would technically be taken. It is not offered,
+    // because the line it composes discards what is already discarded: a
+    // suggestion whose best outcome is a no-op is not a suggestion. Typing it
+    // still works, which is what a `suggest` box is for.
     name: 'lesson-discard', kind: 'write', base: ['mycontext', 'lesson-discard'], boundary: false, runnable: true,
-    args: [{ name: 'id', input: 'text', required: true }, { name: 'key', input: 'text', required: true }],
+    args: [
+      { name: 'id', input: 'suggest', source: 'stagingLessons', required: true },
+      {
+        name: 'key', input: 'suggest', source: 'stagingKeys', dependsOn: 'id',
+        offers: { state: 'pending' }, offersNote: 'pal.suggruled', required: true,
+      },
+    ],
     flags: [],
   },
   {
@@ -538,7 +579,7 @@ export const PALETTE = [
     // and inventing one is a Composer change this entry does not make.
     name: 'procedure done', kind: 'write', base: ['mycontext', 'procedure', 'done'],
     boundary: true, runnable: false,
-    args: [{ name: 'id', source: 'items', required: true }],
+    args: [{ name: 'id', input: 'suggest', source: 'items', required: true }],
     flags: [yes],
   },
   {
@@ -597,7 +638,7 @@ export const PALETTE = [
   },
   {
     name: 'show', kind: 'read', base: ['mycontext', 'show'], boundary: false, runnable: true,
-    args: [{ name: 'id', source: 'items', required: true }], flags: [],
+    args: [{ name: 'id', input: 'suggest', source: 'items', required: true }], flags: [],
   },
   {
     name: 'search', kind: 'read', base: ['mycontext', 'search'], boundary: false, runnable: true,

@@ -152,16 +152,20 @@ test('ack offers the codes doctor reports on the item beside it, and no others',
     }
     // An item the Composer's own `id` picker can actually select, so this is a
     // command a reader could really compose and not a corpus fact alone.
-    const offered = new Set([...document.querySelectorAll<HTMLSelectElement>(
-      '[data-p="palette"] select')].flatMap((s) => [...s.options].map((o) => o.value)));
+    // The ids the `id` box OFFERS, read off its own `<datalist>`. It was a
+    // `<select>` until 2026-09-07 and this read was `select.options`; the
+    // ruling that made it a box did not change what "an id this reader could
+    // pick" means, only where the options live.
+    const offered = new Set([...document.querySelectorAll<HTMLOptionElement>(
+      '#sugg-id option')].map((o) => o.value));
     const chosen = [...byItem.entries()].find(([id]) => offered.has(id));
     return chosen === undefined ? null : { id: chosen[0], codes: chosen[1] };
   });
   expect(reported, 'the fixture corpus reports no finding on any selectable item — '
     + 'this spec measures nothing without one').not.toBeNull();
 
-  const idSelect = page.locator(`${PALETTE} label:has-text("id") select`).first();
-  await idSelect.selectOption(reported!.id);
+  const idBox = page.locator(`${PALETTE} input[list="sugg-id"]`).first();
+  await idBox.fill(reported!.id);
   await expect.poll(async () => (await suggest(page, 'finding')).options.length, DOCTOR_WAIT)
     .toBeGreaterThan(0);
 
@@ -213,8 +217,12 @@ test('the suggestion list follows the id it depends on, and empties with it', as
       if (!codes.includes(f.code)) codes.push(f.code);
       byItem.set(f.item, codes);
     }
-    const offered = new Set([...document.querySelectorAll<HTMLSelectElement>(
-      '[data-p="palette"] select')].flatMap((s) => [...s.options].map((o) => o.value)));
+    // The ids the `id` box OFFERS, read off its own `<datalist>`. It was a
+    // `<select>` until 2026-09-07 and this read was `select.options`; the
+    // ruling that made it a box did not change what "an id this reader could
+    // pick" means, only where the options live.
+    const offered = new Set([...document.querySelectorAll<HTMLOptionElement>(
+      '#sugg-id option')].map((o) => o.value));
     // TWO items whose reported codes DIFFER, so "the list changed" cannot pass
     // by accident on two items that happen to carry the same finding.
     const usable = [...byItem.entries()].filter(([id]) => offered.has(id));
@@ -228,18 +236,18 @@ test('the suggestion list follows the id it depends on, and empties with it', as
   expect(pairs, 'need two items with different reported codes to measure the narrowing')
     .not.toBeNull();
 
-  const idSelect = page.locator(`${PALETTE} label:has-text("id") select`).first();
-  await idSelect.selectOption(pairs!.a.id);
+  const idBox = page.locator(`${PALETTE} input[list="sugg-id"]`).first();
+  await idBox.fill(pairs!.a.id);
   await expect.poll(async () => (await suggest(page, 'finding')).options.sort().join(), DOCTOR_WAIT)
     .toBe([...pairs!.a.codes].sort().join());
 
-  await idSelect.selectOption(pairs!.b.id);
+  await idBox.fill(pairs!.b.id);
   await expect.poll(async () => (await suggest(page, 'finding')).options.sort().join(), DOCTOR_WAIT)
     .toBe([...pairs!.b.codes].sort().join());
 
   // Back to nothing chosen: the list empties rather than keeping the last
   // item's codes, which would be offering an answer to a question nobody asked.
-  await idSelect.selectOption('');
+  await idBox.fill('');
   await expect.poll(async () => (await suggest(page, 'finding')).options.length).toBe(0);
 });
 
@@ -252,23 +260,27 @@ test('the box is reachable and pickable from the keyboard alone', async ({ app }
   // it owes arrow/Home/End/type-ahead, `aria-activedescendant` and a popup that
   // opens on the right side under RTL, all hand-written. An `<input list>` owes
   // none of it, and this test is what turns that claim into a measurement.
-  const idSelect = page.locator(`${PALETTE} label:has-text("id") select`).first();
+  const idBox = page.locator(`${PALETTE} input[list="sugg-id"]`).first();
   const found = await page.evaluate(async () => {
     const body = await (await fetch('/api/doctor', { credentials: 'same-origin' })).json();
-    const offered = new Set([...document.querySelectorAll<HTMLSelectElement>(
-      '[data-p="palette"] select')].flatMap((s) => [...s.options].map((o) => o.value)));
+    // The ids the `id` box OFFERS, read off its own `<datalist>`. It was a
+    // `<select>` until 2026-09-07 and this read was `select.options`; the
+    // ruling that made it a box did not change what "an id this reader could
+    // pick" means, only where the options live.
+    const offered = new Set([...document.querySelectorAll<HTMLOptionElement>(
+      '#sugg-id option')].map((o) => o.value));
     const hit = (body.findings as { code: string; item?: string; about?: string }[])
       .find((f) => typeof f.about !== 'string' && typeof f.item === 'string'
         && f.item !== '' && offered.has(f.item));
     return hit === undefined ? null : { id: hit.item!, code: hit.code };
   });
   expect(found).not.toBeNull();
-  await idSelect.selectOption(found!.id);
+  await idBox.fill(found!.id);
   await expect.poll(async () => (await suggest(page, 'finding')).options.length, DOCTOR_WAIT)
     .toBeGreaterThan(0);
 
   // Reached by TAB from the control before it — never by a click.
-  await idSelect.focus();
+  await idBox.focus();
   await page.keyboard.press('Tab');
   const focused = await page.evaluate(() => {
     const el = document.activeElement as HTMLElement | null;
@@ -336,12 +348,12 @@ test('the check suite is read only when a field asks for it', async ({ app }) =>
   // It IS read the moment the field is USED — here by answering the id it is
   // narrowed by, which is unambiguous intent to compose this command.
   await pick(page, 'ack');
-  const idSelect = page.locator(`${PALETTE} label:has-text("id") select`).first();
-  const id = await idSelect.evaluate((select) =>
-    (select as HTMLSelectElement).options[1]?.value ?? '');
-  expect(id, 'the id picker offers nothing, so nothing here measures the trigger')
+  const idBox = page.locator(`${PALETTE} input[list="sugg-id"]`).first();
+  const id = await idBox.evaluate((box) =>
+    (box as HTMLInputElement).list?.options[0]?.value ?? '');
+  expect(id, 'the id box offers nothing, so nothing here measures the trigger')
     .not.toBe('');
-  await idSelect.selectOption(id);
+  await idBox.fill(id);
   await expect.poll(async () => asked.filter((p) => p === '/api/doctor').length, DOCTOR_WAIT).toBe(1);
 
   // And exactly once for the visit: switching away and back must not re-run a
@@ -349,7 +361,7 @@ test('the check suite is read only when a field asks for it', async ({ app }) =>
   // the id picker with a much bigger constant.
   await pick(page, 'list');
   await pick(page, 'ack');
-  await page.locator(`${PALETTE} label:has-text("id") select`).first().selectOption(id);
+  await page.locator(`${PALETTE} input[list="sugg-id"]`).first().fill(id);
   await page.locator(`${PALETTE} input[list="sugg-finding"]`).focus();
   await page.waitForTimeout(500);
   expect(asked.filter((p) => p === '/api/doctor').length).toBe(1);
@@ -414,16 +426,19 @@ test('the suggestion box is Hebrew prose around an LTR value, and still fills', 
   // English render path.
   const reported = await page.evaluate(async () => {
     const body = await (await fetch('/api/doctor', { credentials: 'same-origin' })).json();
-    const offered = new Set([...document.querySelectorAll<HTMLSelectElement>(
-      '[data-p="palette"] select')].flatMap((s) => [...s.options].map((o) => o.value)));
+    // The ids the `id` box OFFERS, read off its own `<datalist>`. It was a
+    // `<select>` until 2026-09-07 and this read was `select.options`; the
+    // ruling that made it a box did not change what "an id this reader could
+    // pick" means, only where the options live.
+    const offered = new Set([...document.querySelectorAll<HTMLOptionElement>(
+      '#sugg-id option')].map((o) => o.value));
     const hit = (body.findings as { code: string; item?: string; about?: string }[])
       .find((f) => typeof f.about !== 'string' && typeof f.item === 'string'
         && f.item !== '' && offered.has(f.item));
     return hit === undefined ? null : { id: hit.item!, code: hit.code };
   });
   expect(reported).not.toBeNull();
-  await page.locator(`${PALETTE} label:has-text("id") select`).first()
-    .selectOption(reported!.id);
+  await page.locator(`${PALETTE} input[list="sugg-id"]`).first().fill(reported!.id);
   await expect.poll(async () => (await suggest(page, 'finding')).options, DOCTOR_WAIT)
     .toContain(reported!.code);
 

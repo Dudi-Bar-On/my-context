@@ -1037,6 +1037,10 @@ export const strings = {
   'pal.suggn': 'This corpus has nothing to offer here. Type the value — the command composes either way.',
   'pal.suggneed': 'Choose {mv:field} first: what can be offered here depends on it. Typing works either way.',
   'pal.suggerr': 'The list could not be read, so nothing is offered. Type the value instead — the command composes either way.',
+  // Empty because FILTERED, not because absent — `spec.offers` dropped every
+  // row. Named by the def that filters (`offersNote`), because only the def
+  // knows what its filter means.
+  'pal.suggruled': 'All {n} candidates staged for this lesson have already been accepted or discarded, so neither command will take one. Type a key — the command composes either way.',
   // Execute — the one Copy-and-Execute control (lib/command-actions.js).
   //
   // The RESIDUAL is deliberately not a key here. `src/ui/execute.ts` spells it
@@ -1777,6 +1781,7 @@ export const strings = {
   'clih.exnone': 'No example on this page demonstrates this command yet. Nothing is written by hand here, so an example appears when one is generated — never before.',
   'clih.exhow': 'Every example above is real output. It was produced by running the command against a fixed sample project, and a test re-runs the same command and fails if the text ever stops matching.',
   'clih.noargs': 'This tool takes no arguments at all.',
+  'clih.argnodesc': 'The tool’s own schema says nothing more about this one — its name and its type are all it advertises. Nothing on this page is written by hand, so a sentence appears here when the schema carries one.',
   'clih.req': 'required',
   'clih.slashargs': 'Takes:',
   'clih.slashnoargs': 'Takes no argument.',

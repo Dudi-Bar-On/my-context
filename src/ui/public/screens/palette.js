@@ -261,9 +261,26 @@ const GLOB_DEBOUNCE_MS = 180;
  * Landing on `#/palette` and reading the argv chips is neither, and costs
  * nothing.
  */
+/**
+ * **TWO SOURCES MAY SHARE A PATH, AND THEN THEY SHARE THE READ.**
+ *
+ * `stagingLessons` and `stagingKeys` are two vocabularies out of one body:
+ * `/api/staging` answers the lesson ids and their candidates together, and
+ * `lesson-accept` draws both boxes at once. Keyed per SOURCE rather than per
+ * path because a source is what a field names and what `lazyState` reports on
+ * — so `startLazy` fetches once and fills every source whose path matches,
+ * which is why filling the `id` box does not send a second identical GET when
+ * the `key` box beside it asks a moment later.
+ *
+ * `/api/items` is deliberately NOT here: `items` is one of the five reads
+ * `render()` awaits, so an `id` box is full before it is focused and
+ * `paintSuggest` skips the read-state sentences for it entirely.
+ */
 const LAZY = {
   findings: { path: '/api/doctor', options: (body) => findingOptions(body) },
   packs: { path: '/api/packs', options: (body) => packOptions(body) },
+  stagingLessons: { path: '/api/staging', options: (body) => stagingLessonOptions(body) },
+  stagingKeys: { path: '/api/staging', options: (body) => stagingKeyOptions(body) },
 };
 
 /**
@@ -376,14 +393,68 @@ export function pickerOptions(spec, sources) {
  * A row carries its dependency under `item` — the same shape `revisions` uses
  * to carry `revision` beside its value, and for the same reason: one list
  * cannot be filtered by a fact it did not bring with it.
+ *
+ * ── `spec.offers`: THE SECOND NARROWING, AND WHY IT IS NOT THE FIRST ───────
+ *
+ * `dependsOn` narrows by ANOTHER FIELD's value; `offers` narrows by facts the
+ * ROW ITSELF carries — `{ state: 'pending' }` keeps the rows whose `state` is
+ * `pending` and drops the rest. `lesson-accept`/`lesson-discard`'s `key` is
+ * what needed it: a staged candidate that was already accepted or discarded is
+ * one BOTH commands refuse by name, so offering it would compose a line whose
+ * only outcome is a refusal. That is the ruling `sourceLists` already makes
+ * about a disabled category, moved into the data so a second field can make it
+ * without a second branch.
+ *
+ * **The two are deliberately separate**, because what they mean to a reader is
+ * not the same. An empty list under `dependsOn` means *"answer the other field
+ * first"*; an empty list under `offers` means *"these exist and this command
+ * takes none of them"* — a fact about the corpus, not an instruction. Only the
+ * second can be mistaken for a broken read, which is why `offeredAway` below
+ * exists and `spec.offersNote` names the sentence for it.
  */
 export function narrowedOptions(spec, sources, values) {
+  const options = dependent(spec, sources, values);
+  if (options === null || options.length === 0) return options;
+  return options.filter((option) => offered(spec, option));
+}
+
+/** `pickerOptions` narrowed by `spec.dependsOn` ALONE — `offers` not applied. */
+function dependent(spec, sources, values) {
   const options = pickerOptions(spec, sources);
   if (options === null) return null;
   if (typeof spec.dependsOn !== 'string') return options;
   const on = values[spec.dependsOn];
   if (on === undefined || on === '') return [];
   return options.filter((option) => option.item === on);
+}
+
+/** Whether one row survives `spec.offers`. Every named property must match. */
+function offered(spec, option) {
+  const offers = spec.offers;
+  if (offers === null || typeof offers !== 'object') return true;
+  return Object.keys(offers).every((field) => option[field] === offers[field]);
+}
+
+/**
+ * **The rows this field's `offers` filter DROPPED — what exists here that the
+ * command will not take.**
+ *
+ * `narrowedOptions` returning `[]` is one shape with two meanings, and the
+ * difference is the whole reason this function is exported. A `key` box with
+ * nothing in it means *"this lesson has no staged candidates"* when this
+ * answers `0`, and *"every candidate this lesson staged has already been ruled
+ * on"* when it answers `2` — and the second is a state a reader must be told
+ * about in words, because an empty `<datalist>` and a failed read look
+ * identical. Measured on this corpus 2026-09-07: five staging files, eleven
+ * candidates, ALL ELEVEN accepted, so this answers non-zero for every lesson
+ * and the filtered list is empty for every one of them.
+ *
+ * Zero for a field with no `offers` at all, which is every field but `key`.
+ */
+export function offeredAway(spec, sources, values) {
+  const options = dependent(spec, sources, values);
+  if (options === null) return [];
+  return options.filter((option) => !offered(spec, option));
 }
 
 /**
@@ -462,7 +533,77 @@ export function packOptions(body) {
 }
 
 /**
- * The seven picker sources, from the five read bodies that carry them.
+ * `/api/staging`'s `lessons[]` as `lesson-accept`/`lesson-discard` `id`
+ * options: one row per staging FILE, which is exactly the set of lesson ids
+ * those two commands can find staging for.
+ *
+ * **A HINT AND NOT A VOCABULARY.** The commands take any string and refuse an
+ * id with no staging file in their own words (*"nothing staged for <id>. Run
+ * `mycontext lesson <id>` …"*), so a lesson whose file this endpoint could not
+ * parse is still typeable. `/api/staging`'s `skipped[]` and `malformed[]` are
+ * what it says about those; this list is what it could serve.
+ *
+ * **No count rides along as the hint, and that is a correction to the wiring
+ * this was specified with.** The suggested shape was `label: lessonId + ' — '
+ * + pending + ' pending'`, and a `suggest` control never draws `label` at all
+ * — `paintSuggest` builds its `<option>`s from `value` and `hint`, so the
+ * sentence would have been composed and thrown away. Written into `hint`
+ * instead it would have been English prose reaching the DOM inside a Hebrew
+ * page, which is the defect `test/ui/screen-literals.test.ts` exists for. The
+ * number the reader actually needs is on the `key` box beside it, in a keyed
+ * sentence, when it is the answer to something they asked.
+ */
+export function stagingLessonOptions(body) {
+  const lessons = body !== null && body !== undefined && Array.isArray(body.lessons)
+    ? body.lessons : [];
+  const out = [];
+  for (const lesson of lessons) {
+    if (lesson === null || typeof lesson !== 'object') continue;
+    if (typeof lesson.lessonId !== 'string' || lesson.lessonId === '') continue;
+    out.push({ value: lesson.lessonId, label: lesson.lessonId, hint: '' });
+  }
+  return out;
+}
+
+/**
+ * `/api/staging`'s `candidates[]` as `key` options: one row per (lesson, key),
+ * carrying its lesson under `item` so `dependsOn: 'id'` can narrow by it and
+ * its `state` so `offers: { state: 'pending' }` can.
+ *
+ * **Every state is carried here and the filtering happens in
+ * `narrowedOptions`**, rather than this function serving only the pending
+ * rows. The difference is not style: `offeredAway` needs the dropped rows to
+ * tell *"this lesson has nothing staged"* from *"every candidate here has been
+ * ruled on"*, and a source that had already discarded them could not answer.
+ *
+ * The candidate's own TITLE is the hint — the corpus's own words, the same
+ * ruling `sourceLists` makes about every label it builds, and the thing a
+ * reader choosing between two keys is actually choosing between.
+ */
+export function stagingKeyOptions(body) {
+  const candidates = body !== null && body !== undefined && Array.isArray(body.candidates)
+    ? body.candidates : [];
+  const out = [];
+  for (const row of candidates) {
+    if (row === null || typeof row !== 'object') continue;
+    if (typeof row.key !== 'string' || row.key === '') continue;
+    if (typeof row.lessonId !== 'string' || row.lessonId === '') continue;
+    const title = typeof row.title === 'string' ? row.title : '';
+    out.push({
+      value: row.key,
+      label: title === '' ? row.key : `${row.key} — ${title}`,
+      hint: title,
+      item: row.lessonId,
+      state: typeof row.state === 'string' ? row.state : '',
+    });
+  }
+  return out;
+}
+
+/**
+ * The eleven picker sources: seven from the five read bodies `render()`
+ * awaits, and four ON-DEMAND ones that are empty here and assigned over when
+ * the fetch a `suggest` box started actually lands.
  *
  * **Three of them are CLOSED VOCABULARIES and not one of them is spelled here**
  * (owner ruling D10, 2026-09-06). `topics` is `core/teach.ts`' `HELP_TOPICS`,
@@ -502,7 +643,15 @@ export function sourceLists(bodies) {
       .filter((value) => typeof value === 'string' && value !== '')
       .map((value) => ({ value, label: value }));
   return {
-    items: items.map((item) => ({ value: item.id, label: `${item.id} — ${item.title}` })),
+    // `hint` beside `label` since 2026-09-07, because the `id` field is a
+    // `suggest` box now and a `<datalist>` row draws `value` + `hint` where a
+    // `<select>` drew `label`. The title is what a reader picks BY, so losing
+    // it to the control change would have been the conversion quietly costing
+    // the field its readability. Both are kept: `label` is still what a
+    // `<select>` over `items` would show, and nothing forbids one.
+    items: items.map((item) => ({
+      value: item.id, label: `${item.id} — ${item.title}`, hint: item.title,
+    })),
     // A disabled category cannot receive an item, so offering it would compose
     // a command the CLI refuses. The config's own `enabled` is the authority.
     categories: categories.filter((c) => c.enabled === true)
@@ -529,6 +678,13 @@ export function sourceLists(bodies) {
     // actually lands.
     findings: findingOptions(bodies.doctor),
     packs: packOptions(bodies.packs),
+    // The staging pair, also on-demand and also normally empty here. TWO
+    // sources out of ONE body: `/api/staging` answers both the lesson ids and
+    // their candidates in a single read, and `startLazy` fills every source
+    // whose `LAZY` path matches so picking a lesson id does not fetch the same
+    // five files twice.
+    stagingLessons: stagingLessonOptions(bodies.staging),
+    stagingKeys: stagingKeyOptions(bodies.staging),
   };
 }
 
@@ -748,6 +904,27 @@ export function suggestListId(name) {
  *     max-content — a 942-option picker opened the page to 3,902px. An
  *     `<input>` has no such floor: its box is its box and the suggestions are
  *     drawn in a popup outside the layout entirely.
+ *
+ * ── AND SINCE 2026-09-07 THE `id` FIELD IS ONE OF THEM ────────────────────
+ *
+ * Owner ruling (`TASK-a-long-picker-becomes-a-filtering-box-and-the-id-field-stops`):
+ * every field sourced from `items` — eleven of them across ten catalogue
+ * entries, `supersede`'s `--by` included — is a `suggest` box now. The third
+ * bullet above is the measurement that decided it: those are the 951-option
+ * `<select>`s the 260px cap exists to contain, they are rebuilt on every
+ * command switch, and a reader who knows which item they mean was scrolling
+ * for it.
+ *
+ * **THE COST WAS TAKEN KNOWINGLY AND IT IS NOT THE SAME COST AS `--clear`'s.**
+ * `ack --clear` and `init --pack` have values their list CANNOT know, so for
+ * them a box is strictly better than a picker. `items` is different: the id
+ * vocabulary is closed, the `<select>` could not compose a name that does not
+ * exist, and after this a typo composes one. What makes that acceptable is
+ * that **the refusal MOVES rather than disappearing** — every one of the ten
+ * commands refuses an unknown id in its own words ("no item with id …") — and
+ * `test/ui/palette-lib.test.ts` proves it against the real CLI, field by
+ * field, derived from this catalogue so a new `items` field cannot arrive
+ * unproved.
  *
  * `.suggin` JOINS `.tagin`'s selector list in `styles.css` rather than getting
  * a rule of its own. Its own rule says what that treatment is for — *"the other
@@ -1166,15 +1343,26 @@ export async function render(root, ctx) {
   function startLazy(source) {
     if (typeof source !== 'string' || LAZY[source] === undefined) return;
     if (lazyState.has(source)) return;
-    lazyState.set(source, 'reading');
+    // Every source served by the SAME body, filled by the SAME read.
+    // `stagingLessons` and `stagingKeys` are both `/api/staging`, and the
+    // second box asking a moment after the first must not send the request
+    // again — so the whole family is marked `reading` here, which is also what
+    // makes the `lazyState.has` guard above cover all of them.
+    const path = LAZY[source].path;
+    const family = Object.keys(LAZY).filter((name) => LAZY[name].path === path);
+    for (const name of family) lazyState.set(name, 'reading');
     void (async () => {
       try {
-        const body = await ctx.api(LAZY[source].path);
-        sources[source] = LAZY[source].options(body);
-        lazyState.set(source, 'ready');
+        const body = await ctx.api(path);
+        for (const name of family) {
+          sources[name] = LAZY[name].options(body);
+          lazyState.set(name, 'ready');
+        }
       } catch (error) {
-        sources[source] = [];
-        lazyState.set(source, error);
+        for (const name of family) {
+          sources[name] = [];
+          lazyState.set(name, error);
+        }
       }
       if (root.isConnected) paintSuggest();
     })();
@@ -1232,11 +1420,34 @@ export async function render(root, ctx) {
         // than one repaint behind it.
         startLazy(entry.spec.source);
       }
-      const state = lazyState.get(entry.spec.source);
-      if (state instanceof Error) { note('pal.suggerr'); continue; }
-      if (state === 'reading') { note('pal.suggreading'); continue; }
-      if (state === undefined) { note('pal.suggidle'); continue; }
+      // **The three read-state sentences belong to a LAZY source and to no
+      // other.** `items` is one of the five reads `render()` awaits, so an
+      // `id` box is already full when it is drawn: saying "suggestions load
+      // when you use this box" over 951 of them would be an apology for a
+      // fetch that happened before the screen did. A source `LAZY` does not
+      // name has exactly one state — served — and falls straight through to
+      // the count.
+      if (LAZY[entry.spec.source] !== undefined) {
+        const state = lazyState.get(entry.spec.source);
+        if (state instanceof Error) { note('pal.suggerr'); continue; }
+        if (state === 'reading') { note('pal.suggreading'); continue; }
+        if (state === undefined) { note('pal.suggidle'); continue; }
+      }
       if (options.length > 0) { note('pal.sugg', { n: num(options.length) }); continue; }
+      // **EMPTY BECAUSE FILTERED IS NOT EMPTY BECAUSE ABSENT.** `offeredAway`
+      // counts the rows that reached this field and were dropped by
+      // `spec.offers` — the staged candidates a lesson really has and neither
+      // `lesson-accept` nor `lesson-discard` will take. On this corpus that is
+      // every one of them, so without this branch the `key` box would say
+      // "this corpus has nothing to offer here", which is what it would also
+      // say if `/api/staging` were broken. The def names its own sentence
+      // because the reason a filter dropped something is the def's fact, not
+      // this function's.
+      const dropped = offeredAway(entry.spec, sources, held);
+      if (dropped.length > 0 && typeof entry.spec.offersNote === 'string') {
+        note(entry.spec.offersNote, { n: num(dropped.length) });
+        continue;
+      }
       note('pal.suggn');
     }
   }

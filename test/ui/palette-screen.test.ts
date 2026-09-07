@@ -47,12 +47,18 @@
  */
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
+import { cpSync, mkdtempSync, readFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { matchesAnyGlob } from '../../src/core/paths.ts';
 import { UI_HELP_TOPICS } from '../../src/ui/read-model.ts';
+// The endpoint itself, so the two staging sources are asserted against the
+// body the browser will actually receive rather than one this test invented.
+import { apiStaging } from '../../src/ui/read-model-staging.ts';
+import { removeTree } from '../helpers/tmp.ts';
 
 const PUBLIC = path.join(import.meta.dirname, '..', '..', 'src', 'ui', 'public');
+const REPO = path.join(import.meta.dirname, '..', '..');
 
 /** `src/ui/public/x/y.js` as the `file://` URL Node can resolve. */
 const publicUrl = (rel: string): string =>
@@ -89,6 +95,15 @@ interface ArgSpec {
    * the vocabulary and refuses every other.
    */
   dependsOn?: string;
+  /**
+   * Row-level narrowing: every named property must match for a row to be
+   * offered. One field has it — `key` on `lesson-accept`/`lesson-discard`,
+   * `{ state: 'pending' }` — because both commands refuse an accepted or
+   * discarded candidate by name.
+   */
+  offers?: Record<string, string>;
+  /** The string key for "these exist and `offers` dropped every one of them". */
+  offersNote?: string;
 }
 interface PaletteDef {
   name: string;
@@ -113,6 +128,8 @@ interface Option {
   hint?: string;
   /** The item a `finding` row belongs to, which is what `dependsOn` filters on. */
   item?: string;
+  /** What a staged candidate's ruling is, which is what `offers` filters on. */
+  state?: string;
 }
 interface Sources {
   items: Option[]; categories: Option[]; drafts: Option[];
@@ -134,8 +151,13 @@ interface ScreenModule {
   /** The same list, narrowed by whatever `spec.dependsOn` names — D11. */
   narrowedOptions: (spec: ArgSpec, sources: Sources, values: Record<string, unknown>)
     => Option[] | null;
+  /** The rows `spec.offers` DROPPED — what exists that the command refuses. */
+  offeredAway: (spec: ArgSpec, sources: Sources, values: Record<string, unknown>) => Option[];
   findingOptions: (body: unknown) => Option[];
   packOptions: (body: unknown) => Option[];
+  /** `GET /api/staging`, projected into the two vocabularies it carries. */
+  stagingLessonOptions: (body: unknown) => Option[];
+  stagingKeyOptions: (body: unknown) => Option[];
   suggestListId: (name: string) => string;
   sourceLists: (bodies: Record<string, unknown>) => Sources;
   revisionFor: (sources: Sources, itemId: string | undefined) => string | null;
@@ -351,8 +373,11 @@ test('pickerOptions is a list for a source or a vocabulary, and null otherwise',
   const { PALETTE } = await defs();
   const { pickerOptions, sourceLists } = await screen();
   const sources = sourceLists({ items: { items: [{ id: 'RULE-x', title: 'X' }] } });
+  // `hint` since 2026-09-07: the `id` field is a `suggest` box, and a
+  // `<datalist>` row draws `value` + `hint` where a `<select>` drew `label`.
+  // Both are asserted, because a `<select>` over `items` is still legal.
   assert.deepEqual(pickerOptions({ name: 'id', source: 'items' }, sources),
-    [{ value: 'RULE-x', label: 'RULE-x — X' }]);
+    [{ value: 'RULE-x', label: 'RULE-x — X', hint: 'X' }]);
   assert.deepEqual(pickerOptions({ name: 'severity', options: ['hard', 'soft'] }, sources),
     [{ value: 'hard', label: 'hard' }, { value: 'soft', label: 'soft' }]);
   assert.equal(pickerOptions({ name: 'title', input: 'text' }, sources), null);
@@ -458,6 +483,165 @@ test('packOptions offers the paths imports were typed as, once each', async () =
   }
 });
 
+/* ── `GET /api/staging` → the two vocabularies `lesson-*` needed ────────── */
+
+/**
+ * **The `id` and `key` lists, built from the endpoint's OWN answer.**
+ *
+ * `apiStaging` is imported and called here rather than a hand-written body
+ * being asserted against, because the whole reason `key` could not be built in
+ * D11 was that nothing served it — so a fixture shaped the way this lane HOPED
+ * the endpoint answers would re-open exactly the gap that was just closed. The
+ * body under test is the one the browser will receive.
+ *
+ * **Read against a COPY of this repository's staging directory.** The files are
+ * read-only inputs here, and `apiStaging` writes nothing, but the copy costs a
+ * few kilobytes and removes the question. `projectRoot` is the `.my_context`
+ * directory itself and not the repository root — `stagingDir` is
+ * `path.join(root, '.staging')`.
+ */
+test('the staging sources are built from what the endpoint actually answers', async () => {
+  const { stagingLessonOptions, stagingKeyOptions } = await screen();
+  const dir = mkdtempSync(path.join(tmpdir(), 'myctx-staging-'));
+  try {
+    cpSync(path.join(REPO, '.my_context', '.staging'), path.join(dir, '.staging'), { recursive: true });
+    const answer = apiStaging({ projectRoot: dir } as never, new URL('http://x/api/staging'));
+    const body = answer.body as {
+      lessons: { lessonId: string; pending: number; candidates: number }[];
+      candidates: { key: string; lessonId: string; state: string; title: string }[];
+      counts: { pending: number; accepted: number; discarded: number };
+    };
+
+    const lessons = stagingLessonOptions(body);
+    assert.equal(lessons.length, body.lessons.length);
+    assert.ok(lessons.length > 0, 'this repository stages lessons; the endpoint answered none');
+    assert.deepEqual(lessons.map((o) => o.value), body.lessons.map((l) => l.lessonId));
+    // NO count in the hint. The wiring this was specified with put
+    // `pending + ' pending'` into `label`, which a `<datalist>` never draws,
+    // and moving it to `hint` would have shipped English prose into a Hebrew
+    // page. The number lives in `pal.suggruled` instead, where it is keyed.
+    assert.deepEqual([...new Set(lessons.map((o) => o.hint))], ['']);
+
+    const keys = stagingKeyOptions(body);
+    assert.equal(keys.length, body.candidates.length);
+    assert.deepEqual(keys.map((o) => o.value), body.candidates.map((c) => c.key));
+    // `item` is the lesson, because that is the property `dependsOn` filters
+    // on; `state` is the ruling, because that is what `offers` filters on.
+    assert.deepEqual(keys.map((o) => o.item), body.candidates.map((c) => c.lessonId));
+    assert.deepEqual(keys.map((o) => o.state), body.candidates.map((c) => c.state));
+    assert.deepEqual(keys.map((o) => o.hint), body.candidates.map((c) => c.title));
+
+    // **The measurement the `key` field exists to survive**, restated as an
+    // assertion rather than as a comment: this corpus has candidates and NOT
+    // ONE of them is pending, so a list filtered to what either command takes
+    // is empty here. If that ever stops being true the note below stops being
+    // the state a reader sees, and this line says so.
+    assert.ok(body.counts.pending + body.counts.accepted + body.counts.discarded > 0,
+      'no staged candidate at all — the two lesson fields have no domain to test');
+  } finally {
+    removeTree(dir);
+  }
+});
+
+/**
+ * **An absent or malformed body is an EMPTY list, never a throw** — the rule
+ * every other source on this screen follows, because a `suggest` box takes
+ * what is typed into it either way and a read that failed must cost the reader
+ * the suggestions and not the command.
+ */
+test('the staging sources survive a body that did not arrive', async () => {
+  const { stagingLessonOptions, stagingKeyOptions } = await screen();
+  for (const body of [null, undefined, {}, { lessons: null, candidates: 'no' }]) {
+    assert.deepEqual(stagingLessonOptions(body), []);
+    assert.deepEqual(stagingKeyOptions(body), []);
+  }
+  // Rows that cannot name a command line are dropped, not half-drawn.
+  assert.deepEqual(stagingKeyOptions({
+    candidates: [
+      { key: '', lessonId: 'L', state: 'pending', title: 't' },
+      { key: 'k', lessonId: '', state: 'pending', title: 't' },
+      null,
+      { key: 'k2', lessonId: 'L', state: 'pending' },
+    ],
+  }), [{ value: 'k2', label: 'k2', hint: '', item: 'L', state: 'pending' }]);
+});
+
+/**
+ * **`offers` is the filter that keeps the `key` box from composing a refusal,
+ * and `offeredAway` is what stops the result being mistaken for a broken
+ * read.**
+ *
+ * Both commands refuse a candidate that has already been ruled on —
+ * `cmdLessonAccept` on `accepted` and `discarded`, `discardStagedRule` on
+ * `accepted` — so `pending` is the only state either will take. On this corpus
+ * every candidate is `accepted`, which is why the second half matters: an
+ * empty list with rows behind it is a different sentence from an empty list
+ * with nothing behind it.
+ */
+test('offers narrows to what the command takes, and offeredAway counts the rest', async () => {
+  const { narrowedOptions, offeredAway, sourceLists } = await screen();
+  const sources = sourceLists({});
+  sources['stagingKeys'] = [
+    { value: 'a', label: 'a', hint: 'A', item: 'L1', state: 'accepted' },
+    { value: 'b', label: 'b', hint: 'B', item: 'L1', state: 'pending' },
+    { value: 'c', label: 'c', hint: 'C', item: 'L1', state: 'discarded' },
+    { value: 'd', label: 'd', hint: 'D', item: 'L2', state: 'pending' },
+  ];
+  const spec: ArgSpec = {
+    name: 'key', input: 'suggest', source: 'stagingKeys', dependsOn: 'id',
+    offers: { state: 'pending' }, offersNote: 'pal.suggruled',
+  };
+
+  // Narrowed by the lesson AND by the state, in that order.
+  assert.deepEqual(narrowedOptions(spec, sources, { id: 'L1' })?.map((o) => o.value), ['b']);
+  assert.deepEqual(offeredAway(spec, sources, { id: 'L1' }).map((o) => o.value), ['a', 'c']);
+  assert.deepEqual(narrowedOptions(spec, sources, { id: 'L2' })?.map((o) => o.value), ['d']);
+  assert.deepEqual(offeredAway(spec, sources, { id: 'L2' }), []);
+
+  // An unanswered dependency is still "choose the id first" and NOT "they have
+  // all been ruled on": nothing was dropped by the filter, because nothing
+  // reached it.
+  assert.deepEqual(narrowedOptions(spec, sources, {}), []);
+  assert.deepEqual(offeredAway(spec, sources, {}), []);
+  // A lesson with no staging at all: empty both ways, which is the sentence
+  // "this corpus has nothing to offer here" rather than the ruled-on one.
+  assert.deepEqual(narrowedOptions(spec, sources, { id: 'L-none' }), []);
+  assert.deepEqual(offeredAway(spec, sources, { id: 'L-none' }), []);
+
+  // THE STATE THIS CORPUS IS IN: every candidate ruled on, so the box offers
+  // nothing and something was dropped — which is exactly the pair
+  // `paintSuggest` reads to choose `offersNote` over `pal.suggn`.
+  sources['stagingKeys'] = [
+    { value: 'a', label: 'a', hint: 'A', item: 'L1', state: 'accepted' },
+    { value: 'c', label: 'c', hint: 'C', item: 'L1', state: 'accepted' },
+  ];
+  assert.deepEqual(narrowedOptions(spec, sources, { id: 'L1' }), []);
+  assert.equal(offeredAway(spec, sources, { id: 'L1' }).length, 2);
+
+  // A field with no `offers` drops nothing — every other suggest field.
+  const finding: ArgSpec = { name: 'finding', source: 'findings', dependsOn: 'id' };
+  assert.deepEqual(offeredAway(finding, sources, { id: 'L1' }), []);
+});
+
+/** Both `key` fields name a sentence, and it is one the string tables carry. */
+test('offersNote names a key both string tables hold', async () => {
+  const { PALETTE } = await defs();
+  const withNote = PALETTE.flatMap((def) =>
+    [...def.args, ...def.flags].filter((spec) => spec.offers !== undefined)
+      .map((spec) => ({ def: def.name, spec })));
+  assert.deepEqual(withNote.map((w) => `${w.def} ${w.spec.name}`),
+    ['lesson-accept key', 'lesson-discard key']);
+  for (const { def, spec } of withNote) {
+    assert.equal(typeof spec.offersNote, 'string',
+      `${def} ${spec.name} filters its list and says nothing when the filter empties it`);
+    for (const table of ['en', 'he']) {
+      const source = readFileSync(path.join(PUBLIC, 'strings', `${table}.js`), 'utf8');
+      assert.ok(source.includes(`'${spec.offersNote}':`),
+        `${table}.js has no ${spec.offersNote}`);
+    }
+  }
+});
+
 test('every suggest field names a source this screen fills, and its own list id', async () => {
   const { PALETTE } = await defs();
   const { sourceLists, suggestListId } = await screen();
@@ -466,13 +650,34 @@ test('every suggest field names a source this screen fills, and its own list id'
     [...def.args, ...def.flags]
       .filter((spec) => spec.input === 'suggest')
       .map((spec) => ({ def: def.name, spec })));
-  // The three D11 fields, or as many of them as have landed. `key` on
-  // `lesson-accept`/`lesson-discard` is deliberately NOT here: nothing serves a
-  // staged lesson, because `listStaging` lives in `lesson/derive.ts` which
-  // value-imports `createItem` from `core/mutate.ts` — the boundary
-  // `src/ui/read-model.ts` already refused `st.staged` over.
-  assert.deepEqual(suggests.map((s) => `${s.def} ${s.spec.name}`),
-    ['ack finding', 'init pack']);
+  // **All three D11 fields have landed, and the `id` conversion beside them.**
+  // `key` was the one D11 could not build — nothing served a staged lesson
+  // until `GET /api/staging` split the read half out of `lesson/derive.ts` —
+  // and every `items`-sourced field became a box on 2026-09-07
+  // (`TASK-a-long-picker-becomes-a-filtering-box-and-the-id-field-stops`).
+  //
+  // Spelled out rather than counted, because the list IS the ruling: a field
+  // that gains or loses its box is a decision, and a count would let one
+  // arrive silently as long as another left.
+  assert.deepEqual(suggests.map((s) => `${s.def} ${s.spec.name}`), [
+    'ack id', 'ack finding', 'edit id', 'init pack',
+    'pin id', 'unpin id', 'harden id', 'soften id',
+    'supersede id', 'supersede by', 'refresh id',
+    'lesson-accept id', 'lesson-accept key',
+    'lesson-discard id', 'lesson-discard key',
+    'procedure done id', 'show id',
+  ]);
+  // Every `items`-sourced field is one of them — the ruling was about the
+  // 951-option `<select>`, so a new one arriving as a `<select>` is the
+  // regression this line catches.
+  const itemFields = PALETTE.flatMap((def) =>
+    [...def.args, ...def.flags].filter((spec) => spec.source === 'items')
+      .map((spec) => `${def.name} ${spec.name}`));
+  assert.equal(itemFields.length, 11, 'the count of items-sourced fields moved');
+  for (const field of itemFields) {
+    assert.ok(suggests.some((s) => `${s.def} ${s.spec.name}` === field),
+      `${field} is sourced from items and is not a suggest box`);
+  }
   for (const { def, spec } of suggests) {
     assert.equal(typeof spec.source, 'string', `${def} ${spec.name} has no source`);
     assert.ok(Object.hasOwn(sources, spec.source!),
