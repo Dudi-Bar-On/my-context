@@ -1,3 +1,45 @@
+## ⏭ READ THIS FIRST — 2026-09-07, at 92%. He is awake; the D table was given.
+
+**The morning table has been delivered** and he has restarted the MCP servers.
+**Playwright is BACK** — both the MCP and the repo harness now work.
+
+**THE GAP FROM LAST NIGHT IS CLOSED FOR ONE ITEM, AND ONLY ONE.** I drove the
+Composer myself: `list · read` + `category: rule` composes `mycontext list
+rule`, and the action row shows **Copy and Execute only — no Run button**. D22
+no longer rests on a lane's screenshots. Also seen in the same frame: glob
+tester 1,318/1,318, zero horizontal overflow, and **Conversations** and
+**Help** both in the nav.
+
+**STILL RESTING ON LANE SCREENSHOTS, and he should be told which:** the help
+card's worked lines and Hebrew punctuation repair (`library/6`), and the
+conversation screen (`archive/3`). Both are cheap to check now that Playwright
+is back — do it rather than carrying the caveat forward again.
+
+**THE TREE HOLDS TWO UNCOMMITTED PATHS, BOTH DELIBERATE:**
+- `e2e/cli-help.spec.ts` — held at 12 of 14. `.demo-corpus` has ZERO command
+  files, so the `slash` topic renders no body. **His decision: fix the fixture,
+  or scope the test.** A permanently-red e2e file poisons attribution for every
+  lane after it.
+- `e2e/execute.spec.ts` — the builder lane's edit for the id box, still
+  unfolded. Commit it.
+
+**THE QUEUE IS SHORT NOW AND THE SHAPE IS WORTH SEEING:** `builder/5` is the
+ONLY thing standing between him and **D12** — its other five dependencies are
+all done. Then `docsys/11` (D28) behind D12 and `library/6`.
+
+**HE WAS ASKED and has not yet answered:** whether to commit `execute.spec.ts`
+and dispatch `builder/5`.
+
+**AWAITING HIS RULING, none blocking:** `budget/16` (built, reverted to
+`scratchpad/budget-16-spare-band.patch`, reds 49 fixtures —
+`OPENQ-does-the-pinned-tier-spend-its-spare-room-on-governing-items`),
+`budget/15` (a costed proposal), `builder/17` (the id box shows less than half
+of what you picked), `archive/6` (tutorial-manifest 5/7), and the 42 `walk`
+items.
+
+**BOARD:** 640 tasks, 545 done, 87 open. Doctor 0 errors, 2 warnings. Pushed
+through `c6afadb`.
+
 ## ⏭ READ THIS FIRST — 2026-09-07, at 90%
 
 **Nothing happened in this percent but the writing of the block below.** No
