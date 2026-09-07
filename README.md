@@ -1367,13 +1367,37 @@ leaves 20 for migrations, backups and the admin console. Raising the pool past 2
 does not buy throughput; it buys `remaining connection slots are reserved` during
 the next deploy.
 
-_4 governing item(s) below carry a title only — the body was not delivered: INV-prices-are-integer-cents, REQ-checkout-completes-in-two-steps, RULE-never-log-customer-email, STD-api-errors-use-problem-json. A title names a rule; it does not tell you what it requires. Read each with `mycontext show <id>` before treating it as satisfied. Delivering every one of them in full this session would cost ~320 estimated tokens._
+### INV-prices-are-integer-cents · invariant · Prices are integer cents
+
+Every price crossing a module boundary is an integer number of cents.
+Floating-point dollars re-introduce a rounding error at each conversion, and the
+total a customer approves at checkout must equal the sum of its line items exactly.
+
+_scope: src/billing/**_
+
+### REQ-checkout-completes-in-two-steps · requirement · Checkout completes in two steps
+
+Cart to payment, payment to confirmation. A third step was measured against the
+two-step flow in April and abandonment rose by four points, so a new field belongs
+in one of the two existing steps or nowhere.
+
+### RULE-never-log-customer-email · rule · Never log customer email
+
+Log the customer id instead. Access logs are shipped to a third-party aggregator
+that our data-processing agreement does not cover, so an email address in a log
+line leaves the boundary the checkout flow promises the customer.
+
+_scope: src/**_
+
+### STD-api-errors-use-problem-json · standard · API errors use Problem JSON
+
+Every 4xx and 5xx response carries `application/problem+json` with `type`, `title`,
+`status` and `detail`, as defined by RFC 9457. One error shape means the storefront
+needs one error renderer rather than one per endpoint.
+
+_scope: src/api/**_
 
 ## my_context index
-- INV-prices-are-integer-cents · invariant · Prices are integer cents
-- REQ-checkout-completes-in-two-steps · requirement · Checkout completes in two steps
-- RULE-never-log-customer-email · rule · Never log customer email
-- STD-api-errors-use-problem-json · standard · API errors use Problem JSON
 
 2 decision · 1 lesson · 1 drafts pending review · 1 retired
 → use mycontext list or mycontext show <id> to browse these

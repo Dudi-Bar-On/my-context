@@ -8,6 +8,8 @@ import { fileURLToPath } from 'node:url';
 import { runCli } from '../../src/cli/index.ts';
 import { auditLogPath, readAudit, type AuditRecord } from '../../src/core/audit.ts';
 import { buildInjection } from '../../src/core/inject.ts';
+import { loadLayer } from '../../src/core/rebuild.ts';
+import { itemCost } from '../../src/core/select.ts';
 import { SUBAGENT_PREAMBLE } from '../../src/core/render.ts';
 import { readSeen, seenFilePath, seenIds } from '../../src/core/seen-file.ts';
 import { trustedStatus } from '../../src/core/trust.ts';
@@ -69,10 +71,38 @@ Body of ${id}.
 `, 'utf8');
 }
 
+/**
+ * `budgets.pinned` sized to exactly the one pin — the same cap, and for the
+ * same reason, as `test/core/inject-subagent.test.ts`'s.
+ *
+ * Since `plan:budget seq:16` the pinned tier offers whatever room `always`
+ * items leave to governing items that are NOT `always` (`select`'s spare
+ * band), and `constraint` is a governing category, so CONST-retry would be
+ * delivered in full and this file's premise — one item in full, one as an
+ * index line — would quietly stop holding. The subject here is the
+ * SubagentStart binary; a budget that fits the pin and nothing else is how
+ * the fixture says the second item had to reach the index.
+ *
+ * Read from the product's own `itemCost` rather than typed, so a changed
+ * `renderItemBlock` cannot silently make room for two.
+ */
+function capPinnedToTheOnePin(cwd: string): void {
+  const projectRoot = root(cwd);
+  const pin = loadLayer(projectRoot, 'project').find((i) => i.always);
+  assert.ok(pin, 'the fixture must have a pin for the cap to be about');
+  const file = path.join(projectRoot, 'config.json');
+  const raw = JSON.parse(readFileSync(file, 'utf8')) as Record<string, unknown>;
+  const budgets = (raw.budgets ?? {}) as Record<string, number>;
+  raw.budgets = { ...budgets, pinned: itemCost(pin) };
+  writeFileSync(file, `${JSON.stringify(raw, null, 2)}
+`, 'utf8');
+}
+
 /** One pinned item and one index-only item: both tiers are non-empty. */
 function corpus(cwd: string): void {
   item(cwd, 'CONST-pool', 'Pool capped at 20', true);
   item(cwd, 'CONST-retry', 'Retries capped at 3', false);
+  capPinnedToTheOnePin(cwd);
 }
 
 /**

@@ -305,6 +305,14 @@ export interface PinnedSpill {
    * the first name is the most important thing this session did not get. Sorted
    * by id it would read as a list; left as the selector ranked it, it reads as
    * a loss.
+   *
+   * **`always` items only, and the spare band cannot reach this list.** Since
+   * 2026-09-07 the pinned tier also offers its LEFTOVER room to governing items
+   * that are not `always` (`select`'s spare band, `plan:budget seq:16`). A
+   * governing item that does not fit that room records no `Spill` at all
+   * (`fitToBudget`'s `spareFrom`) and is disclosed by `GoverningSpill` instead,
+   * so this list keeps meaning exactly one thing — a pin that was not honoured
+   * — with no filter downstream of it and no reader left to tell the two apart.
    */
   ids: string[];
   /**
@@ -314,6 +322,13 @@ export interface PinnedSpill {
    * It is the honest answer to "what does honouring `always` cost here", which
    * is the number a person raising the budget needs. `Selection.tokens` is the
    * other number and stays what it is: what was actually charged.
+   *
+   * **`always` alone, for `ids`' reason.** The spare band spends the same
+   * budget but is not part of what honouring `always` costs, and folding it in
+   * would make this figure rise when MORE was delivered — the opposite of what
+   * a person reading it is asking. What the spare band delivered is in
+   * `Selection.full` (`tier: 'pinned'`, `item.always` false) and what it cost
+   * is in `Selection.tokens`.
    */
   cost: number;
   /** `config.budgets.pinned` — the figure `cost` was measured against. */
@@ -365,16 +380,26 @@ export interface ContinuitySpill {
  * is worse than a drop because it counts as delivery in every tally while
  * governing nothing."*
  *
- * **No new tier and no new budget key.** `pinned`'s whole semantics is
- * `always` (`PinnedSpill`'s own doc comment says so), and folding `governs()`
- * into its candidate pool would be a second, silent meaning for a field this
- * corpus already documents narrowly. Measured on this repository's own
+ * **No new tier and no new budget key.** Measured on this repository's own
  * corpus before this was written: 104 eligible governing items cost 58,654
- * estimated tokens as bodies — 2.7× the 22,000 this workspace already sets
+ * estimated tokens as bodies — 2.7× the 22,000 this workspace then set
  * `budgets.pinned` to, and 9.8× the shipped default of 6,000. Raising a
  * budget to cover that is a real option and this file does not foreclose it;
- * it is a config change for a human to make with the number in hand, not a
- * silent rewrite of what tier a governing item competes in.
+ * it is a config change for a human to make with the number in hand.
+ *
+ * **What this paragraph used to say, and what overturned it.** It said that
+ * folding `governs()` into the pinned tier's candidate pool would be a second,
+ * silent meaning for `always`. The owner ruled otherwise on 2026-09-04
+ * (`TASK-the-pinned-tier-sits-half-empty-while-sixty-nine-governing`,
+ * `plan:budget seq:16`) and `select`'s pinned tier now offers its LEFTOVER
+ * room to governing items that are not `always`. The objection was answered
+ * rather than overruled: `always` is not widened, it is offered FIRST and in
+ * full, and the spare band only exists in a call where every `always` item
+ * already fitted. `PinnedSpill` still reports `always` alone, so nothing that
+ * reads "a pin was not honoured" changed meaning. What this disclosure counts
+ * changed instead, and that is the point — `titled` fell from 82 to 69 on this
+ * corpus the day the band landed, and it is the measurement of whether the
+ * ruling worked.
  *
  * **What this disclosure does instead: make the degradation LOUD.** The item
  * still costs nothing extra — it is priced and named from data `buildIndex`
@@ -805,17 +830,46 @@ function byPriority(a: Item, b: Item): number {
  * appear nowhere in the config — and `preview.js`'s header is explicit that no
  * second implementation of `fitToBudget` may exist to reconcile.
  *
- * The only caller that passes more than one band today is the JIT tier
- * (`DEC-the-jit-tier-offers-path-scoped-items-first-in-two-bands`).
+ * Two callers pass more than one band: the JIT tier
+ * (`DEC-the-jit-tier-offers-path-scoped-items-first-in-two-bands`) and the
+ * pinned tier's spare band (`spareFrom`, below).
  *
  * **A spill records the band it was offered in** — `Spill.band`, 1-based, and
  * only when more than one band actually held candidates. It is written here
  * because here is where the position is known: a surface re-deriving it from
  * an item's scope and the event path would be a second implementation of the
  * caller's partition, and would answer for items this function never saw.
+ *
+ * **`spareFrom` — the index of the first band offered SPARE capacity**
+ * (`TASK-the-pinned-tier-sits-half-empty-while-sixty-nine-governing`, owner
+ * ruling 2026-09-04). Bands at or after it are admitted on exactly the same
+ * first-fit terms as every other band and, when they do not fit, record NO
+ * `Spill` — because nothing promised them this tier. Default `bands.length`:
+ * no band is spare, and every existing caller is unchanged by construction
+ * rather than by inspection.
+ *
+ * **A miss is not a spill when the tier never owed the item anything.** The
+ * pinned tier's spill record is the alarm for a broken `always` promise
+ * (`PinnedSpill`) — it is read out loud in the injected block, disclosed on
+ * stderr, and counted per item in the audit projection as
+ * `audit_item.role = 'spilled'`. A governing item that was offered leftover
+ * room and did not get it has lost nothing it was owed: it falls through to
+ * the index tier exactly as before, and `GoverningSpill` names it there. Sixty
+ * nine such records per session start would drown the one channel that has to
+ * stay credible, and would double-count in the log every item `governingSpill`
+ * already reports. Measured on this corpus 2026-09-07: 69 of the 82 governing
+ * candidates do not fit the spare band.
+ *
+ * **`partitioned` is computed over the SPILLING bands only**, so a spare band
+ * cannot make a non-spare band's records grow a `band` field. That keeps the
+ * pinned tier's spill records byte-identical to the single-band selector's —
+ * the same property `DEC-the-jit-tier-offers-path-scoped-items-first-in-two-
+ * bands` was decided on, held here structurally rather than by relying on the
+ * caller's own gate.
  */
 function fitToBudget(
   bands: Item[][], budget: number, tier: SelectionEntry['tier'],
+  spareFrom: number = bands.length,
 ): { entries: SelectionEntry[]; spilled: Spill[]; used: number } {
   const entries: SelectionEntry[] = [];
   const spilled: Spill[] = [];
@@ -828,7 +882,11 @@ function fitToBudget(
   // the single-band selector's records byte for byte, which is the property
   // `DEC-the-jit-tier-offers-path-scoped-items-first-in-two-bands` was decided
   // on. See `Spill.band`.
-  const partitioned = bands.filter((band) => band.length > 0).length > 1;
+  // Only the bands that can PRODUCE a spill count towards the partition: a
+  // spare band records nothing, so it cannot be the band a spill was offered
+  // in, and letting it flip this flag would put a `band: 1` on records that
+  // report a partition no spill can distinguish. See `spareFrom`.
+  const partitioned = bands.slice(0, spareFrom).filter((band) => band.length > 0).length > 1;
 
   // `[...band]` per band, never a sort in place: `fitToBudget` and `buildIndex`
   // sort copies and never the caller's array. Nested rather than flattened
@@ -844,6 +902,13 @@ function fitToBudget(
       // budget utilisation — `spilled` is therefore NOT a strict priority prefix of
       // the sorted candidates.
       if (used + cost > budget) {
+        // A SPARE band's miss is not this tier's spill — see `spareFrom`. The
+        // item is skipped exactly as any other over-budget candidate is, and
+        // simply leaves no record behind: it was offered leftover room, not
+        // promised a place, and the tier owes it no disclosure. Whatever runs
+        // after this call sees it as a candidate that was never admitted, which
+        // is what it was before the band existed.
+        if (index >= spareFrom) continue;
         spilled.push({
           id: item.id, tier,
           reason: `budget exceeded (${used + cost} > ${budget} estimated tokens)`,
@@ -1427,7 +1492,75 @@ export function select(items: Item[], ctx: SelectContext, config: Config): Selec
     // only this one has — the duplicate arithmetic is the smaller cost and the
     // one that leaves `fitToBudget` a single-purpose function.
     pinnedCost = candidates.reduce((sum, i) => sum + itemCost(i), 0);
-    const result = fitToBudget([candidates], config.budgets.pinned, 'pinned');
+    /**
+     * **THE SPARE BAND** — `TASK-the-pinned-tier-sits-half-empty-while-sixty-
+     * nine-governing` (`plan:budget seq:16`), owner ruling 2026-09-04: *"his
+     * words were yes 3 and 2"*, choosing the admission change over a budget
+     * rise. Governing items that are NOT `always` may draw on pinned budget
+     * that `always` items have not used. This changes admission and raises no
+     * budget.
+     *
+     * **`always` keeps ABSOLUTE precedence, and it is enforced twice over.**
+     * Band 0 is offered in full before any member of band 1 (`fitToBudget`'s
+     * own contract), and the band is not built at all unless the WHOLE `always`
+     * candidate set fits. `pinnedCost` is that set priced before the budget saw
+     * it, so `pinnedCost <= budget` is exactly "no `always` item spills" — no
+     * second arithmetic, no extra `renderItemBlock`. Without that gate,
+     * first-fit could squeeze a small governing item into room a large `always`
+     * item had just failed to use, and the injected block would name a spilled
+     * pin beside a governing item that was never promised anything. A pin is an
+     * explicit instruction, and the ruling says this must not silently displace
+     * one; when it cannot be honoured in full, nothing else is offered its
+     * tier.
+     *
+     * **`candidates.length > 0` — THE NARROW FORM, and the owner chose it over
+     * the unconditional one** (`OPENQ-does-the-pinned-tier-spend-its-spare-room
+     * -on-governing-items`, ruled 2026-09-07). A workspace that pins NOTHING
+     * has not left room over; it has never used this tier at all, and reading
+     * an untouched budget as "spare" would turn `pinned` into a second general
+     * admission tier for every corpus that never asked for one. The ruling's
+     * own words are about capacity "that always-true items have not used",
+     * which presupposes always-true items. With no pin present this tier
+     * behaves exactly as it did before this band existed — the property that
+     * keeps the change scoped to workspaces that already pin something.
+     *
+     * Measured, and it is why the form was affordable: the unconditional band
+     * turns 64 existing fixtures red across 24 files, this one 26 across 10,
+     * and on THIS corpus the two forms deliver an identical selection. Almost
+     * every fixture the narrow form spares is one with no `always` item in it
+     * at all — written when a non-`always` governing item could not reach a
+     * full-text tier, and asserting an absence rather than admission.
+     *
+     * **A candidate that does not fit records no spill** — see `spareFrom`.
+     * It falls through to the index tier exactly as it did before this band
+     * existed, and `buildGoverningSpill` names it there. That is also what
+     * keeps the count of `titled` items the honest measurement of whether this
+     * worked, which the ruling asks for in as many words.
+     *
+     * **The order within the band is `byPriority`, not a new rank.** The
+     * ruling's own suggestion — the most-spilled governing items first — is
+     * NOT available here: spill counts live in the audit projection, and
+     * `INV-select-is-pure` forbids this module any I/O at all. Ranking by
+     * `byPriority` puts `severity: hard` first among items that already all
+     * answer `governs()` true, which on this corpus admits thirteen items and
+     * every one of them `hard`. A most-spilled order would have to arrive as
+     * an argument from a caller that is allowed to read the log; that is a
+     * change to this function's signature and a decision for the owner, not
+     * something to smuggle in behind a filesystem read.
+     *
+     * Measured on this repository's own corpus, 2026-09-07, at
+     * `budgets.pinned` 30,000 and 996 items: 37 `always` items cost 22,582,
+     * leaving 7,418 of the tier unspent. The spare band admits 13 governing
+     * items for exactly that 7,418, and the governing items arriving as a
+     * title only — `governingSpill.titled`, the disclosure this ruling says is
+     * the measurement — fall from 82 to 69. Every one of the thirteen is
+     * `severity: hard`, which is `byPriority` doing what the paragraph above
+     * says it does.
+     */
+    const spare = candidates.length > 0 && pinnedCost <= config.budgets.pinned
+      ? fresh.filter((i) => !i.always && governs(i))
+      : [];
+    const result = fitToBudget([candidates, spare], config.budgets.pinned, 'pinned', 1);
     entries.push(...result.entries);
     spilled.push(...result.spilled);
     tokens += result.used;
@@ -1574,6 +1707,13 @@ export function select(items: Item[], ctx: SelectContext, config: Config): Selec
    * **Fires on any spill, not only on a total one.** Seven of twenty-three is a
    * partial `always`, and a partial `always` is precisely the failure that reads
    * as success. A threshold here would be the defect wearing the fix's name.
+   *
+   * **No `always` filter is needed on the `tier === 'pinned'` test, and that is
+   * a property of the selector rather than an omission.** The spare band
+   * (`select`'s pinned tier, `plan:budget seq:16`) records no `Spill` at all, so
+   * every record this predicate can see was written for an `always` candidate.
+   * A filter here would read as defensive against a case that cannot arise, and
+   * would go quietly stale the day someone made the spare band spill.
    */
   const pinnedSpillOf = (final: Spill[]): PinnedSpill | null => {
     if (pinnedCost === null) return null;

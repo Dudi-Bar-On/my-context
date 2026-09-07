@@ -57,7 +57,17 @@ test('Selection.tokens is the sum the budget was charged: admitted blocks plus i
   const pinnedB = item({ id: 'RULE-b', type: 'rule', title: 'A rule', always: true, continuity: false, summary: null, summaryOf: null, body: 'Do it.' });
   const indexed = item({ id: 'CONST-c', title: 'Only an index line' });
 
-  const sel = select([pinnedA, pinnedB, indexed], { event: 'session-start' }, CONFIG);
+  // `budgets.pinned` is exactly the two pins' own cost. Since `plan:budget
+  // seq:16` the pinned tier offers whatever room `always` items leave to
+  // governing items that are NOT `always` (`select`'s spare band), and
+  // `constraint` is a governing category — under the default budget CONST-c
+  // would arrive as a BLOCK, and this test's arithmetic (two blocks plus one
+  // index line) would be measuring a selection that no longer had an index
+  // line in it. The subject is what `tokens` sums, not who is admitted.
+  const cfg = resolveConfig({
+    budgets: { pinned: blockCost(pinnedA) + blockCost(pinnedB) },
+  });
+  const sel = select([pinnedA, pinnedB, indexed], { event: 'session-start' }, cfg);
   assert.deepEqual(sel.full.map((e) => e.item.id).sort(), ['CONST-a', 'RULE-b']);
   assert.deepEqual(sel.index.normative.map((n) => n.id), ['CONST-c']);
   assert.equal(

@@ -6,6 +6,8 @@ import path from 'node:path';
 import { auditLogPath, readAudit, type AuditRecord } from '../../src/core/audit.ts';
 import { corpusRootLine, resolveCorpus } from '../../src/core/corpus-identity.ts';
 import { buildInjection } from '../../src/core/inject.ts';
+import { loadLayer } from '../../src/core/rebuild.ts';
+import { itemCost } from '../../src/core/select.ts';
 import { writeSnapshot } from '../../src/core/ledger.ts';
 import { SUBAGENT_PREAMBLE } from '../../src/core/render.ts';
 import { appendSeen, readSeen, seenFilePath, seenIds } from '../../src/core/seen-file.ts';
@@ -55,10 +57,40 @@ Body of ${id}.
 `);
 }
 
+/**
+ * `budgets.pinned` sized to exactly the one pin, so the pinned tier has no
+ * room left over.
+ *
+ * Since `plan:budget seq:16` the pinned tier offers whatever room `always`
+ * items leave to governing items that are NOT `always` (`select`'s spare
+ * band), and `constraint` is a governing category — so with the default
+ * budget CONST-retry arrives in the governing block and this file's whole
+ * premise, "one item in full and one as an index line", stops holding. The
+ * subject here is the SUBAGENT event, not admission; a budget that fits the
+ * pin and nothing else is how the fixture says the second item had to reach
+ * the index.
+ *
+ * The figure is read from the product's own `itemCost` rather than typed:
+ * a hand-picked number would be a coincidence that a changed
+ * `renderItemBlock` could silently turn into room for two.
+ */
+function capPinnedToTheOnePin(cwd: string): void {
+  const projectRoot = root(cwd);
+  const pin = loadLayer(projectRoot, 'project').find((i) => i.always);
+  assert.ok(pin, 'the fixture must have a pin for the cap to be about');
+  const file = path.join(projectRoot, 'config.json');
+  const raw = JSON.parse(readFileSync(file, 'utf8')) as Record<string, unknown>;
+  const budgets = (raw.budgets ?? {}) as Record<string, number>;
+  raw.budgets = { ...budgets, pinned: itemCost(pin) };
+  writeFileSync(file, `${JSON.stringify(raw, null, 2)}
+`);
+}
+
 /** One pinned item and one index-only item: both tiers are non-empty. */
 function corpus(cwd: string): void {
   item(cwd, 'CONST-pool', 'Pool capped at 20', true);
   item(cwd, 'CONST-retry', 'Retries capped at 3', false);
+  capPinnedToTheOnePin(cwd);
 }
 
 function root(cwd: string): string {

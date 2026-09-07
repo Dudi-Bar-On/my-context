@@ -10,7 +10,7 @@ import { buildInjection } from '../../src/core/inject.ts';
 import { renderIndexLine } from '../../src/core/render-item.ts';
 import { renderSelection } from '../../src/core/render.ts';
 import { appendSeen, readSeen, seenIds } from '../../src/core/seen-file.ts';
-import { estimateTokens, select } from '../../src/core/select.ts';
+import { estimateTokens, itemCost, select } from '../../src/core/select.ts';
 import { setSessionName } from '../../src/core/session-names.ts';
 import type { Item } from '../../src/core/types.ts';
 import { removeTree } from '../helpers/tmp.ts';
@@ -43,6 +43,27 @@ function item(over: Partial<Item> = {}): Item {
     ...over,
   };
 }
+
+/**
+ * `budgets.pinned` sized to exactly one `RULE-pinned` block — the precondition
+ * three fixtures below need, spelled once.
+ *
+ * Since `plan:budget seq:16` the pinned tier offers whatever room `always`
+ * items leave over to governing items that are NOT `always` (`select`'s spare
+ * band), and `rule` is a governing category, so every plain `RULE-x` in this
+ * file is a pinned candidate under the default budget. These three fixtures
+ * are about what reaches the INDEX tier and why a carried id got no line;
+ * a budget that fits the pin and nothing else is how they say the item that
+ * follows had to compete for an index line rather than a body.
+ *
+ * Derived from `itemCost` rather than typed, for the reason `lineOfCost`
+ * below derives its own arithmetic: a hand-picked number is a coincidence
+ * nobody can check, and a changed `renderItemBlock` would silently start
+ * admitting a second item.
+ */
+const PINNED_FITS_ONE = resolveConfig({
+  budgets: { pinned: itemCost(item({ id: 'RULE-pinned', always: true })) },
+});
 
 /**
  * An item whose index line costs EXACTLY `tokens`, marker included.
@@ -178,8 +199,13 @@ test('a carried id delivered in full this session is dropped with that reason, a
   // Task 3's |A \ B| = 7 on this repository: every one of the seven is here for
   // this reason and no other, because all seven are the pinned items.
   const items = [item({ id: 'RULE-pinned', always: true }), item({ id: 'RULE-b' })];
+  // `PINNED_FITS_ONE`: RULE-b is a `rule` and would otherwise arrive on the
+  // pinned tier's spare band, so the carried id this test is about would be
+  // dropped for being delivered in full rather than given the index line the
+  // assertion below reads.
   const sel = select(
-    items, { event: 'session-start', carried: carriedFrom(['RULE-pinned', 'RULE-b']) }, CONFIG,
+    items, { event: 'session-start', carried: carriedFrom(['RULE-pinned', 'RULE-b']) },
+    PINNED_FITS_ONE,
   );
 
   assert.deepEqual(sel.full.map((e) => e.item.id), ['RULE-pinned']);
@@ -353,9 +379,12 @@ test('the count in the line is the marked lines rendered, not the ids that were 
   const items = [
     item({ id: 'RULE-pinned', always: true }), item({ id: 'RULE-a' }), item({ id: 'RULE-b' }),
   ];
+  // `PINNED_FITS_ONE`: two of the three ids have to arrive as index LINES for
+  // the count in the disclosure to be two — the spare band would deliver both
+  // in full and leave the line saying zero.
   const sel = select(items, {
     event: 'session-start', carried: carriedFrom(['RULE-pinned', 'RULE-a', 'RULE-b']),
-  }, CONFIG);
+  }, PINNED_FITS_ONE);
   const out = renderSelection(sel);
 
   assert.match(out, /_2 index line\(s\)/,
@@ -371,10 +400,13 @@ test('every carried id that got no line is named with select’s own reason, nev
     item({ id: 'LESSON-a', type: 'lesson' }),
     item({ id: 'RULE-gone', status: 'superseded' }),
   ];
+  // `PINNED_FITS_ONE`: the four reasons only stay four while RULE-a still
+  // reaches the index. On the spare band it is delivered in full, which folds
+  // it into RULE-pinned's reason and makes this a test of three.
   const sel = select(items, {
     event: 'session-start',
     carried: carriedFrom(['RULE-pinned', 'RULE-a', 'LESSON-a', 'RULE-gone', 'RULE-vanished']),
-  }, CONFIG);
+  }, PINNED_FITS_ONE);
   const out = renderSelection(sel);
 
   const dropped = sel.index.carried?.dropped ?? [];

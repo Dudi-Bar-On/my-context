@@ -12,8 +12,8 @@ import { runCli } from '../../src/cli/index.ts';
 import { parseItem, renderItem } from '../../src/core/item.ts';
 import { extraFieldNames, resolveConfig } from '../../src/core/config.ts';
 import { updateItem } from '../../src/core/mutate.ts';
-import { rebuild } from '../../src/core/rebuild.ts';
-import { select } from '../../src/core/select.ts';
+import { loadLayer, rebuild } from '../../src/core/rebuild.ts';
+import { itemCost, select } from '../../src/core/select.ts';
 import { Store } from '../../src/core/store.ts';
 import { resolveWorkspace } from '../../src/core/workspace.ts';
 import { removeTree } from '../helpers/tmp.ts';
@@ -1377,6 +1377,24 @@ test('load_context returns byte-for-byte what SessionStart would inject', () => 
 
 test('load_context leaves an unpinned item in the index, not in the governing block', () => {
   const cwd = corpus();
+  // `budgets.pinned` sized to exactly the one pin. Since `plan:budget seq:16`
+  // the pinned tier offers whatever room `always` items leave to governing
+  // items that are NOT `always` (`select`'s spare band), and `constraint` is
+  // a governing category — so with room to spare CONST-token-checked is
+  // delivered in full and legitimately so. What this test is about is that
+  // `load_context` does not invent a full-text block for an item the
+  // SELECTOR left in the index, which is only a question when the selector
+  // had no room to admit it. Read from the product's own `itemCost` so a
+  // changed `renderItemBlock` cannot silently make room for two.
+  const projectRoot = resolveWorkspace(cwd).projectRoot!;
+  const pin = loadLayer(projectRoot, 'project').find((i) => i.always);
+  assert.ok(pin, 'the fixture must have a pin for the cap to be about');
+  const configFile = path.join(projectRoot, 'config.json');
+  const raw = JSON.parse(readFileSync(configFile, 'utf8')) as Record<string, unknown>;
+  raw.budgets = { ...(raw.budgets ?? {}) as Record<string, number>, pinned: itemCost(pin) };
+  writeFileSync(configFile, `${JSON.stringify(raw, null, 2)}
+`);
+
   const out = createRegistry(cwd).call('load_context', {});
   const indexAt = out.indexOf('## my_context index');
   assert.ok(indexAt > 0, 'the index section is present');

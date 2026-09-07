@@ -58,7 +58,8 @@ import { resolveCarry } from '../../src/core/continuity.ts';
 import { computeDecay } from '../../src/core/decay.ts';
 import { topUpLedger } from '../../src/core/ledger-replay.ts';
 import {
-  reviewQueue, select, tiersRun, type SelectContext, type Selection, type Spill,
+  itemCost, reviewQueue, select, tiersRun,
+  type SelectContext, type Selection, type Spill,
 } from '../../src/core/select.ts';
 import { appendSeen, readSeen, seenFilePath, seenIds } from '../../src/core/seen-file.ts';
 import { setSessionName } from '../../src/core/session-names.ts';
@@ -90,6 +91,17 @@ interface Fixture { dir: string; ws: Workspace; items: Item[]; done(): void }
  * focus narrows to a strict subset), and one rationale-tier decision (so the
  * index summary counts something the full-text tiers never touch).
  *
+ * **`budgets.pinned` is sized to exactly the one pin, and that is now part of
+ * the fixture rather than a default it inherits.** Since `plan:budget seq:16`
+ * the pinned tier offers whatever room `always` items leave to governing
+ * items that are NOT `always` (`select`'s spare band), and all three of these
+ * rules are `rule` — a governing category. Under the shipped default the tier
+ * would take all three, the two `src/**` rules would never reach the JIT or
+ * index tiers, and three separate non-vacuity guards in this file would be
+ * measuring one answer repeated. The figure is read from the product's own
+ * `itemCost` rather than typed, so a changed `renderItemBlock` cannot quietly
+ * make room for a second item.
+ *
  * **Nothing here opens a `Ledger`.** That is a property the empty-ledger tests
  * depend on, and it is asserted rather than assumed.
  */
@@ -108,15 +120,28 @@ function fixture(): Fixture {
   run(['edit', 'RULE-pin-me', '--always=true', '--yes']);
   run(['add', '--summary-omitted', 'decision', 'We chose sqlite', '--body', 'Rationale body.', '--yes']);
 
-  const ws = resolveWorkspace(dir);
-  const store = Store.openReadOnlyChecked(ws.dbPath);
+  const built = resolveWorkspace(dir);
+  const store = Store.openReadOnlyChecked(built.dbPath);
   const items = store.all();
   store.close();
   assert.equal(items.length, 4, 'the fixture must build exactly the four items it describes');
+  const pin = items.find((i) => i.id === 'RULE-pin-me');
   assert.ok(
-    items.find((i) => i.id === 'RULE-pin-me')?.always,
+    pin?.always,
     '`edit --always=true` must have pinned RULE-pin-me, or the pinned tier has no candidate',
   );
+
+  // The pinned cap — see this function's own header. Written before the
+  // workspace every test reads is resolved, because `Workspace.config` is a
+  // snapshot taken at resolve time.
+  const configFile = path.join(built.projectRoot!, 'config.json');
+  const raw = JSON.parse(readFileSync(configFile, 'utf8')) as Record<string, unknown>;
+  raw.budgets = { ...(raw.budgets ?? {}) as Record<string, number>, pinned: itemCost(pin) };
+  writeFileSync(configFile, `${JSON.stringify(raw, null, 2)}
+`);
+
+  const ws = resolveWorkspace(dir);
+  assert.equal(ws.config.budgets.pinned, itemCost(pin), 'the cap must be the config in force');
   return { dir, ws, items, done: () => removeTree(dir) };
 }
 

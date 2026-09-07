@@ -1,10 +1,12 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { buildSessionStartOutput } from '../../src/hooks/session-start.ts';
 import { runCli } from '../../src/cli/index.ts';
+import { loadLayer } from '../../src/core/rebuild.ts';
+import { itemCost } from '../../src/core/select.ts';
 import { snapshotPath, writeSnapshot } from '../../src/core/ledger.ts';
 import { appendSeen, readSeen, seenFilePath, seenIds } from '../../src/core/seen-file.ts';
 import { resolveWorkspace } from '../../src/core/workspace.ts';
@@ -14,6 +16,33 @@ function sandbox(): string {
   const cwd = mkdtempSync(path.join(tmpdir(), 'myctx-restore-'));
   runCli(['init'], cwd, () => {});
   return cwd;
+}
+
+/**
+ * `budgets.pinned` sized to exactly the one pin, so the pinned tier has no
+ * room left over.
+ *
+ * Since `plan:budget seq:16` the pinned tier offers whatever room `always`
+ * items leave to governing items that are NOT `always` (`select`'s spare
+ * band), and `constraint` — `addItem`'s default type — is a governing
+ * category. A fixture that pins one item and expects the other to arrive
+ * through a LATER tier has to say there was nothing left, or it is asserting
+ * about a tier the item never reached.
+ *
+ * Read from the product's own `itemCost` rather than typed: a hand-picked
+ * number would be a coincidence a changed `renderItemBlock` could turn into
+ * room for two.
+ */
+function capPinnedToTheOnePin(cwd: string): void {
+  const projectRoot = root(cwd);
+  const pin = loadLayer(projectRoot, 'project').find((i) => i.always);
+  assert.ok(pin, 'the fixture must have a pin for the cap to be about');
+  const file = path.join(projectRoot, 'config.json');
+  const raw = JSON.parse(readFileSync(file, 'utf8')) as Record<string, unknown>;
+  const budgets = (raw.budgets ?? {}) as Record<string, number>;
+  raw.budgets = { ...budgets, pinned: itemCost(pin) };
+  writeFileSync(file, `${JSON.stringify(raw, null, 2)}
+`);
 }
 
 function addItem(cwd: string, id: string, opts: {
@@ -127,6 +156,9 @@ test('what is injected is recorded under the tier it was injected in', () => {
   const cwd = sandbox();
   addItem(cwd, 'CONST-pinned', { always: true });
   addItem(cwd, 'CONST-restored');
+  // The tier CONST-restored is recorded under is only `restored` while the
+  // pinned tier has no room to take it first — see `capPinnedToTheOnePin`.
+  capPinnedToTheOnePin(cwd);
   writeSnapshot(root(cwd), 's1', ['CONST-restored']);
   buildSessionStartOutput(cwd, { source: 'compact', sessionId: 's1' });
 

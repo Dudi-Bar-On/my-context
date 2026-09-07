@@ -19,13 +19,14 @@
  */
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { existsSync, mkdirSync, mkdtempSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { readAudit, type AuditRecord } from '../../src/core/audit.ts';
 import { buildInjection } from '../../src/core/inject.ts';
 import { snapshotPath, writeSnapshot } from '../../src/core/ledger.ts';
-import { rebuild } from '../../src/core/rebuild.ts';
+import { loadLayer, rebuild } from '../../src/core/rebuild.ts';
+import { itemCost } from '../../src/core/select.ts';
 import { appendSeen, readSeen, seenFilePath, seenIds } from '../../src/core/seen-file.ts';
 import { Store } from '../../src/core/store.ts';
 import { resolveWorkspace } from '../../src/core/workspace.ts';
@@ -43,6 +44,33 @@ function sandbox(t: { after(fn: () => void): void }): string {
 
 function root(cwd: string): string {
   return resolveWorkspace(cwd).projectRoot!;
+}
+
+/**
+ * `budgets.pinned` sized to exactly the one pin, so the pinned tier has no
+ * room left over.
+ *
+ * Since `plan:budget seq:16` the pinned tier offers whatever room `always`
+ * items leave to governing items that are NOT `always` (`select`'s spare
+ * band), and every item this file writes is a `constraint` — a governing
+ * category. A fixture that pins one item and expects the other to arrive
+ * only through the RESTORE tier has to say the pinned tier had nothing left,
+ * or a compaction delivers it either way and the assertion stops being about
+ * the snapshot at all.
+ *
+ * Read from the product's own `itemCost` rather than typed, so a changed
+ * `renderItemBlock` cannot silently make room for two.
+ */
+function capPinnedToTheOnePin(cwd: string): void {
+  const projectRoot = root(cwd);
+  const pin = loadLayer(projectRoot, 'project').find((i) => i.always);
+  assert.ok(pin, 'the fixture must have a pin for the cap to be about');
+  const file = path.join(projectRoot, 'config.json');
+  const raw = JSON.parse(readFileSync(file, 'utf8')) as Record<string, unknown>;
+  const budgets = (raw.budgets ?? {}) as Record<string, number>;
+  raw.budgets = { ...budgets, pinned: itemCost(pin) };
+  writeFileSync(file, `${JSON.stringify(raw, null, 2)}
+`);
 }
 
 function addItem(cwd: string, id: string, opts: {
@@ -143,6 +171,10 @@ test('a clear removes the restore snapshot', (t) => {
   const cwd = sandbox(t);
   addItem(cwd, 'CONST-pinned', { always: true, body: 'Always applies.' });
   addItem(cwd, 'CONST-snap', { body: 'Snapshotted body.' });
+  // The last assertion below reads a compaction that must NOT bring
+  // CONST-snap back. It only says that while the pinned tier has no room to
+  // deliver it on its own account — see `capPinnedToTheOnePin`.
+  capPinnedToTheOnePin(cwd);
   writeSnapshot(root(cwd), 's1', ['CONST-snap']);
   assert.equal(existsSync(snapshotPath(root(cwd), 's1')), true);
 

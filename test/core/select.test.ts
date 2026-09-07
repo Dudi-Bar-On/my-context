@@ -87,7 +87,16 @@ test('pinned tier takes always:true regardless of scope', () => {
   // ctx.path deliberately does NOT match the pinned item's scope. Scope
   // matching is a later-plan (JIT tier) concern; the pinned tier must not
   // consult it at all.
-  const sel = select(items, { event: 'session-start', path: 'docs/x.md' }, CONFIG);
+  //
+  // `budgets.pinned` is exactly the pinned item's own cost, so the tier has
+  // nothing left over. Since `plan:budget seq:16` its LEFTOVER room is offered
+  // to governing items that are not `always` (`select`'s spare band), and
+  // CONST-plain is a `constraint` — a governing category. With a roomy budget
+  // it would arrive on the pinned tier too and this assertion would stop being
+  // about `always` at all. The subject here is that scope is not consulted;
+  // admission is the next test's.
+  const cfg = resolveConfig({ budgets: { pinned: itemCost(items[0]) } });
+  const sel = select(items, { event: 'session-start', path: 'docs/x.md' }, cfg);
   assert.deepEqual(sel.full.map((e) => e.item.id), ['CONST-pinned']);
   assert.equal(sel.full[0].tier, 'pinned');
 });
@@ -383,12 +392,16 @@ test('an item admitted in full is excluded from the index normative listing', ()
 });
 
 test('removing the redundant line frees index budget for an item previously behind "+N more"', () => {
-  const cfg = resolveConfig({ budgets: { index: 20, pinned: 1500 } });
   const items = [
     item({ id: 'CONST-a', always: true }), // admitted in full; no longer competes for index budget
     item({ id: 'CONST-b' }),
     item({ id: 'CONST-c' }),
   ];
+  // `budgets.pinned` is exactly CONST-a's own cost, where it used to be a
+  // roomy 1500: the pinned tier honours the pin and has nothing left for the
+  // spare band (`plan:budget seq:16`), so CONST-b and CONST-c still reach the
+  // index tier — which is the tier this test is about.
+  const cfg = resolveConfig({ budgets: { index: 20, pinned: itemCost(items[0]) } });
   const sel = select(items, { event: 'session-start' }, cfg);
   assert.deepEqual(sel.full.map((e) => e.item.id), ['CONST-a']);
   // Previously (redundancy included), CONST-a + CONST-b filled the 20-token
@@ -399,13 +412,16 @@ test('removing the redundant line frees index budget for an item previously behi
 });
 
 test('truncated still counts genuinely unlisted items after redundant lines are removed', () => {
-  const cfg = resolveConfig({ budgets: { index: 20, pinned: 1500 } });
   const items = [
     item({ id: 'CONST-a', always: true }), // admitted in full; excluded from index candidates
     item({ id: 'CONST-b' }),
     item({ id: 'CONST-c' }),
     item({ id: 'CONST-d' }),
   ];
+  // Exactly CONST-a's cost, for the reason the test above spells out: the
+  // spare band must have nothing to draw on for the index tier to be the one
+  // under test.
+  const cfg = resolveConfig({ budgets: { index: 20, pinned: itemCost(items[0]) } });
   const sel = select(items, { event: 'session-start' }, cfg);
   assert.deepEqual(sel.full.map((e) => e.item.id), ['CONST-a']);
   // Even with CONST-a removed from the candidate pool, three 10-token lines
