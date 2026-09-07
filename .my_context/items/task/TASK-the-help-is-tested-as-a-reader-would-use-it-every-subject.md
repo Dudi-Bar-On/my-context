@@ -5,8 +5,10 @@ title: the help is tested as a reader would use it, every subject, and every cla
 status: active
 severity: soft
 always: false
-summary: Every entry in the help is opened by a person and checked to be telling the truth, not merely to be drawing something.
-summary_of: f78432b0fe5b2969
+summary: Every entry in the help is opened by a person and checked to be telling the truth; the drawing half is now done and the truth half remains.
+summary_of: 777d6d99b65e2680
+summary_was:
+  - 2026-09-07 Every entry in the help is opened by a person and checked to be telling the truth, not merely to be drawing something.
 scope:
   - src/ui/read-model-cli-help.ts
   - src/ui/public/screens/cli-help.js
@@ -25,7 +27,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-09-06
 valid_until: null
-checksum: 682d0579c4b8ddca
+checksum: be35dbcd4658b475
 plan: library
 seq: "6"
 state: todo
@@ -83,3 +85,29 @@ apart on purpose. A test that lets those two blur is testing the wrong thing.
 HELD until the help stops moving: D24, D25 and D26 are in flight and each changes what a subject
 draws. Testing a surface mid-refactor produces a plan that is stale before it is executed - which
 is precisely what happened to D12.
+
+PARTLY LANDED 2026-09-07, AND THE ITEM CORRECTLY STAYS OPEN. A lane reported this done and I
+repeated that to the owner in a progress table. Reading this item's own bar afterwards, that was
+wrong in the direction that flatters the lane, and the correction is his to have.
+
+WHAT LANDED, and it is real: `e2e/cli-help.spec.ts`, NINE tests run in BOTH languages -- the
+picker offers every subject the endpoint serves in four groups; no subject opens the page sideways;
+a command line opens at the command's own name; every topic is drawn as a document with headings;
+every kind draws its own shape and an absence is a sentence; a cross-reference moves the picker; no
+sentence loses its own punctuation. That last one found 552 of 1,073 Hebrew sentences rendering
+their closing punctuation DETACHED, 70px from the letter before it -- found by looking at a picture
+after three suites passed, which is this item's whole thesis.
+
+WHAT IS NOT DONE, which is the bar above: every subject OPENED and every SECTION the skeleton
+promises it, with each claim COMPARED AGAINST THE DERIVATION IT CAME FROM AND FOUND EQUAL. Nine
+structural tests over the roster are not 166 subjects checked for truth. The flag names, formats,
+examples, notes, argument hints, tool arguments and enum values are still unverified against what
+the product answers when asked, and the refusal surface (`help cli` withheld by design, 400 for an
+unknown kind, 404 for an unknown id, never blurred) is untested.
+
+SO THE REMAINING WORK IS THE TRUTH HALF, not the render half. The render half is done and its spec
+is committed and green at 14/14.
+
+AND ONE THING THE SPEC TAUGHT that the next lane needs: its first failure was a RACE, not a
+fixture. The test waited on the pane, which still held the PREVIOUS topic's headings, instead of on
+`.topicbody`, which is what the measurement reads. Wait on the element you measure.
