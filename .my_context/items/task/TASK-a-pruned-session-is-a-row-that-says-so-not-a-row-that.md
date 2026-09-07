@@ -5,8 +5,10 @@ title: a pruned session is a row that says so, not a row that vanishes
 status: active
 severity: soft
 always: false
-summary: When the original transcript file is deleted, the archive should show that it is gone rather than quietly forgetting the session existed.
-summary_of: 36042a75cd5b134e
+summary: A session whose file is deleted disappears from the list unless it was kept, and a kept session is copied out as it grows so nothing is lost.
+summary_of: fdeaecf0b4d98628
+summary_was:
+  - 2026-09-07 When the original transcript file is deleted, the archive should show that it is gone rather than quietly forgetting the session existed.
 scope:
   - src/ui/**
   - src/core/conversation-index.ts
@@ -24,7 +26,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-09-07
 valid_until: null
-checksum: 0203de4c2d80324b
+checksum: cb8e3bfa93ee7707
 plan: archive
 seq: "11"
 state: todo
@@ -59,3 +61,30 @@ AND SAY THE SECURITY SENTENCE WHILE IN HERE, because it is the same spec section
 OWN HELP." The help today says the opposite kind of thing - "nothing here enters your repository" -
 and there are zero mentions of sensitivity, pasted secrets or the local port across all 30 conv.*
 keys.
+
+
+─────────────────────────────────────────────────────────────────────────────
+OWNER RULING 2026-09-07: THE CODE IS RIGHT AND THE TITLE OF THIS ITEM IS WRONG.
+─────────────────────────────────────────────────────────────────────────────
+
+He was shown both sides and chose DELETING the row. Everything above stands as the RECORD of the
+contradiction and of how it was found; it no longer states what to build. The spec sentence "a pruned
+transcript is a broken row in the index" is SUPERSEDED by this ruling.
+
+SO: removeMissing stays. The list shows ONLY sessions that still exist - and, once persistence is
+built, sessions that were marked to persist. The unreachable read half (present:false, missing,
+conv.pruned, conv.missingSome, conv.prunedBody and the 200-body branch in read-model-conversations
+.ts) becomes DEAD CODE to remove rather than a state to make reachable. Removing it is this task.
+
+AND THE HELP TEXT THAT TOOK THE DELETING SIDE IS NOW CORRECT: "A session your machine has deleted is
+gone from here too - that is the cost of not copying." Keep it. It is one string above conv.pruned,
+which said the reverse; conv.pruned is what goes.
+
+THE SECURITY SENTENCE STILL BELONGS HERE and is unaffected by the ruling: the spec says the archive
+widens what a leaked nonce would show and "that should be said out loud in the feature own help". The
+help today says the opposite kind of thing - "nothing here enters your repository" - and there are
+zero mentions of sensitivity, pasted secrets or the local port across all 30 conv.* keys.
+
+WHAT REPLACES THE BROKEN ROW is his own better answer, and it is now plan:archive seq:4 and seq:5:
+PERSISTENCE, which is a live mirror rather than a snapshot. Read those two before starting here, so
+the dead code is removed with the replacement understood rather than merely deleted.
