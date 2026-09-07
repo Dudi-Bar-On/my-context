@@ -1,3 +1,4 @@
+// @basis TASK-code-and-tests-that-speak-with-a-retired-item-s-authority, RULE-a-test-names-the-items-it-rests-on-or-says-it-rests-on-none
 /**
  * **The retired-authority check, proved by planting what it must name.**
  *
@@ -76,7 +77,10 @@ function corpusOf(items: Item[]): Corpus {
   const byId = new Map(items.map((i) => [i.id, i]));
   const ids = [...byId.keys()].sort();
   return {
-    lanes: new Map(), plans: new Set(), ids, byId,
+    // Both lane indexes empty: nothing here asks a lane question, and a
+    // `readCorpus` that grew a second one for retired work (`check-handover`'s
+    // RETIRED tier) must not silently change what these plants mean.
+    lanes: new Map(), retiredLanes: new Map(), plans: new Set(), ids, byId,
     prefixes: new Set(ids.map((id) => id.split('-')[0]!)),
   };
 }

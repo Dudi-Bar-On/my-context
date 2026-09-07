@@ -59,11 +59,39 @@
  * written by an assistant with no room left to check it, and it is exactly the
  * class of claim that gets copied forward six times.
  *
- * ── THE TWO TIERS, AND WHY THE LINE IS WHERE IT IS ──────────────────────────
+ * ── THE THREE TIERS, AND WHY THE LINES ARE WHERE THEY ARE ───────────────────
  *
  * **DANGLING is GATED.** A pointer nothing answers to is binary, cheap to
  * repair, and has one honest reading. It was measured at ZERO the day this
  * landed, so gating it costs nothing today and catches the first one tomorrow.
+ *
+ * **RETIRED is REPORTED and never gates**, and it was added the day this check
+ * went red for a reason that was not a defect. Owner ruling 2026-09-07 retired
+ * seven `walk` tasks with successors; four of them — `walk/3`, `walk/16`,
+ * `walk/21`, `walk/131` — are named in handover blocks written before the
+ * ruling, and this check called each one *"no task answers to it"* and failed
+ * the build.
+ *
+ * **The verdict was wrong in the exact way this project spent that day
+ * measuring.** A RETIRED item EXISTS: it has a file, a status, and — because
+ * the retirement was done properly — a `superseded_by` edge naming what
+ * replaced it. Calling it *nothing* conflates RETIRED with ABSENT, the
+ * conflation `TASK-code-and-tests-that-speak-with-a-retired-item-s-authority`
+ * was filed about and the one `scripts/check-cited-items.ts` deliberately does
+ * not make. **The mechanism was mechanical, not editorial:** a lane resolves
+ * through `buildTaskIndex`, which walks `workItems` — ACTIVE work only — so a
+ * superseded task leaves the index, the key has no bucket, and the pointer
+ * reads as invented. `readCorpus` now builds a SECOND index over the retired
+ * work items, consulted only when the active one is empty.
+ *
+ * **And it must not gate, for the reason the handover exists at all.** The
+ * handover is a HISTORICAL document, appended to at every percent. A block
+ * written in the morning that names a lane retired in the afternoon WAS TRUE
+ * WHEN WRITTEN and is still the record of what happened. Gating on it would
+ * force either rewriting history to go green or never retiring anything a
+ * handover has mentioned — and the second is how a corpus quietly stops
+ * retiring things at all. Same shape, one layer up, as the ruling that
+ * `check-cited-items` reports rather than gates.
  *
  * **CARRIED is REPORTED and never gates.** "This instruction has been repeated
  * five times and its task is still open" is a judgement about the work, not a
@@ -123,14 +151,18 @@
  *     node scripts/check-handover.ts --carried 3   # lower the repetition floor
  *     node scripts/check-handover.ts reports/OTHER.md
  *
- * Exit 0 when every pointer resolves. Exit 1 when one does not. Repetition
- * never sets the exit code.
+ * Exit 0 when every pointer resolves. Exit 1 when one does not. Neither
+ * repetition nor retirement ever sets the exit code.
  */
 import { readFileSync } from 'node:fs';
 import path from 'node:path';
 import { loadLayer, type LoadError } from '../src/core/rebuild.ts';
 import { isMainEntry } from '../src/core/paths.ts';
-import { buildTaskIndex, DONE_STATE, taskState, workItems } from '../src/core/needs.ts';
+import {
+  buildTaskIndex, DONE_STATE, isWorkCategory, taskKey, taskState, workItems,
+} from '../src/core/needs.ts';
+import { RETIRED_STATUSES } from '../src/core/select.ts';
+import { SUPERSEDED_BY } from '../src/core/relations.ts';
 import { resolveWorkspace } from '../src/core/workspace.ts';
 import type { Item } from '../src/core/types.ts';
 
@@ -176,13 +208,42 @@ export const ITEM_ID = /\b([A-Z][A-Z0-9]{1,9})-([a-z0-9][a-z0-9-]{3,})/g;
 
 export type Kind = 'lane' | 'item';
 
+/**
+ * What a pointer resolved to when what it named had been RETIRED.
+ *
+ * Carried on the pointer rather than derived at print time so that `--json`
+ * and the human report say the same thing, and so a test can assert the
+ * successor by id without re-walking the corpus.
+ */
+export interface Retirement {
+  /** The retired items answering to the key, with the status that retired each. */
+  items: Array<{ id: string; status: string }>;
+  /**
+   * `superseded_by` followed to the end, first hop first. EMPTY is a real and
+   * different answer: the corpus holds no edge from the retired item back to
+   * what replaced it, so the reader is told the work was retired and told that
+   * nothing records a successor — which is a fact about the corpus, not a
+   * dangling pointer.
+   */
+  chain: Array<{ id: string; retired: boolean }>;
+}
+
 /** One pointer, and every block it was written in. */
 export interface Pointer {
   kind: Kind;
   /** Exactly as written, so a finding can be grepped for. */
   raw: string;
-  /** What it resolved to, or `null`. For an item, the full id. */
+  /**
+   * What it resolved to, or `null`. For an item, the full id.
+   *
+   * **A retired lane resolves.** `resolved === null` is the definition of
+   * DANGLING and it keeps its old meaning exactly: nothing in the corpus
+   * answers to this name. A pointer at retired work resolves to its key and
+   * carries `retired`.
+   */
   resolved: string | null;
+  /** Set when the thing it names was retired. `null` otherwise. */
+  retired: Retirement | null;
   /** Why it did not resolve, when it did not. */
   why: string | null;
   /** Distinct block indices, newest first, that carry it. */
@@ -224,9 +285,43 @@ export function blockOf(blocks: Block[], line: number): number {
 }
 
 export interface Corpus {
-  /** `plan/seq` → the items answering to it. */
+  /** `plan/seq` → the ACTIVE items answering to it. */
   lanes: Map<string, Item[]>;
-  /** Every plan name the corpus uses. */
+  /**
+   * `plan/seq` → the RETIRED items answering to it, and the reason this index
+   * exists at all.
+   *
+   * `buildTaskIndex` walks `workItems`, which drops `status: superseded` —
+   * correctly, for its own question, which is "what is still owed". Asked
+   * INSTEAD as "does this pointer name anything", that index answers no for a
+   * task that was deliberately replaced, and the pointer reads as invented.
+   * The two questions are different and now have two indexes.
+   *
+   * Keyed the same way and built over the same categories. When a key is in
+   * BOTH the ACTIVE bucket wins and this one is never consulted, because live
+   * work is what a reader of the handover needs.
+   *
+   * **The two sets are not complements, measured:** `RETIRED_STATUSES` is
+   * `superseded`, `deprecated`, `validated`, while `workItems` drops only
+   * `superseded` — deliberately, on the stated ground that a cancelled task
+   * should keep RESOLVING so it stays visible rather than reading as a typo.
+   * So a `deprecated` lane never left the active index, was never reported as
+   * dangling, and reaches no gate that needs answering; only `superseded`
+   * actually falls through to here today. It is keyed on `RETIRED_STATUSES`
+   * regardless, so that if `workItems` ever widens, those pointers become
+   * RETIRED rather than DANGLING on the same day instead of reddening HEAD the
+   * way this tier was written to stop.
+   */
+  retiredLanes: Map<string, Item[]>;
+  /**
+   * Every plan name the corpus uses, retired plans included.
+   *
+   * A `word/number` whose left half is no plan is not read as a lane at all
+   * (see `scan`). Building this from the active index alone would make a plan
+   * whose every task has been retired INVISIBLE rather than RETIRED — the same
+   * conflation one level up, and the one that would let a whole retired plan's
+   * pointers slip past unreported instead of being named.
+   */
   plans: Set<string>;
   /** Every item id, sorted, for prefix resolution. */
   ids: string[];
@@ -237,13 +332,65 @@ export interface Corpus {
 
 export function readCorpus(items: Item[], config: Parameters<typeof buildTaskIndex>[1]): Corpus {
   const lanes = buildTaskIndex(items, config);
+  const retiredLanes = new Map<string, Item[]>();
+  for (const item of items) {
+    if (!RETIRED_STATUSES.has(item.status)) continue;
+    if (!isWorkCategory(config, item.type)) continue;
+    const key = taskKey(item);
+    if (key === null) continue;
+    const bucket = retiredLanes.get(key);
+    if (bucket === undefined) retiredLanes.set(key, [item]);
+    else bucket.push(item);
+  }
   const plans = new Set<string>();
   for (const key of lanes.keys()) plans.add(key.split('/')[0]!);
+  for (const key of retiredLanes.keys()) plans.add(key.split('/')[0]!);
   const byId = new Map<string, Item>();
   for (const item of items) byId.set(item.id, item);
   const ids = [...byId.keys()].sort();
   const prefixes = new Set(ids.map((id) => id.split('-')[0]!));
-  return { lanes, plans, ids, byId, prefixes };
+  return { lanes, retiredLanes, plans, ids, byId, prefixes };
+}
+
+/**
+ * **The successor, followed to the end rather than one hop.**
+ *
+ * `supersedeItem` writes both directions — `supersedes` on the replacement,
+ * `superseded_by` on the item it retires — and caps the back edge at one, so
+ * "what replaced this?" has exactly one answer and reading the back edge is
+ * reading the corpus's own record.
+ *
+ * **One hop is not enough, measured in this corpus:** a successor can itself
+ * have been superseded since, and a report naming only the first hop sends the
+ * reader to a second retired item with no reason to doubt it — which is the
+ * defect this whole tier exists to end, reproduced by the tier itself.
+ *
+ * `seen` is not defensive decoration. The cap is one back-edge per ITEM, not
+ * one per corpus, so a cycle is expressible in hand-edited files even though no
+ * command writes one, and an unguarded walk would hang here rather than report.
+ *
+ * **Why this is a copy of `successorChain` in `scripts/check-cited-items.ts`
+ * and not an import.** That script already imports `readCorpus`, `resolveId`
+ * and `ITEM_ID` FROM THIS FILE; importing back would make the two gates a
+ * module cycle, and a cycle between two checkers is a thing that works until
+ * one of them grows module-level state. If a third caller ever needs this walk,
+ * its home is `src/core/relations.ts` beside `SUPERSEDED_BY`, and both copies
+ * should move there together.
+ */
+export function successorChain(item: Item, byId: Map<string, Item>): Item[] {
+  const chain: Item[] = [];
+  const seen = new Set<string>([item.id]);
+  let cursor: Item | undefined = item;
+  while (cursor !== undefined) {
+    const edge = cursor.relations.find((r) => r.type === SUPERSEDED_BY);
+    if (edge === undefined || seen.has(edge.target)) break;
+    seen.add(edge.target);
+    const next = byId.get(edge.target);
+    if (next === undefined) break;
+    chain.push(next);
+    cursor = RETIRED_STATUSES.has(next.status) ? next : undefined;
+  }
+  return chain;
 }
 
 /**
@@ -301,7 +448,7 @@ export function scan(text: string, blocks: Block[], corpus: Corpus): Pointer[] {
 
   const note = (
     kind: Kind, raw: string, line: number,
-    resolve: () => { resolved: string | null; why: string | null; open: boolean | null; states: string[] },
+    resolve: () => Omit<Pointer, 'kind' | 'raw' | 'line' | 'blocks'>,
   ): void => {
     const key = `${kind}:${raw}`;
     let p = found.get(key);
@@ -326,13 +473,46 @@ export function scan(text: string, blocks: Block[], corpus: Corpus): Pointer[] {
       note('lane', key, line, () => {
         const bucket = corpus.lanes.get(key);
         if (bucket === undefined || bucket.length === 0) {
-          return { resolved: null, why: 'no task answers to it', open: null, states: [] };
+          // **Asked of the retired index BEFORE it is called dangling**, and
+          // the order is the whole fix. A task the owner replaced is not a
+          // pointer into nothing; it is a pointer at work with a successor,
+          // and saying so is a different sentence with a different exit code.
+          const retiredBucket = corpus.retiredLanes.get(key);
+          if (retiredBucket !== undefined && retiredBucket.length > 0) {
+            const chain: Array<{ id: string; retired: boolean }> = [];
+            for (const it of retiredBucket) {
+              for (const step of successorChain(it, corpus.byId)) {
+                // Deduped ACROSS the bucket: a key can hold more than one
+                // retired task and they are often superseded by the same
+                // successor, which the reader needs named once.
+                if (!chain.some((c) => c.id === step.id)) {
+                  chain.push({ id: step.id, retired: RETIRED_STATUSES.has(step.status) });
+                }
+              }
+            }
+            return {
+              resolved: key,
+              why: null,
+              retired: {
+                items: retiredBucket.map((it) => ({ id: it.id, status: it.status })),
+                chain,
+              },
+              // Retired work is not OPEN work. `open: null` is this field's
+              // existing reading of "nothing here can be closed", so a retired
+              // lane repeated across five blocks is never reported as an
+              // instruction that will not land — because it has already been
+              // answered, by being replaced.
+              open: null,
+              states: [],
+            };
+          }
+          return { resolved: null, why: 'no task answers to it', retired: null, open: null, states: [] };
         }
         const states = bucket.map((it) => taskState(it) || 'no state');
         // Satisfied only when EVERY item under the key is done — the same
         // reading `refStatus` takes, and the one that cannot under-report.
         const open = bucket.some((it) => taskState(it) !== DONE_STATE);
-        return { resolved: key, why: null, open, states };
+        return { resolved: key, why: null, retired: null, open, states };
       });
     }
     for (const m of text_.matchAll(ITEM_ID)) {
@@ -340,12 +520,24 @@ export function scan(text: string, blocks: Block[], corpus: Corpus): Pointer[] {
       if (resolveId(corpus, written).skip) continue;
       note('item', written, line, () => {
         const { id, why } = resolveId(corpus, written);
-        if (id === null) return { resolved: null, why, open: null, states: [] };
+        if (id === null) return { resolved: null, why, retired: null, open: null, states: [] };
         const item = corpus.byId.get(id)!;
         const state = taskState(item);
         return {
           resolved: id,
           why: null,
+          // **`retired` is a LANE verdict only, deliberately, and the asymmetry
+          // is the point rather than an oversight.** An item id resolves
+          // through `byId`, which holds EVERY item including the retired ones,
+          // so a retired item id has never been reported as dangling here and
+          // no red gate is being answered. Adding the tier for items would
+          // print a finding per retired id in a 3,300-line historical document
+          // that nobody is asked to repair — the wall this script's own header
+          // refuses for the file-path check, for the same reason. Source files
+          // citing retired items ARE reported, by `check-cited-items.ts`,
+          // because a live comment speaks with present authority and a handover
+          // block written in August does not.
+          retired: null,
           // No `state` means nothing to close. A decision or a requirement
           // repeated across blocks is a standing fact being restated, not an
           // instruction that cannot land, and reporting it would bury the
@@ -436,6 +628,7 @@ function main(): number {
   const pointers = scan(text, blocks, corpus);
 
   const dangling = pointers.filter((p) => p.resolved === null);
+  const retired = pointers.filter((p) => p.retired !== null);
   const carried = pointers
     .filter((p) => p.open === true && p.blocks.length >= carriedAt)
     .sort((a, b) => b.blocks.length - a.blocks.length);
@@ -450,6 +643,11 @@ function main(): number {
       items: pointers.filter((p) => p.kind === 'item').length,
       carriedFloor: carriedAt,
       dangling: dangling.map((p) => ({ kind: p.kind, raw: p.raw, line: p.line, why: p.why })),
+      retired: retired.map((p) => ({
+        kind: p.kind, raw: p.raw, line: p.line,
+        items: p.retired!.items,
+        successors: p.retired!.chain,
+      })),
       carried: carried.map((p) => ({
         kind: p.kind, raw: p.raw, line: p.line, resolved: p.resolved,
         blocks: p.blocks.length, states: p.states,
@@ -463,6 +661,24 @@ function main(): number {
     out(`DANGLING ${rel}:${p.line}`);
     out(`         ${p.kind === 'lane' ? 'lane' : 'item'} ${p.raw}`);
     out(`         ${p.why}`);
+  }
+  // Printed under the same `--quiet` rule as CARRIED, for the same reason: a
+  // retirement is never a failure, so it is silent on a clean quiet run.
+  for (const p of quiet && dangling.length === 0 ? [] : retired) {
+    const r = p.retired!;
+    out(`RETIRED  ${rel}:${p.line}`);
+    out(`         ${p.kind === 'lane' ? 'lane' : 'item'} ${p.raw} → `
+      + `${r.items.map((i) => `${i.id} [${i.status}]`).join(', ')}`);
+    if (r.chain.length === 0) {
+      out('         NO SUCCESSOR RECORDED — the corpus holds no `superseded_by` edge from it,');
+      out('         so what replaced this work is not written down anywhere.');
+    } else {
+      let indent = '         superseded by ';
+      for (const c of r.chain) {
+        out(`${indent}${c.id}${c.retired ? '  [RETIRED TOO]' : ''}`);
+        indent = '                   then ';
+      }
+    }
   }
   // `--quiet` is "print only on failure", and a carry is never a failure. It
   // still prints alongside a real failure, because a dangling pointer and a
@@ -478,8 +694,20 @@ function main(): number {
     out(`${lines.length} line(s), ${blocks.length} block(s) · ${pointers.length} distinct pointer(s): `
       + `${pointers.filter((p) => p.kind === 'lane').length} lane, `
       + `${pointers.filter((p) => p.kind === 'item').length} item · `
-      + `${dangling.length} resolving to nothing`);
+      + `${dangling.length} resolving to nothing, `
+      + `${retired.length} naming retired work`);
     if (dangling.length === 0) out('every pointer in the handover names something that exists.');
+    if (retired.length > 0) {
+      out('');
+      out(`${retired.length} pointer(s) name work that was RETIRED with a successor. `
+        + 'REPORTED, never gated: the handover is a historical document, and a block written '
+        + 'before a retirement was true when it was written. Gating on it would force either '
+        + 'rewriting the record of a past session or never retiring anything a handover has '
+        + 'mentioned, and the second is how a corpus quietly stops retiring things at all. '
+        + 'A retired item EXISTS — it has a file, a status, and an edge naming what replaced '
+        + 'it — and calling that "nothing" is the retired/absent conflation this project ruled '
+        + 'against in TASK-code-and-tests-that-speak-with-a-retired-item-s-authority.');
+    }
     if (carried.length > 0) {
       out('');
       out(`${carried.length} instruction(s) carried into ${carriedAt}+ blocks with the work still open. `

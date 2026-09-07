@@ -1,3 +1,4 @@
+// @basis TASK-a-handover-pointer-at-a-retired-lane-is-not-dangling-and-the, TASK-code-and-tests-that-speak-with-a-retired-item-s-authority, RULE-a-test-names-the-items-it-rests-on-or-says-it-rests-on-none
 /**
  * **The handover truth check, proved by planting what it must refuse.**
  *
@@ -28,19 +29,26 @@
  */
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { readFileSync, existsSync } from 'node:fs';
+import { readFileSync, existsSync, mkdtempSync, writeFileSync } from 'node:fs';
+import { execFileSync } from 'node:child_process';
+import { tmpdir } from 'node:os';
 import { fileURLToPath } from 'node:url';
 import path from 'node:path';
 import { loadLayer } from '../../src/core/rebuild.ts';
 import { resolveWorkspace } from '../../src/core/workspace.ts';
+import { RETIRED_STATUSES } from '../../src/core/select.ts';
+import { SUPERSEDED_BY } from '../../src/core/relations.ts';
 import {
   BLOCK_HEAD, DEFAULT_DOC, ITEM_ID, LANE,
-  blockOf, parseArgs, readBlocks, readCorpus, resolveId, scan,
+  blockOf, parseArgs, readBlocks, readCorpus, resolveId, scan, successorChain,
   type Corpus, type Pointer,
 } from '../../scripts/check-handover.ts';
+import { removeTree } from '../helpers/tmp.ts';
+import type { Item } from '../../src/core/types.ts';
 
 const REPO = path.resolve(fileURLToPath(new URL('.', import.meta.url)), '..', '..');
 const HANDOVER = path.join(REPO, ...DEFAULT_DOC.split('/'));
+const SCRIPT = path.join(REPO, 'scripts', 'check-handover.ts');
 
 const ws = resolveWorkspace(REPO);
 const CORPUS: Corpus | null = ws.projectRoot === null
@@ -139,6 +147,199 @@ test('a shortening that names more than one item is reported, not guessed', () =
   const { id, why } = resolveId(CORPUS!, 'TASK-the-handover');
   assert.equal(id, null);
   assert.match(why ?? '', /items start with it/);
+});
+
+// ── 1b. A pointer at RETIRED work is not dangling ──────────────────────────
+
+/**
+ * **This tier was added the day the gate went red for a reason that was not a
+ * defect.** The owner retired seven `walk` tasks with successors; four of them
+ * are named in handover blocks written before the ruling, and the check called
+ * each *"no task answers to it"* and failed the build. A retired item EXISTS —
+ * file, status, and a `superseded_by` edge naming its replacement — and calling
+ * that "nothing" is the retired/absent conflation this project ruled against.
+ *
+ * Every test below is written against a SYNTHETIC corpus wherever it needs an
+ * exact shape, and against the REAL one wherever the claim is about this
+ * repository. The synthetic ones cannot go quietly vacuous: each asserts the
+ * plant it depends on is really in the index it was built for.
+ */
+
+/** A minimal item, so a plant names only the fields the check reads. */
+function fakeTask(
+  id: string, status: string, plan: string, seq: string,
+  relations: Item['relations'] = [], state = 'todo',
+): Item {
+  return {
+    id, type: 'task', title: `title of ${id}`, status: status as Item['status'],
+    severity: 'soft', always: false, continuity: false, summary: null, summaryOf: null,
+    summaryWas: [], acknowledged: {}, scope: [], tags: [], origin: 'human',
+    sourceFile: null, sourceAnchor: null, sourceChecksum: null, validFrom: null,
+    validUntil: null, checksum: 'x', extra: { plan, seq, state }, body: '', steps: [],
+    observations: [], relations, layer: 'project', filePath: `items/task/${id}.md`,
+  };
+}
+
+/** Shape a corpus out of plants with the REAL `readCorpus`, not a hand-built literal. */
+function corpusOf(items: Item[]): Corpus {
+  assert.ok(ws.config !== undefined, 'the workspace config must load');
+  return readCorpus(items, ws.config);
+}
+
+function scanAgainst(body: string, corpus: Corpus): Pointer[] {
+  const lines = body.split('\n');
+  return scan(body, readBlocks(lines), corpus);
+}
+
+test('a lane whose only task was retired is RETIRED, naming its successor', () => {
+  const corpus = corpusOf([
+    fakeTask('TASK-plant-the-retired-one', 'superseded', 'plant', '7',
+      [{ type: SUPERSEDED_BY, target: 'TASK-plant-the-successor' }]),
+    fakeTask('TASK-plant-the-successor', 'active', 'plant', '8'),
+  ]);
+  // Anti-vacuity: the plant must really be out of the ACTIVE index and in the
+  // retired one, or everything below is asserting about a lane that resolved
+  // normally.
+  assert.equal(corpus.lanes.get('plant/7'), undefined);
+  assert.ok(corpus.retiredLanes.has('plant/7'));
+
+  const p = find(scanAgainst('finish `plant/7` next', corpus), 'plant/7');
+  assert.ok(p !== undefined, 'a retired lane must still be read as a lane');
+  // The whole ruling in one assertion: it RESOLVES, so it is not DANGLING.
+  assert.equal(p.resolved, 'plant/7');
+  assert.equal(p.why, null);
+  assert.notEqual(p.retired, null);
+  assert.deepEqual(p.retired!.items, [
+    { id: 'TASK-plant-the-retired-one', status: 'superseded' },
+  ]);
+  assert.deepEqual(p.retired!.chain, [
+    { id: 'TASK-plant-the-successor', retired: false },
+  ]);
+});
+
+test('a successor that was itself retired is followed to the end of the chain', () => {
+  // One hop is not enough: a report naming only the first hop sends the reader
+  // to a second retired item and gives them no reason to doubt it, which is
+  // the defect this tier exists to end, reproduced by the tier itself.
+  const corpus = corpusOf([
+    fakeTask('TASK-plant-hop-zero', 'superseded', 'plant', '1',
+      [{ type: SUPERSEDED_BY, target: 'TASK-plant-hop-one' }]),
+    fakeTask('TASK-plant-hop-one', 'superseded', 'plant', '2',
+      [{ type: SUPERSEDED_BY, target: 'TASK-plant-hop-two' }]),
+    fakeTask('TASK-plant-hop-two', 'active', 'plant', '3'),
+  ]);
+  const p = find(scanAgainst('see `plant/1`', corpus), 'plant/1');
+  assert.ok(p !== undefined);
+  assert.deepEqual(p.retired!.chain, [
+    { id: 'TASK-plant-hop-one', retired: true },
+    { id: 'TASK-plant-hop-two', retired: false },
+  ]);
+});
+
+test('a retirement with no successor recorded says so, and is still not dangling', () => {
+  const corpus = corpusOf([fakeTask('TASK-plant-orphan', 'superseded', 'plant', '9')]);
+  const p = find(scanAgainst('see `plant/9`', corpus), 'plant/9');
+  assert.ok(p !== undefined);
+  assert.equal(p.resolved, 'plant/9');
+  // Empty is a real and different answer — "retired, and nothing records what
+  // replaced it" — not the same claim as "nothing answers to this name".
+  assert.deepEqual(p.retired!.chain, []);
+  assert.deepEqual(p.retired!.items, [{ id: 'TASK-plant-orphan', status: 'superseded' }]);
+});
+
+/**
+ * **`deprecated` is retired to the corpus and LIVE to the lane index, and the
+ * difference is deliberate on both sides.** A first draft of the test above
+ * planted a `deprecated` task and asserted a RETIRED verdict; it failed,
+ * correctly, and the failure is worth pinning rather than deleting.
+ *
+ * `RETIRED_STATUSES` is `superseded`, `deprecated`, `validated` — the set the
+ * injector filters on. `workItems` drops only `superseded`, on the stated
+ * ground that a cancelled task should keep RESOLVING so it stays visible and
+ * addressable rather than reading as a typo. So a deprecated lane never left
+ * the active index, was never reported as dangling, and reaches no gate that
+ * needs answering. The RETIRED tier is therefore reached only by `superseded`
+ * today — and it is keyed on `RETIRED_STATUSES` anyway, so that if `workItems`
+ * ever widens, the pointer becomes RETIRED rather than DANGLING on the same
+ * day.
+ */
+test('a deprecated lane still resolves as live work, and is not re-labelled RETIRED', () => {
+  const corpus = corpusOf([fakeTask('TASK-plant-cancelled', 'deprecated', 'plant', '10')]);
+  assert.ok(corpus.lanes.has('plant/10'), 'workItems keeps deprecated work in the active index');
+  assert.ok(corpus.retiredLanes.has('plant/10'), 'and RETIRED_STATUSES still counts it retired');
+  const p = find(scanAgainst('see `plant/10`', corpus), 'plant/10');
+  assert.ok(p !== undefined);
+  assert.equal(p.resolved, 'plant/10');
+  // The active bucket wins, so nothing about the existing reading changed.
+  assert.equal(p.retired, null);
+  assert.equal(p.open, true);
+});
+
+test('a live task under a key wins over a retired one sharing it', () => {
+  const corpus = corpusOf([
+    fakeTask('TASK-plant-the-dead', 'superseded', 'plant', '4',
+      [{ type: SUPERSEDED_BY, target: 'TASK-plant-the-live' }]),
+    fakeTask('TASK-plant-the-live', 'active', 'plant', '4'),
+  ]);
+  const p = find(scanAgainst('do `plant/4`', corpus), 'plant/4');
+  assert.ok(p !== undefined);
+  assert.equal(p.resolved, 'plant/4');
+  // Live work is what a reader of the handover needs. The retired tier is
+  // consulted ONLY when the active index is empty.
+  assert.equal(p.retired, null);
+  assert.equal(p.open, true);
+});
+
+test('a retired lane repeated across blocks is never reported as a stuck instruction', () => {
+  const corpus = corpusOf([
+    fakeTask('TASK-plant-retired-carried', 'superseded', 'plant', '5',
+      [{ type: SUPERSEDED_BY, target: 'TASK-plant-carried-successor' }]),
+    fakeTask('TASK-plant-carried-successor', 'active', 'plant', '6'),
+  ]);
+  const doc = ['## ⏭ a', 'do `plant/5`', '## ⏭ b', 'do `plant/5`', '## ⏭ c', 'do `plant/5`'].join('\n');
+  const p = find(scanAgainst(doc, corpus), 'plant/5');
+  assert.ok(p !== undefined);
+  assert.equal(p.blocks.length, 3, 'the repetition must actually be seen, or this test proves nothing');
+  // `open` is the field CARRIED filters on. Retired work is not open work: it
+  // has already been answered, by being replaced.
+  assert.equal(p.open, null);
+});
+
+test('a plan whose every task was retired is still read as a plan', () => {
+  // Building the plan set from the ACTIVE index alone would make such a lane
+  // INVISIBLE rather than RETIRED — the same conflation one level up, and one
+  // that hides pointers instead of naming them.
+  const corpus = corpusOf([fakeTask('TASK-plant-only-retired', 'superseded', 'gonezo', '1')]);
+  assert.ok(corpus.plans.has('gonezo'));
+  const p = find(scanAgainst('see `gonezo/1`', corpus), 'gonezo/1');
+  assert.ok(p !== undefined, 'a lane in an all-retired plan must not vanish from the report');
+  assert.notEqual(p.retired, null);
+});
+
+test('successorChain stops on a cycle rather than hanging', () => {
+  // The back-edge cap is one per ITEM, not one per corpus, so a cycle is
+  // expressible in hand-edited files even though no command writes one.
+  const a = fakeTask('TASK-plant-cycle-a', 'superseded', 'plant', '20',
+    [{ type: SUPERSEDED_BY, target: 'TASK-plant-cycle-b' }]);
+  const b = fakeTask('TASK-plant-cycle-b', 'superseded', 'plant', '21',
+    [{ type: SUPERSEDED_BY, target: 'TASK-plant-cycle-a' }]);
+  const byId = new Map([[a.id, a], [b.id, b]]);
+  assert.deepEqual(successorChain(a, byId).map((i) => i.id), ['TASK-plant-cycle-b']);
+});
+
+test('the real corpus holds retired work items, and they are indexed as retired', () => {
+  // Anti-vacuity over the REAL corpus: if this index were empty, every claim
+  // above would be about a mechanism this repository never exercises, and the
+  // four `walk` lanes that reddened the gate would be back to DANGLING with
+  // nothing here to notice.
+  assert.ok(CORPUS !== null);
+  assert.ok(CORPUS.retiredLanes.size > 0, 'no retired work item carries a plan/seq at all');
+  for (const [key, bucket] of CORPUS.retiredLanes) {
+    assert.ok(bucket.length > 0, `${key} was indexed with an empty bucket`);
+    for (const it of bucket) {
+      assert.ok(RETIRED_STATUSES.has(it.status), `${it.id} is under ${key} but is not retired`);
+    }
+  }
 });
 
 // ── 2. What it must NOT refuse, which is where a checker dies ──────────────
@@ -292,4 +493,71 @@ test('ITEM_ID reads an id whether or not it is backticked', () => {
   const got = [...'`DEC-one-two-three` and REQ-four-five-six'.matchAll(ITEM_ID)]
     .map((m) => `${m[1]}-${m[2]}`);
   assert.deepEqual(got, ['DEC-one-two-three', 'REQ-four-five-six']);
+});
+
+// ── 6. THE EXIT CODE, run as a process, because that is what a gate is ─────
+
+/**
+ * **The anti-vacuity question the RETIRED tier had to answer before it landed:
+ * after teaching the check that a retired lane resolves, would it still fail on
+ * a genuinely invented pointer?**
+ *
+ * `scan` returning `resolved: null` is not the same claim as the gate exiting
+ * 1, and only the second is what CI reads. So these two run the real script as
+ * a child process against a planted document and assert the STATUS, which is
+ * the only thing that can go quietly permissive.
+ */
+function runOn(body: string): { status: number; out: string } {
+  const dir = mkdtempSync(path.join(tmpdir(), 'handover-check-'));
+  try {
+    const doc = path.join(dir, 'PLANTED.md');
+    writeFileSync(doc, body);
+    const r = execFileSync(process.execPath, [SCRIPT, doc], {
+      cwd: REPO, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'],
+    });
+    return { status: 0, out: r };
+  } catch (e) {
+    const err = e as { status?: number | null; stdout?: string };
+    return { status: err.status ?? -1, out: err.stdout ?? '' };
+  } finally {
+    removeTree(dir);
+  }
+}
+
+/** A `plan/seq` no item in this corpus has ever carried, verified against both indexes. */
+function inventedLane(): string {
+  assert.ok(CORPUS !== null);
+  const plan = [...CORPUS.plans][0];
+  assert.ok(plan !== undefined, 'the corpus must know at least one plan name');
+  for (let n = 900001; n < 900100; n++) {
+    const key = `${plan}/${n}`;
+    if (!CORPUS.lanes.has(key) && !CORPUS.retiredLanes.has(key)) return key;
+  }
+  throw new Error('could not invent a lane key this corpus does not carry');
+}
+
+test('a plan/seq no item has ever carried still fails the gate', () => {
+  const key = inventedLane();
+  const { status, out } = runOn(`## ⏭ READ THIS FIRST\n\nnow do \`${key}\`\n`);
+  assert.match(out, new RegExp(`DANGLING[^]*lane ${key.replace('/', '\\/')}`));
+  assert.match(out, /no task answers to it/);
+  assert.match(out, /1 resolving to nothing/);
+  // The load-bearing line of this whole change. DANGLING keeps its exit code.
+  assert.equal(status, 1);
+});
+
+test('a document naming only retired lanes is reported and passes', () => {
+  assert.ok(CORPUS !== null);
+  // A real retired lane with no live task under the same key — the exact shape
+  // that reddened HEAD on 2026-09-07.
+  const entry = [...CORPUS.retiredLanes.entries()].find(([k]) => !CORPUS!.lanes.has(k));
+  assert.ok(entry !== undefined, 'the corpus must hold a lane whose only tasks are retired');
+  const { status, out } = runOn(`## ⏭ READ THIS FIRST\n\nnow do \`${entry[0]}\`\n`);
+  assert.match(out, /RETIRED /);
+  assert.match(out, new RegExp(entry[1][0]!.id));
+  assert.doesNotMatch(out, /DANGLING/);
+  assert.match(out, /0 resolving to nothing, 1 naming retired work/);
+  // REPORTED, never gated. The handover is a historical document, and a block
+  // written before a retirement was true when it was written.
+  assert.equal(status, 0);
 });
