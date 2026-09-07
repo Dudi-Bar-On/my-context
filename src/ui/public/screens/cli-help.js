@@ -33,12 +33,15 @@
  * illustration. A command the README does not demonstrate shows no example
  * rather than an invented one, and the card says which of the two it is.
  *
- * That is also why a topic is drawn as a `<pre>` transcript. The Library
- * screen "READS NO MARKDOWN" — `/doc.html` is where a document is read, and
- * this file imports no renderer and draws no document body. What it draws for
- * `mycontext help slash` is the TEXT that command prints in a terminal, which
- * is the same kind of thing as the examples below it: command output, shown as
- * output. The console is not becoming a documentation site.
+ * A HELP TOPIC IS RENDERED, AND THIS PARAGRAPH USED TO SAY THE OPPOSITE. It
+ * read: *"a topic is drawn as a `<pre>` transcript … this file imports no
+ * renderer and draws no document body"*, which was true until the owner's
+ * 2026-09-06 request — *"they are already markdown, just render them as such
+ * and not as simple print text"* — and false from the line above it onward,
+ * where `markdownNodes` is imported. `paintTopic` carries the reasoning. The
+ * console still reads no OTHER document: `/doc.html` is where a document is
+ * read, and the renderer used here is the one the item pane already uses rather
+ * than a second one.
  *
  * ── THE SELECT, AND THE TRAP THAT IS ALREADY ON THIS PAGE'S RECORD ────────
  *
@@ -104,6 +107,38 @@ function section(ctx, host, key) {
 }
 
 /**
+ * **A run of product text, in whatever language it was written in.**
+ *
+ * Everything on this card that is not a string-table key is text this app did
+ * not choose the language of: a flag's declaration, a tool's schema
+ * description, a category's own sentence, a help topic. On the Hebrew page all
+ * of it sits inside an RTL flow, and an English sentence there renders its
+ * trailing full stop at the WRONG END — `.precedence` rather than `precedence.`
+ *
+ * MEASURED in Chromium on 2026-09-07, `dir="rtl"`, `mycontext add`: the period
+ * closing `--body`'s note laid out 70px to the LEFT of the `e` before it, on
+ * the same line, with nothing between them. 15 of the 15 note cells on that one
+ * command, 16 of 16 on `audit`, and every paragraph and list item of the
+ * `capture` topic — 41 runs on that subject alone. Every assertion on this card
+ * passed throughout, which is why it took a picture and then a range
+ * measurement to find.
+ *
+ * `dir="auto"` is `conversations.js`'s own repair for exactly this, and its
+ * header carries the full argument: the browser infers the direction from the
+ * run's FIRST STRONG CHARACTER, so an English note reads left-to-right and a
+ * Hebrew category description reads right-to-left, on either page. It is
+ * applied to the run rather than to the cell, so a sentence the card DID author
+ * — the per-workspace `clih.ask` disclosure that follows a note — keeps the
+ * page's own direction beside it.
+ */
+function foreign(text) {
+  const run = el('span');
+  run.setAttribute('dir', 'auto');
+  run.append(text);
+  return run;
+}
+
+/**
  * A link from one subject to another, drawn as `button.crumb` — the console's
  * existing text-link affordance, already styled with an underline, a hover and
  * a focus ring, so this needs no rule of its own in `styles.css`.
@@ -155,7 +190,7 @@ function takesCell(ctx, flag) {
     return cell;
   }
   if (typeof flag.format === 'string') {
-    cell.append(flag.format);
+    cell.append(foreign(flag.format));
     if (typeof flag.example === 'string' && flag.example !== '') {
       cell.append(' ', ...ctx.t('clih.eg'), ' ', mono(flag.example));
     }
@@ -187,7 +222,7 @@ function flagTable(ctx, flags) {
     name.append(mono(`--${flag.flag}`));
     row.append(name, takesCell(ctx, flag));
     const means = el('td');
-    means.append(flag.note);
+    means.append(foreign(flag.note));
     if (typeof flag.source === 'string') {
       // A per-workspace vocabulary is not a value this page can print, and
       // saying so is the honest answer: the legal set depends on config.json,
@@ -341,7 +376,7 @@ function paintCommand(ctx, host, body) {
   if (typeof body.what === 'string' && body.what !== '') {
     section(ctx, host, 'clih.s1');
     const what = el('p', 'small');
-    what.append(body.what);
+    what.append(foreign(body.what));
     host.append(what);
   }
 
@@ -397,7 +432,7 @@ function paintCommand(ctx, host, body) {
 function paintTool(ctx, host, body) {
   section(ctx, host, 'clih.s1');
   const summary = el('p', 'small');
-  summary.append(body.description);
+  summary.append(foreign(body.description));
   host.append(summary);
 
   section(ctx, host, 'clih.s2');
@@ -438,7 +473,26 @@ function paintTool(ctx, host, body) {
       takes.append(mono(arg.type ?? '—'));
     }
     const means = el('td');
-    means.append(arg.note);
+    // **An argument whose schema declares no description is a MEASURED absence,
+    // and is drawn as one.** 21 of the 109 argument rows on this card were a
+    // blank third cell under a column headed "what it does", which is the exact
+    // state `flagView` REFUSES a CLI flag for: "an undeclared flag would reach a
+    // reader as a row with an empty explanation".
+    //
+    // The repair is here rather than in `src/mcp/tools.ts` because those
+    // sentences are what the MODEL is sent, and that file's rule is deliberate
+    // and restated at each one — the description says the one thing a caller
+    // cannot infer from the name. `get_item`'s `id` is not under-documented for
+    // a model; it is under-documented for a reader of this table. So the card
+    // says which kind of nothing it is, exactly as it does for the one shortcut
+    // that genuinely takes no argument.
+    if (typeof arg.note === 'string' && arg.note !== '') {
+      means.append(foreign(arg.note));
+    } else {
+      const undeclared = el('span', 'small');
+      undeclared.append(...ctx.t('clih.argnodesc'));
+      means.append(undeclared);
+    }
     row.append(name, takes, means);
     table.append(row);
   }
@@ -482,13 +536,14 @@ function paintTool(ctx, host, body) {
 function paintSlash(ctx, host, body, goto) {
   section(ctx, host, 'clih.s1');
   const summary = el('p', 'small');
-  summary.append(body.description);
+  summary.append(foreign(body.description));
   host.append(summary);
 
   const category = body.category ?? null;
   if (category !== null) {
     const what = el('p', 'small');
-    what.append(...ctx.t('clih.catwhat', { name: category.category }), ' ', category.description);
+    what.append(...ctx.t('clih.catwhat', { name: category.category }), ' ',
+      foreign(category.description));
     host.append(what);
   }
 
@@ -574,6 +629,11 @@ function paintTopic(ctx, host, body) {
   how.append(...ctx.t('clih.topichow', { cmd: body.label }));
   host.append(how);
   const topic = el('div', 'md topicbody');
+  // The whole document, in the language it was written in — see `foreign`.
+  // A help topic is English (only `categories` has a Hebrew source at all), so
+  // on the Hebrew page every one of its paragraphs and list items renders its
+  // closing full stop at the wrong end without this.
+  topic.setAttribute('dir', 'auto');
   topic.append(...markdownNodes(body.markdown ?? '', document).nodes);
   host.append(topic);
 }
