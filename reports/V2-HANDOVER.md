@@ -1,3 +1,49 @@
+## ⏭ READ THIS FIRST — 2026-09-07, at 88%
+
+**ONE LANE IS STILL RUNNING: `library/6` (D27), the help tested for truth.** Its
+work will be uncommitted in the tree. Stage explicit PATHS, never `-A` and
+never a directory.
+
+**WHAT LANDED IN THIS PERCENT.** `builder/16` and `builder/10` are done,
+verified and closed — the `id` picker is a filtering box on all eleven
+id-taking fields, and the `key` field says why it is empty instead of drawing
+an empty control.
+
+That lane is also **the first UI item tonight with browser evidence I can point
+at**: its Playwright worked where mine had disconnected — 20/20 e2e across
+Chromium and Chrome, both languages, four screenshots it read. Everything else
+committed after the disconnect still rests on lane screenshots rather than
+mine, and the block below names the three screens worth his eye.
+
+**THE NEW FINDING, filed as `builder/17`:** the id box filters well and shows
+less than half of what you picked. Measured by me: 986 ids, average 58
+characters, longest 67, against a control rendering at about 318px — and under
+RTL you see the TAIL, which is the least distinguishing part because every id
+in a category shares its prefix. Not a regression; the `<select>` showed less.
+But the ruling bought filtering and did not buy readability, and that half was
+never weighed. The item names why the obvious fix is probably wrong and costs
+a cheaper one beside it.
+
+**THINGS RULED AND NOT DISPATCHED** — unchanged from the block below:
+`budget/16` (built, reverted to a patch, needs a ruling — the question is
+`OPENQ-does-the-pinned-tier-spend-its-spare-room-on-governing-items`),
+`budget/15` (a costed proposal), `archive/6` (the one knowingly-red thing:
+`tutorial-manifest` 5/7, the conversation archive claimed by no tutorial).
+
+**NEXT SESSION, FIRST THREE THINGS**
+
+1. **Wake him with the D table**, rebuilt from the corpus — never copied
+   forward. `RULE-progress-is-reported-as-two-tables-with-stable-d-numbers`
+   holds the shape, the five chips, and the D numbers that are stable forever.
+2. Verify `library/6` yourself before believing any "done", then commit with
+   explicit paths.
+3. Then `builder/5` (it releases `/6` and `/8`), then `builder/11` (D12), then
+   `docsys/11` (D28).
+
+**BOARD AS OF THIS BLOCK:** doctor 0 errors, 2 warnings. Everything pushed, 0
+unpushed. The full suite's only red is the two `archive/6` assertions, so a
+lane reporting a failure is reporting its own.
+
 ## ⏭ READ THIS FIRST — 2026-09-07, at 87%
 
 **Short on purpose.** One percent has passed since the block below and almost
