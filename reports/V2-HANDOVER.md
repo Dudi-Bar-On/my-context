@@ -1,3 +1,68 @@
+## ⏭ READ THIS FIRST — 2026-09-07, PAUSED ON HIS WORD. NO LANE RUNNING, TREE CLEAN.
+
+**He asked to pause at a safe point and this is one:** working tree clean, 0
+unpushed, no lane in flight. The `builder/5` + `walk/20` lane was dispatched and
+**stopped four minutes in, before it wrote a single byte** — it was still
+reading `capture.js` and `palette.js`. Nothing was lost and nothing is
+half-applied. **His standing instruction on pauses: re-dispatch the stopped lane
+FROM THE BEGINNING, not resumed.**
+
+**THE FINDING FROM 96% IS NOW FILED** — `governance/6`, commit `a27b693`,
+`TASK-code-and-tests-that-speak-with-a-retired-item-s-authority`. It carries the
+measurement (2,427 citations, 54 retired items, 31 citing retired), the ruling
+that it is **reported, never gated**, and the harder half he asked for: a test
+can rest on a retired ruling **without citing it**, which no scanner can find —
+`budget/16` reds 49 fixtures and not one is a logic failure.
+
+### THE ONE THING STILL BACK IN TIME, AND IT IS IN THE FILE THAT CAUSED IT
+
+`e2e/app.ts` **still resolves `CORPUS` to `.demo-corpus` today.** Its own header
+block argues at length for the real corpus — *"No fixture anyone would have
+thought to write would have caught that"* — and forty lines below, a second
+block says it moved off the live corpus, citing the superseded
+`DEC-the-ui-is-developed-against-a-simulated-corpus-until-the`. **The file
+asserts the opposite of its own code, in two blocks, both live.** That is
+`governance/6`'s defect class sitting in `governance/6`'s own origin. `port/100`
+is filed to fix it, and belongs with `port/99`.
+
+It did NOT harm the product: the spec that started this ran **12/14 against the
+fixture and 12/14 against the live corpus, identically**. It was a race in the
+test.
+
+### A CORRECTION I OWE HIM, MADE AFTER THE TABLE WAS ALREADY GIVEN
+
+I showed him D27 (`library/6`) as **"landed, item not flipped"**. **That was too
+generous and it is wrong in the direction that flatters me.** Reading the item's
+own acceptance afterwards: the bar is **166 subjects × every section the
+skeleton promises × both languages**, with every flag name, format, example,
+note, hint, enum value and topic sentence **compared against the derivation it
+came from and found equal** — not "the card rendered". `e2e/cli-help.spec.ts`
+holds **9 tests × 2 languages = 14 assertions run**, and covers the picker
+roster, overflow, command-line anchoring, topic headings, per-kind shape,
+cross-references and punctuation. **That is a real spec and a real finding — the
+552 detached Hebrew full stops — but it is NOT the exhaustive bar.**
+
+**So `library/6` is correctly still open, and D27 is NOT done.** The lane's work
+landed; the item did not complete. Say this to him plainly before showing
+another table.
+
+### THE BOARD, REBUILT FROM DISK THIS MORNING
+
+**537 of 631 done. 95 open, of which 44 are `walk`** (42 live, `walk/16`
+deprecated, `walk/21` blocked).
+
+**NEXT, IN ORDER:** `builder/5` **with** `walk/20` in one lane — both items say
+in their own text *"do not schedule them apart"*, and `walk/20` is unblocked by
+`DEC-claude-drafts-the-mockup-and-the-owner-approves`. Deps `builder/2`,
+`builder/3`, `port/95` are all done. Then `/6` and `/8`, then `builder/11`
+(D12), then `docsys/11` (D28).
+
+**ON HIM, BLOCKING NOTHING:** `budget/16` (built, reverted to
+`scratchpad/budget-16-spare-band.patch`, reds 49 fixtures), `budget/15`,
+`builder/17`, `archive/6`, `port/98`, `port/93`, and the 42 `walk` items.
+
+**NEWLY DISPATCHABLE:** `governance/6` (D29) and `port/100` (D30).
+
 ## ⏭ READ THIS FIRST — 2026-09-07, at 96%. A REAL FINDING, NOT YET FILED.
 
 **FILE THIS FIRST. It is the most valuable thing on this page and it exists
