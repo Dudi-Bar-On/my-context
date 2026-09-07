@@ -36,3 +36,4 @@ blob-report/
 
 # Playwright MCP session artefacts.
 .playwright-mcp/
+e2e/screens/

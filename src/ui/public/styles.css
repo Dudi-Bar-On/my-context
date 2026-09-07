@@ -714,9 +714,31 @@ bdi{unicode-bidi:isolate}
 .pop .tagpick,.tagpicker .tagpick{display:flex;align-items:center;gap:6px;padding:2px 4px;
   border-radius:var(--r-sm);font-size:var(--fs-0);cursor:pointer}
 .pop .tagpick:hover,.tagpicker .tagpick:hover{background:var(--sink)}
-.pop .tagname,.tagpicker .tagname{font-family:var(--mono);color:var(--ink);flex:1 1 auto;min-inline-size:0;
+/* **THE NAME DOES NOT GROW, AND THE COUNT IS WHAT REACHES THE FAR END.**
+   Measured in Chromium on the Hebrew Composer, 2026-09-07 (`plan:builder
+   seq:11`, D12): with `flex:1 1 auto` the name's BOX filled the row — 903px for
+   a two-character tag — and because the box is deliberately `direction:ltr`
+   (see above: a tag is a machine value), `text-align:start` inside it resolves
+   to the LEFT edge while the RTL row puts the checkbox at the RIGHT. The tag
+   `v2` rendered with its ink ending at x=114 and its own checkbox beginning at
+   x=1011: **a gap of 897px between a label and the box it labels**, on all 226
+   rows this corpus draws. Clicking the right row was guesswork.
+
+   It is invisible in English, where the row's start and the isolated run's
+   start are the same edge and the name lands against the checkbox by accident.
+   That is why every assertion passed and a screenshot is what caught it — the
+   same family as the leading dot that migrated under RTL and the 552 Hebrew
+   sentences whose full stops detached.
+
+   `flex:0 1 auto` keeps both properties the growth was carrying: the name still
+   SHRINKS and still wraps (`min-inline-size:0`, `overflow-wrap:anywhere`) for a
+   tag longer than the row, and `margin-inline-start:auto` on the count is what
+   pushes the number to the far end — logical, so it is the left end in Hebrew
+   and the right end in English without a second rule. */
+.pop .tagname,.tagpicker .tagname{font-family:var(--mono);color:var(--ink);flex:0 1 auto;min-inline-size:0;
   direction:ltr;unicode-bidi:isolate;overflow-wrap:anywhere}
-.pop .tagn,.tagpicker .tagn{color:var(--dim);font-variant-numeric:tabular-nums;flex:0 0 auto}
+.pop .tagn,.tagpicker .tagn{color:var(--dim);font-variant-numeric:tabular-nums;flex:0 0 auto;
+  margin-inline-start:auto}
 /* The picker sits under its own box, so it needs the gap the form's labels get
    between rows and nothing else. */
 .tagpicker{margin-block:4px 8px}

@@ -311,6 +311,25 @@ export function controlFor(spec, sources, onChange, options = {}) {
     for (const option of picker) select.append(optionEl(option.value, option.label));
     // Nothing to choose is not the same as choosing nothing; see the header.
     select.disabled = picker.length === 0;
+    // **The same `required` the two box branches set, and it was MISSING here
+    // until `plan:builder seq:11` (D12) swept every field of every entry.**
+    //
+    // Measured 2026-09-07: six required fields are `<select>`s — `add`'s and
+    // `config`'s `category`, and the `id` of all four `review` subcommands —
+    // and every one of them was drawn without the attribute, while the eleven
+    // required `suggest` boxes beside them carried it. Two branches of one
+    // function honoured `spec.required` and two did not, for fields the
+    // catalogue marks identically.
+    //
+    // It changes no pixel and no validation: this form is a `<div>` and never
+    // submits, and `styles.css` has no `:required` or `:invalid` rule — the
+    // visible half of "visibly required" is the caption's `*` and
+    // `aria-invalid`, both of which were already correct here. What it changes
+    // is what a SCREEN READER says: it announced `add`'s `title` box as
+    // required and the `category` picker beside it as not, which is exactly the
+    // "two subtly different elements for one catalogue field" divergence this
+    // component's own header says it exists to end.
+    if (spec.required === true) select.required = true;
     select.addEventListener('change', onChange);
     return select;
   }
