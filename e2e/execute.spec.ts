@@ -155,12 +155,15 @@ async function composePinOnPalette(page: Page, itemId: string): Promise<void> {
   await picker.waitFor({ state: 'visible', timeout: 15_000 });
   await picker.selectOption('pin');
 
-  // The second control `pin` offers: its required `id` argument, a picker
-  // sourced from the corpus's own items (`args: [{ name: 'id', source: 'items' }]`,
-  // `src/ui/public/lib/palette-defs.js`).
-  const idPicker = page.locator(`${PALETTE} select`).nth(1);
-  await idPicker.waitFor({ state: 'visible', timeout: 15_000 });
-  await idPicker.selectOption(itemId);
+  // The second control `pin` offers: its required `id` argument. It was a
+  // `<select>` sourced from the corpus's own items until 2026-09-07 and is now
+  // a filtering BOX over the same list
+  // (`args: [{ name: 'id', input: 'suggest', source: 'items' }]`,
+  // `src/ui/public/lib/palette-defs.js`) — `fill` rather than `selectOption`,
+  // which is also exactly what taking a suggestion from the popup does to it.
+  const idBox = page.locator(`${PALETTE} input[list="sugg-id"]`).first();
+  await idBox.waitFor({ state: 'visible', timeout: 15_000 });
+  await idBox.fill(itemId);
 
   const yes = page.locator(`${PALETTE} input[type="checkbox"]`).first();
   await yes.waitFor({ state: 'visible', timeout: 15_000 });
