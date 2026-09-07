@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: Long lists are typed into and filtered rather than scrolled, at the cost that a name with no match can still be composed.
-summary_of: 368815e3c23c131c
+summary_of: 2e065bf0d0936886
 scope:
   - src/ui/public/lib/palette-defs.js
   - src/ui/public/screens/palette.js
@@ -16,18 +16,19 @@ tags:
   - composer
   - "plan:builder"
   - "seq:16"
-  - "state:todo"
+  - "state:done"
 origin: human
 source_file: null
 source_anchor: null
 source_checksum: null
 valid_from: 2026-09-06
 valid_until: null
-checksum: dc0a0b13f7e96491
+checksum: a65f657fdec6191e
 plan: builder
 seq: "16"
-state: todo
+state: done
 priority: "2"
+verified_on: 2026-09-07
 ---
 
 # a long picker becomes a filtering box, and the id field stops constraining the value
