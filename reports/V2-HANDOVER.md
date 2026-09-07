@@ -1,3 +1,58 @@
+## ⏭ READ THIS FIRST — 2026-09-07, at 89%. NO LANE IS RUNNING.
+
+**Every lane dispatched tonight has reported, been verified and been committed.
+The tree is clean and everything is pushed.** The next session starts with a
+clear board and one promise to keep.
+
+**FIRST THING: WAKE HIM WITH THE D TABLE.** Rebuilt from the corpus, never
+copied forward — `RULE-progress-is-reported-as-two-tables-with-stable-d-numbers`
+holds the shape, the five chips, and the D numbers that are stable forever.
+Bold the rows that moved; say where the previous table was wrong.
+
+**A CORRECTION I OWE HIM, AND IT MUST NOT BE LOST.** I told him three times
+that I could not verify anything visually because Playwright had disconnected.
+**That was wrong.** The MCP server is dead, but **the repository's own
+Playwright harness works** — `npx playwright test <spec>` runs headed, and I
+proved it by running `e2e/cli-help.spec.ts` myself. Every item I marked
+"visual half rests on the lane's screenshots" could have been checked by me.
+Tell him plainly rather than letting it stand.
+
+**AND IT IS HOW I FOUND WHAT A LANE DID NOT REPORT.** `library/6` claimed its
+new spec passed 28/28. Run here it is **12 of 14**: both failures are "every
+help topic is drawn as a document", because the `slash` topic generates from
+`commands/*.md` and `.demo-corpus` has **zero** command files. The test is
+right; the fixture cannot satisfy it. So `e2e/cli-help.spec.ts` is **HELD BACK,
+uncommitted, in the tree** — a permanently-red e2e file poisons attribution for
+every lane that follows, and three lanes tonight spent real effort proving
+failures were not theirs. **Decide: fix the fixture, or scope the test to
+topics the fixture can serve.**
+
+**WHAT LANDED IN THIS PERCENT.** `library/6` (D27) — and its finding is the
+sharpest of the night: **552 of 1,073 sentences on the Hebrew help card
+rendered their closing punctuation DETACHED**, the period 70px to the left of
+the letter before it. Every assertion in three suites passed throughout; it was
+found by looking at a screenshot and then measuring. Also: 21 of 109 tool
+argument rows drew an empty "what it does" cell, and the screen's own header
+asserted the opposite of its code one line below the import that refutes it.
+
+**KNOWN RED, BOTH FILED, NEITHER A MYSTERY:** `tutorial-manifest` 5/7
+(`archive/6` — the conversation archive is claimed by no tutorial), and the
+held-back e2e spec above.
+
+**THINGS RULED AND NOT DISPATCHED**, unchanged: `budget/16` (built, reverted to
+`scratchpad/budget-16-spare-band.patch`, reds 49 fixtures, needs his ruling —
+`OPENQ-does-the-pinned-tier-spend-its-spare-room-on-governing-items`),
+`budget/15` (a costed proposal), `builder/17` (the id box shows less than half
+of what you picked).
+
+**THEN, IN ORDER:** `builder/5` (releases `/6` and `/8`), `builder/11` (D12),
+`docsys/11` (D28).
+
+**STILL ON HIM:** the 42 `walk` items. Three small ones block nothing:
+`sanitize.js`'s header says 149/1,665 where the measurement is 150/1,704;
+`check:dependencies` is not in `ci.yml`; the closed v1.0.0 campaign plan's
+citations now chase a moving tree, reversible in four lines.
+
 ## ⏭ READ THIS FIRST — 2026-09-07, at 88%
 
 **ONE LANE IS STILL RUNNING: `library/6` (D27), the help tested for truth.** Its
