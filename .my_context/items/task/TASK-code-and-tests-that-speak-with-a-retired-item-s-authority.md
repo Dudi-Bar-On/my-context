@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: A comment or a test that rests on a decision the project has since reversed says so, instead of sounding current.
-summary_of: ad15259478d21641
+summary_of: 2deea0492a78f4d1
 scope:
   - scripts/**
   - src/**
@@ -18,18 +18,19 @@ tags:
   - testing
   - "plan:governance"
   - "seq:6"
-  - "state:todo"
+  - "state:done"
 origin: human
 source_file: null
 source_anchor: null
 source_checksum: null
 valid_from: 2026-09-07
 valid_until: null
-checksum: 9f95a477231f50d4
+checksum: b66f2706582e3ac4
 plan: governance
 seq: "6"
-state: todo
+state: done
 priority: "2"
+verified_on: 2026-09-07
 ---
 
 # code and tests that speak with a retired item’s authority are named
@@ -77,3 +78,25 @@ So the honest scope is two mechanisms, not one, and the second may not be fully 
      an item already names its scope. That is a habit plus a field, not a scanner.
 Design both, and say plainly if the second reduces to discipline rather than a check - that is a
 finding, not a failure.
+
+HALF ONE LANDED 2026-09-07, commit 7d10c14, and was verified in this session rather than taken on
+the lane’s word: scripts/check-cited-items.ts exits 0, its 23 tests pass, typecheck is clean.
+
+IT IMPORTS RATHER THAN RESTATES: RETIRED_STATUSES from core/select.ts - the same constant injection
+filters on - and its id resolution from check-handover.ts, which is load-bearing: 9 of the sites use
+shortened or hyphen-broken ids that an exact-match scan misses.
+
+MY MEASUREMENT WAS WRONG IN BOTH DIRECTIONS AND THE LANE CORRECTED IT. The "2,427 citations" were
+id-shaped STRINGS, most of them test fixtures inventing ids; 1,441 resolve to real items. The "31"
+is 68 sites naming 16 retired items - 29 comments that read as a live ruling, 13 that say the ruling
+moved, 26 in code.
+
+TWO FINDINGS I DID NOT HAVE. Five of the 16 retired items record NO SUCCESSOR AT ALL, which
+retirementEdgeRefusal says in as many words this system does not offer. And one successor is itself
+superseded, with 11 sites citing the first hop - so a one-hop report would have sent every one of
+those readers to a second retired item. The check follows the chain to the end.
+
+HALF TWO IS NOT CLOSED BY THIS AND WAS NEVER GOING TO BE. A test can rest on a retired ruling
+WITHOUT CITING IT, and no scanner can see that - budget/16 proved it the same day, reddening 26
+fixtures of which ZERO named the rule they rested on. That half is plan:contra seq:2 (ask at
+supersede time) and plan:basis seq:1-2 (a test declares what it rests on). Both are filed.

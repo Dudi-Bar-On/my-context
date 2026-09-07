@@ -4,9 +4,11 @@ type: reference
 title: "the D numbers: what each one means, and which are only proposed"
 status: active
 severity: soft
-always: false
-summary: The short numbers used to talk about work in progress, and what each of them refers to, so the same number never means two things.
-summary_of: ddcc7b010b7d96b8
+always: true
+summary: The short numbers used to talk about work in progress and what each refers to, delivered every session so the same number never means two things.
+summary_of: cb334a3d926312f9
+summary_was:
+  - 2026-09-07 The short numbers used to talk about work in progress, and what each of them refers to, so the same number never means two things.
 scope: []
 tags:
   - v2
@@ -17,7 +19,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-09-07
 valid_until: null
-checksum: c8127bf897990515
+checksum: 11a5c3ec151a84ec
 ---
 
 # the D numbers: what each one means, and which are only proposed
@@ -53,8 +55,8 @@ RATIFIED - the owner has used these numbers himself.
   D27     the help tested for truth   plan:library seq:6
   D28     both READMEs                plan:docsys seq:11
 
-PROPOSED 2026-09-07 AND NOT YET RULED ON. They were offered in conversation and he did not answer.
-They are recorded here so the numbers are not silently reused, NOT as though he had agreed:
+RATIFIED 2026-09-07 by the owner, in the same breath as "save D persistent". These seven were
+proposed and are now in force, permanent like the rest:
   D29     code citing a retired item is named     plan:governance seq:6
   D30     the browser suite off the demo corpus   plan:port seq:100 (with seq:99)
   D31     the 42 walk items measured and ruled    plan:walk seq:140
@@ -71,3 +73,17 @@ Fill a row only from evidence.
 AND THE RULE THIS ITEM SERVES IS ABOUT THE OWNER, NOT ABOUT TIDINESS: the value of a stable number is
 that he can say "do D11" across sessions and compactions and mean exactly one thing. Reusing a number
 would silently redirect an instruction of his. That is why a retired number stays retired.
+
+PINNED 2026-09-07 BY OWNER RULING: "save D persistent". This item is always: true, so my_context
+delivers it at every session start. That is the mechanism - not a habit, not a file somebody
+remembers to open.
+
+WHY IT HAD TO BE PINNED RATHER THAN MERELY FILED. The rule that governs these numbers says a D is
+STABLE FOREVER and never reused. Until 2026-09-07 the map existed in NO file at all: it lived in
+conversation, which is compacted, and in handover blocks, which are superseded, with a few numbers
+leaking into item bodies. A rule about data nobody stores cannot be enforced by anybody. An item
+that is filed but not delivered is only a slower version of the same problem - it is read when
+somebody thinks to look, which is exactly when a stale number does its damage.
+
+THE ONE OBLIGATION THIS ITEM CREATES: assigning a D number and recording it here are ONE ACT. A
+number announced in a message and not written here is not a D number yet, whatever the message said.
