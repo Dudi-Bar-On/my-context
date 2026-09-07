@@ -1,3 +1,25 @@
+## ⏭ READ THIS FIRST — 2026-09-07, at 90%
+
+**Nothing happened in this percent but the writing of the block below.** No
+lane ran, nothing was committed but that handover, no decision was taken. Said
+plainly because a handover written every percent must be able to report a
+quiet one — padding it would cost the reader the ability to tell a busy
+percent from a still one, which is the whole value of the cadence.
+
+**THE BLOCK BELOW IS CURRENT AND COMPLETE.** Read it rather than treating this
+as a supersession. In particular it carries, at its top, the correction that
+matters most: **the Playwright MCP is dead but the repository's own harness
+works**, so every item I marked "rests on the lane's screenshots" could have
+been verified by me and was not.
+
+**STATE, RE-CONFIRMED AT THIS BLOCK:** no lane running. The working tree holds
+one deliberate uncommitted file, `e2e/cli-help.spec.ts`, held back because it
+is 12 of 14 against a fixture with zero command files. Everything else pushed,
+0 unpushed. Doctor 0 errors, 2 warnings.
+
+**FIRST THING NEXT SESSION IS UNCHANGED: wake him with the D table**, rebuilt
+from the corpus, moved rows bold, and say where the previous table was wrong.
+
 ## ⏭ READ THIS FIRST — 2026-09-07, at 89%. NO LANE IS RUNNING.
 
 **Every lane dispatched tonight has reported, been verified and been committed.
