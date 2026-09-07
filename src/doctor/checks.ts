@@ -149,9 +149,13 @@ export type RemedyValues = Record<string, string | true>;
 /**
  * **What settles a finding, declared by the check that emits it.**
  *
- * Recorded as designed-and-unbuilt at `reports/V2-HANDOVER.md:437` and
- * `reports/EXECUTION-BOARD.md:99` (E32): *"a `Finding` in `src/doctor/` must
- * declare its OWN remedies, never a UI-side table."* Until 2026-09-03 the
+ * Recorded as designed-and-unbuilt in `TASK-a-doctor-finding-with-no-repair-shows-no-control-and-no`
+ * (`plan:walk seq:61`): *"a `Finding` in `src/doctor/` must declare its OWN
+ * remedies, never a UI-side table."* It cited `reports/V2-HANDOVER.md:437` and
+ * `reports/EXECUTION-BOARD.md:99` until 2026-09-07; BOTH anchors had already
+ * rotted — the handover is prepended-to, so every line number in it moves on
+ * each write, and the board was rewritten on 2026-09-05. Cite the ITEM, which
+ * is addressed by id and cannot drift, not a line in a report. Until 2026-09-03 the
  * decision lived twice in the browser — `screens/doctor.js`'s `repairFor` and
  * `lib/viewmodel.js`'s `repairCommandFor`, four `if`s each — and every code
  * either of them did not name drew a chip saying there was nothing to offer.
