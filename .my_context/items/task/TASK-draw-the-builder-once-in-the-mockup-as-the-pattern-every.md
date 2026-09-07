@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: Draw the command-building form once in the design, so every screen offering a command copies one agreed pattern instead of inventing its own.
-summary_of: b2e0fc765cea173f
+summary_of: 7a1f8cc1f846cde7
 scope: []
 tags:
   - v2
@@ -16,17 +16,17 @@ tags:
   - owner-input
   - "plan:walk"
   - "seq:20"
-  - "state:todo"
+  - "state:done"
 origin: human
 source_file: null
 source_anchor: null
 source_checksum: null
 valid_from: 2026-08-25
 valid_until: null
-checksum: 43890997ab707ba4
+checksum: 170a7aca28e59269
 plan: walk
 seq: "20"
-state: todo
+state: done
 priority: "1"
 source: "plan:port seq:98, capture and palette"
 ---
@@ -54,3 +54,11 @@ seq:5 says "THE MOCKUP IS THE DESIGN OF RECORD AND MUST MOVE FIRST ... Draw it i
 And screens/capture.js is the model to generalise from, not to replace -- it already does most of this.
 
 UNBLOCKED 2026-08-25 by DEC-claude-drafts-the-mockup-and-the-owner-approves. It was blocked because the mockup is the owner s file. Claude now drafts it and the owner approves; the 1:1 rule is untouched. Dispatch WITH plan:builder seq:5, which carries what must be drawn.
+
+CLOSED 2026-09-07 by owner ruling (plan:walk seq:140, option A). OVERTAKEN.
+
+Commit 93920f6 built src/ui/public/lib/builder.js - the one command-input component this item asked
+to have drawn once. And its mockup half was already dead before that:
+DEC-the-mockup-is-a-frozen-reference-it-is-read-never-written names THIS ITEM BY ID and inverts it -
+the mockup is where the builder is READ, plan:builder seq:5 is where it is BUILT. Nothing remains to
+draw.

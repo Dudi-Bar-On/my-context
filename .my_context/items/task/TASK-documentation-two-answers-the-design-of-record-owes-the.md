@@ -2,7 +2,7 @@
 id: TASK-documentation-two-answers-the-design-of-record-owes-the
 type: task
 title: "Documentation: two answers the design of record owes the renderer — a table-alignment class, and whether the mockup refuses images as its own sentence claims"
-status: active
+status: superseded
 severity: soft
 always: false
 summary: "Two things for the designer to settle: tables ignore the alignment their author wrote, and the design promises to refuse images while quietly showing them."
@@ -22,8 +22,8 @@ source_file: null
 source_anchor: null
 source_checksum: null
 valid_from: 2026-08-29
-valid_until: null
-checksum: 437ad42066ca2fe4
+valid_until: 2026-09-07
+checksum: 7c82e76d50e36c06
 plan: walk
 seq: "95"
 state: todo
@@ -47,3 +47,6 @@ THE ANSWER IS A CLASS, NOT A STYLE ATTRIBUTE. `.md td.end` / `.md td.center` (or
 The app took the sentence over the script and refuses, which is the right call and is recorded as such: "a screen that claims a refusal it does not perform is worse than either behaviour". But the design of record still says one thing and does another, and it is the artefact the owner reads. Either its `mdInline` gains the image branch or `dv.mdnote` stops promising one -- and the first is almost certainly right, because an image in a page rendered by a subset renderer under this CSP is a request the product does not want to make.
 
 BOTH ARE MOCKUP EDITS, so both are the owner's under `DEC-claude-drafts-the-mockup-and-the-owner-approves`, and both belong in the one mockup session already carrying plan:walk seq:3, seq:13, seq:20 and the rest.
+
+## Relations
+- superseded_by [[DEC-the-mockup-is-a-frozen-reference-it-is-read-never-written]]

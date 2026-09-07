@@ -2,7 +2,7 @@
 id: TASK-tutorials-what-the-screen-is-and-what-implemented-means-for
 type: task
 title: "Tutorials: what the screen is, and what implemented means for it"
-status: active
+status: superseded
 severity: soft
 always: false
 summary: The screen listing six guides named for the job they help you do, which currently reads nothing and asserts its contents from fixed text.
@@ -20,8 +20,8 @@ source_file: null
 source_anchor: null
 source_checksum: null
 valid_from: 2026-09-02
-valid_until: null
-checksum: c7a74fead33e45f6
+valid_until: 2026-09-07
+checksum: e62730c2337124fe
 plan: walk
 seq: "131"
 state: todo
@@ -38,3 +38,6 @@ IT IS THE ONE SCREEN WITH NO PLAN BEHIND IT, and that changes how it was built. 
 WHAT IMPLEMENTED MEANS: the six job-titled rows and their two language columns drawn from something a gate can check rather than from twelve literals -- which needs either a route that serves tutorial files or a ruling that this screen is a static index; and the owner's answer to whether tutorials are in scope at all, which is the prior question and is held at plan:port seq:5d.
 
 Filed under plan:walk seq:27, condition 3.
+
+## Relations
+- superseded_by [[DEC-the-documentation-and-tutorials-screens-become-one-list-and]]

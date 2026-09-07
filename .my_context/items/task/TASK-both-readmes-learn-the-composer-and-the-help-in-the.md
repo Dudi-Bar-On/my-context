@@ -24,7 +24,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-09-06
 valid_until: null
-checksum: 59be6b8fb056f9d0
+checksum: e02688643a0622e8
 plan: docsys
 seq: "11"
 state: todo
@@ -76,3 +76,9 @@ example added here goes through it rather than being typed.
 
 AND THE HEBREW IS A TRANSLATION OF WHAT SHIPPED, not a shorter version of it. The two files have
 diverged before by abridgement rather than by error.
+
+## Observations
+- [supersession] Replaces TASK-research-a-documentation-tool-then-build-the-full: Owner ruling 2026-09-07 (plan:walk seq:140, option A). Every question this item posed has since been answered by a ruling: the tool question by DEC-the-documentation-system-is-hand-built-over-a-wide-glob ("BUILT BY HAND, NOT BY A GENERATOR"), and the surface question by DEC-the-documentation-and-tutorials-screens-become-one-list-and ("The console stops trying to be a documentation site"). plan:docsys seq:11 carries what remains.
+
+## Relations
+- supersedes [[TASK-research-a-documentation-tool-then-build-the-full]]

@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: Let the app browse and read the project's own documents, from a list the server builds itself so nobody can ask it for an arbitrary file.
-summary_of: c595a3e883fd379c
+summary_of: c71d77cc8341edfa
 acknowledged:
   - body_disagrees_with_meta@4e877acc112308aa
 scope: []
@@ -17,17 +17,17 @@ tags:
   - api
   - "plan:walk"
   - "seq:25"
-  - "state:todo"
+  - "state:done"
 origin: human
 source_file: null
 source_anchor: null
 source_checksum: null
 valid_from: 2026-08-25
 valid_until: null
-checksum: fb277c752b2302a7
+checksum: 17d6bb1838259e87
 plan: walk
 seq: "25"
-state: todo
+state: done
 priority: "2"
 source: REQ markdown documents are browsable and viewable
 needs: walk/37
@@ -55,6 +55,9 @@ VERDICT: STANDS, blocked on the owner, and the block is a SECURITY question rath
 IT IS THE ROUTE HALF OF plan:port seq:5c, now superseded into the documentation programme. seq:5c also carries a second unlanded half that belongs here: THE DEEP LINK. #/docs/4 is not a route the router parses, and the mockup draws no control on the Contents list. A document viewer that cannot be linked to is half a feature.
 
 AND ITS ORIGIN SHOULD SURVIVE: this exists because the owner REMEMBERED asking for it months ago, and a search of all requirements, rules, tasks, seven specs, the plans and the mockup s 21 sections found it in NONE of them. Recovery by memory is not a mechanism -- LESSON-a-requirement-given-in-conversation-and-never-captured-is-a.
+
+CLOSED 2026-09-07 by owner ruling (plan:walk seq:140, option A). OVERTAKEN: the route and the commits
+that built it are cited in reports/2026-09-07-walk-review.md, in this item’s row.
 
 ## Relations
 - supersedes [[TASK-dv-sub-and-the-spec-say-docs-renders-the-readme-and-no]]

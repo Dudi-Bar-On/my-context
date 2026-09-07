@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: The screen where a person accepts or rejects proposed changes, seeing the difference side by side before approving anything.
-summary_of: 7d967ee37731a18a
+summary_of: 6fa10ec70e8d5661
 scope: []
 tags:
   - v2
@@ -14,17 +14,17 @@ tags:
   - mockup
   - "plan:walk"
   - "seq:127"
-  - "state:todo"
+  - "state:done"
 origin: human
 source_file: null
 source_anchor: null
 source_checksum: null
 valid_from: 2026-09-02
 valid_until: null
-checksum: f65139c14cf1958a
+checksum: b990d41dcb53a006
 plan: walk
 seq: "127"
-state: todo
+state: done
 priority: "2"
 source: "plan:walk seq:27, from the module header of screens/work.js on 2026-09-02"
 verified_on: 2026-09-05
@@ -37,3 +37,12 @@ WHAT THE SCREEN IS, so it can be built without opening the mockup. nav.ch -- Rev
 WHAT IMPLEMENTED MEANS: both queues drawn, all four settlements reachable rather than only the one that says yes, per-field staleness expressed as the row's own shape, and the word-level diff the screen promises either built ONCE where both surfaces can share it or the promise corrected -- a second diff written in the browser is the one repair that would be worse than the gap.
 
 Filed under plan:walk seq:27, condition 3.
+
+CLOSED 2026-09-07 by owner ruling (plan:walk seq:140, option A). OVERTAKEN by commit a18b804, which
+is literally titled "the Review queue was already built" and was verified live in both languages on
+2026-09-05.
+
+WORTH MORE ATTENTION THAN THE FEATURE IT CLOSED: that commit moved this item BACKWARDS, from done to
+doing, which is why it still read todo two days later and why it appeared on a review of unfinished
+work. A closure that a later commit silently reopens is a defect in how state is written, not in the
+screen.

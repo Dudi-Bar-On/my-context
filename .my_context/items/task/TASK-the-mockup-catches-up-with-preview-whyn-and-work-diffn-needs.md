@@ -2,7 +2,7 @@
 id: TASK-the-mockup-catches-up-with-preview-whyn-and-work-diffn-needs
 type: task
 title: the mockup catches up with preview.whyn, and work.diffn needs a ruling
-status: deprecated
+status: superseded
 severity: soft
 always: false
 summary: "Closed without being built: a later ruling makes its premise a non-issue, and its one real question was split out."
@@ -24,8 +24,8 @@ source_file: null
 source_anchor: null
 source_checksum: null
 valid_from: 2026-08-25
-valid_until: 2026-09-05
-checksum: 137762fe6d0ad6a9
+valid_until: 2026-09-07
+checksum: f26f6633a9f246e8
 plan: walk
 seq: "16"
 state: todo
@@ -75,3 +75,4 @@ See LESSON-a-lane-was-told-to-edit-a-file-a-standing-owner-ruling-had.
 
 ## Relations
 - supersedes [[TASK-preview-whyn-still-says-the-gate-ladder-needs-a-stable-code]]
+- superseded_by [[DEC-the-mockup-is-a-frozen-reference-it-is-read-never-written]]

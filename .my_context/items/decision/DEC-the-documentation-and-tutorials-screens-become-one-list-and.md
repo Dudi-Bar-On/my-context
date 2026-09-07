@@ -25,7 +25,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-09-05
 valid_until: null
-checksum: 4ed716550007c359
+checksum: c1101b97cc670b1d
 ---
 
 # the documentation and tutorials screens become one list, and a document opens rendered in a new tab
@@ -73,3 +73,9 @@ The Documentation screen never did the cross-linking - that is Learn, and Learn 
 WHY THIS IS THE RIGHT TRADE. Both screens were built to a premise nobody could state, twice, and
 each time the work was real and closed nothing. "A list, and the document rendered in a tab" is a
 definition that fits in a sentence, which is exactly what the two previous attempts lacked.
+
+## Observations
+- [supersession] Replaces TASK-tutorials-what-the-screen-is-and-what-implemented-means-for: Owner ruling 2026-09-07 (plan:walk seq:140, option A). Superseded outright: one console page replaces both screens, with the measured EN/HE state beside each. A screen that was merged away cannot need a definition of what implemented means for it. plan:tuts seq:2 and library.js carry the surface that replaced it.
+
+## Relations
+- supersedes [[TASK-tutorials-what-the-screen-is-and-what-implemented-means-for]]

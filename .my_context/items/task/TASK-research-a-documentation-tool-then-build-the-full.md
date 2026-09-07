@@ -2,7 +2,7 @@
 id: TASK-research-a-documentation-tool-then-build-the-full
 type: task
 title: research a documentation tool, then build the full application documentation
-status: active
+status: superseded
 severity: soft
 always: false
 summary: Pick a documentation tool first, then build the complete user documentation in both languages out of sources that already exist.
@@ -22,8 +22,8 @@ source_file: null
 source_anchor: null
 source_checksum: null
 valid_from: 2026-08-25
-valid_until: null
-checksum: 7ff67bac0ba75355
+valid_until: 2026-09-07
+checksum: 9b3fe579d1c0380a
 plan: walk
 seq: "24"
 state: todo
@@ -57,3 +57,6 @@ VERDICT: STANDS, and THREE TASKS FOLD INTO IT. It is one of the two largest unbu
   plan:review seq:6b -- SHOULD MERGE. Applying a 2026-08-22 documentation review s findings separately means editing the same documents twice, which is the exact reason that task deferred itself.
 
 AND IT MUST SHARE A SOURCE WITH plan:builder seq:8, which renders /api/help/:topic and `examples <cat>` INTO the screens. If the programme writes a second description of the same commands, the product grows two manuals -- which is the drift plan:builder exists to end.
+
+## Relations
+- superseded_by [[TASK-both-readmes-learn-the-composer-and-the-help-in-the]]

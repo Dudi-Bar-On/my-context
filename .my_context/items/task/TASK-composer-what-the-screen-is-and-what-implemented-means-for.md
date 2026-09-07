@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: The screen that builds a command for you from real choices out of your own project, and hands it over to paste rather than running it.
-summary_of: 57e0e888a5d18ad4
+summary_of: c9fca28a2f80f2cd
 scope: []
 tags:
   - v2
@@ -21,7 +21,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-09-02
 valid_until: null
-checksum: 1d97b19b63e33b8d
+checksum: aba2c0812bc37750
 plan: walk
 seq: "129"
 state: todo
@@ -36,3 +36,11 @@ WHAT THE SCREEN IS, so it can be built without opening the mockup. nav.ch -- Com
 WHAT IMPLEMENTED MEANS: every catalogue entry reachable through pickers built from its own arguments and flags, the glob tester answering from the server rather than from a browser-side rematch, no control that can compose a flag the catalogue withholds -- and the count line and the dead-scope sentence the engine computes and no key can word, held open at plan:screens seq:10s.
 
 Filed under plan:walk seq:27, condition 3.
+
+DEFINITION SETTLED 2026-09-07 by owner ruling (plan:walk seq:140, option A): "close the DEFINITION
+now, and let the verification close under plan:builder seq:11".
+
+So this item is NOT flipped here. What the Composer IS, and what implemented means for it, is now
+answered. What remains is the verification half, and it belongs to builder seq:11 (D12) - which has
+landed for reads and is finishing the write entries. When that closes, this closes with it and needs
+no further ruling.

@@ -2,7 +2,7 @@
 id: TASK-procedures-export-import-and-template-packs-are-the-only
 type: task
 title: Procedures, Export / import and Template packs are the only three screens that state no verdict, because the retired PROPOSED badge is what their design of record put in that slot
-status: active
+status: superseded
 severity: soft
 always: false
 summary: Three screens say nothing about what they are good for, because retiring an old design label left that slot empty rather than filled.
@@ -25,8 +25,8 @@ source_file: null
 source_anchor: null
 source_checksum: null
 valid_from: 2026-08-29
-valid_until: null
-checksum: 72a0f71fbadbde1a
+valid_until: 2026-09-07
+checksum: 2c67f8a4366492a4
 plan: walk
 seq: "108"
 state: todo
@@ -49,3 +49,6 @@ FOUND 2026-08-29 under plan:walk seq:5. One gap with one cause, and it lands on 
 **WHY IT WAITS ON plan:walk seq:92, AND WHAT IT ADDS TO IT.** All three modules refuse on the premise that a key the design of record does not declare fails `strings-parity` in the direction that names it. That direction was dropped on 2026-08-26. seq:92 enumerates thirteen sites of that premise AND ITS GREP MISSED TWO: `screens/port.js` and `screens/packs.js` refuse on the same retired rule in a different wording — *a key that does not exist* rather than *a key that may not be invented* — so neither matched. Add both when seq:92 re-measures; the count is fifteen, not thirteen. `screens/proc.js` is already on that list, for two other sentences.
 
 **WHAT THIS IS NOT.** It is not the em-dash key plan:walk seq:89 asks for, which words why a CELL holds no value. This words what a SCREEN is for. One is the body, the other is the head, and closing either does nothing for the other.
+
+## Relations
+- superseded_by [[TASK-three-screens-draw-the-unmeasured-mark-from-the-same]]

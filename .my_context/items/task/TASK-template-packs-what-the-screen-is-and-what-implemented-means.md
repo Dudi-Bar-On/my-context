@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: The screen for starter collections someone else published, showing what each one brings, what it may never bring, and which are installed here.
-summary_of: dd4843a184592e03
+summary_of: d5ad1be0f7e166d0
 scope: []
 tags:
   - v2
@@ -14,17 +14,17 @@ tags:
   - mockup
   - "plan:walk"
   - "seq:130"
-  - "state:todo"
+  - "state:done"
 origin: human
 source_file: null
 source_anchor: null
 source_checksum: null
 valid_from: 2026-09-02
 valid_until: null
-checksum: 04aae3b6bd50f596
+checksum: fe962a1870b43499
 plan: walk
 seq: "130"
-state: todo
+state: done
 priority: "2"
 source: "plan:walk seq:27, from the module header of screens/packs.js on 2026-09-02"
 ---
@@ -36,3 +36,6 @@ WHAT THE SCREEN IS, so it can be built without opening the mockup. nav.ch -- Tem
 WHAT IMPLEMENTED MEANS: the four cards served, one card per imported pack carrying the wire's own field names in the wire's order with a bounded list and a show-all, isolation that survives a class rename or an element swap, and the three counts the engine computes and no key can say -- quarantined, dropped and missing -- given words, held open at plan:screens seq:10s.
 
 Filed under plan:walk seq:27, condition 3. NOTE-packs-is-the-app-ahead-of-its-design-and-well-defended measured the parity and concluded nothing here needs building; it did not say what the screen IS, which is what this task carries.
+
+CLOSED 2026-09-07 by owner ruling (plan:walk seq:140, option A). OVERTAKEN: the definition this item
+asked for exists.

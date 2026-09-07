@@ -2,7 +2,7 @@
 id: TASK-the-parity-gates-must-understand-a-screen-that-instantiates
 type: task
 title: the parity gates must understand a screen that instantiates a pattern
-status: active
+status: superseded
 severity: soft
 always: false
 summary: Teach the comparison checks that a screen may reuse a shared control, so borrowed pieces stop being reported as invented.
@@ -22,8 +22,8 @@ source_file: null
 source_anchor: null
 source_checksum: null
 valid_from: 2026-08-25
-valid_until: null
-checksum: 04514ecea2c783e6
+valid_until: 2026-09-07
+checksum: 3c3d49b5d69d8032
 plan: walk
 seq: "21"
 state: blocked
@@ -45,3 +45,6 @@ WHAT THE GATES NEED: a way for a screen s section to SAY it instantiates the bui
 DO NOT SOLVE IT WITH A KNOWN_GAPS ENTRY. That ledger is for gaps that will close; a screen correctly instantiating a pattern is not a gap and would sit there forever, which is how a shrink-only ledger stops meaning anything.
 
 Blocked on seq:20: there is no pattern to reference until it is drawn.
+
+## Relations
+- superseded_by [[DEC-the-mockup-is-a-frozen-reference-it-is-read-never-written]]

@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: An empty box titled error reads as an error, so good news looks like bad news on the very screen people open to check.
-summary_of: c31ee9b93eb97ede
+summary_of: 05942abe9f7f867e
 scope: []
 tags:
   - v2
@@ -15,17 +15,17 @@ tags:
   - "screen:doctor"
   - "plan:walk"
   - "seq:34"
-  - "state:todo"
+  - "state:done"
 origin: human
 source_file: null
 source_anchor: null
 source_checksum: null
 valid_from: 2026-08-25
 valid_until: null
-checksum: 1824205e7927d5c3
+checksum: 799ef2f19bbac1a0
 plan: walk
 seq: "34"
-state: todo
+state: done
 priority: "2"
 source: "plan:review seq:5, the functional UX review, 2026-08-25"
 ---
@@ -45,3 +45,6 @@ IT IS THE SAME DISTINCTION THIS PRODUCT HAS DRAWN CORRECTLY FOUR TIMES ELSEWHERE
 THE WORK: an empty level says so, in a keyed sentence. Mockup first, then both tables. Or, if the design of record draws no empty card at all, DRAW NO CARD -- but then the reader cannot tell "no errors" from "the error card failed to render", which is why a sentence is better than an absence.
 
 CHECK THE OTHER EMPTY TABLES IN THE SAME PASS, found by the same sweep: `gaps` draws `Where/What/Next` with zero rows, and `injected` draws `Item/Tier/When` with zero rows. Both are CORRECT states on this corpus -- there are no coverage gaps -- and neither says so.
+
+CLOSED 2026-09-07 by owner ruling (plan:walk seq:140, option A). OVERTAKEN: the code comment at the
+fix site already names this item as its closer. The work was done and the item was never flipped.

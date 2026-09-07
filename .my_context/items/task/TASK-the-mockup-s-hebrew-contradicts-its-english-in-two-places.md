@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: Two translated sentences say the opposite of their English, and two more leave parts of it out.
-summary_of: a0c88c5bb83acdcf
+summary_of: a51e68fd13736f64
 scope: []
 tags:
   - v2
@@ -15,17 +15,17 @@ tags:
   - i18n
   - "plan:walk"
   - "seq:63"
-  - "state:todo"
+  - "state:done"
 origin: human
 source_file: null
 source_anchor: null
 source_checksum: null
 valid_from: 2026-08-28
 valid_until: null
-checksum: 5485a52e1be82f82
+checksum: cd096e7fab6d4f4d
 plan: walk
 seq: "63"
-state: todo
+state: done
 priority: "1"
 needs: walk/37
 source: owner ruled, 2026-08-28
@@ -81,3 +81,6 @@ source: owner ruled, 2026-08-28
 > **Done when**
 >
 > Both contradictions are resolved in whichever direction the measurement supports, with the reasoning recorded; `cfg.nocmd` and `dv.mdnote` carry in Hebrew what they carry in English, with the emphasis then marked; the mockup and both tables agree; `bidi.spec.ts` and `strings-parity` stay green; and the `preview.whyn` / `work.diffn` question is answered rather than left.
+
+CLOSED 2026-09-07 by owner ruling (plan:walk seq:140, option A). OVERTAKEN: every "Done when" clause
+in this item is satisfied on disk today, measured by the review lane against the current files.

@@ -23,7 +23,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-09-05
 valid_until: 2026-09-06
-checksum: f224a6df6d88781e
+checksum: d659f91c8971c324
 ---
 
 # do the ins and del marks become run markers, or is a marker for one sentence a grammar growing by accident
@@ -61,3 +61,6 @@ either way (DEC-the-mockup-is-a-frozen-reference-it-is-read-never-written). And 
 already correct in the product: both string tables say the diff is line-level, matching lineDiff in
 core/revision-diff.ts, which is a line-level LCS and the only diff in src/. Only the frozen drawing
 still says word-level, and a frozen reference is allowed to hold an outdated sentence.
+
+## Relations
+- answers [[DEC-the-string-grammar-stays-at-five-markers-ins-and-del-are]]

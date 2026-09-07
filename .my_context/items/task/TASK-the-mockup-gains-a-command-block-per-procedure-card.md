@@ -2,7 +2,7 @@
 id: TASK-the-mockup-gains-a-command-block-per-procedure-card
 type: task
 title: the mockup gains a command block per procedure card
-status: active
+status: superseded
 severity: soft
 always: false
 summary: Each procedure should carry its own command, since one shared command names a single item that most of them are not.
@@ -22,8 +22,8 @@ source_file: null
 source_anchor: null
 source_checksum: null
 valid_from: 2026-08-24
-valid_until: null
-checksum: c69484e81501e31d
+valid_until: 2026-09-07
+checksum: 2e82022948c9abf8
 plan: walk
 seq: "3"
 state: todo
@@ -43,3 +43,6 @@ THE MOCKUP BELONGS TO THE OWNER. It is not edited to make a gate green, and it h
 The mockup s sample scene holds one procedure, so the change is only visible once plan:port seq:94 gives it more than one. Sequence this AFTER 94 or the edit cannot be seen to be correct.
 
 Re-measure tree-parity afterwards: findings proc #06 and #11 should be gone, and nothing else on the screen should have moved.
+
+## Relations
+- superseded_by [[DEC-the-mockup-is-a-frozen-reference-it-is-read-never-written]]
