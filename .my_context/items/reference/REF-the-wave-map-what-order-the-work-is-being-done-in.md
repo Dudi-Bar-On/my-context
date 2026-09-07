@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: The order of the work is now worked out by the tool itself; what stays here is why a group of work exists and how widely it may run.
-summary_of: 62207a3eb7b038e8
+summary_of: 9240fcfbe5afeae1
 summary_was:
   - 2026-09-07 The wave map is now the execution board in reports; what stays here is why a wave exists and how wide it may run.
   - 2026-09-05 The order the work is being tackled in, grouped so that jobs which do not touch each other can be done at the same time.
@@ -22,7 +22,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-08-28
 valid_until: null
-checksum: 18dc719dd9394389
+checksum: 6a2000b85103a73f
 ---
 
 # the wave map: what order the work is being done in
@@ -52,23 +52,6 @@ checksum: 18dc719dd9394389
 > `DEC-the-wave-is-the-order-and-priority-is-a-tiebreak-within-it` records why the order is
 > authored rather than derived, and what that costs. That decision still stands; only the list
 > moved.
-
-RETIRED AS A POINTER TOO, 2026-09-07. Owner ruling: the execution board is retired and the
-handover is the single place. So this item no longer points anywhere live either.
-
-WHERE THE TWO JOBS WENT. ORDER is now computed by the product from the corpus itself --
-`mycontext ready [--plan <p>] [--held]` reads the `needs:` fields and answers what is
-dispatchable, highest priority first. It cannot go stale because nobody keeps it by hand. STATE and
-narrative live in `reports/V2-HANDOVER.md`.
-
-WHY THE BOARD WAS RETIRED, and it is the same failure this item already suffered: the board was
-rewritten on 2026-09-05 to be "the single place", declared in its own rules that every new task must
-be added when filed and every landing logged -- and was then never touched again while forty-odd
-items were filed and fifteen closed. A hand-kept order document goes stale in days. That is now
-twice, which is enough evidence.
-
-WHAT THIS ITEM IS STILL FOR, unchanged: why a wave exists and how wide it may run. That is
-reasoning, not a list, and reasoning does not rot the way a roster does.
 
 RETIRED AS A POINTER TOO, 2026-09-07. Owner ruling: the execution board is retired and the
 handover is the single place. So this item no longer points anywhere live either.
