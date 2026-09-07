@@ -1,3 +1,47 @@
+## ⏭ READ THIS FIRST — 2026-09-07, at 93%. A DIAGNOSIS OF MINE COLLAPSED.
+
+**RETRACT WHAT THE BLOCK BELOW SAYS ABOUT `.demo-corpus`. IT IS WRONG.**
+
+I told him `e2e/cli-help.spec.ts` was held back because `.demo-corpus` has no
+command files, and framed a "fixture decision" as HIS to make. He pushed back
+— *"we are dogfooding, why did you decide to use demo corpus again?"* — and he
+was right on both counts.
+
+**What I did wrong:** I read a COMMENT in `e2e/app.ts` and repeated its
+conclusion as evidence. The console on 58888 serves the LIVE corpus and always
+did; that is what the help and Composer were built and verified against. Only
+the e2e harness points at `.demo-corpus`, and `MYCONTEXT_E2E_CORPUS` overrides
+it in one environment variable.
+
+**Then the measurement destroyed the diagnosis:**
+- spec against `.demo-corpus` — **12 of 14**
+- spec against the LIVE corpus with all 91 command files — **12 of 14,
+  identical**
+- `GET /api/cli-help/topic/slash` — **13,278 characters served**
+- `markdownNodes` over that markdown — **24 nodes, 0 refusals**
+
+So the endpoint serves the body and the renderer renders it, and the spec
+still reports *"slash: no rendered body"*. **It is not a fixture gap and not a
+product defect: the spec's own assertion is suspect.**
+
+**CONSEQUENCES THE NEXT SESSION MUST NOT MISS:**
+1. **There is no fixture decision on the owner. I invented one.** Do not ask
+   him to rule on it.
+2. **`port/99` is NOT due on this evidence.** I was about to pull a
+   deliberately-sequenced task forward to serve what turned out to be a test
+   bug. `port/98` is done in substance — 139 walk items, 95 closed — but that
+   does not make the return to real data due today.
+3. **I never checked `port/93`'s cost.** He asked twice. It is `todo` and is
+   `port/98`'s declared dependency; that is all I know.
+
+**THE ACTUAL NEXT STEP, and I offered it and have no answer yet: fix the
+spec's assertion.** It is the last thing between `library/6` (D27) and closed.
+`e2e/cli-help.spec.ts` remains uncommitted in the tree; `e2e/execute.spec.ts`
+is the builder lane's id-box edit and simply wants folding in.
+
+**EVERYTHING ELSE IN THE BLOCK BELOW STILL HOLDS** — what landed, the rulings
+awaiting him, the board. Read it.
+
 ## ⏭ READ THIS FIRST — 2026-09-07, at 92%. He is awake; the D table was given.
 
 **The morning table has been delivered** and he has restarted the MCP servers.
