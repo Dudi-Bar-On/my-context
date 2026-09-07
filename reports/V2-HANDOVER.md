@@ -1,3 +1,47 @@
+## ⏭ READ THIS FIRST — 2026-09-07, at 95%. THE RETRACTION BELOW IS RESOLVED.
+
+**`e2e/cli-help.spec.ts` IS 14/14 AND COMMITTED.** It was a race: `choose`
+returns when the picker moves, the detail renders after, and `slash` is the
+largest topic served (13,278 chars) so it alone lost. **My first fix was also
+wrong** — it waited on the pane, which still held the PREVIOUS topic's
+headings, while `.topicbody` was absent. Waiting on `.topicbody` itself fixed
+it. There is no fixture question and never was one.
+
+**THE OWNER RULED: `.demo-corpus` IS RETIRED.** Filed as `port/100`, beside the
+already-filed `port/99`.
+
+**AND THE PRODUCT ANSWERED HIS QUESTION BETTER THAN I DID.** Superseding
+`DEC-the-ui-is-developed-against-a-simulated-corpus-until-the` was REFUSED
+because it is **already superseded** — by
+`INSTR-testing-happens-against-the-current-corpus-and-an-exception`, his own
+dogfooding instruction. The record retired that decision long ago; the e2e
+harness and I had not caught up. **I read a live comment citing a retired
+decision and treated it as current** — the drift this project measures in
+days, walked into while holding the rule against it.
+
+**MEASURED, so the retirement is not a leap:** 69 e2e specs, 24 name the
+fixture; every unit and integration suite (~6,500 tests) always ran against
+the real corpus; and the spec failed 12/14 in BOTH corpora, so nothing was
+hidden. The cost was one morning of my misdiagnosis, not a product defect.
+`port/100` carries forward WHY the fixture existed — the parity ledger
+measured 17, 17 and 11 absent kinds over live data, none of them code — and
+requires all 24 specs classified before any is changed.
+
+**HE SAID HE FEELS WITHOUT A SOLID BASE. THE BASE IS SOLID; GIVE HIM THE
+NUMBERS.** Every lane dispatched last night reported, was verified, committed
+and pushed. **545 of 640 tasks done, doctor 0 errors, nothing unpushed.** What
+is not done was never in last night's batches — it is the chain always
+sequenced last.
+
+**THE WHOLE REMAINING CHAIN IS ONE ITEM WIDE:**
+`builder/5` → releases `/6` and `/8` → `builder/11` (D12) → `docsys/11` (D28).
+**He was asked whether to dispatch `builder/5` and has not answered.** That is
+the first question next session, and the only thing standing at the front.
+
+**AWAITING HIS RULING, none blocking:** `budget/16` (patch at
+`scratchpad/budget-16-spare-band.patch`, reds 49 fixtures), `budget/15`,
+`builder/17`, `archive/6`, `port/100`, and the 43 `walk` items.
+
 ## ⏭ READ THIS FIRST — 2026-09-07, at 93%. A DIAGNOSIS OF MINE COLLAPSED.
 
 **RETRACT WHAT THE BLOCK BELOW SAYS ABOUT `.demo-corpus`. IT IS WRONG.**
