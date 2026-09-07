@@ -992,10 +992,13 @@ export const strings = {
   // silently: a key dropped from one table and left in the other renders
   // nowhere, looks like nothing, and only `strings-parity` sees it.
   //
-  // `pal.incomplete` is the survivor: "Required inputs are missing" used to be
-  // `aria-invalid` and nothing else, so a sighted reader saw an empty command
-  // box and no reason for it.
-  'pal.incomplete': 'Required inputs are missing — fill them in to compose a command.',
+  // `pal.incomplete` was the survivor of those six — "Required inputs are
+  // missing" used to be `aria-invalid` and nothing else, so a sighted reader
+  // saw an empty command box and no reason for it — and it left this block on
+  // 2026-09-07 as `bld.incomplete` (see the `bld.` keys at the end of this
+  // file). Nothing about the sentence changed; what changed is that the
+  // Composer stopped being the only screen that said it. Removed from `he.js`
+  // in the same edit, which is the half that goes wrong silently.
   // Owner ruling D2, 2026-09-06: being in the catalogue draws a form; running is
   // a second licence (`runnable`). Three entries carry it as `false`, so the
   // Composer draws Copy alone for them — this is the sentence that says why,
@@ -1836,4 +1839,26 @@ export const strings = {
   'gh.linksok': 'Every link in this document opens what it names. A link to another document opens it here; a link to a heading lands on it.',
   'gh.links': '{links} link(s) named something this server cannot open — a repository file that is not one of the {b:190 Markdown documents} served here, a path outside the repository, or a heading this document does not contain. Their text is drawn and their anchor is not: a link that opens nothing is worse than no link.',
   'gh.noroster': 'The document roster could not be read, so no link from this document to another could be checked. Every one of them is drawn as plain text rather than as a link that might open nothing.',
+
+  /* ── THE BUILDER — one set of command inputs, for every command site ─────
+     `src/ui/public/lib/builder.js` (`plan:builder seq:5` / `plan:walk seq:20`,
+     2026-09-07). These two keys belong to the COMPONENT and not to a screen,
+     which is a deliberate departure from the rule the `pal.` block above
+     states — that a screen borrowing another screen's key is how an edit meant
+     for one silently changes the other. A component is the case that rule does
+     not reach: Capture and the Composer draw the same command area because it
+     IS the same code, so an edit to this sentence is meant to change both. The
+     `bld.` prefix is what says so.
+
+     `bld.incomplete` was `pal.incomplete`, unchanged in wording. Capture had no
+     equivalent at all: it hid the `.cmd` row and said nothing, which is the
+     per-screen divergence `plan:walk seq:20` asked to be settled once. */
+  'bld.incomplete': 'Required inputs are missing — fill them in to compose a command.',
+  // A closed vocabulary with nothing in it. The picker is DISABLED rather than
+  // offered as a list holding one em dash, and this is the sentence beside it:
+  // an empty list and a list nobody has opened look identical otherwise, which
+  // is the measured-zero rule (`STD-a-measured-zero-is-drawn-and-named-an-
+  // unmeasured-thing-is`) applied to a control. The field's own name is the
+  // CLI's word and is isolated rather than translated.
+  'bld.noopts': 'Nothing to choose for {mv:field} — this corpus offers no value for it yet.',
 };

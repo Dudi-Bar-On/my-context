@@ -2690,6 +2690,60 @@ tr.lanestep td:nth-child(3){padding-inline-start:14px}
 label.small select{min-inline-size:0;max-inline-size:260px;overflow:hidden;
   text-overflow:ellipsis;white-space:nowrap}
 
+/* ── THE BUILDER: the three states a command input can be in ─────────────
+   `src/ui/public/lib/builder.js` (`plan:builder seq:5` / `plan:walk seq:20`,
+   2026-09-07). No new class: every selector here is an element and a STATE,
+   because the states are what the builder sets and a class would be a second
+   name for what the DOM already says.
+
+   THE HINT. Owner instruction 2026-08-24: "a grayed out hint in the fields as
+   placeholder before user enter values".
+
+   `currentColor` at 60%, and NOT a token, which was measured rather than
+   preferred. This product's free-text boxes come in two grounds: `.globin` and
+   `.tagin` wear `--sink` with `--ink` on top, and a bare `<input>` on the
+   Composer wears UA chrome — black on white — because nothing in this sheet
+   has ever styled one. A fixed token cannot serve both. Measured in Chrome
+   2026-09-07 on the real screens: `var(--dim)` (#a9a6b8) reads 7.4:1 on the
+   dark box and 2.05:1 on the white one, which is a hint a reader has to lean
+   in for; the UA's own #757575 is the mirror defect at 3.4:1 on the dark box.
+   `currentColor` at 60% follows whichever ground the box is on — 6.2:1 on the
+   dark, 5.7:1 on the white — and stays visibly lighter than the value that
+   replaces it, which is the whole job of a placeholder.
+
+   The colour is restated as `currentColor` rather than left to inherit,
+   because Firefox and Chrome disagree about what an unstyled `::placeholder`
+   inherits; and `opacity` is set HERE rather than left at the UA default,
+   because Firefox additionally dims a placeholder on top of whatever colour it
+   is given and two dimmings is an unreadable hint.
+
+   That the two boxes have different grounds AT ALL is a defect this task did
+   not create and did not fix: a bare `<input>` on a dark console is UA chrome
+   in the middle of a themed page. Reported rather than absorbed.
+
+   VISIBLY REQUIRED. `aria-invalid="true"` marks a required field that is
+   EMPTY, and until this rule existed it marked it to a screen reader and to
+   nobody else — `capture.js` and `palette.js` both set the attribute and
+   `styles.css` had no selector for it, so four empty required boxes looked
+   exactly like four filled optional ones. The mark is `td.stale`'s own — an
+   inset 2px bar in `--warn` — rather than a red border, and that is a
+   deliberate choice of vocabulary: an empty required field is a field that
+   still needs looking at, not an error the reader has committed. It flips side
+   under `[dir="rtl"]` exactly as `td.stale` does, because an inset shadow is
+   the one border-like effect with no logical-property spelling.
+
+   DISABLED. A closed vocabulary with nothing in it is a disabled `<select>`
+   rather than a list holding one em dash. The declarations are
+   `.cmdactions button:disabled`'s, verbatim, so "this control cannot be used"
+   looks the same wherever the product says it. */
+.card label.small input::placeholder,
+.card label.small textarea::placeholder{color:currentColor;opacity:.6}
+input[aria-invalid="true"],select[aria-invalid="true"],textarea[aria-invalid="true"]{
+  box-shadow:inset 2px 0 0 var(--warn)}
+[dir="rtl"] input[aria-invalid="true"],[dir="rtl"] select[aria-invalid="true"],
+[dir="rtl"] textarea[aria-invalid="true"]{box-shadow:inset -2px 0 0 var(--warn)}
+label.small select:disabled,label.small input:disabled{opacity:.5;cursor:not-allowed}
+
 /* — per-field staleness on the work screen’s table (mockup ~1006-1007) — */
 td.stale{box-shadow:inset 2px 0 0 var(--warn)}
 [dir="rtl"] td.stale{box-shadow:inset -2px 0 0 var(--warn)}

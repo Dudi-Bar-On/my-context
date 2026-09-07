@@ -27,7 +27,7 @@
  * That trick alone is not enough HERE, and the difference is the whole reason
  * this loader is three lines longer than theirs.
  *
- * A screen module is not a leaf. `screens/palette.js` imports `/lib/command.js`,
+ * A screen module is not a leaf. `screens/palette.js` imports `/lib/builder.js`,
  * `/lib/palette-defs.js` and `/screens/parts.js` — SERVER-ABSOLUTE specifiers,
  * which is what the browser resolves and what `ui/static.ts` serves. Node
  * resolves `/lib/command.js` against the filesystem root and fails. Rewriting
@@ -197,10 +197,18 @@ test('the screen imports server-absolute specifiers, and the rewrite finds them'
   const absolute = specifiers.filter((s) => s.startsWith('/'));
   assert.deepEqual(
     absolute.sort(),
-    ['/lib/command-actions.js', '/lib/command.js', '/lib/palette-defs.js', '/screens/parts.js'],
+    ['/lib/builder.js', '/lib/palette-defs.js', '/screens/parts.js'],
     'the browser resolves these against the server root and ui/static.ts serves them; a relative ' +
     'specifier here would mean the module was reshaped for this test');
-  // `/lib/command-actions.js` joined on 2026-08-27, when the Composer adopted the shared
+  // **`/lib/command.js` and `/lib/command-actions.js` LEFT this list on
+  // 2026-09-07** and were replaced by ONE specifier, `/lib/builder.js`
+  // (`plan:builder seq:5`). Neither departure loosens anything: the builder is
+  // where this screen's form and command area are drawn now, it imports both of
+  // them, and `test/ui/palette-lib.test.ts` still walks the composing closure
+  // from `command.js` outward over its own bytes. What changed is that the
+  // Composer no longer spells the `.cmd` row and the Copy control itself, which
+  // is the whole of what that task did.
+  // `/lib/command-actions.js` had joined on 2026-08-27, when the Composer adopted the shared
   // Copy-and-Execute control. Its OWN imports are relative (`./command.js`, `./viewmodel.js`,
   // `../screens/parts.js`) and that is not an inconsistency: a module this test imports
   // through a `data:` URL can resolve a relative specifier and cannot resolve a root-absolute

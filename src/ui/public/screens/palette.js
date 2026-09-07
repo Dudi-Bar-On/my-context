@@ -166,13 +166,37 @@
  * rather than settled here. The glob tree carries `.plate` because the mockup
  * gives it one; on that the two agree.
  */
-import { composeCommand } from '/lib/command.js';
-// The ONE Copy-and-Execute control (plan Task 6). This screen is the first of
-// seven to adopt it, and it no longer builds a copy button of its own: nine
-// hand-rolled copy sites were measured across `screens/` on 2026-08-27, and
-// adding Execute to each of them would have been nine chances to get the
-// confirm wrong — the confirm being the security boundary (§6.3).
-import { commandActions } from '/lib/command-actions.js';
+/**
+ * **THE BUILDER — this screen's own form, moved out so that every command site
+ * draws the same way** (`plan:builder seq:5` / `plan:walk seq:20`, 2026-09-07).
+ *
+ * `controlSpecs`, `pickerOptions`, `missingRequired`, `suggestListId`,
+ * `controlFor`, `valueOf`, `labelled` and `optionEl` were declared in THIS FILE
+ * and are declared in `lib/builder.js` now, byte for byte apart from the two
+ * clauses the task added (a format placeholder, a disabled empty picker). They
+ * are re-exported below because `test/ui/palette-screen.test.ts` asks this
+ * module for them and the questions it asks are still exactly the right ones —
+ * a re-export keeps them answerable while there is only one implementation to
+ * answer with.
+ *
+ * `screens/capture.js` had its own `labelled` and `optionEl`, with a comment
+ * explaining that it rebuilt them because this file's were private. That is
+ * what a shared component is for, and both copies are gone.
+ */
+import {
+  captionFor, controlFor, controlSpecs, emptyPickerNote, labelled, markRequired,
+  missingRequired, optionEl, paintCommand, pickerOptions, readValues, suggestListId,
+} from '/lib/builder.js';
+export { controlSpecs, missingRequired, pickerOptions, suggestListId };
+// `/lib/command.js` and `/lib/command-actions.js` were imported HERE until
+// 2026-09-07 — `composeCommand` for the `.cmd` row and `commandActions` for the
+// one Copy-and-Execute control (plan Task 6; this screen was the first of seven
+// to adopt it, and stopped building a copy button of its own because nine
+// hand-rolled copy sites were measured across `screens/` on 2026-08-27 and
+// adding Execute to each would have been nine chances to get the confirm
+// wrong). Both are `lib/builder.js`' now, and this screen reaches them through
+// `paintCommand`. The quoting rule is still ONE implementation with a checker
+// over its own bytes; what changed is that one fewer file calls it directly.
 import { PALETTE, commandFor, runnableFor } from '/lib/palette-defs.js';
 // `linkId` was imported here until 2026-09-07 and is not any more: its one
 // caller was the id cell of Run's structured result table. The Composer still
@@ -318,23 +342,6 @@ export function copyBlocked(argv) {
 }
 
 /**
- * Every control a def offers, args before flags — the order `commandFor`
- * composes them in, so the form reads in the order the command does.
- *
- * **`def.flagsNotOffered` is absent here on purpose and by construction.** This
- * function is the whole population of the form, so the two lists it names are
- * the two lists a reader can be offered; a field the catalogue files under
- * `flagsNotOffered` has nowhere to appear. Written as an explicit pair rather
- * than as a filter over one merged list, because a filter is a rule that can be
- * relaxed by one predicate and this is meant to be a rule that has to be
- * rewritten. `commandFor` still composes the withheld fields — the Doctor card
- * needs `ack --all --code <c> --count <n>` — and that asymmetry is the point.
- */
-export function controlSpecs(def) {
-  return [...def.args, ...def.flags];
-}
-
-/**
  * The flag names this screen will draw a control for, for one def.
  *
  * `def.flags` and not every flag the entry can compose: this is the answer to
@@ -344,30 +351,6 @@ export function controlSpecs(def) {
  */
 export function offeredFlagNames(def) {
   return def.flags.map((flag) => flag.name);
-}
-
-/**
- * The required inputs that are still empty. `commandFor` throws rather than
- * composing a half-built command, and this is the same question asked without
- * the throw, so the form can mark the controls the throw is about.
- */
-export function missingRequired(def, values) {
-  return controlSpecs(def)
-    .filter((spec) => spec.required === true)
-    .filter((spec) => values[spec.name] === undefined || values[spec.name] === '')
-    .map((spec) => spec.name);
-}
-
-/**
- * The option list for one control, or `null` when it is not a picker at all.
- * A `source` is corpus data fetched at render; `options` is a closed
- * vocabulary the catalogue spells; everything else is a free input or a
- * checkbox and gets no list.
- */
-export function pickerOptions(spec, sources) {
-  if (typeof spec.source === 'string') return sources[spec.source] ?? [];
-  if (Array.isArray(spec.options)) return spec.options.map((value) => ({ value, label: value }));
-  return null;
 }
 
 /**
@@ -838,164 +821,6 @@ function argvChip(chip) {
   return span;
 }
 
-/**
- * A labelled control, the mockup's `<label class="small">` shape.
- *
- * `parts` is a NODE LIST, never a string, because a translated caption arrives
- * from `ctx.t()` as nodes and must stay that way — `label.append(ctx.tFlat(k))`
- * would flatten the `{m:…}` runs a caption may carry, which is owner ruling A1
- * and the defect `lib/i18n.js` records as shipped. A control's own name
- * (`category`, `--severity`) is the CLI's word rather than a translated one and
- * arrives here as a plain text node, the same call `parts.js` makes about tier
- * names.
- */
-function labelled(parts, control) {
-  const label = el('label', 'small');
-  label.append(...parts, ' ', control);
-  return label;
-}
-
-function optionEl(value, label) {
-  const option = document.createElement('option');
-  option.value = value;
-  option.textContent = label;
-  return option;
-}
-
-/**
- * The `id` of the `<datalist>` a `suggest` control reads, from the field's own
- * name. One form is on screen at a time and `controlSpecs` cannot repeat a
- * name within it — `commandFor` reads one values bag, so two fields of one name
- * could not be composed at all — so this is unique by construction rather than
- * by a counter.
- */
-export function suggestListId(name) {
-  return `sugg-${name}`;
-}
-
-/**
- * The control for one arg or flag. A picker where the catalogue names a source
- * or a closed vocabulary, a checkbox for a boolean switch, a textarea for a
- * body, a text input otherwise — and `input.globin` for a `glob`, which is the
- * glob tester's own input rather than a second box saying the same thing.
- *
- * ── **`input: 'suggest'` IS A BOX WITH A LIST**, and it is the D11 answer to
- * "picker or free text" (owner ruling 2026-09-06).
- *
- * `<input list>` + `<datalist>` rather than a `<select>` or a hand-written
- * widget, and the three reasons are the three constraints the ruling set:
- *
- *   - **The escape hatch survives.** Every field that got one has a value the
- *     command accepts and the list cannot know: `ack --clear` withdraws a
- *     ruling whose code doctor no longer reports, and `init --pack` takes any
- *     path on disk. A `<select>` would have composed a narrower command than
- *     the CLI accepts. This is the `--tags` box's rule — *"the box is the
- *     model; what the reader picks is written into the line they can also
- *     type"* — reached by a control the browser draws instead of by a
- *     checkbox list this file draws.
- *   - **Keyboard and RTL are the browser's, not ours.** A `<div role=
- *     "combobox">` owes arrow/Home/End/type-ahead, `aria-activedescendant`,
- *     and a popup that opens on the correct side under `dir="rtl"`. This owes
- *     none of them: it is an `<input>`, so it is in the tab order, and the
- *     suggestion popup is UA chrome that already follows the document's
- *     direction.
- *   - **It cannot reproduce the width defect.** `label.small select` is capped
- *     at 260px in `styles.css` because a select's min-content IS its
- *     max-content — a 942-option picker opened the page to 3,902px. An
- *     `<input>` has no such floor: its box is its box and the suggestions are
- *     drawn in a popup outside the layout entirely.
- *
- * ── AND SINCE 2026-09-07 THE `id` FIELD IS ONE OF THEM ────────────────────
- *
- * Owner ruling (`TASK-a-long-picker-becomes-a-filtering-box-and-the-id-field-stops`):
- * every field sourced from `items` — eleven of them across ten catalogue
- * entries, `supersede`'s `--by` included — is a `suggest` box now. The third
- * bullet above is the measurement that decided it: those are the 951-option
- * `<select>`s the 260px cap exists to contain, they are rebuilt on every
- * command switch, and a reader who knows which item they mean was scrolling
- * for it.
- *
- * **THE COST WAS TAKEN KNOWINGLY AND IT IS NOT THE SAME COST AS `--clear`'s.**
- * `ack --clear` and `init --pack` have values their list CANNOT know, so for
- * them a box is strictly better than a picker. `items` is different: the id
- * vocabulary is closed, the `<select>` could not compose a name that does not
- * exist, and after this a typo composes one. What makes that acceptable is
- * that **the refusal MOVES rather than disappearing** — every one of the ten
- * commands refuses an unknown id in its own words ("no item with id …") — and
- * `test/ui/palette-lib.test.ts` proves it against the real CLI, field by
- * field, derived from this catalogue so a new `items` field cannot arrive
- * unproved.
- *
- * `.suggin` JOINS `.tagin`'s selector list in `styles.css` rather than getting
- * a rule of its own. Its own rule says what that treatment is for — *"the other
- * place this product takes a machine value by hand: mono, LTR and ISOLATED, so
- * it reads left-to-right inside a Hebrew page"* — and a doctor code and a pack
- * path are exactly that. One declaration differs and is overridden beside it:
- * the width, because `label.small` is inline and a full-width control strands
- * its own caption on the line above. That was found by looking at the rendered
- * screen and not by reading the rule.
- */
-function controlFor(spec, sources, onChange) {
-  if (spec.input === 'suggest') {
-    const box = document.createElement('input');
-    box.className = 'suggin';
-    box.spellcheck = false;
-    box.autocomplete = 'off';
-    box.setAttribute('list', suggestListId(spec.name));
-    if (spec.required === true) box.required = true;
-    box.addEventListener('input', onChange);
-    return box;
-  }
-  const options = pickerOptions(spec, sources);
-  if (options !== null) {
-    const select = document.createElement('select');
-    // The blank option is the ABSENT value, not a default. `commandFor` skips
-    // an empty optional and throws on an empty required one, so "—" composes
-    // nothing rather than composing the first thing in the list.
-    select.append(optionEl('', '—'));
-    for (const option of options) select.append(optionEl(option.value, option.label));
-    select.addEventListener('change', onChange);
-    return select;
-  }
-  if (spec.boolean === true) {
-    const box = document.createElement('input');
-    box.type = 'checkbox';
-    box.addEventListener('change', onChange);
-    return box;
-  }
-  const control = spec.input === 'textarea'
-    ? document.createElement('textarea')
-    : document.createElement('input');
-  if (spec.input === 'glob') {
-    control.className = 'globin';
-    control.id = 'globin';
-    control.spellcheck = false;
-    control.autocomplete = 'off';
-    control.setAttribute('aria-describedby', 'globcount');
-    control.value = EVERY_FILE;
-  }
-  // `.tagin` is the treatment `#focustags` already carries and `.globin` before
-  // it: mono, LTR and bidi-ISOLATED, because a comma-separated tag list is a
-  // machine value and must read left-to-right inside a Hebrew page without
-  // reordering the words around it. The picker that fills it is built in
-  // `build()` below rather than here — this function returns ONE control, and
-  // `valueOf` reads exactly this element, which is what keeps the box the model.
-  if (spec.input === 'tags') {
-    control.className = 'tagin';
-    control.spellcheck = false;
-    control.autocomplete = 'off';
-  }
-  if (spec.required === true) control.required = true;
-  control.addEventListener('input', onChange);
-  return control;
-}
-
-/** What one control currently holds, in `commandFor`'s vocabulary. */
-function valueOf(control, spec) {
-  if (spec.boolean === true) return control.checked === true ? true : undefined;
-  return control.value === '' ? undefined : control.value;
-}
-
 export async function render(root, ctx) {
   root.replaceChildren();
   screenHead(ctx, root, 'pal.h', 'pal.v', 'pal.sub');
@@ -1320,14 +1145,8 @@ export async function render(root, ctx) {
 
   const controls = new Map();
 
-  function currentValues() {
-    const values = {};
-    for (const [name, entry] of controls) {
-      const value = valueOf(entry.control, entry.spec);
-      if (value !== undefined) values[name] = value;
-    }
-    return values;
-  }
+  /** What the form holds, read by the builder through one `valueOf`. */
+  const currentValues = () => readValues(controls);
 
   /* ── the suggestion lists behind the `suggest` boxes ───────────────────── */
 
@@ -1483,10 +1302,11 @@ export async function render(root, ctx) {
       }
     }
 
-    const missing = new Set(missingRequired(def, values));
-    for (const [name, entry] of controls) {
-      if (entry.spec.required === true) entry.control.setAttribute('aria-invalid', String(missing.has(name)));
-    }
+    // The builder's mark, on every paint: `aria-invalid` on each required
+    // control, `false` included, so a filled box loses the mark it gained.
+    // `styles.css` paints it now — until 2026-09-07 this attribute was correct
+    // ARIA and nothing a sighted reader could see.
+    const missing = markRequired(def, controls, values);
 
     // `commandFor` throws rather than composing a half-built command. The base
     // is still certain — it is the def's own words — so the chip row shows what
@@ -1497,7 +1317,6 @@ export async function render(root, ctx) {
     } catch {
       argv = [...def.base];
     }
-    const complete = missing.size === 0;
     const blocked = copyBlocked(argv);
 
     chipRow.replaceChildren(...argvChips(argv).map(argvChip));
@@ -1508,33 +1327,26 @@ export async function render(root, ctx) {
     blockNote.hidden = !blocked;
     if (blocked) blockNote.append(...ctx.t('pal.block'));
 
-    cmdBox.replaceChildren();
-    if (!complete) {
-      // **The only sentence this screen owed and did not have.** Every
-      // required control already carries `aria-invalid` — correct ARIA, and
-      // silent for a sighted reader: nothing on screen said WHY the command
-      // box stayed empty. `pal.incomplete` is that sentence, drawn where the
-      // command would otherwise be.
-      const note = el('p', 'small');
-      note.append(...ctx.t('pal.incomplete'));
-      cmdBox.append(note);
-      return;
-    }
-
-    const command = composeCommand(argv);
-    const cmd = el('div', 'cmd');
-    cmd.append(el('code', null, command));
-    cmdBox.append(cmd);
-
-    // **Copy and Execute, from the one control.** The copy refusal travels with
-    // it as `copyBlocked` rather than as a disabled button this screen builds:
-    // the measurement (`copyBlocked(argv)`, above) is the Composer's, and the
-    // rendering of it is every screen's. Execute is deliberately NOT blocked by
-    // the same measurement — a paste reaches a SHELL, where `$(…)` substitutes,
-    // while an execution reaches `execFile` with an argv array, where it is an
-    // ordinary literal.
-    // **`id` is the entry's name only if the entry may RUN, and this line is
-    // where the Composer stopped being the widest door in the product.**
+    // **THE COMMAND AREA IS THE BUILDER'S** (`lib/builder.js` · `paintCommand`).
+    //
+    // What it draws is what this screen used to draw here in fourteen lines:
+    // the `.cmd` row, the one Copy-and-Execute control under it, and —
+    // when a required input is still empty — the sentence in place of both.
+    // That sentence was `pal.incomplete` and is `bld.incomplete` now, because
+    // it is a property of every command site and not of this one; the reason it
+    // exists is unchanged and is worth keeping: every required control carries
+    // `aria-invalid`, which is correct ARIA and silent, and nothing on screen
+    // said WHY the command box stayed empty.
+    //
+    // **The copy refusal travels as `copyBlocked` rather than as a disabled
+    // button this screen builds**: the measurement (`copyBlocked(argv)`, above)
+    // is the Composer's, and the rendering of it is every screen's. Execute is
+    // deliberately NOT blocked by the same measurement — a paste reaches a
+    // SHELL, where `$(…)` substitutes, while an execution reaches `execFile`
+    // with an argv array, where it is an ordinary literal.
+    //
+    // **`id` is the entry's name only if the entry may RUN, and this is where
+    // the Composer stopped being the widest door in the product.**
     //
     // It read `id: def.name` for every def, which was correct for exactly as
     // long as membership in `PALETTE` was itself the execution licence. Owner
@@ -1548,21 +1360,19 @@ export async function render(root, ctx) {
     // This is courtesy, not the boundary. `execute-catalogue.ts` refuses the
     // same ids on the server, and it would refuse them if this line were wrong.
     const runnable = runnableFor(def);
-    cmdBox.append(commandActions({
+    // Said once, where the missing button would be. A reader who has just
+    // composed a correct command and been given one control instead of two is
+    // owed the reason, and "this one is yours to run" is a different sentence
+    // from every refusal in this UI — nothing failed. It is `extra` rather than
+    // an append after the fact because `paintCommand` empties its host.
+    const copyOnly = el('p', 'small');
+    copyOnly.append(...ctx.t('pal.copyOnly'));
+    paintCommand(cmdBox, {
+      argv, missing, ctx, id: runnable ? def.name : null, values, copyBlocked: blocked,
       // `ids` is the index an executed command's TEXT output is resolved
       // against — see `itemIds` above for what it is and why it is built once.
-      argv, id: runnable ? def.name : null, values, ctx, copyBlocked: blocked,
-      ids: itemIds,
-    }));
-    if (!runnable) {
-      // Said once, where the missing button would be. A reader who has just
-      // composed a correct command and been given one control instead of two is
-      // owed the reason, and "this one is yours to run" is a different sentence
-      // from every refusal in this UI — nothing failed.
-      const note = el('p', 'small');
-      note.append(...ctx.t('pal.copyOnly'));
-      cmdBox.append(note);
-    }
+      ids: itemIds, extra: runnable ? [] : [copyOnly],
+    });
 
     // **AND NOTHING AFTER THIS LINE, WHICH IS THE POINT OF THE SCREEN NOW.**
     // A composed command gets Copy, and Execute where the entry is licensed to
@@ -1606,17 +1416,28 @@ export async function render(root, ctx) {
     suggestEntries = [];
 
     for (const spec of controlSpecs(def)) {
+      // The glob field is drawn WITH the tester's own identity — the mockup's
+      // `id="globin"`, the live count it describes, and the universal pattern
+      // as its opening value. Those three are this screen's, not the builder's:
+      // Capture draws the same catalogue field as an empty box with no id,
+      // because two elements carrying one id collide the moment both screens
+      // have been visited. Passing them in is what lets one `controlFor` serve
+      // both.
       const control = controlFor(spec, sources, () => {
         if (spec.input === 'glob') testGlob(control.value.trim());
         recompose();
-      });
+      }, { globId: 'globin', describedBy: 'globcount', value: EVERY_FILE });
       controls.set(spec.name, { control, spec });
       if (spec.input === 'glob') {
         globControl = control;
         continue; // its home is the tester card, not the form list
       }
-      const caption = document.createTextNode(`${spec.name}${spec.required === true ? ' *' : ''}:`);
-      form.append(labelled([caption], control));
+      form.append(labelled([captionFor(spec)], control));
+      // A closed vocabulary with nothing in it is a DISABLED picker and a
+      // sentence saying what the list is empty of — the builder's rule, drawn
+      // here rather than decided here.
+      const empty = emptyPickerNote(ctx, spec, sources);
+      if (empty !== null) form.append(empty);
       // The picker sits UNDER its box rather than replacing it, because the box
       // is the model: what the reader ticks is written into the line they can
       // also type, and both are on screen at once so neither can be a surprise.

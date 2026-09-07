@@ -141,7 +141,42 @@
  * has no bold run to build. `preview.carried` loses a `<b>` pair the same way.
  */
 import { composeCommand } from '/lib/command.js';
-import { commandActions } from '/lib/command-actions.js';
+/**
+ * **THE BUILDER, WHICH THIS SCREEN IS THE MODEL FOR** (`plan:builder seq:5` /
+ * `plan:walk seq:20`, 2026-09-07).
+ *
+ * Both tasks name this file: *"the Capture screen already does most of this — a
+ * select for the category, inputs for title and scope, a select for severity.
+ * Read `screens/capture.js` before designing anything: the job is to
+ * GENERALISE what is there, not to replace it."* `lib/builder.js` is that
+ * generalisation, and this screen now instantiates it rather than hand-rolling
+ * a row of inputs.
+ *
+ * **The four controls are the same four**, and they are built from the SAME
+ * catalogue entry that composes the command — `ADD.args` and `ADD.flags`,
+ * filtered to the four this screen offers (`FIELDS`). They were built by hand
+ * here, in twenty lines that reimplemented `palette.js`' `controlFor`, with a
+ * private `labelled()` whose own comment said it was "rebuilt here rather than
+ * imported: that function is private to that module". That is what a shared
+ * component is for.
+ *
+ * **What this screen gains by instantiating it**, none of which it had:
+ *   * `--scope`'s FORMAT as a placeholder — `a/**,b/**`, the CLI's own spelling
+ *     (owner instruction 2026-08-24, "a grayed out hint in the fields as
+ *     placeholder before user enter values").
+ *   * a VISIBLE required mark. `aria-invalid` was already set here and
+ *     `styles.css` had no rule for it, so an empty required box looked exactly
+ *     like a filled optional one.
+ *   * `bld.incomplete` where the command would be. This screen used to HIDE the
+ *     `.cmd` row and say nothing — correct, and silent; walk/20 asks the pattern
+ *     to "draw what that looks like rather than leaving each screen to decide".
+ *   * a category picker that DISABLES itself when the corpus has no enabled
+ *     category, rather than offering a list holding one em dash.
+ */
+import {
+  captionFor, controlFor, controlSpecs, emptyPickerNote, labelled,
+  markRequired, missingRequired, paintCommand, readValues,
+} from '/lib/builder.js';
 import { PALETTE, commandFor } from '/lib/palette-defs.js';
 import { el, errorNote, num, screenHead, spaced } from '/screens/parts.js';
 
@@ -160,8 +195,12 @@ export const ADD = PALETTE.find((def) => def.name === 'add');
  */
 export const CAPTURE_DEBOUNCE_MS = 180;
 
-/** The mockup's own mark for "no value here", used as the blank option. */
-const ABSENT = '—';
+/**
+ * `ABSENT` — the mockup's own mark for "no value here", used as every picker's
+ * blank option — lived here and lives in `lib/builder.js` now. It was declared
+ * in two screens with two comments saying the same thing, which is the
+ * duplication this task exists to end.
+ */
 
 /**
  * The endpoint's parse, character for character
@@ -256,27 +295,41 @@ export function rowCells(row) {
   return { id: row.id, detail: `${row.type}, ${row.tier}` };
 }
 
-/* ── the DOM half, which is the stated untested surface (spec §6) ──────────── */
+/**
+ * **THE FOUR FIELDS THIS SCREEN OFFERS, BY NAME, OUT OF `add`'s ELEVEN.**
+ *
+ * Named rather than counted, and ordered rather than filtered in place: this
+ * is the answer to *what does Capture ask for*, which is a decision, and a
+ * predicate over the catalogue would let a twelfth field arrive here the day
+ * somebody added one to `mycontext add`. `controlSpecs(ADD)` is the population
+ * and this is the choice out of it, so a field renamed in the catalogue fails
+ * `specsFor()` below rather than disappearing from the screen in silence.
+ *
+ * `scope` is REQUIRED here and optional in the catalogue, which is not a
+ * disagreement: it is optional to `mycontext add`, and it is the whole question
+ * on this screen — the overlap check has nothing to ask about without it. The
+ * override is spelled here, beside the choice it belongs to.
+ */
+export const FIELDS = ['category', 'title', 'scope', 'severity'];
+const REQUIRED_HERE = new Set(['category', 'title', 'scope']);
 
 /**
- * `palette.js`'s `<label class="small">caption control</label>`, rebuilt here
- * rather than imported: that function is private to that module, and a screen
- * reaching into another screen's internals is a coupling neither file
- * declares. The caption arrives as a TEXT NODE and never through `ctx.t` —
- * see the header for why an argument name is not a translated string.
+ * The four specs, in this screen's order, with the `scope` override applied.
+ *
+ * Fails loudly on a name the catalogue does not have: a form that silently drew
+ * three controls because a field was renamed would compose a different command
+ * from the one this screen is about.
  */
-function labelled(caption, control) {
-  const label = el('label', 'small');
-  label.append(document.createTextNode(caption), ' ', control);
-  return label;
+export function specsFor(def) {
+  const byName = new Map(controlSpecs(def).map((spec) => [spec.name, spec]));
+  return FIELDS.map((name) => {
+    const spec = byName.get(name);
+    if (spec === undefined) throw new Error(`capture: ${def.name} has no ${name} field`);
+    return REQUIRED_HERE.has(name) ? { ...spec, required: true } : spec;
+  });
 }
 
-function optionEl(value, label) {
-  const node = document.createElement('option');
-  node.value = value;
-  node.textContent = label;
-  return node;
-}
+/* ── the DOM half, which is the stated untested surface (spec §6) ──────────── */
 
 export async function render(root, ctx) {
   root.replaceChildren();
@@ -310,41 +363,56 @@ export async function render(root, ctx) {
   }
 
   // --- the four controls the mockup does not have (see the header) ---------
+  //
+  // **BUILT BY THE BUILDER, from the catalogue entry this screen composes.**
+  // Twenty lines of hand-rolled `document.createElement` stood here and are
+  // gone: what a `category` looks like is `lib/builder.js`' answer now, and it
+  // is the same answer the Composer gets. The three things this screen still
+  // decides are the three it is entitled to — WHICH fields (`FIELDS`), which
+  // of them are required HERE (`specsFor`), and what happens when one changes.
+  //
+  // `sources.categories` is `/api/config`'s resolved view rather than a fetch
+  // of its own, and `severity`'s vocabulary is the catalogue's own `options`,
+  // so `controlFor` needs no branch for this screen: it reads the spec.
 
-  const category = document.createElement('select');
-  category.append(optionEl('', ABSENT));
-  for (const name of categoryOptions(config)) category.append(optionEl(name, name));
+  // Every answer carries the number of the request that asked for it. Two
+  // keystrokes 200ms apart are two round trips, and the SECOND one is the
+  // question on screen — without this, a slow first answer landing last would
+  // repaint the card with a scope the box no longer holds. Declared ABOVE the
+  // controls rather than beside `look()`, because the scope box's own change
+  // handler is what schedules the round trip and it is built in the loop below.
+  let asked = 0;
+  let timer = null;
 
-  const title = document.createElement('input');
-  title.type = 'text';
-
-  // `.globin` is the glob input's class on the Composer, and a scope pattern is
-  // the same kind of value typed into the same kind of box. The mockup's own
-  // `id="globin"` is deliberately NOT copied: screens stack in the DOM and stay
-  // there hidden, so a second element carrying that id would collide with the
-  // Composer's the moment both have been visited.
-  const scope = el('input', 'globin');
-  scope.spellcheck = false;
-  scope.autocomplete = 'off';
-
-  const severity = document.createElement('select');
-  severity.append(optionEl('', ABSENT));
-  for (const name of severityOptions()) severity.append(optionEl(name, name));
-
-  // `required` and `aria-invalid` and nothing else. The plan declared a
-  // "required inputs are missing" sentence; neither table ever gained the key,
-  // so the marking is native semantics a screen reader already words — the
-  // same call `palette.js` records making for the same missing string.
-  for (const control of [category, title, scope]) control.required = true;
-
-  card.append(
-    labelled('category *:', category),
-    labelled('title *:', title),
-    // Marked required although the catalogue has `--scope` as an optional flag:
-    // optional to `mycontext add`, and the whole question on this screen.
-    labelled('scope *:', scope),
-    labelled('severity:', severity),
-  );
+  const sources = {
+    categories: categoryOptions(config).map((name) => ({ value: name, label: name })),
+  };
+  const specs = specsFor(ADD);
+  const controls = new Map();
+  for (const spec of specs) {
+    // `input: 'glob'` with NO `globId`: `.globin` is the glob input's class on
+    // the Composer, and a scope pattern is the same kind of value typed into
+    // the same kind of box, but the mockup's `id="globin"` is deliberately not
+    // copied — screens stack in the DOM and stay there hidden, so a second
+    // element carrying that id would collide with the Composer's the moment
+    // both have been visited. The builder takes that id as a parameter for
+    // exactly this reason.
+    const control = controlFor(spec, sources, () => {
+      recompose();
+      if (spec.name !== 'scope') return;
+      if (timer !== null) clearTimeout(timer);
+      timer = setTimeout(() => { timer = null; void look(); }, CAPTURE_DEBOUNCE_MS);
+    });
+    controls.set(spec.name, { control, spec });
+    card.append(labelled([captionFor(spec)], control));
+    // A closed vocabulary with nothing in it is a DISABLED picker and a
+    // sentence naming the field it belongs to. A corpus whose config enables no
+    // category is exactly that, and this screen used to draw an operable-looking
+    // list holding one em dash.
+    const empty = emptyPickerNote(ctx, spec, sources);
+    if (empty !== null) card.append(empty);
+  }
+  const scope = controls.get('scope').control;
 
   // --- the card the mockup draws, in its order ----------------------------
 
@@ -359,26 +427,25 @@ export async function render(root, ctx) {
   // a row in it — the treatment `gaps.js` gives its truncation disclosure.
   const notgov = el('p', 'small');
   notgov.hidden = true;
-  const cmd = el('div', 'cmd');
-  const code = el('code');
-  cmd.append(code);
-  card.append(head, table, notgov, spaced(nosim), cmd);
+  // **The command area is one host the builder fills**, rather than a `.cmd`
+  // row this screen hides and a control it appends after it. `paintCommand`
+  // draws the row, the Copy-and-Execute control and — while a required input
+  // is empty — `bld.incomplete` in place of both.
+  const cmdBox = el('div');
+  card.append(head, table, notgov, spaced(nosim), cmdBox);
 
   /**
-   * The shared Copy control, rebuilt on every recomposition.
+   * **THE COPY CONTROL IS REBUILT ON EVERY RECOMPOSITION, and that is
+   * `paintCommand`'s rule rather than this screen's.**
    *
    * `commandActions` is built AROUND one command — it closes over the argv it
    * was given — and this screen's command changes on every keystroke. A control
    * left in place while the `<code>` above it changed would put a capture from
    * two keystrokes ago on the clipboard, which is worse than the hand-rolled
-   * button it replaces rather than better. So it is removed and rebuilt, which
-   * is also why it is held in a variable rather than appended once at build
-   * time.
-   */
-  let actions = null;
-
-  /**
-   * **Capture composes `add`, and it now OFFERS to run it — the decision, taken.**
+   * button it replaces rather than better. `paintCommand` empties its host and
+   * refills it, so the argv on the clipboard is the argv on screen.
+   *
+   * **Capture composes `add`, and it OFFERS to run it — the decision, taken.**
    *
    * This screen was the one place `id: null` was a choice rather than a
    * consequence of the catalogue. `add` has always been in the catalogue; what
@@ -395,7 +462,7 @@ export async function render(root, ctx) {
    * `KNOWN_GAPS.capture` in `screen-parity.spec.ts`, which makes that ledger
    * SHORTER.
    *
-   * **What made waiting free until now is also gone.** `add` is on the approval
+   * **What made waiting free until then is also gone.** `add` is on the approval
    * boundary, and the browser's old `COMMAND_EFFECTS` table could not say what
    * it writes, so an Execute button here would have minted a nonce and then
    * declined — a true sentence traded for a control that could not act.
@@ -404,13 +471,6 @@ export async function render(root, ctx) {
    * 1.3 s as one created item with every field named, with and without
    * `--yes` alike, so this screen's existing values need nothing added to them.
    */
-  const drawActions = (argv, values) => {
-    if (actions !== null) actions.remove();
-    actions = argv === null ? null : commandActions({ argv, id: 'add', values, ctx });
-    // `after`, so the control lands directly below the command it acts on —
-    // the order the mockup draws, now with nothing after it.
-    if (actions !== null) cmd.after(actions);
-  };
 
   // --- what the two halves do when something changes ----------------------
 
@@ -431,18 +491,37 @@ export async function render(root, ctx) {
   };
 
   function recompose() {
+    const values = readValues(controls);
+    // **The composed `--scope` is the string the overlap check was asked
+    // about**, not the keystrokes. `?scope=a/** , ,b/**` is four positions and
+    // two patterns, and the endpoint answers about the two; composing the raw
+    // text instead would hand over a command whose scope is not the scope the
+    // card above it just reported on. So the box's value is re-read through the
+    // endpoint's own parse before it reaches the values bag — the one place
+    // this screen edits what the builder read.
     const patterns = scopePatterns(scope.value);
-    const values = {
-      category: category.value === '' ? undefined : category.value,
-      title: title.value === '' ? undefined : title.value,
-      scope: patterns.length === 0 ? undefined : patterns.join(','),
-      severity: severity.value === '' ? undefined : severity.value,
-    };
-    for (const [control, value] of [
-      [category, values.category], [title, values.title], [scope, values.scope],
-    ]) {
-      control.setAttribute('aria-invalid', String(value === undefined));
-    }
+    if (patterns.length === 0) delete values.scope; else values.scope = patterns.join(',');
+
+    // **TWO REQUIRED SETS, AND THEY ARE NOT THE SAME QUESTION.** This is the
+    // one place this screen does not simply hand the builder a def, and the
+    // distinction is worth stating because collapsing it would change what
+    // Capture composes.
+    //
+    //   `specs` is what THIS SCREEN asks of the reader, `--scope` included:
+    //   the overlap check has nothing to ask about without one, so an empty
+    //   scope box is a field still to fill and is marked as such.
+    //
+    //   `ADD` is what the COMMAND requires. `mycontext add` takes `--scope` as
+    //   an optional flag, so a capture with a category and a title is a
+    //   complete, runnable command whether or not the reader has typed a scope,
+    //   and refusing to compose it would be this screen inventing a CLI rule.
+    //
+    // So the marks come from the first and the command area from the second.
+    // Before the builder these were the same two facts, expressed as an
+    // `aria-invalid` loop over three controls and a `try/catch` around
+    // `captureArgv`; nothing about what composes has changed.
+    markRequired(specs, controls, values);
+    const missing = missingRequired(ADD, values);
     let argv = null;
     try {
       argv = captureArgv(values);
@@ -451,21 +530,14 @@ export async function render(root, ctx) {
       // its title has no command yet, and half of one must not be copyable.
       argv = null;
     }
-    // Hidden rather than emptied, for `palette.js`'s reason about the same
-    // shape: an empty `<p>` still carries its own block margin, and a
-    // paragraph-shaped hole reads as a sentence that failed to load. The
-    // control is REMOVED rather than hidden, because it is rebuilt anyway.
-    code.textContent = argv === null ? '' : composeCommand(argv);
-    cmd.hidden = argv === null;
-    drawActions(argv, values);
+    // The throw is the authority, and `missing` is the same fact asked without
+    // it: if the two ever disagreed, `paintCommand` would still be handed a
+    // reason not to compose rather than a null argv to compose from.
+    paintCommand(cmdBox, {
+      argv, missing: argv === null && missing.length === 0 ? ['title'] : missing,
+      ctx, id: 'add', values,
+    });
   }
-
-  // Every answer carries the number of the request that asked for it. Two
-  // keystrokes 200ms apart are two round trips, and the SECOND one is the
-  // question on screen — without this, a slow first answer landing last would
-  // repaint the card with a scope the box no longer holds.
-  let asked = 0;
-  let timer = null;
 
   async function look() {
     const patterns = scopePatterns(scope.value);
@@ -519,15 +591,6 @@ export async function render(root, ctx) {
       notgov.hidden = true;
     }
   }
-
-  scope.addEventListener('input', () => {
-    recompose();
-    if (timer !== null) clearTimeout(timer);
-    timer = setTimeout(() => { timer = null; void look(); }, CAPTURE_DEBOUNCE_MS);
-  });
-  title.addEventListener('input', recompose);
-  category.addEventListener('change', recompose);
-  severity.addEventListener('change', recompose);
 
   recompose();
   head.hidden = true;

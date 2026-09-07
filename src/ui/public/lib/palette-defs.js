@@ -257,12 +257,18 @@ export const PALETTE = [
     // fields in one value (`kind=text`, the shape `--extra` already uses), so
     // the placeholder its declaration supplies is what tells a composer the
     // "=" is not optional.
+    //
+    // **THAT PLACEHOLDER EXISTS NOW.** The sentence above was written before
+    // anything supplied one: `format` landed on 2026-09-07 with
+    // `lib/builder.js` (`plan:builder seq:5`), and it is what the builder
+    // renders as the box's `placeholder`. See `format` in this file's header.
     flags: [
       { name: 'body', input: 'textarea' }, { name: 'file', input: 'text' },
-      { name: 'note', input: 'text' }, { name: 'observation', input: 'text' },
+      { name: 'note', input: 'text' },
+      { name: 'observation', input: 'text', format: 'kind=text' },
       { name: 'step', input: 'text' },
       { name: 'summary', input: 'text' },
-      { name: 'scope', input: 'glob' },
+      { name: 'scope', input: 'glob', format: 'a/**,b/**' },
       // `input: 'tags'` — a COMMA-SEPARATED LIST with a picker over the tags
       // this corpus already carries (owner ruling D10, 2026-09-06). It stays
       // an input rather than becoming a `source`, and that is the whole design:
@@ -270,9 +276,10 @@ export const PALETTE = [
       // a control that composed `--tags v2` where the reader ticked three
       // would be a regression wearing a convenience's clothes. The box is the
       // model; see `screens/palette.js`' tag picker.
-      { name: 'tags', input: 'tags' },
+      { name: 'tags', input: 'tags', format: 'a,b' },
       { name: 'severity', options: ['hard', 'soft'] },
-      { name: 'valid-from', input: 'text' }, { name: 'extra', input: 'text' },
+      { name: 'valid-from', input: 'text', format: 'YYYY-MM-DD' },
+      { name: 'extra', input: 'text', format: 'key=value' },
       yes,
     ],
   },
@@ -305,14 +312,14 @@ export const PALETTE = [
     args: [{ name: 'id', input: 'suggest', source: 'items', required: true }],
     flags: [
       { name: 'title', input: 'text' }, { name: 'body', input: 'textarea' },
-      { name: 'scope', input: 'glob' },
+      { name: 'scope', input: 'glob', format: 'a/**,b/**' },
       // `input: 'tags'`, for `add`'s reason one entry up — and here the
       // catalogue's picker is doing a second job. `edit --tags` REFUSES a
       // hand-written projected tag outright (`handWrittenProjectionError`,
       // core/tag-projection.ts, called from `cli/commands/edit.ts`), so the
       // Composer offers the FREE-FORM half of `/api/tags` and names the other
       // half rather than drawing a control that composes a refusal.
-      { name: 'tags', input: 'tags' },
+      { name: 'tags', input: 'tags', format: 'a,b' },
       { name: 'severity', options: ['hard', 'soft'] },
       // `--always[=false]`: a switch with an explicit false, so it must be
       // composed JOINED. Space-separated is a refusal, not a synonym.
@@ -322,7 +329,7 @@ export const PALETTE = [
       // through one `boolFlag`.
       { name: 'continuity', options: ['true', 'false'], joined: true },
       { name: 'status', options: ['active', 'draft', 'deprecated', 'validated'] },
-      { name: 'extra', input: 'text' },
+      { name: 'extra', input: 'text', format: 'key=value' },
       yes,
     ],
   },
@@ -371,7 +378,7 @@ export const PALETTE = [
     flags: [
       { name: 'tag', input: 'text' },
       { name: 'category', source: 'categories' },
-      { name: 'scope', input: 'glob' },
+      { name: 'scope', input: 'glob', format: 'path-or-glob' },
       { name: 'clear', boolean: true },
       yes,
     ],
@@ -510,7 +517,8 @@ export const PALETTE = [
       },
     ],
     flags: [
-      { name: 'title', input: 'text' }, { name: 'scope', input: 'glob' },
+      { name: 'title', input: 'text' },
+      { name: 'scope', input: 'glob', format: 'a/**,b/**' },
       { name: 'severity', options: ['hard', 'soft'] },
       { name: 'directive', options: ['do', 'dont'] },
     ],
@@ -586,7 +594,8 @@ export const PALETTE = [
     name: 'review promote', kind: 'write', base: ['mycontext', 'review', 'promote'], boundary: true, runnable: true,
     args: [{ name: 'id', source: 'drafts', required: true }],
     flags: [
-      { name: 'scope', input: 'glob' }, { name: 'always', boolean: true },
+      { name: 'scope', input: 'glob', format: 'a/**,b/**' },
+      { name: 'always', boolean: true },
       { name: 'severity', options: ['hard', 'soft'] }, yes,
     ],
   },
@@ -598,13 +607,19 @@ export const PALETTE = [
     name: 'review promote-revision', kind: 'write', base: ['mycontext', 'review', 'promote-revision'],
     boundary: true, runnable: true,
     args: [{ name: 'id', source: 'revisions', required: true }],
-    flags: [{ name: 'revision', input: 'text' }, { name: 'force', boolean: true }, yes],
+    flags: [
+      { name: 'revision', input: 'text', format: 'REV-...' },
+      { name: 'force', boolean: true }, yes,
+    ],
   },
   {
     name: 'review discard-revision', kind: 'write', base: ['mycontext', 'review', 'discard-revision'],
     boundary: true, runnable: true,
     args: [{ name: 'id', source: 'revisions', required: true }],
-    flags: [{ name: 'revision', input: 'text' }, { name: 'reason', input: 'text' }, yes],
+    flags: [
+      { name: 'revision', input: 'text', format: 'REV-...' },
+      { name: 'reason', input: 'text' }, yes,
+    ],
   },
   // rebuild rewrites .index.db on disk — a write for composition purposes
   // even though it is not in the deny recipe (it rebuilds a derived file the
@@ -758,6 +773,28 @@ export function runnableFor(def) {
  * `name`, `required`, `boolean`, `joined` and `options` and never these, so the
  * server rebuilds through THIS function and inherits the rule rather than
  * carrying a second copy of it.
+ *
+ * ── `format`: THE FIELD'S OWN SHAPE, CARRIED INTO ITS PLACEHOLDER ──────
+ *
+ * Owner instruction 2026-08-24: *"a grayed out hint in the fields as
+ * placeholder before user enter values"*. A field whose value has a SHAPE
+ * declares it here, in the CLI's own spelling, and `lib/builder.js` renders it
+ * as the box's `placeholder` — `--extra key=value`, `--valid-from YYYY-MM-DD`,
+ * `--scope "a/**,b/**"`, `--revision REV-...`, `--observation kind=text`.
+ *
+ * **A field with no format declares none, and gets no placeholder.** Every
+ * value here is copied off the command's own usage line, and
+ * `test/ui/builder.test.ts` runs the real command and fails this file when a
+ * declared format is absent from what that command prints — the same
+ * derivation every other claim in this catalogue is held to. `--title "<text>"`
+ * therefore gets nothing: `<text>` is a type name and not a shape, and a
+ * placeholder reading `<text>` above a caption already reading `title` is
+ * decoration a reader has to look past.
+ *
+ * It is DECLARATIVE and reaches no other reader. `commandFor` never sees it,
+ * `src/ui/execute-catalogue.ts` never sees it, and a wrong format therefore
+ * composes nothing and runs nothing — it misinforms, which is why the test
+ * that derives it from the CLI is the whole of its guarantee.
  *
  * ── `flagsNotOffered`: COMPOSABLE HERE, NEVER DRAWN ON THE COMPOSER ────────
  *

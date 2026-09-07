@@ -497,8 +497,20 @@ test('Capture offers Execute and draws no shell warning — the decision, pinned
  * it is the whole point.
  */
 test('the screen adopts the shared control and keeps no copy button of its own', () => {
-  assert.ok(CODE.includes("from '/lib/command-actions.js'"),
-    'the screen does not import the shared Copy-and-Execute control');
+  // **REACHED THROUGH `lib/builder.js` SINCE 2026-09-07** (`plan:builder
+  // seq:5`). The import moved one file along and the claim did not: this screen
+  // draws its command area with `paintCommand`, which is the ONE place a `.cmd`
+  // row and a Copy-and-Execute control are built for any command site. A direct
+  // `commandActions` import here would now be a SECOND spelling of the thing
+  // the builder exists to have one of, so the assertion is inverted for it and
+  // kept for the clipboard.
+  assert.ok(CODE.includes("from '/lib/builder.js'"),
+    'the screen does not import the builder, so it is drawing its own command area');
+  assert.ok(/paintCommand\(/.test(CODE),
+    'the screen imports the builder and does not paint its command area with it');
+  assert.ok(!CODE.includes("from '/lib/command-actions.js'"),
+    'the screen reaches the shared control directly as well as through the builder — two '
+    + 'spellings of one control is what the builder exists to prevent');
   assert.ok(!/navigator\.clipboard/.test(CODE),
     'the screen still talks to the clipboard itself — Copy lives in lib/command-actions.js now');
 });
@@ -634,8 +646,18 @@ test('the screen invents exactly one class the mockup\'s capture section does no
   // SEVEN since seq:6c: `cmdnote` went with `cap.warn`, and it had exactly one
   // author in this file and one rule in each stylesheet, so nothing else lost a
   // class when it left.
-  assert.ok(written.length >= 7,
-    `the capture.js scan found ${written.length} class string(s); the screen writes at least seven`);
+  //
+  // **FIVE since 2026-09-07** (`plan:builder seq:5`), and the drop is the point
+  // of that task rather than a screen that stopped drawing things. `card pane`,
+  // `h3`, `table`, `tbody`, `small` are still authored HERE; `label.small`,
+  // `input.globin`, `div.cmd` and `code` are authored by `lib/builder.js` now,
+  // because what a labelled control and a command row look like is the
+  // BUILDER's answer and every command site gets the same one. The scan reads
+  // this file's `el()` calls, so a class the builder writes is correctly not
+  // among them — and `test/ui/builder.test.ts` holds the same question over
+  // that file.
+  assert.ok(written.length >= 5,
+    `the capture.js scan found ${written.length} class string(s); the screen writes at least five`);
 
   // `allowed` is the mockup's classes UNION what styles.css styles — see
   // test/helpers/shipped-classes.ts. The app is what gets built now, so a new
