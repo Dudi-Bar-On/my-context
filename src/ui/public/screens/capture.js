@@ -174,8 +174,9 @@ import { composeCommand } from '/lib/command.js';
  *     category, rather than offering a list holding one em dash.
  */
 import {
-  captionFor, controlFor, controlSpecs, emptyPickerNote, labelled,
-  markRequired, missingRequired, paintCommand, readValues,
+  CHECK_REFUSED, captionFor, commandChecker, commandHelp, controlFor, controlSpecs,
+  emptyPickerNote, labelled, markRefusal, markRequired, missingRequired, paintCommand,
+  readValues,
 } from '/lib/builder.js';
 import { PALETTE, commandFor } from '/lib/palette-defs.js';
 import { el, errorNote, num, screenHead, spaced } from '/screens/parts.js';
@@ -432,7 +433,35 @@ export async function render(root, ctx) {
   // draws the row, the Copy-and-Execute control and — while a required input
   // is empty — `bld.incomplete` in place of both.
   const cmdBox = el('div');
-  card.append(head, table, notgov, spaced(nosim), cmdBox);
+  // **WHAT IS LEGAL, WITHOUT LEAVING THE SCREEN** (`plan:builder seq:8`). One
+  // `details.help` explaining the FOUR fields this screen draws — not `add`'s
+  // eleven, because a help card about controls the reader cannot see is the
+  // Library's job done badly in Capture's space. Drawn by the builder out of
+  // `/api/cli-help/command/add`, so every word of it is `FLAG_DECLARATIONS`
+  // and the generated command summary rather than a third description written
+  // here.
+  const helpBox = el('div');
+  card.append(head, table, notgov, spaced(nosim), helpBox, cmdBox);
+
+  /**
+   * **The CLI's own verdict on the composed line** (`plan:builder seq:6`). The
+   * screen's part is one line — hand the checker the argv, repaint when it
+   * answers; when to ask and what to hold while waiting are the builder's,
+   * because they are properties of every command site and not of this one.
+   */
+  const checker = commandChecker(ctx, () => { if (root.isConnected) recompose(); });
+
+  // Tolerant, like the overlap read is not: a refused help read costs the
+  // reader an explanation and `commandHelp(null)` says so, but it must not cost
+  // them the capture, which composes and copies either way.
+  void (async () => {
+    let body = null;
+    try {
+      body = await ctx.api('/api/cli-help/command/add');
+    } catch { /* the keyed sentence, not a blank disclosure. */ }
+    if (!root.isConnected) return;
+    helpBox.replaceChildren(commandHelp(ctx, body, specs));
+  })();
 
   /**
    * **THE COPY CONTROL IS REBUILT ON EVERY RECOMPOSITION, and that is
@@ -530,12 +559,18 @@ export async function render(root, ctx) {
       // its title has no command yet, and half of one must not be copyable.
       argv = null;
     }
+    // **THE CLI'S OWN VERDICT ON THE LINE** (`plan:builder seq:6`), asked only
+    // once there IS a line: a half-built capture is already answered by
+    // `bld.incomplete`, and asking the parser about it would produce a refusal
+    // about a sentence the reader has not finished writing.
+    const check = argv === null || missing.length > 0 ? null : checker.verdictFor(argv);
+    markRefusal(ctx, controls, check !== null && check.state === CHECK_REFUSED ? check : null);
     // The throw is the authority, and `missing` is the same fact asked without
     // it: if the two ever disagreed, `paintCommand` would still be handed a
     // reason not to compose rather than a null argv to compose from.
     paintCommand(cmdBox, {
       argv, missing: argv === null && missing.length === 0 ? ['title'] : missing,
-      ctx, id: 'add', values,
+      ctx, id: 'add', values, check,
     });
   }
 

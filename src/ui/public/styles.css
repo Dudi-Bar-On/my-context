@@ -657,6 +657,32 @@ bdi{unicode-bidi:isolate}
    number. `min-inline-size:0` for `label.small select`'s reason two thousand
    lines down: nothing upstream may float a floor under this box either. */
 .card .suggin{inline-size:min(320px,100%);min-inline-size:0}
+/* `.sugecho` — WHAT YOU PICKED, READ BACK UNDER THE BOX (plan:builder seq:17,
+   owner ruling 2026-09-07).
+
+   MEASURED, and the measurement is the whole design: 986 ids in this corpus at
+   58 characters on average and 67 at the longest need about 615px; the box one
+   rule up renders at about 318px, and it is `direction:ltr;unicode-bidi:isolate`
+   — so on the Hebrew page what a reader sees is the TAIL of the id, which is
+   the least distinguishing part because every id in a category shares its
+   prefix. Filtering works. Reading back what was chosen did not.
+
+   THE BOX IS NOT WIDENED, and that is the ruling rather than a preference.
+   `label.small select` is capped at 260px above because a select's min-content
+   IS its max-content and a 942-option picker opened this page to 3,902px; a
+   600-character example line later put 1,325px of overflow on the same screen.
+   A 615px control on a card that also holds a two-column form is the third
+   attempt at that mistake. A PARAGRAPH has no shrink-to-fit floor at all.
+
+   So: full width of its own container, and `overflow-wrap:anywhere` so a 67-
+   character id wraps rather than pushing the card. `--ink` and not `--dim`,
+   because this is the value itself and not a note about it — the surrounding
+   `.aside` sentences stay dim and the echo reads as the answer among them.
+   The value inside carries `.m .v` from `{mv:…}`, which is already LTR and
+   isolated; `overflow-wrap` is an inherited property, so it reaches that run
+   without a second selector. */
+.sugecho{font-size:var(--fs-0);color:var(--ink);line-height:1.45;margin:0;
+  inline-size:100%;overflow-wrap:anywhere}
 /* — #focuspop's TAG PICKER (REQ-the-focus-dialog-offers-the-tags-it-could) —
    Rules the mockup does not declare, allowed for the reason stated directly
    above: `17e7482` unpinned styles-parity to a COVERAGE FLOOR.

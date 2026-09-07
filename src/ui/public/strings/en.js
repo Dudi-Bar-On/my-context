@@ -1861,4 +1861,49 @@ export const strings = {
   // unmeasured-thing-is`) applied to a control. The field's own name is the
   // CLI's word and is isolated rather than translated.
   'bld.noopts': 'Nothing to choose for {mv:field} — this corpus offers no value for it yet.',
+
+  /* ── seq 6: copy is refused until the command passes, and the refusal is
+     READABLE. `bld.incomplete` above answers the one question the browser can
+     answer alone — a required box is empty. These four carry the answer to the
+     other one, which belongs to the CLI: `POST /api/command/check` runs the
+     real argument parser and words its own refusal, and a sentence composed
+     here instead would waste the effort this project has spent on that one. So
+     the CLI's text is APPENDED to `bld.refused` as a `dir="auto"` run rather
+     than substituted into it — an English sentence inside a Hebrew paragraph
+     lays its full stop at the wrong end otherwise, measured on the Library's
+     command-line card on 2026-09-07. */
+  'bld.checking': 'Checking this line against the CLI\'s own parser — Copy is held until it answers.',
+  // Said on every line that passes, and it is not noise: the endpoint's own
+  // header asks for it. "A checker that answers ok: true without saying what it
+  // looked at invites the caller to read it as 'this command will do what the
+  // form says' … an over-read true is worse than a refusal."
+  'bld.checked': 'The CLI\'s own parser accepts every flag on this line. Whether each VALUE is legal for the flag that took it is decided by the command itself and is not checked here.',
+  'bld.refused': 'The CLI would refuse this line, so there is nothing to copy yet. Its own words:',
+  'bld.refusedhere': 'This is the field the refusal above names.',
+  // The check failing is THIS app failing, not the reader's line. So the line
+  // is still offered, and the failure is said rather than swallowed.
+  'bld.uncheckable': 'This line could not be checked against the CLI — the check itself failed, and nothing about the command has changed. Its own words:',
+
+  /* ── seq 8: what is legal, without leaving the screen. Every WORD OF CONTENT
+     in this disclosure comes off `GET /api/cli-help/command/:id`, which reads
+     the same `FLAG_DECLARATIONS` the parser enforces. What is keyed here is the
+     connectives and nothing else — the item forbids "a third description of the
+     same commands in the browser". */
+  'bld.help': 'What is legal here',
+  'bld.helpnone': 'The command reference could not be read, so what is legal is not shown here. Nothing about the command itself has changed.',
+  'bld.hone': 'One of {mv:values}.',
+  'bld.hsource': 'A value this project supplies — the list is {mv:source}.',
+  'bld.hformat': 'Takes {format}. For example {mv:example}',
+  'bld.hshape': 'Takes a value shaped {mv:format}.',
+  'bld.hswitch': 'A switch — it takes no value.',
+  'bld.hopen': 'Free text. What is legal is decided by the command itself.',
+  'bld.hgroup': 'At most one of {mv:flags} belongs on one line.',
+
+  /* ── seq 17: the id box filters well and shows less than half of what you
+     picked. 986 ids at 58 characters average need about 615px; the box renders
+     at about 318px and is LTR-isolated, so under RTL what shows is the TAIL —
+     the least distinguishing part, since every id in a category shares its
+     prefix. The value is echoed under the box at full width, where there is no
+     shrink-to-fit problem; the box is NOT widened (owner ruling 2026-09-07). */
+  'bld.picked': 'Chosen: {mv:value}',
 };

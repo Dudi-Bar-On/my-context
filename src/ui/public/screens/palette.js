@@ -184,8 +184,9 @@
  * what a shared component is for, and both copies are gone.
  */
 import {
-  captionFor, controlFor, controlSpecs, emptyPickerNote, labelled, markRequired,
-  missingRequired, optionEl, paintCommand, pickerOptions, readValues, suggestListId,
+  CHECK_REFUSED, captionFor, commandChecker, commandHelp, controlFor, controlSpecs,
+  echoLine, emptyPickerNote, labelled, markRefusal, markRequired, missingRequired,
+  optionEl, paintCommand, paintEcho, pickerOptions, readValues, suggestListId,
 } from '/lib/builder.js';
 export { controlSpecs, missingRequired, pickerOptions, suggestListId };
 // `/lib/command.js` and `/lib/command-actions.js` were imported HERE until
@@ -939,7 +940,14 @@ export async function render(root, ctx) {
   const chipRow = el('p');
   const blockNote = el('p', 'small');
   const cmdBox = el('div');
-  card.append(form, argvHead, chipRow, blockNote, cmdBox);
+  // **WHAT IS LEGAL, UNDER THE FORM AND ABOVE THE COMMAND** (`plan:builder
+  // seq:8`). One `details.help` per chosen entry, drawn by the builder out of
+  // `/api/cli-help/command/:id` — the same records the parser enforces and the
+  // Library's command-line card renders. Its position is the item's own
+  // instruction: *"right where someone is filling it in"*, which is between the
+  // fields and the line they compose, not at the top of a screen.
+  const helpBox = el('div');
+  card.append(form, helpBox, argvHead, chipRow, blockNote, cmdBox);
 
   // --- the glob tester, the mockup's nested card ----------------------------
 
@@ -1148,6 +1156,53 @@ export async function render(root, ctx) {
   /** What the form holds, read by the builder through one `valueOf`. */
   const currentValues = () => readValues(controls);
 
+  /**
+   * **The CLI's own verdict on the line this form is composing** (`plan:builder
+   * seq:6`). `POST /api/command/check` had been built, tested and left with
+   * ZERO CALLERS since 2026-09-06; this is its first, and Capture is its
+   * second. The screen's part is one line: hand the checker the argv and paint
+   * again when it answers. Everything about WHEN to ask, what to hold while
+   * waiting, and what to draw is `lib/builder.js`' — it is a property of every
+   * command site rather than of this one.
+   */
+  const checker = commandChecker(ctx, () => { if (root.isConnected) recompose(); });
+
+  /* ── what the chosen entry is legal to take (`plan:builder seq:8`) ─────── */
+
+  /** One answer per command NAME, kept for the visit: a def switch is not a re-read. */
+  const helpCache = new Map();
+
+  /**
+   * Ask `/api/cli-help/command/:id` about the chosen entry and draw the
+   * disclosure when it lands.
+   *
+   * **Tolerant, like the suggestion sources and unlike the five fatal reads.**
+   * A refused help read costs the reader an explanation and says so; it must
+   * not cost them the command, which composes and copies either way. The def is
+   * captured so an answer overtaken by a command switch draws nothing.
+   */
+  function paintHelp(def) {
+    const name = def.base[1];
+    const subcommand = def.base[2] ?? null;
+    const draw = (body) => {
+      if (!root.isConnected || picker.value !== def.name) return;
+      helpBox.replaceChildren(commandHelp(ctx, body, controlSpecs(def), subcommand));
+    };
+    if (helpCache.has(name)) { draw(helpCache.get(name)); return; }
+    helpBox.replaceChildren();
+    void (async () => {
+      let body = null;
+      try {
+        body = await ctx.api(`/api/cli-help/command/${encodeURIComponent(name)}`);
+      } catch { /* `commandHelp(null)` is the keyed sentence that says so. */ }
+      // A REFUSAL IS NOT CACHED. A read that failed once may succeed on the
+      // next switch back, and remembering the failure would turn one bad moment
+      // into a permanently unexplained command for the rest of the visit.
+      if (body !== null) helpCache.set(name, body);
+      draw(body);
+    })();
+  }
+
   /* ── the suggestion lists behind the `suggest` boxes ───────────────────── */
 
   /** One per `input: 'suggest'` control this form drew: its `<datalist>` and note. */
@@ -1220,6 +1275,21 @@ export async function render(root, ctx) {
         entry.drawn = drawn;
         entry.list.replaceChildren(...options.map((option) => optionEl(option.value, option.hint ?? '')));
       }
+      // **READ BACK WHAT WAS PICKED** (`plan:builder seq:17`). The box shows
+      // about 318px of a value that averages 58 characters and is LTR-isolated,
+      // so under `dir="rtl"` what is visible is the TAIL — the least
+      // distinguishing part. The echo is drawn from the same `options` the
+      // `<datalist>` was just filled from, so the TITLE a chosen id carries as
+      // its list hint survives the popup closing; a value the list does not
+      // carry echoes alone, which is the escape hatch working rather than a
+      // state to warn about.
+      // `chosen` and not `held`: `held` is this function's values bag, and a
+      // second `const held` in the loop body shadowed it for the whole block —
+      // the dependency check below reads `held[on]`, so the rename is not
+      // cosmetic. Caught by the browser as a TDZ throw on the first paint.
+      const chosen = entry.control.value;
+      paintEcho(entry.echo, ctx, chosen,
+        options.find((option) => option.value === chosen)?.hint ?? '');
       const note = (key, subs) => entry.note.replaceChildren(...ctx.t(key, subs));
       // **The unanswered dependency is checked FIRST, before the read's own
       // state**, because it is the only one of the six the reader can act on:
@@ -1359,6 +1429,20 @@ export async function render(root, ctx) {
     //
     // This is courtesy, not the boundary. `execute-catalogue.ts` refuses the
     // same ids on the server, and it would refuse them if this line were wrong.
+    // **THE CLI'S OWN VERDICT, AND THE FIELD IT NAMES** (`plan:builder seq:6`).
+    //
+    // Asked only about a line that is otherwise complete: `commandFor` threw
+    // above for a half-built command and `argv` fell back to the def's base, so
+    // checking it would be asking the parser about a line the reader has not
+    // finished writing and answering with a refusal they cannot act on.
+    // `bld.incomplete` is already the right sentence for that state.
+    //
+    // `markRefusal` runs AFTER `markRequired` and clears only what that did not
+    // set — an empty required box and a refused flag are two facts wearing one
+    // `aria-invalid`.
+    const check = missing.length > 0 ? null : checker.verdictFor(argv);
+    markRefusal(ctx, controls, check !== null && check.state === CHECK_REFUSED ? check : null);
+
     const runnable = runnableFor(def);
     // Said once, where the missing button would be. A reader who has just
     // composed a correct command and been given one control instead of two is
@@ -1371,7 +1455,7 @@ export async function render(root, ctx) {
       argv, missing, ctx, id: runnable ? def.name : null, values, copyBlocked: blocked,
       // `ids` is the index an executed command's TEXT output is resolved
       // against — see `itemIds` above for what it is and why it is built once.
-      ids: itemIds, extra: runnable ? [] : [copyOnly],
+      ids: itemIds, extra: runnable ? [] : [copyOnly], check,
     });
 
     // **AND NOTHING AFTER THIS LINE, WHICH IS THE POINT OF THE SCREEN NOW.**
@@ -1456,8 +1540,22 @@ export async function render(root, ctx) {
         const list = document.createElement('datalist');
         list.id = suggestListId(spec.name);
         const note = el('p', 'aside');
-        form.append(list, note);
-        suggestEntries.push({ spec, list, note, drawn: null });
+        // **The echo is appended BEFORE the `<datalist>`, and that is a
+        // measurement rather than a preference.** Visually it must sit between
+        // the box and the note: it is about the VALUE in the box, and the note
+        // is about what the LIST can offer, so the other order would put "986
+        // from this corpus" between a reader and the id they just chose. A
+        // `<datalist>` draws nothing — every UA styles it `display:none`, which
+        // is why the comment below says its position is arbitrary — so putting
+        // it after the echo changes no pixel. What it does change is that
+        // `e2e/composer-suggest.spec.ts` and `e2e/composer-staging.spec.ts`
+        // read the note as `list.nextElementSibling` ON PURPOSE ("asserted by
+        // position rather than by an id, because the position is the claim").
+        // Six of their tests failed when the echo went between the two, and
+        // they were right to: the claim was no longer true.
+        const echo = echoLine();
+        form.append(echo, list, note);
+        suggestEntries.push({ spec, control, list, echo, note, drawn: null });
         // **The cursor arriving in the box is the reader asking for the list**,
         // and it is deliberately not `build()` doing the asking: `ack` is the
         // def this screen arrives on, so a fetch started when the control is
@@ -1496,6 +1594,10 @@ export async function render(root, ctx) {
     if (globError !== null) globCard.append(globError);
 
     testGlob(globControl.value.trim());
+    // The disclosure is per ENTRY, so it is asked for here rather than in
+    // `recompose()`: what the command is legal to take does not change on a
+    // keystroke, and a fetch that did would be a round trip per character.
+    paintHelp(def);
     recompose();
   }
 

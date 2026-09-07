@@ -44,6 +44,28 @@
  *   * THE COMPOSED `.cmd` ROW ITSELF, with the house's one Copy-and-Execute
  *     control under it (`lib/command-actions.js`).
  *
+ * ── WHAT `plan:builder seq:6` AND `seq:8` ADDED, 2026-09-07 ────────────────
+ *
+ *   * **COPY IS REFUSED UNTIL THE COMMAND PASSES, AND THE REFUSAL IS
+ *     READABLE** (seq 6). `bld.incomplete` above answers one question — a
+ *     REQUIRED BOX IS EMPTY — and it is the only question this component could
+ *     ask on its own. The other one belongs to the CLI: `POST
+ *     /api/command/check` (seq 4) runs the real argument parser and answers in
+ *     the CLI's own words, and it had been built, tested and left with ZERO
+ *     CALLERS since 2026-09-06. `commandChecker` is its first caller,
+ *     `paintCommand`'s `check` renders the verdict, and `markRefusal` puts the
+ *     mark on the field the verdict names. The item's whole point is the one
+ *     sentence in it: *"a copy button that is simply ABSENT tells the reader
+ *     nothing about WHY."*
+ *   * **EACH BUILDER SHOWS WHAT IS LEGAL, WITHOUT LEAVING THE SCREEN**
+ *     (seq 8). `commandHelp` draws one `details.help` per command site out of
+ *     `GET /api/cli-help/command/:id` — what the command does, what each drawn
+ *     field will accept, and one worked line. Not a word of it is written here:
+ *     the item forbids *"a third description of the same commands in the
+ *     browser"*, so the content is `FLAG_DECLARATIONS` and the generated
+ *     coverage summary, the same records the parser enforces and the Library
+ *     renders.
+ *
  * ── WHERE THIS CAME FROM, AND WHY IT IS A MOVE RATHER THAN A REWRITE ───────
  *
  * Both tasks say the same thing about method: *"the Capture screen already does
@@ -82,6 +104,7 @@
  */
 import { composeCommand } from './command.js';
 import { commandActions } from './command-actions.js';
+import { helpDisclosure } from './disclosure.js';
 import { el } from '../screens/parts.js';
 
 /** The mockup's own mark for "no value here", used as every picker's blank option. */
@@ -401,6 +424,420 @@ export function emptyPickerNote(ctx, spec, sources) {
 }
 
 /**
+ * **A RUN OF TEXT THIS APP DID NOT CHOOSE THE LANGUAGE OF.**
+ *
+ * The CLI's own refusal, a flag's declared note, a command's generated summary:
+ * every one of them is English written elsewhere, and on the Hebrew page all of
+ * it sits inside an RTL flow where an English sentence renders its trailing
+ * full stop at the WRONG END — `.precedence` rather than `precedence.`
+ *
+ * `dir="auto"` is `screens/cli-help.js`' own repair for exactly this, measured
+ * there in Chromium on 2026-09-07 (the period closing one note laid out 70px to
+ * the LEFT of the letter before it). The browser infers the direction from the
+ * run's first strong character, so an English refusal reads left-to-right and a
+ * Hebrew category description reads right-to-left, on either page. Applied to
+ * the RUN rather than to the paragraph, so the keyed sentence beside it keeps
+ * the page's own direction.
+ */
+export function foreignRun(text) {
+  const run = el('span');
+  run.setAttribute('dir', 'auto');
+  run.append(String(text ?? ''));
+  return run;
+}
+
+/* ══ builder/6 — COPY IS REFUSED UNTIL THE COMMAND PASSES ══════════════════ */
+
+/**
+ * The four states a composed line can be in as far as the CLI's own parser is
+ * concerned. Exported as constants rather than spelled at each comparison,
+ * because `plan:builder seq:11` (D12) asserts them by name and a typo in a
+ * string literal is a branch that silently never runs.
+ */
+export const CHECK_PENDING = 'pending';
+export const CHECK_PASSED = 'passed';
+export const CHECK_REFUSED = 'refused';
+export const CHECK_UNREADABLE = 'unreadable';
+
+/**
+ * How long a form stays still before its line is sent to the checker.
+ *
+ * `capture.js`' own `CAPTURE_DEBOUNCE_MS` is 200 for the overlap read; this is
+ * shorter because the answer gates a CONTROL rather than filling a card, and a
+ * Copy button that stays refused after the reader has stopped typing reads as
+ * broken rather than as careful.
+ */
+export const CHECK_DEBOUNCE_MS = 180;
+
+/**
+ * **The verdict source: would the CLI accept the line this form is composing?**
+ *
+ * `TASK-copy-is-refused-until-the-command-passes-and-the-refusal-is`
+ * (plan:builder seq:6). Its instruction is that the refusal to show is *"the
+ * CLI'S OWN REFUSAL TEXT"* from seq 4 — `POST /api/command/check`, which had
+ * been built, tested and left with ZERO CALLERS in any screen since 2026-09-06.
+ * This is its first one.
+ *
+ * ── WHY A VERDICT OBJECT RATHER THAN A PROMISE PER PAINT ──────────────────
+ *
+ * `recompose()` is SYNCHRONOUS and runs on every keystroke; the check is a
+ * round trip. So the paint reads a verdict that is already settled, or draws
+ * the pending state and is called again when one arrives — the same shape
+ * `paintSuggest` uses for its lazy sources, and for the same reason: a screen
+ * that awaited the answer would be a form that stops accepting keystrokes.
+ *
+ * ── ONE SETTLED VERDICT, KEYED ON THE EXACT ARGV ──────────────────────────
+ *
+ * Not a cache of many, and not a key cleverer than the whole line. The
+ * endpoint's own header says it checks flag NAMES, so a key made of the command
+ * and its flag set would be sound TODAY and would silently go stale the day the
+ * endpoint checked one more thing — a caching rule that has to be re-derived
+ * from someone else's contract is a caching rule that will be wrong once. The
+ * whole argv cannot be wrong, and holding ONE settled verdict rather than a map
+ * means there is no eviction policy to get wrong either. A reader who types a
+ * character and deletes it pays one more round trip to a loopback route that
+ * opens no store and spawns no process.
+ *
+ * ── THE FOUR STATES, AND WHY THE FAILED READ ALLOWS THE COPY ──────────────
+ *
+ * `CHECK_REFUSED` and `CHECK_PENDING` both hold the Copy control: the line has
+ * not passed, and "not yet" and "no" are both "not". `CHECK_UNREADABLE` does
+ * NOT, and that asymmetry is deliberate — the check failing is THIS app's
+ * failure, and refusing a reader their own composed line because our own
+ * endpoint fell over would be a refusal with no unblocking condition they could
+ * act on. It says so instead, in the server's own words.
+ *
+ * `onSettled` is the screen's own recompose. It fires only when the answer is
+ * still about the line the form holds, so an answer overtaken by a keystroke
+ * repaints nothing.
+ */
+export function commandChecker(ctx, onSettled) {
+  /** The line the form is composing right now, as its own JSON. */
+  let wanted = null;
+  /** The line `verdict` is about — never assumed to be `wanted`. */
+  let settledLine = null;
+  let verdict = null;
+  let timer = null;
+
+  function send(line, argv) {
+    void (async () => {
+      let answer;
+      try {
+        const body = await ctx.post('/api/command/check', { argv });
+        answer = body.ok === true
+          ? {
+            state: CHECK_PASSED,
+            command: body.command ?? null,
+            unchecked: Array.isArray(body.unchecked) ? body.unchecked : [],
+          }
+          : {
+            state: CHECK_REFUSED,
+            // The CLI's own sentence, unedited. A second, weaker wording
+            // composed for the browser would waste the effort this project has
+            // spent making the first one good — seq 4's own argument.
+            error: String(body.error ?? ''),
+            flag: typeof body.flag === 'string' ? body.flag : null,
+            command: body.command ?? null,
+          };
+      } catch (error) {
+        answer = { state: CHECK_UNREADABLE, error: error.message };
+      }
+      // Overtaken by a keystroke: the answer is true of a line nobody is
+      // looking at, so it is dropped rather than painted over the current one.
+      if (line !== wanted) return;
+      settledLine = line;
+      verdict = answer;
+      onSettled();
+    })();
+  }
+
+  return {
+    /**
+     * The verdict for this argv, or `null` when there is no command to check.
+     * Asks for one, debounced, when this line has not been asked about.
+     */
+    verdictFor(argv) {
+      if (!Array.isArray(argv) || argv.length < 2) { wanted = null; return null; }
+      const line = JSON.stringify(argv);
+      if (line === settledLine) return verdict;
+      if (line !== wanted) {
+        wanted = line;
+        if (timer !== null) clearTimeout(timer);
+        timer = setTimeout(() => {
+          timer = null;
+          if (wanted === line) send(line, argv);
+        }, CHECK_DEBOUNCE_MS);
+      }
+      return { state: CHECK_PENDING };
+    },
+    /** For a screen that is being torn down, and for a test that must not leak a timer. */
+    stop() {
+      if (timer !== null) clearTimeout(timer);
+      timer = null;
+      wanted = null;
+    },
+  };
+}
+
+/**
+ * **The other half of seq 6: the refusal, next to the field that caused it.**
+ *
+ * The item asks for the CLI's sentence *"next to the field that caused it where
+ * that can be determined"*, and `POST /api/command/check` is what makes that
+ * determinable rather than guessed: an `unknown-option` verdict carries `flag`,
+ * the flag's own name, which is exactly the key `controls` is built under.
+ * Where the verdict names no flag — an unknown command, an unknown subcommand —
+ * nothing is marked, because a mark on an arbitrary field would be worse than
+ * the sentence in the command area alone.
+ *
+ * Two effects, and they are the two `markRequired` already established for the
+ * other kind of "this field is why": `aria-invalid` on the control, which is
+ * what a screen reader words and what `styles.css` paints as an inset `--warn`
+ * bar, and a short keyed sentence under it. The sentence is `p.aside.bldwhy` —
+ * `.aside` is the register every note under a control on these screens already
+ * uses, and `.bldwhy` is a marker this function removes by, so a refusal that
+ * moves from one field to another leaves nothing behind on the first.
+ *
+ * **It runs AFTER `markRequired` and only ever clears what that did not set.**
+ * An empty required box and a refused flag are two different facts wearing one
+ * attribute; the required half owns every control the def marks required, and
+ * this half owns the rest. Clearing indiscriminately here would take the
+ * empty-required marks off on every paint that had a verdict.
+ *
+ * Answers the control it marked, or `null`.
+ */
+export function markRefusal(ctx, controls, refusal) {
+  const flag = refusal === null || refusal === undefined ? null : refusal.flag;
+  for (const [name, entry] of controls) {
+    const holder = entry.control.closest('label') ?? entry.control;
+    const after = holder.nextElementSibling;
+    if (after !== null && after.classList.contains('bldwhy')) after.remove();
+    if (entry.spec.required !== true && name !== flag) entry.control.removeAttribute('aria-invalid');
+  }
+  if (typeof flag !== 'string') return null;
+  const entry = controls.get(flag);
+  if (entry === undefined) return null;
+  entry.control.setAttribute('aria-invalid', 'true');
+  const holder = entry.control.closest('label') ?? entry.control;
+  if (holder.parentNode === null) return entry.control;
+  const note = el('p', 'aside bldwhy');
+  note.append(...ctx.t('bld.refusedhere'));
+  holder.after(note);
+  return entry.control;
+}
+
+/* ══ builder/8 — EACH BUILDER SHOWS WHAT IS LEGAL ══════════════════════════ */
+
+/**
+ * The `FlagView` rows that belong to the entry a screen is drawing, by flag
+ * name — flat command, per-workspace `edit`, or the one subcommand of a
+ * subcommand command.
+ *
+ * `GET /api/cli-help/command/:id` answers about `review`, not about `review
+ * promote`, because `review` is what the CLI dispatches. The Composer's
+ * catalogue names the subcommand in `def.base[2]`, so the screen passes it and
+ * this picks the row set the reader is actually filling in. Without that, the
+ * `promote` form would be explained with the union of every `review`
+ * subcommand's flags, which is a table that is wrong about the screen it is on.
+ */
+function flagViewsOf(help, subcommand) {
+  if (Array.isArray(help.subcommands)) {
+    const chosen = help.subcommands.find((row) => row.subcommand === subcommand);
+    return new Map((chosen?.flags ?? []).map((view) => [view.flag, view]));
+  }
+  return new Map((Array.isArray(help.flags) ? help.flags : []).map((view) => [view.flag, view]));
+}
+
+/** The worked line that belongs beside those rows, or `null`. */
+function workedLineOf(help, subcommand) {
+  const worked = Array.isArray(help.worked) ? help.worked : [];
+  if (Array.isArray(help.subcommands)) {
+    // `read-model-cli-help.ts` composes `worked` by the SAME `Object.entries`
+    // walk it composes `subcommands` by, so row *i* of one is the line of row
+    // *i* of the other. Read by index rather than by re-deriving the order.
+    const i = help.subcommands.findIndex((row) => row.subcommand === subcommand);
+    return i >= 0 ? worked[i] ?? null : null;
+  }
+  return worked[0] ?? null;
+}
+
+/**
+ * **WHAT MAY BE PUT IN ONE FIELD, in one sentence, from a record.**
+ *
+ * Six answers and every one of them is read off something: `FLAG_DECLARATIONS`
+ * through `/api/cli-help` (`values`, `source`, `format`+`example`, and whether
+ * the flag takes a value at all), and the Composer's own catalogue for a
+ * POSITIONAL, which the flag declarations do not cover and which
+ * `test/ui/builder.test.ts` already derives from the command's usage line.
+ *
+ * The order is deliberate: a closed set beats a shape, and a shape beats "the
+ * command decides". `bld.hopen` is the honest floor rather than an invented
+ * hint — the same refusal `formatOf` makes when a field has no format.
+ */
+function legality(ctx, spec, view) {
+  const values = view?.values ?? (Array.isArray(spec.options) ? spec.options : null);
+  if (Array.isArray(values) && values.length > 0) {
+    return ctx.t('bld.hone', { values: values.join(', ') });
+  }
+  const source = view?.source ?? spec.source;
+  if (typeof source === 'string' && source !== '') return ctx.t('bld.hsource', { source });
+  if (typeof view?.format === 'string' && typeof view?.example === 'string') {
+    return ctx.t('bld.hformat', { format: view.format, example: view.example });
+  }
+  const shape = formatOf(spec);
+  if (shape !== null) return ctx.t('bld.hshape', { format: shape });
+  if (view?.takesValue === false || spec.boolean === true) return ctx.t('bld.hswitch');
+  return ctx.t('bld.hopen');
+}
+
+/**
+ * **THE DISCLOSURE THAT SAYS WHAT IS LEGAL, WITHOUT LEAVING THE SCREEN.**
+ *
+ * `TASK-each-builder-shows-what-is-legal-without-leaving-the-screen`
+ * (plan:builder seq:8), owner instruction 2026-08-24: *"there are missing help
+ * examples on those screens and the user does not know what is the correct
+ * format what is legal and what is not"*.
+ *
+ * ── NOT ONE SENTENCE HERE IS WRITTEN BY THIS FILE ─────────────────────────
+ *
+ * The item's binding warning is *"do not write a third description of the same
+ * commands in the browser — that is precisely the drift this plan is about"*.
+ * So every word of content below comes off `GET /api/cli-help/command/:id`,
+ * which reads `COMMAND_FLAGS`, `FLAG_DECLARATIONS` and `editFlagSurface(config)`
+ * — the same records the parser enforces and the same ones the Library's
+ * command-line screen renders. What this function contributes is the eight
+ * keyed CONNECTIVES ("one of", "takes", "a switch") and the layout. A flag
+ * gains a note in `core/command-flags.ts` and it reaches this disclosure with
+ * nobody editing a catalogue, which is `builder/2`'s DERIVE-DO-NOT-COPY rule
+ * one surface along.
+ *
+ * ── AND IT USES THE AFFORDANCE THAT ALREADY EXISTS ────────────────────────
+ *
+ * The item: *"follow the mockup's existing affordance for this rather than
+ * inventing one: `details.help` with its `.helpbox` is already the design of
+ * record's answer to 'explain this without leaving the screen', and it is
+ * already carried in `styles.css`"*. `lib/disclosure.js` is that shape built
+ * once, with the print rule that forces every one of them open on paper, so
+ * this is a call rather than a fifth hand-rolled `<details>`.
+ *
+ * ── ONLY THE FIELDS THIS SCREEN DREW ──────────────────────────────────────
+ *
+ * `specs` is the screen's own list, which is why Capture's disclosure explains
+ * four fields and not `add`'s eleven. A help card that explained flags the
+ * reader cannot see would be the Library's job done badly in the Composer's
+ * space; the Library is where the whole surface is read.
+ *
+ * `help` is `null` when the read was refused — a keyed sentence saying so and
+ * naming that nothing about the command changed, rather than a disclosure that
+ * opens onto nothing.
+ */
+export function commandHelp(ctx, help, specs, subcommand = null) {
+  const body = [];
+  if (help === null || help === undefined) {
+    const note = el('p', 'aside');
+    note.append(...ctx.t('bld.helpnone'));
+    body.push(note);
+    return helpDisclosure(ctx, 'bld.help', body);
+  }
+  // What the command DOES — `readCommandSummaries()`' own sentence, generated
+  // from the CLI/UI coverage document. `null` where that could not be read, and
+  // then no paragraph rather than a blank one.
+  if (typeof help.what === 'string' && help.what !== '') {
+    const what = el('p', 'aside');
+    what.append(foreignRun(help.what));
+    body.push(what);
+  }
+  const views = flagViewsOf(help, subcommand);
+  // Exclusivity, from `FlagDeclaration.group` — and named by the MEMBERS a
+  // reader can see rather than by the group's internal identifier, because
+  // `detail` is a word in this codebase and `--full, --short, --summary` is the
+  // answer to "why can I not have both".
+  const groups = new Map();
+  for (const spec of specs) {
+    const group = views.get(spec.name)?.group;
+    if (typeof group !== 'string') continue;
+    groups.set(group, [...(groups.get(group) ?? []), spec.name]);
+  }
+  for (const spec of specs) {
+    const view = views.get(spec.name);
+    const row = el('p', 'aside');
+    // The field's own CLI name, mono and unfixed — `captionFor`'s ruling, for
+    // `captionFor`'s reason: `--severity` is the word the terminal takes.
+    row.append(el('b', 'm', spec.name), ' — ', ...legality(ctx, spec, view));
+    const group = view?.group;
+    const members = typeof group === 'string' ? groups.get(group) ?? [] : [];
+    if (members.length > 1) row.append(' ', ...ctx.t('bld.hgroup', { flags: members.join(', ') }));
+    if (typeof view?.note === 'string' && view.note !== '') row.append(' ', foreignRun(view.note));
+    body.push(row);
+  }
+  const worked = workedLineOf(help, subcommand);
+  const example = worked === null || typeof worked.command !== 'string'
+    ? [] : [el('code', 'm', worked.command)];
+  return helpDisclosure(ctx, 'bld.help', body, { example });
+}
+
+/* ══ builder/17 — THE CHOSEN VALUE IS READ BACK, AT FULL WIDTH ═════════════ */
+
+/**
+ * The paragraph a `suggest` box echoes its chosen value into. Built empty and
+ * hidden; `paintEcho` fills it.
+ */
+export function echoLine() {
+  const line = el('p', 'sugecho');
+  line.hidden = true;
+  return line;
+}
+
+/**
+ * **WHAT YOU PICKED, UNDER THE BOX, AT FULL WIDTH** (plan:builder seq:17).
+ *
+ * ── THE MEASUREMENT, AND WHY THE OBVIOUS FIX IS THE WRONG ONE ─────────────
+ *
+ * The item measured it: 986 ids in this corpus, 58 characters on average and 67
+ * at the longest, needing about 615px; `.card .suggin` renders at about 318px
+ * (`src/ui/public/styles.css` · `.card .suggin{inline-size:min(320px,100%);min-inline-size:0}`). So less than
+ * half a typical id is visible — and under `dir="rtl"` the box is bidi-isolated
+ * and LTR, so what shows is the TAIL, which is the LEAST distinguishing part
+ * because every id in a category shares its prefix. Filtering works; reading
+ * back what you chose does not, *"and that is the half nobody weighed"*.
+ *
+ * **Widening the control is the trap, and it is ruled out rather than merely
+ * not chosen.** The owner's ruling, taken 2026-09-07: echo the value
+ * underneath, do not widen the box. This screen has been broken twice by a
+ * control wider than its column — a 942-option `<select>` at 3,902px, and a
+ * 600-character example line at 1,325px of overflow — and a 615px box on a card
+ * that also holds a two-column form is the third attempt at the same mistake.
+ * A paragraph under the control has no shrink-to-fit floor at all: it wraps.
+ * The item's own words for the size of this: *"a paragraph rather than a layout
+ * fight"*.
+ *
+ * ── AND THE HINT COMES WITH IT ────────────────────────────────────────────
+ *
+ * `<datalist>` rows already carry the item's TITLE as their hint, and the
+ * browser stops showing it the moment the popup closes. So the echo carries it
+ * too — in a `<bdi>`, because a title is corpus text whose language this app
+ * did not choose, while the id beside it is a machine value and stays LTR
+ * through `{mv:value}`. A typed value the list does not carry echoes alone and
+ * says nothing about being unlisted: the escape hatch is the D11 ruling, not a
+ * mistake to warn about.
+ */
+export function paintEcho(node, ctx, value, hint) {
+  node.replaceChildren();
+  if (typeof value !== 'string' || value === '') {
+    node.hidden = true;
+    return node;
+  }
+  node.hidden = false;
+  node.append(...ctx.t('bld.picked', { value }));
+  if (typeof hint === 'string' && hint !== '') {
+    const title = document.createElement('bdi');
+    title.append(hint);
+    node.append(' — ', title);
+  }
+  return node;
+}
+
+/**
  * **THE COMMAND AREA — the `.cmd` row and the Copy control, or the sentence
  * that says why there is neither.**
  *
@@ -427,12 +864,85 @@ export function emptyPickerNote(ctx, spec, sources) {
  * Answers the `.cmdactions` element when it drew one, and `null` when the
  * command is incomplete — so a caller that wants to reach the control it just
  * asked for does not have to query the DOM for it.
+ *
+ * ── `check` — THE CLI'S OWN VERDICT ON THIS LINE (plan:builder seq:6) ──────
+ *
+ * `commandChecker`'s answer, or `null` for a caller that does not check at all.
+ * It decides three things here and they are three because the item asks for
+ * three: whether the Copy control is offered, WHY it is not, and in whose
+ * words. The refusal is drawn UNDER the composed line rather than instead of it
+ * — a reader owed a reason is also owed the line the reason is about, and
+ * hiding it would be the "copy button that is simply absent" this item exists
+ * to end, wearing a sentence.
+ *
+ * **A refusal draws no `.cmdactions` at all, Execute included.** `copyBlocked`
+ * disables Copy alone, deliberately, because a paste reaches a shell where
+ * `$(…)` substitutes while `execFile` takes it as a literal — that argument is
+ * about a SAFE line spelled dangerously. This is a line the parser says the CLI
+ * would refuse, and offering to run it would be offering a button whose only
+ * possible outcome is the same refusal from further away.
+ *
+ * **A passed line still says what was not checked**, in one sentence, because
+ * `read-model-command.ts` asks for exactly that: *"a checker that answers
+ * `ok: true` without saying what it looked at invites the caller to read it as
+ * 'this command will do what the form says' … an over-read `true` is worse than
+ * a refusal: it is a green light for a line nobody checked."*
  */
 export function paintCommand(host, {
   argv, missing, ctx, id = null, values = {}, copyBlocked = false, ids, extra = [],
+  check = null,
 }) {
+  const pending = check !== null && check.state === CHECK_PENDING;
+  const refused = check !== null && check.state === CHECK_REFUSED;
+  // `missing` is the authority and the null argv is the same fact asked without
+  // it — Capture reaches here with `argv: null` when `commandFor` threw, and
+  // both spellings must land on the sentence rather than on `composeCommand`.
+  const composed = missing.length > 0 || !Array.isArray(argv) ? null : composeCommand(argv);
+
+  // ── A COMMAND AREA IN THE MIDDLE OF A CONFIRMATION IS NOT REDRAWN ────────
+  //
+  // **Found in a browser, and it was a real defect rather than a test's
+  // fussiness.** Until seq 6 every repaint of this host was caused by the
+  // reader's own keystroke, so emptying it could not take anything away that
+  // the same keystroke had not already invalidated. The CHECK is the first
+  // repaint nobody asked for: its verdict lands about `CHECK_DEBOUNCE_MS`
+  // after the last edit, which is exactly the window in which a person fills
+  // the last field and immediately presses Execute. `commandActions` renders
+  // its confirm INLINE, inside this host — deliberately, so the question is
+  // asked where the button that asked it is — so `host.replaceChildren()`
+  // deleted the confirmation out from under them.
+  //
+  // Measured on `e2e/execute.spec.ts`'s boundary-command test: seven of its
+  // tests failed, and all seven passed again the moment the verdict was
+  // prevented from landing during the run.
+  //
+  // So: when the line has not changed and this host is holding an OPEN confirm
+  // or an execution outcome, the controls stand and only the check's own
+  // sentence is refreshed. `dataset.cmdkey` is `commandActions`' own identity
+  // for a control — the composed line — so "the same line" is its answer and
+  // not a second opinion. Both are `hidden` until they have something to say,
+  // which is why the selector tests for that rather than for their presence.
+  //
+  // A REFUSAL still redraws, and that is the one case worth taking the control
+  // away for: a line the parser says the CLI would refuse must not keep an
+  // Execute button, and a confirm standing over it would be asking the reader
+  // to approve something that cannot succeed.
+  const standing = host.querySelector('.cmdactions');
+  const mid = standing !== null
+    && standing.querySelector('.confirm:not([hidden]), .execresult:not([hidden])') !== null;
+  if (composed !== null && !refused && mid && standing.dataset.cmdkey === composed) {
+    // The first direct-child `<button>` is Copy — `commandActions` appends it
+    // before Execute, the confirm and the result, and every button after it is
+    // inside one of those. Classless by that file's own ruling, so position is
+    // the only handle there is.
+    const copy = standing.querySelector(':scope > button');
+    if (copy !== null) copy.disabled = copyBlocked || pending;
+    paintCheckNote(host, ctx, check);
+    return standing;
+  }
+
   host.replaceChildren();
-  if (missing.length > 0) {
+  if (composed === null) {
     // Drawn where the command would be, so the space is never blank. Every
     // required control is marked beside it; this is the sentence that says
     // what the marks add up to.
@@ -442,9 +952,41 @@ export function paintCommand(host, {
     return null;
   }
   const cmd = el('div', 'cmd');
-  cmd.append(el('code', null, composeCommand(argv)));
+  cmd.append(el('code', null, composed));
   host.append(cmd);
-  const actions = commandActions({ argv, id, values, ctx, copyBlocked, ids });
-  host.append(actions, ...extra);
+  if (refused) {
+    const note = el('p', 'small spill');
+    note.append(...ctx.t('bld.refused'), ' ', foreignRun(check.error));
+    host.append(note, ...extra);
+    return null;
+  }
+  const actions = commandActions({
+    argv, id, values, ctx, copyBlocked: copyBlocked || pending, ids,
+  });
+  host.append(actions);
+  paintCheckNote(host, ctx, check);
+  host.append(...extra);
   return actions;
+}
+
+/**
+ * The one sentence the check leaves under the controls, replacing whatever it
+ * left there last time.
+ *
+ * Its own function because it is written on two paths — a full redraw, and the
+ * refresh that leaves an open confirm standing — and a second copy of the
+ * three-way branch is how the two paths come to say different things about one
+ * verdict. `p.aside.bldcheck` rather than a bare `p.aside`: this host also
+ * carries the Composer's `pal.copyOnly` note in `extra`, and a selector that
+ * could not tell them apart would delete that one instead.
+ */
+function paintCheckNote(host, ctx, check) {
+  for (const old of host.querySelectorAll('.bldcheck')) old.remove();
+  if (check === null) return;
+  const note = el('p', 'aside bldcheck');
+  if (check.state === CHECK_PENDING) note.append(...ctx.t('bld.checking'));
+  else if (check.state === CHECK_UNREADABLE) {
+    note.append(...ctx.t('bld.uncheckable'), ' ', foreignRun(check.error));
+  } else note.append(...ctx.t('bld.checked'));
+  host.append(note);
 }
