@@ -16,17 +16,17 @@ tags:
   - review
   - "plan:walk"
   - "seq:140"
-  - "state:todo"
+  - "state:done"
 origin: human
 source_file: null
 source_anchor: null
 source_checksum: null
 valid_from: 2026-09-07
 valid_until: null
-checksum: 1bcae56ab60ee229
+checksum: 2d02f8b42ab2d48e
 plan: walk
 seq: "140"
-state: todo
+state: done
 priority: "1"
 ---
 
