@@ -1,3 +1,91 @@
+## ⏭ READ THIS FIRST — 2026-09-08, at 90%. THE COLLISION IS RESOLVED. ONE LANE STILL RUNNING.
+
+**D36a and D38 are COMMITTED and pushed (`e3c5b9d`).** `tsc` clean, 44 tests,
+`doctor` exit 0. The block below this one told the next session to wait for D38
+and commit both together — **that is done; ignore it.**
+
+### THE ONLY LANE STILL RUNNING: D37's VIEWER
+
+`archive/7`+`/8`+`/13`. Its work is **uncommitted in the tree and must not be
+swept**:
+
+`src/core/conversation-index.ts` · `src/ui/server.ts` ·
+`src/ui/public/screens/conversations.js` · `src/ui/public/styles.css` ·
+**`src/ui/public/strings/en.js`** · **`src/ui/public/strings/he.js`** ·
+`e2e/conversations.spec.ts` · `test/ui/no-writes.test.ts` · and two NEW files:
+**`src/ui/read-model-conversation-document.ts`** and
+**`src/ui/public/lib/ansi.js`** — so it is building the terminal renderer.
+
+**Both string tables are in play.** A missing key makes `t()` throw at runtime
+and has broken HEAD here before: run
+`node --test test/ui/strings-parity.test.ts` before committing it.
+
+### FIRST THING TO DO: THE SEVEN, WHICH HE HAS ALREADY RULED ON
+
+He said **"fix them all"** about the doctor findings. I held
+`retired_still_binding` (7) so D38's new check could demonstrate itself. **It
+has** — `doctor` names all seven and exits 0. **Now stand them down.**
+
+Seven items, **eight fields** — `RULE-delegate-to-subagents-by-default-to-preserve-the-context`
+carries both `always: true` and `severity: hard`; the other six carry `hard`
+alone. `OPENQ-does-sessionstart-injection-actually-work` ·
+`OPENQ-how-do-filters-respect-dependencies` · `REQ-items-carry-a-domain` ·
+`KNOWN-doctor-offers-execute-although-the-running-system-refuses-it` ·
+`KNOWN-execute-is-not-implemented-the-button-is-mounted-on-seven` ·
+`KNOWN-the-corpus-pointed-into-the-plans-by-line-number-and-104-of`.
+
+`mycontext edit <id> --severity soft --yes` (plus `--always false` on the first).
+**The stand-down is prospective only by design** — the idempotent early-return
+deliberately does not repair, because a quiet corpus edit inside a no-op is
+worse than the finding.
+
+### D38 FOUND A WORSE DEFECT THAN THE ONE IT WAS SENT FOR
+
+**`add --supersedes` retired an item and PRINTED NOTHING.** `createItem`
+discarded `supersedeItem`'s message, so under `--yes` there was neither a prompt
+nor a line — an irreversible act invisible on the surface that performed it.
+Fixed; both `createItem` and `updateItem` now carry the message.
+
+Its ruling on **`validated`: excluded**, measured — zero items use it, and it
+means a human AFFIRMED the item, so `hard` there is a claim a person made rather
+than bookkeeping debt. A test pins the set.
+
+**And it was honest about what a confirm cannot close.** The existing-successor
+refusal is hoisted into the pre-flight (a pure question about relations that
+never needed the write). The remaining window is time-of-check/time-of-use and
+needs a transaction primitive this codebase does not have — in a comment AND in
+a test that explicitly does not claim to cover it.
+
+### THE BASELINE IS REAL, AND ITS HEADLINE IS A TRAP
+
+`reports/2026-09-08-contribution-baseline.md`. 2,145 injection records over 22
+days, 179 distinct items, corpus 1,021.
+
+**842 never delivered — 830 of them NEVER CANDIDATES**, because `isNormative`
+rejects the rationale tier. Honest split: **191 eligible, 179 delivered, 12
+never (6.3%).** The §15 cohort comparison is **n = 8** on the agent side, so
+nothing may be concluded — **and that is the finding**, since none of the eight
+came from a loop that does not exist. That is what makes it a control.
+
+**No item was ever spilled without also being delivered** (25,302 spills, zero
+spill-only): the never-delivered were never candidates, not budget casualties.
+**The top nine sit at 799–818 deliveries of 2,145** — a large block is handed
+over almost every time.
+
+### DOCTOR: 54 FINDINGS, 27 OPEN
+
+`open_question_blocks` (7) is **HIS** — do not acknowledge it, that would
+silence a true signal. `retired_still_binding` (7) is the first job above. The
+rest are acknowledged with reasons recorded in `c510a6f` and the commit before
+it.
+
+### STILL ON HIM, NOTHING BLOCKING
+
+`walk/119`'s contradiction · `walk/0` has no `seq` · the "one sentence" wording
+now 250 no longer enforces it · whether the queue **ration** stands · seven open
+questions · `demo-corpus.ts` keep-or-delete · the Simulate colour-only chip ·
+`successorChain`'s overdue move to `core/relations.ts`.
+
 ## ⏭ READ THIS FIRST — 2026-09-08, at 89%. UNCOMMITTED WORK IN THE TREE. TWO LANES RUNNING.
 
 **DO NOT `git add -A` AND DO NOT `git add <a directory>`.** The working tree
