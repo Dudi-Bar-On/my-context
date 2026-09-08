@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: A live feed that drops once keeps saying so on every screen until the page is reloaded, even though the server is still answering everything else.
-summary_of: e4802dc29b740c98
+summary_of: b08907b4e93bd3ac
 scope:
   - src/ui/public/app.js
   - src/ui/watch-model.ts
@@ -23,7 +23,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-09-08
 valid_until: null
-checksum: b39dd72ad1effb02
+checksum: d7628105d8479656
 plan: live
 seq: "21"
 state: todo
@@ -91,3 +91,47 @@ subsequent read succeeds, so the page stops asserting a dead stream while it is 
 to the server. That does not restore the live feed and must not pretend to - the chip would have to
 say the feed is not live rather than that it just failed - but it ends the "many times" without
 touching §2 at all.
+
+ROOT CAUSE FOUND 2026-09-08, AND IT IS NOT A DESIGN PROBLEM. The owner supplied the one fact that
+decided it - the drop happens "every few minutes" - and that frequency pointed at a cause rather
+than at a trade-off.
+
+THE STREAM WRITES NOTHING TO THE SOCKET WHEN THE AUDIT LOG IS QUIET. streamHandler
+(src/ui/watch-model.ts - function streamHandler) polls tail.poll() on a timer and sends a frame
+only when there is a resync or a record - it sends resync when the tail says so, then one frame
+per record, AND THERE IS NO ELSE BRANCH.
+
+Measured: no keep-alive, comment frame or heartbeat exists anywhere in that file. So through any
+quiet period the connection carries ZERO bytes, and a silent socket is what Windows, an antivirus
+shim or any intermediary reaps. "Every few minutes" is exactly that signature, and it also
+explains why every ordinary read keeps working: those are short requests that are never idle.
+
+SO THE FIX IS THE STANDARD ONE AND IT IS THREE BYTES A TICK: send an SSE comment line on ticks
+with nothing to report. A comment is ignored by every SSE consumer by specification - and by
+lib/sse.js, which must be CHECKED rather than assumed to skip it - so it proves the connection is
+alive without inventing a frame describeStreamEvent cannot name. That constraint is already
+recorded on this route: an unnameable frame "must not reach the feed as though it were audited
+history".
+
+AND THIS REVERSES MY OWN RECOMMENDATION, which is worth recording rather than quietly dropping. I
+proposed replacing the stream with a poll, on the reasoning that a poll recovers by construction.
+That reasoning is sound and the conclusion was still wrong: the stream is not inherently fragile,
+it was missing a keep-alive. Replacing a working subsystem to work around a three-byte omission
+would have cost the immediacy that is the entire point of an audit feed, and left the real defect
+in place for anything else that ever holds a connection open.
+
+THE STICKY FAULT IS STILL A DEFECT AND IS STILL FIXED, as defence in depth rather than as the
+cure - a genuine network drop can still happen, and one drop must not poison the page for its
+whole life. liveEnded is cleared when a subsequent read succeeds, and the chip then says the feed
+is NOT LIVE rather than that it just failed, because those are different claims and only the
+first is still true a minute later.
+
+WHAT IS NO LONGER PROPOSED, and the earlier text above is left standing because it was the honest
+reasoning at the time: no poll replaces this stream, no fallback path is built, and section 2 is
+not touched. Nothing silently reconnects, because nothing needs to - the connection stops dying.
+
+ONE THING TO MEASURE, NOT ASSUME: the keep-alive interval. STREAM_POLL_MS is the tail cadence and
+is not automatically the right heartbeat - too long and the reaper still wins, too short and it is
+noise on a socket that already exists. Find what is actually cutting it before picking the number,
+and if the interval has to be short enough to be suspicious, SAY SO, because that would mean the
+reaper is aggressive enough to deserve its own answer.
