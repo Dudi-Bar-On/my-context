@@ -16,17 +16,17 @@ tags:
   - ui
   - "plan:archive"
   - "seq:24"
-  - "state:todo"
+  - "state:done"
 origin: human
 source_file: null
 source_anchor: null
 source_checksum: null
 valid_from: 2026-09-08
 valid_until: null
-checksum: ff8effc5edfaa68a
+checksum: 54f97b43ec9f48d0
 plan: archive
 seq: "24"
-state: todo
+state: done
 priority: "1"
 needs: archive/13
 ---

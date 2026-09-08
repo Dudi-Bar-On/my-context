@@ -16,17 +16,17 @@ tags:
   - tutorials
   - "plan:archive"
   - "seq:6"
-  - "state:todo"
+  - "state:done"
 origin: human
 source_file: null
 source_anchor: null
 source_checksum: null
 valid_from: 2026-09-06
 valid_until: null
-checksum: d0010e56c3c6f400
+checksum: ea03db696312b555
 plan: archive
 seq: "6"
-state: todo
+state: done
 priority: "2"
 needs: archive/7,archive/8
 ---
