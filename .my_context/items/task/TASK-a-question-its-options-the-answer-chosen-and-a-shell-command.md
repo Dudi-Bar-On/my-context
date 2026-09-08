@@ -23,7 +23,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-09-08
 valid_until: null
-checksum: ce4bf5fe76ec6f35
+checksum: d853500d0e52dc27
 plan: archive
 seq: "16"
 state: todo
@@ -63,3 +63,6 @@ ONE THING TO MEASURE BEFORE DESIGNING: how a question and its options are actual
 JSONL - the tool name, where the options live, and whether the ANSWER is in the tool_result or in
 the following user turn. Measure it on his real transcript. classifyTurn is correct for the
 archive’s counting and must not be broken to serve the viewer; add a kind, do not repurpose one.
+
+## Relations
+- depends_on [[TASK-a-tool-call-keeps-160-characters-of-its-input-and-drops-the]]
