@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: Progress notes are taken less often early on and just as often near the end, and the writing itself is handed off, so keeping the notes stops using up the room they exist to protect.
-summary_of: 90f58a21301438e4
+summary_of: 1cbbfedc92db33b7
 scope:
   - src/core/handover-ask.ts
 tags:
@@ -22,7 +22,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-09-08
 valid_until: null
-checksum: 75ef84e3f9c7d2b7
+checksum: 2179c80b09817b6b
 plan: handover
 seq: "19"
 state: todo
@@ -60,14 +60,25 @@ rather than trading it away. A handover written at 86% is near-worthless: it wil
 times before the window dies. The one at 99% is the only one that is ever read. A linear 1% step
 spends equally on both, which is the defect. So the steps widen at the start and narrow at the end:
 
-    85 ....................... 90 .... 92 .... 94 .... 96 .. 97 .. 98 .. 99
-       one step, five wide       2%     2%      2%      1%    1%    1%
+    90 .... 92 .... 94 .... 96 .. 97 .. 98 .. 99
+      2%     2%      2%      1%    1%    1%
 
-Asks fire on ENTERING each band: 85, 90, 92, 94, 96, 97, 98, 99 - eight, against fifteen today.
-NOTE THE COUNT HONESTLY: the option the owner chose was labelled seven. It is eight here because the
-ask on crossing the threshold itself is existing behaviour that predates seq:12, and removing it
-silently would be a second change smuggled in beside the one he approved. If he wants the 85 ask
-dropped, that is a one-line change and it is his to make.
+Asks fire on ENTERING each band: 90, 92, 94, 96, 97, 98, 99 - SEVEN, against fifteen today.
+
+AND THE 85 ASK IS DROPPED BY MOVING THE THRESHOLD, NOT BY SUPPRESSING THE FIRST ASK. Owner ruling
+2026-09-08, asked directly because the first draft of this item filed eight rather than the seven he
+chose: "drop the 85 ask, keep it at 7".
+
+The mechanism to do that is the cheaper one and it is worth naming, because the obvious
+implementation is worse. Special-casing "arm at 85, do not ask until 90" would leave the threshold
+meaning two different things - the point the mechanism wakes up and the point it first speaks - and
+every later reader would have to hold both. Instead `handover.thresholdPercent` moves from 85 to 90.
+Then the first band boundary IS the threshold, "ask on crossing the threshold" survives completely
+unchanged as the behaviour that predates seq:12, and the count is seven by construction rather than
+by subtraction.
+
+So this half of the ruling REMOVES a special case rather than adding one, and the only code that
+changes is `askStep`.
 
 The tail is DENSER than today in the only region that matters: from 96 to 100 the step is 1%, which
 is what it is now, so nothing is lost where the risk is real.
@@ -104,6 +115,20 @@ AND A STRUCTURAL NOTE THAT IS NOT PART OF THIS RULING: reports/V2-HANDOVER.md is
 prepended to forever. It is not hurting context today, because the read is budget-capped, but every
 edit and every read of it gets more expensive and nothing prunes it. Rolling blocks older than the
 current milestone into an archive file is worth doing later, and is deliberately NOT bundled here.
+
+WHO CHANGES WHAT, AND IT SPLITS ACROSS THE ONE BOUNDARY THIS PROJECT DOES NOT CROSS.
+
+`handover.thresholdPercent` is 85 in `.my_context/config.json`, and that file is the OWNER’S. The
+hook says so verbatim - "changes to .my_context/config.json are the user’s to make - ask, do not
+edit" - so a lane implementing this item MUST NOT move 85 to 90 itself, and neither may I. The
+ruling is recorded here; the edit is his, one line, and until he makes it the geometric bands
+simply start at 85 and the count is eight rather than seven.
+
+THE CODE HALF IS A LANE’S: `askStep` in `src/core/handover-ask.ts` becomes a band function, the
+delta cap and the roll-forward-on-nothing-landed are built, and the subagent composition path is
+added. None of that touches config, and all of it is correct at any threshold - which is the right
+split, because it means the two halves can land in either order and neither is broken by the other
+being absent.
 
 ## Relations
 - amends [[TASK-the-handover-is-asked-for-again-at-every-percent-not-written]]
