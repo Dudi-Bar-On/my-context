@@ -16,9 +16,20 @@ commit BOTH together after a full-suite run.** If D38 has died, `git diff
 src/core/command-flags.ts` and separate the two by hand — D36a's half is the
 `contribution` command spec, D38's is the supersede confirm.
 
-**Also running:** the D37 viewer lane (`archive/7`+`/8`+`/13`), in
-`conversation-index.ts`, `read-model-conversations.ts`,
-`screens/conversations.js` and `lib/vendor/`.
+**Also running:** the D37 viewer lane (`archive/7`+`/8`+`/13`).
+
+**WHOSE FILE IS WHOSE, as of `b618933` with 33 dirty — check this before staging
+anything:**
+
+| lane | files |
+|---|---|
+| **D36a — FINISHED, verify and commit** | `src/core/contribution.ts`, `src/cli/commands/contribution.ts`, `src/cli/commands/index.ts`, `test/core/contribution.test.ts`, `test/cli/contribution.test.ts`, `reports/2026-09-08-contribution-baseline.md`, `src/plugin/parity.ts`, `test/cli/{command-flags,f2-registry,unknown-flag-refusal}.test.ts`, `README.md`, `docs/README.he.md`, `docs/cli-ui-coverage.md`, `scripts/build-tutorial-manifest.ts`, `docs/tutorials/manifest.json` |
+| **D38 — RUNNING** | `src/core/mutate.ts`, `src/core/select.ts`, `src/doctor/checks.ts`, `src/cli/commands/supersede.ts`, `src/cli/commands/edit.ts` |
+| **D37 viewer — RUNNING** | `src/core/conversation-index.ts`, `src/ui/read-model-conversations.ts`, `src/ui/public/screens/conversations.js`, **`src/ui/public/strings/en.js`**, **`src/ui/public/strings/he.js`**, `src/ui/public/lib/vendor/` |
+| **SHARED — the collision** | `src/core/command-flags.ts` — D36a's half is the `contribution` command spec, D38's is the supersede confirm |
+
+**The string tables are now in play**, so a missing key would make `t()` throw at
+runtime — that has broken HEAD here before. Run `node --test test/ui/strings-parity.test.ts` before committing the viewer.
 
 ### D36a's BASELINE EXISTS, AND ITS HEADLINE IS A TRAP
 
