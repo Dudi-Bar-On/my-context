@@ -202,7 +202,6 @@ test/core/context-occupancy.test.ts
 test/core/context-share-epoch.test.ts
 test/core/continuity-tier.test.ts
 test/core/continuity.test.ts
-test/core/conversation-index.test.ts
 test/core/corpus-checksums.test.ts
 test/core/create-concurrency.test.ts
 test/core/decay.test.ts
@@ -422,7 +421,6 @@ test/ui/command-check.test.ts
 test/ui/config-error-strip.test.ts
 test/ui/config-screen.test.ts
 test/ui/context-live.test.ts
-test/ui/conversations-endpoint.test.ts
 test/ui/corpus-drift.test.ts
 test/ui/corpus-files.test.ts
 test/ui/coverage-screen.test.ts

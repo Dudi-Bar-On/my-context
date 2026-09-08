@@ -32,6 +32,35 @@
  * A read surface that quietly built its own index would be the read-only
  * guarantee failing at the one place a new feature most wants to break it.
  *
+ * ── AND SO IT MUST SAY HOW FAR BEHIND IT IS ───────────────────────────────
+ *
+ * The consequence of the paragraph above went unnoticed for a day. Nothing but
+ * a person typing the rebuild command had EVER refreshed this index, so the
+ * screen served rows scanned on 2026-09-07T04:03 while the transcript beneath
+ * them had grown 11,231,042 bytes past. Every count and every end time on this
+ * list was of a file that had since moved on — 460 prompts against 557, and an
+ * end time a day and a half early. **A cache that is behind and does not say
+ * so is how that stayed invisible**, and `staleBytes` on every row is the
+ * answer.
+ *
+ * The blast radius is worth stating exactly, because it is narrower than it
+ * looks and the narrowness is load-bearing: `read-model-conversation-document.
+ * ts` walks the FILE for its records and takes `bytes` from a `stat`, so the
+ * document a reader opens is current whatever the row says. What was stale is
+ * the LIST — these counts, these end times — and the title and branch the
+ * document borrows from the row. Nothing anybody read was fabricated; it was
+ * measured, and then it was old.
+ *
+ * It is affordable HERE, on the read surface, for one reason: `summarise`
+ * already stats each transcript to answer `present`, and the same `stat`
+ * carries the size. So the archive reports its own staleness for 0.449 ms over
+ * the whole directory (measured 2026-09-08) and without opening one transcript
+ * — which is what makes disclosure compatible with a surface that may not
+ * write. The REFRESH itself is somebody else's: `hooks/stop.ts` runs it once
+ * per assistant turn, because a read surface that repaired its own cache would
+ * be exactly the read-only guarantee failing where a new feature most wants it
+ * to.
+ *
  * ── THE BOUNDS, AND WHY A NAIVE READ HERE IS A REAL HAZARD ─────────────────
  *
  * Measured on this project's own transcript, 2026-09-07: **52,061,736 bytes**,
@@ -55,7 +84,7 @@
  * the reason each is a FIELD rather than a sentence in a comment.
  */
 import {
-  ConversationIndex, ConversationIndexUninitializedError, classifyTurn,
+  ConversationIndex, ConversationIndexUninitializedError, classifyTurn, staleBy,
   transcriptDir, truncatedScan, type ConversationRow,
 } from '../core/conversation-index.ts';
 import { closeSync, openSync, readSync, statSync } from 'node:fs';
@@ -182,6 +211,29 @@ export interface ConversationSummary {
    * failing to load, and it is the strongest argument for export.
    */
   present: boolean;
+  /**
+   * The transcript's size ON DISK NOW, from the same `stat` that answered
+   * `present` — not the size the row was scanned at, which is `bytes`. `null`
+   * when the file is gone.
+   */
+  fileBytes: number | null;
+  /** When the transcript was last written, from that same `stat`. `null` when gone. */
+  fileMtimeMs: number | null;
+  /**
+   * **Bytes of this session's transcript the index has never read.**
+   *
+   * `0` means the row is current. Anything else is the defect this feature was
+   * built for, measured rather than suspected: on 2026-09-08 this field would
+   * have read **11,231,042** for the owner's live session while the screen
+   * drew its counts as though they were totals.
+   *
+   * It costs NOTHING to serve. `summarise` already stats every row's file to
+   * answer `present`, and that one `stat` carries the size — so the archive can
+   * say how far behind it is without opening a transcript, which is precisely
+   * what makes the disclosure affordable on a read-only surface that may not
+   * rebuild anything.
+   */
+  staleBytes: number;
   scannedAt: string;
 }
 
@@ -208,12 +260,39 @@ export interface ConversationListBody {
   rebuild: string;
   /** Indexed sessions whose transcript has since been pruned from disk. */
   missing: number;
+  /**
+   * Sessions on this page whose transcript has grown past their row.
+   *
+   * Counted over the PAGE and not over the archive, which is `missing`'s rule
+   * and it is here for `missing`'s reason: `summarise` is what stats a file,
+   * and it runs on the rows this answer carries. A number counted over rows
+   * nobody stat'd would be an estimate wearing a count's clothes.
+   */
+  stale: number;
+  /** Bytes those sessions have appended since they were indexed. */
+  staleBytes: number;
 }
 
+/**
+ * One row, plus what a `stat` of its transcript says about it NOW.
+ *
+ * **The stat was already here** — `present` has always needed it — and it has
+ * always thrown away the two numbers that say whether the row is current. That
+ * is not a small oversight in hindsight: it is why an index over a day stale
+ * could be served for a day with no surface anywhere able to notice. The stat
+ * is now read for all three facts rather than for one.
+ */
 function summarise(row: ConversationRow): ConversationSummary {
   let present = false;
+  let fileBytes: number | null = null;
+  let fileMtimeMs: number | null = null;
   try {
-    present = statSync(row.file).isFile();
+    const stat = statSync(row.file);
+    present = stat.isFile();
+    if (present) {
+      fileBytes = stat.size;
+      fileMtimeMs = Math.floor(stat.mtimeMs);
+    }
   } catch {
     present = false;
   }
@@ -234,6 +313,9 @@ function summarise(row: ConversationRow): ConversationSummary {
     scannedBytes: row.scannedBytes,
     scanTruncated: truncatedScan(row),
     present,
+    fileBytes,
+    fileMtimeMs,
+    staleBytes: staleBy(row, fileBytes),
     scannedAt: row.scannedAt,
   };
 }
@@ -268,6 +350,7 @@ export function apiConversations(ws: Workspace, url: URL): JsonResult {
       const body: ConversationListBody = {
         conversations: [], total: 0, limit, offset, omitted: 0, more: false,
         indexed: false, dir, rebuild: REBUILD_COMMAND, missing: 0,
+        stale: 0, staleBytes: 0,
       };
       return { status: 200, body };
     }
@@ -293,6 +376,8 @@ export function apiConversations(ws: Workspace, url: URL): JsonResult {
       dir,
       rebuild: REBUILD_COMMAND,
       missing: conversations.filter((c) => !c.present).length,
+      stale: conversations.filter((c) => c.staleBytes > 0).length,
+      staleBytes: conversations.reduce((sum, c) => sum + c.staleBytes, 0),
     };
     return { status: 200, body };
   } finally {

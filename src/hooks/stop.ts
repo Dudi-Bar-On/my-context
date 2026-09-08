@@ -1,5 +1,8 @@
 import { handoverAskMuted, handoverThresholdPercent } from '../core/config.ts';
 import {
+  ConversationIndex, rebuildConversations, type RebuildReport,
+} from '../core/conversation-index.ts';
+import {
   occupancyStandDownLine, readOccupancy, type UnmeasurableWhy,
 } from '../core/context-occupancy.ts';
 import {
@@ -11,6 +14,7 @@ import {
   upkeepStandDownLine, upkeepUiServer, type Upkeep, type UpkeepDeps,
 } from '../core/ui-server-upkeep.ts';
 import { findProjectRoot } from '../core/workspace.ts';
+import path from 'node:path';
 import { observeAndRecord, type Observation, type ObservationSpec } from './observe.ts';
 import {
   hookParseErrorLine, parseHookInput, readStdin, type HookInput,
@@ -53,6 +57,23 @@ import {
  * So `hooks/post-tool-use.ts` remains untouched, and that question remains the
  * owner's, reported with the measurement attached rather than answered by a
  * commit.
+ *
+ * ── AND IT NOW CARRIES A SECOND UPKEEP, WHICH IS NOT A THIRD PURPOSE ──────
+ *
+ * `stopConversationRefresh` (`plan:archive seq:14`) brings the conversation
+ * index up to date with the transcript on disk, once per turn, beside the
+ * UI-server upkeep that was already here. It is the SAME KIND of thing as that
+ * one: work nobody types, done at the only boundary that fires once per
+ * exchange, reported in the note and never in the envelope. It is emphatically
+ * not `Stop` gaining a second thing to SAY —
+ * `DEC-stop-speaks-once-and-only-to-raise-the-handover` is untouched, and the
+ * only place a refresh appears is the audit row.
+ *
+ * Why here at all: `rebuildConversations` had exactly one caller, a person
+ * typing a command, so the archive screen served whatever that last manual run
+ * had left. Measured 2026-09-08, it had left an index over a day and
+ * 11,231,042 bytes behind the owner's own live session. The function's own
+ * header carries the three sites that were refused and why.
  *
  * ── WHAT THIS HOOK DOES SAY, AND HOW NARROWLY ──────────────────────────────
  *
@@ -543,6 +564,7 @@ function discardedWriteClause(upkeep: Upkeep): string {
 
 export function observeStop(
   input: HookInput, root: string, upkeep: Upkeep | null = null,
+  refresh: RebuildReport | null = null,
 ): Observation | null {
   // `stop_hook_active` is the platform's re-entrancy guard: true when this turn
   // is continuing BECAUSE a stop hook asked it to. Nothing here ever asks — the
@@ -553,7 +575,7 @@ export function observeStop(
   const base =
     `stop_hook_active=${active ? 'true' : 'false'}; the assistant turn ended` +
     (active ? ', continuing because another stop hook asked it to' : '') +
-    upkeepNote(upkeep);
+    upkeepNote(upkeep) + refreshNote(refresh);
 
   const ask = handoverAsk(input, root);
 
@@ -621,15 +643,164 @@ function askVerdictClause(
  * `null` is what every other caller passes, which is why `STOP` below is still
  * the same object it always was to every test that imports it.
  */
-export function stopSpec(upkeep: Upkeep | null): ObservationSpec {
+export function stopSpec(
+  upkeep: Upkeep | null, refresh: RebuildReport | null = null,
+): ObservationSpec {
   return {
     hook: 'Stop',
     op: 'stop',
-    observe: (input, root) => observeStop(input, root, upkeep),
+    observe: (input, root) => observeStop(input, root, upkeep, refresh),
   };
 }
 
 export const STOP: ObservationSpec = stopSpec(null);
+
+/**
+ * How long this hook will wait for another writer to let go of `.index.db`
+ * before giving up on the refresh for this turn.
+ *
+ * **Not the CLI's three seconds**, and the difference is the whole reason the
+ * option exists. `runStopHook` runs inside a timeout the platform enforces, and
+ * the upkeep beside it already spends up to 250 ms on a probe; a refresh that
+ * blocked three seconds on a lock would turn a contended index into a hook that
+ * misses its window on every turn. 300 ms is long enough to outlast the write
+ * this actually contends with — another `Stop` in a sibling session, whose own
+ * transaction is a handful of upserts — and short enough that losing the race
+ * costs a turn's latency rather than the turn.
+ *
+ * **Losing it costs nothing that is not recovered.** The transcript is
+ * append-only and the index records where it stopped, so a refresh skipped now
+ * is a slightly longer tail read next turn. That is the property that makes
+ * "give up quickly" the right answer here and would make it the wrong answer
+ * for a write that had to land.
+ */
+export const REFRESH_BUSY_TIMEOUT_MS = 300;
+
+/**
+ * **Bring the conversation index up to date with the transcript on disk, once
+ * per assistant turn** — `plan:archive seq:14`.
+ *
+ * ── WHY THIS HOOK, AND WHAT WAS REJECTED TO GET HERE ───────────────────────
+ *
+ * Until this landed, `rebuildConversations` had exactly ONE caller: `mycontext
+ * conversation rebuild`, typed by a person. The archive screen serves the
+ * INDEX and not the file, so it showed whatever that last manual run had left.
+ * Measured 2026-09-08: the index said the owner's session ended
+ * `2026-09-07T00:50` while the transcript was 65,046,326 bytes and had been
+ * written that minute — **11,231,042 bytes and over a day behind**, with
+ * `plan:restore` and the self-improvement loop reading the same rows.
+ *
+ * Four sites were available and three were refused:
+ *
+ *   - **On opening the screen.** It is the obvious one and it is the one the
+ *     project cannot have. `ConversationIndex.open` creates tables, which is a
+ *     write; `test/ui/no-writes.test.ts` holds the write bindings under
+ *     `src/ui/` to an EXACT set of one, and `test/ui/server-e2e.test.ts`
+ *     asserts a served read changes not one byte of the corpus. Both would go
+ *     red, and both are right to.
+ *   - **The UI-server upkeep** (`core/ui-server-upkeep.ts`), which already
+ *     rides this same hook. Refused on SCOPE: that pass reads nothing, probes
+ *     nothing and writes nothing unless `ui.port` is set, and that opt-in is a
+ *     deliberate safety call about spawning a server. The conversation index is
+ *     read by `plan:restore` and by the loop with the web UI switched off
+ *     entirely, so gating its freshness on a server's opt-in would leave the
+ *     loop learning from a stale transcript in exactly the configuration where
+ *     nobody is looking at a screen that could say so.
+ *   - **`SessionEnd`.** It cannot fix the defect that was reported. The stale
+ *     session was the owner's OWN, still running, which is the one session a
+ *     hook at the end of a session never reaches. It would leave the live row
+ *     — the only one anybody reads while working — permanently the most stale
+ *     row in the archive.
+ *
+ * `Stop` is what is left, and it is not a residue: it is the one boundary in
+ * this product that fires once per exchange in the parent session, it already
+ * resolves the workspace and its config here, and one turn is the interval at
+ * which "how far behind is the screen" stops being a question anybody asks.
+ *
+ * ── WHY IT IS AFFORDABLE, WHICH IS A MEASUREMENT AND NOT A HOPE ────────────
+ *
+ * `rebuildConversations` skips a file whose size and mtime match its row after
+ * one `stat` — 0.449 ms for this project's whole transcript directory — and
+ * reads only the APPENDED TAIL of one that has grown. So the cost is
+ * proportional to what the turn actually wrote, which is a few kilobytes,
+ * rather than to the 65 MB the file holds. There is no clock file and no floor
+ * beside it, deliberately: a floor would be a second mechanism to explain, and
+ * the work here is already bounded by the thing it is a function of.
+ *
+ * ── THE ONE GATE, AND WHY IT IS NOT "IF THERE IS A WORKSPACE" ──────────────
+ *
+ * It refreshes an index that ALREADY EXISTS and never creates one.
+ * `openReadOnlyChecked` is the door that answers that without writing, and its
+ * `ConversationIndexUninitializedError` is the exact "nobody has ever scanned
+ * here" state. A hook that built the index on first use would silently opt
+ * every workspace with this plugin installed into indexing its transcripts,
+ * which is a decision belonging to a person and to a different item — and it
+ * would also make a damaged index something a background hook quietly
+ * rewrites, which `openReadOnlyChecked` refuses on purpose.
+ *
+ * Subagents decline for `stopUpkeep`'s reason, quoted rather than re-argued: a
+ * fan-out of ten finishing at once is ten writers reaching for one SQLite file
+ * inside one second, and `agent_id` is the only discriminator on the payload.
+ *
+ * Never throws (`INV-hooks-fail-open`). A refresh that failed is a turn whose
+ * tail is read next turn instead.
+ */
+export function stopConversationRefresh(input: HookInput): RebuildReport | null {
+  try {
+    if (input.agent_id !== undefined) return null;
+    const root = findProjectRoot(input.cwd ?? process.cwd());
+    if (root === null) return null;
+    const dbPath = path.join(root, '.index.db');
+
+    // The gate. `openReadOnlyChecked` creates nothing, migrates nothing and
+    // repairs nothing, so this asks "has anybody scanned here" without
+    // becoming the answer to it.
+    try {
+      ConversationIndex.openReadOnlyChecked(dbPath).close();
+    } catch {
+      return null;
+    }
+
+    return rebuildConversations(dbPath, process.env, path.dirname(root), {
+      busyTimeoutMs: REFRESH_BUSY_TIMEOUT_MS,
+    });
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * What the conversation refresh contributes to the audit row, and it is `''`
+ * on the overwhelming majority of turns.
+ *
+ * **Only when the index actually MOVED.** `upkeepNote`'s rule, for
+ * `upkeepNote`'s reason: `Stop` fires on every assistant turn, and a clause
+ * that appended on every one would put a per-turn "still up to date" report
+ * into the one log line that says where an exchange ended. A tail that was
+ * read, a transcript re-read whole, and a row dropped because its file is gone
+ * are all things a person would want to find later; "nothing had changed" is
+ * not.
+ *
+ * The BYTES are named and not only the count, because the number is the whole
+ * argument for doing this per turn at all: a row that says `read 43,118 bytes`
+ * is a row that shows the append-only path working, and a run of rows saying
+ * `read 65,046,326 bytes` would be the same mechanism having quietly fallen
+ * back to whole re-reads on every turn — which is a defect nothing else would
+ * report.
+ */
+export function refreshNote(report: RebuildReport | null): string {
+  if (report === null) return '';
+  const moved = report.appended + report.scanned + report.removed;
+  if (moved === 0) return '';
+  const parts: string[] = [];
+  if (report.appended > 0) {
+    parts.push(`${report.appended} transcript(s) had grown and only the appended tail was read`);
+  }
+  if (report.scanned > 0) parts.push(`${report.scanned} transcript(s) were read whole`);
+  if (report.removed > 0) parts.push(`${report.removed} indexed session(s) no longer on disk`);
+  return `; the conversation index was refreshed — ${parts.join(', ')}, `
+    + `${report.bytesRead} byte(s) in ${report.ms}ms`;
+}
 
 /**
  * Run the UI-server upkeep for this turn, or decline — which is the answer in
@@ -703,7 +874,14 @@ export async function runStopHook(): Promise<void> {
     const { input, parseError } = parseHookInput(readStdin());
     if (parseError !== null) process.stderr.write(hookParseErrorLine(parseError));
     const upkeep = await stopUpkeep(input);
-    const { stdout } = observeAndRecord(stopSpec(upkeep), input, process.cwd());
+    // AFTER the upkeep and BEFORE the row. After, because the upkeep's probe
+    // has a 250 ms cap of its own and a synchronous file read in front of it
+    // would spend that budget before the socket was ever opened. Before,
+    // because the row is where a refresh becomes visible at all — `stdout`
+    // leaves no trace, and a refresh nothing recorded is the invisibility this
+    // whole item is about, wearing a different hat.
+    const refresh = stopConversationRefresh(input);
+    const { stdout } = observeAndRecord(stopSpec(upkeep, refresh), input, process.cwd());
     // Guarded rather than written unconditionally: this is `''` on all but at
     // most one turn of a session, and an unconditional `write('')` on a closed
     // or absent stdout is a throw on a path whose whole job is not to have one.

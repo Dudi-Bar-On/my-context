@@ -1,3 +1,4 @@
+// @basis TASK-the-archive-shows-what-is-on-disk-now-because-nothing-has, INV-nothing-is-dropped-silently
 /**
  * The conversation index and the scanner that rebuilds it from disk —
  * `plan:archive seq:1`.
@@ -362,7 +363,17 @@ test('a transcript that changed is re-read, because the fingerprint moved', () =
     box.write('a1', [...CONVERSATION, { type: 'user', message: { role: 'user', content: 'again' } }]);
 
     const again = rebuildConversations(box.dbPath, box.env, box.cwd);
-    assert.equal(again.scanned, 1, 'the size differs, so the row is stale and is rebuilt');
+    // The row is brought up to date; WHICH READ does it is `appended`'s
+    // business now (`plan:archive seq:14`). What this fixture writes is a
+    // superset with an identical prefix — which is what a transcript growing
+    // looks like on disk — so the cheap path takes it and reads only the new
+    // record. `conversation-refresh.test.ts` proves that composition equals a
+    // whole re-read; what is asserted here is that the file was NOT skipped.
+    assert.equal(
+      again.scanned + again.appended, 1,
+      'the size differs, so the row is stale and is brought up to date',
+    );
+    assert.equal(again.skipped, 0, 'and it is certainly not skipped');
     const index = ConversationIndex.openReadOnlyChecked(box.dbPath);
     try {
       assert.equal(index.get('a1')?.prompts, 2);

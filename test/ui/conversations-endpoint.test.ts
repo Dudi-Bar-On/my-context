@@ -1,3 +1,4 @@
+// @basis TASK-the-archive-shows-what-is-on-disk-now-because-nothing-has, INV-nothing-is-dropped-silently
 /**
  * `GET /api/conversations` and `GET /api/conversations/:id` — `plan:archive
  * seq:2`.
@@ -27,7 +28,8 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
-  mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync,
+  appendFileSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, statSync,
+  writeFileSync,
 } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
@@ -356,6 +358,89 @@ test('a pruned transcript is served as a pruned transcript, not as a failure', (
     assert.ok((body.uncounted ?? '').includes('no longer on disk'),
       'and the reason is a sentence, not a flag — an empty records array with no explanation '
       + 'is indistinguishable from an empty conversation');
+  } finally { b.dispose(); }
+});
+
+/**
+ * **A cache that is behind must say so, and saying so must not be a write.**
+ *
+ * The defect this endpoint had: it served rows scanned on 2026-09-07T04:03
+ * while the transcript beneath them had grown 11,231,042 bytes past, and there
+ * was NO FIELD anywhere in the answer from which a screen could have noticed.
+ * The archive was over a day stale in front of the owner and looked exactly
+ * like an archive that was current.
+ *
+ * Both halves are asserted, and the second is the one that makes the first
+ * affordable. `staleBytes` is a subtraction over the `stat` this endpoint
+ * already ran to answer `present` — so the disclosure opens no transcript,
+ * runs no scan, and leaves the corpus byte for byte where it found it, which
+ * is the only kind of disclosure a read-only surface is allowed to make.
+ */
+test('a stale archive reports how far behind it is, and reports it without writing', () => {
+  const b = box();
+  try {
+    b.write('live', [
+      { type: 'user', message: { role: 'user', content: 'hi' }, timestamp: '2026-09-01T10:00:00.000Z' },
+    ]);
+    b.scan();
+
+    const current = apiConversations(b.ws, url()).body as ConversationListBody;
+    assert.equal(current.stale, 0, 'a freshly scanned archive is not behind');
+    assert.equal(current.staleBytes, 0);
+    assert.equal(current.conversations[0]?.staleBytes, 0);
+    assert.equal(
+      current.conversations[0]?.fileBytes, statSync(path.join(b.dir, 'live.jsonl')).size,
+      'and the row carries what the file measures NOW, beside what the scan read',
+    );
+
+    // The session keeps going, which is what a live transcript does. Nothing
+    // runs a rebuild — which, until `plan:archive seq:14`, nothing ever did.
+    const grew = JSON.stringify({
+      type: 'assistant', message: { role: 'assistant', content: text('and again') },
+      timestamp: '2026-09-02T10:00:00.000Z',
+    }) + '\n';
+    appendFileSync(path.join(b.dir, 'live.jsonl'), grew);
+
+    const before = snapshot(path.join(b.cwd, '.my_context'));
+    const dbBefore = statSync(b.ws.dbPath).size;
+
+    const behind = apiConversations(b.ws, url()).body as ConversationListBody;
+    assert.equal(behind.stale, 1, 'the list says one session has moved past its row');
+    assert.equal(
+      behind.staleBytes, Buffer.byteLength(grew),
+      'by exactly the bytes it grew — a number, so a screen can say "N behind" rather than "stale"',
+    );
+    assert.equal(behind.conversations[0]?.staleBytes, Buffer.byteLength(grew));
+    // The counts are still the OLD ones, and that is correct: this endpoint
+    // serves the index. What changed is that it now says so.
+    assert.equal(behind.conversations[0]?.records, 1);
+
+    assert.deepEqual(
+      snapshot(path.join(b.cwd, '.my_context')), before,
+      'reporting staleness changed not one byte of the corpus',
+    );
+    assert.equal(statSync(b.ws.dbPath).size, dbBefore, 'and did not grow the index either');
+  } finally { b.dispose(); }
+});
+
+/**
+ * A pruned transcript is ABSENT, not behind. Two states, two fields, and
+ * collapsing them would put a "refresh this" prompt on a session whose file no
+ * refresh can ever bring back.
+ */
+test('a pruned transcript is reported as absent and never as stale', () => {
+  const b = box();
+  try {
+    b.write('gone', [{ type: 'user', message: { role: 'user', content: 'hi' } }]);
+    b.scan();
+    rmSync(path.join(b.dir, 'gone.jsonl'));
+
+    const list = apiConversations(b.ws, url()).body as ConversationListBody;
+    assert.equal(list.conversations[0]?.present, false);
+    assert.equal(list.conversations[0]?.fileBytes, null, 'there is no file to measure');
+    assert.equal(list.conversations[0]?.staleBytes, 0);
+    assert.equal(list.missing, 1);
+    assert.equal(list.stale, 0, 'a deleted transcript is not an index that is behind');
   } finally { b.dispose(); }
 });
 

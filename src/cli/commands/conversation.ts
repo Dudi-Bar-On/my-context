@@ -71,6 +71,13 @@ function reportLines(report: ReturnType<typeof rebuildConversations>): string[] 
   const lines = [
     `my_context: scanned ${report.scanned} transcript(s) of ${report.found} in ${report.dir}`,
   ];
+  if (report.appended > 0) {
+    lines.push(
+      `my_context: ${report.appended} transcript(s) had grown since they were indexed and only ` +
+      'the appended tail was read — a transcript never changes what it already holds, so the ' +
+      'row is composed rather than rebuilt; `--full` re-reads them whole anyway',
+    );
+  }
   if (report.skipped > 0) {
     lines.push(
       `my_context: ${report.skipped} unchanged since the last scan and re-read from the index ` +

@@ -153,6 +153,25 @@ function drawRow(ctx, row, open) {
     chip.append(...ctx.t('conv.pruned'));
     marks.append(chip, ' ');
   }
+  // The transcript has grown past the row. Drawn as a chip beside the pruned
+  // and capped ones because it is the same KIND of fact — every number on this
+  // row is what a scan saw and not what the file holds — and because a reader
+  // scanning the list has to be able to tell WHICH session is behind, which an
+  // aggregate line above the list cannot say.
+  //
+  // NO `dataset.g`, unlike the two chips around it, and that is deliberate:
+  // `styles.css` declares `.chip.warn::before{content:"▲ "}`, which is a
+  // two-class rule and therefore beats `.chip::before{content:attr(data-g)}`.
+  // So a `data-g` on a `warn` chip NEVER RENDERS — the `⃠` above and the `⋯`
+  // below are both dead lines, verified in a browser 2026-09-08, and both
+  // chips draw `▲`. Adding a third dead line would be copying a defect
+  // forward; correcting theirs would change two glyphs the owner has seen, so
+  // it is reported rather than done here.
+  if (row.staleBytes > 0) {
+    const chip = el('span', 'chip warn');
+    chip.append(...ctx.t('conv.behindRow', { bytes: sizeText(row.staleBytes) }));
+    marks.append(chip, ' ');
+  }
   // The scan hit its cap, so every count above is a floor rather than a total.
   if (row.scanTruncated === true) {
     const chip = el('span', 'chip warn');
@@ -204,6 +223,45 @@ function drawList(ctx, host, body, open) {
     const gone = el('p', 'small spill');
     gone.append(...ctx.t('conv.missingSome', { n: body.missing }));
     host.append(spaced(gone));
+  }
+
+  // ── HOW FAR BEHIND THIS LIST IS, DRAWN EITHER WAY ────────────────────────
+  //
+  // This is the line whose absence let the archive be over a day stale in
+  // front of the owner without anything saying so: on 2026-09-08 the index
+  // said his session ended 2026-09-07T00:50 while the file had been written
+  // that minute and had grown 11,231,042 bytes past the row.
+  //
+  // It is drawn when the list is CURRENT as well as when it is behind, which
+  // is the same rule and the same reason as the where-it-looked line twenty
+  // lines above: a screen that only speaks up when something is wrong leaves a
+  // reader unable to tell a fresh list from a check that has stopped running.
+  // That is exactly the state this feature was in.
+  //
+  // Both numbers come from `stat`. `staleBytes` is the file's size now minus
+  // the size the row was scanned at — the endpoint takes it from the same
+  // `stat` that already answered `present`, so the disclosure costs no extra
+  // syscall and, crucially, no rebuild. A read-only screen can say it is
+  // behind; it cannot be the thing that fixes it.
+  if (body.stale > 0) {
+    const behind = el('p', 'small spill');
+    behind.append(...ctx.t('conv.behind', {
+      n: body.stale, bytes: sizeText(body.staleBytes),
+    }));
+    host.append(spaced(behind));
+    // WHO refreshes it, and the command a person can run instead of waiting —
+    // the same composed-never-run shape the never-scanned state uses, because
+    // this server writes nothing either way.
+    const how = el('p', 'small');
+    how.append(...ctx.t('conv.refreshedBy'));
+    host.append(how);
+    const cmd = el('p', 'plate convcmd');
+    cmd.append(mono(body.rebuild));
+    host.append(cmd);
+  } else {
+    const fresh = el('p', 'small');
+    fresh.append(...ctx.t('conv.current'));
+    host.append(spaced(fresh));
   }
 
   // `boundedList` calls `host.replaceChildren(...)` — it OWNS the element it

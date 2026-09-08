@@ -65,6 +65,31 @@
  * That is `INV-nothing-is-dropped-silently` cutting both ways, and it is the
  * reason the CLI half of this feature exists at all: a read-only server cannot
  * build its own index, so `mycontext conversation rebuild` is what fills it.
+ *
+ * ── AND FOR A YEAR OF TURNS, THAT WAS THE ONLY THING THAT EVER DID ─────────
+ *
+ * `rebuildConversations` had exactly one caller — that command, typed by a
+ * person — and the screen serves the INDEX rather than the file. Measured
+ * 2026-09-08 on this project's own corpus: the index said the owner's session
+ * ended `2026-09-07T00:50` while the transcript was 65,046,326 bytes and had
+ * been written that minute. **11,231,042 bytes, and over a day, behind.**
+ * `plan:restore` and the self-improvement loop read these same rows, so a
+ * stale index is a loop learning from a day-old transcript and never knowing.
+ *
+ * Two things changed and they are deliberately separate:
+ *
+ *   - **A refresh is now automatic**, on `hooks/stop.ts`, once per assistant
+ *     turn in the parent session. It is affordable because a transcript ONLY
+ *     APPENDS: an unchanged file costs one `stat`, and a grown one costs its
+ *     TAIL. `rebuildConversations` argues that path and carries the numbers.
+ *   - **The staleness is now VISIBLE**, from a `stat` alone and with no
+ *     rebuild, so a cache that is behind says so wherever it is served.
+ *     `staleBy` below is the predicate, and `ui/read-model-conversations.ts`
+ *     serves it on every row.
+ *
+ * The second is not a consolation for the first failing; it is the part that
+ * makes the first CHECKABLE. Automatic refresh that silently stopped working
+ * would put the archive back exactly where it was found.
  */
 import { DatabaseSync } from 'node:sqlite';
 import { closeSync, openSync, readdirSync, readFileSync, readSync, statSync } from 'node:fs';
@@ -202,6 +227,35 @@ const CHUNK_BYTES = 1024 * 1024;
 /** Did this row's scan stop at the cap? The one place the comparison is made. */
 export function truncatedScan(row: { bytes: number; scannedBytes: number }): boolean {
   return row.scannedBytes < row.bytes;
+}
+
+/**
+ * **How many bytes of this session's transcript the index has never read.**
+ *
+ * The predicate the whole staleness disclosure rests on, and it is a
+ * SUBTRACTION rather than a scan: `row.bytes` is the size the file had when it
+ * was indexed and `onDiskBytes` is what a `stat` says now, so a surface can
+ * report "this is 11 MB behind" without opening the file at all. Measured on
+ * this machine, 2026-09-08: `listTranscriptFiles` stats the whole directory in
+ * **0.449 ms**, against 168 ms to re-read the 65 MB transcript it names.
+ *
+ * It exists as a named function beside `truncatedScan` for that function's own
+ * stated reason — a comparison every surface re-derives is a comparison two
+ * surfaces will eventually make differently — and because the defect it
+ * discloses is the one this index actually had: the archive screen served rows
+ * scanned on 2026-09-07T04:03 while the owner's transcript had grown
+ * **11,231,042 bytes** past them, and nothing anywhere said so.
+ *
+ * `0` for a file that is gone (`onDiskBytes === null`), because a pruned
+ * session is not a stale one — `ConversationSummary.present` is the field that
+ * already says that, and two fields disagreeing about one state is worse than
+ * either alone. `0` too for a file that SHRANK, which is not "behind" but a
+ * transcript replaced under the index; `rebuildConversations` re-reads that one
+ * whole rather than appending to it.
+ */
+export function staleBy(row: { bytes: number }, onDiskBytes: number | null): number {
+  if (onDiskBytes === null) return 0;
+  return onDiskBytes > row.bytes ? onDiskBytes - row.bytes : 0;
 }
 
 /**
@@ -642,8 +696,30 @@ export function* iterateTranscript(
  * can see it stopped: when it is less than the file's size, every count here
  * is a floor and `ended_at` is not the end of the conversation. Nothing is
  * dropped silently — it is dropped and said.
+ *
+ * ── `startByte`, AND WHY A PARTIAL SCAN IS THE SAME FUNCTION ───────────────
+ *
+ * A transcript ONLY EVER APPENDS, so a session already indexed at N bytes and
+ * now at N+M needs the M read and nothing else. `startByte` is that, and every
+ * field it returns is then a DELTA over the range read rather than a total:
+ * `records`, `prompts`, `answers`, `machinery` and `unreadable` are added to
+ * the row's; `endedAt`, `branch`, `cwd` and `aiTitle` are last-writer-wins and
+ * overwrite it when the tail carried one. `mergeScan` below owns that
+ * arithmetic so no caller re-derives it.
+ *
+ * `scannedBytes` is bytes READ, not the position reached, so a caller resuming
+ * at `startByte` adds the two to get the file position — which is exactly what
+ * `rebuildConversations` does, and the reason the cap it passes for a tail is
+ * `cap - startByte` rather than `cap`.
+ *
+ * **It must be the first byte of a line**, and the caller is the one that has
+ * to know: `iterateTranscript` documents that an offset landing inside a
+ * record costs one `unreadable` and then reads correctly. `lineStartsAt` below
+ * is how `rebuildConversations` establishes it, from one byte of the file.
  */
-export function scanTranscript(file: string, cap: number = MAX_SCAN_BYTES): ScanResult {
+export function scanTranscript(
+  file: string, cap: number = MAX_SCAN_BYTES, startByte = 0,
+): ScanResult {
   const result: ScanResult = {
     scannedBytes: 0,
     startedAt: null,
@@ -664,7 +740,7 @@ export function scanTranscript(file: string, cap: number = MAX_SCAN_BYTES): Scan
   // iterator exists to prevent.
   const cursor: TranscriptCursor = { scannedBytes: 0, reachedEnd: false, unreadable: 0 };
 
-  for (const step of iterateTranscript(file, { cap, cursor })) {
+  for (const step of iterateTranscript(file, { cap, cursor, startByte })) {
     // `null` is a line that would not parse or parsed to a non-object. The
     // cursor has already counted it; counting it twice here is the bug this
     // shape removes.
@@ -941,14 +1017,97 @@ function toRow(row: Record<string, unknown>): ConversationRow {
   };
 }
 
+/**
+ * **Is `at` the first byte of a line?** One byte of the file answers it.
+ *
+ * This is the guard that makes an append-only resume safe rather than
+ * plausible. `row.bytes` is the size the transcript had when it was indexed,
+ * and it is a line boundary WHENEVER the last thing the scan saw was a
+ * complete record — which is the ordinary case, because the harness writes a
+ * JSON object and a newline per record. It is NOT a line boundary when the
+ * scan caught the file between the object and its newline, and resuming there
+ * would append a second copy of a record the row already counted, silently and
+ * forever: every later refresh would resume past it too.
+ *
+ * So it is CHECKED, from `at - 1`, and a `false` sends the file down the full
+ * re-read path rather than down a cheaper wrong one. Measured on the owner's
+ * own 65 MB transcript, 2026-09-08: the byte at `row.bytes - 1` is `0x0a`, and
+ * the tail scan from there composed exactly — 23,650 + 4,733 records against
+ * 28,383 from a full read, and 460 + 96 prompts against 556.
+ *
+ * A file that will not open is `false`: not a boundary anyone can vouch for,
+ * and the full path reports the failure the way it always has.
+ */
+function lineStartsAt(file: string, at: number): boolean {
+  if (at === 0) return true;
+  if (at < 0) return false;
+  let fd: number;
+  try {
+    fd = openSync(file, 'r');
+  } catch {
+    return false;
+  }
+  try {
+    const byte = Buffer.alloc(1);
+    return readSync(fd, byte, 0, 1, at - 1) === 1 && byte[0] === 0x0a;
+  } catch {
+    return false;
+  } finally {
+    try { closeSync(fd); } catch { /* nothing usable to close */ }
+  }
+}
+
+/**
+ * A row and the tail read since it was written, combined into the row the
+ * session now deserves.
+ *
+ * **The arithmetic lives here and nowhere else**, because it is not uniform
+ * and a caller improvising it would get one of the two kinds wrong:
+ *
+ *   - the COUNTS are cumulative, so they add. `prompts + answers + machinery`
+ *     accounts for every conversational record in the whole file only if the
+ *     tail's contribution is added to the row's rather than replacing it.
+ *   - `endedAt`, `branch` and `cwd` are LAST-WRITER-WINS in `scanTranscript`,
+ *     which over a tail means the tail wins whenever it saw one — and the row
+ *     keeps its value when the tail carried none, which is what a tail of pure
+ *     machinery with no timestamp looks like.
+ *   - `startedAt` is FIRST-writer-wins and therefore never moves, unless the
+ *     row never had one at all.
+ *
+ * `aiTitle` follows `endedAt`: the last `ai-title` in the file is the current
+ * name, and if the tail carried one it is more recent than the row's by
+ * construction.
+ */
+function mergeScan(previous: ConversationRow, tail: ScanResult): ScanResult {
+  return {
+    scannedBytes: previous.scannedBytes + tail.scannedBytes,
+    startedAt: previous.startedAt ?? tail.startedAt,
+    endedAt: tail.endedAt ?? previous.endedAt,
+    prompts: previous.prompts + tail.prompts,
+    answers: previous.answers + tail.answers,
+    machinery: previous.machinery + tail.machinery,
+    records: previous.records + tail.records,
+    unreadable: previous.unreadable + tail.unreadable,
+    branch: tail.branch ?? previous.branch,
+    cwd: tail.cwd ?? previous.cwd,
+    aiTitle: tail.aiTitle ?? (previous.titleSource === 'ai' ? previous.title : null),
+  };
+}
+
 /** What one rebuild did, in the numbers a caller has to be able to print. */
 export interface RebuildReport {
   /** The directory the transcripts were looked for in — named even when empty. */
   dir: string;
   /** Transcripts found on disk. */
   found: number;
-  /** Transcripts actually read this run. */
+  /** Transcripts read WHOLE this run. */
   scanned: number;
+  /**
+   * Transcripts brought up to date by reading only the bytes appended since
+   * they were last indexed — the cheap path, and the one that makes a refresh
+   * affordable often enough to be automatic.
+   */
+  appended: number;
   /** Transcripts skipped because size and mtime matched the indexed row. */
   skipped: number;
   /** Rows dropped because their transcript is gone from disk. */
@@ -971,25 +1130,59 @@ export interface RebuildReport {
  * only how much work is repeated, so the cheap one is the default and the
  * expensive one is available when the reader wants the guarantee rather than
  * the inference.
+ *
+ * ── THE THIRD PATH, AND WHY IT HAD TO EXIST ────────────────────────────────
+ *
+ * There were two paths and they were the wrong two. An unchanged file cost one
+ * `stat`; a file that had grown by one line cost the WHOLE FILE. On the live
+ * session that is 65 MB re-read to learn about a few kilobytes, which is why
+ * this ran only when somebody typed the command — and, measured 2026-09-08,
+ * why nobody had typed it for over a day while the owner read the screen it
+ * fills. **The staleness was a consequence of the cost.**
+ *
+ * A transcript ONLY EVER APPENDS, so the third path reads the tail and adds
+ * it. Measured on the owner's own transcript, 2026-09-08, catching up a gap of
+ * 11,231,042 bytes:
+ *
+ *     full re-read   65,046,326 bytes   168 ms
+ *     tail re-read   11,231,042 bytes    26 ms      6.5x
+ *     `stat` alone            0 bytes  0.449 ms     both files
+ *
+ * and per turn, which is the interval it actually runs at, the tail is a few
+ * kilobytes and the whole refresh is closer to the `stat` than to either.
+ *
+ * The composed row is IDENTICAL to the one a full read produces — 23,650 +
+ * 4,733 records against 28,383, 460 + 96 prompts against 556 — and
+ * `test/core/conversation-refresh.test.ts` asserts that equality against a
+ * `--full` rebuild rather than against remembered numbers, so a divergence in
+ * either path fails rather than being believed.
  */
 export function rebuildConversations(
   dbPath: string,
   env: Record<string, string | undefined>,
   cwd: string,
-  options: { full?: boolean; cap?: number } = {},
+  options: { full?: boolean; cap?: number; busyTimeoutMs?: number } = {},
 ): RebuildReport {
   const startedMs = Date.now();
   const dir = transcriptDir(env, cwd);
   const files = listTranscriptFiles(dir);
   const cap = options.cap ?? MAX_SCAN_BYTES;
 
-  const index = ConversationIndex.open(dbPath);
+  // `busyTimeoutMs` is the caller's, because the two callers have opposite
+  // deadlines. A person at a terminal would rather wait three seconds than be
+  // told to try again; a `Stop` hook is inside a timeout the platform enforces
+  // and would rather give up on this turn and succeed on the next, which is a
+  // choice an append-only refresh can afford and a one-shot command cannot.
+  const index = options.busyTimeoutMs === undefined
+    ? ConversationIndex.open(dbPath)
+    : ConversationIndex.open(dbPath, options.busyTimeoutMs);
   try {
     const known = index.fingerprints();
     const report: RebuildReport = {
       dir,
       found: files.length,
       scanned: 0,
+      appended: 0,
       skipped: 0,
       removed: 0,
       truncated: [],
@@ -1009,8 +1202,59 @@ export function rebuildConversations(
           report.skipped += 1;
           continue;
         }
-        const scan = scanTranscript(file.file, cap);
+
+        // ── THE APPEND-ONLY PATH ──────────────────────────────────────────
+        //
+        // Five conditions, and every one of them is a way the cheap read
+        // could be WRONG rather than merely a way it could be skipped:
+        //
+        //   1. `--full` was not asked for. It is the escape hatch that buys
+        //      the guarantee back, and it must reach a whole re-read.
+        //   2. the row exists and its scan was COMPLETE (`scannedBytes ===
+        //      bytes`). A row capped at `MAX_SCAN_BYTES` stopped in the
+        //      middle of the file, so there is no "rest" to resume from —
+        //      only the part it never reached, and that starts before
+        //      `bytes`, not at it.
+        //   3. the file GREW. Equal size with a different mtime is a file
+        //      rewritten in place, and a smaller one is a file replaced;
+        //      neither is an append and appending to either would carry
+        //      counts forward from a transcript that no longer exists.
+        //   4. `bytes` is a line boundary — `lineStartsAt` argues it.
+        //   5. the row is not one whose `ai-title` a CUSTOM title has hidden
+        //      while that custom title has since been removed. The row stores
+        //      one title, so a row reading `title_source = 'custom'` has
+        //      forgotten the `ai-title` the file may still carry — and a tail
+        //      that saw no `ai-title` of its own cannot recover it, while a
+        //      whole re-read finds it wherever it sits. Without this the two
+        //      paths would DISAGREE, and disagree only in the one case nobody
+        //      would think to look at: a session renamed by hand and then
+        //      un-renamed.
+        //
+        // Anything else falls to the whole re-read below, which is the
+        // behaviour this command has always had. The cheap path is an
+        // OPTIMISATION that can decline; it is never the only way to a row.
+        //
+        // The custom title is therefore read BEFORE the path is chosen, which
+        // costs one `readFileSync` of a tiny JSON file that both paths needed
+        // anyway.
         const custom = customTitleOf(dir, file.sessionId);
+        const previous = fingerprint === undefined || options.full === true
+          ? null
+          : index.get(file.sessionId);
+        const appendable = previous !== null
+          && previous.scannedBytes === previous.bytes
+          && file.bytes > previous.bytes
+          && previous.bytes < cap
+          && !(previous.titleSource === 'custom' && custom === null)
+          && lineStartsAt(file.file, previous.bytes);
+
+        const tail = appendable && previous !== null
+          ? scanTranscript(file.file, cap - previous.bytes, previous.bytes)
+          : null;
+        const scan = tail !== null && previous !== null
+          ? mergeScan(previous, tail)
+          : scanTranscript(file.file, cap);
+
         index.upsert({
           sessionId: file.sessionId,
           source: 'live',
@@ -1031,8 +1275,16 @@ export function rebuildConversations(
           titleSource: custom !== null ? 'custom' : (scan.aiTitle !== null ? 'ai' : null),
           scannedAt: new Date().toISOString(),
         });
-        report.scanned += 1;
-        report.bytesRead += scan.scannedBytes;
+        if (tail !== null) {
+          report.appended += 1;
+          // Bytes THIS RUN read, not bytes the row now accounts for. A
+          // refresh that reported 65 MB for reading 11 MB would hide exactly
+          // the saving it exists to make.
+          report.bytesRead += tail.scannedBytes;
+        } else {
+          report.scanned += 1;
+          report.bytesRead += scan.scannedBytes;
+        }
         if (scan.scannedBytes < file.bytes) report.truncated.push(file.sessionId);
       }
       report.removed = index.removeMissing(new Set(files.map((f) => f.sessionId)));
