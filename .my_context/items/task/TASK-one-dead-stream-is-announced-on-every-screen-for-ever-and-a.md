@@ -16,17 +16,17 @@ tags:
   - live
   - "plan:live"
   - "seq:21"
-  - "state:todo"
+  - "state:done"
 origin: human
 source_file: null
 source_anchor: null
 source_checksum: null
 valid_from: 2026-09-08
 valid_until: null
-checksum: d7628105d8479656
+checksum: 32120f1eac30553e
 plan: live
 seq: "21"
-state: todo
+state: done
 priority: "1"
 ---
 
