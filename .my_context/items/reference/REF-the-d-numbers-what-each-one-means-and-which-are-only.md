@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: true
 summary: The short numbers used to talk about work in progress and what each refers to, delivered every session so the same number never means two things.
-summary_of: b10fbb15ca10b85f
+summary_of: 35be67492db0510c
 summary_was:
   - 2026-09-07 The short numbers used to talk about work in progress, and what each of them refers to, so the same number never means two things.
 scope: []
@@ -19,7 +19,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-09-07
 valid_until: null
-checksum: 3fc71350afa06cc7
+checksum: 94e357c8f38aa99e
 ---
 
 # the D numbers: what each one means, and which are only proposed
@@ -92,3 +92,28 @@ D36 ASSIGNED 2026-09-08: the agent self-improvement loop.
 Design of record: docs/superpowers/specs/2026-09-08-self-improvement-loop-design.md.
 Items are filed after the owner reviews that spec; this row exists now because assigning a number
 and recording it here are ONE ACT, which is this item’s own obligation.
+
+ASSIGNED 2026-09-08, by owner ruling, and recorded in the same act as the assignment:
+
+  D37  the conversation archive rebuilt      plan:archive seq:7-13
+       The viewer he asked for: one scrollable document rendered like the terminal, the opt-in key,
+       browse and search, the pruned-row ruling, persistence, subagent transcripts, and the
+       rendering format he supplied by example.
+
+  D38  the corpus lifecycle is enforced      plan:governance seq:8 + plan:contra seq:4
+       Retiring an item stands it down (clears always, drops a normative severity) and asks before
+       it happens, wherever it is triggered from. Both were found by lanes in their own work.
+
+AND THE D36 PHASES, using the D13a/b precedent already in this table rather than four flat numbers -
+so "do D36" still names the subject while "do D36c" names a phase. Each has a plan on disk:
+
+  D36a  instrumentation and the baseline   docs/superpowers/plans/2026-09-08-self-improvement-instrumentation.md
+  D36b  the trigger and the pass           docs/superpowers/plans/2026-09-08-self-improvement-trigger-and-pass.md
+  D36c  proposals and the artifact         docs/superpowers/plans/2026-09-08-self-improvement-proposals.md
+  D36d  review, decline and the indicator  docs/superpowers/plans/2026-09-08-self-improvement-review-surface.md
+  D36e  retirement and the bounded cap     docs/superpowers/plans/2026-09-08-self-improvement-retirement.md
+
+D36a IS FIRST AND THE ORDER IS NOT A PREFERENCE: library drift is silent by construction and only
+detectable as a CHANGE, so instrumentation added after the first promotions has no baseline and the
+experiment has no control. D36e’s thresholds are DERIVED from D36a’s output and must not be copied
+from a paper.
