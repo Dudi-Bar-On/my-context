@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: A saved session opens as one continuous scrollable view of the whole conversation instead of a first page you cannot move past.
-summary_of: a5dcfc6e5ed08032
+summary_of: f996b64132b9d54f
 scope:
   - src/ui/**
   - src/core/conversation-index.ts
@@ -24,7 +24,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-09-07
 valid_until: null
-checksum: a0b5cc051dc928f6
+checksum: b485915177e3e2f7
 plan: archive
 seq: "7"
 state: todo
@@ -60,3 +60,25 @@ none of the three, although the code claims twice that the three account for eve
 15,788 ARE the terminal activities of clause 1. A view that does not classify before it draws has no
 such gap. Do not "fix the counters" first - decide what the terminal view draws, and let the
 headline numbers follow from it.
+
+NO CAP IN THE DOCUMENT VIEW — OWNER RULING 2026-09-08, on seeing the screen say so.
+
+The viewer prints "A turn longer than 60000 characters is shown up to there and says so; tool
+output, up to 4000." His ruling: "if there is a size restriction it must be removed, i want no
+restriction or limitation."
+
+AND THE CAP DOES NOT NEED DEFENDING BECAUSE THE DELIVERY MECHANISM CHANGES. Those numbers are the
+bounds of an endpoint that hands a whole page to the browser at once, and they are honest bounds for
+that shape - src/ui/read-model-conversations.ts discloses every one of them as a FIELD rather than
+truncating silently, which is why he could read the sentence at all. What this item replaces is the
+shape: a VIRTUALISED document fetches ranges on demand, so nothing has to be handed over whole and
+there is nothing for a cap to protect.
+
+SO THE CAP IS REMOVED BY BUILDING seq:7, NOT BY RAISING A NUMBER. Raising 60000 to a bigger number
+would keep the defect and move it: a turn longer than the new number would still be cut, and the
+reader would still be told about it. Deleting the cap while still shipping whole pages would hand a
+64 MB session to a browser in one response.
+
+WHAT MUST SURVIVE: the DISCLOSURE habit. If any limit remains anywhere - a fetch size, a render
+budget - it is named on the screen as a field, never hidden. INV-nothing-is-dropped-silently. A
+viewer that quietly stops rendering is worse than one that says where it stopped.
