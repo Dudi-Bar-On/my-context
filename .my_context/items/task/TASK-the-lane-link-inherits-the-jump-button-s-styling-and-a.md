@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: Giving the control that opens a helper agent's transcript a look of its own, instead of borrowing the one the scroll buttons wear.
-summary_of: 521e57d2b8fcba54
+summary_of: 3dcccdff2980a3e9
 scope:
   - src/ui/public/styles.css
 tags:
@@ -15,18 +15,19 @@ tags:
   - ui
   - "plan:archive"
   - "seq:31"
-  - "state:todo"
+  - "state:done"
 origin: human
 source_file: null
 source_anchor: null
 source_checksum: null
 valid_from: 2026-09-08
 valid_until: null
-checksum: "1556611255824214"
+checksum: 3d7d4f3f2df15c33
 plan: archive
 seq: "31"
-state: todo
+state: done
 priority: "3"
+verified_on: 2026-09-09
 ---
 
 # the lane link inherits the jump button's styling, and a sentence-length label is not a jump button

@@ -3682,6 +3682,52 @@ body.docpage{overflow-y:auto}
   border-radius:var(--r-sm);padding:var(--sp-1) var(--sp-2);cursor:pointer}
 .tvcount{margin:0 0 var(--sp-1);font-size:var(--fs-00);color:var(--dim)}
 
+/* ── A LINK TO A LANE'S OWN TRANSCRIPT, DRESSED AS A LINK ──────────────────
+   `plan:archive seq:31`, paying back what `seq:15` borrowed.
+
+   `laneLink` shipped this control wearing `.tvjump`, the class Top, End and
+   "N new below" wear, because this file was another lane's the night it
+   landed. A jump button is two words in a box. This is a SENTENCE — "Open
+   this agent's transcript in a new tab — 19 records", and its Hebrew is a
+   sentence too — so it arrived carrying THREE affordances at once: a border,
+   a monospace face meant for identifiers, and the user agent's own underline.
+
+   ONE AFFORDANCE, AND IT IS THE ONE THIS FILE ALREADY OWNS. `.tvsaid a` makes
+   a link inside a transcript `--gold`; a gold underlined phrase is therefore
+   already this viewer's word for "a link", and this IS a link. No new hue is
+   spent: `--gold` is a budgeted meaning hue and this is the meaning it
+   already carries three rules below.
+
+   WHY THE BORDER GOES AND THE UNDERLINE STAYS, which is not only taste. The
+   label sits inline in `.tvstephead` and in `.tvnote`, both of which WRAP: a
+   bordered box that breaks across two lines draws two open-ended boxes, and
+   at 30% zoom on the owner's own document that is exactly where it breaks.
+   An underline wraps correctly by construction. The underline also survives
+   `@media print`, where every hue collapses to `#000` and colour says
+   nothing at all — a border would too, but only the underline is the mark a
+   reader does not have to learn.
+
+   `var(--sans)` at `--fs-00` and not `--fs-0`: the two lines this label lives
+   in are both `--fs-00`, so the face changes and the metrics do not.
+
+   THE MARKUP IS UNCHANGED and still reads `tvjump tvlane`. `laneLink` is in
+   another lane's file, and `e2e/conversations.spec.ts` names `a.tvlane` and
+   `a.tvlanehome` as handles. So these rules FOLLOW `.tvjump` and win on
+   order, and every declaration `.tvjump` makes that could reach this control
+   is answered here rather than left half-overridden — the font, the ground,
+   the border, the radius and the padding. Two are deliberately left standing:
+   `flex:0 0 auto`, which is inert because neither `.tvstephead` nor `.tvnote`
+   is a flex container, and `.tvjump:focus-visible`, which is the product's own
+   2px gold ring and is exactly what this control should keep.
+
+   `button.tvjump` is what every test that clicks Top, End or "N new below"
+   names, so nothing here reaches them. */
+.tvlane,.tvlanehome{inline-size:auto;font:var(--fs-00)/1.5 var(--sans);
+  color:var(--gold);background:none;border:0;border-radius:0;padding:0;
+  text-decoration:underline;text-underline-offset:2px;cursor:pointer}
+.tvlane:hover,.tvlanehome:hover{color:var(--gold);
+  text-decoration-thickness:2px}
+
 /* THE SCROLL. One well, one document. Its height is a viewport fraction so a
    long session and a short one both read as a terminal rather than as a page
    that grew — `seq:7`'s "similar experience like SCROLLING OVER A TERMINAL".

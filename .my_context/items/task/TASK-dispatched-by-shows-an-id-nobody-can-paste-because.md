@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: A column meant to name which helper dispatched another prints a value that is not the name anything else uses for it.
-summary_of: 73972363e1741b7e
+summary_of: f1bf47a467fafa8a
 scope:
   - src/cli/commands/conversation.ts
   - src/core/conversation-index.ts
@@ -16,18 +16,19 @@ tags:
   - cli
   - "plan:archive"
   - "seq:32"
-  - "state:todo"
+  - "state:done"
 origin: human
 source_file: null
 source_anchor: null
 source_checksum: null
 valid_from: 2026-09-08
 valid_until: null
-checksum: a96bc530edfe73fb
+checksum: 6afa0d9484ba3178
 plan: archive
 seq: "32"
-state: todo
+state: done
 priority: "3"
+verified_on: 2026-09-09
 ---
 
 # dispatched by shows an id nobody can paste, because parentAgentId drops the agent- prefix
