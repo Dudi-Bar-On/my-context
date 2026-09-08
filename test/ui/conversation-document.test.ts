@@ -2,6 +2,7 @@
 // TASK-the-viewer-renders-what-the-terminal-showed-with-its,
 // TASK-a-conversation-is-rendered-as-a-document-who-spoke-when-and,
 // TASK-the-open-document-follows-the-session-as-it-is-written-and,
+// TASK-a-tool-call-keeps-160-characters-of-its-input-and-drops-the,
 // INV-nothing-is-dropped-silently
 /**
  * The transcript read as ONE DOCUMENT — `plan:archive seq:7`, `seq:8`, `seq:13`.
@@ -41,7 +42,7 @@ import path from 'node:path';
 import {
   DOCUMENT_WALK_CAP, WORK_RUN_CAP, buildOutline, readNodes,
   apiConversationOutline, apiConversationNodes, apiConversationTip,
-  type DocOutlineBody, type DocOutlineNode, type DocTipBody,
+  type DocOutlineBody, type DocOutlineNode, type DocStep, type DocTipBody,
 } from '../../src/ui/read-model-conversation-document.ts';
 import { iterateTranscript, projectDirName, rebuildConversations } from '../../src/core/conversation-index.ts';
 import { registeredRoutes } from '../../src/ui/routes.ts';
@@ -288,6 +289,189 @@ test('a folded run carries its steps, its tool detail and its failure', () => {
     // was skipped.
     assert.ok(body!.steps.some((s) => s.type === 'ai-title' || s.type === 'attachment'
       || s.type === 'queue-operation'), 'a record with no message is a named step, never a gap');
+  } finally { b.dispose(); }
+});
+
+/* ══ WHAT THE TOOL WAS ASKED, NOT ONLY WHAT CAME BACK ══════════════════════ */
+
+/**
+ * The owner pasted his own terminal output back on 2026-09-08 and found a
+ * `Write(...)` naming the file it wrote and a `Bash(...)` naming the command it
+ * ran, BOTH absent from the session he was reading in the browser. It was a
+ * capture defect: `detail` was one line of at most 160 characters and was the
+ * only thing the read model held about an input, so the fold being openable
+ * could never have shown it. Measured on that transcript, 3,027 of 3,280 tool
+ * calls lost content — 4.45 MB.
+ *
+ * Every shape that lost something has a row here: a `Bash` whose command was
+ * beaten by its description, an `Agent` whose brief was, a `Write` whose
+ * content was beaten by its path, and an `AskUserQuestion` that captured
+ * NOTHING because `questions` is an array and the fallback only took strings.
+ */
+const ASKED: unknown[] = [
+  { type: 'user', message: { role: 'user', content: 'run the suite' }, timestamp: '2026-09-08T10:00:00.000Z' },
+  {
+    type: 'assistant',
+    message: { role: 'assistant', content: toolUse('Bash', {
+      command: 'npx playwright test --config e2e/playwright.config.ts\nconversations.spec.ts',
+      description: 'Run the browser suite',
+      timeout: 600000,
+      run_in_background: false,
+    }) },
+    timestamp: '2026-09-08T10:00:01.000Z',
+  },
+  {
+    type: 'assistant',
+    message: { role: 'assistant', content: toolUse('Write', {
+      file_path: '/tmp/report.md', content: '# report\n\nthe whole file body\n',
+    }) },
+    timestamp: '2026-09-08T10:00:02.000Z',
+  },
+  {
+    type: 'assistant',
+    message: { role: 'assistant', content: toolUse('AskUserQuestion', {
+      questions: [{
+        question: 'Which corpus should the suite read?',
+        header: 'Corpus',
+        multiSelect: false,
+        options: [
+          { label: 'The live corpus', description: 'dogfooding, as the rule requires' },
+          { label: 'A fixture corpus', description: 'needs the owner’s approval' },
+        ],
+      }],
+    }) },
+    timestamp: '2026-09-08T10:00:03.000Z',
+  },
+  {
+    type: 'assistant',
+    message: { role: 'assistant', content: toolUse('Bare', ['not', 'an', 'object']) },
+    timestamp: '2026-09-08T10:00:04.000Z',
+  },
+  { type: 'assistant', message: { role: 'assistant', content: text('done') }, timestamp: '2026-09-08T10:00:05.000Z' },
+];
+
+/** Every step of every `work` node in a session, in record order. */
+function stepsOf(file: string): DocStep[] {
+  const out = buildOutline(file);
+  const steps: DocStep[] = [];
+  for (const node of out.nodes.filter((n) => n.k === 'work')) {
+    const [body] = readNodes(file, { at: node.o, from: node.f, node: node.n, count: 1 });
+    steps.push(...body!.steps);
+  }
+  return steps;
+}
+
+test('a tool call carries its whole input, and the act reads before the prose about it', () => {
+  const b = box();
+  try {
+    b.write('sess-asked', ASKED);
+    const steps = stepsOf(b.file('sess-asked'));
+
+    const bash = steps.find((s) => s.tool === 'Bash')!;
+    // THE COMMAND, WHOLE, newline and all — the thing the owner could not find.
+    const command = bash.input.find((f) => f.name === 'command')!;
+    assert.equal(command.value,
+      'npx playwright test --config e2e/playwright.config.ts\nconversations.spec.ts',
+      'the command is served exactly as it ran, not collapsed to one line');
+
+    // ORDERING: the ACT outranks the prose ABOUT the act. `description` is
+    // written by the same party whose actions are being audited; the command
+    // is the fact.
+    const names = bash.input.map((f) => f.name);
+    assert.ok(names.indexOf('command') < names.indexOf('description'),
+      'the command reads before the description of it');
+    assert.equal(names[names.length - 1], 'description', 'prose about the call reads last');
+
+    // NOTHING IS DROPPED, including the arguments that are not strings — a
+    // capture layer that only understood strings is how AskUserQuestion ended
+    // up carrying nothing at all.
+    assert.deepEqual([...names].sort(),
+      ['command', 'description', 'run_in_background', 'timeout']);
+    assert.equal(bash.input.find((f) => f.name === 'timeout')!.value, 600000);
+    assert.equal(bash.input.find((f) => f.name === 'run_in_background')!.value, false);
+
+    // The SUMMARY line is untouched. It is what makes a closed fold skimmable
+    // when 2,357 of 3,280 calls are `Bash`, and it costs nothing now that the
+    // command is one fold away.
+    assert.equal(bash.detail, 'Run the browser suite');
+  } finally { b.dispose(); }
+});
+
+test('a written file carries its content, not only its path', () => {
+  const b = box();
+  try {
+    b.write('sess-asked', ASKED);
+    const write = stepsOf(b.file('sess-asked')).find((s) => s.tool === 'Write')!;
+    assert.equal(write.detail, '/tmp/report.md', 'the fold still names the file');
+    assert.equal(write.input.find((f) => f.name === 'content')!.value,
+      '# report\n\nthe whole file body\n', 'and the step carries what was written');
+  } finally { b.dispose(); }
+});
+
+test('a question keeps every option it offered, as structure rather than as a sentence', () => {
+  const b = box();
+  try {
+    b.write('sess-asked', ASKED);
+    const ask = stepsOf(b.file('sess-asked')).find((s) => s.tool === 'AskUserQuestion')!;
+
+    // `plan:archive seq:16` must draw a question with EVERY option offered,
+    // not only the one chosen — "the options he declined are the record of
+    // what was considered". So the array arrives AS AN ARRAY. Stringifying it
+    // here would hand that lane a paragraph to re-parse.
+    const questions = ask.input.find((f) => f.name === 'questions')!.value as {
+      question: string; options: { label: string }[];
+    }[];
+    assert.ok(Array.isArray(questions), 'a structured argument keeps its structure');
+    assert.equal(questions[0]!.question, 'Which corpus should the suite read?');
+    assert.deepEqual(questions[0]!.options.map((o) => o.label),
+      ['The live corpus', 'A fixture corpus'], 'both options, including the one declined');
+
+    // 71 of these carried NO detail line at all, because every top-level value
+    // is an array or a boolean. The last resort now reads one level in rather
+    // than giving up, so the closed fold says which question was asked.
+    assert.equal(ask.detail, 'Which corpus should the suite read?');
+  } finally { b.dispose(); }
+});
+
+test('an input that is not an object is still served, under its own name', () => {
+  const b = box();
+  try {
+    b.write('sess-asked', ASKED);
+    const bare = stepsOf(b.file('sess-asked')).find((s) => s.tool === 'Bare')!;
+    // `INV-nothing-is-dropped-silently`: this module does not get to rule that
+    // a tool's arguments are the wrong shape. It serves them and names them.
+    assert.deepEqual(bare.input, [{ name: 'input', value: ['not', 'an', 'object'] }]);
+  } finally { b.dispose(); }
+});
+
+test('carrying an input does not change the count — a step is still one record', () => {
+  const b = box();
+  try {
+    b.write('sess-asked', ASKED);
+    const file = b.file('sess-asked');
+    const out = buildOutline(file);
+
+    let span = 0;
+    for (const node of out.nodes) span += node.s;
+    assert.equal(span, out.records, 'sum(span) === records, with structured inputs in the steps');
+
+    const steps = stepsOf(file);
+    assert.equal(steps.length, out.nodes.filter((n) => n.k === 'work')
+      .reduce((sum, n) => sum + n.s, 0),
+    'a step carrying four arguments is still exactly ONE step');
+    assert.equal(steps.filter((s) => s.input.length > 0).length, 4,
+      'the four tool calls carry input; nothing else does');
+  } finally { b.dispose(); }
+});
+
+test('a record that calls no tool carries no input, and says so with an empty list', () => {
+  const b = box();
+  try {
+    b.write('sess-doc', SESSION);
+    for (const step of stepsOf(b.file('sess-doc'))) {
+      assert.ok(Array.isArray(step.input), 'every step has the field, never `undefined`');
+      if (step.tool === null) assert.equal(step.input.length, 0);
+    }
   } finally { b.dispose(); }
 });
 

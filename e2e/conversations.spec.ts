@@ -7,6 +7,7 @@
 // TASK-looking-at-the-tab-is-the-fastest-signal-a-reader-can-send,
 // TASK-a-chip-s-data-g-never-renders-on-six-of-the-eight-chip-kinds,
 // TASK-a-timestamp-is-shown-in-the-reader-s-own-zone-and-says-which,
+// TASK-a-tool-call-keeps-160-characters-of-its-input-and-drops-the,
 // INV-nothing-is-dropped-silently
 /**
  * The conversation archive, driven in a real browser in both languages —
@@ -135,6 +136,42 @@ function session(): unknown[] {
       },
       timestamp: at(i * 4 + 3),
     });
+    // PLANTED IN THE LAST ROUND ONLY, so every other fold keeps the four
+    // records its own assertions count. These are the two shapes that lost the
+    // most when a tool call kept 160 characters of its input: a `Write`, whose
+    // `file_path` won and whose CONTENT was dropped, and an `AskUserQuestion`,
+    // which captured NOTHING AT ALL because `questions` is an array and the
+    // fallback took only strings. 71 of the owner's calls were that second one.
+    if (last) {
+      rows.push({
+        type: 'assistant',
+        message: {
+          role: 'assistant',
+          content: [{ type: 'tool_use', name: 'Write', input: {
+            file_path: '/tmp/report.md', content: 'the whole file body, not only its path',
+          } }],
+        },
+        timestamp: at(i * 4 + 3),
+      });
+      rows.push({
+        type: 'assistant',
+        message: {
+          role: 'assistant',
+          content: [{ type: 'tool_use', name: 'AskUserQuestion', input: {
+            questions: [{
+              question: 'Which corpus should the suite read?',
+              header: 'Corpus',
+              multiSelect: false,
+              options: [
+                { label: 'The live corpus', description: 'dogfooding, as the rule requires' },
+                { label: 'A fixture corpus', description: 'needs approval first' },
+              ],
+            }],
+          } }],
+        },
+        timestamp: at(i * 4 + 3),
+      });
+    }
     rows.push({ type: 'queue-operation', operation: 'drain' });
   }
   return rows;
@@ -366,6 +403,66 @@ for (const lang of ['en', 'he'] as const) {
     await page.screenshot({
       path: `e2e/screens/conversations-document-${lang}.png`, fullPage: true,
     });
+  });
+
+  /* ══ seq:24 — AN OPENED STEP SHOWS WHAT WAS ASKED ═════════════════════ */
+
+  /**
+   * The owner pasted his own terminal output back and found a `Write(...)`
+   * with the file it wrote and a `Bash(...)` with the command it ran, both
+   * ABSENT from the session he was reading here. It was a CAPTURE defect —
+   * `detail` reduced a whole input to one line of 160 characters and nothing
+   * else about the input was ever in the read model — so no amount of opening
+   * the fold could have shown it. 3,027 of 3,280 tool calls on his transcript
+   * lost content that way, 4.45 MB of it.
+   *
+   * This drives the repair on a real screen, in both languages, because a
+   * server test can prove the field is served and cannot prove it is DRAWN.
+   */
+  test(`an opened step shows what the tool was asked, not only what came back (${lang})`, async ({ page }) => {
+    // The end of the document, where the planted `Write` and `AskUserQuestion`
+    // sit — and where a session opens anyway.
+    await openDocument(page, lang, 'default');
+    await expect(page.locator('.tvscroll')).toContainText(LAST_PHRASE, { timeout: 20_000 });
+
+    const fold = page.locator('.tvwork').filter({ hasText: 'AskUserQuestion' }).first();
+    await expect(fold).toBeVisible();
+    await fold.locator('summary').click();
+    expect(await fold.evaluate((n) => (n as HTMLDetailsElement).open)).toBe(true);
+
+    // THE COMMAND THAT RAN. `description` used to be the only thing kept.
+    await expect(fold).toContainText('echo 119');
+    // THE FILE'S CONTENT, not only the path the fold summary already named.
+    await expect(fold).toContainText('the whole file body, not only its path');
+    // EVERY OPTION OFFERED, including the one declined — `plan:archive seq:16`
+    // reads this from the same capture: "the options he declined are the
+    // record of what was considered". A structured input is drawn as
+    // structure, so all of it is on the screen rather than a first string.
+    await expect(fold).toContainText('Which corpus should the suite read?');
+    await expect(fold).toContainText('The live corpus');
+    await expect(fold).toContainText('A fixture corpus');
+
+    // THE ORDER, which is the second half of the repair: the ACT reads before
+    // the prose ABOUT the act, because the prose is written by the same party
+    // whose actions are being read.
+    const bash = fold.locator('.tvstep').filter({ hasText: 'echo 119' }).first();
+    expect((await bash.locator('.tvarg').allTextContents()).map((t) => t.trim()))
+      .toEqual(['command', 'description']);
+
+    // AND THE SUMMARY LINE IS STILL ONE LINE. 2,357 of 3,280 calls on his
+    // transcript are `Bash`; a fold that reads `Bash` forty times cannot be
+    // skimmed, so the fix went behind the fold and not into it.
+    const summary = await fold.locator('summary').evaluate(
+      (n) => (n as HTMLElement).textContent ?? '',
+    );
+    expect(summary).not.toContain('echo 119');
+
+    // THE FOLD ITSELF, not `fullPage`. A full-page screenshot RESIZES the
+    // viewport, the document's resize handler re-renders the window, and the
+    // `<details>` this test just opened comes back closed — so the artifact
+    // showed a shut fold while every assertion above had passed. An element
+    // screenshot leaves the viewport alone and photographs what was read.
+    await fold.screenshot({ path: `e2e/screens/conversations-asked-${lang}.png` });
   });
 
   /* ══ seq:14 — THE LIST SAYS WHERE IT STANDS, EVEN WHEN IT IS FINE ══════ */

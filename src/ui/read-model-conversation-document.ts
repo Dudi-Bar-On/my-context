@@ -226,6 +226,21 @@ export const NODE_WINDOW_DEFAULT = 24;
  * biggest single thing the DOM now holds is one 58,888-character `<pre>`
  * inside a `<details>` that is CLOSED until a reader opens it.
  *
+ * **AND THE SAME MEASUREMENT WAS RE-TAKEN when `DocStep.input` was added on
+ * 2026-09-08, because `seq:24` required it rather than letting either answer be
+ * inherited.** On the same transcript, grown to 30,218 records and 5,280 nodes:
+ *
+ *     largest single ARGUMENT of any call      21,713 chars — a `Write` body,
+ *                                                    37% of the largest step
+ *                                                    text already served whole
+ *     worst 24-node window, without `input`   170,356 bytes on the wire
+ *     worst 24-node window, with `input`      215,086 bytes on the wire
+ *
+ * **45 KB on the worst window a reader can ask for, over loopback**, to stop
+ * dropping 4.45 MB of what was asked. So `input` is not capped either, for the
+ * reason above and not by inheritance: nothing in the file comes close to the
+ * text this list already draws.
+ *
  * **What survives is the DISCLOSURE HABIT, which the item names as the thing
  * to keep.** The bounds that remain are bounds on the WINDOW, not on text, and
  * every one of them is still a field: `DOCUMENT_WALK_CAP` with `truncated` and
@@ -372,6 +387,28 @@ export interface DocTipBody {
   mtimeMs: number;
 }
 
+/**
+ * ONE ARGUMENT OF A TOOL CALL, kept under the tool's own name for it.
+ *
+ * **`value` is the JSON value the transcript holds, in its own type — not a
+ * string this module made of it.** Measured on the owner's transcript,
+ * 2026-09-08: 71 `AskUserQuestion` calls carry `questions` as an ARRAY of
+ * objects, 347 `Bash` calls carry a numeric `timeout`, 61 `Edit` calls a
+ * boolean `replace_all`, and `Artifact` carries object-valued `capabilities`
+ * and `query`. A capture layer that only understood strings is exactly how
+ * those 71 records ended up carrying nothing at all, so this one does not
+ * stringify on the way out. The wire is JSON; structure survives for free, and
+ * `plan:archive seq:16` — which must draw a question with EVERY option it
+ * offered, not only the chosen one — gets the real array rather than a
+ * paragraph it would have to re-parse.
+ */
+export interface DocField {
+  /** The argument's own name, as the tool call wrote it. */
+  name: string;
+  /** Its value, unchanged. A string stays a string; nothing else is coerced. */
+  value: unknown;
+}
+
 /** One record inside an opened fold. */
 export interface DocStep {
   /** Record index in the file — the number every other surface counts in. */
@@ -409,6 +446,38 @@ export interface DocStep {
    * carries.
    */
   text: string;
+  /**
+   * WHAT THE TOOL WAS ASKED, WHOLE — every argument of the call, in reading
+   * order. Empty on a record that calls no tool.
+   *
+   * **This field exists because `detail` was the ONLY capture path and a
+   * summary is not a record.** `detail` reduces the whole input to one line of
+   * at most 160 characters by taking the first name present in
+   * `DETAIL_FIELDS`; everything else was dropped on the floor and was never in
+   * the read model to be un-hidden. Measured on the owner's own transcript,
+   * 2026-09-08 — 30,190 records:
+   *
+   *     `tool_use` blocks                          3,280
+   *     characters of input, as JSON           4,450,726
+   *     largest single input                      22,382   a `Write`
+   *
+   *     Bash    2,357 calls   `description` won, so THE COMMAND was lost
+   *     Agent     208 calls   `description` won, so THE LANE BRIEF was lost
+   *     Write     141 calls   `file_path` won, so THE CONTENT was lost
+   *     AskUser…   71 calls   NOTHING won — `questions` is an array and the
+   *                           fallback loop only accepted strings
+   *
+   * **NOT CAPPED, and the measurement is why.** `seq:7` removed the text caps
+   * after finding the largest `said` node was 41% of a cap that never fired;
+   * the same measurement here says the largest input in the file is 22,382
+   * characters — 38% of the largest step TEXT this fold already serves
+   * uncapped (58,888). The bound that matters is still the WINDOW:
+   * `NODE_WINDOW_DEFAULT` nodes of at most `WORK_RUN_CAP` steps.
+   *
+   * **The count is untouched.** A step carries its whole input and is still
+   * exactly ONE step, so `sum(span) === records` says what it said.
+   */
+  input: DocField[];
   /** This line would not parse. Served as a step so the gap is visible. */
   unreadable: boolean;
 }
@@ -509,7 +578,69 @@ function toolDetail(input: unknown): string | null {
   for (const value of Object.values(row)) {
     if (typeof value === 'string' && value.trim() !== '') return oneLine(value, 160);
   }
+  // NOTHING AT THE TOP LEVEL WAS A STRING, which on the owner's transcript is
+  // 71 `AskUserQuestion` calls and 13 others — every one of them drawn as a
+  // bare tool name with no line beside it. The text is there, one level in:
+  // `questions[0].question` is the question he was asked. So the last resort
+  // reads INTO the structure rather than giving up on it, depth-bounded so a
+  // deep input cannot turn a fold summary into a walk.
+  const nested = firstString(row, DETAIL_DEPTH);
+  return nested === null ? null : oneLine(nested, 160);
+}
+
+/** How far `toolDetail` reads into a structured input for its one line. */
+const DETAIL_DEPTH = 4;
+
+/** The first non-empty string anywhere in `value`, in the value's own order. */
+function firstString(value: unknown, depth: number): string | null {
+  if (typeof value === 'string') return value.trim() === '' ? null : value;
+  if (depth <= 0 || typeof value !== 'object' || value === null) return null;
+  for (const inner of Array.isArray(value) ? value : Object.values(value)) {
+    const found = firstString(inner, depth - 1);
+    if (found !== null) return found;
+  }
   return null;
+}
+
+/**
+ * The arguments of a tool call put in READING ORDER — the act first, the prose
+ * about the act last, and everything else where the call itself wrote it.
+ *
+ * **This is the ordering fix, and it belongs HERE rather than in
+ * `DETAIL_FIELDS`.** The item that ordered it (`plan:archive seq:24`) argues
+ * both sides in one paragraph: it says `command` must outrank `description`,
+ * and in the next sentence that *"a reader who wants the summary has
+ * `detail`"* — which only holds if `detail` still carries the summary. The
+ * reason `description` winning was damaging at all was that `DETAIL_FIELDS`
+ * was the ONLY path input took; with the whole input captured, the fold's one
+ * line costs nothing and keeps the property `seq:13` measured it for — 2,357
+ * of 3,280 calls on this transcript are `Bash`, and a fold that reads `Bash`
+ * forty times is unskimmable. So the summary line keeps `description` and the
+ * OPENED step leads with the act.
+ */
+const INPUT_FIRST = [
+  'file_path', 'path', 'url', 'command', 'prompt', 'content',
+  'old_string', 'new_string', 'questions', 'pattern', 'query', 'function', 'text',
+];
+
+/** Prose ABOUT the call, written by the caller. It reads last. */
+const INPUT_LAST = ['description'];
+
+function toolInput(input: unknown): DocField[] {
+  if (input === undefined) return [];
+  // An input that is not an object at all is still an input, and a tool that
+  // takes a bare array or string is not a schema violation this module gets to
+  // rule on — `INV-nothing-is-dropped-silently`. It is served under its own
+  // name so the screen can say what it is.
+  if (typeof input !== 'object' || input === null || Array.isArray(input)) {
+    return [{ name: 'input', value: input }];
+  }
+  const row = input as Record<string, unknown>;
+  const names = Object.keys(row);
+  const lead = INPUT_FIRST.filter((name) => names.includes(name));
+  const trail = INPUT_LAST.filter((name) => names.includes(name));
+  const middle = names.filter((name) => !lead.includes(name) && !trail.includes(name));
+  return [...lead, ...middle, ...trail].map((name) => ({ name, value: row[name] }));
 }
 
 /** Collapse to one line and cap. Never a slice through a newline. */
@@ -537,13 +668,15 @@ interface Read {
   body: string;
   tool: string | null;
   detail: string | null;
+  /** Every argument of the tool call, in reading order. See `DocStep.input`. */
+  input: DocField[];
   failed: boolean;
   blocks: string[];
 }
 
 function readRecord(message: unknown): Read {
   const out: Read = {
-    said: '', thinking: '', body: '', tool: null, detail: null,
+    said: '', thinking: '', body: '', tool: null, detail: null, input: [],
     failed: false, blocks: [],
   };
   if (typeof message !== 'object' || message === null) return out;
@@ -574,6 +707,13 @@ function readRecord(message: unknown): Read {
       if (typeof b.name === 'string') out.tool = b.name;
       const detail = toolDetail(b.input);
       if (detail !== null) out.detail = detail;
+      // APPENDED, not assigned, so a record carrying two calls keeps both.
+      // Measured on the owner's transcript: 0 of 3,280 records carry more than
+      // one `tool_use` block, so this costs nothing today — but `tool` and
+      // `detail` above are last-wins, and a silent replacement is the one
+      // outcome `INV-nothing-is-dropped-silently` refuses. That those two are
+      // still last-wins is a pre-existing shape this lane did not change.
+      out.input.push(...toolInput(b.input));
     } else if (b.type === 'tool_result') {
       if (b.is_error === true) out.failed = true;
       if (typeof b.content === 'string') body.push(b.content);
@@ -607,7 +747,7 @@ interface Shape {
 
 function shapeOf(row: Record<string, unknown> | null): Shape {
   const empty: Read = {
-    said: '', thinking: '', body: '', tool: null, detail: null,
+    said: '', thinking: '', body: '', tool: null, detail: null, input: [],
     failed: false, blocks: [],
   };
   if (row === null) return { said: false, who: null, read: empty, synthetic: null };
@@ -836,6 +976,7 @@ export function readNodes(file: string, want: NodeWindowRequest): DocNodeBody[] 
         timestamp,
         tool: shape.read.tool,
         detail: shape.read.detail,
+        input: shape.read.input,
         failed: shape.read.failed,
         blocks: shape.read.blocks,
         text: body,

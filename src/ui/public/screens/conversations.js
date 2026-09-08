@@ -683,6 +683,47 @@ function drawTurn(ctx, body) {
   return turn;
 }
 
+/**
+ * ONE ARGUMENT of a tool call, drawn as itself.
+ *
+ * A string is drawn VERBATIM — a `command` reads as a command, a `content`
+ * reads as the file that was written, newlines and all. Anything else is drawn
+ * as indented JSON, because it IS structured: measured on the owner's
+ * transcript, `questions` is an array of objects on all 71 `AskUserQuestion`
+ * calls, and stringifying it early would hand `plan:archive seq:16` a
+ * paragraph where it needs a list of options. The value arrives here in its
+ * own JSON type and this is the last place it is turned into characters.
+ */
+function argBody(value) {
+  if (typeof value === 'string') return termBody(value);
+  let json;
+  try { json = JSON.stringify(value, null, 2); } catch { json = undefined; }
+  return termBody(json === undefined ? String(value) : json);
+}
+
+/** Longest argument drawn beside its name instead of in a block of its own. */
+const ARG_INLINE = 120;
+
+/**
+ * The argument as ONE LINE, or `null` if it needs a block.
+ *
+ * Without this every argument got its own bordered `<pre>`, so a single `Bash`
+ * step drew four boxes — one of them holding the number `600000`. Measured on
+ * the owner's transcript, arguments that are one short line are the MAJORITY:
+ * 347 numeric `timeout`s, 61 boolean `replace_all`s, every `file_path`, and
+ * most `description`s. A box each is noise around the two arguments a reader
+ * opened the step for, and `STD-a-screen-explains-itself-in-plain-words-and-depth-hides`
+ * is the standard that makes that a defect rather than a taste.
+ */
+function shortArg(value) {
+  if (typeof value === 'number' || typeof value === 'boolean' || value === null) {
+    return String(value);
+  }
+  if (typeof value !== 'string') return null;
+  if (value.includes('\n') || value.length > ARG_INLINE) return null;
+  return value;
+}
+
 /** What one folded step calls itself: the tool, else the blocks, else the type. */
 function stepLabel(ctx, step) {
   if (step.tool !== null) return mono(step.tool);
@@ -756,6 +797,47 @@ function drawWork(ctx, body) {
       line.append(' ', bad);
     }
     item.append(line);
+
+    // WHAT THE TOOL WAS ASKED, before what came back. The owner pasted his own
+    // terminal back and found a `Write(...)` and a `Bash(...)` whose file and
+    // whose command were both absent from this screen: `detail` above is one
+    // line of at most 160 characters, and until 2026-09-08 it was the only
+    // thing the read model carried about an input at all. It was a CAPTURE
+    // defect, so opening the fold could not have shown it — 3,027 of 3,280
+    // tool calls on his transcript lost content, 4.45 MB of it.
+    //
+    // The summary line stays one line and this sits under it, so a fold is
+    // still skimmable closed and complete open. Nothing is capped here: the
+    // largest input in that file is 22,382 characters, against the 58,888-
+    // character step TEXT this same list already draws whole.
+    if (Array.isArray(step.input) && step.input.length > 0) {
+      const args = el('dl', 'tvargs');
+      for (const field of step.input) {
+        const short = shortArg(field.value);
+        // A `<div>` around each pair, which `<dl>` allows: it is what lets one
+        // argument sit beside its name and the next one sit under it.
+        const row = el('div', short === null ? 'tvargrow' : 'tvargrow tvarg1');
+        const name = el('dt', 'tvarg');
+        // The NAME is monospace-isolated the way `stepLabel` isolates a tool
+        // name: `file_path` is an identifier, and on the Hebrew page an
+        // identifier inside an RTL paragraph is reordered unless it is a run
+        // of its own.
+        name.append(mono(field.name));
+        const value = el('dd', 'tvargv');
+        value.setAttribute('dir', 'auto');
+        // A BLOCK renders its escapes as colour (`seq:8`); a one-line value
+        // strips them, the way `.tvdetail` above does — a control character in
+        // a span is invisible damage rather than a colour. Measured: exactly
+        // one record in the owner's transcript carries an escape at all, and
+        // it is a tool RESULT, so neither branch fires on his file.
+        if (short === null) value.append(argBody(field.value));
+        else value.textContent = stripEscapes(short);
+        row.append(name, value);
+        args.append(row);
+      }
+      item.append(args);
+    }
+
     // WHOLE, never clipped — see `drawTurn` above for the ruling. Measured on
     // the owner's own transcript before the cap came off: 41 of 28,998 records
     // were over the old 4,000-character step cap, the largest of them 58,888

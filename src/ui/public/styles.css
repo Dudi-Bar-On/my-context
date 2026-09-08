@@ -3804,6 +3804,20 @@ body.docpage{overflow-y:auto}
 .tvfail .tvdetail{color:var(--crit)}
 .tvresult{color:var(--carry)}
 
+/* WHAT THE TOOL WAS ASKED. A description list, because that is what it is:
+   the argument's own name against the value the call gave it. The `dd` margin
+   is reset because the UA's 40px is an inline offset that reverses under
+   `dir="rtl"` and would indent the Hebrew page from the wrong side. */
+.tvargs{margin:0 0 var(--sp-2);display:grid;gap:var(--sp-1)}
+.tvargrow{display:grid;gap:var(--sp-1)}
+.tvargrow.tvarg1{display:flex;flex-wrap:wrap;align-items:baseline;
+  gap:var(--sp-2)}
+.tvarg{font:var(--fs-00)/1.5 var(--mono);color:var(--carry);
+  overflow-wrap:anywhere}
+.tvargv{margin:0}
+.tvarg1 .tvargv{font:var(--fs-00)/1.5 var(--mono);color:var(--ink);
+  overflow-wrap:anywhere}
+
 /* TERMINAL OUTPUT. Monospace, wrapped rather than clipped, and bounded so one
    40,000-character `git log` cannot own the whole well. */
 .tvterm{margin:0;padding:var(--sp-2) var(--sp-3);font:var(--fs-00)/1.5 var(--mono);
