@@ -40,6 +40,17 @@ Its files: `src/core/conversation-index.ts` · `src/ui/server.ts` ·
 tables are in play and a missing key makes `t()` throw at runtime, which has
 broken HEAD here.
 
+**STATE AT 94%, and it is near the end:** 21 dirty, 0 unpushed, `HEAD 5909007`.
+The lane has moved into its LOOK-AT-IT phase — it is writing screenshots to
+`e2e/screens/` (gitignored): `conversations-document-{en,he}.png`,
+`conversations-list-{en,he}.png`, `conversations-search-en.png`.
+
+**Note the SEARCH screenshot.** Its three items are `seq:7`+`/8`+`/13`; search
+is `seq:10`. **It may have gone wider than its brief** — that is not
+automatically wrong, but check what it actually built against what it was asked
+for before committing, and if it did reach into `seq:10`, say so in the commit
+rather than letting a later reader think that item is still untouched.
+
 ### `plan:archive` IS NOW FOURTEEN ITEMS, FIVE FILED TODAY FROM HIM READING THE SCREEN
 
 - **`archive/14`** the index was **over a day stale** — `rebuildConversations`
