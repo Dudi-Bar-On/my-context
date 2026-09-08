@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: The results that helpers report back are readable in a saved conversation instead of appearing as a bare label, and a row that can never have content says so once rather than repeatedly.
-summary_of: 774382b91d81067b
+summary_of: 24c63543fa466fdd
 scope:
   - src/ui/read-model-conversation-document.ts
   - src/ui/public/screens/conversations.js
@@ -23,7 +23,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-09-08
 valid_until: null
-checksum: 9628674d4cd63523
+checksum: 0f9729f76df47ddd
 plan: archive
 seq: "28"
 state: todo
@@ -112,3 +112,42 @@ here rather than inheriting either answer.
 
 AND THE COUNT MUST STAY HONEST: `sum(span) === records` is asserted so a fold cannot quietly drop a
 record. None of the three changes above may disturb it.
+
+AND A SECOND DEFECT ON THE SAME RECORDS, REPORTED BY THE OWNER 2026-09-09 FROM THE SCREEN. He saw
+a turn drawn as:
+
+    You
+    Background task finished
+    2026-09-09 00:01 GMT+3
+
+and read it as his own input being overridden - "the You lost it's color and the Background task
+finished overides the text that supposed to be near You (it's a guess i do not real see so not
+realy know)".
+
+NOTHING IS BEING OVERRIDDEN, and that half is worth writing down because it is the reading anybody
+would reach for. `conv.doc.syn.task` is a STRING-TABLE SENTENCE - "Background task finished" /
+"משימת רקע הסתיימה" - so the viewer is REPLACING the raw `<task-notification>` payload with a
+readable line. There is no input of his behind it: the turn has none. The dimming is the synthetic
+marker working as designed (`syntheticLabel`, which already counts 194 task-notifications among the
+525 records `classifyTurn` calls prompts).
+
+THE DEFECT IS THE ATTRIBUTION. The turn is headed "You" for something the owner did not say. A
+synthetic marker that dims the turn and a heading that names him as the speaker are two statements
+in the same row that contradict each other, and the heading is the one a reader believes - it is
+larger, it is first, and it is the thing every other turn uses to mean "this person typed this".
+
+SO A SYNTHETIC TURN MUST NOT CARRY A PERSON'S NAME. Options, and the choice is a visual ruling:
+give it its own speaker (the harness, the system), or give it no speaker at all and let the
+sentence stand alone as the machinery it is. What it must not do is claim he spoke.
+
+AND THE ORDER LOOKS WRONG TOO, which is worth checking rather than assuming from his paste:
+seq:13 rules the shape as heading, then THE TIMESTAMP ON ITS OWN LINE DIRECTLY UNDER THE HEADING,
+then the content. His paste shows heading, content, timestamp. Either the synthetic path builds the
+row in a different order from every other turn, or he transcribed it loosely. MEASURE IT IN THE
+BROWSER before changing anything - and if the synthetic path really does differ, that is the
+defect rather than the ordering rule.
+
+THIS COMPOSES WITH THE 3.9 MB ABOVE RATHER THAN COMPETING. That half makes the notification's
+CONTENT reachable - what the lane actually reported. This half stops the row lying about WHO said
+it. Both are the same records and the same file, so they are one piece of work: a reader should be
+able to see that a lane finished, read what it said, and never think they said it themselves.
