@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: true
 summary: The short numbers used to talk about work in progress and what each refers to, delivered every session so the same number never means two things.
-summary_of: e4b40827693c4db4
+summary_of: 132f542901653629
 summary_was:
   - 2026-09-07 The short numbers used to talk about work in progress, and what each of them refers to, so the same number never means two things.
 acknowledged:
@@ -21,7 +21,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-09-07
 valid_until: null
-checksum: 9823a75e6515363c
+checksum: 1bb03c68b2107d0d
 ---
 
 # the D numbers: what each one means, and which are only proposed
@@ -139,3 +139,20 @@ AND WHAT IS ACTUALLY DONE UNDER IT, as of 2026-09-08: seq:1-3 (the index, the en
 screen), seq:8, seq:13 and seq:14 are closed. seq:7 is HALF closed - the virtualised document
 landed and the owner’s no-cap ruling did not. seq:4, 5, 6, 9, 10, 11, 12, 15, 16, 17, 18 and 19
 are open.
+
+D39 ASSIGNED 2026-09-08, AND DEFERRED IN THE SAME ACT - the owner: "Deffer it for later, put it
+on the D table but at the bottom."
+
+  D39  Export / import: make the screen true, one way or the other      DEFERRED, lowest priority
+       A third of that screen describes importing, which the product cannot do. Three answers were
+       put to him - build import, delete the description, or badge it PROPOSED - and he chose none
+       of them yet. So the number exists and the work does not start.
+
+WHY IT IS RECORDED AT ALL RATHER THAN LEFT IN A MESSAGE. This item's own obligation is that
+assigning a number and writing it here are ONE ACT. He asked for it to go on the table, so it goes
+on the table - and a deferred row is more honest than an absent one, because "at the bottom" is a
+position and a position needs a table to be in.
+
+AND DEFERRED IS NOT THE SAME AS UNDECIDED ABOUT PRIORITY: it sits below every open D, and nothing
+should pick it up without asking him first. The open question behind it stays active precisely
+because he has not answered it - unlike the four that were retired the same day, which he did.

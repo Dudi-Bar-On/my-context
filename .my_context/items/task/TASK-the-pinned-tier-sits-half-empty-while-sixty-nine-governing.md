@@ -25,7 +25,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-09-04
 valid_until: null
-checksum: 2bc26f37c13aacf5
+checksum: 205ca555f4f0c65c
 plan: budget
 seq: "16"
 state: todo
@@ -67,3 +67,6 @@ a permanent mutation of a corpus that is being dogfooded.
 Watch the interaction with the disclosure that shipped alongside this. Governing items not
 delivered in full are now NAMED rather than silently degraded, so the count of titled items is
 the measurement of whether this worked, and it should fall.
+
+## Relations
+- supersedes [[OPENQ-does-the-pinned-tier-spend-its-spare-room-on-governing-items]]

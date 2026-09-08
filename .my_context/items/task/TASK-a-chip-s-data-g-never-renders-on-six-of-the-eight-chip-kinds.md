@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: A glyph a screen puts on a coloured chip is silently replaced by the glyph its colour class carries, so several states in the conversation archive draw the same mark.
-summary_of: 0eb6b6d5ae47d8d0
+summary_of: 2f30c012728f571f
 scope:
   - src/ui/public/styles.css
   - src/ui/public/screens/**
@@ -23,7 +23,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-09-08
 valid_until: null
-checksum: 2d9530f90181bb32
+checksum: 5e983eee07e7832a
 plan: archive
 seq: "20"
 state: todo
@@ -101,3 +101,21 @@ differing only in their words.
 NO TEST GUARDS THIS TODAY. Whatever is chosen, the guard is a browser assertion on
 `getComputedStyle(el, '::before').content` for a chip that carries a `data-g` — the probe above,
 kept rather than thrown away.
+
+OWNER RULING 2026-09-08: scope data-g to the NEW chips only. The five dead glyphs come alive on
+the conversations screen; every other screen keeps the glyph vocabulary he already reads.
+
+HE WAS SHOWN THE COST OF THE ALTERNATIVE AND CHOSE AGAINST IT. Letting data-g win everywhere is
+the cleaner CSS and the single rule, and it would change the glyph on six chip kinds across
+Doctor, Decay, Work, Watch and Status - screens he has been reading for weeks. A tidier cascade is
+not worth re-teaching a reader symbols they already know.
+
+WHAT THIS RULING COSTS, said plainly so nobody later reads it as free: TWO GLYPH VOCABULARIES NOW
+COEXIST. A chip on the conversations screen and a chip on Doctor obey different rules about their
+glyph. That is a real inconsistency and it is accepted deliberately rather than overlooked. The
+implementation must therefore make the boundary legible in the CSS itself - a scoped selector with
+a comment saying WHY it is scoped - or the next reader will "fix" it back.
+
+AND conv.none matches by COINCIDENCE, which the implementation must not preserve by accident: it
+draws the right glyph today because the override happens to agree with its data-g, not because
+anything made them agree.

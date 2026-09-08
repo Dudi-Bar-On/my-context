@@ -22,7 +22,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-09-08
 valid_until: null
-checksum: 57a9ef215058b61c
+checksum: 8a61980450d2199d
 plan: handover
 seq: "19"
 state: todo
@@ -141,3 +141,4 @@ being absent.
 
 ## Relations
 - amends [[TASK-the-handover-is-asked-for-again-at-every-percent-not-written]]
+- supersedes [[OPENQ-is-98-the-right-threshold-when-the-platform-compacts-before]]

@@ -2,11 +2,11 @@
 id: OPENQ-install-the-status-line-bridge-over-the-owner-s-current
 type: open_question
 title: install the status-line bridge over the owner’s current status line, or leave the occupancy requirement inert?
-status: active
+status: deprecated
 severity: soft
 always: false
 summary: Should the tool take over the bar at the foot of the screen to get a reading it needs, or should the feature that needs it stay switched off?
-summary_of: fd83f2e1b43a0708
+summary_of: 0325af60b30672f9
 scope: []
 tags:
   - v2
@@ -18,8 +18,8 @@ source_file: null
 source_anchor: null
 source_checksum: null
 valid_from: 2026-08-27
-valid_until: null
-checksum: efe51fff056c1fee
+valid_until: 2026-09-08
+checksum: 085d0fdf9b3601b4
 blocks: the occupancy requirement measuring anything at all
 ---
 
@@ -37,3 +37,25 @@ THE THREE ANSWERS:
 - CHAIN. Neither exists today: the bridge replaces rather than delegates. Making it tee AND pass through to a previous status line is a real change to that command and is not in either plan.
 
 Design: docs/superpowers/specs/2026-08-27-handover-continuity-across-compaction-design.md section 7.
+
+THIS QUESTION IS STALE AND THE WORLD HAS ANSWERED IT. Re-measured 2026-09-08 on the same machine.
+
+THE BRIDGE IS INSTALLED. `~/.claude/settings.json` carries
+`statusLine.command = node ... my-context/src/cli/index.ts statusline` with a 60 s refresh - not a
+different plugin script, which is what the 2026-08-27 measurement above found. `.my_context/.statusline/`
+exists and holds a live tee per session.
+
+AND THE OCCUPANCY REQUIREMENT IS NOT INERT. The tee for the session current at the time of writing
+carries `context_window.used_percentage: 25` against a `context_window_size` of 1,000,000, with all
+four token fields present. So the figure the whole handover mechanism depends on is being read
+live, and has been.
+
+ONE SHAPE NOTE, because it is the trap a future reader will hit: the payload nests the window under
+`context_window`, and `src/core/statusline-tee.ts` reads it there. A synthetic payload written with
+those fields at the TOP level - which is how this item and the design doc both describe them -
+renders `ctx - unreadable` and looks exactly like a broken bridge. It is not; it is the wrong
+fixture shape.
+
+SO THE THREE ANSWERS THE ITEM OFFERED HAVE ALL LAPSED: there is nothing to install, nothing of the
+owner's to preserve, and no requirement standing inert. The only question left is a preference -
+whether he wants anything changed about what the bar shows - and that is not this question.

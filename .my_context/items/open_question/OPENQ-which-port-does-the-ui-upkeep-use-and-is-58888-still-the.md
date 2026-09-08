@@ -2,11 +2,11 @@
 id: OPENQ-which-port-does-the-ui-upkeep-use-and-is-58888-still-the
 type: open_question
 title: which port does the UI upkeep use, and is 58888 still the number?
-status: active
+status: deprecated
 severity: soft
 always: false
 summary: Which port should the viewing application use, and is the number that has only ever been typed by hand the one to write down as a setting?
-summary_of: 0e092cfc80b08150
+summary_of: f16bac74458d49f1
 scope: []
 tags:
   - v2
@@ -18,8 +18,8 @@ source_file: null
 source_anchor: null
 source_checksum: null
 valid_from: 2026-08-27
-valid_until: null
-checksum: 052c0001d673aed9
+valid_until: 2026-09-08
+checksum: c3e5294db0c15427
 blocks: "plan:upkeep — the whole mechanism is off until a port is named"
 ---
 
@@ -32,3 +32,13 @@ The upkeep mechanism is off until ui.port is set, and setting it is the owner's 
 WHAT THE ANSWER DECIDES: whether the upkeep runs in this workspace at all, and on which port his bookmark points at. The demo corpus and the real corpus are different workspaces with different config files, so the answer may be different for each -- and today the server he looks at is served from .demo-corpus.
 
 Design: docs/superpowers/specs/2026-08-27-the-ui-server-outlives-the-session-design.md section 8.
+
+ANSWERED 2026-09-08 by the file itself: `.my_context/config.json` carries `ui.port: 58888` with
+`ui.enabled: true`. So the number is no longer one that has only ever been typed by hand - it is a
+written setting, which is exactly what this question asked for.
+
+AND IT IS LOAD-BEARING BEYOND CONFIGURATION, which is the part worth keeping: 58888 is the owner's
+own running server, and standing instruction is that no lane may kill, restart, replace or bind to
+it. Every test and every lane uses an ephemeral port instead - the browser suite through
+`startUiChild`. A question about which port to write down has therefore become a constraint about
+which port not to touch.

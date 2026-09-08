@@ -2,11 +2,11 @@
 id: OPENQ-does-the-pinned-tier-spend-its-spare-room-on-governing-items
 type: open_question
 title: does the pinned tier spend its spare room on governing items, at the price of forty-nine fixtures
-status: active
+status: superseded
 severity: soft
 always: false
 summary: Using leftover room for items that would otherwise arrive as titles is built and measured, and costs a large rewrite of existing tests.
-summary_of: 1c6a1d2bafd50f48
+summary_of: 427f85eb64427d38
 acknowledged:
   - body_disagrees_with_meta@69fb19d61b487009
 scope:
@@ -21,8 +21,8 @@ source_file: null
 source_anchor: null
 source_checksum: null
 valid_from: 2026-09-06
-valid_until: null
-checksum: de9c65cbd03437d9
+valid_until: 2026-09-08
+checksum: 5f6d2b2ecb1aa731
 ---
 
 # does the pinned tier spend its spare room on governing items, at the price of forty-nine fixtures
@@ -71,3 +71,21 @@ wrong means an item re-offered on every tool call, or lost after a compaction.
 
 THE PATCH is in the session scratchpad as budget-16-spare-band.patch, 441 lines, and the tree was
 restored: the two suites I checked are back to 44 of 44.
+
+ANSWERED BY THE OWNER 2026-09-08: YES - spend the spare room.
+
+The trade was put to him with both numbers: about sixty-nine governing items reach a session as
+titles only while the pinned tier sits roughly half empty, against a one-time rewrite of about
+forty-nine test fixtures. He ruled for the room.
+
+THE REASONING THAT DECIDED IT, recorded because the cost is the memorable half and the benefit is
+the durable one: the fixture rewrite is paid ONCE and is mechanical - a wrong one fails a test
+rather than shipping quietly - while the titles are paid EVERY SESSION, and a governing item
+delivered as a title is a constraint the agent has to know to go and fetch.
+
+WHAT THE IMPLEMENTATION MUST NOT DO: fill the room and leave the fixtures to be discovered. Forty-
+nine failing fixtures found later, by somebody who does not know this ruling happened, reads as a
+regression rather than as expected work.
+
+## Relations
+- superseded_by [[TASK-the-pinned-tier-sits-half-empty-while-sixty-nine-governing]]
