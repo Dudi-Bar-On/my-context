@@ -19,12 +19,14 @@
 # `test/scripts/basis-gate.test.ts` pins the length below as a CEILING, so a new
 # file smuggled in here fails `npm test` as well as review.
 #
-# It started at 484 and is 475: the nine files `cdc9fd8` had to repair now
-# declare what they rest on, because that commit's own message records it. They
-# are the one retrofit this project can make without guessing, and they are the
-# evidence that the convention expresses the set it was designed from.
+# It started at 484 and is 473. Nine of the shrink are the files `cdc9fd8` had
+# to repair, which now declare what they rest on because that commit's own
+# message records it — the one retrofit this project can make without guessing,
+# and the evidence that the convention expresses the set it was designed from.
+# The other two are `test/core/summary.test.ts` and `test/ingest/schema.test.ts`,
+# declared when SUMMARY_MAX_CHARS moved from 160 to 250 (owner ruling 2026-09-08).
 #
-# 475 entries.
+# 473 entries. The ceiling `test/scripts/basis-gate.test.ts` pins is 475.
 e2e/announce.spec.ts
 e2e/app-layout.spec.ts
 e2e/app-refresh.spec.ts
@@ -273,7 +275,6 @@ test/core/store-scoped.test.ts
 test/core/store.test.ts
 test/core/summary-gate.test.ts
 test/core/summary-history.test.ts
-test/core/summary.test.ts
 test/core/tag-projection-doctor.test.ts
 test/core/tag-projection-filtering.test.ts
 test/core/tag-projection.test.ts
@@ -366,7 +367,6 @@ test/ingest/lock-timeout.test.ts
 test/ingest/request.test.ts
 test/ingest/schema-context-type.test.ts
 test/ingest/schema-unknown-keys.test.ts
-test/ingest/schema.test.ts
 test/ingest/session-recovery.test.ts
 test/ingest/session.test.ts
 test/lesson/derive-guards.test.ts

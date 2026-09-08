@@ -358,28 +358,52 @@ export function validateTitle(title: string): void {
  * directions and not a bound", so it cannot gate a write. A character count is
  * exact, is what the file actually stores, and is checkable on the hook path.
  *
- * *Why 160.* The number is reasoned from how much a person absorbs in one
- * pass, NOT from what fits on a screen or in a budget — an earlier draft of
- * this bound was 240, chosen because it is three lines at the CLI's
- * 80-column layout budget and admits the first sentence of 94.8% of this
- * corpus's bodies. Both of those are fit arguments, and fit is the wrong
- * question: the 120-character title above fits everything and is unreadable.
+ * *Why 250, and why it was 160.* **Owner ruling 2026-09-08, from his own
+ * experience as a reader of this corpus: 160 is not enough to describe a long
+ * body.** The number moved from 160 to 250 on that ruling, and the measurement
+ * that backs it is recorded here rather than in a commit message, because the
+ * next person to argue about this number will read this docblock and not the
+ * log.
  *
- * 160 characters is about twenty-five words — one plain sentence, two lines at
- * 80 columns, which is the span an eye crosses without returning to the start.
- * It is a little under twice the owner's worked example above (89 characters)
- * and a little under twice this corpus's median first-sentence-of-body (90),
- * so it has room for one sentence written plainly and no room for two written
- * densely. The 138 of 730 body first-sentences that run past it are precisely
- * the dense ones, which is the point: **the bound is tight enough that a
- * writer has to choose plain words instead of squeezing in the precise ones.**
+ * **What was measured, over all 1,011 summaries in this repository's own
+ * corpus on the day of the ruling:** mean 128, median 131, minimum 57, and
+ * **maximum exactly 160** — the old ceiling, hit to the character. A maximum
+ * that equals its limit exactly is the signature of sentences trimmed to fit
+ * rather than written to length: nothing in the corpus was 161 because nothing
+ * could be. 105 of the 1,011 (10.4%) sat at 150 or above, so the ceiling was
+ * genuinely pressing on about one summary in ten, and p90 was 150, p95 154,
+ * p99 157. The distribution is not a corpus comfortably inside its bound; it
+ * is a corpus compressed against it.
+ *
+ * **160's reasoning is kept, because it was right about the bar and wrong
+ * about the ceiling.** It was reasoned from how much a person absorbs in one
+ * pass — about twenty-five words, two lines at 80 columns, the span an eye
+ * crosses without returning to the start — and NOT from what fits on a screen
+ * or in a budget, on the argument that fit is the wrong question because the
+ * 120-character title above fits everything and is unreadable. That argument
+ * still holds and is still the bar. What it got wrong is that the bar and the
+ * ceiling are not the same number. The bar is where a good summary stops; the
+ * ceiling is where the product refuses. Setting the ceiling AT the bar meant
+ * every writer with a dense item met a refusal instead of a bar, and the
+ * cheapest way past a refusal is a denser sentence — the exact failure the
+ * bound exists to prevent, produced by the bound itself.
+ *
+ * 250 characters is about forty words. It is not a licence to write forty:
+ * the median summary in this corpus is 131 and nothing here asks it to move,
+ * **this change permits longer summaries and does not require them**, and the
+ * refusal below still teaches the bar rather than the ceiling. What 250 buys
+ * is room for the one item in ten whose plain sentence genuinely did not fit,
+ * so that the writer who reaches the limit has actually run out of plainness
+ * rather than run out of characters.
  *
  * *What the refusal means.* Per the owner's ruling: an item that cannot be
  * summarised inside the bound is a finding, not a case for a larger bound —
  * the item is carrying more than one claim and wants splitting. The message
- * below says that, and says the bar, rather than only naming the number.
+ * below says that, and says the bar, rather than only naming the number. That
+ * argument is unchanged by the ceiling moving: it was never an argument about
+ * where the number sits, only about what a writer who hits it should conclude.
  */
-export const SUMMARY_MAX_CHARS = 160;
+export const SUMMARY_MAX_CHARS = 250;
 
 /**
  * The one normalisation of a summary, so the value a caller is validated on,

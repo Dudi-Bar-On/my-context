@@ -52,7 +52,7 @@ repeated — on `mycontext edit` as well.
 `--summary "<text>"` is one plain sentence saying what the item IS and why it
 matters, written for somebody who does NOT know this codebase: plain words
 rather than project vocabulary, no ids, no file paths, no measurements, and
-never how it was found. It is capped at 160 characters and the body keeps all
+never how it was found. It is capped at 250 characters and the body keeps all
 the precision. It is also recorded WITH the content it was written against, so
 a later edit to the body makes it measurably stale (`mycontext doctor` reports
 it, and `get_item` labels it) rather than quietly wrong. `mycontext edit <id>

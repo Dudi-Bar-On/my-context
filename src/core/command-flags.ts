@@ -759,7 +759,7 @@ const LIMIT: FlagDeclaration = {
  * true of `edit` alone: the empty value clears it.
  */
 export const SUMMARY_FLAG: FlagDeclaration = {
-  format: 'one plain sentence, at most 160 characters',
+  format: 'one plain sentence, at most 250 characters',
   example: 'A screen says it checked a session and found nothing, when it never checked at all.',
   note: 'What this item is and why it matters, in plain words for somebody who does NOT know '
     + 'this codebase - no ids, no file paths, no measurements, and never how it was found. '

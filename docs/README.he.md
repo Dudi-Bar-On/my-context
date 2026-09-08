@@ -738,7 +738,7 @@ my_context EXTRACTION REQUEST — docs/prd.md § bookstore-api-prd (chunk 1 of 3
 - Emit a JSON array matching the "schema" field. Return [] when the chunk establishes nothing normative — that is a correct and common answer, and the common case for prose that isn't a spec.
 - Every candidate MUST carry a "quote": a span copied VERBATIM from the chunk. It is checked by exact match after whitespace collapsing, and a paraphrase is rejected. This is how an invented item is caught.
 - "title" is one declarative sentence on a SINGLE LINE, at most 200 characters — no line breaks. Put the reasoning in "body".
-- Every candidate MUST carry a "summary": one plain sentence for a reader who does not know this codebase, saying what the item IS and why it matters — not how it was found. Plain words only, no ids, no file paths, no measurements, at most 160 characters. Write it now, while you still have the source document in view: nothing else in this product can write it for you afterwards, and a candidate with no summary is rejected.
+- Every candidate MUST carry a "summary": one plain sentence for a reader who does not know this codebase, saying what the item IS and why it matters — not how it was found. Plain words only, no ids, no file paths, no measurements, at most 250 characters. Write it now, while you still have the source document in view: nothing else in this product can write it for you afterwards, and a candidate with no summary is rejected.
 - "body" is plain prose: no line may start with a Markdown heading ("#" through "######", e.g. "## Why") — that line and everything after it is silently dropped when the item is read back from disk. Do not structure the rationale with headings; use plain paragraphs.
 - "scope", "tags" and "observations" must each be a JSON ARRAY — never a bare string. Scope RESTRICTS where an item applies: set it only to the directories the item actually governs, as POSIX globs such as "src/auth/**". "**", "*" and "**/*" are all rejected, because omitting "scope" already means exactly that. Omitting scope is safe and is the right answer when the item is not about particular files — it simply leaves the item unrestricted, so it applies everywhere.
 - "severity" is "hard" (a future enforcement candidate) or "soft" (the default) — omit it to get "soft".
@@ -985,8 +985,8 @@ built, it is meant as a boundary.
         },
         "summary": {
           "type": "string",
-          "maxLength": 160,
-          "description": "One plain sentence for a reader who does not know this codebase: what the item IS and why it matters, not how it was found. Plain words only — no ids, no file paths, no measurements, no project vocabulary. At most 160 characters, a single line. Write it now, while you still have the source document in view — this is the only chance, because everything this item creates lands as an unreviewed draft and nothing else in this product can write the sentence for you afterwards."
+          "maxLength": 250,
+          "description": "One plain sentence for a reader who does not know this codebase: what the item IS and why it matters, not how it was found. Plain words only — no ids, no file paths, no measurements, no project vocabulary. At most 250 characters, a single line. Write it now, while you still have the source document in view — this is the only chance, because everything this item creates lands as an unreviewed draft and nothing else in this product can write the sentence for you afterwards."
         },
         "quote": {
           "type": "string",
@@ -2524,7 +2524,7 @@ Every `normative`-tier item:
 │            │           │                       │                        │ NOT know this codebase │
 │            │           │                       │                        │ - plain words, no ids, │
 │            │           │                       │                        │ no paths, no numbers.  │
-│            │           │                       │                        │ Max 160 chars; the     │
+│            │           │                       │                        │ Max 250 chars; the     │
 │            │           │                       │                        │ body keeps the         │
 │            │           │                       │                        │ precision.             │
 │            │           │                       │                        │ `--summary=` removes   │
@@ -4038,7 +4038,7 @@ health: 0 error(s), 0 warning(s), 0 note(s) — details from `mycontext doctor`.
 | <span dir="ltr">`--valid-from YYYY-MM-DD`</span> | היום שבו הפריט התחיל לחול. היום הנוכחי כשהוא נשמט, וזה נכון לדבר שנלכד עכשיו ושגוי לפריט שהועתק ממאגר שבו הוא כבר היה קיים — ו-<span dir="ltr">`valid_from`</span> הוא שם שמור בחזית הפריט, ולכן <span dir="ltr">`--extra`</span> אינו יכול לשאת אותו. תאריך שאינו קיים מסורב במקום להיות מעוגל | `add` |
 | <span dir="ltr">`--step "<text>"`</span> | צעד אחד של <span dir="ltr">`procedure`</span> — פעולה שמבצעים פעם אחת ומסיימים. ניתן לחזרה, בסדר שורת הפקודה, ואינו מפוצל בפסיקים, מאותה סיבה ש-<span dir="ltr">`--note`</span> אינו: צעד הוא משפט. פעולה שחוזרת היא <span dir="ltr">`runbook`</span>, ששומרת את צעדיה בגוף. צעדים אינם ניתנים לעריכה או לסימון בשום פקודה אחר כך — תיקון אחד מהם משמעו עריכת ה-Markdown והרצת <span dir="ltr">`mycontext repair`</span> | <span dir="ltr">`add`</span> |
 | <span dir="ltr">`--original-id <id>`</span> | לשאת את המזהה שיש לפריט קיים במקום לגזור מזהה חדש מכותרתו. **להגירה בלבד.** מזהה הוא שם פומבי — המפתח של כל קשר, כל רשומת ביקורת וכל ציטוט שנכתב לתוך הערה בקוד — ולכן יצירה מחדש של פריט תחת מזהה שנגזר מהכותרת משנה את שמו ושוברת את כולם בבת אחת. הדגל קיים ב-<span dir="ltr">`add`</span> בלבד: מזהה שיכול להשתנות אחרי היצירה הוא אותה שבירה עצמה עם שובל ביקורת מאחוריה, ושינוי שם של פריט נעשה ב-<span dir="ltr">`mycontext supersede`</span>, שמטביעה פריט חדש ומחווטת אליו את הישן. המזהה חייב להיות מקטע שם קובץ בטוח אחד, וחייב להתחיל בקידומת של הקטגוריה עצמה; מזהה שפריט כאן כבר מחזיק מסורב במקום להידרס — אלא אם התוכן זהה, ואז הלכידה היא אותה פעולת סרק שהייתה ממילא | <span dir="ltr">`add`</span> |
-| <span dir="ltr">`--summary "<text>"`</span> | משפט אחד פשוט שאומר מה הפריט **הוא** ולמה זה חשוב, כתוב לקורא שאינו מכיר את הקוד הזה: מילים פשוטות ולא אוצר מילים של הפרויקט, בלי מזהים, בלי נתיבי קבצים, בלי מדידות, ולעולם לא איך הדבר התגלה. עד 160 תווים — הגוף שומר את כל הדיוק. הוא נרשם יחד עם גיבוב של התוכן שכנגדו נכתב, ולכן עריכה מאוחרת של הכותרת, הגוף, הצעדים, התצפיות או השדות הנוספים הופכת אותו ל**מיושן**, ו-<span dir="ltr">`mycontext doctor`</span>, <span dir="ltr">`mycontext show`</span> ו-<span dir="ltr">`get_item`</span> אומרים זאת במקום להניח לצטט אותו כעדכני. <span dir="ltr">`mycontext edit <id> --summary=`</span> מוחק אותו. **לכידה חייבת לשאת תקציר** — גם ב-<span dir="ltr">`mycontext add`</span> וגם ב-<span dir="ltr">`create_item`</span> — או לומר במפורש <span dir="ltr">`--summary-omitted`</span> (<span dir="ltr">`summary_omitted: true`</span>): פריט שנוצר בלי תקציר לעולם לא יידרש לקבל אחד, מפני שכל בדיקה שהייתה דורשת זאת משווה תקציר מול הטקסט שכנגדו נכתב, ולאחד שאינו קיים אין אף אחד מהם — <span dir="ltr">`mycontext doctor`</span> נוקב בו בשם <span dir="ltr">`summary_absent`</span>, ושום דבר אחר לא יעשה זאת <!-- `core/validate.ts` · `export const SUMMARY_MAX_CHARS = 160;` · ~382 --> | <span dir="ltr">`add`, `edit`</span> |
+| <span dir="ltr">`--summary "<text>"`</span> | משפט אחד פשוט שאומר מה הפריט **הוא** ולמה זה חשוב, כתוב לקורא שאינו מכיר את הקוד הזה: מילים פשוטות ולא אוצר מילים של הפרויקט, בלי מזהים, בלי נתיבי קבצים, בלי מדידות, ולעולם לא איך הדבר התגלה. עד 250 תווים — הגוף שומר את כל הדיוק. הוא נרשם יחד עם גיבוב של התוכן שכנגדו נכתב, ולכן עריכה מאוחרת של הכותרת, הגוף, הצעדים, התצפיות או השדות הנוספים הופכת אותו ל**מיושן**, ו-<span dir="ltr">`mycontext doctor`</span>, <span dir="ltr">`mycontext show`</span> ו-<span dir="ltr">`get_item`</span> אומרים זאת במקום להניח לצטט אותו כעדכני. <span dir="ltr">`mycontext edit <id> --summary=`</span> מוחק אותו. **לכידה חייבת לשאת תקציר** — גם ב-<span dir="ltr">`mycontext add`</span> וגם ב-<span dir="ltr">`create_item`</span> — או לומר במפורש <span dir="ltr">`--summary-omitted`</span> (<span dir="ltr">`summary_omitted: true`</span>): פריט שנוצר בלי תקציר לעולם לא יידרש לקבל אחד, מפני שכל בדיקה שהייתה דורשת זאת משווה תקציר מול הטקסט שכנגדו נכתב, ולאחד שאינו קיים אין אף אחד מהם — <span dir="ltr">`mycontext doctor`</span> נוקב בו בשם <span dir="ltr">`summary_absent`</span>, ושום דבר אחר לא יעשה זאת <!-- `core/validate.ts` · `export const SUMMARY_MAX_CHARS = 250;` · ~382 --> | <span dir="ltr">`add`, `edit`</span> |
 | <span dir="ltr">`--summary-omitted`</span> | לומר במפורש שהפריט נלכד **בלי** תקציר ושזו החלטה מכוונת. לכידה שאינה נושאת לא <span dir="ltr">`--summary`</span> ולא את זה — מסורבת. זה לעולם לא ברירת מחדל, זה מסורב לצד <span dir="ltr">`--summary`</span>, ושורת הביקורת רושמת <span dir="ltr">`summary-omitted`</span>, כך שהעובדה שאיש לא כתב תקציר גלויה ולא משוערת. שימוש נכון: כשלפריט באמת אין מה לומר במשפט אחד מעבר לכותרת — לעולם לא כדי לעקוף את הסירוב | <span dir="ltr">`add`</span> |
 | <span dir="ltr">`--scope "<globs>"`</span> | תבניות הקבצים שהפריט נצמד אליהן, מופרדות בפסיקים | <span dir="ltr">`add`, `edit`, `review promote`, `lesson-accept`</span> |
 | <span dir="ltr">`--tags "<labels>"`</span> | תגיות חופשיות, מופרדות בפסיקים. אינן משפיעות על ההזרקה כל עוד לא הוגדר מיקוד — <span dir="ltr">`mycontext focus <tag>`</span> מצמצם את ההזרקה לתגיות שהוא נוקב בהן | <span dir="ltr">`add`, `edit`</span> |
@@ -4358,7 +4358,7 @@ health: 0 error(s), 0 warning(s), 0 note(s) — details from `mycontext doctor`.
 - **`summary`** — a field; free text; `mycontext edit <id> --summary "…"`
   One plain sentence saying what this item IS and why it matters, for a reader
   who does NOT know this codebase - plain words, no ids, no paths, no numbers.
-  Max 160 chars; the body keeps the precision. `--summary=` removes it.
+  Max 250 chars; the body keeps the precision. `--summary=` removes it.
 - **`scope`** — a field; free text; `mycontext edit <id> --scope "a/**,b/**"`
   The globs this governs. Empty means everywhere, unless the category sets
   scopePolicy required.
@@ -4388,7 +4388,7 @@ health: 0 error(s), 0 warning(s), 0 note(s) — details from `mycontext doctor`.
 - **`summary`** — a field; free text; `mycontext edit <id> --summary "…"`
   One plain sentence saying what this item IS and why it matters, for a reader
   who does NOT know this codebase - plain words, no ids, no paths, no numbers.
-  Max 160 chars; the body keeps the precision. `--summary=` removes it.
+  Max 250 chars; the body keeps the precision. `--summary=` removes it.
 - **`scope`** — a field; free text; `mycontext edit <id> --scope "a/**,b/**"`
   The globs this is about. Accepted on this tier, unlike severity and always.
 - **`tags`** — a tag; free text; `mycontext edit <id> --tags "a,b"`

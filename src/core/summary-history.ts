@@ -37,8 +37,8 @@
  *
  * The item file is the one artefact this product promises to round-trip byte
  * for byte, and this is the only field on it that never shrinks. Three is the
- * owner's "does not take long space" made a number: at `SUMMARY_MAX_CHARS` (160)
- * plus a date, a full history costs about 520 bytes on an item whose body has a
+ * owner's "does not take long space" made a number: at `SUMMARY_MAX_CHARS` (250)
+ * plus a date, a full history costs about 800 bytes on an item whose body has a
  * median of 1,693 — visible in a diff, invisible in a corpus. The cap is applied
  * ONLY when appending; a file that arrives from disk carrying more entries keeps
  * every one of them until something appends, because dropping authored text at

@@ -1,3 +1,4 @@
+// @basis STD-a-summary-is-one-plain-sentence-for-someone-who-does-not, DEC-a-stale-summary-that-is-still-correct-is-cleared-by-passing, INV-markdown-is-the-source-of-truth
 /**
  * **`Item.summary`, and the staleness mechanism that keeps it honest.**
  *
@@ -311,13 +312,80 @@ test('the basis excludes the summary itself, so a summary is never born stale', 
 
 // --- the bound --------------------------------------------------------------
 
-test('the bound is 160 characters, and it is a readability bound', () => {
-  assert.equal(SUMMARY_MAX_CHARS, 160,
-    'the number is reasoned from what a reader absorbs in one pass — about twenty-five words, ' +
-    'two lines at 80 columns — not from what fits on a screen. Changing it is a decision ' +
-    'about the bar, which validate.ts states in full.');
+test('the bound is 250 characters, and it is a readability bound', () => {
+  assert.equal(SUMMARY_MAX_CHARS, 250,
+    'owner ruling 2026-09-08, from his experience as a reader: 160 was not enough to describe ' +
+    'a long body. Measured over all 1,011 summaries in this corpus on the day of the ruling — ' +
+    'mean 128, median 131, maximum EXACTLY 160, and 105 of 1,011 (10.4%) at 150 or above: a ' +
+    'maximum equal to the limit is the signature of sentences trimmed to fit rather than ' +
+    'written to length. The bar is unchanged and is still what the refusal teaches; only the ' +
+    'ceiling moved. Changing it again is a decision about the bar, which validate.ts states ' +
+    'in full.');
   assert.doesNotThrow(() => validateSummary('x'.repeat(SUMMARY_MAX_CHARS)));
-  assert.throws(() => validateSummary('x'.repeat(SUMMARY_MAX_CHARS + 1)), /161 characters/);
+  assert.throws(
+    () => validateSummary('x'.repeat(SUMMARY_MAX_CHARS + 1)),
+    new RegExp(`${SUMMARY_MAX_CHARS + 1} characters`),
+  );
+});
+
+/**
+ * **The number is written out in prose in seven places, and none of them can
+ * be reached from the constant.**
+ *
+ * Moving `SUMMARY_MAX_CHARS` from 160 to 250 moved nine sites: the constant,
+ * its own docblock, and seven pieces of prose a person or a model READS —
+ * three of which (`capture.md`, both READMEs) are Markdown that no template
+ * literal can reach, and two of which are comments. Interpolating the four
+ * that could take a template literal would leave the five highest-risk sites
+ * uncovered while making the codebase say the number two different ways, so
+ * the guard is this test instead: it fails when a prose site names a number
+ * the constant no longer holds, and its failure names the file and the exact
+ * sentence to repair.
+ *
+ * This is the same reasoning `scripts/check-dependency-budget.ts` writes down
+ * for parsing its enumeration out of `CONST-zero-runtime-dependencies` —
+ * duplicating a fact is how two halves of a rule drift apart — reached by the
+ * other road, because here the duplicate cannot be removed and can only be
+ * watched.
+ *
+ * **Not covered, and deliberately:**
+ * `.my_context/items/standard/STD-a-summary-is-one-plain-sentence-for-someone-who-does-not.md`
+ * states the bound twice in its own body and is the most authoritative prose
+ * site of all. It is a corpus item, not source, and a test that asserted on a
+ * corpus item's text would fail the day somebody legitimately rewords it.
+ */
+const PROSE_SITES: { file: string; says: (n: number) => string }[] = [
+  { file: 'src/core/validate.ts', says: (n) => `*Why ${n},` },
+  { file: 'src/core/categories.ts', says: (n) => `Max ${n} chars; the body keeps the precision.` },
+  { file: 'src/core/command-flags.ts', says: (n) => `one plain sentence, at most ${n} characters` },
+  { file: 'src/core/summary-history.ts', says: (n) => `\`SUMMARY_MAX_CHARS\` (${n})` },
+  { file: 'src/help/topics/capture.md', says: (n) => `capped at ${n} characters` },
+  { file: 'src/mcp/tools.ts', says: (n) => `One PLAIN sentence, max ${n} chars` },
+  { file: 'README.md', says: (n) => `At most ${n} characters` },
+  // Written as escapes rather than as Hebrew letters: this file is otherwise
+  // left-to-right, and one bidi run inline reorders the surrounding source in
+  // every editor that renders it.
+  { file: 'docs/README.he.md', says: (n) => `עד ${n} תווים` },
+];
+
+/** Every value this bound has ever shipped at, so a stale one cannot survive. */
+const RETIRED_BOUNDS = [160];
+
+test('every prose site names the bound the constant actually holds', () => {
+  const repo = path.join(import.meta.dirname, '..', '..');
+  for (const { file, says } of PROSE_SITES) {
+    const text = readFileSync(path.join(repo, file), 'utf8');
+    assert.ok(text.includes(says(SUMMARY_MAX_CHARS)),
+      `${file} does not say "${says(SUMMARY_MAX_CHARS)}". SUMMARY_MAX_CHARS is ` +
+      `${SUMMARY_MAX_CHARS} and this file is what a person reads instead of the constant — ` +
+      'a prose site that keeps the old number is wrong in the one place being wrong is ' +
+      'invisible.');
+    for (const retired of RETIRED_BOUNDS) {
+      if (retired === SUMMARY_MAX_CHARS) continue;
+      assert.ok(!text.includes(says(retired)),
+        `${file} still says "${says(retired)}" — the bound is now ${SUMMARY_MAX_CHARS}.`);
+    }
+  }
 });
 
 test('the refusal teaches the bar rather than only naming the number', () => {
@@ -338,11 +406,11 @@ test('a line break in a summary is refused, not folded', () => {
 test('an over-long summary is refused at every write surface', () => {
   const box = sandbox();
   try {
-    assert.throws(() => rule(box, { summary: 'x'.repeat(200) }), /the limit is 160/);
+    assert.throws(() => rule(box, { summary: 'x'.repeat(300) }), /the limit is 250/);
     const id = rule(box);
     assert.throws(
-      () => updateItem(box.ctx, { id, summary: 'x'.repeat(200), origin: 'human' }),
-      /the limit is 160/,
+      () => updateItem(box.ctx, { id, summary: 'x'.repeat(300), origin: 'human' }),
+      /the limit is 250/,
     );
     assert.equal(itemOf(box, id).summary, null, 'the refusal promises nothing was written');
   } finally { box.dispose(); }
@@ -541,11 +609,11 @@ test('mycontext add refuses an over-long summary before the normative gate', () 
   try {
     const lines: string[] = [];
     assert.equal(runCli(
-      ['add', 'rule', 'A title', '--summary', 'x'.repeat(200), '--yes'],
+      ['add', 'rule', 'A title', '--summary', 'x'.repeat(300), '--yes'],
       box.cwd, (s) => { lines.push(s); },
     ), 1);
     const text = lines.join('\n');
-    assert.match(text, /the limit is 160/);
+    assert.match(text, /the limit is 250/);
     assert.doesNotMatch(text, /about to create/,
       'a capture that cannot land is refused before a human is asked to approve it');
   } finally { box.dispose(); }

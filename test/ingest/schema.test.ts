@@ -1,3 +1,4 @@
+// @basis TASK-the-ingest-candidate-schema-gains-a-summary-field-so, DEC-the-document-extraction-schema-gains-a-summary-field-so
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
@@ -7,6 +8,7 @@ import { resolveConfig } from '../../src/core/config.ts';
 import type { Chunk } from '../../src/ingest/chunk.ts';
 import { createItem } from '../../src/core/mutate.ts';
 import { computeItemChecksum, parseItem, renderItem } from '../../src/core/item.ts';
+import { SUMMARY_MAX_CHARS } from '../../src/core/validate.ts';
 import { sandbox } from '../helpers/workspace.ts';
 
 const CONFIG = resolveConfig({});
@@ -70,9 +72,10 @@ test('a summary with a line break is rejected, aligned with the write boundary',
 });
 
 test('an over-long summary is rejected the same way validateSummary rejects it everywhere else', () => {
-  const result = validateCandidates([candidate({ summary: 'x'.repeat(161) })], CONFIG, CHUNK);
+  const result = validateCandidates([candidate({ summary: 'x'.repeat(SUMMARY_MAX_CHARS + 1) })], CONFIG, CHUNK);
   assert.equal(result.valid.length, 0);
-  assert.match(result.issues[0].message, /"summary" is 161 characters/);
+  assert.match(result.issues[0].message,
+    new RegExp(`"summary" is ${SUMMARY_MAX_CHARS + 1} characters`));
 });
 
 test('a summary is trimmed the same way title and body are', () => {

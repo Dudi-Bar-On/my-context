@@ -610,7 +610,7 @@ const SPECS: ToolSpec[] = [
       type: { ...S_STRING, description: 'Category — see mycontext_help("categories")' },
       title: { ...S_STRING, description: 'One sentence, the item as a claim' },
       body: { ...S_STRING, description: 'Why it holds' },
-      summary: { ...S_STRING, description: 'One PLAIN sentence, max 160 chars, for a reader who does not know this codebase: what it IS and why it matters. No ids, no paths, no measurements, never how it was found. The body keeps the precision. REQUIRED unless you pass summary_omitted: an item created without a summary can never afterwards be asked for one, because every check that would ask compares a summary against the text it was written against' },
+      summary: { ...S_STRING, description: 'One PLAIN sentence, max 250 chars, for a reader who does not know this codebase: what it IS and why it matters. No ids, no paths, no measurements, never how it was found. The body keeps the precision. REQUIRED unless you pass summary_omitted: an item created without a summary can never afterwards be asked for one, because every check that would ask compares a summary against the text it was written against' },
       // A boolean beside a string, and the pair is the whole design: the
       // schema cannot make `summary` conditionally required, so the handler
       // refuses instead and this description is where a model learns the
@@ -792,7 +792,7 @@ const SPECS: ToolSpec[] = [
       summary: {
         ...S_STRING,
         description:
-          'One PLAIN sentence, max 160 chars, for a reader who does not know this codebase: what it IS and why it matters. No ids, no paths, no measurements, never how it was found. Optional - the body keeps the precision. Content, so it is staged for ' +
+          'One PLAIN sentence, max 250 chars, for a reader who does not know this codebase: what it IS and why it matters. No ids, no paths, no measurements, never how it was found. Optional - the body keeps the precision. Content, so it is staged for ' +
           'review on a governing normative item like title and body. Pass "" to remove ' +
           'the existing summary',
       },

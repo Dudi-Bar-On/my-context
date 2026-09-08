@@ -675,7 +675,7 @@ my_context EXTRACTION REQUEST — docs/prd.md § bookstore-api-prd (chunk 1 of 3
 - Emit a JSON array matching the "schema" field. Return [] when the chunk establishes nothing normative — that is a correct and common answer, and the common case for prose that isn't a spec.
 - Every candidate MUST carry a "quote": a span copied VERBATIM from the chunk. It is checked by exact match after whitespace collapsing, and a paraphrase is rejected. This is how an invented item is caught.
 - "title" is one declarative sentence on a SINGLE LINE, at most 200 characters — no line breaks. Put the reasoning in "body".
-- Every candidate MUST carry a "summary": one plain sentence for a reader who does not know this codebase, saying what the item IS and why it matters — not how it was found. Plain words only, no ids, no file paths, no measurements, at most 160 characters. Write it now, while you still have the source document in view: nothing else in this product can write it for you afterwards, and a candidate with no summary is rejected.
+- Every candidate MUST carry a "summary": one plain sentence for a reader who does not know this codebase, saying what the item IS and why it matters — not how it was found. Plain words only, no ids, no file paths, no measurements, at most 250 characters. Write it now, while you still have the source document in view: nothing else in this product can write it for you afterwards, and a candidate with no summary is rejected.
 - "body" is plain prose: no line may start with a Markdown heading ("#" through "######", e.g. "## Why") — that line and everything after it is silently dropped when the item is read back from disk. Do not structure the rationale with headings; use plain paragraphs.
 - "scope", "tags" and "observations" must each be a JSON ARRAY — never a bare string. Scope RESTRICTS where an item applies: set it only to the directories the item actually governs, as POSIX globs such as "src/auth/**". "**", "*" and "**/*" are all rejected, because omitting "scope" already means exactly that. Omitting scope is safe and is the right answer when the item is not about particular files — it simply leaves the item unrestricted, so it applies everywhere.
 - "severity" is "hard" (a future enforcement candidate) or "soft" (the default) — omit it to get "soft".
@@ -922,8 +922,8 @@ built, it is meant as a boundary.
         },
         "summary": {
           "type": "string",
-          "maxLength": 160,
-          "description": "One plain sentence for a reader who does not know this codebase: what the item IS and why it matters, not how it was found. Plain words only — no ids, no file paths, no measurements, no project vocabulary. At most 160 characters, a single line. Write it now, while you still have the source document in view — this is the only chance, because everything this item creates lands as an unreviewed draft and nothing else in this product can write the sentence for you afterwards."
+          "maxLength": 250,
+          "description": "One plain sentence for a reader who does not know this codebase: what the item IS and why it matters, not how it was found. Plain words only — no ids, no file paths, no measurements, no project vocabulary. At most 250 characters, a single line. Write it now, while you still have the source document in view — this is the only chance, because everything this item creates lands as an unreviewed draft and nothing else in this product can write the sentence for you afterwards."
         },
         "quote": {
           "type": "string",
@@ -2398,7 +2398,7 @@ Every `normative`-tier item:
 │            │           │                       │                        │ NOT know this codebase │
 │            │           │                       │                        │ - plain words, no ids, │
 │            │           │                       │                        │ no paths, no numbers.  │
-│            │           │                       │                        │ Max 160 chars; the     │
+│            │           │                       │                        │ Max 250 chars; the     │
 │            │           │                       │                        │ body keeps the         │
 │            │           │                       │                        │ precision.             │
 │            │           │                       │                        │ `--summary=` removes   │
@@ -3797,7 +3797,7 @@ The MCP tools take named JSON arguments rather than flags; those are the tool ta
 | `--observation kind=text` | add one observation under a kind of your choosing — `--observation limit="Pool size must never exceed 20"`. What `--note` does for `[note]`, this does for `[limit]`, `[exception]`, `[invariant]` or any other kind a corpus already carries. The kind is written as `[kind]` in the item and must be lowercase letters, digits, underscore or hyphen — that is the whole of what the parser reading the item back can see, so anything else is refused rather than silently dropped. The text is everything after the first `=`, taken whole, commas and further `=` included. Repeatable, and it keeps command-line order **with** `--note`, so an item re-created from somewhere else gets its observations back in the order they were written. An observation's own tags and context still have no flag spelling; `create_item` is the route for those | `add` |
 | `--valid-from YYYY-MM-DD` | the day this item started holding. Today when omitted, which is right for something captured now and wrong for an item copied in from a corpus where it already existed — and `valid_from` is a reserved frontmatter name, so `--extra` cannot carry it. A date that does not exist is refused rather than rounded | `add` |
 | `--original-id <id>` | carry an existing item's id across instead of deriving a new one from its title. **For migration and nothing else.** An id is a public name — the key of every relation, every audit record and every citation written into a source comment — so re-creating an item under a title-derived id renames it and breaks all of them at once. It is on `add` alone: an id that could change after creation is the same breakage with an audit trail behind it, and renaming an item is `mycontext supersede`, which mints a new one and wires the old to it. The id must be one safe filename segment and must begin with the category's own prefix; an id an item here already holds is refused rather than overwritten, unless the content is identical, in which case the capture is the no-op it already was | `add` |
-| `--summary "<text>"` | one plain sentence saying what the item **is** and why it matters, written for a reader who does not know this codebase: plain words rather than project vocabulary, no ids, no file paths, no measurements, and never how it was found. At most 160 characters — the body keeps all the precision. It is recorded together with a hash of the content it was written against, so a later edit to the body, steps, observations or extra fields makes it **stale** (the title is deliberately not part of that basis — owner ruling 2026-08-27), and `mycontext doctor`, `mycontext show` and `get_item` all say so rather than letting it be quoted as current. `mycontext edit <id> --summary=` removes one. **A capture must carry one**, on `mycontext add` and on `create_item` alike, or say `--summary-omitted` (`summary_omitted: true`) in so many words: an item created with no summary can never afterwards be asked for one, because every check that would ask compares a summary against the text it was written against and an absent one has neither — `mycontext doctor` names it as `summary_absent`, and nothing else ever will <!-- `core/validate.ts` · `export const SUMMARY_MAX_CHARS = 160;` · ~382 --> | `add`, `edit` |
+| `--summary "<text>"` | one plain sentence saying what the item **is** and why it matters, written for a reader who does not know this codebase: plain words rather than project vocabulary, no ids, no file paths, no measurements, and never how it was found. At most 250 characters — the body keeps all the precision. It is recorded together with a hash of the content it was written against, so a later edit to the body, steps, observations or extra fields makes it **stale** (the title is deliberately not part of that basis — owner ruling 2026-08-27), and `mycontext doctor`, `mycontext show` and `get_item` all say so rather than letting it be quoted as current. `mycontext edit <id> --summary=` removes one. **A capture must carry one**, on `mycontext add` and on `create_item` alike, or say `--summary-omitted` (`summary_omitted: true`) in so many words: an item created with no summary can never afterwards be asked for one, because every check that would ask compares a summary against the text it was written against and an absent one has neither — `mycontext doctor` names it as `summary_absent`, and nothing else ever will <!-- `core/validate.ts` · `export const SUMMARY_MAX_CHARS = 250;` · ~382 --> | `add`, `edit` |
 | `--summary-omitted` | say, in words, that this item is being captured with **no** summary and that it is deliberate. A capture carrying neither `--summary` nor this is refused. It is never a default, it is refused beside `--summary`, and the audit row records `summary-omitted`, so "nobody wrote one" is visible rather than assumed. Reach for it when the item genuinely has nothing to say in one sentence that its title does not — never to get past the refusal | `add` |
 | `--scope "<globs>"` | the file patterns the item attaches to, comma-separated | `add`, `edit`, `review promote`, `lesson-accept` |
 | `--tags "<labels>"` | free-form labels, comma-separated. They affect nothing about injection until a focus is set — `mycontext focus <tag>` narrows injection to the tags it names | `add`, `edit` |
@@ -4087,7 +4087,7 @@ the table. A type then adds only the names that are its own.
 - **`summary`** — a field; free text; `mycontext edit <id> --summary "…"`
   One plain sentence saying what this item IS and why it matters, for a reader
   who does NOT know this codebase - plain words, no ids, no paths, no numbers.
-  Max 160 chars; the body keeps the precision. `--summary=` removes it.
+  Max 250 chars; the body keeps the precision. `--summary=` removes it.
 - **`scope`** — a field; free text; `mycontext edit <id> --scope "a/**,b/**"`
   The globs this governs. Empty means everywhere, unless the category sets
   scopePolicy required.
@@ -4117,7 +4117,7 @@ the table. A type then adds only the names that are its own.
 - **`summary`** — a field; free text; `mycontext edit <id> --summary "…"`
   One plain sentence saying what this item IS and why it matters, for a reader
   who does NOT know this codebase - plain words, no ids, no paths, no numbers.
-  Max 160 chars; the body keeps the precision. `--summary=` removes it.
+  Max 250 chars; the body keeps the precision. `--summary=` removes it.
 - **`scope`** — a field; free text; `mycontext edit <id> --scope "a/**,b/**"`
   The globs this is about. Accepted on this tier, unlike severity and always.
 - **`tags`** — a tag; free text; `mycontext edit <id> --tags "a,b"`
