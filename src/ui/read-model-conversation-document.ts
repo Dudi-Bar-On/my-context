@@ -478,6 +478,43 @@ export interface DocStep {
    * exactly ONE step, so `sum(span) === records` says what it said.
    */
   input: DocField[];
+  /**
+   * **The `id` of this record's `tool_use` block — the handle a subagent is
+   * opened by**, and `plan:archive seq:15`'s whole seam.
+   *
+   * An `agent-<id>.meta.json` sits beside every lane transcript carrying
+   * `toolUseId`, which is exactly this id (`SubagentMeta` in
+   * `core/conversation-index.ts` has the measurement: 253 of 253 sidecars
+   * present, and every `Agent` call in the session resolved). So a step and a
+   * lane are joined by a value BOTH SIDES ALREADY RECORDED, and the screen
+   * invents no correlation of its own — no timestamp window, no ordinal, no
+   * matching of a description against a prompt.
+   *
+   * **It costs almost nothing and it was measured rather than assumed.** On
+   * the owner's own 74,099,176-byte transcript, 2026-09-09:
+   *
+   *     records                                       31,033
+   *     `tool_use` blocks                              3,354
+   *     of those carrying an `id`                      3,354   100%
+   *     every id served, over the WHOLE file         147,576 bytes   0.2%
+   *
+   * And per WINDOW, which is the number that actually reaches a screen — the
+   * same worst-case 24-node window the `input` measurement above is stated in:
+   *
+   *     worst 24-node window, without the ids        223,747 bytes
+   *     worst 24-node window, with them              225,997 bytes
+   *     the 50 ids inside it                           2,250 bytes   0.996%
+   *
+   * `null` on a record that calls no tool, which is 27,679 of those 31,033.
+   *
+   * **Last-wins where a record carries two calls, exactly as `tool` and
+   * `detail` are**, and deliberately so: a step draws ONE tool name and this
+   * is the id of that call. Measured on the same file, 0 records carry more
+   * than one `tool_use` block, so the choice is between two spellings of a
+   * case that does not occur — and the one that agrees with `tool` cannot
+   * label a step with a name and a link that disagree.
+   */
+  toolUseId: string | null;
   /** This line would not parse. Served as a step so the gap is visible. */
   unreadable: boolean;
 }
@@ -703,6 +740,8 @@ interface Read {
   detail: string | null;
   /** Every argument of the tool call, in reading order. See `DocStep.input`. */
   input: DocField[];
+  /** The `tool_use` block's own id. See `DocStep.toolUseId`. */
+  toolUseId: string | null;
   failed: boolean;
   blocks: string[];
 }
@@ -710,7 +749,7 @@ interface Read {
 function readRecord(message: unknown): Read {
   const out: Read = {
     said: '', thinking: '', body: '', tool: null, detail: null, input: [],
-    failed: false, blocks: [],
+    toolUseId: null, failed: false, blocks: [],
   };
   if (typeof message !== 'object' || message === null) return out;
   const content = (message as { content?: unknown }).content;
@@ -731,13 +770,16 @@ function readRecord(message: unknown): Read {
     if (typeof block !== 'object' || block === null) continue;
     const b = block as {
       type?: unknown; text?: unknown; name?: unknown; input?: unknown;
-      content?: unknown; thinking?: unknown; is_error?: unknown;
+      content?: unknown; thinking?: unknown; is_error?: unknown; id?: unknown;
     };
     if (typeof b.type === 'string' && !out.blocks.includes(b.type)) out.blocks.push(b.type);
     if (b.type === 'text' && typeof b.text === 'string') said.push(b.text);
     else if (b.type === 'thinking' && typeof b.thinking === 'string') thinking.push(b.thinking);
     else if (b.type === 'tool_use') {
       if (typeof b.name === 'string') out.tool = b.name;
+      // The handle a lane is opened by — `DocStep.toolUseId` carries the
+      // measurement and the last-wins reasoning.
+      if (typeof b.id === 'string' && b.id !== '') out.toolUseId = b.id;
       const detail = toolDetail(b.input);
       if (detail !== null) out.detail = detail;
       // APPENDED, not assigned, so a record carrying two calls keeps both.
@@ -781,7 +823,7 @@ interface Shape {
 function shapeOf(row: Record<string, unknown> | null): Shape {
   const empty: Read = {
     said: '', thinking: '', body: '', tool: null, detail: null, input: [],
-    failed: false, blocks: [],
+    toolUseId: null, failed: false, blocks: [],
   };
   if (row === null) return { said: false, who: null, read: empty, synthetic: null };
   const message = row['message'];
@@ -1010,6 +1052,7 @@ export function readNodes(file: string, want: NodeWindowRequest): DocNodeBody[] 
         tool: shape.read.tool,
         detail: shape.read.detail,
         input: shape.read.input,
+        toolUseId: shape.read.toolUseId,
         failed: shape.read.failed,
         blocks: shape.read.blocks,
         text: body,

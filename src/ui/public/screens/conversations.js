@@ -31,6 +31,11 @@
 //              `termBody` below.
 //   `seq:7`  — THE ONE SCROLL. `mountDocument` below, and the arithmetic in
 //              `Scroller`.
+//   `seq:15` — THE LANE, OPENED FROM THE TURN THAT DISPATCHED IT. `laneIndex`
+//              and `laneLink` below, and the link is drawn on the step in
+//              `drawWork`. A new tab, because the return the item asks for is
+//              then not restored but never lost — `laneLink`'s own header
+//              carries the whole argument and what it rejects.
 //
 // ── WHY IT IS NOT DRAWN IN A CARD ─────────────────────────────────────────
 //
@@ -751,6 +756,122 @@ function shortArg(value) {
   return value;
 }
 
+/* ══ THE LANES A DOCUMENT DISPATCHED ═══════════════════════════════════════ */
+
+/**
+ * The address of one lane's transcript — **the SAME document route a session
+ * uses**, which is `plan:archive seq:15`'s "the same renderer, whichever shape
+ * wins" spent rather than restated. `rowFor` in
+ * `read-model-conversation-document.ts` resolves a lane, so `#/conversations/
+ * <agentId>` is already a working address and nothing new renders it.
+ */
+export function laneHref(agentId) {
+  return `#/conversations/${encodeURIComponent(agentId)}`;
+}
+
+/**
+ * The lanes this document can open, keyed by the `Agent` call that dispatched
+ * each one.
+ *
+ * ── WHY A MAP FROM `toolUseId`, AND WHY THAT IS THE WHOLE CORRELATION ─────
+ *
+ * Both sides already recorded the join. Every lane has an
+ * `agent-<id>.meta.json` beside it carrying `toolUseId` — 253 of 253 in this
+ * workspace, never missing — and that value is the `id` of the `tool_use`
+ * block in the dispatching turn, which `DocStep.toolUseId` now serves. So the
+ * screen matches a recorded id against a recorded id and invents nothing: no
+ * timestamp window, no ordinal, no comparing a description against a prompt.
+ *
+ * ── AND IT WORKS AT DEPTH 2 WITHOUT KNOWING WHAT DEPTH IS ─────────────────
+ *
+ * 43 of this workspace's 254 lanes were dispatched from INSIDE another lane, so
+ * a document opened on a lane has dispatching turns of its own. A build that
+ * asked only about the session would mis-file a fifth of them. It does not
+ * arise here because `/subagents` answers the WHOLE roster of the owning
+ * session for a lane id as well (`SubagentListBody.ownerSessionId`), and a
+ * `tool_use` id is unique across that whole tree — so one map serves a document
+ * at any depth and this function has no idea depth exists.
+ *
+ * ── A ROSTER THAT DID NOT LOAD IS NOT AN EMPTY ONE ────────────────────────
+ *
+ * `read: false` is a state the page says out loud (`conv.doc.lanesUnread`),
+ * exactly as `doc.js` says `gh.noroster` rather than quietly drawing every
+ * relative link as plain text. `INV-nothing-is-dropped-silently`.
+ *
+ * Exported and pure so `node --test` can measure it without a browser — the
+ * same bargain `sessionFromHash` and `doc.js`' `docAddress` make.
+ */
+export function laneIndex(body) {
+  const byCall = new Map();
+  if (body === null || typeof body !== 'object' || !Array.isArray(body.subagents)) {
+    return { byCall, total: 0, unlinked: 0, owner: null, read: false };
+  }
+  for (const lane of body.subagents) {
+    if (lane === null || typeof lane !== 'object') continue;
+    if (typeof lane.toolUseId !== 'string' || lane.toolUseId === '') continue;
+    byCall.set(lane.toolUseId, lane);
+  }
+  return {
+    byCall,
+    total: typeof body.total === 'number' ? body.total : byCall.size,
+    unlinked: typeof body.unlinked === 'number' ? body.unlinked : 0,
+    // The SESSION this roster belongs to, which for a lane document is not the
+    // document's own id — the endpoint resolved it, and the head uses it to
+    // say where this lane came from.
+    owner: typeof body.ownerSessionId === 'string' ? body.ownerSessionId : null,
+    read: true,
+  };
+}
+
+/** An empty roster nobody has read yet, so a caller always holds the shape. */
+const NO_LANES = { byCall: new Map(), total: 0, unlinked: 0, owner: null, read: false };
+
+/**
+ * The control that opens one lane — **a real `<a>` with `target="_blank"`, and
+ * that IS the answer to "return exactly to the cursor point".**
+ *
+ * `plan:archive seq:15` left the shape open — *"either as a popup window with
+ * the same renderer or a different way"* — and made the return the requirement:
+ * *"what's important is to let the user return exactly to the cursor point from
+ * where it requested to view the subagent content"*. A new tab answers it by
+ * NOT LEAVING. The reader's document is never unmounted, never re-laid-out and
+ * never scrolled, so their position is not restored — it was never lost, and
+ * there is no arithmetic that can get it wrong.
+ *
+ * **That matters more here than the phrase "a new tab" makes it sound**,
+ * because this document is virtualised: the row a reader is looking at may not
+ * be in the DOM at all, `scroller.total` is a sum of estimates that moves as
+ * rows are measured, and a landing computed from a remembered pixel is the
+ * defect `atTail()` and `paint`'s anchor node were both written to avoid. A
+ * shape with no return path cannot reintroduce it.
+ *
+ * **An `<a>` and not a `<button>` calling `window.open`.** Middle-click,
+ * ctrl-click, "open in new window", "copy link address" and the keyboard all
+ * work by construction and none of them is coded here — the same reasoning
+ * `lib/disclosure.js` records for using a real `<details>`. A popup would also
+ * have kept the reader's place, and is rejected for exactly these: it needs
+ * script, it can be blocked, and it has no copyable address.
+ *
+ * `.tvjump` for the look it already has, and `.tvlane` so a test can name THIS
+ * control rather than counting them — the note `toNew` already carries.
+ */
+function laneLink(ctx, lane) {
+  if (lane.present === false) {
+    const gone = el('span', 'tvcut');
+    gone.append(...ctx.t('conv.doc.laneGone'));
+    return gone;
+  }
+  const open = el('a', 'tvjump tvlane');
+  open.href = laneHref(lane.agentId);
+  open.target = '_blank';
+  // `noopener` alone would be enough for a same-origin page, and `noreferrer`
+  // is not added: this app reads its own `document.referrer` nowhere, and a
+  // link that hid where it came from would be inventing a policy.
+  open.rel = 'noopener';
+  open.append(...ctx.t('conv.doc.lane', { records: lane.records }));
+  return open;
+}
+
 /** What one folded step calls itself: the tool, else the blocks, else the type. */
 function stepLabel(ctx, step) {
   if (step.tool !== null) return mono(step.tool);
@@ -777,7 +898,7 @@ function stepLabel(ctx, step) {
  * screen-reader announced and print-expandable for free, which is the reason
  * `lib/disclosure.js` gives for the same choice. There is no key handler here.
  */
-function drawWork(ctx, body) {
+function drawWork(ctx, body, lanes = NO_LANES) {
   const fold = el('details', 'tvwork');
   fold.dataset.n = String(body.n);
 
@@ -823,6 +944,18 @@ function drawWork(ctx, body) {
       bad.append(...ctx.t('conv.unreadable'));
       line.append(' ', bad);
     }
+
+    // **THE LANE THIS STEP DISPATCHED, OPENED FROM THE STEP THAT DISPATCHED
+    // IT** — `plan:archive seq:15`. The item puts the link exactly here and
+    // nowhere else: the `Agent` call carries the whole brief in `input` since
+    // `seq:24`, so the turn a reader is looking at when they want the working
+    // IS this step. A list of lanes somewhere else on the page would be a
+    // second place to look and would lose which turn each belonged to.
+    //
+    // Drawn on the SUMMARY LINE, above the arguments, so a reader who opens a
+    // fold meets it before the brief rather than after 22 KB of it.
+    const lane = typeof step.toolUseId === 'string' ? lanes.byCall.get(step.toolUseId) : undefined;
+    if (lane !== undefined) line.append(' ', laneLink(ctx, lane));
     item.append(line);
 
     // WHAT THE TOOL WAS ASKED, before what came back. The owner pasted his own
@@ -932,7 +1065,7 @@ function drawWaiting(ctx, node, height) {
  * reader opened must survive a scroll of two pixels, and rebuilding would shut
  * every one of them. `live` is the map that makes that possible.
  */
-function mountDocument(ctx, host, outline, back) {
+function mountDocument(ctx, host, outline, back, lanes = NO_LANES) {
   const nodes = outline.nodes;
 
   /* ── head ──────────────────────────────────────────────────────────────── */
@@ -953,6 +1086,30 @@ function mountDocument(ctx, host, outline, back) {
   facts.append(' · ', mono(sizeText(outline.bytes)));
   head.append(facts);
   host.append(head);
+
+  // **A LANE SAYS IT IS A LANE, AND SAYS WHOSE.** Opened in a tab of its own it
+  // otherwise arrives with no context at all: a transcript whose title is a
+  // one-line brief and whose Back button goes to a list it is not on. `source`
+  // is the read model's own honest answer to "what is this row"
+  // (`subagentAsRow`), so the screen states it rather than inferring it from
+  // the id.
+  //
+  // The session link is `target="_blank"` for the same reason the lane link
+  // is: a reader has a position in THIS document too, and following a link
+  // must not cost it. Never a same-tab replacement — see `laneLink`.
+  if (outline.source === 'subagent') {
+    const from = el('p', 'tvnote tvlaneof');
+    from.append(...ctx.t('conv.doc.laneOf'));
+    if (lanes.owner !== null) {
+      const home = el('a', 'tvjump tvlanehome');
+      home.href = laneHref(lanes.owner);
+      home.target = '_blank';
+      home.rel = 'noopener';
+      home.append(...ctx.t('conv.doc.laneHome'));
+      from.append(' ', home);
+    }
+    host.append(from);
+  }
 
   if (outline.present === false) {
     const gone = el('p', 'tvnote tvwarn');
@@ -1094,6 +1251,32 @@ function mountDocument(ctx, host, outline, back) {
     host.append(bad);
   }
 
+  // **WHAT THIS PAGE CANNOT OPEN, SAID ON THE PAGE** —
+  // `INV-nothing-is-dropped-silently`, and the same shape `doc.js` gives
+  // `gh.noroster`: a roster that failed to read must not be treated as a
+  // session that dispatched nothing, because the two look identical from the
+  // reader's side and only one of them is true.
+  //
+  // The unlinked count is the second half. A lane whose sidecar carried no
+  // `toolUseId` has a transcript worth reading and NO turn to hang it on, so
+  // the absence of a link on every turn is a fact about the recording rather
+  // than about this screen — and a reader who is told the number can go
+  // looking. Measured in this workspace: 0 of 253. A measured zero draws
+  // nothing here because the roster is answered per session and "0 unlinked"
+  // on every session would be noise; what is drawn is the non-zero case,
+  // which is the one nobody could otherwise see.
+  if (lanes.read === false) {
+    const noroster = el('p', 'tvnote tvwarn');
+    noroster.append(...ctx.t('conv.doc.lanesUnread'));
+    host.append(noroster);
+  } else if (lanes.unlinked > 0) {
+    const unlinked = el('p', 'tvnote tvwarn');
+    unlinked.append(...ctx.t('conv.doc.lanesUnlinked', {
+      n: lanes.unlinked, total: lanes.total,
+    }));
+    host.append(unlinked);
+  }
+
   /* ── state ─────────────────────────────────────────────────────────────── */
   /** Node indices currently shown, in document order. Narrowed by the filter. */
   let view = nodes.map((_, i) => i);
@@ -1209,7 +1392,7 @@ function mountDocument(ctx, host, outline, back) {
       return drawWaiting(ctx, nodes[nodeIndex], heightOf(nodeIndex));
     }
     waiting.delete(nodeIndex);
-    return body.kind === 'said' ? drawTurn(ctx, body) : drawWork(ctx, body);
+    return body.kind === 'said' ? drawTurn(ctx, body) : drawWork(ctx, body, lanes);
   };
 
   /**
@@ -1831,6 +2014,22 @@ export async function render(root, ctx) {
   const viewer = el('section', 'tvroot');
   root.append(viewer);
 
+  // **The lane roster, started BEFORE the outline and awaited after it** — the
+  // shape `doc.js` already uses for the document roster it checks links
+  // against, and for the same two reasons. Two reads that need nothing from
+  // each other should not be two round trips in sequence; and a refusal is
+  // caught into "not read" rather than thrown, because a roster this page
+  // could not fetch must not take the document down with it. It costs the
+  // links, and `conv.doc.lanesUnread` says so on the page.
+  //
+  // It is fetched HERE rather than after the mount so the first paint already
+  // carries the links. A roster arriving later would have to rebuild rows that
+  // are already drawn — and a rebuilt row is a `<details>` a reader opened
+  // being shut, which is the one thing `paint` moves rows to avoid.
+  const lanes = ctx.api(`/api/conversations/${encodeURIComponent(session)}/subagents`)
+    .then((body) => laneIndex(body))
+    .catch(() => laneIndex(null));
+
   let outline;
   try {
     outline = await ctx.api(
@@ -1844,5 +2043,5 @@ export async function render(root, ctx) {
     viewer.append(backButton);
     return;
   }
-  mountDocument(ctx, viewer, outline, back);
+  mountDocument(ctx, viewer, outline, back, await lanes);
 }

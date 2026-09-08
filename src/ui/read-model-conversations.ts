@@ -813,7 +813,27 @@ export interface SubagentSummary {
 }
 
 export interface SubagentListBody {
+  /** The id that was ASKED for — a session, or one of its own lanes. */
   sessionId: string;
+  /**
+   * **The session this roster belongs to, which is not always what was asked
+   * for** — `plan:archive seq:15`, and the trap it exists to close.
+   *
+   * A lane at depth 2 was dispatched from INSIDE another lane's transcript, so
+   * its `Agent` call is a record in that lane's file and not in the session's.
+   * Measured on this workspace, 2026-09-08: 43 of 254 lanes are at depth 2 —
+   * **a fifth of them.** A document opened ON a lane therefore has dispatching
+   * turns of its own, and asking `subagentsOf('agent-…')` answers nothing,
+   * because `subagents.session_id` is the OWNING SESSION for every row at
+   * every depth (measured: 99,760 of 99,760 records inside a lane transcript
+   * carry the session's id, including all 43 at depth 2).
+   *
+   * So an id that names a lane is resolved to its owning session first and the
+   * WHOLE roster is answered. A `tool_use` id is unique across the session's
+   * tree, so one map from `toolUseId` serves a document at any depth and the
+   * caller needs no notion of depth at all.
+   */
+  ownerSessionId: string;
   subagents: SubagentSummary[];
   total: number;
   /** Lanes whose transcript has since been pruned from disk. */
@@ -881,6 +901,13 @@ function summariseSubagent(row: SubagentRow): SubagentSummary {
  * being true the bound belongs here, disclosed the way every other bound in
  * this module is; it is not true yet and a cap nobody needs is a cap nobody
  * maintains.
+ *
+ * **`:id` MAY NAME A LANE, and answering that with an empty list would be the
+ * quiet defect `plan:archive seq:15` is most exposed to.** 43 of this
+ * workspace's 254 lanes were dispatched from inside another lane, so a
+ * document opened on a lane has dispatching turns of its own — and the rows
+ * for them are filed under the SESSION. `ownerSessionId` carries the
+ * resolution and its measurement.
  */
 export function apiConversationSubagents(
   ws: Workspace, url: URL, params: { id: string },
@@ -895,7 +922,8 @@ export function apiConversationSubagents(
     if (err instanceof ConversationIndexUninitializedError
       || err instanceof ConversationIndexIncompleteError) {
       const body: SubagentListBody = {
-        sessionId: params.id, subagents: [], total: 0, missing: 0, unlinked: 0,
+        sessionId: params.id, ownerSessionId: params.id,
+        subagents: [], total: 0, missing: 0, unlinked: 0,
         bytes: 0, indexed: false, rebuild: REBUILD_COMMAND,
       };
       return { status: 200, body };
@@ -904,9 +932,16 @@ export function apiConversationSubagents(
   }
 
   try {
-    const rows = index.subagentsOf(params.id).map(summariseSubagent);
+    // **An id that names a LANE is resolved to the session that owns it** —
+    // see `SubagentListBody.ownerSessionId`. One exact lookup on a primary
+    // key; a session id is never in this table, so a session pays for a miss
+    // and nothing else.
+    const asLane = index.getSubagent(params.id);
+    const owner = asLane === null ? params.id : asLane.sessionId;
+    const rows = index.subagentsOf(owner).map(summariseSubagent);
     const body: SubagentListBody = {
       sessionId: params.id,
+      ownerSessionId: owner,
       subagents: rows,
       total: rows.length,
       missing: rows.filter((r) => !r.present).length,

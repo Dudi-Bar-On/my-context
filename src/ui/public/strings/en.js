@@ -208,6 +208,12 @@ export const strings = {
   'conv.doc.replaced': 'This transcript was replaced rather than added to, so what is on screen is no longer where the file is. Reload the page to read it as it stands.',
   'conv.doc.truncated': 'This session is longer than this reader walks. {bytes} bytes were read, and the document ends there.',
   'conv.doc.unreadable': '{n} lines in this file would not parse. They are counted, never skipped.',
+  'conv.doc.lane': 'Open this agent’s transcript in a new tab — {records} records',
+  'conv.doc.laneGone': 'This agent’s transcript is no longer on disk, so there is nothing to open.',
+  'conv.doc.lanesUnlinked': '{n} of {total} helper transcripts here record no dispatching turn, so no turn on this page opens them.',
+  'conv.doc.lanesUnread': 'The helper transcripts could not be read, so no turn on this page opens one.',
+  'conv.doc.laneOf': 'A helper agent’s transcript, not a session of its own.',
+  'conv.doc.laneHome': 'Open the session that dispatched it, in a new tab',
   // Injection preview
   'preview.h': 'Injection preview',
   'preview.v': 'exactly what Claude gets',

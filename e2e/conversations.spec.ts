@@ -74,6 +74,27 @@ const ROUNDS = 120;
 const LAST_PHRASE = 'the very last thing anybody asked';
 const DEEP_PHRASE = 'a needle only the whole-session filter can find';
 
+/**
+ * **THE LANE PLANTED HALF WAY DOWN** — `plan:archive seq:15`.
+ *
+ * The round is 60 of 120 ON PURPOSE. The item's requirement is the RETURN —
+ * *"let the user return exactly to the cursor point from where it requested to
+ * view the subagent content"* — and a return proved at the top or at the end
+ * proves nothing: both are positions a document can land on by accident. The
+ * middle of a 22,000px virtualised scroll is not.
+ *
+ * Two lanes, at two depths, because a build that only looked at the session
+ * would mis-file a fifth of the real ones: `agent-outer` was dispatched by the
+ * SESSION, and `agent-inner` by a call that lives inside `agent-outer.jsonl`
+ * and nowhere in the session's own file.
+ */
+const LANE_ROUND = 60;
+const LANE_CALL = 'toolu_LANE_MID';
+const DEEP_CALL = 'toolu_LANE_DEEP';
+const LANE_BRIEF = 'read the index and report what it holds';
+const LANE_PHRASE = 'the working that produced the lane report';
+const DEEP_PHRASE_LANE = 'the deeper lane, dispatched from inside a lane';
+
 function session(): unknown[] {
   const rows: unknown[] = [];
   const at = (n: number): string => new Date(Date.UTC(2026, 8, 8, 9, 0, n)).toISOString();
@@ -136,6 +157,27 @@ function session(): unknown[] {
       },
       timestamp: at(i * 4 + 3),
     });
+    // THE DISPATCHING TURN, half way down. One more record in this one run,
+    // so every other fold keeps the count its own assertions make. It carries
+    // an `id`, which is what the lane's sidecar names it by, and a `prompt`,
+    // which is the lane brief `seq:24` made visible.
+    if (i === LANE_ROUND) {
+      rows.push({
+        type: 'assistant',
+        message: {
+          role: 'assistant',
+          content: [{
+            type: 'tool_use', id: LANE_CALL, name: 'Agent',
+            input: {
+              subagent_type: 'general-purpose',
+              description: 'Read the index',
+              prompt: LANE_BRIEF,
+            },
+          }],
+        },
+        timestamp: at(i * 4 + 3),
+      });
+    }
     // PLANTED IN THE LAST ROUND ONLY, so every other fold keeps the four
     // records its own assertions count. These are the two shapes that lost the
     // most when a tool call kept 160 characters of its input: a `Write`, whose
@@ -190,6 +232,43 @@ test.beforeAll(async () => {
     path.join(dir, 'sess-archive.jsonl'),
     session().map((r) => JSON.stringify(r)).join('\n') + '\n',
   );
+
+  // **THE TWO LANES, ON DISK WHERE THE HARNESS PUTS THEM** — a `subagents/`
+  // directory under the session's own name, each transcript beside an
+  // `agent-<id>.meta.json`. That sidecar is the only place the dispatching
+  // `toolUseId` is recorded, and 253 of 253 real ones carry it.
+  const lanes = path.join(dir, 'sess-archive', 'subagents');
+  mkdirSync(lanes, { recursive: true });
+  const jsonl = (rows: unknown[]): string => rows.map((r) => JSON.stringify(r)).join('\n') + '\n';
+
+  writeFileSync(path.join(lanes, 'agent-outer.jsonl'), jsonl([
+    { type: 'user', message: { role: 'user', content: LANE_BRIEF }, timestamp: '2026-09-08T09:04:10.000Z' },
+    { type: 'assistant', message: { role: 'assistant', content: text(LANE_PHRASE) }, timestamp: '2026-09-08T09:04:11.000Z' },
+    // The call that makes the depth-2 lane. It lives HERE and nowhere in the
+    // session's file, which is the whole reason the roster has to be resolved
+    // through the owning session rather than through the document's own id.
+    {
+      type: 'assistant',
+      message: {
+        role: 'assistant',
+        content: [{ type: 'tool_use', id: DEEP_CALL, name: 'Agent', input: { prompt: 'go one level deeper' } }],
+      },
+      timestamp: '2026-09-08T09:04:12.000Z',
+    },
+  ]));
+  writeFileSync(path.join(lanes, 'agent-outer.meta.json'), JSON.stringify({
+    agentType: 'general-purpose', description: 'Read the index',
+    toolUseId: LANE_CALL, spawnDepth: 1,
+  }));
+
+  writeFileSync(path.join(lanes, 'agent-inner.jsonl'), jsonl([
+    { type: 'user', message: { role: 'user', content: 'go one level deeper' }, timestamp: '2026-09-08T09:04:20.000Z' },
+    { type: 'assistant', message: { role: 'assistant', content: text(DEEP_PHRASE_LANE) }, timestamp: '2026-09-08T09:04:21.000Z' },
+  ]));
+  writeFileSync(path.join(lanes, 'agent-inner.meta.json'), JSON.stringify({
+    agentType: 'Explore', description: 'One level deeper',
+    toolUseId: DEEP_CALL, parentAgentId: 'outer', spawnDepth: 2,
+  }));
 
   process.env['CLAUDE_CONFIG_DIR'] = home;
   const previous = process.cwd();
@@ -383,8 +462,24 @@ for (const lang of ['en', 'he'] as const) {
     // the point: a step's number is the record's own index in the file, the
     // one the list screen and the endpoint both count in.
     await expect(fold.locator('.tvstep').first()).toContainText('attachment');
+
+    // ── THE COMMAND IS THE SUMMARY; THE DESCRIPTION IS ONE FOLD AWAY ───────
+    //
+    // Owner ruling, 2026-09-08: *"move the command into the closed fold"*.
+    // `DETAIL_FIELDS` reads `command` ahead of `description`, so a step's
+    // one-line summary is WHAT RAN rather than the prose written about it.
+    //
+    // Both halves are asserted here on purpose, in a real browser, because the
+    // ruling is only safe while the second holds: `plan:archive seq:24`'s lane
+    // argued against this swap and was right at the time — `description` is
+    // what makes a fold of 2,375 `Bash` calls skimmable, and promoting the
+    // command would once have destroyed it. `seq:24` captures the whole input,
+    // so the description is still on screen the moment the step is opened, and
+    // that is what this pair pins.
+    await expect(fold.locator('.tvstep .tvdetail').first()).toContainText('echo 0');
+    // The prose survives, one fold away. This is the condition the ruling
+    // rests on, so it is asserted rather than assumed.
     await expect(fold).toContainText('Echo round');
-    await expect(fold.locator('.tvstep .tvdetail').first()).toContainText('Echo round');
 
     // A TURN IS NOT FOLDED — the reader came for it.
     await expect(page.locator('.tvturn details.tvwork')).toHaveCount(0);
@@ -1713,4 +1808,165 @@ test.describe('a session opens at its end', () => {
     await page.locator('.tvbar button.tvjump').last().click();
     await expect(well).toContainText(LAST_PHRASE, { timeout: 20_000 });
   });
+});
+
+/* ══ seq:15 — A LANE IS OPENED FROM THE TURN THAT DISPATCHED IT ═══════════ */
+
+/**
+ * **THE RETURN IS THE REQUIREMENT, NOT THE LINK** — the owner's own words on
+ * `plan:archive seq:15`: *"what's important is to let the user return exactly
+ * to the cursor point from where it requested to view the subagent content"*.
+ *
+ * ── WHY THE SHAPE CHOSEN IS THE ONE THAT CAN BE PROVED ────────────────────
+ *
+ * He left the shape open — *"either as a popup window with the same renderer
+ * or a different way"*. What ships is a real `<a target="_blank">`, and the
+ * argument is exactly what these tests measure: **the reader's position is not
+ * restored, because it is never lost.** The document is not unmounted, not
+ * re-laid-out and not scrolled, so there is no arithmetic that can get the
+ * return wrong — which matters here more than the phrase "a new tab" suggests,
+ * because this scroll is VIRTUALISED: the row a reader is looking at may not
+ * be in the DOM, `scroller.total` moves as rows are measured, and a landing
+ * computed from a remembered pixel is the defect `atTail()` and `paint`'s
+ * anchor node were both written to avoid.
+ *
+ * ── AND IT IS PROVED IN THE MIDDLE, WHICH IS THE ONLY HONEST PLACE ────────
+ *
+ * The top and the end are positions a document can land on by accident, so a
+ * return proved at either proves nothing. `LANE_ROUND` is 60 of 120 for that
+ * reason, and `reachTheLane` walks the reader there through the well's own
+ * scroll rather than through a hash.
+ */
+
+/** The fold half way down that dispatched a lane, opened, with the reader on it. */
+async function reachTheLane(page: Page) {
+  const well = page.locator('.tvscroll');
+  await expect(well).toContainText(LAST_PHRASE, { timeout: 20_000 });
+
+  // **THE MOUNT LANDING IS A HOLD, and only the reader's own input releases
+  // it.** `paint` re-pins to the end for `STICK_MS` after the mount, so a
+  // programmatic `scrollTop` inside that window would be undone on the next
+  // frame. `press` on the locator focuses the well first, which is what makes
+  // this the `keydown` the hold listens for — the note
+  // `a reader who scrolls up as it opens is obeyed` records why the cheaper
+  // spellings do not work.
+  await well.press('PageUp');
+
+  const fold = page.locator('details.tvwork').filter({ has: page.locator('a.tvlane') });
+  for (let step = 0; step <= 12; step += 1) {
+    // 0.40 → 0.64 of the document. The dispatching turn is round 60 of 120 and
+    // the rounds are near enough uniform, so the first or second position
+    // draws it; the walk exists so a fixture edit that moves it by a few
+    // percent does not turn into a flake.
+    const fraction = 0.40 + step * 0.02;
+    await well.evaluate((n, f) => {
+      const el = n as HTMLElement;
+      el.scrollTop = Math.round((el.scrollHeight - el.clientHeight) * (f as number));
+    }, fraction);
+    await page.waitForTimeout(350);
+    if (await fold.count() > 0) break;
+  }
+  expect(await fold.count(), 'the dispatching fold was never drawn between 40% and 64%')
+    .toBeGreaterThan(0);
+
+  const one = fold.first();
+  await one.locator('summary').click();
+  await expect(one.locator('a.tvlane').first()).toBeVisible();
+  return one;
+}
+
+/** Everything about where the reader is that a return must not disturb. */
+const readerPlace = (page: Page): Promise<{
+  scrollTop: number; rows: string[]; open: string[];
+}> => page.locator('.tvscroll').evaluate((n) => {
+  const el = n as HTMLElement;
+  return {
+    scrollTop: el.scrollTop,
+    // The NODES in the DOM and their order — the unit `paint`'s anchor and
+    // `atTail()` both work in, and the one that survives a re-sum. A pixel
+    // alone would pass on a document that had silently rebuilt every row.
+    rows: [...el.querySelectorAll('.tvrow')].map((r) => (r as HTMLElement).dataset['n'] ?? ''),
+    open: [...el.querySelectorAll('details.tvwork')]
+      .filter((d) => (d as HTMLDetailsElement).open)
+      .map((d) => (d as HTMLElement).dataset['n'] ?? ''),
+  };
+});
+
+for (const lang of ['en', 'he'] as const) {
+  test(`the turn that dispatched a lane opens it, and the reader does not move (${lang})`, async ({ page }) => {
+    await openDocument(page, lang, 'default');
+    const fold = await reachTheLane(page);
+
+    // THE LINK IS ON THE STEP, beside the brief that step already carries.
+    const link = fold.locator('a.tvlane').first();
+    await expect(link).toHaveAttribute('href', '#/conversations/agent-outer');
+    await expect(link).toHaveAttribute('target', '_blank');
+    await expect(link).toHaveAttribute('rel', 'noopener');
+    // The label says where it opens rather than leaving that to be discovered,
+    // and it says it in the reader's own language.
+    await expect(link).toContainText(lang === 'he' ? 'לשונית חדשה' : 'new tab');
+    // The brief `seq:24` captured is on the same step, which is why the link
+    // belongs here rather than in a list of lanes somewhere else on the page.
+    await expect(fold).toContainText(LANE_BRIEF);
+
+    // ── THE MEASUREMENT ────────────────────────────────────────────────────
+    const before = await readerPlace(page);
+    expect(before.scrollTop, 'this must be a DEEP offset or the return proves nothing')
+      .toBeGreaterThan(2_000);
+
+    const [lane] = await Promise.all([
+      page.waitForEvent('popup'),
+      link.click(),
+    ]);
+    await lane.waitForSelector('.tvscroll .tvturn', { timeout: 20_000 });
+    await expect(lane.locator('.tvscroll')).toContainText(LANE_PHRASE, { timeout: 20_000 });
+
+    // A tab of its own, the SAME renderer, and it says what it is: a helper's
+    // transcript rather than a session, with the session it came from named.
+    await expect(lane.locator('p.tvlaneof')).toBeVisible();
+    await expect(lane.locator('a.tvlanehome')).toHaveAttribute('href', '#/conversations/sess-archive');
+    await lane.locator('.tvroot').screenshot({ path: `e2e/screens/conversations-lane-${lang}.png` });
+    await lane.close();
+
+    // AND THE READER IS EXACTLY WHERE THEY WERE — the same pixel, the same
+    // nodes in the same order, and the fold they opened still open. Nothing
+    // was restored; nothing was disturbed.
+    await page.waitForTimeout(1_500);
+    const after = await readerPlace(page);
+    expect(after.scrollTop, 'the same pixel, not a near-enough one').toBe(before.scrollTop);
+    expect(after.rows).toEqual(before.rows);
+    expect(after.open, 'a `<details>` the reader opened survives the round trip').toEqual(before.open);
+  });
+}
+
+test('a lane at depth 2 is reachable, because the roster is the SESSION own', async ({ page }) => {
+  // Opened directly, which is what a second tab is. `agent-outer`'s own
+  // dispatching call lives in `agent-outer.jsonl` and NOWHERE in the session's
+  // file, so a build that asked `/subagents` for the document's own id would
+  // draw this page with no link at all — and it would look exactly like a lane
+  // that dispatched nothing. 43 of this workspace's 254 real lanes are this
+  // shape.
+  await open(page, '#/conversations/agent-outer', 'en');
+  await page.waitForSelector('.tvscroll .tvturn', { timeout: 20_000 });
+
+  const fold = page.locator('details.tvwork').filter({ has: page.locator('a.tvlane') }).first();
+  await expect(fold).toHaveCount(1);
+  await fold.locator('summary').click();
+  const deeper = fold.locator('a.tvlane').first();
+  await expect(deeper).toHaveAttribute('href', '#/conversations/agent-inner');
+
+  const [inner] = await Promise.all([
+    page.waitForEvent('popup'),
+    deeper.click(),
+  ]);
+  await expect(inner.locator('.tvscroll')).toContainText(DEEP_PHRASE_LANE, { timeout: 20_000 });
+  await inner.close();
+});
+
+test('a session that dispatched lanes says so on its list row', async ({ page }) => {
+  await open(page, '#/conversations', 'en');
+  // `seq:12` put the count on every row so the list is answerable without a
+  // second request; `seq:15` is what makes it worth having. Two lanes: the one
+  // the session dispatched and the one its own lane did.
+  await expect(page.locator('.convrow').first()).toContainText('2 helper agents');
 });

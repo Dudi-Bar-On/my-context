@@ -1,4 +1,6 @@
-// @basis TASK-the-archive-shows-what-is-on-disk-now-because-nothing-has, INV-nothing-is-dropped-silently
+// @basis TASK-the-archive-shows-what-is-on-disk-now-because-nothing-has,
+// TASK-a-subagent-is-opened-from-the-turn-that-dispatched-it-and,
+// INV-nothing-is-dropped-silently
 /**
  * `GET /api/conversations` and `GET /api/conversations/:id` — `plan:archive
  * seq:2`.
@@ -812,5 +814,80 @@ test('a lane opens through the SAME document renderer, so there is no second vie
       'the refusal names both id spaces, because a reader who mistyped either should be told '
       + 'which two things were looked for',
     );
+  } finally { b.dispose(); }
+});
+
+/**
+ * **THE TRAP `plan:archive seq:15` IS MOST EXPOSED TO, AND IT IS A FIFTH OF
+ * THE LANES.**
+ *
+ * A lane dispatched from inside another lane has its `Agent` call in THAT
+ * lane's transcript, so a document opened on a lane has dispatching turns of
+ * its own. Its rows are still filed under the SESSION — `subagents.session_id`
+ * is the owning session at every depth — so asking this route for a lane id
+ * would answer an empty list, every link on that page would be missing, and
+ * the page would look exactly like a lane that dispatched nothing.
+ *
+ * Measured in this workspace on 2026-09-08: 43 of 254 lanes are at depth 2.
+ */
+test('asking for a LANE answers the owning session\'s whole roster, so depth 2 still links', () => {
+  const b = box();
+  try {
+    b.write('sess-deep', [
+      { type: 'user', message: { role: 'user', content: 'go' }, timestamp: '2026-09-08T09:00:00.000Z' },
+      { type: 'assistant', message: { role: 'assistant', content: [{ type: 'tool_use', id: 'toolu_TOP', name: 'Agent', input: { prompt: 'the outer lane' } }] }, timestamp: '2026-09-08T09:00:01.000Z' },
+    ]);
+    // The outer lane, dispatched by the session. Its own transcript carries the
+    // `Agent` call that made the inner one — which is exactly why the session's
+    // records cannot answer for it.
+    b.lane('sess-deep', 'agent-outer', laneMeta('toolu_TOP', { description: 'the outer lane' }), [
+      { type: 'user', message: { role: 'user', content: 'the outer lane' }, timestamp: '2026-09-08T09:00:02.000Z' },
+      { type: 'assistant', message: { role: 'assistant', content: [{ type: 'tool_use', id: 'toolu_INNER', name: 'Agent', input: { prompt: 'the inner lane' } }] }, timestamp: '2026-09-08T09:00:03.000Z' },
+    ]);
+    b.lane('sess-deep', 'agent-inner', laneMeta('toolu_INNER', {
+      description: 'the inner lane', parentAgentId: 'outer', spawnDepth: 2,
+    }), [
+      { type: 'assistant', message: { role: 'assistant', content: text('the deep working') }, timestamp: '2026-09-08T09:00:04.000Z' },
+    ]);
+    b.scan();
+
+    const forLane = apiConversationSubagents(
+      b.ws, new URL('http://x/'), { id: 'agent-outer' },
+    ).body as SubagentListBody;
+
+    assert.equal(forLane.sessionId, 'agent-outer', 'what was asked for is echoed unchanged');
+    assert.equal(
+      forLane.ownerSessionId, 'sess-deep',
+      'and the roster says whose it is — a lane page needs this to name where it came from, and '
+      + 'showing its own id there would point a reader back at the page they are on',
+    );
+    assert.equal(forLane.total, 2, 'the whole tree, not the lane\'s own children');
+    const inner = forLane.subagents.find((s) => s.agentId === 'agent-inner')!;
+    assert.equal(
+      inner.toolUseId, 'toolu_INNER',
+      'the id of an `Agent` call that lives in `agent-outer.jsonl` and NOWHERE in the session — '
+      + 'this is the row that would have been missing, and the link with it',
+    );
+    assert.equal(inner.spawnDepth, 2);
+
+    // The session's own answer is unchanged, and it is the SAME set: a
+    // `tool_use` id is unique across the tree, so one map serves a document at
+    // any depth and the screen needs no notion of depth at all.
+    const forSession = apiConversationSubagents(
+      b.ws, new URL('http://x/'), { id: 'sess-deep' },
+    ).body as SubagentListBody;
+    assert.equal(forSession.ownerSessionId, 'sess-deep');
+    assert.deepEqual(
+      forSession.subagents.map((s) => s.agentId).sort(),
+      forLane.subagents.map((s) => s.agentId).sort(),
+    );
+
+    // An id that names NEITHER is not resolved to something else: it answers
+    // for itself, empty, the way a session that dispatched none does.
+    const unknown = apiConversationSubagents(
+      b.ws, new URL('http://x/'), { id: 'agent-nope' },
+    ).body as SubagentListBody;
+    assert.equal(unknown.ownerSessionId, 'agent-nope');
+    assert.equal(unknown.total, 0);
   } finally { b.dispose(); }
 });

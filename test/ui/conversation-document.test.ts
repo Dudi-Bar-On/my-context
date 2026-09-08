@@ -1,4 +1,5 @@
 // @basis TASK-the-transcript-is-one-document-you-scroll-not-fifty-records,
+// TASK-a-subagent-is-opened-from-the-turn-that-dispatched-it-and,
 // TASK-the-viewer-renders-what-the-terminal-showed-with-its,
 // TASK-a-conversation-is-rendered-as-a-document-who-spoke-when-and,
 // TASK-the-open-document-follows-the-session-as-it-is-written-and,
@@ -500,6 +501,50 @@ test('a record that calls no tool carries no input, and says so with an empty li
     for (const step of stepsOf(b.file('sess-doc'))) {
       assert.ok(Array.isArray(step.input), 'every step has the field, never `undefined`');
       if (step.tool === null) assert.equal(step.input.length, 0);
+    }
+  } finally { b.dispose(); }
+});
+
+/**
+ * `plan:archive seq:15`. A step must carry the `tool_use` block's own `id`,
+ * because that id — and nothing else — is what an `agent-<id>.meta.json`
+ * records as `toolUseId` beside the lane it dispatched.
+ *
+ * **The alternative this closes off is the reason it is asserted.** Without
+ * the id the screen would have to GUESS which turn dispatched which lane —
+ * by timestamp proximity, by counting `Agent` calls in order, or by matching a
+ * lane's `description` against a call's `prompt`. Every one of those is right
+ * most of the time and silently wrong on a session that dispatched two lanes
+ * in the same second, which is the ordinary case here: this workspace's own
+ * session dispatched 212.
+ */
+test('a tool call carries the id its lane names it by, and a record with no call carries none', () => {
+  const b = box();
+  try {
+    b.write('sess-ids', [
+      { type: 'user', message: { role: 'user', content: 'go' }, timestamp: '2026-09-08T09:00:00.000Z' },
+      { type: 'assistant', message: { role: 'assistant', content: [{ type: 'tool_use', id: 'toolu_LANE', name: 'Agent', input: { prompt: 'the lane brief', subagent_type: 'Explore' } }] }, timestamp: '2026-09-08T09:00:01.000Z' },
+      { type: 'user', message: { role: 'user', content: toolResult('the lane reported back') }, timestamp: '2026-09-08T09:00:02.000Z' },
+      { type: 'attachment', attachment: { type: 'total_tokens_reminder' } },
+    ]);
+    const steps = stepsOf(b.file('sess-ids'));
+
+    const call = steps.find((s) => s.tool === 'Agent')!;
+    assert.equal(call.toolUseId, 'toolu_LANE');
+    assert.ok(
+      call.input.some((f) => f.name === 'prompt'),
+      'and the brief is beside it, so the link sits on a step that already shows what was asked',
+    );
+
+    for (const step of steps) {
+      assert.ok(
+        step.toolUseId === null || typeof step.toolUseId === 'string',
+        'every step has the field, never `undefined` — a screen must not have to tell an absent '
+        + 'field from an absent id',
+      );
+      if (step.tool === null) {
+        assert.equal(step.toolUseId, null, 'a record that calls nothing dispatched nothing');
+      }
     }
   } finally { b.dispose(); }
 });
