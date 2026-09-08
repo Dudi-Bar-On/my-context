@@ -9,6 +9,7 @@ summary: What a session inherited from an earlier one is already shown; it looks
 summary_of: 8917551cef7e490b
 acknowledged:
   - citation_form@91adea82dad3dd08
+  - state_unaudited@e9401cf8c4d981eb
 scope: []
 tags:
   - v2
@@ -24,7 +25,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-08-25
 valid_until: null
-checksum: 3b5df42159f76dde
+checksum: 21761ce6b0a09aa9
 plan: walk
 seq: "26"
 state: done

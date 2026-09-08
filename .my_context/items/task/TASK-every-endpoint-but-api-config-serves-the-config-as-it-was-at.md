@@ -11,7 +11,7 @@ summary_was:
   - 2026-09-03 Change a setting while the app is running and almost everything keeps using the old value, because it was read once when the server started.
 acknowledged:
   - citation_form@5f2e6f9760f1bf42
-  - state_unaudited@5f2e6f9760f1bf42
+  - state_unaudited@7b23a3bca531d0d1
 scope: []
 tags:
   - v2
@@ -26,7 +26,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-08-28
 valid_until: null
-checksum: 44fc8529615b1d6f
+checksum: 0862adabfcdedc95
 plan: live
 seq: "8"
 state: done

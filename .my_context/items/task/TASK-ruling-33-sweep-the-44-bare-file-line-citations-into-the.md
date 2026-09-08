@@ -9,6 +9,7 @@ summary: Forty-four references to code are written in a form the checker ignores
 summary_of: 2614fa01cb8645cc
 acknowledged:
   - citation_form@27140dd5951189b9
+  - state_unaudited@593f5306377c2480
 scope: []
 tags:
   - "plan:rulings"
@@ -21,7 +22,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-08-21
 valid_until: null
-checksum: ce15471fcd2a38af
+checksum: 96598f79c3558043
 plan: rulings
 seq: "33"
 state: done

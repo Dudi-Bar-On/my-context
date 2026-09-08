@@ -9,6 +9,7 @@ summary: The browser tests stopped passing reliably once the sample data grew, a
 summary_of: a9a5719da58b95a0
 acknowledged:
   - body_disagrees_with_meta@3f63f1005dbcb37d
+  - state_unaudited@936f694f8e0881ff
 scope: []
 tags:
   - v2
@@ -24,7 +25,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-08-30
 valid_until: null
-checksum: 8bb083af9c71792a
+checksum: c91c818fb5365350
 plan: port
 seq: "96"
 state: done

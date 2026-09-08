@@ -11,6 +11,7 @@ summary_was:
   - 2026-09-03 Five lists print everything the server sends with no limit; each needs a limit, a stated order, and an honest sentence about what is not shown.
 acknowledged:
   - citation_form@6aadd7076a455562
+  - state_unaudited@4bed7cf1f15af862
 scope: []
 tags:
   - v2
@@ -25,7 +26,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-08-26
 valid_until: null
-checksum: d68584cd1bfbdc3b
+checksum: 489932df32bdb5b5
 plan: walk
 seq: "45"
 state: done

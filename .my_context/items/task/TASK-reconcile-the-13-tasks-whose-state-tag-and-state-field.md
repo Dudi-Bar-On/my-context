@@ -9,6 +9,7 @@ summary: Two places record how far a job has got and they disagree on a growing 
 summary_of: 10385d0fcc9c2839
 acknowledged:
   - body_disagrees_with_meta@089511eb2e7246e3
+  - state_unaudited@e9a6b7ba5615135c
 scope: []
 tags:
   - "plan:categories"
@@ -21,7 +22,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-08-23
 valid_until: null
-checksum: f0245a958721dd35
+checksum: b8bf4ae5d54497e4
 plan: categories
 seq: "19"
 state: done

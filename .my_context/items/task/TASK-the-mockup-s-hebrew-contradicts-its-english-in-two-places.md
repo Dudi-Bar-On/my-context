@@ -7,6 +7,8 @@ severity: soft
 always: false
 summary: Two translated sentences say the opposite of their English, and two more leave parts of it out.
 summary_of: a51e68fd13736f64
+acknowledged:
+  - task_unverified@adf13b662a37001c
 scope: []
 tags:
   - v2
@@ -22,7 +24,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-08-28
 valid_until: null
-checksum: cd096e7fab6d4f4d
+checksum: 2695b8a9d37e9077
 plan: walk
 seq: "63"
 state: done

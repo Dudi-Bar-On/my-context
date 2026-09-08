@@ -7,6 +7,8 @@ severity: soft
 always: false
 summary: An empty box titled error reads as an error, so good news looks like bad news on the very screen people open to check.
 summary_of: 05942abe9f7f867e
+acknowledged:
+  - task_unverified@5cd7d8c6a7733001
 scope: []
 tags:
   - v2
@@ -22,7 +24,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-08-25
 valid_until: null
-checksum: 799ef2f19bbac1a0
+checksum: 399ab9f41a4db23b
 plan: walk
 seq: "34"
 state: done

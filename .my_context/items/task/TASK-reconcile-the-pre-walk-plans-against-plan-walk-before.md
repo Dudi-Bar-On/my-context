@@ -9,6 +9,7 @@ summary: Read the older plans against the newer one before starting anything, so
 summary_of: 80de7b544745bd64
 acknowledged:
   - body_disagrees_with_meta@d99ba4a84d121194
+  - state_unaudited@8ec14beb8ea8a89d
 scope: []
 tags:
   - v2
@@ -24,7 +25,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-08-25
 valid_until: null
-checksum: b213f56208718786
+checksum: c0e93410732ce490
 plan: walk
 seq: "23"
 state: done

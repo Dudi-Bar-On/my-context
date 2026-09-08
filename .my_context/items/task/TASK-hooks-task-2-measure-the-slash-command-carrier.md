@@ -9,6 +9,7 @@ summary: Find out what information a shortcut command actually carries, which ne
 summary_of: 6e076be8944fee2a
 acknowledged:
   - body_disagrees_with_meta@a9ecccb5aa0d6060
+  - state_unaudited@005862c48b19e263
 scope: []
 tags:
   - "plan:hooks"
@@ -21,7 +22,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-08-20
 valid_until: null
-checksum: 60904d862f0dea53
+checksum: 746e0fbb5ae0450c
 plan: hooks
 seq: "2"
 state: done

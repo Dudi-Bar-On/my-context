@@ -9,6 +9,7 @@ summary: Cross-references that quote wording people see break every time that wo
 summary_of: 8b74fec3de9e666f
 acknowledged:
   - citation_form@ff17f84c1a6b7199
+  - state_unaudited@8d694dca7231a0a6
 scope: []
 tags:
   - v2
@@ -23,7 +24,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-08-28
 valid_until: null
-checksum: 7ebf9dedba2cb2e9
+checksum: fed17d1e7292b51c
 plan: walk
 seq: "69"
 state: done

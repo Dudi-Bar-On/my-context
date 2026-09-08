@@ -9,6 +9,7 @@ summary: Notice when another tool on the same machine also collects durable note
 summary_of: 05df35a060cf21ca
 acknowledged:
   - body_disagrees_with_meta@7ea5c8b3ca54f8b7
+  - state_unaudited@b6a5d8b136efe025
 scope: []
 tags:
   - v2
@@ -24,7 +25,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-08-25
 valid_until: null
-checksum: 50227542f105ee7f
+checksum: 51293ecf9aa0b8cb
 plan: walk
 seq: "19"
 state: done

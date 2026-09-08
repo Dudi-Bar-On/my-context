@@ -9,6 +9,7 @@ summary: An old reading is treated as current, so nothing notices the context is
 summary_of: ce027f8f5443d6c5
 acknowledged:
   - citation_form@b97a439e9a2e4fc0
+  - state_unaudited@86b212cffead24e8
 scope: []
 tags:
   - v2
@@ -25,7 +26,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-08-31
 valid_until: null
-checksum: dc463f673e27fa80
+checksum: 542097461ddc8309
 plan: walk
 seq: "123"
 state: done

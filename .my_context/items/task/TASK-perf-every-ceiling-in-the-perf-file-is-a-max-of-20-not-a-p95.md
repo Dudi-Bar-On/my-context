@@ -11,6 +11,7 @@ summary_was:
   - 2026-09-03 Speed limits labelled as a typical case are really a worst case, so one hiccup fails the run; three test files still do this.
 acknowledged:
   - citation_form@b7d01675bb92ee52
+  - state_unaudited@79298d6e4adca4e8
 scope: []
 tags:
   - "plan:hooks"
@@ -23,7 +24,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-08-21
 valid_until: null
-checksum: 1918e6ac37d4ba29
+checksum: 9dfb1f73d26c2f81
 plan: hooks
 seq: 12p
 state: done

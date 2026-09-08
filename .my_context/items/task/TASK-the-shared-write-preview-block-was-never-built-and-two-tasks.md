@@ -11,6 +11,7 @@ summary_was:
   - 2026-09-03 A shared before-and-after preview was never actually built, and two jobs marked finished were planned on top of it.
 acknowledged:
   - citation_form@7f1ce3987645213c
+  - state_unaudited@bcdb0dafbd28e273
 scope: []
 tags:
   - v2
@@ -25,7 +26,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-08-26
 valid_until: null
-checksum: edcbd9212ff90415
+checksum: 1e2f1a3605a24c93
 plan: walk
 seq: "46"
 state: done

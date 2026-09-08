@@ -11,7 +11,7 @@ summary_was:
   - 2026-09-03 The strip tells everyone that a component is not installed without ever checking, including the people who installed it.
 acknowledged:
   - citation_form@8412e66d162efdb9
-  - state_unaudited@8412e66d162efdb9
+  - state_unaudited@b13ba91f99f3d5f3
 scope: []
 tags:
   - v2
@@ -28,7 +28,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-08-25
 valid_until: null
-checksum: 7d8a3c3f8fa3457e
+checksum: 4ca9316c2b4218ed
 plan: walk
 seq: "29"
 state: done

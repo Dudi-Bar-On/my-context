@@ -10,6 +10,7 @@ summary_of: 6602324a5553d613
 acknowledged:
   - body_disagrees_with_meta@316c83a0174520ce
   - citation_form@316c83a0174520ce
+  - state_unaudited@ac4f3e7dfcb4b01c
 scope: []
 tags:
   - "plan:export"
@@ -22,7 +23,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-08-21
 valid_until: null
-checksum: f2b47050f6cef64f
+checksum: 4d67e215993bbec8
 plan: export
 seq: 8w
 state: done

@@ -9,6 +9,7 @@ summary: Measure what actually happens when a conversation is cleared, which nee
 summary_of: b45c4dd1367dc900
 acknowledged:
   - body_disagrees_with_meta@ac4ca4157c9584da
+  - state_unaudited@733a672ee62d302b
 scope: []
 tags:
   - "plan:hooks"
@@ -21,7 +22,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-08-20
 valid_until: null
-checksum: 4e9c9649a44d95f5
+checksum: 8900d9093dc29bed
 plan: hooks
 seq: "1"
 state: done

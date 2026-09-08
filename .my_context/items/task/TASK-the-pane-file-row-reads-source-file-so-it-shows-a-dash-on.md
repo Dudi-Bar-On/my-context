@@ -11,6 +11,7 @@ summary_was:
   - 2026-09-03 The detail panel shows a dash where a file path should be, because it reads the wrong field for nearly every item.
 acknowledged:
   - citation_form@95db9332b0fb529d
+  - state_unaudited@0ea8ec6efbfa15dc
 scope: []
 tags:
   - v2
@@ -26,7 +27,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-08-25
 valid_until: null
-checksum: 4e74f2e605eb43f7
+checksum: 3e76b0ef45d7fc32
 plan: walk
 seq: "42"
 state: done

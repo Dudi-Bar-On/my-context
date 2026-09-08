@@ -11,6 +11,7 @@ summary_was:
   - 2026-09-03 Three more hand-kept lists that the code could produce on its own, one of them held stale in place by the test that was meant to protect it.
 acknowledged:
   - citation_form@5620ba3c428bb635
+  - state_unaudited@e3524f507069787f
 scope: []
 tags:
   - "plan:rulings"
@@ -23,7 +24,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-08-21
 valid_until: null
-checksum: 1a1a7b6f6e7be936
+checksum: f3c92652490b0d81
 plan: rulings
 seq: "35"
 state: done

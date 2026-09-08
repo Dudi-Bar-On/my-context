@@ -7,6 +7,8 @@ severity: soft
 always: false
 summary: The screen for starter collections someone else published, showing what each one brings, what it may never bring, and which are installed here.
 summary_of: d5ad1be0f7e166d0
+acknowledged:
+  - task_unverified@fcecce8398cd118a
 scope: []
 tags:
   - v2
@@ -21,7 +23,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-09-02
 valid_until: null
-checksum: fe962a1870b43499
+checksum: bd8205397ab086ab
 plan: walk
 seq: "130"
 state: done

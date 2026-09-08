@@ -9,6 +9,7 @@ summary: Two figures the design puts in the bottom strip are missing, left out a
 summary_of: d9148df6ef98393d
 acknowledged:
   - citation_form@56bb933ad3374588
+  - state_unaudited@f142773dc21cfd7d
 scope: []
 tags:
   - "plan:port"
@@ -22,7 +23,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-08-22
 valid_until: null
-checksum: 787d79f6d7c099b0
+checksum: ca722b0ca7b1e168
 plan: port
 seq: "6"
 state: done

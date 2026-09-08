@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: Both screens are replaced by a single list of titles, and reading a document happens on its own page rather than inside the console.
-summary_of: e44598a669b634bd
+summary_of: bcce8c35cba770b6
 scope:
   - src/ui/public/screens/library.js
   - src/ui/public/doc.js
@@ -25,7 +25,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-09-05
 valid_until: null
-checksum: c1101b97cc670b1d
+checksum: 2ab267ff2e21d0fd
 ---
 
 # the documentation and tutorials screens become one list, and a document opens rendered in a new tab

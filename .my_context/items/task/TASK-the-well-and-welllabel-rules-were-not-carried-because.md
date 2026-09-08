@@ -11,6 +11,7 @@ summary_was:
   - 2026-09-03 Two styling rules were skipped because nothing used them; something does now, so a quoted body reads as ordinary page text.
 acknowledged:
   - citation_form@e5d2e442aa1bdd91
+  - state_unaudited@419963e83c6dcc2e
 scope: []
 tags:
   - v2
@@ -26,7 +27,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-08-25
 valid_until: null
-checksum: b35767748a34331d
+checksum: bbbd5e0ebe8d0710
 plan: walk
 seq: "41"
 state: done

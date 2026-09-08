@@ -9,6 +9,7 @@ summary: The check listing which commands can act without a person misses one co
 summary_of: 552adc1e38c9a6e7
 acknowledged:
   - citation_form@f8e3f9ba74a6f9a0
+  - state_unaudited@586e03073ff2aef1
 scope: []
 tags:
   - v2
@@ -24,7 +25,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-08-29
 valid_until: null
-checksum: c877187be23dc584
+checksum: 4887cbf7e8e51154
 plan: walk
 seq: "107"
 state: done

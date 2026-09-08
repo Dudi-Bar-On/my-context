@@ -9,6 +9,7 @@ summary: Let the app browse and read the project's own documents, from a list th
 summary_of: c71d77cc8341edfa
 acknowledged:
   - body_disagrees_with_meta@4e877acc112308aa
+  - task_unverified@737b45cbe7f2bb3a
 scope: []
 tags:
   - v2
@@ -24,7 +25,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-08-25
 valid_until: null
-checksum: 17d6bb1838259e87
+checksum: 5597529f254ae04f
 plan: walk
 seq: "25"
 state: done

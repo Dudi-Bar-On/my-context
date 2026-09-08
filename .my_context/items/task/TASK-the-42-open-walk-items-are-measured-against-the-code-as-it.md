@@ -7,6 +7,8 @@ severity: soft
 always: false
 summary: Checking the outstanding screen-review notes against the product as it stands, so the ones already overtaken can be closed instead of worked.
 summary_of: 66dff13d75ccc93e
+acknowledged:
+  - task_unverified@35a645251c9a3ef3
 scope:
   - src/ui/**
   - .my_context/items/**
@@ -23,7 +25,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-09-07
 valid_until: null
-checksum: 2d02f8b42ab2d48e
+checksum: f8d4831504d30876
 plan: walk
 seq: "140"
 state: done

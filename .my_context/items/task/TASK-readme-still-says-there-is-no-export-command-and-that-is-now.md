@@ -11,6 +11,7 @@ summary_was:
   - 2026-09-03 The main guide still says a feature does not exist, weeks after it shipped, and the same false claim survives in a second place.
 acknowledged:
   - citation_form@293dcefef6597724
+  - state_unaudited@c22fa45d4454139c
 scope: []
 tags:
   - "plan:export"
@@ -23,7 +24,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-08-21
 valid_until: null
-checksum: 0bf1ff177a61a023
+checksum: c4a79823c42c399d
 plan: export
 seq: 13r
 state: done

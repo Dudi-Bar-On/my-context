@@ -9,6 +9,7 @@ summary: The activity screen, and the live feed of events that fills it.
 summary_of: 1bf247bdf2c15828
 acknowledged:
   - citation_form@df61d9829fb618fe
+  - state_unaudited@e2f53265886b408a
 scope: []
 tags:
   - "plan:ui3"
@@ -23,7 +24,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-08-20
 valid_until: null
-checksum: b1f50da05ca6fc43
+checksum: d3bdbee239487e23
 plan: ui3
 seq: "11"
 state: done

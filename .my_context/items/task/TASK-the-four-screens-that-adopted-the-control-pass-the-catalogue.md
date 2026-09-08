@@ -11,6 +11,7 @@ summary_was:
   - 2026-09-03 A claim that four screens were throwing away a run button turned out to be wrong for three of them; only one is a real gap.
 acknowledged:
   - body_disagrees_with_meta@ba7f426dc474ab65
+  - state_unaudited@b6333588853e1d80
 scope: []
 tags:
   - v2
@@ -25,7 +26,7 @@ source_anchor: null
 source_checksum: bda1ac0206f74768
 valid_from: 2026-08-27
 valid_until: null
-checksum: 97b1e5848287f757
+checksum: 7755fe8265d9b58f
 plan: execute
 seq: 6c
 state: done

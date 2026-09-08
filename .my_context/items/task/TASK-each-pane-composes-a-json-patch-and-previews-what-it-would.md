@@ -10,6 +10,7 @@ summary_of: c1197552929dee95
 acknowledged:
   - body_disagrees_with_meta@6dfcb120e7fd82d1
   - citation_form@6dfcb120e7fd82d1
+  - state_unaudited@0b97ba5e9c67f06b
 scope: []
 tags:
   - "plan:config"
@@ -22,7 +23,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-08-23
 valid_until: null
-checksum: 890e9bea35c16b47
+checksum: ad3d0cd8f035844d
 plan: config
 seq: "2"
 state: done

@@ -11,7 +11,7 @@ summary_was:
   - 2026-09-07 The wave map is now the execution board in reports; what stays here is why a wave exists and how wide it may run.
   - 2026-09-05 The order the work is being tackled in, grouped so that jobs which do not touch each other can be done at the same time.
 acknowledged:
-  - reference_no_source@0bc80f612344854a
+  - reference_no_source@7b97dcfdbb81c28c
 scope: []
 tags:
   - v2
@@ -22,7 +22,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-08-28
 valid_until: null
-checksum: 6a2000b85103a73f
+checksum: 9a750471dbdd0873
 ---
 
 # the wave map: what order the work is being done in

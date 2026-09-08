@@ -9,6 +9,7 @@ summary: One editing pass over the design file covering several wording decision
 summary_of: 4ca15a1a0be05338
 acknowledged:
   - body_disagrees_with_meta@d5d2beacba252118
+  - state_unaudited@ad72d84c70335b5a
 scope: []
 tags:
   - "plan:rulings"
@@ -22,7 +23,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-08-20
 valid_until: null
-checksum: 9dede47cd93d34d3
+checksum: 855666830c8a51f0
 plan: rulings
 seq: "14"
 state: done

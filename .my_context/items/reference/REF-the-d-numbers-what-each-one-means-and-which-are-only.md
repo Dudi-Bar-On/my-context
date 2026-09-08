@@ -9,6 +9,8 @@ summary: The short numbers used to talk about work in progress and what each ref
 summary_of: 35be67492db0510c
 summary_was:
   - 2026-09-07 The short numbers used to talk about work in progress, and what each of them refers to, so the same number never means two things.
+acknowledged:
+  - reference_no_source@ce00c7ccbedbc733
 scope: []
 tags:
   - v2
@@ -19,7 +21,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-09-07
 valid_until: null
-checksum: 94e357c8f38aa99e
+checksum: f1df3dabd6b9ebee
 ---
 
 # the D numbers: what each one means, and which are only proposed
