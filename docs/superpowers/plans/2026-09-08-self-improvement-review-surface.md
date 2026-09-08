@@ -146,18 +146,32 @@ the draft; Approve promotes and **offers to stage the patch it implies** through
 the existing `stageRevision` path — the `relations.ts` restrictions survive:
 the pass may propose a revision, never land one.
 
-- [ ] **Step 5: Look at it, in both languages**
+- [ ] **Step 5: Delete the review brief on promotion**
+
+Spec §6: the brief is **scaffolding for the decision, not permanent weight in
+the corpus.** When a draft is approved, the brief field is removed and the
+owner writes the real 250-character summary — which the product will refuse to
+let him skip.
+
+Test: approve a draft carrying a brief; assert the promoted item has **no brief
+field**, and that its summary is present and within the bound.
+
+**And this is where the split-into-two pressure lands:** if a draft genuinely
+cannot be summarised in 250 characters at promotion, that is the product saying
+it is two lessons. A longer summary limit would have hidden exactly that.
+
+- [ ] **Step 6: Look at it, in both languages**
 
 Screenshot English and Hebrew. **Check the Hebrew.** This project has found a
 tag name 897px from its own checkbox, a leading dot at the wrong end, and 552
 detached full stops — every one after assertions passed.
 
-- [ ] **Step 6: Run the parity gates**
+- [ ] **Step 7: Run the parity gates**
 
 Run: `node --test "test/ui/*.test.ts"`
 Expected: `strings-parity` and `screen-parity` green.
 
-- [ ] **Step 7: Commit**
+- [ ] **Step 8: Commit**
 
 ```bash
 git add src/ui/public/screens src/ui/public/strings e2e/review-queue.spec.ts

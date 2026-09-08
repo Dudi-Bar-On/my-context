@@ -350,18 +350,38 @@ did not: zeroing one interval left another path creating anyway. **One switch,
 one subsystem, and a test asserting that with `enabled: false` no child is
 spawned at all.**
 
-- [ ] **Step 5: Run the hook suites**
+- [ ] **Step 5: The tool boundary — deny at dispatch, never by narrowing the schema**
+
+The child runs with the full advertised tool schema and is denied on **write
+paths outside its remit at call time**. Do not narrow `tools[]`.
+
+Two measured reasons, both from upstream and both recorded in spec §5a:
+**cache parity** is worth ~26% end-to-end and a narrowed schema breaks the
+prefix cache; and narrowing **starved the loop** — *"~142 denials + ~204
+read-before-write refusals over 2 days… the model never loaded SKILL.md, so
+almost no patch landed."*
+
+**The pass keeps read access.** The real boundary is that `create_item` already
+refuses what an agent may not do — the whitelist is belt-and-braces, not the
+guard.
+
+Test: assert the child is invoked with read tools present, and that a write to
+anything outside the review path is refused. **Assert the refusal comes from
+the mutation layer, not from an absent tool** — if the tool is simply missing,
+this step has been implemented the wrong way round.
+
+- [ ] **Step 6: Run the hook suites**
 
 Run: `node --test "test/hooks/*.test.ts" "test/review/*.test.ts"`
 Expected: green.
 
-- [ ] **Step 6: Turn it on here and watch it for a day**
+- [ ] **Step 7: Turn it on here and watch it for a day**
 
 Set `review.enabled: true` in this workspace, work normally, then read
 `state/review-last-pass.json`. **It writes nothing to the corpus in this phase**,
 so the only risk is wasted tokens — which is the point of stopping here.
 
-- [ ] **Step 7: Commit**
+- [ ] **Step 8: Commit**
 
 ```bash
 git add src/review/pass.ts src/hooks/stop.ts src/core/config.ts test/review/pass.test.ts test/hooks/stop.test.ts
