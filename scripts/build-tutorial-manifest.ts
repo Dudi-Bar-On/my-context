@@ -222,7 +222,13 @@ const CLUSTERS: Cluster[] = [
     id: 'decay-finding-what-stopped-mattering',
     title: 'Find what stopped mattering',
     tier: 'advanced',
-    cli: ['decay.ts'],
+    // `contribution.ts` sits here rather than in a cluster of its own because
+    // it answers this tutorial's question from the other side: `decay` says
+    // which items have not been injected LATELY, `contribution` says how often
+    // each has EVER been delivered and by whose authorship. Same subject, same
+    // ledger, and the same hedge printed over both — the log records injection,
+    // never reading or reliance.
+    cli: ['decay.ts', 'contribution.ts'],
     slash: ['decay.md'],
     screens: ['decay.js'],
   },

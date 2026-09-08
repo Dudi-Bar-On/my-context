@@ -1216,7 +1216,18 @@ function cmdAdd(ws: Workspace, args: string[], out: Emit, cwd: string): number {
 
   const { store, errors } = openStore(ws);
   try {
-    const ctx: MutationContext = { root, store, config: ws.config };
+    // **The gated path's confirm** — see `MutationContext.confirm`
+    // (core/mutate.ts) and the identical line in `cmdEdit`. `--supersedes <id>`
+    // answers the contradiction gate by RETIRING the named item, and that
+    // retirement asked nothing until this hook existed: the confirm lived only
+    // in `mycontext supersede`. It is a SECOND question, not a replacement for
+    // the normative-capture gate above — one approves bringing an item into
+    // force, this one approves taking another one out of it — and both read
+    // `--yes` through the same `confirmAction`.
+    const ctx: MutationContext = {
+      root, store, config: ws.config,
+      confirm: (question) => confirmAction(args, out, question),
+    };
     const result = createItem(ctx, input);
     out(result.message);
     // F2: `add` did what it was asked — the item exists on disk and in the

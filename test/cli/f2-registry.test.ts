@@ -290,6 +290,18 @@ const SETUPS: Record<string, (cwd: string) => string[]> = {
     plantUnrelatedCorruptItem(cwd);
     return [];
   },
+  contribution: (cwd) => {
+    // A real item, not an empty corpus: `contribution`'s "no items" sentence
+    // and its ranked table are two separate branches, and an empty setup would
+    // only ever reach the first — the same hole `decay`'s entry below records.
+    // No injection record is planted, because the branch that matters for F2
+    // is the one that reads a corpus at all; whether the LOG is empty changes
+    // no exit path.
+    run(['add', '--summary-omitted', 'constraint', 'An item for the F2 guard', '--yes'], cwd);
+    plantUnrelatedCorruptItem(cwd);
+    return [];
+  },
+
   decay: (cwd) => {
     // A scoped item, not an empty corpus: `decay`'s empty-corpus branch and
     // its full-report branch return through two SEPARATE code paths (see

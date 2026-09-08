@@ -127,6 +127,9 @@ const BORN_HERE: Record<string, string> = {
   handover: 'cli/commands/handover.ts — the command itself is newer than this module (owner '
     + 'ruling 2026-09-06, the handover asked for on demand from three surfaces), so its spec '
     + 'was authored here and has never lived anywhere else.',
+  contribution: 'cli/commands/contribution.ts — the command itself is newer than this module '
+    + '(plan:loop seq:1, 2026-09-08, per-item delivery read backwards out of the audit log), '
+    + 'so its spec was authored here and has never lived anywhere else.',
 };
 
 /**

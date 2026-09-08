@@ -941,6 +941,63 @@ function fitToBudget(
 export const RETIRED_STATUSES = new Set(['superseded', 'deprecated', 'validated']);
 
 /**
+ * **The two fields a retired item must not still be carrying, named once so
+ * `supersedeItem` and `doctor` cannot disagree about them.**
+ *
+ * `always: true` asks for the pinned tier and `severity: 'hard'` says "this
+ * binds". Neither is read by `isEligible` on a retired item — the first tier
+ * holds, and that is exactly why this went unnoticed for 60 retirements — but
+ * both SURVIVE AS DATA, and data is what counts, reports, the pinned-set
+ * review and anything written later by somebody who reasonably assumes a
+ * pinned item is a live one all read. A retired item carrying them still
+ * speaks with authority it no longer has.
+ *
+ * Returned as the list of field NAMES that are still set rather than a
+ * boolean, because both readers need to say WHICH: the mutation records what
+ * it cleared (`INV-nothing-is-dropped-silently`) and the doctor finding names
+ * what a person would be clearing.
+ *
+ * It asks nothing about status on purpose. `supersedeItem` calls it on an item
+ * that is about to BECOME `superseded`, so a status test here would answer
+ * `false` at exactly the moment the answer matters; the doctor check pairs it
+ * with `STOOD_DOWN_STATUSES` instead.
+ */
+export function standDownFields(item: Item): ('always' | 'severity')[] {
+  const fields: ('always' | 'severity')[] = [];
+  if (item.always) fields.push('always');
+  if (item.severity === 'hard') fields.push('severity');
+  return fields;
+}
+
+/**
+ * **The retired statuses a stand-down applies to, and it is deliberately NOT
+ * `RETIRED_STATUSES`.**
+ *
+ * `validated` is the difference, and it was measured rather than assumed. It
+ * sits in `RETIRED_STATUSES` because the session banner has always counted it
+ * as "finished with" and `isEligible` does not inject it — but it means
+ * something no other member does: a human read the item and AFFIRMED it.
+ * `GOVERNING_STATUS.validated === true` (trust.ts) says so from the other
+ * side, and `governsNormatively` protects a `validated` item from a non-human
+ * caller for precisely that reason. On an item somebody has affirmed, `hard`
+ * and a pin are a claim a person made and may still mean; clearing them, or
+ * reporting them as bookkeeping debt, would treat the strongest human
+ * endorsement in the corpus as staleness.
+ *
+ * **Measured, 2026-09-08, over 1,021 items: ZERO carry `validated`** — 961
+ * active, 32 superseded, 28 deprecated. So including it would have decided a
+ * live question on no evidence and changed nothing today; excluding it decides
+ * the same question the other way, and the day the first `validated` item
+ * appears the decision is here in words rather than in a set membership
+ * nobody argued for.
+ *
+ * `supersedeItem` never has to consult this — it writes `superseded` and
+ * nothing else — so this exists for the doctor check, which sees whatever is
+ * already on disk.
+ */
+export const STOOD_DOWN_STATUSES = new Set(['superseded', 'deprecated']);
+
+/**
  * The review queue: the drafts a human can actually act on from THIS project.
  *
  * The layer filter is part of the definition of the queue, not a display

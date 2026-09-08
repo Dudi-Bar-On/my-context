@@ -6,6 +6,7 @@ import './ack.ts';
 import './audit.ts';
 import './carry.ts';
 import './config.ts';
+import './contribution.ts';
 import './conversation.ts';
 import './decay.ts';
 import './doctor.ts';

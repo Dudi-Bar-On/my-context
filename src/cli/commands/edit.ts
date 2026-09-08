@@ -569,6 +569,15 @@ function cmdEdit(ws: Workspace, args: string[], out: Emit): number {
   }
 
   const { ctx, errors } = openMutateContext(ws);
+  // **The gated path's confirm, wired at the surface that can ask.**
+  // `--supersedes <id>` answers the contradiction gate by RETIRING the
+  // candidate, and until this line that retirement happened with no
+  // confirmation at all — the only prompt lived in `mycontext supersede`. The
+  // hook is set unconditionally because only `preflightSupersede` consults it,
+  // and only when a disposition actually names an item to retire; `confirm`
+  // reads `--yes` and refuses off a TTY exactly as every other gate on this
+  // command does. See `MutationContext.confirm` (core/mutate.ts).
+  ctx.confirm = (question) => confirmAction(args, out, question);
   try {
     // The patch, assembled before anything is read from the corpus so a
     // malformed flag value is refused on its own terms. `listFlag`, not

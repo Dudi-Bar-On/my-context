@@ -162,6 +162,12 @@ export const CLI_WITHOUT_SLASH: Record<string, string> = {
     'item was required; a slash command would let a model make that same call on its own, ' +
     'the same reason `ack` has none. It is read out of the spilled-items list and typed by ' +
     'the person who read it.',
+  contribution: 'Reads the audit log and reports how often each item was actually delivered '
+    + 'into a session, split by who authored it. It is a MEASUREMENT of the injection '
+    + 'machinery, taken by a person deciding whether this corpus is helping — and the one '
+    + 'reader it must not be is the model whose deliveries it counts, which is the same '
+    + 'shape as `conversation` below. It writes nothing and governs nothing, so a slash '
+    + 'command would only put a table in front of a model that the table is about.',
   conversation: 'Reads the transcripts Claude Code has already written on disk and indexes ' +
     'them; it is the scanner behind the ARCHIVE, not a corpus operation. A model has no use ' +
     'for it — the conversation it would be asking about is the one it is having — and the ' +
@@ -328,6 +334,17 @@ export const CLI_WITHOUT_TOOL: Record<string, ToolAbsence> = {
       '`human`, unconditionally — there is no `--agent` escape hatch here the way `mycontext ' +
       'lesson` has one. A tool call IS a non-human caller by construction, so a tool for `ack` ' +
       'would exist only to be refused on every call.',
+  },
+  contribution: {
+    disposition: 'intended',
+    reason:
+      'The whole point of the report is to be read by a PERSON weighing whether accumulated '
+      + 'knowledge is helping or has pushed a session below the no-knowledge baseline. An '
+      + 'agent asking how often it was handed an item is asking about its own delivery '
+      + 'record, which it cannot act on without acting on the measurement — and a corpus '
+      + 'that edits itself in response to its own contribution numbers is the exact failure '
+      + 'mode the instrumentation exists to detect rather than to feed. `--json` is the '
+      + 'machine surface, for a script a person runs.',
   },
   conversation: {
     disposition: 'intended',

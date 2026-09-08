@@ -366,6 +366,7 @@
     "title": "Find what stopped mattering",
     "tier": "advanced",
     "cli": [
+      "contribution.ts",
       "decay.ts"
     ],
     "slash": [

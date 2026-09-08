@@ -1950,7 +1950,7 @@ draft, retiring a governing item. How far that separation actually holds is
 ```mermaid
 flowchart TB
   U(["<b>You</b>"]) --> SL["<b>/mycontext:…</b><br/>91 slash commands"]
-  U --> CL["<b>mycontext …</b><br/>45 CLI commands"]
+  U --> CL["<b>mycontext …</b><br/>46 CLI commands"]
   A(["<b>Claude</b>"]) --> TL["<b>MCP tools</b><br/>twenty-six, served over stdio"]
   SL -->|"add-* · search · link · LoadMyContext"| TL
   SL -->|"list-* · review · status · edit · query"| CL
@@ -2237,7 +2237,7 @@ listed with one. The remaining absences are in [section 8](#one-surface-for-ever
 
 ### What you run: the CLI
 
-45 commands. `mycontext help` prints the same list from the program itself, and
+46 commands. `mycontext help` prints the same list from the program itself, and
 `mycontext help <topic>` explains one of seven. Four are concepts — `categories`, `scope`,
 `capture`, `workflow` — and three are one page per invocation surface: `cli`, `tools` and
 `slash`, each generated from the registry, schema or directory it describes rather than
@@ -2643,6 +2643,7 @@ moves no count of what governs.
 | `mycontext doctor` | index freshness, orphans, drift, dead globs, permissions, session ids |
 | `mycontext ack <id> <code>` | record that a person has read one `doctor` finding on one item and ruled on it. The finding is still computed, still reported and still counted — it reports as **acknowledged** rather than open, which is the whole of what the verb does. The acknowledgement is stored on the item together with a hash of the content it was made against, so editing that item **lapses** it and the finding is open again; `--list` prints every finding on the item and whether each is acknowledged, lapsed or open, and `--clear` withdraws one. It refuses a code `doctor` is not currently reporting on that item, and it refuses any origin but a person: there is no MCP tool and no slash command, because an acknowledgement a machine wrote about itself is a report of what the machine has decided to stop mentioning |
 | `mycontext decay` | items that have not been injected lately |
+| `mycontext contribution` | how often each item has actually been **delivered** into a session, read backwards out of the audit log — one row per origin (`human`, `agent`, `ingest`), then the least-delivered items. It adds no write path and changes no hook: `recordAudit` has always written one injection record per delivery carrying what was injected and what the budget spilled, so this answers for history that already happened. Read the two hedges it prints before acting on a number: the log records **injection, never reading or reliance**, so an item opened as Markdown or fetched with `show` leaves no trace here; and the counts are not normalised for age. `--full` for every item with its first and last delivery, `--json` for the machine form |
 | `mycontext audit` | the run-time log: every mutation, and every injection by scope |
 | `mycontext focus` | narrow what gets injected, and report what that hides |
 | `mycontext conversation [rebuild\|list]` | the **conversation archive**: index the transcripts Claude Code has already written for this project, and list what the index holds. Nothing is recorded and nothing is copied — the transcripts are read where the harness put them, and the index is one row per session that a rebuild reconstructs entirely from disk, so losing it costs time and never knowledge. `rebuild` re-reads only transcripts whose size or mtime has moved; `--full` re-reads them all. `list` prints the sessions newest first with the counts of what a person asked and what the model answered — **not** a count of `message.role`, which would report every tool result as something you typed. A transcript longer than the scan cap is indexed with its counts marked as floors rather than silently short. Browsing and reading one is the [Conversations screen](#the-web-ui--mycontext-ui); this command is what fills the index for it, because the web UI never writes. `--limit`, `--json` |
@@ -6319,7 +6320,7 @@ command, or both; the map is `src/plugin/parity.ts` and `test/plugin/parity.test
 it against the usage banner the program prints and the files in `commands/`.
 
 What is left is asymmetry in the other direction — commands with no slash command — and it
-is **listed rather than discovered**. 16 of the 45 CLI commands have none, each for a reason
+is **listed rather than discovered**. 17 of the 46 CLI commands have none, each for a reason
 recorded beside it in `CLI_WITHOUT_SLASH`:
 
 - `ack` records that a **person** read a `doctor` finding and ruled on it, so a slash command
@@ -6331,6 +6332,11 @@ recorded beside it in `CLI_WITHOUT_SLASH`:
   next injection and forgets it, whether or not the line was admitted — a slash command or a
   tool would let a model make that call for itself, which is exactly the choice this command
   exists to keep with you.
+- `contribution` reports how often each item has actually been delivered, and the one reader it
+  must not have is the model whose deliveries it counts: a corpus that edits itself in response to
+  its own contribution numbers is the failure the measurement exists to **detect** rather than to
+  feed. It writes nothing and governs nothing, so a slash command would only put a table in front
+  of the thing the table is about. `--json` is the machine surface, for a script a person runs.
 - `conversation` indexes and lists the transcripts Claude Code has already written on disk.
   A model has no use for it — the conversation it would be asking about is the one it is
   having — and the browsing it exists to serve was ruled a web feature, on the
@@ -6580,7 +6586,7 @@ command prints; that the injected output quoted in sections 3, 4 and 6 is what t
 emit; that every section the table of contents links either has a line in the capabilities
 summary near the top or is listed, with a reason, as something the product does not *do*; and
 that both documents carry the same heading sequence and the same examples in the same order.
-Of those, `counts.test.ts` computes the "16 of the 45 CLI commands" ratio above from the
+Of those, `counts.test.ts` computes the "17 of the 46 CLI commands" ratio above from the
 running program and fails in **both** languages if either half drifts — it had drifted twice
 before the test existed — and it computes this paragraph's own file count the same way.
 `parity.test.ts` holds this section's heading sequence to the Hebrew mirror's. This paragraph

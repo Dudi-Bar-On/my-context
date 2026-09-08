@@ -8,7 +8,9 @@ import {
 } from '../core/audit.ts';
 import { openProjectionReadOnlyChecked, topItems } from '../core/audit-db.ts';
 import { scopePolicyFor, skippedKeyNotice, type Config } from '../core/config.ts';
-import { governs, isEligible, itemCost } from '../core/select.ts';
+import {
+  governs, isEligible, itemCost, standDownFields, STOOD_DOWN_STATUSES,
+} from '../core/select.ts';
 import {
   BLOCKED_STATE, buildTaskIndex, DONE_STATE, NEEDS_FIELD, readNeeds, STATE_FIELD, taskState,
   workItems,
@@ -2900,6 +2902,84 @@ export function checkReferenceNoSource(items: Item[]): Finding[] {
 }
 
 /**
+ * **A retired item that still says it is pinned, or still says it binds.**
+ *
+ * `supersedeItem` stands an item down in the same act that retires it (see its
+ * doc comment). That is PROSPECTIVE: it fixes retirements from 2026-09-08
+ * onward and repairs nothing already on disk. This check is the other half —
+ * the items retired before it existed, which nothing would otherwise surface.
+ *
+ * **On this corpus, the day it was written: seven items, eight fields.** 1,021
+ * items, 60 of them retired; `RULE-delegate-to-subagents-by-default-to-preserve
+ * -the-context` superseded and still `always: true` AND `severity: hard`, plus
+ * six more carrying `hard` alone — `OPENQ-does-sessionstart-injection-actually-
+ * work`, `OPENQ-how-do-filters-respect-dependencies`, `REQ-items-carry-a-domain`
+ * and three deprecated `KNOWN-` items. All seven are normative-tier categories,
+ * so none of the fields is inert; every one of them is a stored claim to
+ * authority the item no longer has.
+ *
+ * ── WARN, NOT ERROR, AND THE LEVEL IS THE RULING ────────────────────────────
+ *
+ * Nothing is being delivered wrongly. `isEligible` filters `RETIRED_STATUSES`
+ * out of selection before a pin can matter, so the first tier holds and this is
+ * BOOKKEEPING — a field that survives as data and misleads a reader or a count,
+ * not an item reaching a session it should not. `warn` keeps it off the exit
+ * code (`exitCode` reads `counts.errors`), which is the whole of "reported, not
+ * gated": a person may have a reason for any one of these, and a check that
+ * failed CI over an unpinned pin would be answered by turning the check off.
+ *
+ * The remedy is `edit` rather than `ACK` because there is an exact command
+ * here, and this file's rule for the `run` route is that the finding's own
+ * MESSAGE names it — it does, and `values` is built per item so an item
+ * carrying only `hard` is not offered a pin it does not have. `mycontext ack`
+ * remains available on every finding and the message says so, which is the
+ * route for the person who has a reason.
+ *
+ * `validated` is EXCLUDED, and it is the one judgement call in the check —
+ * `STOOD_DOWN_STATUSES` (select.ts) carries the argument and the measurement.
+ */
+export function checkRetiredStillBinding(items: Item[]): Finding[] {
+  const findings: Finding[] = [];
+  for (const item of items) {
+    if (!STOOD_DOWN_STATUSES.has(item.status)) continue;
+    const fields = standDownFields(item);
+    if (fields.length === 0) continue;
+    const pinned = fields.includes('always');
+    const hard = fields.includes('severity');
+    // Only the fields this item actually carries, so the composed command
+    // cannot set one it does not have — the same reason `fields` is a list
+    // rather than a boolean in `standDownFields`.
+    const values: RemedyValues = {
+      id: item.id, ...(pinned ? { always: 'false' } : {}), ...(hard ? { severity: 'soft' } : {}),
+      yes: true,
+    };
+    const carries = [
+      ...(pinned ? ['`always: true`'] : []),
+      ...(hard ? ['`severity: "hard"`'] : []),
+    ].join(' and ');
+    const flags = [
+      ...(pinned ? ['--always=false'] : []),
+      ...(hard ? ['--severity soft'] : []),
+    ].join(' ');
+    findings.push({
+      level: 'warn', code: 'retired_still_binding', item: item.id,
+      remedy: { route: 'run', command: 'edit', values },
+      message:
+        `is "${item.status}" and still carries ${carries}. Nothing is being delivered wrongly — ` +
+        `a retired item is filtered out of injection before a pin can matter — but the ` +
+        `${fields.length > 1 ? 'fields survive' : 'field survives'} as DATA, read by counts, ` +
+        `reports, the pinned-set review and anything written later by somebody who reasonably ` +
+        `assumes a pinned item is a live one. Retiring an item stands it down in the same act ` +
+        `since 2026-09-08; ${item.id} was retired before that. Stand it down with ` +
+        `\`mycontext edit ${item.id} ${flags} --yes\`, or, if the ` +
+        `${fields.length > 1 ? 'values are' : 'value is'} deliberate, record why with ` +
+        `\`mycontext ack ${item.id} retired_still_binding\`.`,
+    });
+  }
+  return findings;
+}
+
+/**
  * **A second `.my_context` below this one, which would shadow it.**
  *
  * `findProjectRoot` walks UP from the session's working directory and stops at
@@ -4204,6 +4284,7 @@ export function runChecks(opts: {
     () => checkOpenQuestionBlocks(opts.items),
     () => checkAssumptionOverdue(opts.root, opts.items),
     () => checkReferenceNoSource(opts.items),
+    () => checkRetiredStillBinding(opts.items),
     () => checkNestedCorpus(opts.root, opts.repoRoot),
     () => checkForeignStore(opts.repoRoot),
   ];

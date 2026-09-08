@@ -49,7 +49,7 @@
  * plan's own rule rather than a new one. Three of the ten mutation ops write
  * ANOTHER ITEM'S ID into `note`:
  *
- *   - `supersede` — `core/mutate.ts` · ``{ fields: ['status', 'relations', 'validUntil'], note: `by ${replacement.id}` },``
+ *   - `supersede` — `core/mutate.ts` · ``note: `by ${replacement.id}`,``
  *   - `link` and `unlink` — `core/relations.ts` · ``fields: ['relations'], note: `${input.relation} ${input.to}`,``
  *
  * None of those notes contains `': '`, so the plan's redaction ("keep up to
@@ -273,7 +273,7 @@ type NoteRule =
  *
  *   - `stage` — `core/mutate.ts` · `          note: result.revision.revisionId,`
  *   - `discard` — `core/revision.ts` · ``${pending.revisionId}: ${options.reason}``
- *   - `supersede` — `core/mutate.ts` · ``note: `by ${replacement.id}` },``
+ *   - `supersede` — `core/mutate.ts` · ``note: `by ${replacement.id}`,``
  *   - `link`/`unlink` — `core/relations.ts` · ``fields: ['relations'], note: `${input.relation} ${input.to}`,``
  *   - the other five reach `auditMutation` with no `extra.note` at all.
  *

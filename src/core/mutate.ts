@@ -24,6 +24,7 @@ import {
   snapshotFields, movedFields, stampValidUntil, today,
 } from './persist.ts';
 import { isItemExistsError } from './rebuild.ts';
+import { standDownFields } from './select.ts';
 import { existingSuccessorRefusal, SUPERSEDED_BY } from './relations.ts';
 // `revision.ts` imports `updateItem` back out of this module, so this edge
 // closes a cycle. It resolves under ESM because both sides only ever CALL
@@ -61,6 +62,36 @@ export interface MutationContext {
   root: string;
   store: Store;
   config: Config;
+  /**
+   * **How a mutation asks a person before it retires something, when there is
+   * a person to ask.**
+   *
+   * Retirement is the one irreversible lifecycle move, and until this existed
+   * the confirmation for it lived in ONE command — `mycontext supersede` — and
+   * therefore covered exactly one of the three routes into `supersedeItem`.
+   * The gate's `--supersedes <id>` disposition (`preflightSupersede`) reaches
+   * the same write from `add` and from `edit`, and asked nothing at all.
+   *
+   * **A hook rather than a call, because `core/` must not import `cli/`.**
+   * `confirmAction` (cli/commands/review.ts) reads `--yes`, refuses off a TTY
+   * and prints its own refusal; it is a surface concern and stays one. A
+   * surface that can ask a person supplies this and the mutation asks through
+   * it; a surface that cannot — the MCP tools, ingestion, `applyCandidates` —
+   * leaves it undefined, and the ORIGIN guards (`governsNormatively`, in both
+   * `preflightSupersede` and `supersedeItem`) remain what protects a governing
+   * item from a non-human caller. A missing hook is therefore never a silent
+   * "yes" on the path that matters.
+   *
+   * `mycontext supersede` deliberately does NOT set it: that command already
+   * asks the identical question (`supersedeQuestion`, imported rather than
+   * re-spelled) beside a preview this depth cannot render, and setting it here
+   * would ask a person the same thing twice in one command.
+   *
+   * Returns `true` to proceed. `false` means the person declined, and the
+   * caller of the hook turns that into a refusal — never into a quiet skip of
+   * the retirement while the rest of the write lands.
+   */
+  confirm?: (question: string) => boolean;
 }
 
 export interface CreateInput {
@@ -610,7 +641,49 @@ function updateSurface(origin: Origin): ContradictionSurface {
   return origin === 'human' ? 'edit' : 'update_item';
 }
 
-function preflightSupersede(ctx: MutationContext, id: string, origin: Origin): void {
+/**
+ * **The one wording of the question that retires an item, so the gated path
+ * cannot ask it differently from `mycontext supersede`.**
+ *
+ * `cmdSupersede` (cli/commands/supersede.ts) has asked exactly this since the
+ * command shipped and now imports it; `preflightSupersede` asks it on the
+ * `--supersedes <id>` path. A second sentence here would be the same defect
+ * this file names everywhere else — one rule, two spellings — arriving at the
+ * one prompt whose whole job is to be recognisable.
+ *
+ * `by` is a LABEL rather than an id, and that is forced rather than chosen: on
+ * the `add` path the replacement has not been minted yet — its id is allocated
+ * by `createItem`'s family walk, AFTER the pre-flight — so there is nothing to
+ * name but the item about to be written. `edit` and `supersede` both pass a
+ * real id. The half of the sentence that carries the irreversible act, the
+ * retiree, is identical in all three.
+ */
+export function supersedeQuestion(retired: { id: string; title: string }, by: string): string {
+  return `Supersede ${retired.id} ("${retired.title}") with ${by}?`;
+}
+
+/**
+ * **What a person is asked, and what they are told when they say no.**
+ *
+ * `confirmAction` has already printed its own "not confirmed" line by the time
+ * this throws, so this message does NOT restate that. It states the thing only
+ * this depth knows: the retirement was one half of a write that had two, and
+ * the OTHER half did not happen either. Without that sentence a person who
+ * declined at the second prompt of `mycontext add` would be left unable to
+ * tell whether the new item had landed.
+ */
+function supersedeDeclinedRefusal(id: string): string {
+  return (
+    `my_context: ${id} was not superseded, and nothing was written — the item this write would ` +
+    `have created or changed was not written either, so the pair is not half done. Re-run when ` +
+    `you mean to retire ${id}, or answer the gate with "--distinct" instead, which says both can ` +
+    `be true and is recorded the same way.`
+  );
+}
+
+function preflightSupersede(
+  ctx: MutationContext, id: string, origin: Origin, by: string,
+): void {
   const target = requireWritableItem(ctx, id);
   if (origin !== 'human' && governsNormatively(ctx, target)) {
     throw new Error(
@@ -621,6 +694,52 @@ function preflightSupersede(ctx: MutationContext, id: string, origin: Origin): v
       `way. If ${target.id} genuinely has to go, ask the user, who can run ` +
       `\`mycontext supersede ${target.id} --by <the new id>\`.`,
     );
+  }
+  // **THE EXISTING-SUCCESSOR REFUSAL, HOISTED IN FRONT OF THE WRITE.**
+  //
+  // It used to be reachable only from inside `supersedeItem`, which runs AFTER
+  // the create — so a `--supersedes` naming an item that already had a
+  // successor left the new item on disk and the old one un-retired, the exact
+  // half-done pair this path's own docblock disclosed. It is a pure question
+  // about the RETIREE's relations, so nothing about it needed the write to
+  // have happened; it was only ever asked late because that is where the
+  // function that asks it lives.
+  //
+  // `by` is passed through rather than a second sentence being written for the
+  // `add` case: the refusal's closing advice names the replacement, and on
+  // that path the honest name is the label — the item has not been minted yet.
+  // It cannot mis-fire as the idempotent case either, because a label is never
+  // equal to a recorded relation target.
+  //
+  // `supersedeItem` still asks it too, and that duplication is deliberate: it
+  // is that function's own contract, reachable from `mycontext supersede` and
+  // the MCP tool, and a guard on one side of a pair of call paths is the
+  // "fixed in one place, live in the next" gap this file keeps naming. What is
+  // NOT closed by hoisting it, and is disclosed rather than implied: an id
+  // that stops being writable BETWEEN this pre-flight and the write can still
+  // surface after the create. That one is a time-of-check/time-of-use window
+  // and only a transaction closes it — see the task's own note that atomic
+  // create-plus-retire is the larger, better guarantee.
+  const successorRefusal = existingSuccessorRefusal(target, by);
+  if (successorRefusal !== null) throw new Error(successorRefusal);
+
+  // **ASKED, on every surface that can ask** — the second half of this
+  // pre-flight's promise, and the reason it is here rather than in `cmdAdd`
+  // and `cmdEdit` twice. `supersedeItem` never prompted; the confirm lived in
+  // `mycontext supersede`, so retiring a governing item through the gate
+  // happened with no confirmation at all.
+  //
+  // UNCONDITIONAL when a surface offers the hook, deliberately: `mycontext
+  // supersede` asks about every item it retires, not only a governing one, and
+  // a narrower condition here would be a second policy about the same act
+  // wearing the same sentence. The origin refusal above is a different
+  // question — "may this caller do it" — and is not softened by an answer.
+  //
+  // BEFORE the write, like every other refusal in this pre-flight, so the
+  // "nothing was written" the gate's own refusal promises stays true when the
+  // answer is no.
+  if (ctx.confirm !== undefined && !ctx.confirm(supersedeQuestion(target, by))) {
+    throw new Error(supersedeDeclinedRefusal(target.id));
   }
 }
 
@@ -860,7 +979,12 @@ export function createItem(
   const settled = gated ? contradictionCheck(ctx, draft, createSurface(origin)) : [];
   // The pre-flight §6 path 2 needs, and it has to happen here rather than
   // after the write — see `preflightSupersede`.
-  if (gated && draft.supersedes !== null) preflightSupersede(ctx, draft.supersedes, origin);
+  // The label, not an id: nothing has been minted yet on this path — see
+  // `supersedeQuestion`. `category.prefix` is not used because the person
+  // answering typed the category, not the prefix.
+  if (gated && draft.supersedes !== null) {
+    preflightSupersede(ctx, draft.supersedes, origin, `the new ${input.type} "${title}"`);
+  }
 
   const buildItem = (itemId: string): Item => {
     const built: Item = {
@@ -1004,12 +1128,26 @@ export function createItem(
   // could not foresee leaves behind the ruling that was made rather than losing
   // it — the item is on disk either way, and re-sending the capture would
   // otherwise ask the same question again.
-  if (draft.supersedes !== null && settled.some((c) => c.id === draft.supersedes)) {
-    supersedeItem(ctx, {
+  //
+  // **Its message is CARRIED, not discarded**, and that was a real hole: the
+  // gated path retired an item, stood it down and wrote two relation edges,
+  // and the only thing printed was "created <id>". A person who had just
+  // confirmed the retirement was told nothing about whether it happened, and
+  // under `--yes` there was neither a prompt nor a line — the act was
+  // invisible on the surface that performed it. `INV-nothing-is-dropped-
+  // silently` reads on an ACT as much as on a field.
+  const retirement = draft.supersedes !== null && settled.some((c) => c.id === draft.supersedes)
+    ? supersedeItem(ctx, {
       id: draft.supersedes, by: id, origin,
       reason: `settled by the contradiction gate at capture: ${id} replaces it`,
-    });
-  }
+    })
+    : null;
+  // One line, not two: `MutationResult.message` is a single sentence-run every
+  // surface prints as one, so the prefix comes off rather than a second
+  // `my_context:` landing mid-line.
+  const retired = retirement === null
+    ? ''
+    : ` ${retirement.message.replace(/^my_context: /, '')}`;
 
   // Gated on the rule having actually fired — not merely on the resulting
   // status — so a caller that explicitly asks for `draft` on a non-normative
@@ -1056,7 +1194,7 @@ export function createItem(
     status: item.status,
     filePath: item.filePath,
     message:
-      `my_context: created ${id} (${item.status}) at ${item.filePath}.${suffix}${audited}`,
+      `my_context: created ${id} (${item.status}) at ${item.filePath}.${suffix}${retired}${audited}`,
   };
 }
 
@@ -1632,7 +1770,7 @@ export function updateItem(
     ? contradictionCheck(ctx, editDraft, updateSurface(origin))
     : [];
   if (contradictionGated && editDraft.supersedes !== null) {
-    preflightSupersede(ctx, editDraft.supersedes, origin);
+    preflightSupersede(ctx, editDraft.supersedes, origin, item.id);
   }
 
   // Taken immediately before the assignments, so `changedFields` below reports
@@ -1758,12 +1896,19 @@ export function updateItem(
       ctx, { id: item.id, basis: contradictionBasis(item) }, editSettled, editDraft, origin,
     );
   }
-  if (editDraft.supersedes !== null && editSettled.some((c) => c.id === editDraft.supersedes)) {
-    supersedeItem(ctx, {
-      id: editDraft.supersedes, by: item.id, origin,
-      reason: `settled by the contradiction gate on an edit: ${item.id} replaces it`,
-    });
-  }
+  // Carried into the message rather than discarded, for `createItem`'s stated
+  // reason: an edit that also retired another item said only "updated <id>",
+  // so the act nobody can undo was the one act the surface did not report.
+  const retirement =
+    editDraft.supersedes !== null && editSettled.some((c) => c.id === editDraft.supersedes)
+      ? supersedeItem(ctx, {
+        id: editDraft.supersedes, by: item.id, origin,
+        reason: `settled by the contradiction gate on an edit: ${item.id} replaces it`,
+      })
+      : null;
+  const retired = retirement === null
+    ? ''
+    : ` ${retirement.message.replace(/^my_context: /, '')}`;
   // **The no-lapse half of §7.** The escape hatch and the re-affirmation are
   // the two ways of saying "this write did not change what the item MEANS",
   // and both re-stamp `summary_of`. Every verdict about this item is keyed to
@@ -1779,7 +1924,8 @@ export function updateItem(
     status: item.status,
     filePath: item.filePath,
     message:
-      `my_context: updated ${item.id} (${item.status}).${inertFieldNote(ctx, item)}${audited}`,
+      `my_context: updated ${item.id} (${item.status}).${inertFieldNote(ctx, item)}`
+      + `${retired}${audited}`,
   };
 }
 
@@ -1923,7 +2069,30 @@ export function acknowledgeFinding(ctx: MutationContext, input: AcknowledgeInput
 /**
  * Never deletes and never drops content (spec §10): the retired item keeps
  * its file, body, observations and existing relations — `status` and
- * `validUntil` move, and one relation is added.
+ * `validUntil` move, one relation is added, and the item is STOOD DOWN.
+ *
+ * ── STANDING DOWN IS PART OF RETIRING, NOT A SECOND CALL ────────────────────
+ *
+ * `always: true` and `severity: 'hard'` are cleared here, in the same act, for
+ * exactly the reason both relation directions are written here rather than
+ * left to a caller: two things that must always be true together must not be
+ * two calls that can diverge. Until 2026-09-08 they were, and the corpus had
+ * measured the divergence — 60 retired items, of which SEVEN still carried
+ * `severity: hard` (two open questions, a requirement and three known issues)
+ * and one, `RULE-delegate-to-subagents-by-default-to-preserve-the-context`,
+ * was superseded and still `always: true`.
+ *
+ * **This was never a delivery bug and the fix is not for one.** `isEligible`
+ * (select.ts) filters `RETIRED_STATUSES` out before a pin can matter, so the
+ * first tier held the whole time — which is why nobody noticed. What the
+ * fields do is SURVIVE AS DATA, read by counts, reports, the pinned-set review
+ * and anything written later by somebody who reasonably assumes a pinned item
+ * is a live one. See `standDownFields` (select.ts), which owns the predicate
+ * so `doctor`'s `retired_still_binding` asks the identical question of the
+ * items retired before this existed.
+ *
+ * It is PROSPECTIVE: this function stands down what it retires and repairs
+ * nothing it finds. See the idempotent early return for why.
  *
  * BOTH directions are written. The `supersedes` edge goes onto the
  * *replacement*, so the surviving item carries the pointer to its own history
@@ -1942,6 +2111,40 @@ export function acknowledgeFinding(ctx: MutationContext, input: AcknowledgeInput
  * function changes `createItem`'s dedup keys, so it does not make that
  * pre-existing gap any wider.
  */
+/**
+ * **The sentence a stood-down field leaves behind on the item itself.**
+ *
+ * `INV-nothing-is-dropped-silently` in its standing form: an item that was
+ * pinned mattered enough for somebody to pin it, so a reader who later wonders
+ * why a once-pinned rule is quiet gets an answer on the file rather than a
+ * mystery plus an audit log they would have to know to go looking in. The
+ * audit row records the same act for a machine; this records it for a person
+ * reading the item.
+ *
+ * On the RETIREE, not the replacement — unlike the supersede `reason`, which
+ * goes on the replacement because it explains what the SUCCESSOR is for. This
+ * explains what happened to THIS item, and the retiree is the only file a
+ * reader who asks that question has open.
+ *
+ * The date is `today()`, the same stamp `validUntil` takes in the same act, so
+ * the two cannot disagree about when the retirement happened.
+ *
+ * Shape constraints, all of them enforced by `validateObservationText`: one
+ * line, no "#word" away from the end, and it must not END in a parenthetical
+ * (which the reader would silently lift into the observation's `context`
+ * field). The closing clause is prose for that last reason and not decoration.
+ */
+function standDownNote(fields: readonly ('always' | 'severity')[], by: string): string {
+  const clauses = fields.map((f) => (f === 'always'
+    ? 'the pin was cleared, so "always" is now false and it no longer asks to be injected every session'
+    : 'the binding severity was dropped, so "severity" is now "soft" instead of "hard"'));
+  return (
+    `Stood down on ${today()} when ${by} superseded it: ${clauses.join('; and ')}. ` +
+    `Nothing else was changed and nothing was deleted — a retired item keeps its file, its body, ` +
+    `its observations and its relations, and stops claiming to govern.`
+  );
+}
+
 export function supersedeItem(ctx: MutationContext, input: SupersedeInput): MutationResult {
   if (input.id === input.by) {
     throw new Error(`my_context: ${input.id} cannot supersede itself.`);
@@ -2011,6 +2214,14 @@ export function supersedeItem(ctx: MutationContext, input: SupersedeInput): Muta
   const backWired = retired.relations.some(
     (r) => r.type === SUPERSEDED_BY && r.target === replacement.id,
   );
+  // NOT a stand-down point, deliberately: this return's own message says
+  // "already superseded ... Nothing changed", and clearing a field here would
+  // make that sentence false. The stand-down is PROSPECTIVE — it belongs to
+  // the act of retiring, and this call performs no act. Items retired before
+  // it existed are surfaced by `doctor`'s `retired_still_binding` instead,
+  // where a person can rule on each one; a repeat `supersede` quietly
+  // repairing them would be a corpus edit nobody asked for, hidden inside a
+  // no-op.
   if (alreadyWired && backWired && retired.status === 'superseded') {
     return {
       id: retired.id,
@@ -2054,11 +2265,36 @@ export function supersedeItem(ctx: MutationContext, input: SupersedeInput): Muta
   const successorRefusal = existingSuccessorRefusal(retired, replacement.id);
   if (successorRefusal !== null) throw new Error(successorRefusal);
 
+  // ── RETIREMENT STANDS THE ITEM DOWN, IN THE SAME ACT ───────────────────
+  //
+  // See `standDownFields` for what moves and why it moves HERE rather than in
+  // a caller. Computed before the assignments below because the note it
+  // produces has to name the values the item HAD.
+  const stoodDown = standDownFields(retired);
+
   // Content is never removed — only the lifecycle fields move (spec §10)
   // and this one relation is ADDED. The retiree's own relations, body and
-  // observations are untouched.
+  // observations are untouched, except for the one observation the stand-down
+  // adds to RECORD itself (`INV-nothing-is-dropped-silently`): a field cleared
+  // with no trace is exactly the silent drop that invariant forbids, and an
+  // item somebody once pinned deserves an answer to "why is this quiet now?"
+  // on the item itself rather than only in the audit log.
   retired.status = 'superseded';
   retired.validUntil = today();
+  if (stoodDown.length > 0) {
+    retired.always = false;
+    retired.severity = 'soft';
+    // Through `normalizeObservations`, never pushed raw, for the reason the
+    // supersede reason is: an uncollapsed string is hashed uncollapsed and
+    // read back collapsed, which is a permanent checksum mismatch that
+    // `doctor` reports as a hand edit.
+    retired.observations.push(...normalizeObservations([{
+      category: 'supersession',
+      text: standDownNote(stoodDown, replacement.id),
+      tags: [],
+      context: null,
+    }]));
+  }
   if (!backWired) retired.relations.push({ type: SUPERSEDED_BY, target: replacement.id });
   persist(ctx, retired);
 
@@ -2095,7 +2331,14 @@ export function supersedeItem(ctx: MutationContext, input: SupersedeInput): Muta
   // learn what replaced what.
   const audited = auditMutation(
     ctx, 'supersede', input.origin ?? 'human', retired.id,
-    { fields: ['status', 'relations', 'validUntil'], note: `by ${replacement.id}` },
+    // `stoodDown` is spread rather than always listed: `fields` means "what
+    // this write MOVED", and naming `always` on a retirement that found it
+    // already false would put an echo in the log — the same reason
+    // `snapshotFields`/`movedFields` exist for `updateItem`.
+    {
+      fields: ['status', 'relations', 'validUntil', ...stoodDown],
+      note: `by ${replacement.id}`,
+    },
   );
 
   return {
@@ -2105,6 +2348,15 @@ export function supersedeItem(ctx: MutationContext, input: SupersedeInput): Muta
     filePath: retired.filePath,
     message:
       `my_context: ${retired.id} is now superseded by ${replacement.id}. ` +
-      `Nothing was deleted — the file remains and the item stays searchable.${audited}`,
+      `Nothing was deleted — the file remains and the item stays searchable.` +
+      // SAID, not merely recorded. The observation and the audit row are for a
+      // reader who comes back later; this is for the person standing here, who
+      // asked to retire an item and would otherwise learn only from a diff
+      // that the same act unpinned it.
+      `${stoodDown.length === 0 ? '' : ` It was also stood down: ${
+        stoodDown.map((f) => (f === 'always'
+          ? '"always" is now false'
+          : '"severity" is now "soft"')).join(' and ')
+      }, recorded as an observation on ${retired.id}.`}${audited}`,
   };
 }

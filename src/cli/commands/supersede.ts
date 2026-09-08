@@ -1,7 +1,8 @@
 import { COMMAND_FLAGS } from '../../core/command-flags.ts';
-import { supersedeItem, type MutationContext } from '../../core/mutate.ts';
+import { supersedeItem, supersedeQuestion, type MutationContext } from '../../core/mutate.ts';
 import { globalLayerRefusal } from '../../core/persist.ts';
 import { existingSuccessorRefusal } from '../../core/relations.ts';
+import { standDownFields } from '../../core/select.ts';
 import type { Item } from '../../core/types.ts';
 import type { Workspace } from '../../core/workspace.ts';
 import { emitLoadErrors, openMutateContext } from './context.ts';
@@ -122,6 +123,26 @@ function cmdSupersede(ws: Workspace, args: string[], out: Emit): number {
     out(`  today       ${retiredInjection.phrase}`);
     out(`  after       not injected (status "superseded"); the file, its body, its observations`);
     out(`              and its relations all stay, and it stays searchable`);
+    // **The stand-down is part of what is being approved, so it is previewed.**
+    // `supersedeItem` clears `always` and drops a `hard` severity in the same
+    // act (see its doc comment), and a person who pinned this item is entitled
+    // to learn that from the approval rather than from a diff afterwards. The
+    // line is drawn only when there is something to clear; `standDownFields`
+    // is the same predicate the write and `doctor` both ask, so the preview
+    // cannot promise a clearing the write does not perform.
+    //
+    // One line per field rather than one joined line: the preview is a fixed
+    // two-column table and a joined sentence naming both fields runs past the
+    // 100-column budget `format.ts` renders every other table at.
+    const standingDown = standDownFields(retired);
+    if (standingDown.length > 0) {
+      standingDown.forEach((field, n) => {
+        out(`  ${n === 0 ? 'stood down' : '          '}  ${field === 'always'
+          ? '"always" -> false; it stops being pinned'
+          : '"severity" -> "soft"; it stops claiming to bind'}`);
+      });
+      out(`              recorded as an observation on the item, not cleared silently`);
+    }
     out('');
     out(`  replaced by ${replacement.id}`);
     out(`  type        ${replacement.type}`);
@@ -142,10 +163,16 @@ function cmdSupersede(ws: Workspace, args: string[], out: Emit): number {
     }
     out('');
 
-    if (!confirmAction(
-      args, out,
-      `Supersede ${retired.id} ("${retired.title}") with ${replacement.id}?`,
-    )) return 1;
+    // `supersedeQuestion` (core/mutate.ts) owns this sentence now, and it is
+    // imported rather than kept here because the gated `--supersedes <id>`
+    // path asks the same question from `preflightSupersede` — two spellings of
+    // one prompt is how a person learns to read only half of it.
+    //
+    // This command does NOT set `ctx.confirm`, which is what stops the prompt
+    // being asked twice: `supersedeItem` is reached directly from here, after
+    // this answer, and the pre-flight that consults the hook is on the other
+    // path.
+    if (!confirmAction(args, out, supersedeQuestion(retired, replacement.id))) return 1;
 
     // `origin: 'human'` is required, not decorative: `supersedeItem` refuses
     // any non-human caller retiring a governing normative item, which is the

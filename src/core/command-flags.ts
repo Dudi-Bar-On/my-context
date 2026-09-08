@@ -50,12 +50,14 @@
  * one-shot delivery override with a flat spec of its own; and `mycontext link`, the same day
  * again, the CLI spelling `link_items` had and the terminal did not), and again 2026-09-06
  * (`mycontext handover`, the ask on demand — `plan:handover seq:14`), and again 2026-09-07
- * (`mycontext conversation`, the archive's index and scanner — `plan:archive seq:1`),
- * over the **45** commands
- * the CLI dispatches: 38 registered by `cli/commands/index.ts`'s column of side-effect
+ * (`mycontext conversation`, the archive's index and scanner — `plan:archive seq:1`), and
+ * again 2026-09-08 (`mycontext contribution`, the per-item delivery baseline —
+ * `plan:loop seq:1`),
+ * over the **46** commands
+ * the CLI dispatches: 39 registered by `cli/commands/index.ts`'s column of side-effect
  * imports, and 7 more registered in `cli/index.ts` itself.
  *
- *   | 41 | have a SEPARABLE flag spec — a declarative list, liftable as it is |
+ *   | 42 | have a SEPARABLE flag spec — a declarative list, liftable as it is |
  *   |  0 | read their flags INLINE where they are used, with no spec to lift  |
  *   |  1 | resists: `edit`, whose accepted set is computed per workspace      |
  *   |  3 | take no flags at all — `show`, `rebuild`, `help`                   |
@@ -65,15 +67,17 @@
  * because they refused no unknown flag: a command with nothing to disagree
  * with cannot be checked, so nothing could tell a builder that the command it
  * had composed was wrong. They were given parsers rather than an exception,
- * and the row stays so that the partition still covers all 41 — and so that a
+ * and the row stays so that the partition still covers all 42 — and so that a
  * sixth command written the same way lands in a row that has a name.
  *
- * **This paragraph said 38, and 38 was neither number.** `COMMANDS` holds 32
- * when only `cli/commands/index.ts` has been imported and 39 once `cli/index.ts`
+ * **This paragraph said 38, and 38 was neither number.** `COMMANDS` holds 33
+ * when only `cli/commands/index.ts` has been imported and 40 once `cli/index.ts`
  * has, because seven commands are registered in the entry module rather than in
  * a module of their own — `show`, `help` and `rebuild`, which take no flags,
- * and the four whose specs the map below now holds; both READMEs say 39 and
- * were right while this said 38.
+ * and the four whose specs the map below now holds; both READMEs said 39 and
+ * were right while this said 38 — they now say 46, which is `COMMANDS.size`
+ * once the entry module has been imported and the figure this paragraph's own
+ * total is checked against.
  * A count in a comment is exactly the hand-kept number this repository keeps
  * finding stale, so it is no longer only a comment: `test/cli/command-flags.test.ts`
  * derives every figure above from the registry and from this map and fails if
@@ -81,7 +85,7 @@
  * commands named as absent, plus the keys of `COMMAND_FLAGS`, must be exactly
  * the registered set, so a command cannot arrive and be silently uncounted.
  *
- * **35** of the 41 are here. Twenty-one arrived with the first lift, and they
+ * **36** of the 42 are here. Twenty-one arrived with the first lift, and they
  * are the ones whose spec was already a declarative constant over a FLAT
  * surface — one command, one flag set. The other four arrived with
  * `plan:builder seq:1b` and came out of `src/cli/index.ts` itself — the entry
@@ -121,6 +125,15 @@
  * No `--yes`: it writes one per-session file under `state/` and nothing that
  * governs this project, so putting it on the approval boundary would publish a
  * deny rule for a command that changes nothing.
+ *
+ * **`mycontext contribution` is the thirty-sixth entry, and the newest** —
+ * 2026-09-08, `plan:loop seq:1`: a pure READ over the audit log answering how
+ * often each item was actually delivered into a session, split by who authored
+ * it. Born here, as the four above it were, and the flattest kind of reporting
+ * entry — the shared detail levels and nothing else, because the command takes
+ * no target and writes nothing. It is deliberately the spec the other two
+ * reporting commands carry minus their one extra switch, so a read surface
+ * offering all three offers one shape.
  *
  * **`mycontext link` is the thirty-fourth entry** — the same
  * day again, owner instruction "support relation using the cli too":
@@ -288,6 +301,12 @@ export const COMMAND_FLAGS: Record<string, FlagSpec> = {
    * act flags is required, same as `--delete`/`--disable` were the only two.
    */
   config: { allowed: ['delete', 'disable', 'set', 'unset', 'yes'], values: ['set', 'unset'] },
+  /**
+   * A read, and only a read: no target, no `--yes`, no switch that changes
+   * what is measured. The detail levels are the whole surface, so there is
+   * nothing here for a builder to get wrong.
+   */
+  contribution: { allowed: [...DETAIL_FLAGS], values: [] },
   decay: { allowed: [...DETAIL_FLAGS, 'sessions', 'all'], values: ['sessions'] },
   doctor: { allowed: [...DETAIL_FLAGS, 'quiet'], values: [] },
   export: {
@@ -934,6 +953,7 @@ export const FLAG_DECLARATIONS: Record<string, FlagDeclarations> = {
     },
     yes: YES,
   },
+  contribution: { ...DETAIL },
   decay: {
     ...DETAIL,
     sessions: {
