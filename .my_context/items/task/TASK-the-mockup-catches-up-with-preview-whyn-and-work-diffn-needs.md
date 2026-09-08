@@ -9,6 +9,8 @@ summary: "Closed without being built: a later ruling makes its premise a non-iss
 summary_of: d77f70bc0baadaef
 summary_was:
   - 2026-09-05 One sentence in the design has fallen behind the app, and another needs a decision about how it shows the formatting it describes.
+acknowledged:
+  - body_disagrees_with_meta@7cd76abea95df3a7
 scope: []
 tags:
   - v2
@@ -25,7 +27,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-08-25
 valid_until: 2026-09-07
-checksum: f26f6633a9f246e8
+checksum: a371cf7382e627fb
 plan: walk
 seq: "16"
 state: todo

@@ -24,7 +24,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-09-06
 valid_until: null
-checksum: 5265f14d4650e41a
+checksum: 8c84fe59a11047d2
 plan: handover
 seq: "12"
 state: done
@@ -73,3 +73,9 @@ unaffected and stays.
 TWO THINGS NOT TO BREAK. The stand-down path (occupancy unmeasurable) must still fire once and stay
 quiet - it is not a percentage step. And the audit row must remain able to say WHICH ask a verdict
 belongs to, or the log stops being able to answer "was this ask acted on" at all.
+
+## Observations
+- [supersession] Replaces DEC-the-ask-and-the-writing-are-two-turns-apart-so-a-flag-is: Recorded 2026-09-08. The body has named this successor in prose since 2026-09-06 and carried NO superseded_by edge, so the item read as deprecated-with-no-successor -- one of the five that retirementEdgeRefusal says this system does not offer, and one that check-cited-items reports with 7 sites citing it and nowhere to send a reader next. The edge now exists; nothing about the text changed.
+
+## Relations
+- supersedes [[DEC-the-ask-and-the-writing-are-two-turns-apart-so-a-flag-is]]

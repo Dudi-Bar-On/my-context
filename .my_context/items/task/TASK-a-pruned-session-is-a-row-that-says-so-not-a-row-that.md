@@ -9,6 +9,8 @@ summary: A session whose file is deleted disappears from the list unless it was 
 summary_of: fdeaecf0b4d98628
 summary_was:
   - 2026-09-07 When the original transcript file is deleted, the archive should show that it is gone rather than quietly forgetting the session existed.
+acknowledged:
+  - body_disagrees_with_meta@a4f0746fb32677e1
 scope:
   - src/ui/**
   - src/core/conversation-index.ts
@@ -26,7 +28,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-09-07
 valid_until: null
-checksum: cb8e3bfa93ee7707
+checksum: b45f18275e0f675b
 plan: archive
 seq: "11"
 state: todo

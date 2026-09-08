@@ -9,6 +9,8 @@ summary: The command builder loses the older of its two run buttons, so the two 
 summary_of: b0d8cf56c8531a66
 summary_was:
   - 2026-09-06 Two ways of running the same composed command on one screen return different answers.
+acknowledged:
+  - body_disagrees_with_meta@f7aa05e06572681a
 scope:
   - src/ui/public/lib/palette-defs.js
   - src/ui/read-model.ts
@@ -25,7 +27,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-09-06
 valid_until: null
-checksum: 9d1cf2532a9bc28f
+checksum: e296f4a62dfa501d
 plan: builder
 seq: "15"
 state: done

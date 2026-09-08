@@ -2,7 +2,7 @@
 id: DEC-the-documentation-screen-is-a-help-system-built-from-the
 type: decision
 title: the documentation screen is a help system built from the readmes, not a browser over every corpus document
-status: deprecated
+status: superseded
 severity: soft
 always: false
 summary: "Superseded the same day: rather than designing a help system in the console, both screens were replaced by a list and a rendered page."
@@ -25,8 +25,8 @@ source_file: null
 source_anchor: null
 source_checksum: null
 valid_from: 2026-09-05
-valid_until: 2026-09-05
-checksum: e4d9e0922d7685c7
+valid_until: 2026-09-08
+checksum: ed0cffc5639bb6d3
 ---
 
 # the documentation screen is a help system built from the readmes, not a browser over every corpus document
@@ -46,3 +46,6 @@ nobody could state, and a list plus a rendered page is a definition that fits in
 
 Its scope names two deleted files and is left as written: this decision governed a screen that no
 longer exists, so no path replaced it.
+
+## Relations
+- superseded_by [[DEC-the-documentation-and-tutorials-screens-become-one-list-and]]

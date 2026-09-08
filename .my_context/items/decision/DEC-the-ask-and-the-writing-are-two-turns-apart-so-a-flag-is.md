@@ -2,7 +2,7 @@
 id: DEC-the-ask-and-the-writing-are-two-turns-apart-so-a-flag-is
 type: decision
 title: the ask and the writing are two turns apart, so a flag is what tells them apart
-status: deprecated
+status: superseded
 severity: soft
 always: false
 summary: "Superseded: the two-ask bound assumed the window stops changing between asks, and measurement showed it does not."
@@ -21,8 +21,8 @@ source_file: null
 source_anchor: null
 source_checksum: null
 valid_from: 2026-08-27
-valid_until: 2026-09-06
-checksum: d966420ffb55bed8
+valid_until: 2026-09-08
+checksum: 4013d7f42a143ab5
 ---
 
 # the ask and the writing are two turns apart, so a flag is what tells them apart
@@ -48,3 +48,6 @@ turn passing. MAX_ASKS is gone and askStep replaced it.
 
 The anti-nagging instinct survives intact in the new shape: an ask never repeats INSIDE the percent
 it was made in, which is the thing this decision was actually protecting.
+
+## Relations
+- superseded_by [[TASK-the-handover-is-asked-for-again-at-every-percent-not-written]]

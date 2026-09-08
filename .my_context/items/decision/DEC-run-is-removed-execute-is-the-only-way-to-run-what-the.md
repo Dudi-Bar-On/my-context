@@ -7,6 +7,8 @@ severity: soft
 always: false
 summary: The command builder keeps one button that really runs things, instead of two that could disagree.
 summary_of: 96034178877ce0fa
+acknowledged:
+  - body_disagrees_with_meta@73fde50f7e0b9a83
 scope:
   - src/ui/public/lib/palette-defs.js
   - src/ui/public/screens/palette.js
@@ -20,7 +22,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-09-06
 valid_until: null
-checksum: 861156d6244d4a4f
+checksum: a03321d60072fd62
 ---
 
 # Run is removed; Execute is the only way to run what the Composer composed

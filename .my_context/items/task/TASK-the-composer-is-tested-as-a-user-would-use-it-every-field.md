@@ -9,6 +9,8 @@ summary: "Nothing on the command builder is taken on trust: every input is teste
 summary_of: bd15517bb105f2cc
 summary_was:
   - "2026-09-06 Nothing on the command builder is taken on trust: a plan is written for the whole surface, executed, and every failure fixed until it passes."
+acknowledged:
+  - body_disagrees_with_meta@c96e3e8e971d5ca3
 scope:
   - src/ui/public/screens/palette.js
   - src/ui/public/lib/palette-defs.js
@@ -30,7 +32,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-09-06
 valid_until: null
-checksum: d7b36e2a101322be
+checksum: d4710a49695d90ea
 plan: builder
 seq: "11"
 state: done

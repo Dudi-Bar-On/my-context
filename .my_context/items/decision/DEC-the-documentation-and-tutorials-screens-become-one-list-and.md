@@ -25,7 +25,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-09-05
 valid_until: null
-checksum: 2ab267ff2e21d0fd
+checksum: 8069aa051fec1281
 ---
 
 # the documentation and tutorials screens become one list, and a document opens rendered in a new tab
@@ -76,6 +76,8 @@ definition that fits in a sentence, which is exactly what the two previous attem
 
 ## Observations
 - [supersession] Replaces TASK-tutorials-what-the-screen-is-and-what-implemented-means-for: Owner ruling 2026-09-07 (plan:walk seq:140, option A). Superseded outright: one console page replaces both screens, with the measured EN/HE state beside each. A screen that was merged away cannot need a definition of what implemented means for it. plan:tuts seq:2 and library.js carry the surface that replaced it.
+- [supersession] Replaces DEC-the-documentation-screen-is-a-help-system-built-from-the: Recorded 2026-09-08. The body has named this successor in prose since 2026-09-05 and carried NO superseded_by edge, so the item read as deprecated-with-no-successor. The edge now exists; nothing about the text changed.
 
 ## Relations
 - supersedes [[TASK-tutorials-what-the-screen-is-and-what-implemented-means-for]]
+- supersedes [[DEC-the-documentation-screen-is-a-help-system-built-from-the]]
