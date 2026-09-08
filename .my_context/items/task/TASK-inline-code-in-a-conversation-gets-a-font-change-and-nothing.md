@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: A path or command written inside a sentence stands out from the words around it, the way it does in the terminal, instead of looking like ordinary prose.
-summary_of: 7d5af94e03d0af13
+summary_of: 8a63f4967c602c28
 scope:
   - src/ui/public/styles.css
   - src/ui/public/lib/markdown.js
@@ -23,7 +23,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-09-08
 valid_until: null
-checksum: f674d5b7d56b5b84
+checksum: 67bd08d77c5f9378
 plan: archive
 seq: "26"
 state: todo
@@ -157,3 +157,38 @@ THE RTL CONSTRAINT DOES NOT RELAX FOR ANY OF THIS. `code` and `pre` carry
 spans added INSIDE a highlighted block must not break that isolation - a token wrapper is a new
 inline element inside an LTR island on an RTL page, which is exactly the shape that produced a
 leading dot at the wrong end once already. Measure in both languages.
+
+OWNER RULING 2026-09-08, settling the auto-detection question: "i'll try your recommendation first
+and see if it is good enough".
+
+SO THE SCOPE IS FIXED AND IT IS THE THREE-PART RECOMMENDATION ABOVE, nothing wider:
+  1. Inline spans get the `.tvsaid .m` treatment. 10,047 occurrences.
+  2. Fences that DECLARE a language get coloured. 25 today; js/ts, bash and json are 21 of them.
+  3. Fences that declare nothing stay exactly as they are - boxed, monospace, scrollable.
+     NO AUTO-DETECTION IS BUILT.
+
+AND THE RULING IS PROVISIONAL BY HIS OWN WORDS, which changes how this should be built rather than
+only what is built. "See if it is good enough" means the 93.2% of untagged fences are the thing he
+will be judging, and he will be judging them on his own transcript rather than on a fixture.
+
+SO BUILD IT SO THE VERDICT IS CHEAP TO ACT ON:
+  - The tagged-language path and the "leave it alone" path must be ONE seam with a clear boundary,
+    so that if he says untagged fences need colour too, detection plugs in at that seam rather than
+    being threaded through the renderer. Do not scatter the language decision.
+  - Do not let the absence of detection become invisible. A reader looking at an untagged fence
+    should not have to wonder whether highlighting is broken or absent - and this project has a
+    standard about a measured zero being drawn and named. Decide whether that needs a visible
+    signal at all, and say which way and why; a chip on every code block would be worse than the
+    problem.
+
+WHAT WOULD CHANGE THE ANSWER, so the re-decision is evidence-led rather than a second guess: if he
+reports it is NOT good enough, the question is whether the untagged 345 are mostly ONE language.
+Measure that before proposing detection. A corpus whose untagged fences are 90% shell is a case for
+defaulting the language, which is not detection and carries none of its risk. A corpus that is
+genuinely mixed is the only case that justifies guessing, and even then a wrong guess paints tokens
+as though they carried meaning.
+
+AND THE MEASUREMENT THIS ITEM ALREADY ASKED FOR STILL COMES FIRST: render a real turn of his before
+choosing between the box and a tint for inline code. 4.9 spans per block is dense enough that a box
+on each could read as noise, and that is the kind of thing that looks right in a mock-up and wrong
+on a transcript.
