@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: The saved conversation looks like the terminal it came from, colours and layout included, instead of plain text in boxes.
-summary_of: 5e94caf6507d71e1
+summary_of: 10739274a188af94
 scope:
   - src/ui/**
   - src/core/conversation-index.ts
@@ -17,17 +17,17 @@ tags:
   - archive
   - "plan:archive"
   - "seq:8"
-  - "state:todo"
+  - "state:done"
 origin: human
 source_file: null
 source_anchor: null
 source_checksum: null
 valid_from: 2026-09-07
 valid_until: null
-checksum: 6178b36e43403baa
+checksum: 09b25f6e77b2b266
 plan: archive
 seq: "8"
-state: todo
+state: done
 priority: "1"
 ---
 
@@ -58,3 +58,19 @@ anyone correct it for that.
 CHECK WHAT THE TRANSCRIPT ACTUALLY HOLDS BEFORE DESIGNING THE RENDERER. The records are JSONL from
 the harness; whether they carry ANSI escapes, pre-rendered text, or structured blocks decides this
 entire task. Measure it on the owner real transcript, not on a fixture.
+
+LANDED 2026-09-08 in b15a9ea, and closed on evidence rather than on a status flip.
+
+The lead in this item was WRONG and the lane measured before believing it. Across 63,871,429
+bytes and 27,752 records, ONE record carries an ANSI escape - a Playwright timeout quoting its
+own dim call log - and 3,684 rendered fields carry none. So nothing was vendored for it: the
+transcript is structured JSON whose text blocks hold MARKDOWN, which is what the terminal itself
+renders, and the weight moved onto lib/markdown.js which was already vendored and gated.
+
+`src/ui/public/lib/ansi.js` still exists and still earns its place, but for the job that runs on
+every record rather than the one that runs on 0.004% of them: it honours SGR and REMOVES non-SGR
+sequences, so a stray [2J never renders as literal text.
+
+PINNED BY A TEST A READER CAN RUN: `e2e/conversations.spec.ts` - `a turn renders with its
+formatting, and terminal colour survives` - in both languages, and that file names this item in
+its `@basis` header.

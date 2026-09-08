@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: A saved conversation reads like a transcript of a discussion, with each speaker and time marked and the tool activity tucked out of the way.
-summary_of: e13a04691c127f8a
+summary_of: cbf431928e88ccb1
 scope:
   - src/ui/**
 tags:
@@ -15,17 +15,17 @@ tags:
   - ui
   - "plan:archive"
   - "seq:13"
-  - "state:todo"
+  - "state:done"
 origin: human
 source_file: null
 source_anchor: null
 source_checksum: null
 valid_from: 2026-09-08
 valid_until: null
-checksum: c8a1defd3a18fd75
+checksum: 28d6bd7bed4cd9f7
 plan: archive
 seq: "13"
-state: todo
+state: done
 priority: "1"
 needs: archive/7
 ---
@@ -60,3 +60,16 @@ AND ONE THING TO CHECK BEFORE COPYING IT WHOLE: that file is an EXPORT, written 
 is scrolled, searched and virtualised. Whatever of this format survives virtualised scrolling is what
 to keep - a heading per turn survives, a horizontal rule between exchanges probably does, and
 "sources collected at the end" is an export-only affordance that has no meaning in a scroll.
+
+LANDED 2026-09-08 in b15a9ea, and closed on evidence rather than on a status flip.
+
+THE FOLD IS PER RUN, NOT PER RECORD, and that is what the owner’s "49 folded 0-character rows"
+actually were. 27,813 records become 4,916 nodes, and `sum(span) === records` is asserted so
+nothing can be dropped quietly.
+
+THE EXPORT-ONLY PART WAS CORRECTLY LEFT BEHIND, which this item asked to be checked rather than
+copied whole: a heading per turn and a rule between exchanges survive virtualisation; "sources
+collected at the end" has no meaning in a scroll and was not built.
+
+PINNED BY: `e2e/conversations.spec.ts` - `the session reads as a document: who spoke, when,
+machinery folded` - in both languages, and that file names this item in its `@basis` header.
