@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: Opening a conversation lands you at the newest turns rather than at the very first one, which is also what lets it start keeping up straight away.
-summary_of: 2404196d9159641e
+summary_of: 75cf5f8cbe2659c9
 scope:
   - src/ui/public/screens/conversations.js
 tags:
@@ -15,17 +15,17 @@ tags:
   - ui
   - "plan:archive"
   - "seq:23"
-  - "state:todo"
+  - "state:done"
 origin: human
 source_file: null
 source_anchor: null
 source_checksum: null
 valid_from: 2026-09-08
 valid_until: null
-checksum: d7feafb3c9e61e6d
+checksum: 03485c5254da7009
 plan: archive
 seq: "23"
-state: todo
+state: done
 priority: "1"
 needs: archive/19
 ---
@@ -76,3 +76,27 @@ AND THE Top / End BUTTONS ALREADY EXIST (`toTop`, `toEnd`, both `button.tvjump`)
 on click. This ruling changes the DEFAULT, and the buttons must keep working unchanged - in
 particular Top must still go to the top, which is the affordance a reader needs MORE once the
 default moves to the end.
+
+CLOSED 2026-09-08, in the same lane as seq:22 and seq:20.
+
+BOTH TRAPS THIS ITEM NAMED WERE AVOIDED. applyFilter split into redraw(land): mount calls
+redraw('end') and the filter path calls redraw('top') and is unchanged in behaviour - the shared
+line was NOT edited, the two paths stopped sharing it, which is what this item required. And the
+landing is HELD with stickUntil/STICK_MS, the same mechanism refill uses, because scroller.total at
+mount is a sum of estimates rather than a measurement.
+
+AND IT FOUND A CONSEQUENCE THIS ITEM DID NOT PREDICT: toTop was DEAD FOR THREE SECONDS after
+mount. The three release listeners (wheel, keydown, pointerdown) are on the WELL, and Top is in the
+bar above it - so pressing Top during the hold did nothing at all. toTop now clears stickUntil
+itself. That is the exact shape this item warned about in the other direction: a hold must never
+become a pin.
+
+"THE END" IS THE END OF THE VIEW - the last node not filtered out - because scroller.total sums over
+view. Identical to the last node today, and the answer this item asked for: when seq:10 lands, a
+reader on a filtered document should land on the last MATCH.
+
+ONE TEST-SHAPE CONSEQUENCE, recorded because it looks like papering over and is not: openDocument
+in the spec now takes at: top | default and DEFAULTS TO PRESSING TOP, because six existing tests
+read the BEGINNING of the document - first speaker, first timestamp, first ANSI colours. Those
+tests are about the document, not about where it opens. The default landing is asserted in its own
+describe, and the comment says exactly that.

@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: Coming back to the browser shows the latest turns straight away, instead of waiting for the next scheduled check before it even looks.
-summary_of: d04617d99b9dfb97
+summary_of: 0dc1d7aeb3c8dead
 scope:
   - src/ui/public/screens/conversations.js
 tags:
@@ -15,17 +15,17 @@ tags:
   - ui
   - "plan:archive"
   - "seq:22"
-  - "state:todo"
+  - "state:done"
 origin: human
 source_file: null
 source_anchor: null
 source_checksum: null
 valid_from: 2026-09-08
 valid_until: null
-checksum: ef08f155a07e9630
+checksum: fea02166c43d5b29
 plan: archive
 seq: "22"
-state: todo
+state: done
 priority: "1"
 needs: archive/19
 ---
@@ -122,3 +122,48 @@ SO THE DELIVERABLE IS THREE THINGS, in order of how much latency each removes:
   2. TIP_MS 5000 -> 1000, with the per-tab arithmetic in the comment.
   3. THE DOUBLE-FIRE GUARD from the list above becomes load-bearing rather than tidy at 1000 ms,
      because a focus tick and a scheduled tick are now much more likely to land together.
+
+CLOSED 2026-09-08, and the number that closes it is the RETURN case rather than the interval.
+
+MEASURED END TO END, appended-to-on-screen, on two browsers:
+    tab in front, six probes      438 - 949 ms
+    returned to the tab           42 - 117 ms
+
+The second row is the whole item. There was no visibilitychange listener at all, so a reader who
+looked at the tab waited for the next SCHEDULED tick - and hidden-tab throttling meant that could
+be a minute. It is now one round trip.
+
+The ~950 ms on the first probe is where in the period the append landed, not overhead: the round
+trip adds nothing meaningful to the interval. So a watched tab is about half a second typical and
+one second worst.
+
+BUILT: onLook on BOTH document.visibilitychange and window.focus - a window raised without a tab
+change fires one and not the other - removed in stopFollowing beside tipTimer. TIP_MS is 1000, and
+the per-open-document arithmetic sits in the comment beside the constant rather than only here,
+because three tabs at 1000 ms is 10.26 ms/min and already over the 6.24 ms/min sweep. It did not go
+below 1000, as instructed.
+
+THE DOUBLE-FIRE GUARD BECAME LOAD-BEARING, as this item predicted: LOOK_GAP_MS 250 drops the
+second of the visibilitychange+focus pair, and the interval is RE-BASED on a manual tick so a look
+tick and a scheduled tick cannot collide. A test prints the count - one /tip in the 300 ms after a
+look.
+
+AND A CORRECTNESS FIX IN refill THAT NOBODY ASKED FOR AND IS RIGHT: seenBytes now takes
+walkedBytes on a truncated tail rather than the full size. Recording the full size would have
+marked the document current at a size it never read to - a hole drawn as continuity. Unreachable in
+practice (it needs 256 MB of appends while away) and exactly the big-jump class this item names.
+
+ONE THING THIS ITEM COULD NOT HAVE KNOWN, and it constrains every future test here: A GENUINELY
+HIDDEN TAB IS NOT REACHABLE IN PLAYWRIGHT. Four ways measured - newPage plus bringToFront,
+window.open, CDP Emulation.setPageVisibilityOverride (removed from the protocol) and
+Page.setWebLifecycleState frozen - and every page stays visible, because Playwright gives each page
+its own top-level window rather than a tab. The return test therefore overrides
+Document.prototype.visibilityState and dispatches the real events into the real handler, and is
+kept honest by its own first half: six seconds hidden with a real append on disk must produce ZERO
+/tip requests, which a stub the code ignored would fail. The browser own background throttling is
+the part no test can stage, and the file says so.
+
+AND THE DISCLOSURE SENTENCE LOST ITS SLOT. At 1000 ms it spelled "every 1 seconds" / "כל 1 שניות",
+and this string table has already refused count-plural constructions twice for want of a plural
+rule. The number is written into both translations, and test/ui/conversation-follow-cadence.test.ts
+holds them to TIP_MS - so the interval cannot move without both sentences moving with it.

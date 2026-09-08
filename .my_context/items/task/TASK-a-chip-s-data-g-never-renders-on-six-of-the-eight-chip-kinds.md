@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: A glyph a screen puts on a coloured chip is silently replaced by the glyph its colour class carries, so several states in the conversation archive draw the same mark.
-summary_of: 2f30c012728f571f
+summary_of: ff0c0da2216e0bbd
 scope:
   - src/ui/public/styles.css
   - src/ui/public/screens/**
@@ -16,17 +16,17 @@ tags:
   - archive
   - "plan:archive"
   - "seq:20"
-  - "state:todo"
+  - "state:done"
 origin: human
 source_file: null
 source_anchor: null
 source_checksum: null
 valid_from: 2026-09-08
 valid_until: null
-checksum: 5e983eee07e7832a
+checksum: f7b8c86e25d089f8
 plan: archive
 seq: "20"
-state: todo
+state: done
 priority: "2"
 ---
 
@@ -119,3 +119,33 @@ a comment saying WHY it is scoped - or the next reader will "fix" it back.
 AND conv.none matches by COINCIDENCE, which the implementation must not preserve by accident: it
 draws the right glyph today because the override happens to agree with its data-g, not because
 anything made them agree.
+
+CLOSED 2026-09-08, scoped as the owner ruled.
+
+A new rule `.chip.glyphed[data-g]::before` carries the glyph, with `[data-g]` in the selector for
+SPECIFICITY (0,3,1 against the colour classes 0,2,1) so it does not depend on source order. Six
+call sites opted in. The comment beside it says why it is scoped and that two glyph vocabularies
+now coexist deliberately - which this item required, so the next reader does not "fix" it back.
+
+conv.behindRow deliberately stays UNMARKED and keeps the warning triangle: it is the ordinary
+warning of the three, and the comment that used to say "no data-g, it would be dead" now says why
+it is bare on purpose.
+
+THIS ITEM NAMED THE WRONG CHARACTER, and it took rendering it to find out. The pruned chip glyph is
+recorded here as U+20E0 COMBINING ENCLOSING CIRCLE BACKSLASH. Nobody had ever seen it draw, because
+data-g never rendered on a warn chip - that is the defect. Rendered for the first time it did what
+a combining mark with no base does: swallowed the trailing space that `content: attr(data-g) " "`
+supplies and landed ON THE F of "File deleted", eating the leading space too. U+20E0, U+2298 and
+U+29B8 were drawn side by side at 3x to be sure.
+
+IT IS NOW U+29B8 CIRCLED REVERSE SOLIDUS - the same picture, a standalone character, correct
+spacing. Confirmed on screen in e2e/screens/conversations-glyphs-en.png. The ruling that five dead
+glyphs come alive was right; one of the five was not a usable character.
+
+AND conv.none IS NO LONGER A COINCIDENCE. It drew the right glyph before and after this change for
+two different reasons, and the comment now records that rather than leaving the next reader to
+assume the old behaviour was intended.
+
+TWO OF THE SIX CANNOT BE TESTED END TO END AND THAT IS NAMED RATHER THAN HIDDEN: conv.exported is
+UNREACHABLE, not merely dead, because `source` is hard-coded to live in conversation-index.ts until
+seq:4-5 ship; and conv.scanCapped needs a 256 MB transcript.
