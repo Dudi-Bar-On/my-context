@@ -1,3 +1,4 @@
+// @basis DEC-a-refresh-keeps-the-reader-s-place-or-it-asks, INSTR-testing-happens-against-the-current-corpus-and-an-exception
 /**
  * **THE READER'S PLACE ON THE INJECTION PREVIEW, AND THE TWO DISCLOSURES BESIDE
  * IT** — `plan:walk seq:64`, `seq:58` and `seq:60`, measured in a browser
@@ -57,23 +58,28 @@
  * that passes when both are wrong together. What must hold is that the sentence
  * is not the English one, is not empty, and comes back.
  */
-import { test, expect, CORPUS } from './app.ts';
+import { isolatedTest as test, expect } from './scratch-corpus.ts';
 import type { Page } from '@playwright/test';
-import path from 'node:path';
 import { recordAudit } from '../src/core/audit.ts';
-import { DIR_NAME } from '../src/core/workspace.ts';
 import { settleScreen } from './settle.ts';
 
 /**
- * `recordAudit`'s `root` is the `.my_context` directory, not the workspace —
- * `e2e/live-refresh.spec.ts` records the measurement behind this line: passing
- * `CORPUS` itself writes a stray log the running server never watches, so the
- * stream sees nothing and the affordance never appears.
+ * **THIS SPEC WRITES A RECORD, SO IT DOES NOT WRITE HERE.**
+ *
+ * The acceptance condition needs a `mutation` to ARRIVE while the picks are
+ * held, and the only honest way to make one arrive is to append one.
+ * `INSTR-testing-happens-against-the-current-corpus-and-an-exception` forbids
+ * that in this project's own corpus — *"a probe must not write injection or
+ * session records, because those become the newest rows and every latest-N
+ * reader believes them"* — so `app` is `scratch-corpus.ts`' twin: the same
+ * corpus at the same scale, on a copy this test owns and deletes.
+ *
+ * `app.myContextDir` is the `.my_context` DIRECTORY and not the workspace;
+ * `e2e/live-refresh.spec.ts` records the measurement behind that distinction —
+ * passing the workspace writes a stray log the running server never watches, so
+ * the stream sees nothing and the affordance never appears.
  */
-const MY_CONTEXT = path.join(CORPUS, DIR_NAME);
 
-/** A path a scoped item in `.demo-corpus` actually names — `preview-spilled`'s own. */
-const SCOPED_PATH = 'src/api/handler.ts';
 
 /** The preview section, and every query scoped to it. */
 const preview = (page: Page) => page.locator('[data-p="preview"]').last();
@@ -98,6 +104,35 @@ async function choosePath(page: Page, file: string): Promise<void> {
   await preview(page).locator('#pathsel').selectOption(file);
   const settled = await settleScreen(page, 'preview');
   expect(settled.settled, 'the preview never settled after the path changed').toBe(true);
+}
+
+/**
+ * **A path the picker itself offers, CHOSEN rather than named.**
+ *
+ * It used to be the literal `'src/api/handler.ts'`, measured against
+ * `.demo-corpus` because a rule there declared `src/api/**`. Over this
+ * repository's own corpus no event touches that file, `#pathsel` never offers
+ * it, and `selectOption` waited thirty seconds for an option that does not
+ * exist — a CORPUS-CONTENT ASSUMPTION reading as a broken picker. It is the
+ * same lesson `composer-write-execute.spec.ts` paid for once already: *"a
+ * hard-coded id is a corpus-content assumption that reads as a product failure
+ * the day the corpus moves."*
+ *
+ * So the path is asked for. What this test needs is only that the tool event
+ * offers SOME path and that picking it is remembered across a refresh; which
+ * file it is was never the subject.
+ */
+async function offeredPath(page: Page): Promise<string> {
+  const options = await preview(page).locator('#pathsel option').evaluateAll(
+    (nodes) => nodes.map((n) => (n as HTMLOptionElement).value).filter((v) => v !== ''),
+  );
+  expect(
+    options.length,
+    'the tool event offers no path at all, so there is no pick for a refresh to keep — '
+    + 'this corpus records no tool event against a file, which is a different scene from '
+    + 'the one the assertions below were written for',
+  ).toBeGreaterThan(0);
+  return options[0]!;
 }
 
 /** Press one of the two question buttons, and wait. */
@@ -137,11 +172,12 @@ test('a taken refresh keeps the event, the path and the question — and the ans
 
   // The reader's question: a different event, a chosen path, the cold question.
   await chooseEvent(page, 'tool');
-  await choosePath(page, SCOPED_PATH);
+  const scopedPath = await offeredPath(page);
+  await choosePath(page, scopedPath);
   await ask(page, 'cold');
   const chosen = await place(page);
   expect(chosen, 'the three controls did not take the picks this test is about')
-    .toEqual({ event: 'tool', path: SCOPED_PATH, question: 'cold' });
+    .toEqual({ event: 'tool', path: scopedPath, question: 'cold' });
   const chosenAnswer = await delivered(page);
 
   // ── THE COINCIDENCE, MEASURED AWAY ────────────────────────────────────
@@ -154,7 +190,7 @@ test('a taken refresh keeps the event, the path and the question — and the ans
   test.info().annotations.push({
     type: 'measured',
     description: `session-start/warm delivered ${landingAnswer.length} ids; `
-      + `tool@${SCOPED_PATH}/cold delivered ${chosenAnswer.length}; differ: ${answersDiffer}`,
+      + `tool@${scopedPath}/cold delivered ${chosenAnswer.length}; differ: ${answersDiffer}`,
   });
 
   // Not a permanent banner: nothing has arrived yet.
@@ -162,7 +198,7 @@ test('a taken refresh keeps the event, the path and the question — and the ans
     .toBeHidden();
 
   // A real record, through the shared stream's own tail — not a page-side fake.
-  recordAudit(MY_CONTEXT, {
+  recordAudit(app.myContextDir, {
     kind: 'mutation', op: 'update', origin: 'human',
     itemId: 'RULE-preview-picks-acceptance-synthetic', fields: ['body'],
   });
@@ -262,14 +298,30 @@ test('the path picker discloses how many items are scoped, and what the policy m
   ).not.toBeEmpty();
 
   const text = (await note.innerText()).replace(/\s+/g, ' ');
+  // **THE NUMBERS ARE FORMATTED THE WAY THE SCREEN FORMATS THEM, and that is a
+  // finding this corpus produced rather than a nicety.**
+  //
+  // This assertion built its expected substring by raw concatenation —
+  // `${scoped} of ${scoped + unscoped}` — and passed for weeks against a 760
+  // item fixture, because no count there reached four digits. Over this
+  // repository's own corpus the screen draws `197 of 1,011` and the assertion
+  // looked for `197 of 1011`. The PRODUCT is right: a reader wants the
+  // separator. The test was wrong in exactly the shape `plan:port seq:99`
+  // predicts — *"a count that is fine at 12 items and wrong at 300"* — and it
+  // could only be caught at real volume.
+  //
+  // `en-US` is not a guess: `e2e/playwright.config.ts` pins `locale: 'en-US'`
+  // for the whole suite, and `live-refresh.spec.ts` already reads budgets back
+  // through `toLocaleString('en-US')` for the same reason.
+  const said = (n: number): string => n.toLocaleString('en-US');
   // The whole corpus, not the drawn half: a sentence naming a display cap where
   // a corpus total belongs is the display cap reported as a fact.
   expect(
     text,
     'the disclosure must carry the REAL count of scoped items and the REAL total — these are '
     + 'the two numbers the owner needed in order to read an inert-looking control correctly',
-  ).toContain(`${split.scoped} of ${split.scoped + split.unscoped}`);
-  expect(text, 'and how many carry no scope of their own').toContain(String(split.unscoped));
+  ).toContain(`${said(split.scoped)} of ${said(split.scoped + split.unscoped)}`);
+  expect(text, 'and how many carry no scope of their own').toContain(said(split.unscoped));
   expect(
     text,
     'and it must name the tier the path actually narrows — the path reaches the jit tier and '

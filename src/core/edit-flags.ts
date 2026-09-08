@@ -69,9 +69,16 @@ export const EDIT_FLAGS: FlagSpec = {
     // line), and reflowing a list to add an entry is not a reason to break two
     // documents.
     'summary-unchanged',
+    // The contradiction gate's two answers, added as a pair and on their own
+    // line for the reason `summary-unchanged` has one: the lines above and
+    // below it are cited verbatim by both READMEs.
+    'distinct', 'supersedes',
     'extra', 'unlink', 'yes',
   ],
-  values: ['title', 'body', 'summary', 'scope', 'tags', 'severity', 'status', 'extra'],
+  values: [
+    'title', 'body', 'summary', 'scope', 'tags', 'severity', 'status', 'extra',
+    'distinct', 'supersedes',
+  ],
 };
 
 /**
@@ -136,6 +143,22 @@ const BUILT_IN_DECLARATIONS: FlagDeclarations = {
       + 'something slightly different - that the item is being left without one, deliberately '
       + '- and the audit row records `summary-omitted` instead. It is refused beside '
       + '`--summary`, and on an edit that was never asked for one.',
+  },
+  distinct: {
+    format: 'the id of an item the refusal named', example: 'RULE-never-log-secrets',
+    source: 'items',
+    note: 'Answer the contradiction gate: this edit and that item can BOTH be true, because '
+      + 'they are about different things. Repeatable, and every candidate the refusal named has '
+      + 'to be settled before anything is written. The ruling is recorded against the PAIR and '
+      + 'against what both items say today, so you are not asked again until one of them '
+      + 'changes its meaning.',
+  },
+  supersedes: {
+    format: 'the id of an item the refusal named', example: 'RULE-never-log-secrets',
+    source: 'items',
+    note: 'Answer the contradiction gate the other way: this item REPLACES that one, which is '
+      + 'retired in the same act with the link recorded in both directions. It routes through '
+      + 'the same code `mycontext supersede` does, so nothing retires without a successor.',
   },
   always: {
     note: 'Pin the item: inject it in full at every session start. `--always=false` clears it, '

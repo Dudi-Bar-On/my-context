@@ -128,7 +128,11 @@ test('a rationale item is ungated, because nothing governs before or after', () 
 test('neither retirement edge can be removed, and the refusal names the real remedy', () => {
   withProject((cwd) => {
     run(['add', '--summary-omitted', 'constraint', 'The old cap', '--yes'], cwd);
-    run(['add', '--summary-omitted', 'constraint', 'The new cap', '--yes'], cwd);
+    run(['add', '--summary-omitted', 'constraint', 'The new cap',
+      // Two three-word titles that differ in one word: the contradiction gate
+      // raises the old cap against the new one, and retiring the first BY the
+      // second is what these tests do next, through `mycontext supersede`.
+      '--distinct', 'CONST-the-old-cap', '--yes'], cwd);
     const old = 'CONST-the-old-cap';
     const next = 'CONST-the-new-cap';
     const retired = run(['supersede', old, '--by', next, '--yes'], cwd);
@@ -155,7 +159,11 @@ test('neither retirement edge can be removed, and the refusal names the real rem
 test('the retirement refusal arrives before the preview, not after it', () => {
   withProject((cwd) => {
     run(['add', '--summary-omitted', 'constraint', 'The old cap', '--yes'], cwd);
-    run(['add', '--summary-omitted', 'constraint', 'The new cap', '--yes'], cwd);
+    run(['add', '--summary-omitted', 'constraint', 'The new cap',
+      // Two three-word titles that differ in one word: the contradiction gate
+      // raises the old cap against the new one, and retiring the first BY the
+      // second is what these tests do next, through `mycontext supersede`.
+      '--distinct', 'CONST-the-old-cap', '--yes'], cwd);
     run(['supersede', 'CONST-the-old-cap', '--by', 'CONST-the-new-cap', '--yes'], cwd);
     const { out } = run(
       ['edit', 'CONST-the-old-cap', '--unlink', 'superseded_by', 'CONST-the-new-cap'], cwd,

@@ -167,7 +167,10 @@ test('link and unlink each record their own act, and who performed it', () => {
       type: 'rule', title: 'Rule A', body: 'A.', origin: 'human',
     });
     const b = createItem(box.ctx, {
-      type: 'rule', title: 'Rule B', body: 'B.', origin: 'human',
+      // "Rule A"/"Rule B" with one-letter bodies are near-identical text, and the
+      // contradiction gate raises the first against the second. Settled here so
+      // the LINK is what this test measures.
+      type: 'rule', title: 'Rule B', body: 'B.', origin: 'human', distinct: [a.id],
     });
 
     linkItems(box.ctx, { from: a.id, to: b.id, relation: 'constrains', origin: 'agent' });

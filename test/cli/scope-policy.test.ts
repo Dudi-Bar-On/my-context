@@ -111,7 +111,8 @@ test('the supersede preview says an unscoped item is injected nowhere under iner
   const cwd = project('inert');
   try {
     run(['add', '--summary-omitted', 'constraint', 'Pool capped at 10', '--yes'], cwd);
-    run(['add', '--summary-omitted', 'constraint', 'Pool capped at 20', '--yes'], cwd);
+    run(['add', '--summary-omitted', 'constraint', 'Pool capped at 20',
+      '--distinct', 'CONST-pool-capped-at-10', '--yes'], cwd);
     const { out } = run([
       'supersede', 'CONST-pool-capped-at-10', '--by', 'CONST-pool-capped-at-20', '--yes',
     ], cwd);

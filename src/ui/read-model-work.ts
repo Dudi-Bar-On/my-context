@@ -19,6 +19,10 @@
  */
 import path from 'node:path';
 import { injection } from '../cli/commands/injection.ts';
+// The retrieval half of the contradiction gate, imported rather than
+// duplicated — see the "Capture-time overlap" block below for why it moved out
+// of this file and what would break if a second copy of it ever appeared here.
+import { overlapScore, OVERLAP_CAP, OVERLAP_THRESHOLD } from '../core/overlap.ts';
 import { matchesAnyGlob } from '../core/paths.ts';
 import {
   anyFilterSet, filterItems, searchableRelationTypes, type ItemFilters,
@@ -280,14 +284,24 @@ export function apiGlob(ws: Workspace, url: URL): JsonResult {
  * Capture-time overlap detection (spec §4, Work): a HEURISTIC hint that two
  * texts say nearly the same thing, shown before the second is filed — never a
  * dedup rule the corpus enforces, and the screen's wording says "may already
- * say this", not "duplicate". No similarity function existed anywhere in src/
- * when this was written (grepped); this is the one, kept deliberately simple
- * and deterministic: lowercase word sets (runs of [a-z0-9], length >= 3),
- * jaccard for symmetric similarity, containment (scaled 0.8) so a short
- * draft that is a subset of a long item still surfaces.
+ * say this", not "duplicate".
  *
- * It earns its place because `type` is fixed at creation: a duplicate filed
- * under the wrong category cannot be cleanly undone afterwards.
+ * ── THE FUNCTION MOVED, AND THIS IS WHERE IT USED TO LIVE ──────────────────
+ *
+ * `overlapScore`, `OVERLAP_THRESHOLD` and `OVERLAP_CAP` were defined here
+ * until the contradiction gate needed them (design
+ * `docs/superpowers/specs/2026-09-07-contradiction-gate-design.md` §4). They
+ * are now in `core/overlap.ts`, unchanged in behaviour, and this module reads
+ * them back out of it. The move is a boundary the change FORCED rather than
+ * scope creep: the gate runs inside `core/mutate.ts`, and a mutation path
+ * must not import from `src/ui/`.
+ *
+ * `overlapScore` is re-exported by name because it is what
+ * `test/ui/read-model-work-search.test.ts` imports and what pins the metric's
+ * behaviour — threshold, cap, token rule and the 0.8 containment scale. A
+ * caller that reaches the score through this module and one that reaches it
+ * through `core/overlap.ts` are calling the same function, which is the whole
+ * point of moving it rather than copying it.
  *
  * **What the SCREEN does with this is not settled** (plan §0, open question 1).
  * The mockup's Capture screen lists the items whose SCOPE matches and says in
@@ -296,25 +310,6 @@ export function apiGlob(ws: Workspace, url: URL): JsonResult {
  * a ranked order must not be rendered until the owner rules. The function is
  * pure and tested either way; nothing here decides what is drawn.
  */
-function overlapTokens(text: string): Set<string> {
-  return new Set((text.toLowerCase().match(/[a-z0-9]+/g) ?? []).filter((w) => w.length >= 3));
-}
-
-export function overlapScore(draft: { title: string; body: string }, item: Item): number {
-  const a = overlapTokens(`${draft.title}\n${draft.body}`);
-  const b = overlapTokens(`${item.title}\n${item.body}`);
-  // Nothing to compare is 0, not NaN. A NaN sorts unpredictably and would put
-  // an empty draft anywhere in the list.
-  if (a.size === 0 || b.size === 0) return 0;
-  let common = 0;
-  for (const w of a) if (b.has(w)) common++;
-  const jaccard = common / (a.size + b.size - common);
-  const containment = common / Math.min(a.size, b.size);
-  return Math.max(jaccard, containment * 0.8);
-}
-
-const OVERLAP_THRESHOLD = 0.2;
-const OVERLAP_CAP = 5;
 
 /**
  * `POST /api/overlap` — the items a draft may already be saying.
@@ -361,6 +356,8 @@ export function apiOverlap(ws: Workspace, url: URL, body: unknown): JsonResult {
     return { status: 200, body: { candidates } };
   });
 }
+
+export { overlapScore };
 
 export function registerWorkRoutes(): void {
   const json = (fn: (ws: Workspace, url: URL) => JsonResult) =>

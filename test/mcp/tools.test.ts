@@ -1,3 +1,4 @@
+// @basis TASK-the-pinned-tier-sits-half-empty-while-sixty-nine-governing, OPENQ-does-the-pinned-tier-spend-its-spare-room-on-governing-items
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
@@ -1265,6 +1266,9 @@ test('the create_item schema exposes exactly the extra fields the config declare
   const core = new Set([
     'type', 'title', 'body', 'summary', 'summary_omitted', 'scope', 'tags', 'severity', 'always',
     'observations', 'steps', 'source_file', 'source_anchor', 'extra',
+    // The contradiction gate's two answers — instructions about a write rather
+    // than fields of an item, like `summary_omitted` beside them.
+    'distinct', 'supersedes',
   ]);
   for (const key of Object.keys(props)) {
     assert.ok(core.has(key) || declared.includes(key), `schema has undeclared property "${key}"`);

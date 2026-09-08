@@ -132,7 +132,13 @@ function fixture(): string {
   const cwd = mkdtempSync(path.join(tmpdir(), 'myctx-slash-write-'));
   assert.equal(runCli(['init'], cwd, () => {}), 0);
   run(['add', '--summary-omitted', 'constraint', 'The pool is capped at twenty', '--body', 'Twenty.', '--yes'], cwd);
-  run(['add', '--summary-omitted', 'constraint', 'The pool is capped at fifty', '--body', 'Fifty.', '--yes'], cwd);
+  // `--distinct GOVERNING`: the contradiction gate raises the twenty-cap
+  // constraint against this one, and it is right to — they are two live caps
+  // on the same pool. The fixture needs both standing (one is superseded BY
+  // the other in the `supersede` dry run below), so the ruling this fixture
+  // makes is "distinct", and it is made once here rather than in each test.
+  run(['add', '--summary-omitted', 'constraint', 'The pool is capped at fifty', '--body', 'Fifty.',
+    '--distinct', GOVERNING, '--yes'], cwd);
   run(['add', '--summary-omitted', 'decision', 'Stripe was chosen for payments'], cwd);
 
   // A draft: `create_item` through the MCP server passes `origin: 'agent'`,

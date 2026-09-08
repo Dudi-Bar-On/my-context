@@ -210,6 +210,10 @@ export const DETAIL_FLAGS = ['full', 'short', 'summary', 'json'];
 const ADD_VALUE_FLAGS = [
   'body', 'file', 'note', 'observation', 'step', 'summary', 'scope', 'tags', 'severity',
   'valid-from', 'original-id', 'extra',
+  // The contradiction gate's two answers (contradiction-gate design §5). Both
+  // take a value — an item id — so they belong in the VALUE list rather than
+  // beside `always`/`summary-omitted`, which are switches.
+  'distinct', 'supersedes',
 ];
 
 /**
@@ -1208,6 +1212,28 @@ export const FLAG_DECLARATIONS: Record<string, FlagDeclarations> = {
     scope: {
       format: 'comma-separated path globs', example: 'src/**,docs/*.md',
       note: 'The paths this item attaches to. Omitting it means the whole repository.',
+    },
+    // The contradiction gate's two answers. `source: "items"` on both: unlike
+    // `--original-id` above, each names an id that MUST already exist — it is
+    // one of the ids the refusal just printed — so a picker over the corpus
+    // offers exactly the right list.
+    distinct: {
+      format: 'the id of an item the refusal named', example: 'RULE-never-log-secrets',
+      source: 'items',
+      note: 'Answer the contradiction gate: this capture and that item can BOTH be true, '
+        + 'because they are about different things. Repeatable, and every candidate the '
+        + 'refusal named has to be settled before anything is written - a capture that settles '
+        + 'one of two is refused again, naming the one still open. The ruling is recorded '
+        + 'against the PAIR and against what both items say today, so you are not asked about '
+        + 'it again until one of them changes its meaning.',
+    },
+    supersedes: {
+      format: 'the id of an item the refusal named', example: 'RULE-never-log-secrets',
+      source: 'items',
+      note: 'Answer the contradiction gate the other way: this capture REPLACES that item, '
+        + 'which is retired in the same act, with the link recorded in both directions. It '
+        + 'routes through the same code `mycontext supersede` does, so nothing retires without '
+        + 'a successor. Abandoning the capture is the third answer and needs no flag.',
     },
     tags: {
       format: 'a comma-separated list', example: 'v2,ui',

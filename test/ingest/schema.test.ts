@@ -637,6 +637,13 @@ test('every accepted stress-matrix candidate survives createItem -> write -> par
       const out = createItem(s.ctx, {
         type: v.type, title: v.title, body: v.body, severity: v.severity,
         scope: v.scope, tags: v.tags, observations: v.observations, extra: v.extra,
+        // The stress matrix mints many near-identical titles into ONE sandbox, so
+        // the contradiction gate raises the earlier ones against each new capture.
+        // This test is about the BYTE-IDENTICAL ROUND TRIP, not about which of two
+        // stress fixtures is right, so every item already in the sandbox is settled
+        // as distinct — read off the store rather than listed, so a matrix entry
+        // added later needs no second edit here.
+        distinct: s.ctx.store.all().map((existing) => existing.id),
       });
 
       const filePath = path.join(s.root, ...out.filePath.split('/'));

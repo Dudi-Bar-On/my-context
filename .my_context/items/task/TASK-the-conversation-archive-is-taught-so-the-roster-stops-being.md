@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: The new way of reading past conversations gets written up, in both languages, like every other feature.
-summary_of: a7ea26d25054ed2e
+summary_of: a33f6a70b752dc13
 scope:
   - docs/tutorials/**
   - scripts/build-tutorial-manifest.ts
@@ -23,11 +23,12 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-09-06
 valid_until: null
-checksum: 7fbb675fa8dacf38
+checksum: d0010e56c3c6f400
 plan: archive
 seq: "6"
 state: todo
 priority: "2"
+needs: archive/7,archive/8
 ---
 
 # the conversation archive is taught, so the roster stops being red
@@ -64,3 +65,17 @@ test now forbids.
 AND THE COMMANDS IN IT ARE RUN, NOT COMPOSED. Every command and every block of output in these
 tutorials was executed against a fixture; gen-doc-examples.ts is the mechanism. A pasted-looking
 transcript nobody re-runs is what this family of documents exists to not be.
+
+HELD 2026-09-08 BY OWNER RULING: write it AFTER the viewer lands - plan:archive seq:7 (the scrollable
+document) and seq:8 (the terminal renderer).
+
+WHY, AND IT IS NOT PROCRASTINATION: those two REPLACE the transcript view. A tutorial written now
+would describe a screen already ruled wrong, and would have to explain the counting gap - 8,969
+classified records against 24,757 total on his own session - that the rebuild DISSOLVES rather than
+documents. Writing that section honestly today would mean explaining a number that is about to stop
+existing.
+
+THE RED IS ACCEPTED IN THE MEANTIME AND IS NOT HIDING ANYTHING: test/core/tutorial-manifest.test.ts
+is 5/7 because conversation.ts and conversations.js are claimed by no tutorial. It is known, filed,
+and attributable to this item. The roster was deliberately NOT edited to silence it - that roster is
+a coverage requirement and a claim with no section behind it is a false claim.

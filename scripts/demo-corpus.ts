@@ -1,4 +1,51 @@
 /**
+ * **RETIRED 2026-09-07. NOTHING RUNS THIS, AND NOTHING MAY START.**
+ *
+ * Owner ruling, in his own words: *"supersede the e2e tests that uses demo
+ * corpus, it should not be used anymore"*, under
+ * `INSTR-testing-happens-against-the-current-corpus-and-an-exception`
+ * (severity `hard`), which SUPERSEDES the decision this script was built to
+ * serve, `DEC-the-ui-is-developed-against-a-simulated-corpus-until-the`.
+ * `e2e/app.ts` now serves this repository's own corpus, and no file in `e2e/`
+ * reads `.demo-corpus` any more.
+ *
+ * ── WHY THE FILE IS STILL HERE, WHICH IS NOT SENTIMENT ────────────────────
+ *
+ * One question is open and this script is the only instrument that can answer
+ * it. `e2e/screen-parity.spec.ts` holds a SHRINK-ONLY ledger — `KNOWN_GAPS`,
+ * whose entries are a list of what each screen does not draw, and which fails
+ * BOTH when a gap appears and when a listed gap closes. Every entry below its
+ * own "RE-BASED 2026-08-23" line was measured against the corpus this script
+ * builds, and that file says plainly what was never done:
+ *
+ *     "What has NOT been done is the work of separating, per kind, 'the code
+ *      cannot draw this' from 'this corpus gives it nothing to draw'."
+ *
+ * Re-deriving that baseline against the live corpus needs both readings, and a
+ * both-ways reading needs both corpora. Deleting this before that ruling would
+ * throw away the control measurement — which is the same mistake in the other
+ * direction: acting on one number when the whole defect was that one number
+ * could not tell code from data.
+ *
+ * ── SO: DO NOT RUN IT ─────────────────────────────────────────────────────
+ *
+ * Not to make a test green, not to demonstrate a screen, not to reproduce an
+ * old report. A stand-in that is right for a gate is still a SECOND ANSWER to
+ * "what is the app looking at", and a second answer is somewhere for a wrong
+ * diagnosis to land — which is what it cost, once, measured: a morning spent
+ * reading a comment that named this fixture and reaching for it as the
+ * explanation for a defect that was a race in a test.
+ *
+ * If a spec needs one specific state — a pending revision, an undelivered
+ * session, a spill, a draft — it arranges that state in a SCRATCH WORKSPACE of
+ * its own, copied from the live corpus. `e2e/scratch-corpus.ts` is that, and
+ * `e2e/composer-write-execute.spec.ts` is the worked example.
+ *
+ * Everything below this line is the file as it stood when it was retired, kept
+ * verbatim so the control measurement is reproducible.
+ *
+ * ══════════════════════════════════════════════════════════════════════════
+ *
  * **Builds the SIMULATED corpus the UI is developed against.**
  *
  * Owner ruling, 2026-08-23 (`DEC-the-ui-is-developed-against-a-simulated-corpus-until-the`):

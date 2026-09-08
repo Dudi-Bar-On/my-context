@@ -1,3 +1,4 @@
+// @basis TASK-the-pinned-tier-sits-half-empty-while-sixty-nine-governing, OPENQ-does-the-pinned-tier-spend-its-spare-room-on-governing-items
 /**
  * `Selection.tokens` and the injection record's `tokens` field: the estimated
  * token count the budget was actually charged, frozen at injection time.

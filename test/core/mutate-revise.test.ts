@@ -236,7 +236,15 @@ test('supersede retires the old item without deleting anything', () => {
     observations: [{ category: 'note', text: 'Observed under load.', tags: [], context: null }],
     relations: [{ type: 'constrains', target: 'ADR-elsewhere' }],
   });
-  const next = createItem(s.ctx, { type: 'constraint', title: 'Pool capped at 20' });
+  const next = createItem(s.ctx, {
+    type: 'constraint', title: 'Pool capped at 20',
+    // The contradiction gate raises the 10-cap against this one, correctly: two
+    // live caps on the same pool are exactly what it exists to stop going in
+    // unexamined. These tests are about `supersedeItem` and need both items to
+    // exist first, so the ruling is made here and the supersession below is the
+    // act under test.
+    distinct: ['CONST-pool-capped-at-10'],
+  });
 
   supersedeItem(s.ctx, { id: old.id, by: next.id, reason: 'RDS instance resized.' });
 
@@ -260,7 +268,15 @@ test('supersede retires the old item without deleting anything', () => {
 test('supersede wires the relation onto the replacement', () => {
   const s = sandbox();
   const old = createItem(s.ctx, { type: 'constraint', title: 'Pool capped at 10' });
-  const next = createItem(s.ctx, { type: 'constraint', title: 'Pool capped at 20' });
+  const next = createItem(s.ctx, {
+    type: 'constraint', title: 'Pool capped at 20',
+    // The contradiction gate raises the 10-cap against this one, correctly: two
+    // live caps on the same pool are exactly what it exists to stop going in
+    // unexamined. These tests are about `supersedeItem` and need both items to
+    // exist first, so the ruling is made here and the supersession below is the
+    // act under test.
+    distinct: ['CONST-pool-capped-at-10'],
+  });
   supersedeItem(s.ctx, { id: old.id, by: next.id });
 
   assert.deepEqual(s.ctx.store.get(next.id)?.relations, [
@@ -402,7 +418,15 @@ test('superseded_by cannot be forged through link_items', () => {
   const active = createItem(s.ctx, {
     type: 'constraint', title: 'Pool capped at 10', status: 'active', origin: 'human',
   });
-  const other = createItem(s.ctx, { type: 'constraint', title: 'Pool capped at 20' });
+  const other = createItem(s.ctx, {
+    type: 'constraint', title: 'Pool capped at 20',
+    // The contradiction gate raises the 10-cap against this one, correctly: two
+    // live caps on the same pool are exactly what it exists to stop going in
+    // unexamined. These tests are about `supersedeItem` and need both items to
+    // exist first, so the ruling is made here and the supersession below is the
+    // act under test.
+    distinct: ['CONST-pool-capped-at-10'],
+  });
 
   assert.throws(
     () => linkItems(s.ctx, { from: active.id, to: other.id, relation: 'superseded_by' }),
@@ -453,7 +477,15 @@ test('the retirement-relation refusal names both orderings, not one inverted rem
 test('supersede backfills a missing superseded_by on an already-retired pair', () => {
   const s = sandbox();
   const old = createItem(s.ctx, { type: 'constraint', title: 'Pool capped at 10' });
-  const next = createItem(s.ctx, { type: 'constraint', title: 'Pool capped at 20' });
+  const next = createItem(s.ctx, {
+    type: 'constraint', title: 'Pool capped at 20',
+    // The contradiction gate raises the 10-cap against this one, correctly: two
+    // live caps on the same pool are exactly what it exists to stop going in
+    // unexamined. These tests are about `supersedeItem` and need both items to
+    // exist first, so the ruling is made here and the supersession below is the
+    // act under test.
+    distinct: ['CONST-pool-capped-at-10'],
+  });
   supersedeItem(s.ctx, { id: old.id, by: next.id });
 
   // Re-create the pre-back-reference state exactly: status superseded,
@@ -476,7 +508,15 @@ test('supersede backfills a missing superseded_by on an already-retired pair', (
 test('supersede keeps exactly one superseded_by when run twice', () => {
   const s = sandbox();
   const old = createItem(s.ctx, { type: 'constraint', title: 'Pool capped at 10' });
-  const next = createItem(s.ctx, { type: 'constraint', title: 'Pool capped at 20' });
+  const next = createItem(s.ctx, {
+    type: 'constraint', title: 'Pool capped at 20',
+    // The contradiction gate raises the 10-cap against this one, correctly: two
+    // live caps on the same pool are exactly what it exists to stop going in
+    // unexamined. These tests are about `supersedeItem` and need both items to
+    // exist first, so the ruling is made here and the supersession below is the
+    // act under test.
+    distinct: ['CONST-pool-capped-at-10'],
+  });
   supersedeItem(s.ctx, { id: old.id, by: next.id });
   supersedeItem(s.ctx, { id: old.id, by: next.id });
 
@@ -508,7 +548,15 @@ test('supersede validates the replacement id as a relation target', () => {
 test('supersede records the reason as an observation on the replacement', () => {
   const s = sandbox();
   const old = createItem(s.ctx, { type: 'constraint', title: 'Pool capped at 10' });
-  const next = createItem(s.ctx, { type: 'constraint', title: 'Pool capped at 20' });
+  const next = createItem(s.ctx, {
+    type: 'constraint', title: 'Pool capped at 20',
+    // The contradiction gate raises the 10-cap against this one, correctly: two
+    // live caps on the same pool are exactly what it exists to stop going in
+    // unexamined. These tests are about `supersedeItem` and need both items to
+    // exist first, so the ruling is made here and the supersession below is the
+    // act under test.
+    distinct: ['CONST-pool-capped-at-10'],
+  });
   supersedeItem(s.ctx, { id: old.id, by: next.id, reason: 'RDS instance resized.' });
 
   const observations = s.ctx.store.get(next.id)!.observations;
@@ -541,7 +589,15 @@ test('supersede names the unknown side of the pair', () => {
 test('supersede is idempotent', () => {
   const s = sandbox();
   const old = createItem(s.ctx, { type: 'constraint', title: 'Pool capped at 10' });
-  const next = createItem(s.ctx, { type: 'constraint', title: 'Pool capped at 20' });
+  const next = createItem(s.ctx, {
+    type: 'constraint', title: 'Pool capped at 20',
+    // The contradiction gate raises the 10-cap against this one, correctly: two
+    // live caps on the same pool are exactly what it exists to stop going in
+    // unexamined. These tests are about `supersedeItem` and need both items to
+    // exist first, so the ruling is made here and the supersession below is the
+    // act under test.
+    distinct: ['CONST-pool-capped-at-10'],
+  });
   supersedeItem(s.ctx, { id: old.id, by: next.id });
   const again = supersedeItem(s.ctx, { id: old.id, by: next.id });
 
@@ -788,7 +844,15 @@ test('an agent may supersede an active rationale item', () => {
 test('a human may supersede a governing normative item', () => {
   const s = sandbox();
   const old = createItem(s.ctx, { type: 'constraint', title: 'Pool capped at 10' });
-  const next = createItem(s.ctx, { type: 'constraint', title: 'Pool capped at 20' });
+  const next = createItem(s.ctx, {
+    type: 'constraint', title: 'Pool capped at 20',
+    // The contradiction gate raises the 10-cap against this one, correctly: two
+    // live caps on the same pool are exactly what it exists to stop going in
+    // unexamined. These tests are about `supersedeItem` and need both items to
+    // exist first, so the ruling is made here and the supersession below is the
+    // act under test.
+    distinct: ['CONST-pool-capped-at-10'],
+  });
 
   const result = supersedeItem(s.ctx, { id: old.id, by: next.id });
   assert.equal(result.created, true);
@@ -937,7 +1001,12 @@ test('linkItems refuses a self-link', () => {
 test('linkItems refuses relation "supersedes" and routes to supersede_item', () => {
   const s = sandbox();
   const a = createItem(s.ctx, { type: 'constraint', title: 'Pool cap' });
-  const b = createItem(s.ctx, { type: 'constraint', title: 'Pool cap v2' });
+  // "Pool cap v2" is a near-duplicate of "Pool cap" and the contradiction gate
+  // says so. The pair is settled as distinct because this test is about
+  // `linkItems` refusing the retirement edge, not about which cap is right.
+  const b = createItem(s.ctx, {
+    type: 'constraint', title: 'Pool cap v2', distinct: ['CONST-pool-cap'],
+  });
   assert.throws(
     () => linkItems(s.ctx, { from: a.id, to: b.id, relation: 'supersedes' }),
     /supersede_item/,
@@ -1035,14 +1104,31 @@ test('linkItems refuses an empty "to" target', () => {
 test('a repeat supersede after a status reset does not duplicate the reason observation', () => {
   const s = sandbox();
   const old = createItem(s.ctx, { type: 'constraint', title: 'Pool capped at 10' });
-  const next = createItem(s.ctx, { type: 'constraint', title: 'Pool capped at 20' });
+  const next = createItem(s.ctx, {
+    type: 'constraint', title: 'Pool capped at 20',
+    // The contradiction gate raises the 10-cap against this one, correctly: two
+    // live caps on the same pool are exactly what it exists to stop going in
+    // unexamined. These tests are about `supersedeItem` and need both items to
+    // exist first, so the ruling is made here and the supersession below is the
+    // act under test.
+    distinct: ['CONST-pool-capped-at-10'],
+  });
   supersedeItem(s.ctx, { id: old.id, by: next.id, reason: 'RDS instance resized.' });
 
   // The relation onto `next` stays wired, but the retiree's own status is
   // reset by a human — the idempotent short-circuit (relation wired AND
   // status already 'superseded') no longer applies, so this exercises the
   // real repeat path rather than the trivial early return.
-  updateItem(s.ctx, { id: old.id, status: 'active' });
+  //
+  // `distinct` on a STATUS change, and it is the contradiction gate working
+  // rather than getting in the way: bringing a retired item back to `active`
+  // is the moment it starts governing again, so it is checked against what
+  // governs now — which is the item that replaced it. Without that clause,
+  // "capture a draft, then promote it" would file an unexamined item into
+  // force through a door the gate stands beside.
+  updateItem(s.ctx, {
+    id: old.id, status: 'active', distinct: ['CONST-pool-capped-at-20'],
+  });
   supersedeItem(s.ctx, { id: old.id, by: next.id, reason: 'RDS instance resized.' });
 
   assert.equal(s.ctx.store.get(next.id)!.observations.length, 1);
@@ -1167,7 +1253,15 @@ test('valid_until survives an edit that does not move the status', () => {
 test('supersede_item refuses a reason that would be mangled into tags and context', () => {
   const s = sandbox();
   const old = createItem(s.ctx, { type: 'constraint', title: 'Pool capped at 10' });
-  const next = createItem(s.ctx, { type: 'constraint', title: 'Pool capped at 20' });
+  const next = createItem(s.ctx, {
+    type: 'constraint', title: 'Pool capped at 20',
+    // The contradiction gate raises the 10-cap against this one, correctly: two
+    // live caps on the same pool are exactly what it exists to stop going in
+    // unexamined. These tests are about `supersedeItem` and need both items to
+    // exist first, so the ruling is made here and the supersession below is the
+    // act under test.
+    distinct: ['CONST-pool-capped-at-10'],
+  });
   // A "#word" that is NOT last really is moved to the end of the line by the
   // reader, so the sentence on disk would not be the sentence given here.
   assert.throws(
@@ -1190,7 +1284,15 @@ test('supersede_item refuses a reason that would be mangled into tags and contex
 test('supersede_item keeps a trailing "#word" in the reason exactly as given', () => {
   const s = sandbox();
   const old = createItem(s.ctx, { type: 'constraint', title: 'Pool capped at 10' });
-  const next = createItem(s.ctx, { type: 'constraint', title: 'Pool capped at 20' });
+  const next = createItem(s.ctx, {
+    type: 'constraint', title: 'Pool capped at 20',
+    // The contradiction gate raises the 10-cap against this one, correctly: two
+    // live caps on the same pool are exactly what it exists to stop going in
+    // unexamined. These tests are about `supersedeItem` and need both items to
+    // exist first, so the ruling is made here and the supersession below is the
+    // act under test.
+    distinct: ['CONST-pool-capped-at-10'],
+  });
   supersedeItem(s.ctx, { id: old.id, by: next.id, reason: 'the pool was resized, see #4521' });
 
   const observation = s.ctx.store.get(next.id)!.observations

@@ -62,6 +62,13 @@ function rule(box: Sandbox, extra: Record<string, unknown> = {}): string {
     body: 'Secrets in logs outlive the incident.',
     status: 'active',
     origin: 'human',
+    // **Every rule this helper mints is the SAME rule**, title and body, so the
+    // second one in a test is a near-duplicate by construction and the
+    // contradiction gate (core/overlap.ts) says so. It is settled here, against
+    // whatever this sandbox already holds, because these tests are about the
+    // SUMMARY basis and the second rule is scaffolding — a second item to
+    // supersede, or a second one for `checkSummary` to stay silent about.
+    distinct: box.ctx.store.all().filter((i) => i.type === 'rule').map((i) => i.id),
     ...extra,
   }).id;
 }

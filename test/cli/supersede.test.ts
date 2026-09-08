@@ -50,7 +50,12 @@ function itemFile(cwd: string, type: string, id: string): string {
  * passes `origin: 'human'`, so both land `active` rather than `draft`. */
 function pair(cwd: string, scope = 'src/db/**'): { old: string; next: string } {
   run(['add', '--summary-omitted', 'constraint', 'Pool capped at 10', '--scope', scope, '--yes'], cwd);
-  run(['add', '--summary-omitted', 'constraint', 'Pool capped at 20', '--scope', scope, '--yes'], cwd);
+  // The 10-cap and the 20-cap are near-identical text and the contradiction gate
+  // raises one against the other. Settled as `distinct` here because the fixture
+  // needs both standing: retiring one BY the other is the act under test, and it
+  // is `mycontext supersede` that must perform it.
+  run(['add', '--summary-omitted', 'constraint', 'Pool capped at 20', '--scope', scope,
+    '--distinct', 'CONST-pool-capped-at-10', '--yes'], cwd);
   return { old: 'CONST-pool-capped-at-10', next: 'CONST-pool-capped-at-20' };
 }
 
@@ -215,7 +220,8 @@ test('the preview does not claim a scoped rationale item is injected', () => {
 test('the preview says an unscoped active item is injected on any file, not never', () => {
   withProject((cwd) => {
     run(['add', '--summary-omitted', 'constraint', 'Pool capped at 10', '--yes'], cwd);
-    run(['add', '--summary-omitted', 'constraint', 'Pool capped at 20', '--yes'], cwd);
+    run(['add', '--summary-omitted', 'constraint', 'Pool capped at 20',
+      '--distinct', 'CONST-pool-capped-at-10', '--yes'], cwd);
 
     const { out } = run([
       'supersede', 'CONST-pool-capped-at-10', '--by', 'CONST-pool-capped-at-20', '--yes',
@@ -382,7 +388,12 @@ test('supersede is idempotent through the CLI', () => {
 test('superseding an already-retired item with a DIFFERENT replacement is refused, before any preview', () => {
   withProject((cwd) => {
     const { old, next } = pair(cwd);
-    run(['add', '--summary-omitted', 'constraint', 'Pool capped at 30', '--scope', 'src/db/**', '--yes'], cwd);
+    // BOTH caps, and the second one is the rule working: every candidate the
+    // gate raises has to be settled, so a write that settles one of two is
+    // refused again naming the one still open.
+    run(['add', '--summary-omitted', 'constraint', 'Pool capped at 30', '--scope', 'src/db/**',
+      '--distinct', 'CONST-pool-capped-at-10', '--distinct', 'CONST-pool-capped-at-20',
+      '--yes'], cwd);
     const third = 'CONST-pool-capped-at-30';
 
     assert.equal(run(['supersede', old, '--by', next, '--yes'], cwd).code, 0);

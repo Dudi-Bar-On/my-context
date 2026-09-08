@@ -1,3 +1,4 @@
+// @basis REQ-configure-and-the-simulator-agree-on-the-budgets-whatever, INSTR-testing-happens-against-the-current-corpus-and-an-exception
 /**
  * **The budget simulator can reach the budget in force, and says the true one.**
  *
@@ -20,13 +21,30 @@
  * `REQ-configure-and-the-simulator-agree-on-the-budgets-whatever` is the rule it
  * breaks: agreeing on a value is not enough if one screen cannot display it.
  *
- * **This test RESTORES the budget it writes.** `e2e/app.ts` refuses to start
- * without the one shared `.demo-corpus`, and the workers run in parallel, so a
- * spec that leaves a budget changed leaves it changed underneath every other
- * spec — the hazard `plan:execute seq:7` names in its own words. Restoring is
- * not politeness; it is the difference between a fixture and a mutation.
+ * **THIS TEST WRITES A BUDGET, SO IT OWNS THE CORPUS IT WRITES TO.**
+ *
+ * It used to write into the one shared fixture and put the value back in a
+ * `finally`, and said so: *"Restoring is not politeness; it is the difference
+ * between a fixture and a mutation."* That reasoning was right and the fixture
+ * is gone. Under
+ * `INSTR-testing-happens-against-the-current-corpus-and-an-exception` a budget
+ * write into this project's own corpus is exactly the litter the instruction
+ * names, so `app` here is `scratch-corpus.ts`' twin — the same corpus at the
+ * same scale, on a copy this test owns and deletes.
+ *
+ * **AND THE SKIP CAME OUT WITH IT.** This spec ran on `chromium` alone, and the
+ * note explaining why named its own remedy: *"The real remedy is a per-spec
+ * workspace, which the harness does not offer today."* It does now. The two
+ * projects wrote and restored the same `jit` value on top of each other — the
+ * first run's restore landing while the second was asserting, measured green on
+ * chromium and red on chrome, same code, same moment. With a workspace per test
+ * there is nothing shared to race over, so both projects run.
+ *
+ * The restore below stays. Not for isolation any more — the workspace is
+ * thrown away either way — but because putting the value back and reading it
+ * again is the second half of the round trip this test is about.
  */
-import { expect, test } from './app.ts';
+import { isolatedTest as test, expect } from './scratch-corpus.ts';
 
 const CONFIG = '[data-p="config"]';
 const SIM = '[data-p="simulate"]';
@@ -35,27 +53,7 @@ const SIM = '[data-p="simulate"]';
  *  could coincide with a default anywhere. */
 const ABOVE_THE_LITERAL = 15_350;
 
-test('the slider reaches a budget above the mockup literal, and shows the true value', async ({ app }, testInfo) => {
-  // **ONE PROJECT, and that is a fixture decision rather than reduced coverage.**
-  //
-  // This spec WRITES a budget, and the two projects run in parallel against the
-  // one shared `.demo-corpus` that `e2e/app.ts` refuses to start without. Run in
-  // both, the two copies of this test write and restore the same `jit` value on
-  // top of each other: the first run's restore lands while the second is
-  // asserting, and the second fails on a number the first put back. Measured
-  // exactly that way on 2026-08-28 — green on chromium, red on chrome, same
-  // code, same moment.
-  //
-  // The subject is a DOM clamp on `input[type=range]`, which is identical in
-  // both projects — `chrome` is the same engine through a different channel
-  // (`e2e/playwright.config.ts`: "they are not two engines"). So a second run
-  // buys no engine coverage and costs determinism.
-  //
-  // The real remedy is a per-spec workspace, which the harness does not offer
-  // today; `e2e/live-refresh.spec.ts`'s REQ test writes the same budget and has
-  // the same latent race, currently unhit because it runs alone in its file.
-  test.skip(testInfo.project.name !== 'chromium',
-    'writes a shared-fixture budget; see the note above');
+test('the slider reaches a budget above the mockup literal, and shows the true value', async ({ app }) => {
 
   const { page } = app;
 

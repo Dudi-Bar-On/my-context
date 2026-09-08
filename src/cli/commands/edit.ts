@@ -33,7 +33,7 @@ import { injection } from './injection.ts';
 import { confirmAction } from './review.ts';
 import { fieldDiff } from './revision-view.ts';
 import {
-  boolFlag, flag, flagOccurrences, listFlag, positionals, registerCommand, type Emit,
+  boolFlag, dedupe, flag, flagOccurrences, listFlag, positionals, registerCommand, type Emit,
 } from './registry.ts';
 
 /**
@@ -1003,6 +1003,18 @@ function cmdEdit(ws: Workspace, args: string[], out: Emit): number {
     // `updateItem` with an empty patch would write a revision of nothing and
     // print "updated" for an edit that changed no field.
     if (Object.keys(patch).length > 2) {
+      // **The contradiction gate's two answers, attached LAST** (design §5).
+      // They are read from argv up with everything else and attached here, one
+      // line before the call, because both `<= 2` counts above ask "did this
+      // invocation name a FIELD" — and a disposition names none. Attached
+      // earlier, `mycontext edit <id> --distinct <other>` would report itself
+      // as an edit, stage a revision of nothing, and print "updated" for a
+      // call that moved no field. They are answers to a refusal the gate
+      // raised, never an edit in themselves.
+      const distinct = dedupe(listFlag(args, 'distinct') ?? []);
+      if (distinct.length > 0) patch.distinct = distinct;
+      const supersedes = flag(args, 'supersedes');
+      if (supersedes !== null) patch.supersedes = supersedes;
       const result = updateItem(ctx, patch);
       say(out, result.message);
     }

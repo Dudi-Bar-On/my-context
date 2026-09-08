@@ -83,7 +83,13 @@ test('different content at the same anchor creates a new item, not a refusal', (
   };
 
   const first = createItem(s.ctx, { ...base, body: 'Via an emailed link.' });
-  const second = createItem(s.ctx, { ...base, body: 'Via SMS, within 10 minutes.' });
+  // The contradiction gate raises the first against the second, correctly: same
+  // title, same subject. These tests are about ID ALLOCATION, so the pair is
+  // settled as distinct and the allocation is what is measured.
+  const second = createItem(s.ctx, {
+    ...base, body: 'Via SMS, within 10 minutes.',
+    distinct: ['REQ-users-can-reset-their-password'],
+  });
 
   assert.equal(first.created, true);
   assert.equal(second.created, true);
@@ -112,6 +118,12 @@ test('a revision at the same anchor unblocks supersede', () => {
   const original = createItem(s.ctx, { ...base, body: 'Via an emailed link.' });
   const revision = createItem(s.ctx, {
     ...base, body: 'Via SMS, within 10 minutes.', id: `${original.id}-r2`,
+    // A revision of the original IS the case the gate exists for, and the
+    // supersession below is what settles it — but `--supersedes` would perform
+    // that supersession inside `createItem`, and it is `supersedeItem` being
+    // measured here. So the pair is ruled distinct at capture and retired by the
+    // explicit call, which is the act under test.
+    distinct: [original.id],
   });
 
   assert.equal(revision.created, true);
@@ -139,7 +151,12 @@ test('source paths are normalized to POSIX before they are stored', () => {
 test('a colliding title with different content gets a suffixed id', () => {
   const s = sandbox();
   const first = createItem(s.ctx, { type: 'constraint', title: 'Pool cap', body: 'One.' });
-  const second = createItem(s.ctx, { type: 'constraint', title: 'Pool cap', body: 'Two.' });
+  // The contradiction gate raises the first against the second, correctly: same
+  // title, same subject. These tests are about ID ALLOCATION, so the pair is
+  // settled as distinct and the allocation is what is measured.
+  const second = createItem(s.ctx, {
+    type: 'constraint', title: 'Pool cap', body: 'Two.', distinct: ['CONST-pool-cap'],
+  });
 
   assert.equal(first.id, 'CONST-pool-cap');
   assert.equal(second.id, 'CONST-pool-cap-2');
@@ -272,8 +289,14 @@ test('an explicit id in the shape this project actually mints is still accepted'
   // which is why this guard is "one safe filename segment" and not
   // `slugify`'s grammar.
   const accepted = ['CONST-pool-cap', 'CONST-pool-cap-2', 'CONST-pool-cap-r2', 'CONST_Pool.Cap', '0'];
+  // Every title here is `Accepted shape <n>`, so each one is near-identical text
+  // to the ones before it and the contradiction gate says so from the second
+  // onwards. They are distinct — the titles are scaffolding for an ID test — so
+  // each capture settles the ones already standing.
   accepted.forEach((id, i) => {
-    const result = createItem(s.ctx, { type: 'constraint', title: `Accepted shape ${i}`, id });
+    const result = createItem(s.ctx, {
+      type: 'constraint', title: `Accepted shape ${i}`, id, distinct: accepted.slice(0, i),
+    });
     assert.equal(result.created, true, `${id} was refused`);
     assert.equal(result.id, id);
   });
@@ -327,7 +350,13 @@ test('a Windows-style scope glob does not create a spurious second item', () => 
 test('re-capturing the same title with a different severity is not a no-op duplicate', () => {
   const s = sandbox();
   const first = createItem(s.ctx, { type: 'constraint', title: 'Pool cap', body: 'One.', severity: 'soft' });
-  const second = createItem(s.ctx, { type: 'constraint', title: 'Pool cap', body: 'One.', severity: 'hard' });
+  // The contradiction gate raises the first against the second, correctly: same
+  // title, same subject. These tests are about ID ALLOCATION, so the pair is
+  // settled as distinct and the allocation is what is measured.
+  const second = createItem(s.ctx, {
+    type: 'constraint', title: 'Pool cap', body: 'One.', severity: 'hard',
+    distinct: ['CONST-pool-cap'],
+  });
 
   assert.equal(second.created, true);
   assert.notEqual(second.id, first.id);
@@ -337,7 +366,13 @@ test('re-capturing the same title with a different severity is not a no-op dupli
 test('re-capturing the same title with a different always is not a no-op duplicate', () => {
   const s = sandbox();
   const first = createItem(s.ctx, { type: 'constraint', title: 'Pool cap', body: 'One.', always: false });
-  const second = createItem(s.ctx, { type: 'constraint', title: 'Pool cap', body: 'One.', always: true });
+  // The contradiction gate raises the first against the second, correctly: same
+  // title, same subject. These tests are about ID ALLOCATION, so the pair is
+  // settled as distinct and the allocation is what is measured.
+  const second = createItem(s.ctx, {
+    type: 'constraint', title: 'Pool cap', body: 'One.', always: true,
+    distinct: ['CONST-pool-cap'],
+  });
 
   assert.equal(second.created, true);
   assert.notEqual(second.id, first.id);
@@ -349,7 +384,12 @@ test('re-capturing the same title with a different always is not a no-op duplica
 test('a third identical call to a colliding title is still a duplicate, not a third item', () => {
   const s = sandbox();
   createItem(s.ctx, { type: 'constraint', title: 'Pool cap', body: 'One.' });
-  const second = createItem(s.ctx, { type: 'constraint', title: 'Pool cap', body: 'Two.' });
+  // The contradiction gate raises the first against the second, correctly: same
+  // title, same subject. These tests are about ID ALLOCATION, so the pair is
+  // settled as distinct and the allocation is what is measured.
+  const second = createItem(s.ctx, {
+    type: 'constraint', title: 'Pool cap', body: 'Two.', distinct: ['CONST-pool-cap'],
+  });
   // Identical to the SIBLING (base-2), not the base — dedup must inspect the
   // whole family, not just the base id, or this mints a third item.
   const third = createItem(s.ctx, { type: 'constraint', title: 'Pool cap', body: 'Two.' });
@@ -415,6 +455,9 @@ test('a requirement and a constraint at the same anchor do not collide', () => {
   const constraint = createItem(s.ctx, {
     type: 'constraint', title: 'Reset flow limit', body: 'Y.',
     sourceFile: 'docs/prd/auth.md', sourceAnchor: '## Password reset',
+    // Two items about the same reset flow: the gate raises one against the
+    // other and this test is about the ANCHOR key, not about which is right.
+    distinct: ['REQ-reset-flow'],
   });
 
   assert.equal(req.created, true);

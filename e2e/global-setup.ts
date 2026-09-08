@@ -1,3 +1,4 @@
+// @basis INSTR-testing-happens-against-the-current-corpus-and-an-exception
 /**
  * Sync the audit projection ONCE, before any worker starts — because doing it
  * per fixture is what made this suite contend.
@@ -5,8 +6,8 @@
  * ── WHAT THIS REPLACES ─────────────────────────────────────────────────────
  *
  * `e2e/app.ts`'s fixture used to call `mycontext audit --limit 1` on the way
- * into EVERY test. The reason it did was right and still is: reading
- * `.demo-corpus` appends `access` records to `audit.jsonl`, and a projection
+ * into EVERY test. The reason it did was right and still is: READING A CORPUS
+ * appends `access` records to `audit.jsonl`, and a projection
  * behind its log makes the read surface refuse — eighteen of twenty-one
  * screens once rendered "the audit projection is behind relative to its log"
  * where their content belongs (2026-08-24). What was wrong was the FREQUENCY.
@@ -69,6 +70,27 @@ import { execFileSync } from 'node:child_process';
 import path from 'node:path';
 import { CORPUS } from './app.ts';
 
+/**
+ * **THIS IS THE SUITE'S ONE WRITE INTO THE SERVED CORPUS, AND SINCE
+ * 2026-09-07 THAT CORPUS IS THIS PROJECT'S OWN.**
+ *
+ * `mycontext audit` advances the audit PROJECTION — a derived index rebuilt
+ * from a log it does not itself append to. It authors no item and appends no
+ * record, so it is not the manufacturing
+ * `INSTR-testing-happens-against-the-current-corpus-and-an-exception` forbids;
+ * it is a maintenance command a person runs, on the corpus that person uses,
+ * which is what that instruction calls the point.
+ *
+ * It is named here rather than left implicit because the suite's OTHER writes
+ * into the live corpus are the product's own: every screen a run opens appends
+ * `access` records through the read surface, and `execute.spec.ts` runs a real
+ * `mycontext status` through the UI and gets a real `execution` record for it.
+ * Measured over one chromium project against a twin of this corpus: about 150
+ * records per 170 tests, most of them `access`. A full two-project run is
+ * therefore a few hundred rows of test traffic in the audit stream the Watch
+ * screen draws. That is dogfooding costing what dogfooding costs, and it is
+ * written down so nobody reads it later as corruption.
+ */
 const CLI = path.join(import.meta.dirname, '..', 'src', 'cli', 'index.ts');
 
 export default function globalSetup(): void {

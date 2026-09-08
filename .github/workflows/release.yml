@@ -41,6 +41,17 @@ jobs:
       - run: npm ci
       # See RULE-quote-the-test-glob. Before the suite, for the same reason.
       - run: npm run check:test-glob
+      # A test that does not say what it rests on cannot be found when the ruling
+      # it rests on is reversed. Measured in cdc9fd8: one reversal reddened 26
+      # fixtures across ten files, not one of them a logic failure, and ZERO named
+      # the rule they encoded. This GATES -- a missing, malformed or dangling
+      # declaration fails the build -- so it belongs here rather than riding
+      # `npm test`, which is the tree's line between a gate and a reporter. It is
+      # beside `check:test-glob` because the two ask the same question from
+      # opposite ends: that the suite reaches every file, and that every file it
+      # reaches says what it assumes. `test/scripts/basis-gate.test.ts` proves the
+      # checker itself, the way every other checker here is proved.
+      - run: npm run check:basis
       # A correction recorded in a plan's section 0 must also be applied in its
       # body. That gap is invisible by construction -- a correct section 0 tells
       # you nothing about whether the tasks agree with it.

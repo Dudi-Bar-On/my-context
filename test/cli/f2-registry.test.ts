@@ -442,7 +442,11 @@ const SETUPS: Record<string, (cwd: string) => string[]> = {
   // takes no `--yes` to find (see `cli/commands/link.ts`).
   link: (cwd) => {
     const from = run(['add', '--summary-omitted', 'constraint', 'A constraint to link for the F2 guard', '--yes'], cwd);
-    const to = run(['add', '--summary-omitted', 'constraint', 'Another constraint to link for the F2 guard', '--yes'], cwd);
+    // The two titles differ in one word, so the contradiction gate raises the
+    // first against the second. Settled here because this entry exists to give
+    // `link` two real active items, not to rule on which constraint is right.
+    const to = run(['add', '--summary-omitted', 'constraint', 'Another constraint to link for the F2 guard',
+      '--distinct', constraintId(from.out), '--yes'], cwd);
     plantUnrelatedCorruptItem(cwd);
     return [constraintId(from.out), 'blocks', constraintId(to.out)];
   },
@@ -472,7 +476,10 @@ const SETUPS: Record<string, (cwd: string) => string[]> = {
     // itself because stdin is not interactive under `node --test` and
     // `confirmAction` refuses without it by design.
     const old = run(['add', '--summary-omitted', 'constraint', 'The old constraint for the F2 guard', '--yes'], cwd);
-    const next = run(['add', '--summary-omitted', 'constraint', 'The new constraint for the F2 guard', '--yes'], cwd);
+    // Settled as distinct at capture: the retirement below is what this entry
+    // drives, and `mycontext supersede` is the command that must perform it.
+    const next = run(['add', '--summary-omitted', 'constraint', 'The new constraint for the F2 guard',
+      '--distinct', constraintId(old.out), '--yes'], cwd);
     plantUnrelatedCorruptItem(cwd);
     return [constraintId(old.out), '--by', constraintId(next.out), '--yes'];
   },

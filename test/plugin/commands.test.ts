@@ -738,8 +738,19 @@ test('the CLI fallback each add-<type> names does what that file says it does', 
       assert.equal(argv[0], 'add', `${category}: fallback is an \`add\` invocation`);
       assert.equal(argv[1], category, `${category}: fallback captures its own category`);
 
+      // **Every item this loop has already created, settled as distinct.** Every
+      // probe is titled "Fallback probe for <category>" and they share one
+      // workspace, so each is near-identical text to the ones before it and the
+      // contradiction gate raises them. They ARE distinct - the shared title is
+      // scaffolding for a test about what each `add-<type>.md` claims - and the
+      // list is read off the store rather than written out, so a category added
+      // later needs no second edit here.
+      const seeded = openStore(resolveWorkspace(cwd));
+      const already = seeded.store.all().flatMap((i) => ['--distinct', i.id]);
+      seeded.store.close();
+
       let out = '';
-      const code = runCli(argv, cwd, (s) => { out += s + '\n'; });
+      const code = runCli([...argv, ...already], cwd, (s) => { out += s + '\n'; });
       assert.equal(code, 0, `${category}: the documented fallback failed — ${out}`);
 
       const { store } = openStore(resolveWorkspace(cwd));

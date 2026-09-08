@@ -1,3 +1,4 @@
+// @basis TASK-the-pinned-tier-sits-half-empty-while-sixty-nine-governing, OPENQ-does-the-pinned-tier-spend-its-spare-room-on-governing-items
 /**
  * The select/render/simulate/sessions/injected/status/doctor/decay read model,
  * and the route table under it.
@@ -732,9 +733,16 @@ function evictionFixture(): Fixture {
   run(['init']);
   run(['add', '--summary-omitted', 'rule', 'AAA big pinned item', '--body', 'Big body text. '.repeat(400), '--yes']);
   run(['edit', 'RULE-aaa-big-pinned-item', '--always=true', '--yes']);
-  run(['add', '--summary-omitted', 'rule', 'BBB medium pinned item', '--body', 'Medium body text. '.repeat(15), '--yes']);
+  // The three titles differ in one word and two of the bodies are the same
+  // sentence repeated, so the contradiction gate raises each against the ones
+  // before it. They are distinct — the near-identical text is scaffolding for a
+  // BUDGET test that needs three items of three known sizes — so that is what
+  // the fixture rules, once, here.
+  run(['add', '--summary-omitted', 'rule', 'BBB medium pinned item', '--body', 'Medium body text. '.repeat(15),
+    '--distinct', 'RULE-aaa-big-pinned-item', '--yes']);
   run(['edit', 'RULE-bbb-medium-pinned-item', '--always=true', '--yes']);
-  run(['add', '--summary-omitted', 'rule', 'CCC small pinned item', '--body', 'Tiny body.', '--yes']);
+  run(['add', '--summary-omitted', 'rule', 'CCC small pinned item', '--body', 'Tiny body.',
+    '--distinct', 'RULE-aaa-big-pinned-item', '--distinct', 'RULE-bbb-medium-pinned-item', '--yes']);
   run(['edit', 'RULE-ccc-small-pinned-item', '--always=true', '--yes']);
   const ws = resolveWorkspace(dir);
   const store = Store.openReadOnlyChecked(ws.dbPath);

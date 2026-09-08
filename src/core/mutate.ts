@@ -5,8 +5,19 @@ import {
 } from './acknowledge.ts';
 import { type MutationOp } from './audit.ts';
 import { agentEditsFor, type Config, type ResolvedCategory } from './config.ts';
-import { contentHash, itemContentHash, stampSummary } from './content-hash.ts';
+import { contentHash, itemContentHash, itemSummaryBasis, stampSummary } from './content-hash.ts';
 import { parseItem } from './item.ts';
+import { appendJsonlLine, readJsonlFile, type JsonlLogSpec } from './jsonl-log.ts';
+// The contradiction gate's PURE half. It knows no workspace and touches no
+// file — see `core/overlap.ts`' module comment for why the split is not
+// stylistic: `ui/read-model-work.ts` imports that module for `overlapScore`,
+// and `test/ui/no-writes.test.ts` walks its graph for fs writers.
+import {
+  contradictionGate, contradictionRefusal, inContradictionScope, latestVerdicts,
+  unknownDispositionRefusal, CONTRADICTION_PROTOCOL,
+  type ContradictionCandidate, type ContradictionDisposition, type ContradictionDraft,
+  type ContradictionItem, type ContradictionSurface, type ContradictionVerdict,
+} from './overlap.ts';
 import { normalizePosix } from './paths.ts';
 import {
   auditMutation, normalizeSource, persist, projectItem, projectItems, requireWritableItem,
@@ -23,7 +34,7 @@ import { existingSuccessorRefusal, SUPERSEDED_BY } from './relations.ts';
 // entry points, not only under `node --test`.
 import { stageRevision, type RevisionChanges } from './revision.ts';
 import { makeId } from './slug.ts';
-import { summaryReaffirmed } from './summary-gate.ts';
+import { afterContent, basisMoves, summaryReaffirmed } from './summary-gate.ts';
 import {
   reaffirmSummary, reviseSummary,
   SUMMARY_OMITTED_NOTE, SUMMARY_REAFFIRMED_NOTE, SUMMARY_UNCHANGED_NOTE,
@@ -35,7 +46,7 @@ import { normalizeEol } from './text.ts';
 import {
   contentChange, governsNormatively, guardedChange, inertFieldError, inertFieldNote,
   nonContentChanges, openContentPhrase, scopeRequirementError, stagedContentCaveat,
-  fieldList, tierOf, trustedStatus, unknownExtraFieldError, GUARDED_FIELDS,
+  fieldList, tierOf, trustedStatus, unknownExtraFieldError, GOVERNING_STATUS, GUARDED_FIELDS,
 } from './trust.ts';
 import type { Item, Observation, Origin, Relation, Severity, Status } from './types.ts';
 import {
@@ -142,6 +153,30 @@ export interface CreateInput {
    * cannot assert that a sentence was written and that none was.
    */
   summaryOmitted?: boolean;
+  /**
+   * **The contradiction gate's two answers** (contradiction-gate design §5,
+   * §6), and they are answers rather than options: the gate raises the items
+   * this capture may contradict, refuses the write, and accepts nothing else.
+   *
+   *  - `distinct` — "both can be true; they are about different things",
+   *    repeatable because a write can raise up to `OVERLAP_CAP` candidates and
+   *    every one of them has to be settled before anything is written.
+   *  - `supersedes` — "this replaces it, and it is retired". It routes into
+   *    `supersedeItem` after the capture lands, so the new item is created and
+   *    the old one retired with the link recorded, and nothing retires without
+   *    a successor.
+   *
+   * Abandoning the write is the third outcome and needs no field: nothing was
+   * written, which is already the state.
+   *
+   * **Both are instructions about a write, not fields of an item.** Nothing on
+   * disk corresponds to either, `contentHash` does not read them, and they are
+   * absent from `ContentShape` — the same shape `summaryOmitted` has. What they
+   * leave behind is a row in `.my_context/.verdicts/contradiction.jsonl`, keyed
+   * to the pair and to what both items say today.
+   */
+  distinct?: string[];
+  supersedes?: string;
   scope?: string[];
   tags?: string[];
   origin?: Origin;
@@ -309,6 +344,286 @@ function itemAtPath(ctx: MutationContext, filePath: string): Item {
   }
 }
 
+// --- The contradiction gate (spec 2026-09-07, §2 §4 §5 §7) ------------------
+//
+// **Here, and not in the CLI, because these two functions are the only write
+// paths for item content.** `mycontext add`/`edit`, the MCP `create_item`/
+// `update_item` tools, `inbox-promote`, `lesson`, `lesson-accept`,
+// `ingest-apply`, a promoted revision and pack import all drive down this road.
+// A gate one layer out would be a gate with seven doors beside it, and
+// `test/core/contradiction-gate.test.ts` walks the runtime import graph of
+// every one of those entry points to prove none of them reaches `persist`
+// without passing through here.
+//
+// **It is DELIBERATELY not shaped like `summary-gate.ts`, and the difference is
+// worth stating once.** That module exports predicates and refusals and is
+// called from the four AUTHORED surfaces alone, on the stated grounds that a
+// gate inside `createItem` would refuse mechanical callers who have no person
+// at the keyboard. This gate makes the opposite trade, on the owner's ruling
+// (§2, §10): a mechanical caller that would file a second live rule against a
+// standing one is exactly the case the gate exists for, so it "must either
+// carry dispositions decided earlier or fail cleanly naming what to settle",
+// and a bypass "would defeat §2 entirely". The two gates therefore sit at
+// different depths on purpose, and neither position is a mistake about the
+// other.
+
+/**
+ * **What an item's meaning hashes to, for the purpose of remembering a
+ * ruling about it.**
+ *
+ * `summary_of` is the field the product already maintains for exactly this
+ * question — it is what `summary_stale` compares against and what the summary
+ * gate fires on — so §7 keys verdicts to it. It has one hole, and the fallback
+ * is the fix rather than a second mechanism:
+ *
+ * `stampSummary` writes `summaryOf: null` for an item with no summary, and
+ * `null` never moves. A verdict keyed to it could therefore never lapse, and a
+ * pair involving an unsummarised item would be silenced permanently by one
+ * ruling — the exact failure §7 exists to prevent, arriving through the field
+ * §7 chose. So an unsummarised item is keyed to its LIVE summarised-content
+ * hash, which is the same value `summary_of` would hold if it had one. The
+ * consequence is stated rather than hidden: on such an item the verdict lapses
+ * on any content edit, including a mechanical one, because there is no summary
+ * for `--summary-unchanged` to leave standing and so nothing to carry forward.
+ */
+export function contradictionBasis(item: Item): string {
+  return item.summaryOf ?? itemSummaryBasis(item);
+}
+
+/** `.my_context/.verdicts/` — the audit log's shape, and its `.gitignore`. */
+export function verdictsDir(root: string): string {
+  return path.join(root, '.verdicts');
+}
+
+export function contradictionLogPath(root: string): string {
+  return path.join(verdictsDir(root), 'contradiction.jsonl');
+}
+
+/**
+ * The log's read contract, and it is the audit log's, for the reason §7 gives:
+ * append-only survived concurrent writers on this project where a
+ * read-modify-write destroyed 1–21 rows per run.
+ *
+ * A damaged line THROWS rather than being skipped. "This log cannot be read"
+ * and "nothing has been ruled" are opposite facts, and answering the first
+ * with the second would re-raise every settled pair in the corpus at once —
+ * which is the wall §7 exists to prevent, reached by a silent read.
+ */
+function verdictSpec(root: string): JsonlLogSpec {
+  const file = contradictionLogPath(root);
+  return {
+    file,
+    protocol: CONTRADICTION_PROTOCOL,
+    validate: (row) => {
+      if (typeof row.a !== 'string' || row.a === '') return 'has no usable "a"';
+      if (typeof row.b !== 'string' || row.b === '') return 'has no usable "b"';
+      if (row.verdict !== 'distinct' && row.verdict !== 'supersedes') {
+        return 'has no usable "verdict"';
+      }
+      if (typeof row.aBasis !== 'string' || row.aBasis === '') return 'has no usable "aBasis"';
+      if (typeof row.bBasis !== 'string' || row.bBasis === '') return 'has no usable "bBasis"';
+      if (typeof row.ruledAt !== 'string' || row.ruledAt === '') return 'has no usable "ruledAt"';
+      return null;
+    },
+    refuse: (line, reason) => new Error(
+      `my_context: contradiction verdict log line ${line} ${reason} (${file}). Every ruling ` +
+      `about a pair of items is recorded there, so a line that cannot be read is a ruling ` +
+      `that cannot be honoured — and skipping it would re-open a pair somebody already ` +
+      `settled. Nothing was written. Repair or remove the line, then retry.`,
+    ),
+    unreadable: (err) => new Error(
+      `my_context: the contradiction verdict log could not be read (${file}): ${
+        err instanceof Error ? err.message : String(err)}. "Cannot read" is not "nothing was ` +
+        `ruled", so nothing was written.`,
+    ),
+  };
+}
+
+export function readVerdicts(root: string): ContradictionVerdict[] {
+  return readJsonlFile(verdictSpec(root)).map((row) => ({
+    protocol: String(row.protocol),
+    a: String(row.a),
+    b: String(row.b),
+    verdict: row.verdict as ContradictionDisposition,
+    aBasis: String(row.aBasis),
+    bBasis: String(row.bBasis),
+    ruledAt: String(row.ruledAt),
+    ruledBy: (row.ruledBy ?? 'human') as Origin,
+    ...(row.carried === true ? { carried: true } : {}),
+  }));
+}
+
+/** One ruling, appended. Ids are stored in lexicographic order — see `pairKey`. */
+function appendVerdict(
+  root: string,
+  one: { id: string; basis: string },
+  other: { id: string; basis: string },
+  verdict: ContradictionDisposition,
+  ruledBy: Origin,
+  carried?: { ruledAt: string },
+): void {
+  const [a, b] = one.id < other.id ? [one, other] : [other, one];
+  appendJsonlLine(verdictsDir(root), contradictionLogPath(root), {
+    protocol: CONTRADICTION_PROTOCOL,
+    a: a.id, b: b.id, verdict, aBasis: a.basis, bBasis: b.basis,
+    ruledAt: carried?.ruledAt ?? new Date().toISOString(),
+    ruledBy,
+    ...(carried === undefined ? {} : { carried: true }),
+  });
+}
+
+/** Every project item as the gate sees it — a narrow view, never whole `Item`s. */
+function contradictionCandidates(ctx: MutationContext): ContradictionItem[] {
+  return projectItems(ctx).map((i) => ({
+    id: i.id, type: i.type, title: i.title, body: i.body, summary: i.summary,
+    severity: i.severity, always: i.always, status: i.status, basis: contradictionBasis(i),
+  }));
+}
+
+/**
+ * Run the gate and THROW its refusal, or return what this call settled.
+ *
+ * Every candidate the call dispositioned comes back, because a verdict has to
+ * be recorded for each of them after the write lands and asking the gate a
+ * second time afterwards would let the two answers disagree — the item on disk
+ * would then carry a ruling the refusal never raised, or miss one it did.
+ */
+function contradictionCheck(
+  ctx: MutationContext,
+  draft: ContradictionDraft,
+  surface: ContradictionSurface,
+): readonly ContradictionCandidate[] {
+  const outcome = contradictionGate(draft, contradictionCandidates(ctx), readVerdicts(ctx.root));
+  // Before the refusal, deliberately: a caller that typo'd an id would
+  // otherwise read the refusal, see its own disposition ignored, and have no
+  // way to tell that from the gate having lost it.
+  const stray = unknownDispositionRefusal(draft, outcome.stray, surface);
+  if (stray !== null) throw new Error(stray);
+  if (!outcome.allowed) throw new Error(contradictionRefusal(draft, outcome.candidates, surface));
+  return outcome.candidates;
+}
+
+/**
+ * The other half of §7: record what was just settled, once the write has
+ * actually landed.
+ *
+ * After rather than before, and the ordering is the guarantee: a refusal
+ * upstream promises "nothing was written", and a verdict written beside a
+ * write that then failed would silence a pair on the strength of an act that
+ * never happened.
+ */
+function recordVerdicts(
+  ctx: MutationContext,
+  self: { id: string; basis: string },
+  settled: readonly ContradictionCandidate[],
+  draft: ContradictionDraft,
+  ruledBy: Origin,
+): void {
+  for (const candidate of settled) {
+    const verdict: ContradictionDisposition =
+      draft.supersedes === candidate.id ? 'supersedes' : 'distinct';
+    appendVerdict(ctx.root, self, { id: candidate.id, basis: candidate.basis }, verdict, ruledBy);
+  }
+}
+
+/**
+ * **The no-lapse half of §7, and it is the summary's own mechanism applied to
+ * the verdicts keyed on it.**
+ *
+ * `--summary-unchanged` (and a re-affirmation) says in words that this edit did
+ * not change what the item MEANS, and `reaffirmSummary` answers it by
+ * re-stamping `summary_of` onto the new content. Every verdict about this item
+ * is keyed to that stamp, so unless they move with it, the one flag whose whole
+ * assertion is "the meaning did not move" would lapse every ruling about the
+ * item — the gate would then raise, on a typo fix, exactly the pairs a person
+ * has already settled, which is the wall §7 exists to prevent.
+ *
+ * So they are RE-STAMPED, not re-ruled: only verdicts that are live at this
+ * moment are carried (both bases still matching), the other item's basis is
+ * taken as it stands rather than as it was, `ruledAt` keeps the day the person
+ * actually ruled, and the row is marked `carried` so the log can always
+ * distinguish a ruling from its re-stamp. A verdict whose OTHER side has
+ * changed meaning is not carried, and lapses exactly as it should.
+ */
+function carryVerdicts(ctx: MutationContext, item: Item, basisBefore: string): void {
+  const basisAfter = contradictionBasis(item);
+  if (basisAfter === basisBefore) return;
+  const live = latestVerdicts(readVerdicts(ctx.root));
+  for (const recorded of live.values()) {
+    if (recorded.a !== item.id && recorded.b !== item.id) continue;
+    const selfIsA = recorded.a === item.id;
+    if ((selfIsA ? recorded.aBasis : recorded.bBasis) !== basisBefore) continue;
+    const otherId = selfIsA ? recorded.b : recorded.a;
+    const other = projectItem(ctx, otherId);
+    if (other === null) continue;
+    const otherBasis = contradictionBasis(other);
+    if ((selfIsA ? recorded.bBasis : recorded.aBasis) !== otherBasis) continue;
+    appendVerdict(
+      ctx.root, { id: item.id, basis: basisAfter }, { id: otherId, basis: otherBasis },
+      recorded.verdict, recorded.ruledBy, { ruledAt: recorded.ruledAt },
+    );
+  }
+}
+
+/**
+ * §6 path 2, routed rather than reimplemented: `--supersedes <id>` retires the
+ * candidate by the item this call just wrote, through `supersedeItem` — which
+ * already validates both ids, refuses a second successor, writes both edges and
+ * records one audit row for the pair.
+ *
+ * **The pre-flight is the honest part.** `supersedeItem` runs AFTER the write,
+ * because a successor has to exist before anything can be superseded by it, so
+ * a refusal raised in there would land with the new item already on disk and
+ * break the "nothing was written" promise this gate's own refusal makes. Both
+ * of its refusals that a caller can trip from here — an id that names nothing
+ * writable, and a non-human caller retiring a governing normative item — are
+ * therefore asked BEFORE the write, through the very functions `supersedeItem`
+ * itself consults, so the answer cannot drift from the one it would give.
+ *
+ * What is left is narrow and is disclosed rather than papered over: an id that
+ * stops being writable between the pre-flight and the write, and the existing-
+ * successor refusal, can still surface after the create. Both leave the new
+ * item on disk and the old one un-retired, and the message says so.
+ */
+/**
+ * Which spelling of the two dispositions the reader of this refusal can
+ * actually type, inferred from `origin` — for `summaryRequiredRefusal`'s stated
+ * reason: *"a refusal that names a command the reader cannot run is worse than
+ * one that names nothing"*.
+ *
+ * `origin` is the only surface signal that reaches this depth, and it is a
+ * true one for every path that exists today: every CLI write passes
+ * `origin: 'human'` (that is precisely the claim `updateItem`'s trust guard
+ * says a non-human caller cannot make), and every MCP tool and every ingest
+ * path hardcodes a non-human origin. **The limit is real and is stated rather
+ * than assumed away**: a human running the MCP tools through an agent gets the
+ * flag spelling, and a human-origin caller that is not the CLI does not exist
+ * yet. The day one does, this inference becomes a field on the input the way
+ * `summary-gate.ts` takes a `surface` argument, and not a guess with a wider
+ * range.
+ */
+function createSurface(origin: Origin): ContradictionSurface {
+  return origin === 'human' ? 'add' : 'create_item';
+}
+
+function updateSurface(origin: Origin): ContradictionSurface {
+  return origin === 'human' ? 'edit' : 'update_item';
+}
+
+function preflightSupersede(ctx: MutationContext, id: string, origin: Origin): void {
+  const target = requireWritableItem(ctx, id);
+  if (origin !== 'human' && governsNormatively(ctx, target)) {
+    throw new Error(
+      `my_context: this write disposes of ${target.id} with "supersedes", which retires it — and ` +
+      `a non-human caller cannot retire a governing normative item. ${target.id} is currently ` +
+      `"${target.status}", a status only a human sets. Nothing was written. The other ` +
+      `disposition is open to you: "distinct" says both can be true, and it is recorded the same ` +
+      `way. If ${target.id} genuinely has to go, ask the user, who can run ` +
+      `\`mycontext supersede ${target.id} --by <the new id>\`.`,
+    );
+  }
+}
+
 export function createItem(
   ctx: MutationContext, input: CreateInput, auditOp: MutationOp = 'create',
 ): MutationResult {
@@ -470,6 +785,83 @@ export function createItem(
 
   const origin: Origin = input.origin ?? 'human';
   const status: Status = trustedStatus(origin, category.tier, input.status ?? 'active');
+
+  const duplicateOf = (existing: Item): MutationResult => ({
+    id: existing.id,
+    created: false,
+    status: existing.status,
+    filePath: existing.filePath,
+    message: `my_context: already captured as ${existing.id}. Nothing changed.`,
+  });
+
+  const occupiedError = (existingId: string): Error => new Error(
+    `my_context: "${existingId}" already exists with different content. create_item never ` +
+    `overwrites an existing item — call update_item(id: "${existingId}", ...) to change it, ` +
+    `or supersede_item(id: "${existingId}", ...) to replace it with a new revision.`,
+  );
+
+  // **The duplicate probe, ABOVE the gate** — the same two lookups the id
+  // allocation below makes, hoisted so their answers are known before anything
+  // is refused. `located` is reused below rather than recomputed, so this costs
+  // one store scan and not two.
+  //
+  // The ordering is the point: a re-capture of content the corpus already holds
+  // writes NOTHING, and gating a write that was never going to happen would ask
+  // a person to rule on a pair that this call was not going to add to. It is
+  // the same reason the anchored-duplicate return above sits where it does.
+  // Measured before the hoist: `test/core/mutate-create.test.ts` · "a colliding
+  // title with identical content is a duplicate, not a suffix" was refused by
+  // the gate for re-capturing an item byte for byte.
+  const explicitExisting = input.id === undefined ? null : projectItem(ctx, input.id);
+  if (explicitExisting !== null) {
+    if (itemContentHash(explicitExisting) === hash) return duplicateOf(explicitExisting);
+    throw occupiedError(input.id as string);
+  }
+  const located = input.id === undefined
+    ? locateInFamily(ctx, category.prefix, title, hash)
+    : null;
+  if (located?.duplicate) return duplicateOf(located.duplicate);
+
+  // ── THE CONTRADICTION GATE, BEFORE ANY BYTES ARE WRITTEN ────────────────
+  //
+  // Placed beside the existing refusals and above every `persist` in this
+  // function, so the promise its message makes — "nothing was created" — is
+  // true in the same way the scope, inert-field and extra-field refusals'
+  // is.
+  //
+  // **Gated on the item this call would actually put IN FORCE, not on the
+  // category alone.** `trustedStatus` has just forced a non-human normative
+  // capture to `draft`, and a draft governs nothing and contradicts nothing —
+  // `select` never injects it, and a human still has to promote it. The
+  // promotion is an `updateItem` and is gated there, at the moment the item
+  // starts to govern, which is where a person is present to answer. Without
+  // this clause the gate would fire on every agent capture, refuse it with a
+  // question no agent can answer, and be routed around within a week; with it,
+  // `lesson-accept` and `ingest-apply` filing normative drafts are unaffected
+  // and the ruling happens once, at review.
+  const draft: ContradictionDraft = {
+    id: null,
+    type: input.type,
+    title,
+    body,
+    always: input.always ?? false,
+    basis: itemSummaryBasis({
+      type: input.type, title, body, steps,
+      severity: input.severity ?? 'soft',
+      always: input.always ?? false,
+      continuity: input.continuity ?? false,
+      scope: (input.scope ?? []).map((g) => normalizePosix(g)),
+      tags, observations, relations: input.relations ?? [], extra: input.extra ?? {},
+    }),
+    distinct: input.distinct ?? [],
+    supersedes: input.supersedes ?? null,
+  };
+  const gated = inContradictionScope(draft.type, draft.always) && GOVERNING_STATUS[status];
+  const settled = gated ? contradictionCheck(ctx, draft, createSurface(origin)) : [];
+  // The pre-flight §6 path 2 needs, and it has to happen here rather than
+  // after the write — see `preflightSupersede`.
+  if (gated && draft.supersedes !== null) preflightSupersede(ctx, draft.supersedes, origin);
+
   const buildItem = (itemId: string): Item => {
     const built: Item = {
     id: itemId,
@@ -531,20 +923,6 @@ export function createItem(
     return built;
   };
 
-  const duplicateOf = (existing: Item): MutationResult => ({
-    id: existing.id,
-    created: false,
-    status: existing.status,
-    filePath: existing.filePath,
-    message: `my_context: already captured as ${existing.id}. Nothing changed.`,
-  });
-
-  const occupiedError = (existingId: string): Error => new Error(
-    `my_context: "${existingId}" already exists with different content. create_item never ` +
-    `overwrites an existing item — call update_item(id: "${existingId}", ...) to change it, ` +
-    `or supersede_item(id: "${existingId}", ...) to replace it with a new revision.`,
-  );
-
   /**
    * Allocate an id and write the file, with the WRITE — not a store lookup —
    * as the thing that decides whether the id was free.
@@ -573,12 +951,11 @@ export function createItem(
     // An explicit id names an item this call must never silently overwrite.
     // Only two outcomes are legal: it's the same content (a no-op duplicate),
     // or the caller is pointed at update_item/supersede_item instead. There
-    // is no "next candidate" here — the caller named this exact id.
-    const existing = projectItem(ctx, input.id);
-    if (existing) {
-      if (itemContentHash(existing) === hash) return duplicateOf(existing);
-      throw occupiedError(input.id);
-    }
+    // is no "next candidate" here — the caller named this exact id. The store
+    // lookup itself is `explicitExisting` above, hoisted so that a duplicate
+    // is recognised before the contradiction gate can refuse a call that was
+    // going to write nothing; the `catch` below is still the guarantee, for
+    // the reason this comment block gives.
     item = buildItem(input.id);
     try {
       persist(ctx, item, { exclusive: true });
@@ -589,12 +966,15 @@ export function createItem(
       throw occupiedError(item.id);
     }
   } else {
-    const located = locateInFamily(ctx, category.prefix, title, hash);
-    if (located.duplicate) return duplicateOf(located.duplicate);
+    // Computed above the gate (`located`) rather than here, so that a
+    // re-capture of identical content returns as the duplicate it is before
+    // anything can be refused. Non-null on this branch by construction: it is
+    // assigned exactly when `input.id === undefined`.
+    const family = located as NonNullable<typeof located>;
 
     let written: Item | null = null;
-    for (let n = located.nextN; n <= MAX_FAMILY && written === null; n++) {
-      const candidate = buildItem(familyId(located.base, n));
+    for (let n = family.nextN; n <= MAX_FAMILY && written === null; n++) {
+      const candidate = buildItem(familyId(family.base, n));
       try {
         persist(ctx, candidate, { exclusive: true });
         written = candidate;
@@ -610,6 +990,26 @@ export function createItem(
     item = written;
   }
   const id = item.id;
+
+  // §7, after the write and only on the path that actually wrote — the
+  // duplicate returns above created nothing, so they rule on nothing. The
+  // basis is read off the item that was actually built rather than off the
+  // draft, for `stampSummary`'s reason: the recorded key has to describe what
+  // landed on disk, not what was passed in.
+  if (settled.length > 0) {
+    recordVerdicts(ctx, { id, basis: contradictionBasis(item) }, settled, draft, origin);
+  }
+  // §6 path 2: created AND retired in one act, with the link recorded. It runs
+  // last, after the verdict, so that a `supersedeItem` refusal the pre-flight
+  // could not foresee leaves behind the ruling that was made rather than losing
+  // it — the item is on disk either way, and re-sending the capture would
+  // otherwise ask the same question again.
+  if (draft.supersedes !== null && settled.some((c) => c.id === draft.supersedes)) {
+    supersedeItem(ctx, {
+      id: draft.supersedes, by: id, origin,
+      reason: `settled by the contradiction gate at capture: ${id} replaces it`,
+    });
+  }
 
   // Gated on the rule having actually fired — not merely on the resulting
   // status — so a caller that explicitly asks for `draft` on a non-normative
@@ -726,6 +1126,14 @@ export interface UpdateInput {
    * field of an item: there is nothing on disk for it to become.
    */
   summaryUnchanged?: boolean;
+  /**
+   * The contradiction gate's two answers at the other end of an item's life —
+   * see `CreateInput.distinct` for what each one asserts and where the ruling
+   * is recorded. On an edit, `supersedes` makes THIS item the successor: the
+   * named item is retired by it, in one act, with both edges written.
+   */
+  distinct?: string[];
+  supersedes?: string;
   status?: Status;
   extra?: Record<string, string>;
   origin?: Origin;
@@ -1148,6 +1556,85 @@ export function updateItem(
     // must still report the same no-op it always did.
   }
 
+  // ── THE CONTRADICTION GATE, BEFORE ANY BYTES ARE WRITTEN ────────────────
+  //
+  // Below the staging branch and above every assignment, and both halves of
+  // that position are the design.
+  //
+  // **Below staging**, because a staged revision writes nothing to the item: it
+  // is a proposal held for a human, and refusing it here would refuse the
+  // proposal instead of the change. The PROMOTION comes back through this
+  // function with `origin: 'human'` (`revision.ts`), which is where a person is
+  // present to rule, and it is gated there.
+  //
+  // **Above the assignments**, because `item` is mutated in place a few lines
+  // down and every message this function prints promises "nothing was changed".
+  //
+  // ── WHAT TRIGGERS IT, AND WHY EACH CLAUSE IS THERE ─────────────────────
+  //
+  // `basisMoves` is the same derived predicate the summary gate fires on, and
+  // it is used here for that module's own stated reason: the alternative is a
+  // list of fields that change what an item SAYS, and this repository has
+  // measured that list being wrong eight times. A status change, a retag, a
+  // scope narrowing, a pin — none of them moves a word of what the item claims,
+  // and none of them can newly contradict anything.
+  //
+  // Two clauses stand beside it because they are the moments an item starts to
+  // govern without its text moving at all, and both are otherwise a way around
+  // the gate: promotion out of `draft` (which is exactly where every agent
+  // capture lands, by `trustedStatus`), and pinning an item into scope with
+  // `--always true`. Without them, "capture a draft, then promote it" and
+  // "capture it as a note, then pin it" would each file an unexamined item into
+  // force through a door the gate is standing beside.
+  const alwaysAfter = update.always ?? item.always;
+  const statusAfter = update.status ?? item.status;
+  const contradictionGated =
+    inContradictionScope(item.type, alwaysAfter) &&
+    GOVERNING_STATUS[statusAfter] &&
+    (basisMoves(item, update) ||
+      !GOVERNING_STATUS[item.status] ||
+      (alwaysAfter && !item.always));
+  // Read before the assignments for `reaffirmed`'s reason one line down: it is
+  // the key every verdict about this item is filed under, and it is about to be
+  // overwritten by `reaffirmSummary` on exactly the write that must not lapse
+  // them. See `carryVerdicts`.
+  const contradictionBasisBefore = contradictionBasis(item);
+  // **The write that says its meaning did not move is MEASURED against the
+  // basis it had, not the one it is about to get — and this is the whole of
+  // §11's no-lapse test.**
+  //
+  // `--summary-unchanged` and a re-affirmation both assert, in words, that this
+  // edit does not change what the item MEANS; both are answered by re-stamping
+  // `summary_of` onto the new content, and `carryVerdicts` re-stamps every
+  // verdict with it. But `carryVerdicts` runs AFTER the write, and this gate
+  // runs before — so asking it with the new basis would find every verdict
+  // lapsed and refuse the write, and the carry-forward would never get to
+  // happen. The pair would be raised again on a typo fix, which is precisely
+  // the wall §7 exists to prevent.
+  //
+  // So the assertion is honoured at both ends of the write: the basis the
+  // memory is looked up under is the one the item HAD, and the basis recorded
+  // afterwards is the one it has. The retrieval still uses the NEW text — a
+  // write that raises a candidate it has never ruled on is still refused,
+  // whatever it says about its own meaning.
+  const meaningHeld = update.summaryUnchanged === true || summaryReaffirmed(item, update);
+  const editDraft: ContradictionDraft = {
+    id: item.id,
+    type: item.type,
+    title: title ?? item.title,
+    body: body ?? item.body,
+    always: alwaysAfter,
+    basis: meaningHeld ? contradictionBasisBefore : itemSummaryBasis(afterContent(item, update)),
+    distinct: update.distinct ?? [],
+    supersedes: update.supersedes ?? null,
+  };
+  const editSettled = contradictionGated
+    ? contradictionCheck(ctx, editDraft, updateSurface(origin))
+    : [];
+  if (contradictionGated && editDraft.supersedes !== null) {
+    preflightSupersede(ctx, editDraft.supersedes, origin);
+  }
+
   // Taken immediately before the assignments, so `changedFields` below reports
   // what this call MOVED rather than what it carried — an echoed value is not
   // a change and must not appear in the audit record as one.
@@ -1262,6 +1749,29 @@ export function updateItem(
       ? { note: item.summary === null ? SUMMARY_OMITTED_NOTE : SUMMARY_UNCHANGED_NOTE }
       : reaffirmed ? { note: SUMMARY_REAFFIRMED_NOTE } : {}),
   });
+
+  // §7, after the write and never before it: a refusal upstream promises
+  // "nothing was changed", and a verdict recorded beside a write that then
+  // failed would silence a pair on the strength of an act that never happened.
+  if (editSettled.length > 0) {
+    recordVerdicts(
+      ctx, { id: item.id, basis: contradictionBasis(item) }, editSettled, editDraft, origin,
+    );
+  }
+  if (editDraft.supersedes !== null && editSettled.some((c) => c.id === editDraft.supersedes)) {
+    supersedeItem(ctx, {
+      id: editDraft.supersedes, by: item.id, origin,
+      reason: `settled by the contradiction gate on an edit: ${item.id} replaces it`,
+    });
+  }
+  // **The no-lapse half of §7.** The escape hatch and the re-affirmation are
+  // the two ways of saying "this write did not change what the item MEANS",
+  // and both re-stamp `summary_of`. Every verdict about this item is keyed to
+  // that stamp, so they are re-stamped with it — see `carryVerdicts` for why
+  // that is the summary's own mechanism rather than a second, quieter ruling.
+  if ((input.summaryUnchanged === true && item.summary !== null) || reaffirmed) {
+    carryVerdicts(ctx, item, contradictionBasisBefore);
+  }
 
   return {
     id: item.id,

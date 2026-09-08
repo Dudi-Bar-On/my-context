@@ -1,3 +1,4 @@
+// @basis DEC-a-refresh-keeps-the-reader-s-place-or-it-asks, REQ-configure-and-the-simulator-agree-on-the-budgets-whatever, INSTR-testing-happens-against-the-current-corpus-and-an-exception
 /**
  * `plan:live seq:3` — `DEC-a-refresh-keeps-the-reader-s-place-or-it-asks`:
  * *"a refresh that can keep the reader's place happens; one that cannot
@@ -10,9 +11,9 @@
  * first test's own assertion sequence: *"with an item pane open and the page
  * scrolled, a mutation arrives; the pane stays open on the same item and the
  * scroll offset does not move."* `preview` is the screen this measures it
- * against — the landing screen, guaranteed a `button.linkid` against
- * `.demo-corpus` (`e2e/item-pane.spec.ts`'s own note: several screens render
- * NONE against this fixture) — and it declares `refresh: 'ask'`
+ * against — the landing screen, the one screen `e2e/item-pane.spec.ts` own
+ * note says is guaranteed a `button.linkid` where several others render NONE —
+ * and it declares `refresh: 'ask'`
  * (`live-invalidation.js`: an open gate-pick selection a silent rebuild would
  * discard), so the test also measures the affordance itself: it is HIDDEN
  * until something arrives, shown once, and hidden again once taken — never a
@@ -29,24 +30,29 @@
  * context authenticates off the cookie the first tab's nonce exchange left
  * behind.
  */
-import { test, expect, CORPUS } from './app.ts';
+import { isolatedTest as test, expect } from './scratch-corpus.ts';
 import type { Page } from '@playwright/test';
-import path from 'node:path';
 import { recordAudit } from '../src/core/audit.ts';
-import { DIR_NAME } from '../src/core/workspace.ts';
 
-// `CORPUS` (from `./app.ts`) is the WORKSPACE — the directory `mycontext ui`
-// is pointed at, and the value `startUiChild()` takes — not the `.my_context`
-// directory `recordAudit`'s own `root` parameter expects
-// (`auditLogPath(root)` joins `root` straight to `.audit/audit.jsonl`, and
-// `e2e/live-stream.spec.ts`'s own fixture passes `path.join(dir, DIR_NAME)`
-// for exactly this reason). Passing `CORPUS` itself here silently wrote a
-// STRAY `.demo-corpus/.audit/audit.jsonl` the running server's tail never
-// watches — `written: true`, and no record the stream would ever see. Caught
-// by the acceptance test itself going consistently red on `#screenstale`
-// (and, once, passing the earlier assertions by accident on old debounced
-// timing before this was found) — see this task's report.
-const MY_CONTEXT = path.join(CORPUS, DIR_NAME);
+// **THIS SPEC WRITES, SO IT DOES NOT WRITE HERE.**
+//
+// Both tests below manufacture a record: the first appends a synthetic
+// `kind: 'mutation'` straight to the audit log, and the second performs a REAL
+// budget write through Configure and never puts it back. Under
+// `INSTR-testing-happens-against-the-current-corpus-and-an-exception` those
+// records must not land in this project own corpus — *"a probe must not write
+// injection or session records, because those become the newest rows and every
+// latest-N reader believes them"* — so `app` here is `scratch-corpus.ts`' twin:
+// the same data at the same scale, on a copy this test owns and deletes.
+//
+// `app.myContextDir` is the `.my_context` DIRECTORY, which is what
+// `recordAudit` own `root` parameter expects and NOT the workspace
+// (`auditLogPath(root)` joins `root` straight to `.audit/audit.jsonl`). Passing
+// the workspace silently wrote a STRAY `.audit/audit.jsonl` the running server
+// tail never watches — `written: true`, and no record the stream would ever
+// see. Caught by the acceptance test itself going consistently red on
+// `#screenstale`; the distinction is now made by the fixture rather than by
+// each call site remembering it.
 
 /** The first id button on the injection preview — the screen the owner was on.
  *
@@ -89,7 +95,7 @@ test('a mutation while an item pane is open and the page is scrolled: the pane s
     body.scrollTop = 300;
     return body.scrollTop;
   });
-  expect(scrolled, 'the preview screen against .demo-corpus is not tall enough to scroll — '
+  expect(scrolled, 'the preview screen over this corpus is not tall enough to scroll — '
     + 'this test cannot measure a scroll offset that never left zero').toBeGreaterThan(0);
 
   // Not a permanent banner: hidden before anything has arrived.
@@ -98,7 +104,7 @@ test('a mutation while an item pane is open and the page is scrolled: the pane s
 
   // The mutation. A real record, appended the way `e2e/live-stream.spec.ts`
   // does it — through the shared stream's own tail, not a page-side fake.
-  recordAudit(MY_CONTEXT, {
+  recordAudit(app.myContextDir, {
     kind: 'mutation', op: 'update', origin: 'human',
     itemId: 'RULE-live-refresh-acceptance-synthetic', fields: ['body'],
   });

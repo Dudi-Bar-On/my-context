@@ -162,7 +162,21 @@ test('the citation that cost the morning is named, with its successor', () => {
   const app = finding.sites.find((s) => s.file === 'e2e/app.ts');
   if (app === undefined) return;
   assert.equal(app.where, 'comment', 'the carrier was a comment, which is the shape that misleads');
-  assert.equal(app.disclosed, false, 'that comment says nothing about the ruling having moved');
+  // **This flipped on 2026-09-08, and the flip is the point.** It asserted
+  // `false` — "that comment says nothing about the ruling having moved" —
+  // because that was the defect: a live comment citing
+  // `DEC-the-ui-is-developed-against-a-simulated-corpus-until-the` as current,
+  // which cost a morning. `plan:port seq:100` rewrote `e2e/app.ts`, deleting the
+  // two blocks that asserted opposite things and recording the retirement, so
+  // the site now DISCLOSES.
+  //
+  // The test is not weakened by the flip: everything above it still holds — the
+  // item is still retired, the chain still names its successor, the report still
+  // carries it, and the site is still FOUND and still a comment. What changed is
+  // the one field that was the defect. A test that pins a defect's shape must
+  // move when the defect is repaired, or it becomes a test that fails on being
+  // fixed.
+  assert.equal(app.disclosed, true, 'port/100 repaired that comment; it now names the retirement');
 });
 
 // ── 1. Planted: what is a finding and what is not ──────────────────────────

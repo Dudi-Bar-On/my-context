@@ -238,8 +238,14 @@ test('the answer changes with the corpus, not with a cached snapshot', () => {
     const before = ok(dir, '?scope=src/billing/**');
     assert.equal(before.governing.some((r) => r.id === 'STD-api-errors-use-problem-json'), false);
     // The mockup's second sample row, added for real.
+    // `--distinct`: the contradiction gate raises CONST-invoice-api-errors
+    // ("Problem+json.") against this standard, correctly — they are about the
+    // same error format. They are distinct here, and settling it is what lets
+    // this test measure the thing it is about: that the answer changes with the
+    // corpus rather than with a cached snapshot.
     assert.equal(runCli(['add', '--summary-omitted', 'standard', 'Api errors use problem json',
-      '--scope', 'src/billing/**', '--body', 'RFC 9457.', '--yes'], dir, () => {}), 0);
+      '--scope', 'src/billing/**', '--body', 'RFC 9457.',
+      '--distinct', 'CONST-invoice-api-errors', '--yes'], dir, () => {}), 0);
     const after = ok(dir, '?scope=src/billing/**');
     const row = after.governing.find((r) => r.id === 'STD-api-errors-use-problem-json');
     assert.ok(row, 'the newly captured standard must govern the scope it was captured into');

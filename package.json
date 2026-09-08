@@ -36,7 +36,8 @@
     "check:needs-cycles": "node scripts/check-needs-cycles.ts",
     "check:handover": "node scripts/check-handover.ts",
     "check:dependencies": "node scripts/check-dependency-budget.ts",
-    "check:cited-items": "node scripts/check-cited-items.ts"
+    "check:cited-items": "node scripts/check-cited-items.ts",
+    "check:basis": "node scripts/check-basis.ts"
   },
   "devDependencies": {
     "@playwright/test": "^1.62.1",

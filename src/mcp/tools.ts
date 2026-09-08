@@ -665,6 +665,23 @@ const SPECS: ToolSpec[] = [
       },
       source_file: { ...S_STRING, description: 'Document this came from' },
       source_anchor: { ...S_STRING, description: 'Heading within that document' },
+      // The contradiction gate's two answers, and they are ANSWERS: do not
+      // reach for either until a capture has been refused and the refusal has
+      // named the ids. See `update_item` for the same pair on an edit.
+      distinct: {
+        ...S_STRINGS,
+        description:
+          'Answer the contradiction gate: this capture and the item(s) it named can BOTH be ' +
+          'true, because they are about different things. Only ids the refusal listed. Every ' +
+          'candidate must be settled - a capture settling one of two is refused again',
+      },
+      supersedes: {
+        ...S_STRING,
+        description:
+          'Answer the contradiction gate the other way: this capture REPLACES the item named, ' +
+          'which is retired in the same act with the link recorded. Refused to a non-human ' +
+          'caller against a governing normative item - ask the user for that one',
+      },
       ...extraFieldSchema(DEFAULT_CONFIG),
       // The escape hatch `update_item` already has (see its own `extra`
       // property below), mirrored here. The flattened properties just above
@@ -736,6 +753,12 @@ const SPECS: ToolSpec[] = [
         steps: optList(args, 'steps'),
         sourceFile: optStr(args, 'source_file') ?? null,
         sourceAnchor: optStr(args, 'source_anchor') ?? null,
+        // The contradiction gate's two answers (contradiction-gate design §5).
+        // `optList` for `distinct` because a capture can raise up to five
+        // candidates and every one has to be settled; `optStr` for
+        // `supersedes` because an item has one successor.
+        distinct: optList(args, 'distinct'),
+        supersedes: optStr(args, 'supersedes'),
         extra,
         origin: 'agent',
       };
@@ -795,6 +818,23 @@ const SPECS: ToolSpec[] = [
       severity: { ...S_STRING, enum: SEVERITIES, description: 'Refused on a governing normative item' },
       always: { type: 'boolean', description: 'Refused on a governing normative item' },
       status: { ...S_STRING, enum: STATUSES, description: 'Rationale items only' },
+      // The contradiction gate's two answers, and they are ANSWERS: the tool
+      // does not offer them until the gate has refused a write and named the
+      // ids. Described as such, so a model does not reach for them unprompted.
+      distinct: {
+        ...S_STRINGS,
+        description:
+          'Answer the contradiction gate: this edit and the item(s) it named can BOTH be true, ' +
+          'because they are about different things. Only ids the refusal listed. Every ' +
+          'candidate must be settled - an edit settling one of two is refused again',
+      },
+      supersedes: {
+        ...S_STRING,
+        description:
+          'Answer the contradiction gate the other way: this item REPLACES the one named, which ' +
+          'is retired in the same act with the link recorded. Refused to a non-human caller ' +
+          'against a governing normative item - ask the user for that one',
+      },
       // Content, and it says so: `extra` carries `rule.directive`, which decides
       // whether a rule prohibits or prescribes. It used to be described here as
       // fields "to merge in" and nothing else, while it was the one writable
@@ -820,6 +860,9 @@ const SPECS: ToolSpec[] = [
         severity: optEnum<Severity>(args, 'severity', SEVERITIES, 'capture'),
         always: optBool(args, 'always'),
         status: optEnum<Status>(args, 'status', STATUSES, 'workflow'),
+        // The contradiction gate's two answers — see `create_item` above.
+        distinct: optList(args, 'distinct'),
+        supersedes: optStr(args, 'supersedes'),
         extra: optExtra(args),
         origin: 'agent',
       };

@@ -86,9 +86,16 @@ function workspace(): Box {
 function seed(box: Box): string[] {
   const ids: string[] = [];
   for (const title of ['Never log customer email', 'Rotate tokens quarterly', 'One writer per index']) {
+    // **`--distinct` for every rule already seeded**, and it is the fixture
+    // being honest rather than the gate being wrong: all three rules share
+    // `RETRACTING_BODY` verbatim, so they are near-identical text by
+    // construction and the contradiction gate says so on the second and third.
+    // They ARE distinct — the shared body is scaffolding for the doctor finding
+    // these tests are about — so that is what the fixture rules.
+    const settled = ids.flatMap((id) => ['--distinct', id]);
     const { code, text } = box.run([
       'add', 'rule', title, '--body', RETRACTING_BODY,
-      '--summary', `A rule about ${title.toLowerCase()}.`, '--yes',
+      '--summary', `A rule about ${title.toLowerCase()}.`, ...settled, '--yes',
     ]);
     assert.equal(code, 0, `seeding "${title}" failed: ${text}`);
     const id = /\b(RULE-[a-z0-9-]+)/.exec(text)?.[1];

@@ -1,3 +1,4 @@
+// @basis TASK-the-pinned-tier-sits-half-empty-while-sixty-nine-governing, OPENQ-does-the-pinned-tier-spend-its-spare-room-on-governing-items
 /**
  * `/clear` destroys a context window; until this branch existed, it left the
  * window's dedupe state behind. The next injection into the now-empty window

@@ -1,3 +1,4 @@
+// @basis INSTR-testing-happens-against-the-current-corpus-and-an-exception, TASK-the-browser-suite-returns-to-the-real-corpus-and-the, TASK-last-ui-task-return-the-ui-to-the-real-corpus
 /**
  * The APP, opened against THIS REPOSITORY'S OWN CORPUS.
  *
@@ -50,73 +51,92 @@
  */
 import { test as base, expect } from '@playwright/test';
 import type { Page } from '@playwright/test';
-import { existsSync } from 'node:fs';
 import path from 'node:path';
 import { mintNonce, startUiChild, type UiHarness } from '../test/ui/helpers.ts';
 
 const REPO = path.resolve(import.meta.dirname, '..');
 
 /**
- * The corpus the app is served over: **`.demo-corpus`, the simulated one**,
- * since 2026-08-23.
+ * The corpus the app is served over: **this repository's own live corpus**,
+ * since 2026-09-07.
  *
- * ── WHY THIS MOVED OFF THE LIVE CORPUS ────────────────────────────────────
+ * ── THE RULING, AND WHAT IT RETIRED ───────────────────────────────────────
  *
- * It used to be the outer repository root — the project's own live corpus, on
- * the reasoning that testing over real data is stronger than testing over a
- * fixture. It is, for everything except a gate whose whole output is a LIST OF
- * WHAT IS MISSING. `screen-parity.spec.ts` compares each screen to its mockup
- * section and holds the gaps in a shrink-only ledger; over a live corpus that
- * ledger records what the corpus happened to contain on the day it was
- * written, and every later run measures a different day.
+ * `INSTR-testing-happens-against-the-current-corpus-and-an-exception`
+ * (severity `hard`), owner's words 2026-09-03 and re-ruled on the fixture
+ * itself 2026-09-07: *"all your tests would be on the current corpus because
+ * we are doing dog fooding, if you need an exception you should ask me first
+ * to approve"*, and then *"supersede the e2e tests that uses demo corpus, it
+ * should not be used anymore"*. That instruction SUPERSEDES
+ * `DEC-the-ui-is-developed-against-a-simulated-corpus-until-the`, which is the
+ * decision the block that stood here cited as current for two weeks after it
+ * had been overruled. `.demo-corpus` is retired.
  *
- * Measured, both ways, on 2026-08-23 with seventeen screens built:
+ * This is `plan:port seq:99` — the last UI task — carried out under
+ * `TASK-the-browser-suite-returns-to-the-real-corpus-and-the`.
  *
- *   over the LIVE corpus   `ask` reports 17 absent kinds and `work` 17 more —
- *                          every one of them present in the code and unreachable
- *                          because that corpus has no pending revision and its
- *                          audit projection holds nothing the Ask tab can query.
- *                          `preview` reports 11, because there is no undelivered
- *                          session to preview.
- *   over `.demo-corpus`    `ask` reports one, `work` none, `preview` three.
+ * ── WHAT THE FIXTURE COST, MEASURED, SO IT IS NOT RE-ARGUED ───────────────
  *
- * Not one of those differences is a line of code. This is
- * `TASK-the-parity-gate-needs-a-fixture-corpus-holding-one-record-of` (plan:port
- * seq:9) answered, and it follows the owner's standing ruling that the UI is
- * developed against the simulated corpus until the screens are finished
- * (`DEC-the-ui-is-developed-against-a-simulated-corpus-until-the`). `plan:port
- * seq:99`, the last UI task, moves it back — and the point of moving it back is
- * precisely to find what a fixture hid.
+ * It did not harm the product. The spec that provoked the ruling ran 12 of 14
+ * against the fixture and 12 of 14 against the LIVE corpus, identically; the
+ * defect was a race in the test. What it cost was a MORNING OF MISDIAGNOSIS —
+ * the block that stood here named the fixture, and a reader reached for it as
+ * the explanation. A stand-in that is right for a gate is still a second
+ * answer to "what is the app looking at", and a second answer is somewhere for
+ * a wrong diagnosis to land.
  *
- * **Dogfooding is not abandoned by this.** The demo corpus is written BY the
- * real code — the hooks write its injections, `mycontext focus` writes its focus
- * record, `stageRevision` stages its one revision — and only the clock is
- * synthetic. It is also deterministic: `scripts/demo-corpus.ts` contains no
- * randomness, so two builds produce the same corpus and the ledger measures the
- * code rather than the day.
+ * ── AND THE REASON IT EXISTED IS ANSWERED, NOT DISCARDED ──────────────────
  *
- * **It refuses rather than falling back.** `.demo-corpus` is gitignored, so a
- * fresh checkout does not have it. Silently serving the live corpus instead
- * would produce exactly the failure above — thirty-odd phantom gaps and no hint
- * why — so a missing corpus is an error naming the one command that builds it.
- * `MYCONTEXT_E2E_CORPUS` still overrides everything, for the same reason
- * `MYCONTEXT_MOCKUP` exists: to point a run at a deliberately broken copy and
- * watch it go red.
+ * The fixture was introduced for ONE gate: `screen-parity.spec.ts`, whose
+ * whole output is a LIST OF WHAT IS MISSING, held in a SHRINK-ONLY ledger.
+ * Measured both ways on 2026-08-23 with seventeen screens built:
+ *
+ *   over the LIVE corpus   `ask` reported 17 absent kinds, `work` 17 more and
+ *                          `preview` 11 — and not one was a line of code. They
+ *                          were what that corpus happened to hold that day.
+ *   over `.demo-corpus`    `ask` one, `work` none, `preview` three.
+ *
+ * So a ledger over live data records the DAY rather than the CODE. That
+ * problem is real and it does not go away with the fixture. It is answered
+ * where it belongs — per spec — rather than by giving the whole suite a second
+ * corpus:
+ *
+ *   1. A spec that never needed the fixture simply reads this one.
+ *   2. A spec that needs ONE SPECIFIC STATE — a pending revision, an
+ *      undelivered session, a spill, a draft — arranges it in a SCRATCH
+ *      WORKSPACE of its own, the way `e2e/execute.spec.ts` and
+ *      `e2e/composer-write-execute.spec.ts` do: copy this corpus, seed it,
+ *      serve THAT. Determinism per test, not a second corpus for everyone.
+ *   3. A shrink-only ledger has its baseline re-derived against this corpus,
+ *      and says which of its entries are code and which are data.
+ *
+ * ── THE READ SURFACE IS SAFE; THE WRITING SPECS ARE NOT, AND ARE NAMED ────
+ *
+ * The UI server is a read-only surface: `test/ui/server-e2e.test.ts` snapshots
+ * every byte under the workspace and compares it after a full route sweep, so
+ * "the read surface changes not one byte of the corpus" is an assertion, not a
+ * comment. Its one write is the `access` record a read appends, which is a
+ * record of a real read by a real reader and is the dogfooding working.
+ *
+ * `INSTR-…-and-an-exception` draws the line that matters here: *"It does not
+ * licence writing to the corpus to see what happens."* A spec that MANUFACTURES
+ * a record — a synthetic `mutation`, a budget bumped to prove a screen noticed
+ * — must not do it here, because those records become the newest rows and every
+ * latest-N reader believes them. Such a spec is case 2 above and belongs in a
+ * scratch workspace.
+ *
+ * ── THE OVERRIDE STAYS, AND IT IS NOT A FALLBACK ──────────────────────────
+ *
+ * `MYCONTEXT_E2E_CORPUS` still overrides everything, for the reason
+ * `MYCONTEXT_MOCKUP` exists: to point a run at a deliberately broken copy, or
+ * at a scratch workspace, and watch it go red. There is no longer anything to
+ * refuse over — the live corpus is present in every checkout by construction,
+ * which is the whole point of dogfooding a tool on its own records.
  */
 export const CORPUS = ((): string => {
   const override = process.env['MYCONTEXT_E2E_CORPUS'];
   if (override !== undefined) return path.resolve(override);
-  const demo = path.join(REPO, '.demo-corpus');
-  if (!existsSync(path.join(demo, '.my_context'))) {
-    throw new Error(
-      `e2e: the simulated corpus is missing at ${demo}. It is gitignored and deterministic — ` +
-      'build it with `node scripts/demo-corpus.ts` from my-context/, then run this suite ' +
-      'again. Refused rather than falling back to the live corpus, because a parity gate ' +
-      'measured against a different corpus reports code gaps that are only data gaps. Set ' +
-      'MYCONTEXT_E2E_CORPUS to point somewhere else deliberately.',
-    );
-  }
-  return demo;
+  return REPO;
 })();
 
 export interface App {
@@ -138,7 +158,7 @@ export interface App {
  * **The audit projection is synced ONCE for the whole suite, and not here.**
  *
  * This fixture used to run `mycontext audit --limit 1` before starting each
- * server, because reading `.demo-corpus` appends `access` records and a
+ * server, because reading a corpus appends `access` records and a
  * projection behind its log makes the read surface refuse — eighteen of
  * twenty-one screens rendered that refusal where their content belongs on
  * 2026-08-24, and a tree-parity inventory was taken against exactly that.

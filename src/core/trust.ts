@@ -483,8 +483,32 @@ export const UPDATE_FIELD_POLICY = {
   // refused beside `summary`, refused on an item with no summary, and refused
   // on any edit that does not raise the gate — so it can never widen what an
   // agent may change, only answer a question the gate asked.
+  //
+  // **`distinct` and `supersedes` are excluded on the identical grounds**, and
+  // the table did its job on the way in: adding them to `UpdateInput` broke
+  // this line, which is exactly the "a field nobody classified" failure the
+  // `satisfies` exists to catch. They are the contradiction gate's two answers
+  // (`core/overlap.ts`), and like `summaryUnchanged` they name no item data —
+  // there is no value either can put on disk, nothing for a staged revision to
+  // carry, and nothing for a guard to refuse. What they leave behind is a row
+  // in the verdict log, keyed to the pair.
+  //
+  // Classifying them `content` would be actively wrong rather than merely
+  // untidy: `contentChange` would then report an edit that carries only a
+  // disposition as a content change and STAGE it, so an agent answering the
+  // gate would file a revision whose changes are empty. `gated` would be wrong
+  // in the other direction — `guardedChange` would refuse a non-human caller
+  // for answering a question the gate asked it. What actually governs them is
+  // narrower than either class and lives in `updateItem`: a disposition is
+  // accepted only for a candidate the gate raised on this same call
+  // (`unknownDispositionRefusal`), and `supersedes` is refused outright to a
+  // non-human caller against a governing normative item (`preflightSupersede`,
+  // which asks `governsNormatively` — this module's own predicate — rather than
+  // a second copy of it).
 } as const satisfies Record<
-  Exclude<keyof UpdateInput, 'id' | 'origin' | 'summaryUnchanged'>, FieldPolicy
+  Exclude<
+    keyof UpdateInput, 'id' | 'origin' | 'summaryUnchanged' | 'distinct' | 'supersedes'
+  >, FieldPolicy
 >;
 
 type UpdateField = keyof typeof UPDATE_FIELD_POLICY;

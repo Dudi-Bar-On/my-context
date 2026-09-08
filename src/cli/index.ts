@@ -899,6 +899,18 @@ function cmdAdd(ws: Workspace, args: string[], out: Emit, cwd: string): number {
     if (summaryRequiredAtCreate(input)) {
       throw new Error(summaryAtCreateRefusal(input, 'add'));
     }
+    // **The contradiction gate's two answers** (contradiction-gate design §5).
+    // They are only ever ANSWERS: the gate lives in `createItem`, which is where
+    // it can see every write path, and these two flags carry the ruling back to
+    // it. `--distinct` is repeatable through `addValues` for the reason `--note`
+    // and `--step` are — a write can raise up to five candidates and dropping
+    // the second silently would settle one item while reporting that all of
+    // them were settled. `--supersedes` is scalar: an item has one successor,
+    // and `existingSuccessorRefusal` is the same rule one layer in.
+    const distinct = dedupe(addValues(args, 'distinct'));
+    if (distinct.length > 0) input.distinct = distinct;
+    const supersedes = scalarFlag(args, 'supersedes');
+    if (supersedes !== null) input.supersedes = supersedes;
     // Every occurrence of BOTH observation flags, in command-line order, so
     // `--note a --observation limit=b --note c` records three observations in
     // that order rather than keeping the first and dropping the second — the
