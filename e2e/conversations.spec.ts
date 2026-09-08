@@ -1,8 +1,11 @@
 // @basis TASK-the-transcript-is-one-document-you-scroll-not-fifty-records,
+// TASK-a-session-opens-at-its-end-because-the-end-is-where-the-work,
 // TASK-the-viewer-renders-what-the-terminal-showed-with-its,
 // TASK-a-conversation-is-rendered-as-a-document-who-spoke-when-and,
 // TASK-the-archive-shows-what-is-on-disk-now-because-nothing-has,
 // TASK-the-open-document-follows-the-session-as-it-is-written-and,
+// TASK-looking-at-the-tab-is-the-fastest-signal-a-reader-can-send,
+// TASK-a-chip-s-data-g-never-renders-on-six-of-the-eight-chip-kinds,
 // TASK-a-timestamp-is-shown-in-the-reader-s-own-zone-and-says-which,
 // INV-nothing-is-dropped-silently
 /**
@@ -38,7 +41,7 @@
  */
 import { test, expect } from '@playwright/test';
 import type { Page } from '@playwright/test';
-import { appendFileSync, mkdirSync, mkdtempSync, writeFileSync } from 'node:fs';
+import { appendFileSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { removeTree } from '../test/helpers/tmp.ts';
@@ -197,11 +200,31 @@ async function open(page: Page, hash: string, lang: 'en' | 'he'): Promise<void> 
   await expect(page.locator('#exited')).toBeHidden();
 }
 
-/** Open the one session and wait for the document to have drawn its first turn. */
-async function openDocument(page: Page, lang: 'en' | 'he'): Promise<void> {
+/**
+ * Open the one session and wait for the document to have drawn its first turn.
+ *
+ * **`at` defaults to `'top'` AND THAT IS NOT WHERE A SESSION OPENS ANY MORE.**
+ * `TASK-a-session-opens-at-its-end-because-the-end-is-where-the-work` moved the
+ * default landing to the END — that is the owner's ruling and the missing half
+ * of the follow, since a document only follows a reader who is at the tail. The
+ * tests that read the BEGINNING of the document — who spoke first, the first
+ * timestamp, the first ANSI colours — are about the document and not about
+ * where it opens, so they press Top and say so, rather than being rewritten to
+ * assert on whichever turn the end happens to hold.
+ *
+ * `at: 'default'` is the un-pressed path, and `a session opens at its end` is
+ * where the ruling itself is asserted.
+ */
+async function openDocument(
+  page: Page, lang: 'en' | 'he', at: 'top' | 'default' = 'top',
+): Promise<void> {
   await open(page, '#/conversations', lang);
   await page.locator('.convrow').first().click();
   await page.waitForSelector('.tvscroll .tvturn', { timeout: 20_000 });
+  if (at === 'top') {
+    await page.locator('.tvbar button.tvjump').first().click();
+    await expect(page.locator('.tvscroll')).toContainText('What the terminal showed', { timeout: 20_000 });
+  }
 }
 
 for (const lang of ['en', 'he'] as const) {
@@ -837,9 +860,9 @@ test.describe('the open document follows the session as it is written', () => {
 
   for (const lang of ['en', 'he'] as const) {
     test(`at the end of the file, a new turn arrives on its own (${lang})`, async ({ page }) => {
-      // The poll is five seconds and the append has to be noticed, read and
+      // The poll is one second and the append has to be noticed, read and
       // drawn after it; the default per-test budget is too tight to be honest
-      // about that.
+      // about that, and this fixture builds a whole server of its own first.
       test.setTimeout(90_000);
       await openLive(page, lang);
 
@@ -848,7 +871,13 @@ test.describe('the open document follows the session as it is written', () => {
       // document that would otherwise update silently or not at all.
       const follows = page.locator('p.tvfollows');
       await expect(follows).toBeVisible();
-      await expect(follows).toContainText(lang === 'he' ? '5' : 'every 5 seconds');
+      // `seq:22` moved the cadence to one second and, with it, the sentence:
+      // a `{secs}` slot cannot spell "every 1 seconds" or "כל 1 שניות" in a table
+      // with no plural rule, so the number is written into both translations
+      // and `test/ui/conversation-follow-cadence.test.ts` is what holds them to
+      // `TIP_MS`. It also now discloses the return-to-tab tick, which is the
+      // half of the following a reader is most likely to notice.
+      await expect(follows).toContainText(lang === 'he' ? 'כל שנייה' : 'every second');
 
       await page.locator('.tvbar button.tvjump').last().click();
       await expect(page.locator('.tvscroll')).toContainText(LAST_PHRASE, { timeout: 20_000 });
@@ -919,4 +948,672 @@ test.describe('the open document follows the session as it is written', () => {
       await expect(affordance).toBeHidden();
     });
   }
+
+  /**
+   * **THE COMPOSITION `seq:23` EXISTS FOR, asserted rather than argued.** The
+   * document follows only a reader who is AT THE TAIL — `atTail()` is the gate,
+   * and `seq:19`'s ruling is that a reader above the end is never dragged down.
+   * While a session opened at record zero that meant the feature the owner
+   * asked for did not start until he had travelled to the end himself. Nobody
+   * presses anything here: the session is opened, and a turn is appended.
+   */
+  test('the follow is already running at the moment the session opens', async ({ page }) => {
+    test.setTimeout(90_000);
+    await openLive(page, 'en');
+    // NO `.tvjump` CLICK. That absence is the test.
+    await expect(page.locator('button.tvnew')).toBeHidden();
+
+    const phrase = 'arrived without anybody travelling to the end first';
+    appendTurn(phrase);
+    await expect(page.locator('.tvscroll')).toContainText(phrase, { timeout: 30_000 });
+    // AND THE READER WAS TAKEN WITH IT rather than told about it, because they
+    // were at the tail from the first frame.
+    await expect(page.locator('button.tvnew')).toBeHidden();
+  });
+
+  /* ══ seq:22 — HOW LONG IT ACTUALLY TAKES ═══════════════════════════════ */
+
+  /**
+   * **THE NUMBER THE OWNER ASKED ABOUT IS APPENDED-TO-ON-SCREEN, NOT THE
+   * INTERVAL.** `seq:19` proved the turn arrives; his ruling on it was about
+   * how long that took — *"it should occure immediate as possible"*, sharpened
+   * to *"almost after it occured on the terminal — near real time"*. So these
+   * two MEASURE, and the assertion is a ceiling on a measurement rather than a
+   * restatement of `TIP_MS`. A 1000 ms interval that delivers in 1600 ms is not
+   * what the item claims, and only a clock can tell the two apart.
+   *
+   * **English only, and not because Hebrew matters less.** The quantity is a
+   * round trip and a tail read; nothing on the path is language-dependent, and
+   * a second copy would double the wall clock of the slowest describe in this
+   * file to re-measure the same server.
+   *
+   * **The ceilings are loose on purpose.** These run headed, several workers
+   * deep, on a machine that may be running other lanes — the same contention
+   * `playwright.config.ts` measured and capped workers for. A tight bound would
+   * report the machine rather than the screen. The numbers are PRINTED either
+   * way, so a regression shows up as a number moving even when nothing fails.
+   */
+  test('a turn appended while the reader watches is on screen within a second or so', async ({ page }) => {
+    test.setTimeout(90_000);
+    await openLive(page, 'en');
+    // **NO JUMP, AND NO HUNT FOR A PLANTED PHRASE.** The document opens at its
+    // end since `TASK-a-session-opens-at-its-end-because-the-end-is-where-the-work`,
+    // so there is nothing to press — and this describe appends to ONE shared
+    // transcript from several tests, so "the last phrase" is whichever sibling
+    // ran last and is not a thing a test may assert on. Being at the tail is
+    // the state that matters, and the affordance is how the screen says so: it
+    // appears only for a reader who is NOT at the end.
+    await expect(page.locator('button.tvnew')).toBeHidden();
+    // The tab is in front, which is the condition `shouldPing` gates on and
+    // therefore the condition this measurement is about.
+    expect(await page.evaluate(() => document.visibilityState)).toBe('visible');
+
+    // Three appends, because ONE measures where in the poll period the append
+    // happened to land as much as it measures the poll. Three spread across it
+    // and the worst of them is the honest headline.
+    const seen: number[] = [];
+    for (let i = 0; i < 3; i += 1) {
+      const phrase = `latency probe ${i} ${Date.now()}`;
+      const t0 = Date.now();
+      appendTurn(phrase);
+      // Polled IN THE PAGE at 25 ms, so the clock reads the screen rather than
+      // the test runner's own round trips.
+      await page.waitForFunction(
+        (needle) => (document.querySelector('.tvscroll')?.textContent ?? '').includes(needle as string),
+        phrase,
+        { polling: 25, timeout: 30_000 },
+      );
+      seen.push(Date.now() - t0);
+      // Clear of the next probe, so two appends never share one tick.
+      await page.waitForTimeout(1_500);
+    }
+
+    const worst = Math.max(...seen);
+    console.log(`[seq:22] appended -> on screen, tab in front: ${seen.join(' ms, ')} ms`);
+    // A CEILING, and it is the one the item's arithmetic buys: one poll period
+    // plus a `/tip` plus a resumed outline read plus a paint. Four seconds is
+    // deliberately generous against a contended machine — the point of the
+    // bound is that a regression to the old five-second interval, or to a poll
+    // that stopped running, fails here rather than reaching the owner.
+    expect(worst).toBeLessThan(4_000);
+  });
+
+  /**
+   * **THE RETURN TO THE TAB, which is `seq:22`'s first deliverable.** A hidden
+   * tab does not ask — `shouldPing`, and that rule does not move — so
+   * everything appended while the reader was away is waiting. Before this item
+   * the screen then waited for the next SCHEDULED tick, and that is not one
+   * interval: Chrome throttles a hidden tab's `setInterval` towards once a
+   * minute, so the wait after a return was a throttled period rather than
+   * `TIP_MS`. This asserts the screen answers the look in one round trip.
+   *
+   * ── WHY `visibilityState` IS OVERRIDDEN HERE, WHICH IS A REAL WEAKNESS ────
+   *
+   * The first draft of this test backgrounded the page with a second tab and
+   * `bringToFront()`, and it FAILED — the page stayed `visible`. Measured
+   * three ways against Playwright 1.62 on this machine, 2026-09-08, before
+   * anything was stubbed:
+   *
+   *     context.newPage() + other.bringToFront()   both pages report `visible`
+   *     window.open('_blank') from the first page  both pages report `visible`
+   *     CDP Emulation.setPageVisibilityOverride    'wasn't found' — removed
+   *     CDP Page.setWebLifecycleState 'frozen'     still reports `visible`
+   *
+   * Playwright gives every page its own top-level window rather than a tab, so
+   * nothing in the harness can produce a genuinely hidden document. So the
+   * property is overridden — and the override is confined to the ONE thing the
+   * harness cannot do. Everything else on the path is real: the real
+   * `visibilitychange` and `focus` events, the real `onLook` handler, the real
+   * `shouldPing` gate reading the property, real requests to `/tip`, a real
+   * append on disk and a real repaint.
+   *
+   * **AND THE FIRST HALF OF THIS TEST IS WHAT KEEPS THAT HONEST.** A stub that
+   * the code ignored would show up as the hidden document polling anyway, so
+   * the six seconds of silence below is not padding — it is the evidence that
+   * the override reaches the gate at all, and it is also the assertion that
+   * `seq:22` did not weaken the rule `test/ui/viewmodel.test.ts` states in
+   * isolation: a tab nobody is looking at does not ask.
+   *
+   * What is NOT covered, said rather than implied: the browser's own
+   * background-timer throttling. That is what makes the real-world wait much
+   * worse than `TIP_MS` and it is exactly the part a test cannot stage.
+   */
+  test('a reader coming back to the tab is not made to wait for the next tick', async ({ page }) => {
+    test.setTimeout(90_000);
+
+    // Added BEFORE `openLive`'s own init script and its navigation, so the app
+    // sees the overridden getter from its first line.
+    await page.addInitScript(() => {
+      let forced: string | null = null;
+      Object.defineProperty(Document.prototype, 'visibilityState', {
+        configurable: true,
+        get(): string { return forced ?? 'visible'; },
+      });
+      Object.defineProperty(window, '__look', {
+        value: (state: string | null) => {
+          forced = state;
+          // BOTH events, because the screen registers both and the guard that
+          // stops them asking twice is the thing worth measuring.
+          document.dispatchEvent(new Event('visibilitychange'));
+          window.dispatchEvent(new Event('focus'));
+        },
+      });
+    });
+
+    /** Every `/tip` the page asks for, by wall clock. */
+    const tips: number[] = [];
+    page.on('request', (r) => { if (r.url().includes('/tip')) tips.push(Date.now()); });
+
+    await openLive(page, 'en');
+    // **NO JUMP, AND NO HUNT FOR A PLANTED PHRASE.** The document opens at its
+    // end since `TASK-a-session-opens-at-its-end-because-the-end-is-where-the-work`,
+    // so there is nothing to press — and this describe appends to ONE shared
+    // transcript from several tests, so "the last phrase" is whichever sibling
+    // ran last and is not a thing a test may assert on. Being at the tail is
+    // the state that matters, and the affordance is how the screen says so: it
+    // appears only for a reader who is NOT at the end.
+    await expect(page.locator('button.tvnew')).toBeHidden();
+
+    await page.evaluate(() => (window as unknown as { __look: (s: string | null) => void })
+      .__look('hidden'));
+    expect(await page.evaluate(() => document.visibilityState)).toBe('hidden');
+
+    const phrase = 'appended while the reader was away';
+    const hiddenFrom = Date.now();
+    appendTurn(phrase);
+    // Six seconds — long enough that the OLD five-second interval would have
+    // fired once and the new one six times, had the tab been in front.
+    await page.waitForTimeout(6_000);
+    const asked = tips.filter((t) => t > hiddenFrom).length;
+    expect(asked, 'a hidden tab must not ask, and this is the rule seq:22 must not move').toBe(0);
+    expect(await page.evaluate((needle) =>
+      (document.querySelector('.tvscroll')?.textContent ?? '').includes(needle as string),
+    phrase)).toBe(false);
+
+    const t0 = Date.now();
+    await page.evaluate(() => (window as unknown as { __look: (s: string | null) => void })
+      .__look(null));
+    await page.waitForFunction(
+      (needle) => (document.querySelector('.tvscroll')?.textContent ?? '').includes(needle as string),
+      phrase,
+      { polling: 25, timeout: 30_000 },
+    );
+    const back = Date.now() - t0;
+    console.log(`[seq:22] returned to tab -> on screen: ${back} ms`);
+    // ONE ROUND TRIP, not one interval and certainly not one throttled
+    // interval. The bound is under the 5 s the screen used to wait at BEST,
+    // so a regression that deletes the two listeners cannot pass here.
+    expect(back).toBeLessThan(3_000);
+
+    // AND EXACTLY ONE ASK IN THAT FIRST MOMENT. `visibilitychange` and `focus`
+    // both fired, microseconds apart, and the screen answered once — which is
+    // the double-fire guard, load-bearing at a one-second interval and
+    // untestable by reading the code.
+    const burst = tips.filter((t) => t >= t0 && t < t0 + 300).length;
+    console.log(`[seq:22] /tip requests in the 300 ms after the look: ${burst}`);
+    expect(burst, 'one look, one ask — visibilitychange and focus must not both fire a tick')
+      .toBe(1);
+  });
+
+  /**
+   * **A BIG JUMP COUNTS RIGHT, and the item asks for this in those words:** the
+   * "N new below" affordance must be correct after a long absence, not only
+   * after a single turn arriving under a reader who is watching.
+   *
+   * The failure it guards against is not hypothetical arithmetic. `refill`
+   * rebuilds the LAST node rather than skipping past it — an open `work` run
+   * that the append extended is a different node now — so the increment is
+   * `fresh.length - 1` and not `fresh.length`. That off-by-one is invisible
+   * when one turn arrives and one node changes, and it is the whole count when
+   * forty do.
+   */
+  test('after a long absence the count of what arrived is right, not approximately right',
+    async ({ page }) => {
+      test.setTimeout(120_000);
+      await page.addInitScript(() => {
+        let forced: string | null = null;
+        Object.defineProperty(Document.prototype, 'visibilityState', {
+          configurable: true,
+          get(): string { return forced ?? 'visible'; },
+        });
+        Object.defineProperty(window, '__look', {
+          value: (state: string | null) => {
+            forced = state;
+            document.dispatchEvent(new Event('visibilitychange'));
+            window.dispatchEvent(new Event('focus'));
+          },
+        });
+      });
+
+      await openLive(page, 'en');
+      // SCROLLED UP, which is what makes the count exist at all: a reader at
+      // the tail is taken there and never sees a number.
+      await page.locator('.tvbar button.tvjump').first().click();
+      await expect(page.locator('.tvscroll')).toContainText('What the terminal showed', { timeout: 20_000 });
+
+      await page.evaluate(() => (window as unknown as { __look: (s: string | null) => void })
+        .__look('hidden'));
+
+      // TWENTY turns while away. Each `appendTurn` writes a `user` record and
+      // an `attachment` record, and a `said` node closes any open `work` run —
+      // so twenty rounds is forty nodes, and the one node that was open at the
+      // end of the document is rebuilt rather than added. Forty is therefore
+      // the number the screen must say.
+      const many = 20;
+      for (let i = 0; i < many; i += 1) appendTurn(`a turn that landed while nobody looked ${i}`);
+      await page.waitForTimeout(2_000);
+      await expect(page.locator('button.tvnew')).toBeHidden();
+
+      const scrolledTo = await page.locator('.tvscroll').evaluate((n) => (n as HTMLElement).scrollTop);
+      await page.evaluate(() => (window as unknown as { __look: (s: string | null) => void })
+        .__look(null));
+
+      const affordance = page.locator('button.tvnew');
+      await expect(affordance).toBeVisible({ timeout: 20_000 });
+      const said = (await affordance.textContent() ?? '').trim();
+      console.log(`[seq:22] after ${many} turns arrived unseen, the screen says: ${said}`);
+      // THE NUMBER, not "a number". `{n} new below` with `n` wrong is worse
+      // than no affordance, because a reader acts on it.
+      expect(said).toContain(`${many * 2} new below`);
+
+      // AND THE READER STILL DID NOT MOVE, which is `seq:19`'s ruling and does
+      // not stop applying because a lot arrived at once.
+      expect(await page.locator('.tvscroll').evaluate((n) => (n as HTMLElement).scrollTop))
+        .toBe(scrolledTo);
+
+      await affordance.click();
+      await expect(page.locator('.tvscroll'))
+        .toContainText(`a turn that landed while nobody looked ${many - 1}`, { timeout: 20_000 });
+      await expect(affordance).toBeHidden();
+    });
+});
+
+/* ══ seq:20 — THE CHIP GLYPHS, MEASURED IN THE CASCADE ════════════════════ */
+
+/**
+ * **`getComputedStyle(el, '::before').content`, kept rather than thrown away.**
+ * `TASK-a-chip-s-data-g-never-renders-on-six-of-the-eight-chip-kinds` was found
+ * with exactly this probe and closes by saying that whatever is chosen, this is
+ * the guard — because the defect is a SPECIFICITY one and no assertion on
+ * markup can see it. Every `data-g` was still in the DOM while six of the eight
+ * chip kinds drew their colour's glyph instead.
+ *
+ * **AND IT ASSERTS THE SCOPE, WHICH IS THE RULING.** Owner ruling 2026-09-08:
+ * the `data-g` comes alive on the conversation archive's chips and NOWHERE
+ * else, because letting it win everywhere would change glyphs he has read for
+ * weeks on Doctor, Decay, Work, Watch and Status. So the half of this test that
+ * will look wrong to a future reader — an unmarked `warn` chip must still draw
+ * `▲` even with a `data-g` on it — is there on purpose. Two glyph vocabularies
+ * coexist deliberately; deleting that assertion is how the ruling gets quietly
+ * reversed.
+ */
+test.describe('a conversation chip draws its own glyph, and only there', () => {
+  test('the six kinds that overrode data-g honour it when a chip asks', async ({ page }) => {
+    await open(page, '#/conversations', 'en');
+
+    const drawn = await page.evaluate(() => {
+      const read = (cls: string, g: string): string => {
+        const span = document.createElement('span');
+        span.className = cls;
+        span.dataset['g'] = g;
+        span.textContent = 'probe';
+        document.body.append(span);
+        const got = getComputedStyle(span, '::before').content;
+        span.remove();
+        return got;
+      };
+      const kinds = ['warn', 'crit', 'carry', 'ok', 'gov', 'unmeas', 'index', ''];
+      const out: Record<string, { plain: string; glyphed: string }> = {};
+      for (const kind of kinds) {
+        out[kind === '' ? 'plain' : kind] = {
+          plain: read(`chip ${kind}`.trim(), '⦸'),
+          glyphed: read(`chip ${kind} glyphed`.trim(), '⦸'),
+        };
+      }
+      return out;
+    });
+
+    // WHAT THE ITEM MEASURED, UNCHANGED: an unmarked meaning-coloured chip
+    // still wears its colour's glyph, `data-g` or no `data-g`. That is the
+    // ruling and not a leftover.
+    expect(drawn['warn']?.plain).toContain('▲');
+    expect(drawn['crit']?.plain).toContain('■');
+    expect(drawn['carry']?.plain).toContain('◇');
+    expect(drawn['ok']?.plain).toContain('●');
+    expect(drawn['gov']?.plain).toContain('◆');
+    expect(drawn['unmeas']?.plain).toContain('◌');
+    // …and the two kinds that always honoured it still do.
+    expect(drawn['index']?.plain).toContain('⦸');
+    expect(drawn['plain']?.plain).toContain('⦸');
+
+    // AND THE OPT-IN WINS ON ALL EIGHT. `.chip.glyphed[data-g]::before` beats
+    // the colour classes on SPECIFICITY rather than on source order, which is
+    // what stops a future re-ordering of the stylesheet from undoing it.
+    for (const kind of Object.keys(drawn)) {
+      expect(drawn[kind]?.glyphed, `chip ${kind} glyphed`).toContain('⦸');
+    }
+  });
+
+  test('the marked chips the shared fixture happens to draw all honour their data-g', async ({ page }) => {
+    await open(page, '#/conversations', 'en');
+
+    // **THIS SWEEP IS A NET, NOT THE PROOF.** The shared fixture is a clean
+    // session — nothing pruned, nothing capped, no failed step — so it draws
+    // few marked chips or none, and a loop over an empty list asserts nothing.
+    // The describe below plants a fixture that DOES draw them and is where the
+    // claim is actually tested. This one is here because it costs one page load
+    // and catches a marked chip that stops honouring its glyph anywhere on this
+    // screen, including ones added later.
+    for (const where of ['#/conversations', 'document'] as const) {
+      if (where === 'document') {
+        await page.locator('.convrow').first().click();
+        await page.waitForSelector('.tvscroll .tvturn', { timeout: 20_000 });
+      }
+      const marked = await page.evaluate(() =>
+        [...document.querySelectorAll('.chip.glyphed')].map((el) => ({
+          cls: el.className,
+          g: (el as HTMLElement).dataset['g'] ?? '',
+          before: getComputedStyle(el, '::before').content,
+        })));
+      for (const one of marked) {
+        expect(one.g, `${one.cls} carries a data-g`).not.toBe('');
+        expect(one.before, `${one.cls} draws its own data-g`).toContain(one.g);
+      }
+    }
+
+    // The synthetic-turn label is the one that always worked, and it is the
+    // control: `.chip.index` has no `::before` of its own, so it honours
+    // `data-g` through the base rule and needs no opt-in. If this fails, the
+    // base rule moved.
+    const tag = page.locator('.chip.index.tvtag').first();
+    if (await tag.count() > 0) {
+      const before = await tag.evaluate((el) => getComputedStyle(el, '::before').content);
+      expect(before).toContain('⌁');
+    }
+  });
+});
+
+/**
+ * **THE CHIPS THE ITEM NAMED, DRAWN BY THE SCREEN RATHER THAN BY A PROBE.**
+ *
+ * The probe above proves the CASCADE; this proves the SCREEN uses it, and the
+ * two are different claims — a `data-g` can render perfectly on a chip no call
+ * site ever marks. It needs a fixture of its own because the shared session is
+ * clean: `TASK-a-chip-s-data-g-never-renders-on-six-of-the-eight-chip-kinds`
+ * lists six dead call sites and not one of them fires on a healthy transcript.
+ *
+ * So this plants the two that can be made to happen without a new feature:
+ *   - a PRUNED row — indexed, then the file deleted, which is what the harness
+ *     does to a real transcript and the reason `export` exists at all. `chip
+ *     warn` with `data-g="⦸"`, which used to draw `▲`.
+ *   - a FAILED STEP — a `tool_result` carrying `is_error`, which is the one
+ *     field `shapeOf` reads for it. `chip crit` with `data-g="⚠"`, which used
+ *     to draw `■`.
+ *
+ * **AND A BEHIND ROW, WHICH IS THE CONTROL AND THE POINT.** Appending to the
+ * indexed session after the rebuild puts an UNMARKED `chip warn` on the same
+ * list as the marked one. Two `warn` chips, side by side, drawing two different
+ * glyphs — `▲` and `⦸` — is the owner's ruling as a picture: `data-g` comes
+ * alive where a chip asks for it and the colour vocabulary is untouched
+ * everywhere else.
+ *
+ * The two dead call sites this cannot reach are `conv.scanCapped` (needs a
+ * 256 MB transcript) and `conv.exported` (needs the export `plan:archive`
+ * seq:4/5 has not shipped — `source` is hard-coded `'live'` in
+ * `conversation-index.ts` today, so no row can carry it yet).
+ */
+test.describe('the archive draws its own glyphs where the item said it did not', () => {
+  let glyphs: UiHarness;
+  let glyphCwd: string;
+  let glyphHome: string;
+
+  test.beforeAll(async () => {
+    glyphHome = mkdtempSync(path.join(tmpdir(), 'e2e-glyph-home-'));
+    glyphCwd = mkdtempSync(path.join(tmpdir(), 'e2e-glyph-cwd-'));
+    const dir = path.join(glyphHome, 'projects', projectDirName(glyphCwd));
+    mkdirSync(dir, { recursive: true });
+
+    const at = (s: number): string => new Date(Date.UTC(2026, 8, 8, 13, 0, s)).toISOString();
+    const kept = path.join(dir, 'sess-glyph-kept.jsonl');
+    writeFileSync(kept, [
+      { type: 'user', message: { role: 'user', content: 'the session with a failed step' }, timestamp: at(0) },
+      {
+        type: 'assistant',
+        message: { role: 'assistant', content: [{ type: 'tool_use', name: 'Bash', input: { command: 'exit 1' } }] },
+        timestamp: at(1),
+      },
+      {
+        type: 'user',
+        message: { role: 'user', content: [{ type: 'tool_result', is_error: true, content: 'command failed' }] },
+        timestamp: at(2),
+      },
+      {
+        type: 'assistant',
+        message: { role: 'assistant', content: [{ type: 'text', text: 'that step did not work' }] },
+        timestamp: at(3),
+      },
+    ].map((r) => JSON.stringify(r)).join('\n') + '\n');
+
+    const gone = path.join(dir, 'sess-glyph-pruned.jsonl');
+    writeFileSync(gone, [
+      { type: 'user', message: { role: 'user', content: 'the session the harness later pruned' }, timestamp: at(10) },
+      { type: 'assistant', message: { role: 'assistant', content: [{ type: 'text', text: 'and its answer' }] }, timestamp: at(11) },
+    ].map((r) => JSON.stringify(r)).join('\n') + '\n');
+
+    process.env['CLAUDE_CONFIG_DIR'] = glyphHome;
+    const previous = process.cwd();
+    process.chdir(glyphCwd);
+    try {
+      runCli(['init'], glyphCwd, () => {});
+      runCli(['conversation', 'rebuild'], glyphCwd, () => {});
+    } finally {
+      process.chdir(previous);
+    }
+
+    // AFTER the index was built, and never rebuilt — which is exactly how the
+    // owner's own archive gets into both of these states.
+    rmSync(gone);
+    appendFileSync(kept, JSON.stringify({
+      type: 'user',
+      message: { role: 'user', content: `written after the index was built ${'.'.repeat(2000)}` },
+      timestamp: at(20),
+    }) + '\n');
+
+    glyphs = await startUiChild(glyphCwd);
+  });
+
+  test.afterAll(async () => {
+    await glyphs?.stop();
+    delete process.env['CLAUDE_CONFIG_DIR'];
+    if (glyphCwd) removeTree(glyphCwd);
+    if (glyphHome) removeTree(glyphHome);
+  });
+
+  const openGlyphs = async (page: Page): Promise<void> => {
+    await page.addInitScript(() => {
+      try { localStorage.setItem('myctx-lang', 'en'); } catch { /* private mode */ }
+    });
+    const nonce = await mintNonce(glyphs.port);
+    await page.goto(`http://127.0.0.1:${glyphs.port}/#${nonce}`);
+    await page.waitForSelector('.rail', { timeout: 20_000 });
+    await page.evaluate(() => { location.hash = '#/conversations'; });
+    await page.waitForSelector('.convrow', { timeout: 20_000 });
+    await expect(page.locator('#exited')).toBeHidden();
+  };
+
+  test('two warn chips on one list draw two different glyphs', async ({ page }) => {
+    await openGlyphs(page);
+
+    const pruned = page.locator('.convrow .chip.warn.glyphed');
+    await expect(pruned).toHaveCount(1);
+    await expect(pruned).toContainText('File deleted');
+    // THE ASSERTION THE ITEM ASKED FOR, made the way it asked: read the
+    // cascade, not the markup. `⦸` was in the DOM before this fix too.
+    expect(await pruned.evaluate((el) => getComputedStyle(el, '::before').content))
+      .toContain('⦸');
+
+    // THE CONTROL, on the same screen and in the same colour. An unmarked warn
+    // chip still wears `▲`, which is the ruling: the archive's chips changed
+    // and the vocabulary the owner reads everywhere else did not.
+    const behind = page.locator('.convrow .chip.warn:not(.glyphed)');
+    await expect(behind).toHaveCount(1);
+    await expect(behind).toContainText('Behind by');
+    expect(await behind.evaluate((el) => getComputedStyle(el, '::before').content))
+      .toContain('▲');
+
+    await page.screenshot({ path: 'e2e/screens/conversations-glyphs-en.png', fullPage: true });
+  });
+
+  test('a failed step wears a warning sign and not the crit square', async ({ page }) => {
+    await openGlyphs(page);
+    // The row picked by a CHIP rather than by a title: a row's title is the
+    // model's own, and this fixture never gave the model a chance to name one.
+    await page.locator('.convrow')
+      .filter({ has: page.locator('.chip.warn:not(.glyphed)') }).first().click();
+    await page.waitForSelector('.tvscroll .tvturn', { timeout: 20_000 });
+
+    const bad = page.locator('.tvwork .chip.crit.glyphed').first();
+    await expect(bad).toBeVisible({ timeout: 20_000 });
+    await expect(bad).toContainText('failed');
+    expect(await bad.evaluate((el) => getComputedStyle(el, '::before').content))
+      .toContain('⚠');
+    // `■` is what it drew before the opt-in existed. Naming it here is what
+    // makes this test fail loudly if the scoping is ever "tidied" away.
+    expect(await bad.evaluate((el) => getComputedStyle(el, '::before').content))
+      .not.toContain('■');
+  });
+});
+
+/* ══ seq:23 — A SESSION OPENS WHERE THE WORK IS ═══════════════════════════ */
+
+/**
+ * **`TASK-a-session-opens-at-its-end-because-the-end-is-where-the-work`.** Owner
+ * ruling 2026-09-08: *"when the session is opened in conversation, scroll it to
+ * the end by default."* Until then `mountDocument` finished by calling
+ * `applyFilter()`, which contains `scroll.scrollTop = 0`, so every session
+ * opened at record zero — on the owner's own session, 28,998 records from where
+ * he works.
+ *
+ * **The three tests here are the three ways this goes wrong**, and each is a
+ * trap the item named before the code was written:
+ *   - the landing is a SUM OF ESTIMATES at mount, so setting `scrollTop` once
+ *     lands somewhere that stops being the end the moment the first rows are
+ *     measured. Held with `stickUntil`, the way `refill` holds its own.
+ *   - the mount path and the FILTER path used to share that one line, and the
+ *     filter wants the opposite end. Typing a query must still go to the top.
+ *   - a hold is not a pin. A reader who opens a session and scrolls up has said
+ *     something, and `seq:19`'s ruling — do not move a reader who is above the
+ *     end — does not stop applying in the first three seconds.
+ */
+test.describe('a session opens at its end', () => {
+  for (const lang of ['en', 'he'] as const) {
+    test(`the last turn is on screen without anybody pressing End (${lang})`, async ({ page }) => {
+      await openDocument(page, lang, 'default');
+
+      // THE RULING, as the reader meets it: the newest turn is in the well.
+      await expect(page.locator('.tvscroll')).toContainText(LAST_PHRASE, { timeout: 20_000 });
+
+      // AND IT HELD. This is the assertion that fails if the landing is set
+      // once and hoped for: `scroller.total` is a sum of ESTIMATES at mount and
+      // moves under the reader as rows are measured and bodies arrive, so a
+      // check taken immediately would pass on a document that has already
+      // drifted a screenful up by the time anybody looks. Measured against the
+      // well's own scroll box, after the settling window.
+      await page.waitForTimeout(1_500);
+      const landed = await page.locator('.tvscroll').evaluate((n) => {
+        const el = n as HTMLElement;
+        return { top: el.scrollTop, max: el.scrollHeight - el.clientHeight };
+      });
+      expect(landed.max, 'the fixture must be taller than the well, or this proves nothing')
+        .toBeGreaterThan(500);
+      expect(landed.max - landed.top).toBeLessThan(4);
+
+      // AND THE DISCLOSURE UNDER IT IS READ AND KEPT, in both languages. The
+      // cadence sentence lost its `{secs}` slot in `seq:22` — a table with no
+      // plural rule cannot spell "every 1 seconds" — so the number is written
+      // into the prose, and this is where a human being can look at the result
+      // rather than at an assertion about it.
+      const follows = page.locator('p.tvfollows');
+      console.log(`[seq:22] the note (${lang}): ${(await follows.textContent() ?? '').trim()}`);
+      await follows.screenshot({ path: `e2e/screens/conversations-follows-note-${lang}.png` });
+
+      await page.screenshot({
+        path: `e2e/screens/conversations-opens-at-end-${lang}.png`, fullPage: true,
+      });
+    });
+  }
+
+  test('typing a query still goes to the top, which is where matches are read from', async ({ page }) => {
+    await openDocument(page, 'en', 'default');
+    await expect(page.locator('.tvscroll')).toContainText(LAST_PHRASE, { timeout: 20_000 });
+
+    // TRAP ONE. `applyFilter` is the input handler as well as the old mount
+    // path, and resetting to the top on a filter change is CORRECT. If this
+    // ever lands at the bottom, the two paths have been re-joined.
+    await page.locator('.tvfind').fill('round 3:');
+    await expect(page.locator('.tvscroll')).toContainText('round 3:', { timeout: 20_000 });
+    await page.waitForTimeout(1_500);
+    expect(await page.locator('.tvscroll').evaluate((n) => (n as HTMLElement).scrollTop)).toBe(0);
+  });
+
+  test('a reader who scrolls up as it opens is obeyed, not held', async ({ page }) => {
+    await openDocument(page, 'en', 'default');
+    const well = page.locator('.tvscroll');
+    await expect(well).toContainText(LAST_PHRASE, { timeout: 20_000 });
+
+    /**
+     * **THE GAP FROM THE END, never an absolute `scrollTop`.** Two measured
+     * failures put it this way. `scroller.total` GROWS while rows are measured
+     * and bodies arrive, so an absolute number taken before the document
+     * settled compared against a maximum taken after it read as "still at the
+     * end" when the reader had moved (chrome, 22508.5 against a 22474
+     * maximum). A distance from the end is immune to the total moving.
+     */
+    const gap = async (): Promise<number> => well.evaluate((n) => {
+      const el = n as HTMLElement;
+      return (el.scrollHeight - el.clientHeight) - el.scrollTop;
+    });
+
+    // **`locator.press`, NOT `keyboard.press` AND NOT `mouse.wheel`.** Both of
+    // the cheaper spellings were tried and both failed on the `chrome` project
+    // while passing on `chromium`: a single large wheel delta is clamped (170
+    // px of a 22,497 px document), and a bare `keyboard.press` goes to whatever
+    // holds focus — which is not necessarily the well, and a key that never
+    // reaches the well is not the `keydown` this hold listens for. `press` on
+    // the locator focuses it first. Pressed repeatedly because one PageUp is
+    // one viewport of a document that is still measuring itself.
+    await expect.poll(async () => {
+      await well.press('PageUp');
+      return gap();
+    }, {
+      timeout: 20_000,
+      message: 'PageUp on the well must actually move the reader off the end, or the assertion '
+        + 'below proves nothing',
+    }).toBeGreaterThan(400);
+
+    // AND THEY STAY THERE. The mount hold is a CEILING released by the reader's
+    // own input — `wheel`, `keydown`, `pointerdown` — exactly as the follow's
+    // is. If this fails, opening a session has become a pin, which is the wrong
+    // `seq:19` in the other direction.
+    await page.waitForTimeout(2_000);
+    expect(await gap(), 'a reader who took the scroll must not be dragged back to the end')
+      .toBeGreaterThan(400);
+  });
+
+  test('Top and End still do what they say, with the default moved', async ({ page }) => {
+    await openDocument(page, 'en', 'default');
+    const well = page.locator('.tvscroll');
+
+    // TOP, pressed INSIDE the hold window. The three release listeners are on
+    // the WELL and this button is in the bar above it, so without the handler
+    // clearing the hold itself the next paint would put the reader straight
+    // back at the end. Top matters more, not less, once the default moves.
+    await page.locator('.tvbar button.tvjump').first().click();
+    await expect(well).toContainText('What the terminal showed', { timeout: 20_000 });
+    await page.waitForTimeout(1_500);
+    expect(await well.evaluate((n) => (n as HTMLElement).scrollTop)).toBe(0);
+
+    await page.locator('.tvbar button.tvjump').last().click();
+    await expect(well).toContainText(LAST_PHRASE, { timeout: 20_000 });
+  });
 });

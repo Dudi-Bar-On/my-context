@@ -200,7 +200,7 @@ export const strings = {
   'conv.doc.whole': '{turns} turns across {records} records. Scroll the whole session — there is no page to leave.',
   'conv.doc.noMatch': 'Nothing in this session matches.',
   'conv.doc.matched': '{shown} of {total} sections match. The search reads the first {peek} characters of each turn and the tools each run used, not every word of the file.',
-  'conv.doc.follows': 'This session may still be being written. New turns are looked for every {secs} seconds, while this tab is in front.',
+  'conv.doc.follows': 'This session may still be being written. New turns are looked for every second while this tab is in front, and at once when you come back to it.',
   'conv.doc.newBelow': '{n} new below — go to the end',
   'conv.doc.replaced': 'This transcript was replaced rather than added to, so what is on screen is no longer where the file is. Reload the page to read it as it stands.',
   'conv.doc.truncated': 'This session is longer than this reader walks. {bytes} bytes were read, and the document ends there.',

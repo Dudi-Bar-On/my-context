@@ -1968,6 +1968,43 @@ tr:last-child td{border-block-end:0}
 .chip.carry::before{content:"◇ "}
 .chip::before{content:attr(data-g) " ";font-family:var(--mono)}
 
+/* ─── `.chip.glyphed` — A CHIP THAT WEARS ITS OWN GLYPH INSTEAD OF ITS
+   COLOUR'S, AND IT IS SCOPED ON PURPOSE. DO NOT "TIDY" THIS INTO
+   `.chip[data-g]::before`.
+   (`TASK-a-chip-s-data-g-never-renders-on-six-of-the-eight-chip-kinds`)
+
+   THE DEFECT. The five rules directly above are TWO-CLASS and the `attr(data-g)`
+   rule is one-class, so a colour class beats a screen's `data-g` whatever the
+   source order. Measured in a real browser 2026-09-08 by reading
+   `getComputedStyle(el, '::before').content` off a `<span class="chip X"
+   data-g="⃠">` for every class this file declares: `warn ▲`, `crit ■`,
+   `carry ◇`, `ok ●`, `gov ◆` and `unmeas ◌` all override it, and only bare
+   `.chip` and `.chip.index` honour it. Six of the eight chip kinds.
+
+   WHY IT IS A MARKER CLASS AND NOT A GLOBAL RULE. Owner ruling, 2026-09-08:
+   the `data-g` comes alive on the CONVERSATION ARCHIVE'S chips only. He was
+   shown the alternative — `.chip[data-g]::before` winning everywhere, which is
+   the cleaner cascade and one rule instead of two — and chose against it,
+   because it would change the glyph on chips in Doctor, Decay, Work, Watch and
+   Status that he has been reading for weeks. A tidier stylesheet is not worth
+   re-teaching a reader symbols they already know.
+
+   WHAT THAT COSTS, WRITTEN DOWN SO NOBODY LATER READS IT AS FREE: TWO GLYPH
+   VOCABULARIES NOW COEXIST IN THIS APP. A `crit` chip in the conversation
+   archive draws `⚠` and a `crit` chip on Doctor draws `■`, and they are
+   supposed to. That inconsistency is accepted deliberately, not overlooked,
+   which is exactly why the opt-in is a class a screen has to ASK for: reading
+   `chip crit glyphed` in `screens/conversations.js` is what tells the next
+   author which vocabulary that chip belongs to.
+
+   THE ATTRIBUTE IS IN THE SELECTOR FOR SPECIFICITY, NOT FOR TASTE. `.chip.warn
+   ::before` is (0,2,1); `.chip.glyphed::before` is also (0,2,1) and would win
+   only by sitting later in the file, which the next person to re-order this
+   stylesheet would silently undo. Adding `[data-g]` makes it (0,3,1) and the
+   rule wins on its own merits. It also means a `glyphed` chip that forgot its
+   `data-g` falls back to its colour glyph rather than to an empty mark. */
+.chip.glyphed[data-g]::before{content:attr(data-g) " ";font-family:var(--mono)}
+
 /* `.small` (mockup ~560) — every screen's secondary caption text; parts.js's
    errorNote() composes it as `small spill` for a refusal message. The
    mockup declares no `.spill{}` rule anywhere in its own stylesheet

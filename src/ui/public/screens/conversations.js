@@ -158,7 +158,7 @@ function drawRow(ctx, row, open) {
   // An exported copy is marked wherever it appears — the owner asked for the
   // two never to be confused, and `source` is a column for that reason.
   if (row.source !== 'live') {
-    const chip = el('span', 'chip carry');
+    const chip = el('span', 'chip carry glyphed');
     chip.dataset.g = '⎘';
     chip.append(...ctx.t('conv.exported'));
     marks.append(chip, ' ');
@@ -167,8 +167,18 @@ function drawRow(ctx, row, open) {
   // rather than failing to load it — the spec names it as the strongest
   // argument for export.
   if (row.present === false) {
-    const chip = el('span', 'chip warn');
-    chip.dataset.g = '⃠';
+    const chip = el('span', 'chip warn glyphed');
+    // **`⦸` AND NOT `⃠`, WHICH IS WHAT THIS LINE SAID WHILE IT WAS DEAD
+    // MARKUP.** `TASK-a-chip-s-data-g-never-renders-on-six-of-the-eight-chip-kinds`
+    // records the pruned chip's glyph as U+20E0 COMBINING ENCLOSING CIRCLE
+    // BACKSLASH, and nobody ever saw it: `.chip.warn::before` overrode it, so
+    // the chip drew `▲`. Rendered for the first time on 2026-09-08 it does what
+    // a combining mark does with no base character — it swallows the trailing
+    // space `content: attr(data-g) " "` supplies and lands ON the `F` of
+    // `File deleted`, eating the chip's leading space. U+29B8 CIRCLED REVERSE
+    // SOLIDUS draws the same picture as a standalone character and spaces
+    // correctly; the two were rendered side by side before this was changed.
+    chip.dataset.g = '⦸';
     chip.append(...ctx.t('conv.pruned'));
     marks.append(chip, ' ');
   }
@@ -178,14 +188,18 @@ function drawRow(ctx, row, open) {
   // scanning the list has to be able to tell WHICH session is behind, which an
   // aggregate line above the list cannot say.
   //
-  // NO `dataset.g`, unlike the two chips around it, and that is deliberate:
-  // `styles.css` declares `.chip.warn::before{content:"▲ "}`, which is a
-  // two-class rule and therefore beats `.chip::before{content:attr(data-g)}`.
-  // So a `data-g` on a `warn` chip NEVER RENDERS — the `⃠` above and the `⋯`
-  // below are both dead lines, verified in a browser 2026-09-08, and both
-  // chips draw `▲`. Adding a third dead line would be copying a defect
-  // forward; correcting theirs would change two glyphs the owner has seen, so
-  // it is reported rather than done here.
+  // **NO `glyphed` AND NO `dataset.g`, unlike the two chips around it, and it
+  // is a choice rather than an omission.** The three chips on this row used to
+  // draw one `▲` between them because a colour class' glyph beat every
+  // `data-g` a screen wrote — `.chip.warn::before` is a two-class rule and
+  // `.chip::before{content:attr(data-g)}` is not
+  // (`TASK-a-chip-s-data-g-never-renders-on-six-of-the-eight-chip-kinds`). The
+  // other two now opt in to `glyphed` and wear `⃠` and `⋯`. This one keeps the
+  // plain `▲`, because "the file has grown past what the scan read" is the
+  // ordinary warning of the three and the one a reader can safely read as the
+  // colour's own meaning. Three facts, three marks; the distinction the item
+  // asked for is made by giving the two SPECIAL ones a glyph, not by inventing
+  // a third symbol for the general case.
   if (row.staleBytes > 0) {
     const chip = el('span', 'chip warn');
     chip.append(...ctx.t('conv.behindRow', { bytes: sizeText(row.staleBytes) }));
@@ -193,7 +207,7 @@ function drawRow(ctx, row, open) {
   }
   // The scan hit its cap, so every count above is a floor rather than a total.
   if (row.scanTruncated === true) {
-    const chip = el('span', 'chip warn');
+    const chip = el('span', 'chip warn glyphed');
     chip.dataset.g = '⋯';
     chip.append(...ctx.t('conv.scanCapped'));
     marks.append(chip, ' ');
@@ -229,7 +243,16 @@ function drawList(ctx, host, body, open) {
     // A MEASURED zero — the scan ran and found nothing — drawn with the one
     // `◌` primitive this product already uses for exactly this state, never a
     // second glyph invented here.
-    const zero = el('span', 'chip unmeas');
+    //
+    // **`glyphed` HERE IS TURNING A COINCIDENCE INTO A STATEMENT, and that is
+    // the whole reason it is on a chip whose picture does not change.** This
+    // chip drew the right `◌` before the fix and after it, but for two
+    // different reasons: before, `.chip.unmeas::before` overrode the `data-g`
+    // and happened to declare the same character; now the `data-g` is what
+    // renders. The item names that agreement as accidental and says not to
+    // preserve it by accident, so the chip asks for its own glyph like its
+    // five siblings and stops depending on two rules agreeing.
+    const zero = el('span', 'chip unmeas glyphed');
     zero.dataset.g = '◌';
     zero.append(...ctx.t('conv.none'));
     const line = el('p', 'small');
@@ -336,7 +359,7 @@ const FETCH_PAGE = 24;
  * reader watching his own session go by would see it arrive in minute-long
  * jumps at that cadence.
  *
- * ── WHAT FIVE SECONDS COSTS, MEASURED, AND AGAINST WHAT BUDGET ───────────
+ * ── WHAT THE POLL COSTS, MEASURED, AND AGAINST WHAT BUDGET ───────────────
  *
  * The comparison that matters is not "is a poll cheap" but "is it cheap
  * against the number the 60 s ruling protects", which is `measureCorpusDrift`
@@ -348,17 +371,47 @@ const FETCH_PAGE = 24;
  *     the whole outline it avoids re-walking            258 ms, 884 KB
  *     the resumed outline a real append costs         2.722 ms, 512 bytes
  *
- * At 5 s the shipped route is **0.68 ms/min per open document** — an order of
- * magnitude under the sweep the ruling protects. The first draft would have
- * been 23 ms/min, four times over it, and that measurement is why the route
- * resolves its file from `listTranscriptFiles` rather than from the index;
- * `read-model-conversation-document.ts` carries the working.
+ * At 0.057 ms a call, the cost of an interval is arithmetic rather than taste
+ * (`TASK-looking-at-the-tab-is-the-fastest-signal-a-reader-can-send`):
+ *
+ *     5000 ms    12 calls/min    0.68 ms/min    under budget   <- was
+ *     2000 ms    30 calls/min    1.71 ms/min    under budget
+ *     1000 ms    60 calls/min    3.42 ms/min    under budget   <- IS
+ *      750 ms    80 calls/min    4.56 ms/min    under budget
+ *      500 ms   120 calls/min    6.84 ms/min    OVER budget
+ *      250 ms   240 calls/min   13.68 ms/min    OVER budget
+ *
+ * **AND EVERY ROW OF THAT TABLE IS PER OPEN DOCUMENT.** It is not a global
+ * budget line: this timer is created by `mountDocument`, so THREE conversation
+ * documents open in three tabs at 1000 ms is 10.26 ms/min and already over the
+ * sweep. What makes that survivable is `shouldPing` — a tab in the background
+ * contributes nothing, so the multiplier only applies to documents somebody is
+ * actually looking at. Lower this constant and that disclosure moves with it.
+ *
+ * **Half a second is the first step that breaks the budget**, so 1000 ms is
+ * the floor a poll can reach and anything faster is a different mechanism: a
+ * PUSH, which `seq:19` ruled against for a read surface and which is the
+ * owner's to reopen rather than a lane's to assume.
+ *
+ * **Polling faster genuinely buys freshness**, which is not obvious and was
+ * measured rather than assumed: the harness writes the transcript DURING a
+ * turn, not at the end of it. Sampling the owner's own live transcript three
+ * seconds apart mid-turn — 69,751,672 bytes then 69,760,908 — it grew 9,236
+ * bytes in those three seconds with an mtime two seconds old. So the ceiling
+ * on how fresh this screen can be is this interval, not the harness's
+ * buffering.
  *
  * `shouldPing` is honoured on every tick, so a tab in the background stops
  * asking — the same rule, and the same reason, as the heartbeat's: a forgotten
- * tab must not hold the server up.
+ * tab must not hold the server up. The interval is not the only thing that
+ * makes the screen ask, though: see `LOOK_GAP_MS` and `onLook` below, which
+ * turn "the reader came back to the tab" into a tick of its own.
+ *
+ * **The cadence is DISCLOSED on screen**, in `conv.doc.follows` in both string
+ * tables, and the two are held together by
+ * `test/ui/conversation-follow-cadence.test.ts` rather than by memory.
  */
-const TIP_MS = 5_000;
+const TIP_MS = 1_000;
 
 /**
  * The first guess at a node's height, in pixels, before it has been drawn.
@@ -678,7 +731,7 @@ function drawWork(ctx, body) {
   }
   const failed = body.steps.filter((s) => s.failed === true).length;
   if (failed > 0) {
-    const bad = el('span', 'chip crit tvtag');
+    const bad = el('span', 'chip crit tvtag glyphed');
     bad.dataset.g = '⚠';
     bad.append(...ctx.t('conv.doc.failed', { n: failed }));
     summary.append(bad);
@@ -697,7 +750,7 @@ function drawWork(ctx, body) {
       line.append(' ', detail);
     }
     if (step.unreadable === true) {
-      const bad = el('span', 'chip crit tvtag');
+      const bad = el('span', 'chip crit tvtag glyphed');
       bad.dataset.g = '⚠';
       bad.append(...ctx.t('conv.unreadable'));
       line.append(' ', bad);
@@ -910,7 +963,15 @@ function mountDocument(ctx, host, outline, back) {
   // its file has exactly that problem, so it says that it is following, and
   // at what cadence.
   const follows = el('p', 'tvnote tvfollows');
-  follows.append(...ctx.t('conv.doc.follows', { secs: TIP_MS / 1000 }));
+  // **THE CADENCE IS SPELLED, NOT SUBSTITUTED, and that is a change from
+  // `seq:19`.** The sentence used to carry a `{secs}` slot filled from
+  // `TIP_MS`, which was drift-proof and ungrammatical the moment the interval
+  // reached one: "every 1 seconds" in English and "כל 1 שניות" in Hebrew, and
+  // this table has refused count-plural constructions twice already for want of
+  // a plural rule (`rail.cntSome`, `doctor` — see `en.js`). So the number is
+  // written into the sentence in both languages, and what holds it to `TIP_MS`
+  // is `test/ui/conversation-follow-cadence.test.ts` rather than memory.
+  follows.append(...ctx.t('conv.doc.follows'));
   host.append(follows);
 
   if (outline.truncated === true) {
@@ -967,6 +1028,28 @@ function mountDocument(ctx, host, outline, back) {
    * Bounded by the clock rather than by a flag, because a flag would pin the
    * reader to the bottom for ever — the wrong `seq:19` names in the other
    * direction — and released early the moment they take the scroll back.
+   *
+   * ── WHO MAY SET IT, AND IT IS A SHORT LIST ON PURPOSE ─────────────────
+   *
+   * **Every setter is the reader consenting to be at the end**, and nothing
+   * else may join them. There are three:
+   *   - `refill`'s `if (following)` branch — they WERE at the end when the
+   *     turn arrived, measured by `atTail()` BEFORE the append and never
+   *     after it. A reader one row short of the end is not at the end.
+   *   - the `toNew` click — they asked to go down, in as many words.
+   *   - `redraw('end')`, the mount landing
+   *     (`TASK-a-session-opens-at-its-end-because-the-end-is-where-the-work`).
+   *     The owner ruled the END is where a session opens, so at mount the
+   *     reader's position IS the end and holding it there is holding their
+   *     position, not moving them off it.
+   *
+   * **AND `onLook` IS DELIBERATELY NOT ONE OF THEM.** Coming back to the tab
+   * is a request for FRESH, not a request for the bottom: a reader who left
+   * the tab while reading half way up comes back to the same place, with a
+   * count of what arrived below. `seq:19`'s ruling — *"if the user is looking
+   * at a point upper than the end of the session, do not scroll it down
+   * automatically"* — does not weaken because the tick that noticed the append
+   * was fired by a look instead of by a timer.
    */
   let stickUntil = 0;
   const STICK_MS = 3_000;
@@ -1163,7 +1246,15 @@ function mountDocument(ctx, host, outline, back) {
   scroll.addEventListener('toggle', () => { schedule(); }, true);
   window.addEventListener('resize', schedule);
 
-  toTop.addEventListener('click', () => { scroll.scrollTop = 0; paint(); });
+  // **`stickUntil = 0` IS WHAT KEEPS Top WORKING NOW THAT THE DOCUMENT OPENS
+  // AT THE END** (`TASK-a-session-opens-at-its-end-because-the-end-is-where-the-work`).
+  // The mount landing is held for `STICK_MS` the way `refill`'s is, and the
+  // three inputs that release it — `wheel`, `keydown`, `pointerdown` — are
+  // bound to the WELL. This button is in the bar above it, so pressing it
+  // inside that window would set `scrollTop` to zero and the next `paint`
+  // would put the reader straight back at the end. Top is the affordance a
+  // reader needs MORE once the default moves, so it says so itself.
+  toTop.addEventListener('click', () => { stickUntil = 0; scroll.scrollTop = 0; paint(); });
   toEnd.addEventListener('click', () => { scroll.scrollTop = scroller.total; paint(); });
 
   /**
@@ -1197,16 +1288,64 @@ function mountDocument(ctx, host, outline, back) {
     }
   };
 
-  const applyFilter = () => {
+  /**
+   * Throw away every drawn row, re-derive the view, and land the reader.
+   *
+   * **`land` is the whole reason this is a parameter and not a constant**
+   * (`TASK-a-session-opens-at-its-end-because-the-end-is-where-the-work`). The
+   * mount path and the filter path used to share one function and therefore one
+   * scroll position, and they want OPPOSITE ends:
+   *
+   *   - `'top'` — a reader who has typed a query wants the matches from the
+   *     start of the session. That is correct and does not move. It also
+   *     CLEARS the hold below, because a filter arriving inside the mount's
+   *     three seconds must not be dragged back down by it.
+   *   - `'end'` — a session opens where the work is. Owner ruling 2026-09-08:
+   *     *"when the session is opened in conversation, scroll it to the end by
+   *     default."* On his own session the top is 28,998 records from where he
+   *     is working.
+   *
+   * **AND OPENING AT THE END IS THE MISSING HALF OF `seq:19`, not a
+   * preference.** The document follows a live session only for a reader who is
+   * AT THE TAIL — that is what `atTail()` gates — so a session that opened at
+   * the top made the reader travel to the end before the following he asked for
+   * began. Opening at the end means it is running from the first frame.
+   *
+   * **THE LANDING IS HELD, NOT SET AND HOPED FOR.** `scroller.total` is a sum
+   * of ESTIMATES at mount — nothing has been measured yet — so a single
+   * `scrollTop = total` lands somewhere that stops being the end as soon as
+   * the first rows are measured and the first bodies arrive. `stickUntil` is
+   * the mechanism `refill` already uses for exactly this, and `paint` re-pins
+   * to the end on every pass while it is hot. It is a CEILING, not a pin: the
+   * same `wheel`/`keydown`/`pointerdown` listeners that release the follow's
+   * hold release this one, so a reader who opens a session and immediately
+   * scrolls up is obeyed at once.
+   *
+   * **"THE END" IS THE END OF THE VIEW, not of the nodes.** `scroller.total` is
+   * summed over `view`, which is the filtered list. They are the same thing
+   * today because no filter can be present at mount, and this is the reading
+   * that stays right when `seq:10` makes them diverge: a reader looking at a
+   * filtered document should land at the last MATCH, not at a node the filter
+   * is hiding.
+   */
+  const redraw = (land) => {
     reView();
     for (const [, row] of live) row.remove();
     live.clear();
     waiting.clear();
-    scroll.scrollTop = 0;
+    if (land === 'end') {
+      scroll.scrollTop = scroller.total;
+      stickUntil = Date.now() + STICK_MS;
+    } else {
+      stickUntil = 0;
+      scroll.scrollTop = 0;
+    }
     paint();
   };
+
+  const applyFilter = () => { redraw('top'); };
   find.addEventListener('input', applyFilter);
-  applyFilter();
+  redraw('end');
 
   /* ── FOLLOWING A SESSION THAT IS STILL BEING WRITTEN ────────────────────
    *
@@ -1245,6 +1384,22 @@ function mountDocument(ctx, host, outline, back) {
   /** A refill is in flight; a second tick must not start another. */
   let asking = false;
   let tipTimer = 0;
+  /**
+   * When the last tick actually ASKED — the half of the double-fire guard that
+   * `onLook` reads. `0` is "never", which is correct on the first look.
+   */
+  let askedAt = 0;
+  /**
+   * How close to the last ask a look-tick is dropped as a duplicate.
+   *
+   * **Sized against the collision it exists for, not against the interval.**
+   * One tab switch fires `visibilitychange` and `focus` within the same task,
+   * so the gap this has to swallow is microseconds; a quarter second is two
+   * orders of magnitude of slack over that and still a quarter of `TIP_MS`, so
+   * a reader who genuinely leaves and returns inside one interval is answered
+   * rather than debounced away.
+   */
+  const LOOK_GAP_MS = 250;
 
   /**
    * Is the reader at the end of the document?
@@ -1277,6 +1432,15 @@ function mountDocument(ctx, host, outline, back) {
   const stopFollowing = () => {
     if (tipTimer !== 0) { clearInterval(tipTimer); tipTimer = 0; }
     window.removeEventListener('hashchange', onLeave);
+    // **THREE LISTENERS ARE ADDED AND THREE ARE REMOVED, and the two below are
+    // the ones that would leak.** `hashchange` is on `window` and the two here
+    // are on `document` and `window` — none of them dies with the well, so a
+    // reader who opens six conversations in one session would otherwise leave
+    // six `onLook` handlers behind and fire all six on the next tab focus.
+    // `tick`'s `scroll.isConnected` guard makes each of them harmless, which is
+    // exactly why the leak would never be noticed.
+    document.removeEventListener('visibilitychange', onLook);
+    window.removeEventListener('focus', onLook);
   };
 
   /**
@@ -1320,7 +1484,17 @@ function mountDocument(ctx, host, outline, back) {
         + `?at=${last.o}&from=${last.f}&node=${last.n}`);
       if (!scroll.isConnected) return;
       if (tail.present === false) { stopWith('conv.prunedBody'); return; }
-      seenBytes = tail.bytes;
+      // **A BIG JUMP IS CAUGHT UP IN STEPS RATHER THAN CLAIMED IN ONE.** A
+      // reader who left the tab for an hour comes back to a file that may have
+      // grown past `DOCUMENT_WALK_CAP`, and the resumed outline then stops at
+      // the cap and says so in `truncated`. Recording `tail.bytes` there would
+      // mark the document current at a size it has NOT read to, and the tail
+      // between the cap and the end would never be asked for again — a hole,
+      // drawn as continuity, which is the one thing this screen's own
+      // `conv.doc.replaced` path exists to refuse. `walkedBytes` is how far
+      // this tail actually READ, so the next tick sees the file is still ahead
+      // and asks for the next stretch from the new last node.
+      seenBytes = tail.truncated === true ? tail.walkedBytes : tail.bytes;
       seenMtime = tail.mtimeMs;
       const fresh = tail.nodes ?? [];
       if (fresh.length === 0) return;
@@ -1390,6 +1564,7 @@ function mountDocument(ctx, host, outline, back) {
     // The heartbeat's own rule, imported rather than restated: a tab nobody is
     // looking at stops asking, so a forgotten one cannot hold the server up.
     if (!shouldPing(document.visibilityState)) return;
+    askedAt = Date.now();
     ctx.api(`/api/conversations/${encodeURIComponent(outline.sessionId)}/tip`)
       .then((tip) => {
         if (!scroll.isConnected) { stopFollowing(); return; }
@@ -1416,6 +1591,48 @@ function mountDocument(ctx, host, outline, back) {
         // simply a tick that learned nothing.
       });
   };
+
+  /**
+   * **Looking at the tab is the fastest signal a reader can send, and this is
+   * the screen answering it** —
+   * `TASK-looking-at-the-tab-is-the-fastest-signal-a-reader-can-send`.
+   *
+   * Without this the reader who comes back waits for the next SCHEDULED tick,
+   * and that is not one interval: browsers throttle a hidden tab's
+   * `setInterval` to roughly once a minute, so the wait after a return is a
+   * throttled period rather than `TIP_MS`. Coming back to the tab converts
+   * that into one round trip.
+   *
+   * **Both events, because they answer different questions.** A tab switch
+   * fires `visibilitychange`; a window RAISED without a tab change fires only
+   * `focus`. Registering one of the two leaves half the returns slow, and the
+   * half it leaves slow is the one an owner watching a terminal beside a
+   * browser actually does.
+   *
+   * **`shouldPing` is still the gate and it does not move.** `focus` fires on a
+   * window whose tab is not the front one, so this asks the same question
+   * `tick` asks and stops there when the answer is no: a HIDDEN tab must not
+   * ask, which is what `test/ui/viewmodel.test.ts` asserts about the rule in
+   * isolation. This makes a VISIBLE tab faster and nothing else.
+   *
+   * **AND IT MUST NOT DOUBLE-FIRE**, which at 1000 ms is load-bearing rather
+   * than tidy. Two guards, and they cover different collisions:
+   *   - `askedAt` drops a look-tick that lands within `LOOK_GAP_MS` of the
+   *     last ask. This is what stops the PAIR — `visibilitychange` and `focus`
+   *     both fire on one tab switch, microseconds apart — from asking twice.
+   *   - re-basing the interval is what stops a look-tick colliding with a
+   *     SCHEDULED one: after a manual ask the next scheduled ask is a full
+   *     `TIP_MS` away rather than whatever was left of the old period.
+   */
+  function onLook() {
+    if (tipTimer === 0) return;
+    if (!scroll.isConnected) { stopFollowing(); return; }
+    if (!shouldPing(document.visibilityState)) return;
+    if (Date.now() - askedAt < LOOK_GAP_MS) return;
+    clearInterval(tipTimer);
+    tipTimer = setInterval(tick, TIP_MS);
+    tick();
+  }
 
   // A reader who scrolls back down to the end has SEEN what arrived, so the
   // affordance goes away on its own rather than needing to be dismissed.
@@ -1447,6 +1664,11 @@ function mountDocument(ctx, host, outline, back) {
   if (outline.truncated !== true) {
     tipTimer = setInterval(tick, TIP_MS);
     window.addEventListener('hashchange', onLeave);
+    // Both, for the reason `onLook` gives: a tab switch fires the first and a
+    // window raised without a tab change fires only the second. Removed
+    // together in `stopFollowing`.
+    document.addEventListener('visibilitychange', onLook);
+    window.addEventListener('focus', onLook);
   } else {
     follows.hidden = true;
   }
