@@ -1,5 +1,7 @@
 // @basis TASK-the-viewer-renders-what-the-terminal-showed-with-its,
-// TASK-the-transcript-is-one-document-you-scroll-not-fifty-records
+// TASK-the-transcript-is-one-document-you-scroll-not-fifty-records,
+// TASK-a-subagent-is-opened-from-the-turn-that-dispatched-it-and,
+// INV-nothing-is-dropped-silently
 /**
  * The two pure halves of the transcript viewer: the escape-sequence renderer
  * (`plan:archive seq:8`) and the scroll's arithmetic (`seq:7`).
@@ -165,6 +167,14 @@ interface ViewerModule {
   estimateHeight: (node: { k: string; c: number }) => number;
   matchesNode: (node: Record<string, unknown>, needle: string) => boolean;
   sessionFromHash: (hash: string) => string | null;
+  laneHref: (agentId: string) => string;
+  laneIndex: (body: unknown) => {
+    byCall: Map<string, { agentId: string }>;
+    total: number;
+    unlinked: number;
+    owner: string | null;
+    read: boolean;
+  };
 }
 const viewer = (): Promise<ViewerModule> => browserModule<ViewerModule>('screens', 'conversations.js');
 
@@ -246,4 +256,90 @@ test('the session id is read off the hash, and an empty one is no session', asyn
   assert.equal(sessionFromHash('#/conversations/'), null);
   assert.equal(sessionFromHash('#/conversations/abc-123'), 'abc-123');
   assert.equal(sessionFromHash('#/conversations/a%20b'), 'a b');
+});
+
+/* ══ THE LANES A DOCUMENT CAN OPEN ═════════════════════════════════════════ */
+
+/**
+ * `plan:archive seq:15`. The screen joins a turn to a lane on a value BOTH
+ * SIDES ALREADY RECORDED — the `tool_use` block's `id`, which the lane's
+ * sidecar carries as `toolUseId`. These three tests hold the two halves of
+ * that join that can be wrong without anybody seeing it in a screenshot: a
+ * lane that cannot be linked being silently dropped, and a roster that failed
+ * to load being mistaken for a session that dispatched nothing.
+ */
+test('a lane is keyed by the call that dispatched it, and an unlinkable one is counted not dropped', async () => {
+  const { laneIndex } = await viewer();
+  const index = laneIndex({
+    sessionId: 'sess-1',
+    ownerSessionId: 'sess-1',
+    total: 3,
+    unlinked: 1,
+    subagents: [
+      { agentId: 'agent-one', toolUseId: 'toolu_ONE', records: 40, present: true },
+      { agentId: 'agent-two', toolUseId: 'toolu_TWO', records: 12, present: false },
+      // The sidecar was unreadable. It has a transcript worth reading and NO
+      // turn to hang it on, so it must not be in the map — and the count that
+      // says so must survive, or a reader sees a document with no links and
+      // cannot tell that from a session that dispatched nothing.
+      { agentId: 'agent-three', toolUseId: null, records: 7, present: true },
+    ],
+  });
+
+  assert.equal(index.read, true);
+  assert.equal(index.byCall.size, 2, 'only the two lanes a turn can actually name');
+  assert.equal(index.byCall.get('toolu_ONE')?.agentId, 'agent-one');
+  assert.equal(index.byCall.get('toolu_TWO')?.agentId, 'agent-two');
+  assert.equal(index.byCall.has('toolu_MISSING'), false);
+  assert.equal(index.total, 3, 'the roster is three even though two are reachable');
+  assert.equal(index.unlinked, 1, 'INV-nothing-is-dropped-silently: the page says this number');
+});
+
+test('a roster that failed to read is NOT an empty one, and says which it is', async () => {
+  const { laneIndex } = await viewer();
+
+  // The refusal path — `ctx.api` threw and the screen caught it into `null`,
+  // the same shape `doc.js` gives a document roster it could not fetch.
+  const refused = laneIndex(null);
+  assert.equal(refused.read, false, 'so `conv.doc.lanesUnread` is drawn');
+  assert.equal(refused.byCall.size, 0);
+  assert.equal(refused.owner, null);
+
+  // A session that genuinely dispatched none. Identical to the reader unless
+  // these two states are told apart HERE, which is the whole reason `read` is
+  // a field rather than `byCall.size === 0`.
+  const none = laneIndex({ sessionId: 's', ownerSessionId: 's', subagents: [], total: 0, unlinked: 0 });
+  assert.equal(none.read, true, 'nothing is drawn: there is nothing to disclose');
+  assert.equal(none.byCall.size, 0);
+});
+
+test('a lane document keeps the OWNING session, which is not its own id — the depth-2 trap', async () => {
+  const { laneIndex, laneHref } = await viewer();
+
+  // The document is `agent-parent`; the roster answered for it is the whole
+  // SESSION's, because a lane at depth 2 is filed under the session and its
+  // `Agent` call is a record inside this lane's own transcript. 43 of this
+  // workspace's 254 lanes are that shape.
+  const index = laneIndex({
+    sessionId: 'agent-parent',
+    ownerSessionId: 'sess-owner',
+    total: 1,
+    unlinked: 0,
+    subagents: [{ agentId: 'agent-child', toolUseId: 'toolu_DEEP', records: 9, present: true }],
+  });
+  assert.equal(
+    index.owner, 'sess-owner',
+    'a lane page that showed its own id as the session it came from would be pointing a reader '
+    + 'back at the page they are on',
+  );
+  assert.equal(index.byCall.get('toolu_DEEP')?.agentId, 'agent-child');
+
+  // ONE address for both, which is `seq:15`'s "the same renderer, whichever
+  // shape wins" spent rather than restated.
+  assert.equal(laneHref('agent-child'), '#/conversations/agent-child');
+  assert.equal(laneHref('sess-owner'), '#/conversations/sess-owner');
+  assert.equal(
+    laneHref('a b/c'), '#/conversations/a%20b%2Fc',
+    'an id goes into the hash encoded, so nothing in it can be read as another route',
+  );
 });

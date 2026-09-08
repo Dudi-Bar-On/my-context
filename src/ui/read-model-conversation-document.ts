@@ -249,11 +249,121 @@ export const NODE_WINDOW_DEFAULT = 24;
  * needs to say it was.
  */
 
-/** Steps of one folded run served in a node body. Bounded by `WORK_RUN_CAP`. */
-export const STEP_CAP = WORK_RUN_CAP;
+/**
+ * ── `STEP_CAP` AND `stepsOmitted` ARE GONE, AND THE ARITHMETIC IS WHY ──────
+ *
+ * `plan:archive seq:21`. `STEP_CAP` was declared `= WORK_RUN_CAP` and
+ * `readNodes` closes a run BEFORE it takes a record — `if (open !== null &&
+ * open.span >= WORK_RUN_CAP) closeRun()` — so a run's `span` never exceeded 40,
+ * one record pushed one step, and `steps.length < STEP_CAP` was therefore true
+ * on every record that ever reached it. `stepsOmitted` was `0` for every node
+ * this endpoint has ever produced, `drawWork`'s `body.stepsOmitted > 0` branch
+ * was unreachable, and the string behind it was delivered to no reader in
+ * either table.
+ *
+ * **Option 1 of the three the item lists — delete — taken with option 2's
+ * guard kept.** The coupling is removed by removing one side of it, and the
+ * PROPERTY that made the branch dead is asserted instead of the constant:
+ * `test/ui/conversation-document.test.ts` requires `steps.length === span` on
+ * every node, so anyone who later re-introduces a cut has a red test rather
+ * than a silently dropped step. `seq:7` removed two disclosures for this same
+ * reason and this is the third.
+ *
+ * **`.tvcut` is NOT dead, and the item is wrong about that.** It has a live
+ * call site in `laneLink` (`conversations.js`) — the line a lane whose
+ * transcript has been pruned draws. The rule stays.
+ */
 
-/** Who said it. `null` on a `work` node, which is nobody speaking. */
-export type Speaker = 'you' | 'claude';
+/**
+ * Who caused this turn — **not who typed it**, which is
+ * `plan:archive seq:28`'s ruling and the reason there are four of these.
+ *
+ * `null` is a legal answer and is the honest one for the harness talking to
+ * itself: a monitor tick, an `isMeta` record, a compaction carry-over. Measured
+ * on the owner's own session, 2026-09-09 — 271 synthetic person-side turns:
+ *
+ *     `Agent "…" finished` / failed / stalled   177   `subagent`
+ *     `Background command …`                     24   `shell`
+ *     Monitor event / stream ended               16   null
+ *     `isMeta`                                   25   null
+ *     harness compaction carry-over               6   null
+ *     no completion record found                  1   null
+ *     slash-command wrapper                      23   `you`
+ *
+ * **`claude` is the speaker of none of them**, and that is the finding rather
+ * than an omission: every one is delivered TO the assistant, so attributing any
+ * of them to Claude would repeat the error the ruling exists to fix one name
+ * over. **The 23 slash commands keep `you` and that is correct** — the wrapper
+ * text is machinery but the ACT was his, and a change that renamed all 271
+ * would take his own invocations away from him.
+ *
+ * `shell` is also the speaker of a command that RAN — see `Deed`.
+ */
+export type Speaker = 'you' | 'claude' | 'subagent' | 'shell';
+
+/**
+ * A record a reader wants MORE than the prose around it — `plan:archive
+ * seq:16`, and the reason the fold grew a third node kind instead of a wider
+ * exception.
+ *
+ * Owner ruling 2026-09-08: he wants to see *"the questions put to him, the
+ * suggestions offered, which one he chose and what he answered — and the same
+ * for shell commands that were executed."* Those are not missing from the file:
+ * `classifyTurn` sorts every record that is not plainly a prompt or an answer
+ * into MACHINERY, and the viewer folds machinery away, so they were present,
+ * counted and collapsed as noise.
+ *
+ * **Machinery was one bucket doing two jobs** — things a reader never wants
+ * (file-history snapshots, mode changes, latches) and things a reader wants
+ * more than the words beside them. So a KIND IS ADDED here and `classifyTurn`
+ * is untouched: the archive's counting definition of a prompt is measured and
+ * shared, and breaking it to serve a viewer is how two screens come to disagree
+ * about one record.
+ *
+ * **And the fold is kept for the rest.** 16,659 of 26,673 records carry no
+ * `message` at all; promoting everything would undo `seq:13`. Measured on the
+ * owner's transcript, 2026-09-09 — 31,101 records, 3,358 tool calls:
+ *
+ *     `Bash`             2,418   promoted
+ *     `PowerShell`          15   promoted
+ *     `AskUserQuestion`     71   promoted
+ *     everything else      854   still folded
+ *
+ * A deed node is ONE RECORD — `span` 1 — so `sum(span) === records` says what
+ * it said. Its RESULT stays folded, which is the ruling in the item's own
+ * words: *"Its output belongs behind the fold; the command does not."*
+ */
+export type Deed = 'ran' | 'ask';
+
+/** Tool names whose call IS a shell command. */
+const SHELL_TOOLS = ['Bash', 'PowerShell'];
+
+/** Tool names that put a question to the person. */
+const ASK_TOOLS = ['AskUserQuestion'];
+
+function deedOf(tool: string | null): Deed | null {
+  if (tool === null) return null;
+  if (SHELL_TOOLS.includes(tool)) return 'ran';
+  if (ASK_TOOLS.includes(tool)) return 'ask';
+  return null;
+}
+
+/**
+ * How far past a full window `readNodes` keeps reading to learn how a promoted
+ * call ENDED — records only, no further nodes.
+ *
+ * A deed carries its outcome, and the outcome lives in the `tool_result` record
+ * that answers it, which is a LATER record than the call. Measured on the
+ * owner's transcript, 2026-09-09, over 2,504 promoted calls: the result is the
+ * very next record 2,314 times, and the largest gap in the file is 17 records.
+ * So 40 is the same number `WORK_RUN_CAP` already is and more than twice the
+ * worst case — and without it roughly one deed per window would say its result
+ * was not in view when it plainly was.
+ *
+ * **0 calls in that file are never answered**, so `conv.doc.deed.noResult` is a
+ * measured zero on his session and draws nothing there.
+ */
+const RESOLVE_AHEAD = WORK_RUN_CAP;
 
 /**
  * One node of the document, as the OUTLINE carries it — everything the scroll
@@ -268,9 +378,17 @@ export type Speaker = 'you' | 'claude';
 export interface DocOutlineNode {
   /** 0-based position in the DOCUMENT. The handle a scroll window asks by. */
   n: number;
-  /** `said` — somebody used words. `work` — a folded run of machinery. */
-  k: 'said' | 'work';
-  /** Who spoke, on a `said` node. `null` on `work`. */
+  /**
+   * `said` — somebody used words. `work` — a folded run of machinery.
+   * `deed` — one promoted record: a shell command, or a question put to the
+   * person. See `Deed`.
+   */
+  k: 'said' | 'work' | 'deed';
+  /**
+   * Who CAUSED it. `null` on `work`, and also on a synthetic person-side turn
+   * nobody caused — a monitor tick, an `isMeta` record, the harness's own
+   * compaction carry-over. See `Speaker`.
+   */
   w: Speaker | null;
   /** ISO timestamp of the node's first record that carries one, else `null`. */
   t: string | null;
@@ -348,6 +466,8 @@ export interface DocOutlineBody {
   said: number;
   /** `work` nodes — the folded runs. */
   work: number;
+  /** `deed` nodes — the commands and the questions, promoted out of the fold. */
+  deed: number;
   nodes: DocOutlineNode[];
   /** The walk stopped at `DOCUMENT_WALK_CAP` before the file ended. */
   truncated: boolean;
@@ -415,6 +535,28 @@ export interface DocStep {
   index: number;
   /** The harness's own `type`. Unknown values are served, never dropped. */
   type: string;
+  /**
+   * WHAT THIS RECORD IS, where its `type` only names the envelope —
+   * `plan:archive seq:28`.
+   *
+   * `attachment` is the measured case and the argument. Measured on the owner's
+   * transcript, 2026-09-09, 4,864 of them: 3,646 are `total_tokens_reminder`,
+   * which is pure book-keeping a reader never wants, and **1,218 are not** —
+   * 677 `hook_success`, 230 `queued_command`, 77 `hook_additional_context`, 26
+   * `file`, and twenty-two further kinds. Every one of them drew the same bare
+   * word, so a reader could not tell "the harness counted tokens" from "a hook
+   * injected context into this turn", and the second CHANGED THE CONVERSATION.
+   * This is the argument `seq:13` already won for tool calls — a fold that says
+   * `Bash` forty times is unskimmable — applied to the record type that never
+   * got it.
+   *
+   * Read off the record's own shape rather than off a list of type names:
+   * `attachment.type`, else `subtype` (which is what `system` records carry —
+   * `away_summary` and its siblings), else `operation` (`queue-operation`:
+   * `enqueue` 790, `remove` 562, `dequeue` 227). `null` when the record names
+   * nothing finer than its type.
+   */
+  subtype: string | null;
   timestamp: string | null;
   /** The tool this record calls, when it calls one. */
   tool: string | null;
@@ -434,8 +576,8 @@ export interface DocStep {
   /** Content block types this record carries, in first-seen order. */
   blocks: string[];
   /**
-   * This record's text, WHOLE. Not capped, not sliced — see the ruling above
-   * `STEP_CAP`.
+   * This record's text, WHOLE. Not capped, not sliced — see THERE IS NO TEXT
+   * CAP IN THIS DOCUMENT above.
    *
    * `totalChars` and `textTruncated` sat beside this field until 2026-09-08
    * and went with the cap: `totalChars` was `text.length` restated for a
@@ -519,10 +661,39 @@ export interface DocStep {
   unreadable: boolean;
 }
 
+/**
+ * ONE QUESTION AND WHAT WAS DONE WITH IT — `plan:archive seq:16`.
+ *
+ * **The question and its options arrive as STRUCTURE and the answer arrives as
+ * PROSE, and that asymmetry is a fact about the transcript rather than a choice
+ * made here.** `seq:24` kept every argument of a call in its own JSON type, so
+ * `AskUserQuestion.questions` is a real array of objects carrying every option
+ * that was offered. The ANSWER is in the `tool_result`, in English, and there
+ * is NO chosen-index field anywhere in the record. Measured on the owner's
+ * transcript, 2026-09-09 — 71 calls, 71 answered, **three shapes and not two**:
+ *
+ *     `The user answered: "Q"="A", "Q2"="A2".`             the common one
+ *     `Your questions have been answered: "Q"="A", …`      a resumed ask
+ *     a rejection paragraph listing `Questions asked:`     2 of 71, with
+ *       `- "Q"` then `  Answer: <label>` or `(No answer provided)`
+ *
+ * So which option he picked is recovered by MATCHING TEXT, and when the match
+ * fails the raw sentence is served instead (`DocNodeBody.answerText`) rather
+ * than a silent blank — `INV-nothing-is-dropped-silently`.
+ */
+export interface DocAnswer {
+  /** The question, exactly as the answer names it. */
+  question: string;
+  /** What he answered — an option label, free text, or both. `null` = none. */
+  answer: string | null;
+}
+
 /** One node of the document with its body — what the scroll actually draws. */
 export interface DocNodeBody {
   n: number;
-  kind: 'said' | 'work';
+  kind: 'said' | 'work' | 'deed';
+  /** `ran` or `ask` on a `deed` node, `null` on the other two. See `Deed`. */
+  deed: Deed | null;
   who: Speaker | null;
   timestamp: string | null;
   first: number;
@@ -536,17 +707,36 @@ export interface DocNodeBody {
    *
    * It stays for the `work` case; the `textTruncated` and `thinkingTruncated`
    * flags that sat beside it did not, because nothing here can truncate any
-   * more. See the ruling above `STEP_CAP`.
+   * more. See THERE IS NO TEXT CAP IN THIS DOCUMENT above.
    */
   totalChars: number;
   /** `said`: the thinking that came with the words, folded beside them. */
   thinking: string;
   /** The label a synthetic person-side turn carries. See `DocOutlineNode.y`. */
   synthetic: string | null;
-  /** `work`: one entry per record folded, capped at `STEP_CAP`. */
+  /**
+   * `work`: one entry per record folded — every record, since a run closes at
+   * `WORK_RUN_CAP` before it takes another. `deed`: exactly one, the promoted
+   * call. `said`: one when the turn ALSO carried a tool call, which is 3 records
+   * of 31,101 on the owner's transcript and 2 of them shell commands — words
+   * win the classification and the call is served beside them rather than
+   * dropped for being rare.
+   */
   steps: DocStep[];
-  /** Steps this node covers that the cap left out. */
-  stepsOmitted: number;
+  /**
+   * `deed`: how the call ended, read off the `tool_result` that answered it.
+   * `null` means no result was found within `RESOLVE_AHEAD` records — measured
+   * zero on the owner's session, and drawn rather than hidden when it happens.
+   */
+  outcome: 'ok' | 'failed' | null;
+  /** `deed`/`ask`: the questions and what he answered. See `DocAnswer`. */
+  answers: DocAnswer[];
+  /**
+   * The answer sentence VERBATIM, served only when `answers` is empty and a
+   * result was found — a shape this parser did not recognise is shown as it
+   * was written rather than silently reduced to nothing.
+   */
+  answerText: string;
 }
 
 export interface DocNodesBody {
@@ -589,6 +779,180 @@ function syntheticLabel(
     return 'harness-compaction-summary';
   }
   return null;
+}
+
+/** The `<summary>` a task notification carries, collapsed to one line. */
+function summaryLine(text: string): string | null {
+  const found = /<summary>([\s\S]*?)<\/summary>/.exec(text);
+  if (found === null) return null;
+  const line = oneLine(found[1] ?? '', 160);
+  return line === '' ? null : line;
+}
+
+/**
+ * WHO CAUSED a synthetic person-side turn — `plan:archive seq:28`'s ruling,
+ * applied per kind rather than as one label for all of them.
+ *
+ * **The distinction lives in the `<summary>` line and nowhere else, which is
+ * why this reads the payload rather than the record.** `syntheticLabel` above
+ * stops at `task-notification`: the record type, the queue operation and the
+ * XML envelope are IDENTICAL for a finished lane, a finished background command
+ * and a monitor tick, so nothing outside the summary can tell the 177 from the
+ * 24 from the 16. Measured on the owner's own session and reliable across all
+ * 217 of them.
+ *
+ * `null` is the answer for everything else, and it is a real answer: see
+ * `Speaker` for the measured table and for why `claude` never appears in it.
+ */
+function syntheticSpeaker(label: string, text: string): Speaker | null {
+  // He typed the slash command. The wrapper is machinery; the ACT was his.
+  if (label === 'slash-command') return 'you';
+  if (label !== 'task-notification') return null;
+  const summary = summaryLine(text);
+  if (summary === null) return null;
+  // `Agent "…" finished`, and also `failed:`, `was stopped by Claude` and
+  // `stalled` — 177 of 217. A lane reporting back, whatever it reported.
+  if (summary.startsWith('Agent ')) return 'subagent';
+  // `Background command "…" completed (exit code N)` / `failed with exit code
+  // N` / `was stopped` — 24. The exit code is inside the sentence itself.
+  if (summary.startsWith('Background command')) return 'shell';
+  // A monitor tick, or the one record that says no completion was ever found.
+  // Nobody caused these; the harness is talking to itself, and an invented
+  // name would be worse than none.
+  return null;
+}
+
+/* ── THE PAYLOAD OF A RECORD THAT CARRIES NO `message` ────────────────────── */
+
+/**
+ * Text held under a payload field, whatever shape the harness wrote it in.
+ *
+ * A bare string, an array of strings, or an array of blocks carrying `content`
+ * or `text` — all three occur, and a reader of one of them only would have
+ * found a third of what is there.
+ */
+function payloadText(value: unknown): string {
+  if (typeof value === 'string') return value;
+  if (!Array.isArray(value)) return '';
+  const parts: string[] = [];
+  for (const block of value) {
+    if (typeof block === 'string') { if (block !== '') parts.push(block); continue; }
+    if (typeof block !== 'object' || block === null) continue;
+    const b = block as { content?: unknown; text?: unknown };
+    if (typeof b.content === 'string' && b.content !== '') parts.push(b.content);
+    else if (typeof b.text === 'string' && b.text !== '') parts.push(b.text);
+  }
+  return parts.join('\n\n');
+}
+
+/**
+ * WHAT A RECORD WITH NO `message` ACTUALLY SAYS — `plan:archive seq:28`, and
+ * the same shape of defect `seq:24` fixed one field over.
+ *
+ * **Measured on the owner's own transcript, 2026-09-09, 31,101 records.** The
+ * read model reached for a record's `message` object and its text blocks; these
+ * records have none, so nothing was hidden and nothing was capped — the field
+ * was never read at all:
+ *
+ *     `queue-operation.content`   1,352 records   3,971,694 characters
+ *     `attachment.rendered[]`     4,129 records   2,016,939 characters
+ *     `system.content`               40 records       8,653 characters
+ *
+ * That is **6.0 MB drawn as three bare words**, and it is not incidental
+ * content: the `queue-operation` payload is a `<task-notification>` block,
+ * which is HOW A SUBAGENT REPORTS BACK. Every lane completion and every result
+ * a dispatched agent returned arrives in that record type, so the archive
+ * showed that a lane had finished and not one word of what it said.
+ *
+ * **AND THE ITEM IS WRONG ABOUT `attachment`, which is worth more than agreeing
+ * with it.** `seq:28` states *"`rendered` is null on all 4,796, so there is
+ * nothing to draw from there"*. It is not null on any of them: it is ABSENT on
+ * 735 and an ARRAY of `{content}` blocks on 4,129, holding the exact
+ * `<system-reminder>` text the harness injected into that turn — the
+ * instructions, the environment, the session context, the queued command, the
+ * hook output. A `typeof x === 'string'` probe would report the same "nothing
+ * there" the item did, which is why this reads the shape rather than a type.
+ *
+ * **A FIELD SWEEP, NOT A TYPE-NAME SWEEP**, exactly as the item requires — *"or
+ * the next type to appear repeats it."* `content` first, then `rendered`, on
+ * ANY record with no `message`. `system` was found by the sweep and not by
+ * name, which is the sweep earning itself once already.
+ *
+ * **What is deliberately NOT read, so the omission is a decision rather than an
+ * oversight**: `last-prompt.lastPrompt` (1,322 records, 152,383 characters) is
+ * the harness restating a prompt the document already draws as its own turn,
+ * and `bridge-session`, `ai-title`, `custom-title`, `agent-name`, `mode`,
+ * `permission-mode` and `atis-latch` are single short identifiers already named
+ * by `subtype`. Reading those would be duplication, which is the one thing a
+ * document that already tiles its record space cannot afford.
+ */
+const PAYLOAD_FIELDS = ['content', 'rendered'];
+
+function readPayload(row: Record<string, unknown>): { text: string; subtype: string | null } {
+  let text = '';
+  for (const field of PAYLOAD_FIELDS) {
+    const got = payloadText(row[field]);
+    if (got !== '') { text = got; break; }
+  }
+  return { text, subtype: subtypeOf(row) };
+}
+
+/** The record's own name for itself, finer than its `type`. See `DocStep.subtype`. */
+function subtypeOf(row: Record<string, unknown>): string | null {
+  const attachment = row['attachment'];
+  if (typeof attachment === 'object' && attachment !== null) {
+    const kind = (attachment as { type?: unknown }).type;
+    if (typeof kind === 'string' && kind !== '') return kind;
+  }
+  for (const field of ['subtype', 'operation']) {
+    const value = row[field];
+    if (typeof value === 'string' && value !== '') return value;
+  }
+  return null;
+}
+
+/**
+ * The questions and the answers, read out of the `tool_result`'s English.
+ *
+ * See `DocAnswer` for the three measured shapes and for why this is a parse of
+ * prose rather than a read of a field: there is no chosen-index anywhere in the
+ * record. An unrecognised shape returns nothing and the caller serves the
+ * sentence itself.
+ */
+export function parseAnswers(text: string): DocAnswer[] {
+  const out: DocAnswer[] = [];
+
+  // The rejection paragraph — `Questions asked:` and then one `- "…"` per
+  // question, each followed by `Answer: <label>` or `(No answer provided)`.
+  if (text.includes('Questions asked:')) {
+    let question: string | null = null;
+    for (const raw of text.split('\n')) {
+      const line = raw.trim();
+      const asked = /^-\s+"([\s\S]*)"$/.exec(line);
+      if (asked !== null) {
+        if (question !== null) out.push({ question, answer: null });
+        question = asked[1] ?? '';
+        continue;
+      }
+      if (question === null) continue;
+      const answered = /^Answer:\s*(.+)$/.exec(line);
+      if (answered !== null) { out.push({ question, answer: answered[1] ?? '' }); question = null; continue; }
+      if (line === '(No answer provided)') { out.push({ question, answer: null }); question = null; }
+    }
+    if (question !== null) out.push({ question, answer: null });
+    if (out.length > 0) return out;
+  }
+
+  // `The user answered:` / `Your questions have been answered:` — one
+  // `"question"="answer"` pair per question, comma separated.
+  if (!/^\s*(The user answered:|Your questions have been answered:)/.test(text)) return out;
+  const pair = /"([^"]*)"="([^"]*)"/g;
+  for (;;) {
+    const found = pair.exec(text);
+    if (found === null) break;
+    out.push({ question: found[1] ?? '', answer: found[2] ?? '' });
+  }
+  return out;
 }
 
 /**
@@ -744,13 +1108,21 @@ interface Read {
   toolUseId: string | null;
   failed: boolean;
   blocks: string[];
+  /** The record's own name for itself, finer than its type. See `DocStep.subtype`. */
+  subtype: string | null;
+  /** Results this record carries, so a promoted call can learn how it ended. */
+  results: { id: string | null; failed: boolean; text: string }[];
+}
+
+function emptyRead(): Read {
+  return {
+    said: '', thinking: '', body: '', tool: null, detail: null, input: [],
+    toolUseId: null, failed: false, blocks: [], subtype: null, results: [],
+  };
 }
 
 function readRecord(message: unknown): Read {
-  const out: Read = {
-    said: '', thinking: '', body: '', tool: null, detail: null, input: [],
-    toolUseId: null, failed: false, blocks: [],
-  };
+  const out: Read = emptyRead();
   if (typeof message !== 'object' || message === null) return out;
   const content = (message as { content?: unknown }).content;
 
@@ -791,16 +1163,28 @@ function readRecord(message: unknown): Read {
       out.input.push(...toolInput(b.input));
     } else if (b.type === 'tool_result') {
       if (b.is_error === true) out.failed = true;
-      if (typeof b.content === 'string') body.push(b.content);
+      const mine: string[] = [];
+      if (typeof b.content === 'string') mine.push(b.content);
       else if (Array.isArray(b.content)) {
         for (const inner of b.content) {
           if (typeof inner === 'object' && inner !== null
             && (inner as { type?: unknown }).type === 'text'
             && typeof (inner as { text?: unknown }).text === 'string') {
-            body.push((inner as { text: string }).text);
+            mine.push((inner as { text: string }).text);
           }
         }
       }
+      body.push(...mine);
+      // KEPT APART AS WELL AS JOINED, so a promoted call can be told how it
+      // ended by the record that answered it. `body` is what this record DRAWS;
+      // `results` is what it ANSWERS, and the two are the same characters
+      // filed under different questions.
+      const answers = (b as { tool_use_id?: unknown }).tool_use_id;
+      out.results.push({
+        id: typeof answers === 'string' && answers !== '' ? answers : null,
+        failed: b.is_error === true,
+        text: mine.join('\n\n'),
+      });
     }
     // A block type this build has never heard of contributes no text and is
     // not an error — the transcript schema is the harness's and gains members.
@@ -815,20 +1199,27 @@ function readRecord(message: unknown): Read {
 /** `said`, `work`, and who — the one classification, made once. */
 interface Shape {
   said: boolean;
+  /** A promoted record — a command that ran, or a question put. See `Deed`. */
+  deed: Deed | null;
   who: Speaker | null;
   read: Read;
   synthetic: string | null;
 }
 
 function shapeOf(row: Record<string, unknown> | null): Shape {
-  const empty: Read = {
-    said: '', thinking: '', body: '', tool: null, detail: null, input: [],
-    toolUseId: null, failed: false, blocks: [],
-  };
-  if (row === null) return { said: false, who: null, read: empty, synthetic: null };
+  if (row === null) {
+    return { said: false, deed: null, who: null, read: emptyRead(), synthetic: null };
+  }
   const message = row['message'];
   if (typeof message !== 'object' || message === null) {
-    return { said: false, who: null, read: empty, synthetic: null };
+    // NO `message` AT ALL — 62.6% of the file, and 6.0 MB of it carries a
+    // payload one field over. See `readPayload`.
+    const payload = readPayload(row);
+    const read = emptyRead();
+    read.body = payload.text;
+    read.subtype = payload.subtype;
+    read.detail = summaryLine(payload.text);
+    return { said: false, deed: null, who: null, read, synthetic: null };
   }
   const content = (message as { content?: unknown }).content;
   // `classifyTurn` is IMPORTED rather than restated — `core/session-summary.ts`
@@ -837,14 +1228,23 @@ function shapeOf(row: Record<string, unknown> | null): Shape {
   // one record.
   const turn = classifyTurn(row['type'], content);
   if (turn === 'machinery') {
-    return { said: false, who: null, read: readRecord(message), synthetic: null };
+    const read = readRecord(message);
+    read.subtype = subtypeOf(row);
+    // A COMMAND, OR A QUESTION PUT TO HIM — lifted out of the fold rather than
+    // counted into it. `classifyTurn` still calls this machinery and is right
+    // to; what changes is which of the two jobs that bucket was doing.
+    return { said: false, deed: deedOf(read.tool), who: null, read, synthetic: null };
   }
   const read = readRecord(message);
-  const who: Speaker = turn === 'prompt' ? 'you' : 'claude';
-  const synthetic = who === 'you'
+  read.subtype = subtypeOf(row);
+  let who: Speaker | null = turn === 'prompt' ? 'you' : 'claude';
+  const synthetic = turn === 'prompt'
     ? syntheticLabel(read.said, row['isMeta'] === true, row['isCompactSummary'] === true)
     : null;
-  return { said: true, who, read, synthetic };
+  // WORDS WIN over a call in the same record, and the call is served beside
+  // them rather than dropped — 3 records of 31,101 carry both.
+  if (synthetic !== null) who = syntheticSpeaker(synthetic, read.said);
+  return { said: true, deed: null, who, read, synthetic };
 }
 
 /* ══ THE OUTLINE ═══════════════════════════════════════════════════════════ */
@@ -892,7 +1292,7 @@ export function buildOutline(
   file: string, cap: number = DOCUMENT_WALK_CAP, resume?: OutlineResume,
 ): {
   nodes: DocOutlineNode[]; records: number; cursor: TranscriptCursor;
-  said: number; work: number;
+  said: number; work: number; deed: number;
 } {
   const nodes: DocOutlineNode[] = [];
   const cursor: TranscriptCursor = { scannedBytes: 0, reachedEnd: false, unreadable: 0 };
@@ -900,6 +1300,7 @@ export function buildOutline(
   let records = 0;
   let said = 0;
   let work = 0;
+  let deed = 0;
 
   /** The run being accumulated, or `null` between runs. */
   let run: DocOutlineNode | null = null;
@@ -943,6 +1344,27 @@ export function buildOutline(
       continue;
     }
 
+    // A COMMAND, OR A QUESTION PUT TO HIM. One record, one node, drawn open —
+    // `plan:archive seq:16`. Its `peek` is what the call ASKED, so the filter
+    // above the scroll now finds a command by what it ran; before this, a
+    // search over 2,433 shell calls could match nothing but the word `Bash`.
+    if (shape.deed !== null) {
+      closeRun();
+      const asked = shape.read.detail ?? shape.read.tool ?? '';
+      const node: DocOutlineNode = {
+        n: base + nodes.length, k: 'deed',
+        w: shape.deed === 'ran' ? 'shell' : 'claude',
+        t: typeof step.record?.['timestamp'] === 'string'
+          ? step.record['timestamp'] as string : null,
+        c: asked.length, f: step.index, s: 1, o: step.byteOffset,
+      };
+      if (asked !== '') node.p = oneLine(asked, PEEK_CHARS);
+      if (shape.read.tool !== null) node.x = [shape.read.tool];
+      nodes.push(node);
+      deed += 1;
+      continue;
+    }
+
     // Machinery, and everything with no message at all. A run, capped so a
     // fold stays openable.
     if (run !== null && run.s >= WORK_RUN_CAP) closeRun();
@@ -962,7 +1384,7 @@ export function buildOutline(
   }
   closeRun();
 
-  return { nodes, records, cursor, said, work };
+  return { nodes, records, cursor, said, work, deed };
 }
 
 /* ══ READING A WINDOW OF NODES ═════════════════════════════════════════════ */
@@ -1000,65 +1422,122 @@ export function readNodes(file: string, want: NodeWindowRequest): DocNodeBody[] 
     open = null;
   };
 
+  /**
+   * Promoted calls in this window that have not yet been told how they ended.
+   * Keyed by the `tool_use` id BOTH SIDES ALREADY RECORDED — the same join
+   * `laneIndex` uses, and no correlation invented here either.
+   */
+  const pending = new Map<string, DocNodeBody>();
+  /** The window is full. The walk continues for outcomes only. See `RESOLVE_AHEAD`. */
+  let done = false;
+  let extra = 0;
+
   const walk = iterateTranscript(file, {
     cap: DOCUMENT_WALK_CAP, startByte: want.at, startIndex: want.from, cursor,
   });
 
   for (const step of walk) {
-    // Enough nodes built, and the run that was open is closed. Stop reading:
-    // the generator's `finally` closes the descriptor on `break`.
-    if (out.length >= want.count) break;
     const shape = shapeOf(step.record);
+
+    // HOW A PROMOTED CALL ENDED, taken from whichever later record answers it.
+    // Done before the window check so a deed at the very end of a window still
+    // learns its outcome instead of claiming it has none.
+    for (const result of shape.read.results) {
+      if (result.id === null) continue;
+      const node = pending.get(result.id);
+      if (node === undefined) continue;
+      node.outcome = result.failed ? 'failed' : 'ok';
+      if (node.deed === 'ask') {
+        node.answers = parseAnswers(result.text);
+        if (node.answers.length === 0) node.answerText = result.text;
+      }
+      pending.delete(result.id);
+    }
+
+    if (!done && out.length >= want.count) done = true;
+    if (done) {
+      // Enough nodes built. Keep reading only far enough to answer the deeds
+      // still waiting, then stop: the generator's `finally` closes the
+      // descriptor on `break`.
+      extra += 1;
+      if (pending.size === 0 || extra >= RESOLVE_AHEAD) break;
+      continue;
+    }
+
     const timestamp = typeof step.record?.['timestamp'] === 'string'
       ? step.record['timestamp'] as string : null;
 
+    const asStep = (): DocStep => ({
+      index: step.index,
+      type: typeof step.record?.['type'] === 'string' ? step.record['type'] as string : 'unknown',
+      subtype: shape.read.subtype,
+      timestamp,
+      tool: shape.read.tool,
+      detail: shape.read.detail,
+      input: shape.read.input,
+      toolUseId: shape.read.toolUseId,
+      failed: shape.read.failed,
+      blocks: shape.read.blocks,
+      text: shape.read.body !== '' ? shape.read.body : shape.read.thinking,
+      unreadable: step.record === null,
+    });
+
     if (shape.said) {
       closeRun();
-      if (out.length >= want.count) break;
+      if (out.length >= want.count) { done = true; continue; }
       const text = shape.read.said;
       const thinking = shape.read.thinking;
       out.push({
-        n: n++, kind: 'said', who: shape.who, timestamp,
+        n: n++, kind: 'said', deed: null, who: shape.who, timestamp,
         first: step.index, span: 1,
         text,
         totalChars: text.length,
         thinking,
         synthetic: shape.synthetic,
-        steps: [], stepsOmitted: 0,
+        // A turn that ALSO called a tool keeps the call beside its words —
+        // 3 records of 31,101, and dropping them for being rare is the shape
+        // `INV-nothing-is-dropped-silently` refuses.
+        steps: shape.read.tool !== null ? [asStep()] : [],
+        outcome: null, answers: [], answerText: '',
       });
+      continue;
+    }
+
+    if (shape.deed !== null) {
+      closeRun();
+      if (out.length >= want.count) { done = true; continue; }
+      const node: DocNodeBody = {
+        n: n++, kind: 'deed', deed: shape.deed,
+        who: shape.deed === 'ran' ? 'shell' : 'claude',
+        timestamp, first: step.index, span: 1,
+        text: '', totalChars: 0, thinking: shape.read.thinking, synthetic: null,
+        steps: [asStep()],
+        outcome: null, answers: [], answerText: '',
+      };
+      out.push(node);
+      if (shape.read.toolUseId !== null) pending.set(shape.read.toolUseId, node);
       continue;
     }
 
     if (open !== null && open.span >= WORK_RUN_CAP) {
       closeRun();
-      if (out.length >= want.count) break;
+      if (out.length >= want.count) { done = true; continue; }
     }
     if (open === null) {
       open = {
-        n: n++, kind: 'work', who: null, timestamp,
+        n: n++, kind: 'work', deed: null, who: null, timestamp,
         first: step.index, span: 0, text: '', totalChars: 0,
         thinking: '', synthetic: null,
-        steps: [], stepsOmitted: 0,
+        steps: [], outcome: null, answers: [], answerText: '',
       };
     }
     open.span += 1;
     const body = shape.read.body !== '' ? shape.read.body : shape.read.thinking;
     open.totalChars += body.length;
-    if (open.steps.length < STEP_CAP) {
-      open.steps.push({
-        index: step.index,
-        type: typeof step.record?.['type'] === 'string' ? step.record['type'] as string : 'unknown',
-        timestamp,
-        tool: shape.read.tool,
-        detail: shape.read.detail,
-        input: shape.read.input,
-        toolUseId: shape.read.toolUseId,
-        failed: shape.read.failed,
-        blocks: shape.read.blocks,
-        text: body,
-        unreadable: step.record === null,
-      });
-    } else open.stepsOmitted += 1;
+    // EVERY RECORD IN THE RUN IS A STEP. A run closes at `WORK_RUN_CAP` before
+    // it takes another record, so `steps.length === span` always — which is
+    // exactly why `STEP_CAP` and `stepsOmitted` are gone. See their note above.
+    open.steps.push(asStep());
   }
   // A run still open when the file ended is a node, not a leak.
   if (out.length < want.count) closeRun();
@@ -1269,7 +1748,7 @@ export function apiConversationOutline(
     const body: DocOutlineBody = {
       ...head, present: false, bytes: row.bytes, mtimeMs: row.mtimeMs,
       records: 0, unreadable: 0,
-      said: 0, work: 0, nodes: [], truncated: false, walkedBytes: 0,
+      said: 0, work: 0, deed: 0, nodes: [], truncated: false, walkedBytes: 0,
       uncounted: 'the transcript is no longer on disk — the harness prunes them, and the '
         + 'archive reads them in place rather than copying, so what is gone is gone. The '
         + 'counts on the list are what the last scan measured.',
@@ -1285,7 +1764,7 @@ export function apiConversationOutline(
   if (resume !== undefined && resume.at >= bytes) {
     const body: DocOutlineBody = {
       ...head, present: true, bytes, mtimeMs, records: 0, unreadable: 0,
-      said: 0, work: 0, nodes: [], truncated: false, walkedBytes: bytes,
+      said: 0, work: 0, deed: 0, nodes: [], truncated: false, walkedBytes: bytes,
       uncounted: null,
     };
     return { status: 200, body };
@@ -1306,6 +1785,7 @@ export function apiConversationOutline(
     unreadable: built.cursor.unreadable,
     said: built.said,
     work: built.work,
+    deed: built.deed,
     nodes: built.nodes,
     truncated,
     walkedBytes,

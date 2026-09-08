@@ -468,6 +468,9 @@ const WORK_PX = 34;
 export function estimateHeight(node) {
   if (node.k === 'work') return WORK_PX;
   const lines = Math.max(1, Math.ceil((node.c || 0) / CHARS_PER_LINE));
+  // A `deed` is a heading, the command or the question, and the arguments
+  // under it — closer to a turn than to a folded line, and its `c` is what was
+  // ASKED rather than what came back, so the same arithmetic reads it.
   return TURN_CHROME_PX + Math.min(lines, 400) * LINE_PX;
 }
 
@@ -615,6 +618,47 @@ const SYNTHETIC_KEYS = {
 };
 
 /**
+ * THE NAME AT THE TOP OF A TURN — `plan:archive seq:28`.
+ *
+ * The owner read a row that said **You** above *"Background task finished"* and
+ * took it for his own input being overridden. Nothing was overridden: the
+ * sentence is `conv.doc.syn.task` REPLACING the raw `<task-notification>`
+ * payload, which is correct and stays. The row had exactly one defect — the
+ * heading named him as the speaker of something he did not say.
+ *
+ * His ruling was per kind and the kinds were measured before any was assigned;
+ * `Speaker` in `read-model-conversation-document.ts` carries the table. Three
+ * things about it are worth having here, because a later edit will be tempted
+ * by each:
+ *
+ *   - **`claude` never appears.** Every synthetic person-side turn is
+ *     something delivered TO the assistant, so naming Claude would repeat the
+ *     error one name over.
+ *   - **The 23 slash commands keep `You`.** The wrapper is machinery; the act
+ *     was his. A change that renamed all 271 would take his own invocations
+ *     away from him.
+ *   - **`null` is a real answer**, for the 47 turns nobody caused. The row then
+ *     draws no name at all and its keyed chip says what it is, which is what
+ *     the ruling asked for — an invented name would be worse than none.
+ */
+const SPEAKER_KEYS = {
+  you: 'conv.doc.you',
+  claude: 'conv.doc.claude',
+  subagent: 'conv.doc.subagent',
+  shell: 'conv.doc.shell',
+};
+
+/** The accent a turn wears. Only the two real speakers get one of their own. */
+const SPEAKER_CLASS = { you: 'tvyou', claude: 'tvclaude' };
+
+/** The glyph beside the name — distinction by more than colour. */
+function speakerGlyph(who) {
+  if (who === 'you') return KINDS.prompt.glyph;
+  if (who === 'claude') return KINDS.answer.glyph;
+  return KINDS.machinery.glyph;
+}
+
+/**
  * One turn: who spoke, when, and what they said — `seq:13`'s skeleton, read
  * off the export he supplied as the format.
  *
@@ -625,18 +669,26 @@ const SYNTHETIC_KEYS = {
  * says survives virtualisation.
  */
 function drawTurn(ctx, body) {
-  const who = body.who === 'you' ? 'you' : 'claude';
-  const turn = el('article', `tvturn tv${who}${body.synthetic !== null ? ' tvsyn' : ''}`);
+  const who = body.who;
+  const accent = SPEAKER_CLASS[who] ?? '';
+  const turn = el('article', `tvturn ${accent}${body.synthetic !== null ? ' tvsyn' : ''}`.trim());
   turn.dataset.n = String(body.n);
 
   const head = el('header', 'tvwho');
   const mark = el('span', 'tvmark');
-  mark.dataset.g = who === 'you' ? KINDS.prompt.glyph : KINDS.answer.glyph;
+  mark.dataset.g = speakerGlyph(who);
   head.append(mark);
 
-  const name = el('h4', 'tvname');
-  name.append(...ctx.t(who === 'you' ? 'conv.doc.you' : 'conv.doc.claude'));
-  head.append(name);
+  // **A TURN NOBODY CAUSED CARRIES NO NAME.** `SPEAKER_KEYS` has the ruling and
+  // the measured table. The chip below is then the row's whole identity, which
+  // is what "or none" meant — a monitor tick has no speaker in any honest
+  // sense, and inventing one is the defect this fix exists to end.
+  const key = SPEAKER_KEYS[who];
+  if (key !== undefined) {
+    const name = el('h4', 'tvname');
+    name.append(...ctx.t(key));
+    head.append(name);
+  }
 
   // Person-side text nobody typed keeps its place and its record and is
   // LABELLED. `classifyTurn` counts these as prompts and is right to for the
@@ -646,8 +698,13 @@ function drawTurn(ctx, body) {
   if (body.synthetic !== null) {
     const tag = el('span', 'chip index tvtag');
     tag.dataset.g = '⌁';
-    const key = SYNTHETIC_KEYS[body.synthetic];
-    if (key !== undefined) tag.append(...ctx.t(key));
+    // **THE LABEL IS UNCHANGED, AND `plan:archive seq:28` SAYS SO IN AS MANY
+    // WORDS.** *"The format, the timestamp, the dimming, the readable sentence
+    // in place of raw XML — correct and must survive the fix."* Only the
+    // HEADING above moved. A finer label per notification subtype was
+    // available and was not taken for exactly this reason.
+    const label = SYNTHETIC_KEYS[body.synthetic];
+    if (label !== undefined) tag.append(...ctx.t(label));
     else tag.append(body.synthetic);
     head.append(tag);
   }
@@ -712,6 +769,13 @@ function drawTurn(ctx, body) {
     fold.append(summary, termBody(body.thinking));
     turn.append(fold);
   }
+
+  // A TURN THAT ALSO CALLED A TOOL. Measured on the owner's transcript: 3
+  // records of 31,101 carry words and a call in the same record, and two of
+  // those calls are shell commands. Words win the classification — the reader
+  // came for the words — and the call is drawn beneath them rather than
+  // dropped for being rare.
+  for (const step of body.steps ?? []) turn.append(...stepParts(ctx, step, NO_LANES));
   return turn;
 }
 
@@ -872,7 +936,18 @@ function laneLink(ctx, lane) {
   return open;
 }
 
-/** What one folded step calls itself: the tool, else the blocks, else the type. */
+/**
+ * What one folded step calls itself: the tool, else the blocks, else the type
+ * — **and the type's own name for itself where it has one**.
+ *
+ * `plan:archive seq:28`. `attachment` names the ENVELOPE;
+ * `total_tokens_reminder` and `hook_additional_context` name the thing, and
+ * 1,218 of the owner's 4,864 attachments are the second kind while 3,646 are
+ * the first. They rendered identically, so a reader could not tell the harness
+ * counting tokens from a hook injecting context into that turn. The subtype is
+ * drawn beside the type for the same reason `seq:13` made a fold name its
+ * tools: a fold that says one word forty times cannot be skimmed.
+ */
 function stepLabel(ctx, step) {
   if (step.tool !== null) return mono(step.tool);
   if (Array.isArray(step.blocks) && step.blocks.includes('tool_result')) {
@@ -880,8 +955,298 @@ function stepLabel(ctx, step) {
     word.append(...ctx.t('conv.doc.result'));
     return word;
   }
+  if (typeof step.subtype === 'string' && step.subtype !== '') {
+    return mono(`${step.type} · ${step.subtype}`);
+  }
   if (Array.isArray(step.blocks) && step.blocks.length > 0) return mono(step.blocks.join(' + '));
   return mono(step.type);
+}
+
+/**
+ * ONE STEP, drawn as its pieces — the summary line, what the tool was asked,
+ * and what came back.
+ *
+ * Shared by all three node kinds rather than written three times: a folded run
+ * wraps these in an `<li>`, a promoted call (`drawDeed`) appends them under its
+ * own heading, and the three turns that carry both words and a call append them
+ * beneath the words. One renderer means a step looks the same wherever a reader
+ * meets it, which is the property `seq:13`'s fold and `seq:16`'s promotion both
+ * depend on.
+ */
+function stepParts(ctx, step, lanes) {
+  const parts = [];
+  const line = el('p', 'tvstephead');
+  line.append(mono(String(step.index)), ' ', stepLabel(ctx, step));
+  if (step.detail !== null && step.detail !== '') {
+    const detail = el('span', 'tvdetail');
+    detail.setAttribute('dir', 'auto');
+    detail.textContent = stripEscapes(step.detail);
+    line.append(' ', detail);
+  }
+  if (step.unreadable === true) {
+    const bad = el('span', 'chip crit tvtag glyphed');
+    bad.dataset.g = '⚠';
+    bad.append(...ctx.t('conv.unreadable'));
+    line.append(' ', bad);
+  }
+
+  // **THE LANE THIS STEP DISPATCHED, OPENED FROM THE STEP THAT DISPATCHED
+  // IT** — `plan:archive seq:15`. The item puts the link exactly here and
+  // nowhere else: the `Agent` call carries the whole brief in `input` since
+  // `seq:24`, so the turn a reader is looking at when they want the working
+  // IS this step. A list of lanes somewhere else on the page would be a
+  // second place to look and would lose which turn each belonged to.
+  //
+  // Drawn on the SUMMARY LINE, above the arguments, so a reader who opens a
+  // fold meets it before the brief rather than after 22 KB of it.
+  const lane = typeof step.toolUseId === 'string' ? lanes.byCall.get(step.toolUseId) : undefined;
+  if (lane !== undefined) line.append(' ', laneLink(ctx, lane));
+  parts.push(line);
+
+  // WHAT THE TOOL WAS ASKED, before what came back. The owner pasted his own
+  // terminal back and found a `Write(...)` and a `Bash(...)` whose file and
+  // whose command were both absent from this screen: `detail` above is one
+  // line of at most 160 characters, and until 2026-09-08 it was the only
+  // thing the read model carried about an input at all. It was a CAPTURE
+  // defect, so opening the fold could not have shown it — 3,027 of 3,280
+  // tool calls on his transcript lost content, 4.45 MB of it.
+  //
+  // The summary line stays one line and this sits under it, so a fold is
+  // still skimmable closed and complete open. Nothing is capped here: the
+  // largest input in that file is 22,382 characters, against the 62,002-
+  // character step TEXT this same list already draws whole.
+  const args = argsList(step.input);
+  if (args !== null) parts.push(args);
+
+  // WHOLE, never clipped — see `drawTurn` above for the ruling. Measured on
+  // the owner's own transcript before the cap came off: 41 of 28,998 records
+  // were over the old 4,000-character step cap, the largest of them 58,888
+  // characters, and every one of them sits inside a `<details>` that is
+  // closed until a reader opens it.
+  if (step.text !== '') parts.push(termBody(step.text));
+  return parts;
+}
+
+/** The arguments of a call as a `<dl>`, or `null` when there were none. */
+function argsList(input, skip = []) {
+  if (!Array.isArray(input)) return null;
+  const fields = input.filter((f) => !skip.includes(f.name));
+  if (fields.length === 0) return null;
+  const args = el('dl', 'tvargs');
+  for (const field of fields) {
+    const short = shortArg(field.value);
+    // A `<div>` around each pair, which `<dl>` allows: it is what lets one
+    // argument sit beside its name and the next one sit under it.
+    const row = el('div', short === null ? 'tvargrow' : 'tvargrow tvarg1');
+    const name = el('dt', 'tvarg');
+    // The NAME is monospace-isolated the way `stepLabel` isolates a tool
+    // name: `file_path` is an identifier, and on the Hebrew page an
+    // identifier inside an RTL paragraph is reordered unless it is a run
+    // of its own.
+    name.append(mono(field.name));
+    const value = el('dd', 'tvargv');
+    value.setAttribute('dir', 'auto');
+    // A BLOCK renders its escapes as colour (`seq:8`); a one-line value
+    // strips them, the way `.tvdetail` above does — a control character in
+    // a span is invisible damage rather than a colour. Measured: exactly
+    // one record in the owner's transcript carries an escape at all, and
+    // it is a tool RESULT, so neither branch fires on his file.
+    if (short === null) value.append(argBody(field.value));
+    else value.textContent = stripEscapes(short);
+    row.append(name, value);
+    args.append(row);
+  }
+  return args;
+}
+
+/** One named argument of a call, or `undefined`. */
+function argOf(input, name) {
+  if (!Array.isArray(input)) return undefined;
+  const found = input.find((f) => f.name === name);
+  return found === undefined ? undefined : found.value;
+}
+
+/**
+ * A COMMAND THAT RAN, OR A QUESTION HE WAS ASKED — `plan:archive seq:16`,
+ * drawn open where the fold used to swallow it.
+ *
+ * Owner ruling 2026-09-08: he wants *"the questions put to him, the suggestions
+ * offered, which one he chose and what he answered — and the same for shell
+ * commands that were executed."* All four were already in the file; they were
+ * classified as machinery and folded away, which is what the 49 rows reading
+ * "Tool step … 0 characters" on the first page of his own session actually
+ * were.
+ *
+ * **Every option is drawn, not only the chosen one.** The item says why in one
+ * line and it is the whole reason this is a list rather than a sentence: *"The
+ * options he declined are the record of what was considered."*
+ *
+ * **The command is here; its OUTPUT is not.** That is the ruling exactly — the
+ * result stays in the folded run below, where a reader can open it. What this
+ * row carries about the outcome is whether it succeeded, which is the one part
+ * a reader needs without opening anything.
+ */
+function drawDeed(ctx, body, lanes = NO_LANES) {
+  const turn = el('article', 'tvturn tvsyn tvdeed');
+  turn.dataset.n = String(body.n);
+  const step = Array.isArray(body.steps) && body.steps.length > 0 ? body.steps[0] : null;
+
+  const head = el('header', 'tvwho');
+  const mark = el('span', 'tvmark');
+  mark.dataset.g = speakerGlyph(body.who);
+  head.append(mark);
+  const key = SPEAKER_KEYS[body.who];
+  if (key !== undefined) {
+    const name = el('h4', 'tvname');
+    name.append(...ctx.t(key));
+    head.append(name);
+  }
+  const tag = el('span', 'chip index tvtag');
+  tag.dataset.g = body.deed === 'ask' ? '?' : '$';
+  tag.append(...ctx.t(body.deed === 'ask' ? 'conv.doc.deed.ask' : 'conv.doc.deed.ran'));
+  head.append(tag);
+
+  // HOW IT ENDED. `.exitcode` / `.exitcode.bad` is the vocabulary this app
+  // already uses for the outcome of a command, so the word is keyed and the
+  // colour is the stylesheet's, not this file's.
+  if (body.outcome !== null) {
+    const code = el('span', `exitcode${body.outcome === 'failed' ? ' bad' : ''}`);
+    code.append(...ctx.t(body.outcome === 'failed' ? 'conv.doc.deed.bad' : 'conv.doc.deed.ok'));
+    head.append(code);
+  } else {
+    // A call whose result is not in the file. Measured zero on the owner's
+    // session — and said out loud rather than left as a blank that reads like
+    // success. `INV-nothing-is-dropped-silently`.
+    const none = el('span', 'tvcut');
+    none.append(...ctx.t('conv.doc.deed.noResult'));
+    head.append(none);
+  }
+
+  const day = dayText(body.timestamp);
+  if (day !== null) {
+    const at = el('time', 'tvat', day);
+    if (typeof body.timestamp === 'string') at.dateTime = body.timestamp;
+    at.setAttribute('dir', 'ltr');
+    head.append(at);
+  }
+  turn.append(head);
+
+  if (step === null) return turn;
+
+  if (body.deed === 'ran') {
+    // THE COMMAND EXACTLY AS IT RAN, verbatim and whole — newlines, heredocs
+    // and all. `detail` collapses it to 160 characters for a fold summary and
+    // 81% of the owner's are longer than that, so the summary is not the
+    // record and this is.
+    const command = argOf(step.input, 'command');
+    if (typeof command === 'string') turn.append(termBody(command));
+    const rest = argsList(step.input, ['command']);
+    if (rest !== null) turn.append(rest);
+  } else {
+    turn.append(...askParts(ctx, body, step));
+  }
+
+  // The lane a promoted call dispatched — a shell command dispatches none
+  // today, but the join is the step's and costs nothing to honour here.
+  const lane = typeof step.toolUseId === 'string' ? lanes.byCall.get(step.toolUseId) : undefined;
+  if (lane !== undefined) {
+    const line = el('p', 'tvstephead');
+    line.append(laneLink(ctx, lane));
+    turn.append(line);
+  }
+  return turn;
+}
+
+/**
+ * THE QUESTIONS, THEIR OPTIONS, AND THE ONE HE PICKED.
+ *
+ * The question and its options arrive as STRUCTURE — `seq:24` kept every
+ * argument in its own JSON type for exactly this. The ANSWER arrives as English
+ * prose in the `tool_result` and there is no chosen-index field anywhere in the
+ * record, so the match is by TEXT and it is allowed to fail: an option is
+ * marked only when the answer names it, and an answer that matches no option is
+ * drawn as itself. `DocAnswer` in the read model carries the three measured
+ * shapes of that sentence.
+ */
+function askParts(ctx, body, step) {
+  const parts = [];
+  const questions = argOf(step.input, 'questions');
+  const answers = Array.isArray(body.answers) ? body.answers : [];
+  const asked = Array.isArray(questions) ? questions : [];
+
+  for (const q of asked) {
+    if (q === null || typeof q !== 'object') continue;
+    const text = typeof q.question === 'string' ? q.question : '';
+    const line = el('p', 'tvstephead');
+    line.setAttribute('dir', 'auto');
+    line.textContent = stripEscapes(text);
+    parts.push(line);
+
+    const answer = answers.find((a) => a.question === text);
+    const chosen = answer === undefined || answer.answer === null ? null : answer.answer;
+    const options = Array.isArray(q.options) ? q.options : [];
+    const list = el('ul', 'tvsteps');
+    let matched = false;
+    for (const option of options) {
+      if (option === null || typeof option !== 'object') continue;
+      const label = typeof option.label === 'string' ? option.label : '';
+      // The answer sentence carries the label the harness wrote, which for a
+      // recommended option ends in a marker the option itself does not have.
+      const picked = chosen !== null && chosen.includes(label) && label !== '';
+      if (picked) matched = true;
+      const item = el('li', 'tvstep');
+      const row = el('p', 'tvstephead');
+      row.setAttribute('dir', 'auto');
+      // **THE LABEL IS THE BRIGHT HALF AND ITS DESCRIPTION IS THE DIM ONE, AND
+      // THAT ORDER WAS FOUND IN THE PICTURE.** Drawn first as a `<p
+      // class="tvdetail">` of its own, the description inherited the article's
+      // sans body type while the label kept `.tvstephead`'s small mono — so an
+      // option's blurb shouted over the option, on the owner's own screen,
+      // after every assertion had passed. `.tvdetail` is `color: var(--ink)`
+      // and `.tvstep` is `color: var(--dim)`, so putting the label in the
+      // first and the blurb in neither gets the hierarchy from rules that
+      // already exist. No new CSS: `styles.css` is another lane's file
+      // tonight.
+      const name = el('span', 'tvdetail');
+      name.textContent = stripEscapes(label);
+      row.append(name);
+      if (picked) {
+        const mark = el('span', 'chip ok tvtag glyphed');
+        mark.dataset.g = '✓';
+        mark.append(...ctx.t('conv.doc.deed.chose'));
+        row.append(' ', mark);
+      }
+      if (typeof option.description === 'string' && option.description !== '') {
+        const why = el('span');
+        why.textContent = ` — ${stripEscapes(option.description)}`;
+        row.append(why);
+      }
+      item.append(row);
+      list.append(item);
+    }
+    if (options.length > 0) parts.push(list);
+
+    // WHAT HE TYPED, when it was not one of the options — or when it was one of
+    // them and he wrote more beside it. Drawn as itself rather than reduced to
+    // a tick nobody can read.
+    if (chosen === null) {
+      const none = el('p', 'tvcut');
+      none.append(...ctx.t('conv.doc.deed.noAnswer'));
+      parts.push(none);
+    } else if (!matched || chosen.length > 120) {
+      parts.push(termBody(chosen));
+    }
+  }
+
+  // A SENTENCE THIS PARSER DID NOT RECOGNISE is served as it was written. The
+  // shapes are measured and there are three of them, and a fourth arriving must
+  // not turn into a blank row.
+  if (typeof body.answerText === 'string' && body.answerText !== '') {
+    parts.push(termBody(body.answerText));
+  }
+  const rest = argsList(step.input, ['questions']);
+  if (rest !== null) parts.push(rest);
+  return parts;
 }
 
 /**
@@ -928,90 +1293,37 @@ function drawWork(ctx, body, lanes = NO_LANES) {
   fold.append(summary);
 
   const list = el('ol', 'tvsteps');
+  let thought = 0;
   for (const step of body.steps) {
     const item = el('li', `tvstep${step.failed === true ? ' tvfail' : ''}`);
-    const line = el('p', 'tvstephead');
-    line.append(mono(String(step.index)), ' ', stepLabel(ctx, step));
-    if (step.detail !== null && step.detail !== '') {
-      const detail = el('span', 'tvdetail');
-      detail.setAttribute('dir', 'auto');
-      detail.textContent = stripEscapes(step.detail);
-      line.append(' ', detail);
-    }
-    if (step.unreadable === true) {
-      const bad = el('span', 'chip crit tvtag glyphed');
-      bad.dataset.g = '⚠';
-      bad.append(...ctx.t('conv.unreadable'));
-      line.append(' ', bad);
-    }
-
-    // **THE LANE THIS STEP DISPATCHED, OPENED FROM THE STEP THAT DISPATCHED
-    // IT** — `plan:archive seq:15`. The item puts the link exactly here and
-    // nowhere else: the `Agent` call carries the whole brief in `input` since
-    // `seq:24`, so the turn a reader is looking at when they want the working
-    // IS this step. A list of lanes somewhere else on the page would be a
-    // second place to look and would lose which turn each belonged to.
-    //
-    // Drawn on the SUMMARY LINE, above the arguments, so a reader who opens a
-    // fold meets it before the brief rather than after 22 KB of it.
-    const lane = typeof step.toolUseId === 'string' ? lanes.byCall.get(step.toolUseId) : undefined;
-    if (lane !== undefined) line.append(' ', laneLink(ctx, lane));
-    item.append(line);
-
-    // WHAT THE TOOL WAS ASKED, before what came back. The owner pasted his own
-    // terminal back and found a `Write(...)` and a `Bash(...)` whose file and
-    // whose command were both absent from this screen: `detail` above is one
-    // line of at most 160 characters, and until 2026-09-08 it was the only
-    // thing the read model carried about an input at all. It was a CAPTURE
-    // defect, so opening the fold could not have shown it — 3,027 of 3,280
-    // tool calls on his transcript lost content, 4.45 MB of it.
-    //
-    // The summary line stays one line and this sits under it, so a fold is
-    // still skimmable closed and complete open. Nothing is capped here: the
-    // largest input in that file is 22,382 characters, against the 58,888-
-    // character step TEXT this same list already draws whole.
-    if (Array.isArray(step.input) && step.input.length > 0) {
-      const args = el('dl', 'tvargs');
-      for (const field of step.input) {
-        const short = shortArg(field.value);
-        // A `<div>` around each pair, which `<dl>` allows: it is what lets one
-        // argument sit beside its name and the next one sit under it.
-        const row = el('div', short === null ? 'tvargrow' : 'tvargrow tvarg1');
-        const name = el('dt', 'tvarg');
-        // The NAME is monospace-isolated the way `stepLabel` isolates a tool
-        // name: `file_path` is an identifier, and on the Hebrew page an
-        // identifier inside an RTL paragraph is reordered unless it is a run
-        // of its own.
-        name.append(mono(field.name));
-        const value = el('dd', 'tvargv');
-        value.setAttribute('dir', 'auto');
-        // A BLOCK renders its escapes as colour (`seq:8`); a one-line value
-        // strips them, the way `.tvdetail` above does — a control character in
-        // a span is invisible damage rather than a colour. Measured: exactly
-        // one record in the owner's transcript carries an escape at all, and
-        // it is a tool RESULT, so neither branch fires on his file.
-        if (short === null) value.append(argBody(field.value));
-        else value.textContent = stripEscapes(short);
-        row.append(name, value);
-        args.append(row);
-      }
-      item.append(args);
-    }
-
-    // WHOLE, never clipped — see `drawTurn` above for the ruling. Measured on
-    // the owner's own transcript before the cap came off: 41 of 28,998 records
-    // were over the old 4,000-character step cap, the largest of them 58,888
-    // characters, and every one of them sits inside a `<details>` that is
-    // closed until a reader opens it.
-    if (step.text !== '') item.append(termBody(step.text));
+    if (Array.isArray(step.blocks) && step.blocks.includes('thinking')) thought += 1;
+    item.append(...stepParts(ctx, step, lanes));
     list.append(item);
   }
   fold.append(list);
 
-  if (body.stepsOmitted > 0) {
-    const more = el('p', 'tvcut');
-    more.append(...ctx.t('conv.doc.stepsOmitted', { n: body.stepsOmitted }));
-    fold.append(more);
+  // ── THINKING IS NEVER RECORDED, AND THAT IS SAID ONCE ──────────────────
+  //
+  // `plan:archive seq:28`. Measured on the owner's own transcript: 2,080
+  // thinking blocks, EVERY ONE of them holding zero characters. Claude Code
+  // does not persist thinking text to a transcript at all, so this is not a
+  // capture bug and there is nothing to recover — the row saying "thinking"
+  // with nothing beside it is TRUE, and will be true of every thinking block
+  // that will ever be written.
+  //
+  // Which makes it a DISCLOSURE question rather than a rendering one, and
+  // `STD-a-measured-zero-is-drawn-and-named-an-unmeasured-thing-is` decides it:
+  // what must not happen is drawing them as
+  // though the text were merely missing this time. So the fold says it ONCE —
+  // not 2,080 times that a block existed, and not never.
+  //
+  // Once per FOLD rather than once per document, because that is where a
+  // reader meets the row and asks the question. The archive can never show the
+  // assistant's reasoning; it can show that reasoning happened.
+  if (thought > 0) {
+    const note = el('p', 'tvcut');
+    note.append(...ctx.t('conv.doc.thinkingNever'));
+    fold.append(note);
   }
   return fold;
 }
@@ -1392,7 +1704,10 @@ function mountDocument(ctx, host, outline, back, lanes = NO_LANES) {
       return drawWaiting(ctx, nodes[nodeIndex], heightOf(nodeIndex));
     }
     waiting.delete(nodeIndex);
-    return body.kind === 'said' ? drawTurn(ctx, body) : drawWork(ctx, body, lanes);
+    if (body.kind === 'said') return drawTurn(ctx, body);
+    // A command, or a question put to him — drawn open. `plan:archive seq:16`.
+    if (body.kind === 'deed') return drawDeed(ctx, body, lanes);
+    return drawWork(ctx, body, lanes);
   };
 
   /**
@@ -1807,9 +2122,12 @@ function mountDocument(ctx, host, outline, back, lanes = NO_LANES) {
       // invariant a test asserts, so it is computed the same way here.
       outline.said = 0;
       outline.work = 0;
+      outline.deed = 0;
       outline.records = 0;
       for (const node of nodes) {
-        if (node.k === 'said') outline.said += 1; else outline.work += 1;
+        if (node.k === 'said') outline.said += 1;
+        else if (node.k === 'deed') outline.deed += 1;
+        else outline.work += 1;
         outline.records += node.s;
       }
       reView();

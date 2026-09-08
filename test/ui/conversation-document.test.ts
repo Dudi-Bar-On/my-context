@@ -4,6 +4,10 @@
 // TASK-a-conversation-is-rendered-as-a-document-who-spoke-when-and,
 // TASK-the-open-document-follows-the-session-as-it-is-written-and,
 // TASK-a-tool-call-keeps-160-characters-of-its-input-and-drops-the,
+// TASK-a-question-its-options-the-answer-chosen-and-a-shell-command,
+// TASK-a-task-notification-is-3-9-mb-of-what-a-lane-reported-drawn,
+// TASK-the-folded-run-s-stepsomitted-disclosure-can-never-fire,
+// STD-a-measured-zero-is-drawn-and-named-an-unmeasured-thing-is,
 // INV-nothing-is-dropped-silently
 /**
  * The transcript read as ONE DOCUMENT — `plan:archive seq:7`, `seq:8`, `seq:13`.
@@ -41,7 +45,7 @@ import { appendFileSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } f
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import {
-  DOCUMENT_WALK_CAP, WORK_RUN_CAP, buildOutline, readNodes,
+  DOCUMENT_WALK_CAP, WORK_RUN_CAP, buildOutline, parseAnswers, readNodes,
   apiConversationOutline, apiConversationNodes, apiConversationTip,
   type DocOutlineBody, type DocOutlineNode, type DocStep, type DocTipBody,
 } from '../../src/ui/read-model-conversation-document.ts';
@@ -111,8 +115,12 @@ const SESSION: unknown[] = [
   { type: 'ai-title', aiTitle: 'The conversation archive' },
   { type: 'assistant', message: { role: 'assistant', content: text('קודם כול אקרא את המפרט — **one** document.') }, timestamp: '2026-09-08T09:00:01.000Z' },
   { type: 'attachment', attachment: { type: 'total_tokens_reminder' } },
-  { type: 'assistant', message: { role: 'assistant', content: toolUse('Bash', { command: 'git status', description: 'Show working tree status' }) }, timestamp: '2026-09-08T09:00:02.000Z' },
-  { type: 'user', message: { role: 'user', content: toolResult('nothing to commit, working tree clean') }, timestamp: '2026-09-08T09:00:03.000Z' },
+  // THE SHELL COMMAND, WITH ITS OWN `id` AND THE RESULT THAT NAMES IT BACK —
+  // which is the shape every real call has (3,354 of 3,354 `tool_use` blocks
+  // on the owner's transcript carry an `id`) and the join a promoted call is
+  // told its outcome by.
+  { type: 'assistant', message: { role: 'assistant', content: [{ type: 'tool_use', id: 'toolu_RAN', name: 'Bash', input: { command: 'git status', description: 'Show working tree status' } }] }, timestamp: '2026-09-08T09:00:02.000Z' },
+  { type: 'user', message: { role: 'user', content: [{ type: 'tool_result', tool_use_id: 'toolu_RAN', content: 'nothing to commit, working tree clean' }] }, timestamp: '2026-09-08T09:00:03.000Z' },
   { type: 'queue-operation', operation: 'drain' },
   { type: 'assistant', message: { role: 'assistant', content: toolUse('Read', { file_path: '/tmp/spec.md' }) }, timestamp: '2026-09-08T09:00:04.000Z' },
   { type: 'user', message: { role: 'user', content: toolResult('no such file', true) }, timestamp: '2026-09-08T09:00:05.000Z' },
@@ -129,7 +137,9 @@ test('the outline tiles the record space exactly — every record is inside a no
     const out = buildOutline(b.file('sess-doc'));
 
     assert.equal(out.records, SESSION.length, 'every line is a record');
-    assert.equal(out.nodes.length, out.said + out.work, 'a node is `said` or `work`, never a third thing');
+    assert.equal(out.nodes.length, out.said + out.work + out.deed,
+      'a node is `said`, `work` or `deed` — and the three are counted, so a kind added '
+      + 'without a count would show up here rather than in a missing row');
 
     let at = 0;
     for (let i = 0; i < out.nodes.length; i += 1) {
@@ -159,21 +169,35 @@ test('a said node is one turn and a work node is a RUN — the fold that makes i
     assert.equal(said.length, 4, 'one node per turn somebody took');
     for (const node of said) assert.equal(node.s, 1, 'a said node is never a run');
 
-    assert.deepEqual(said.map((n) => n.w), ['you', 'claude', 'you', 'claude'],
-      'the speaker is read off the turn, in document order');
+    // **THE THIRD SPEAKER IS `null`, AND THAT IS `plan:archive seq:28`.** The
+    // task notification is person-side text NOBODY CAUSED — its `<summary>`
+    // names no lane and no background command — so the document names no
+    // speaker for it rather than naming him. `Speaker` in the read model
+    // carries the measured table behind that.
+    assert.deepEqual(said.map((n) => n.w), ['you', 'claude', null, 'claude'],
+      'the speaker is who CAUSED the turn, in document order');
 
-    // THE FOLD. Seven records carried no words — an `ai-title`, an
-    // `attachment`, a `queue-operation`, two tool calls and two tool results —
-    // and they became TWO folded runs rather than seven rows: the `ai-title`
-    // alone between the prompt and the answer, then the six that run together.
-    // A fold per record is not a fold; it is the same list with smaller rows,
-    // and it is what the owner saw as "49 folded 0-character rows".
+    // **THE SHELL COMMAND IS ITS OWN NODE** — `plan:archive seq:16`. It was a
+    // record inside the fold until 2026-09-09 and it is now a row a reader
+    // meets without opening anything.
+    const deeds = out.nodes.filter((n) => n.k === 'deed');
+    assert.equal(deeds.length, 1, 'the Bash call is promoted out of the fold');
+    assert.equal(deeds[0]!.s, 1, 'and it is ONE record, so the spans still tile');
+    assert.deepEqual(deeds[0]!.x, ['Bash']);
+    assert.equal(deeds[0]!.p, 'git status', 'the filter can now find a command by what it ran');
+
+    // THE FOLD. Six records carried no words and called nothing a reader wants
+    // promoted — an `ai-title`, an `attachment`, a `queue-operation`, a `Read`
+    // call and two tool results — and they became THREE folded runs rather
+    // than six rows. A fold per record is not a fold; it is the same list with
+    // smaller rows, and it is what the owner saw as "49 folded 0-character
+    // rows".
     const work = out.nodes.filter((n) => n.k === 'work');
-    assert.equal(work.length, 2, 'consecutive machinery collapses into one node');
-    assert.equal(work.reduce((sum, n) => sum + n.s, 0), 7, 'and it still covers all seven records');
+    assert.equal(work.length, 3, 'consecutive machinery collapses into one node');
+    assert.equal(work.reduce((sum, n) => sum + n.s, 0), 6, 'and it still covers all six records');
 
-    const withTools = work.find((n) => n.x !== undefined && n.x.includes('Bash'));
-    assert.ok(withTools, 'a folded run NAMES what ran — a fold that says only "7 steps" cannot be skimmed');
+    const withTools = work.find((n) => n.x !== undefined && n.x.includes('Read'));
+    assert.ok(withTools, 'a folded run NAMES what ran — a fold that says only "4 steps" cannot be skimmed');
   } finally { b.dispose(); }
 });
 
@@ -187,7 +211,12 @@ test('person-side text nobody typed is labelled, never drawn as the person speak
     // It keeps its POSITION and its record. Labelling is the disclosure;
     // dropping it would renumber everything after it.
     assert.equal(tagged[0]!.k, 'said');
-    assert.equal(tagged[0]!.w, 'you');
+    // **AND IT NAMES NO SPEAKER.** The owner read a row headed "You" above
+    // "Background task finished" and took it for his own input being
+    // overridden. `plan:archive seq:28`: the sentence was right, the heading
+    // was not, and a notification whose `<summary>` names neither a lane nor a
+    // background command has no speaker at all.
+    assert.equal(tagged[0]!.w, null);
   } finally { b.dispose(); }
 });
 
@@ -270,13 +299,15 @@ test('a folded run carries its steps, its tool detail and its failure', () => {
     b.write('sess-doc', SESSION);
     const file = b.file('sess-doc');
     const out = buildOutline(file);
-    const run = out.nodes.find((n) => n.k === 'work' && (n.x ?? []).some((t) => t.startsWith('Bash')))!;
+    const run = out.nodes.find((n) => n.k === 'work' && (n.x ?? []).some((t) => t.startsWith('Read')))!;
     const [body] = readNodes(file, { at: run.o, from: run.f, node: run.n, count: 1 });
 
     assert.equal(body!.kind, 'work');
     assert.equal(body!.steps.length, run.s, 'every record in the run is a step — nothing folded away twice');
 
-    const bash = body!.steps.find((s) => s.tool === 'Bash')!;
+    const call = out.nodes.find((n) => n.k === 'deed')!;
+    const [ran] = readNodes(file, { at: call.o, from: call.f, node: call.n, count: 1 });
+    const bash = ran!.steps[0]!;
     // A fold that says `Bash` forty times cannot be skimmed. 2,375 of the
     // owner's 3,280 tool calls are Bash, so the DETAIL is what makes the
     // summary readable — and OWNER RULING 2026-09-08, *"move the command into
@@ -291,6 +322,11 @@ test('a folded run carries its steps, its tool detail and its failure', () => {
       bash.detail, 'git status',
       'the CLOSED fold shows what ran, not the sentence about what ran',
     );
+
+    // AND ITS OUTCOME, read off the `tool_result` that answered it — which is
+    // a LATER record and stays folded, exactly as the ruling asks: *"its
+    // output belongs behind the fold; the command does not."*
+    assert.equal(ran!.outcome, 'ok', 'a command that succeeded says so on its own row');
 
     const result = body!.steps.find((s) => s.blocks.includes('tool_result'))!;
     assert.match(result.text, /working tree clean/, 'a tool result keeps its output');
@@ -361,11 +397,15 @@ const ASKED: unknown[] = [
   { type: 'assistant', message: { role: 'assistant', content: text('done') }, timestamp: '2026-09-08T10:00:05.000Z' },
 ];
 
-/** Every step of every `work` node in a session, in record order. */
+/**
+ * Every step of every FOLDED and every PROMOTED node, in record order — a
+ * `deed` is one record and carries exactly one step, so a call is found here
+ * whether the fold swallowed it or `seq:16` lifted it out.
+ */
 function stepsOf(file: string): DocStep[] {
   const out = buildOutline(file);
   const steps: DocStep[] = [];
-  for (const node of out.nodes.filter((n) => n.k === 'work')) {
+  for (const node of out.nodes.filter((n) => n.k === 'work' || n.k === 'deed')) {
     const [body] = readNodes(file, { at: node.o, from: node.f, node: node.n, count: 1 });
     steps.push(...body!.steps);
   }
@@ -486,7 +526,7 @@ test('carrying an input does not change the count — a step is still one record
     assert.equal(span, out.records, 'sum(span) === records, with structured inputs in the steps');
 
     const steps = stepsOf(file);
-    assert.equal(steps.length, out.nodes.filter((n) => n.k === 'work')
+    assert.equal(steps.length, out.nodes.filter((n) => n.k === 'work' || n.k === 'deed')
       .reduce((sum, n) => sum + n.s, 0),
     'a step carrying four arguments is still exactly ONE step');
     assert.equal(steps.filter((s) => s.input.length > 0).length, 4,
@@ -627,12 +667,12 @@ test('the outline endpoint serves the whole document and says how far it read', 
       b.ws, new URL('http://localhost/api/conversations/sess-doc/outline'), { id: 'sess-doc' });
     assert.equal(got.status, 200);
     const body = got.body as {
-      present: boolean; records: number; said: number; work: number;
+      present: boolean; records: number; said: number; work: number; deed: number;
       nodes: unknown[]; truncated: boolean; walkedBytes: number; uncounted: string | null;
     };
     assert.equal(body.present, true);
     assert.equal(body.records, SESSION.length);
-    assert.equal(body.said + body.work, body.nodes.length);
+    assert.equal(body.said + body.work + body.deed, body.nodes.length);
     assert.equal(body.truncated, false);
     assert.equal(body.uncounted, null, 'a whole walk has nothing to explain away');
     assert.ok(body.walkedBytes > 0, 'and it says how many bytes it read');
@@ -963,4 +1003,344 @@ test('a resume past the end of a replaced file is an empty tail, not a crash', (
       'a transcript can be replaced under a reader, and a client holding a minute-old outline '
       + 'is asking a legitimate question about a file that has since changed');
   } finally { b.dispose(); }
+});
+
+/* ══ seq:21 — THE CUT THAT COULD NEVER FIRE, AND THE PROPERTY THAT KILLED IT ═ */
+
+/**
+ * `plan:archive seq:21`. `STEP_CAP` was declared `= WORK_RUN_CAP` and a run
+ * closes BEFORE it takes a record once its span reaches `WORK_RUN_CAP`, so
+ * `steps.length < STEP_CAP` was true on every record that ever reached it:
+ * `stepsOmitted` was structurally `0`, `drawWork`'s branch was unreachable and
+ * the string behind it reached no reader in either table. All three are gone.
+ *
+ * **This test is what replaces the constant.** The item's option 2 wanted the
+ * identity asserted so a future edit could not quietly re-enable an untested
+ * path; option 1 wanted the coupling removed by deletion. Both are had by
+ * asserting the PROPERTY instead of either constant — a folded run holds one
+ * step per record it covers, over a session long enough to split several runs.
+ * Anyone re-introducing a cut gets a red test rather than a dropped step.
+ */
+test('a folded run holds one step per record — the cut that could never fire is gone', () => {
+  const b = box();
+  try {
+    const long: unknown[] = [
+      { type: 'user', message: { role: 'user', content: 'go' }, timestamp: '2026-09-08T09:00:00.000Z' },
+    ];
+    for (let i = 0; i < WORK_RUN_CAP * 3 + 7; i += 1) {
+      long.push({ type: 'attachment', attachment: { type: 'total_tokens_reminder' } });
+    }
+    b.write('sess-cap', long);
+    const file = b.file('sess-cap');
+    const out = buildOutline(file);
+    assert.ok(out.nodes.filter((n) => n.k === 'work').length >= 4, 'the run split several times');
+
+    let steps = 0;
+    for (const node of out.nodes) {
+      const [body] = readNodes(file, { at: node.o, from: node.f, node: node.n, count: 1 });
+      assert.equal(body!.steps.length, body!.kind === 'said' ? 0 : body!.span,
+        `node ${node.n} holds one step per record it covers. `
+        + 'A cut here would be invisible: the span would still tile and the reader would '
+        + 'be short a record with nothing on screen saying so.');
+      steps += body!.steps.length;
+    }
+    assert.equal(steps + out.said, out.records, 'and every record is either said or stepped');
+  } finally { b.dispose(); }
+});
+
+/* ══ seq:28 — 6.0 MB THAT NOTHING EVER READ ════════════════════════════════ */
+
+/**
+ * `plan:archive seq:28`. A record with no `message` object had its payload
+ * read from nowhere, and the payload is 6.0 MB on the owner's own transcript:
+ * `queue-operation.content` (3,971,694 characters — every `<task-notification>`,
+ * which is HOW A SUBAGENT REPORTS BACK), `attachment.rendered[]` (2,016,939)
+ * and `system.content` (8,653).
+ *
+ * **The item says `attachment.rendered` is null on all of them. It is not.**
+ * It is ABSENT on 735 and an array of `{content}` blocks on 4,129, and this
+ * fixture carries that shape so the correction cannot be lost again.
+ */
+const PAYLOADS: unknown[] = [
+  { type: 'user', message: { role: 'user', content: 'dispatch the lanes' }, timestamp: '2026-09-09T09:00:00.000Z' },
+  {
+    type: 'queue-operation', operation: 'enqueue', timestamp: '2026-09-09T09:00:01.000Z',
+    content: '<task-notification>\n<task-id>abc</task-id>\n<summary>Agent "measure the fold" finished</summary>\n<result>the lane reported 41 records over the cap</result>\n</task-notification>',
+  },
+  {
+    type: 'attachment', timestamp: '2026-09-09T09:00:02.000Z',
+    attachment: { type: 'hook_additional_context', content: ['the hook injected this'] },
+    rendered: [{ content: '<system-reminder>\nthe hook injected this\n</system-reminder>' }],
+  },
+  { type: 'attachment', timestamp: '2026-09-09T09:00:03.000Z', attachment: { type: 'total_tokens_reminder' }, rendered: [{ content: '<total_tokens>15000000 tokens left</total_tokens>' }] },
+  { type: 'system', subtype: 'away_summary', timestamp: '2026-09-09T09:00:04.000Z', content: 'what the away summary said' },
+  { type: 'assistant', message: { role: 'assistant', content: text('done') }, timestamp: '2026-09-09T09:00:05.000Z' },
+];
+
+test('a record with no message carries its payload, and names itself finer than its type', () => {
+  const b = box();
+  try {
+    b.write('sess-pay', PAYLOADS);
+    const steps = stepsOf(b.file('sess-pay'));
+
+    const queued = steps.find((s) => s.type === 'queue-operation')!;
+    assert.match(queued.text, /the lane reported 41 records over the cap/,
+      'a `queue-operation` is 3.9 MB of what a lane reported and was drawn as one word. '
+      + 'Nothing was hidden and nothing was capped: the field was never read.');
+    assert.equal(queued.subtype, 'enqueue', 'and it says which queue operation it was');
+    assert.equal(queued.detail, 'Agent "measure the fold" finished',
+      'the `<summary>` is the one line that makes a run of these skimmable');
+
+    // THE CORRECTION TO THE ITEM. `rendered` is an ARRAY of blocks holding the
+    // exact `<system-reminder>` the harness injected — 2.0 MB of it — and a
+    // `typeof x === "string"` probe reports the same "nothing there" the item
+    // did.
+    const hook = steps.find((s) => s.subtype === 'hook_additional_context')!;
+    assert.match(hook.text, /the hook injected this/,
+      '`attachment.rendered` is not null; it is an array of `{content}` blocks');
+
+    // AND THE SUBTYPE IS WHAT SEPARATES THEM. 3,646 of the owner's 4,864
+    // attachments are book-keeping and 1,218 are not, and they rendered
+    // identically — a reader could not tell the harness counting tokens from a
+    // hook changing the conversation.
+    assert.deepEqual(
+      steps.filter((s) => s.type === 'attachment').map((s) => s.subtype),
+      ['hook_additional_context', 'total_tokens_reminder']);
+
+    const away = steps.find((s) => s.type === 'system')!;
+    assert.equal(away.text, 'what the away summary said',
+      'the sweep is over the FIELD and not over a list of type names, so `system` was '
+      + 'found by it rather than by name — which is the sweep earning itself once already');
+    assert.equal(away.subtype, 'away_summary');
+  } finally { b.dispose(); }
+});
+
+test('reading a payload does not change the count — a record is still one record', () => {
+  const b = box();
+  try {
+    b.write('sess-pay', PAYLOADS);
+    const out = buildOutline(b.file('sess-pay'));
+    let span = 0;
+    for (const node of out.nodes) span += node.s;
+    assert.equal(span, out.records, 'sum(span) === records, with 6.0 MB more text in the steps');
+  } finally { b.dispose(); }
+});
+
+/* ══ seq:28 — THE SPEAKER FOLLOWS WHO CAUSED THE TURN ══════════════════════ */
+
+/**
+ * The owner read a row that said **You** above *"Background task finished"* and
+ * took it for his own input being overridden. Nothing was overridden — the
+ * sentence is the string table replacing raw XML and it is correct — but the
+ * heading named him as the speaker of something he did not say.
+ *
+ * His ruling: *"it's Claude / Shell / Subagent or none — select the correct
+ * one"*, per kind, and the kinds were measured on his own session before any
+ * was assigned. Two findings are asserted here as well as the mapping, because
+ * both are load-bearing and both are easy to undo by accident:
+ *
+ *   - **Claude is the speaker of NONE of them.** Every one is delivered TO the
+ *     assistant.
+ *   - **A slash command keeps `you`.** The wrapper is machinery; the act was
+ *     his, and a change that renamed all 271 would take his own invocations
+ *     away from him.
+ */
+const NOTIFY = (summary: string): string =>
+  `<task-notification>\n<task-id>x</task-id>\n<summary>${summary}</summary>\n</task-notification>`;
+
+test('a synthetic turn names who CAUSED it, and never the assistant', () => {
+  const b = box();
+  try {
+    b.write('sess-who', [
+      { type: 'user', message: { role: 'user', content: NOTIFY('Agent "A9 measure the fold" finished') }, timestamp: '2026-09-09T09:00:00.000Z' },
+      { type: 'user', message: { role: 'user', content: NOTIFY('Agent "A5 retire the excuse" failed: Agent terminated early') }, timestamp: '2026-09-09T09:00:01.000Z' },
+      { type: 'user', message: { role: 'user', content: NOTIFY('Background command "npm test" completed (exit code 0)') }, timestamp: '2026-09-09T09:00:02.000Z' },
+      { type: 'user', message: { role: 'user', content: NOTIFY('Background command "npm test" failed with exit code 1') }, timestamp: '2026-09-09T09:00:03.000Z' },
+      { type: 'user', message: { role: 'user', content: NOTIFY('Monitor event: "the file grew"') }, timestamp: '2026-09-09T09:00:04.000Z' },
+      { type: 'user', message: { role: 'user', content: NOTIFY('No completion record was found for this background shell command') }, timestamp: '2026-09-09T09:00:05.000Z' },
+      { type: 'user', message: { role: 'user', content: '<command-name>/graphify</command-name>' }, timestamp: '2026-09-09T09:00:06.000Z' },
+      { type: 'user', isMeta: true, message: { role: 'user', content: 'harness book-keeping' }, timestamp: '2026-09-09T09:00:07.000Z' },
+      { type: 'user', message: { role: 'user', content: 'a thing he actually typed' }, timestamp: '2026-09-09T09:00:08.000Z' },
+      { type: 'assistant', message: { role: 'assistant', content: text('and the answer') }, timestamp: '2026-09-09T09:00:09.000Z' },
+    ]);
+    const out = buildOutline(b.file('sess-who'));
+    const said = out.nodes.filter((n) => n.k === 'said');
+
+    assert.deepEqual(said.map((n) => n.w), [
+      'subagent',   // a lane reporting back — 177 of the owner's 271
+      'subagent',   // and one that failed is still the lane's own report
+      'shell',      // a background command finishing — 24
+      'shell',      // failed or not, the shell is what caused it
+      null,         // a monitor tick: nobody caused it
+      null,         // no completion record: the harness talking to itself
+      'you',        // HE typed the slash command. The wrapper is machinery.
+      null,         // `isMeta` book-keeping
+      'you',        // and a prompt he really typed is unchanged
+      'claude',
+    ], 'the speaker follows WHO CAUSED the turn, not whether a person typed the text');
+
+    assert.equal(said.filter((n) => n.w === 'claude').length, 1,
+      'Claude is the speaker of NO synthetic turn — every one is delivered TO the '
+      + 'assistant, so naming Claude would repeat the error one name over');
+
+    // The readable sentence in place of raw XML is CORRECT and survives: the
+    // label is unchanged, and only the heading moved.
+    assert.deepEqual(said.slice(0, 6).map((n) => n.y),
+      ['task-notification', 'task-notification', 'task-notification',
+        'task-notification', 'task-notification', 'task-notification']);
+    assert.equal(said[6]!.y, 'slash-command');
+  } finally { b.dispose(); }
+});
+
+/* ══ seq:16 — A QUESTION, ITS OPTIONS, THE ANSWER, AND A COMMAND ═══════════ */
+
+/**
+ * `plan:archive seq:16`. Owner ruling 2026-09-08: he wants to see the questions
+ * put to him, EVERY suggestion offered, which one he chose and what he
+ * answered — and the same for shell commands.
+ *
+ * They were never missing from the file. `classifyTurn` sorts everything that
+ * is not plainly a prompt or an answer into MACHINERY and the viewer folds
+ * machinery away, so they were present, counted and collapsed as noise. This is
+ * the classification change, and `classifyTurn` is untouched by it.
+ */
+const ASK_ID = 'toolu_ASK';
+const RAN_ID = 'toolu_RUN';
+const ASKED_SESSION: unknown[] = [
+  { type: 'user', message: { role: 'user', content: 'settle the corpus question' }, timestamp: '2026-09-09T10:00:00.000Z' },
+  {
+    type: 'assistant',
+    message: { role: 'assistant', content: [{ type: 'tool_use', id: ASK_ID, name: 'AskUserQuestion', input: { questions: [{
+      question: 'Which corpus should the suite read?',
+      header: 'Corpus',
+      options: [
+        { label: 'The live corpus', description: 'dogfooding, as the rule requires' },
+        { label: 'A fixture corpus', description: 'needs approval first' },
+      ],
+    }] } }] },
+    timestamp: '2026-09-09T10:00:01.000Z',
+  },
+  {
+    type: 'user',
+    message: { role: 'user', content: [{
+      type: 'tool_result', tool_use_id: ASK_ID,
+      content: 'The user answered: "Which corpus should the suite read?"="The live corpus (Recommended)". Read the answers carefully.',
+    }] },
+    timestamp: '2026-09-09T10:00:02.000Z',
+  },
+  { type: 'attachment', attachment: { type: 'total_tokens_reminder' } },
+  {
+    type: 'assistant',
+    message: { role: 'assistant', content: [{ type: 'tool_use', id: RAN_ID, name: 'Bash', input: { command: 'npx playwright test --config e2e/playwright.config.ts', description: 'Run the browser suite' } }] },
+    timestamp: '2026-09-09T10:00:03.000Z',
+  },
+  {
+    type: 'user',
+    message: { role: 'user', content: [{ type: 'tool_result', tool_use_id: RAN_ID, content: '3 failed', is_error: true }] },
+    timestamp: '2026-09-09T10:00:04.000Z',
+  },
+];
+
+test('a question and a command are nodes a reader meets, not records inside a fold', () => {
+  const b = box();
+  try {
+    b.write('sess-deed', ASKED_SESSION);
+    const file = b.file('sess-deed');
+    const out = buildOutline(file);
+
+    const deeds = out.nodes.filter((n) => n.k === 'deed');
+    assert.equal(deeds.length, 2, 'the question and the command are both promoted');
+    assert.deepEqual(deeds.map((n) => n.w), ['claude', 'shell'],
+      'Claude asked the question; the shell is what ran the command');
+    for (const node of deeds) assert.equal(node.s, 1, 'a deed is ONE record — the spans still tile');
+
+    let span = 0;
+    for (const node of out.nodes) span += node.s;
+    assert.equal(span, out.records, 'promoting a record out of a run does not change the count');
+
+    const [ask] = readNodes(file, { at: deeds[0]!.o, from: deeds[0]!.f, node: deeds[0]!.n, count: 1 });
+    assert.equal(ask!.kind, 'deed');
+    assert.equal(ask!.deed, 'ask');
+    assert.equal(ask!.outcome, 'ok');
+
+    // EVERY OPTION, NOT ONLY THE CHOSEN ONE. The item's own reason: "the
+    // options he declined are the record of what was considered."
+    const questions = ask!.steps[0]!.input.find((f) => f.name === 'questions')!.value as {
+      options: { label: string }[];
+    }[];
+    assert.deepEqual(questions[0]!.options.map((o) => o.label),
+      ['The live corpus', 'A fixture corpus']);
+
+    // WHICH ONE HE CHOSE — parsed out of the result's English, because there is
+    // no chosen-index field anywhere in the record.
+    assert.deepEqual(ask!.answers, [{
+      question: 'Which corpus should the suite read?',
+      answer: 'The live corpus (Recommended)',
+    }]);
+    assert.equal(ask!.answerText, '',
+      'a recognised sentence needs no verbatim fallback — the fallback is for the shape '
+      + 'this parser has not met yet, and it must not fire when the parse succeeded');
+
+    const [ran] = readNodes(file, { at: deeds[1]!.o, from: deeds[1]!.f, node: deeds[1]!.n, count: 1 });
+    assert.equal(ran!.deed, 'ran');
+    // THE COMMAND EXACTLY AS IT RAN — 81% of the owner's collapse past the
+    // 160-character summary, so the summary is not the record.
+    assert.equal(ran!.steps[0]!.input.find((f) => f.name === 'command')!.value,
+      'npx playwright test --config e2e/playwright.config.ts');
+    // AND ITS EXIT STATUS. The OUTPUT stays folded; the command does not.
+    assert.equal(ran!.outcome, 'failed');
+    assert.equal(ran!.steps[0]!.text, '', 'the result is a later record and is not copied here');
+  } finally { b.dispose(); }
+});
+
+test('a deed at the end of a window still learns how it ended', () => {
+  const b = box();
+  try {
+    b.write('sess-deed', ASKED_SESSION);
+    const file = b.file('sess-deed');
+    const out = buildOutline(file);
+    const deeds = out.nodes.filter((n) => n.k === 'deed');
+
+    // ONE node asked for, so the result that answers it is past the end of the
+    // window. Without `RESOLVE_AHEAD` roughly one deed per window would claim
+    // its result was not in the file when it plainly was — a false disclosure,
+    // which is worse than none.
+    const [only] = readNodes(file, { at: deeds[1]!.o, from: deeds[1]!.f, node: deeds[1]!.n, count: 1 });
+    assert.equal(only!.outcome, 'failed');
+  } finally { b.dispose(); }
+});
+
+/**
+ * The answer is PROSE and there are three shapes of it, measured on the owner's
+ * own transcript over 71 calls — the briefing named two, and the third is here
+ * because a parser written to two would have silently blanked the ones it met.
+ * An unrecognised shape returns nothing so the caller can serve the sentence
+ * itself: `INV-nothing-is-dropped-silently`.
+ */
+test('the three measured shapes of an answer are read, and a fourth returns nothing', () => {
+  assert.deepEqual(
+    parseAnswers('The user answered: "First?"="Yes", "Second?"="No". Read the answers carefully'),
+    [{ question: 'First?', answer: 'Yes' }, { question: 'Second?', answer: 'No' }]);
+
+  assert.deepEqual(
+    parseAnswers('Your questions have been answered: "Only?"="Fix the defect first (Recommended)". You can now continue.'),
+    [{ question: 'Only?', answer: 'Fix the defect first (Recommended)' }]);
+
+  assert.deepEqual(
+    parseAnswers([
+      'The user doesn\'t want to proceed with this tool use.',
+      '',
+      '    Questions asked:',
+      '- "How should it be settled?"',
+      '  Answer: Retire the excuse (Recommended)',
+      '- "Which work should I dispatch now?"',
+      '  (No answer provided)',
+    ].join('\n')),
+    [
+      { question: 'How should it be settled?', answer: 'Retire the excuse (Recommended)' },
+      { question: 'Which work should I dispatch now?', answer: null },
+    ]);
+
+  assert.deepEqual(parseAnswers('some shape nobody has seen yet'), [],
+    'an unrecognised sentence parses to nothing so the caller can serve it verbatim');
 });

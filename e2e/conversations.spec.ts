@@ -8,6 +8,8 @@
 // TASK-a-chip-s-data-g-never-renders-on-six-of-the-eight-chip-kinds,
 // TASK-a-timestamp-is-shown-in-the-reader-s-own-zone-and-says-which,
 // TASK-a-tool-call-keeps-160-characters-of-its-input-and-drops-the,
+// TASK-a-question-its-options-the-answer-chosen-and-a-shell-command,
+// TASK-a-task-notification-is-3-9-mb-of-what-a-lane-reported-drawn,
 // INV-nothing-is-dropped-silently
 /**
  * The conversation archive, driven in a real browser in both languages —
@@ -90,6 +92,7 @@ const DEEP_PHRASE = 'a needle only the whole-session filter can find';
  */
 const LANE_ROUND = 60;
 const LANE_CALL = 'toolu_LANE_MID';
+const ASK_CALL = 'toolu_ASK_LAST';
 const DEEP_CALL = 'toolu_LANE_DEEP';
 const LANE_BRIEF = 'read the index and report what it holds';
 const LANE_PHRASE = 'the working that produced the lane report';
@@ -136,11 +139,16 @@ function session(): unknown[] {
       timestamp: at(i * 4 + 1),
     });
     rows.push({ type: 'attachment', attachment: { type: 'total_tokens_reminder' } });
+    // THE SHELL COMMAND, WITH ITS OWN `id` AND A RESULT THAT NAMES IT BACK.
+    // Every real `tool_use` carries one — 3,354 of 3,354 on the owner's
+    // transcript — and it is what lets the promoted row say how the command
+    // ENDED without copying its output out of the fold (`plan:archive
+    // seq:16`).
     rows.push({
       type: 'assistant',
       message: {
         role: 'assistant',
-        content: [{ type: 'tool_use', name: 'Bash', input: { command: `echo ${i}`, description: `Echo round ${i}` } }],
+        content: [{ type: 'tool_use', id: `toolu_R${i}`, name: 'Bash', input: { command: `echo ${i}`, description: `Echo round ${i}` } }],
       },
       timestamp: at(i * 4 + 2),
     });
@@ -150,6 +158,7 @@ function session(): unknown[] {
         role: 'user',
         content: [{
           type: 'tool_result',
+          tool_use_id: `toolu_R${i}`,
           content: i === 3
             ? `Call log:\n${ESC}[2m  - waiting for locator('nav')${ESC}[22m\n`
             : `round ${i} output`,
@@ -199,7 +208,7 @@ function session(): unknown[] {
         type: 'assistant',
         message: {
           role: 'assistant',
-          content: [{ type: 'tool_use', name: 'AskUserQuestion', input: {
+          content: [{ type: 'tool_use', id: ASK_CALL, name: 'AskUserQuestion', input: {
             questions: [{
               question: 'Which corpus should the suite read?',
               header: 'Corpus',
@@ -210,6 +219,22 @@ function session(): unknown[] {
               ],
             }],
           } }],
+        },
+        timestamp: at(i * 4 + 3),
+      });
+      // WHICH ONE HE CHOSE, in the shape the transcript actually records it:
+      // English prose in the `tool_result`, with no chosen-index field
+      // anywhere. `plan:archive seq:16` — the answer is matched to an option
+      // by text, and the option he DECLINED stays on the screen because it is
+      // the record of what was considered.
+      rows.push({
+        type: 'user',
+        message: {
+          role: 'user',
+          content: [{
+            type: 'tool_result', tool_use_id: ASK_CALL,
+            content: 'The user answered: "Which corpus should the suite read?"="The live corpus". Read the answers carefully.',
+          }],
         },
         timestamp: at(i * 4 + 3),
       });
@@ -432,22 +457,35 @@ for (const lang of ['en', 'he'] as const) {
     await expect(page.locator('.tvturn.tvclaude .tvmark').first())
       .toHaveAttribute('data-g', '◆');
 
-    // THE FOLD, which is what `seq:13` adds to `seq:7`: a RUN of machinery as
-    // ONE line, not one row per record. Four records sit between every pair of
-    // turns in this fixture and they draw as a single `<details>`.
+    // ── THE COMMAND IS A ROW, NOT A RECORD INSIDE A FOLD ──────────────────
     //
-    // NOT `.tvwork` first: the document's very first node is the lone
-    // `ai-title` record that sits before the first prompt, which is a run of
-    // ONE and names no tool. Asserting on it was this test being wrong about
-    // the fixture rather than the screen being wrong about the record — and it
-    // is worth keeping the distinction, because a one-record run is a real
-    // shape the viewer has to draw.
-    const fold = page.locator('.tvwork').filter({ hasText: 'Bash' }).first();
+    // `plan:archive seq:16`. Owner ruling 2026-09-08: he wants to see *"the
+    // shell commands that were executed"*. They were never absent from the
+    // file — `classifyTurn` calls a tool call machinery and the viewer folds
+    // machinery away, so they were present, counted and collapsed as noise.
+    // Now the CALL is a row a reader meets and the OUTPUT is still folded,
+    // which is the ruling in its own words.
+    const ran = page.locator('.tvdeed').first();
+    await expect(ran).toBeVisible();
+    await expect(ran.locator('h4.tvname'))
+      .toHaveText(lang === 'he' ? 'מעטפת' : 'Shell');
+    // WHAT RAN, verbatim — 81% of the owner's commands are longer than the
+    // 160-character summary line, so the summary is not the record.
+    await expect(ran.locator('.tvterm')).toHaveText('echo 0');
+    // AND HOW IT ENDED, in the vocabulary this app already uses for the
+    // outcome of a command.
+    await expect(ran.locator('.exitcode')).toHaveText(lang === 'he' ? 'הצליחה' : 'succeeded');
+    // The prose ABOUT the act reads after the act itself.
+    await expect(ran).toContainText('Echo round 0');
+
+    // THE FOLD, which is what `seq:13` adds to `seq:7`: a RUN of machinery as
+    // ONE line, not one row per record. What is left between two turns once
+    // the command has been promoted is the result it produced and the
+    // book-keeping around it, and they draw as a single `<details>`.
+    const fold = page.locator('.tvwork').filter({ hasText: 'round 0 output' }).first();
     await expect(fold).toBeVisible();
     await expect(fold.locator('summary .tvmark')).toHaveAttribute('data-g', '⚙');
     expect(await fold.evaluate((n) => (n as HTMLDetailsElement).open)).toBe(false);
-    // It NAMES what ran — a fold that says only "4 steps" cannot be skimmed.
-    await expect(fold.locator('.tvtools')).toContainText('Bash');
 
     // A real <details>: Enter opens it, with no key handler of our own.
     await fold.locator('summary').focus();
@@ -456,30 +494,19 @@ for (const lang of ['en', 'he'] as const) {
     // And opening it shows every record in the run, book-keeping included —
     // a reader who cannot see that a record was there cannot know one was
     // skipped.
-    await expect(fold.locator('.tvstep')).toHaveCount(4);
-    // The steps are in RECORD order, so the run opens on the `attachment` the
-    // harness filed before the tool call — not on the tool call. That order is
-    // the point: a step's number is the record's own index in the file, the
-    // one the list screen and the endpoint both count in.
-    await expect(fold.locator('.tvstep').first()).toContainText('attachment');
-
-    // ── THE COMMAND IS THE SUMMARY; THE DESCRIPTION IS ONE FOLD AWAY ───────
+    await expect(fold.locator('.tvstep')).toHaveCount(2);
+    // The steps are in RECORD order, so the run opens on the result the
+    // command produced and closes on the harness's own queue record. A step's
+    // number is the record's own index in the file, the one the list screen
+    // and the endpoint both count in.
+    await expect(fold.locator('.tvstep').first()).toContainText('round 0 output');
+    // ── A RECORD WITH NO `message` NAMES ITSELF FINER THAN ITS TYPE ────────
     //
-    // Owner ruling, 2026-09-08: *"move the command into the closed fold"*.
-    // `DETAIL_FIELDS` reads `command` ahead of `description`, so a step's
-    // one-line summary is WHAT RAN rather than the prose written about it.
-    //
-    // Both halves are asserted here on purpose, in a real browser, because the
-    // ruling is only safe while the second holds: `plan:archive seq:24`'s lane
-    // argued against this swap and was right at the time — `description` is
-    // what makes a fold of 2,375 `Bash` calls skimmable, and promoting the
-    // command would once have destroyed it. `seq:24` captures the whole input,
-    // so the description is still on screen the moment the step is opened, and
-    // that is what this pair pins.
-    await expect(fold.locator('.tvstep .tvdetail').first()).toContainText('echo 0');
-    // The prose survives, one fold away. This is the condition the ruling
-    // rests on, so it is asserted rather than assumed.
-    await expect(fold).toContainText('Echo round');
+    // `plan:archive seq:28`. `queue-operation` and `attachment` name the
+    // ENVELOPE; the subtype names the thing. 3,646 of the owner's 4,864
+    // attachments are book-keeping and 1,218 are not, and until 2026-09-09
+    // they rendered identically.
+    await expect(fold.locator('.tvstep').last()).toContainText('queue-operation · drain');
 
     // A TURN IS NOT FOLDED — the reader came for it.
     await expect(page.locator('.tvturn details.tvwork')).toHaveCount(0);
@@ -520,44 +547,53 @@ for (const lang of ['en', 'he'] as const) {
     await openDocument(page, lang, 'default');
     await expect(page.locator('.tvscroll')).toContainText(LAST_PHRASE, { timeout: 20_000 });
 
-    const fold = page.locator('.tvwork').filter({ hasText: 'AskUserQuestion' }).first();
+    // THE FILE'S CONTENT, not only the path the fold summary already named.
+    // `Write` is not promoted, so this is still read by opening the fold.
+    const fold = page.locator('.tvwork').filter({ hasText: 'Write' }).first();
     await expect(fold).toBeVisible();
+    // It NAMES what ran — a fold that says only "3 steps" cannot be skimmed.
+    await expect(fold.locator('.tvtools')).toContainText('Write');
     await fold.locator('summary').click();
     expect(await fold.evaluate((n) => (n as HTMLDetailsElement).open)).toBe(true);
-
-    // THE COMMAND THAT RAN. `description` used to be the only thing kept.
-    await expect(fold).toContainText('echo 119');
-    // THE FILE'S CONTENT, not only the path the fold summary already named.
     await expect(fold).toContainText('the whole file body, not only its path');
-    // EVERY OPTION OFFERED, including the one declined — `plan:archive seq:16`
-    // reads this from the same capture: "the options he declined are the
-    // record of what was considered". A structured input is drawn as
-    // structure, so all of it is on the screen rather than a first string.
-    await expect(fold).toContainText('Which corpus should the suite read?');
-    await expect(fold).toContainText('The live corpus');
-    await expect(fold).toContainText('A fixture corpus');
 
+    // ── THE QUESTION, EVERY OPTION, AND THE ONE HE PICKED ─────────────────
+    //
+    // `plan:archive seq:16`, and it is a ROW now rather than a record inside a
+    // fold. The options he declined stay on the screen because they are the
+    // record of what was considered; the answer is matched to an option out of
+    // the result's English, because no chosen-index is recorded anywhere.
+    const ask = page.locator('.tvdeed').filter({ hasText: 'Which corpus' }).first();
+    await expect(ask).toBeVisible();
+    await expect(ask.locator('h4.tvname'))
+      .toHaveText(lang === 'he' ? 'Claude' : 'Claude');
+    await expect(ask).toContainText('Which corpus should the suite read?');
+    await expect(ask).toContainText('The live corpus');
+    await expect(ask).toContainText('A fixture corpus');
+    // The one he chose is MARKED, and the mark is a word as well as a colour.
+    const chosen = ask.locator('li.tvstep').filter({ hasText: 'The live corpus' });
+    await expect(chosen.locator('.chip.ok')).toContainText(lang === 'he' ? 'נבחר' : 'chosen');
+    const declined = ask.locator('li.tvstep').filter({ hasText: 'A fixture corpus' });
+    await expect(declined.locator('.chip.ok')).toHaveCount(0);
+
+    // THE COMMAND THAT RAN, on its own row — `description` used to be the only
+    // thing kept, and the command was invisible on this screen.
+    const ran = page.locator('.tvdeed').filter({ hasText: 'echo 119' }).first();
+    await expect(ran).toBeVisible();
+    await expect(ran.locator('.tvterm')).toHaveText('echo 119');
     // THE ORDER, which is the second half of the repair: the ACT reads before
     // the prose ABOUT the act, because the prose is written by the same party
-    // whose actions are being read.
-    const bash = fold.locator('.tvstep').filter({ hasText: 'echo 119' }).first();
-    expect((await bash.locator('.tvarg').allTextContents()).map((t) => t.trim()))
-      .toEqual(['command', 'description']);
+    // whose actions are being read. The command is drawn first and on its own,
+    // so what is left in the argument list is the prose.
+    expect((await ran.locator('.tvarg').allTextContents()).map((t) => t.trim()))
+      .toEqual(['description']);
 
-    // AND THE SUMMARY LINE IS STILL ONE LINE. 2,357 of 3,280 calls on his
-    // transcript are `Bash`; a fold that reads `Bash` forty times cannot be
-    // skimmed, so the fix went behind the fold and not into it.
-    const summary = await fold.locator('summary').evaluate(
-      (n) => (n as HTMLElement).textContent ?? '',
-    );
-    expect(summary).not.toContain('echo 119');
-
-    // THE FOLD ITSELF, not `fullPage`. A full-page screenshot RESIZES the
+    // THE ROWS THEMSELVES, not `fullPage`. A full-page screenshot RESIZES the
     // viewport, the document's resize handler re-renders the window, and the
     // `<details>` this test just opened comes back closed — so the artifact
     // showed a shut fold while every assertion above had passed. An element
     // screenshot leaves the viewport alone and photographs what was read.
-    await fold.screenshot({ path: `e2e/screens/conversations-asked-${lang}.png` });
+    await ask.screenshot({ path: `e2e/screens/conversations-asked-${lang}.png` });
   });
 
   /* ══ seq:14 — THE LIST SAYS WHERE IT STANDS, EVEN WHEN IT IS FINE ══════ */
@@ -1517,10 +1553,27 @@ test.describe('a conversation chip draws its own glyph, and only there', () => {
     // control: `.chip.index` has no `::before` of its own, so it honours
     // `data-g` through the base rule and needs no opt-in. If this fails, the
     // base rule moved.
-    const tag = page.locator('.chip.index.tvtag').first();
+    //
+    // **NOT `.tvdeed`'s tag, which wears the same classes and is a different
+    // claim.** `plan:archive seq:16` gave a promoted command and a promoted
+    // question a `chip index tvtag` of their own, so an unqualified `.first()`
+    // now finds one of those on this fixture — which would test the base rule
+    // against the wrong glyph and say nothing about the synthetic label.
+    const tag = page.locator('.tvturn:not(.tvdeed) .chip.index.tvtag').first();
     if (await tag.count() > 0) {
       const before = await tag.evaluate((el) => getComputedStyle(el, '::before').content);
       expect(before).toContain('⌁');
+    }
+
+    // And the promoted rows honour THEIR glyphs through the same base rule,
+    // which is the property that made reusing `.chip.index` correct rather
+    // than convenient.
+    const deedTag = page.locator('.tvdeed .chip.index.tvtag').first();
+    if (await deedTag.count() > 0) {
+      const g = await deedTag.evaluate((el) => (el as HTMLElement).dataset['g'] ?? '');
+      const before = await deedTag.evaluate((el) => getComputedStyle(el, '::before').content);
+      expect(g).not.toBe('');
+      expect(before).toContain(g);
     }
   });
 });
