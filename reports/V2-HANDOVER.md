@@ -1,3 +1,88 @@
+## ⏭ READ THIS FIRST — 2026-09-08. THREE LANES RUNNING. THE LOOP IS SPECCED AND PLANNED.
+
+**Running when this was written:** D38 (`governance/8` + `contra/4`, in
+`mutate.ts`/`doctor/`), D36a (`loop/1`, in `contribution.ts`), and the D37
+viewer (`archive/7`+`/8`+`/13`). Provably disjoint file sets.
+
+### THE DAY'S BIGGEST FINDING IS THAT THE DESIGN WAS WRONG, AND THE EVIDENCE WON
+
+A literature review contradicted most of the first self-improvement design.
+**Every place it did is marked in the spec**
+(`docs/superpowers/specs/2026-09-08-self-improvement-loop-design.md`, 17
+sections).
+
+- **Prose lessons are the weakest artifact.** Distilled skills measured −2.44pp
+  while **raw trajectory retrieval beat them on every metric**. The one
+  intervention with a large clean effect compiled corrections into **runtime
+  checks that must pass** (violations 100% → 37.6%). So the pass now asks *can
+  it be checked* after *what did we learn*: check → rule → lesson. **LESSON is
+  unchanged as a category; it stops being the default.**
+- **This repository is local evidence for the same thing.** What improved it
+  this week was checks born from corrections — `check-cited-items`,
+  `check-basis`, the contradiction gate. Not lessons.
+- **A tool-call counter is measured inferior** to a rubric (+6.3pp, 30–70%
+  cheaper). **Calendar deprecation is a badly tuned retirement rule, and badly
+  tuned retirement measured WORSE THAN NONE** (−0.019 against a 0.258 baseline).
+- **Content screens cannot catch falsehood**: a four-stage screen with 83.2%
+  injection recall rejected **0 of 360** poisoned memories.
+
+**AND THE OWNER'S TWO CONTRIBUTIONS REPAIRED IT WHERE IT WAS WEAKEST.** He
+caught that `SessionEnd` never fires here — this session ran for hours through
+**five compactions** and never fired one. And he asked for the **whole
+transcript plus subagent transcripts**, which answers three attacks at once:
+raw trajectory beat distillation, it bypasses the compaction cliff (recall 53%
+after one compaction, **10% after five**), and the file contains the
+**outcomes** that outcome-linked promotion needs.
+
+**Measured: 478 subagent transcripts, 91 MB, against 61 MB for the session —
+and the archive indexes 2 files and sees none of them.** The session holds each
+lane's REPORT; the subagent transcripts hold their REASONING, which is where
+the eight corrections to me this week actually live. They are in `Temp`.
+
+### EVERYTHING IS ON DISK, WHICH WAS HIS INSTRUCTION AND HE WAS RIGHT
+
+One spec, **five plans** (`docs/superpowers/plans/2026-09-08-self-improvement-*`),
+and **five corpus items** `loop/1`–`/5`. I had written only Phase 1 and argued
+the skill forbade more; it does not — it forbids mixing subsystems into one
+plan, not writing several. The real constraint was narrower: a few **numbers**
+wait on measurement.
+
+**D36a is first and it is not a preference.** Library drift is silent by
+construction and only detectable as a CHANGE. And it is cheap because **the
+instrument was already recording** — `recordAudit` has always written
+`injected` and `spilled` per delivery, so contribution is derivable BACKWARDS
+with no new write path.
+
+### D NUMBERS: THE MAP IS PINNED, AND ASSIGNING ONE IS ONE ACT WITH RECORDING IT
+
+`REF-the-d-numbers-what-each-one-means-and-which-are-only` is `always: true`.
+**D29–D35 ratified. D36 the loop (phases D36a–e, on the D13a/b precedent), D37
+the archive rebuilt, D38 the corpus lifecycle.**
+
+### ON HIM
+
+**Nothing blocking.** `walk/119`'s unresolved contradiction; `walk/0` has no
+`seq`; the "one sentence" wording now that 250 no longer enforces it; whether
+the queue **ration** stands (it modifies his own indicator ruling and is
+flagged as his); `scripts/demo-corpus.ts` keep-or-delete; the Simulate chip
+carrying state by colour alone; `successorChain`'s overdue move to
+`core/relations.ts`.
+
+### KNOWN RED, ATTRIBUTABLE
+
+`tutorial-manifest` ×2 — `conversation.ts`/`conversations.js` claimed by no
+tutorial. That is `archive/6`, deliberately **held on `archive/7`+`/8`**, so it
+stays red until the viewer lands. Filed, not hidden.
+
+### THE HABIT THAT PAID OFF EVERY SINGLE TIME TODAY
+
+Every brief says **my leads may be wrong and I want the contradiction
+reported**. Today lanes corrected me on: a similarity threshold that would have
+refused 207 of 207 writes; `RETIRED_STATUSES` wrong in both directions; 54
+dependent specs rather than 24; a token cost that does not exist; four dangling
+pointers rather than three; and `scope` un-injecting 814 of 1,011 items. **Not
+one would have surfaced from a brief written as instructions.**
+
 ## ⏭ READ THIS FIRST — 2026-09-07 evening, PAUSED ON HIS WORD. TREE CLEAN, HEAD GREEN.
 
 **No lane is running. 0 unpushed. `check:handover` exit 0, `tsc` clean.**
