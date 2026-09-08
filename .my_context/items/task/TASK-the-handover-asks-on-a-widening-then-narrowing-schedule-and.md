@@ -1,0 +1,109 @@
+---
+id: TASK-the-handover-asks-on-a-widening-then-narrowing-schedule-and
+type: task
+title: the handover asks on a widening-then-narrowing schedule, and a subagent writes the block
+status: active
+severity: soft
+always: false
+summary: Progress notes are taken less often early on and just as often near the end, and the writing itself is handed off, so keeping the notes stops using up the room they exist to protect.
+summary_of: 90f58a21301438e4
+scope:
+  - src/core/handover-ask.ts
+tags:
+  - v2
+  - handover
+  - context
+  - "plan:handover"
+  - "seq:19"
+  - "state:todo"
+origin: human
+source_file: null
+source_anchor: null
+source_checksum: null
+valid_from: 2026-09-08
+valid_until: null
+checksum: 75ef84e3f9c7d2b7
+plan: handover
+seq: "19"
+state: todo
+priority: "1"
+---
+
+# the handover asks on a widening-then-narrowing schedule, and a subagent writes the block
+
+Owner ruling 2026-09-08, on noticing the mechanism eating the runway it exists to protect: "starting
+handover at 85% is to early and each handover generation is adding to the context window text that
+also fills the window faster so we should try to optimize this".
+
+THIS REVERSES PART OF HIS OWN INSTRUCTION OF 2026-09-06, which plan:handover seq:12 implements, and
+the reversal is narrow: the GOAL is unchanged - as little unrecorded work as possible at the moment
+the window dies - and only the schedule that serves it changes.
+
+THE COST, MEASURED ON THIS SESSION RATHER THAN ESTIMATED. Eleven handover updates between 85% and
+96%, adding 783 lines / 42 KB to reports/V2-HANDOVER.md. The written prose is about 2K tokens each,
+but the update is a whole turn - read the state, compose, stage, commit, push - so call it ~3.5K
+all-in. Eleven of those is ~38K tokens. The window between 85% and 100% is ~150K tokens.
+
+  ABOUT A QUARTER OF THE REMAINING RUNWAY WAS SPENT BY THE MECHANISM THAT EXISTS TO PROTECT IT.
+
+Fifteen steps from 85 would have spent roughly a third.
+
+WHAT IS NOT THE PROBLEM, checked before changing anything: the INJECTION is bounded. `readHandover`
+(`src/core/handover.ts` - `export function readHandover`) caps to `budgetTokens` via `capToBudget`
+and delivers only the marker section or the head, so the 4,127-line file is not landing in context
+whole. The cost is entirely GENERATION. A fix aimed at the file's size would have missed.
+
+RULED - TWO CHANGES, AND THEY COMPOUND.
+
+FIRST, THE CADENCE BECOMES GEOMETRIC RATHER THAN LINEAR, and this serves the 2026-09-06 goal BETTER
+rather than trading it away. A handover written at 86% is near-worthless: it will be superseded ten
+times before the window dies. The one at 99% is the only one that is ever read. A linear 1% step
+spends equally on both, which is the defect. So the steps widen at the start and narrow at the end:
+
+    85 ....................... 90 .... 92 .... 94 .... 96 .. 97 .. 98 .. 99
+       one step, five wide       2%     2%      2%      1%    1%    1%
+
+Asks fire on ENTERING each band: 85, 90, 92, 94, 96, 97, 98, 99 - eight, against fifteen today.
+NOTE THE COUNT HONESTLY: the option the owner chose was labelled seven. It is eight here because the
+ask on crossing the threshold itself is existing behaviour that predates seq:12, and removing it
+silently would be a second change smuggled in beside the one he approved. If he wants the 85 ask
+dropped, that is a one-line change and it is his to make.
+
+The tail is DENSER than today in the only region that matters: from 96 to 100 the step is 1%, which
+is what it is now, so nothing is lost where the risk is real.
+
+SECOND, THE BLOCK IS COMPOSED BY A SUBAGENT. The expensive half of a handover update is writing the
+prose, not deciding what belongs in it. So the decision stays here - a short brief naming what
+landed, what was ruled, and what is still owed - and a subagent turns that into the block, commits,
+pushes and reports one line. That moves ~3.5K tokens per update to ~500.
+
+This is not a new idea in this project, it is RULE-delegate-to-subagents-by-default-to-preserve-the-
+context applied to the one turn that was exempt from it by habit.
+
+AND THE ONE THING THAT MUST NOT MOVE WITH IT: a handover is worth reading because it carries a
+judgement about what mattered, and a subagent handed only a file diff does not have that judgement.
+The brief carries it. A lane that is told "write the handover" rather than "record THESE things"
+will produce a changelog, which is the failure mode to watch for and the reason this half of the
+ruling could fail.
+
+TWO SMALLER MEASURES, ruled in the same breath and cheaper to build:
+  - A STEP UPDATE IS A DELTA, capped around 25 lines: only what changed since the last block. The
+    full narrative block is written once on crossing the threshold and once at the last step.
+  - A STEP WITH NOTHING TO RECORD ROLLS FORWARD instead of firing. Two of this session's eleven
+    updates added 11 and 14 lines because nothing much had landed. The audit log already knows
+    whether a lane landed or a ruling was made since the last block.
+
+WHAT THE IMPLEMENTATION ACTUALLY TOUCHES, so this is not read as bigger than it is: `askStep`
+(`src/core/handover-ask.ts` - `export function askStep`) returns `Math.min(ASK_CEILING_PERCENT,
+Math.floor(percent))` today. Geometric bands make it a band-identifier function over the same
+input, and everything downstream - the latch carrying the last step asked at, the stand-down path,
+the audit row naming which ask a verdict belongs to - keeps working unchanged because it only ever
+compares steps for equality. The two things seq:12 said not to break are still not to be broken.
+
+AND A STRUCTURAL NOTE THAT IS NOT PART OF THIS RULING: reports/V2-HANDOVER.md is 4,127 lines and is
+prepended to forever. It is not hurting context today, because the read is budget-capped, but every
+edit and every read of it gets more expensive and nothing prunes it. Rolling blocks older than the
+current milestone into an archive file is worth doing later, and is deliberately NOT bundled here.
+
+## Relations
+- amends [[TASK-the-handover-is-asked-for-again-at-every-percent-not-written]]

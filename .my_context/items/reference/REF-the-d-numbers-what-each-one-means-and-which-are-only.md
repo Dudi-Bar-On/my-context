@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: true
 summary: The short numbers used to talk about work in progress and what each refers to, delivered every session so the same number never means two things.
-summary_of: 35be67492db0510c
+summary_of: e4b40827693c4db4
 summary_was:
   - 2026-09-07 The short numbers used to talk about work in progress, and what each of them refers to, so the same number never means two things.
 acknowledged:
@@ -21,7 +21,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-09-07
 valid_until: null
-checksum: f1df3dabd6b9ebee
+checksum: 9823a75e6515363c
 ---
 
 # the D numbers: what each one means, and which are only proposed
@@ -119,3 +119,23 @@ D36a IS FIRST AND THE ORDER IS NOT A PREFERENCE: library drift is silent by cons
 detectable as a CHANGE, so instrumentation added after the first promotions has no baseline and the
 experiment has no control. D36e’s thresholds are DERIVED from D36a’s output and must not be copied
 from a paper.
+
+D37 WIDENED 2026-09-08, BY OWNER RULING, and recorded in the same act as the widening.
+
+  D37  the conversation archive rebuilt      plan:archive seq:7-19   (was seq:7-13)
+
+seq:14-19 are six items the owner filed while READING the viewer that seq:7-13 built - the stale
+index, the subagent link, the questions and shell commands folded as machinery, the clipboard
+formats, the timezone, and the document following a session still being written. Asked whether they
+should fold into D37 or take a new D39, he ruled: fold. They are the same subject, found by using
+the thing rather than by specifying it, and "do D37" keeps naming one thing.
+
+THIS IS THE FIRST TIME A D NUMBER HAS GROWN RATHER THAN BEEN ADDED, so the precedent is worth
+stating: a D number names a SUBJECT, not a fixed list of items. Widening one is not renumbering and
+does not touch the rule that a number is stable forever - D37 still means what it meant, and
+nothing that was D37 has become anything else. What changes is only how far the subject reaches.
+
+AND WHAT IS ACTUALLY DONE UNDER IT, as of 2026-09-08: seq:1-3 (the index, the endpoints, the
+screen), seq:8, seq:13 and seq:14 are closed. seq:7 is HALF closed - the virtualised document
+landed and the owner’s no-cap ruling did not. seq:4, 5, 6, 9, 10, 11, 12, 15, 16, 17, 18 and 19
+are open.
