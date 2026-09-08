@@ -1,3 +1,81 @@
+## ⏭ READ THIS FIRST — 2026-09-08, at 91%. HE LOOKED AT THE VIEWER AND FOUND THREE THINGS.
+
+The D37 viewer lane is **still running** and its work is uncommitted — he is
+looking at it live on 58888, and said **"conversation browsing looks great"**.
+Then he found three defects, all now filed.
+
+### 1. THE ARCHIVE WAS OVER A DAY STALE, AND NOTHING HAS EVER REFRESHED IT
+
+He asked why ~3.5 hours were missing. Measured: **the index said his session
+ended `2026-09-07T00:50` while the file was 64,506,161 bytes and had been
+written to that minute.** More than a day, not hours.
+
+**ROOT CAUSE: `rebuildConversations` has exactly ONE caller** —
+`src/cli/commands/conversation.ts`, the `mycontext conversation rebuild`
+command. **The screen serves the INDEX, not the file.** So it shows whatever
+was there the last time a person ran that by hand, which was during the archive
+lane's own work the day before.
+
+Filed **`archive/14`, priority 1**. The fix is cheap because the transcript
+**only appends**: the index already keys freshness on `(bytes, mtime_ms)`, so
+one `stat()` says it is behind and a refresh reads only the NEW TAIL, never the
+64 MB. Where the refresh fires is left open; **a staleness line is required
+whatever is chosen** — a cache that is behind and does not say so is how this
+hid for a day.
+
+**It is not cosmetic:** `plan:restore seq:1` and the whole self-improvement loop
+read this index. A stale index means the loop learns from a day-old transcript
+and never knows.
+
+### 2. NO CAP IN THE DOCUMENT VIEW — recorded on `archive/7`
+
+The screen says *"A turn longer than 60000 characters is shown up to there and
+says so; tool output, up to 4000."* **His ruling: remove it, no restriction.**
+
+**And it needs no defending, because the delivery mechanism changes.** Raising
+60000 keeps the defect and moves it — a longer turn is still cut. Deleting the
+cap while still shipping whole pages hands 64 MB to a browser in one response.
+**A virtualised document fetches ranges on demand, so nothing is left for a cap
+to protect. The cap is removed by BUILDING seq:7, not by editing a number.**
+
+**What must survive: the disclosure habit.** He could read that sentence
+*because* `read-model-conversations.ts` names its bounds as FIELDS instead of
+truncating silently. Any limit that remains anywhere stays named on screen.
+
+### 3. SUBAGENTS OPEN FROM THE TURN THAT DISPATCHED THEM — `archive/15`
+
+**The RETURN is the requirement, not the link** — his words: *"return exactly to
+the cursor point from where it requested to view the subagent content."* A
+reader ten thousand records into a 26,673-record document who follows a link and
+loses their place has been punished for looking, and in a VIRTUALISED scroll
+that is a real problem rather than a `scrollTop`: the row may not be in the DOM
+on return.
+
+Shape left open as he left it — popup or second tab — but **the same renderer
+either way** (`seq:13`'s skeleton, `seq:8`'s terminal rendering). Depends on
+`seq:12`; without it there is nothing to link to.
+
+### WHAT THE NEXT SESSION DOES FIRST
+
+1. **The seven `retired_still_binding` items** — he ruled "fix them all" and I
+   held them only so D38's check could demonstrate itself. It has.
+   `mycontext edit <id> --severity soft --yes`, plus `--always false` on
+   `RULE-delegate-to-subagents-by-default-to-preserve-the-context`, which is the
+   one carrying both fields. Seven items, eight fields.
+2. **Land the D37 viewer when it reports.** Both string tables are in play —
+   run `node --test test/ui/strings-parity.test.ts` before committing, because a
+   missing key makes `t()` throw and has broken HEAD here before. Its new files
+   are `src/ui/read-model-conversation-document.ts` and
+   `src/ui/public/lib/ansi.js`.
+3. **Then `archive/14`**, because everything downstream reads that index.
+
+### STILL ON HIM
+
+`open_question_blocks` (7) — do not acknowledge, that silences a true signal ·
+`walk/119`'s contradiction · `walk/0` has no `seq` · the "one sentence" wording ·
+whether the queue **ration** stands · `demo-corpus.ts` keep-or-delete · the
+Simulate colour-only chip · `successorChain`'s move to `core/relations.ts`.
+
 ## ⏭ READ THIS FIRST — 2026-09-08, at 90%. THE COLLISION IS RESOLVED. ONE LANE STILL RUNNING.
 
 **D36a and D38 are COMMITTED and pushed (`e3c5b9d`).** `tsc` clean, 44 tests,
