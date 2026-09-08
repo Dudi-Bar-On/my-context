@@ -1,6 +1,7 @@
 import {
-  ConversationIndex, ConversationIndexUninitializedError, MAX_SCAN_BYTES,
-  rebuildConversations, transcriptDir, truncatedScan, type ConversationRow,
+  ConversationIndex, ConversationIndexIncompleteError, ConversationIndexUninitializedError,
+  MAX_SCAN_BYTES, rebuildConversations, transcriptDir, truncatedScan,
+  type ConversationRow, type SubagentRow,
 } from '../../core/conversation-index.ts';
 import { SUBCOMMAND_FLAGS } from '../../core/command-flags.ts';
 import type { Workspace } from '../../core/workspace.ts';
@@ -28,10 +29,11 @@ import { flag, hasFlag, positionals, registerCommand, type Emit } from './regist
  * `docs/superpowers/specs/2026-09-04-conversation-archive-design.md`.
  */
 
-export const SUBCOMMANDS = ['rebuild', 'list'] as const;
+export const SUBCOMMANDS = ['rebuild', 'list', 'subagents'] as const;
 
 const USAGE = `usage: mycontext conversation rebuild [--full] [--json]
-       mycontext conversation list [--limit <n>] [--json]`;
+       mycontext conversation list [--limit <n>] [--json]
+       mycontext conversation subagents [<session>] [--json]`;
 
 const CONVERSATION_FLAGS = SUBCOMMAND_FLAGS['conversation'];
 
@@ -105,6 +107,41 @@ function reportLines(report: ReturnType<typeof rebuildConversations>): string[] 
       'two can be told apart.',
     );
   }
+  // ── THE LANES, REPORTED APART ──────────────────────────────────────────
+  //
+  // `plan:archive seq:12`. Their numbers are separate from the session's
+  // because their budget is: measured in this workspace 2026-09-08, 253
+  // subagent transcripts totalling 615.3 MB against 65 MB of session. One
+  // merged total would hide which of the two a slow scan actually paid for,
+  // and would silently change what the line above this one means.
+  const agents = report.subagents;
+  if (agents.found > 0) {
+    lines.push(
+      `my_context: and ${agents.found} subagent transcript(s) under those sessions — ` +
+      `${agents.scanned} read whole, ${agents.appended} from their appended tail, ` +
+      `${agents.skipped} unchanged, ${agents.bytesRead} byte(s) read`,
+    );
+    if (agents.removed > 0) {
+      lines.push(
+        `my_context: ${agents.removed} indexed subagent(s) no longer have a transcript on disk ` +
+        'and were dropped from the index.',
+      );
+    }
+    if (agents.unlinked > 0) {
+      lines.push(
+        `my_context: ${agents.unlinked} subagent(s) have no readable .meta.json beside them, so ` +
+        'nothing links them to the turn that dispatched them. They are indexed and readable; ' +
+        'only the link is missing.',
+      );
+    }
+    if (agents.truncated.length > 0) {
+      lines.push(
+        `my_context: ${agents.truncated.length} subagent transcript(s) hit the ` +
+        `${MAX_SCAN_BYTES} byte scan cap, so their counts are FLOORS: ` +
+        `${agents.truncated.join(', ')}`,
+      );
+    }
+  }
   lines.push(`my_context: read ${report.bytesRead} byte(s) in ${report.ms}ms`);
   return lines;
 }
@@ -156,14 +193,28 @@ function cmdConversationList(ws: Workspace, root: string, args: string[], out: E
   try {
     index = ConversationIndex.openReadOnlyChecked(ws.dbPath);
   } catch (err) {
-    if (err instanceof ConversationIndexUninitializedError) {
+    // An index a schema behind is not a damaged one, and it is not an empty
+    // one either — it is full and momentarily unreadable (`plan:archive
+    // seq:12`). Both reach the same "nothing to list" answer here, and the
+    // sentence differs because the reader's situation does.
+    if (err instanceof ConversationIndexUninitializedError
+      || err instanceof ConversationIndexIncompleteError) {
       // The empty state, named as itself. Not an error, and not silence.
       const dir = transcriptDir(process.env, workspaceCwd(root));
+      const outdated = err instanceof ConversationIndexIncompleteError;
       if (wantsJson(args)) {
-        emitJson(out, { conversations: [], total: 0, indexed: false, dir });
+        emitJson(out, { conversations: [], total: 0, indexed: false, outdated, dir });
         return 0;
       }
-      out('my_context: no conversation index in this workspace yet — nothing has been scanned.');
+      if (outdated) {
+        out(
+          'my_context: this workspace\'s conversation index was built before this build added a ' +
+          'table it reads, so there is nothing here to list yet. It is not damaged and nothing ' +
+          'has been lost — the index is rebuilt from the transcripts on disk.',
+        );
+      } else {
+        out('my_context: no conversation index in this workspace yet — nothing has been scanned.');
+      }
       out(`my_context: run \`mycontext conversation rebuild\` to scan ${dir}`);
       return 0;
     }
@@ -233,6 +284,100 @@ function cmdConversationList(ws: Workspace, root: string, args: string[], out: E
   }
 }
 
+/**
+ * `mycontext conversation subagents [<session>]` — **the lanes a session
+ * dispatched, and what links each to the turn that dispatched it.**
+ *
+ * `plan:archive seq:12`. It exists in the terminal and not only on the screen
+ * because the link is the thing most likely to be doubted: a reader who wants
+ * to know whether a lane is reachable from its `Agent` call should be able to
+ * see the `toolUseId` beside it without opening a browser.
+ *
+ * With no session named it lists the lanes of the newest indexed session,
+ * which is the one a person asking this question almost always means.
+ */
+function cmdConversationSubagents(ws: Workspace, root: string, args: string[], out: Emit): number {
+  const [, asked] = positionals(args, ['limit']);
+
+  let index: ConversationIndex;
+  try {
+    index = ConversationIndex.openReadOnlyChecked(ws.dbPath);
+  } catch (err) {
+    if (err instanceof ConversationIndexUninitializedError
+      || err instanceof ConversationIndexIncompleteError) {
+      const dir = transcriptDir(process.env, workspaceCwd(root));
+      if (wantsJson(args)) {
+        emitJson(out, { subagents: [], total: 0, indexed: false, dir });
+        return 0;
+      }
+      out('my_context: nothing is indexed in this workspace yet.');
+      out(`my_context: run \`mycontext conversation rebuild\` to scan ${dir}`);
+      return 0;
+    }
+    throw err;
+  }
+
+  try {
+    const sessions = index.all();
+    const sessionId = asked ?? sessions[0]?.sessionId;
+    if (sessionId === undefined) {
+      out('my_context: the conversation index is built and holds no sessions.');
+      return 0;
+    }
+    const rows = index.subagentsOf(sessionId);
+    if (wantsJson(args)) {
+      emitJson(out, { sessionId, subagents: rows, total: rows.length, indexed: true });
+      return 0;
+    }
+    if (rows.length === 0) {
+      out(
+        `my_context: session ${sessionId.slice(0, 8)} dispatched no subagents — a measured ` +
+        'zero, not a scan that has not run.',
+      );
+      return 0;
+    }
+
+    const drawn = table(
+      ['agent', 'depth', 'type', 'records', 'size', 'dispatched by', 'description'],
+      rows.map((row: SubagentRow) => [
+        row.agentId,
+        String(row.spawnDepth),
+        row.agentType ?? '—',
+        String(row.records),
+        `${Math.round(row.bytes / 1024)}K`,
+        // WHAT DISPATCHED IT, which is two facts and not one: a lane at depth
+        // 1 was dispatched by the session, and one deeper by another lane.
+        // Measured 2026-09-08: 210 at depth 1 and 43 at depth 2, and
+        // `parentAgentId` is present on exactly the deeper ones.
+        row.parentAgentId ?? 'the session',
+        row.description ?? '—',
+      ]),
+    );
+    for (const line of drawn) out(line);
+
+    const unlinked = rows.filter((r) => r.toolUseId === null);
+    out(
+      `my_context: ${rows.length} subagent(s) under session ${sessionId.slice(0, 8)}, ` +
+      `${rows.reduce((n, r) => n + r.records, 0)} records, ` +
+      `${rows.reduce((n, r) => n + r.bytes, 0)} byte(s).`,
+    );
+    if (unlinked.length > 0) {
+      out(
+        `my_context: ${unlinked.length} of them carry no tool_use id, so nothing links them to ` +
+        'the turn that dispatched them. Their transcripts are still readable.',
+      );
+    } else {
+      out(
+        'my_context: every one carries the tool_use id of the `Agent` call that dispatched it, ' +
+        'so each can be opened from the turn it came from.',
+      );
+    }
+    return 0;
+  } finally {
+    index.close();
+  }
+}
+
 function cmdConversation(ws: Workspace, args: string[], out: Emit): number {
   if (!ws.projectRoot) {
     out('my_context: no workspace here. Run `mycontext init` to create one.');
@@ -251,6 +396,7 @@ function cmdConversation(ws: Workspace, args: string[], out: Emit): number {
 
   try {
     if (subcommand === 'rebuild') return cmdConversationRebuild(ws, root, args, out);
+    if (subcommand === 'subagents') return cmdConversationSubagents(ws, root, args, out);
     return cmdConversationList(ws, root, args, out);
   } catch (err) {
     out(toCliMessage(err));
@@ -261,7 +407,7 @@ function cmdConversation(ws: Workspace, args: string[], out: Emit): number {
 registerCommand({
   name: 'conversation',
   usage: `conversation [${SUBCOMMANDS.join('|')}] [--full] [--limit <n>] [--json]`,
-  summary: 'index the conversation transcripts on disk, and list what the index holds',
+  summary: 'index the conversation and subagent transcripts on disk, and list what it holds',
   run: (ws, args, out) => cmdConversation(ws, args, out),
 });
 

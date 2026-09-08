@@ -137,9 +137,9 @@
  */
 import { statSync } from 'node:fs';
 import {
-  ConversationIndex, ConversationIndexUninitializedError, MAX_SCAN_BYTES,
-  classifyTurn, iterateTranscript, listTranscriptFiles, transcriptDir,
-  type ConversationRow, type TranscriptCursor,
+  ConversationIndex, ConversationIndexIncompleteError, ConversationIndexUninitializedError,
+  MAX_SCAN_BYTES, classifyTurn, iterateTranscript, listTranscriptFiles, transcriptDir,
+  type ConversationRow, type SubagentRow, type TranscriptCursor,
 } from '../core/conversation-index.ts';
 import { workspaceCwd } from './read-model-conversations.ts';
 import { registerRoute, type ApiContext, type JsonResult } from './routes.ts';
@@ -562,9 +562,42 @@ function syntheticLabel(
  * falls through to the first string argument it carries, which is the safe
  * direction — an unknown tool describes itself imperfectly rather than not at
  * all, and `INV-nothing-is-dropped-silently` prefers the imperfect line.
+ *
+ * ── `command` LEADS `description`, AND THE PREMISE FOR THAT CHANGED ────────
+ *
+ * Owner ruling, 2026-09-08: *"move the command into the closed fold"*. The
+ * closed fold now shows WHAT RAN rather than the prose written about it.
+ *
+ * **`seq:24`'s lane argued against exactly this and was right at the time.**
+ * While `DETAIL_FIELDS` was the ONLY capture path, promoting `command` would
+ * have destroyed `description` outright — and `description` is what makes a
+ * fold of 2,375 `Bash` calls skimmable at all. That argument was sound; its
+ * PREMISE is what changed. `seq:24` captures the whole input, so `description`
+ * is on screen the moment the step is opened, and the swap now costs a reader
+ * nothing while gaining the fact over the prose about the fact.
+ *
+ * **WHAT IT COSTS, MEASURED on the owner's own transcript, 2026-09-08, and
+ * reported rather than shipped quietly** — 2,375 `Bash` calls, every one of
+ * which carries BOTH a `description` and a `command`:
+ *
+ *     collapsed command longer than the 160-char cap   1,934   81%
+ *
+ * and the leading ~46 characters of nearly every one are the same constant,
+ * `cd "D:/Users/UserC/source/repos/my-context" && `, which is a third of the
+ * budget spent on a fact that never varies. A collapsed heredoc then reads:
+ *
+ *     cd "D:/…/my-context" && git commit -F - <<'EOF' doctor: a finding
+ *     declares its own remedy, and a run is visible to whoever ran it The own…
+ *
+ * That is a summary line for a `git commit` and it is NOT one for the `python
+ * - <<'PYEOF' import io p='reports/…' s=io.open(p,…).read() s=s.replace("| E…`
+ * shape, which cuts mid-token and tells a reader only that some Python ran.
+ * The ruling is the owner's and it is applied as given; this note is the
+ * disclosure that 81% of these lines are truncated and that the prefix is
+ * dead weight, so whoever holds the next ruling holds the measurement too.
  */
 const DETAIL_FIELDS = [
-  'description', 'command', 'file_path', 'pattern', 'query', 'url', 'prompt',
+  'command', 'description', 'file_path', 'pattern', 'query', 'url', 'prompt',
   'skill', 'path', 'name', 'id',
 ];
 
@@ -1013,13 +1046,46 @@ function unknownParams(url: URL, allowed: string[]): string | null {
   return null;
 }
 
-/** The indexed row for a session, or the refusal that explains itself. */
+/**
+ * The indexed row for a session — **or for a SUBAGENT, on the same three
+ * routes and through the same renderer.**
+ *
+ * `plan:archive seq:12`, and it is the seam `seq:15` needs: that item requires
+ * *"THE SAME RENDERER, whichever shape wins … A subagent transcript is the
+ * same kind of thing and must not grow a second viewer."* Every document route
+ * in this module reaches the file through this one function and then uses only
+ * `row.file` and `row.bytes`, so teaching THIS to resolve a lane makes the
+ * whole outline / nodes / tip document work on one, and leaves `seq:15` with a
+ * screen to build rather than a reader to write.
+ *
+ * **The two id spaces cannot collide, and that is measured rather than
+ * assumed.** A session id is the harness's UUID (`595db3b1-a481-…`); a lane id
+ * is the transcript's filename, `agent-` + its `agentId` — verified on all 253
+ * lanes in this workspace, every one of which begins `agent-` and none of
+ * which is a UUID. The session table is consulted FIRST regardless, so a
+ * session can never be shadowed by a lane whatever the harness renames next.
+ *
+ * The lane is adapted into a `ConversationRow` rather than given a parallel
+ * type, because what the routes want from it — a file, its size, a name to
+ * draw, a branch — is the same list. Two fields are the adapter making a
+ * choice and both are stated rather than implied:
+ *
+ *   - `title` is the lane's `description`, the one line the dispatcher typed.
+ *     It is a RECORDED name and not a fabricated one, which is the bar
+ *     `customTitleOf` sets. `titleSource` is `'agent'` — a third value beside
+ *     `'custom'` and `'ai'`, because "the agent that dispatched it named it"
+ *     is neither of those and a reader is owed which.
+ *   - `source` is `'subagent'`. It is the honest answer to "what is this row"
+ *     and it does not touch the `conversations` table's own `source` column,
+ *     which stays `'live'`/`'exported'` for `seq:5`.
+ */
 function rowFor(ws: Workspace, id: string): { row: ConversationRow } | { fail: JsonResult } {
   let index: ConversationIndex;
   try {
     index = ConversationIndex.openReadOnlyChecked(ws.dbPath);
   } catch (err) {
-    if (err instanceof ConversationIndexUninitializedError) {
+    if (err instanceof ConversationIndexUninitializedError
+      || err instanceof ConversationIndexIncompleteError) {
       return {
         fail: {
           status: 404,
@@ -1035,13 +1101,48 @@ function rowFor(ws: Workspace, id: string): { row: ConversationRow } | { fail: J
   let row: ConversationRow | null;
   try {
     row = index.get(id);
+    if (row === null) {
+      const agent = index.getSubagent(id);
+      if (agent !== null) row = subagentAsRow(agent);
+    }
   } finally {
     index.close();
   }
   if (row === null) {
-    return { fail: { status: 404, body: { error: `no indexed conversation "${id}".` } } };
+    return {
+      fail: {
+        status: 404,
+        body: {
+          error: `no indexed conversation or subagent "${id}".`,
+        },
+      },
+    };
   }
   return { row };
+}
+
+/** A lane in the shape the document routes read. See `rowFor` for the two choices. */
+function subagentAsRow(agent: SubagentRow): ConversationRow {
+  return {
+    sessionId: agent.agentId,
+    source: 'subagent',
+    file: agent.file,
+    bytes: agent.bytes,
+    mtimeMs: agent.mtimeMs,
+    scannedBytes: agent.scannedBytes,
+    startedAt: agent.startedAt,
+    endedAt: agent.endedAt,
+    prompts: agent.prompts,
+    answers: agent.answers,
+    machinery: agent.machinery,
+    records: agent.records,
+    unreadable: agent.unreadable,
+    branch: agent.branch,
+    cwd: agent.cwd,
+    title: agent.description,
+    titleSource: agent.description === null ? null : 'agent',
+    scannedAt: agent.scannedAt,
+  };
 }
 
 /**

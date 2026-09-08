@@ -5,8 +5,10 @@ title: the work done in subagents is indexed and kept, because that is where the
 status: active
 severity: soft
 always: false
-summary: The separate records of work done by helper agents are listed and preserved alongside the main conversations, instead of being lost when temporary files are cleared.
-summary_of: 86f2ac841c3c8847
+summary: The separate records of work done by helper agents are listed and preserved alongside the main conversations, so the reasoning behind each helper's report can still be read.
+summary_of: 9d19adcec0a44eab
+summary_was:
+  - 2026-09-08 The separate records of work done by helper agents are listed and preserved alongside the main conversations, instead of being lost when temporary files are cleared.
 scope:
   - src/core/conversation-index.ts
   - src/ui/**
@@ -15,18 +17,19 @@ tags:
   - archive
   - "plan:archive"
   - "seq:12"
-  - "state:todo"
+  - "state:done"
 origin: human
 source_file: null
 source_anchor: null
 source_checksum: null
 valid_from: 2026-09-08
 valid_until: null
-checksum: 5fc75b9b5ee3b314
+checksum: 8c5f9e9c301f1883
 plan: archive
 seq: "12"
-state: todo
+state: done
 priority: "1"
+verified_on: 2026-09-09
 ---
 
 # the work done in subagents is indexed and kept, because that is where the reasoning is

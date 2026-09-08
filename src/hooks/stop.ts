@@ -1,6 +1,7 @@
 import { handoverAskMuted, handoverThresholdPercent } from '../core/config.ts';
 import {
-  ConversationIndex, rebuildConversations, type RebuildReport,
+  ConversationIndex, ConversationIndexIncompleteError, rebuildConversations,
+  type RebuildReport,
 } from '../core/conversation-index.ts';
 import {
   occupancyStandDownLine, readOccupancy, type UnmeasurableWhy,
@@ -755,10 +756,44 @@ export function stopConversationRefresh(input: HookInput): RebuildReport | null 
     // The gate. `openReadOnlyChecked` creates nothing, migrates nothing and
     // repairs nothing, so this asks "has anybody scanned here" without
     // becoming the answer to it.
+    //
+    // ── AND "A SCHEMA BEHIND" COUNTS AS EXISTING. THIS IS THE MIGRATION ────
+    //
+    // `ConversationIndexIncompleteError` is an index that HAS `conversations`
+    // and lacks a table a later build added — every workspace in the world,
+    // the moment `plan:archive seq:12` ships. It is the answer "yes, somebody
+    // has scanned here", so it passes the gate, and `rebuildConversations`
+    // then opens for WRITE and its `CREATE TABLE IF NOT EXISTS` fills the gap
+    // on the next assistant turn.
+    //
+    // **This is not the gate being weakened; it is the gate being able to tell
+    // its two cases apart.** The refusal stays exactly as loud for a genuinely
+    // damaged index — an index holding `subagents` and no `conversations` is
+    // still an `Error` and still declines here — and `Uninitialized` still
+    // declines, so a workspace nobody has ever scanned is still never opted in
+    // by a background hook. What changed is that "old" stopped being reported
+    // as "damaged".
+    //
+    // **Measured cost of NOT doing this, on the owner's own running server,
+    // 2026-09-08:** the sessions list drew no files and printed the refusal
+    // verbatim, and there was no way out but a command the reader had to
+    // already know. Worse, the path was self-sealing: this gate caught the
+    // throw and returned `null`, so the automatic refresh stopped for good —
+    // and the automatic refresh is the only thing that would have created the
+    // missing table. An index frozen at the byte it reached on upgrade day is
+    // precisely the defect `plan:archive seq:14` exists to end.
+    //
+    // The alternative — migrating on the READ open — is not available and that
+    // is deliberate rather than awkward: `openReadOnlyChecked` may not write,
+    // `test/ui/no-writes.test.ts` holds the UI's write bindings to an exact
+    // set, and a read surface that repaired its own cache is the read-only
+    // guarantee failing where a new feature most wants it to. So the repair
+    // belongs to a writer, and this hook is the only writer that runs by
+    // itself.
     try {
       ConversationIndex.openReadOnlyChecked(dbPath).close();
-    } catch {
-      return null;
+    } catch (err) {
+      if (!(err instanceof ConversationIndexIncompleteError)) return null;
     }
 
     return rebuildConversations(dbPath, process.env, path.dirname(root), {
@@ -790,7 +825,15 @@ export function stopConversationRefresh(input: HookInput): RebuildReport | null 
  */
 export function refreshNote(report: RebuildReport | null): string {
   if (report === null) return '';
-  const moved = report.appended + report.scanned + report.removed;
+  // **The lanes count as movement.** They have to be in this sum and not only
+  // in the clause below: a turn in which the session's own transcript was
+  // unchanged while two lanes ran and finished is a turn on which something
+  // genuinely happened, and gating on the session's numbers alone would report
+  // it as "nothing had changed". Caught by the test below rather than by
+  // reading, which is why the assertion for it names this sentence.
+  const agentsMoved = report.subagents.scanned + report.subagents.appended
+    + report.subagents.removed;
+  const moved = report.appended + report.scanned + report.removed + agentsMoved;
   if (moved === 0) return '';
   const parts: string[] = [];
   if (report.appended > 0) {
@@ -798,6 +841,29 @@ export function refreshNote(report: RebuildReport | null): string {
   }
   if (report.scanned > 0) parts.push(`${report.scanned} transcript(s) were read whole`);
   if (report.removed > 0) parts.push(`${report.removed} indexed session(s) no longer on disk`);
+  // The lanes, on the same rule and for the same reason (`plan:archive
+  // seq:12`). A subagent transcript is FINISHED when its lane returns, so in
+  // the steady state this clause is absent and its appearance means lanes ran
+  // during that turn — which is the fact a reader is looking for. Their bytes
+  // are named separately from the session's because they are a separate
+  // budget: 615.3 MB across 253 lanes here against 65 MB of session, so one
+  // total would hide which of the two a slow turn paid for.
+  const agents = report.subagents;
+  if (agentsMoved > 0) {
+    const lanes: string[] = [];
+    if (agents.scanned > 0) lanes.push(`${agents.scanned} subagent transcript(s) read whole`);
+    if (agents.appended > 0) {
+      lanes.push(`${agents.appended} subagent transcript(s) had grown and only the tail was read`);
+    }
+    if (agents.removed > 0) lanes.push(`${agents.removed} indexed subagent(s) no longer on disk`);
+    if (agents.unlinked > 0) {
+      lanes.push(
+        `${agents.unlinked} with no readable .meta.json, so nothing links them to the turn that ` +
+        'dispatched them',
+      );
+    }
+    parts.push(`${lanes.join(', ')} (${agents.bytesRead} byte(s))`);
+  }
   return `; the conversation index was refreshed — ${parts.join(', ')}, `
     + `${report.bytesRead} byte(s) in ${report.ms}ms`;
 }

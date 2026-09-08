@@ -276,10 +276,20 @@ test('a folded run carries its steps, its tool detail and its failure', () => {
     assert.equal(body!.steps.length, run.s, 'every record in the run is a step — nothing folded away twice');
 
     const bash = body!.steps.find((s) => s.tool === 'Bash')!;
-    // A fold that says `Bash` forty times cannot be skimmed. 2,123 of the
-    // owner's 3,014 tool calls are Bash, so the DETAIL is what makes the
-    // summary readable — the call's own `description`, read off its arguments.
-    assert.equal(bash.detail, 'Show working tree status');
+    // A fold that says `Bash` forty times cannot be skimmed. 2,375 of the
+    // owner's 3,280 tool calls are Bash, so the DETAIL is what makes the
+    // summary readable — and OWNER RULING 2026-09-08, *"move the command into
+    // the closed fold"*, settles which argument it reads: the command, not the
+    // prose written about the command.
+    //
+    // `seq:24`'s lane argued against this and was right at the time — while
+    // `DETAIL_FIELDS` was the only capture path, promoting `command` destroyed
+    // `description` outright. `seq:24` captures the whole input, so the
+    // premise changed and the swap now costs a reader nothing.
+    assert.equal(
+      bash.detail, 'git status',
+      'the CLOSED fold shows what ran, not the sentence about what ran',
+    );
 
     const result = body!.steps.find((s) => s.blocks.includes('tool_result'))!;
     assert.match(result.text, /working tree clean/, 'a tool result keeps its output');
@@ -390,10 +400,29 @@ test('a tool call carries its whole input, and the act reads before the prose ab
     assert.equal(bash.input.find((f) => f.name === 'timeout')!.value, 600000);
     assert.equal(bash.input.find((f) => f.name === 'run_in_background')!.value, false);
 
-    // The SUMMARY line is untouched. It is what makes a closed fold skimmable
-    // when 2,357 of 3,280 calls are `Bash`, and it costs nothing now that the
-    // command is one fold away.
-    assert.equal(bash.detail, 'Run the browser suite');
+    // ── THE CLOSED FOLD SHOWS THE COMMAND; THE OPEN STEP STILL SHOWS THE
+    //    DESCRIPTION ────────────────────────────────────────────────────────
+    //
+    // Owner ruling, 2026-09-08: *"move the command into the closed fold"*.
+    // Both halves are asserted together on purpose, because the ruling is only
+    // safe while the second half holds: `description` is what makes a fold of
+    // 2,375 `Bash` calls skimmable, and it survives here because `seq:24`
+    // captures the whole input one fold away. If a later change dropped
+    // `description` from `input`, this pairing fails rather than quietly
+    // costing every reader the summary.
+    assert.equal(
+      bash.detail, 'npx playwright test --config e2e/playwright.config.ts conversations.spec.ts',
+      'a MULTI-LINE command collapses to one summary line — `oneLine` flattens whitespace, so '
+      + 'the newline in this fixture becomes a space rather than breaking the fold. Measured on '
+      + 'the owner\'s transcript: 1,934 of 2,375 collapsed commands (81%) exceed the 160-char '
+      + 'cap and are truncated, which is acceptable ONLY because the whole command is in the '
+      + 'open fold.',
+    );
+    assert.equal(
+      bash.input.find((f) => f.name === 'description')!.value, 'Run the browser suite',
+      'and the prose is still there the moment the step is opened — the condition that makes '
+      + 'the ruling above cost nothing',
+    );
   } finally { b.dispose(); }
 });
 

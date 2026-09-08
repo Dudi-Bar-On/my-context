@@ -840,6 +840,14 @@ const READ_ROUTES = (from: { item: string; session: string | null }): Probe[] =>
   // seconds for as long as a reader has a session open, so a write on this
   // path would be the most frequent write in the product.
   '/api/conversations/not-a-real-session-id/tip',
+  // `plan:archive seq:12`. The lanes one session dispatched. It reads the same
+  // index through the same read-only door and stats each lane's transcript to
+  // answer `present` — a `statSync`, never an open for writing — so a path
+  // that ever cached its answer would leave a file inside the snapshot below.
+  // On a corpus nobody has scanned it answers 200 with `indexed: false`, and
+  // on this unknown session id it answers 200 with an empty list, because a
+  // session that dispatched no lanes is a measured zero rather than a 404.
+  '/api/conversations/not-a-real-session-id/subagents',
 ];
 
 /** Does a registered path template match this concrete pathname? */

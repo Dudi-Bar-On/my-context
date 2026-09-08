@@ -1455,6 +1455,11 @@ export const SUBCOMMAND_FLAGS: Record<string, Record<string, FlagSpec>> = {
   conversation: {
     rebuild: { allowed: ['full', 'json'], values: [] },
     list: { allowed: ['limit', 'json'], values: ['limit'] },
+    // `subagents` (`plan:archive seq:12`) takes a POSITIONAL session id rather
+    // than a flag, and no `--limit`: it lists the lanes of one session, which
+    // is bounded by how many that session dispatched, and a bound nobody needs
+    // is a bound nobody maintains.
+    subagents: { allowed: ['json'], values: [] },
   },
   /** `cli/commands/pack.ts`. `import` is the whole surface; `list` reports. */
   pack: {

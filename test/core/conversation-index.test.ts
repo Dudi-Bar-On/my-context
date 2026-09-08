@@ -184,11 +184,21 @@ test('the scanner counts prompts and answers off the role, and tolerates the res
       + 'the list screen has.',
     );
     assert.equal(scan.answers, 2, 'two assistant turns carry text; the tool_use one does not');
-    assert.equal(scan.machinery, 2, 'the tool_result and the tool_use, counted rather than lost');
     assert.equal(
-      scan.prompts + scan.answers + scan.machinery, 5,
-      'every user/assistant record lands in exactly one of the three, so the two headline '
-      + 'numbers can be checked against the total instead of believed',
+      scan.machinery, 5,
+      'the tool_result, the tool_use, the two ai-titles and the attachment — counted rather '
+      + 'than lost. It was 2: `machinery` was incremented only for `user`/`assistant` records '
+      + 'carrying a `message`, so every other type fell into NO column. Measured 2026-09-08, '
+      + 'that hole swallowed 29,082 `attachment` records — 29% — across this workspace\'s 253 '
+      + 'subagent transcripts.',
+    );
+    assert.equal(
+      scan.prompts + scan.answers + scan.machinery, scan.records,
+      'EVERY record lands in exactly one of the three, so the two headline numbers can be '
+      + 'checked against the total instead of believed. This assertion used to read `=== 5` '
+      + 'against a fixture of 8 records, which is the defect written down as though it were '
+      + 'the contract — `ConversationRow.machinery` promised this identity all along. It is '
+      + 'pinned to `scan.records` and not to a literal so it cannot drift back.',
     );
     assert.equal(scan.records, CONVERSATION.length, 'every record counts, known type or not');
     assert.equal(scan.unreadable, 0);

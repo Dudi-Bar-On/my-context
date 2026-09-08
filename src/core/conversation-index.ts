@@ -108,6 +108,12 @@ const CONVERSATION_TABLE_COLUMNS: [string, string[]][] = [
     'started_at', 'ended_at', 'prompts', 'answers', 'machinery', 'records', 'unreadable',
     'branch', 'cwd', 'title', 'title_source', 'scanned_at',
   ]],
+  ['subagents', [
+    'agent_id', 'session_id', 'parent_agent_id', 'tool_use_id', 'agent_type', 'description',
+    'model', 'spawn_depth', 'is_fork', 'file', 'bytes', 'mtime_ms', 'scanned_bytes',
+    'started_at', 'ended_at', 'prompts', 'answers', 'machinery', 'records', 'unreadable',
+    'branch', 'cwd', 'scanned_at',
+  ]],
 ];
 
 /**
@@ -125,6 +131,43 @@ const CONVERSATION_TABLE_COLUMNS: [string, string[]][] = [
  *
  * `(bytes, mtime_ms)` is the freshness key, and the reason a re-scan is cheap:
  * a file whose size and mtime match its row is skipped after one `stat`.
+ *
+ * ── `subagents` IS A SECOND TABLE, AND THAT WAS DECIDED ON MEASUREMENT ─────
+ *
+ * `plan:archive seq:12` left the choice open — same list or its own — and
+ * asked for it to be settled against what the harness actually records. It
+ * was, on this workspace's own 253 subagent transcripts, 2026-09-08:
+ *
+ *   - **A subagent has no title and structurally cannot have one.** ZERO
+ *     `ai-title` records across all 253 transcripts (99,760 records), and no
+ *     `custom-title.json` anywhere under `subagents/`. `title` and
+ *     `title_source` would be two columns that are always `NULL`, and the
+ *     screen's "named by the model" state would be unreachable for every one
+ *     of them. The name a subagent HAS is `description` — the one line the
+ *     dispatcher typed — and it comes from a different file entirely.
+ *   - **`session_id` would have to mean two different things.** In a subagent
+ *     transcript the `sessionId` FIELD names the PARENT session, not the
+ *     subagent: measured, 0 of 99,760 records carry any other value. So in one
+ *     shared table the primary key would be the agent id while a column called
+ *     `session_id` pointed at somebody else's row — a field whose meaning
+ *     flips on a discriminator, which is the defect this repository spent
+ *     2026-09-07 measuring in its own documents.
+ *   - **`source` cannot be the discriminator.** It is hard-coded to `'live'`
+ *     and `'exported'` is reserved for step 5 (which is why `conv.exported`'s
+ *     chip is unreachable — `seq:4`/`seq:5`). Spending that column on a third
+ *     meaning would take the word step 5 was designed around and make one
+ *     already-unreachable state into two.
+ *   - **The list is 2 sessions against 253 subagents**, and `all()` is capped
+ *     at 200 rows. Merged, the two real conversations would sort below a
+ *     hundred lanes and the archive screen would answer a question nobody
+ *     asked.
+ *
+ * So they are separate tables with separate keys, and what joins them is
+ * recorded rather than inferred — see `SubagentMeta`.
+ *
+ * There is deliberately no `source` column here. A second hard-coded `'live'`
+ * would be a second copy of a discriminator that is already known not to work,
+ * and step 5 can add the column when it has a second value to put in it.
  */
 const CONVERSATION_SCHEMA = `
 CREATE TABLE IF NOT EXISTS conversations (
@@ -150,6 +193,36 @@ CREATE TABLE IF NOT EXISTS conversations (
 
 CREATE INDEX IF NOT EXISTS idx_conversations_ended  ON conversations(ended_at);
 CREATE INDEX IF NOT EXISTS idx_conversations_source ON conversations(source);
+
+CREATE TABLE IF NOT EXISTS subagents (
+  agent_id        TEXT PRIMARY KEY,
+  session_id      TEXT NOT NULL,
+  parent_agent_id TEXT,
+  tool_use_id     TEXT,
+  agent_type      TEXT,
+  description     TEXT,
+  model           TEXT,
+  spawn_depth     INTEGER NOT NULL,
+  is_fork         INTEGER NOT NULL,
+  file            TEXT NOT NULL,
+  bytes           INTEGER NOT NULL,
+  mtime_ms        INTEGER NOT NULL,
+  scanned_bytes   INTEGER NOT NULL,
+  started_at      TEXT,
+  ended_at        TEXT,
+  prompts         INTEGER NOT NULL,
+  answers         INTEGER NOT NULL,
+  machinery       INTEGER NOT NULL,
+  records         INTEGER NOT NULL,
+  unreadable      INTEGER NOT NULL,
+  branch          TEXT,
+  cwd             TEXT,
+  scanned_at      TEXT NOT NULL
+) WITHOUT ROWID;
+
+CREATE INDEX IF NOT EXISTS idx_subagents_session ON subagents(session_id);
+CREATE INDEX IF NOT EXISTS idx_subagents_tooluse ON subagents(tool_use_id);
+CREATE INDEX IF NOT EXISTS idx_subagents_parent  ON subagents(parent_agent_id);
 `;
 
 /**
@@ -163,6 +236,41 @@ CREATE INDEX IF NOT EXISTS idx_conversations_source ON conversations(source);
  * a caller can tell this state from damage without matching on a message.
  */
 export class ConversationIndexUninitializedError extends Error {}
+
+/**
+ * **The index was built by an OLDER BUILD that had fewer tables** — every
+ * table this build reads is either present or is one this build added, and a
+ * rebuild fills it.
+ *
+ * Its own class, and it is not a nicety. When `conversations` was the only
+ * table, `missing.length > 0` could only mean somebody had deleted a table by
+ * hand, so calling it damage was right. `subagents` (`plan:archive seq:12`)
+ * makes it mean something else as well, and far more often: an index built
+ * before this build existed. Every corpus in the world is in that state the
+ * moment this ships.
+ *
+ * **Reporting that as damage would have been a permanent stall**, and the path
+ * is worth spelling out because nothing would have said so:
+ * `stopConversationRefresh` gates on `openReadOnlyChecked` and returns `null`
+ * when it throws, so a hard error there would stop the automatic refresh for
+ * good — and the automatic refresh is the only thing that would have created
+ * the missing table. The index would then sit frozen at the byte it reached
+ * on upgrade day, exactly the defect `plan:archive seq:14` was built to end,
+ * and with no surface anywhere reporting a cause.
+ *
+ * So it is a REPAIRABLE state with a named repair, the write path heals it on
+ * the next turn, and the read surfaces serve the same empty answer they serve
+ * for `ConversationIndexUninitializedError` — with the rebuild command
+ * composed beside it, never run.
+ */
+export class ConversationIndexIncompleteError extends Error {
+  /** The tables this build reads that the index does not have yet. */
+  readonly missing: string[];
+  constructor(message: string, missing: string[]) {
+    super(message);
+    this.missing = missing;
+  }
+}
 
 /** One indexed session, in the shape the row is stored and read back. */
 export interface ConversationRow {
@@ -398,6 +506,198 @@ function customTitleOf(dir: string, sessionId: string): string | null {
   } catch {
     return null;
   }
+}
+
+/**
+ * **What the harness records about a subagent, in a file beside its
+ * transcript — and it is the whole answer to "what links a lane to the turn
+ * that dispatched it".**
+ *
+ * `plan:archive seq:12` asked for this to be MEASURED rather than invented,
+ * and `seq:15` cannot be built without it. It was measured on this workspace,
+ * 2026-09-08, over all 253 subagent transcripts:
+ *
+ *     agent-<id>.jsonl        the transcript
+ *     agent-<id>.meta.json    THIS — present for 253 of 253, never missing
+ *
+ * and every one of the 253 carries `agentType`, `description`, `toolUseId` and
+ * `spawnDepth`. `parentAgentId` appears on 43, `model` on 88, `isFork` on 8.
+ *
+ * ── `toolUseId` IS THE LINK, AND IT RESOLVES EXACTLY ───────────────────────
+ *
+ * It is the `id` of the `tool_use` block of the `Agent` call that dispatched
+ * this lane, in the transcript of whoever dispatched it. Cross-checked both
+ * directions on the owner's own session:
+ *
+ *     `Agent` tool_use blocks in the session transcript        210
+ *     of those with a subagent transcript                      210   100%
+ *     subagent metas whose toolUseId is NOT in the session      43
+ *     subagent metas carrying `parentAgentId`                   43   the same 43
+ *     of those, resolved inside `agent-<parentAgentId>.jsonl`    43   100%
+ *
+ * So there are no orphans in either direction, and the 43 that do not resolve
+ * against the session are not a failure of the link — they are lanes a LANE
+ * dispatched. `spawnDepth` says which: 210 at depth 1, 43 at depth 2, and
+ * `parentAgentId` is present on exactly the ones with depth > 1 and absent on
+ * exactly the ones with depth 1.
+ *
+ * **So the parent is two facts and not one**, and a build that stored only the
+ * session would silently mis-file a fifth of them: `parentAgentId === null`
+ * means the SESSION dispatched it, and otherwise the named subagent did.
+ *
+ * ── AND `sessionId` IN THE TRANSCRIPT NAMES THE PARENT, NOT THE SUBAGENT ───
+ *
+ * Every record inside a subagent transcript carries `sessionId` = the owning
+ * SESSION — 99,760 of 99,760, including all 43 at depth 2. The subagent's own
+ * identity is `agentId`, and the filename is `agent-` + that: verified on all
+ * 253. That is why `session_id` here is the ROOT session and not a hop.
+ */
+export interface SubagentMeta {
+  /** `general-purpose`, `Explore`, `fork`, a plugin agent — the harness's word. */
+  agentType: string | null;
+  /** The one line the dispatcher typed. The nearest thing a lane has to a title. */
+  description: string | null;
+  /** The `Agent` tool_use block that dispatched this lane. THE parent link. */
+  toolUseId: string | null;
+  /** `null` when the SESSION dispatched it; else the subagent that did. */
+  parentAgentId: string | null;
+  model: string | null;
+  /** 1 for a lane the session dispatched, 2 for a lane a lane dispatched. */
+  spawnDepth: number;
+  /** A `fork` inherits the dispatcher's context. Recorded because it changes what to expect. */
+  isFork: boolean;
+}
+
+/**
+ * Read one subagent's sidecar.
+ *
+ * **Never throws, and a missing or unparseable sidecar is not a reason to drop
+ * the transcript.** The reasoning is `listTranscriptFiles`': the sidecar's
+ * schema is the HARNESS's and can change without notice, while the transcript
+ * beside it is the thing worth keeping. A lane whose sidecar cannot be read is
+ * indexed with its link fields `null` and `spawnDepth` 0 — visibly unlinked
+ * rather than absent, which is `INV-nothing-is-dropped-silently` applied to
+ * the join rather than to the counts.
+ *
+ * Measured 2026-09-08: this branch never fired here — 253 of 253 sidecars
+ * parsed — so it is a tolerance rather than a workaround for something seen.
+ */
+export function readSubagentMeta(dir: string, agentId: string): SubagentMeta | null {
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(readFileSync(path.join(dir, `${agentId}.meta.json`), 'utf8'));
+  } catch {
+    return null;
+  }
+  if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) return null;
+  const row = parsed as Record<string, unknown>;
+  const text = (key: string): string | null => {
+    const value = row[key];
+    return typeof value === 'string' && value !== '' ? value : null;
+  };
+  return {
+    agentType: text('agentType'),
+    description: text('description'),
+    toolUseId: text('toolUseId'),
+    parentAgentId: text('parentAgentId'),
+    model: text('model'),
+    spawnDepth: typeof row['spawnDepth'] === 'number' ? row['spawnDepth'] : 0,
+    isFork: row['isFork'] === true,
+  };
+}
+
+/** Where one session's subagent transcripts live. */
+export function subagentDir(
+  env: Record<string, string | undefined>, cwd: string, sessionId: string,
+): string {
+  return path.join(transcriptDir(env, cwd), sessionId, 'subagents');
+}
+
+/** One subagent transcript found on disk, with whatever its sidecar said. */
+export interface SubagentFile {
+  /** `agent-<hex>` — the filename without `.jsonl`, and the primary key. */
+  agentId: string;
+  file: string;
+  bytes: number;
+  mtimeMs: number;
+  meta: SubagentMeta | null;
+}
+
+/**
+ * The subagent transcripts of one session: **top-level `*.jsonl` in that one
+ * directory, and never a recursive walk** — `listTranscriptFiles`' rule, for
+ * `listTranscriptFiles`' reason.
+ *
+ * `.meta.json` is excluded by the `.jsonl` test alone, which is worth stating
+ * because the two files share a stem: `agent-<id>.jsonl` and
+ * `agent-<id>.meta.json` sit beside each other, so a listing keyed on a prefix
+ * rather than on the extension would find every lane twice.
+ *
+ * Never throws. A session with no `subagents/` directory dispatched no lanes,
+ * which is an ordinary state and not a fault — measured here, 2 of the 4
+ * sessions in this project's directory have no such directory at all.
+ */
+export function listSubagentFiles(dir: string): SubagentFile[] {
+  let names: string[];
+  try {
+    names = readdirSync(dir);
+  } catch {
+    return [];
+  }
+  const found: SubagentFile[] = [];
+  for (const name of names) {
+    if (!name.endsWith('.jsonl')) continue;
+    const agentId = name.slice(0, -'.jsonl'.length);
+    const file = path.join(dir, name);
+    try {
+      const stat = statSync(file);
+      if (!stat.isFile()) continue;
+      found.push({
+        agentId,
+        file,
+        bytes: stat.size,
+        mtimeMs: Math.floor(stat.mtimeMs),
+        meta: readSubagentMeta(dir, agentId),
+      });
+    } catch {
+      continue;
+    }
+  }
+  return found.sort((a, b) => (a.agentId < b.agentId ? -1 : 1));
+}
+
+/**
+ * One indexed subagent. The counting columns are `ConversationRow`'s, by the
+ * same scanner, so the two kinds of transcript are never counted two ways.
+ */
+export interface SubagentRow {
+  agentId: string;
+  /** The session that OWNS this lane, however many hops dispatched it. */
+  sessionId: string;
+  /** `null` when the session dispatched it directly. */
+  parentAgentId: string | null;
+  /** The `Agent` tool_use block in the dispatching transcript. `seq:15`'s handle. */
+  toolUseId: string | null;
+  agentType: string | null;
+  /** The dispatcher's one-line brief. A lane's name, and never fabricated. */
+  description: string | null;
+  model: string | null;
+  spawnDepth: number;
+  isFork: boolean;
+  file: string;
+  bytes: number;
+  mtimeMs: number;
+  scannedBytes: number;
+  startedAt: string | null;
+  endedAt: string | null;
+  prompts: number;
+  answers: number;
+  machinery: number;
+  records: number;
+  unreadable: number;
+  branch: string | null;
+  cwd: string | null;
+  scannedAt: string;
 }
 
 /** What one transcript scan learned. Every field is derived; none is assumed. */
@@ -766,14 +1066,42 @@ export function scanTranscript(
 
     // The turn, classified on its CONTENT rather than on `message.role` — see
     // `classifyTurn` for the measurement that made the difference matter.
+    //
+    // ── `machinery` IS THE REMAINDER, AND IT WAS NOT ────────────────────────
+    //
+    // This block used to increment `machinery` only when `row.type` was
+    // `user` or `assistant`, and only when the record carried a `message`
+    // object at all. So a record of any other type landed in NONE of the
+    // three, and `prompts + answers + machinery` came out BELOW `records` —
+    // while `ConversationRow.machinery`'s own doc promised the opposite:
+    // *"counted rather than discarded so `prompts + answers + machinery`
+    // accounts for every conversational record"*. The code contradicted its
+    // own stated contract, which is the silent drop rather than the disclosed
+    // one and exactly what `INV-nothing-is-dropped-silently` forbids.
+    //
+    // Measured on this workspace, 2026-09-08, which is why it is fixed here
+    // rather than noted: of 99,760 records across the 253 subagent
+    // transcripts, **29,082 are `attachment`** — 29% of the file falling into
+    // no column at all. On the session transcript the same hole swallows
+    // `ai-title`, `queue-operation`, `system` and `file-history-snapshot`.
+    //
+    // `classifyTurn` already answers `'machinery'` for every type it does not
+    // know, so the fix is to stop second-guessing it: the two guards are gone
+    // and the identity now HOLDS — `prompts + answers + machinery ===
+    // records`, exactly, for both kinds of transcript.
+    //
+    // **This changes existing numbers**, upward, in the `machinery` column
+    // only. That is the column being made true rather than a count being
+    // inflated: nothing moves out of `prompts` or `answers`, and the two
+    // headline numbers are untouched.
     const message = row.message;
-    if (typeof message === 'object' && message !== null) {
-      const content = (message as { content?: unknown }).content;
-      const turn = classifyTurn(row.type, content);
-      if (turn === 'prompt') result.prompts += 1;
-      else if (turn === 'answer') result.answers += 1;
-      else if (row.type === 'user' || row.type === 'assistant') result.machinery += 1;
-    }
+    const content = typeof message === 'object' && message !== null
+      ? (message as { content?: unknown }).content
+      : undefined;
+    const turn = classifyTurn(row.type, content);
+    if (turn === 'prompt') result.prompts += 1;
+    else if (turn === 'answer') result.answers += 1;
+    else result.machinery += 1;
   }
 
   result.scannedBytes = cursor.scannedBytes;
@@ -874,6 +1202,26 @@ export class ConversationIndex {
         );
       }
       if (missing.length > 0) {
+        // **Which table is missing decides which of the two states this is.**
+        //
+        // `conversations` is created by the same `open` that creates every
+        // other table here, so an index that HAS it was built by some build of
+        // this feature and the tables it lacks are ones a LATER build added.
+        // That is an upgrade, and a rebuild fills them.
+        //
+        // An index missing `conversations` while holding something else is the
+        // original reading and still damage: nothing has ever created one
+        // without the other, so a file in that shape was edited by something
+        // that is not this code.
+        if (present.includes('conversations')) {
+          throw new ConversationIndexIncompleteError(
+            `my_context: ${dbPath} has ${present.join(', ')} but not ${missing.join(', ')} — ` +
+            'an index built before this build added that table, not a damaged one. Run ' +
+            '`mycontext conversation rebuild` to fill it; the automatic per-turn refresh also ' +
+            'creates it, because creating tables is a write and a read-only caller never does.',
+            missing,
+          );
+        }
         throw new Error(
           `my_context: ${dbPath} has ${present.join(', ')} but not ${missing.join(', ')}. ` +
           'Half an index is damage, not the not-yet-scanned empty state, and this open refuses ' +
@@ -970,6 +1318,108 @@ export class ConversationIndex {
     return gone.length;
   }
 
+  /** Replace one subagent's row wholesale. A scan is a fact about a file at a time. */
+  upsertSubagent(row: SubagentRow): void {
+    this.#db.prepare(
+      `INSERT INTO subagents (
+         agent_id, session_id, parent_agent_id, tool_use_id, agent_type, description, model,
+         spawn_depth, is_fork, file, bytes, mtime_ms, scanned_bytes, started_at, ended_at,
+         prompts, answers, machinery, records, unreadable, branch, cwd, scanned_at
+       ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+       ON CONFLICT(agent_id) DO UPDATE SET
+         session_id = excluded.session_id, parent_agent_id = excluded.parent_agent_id,
+         tool_use_id = excluded.tool_use_id, agent_type = excluded.agent_type,
+         description = excluded.description, model = excluded.model,
+         spawn_depth = excluded.spawn_depth, is_fork = excluded.is_fork,
+         file = excluded.file, bytes = excluded.bytes, mtime_ms = excluded.mtime_ms,
+         scanned_bytes = excluded.scanned_bytes, started_at = excluded.started_at,
+         ended_at = excluded.ended_at, prompts = excluded.prompts, answers = excluded.answers,
+         machinery = excluded.machinery, records = excluded.records,
+         unreadable = excluded.unreadable, branch = excluded.branch, cwd = excluded.cwd,
+         scanned_at = excluded.scanned_at`,
+    ).run(
+      row.agentId, row.sessionId, row.parentAgentId, row.toolUseId, row.agentType,
+      row.description, row.model, row.spawnDepth, row.isFork ? 1 : 0, row.file, row.bytes,
+      row.mtimeMs, row.scannedBytes, row.startedAt, row.endedAt, row.prompts, row.answers,
+      row.machinery, row.records, row.unreadable, row.branch, row.cwd, row.scannedAt,
+    );
+  }
+
+  /**
+   * One session's lanes, OLDEST FIRST.
+   *
+   * The opposite of `all()`'s order, and deliberately: `all()` lists sessions,
+   * where the newest conversation is the one a reader wants on top, while this
+   * lists the lanes WITHIN one session, which a reader follows in the order
+   * the session dispatched them. A row with no `started_at` sorts last for
+   * `all()`'s reason — it is a real state, not a zero date.
+   */
+  subagentsOf(sessionId: string): SubagentRow[] {
+    const rows = this.#db.prepare(
+      'SELECT * FROM subagents WHERE session_id = ? ' +
+      'ORDER BY started_at ASC NULLS LAST, agent_id ASC',
+    ).all(sessionId) as Record<string, unknown>[];
+    return rows.map(toSubagentRow);
+  }
+
+  getSubagent(agentId: string): SubagentRow | null {
+    const row = this.#db.prepare(
+      'SELECT * FROM subagents WHERE agent_id = ?',
+    ).get(agentId) as Record<string, unknown> | undefined;
+    return row === undefined ? null : toSubagentRow(row);
+  }
+
+  /**
+   * **The lane a given `Agent` tool call produced** — `plan:archive seq:15`'s
+   * whole lookup, in one indexed query.
+   *
+   * `tool_use_id` is not declared UNIQUE, because uniqueness is the harness's
+   * to guarantee and not ours to enforce on data we only read; measured
+   * 2026-09-08 the 253 ids here are all distinct. `get` rather than `all` is
+   * the reading that follows from the fact: one call dispatches one lane.
+   */
+  subagentByToolUse(toolUseId: string): SubagentRow | null {
+    const row = this.#db.prepare(
+      'SELECT * FROM subagents WHERE tool_use_id = ?',
+    ).get(toolUseId) as Record<string, unknown> | undefined;
+    return row === undefined ? null : toSubagentRow(row);
+  }
+
+  /** How many lanes each session owns, for the list's count. One grouped query. */
+  subagentCounts(): Map<string, number> {
+    const rows = this.#db.prepare(
+      'SELECT session_id, COUNT(*) AS n FROM subagents GROUP BY session_id',
+    ).all() as { session_id: string; n: number }[];
+    return new Map(rows.map((r) => [r.session_id, Number(r.n)]));
+  }
+
+  /** The `(bytes, mtime_ms)` freshness key for every indexed subagent. */
+  subagentFingerprints(): Map<string, { bytes: number; mtimeMs: number }> {
+    const rows = this.#db.prepare(
+      'SELECT agent_id, bytes, mtime_ms FROM subagents',
+    ).all() as { agent_id: string; bytes: number; mtime_ms: number }[];
+    return new Map(rows.map((r) => [r.agent_id, { bytes: r.bytes, mtimeMs: r.mtime_ms }]));
+  }
+
+  /**
+   * Drop the rows for lanes no longer on disk, and say how many.
+   *
+   * **Scoped to ONE session**, unlike `removeMissing`, and the difference is
+   * load-bearing: a rebuild only ever lists the `subagents/` directories of
+   * the sessions it found, so it learns nothing about the lanes of a session
+   * whose own transcript has been pruned. Sweeping globally on that knowledge
+   * would delete every one of them on the first refresh after a prune —
+   * knowledge leaving the archive to a walk that never looked.
+   */
+  removeMissingSubagents(sessionId: string, present: Set<string>): number {
+    const known = (this.#db.prepare('SELECT agent_id FROM subagents WHERE session_id = ?')
+      .all(sessionId) as { agent_id: string }[]).map((r) => r.agent_id);
+    const gone = known.filter((id) => !present.has(id));
+    const statement = this.#db.prepare('DELETE FROM subagents WHERE agent_id = ?');
+    for (const id of gone) statement.run(id);
+    return gone.length;
+  }
+
   transaction<T>(fn: () => T): T {
     this.#db.exec('BEGIN IMMEDIATE');
     try {
@@ -1013,6 +1463,39 @@ function toRow(row: Record<string, unknown>): ConversationRow {
     cwd: text('cwd'),
     title: text('title'),
     titleSource: text('title_source'),
+    scannedAt: String(row['scanned_at'] ?? ''),
+  };
+}
+
+function toSubagentRow(row: Record<string, unknown>): SubagentRow {
+  const text = (key: string): string | null => {
+    const value = row[key];
+    return typeof value === 'string' ? value : null;
+  };
+  const count = (key: string): number => Number(row[key] ?? 0);
+  return {
+    agentId: String(row['agent_id'] ?? ''),
+    sessionId: String(row['session_id'] ?? ''),
+    parentAgentId: text('parent_agent_id'),
+    toolUseId: text('tool_use_id'),
+    agentType: text('agent_type'),
+    description: text('description'),
+    model: text('model'),
+    spawnDepth: count('spawn_depth'),
+    isFork: count('is_fork') === 1,
+    file: String(row['file'] ?? ''),
+    bytes: count('bytes'),
+    mtimeMs: count('mtime_ms'),
+    scannedBytes: count('scanned_bytes'),
+    startedAt: text('started_at'),
+    endedAt: text('ended_at'),
+    prompts: count('prompts'),
+    answers: count('answers'),
+    machinery: count('machinery'),
+    records: count('records'),
+    unreadable: count('unreadable'),
+    branch: text('branch'),
+    cwd: text('cwd'),
     scannedAt: String(row['scanned_at'] ?? ''),
   };
 }
@@ -1077,8 +1560,25 @@ function lineStartsAt(file: string, at: number): boolean {
  * `aiTitle` follows `endedAt`: the last `ai-title` in the file is the current
  * name, and if the tail carried one it is more recent than the row's by
  * construction.
+ *
+ * **`previous` is the structural shape both row kinds share**, rather than
+ * `ConversationRow`, so a subagent row composes by the identical arithmetic
+ * (`plan:archive seq:12`). It has to be the same function and not a second
+ * one: the whole reason this lives in one place is that a caller improvising
+ * it gets one of the two kinds wrong, and a second row kind is a second
+ * caller. `previousAiTitle` is passed IN because it is the only field the two
+ * kinds disagree about — a subagent has no title at all, measured, so it
+ * passes `null` and the last-writer-wins rule collapses to the tail's answer.
  */
-function mergeScan(previous: ConversationRow, tail: ScanResult): ScanResult {
+type MergeablePrevious = Pick<
+  ConversationRow,
+  'scannedBytes' | 'startedAt' | 'endedAt' | 'prompts' | 'answers' | 'machinery'
+  | 'records' | 'unreadable' | 'branch' | 'cwd'
+>;
+
+function mergeScan(
+  previous: MergeablePrevious, tail: ScanResult, previousAiTitle: string | null,
+): ScanResult {
   return {
     scannedBytes: previous.scannedBytes + tail.scannedBytes,
     startedAt: previous.startedAt ?? tail.startedAt,
@@ -1090,8 +1590,43 @@ function mergeScan(previous: ConversationRow, tail: ScanResult): ScanResult {
     unreadable: previous.unreadable + tail.unreadable,
     branch: tail.branch ?? previous.branch,
     cwd: tail.cwd ?? previous.cwd,
-    aiTitle: tail.aiTitle ?? (previous.titleSource === 'ai' ? previous.title : null),
+    aiTitle: tail.aiTitle ?? previousAiTitle,
   };
+}
+
+/**
+ * What the subagent half of one rebuild did.
+ *
+ * **A nested object rather than more fields on `RebuildReport`**, so every
+ * number already printed keeps meaning exactly what it meant: `found` is
+ * transcripts, `scanned` is transcripts, `bytesRead` is bytes of transcript.
+ * A rebuild that quietly folded 253 lanes into `found` would make the one
+ * line `reportLines` prints — *"scanned N transcript(s) of M"* — say something
+ * different without anybody editing it, which is how a number stops being
+ * checkable.
+ */
+export interface SubagentRebuildReport {
+  /** Subagent transcripts found on disk, across every session listed. */
+  found: number;
+  /** Read WHOLE this run. */
+  scanned: number;
+  /** Brought up to date from their appended tail alone. */
+  appended: number;
+  /** Skipped because size and mtime matched the indexed row. */
+  skipped: number;
+  /** Rows dropped because their transcript is gone from disk. */
+  removed: number;
+  /** Lanes whose scan hit the cap; their counts are floors. */
+  truncated: string[];
+  /**
+   * Transcripts whose `.meta.json` was missing or unreadable, so the link to
+   * the turn that dispatched them is `null`. Counted because an unlinked lane
+   * is exactly what `plan:archive seq:15` cannot open, and a silent zero here
+   * would look identical to a session that dispatched none.
+   */
+  unlinked: number;
+  /** Bytes of subagent transcript actually read this run. */
+  bytesRead: number;
 }
 
 /** What one rebuild did, in the numbers a caller has to be able to print. */
@@ -1116,6 +1651,8 @@ export interface RebuildReport {
   truncated: string[];
   /** Bytes actually read this run. */
   bytesRead: number;
+  /** The subagent half, kept apart so neither set of numbers dilutes the other. */
+  subagents: SubagentRebuildReport;
   /** How long the scan took, so a slow archive is visible rather than felt. */
   ms: number;
 }
@@ -1178,6 +1715,7 @@ export function rebuildConversations(
     : ConversationIndex.open(dbPath, options.busyTimeoutMs);
   try {
     const known = index.fingerprints();
+    const knownAgents = index.subagentFingerprints();
     const report: RebuildReport = {
       dir,
       found: files.length,
@@ -1187,13 +1725,155 @@ export function rebuildConversations(
       removed: 0,
       truncated: [],
       bytesRead: 0,
+      subagents: {
+        found: 0, scanned: 0, appended: 0, skipped: 0, removed: 0,
+        truncated: [], unlinked: 0, bytesRead: 0,
+      },
       ms: 0,
+    };
+
+    /**
+     * **One session's lanes** — `plan:archive seq:12`.
+     *
+     * ── THE COST, MEASURED, BECAUSE THE ITEM ASKED FOR IT TO BE ────────────
+     *
+     * This runs on the `Stop` hook, once per assistant turn, so it has to be
+     * affordable at that cadence and not merely finite. Measured on this
+     * workspace, 2026-09-08, over its 253 subagent transcripts:
+     *
+     *     stat every one of the 253       5.06 ms      615.3 MB on disk
+     *     read every one of the 253      1577 ms       99,760 records
+     *     the largest single lane          28 ms        16.2 MB
+     *                                                  ---------- 311x
+     *
+     * **The steady state is the 5 ms, and the reason is a property a session
+     * does not have: a subagent transcript is FINISHED.** A session appends
+     * for as long as somebody is typing into it, so its row is stale by
+     * construction on every turn. A lane's transcript stops the moment the
+     * lane returns, and never grows again — so after the first index every
+     * later refresh is `stat`s that match, plus a whole-file read of only the
+     * lanes that ran during that one turn. The first index pays 1.6 seconds
+     * ONCE, from `mycontext conversation rebuild`.
+     *
+     * The cap is not reached and is not close: the largest lane here is 16.2
+     * MB against `MAX_SCAN_BYTES` of 256 MiB, so no row is truncated and
+     * `truncated` stays empty. It is still checked and still reported, for
+     * the reason the session path checks it — a bound nobody tests is a bound
+     * nobody knows the state of.
+     *
+     * **The append path is not a precaution here; it FIRES.** It was offered
+     * on the reasoning that "a finished lane never grows" is a claim about the
+     * harness rather than a guarantee from it — and the first incremental run
+     * measured it firing on 2 of 254 lanes for 8,529 bytes, because two lanes
+     * were RUNNING at that moment and a running lane is writing. So the
+     * sentence above needs its qualifier: a lane's transcript is finished once
+     * the lane returns, and until then it appends exactly as a session does.
+     *
+     * The three runs, measured end to end through `mycontext conversation
+     * rebuild` on this workspace, 2026-09-08:
+     *
+     *     --full            254 lanes read whole   646,837,699 B   1,762 ms
+     *     incremental       2 tails, 252 skipped         8,529 B      36 ms
+     *     incremental       0 tails, 254 skipped             0 B      18 ms
+     *
+     * The 18 ms is the per-turn cost in the steady state, and it is what makes
+     * this affordable on `Stop`.
+     */
+    const scanSubagents = (sessionId: string): void => {
+      const agentDir = path.join(dir, sessionId, 'subagents');
+      const agents = listSubagentFiles(agentDir);
+      report.subagents.found += agents.length;
+      for (const agent of agents) {
+        if (agent.meta === null) report.subagents.unlinked += 1;
+        const fingerprint = knownAgents.get(agent.agentId);
+        if (
+          options.full !== true && fingerprint !== undefined
+          && fingerprint.bytes === agent.bytes && fingerprint.mtimeMs === agent.mtimeMs
+        ) {
+          report.subagents.skipped += 1;
+          continue;
+        }
+
+        const previous = fingerprint === undefined || options.full === true
+          ? null
+          : index.getSubagent(agent.agentId);
+        // The session path's five conditions, less the one that cannot apply:
+        // there is no custom title to have hidden an `ai-title`, because a
+        // subagent transcript carries no `ai-title` at all (measured: 0 across
+        // 99,760 records). The other four are the ways a cheap read would be
+        // WRONG rather than merely skippable, and they are unchanged.
+        const appendable = previous !== null
+          && previous.scannedBytes === previous.bytes
+          && agent.bytes > previous.bytes
+          && previous.bytes < cap
+          && lineStartsAt(agent.file, previous.bytes);
+
+        const tail = appendable && previous !== null
+          ? scanTranscript(agent.file, cap - previous.bytes, previous.bytes)
+          : null;
+        const scan = tail !== null && previous !== null
+          ? mergeScan(previous, tail, null)
+          : scanTranscript(agent.file, cap);
+
+        index.upsertSubagent({
+          agentId: agent.agentId,
+          // **From the DIRECTORY, not from the records.** The two agree here —
+          // 99,760 of 99,760 records carry this same session — but the
+          // directory is the fact that made the file reachable at all, and a
+          // row filed under a `sessionId` a record claimed would be a row the
+          // walk that found it could not find again.
+          sessionId,
+          parentAgentId: agent.meta?.parentAgentId ?? null,
+          toolUseId: agent.meta?.toolUseId ?? null,
+          agentType: agent.meta?.agentType ?? null,
+          description: agent.meta?.description ?? null,
+          model: agent.meta?.model ?? null,
+          spawnDepth: agent.meta?.spawnDepth ?? 0,
+          isFork: agent.meta?.isFork ?? false,
+          file: agent.file,
+          bytes: agent.bytes,
+          mtimeMs: agent.mtimeMs,
+          scannedBytes: scan.scannedBytes,
+          startedAt: scan.startedAt,
+          endedAt: scan.endedAt,
+          prompts: scan.prompts,
+          answers: scan.answers,
+          machinery: scan.machinery,
+          records: scan.records,
+          unreadable: scan.unreadable,
+          branch: scan.branch,
+          cwd: scan.cwd,
+          scannedAt: new Date().toISOString(),
+        });
+
+        if (tail !== null) {
+          report.subagents.appended += 1;
+          report.subagents.bytesRead += tail.scannedBytes;
+        } else {
+          report.subagents.scanned += 1;
+          report.subagents.bytesRead += scan.scannedBytes;
+        }
+        if (scan.scannedBytes < agent.bytes) report.subagents.truncated.push(agent.agentId);
+      }
+      report.subagents.removed += index.removeMissingSubagents(
+        sessionId, new Set(agents.map((a) => a.agentId)),
+      );
     };
 
     // One transaction for the whole run, for `rebuild.ts`'s measured reason:
     // per-statement WAL flushes dominate a batch of small writes.
     index.transaction(() => {
       for (const file of files) {
+        // **Before the skip, not after it.** A session whose own transcript is
+        // byte-for-byte unchanged can still have gained a lane — a subagent
+        // writes its own file, and the parent's Stop hook is what indexes it,
+        // so the two do not move together. Skipping the lanes of an unchanged
+        // session would mean a lane dispatched by a session that has since
+        // ended is never indexed at all. It costs a `readdir` and one `stat`
+        // per lane: 5.06 ms for all 253 measured here, against 1,577 ms to
+        // read them.
+        scanSubagents(file.sessionId);
+
         const fingerprint = known.get(file.sessionId);
         if (
           options.full !== true && fingerprint !== undefined
@@ -1252,7 +1932,7 @@ export function rebuildConversations(
           ? scanTranscript(file.file, cap - previous.bytes, previous.bytes)
           : null;
         const scan = tail !== null && previous !== null
-          ? mergeScan(previous, tail)
+          ? mergeScan(previous, tail, previous.titleSource === 'ai' ? previous.title : null)
           : scanTranscript(file.file, cap);
 
         index.upsert({

@@ -1075,6 +1075,12 @@ const UNCATALOGUED: Record<string, string> = {
     + 'which is the reason `todo` gives a few rows down; it is here rather than withheld '
     + 'because the '
     + 'screen is new and whether that judgement holds has not been taken.',
+  'conversation subagents': 'the lanes one session dispatched, in the terminal '
+    + '(`plan:archive seq:12`). It is `conversation list`\'s case exactly and is withheld for '
+    + 'the same reason — a def would compose a read whose answer is on the screen the reader '
+    + 'is already looking at. It is worth having in the terminal at all because the LINK is '
+    + 'the part most likely to be doubted: it prints the tool_use id beside each lane, so '
+    + '"can this be opened from the turn that dispatched it" is answerable without a browser.',
   // `ack` stood here until 2026-09-03 and its row named the condition that
   // closed it: "a control that composed a usable line would have to be driven
   // by the doctor read model rather than by a flag declaration". `Finding.remedy`

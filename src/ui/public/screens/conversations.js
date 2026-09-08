@@ -147,6 +147,24 @@ function drawRow(ctx, row, open) {
   meta.append(...ctx.t('conv.counts', {
     prompts: row.prompts, answers: row.answers, machinery: row.machinery,
   }));
+  // **The lanes this session dispatched** (`plan:archive seq:12`).
+  //
+  // On the counts line and not as a chip, because it is the same KIND of fact
+  // as the three beside it — how much of this session there is to read — and
+  // not a warning about the row. The chips below are all conditions a reader
+  // should worry about; this one is not.
+  //
+  // Drawn only when there are some. A session that dispatched no lanes is the
+  // ordinary case and `0 subagents` on every such row would be noise, which is
+  // the one place this differs from the measured-zero rule: that rule governs
+  // an EMPTY LIST, where silence would be indistinguishable from a check that
+  // never ran, and here the counts beside it already prove the row was scanned.
+  if (typeof row.subagents === 'number' && row.subagents > 0) {
+    meta.append(' · ');
+    meta.append(...ctx.t(row.subagents === 1 ? 'conv.lane' : 'conv.lanes', {
+      n: row.subagents,
+    }));
+  }
   if (row.branch !== null) {
     meta.append(' · ');
     meta.append(mono(row.branch));
@@ -230,8 +248,17 @@ function drawList(ctx, host, body, open) {
   if (body.indexed === false) {
     // NOT an error and NOT an empty list — a third state, with the command
     // that changes it. Composed, never run: this server cannot write.
+    //
+    // **AND IT IS TWO STATES, NOT ONE** (`plan:archive seq:12`). `outdated`
+    // means the index is a SCHEMA BEHIND rather than never scanned — full,
+    // and momentarily unreadable. Telling a reader with a complete archive
+    // that nothing has ever been scanned would be false, and it is the exact
+    // false sentence the owner met on his own running server on 2026-09-08
+    // when this table was added. That state repairs itself on the next
+    // assistant turn, so it says so; the rebuild command is still drawn
+    // beneath, because a reader who does not want to wait should not have to.
     const note = el('p', 'small');
-    note.append(...ctx.t('conv.neverScanned'));
+    note.append(...ctx.t(body.outdated === true ? 'conv.outdated' : 'conv.neverScanned'));
     host.append(spaced(note));
     const cmd = el('p', 'plate convcmd');
     cmd.append(mono(body.rebuild));

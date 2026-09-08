@@ -242,6 +242,10 @@ test('the note says what the refresh moved, and says nothing at all when nothing
   const base: RebuildReport = {
     dir: '/w', found: 1, scanned: 0, appended: 0, skipped: 1, removed: 0,
     truncated: [], bytesRead: 0, ms: 2,
+    subagents: {
+      found: 0, scanned: 0, appended: 0, skipped: 0, removed: 0,
+      truncated: [], unlinked: 0, bytesRead: 0,
+    },
   };
   assert.equal(
     refreshNote(base), '',
@@ -258,6 +262,44 @@ test('the note says what the refresh moved, and says nothing at all when nothing
 
   const gone = refreshNote({ ...base, removed: 2, skipped: 0 });
   assert.match(gone, /2 indexed session\(s\) no longer on disk/);
+
+  // ── THE LANES, ON THE SAME RULE ──────────────────────────────────────────
+  //
+  // A subagent transcript is finished when its lane returns, so in the steady
+  // state this clause is ABSENT and its appearance is the fact worth finding:
+  // lanes ran during that turn. `plan:archive seq:12`.
+  const quietLanes = refreshNote({
+    ...base, subagents: { ...base.subagents, found: 253, skipped: 253 },
+  });
+  assert.equal(
+    quietLanes, '',
+    '253 lanes all unchanged is the ordinary turn and must stay silent — a clause that fired on '
+    + 'every turn would put a per-turn "still up to date" report into the one line that says '
+    + 'where an exchange ended',
+  );
+
+  const lanesRan = refreshNote({
+    ...base,
+    skipped: 0,
+    appended: 1,
+    bytesRead: 43_118,
+    subagents: {
+      ...base.subagents, found: 253, skipped: 251, scanned: 2, bytesRead: 1_204_882,
+    },
+  });
+  assert.match(lanesRan, /2 subagent transcript\(s\) read whole/);
+  // The lanes' bytes are their OWN number and not folded into the session's.
+  // 615.3 MB of lanes against 65 MB of session was measured in this workspace,
+  // so one total would hide which of the two a slow turn actually paid for.
+  assert.match(lanesRan, /\(1204882 byte\(s\)\)/);
+  assert.match(lanesRan, /43118 byte\(s\) in 2ms/);
+
+  // An unreadable `.meta.json` is what `plan:archive seq:15` cannot open, and
+  // a silent zero would look exactly like a session that dispatched none.
+  const unlinked = refreshNote({
+    ...base, skipped: 0, subagents: { ...base.subagents, found: 1, scanned: 1, unlinked: 1 },
+  });
+  assert.match(unlinked, /1 with no readable \.meta\.json/);
 });
 
 test('what the refresh did reaches the audit row, because stdout leaves no trace', () => {

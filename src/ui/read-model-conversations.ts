@@ -84,8 +84,9 @@
  * the reason each is a FIELD rather than a sentence in a comment.
  */
 import {
-  ConversationIndex, ConversationIndexUninitializedError, classifyTurn, staleBy,
-  transcriptDir, truncatedScan, type ConversationRow,
+  ConversationIndex, ConversationIndexIncompleteError, ConversationIndexUninitializedError,
+  classifyTurn, staleBy, transcriptDir, truncatedScan,
+  type ConversationRow, type SubagentRow,
 } from '../core/conversation-index.ts';
 import { closeSync, openSync, readSync, statSync } from 'node:fs';
 import path from 'node:path';
@@ -241,6 +242,18 @@ export interface ConversationSummary {
    * rebuild anything.
    */
   staleBytes: number;
+  /**
+   * **How many subagent transcripts this session owns** — `plan:archive
+   * seq:12`, and the count is the whole argument for the feature.
+   *
+   * Measured on this workspace, 2026-09-08: 253 lanes and 615.3 MB against a
+   * 65 MB session. The session holds each lane's REPORT; those files hold its
+   * REASONING, and until now the archive saw none of them.
+   *
+   * `0` is a measured zero — a session that dispatched no lanes — and not an
+   * absence: every row on this list carries the number.
+   */
+  subagents: number;
   scannedAt: string;
 }
 
@@ -278,6 +291,18 @@ export interface ConversationListBody {
   stale: number;
   /** Bytes those sessions have appended since they were indexed. */
   staleBytes: number;
+  /**
+   * `indexed: false` because the index is a SCHEMA BEHIND, not because nothing
+   * has been scanned — `plan:archive seq:12`.
+   *
+   * The two states are both "no rows to serve" and they are opposite facts
+   * about the reader's archive: one has nothing in it and the other is full
+   * and momentarily unreadable. Measured on the owner's running server,
+   * 2026-09-08, where the second was reported as a raw refusal and the screen
+   * drew no files. It repairs itself on the next assistant turn, so the
+   * honest line is "one moment", not "run this".
+   */
+  outdated?: boolean;
 }
 
 /**
@@ -289,7 +314,7 @@ export interface ConversationListBody {
  * could be served for a day with no surface anywhere able to notice. The stat
  * is now read for all three facts rather than for one.
  */
-function summarise(row: ConversationRow): ConversationSummary {
+function summarise(row: ConversationRow, subagents: number): ConversationSummary {
   let present = false;
   let fileBytes: number | null = null;
   let fileMtimeMs: number | null = null;
@@ -323,6 +348,7 @@ function summarise(row: ConversationRow): ConversationSummary {
     fileBytes,
     fileMtimeMs,
     staleBytes: staleBy(row, fileBytes),
+    subagents,
     scannedAt: row.scannedAt,
   };
 }
@@ -349,7 +375,22 @@ export function apiConversations(ws: Workspace, url: URL): JsonResult {
   try {
     index = ConversationIndex.openReadOnlyChecked(ws.dbPath);
   } catch (err) {
-    if (err instanceof ConversationIndexUninitializedError) {
+    // **Both empty states, and they are the same answer to a reader.**
+    //
+    // `Uninitialized` is "nobody has ever scanned here". `Incomplete`
+    // (`plan:archive seq:12`) is "this index was built before a table this
+    // build reads existed" — which every workspace hits on upgrade day, and
+    // which was measured hitting the owner's own running server on
+    // 2026-09-08: the list drew no files and printed the raw refusal instead.
+    //
+    // Neither is damage and neither is this surface's to repair, because
+    // creating a table is a write. So both are served as the empty state with
+    // the rebuild COMPOSED beside it — the Doctor screen's rule, and the same
+    // one this module already applied to the never-scanned case. `indexed`
+    // reports which of the two, so the screen can say "run this" rather than
+    // "there is nothing here".
+    if (err instanceof ConversationIndexUninitializedError
+      || err instanceof ConversationIndexIncompleteError) {
       // **A 200, not a 404 and not a 500.** The question was answered: this
       // workspace holds no conversation index. `server-e2e.test.ts` accepts
       // 200 and 404 and nothing else, and more importantly a reader needs the
@@ -358,6 +399,13 @@ export function apiConversations(ws: Workspace, url: URL): JsonResult {
         conversations: [], total: 0, limit, offset, omitted: 0, more: false,
         indexed: false, dir, rebuild: REBUILD_COMMAND, missing: 0,
         stale: 0, staleBytes: 0,
+        // An index a schema behind is a DIFFERENT empty state from one nobody
+        // has scanned, and the screen must not tell a reader with a full
+        // archive that nothing has ever been scanned. It heals itself on the
+        // next assistant turn — `stopConversationRefresh` treats this state as
+        // existing — so what the reader is owed is that sentence, not a
+        // command they must type.
+        outdated: err instanceof ConversationIndexIncompleteError,
       };
       return { status: 200, body };
     }
@@ -367,7 +415,13 @@ export function apiConversations(ws: Workspace, url: URL): JsonResult {
   try {
     const all = index.all();
     const page = all.slice(offset, offset + limit);
-    const conversations = page.map(summarise);
+    // ONE grouped query for the whole archive rather than one per row. The
+    // page is capped at 200 sessions and this workspace has 253 lanes under a
+    // single one of them, so a per-row `COUNT(*)` would be 200 statements to
+    // answer what one `GROUP BY` answers.
+    const laneCounts = index.subagentCounts();
+    const conversations = page.map((row) =>
+      summarise(row, laneCounts.get(row.sessionId) ?? 0));
     const body: ConversationListBody = {
       conversations,
       total: all.length,
@@ -627,7 +681,8 @@ export function apiConversation(
   try {
     index = ConversationIndex.openReadOnlyChecked(ws.dbPath);
   } catch (err) {
-    if (err instanceof ConversationIndexUninitializedError) {
+    if (err instanceof ConversationIndexUninitializedError
+      || err instanceof ConversationIndexIncompleteError) {
       // Nothing is indexed, so this session is not known here. A 404 with the
       // reason, rather than a 500 that reads as damage.
       return {
@@ -715,7 +770,163 @@ export function apiConversation(
   return { status: 200, body };
 }
 
+/** One indexed lane as the list serves it. */
+export interface SubagentSummary {
+  agentId: string;
+  sessionId: string;
+  /** `null` when the SESSION dispatched it; else the lane that did. */
+  parentAgentId: string | null;
+  /**
+   * **The `Agent` tool_use block that dispatched this lane** — `plan:archive
+   * seq:15`'s handle, and the reason this endpoint exists rather than a
+   * count alone.
+   *
+   * A document step rendered from an `Agent` call carries this same id in its
+   * captured input (`seq:24`), so a screen can go from THE TURN to THE
+   * TRANSCRIPT with no correlation of its own to invent. `null` means the
+   * sidecar was unreadable and this lane cannot be linked — visibly, rather
+   * than by being absent from the list.
+   */
+  toolUseId: string | null;
+  agentType: string | null;
+  /** The dispatcher's one-line brief. A lane's name, never fabricated. */
+  description: string | null;
+  model: string | null;
+  spawnDepth: number;
+  isFork: boolean;
+  startedAt: string | null;
+  endedAt: string | null;
+  prompts: number;
+  answers: number;
+  machinery: number;
+  records: number;
+  unreadable: number;
+  bytes: number;
+  scannedBytes: number;
+  scanTruncated: boolean;
+  /** The transcript is still on disk. `false` is a lane whose file is gone. */
+  present: boolean;
+  fileBytes: number | null;
+  /** Bytes of this lane's transcript the index has never read. */
+  staleBytes: number;
+  scannedAt: string;
+}
+
+export interface SubagentListBody {
+  sessionId: string;
+  subagents: SubagentSummary[];
+  total: number;
+  /** Lanes whose transcript has since been pruned from disk. */
+  missing: number;
+  /** Lanes with no `toolUseId`, which nothing can link to a turn. */
+  unlinked: number;
+  /** Bytes of lane transcript on disk, summed over what this answer carries. */
+  bytes: number;
+  indexed: boolean;
+  rebuild: string;
+}
+
+function summariseSubagent(row: SubagentRow): SubagentSummary {
+  let present = false;
+  let fileBytes: number | null = null;
+  try {
+    const stat = statSync(row.file);
+    present = stat.isFile();
+    if (present) fileBytes = stat.size;
+  } catch {
+    present = false;
+  }
+  return {
+    agentId: row.agentId,
+    sessionId: row.sessionId,
+    parentAgentId: row.parentAgentId,
+    toolUseId: row.toolUseId,
+    agentType: row.agentType,
+    description: row.description,
+    model: row.model,
+    spawnDepth: row.spawnDepth,
+    isFork: row.isFork,
+    startedAt: row.startedAt,
+    endedAt: row.endedAt,
+    prompts: row.prompts,
+    answers: row.answers,
+    machinery: row.machinery,
+    records: row.records,
+    unreadable: row.unreadable,
+    bytes: row.bytes,
+    scannedBytes: row.scannedBytes,
+    scanTruncated: truncatedScan(row),
+    present,
+    fileBytes,
+    staleBytes: staleBy(row, fileBytes),
+    scannedAt: row.scannedAt,
+  };
+}
+
+/**
+ * `GET /api/conversations/:id/subagents` — **the lanes one session
+ * dispatched**, oldest first.
+ *
+ * `plan:archive seq:12`. It is deliberately NOT a page of the sessions list:
+ * a subagent is not a conversation a person had, it has no title and cannot
+ * have one, and merging 253 of them into a 200-row list would bury the two
+ * real sessions beneath them. It hangs UNDER the session instead, which is
+ * also where a reader looks for it — the item's own words.
+ *
+ * **Uncapped, and that is a measurement rather than an oversight.** One row is
+ * roughly 300 bytes and the largest session in this workspace owns 253 lanes,
+ * so the whole answer is about 76 KB — against `CONVERSATION_LIST_CAP`, which
+ * bounds a list whose rows are unbounded in number across all time. This one
+ * is bounded by how many lanes ONE session dispatched. If that ever stops
+ * being true the bound belongs here, disclosed the way every other bound in
+ * this module is; it is not true yet and a cap nobody needs is a cap nobody
+ * maintains.
+ */
+export function apiConversationSubagents(
+  ws: Workspace, url: URL, params: { id: string },
+): JsonResult {
+  const bad = unknownParams(url, []) ?? repeatedParams(url);
+  if (bad) return badRequest(bad);
+
+  let index: ConversationIndex;
+  try {
+    index = ConversationIndex.openReadOnlyChecked(ws.dbPath);
+  } catch (err) {
+    if (err instanceof ConversationIndexUninitializedError
+      || err instanceof ConversationIndexIncompleteError) {
+      const body: SubagentListBody = {
+        sessionId: params.id, subagents: [], total: 0, missing: 0, unlinked: 0,
+        bytes: 0, indexed: false, rebuild: REBUILD_COMMAND,
+      };
+      return { status: 200, body };
+    }
+    throw err;
+  }
+
+  try {
+    const rows = index.subagentsOf(params.id).map(summariseSubagent);
+    const body: SubagentListBody = {
+      sessionId: params.id,
+      subagents: rows,
+      total: rows.length,
+      missing: rows.filter((r) => !r.present).length,
+      unlinked: rows.filter((r) => r.toolUseId === null).length,
+      bytes: rows.reduce((sum, r) => sum + r.bytes, 0),
+      indexed: true,
+      rebuild: REBUILD_COMMAND,
+    };
+    return { status: 200, body };
+  } finally {
+    index.close();
+  }
+}
+
 export function registerConversationRoutes(): void {
+  registerRoute('GET', '/api/conversations/:id/subagents', {
+    kind: 'json',
+    handle: (ctx: ApiContext) =>
+      apiConversationSubagents(ctx.ws, ctx.url, { id: ctx.params['id'] ?? '' }),
+  });
   registerRoute('GET', '/api/conversations', {
     kind: 'json', handle: (ctx: ApiContext) => apiConversations(ctx.ws, ctx.url),
   });

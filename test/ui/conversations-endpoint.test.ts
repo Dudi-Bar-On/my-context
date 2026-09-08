@@ -34,10 +34,11 @@ import {
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import {
-  apiConversation, apiConversations, CONVERSATION_LIST_CAP, CONVERSATION_RECORD_CAP,
-  CONVERSATION_RECORD_DEFAULT, CONVERSATION_TEXT_CAP,
-  type ConversationBody, type ConversationListBody,
+  apiConversation, apiConversations, apiConversationSubagents, CONVERSATION_LIST_CAP,
+  CONVERSATION_RECORD_CAP, CONVERSATION_RECORD_DEFAULT, CONVERSATION_TEXT_CAP,
+  type ConversationBody, type ConversationListBody, type SubagentListBody,
 } from '../../src/ui/read-model-conversations.ts';
+import { apiConversationOutline } from '../../src/ui/read-model-conversation-document.ts';
 import { projectDirName, rebuildConversations } from '../../src/core/conversation-index.ts';
 import { registeredRoutes } from '../../src/ui/routes.ts';
 import { registerReadRoutes } from '../../src/ui/server.ts';
@@ -176,7 +177,9 @@ test('nothing this endpoint can reach can write or start a process', () => {
 test('both routes are registered, so a page can actually reach them', () => {
   registerReadRoutes();
   const routes = registeredRoutes();
-  for (const path of ['/api/conversations', '/api/conversations/:id']) {
+  for (const path of [
+    '/api/conversations', '/api/conversations/:id', '/api/conversations/:id/subagents',
+  ]) {
     assert.ok(
       routes.some((r) => r.method === 'GET' && r.path === path),
       `${path} has a read model and nothing serves it. \`registerConversationRoutes\` must be `
@@ -194,6 +197,8 @@ interface Box {
   dir: string;
   cwd: string;
   write: (session: string, lines: unknown[]) => void;
+  /** A subagent transcript plus the sidecar the harness writes beside it. */
+  lane: (session: string, agentId: string, meta: unknown, lines: unknown[]) => void;
   scan: () => void;
   dispose: () => void;
 }
@@ -223,6 +228,17 @@ function box(): Box {
         path.join(dir, `${session}.jsonl`),
         lines.map((l) => JSON.stringify(l)).join('\n') + '\n',
       );
+    },
+    lane: (session, agentId, meta, lines) => {
+      const under = path.join(dir, session, 'subagents');
+      mkdirSync(under, { recursive: true });
+      writeFileSync(
+        path.join(under, `${agentId}.jsonl`),
+        lines.map((l) => JSON.stringify(l)).join('\n') + '\n',
+      );
+      if (meta !== null) {
+        writeFileSync(path.join(under, `${agentId}.meta.json`), JSON.stringify(meta));
+      }
     },
     scan: () => { rebuildConversations(dbPath, process.env, cwd); },
     dispose: () => {
@@ -606,5 +622,195 @@ test('an unknown session id is a 404 that does not echo the id back as markup', 
     // but it lands in a JSON string field, never in markup, and the screen
     // appends it as a text node.
     assert.equal(typeof (answer.body as { error: string }).error, 'string');
+  } finally { b.dispose(); }
+});
+
+/* ══ THE LANES A SESSION DISPATCHED ════════════════════════════════════════ */
+
+/**
+ * `plan:archive seq:12`. The session holds each lane's REPORT; the lane
+ * transcripts hold its REASONING — 615.3 MB of it against 65 MB of session,
+ * measured in this workspace on 2026-09-08 — and until this shipped the
+ * archive saw none of them.
+ */
+
+const laneMeta = (toolUseId: string, extra: Record<string, unknown> = {}): unknown => ({
+  agentType: 'general-purpose', description: 'a lane brief', toolUseId, spawnDepth: 1, ...extra,
+});
+
+test('a session lists the lanes it dispatched, each carrying the tool call that made it', () => {
+  const b = box();
+  try {
+    b.write('sess-lanes', [
+      { type: 'user', message: { role: 'user', content: 'go' }, timestamp: '2026-09-08T09:00:00.000Z' },
+      { type: 'assistant', message: { role: 'assistant', content: [{ type: 'tool_use', id: 'toolu_ONE', name: 'Agent', input: { prompt: 'a lane brief' } }] }, timestamp: '2026-09-08T09:00:01.000Z' },
+    ]);
+    b.lane('sess-lanes', 'agent-one', laneMeta('toolu_ONE'), [
+      { type: 'user', message: { role: 'user', content: 'a lane brief' }, timestamp: '2026-09-08T09:00:02.000Z' },
+      { type: 'assistant', message: { role: 'assistant', content: text('the working') }, timestamp: '2026-09-08T09:00:03.000Z' },
+    ]);
+    b.lane('sess-lanes', 'agent-two', laneMeta('toolu_TWO', {
+      parentAgentId: 'one', spawnDepth: 2, model: 'opus', isFork: true,
+    }), [
+      { type: 'assistant', message: { role: 'assistant', content: text('deeper') }, timestamp: '2026-09-08T09:00:04.000Z' },
+    ]);
+    b.scan();
+
+    const result = apiConversationSubagents(b.ws, new URL('http://x/'), { id: 'sess-lanes' });
+    assert.equal(result.status, 200);
+    const body = result.body as SubagentListBody;
+    assert.equal(body.total, 2);
+    assert.equal(body.indexed, true);
+    assert.equal(body.missing, 0);
+    assert.equal(body.unlinked, 0);
+
+    const one = body.subagents.find((s) => s.agentId === 'agent-one')!;
+    // **THE LINK `plan:archive seq:15` FOLLOWS.** The same id appears on the
+    // `Agent` tool_use in the session transcript above, so a screen goes from
+    // the TURN to the TRANSCRIPT with no correlation of its own to invent.
+    assert.equal(one.toolUseId, 'toolu_ONE');
+    assert.equal(one.parentAgentId, null, 'null means the SESSION dispatched it');
+    assert.equal(one.spawnDepth, 1);
+    assert.equal(one.description, 'a lane brief', 'the dispatcher\'s own words, never fabricated');
+    assert.equal(one.present, true);
+    assert.equal(one.staleBytes, 0);
+
+    const two = body.subagents.find((s) => s.agentId === 'agent-two')!;
+    assert.equal(
+      two.parentAgentId, 'one',
+      'a lane dispatched by a LANE names it — its `Agent` call is in that lane\'s transcript '
+      + 'and not in the session\'s. Measured: 43 of 254 in this workspace.',
+    );
+    assert.equal(two.spawnDepth, 2);
+    assert.equal(two.isFork, true);
+    assert.equal(two.model, 'opus');
+
+    // Oldest first — the order the session dispatched them, which is the order
+    // a reader follows. The opposite of the SESSIONS list, deliberately.
+    assert.deepEqual(body.subagents.map((s) => s.agentId), ['agent-one', 'agent-two']);
+  } finally { b.dispose(); }
+});
+
+test('the sessions list says how many lanes each session owns, and a measured zero is zero', () => {
+  const b = box();
+  try {
+    b.write('sess-with', [
+      { type: 'user', message: { role: 'user', content: 'go' }, timestamp: '2026-09-08T09:00:00.000Z' },
+    ]);
+    b.write('sess-without', [
+      { type: 'user', message: { role: 'user', content: 'go' }, timestamp: '2026-09-08T08:00:00.000Z' },
+    ]);
+    b.lane('sess-with', 'agent-a', laneMeta('toolu_A'), [
+      { type: 'assistant', message: { role: 'assistant', content: text('x') }, timestamp: '2026-09-08T09:00:01.000Z' },
+    ]);
+    b.scan();
+
+    const body = apiConversations(b.ws, new URL('http://x/')).body as ConversationListBody;
+    const withLanes = body.conversations.find((c) => c.sessionId === 'sess-with')!;
+    const without = body.conversations.find((c) => c.sessionId === 'sess-without')!;
+    assert.equal(withLanes.subagents, 1);
+    assert.equal(
+      without.subagents, 0,
+      'a session that dispatched none carries the NUMBER zero, not an absent field — every row '
+      + 'on this list is answerable without a second request',
+    );
+  } finally { b.dispose(); }
+});
+
+test('an unlinked lane is served and counted, because only its link is missing', () => {
+  const b = box();
+  try {
+    b.write('sess-unlinked', [
+      { type: 'user', message: { role: 'user', content: 'go' }, timestamp: '2026-09-08T09:00:00.000Z' },
+    ]);
+    b.lane('sess-unlinked', 'agent-nometa', null, [
+      { type: 'assistant', message: { role: 'assistant', content: text('worked anyway') }, timestamp: '2026-09-08T09:00:01.000Z' },
+    ]);
+    b.scan();
+
+    const body = apiConversationSubagents(
+      b.ws, new URL('http://x/'), { id: 'sess-unlinked' },
+    ).body as SubagentListBody;
+    assert.equal(body.total, 1, 'still served');
+    assert.equal(
+      body.unlinked, 1,
+      'and DISCLOSED. A lane nothing can open from a turn is exactly what seq:15 needs told '
+      + 'about, and a silent zero would look like a session that dispatched none.',
+    );
+    assert.equal(body.subagents[0]!.toolUseId, null);
+    assert.ok(body.subagents[0]!.records > 0, 'the reasoning is still readable');
+  } finally { b.dispose(); }
+});
+
+test('a session that dispatched none answers an empty list rather than a 404 or a throw', () => {
+  const b = box();
+  try {
+    b.write('sess-none', [
+      { type: 'user', message: { role: 'user', content: 'go' }, timestamp: '2026-09-08T09:00:00.000Z' },
+    ]);
+    b.scan();
+    const body = apiConversationSubagents(
+      b.ws, new URL('http://x/'), { id: 'sess-none' },
+    ).body as SubagentListBody;
+    assert.equal(body.total, 0);
+    assert.equal(body.indexed, true, 'the index EXISTS and this session simply dispatched none');
+    assert.equal(body.bytes, 0);
+  } finally { b.dispose(); }
+});
+
+test('the subagents route refuses a parameter it does not act on', () => {
+  const b = box();
+  try {
+    b.write('sess-p', [
+      { type: 'user', message: { role: 'user', content: 'go' }, timestamp: '2026-09-08T09:00:00.000Z' },
+    ]);
+    b.scan();
+    // A parameter accepted and ignored would silently answer a different
+    // question — this module's own rule, applied to the new route.
+    const bad = apiConversationSubagents(b.ws, new URL('http://x/?limit=5'), { id: 'sess-p' });
+    assert.equal(bad.status, 400);
+    assert.match(String((bad.body as { error: string }).error), /unknown parameter "limit"/);
+  } finally { b.dispose(); }
+});
+
+test('a lane opens through the SAME document renderer, so there is no second viewer', () => {
+  const b = box();
+  try {
+    b.write('sess-doc', [
+      { type: 'user', message: { role: 'user', content: 'go' }, timestamp: '2026-09-08T09:00:00.000Z' },
+    ]);
+    b.lane('sess-doc', 'agent-doc', laneMeta('toolu_D', { description: 'the lane brief' }), [
+      { type: 'user', message: { role: 'user', content: 'the brief' }, timestamp: '2026-09-08T09:00:01.000Z' },
+      { type: 'assistant', message: { role: 'assistant', content: text('the reasoning') }, timestamp: '2026-09-08T09:00:02.000Z' },
+    ]);
+    b.scan();
+
+    // `plan:archive seq:15` requires "THE SAME RENDERER … A subagent
+    // transcript is the same kind of thing and must not grow a second viewer."
+    // Every document route reaches its file through one `rowFor`, so teaching
+    // that to resolve a lane makes outline/nodes/tip all work on one.
+    const out = apiConversationOutline(b.ws, new URL('http://x/'), { id: 'agent-doc' });
+    assert.equal(out.status, 200);
+    const body = out.body as { title: string | null; titleSource: string | null; source: string };
+    assert.equal(
+      body.title, 'the lane brief',
+      'a lane has NO title and structurally cannot have one — 0 `ai-title` records across all '
+      + '253 real transcripts and no custom-title.json anywhere. The dispatcher\'s description '
+      + 'is the recorded name it does have.',
+    );
+    assert.equal(body.titleSource, 'agent', 'and a reader is owed WHICH kind of name that is');
+    assert.equal(body.source, 'subagent');
+
+    // A session is still resolved first, so a lane can never shadow one.
+    assert.equal(
+      apiConversationOutline(b.ws, new URL('http://x/'), { id: 'sess-doc' }).status, 200,
+    );
+    const missing = apiConversationOutline(b.ws, new URL('http://x/'), { id: 'agent-nope' });
+    assert.equal(missing.status, 404);
+    assert.match(
+      String((missing.body as { error: string }).error), /conversation or subagent/,
+      'the refusal names both id spaces, because a reader who mistyped either should be told '
+      + 'which two things were looked for',
+    );
   } finally { b.dispose(); }
 });
