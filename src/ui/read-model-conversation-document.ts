@@ -138,9 +138,10 @@
 import { statSync } from 'node:fs';
 import {
   ConversationIndex, ConversationIndexUninitializedError, MAX_SCAN_BYTES,
-  classifyTurn, iterateTranscript,
+  classifyTurn, iterateTranscript, listTranscriptFiles, transcriptDir,
   type ConversationRow, type TranscriptCursor,
 } from '../core/conversation-index.ts';
+import { workspaceCwd } from './read-model-conversations.ts';
 import { registerRoute, type ApiContext, type JsonResult } from './routes.ts';
 import type { Workspace } from '../core/workspace.ts';
 
@@ -182,15 +183,56 @@ export const NODE_WINDOW_CAP = 80;
 export const NODE_WINDOW_DEFAULT = 24;
 
 /**
- * Characters of one record's text served in a node body.
+ * ── THERE IS NO TEXT CAP IN THIS DOCUMENT, AND THAT IS A RULING ───────────
  *
- * Lower than `CONVERSATION_TEXT_CAP` (20,000) because a `work` node serves up
- * to `WORK_RUN_CAP` records at once: forty records at 20,000 characters is an
- * 800 KB response for one fold. A `said` node — the thing a reader came for —
- * gets the larger cap.
+ * `STEP_TEXT_CAP = 4_000` and `SAID_TEXT_CAP = 60_000` stood here until
+ * 2026-09-08. The owner read their disclosure on his own screen — *"A turn
+ * longer than 60000 characters is shown up to there and says so; tool output,
+ * up to 4000"* — and ruled: *"if there is a size restriction it must be
+ * removed, i want no restriction or limitation."* The ruling is
+ * `TASK-the-transcript-is-one-document-you-scroll-not-fifty-records`, under
+ * "NO CAP IN THE DOCUMENT VIEW". The lane that wrote the caps was dispatched
+ * before it was written and never saw it.
+ *
+ * **The ruling is affordable HERE and would not be one level up, and that
+ * difference is the whole argument.** `read-model-conversations.ts` hands a
+ * whole page of records over in one response and keeps `CONVERSATION_TEXT_CAP`
+ * for that reason — the item says so in as many words: *"Deleting the cap
+ * while still shipping whole pages would hand a 64 MB session to a browser in
+ * one response."* This module ships a WINDOW: `NODE_WINDOW_DEFAULT` nodes
+ * seeked to by byte offset, so what a cap here would protect is already
+ * bounded by the window.
+ *
+ * **MEASURED before removing them, on the owner's own transcript, 2026-09-08 —
+ * 66,976,537 bytes, 28,998 records, 5,076 nodes:**
+ *
+ *     largest `said` node                    24,605 chars   (41% of 60,000)
+ *     `said` nodes over 60,000 chars                  0     of 2,533
+ *     largest folded STEP                    58,888 chars
+ *     steps over 4,000 chars                         41     of 28,998 (0.14%)
+ *     largest RECORD in the file          1,229,510 bytes — a base64 image
+ *                                                    inside a `tool_result`,
+ *                                                    which contributes ZERO
+ *                                                    characters of text either
+ *                                                    way (`readRecord` reads
+ *                                                    `text` blocks, not
+ *                                                    `image` ones)
+ *     worst 24-node window, capped              101,267 bytes on the wire
+ *     worst 24-node window, uncapped            191,671 bytes on the wire
+ *
+ * So `SAID_TEXT_CAP` **never fired on this file at all** — the sentence on the
+ * screen described a bound that had never bound anything — and removing both
+ * costs 90 KB on the worst window a reader can ask for, over loopback. The
+ * biggest single thing the DOM now holds is one 58,888-character `<pre>`
+ * inside a `<details>` that is CLOSED until a reader opens it.
+ *
+ * **What survives is the DISCLOSURE HABIT, which the item names as the thing
+ * to keep.** The bounds that remain are bounds on the WINDOW, not on text, and
+ * every one of them is still a field: `DOCUMENT_WALK_CAP` with `truncated` and
+ * `uncounted`, `NODE_WINDOW_CAP` with the `count` the caller asked for,
+ * `WORK_RUN_CAP` with each node's true `span`. Nothing is cut, so nothing
+ * needs to say it was.
  */
-export const STEP_TEXT_CAP = 4_000;
-export const SAID_TEXT_CAP = 60_000;
 
 /** Steps of one folded run served in a node body. Bounded by `WORK_RUN_CAP`. */
 export const STEP_CAP = WORK_RUN_CAP;
@@ -269,7 +311,21 @@ export interface DocOutlineBody {
   /** `false` is a pruned session — a state, never an error. */
   present: boolean;
   bytes: number;
-  /** Records the walk saw. A floor when `truncated`. */
+  /**
+   * The transcript's `mtimeMs` at the instant of this walk. With `bytes` it is
+   * the freshness key — **`ConversationIndex`' own `(bytes, mtime_ms)`, not a
+   * second one.** `plan:archive seq:19` names that as the requirement: the
+   * LIST and the OPEN DOCUMENT are two readers of one probe, and a document
+   * that invented its own notion of "the file moved" would eventually disagree
+   * with the list about it, which is the class of defect `seq:14` was filed
+   * for.
+   */
+  mtimeMs: number;
+  /**
+   * Records the walk saw. A floor when `truncated`, and — when the request
+   * carried `at`/`from`/`node` — the TAIL's records rather than the file's.
+   * The whole is `nodes[0].f + records`, which the caller already holds.
+   */
   records: number;
   /** Lines that would not parse. Counted, never skipped. */
   unreadable: number;
@@ -284,8 +340,36 @@ export interface DocOutlineBody {
   /** Why the document is short, or `null` when it is whole. */
   uncounted: string | null;
   peekChars: number;
-  saidTextCap: number;
-  stepTextCap: number;
+  /**
+   * This answer is the TAIL of a document the caller already holds, starting
+   * at the node it named. `false` is a whole outline.
+   */
+  resumed: boolean;
+}
+
+/**
+ * The cheap probe — `plan:archive seq:19`. A `stat` and nothing else.
+ *
+ * **It is deliberately NOT on `/api/ping`, and that is the item's ruling
+ * rather than a preference.** The heartbeat's 60s "was RULED rather than
+ * inherited": `measureCorpusDrift` rides that request, and its once-a-minute
+ * budget is the argument that ruled out a file watcher at all. Hanging a
+ * transcript `stat` on it would either inherit a cadence that is not the
+ * "near real time" the owner asked for, or multiply that sweep for every
+ * visible tab. So the probe gets a route of its own that does the `stat` and
+ * NOT the sweep, and the screen that wants it runs a timer that lives and dies
+ * with the document.
+ *
+ * What it costs, and how it got there, is under `apiConversationTip` — the
+ * numbers matter, because the first draft of this route cost four times the
+ * budget the ruling it respects exists to protect.
+ */
+export interface DocTipBody {
+  sessionId: string;
+  /** `false` — the harness pruned the transcript while it was being read. */
+  present: boolean;
+  bytes: number;
+  mtimeMs: number;
 }
 
 /** One record inside an opened fold. */
@@ -312,10 +396,19 @@ export interface DocStep {
   failed: boolean;
   /** Content block types this record carries, in first-seen order. */
   blocks: string[];
-  /** This record's text, capped at `STEP_TEXT_CAP`. */
+  /**
+   * This record's text, WHOLE. Not capped, not sliced — see the ruling above
+   * `STEP_CAP`.
+   *
+   * `totalChars` and `textTruncated` sat beside this field until 2026-09-08
+   * and went with the cap: `totalChars` was `text.length` restated for a
+   * reader who had been handed less than that, and `textTruncated` was the
+   * flag saying so. With nothing able to cut, both are `text.length` and
+   * `false` for ever, and a window carries up to `WORK_RUN_CAP` steps — so
+   * they were forty restatements per node of a fact the string itself
+   * carries.
+   */
   text: string;
-  totalChars: number;
-  textTruncated: boolean;
   /** This line would not parse. Served as a step so the gap is visible. */
   unreadable: boolean;
 }
@@ -328,13 +421,20 @@ export interface DocNodeBody {
   timestamp: string | null;
   first: number;
   span: number;
-  /** `said`: the words, as Markdown source. `work`: empty. */
+  /** `said`: the words, as Markdown source, WHOLE. `work`: empty. */
   text: string;
+  /**
+   * `said`: `text.length`. `work`: the characters every record in the run
+   * holds, which is a real total and not a restatement — a `work` node's own
+   * `text` is empty and its content lives in `steps`.
+   *
+   * It stays for the `work` case; the `textTruncated` and `thinkingTruncated`
+   * flags that sat beside it did not, because nothing here can truncate any
+   * more. See the ruling above `STEP_CAP`.
+   */
   totalChars: number;
-  textTruncated: boolean;
   /** `said`: the thinking that came with the words, folded beside them. */
   thinking: string;
-  thinkingTruncated: boolean;
   /** The label a synthetic person-side turn carries. See `DocOutlineNode.y`. */
   synthetic: string | null;
   /** `work`: one entry per record folded, capped at `STEP_CAP`. */
@@ -346,8 +446,6 @@ export interface DocNodeBody {
 export interface DocNodesBody {
   sessionId: string;
   nodes: DocNodeBody[];
-  saidTextCap: number;
-  stepTextCap: number;
 }
 
 /* ══ READING ONE RECORD ════════════════════════════════════════════════════ */
@@ -537,21 +635,53 @@ function shapeOf(row: Record<string, unknown> | null): Shape {
 /* ══ THE OUTLINE ═══════════════════════════════════════════════════════════ */
 
 /**
- * Walk a transcript once and return the document's skeleton.
+ * Where a walk of an APPENDED file resumes: the first byte, record index and
+ * document position of a node the caller already holds.
+ *
+ * Its contract is `readNodes`', for the same reason and with the same proof:
+ * `at` must be the first byte of the first record of a node, which is a run
+ * boundary by construction, so re-deriving from there yields the identical
+ * nodes the first walk named. The node named is RE-BUILT, not skipped — it may
+ * have been an open `work` run that the append has since extended, and a
+ * resume that started after it would leave the reader holding a run of 3 while
+ * the file says 7.
+ */
+export interface OutlineResume {
+  /** Byte offset of the node's first record. From `o`. */
+  at: number;
+  /** Record index of that record. From `f`. */
+  from: number;
+  /** Document position of that node. From `n`. */
+  node: number;
+}
+
+/**
+ * Walk a transcript and return the document's skeleton — the whole of it, or,
+ * given `resume`, only the part from one node onward.
  *
  * The nodes TILE the record space: node `k`'s `f + s` is node `k+1`'s `f`, and
  * the last node's `f + s` is `records`. That is not a nicety — it is what lets
  * the screen say *"27,752 records, 2,444 of them turns"* and lets a test add
- * the spans up instead of trusting a sentence.
+ * the spans up instead of trusting a sentence. With `resume` the tiling is the
+ * same claim shifted: the first node returned is `resume.node` and its `f` is
+ * `resume.from`, so a caller splices rather than concatenating.
+ *
+ * **`records`, `said` and `work` count what THIS walk saw**, which is the whole
+ * file without `resume` and the tail with it. `cursor.scannedBytes` is likewise
+ * bytes read by this walk, so the absolute end is `resume.at + scannedBytes` —
+ * `apiConversationOutline` does that addition rather than leaving it to a
+ * reader who would have to know that `iterateTranscript` counts from where it
+ * started.
  */
 export function buildOutline(
-  file: string, cap: number = DOCUMENT_WALK_CAP,
+  file: string, cap: number = DOCUMENT_WALK_CAP, resume?: OutlineResume,
 ): {
   nodes: DocOutlineNode[]; records: number; cursor: TranscriptCursor;
   said: number; work: number;
 } {
   const nodes: DocOutlineNode[] = [];
   const cursor: TranscriptCursor = { scannedBytes: 0, reachedEnd: false, unreadable: 0 };
+  const base = resume?.node ?? 0;
   let records = 0;
   let said = 0;
   let work = 0;
@@ -575,14 +705,16 @@ export function buildOutline(
     runTools = new Map();
   };
 
-  for (const step of iterateTranscript(file, { cap, cursor })) {
+  for (const step of iterateTranscript(file, {
+    cap, cursor, startByte: resume?.at ?? 0, startIndex: resume?.from ?? 0,
+  })) {
     records += 1;
     const shape = shapeOf(step.record);
 
     if (shape.said) {
       closeRun();
       const node: DocOutlineNode = {
-        n: nodes.length, k: 'said', w: shape.who,
+        n: base + nodes.length, k: 'said', w: shape.who,
         t: typeof step.record?.['timestamp'] === 'string'
           ? step.record['timestamp'] as string : null,
         c: shape.read.said.length, f: step.index, s: 1, o: step.byteOffset,
@@ -601,7 +733,7 @@ export function buildOutline(
     if (run !== null && run.s >= WORK_RUN_CAP) closeRun();
     if (run === null) {
       run = {
-        n: nodes.length, k: 'work', w: null,
+        n: base + nodes.length, k: 'work', w: null,
         t: typeof step.record?.['timestamp'] === 'string'
           ? step.record['timestamp'] as string : null,
         c: 0, f: step.index, s: 0, o: step.byteOffset,
@@ -673,11 +805,9 @@ export function readNodes(file: string, want: NodeWindowRequest): DocNodeBody[] 
       out.push({
         n: n++, kind: 'said', who: shape.who, timestamp,
         first: step.index, span: 1,
-        text: text.length > SAID_TEXT_CAP ? text.slice(0, SAID_TEXT_CAP) : text,
+        text,
         totalChars: text.length,
-        textTruncated: text.length > SAID_TEXT_CAP,
-        thinking: thinking.length > STEP_TEXT_CAP ? thinking.slice(0, STEP_TEXT_CAP) : thinking,
-        thinkingTruncated: thinking.length > STEP_TEXT_CAP,
+        thinking,
         synthetic: shape.synthetic,
         steps: [], stepsOmitted: 0,
       });
@@ -691,8 +821,8 @@ export function readNodes(file: string, want: NodeWindowRequest): DocNodeBody[] 
     if (open === null) {
       open = {
         n: n++, kind: 'work', who: null, timestamp,
-        first: step.index, span: 0, text: '', totalChars: 0, textTruncated: false,
-        thinking: '', thinkingTruncated: false, synthetic: null,
+        first: step.index, span: 0, text: '', totalChars: 0,
+        thinking: '', synthetic: null,
         steps: [], stepsOmitted: 0,
       };
     }
@@ -708,9 +838,7 @@ export function readNodes(file: string, want: NodeWindowRequest): DocNodeBody[] 
         detail: shape.read.detail,
         failed: shape.read.failed,
         blocks: shape.read.blocks,
-        text: body.length > STEP_TEXT_CAP ? body.slice(0, STEP_TEXT_CAP) : body,
-        totalChars: body.length,
-        textTruncated: body.length > STEP_TEXT_CAP,
+        text: body,
         unreadable: step.record === null,
       });
     } else open.stepsOmitted += 1;
@@ -775,11 +903,51 @@ function rowFor(ws: Workspace, id: string): { row: ConversationRow } | { fail: J
   return { row };
 }
 
+/**
+ * `GET /api/conversations/:id/outline` — the document's skeleton.
+ *
+ * With `at`, `from` and `node` it answers the TAIL instead: the nodes from
+ * that one onward, which is what a screen following a session still being
+ * written asks for after the cheap probe says the file grew.
+ *
+ * **The three are supplied together or not at all**, because two of them
+ * without the third is a request whose answer cannot be spliced anywhere:
+ * `at` says where to seek, `from` numbers the records it finds, `node` numbers
+ * the nodes. A partial set is refused rather than defaulted, since a defaulted
+ * `node` of 0 would renumber the reader's whole document in silence.
+ *
+ * **The named node is REBUILT, not skipped.** It may have been an open `work`
+ * run that the append extended — a run of 3 that is now a run of 7 — so the
+ * caller replaces it rather than appending after it. See `OutlineResume`.
+ *
+ * **MEASURED on the owner's 66,976,537-byte transcript, 2026-09-08:** the
+ * whole walk is 224 ms over 28,998 records and 5,076 nodes; a resume from the
+ * last node reads the appended bytes and nothing else, which is the difference
+ * this route exists for. `iterateTranscript`'s own header is why it can seek
+ * at all: byte offsets found in the Buffer rather than character offsets from
+ * a decoded split, in a corpus that is half Hebrew.
+ */
 export function apiConversationOutline(
   ws: Workspace, url: URL, params: { id: string },
 ): JsonResult {
-  const bad = unknownParams(url, []);
+  const bad = unknownParams(url, ['at', 'from', 'node']);
   if (bad !== null) return badRequest(bad);
+
+  const at = digits(url, 'at');
+  const from = digits(url, 'from');
+  const node = digits(url, 'node');
+  for (const [name, value] of [['at', at], ['from', from], ['node', node]] as const) {
+    if (value === null) return badRequest(`${name} must be a whole number, written in digits.`);
+  }
+  const given = [at, from, node].filter((v) => v !== undefined).length;
+  if (given !== 0 && given !== 3) {
+    return badRequest('at, from and node are supplied together or not at all — a resume needs '
+      + 'the byte to seek to, the record index to count from and the node number to continue at, '
+      + 'and defaulting any one of them would renumber the document in silence.');
+  }
+  const resume: OutlineResume | undefined = given === 3
+    ? { at: at as number, from: from as number, node: node as number }
+    : undefined;
 
   const found = rowFor(ws, params.id);
   if ('fail' in found) return found.fail;
@@ -787,10 +955,17 @@ export function apiConversationOutline(
 
   let present = false;
   let bytes = row.bytes;
+  let mtimeMs = row.mtimeMs;
   try {
     const stat = statSync(row.file);
     present = stat.isFile();
     bytes = stat.size;
+    // FLOORED, and the floor is not cosmetic: `listTranscriptFiles` floors the
+    // same number, `/tip` answers from that listing, and a client comparing an
+    // unfloored 1234.5678 here against a floored 1234 there would read its own
+    // rounding as the file having changed and say so on the screen. One key
+    // means one representation of it.
+    mtimeMs = Math.floor(stat.mtimeMs);
   } catch {
     present = false;
   }
@@ -799,7 +974,7 @@ export function apiConversationOutline(
     sessionId: row.sessionId, source: row.source, title: row.title,
     titleSource: row.titleSource, branch: row.branch,
     startedAt: row.startedAt, endedAt: row.endedAt,
-    peekChars: PEEK_CHARS, saidTextCap: SAID_TEXT_CAP, stepTextCap: STEP_TEXT_CAP,
+    peekChars: PEEK_CHARS, resumed: resume !== undefined,
   };
 
   if (!present) {
@@ -807,7 +982,8 @@ export function apiConversationOutline(
     // and an empty document that SAYS why rather than an error that reads as
     // damage. `read-model-conversations.ts` answers the same way one level up.
     const body: DocOutlineBody = {
-      ...head, present: false, bytes: row.bytes, records: 0, unreadable: 0,
+      ...head, present: false, bytes: row.bytes, mtimeMs: row.mtimeMs,
+      records: 0, unreadable: 0,
       said: 0, work: 0, nodes: [], truncated: false, walkedBytes: 0,
       uncounted: 'the transcript is no longer on disk — the harness prunes them, and the '
         + 'archive reads them in place rather than copying, so what is gone is gone. The '
@@ -816,25 +992,134 @@ export function apiConversationOutline(
     return { status: 200, body };
   }
 
-  const built = buildOutline(row.file);
+  // A resume offset at or past the end is not an error, for
+  // `apiConversationNodes`' reason and with its answer: a transcript can be
+  // replaced under a reader, and a client holding an outline built a minute ago
+  // is asking a legitimate question about a file that has since changed. It
+  // gets an empty tail and decides what to do about it.
+  if (resume !== undefined && resume.at >= bytes) {
+    const body: DocOutlineBody = {
+      ...head, present: true, bytes, mtimeMs, records: 0, unreadable: 0,
+      said: 0, work: 0, nodes: [], truncated: false, walkedBytes: bytes,
+      uncounted: null,
+    };
+    return { status: 200, body };
+  }
+
+  const built = buildOutline(row.file, DOCUMENT_WALK_CAP, resume);
   const truncated = !built.cursor.reachedEnd;
+  // `cursor.scannedBytes` counts from where THIS walk started, so the absolute
+  // end is the resume offset plus it. The addition is made here rather than
+  // left to a caller who would have to know that about `iterateTranscript`.
+  const walkedBytes = (resume?.at ?? 0) + built.cursor.scannedBytes;
   const body: DocOutlineBody = {
     ...head,
     present: true,
     bytes,
+    mtimeMs,
     records: built.records,
     unreadable: built.cursor.unreadable,
     said: built.said,
     work: built.work,
     nodes: built.nodes,
     truncated,
-    walkedBytes: built.cursor.scannedBytes,
+    walkedBytes,
     uncounted: truncated
       ? `the walk stopped at ${DOCUMENT_WALK_CAP} bytes (DOCUMENT_WALK_CAP) of a ${bytes} `
         + 'byte transcript, so the document ends there and records past it were never seen.'
       : null,
   };
   return { status: 200, body };
+}
+
+/**
+ * `GET /api/conversations/:id/tip` — has this transcript moved?
+ *
+ * It reads no records, opens no descriptor onto the content and builds
+ * nothing. See `DocTipBody` for why it is a route of its own rather than a
+ * field on `/api/ping`.
+ *
+ * ── IT DOES NOT OPEN THE INDEX, AND THAT IS A MEASUREMENT, NOT A STYLE ────
+ *
+ * The first draft of this route resolved the file the way every other
+ * conversation route does — `rowFor`, which opens the index, reads one row and
+ * closes it. **Measured on this machine, 2026-09-08, and the split is the
+ * whole decision:**
+ *
+ *     open + get + close (what `rowFor` costs)        1.930 ms
+ *     open + close, with no query at all              1.917 ms
+ *     `listTranscriptFiles` over the directory        0.057 ms
+ *     `statSync` on the 67 MB transcript              0.007 ms
+ *
+ * So 1.92 of those 1.93 ms are opening a SQLite file, to learn a path — and
+ * the fact being asked for, the size on disk right now, is not in the index at
+ * all. At the screen's five-second cadence `rowFor` would have cost 23 ms of
+ * server CPU per minute per open document, against the 6.24 ms/min budget that
+ * `measureCorpusDrift` is held to and that the heartbeat's 60 s was RULED to
+ * protect. A route that claimed to respect that ruling while costing four
+ * times what it protects would be a worse defect than the cadence it bought.
+ *
+ * `listTranscriptFiles` already carries `bytes` and `mtimeMs` for every
+ * transcript in this workspace's own directory — the same listing
+ * `rebuildConversations` walks and the same one `/api/conversations` names as
+ * `dir` — so the answer is a directory read and no database at all: 0.68 ms
+ * per minute per document, an order of magnitude UNDER the sweep the ruling
+ * protects. **No path is built from `:id`**; the id is compared against the
+ * listing's own session names, so a traversal has nothing to traverse.
+ *
+ * ── WHAT THE INDEX IS STILL FOR, AND THE ONE DIVERGENCE THIS CREATES ──────
+ *
+ * A session that is NOT in that directory — an exported one, whose file lives
+ * wherever the export was written, or one the harness has pruned — falls
+ * through to the index, which is the only thing that knows where an export is
+ * or that a pruned session ever existed. An id nobody indexed takes the same
+ * 404 the outline gives it, from the same function.
+ *
+ * The divergence, stated rather than discovered: a transcript present in the
+ * directory but not yet INDEXED answers 200 here and 404 from `/outline`. That
+ * is the archive-is-behind state `seq:14` is about, it exposes nothing
+ * `/api/conversations` does not already publish as `dir`, and it is
+ * unreachable from the screen — which polls only a session it has already
+ * opened, and opening one requires the index.
+ */
+export function apiConversationTip(
+  ws: Workspace, url: URL, params: { id: string },
+): JsonResult {
+  const bad = unknownParams(url, []);
+  if (bad !== null) return badRequest(bad);
+
+  for (const file of listTranscriptFiles(transcriptDir(process.env, workspaceCwd(ws)))) {
+    if (file.sessionId !== params.id) continue;
+    const body: DocTipBody = {
+      sessionId: file.sessionId, present: true,
+      bytes: file.bytes, mtimeMs: file.mtimeMs,
+    };
+    return { status: 200, body };
+  }
+
+  const found = rowFor(ws, params.id);
+  if ('fail' in found) return found.fail;
+  const { row } = found;
+
+  try {
+    const stat = statSync(row.file);
+    if (!stat.isFile()) throw new Error('not a file');
+    const body: DocTipBody = {
+      sessionId: row.sessionId, present: true,
+      bytes: stat.size, mtimeMs: Math.floor(stat.mtimeMs),
+    };
+    return { status: 200, body };
+  } catch {
+    // A pruned transcript, answered with the bytes the INDEX remembers,
+    // exactly as the outline answers it — a session that has gone is a state,
+    // never an error, and a screen reading one is told rather than left
+    // waiting for a turn that will never arrive.
+    const body: DocTipBody = {
+      sessionId: row.sessionId, present: false,
+      bytes: row.bytes, mtimeMs: row.mtimeMs,
+    };
+    return { status: 200, body };
+  }
 }
 
 export function apiConversationNodes(
@@ -867,7 +1152,6 @@ export function apiConversationNodes(
       status: 200,
       body: {
         sessionId: row.sessionId, nodes: [],
-        saidTextCap: SAID_TEXT_CAP, stepTextCap: STEP_TEXT_CAP,
       } satisfies DocNodesBody,
     };
   }
@@ -882,7 +1166,6 @@ export function apiConversationNodes(
       status: 200,
       body: {
         sessionId: row.sessionId, nodes: [],
-        saidTextCap: SAID_TEXT_CAP, stepTextCap: STEP_TEXT_CAP,
       } satisfies DocNodesBody,
     };
   }
@@ -895,7 +1178,6 @@ export function apiConversationNodes(
   });
   const body: DocNodesBody = {
     sessionId: row.sessionId, nodes,
-    saidTextCap: SAID_TEXT_CAP, stepTextCap: STEP_TEXT_CAP,
   };
   return { status: 200, body };
 }
@@ -910,5 +1192,10 @@ export function registerConversationDocumentRoutes(): void {
     kind: 'json',
     handle: (ctx: ApiContext) =>
       apiConversationNodes(ctx.ws, ctx.url, { id: ctx.params['id'] ?? '' }),
+  });
+  registerRoute('GET', '/api/conversations/:id/tip', {
+    kind: 'json',
+    handle: (ctx: ApiContext) =>
+      apiConversationTip(ctx.ws, ctx.url, { id: ctx.params['id'] ?? '' }),
   });
 }

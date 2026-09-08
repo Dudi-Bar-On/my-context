@@ -1,6 +1,9 @@
 // @basis TASK-the-transcript-is-one-document-you-scroll-not-fifty-records,
 // TASK-the-viewer-renders-what-the-terminal-showed-with-its,
-// TASK-a-conversation-is-rendered-as-a-document-who-spoke-when-and
+// TASK-a-conversation-is-rendered-as-a-document-who-spoke-when-and,
+// TASK-the-archive-shows-what-is-on-disk-now-because-nothing-has,
+// TASK-the-open-document-follows-the-session-as-it-is-written-and,
+// INV-nothing-is-dropped-silently
 /**
  * The conversation archive, driven in a real browser in both languages —
  * `plan:archive seq:3` for the list, and `seq:7`, `seq:8` and `seq:13` for the
@@ -34,7 +37,7 @@
  */
 import { test, expect } from '@playwright/test';
 import type { Page } from '@playwright/test';
-import { mkdirSync, mkdtempSync, writeFileSync } from 'node:fs';
+import { appendFileSync, mkdirSync, mkdtempSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { removeTree } from '../test/helpers/tmp.ts';
@@ -274,9 +277,46 @@ for (const lang of ['en', 'he'] as const) {
     // A TURN IS NOT FOLDED — the reader came for it.
     await expect(page.locator('.tvturn details.tvwork')).toHaveCount(0);
 
+    // NOTHING ON THIS SCREEN CLAIMS A SIZE LIMIT — `seq:7`'s remainder, and
+    // the sentence he was reading when he ruled it out. It stood under the
+    // scroll and said "A turn longer than 60000 characters is shown up to
+    // there and says so; tool output, up to 4000." Both caps are gone from the
+    // read model, so the disclosure went with them and NO row may carry a
+    // "shown N of M characters" line either.
+    const viewer = page.locator('.tvroot');
+    await expect(viewer).not.toContainText(lang === 'he' ? 'תור ארוך מ' : 'is shown up to there');
+    await expect(viewer).not.toContainText(lang === 'he' ? 'מוצגים' : 'The rest is in the file');
+    await expect(page.locator('.tvcut')).toHaveCount(0);
+
     await page.screenshot({
       path: `e2e/screens/conversations-document-${lang}.png`, fullPage: true,
     });
+  });
+
+  /* ══ seq:14 — THE LIST SAYS WHERE IT STANDS, EVEN WHEN IT IS FINE ══════ */
+
+  test(`the list says it is current when nothing has grown (${lang})`, async ({ page }) => {
+    await open(page, '#/conversations', lang);
+
+    // **Drawn when the list is CURRENT as well as when it is behind, and that
+    // is the rule rather than a nicety.** `seq:14`'s defect was an archive
+    // that was over a day stale in front of the owner with nothing saying so;
+    // a screen that only speaks up when something is wrong leaves a reader
+    // unable to tell a fresh list from a check that has stopped running, which
+    // is precisely the state that feature was in. This fixture is rebuilt and
+    // never appended to, so the answer here is "current".
+    //
+    // Scoped to the card that HOLDS THE LIST rather than to `.pane`: the shell
+    // draws several, and one of them is the item detail aside.
+    const card = page.locator('.card.pane').filter({ has: page.locator('.convrow') });
+    await expect(card).toContainText(
+      lang === 'he' ? 'מעודכן מול כל קובץ בדיסק' : 'Current with every file on disk');
+
+    // …and nothing claims otherwise. The behind chip and the behind line are
+    // the two things that must NOT be here.
+    await expect(page.locator('.convrow .chip.warn')).toHaveCount(0);
+    await expect(card).not.toContainText(
+      lang === 'he' ? 'גדלו מאז הקריאה האחרונה' : 'have grown since they were last read');
   });
 
   /* ══ seq:7 — ONE SCROLL, AND AN END YOU CAN REACH ══════════════════════ */
@@ -292,11 +332,18 @@ for (const lang of ['en', 'he'] as const) {
     await expect(count).toContainText(String(ROUNDS * 2));
 
     // Scroll to the very end and read the last thing anybody said.
-    await page.locator('button.tvjump').last().click();
+    //
+    // SCOPED TO `.tvbar`, and the scoping is load-bearing rather than tidy:
+    // `plan:archive seq:19` added a third `button.tvjump` — the "N new below"
+    // affordance, which lives outside the bar and is HIDDEN until turns arrive
+    // — so `.last()` began resolving to a control that is correctly invisible
+    // and the click waited for it for ever. A test that names the button it
+    // means cannot be broken by a button it does not.
+    await page.locator('.tvbar button.tvjump').last().click();
     await expect(page.locator('.tvscroll')).toContainText(LAST_PHRASE, { timeout: 20_000 });
 
     // …and back to the top, to the first thing.
-    await page.locator('button.tvjump').first().click();
+    await page.locator('.tvbar button.tvjump').first().click();
     await expect(page.locator('.tvscroll')).toContainText('What the terminal showed', { timeout: 20_000 });
   });
 
@@ -485,4 +532,292 @@ test('the screen is reachable from the rail, under Read', async ({ page }) => {
   const nav = page.locator('.nav[href="#/conversations"], .nav').filter({ hasText: 'Conversations' });
   await expect(nav.first()).toBeVisible();
   await expect(page.locator('.nav[aria-current="page"]')).toContainText('Conversations');
+});
+
+/* ══ seq:14 — THE STALENESS LINE, IN A BROWSER ════════════════════════════ */
+
+/**
+ * **The deliverable `seq:14` closed without, and named in its own closure as
+ * still owed.** That lane built `conv.behind`, `conv.behindRow`,
+ * `conv.current`, `conv.refreshedBy` and `staleBytes` on the endpoint, in both
+ * languages, and did not touch this file: *"the staleness line is built … and
+ * has NO browser test … It is a required deliverable of the next lane on this
+ * screen."*
+ *
+ * **It gets a harness of its own, and that is not caution — it is the only
+ * shape that works.** The fixture the rest of this file shares is planted with
+ * a last phrase that `the end of the session is reachable` asserts on;
+ * appending to it to make the index stale would move that phrase off the end
+ * and break the one test this whole file exists for. So: its own home, its own
+ * cwd, its own transcript, its own server.
+ *
+ * The staleness is produced the way the owner's own was — by APPENDING to a
+ * transcript AFTER the index was built, and never rebuilding. `seq:14`'s
+ * refresh fires on the Stop hook, which no browser test runs, so the index
+ * here stays exactly as stale as it was made.
+ */
+test.describe('the archive says how far behind it is', () => {
+  let stale: UiHarness;
+  let staleCwd: string;
+  let staleHome: string;
+  /** Bytes the transcript grew by after the index was built. */
+  let grewBy = 0;
+
+  test.beforeAll(async () => {
+    staleHome = mkdtempSync(path.join(tmpdir(), 'e2e-stale-home-'));
+    staleCwd = mkdtempSync(path.join(tmpdir(), 'e2e-stale-cwd-'));
+    const dir = path.join(staleHome, 'projects', projectDirName(staleCwd));
+    mkdirSync(dir, { recursive: true });
+    const file = path.join(dir, 'sess-stale.jsonl');
+    // A short session — this test is about the LIST, not the document.
+    writeFileSync(file, session().slice(0, 61).map((r) => JSON.stringify(r)).join('\n') + '\n');
+
+    process.env['CLAUDE_CONFIG_DIR'] = staleHome;
+    const previous = process.cwd();
+    process.chdir(staleCwd);
+    try {
+      runCli(['init'], staleCwd, () => {});
+      runCli(['conversation', 'rebuild'], staleCwd, () => {});
+    } finally {
+      process.chdir(previous);
+    }
+
+    // THE APPEND, after the rebuild and with nothing to refresh it. Sized to
+    // land in kilobytes rather than bytes, so the screen's own `sizeText`
+    // renders a unit a reader recognises and the assertion below can name it.
+    const grew = [];
+    for (let i = 0; i < 30; i += 1) {
+      grew.push({
+        type: 'user',
+        message: { role: 'user', content: `written after the index was built (${i}) ${'.'.repeat(200)}` },
+        timestamp: new Date(Date.UTC(2026, 8, 8, 10, 0, i)).toISOString(),
+      });
+    }
+    const added = grew.map((r) => JSON.stringify(r)).join('\n') + '\n';
+    grewBy = Buffer.byteLength(added);
+    appendFileSync(file, added);
+
+    stale = await startUiChild(staleCwd);
+  });
+
+  test.afterAll(async () => {
+    await stale?.stop();
+    delete process.env['CLAUDE_CONFIG_DIR'];
+    if (staleCwd) removeTree(staleCwd);
+    if (staleHome) removeTree(staleHome);
+  });
+
+  for (const lang of ['en', 'he'] as const) {
+    test(`the list says it is behind, by how much, and who fixes it (${lang})`, async ({ page }) => {
+      await page.addInitScript((l) => {
+        try { localStorage.setItem('myctx-lang', l as string); } catch { /* private mode */ }
+      }, lang);
+      const nonce = await mintNonce(stale.port);
+      await page.goto(`http://127.0.0.1:${stale.port}/#${nonce}`);
+      await page.waitForSelector('.rail', { timeout: 20_000 });
+      await page.evaluate(() => { location.hash = '#/conversations'; });
+      await page.waitForSelector('.convrow', { timeout: 20_000 });
+      await expect(page.locator('#exited')).toBeHidden();
+
+      expect(grewBy).toBeGreaterThan(1024);
+
+      // Scoped to the card that holds the list: the shell draws `.spill`
+      // paragraphs of its own — the credential note, the refusal wording — and
+      // an unscoped locator resolves to four of them.
+      const card = page.locator('.card.pane').filter({ has: page.locator('.convrow') });
+
+      // THE LIST-LEVEL LINE. It names the amount, because "this list is a bit
+      // old" is not a fact anybody can act on — the owner's was 11,231,042
+      // bytes behind and the screen said nothing at all.
+      const behind = card.locator('p.spill');
+      await expect(behind).toContainText(
+        lang === 'he' ? 'גדלו מאז הקריאה האחרונה' : 'have grown since they were last read');
+      await expect(behind).toContainText('KB');
+
+      // WHO REFRESHES IT, and the command a person can run instead of waiting.
+      // Composed, never run: this server writes nothing, which is the whole
+      // reason the index can be stale in the first place.
+      await expect(card).toContainText(
+        lang === 'he' ? 'מתרעננת בסוף כל תור' : 'refreshed at the end of each of your turns');
+      await expect(card.locator('p.convcmd')).toContainText('mycontext conversation rebuild');
+
+      // THE PER-ROW CHIP. An aggregate line above the list cannot say WHICH
+      // session is behind, and a reader scanning a list of sessions has to be
+      // able to tell.
+      const chip = page.locator('.convrow .chip.warn');
+      await expect(chip).toHaveCount(1);
+      await expect(chip).toContainText(lang === 'he' ? 'מפגר' : 'Behind by');
+      await expect(chip).toContainText('KB');
+
+      // And the fresh half is NOT also drawn. Two lines claiming opposite
+      // things about one list is worse than either alone.
+      await expect(card).not.toContainText(
+        lang === 'he' ? 'מעודכן מול כל קובץ בדיסק' : 'Current with every file on disk');
+
+      await page.screenshot({
+        path: `e2e/screens/conversations-stale-${lang}.png`, fullPage: true,
+      });
+    });
+  }
+});
+
+/* ══ seq:19 — THE DOCUMENT FOLLOWS A SESSION STILL BEING WRITTEN ══════════ */
+
+/**
+ * **A test cannot use the live session, and `seq:19` says why:** *"the session
+ * on screen may be the session writing the record of it being on screen. The
+ * document grows BECAUSE it is being looked at."* So this describe writes its
+ * own transcript and appends to it itself, and watches its own append arrive.
+ *
+ * The two cases are the two halves of the owner's condition — *"if i am at the
+ * end of the file i could see the changes live near real time asap"* — which
+ * binds in both directions: at the tail, follow; scrolled up, DO NOT MOVE.
+ */
+test.describe('the open document follows the session as it is written', () => {
+  let live: UiHarness;
+  let liveCwd: string;
+  let liveHome: string;
+  let liveFile: string;
+  let clock = 0;
+
+  /** One prompt and one answer, appended to the file the browser is reading. */
+  const appendTurn = (phrase: string): void => {
+    clock += 1;
+    appendFileSync(liveFile, [
+      {
+        type: 'user',
+        message: { role: 'user', content: phrase },
+        timestamp: new Date(Date.UTC(2026, 8, 8, 11, 0, clock)).toISOString(),
+      },
+      { type: 'attachment', attachment: { type: 'total_tokens_reminder' } },
+    ].map((r) => JSON.stringify(r)).join('\n') + '\n');
+  };
+
+  test.beforeAll(async () => {
+    liveHome = mkdtempSync(path.join(tmpdir(), 'e2e-live-home-'));
+    liveCwd = mkdtempSync(path.join(tmpdir(), 'e2e-live-cwd-'));
+    const dir = path.join(liveHome, 'projects', projectDirName(liveCwd));
+    mkdirSync(dir, { recursive: true });
+    liveFile = path.join(dir, 'sess-live.jsonl');
+    // Long enough that the document does not fit the viewport, which is what
+    // makes "scrolled up" a state this fixture can actually be in.
+    writeFileSync(liveFile, session().map((r) => JSON.stringify(r)).join('\n') + '\n');
+
+    process.env['CLAUDE_CONFIG_DIR'] = liveHome;
+    const previous = process.cwd();
+    process.chdir(liveCwd);
+    try {
+      runCli(['init'], liveCwd, () => {});
+      runCli(['conversation', 'rebuild'], liveCwd, () => {});
+    } finally {
+      process.chdir(previous);
+    }
+    live = await startUiChild(liveCwd);
+  });
+
+  test.afterAll(async () => {
+    await live?.stop();
+    delete process.env['CLAUDE_CONFIG_DIR'];
+    if (liveCwd) removeTree(liveCwd);
+    if (liveHome) removeTree(liveHome);
+  });
+
+  const openLive = async (page: Page, lang: 'en' | 'he'): Promise<void> => {
+    await page.addInitScript((l) => {
+      try { localStorage.setItem('myctx-lang', l as string); } catch { /* private mode */ }
+    }, lang);
+    const nonce = await mintNonce(live.port);
+    await page.goto(`http://127.0.0.1:${live.port}/#${nonce}`);
+    await page.waitForSelector('.rail', { timeout: 20_000 });
+    await page.evaluate(() => { location.hash = '#/conversations'; });
+    await page.waitForSelector('.convrow', { timeout: 20_000 });
+    await page.locator('.convrow').first().click();
+    await page.waitForSelector('.tvscroll .tvturn', { timeout: 20_000 });
+    await expect(page.locator('#exited')).toBeHidden();
+  };
+
+  for (const lang of ['en', 'he'] as const) {
+    test(`at the end of the file, a new turn arrives on its own (${lang})`, async ({ page }) => {
+      // The poll is five seconds and the append has to be noticed, read and
+      // drawn after it; the default per-test budget is too tight to be honest
+      // about that.
+      test.setTimeout(90_000);
+      await openLive(page, lang);
+
+      // The document SAYS it is following, and at what cadence — the same
+      // disclosure rule the list's "current" line follows, applied to a
+      // document that would otherwise update silently or not at all.
+      const follows = page.locator('p.tvfollows');
+      await expect(follows).toBeVisible();
+      await expect(follows).toContainText(lang === 'he' ? '5' : 'every 5 seconds');
+
+      await page.locator('.tvbar button.tvjump').last().click();
+      await expect(page.locator('.tvscroll')).toContainText(LAST_PHRASE, { timeout: 20_000 });
+
+      const phrase = `written while the browser was open ${lang}`;
+      appendTurn(phrase);
+
+      // NOBODY RELOADED. The document is the same page load it was, and the
+      // turn arrives at the bottom on its own — which is the whole request.
+      await expect(page.locator('.tvscroll')).toContainText(phrase, { timeout: 60_000 });
+
+      // AND THE READER IS LOOKING AT IT, not merely holding it in the DOM.
+      //
+      // Measured against the WELL and not against the browser viewport, which
+      // is what `toBeInViewport()` asks and what failed here first: the
+      // document well is taller than the window on this fixture, so its own
+      // bottom rows are correctly outside the page's viewport while being
+      // exactly where the reader's eye is inside the scroll. The band that
+      // matters is `.tvscroll`'s, which is the same comparison `content is on
+      // screen at every depth, not only at the two ends` makes for the same
+      // reason.
+      await expect.poll(async () => page.evaluate((needle) => {
+        const well = document.querySelector('.tvscroll') as HTMLElement | null;
+        if (well === null) return 'no well';
+        const box = well.getBoundingClientRect();
+        const row = [...well.querySelectorAll('.tvturn')]
+          .find((one) => (one.textContent ?? '').includes(needle as string));
+        if (row === undefined) return 'not drawn';
+        const seen = row.getBoundingClientRect();
+        return seen.bottom > box.top + 1 && seen.top < box.bottom - 1 ? 'in the well' : 'off screen';
+      }, phrase), {
+        timeout: 20_000,
+        message: 'a reader who was at the end when a turn arrived must be looking at it, not '
+          + 'holding it somewhere below the fold',
+      }).toBe('in the well');
+
+      await page.screenshot({
+        path: `e2e/screens/conversations-follow-${lang}.png`, fullPage: true,
+      });
+    });
+
+    test(`a reader who has scrolled up is told, not dragged (${lang})`, async ({ page }) => {
+      test.setTimeout(90_000);
+      await openLive(page, lang);
+
+      await page.locator('.tvbar button.tvjump').first().click();
+      await expect(page.locator('.tvscroll')).toContainText('What the terminal showed', { timeout: 20_000 });
+      const before = await page.locator('.tvscroll').evaluate((n) => (n as HTMLElement).scrollTop);
+
+      const phrase = `arrived while they were reading the top ${lang}`;
+      appendTurn(phrase);
+
+      // THE AFFORDANCE, not the jump. `seq:19`: "A reader dragged to the
+      // bottom mid-sentence has been punished for reading."
+      const affordance = page.locator('button.tvnew');
+      await expect(affordance).toBeVisible({ timeout: 60_000 });
+      await expect(affordance).toContainText(lang === 'he' ? 'חדשים למטה' : 'new below');
+
+      // AND THE READER DID NOT MOVE. This is the assertion the whole item
+      // turns on; everything above it is the plumbing that makes it possible.
+      const after = await page.locator('.tvscroll').evaluate((n) => (n as HTMLElement).scrollTop);
+      expect(after).toBe(before);
+      await expect(page.locator('.tvscroll')).not.toContainText(phrase);
+
+      // …and taking the offer goes to it.
+      await affordance.click();
+      await expect(page.locator('.tvscroll')).toContainText(phrase, { timeout: 20_000 });
+      await expect(affordance).toBeHidden();
+    });
+  }
 });

@@ -478,6 +478,29 @@ test('prompts, answers and machinery are told apart on the CONTENT, not the role
  * that will hand back everything is a way to take the server down by clicking
  * a link. Asserting only that the answer is short would pass on an endpoint
  * that truncated in silence.
+ *
+ * ── THIS SURVIVED THE OWNER'S NO-CAP RULING, AND HERE IS WHY ──────────────
+ *
+ * On 2026-09-08 he ruled *"if there is a size restriction it must be removed,
+ * i want no restriction or limitation"*, reading the DOCUMENT view's own
+ * disclosure off his screen. `read-model-conversation-document.ts` lost both
+ * of its text caps that day and `test/ui/conversation-document.test.ts` now
+ * asserts the opposite claim — a 90,000-character turn served whole.
+ *
+ * **That ruling does not reach this test, and `seq:7`'s body says so in as
+ * many words**: *"Deleting the cap while still shipping whole pages would hand
+ * a 64 MB session to a browser in one response."* This endpoint is the
+ * whole-page one — `?limit=&offset=` over records, `CONVERSATION_RECORD_CAP`
+ * of them at a time — and the cap it keeps is what makes that shape honest.
+ * The document endpoint could drop its caps because it ships a WINDOW seeked
+ * to by byte offset, and its own header carries the measurement.
+ *
+ * So the two tests are not a contradiction, and neither is stale: they are
+ * one claim about two delivery shapes. **If this endpoint is ever pointed at
+ * a screen again, that is the moment to re-ask the owner** — nothing in the
+ * product calls it today (`screens/conversations.js` asks only
+ * `/api/conversations`, `/outline` and `/nodes`), which is a fact worth
+ * knowing before anyone spends a ruling on it.
  */
 test('a long record is clipped AND SAYS SO, and a short one is not marked', () => {
   const b = box();

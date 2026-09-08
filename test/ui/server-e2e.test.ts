@@ -833,6 +833,13 @@ const READ_ROUTES = (from: { item: string; session: string | null }): Probe[] =>
   // can hold, so each takes the 404 this sweep accepts.
   '/api/conversations/not-a-real-session-id/outline',
   '/api/conversations/not-a-real-session-id/nodes?at=0&from=0&node=0&count=2',
+  // `plan:archive seq:19`. The cheap probe an open document polls: ONE
+  // `stat()` on the transcript, which is the whole reason it is a route of its
+  // own rather than a field on `/api/ping`. It is in this sweep for the same
+  // reason as the two above and one more of its own — it is asked every few
+  // seconds for as long as a reader has a session open, so a write on this
+  // path would be the most frequent write in the product.
+  '/api/conversations/not-a-real-session-id/tip',
 ];
 
 /** Does a registered path template match this concrete pathname? */

@@ -1,6 +1,8 @@
 // @basis TASK-the-transcript-is-one-document-you-scroll-not-fifty-records,
 // TASK-the-viewer-renders-what-the-terminal-showed-with-its,
-// TASK-a-conversation-is-rendered-as-a-document-who-spoke-when-and
+// TASK-a-conversation-is-rendered-as-a-document-who-spoke-when-and,
+// TASK-the-open-document-follows-the-session-as-it-is-written-and,
+// INV-nothing-is-dropped-silently
 /**
  * The transcript read as ONE DOCUMENT — `plan:archive seq:7`, `seq:8`, `seq:13`.
  *
@@ -33,12 +35,13 @@
  */
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
+import { appendFileSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import {
   DOCUMENT_WALK_CAP, WORK_RUN_CAP, buildOutline, readNodes,
-  apiConversationOutline, apiConversationNodes,
+  apiConversationOutline, apiConversationNodes, apiConversationTip,
+  type DocOutlineBody, type DocOutlineNode, type DocTipBody,
 } from '../../src/ui/read-model-conversation-document.ts';
 import { iterateTranscript, projectDirName, rebuildConversations } from '../../src/core/conversation-index.ts';
 import { registeredRoutes } from '../../src/ui/routes.ts';
@@ -349,11 +352,12 @@ test('a line that will not parse is a visible step, never a silent skip', () => 
 
 /* ══ THE ROUTES ════════════════════════════════════════════════════════════ */
 
-test('both document routes are registered, so a page can actually reach them', () => {
+test('all three document routes are registered, so a page can actually reach them', () => {
   registerReadRoutes();
   const paths = registeredRoutes().map((r) => `${r.method} ${r.path}`);
   assert.ok(paths.includes('GET /api/conversations/:id/outline'), paths.join('\n'));
   assert.ok(paths.includes('GET /api/conversations/:id/nodes'), paths.join('\n'));
+  assert.ok(paths.includes('GET /api/conversations/:id/tip'), paths.join('\n'));
 });
 
 test('the outline endpoint serves the whole document and says how far it read', () => {
@@ -456,4 +460,249 @@ test('the outline reads as far as the index does, so the two screens cannot disa
   // have made the document stop before the counts the LIST screen shows for
   // the same file — two screens disagreeing about one transcript.
   assert.equal(DOCUMENT_WALK_CAP, 256 * 1024 * 1024);
+});
+
+/* ══ NO CAP — `seq:7`'s REMAINDER, AND THE RULING IT REPLACED ══════════════ */
+
+/**
+ * **The ruling this asserts, and the one it replaces.**
+ *
+ * `SAID_TEXT_CAP = 60_000` and `STEP_TEXT_CAP = 4_000` stood in the document
+ * read model until 2026-09-08, each with a `textTruncated` flag that disclosed
+ * itself honestly. The owner read that disclosure on his own screen and ruled
+ * it out: *"if there is a size restriction it must be removed, i want no
+ * restriction or limitation"* — `seq:7`, "NO CAP IN THE DOCUMENT VIEW".
+ *
+ * So this test is the OPPOSITE claim to the one a capped endpoint owes, and it
+ * is written as a claim about both halves for the same reason the capped
+ * version was: a test that only fed it a short record would pass on an
+ * endpoint that had quietly kept a cap ten times larger.
+ *
+ * The sizes are chosen to sit either side of the numbers that were there:
+ * 90,000 characters of spoken text against the old 60,000, and 12,000
+ * characters of tool output against the old 4,000. Measured on the owner's own
+ * transcript before the caps came off, neither bound was hypothetical in the
+ * same way: the largest turn in 28,998 records is 24,605 characters, so
+ * `SAID_TEXT_CAP` never once fired, while 41 records exceeded the step cap and
+ * the largest of them was 58,888 characters.
+ */
+test('a long turn and a long tool result come back WHOLE, and nothing claims a cut', () => {
+  const b = box();
+  try {
+    const said = 'x'.repeat(90_000);
+    const output = 'y'.repeat(12_000);
+    b.write('sess-big', [
+      { type: 'user', message: { role: 'user', content: 'go' }, timestamp: '2026-09-08T09:00:00.000Z' },
+      { type: 'assistant', message: { role: 'assistant', content: text(said) }, timestamp: '2026-09-08T09:00:01.000Z' },
+      { type: 'assistant', message: { role: 'assistant', content: toolUse('Bash', { command: 'ls' }) }, timestamp: '2026-09-08T09:00:02.000Z' },
+      { type: 'user', message: { role: 'user', content: toolResult(output) }, timestamp: '2026-09-08T09:00:03.000Z' },
+      { type: 'assistant', message: { role: 'assistant', content: text('short') }, timestamp: '2026-09-08T09:00:04.000Z' },
+    ]);
+    const out = buildOutline(b.file('sess-big'));
+    const nodes = readNodes(b.file('sess-big'), {
+      at: out.nodes[0]!.o, from: 0, node: 0, count: out.nodes.length,
+    });
+
+    const long = nodes.find((n) => n.kind === 'said' && n.text.length > 1_000);
+    assert.ok(long !== undefined, 'the long turn is a node of its own');
+    assert.equal(long.text.length, 90_000,
+      'WHOLE. 60,000 was the cap the owner ruled out, and a slice at any number '
+      + 'is the defect he ruled out rather than a smaller version of it.');
+    assert.equal(long.totalChars, 90_000, 'and the length it reports is the length it sent');
+
+    const work = nodes.find((n) => n.kind === 'work' && n.steps.some((step) => step.text !== ''));
+    assert.ok(work !== undefined, 'the tool result is folded into a run');
+    const step = work.steps.find((one) => one.text.length > 1_000)!;
+    assert.equal(step.text.length, 12_000, 'tool output is whole too — 4,000 was the other cap');
+
+    // The complete short turn is asserted in the same breath, which is what
+    // the capped version of this test did in the other direction: a claim that
+    // long records survive is worth little without the claim that the endpoint
+    // did not simply stop measuring.
+    const short = nodes.find((n) => n.kind === 'said' && n.text === 'short');
+    assert.ok(short !== undefined);
+    assert.equal(short.totalChars, 5);
+
+    // AND THE DISCLOSURE FIELDS ARE GONE, not merely always false. A `false`
+    // that can never be `true` is a screen drawing a branch nobody can reach,
+    // and `conversations.js` read exactly these two names to draw it.
+    for (const node of nodes) {
+      assert.ok(!('textTruncated' in node), 'nothing can truncate, so nothing discloses one');
+      assert.ok(!('thinkingTruncated' in node));
+      for (const one of node.steps) {
+        assert.ok(!('textTruncated' in one));
+        assert.ok(!('totalChars' in one), 'a step\'s totalChars was text.length restated');
+      }
+    }
+
+    const body = apiConversationOutline(
+      b.ws, new URL('http://localhost/api/conversations/sess-big/outline'), { id: 'sess-big' },
+    ).body as Record<string, unknown>;
+    assert.ok(!('saidTextCap' in body), 'and the answer no longer advertises a bound it does not have');
+    assert.ok(!('stepTextCap' in body));
+  } finally { b.dispose(); }
+});
+
+/* ══ seq:19 — THE DOCUMENT FOLLOWS A SESSION STILL BEING WRITTEN ═══════════ */
+
+/**
+ * `plan:archive seq:19` warns that a test cannot use the live session, because
+ * *"the document grows BECAUSE it is being looked at"*. So every test below
+ * appends to a fixture of its own and watches its own append arrive.
+ */
+test('the tip is one stat: the bytes and mtime the freshness key is made of', () => {
+  const b = box();
+  try {
+    b.write('sess-tip', SESSION);
+    b.scan();
+    const got = apiConversationTip(
+      b.ws, new URL('http://localhost/api/conversations/sess-tip/tip'), { id: 'sess-tip' });
+    assert.equal(got.status, 200);
+    const tip = got.body as DocTipBody;
+    assert.equal(tip.present, true);
+    assert.ok(tip.bytes > 0);
+    assert.ok(tip.mtimeMs > 0, 'the OTHER half of the key — `(bytes, mtime_ms)` is the '
+      + 'index\'s own, and a document that invented a second notion of "the file moved" '
+      + 'would eventually disagree with the list about it');
+
+    const before = tip.bytes;
+    appendFileSync(b.file('sess-tip'), JSON.stringify(
+      { type: 'user', message: { role: 'user', content: 'and one more thing' } }) + '\n');
+    const after = (apiConversationTip(
+      b.ws, new URL('http://localhost/api/conversations/sess-tip/tip'), { id: 'sess-tip' },
+    ).body as DocTipBody).bytes;
+    assert.ok(after > before,
+      'and it reads the FILE rather than the index row — the index was scanned before the '
+      + 'append and nothing has rebuilt it, which is exactly the state seq:14 was filed for');
+  } finally { b.dispose(); }
+});
+
+/**
+ * **One key, one representation of it — and this is the bug it would have
+ * been.** The outline stats the file itself; the tip answers out of
+ * `listTranscriptFiles`, which FLOORS `mtimeMs`. A screen holding the
+ * outline's unfloored `1234.5678` and receiving the tip's `1234` would read
+ * its own rounding as the transcript having been replaced under it, and say so
+ * on the screen — the loudest possible way to be wrong about a file that had
+ * not changed at all. Both are floored, and this is the assertion that keeps
+ * them that way.
+ */
+test('the outline and the tip report the SAME mtime for the same file, to the same precision', () => {
+  const b = box();
+  try {
+    b.write('sess-key', SESSION);
+    b.scan();
+    const outline = apiConversationOutline(
+      b.ws, new URL('http://localhost/api/conversations/sess-key/outline'), { id: 'sess-key' },
+    ).body as DocOutlineBody;
+    const tip = apiConversationTip(
+      b.ws, new URL('http://localhost/api/conversations/sess-key/tip'), { id: 'sess-key' },
+    ).body as DocTipBody;
+
+    assert.equal(outline.mtimeMs, tip.mtimeMs,
+      'the freshness key is (bytes, mtime_ms) and the two readers of it must agree bit for bit');
+    assert.equal(outline.mtimeMs, Math.floor(outline.mtimeMs), 'a whole number of milliseconds');
+    assert.equal(outline.bytes, tip.bytes);
+  } finally { b.dispose(); }
+});
+
+test('a pruned transcript answers the tip as a state, never as a failure', () => {
+  const b = box();
+  try {
+    b.write('sess-gone-tip', SESSION);
+    b.scan();
+    removeTree(b.file('sess-gone-tip'));
+    const got = apiConversationTip(
+      b.ws, new URL('http://localhost/api/conversations/sess-gone-tip/tip'),
+      { id: 'sess-gone-tip' });
+    assert.equal(got.status, 200, 'a session the harness pruned is a state the screen draws');
+    assert.equal((got.body as DocTipBody).present, false);
+  } finally { b.dispose(); }
+});
+
+test('the outline resumes from a node and returns only the tail — the append, not the file', () => {
+  const b = box();
+  try {
+    b.write('sess-tail', SESSION);
+    b.scan();
+    const whole = apiConversationOutline(
+      b.ws, new URL('http://localhost/api/conversations/sess-tail/outline'), { id: 'sess-tail' },
+    ).body as DocOutlineBody;
+    assert.equal(whole.resumed, false);
+    const last = whole.nodes[whole.nodes.length - 1] as DocOutlineNode;
+
+    // The append: two more turns and the machinery between them.
+    appendFileSync(b.file('sess-tail'), [
+      { type: 'user', message: { role: 'user', content: 'one more question' }, timestamp: '2026-09-08T09:01:00.000Z' },
+      { type: 'attachment', attachment: { type: 'total_tokens_reminder' } },
+      { type: 'assistant', message: { role: 'assistant', content: text('one more answer') }, timestamp: '2026-09-08T09:01:01.000Z' },
+    ].map((r) => JSON.stringify(r)).join('\n') + '\n');
+
+    const tail = apiConversationOutline(
+      b.ws,
+      new URL(`http://localhost/api/conversations/sess-tail/outline?at=${last.o}&from=${last.f}&node=${last.n}`),
+      { id: 'sess-tail' },
+    ).body as DocOutlineBody;
+
+    assert.equal(tail.resumed, true);
+    // THE NAMED NODE IS REBUILT, NOT SKIPPED. It may have been an open `work`
+    // run the append extended, so the caller replaces it — and that is only
+    // sound if the resumed walk starts AT it.
+    assert.equal(tail.nodes[0]!.n, last.n, 'the tail begins at the node the caller named');
+    assert.equal(tail.nodes[0]!.f, last.f, 'and at that node\'s own first record');
+    assert.ok(tail.nodes.length > 1, 'and it carries what the append added');
+
+    // The whole document, spliced the way the screen splices it, still tiles
+    // the record space — which is INV-nothing-is-dropped-silently as
+    // arithmetic rather than as a promise, asserted across an APPEND.
+    const spliced = [...whole.nodes.slice(0, last.n), ...tail.nodes];
+    let at = 0;
+    for (const node of spliced) {
+      assert.equal(node.f, at, 'node k\'s first is node k-1\'s first + span');
+      at += node.s;
+    }
+    assert.equal(at, last.f + tail.records,
+      'and the spans sum to the records — the tail counts from where it started, so the '
+      + 'whole is the resumed record index plus the tail\'s own count');
+    assert.equal(at, SESSION.length + 3);
+
+    // The nodes are numbered densely across the seam, which is what lets the
+    // screen key its cached bodies and measured heights by node index at all.
+    spliced.forEach((node, i) => { assert.equal(node.n, i); });
+  } finally { b.dispose(); }
+});
+
+test('a resume needs all three of at, from and node — a partial set is refused, not defaulted', () => {
+  const b = box();
+  try {
+    b.write('sess-tail2', SESSION);
+    b.scan();
+    const call = (q: string) => apiConversationOutline(
+      b.ws, new URL(`http://localhost/api/conversations/sess-tail2/outline${q}`), { id: 'sess-tail2' });
+
+    assert.equal(call('').status, 200, 'none of them is the whole outline, as it always was');
+    assert.equal(call('?at=0').status, 400,
+      'a defaulted `node` of 0 would renumber the caller\'s whole document in silence, which '
+      + 'is worse than a refusal it can read');
+    assert.equal(call('?at=0&from=0').status, 400);
+    assert.equal(call('?at=0&from=0&node=0').status, 200);
+    assert.equal(call('?at=-1&from=0&node=0').status, 400, 'a negative offset is not digits');
+    assert.equal(call('?limit=5').status, 400, 'a parameter this route does not take is refused');
+  } finally { b.dispose(); }
+});
+
+test('a resume past the end of a replaced file is an empty tail, not a crash', () => {
+  const b = box();
+  try {
+    b.write('sess-tail3', SESSION);
+    b.scan();
+    const got = apiConversationOutline(
+      b.ws,
+      new URL('http://localhost/api/conversations/sess-tail3/outline?at=999999999&from=0&node=0'),
+      { id: 'sess-tail3' });
+    assert.equal(got.status, 200);
+    assert.deepEqual((got.body as DocOutlineBody).nodes, [],
+      'a transcript can be replaced under a reader, and a client holding a minute-old outline '
+      + 'is asking a legitimate question about a file that has since changed');
+  } finally { b.dispose(); }
 });

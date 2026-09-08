@@ -153,8 +153,15 @@ function boundedDigits(url: URL, name: string): number | null | undefined {
  * Derived from the corpus rather than from `process.cwd()` so this and
  * `mycontext conversation rebuild` cannot disagree about which project's
  * transcripts they mean, whichever directory either was launched from.
+ *
+ * **Exported for `read-model-conversation-document.ts` rather than copied
+ * there.** It is one derivation with a defect already paid for once — the
+ * `.my_context` directory encoded as the project name, found by driving the
+ * screen after every assertion had passed — and a second spelling of it would
+ * be a second chance to make that mistake, in a module whose answer the first
+ * one would not contradict until a reader noticed two screens disagreeing.
  */
-function workspaceCwd(ws: Workspace): string {
+export function workspaceCwd(ws: Workspace): string {
   return ws.projectRoot === null ? process.cwd() : path.dirname(ws.projectRoot);
 }
 

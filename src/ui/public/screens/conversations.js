@@ -55,6 +55,7 @@ import {
   boundedList, el, errorNote, mono, screenHead, spaced,
 } from './parts.js';
 import { helpDisclosure } from '../lib/disclosure.js';
+import { shouldPing } from '../lib/heartbeat.js';
 import { markdownNodes } from '../lib/markdown.js';
 import { ansiNodes, hasEscapes, stripEscapes } from '../lib/ansi.js';
 
@@ -284,6 +285,62 @@ const OVERSCAN = 6;
 
 /** Node bodies one fetch asks for. The endpoint caps at 80. */
 const FETCH_PAGE = 24;
+
+/**
+ * How often an OPEN conversation document asks whether its transcript moved —
+ * `plan:archive seq:19`, and the number is the whole decision in that item.
+ *
+ * ── IT DOES NOT SHORTEN THE HEARTBEAT, AND THAT IS THE POINT ──────────────
+ *
+ * The owner asked to see a session he is watching update "live near real time
+ * asap", and named the status strip as the precedent. The strip is filled by
+ * `startHeartbeat` in `app.js` at **60 seconds**, and that 60 "was RULED
+ * rather than inherited": the occupancy read it carries is 0.32 ms and would
+ * be affordable far faster, but `measureCorpusDrift` rides the same request
+ * and its once-a-minute budget is the argument that ruled out a file watcher
+ * in the first place. That comment also refuses a second timer, as "a second
+ * cadence to keep in step".
+ *
+ * **Both halves of that ruling are met rather than stepped around.** The
+ * global heartbeat is untouched, and the transcript `stat` is NOT hung on
+ * `/api/ping` — it has a route of its own, `/tip`, which does the `stat` and
+ * not the sweep. What is left of the "second cadence" objection is answered by
+ * scope: this timer is not global. It is created by `mountDocument`, it exists
+ * only while one conversation document is on screen, and it stops the moment
+ * the reader navigates away or the well leaves the DOM. There is nothing to
+ * keep in step with, because there is nothing running when nobody is reading.
+ *
+ * **And the argument that made 60 s ENOUGH for the strip does not transfer.**
+ * `app.js` says so itself: what makes a minute enough there is that "the
+ * sample under it is rewritten once per assistant message". A transcript gains
+ * records many times inside a single turn — measured on the owner's own file,
+ * 28,998 records against 2,533 turns, so about eleven records per turn — and a
+ * reader watching his own session go by would see it arrive in minute-long
+ * jumps at that cadence.
+ *
+ * ── WHAT FIVE SECONDS COSTS, MEASURED, AND AGAINST WHAT BUDGET ───────────
+ *
+ * The comparison that matters is not "is a poll cheap" but "is it cheap
+ * against the number the 60 s ruling protects", which is `measureCorpusDrift`
+ * at **6.24 ms of server CPU per minute**. Measured on this machine,
+ * 2026-09-08, against the owner's own 67,192,723-byte transcript:
+ *
+ *     `/tip` as first drafted, opening the index      1.930 ms per call
+ *     `/tip` as shipped, reading the directory        0.057 ms per call
+ *     the whole outline it avoids re-walking            258 ms, 884 KB
+ *     the resumed outline a real append costs         2.722 ms, 512 bytes
+ *
+ * At 5 s the shipped route is **0.68 ms/min per open document** — an order of
+ * magnitude under the sweep the ruling protects. The first draft would have
+ * been 23 ms/min, four times over it, and that measurement is why the route
+ * resolves its file from `listTranscriptFiles` rather than from the index;
+ * `read-model-conversation-document.ts` carries the working.
+ *
+ * `shouldPing` is honoured on every tick, so a tab in the background stops
+ * asking — the same rule, and the same reason, as the heartbeat's: a forgotten
+ * tab must not hold the server up.
+ */
+const TIP_MS = 5_000;
 
 /**
  * The first guess at a node's height, in pixels, before it has been drawn.
@@ -525,13 +582,13 @@ function drawTurn(ctx, body) {
   // nothing is parsed.
   turn.append(body.synthetic !== null ? termBody(body.text) : saidBody(ctx, body.text));
 
-  if (body.textTruncated === true) {
-    const cut = el('p', 'tvcut');
-    cut.append(...ctx.t('conv.doc.textCut', {
-      shown: body.text.length, total: body.totalChars,
-    }));
-    turn.append(cut);
-  }
+  // NOTHING IS CUT HERE ANY MORE, so nothing says it was. A `tvcut` line drawn
+  // from `body.textTruncated` stood here until 2026-09-08 and went with the
+  // cap it disclosed — owner ruling, read off this very screen: "if there is a
+  // size restriction it must be removed, i want no restriction or limitation."
+  // The bounds that remain are on the WINDOW rather than on text and are still
+  // named: `conv.doc.truncated` below when the walk stopped, and each fold's
+  // own true `span`.
 
   // Reasoning that came with the words. Folded, never drawn as prose: it is
   // not what was said. Measured on the owner's session this fires on no turn
@@ -621,16 +678,12 @@ function drawWork(ctx, body) {
       line.append(' ', bad);
     }
     item.append(line);
-    if (step.text !== '') {
-      item.append(termBody(step.text));
-      if (step.textTruncated === true) {
-        const cut = el('p', 'tvcut');
-        cut.append(...ctx.t('conv.doc.textCut', {
-          shown: step.text.length, total: step.totalChars,
-        }));
-        item.append(cut);
-      }
-    }
+    // WHOLE, never clipped — see `drawTurn` above for the ruling. Measured on
+    // the owner's own transcript before the cap came off: 41 of 28,998 records
+    // were over the old 4,000-character step cap, the largest of them 58,888
+    // characters, and every one of them sits inside a `<details>` that is
+    // closed until a reader opens it.
+    if (step.text !== '') item.append(termBody(step.text));
     list.append(item);
   }
   fold.append(list);
@@ -748,6 +801,37 @@ function mountDocument(ctx, host, outline, back) {
   count.setAttribute('aria-live', 'polite');
   host.append(count);
 
+  /**
+   * "N new below" — the affordance for the reader who has SCROLLED UP.
+   *
+   * `plan:archive seq:19` rules the condition both ways: at the tail, append
+   * and follow; scrolled up, append and DO NOT MOVE. "A reader dragged to the
+   * bottom mid-sentence has been punished for reading." So the arrival of new
+   * turns reaches a reader who is not at the end as a thing they can take,
+   * never as a jump they did not ask for.
+   *
+   * It is a real `<button>` in an `aria-live` region, above the well rather
+   * than floating inside it: a reader scrolled to the middle of a virtualised
+   * document must be able to reach this without hunting, and a screen reader
+   * has to hear that it appeared.
+   */
+  // `tvnote` and NOT `tvcount`. The count line is addressed as `p.tvcount` by
+  // `e2e/conversations.spec.ts` — twice, once for its `aria-live` and once for
+  // the whole-session figure — and a second element wearing that class turned
+  // both into strict-mode violations. A new control does not get to rename an
+  // existing one by sharing its class.
+  const arrived = el('p', 'tvnote tvarrived');
+  arrived.setAttribute('aria-live', 'polite');
+  arrived.hidden = true;
+  // `tvjump` for the look it already has, and `tvnew` so a test can name THIS
+  // button rather than counting them: `button.tvjump` used to resolve to two
+  // controls and now resolves to three, and `e2e/conversations.spec.ts` reached
+  // the End button with `.last()`.
+  const toNew = el('button', 'tvjump tvnew');
+  toNew.type = 'button';
+  arrived.append(toNew);
+  host.append(arrived);
+
   // Drawn only when a window refuses, and never removed once drawn: a reader
   // who saw part of a document must be told the rest could not be read.
   const failed = el('div', 'tvfail');
@@ -786,11 +870,24 @@ function mountDocument(ctx, host, outline, back) {
   scroll.append(inner);
   host.append(scroll);
 
-  const foot = el('p', 'tvnote');
-  foot.append(...ctx.t('conv.doc.caps', {
-    said: outline.saidTextCap, step: outline.stepTextCap,
-  }));
-  host.append(foot);
+  // The line that used to stand here read "A turn longer than 60000
+  // characters is shown up to there and says so; tool output, up to 4000." It
+  // is what the owner was reading when he ruled the caps out, and it went with
+  // them: a disclosure of a limit that no longer exists is a false claim about
+  // the screen, not a habit worth keeping. The notes below stay, because the
+  // walk cap and unreadable lines are real and can still fire.
+  //
+  // What takes its place is the OTHER kind of disclosure this screen already
+  // practises — the staleness line on the list is drawn when the list is
+  // CURRENT as well as when it is behind, because "a screen that only speaks
+  // up when something is wrong leaves a reader unable to tell a fresh list
+  // from a check that has stopped running". A document that quietly follows
+  // its file has exactly that problem, so it says that it is following, and
+  // at what cadence.
+  const follows = el('p', 'tvnote tvfollows');
+  follows.append(...ctx.t('conv.doc.follows', { secs: TIP_MS / 1000 }));
+  host.append(follows);
+
   if (outline.truncated === true) {
     const cut = el('p', 'tvnote tvwarn');
     cut.append(...ctx.t('conv.doc.truncated', { bytes: outline.walkedBytes }));
@@ -828,6 +925,26 @@ function mountDocument(ctx, host, outline, back) {
    */
   const waiting = new Set();
   let frame = 0;
+  /**
+   * Until when a paint must land the reader at the very end — see the follow
+   * block at the foot of this function.
+   *
+   * **A DEADLINE, and the first draft's counter is why.** That counter was
+   * "the next two paints", and the two paints it bought were spent before the
+   * new rows existed: `refill` sets this, `paint` asks the server for the
+   * bodies it is missing, and the measurement pass that follows the CURRENT
+   * rows runs another paint immediately — so both were gone by the time the
+   * bodies arrived and the reader was left a screenful above the turn they
+   * were following. Caught in the browser, on `at the end of the file, a new
+   * turn arrives on its own`, which read the text into the DOM and then found
+   * it out of the viewport.
+   *
+   * Bounded by the clock rather than by a flag, because a flag would pin the
+   * reader to the bottom for ever — the wrong `seq:19` names in the other
+   * direction — and released early the moment they take the scroll back.
+   */
+  let stickUntil = 0;
+  const STICK_MS = 3_000;
 
   const heightOf = (nodeIndex) => known.get(nodeIndex) ?? estimateHeight(nodes[nodeIndex]);
 
@@ -976,6 +1093,12 @@ function mountDocument(ctx, host, outline, back) {
       scroll.scrollTop = scroller.top(anchor) + Math.min(anchorDelta, Math.max(0, height - 1));
       schedule();
     }
+
+    // A reader who WAS at the end when new turns arrived stays at the end
+    // while they draw. This runs after the anchor correction above, because
+    // that correction holds the reader's OLD position still and the whole
+    // point here is that their position is the end, which has just moved.
+    if (stickUntil > Date.now()) scroll.scrollTop = scroller.total;
   }
 
   /**
@@ -1018,7 +1141,15 @@ function mountDocument(ctx, host, outline, back) {
   toTop.addEventListener('click', () => { scroll.scrollTop = 0; paint(); });
   toEnd.addEventListener('click', () => { scroll.scrollTop = scroller.total; paint(); });
 
-  const applyFilter = () => {
+  /**
+   * Re-derive `view` from the nodes and the needle, and say what it holds.
+   *
+   * Split out of `applyFilter` because an APPEND has to do exactly this and
+   * must NOT do the two things `applyFilter` does around it — throw away every
+   * drawn row and send the reader back to the top. A new turn arriving is not
+   * a new search.
+   */
+  const reView = () => {
     const needle = find.value.trim().toLowerCase();
     view = [];
     for (let i = 0; i < nodes.length; i += 1) {
@@ -1027,10 +1158,6 @@ function mountDocument(ctx, host, outline, back) {
       if (needle === '' || matchesNode(nodes[i], needle)) view.push(i);
     }
     rebuild();
-    for (const [, row] of live) row.remove();
-    live.clear();
-    waiting.clear();
-    scroll.scrollTop = 0;
     count.replaceChildren();
     if (needle === '') {
       count.append(...ctx.t('conv.doc.whole', {
@@ -1043,10 +1170,261 @@ function mountDocument(ctx, host, outline, back) {
         shown: view.length, total: nodes.length, peek: outline.peekChars,
       }));
     }
+  };
+
+  const applyFilter = () => {
+    reView();
+    for (const [, row] of live) row.remove();
+    live.clear();
+    waiting.clear();
+    scroll.scrollTop = 0;
     paint();
   };
   find.addEventListener('input', applyFilter);
   applyFilter();
+
+  /* ── FOLLOWING A SESSION THAT IS STILL BEING WRITTEN ────────────────────
+   *
+   * `plan:archive seq:19`, in the owner's words: "if the session is updated
+   * and the browser is opend on the current session, update the browser to so
+   * if i am at the end of the file i could see the changes live near real time
+   * asap" — amended a minute later to "the same way the web status bar is
+   * updated".
+   *
+   * THE TRANSPORT IS A POLL, NOT A SOCKET, and the amendment is why. The strip
+   * is filled by a client timer on `/api/ping`; `/api/watch/stream` exists and
+   * is a real SSE feed, but it holds a socket open per tab and the whole
+   * `kind: 'stream'` idle carve-out exists to stop that pinning the process
+   * alive. `seq:19`: "Do not grow a second long-lived socket for a READ
+   * surface when a poll the page already runs will do." One thing is stolen
+   * from it and only one — its `resync` discipline: when the tail cannot be
+   * trusted, SAY SO rather than showing a hole. That is `conv.doc.replaced`.
+   *
+   * THE PROBE IS CHEAP AND THE REFILL IS NOT, which is the shape `/api/ping`
+   * already states in its own header: "it is cheap enough to be asked on every
+   * heartbeat, so the expensive refill happens only on the ticks where the
+   * reading actually moved." Here the cheap probe is `/tip` — one `stat()` —
+   * and the expensive half is a resumed outline walk that reads the APPENDED
+   * BYTES and nothing else, which `iterateTranscript`'s `startByte` has
+   * supported since the document was built. On the owner's file that is the
+   * difference between reading a few kilobytes and re-reading 67 MB.
+   *
+   * THE FRESHNESS KEY IS `(bytes, mtimeMs)` — `ConversationIndex`' own, the
+   * one the LIST's staleness line already uses. One notion of "the file
+   * moved", two readers of it.
+   */
+  let seenBytes = outline.bytes;
+  let seenMtime = outline.mtimeMs;
+  /** Nodes appended while the reader was NOT at the tail. */
+  let unseen = 0;
+  /** A refill is in flight; a second tick must not start another. */
+  let asking = false;
+  let tipTimer = 0;
+
+  /**
+   * Is the reader at the end of the document?
+   *
+   * **NOT `scrollTop + clientHeight >= scrollHeight`.** `seq:19` singles that
+   * out, and the reason is this document's own arithmetic: every row's height
+   * is an ESTIMATE until it has been drawn and measured, so `scroller.total` —
+   * which is what `inner`'s height and therefore `scrollHeight` is written
+   * from — moves under the reader as rows are measured. A pixel comparison
+   * against a number that is still settling answers differently on consecutive
+   * frames for a reader who has not moved.
+   *
+   * So the question is asked about a NODE, the same unit `paint`'s anchor
+   * uses: is the LAST row of the view the one the bottom of the viewport lands
+   * in? That survives a re-sum, because a node keeps its identity across one.
+   */
+  const atTail = () => {
+    if (view.length === 0) return true;
+    const bottom = scroll.scrollTop + (scroll.clientHeight || 600);
+    return scroller.at(Math.max(0, bottom - 1)) >= view.length - 1;
+  };
+
+  const sayArrived = () => {
+    if (unseen <= 0) { arrived.hidden = true; return; }
+    toNew.replaceChildren();
+    toNew.append(...ctx.t('conv.doc.newBelow', { n: unseen }));
+    arrived.hidden = false;
+  };
+
+  const stopFollowing = () => {
+    if (tipTimer !== 0) { clearInterval(tipTimer); tipTimer = 0; }
+    window.removeEventListener('hashchange', onLeave);
+  };
+
+  /**
+   * The screen contract has no teardown hook — `watch.js` says so where it
+   * solves the same problem — so the router's own event is the signal
+   * available. Leaving THIS session is enough: navigating back to the list, to
+   * another session or to another screen all change the hash away from this
+   * id. The tick below also checks `isConnected`, which covers the case this
+   * cannot see: a re-render that replaces the well without the hash moving.
+   */
+  function onLeave() {
+    if (sessionFromHash(location.hash) === outline.sessionId) return;
+    stopFollowing();
+  }
+
+  /** Say the transcript can no longer be followed, and stop asking. */
+  const stopWith = (key) => {
+    stopFollowing();
+    follows.replaceChildren();
+    follows.classList.add('tvwarn');
+    follows.append(...ctx.t(key));
+  };
+
+  /**
+   * The file grew. Read the tail and splice it on.
+   *
+   * **The LAST node is re-asked for, not skipped past.** It may have been an
+   * open `work` run that the append extended — a run of three that is now a
+   * run of seven — so it is rebuilt and replaced, and its cached body and
+   * measured height go with it. Asking for the node AFTER it would leave the
+   * reader holding a fold that says three for ever.
+   */
+  const refill = async () => {
+    if (asking || nodes.length === 0) return;
+    asking = true;
+    const last = nodes[nodes.length - 1];
+    const following = atTail();
+    try {
+      const tail = await ctx.api(
+        `/api/conversations/${encodeURIComponent(outline.sessionId)}/outline`
+        + `?at=${last.o}&from=${last.f}&node=${last.n}`);
+      if (!scroll.isConnected) return;
+      if (tail.present === false) { stopWith('conv.prunedBody'); return; }
+      seenBytes = tail.bytes;
+      seenMtime = tail.mtimeMs;
+      const fresh = tail.nodes ?? [];
+      if (fresh.length === 0) return;
+
+      // The replaced node loses its cached body, its measured height and its
+      // drawn row — all three describe the node as it was three records ago.
+      bodies.delete(last.n);
+      known.delete(last.n);
+      const stale = live.get(last.n);
+      if (stale !== undefined) { stale.remove(); live.delete(last.n); waiting.delete(last.n); }
+
+      const before = nodes.length;
+      nodes.length = last.n;
+      for (const node of fresh) nodes.push(node);
+      // The headline counts are re-derived from the nodes rather than added
+      // up: `said` and `work` are counts over the WHOLE document and the tail
+      // only knows its own share, and `sum(span) === records` is the
+      // invariant a test asserts, so it is computed the same way here.
+      outline.said = 0;
+      outline.work = 0;
+      outline.records = 0;
+      for (const node of nodes) {
+        if (node.k === 'said') outline.said += 1; else outline.work += 1;
+        outline.records += node.s;
+      }
+      reView();
+      if (following) {
+        unseen = 0;
+        scroll.scrollTop = scroller.total;
+        // The next three seconds of paints are pinned to the end: the bodies
+        // of the new rows have not been asked for yet, and the measurement
+        // that follows them moves `scroller.total` under the reader.
+        stickUntil = Date.now() + STICK_MS;
+      } else {
+        unseen += nodes.length - before;
+      }
+      sayArrived();
+      paint();
+    } catch (error) {
+      // A refill that will not load SAYS SO, in the one place this screen
+      // already draws a window that refused. The timer keeps running: the next
+      // tick is five seconds away and a transient refusal must not end the
+      // following silently.
+      failed.replaceChildren(errorNote(error.message));
+      failed.hidden = false;
+    } finally {
+      asking = false;
+    }
+  };
+
+  /**
+   * One tick: has the file moved?
+   *
+   * Four answers, and each is a state rather than an error.
+   *   - gone      the harness pruned the transcript under the reader.
+   *   - shrank    it was REPLACED rather than appended to, so every byte
+   *               offset on screen now points somewhere else. This is the
+   *               `resync` discipline borrowed from `watch-model.ts`: say the
+   *               tail cannot be trusted instead of drawing a hole.
+   *   - grew      read the tail.
+   *   - unchanged nothing, not even a repaint. `mtimeMs` is still recorded, so
+   *               a touch that does not change the size does not read as
+   *               growth on the next tick.
+   */
+  const tick = () => {
+    if (!scroll.isConnected) { stopFollowing(); return; }
+    // The heartbeat's own rule, imported rather than restated: a tab nobody is
+    // looking at stops asking, so a forgotten one cannot hold the server up.
+    if (!shouldPing(document.visibilityState)) return;
+    ctx.api(`/api/conversations/${encodeURIComponent(outline.sessionId)}/tip`)
+      .then((tip) => {
+        if (!scroll.isConnected) { stopFollowing(); return; }
+        if (tip.present === false) { stopWith('conv.prunedBody'); return; }
+        // SHRANK, or the same length with a different mtime. Either way the
+        // file on disk is not the file these byte offsets were computed
+        // against, and every `o` the outline holds now points somewhere else.
+        // A transcript only ever appends, so both are a REPLACEMENT — the
+        // index treats a shrink the same way, re-reading the whole file rather
+        // than resuming — and the honest answer is the `resync` one borrowed
+        // from `watch-model.ts`: say the tail cannot be trusted rather than
+        // draw a hole. The reader reloads and gets a document built against
+        // the file as it now is.
+        if (tip.bytes < seenBytes
+          || (tip.bytes === seenBytes && tip.mtimeMs !== seenMtime)) {
+          stopWith('conv.doc.replaced');
+          return;
+        }
+        if (tip.bytes > seenBytes) void refill();
+      })
+      .catch(() => {
+        // `api()` raises `#exited` itself when the server is gone, which is a
+        // global state and not this screen's to restate. A refused probe is
+        // simply a tick that learned nothing.
+      });
+  };
+
+  // A reader who scrolls back down to the end has SEEN what arrived, so the
+  // affordance goes away on its own rather than needing to be dismissed.
+  scroll.addEventListener('scroll', () => {
+    if (unseen > 0 && atTail()) { unseen = 0; sayArrived(); }
+  }, { passive: true });
+
+  toNew.addEventListener('click', () => {
+    unseen = 0;
+    sayArrived();
+    scroll.scrollTop = scroller.total;
+    stickUntil = Date.now() + STICK_MS;
+    paint();
+  });
+
+  // The reader taking the scroll back ends the pinning at once, so the three
+  // seconds above are a ceiling rather than a sentence. `wheel` and `keydown`
+  // are the two inputs that are unambiguously theirs — `scroll` itself is not,
+  // because `paint` fires it.
+  for (const event of ['wheel', 'keydown', 'pointerdown']) {
+    scroll.addEventListener(event, () => { stickUntil = 0; }, { passive: true });
+  }
+
+  // A document whose walk stopped at `DOCUMENT_WALK_CAP` already ends before
+  // the file does, and it says so two lines above. Following it would append
+  // the newest records onto a document that is missing the ones in between —
+  // a hole, drawn as continuity. So it does not follow, and the note that
+  // explains why is the one already on screen.
+  if (outline.truncated !== true) {
+    tipTimer = setInterval(tick, TIP_MS);
+    window.addEventListener('hashchange', onLeave);
+  } else {
+    follows.hidden = true;
+  }
 }
 
 /* ══ THE SCREEN ════════════════════════════════════════════════════════════ */
