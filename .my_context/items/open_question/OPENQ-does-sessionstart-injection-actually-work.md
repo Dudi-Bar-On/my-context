@@ -3,7 +3,7 @@ id: OPENQ-does-sessionstart-injection-actually-work
 type: open_question
 title: Has SessionStart injection ever been observed in a live session?
 status: superseded
-severity: hard
+severity: soft
 always: false
 summary: Nobody has watched the text handed to a new conversation actually reach the assistant, and a whole stage of the work is built on the assumption that it does.
 summary_of: 5c3d540021cad032
@@ -16,7 +16,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-08-13
 valid_until: 2026-09-03
-checksum: 9ee9c64507f5d0e5
+checksum: 47f8318ecf7d2461
 ---
 
 # Has SessionStart injection ever been observed in a live session?

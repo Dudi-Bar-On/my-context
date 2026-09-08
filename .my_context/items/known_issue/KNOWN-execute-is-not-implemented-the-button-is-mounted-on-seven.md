@@ -3,7 +3,7 @@ id: KNOWN-execute-is-not-implemented-the-button-is-mounted-on-seven
 type: known_issue
 title: "Execute is not implemented: the button is mounted on seven screens and runs nothing"
 status: deprecated
-severity: hard
+severity: soft
 always: false
 summary: A report that the Execute button appears across the interface without actually running anything behind it.
 summary_of: 9ca5eb505933a8df
@@ -20,7 +20,7 @@ source_anchor: null
 source_checksum: 7e4ec37ffcc4110d
 valid_from: 2026-08-27
 valid_until: 2026-08-29
-checksum: a7319352a8ecdc07
+checksum: 940ebadca1b60415
 ---
 
 # Execute is not implemented: the button is mounted on seven screens and runs nothing

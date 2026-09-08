@@ -3,7 +3,7 @@ id: OPENQ-how-do-filters-respect-dependencies
 type: open_question
 title: When a filter excludes an item something else depends on, what happens?
 status: superseded
-severity: hard
+severity: soft
 always: false
 summary: "Hiding one entry can leave another misleading rather than merely absent: a hidden warning lets work begin on something deliberately blocked."
 summary_of: 5b71f4078abf9871
@@ -19,7 +19,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-08-13
 valid_until: 2026-09-03
-checksum: df998ec7894274ed
+checksum: a05e71557ae7ecba
 ---
 
 # When a filter excludes an item something else depends on, what happens?

@@ -3,7 +3,7 @@ id: REQ-items-carry-a-domain
 type: requirement
 title: Items carry a domain — a declared grouping above category
 status: superseded
-severity: hard
+severity: soft
 always: false
 summary: Every entry names one area of concern, drawn from a fixed list, so a whole area can be switched off at once instead of hidden one entry at a time.
 summary_of: 56cbaaa78e9b3022
@@ -21,7 +21,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-08-13
 valid_until: 2026-09-03
-checksum: 656c3b9e7118d858
+checksum: ada47b99a1747627
 kind: functional
 ---
 

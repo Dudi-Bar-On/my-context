@@ -3,8 +3,8 @@ id: RULE-delegate-to-subagents-by-default-to-preserve-the-context
 type: rule
 title: Delegate to subagents by default to preserve the context window
 status: superseded
-severity: hard
-always: true
+severity: soft
+always: false
 summary: A rule that reading and searching are handed to subagents by default, keeping the main conversation free for judgement rather than bulk text.
 summary_of: 63e0768c6b2b8888
 scope: []
@@ -18,7 +18,7 @@ source_anchor: null
 source_checksum: 22a107771ad2f9a9
 valid_from: 2026-08-19
 valid_until: 2026-08-19
-checksum: cb61236a57d9148b
+checksum: d3500f6ebb7f5388
 ---
 
 # Delegate to subagents by default to preserve the context window

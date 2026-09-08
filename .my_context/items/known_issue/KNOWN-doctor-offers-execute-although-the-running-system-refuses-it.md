@@ -3,7 +3,7 @@ id: KNOWN-doctor-offers-execute-although-the-running-system-refuses-it
 type: known_issue
 title: Doctor offers Execute although the running system refuses it, while the catalogue marks it off the boundary
 status: deprecated
-severity: hard
+severity: soft
 always: false
 summary: A contradiction where the diagnostics screen offers to run a command that the system then refuses, because no confirmation can be built for it.
 summary_of: 88c79138be8b50b7
@@ -21,7 +21,7 @@ source_anchor: null
 source_checksum: 35f6b24559d884ce
 valid_from: 2026-08-27
 valid_until: 2026-08-29
-checksum: 4becd257fac15be6
+checksum: 5def3be310b6ee62
 ---
 
 # Doctor offers Execute although the running system refuses it, while the catalogue marks it off the boundary
