@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: Turning a long saved conversation into a short account of what was decided and tried, proved in a throwaway session rather than this one.
-summary_of: f3d6a5ff98aa8036
+summary_of: bbd1b129cc9f22ca
 summary_was:
   - 2026-09-07 Turning a long saved conversation into a short account of what was decided, tried and measured, without the parts that can be found elsewhere.
 scope:
@@ -20,18 +20,19 @@ tags:
   - context
   - "plan:restore"
   - "seq:1"
-  - "state:todo"
+  - "state:done"
 origin: human
 source_file: null
 source_anchor: null
 source_checksum: null
 valid_from: 2026-09-07
 valid_until: null
-checksum: c2ac90e168e24580
+checksum: 9ce347e0ec6b8437
 plan: restore
 seq: "1"
-state: todo
+state: done
 priority: "2"
+verified_on: 2026-09-08
 ---
 
 # a session transcript is summarised to a recipe, and the recipe is settled against a real session
@@ -110,3 +111,19 @@ AND NOTICE WHAT HE HAS ACTUALLY DESCRIBED: A GENERAL HARNESS, NOT A ONE-OFF. A d
 the same cwd is how ANYTHING injection-shaped should be tested - this feature, the handover, the
 budget tiers, plan:contra. Today those are covered by hook-level unit tests that never open a session
 at all. Whoever builds this should build it as a reusable harness and say so.
+
+DONE 2026-09-08. src/core/session-summary.ts plus 17 tests, run against this session’s real
+transcript: 26,673 records read in 533 ms.
+
+THE FILTER IS STRUCTURAL, NOT A WHITELIST, AND THAT MATTERS: the lead named seven record types; the
+file carries SEVENTEEN, ten of them not on the list. A whitelist written yesterday was already wrong
+today, and wrong silently. Asking "does this record carry a message object" stays true when the
+harness adds a member. 16,659 of 26,673 removed by that question alone.
+
+A STAGE THE SPEC DID NOT HAVE, and the data demanded it: of 525 records classified as prompts, 194
+are task notifications and 24 are meta. 279 turns were typed by a person - 44,006 characters, 0.07%
+of a 61 MB file.
+
+AND THE FIRST RUN PRODUCED A BROKEN SUMMARY, which is worth keeping: a global top-60 gave 45 slots to
+measurements and ZERO to corrections and failures, the two categories the design calls irreplaceable.
+Fixed structurally - the cap is a quota per category, not a sort - not by tuning cues.

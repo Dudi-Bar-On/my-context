@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: Writing a rule that conflicts with one already in force is stopped and settled, instead of both quietly standing.
-summary_of: 47ba32f066081c9e
+summary_of: d1c4ec65f59b16b3
 scope:
   - src/core/**
   - src/cli/**
@@ -18,18 +18,19 @@ tags:
   - corpus
   - "plan:contra"
   - "seq:1"
-  - "state:todo"
+  - "state:done"
 origin: human
 source_file: null
 source_anchor: null
 source_checksum: null
 valid_from: 2026-09-07
 valid_until: null
-checksum: 643663fcedbe55f2
+checksum: 0fc6f72cd4a9218d
 plan: contra
 seq: "1"
-state: todo
+state: done
 priority: "1"
+verified_on: 2026-09-08
 ---
 
 # a new governing item is checked against the ones already governing, and a contradiction stops the write
@@ -82,3 +83,17 @@ TESTS: the gate is a PURE FUNCTION of (draft, active items, verdicts), testable 
 Plus the call-graph test, an ANTI-VACUITY test proving it actually fires (this project has been
 bitten by checks that silently stopped checking), a LAPSE test (verdict, then a meaning change,
 then raised again) and a NO-LAPSE test (verdict, then --summary-unchanged, then still settled).
+
+DONE 2026-09-08. The gate, the dispositions and the pair memory all landed and were verified here:
+tsc clean, 27 tests, and it refused one of my own edits within two hours of being built.
+
+THE THRESHOLD IS THE FINDING. At the 0.2 I specified it would have refused 207 of 207 in-scope
+writes - 100%, every one carrying the full cap of five candidates - because 59.3% of all 21,321
+in-scope pairs score above it. overlapTokens has no stopword list and no IDF, so two ordinary English
+bodies share 20-30% of their vocabulary before either says anything about the other’s subject.
+Harmless behind a UI hint, fatal in a refusal. CONTRADICTION_THRESHOLD is a SEPARATE constant at 0.45
+(9.2%, mean 1.05 candidates), owner-confirmed, with the calibration table in its comment.
+
+AND MY RETIRED_STATUSES LEAD WAS WRONG IN BOTH DIRECTIONS: `draft` is not in it, so an agent’s
+unreviewed draft would have refused a human write; `validated` IS in it and governs. It uses
+GOVERNING_STATUS from trust.ts and pins the disagreement with a test.

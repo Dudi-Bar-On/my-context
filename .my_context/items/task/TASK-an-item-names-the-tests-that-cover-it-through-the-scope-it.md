@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: A rule points at the tests that check it, so anyone changing the rule can see what depends on it.
-summary_of: 9b8269ffbee5caeb
+summary_of: 0cb72e2f1824c07f
 scope:
   - test/**
   - e2e/**
@@ -18,18 +18,19 @@ tags:
   - governance
   - "plan:basis"
   - "seq:1"
-  - "state:todo"
+  - "state:done"
 origin: human
 source_file: null
 source_anchor: null
 source_checksum: null
 valid_from: 2026-09-07
 valid_until: null
-checksum: a897ca413a1b6af2
+checksum: 7841cdc2ab8869ef
 plan: basis
 seq: "1"
-state: todo
+state: done
 priority: "2"
+verified_on: 2026-09-08
 ---
 
 # an item names the tests that cover it, through the scope it already carries
@@ -55,3 +56,19 @@ and recommend - do not assume the cheap answer is right because it is cheap.
 START WITH THE 26. budget/16 named 26 fixtures across 10 files and the rule they all rested on. That
 is a ready-made, verified test set for this convention: if the mechanism cannot express those 26,
 it does not work.
+
+ANSWERED 2026-09-08, and its own premise was REJECTED on measurement rather than implemented.
+
+THE ITEM ASKED for items to name their covering tests through the `scope` globs they already carry.
+Measured with the product’s own matchesScope: `scope` is NOT inert. Empty scope matches every path;
+non-empty matches ONLY those globs. 814 of 1,011 items have an empty scope - so for 80.5% of the
+corpus, adding one covering-test path would SILENTLY UN-INJECT THE ITEM EVERYWHERE ELSE. Not a
+category error in theory; a behaviour change in production.
+
+AND MY OTHER LEAD WAS WRONG TOO: a new field does NOT alter every recorded checksum.
+computeItemChecksum adds fields conditionally and has done so four times; CHECKSUM_BASIS_VERSION has
+never been bumped because of it.
+
+WHAT REPLACED IT: derive the item side FROM the test side - `check:basis --items` inverts the @basis
+declarations into "which tests name this item". No corpus write, no injection change, no conflation.
+If a stored item-side field is ever wanted it must be a NEW conditional field, never `scope`.

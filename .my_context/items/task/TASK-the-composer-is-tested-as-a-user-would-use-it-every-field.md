@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: "Nothing on the command builder is taken on trust: every input is tested by running the command and checking what it actually did."
-summary_of: 71811f52218a7ea8
+summary_of: bd15517bb105f2cc
 summary_was:
   - "2026-09-06 Nothing on the command builder is taken on trust: a plan is written for the whole surface, executed, and every failure fixed until it passes."
 scope:
@@ -20,7 +20,7 @@ tags:
   - testing
   - "plan:builder"
   - "seq:11"
-  - "state:todo"
+  - "state:done"
   - "priority:3"
   - "needs:builder/9"
   - builder/10
@@ -30,12 +30,13 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-09-06
 valid_until: null
-checksum: 266530ad17691669
+checksum: d7b36e2a101322be
 plan: builder
 seq: "11"
-state: todo
+state: done
 priority: "3"
 needs: builder/3,builder/4,builder/5,builder/6,builder/8,builder/15
+verified_on: 2026-09-08
 ---
 
 # the composer is tested as a user would use it, every field, every value, every combination
@@ -102,3 +103,21 @@ are writes, so executing them mutates a corpus. The standing rule is that tests 
 current corpus and an exception needs the owner's approval FIRST. `e2e/execute.spec.ts` already
 isolates write tests into their own workspace and is the precedent to follow rather than a new
 mechanism to invent.
+
+DONE 2026-09-08, reads and writes, verified in-session rather than on a lane’s word: tsc clean,
+1,765 ui tests, the browser suite 12/12, and the write spec 8/8 on both browser projects.
+
+ALL 17 REMAINING RUNNABLE WRITES EXECUTED end to end - choose, fill every field, Execute, Run it,
+nonce never bypassed - each compared to the real CLI for exit code and stdout, with durable effects
+read back off disk. The oracle had to be redesigned for writes: "same argv, same workspace" is
+impossible when running the CLI first PERFORMS the write, so each test builds a twin workspace seeded
+identically.
+
+THE CLAUSE THAT RESTED ON SOMETHING GONE: "test BOTH PATHS, RUN and EXECUTE". D22 deleted Run. The
+lane did not resurrect it - it found what the clause was FOR (two derivations of one line that can
+silently disagree) and tested that instead.
+
+TWO PRODUCT DEFECTS ONLY EXECUTING COULD FIND: the glob tester seeded `**` into --scope, making two
+writes impossible from the screen’s opening state and silently stamping scope:["**"] on three others;
+and ack --clear reported a withdrawal as an acknowledgement. The composed line was right, the exit
+code was 0, and the sentence was wrong - which is the whole argument for this item’s bar.
