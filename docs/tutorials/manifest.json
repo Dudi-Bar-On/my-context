@@ -411,6 +411,7 @@
     "title": "Carry work from one session into the next",
     "tier": "advanced",
     "cli": [
+      "conversation.ts",
       "handover.ts",
       "session.ts"
     ],
@@ -419,7 +420,9 @@
       "session-carry.md",
       "session-name.md"
     ],
-    "screens": [],
+    "screens": [
+      "conversations.js"
+    ],
     "categories": [],
     "enFile": "docs/tutorials/sessions-and-continuity.md",
     "heFile": "docs/tutorials/sessions-and-continuity.he.md"

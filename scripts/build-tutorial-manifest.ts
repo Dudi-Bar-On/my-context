@@ -252,9 +252,27 @@ const CLUSTERS: Cluster[] = [
     id: 'sessions-and-continuity',
     title: 'Carry work from one session into the next',
     tier: 'advanced',
-    cli: ['session.ts'],
-    slash: ['session-carry.md', 'session-name.md'],
-    screens: [],
+    // **Reading a past conversation is the same subject as carrying work
+    // between them**, which is the placement
+    // `TASK-the-conversation-archive-is-taught-so-the-roster-stops-being`
+    // (`plan:archive seq:6`) rules on the evidence of what this cluster
+    // already claims: `session.ts`, `handover.ts` and the session slash
+    // commands. Continuity answers *what the next session is told*; the
+    // archive answers *what the last one actually said*. One tutorial, two
+    // halves of one question.
+    //
+    // **`handover.ts` and `handover.md` were already in the checked-in
+    // manifest and were NOT in this table**, so `npm run gen:tutorials` could
+    // not reproduce `docs/tutorials/manifest.json` and threw on them —
+    // `validateCoverage` named them beside `conversation.ts`. They arrived in
+    // `bd249ec` (2026-09-06, "five lanes land together"), where the roster was
+    // brought forward without this table. The prose of both
+    // `sessions-and-continuity` files has taught `mycontext handover ask` and
+    // `/mycontext:handover` since that day, so this is the generator catching
+    // up with a claim the documents already honour — not a new one.
+    cli: ['session.ts', 'handover.ts', 'conversation.ts'],
+    slash: ['session-carry.md', 'session-name.md', 'handover.md'],
+    screens: ['conversations.js'],
   },
   {
     id: 'the-status-line',
