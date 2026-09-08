@@ -18,7 +18,7 @@
   ],
   "handover": {
     "path": "reports/V2-HANDOVER.md",
-    "thresholdPercent": 85
+    "thresholdPercent": 90
   },
   "ui": {
     "enabled": true,

@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: Progress notes are taken less often early on and just as often near the end, and the writing itself is handed off, so keeping the notes stops using up the room they exist to protect.
-summary_of: 1cbbfedc92db33b7
+summary_of: 931862a48945e0e2
 scope:
   - src/core/handover-ask.ts
 tags:
@@ -22,7 +22,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-09-08
 valid_until: null
-checksum: 2179c80b09817b6b
+checksum: 57a9ef215058b61c
 plan: handover
 seq: "19"
 state: todo
@@ -120,9 +120,18 @@ WHO CHANGES WHAT, AND IT SPLITS ACROSS THE ONE BOUNDARY THIS PROJECT DOES NOT CR
 
 `handover.thresholdPercent` is 85 in `.my_context/config.json`, and that file is the OWNER’S. The
 hook says so verbatim - "changes to .my_context/config.json are the user’s to make - ask, do not
-edit" - so a lane implementing this item MUST NOT move 85 to 90 itself, and neither may I. The
-ruling is recorded here; the edit is his, one line, and until he makes it the geometric bands
-simply start at 85 and the count is eight rather than seven.
+edit". So it was ASKED FOR rather than taken, and the owner answered on 2026-09-08: "i approve you
+to change it, config also has capability to be updated from the Config screen."
+
+DONE UNDER THAT APPROVAL: thresholdPercent is 90. One line, nothing else in the file touched -
+`ui.port` is still 58888 - and the config loads clean through the project’s own loader rather than
+only parsing as JSON. The count is therefore SEVEN, as ruled.
+
+AND THE APPROVAL DOES NOT GENERALISE, which is worth writing down next to the change rather than
+leaving to memory. It covered this value, once. The rule that config is the owner’s stands
+unchanged, and a lane implementing the rest of this item still may not touch that file. He also
+named the other route - the Config screen edits config behind a confirm - and that, not a hand
+edit, is the path a future change should take.
 
 THE CODE HALF IS A LANE’S: `askStep` in `src/core/handover-ask.ts` becomes a band function, the
 delta cap and the roll-forward-on-nothing-landed are built, and the subagent composition path is
