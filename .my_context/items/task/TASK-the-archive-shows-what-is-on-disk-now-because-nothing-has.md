@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: The list of saved conversations keeps itself up to date instead of showing whatever it happened to hold the last time somebody rebuilt it by hand.
-summary_of: 84880066ce64d74f
+summary_of: 55fd255f783b6389
 scope:
   - src/core/conversation-index.ts
   - src/ui/**
@@ -23,7 +23,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-09-08
 valid_until: null
-checksum: 09eff7a81ba4f46f
+checksum: 028737cd92498931
 plan: archive
 seq: "14"
 state: done
@@ -80,3 +80,16 @@ WHAT IS STILL OWED, AND IT IS THE ONE THING THIS ITEM CALLED REQUIRED: the stale
 built (`conv.behind`, `conv.behindRow`, `conv.current`, both languages) and has NO browser test -
 `e2e/conversations.spec.ts` was not touched. It is a required deliverable of the next lane on
 this screen, and it is named here so a reader does not read this closure as covering it.
+
+THE OWED TEST NOW EXISTS, 2026-09-08 - the paragraph above is discharged. It is left standing
+rather than edited away, because what it recorded was true when it was written.
+
+e2e/conversations.spec.ts - the archive says how far behind it is - drives it in a real browser in
+both languages: the list-level line naming the amount, the refreshedBy sentence, the rebuild
+command plate, and exactly one per-row chip naming the amount. A test in the main loop asserts the
+converse, which is the half that would have rotted silently: conv.current renders when nothing has
+grown, and the behind line and chip do NOT.
+
+It needed its own harness, home, cwd and transcript - appending to the shared sess-archive.jsonl
+would have moved LAST_PHRASE off the end and broken the end of the session is reachable, the one
+test in that file that exists for a defect the owner reported himself.

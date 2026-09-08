@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: A saved session opens as one continuous scrollable view of the whole conversation instead of a first page you cannot move past.
-summary_of: f996b64132b9d54f
+summary_of: 8f3652c802c8c177
 scope:
   - src/ui/**
   - src/core/conversation-index.ts
@@ -17,17 +17,17 @@ tags:
   - archive
   - "plan:archive"
   - "seq:7"
-  - "state:todo"
+  - "state:done"
 origin: human
 source_file: null
 source_anchor: null
 source_checksum: null
 valid_from: 2026-09-07
 valid_until: null
-checksum: b485915177e3e2f7
+checksum: aaf21e3b4cb79345
 plan: archive
 seq: "7"
-state: todo
+state: done
 priority: "1"
 ---
 
@@ -82,3 +82,33 @@ reader would still be told about it. Deleting the cap while still shipping whole
 WHAT MUST SURVIVE: the DISCLOSURE habit. If any limit remains anywhere - a fetch size, a render
 budget - it is named on the screen as a field, never hidden. INV-nothing-is-dropped-silently. A
 viewer that quietly stops rendering is worse than one that says where it stopped.
+
+CLOSED 2026-09-08. The virtualised document landed in b15a9ea; the no-cap ruling landed now, in
+the lane that also built seq:19.
+
+THE CAP HAD NEVER BOUND ANYTHING, which is a worse finding than it being set wrong. Measured on
+the owner transcript - 66,976,537 bytes, 28,998 records, 5,076 nodes - the largest said node is
+24,605 characters, 41% of the 60,000 cap, and ZERO of 2,533 said nodes exceeded it. The sentence
+on his screen was disclosing a truncation that had never once occurred. 41 of 28,998 steps (0.14%)
+exceeded the 4,000 step cap.
+
+WHAT REMOVING THEM COSTS, measured rather than assumed: +90 KB on the worst 24-node window a
+reader can ask for (101,267 bytes capped against 191,671 uncapped), over loopback. The largest
+single record in the file is a 1,229,510-byte base64 image in a tool_result, which contributes no
+text either way. The largest thing the DOM now holds is one 58,888-character pre block inside a
+details element that starts closed.
+
+AND THE DISCLOSURE FIELDS WENT WITH THE CAPS, because a disclosure that can never fire is dead
+code: textTruncated, thinkingTruncated, DocStep.totalChars, and saidTextCap/stepTextCap off both
+the outline and nodes endpoints. DocNodeBody.totalChars stays - on a work node it is the real
+total for the run rather than a restatement of one field.
+
+ONE CAP SURVIVES THIS RULING AND IT IS NOT AN OVERSIGHT: CONVERSATION_TEXT_CAP on
+/api/conversations/:id, the WHOLE-PAGE records endpoint. This item own body keeps it - deleting
+the cap while still shipping whole pages would hand a 64 MB session to a browser in one response.
+That endpoint currently has no caller; if it is ever pointed at a screen again, its cap is worth
+re-asking about then.
+
+PINNED BY: test/ui/conversation-document.test.ts - a long turn and a long tool result come back
+WHOLE - which asserts a 90,000-character turn and a 12,000-character step survive intact AND that
+the disclosure fields are ABSENT rather than merely false.

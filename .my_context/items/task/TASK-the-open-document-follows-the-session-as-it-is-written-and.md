@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: A conversation you are reading keeps up with the session while it is still being written, so new turns arrive at the bottom on their own - and a reader who has scrolled up is told there are new turns rather than dragged down to them.
-summary_of: e921a2ee7a816caf
+summary_of: 5324ca236d309257
 scope:
   - src/ui/**
   - src/core/conversation-index.ts
@@ -16,17 +16,17 @@ tags:
   - ui
   - "plan:archive"
   - "seq:19"
-  - "state:todo"
+  - "state:done"
 origin: human
 source_file: null
 source_anchor: null
 source_checksum: null
 valid_from: 2026-09-08
 valid_until: null
-checksum: a60b1bea820780a7
+checksum: 2042f886a62c4b15
 plan: archive
 seq: "19"
-state: todo
+state: done
 priority: "1"
 needs: archive/13,archive/14
 ---
@@ -108,3 +108,43 @@ against it.
 
 DEPENDS ON seq:13 for the document to update and seq:14 for the probe. It must not be dispatched
 alongside seq:14: both touch the conversations screen, the read model and both string tables.
+
+LANDED 2026-09-08, in the same lane as the seq:7 remainder.
+
+BUILT AS RECOMMENDED: a screen-local timer in mountDocument at 5 s, gated by shouldPing so a
+background tab stops asking, dying with the document on hash change. The global heartbeat was not
+touched and nothing was added to /api/ping. A new GET /api/conversations/:id/tip is the cheap
+probe; the outline endpoint gained at/from/node and reads the appended tail through the startByte
+option on iterateTranscript. Freshness is (bytes, mtimeMs), the index own key.
+
+THE 60s RULING BIT EXACTLY WHERE THIS ITEM AIMED IT, and the first implementation FAILED it. A
+route that does the stat and not the sweep is not automatically cheap: resolving the file through
+rowFor measured 1.930 ms per call, of which 1.917 ms is opening SQLite - the statSync itself is
+0.007 ms - only to learn a path. At a 5 s timer that is 23 ms/min, FOUR TIMES the 6.24 ms/min that
+measureCorpusDrift spends, which is the budget the 60s ruling exists to protect. Resolving from
+listTranscriptFiles instead costs 0.057 ms: 0.68 ms/min per open document, an order of magnitude
+UNDER the sweep. The resumed outline is 2.722 ms / 512 bytes against 258 ms / 884 KB for a whole
+walk.
+
+THAT IS THE ONE THING THIS ITEM OWN BODY DID NOT SAY, and it is worth carrying forward: the
+expensive thing on a cheap freshness route is not the syscall, it is whatever the route has to
+open in order to know WHICH file to stat.
+
+THE NAMED NODE IS REBUILT, NOT SKIPPED - it may be an open work run that the append extended - and
+at/from/node are all-or-nothing, because a defaulted node would renumber the reader document in
+silence.
+
+atTail() IS NODE-BASED, as this item warned it had to be: the last view row is the one the
+viewport bottom lands in, never scrollTop + clientHeight >= scrollHeight, which was never
+available over a virtualised scroll. At the tail it appends and follows; scrolled up it appends,
+DOES NOT MOVE, and shows a tvnew button reading N new below.
+
+A BUG THE LANE INTRODUCED AND CAUGHT ITSELF, kept here because it is the instructive kind: the
+outline returned an unfloored mtimeMs while tip floored it, so a client would have read its own
+rounding as this transcript was replaced - the loudest possible way to be wrong about a file that
+had not changed. Both floor now, guarded by a test asserting the outline and the tip report the
+SAME mtime for the same file.
+
+PINNED BY: e2e/conversations.spec.ts - at the end of the file, a new turn arrives on its own, and
+a reader who has scrolled up is told, not dragged - both languages, driven in a real browser
+against a transcript the test appends to itself.
