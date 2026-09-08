@@ -505,3 +505,108 @@ test('the stream refuses a backlog it cannot bound, naming the range', async () 
     assert.match((await bad.json() as { error: string }).error, /backlog/);
   } finally { await h?.stop(); done(); }
 });
+
+/* ══ THE KEEP-ALIVE ════════════════════════════════════════════════════════
+ *
+ * `TASK-one-dead-stream-is-announced-on-every-screen-for-ever-and-a`. Until
+ * 2026-09-08 this route wrote to the socket ONLY when `tail.poll()` had a
+ * `resync` or a record — no `else`, no heartbeat anywhere in the module — so a
+ * quiet corpus meant a connection carrying zero bytes, indefinitely. The owner
+ * saw the consequence as *"the stream refused to continue: network error"* in
+ * the status bar, *"every few minutes"*.
+ *
+ * These two tests are the pair, and the SECOND is the one that would be
+ * forgotten. The first proves a comment goes out at all; the second proves it
+ * goes out on an INTERVAL rather than on every tick, which is the difference
+ * between nine bytes a minute and a frame a second on every open tab. The item
+ * as filed asked for "an SSE comment line on ticks with nothing to report",
+ * which is the per-tick shape; `STREAM_KEEPALIVE_MS` is why it is not.
+ *
+ * `keepalive` is a bounded query parameter for exactly this reason: a test
+ * that had to wait out the 20 s default would add twenty seconds to every run
+ * of this file, and an interval nothing can reach is an interval nothing
+ * checks. `poll` has the same shape for the same reason.
+ */
+
+/** Raw stream bytes for `ms`, then abort. Not frames — the comment IS the subject. */
+async function rawFor(url: string, token: string, ms: number): Promise<string> {
+  const abort = new AbortController();
+  const res = await fetch(url, {
+    headers: { [TOKEN_HEADER]: token },
+    signal: AbortSignal.any([abort.signal, AbortSignal.timeout(30_000)]),
+  });
+  assert.equal(res.status, 200);
+  const reader = res.body!.getReader();
+  const decoder = new TextDecoder();
+  let text = '';
+  const stop = setTimeout(() => abort.abort(), ms);
+  try {
+    for (;;) {
+      const chunk = await reader.read();
+      if (chunk.done) break;
+      text += decoder.decode(chunk.value, { stream: true });
+    }
+  } catch { /* the abort above is how this ends; the bytes so far are the answer */ }
+  clearTimeout(stop);
+  return text;
+}
+
+test('a quiet stream proves itself alive with an SSE comment, and nothing else', async () => {
+  const { dir, done } = project();
+  let h: UiHarness | null = null;
+  try {
+    h = await startUiChild(dir);
+    const token = await redeemNonce(h.port, h.nonce);
+    // Nothing is appended to the log for the whole of this read: a corpus that
+    // says nothing is the exact condition under which the socket used to go
+    // silent. 200ms keep-alive, ~1.2s of reading — at least four are due, and
+    // asserting two is the slack a loaded machine needs.
+    const text = await rawFor(
+      `http://127.0.0.1:${h.port}/api/watch/stream?poll=50&keepalive=200`, token, 1200,
+    );
+    const comments = text.split(':\n\n').length - 1;
+    assert.ok(
+      comments >= 2,
+      `a stream quiet for 1.2s at a 200ms keep-alive wrote ${comments} comments: ${JSON.stringify(text)}`,
+    );
+    // And the socket carried the `hello` and NOTHING that claims to be audited
+    // history. `test/ui/viewmodel.test.ts` puts these same bytes through the
+    // real parser and asserts they reach no consumer at all.
+    assert.equal(text.split('event: ').length - 1, 1, `expected one event frame: ${JSON.stringify(text)}`);
+    assert.match(text, /^event: hello\n/);
+  } finally { await h?.stop(); done(); }
+});
+
+test('the keep-alive is an INTERVAL, not a frame per tick', async () => {
+  const { dir, done } = project();
+  let h: UiHarness | null = null;
+  try {
+    h = await startUiChild(dir);
+    const token = await redeemNonce(h.port, h.nonce);
+    // The default keep-alive is 20s and the poll is asked to be 50ms, so this
+    // read spans ~30 ticks with nothing to report. A per-tick comment writes
+    // thirty of them; an interval writes none.
+    const text = await rawFor(
+      `http://127.0.0.1:${h.port}/api/watch/stream?poll=50`, token, 1500,
+    );
+    assert.equal(
+      text.split(':\n\n').length - 1, 0,
+      `1.5s of quiet at the default 20s keep-alive wrote a comment, so the interval is being `
+      + `ignored and every tick is writing one: ${JSON.stringify(text)}`,
+    );
+  } finally { await h?.stop(); done(); }
+});
+
+test('the stream refuses a keep-alive it cannot bound, naming the range', async () => {
+  const { dir, done } = project();
+  let h: UiHarness | null = null;
+  try {
+    h = await startUiChild(dir);
+    const token = await redeemNonce(h.port, h.nonce);
+    const bad = await fetch(`http://127.0.0.1:${h.port}/api/watch/stream?keepalive=0`, {
+      headers: { [TOKEN_HEADER]: token },
+    });
+    assert.equal(bad.status, 400);
+    assert.match((await bad.json() as { error: string }).error, /keepalive/);
+  } finally { await h?.stop(); done(); }
+});

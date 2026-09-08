@@ -2119,6 +2119,13 @@ async function request(path, method, body) {
     stopHeartbeat();
     throw new Error('server exited');
   }
+  // **The server ANSWERED — which is the only evidence left that it is there.**
+  // Any status counts, including a refusal: a 403 is a running process saying
+  // no. This is what stops the live chip re-asserting "the stream just failed:
+  // network error" for the rest of the page's life while every other request
+  // on that page is succeeding (see `liveProven`). It is a no-op unless the
+  // shared stream has actually faulted, and once-only after it has.
+  noteServerAnswered();
   if (response.status === 401 || response.status === 403) {
     // The token this tab remembered is not this server's. Clear it, so a
     // reload after the next `mycontext ui` starts from the handoff instead of
@@ -2363,6 +2370,32 @@ let liveHello = null;
  * silence means nothing is happening.
  */
 let liveEnded = null;
+/**
+ * **Has a later read PROVED the server is still there?**
+ *
+ * `TASK-one-dead-stream-is-announced-on-every-screen-for-ever-and-a`, owner
+ * report 2026-09-08: *"on the web status bar i see many times the message
+ * 'the stream refused to continue: network error'"*. `liveEnded` was set once
+ * and nothing anywhere ever cleared it, so the chip below re-asserted a
+ * MOMENT — "it just failed, with this error" — for the rest of the page's
+ * life, and `route()` re-drew that sentence on every screen it built.
+ *
+ * **What the fix clears is the CLAIM, not the record, and that is a
+ * correction to the item.** The item asked for `liveEnded` itself to be
+ * cleared on the next successful read. It must not be: it is the only thing
+ * `subscribeStream()` has to replay to a screen that mounts after the fault,
+ * and dropping it would leave that screen its `hello` and nothing else —
+ * "connected — waiting for the next record" over a connection that is dead,
+ * which is the exact silence the replay was built to prevent. The stream
+ * really is finished, permanently (§2: it never reopens). What stopped being
+ * true a minute later is only that it JUST failed.
+ *
+ * So the fault is kept and the sentence changes: once any later request has
+ * come back from the server, the chip says the feed is not live. Never
+ * cleared afterwards, because nothing un-proves a server that answered, and
+ * because the feed does not come back either.
+ */
+let liveProven = false;
 
 /**
  * **Chrome-owned, said once, regardless of which screen (if any) is showing
@@ -2383,23 +2416,51 @@ let liveEnded = null;
  * Reuses `watch.streamFault` rather than inventing a second sentence for the
  * same fact — the shared connection carries the identical frame regardless
  * of who is listening, so the words that were already true stay true here.
+ *
+ * **TWO SENTENCES SINCE 2026-09-08, and they are different CLAIMS rather than
+ * two wordings of one.** `watch.streamFault` names an event and its error:
+ * that is a report about a moment, and it is exactly right in the seconds
+ * after the frame arrives. `watch.streamNotLive` names a STATE, and it is
+ * what is still true a minute later — the feed is not running and will not
+ * restart itself. `liveProven` is the switch between them, and the note on
+ * that variable carries the argument. Redrawn rather than left standing
+ * because a chip that keeps saying "network error" while every other request
+ * on the page is succeeding is the page contradicting itself in one strip.
  */
-function showLiveFault(error) {
+function showLiveState() {
   const el = document.getElementById('livestate');
   const sep = document.getElementById('livesep');
-  if (el === null) return;
+  if (el === null || liveEnded === null) return;
   const chip = document.createElement('span');
   chip.className = 'chip warn';
   chip.dataset.g = '▲';
-  chip.append(...translate(table.strings, 'watch.streamFault', { error }));
+  chip.append(...(liveProven
+    ? translate(table.strings, 'watch.streamNotLive')
+    : translate(table.strings, 'watch.streamFault', { error: liveEnded })));
   el.replaceChildren(chip);
   el.hidden = false;
   if (sep !== null) sep.hidden = false;
 }
 
 /**
+ * **A later read came back — so the fault stops being NEWS and becomes a
+ * state.** Called from `request()` for every answer the server gives, which
+ * is the only evidence available that the process is still there: the stream
+ * is gone and cannot report anything more about itself.
+ *
+ * Cheap on the overwhelmingly common path (no fault has ever happened), and
+ * once-only after one has: the chip is rebuilt exactly once, on the first
+ * successful request after the fault, and never again.
+ */
+function noteServerAnswered() {
+  if (liveEnded === null || liveProven) return;
+  liveProven = true;
+  showLiveState();
+}
+
+/**
  * The one place every frame off the shared connection passes through: the
- * shell's own bookkeeping (`liveHello`/`liveEnded`/`showLiveFault`) runs
+ * shell's own bookkeeping (`liveHello`/`liveEnded`/`showLiveState`) runs
  * FIRST, unconditionally, because it must happen whether or not any screen
  * is currently subscribed; the per-subscriber fan-out runs after.
  *
@@ -2416,7 +2477,7 @@ function dispatchLiveEvent(event, data) {
   if (event === 'fault') {
     liveEnded = data !== null && typeof data === 'object' && typeof data.error === 'string'
       ? data.error : '';
-    showLiveFault(liveEnded);
+    showLiveState();
   }
   if (event === 'record') {
     const kind = data !== null && typeof data === 'object' ? data.kind : undefined;
@@ -2616,7 +2677,7 @@ let pendingScreenRefresh = null;
  * Refresh button offering to reload a screen that had not gone stale), and
  * removing the element from the DOM when hidden does not make the rule
  * redundant: the element is `hidden` for the frame between construction and
- * insertion, and `showLiveFault`'s neighbour rule shares the selector list.
+ * insertion, and `showLiveState`'s neighbour rule shares the selector list.
  *
  * `onTake` is what pressing its control does.
  */
@@ -4177,7 +4238,7 @@ function renderChrome() {
 
   // ── THE SHARED LIVE STREAM'S OWN FAULT — present but hidden, exactly as
   // `#prov` is built empty above, so the row's width does not jump the
-  // instant a fault actually happens. `showLiveFault()` unhides both; see
+  // instant a fault actually happens. `showLiveState()` unhides both; see
   // "THE SHARED LIVE STREAM" for why this lives at shell level at all.
   const liveSep = document.createElement('span');
   liveSep.className = 'sep';
@@ -4218,7 +4279,7 @@ function renderChrome() {
   fitStrip();
   watchStripFit(strip);
 
-  if (liveEnded !== null) showLiveFault(liveEnded);
+  showLiveState();
 }
 
 /**
@@ -7599,12 +7660,23 @@ async function main() {
   // second cadence to keep in step. So the interval stands, and what makes 60s
   // enough is the pair above: the sample under it is rewritten once per
   // assistant message, and every age on the strip is recomputed at draw time.
+  //
+  // **AND `window` IS THE FOURTH ARGUMENT, WHICH IS ABOUT THE RETURN AND NOT
+  // ABOUT THE INTERVAL** (`TASK-the-status-strip-has-the-same-return-to-tab
+  // -delay-the`). It turns on `heartbeat.js`'s look-tick: coming back to the
+  // tab asks at once instead of waiting for the next scheduled beat — which,
+  // because browsers throttle a hidden tab's timers towards once a minute, was
+  // a throttled period rather than the 60 s ruled above. The cadence is
+  // untouched; what changes is that a reader who looks is answered. `stop()`
+  // removes those listeners as well as the timer, which is why `api()`'s catch
+  // above is still the whole of the §2 story: a page whose server has gone
+  // does not ping on focus either.
   stopHeartbeat = startHeartbeat(
     document, () => api('/api/ping' + pingQuery()).then((answer) => {
       noteCodeSkew(answer);
       noteCorpusDrift(answer);
       noteOccupancy(answer);
-    }).catch(() => {}), 60_000);
+    }).catch(() => {}), 60_000, window);
   installNonceRedemption();
   // **BEFORE `installItemPane()`, and the order is the contract.** Both install
   // a document-level `keydown`, listeners fire in registration order, and

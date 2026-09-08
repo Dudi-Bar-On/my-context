@@ -171,6 +171,9 @@ export const strings = {
   'conv.exported': 'Exported copy',
   'conv.pruned': 'File deleted',
   'conv.scanCapped': 'Counts are a minimum',
+  'conv.lane': '{n} helper agent',
+  'conv.lanes': '{n} helper agents',
+  'conv.outdated': 'This archive was indexed by an earlier version, so there is nothing to show yet. Nothing has been lost — it is rebuilt from the files on disk, and it repairs itself at the end of your next turn. To do it now:',
   'conv.missingSome': '{n} of these no longer have a file on disk. Their counts are what the last scan saw.',
   'conv.behind': '{n} of these have grown since they were last read. {bytes} of transcript is not in this list yet, so every count and end time below is what the last scan saw.',
   'conv.behindRow': 'Behind by {bytes}',
@@ -538,6 +541,11 @@ export const strings = {
   'watch.shown': '{records} records shown',
   'watch.streamWaiting': 'connected — waiting for the next record',
   'watch.streamFault': 'the stream refused to continue: {error}',
+  // TASK-one-dead-stream-is-announced-on-every-screen-for-ever-and-a: the
+  // state, not the moment. `streamFault` above reports an event and its
+  // error and is right in the seconds after it; this is what is still true a
+  // minute later, once a later request has proved the server is answering.
+  'watch.streamNotLive': 'the live feed is not running — reload to reconnect',
   'watch.resync': 'the log rotated or moved — continuing from now; the history list below was refetched',
   // The four sentences the blank feed cost (plan:walk seq:52). A live tail that
   // is empty is UNMEASURED — "nothing since you opened this", never "no

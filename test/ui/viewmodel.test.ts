@@ -305,6 +305,18 @@ test('createSseParser: comments, retry and id are not events', async () => {
   // does not read — none of them carries `data:`, so none of them is an event.
   feed(': keep-alive\n\nretry: 3000\n\nid: 7\n\n');
   assert.deepEqual(seen, []);
+  // **AND THE BARE COLON, which is the one the SERVER actually writes.**
+  // `ui/watch-model.ts`'s `sseComment` sends exactly `:\n\n` on a stream that
+  // has been silent for `STREAM_KEEPALIVE_MS`
+  // (`src/ui/watch-model.ts` · `res.write(':\n\n');` · in `sseComment`), and
+  // `TASK-one-dead-stream-is-announced-on-every-screen-for-ever-and-a` asked
+  // for that to be CHECKED against this parser rather than assumed from the
+  // grammar. A comment with no text at all is still a comment: it must reach
+  // no consumer, and in particular must not arrive as an unnamed `message`
+  // event, which `lib/viewmodel.js`'s `describeStreamEvent` would drop as a
+  // frame it cannot name.
+  feed(':\n\n:\n\n');
+  assert.deepEqual(seen, []);
   // …and a comment INSIDE a real frame does not disturb it.
   feed(': ping\nevent: record\n: mid-frame comment\ndata: {"op":"jit"}\n\n');
   assert.deepEqual(seen, [['record', { op: 'jit' }]]);
@@ -830,9 +842,26 @@ interface BootstrapModule {
   ) => Promise<string | null>;
 }
 
+/**
+ * `win` and the listener pair on `doc` are the look-tick
+ * (`TASK-the-status-strip-has-the-same-return-to-tab-delay-the`). Both are
+ * OPTIONAL in the stand-in below for the reason they are optional in the
+ * module: the two tests that predate them pass a two-field object, and that is
+ * the whole reason `doc` is injected rather than read off `globalThis`.
+ */
+interface FakeTarget {
+  addEventListener: (type: string, fn: () => void) => void;
+  removeEventListener: (type: string, fn: () => void) => void;
+}
 interface HeartbeatModule {
   shouldPing: (visibilityState: string) => boolean;
-  startHeartbeat: (doc: { visibilityState: string }, pingFn: () => void, intervalMs: number) => () => void;
+  LOOK_GAP_MS: number;
+  startHeartbeat: (
+    doc: { visibilityState: string } & Partial<FakeTarget>,
+    pingFn: () => void,
+    intervalMs: number,
+    win?: FakeTarget,
+  ) => () => void;
 }
 
 interface I18nModule {
@@ -918,6 +947,120 @@ test('startHeartbeat pings only while visible, and stop() clears the timer', asy
   }
   await new Promise((r) => setTimeout(r, 100));
   assert.equal(pings, seenVisible, 'no ping after stop(), even once visible again');
+});
+
+/* ══ THE LOOK-TICK ═════════════════════════════════════════════════════════
+ *
+ * `TASK-the-status-strip-has-the-same-return-to-tab-delay-the`. `startHeartbeat`
+ * had the shape `screens/conversations.js` had before `plan:archive seq:22`
+ * fixed it one floor up: visible-only, with no `visibilitychange` listener and
+ * no `focus` listener anywhere in the module. So a reader coming back to the
+ * tab waited for the next SCHEDULED beat, and because browsers throttle a
+ * hidden tab's timers towards once a minute, that wait was a throttled period
+ * rather than the 60 s the cadence ruling chose.
+ *
+ * A tiny event target rather than a real `Document` or `Window`, for the reason
+ * the module takes `doc` at all: these are assertions about the RULE, and a
+ * rule that needs a browser to be checked is a rule nothing checks.
+ */
+function target(): FakeTarget & { fire: (type: string) => void; count: (type: string) => number } {
+  const listeners = new Map<string, Set<() => void>>();
+  return {
+    addEventListener: (type, fn) => {
+      const set = listeners.get(type) ?? new Set();
+      set.add(fn);
+      listeners.set(type, set);
+    },
+    removeEventListener: (type, fn) => { listeners.get(type)?.delete(fn); },
+    fire: (type) => { for (const fn of [...(listeners.get(type) ?? [])]) fn(); },
+    count: (type) => listeners.get(type)?.size ?? 0,
+  };
+}
+
+test('startHeartbeat asks at once when the reader comes back — on EITHER event', async () => {
+  const { startHeartbeat } = await heartbeat();
+  const doc = { visibilityState: 'visible', ...target() };
+  const win = target();
+  let pings = 0;
+  // An interval far longer than this test, so every ping counted below is a
+  // look-tick and never a scheduled beat that happened to land.
+  const stop = startHeartbeat(doc, () => { pings += 1; }, 60_000, win);
+  try {
+    doc.fire('visibilitychange');
+    assert.equal(pings, 1, 'coming back to the tab must ask immediately');
+
+    // **BOTH EVENTS, because they answer different questions.** A tab switch
+    // fires `visibilitychange`; a window RAISED without a tab change fires only
+    // `focus`, and that is the return an owner watching a terminal beside a
+    // browser actually makes. `LOOK_GAP_MS` has to pass first or this would be
+    // indistinguishable from the double-fire guard letting it through.
+    await new Promise((r) => setTimeout(r, 300));
+    win.fire('focus');
+    assert.equal(pings, 2, 'a window raised without a tab change must ask too');
+  } finally { stop(); }
+});
+
+test('startHeartbeat asks ONCE for one return, and never while hidden', async () => {
+  const { startHeartbeat, LOOK_GAP_MS } = await heartbeat();
+  assert.ok(LOOK_GAP_MS > 0, 'the gap guard is a real number the module exports');
+  const doc = { visibilityState: 'visible', ...target() };
+  const win = target();
+  let pings = 0;
+  const stop = startHeartbeat(doc, () => { pings += 1; }, 60_000, win);
+  try {
+    // ONE return to the tab fires both events, microseconds apart. That pair is
+    // the collision `LOOK_GAP_MS` exists for, and at a 60 s cadence a doubled
+    // ask is two `/api/ping` round trips and two `measureCorpusDrift` sweeps.
+    doc.fire('visibilitychange');
+    win.fire('focus');
+    assert.equal(pings, 1, 'one return to the tab is one ask, not two');
+
+    // `focus` fires on a window whose tab is not the front one, so the §2
+    // visibility rule is still the gate and this makes a VISIBLE tab faster and
+    // nothing else.
+    doc.visibilityState = 'hidden';
+    await new Promise((r) => setTimeout(r, 300));
+    win.fire('focus');
+    doc.fire('visibilitychange');
+    assert.equal(pings, 1, 'a hidden tab must not ask, however loudly it is looked at');
+  } finally { stop(); }
+});
+
+test('stop() removes the look listeners, not merely the timer', async () => {
+  const { startHeartbeat } = await heartbeat();
+  const doc = { visibilityState: 'visible', ...target() };
+  const win = target();
+  let pings = 0;
+  const stop = startHeartbeat(doc, () => { pings += 1; }, 60_000, win);
+  assert.equal(doc.count('visibilitychange'), 1);
+  assert.equal(win.count('focus'), 1);
+  stop();
+  // **THIS IS THE §2 ASSERTION AND IT IS WHY THE TEARDOWN IS LOAD-BEARING.**
+  // `app.js` calls `stop()` from `api()`'s catch the moment a request proves
+  // the server is gone. A focus tick fired after that would be a dead page
+  // pinging a process that exited — the silent reconnection §2 forbids,
+  // arriving through the one channel a cleared timer does not close. So the
+  // listeners are REMOVED, not gated.
+  assert.equal(doc.count('visibilitychange'), 0, 'a stopped heartbeat still listening is a leak');
+  assert.equal(win.count('focus'), 0, 'a stopped heartbeat still listening is a leak');
+  doc.fire('visibilitychange');
+  win.fire('focus');
+  assert.equal(pings, 0, 'a stopped heartbeat must not ping, on any signal');
+  stop();  // idempotent: app.js can call it from more than one failure path
+});
+
+test('startHeartbeat without a window is exactly the timer it always was', async () => {
+  const { startHeartbeat } = await heartbeat();
+  const doc = { visibilityState: 'visible', ...target() };
+  let pings = 0;
+  // No `win`, so no pair — and registering only ONE of the two would leave half
+  // the returns slow, which is why the pair is gated on a single argument.
+  const stop = startHeartbeat(doc, () => { pings += 1; }, 60_000);
+  try {
+    assert.equal(doc.count('visibilitychange'), 0, 'no window, no listeners at all');
+    doc.fire('visibilitychange');
+    assert.equal(pings, 0);
+  } finally { stop(); }
 });
 
 /**

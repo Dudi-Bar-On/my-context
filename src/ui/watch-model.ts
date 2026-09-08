@@ -85,6 +85,52 @@ import { SECURITY_HEADERS } from './security.ts';
 export const STREAM_POLL_MS = 1000;
 
 /**
+ * **How long this stream may carry ZERO BYTES before it proves it is alive.**
+ *
+ * `TASK-one-dead-stream-is-announced-on-every-screen-for-ever-and-a`. Owner
+ * report 2026-09-08: the status bar said *"the stream refused to continue:
+ * network error"*, over and over, *"every few minutes"* — while every ordinary
+ * read on the same page kept working, because those are short requests that
+ * are never idle. `streamHandler` below sent a frame only when `tail.poll()`
+ * had a `resync` or a record, and there was no `else`: through any quiet
+ * period the connection carried nothing at all, and a silent socket is what
+ * gets reaped.
+ *
+ * **THIS NUMBER IS NOT `STREAM_POLL_MS`, and the distance between them is the
+ * whole point.** The poll cadence is how often the LOG is asked; this is how
+ * often the SOCKET is proved. Tying them would put a frame on the wire every
+ * second for a connection that needs one every half-minute — noise on a
+ * socket that already exists, multiplied by every open tab.
+ *
+ * **WHAT WAS MEASURED FOR THIS NUMBER, 2026-09-08** — the lane's report
+ * carries the runs in full, and the short version is that nothing on this
+ * machine was caught reaping anything. A silent held-open response survived
+ * 11 minutes on loopback against a Node client, with Node's own
+ * `requestTimeout` (300 s) at its default, and there is no third-party network
+ * filter installed to proxy loopback (Microsoft Defender only). So this
+ * interval is NOT a race against a killer whose period is known.
+ *
+ * It is instead the smallest number that sits comfortably under every idle
+ * window a connection of this class meets — 30 s is the shortest such default
+ * in common intermediaries - and it costs three bytes a time: nine bytes a
+ * minute per open tab. It is deliberately not suspiciously short. **If a reap
+ * is ever observed BELOW twenty seconds, that is a reaper aggressive enough to
+ * deserve its own item: report the number rather than quietly halving this.**
+ */
+export const STREAM_KEEPALIVE_MS = 20_000;
+
+/**
+ * Bounds on the `keepalive` query parameter, which exists so the interval
+ * above is a MEASURABLE property of the route rather than a constant nothing
+ * can reach: `test/ui/watch-e2e.test.ts` reads a real comment off a real
+ * connection in under a second by asking for one. The floor is the same 50 ms
+ * `poll` takes, and the ceiling is a minute, past which a keep-alive is not
+ * keeping anything alive.
+ */
+const MIN_KEEPALIVE_MS = 50;
+const MAX_KEEPALIVE_MS = 60_000;
+
+/**
  * The most history one stream will replay on open.
  *
  * The screen asks for `BOUND_CAP_LIST` — twenty, the list bound every other
@@ -958,6 +1004,29 @@ function sseSend(res: ServerResponse, event: string, data: unknown): void {
 }
 
 /**
+ * **Three bytes that say "still here", and NOT an event.**
+ *
+ * `:` opens a comment line in the SSE grammar, and a comment is not a frame.
+ * CHECKED against this project's own parser rather than assumed from the
+ * specification, because the assumption is what the item asked to verify:
+ * `public/lib/sse.js` returns on `text.startsWith(':')` before any field name
+ * is read, and its `dispatch()` refuses to fire for a frame that never carried
+ * a `data:` field — "a frame with no `data:` field at all dispatches nothing".
+ * So this reaches no `onEvent`, no subscriber and no screen, and it arrives as
+ * NOTHING rather than as an unnamed `message` event.
+ *
+ * That is the requirement and not a convenience: `public/lib/viewmodel.js`'s
+ * `describeStreamEvent` names four frames and drops anything else, because an
+ * unnameable frame "must not reach the feed as though it were audited
+ * history". A keep-alive is a fact about the SOCKET; every frame on this
+ * stream is a claim about the audit log, and this says nothing about the audit
+ * log.
+ */
+function sseComment(res: ServerResponse): void {
+  res.write(':\n\n');
+}
+
+/**
  * The live audit stream — **the route the idle rule was built for**. The
  * dispatch loop never `touch()`es a `kind: 'stream'` route, so a forgotten tab
  * holding this open still lets the idle exit fire (spec §2) — eight hours by
@@ -997,19 +1066,24 @@ function sseSend(res: ServerResponse, event: string, data: unknown): void {
  * stream will behave. One frame, one boundary, no ordering left to get wrong.
  */
 function streamHandler(ctx: ApiContext, res: ServerResponse): void {
-  const bad = unknownParams(ctx.url, ['poll', 'backlog']) ?? repeatedParams(ctx.url);
+  const bad = unknownParams(ctx.url, ['poll', 'backlog', 'keepalive']) ?? repeatedParams(ctx.url);
   const poll = intParam(ctx.url, 'poll', 50, 10_000, STREAM_POLL_MS);
   const backlog = intParam(ctx.url, 'backlog', 0, MAX_STREAM_BACKLOG, 0);
-  if (bad !== null || poll === null || backlog === null) {
+  const keepAlive = intParam(
+    ctx.url, 'keepalive', MIN_KEEPALIVE_MS, MAX_KEEPALIVE_MS, STREAM_KEEPALIVE_MS,
+  );
+  if (bad !== null || poll === null || backlog === null || keepAlive === null) {
     res.writeHead(400, { ...SECURITY_HEADERS, 'content-type': 'application/json; charset=utf-8' });
     res.end(JSON.stringify({
       error: bad
         ?? (poll === null
           ? 'poll must be an integer between 50 and 10000'
-          : `backlog must be an integer between 0 and ${MAX_STREAM_BACKLOG}. It refuses rather `
-            + 'than clamping, for the reason every other bound on this surface does: a replay '
-            + 'quietly shortened to fit a ceiling is drawn under a sentence claiming the reader '
-            + 'asked for that many.'),
+          : keepAlive === null
+            ? `keepalive must be an integer between ${MIN_KEEPALIVE_MS} and ${MAX_KEEPALIVE_MS}`
+            : `backlog must be an integer between 0 and ${MAX_STREAM_BACKLOG}. It refuses rather `
+              + 'than clamping, for the reason every other bound on this surface does: a replay '
+              + 'quietly shortened to fit a ceiling is drawn under a sentence claiming the reader '
+              + 'asked for that many.'),
     }));
     return;
   }
@@ -1052,6 +1126,14 @@ function streamHandler(ctx: ApiContext, res: ServerResponse): void {
   // monitor exits the server WITH this stream open (an open stream is not
   // activity — spec §2), and server.closeAllConnections() destroys the
   // socket, which fires 'close' below and clears the timer.
+  //
+  // **AND A QUIET TICK NO LONGER WRITES NOTHING** — see `STREAM_KEEPALIVE_MS`
+  // for the defect and the measurement. `wroteAt` is when this connection last
+  // put a byte on the wire, the `hello` above included, so a stream that is
+  // genuinely busy never sends a keep-alive at all: the comment goes out only
+  // when the socket has been silent for the whole interval, which is what makes
+  // this nine bytes a minute on an idle tab and nothing on a working one.
+  let wroteAt = Date.now();
   const timer = setInterval(() => {
     let result;
     try {
@@ -1065,6 +1147,10 @@ function streamHandler(ctx: ApiContext, res: ServerResponse): void {
     }
     if (result.resync) sseSend(res, 'resync', {});
     for (const record of result.records) sseSend(res, 'record', record);
+    if (result.resync || result.records.length > 0) { wroteAt = Date.now(); return; }
+    if (Date.now() - wroteAt < keepAlive) return;
+    sseComment(res);
+    wroteAt = Date.now();
   }, poll);
   timer.unref();
   res.on('close', () => clearInterval(timer));

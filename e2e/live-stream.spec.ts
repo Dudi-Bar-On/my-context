@@ -267,5 +267,132 @@ test('a dead stream is drawn as dead on whatever screen is showing — not only 
     // must not be un-said by visiting a third screen.
     await p.evaluate(() => { location.hash = '#/preview'; });
     await expect(page.locator('#livestate')).toBeVisible();
+
+    // **AND THE SENTENCE CHANGES, WHICH IS THE HALF THIS TEST DID NOT USED TO
+    // MAKE** — `TASK-one-dead-stream-is-announced-on-every-screen-for-ever
+    // -and-a`. Owner report 2026-09-08: *"on the web status bar i see many
+    // times the message 'the stream refused to continue: network error'"*.
+    // `liveEnded` was set once and cleared nowhere, so the chip re-asserted a
+    // MOMENT for the rest of the page's life while every ordinary read on that
+    // page kept succeeding — the page contradicting itself inside one strip.
+    //
+    // The navigation above is a screen's worth of real requests, so by now the
+    // server has answered again and the claim has changed with it: the feed is
+    // not running, which is still true, rather than it having just failed with
+    // an error, which is not. What is NOT cleared is the fault itself — see
+    // `liveProven` in `app.js` — because it is the only thing a screen
+    // subscribing after the fault has to learn from.
+    await expect(
+      page.locator('#livestate'),
+      'the chip still names the network error after a screenful of successful reads',
+    ).toContainText(/not running/i, { timeout: 15_000 });
+    await expect(page.locator('#livestate')).not.toContainText(/refused to continue/i);
+  });
+});
+
+/* ══ THE STATUS STRIP'S OWN RETURN-TO-TAB TICK ═════════════════════════════
+ *
+ * `TASK-the-status-strip-has-the-same-return-to-tab-delay-the`. Filed by the
+ * `plan:archive seq:22` lane while it was fixing the identical shape one floor
+ * up, and reported rather than fixed there because that item put the shell out
+ * of its own scope in as many words.
+ *
+ * It joins THIS file rather than getting one of its own because it is the same
+ * subject and the same fixture: a thing that is supposed to stay live and does
+ * not. `shelled()` above already builds a corpus, a server and a booted shell,
+ * and the strip is drawn by that shell.
+ *
+ * **`visibilityState` IS OVERRIDDEN, AND THAT IS A REAL WEAKNESS, MEASURED.**
+ * `e2e/conversations.spec.ts` established it on 2026-09-08 with the four
+ * things it tried first: `context.newPage()` + `bringToFront()`,
+ * `window.open('_blank')`, CDP `Emulation.setPageVisibilityOverride` (removed
+ * from the protocol) and CDP `Page.setWebLifecycleState 'frozen'` — every one
+ * of them left the document reporting `visible`, because Playwright gives each
+ * page its own top-level window rather than a tab. Confirmed again by this
+ * lane on the same day against Google Chrome itself. So the override is
+ * confined to the one thing the harness cannot do; everything else is real —
+ * the real events, the real `startHeartbeat` listeners, the real `shouldPing`
+ * gate reading the property, and real `/api/ping` requests.
+ *
+ * What is NOT covered, said rather than implied: the browser's own
+ * background-timer throttling, which is what makes the real wait far worse
+ * than the 60 s cadence and is exactly the part a test cannot stage.
+ */
+test('the status strip asks the moment the reader comes back to the tab', async ({ page }) => {
+  test.setTimeout(90_000);
+
+  // Before `shelled()`'s `goto`, so the app sees the overridden getter from its
+  // first line.
+  await page.addInitScript(() => {
+    let forced: string | null = null;
+    Object.defineProperty(Document.prototype, 'visibilityState', {
+      configurable: true,
+      get(): string { return forced ?? 'visible'; },
+    });
+    Object.defineProperty(window, '__look', {
+      value: (state: string | null) => {
+        forced = state;
+        // BOTH events, because `startHeartbeat` registers both and the guard
+        // that stops them asking twice is the thing worth measuring.
+        document.dispatchEvent(new Event('visibilitychange'));
+        window.dispatchEvent(new Event('focus'));
+      },
+    });
+  });
+
+  /** Every `/api/ping` the page asks for, and every answer, by wall clock. */
+  const pings: number[] = [];
+  const answers: number[] = [];
+  page.on('request', (r) => { if (r.url().includes('/api/ping')) pings.push(Date.now()); });
+  page.on('response', (r) => { if (r.url().includes('/api/ping')) answers.push(Date.now()); });
+
+  await shelled(page, async ({ page: p }) => {
+    await p.evaluate(() => (window as unknown as { __look: (s: string | null) => void })
+      .__look('hidden'));
+    expect(await p.evaluate(() => document.visibilityState)).toBe('hidden');
+
+    // **A LOOK AT A HIDDEN TAB IS NOT A LOOK, and this is the assertion that
+    // keeps the rest honest.** The cadence is 60 s, so a scheduled beat proves
+    // nothing inside this test — but `__look` above dispatched BOTH events at a
+    // document that reports `hidden`, and a look-tick without `shouldPing` in
+    // front of it would have asked. `spec §2` is that rule, and this item is
+    // about the RETURN, never about the rule.
+    const hiddenFrom = Date.now();
+    await p.waitForTimeout(2_000);
+    expect(
+      pings.filter((t) => t > hiddenFrom).length,
+      'a hidden tab asked — the §2 visibility gate is no longer in front of the look-tick',
+    ).toBe(0);
+
+    const t0 = Date.now();
+    await p.evaluate(() => (window as unknown as { __look: (s: string | null) => void })
+      .__look(null));
+    await expect
+      .poll(() => pings.filter((t) => t >= t0).length, { intervals: [10, 10, 25, 25, 50], timeout: 30_000 })
+      .toBeGreaterThan(0);
+    const back = (pings.find((t) => t >= t0) as number) - t0;
+    console.log(`[archive/25] returned to tab -> /api/ping asked: ${back} ms`);
+    await expect
+      .poll(() => answers.filter((t) => t >= t0).length, { intervals: [10, 10, 25, 25, 50], timeout: 30_000 })
+      .toBeGreaterThan(0);
+    // The end-to-end number, so it is comparable with the 42-117 ms
+    // `plan:archive seq:22` measured for the document one floor up: from the
+    // reader looking, to the strip's own reading being back in the page.
+    console.log(`[archive/25] returned to tab -> /api/ping answered: ${(answers.find((t) => t >= t0) as number) - t0} ms`);
+    // ONE ROUND TRIP, not one interval and certainly not one throttled
+    // interval. The bound is far under the 60 s the strip used to wait at BEST,
+    // so a regression that drops the `window` argument cannot pass here.
+    expect(back).toBeLessThan(3_000);
+
+    // AND EXACTLY ONE ASK IN THAT FIRST MOMENT. `visibilitychange` and `focus`
+    // both fired, microseconds apart, and the strip asked once — the
+    // double-fire guard, which is not tidiness: every `/api/ping` carries
+    // `measureCorpusDrift`'s sweep, and its 6.24 ms/min budget is the argument
+    // that ruled out a file watcher in the first place.
+    await p.waitForTimeout(400);
+    const burst = pings.filter((t) => t >= t0 && t < t0 + 300).length;
+    console.log(`[archive/25] /api/ping requests in the 300 ms after the look: ${burst}`);
+    expect(burst, 'one look, one ask — visibilitychange and focus must not both fire a beat')
+      .toBe(1);
   });
 });
