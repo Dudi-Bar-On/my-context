@@ -824,6 +824,15 @@ const READ_ROUTES = (from: { item: string; session: string | null }): Probe[] =>
   '/api/conversations',
   '/api/conversations?limit=5&offset=0',
   '/api/conversations/not-a-real-session-id',
+  // `plan:archive seq:7`. The same pair one level down: the DOCUMENT reads the
+  // same transcript through the same read-only index door, and it walks the
+  // file with `iterateTranscript` — a generator over an `openSync(file, 'r')`
+  // descriptor. A read path that ever opened for writing, or that cached an
+  // outline to disk instead of to memory, would leave a file inside the
+  // snapshot below and redden this. Both are probed on a session id no index
+  // can hold, so each takes the 404 this sweep accepts.
+  '/api/conversations/not-a-real-session-id/outline',
+  '/api/conversations/not-a-real-session-id/nodes?at=0&from=0&node=0&count=2',
 ];
 
 /** Does a registered path template match this concrete pathname? */

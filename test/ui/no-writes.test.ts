@@ -839,10 +839,18 @@ function definedIn(
   if (src === null) return null;
   const text = src.masked;
 
+  // `function[ \t]*\*[ \t]*` is the GENERATOR form, and its absence was a real
+  // hole rather than a tidy-up: `core/conversation-index.ts` exports
+  // `export function* iterateTranscript`, and this pattern's `function[ \t]+`
+  // cannot cross the `*`. The symbol came back UNPLACED, which this file's
+  // own equality test then refused — correctly, because an unplaced symbol is
+  // a hole in the analysis and not a pass. Recognising the declaration is the
+  // fix; widening the refusal would have been the bug.
+  const DECL = '(?:function[ \\t]*\\*[ \\t]*|function[ \\t]+|(?:const|let|var|class)[ \\t]+)';
   const exportedDecl = new RegExp(
-    `^[ \\t]*export[ \\t]+(?:async[ \\t]+)?(?:function|const|let|var|class)[ \\t]+${symbol}\\b`, 'm');
+    `^[ \\t]*export[ \\t]+(?:async[ \\t]+)?${DECL}${symbol}\\b`, 'm');
   const localDecl = new RegExp(
-    `^[ \\t]*(?:export[ \\t]+)?(?:async[ \\t]+)?(?:function|const|let|var|class)[ \\t]+${symbol}\\b`, 'm');
+    `^[ \\t]*(?:export[ \\t]+)?(?:async[ \\t]+)?${DECL}${symbol}\\b`, 'm');
 
   const step = (spec: string, exported: string): string | null => {
     const next = resolve(module, spec);
@@ -1872,6 +1880,13 @@ test('the resolver places a symbol through each chain shape, and refuses the res
     '/p/home-b.ts': 'export const inner = 1;',
     '/p/home-c.ts': 'export class gamma {}',
     '/p/home-d.ts': 'export function deep(): void {}',
+    // A GENERATOR, and the reason this line exists: `function*` is the one
+    // declaration form the resolver could not read, so a real module —
+    // `core/conversation-index.ts`' `iterateTranscript` — came back unplaced
+    // and reddened the equality below for a hole rather than for a writer.
+    '/p/gen.ts': 'export function* walk(): Generator<number> { yield 1; }',
+    '/p/gen-spaced.ts': 'export function * walk(): Generator<number> { yield 1; }',
+    '/p/gen-hub.ts': "export { walk } from '/p/gen.ts';",
     '/p/dead-end.ts': "export { nothing } from '/p/empty.ts';",
     '/p/empty.ts': 'export const somethingElse = 1;',
     '/p/cycle-a.ts': "export { loop } from '/p/cycle-b.ts';",
@@ -1892,5 +1907,9 @@ test('the resolver places a symbol through each chain shape, and refuses the res
     + 'the LOCAL name into the import, not the exported alias');
   assert.equal(at('/p/dead-end.ts', 'nothing'), null, 'a chain that ends nowhere is refused');
   assert.equal(at('/p/cycle-a.ts', 'loop'), null, 'a cycle is refused rather than looped');
+  assert.equal(at('/p/gen-hub.ts', 'walk'), '/p/gen.ts',
+    'a generator declaration ends the chain — `export function*` is a declaration');
+  assert.equal(at('/p/gen-spaced.ts', 'walk'), '/p/gen-spaced.ts',
+    '`export function * name` is the same declaration with the star spaced off');
   assert.equal(at('/p/missing.ts', 'x'), null, 'an unreadable module is refused');
 });

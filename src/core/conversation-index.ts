@@ -410,6 +410,197 @@ export function classifyTurn(type: unknown, content: unknown): 'prompt' | 'answe
 }
 
 /**
+ * One record of a transcript, as the walk yields it — the SEAM that
+ * `core/session-summary.ts` reported as missing and could not add from where
+ * it sits.
+ *
+ * Its header says it plainly: *"What is NOT shared is the walk itself, and
+ * that is a real defect rather than a choice: `scanTranscript` consumes
+ * records and returns only counts, and `readWindow` (`ui/read-model-
+ * conversations.ts`) is private to the UI read model … Neither exposes a seam
+ * that yields records. The repair is one record-iterator in
+ * `conversation-index.ts` that all three consume; it belongs to the lane that
+ * owns that file."* This is that repair, and `scanTranscript` below is now a
+ * CONSUMER of it rather than a second walk of its own.
+ *
+ * ── `byteOffset` IS WHY THIS EXISTS, NOT ONLY WHY IT IS TIDY ───────────────
+ *
+ * `readWindow` (`ui/read-model-conversations.ts`) states the cost it accepted:
+ * *"The walk is from the start every time … JSONL records are variable-length,
+ * so there is no offset to seek to."* That is true of a reader who has never
+ * walked the file and false of one who has. A document outline walks it ONCE
+ * and remembers where each node began; every later window then costs the
+ * window instead of the file — on the owner's own transcript, 61 MB read once
+ * rather than 61 MB read per scroll. That is the whole of what makes a
+ * virtualised scroll over 27,686 records possible.
+ *
+ * So the walk is over BYTES and not over a decoded string. Splitting a decoded
+ * chunk on `'\n'` loses byte positions the moment a record carries a
+ * non-ASCII character, and this project's own corpus is half Hebrew: every
+ * offset after the first such record would be wrong, and wrong SILENTLY,
+ * because a wrong offset lands mid-record and reports `unreadable` rather than
+ * throwing. The newline is therefore found in the Buffer, and each line is
+ * decoded on its own.
+ */
+export interface TranscriptRecord {
+  /** 0-based position in the file — the index every surface counts in. */
+  index: number;
+  /** Where this line's first byte sits in the file. A seek target. */
+  byteOffset: number;
+  /** The line's length in bytes, not counting the newline that ended it. */
+  byteLength: number;
+  /**
+   * The parsed object, or `null` when the line would not parse OR parsed to
+   * something that is not a plain object.
+   *
+   * `null` for both is deliberate and carries `scanTranscript`'s own rule:
+   * `typeof [] === 'object'` and `[] !== null`, so a line holding a JSON array
+   * passes a naive check and then reads every field as `undefined` — a record
+   * counted as understood and contributing nothing, which is the silent drop
+   * rather than the disclosed one.
+   */
+  record: Record<string, unknown> | null;
+}
+
+/**
+ * How far the walk got, mutated as it goes so a caller reading the last record
+ * already knows whether there was more.
+ *
+ * A consumer that stops early leaves these at the point it stopped, which is
+ * the honest answer: `reachedEnd` false with `scannedBytes` below the cap
+ * means the CONSUMER stopped, not the file.
+ */
+export interface TranscriptCursor {
+  /** Bytes read from the file so far. */
+  scannedBytes: number;
+  /** The read saw end-of-file rather than stopping at `cap`. */
+  reachedEnd: boolean;
+  /** Lines that would not parse. Counted, never thrown and never skipped. */
+  unreadable: number;
+}
+
+export interface TranscriptWalkOptions {
+  /** Stop after this many bytes. Default `MAX_SCAN_BYTES`. */
+  cap?: number;
+  /**
+   * Start reading here instead of at byte 0.
+   *
+   * **It must be the first byte of a line**, which in practice means an offset
+   * this same walk produced. A caller that passes an offset landing inside a
+   * record gets one `unreadable` and then correct records after the next
+   * newline — visibly wrong rather than quietly shifted.
+   */
+  startByte?: number;
+  /** What `index` the record at `startByte` carries. Default 0. */
+  startIndex?: number;
+  /** Mutated as the walk proceeds. Pass one in to read it afterwards. */
+  cursor?: TranscriptCursor;
+}
+
+/** Read granularity for the walk. Bounds memory, never the read. */
+const WALK_CHUNK_BYTES = 1024 * 1024;
+
+/**
+ * Walk a transcript line by line, in bounded chunks, yielding every record
+ * with the byte offset it lives at.
+ *
+ * **Errors are states, never throws.** A file that will not open yields
+ * nothing and leaves the cursor at zero — the answer `scanTranscript` already
+ * gave, because a rebuild that aborted on one bad file would lose the whole
+ * archive to it. A read that fails part-way keeps everything already yielded
+ * and stops.
+ *
+ * The descriptor is closed in a `finally`, so a consumer that `break`s out of
+ * the `for…of` closes the file: a generator runs its `finally` on `.return()`.
+ */
+export function* iterateTranscript(
+  file: string, options: TranscriptWalkOptions = {},
+): Generator<TranscriptRecord> {
+  const cap = options.cap ?? MAX_SCAN_BYTES;
+  const cursor = options.cursor ?? { scannedBytes: 0, reachedEnd: false, unreadable: 0 };
+  let index = options.startIndex ?? 0;
+  let position = options.startByte ?? 0;
+
+  let fd: number;
+  try {
+    fd = openSync(file, 'r');
+  } catch {
+    return;
+  }
+
+  const buffer = Buffer.alloc(WALK_CHUNK_BYTES);
+  /** Bytes of a line the last chunk ended in the middle of. */
+  let carry: Buffer | null = null;
+  /** Where that partial line began in the file. */
+  let carryAt = 0;
+
+  const parse = (bytes: Buffer, at: number): TranscriptRecord => {
+    let record: unknown;
+    try {
+      record = JSON.parse(bytes.toString('utf8'));
+    } catch {
+      cursor.unreadable += 1;
+      return { index: index++, byteOffset: at, byteLength: bytes.length, record: null };
+    }
+    if (typeof record !== 'object' || record === null || Array.isArray(record)) {
+      cursor.unreadable += 1;
+      return { index: index++, byteOffset: at, byteLength: bytes.length, record: null };
+    }
+    return {
+      index: index++, byteOffset: at, byteLength: bytes.length,
+      record: record as Record<string, unknown>,
+    };
+  };
+
+  try {
+    while (cursor.scannedBytes < cap) {
+      const want = Math.min(WALK_CHUNK_BYTES, cap - cursor.scannedBytes);
+      const read = readSync(fd, buffer, 0, want, position);
+      if (read <= 0) { cursor.reachedEnd = true; break; }
+      const chunkAt = position;
+      position += read;
+      cursor.scannedBytes += read;
+
+      const view = buffer.subarray(0, read);
+      let from = 0;
+      for (;;) {
+        const nl = view.indexOf(0x0a, from);
+        if (nl === -1) break;
+        let bytes: Buffer;
+        let at: number;
+        if (carry !== null) {
+          bytes = Buffer.concat([carry, view.subarray(from, nl)]);
+          at = carryAt;
+          carry = null;
+        } else {
+          bytes = view.subarray(from, nl);
+          at = chunkAt + from;
+        }
+        from = nl + 1;
+        // An empty line is not a record. `scanTranscript` skipped one and so
+        // does this, so the index a record carries is unchanged by the blank
+        // line a transcript may end with.
+        if (bytes.length > 0) yield parse(bytes, at);
+      }
+      if (from < read) {
+        const rest = view.subarray(from, read);
+        if (carry === null) { carryAt = chunkAt + from; carry = Buffer.from(rest); }
+        else carry = Buffer.concat([carry, rest]);
+      }
+    }
+    // The trailing fragment is a whole line only when the read reached the end
+    // of the file. If the cap stopped us it is a record cut in half, and
+    // parsing it would turn the bound into a phantom `unreadable`.
+    if (cursor.reachedEnd && carry !== null && carry.length > 0) yield parse(carry, carryAt);
+  } catch {
+    // A read that failed part-way keeps what it yielded. `scannedBytes` says
+    // how far it got.
+  } finally {
+    try { closeSync(fd); } catch { /* nothing usable to close */ }
+  }
+}
+
+/**
  * Read one transcript and count what the index holds, synchronously and in
  * bounded chunks.
  *
@@ -467,41 +658,18 @@ export function scanTranscript(file: string, cap: number = MAX_SCAN_BYTES): Scan
     aiTitle: null,
   };
 
-  let fd: number;
-  try {
-    fd = openSync(file, 'r');
-  } catch {
-    // Unreadable is a state this returns, not one it throws. The caller marks
-    // the row and the reader is told; a rebuild that aborted on one bad file
-    // would lose the whole archive to it.
-    return result;
-  }
+  // The cursor is READ AFTERWARDS rather than accumulated here, so this
+  // function has no opinion about bytes at all — the walk owns that, and a
+  // second opinion about how far a read got is exactly the drift the shared
+  // iterator exists to prevent.
+  const cursor: TranscriptCursor = { scannedBytes: 0, reachedEnd: false, unreadable: 0 };
 
-  const buffer = Buffer.alloc(CHUNK_BYTES);
-  let carry = '';
-
-  /** One complete line. Everything above is bookkeeping around this. */
-  const take = (line: string): void => {
-    if (line === '') return;
-    let record: unknown;
-    try {
-      record = JSON.parse(line);
-    } catch {
-      result.unreadable += 1;
-      return;
-    }
-    // `Array.isArray` is not tidiness: `typeof [] === 'object'` and `[] !==
-    // null`, so a line holding a JSON array passes both other checks and then
-    // reads every field as `undefined` — a record counted as understood and
-    // contributing nothing, which is the silent drop rather than the disclosed
-    // one. Caught by `a line that will not parse costs one row and never its
-    // neighbours`, which is why that test asserts the COUNT and not merely
-    // that the neighbours survived.
-    if (typeof record !== 'object' || record === null || Array.isArray(record)) {
-      result.unreadable += 1;
-      return;
-    }
-    const row = record as {
+  for (const step of iterateTranscript(file, { cap, cursor })) {
+    // `null` is a line that would not parse or parsed to a non-object. The
+    // cursor has already counted it; counting it twice here is the bug this
+    // shape removes.
+    if (step.record === null) continue;
+    const row = step.record as {
       type?: unknown; timestamp?: unknown; gitBranch?: unknown; cwd?: unknown;
       aiTitle?: unknown; message?: unknown;
     };
@@ -530,30 +698,10 @@ export function scanTranscript(file: string, cap: number = MAX_SCAN_BYTES): Scan
       else if (turn === 'answer') result.answers += 1;
       else if (row.type === 'user' || row.type === 'assistant') result.machinery += 1;
     }
-  };
-
-  try {
-    let read = 0;
-    while (result.scannedBytes < cap) {
-      const want = Math.min(CHUNK_BYTES, cap - result.scannedBytes);
-      read = readSync(fd, buffer, 0, want, null);
-      if (read <= 0) break;
-      result.scannedBytes += read;
-      const parts = (carry + buffer.toString('utf8', 0, read)).split('\n');
-      carry = parts.pop() ?? '';
-      for (const line of parts) take(line);
-    }
-    // The trailing fragment is a whole line only when the read reached the end
-    // of the file. If the cap stopped us, it is a record cut in half, and
-    // parsing it would turn the bound into a phantom `unreadable`.
-    if (result.scannedBytes < cap) take(carry);
-  } catch {
-    // A read that failed part-way keeps what it counted. `scannedBytes` says
-    // how far it got, and the row it produces is visibly short.
-  } finally {
-    try { closeSync(fd); } catch { /* nothing usable to close */ }
   }
 
+  result.scannedBytes = cursor.scannedBytes;
+  result.unreadable = cursor.unreadable;
   return result;
 }
 

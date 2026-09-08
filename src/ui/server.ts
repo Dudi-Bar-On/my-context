@@ -99,6 +99,9 @@ import {
 import { registerCliHelpRoutes } from './read-model-cli-help.ts';
 import { registerCommandRoutes } from './read-model-command.ts';
 import { registerConversationRoutes } from './read-model-conversations.ts';
+import {
+  registerConversationDocumentRoutes,
+} from './read-model-conversation-document.ts';
 import { registerStagingRoutes } from './read-model-staging.ts';
 import { registerFlagRoutes } from './read-model-flags.ts';
 import { registerConfigRoutes } from './read-model-config.ts';
@@ -612,6 +615,13 @@ export function registerReadRoutes(): void {
   // does that. `test/ui/conversations-endpoint.test.ts` holds it to both.
   // Registered here for the same two reasons as the calls above.
   registerConversationRoutes();
+  // `plan:archive seq:7`/`seq:8`/`seq:13` — the same transcript read as ONE
+  // DOCUMENT rather than as a page of records: an outline the scroll places
+  // rows from, and a node window it seeks to. Its graph is the same one the
+  // call above justifies (`core/conversation-index.ts` and nothing else), and
+  // it binds no writer at all — it never opens the index for writing and never
+  // touches `node:fs`' mutating half.
+  registerConversationDocumentRoutes();
   // plan:library seq:1. The same two tables again, plus the help topics, the
   // MCP tool schemas and the committed slash-command files — served SUBJECT BY
   // SUBJECT rather than all at once, because the Library's picker asks about

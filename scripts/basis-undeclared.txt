@@ -47,7 +47,6 @@ e2e/composer-staging.spec.ts
 e2e/composer-suggest.spec.ts
 e2e/config-blast-face.spec.ts
 e2e/config-composer.spec.ts
-e2e/conversations.spec.ts
 e2e/corpus-tree.spec.ts
 e2e/ctx-post.spec.ts
 e2e/degraded.spec.ts

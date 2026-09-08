@@ -3585,3 +3585,252 @@ body.docpage{overflow-y:auto}
 .convfold>summary{cursor:pointer;font-size:var(--fs-0);color:var(--dim)}
 .convback{inline-size:auto;margin-block-end:var(--sp-2)}
 .convtitle{font-weight:600}
+
+/* ══════════════════════════════════════════════════════════════════════════
+   THE TRANSCRIPT VIEWER — `plan:archive seq:7`, `seq:8`, `seq:13`.
+
+   ── THIS BLOCK IS DELIBERATELY UNLIKE EVERY BLOCK ABOVE IT ────────────────
+
+   Owner ruling, carried verbatim by `seq:8`: "DO NOT USE THE CSS STYLE OF THE
+   APP CARDS, it should not be limiting you - you can use the cards to EMBED IN
+   THEM components." The item calls that "A RELEASE, NOT A BAN" and adds:
+   "Expect to write CSS that looks unlike the rest of the app, and do not let
+   anyone correct it for that."
+
+   So nothing here extends `.card`, `.pane`, `.plate`, `.row` or `.chip`'s box.
+   `.tvscroll` is a terminal: a sunken well with a hard edge, monospace
+   machinery, prose set for reading, and no gloss, no elevation and no rounded
+   pane furniture. The five budgeted meaning hues are still the only hues that
+   carry MEANING here — `--gold` marks a prompt and `--ok` an answer, exactly
+   as `.chip.gov` and `.chip.ok` do elsewhere — because that vocabulary is the
+   product's and this viewer is inside the product.
+
+   ── WHAT IS SCOPED, AND WHY THAT IS THE WHOLE SAFETY ARGUMENT ─────────────
+
+   Every selector below begins `.tv`, and the sixteen-colour terminal palette
+   is declared on `.tvterm` rather than on `:root`. That is the discipline
+   `lib/vendor/VENDOR.md` records for Web Awesome — "one block scoped to
+   `wa-tree` so the foreign vocabulary cannot leak onto a screen". A terminal
+   palette is exactly such a foreign vocabulary: it cannot come out of five
+   meaning hues, and it must not leak into them.
+
+   ── LOGICAL PROPERTIES ONLY, AS EVERYWHERE ELSE IN THIS FILE ──────────────
+
+   The accent that marks a turn is `border-inline-start`, so under `dir="rtl"`
+   it moves to the right edge on its own. `e2e/conversations.spec.ts` measures
+   that in both languages rather than trusting this sentence — this project has
+   found a leading dot at the wrong end under RTL after every assertion passed.
+   ══════════════════════════════════════════════════════════════════════════ */
+
+.tvroot{display:block;min-inline-size:0}
+.tvhead{display:flex;flex-wrap:wrap;align-items:baseline;gap:var(--sp-2);
+  margin-block-end:var(--sp-2)}
+.tvtitle{margin:0;font-size:var(--fs-3)}
+.tvfacts{margin:0;font-size:var(--fs-00);color:var(--dim);
+  overflow-wrap:anywhere}
+.tvback{inline-size:auto;flex:0 0 auto;font:var(--fs-0)/1.2 var(--sans);
+  color:var(--ink);background:var(--panel-2);border:1px solid var(--edge);
+  border-radius:var(--r-sm);padding:var(--sp-1) var(--sp-2);cursor:pointer}
+.tvback:hover,.tvjump:hover{border-color:var(--gold);color:var(--gold)}
+.tvback:focus-visible,.tvjump:focus-visible,.tvfind:focus-visible,
+.tvscroll:focus-visible{outline:2px solid var(--gold);outline-offset:2px}
+
+.tvbar{display:flex;flex-wrap:wrap;align-items:center;gap:var(--sp-2);
+  margin-block-end:var(--sp-1)}
+.tvfind{flex:1 1 220px;min-inline-size:0;font:var(--fs-0)/1.4 var(--sans);
+  color:var(--ink);background:var(--sink);border:1px solid var(--edge);
+  border-radius:var(--r-sm);padding:var(--sp-1) var(--sp-2)}
+.tvjump{inline-size:auto;flex:0 0 auto;font:600 var(--fs-00)/1.2 var(--mono);
+  color:var(--dim);background:var(--panel-2);border:1px solid var(--edge);
+  border-radius:var(--r-sm);padding:var(--sp-1) var(--sp-2);cursor:pointer}
+.tvcount{margin:0 0 var(--sp-1);font-size:var(--fs-00);color:var(--dim)}
+
+/* THE SCROLL. One well, one document. Its height is a viewport fraction so a
+   long session and a short one both read as a terminal rather than as a page
+   that grew — `seq:7`'s "similar experience like SCROLLING OVER A TERMINAL".
+   `overscroll-behavior` keeps a wheel that reaches the end inside the well
+   instead of scrolling the page out from under the reader. */
+/* `contain:inline-size`, AND IT IS THE FIX FOR A MEASURED DEFECT rather than
+   an optimisation. `main` is `display:grid` with `overflow-x:auto`, so its
+   single track grows to its content's max-content and the PAGE scrolls
+   sideways. Measured on the owner's real transcript: one turn holding a
+   `<pre>` of `white-space:pre` text pushed that track to 1,663px inside a
+   1,211px column, and every turn on screen was clipped at the right edge.
+   `contain:inline-size` makes this box's intrinsic inline size independent of
+   what is inside it, so the well is exactly as wide as its column and the
+   page never scrolls sideways.
+
+   `overflow-x:hidden` is then safe rather than a silent clip, because every
+   construct that can be wider than the column scrolls INSIDE ITSELF —
+   `.tvterm`, `.tvsaid pre` and `.tvsaid table` each carry their own
+   `overflow-x:auto`, and `.tvsaid` breaks anywhere. Wide content is reachable;
+   it is just reachable in its own box. */
+.tvscroll{block-size:min(70vh,860px);overflow-y:auto;overflow-x:hidden;
+  overscroll-behavior:contain;background:var(--sink);
+  border:1px solid var(--edge);border-radius:var(--r-md);
+  padding-inline:var(--sp-3);contain:layout paint inline-size}
+/* The document's whole height, with the drawn rows POSITIONED in it. A row's
+   top is written from the scroller's own model, so nothing has a second
+   opinion about where a row is — see `mountDocument`'s header for the shape
+   this replaced (two spacers with the rows in normal flow) and for the blank
+   well it drew on the owner's real session. `inset-inline:0` and not
+   `left/right`, so a row still spans its column under `dir=rtl`. */
+.tvinner{position:relative;inline-size:100%}
+.tvrow{position:absolute;inset-inline:0}
+.tvwait{display:flex;align-items:center;font:var(--fs-00)/1.4 var(--mono);
+  color:var(--dim)}
+
+/* A TURN. The accent and the glyph together, never colour alone — the same
+   rule the list's chips follow, for the same reason: this app is bilingual and
+   themed, and a monochrome print, a colour-blind reader and the RTL flip must
+   all keep the distinction. */
+.tvturn{border-inline-start:3px solid var(--rule);
+  border-block-start:1px solid var(--edge);
+  padding-block:var(--sp-3);padding-inline-start:var(--sp-3)}
+.tvturn.tvyou{border-inline-start-color:var(--gold)}
+.tvturn.tvclaude{border-inline-start-color:var(--ok)}
+.tvturn.tvsyn{border-inline-start-color:var(--edge-3)}
+.tvwho{display:flex;flex-wrap:wrap;align-items:baseline;gap:var(--sp-2);
+  margin-block-end:var(--sp-2)}
+.tvmark{font-family:var(--mono);font-size:var(--fs-0);color:var(--dim)}
+.tvmark::before{content:attr(data-g)}
+.tvyou .tvmark{color:var(--gold)}
+.tvclaude .tvmark{color:var(--ok)}
+.tvname{margin:0;font:600 var(--fs-1)/1.2 var(--sans);color:var(--ink)}
+.tvyou .tvname{color:var(--gold)}
+.tvclaude .tvname{color:var(--ok)}
+.tvsyn .tvname{color:var(--dim)}
+.tvat{font:var(--fs-00)/1.2 var(--mono);color:var(--dim)}
+.tvtag{align-self:center}
+
+/* THE WORDS. Prose, set for reading rather than for a data row — `seq:8`'s
+   cell content, rendered from the Markdown the terminal itself renders. The
+   descendant rules below style what `lib/markdown.js` builds; it emits plain
+   semantic tags and almost no classes, which is why they are reached by tag. */
+.tvsaid{font:var(--fs-1)/1.6 var(--sans);color:var(--ink);
+  overflow-wrap:anywhere}
+.tvsaid>:first-child{margin-block-start:0}
+.tvsaid>:last-child{margin-block-end:0}
+.tvsaid p,.tvsaid ul,.tvsaid ol,.tvsaid blockquote,.tvsaid table{
+  margin-block:0 var(--sp-3)}
+.tvsaid h1,.tvsaid h2,.tvsaid h3,.tvsaid h4,.tvsaid h5,.tvsaid h6{
+  margin-block:var(--sp-4) var(--sp-2);font-family:var(--sans);
+  line-height:1.3;color:var(--ink)}
+.tvsaid h1,.tvsaid h2{font-size:var(--fs-2)}
+.tvsaid h3,.tvsaid h4,.tvsaid h5,.tvsaid h6{font-size:var(--fs-1)}
+.tvsaid ul,.tvsaid ol{padding-inline-start:var(--sp-5)}
+.tvsaid li{margin-block-end:var(--sp-1)}
+.tvsaid li.task-list-item{list-style:none}
+.tvsaid a{color:var(--gold)}
+.tvsaid b{color:var(--ink);font-weight:600}
+.tvsaid em{font-style:italic}
+.tvsaid .m{background:var(--paper);border:1px solid var(--edge);
+  border-radius:var(--r-sm);padding-inline:4px}
+.tvsaid pre{margin-block:0 var(--sp-3);padding:var(--sp-2) var(--sp-3);
+  background:var(--paper);border:1px solid var(--edge);
+  border-radius:var(--r-sm);overflow-x:auto}
+.tvsaid blockquote{border-inline-start:2px solid var(--edge-3);
+  padding-inline-start:var(--sp-3);color:var(--dim)}
+.tvsaid table{border-collapse:collapse;display:block;overflow-x:auto;
+  font-size:var(--fs-0)}
+.tvsaid th,.tvsaid td{border:1px solid var(--edge);
+  padding:var(--sp-1) var(--sp-2);text-align:start}
+.tvsaid hr{border:0;border-block-start:1px solid var(--edge);
+  margin-block:var(--sp-3)}
+.tvsaid .refusal{display:inline-block;font:600 var(--fs-00)/1.4 var(--mono);
+  color:var(--warn)}
+
+.tvcut{margin:var(--sp-1) 0 0;font-size:var(--fs-00);color:var(--warn)}
+.tvnote{margin:var(--sp-2) 0 0;font-size:var(--fs-00);color:var(--dim)}
+.tvnote.tvwarn{color:var(--warn)}
+.tvthink{margin-block-start:var(--sp-2)}
+.tvthink>summary{font:var(--fs-00)/1.4 var(--mono);color:var(--dim);
+  cursor:pointer}
+
+/* THE FOLD. One line for a whole run of machinery, and the run is the point:
+   `seq:13`'s "the machinery is present but collapsed to one summarised line".
+   A real `<details>`, so Enter opens it and print expands it. */
+.tvwork{border-block-start:1px solid var(--edge);padding-block:var(--sp-1)}
+.tvworksum{display:flex;flex-wrap:wrap;align-items:baseline;gap:var(--sp-2);
+  font:var(--fs-00)/1.6 var(--mono);color:var(--dim);cursor:pointer;
+  padding-inline-start:var(--sp-3)}
+.tvworksum::marker{color:var(--edge-3)}
+.tvworkn{color:var(--ink)}
+.tvtools{color:var(--carry);overflow-wrap:anywhere}
+.tvsteps{margin:var(--sp-2) 0 var(--sp-2);
+  padding-inline-start:0;list-style:none}
+.tvstep{margin-block-end:var(--sp-2);color:var(--dim)}
+.tvstep.tvfail{color:var(--crit)}
+.tvstephead{margin:0 0 var(--sp-1);font:var(--fs-00)/1.5 var(--mono);
+  overflow-wrap:anywhere}
+.tvdetail{color:var(--ink)}
+.tvfail .tvdetail{color:var(--crit)}
+.tvresult{color:var(--carry)}
+
+/* TERMINAL OUTPUT. Monospace, wrapped rather than clipped, and bounded so one
+   40,000-character `git log` cannot own the whole well. */
+.tvterm{margin:0;padding:var(--sp-2) var(--sp-3);font:var(--fs-00)/1.5 var(--mono);
+  color:var(--ink);background:var(--paper);border:1px solid var(--edge);
+  border-radius:var(--r-sm);white-space:pre-wrap;overflow-wrap:anywhere;
+  max-block-size:44vh;overflow-y:auto}
+
+/* THE SIXTEEN COLOURS, scoped to `.tvterm` so the foreign vocabulary cannot
+   reach a screen. `lib/ansi.js` emits only these class names and never an
+   inline colour, and its header carries the measurement that sized the whole
+   feature: ONE record of 27,752 on the owner's transcript carries an escape
+   sequence at all. This is here so that one renders as it did, and so that
+   every non-SGR sequence renders as the terminal showed it — as nothing. */
+.tvterm .tva-bold{font-weight:700}
+.tvterm .tva-dim{opacity:.7}
+.tvterm .tva-it{font-style:italic}
+.tvterm .tva-un{text-decoration:underline}
+.tvterm .tva-fk{color:#5c6370}
+.tvterm .tva-fr{color:#e06c75}
+.tvterm .tva-fg{color:#98c379}
+.tvterm .tva-fy{color:#d19a66}
+.tvterm .tva-fb{color:#61afef}
+.tvterm .tva-fm{color:#c678dd}
+.tvterm .tva-fc{color:#56b6c2}
+.tvterm .tva-fw{color:#abb2bf}
+.tvterm .tva-fK{color:#7f8c9b}
+.tvterm .tva-fR{color:#ff7b86}
+.tvterm .tva-fG{color:#b5e890}
+.tvterm .tva-fY{color:#e5c07b}
+.tvterm .tva-fB{color:#82c9ff}
+.tvterm .tva-fM{color:#e29bf5}
+.tvterm .tva-fC{color:#68d8e3}
+.tvterm .tva-fW{color:#f0f2f5}
+.tvterm .tva-bk{background:#22262c}
+.tvterm .tva-br{background:#4a2429}
+.tvterm .tva-bg{background:#2b3d24}
+.tvterm .tva-by{background:#463d1f}
+.tvterm .tva-bb{background:#1f3448}
+.tvterm .tva-bm{background:#3d2545}
+.tvterm .tva-bc{background:#1e3c40}
+.tvterm .tva-bw{background:#3a3f47}
+.tvterm .tva-bK{background:#31363e}
+.tvterm .tva-bR{background:#5c2d33}
+.tvterm .tva-bG{background:#364c2d}
+.tvterm .tva-bY{background:#54401f}
+.tvterm .tva-bB{background:#26415a}
+.tvterm .tva-bM{background:#4b2d55}
+.tvterm .tva-bC{background:#254a4f}
+.tvterm .tva-bW{background:#474d56}
+
+/* NO `scroll-behavior:smooth`, and that is a measured choice rather than an
+   omission. A virtualised well repaints on every scroll event, so animating a
+   23,000-pixel jump to the end runs the window builder dozens of times on the
+   way — visibly janky, and it made `the end of the session is reachable` flake
+   under parallel load because the assertion fired mid-animation. A jump to the
+   end of a document is a jump, not a journey; the wheel and the keyboard still
+   scroll at their own pace. `overscroll-behavior:contain` above is what keeps a
+   wheel that reaches the end inside the well rather than carrying the page. */
+
+/* PRINT. A virtualised scroll holds a screenful; printing one would print a
+   screenful and silently lose the rest, which is exactly the drop this whole
+   change exists to remove. So the well prints as what it is — a window on a
+   longer document — and says so rather than pretending to be the document. */
+@media print{
+  .tvscroll{block-size:auto;overflow:visible;border:0;background:none}
+  .tvwork[open] .tvsteps{break-inside:avoid}
+}
