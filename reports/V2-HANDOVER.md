@@ -1,3 +1,84 @@
+## ⏭ READ THIS FIRST — 2026-09-08, at 95%. THE VIEWER LANDED. `archive/14` IS RUNNING.
+
+**Committed and pushed: `b15a9ea`** — `archive/7`+`/8`+`/13`, verified here:
+strings-parity 8/8 (both tables were in play), `tsc` clean, 48 unit tests,
+**browser suite 17/17 in both languages**, `check:vendor` unchanged at 28 files.
+
+**Running now: `archive/14`, the stale index.** Tree was clean when it started.
+
+### WHAT THE VIEWER ACTUALLY DID, AND THE THREE FACTS WORTH KEEPING
+
+**1. MY ANSI LEAD WAS WRONG AND IT MEASURED BEFORE BELIEVING ME.** Across
+63,871,429 bytes / 27,752 records: **exactly ONE record carries an ANSI escape**,
+and it is a Playwright timeout quoting its own dim call log. 3,684 `rendered`
+fields, **zero** with ANSI. **The transcript is not a terminal capture** — it is
+structured JSON whose text blocks hold MARKDOWN, which is what the terminal
+itself renders. **So it vendored NOTHING** (~9–14 KB pinned plus a re-fetch
+recipe and an upgrade ritual, to serve 0.004% of records, is a bad trade) and
+moved the weight onto `lib/markdown.js`, already vendored and gated.
+`lib/ansi.js` exists only to honour SGR and — the job that matters on every
+record — **strip** non-SGR sequences so `[2J` never renders as text.
+
+**2. VIRTUALISED SCROLLING NEEDED A SEAM, NOT A RULING.** `readWindow` had
+written down *"there is no offset to seek to"* — true of a reader that has never
+walked the file. **`iterateTranscript` (`src/core/conversation-index.ts`) now
+yields every record with its BYTE offset**, found in the Buffer rather than a
+decoded split, because this corpus is Hebrew from record 5. Outline walk **358 ms
+over 61 MB**; a 6-node window at byte 49,406,305 in **2 ms**. **This is also the
+repair `session-summary.ts` reported as missing and could not make** — `plan:loop`
+and `plan:restore` both benefit.
+
+**3. THE FOLD IS PER RUN, NOT PER RECORD** — which is exactly what his "49 folded
+0-character rows" were. 27,813 records → **4,916 nodes**, with
+`sum(span) === records` asserted so nothing can be quietly dropped.
+
+**FOUR DEFECTS ONLY THE SCREENSHOTS FOUND**, and the second is why that rule
+exists: the document well drew **COMPLETELY BLANK at four of seven depths while
+both prior tests passed throughout** — two spacers plus normal flow gives a row
+two positions that disagree until every height is measured. Also: rows reading
+"Reading…" for ever while the endpoint answered 200; one `<pre>` pushing the grid
+track to 1,663px inside a 1,211px column; and a Hebrew timestamp reordered to
+`09:00 2026-09-08` because a stamp is two neutral runs.
+
+**It did NOT go wider than its brief.** The search it screenshotted is a filter
+over turn openings — **first 140 characters plus tool names, and it says so on
+screen.** Real full-text search needs a server-side index and remains `seq:10`.
+
+### THE BOTTOM LINE HE ASKED FOR: NOT EVERYTHING IS BUILT
+
+**Landed:** the scrollable document · run-folding · the document skeleton
+(speaker headings, timestamps) · terminal-styled rendering · the card ruling
+taken literally (the list keeps `.card`; the document shares no rule with it, and
+the sixteen-colour palette is scoped so it cannot reach the five budgeted
+meaning hues).
+
+**Still owed, each filed:**
+- **`archive/14`** the archive being up to date — **RUNNING NOW**
+- **`archive/7`** the size caps — amended with his no-cap ruling; **the cap still
+  has to be removed now the scroll exists**
+- **`archive/16`** questions, every option offered, his answer, shell commands
+- **`archive/17`** copy a selection, three formats named by purpose
+- **`archive/15`** subagent links with cursor return (needs `/12`)
+
+### WHAT THE NEXT SESSION DOES FIRST
+
+1. **Land `archive/14` when it reports.** Its design question is where the
+   refresh fires — **a GET must not write**, because `server-e2e.test.ts` asserts
+   a served read changes not one byte and `no-writes.test.ts` holds an exact set
+   of write bindings. **A staleness line is required whatever it chose.**
+2. **Then `archive/16` and `/17`** — they are what he asked for most recently,
+   and `/16` is a classification change rather than new capture.
+3. `/15` and `/17` **share one hard problem**: a DOM range must map to a RECORD
+   range in a document whose rows may not be in the DOM. **Solve once.**
+
+### THE TRAP THAT STILL SHAPES EVERY CORPUS EDIT
+
+**Editing an item lapses its summary AND its acknowledgements.** Fixing a doctor
+finding on a closed item re-opens the ones settled earlier. That is why five
+citations were acknowledged rather than repaired, and why the seven stand-downs
+changed fields only. **doctor: 89 this morning → 47, twelve warnings and none of
+them open.** `open_question_blocks` (7) is HIS and must not be acknowledged.
+
 ## ⏭ READ THIS FIRST — 2026-09-08, at 93%. THE SEVEN ARE DONE. ONE LANE STILL RUNNING.
 
 **The block below this one told you to stand down the seven `retired_still_binding`
