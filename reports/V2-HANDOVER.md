@@ -1,3 +1,82 @@
+## ⏭ READ THIS FIRST — 2026-09-08, at 93%. THE SEVEN ARE DONE. ONE LANE STILL RUNNING.
+
+**The block below this one told you to stand down the seven `retired_still_binding`
+items first. THAT IS DONE** (`5d081b6`). Measured after: **60 retired items, 0
+still pinned, 0 still hard.** `retired_still_binding` is gone from doctor
+entirely. Do not redo it.
+
+### DOCTOR: 89 THIS MORNING, 47 NOW, AND NO WARNING IS OPEN
+
+Twelve warnings, **every one acknowledged with a recorded reason**. Open and
+genuinely outstanding: **`open_question_blocks` (7) — HIS, and must NOT be
+acknowledged**, because that would silence a true signal; `body_disagrees_with_meta`
+(9); `citation_form` (2); two stale summaries from my own supersede edits.
+
+**The reasons for every acknowledgement are in commit messages, not in the
+items** — `c510a6f`, `5d081b6` and the two before them. `ack` carries no text,
+which is why.
+
+**AND THE TRAP THAT SHAPED ALL OF IT, because it will catch the next session
+too: EDITING AN ITEM LAPSES ITS SUMMARY AND ITS ACKNOWLEDGEMENTS.** So
+"fixing" a finding on a closed item re-opens the findings settled an hour
+earlier — doctor gets worse, not better. That is why five citations were
+acknowledged rather than repaired, and why the seven stand-downs added **no body
+notes**: fields only, reasons in the commit.
+
+**This backlog cannot re-form.** `supersedeItem` now clears `always` and a hard
+severity in the same act and records what it cleared as an observation on the
+retiree.
+
+### THE ONLY LANE RUNNING: D37's VIEWER — DO NOT SWEEP IT
+
+`archive/7`+`/8`+`/13`, uncommitted, and he is reading it live on 58888.
+Its files: `src/core/conversation-index.ts` · `src/ui/server.ts` ·
+`src/ui/public/screens/conversations.js` · `src/ui/public/styles.css` ·
+**`src/ui/public/strings/en.js`** · **`src/ui/public/strings/he.js`** ·
+`e2e/conversations.spec.ts` · `test/ui/no-writes.test.ts` · and new:
+**`src/ui/read-model-conversation-document.ts`**, **`src/ui/public/lib/ansi.js`**.
+
+**Run `node --test test/ui/strings-parity.test.ts` BEFORE committing it** — both
+tables are in play and a missing key makes `t()` throw at runtime, which has
+broken HEAD here.
+
+### `plan:archive` IS NOW FOURTEEN ITEMS, FIVE FILED TODAY FROM HIM READING THE SCREEN
+
+- **`archive/14`** the index was **over a day stale** — `rebuildConversations`
+  has exactly ONE caller, the CLI command, so the screen serves an index nobody
+  refreshes. Cheap fix (append-only file, freshness already keyed on
+  `(bytes, mtime_ms)`), but **a staleness line is required.** `restore/1` and the
+  loop read this index.
+- **`archive/15`** subagent opens from the turn that dispatched it — **the RETURN
+  is the requirement, not the link.**
+- **`archive/16`** his questions and shell commands are **not missing — they are
+  classified as machinery and folded.** A classification change, not a capture
+  one. Show **every option offered**, not only the chosen one.
+- **`archive/17`** the clipboard: **neither** the rendered DOM (this UI
+  deliberately inserts bidi isolation — 116 `dir` wrappers, 344 RLM marks removed
+  *because they had been pasted around*) **nor** the raw JSONL (an envelope).
+  His amendment makes it **three formats named by purpose**.
+- **`archive/7` amended** — **no cap in the document view**, removed by BUILDING
+  the virtualised document rather than raising 60000.
+
+**`archive/15` and `/17` share one hard problem** — a DOM range must map to a
+RECORD range in a document whose rows may not be in the DOM. **Solve once.**
+
+### WHAT THE NEXT SESSION DOES FIRST
+
+1. **Land the D37 viewer when it reports** (strings-parity first).
+2. **Then `archive/14`** — everything downstream reads that index, and a stale
+   index means the self-improvement loop would learn from a day-old transcript
+   and never know.
+3. Then the rest of D37 in order: `/9` opt-in · `/4`+`/5` persistence · `/12`
+   subagents · `/16` · `/17` · `/10` · `/11` · `/6`.
+
+### STILL ON HIM, NOTHING BLOCKING
+
+`open_question_blocks` (7) · `walk/119` · `walk/0` has no `seq` · the "one
+sentence" wording · the queue **ration** · `demo-corpus.ts` keep-or-delete · the
+Simulate colour-only chip · `successorChain` to `core/relations.ts`.
+
 ## ⏭ READ THIS FIRST — 2026-09-08, at 92%. FIVE MORE ARCHIVE ITEMS FROM HIM READING THE SCREEN.
 
 The D37 viewer lane is **still running**, uncommitted, and he is reading its
