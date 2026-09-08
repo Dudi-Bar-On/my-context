@@ -3766,6 +3766,21 @@ body.docpage{overflow-y:auto}
 .tvsaid pre{margin-block:0 var(--sp-3);padding:var(--sp-2) var(--sp-3);
   background:var(--paper);border:1px solid var(--edge);
   border-radius:var(--r-sm);overflow-x:auto}
+/* WHAT THE FENCE SAID IT WAS — drawn only where it said something.
+   `lib/markdown.js`'s `fenceNode` sets `data-lang` to the word the author
+   wrote, so this selector matches 25 of the 185 fenced blocks on the owner's
+   own transcript and none of the other 160. That asymmetry is the decision,
+   not an accident: a mark on the 160 would be a badge on the common case
+   explaining the absence of a treatment the rare case gets, where a label on
+   the 25 says the useful thing positively — colour and label arrive together,
+   so "coloured" and "declared" are visibly one set and a block with neither
+   declared nothing. `fenceNode`'s own header carries the argument.
+   `attr()` is content, so this needs no string-table key and no language: it
+   echoes the author's own word. The `pre` is `direction:ltr`, so the label
+   sits at the same edge as the code it names under `dir="rtl"` too. */
+.tvsaid pre[data-lang]::before{content:attr(data-lang);display:block;
+  font:var(--fs-00)/1.4 var(--mono);color:var(--dim);
+  margin-block-end:var(--sp-1);user-select:none}
 .tvsaid blockquote{border-inline-start:2px solid var(--edge-3);
   padding-inline-start:var(--sp-3);color:var(--dim)}
 .tvsaid table{border-collapse:collapse;display:block;overflow-x:auto;
@@ -3868,6 +3883,85 @@ body.docpage{overflow-y:auto}
 .tvterm .tva-bC{background:#254a4f}
 .tvterm .tva-bW{background:#474d56}
 
+/* ── SYNTAX COLOUR, AND WHY IT ADDS NO HUE TO THIS PRODUCT ────────────────
+
+   `TASK-inline-code-in-a-conversation-gets-a-font-change-and-nothing`, owner
+   2026-09-08: *"Full syntax colouring in fenced blocks too. everything that is
+   colourd should apear similar in the viewer"*.
+
+   Syntax colours are a FOREIGN VOCABULARY in exactly the sense the block at the
+   top of this viewer names, so they are scoped the way the sixteen terminal
+   colours above are and the ten `--wa-*` properties are: declared in ONE place,
+   on the one element that carries them, unable to reach a chip or one of the
+   five budgeted meaning hues.
+
+   Two things make that scoping real rather than stated:
+
+     1. **The selector is `.tvsaid pre[data-lang]`** — the archive's own prose
+        well, and inside it only a fence that DECLARED a language. `lib/markdown
+        .js` builds the same token spans wherever it renders, so the item pane's
+        own fences carry the markup and none of the colour; extending this to
+        them is one selector, on a day somebody asks for it.
+     2. **The nine hues are byte-identical to nine already declared above.**
+        `--tvh-comment` is `.tva-fK`, `--tvh-string` is `.tva-fg`, `--tvh-number`
+        is `.tva-fy`, `--tvh-keyword` is `.tva-fm`, `--tvh-literal` is `.tva-fy`,
+        `--tvh-fn` is `.tva-fb`, `--tvh-type` is `.tva-fY`, `--tvh-prop` is
+        `.tva-fr`, `--tvh-opt` is `.tva-fc`. **Nothing new enters the product**:
+        this is the terminal's own palette, used for the thing the terminal uses
+        it for, which is what the ruling asked to see.
+
+   MEASURED against `--paper` (#0f0f12), which is what `.tvsaid pre` sits on:
+   comment 5.58:1, string 9.49:1, number/literal 7.77:1, keyword 6.50:1,
+   function 8.10:1, type 11.08:1, property 5.99:1, option 8.08:1. Every one
+   clears 4.5:1. `.tva-fk` (#5c6370, One Dark's own comment grey) measures
+   3.17:1 and is DELIBERATELY not used here — a comment is prose a reader has to
+   read, where a dim terminal run is output they are scanning.
+
+   AND COLOUR IS THE ONLY CHANNEL HERE, which is a departure worth naming rather
+   than hiding. Everywhere else in this app a hue is paired with a glyph and a
+   keyed word, because the app is bilingual and themed. A keyword cannot carry a
+   glyph. What that costs is bounded: an uncoloured fence is still a fence —
+   boxed, monospace, scrollable, complete — so the reader loses an aid and never
+   a fact. The print register below flattens all nine to black for the same
+   reason, so a printed transcript reads as the plain code it is. */
+.tvsaid pre[data-lang]{
+  --tvh-comment:#7f8c9b;
+  --tvh-string:#98c379;
+  --tvh-number:#d19a66;
+  --tvh-keyword:#c678dd;
+  --tvh-literal:#d19a66;
+  --tvh-fn:#61afef;
+  --tvh-type:#e5c07b;
+  --tvh-prop:#e06c75;
+  --tvh-opt:#56b6c2;
+}
+/* NO `direction` and NO `unicode-bidi` on a token, and that is load-bearing.
+   `.tvsaid pre` is already an LTR island (`[dir="rtl"] code, [dir="rtl"] pre`
+   above), and a `<span>` at the default `unicode-bidi:normal` is transparent to
+   the bidi algorithm — splitting a line into spans cannot reorder it. Isolating
+   each token WOULD reorder it, by making every token its own bidi run, which is
+   the shape that once put a leading dot at the wrong end of a sentence on the
+   Hebrew page. `e2e/code-colour.spec.ts` measures the rendered text in both
+   languages rather than trusting this comment. */
+.tvsaid pre[data-lang] .tvh-c{color:var(--tvh-comment)}
+.tvsaid pre[data-lang] .tvh-s{color:var(--tvh-string)}
+.tvsaid pre[data-lang] .tvh-n{color:var(--tvh-number)}
+.tvsaid pre[data-lang] .tvh-k{color:var(--tvh-keyword)}
+.tvsaid pre[data-lang] .tvh-l{color:var(--tvh-literal)}
+.tvsaid pre[data-lang] .tvh-f{color:var(--tvh-fn)}
+.tvsaid pre[data-lang] .tvh-t{color:var(--tvh-type)}
+.tvsaid pre[data-lang] .tvh-p{color:var(--tvh-prop)}
+.tvsaid pre[data-lang] .tvh-v{color:var(--tvh-prop)}
+.tvsaid pre[data-lang] .tvh-a{color:var(--tvh-opt)}
+/* A diff colours LINES, and it is the one tagged language whose colours mean
+   what the five meaning hues mean elsewhere — added, removed. They are still
+   drawn from the terminal palette above rather than from `--ok`/`--crit`,
+   because this is a fence rendering a diff and not the product making a
+   judgement about one. */
+.tvsaid pre[data-lang] .tvh-add{color:var(--tvh-string)}
+.tvsaid pre[data-lang] .tvh-del{color:var(--tvh-prop)}
+.tvsaid pre[data-lang] .tvh-meta{color:var(--tvh-fn)}
+
 /* NO `scroll-behavior:smooth`, and that is a measured choice rather than an
    omission. A virtualised well repaints on every scroll event, so animating a
    23,000-pixel jump to the end runs the window builder dozens of times on the
@@ -3884,4 +3978,14 @@ body.docpage{overflow-y:auto}
 @media print{
   .tvscroll{block-size:auto;overflow:visible;border:0;background:none}
   .tvwork[open] .tvsteps{break-inside:avoid}
+  /* The nine syntax hues, flattened — the same thing the `:root` print register
+     does to every meaning hue, and for the same reason. Syntax colour is the
+     one place in this app where a hue is the ONLY channel, so on paper it is no
+     channel at all; the code still prints as code, which is what it was. One
+     block because the colours are custom properties on one element. */
+  .tvsaid pre[data-lang]{
+    --tvh-comment:#000; --tvh-string:#000; --tvh-number:#000;
+    --tvh-keyword:#000; --tvh-literal:#000; --tvh-fn:#000;
+    --tvh-type:#000; --tvh-prop:#000; --tvh-opt:#000;
+  }
 }

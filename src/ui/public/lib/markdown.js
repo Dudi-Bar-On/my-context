@@ -88,9 +88,21 @@
  * 96% of the whole cost, and rejected. A fence with no drawing on file falls
  * back to the `<pre>` any other fence would have produced: nothing is dropped
  * and nothing is invented.
+ *
+ * ── SYNTAX COLOUR, AND ONLY WHERE THE FENCE SAID WHAT IT WAS ──────────────
+ *
+ * `TASK-inline-code-in-a-conversation-gets-a-font-change-and-nothing`, owner
+ * ruling of 2026-09-08. A fence that DECLARES a language is tokenised by
+ * `lib/highlight.js` and its tokens wear classes `styles.css` colours; a fence
+ * that declares nothing is the `<pre>` it always was. **No language is ever
+ * detected**, and the argument for that is the corpus rather than the effort —
+ * `lib/highlight.js`'s header carries both measurements. `fenceNode` below is
+ * the whole of it here, and the decision it delegates lives in one function so
+ * that ruling detection back in is a change to that function alone.
  */
 import MarkdownIt from './vendor/markdown-it.esm.min.js';
 import { DIAGRAMS } from './diagrams.js';
+import { highlightNodes, languageFor } from './highlight.js';
 import {
   ALLOWED_TAGS, buildElement, htmlTokens, VOID_TAGS,
 } from './sanitize.js';
@@ -290,6 +302,63 @@ function diagramNode(doc, source) {
 }
 
 /**
+ * A fenced block: the `<pre>` it has always been, plus what the fence DECLARED
+ * itself to be.
+ *
+ * ── THREE OUTCOMES, AND THE THIRD IS THE ONE WORTH READING ────────────────
+ *
+ *   1. **It declared a language this product tokenises** — `data-lang` carries
+ *      that language and the block holds token spans. `styles.css` colours
+ *      them, scoped, and draws the label. 25 of 185 blocks on the owner's own
+ *      transcript.
+ *   2. **It declared a language nothing here tokenises** — ```` ```python ````.
+ *      `data-lang` still carries it, so the label is drawn and the block is
+ *      plain. Zero of 185 today, and the shape exists so the reader is told
+ *      "this said python and was not coloured" rather than being left to guess
+ *      whether colouring broke. Nothing is dropped, nothing is invented.
+ *   3. **It declared nothing** — no attribute, no label, no spans, byte for
+ *      byte the `<pre>` this renderer emitted before. 160 of 185 blocks.
+ *
+ * ── WHY THE THIRD DRAWS NO SIGNAL AT ALL, WHICH IS A DECISION ─────────────
+ *
+ * The item asks for this to be decided and said which way, and the measurement
+ * decides it. `STD-a-measured-zero-is-drawn-and-named-an-unmeasured-thing-is`
+ * is the standard in play and it is READ rather than invoked: its three clauses
+ * are about a zero somebody MEASURED, a thing nobody measured, and a BLANK. An
+ * untagged fence is none of the three — nothing was measured and nothing is
+ * blank; the whole block is on screen, complete, boxed and scrollable. What is
+ * absent is a DECLARATION the author did not write, which is a fact about the
+ * text rather than a finding the reader is owed a chip for. A marker on 160 of
+ * 185 blocks would be a badge on the COMMON case to explain the absence of a
+ * treatment the rare case gets, and `.tvsaid` would end up carrying more
+ * furniture than colour.
+ *
+ * The signal is drawn on the OTHER side, which costs 25 marks instead of 160
+ * and says more: the label appears exactly where a language was claimed. Colour
+ * and label arrive together, so "coloured" and "said what it was" are visibly
+ * the same set, and a block with neither is a block that said nothing. That is
+ * the distinction a reader actually needs, drawn positively.
+ *
+ * ── THE LANGUAGE DECISION IS NOT MADE HERE ────────────────────────────────
+ *
+ * `languageFor` is asked, and this function does not otherwise look at `info`
+ * except to decide whether a label exists. Detection, if it is ever ruled in,
+ * changes that function and nothing in this file — see `lib/highlight.js`'s
+ * header for why the seam is exactly one function wide.
+ */
+function fenceNode(doc, source, info) {
+  const pre = make(doc, 'pre', null, null);
+  if (info === '') { pre.textContent = source; return pre; }
+  // The DECLARED word, not the canonical one: a reader who wrote `sh` is shown
+  // `sh`, because the label's job is to report what the fence said.
+  pre.setAttribute('data-lang', info);
+  const lang = languageFor(info);
+  if (lang === null) { pre.textContent = source; return pre; }
+  pre.append(...highlightNodes(source, lang, doc));
+  return pre;
+}
+
+/**
  * The block walk. markdown-it's block tokens are a FLAT array with `nesting`
  * on the openers and closers, so one element stack reproduces the tree — and
  * a blockquote holding a heading, a list holding a list, and a table cell
@@ -366,11 +435,13 @@ function blockNodes(tokens, refusals, doc, labelFor) {
       case 'hr':
         emit(make(doc, 'hr', null, null));
         break;
-      case 'fence':
-        emit(String(token.info ?? '').trim().split(/\s+/)[0] === 'mermaid'
+      case 'fence': {
+        const info = String(token.info ?? '').trim().split(/\s+/)[0] ?? '';
+        emit(info === 'mermaid'
           ? diagramNode(doc, token.content)
-          : make(doc, 'pre', null, token.content));
+          : fenceNode(doc, token.content, info));
         break;
+      }
       case 'code_block':
         emit(make(doc, 'pre', null, token.content));
         break;
