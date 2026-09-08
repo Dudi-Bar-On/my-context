@@ -1,3 +1,88 @@
+## ⏭ READ THIS FIRST — 2026-09-08, at 92%. FIVE MORE ARCHIVE ITEMS FROM HIM READING THE SCREEN.
+
+The D37 viewer lane is **still running**, uncommitted, and he is reading its
+work live on 58888. Everything below came from him looking at it. `plan:archive`
+is now **fourteen items**.
+
+### THE ONE THAT EXPLAINS THE OTHERS
+
+**His questions and shell commands are not missing from the archive — they are
+CLASSIFIED AS MACHINERY AND FOLDED AWAY.** A question to the user and a shell
+command are both `tool_use`/`tool_result` pairs inside a `message` object, and
+`classifyTurn` (`src/core/conversation-index.ts`) sorts everything that is not
+plainly a prompt or an answer into machinery. **That is what the 49 rows reading
+"Tool step … 0 characters" on the first page of his own session actually are.**
+
+**`archive/16`** — a classification change, not a capture one. Machinery is one
+bucket doing two jobs: what a reader never wants (file-history snapshots, mode
+changes, latches) and what a reader wants MORE than the prose around it.
+Required, not optional: **every option that was offered, not only the chosen
+one** — the declined ones are the record of what was considered — and **the
+command with its exit status, output behind the fold.** Everything else stays
+folded: 16,659 of 26,673 records carry no `message` object at all, and promoting
+all of it would undo `seq:13`.
+
+**Do not repurpose `classifyTurn`** — it is correct for the archive's counting.
+Add a kind.
+
+### `archive/17` — THE CLIPBOARD, AND HIS QUESTION IS ANSWERED
+
+He asked whether a copied selection should be the rendered browser text or the
+raw session file. **Neither, for a reason specific to this project.**
+
+**Not the DOM:** this UI *deliberately* inserts bidi isolation — 116 `dir`
+wrappers in one pass, and a conversion that removed 344 RLM marks and 249
+non-breaking hyphens **because they had been pasted around**. A DOM selection
+carries those invisible characters into whatever he pastes into; whitespace is
+collapsed by CSS and folded blocks are absent entirely.
+**Not the raw JSONL:** an envelope with the text escaped inside it.
+
+**His amendment — "allow both formats for different purposes" — is the better
+answer and makes it THREE**, each named by what it is FOR: **message text**
+(record, no envelope, no presentation — the default, and for a shell command the
+command exactly as it ran) · **rendered text** (pasting as it looks; must say so)
+· **raw record** (reproducing a bug).
+
+**THE HARD PART, named now rather than discovered:** a browser selection is a DOM
+range and the clipboard must be filled from the RECORD range — in a virtualised
+document where the surrounding rows may not be in the DOM. **That is the same
+anchor problem as `archive/15`'s cursor return. Solve them once.**
+
+### THE OTHER THREE, FROM EARLIER IN THE SAME PASS
+
+- **`archive/14`** — the archive was **over a day stale**: the index said his
+  session ended `2026-09-07T00:50` while the file was 64,506,161 bytes, written
+  that minute. **`rebuildConversations` has exactly one caller**, the CLI
+  command. Cheap to fix — the transcript only appends and the index already keys
+  freshness on `(bytes, mtime_ms)` — but a **staleness line is required**
+  whatever else is chosen. Not cosmetic: `restore/1` and the loop read this index.
+- **`archive/15`** — a subagent opens from the turn that dispatched it; **the
+  RETURN is the requirement, not the link.**
+- **`archive/7` amended** — **no cap in the document view.** The cap goes away by
+  BUILDING the virtualised document, not by raising 60000. What survives is the
+  disclosure habit: he could read that sentence *because* bounds are named as
+  fields rather than truncated silently.
+
+### WHAT THE NEXT SESSION DOES FIRST
+
+1. **The seven `retired_still_binding` items** — he ruled "fix them all"; I held
+   them only until D38's check could demonstrate itself, and it has.
+   `mycontext edit <id> --severity soft --yes`, plus `--always false` on
+   `RULE-delegate-to-subagents-by-default-to-preserve-the-context`. **Seven
+   items, eight fields.**
+2. **Land the D37 viewer when it reports.** New files
+   `src/ui/read-model-conversation-document.ts` and `src/ui/public/lib/ansi.js`;
+   **both string tables are in play**, so run
+   `node --test test/ui/strings-parity.test.ts` first — a missing key makes `t()`
+   throw and has broken HEAD here.
+3. **Then `archive/14`**, because everything downstream reads that index.
+
+### STILL ON HIM
+
+`open_question_blocks` (7) — do not acknowledge · `walk/119` · `walk/0` has no
+`seq` · the "one sentence" wording · the queue **ration** · `demo-corpus.ts` ·
+the Simulate colour-only chip · `successorChain` to `core/relations.ts`.
+
 ## ⏭ READ THIS FIRST — 2026-09-08, at 91%. HE LOOKED AT THE VIEWER AND FOUND THREE THINGS.
 
 The D37 viewer lane is **still running** and its work is uncommitted — he is
