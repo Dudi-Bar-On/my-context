@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: A session whose file is deleted disappears from the list unless it was kept, and a kept session is copied out as it grows so nothing is lost.
-summary_of: fdeaecf0b4d98628
+summary_of: f49f58500e4c20dc
 summary_was:
   - 2026-09-07 When the original transcript file is deleted, the archive should show that it is gone rather than quietly forgetting the session existed.
 acknowledged:
@@ -28,7 +28,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-09-07
 valid_until: null
-checksum: b45f18275e0f675b
+checksum: 7898e74e648d2dff
 plan: archive
 seq: "11"
 state: todo
@@ -43,7 +43,8 @@ justify the opposite.
 The spec: "A pruned transcript is a BROKEN ROW in the index. The list MUST SHOW that a session file
 is gone rather than failing to load, and that is the strongest argument for export."
 
-The code: rebuildConversations calls index.removeMissing(...) (src/core/conversation-index.ts:890,
+The code: rebuildConversations calls index.removeMissing(...) (`src/core/conversation-index.ts` ·
+`index.removeMissing(`,
 method at :740), which DELETES every row whose transcript is gone. And removeMissing own doc comment
 CITES THAT SPEC SENTENCE to justify doing the opposite of what it says.
 
@@ -90,3 +91,11 @@ zero mentions of sensitivity, pasted secrets or the local port across all 30 con
 WHAT REPLACES THE BROKEN ROW is his own better answer, and it is now plan:archive seq:4 and seq:5:
 PERSISTENCE, which is a live mirror rather than a snapshot. Read those two before starting here, so
 the dead code is removed with the replacement understood rather than merely deleted.
+
+CITATION RE-ANCHORED 2026-09-08, under
+RULE-a-citation-names-an-item-by-id-never-a-report-by-line-number.
+
+It cited src/core/conversation-index.ts:890 by line and carried no fragment - and the line HAD
+ALREADY DRIFTED: 890 is a fragment of a query, not the removeMissing call the sentence is about.
+The citation was wrong within a day of being written, which is the argument for the rule rather
+than an exception to it.

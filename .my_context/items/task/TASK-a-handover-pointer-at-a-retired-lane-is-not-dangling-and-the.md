@@ -7,6 +7,8 @@ severity: soft
 always: false
 summary: A note pointing at work that was deliberately retired should say so, instead of being reported as pointing at nothing.
 summary_of: 36d220233c2274ab
+acknowledged:
+  - citation_form@ca275ee181d4fda4
 scope:
   - scripts/check-handover.ts
   - test/**
@@ -23,7 +25,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-09-07
 valid_until: null
-checksum: 82ee9096b44b5d17
+checksum: 46823ccd012fdd02
 plan: handover
 seq: "18"
 state: done

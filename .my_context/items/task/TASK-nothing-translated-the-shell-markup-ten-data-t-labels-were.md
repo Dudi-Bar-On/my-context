@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: A test that catches English text left in the interface where a translation should be.
-summary_of: adb844dd7eee9781
+summary_of: b4adb7e82abccf72
 summary_was:
   - 2026-09-07 Ten labels stayed in English on the Hebrew page for months; the fix is in, but nothing yet stops it happening again.
 acknowledged:
@@ -26,7 +26,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-08-25
 valid_until: null
-checksum: 78c87a6e162e8230
+checksum: 1c088e32e2223ced
 plan: walk
 seq: "43"
 state: todo
@@ -53,8 +53,14 @@ AND CHECK THE MOCKUP S OWN SCANNER while there: it has one, and the app delibera
 RE-CUT 2026-09-07 by owner ruling (plan:walk seq:140, option A). What follows narrows this
 item; everything above it is the record of why.
 
-RETIRED HALF: the defect itself, against app.js:7448 - the ten labels are translated today.
+RETIRED HALF: the defect itself, against `src/ui/public/app.js` · `function applyStatic(root) {` - the ten labels are
+translated today.
 
 SURVIVES: the TEST half, and it is the reason the item exists. Ten seeded-English nodes are a live
 regression surface with NO GATE on them: nothing fails if they revert. A fix with no test is a defect
 waiting for its second appearance.
+
+CITATION RE-ANCHORED 2026-09-08, under
+RULE-a-citation-names-an-item-by-id-never-a-report-by-line-number: it pointed at app.js:7448 by
+line with no fragment, and a bare path with no directory besides. The fragment is the identity;
+the line is a convenience.

@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: The simulator’s staircase says how much room is left, read from the real window rather than a typed number.
-summary_of: 1734d4eb1d188c3d
+summary_of: b9f938fd0fb22bc0
 summary_was:
   - 2026-09-07 Show the room actually left in the conversation on the what-fits chart, so the setting stops being an abstract number, and say when it is unknown.
 scope: []
@@ -24,7 +24,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-08-24
 valid_until: null
-checksum: 02414889220dc47e
+checksum: 1149c8946c74d0d6
 plan: walk
 seq: "8"
 state: todo
@@ -51,7 +51,11 @@ Unblocked 2026-08-28: plan:walk seq:7 landed (commit 3a096ff) and its gates are 
 RE-CUT 2026-09-07 by owner ruling (plan:walk seq:140, option A). What follows narrows this
 item; everything above it is the record of why.
 
-CLOSED HALF: "anchor it and say when it is unknown", against plan:budget seq:3 and seq:4, which
+HALF CLOSED — "anchor it and say when it is unknown", against plan:budget seq:3 and seq:4, which
 answered it.
 
 SURVIVES: the free-space line on the staircase, and only that.
+WORDING CORRECTED 2026-09-08. This body opened a line with a verdict word - CLOSED, BLOCKED - to
+mean that ONE HALF of the item was settled, on an item that remains open. `body_disagrees_with_meta`
+read it as the item’s own verdict and was right to: a reader skimming sees the word before the
+qualifier. The half is still settled; only the wording moved.

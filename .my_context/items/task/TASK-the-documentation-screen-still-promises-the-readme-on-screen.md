@@ -7,6 +7,8 @@ severity: soft
 always: false
 summary: Corrects a shipped screen sentence that still promises the README, three weeks after the owner ruled it should say it serves help topics instead.
 summary_of: bac72b7295910b1e
+acknowledged:
+  - citation_form@9ccc54441c7f3bdc
 scope:
   - docs/design/web-ui-mockup.html
   - src/ui/public/strings/en.js
@@ -25,7 +27,7 @@ source_anchor: null
 source_checksum: d6934660463ba297
 valid_from: 2026-09-05
 valid_until: null
-checksum: 342fe09cfc481838
+checksum: 5c38a43d34d8abc8
 plan: docsys
 seq: "1"
 state: done

@@ -7,6 +7,8 @@ severity: soft
 always: false
 summary: References in the code point at things that keep their name, instead of line numbers that move the next time anyone writes.
 summary_of: 6a01f43f8837446b
+acknowledged:
+  - citation_form@9c5150f8dec53642
 scope:
   - src/**
   - scripts/**
@@ -22,7 +24,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-09-07
 valid_until: null
-checksum: d2e5cf8c985e2c76
+checksum: d422ca6ed877169a
 ---
 
 # a citation names an item by id, never a report by line number

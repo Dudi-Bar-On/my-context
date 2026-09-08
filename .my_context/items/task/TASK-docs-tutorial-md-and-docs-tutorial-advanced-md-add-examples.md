@@ -7,6 +7,8 @@ severity: soft
 always: false
 summary: "The install tutorial's own example commands fail as written for the same reason the README's did: they predate the --summary requirement on mycontext add."
 summary_of: 3cdf65c7ca0c2e4e
+acknowledged:
+  - citation_form@76c0468f2671970d
 scope:
   - docs/TUTORIAL.md
   - docs/TUTORIAL-ADVANCED.md
@@ -21,7 +23,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-09-04
 valid_until: null
-checksum: f17ffb688c486096
+checksum: ebf0a5e39073b308
 state: done
 verified_on: 2026-09-04
 ---

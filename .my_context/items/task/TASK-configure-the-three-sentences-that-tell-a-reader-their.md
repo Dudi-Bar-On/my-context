@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: When part of a configuration file is ignored, the screen says so, because nothing else will tell the reader.
-summary_of: d44d0aca53d1655a
+summary_of: 6315a2b28c84b3fd
 summary_was:
   - 2026-09-07 The messages telling someone their settings file is broken appear only in English, on a screen that is otherwise blank and otherwise translated.
 scope: []
@@ -25,7 +25,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-08-29
 valid_until: null
-checksum: d2dbb7b7df221a7c
+checksum: 220b6bc54f5e84c4
 plan: walk
 seq: "105"
 state: todo
@@ -56,8 +56,12 @@ THE HONEST SHAPE OF THE FIX, because the loader's message is composed at run tim
 RE-CUT 2026-09-07 by owner ruling (plan:walk seq:140, option A). What follows narrows this
 item; everything above it is the record of why.
 
-CLOSED: the parseError and resolveError two-thirds.
+HALF CLOSED — the parseError and resolveError two-thirds.
 
 SURVIVES: skippedNotice, and it survives for a reason worth keeping - it is the one notice
 src/ui/read-model-config.ts COMPELS this surface to print. A surface that shows config to a human and
 does not print it is lying by omission about what the file actually did.
+WORDING CORRECTED 2026-09-08. This body opened a line with a verdict word - CLOSED, BLOCKED - to
+mean that ONE HALF of the item was settled, on an item that remains open. `body_disagrees_with_meta`
+read it as the item’s own verdict and was right to: a reader skimming sees the word before the
+qualifier. The half is still settled; only the wording moved.

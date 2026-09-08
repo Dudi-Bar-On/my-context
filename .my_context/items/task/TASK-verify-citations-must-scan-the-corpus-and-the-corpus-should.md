@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: References in the knowledge base point at a place that keeps its name, rather than a line number that moves.
-summary_of: 77bb970e95f840de
+summary_of: e794e0a03a2b80d2
 summary_was:
   - 2026-09-07 The reference checker has three known blind spots; settle by rule what it covers, and stop pointing at line numbers that rot.
 scope: []
@@ -24,7 +24,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-08-25
 valid_until: null
-checksum: 37b34e1ee488c0b4
+checksum: cbad499f762d1ee9
 plan: walk
 seq: "30"
 state: todo
@@ -59,7 +59,7 @@ Whatever this task settles about scanning the corpus should settle this too, or 
 RE-CUT 2026-09-07 by owner ruling (plan:walk seq:140, option A). What follows narrows this
 item; everything above it is the record of why.
 
-CLOSED HALF: the gate half, against the standard and the rule that now cover it.
+HALF CLOSED — the gate half, against the standard and the rule that now cover it.
 
 SURVIVES: the corpus residue - normalise the 31 pointers that still cite by line, and stop the writer
 emitting file:line in the first place.
@@ -69,3 +69,7 @@ RULE-a-citation-names-an-item-by-id-never-a-report-by-line-number, taken after t
 src/doctor/checks.ts were found pointing at lines that had held something else for days. The handover
 is PREPENDED to, so every line number into it rots on the next write. This item is the cleanup that
 rule implies.
+WORDING CORRECTED 2026-09-08. This body opened a line with a verdict word - CLOSED, BLOCKED - to
+mean that ONE HALF of the item was settled, on an item that remains open. `body_disagrees_with_meta`
+read it as the item’s own verdict and was right to: a reader skimming sees the word before the
+qualifier. The half is still settled; only the wording moved.

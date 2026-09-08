@@ -7,6 +7,8 @@ severity: soft
 always: false
 summary: The notes handed from one session to the next are held to the same standard as everything else written down here.
 summary_of: a9de712ea9eff374
+acknowledged:
+  - citation_form@8a33aef3ce3adbf8
 scope:
   - scripts/verify-citations.ts
   - src/hooks/session-start.ts
@@ -24,7 +26,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-09-06
 valid_until: null
-checksum: fafb706fe6527fd0
+checksum: 74dd5d03d2485097
 plan: handover
 seq: "15"
 state: done

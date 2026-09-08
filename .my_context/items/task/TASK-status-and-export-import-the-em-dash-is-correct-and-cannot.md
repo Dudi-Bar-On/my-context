@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: The status screen shows how many things are waiting for a person, counted rather than left blank.
-summary_of: c9fb797b37345ad2
+summary_of: 16ceb999256af1f7
 summary_was:
   - 2026-09-07 Two screens draw a dash where a number would go and cannot say why it is missing, though the reasons behind them are entirely different.
 scope: []
@@ -23,7 +23,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-08-29
 valid_until: null
-checksum: 4b62daa373b722e3
+checksum: ba55364772b637c2
 plan: walk
 seq: "89"
 state: todo
@@ -63,7 +63,11 @@ BUILD NOW: Status’s two counts - wire /api/staging plus a read-only ingest cou
 Both blockers this item named are DEAD: DEC-the-read-half-of-lesson-derive-ts-is-split-out moved
 listStaging and shipped /api/staging with the counts, and the ingest half was NEVER blocked.
 
-STAYS BLOCKED: Port’s dash key, on its open question.
+ONE PART STAYS BLOCKED — Port’s dash key, on its open question.
 
 AND CORRECT THE ITEM BEFORE ANYONE REASONS FROM IT: its sentence "there is NO POST anywhere in this
 UI" is false. There are seven.
+WORDING CORRECTED 2026-09-08. This body opened a line with a verdict word - CLOSED, BLOCKED - to
+mean that ONE HALF of the item was settled, on an item that remains open. `body_disagrees_with_meta`
+read it as the item’s own verdict and was right to: a reader skimming sees the word before the
+qualifier. The half is still settled; only the wording moved.
