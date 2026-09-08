@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: true
 summary: The short numbers used to talk about work in progress and what each refers to, delivered every session so the same number never means two things.
-summary_of: cb334a3d926312f9
+summary_of: b10fbb15ca10b85f
 summary_was:
   - 2026-09-07 The short numbers used to talk about work in progress, and what each of them refers to, so the same number never means two things.
 scope: []
@@ -19,7 +19,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-09-07
 valid_until: null
-checksum: 11a5c3ec151a84ec
+checksum: 3fc71350afa06cc7
 ---
 
 # the D numbers: what each one means, and which are only proposed
@@ -87,3 +87,8 @@ somebody thinks to look, which is exactly when a stale number does its damage.
 
 THE ONE OBLIGATION THIS ITEM CREATES: assigning a D number and recording it here are ONE ACT. A
 number announced in a message and not written here is not a D number yet, whatever the message said.
+
+D36 ASSIGNED 2026-09-08: the agent self-improvement loop.
+Design of record: docs/superpowers/specs/2026-09-08-self-improvement-loop-design.md.
+Items are filed after the owner reviews that spec; this row exists now because assigning a number
+and recording it here are ONE ACT, which is this item’s own obligation.
