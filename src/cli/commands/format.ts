@@ -357,6 +357,58 @@ export function emitJson(out: Emit, value: unknown): void {
 }
 
 /**
+ * **AN ARCHIVED INSTANT, IN THE READER'S OWN CLOCK, NAMING THAT CLOCK** —
+ * `2026-09-08 17:11 GMT+3`.
+ * `TASK-a-timestamp-is-shown-in-the-reader-s-own-zone-and-says-which`.
+ *
+ * ── WHY THE TERMINAL MOVED TOO, WHICH THE ITEM LEFT OPEN ──────────────────
+ *
+ * The item asks the question rather than answering it: *"whether the LIST and
+ * the CLI table need the same treatment … a reader comparing the screen
+ * against the terminal must not see two different times for one session."*
+ *
+ * `conversation list` printed `row.endedAt` verbatim — `2026-09-08T14:11:23.456Z`
+ * — which is NOT the browser's defect: it names its zone, in the `Z`, and is
+ * therefore honest. It was still changed, for the reason the item gives. The
+ * owner's whole report began with two numbers three hours apart, and leaving
+ * one surface on 14:11 and moving the other to 17:11 hands him the same
+ * subtraction again on the next screen. One instant, one set of digits,
+ * wherever a person reads it.
+ *
+ * `--json` is UNTOUCHED and must stay untouched: it emits the index rows as
+ * stored, and the stored value is UTC. This is a display, and only a display.
+ *
+ * ── WHY THIS IS A SECOND COPY OF THE SPELLING, AND WHAT HOLDS THEM EQUAL ──
+ *
+ * `src/ui/public/lib/viewmodel.js` is untyped JavaScript and `tsconfig.json`
+ * sets no `allowJs`, so a TypeScript caller cannot import it. The two answers
+ * this project has already given to that are a dynamic-import bridge behind an
+ * arrival check (`statusline-powerline.ts`' occupancy bands) and a copy proven
+ * equal by a sweep (`formatDuration`, pinned by
+ * `test/ui/duration-parity.test.ts`). The bridge is async and this caller is
+ * sync, which is the same reason `formatDuration` was copied — so this takes
+ * the same deal, and `test/ui/zoned-stamp-parity.test.ts` is the pin:
+ * every instant and every zone in it must spell identically in both files, or
+ * the suite is red.
+ *
+ * The zone is the RUNTIME's, which in a terminal is the person reading it.
+ * `process.env.TZ` is what a test moves, and Node honours it.
+ */
+export function zonedStamp(at: unknown, timeZone?: string): string | null {
+  const when = at instanceof Date ? at : new Date(String(at));
+  if (Number.isNaN(when.getTime())) return null;
+  const parts = new Intl.DateTimeFormat('en-GB', {
+    timeZone, year: 'numeric', month: '2-digit', day: '2-digit',
+    hour: '2-digit', minute: '2-digit', hourCycle: 'h23', timeZoneName: 'shortOffset',
+  }).formatToParts(when);
+  const field = (type: Intl.DateTimeFormatPartTypes): string =>
+    parts.find((p) => p.type === type)?.value ?? '';
+  const zone = field('timeZoneName');
+  if (zone === '') return null;
+  return `${field('year')}-${field('month')}-${field('day')} ${field('hour')}:${field('minute')} ${zone}`;
+}
+
+/**
  * The flag names every reporting command accepts, spelled once beside
  * `DETAIL_USAGE` so a command whose usage line advertises the detail levels
  * cannot forget to accept them (or accept ones it does not advertise).

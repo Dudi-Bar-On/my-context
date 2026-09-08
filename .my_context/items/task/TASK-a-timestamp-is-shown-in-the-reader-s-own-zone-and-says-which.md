@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: Times in a saved conversation are shown in the reader's local clock and name the zone, instead of silently showing a different one.
-summary_of: d940def044091e18
+summary_of: 8566d99fb6a0d775
 scope:
   - src/ui/**
   - src/cli/commands/conversation.ts
@@ -16,17 +16,17 @@ tags:
   - ui
   - "plan:archive"
   - "seq:18"
-  - "state:todo"
+  - "state:done"
 origin: human
 source_file: null
 source_anchor: null
 source_checksum: null
 valid_from: 2026-09-08
 valid_until: null
-checksum: 1f148a329a4977d5
+checksum: c546940ccd6fb9ab
 plan: archive
 seq: "18"
-state: todo
+state: done
 priority: "1"
 ---
 
@@ -63,3 +63,47 @@ dir="ltr" on the <time> element. Whatever formatting lands must keep that.
 ONE QUESTION TO ANSWER RATHER THAN ASSUME: whether the LIST and the CLI table need the same
 treatment. `mycontext conversation list` prints the raw Z stamp too. A reader comparing the screen
 against the terminal must not see two different times for one session.
+
+CLOSED 2026-09-08.
+
+ONE SPELLING, AND IT IS `zonedStamp(at, timeZone)` - `src/ui/public/lib/viewmodel.js`, with a
+TypeScript twin in `src/cli/commands/format.ts` because viewmodel.js is untyped browser JS, kept
+in step by `test/ui/zoned-stamp-parity.test.ts` across six zones by six instants. It renders
+2026-09-08 17:11 GMT+3.
+
+THE TRAP THIS ITEM NAMED WAS AVOIDED, and by more than pinning the locale. The locale is pinned to
+en-GB, but the ORDER is assembled from formatToParts rather than trusted to the locale, so no ICU
+build can reorder the fields; hourCycle h23 rather than hour12 false, which some ICU builds
+disagree about; and one cached Intl.DateTimeFormat per zone. The zone is passed through, so
+undefined means the RUNTIME reader - the browser - and never the server.
+
+AND THE ZONE IS AN OFFSET, NOT AN ABBREVIATION. GMT+3 rather than IST, because an offset is
+readable by someone who does not know what IST stands for, and the reader who needed this was
+reading a clock he already knew.
+
+A REFUSAL RATHER THAN A GUESS: `zonedStampOf` returns null instead of raw text when the instant
+will not parse, so the archive draws NO stamp rather than an unzoned one. The `datetime` attribute
+and `conversation --json` both still carry stored UTC - the value never moved, only the display.
+
+THE ITEM WAS WRONG ABOUT ONE THING, and the correction matters more than the fix. It said the
+Hebrew bidi case was protected by a browser test. It was not: `time.tvat` appeared once in e2e/
+asserting only the datetime attribute, and the dir="ltr" repair was carried by a code comment and
+a screenshot - nothing executable. The missing test now exists, with computed-direction and
+Range-based visual-order assertions, plus a describe block running the browser in Asia/Jerusalem
+to prove the three-hour shift on both the document and the list. Naming the zone made the stamp
+THREE neutral runs rather than two, so the bidi rule had a third field to move and now has a test.
+
+VERIFIED: tsc clean; 13/13 on the two unit files; and the browser suite 54/54 through
+e2e/playwright.config.ts across both projects.
+
+AND HOW THAT SUITE IS RUN IS PART OF THE RECORD, because getting it wrong produced a false
+regression report. `npx playwright test e2e/<spec>` from the repo root does NOT load
+e2e/playwright.config.ts, so it runs with NO pinned colorScheme, locale, timezone or viewport -
+and this is the first work in the file whose assertions depend on that pin. Run it as package.json
+does: `playwright test --config e2e/playwright.config.ts`. Read wrongly, a correct test asserting
+GMT+0 fails with GMT+3 on a UTC+3 machine and looks exactly like the machine-dependence this item
+warned about.
+
+FOUND AND NOT FIXED, deliberately and filed as plan:walk seq:142: the same defect in two shapes on
+five more surfaces - audit.ts stamp() still slices the Z off, and wallStamp/clockOf/stampOf convert
+correctly but carry no timeZoneName at all.

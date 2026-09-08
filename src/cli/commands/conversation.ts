@@ -5,7 +5,7 @@ import {
 import { SUBCOMMAND_FLAGS } from '../../core/command-flags.ts';
 import type { Workspace } from '../../core/workspace.ts';
 import { toCliMessage } from './context.ts';
-import { emitJson, refuseUnknownFlag, table, wantsJson } from './format.ts';
+import { emitJson, refuseUnknownFlag, table, wantsJson, zonedStamp } from './format.ts';
 import path from 'node:path';
 import { flag, hasFlag, positionals, registerCommand, type Emit } from './registry.ts';
 
@@ -121,6 +121,17 @@ function cmdConversationRebuild(ws: Workspace, root: string, args: string[], out
   return 0;
 }
 
+/**
+ * The `ended` column: the reader's own wall clock, or the honest absence of a
+ * time. The raw stamp is the fallback rather than `—`, because a value that
+ * exists and cannot be reformatted is still evidence — the same argument
+ * `screens/parts.js`' `stampOf` makes for its own column.
+ */
+function endedCell(endedAt: string | null): string {
+  if (endedAt === null) return '—';
+  return zonedStamp(endedAt) ?? endedAt;
+}
+
 /** One row's title, or the honest absence of one. Never a fabricated title. */
 function titleCell(row: ConversationRow): string {
   if (row.title === null) return '—';
@@ -186,7 +197,13 @@ function cmdConversationList(ws: Workspace, root: string, args: string[], out: E
       ['session', 'ended', 'prompts', 'answers', 'branch', 'title'],
       shown.map((row) => [
         row.sessionId.slice(0, 8),
-        row.endedAt ?? '—',
+        // THE READER'S OWN CLOCK, NAMING ITSELF — the same digits the archive
+        // screen draws for the same session, which is what
+        // `TASK-a-timestamp-is-shown-in-the-reader-s-own-zone-and-says-which`
+        // asks the terminal for. `--json` above is untouched and still carries
+        // the stored UTC. A stamp the formatter refuses falls back to what the
+        // index holds, because a table has a cell that must say something.
+        endedCell(row.endedAt),
         truncatedScan(row) ? `${row.prompts}+` : String(row.prompts),
         truncatedScan(row) ? `${row.answers}+` : String(row.answers),
         row.branch ?? '—',

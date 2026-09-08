@@ -27,7 +27,7 @@
  * only ever with LOGICAL properties.
  */
 
-import { wallStamp } from '../lib/viewmodel.js';
+import { wallStamp, zonedStamp } from '../lib/viewmodel.js';
 
 /** `el(tag, cls, txt)` — the mockup's own factory, argument for argument. */
 export function el(tag, cls, txt) {
@@ -151,6 +151,31 @@ export function stampOf(at) {
   // a fact about this product's own log; `wallStamp` is about how an instant
   // is spelled, which is a fact about the interface.
   return wallStamp(when.getTime()) ?? String(at);
+}
+
+/**
+ * **An archived instant in the reader's own clock, with that clock named** —
+ * the same `INSTANT` guard as the two above, over `zonedStamp`'s spelling.
+ * `TASK-a-timestamp-is-shown-in-the-reader-s-own-zone-and-says-which`.
+ *
+ * **`null` where the two above return the string they were handed**, and the
+ * difference is the whole point of this form. `clockOf` and `stampOf` fill a
+ * COLUMN — the record's own bytes are the last true thing left when it cannot
+ * be reformatted, so an unparsable `At` is drawn as it arrived. The archive
+ * has no column: a turn's header simply carries no `<time>`, and the list's
+ * meta line starts at the counts. And here the fallback the other two take
+ * would be the ORIGINAL DEFECT — an unzoned stamp presented as a time — so it
+ * is the one answer this function must not give.
+ *
+ * Nothing real is lost by refusing. Every stamp the archive draws is a
+ * transcript record's `timestamp`, which the harness writes as
+ * `new Date().toISOString()`: zoned ISO-8601, every record, all 27,813 of them
+ * on the session this was measured against. The raw value stays in the
+ * element's `datetime` either way.
+ */
+export function zonedStampOf(at, timeZone) {
+  const when = instantOf(at);
+  return when === null ? null : zonedStamp(when, timeZone);
 }
 
 /** The mockup's `style="margin-block-start:8px"`, without the attribute. */

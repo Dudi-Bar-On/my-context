@@ -52,7 +52,7 @@
 // The outline costs one 358 ms walk; every scroll after it costs 2 ms.
 
 import {
-  boundedList, el, errorNote, mono, screenHead, spaced,
+  boundedList, el, errorNote, mono, screenHead, spaced, zonedStampOf,
 } from './parts.js';
 import { helpDisclosure } from '../lib/disclosure.js';
 import { shouldPing } from '../lib/heartbeat.js';
@@ -106,11 +106,29 @@ function sizeText(bytes) {
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 }
 
-/** An ISO stamp as a date a person reads. Invalid or absent stays absent. */
+/**
+ * An ISO stamp as a date a person reads — **IN THE READER'S OWN CLOCK, AND
+ * SAYING WHICH CLOCK THAT IS.**
+ * `TASK-a-timestamp-is-shown-in-the-reader-s-own-zone-and-says-which`.
+ *
+ * What stood here was `iso.slice(0, 16).replace('T', ' ')`: the stored UTC
+ * value, with its `Z` cut off by the slice. That is how the owner came to
+ * report three hours of his session missing — 14:11 drawn where his own clock
+ * said 17:11, and nothing on the screen to say the two were the same instant.
+ * The whole defect fits in that one expression, which is why it is quoted
+ * rather than described.
+ *
+ * The stored value does not move: the `<time>` element's `datetime` still
+ * carries the raw UTC ISO the record holds, and so does the endpoint. Only the
+ * DISPLAY is in the reader's zone. See `zonedStampOf` in `parts.js` for the
+ * guard and `zonedStamp` in `lib/viewmodel.js` for the spelling and for why
+ * the locale is pinned while the zone is not.
+ *
+ * Invalid or absent stays absent — a header with no `<time>`, never a stamp
+ * that cannot say which clock it is on.
+ */
 function dayText(iso) {
-  if (typeof iso !== 'string') return null;
-  const at = new Date(iso);
-  return Number.isNaN(at.getTime()) ? null : iso.slice(0, 16).replace('T', ' ');
+  return zonedStampOf(iso);
 }
 
 /* ══ THE LIST ══════════════════════════════════════════════════════════════ */
@@ -560,6 +578,13 @@ function drawTurn(ctx, body) {
     // do; the mistake was letting a timestamp inherit the paragraph's
     // direction at all. This is the same isolation `{mv:…}` gives an
     // identifier in the string tables.
+    //
+    // **AND IT IS LOAD-BEARING TWICE OVER SINCE THE ZONE WAS NAMED.** The
+    // stamp is now `2026-09-08 09:00 GMT+0` — THREE runs, not two, and the
+    // third is the one a reader most needs beside its own time. Removing this
+    // attribute would draw `GMT+0 09:00 2026-09-08` on the Hebrew page, which
+    // is a worse version of the defect this stamp was rewritten to end.
+    // `e2e/conversations.spec.ts` asserts the visible order in Hebrew.
     at.setAttribute('dir', 'ltr');
     head.append(at);
   }

@@ -3,6 +3,7 @@
 // TASK-a-conversation-is-rendered-as-a-document-who-spoke-when-and,
 // TASK-the-archive-shows-what-is-on-disk-now-because-nothing-has,
 // TASK-the-open-document-follows-the-session-as-it-is-written-and,
+// TASK-a-timestamp-is-shown-in-the-reader-s-own-zone-and-says-which,
 // INV-nothing-is-dropped-silently
 /**
  * The conversation archive, driven in a real browser in both languages —
@@ -233,7 +234,58 @@ for (const lang of ['en', 'he'] as const) {
       .toHaveText(lang === 'he' ? 'אתם' : 'You');
 
     // THE TIMESTAMP ON ITS OWN, beneath the speaker, machine-readable.
-    await expect(first.locator('time.tvat')).toHaveAttribute('datetime', /^2026-09-08T/);
+    const stamp = first.locator('time.tvat');
+    await expect(stamp).toHaveAttribute('datetime', /^2026-09-08T/);
+
+    // ── AND IT IS IN THE READER'S CLOCK, AND IT SAYS WHICH CLOCK ────────
+    //
+    // `TASK-a-timestamp-is-shown-in-the-reader-s-own-zone-and-says-which`.
+    // The owner reported three hours of his session missing; nothing was
+    // missing, the screen was drawing the stored UTC value with the `Z` sliced
+    // off and he is UTC+3.
+    //
+    // `playwright.config.ts` pins `timezoneId: 'UTC'`, so the reader HERE is a
+    // UTC reader and the digits do not move — which is exactly why this
+    // assertion is about the MARKER. A UTC reader is the one for whom the
+    // named zone looks like decoration, and dropping it is how the defect
+    // comes back for everybody else. The shift itself is proven in
+    // `the reader's own zone` below, which runs a browser in Asia/Jerusalem.
+    //
+    // The `datetime` above is unchanged and still UTC: the stored value never
+    // moved, only the display.
+    await expect(stamp).toHaveText('2026-09-08 09:00 GMT+0');
+
+    // **`dir="ltr"` SURVIVES, and it now carries more than it did.** A
+    // previous lane found `2026-09-08 09:00` drawn as `09:00 2026-09-08` on
+    // the Hebrew page — two neutral runs reordered by the RTL paragraph — and
+    // fixed it here. Naming the zone made the stamp THREE runs, so the same
+    // bidi rule now has a third field to move.
+    //
+    // Asserted as the COMPUTED direction and not only the attribute, because
+    // the attribute is the means and the direction is the property: a
+    // stylesheet rule could satisfy one and break the other.
+    await expect(stamp).toHaveAttribute('dir', 'ltr');
+    expect(await stamp.evaluate((n) => getComputedStyle(n).direction)).toBe('ltr');
+
+    // And the VISUAL order, which is the thing the screenshot showed and no
+    // `textContent` assertion can see: bidi reorders what is painted, not what
+    // is in the DOM. The first character's box must start to the LEFT of the
+    // last character's, on both pages — that is false the moment the stamp is
+    // allowed to inherit an RTL paragraph.
+    const order = await stamp.evaluate((n) => {
+      const text = n.firstChild;
+      if (text === null) return null;
+      const box = (from: number, to: number): DOMRect => {
+        const r = document.createRange();
+        r.setStart(text, from);
+        r.setEnd(text, to);
+        return r.getBoundingClientRect();
+      };
+      const len = (text.textContent ?? '').length;
+      return { first: box(0, 1).left, last: box(len - 1, len).left };
+    });
+    expect(order).not.toBeNull();
+    expect(order!.first).toBeLessThan(order!.last);
 
     // Distinct by MORE than colour: a glyph beside the accent, so the
     // distinction survives a monochrome print and a colour-blind reader.
@@ -526,6 +578,53 @@ for (const lang of ['en', 'he'] as const) {
     if (lang === 'he') expect(bar).not.toMatch(/Top|End/);
   });
 }
+
+/* ══ seq:18 — THE READER'S OWN CLOCK, IN A BROWSER THAT IS NOT ON UTC ═════ */
+
+/**
+ * **THE THREE HOURS, REPRODUCED AND THEN GONE** —
+ * `TASK-a-timestamp-is-shown-in-the-reader-s-own-zone-and-says-which`.
+ *
+ * Every other test in this file runs under `playwright.config.ts`'
+ * `timezoneId: 'UTC'`, which is right for determinism and is also the one
+ * setting under which this defect is INVISIBLE: a UTC reader sees the stored
+ * value and the local value agree, so a viewer that never converts passes.
+ * That is how it shipped.
+ *
+ * So this block moves the browser to the owner's own zone and nothing else.
+ * `Asia/Jerusalem` is still a PIN — a named zone, not the machine's — so the
+ * digits below are as deterministic as every other assertion here; what
+ * changes is which reader they are determined for.
+ *
+ * The fixture's first prompt is `09:00:00Z`, so the number to look for is
+ * `12:00`. If this test ever draws `09:00` again, that is the owner's report
+ * of three missing hours, arriving before he does.
+ */
+test.describe('the reader\'s own zone', () => {
+  test.use({ timezoneId: 'Asia/Jerusalem' });
+
+  for (const lang of ['en', 'he'] as const) {
+    test(`a stamp is converted to the reader's clock and names it (${lang})`, async ({ page }) => {
+      await openDocument(page, lang);
+
+      const stamp = page.locator('.tvturn time.tvat').first();
+      // THE SHIFT. Three hours, exactly the ones he reported.
+      await expect(stamp).toHaveText('2026-09-08 12:00 GMT+3');
+      // THE STORED VALUE DID NOT MOVE. `datetime` is still the record's own
+      // UTC — a document read by a machine, or exported and read next year,
+      // has the instant and not one reader's rendering of it.
+      await expect(stamp).toHaveAttribute('datetime', '2026-09-08T09:00:00.000Z');
+
+      // The LIST says the same thing about the same session. `endedAt` is the
+      // fixture's last record, `09:07:59Z`, which is `12:07` on this clock —
+      // the point being that a reader who looks at both surfaces is not handed
+      // a subtraction to do.
+      await page.evaluate(() => { location.hash = '#/conversations'; });
+      await page.waitForSelector('.convrow', { timeout: 20_000 });
+      await expect(page.locator('.convrow').first()).toContainText('2026-09-08 12:07 GMT+3');
+    });
+  }
+});
 
 test('the screen is reachable from the rail, under Read', async ({ page }) => {
   await open(page, '#/conversations', 'en');

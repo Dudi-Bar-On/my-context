@@ -187,6 +187,95 @@ export function wallStamp(ms) {
 }
 
 /**
+ * **THE ONE SPELLING OF AN ARCHIVED INSTANT — the reader's own clock, AND THE
+ * NAME OF THAT CLOCK** — `TASK-a-timestamp-is-shown-in-the-reader-s-own-zone-and-says-which`.
+ *
+ * `2026-09-08 17:11 GMT+3`.
+ *
+ * ── WHY THIS EXISTS, AND WHY IT IS WORTH MORE THAN IT LOOKS ───────────────
+ *
+ * The owner opened the archive on his own session and reported THREE HOURS OF
+ * IT MISSING. Nothing was missing. The viewer drew the stored UTC stamp raw —
+ * `iso.slice(0, 16).replace('T', ' ')` — and he is UTC+3. Measured the same
+ * minute: `14:11` on the screen, `17:11` on his clock. A session that ran
+ * until 17:00 read as though it stopped at 14:00, so a FORMATTING defect
+ * produced a report of DATA LOSS, which is the more expensive kind: it sends
+ * somebody to hunt a stale index while the screen is simply lying about the
+ * clock.
+ *
+ * **BOTH HALVES ARE THE FIX, and the second one is the one that gets dropped.**
+ * Converting to local time alone would have moved the digits to 17:11 and left
+ * them just as unlabelled — a plausible time that is silently the wrong one
+ * for anybody reading the same transcript from another country, which is
+ * exactly what a transcript is for. So the zone is NAMED, every time, in the
+ * visible text. `GMT+3` and not `IST`: an offset is readable without knowing a
+ * country's abbreviations, and the defect was about an offset.
+ *
+ * **THE ZONE COMES FROM THE READER.** `timeZone` is passed through to `Intl`,
+ * and `undefined` means "whatever this runtime resolves" — the BROWSER's zone
+ * in the web app, the terminal user's zone in the CLI. The server's zone never
+ * enters it, because the server is not the one being lied to. Tests pass the
+ * zone explicitly, which is what makes the digits assertable at all.
+ *
+ * ── WHY IT IS ASSEMBLED FROM PARTS AND NOT FORMATTED WHOLE ────────────────
+ *
+ * `test/helpers/pin-rendering.ts` exists because this suite was green on every
+ * machine that could run it locally and red on CI, and its argument applies
+ * here twice: a bare `toLocaleString()` picks up the machine's locale AND the
+ * machine's zone, and when it fails it looks exactly like flake. The locale is
+ * therefore pinned to `en-GB` — a FORMAT choice, not a language one, the same
+ * argument `wallStamp` and `num()` make — and the ORDER is not taken from the
+ * locale at all: `formatToParts` hands back the fields and this builds
+ * `YYYY-MM-DD HH:MM` itself.
+ *
+ * **ISO-ORDERED, deliberately different from `wallStamp`'s `08/09/2026`.** A
+ * list of sessions is scanned down a column and read as a sequence, and
+ * year-first is the only order that sorts as it reads. `wallStamp` answers a
+ * different question on a status bar — "is this line current?" — where a
+ * day-first wall clock is what a person compares against their own. Two
+ * spellings, one reason each, and neither is a copy of the other.
+ *
+ * `hourCycle: 'h23'` rather than `hour12: false`, which in some ICU builds
+ * spells midnight `24:00`.
+ *
+ * `null` for anything that is not a real instant, so a caller draws no stamp
+ * rather than a wrong one.
+ */
+export function zonedStamp(at, timeZone) {
+  const when = at instanceof Date ? at : new Date(at);
+  if (Number.isNaN(when.getTime())) return null;
+  const parts = zonedFormat(timeZone).formatToParts(when);
+  const field = (type) => parts.find((p) => p.type === type)?.value ?? '';
+  const zone = field('timeZoneName');
+  if (zone === '') return null;
+  return `${field('year')}-${field('month')}-${field('day')} ${field('hour')}:${field('minute')} ${zone}`;
+}
+
+/**
+ * One `Intl.DateTimeFormat` per zone, kept.
+ *
+ * Constructing one is the expensive half of formatting a date, and the archive
+ * draws a stamp per turn: the owner's own session is 4,916 nodes, and a
+ * scrolled window redraws them as it moves. The cache is keyed by the zone
+ * string because that is the only argument, and `undefined` — "the reader's
+ * own" — is a key like any other.
+ */
+const ZONED = new Map();
+
+function zonedFormat(timeZone) {
+  const key = timeZone ?? '';
+  let format = ZONED.get(key);
+  if (format === undefined) {
+    format = new Intl.DateTimeFormat('en-GB', {
+      timeZone, year: 'numeric', month: '2-digit', day: '2-digit',
+      hour: '2-digit', minute: '2-digit', hourCycle: 'h23', timeZoneName: 'shortOffset',
+    });
+    ZONED.set(key, format);
+  }
+  return format;
+}
+
+/**
  * **WHERE A DIRECTORY IS, RELATIVE TO THE ONE THE SESSION WAS LAUNCHED IN** —
  * the abbreviation both bars draw the working directory and the corpus root
  * with, written once here for the reason `formatDuration` is.
