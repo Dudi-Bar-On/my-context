@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: One place holding the questions that need the owner rather than a measurement, so work continues overnight and he answers a list instead of being interrupted.
-summary_of: 82bf2a838dd70f95
+summary_of: fac1415120b07c3c
 scope: []
 tags:
   - v2
@@ -17,7 +17,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-09-08
 valid_until: null
-checksum: beebb18b91d9776b
+checksum: e50da25e740ffb7b
 ---
 
 # decisions collected overnight for the owner to answer in the morning
@@ -81,3 +81,23 @@ staying silent about it is not.)
     for the 24 background commands, none for the 47 monitor/meta/compaction records, and YOU stays
     correct for the 23 slash commands because he typed those. Claude is never the answer.
   - Security is not being handled, at his instruction, and the finding stays local and uncommitted.
+
+── OBSERVED OVERNIGHT, NOT A DECISION ────────────────────────────────────────────────────────
+
+HIS UI SERVER ON 58888 WENT DOWN AT 22:31:48Z AND DID NOT COME BACK. It had been up since
+21:01:04Z as pid 111064, so about ninety minutes. Two earlier transitions the same evening were
+restarts that recovered in 5 s and 11 s with a fresh pid; this one did not.
+
+I DID NOT RESTART IT, and will not: the standing instruction is that the server on 58888 is his and
+no lane or session may kill, replace, restart or bind to it. Starting one for him would be the same
+act as killing one.
+
+IT DOES NOT AFFECT THE WORK. Every lane and every check runs `startUiChild` on an ephemeral port,
+so nothing overnight depended on it. What he loses is only his own open browser.
+
+IDLE EXIT IS NOT THE EXPLANATION: `IDLE_MS` in `src/ui/idle.ts` is eight hours. So the cause is
+outside the product - a machine sleep, a closed terminal, or something ending the process. I cannot
+attribute it from here, and I am NOT claiming a lane did it: both running lanes were instructed not
+to touch that port and both earlier lanes reported they never did. If he did not stop it himself,
+that is worth knowing, because the only remaining explanations are his machine or a lane breaking a
+standing rule.
