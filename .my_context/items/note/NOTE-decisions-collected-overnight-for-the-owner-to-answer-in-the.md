@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: One place holding the questions that need the owner rather than a measurement, so work continues overnight and he answers a list instead of being interrupted.
-summary_of: fac1415120b07c3c
+summary_of: ad64a5f06cd2a752
 scope: []
 tags:
   - v2
@@ -17,7 +17,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-09-08
 valid_until: null
-checksum: e50da25e740ffb7b
+checksum: 906601740e923b1d
 ---
 
 # decisions collected overnight for the owner to answer in the morning
@@ -101,3 +101,41 @@ attribute it from here, and I am NOT claiming a lane did it: both running lanes 
 to touch that port and both earlier lanes reported they never did. If he did not stop it himself,
 that is worth knowing, because the only remaining explanations are his machine or a lane breaking a
 standing rule.
+
+── ITEM 1 SHARPENED: WHAT HE IS ACTUALLY JUDGING ON THE COLOURING ───────────────────────────
+
+The colouring landed and the verdict is still his, but the lane took the measurement this note
+said to take BEFORE asking him a second time, and it points the OPPOSITE way from my guess.
+
+I wrote that if plain untagged fences were not good enough, the next question was whether those
+fences are mostly ONE language - because a corpus that is 90% shell is a case for DEFAULTING the
+language rather than guessing it. Hand-classified by first line: OF THE 160 UNTAGGED FENCES, AT
+MOST 19 ARE CODE OR A COMMAND IN ANY LANGUAGE. The rest are command output, aligned ledgers,
+timelines and counts tables - a column of numbers, a progress bar, a types histogram.
+
+SO THE UNTAGGED MAJORITY IS NOT ONE LANGUAGE. IT IS MOSTLY NOT A LANGUAGE AT ALL. Both detection
+and defaulting would paint a table of counts as though it were source, which is worse than leaving
+it plain. That closes the escape hatch I had left myself: if he says plain is not good enough, the
+answer is NOT to guess harder - it is that the ~19 real ones want a language tag written into them
+at authoring time, which is my habit to change and not the product.
+
+AND MY FENCE COUNT WAS DOUBLE. 185 fenced blocks, not 370 - my per-line scan counted every closing
+fence as a block. Tagged is 25 either way, so untagged is 86.5% rather than 93.2%.
+
+ALSO WORTH KNOWING BEFORE HE JUDGES: part 1 of that item was already built. I had read the wrong
+renderer - the archive draws through markdownNodes, whose inline code has carried the box since the
+renderer was vendored. So what he saw as "no colour" was a box with no HUE, not an unstyled span,
+and what changed tonight is the fenced blocks and their label, not the inline spans.
+
+── DECIDED TONIGHT BY LANES, LISTED SO HE CAN OVERTURN ANY OF THEM ───────────────────────────
+
+  A. A LANE OPENS IN A NEW TAB, as a real anchor, not a popup and not an in-tab restore. Reversing
+     it costs a landing mode and a fourth stickUntil setter, which is why it was chosen: the
+     document is never unmounted, so the reader position is NOT RESTORED, IT IS NEVER LOST.
+     Measured on his own corpus: scrollTop 299,226 before and after, same 18 rows, fold still open.
+  B. SYNTAX COLOURING IS HAND-WRITTEN, not vendored. highlight.js was actually fetched and measured
+     at 49,091 bytes across nine files with nine SHA pins, and it WOULD have passed check:vendor -
+     so this was proportion, not admissibility. Reversing it is adopting those nine files and their
+     upgrade ritual.
+  C. UNTAGGED FENCES GET NO MARK AT ALL, and the label appears only on the 25 that declared a
+     language, so "coloured" and "declared" are visibly one set. Reversing it is one rule.
