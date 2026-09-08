@@ -1,3 +1,79 @@
+## ⏭ READ THIS FIRST — 2026-09-08, at 96%. A FALSE REPORT OF DATA LOSS, AND TWO THINGS I RECORDED BUT DID NOT SHIP.
+
+**`archive/14` is RUNNING** (the stale index). Tree otherwise clean at `db0a8b3`.
+
+### THE MOST USEFUL THING THAT HAPPENED IN THIS PERCENT
+
+He said "about 3 hours missing" from the archive. **I believed the frame and went
+looking for missing records. He then found the real cause himself: THE VIEWER
+RENDERS THE STORED UTC STAMP RAW, AND HE IS UTC+3.** Measured the same minute:
+**14:11Z here, 17:11 on his clock.** Nothing is absent — a session that ran to
+17:00 looks like it stopped at 14:00.
+
+**A formatting defect produced a false report of data loss, which is the more
+expensive kind.** Filed as **`archive/18`**, priority 1.
+
+**AND IT IS NOT `archive/14`, though they were reported together.** That one is
+real and still open: the index says his session ended `2026-09-07T00:50` while
+the file is current. **One is a day of missing CONTENT; the other is three hours
+of wrong PRESENTATION.** Do not let a fix for one close the other.
+
+**The trap in `archive/18`, named because it will look like flake:** this project
+**pins rendering for determinism** (`test/helpers/pin-rendering.ts`; a lane
+already had to pin `toLocaleString('en-US')` for a thousands separator). A bare
+`toLocaleString()` makes tests machine-dependent. **Pin the locale; take the ZONE
+from the reader.** And keep the `dir="ltr"` the viewer lane put on `<time>` — a
+date and a time are two neutral runs, which is why Hebrew reordered a stamp to
+`09:00 2026-09-08`.
+
+### TWO THINGS I RECORDED AS RULINGS AND DID NOT SHIP — HE NOTICED
+
+He asked why he still sees *"A turn longer than 60000 characters is shown up to
+there…"*. **Because I never removed it.** `STEP_TEXT_CAP = 4_000` and
+`SAID_TEXT_CAP = 60_000` are live in `src/ui/read-model-conversation-document.ts`.
+
+**AND THE SEQUENCING ERROR IS MINE AND WORTH NOT REPEATING: I dispatched the
+viewer lane, and THEN amended `archive/7` with his no-cap ruling.** The lane
+never saw it. **Amending an item after dispatching the lane that reads it changes
+nothing.**
+
+**The cap removal is NOT just deleting two constants.** In a virtualised document
+each node is one DOM element: a 60k turn as one node is fine, but an uncapped
+`tool_result` becomes a single enormous node and destroys the property that made
+it fast (13 rows in the DOM over a 924,410 px document). **Render whole but in
+slices** — nothing withheld, nothing one giant node. That belongs in the brief.
+
+**Held only to avoid a collision:** `archive/14` will touch the screen and BOTH
+string tables for its staleness line, and two lanes in the string tables is how
+`t()` throws at runtime. **Dispatch the cap removal the moment `archive/14`
+lands.** It is the last piece of `archive/7`, which is why that item is open.
+
+### `plan:archive` IS NOW FIFTEEN ITEMS
+
+Done: `/1` `/2` `/3` `/7` `/8` `/13`. Open: **`/14` running** · `/4` `/5` `/6`
+`/9` `/10` `/11` `/12` `/15` `/16` `/17` **`/18`**.
+
+### WHAT THE NEXT SESSION DOES FIRST
+
+1. **Land `archive/14`.** Its design constraint: **a GET must not write** —
+   `server-e2e.test.ts` asserts a served read changes not one byte, and
+   `no-writes.test.ts` holds an exact set of write bindings. **A staleness line
+   is required whatever it chose.**
+2. **Dispatch the cap removal** (`archive/7`'s remainder) with the slicing point
+   above.
+3. **`archive/18`** the timezone — small, visible, and it removes a source of
+   false bug reports.
+4. Then `/16` and `/17`; `/15` and `/17` **share one hard problem** — a DOM range
+   must map to a RECORD range in a document whose rows may not be in the DOM.
+   **Solve once.**
+
+### UNCHANGED AND STILL TRUE
+
+**Editing an item lapses its summary AND its acknowledgements**, so fixing a
+doctor finding on a closed item re-opens ones settled earlier. doctor: **89 this
+morning → 47**, twelve warnings, none open. `open_question_blocks` (7) is HIS and
+must not be acknowledged.
+
 ## ⏭ READ THIS FIRST — 2026-09-08, at 95%. THE VIEWER LANDED. `archive/14` IS RUNNING.
 
 **Committed and pushed: `b15a9ea`** — `archive/7`+`/8`+`/13`, verified here:
