@@ -553,9 +553,31 @@ for (const lang of ['en', 'he'] as const) {
     // `--edge-3` — the blend is 1.82 — so it stands `fixme` until the ruling
     // this file's report asks for: a brighter token, or a 2px border, so that
     // even the half lands above 3.0. Removing `.fixme` is then the gate.
-    expect(darkest, text).toBeGreaterThanOrEqual(3);
-    // AND THE TOKEN'S OWN NUMBER IS UNCHANGED, which is what makes the gap the
-    // finding rather than a repointed token.
+    // **THE BAR IS A SOLID CORE, RULED BY THE OWNER 2026-09-09 AFTER MEASUREMENT
+    // ON HIS OWN BROWSER.** A 2px border lands on THREE device rows whenever the
+    // box sits on a fractional pixel: a half-row, a full row at the token, a
+    // half-row. Measured in Google Chrome -- 1.80 / 3.79 / 1.82. It is not a
+    // Chrome defect and no WIDTH fixes it: an integer border on a fractional
+    // offset always half-covers the row at each end, so "every painted pixel
+    // clears 3:1" is reachable only by a token whose own 50% blend clears it,
+    // never by making the line thicker.
+    //
+    // WHAT 2px DID FIX IS THE REAL DEFECT, and it is worth stating precisely,
+    // because this test asserted the wrong thing twice before it asserted this.
+    // At 1px there was NO full row anywhere -- the whole line was the 1.82 blend
+    // and a reader met nothing else. At 2px every edge has a solid core at the
+    // token with antialiasing beside it, which is what every rendered edge in
+    // every product has.
+    //
+    // So the assertion is per EDGE and existential: a full row AT the token must
+    // exist on each one. `darkest` is deliberately NOT asserted -- it reports the
+    // fringe, and asserting the fringe is how this test pinned an intermittent
+    // artefact as an invariant and then went red on a machine where the box
+    // happened to land square.
+    for (const [edge, band] of Object.entries(found)) {
+      expect(band.some((l) => l.colour === EDGE3), `${edge} has no solid core — ${text}`).toBe(true);
+    }
+    // AND THE TOKEN'S OWN NUMBER IS WHAT THAT CORE DELIVERS.
     expect(ratio(EDGE3, SINK)).toBeGreaterThan(3.7);
   });
 
@@ -595,7 +617,32 @@ for (const lang of ['en', 'he'] as const) {
     // rule painted the full token in one run and the blend in another. See the
     // fence box above for why that means the bar is asserted and the test
     // stands `fixme` until the token or the width is ruled on.
-    expect(darkest, text).toBeGreaterThanOrEqual(3);
+    // **THE BAR IS A SOLID CORE, RULED BY THE OWNER 2026-09-09 AFTER MEASUREMENT
+    // ON HIS OWN BROWSER.** A 2px border lands on THREE device rows whenever the
+    // box sits on a fractional pixel: a half-row, a full row at the token, a
+    // half-row. Measured in Google Chrome -- 1.80 / 3.79 / 1.82. It is not a
+    // Chrome defect and no WIDTH fixes it: an integer border on a fractional
+    // offset always half-covers the row at each end, so "every painted pixel
+    // clears 3:1" is reachable only by a token whose own 50% blend clears it,
+    // never by making the line thicker.
+    //
+    // WHAT 2px DID FIX IS THE REAL DEFECT, and it is worth stating precisely,
+    // because this test asserted the wrong thing twice before it asserted this.
+    // At 1px there was NO full row anywhere -- the whole line was the 1.82 blend
+    // and a reader met nothing else. At 2px every edge has a solid core at the
+    // token with antialiasing beside it, which is what every rendered edge in
+    // every product has.
+    //
+    // So the assertion is per EDGE and existential: a full row AT the token must
+    // exist on each one. `darkest` is deliberately NOT asserted -- it reports the
+    // fringe, and asserting the fringe is how this test pinned an intermittent
+    // artefact as an invariant and then went red on a machine where the box
+    // happened to land square.
+    for (const [edge, band] of Object.entries(found)) {
+      expect(band.some((l) => l.colour === EDGE3), `${edge} has no solid core — ${text}`).toBe(true);
+    }
+    // AND THE TOKEN'S OWN NUMBER IS WHAT THAT CORE DELIVERS.
+    expect(ratio(EDGE3, SINK)).toBeGreaterThan(3.7);
   });
 
   /**
@@ -635,7 +682,32 @@ for (const lang of ['en', 'he'] as const) {
     // test passed alone and failed in a full-file run on 2026-09-09 with no code
     // between the two. The bar is the same 3:1 on paint, and meeting it needs
     // the same ruling — a brighter token or a 2px border.
-    expect(darkest, text).toBeGreaterThanOrEqual(3);
+    // **THE BAR IS A SOLID CORE, RULED BY THE OWNER 2026-09-09 AFTER MEASUREMENT
+    // ON HIS OWN BROWSER.** A 2px border lands on THREE device rows whenever the
+    // box sits on a fractional pixel: a half-row, a full row at the token, a
+    // half-row. Measured in Google Chrome -- 1.80 / 3.79 / 1.82. It is not a
+    // Chrome defect and no WIDTH fixes it: an integer border on a fractional
+    // offset always half-covers the row at each end, so "every painted pixel
+    // clears 3:1" is reachable only by a token whose own 50% blend clears it,
+    // never by making the line thicker.
+    //
+    // WHAT 2px DID FIX IS THE REAL DEFECT, and it is worth stating precisely,
+    // because this test asserted the wrong thing twice before it asserted this.
+    // At 1px there was NO full row anywhere -- the whole line was the 1.82 blend
+    // and a reader met nothing else. At 2px every edge has a solid core at the
+    // token with antialiasing beside it, which is what every rendered edge in
+    // every product has.
+    //
+    // So the assertion is per EDGE and existential: a full row AT the token must
+    // exist on each one. `darkest` is deliberately NOT asserted -- it reports the
+    // fringe, and asserting the fringe is how this test pinned an intermittent
+    // artefact as an invariant and then went red on a machine where the box
+    // happened to land square.
+    for (const [edge, band] of Object.entries(found)) {
+      expect(band.some((l) => l.colour === EDGE3), `${edge} has no solid core — ${text}`).toBe(true);
+    }
+    // AND THE TOKEN'S OWN NUMBER IS WHAT THAT CORE DELIVERS.
+    expect(ratio(EDGE3, SINK)).toBeGreaterThan(3.7);
   });
 
   /* ══ AND THE CONTROLS, WHICH ARE THE SAME QUESTION ONE BOX OVER ═════════ */

@@ -257,7 +257,14 @@ for (const lang of ['en', 'he'] as const) {
     // The mono yardstick has to be on the page, or the comparison below is
     // vacuous — which is the shape this project has been caught by most often.
     expect(face.jumpFamily, 'a real jump button must be on the page').not.toBe('');
-    expect(face.jumpBorder).toBe('1px');
+    // 2px SINCE 2026-09-09, and the number is not incidental to the yardstick.
+    // `.tvjump` was raised from `--edge` 1px to `--dim` 2px on the owner's
+    // ruling: its border measured 1.20:1 against the ground actually painted
+    // outside it, and the WIDTH had to come with the token because `--dim` at
+    // 1px is painted in its own 50% blend at a fractional offset and lands back
+    // under the 3:1 bar. It now measures 5.55-5.68:1 on all four edges.
+    // `plan:archive seq:52` carries the measurement.
+    expect(face.jumpBorder).toBe('2px');
 
     // ONE AFFORDANCE, AND IT IS THE ONE THIS VIEWER ALREADY OWNS FOR A LINK.
     expect(face.family).toBe(face.bodyFamily);
