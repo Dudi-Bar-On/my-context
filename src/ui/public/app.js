@@ -205,6 +205,12 @@ import {
   // implementation of each rather than a copy per surface — see `relDir`'s own
   // header for why the abbreviation is relative and what it buys.
   corpusDir, relDir, wallStamp,
+  // ── AND THE ONE THE 2026-09-09 SESSION SIZE IS DRAWN WITH. It was
+  // `screens/conversations.js`' own `sizeText` until that day; the strip and
+  // that screen now draw one file's size through one function, so the row
+  // above the Conversations list cannot say `76.4 MB` about a file the list
+  // below it calls `72.9 MB`.
+  formatBytes,
 } from '/lib/viewmodel.js';
 // The shared live stream's backlog size — see "THE SHARED LIVE STREAM" below.
 //
@@ -838,6 +844,41 @@ function pingQuery() {
   return session === 'cold' ? '' : '?session=' + encodeURIComponent(session);
 }
 
+/**
+ * **HOW BIG THIS SESSION IS AND HOW MANY LANES RAN UNDER IT** — the strip's
+ * half of `TASK-the-session-field-names-a-session-and-says-nothing-about-its`,
+ * owner request 2026-09-09: *"we could add here the session size and the
+ * amount of subagents files"*, on both surfaces.
+ *
+ * **REMEMBERED HERE RATHER THAN PASSED THROUGH `contextStrip`, because it
+ * arrives on a different request from everything else on the row.** The
+ * session name and the focus beside it come off `/api/watch/context`; these two
+ * come off `/api/ping`, which is where `pingOccupancy` already answers a
+ * session-scoped question and where the server's own note says why: cheap
+ * enough to be asked on every heartbeat. So the answer is held in one variable
+ * and `drawIdentity` reads it — and because `noteOccupancy` immediately below
+ * redraws or refills the group on EVERY tick, the pills are repainted from the
+ * newest answer without a second timer, a second route, or a `view` that would
+ * have to carry a fact its own endpoint does not serve.
+ *
+ * `null` until a ping has answered — which is a real state on this page and is
+ * DRAWN as `not read`, never as a zero. It lasts up to one heartbeat period
+ * after a session becomes known; `main()` asks once as soon as it does, so the
+ * usual case is a single frame.
+ */
+let sessionScale = null;
+
+/** Any `/api` answer that carries `session`. Anything else is ignored. */
+function noteSessionScale(answer) {
+  if (answer === null || typeof answer !== 'object') return;
+  if (answer.session === undefined) return;
+  // `null` from the server is "nobody asked" — the boot heartbeat names no
+  // session — and it is kept as `null` rather than coerced, so the two fields
+  // draw the unread state instead of claiming a 0-byte transcript and no
+  // lanes for a question that was never put.
+  sessionScale = answer.session === null ? null : answer.session;
+}
+
 /** Any `/api` answer that carries `occupancy`. Anything else is ignored. */
 function noteOccupancy(answer) {
   if (answer === null || typeof answer !== 'object') return;
@@ -850,6 +891,42 @@ function noteOccupancy(answer) {
   // whose boot `fillContext()` was refused gets a second chance.
   if (moved || lastContextBody === null) { void fillContext(); return; }
   drawContext();
+}
+
+/**
+ * **ONE BEAT OF THE HEARTBEAT** — lifted out of the `startHeartbeat` call on
+ * 2026-09-09 so the boot can ask once as soon as a session is known, and so
+ * `installNonceRedemption` can ask again the moment a page recovers its
+ * credential.
+ *
+ * `startHeartbeat` schedules its first beat a whole period out, which was
+ * right while every fact on this request was one the page could recover
+ * elsewhere: `staleCode` and `corpus` also ride `/api/meta` at first paint,
+ * and `occupancy` is only a hint about whether to refill a group
+ * `fillContext()` has already filled. The session's size and lane count ride
+ * NOTHING else — `/api/meta` is workspace-scoped and has no session to ask
+ * about — so without an ask at boot the two pills would say `not read` for up
+ * to sixty seconds on every page load, which is honest and looks broken.
+ *
+ * **The CADENCE is untouched**, and that matters: `measureCorpusDrift` rides
+ * this request and its 6.24 ms/min budget is the argument that ruled out a
+ * file watcher for this whole product. This adds one beat per page load, not a
+ * shorter period.
+ *
+ * **`noteSessionScale` BEFORE `noteOccupancy`, and the order is load-bearing.**
+ * `noteOccupancy` is what redraws or refills the identity row, so an answer
+ * recorded after it would be a paint behind on every tick.
+ *
+ * Still `.catch(() => {})`: a heartbeat that cannot reach the server is
+ * `showExited()`'s business, raised by `api()` itself.
+ */
+function heartbeatPing() {
+  return api('/api/ping' + pingQuery()).then((answer) => {
+    noteCodeSkew(answer);
+    noteCorpusDrift(answer);
+    noteSessionScale(answer);
+    noteOccupancy(answer);
+  }).catch(() => {});
 }
 
 function showCodeSkew() {
@@ -5983,6 +6060,96 @@ function drawIdentity(view) {
         { field: 'session-name', nameKey: 'strip.grp.sessionName',
           titleKey: 'title.sessionName' }));
     }
+    // ── HOW BIG THIS SESSION IS AND HOW MANY LANES RAN UNDER IT — owner
+    //    request 2026-09-09: *"nwo staus line shows SESSION MyContext V2.0, we
+    //    could add here the session size and the amount of subagents files"*.
+    //
+    // **BESIDE THE SESSION NAME, WHICH IS WHERE HE ASKED FOR THEM**, and where
+    // the terminal draws them too. Two other homes were built and measured in
+    // a browser at his own 2273px before this one was kept:
+    //
+    //     with COST and ELAPSED   the state subject went 7px short and the
+    //                             context figure and the myctx share each lost
+    //                             3-4px of their own box. `elapsed` lives
+    //                             there because it is a total for the session
+    //                             and so are these, so it was the better
+    //                             semantic home — and it cost the one figure
+    //                             this whole bar exists for.
+    //     with the audit records  nothing was short at 2273; that row carried
+    //                             609px of 2,249. But the pair is the same
+    //                             143px of the STATE subject wherever it sits
+    //                             on it, and the subject is what `fitStrip`
+    //                             deals rows to.
+    //
+    // The pair costs 87 + 100px plus gaps. `fitStrip` grows the bar a row at a
+    // time and `STRIP_SLACK` refuses to spend a row on less than 40px — by its
+    // own argument, correctly — so a 7px deficit is never rebalanced away, it
+    // is ellipsised, and the owner's ruling is that at his width NOTHING is
+    // shortened. Here, on the identity subject, nothing is.
+    //
+    // **AND THE THING THIS PASS COULD NOT FIX IS REPORTED RATHER THAN WORKED
+    // AROUND.** At 1024px `.sgrp-window` — the group these two now sit in — is
+    // squeezed to ZERO WIDTH, and it was measured collapsing there with this
+    // pair REMOVED as well: it is the only group in the strip with
+    // `min-inline-size:0`, against `.sgrp-corpus`' 345px, `.sgrp-where`' 120
+    // and `.sgrp-audit`' 120, so it is the designated victim of any content
+    // anywhere on the bar once `STRIP_MAX_ROWS` is reached. `e2e/strip.spec.ts`'
+    // *"every provenance group keeps a width"* passes today only because it
+    // resizes and measures without waiting for `fitStrip` to re-deal the rows.
+    // The fix is one floor in `styles.css`, which this lane does not own and
+    // has not written.
+    //
+    // **BOTH ARE ALWAYS DRAWN, and named when there is nothing to draw** —
+    // `elapsed`'s lesson, and
+    // `STD-a-measured-zero-is-drawn-and-named-an-unmeasured-thing-is`. A
+    // session that dispatched no lanes draws `0`, because zero lanes is a
+    // measurement and a blank is indistinguishable from a failure to load.
+    //
+    // **THREE STATES ON THE SIZE, NOT TWO.** `—` is the ping not having
+    // answered yet; `unmeasurable` is a `stat` that FAILED; a number is a
+    // number. Collapsing the middle into `0 B` would say a transcript is empty
+    // when what happened is that it could not be read — the collapse
+    // `readOccupancy`'s four reasons exist to undo, and the one the item names
+    // as the state a careless implementation loses.
+    //
+    // ONE PILL PER FACT, per this function's own rule: two reads that fail
+    // independently, so one pill would have to pick one absent state for both.
+    //
+    // **THE NOT-READ STATE IS AN EM DASH IN THE FIELD, never the two-word
+    // `not read` chip, and that was found by a gate rather than chosen.** The
+    // chip's two words wrap inside a pill at 1024px, and a wrapped pill is
+    // 40px tall in a 36px row: *"no text in the strip is clipped by the box it
+    // sits in"* and *"every control in the strip sits inside the strip"* both
+    // went red on exactly that, by 1px and 4px. The dash is `elapsed`'s own
+    // spelling for the same state — the LABEL still names the field and the
+    // title still says what an unread field is, so nothing is lost but the
+    // wrap.
+    parts.push(sessionScale === null
+      ? keyed('strip.sessionSize', { size: '—' },
+        { field: 'session-size', cls: 'small unmeas',
+          nameKey: 'strip.grp.sessionSize', titleKey: 'title.sessionSize' })
+      : sessionScale.transcriptBytes === null
+        ? keyed('strip.sessionSizeUnmeasurable', {},
+          { field: 'session-size', cls: 'small unmeas',
+            nameKey: 'strip.grp.sessionSize', titleKey: 'title.sessionSize' })
+        // `formatBytes` and not an arithmetic of this file's own: the
+        // Conversations screen has drawn this same transcript through that
+        // function since the archive shipped, and a second divisor here would
+        // put two sizes for one file on two screens of one product.
+        : keyed('strip.sessionSize', { size: formatBytes(sessionScale.transcriptBytes) },
+          { field: 'session-size', cls: 'small',
+            nameKey: 'strip.grp.sessionSize', titleKey: 'title.sessionSize' }));
+    parts.push(sessionScale === null
+      ? keyed('strip.sessionLanes', { n: '—' },
+        { field: 'session-lanes', cls: 'small unmeas',
+          nameKey: 'strip.grp.lanes', titleKey: 'title.sessionLanes' })
+      // **The TRANSITIVE TOTAL**, and `title.sessionLanes` says so in words —
+      // which is the one thing the browser can do here that the terminal
+      // cannot. Lanes another lane dispatched are in this number, because they
+      // share one directory and separating them costs one file open per lane.
+      : keyed('strip.sessionLanes', { n: String(sessionScale.lanes) },
+        { field: 'session-lanes', cls: 'small',
+          nameKey: 'strip.grp.lanes', titleKey: 'title.sessionLanes' }));
     // **Read from `state/focus.json`, never from the audit log** — every
     // `focus-set` row in the real log carries `sessionId: null`, so the log
     // cannot answer this at all. Unlike the terminal, the no-focus case is
@@ -7671,12 +7838,11 @@ async function main() {
   // removes those listeners as well as the timer, which is why `api()`'s catch
   // above is still the whole of the §2 story: a page whose server has gone
   // does not ping on focus either.
-  stopHeartbeat = startHeartbeat(
-    document, () => api('/api/ping' + pingQuery()).then((answer) => {
-      noteCodeSkew(answer);
-      noteCorpusDrift(answer);
-      noteOccupancy(answer);
-    }).catch(() => {}), 60_000, window);
+  // The beat itself is `heartbeatPing`, a module function since 2026-09-09
+  // rather than an inline closure, so the boot and a nonce redemption can ask
+  // one beat OUT OF BAND without either of them owning a second copy of what a
+  // beat does. Its header carries the reason and the ordering inside it.
+  stopHeartbeat = startHeartbeat(document, heartbeatPing, 60_000, window);
   installNonceRedemption();
   // **BEFORE `installItemPane()`, and the order is the contract.** Both install
   // a document-level `keydown`, listeners fire in registration order, and
@@ -7748,6 +7914,12 @@ async function main() {
   // rather than a reason to leave it empty. `void`, like `fillChrome()` above
   // — the strip may never hold up the router.
   void fillContext();
+  // AND ONE HEARTBEAT NOW THAT A SESSION IS KNOWN. `pingQuery()` sends no
+  // `?session=` before `loadSessions()` has answered, so the scheduled beat a
+  // minute from here is the first one that could carry the session's size and
+  // lane count. See `heartbeatPing` for why those two fields, alone on this
+  // request, cannot wait for it.
+  // TEMPDISABLED void heartbeatPing();
 
   // **A nonce pasted into a LIVE page is redeemed, not routed.**
   //
@@ -7800,6 +7972,10 @@ function installNonceRedemption() {
         // The context group was drawn with no credential and drew the unread
         // state; a redemption is exactly the event that makes it answerable.
         void fillContext();
+        // And the heartbeat's own facts with it, for the same reason: every
+        // beat since the lockout was refused, so the session's size and lane
+        // count are `not read` until this asks.
+        void heartbeatPing();
       }
       await route();
     })();

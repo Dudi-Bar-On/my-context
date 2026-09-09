@@ -260,6 +260,10 @@ const INPUT: PowerlineInput = {
   sevenDay: { usedPercent: 88, resetsAt: null },
   costUsd: null,
   elapsedMs: null, warmPercent: null,
+  // The 2026-09-09 pair is not what this file measures — it bands the five
+  // used-of-maximum blocks — and `null` is the honest "nobody asked" input
+  // rather than a size invented to satisfy a required property.
+  sessionScale: null,
   myctx: { tokens: 264_500, injections: 3, unrecorded: 0 },
   lastAudit: null, myctxNote: null, teeNote: null, corpus: null,
   cwd: null, projectDir: null,

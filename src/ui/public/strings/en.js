@@ -1633,6 +1633,23 @@ export const strings = {
   'title.log': 'When the audit log last moved, and what moved it. If this stops advancing while you work, something has stopped recording.',
   'strip.grp.focus': 'focus',
   'strip.grp.sessionName': 'session name',
+  // ── HOW BIG THIS SESSION IS AND HOW MANY LANES RAN UNDER IT — owner
+  //    request 2026-09-09, on both surfaces.
+  //
+  // The VALUE alone in each, because the field's own caps-and-white label
+  // already says which fact it is: `SIZE 72.9 MB`, `LANES 262`. A `{n} lanes`
+  // spelling would put the unit on the bar twice, and the terminal has 27
+  // columns for the pair.
+  'strip.sessionSize': '{size}',
+  // The stat FAILED, which is not a zero-byte transcript and is not a session
+  // that recorded nothing. One word, because it is a pill on a 30px bar; the
+  // hover says what it means.
+  'strip.sessionSizeUnmeasurable': 'unmeasurable',
+  'strip.sessionLanes': '{n}',
+  'strip.grp.sessionSize': 'size',
+  'strip.grp.lanes': 'lanes',
+  'title.sessionSize': 'How large this session’s transcript is on disk. Read with one {m:stat} on the heartbeat — never from the conversation archive, which is off by default and which no read surface may build. A size shown as unmeasurable means the file could not be read at all, which is a different fact from a transcript with nothing in it.',
+  'title.sessionLanes': 'How many helper agents have run under this session — the TOTAL, including lanes that another lane dispatched, because they all share one directory and telling them apart would mean opening every one of their sidecar files. {m:mycontext conversation subagents} can separate them and will report a smaller number for the session’s own dispatches. Counted with one directory listing on the heartbeat. Zero means this session has dispatched none.',
   'strip.grp.ask': 'ask',
   'strip.grp.rate5': '5h',
   'strip.grp.rate7': '7d',

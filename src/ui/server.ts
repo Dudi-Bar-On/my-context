@@ -63,11 +63,13 @@
  * registered route is a route behind the gate and both of their whole jobs is
  * to be routes that are not.
  */
+import { statSync } from 'node:fs';
 import { createServer, type IncomingMessage, type ServerResponse } from 'node:http';
 import type { AddressInfo } from 'node:net';
 import path from 'node:path';
 import { AUDIT_KINDS, AUDIT_OPS, type RefusalCheck } from '../core/audit.ts';
 import { readOccupancy, type Occupancy } from '../core/context-occupancy.ts';
+import { countSubagentFiles, subagentDir, transcriptDir } from '../core/conversation-index.ts';
 import { measureCorpusDrift } from '../core/corpus-drift.ts';
 import { isMainEntry } from '../core/paths.ts';
 // The two closed vocabularies `/api/meta` now serves, each imported from the
@@ -98,7 +100,7 @@ import {
 } from './read-model.ts';
 import { registerCliHelpRoutes } from './read-model-cli-help.ts';
 import { registerCommandRoutes } from './read-model-command.ts';
-import { registerConversationRoutes } from './read-model-conversations.ts';
+import { registerConversationRoutes, workspaceCwd } from './read-model-conversations.ts';
 import {
   registerConversationDocumentRoutes,
 } from './read-model-conversation-document.ts';
@@ -285,6 +287,79 @@ function pingOccupancy(ws: Workspace, url: URL): Occupancy | null {
 }
 
 /**
+ * **HOW BIG ONE SESSION IS AND HOW MANY LANES RAN UNDER IT** — the strip's half
+ * of `TASK-the-session-field-names-a-session-and-says-nothing-about-its`.
+ *
+ * ── ON THIS ROUTE, AND NOT ON A ROUTE OF ITS OWN ─────────────────────────
+ *
+ * `pingOccupancy` one function up already answers a session-scoped question
+ * here, and the reason it does is this route's own design note: cheap enough
+ * to be asked on every heartbeat, so the expensive refill happens only on the
+ * ticks where the reading actually moved. Both these facts are the same shape
+ * — 0.30 ms of `stat` and `readdir` against `/api/watch/context`'s 4.69 ms —
+ * and a second endpoint for them would be a second channel to keep in step
+ * with this one, which is what the `corpus` and `staleCode` fields above were
+ * put here to avoid.
+ *
+ * ── BOTH FACTS COME FROM DISK, NEVER FROM THE CONVERSATION INDEX ─────────
+ *
+ * And that is the stronger half of the ruling, stronger than the cost. This
+ * server runs in workspaces whose archive was never built: `plan:archive
+ * seq:9` established that off-by-default is enforced in three places —
+ * `ConversationIndex.open` has one caller, inside `rebuildConversations`,
+ * which has two, and no read surface can build one. **A status strip that
+ * opened the index would read as opting a workspace in.** A `stat` and a
+ * `readdir` are correct whether the archive exists or not, and they are also
+ * a twentieth of the `measureCorpusDrift` sweep already on this request.
+ *
+ * ── IT STAYS A READ ──────────────────────────────────────────────────────
+ *
+ * `statSync` and `readdirSync` and nothing else. `test/ui/no-writes.test.ts`
+ * holds `/api/ping` to that and was strengthened on 2026-09-09 with a
+ * `WRITES_WITHOUT_FS` set after being found unable to see a `node:sqlite`
+ * writer at all — and the index route this refuses is exactly the thing that
+ * set would have to look at.
+ *
+ * `null` is "nobody asked" — no session named, or no workspace to resolve a
+ * transcript directory from — for the identical reason `pingOccupancy`
+ * answers `null` rather than an `unmeasurable` on the boot heartbeat.
+ *
+ * The lanes count is the **transitive total**: every lane owned by the session
+ * lands in one directory however many hops dispatched it, and telling them
+ * apart means opening 262 sidecars. Both the strip's hover and this field's
+ * name have to keep saying so, because `mycontext conversation subagents` can
+ * separate them and would otherwise look like it disagreed.
+ */
+function pingSessionScale(
+  ws: Workspace, url: URL,
+): { transcriptBytes: number | null; lanes: number } | null {
+  const session = url.searchParams.get('session');
+  if (session === null || session === '') return null;
+  // Unlike `pingOccupancy`, this does NOT need `projectRoot`: the transcripts
+  // are Claude Code's, not the corpus's, and a session in a directory with no
+  // `.my_context` still has a size and still ran lanes. `workspaceCwd` falls
+  // back to this process's cwd for exactly that case, which is the directory
+  // this server was started in — the same answer every other conversation read
+  // model here takes.
+  const dir = transcriptDir(process.env, workspaceCwd(ws));
+  let transcriptBytes: number | null = null;
+  try {
+    const stat = statSync(path.join(dir, `${session}.jsonl`));
+    // **A failed `stat` is `unmeasurable`, never 0.** A pruned transcript and
+    // a session that has recorded nothing are different facts with different
+    // causes, and the strip draws them apart.
+    if (stat.isFile()) transcriptBytes = stat.size;
+  } catch {
+    transcriptBytes = null;
+  }
+  // A session that dispatched none has no `subagents/` directory at all, and
+  // that is a MEASURED ZERO which the strip DRAWS —
+  // `STD-a-measured-zero-is-drawn-and-named-an-unmeasured-thing-is`.
+  // `countSubagentFiles` never throws and answers 0 for it.
+  return { transcriptBytes, lanes: countSubagentFiles(subagentDir(process.env, workspaceCwd(ws), session)) };
+}
+
+/**
  * The read routes, registered into the shared table `routes.ts` owns.
  *
  * Exported and idempotent so a test can ask what the table holds without
@@ -384,6 +459,11 @@ export function registerReadRoutes(): void {
         staleCode: ctx.code.isStale(),
         corpus: measureCorpusDrift(ctx.ws.projectRoot),
         occupancy: pingOccupancy(ctx.ws, ctx.url),
+        // **AND A FOURTH: `session`** — owner request 2026-09-09, and it is
+        // here for the reason `occupancy` one line up is. See
+        // `pingSessionScale`, which carries the cost, the refusal of the
+        // conversation index, and why this is not a route of its own.
+        session: pingSessionScale(ctx.ws, ctx.url),
       },
     }),
   });

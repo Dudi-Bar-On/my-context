@@ -989,7 +989,23 @@ bdi{unicode-bidi:isolate}
    belongs at the end, where the live-stream fault and the refresh affordance
    already sit. */
 .sgrp-session{flex:0 1 auto;min-inline-size:0}
-.sgrp-window{flex:0 1 auto;min-inline-size:0}
+/* IT GIVES WAY, BUT IT DOES NOT VANISH — and the difference is the whole of the
+   rule above this one. `min-inline-size:0` let this group reach ZERO WIDTH at
+   1024px, measured 2026-09-09 with `plan:archive seq:44`'s two new pills
+   REMOVED, so it predates them: it is the only group without a floor
+   (`.sgrp-where` 120, `.sgrp-audit` 120, `.sgrp-corpus` 345), which made it the
+   designated victim of any content added anywhere on the bar.
+   The comment above already calls squeezing a group to zero "the
+   four-of-forty-four defect wearing a flexbox" — that was the same defect
+   happening to `.sgrp-corpus`, and the answer there was a floor. This is that
+   answer applied to the group it was written next to.
+   120px matches its two siblings and holds the context reading itself; the
+   drop order seq:44 measured (SIZE at 155 columns, LANES at 145, SESSION at
+   130) is what gives way first instead, which is the order that was designed.
+   `e2e/strip.spec.ts`'s "every provenance group keeps a width" passed before
+   this only because it sampled the 1280 layout before `fitStrip` re-dealt the
+   rows — so the gate was green over a measurement it never took. */
+.sgrp-window{flex:0 1 auto;min-inline-size:120px}
 .modelstate,.windowstate,.coststate,.limitstate{display:flex;align-items:center;gap:var(--sp-3);min-inline-size:0}
 .windowstate{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 /* THE CORPUS GROUP CAN GIVE WAY NOW, BECAUSE IT CARRIES A SENTENCE.
@@ -3883,12 +3899,102 @@ body.docpage{overflow-y:auto}
 .tvsaid li{margin-block-end:var(--sp-1)}
 .tvsaid li.task-list-item{list-style:none}
 .tvsaid a{color:var(--gold)}
-.tvsaid b{color:var(--ink);font-weight:600}
+/* BOLD IS 700 AND NOT 600, and the reason is that it CANNOT be brighter.
+   `TASK-inline-code-has-no-hue-and-a-table-frame-is-drawn-at-1-71-1` reads
+   this rule as "bold is weight-only where a terminal brightens it". Half of
+   that is right and the remedy named is not available: a terminal brightens
+   bold by moving the default foreground to its BRIGHT white, and this
+   viewer's prose is ALREADY there — `--ink` #f0eef6 measures 16.64:1 on
+   `--paper` against `.tva-fW` #f0f2f5's 17.06:1, a step of 0.4 points that no
+   reader can see. There is no headroom to spend, so spending a hue instead
+   would be inventing a meaning bold does not carry.
+   What was actually wrong is the WEIGHT: `lib/ansi.js`'s own bold is
+   `.tva-bold{font-weight:700}` two blocks below, so terminal output in this
+   very well drew bold heavier than prose bold did. 700 makes one app say one
+   thing about bold, and the surface is not small: 7,392 bold runs against
+   10,797 inline spans on his own session, measured the same day. */
+.tvsaid b{color:var(--ink);font-weight:700}
 .tvsaid em{font-style:italic}
+
+/* ── A HUE ON INLINE CODE, AND WHERE THE BOUNDARY NOW SITS ────────────────
+   `TASK-inline-code-has-no-hue-and-a-table-frame-is-drawn-at-1-71-1`, owner
+   2026-09-09 on what `seq:26` shipped: *"about color, currentlly many missing
+   almost none so it is not good enough"* … *"make it at least as the terminal
+   TUI does, many words are highlited by color (think it is lite purple or
+   blue)"*.
+
+   WHY THE BOX WAS NEVER GOING TO BE ENOUGH, which is a measurement and not a
+   change of taste. `seq:26` gave inline code `.tvsaid .m`'s existing box, on
+   the argument that the box separates the span from the prose. The box is
+   drawn in `--edge` #3a3a45, which measures **1.71:1** against `--paper` —
+   barely over half of the 3.0:1 WCAG asks of a boundary a reader must see. A
+   border nobody can see separates nothing. And the volumes say the rest:
+   **10,797 inline spans against 25 tagged fences** — re-counted on his 76 MB
+   session on 2026-09-09, spans inside fences excluded so the two columns do
+   not overlap — so colouring the fences moved 0.2% of the coloured-looking
+   text and "almost none" was the exact word.
+
+   VIOLET AND NOT BLUE, and the tie is broken on SEPARATION rather than on
+   contrast. Both of his own words were measured, against `--paper` #0f0f12
+   and against the print register's `#fff`:
+
+       #c678dd  keyword violet   6.50:1 on paper    2.94:1 on white
+       #61afef  function blue    8.10:1 on paper    2.36:1 on white
+
+   Blue wins on contrast and LOSES, because contrast is not the binding
+   constraint — both clear 4.5:1 for body text with room, and neither is
+   readable on white, which is why both flatten to #000 in the print block at
+   the foot of this file. What binds is that `--carry` #8b9ce6 is spent THREE
+   TIMES IN THIS SAME WELL — `.tvtools`, `.tvarg` and `.tvresult`, the tool
+   name, its arguments and its result, often in the turn directly above.
+   Adjacent ΔE76, by the method the TOKENS block's own palette trial used and
+   against the ~10 at which two colours stop being reliably told apart:
+
+       #61afef  vs --carry  17.9     vs --dim  32.0
+       #c678dd  vs --carry  34.8     vs --dim  52.6
+
+   A blue code span beside a `--carry` tool name is two blues nine points
+   above the discrimination floor; the violet has twice that room from
+   `--carry` and from the prose greys alike. It is also the first word he
+   used.
+
+   ── THE SCOPE BOUNDARY, STATED BECAUSE IT MOVED ────────────────────────────
+   The nine fence hues below are scoped to `.tvsaid pre[data-lang]` — inside a
+   fence that declared a language. This is WIDER: `.tvsaid .m`, which is any
+   inline code anywhere in a transcript's prose, including inside a heading, a
+   list item, a table cell or a bold run. The boundary is therefore now **the
+   archive's prose body, and nothing else**, and it is exact rather than
+   hopeful for one checked reason: `screens/conversations.js`' `saidBody`
+   appends ONLY `markdownNodes`' output into `.tvsaid`, and `markdownNodes`
+   builds a `span.m` for exactly one token type, `code_inline`. No string
+   table `{m:…}` slot is ever rendered into this element, so no translated run
+   can pick the hue up by wearing the same class.
+
+   OUTSIDE that element nothing changes: the item pane and `/doc.html` render
+   the same markup and take none of this, the same way they take none of the
+   fence colours. `--tvcode` is a custom property on `.tvsaid` rather than a
+   `:root` token for the reason the sixteen `.tvterm` colours and the ten
+   `--wa-*` properties are scoped: a foreign hue that cannot be READ outside
+   the one element cannot leak onto a chip or become a sixth meaning hue.
+
+   A MEANING HUE STILL OUTRANKS IT. `--gold` inside `.tvsaid` means "a link",
+   and `.tvsaid .m` (0,2,0) would otherwise out-specify `.tvsaid a` (0,1,1)
+   and repaint the code inside a link. The rule after next puts the link's own
+   hue back, so a budgeted meaning hue is never overwritten by a decoration.
+
+   NO `direction` AND NO `unicode-bidi` HERE, for the reason the fence tokens
+   below carry at length: `.m` already inherits `direction:ltr;unicode-bidi:
+   isolate` from the global `.m,code,kbd,pre` rule, adding `color` cannot
+   change a bidi run, and this is the exact shape that once put a leading dot
+   at the wrong end of a Hebrew sentence. `e2e/code-colour.spec.ts` measures
+   the rendered text in both languages rather than trusting this comment. */
+.tvsaid{--tvcode:#c678dd}
 .tvsaid .m{background:var(--paper);border:1px solid var(--edge);
-  border-radius:var(--r-sm);padding-inline:4px}
+  border-radius:var(--r-sm);padding-inline:4px;color:var(--tvcode)}
+/* The link keeps its own hue through a code span — see the block above. */
+.tvsaid a .m{color:var(--gold)}
 .tvsaid pre{margin-block:0 var(--sp-3);padding:var(--sp-2) var(--sp-3);
-  background:var(--paper);border:1px solid var(--edge);
+  background:var(--paper);border:1px solid var(--edge-3);
   border-radius:var(--r-sm);overflow-x:auto}
 /* WHAT THE FENCE SAID IT WAS — drawn only where it said something.
    `lib/markdown.js`'s `fenceNode` sets `data-lang` to the word the author
@@ -3909,9 +4015,49 @@ body.docpage{overflow-y:auto}
   padding-inline-start:var(--sp-3);color:var(--dim)}
 .tvsaid table{border-collapse:collapse;display:block;overflow-x:auto;
   font-size:var(--fs-0)}
-.tvsaid th,.tvsaid td{border:1px solid var(--edge);
+/* ── THE FRAME A READER MUST SEE, AND THE FOUR THAT ARE NOT ONE ───────────
+   Owner, same ruling: *"the tables frames are also almost not seen to dark"*.
+   AND THE ITEM NEVER COUNTED THEM, which understates its own second half:
+   **300 markdown tables carrying 1,950 body rows** on his session, so the
+   frame he could not see is drawn more often than every fence, rule and link
+   in that transcript put together (192, 35 and 8).
+   `--edge` #3a3a45 is **1.71:1** on `--paper` and **1.69:1** on `--sink`,
+   which is what a table actually sits on here — the cells declare no
+   background, so the ground is `.tvscroll`'s. Either way it is barely over
+   half of the 3.0:1 WCAG asks. `--edge-3` #6e6e7e measures **3.82:1** and
+   **3.79:1** on the same two grounds, so this is a token swap and not a new
+   colour, and it costs NOTHING on paper: the print `:root` already flattens
+   `--edge` and `--edge-3` alike to `#000` on `#fff`, 21:1 both before and
+   after.
+
+   THE SWAP IS NOT GLOBAL, because these borders do not do one job. Eight
+   rules in this viewer draw `--edge`; four are raised and four are left, and
+   the line between them is whether a reader has to SEE the boundary to read
+   the content:
+
+     RAISED — a box or rule that bounds content and has no other channel:
+       `.tvsaid th,td`  the ruling of a table IS how a table is read.
+       `.tvsaid pre`    a fence's own `--paper` fill is #0f0f12 against the
+                        well's #101014 — a 0.4% step, so the border was the
+                        only thing saying where code started and stopped.
+       `.tvsaid hr`     a break the AUTHOR wrote, and the terminal draws it.
+       `.tvterm`        the same box as `.tvsaid pre`, for tool output.
+
+     LEFT AT `--edge` — decoration beside a channel that already carries it:
+       `.tvsaid .m`     the inline box now has a HUE. Raising a border on
+                        10,249 spans would draw 10,249 visible outlines
+                        through the prose, which is the noise `seq:26`'s own
+                        item warned a box might become.
+       `.tvturn`        the turn separator, beside a 3px `--gold`/`--ok`
+                        accent and a glyph on every turn.
+       `.tvwork`        the fold's separator, beside its own summary line.
+       `.tvscroll`      the well's outer frame, beside a `--sink` fill on a
+                        `--panel` card. Not raised here because the owner
+                        named the CONTENT frames and this one is chrome —
+                        reported rather than changed. */
+.tvsaid th,.tvsaid td{border:1px solid var(--edge-3);
   padding:var(--sp-1) var(--sp-2);text-align:start}
-.tvsaid hr{border:0;border-block-start:1px solid var(--edge);
+.tvsaid hr{border:0;border-block-start:1px solid var(--edge-3);
   margin-block:var(--sp-3)}
 .tvsaid .refusal{display:inline-block;font:600 var(--fs-00)/1.4 var(--mono);
   color:var(--warn)}
@@ -3960,7 +4106,7 @@ body.docpage{overflow-y:auto}
 /* TERMINAL OUTPUT. Monospace, wrapped rather than clipped, and bounded so one
    40,000-character `git log` cannot own the whole well. */
 .tvterm{margin:0;padding:var(--sp-2) var(--sp-3);font:var(--fs-00)/1.5 var(--mono);
-  color:var(--ink);background:var(--paper);border:1px solid var(--edge);
+  color:var(--ink);background:var(--paper);border:1px solid var(--edge-3);
   border-radius:var(--r-sm);white-space:pre-wrap;overflow-wrap:anywhere;
   max-block-size:44vh;overflow-y:auto}
 
@@ -4112,4 +4258,15 @@ body.docpage{overflow-y:auto}
     --tvh-keyword:#000; --tvh-literal:#000; --tvh-fn:#000;
     --tvh-type:#000; --tvh-prop:#000; --tvh-opt:#000;
   }
+  /* The inline hue, flattened on the same argument and by the same mechanism.
+     It is one line because it is one custom property on one element, which is
+     the whole reason it was declared as a property rather than written into
+     `.tvsaid .m` as a literal. #c678dd measures 2.94:1 on the print register's
+     white paper and would fail a reader at any size; #000 is 21:1, and the
+     span keeps its box, its monospace face and its padding, so a printed
+     transcript still shows where code was. The other half of this item's
+     change needs nothing here: the print `:root` above already flattens BOTH
+     `--edge` and `--edge-3` to #000, so raising a frame from one to the other
+     is invisible on paper by construction. */
+  .tvsaid{--tvcode:#000}
 }

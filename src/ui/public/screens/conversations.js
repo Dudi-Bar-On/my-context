@@ -63,6 +63,7 @@ import { helpDisclosure } from '../lib/disclosure.js';
 import { shouldPing } from '../lib/heartbeat.js';
 import { markdownNodes } from '../lib/markdown.js';
 import { ansiNodes, hasEscapes, stripEscapes } from '../lib/ansi.js';
+import { formatBytes } from '../lib/viewmodel.js';
 import {
   PASSAGE_NODE_CAP, PASSAGE_RAW_CAP, messagePassage, runsOf,
 } from '../lib/passage.js';
@@ -119,8 +120,9 @@ function titleNodes(ctx, row) {
  * carries information — the six-day session draws `6d`, because its 21 extra
  * minutes round to a zero hour and a unit that says nothing is not shown.
  *
- * Two units and never three, which is the same judgement `sizeText` above
- * makes with one decimal: `5d 23h` is a duration a person compares at a glance
+ * Two units and never three, which is the same judgement `formatBytes`
+ * (`lib/viewmodel.js`, lifted out of this file on 2026-09-09 so the status
+ * strip could not spell one file's size a second way) makes with one decimal: `5d 23h` is a duration a person compares at a glance
  * and `5d 23h 41m 12s` is a number they have to read. Nothing is rounded away
  * silently — `durationMs` is in the body for anything that needs the exact
  * value, and the SCREEN is where the reading happens.
@@ -155,13 +157,6 @@ function durationText(ctx, ms) {
       : `${unit('conv.dur.m', minutes)} ${unit('conv.dur.s', rest)}`;
   }
   return unit('conv.dur.s', seconds);
-}
-
-/** `52,061,736` → `49.6 MB`. Sizes are read, not computed, by a person. */
-function sizeText(bytes) {
-  if (bytes < 1024) return `${bytes} B`;
-  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
-  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 }
 
 /**
@@ -244,7 +239,7 @@ function drawRow(ctx, row, open) {
     meta.append(' · ');
     meta.append(mono(row.branch));
   }
-  meta.append(' · ', mono(sizeText(row.bytes)));
+  meta.append(' · ', mono(formatBytes(row.bytes)));
   // **Why this row is in a filtered answer.** Drawn only when a search term
   // matched LANES, because that is the only case a reader cannot see for
   // themselves: a session matched by its own title has the title right there,
@@ -307,7 +302,7 @@ function drawRow(ctx, row, open) {
   } else if (row.source === 'persisted' && typeof row.keptBytes === 'number'
     && typeof row.fileBytes === 'number' && row.fileBytes > row.keptBytes) {
     const chip = el('span', 'chip warn');
-    chip.append(...ctx.t('conv.keptBehind', { bytes: sizeText(row.fileBytes - row.keptBytes) }));
+    chip.append(...ctx.t('conv.keptBehind', { bytes: formatBytes(row.fileBytes - row.keptBytes) }));
     marks.append(chip, ' ');
   }
   // ── A SESSION WHOSE TRANSCRIPT IS GONE, AND WHY THE CHIP SURVIVED A RULING
@@ -379,7 +374,7 @@ function drawRow(ctx, row, open) {
   // a third symbol for the general case.
   if (row.staleBytes > 0) {
     const chip = el('span', 'chip warn');
-    chip.append(...ctx.t('conv.behindRow', { bytes: sizeText(row.staleBytes) }));
+    chip.append(...ctx.t('conv.behindRow', { bytes: formatBytes(row.staleBytes) }));
     marks.append(chip, ' ');
   }
   // The scan hit its cap, so every count above is a floor rather than a total.
@@ -508,7 +503,7 @@ function drawList(ctx, host, body, open) {
   if (body.stale > 0) {
     const behind = el('p', 'small spill');
     behind.append(...ctx.t('conv.behind', {
-      n: body.stale, bytes: sizeText(body.staleBytes),
+      n: body.stale, bytes: formatBytes(body.staleBytes),
     }));
     host.append(spaced(behind));
     // WHO refreshes it, and the command a person can run instead of waiting —
@@ -1799,7 +1794,7 @@ function mountDocument(ctx, host, outline, back, roster = NO_LANES) {
   const facts = el('p', 'tvfacts');
   facts.append(mono(outline.sessionId));
   if (outline.branch !== null) facts.append(' · ', mono(outline.branch));
-  facts.append(' · ', mono(sizeText(outline.bytes)));
+  facts.append(' · ', mono(formatBytes(outline.bytes)));
   head.append(facts);
   host.append(head);
 

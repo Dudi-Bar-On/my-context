@@ -936,6 +936,48 @@ export function fmtCount(n) {
   return n < 0 ? `-${body}` : body;
 }
 
+/**
+ * **A SIZE ON DISK, IN THE ONE SPELLING BOTH SURFACES AND EVERY SCREEN USE.**
+ * `52,061,736` → `49.6 MB`. Sizes are read, not computed, by a person.
+ *
+ * ── WHY IT MOVED HERE, AND WHAT IT WAS ABOUT TO COST ────────────────────
+ *
+ * This is `screens/conversations.js`' own `sizeText`, lifted verbatim on
+ * 2026-09-09 when the status line gained a transcript size
+ * (`TASK-the-session-field-names-a-session-and-says-nothing-about-its`). The
+ * Conversations screen has drawn this session's transcript as `72.9 MB` all
+ * along, because it divides by 1024; a strip that spelled the same file's size
+ * in decimal megabytes would have drawn `76.4 MB` on the row above. **Two
+ * numbers, one file, no way for a reader to tell which was wrong** — this
+ * project's most repeated defect, and it was one keystroke away.
+ *
+ * The terminal takes it across the same `BandModule` bridge `fmtCount`,
+ * `wallStamp` and `relDir` come over, so there is ONE implementation rather
+ * than a copy pinned by a test.
+ *
+ * **1024 AND NOT 1000, and the label still reads `MB`.** That is the
+ * convention already on screen and it is the one a reader compares against
+ * their own file manager on this platform; changing the divisor to earn a
+ * pedantically correct `MiB` would move a number the owner has been reading
+ * for weeks, to say the same thing.
+ *
+ * **TWO UNITS AND NEVER THREE.** A transcript is bytes, kilobytes or
+ * megabytes; a gigabyte transcript is a different problem and a wider field
+ * than this bar has, and it renders honestly as a four-digit `MB` rather than
+ * silently changing unit under a reader who was watching the number grow.
+ *
+ * `'?'` for anything that is not a finite number — visibly not-a-number rather
+ * than a wrong one, which is `fmtCount`'s rule one function up. It is NOT the
+ * unmeasurable state: a caller with no reading draws its own named absence,
+ * because "the stat failed" and "the size is zero" are different facts.
+ */
+export function formatBytes(bytes) {
+  if (typeof bytes !== 'number' || !Number.isFinite(bytes)) return '?';
+  if (bytes < 1024) return `${Math.round(bytes)} B`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+}
+
 /* ══ THE ACCOUNT'S TWO RATE-LIMIT WINDOWS ══════════════════════════════════
  *
  * Owner ruling, 2026-08-31. `rate_limits.five_hour` and `rate_limits.seven_day`

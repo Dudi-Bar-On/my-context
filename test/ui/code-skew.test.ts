@@ -429,8 +429,21 @@ test('the shell reads staleCode from BOTH channels it has', () => {
   // `noteCodeSkew`.
   assertMatches(app, /api\('\/api\/ping'[^;]{0,40}?\)\.then\(\(answer\) => \{[\s\S]{0,200}?noteCodeSkew\(answer\);/,
     'the heartbeat must carry the disclosure: it is the only poll a morning tab makes');
-  assertMatches(app, /startHeartbeat\(\s*\n?\s*document, \(\) => api\('\/api\/ping'[^;]{0,40}?\)/,
+  // **Loosened a THIRD time, on 2026-09-09, when the beat became a named
+  // module function.** `TASK-the-session-field-names-a-session-and-says-
+  // nothing-about-its` put the session's size and lane count on this same
+  // request, and those two ride NOTHING else — `/api/meta` is workspace-scoped
+  // and has no session to ask about — so the boot and a nonce redemption each
+  // ask one beat out of band rather than leaving the strip `not read` for up
+  // to a minute. That needs the beat to have a NAME, and a closure pinned by
+  // its own punctuation cannot have one. The property this file is about is
+  // unchanged and is still asserted in two halves: the disclosure reaches
+  // `noteCodeSkew` from a `/api/ping` answer (above), and it is the HEARTBEAT
+  // that carries it rather than a timer of this shell's own (below).
+  assertMatches(app, /startHeartbeat\(document, heartbeatPing, 60_000, window\)/,
     'and it must still BE the heartbeat that carries it, not a poll of its own');
+  assertMatches(app, /function heartbeatPing\(\) \{\n\s*return api\('\/api\/ping'/,
+    'and the named beat must be the thing that asks /api/ping');
   assertMatches(app, /const meta = await api\('\/api\/meta'\);\n(?:\s*\/\/.*\n)*\s*noteCodeSkew\(meta\);/,
     'first paint must disclose too, without waiting up to a minute');
   assertMatches(app, /const CODE_SKEW_KEY = 'ex\.codeSkew';/,

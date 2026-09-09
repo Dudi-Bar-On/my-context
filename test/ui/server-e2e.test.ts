@@ -157,10 +157,19 @@ test('wrong token 403, missing header 401, bad Origin 403 — and no CORS header
     // any of the four `UnmeasurableWhy` reasons and must not be reported as
     // one. That it is present and null with no session, and a reading with one,
     // is held apart in `test/ui/context-live.test.ts`.
+    // `session` (`TASK-the-session-field-names-a-session-and-says-nothing-
+    // about-its`) is the fourth field and the SECOND session-scoped one, so it
+    // has `occupancy`'s contract exactly: present always, `null` for a request
+    // that named no session — "nobody asked", which is neither a zero-byte
+    // transcript nor a session that dispatched no lanes. Its three real states
+    // are held apart in `test/cli/statusline-session-scale.test.ts`, which owns
+    // the reads both surfaces make.
     const body = await good.json() as {
       ok: boolean; staleCode: boolean; corpus: { drifted: boolean | null }; occupancy: unknown;
+      session: unknown;
     };
-    assert.deepEqual(Object.keys(body).sort(), ['corpus', 'occupancy', 'ok', 'staleCode']);
+    assert.deepEqual(Object.keys(body).sort(), ['corpus', 'occupancy', 'ok', 'session', 'staleCode']);
+    assert.equal(body.session, null, 'a ping that names no session asked nothing of the disk either');
     assert.equal(body.ok, true);
     assert.equal(typeof body.staleCode, 'boolean');
     assert.ok(

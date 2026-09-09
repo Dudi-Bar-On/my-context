@@ -1,7 +1,9 @@
 import { spawnSync } from 'node:child_process';
+import { statSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { openProjection, syncProjection } from '../../core/audit-db.ts';
+import { countSubagentFiles, subagentDir, transcriptDir } from '../../core/conversation-index.ts';
 import { handoverThresholdPercent, type HandoverConfig } from '../../core/config.ts';
 import { readOccupancy } from '../../core/context-occupancy.ts';
 import { describeFocus, isFocusActive, readFocus } from '../../core/focus.ts';
@@ -20,7 +22,7 @@ import { cmdStatuslineInstall, cmdStatuslineUninstall, delegateFor } from './sta
 import {
   buildLines, buildSegments, colourAllowed, gitBranch, payloadExtras, renderPowerline,
   renderStatusLine, type HandoverAskView, type LastAudit, type OccupancyView,
-  type PowerlineInput,
+  type PowerlineInput, type SessionScale,
 } from './statusline-powerline.ts';
 
 // --- The status line bridge (spec §4b) --------------------------------------
@@ -104,6 +106,65 @@ export function lastAudit(projectRoot: string): LastAudit {
   } catch {
     return { state: 'unreadable' };
   }
+}
+
+/**
+ * **HOW BIG THIS SESSION IS AND HOW MANY LANES RAN UNDER IT, BOTH FROM DISK**
+ * — `TASK-the-session-field-names-a-session-and-says-nothing-about-its`.
+ *
+ * ── THE TRANSCRIPT PATH COMES FROM THE PAYLOAD, NOT FROM A DERIVATION ─────
+ *
+ * Claude Code hands this command `transcript_path` on every message, and it is
+ * the exact file. The derived alternative — `transcriptDir(env, cwd)` plus the
+ * session id — re-encodes a cwd into a directory name, and that encoding is
+ * keyed on the directory the session was LAUNCHED in: a reader who has `cd`-ed
+ * into a subdirectory since then gets a different encoded name and an ENOENT,
+ * which this function would then have to report as `unmeasurable` for a file
+ * that is sitting right there. So the payload's own answer is preferred and
+ * the derivation is the fallback for a payload that carried none.
+ *
+ * The lanes directory is `<transcript dir>/<session>/subagents`, which is
+ * `subagentDir`'s own shape — taken from the transcript path's directory when
+ * there is one, for the reason above, and from `subagentDir` when there is not.
+ * The path rule lives in ONE place either way.
+ *
+ * ── WHAT IT COSTS, MEASURED ON THE OWNER'S OWN SESSION (2026-09-09) ───────
+ *
+ *     stat the transcript                       0.008 ms   ->  72.9 MB
+ *     readdir the subagents directory           0.294 ms   ->  262 lanes
+ *     ----------------------------------------------------------------
+ *                                               0.302 ms
+ *
+ * against a bar that already pays p95 26.6 ms for `myctxShare` and opens
+ * SQLite to do it. The index route the item measured at 6.738 ms is refused
+ * for a reason stronger than the cost and stated on `SessionScale`.
+ *
+ * **NEVER THROWS**, which is this file's standing rule: a status line that
+ * disappeared because a directory was pruned would be a worse failure than the
+ * two fields it was drawing. `countSubagentFiles` answers 0 for a directory
+ * that is not there, and the `stat` is caught into `null` — `unmeasurable`,
+ * which is a different fact from a zero-byte transcript and is drawn as one.
+ */
+export function sessionScaleOf(
+  env: Record<string, string | undefined>,
+  sessionCwd: string,
+  sessionId: string,
+  transcriptPath: string | null,
+): SessionScale {
+  const file = transcriptPath ?? path.join(transcriptDir(env, sessionCwd), `${sessionId}.jsonl`);
+  let transcriptBytes: number | null = null;
+  try {
+    const stat = statSync(file);
+    if (stat.isFile()) transcriptBytes = stat.size;
+  } catch {
+    transcriptBytes = null;
+  }
+  const lanes = countSubagentFiles(
+    transcriptPath === null
+      ? subagentDir(env, sessionCwd, sessionId)
+      : path.join(path.dirname(transcriptPath), sessionId, 'subagents'),
+  );
+  return { transcriptBytes, lanes };
 }
 
 /**
@@ -736,6 +797,26 @@ function cmdStatusline(ws: Workspace, args: string[], out: Emit, cwd: string): n
       ? occupancyFromTee(projectRoot, p.session_id, Date.now())
       : occupancyFromPayload(sample);
 
+  // ── HOW BIG THIS SESSION IS AND HOW MANY LANES RAN UNDER IT — owner
+  //    request, 2026-09-09.
+  //
+  // **NOT GUARDED ON `projectRoot`, and that is deliberate.** Every other
+  // field above needs a corpus — the tee, the share, the focus, the audit
+  // clock all read `.my_context/`. These two read Claude Code's own transcript
+  // directory, which exists for any session in any directory, corpus or not. A
+  // guard would blank two fields in exactly the workspaces where nothing else
+  // on the bar can say anything either.
+  //
+  // The session id is the only thing it needs, and `null` for a payload
+  // without one is "nobody asked" rather than a zero — see `SessionScale`.
+  const sessionScale =
+    typeof p?.session_id === 'string'
+      ? sessionScaleOf(
+        process.env, sessionCwd, p.session_id,
+        typeof p?.transcript_path === 'string' ? p.transcript_path : null,
+      )
+      : null;
+
   // Computed before the delegate runs, not after: this is the fallback, and a
   // fallback assembled only once something has already gone wrong is a code
   // path that first runs on the user's machine.
@@ -770,6 +851,7 @@ function cmdStatusline(ws: Workspace, args: string[], out: Emit, cwd: string): n
       myctxNote,
       teeNote,
       corpus,
+      sessionScale,
     },
     colourAllowed(process.env, process.stdout.isTTY === true, true),
     typeof process.stdout.columns === 'number' ? process.stdout.columns : null,

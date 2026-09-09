@@ -827,6 +827,67 @@ export function listSubagentFiles(dir: string): SubagentFile[] {
 }
 
 /**
+ * **HOW MANY LANES RAN UNDER ONE SESSION — the count alone, and nothing
+ * opened.** `TASK-the-session-field-names-a-session-and-says-nothing-about-its`.
+ *
+ * ── WHY THIS IS NOT `listSubagentFiles(dir).length`, WHICH IS WHAT THE ITEM
+ *    SAID TO REUSE ────────────────────────────────────────────────────────
+ *
+ * Because that call is **a hundred times more expensive than the thing it was
+ * chosen to avoid.** Measured here on 2026-09-09, this project's own
+ * directory, 262 lanes (524 files):
+ *
+ *     readdirSync + the `.jsonl` test          p50   0.294 ms
+ *     listSubagentFiles(dir).length            p50 109.079 ms
+ *     ConversationIndex.open + count           p50   6.738 ms   (the item's)
+ *
+ * `listSubagentFiles` is not a listing, it is a listing PLUS 262 `statSync`
+ * calls PLUS 262 `readSubagentMeta` sidecar reads and parses, because its
+ * callers want `bytes`, `mtimeMs` and `agentType`. The item ruled the index
+ * out on a budget argument — `measureCorpusDrift` spends 6.24 ms/min and a
+ * 6.738 ms index open would spend a minute's whole allowance in one call — and
+ * that argument rules `listSubagentFiles` out SEVENTEEN TIMES HARDER on the
+ * per-message status-line path. The item's own 1.011 ms figure was a plain
+ * `readdir`; only the sentence recommending the function was wrong.
+ *
+ * So this is that `readdir`, sitting beside its sibling rather than inlined at
+ * two call sites, because the two share a rule that must not be spelled twice:
+ * **top-level `*.jsonl` only, never a recursive walk** (`listTranscriptFiles`'
+ * reason), and `.meta.json` excluded by the extension test alone — the two
+ * files share a stem, so a count keyed on a prefix would find every lane twice
+ * and this project's owner would be told he had dispatched 524 of them.
+ *
+ * **Never throws, and a directory that is not there is ZERO — not an error and
+ * not an absence.** A session that dispatched no lanes has no `subagents/`
+ * directory at all; measured here, 2 of the 4 sessions in this project's
+ * directory have none. That is a measured zero and is drawn as one —
+ * `STD-a-measured-zero-is-drawn-and-named-an-unmeasured-thing-is`. The same
+ * answer is given for a directory that cannot be read for any other reason,
+ * which is `listSubagentFiles`' contract and is deliberately not split here: a
+ * second, subtly different rule about what an unreadable directory means would
+ * be the two-spellings defect, and neither caller can act on the difference.
+ *
+ * **The number is the TRANSITIVE TOTAL and its callers must say so.** Every
+ * lane owned by this session lands in this one directory however many hops
+ * dispatched it — on 2026-09-09 that was 262 files, 218 dispatched by the
+ * session and 43 by another lane. Depth lives in the `agent-<id>.meta.json`
+ * sidecars, so separating them costs the 262 opens this function exists not to
+ * make. A surface that labelled this "dispatched by this session" would
+ * disagree with `mycontext conversation subagents`, which can tell them apart.
+ */
+export function countSubagentFiles(dir: string): number {
+  let names: string[];
+  try {
+    names = readdirSync(dir);
+  } catch {
+    return 0;
+  }
+  let found = 0;
+  for (const name of names) if (name.endsWith('.jsonl')) found += 1;
+  return found;
+}
+
+/**
  * One indexed subagent. The counting columns are `ConversationRow`'s, by the
  * same scanner, so the two kinds of transcript are never counted two ways.
  */

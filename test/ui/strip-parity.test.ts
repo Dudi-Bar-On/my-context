@@ -155,6 +155,11 @@ const FULL: PowerlineInput = {
   corpus: {
     root: '/repo/test_mycontext_plugin/.my_context', overridden: false, nesting: null,
   },
+  // The ORDINARY session-scale case: a transcript that could be read and lanes
+  // that ran. `NOTED` below carries the other two states — a `stat` that failed
+  // and a session that dispatched none — so the two fixtures between them reach
+  // every branch `buildLines` has for this pair.
+  sessionScale: { transcriptBytes: 52_061_736, lanes: 262 },
 };
 
 /** The same payload with the two NOTES present instead of what they qualify. */
@@ -181,6 +186,17 @@ const NOTED: PowerlineInput = {
       enclosing: '/repo/test_mycontext_plugin/.my_context', items: 44, enclosingItems: 759,
     },
   },
+  // ── THE TWO ABSENT STATES OF THE SESSION SCALE, which cannot ride `FULL`
+  //    for the reason the two notes cannot: one payload is in one state.
+  //
+  // `transcriptBytes: null` is a `stat` that FAILED — `unmeasurable`, and NOT
+  // a zero-byte transcript, which is the distinction the item names as the one
+  // a careless implementation loses. `lanes: 0` is a MEASURED zero — a session
+  // with no `subagents/` directory at all — and it is DRAWN rather than
+  // omitted, per `STD-a-measured-zero-is-drawn-and-named-an-unmeasured-thing-
+  // is`. Both branches emit the same two field ids `FULL` does, which is what
+  // keeps this about states rather than about fields.
+  sessionScale: { transcriptBytes: null, lanes: 0 },
 };
 
 function emitted(input: PowerlineInput): Segment[] {

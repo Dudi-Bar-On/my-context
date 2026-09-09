@@ -97,6 +97,23 @@ export const FIELD_NAME: Record<string, string> = {
   project: 'REPO',
   branch: 'BRANCH',
   'session-name': 'SESSION',
+  /**
+   * **THE TWO 2026-09-09 ADDITIONS — how big this session is and how many
+   * lanes ran under it** (`TASK-the-session-field-names-a-session-and-says-
+   * nothing-about-its`, owner request: *"we could add here the session size
+   * and the amount of subagents files"*).
+   *
+   * `SIZE` and `LANES` rather than one `SESSION 72.9 MB · 262 lanes` block,
+   * because they are two facts from two reads that fail independently — a
+   * `stat` can refuse while a `readdir` answers — and one block would have to
+   * pick one absent state for both. It is also the strip's own rule, written
+   * in `drawIdentity`: ONE PILL PER FACT, never per group.
+   *
+   * `LANES` and not `SUBAGENTS`: the number is what ran under this session,
+   * and it is nine columns shorter on the tightest surface in the product.
+   */
+  'session-size': 'SIZE',
+  'session-lanes': 'LANES',
   focus: 'FOCUS',
   ask: 'ASK',
   /**
@@ -225,6 +242,16 @@ interface BandModule {
   wallStamp: (ms: unknown) => string | null;
   relDir: (dir: unknown, anchor: unknown) => string | null;
   corpusDir: (root: unknown, anchor: unknown, dirName?: string) => string | null;
+  /**
+   * **The 2026-09-09 arrival, and it comes across this bridge for a reason
+   * that had already gone wrong once.** The Conversations screen has drawn
+   * this session's transcript as `72.9 MB` since the archive shipped, dividing
+   * by 1024. A status line that spelled the same file in decimal megabytes
+   * would say `76.4 MB` on the row above it — two numbers for one file, with
+   * nothing on either surface to say which was wrong. There is one
+   * implementation, in `lib/viewmodel.js`, and both surfaces call it.
+   */
+  formatBytes: (bytes: unknown) => string;
 }
 
 async function loadBands(): Promise<BandModule | null> {
@@ -242,6 +269,11 @@ async function loadBands(): Promise<BandModule | null> {
         // answering `undefined` three calls later, in the middle of a field.
         || typeof mod.wallStamp !== 'function' || typeof mod.relDir !== 'function'
         || typeof mod.corpusDir !== 'function'
+        // And the 2026-09-09 arrival, for the same reason a fourth time: a
+        // `viewmodel.js` that predates the shared size spelling is refused as
+        // a SHAPE, rather than answering `undefined` in the middle of the
+        // session field.
+        || typeof mod.formatBytes !== 'function'
         // And the `seq:13` arrivals, for the third time and the same reason: a
         // `viewmodel.js` that predates the ask series is refused as a SHAPE
         // rather than answering `undefined` in the middle of the ask block.
@@ -1155,6 +1187,19 @@ export function relDir(dir: string | null, anchor: string | null): string | null
   return BANDS === null ? null : BANDS.relDir(dir, anchor);
 }
 
+/**
+ * A size on disk — the web's own `formatBytes`, so the strip, the Conversations
+ * screen and this bar cannot spell one file's size three ways.
+ *
+ * `null` when the shared module did not load, which draws no field at all
+ * rather than a size this file rounded for itself. That is `stamp`'s rule and
+ * not `fmtCount`'s `'?'`: a `'?'` inside a used-of-maximum pair still names the
+ * field it sits in, and a bare `SIZE ?` names nothing.
+ */
+export function bytes(n: number): string | null {
+  return BANDS === null ? null : BANDS.formatBytes(n);
+}
+
 /** A corpus root relative to the launch directory — the web's own `corpusDir`. */
 export function corpusDir(root: string | null, anchor: string | null): string | null {
   return BANDS === null ? null : BANDS.corpusDir(root, anchor, DIR_NAME);
@@ -1313,6 +1358,66 @@ export interface PowerlineInput {
    * `null` when nothing resolved it — no session directory to walk up from.
    */
   corpus: CorpusResolution | null;
+  /**
+   * **HOW BIG THIS SESSION IS AND HOW MANY LANES RAN UNDER IT** —
+   * `TASK-the-session-field-names-a-session-and-says-nothing-about-its`.
+   *
+   * `null` is "the question could not be asked" — a payload with no session id
+   * — and it draws NEITHER field, which is the rule `handoverAsk` states one
+   * property up. It is not a zero and it is not an `unmeasurable`: nobody
+   * looked.
+   */
+  sessionScale: SessionScale | null;
+}
+
+/**
+ * **BOTH FACTS COME FROM DISK, NEVER FROM THE CONVERSATION INDEX**, and that
+ * is the whole of the design rather than an implementation note.
+ *
+ * The item ruled it on cost — `measureCorpusDrift` spends 6.24 ms/min and that
+ * number is what ruled out a file watcher for this entire product, so a 6.738
+ * ms index open on a per-message path would spend a minute's whole allowance
+ * in one call — and then on something stronger than cost: **the status line
+ * runs in workspaces that were never scanned.** `plan:archive seq:9`
+ * established that the archive is off by default and that no read surface may
+ * build one, so a bar that opened the index would read as opting a workspace
+ * in. A `stat` and a `readdir` are correct whether the archive exists or not.
+ *
+ * Measured 2026-09-09 on the owner's own session: `stat` 0.008 ms, `readdir`
+ * 0.294 ms — 0.30 ms for the pair, a twentieth of the drift sweep already on
+ * the ping and a hundredth of the ONE call the item recommended for the count
+ * (`countSubagentFiles` in `core/conversation-index.ts` carries that
+ * correction and its numbers).
+ */
+export interface SessionScale {
+  /**
+   * The session transcript's size in bytes.
+   *
+   * **`null` is `unmeasurable`, and it is NOT zero.** A `stat` that failed and
+   * a 0-byte transcript are different facts with different causes — a pruned
+   * archive against a session that has recorded nothing — and both surfaces
+   * draw them apart. The item is explicit about this and it is the one state
+   * a careless implementation collapses.
+   */
+  transcriptBytes: number | null;
+  /**
+   * **The TRANSITIVE TOTAL of lanes owned by this session**, and every surface
+   * that draws it must be able to say so.
+   *
+   * Every lane lands in one `subagents/` directory however many hops
+   * dispatched it: on 2026-09-09 that was 262 files, 218 dispatched by the
+   * session itself and 43 dispatched by another lane. Depth lives in the
+   * `agent-<id>.meta.json` sidecars, so telling them apart costs 262 file
+   * opens — which is exactly what the cheap route exists not to pay. The total
+   * is also the more useful number for a status line; what it must not do is
+   * be LABELLED as the session's own dispatches, because
+   * `mycontext conversation subagents` can separate them and would disagree.
+   *
+   * Never `null`: a session with no `subagents/` directory dispatched no lanes,
+   * which is a MEASURED ZERO and is drawn as one —
+   * `STD-a-measured-zero-is-drawn-and-named-an-unmeasured-thing-is`.
+   */
+  lanes: number;
 }
 
 /**
@@ -1343,7 +1448,7 @@ export interface PowerlineInput {
 export const NO_EXTRAS: Pick<
   PowerlineInput,
   'modes' | 'fiveHour' | 'sevenDay' | 'costUsd' | 'elapsedMs' | 'warmPercent' | 'sessionName'
-  | 'cwd' | 'projectDir' | 'handoverAsk'
+  | 'cwd' | 'projectDir' | 'handoverAsk' | 'sessionScale'
 > = {
   modes: { effort: null, thinking: null, fastMode: null, exceeds200k: null },
   /**
@@ -1362,6 +1467,13 @@ export const NO_EXTRAS: Pick<
   sessionName: null,
   cwd: null,
   projectDir: null,
+  /**
+   * **`null` is "nobody asked", exactly as `handoverAsk`'s is.** A caller with
+   * no session id has no directory to read and no file to stat, and neither
+   * field is drawn for it. A session that dispatched no lanes is a different
+   * answer entirely — `{ transcriptBytes, lanes: 0 }` — and it IS drawn.
+   */
+  sessionScale: null,
 };
 
 export const GIVE = {
@@ -1377,6 +1489,39 @@ export const GIVE = {
    */
   focus: 4,
   sessionName: 6,
+  /**
+   * **THE TWO 2026-09-09 ADDITIONS GO FIRST OF ALL, AND SIZE GOES BEFORE
+   * LANES.** Both halves were decided against a measurement rather than a
+   * feeling, and the measurement is that neither of them is the reason anyone
+   * looks at this bar.
+   *
+   * They rank below `focus` — which the table above calls "first of all" —
+   * because a window you cannot NAME and cannot say what it is FOR is worse
+   * than a window whose size you do not know. Nothing above them moves.
+   *
+   * **SIZE IS GIVEN UP FIRST, and that is the argued half.** The lane count is
+   * the fact with no other cheap source anywhere: `mycontext conversation
+   * subagents` can answer it, but only in a workspace whose archive was built,
+   * and `plan:archive seq:9` established that the archive is off by default
+   * and that no read surface may build one — so in most workspaces this bar is
+   * the ONLY place the number exists. The transcript size is one `ls -l` away
+   * in any shell, and it is monotonic: a reader who saw 72.9 MB a minute ago
+   * knows it is about 72.9 MB now. The more recoverable half is what a narrow
+   * terminal gives up, which is the same argument `handoverVerdict` is ranked
+   * under `ask` by.
+   *
+   * MEASURED before it was ranked (2026-09-09, this session's real payload,
+   * no focus set, branch `master`): line 1 is 138 columns today and 165 with
+   * both fields, so at the owner's ~200-column terminal NOTHING is given up
+   * and this ordering never fires. It fires below 165, and the order above is
+   * what happens then. The 204-column figure in the item is line 1 measured on
+   * 2026-09-02 with a 24-character branch name and a focus phrase on it; the
+   * row this pass actually widens is the one with 62 columns of slack, not the
+   * one at 190 (line 3, the account row), which is why both fields are on
+   * line 1 and neither is beside `ELAPSED`.
+   */
+  sessionSize: 2,
+  sessionLanes: 3,
   /**
    * Ranked with the line-3 conveniences. It is the field the owner's reference
    * closes on, so it is drawn LAST and given up EARLY — those are not in
@@ -2235,6 +2380,89 @@ export function buildLines(input: PowerlineInput, now: number = Date.now()): Sta
     identity.push({
       text: named, label: FIELD_NAME['session-name'],
       ink: INK.carry, give: GIVE.sessionName, field: 'session-name',
+    });
+  }
+
+  // ── HOW BIG THIS SESSION IS, AND HOW MANY LANES RAN UNDER IT — owner
+  //    request, 2026-09-09: *"nwo staus line shows SESSION MyContext V2.0, we
+  //    could add here the session size and the amount of subagents files"*.
+  //
+  // **IMMEDIATELY AFTER THE SESSION NAME, because "here" was the request.**
+  // The row then reads outward in one direction the way it already did — the
+  // tool, the repository, the branch, the directory, the corpus, WHICH window
+  // this is, how big it has become, how many lanes it has run — and only then
+  // what it is for.
+  //
+  // **ON LINE 1 AND NOT ON LINE 3, AND THAT WAS MEASURED RATHER THAN
+  // ARGUED.** The honest case for line 3 is real: this row is IDENTITY and
+  // identity does not move, while both of these grow on the per-message clock,
+  // which is what line 3 is for and where `ELAPSED` — the same shape of fact —
+  // already sits. What settles it is the width. Measured 2026-09-09 on this
+  // session's live payload, colour off, no focus set, branch `master`:
+  //
+  //     line 1  identity   138 columns
+  //     line 2  window     107
+  //     line 3  account    190
+  //
+  // Line 3 is the crowded row, 10 columns from the ~200 the owner's terminal
+  // has; line 1 has 62 to spare. Putting 27 more columns on the account row
+  // would start evicting `CLOCK` and `ELAPSED` on the owner's own screen to
+  // make room for a field he asked to be put somewhere else. So the row that
+  // gets the pair is the row with the slack, and it is also the row he named.
+  //
+  // **The session NAME is suppressed when it matches the project and these two
+  // are not**, which is not an inconsistency. That suppression exists because a
+  // name that cannot tell two windows apart says nothing; a size and a lane
+  // count say something about every window, including one named after its
+  // project. When the name is suppressed these simply follow the corpus block.
+  if (input.sessionScale !== null) {
+    // **A FAILED `stat` IS `unmeasurable`, NEVER `0 B`.** They are different
+    // facts — a transcript that could not be read against one that holds
+    // nothing — and this bar has kept that distinction apart everywhere else
+    // it arises (`OccupancyView`'s four reasons, `LastAudit`'s empty against
+    // unreadable). Drawn `neutral` rather than `carry`, which is this file's
+    // register for "no verdict here" and is what every other unmeasurable
+    // state on the bar wears.
+    //
+    // `bytes()` answering `null` is a THIRD case and it draws nothing at all:
+    // that is the shared `viewmodel.js` failing to load, which costs the whole
+    // bar its colour already, and `SIZE ?` would name a field that is telling
+    // the reader nothing.
+    const size = input.sessionScale.transcriptBytes === null
+      ? null : bytes(input.sessionScale.transcriptBytes);
+    if (input.sessionScale.transcriptBytes === null) {
+      identity.push({
+        text: 'unmeasurable', label: FIELD_NAME['session-size'],
+        ink: INK.neutral, give: GIVE.sessionSize, field: 'session-size',
+      });
+    } else if (size !== null) {
+      identity.push({
+        text: size, label: FIELD_NAME['session-size'],
+        ink: INK.carry, give: GIVE.sessionSize, field: 'session-size',
+      });
+    }
+    // **ZERO IS DRAWN.** A session that dispatched no lanes has no
+    // `subagents/` directory at all, and `STD-a-measured-zero-is-drawn-and-
+    // named-an-unmeasured-thing-is` is explicit that the measurement is the
+    // point: a blank here would be indistinguishable from a field that failed.
+    //
+    // **`LANES 262` AND NOT `LANES 262 lanes`.** The item's proposal spelled
+    // it `· 260 lanes`, which was written for a field that had no label; every
+    // field on this bar has carried one since the owner's ruling of
+    // 2026-09-01, so the unit is already said and saying it twice costs six
+    // columns on the tightest surface in the product to repeat a word.
+    //
+    // **The number is the TRANSITIVE TOTAL and the terminal cannot say so.**
+    // 262 here is 218 dispatched by the session and 43 dispatched by another
+    // lane; separating them needs the 262 sidecar opens the cheap route exists
+    // not to make. The web strip's hover carries that qualification in words,
+    // which is a thing a terminal status line has nowhere to put — and the
+    // item's ruling is that the total is the more useful of the two numbers
+    // anyway. What must not happen is either surface calling it "dispatched by
+    // this session", which `mycontext conversation subagents` would contradict.
+    identity.push({
+      text: String(input.sessionScale.lanes), label: FIELD_NAME['session-lanes'],
+      ink: INK.carry, give: GIVE.sessionLanes, field: 'session-lanes',
     });
   }
 

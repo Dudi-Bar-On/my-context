@@ -1347,6 +1347,13 @@ test('the whole bar, from a real payload shape, with every group present', () =>
     lastAudit: null,
     myctxNote: null,
     teeNote: null, corpus: null,
+    // **The 2026-09-09 pair, MEASURED rather than null**, because the whole
+    // point of asserting the fallback whole is that it is a real rendering: a
+    // field left out of this fixture is a field nobody has ever looked at in
+    // the one-line form. `52,061,736` is `formatBytes`' own documented example
+    // and comes back `49.6 MB` through the shared `viewmodel.js` — which is
+    // also what pins that the terminal is not spelling a size for itself.
+    sessionScale: { transcriptBytes: 52_061_736, lanes: 262 },
   }, NOW), { colour: false, columns: null });
 
   // **The ONE-LINE FALLBACK, whole.** Since the owner's three-row ruling of
@@ -1361,6 +1368,10 @@ test('the whole bar, from a real payload shape, with every group present', () =>
   assert.equal(rendered, [
     'MODEL Opus 5 high think', 'REPO test_mycontext_plugin',
     'BRANCH campaign/my-context-test',
+    // Immediately after the branch and before the window pair, because the
+    // session name and focus are absent on this payload. `LANES 262` and not
+    // `LANES 262 lanes`: the label already says the unit.
+    'SIZE 49.6 MB', 'LANES 262',
     'ASK ▰▰▰▰▱▱▱▱▱▱ 43% (42.0 / 98) ·+56.0',
     'WINDOW ▰▰▰▰▱▱▱▱▱▱ 42.0% (420.0k / 1.0M)',
     '7D ▰▰▰▰▰▱▱▱▱▱ 49% ·1d4h',
@@ -1436,6 +1447,12 @@ test('the line gives itself up in the order the owner ranked, not by width', () 
     lastAudit: null,
     myctxNote: null,
     teeNote: null, corpus: null,
+    // **`null`, so every width on the ladder below is unchanged by the
+    // 2026-09-09 pair.** This test is about the ORDER the bar gives itself up
+    // in and pins that order at named widths; a fixture that grew 27 columns
+    // would move every rung and prove nothing about the ranking. The new
+    // fields' own rank is pinned in its own test, from its own fixture.
+    sessionScale: null,
   };
   // Compared as RENDERED fields — name and value — since the owner's labels
   // ruling moved the name out of the value and into its own property.
