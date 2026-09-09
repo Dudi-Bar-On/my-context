@@ -135,7 +135,7 @@
  *     collect at in a scroll over 27,752 records, and a footer nobody can
  *     reach is not an affordance.
  */
-import { statSync } from 'node:fs';
+import { closeSync, openSync, readSync, statSync } from 'node:fs';
 import {
   ConversationIndex, ConversationIndexIncompleteError, ConversationIndexUninitializedError,
   MAX_SCAN_BYTES, classifyTurn, iterateTranscript, listTranscriptFiles, transcriptDir,
@@ -1947,6 +1947,148 @@ export function apiConversationNodes(
   return { status: 200, body };
 }
 
+/**
+ * THE TRANSCRIPT'S OWN BYTES, over the records one marked passage covers —
+ * `TASK-a-selected-passage-copies-as-something-a-terminal-will`, the third of
+ * the three forms it rules.
+ *
+ * ── WHY THIS IS A SLICE AND NOT A RE-SERIALISATION ────────────────────────
+ *
+ * The item's words are *"the JSONL exactly as created, for reproducing a bug
+ * or feeding a tool."* `readNodes` above cannot answer that: it PARSES, and
+ * everything it hands back has been through `shapeOf`, so a record served from
+ * it would be this module's reading of the line rather than the line. Anything
+ * re-serialised from `JSON.parse` also loses key order, whitespace and the
+ * exact number formatting the harness wrote, and those are precisely what a
+ * reader reproducing a bug is holding the file for.
+ *
+ * So this reads BYTES and does nothing else to them. It is exact by
+ * construction rather than by care.
+ *
+ * ── THE OFFSETS ARE ALREADY THE CLIENT'S, WHICH IS WHY IT IS THIS SMALL ───
+ *
+ * `DocOutlineNode.o` is the byte offset of a node's FIRST record, and a node
+ * boundary is a record boundary by construction. So the slice covering nodes
+ * `a…b` is `[nodes[a].o, nodes[b + 1].o)` — two numbers the screen already
+ * holds — and `to` is simply omitted for a passage that runs to the end of the
+ * document, which reads to whatever end-of-file is at the moment of the read.
+ * No node model, no walk, no `iterateTranscript`.
+ *
+ * ── WHAT IT EXPOSES, SAID RATHER THAN LEFT TO BE FOUND ────────────────────
+ *
+ * A raw record carries envelope fields the document never draws — `cwd`,
+ * `gitBranch`, `userType`, `requestId`, `sessionId`, `parentUuid`. It serves
+ * no TEXT that is not already on the screen, so
+ * `TASK-the-archive-already-serves-a-live-api-key-and-full-input`'s finding is
+ * unchanged by it; what it adds is the envelope, and the absolute paths in it
+ * come off the reader's own machine.
+ *
+ * That is a small widening rather than none, so it is FILED rather than
+ * argued here: `TASK-the-raw-record-copy-serves-envelope-fields-the-screen-never`
+ * carries it, and it depends on `seq:27` deliberately — one product should not
+ * grow two redaction policies.
+ *
+ * It is also read-only, on the loopback-bound server, over a file already
+ * unencrypted in the reader's own home — the exposure `seq:27` measured and
+ * declined to call a leak.
+ *
+ * ── AND IT REFUSES RATHER THAN TRUNCATES ──────────────────────────────────
+ *
+ * A truncated JSONL is a broken JSONL: the last line is half a record and the
+ * tool it was copied for will reject the whole file. `INV-nothing-is-dropped-
+ * silently` and the item's own *"worse than one that refuses"* agree here, so
+ * a slice over `PASSAGE_RAW_CAP` returns the size and no bytes, and the screen
+ * says how big the passage was.
+ */
+export const PASSAGE_RAW_CAP = 8 * 1024 * 1024;
+
+export interface DocRawBody {
+  sessionId: string;
+  /** `false` — the transcript is not on disk. No bytes, and not an error. */
+  present: boolean;
+  /** First byte served. Echoed so a caller can see what it actually got. */
+  at: number;
+  /** Bytes served. `0` with `tooLong` set is the refusal, never a short read. */
+  bytes: number;
+  /** The slice would have been this many bytes. Only set when `tooLong`. */
+  wanted: number;
+  /** The slice is longer than `PASSAGE_RAW_CAP`, so nothing was served. */
+  tooLong: boolean;
+  text: string;
+}
+
+export function apiConversationRaw(
+  ws: Workspace, url: URL, params: { id: string },
+): JsonResult {
+  const bad = unknownParams(url, ['at', 'to']);
+  if (bad !== null) return badRequest(bad);
+
+  const at = digits(url, 'at');
+  const to = digits(url, 'to');
+  if (at === null) return badRequest('at must be a whole number, written in digits.');
+  if (to === null) return badRequest('to must be a whole number, written in digits.');
+
+  const found = rowFor(ws, params.id);
+  if ('fail' in found) return found.fail;
+  const { row } = found;
+
+  const empty = (present: boolean): JsonResult => ({
+    status: 200,
+    body: {
+      sessionId: row.sessionId, present, at: at ?? 0, bytes: 0,
+      wanted: 0, tooLong: false, text: '',
+    } satisfies DocRawBody,
+  });
+
+  let size = 0;
+  try {
+    const stat = statSync(row.file);
+    if (!stat.isFile()) throw new Error('not a file');
+    size = stat.size;
+  } catch {
+    return empty(false);
+  }
+
+  const start = at ?? 0;
+  // The file is written while it is read, so an end past what is there now is
+  // a legitimate question about a file that has since changed — the same
+  // answer `apiConversationNodes` gives, for the same reason.
+  const end = Math.min(to === undefined ? size : to, size);
+  if (start >= size || end <= start) return empty(true);
+
+  const wanted = end - start;
+  if (wanted > PASSAGE_RAW_CAP) {
+    return {
+      status: 200,
+      body: {
+        sessionId: row.sessionId, present: true, at: start, bytes: 0,
+        wanted, tooLong: true, text: '',
+      } satisfies DocRawBody,
+    };
+  }
+
+  const buffer = Buffer.alloc(wanted);
+  let read = 0;
+  let fd: number | null = null;
+  try {
+    fd = openSync(row.file, 'r');
+    read = readSync(fd, buffer, 0, wanted, start);
+  } catch {
+    return empty(true);
+  } finally {
+    if (fd !== null) { try { closeSync(fd); } catch { /* nothing usable to close */ } }
+  }
+
+  const text = buffer.subarray(0, read).toString('utf8');
+  return {
+    status: 200,
+    body: {
+      sessionId: row.sessionId, present: true, at: start, bytes: read,
+      wanted, tooLong: false, text,
+    } satisfies DocRawBody,
+  };
+}
+
 export function registerConversationDocumentRoutes(): void {
   registerRoute('GET', '/api/conversations/:id/outline', {
     kind: 'json',
@@ -1962,5 +2104,10 @@ export function registerConversationDocumentRoutes(): void {
     kind: 'json',
     handle: (ctx: ApiContext) =>
       apiConversationTip(ctx.ws, ctx.url, { id: ctx.params['id'] ?? '' }),
+  });
+  registerRoute('GET', '/api/conversations/:id/raw', {
+    kind: 'json',
+    handle: (ctx: ApiContext) =>
+      apiConversationRaw(ctx.ws, ctx.url, { id: ctx.params['id'] ?? '' }),
   });
 }

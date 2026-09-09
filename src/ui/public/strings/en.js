@@ -284,6 +284,39 @@ export const strings = {
   'conv.doc.lanesUnread': 'The helper transcripts could not be read, so no turn on this page opens one.',
   'conv.doc.laneOf': 'A helper agent’s transcript, not a session of its own.',
   'conv.doc.laneHome': 'Open the session that dispatched it, in a new tab',
+  // Copying a marked passage — three forms, each NAMED BY WHAT IT IS FOR.
+  // "A menu offering text / rendered / raw makes a reader guess; one offering
+  // paste into a prompt / paste as it looks / the exact record does not."
+  'conv.copy.h': 'Copy what you have marked:',
+  'conv.copy.msg': 'to paste into a prompt',
+  'conv.copy.seen': 'to paste as it looks',
+  'conv.copy.raw': 'the exact record',
+  'conv.copy.hint': 'Mark part of the document below, then copy it. The first is the one to reach for: it is the text as the record holds it, with no page formatting in it, and a command comes out as the command.',
+  'conv.copy.empty': 'Nothing is marked in the document, so there was nothing to copy.',
+  'conv.copy.turn': 'A turn',
+  'conv.copy.notTyped': 'nobody typed this',
+  'conv.copy.shutFold': '[{n} machine steps were left out of this copy: the fold holding them is closed. Open it and copy again to take them too.]',
+  'conv.copy.shutThinking': '[The thinking folded beside this turn was left out of this copy: the fold holding it is closed.]',
+  'conv.copy.renderedIs': '[Copied AS IT LOOKS — the browser’s own text for what is on screen. It can carry direction marks you cannot see and spacing the page collapsed. For text a prompt or a terminal will take, copy to paste into a prompt instead.]',
+  'conv.copy.working': 'Reading the marked records…',
+  // **THREE SENTENCES FOR ONE COUNT, and this table has earned that twice.**
+  // A count substituted into one sentence reads "1 sections" and "1 closed
+  // folds" — seen on the owner's own transcript, after the assertions passed.
+  // `en.js` has refused count-plural constructions before for want of a plural
+  // rule (`rail.cntSome`, `doctor`), and `conv.doc.fold`/`conv.doc.fold1` is
+  // the shape it settled on. This follows it rather than inventing a fourth.
+  'conv.copy.took': 'Copied {n} sections — records {from} to {to}.',
+  'conv.copy.took1': 'Copied 1 section — record {from}.',
+  'conv.copy.took1span': 'Copied 1 section — records {from} to {to}.',
+  'conv.copy.leftFolds': '{n} machine steps in {folds} closed folds were left out, and the copy says so where they were.',
+  'conv.copy.leftFolds1': 'One closed fold kept {n} machine steps out, and the copy says so where they were.',
+  'conv.copy.leftArgs': 'The command was copied on its own so a terminal will take it. What it was called with beside the command — {names} — is not in the copy.',
+  'conv.copy.notDrawn': '{n} of the marked sections are not on screen right now, so this form could not reach them. The other two can.',
+  'conv.copy.notDrawn1': 'One of the marked sections is not on screen right now, so this form could not reach it. The other two can.',
+  'conv.copy.tooMany': 'That marks {n} sections and one copy takes at most {cap}. Nothing was copied — mark less and copy again.',
+  'conv.copy.tooLong': 'Those records are {bytes} bytes and one copy takes at most {cap}. Nothing was copied — a half-written record is not a record, so this refuses rather than cuts.',
+  'conv.copy.noBytes': 'The transcript those records live in could not be read, so nothing was copied.',
+  'conv.copy.refused': 'The browser refused the clipboard, so nothing was copied. The text is ready — press the button again, or use your browser’s own copy.',
   // Injection preview
   'preview.h': 'Injection preview',
   'preview.v': 'exactly what Claude gets',

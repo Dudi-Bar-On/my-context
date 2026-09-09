@@ -11,6 +11,7 @@
 // TASK-a-tool-call-keeps-160-characters-of-its-input-and-drops-the,
 // TASK-a-question-its-options-the-answer-chosen-and-a-shell-command,
 // TASK-a-task-notification-is-3-9-mb-of-what-a-lane-reported-drawn,
+// TASK-a-selected-passage-copies-as-something-a-terminal-will,
 // INV-nothing-is-dropped-silently
 /**
  * The conversation archive, driven in a real browser in both languages —
@@ -364,7 +365,7 @@ async function openDocument(
   await page.locator('.convrow').first().click();
   await page.waitForSelector('.tvscroll .tvturn', { timeout: 20_000 });
   if (at === 'top') {
-    await page.locator('.tvbar button.tvjump').first().click();
+    await page.locator('button.tvtop').click();
     await expect(page.locator('.tvscroll')).toContainText('What the terminal showed', { timeout: 20_000 });
   }
 }
@@ -637,17 +638,20 @@ for (const lang of ['en', 'he'] as const) {
 
     // Scroll to the very end and read the last thing anybody said.
     //
-    // SCOPED TO `.tvbar`, and the scoping is load-bearing rather than tidy:
-    // `plan:archive seq:19` added a third `button.tvjump` — the "N new below"
-    // affordance, which lives outside the bar and is HIDDEN until turns arrive
-    // — so `.last()` began resolving to a control that is correctly invisible
-    // and the click waited for it for ever. A test that names the button it
-    // means cannot be broken by a button it does not.
-    await page.locator('.tvbar button.tvjump').last().click();
+    // **NAMED, AND THE NAMING WAS EARNED TWICE.** This was
+    // `.tvbar button.tvjump` with `.first()`/`.last()`. `plan:archive seq:19`
+    // added a third `button.tvjump` — the "N new below" affordance, hidden
+    // until turns arrive — and `.last()` began waiting for ever on a control
+    // that is correctly invisible; scoping to `.tvbar` fixed that and left the
+    // COUNTING in place. The copy controls
+    // (`TASK-a-selected-passage-copies-as-something-a-terminal-will`) then
+    // landed inside the bar and `.last()` moved again, this time to a button
+    // that copies. `button.tvend` cannot be moved by a button that is not End.
+    await page.locator('button.tvend').click();
     await expect(page.locator('.tvscroll')).toContainText(LAST_PHRASE, { timeout: 20_000 });
 
     // …and back to the top, to the first thing.
-    await page.locator('.tvbar button.tvjump').first().click();
+    await page.locator('button.tvtop').click();
     await expect(page.locator('.tvscroll')).toContainText('What the terminal showed', { timeout: 20_000 });
   });
 
@@ -757,12 +761,23 @@ for (const lang of ['en', 'he'] as const) {
     // ANSI: the escape bytes are gone and the colour they carried is a span.
     await page.locator('.tvscroll').evaluate((n) => { (n as HTMLElement).scrollTop = 1600; });
     await page.waitForTimeout(500);
-    const opened = page.locator('.tvwork').first();
+    // **THE FOLD IS NAMED BY ITS NODE, AND `.first()` IS WHY.** This read
+    // `page.locator('.tvwork').first()`, which is a LAZY locator: it is
+    // re-resolved on every assertion. Clicking a summary that is above the
+    // visible part of the well makes Playwright scroll the well to reach it,
+    // the window moves, and "the first fold in the DOM" is then a different
+    // element — so the assertion below waited on a fold this test never
+    // opened, which is correctly closed and correctly invisible.
+    //
+    // It survived only because DOM order used to be insertion order, which is
+    // arbitrary; `TASK-a-selected-passage-copies-as-something-a-terminal-will`
+    // made it DOCUMENT order so that a browser selection runs the way the
+    // reader sees it, and `.first()` started tracking the top of the window.
+    // A test that names the row it means cannot be moved by a scroll.
+    const foldN = await page.locator('.tvwork').first()
+      .evaluate((n) => (n as HTMLElement).dataset['n'] ?? '');
+    const opened = page.locator(`.tvwork[data-n="${foldN}"]`);
     await opened.locator('summary').click();
-    // Scoped to the fold this test OPENED. `.tvterm` first on the page resolves
-    // inside whichever fold happens to be earliest in the window — and a closed
-    // `<details>` hides its contents, so the assertion was waiting on an element
-    // that is correctly invisible.
     await expect(opened.locator('.tvterm').first()).toBeVisible();
     const escaped = await page.locator('.tvscroll').innerText();
     expect(escaped).not.toContain('\u001b');
@@ -1108,7 +1123,7 @@ test.describe('the open document follows the session as it is written', () => {
       // half of the following a reader is most likely to notice.
       await expect(follows).toContainText(lang === 'he' ? 'כל שנייה' : 'every second');
 
-      await page.locator('.tvbar button.tvjump').last().click();
+      await page.locator('button.tvend').click();
       await expect(page.locator('.tvscroll')).toContainText(LAST_PHRASE, { timeout: 20_000 });
 
       const phrase = `written while the browser was open ${lang}`;
@@ -1152,7 +1167,7 @@ test.describe('the open document follows the session as it is written', () => {
       test.setTimeout(90_000);
       await openLive(page, lang);
 
-      await page.locator('.tvbar button.tvjump').first().click();
+      await page.locator('button.tvtop').click();
       await expect(page.locator('.tvscroll')).toContainText('What the terminal showed', { timeout: 20_000 });
       const before = await page.locator('.tvscroll').evaluate((n) => (n as HTMLElement).scrollTop);
 
@@ -1417,7 +1432,7 @@ test.describe('the open document follows the session as it is written', () => {
       await openLive(page, 'en');
       // SCROLLED UP, which is what makes the count exist at all: a reader at
       // the tail is taken there and never sees a number.
-      await page.locator('.tvbar button.tvjump').first().click();
+      await page.locator('button.tvtop').click();
       await expect(page.locator('.tvscroll')).toContainText('What the terminal showed', { timeout: 20_000 });
 
       await page.evaluate(() => (window as unknown as { __look: (s: string | null) => void })
@@ -1862,12 +1877,12 @@ test.describe('a session opens at its end', () => {
     // the WELL and this button is in the bar above it, so without the handler
     // clearing the hold itself the next paint would put the reader straight
     // back at the end. Top matters more, not less, once the default moves.
-    await page.locator('.tvbar button.tvjump').first().click();
+    await page.locator('button.tvtop').click();
     await expect(well).toContainText('What the terminal showed', { timeout: 20_000 });
     await page.waitForTimeout(1_500);
     expect(await well.evaluate((n) => (n as HTMLElement).scrollTop)).toBe(0);
 
-    await page.locator('.tvbar button.tvjump').last().click();
+    await page.locator('button.tvend').click();
     await expect(well).toContainText(LAST_PHRASE, { timeout: 20_000 });
   });
 });
@@ -2221,5 +2236,368 @@ test.describe('the list is browsable', () => {
     // Newest first — `all()`'s order, untouched by the filter.
     await expect(rows.nth(0)).toContainText('took 2m');
     await expect(rows.nth(1)).toContainText('took 1h 30m');
+  });
+});
+
+/* ══ A MARKED PASSAGE, COPIED AS SOMETHING A TERMINAL WILL ACCEPT ══════════
+ *
+ * `TASK-a-selected-passage-copies-as-something-a-terminal-will`.
+ *
+ * ── WHY THESE ARE BROWSER TESTS AND CANNOT BE ANYTHING ELSE ───────────────
+ *
+ * The item's hard part is a MAPPING: *"a browser selection is a DOM range, and
+ * the clipboard must be filled from the RECORD range it corresponds to. In a
+ * VIRTUALISED document the rows around the selection may not even be in the
+ * DOM."* A `Selection` over a virtualised well is not a thing `node --test`
+ * has. `test/ui/passage-copy.test.ts` holds the halves that are arithmetic —
+ * what the payload says, and the byte slice — and everything below is the half
+ * that only exists in a browser.
+ *
+ * ── HOW THE CLIPBOARD IS READ, SAID RATHER THAN ASSUMED ───────────────────
+ *
+ * `navigator.clipboard` needs a permission and a secure context, and a
+ * headless engine may refuse it. So these assert `pre.tvclip` — the element
+ * the page fills with the payload BEFORE it attempts either clipboard path,
+ * and which the `execCommand` fallback then selects. That is the payload the
+ * page would write, which is the honest thing to assert when the OS clipboard
+ * is not reachable. `the clipboard itself is written when the engine allows
+ * it` below measures whether the real write succeeded, and says so either way
+ * rather than leaving it unknown.
+ */
+
+/** The controls the copy feature draws, and the line it reports through. */
+const copyBar = (page: Page) => ({
+  message: page.locator('button.tvcopymsg'),
+  seen: page.locator('button.tvcopyseen'),
+  raw: page.locator('button.tvcopyraw'),
+  said: page.locator('p.tvcopied'),
+});
+
+/** What the page would put on the clipboard. */
+const payload = (page: Page): Promise<string> =>
+  page.locator('pre.tvclip').evaluate((n) => n.textContent ?? '');
+
+/**
+ * Mark the whole of one drawn row, and wait for the screen to notice.
+ *
+ * `selectionchange` is delivered as a task rather than synchronously, so a
+ * test that marked and clicked in the same tick would click a button that had
+ * not yet been armed. The wait is on the BUTTON rather than on a timer.
+ */
+async function markRow(page: Page, dataN: string): Promise<void> {
+  await page.evaluate((n) => {
+    const row = document.querySelector(`.tvrow[data-n="${n as string}"]`);
+    if (row === null) throw new Error(`row ${n as string} is not drawn`);
+    const range = document.createRange();
+    range.selectNodeContents(row);
+    const selection = document.getSelection();
+    if (selection === null) throw new Error('no selection object');
+    selection.removeAllRanges();
+    selection.addRange(range);
+  }, dataN);
+  await expect(page.locator('button.tvcopymsg')).toBeEnabled({ timeout: 10_000 });
+}
+
+/** The `data-n` of every row currently in the DOM, as numbers. */
+const drawnNodes = (page: Page): Promise<number[]> =>
+  page.locator('.tvscroll').evaluate((n) => [...n.querySelectorAll('.tvrow')]
+    .map((r) => Number((r as HTMLElement).dataset['n'])));
+
+/** Park the well at a fraction of the document and let it settle. */
+async function parkAt(page: Page, fraction: number): Promise<void> {
+  await page.locator('.tvscroll').evaluate((n, f) => {
+    const el = n as HTMLElement;
+    el.scrollTop = Math.round((el.scrollHeight - el.clientHeight) * (f as number));
+  }, fraction);
+  await page.waitForTimeout(500);
+}
+
+/** Direction marks a copy must not invent. */
+const BIDI = /[‎‏؜‪-‮⁦-⁩]/;
+
+test.describe('a marked passage copies as something a terminal will accept', () => {
+  for (const lang of ['en', 'he'] as const) {
+    test(`the three copies are named by what they are FOR, and wait to be given something (${lang})`,
+      async ({ page }) => {
+        await openDocument(page, lang);
+        const bar = copyBar(page);
+
+        // NAMED BY PURPOSE, which is the item's own instruction: *"A menu
+        // offering 'text / rendered / raw' makes a reader guess; one offering
+        // 'paste into a prompt / paste as it looks / the exact record' does
+        // not."* Both languages, because a control that says what it is for in
+        // one language and names a format in the other has only half shipped.
+        await expect(bar.message).toContainText(lang === 'he' ? 'פרומפט' : 'prompt');
+        await expect(bar.seen).toContainText(lang === 'he' ? 'נראה' : 'looks');
+        await expect(bar.raw).toContainText(lang === 'he' ? 'רשומה' : 'record');
+
+        // Nothing is marked yet, so there is nothing to copy — and the three
+        // controls say so by being unusable rather than by refusing after the
+        // click. They are PRESENT the whole time, so nothing reflows under a
+        // reader in the middle of marking.
+        for (const button of [bar.message, bar.seen, bar.raw]) {
+          await expect(button).toBeVisible();
+          await expect(button).toBeDisabled();
+        }
+        await expect(bar.said).toContainText(lang === 'he' ? 'סמנו' : 'Mark');
+
+        // The ELEMENT, never `fullPage` — a full-page shot resizes the
+        // viewport, and this project has already had a `<details>` come back
+        // closed in one.
+        await page.locator('.tvbar').screenshot({
+          path: `e2e/screens/conversations-copy-bar-${lang}.png`,
+        });
+      });
+  }
+
+  test('a marked shell command copies as the command, and nothing above it', async ({ page }) => {
+    await openDocument(page, 'en');
+    const bar = copyBar(page);
+
+    // THE CASE THE OWNER NAMED. A promoted `deed` row carries the command
+    // verbatim; a heading above it in the payload is exactly what stops a
+    // terminal taking the paste.
+    const deed = page.locator('article.tvdeed').first();
+    await expect(deed).toBeVisible();
+    const dataN = await deed.evaluate((n) => (n as HTMLElement).dataset['n'] ?? '');
+    await markRow(page, dataN);
+
+    await bar.message.click();
+    await expect(bar.said).toContainText('Copied', { timeout: 10_000 });
+
+    const text = await payload(page);
+    expect(text, 'the command, exactly as it ran, and nothing else').toMatch(/^echo \d+$/);
+    expect(text).not.toContain('##');
+    // What was NOT taken is said on the screen, because it cannot be said in
+    // the payload without breaking the paste — `INV-nothing-is-dropped-silently`.
+    await expect(bar.said).toContainText('description');
+  });
+
+  test('a marked turn copies its own words, with no invisible marks added', async ({ page }) => {
+    // **THE HEBREW PAGE ON PURPOSE.** The item rules out the DOM because this
+    // UI inserts direction wrappers and isolation, and *"a DOM selection
+    // copies those invisible characters into the clipboard, and they will
+    // travel into whatever he pastes into."* Message text is built from the
+    // RECORD, so this is where that claim is measured rather than repeated.
+    await openDocument(page, 'he');
+    const bar = copyBar(page);
+
+    const turn = page.locator('article.tvturn:not(.tvsyn)').first();
+    const dataN = await turn.evaluate((n) => (n as HTMLElement).dataset['n'] ?? '');
+    await markRow(page, dataN);
+
+    // What the BROWSER would have copied from exactly these rows, measured
+    // before the button is pressed (a click collapses nothing — the controls
+    // refuse the default on `mousedown` — but reading it first keeps the two
+    // measurements about the same selection beyond doubt).
+    const rendered = await page.evaluate(() => document.getSelection()?.toString() ?? '');
+
+    await bar.message.click();
+    await expect(bar.said).toContainText('הועתק', { timeout: 10_000 });
+
+    const text = await payload(page);
+    expect(text.length).toBeGreaterThan(0);
+    expect(BIDI.test(text), 'message text carries no direction mark the record did not')
+      .toBe(false);
+    // Reported rather than asserted: what the browser's own serialisation
+    // holds is a fact about the engine, and the ruling this feature rests on
+    // is that only one of the two forms is a fact about the RECORD.
+    // eslint-disable-next-line no-console
+    console.log('[copy] browser selection marks:', BIDI.test(rendered),
+      '· rendered codepoints:', rendered.length, '· message codepoints:', text.length);
+  });
+
+  test('a passage spanning records that are NOT in the DOM copies all of them',
+    async ({ page }) => {
+      // ── THE LOAD-BEARING TEST OF THIS FEATURE ──────────────────────────
+      //
+      // The item says the mapping is the hard part and names why: the rows
+      // between a selection's two ends may never have been drawn. This marks a
+      // row a fifth of the way down, scrolls a third of the document away,
+      // extends the selection into a row down there, and then asks whether the
+      // clipboard holds the turns IN BETWEEN — turns that were never in the
+      // DOM at any moment while the passage existed.
+      //
+      // It is the same two-step a reader takes: mark, scroll, shift-click.
+      await openDocument(page, 'en', 'default');
+      const well = page.locator('.tvscroll');
+      const bar = copyBar(page);
+      // The mount landing is HELD for `STICK_MS`; only the reader's own input
+      // releases it, so a programmatic scroll before this is undone.
+      await well.press('PageUp');
+
+      await parkAt(page, 0.20);
+      const near = await drawnNodes(page);
+      expect(near.length).toBeGreaterThan(0);
+      const from = Math.min(...near) + 2;
+      await markRow(page, String(from));
+
+      await parkAt(page, 0.55);
+      const far = await drawnNodes(page);
+      const to = Math.max(...far) - 2;
+      expect(to - from, 'this must span far more than one window or it proves nothing')
+        .toBeGreaterThan(100);
+
+      // The shift-click, as a selection extension.
+      await page.evaluate((n) => {
+        const row = document.querySelector(`.tvrow[data-n="${n as string}"]`);
+        if (row === null) throw new Error('the far row is not drawn');
+        document.getSelection()?.extend(row, row.childNodes.length);
+      }, String(to));
+      await page.waitForTimeout(400);
+
+      const inDom = new Set(await drawnNodes(page));
+      let missing = 0;
+      for (let n = from; n <= to; n += 1) if (!inDom.has(n)) missing += 1;
+      expect(missing,
+        'the middle of the passage has to be OUT of the DOM or this test is vacuous')
+        .toBeGreaterThan(80);
+
+      await bar.message.click();
+      await expect(bar.said).toContainText('Copied', { timeout: 30_000 });
+      const text = await payload(page);
+
+      // WHAT THE PASSAGE HOLDS, compared against WHAT THE SCREEN HOLDS. The
+      // fixture numbers every prompt, so the rounds present in the clipboard
+      // and the rounds present in the DOM are both countable — and the ones in
+      // the first and not the second are the proof.
+      const rounds = (source: string): Set<number> => {
+        const out = new Set<number>();
+        for (const m of source.matchAll(/round (\d+): keep going/g)) out.add(Number(m[1]));
+        return out;
+      };
+      const onScreen = rounds(await well.evaluate((n) => n.textContent ?? ''));
+      const copied = rounds(text);
+      const never = [...copied].filter((r) => !onScreen.has(r));
+      expect(never.length,
+        'the copy has to hold turns the DOM never drew — that is the whole mapping')
+        .toBeGreaterThan(20);
+
+      // And the count it REPORTS is the count it took.
+      const said = await bar.said.textContent() ?? '';
+      const sections = Number(/Copied (\d+) sections/.exec(said)?.[1] ?? '0');
+      expect(sections).toBe(to - from + 1);
+      expect(sections).toBeGreaterThan(inDom.size);
+      // eslint-disable-next-line no-console
+      console.log('[copy] sections:', sections, '· rows in the DOM:', inDom.size,
+        '· turns copied that the DOM never held:', never.length,
+        '· payload characters:', text.length);
+    });
+
+  test('copying does not move a reader who has taken the scroll', async ({ page }) => {
+    // `stickUntil` has exactly three setters and every one of them is the
+    // reader consenting to be at the end. Copying adds none, and this is what
+    // fails if it ever does.
+    await openDocument(page, 'en', 'default');
+    const well = page.locator('.tvscroll');
+    await well.press('PageUp');
+    await parkAt(page, 0.45);
+
+    const nodes = await drawnNodes(page);
+    await markRow(page, String(Math.min(...nodes) + 1));
+    const before = await well.evaluate((n) => (n as HTMLElement).scrollTop);
+
+    const bar = copyBar(page);
+    await bar.message.click();
+    await expect(bar.said).toContainText('Copied', { timeout: 10_000 });
+    await page.waitForTimeout(700);
+
+    const after = await well.evaluate((n) => (n as HTMLElement).scrollTop);
+    expect(after, 'a copy is not a reason to move the document').toBe(before);
+  });
+
+  test('the rendered copy SAYS it is the rendered form', async ({ page }) => {
+    await openDocument(page, 'en');
+    const bar = copyBar(page);
+    const turn = page.locator('article.tvturn').first();
+    await markRow(page, await turn.evaluate((n) => (n as HTMLElement).dataset['n'] ?? ''));
+
+    await bar.seen.click();
+    await expect(bar.said).toContainText('Copied', { timeout: 10_000 });
+    const text = await payload(page);
+    // The item requires it, and the payload is the only place the warning can
+    // travel to wherever it is pasted.
+    expect(text.startsWith('[Copied AS IT LOOKS')).toBe(true);
+    expect(text).toContain('direction marks you cannot see');
+  });
+
+  test('the exact record is JSONL that parses, envelope and all', async ({ page }) => {
+    await openDocument(page, 'en');
+    const bar = copyBar(page);
+    const turn = page.locator('article.tvturn').first();
+    await markRow(page, await turn.evaluate((n) => (n as HTMLElement).dataset['n'] ?? ''));
+
+    await bar.raw.click();
+    await expect(bar.said).toContainText('Copied', { timeout: 10_000 });
+    const text = await payload(page);
+
+    const lines = text.split('\n').filter((l) => l !== '');
+    expect(lines.length).toBeGreaterThan(0);
+    for (const line of lines) expect(() => JSON.parse(line) as unknown).not.toThrow();
+    // It is the record and not this app's reading of it: the envelope the
+    // document never draws is there.
+    const first = JSON.parse(lines[0] ?? '{}') as Record<string, unknown>;
+    expect(typeof first['type']).toBe('string');
+  });
+
+  test('a closed fold is disclosed, and opening it changes what the copy holds',
+    async ({ page }) => {
+      await openDocument(page, 'en');
+      const bar = copyBar(page);
+      const fold = page.locator('details.tvwork').first();
+      await expect(fold).toBeVisible();
+      const dataN = await fold.evaluate((n) => (n as HTMLElement).dataset['n'] ?? '');
+
+      await markRow(page, dataN);
+      await bar.message.click();
+      await expect(bar.said).toContainText('Copied', { timeout: 10_000 });
+      const shut = await payload(page);
+      // *"If a selection spans a folded block, either include its content or
+      // say it was omitted."* This says it.
+      expect(shut).toContain('were left out of this copy');
+
+      // Open it, mark it again, and the same passage now carries the records.
+      await fold.locator('summary').click();
+      await expect(fold).toHaveAttribute('open', '');
+      await markRow(page, dataN);
+      await bar.message.click();
+      await expect(bar.said).toContainText('Copied', { timeout: 10_000 });
+      const opened = await payload(page);
+      expect(opened).not.toContain('were left out of this copy');
+      // THE RECORDS THEMSELVES, one heading each — not a length comparison.
+      // Measured on this fixture: the disclosure sentence is 138 characters
+      // and the fold it discloses holds one book-keeping record whose whole
+      // content is 31, so "the open copy is longer" is FALSE on exactly the
+      // fold this document draws first. What changed is what is in it.
+      expect(opened).toContain('###');
+      expect(shut).not.toContain('###');
+    });
+
+  test('the clipboard itself is written when the engine allows it', async ({ page, context }) => {
+    // MEASURED, not assumed. If the permission is refused this reports it and
+    // falls back to the payload the page would have written — which is what
+    // every test above asserts anyway.
+    let granted = true;
+    try {
+      await context.grantPermissions(['clipboard-read', 'clipboard-write']);
+    } catch { granted = false; }
+
+    await openDocument(page, 'en');
+    const bar = copyBar(page);
+    const deed = page.locator('article.tvdeed').first();
+    await markRow(page, await deed.evaluate((n) => (n as HTMLElement).dataset['n'] ?? ''));
+    await bar.message.click();
+    await expect(bar.said).toContainText('Copied', { timeout: 10_000 });
+
+    let onClipboard: string | null = null;
+    try {
+      onClipboard = await page.evaluate(() => navigator.clipboard.readText());
+    } catch { onClipboard = null; }
+    // eslint-disable-next-line no-console
+    console.log('[copy] permissions granted:', granted, '· clipboard readable:',
+      onClipboard !== null);
+
+    if (onClipboard !== null) expect(onClipboard).toBe(await payload(page));
+    else expect(await payload(page)).toMatch(/^echo \d+$/);
   });
 });

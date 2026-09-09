@@ -3734,6 +3734,32 @@ body.docpage{overflow-y:auto}
   border-radius:var(--r-sm);padding:var(--sp-1) var(--sp-2);cursor:pointer}
 .tvcount{margin:0 0 var(--sp-1);font-size:var(--fs-00);color:var(--dim)}
 
+/* ── COPYING A MARKED PASSAGE ──────────────────────────────────────────────
+   `TASK-a-selected-passage-copies-as-something-a-terminal-will`.
+
+   THE THREE BUTTONS WEAR `.tvjump` AND GET NO COLOUR OF THEIR OWN. That class
+   already sets `color`, `background` and `border` explicitly, and this
+   project has shipped a Clear button at contrast ≈ 1.0 by letting a new
+   control take the user agent's background — so a copy control that invented
+   its own palette would be the same defect wearing a newer class. What is
+   added here is only what `.tvjump` does not say: the group's label, the
+   status line, the DISABLED state, and the off-screen holder.
+
+   `:disabled` is `.cmdactions button:disabled`'s pair verbatim, for the reason
+   `label.small select:disabled` gives beside it: "this control cannot be used"
+   should look the same everywhere in one app.
+
+   `.tvclip` is the payload the page would write, kept in the document so the
+   `execCommand` fallback has something to select on an engine with no
+   `navigator.clipboard`. It is `hidden`, so `[hidden]{display:none}` in the
+   reset already removes it; the rule below exists only so a browser that
+   ever un-hides it does not paint a wall of text over the document. */
+.tvcopyh{flex:0 0 auto;font:var(--fs-00)/1.2 var(--sans);color:var(--dim)}
+.tvjump:disabled{opacity:.5;cursor:not-allowed}
+.tvcopied{color:var(--dim)}
+.tvclip{position:absolute;inline-size:1px;block-size:1px;overflow:hidden;
+  clip-path:inset(50%);white-space:pre}
+
 /* ── A LINK TO A LANE'S OWN TRANSCRIPT, DRESSED AS A LINK ──────────────────
    `plan:archive seq:31`, paying back what `seq:15` borrowed.
 

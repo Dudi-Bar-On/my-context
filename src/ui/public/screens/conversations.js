@@ -63,6 +63,9 @@ import { helpDisclosure } from '../lib/disclosure.js';
 import { shouldPing } from '../lib/heartbeat.js';
 import { markdownNodes } from '../lib/markdown.js';
 import { ansiNodes, hasEscapes, stripEscapes } from '../lib/ansi.js';
+import {
+  PASSAGE_NODE_CAP, PASSAGE_RAW_CAP, messagePassage, runsOf,
+} from '../lib/passage.js';
 
 /**
  * The glyph that marks each of the three kinds. ONE table, so the list and the
@@ -974,6 +977,38 @@ const SPEAKER_KEYS = {
 /** The accent a turn wears. Only the two real speakers get one of their own. */
 const SPEAKER_CLASS = { you: 'tvyou', claude: 'tvclaude' };
 
+/**
+ * The words `lib/passage.js` needs, in the reader's language.
+ *
+ * **It is a bridge and not a second table**, which is the point of it. The
+ * passage builder emits sentences and must therefore be bilingual; it must
+ * also be drivable by `node --test` with no string table and no DOM. So the
+ * words arrive as four functions, and `SPEAKER_KEYS` and `SYNTHETIC_KEYS`
+ * above stay the only place either mapping is written down — a copy of them in
+ * a library the screen imports is exactly the drift this file's own header
+ * warns about for the KINDS table.
+ *
+ * `stamp` is `dayText`, so a timestamp in a copied passage is the same string
+ * the row above it drew: the reader's own zone, saying which zone it is
+ * (`TASK-a-timestamp-is-shown-in-the-reader-s-own-zone-and-says-which`).
+ */
+function passageLabels(ctx) {
+  return {
+    t: (key, subs = {}) => ctx.tFlat(key, subs),
+    speaker: (who) => {
+      const key = SPEAKER_KEYS[who];
+      return key === undefined ? null : ctx.tFlat(key);
+    },
+    // A label this screen has no word for is served AS ITSELF rather than
+    // dropped — the same choice `drawTurn` makes for the chip.
+    synthetic: (label) => {
+      const key = SYNTHETIC_KEYS[label];
+      return key === undefined ? label : ctx.tFlat(key);
+    },
+    stamp: (iso) => dayText(iso),
+  };
+}
+
 /** The glyph beside the name — distinction by more than colour. */
 function speakerGlyph(who) {
   if (who === 'you') return KINDS.prompt.glyph;
@@ -1829,18 +1864,102 @@ function mountDocument(ctx, host, outline, back, roster = NO_LANES) {
   find.setAttribute('aria-label', ctx.tFlat('conv.doc.filter'));
   bar.append(find);
 
-  const toTop = el('button', 'tvjump');
+  // **`tvtop` AND `tvend` ARE HANDLES, and they exist because counting broke
+  // twice.** `seq:19` added a third `button.tvjump` and the note on `toNew`
+  // below records what it cost: `e2e/conversations.spec.ts` reached End with
+  // `.last()`, and a new control moved it. The copy controls
+  // (`TASK-a-selected-passage-copies-as-something-a-terminal-will`) are inside
+  // THIS bar, so `.last()` inside `.tvbar` moved as well — the same defect, one
+  // scope in. A test that names the button it means cannot be broken by a
+  // button it does not, so both of these now say which one they are.
+  const toTop = el('button', 'tvjump tvtop');
   toTop.type = 'button';
   toTop.append(...ctx.t('conv.doc.top'));
-  const toEnd = el('button', 'tvjump');
+  const toEnd = el('button', 'tvjump tvend');
   toEnd.type = 'button';
   toEnd.append(...ctx.t('conv.doc.end'));
   bar.append(toTop, toEnd);
+
+  /* ── THE THREE COPIES ───────────────────────────────────────────────────
+   *
+   * `TASK-a-selected-passage-copies-as-something-a-terminal-will`. Each is
+   * named by WHAT IT IS FOR, which is the item's own instruction and not a
+   * style preference: *"A menu offering 'text / rendered / raw' makes a reader
+   * guess; one offering 'paste into a prompt / paste as it looks / the exact
+   * record' does not."*
+   *
+   * **Three buttons rather than one button and a menu**, so that the choice is
+   * visible without being opened and a test can name each one. They live in the
+   * bar that already holds Top and End, so nothing appears or disappears as a
+   * selection is made and dropped — a control that materialised beside a
+   * marked passage would reflow the page under a reader in the middle of
+   * marking it. They are DISABLED until something is marked instead.
+   *
+   * **They wear `.tvjump` and get no colour of their own.** This app has
+   * already shipped a Clear button at contrast ≈ 1.0 by letting a new control
+   * inherit the user agent's background; `.tvjump` sets `color`, `background`
+   * and `border` explicitly and is the class Top, End and "N new below"
+   * already wear, so the only new rule is `:disabled`.
+   */
+  const copyLabel = el('span', 'tvcopyh');
+  copyLabel.append(...ctx.t('conv.copy.h'));
+  const copyMessage = el('button', 'tvjump tvcopy tvcopymsg');
+  copyMessage.type = 'button';
+  copyMessage.append(...ctx.t('conv.copy.msg'));
+  const copySeen = el('button', 'tvjump tvcopy tvcopyseen');
+  copySeen.type = 'button';
+  copySeen.append(...ctx.t('conv.copy.seen'));
+  const copyRaw = el('button', 'tvjump tvcopy tvcopyraw');
+  copyRaw.type = 'button';
+  copyRaw.append(...ctx.t('conv.copy.raw'));
+  bar.append(copyLabel, copyMessage, copySeen, copyRaw);
   host.append(bar);
 
   const count = el('p', 'tvcount');
   count.setAttribute('aria-live', 'polite');
   host.append(count);
+
+  /**
+   * What the last copy actually took — and, before there has been one, how to
+   * make one.
+   *
+   * **This is where `INV-nothing-is-dropped-silently` is discharged for the
+   * two omissions that cannot live in the payload.** A closed fold and a
+   * synthetic turn are disclosed IN the copied text, because they have to
+   * travel with it. A bare shell command copied on its own cannot carry a
+   * disclosure — a note above it would be the thing that stops a terminal
+   * accepting it, which is the whole case the item was filed for — so what was
+   * left beside the command is said HERE. Same for a rendered copy that could
+   * not reach sections the browser is not currently drawing.
+   *
+   * `aria-live` so a reader who cannot see the line still hears what was
+   * taken, and `tvnote` rather than `tvcount` for the reason the arrived line
+   * gives above: `p.tvcount` is a test's handle for the count line and a second
+   * element wearing it turns that handle into a strict-mode violation.
+   */
+  const copied = el('p', 'tvnote tvcopied');
+  copied.setAttribute('aria-live', 'polite');
+  copied.append(...ctx.t('conv.copy.hint'));
+  host.append(copied);
+
+  /**
+   * The text the page would put on the clipboard, kept in the document.
+   *
+   * It exists for the `execCommand` fallback, which needs something selectable
+   * when `navigator.clipboard` is refused — a headless engine with no
+   * clipboard permission, or any page not on a secure context. It is `hidden`,
+   * so the reset's `[hidden]{display:none}` removes it, and it is unhidden for
+   * the length of one synchronous copy and hidden again.
+   *
+   * It is also what a browser test can read. That is not a back door: a suite
+   * that cannot get at the OS clipboard should assert the payload the page
+   * WOULD write rather than pretend to read the clipboard, and this element is
+   * that payload, written before either clipboard path is attempted.
+   */
+  const clip = el('pre', 'tvclip');
+  clip.hidden = true;
+  clip.setAttribute('aria-hidden', 'true');
+  host.append(clip);
 
   /**
    * "N new below" — the affordance for the reader who has SCROLLED UP.
@@ -2047,8 +2166,68 @@ function mountDocument(ctx, host, outline, back, roster = NO_LANES) {
    */
   let stickUntil = 0;
   const STICK_MS = 3_000;
+  /**
+   * The rows the reader's SELECTION BEGINS AND ENDS IN, which `paint` will not
+   * evict. **At most two.**
+   *
+   * **This is the second half of making a passage markable at all, and it was
+   * found by dragging** — `TASK-a-selected-passage-copies-as-something-a-
+   * terminal-will`. A drag that reaches the bottom edge of the well
+   * auto-scrolls it; `paint` then removes the rows that left the window, and
+   * removing a node a selection BOUNDARY sits in moves that boundary up to the
+   * container. The selection is not destroyed — it is QUIETLY NARROWED, which
+   * is the worst of the outcomes available: the reader watches their highlight
+   * cover forty turns and the clipboard gets the last dozen.
+   *
+   * A row is `position:absolute` with its top written from the model, so
+   * keeping one that has scrolled out costs a node and nothing else — it is
+   * still exactly where the model says it is, and it is off screen.
+   *
+   * **ONLY THE TWO ENDS, and the difference is not a micro-optimisation.**
+   * The first draft pinned every marked row, which is up to `PASSAGE_NODE_CAP`
+   * of them, and `measure` walks `live` calling `getBoundingClientRect` on
+   * every entry — so a 400-section passage would have cost four hundred forced
+   * layouts per scroll frame, on the surface whose whole design is "every
+   * scroll after the first costs 2 ms". It is also unnecessary: removing a node
+   * from the MIDDLE of a range does not move either boundary, and the middle of
+   * a passage is filled from the RECORD rather than from the DOM. So the ends
+   * are held and the middle is allowed to go.
+   */
+  const held = new Set();
 
   const heightOf = (nodeIndex) => known.get(nodeIndex) ?? estimateHeight(nodes[nodeIndex]);
+
+  /**
+   * The node indices a selection's two boundary points sit in — what `held`
+   * keeps. Empty when neither end is inside the well.
+   *
+   * `rowOf` is declared with the rest of the copy machinery further down; this
+   * is only ever called from a listener, so the binding exists by then.
+   */
+  const boundaryRows = () => {
+    const selection = document.getSelection();
+    if (selection === null || selection.rangeCount === 0) return [];
+    const range = selection.getRangeAt(0);
+    const out = [];
+    for (const end of [range.startContainer, range.endContainer]) {
+      const row = rowOf(end);
+      if (row === null) continue;
+      const nodeIndex = Number(row.dataset.n);
+      if (Number.isInteger(nodeIndex)) out.push(nodeIndex);
+    }
+    return out;
+  };
+
+  /** First position in `view` holding a node index at or after `n`. */
+  const viewFrom = (n) => {
+    let lo = 0;
+    let hi = view.length;
+    while (lo < hi) {
+      const mid = (lo + hi) >> 1;
+      if (view[mid] < n) lo = mid + 1; else hi = mid;
+    }
+    return lo;
+  };
 
   const rebuild = () => {
     scroller = new Scroller(view.map(heightOf));
@@ -2149,30 +2328,92 @@ function mountDocument(ctx, host, outline, back, roster = NO_LANES) {
 
     for (const [nodeIndex, node] of [...live]) {
       // Out of the window, or a placeholder whose body has since arrived.
-      if (!want.has(nodeIndex) || (waiting.has(nodeIndex) && bodies.has(nodeIndex))) {
-        node.remove();
-        live.delete(nodeIndex);
-        waiting.delete(nodeIndex);
-      }
+      const gone = !want.has(nodeIndex);
+      if (!gone && !(waiting.has(nodeIndex) && bodies.has(nodeIndex))) continue;
+      // A row the reader has MARKED is not evicted for scrolling past it —
+      // see `held`. The placeholder swap is still allowed to happen even on a
+      // held row: a row still reading "Reading…" has no text worth keeping a
+      // selection in, and leaving it would pin the placeholder for ever.
+      if (gone && held.has(nodeIndex)) continue;
+      node.remove();
+      live.delete(nodeIndex);
+      waiting.delete(nodeIndex);
     }
     // Build what is missing and PLACE everything. A row already in the DOM is
     // moved, never rebuilt — a `<details>` a reader opened must survive a
     // two-pixel scroll, and rebuilding would shut every one of them.
+    //
+    // **A NEW ROW IS INSERTED IN DOCUMENT ORDER, NOT APPENDED** —
+    // `TASK-a-selected-passage-copies-as-something-a-terminal-will`. Every row
+    // is `position:absolute` with its top written from the model, so where it
+    // sits in the DOM has no effect on where it is DRAWN, and `inner.append`
+    // was therefore free. It is not free for a SELECTION: a browser range runs
+    // in DOM order, so a reader scrolling UP — which appends the rows above
+    // the viewport AFTER the rows below it — could drag across three visible
+    // rows and get a range that, read in DOM order, ran the other way and
+    // swept in rows that are elsewhere on the screen. Inserting after the
+    // previous row of the window keeps the two orders equal for ever.
+    //
+    // **And it never moves a row that is already in the DOM**, which matters
+    // twice: moving one would shut nothing (`open` is an attribute) but it
+    // WOULD destroy the reader's selection, on every scroll, which is the one
+    // thing this feature cannot survive. Only rows built on this pass are
+    // placed, and a row only ever leaves the DOM by being removed above.
+    //
+    // The FIRST row of a window has no previous row to follow, so its place is
+    // found among whatever else is in the container — which, with `held`, can
+    // be a marked passage a long way up or down the document. `inner.prepend`
+    // would put a window at record 12,000 in front of a passage marked at
+    // record 40.
+    const placeFirst = (row, nodeIndex) => {
+      let next = null;
+      for (const [otherIndex, other] of live) {
+        if (otherIndex <= nodeIndex) continue;
+        if (next === null || otherIndex < next.index) next = { index: otherIndex, node: other };
+      }
+      if (next === null) inner.append(row); else next.node.before(row);
+    };
+    let previous = null;
     for (const i of wanted) {
       const nodeIndex = view[i];
       let row = live.get(nodeIndex);
       if (row === undefined) {
         row = buildRow(nodeIndex);
         row.classList.add('tvrow');
+        if (previous === null) placeFirst(row, nodeIndex); else previous.after(row);
         live.set(nodeIndex, row);
-        inner.append(row);
       }
-      // A COMPUTED value, never a static one: `check-cssom-restatement.ts`
-      // refuses an inline write that restates what the stylesheet says, and
-      // this number exists only at runtime.
-      row.style.insetBlockStart = `${Math.round(scroller.top(i))}px`;
+      previous = row;
     }
-    inner.style.blockSize = `${Math.round(scroller.total)}px`;
+
+    /**
+     * Every row's top, written from the model — including the held ones.
+     *
+     * A held row is outside the window, so nothing in the loop above touches
+     * it; but a measurement moves every row BELOW the one that changed, and a
+     * marked passage left at a stale pixel would be in the wrong place the
+     * moment the reader scrolled back to it. `viewFrom` is how a node index
+     * becomes a view row when it is not in the window's own list.
+     *
+     * The value is COMPUTED, never static: `check-cssom-restatement.ts`
+     * refuses an inline write that restates what the stylesheet says, and this
+     * number exists only at runtime.
+     */
+    const place = () => {
+      for (const i of wanted) {
+        const row = live.get(view[i]);
+        if (row !== undefined) row.style.insetBlockStart = `${Math.round(scroller.top(i))}px`;
+      }
+      for (const nodeIndex of held) {
+        if (want.has(nodeIndex)) continue;
+        const row = live.get(nodeIndex);
+        if (row !== undefined) {
+          row.style.insetBlockStart = `${Math.round(scroller.top(viewFrom(nodeIndex)))}px`;
+        }
+      }
+      inner.style.blockSize = `${Math.round(scroller.total)}px`;
+    };
+    place();
 
     // Ask for the first body this window is missing. One request covers
     // `FETCH_PAGE` consecutive nodes, so a scroll asks about once per screen.
@@ -2183,11 +2424,7 @@ function mountDocument(ctx, host, outline, back, roster = NO_LANES) {
 
     if (measure()) {
       rebuild();
-      for (const i of wanted) {
-        const row = live.get(view[i]);
-        if (row !== undefined) row.style.insetBlockStart = `${Math.round(scroller.top(i))}px`;
-      }
-      inner.style.blockSize = `${Math.round(scroller.total)}px`;
+      place();
       // Put the anchor node back under the reader's eye. `anchorDelta` was
       // measured against that row's ESTIMATED height, so it is clamped to the
       // height the row actually took — otherwise a 900px offset into a row the
@@ -2340,9 +2577,386 @@ function mountDocument(ctx, host, outline, back, roster = NO_LANES) {
     paint();
   };
 
-  const applyFilter = () => { redraw('top'); };
+  /**
+   * A new search throws away every drawn row, so it throws away the passage
+   * too. Forgetting it is the honest answer: the sections the reader marked
+   * were marked on a document that no longer exists, and a copy taken after a
+   * filter narrowed the view would be filled from records they can no longer
+   * see. Nothing is silently kept.
+   */
+  const applyFilter = () => {
+    marked = null;
+    held.clear();
+    armCopy(false);
+    redraw('top');
+  };
   find.addEventListener('input', applyFilter);
   redraw('end');
+
+  /* ── A MARKED PASSAGE, AND THE THREE THINGS IT CAN BECOME ───────────────
+   *
+   * `TASK-a-selected-passage-copies-as-something-a-terminal-will`.
+   *
+   * ── THE HARD PART, WHICH THE ITEM NAMES AND WHICH IS SOLVED HERE ───────
+   *
+   * *"A browser selection is a DOM range, and the clipboard must be filled
+   * from the RECORD range it corresponds to. In a VIRTUALISED document the
+   * rows around the selection may not even be in the DOM."*
+   *
+   * **The item says this is the same anchor problem as `seq:15`'s cursor
+   * return and that the two should be solved once. They could not be.**
+   * `seq:15` solved its half by DELETING it — a lane opens in a NEW TAB, so
+   * the document is never unmounted and no position is ever restored. That
+   * answer is not available here: a selection genuinely spans records, and
+   * they genuinely have to be mapped. Nothing below is reused from it.
+   *
+   * **What makes it tractable is one observation.** A selection's two
+   * ENDPOINTS are DOM positions by definition, so they are always in the DOM —
+   * it is only the MIDDLE that can be missing. So the DOM is asked for the two
+   * ends and for nothing else, and the middle is filled from the RECORD, by
+   * node index, from the same endpoint the scroll already uses. The mapping
+   * therefore costs one round trip per `FETCH_PAGE` sections that are not
+   * already cached, and nothing at all for a passage the reader can see.
+   *
+   * That also makes the DOM's own order irrelevant: the span is `min`/`max` of
+   * `data-n`, never first-in-the-range and last-in-the-range. `paint` now
+   * keeps the two orders equal anyway, for the sake of the highlight the
+   * reader sees while dragging, but this code does not depend on it.
+   *
+   * ── AND NOT ONE LINE OF IT MOVES THE READER ────────────────────────────
+   *
+   * `stickUntil` has exactly three setters, all of them the reader consenting
+   * to be at the end, and copying adds none. Nothing here writes `scrollTop`,
+   * nothing here calls `paint`, and `passageBodies` deliberately does NOT
+   * reuse `fetchFrom` — which repaints on arrival — precisely so that filling
+   * a passage cannot move a document somebody is reading.
+   */
+
+  /** The row a selection endpoint sits in, or `null` if it is outside the well. */
+  const rowOf = (node) => {
+    const start = node === null || node === undefined ? null
+      : (node.nodeType === 3 ? node.parentElement : node);
+    if (start === null || typeof start.closest !== 'function') return null;
+    const row = start.closest('.tvrow');
+    return row !== null && inner.contains(row) ? row : null;
+  };
+
+  /**
+   * The node indices the reader has marked.
+   *
+   * Three answers, and the difference between two of them is load-bearing:
+   *   - `null`   there is no usable selection at all (none, or collapsed).
+   *              The remembered passage is KEPT — see `onSelect`.
+   *   - `[]`     there is a real selection and none of it is in the well.
+   *   - indices  the sections it covers, ascending, in DOCUMENT order.
+   *
+   * **The span is taken over `view` and not over `nodes`.** With a filter
+   * typed, the sections between the two ends include ones the filter is
+   * hiding, and the reader did not mark those — they are not on the screen. A
+   * copy that swept them in would be filled from the record with content the
+   * reader never saw, which is the mirror image of the defect this feature
+   * exists to fix.
+   */
+  const passageSpan = () => {
+    const selection = document.getSelection();
+    if (selection === null || selection.rangeCount === 0 || selection.isCollapsed) return null;
+    let lowest = Infinity;
+    let highest = -Infinity;
+    for (const [nodeIndex, row] of live) {
+      let touched = false;
+      try { touched = selection.containsNode(row, true); } catch { touched = false; }
+      if (!touched) continue;
+      if (nodeIndex < lowest) lowest = nodeIndex;
+      if (nodeIndex > highest) highest = nodeIndex;
+    }
+    // `containsNode` is not in every engine, and a selection that starts in a
+    // row and ends past the end of the well contains no whole row at all. The
+    // two ENDS always answer, so they are the fallback rather than the
+    // primary: a passage of one partly-marked row is still a passage.
+    if (highest < 0) {
+      const range = selection.getRangeAt(0);
+      for (const end of [range.startContainer, range.endContainer]) {
+        const row = rowOf(end);
+        if (row === null) continue;
+        const nodeIndex = Number(row.dataset.n);
+        if (!Number.isInteger(nodeIndex)) continue;
+        if (nodeIndex < lowest) lowest = nodeIndex;
+        if (nodeIndex > highest) highest = nodeIndex;
+      }
+    }
+    if (highest < 0) return [];
+    return view.slice(viewFrom(lowest), viewFrom(highest + 1));
+  };
+
+  /** The passage the reader marked, or `null`. Node indices, ascending. */
+  let marked = null;
+  const copyButtons = [copyMessage, copySeen, copyRaw];
+  const armCopy = (on) => { for (const button of copyButtons) button.disabled = !on; };
+  armCopy(false);
+
+  /**
+   * **A CLICK ON A BUTTON CLEARS THE SELECTION BEFORE THE CLICK ARRIVES.**
+   *
+   * `mousedown` on a control collapses the caret, so `selectionchange` fires
+   * with nothing selected and the button would disable itself out from under
+   * the finger already pressing it. Two things answer that, and both are
+   * needed: the buttons refuse the default on `mousedown`, which keeps the
+   * marked text highlighted and is what makes the RENDERED form possible at
+   * all; and a collapsed selection here is treated as "nothing changed" rather
+   * than as "nothing is marked", so the passage survives a stray click.
+   *
+   * A real selection made somewhere ELSE does clear it, because that is a
+   * reader marking something else.
+   */
+  const onSelect = () => {
+    if (!scroll.isConnected) {
+      document.removeEventListener('selectionchange', onSelect);
+      return;
+    }
+    const span = passageSpan();
+    if (span === null) return;
+    marked = span.length === 0 ? null : span;
+    armCopy(marked !== null);
+    // The two rows the selection BEGINS AND ENDS IN stop being evictable, so a
+    // drag that auto-scrolls the well cannot narrow the passage under the
+    // reader. `schedule` lets the next paint drop whatever this stopped
+    // holding — see `held` for why it is the ends and not the whole passage.
+    held.clear();
+    for (const nodeIndex of boundaryRows()) held.add(nodeIndex);
+    schedule();
+  };
+  document.addEventListener('selectionchange', onSelect);
+  for (const button of copyButtons) {
+    button.addEventListener('mousedown', (event) => { event.preventDefault(); });
+  }
+
+  const say = (key, subs = {}) => {
+    copied.replaceChildren();
+    copied.append(...ctx.t(key, subs));
+  };
+  const alsoSay = (key, subs = {}) => { copied.append(' ', ...ctx.t(key, subs)); };
+
+  /**
+   * Which sections have a fold the reader has OPENED.
+   *
+   * A `work` row IS the `<details>`; a `said` row may hold one for the
+   * thinking beside it. Either way a node has at most one, so one boolean per
+   * node is the whole state — and a node that is not drawn has none, which is
+   * the same answer the screen would give if it were drawn, because a fold
+   * opens closed.
+   */
+  const openFolds = () => {
+    const open = new Set();
+    for (const [nodeIndex, row] of live) {
+      const fold = row.tagName === 'DETAILS' ? row : row.querySelector('details');
+      if (fold !== null && fold.open === true) open.add(nodeIndex);
+    }
+    return open;
+  };
+
+  /**
+   * The bodies for a passage, fetching whatever is not already cached.
+   *
+   * **It does not call `paint`, and that is not an oversight.** `fetchFrom`
+   * repaints when a window arrives, which is right for a window the reader is
+   * looking at and wrong for one being read behind their back: a repaint
+   * re-measures, re-sums and moves rows, which would destroy the very
+   * selection this is filling. `bodies` is the shared cache either way, so a
+   * passage that is fetched here is on screen for free when it is scrolled to.
+   */
+  const passageBodies = async (indices) => {
+    const out = [];
+    for (let i = 0; i < indices.length; i += 1) {
+      const nodeIndex = indices[i];
+      if (!bodies.has(nodeIndex)) {
+        const node = nodes[nodeIndex];
+        const got = await ctx.api(
+          `/api/conversations/${encodeURIComponent(outline.sessionId)}/nodes`
+          + `?at=${node.o}&from=${node.f}&node=${node.n}&count=${FETCH_PAGE}`);
+        for (const body of got.nodes ?? []) bodies.set(body.n, body);
+        // The file was replaced under the read. Answered as a refusal rather
+        // than as a passage with a hole in it.
+        if (!bodies.has(nodeIndex)) return null;
+      }
+      out.push(bodies.get(nodeIndex));
+    }
+    return out;
+  };
+
+  /**
+   * Put the text on the clipboard, and say honestly whether it went.
+   *
+   * `navigator.clipboard` is not everywhere: it wants a secure context, and a
+   * headless engine may refuse the permission outright. So the payload is
+   * written into `clip` FIRST — it is the text the page would put on the
+   * clipboard, it is in the document either way, and the `execCommand`
+   * fallback needs something in the document to select. A refusal returns
+   * `false` and is SAID, never swallowed into a button that looks like it
+   * worked.
+   */
+  const toClipboard = async (text) => {
+    clip.textContent = text;
+    try {
+      if (navigator.clipboard !== undefined
+        && typeof navigator.clipboard.writeText === 'function') {
+        await navigator.clipboard.writeText(text);
+        return true;
+      }
+    } catch { /* the older path below is the answer, not a failure */ }
+    try {
+      const selection = document.getSelection();
+      const kept = selection !== null && selection.rangeCount > 0
+        ? selection.getRangeAt(0).cloneRange() : null;
+      clip.hidden = false;
+      const range = document.createRange();
+      range.selectNodeContents(clip);
+      selection.removeAllRanges();
+      selection.addRange(range);
+      const wrote = document.execCommand('copy');
+      selection.removeAllRanges();
+      // The reader's own marked passage is put back. Nothing has moved in
+      // between — no repaint, no scroll — so the range is still valid.
+      if (kept !== null) selection.addRange(kept);
+      clip.hidden = true;
+      return wrote === true;
+    } catch {
+      clip.hidden = true;
+      return false;
+    }
+  };
+
+  /** How many records the passage covers, as the numbers every surface counts in. */
+  const recordSpan = (indices) => {
+    const first = nodes[indices[0]];
+    const last = nodes[indices[indices.length - 1]];
+    return { from: first.f, to: last.f + last.s - 1 };
+  };
+
+  let copying = false;
+
+  /**
+   * ONE OF THE THREE COPIES.
+   *
+   *   `message`  the record's text, no envelope and no presentation layer.
+   *              THE DEFAULT, and the only one that can reach the whole
+   *              passage, because it is filled from the record.
+   *   `seen`     the browser's OWN text for what is on screen. Not
+   *              reimplemented here: `Selection.toString()` is what the
+   *              browser would have put on the clipboard, and any serializer
+   *              written in this file would be an imitation of it that differs
+   *              in exactly the invisible ways the item is about. It stops at
+   *              the DOM, and says so — you cannot see what is not drawn.
+   *              **And that — not hidden characters — is the reason the item's
+   *              ruling holds.**
+   *              `NOTE-the-dom-selection-was-measured-and-it-carries-no-bidi`
+   *              has the measurement: on the Hebrew page, over the owner's own
+   *              transcript, the browser's selection carried no bidi control
+   *              character on any of fourteen sampled rows. Do not repeat the
+   *              "invisible characters" argument; repeat this one.
+   *   `raw`      a BYTE SLICE of the transcript. The server's, and exact by
+   *              construction rather than by care. It carries the record's
+   *              ENVELOPE as well as its text —
+   *              `TASK-the-raw-record-copy-serves-envelope-fields-the-screen-never`
+   *              is where that is filed.
+   */
+  const copy = async (form) => {
+    if (copying) return;
+    if (marked === null || marked.length === 0) { say('conv.copy.empty'); return; }
+    if (marked.length > PASSAGE_NODE_CAP) {
+      say('conv.copy.tooMany', { n: marked.length, cap: PASSAGE_NODE_CAP });
+      return;
+    }
+    const passage = marked;
+    copying = true;
+    armCopy(false);
+    try {
+      say('conv.copy.working');
+      let text = null;
+      let extra = null;
+
+      if (form === 'seen') {
+        const selection = document.getSelection();
+        const shown = selection === null || selection.rangeCount === 0
+          ? '' : selection.toString();
+        if (shown === '') { say('conv.copy.empty'); return; }
+        // **IT SAYS WHAT IT IS, IN THE PAYLOAD.** The item requires the
+        // rendered form to declare itself, and the payload is the only place
+        // that travels with the text into whatever it is pasted into.
+        text = `${ctx.tFlat('conv.copy.renderedIs')}\n\n${shown}`;
+        const missing = passage.filter((n) => !live.has(n)).length;
+        if (missing > 0) {
+          extra = () => {
+            if (missing === 1) alsoSay('conv.copy.notDrawn1');
+            else alsoSay('conv.copy.notDrawn', { n: missing });
+          };
+        }
+      } else if (form === 'raw') {
+        const parts = [];
+        let bytes = 0;
+        for (const run of runsOf(passage)) {
+          const at = nodes[run.from].o;
+          const next = nodes[run.to + 1];
+          const got = await ctx.api(
+            `/api/conversations/${encodeURIComponent(outline.sessionId)}/raw`
+            + `?at=${at}${next === undefined ? '' : `&to=${next.o}`}`);
+          if (got.present === false) { say('conv.copy.noBytes'); return; }
+          if (got.tooLong === true) {
+            say('conv.copy.tooLong', { bytes: got.wanted, cap: PASSAGE_RAW_CAP });
+            return;
+          }
+          bytes += got.bytes;
+          if (bytes > PASSAGE_RAW_CAP) {
+            say('conv.copy.tooLong', { bytes, cap: PASSAGE_RAW_CAP });
+            return;
+          }
+          parts.push(got.text);
+        }
+        text = parts.join('');
+      } else {
+        const list = await passageBodies(passage);
+        if (list === null) { say('conv.copy.noBytes'); return; }
+        const built = messagePassage(list, openFolds(), passageLabels(ctx));
+        text = built.text;
+        extra = () => {
+          if (built.notes.shutFolds === 1) {
+            alsoSay('conv.copy.leftFolds1', { n: built.notes.shutRecords });
+          } else if (built.notes.shutFolds > 1) {
+            alsoSay('conv.copy.leftFolds', {
+              n: built.notes.shutRecords, folds: built.notes.shutFolds,
+            });
+          }
+          if (built.notes.dropped.length > 0) {
+            alsoSay('conv.copy.leftArgs', { names: built.notes.dropped.join(', ') });
+          }
+        };
+      }
+
+      if (!await toClipboard(text)) { say('conv.copy.refused'); return; }
+      // WHAT IT TOOK, in sections and in the record numbers every other
+      // surface counts in. Three sentences rather than one with a count
+      // substituted into it: "Copied 1 sections" is what one sentence produces
+      // for a passage of one, and a fold of five records is a passage of ONE
+      // section spanning five, so "record" and "records" are both real cases.
+      const span = recordSpan(passage);
+      if (passage.length > 1) {
+        say('conv.copy.took', { n: passage.length, from: span.from, to: span.to });
+      } else if (span.from === span.to) {
+        say('conv.copy.took1', { from: span.from });
+      } else {
+        say('conv.copy.took1span', { from: span.from, to: span.to });
+      }
+      if (extra !== null) extra();
+    } catch (error) {
+      copied.replaceChildren(errorNote(error.message));
+    } finally {
+      copying = false;
+      armCopy(marked !== null);
+    }
+  };
+
+  copyMessage.addEventListener('click', () => { void copy('message'); });
+  copySeen.addEventListener('click', () => { void copy('seen'); });
+  copyRaw.addEventListener('click', () => { void copy('raw'); });
 
   /* ── FOLLOWING A SESSION THAT IS STILL BEING WRITTEN ────────────────────
    *
@@ -2451,6 +3065,13 @@ function mountDocument(ctx, host, outline, back, roster = NO_LANES) {
   function onLeave() {
     if (sessionFromHash(location.hash) === outline.sessionId) return;
     stopFollowing();
+    // The copy listener is on `document` and does not die with the well
+    // either. It is NOT removed in `stopFollowing`, because `stopWith` calls
+    // that when a transcript is pruned or replaced — the document stays on
+    // screen and readable then, and a reader must still be able to copy what
+    // they are looking at. `onSelect`'s own `isConnected` guard removes it in
+    // the case this cannot see, exactly as `tick`'s does.
+    document.removeEventListener('selectionchange', onSelect);
   }
 
   /** Say the transcript can no longer be followed, and stop asking. */

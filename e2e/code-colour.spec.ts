@@ -263,7 +263,7 @@ async function openDocument(page: Page, lang: 'en' | 'he'): Promise<void> {
   // with every assertion green. Pressing Top clears `stickUntil`, which is the
   // handler's own first statement, so the reader — and this spec — owns the
   // position from here on.
-  await page.locator('.tvbar button.tvjump').first().click();
+  await page.locator('button.tvtop').click();
   await expect(page.locator('.tvscroll')).toContainText('Both premises verified', { timeout: 20_000 });
 }
 

@@ -840,6 +840,14 @@ const READ_ROUTES = (from: { item: string; session: string | null }): Probe[] =>
   // seconds for as long as a reader has a session open, so a write on this
   // path would be the most frequent write in the product.
   '/api/conversations/not-a-real-session-id/tip',
+  // `TASK-a-selected-passage-copies-as-something-a-terminal-will`. The third
+  // copy form: a BYTE SLICE of the transcript over the records one marked
+  // passage covers. It is the only route in this product that reads the file
+  // with `openSync`/`readSync` directly rather than through
+  // `iterateTranscript`, so "opened for reading and nothing else" is a claim
+  // this sweep is the only thing checking. Probed on a session id no index can
+  // hold, so it takes the 404 the sweep accepts.
+  '/api/conversations/not-a-real-session-id/raw?at=0&to=64',
   // `plan:archive seq:12`. The lanes one session dispatched. It reads the same
   // index through the same read-only door and stats each lane's transcript to
   // answer `present` — a `statSync`, never an open for writing — so a path
