@@ -202,6 +202,15 @@ export const strings = {
   'conv.lanes.records': '{n} records',
   'conv.lanes.fromLane': 'dispatched by another helper agent',
   'conv.lanes.unnamed': 'No brief was recorded for this agent.',
+  // WHAT KIND OF WORKER IT IS — `plan:archive seq:50`, drawn on a roster row
+  // and on the turn that dispatched the lane. TWO FIELDS AND NOT ONE: the
+  // brief beside it says what THIS agent was asked to do, and this says what
+  // kind of agent was asked. The label is the word `mycontext conversation
+  // subagents` already heads the same column with, so the field has one name
+  // wherever a reader meets it, and the value is `{mv:}` because
+  // `general-purpose` is an identifier and stays left-to-right on the Hebrew
+  // page.
+  'conv.lanes.kind': 'type {mv:type}',
   'conv.outdated': 'This archive was indexed by an earlier version, so there is nothing to show yet. Nothing has been lost — it is rebuilt from the files on disk, and it repairs itself at the end of your next turn. To do it now:',
   // ── WHAT THE ARCHIVE COSTS YOU TO TURN ON — plan:archive seq:11 and seq:9 ──
   //

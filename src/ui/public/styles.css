@@ -3729,7 +3729,7 @@ body.docpage{overflow-y:auto}
    override, so the browser stays in charge of drawing its own control. */
 .convselect,.convdate{color-scheme:dark}
 .convclear{inline-size:auto;flex:0 0 auto;font:600 var(--fs-00)/1.2 var(--mono);
-  color:var(--dim);background:var(--panel-2);border:1px solid var(--edge);
+  color:var(--dim);background:var(--panel-2);border:2px solid var(--dim);
   border-radius:var(--r-sm);padding:var(--sp-1) var(--sp-2);cursor:pointer}
 .convclear:hover,.convclear:focus-visible{color:var(--gold);border-color:var(--gold)}
 .convresults{display:block}
@@ -4360,6 +4360,25 @@ body.docpage{overflow-y:auto}
 .tvdetail{color:var(--ink)}
 .tvfail .tvdetail{color:var(--crit)}
 .tvresult{color:var(--carry)}
+
+/* WHAT KIND OF WORKER A LANE IS — `plan:archive seq:50`. Two runs, and the
+   split is the whole point: the LABEL stays in the surrounding dim, because it
+   is the field's name and a reader needs it once; the VALUE takes `--ink`,
+   because `general-purpose` is the word the owner came here looking for.
+
+   NO NEW HUE AND NO NEW GEOMETRY. `--ink` and `--dim` are the neutrals every
+   line in this fold already uses, so the meaning-hue budget
+   `DEC-the-meaning-hue-budget-is-five-gold-ok-carry-crit-and-warn` rules is
+   untouched — and a chip was rejected for the reason `.tvlane` records three
+   rules up: `.tvstephead` WRAPS, and a bordered box that breaks across two
+   lines draws two open-ended boxes.
+
+   ONE SELECTOR PAIR FOR BOTH SURFACES. The same `laneKind` run is drawn on a
+   dispatching step (`.tvstephead`, mono already) and on a roster row
+   (`.convmeta`, sans), so nothing here sets a face: the value's own `.m` from
+   `i18n.js` carries the monospace it needs on either. */
+.tvkind{color:var(--dim)}
+.tvkind .m{color:var(--ink)}
 
 /* WHAT THE TOOL WAS ASKED. A description list, because that is what it is:
    the argument's own name against the value the call gave it. The `dd` margin

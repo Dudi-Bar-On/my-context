@@ -15,6 +15,7 @@
 // TASK-a-question-its-options-the-answer-chosen-and-a-shell-command,
 // TASK-a-task-notification-is-3-9-mb-of-what-a-lane-reported-drawn,
 // TASK-a-selected-passage-copies-as-something-a-terminal-will,
+// TASK-a-lane-is-named-by-what-it-did-and-never-by-what-it-is-so,
 // INV-nothing-is-dropped-silently
 /**
  * The conversation archive, driven in a real browser in both languages —
@@ -2011,6 +2012,16 @@ for (const lang of ['en', 'he'] as const) {
     // belongs here rather than in a list of lanes somewhere else on the page.
     await expect(fold).toContainText(LANE_BRIEF);
 
+    // **AND WHAT KIND OF WORKER IT IS, BESIDE IT** — `plan:archive seq:50`.
+    // This is the step in the SESSION's own 120-round document, half way down,
+    // which is the screen the owner was on when he reported that the name he
+    // knows from the terminal was nowhere near the agent. `general-purpose`
+    // here and `Explore` on the depth-2 step below: the value is the lane's
+    // own, in the reader's own language.
+    const kind = fold.locator('p.tvstephead .tvkind').first();
+    await expect(kind.locator('.m')).toHaveText('general-purpose');
+    await expect(kind).toContainText(lang === 'he' ? 'סוג' : 'type');
+
     // ── THE MEASUREMENT ────────────────────────────────────────────────────
     const before = await readerPlace(page);
     expect(before.scrollTop, 'this must be a DEEP offset or the return proves nothing')
@@ -2063,6 +2074,110 @@ test('a lane at depth 2 is reachable, because the roster is the SESSION own', as
   ]);
   await expect(inner.locator('.tvscroll')).toContainText(DEEP_PHRASE_LANE, { timeout: 20_000 });
   await inner.close();
+});
+
+/**
+ * **WHAT KIND OF AGENT IT IS, AND WHAT THAT ONE WAS ASKED TO DO — TWO FIELDS
+ * ON THE SAME LINE** — `plan:archive seq:50`.
+ *
+ * Owner report 2026-09-09, after clicking through to a lane successfully:
+ * *"near the agent there was no name like the names i see on the terminal that
+ * mostly starts with general purpose"*. The document drew the BRIEF and never
+ * the KIND, so the one name he already recognised was the one that was
+ * missing. These two tests ask, on both surfaces, whether a reader can now see
+ * both — the fields are asserted as SEPARATE runs, because a row that says
+ * only one of them is the state being reported and so is a sentence that has
+ * glued them together.
+ *
+ * ── WHY THE DEPTH-2 STEP IS THE ONE THAT PROVES WHERE THE VALUE CAME FROM ──
+ *
+ * `DEEP_CALL`'s input carries `prompt` and NO `subagent_type`, and that is not
+ * a gap in the fixture — measured on this project's own session files,
+ * 2026-09-09: **227 `Agent` calls, 227 with a `description`, 214 with a
+ * `subagent_type`.** Thirteen dispatchers named no type at all. So a build that
+ * drew this field out of the step's own arguments would draw nothing here,
+ * while the sidecar carries `agentType` for 269 of 269 indexed lanes and
+ * `/subagents` already serves it. The type below is therefore proof that the
+ * roster answered, not the call.
+ *
+ * ── AND IT IS `Explore`, WHICH IS WHY THE FIELD IS NOT COSMETIC ────────────
+ *
+ * The item warns that every lane in this corpus is `general-purpose` and that a
+ * constant field is still a field. Re-measured over the whole index it is not
+ * even constant: **269 lanes, 8 distinct types — 233 `general-purpose`, 21
+ * `Explore`, 8 `fork`, 7 across five plugin agents.** The fixture's two lanes
+ * are one of each shape for exactly that reason, so an implementation that
+ * hard-coded the common word would go red here.
+ */
+for (const lang of ['en', 'he'] as const) {
+  test(`a dispatching step says what KIND of agent it opened, beside the brief (${lang})`, async ({ page }) => {
+    // Opened directly on the depth-1 lane, whose single dispatching turn needs
+    // no scroll walk: this test is about one line of text, and
+    // `the turn that dispatched a lane opens it` above already proves the same
+    // field on the session's own 120-round document, in the reader's place.
+    await open(page, '#/conversations/agent-outer', lang);
+    await page.waitForSelector('.tvscroll .tvturn', { timeout: 20_000 });
+
+    const fold = page.locator('details.tvwork').filter({ has: page.locator('a.tvlane') }).first();
+    await fold.locator('summary.tvworksum').click();
+
+    // ONE LINE, and the type is ON it — beside the link and beside the brief,
+    // which is where the reader is looking when they decide whether to open
+    // the lane at all.
+    const line = fold.locator('p.tvstephead').filter({ has: page.locator('a.tvlane') }).first();
+    await expect(line.locator('a.tvlane')).toBeVisible();
+    const kind = line.locator('.tvkind');
+    await expect(kind, 'the kind of worker, on the dispatching step').toBeVisible();
+    // THE VALUE, in its own monospace isolated run: an identifier, and on the
+    // Hebrew page an identifier that is not isolated is reordered.
+    await expect(kind.locator('.m')).toHaveText('Explore');
+    // THE LABEL, in the reader's own language, so the run is a named field and
+    // not a second identifier sitting between two others.
+    await expect(kind).toContainText(lang === 'he' ? 'סוג' : 'type');
+    // NOT the common word, which is what a hard-coded label would have said.
+    await expect(kind).not.toContainText('general-purpose');
+
+    // AND THE OTHER FIELD IS STILL ITS OWN FIELD. `.tvdetail` is what this
+    // step was ASKED; `.tvkind` is what KIND was asked. Two runs, two facts.
+    const detail = line.locator('.tvdetail');
+    await expect(detail).toHaveText('go one level deeper');
+    await expect(detail).not.toContainText('Explore');
+
+    // ── WHERE THE VALUE CAME FROM, ASSERTED AND NOT ASSUMED ───────────────
+    // This call recorded no `subagent_type`, so the arguments below cannot be
+    // the source. 13 of the owner's 227 `Agent` calls are this shape.
+    const argNames = await fold.locator('.tvarg').allInnerTexts();
+    expect(argNames, 'the fixture call must carry no type of its own, or this proves nothing')
+      .not.toContain('subagent_type');
+  });
+}
+
+test('a roster row carries the kind of agent and its brief as two fields', async ({ page }) => {
+  // The roster is `seq:41`'s, and it already drew the type — as a bare
+  // monospace run between the id and the record count, where it read as a
+  // second identifier. It is now the same named field the document draws.
+  await open(page, '#/conversations/lanes/sess-archive', 'en');
+  await page.waitForSelector('.rows .convrow', { timeout: 20_000 });
+  // `.rows`-scoped, as every other roster assertion in this file is: the
+  // router keeps every visited screen inside `#screen`, merely hidden, so a
+  // page-wide `.convrow` can lock onto a row the reader cannot see.
+  const rows = page.locator('.rows .convrow');
+  await expect(rows).toHaveCount(2);
+
+  // THE PARENT: `general-purpose`, the word the owner recognises.
+  await expect(rows.nth(0).locator('.convtitle')).toHaveText('Read the index');
+  await expect(rows.nth(0).locator('.convmeta .tvkind .m')).toHaveText('general-purpose');
+  await expect(rows.nth(0).locator('.convmeta .tvkind')).toContainText('type');
+
+  // THE CHILD: a different type on the same screen, which is the whole reason
+  // the field is worth drawing — an `Explore` lane and a `general-purpose` one
+  // are told apart here and nowhere else on this row.
+  await expect(rows.nth(1).locator('.convtitle')).toHaveText('One level deeper');
+  await expect(rows.nth(1).locator('.convmeta .tvkind .m')).toHaveText('Explore');
+
+  // THE BRIEF IS NOT THE TYPE AND THE TYPE IS NOT THE BRIEF — the row's title
+  // says what this one was asked to do and carries no type in it.
+  await expect(rows.nth(1).locator('.convtitle')).not.toContainText('Explore');
 });
 
 test('a session that dispatched lanes says so on its list row', async ({ page }) => {

@@ -1342,13 +1342,67 @@ function laneLink(ctx, lane) {
  * saying "not in the copy" there would be a false claim on almost every step.
  */
 function laneMark(ctx, lanes, toolUseId) {
-  if (typeof toolUseId !== 'string' || toolUseId === '') return null;
+  if (typeof toolUseId !== 'string' || toolUseId === '') return [];
   const lane = lanes.byCall.get(toolUseId);
-  if (lane !== undefined) return laneLink(ctx, lane);
-  if (lanes.notKept !== true) return null;
+  if (lane !== undefined) {
+    const kind = laneKind(ctx, lane);
+    const link = laneLink(ctx, lane);
+    return kind === null ? [link] : [kind, link];
+  }
+  if (lanes.notKept !== true) return [];
   const missing = el('span', 'tvcut');
   missing.append(...ctx.t('conv.doc.laneNotKept'));
-  return missing;
+  return [missing];
+}
+
+/**
+ * **WHAT KIND OF WORKER THIS LANE IS** — `plan:archive seq:50`, and the one
+ * name the owner already knows.
+ *
+ * Owner report 2026-09-09, after clicking through to a lane successfully:
+ * *"near the agent there was no name like the names i see on the terminal that
+ * mostly starts with general purpose"*. The terminal names a lane by its KIND
+ * first and this document named it only by its BRIEF, so the field he
+ * recognises was the one field on the screen that was missing.
+ *
+ * ── TWO FIELDS, NEVER ONE SENTENCE ────────────────────────────────────────
+ *
+ * The type says what kind of worker it is; the brief says what THIS one was
+ * asked to do. They are different facts and both are wanted, so this is its
+ * own run beside `.tvdetail` rather than words glued onto it. The label is
+ * `type`, which is the word `mycontext conversation subagents` already puts at
+ * the head of the same column — one field, one name, in the CLI and on the
+ * screen.
+ *
+ * ── AND IT IS READ OFF THE ROSTER, NOT OFF THE CALL ───────────────────────
+ *
+ * The dispatching call's own input carries `subagent_type`, so the fold's
+ * argument list below already shows it — sometimes. Measured on this project's
+ * session files, 2026-09-09: **227 `Agent` calls, 227 with a `description`,
+ * only 214 with a `subagent_type`** — 13 calls named no type at all because the
+ * dispatcher let it default. The lane's own sidecar carries `agentType` for
+ * **269 of 269** indexed lanes, and `/subagents` already serves it into
+ * `laneIndex`, so the roster is both the complete answer and the one already
+ * in hand. Nothing new is read to draw this.
+ *
+ * ── A FIELD THAT LOOKS CONSTANT IS NOT ────────────────────────────────────
+ *
+ * The item warns that every lane here is `general-purpose` and that this does
+ * not make the field useless. Re-measured over the whole index the warning is
+ * milder than it says and the conclusion is stronger: **269 lanes, 8 distinct
+ * types — 233 `general-purpose`, 21 `Explore`, 8 `fork`, and 7 more across
+ * five plugin agents.** 36 of 269 rows, 13%, say something the brief does not.
+ *
+ * `null` is answered by drawing nothing, which is the same answer
+ * `drawLaneRow` has always given an absent type, and it is not a silent drop:
+ * no lane in this workspace has one (269 of 269 carry it), so a phrase saying
+ * "no type was recorded" would be a sentence with no measured occurrence.
+ */
+function laneKind(ctx, lane) {
+  if (typeof lane.agentType !== 'string' || lane.agentType === '') return null;
+  const kind = el('span', 'tvkind');
+  kind.append(...ctx.t('conv.lanes.kind', { type: lane.agentType }));
+  return kind;
 }
 
 /**
@@ -1482,8 +1536,11 @@ function stepParts(ctx, step, lanes) {
   //
   // Drawn on the SUMMARY LINE, above the arguments, so a reader who opens a
   // fold meets it before the brief rather than after 22 KB of it.
-  const laneNode = laneMark(ctx, lanes, step.toolUseId);
-  if (laneNode !== null) line.append(' ', laneNode);
+  //
+  // TWO MARKS AND NOT ONE since `seq:50`: the KIND of worker, then the way in.
+  // `laneKind`'s note carries why the type is drawn here at all and why it is
+  // read off the roster rather than off this call's own arguments.
+  for (const mark of laneMark(ctx, lanes, step.toolUseId)) line.append(' ', mark);
   parts.push(line);
 
   // WHAT THE TOOL WAS ASKED, before what came back. The owner pasted his own
@@ -1631,10 +1688,10 @@ function drawDeed(ctx, body, lanes = NO_LANES) {
 
   // The lane a promoted call dispatched — a shell command dispatches none
   // today, but the join is the step's and costs nothing to honour here.
-  const laneNode = laneMark(ctx, lanes, step.toolUseId);
-  if (laneNode !== null) {
+  const laneMarks = laneMark(ctx, lanes, step.toolUseId);
+  if (laneMarks.length > 0) {
     const line = el('p', 'tvstephead');
-    line.append(laneNode);
+    line.append(...laneMarks.flatMap((node, i) => (i === 0 ? [node] : [' ', node])));
     turn.append(line);
   }
   return turn;
@@ -3752,9 +3809,15 @@ function drawLaneRow(ctx, row, open) {
 
   const meta = el('p', 'small convmeta');
   meta.append(mono(row.lane.agentId));
-  if (typeof row.lane.agentType === 'string' && row.lane.agentType !== '') {
-    meta.append(' · ', mono(row.lane.agentType));
-  }
+  // THE KIND OF WORKER, NAMED — `seq:50`. This row already drew the type, and
+  // it drew it as a bare monospace run sitting between two other bare
+  // monospace runs, where it reads as a second identifier rather than as an
+  // answer to "what kind of agent is this". `laneKind` is the same field, with
+  // the same label, as the dispatching step in the document now carries: a
+  // reader who learns the word `type` on one surface does not relearn it on
+  // the other.
+  const kind = laneKind(ctx, row.lane);
+  if (kind !== null) meta.append(' · ', kind);
   meta.append(' · ');
   meta.append(...ctx.t('conv.lanes.records', { n: row.lane.records }));
   meta.append(' · ', mono(formatBytes(row.lane.bytes)));
