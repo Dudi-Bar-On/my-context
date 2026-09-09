@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: When a rule is replaced, the person replacing it says which tests assumed the old one, so those tests are not left quietly asserting something reversed.
-summary_of: 7a5b4b3ce93a732b
+summary_of: 9b08ec568d973f4b
 scope:
   - src/core/**
   - src/cli/**
@@ -18,17 +18,17 @@ tags:
   - corpus
   - "plan:contra"
   - "seq:2"
-  - "state:todo"
+  - "state:done"
 origin: human
 source_file: null
 source_anchor: null
 source_checksum: null
 valid_from: 2026-09-07
 valid_until: null
-checksum: f6b87139b4bd4cb4
+checksum: d49a6daa5131c59a
 plan: contra
 seq: "2"
-state: todo
+state: done
 priority: "1"
 needs: contra/1
 ---
@@ -69,3 +69,31 @@ field or an observation by convention (a frontmatter change alters every recorde
 the continuity/summary conditional-key problem), and whether an agent may write it at all, given
 that relations.ts already refuses an agent the ability to supersede a governing normative item in
 either direction.
+
+DONE 2026-09-10. supersedeItem now ANSWERS the question through every door into retirement -
+mycontext supersede, add --supersedes, edit --supersedes, MCP supersede_item and ingest apply all
+reach it - with the count in the CLI preview before the confirm and the list in the result message.
+core/tests-resting-on.ts is the module; the @basis grammar moved there from scripts/check-basis.ts,
+which imports it back, because scripts/ is not in the published package and a src/ module can never
+import from it. One grammar, not two.
+
+I ASKED FOR A QUESTION AND WHAT LANDED IS A DERIVED ANSWER, and that is deliberate: I reserved two
+decisions for myself - new frontmatter field or observation by convention, and whether an agent may
+write it - so the lane stored nothing at all. It derives the answer from the two places the claim is
+already written on purpose: an @basis declaration naming the item, and a test path in scope, which is
+the no-new-field version this body already called the cheapest. 61 test files declare a basis today
+and 56 items name a test path in scope. The storage half is still mine to rule on.
+
+THE PROOF IS THE HALF THAT MATTERS AND IT IS REAL. A declaration is true by construction, because the
+file was read to find it. A recorded path is a CLAIM and every one is resolved against the tree: one
+that matches nothing is named "MATCHES NO FILE - renamed or deleted", with the sentence that an
+answer naming a file which does not exist is worse than no answer. Measured on this corpus: 0 dead
+test paths across 56 items and 66 scope entries, so the renamed case is proved in a planted tree
+rather than claimed from a zero. checkDeadScopes also only looks at active items, so a retired item's
+stale test scope is invisible there - one such item exists today.
+
+AND IT CANNOT GATE, which this body demanded be written into the code. It is: the call is wrapped so
+a tree that cannot be walked costs a sentence rather than a retirement, walked==0 answers NOT
+MEASURED rather than "none", and the output says in as many words that "no tests named" is
+indistinguishable from "no tests affected". Proved by removal - deleting that paragraph, the
+unresolved detection, and the wiring in supersedeItem each reddened a test.
