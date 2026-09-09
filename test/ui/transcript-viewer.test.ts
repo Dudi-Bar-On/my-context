@@ -1,4 +1,6 @@
-// @basis TASK-the-viewer-renders-what-the-terminal-showed-with-its,
+// @basis TASK-a-fold-spends-eleven-lines-saying-some-bookkeeping-happened,
+// TASK-the-count-of-helper-agents-is-not-a-link-so-the-only-way-to,
+// TASK-the-viewer-renders-what-the-terminal-showed-with-its,
 // TASK-the-transcript-is-one-document-you-scroll-not-fifty-records,
 // TASK-a-subagent-is-opened-from-the-turn-that-dispatched-it-and,
 // INV-nothing-is-dropped-silently
@@ -175,6 +177,16 @@ interface ViewerModule {
     owner: string | null;
     read: boolean;
   };
+  /** `plan:archive seq:39` — does this record draw anything at all? */
+  saysNothing: (step: unknown) => boolean;
+  /** `plan:archive seq:41` — the roster's own three pure halves. */
+  laneKey: (id: unknown) => string | null;
+  rosterOrder: (lanes: unknown) => {
+    lane: { agentId: string }; depth: number; children: number;
+  }[];
+  laneMatches: (lane: unknown, needle: string) => boolean;
+  rosterHref: (sessionId: string) => string;
+  rosterFromHash: (hash: string) => string | null;
 }
 const viewer = (): Promise<ViewerModule> => browserModule<ViewerModule>('screens', 'conversations.js');
 
@@ -341,5 +353,149 @@ test('a lane document keeps the OWNING session, which is not its own id — the 
   assert.equal(
     laneHref('a b/c'), '#/conversations/a%20b%2Fc',
     'an id goes into the hash encoded, so nothing in it can be read as another route',
+  );
+});
+
+/* ══ WHAT A FOLD DRAWS AND WHAT IT COUNTS ══════════════════════════════════
+ *
+ * `plan:archive seq:39`. The owner was shown a fold of eleven rows of which
+ * eight could never hold anything and ruled: COUNT THEM AS ONE LINE. The item
+ * then names the one thing that had to be decided rather than assumed —
+ * WHICH records qualify, DERIVED and not listed — and this is that decision
+ * under test, in the only place it can be measured without a browser.
+ *
+ * The list-of-names spelling was measured before it was rejected. On the
+ * owner's own transcript, 2026-09-09, 32,610 records: **50 distinct
+ * `type · subtype` keys appear inside folds and 26 of them carry records that
+ * draw nothing**, against the eight names the item was raised on.
+ */
+test('a record qualifies for the collapsed line by DRAWING NOTHING, never by its name', async () => {
+  const { saysNothing } = await viewer();
+  const bare = {
+    index: 31_360, type: 'mode', subtype: null, tool: null, detail: null,
+    text: '', input: [], toolUseId: null, failed: false, blocks: [], unreadable: false,
+  };
+  assert.equal(saysNothing(bare), true, 'the eight the owner was shown');
+  // A type nobody has seen yet qualifies on the same test, which is the whole
+  // reason the test is derived: a list of eight names rots on the ninth.
+  assert.equal(saysNothing({ ...bare, type: 'a-harness-field-invented-tomorrow' }), true);
+
+  // Every clause is one thing `stepParts` would have put on the screen.
+  assert.equal(saysNothing({ ...bare, text: 'output' }), false, 'text');
+  assert.equal(saysNothing({ ...bare, input: [{ name: 'file_path', value: 'x' }] }), false, 'input');
+  assert.equal(saysNothing({ ...bare, detail: 'ran the suite' }), false, 'detail');
+  assert.equal(saysNothing({ ...bare, unreadable: true }), false, 'the would-not-parse chip');
+  assert.equal(saysNothing({ ...bare, failed: true }), false, 'a failure is counted on the summary');
+  assert.equal(
+    saysNothing({ ...bare, toolUseId: 'toolu_1' }), false,
+    'a step that dispatched a lane carries the only link to that transcript',
+  );
+
+  // **THINKING IS NOT COLLAPSED, and this is the correction to the item.**
+  // Claude Code writes no reasoning text to a transcript, so such a record's
+  // `text` is empty for ever — 2,158 of them in this session. They record
+  // that reasoning HAPPENED, which the fold already discloses in its own
+  // sentence, and folding them under "nothing but their type" would be false.
+  assert.equal(saysNothing({ ...bare, blocks: ['thinking'] }), false);
+});
+
+/* ══ THE ROSTER ════════════════════════════════════════════════════════════
+ *
+ * `plan:archive seq:41`. The owner ruled the shape — A FLAT LIST WITH THE
+ * CHILDREN INDENTED, NOT A FOLDER TREE — on a measurement: 221 lanes at depth
+ * 1, 43 at depth 2, and only SEVENTEEN of 264 with any children at all.
+ */
+test('the roster walks parents then children, and the two sides spell an id differently', async () => {
+  const { rosterOrder, laneKey } = await viewer();
+
+  // **THE DEFECT THIS FOUND.** `agentId` is read off the file name and carries
+  // `agent-`; `parentAgentId` is copied out of the sidecar and does not. This
+  // is the first code that ever joined them. Measured on this workspace,
+  // 2026-09-09: 43 rows carry a parent, 0 of them matched an `agentId`, and
+  // 43 of 43 matched once `agent-` was prepended.
+  assert.equal(laneKey('a1'), 'agent-a1');
+  assert.equal(laneKey('agent-a1'), 'agent-a1', 'already-prefixed is left alone');
+  assert.equal(laneKey(''), null);
+  assert.equal(laneKey(null), null);
+
+  const order = rosterOrder([
+    { agentId: 'agent-a', parentAgentId: null },
+    { agentId: 'agent-b', parentAgentId: null },
+    { agentId: 'agent-b1', parentAgentId: 'b' },
+    { agentId: 'agent-b2', parentAgentId: 'b' },
+    { agentId: 'agent-c', parentAgentId: null },
+  ]);
+  assert.deepEqual(order.map((r) => r.lane.agentId),
+    ['agent-a', 'agent-b', 'agent-b1', 'agent-b2', 'agent-c'],
+    'a child is drawn under its own parent, not at the end of the list');
+  assert.deepEqual(order.map((r) => r.depth), [1, 1, 2, 2, 1]);
+  assert.deepEqual(order.map((r) => r.children), [0, 2, 0, 0, 0],
+    'and the parent carries the count, the way a session row already does');
+});
+
+test('the roster loses no lane to a parent it cannot resolve, or to a cycle', async () => {
+  const { rosterOrder } = await viewer();
+
+  // A lane whose parent is not in this answer is drawn at the top level rather
+  // than left out of the walk — `INV-nothing-is-dropped-silently`.
+  const orphan = rosterOrder([
+    { agentId: 'agent-a', parentAgentId: null },
+    { agentId: 'agent-lost', parentAgentId: 'somebody-else' },
+  ]);
+  assert.deepEqual(orphan.map((r) => r.lane.agentId), ['agent-a', 'agent-lost']);
+  assert.deepEqual(orphan.map((r) => r.depth), [1, 1]);
+
+  // A row naming itself as its own parent would recurse for ever, and this
+  // list is drawn from an index a rebuild writes rather than from this file.
+  const self = rosterOrder([{ agentId: 'agent-x', parentAgentId: 'x' }]);
+  assert.deepEqual(self.map((r) => r.lane.agentId), ['agent-x']);
+  assert.equal(self.length, 1);
+
+  // Two lanes each claiming the other: nothing may vanish.
+  const cycle = rosterOrder([
+    { agentId: 'agent-p', parentAgentId: 'q' },
+    { agentId: 'agent-q', parentAgentId: 'p' },
+  ]);
+  assert.equal(cycle.length, 2, 'a cycle costs the nesting, never a row');
+  assert.equal(rosterOrder(null).length, 0);
+  assert.equal(rosterOrder([null, undefined]).length, 0);
+});
+
+test('the roster has an address of its own, and it cannot be read as a session id', async () => {
+  const { rosterHref, rosterFromHash, sessionFromHash } = await viewer();
+
+  // `app.js`' `screenFromHash` splits at the FIRST `/` and hands the rest to
+  // this module, saying so in as many words — so a second segment reaches the
+  // screen with no change to the shell's router.
+  const href = rosterHref('sess-1');
+  assert.equal(href, '#/conversations/lanes/sess-1');
+  assert.equal(rosterFromHash(href), 'sess-1');
+  assert.equal(rosterFromHash('#/conversations/sess-1'), null, 'a session is not a roster');
+  assert.equal(rosterFromHash('#/conversations'), null);
+  assert.equal(rosterFromHash('#/conversations/lanes/'), null, 'an empty id is not an address');
+  assert.equal(
+    rosterFromHash(rosterHref('a b/c')), 'a b/c',
+    'an id goes into the hash encoded and comes back whole',
+  );
+  assert.equal(
+    sessionFromHash(href), 'lanes/sess-1',
+    'and the older reader still answers what it always did, which is why the roster is '
+    + 'taken FIRST in render()',
+  );
+});
+
+test('the roster filter reads the brief, the type and the id — never a transcript', async () => {
+  const { laneMatches } = await viewer();
+  const lane = {
+    agentId: 'agent-a1', agentType: 'Explore', description: 'Enumerate bulk precedents',
+  };
+  assert.equal(laneMatches(lane, ''), true, 'an empty box is the whole roster');
+  assert.equal(laneMatches(lane, 'bulk'), true, 'the brief, which is a lane’s only real name');
+  assert.equal(laneMatches(lane, 'explore'), true, 'the type, folded to lower case');
+  assert.equal(laneMatches(lane, 'agent-a1'), true, 'the id, for a reader holding one');
+  assert.equal(laneMatches(lane, 'nothing here'), false);
+  assert.equal(
+    laneMatches({ agentId: 'agent-b', agentType: null, description: null }, 'b'), true,
+    'a lane with no brief is still findable by its id rather than unreachable',
   );
 });

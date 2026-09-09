@@ -285,7 +285,7 @@ test('a dispatching step with no lane behind it says so, in a copy', async ({ pa
   // real element and clicking its summary is how a reader opens it.
   const fold = page.locator('.tvscroll details').first();
   await expect(fold).toBeVisible({ timeout: 20_000 });
-  await fold.locator('summary').click();
+  await fold.locator('summary.tvworksum').click();
   await expect(fold).toHaveJSProperty('open', true);
 
   // TWO dispatching steps, TWO different answers, in one fold. The lane whose

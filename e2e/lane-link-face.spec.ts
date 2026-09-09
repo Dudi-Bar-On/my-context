@@ -218,7 +218,7 @@ for (const lang of ['en', 'he'] as const) {
     // own tiny session instead of borrowing the 120-round one.
     const fold = page.locator('details').filter({ has: page.locator('a.tvlane') }).first();
     await expect(fold, 'the dispatching turn must draw its fold').toHaveCount(1);
-    await fold.locator('summary').first().click();
+    await fold.locator('summary.tvworksum').first().click();
 
     await expectsALinkFace(page.locator('a.tvlane').first(), `${lang} · the dispatching step`);
     await fold.screenshot({ path: `e2e/screens/lane-face-step-${lang}.png` });

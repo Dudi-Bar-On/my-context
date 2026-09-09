@@ -184,6 +184,24 @@ export const strings = {
   'conv.scanCapped': 'Counts are a minimum',
   'conv.lane': '{n} helper agent',
   'conv.lanes': '{n} helper agents',
+  // ── THE ROSTER — plan:archive seq:41 ──────────────────────────────────────
+  //
+  // The count above was a dead end everywhere it was drawn: `mycontext
+  // conversation subagents` in a terminal was the only way to see the list,
+  // and 43 of this workspace's 264 lanes were dispatched from inside another
+  // lane, so the roster is the ONLY route to a fifth of them.
+  'conv.lanes.h': 'Helper agents',
+  'conv.lanes.sub': 'Every helper agent this session dispatched, oldest first. One that was dispatched by another helper agent is drawn under it. Open one to read it in the same viewer a session uses.',
+  'conv.lanes.of': 'Dispatched by session',
+  'conv.lanes.back': 'Back to this session',
+  'conv.lanes.find': 'Find a helper agent',
+  'conv.lanes.all': '{n} helper agents. The box above reads each one’s brief, its type and its id — never its transcript.',
+  'conv.lanes.matched': '{n} of {total} match.',
+  'conv.lanes.noMatch': 'No helper agent matches what you asked for. Clear the box to see all {total}.',
+  'conv.lanes.none': 'This session dispatched no helper agents — the index was read and it holds none.',
+  'conv.lanes.records': '{n} records',
+  'conv.lanes.fromLane': 'dispatched by another helper agent',
+  'conv.lanes.unnamed': 'No brief was recorded for this agent.',
   'conv.outdated': 'This archive was indexed by an earlier version, so there is nothing to show yet. Nothing has been lost — it is rebuilt from the files on disk, and it repairs itself at the end of your next turn. To do it now:',
   // ── WHAT THE ARCHIVE COSTS YOU TO TURN ON — plan:archive seq:11 and seq:9 ──
   //
@@ -253,6 +271,18 @@ export const strings = {
   'conv.doc.result': 'result',
   'conv.doc.fold': '{n} machine steps',
   'conv.doc.fold1': '1 machine step',
+  // ── THE RECORDS THAT SAY ONLY THEIR OWN NAME — plan:archive seq:39 ────────
+  //
+  // Owner ruling 2026-09-09, shown a real fold of eleven rows of which eight
+  // could never hold anything: COUNT THEM AS ONE LINE. The sentence names the
+  // MEASURE and not a guess at the harness's intent, because the test is
+  // derived rather than listed — a record is here because nothing was left to
+  // draw after seq:28's field sweep, not because its type is on a list.
+  // Nothing is dropped: the records stay in the fold's count, in its span and
+  // in a copied passage, and the line opens onto every one of their indexes.
+  'conv.doc.quiet': '{n} records with nothing in them but their own type',
+  'conv.doc.quiet1': '1 record with nothing in it but its own type',
+  'conv.doc.quietMore': 'and {n} more',
   'conv.doc.failed': '{n} failed',
   'conv.doc.loading': 'Reading…',
   'conv.doc.filter': 'Find in the whole session',
@@ -284,6 +314,15 @@ export const strings = {
   'conv.doc.lanesUnread': 'The helper transcripts could not be read, so no turn on this page opens one.',
   'conv.doc.laneOf': 'A helper agent’s transcript, not a session of its own.',
   'conv.doc.laneHome': 'Open the session that dispatched it, in a new tab',
+  // ── THE WAY BACK OUT OF THE TAB seq:15 OPENED — plan:archive seq:40 ───────
+  //
+  // Two words, because the control wears `.tvjump` and a sentence in a
+  // bordered mono box wraps into two open-ended boxes. Drawn only on a tab
+  // that has shown nothing else, and never left sitting there having appeared
+  // to work: a browser that refuses gets the second sentence and the link
+  // beside it stays.
+  'conv.doc.laneShut': 'Close this tab',
+  'conv.doc.laneShutNo': 'This browser would not let the page close its own tab. Use the link beside this, or close the tab yourself.',
   // Copying a marked passage — three forms, each NAMED BY WHAT IT IS FOR.
   // "A menu offering text / rendered / raw makes a reader guess; one offering
   // paste into a prompt / paste as it looks / the exact record does not."

@@ -1,4 +1,7 @@
-// @basis TASK-the-list-is-browsable-filter-search-and-duration-across,
+// @basis TASK-a-fold-spends-eleven-lines-saying-some-bookkeeping-happened,
+// TASK-a-lane-opens-in-a-new-tab-with-no-warning-no-landing-and-no,
+// TASK-the-count-of-helper-agents-is-not-a-link-so-the-only-way-to,
+// TASK-the-list-is-browsable-filter-search-and-duration-across,
 // TASK-the-transcript-is-one-document-you-scroll-not-fifty-records,
 // TASK-a-session-opens-at-its-end-because-the-end-is-where-the-work,
 // TASK-the-viewer-renders-what-the-terminal-showed-with-its,
@@ -339,7 +342,20 @@ async function open(page: Page, hash: string, lang: 'en' | 'he'): Promise<void> 
   await page.goto(`http://127.0.0.1:${harness.port}/#${nonce}`);
   await page.waitForSelector('.rail', { timeout: 20_000 });
   await page.evaluate((h) => { location.hash = h as string; }, hash.replace(/^#/, '#'));
-  await page.waitForSelector('.convrow, .tvturn, .spill', { timeout: 20_000 });
+  // **SCOPED TO THE VISIBLE SCREEN, and that is a repair rather than tidiness.**
+  //
+  // This read `.convrow, .tvturn, .spill` PAGE-WIDE, and `app.js` says why that
+  // cannot hold: *"the router keeps every visited screen inside `#screen`,
+  // merely hidden"*. `.spill` is what `errorNote` wears and what the
+  // no-credential note wears, so under load the screen the app booted on
+  // leaves one behind — HIDDEN — and `waitForSelector` locks onto the first
+  // match in DOM order and waits on an element that will never be visible,
+  // even after `.convrow` has drawn. Seen as a rotating handful of failures
+  // per run whose set changed every time and which all passed alone:
+  // 15 of 66, then 11, then 6 of 132, never twice the same test.
+  const on = '[data-p]:not([hidden])';
+  await page.waitForSelector(
+    `${on} .convrow, ${on} .tvturn, ${on} .spill`, { timeout: 20_000 });
   await expect(page.locator('#exited')).toBeHidden();
 }
 
@@ -490,13 +506,22 @@ for (const lang of ['en', 'he'] as const) {
     expect(await fold.evaluate((n) => (n as HTMLDetailsElement).open)).toBe(false);
 
     // A real <details>: Enter opens it, with no key handler of our own.
-    await fold.locator('summary').focus();
+    await fold.locator('summary.tvworksum').focus();
     await page.keyboard.press('Enter');
     expect(await fold.evaluate((n) => (n as HTMLDetailsElement).open)).toBe(true);
     // And opening it shows every record in the run, book-keeping included —
     // a reader who cannot see that a record was there cannot know one was
     // skipped.
-    await expect(fold.locator('.tvstep')).toHaveCount(2);
+    //
+    // **THREE `.tvstep`s FOR TWO RECORDS, AND THAT IS `plan:archive seq:39`.**
+    // The result keeps a row of its own; the `queue-operation` record, which
+    // draws nothing but its own name, is counted on ONE collapsed line — and
+    // that line is itself a `<details>` holding the record's own index row, so
+    // nothing became unreachable. The count on the summary above is still 2.
+    // `a fold counts its empty records on one line, and that line opens` is
+    // where the whole of that behaviour is driven.
+    await expect(fold.locator('.tvstep')).toHaveCount(3);
+    await expect(fold.locator('details.tvquiet')).toHaveCount(1);
     // The steps are in RECORD order, so the run opens on the result the
     // command produced and closes on the harness's own queue record. A step's
     // number is the record's own index in the file, the one the list screen
@@ -555,7 +580,7 @@ for (const lang of ['en', 'he'] as const) {
     await expect(fold).toBeVisible();
     // It NAMES what ran — a fold that says only "3 steps" cannot be skimmed.
     await expect(fold.locator('.tvtools')).toContainText('Write');
-    await fold.locator('summary').click();
+    await fold.locator('summary.tvworksum').click();
     expect(await fold.evaluate((n) => (n as HTMLDetailsElement).open)).toBe(true);
     await expect(fold).toContainText('the whole file body, not only its path');
 
@@ -777,7 +802,7 @@ for (const lang of ['en', 'he'] as const) {
     const foldN = await page.locator('.tvwork').first()
       .evaluate((n) => (n as HTMLElement).dataset['n'] ?? '');
     const opened = page.locator(`.tvwork[data-n="${foldN}"]`);
-    await opened.locator('summary').click();
+    await opened.locator('summary.tvworksum').click();
     await expect(opened.locator('.tvterm').first()).toBeVisible();
     const escaped = await page.locator('.tvscroll').innerText();
     expect(escaped).not.toContain('\u001b');
@@ -1947,7 +1972,7 @@ async function reachTheLane(page: Page) {
     .toBeGreaterThan(0);
 
   const one = fold.first();
-  await one.locator('summary').click();
+  await one.locator('summary.tvworksum').click();
   await expect(one.locator('a.tvlane').first()).toBeVisible();
   return one;
 }
@@ -2028,7 +2053,7 @@ test('a lane at depth 2 is reachable, because the roster is the SESSION own', as
 
   const fold = page.locator('details.tvwork').filter({ has: page.locator('a.tvlane') }).first();
   await expect(fold).toHaveCount(1);
-  await fold.locator('summary').click();
+  await fold.locator('summary.tvworksum').click();
   const deeper = fold.locator('a.tvlane').first();
   await expect(deeper).toHaveAttribute('href', '#/conversations/agent-inner');
 
@@ -2046,6 +2071,220 @@ test('a session that dispatched lanes says so on its list row', async ({ page })
   // second request; `seq:15` is what makes it worth having. Two lanes: the one
   // the session dispatched and the one its own lane did.
   await expect(page.locator('.convrow').first()).toContainText('2 helper agents');
+});
+
+/* ══ seq:39 — THE RECORDS THAT SAY ONLY THEIR OWN NAME ═════════════════════
+ *
+ * Owner ruling 2026-09-09, shown a real fold of eleven rows of which eight
+ * could never hold anything: COUNT THEM AS ONE LINE. Measured on his own
+ * transcript the same day — 32,610 records — **14,937 of the 27,156 rows an
+ * opened fold draws carry nothing at all**, 45.8% of every record in the file,
+ * across 26 distinct `type · subtype` keys. The rows an opened fold draws fall
+ * from 27,156 to 14,223.
+ *
+ * What is asserted here is the whole of the item's two open questions: the
+ * qualifying test is DERIVED (a `queue-operation · drain` is collapsed and a
+ * `tool_result` beside it is not, and no name is written anywhere), and the
+ * line OPENS (the record's own index is still reachable, which is what
+ * `INV-nothing-is-dropped-silently` asks of a count).
+ */
+for (const lang of ['en', 'he'] as const) {
+  test(`a fold counts its empty records on one line, and that line opens (${lang})`, async ({ page }) => {
+    await openDocument(page, lang);
+
+    const fold = page.locator('.tvwork').filter({ hasText: 'round 0 output' }).first();
+    await expect(fold).toBeVisible();
+    // **THE COUNT ON THE SUMMARY DOES NOT MOVE.** `sum(span) === records` is
+    // asserted by the endpoint's own tests and the owner was offered dropping
+    // these records and declined it on exactly that cost. Only the drawn form
+    // collapses: the run is still two records.
+    await expect(fold.locator('summary.tvworksum .tvworkn')).toContainText('2');
+    await fold.locator('summary.tvworksum').click();
+    expect(await fold.evaluate((n) => (n as HTMLDetailsElement).open)).toBe(true);
+
+    // The tool result keeps its own row, because it has something to show.
+    await expect(fold).toContainText('round 0 output');
+
+    // The queue record does not, because it has nothing — and it was chosen by
+    // DRAWING NOTHING rather than by being named in a list.
+    const quiet = fold.locator('details.tvquiet');
+    await expect(quiet).toHaveCount(1);
+    await expect(quiet.locator('summary')).toContainText(
+      lang === 'he' ? 'רשומה אחת' : '1 record with nothing in it',
+    );
+    // It names the type it covers, so the line can be skimmed without opening.
+    await expect(quiet.locator('.tvtools')).toContainText('queue-operation · drain');
+    expect(await quiet.evaluate((n) => (n as HTMLDetailsElement).open)).toBe(false);
+
+    // ── AND THE RECORD IS STILL REACHABLE, which is the decision the item
+    //    left open. A reader reconciling this document against the file needs
+    //    the INDEX, and the index is the only thing these rows ever carried.
+    await quiet.locator('summary').click();
+    expect(await quiet.evaluate((n) => (n as HTMLDetailsElement).open)).toBe(true);
+    const inside = quiet.locator('li.tvstep');
+    await expect(inside).toHaveCount(1);
+    await expect(inside.first()).toContainText('queue-operation · drain');
+    // The record's own number in the file — the one the endpoint, the copy
+    // and the list screen all count in.
+    await expect(inside.first().locator('.m').first()).not.toBeEmpty();
+
+    await fold.screenshot({ path: `e2e/screens/conversations-fold-quiet-${lang}.png` });
+  });
+}
+
+/* ══ seq:41 — THE ROSTER, WHICH THE COUNT USED TO BE THE END OF ════════════
+ *
+ * *"could the user see the list of subagents context files and can view them
+ * as we do for a session ?"* — the answer was PARTLY: one lane could be
+ * viewed, the CLI could list them, and the browser could not. The count on the
+ * row was not a link and `laneIndex` is a map keyed on `toolUseId`, not a list
+ * surface.
+ *
+ * **The owner ruled the shape and it is not re-opened here.** A FLAT LIST WITH
+ * THE CHILDREN INDENTED, NOT A FOLDER TREE — measured: 221 lanes at depth 1,
+ * 43 at depth 2, and only SEVENTEEN of 264 with any children at all, so a tree
+ * would spend expand/collapse on 6.4% of the rows. What this drives is that
+ * the surface exists, that a child is drawn under its parent, and that the
+ * filter `seq:10` built for sessions is inherited by a flat list.
+ */
+test('the count of helper agents opens the roster, with a child under its parent', async ({ page }) => {
+  await open(page, '#/conversations/sess-archive', 'en');
+  await page.waitForSelector('.tvscroll .tvturn', { timeout: 20_000 });
+
+  const toRoster = page.locator('button.tvlanes');
+  await expect(toRoster).toContainText('2 helper agents');
+  await toRoster.click();
+  await page.waitForSelector('.rows .convrow', { timeout: 20_000 });
+  expect(page.url()).toContain('#/conversations/lanes/sess-archive');
+
+  const rows = page.locator('.rows .convrow');
+  await expect(rows).toHaveCount(2);
+  // Oldest first, and the child directly under the lane that dispatched it.
+  await expect(rows.nth(0)).toContainText('Read the index');
+  await expect(rows.nth(0)).toContainText('agent-outer');
+  // The parent carries a count, the way a session row already does.
+  await expect(rows.nth(0)).toContainText('1 helper agent');
+  await expect(rows.nth(1)).toContainText('One level deeper');
+  await expect(rows.nth(1)).toContainText('Explore');
+
+  // **THE INDENT IS A FACT AND IT IS ALSO SAID IN WORDS.** A reader who cannot
+  // see the indent, and a reader looking at a FILTERED list where the parent
+  // may not be on screen at all, both get the sentence.
+  await expect(rows.nth(1)).toContainText('dispatched by another helper agent');
+  const inset = await rows.nth(1).locator('.convhead')
+    .evaluate((n) => getComputedStyle(n as HTMLElement).paddingInlineStart);
+  expect(parseFloat(inset), 'a child is drawn in from its parent').toBeGreaterThan(0);
+  const flat = await rows.nth(0).locator('.convhead')
+    .evaluate((n) => getComputedStyle(n as HTMLElement).paddingInlineStart);
+  expect(parseFloat(flat)).toBe(0);
+
+  // The filter a flat list inherits — and it reads the BRIEF, which is the
+  // only real name a lane has.
+  await page.locator('input.convfind').fill('deeper');
+  await expect(rows).toHaveCount(1);
+  await expect(rows.first()).toContainText('One level deeper');
+  await page.locator('input.convfind').fill('nothing matches this at all');
+  await expect(rows).toHaveCount(0);
+  await expect(page.locator('.convlanes')).toContainText('No helper agent matches');
+  await page.locator('input.convfind').fill('');
+  await expect(rows).toHaveCount(2);
+
+  await page.screenshot({ path: 'e2e/screens/conversations-roster-en.png', fullPage: true });
+
+  // And a row opens the lane in the same viewer a session uses.
+  await rows.nth(1).click();
+  await page.waitForSelector('.tvscroll .tvturn', { timeout: 20_000 });
+  await expect(page.locator('.tvscroll')).toContainText(DEEP_PHRASE_LANE, { timeout: 20_000 });
+});
+
+test('the roster is reachable from a lane too, because it is the SESSION own', async ({ page }) => {
+  // The route the item says some lanes have no other: 43 of 264 were
+  // dispatched from inside another lane, so reaching them meant finding and
+  // opening the parent first. A lane page resolves to its owning session's
+  // roster, which is where its siblings are.
+  await open(page, '#/conversations/agent-outer', 'en');
+  await page.waitForSelector('.tvscroll .tvturn', { timeout: 20_000 });
+  await page.locator('button.tvlanes').click();
+  await page.waitForSelector('.rows .convrow', { timeout: 20_000 });
+  expect(page.url()).toContain('#/conversations/lanes/sess-archive');
+  await expect(page.locator('.rows .convrow')).toHaveCount(2);
+
+  // Back goes to the session this roster belongs to, not to the list.
+  await page.locator('button.tvback').click();
+  await page.waitForSelector('.tvscroll .tvturn', { timeout: 20_000 });
+  expect(page.url()).toContain('#/conversations/sess-archive');
+});
+
+/* ══ seq:40 — THE WAY BACK OUT OF THE TAB ══════════════════════════════════
+ *
+ * Owner ruling 2026-09-09, accepting the new tab and asking for a way back:
+ * *"give the user a button on the new tab to close it so he could return to
+ * the main viewer"*. The item requires a MEASUREMENT rather than an
+ * assumption, because `window.close()` is specified to work only on a window a
+ * script opened or on one whose session history holds a single entry — and
+ * `laneLink` sets `rel="noopener"`, so the tab has no `window.opener` at all
+ * and cannot lean on the first clause.
+ *
+ * **This is that measurement, and it runs in chromium AND in chrome**, which
+ * is why it is a browser test rather than a paragraph: it is a browser rule,
+ * not a fact about this code, and browser rules move across versions.
+ *
+ * What the item asks for first — SAYING that a new tab is opening, before it
+ * does — was already built by `seq:15` and is asserted above, in both
+ * languages, on `conv.doc.lane`.
+ */
+test('a lane opened in a new tab can close itself, and the button is only there when it can', async ({ page }) => {
+  await openDocument(page, 'en', 'default');
+  const fold = await reachTheLane(page);
+  const link = fold.locator('a.tvlane').first();
+
+  const [lane] = await Promise.all([
+    page.waitForEvent('popup'),
+    link.click(),
+  ]);
+  await lane.waitForSelector('.tvscroll .tvturn', { timeout: 20_000 });
+
+  // The tab the anchor opened: no opener, one history entry.
+  expect(await lane.evaluate(() => window.opener !== null),
+    '`rel=noopener` is deliberate, so the first clause of the spec is not available').toBe(false);
+  expect(await lane.evaluate(() => history.length)).toBe(1);
+
+  const shut = lane.locator('button.tvlaneshut');
+  await expect(shut).toBeVisible();
+  await expect(shut).toContainText('Close this tab');
+
+  // **IT SETS ITS OWN COLOUR, BACKGROUND AND BORDER.** A Clear button shipped
+  // at contrast 1.0 by letting a new control take the user agent's ground, and
+  // `e2e/button-contrast.spec.ts` exists for it. `.tvjump` is the class Top,
+  // End and "N new below" already wear and it declares all three.
+  const face = await shut.evaluate((n) => {
+    const cs = getComputedStyle(n as HTMLElement);
+    return { color: cs.color, background: cs.backgroundColor, border: cs.borderTopColor };
+  });
+  expect(face.background).not.toBe('rgba(0, 0, 0, 0)');
+  expect(face.color).not.toBe(face.background);
+
+  // ── THE MEASUREMENT ────────────────────────────────────────────────────
+  await Promise.all([lane.waitForEvent('close', { timeout: 10_000 }), shut.click()]);
+  expect(lane.isClosed(), 'the tab the reader was sent to is gone, and they are back where they were')
+    .toBe(true);
+
+  // And the reader's own document is untouched — the whole reason `seq:15`
+  // chose a tab over a return.
+  await expect(page.locator('.tvscroll')).toBeVisible();
+});
+
+test('a document that is NOT in a tab of its own is not offered a close button', async ({ page }) => {
+  // A reader who reached a lane by any route that left history behind has
+  // somewhere to go back to, and closing their only tab would take the session
+  // with it. The back-link stays either way, which is the fallback the item
+  // names.
+  await open(page, '#/conversations', 'en');
+  await page.evaluate(() => { location.hash = '#/conversations/agent-outer'; });
+  await page.waitForSelector('.tvscroll .tvturn', { timeout: 20_000 });
+  expect(await page.evaluate(() => history.length)).toBeGreaterThan(1);
+  await expect(page.locator('button.tvlaneshut')).toHaveCount(0);
+  await expect(page.locator('a.tvlanehome')).toBeVisible();
 });
 
 /**
@@ -2557,7 +2796,7 @@ test.describe('a marked passage copies as something a terminal will accept', () 
       expect(shut).toContain('were left out of this copy');
 
       // Open it, mark it again, and the same passage now carries the records.
-      await fold.locator('summary').click();
+      await fold.locator('summary.tvworksum').click();
       await expect(fold).toHaveAttribute('open', '');
       await markRow(page, dataN);
       await bar.message.click();

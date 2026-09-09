@@ -3988,7 +3988,115 @@ body.docpage{overflow-y:auto}
    change a bidi run, and this is the exact shape that once put a leading dot
    at the wrong end of a Hebrew sentence. `e2e/code-colour.spec.ts` measures
    the rendered text in both languages rather than trusting this comment. */
-.tvsaid{--tvcode:#c678dd}
+/* ── TWO MORE PROPERTIES ON THE SAME ELEMENT, AND WHY THEY LIVE HERE ──────
+   `TASK-the-table-frames-want-to-be-near-white-and-an-untagged-code`, owner
+   2026-09-09, having accepted the hue above (*"in general it looks better"*)
+   and the fenced syntax colouring (*"they looks good"*), asking for exactly
+   two more things:
+
+     *"the tables frames i want them brighter than the current color not white
+      but near it"*
+     *"what i did not see in the screenshots is examples of code colored
+      differently … at least different bright than white like green or yello
+      kind of as it is on the TUI"*
+
+   `--tvframe` and `--tvfence` are declared beside `--tvcode` for the reason
+   `--tvcode` was: a custom property on `.tvsaid` cannot be READ outside that
+   element, so neither value can reach a chip, a screen or a sixth meaning hue.
+   The `:root` blocks at the top of this file are byte-parity-pinned to
+   `docs/design/web-ui-mockup.html` by `test/ui/styles-parity.test.ts`, so a
+   token there is not available for either of these even if it were wanted —
+   the scope is forced as well as chosen.
+
+   ── `--tvframe` #c9c6d4, WHICH IS HIS NUMBER AND NOT THE SAFE ONE ─────────
+   Measured on `--sink` #101014, the ground a table cell actually sits on
+   (cells declare no background), and on the print register's #fff:
+
+       --edge     #3a3a45    1.69:1 dark   11.22:1 white   before `seq:38`
+       --edge-3   #6e6e7e    3.79:1        5.01:1          what `seq:38` shipped
+       --faint    #7d7a90    4.57:1        4.15:1
+       --dim      #a9a6b8    7.99:1        2.38:1
+       --tvframe  #c9c6d4   11.31:1        1.68:1          NOW
+       --ink      #f0eef6   16.51:1        1.15:1          the prose itself
+
+   #c9c6d4 is a step on the EXISTING grey ramp rather than a new colour: --ink,
+   --dim and --faint all run blue > red > green in that order, and so does this
+   — it is the value that lands halfway between --dim and --ink on the ramp
+   those three already describe.
+
+   AND THE HAZARD IS REAL AND IS HIS TO WEIGH. A frame at 11.31:1 competes with
+   body text at 16.51:1 — ΔE76 14.4 from the prose, against --dim's 26.2 — and
+   this well draws **300 tables carrying 1,950 body rows** on his own session,
+   so a near-white grid can become the loudest thing on screen. `--dim` at 7.99
+   is twice today's brightness and still recedes. Both were photographed on the
+   same real table turn — `e2e/screens/frame-near-white-en.png` and
+   `frame-dim-en.png` — and the picture is what he judged, not this table.
+
+   ── `--tvfence` #98c379, WHICH IS A TINT AND NOT A SYNTAX CLAIM ───────────
+   `seq:26` ruled — and he ruled — that untagged fences are NOT guessed at, on
+   the finding that at most 19 of the 167 untagged blocks in his transcript are
+   code at all: the rest are command output, aligned ledgers, timelines and
+   counts tables, and syntax-colouring those would paint a column of numbers as
+   though it were source. That ruling stands. A UNIFORM tint is the middle path
+   it leaves open, and it cannot lie about a token because it makes no claim
+   about any token: it says only "this block is not prose", which is true of all
+   167 and is what a terminal does with preformatted text.
+
+   ONE FLAT COLOUR AGAINST NINE IS THE DISTINCTION, and the label is still the
+   discriminator — a fence that declared a language is LABELLED and coloured,
+   which `seq:26` made deliberate so that "coloured" and "declared" are one
+   visible set. `.tvsaid pre:not([data-lang])` is therefore exactly the set that
+   declared nothing, and a reader can tell the two apart without reading a
+   single token.
+
+   GREEN AND NOT YELLOW, and the tie is broken on separation, the same method
+   the violet above used. Both of his words are already in the terminal palette
+   below — `.tva-fg` #98c379 and `.tva-fY` #e5c07b — so neither is a new value:
+
+       #98c379   9.42:1 on --sink    2.02:1 on white
+       #e5c07b  10.99:1 on --sink    1.73:1 on white
+
+   ΔE76 against the hues that share this well, with ~10 the floor at which two
+   colours stop being reliably told apart:
+
+                        --ok    --gold   --carry   --ink    --tvcode
+       #98c379 green    35.3     57.1      82.6     51.0     104.3
+       #e5c07b yellow   66.8     38.4      80.5     45.8      91.3
+
+   The yellow's 38.4 from `--gold` is the binding number: `--gold` is a BUDGETED
+   MEANING HUE and inside `.tvsaid` it means "a link", so a yellow block of
+   preformatted text sits nearest the one hue in this element that carries
+   meaning. The green's nearest meaning hue is `--ok` at 35.3, and `--ok` is not
+   spent inside `.tvsaid` at all — it appears on the turn accent outside it. The
+   green is also further from the prose (51.0 against 45.8) and DIMMER than the
+   yellow (9.42 against 10.99), which matters because 167 blocks of it must
+   recede from the sentences around them rather than shout over them. It was
+   also the first word he used.
+
+   MEASURED ON A LEDGER AND NOT ON CODE, because that is what most untagged
+   fences are: `e2e/screens/fence-tint-ledger-en.png` is a counts table and a
+   progress-bar block in this tint, photographed beside a tagged `bash` fence in
+   the same frame so the flat colour and the palette can be compared directly.
+
+   THE ~19 REAL UNTAGGED CODE BLOCKS ARE STILL NOT SYNTAX-COLOURED, and that is
+   deliberate rather than pending: the answer for those is a language tag
+   written when the block is authored, which is an author's habit and not this
+   renderer's guess.
+
+   A FENCE THAT DECLARED A LANGUAGE NOTHING HERE TOKENISES — ```` ```python ````
+   — takes NO tint, because the rule is "declared nothing" and that block
+   declared something. It is drawn with its label and left at `--ink`.
+   `lib/markdown.js`' `fenceNode` records the count: **zero of 185 blocks** on
+   his transcript are that shape, so this is an unoccupied case named rather
+   than a state a reader meets.
+
+   NO `direction` AND NO `unicode-bidi` ON EITHER, for the reason carried at
+   length beside the fence tokens below: `.tvsaid pre` is already an LTR island
+   from the global `[dir="rtl"] code, [dir="rtl"] pre` rule, `color` on a `pre`
+   cannot change a bidi run, and a border colour on a cell cannot either.
+   `e2e/code-hue.spec.ts` measures the rendered text in both languages rather
+   than trusting this comment. */
+.tvsaid{--tvcode:#c678dd;--tvframe:#c9c6d4;--tvfence:#98c379}
 .tvsaid .m{background:var(--paper);border:1px solid var(--edge);
   border-radius:var(--r-sm);padding-inline:4px;color:var(--tvcode)}
 /* The link keeps its own hue through a code span — see the block above. */
@@ -4011,6 +4119,30 @@ body.docpage{overflow-y:auto}
 .tvsaid pre[data-lang]::before{content:attr(data-lang);display:block;
   font:var(--fs-00)/1.4 var(--mono);color:var(--dim);
   margin-block-end:var(--sp-1);user-select:none}
+/* AND WHAT THE FENCE DID NOT SAY — the other 167 of 192, tinted rather than
+   parsed. The whole argument is beside `--tvfence` above; the selector is the
+   argument in one line: a fence that declared NOTHING is not prose, and this
+   says so without claiming anything about a token inside it. An indented code
+   block (`code_block`) reaches the same `<pre>` with no attribute and is caught
+   by the same rule, correctly — it declared nothing either. */
+.tvsaid pre:not([data-lang]){color:var(--tvfence)}
+/* AND THE ONE FENCE THAT DECLARED SOMETHING NOBODY HERE CAN COLOUR —
+   ```` ```python ````. `fenceNode` gives it its label and plain text, so before
+   this rule it would have been the ONLY fence left at `--ink`: the least marked
+   block in the well would have been the one that DID say what it was, which is
+   backwards. A fence with no token span in it is a fence nothing coloured, and
+   that is the true rule, so it takes the same flat tint and keeps its label.
+   Zero of 185 blocks on the owner's transcript are this shape and one of the
+   three in `e2e/code-colour.spec.ts`' fixture is, which is why it is worth a
+   line and not worth a mechanism.
+
+   A SEPARATE RULE AND NOT A SECOND SELECTOR ON THE ONE ABOVE, deliberately:
+   a comma-separated selector list is not forgiving, so a parser that does not
+   know `:has()` would drop the WHOLE list and take the 167 down with the 1.
+   Split, the common case is unconditional and this one degrades to `--ink`,
+   which is what it renders as today. `:has()` is the only place in this
+   stylesheet that spends it, and it is spent on the rarer half on purpose. */
+.tvsaid pre[data-lang]:not(:has(span)){color:var(--tvfence)}
 .tvsaid blockquote{border-inline-start:2px solid var(--edge-3);
   padding-inline-start:var(--sp-3);color:var(--dim)}
 .tvsaid table{border-collapse:collapse;display:block;overflow-x:auto;
@@ -4055,7 +4187,15 @@ body.docpage{overflow-y:auto}
                         `--panel` card. Not raised here because the owner
                         named the CONTENT frames and this one is chrome —
                         reported rather than changed. */
-.tvsaid th,.tvsaid td{border:1px solid var(--edge-3);
+/* THE TABLE FRAME MOVED AGAIN, AND ONLY THE TABLE FRAME. `seq:38` raised four
+   borders together — `th/td`, `.tvsaid pre`, `.tvsaid hr` and `.tvterm` — on
+   the argument that each bounds content with no other channel. The owner then
+   named ONE of the four: *"the tables frames"*. So `th/td` takes `--tvframe`
+   #c9c6d4 at 11.31:1 and the other three stay at `--edge-3` #6e6e7e at 3.79:1,
+   which already clears the 3.0:1 WCAG asks. Raising the fence box and the rule
+   with it would have been a change he did not ask for, on the surface he has
+   corrected three times; it is reported instead. */
+.tvsaid th,.tvsaid td{border:1px solid var(--tvframe);
   padding:var(--sp-1) var(--sp-2);text-align:start}
 .tvsaid hr{border:0;border-block-start:1px solid var(--edge-3);
   margin-block:var(--sp-3)}
@@ -4264,9 +4404,17 @@ body.docpage{overflow-y:auto}
      `.tvsaid .m` as a literal. #c678dd measures 2.94:1 on the print register's
      white paper and would fail a reader at any size; #000 is 21:1, and the
      span keeps its box, its monospace face and its padding, so a printed
-     transcript still shows where code was. The other half of this item's
-     change needs nothing here: the print `:root` above already flattens BOTH
-     `--edge` and `--edge-3` to #000, so raising a frame from one to the other
-     is invisible on paper by construction. */
-  .tvsaid{--tvcode:#000}
+     transcript still shows where code was.
+
+     AND THE TWO PROPERTIES ADDED AFTER IT FLATTEN ON THE SAME LINE, which they
+     have to rather than merely ought to. `seq:38`'s frame change was free here
+     because the print `:root` above already flattens BOTH `--edge` and
+     `--edge-3` to #000; `--tvframe` is a LITERAL on `.tvsaid`, so it is not
+     reached by that and would print at **1.68:1 on white** — a table whose
+     ruling has vanished. `--tvfence` #98c379 measures **2.02:1 on white** and
+     would fail a reader at any size. #000 is 21:1 for both, the cells keep
+     their ruling, and an untagged fence prints as the plain preformatted text
+     it always was — colour was the only channel the tint ever had, which is
+     the same thing the nine syntax hues above say about themselves. */
+  .tvsaid{--tvcode:#000;--tvframe:#000;--tvfence:#000}
 }

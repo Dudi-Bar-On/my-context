@@ -1,4 +1,5 @@
-// @basis TASK-inline-code-has-no-hue-and-a-table-frame-is-drawn-at-1-71-1,
+// @basis TASK-the-table-frames-want-to-be-near-white-and-an-untagged-code,
+// TASK-inline-code-has-no-hue-and-a-table-frame-is-drawn-at-1-71-1,
 // TASK-inline-code-in-a-conversation-gets-a-font-change-and-nothing,
 // REQ-the-conversation-archive-is-a-terminal-you-can-scroll-not-a,
 // DEC-the-meaning-hue-budget-is-five-gold-ok-carry-crit-and-warn
@@ -28,9 +29,27 @@
  * table in this well actually sits on (the cells declare no background):
  *
  *     --edge     #3a3a45   1.71:1 / 1.69:1   WAS the table frame — half of 3.0
- *     --edge-3   #6e6e7e   3.82:1 / 3.79:1   IS the table frame
+ *     --edge-3   #6e6e7e   3.82:1 / 3.79:1   the fence box, the rule, .tvterm
+ *     #c9c6d4    --tvframe 11.40 / 11.31:1   IS the table frame
  *     #c678dd    violet    6.50:1 / 6.45:1   IS inline code
  *     #61afef    blue      8.10:1 / 8.03:1   the other candidate, and rejected
+ *     #98c379    --tvfence 9.49:1 / 9.42:1   IS an untagged fence's text
+ *     #e5c07b    yellow   11.08 / 10.99:1    the other candidate, and rejected
+ *
+ * ── AND WHAT THIS FILE GAINED ON 2026-09-09 ───────────────────────────────
+ *
+ * `TASK-the-table-frames-want-to-be-near-white-and-an-untagged-code`, the
+ * owner having accepted the hue (*"in general it looks better"*) and the fenced
+ * syntax colouring (*"they looks good"*) and asked for two more things: the
+ * table frame BRIGHTER (*"not white but near it"*), and a colour on code that
+ * declared no language (*"at least different bright than white like green or
+ * yello kind of as it is on the TUI"*).
+ *
+ * Both land inside this file rather than a new one because its fixture is
+ * already the surface both were judged on — his own table turn, and an untagged
+ * progress-bar fence in the probes turn. A third turn is added below carrying
+ * the ledgers the tint has to be judged on, and the frame assertion below moves
+ * from #6e6e7e to #c9c6d4 with the rule it pins.
  *
  * **The blue lost on separation, not on contrast.** `--carry` #8b9ce6 is spent
  * three times in this same well — `.tvtools`, `.tvarg`, `.tvresult` — and
@@ -116,6 +135,61 @@ const PROBES = [
   '```',
 ].join('\n');
 
+/**
+ * **The turn the TINT has to be judged on, and it is deliberately not code.**
+ *
+ * The item is explicit that the honest test of a uniform tint is a LEDGER
+ * rather than a source listing, because that is what most untagged fences in
+ * this corpus are: of the 167 untagged blocks on the owner's own transcript, at
+ * most 19 are code at all — the rest are command output, aligned ledgers,
+ * timelines and counts tables. If a green counts table reads as source, the
+ * tint is wrong, and the picture rather than this comment is what says so.
+ *
+ * So the four fences here are the four cases, in one frame:
+ *
+ *   1. A counts table — `lib/highlight.js`' own re-measurement, verbatim.
+ *   2. A progress-bar block, the shape `mycontext ready` prints.
+ *   3. One of the ~19 untagged blocks that really IS code.
+ *   4. A ```` ```bash ```` fence that DECLARED itself, so the flat tint and the
+ *      nine-hue palette are photographed side by side and "one flat colour
+ *      against several" can be checked by eye rather than asserted.
+ */
+const LEDGERS = [
+  'The counts, as `lib/highlight.js` re-measured them:',
+  '',
+  '```',
+  '                                  this file        the item table',
+  '    assistant text blocks           2,108               2,060',
+  '    inline code spans              10,249              10,047',
+  '    FENCED BLOCKS                     185                 370',
+  '    with a language tag                25                  25',
+  '    with NO language tag              160  (86.5%)        345',
+  '```',
+  '',
+  'and the plan, the way `mycontext ready` prints it:',
+  '',
+  '```',
+  'done     406  ████████████████░░░░  80%',
+  'open      68  ███░░░░░░░░░░░░░░░░░  13%',
+  'held      36  █░░░░░░░░░░░░░░░░░░░   7%',
+  '```',
+  '',
+  'One of the ~19 untagged blocks that really is code:',
+  '',
+  '```',
+  'node src/cli/index.ts show TASK-the-table-frames-want-to-be-near-white',
+  '```',
+  '',
+  'And one that said what it was, for comparison:',
+  '',
+  '```bash',
+  '# 25 of 192 fences declared a language',
+  "export MYCTX_LANG='he'",
+  'npx playwright test --config e2e/playwright.config.ts code-hue',
+  'echo $HOME',
+  '```',
+].join('\n');
+
 /** A slash command, which the doc builder marks synthetic and draws as `.tvterm`. */
 const SYNTHETIC = '<command-name>/graphify</command-name>\n<command-args>archive</command-args>';
 
@@ -125,7 +199,7 @@ function session(): unknown[] {
   const rows: unknown[] = [];
   const at = (n: number): string => new Date(Date.UTC(2026, 8, 9, 4, 0, n)).toISOString();
   rows.push({ type: 'ai-title', aiTitle: 'A table, and the words in it' });
-  const said = [REAL_TURN, PROBES];
+  const said = [REAL_TURN, PROBES, LEDGERS];
   for (let i = 0; i < said.length; i += 1) {
     rows.push({
       type: 'user',
@@ -274,6 +348,31 @@ async function shot(page: Page, phrase: string, file: string, extra = 0): Promis
   await page.locator('.tvscroll').screenshot({ path: `e2e/screens/${file}.png` });
 }
 
+/**
+ * The visible box of a locator INSIDE the well, as a screenshot clip.
+ *
+ * `boundingBox()` alone is not that. The well is a fixed-height scroller and a
+ * table parked at its top can be taller than it, so the element's own box runs
+ * on past the well's bottom edge — and a clip taken from it photographs the
+ * app's own card chrome beneath. That is not hypothetical: it put 38 rows of
+ * `--panel` #17171c, `--panel-2` #1d1d24 and `--rule` #262630 into a crop that
+ * was supposed to hold a table, which is exactly the class of defect this
+ * file's other traps are about — an assertion measuring the wrong pixels.
+ */
+async function wellClip(page: Page, target: ReturnType<Page['locator']>): Promise<{
+  x: number; y: number; width: number; height: number;
+}> {
+  const inner = await target.boundingBox();
+  const well = await page.locator('.tvscroll').boundingBox();
+  if (inner === null || well === null) throw new Error('nothing to clip');
+  const top = Math.max(inner.y, well.y);
+  const bottom = Math.min(inner.y + inner.height, well.y + well.height);
+  const start = Math.max(inner.x, well.x);
+  const end = Math.min(inner.x + inner.width, well.x + well.width);
+  if (bottom - top < 40 || end - start < 40) throw new Error('the clip is not on screen');
+  return { x: start, y: top, width: end - start, height: bottom - top };
+}
+
 /** `#rrggbb` as the browser reports it. */
 const rgb = (hex: string): string => {
   const n = [1, 3, 5].map((i) => parseInt(hex.slice(i, i + 2), 16));
@@ -338,7 +437,7 @@ for (const lang of ['en', 'he'] as const) {
     await shot(page, 'The grand D table', `hue-real-table-turn-${lang}`);
   });
 
-  /* ══ THE FRAME, AT 3.79:1 INSTEAD OF 1.69:1 ══════════════════════════════ */
+  /* ══ THE FRAME, AT 11.31:1 INSTEAD OF 1.69:1 ═════════════════════════════ */
 
   test(`a table's ruling clears the 3:1 a reader needs (${lang})`, async ({ page }) => {
     await openDocument(page, lang);
@@ -362,16 +461,108 @@ for (const lang of ['en', 'he'] as const) {
     });
 
     expect(drawn.width).toBe('1px');
-    // `--edge-3`, not `--edge`. #3a3a45 measured 1.69:1 here and is the frame
-    // the owner said he could not see.
-    expect(drawn.border).toBe(rgb('#6e6e7e'));
+    // `--tvframe` #c9c6d4, at HIS number. `seq:38` moved this from `--edge`
+    // #3a3a45 (1.69:1) to `--edge-3` #6e6e7e (3.79:1); he looked at that and
+    // said *"brighter than the current color not white but near it"*, which is
+    // the 11:1 end of the ramp and not the 3:1 end.
+    expect(drawn.border).toBe(rgb('#c9c6d4'));
     expect(drawn.ground).toBe(rgb('#101014'));
-    // WCAG 1.4.11: a non-text boundary a reader must see owes 3.0:1. The old
-    // token paid 1.69. Asserted as a NUMBER so a future repoint of either
-    // token fails here rather than in the owner's eyes.
+    // WCAG 1.4.11: a non-text boundary a reader must see owes 3.0:1. The
+    // original token paid 1.69. Asserted as a NUMBER so a future repoint of
+    // either token fails here rather than in the owner's eyes.
     const got = ratio(drawn.border, drawn.ground);
     expect(got, `table ruling measures ${got.toFixed(2)}:1`).toBeGreaterThanOrEqual(3);
+    expect(got, `table ruling measures ${got.toFixed(2)}:1`).toBeGreaterThan(11);
     expect(ratio(rgb('#3a3a45'), drawn.ground)).toBeLessThan(2);
+    // AND IT IS STILL NOT WHITE, which is half of what he asked for and the
+    // half a number can check. `--ink` #f0eef6 is the prose at 16.51:1; the
+    // frame stops five points short of it, so the grid is never brighter than
+    // the words it rules.
+    const prose = await body.evaluate((el) => getComputedStyle(el).color);
+    expect(prose).toBe(rgb('#f0eef6'));
+    expect(drawn.border).not.toBe(prose);
+    expect(got).toBeLessThan(ratio(prose, drawn.ground));
+  });
+
+  /* ══ THE TINT ON A FENCE THAT DECLARED NOTHING ═══════════════════════════ */
+
+  test(`an untagged fence is tinted, and it is one flat colour (${lang})`, async ({ page }) => {
+    await openDocument(page, lang);
+    const body = await said(page, 'The counts, as');
+
+    // Four fences in this turn: three that declared nothing, one that said
+    // `bash`. The split is the whole design, so it is asserted rather than
+    // assumed — a renderer change that started emitting `data-lang` for every
+    // fence would otherwise turn this test green over the wrong pixels.
+    const flat = body.locator('pre:not([data-lang])');
+    const tagged = body.locator('pre[data-lang]');
+    expect(await flat.count()).toBe(3);
+    expect(await tagged.count()).toBe(1);
+
+    const painted = await flat.evaluateAll(
+      (els) => els.map((el) => {
+        const s = getComputedStyle(el as HTMLElement);
+        return { colour: s.color, background: s.backgroundColor, family: s.fontFamily };
+      }));
+    for (const p of painted) {
+      // #98c379 — the terminal's own green, already declared on `.tva-fg` and
+      // on `--tvh-string`. Nothing new entered the product.
+      expect(p.colour).toBe(rgb('#98c379'));
+      // The box `seq:26` shipped is KEPT beneath the tint.
+      expect(p.background).toBe(rgb('#0f0f12'));
+      expect(p.family).toContain('Geist Mono');
+      // 9.49:1 on the fence's own fill — clear of 4.5:1 for body text.
+      expect(ratio(p.colour, p.background)).toBeGreaterThan(4.5);
+    }
+
+    // ONE COLOUR, NOT NINE. A tinted block holds no token spans at all, so it
+    // cannot be making a claim about any token in it — which is the entire
+    // reason this is not syntax colouring and cannot lie the way a guess would.
+    expect(await flat.locator('span').count()).toBe(0);
+    const shades = new Set(painted.map((p) => p.colour));
+    expect(shades.size).toBe(1);
+
+    // AND IT DOES NOT READ AS TAGGED. The tagged fence is LABELLED and carries
+    // several hues; the flat ones carry no label and one hue. Both halves of
+    // that distinction are checked, because either alone would be weaker than
+    // what `seq:26` deliberately paired.
+    const label = await tagged.first().evaluate(
+      (el) => getComputedStyle(el, '::before').content);
+    expect(label).toContain('bash');
+    const taggedHues = await tagged.first().evaluateAll(
+      (els) => [...(els[0] as HTMLElement).querySelectorAll('span')]
+        .map((n) => getComputedStyle(n).color));
+    expect(taggedHues.length).toBeGreaterThan(2);
+    expect(new Set(taggedHues).size).toBeGreaterThan(1);
+    const flatLabel = await flat.first().evaluate(
+      (el) => getComputedStyle(el, '::before').content);
+    expect(flatLabel).toBe('none');
+  });
+
+  test(`the tint reaches no prose, no cell and no tagged fence (${lang})`, async ({ page }) => {
+    await openDocument(page, lang);
+    const body = await said(page, 'The counts, as');
+
+    // The prose around the fences is untouched: the tint is a property on
+    // `.tvsaid` read by ONE selector, not an inherited colour.
+    const prose = await body.evaluate((el) => getComputedStyle(el).color);
+    expect(prose).toBe(rgb('#f0eef6'));
+
+    // The green is scoped to `.tvsaid` and cannot be read outside it, the same
+    // way `--tvcode` cannot. A `<pre>` in the page chrome — `.tvterm` is one,
+    // and so is any help transcript — must be untouched, or the tint has become
+    // a sixth product-wide hue.
+    const strays = await page.evaluate(() => [...document.querySelectorAll('pre')]
+      .filter((el) => el.closest('.tvsaid') === null)
+      .map((el) => getComputedStyle(el).color));
+    expect(strays.length).toBeGreaterThan(0);
+    for (const colour of strays) expect(colour).not.toBe('rgb(152, 195, 121)');
+
+    // And the property itself is unreadable outside the element that declares
+    // it, which is the mechanism the whole scoping argument rests on.
+    const outside = await page.evaluate(
+      () => getComputedStyle(document.documentElement).getPropertyValue('--tvfence').trim());
+    expect(outside).toBe('');
   });
 
   test(`a fence, a rule and terminal output take the same frame (${lang})`, async ({ page }) => {
@@ -479,12 +670,262 @@ test('the inline hue flattens to black on paper, and the frame costs nothing the
   // The span keeps its box and its face, so a printed transcript still shows
   // WHERE code was once the hue is gone — colour was never the only channel.
   expect(printed.face).toContain('Geist Mono');
-  // And the frame change is free on paper: the print `:root` already flattened
-  // BOTH `--edge` and `--edge-3` to #000, so raising one to the other is
-  // invisible there by construction rather than by a second measurement.
+  // The frame is now a LITERAL on `.tvsaid` rather than `--edge-3`, so the
+  // print `:root`'s flattening of the two edge tokens no longer reaches it.
+  // #c9c6d4 measures 1.68:1 on white — a ruling that has vanished — so it is
+  // flattened on `.tvsaid`'s own line beside the code hue.
   expect(printed.cell).toBe('rgb(0, 0, 0)');
+  expect(ratio(rgb('#c9c6d4'), rgb('#ffffff'))).toBeLessThan(2);
 
   await page.emulateMedia({ media: 'screen' });
+});
+
+/**
+ * The tint on the same argument: #98c379 measures **2.02:1 on white**, so on
+ * paper it is not a quiet colour either. It flattens with the nine syntax hues
+ * and the inline violet, and an untagged fence prints as the plain preformatted
+ * text it always was — colour was the only channel it ever had, which is the
+ * same thing the nine hues say about themselves.
+ */
+test('the untagged tint flattens to black on paper', async ({ page }) => {
+  await openDocument(page, 'en');
+  const body = await said(page, 'The counts, as');
+  await page.emulateMedia({ media: 'print' });
+
+  const printed = await body.locator('pre:not([data-lang])').first().evaluate((el) => {
+    const s = getComputedStyle(el as HTMLElement);
+    return { colour: s.color, background: s.backgroundColor, family: s.fontFamily };
+  });
+  expect(printed.colour).toBe('rgb(0, 0, 0)');
+  expect(printed.background).toBe(rgb('#ffffff'));
+  // The block keeps its face and its box, so a printed transcript still shows
+  // where the fence was once the tint is gone.
+  expect(printed.family).toContain('Geist Mono');
+  expect(ratio(rgb('#98c379'), rgb('#ffffff'))).toBeLessThan(2.5);
+
+  await page.emulateMedia({ media: 'screen' });
+});
+
+/* ══ THE TWO PICTURES THE OWNER PICKS FROM ═════════════════════════════════ */
+
+/**
+ * **His number and the safe one, on the same real table, in the same frame.**
+ *
+ * The item asks for this rather than for an argument, and the reason is that
+ * the hazard is real and cannot be settled by arithmetic: a frame at 11.31:1
+ * competes with body text at 16.51:1, and this well draws 300 tables carrying
+ * 1,950 body rows on his own session, so a near-white grid can become the
+ * loudest thing on the screen. `--dim` #a9a6b8 at 7.99:1 is twice today's
+ * brightness and still recedes.
+ *
+ * The alternative is painted by overriding the ONE property the rule reads —
+ * which is only possible because `--tvframe` is a property on `.tvsaid` rather
+ * than a literal inside the rule, and is therefore also a check that the
+ * scoping is what the stylesheet claims. The shipped value is restored and
+ * re-measured afterwards, so this test cannot leave the page lying.
+ */
+test('both frame candidates are photographed on his own table', async ({ page }) => {
+  await openDocument(page, 'en');
+  const body = await said(page, 'The grand D table');
+  const cell = body.locator('td').first();
+
+  const set = async (value: string | null): Promise<string> => {
+    await page.evaluate((v) => {
+      for (const el of document.querySelectorAll('.tvsaid')) {
+        if (v === null) (el as HTMLElement).style.removeProperty('--tvframe');
+        else (el as HTMLElement).style.setProperty('--tvframe', v as string);
+      }
+    }, value);
+    return cell.evaluate((el) => getComputedStyle(el).borderTopColor);
+  };
+
+  /**
+   * A TIGHT CROP OF THE TABLE BESIDE THE WHOLE WELL, and the second one is not
+   * decoration: at well scale a 1px ruling is a hairline, and #c9c6d4 against
+   * #a9a6b8 is a difference of 3.3 contrast points spread over single pixels —
+   * the two full-well shots differ by 5 bytes of PNG. Cropped to the table's
+   * own box the lines are the same pixels at a far larger share of the frame,
+   * which is what makes the two candidates comparable by eye at all.
+   *
+   * `page.screenshot({clip})` and NOT `locator.screenshot()`: an element shot
+   * asks the browser to scroll the element into view, and `.tvrow` is absolute
+   * inside a virtualised scroller, so that fires the scroll handler, rebuilds
+   * the window and detaches the node being photographed. `said` has already
+   * parked the row, so the box it reports is on screen and a clip needs no
+   * scroll at all.
+   */
+  const table = body.locator('table').first();
+  const crop = async (file: string): Promise<void> => {
+    await page.screenshot({
+      path: `e2e/screens/${file}.png`, clip: await wellClip(page, table),
+    });
+  };
+
+  // HIS NUMBER, which is what ships.
+  expect(await set(null)).toBe(rgb('#c9c6d4'));
+  await page.locator('.tvscroll').screenshot({ path: 'e2e/screens/frame-near-white-en.png' });
+  await crop('frame-near-white-table-en');
+
+  // `--dim`, the step that is twice today's brightness and still recedes.
+  expect(await set('#a9a6b8')).toBe(rgb('#a9a6b8'));
+  await page.locator('.tvscroll').screenshot({ path: 'e2e/screens/frame-dim-en.png' });
+  await crop('frame-dim-table-en');
+
+  // And the one it moved FROM, so the picture carries the whole ramp the owner
+  // has now judged twice: 3.79:1, 7.99:1 and 11.31:1 on the same table.
+  expect(await set('#6e6e7e')).toBe(rgb('#6e6e7e'));
+  await crop('frame-edge3-table-en');
+
+  // And the page is left as it ships, measured rather than assumed.
+  expect(await set(null)).toBe(rgb('#c9c6d4'));
+});
+
+/**
+ * **HALF OF A COLLAPSED RULING IS NOT PAINTED IN THE TOKEN'S COLOUR, and that
+ * corrects both this item's table and `seq:38`'s.**
+ *
+ * Every ratio either item quotes for the table frame was computed from the HEX
+ * A RULE WAS WRITTEN WITH. Sampled out of the actual PNG instead, one table's
+ * ruling is two colours, in a stable 57/43 split — 5,319 pixels of the token
+ * and 4,043 pixels of a **flat 50% blend of the token over the ground**:
+ *
+ *                        the token   its painted half   share below 3.0
+ *     --edge-3 #6e6e7e      3.79:1        1.82:1        43% of the ruling
+ *     --dim    #a9a6b8      7.99:1        2.85:1        43% of the ruling
+ *     --tvframe #c9c6d4    11.31:1        3.62:1        NONE
+ *
+ * The cause is `border-collapse:collapse` over rows whose heights are not whole
+ * device pixels (`--sp-1`/`--sp-2` padding on a 1.6 line-height at `--fs-0`),
+ * so the browser antialiases each 1px collapsed edge across two device rows at
+ * half intensity each. It is not a defect and it is not fixable by a colour.
+ *
+ * WHAT IT MEANS IS THAT `seq:38` DID NOT ACTUALLY DELIVER A 3:1 FRAME. It
+ * delivered 3.79:1 on 57% of the ruling and 1.82:1 on the rest — and 1.82 is
+ * within a rounding error of the `--edge` #3a3a45 the owner said he could not
+ * see. That is the most likely reason he looked at it and still asked for
+ * brighter, and it is why his number is not merely taste: **#c9c6d4 is the
+ * first step on this ramp at which EVERY pixel of the ruling clears 3.0:1.**
+ * `--dim`'s half measures 2.85 and would still fail.
+ *
+ * THE RULING IS FOUND BY GEOMETRY AND NOT BY COLOUR, and the first attempt at
+ * this test got that wrong in a way worth recording: `--tvframe` and the ground
+ * are both near-greys, so "this pixel lies on the ground→frame line" is very
+ * nearly "this pixel is grey" and it swept up the antialiasing of the `--dim`
+ * header text as though it were part of the frame. A collapsed horizontal
+ * border is the only thing in a table that spans its whole width, so the rows
+ * are found by span instead — which also means a different device scale factor
+ * changes the split this finds and not the claim it checks.
+ */
+test('every pixel of the ruling clears 3:1, and not only the token', async ({ page }) => {
+  await openDocument(page, 'en');
+  const body = await said(page, 'The grand D table');
+  // `page.screenshot({clip})` and not `locator.screenshot()`, for the reason
+  // `said` carries: an element shot scrolls, and a scroll detaches the row.
+  const png = await page.screenshot({
+    clip: await wellClip(page, body.locator('table').first()),
+  });
+  const found = await page.evaluate(async ({ url, ground, frame }) => {
+    const img = new Image();
+    img.src = url;
+    await img.decode();
+    const canvas = document.createElement('canvas');
+    canvas.width = img.width;
+    canvas.height = img.height;
+    const ctx = canvas.getContext('2d');
+    if (ctx === null) throw new Error('no 2d context');
+    ctx.drawImage(img, 0, 0);
+    const data = ctx.getImageData(0, 0, canvas.width, canvas.height).data;
+    const key = (x: number, y: number): string => {
+      const i = (y * canvas.width + x) * 4;
+      return `${data[i]},${data[i + 1]},${data[i + 2]}`;
+    };
+    const groundKey = ground.join(',');
+    // A RULING ROW passes TWO tests, and neither is sufficient alone. It spans
+    // most of the table's width — only a collapsed horizontal border does that;
+    // a row of text is mostly ground and a chip is a few cells wide. AND its
+    // colour is at least a quarter of the way from the ground to the frame,
+    // which rejects the app's own dark surfaces if a clip ever slips off the
+    // well again. The colour test alone was tried first and is not enough:
+    // `--tvframe` and the ground are both near-greys, so "lies between them"
+    // is nearly "is grey" and it swept up antialiased `--dim` header text.
+    const rows: { colour: number[]; pixels: number; y: number }[] = [];
+    for (let y = 0; y < canvas.height; y += 1) {
+      const tally = new Map<string, number>();
+      for (let x = 0; x < canvas.width; x += 1) {
+        const k = key(x, y);
+        tally.set(k, (tally.get(k) ?? 0) + 1);
+      }
+      const [top, n] = [...tally.entries()].sort((a, b) => b[1] - a[1])[0]!;
+      if (top === groundKey) continue;
+      if (n / canvas.width < 0.6) continue;
+      const colour = top.split(',').map(Number);
+      const f = (colour[0]! - ground[0]!) / (frame[0]! - ground[0]!);
+      if (f < 0.25) continue;
+      rows.push({ colour, pixels: n, y });
+    }
+    // Grouped by the colour they are painted in, brightest last.
+    const byColour = new Map<string, { colour: number[]; pixels: number; rows: number }>();
+    for (const row of rows) {
+      const k = row.colour.join(',');
+      const seen = byColour.get(k) ?? { colour: row.colour, pixels: 0, rows: 0 };
+      seen.pixels += row.pixels;
+      seen.rows += 1;
+      byColour.set(k, seen);
+    }
+    return [...byColour.values()].sort((a, b) => a.colour[0]! - b.colour[0]!);
+  }, {
+    url: `data:image/png;base64,${png.toString('base64')}`,
+    ground: [0x10, 0x10, 0x14],
+    frame: [0xc9, 0xc6, 0xd4],
+  });
+
+  const asCss = (c: number[]): string => `rgb(${c[0]}, ${c[1]}, ${c[2]})`;
+  const ground = rgb('#101014');
+  const shown = found.map((f) => `${asCss(f.colour)} on ${f.rows} rows `
+    + `(${ratio(asCss(f.colour), ground).toFixed(2)}:1)`).join('; ');
+
+  // TWO populations, not one — the test would be vacuous if the blend were not
+  // in the paint, and the whole finding is that it is.
+  expect(found.length, `ruling rows: ${shown}`).toBeGreaterThanOrEqual(2);
+  const full = found[found.length - 1]!;
+  const part = found[0]!;
+  expect(full.colour, `ruling rows: ${shown}`).toEqual([0xc9, 0xc6, 0xd4]);
+  expect(part.rows, `ruling rows: ${shown}`).toBeGreaterThan(2);
+  expect(full.rows, `ruling rows: ${shown}`).toBeGreaterThan(2);
+
+  const dim = ratio(asCss(part.colour), ground);
+  const bright = ratio(asCss(full.colour), ground);
+  expect(bright, `the token paints ${bright.toFixed(2)}:1`).toBeGreaterThan(11);
+  // THE CLAIM. The darkest ROW of the ruling clears 3.0:1 — which `--dim`
+  // (2.85 at the same blend) and `--edge-3` (1.82) do not.
+  expect(dim, `the half-painted ruling measures ${dim.toFixed(2)}:1 — ${shown}`)
+    .toBeGreaterThan(3);
+  const halfOf = (hex: string): string => {
+    const g = [0x10, 0x10, 0x14];
+    const c = [1, 3, 5].map((i) => parseInt(hex.slice(i, i + 2), 16));
+    return `rgb(${g.map((v, i) => Math.round(v + (c[i]! - v) / 2)).join(', ')})`;
+  };
+  expect(ratio(halfOf('#a9a6b8'), ground)).toBeLessThan(3);
+  expect(ratio(halfOf('#6e6e7e'), ground)).toBeLessThan(2);
+});
+
+/**
+ * The tint, photographed on the thing it has to survive: a counts table and a
+ * progress-bar block, with a tagged `bash` fence in the same frame so one flat
+ * colour and nine can be compared by eye. If the green ledger reads as source,
+ * the tint is wrong — and that is a judgement about a picture, which is why the
+ * picture is produced here rather than a number.
+ */
+test('the tint is photographed on a ledger, not on code', async ({ page }) => {
+  await openDocument(page, 'en');
+  // The counts table and the progress bars, which are what 148 of the 167
+  // untagged fences on his transcript actually are.
+  await shot(page, 'The counts, as', 'fence-tint-ledger-en');
+  // And the same turn scrolled on, so ONE FLAT COLOUR and NINE are in the same
+  // frame: the tagged `bash` fence below carries its label and its palette, the
+  // untagged block above it carries neither. This is the picture the claim
+  // "it must not read as tagged" is actually settled by.
+  await shot(page, 'The counts, as', 'fence-tint-vs-tagged-en', 330);
 });
 
 /* ══ RTL, WHICH IS WHERE THIS PROJECT HAS FOUND ITS REAL DEFECTS ═══════════ */

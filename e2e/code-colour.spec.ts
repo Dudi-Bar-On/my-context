@@ -1,4 +1,5 @@
 // @basis TASK-inline-code-in-a-conversation-gets-a-font-change-and-nothing,
+// TASK-the-table-frames-want-to-be-near-white-and-an-untagged-code,
 // REQ-the-conversation-archive-is-a-terminal-you-can-scroll-not-a,
 // INV-nothing-is-dropped-silently
 /**
@@ -447,20 +448,27 @@ for (const lang of ['en', 'he'] as const) {
   });
 
   /**
-   * **THE 86.5%, AND THE DECISION THAT THEY GET NO MARK.**
+   * **THE 86.5%, AND THE DECISION THAT THEY GET NO MARK — AND WHAT MOVED.**
    *
    * 160 of 185 fenced blocks in the owner's session declare nothing, and both
    * control blocks here are what those blocks actually hold — a ledger and a
-   * counts table, which are not code in any language. They stay exactly as they
-   * were: boxed by `.tvsaid pre`, monospace, scrollable, and carrying NO chip,
-   * NO label and NO token span.
+   * counts table, which are not code in any language. They carry NO chip, NO
+   * label and NO token span, and that half of the decision is unchanged: the
+   * signal is drawn on the other side, where the label appears on the 25 that
+   * declared something, so colour and label arrive together.
    *
-   * The signal is drawn on the other side instead: the label appears on the 25
-   * that declared something, so colour and label arrive together and a block
-   * with neither declared nothing. A mark on the 160 would be a badge on the
-   * common case explaining the absence of a treatment the rare case gets.
+   * WHAT MOVED IS THE INK, by owner ruling on 2026-09-09 —
+   * `TASK-the-table-frames-want-to-be-near-white-and-an-untagged-code`:
+   * *"at least different bright than white like green or yello kind of as it is
+   * on the TUI"*. This test used to assert these blocks were `--ink` #f0eef6,
+   * the prose colour, and that assertion was the thing he objected to. They now
+   * take `--tvfence` #98c379 — ONE flat colour, not a palette, so it makes no
+   * claim about any token and the "no auto-detection" ruling is untouched. The
+   * distinction from a tagged fence is asserted below and is what `seq:26`
+   * deliberately paired: one colour and no label against nine and a label.
+   * `e2e/code-hue.spec.ts` carries the measurements and the ledger picture.
    */
-  test(`a fence that declares nothing is untouched, and unmarked (${lang})`, async ({ page }) => {
+  test(`a fence that declares nothing is tinted, and unmarked (${lang})`, async ({ page }) => {
     await openDocument(page, lang);
     const body = await said(page, 'Six languages, and two blocks');
     const plain = body.locator('pre:not([data-lang])');
@@ -478,7 +486,10 @@ for (const lang of ['en', 'he'] as const) {
       expect(shown.before, 'no marker on the common case').toBe('none');
       expect(shown.background).toBe(rgb('#0f0f12'));
       expect(shown.overflow).toBe('auto');
-      expect(shown.colour).toBe(rgb('#f0eef6'));
+      // #98c379, the terminal's own green — one flat tint, and NOT `--ink`
+      // #f0eef6, which is what this line asserted until the ruling above.
+      expect(shown.colour).toBe(rgb('#98c379'));
+      expect(shown.colour).not.toBe(rgb('#f0eef6'));
     }
     // The bar chart and the box-drawing characters survive verbatim: this is
     // the text a highlighter would have had to guess at, and nothing did.
@@ -495,6 +506,13 @@ for (const lang of ['en', 'he'] as const) {
     expect(await pre.evaluate((el) => getComputedStyle(el, '::before').content)).toBe('"python"');
     await expect(pre.locator('[class^="tvh-"]')).toHaveCount(0);
     await expect(pre).toContainText('print("hello")');
+    // NOT COLOURED BY SYNTAX, and still not `--ink`. Before the 2026-09-09
+    // ruling this was the same colour as the prose; leaving it there once
+    // untagged fences were tinted would have made the one block that DID say
+    // what it was the least marked block in the well. It takes the same flat
+    // tint as a block that declared nothing — "nothing coloured this" — and its
+    // label remains the thing that says it declared something.
+    await expect(pre).toHaveCSS('color', rgb('#98c379'));
   });
 }
 

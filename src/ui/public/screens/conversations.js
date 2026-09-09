@@ -1187,6 +1187,33 @@ export function laneHref(agentId) {
 }
 
 /**
+ * The address of one session's ROSTER of lanes — `plan:archive seq:41`.
+ *
+ * **A real address, with no change to the shell's router.** `app.js`'
+ * `screenFromHash` splits at the FIRST `/` and hands the rest to the screen,
+ * saying so in as many words: *"the segment after the screen is NOT parsed
+ * here, deliberately."* So `#/conversations/lanes/<id>` reaches this module
+ * exactly as `#/conversations/<id>` does, and `rosterFromHash` below is the
+ * only code that knows what the extra segment means — which is where that
+ * knowledge belongs.
+ *
+ * It is an ADDRESS and not a panel for the reason `laneLink` gives for using a
+ * real `<a>`: a reader can copy it, bookmark it, and open it in a tab of their
+ * own choosing, and none of that is code written here.
+ */
+export function rosterHref(sessionId) {
+  return `#/conversations/lanes/${encodeURIComponent(sessionId)}`;
+}
+
+/** The session a roster address names, or `null` when the hash is not one. */
+export function rosterFromHash(hash) {
+  const id = sessionFromHash(hash);
+  if (id === null || !id.startsWith('lanes/')) return null;
+  const rest = id.slice('lanes/'.length);
+  return rest === '' ? null : rest;
+}
+
+/**
  * The lanes this document can open, keyed by the `Agent` call that dispatched
  * each one.
  *
@@ -1336,19 +1363,87 @@ function laneMark(ctx, lanes, toolUseId) {
  * drawn beside the type for the same reason `seq:13` made a fold name its
  * tools: a fold that says one word forty times cannot be skimmed.
  */
-function stepLabel(ctx, step) {
-  if (step.tool !== null) return mono(step.tool);
+function typeWord(ctx, step) {
+  if (step.tool !== null) return step.tool;
   if (Array.isArray(step.blocks) && step.blocks.includes('tool_result')) {
-    const word = el('span', 'tvresult');
-    word.append(...ctx.t('conv.doc.result'));
-    return word;
+    return ctx.tFlat('conv.doc.result');
   }
   if (typeof step.subtype === 'string' && step.subtype !== '') {
-    return mono(`${step.type} · ${step.subtype}`);
+    return `${step.type} · ${step.subtype}`;
   }
-  if (Array.isArray(step.blocks) && step.blocks.length > 0) return mono(step.blocks.join(' + '));
-  return mono(step.type);
+  if (Array.isArray(step.blocks) && step.blocks.length > 0) return step.blocks.join(' + ');
+  return step.type;
 }
+
+/**
+ * The same word, dressed — mono for an identifier, `.tvresult`'s carry hue for
+ * the one that is a keyed English word rather than a name the harness wrote.
+ *
+ * **It is a wrapper around `typeWord` and not a second copy of that ladder**,
+ * because `quietLine` below names the same types in a summary where only a
+ * STRING will do. Two ladders would drift, and the drift would be a fold whose
+ * collapsed line names a type differently from the row it replaced.
+ */
+function stepLabel(ctx, step) {
+  const word = typeWord(ctx, step);
+  if (step.tool === null && Array.isArray(step.blocks) && step.blocks.includes('tool_result')) {
+    const said = el('span', 'tvresult');
+    said.append(word);
+    return said;
+  }
+  return mono(word);
+}
+
+/**
+ * **Did this record yield anything a reader could look at?** — `plan:archive
+ * seq:39`, and the whole of that item's first decision.
+ *
+ * ── DERIVED, NEVER LISTED ─────────────────────────────────────────────────
+ *
+ * The item was raised on eight type NAMES the owner was shown, and a list of
+ * eight names is wrong twice over: it rots the moment the harness adds a
+ * ninth, and it was already an undercount when it was written. Measured on his
+ * own transcript, 2026-09-09, 32,610 records — **50 distinct `type · subtype`
+ * keys appear inside folds, and 26 of them carry records that draw nothing.**
+ * A hard-coded eight would have collapsed 11,256 rows and left 3,681 more
+ * standing that are exactly as empty.
+ *
+ * So the question asked here is the one `stepParts` itself answers: after
+ * `seq:28`'s field sweep, is there ANY of it left to draw? Every clause below
+ * names one thing `stepParts` would have put on the screen:
+ *
+ *     step.text        the record's own text, whole
+ *     step.input       the arguments `seq:24` captured
+ *     step.detail      the one-line summary of what was asked
+ *     unreadable       a chip saying the line would not parse
+ *     failed           a colour, and a place in the fold's own `{n} failed`
+ *     toolUseId        a lane link, when the roster holds that call
+ *
+ * ── THINKING IS NOT COLLAPSED, AND THAT IS A CORRECTION TO THE ITEM ───────
+ *
+ * A record whose only block is `thinking` passes every clause above — Claude
+ * Code writes no reasoning text to a transcript, so its `text` is empty for
+ * ever (`conv.doc.thinkingNever`). Measured, it is **2,158 records** in this
+ * session, and folding them into a line that says "nothing but their type"
+ * would be false: they say that REASONING HAPPENED, which is a fact the fold
+ * already discloses once, in its own sentence, and which is not bookkeeping.
+ *
+ * Exported and pure so `node --test` can measure it without a browser — the
+ * same bargain `laneIndex` and `matchesNode` make.
+ */
+export function saysNothing(step) {
+  if (step === null || typeof step !== 'object') return false;
+  if (step.unreadable === true || step.failed === true) return false;
+  if (typeof step.text === 'string' && step.text !== '') return false;
+  if (Array.isArray(step.input) && step.input.length > 0) return false;
+  if (typeof step.detail === 'string' && step.detail !== '') return false;
+  if (typeof step.toolUseId === 'string' && step.toolUseId !== '') return false;
+  if (Array.isArray(step.blocks) && step.blocks.includes('thinking')) return false;
+  return true;
+}
+
+/** Types named on the collapsed line before it says "and N more". */
+const TYPES_NAMED = 4;
 
 /**
  * ONE STEP, drawn as its pieces — the summary line, what the tool was asked,
@@ -1638,6 +1733,111 @@ function askParts(ctx, body, step) {
 }
 
 /**
+ * THE RECORDS THAT SAY ONLY THEIR OWN NAME, ON ONE LINE — `plan:archive
+ * seq:39`, and it is OPENABLE.
+ *
+ * ── WHY IT OPENS, WHICH THE ITEM LEFT TO BE DECIDED ───────────────────────
+ *
+ * The item warns that a fold inside a fold may be worse than the problem, and
+ * asks which. It opens, for one reason that outranks the tidiness: **the
+ * record indexes are the only thing these rows ever carried, and they are the
+ * one thing a reader might want.** A reader who is reconciling this document
+ * against the file — which is what a record index is FOR, and what
+ * `conv.copy.took` counts in — needs to know that records 31,359 to 31,366 are
+ * these and not a hole. `INV-nothing-is-dropped-silently` is about what a
+ * reader can REACH, not only about what a count says, and a line that says
+ * "nine records" with no way to learn which nine fails it.
+ *
+ * **And the cost the item feared is not paid here, because this is not a
+ * second fold over the same material.** The outer fold hides a run of
+ * MACHINERY; this hides nothing but a list of indexes and type names, which is
+ * the cheapest possible thing to be behind a disclosure — it is closed, it is
+ * one line, and opening it can never produce a wall of text. Measured on the
+ * owner's own transcript: the rows drawn inside opened folds fall from 27,156
+ * to 14,223, a 47.6% reduction, and the deepest this line can ever be is the
+ * `WORK_RUN_CAP` of 40 index lines.
+ *
+ * ── THE TYPES ARE NAMED, UP TO FOUR ───────────────────────────────────────
+ *
+ * `TYPES_NAMED` and its "and N more" are `drawWork`'s own choice for tool
+ * names two functions down, made again for the same reason: a summary that
+ * names everything is not a summary. Measured, the median collapsed line
+ * covers NINE distinct types and the worst covers fifteen, so naming them all
+ * would put a fifteen-item list on the line that exists to replace a list.
+ *
+ * ── IT WEARS `.tvthink`, AND THAT IS BORROWED RATHER THAN CHOSEN ──────────
+ *
+ * `styles.css` is another lane's file tonight. `.tvthink > summary` is the
+ * only rule in this stylesheet that dresses a `<summary>` INSIDE the well —
+ * `--fs-00` mono, `--dim`, and the `cursor:pointer` a summary does not get on
+ * its own — and it is exactly what this line wants. `.tvquiet` is beside it so
+ * a test can name THIS control rather than counting `<details>` elements, the
+ * note `toNew` and `tvtop` both carry. The rule I would have written is in the
+ * lane's report; nothing here depends on it existing.
+ */
+function quietLine(ctx, steps) {
+  const fold = el('details', 'tvthink tvquiet');
+  const summary = el('summary');
+  // **`.tvdetail` AND NOT `.tvworkn`, WHICH IS THE OBVIOUS CHOICE AND IS
+  // WRONG.** Both are `color: var(--ink)` and either would have drawn the same
+  // picture, but `.tvworkn` is the fold's OWN count — the number a test names
+  // when it means "how many records this run holds" — and a second element
+  // wearing it inside the same `<details>` turns that name into a strict-mode
+  // violation. `arrived` and `copied` carry the same note about `p.tvcount`
+  // one screen down, and this file has now paid for it twice. `.tvdetail` is
+  // the class `askParts` already borrows for exactly this — the bright half of
+  // a line whose rest is dim.
+  const count = el('span', 'tvdetail');
+  count.append(...ctx.t(steps.length === 1 ? 'conv.doc.quiet1' : 'conv.doc.quiet', {
+    n: steps.length,
+  }));
+  summary.append(count);
+
+  const named = [];
+  for (const step of steps) {
+    const word = typeWord(ctx, step);
+    if (!named.includes(word)) named.push(word);
+  }
+  if (named.length > 0) {
+    // **A COMMA BETWEEN THE TYPES, AND `drawWork`'s ` · ` WOULD HAVE BEEN
+    // WRONG HERE.** The fold's own summary joins TOOL NAMES with ` · ` and
+    // that is right, because a tool name is one word. A type word can be two
+    // — `seq:28` made it `attachment · total_tokens_reminder` — so the same
+    // separator drew `attachment · hook_success · system · stop_hook_summary`
+    // on the owner's own document, which reads as four types and is two. Seen
+    // in the browser before this line changed.
+    //
+    // And it is inside `mono`, whose `.m` is `direction:ltr; unicode-bidi:
+    // isolate`: this is a run of identifiers the harness wrote, and on the
+    // Hebrew page a comma-separated Latin list inside an RTL paragraph is
+    // reordered exactly the way `dayText`'s stamp was.
+    const types = el('span', 'tvtools');
+    types.append(mono(named.slice(0, TYPES_NAMED).join(', ')));
+    summary.append(' ', types);
+  }
+  if (named.length > TYPES_NAMED) {
+    const more = el('span');
+    more.append(...ctx.t('conv.doc.quietMore', { n: named.length - TYPES_NAMED }));
+    summary.append(' ', more);
+  }
+  fold.append(summary);
+
+  // Exactly the rows that were removed, and nothing added: the index and the
+  // type, drawn by the same `stepLabel` the fold's own rows use. There is no
+  // body to draw — that is what put them here.
+  const list = el('ol', 'tvsteps');
+  for (const step of steps) {
+    const item = el('li', 'tvstep');
+    const line = el('p', 'tvstephead');
+    line.append(mono(String(step.index)), ' ', stepLabel(ctx, step));
+    item.append(line);
+    list.append(item);
+  }
+  fold.append(list);
+  return fold;
+}
+
+/**
  * A run of machinery, folded to one line — the part `seq:13` says it ADDS to
  * `seq:7`, and the whole reason 27,813 records read as 4,916 nodes.
  *
@@ -1682,12 +1882,43 @@ function drawWork(ctx, body, lanes = NO_LANES) {
 
   const list = el('ol', 'tvsteps');
   let thought = 0;
+  /**
+   * The records that draw nothing but their own type, and the `<li>` held for
+   * them — `plan:archive seq:39`.
+   *
+   * **The slot is placed where the FIRST of them stood**, so the collapsed
+   * line is in the fold at the point the run it replaces began, rather than
+   * swept to the end. Every record it covers keeps its own index inside it, in
+   * file order, so the reader can still read the run in the order it happened.
+   *
+   * **One line per FOLD and not one per run**, which is the item's word and is
+   * also what the transcript asks for. Measured on the owner's own file,
+   * 2026-09-09: 2,002 folds hold at least one such record, and in **396 of
+   * them the empty records are not one contiguous block** — up to six separate
+   * runs inside a single fold. A line per run would have drawn six "nothing
+   * but their type" lines inside one fold, which is the noise this item exists
+   * to end wearing a shorter label.
+   */
+  const quiet = [];
+  let slot = null;
   for (const step of body.steps) {
-    const item = el('li', `tvstep${step.failed === true ? ' tvfail' : ''}`);
     if (Array.isArray(step.blocks) && step.blocks.includes('thinking')) thought += 1;
+    if (saysNothing(step)) {
+      quiet.push(step);
+      if (slot === null) { slot = el('li', 'tvstep'); list.append(slot); }
+      continue;
+    }
+    const item = el('li', `tvstep${step.failed === true ? ' tvfail' : ''}`);
     item.append(...stepParts(ctx, step, lanes));
     list.append(item);
   }
+  // **`span` IS UNTOUCHED AND SO IS THE COUNT ON THE SUMMARY LINE.** The
+  // records stay in the node, stay in `body.steps`, stay inside the copy a
+  // marked passage takes (`passageBody` fills from the RECORD, not from the
+  // DOM, so a closed line below drops nothing) and stay in
+  // `sum(span) === records`. The item was offered dropping them and declined
+  // it on exactly that cost; only their DRAWN FORM collapses.
+  if (slot !== null) slot.append(quietLine(ctx, quiet));
   fold.append(list);
 
   // ── THINKING IS NEVER RECORDED, AND THAT IS SAID ONCE ──────────────────
@@ -1796,6 +2027,45 @@ function mountDocument(ctx, host, outline, back, roster = NO_LANES) {
   if (outline.branch !== null) facts.append(' · ', mono(outline.branch));
   facts.append(' · ', mono(formatBytes(outline.bytes)));
   head.append(facts);
+
+  /**
+   * **THE ROSTER, WHICH THE COUNT USED TO BE THE END OF** — `plan:archive
+   * seq:41`. Until this, a count of helper agents was a dead end everywhere
+   * it was drawn and `mycontext conversation subagents` in a terminal was the
+   * only way to see the list.
+   *
+   * **Here rather than on the list row, and that is a limitation being
+   * disclosed rather than a design.** The list's row is a `<button>` — the
+   * whole row opens the session — and an `<a>` or a second `<button>` nested
+   * inside a `<button>` is invalid markup that browsers un-nest, so the count
+   * on that row cannot become a control without either restructuring the row
+   * or a new rule in `styles.css`, which is another lane's file tonight. The
+   * lane's report names the rule. From the LIST the roster is therefore two
+   * clicks away rather than one.
+   *
+   * **Drawn from `lanes.owner`, not from this document's own id**, which is
+   * what makes it work on a lane as well as on a session: 43 of this
+   * workspace's 264 lanes were dispatched from inside another lane, and the
+   * roster endpoint resolves any id to the session that owns it
+   * (`SubagentListBody.ownerSessionId`). So a reader on a depth-2 lane reaches
+   * its 263 siblings — which is the route the item says some of them have no
+   * other way to be found by.
+   *
+   * A `<button>` and not a link, and the same tab: the roster is a LIST, so
+   * there is no scroll position to lose and no reason to spend a tab on it.
+   * `seq:15`'s new-tab ruling is about THIS document — a virtualised scroll
+   * whose position cannot be recomputed — and it does not generalise to a
+   * page of rows the browser's own Back restores.
+   */
+  if (lanes.read === true && lanes.total > 0) {
+    const roster = el('button', 'tvjump tvlanes');
+    roster.type = 'button';
+    roster.append(...ctx.t(lanes.total === 1 ? 'conv.lane' : 'conv.lanes', { n: lanes.total }));
+    roster.addEventListener('click', () => {
+      ctx.navigate(rosterHref(lanes.owner ?? outline.sessionId));
+    });
+    head.append(roster);
+  }
   host.append(head);
 
   // **A LANE SAYS IT IS A LANE, AND SAYS WHOSE.** Opened in a tab of its own it
@@ -1818,6 +2088,71 @@ function mountDocument(ctx, host, outline, back, roster = NO_LANES) {
       home.rel = 'noopener';
       home.append(...ctx.t('conv.doc.laneHome'));
       from.append(' ', home);
+    }
+    /**
+     * **THE WAY BACK OUT OF THE TAB `seq:15` OPENED** — `plan:archive
+     * seq:40`, and it is here because it was MEASURED to work rather than
+     * assumed.
+     *
+     * The item is right that this needed a measurement: `window.close()` is
+     * specified to work only on a window a script opened, or on one whose
+     * session history holds a single entry, and `laneLink` sets
+     * `rel="noopener"` — so the new tab has **no `window.opener` at all** and
+     * cannot lean on the first clause. Driven in GOOGLE CHROME ITSELF on
+     * 2026-09-09, through a real trusted click on `a.tvlanehome` against this
+     * app on an ephemeral port:
+     *
+     *     window.opener in the new tab                     null
+     *     history.length in the new tab                       1
+     *     window.close() from the page                    CLOSED   target gone
+     *     window.close() after a hash navigation          CLOSED   still gone
+     *
+     * `e2e/conversations.spec.ts` re-takes that measurement in chromium AND
+     * in chrome on every run, because it is a browser rule rather than a fact
+     * about this code, and browser rules move.
+     *
+     * ── WHY IT IS GATED ON `history.length === 1` ────────────────────────
+     *
+     * A reader who reached this lane WITHOUT a new tab — by editing the hash,
+     * or by a route this screen may grow later — has somewhere to go back to,
+     * and closing their only tab would take the session away with it. One
+     * history entry is the honest, measurable signature of "this tab was
+     * opened for this document and has shown nothing else", which is exactly
+     * the tab this control is for. The back-link above is the route in every
+     * other case and is drawn either way.
+     *
+     * ── AND IT IS NEVER A BUTTON THAT SILENTLY DOES NOTHING ──────────────
+     *
+     * If a browser refuses after all, the page SAYS SO in the reader's own
+     * language and points at the link beside it, rather than sitting there
+     * having appeared to work. `INV-nothing-is-dropped-silently` — and this
+     * project has just removed two disclosures for being unreachable.
+     *
+     * **`.tvjump` sets its own colour, background and border**, which is the
+     * item's standing requirement after a Clear button shipped at contrast
+     * 1.0: `--ink-dim` on `--panel-2`, not the user agent's default. It is the
+     * class Top, End and "N new below" already wear, and the label is TWO
+     * WORDS for the reason `styles.css` gives beside `.tvlane` — a sentence
+     * in a bordered mono box wraps into two open-ended boxes.
+     */
+    if (window.history.length === 1) {
+      const shut = el('button', 'tvjump tvlaneshut');
+      shut.type = 'button';
+      shut.append(...ctx.t('conv.doc.laneShut'));
+      shut.addEventListener('click', () => {
+        window.close();
+        // `window.closed` does not become true synchronously in every engine,
+        // so the refusal is read one turn later. A tab that really closed
+        // never runs this.
+        setTimeout(() => {
+          if (window.closed === true) return;
+          shut.disabled = true;
+          const why = el('span', 'tvcut');
+          why.append(...ctx.t('conv.doc.laneShutNo'));
+          from.append(' ', why);
+        }, 250);
+      });
+      from.append(' ', shut);
     }
     host.append(from);
   }
@@ -3303,6 +3638,311 @@ function mountDocument(ctx, host, outline, back, roster = NO_LANES) {
   }
 }
 
+/* ══ THE ROSTER: EVERY LANE ONE SESSION DISPATCHED ═════════════════════════ */
+
+/**
+ * How deep this lane is drawn, with its children after it — **A FLAT LIST WITH
+ * THE CHILDREN INDENTED, NOT A FOLDER TREE.**
+ *
+ * ── THE OWNER RULED THE SHAPE, AND THE MEASUREMENT IS WHY ─────────────────
+ *
+ * `plan:archive seq:41`. Measured on this workspace, 2026-09-09: **221 lanes
+ * at depth 1, 43 at depth 2, and only SEVENTEEN of the 264 have any children
+ * at all.** A folder tree would be 264 rows of which 17 are folders and 247
+ * are leaves — expand and collapse spent on 6.4% of the rows, and the other
+ * 247 put behind nesting they do not need.
+ *
+ * The deciding argument is that **finding a lane is a SEARCH problem and not a
+ * navigation one**. `seq:10` built the filter for sessions; a flat list
+ * inherits it, and a tree cannot — filtering a tree either hides a parent
+ * whose child matched or keeps a parent that did not, and both are lies about
+ * what was searched.
+ *
+ * ── THE TWO SIDES OF THE JOIN SPELL AN AGENT ID DIFFERENTLY ───────────────
+ *
+ * **`agentId` carries the `agent-` prefix and `parentAgentId` does not**, and
+ * this is the first code that ever tried to join them, so nothing had found
+ * it. Measured on this workspace, 2026-09-09, over all 265 rows the endpoint
+ * answers:
+ *
+ *     rows carrying a `parentAgentId`                      43
+ *     of those, whose parent matched an `agentId`           0
+ *     of those, matched after `agent-` is prepended        43   100%
+ *     distinct parents, which is the count seq:41 ruled on 17
+ *
+ * `agentId` is read off the FILE NAME (`agent-<id>.jsonl`) and
+ * `parentAgentId` is copied out of the sidecar, which writes the bare id. So
+ * the ids are keyed here rather than compared: without this every one of the
+ * 43 lanes dispatched from inside another lane would draw at the top level,
+ * which is a flat list that has quietly lost the one fact the indent carries.
+ * The root of it is in `SubagentMeta`/`upsertSubagent` and is in this lane's
+ * report; normalising here costs nothing and needs no rebuild.
+ *
+ * ── AND NOTHING IS DROPPED FOR HAVING A PARENT THAT IS NOT HERE ───────────
+ *
+ * A lane whose `parentAgentId` names something this roster does not hold is
+ * drawn at the top level rather than left out of the walk. `seen` is not
+ * defensiveness for its own sake either: a row that named itself as its own
+ * parent would otherwise recurse for ever, and this list is drawn from an
+ * index a rebuild writes rather than from anything this file controls.
+ *
+ * Exported and pure so `node --test` can measure it without a browser.
+ */
+export function laneKey(id) {
+  return typeof id !== 'string' || id === '' ? null : (id.startsWith('agent-') ? id : `agent-${id}`);
+}
+
+export function rosterOrder(lanes) {
+  const rows = Array.isArray(lanes) ? lanes.filter((l) => l !== null && typeof l === 'object') : [];
+  const kids = new Map();
+  const known = new Set(rows.map((l) => laneKey(l.agentId)));
+  const parentOf = (lane) => {
+    const parent = laneKey(lane.parentAgentId);
+    if (parent === null || !known.has(parent) || parent === laneKey(lane.agentId)) return null;
+    return parent;
+  };
+  for (const lane of rows) {
+    const parent = parentOf(lane);
+    if (parent === null) continue;
+    const list = kids.get(parent) ?? [];
+    list.push(lane);
+    kids.set(parent, list);
+  }
+  const out = [];
+  const seen = new Set();
+  const place = (lane, depth) => {
+    if (seen.has(lane.agentId)) return;
+    seen.add(lane.agentId);
+    const children = kids.get(laneKey(lane.agentId)) ?? [];
+    out.push({ lane, depth, children: children.length });
+    for (const child of children) place(child, depth + 1);
+  };
+  for (const lane of rows) {
+    if (parentOf(lane) !== null) continue;
+    place(lane, 1);
+  }
+  // A cycle among parents would leave rows unplaced; they are drawn rather
+  // than lost, at the top level, where the reader can at least reach them.
+  for (const lane of rows) place(lane, 1);
+  return out;
+}
+
+/** Does this lane match what the reader typed? Exported so `node --test` can measure it. */
+export function laneMatches(lane, needle) {
+  if (needle === '') return true;
+  const hay = `${lane.description ?? ''} ${lane.agentType ?? ''} ${lane.agentId ?? ''}`;
+  return hay.toLowerCase().includes(needle);
+}
+
+/**
+ * How far one level of nesting moves a row's text, in pixels.
+ *
+ * **It is the one number this file invents, and it is here because
+ * `styles.css` is another lane's tonight.** The rule that belongs in the sheet
+ * is in the lane's report; what is written at runtime is a value COMPUTED from
+ * the row's depth, which is what `check-cssom-restatement.ts` distinguishes
+ * from a static restatement — and there is no `.convrow` declaration in the
+ * sheet for it to restate. It is applied to the row's two inner lines rather
+ * than to the row itself: `.row` is `inline-size:100%`, so a margin on the
+ * button would push it past the edge of `.rows`, and a padding on a
+ * `border-box` child cannot.
+ */
+const LANE_INDENT_PX = 18;
+
+function drawLaneRow(ctx, row, open) {
+  const button = el('button', 'row convrow');
+  button.type = 'button';
+
+  const head = el('div', 'convhead');
+  // The lane's own brief, which `seq:24` captures whole and which is the only
+  // thing that makes a row identifiable — an agent id is a hash. A lane whose
+  // sidecar recorded none says so; a fabricated name would be worse than none,
+  // which is `titleNodes`' own rule one screen up.
+  if (typeof row.lane.description === 'string' && row.lane.description !== '') {
+    head.append(el('bdi', 'convtitle', row.lane.description));
+  } else {
+    head.append(...ctx.t('conv.lanes.unnamed'));
+  }
+  button.append(head);
+
+  const meta = el('p', 'small convmeta');
+  meta.append(mono(row.lane.agentId));
+  if (typeof row.lane.agentType === 'string' && row.lane.agentType !== '') {
+    meta.append(' · ', mono(row.lane.agentType));
+  }
+  meta.append(' · ');
+  meta.append(...ctx.t('conv.lanes.records', { n: row.lane.records }));
+  meta.append(' · ', mono(formatBytes(row.lane.bytes)));
+  // **What a parent is, said on the parent's own row.** Seventeen rows of 264
+  // carry this, which is exactly why the shape is a flat list: the fact is
+  // worth a phrase and is not worth a folder.
+  if (row.children > 0) {
+    meta.append(' · ');
+    meta.append(...ctx.t(row.children === 1 ? 'conv.lane' : 'conv.lanes', { n: row.children }));
+  }
+  // And what a CHILD is, on the child's own row. The indent says it visually;
+  // this says it in words, for a reader who cannot see the indent and for the
+  // filtered list, where a parent may not be on screen at all.
+  if (row.depth > 1) {
+    meta.append(' · ');
+    meta.append(...ctx.t('conv.lanes.fromLane'));
+  }
+  button.append(meta);
+
+  const marks = el('p', 'small');
+  if (row.lane.present === false) {
+    const chip = el('span', 'chip warn glyphed');
+    chip.dataset.g = '⦸';
+    chip.append(...ctx.t('conv.pruned'));
+    marks.append(chip, ' ');
+  }
+  if (row.lane.staleBytes > 0) {
+    const chip = el('span', 'chip warn');
+    chip.append(...ctx.t('conv.behindRow', { bytes: formatBytes(row.lane.staleBytes) }));
+    marks.append(chip, ' ');
+  }
+  if (row.lane.scanTruncated === true) {
+    const chip = el('span', 'chip warn glyphed');
+    chip.dataset.g = '⋯';
+    chip.append(...ctx.t('conv.scanCapped'));
+    marks.append(chip, ' ');
+  }
+  if (marks.childNodes.length > 0) button.append(marks);
+
+  if (row.depth > 1) {
+    const inset = `${(row.depth - 1) * LANE_INDENT_PX}px`;
+    for (const line of [head, meta, marks]) line.style.paddingInlineStart = inset;
+  }
+
+  // A lane whose transcript is gone has nothing to open, and the row says so
+  // rather than opening a document that cannot load.
+  if (row.lane.present === false) button.disabled = true;
+  else button.addEventListener('click', () => open(row.lane.agentId));
+  return button;
+}
+
+/**
+ * `#/conversations/lanes/<id>` — the whole roster of one session's lanes.
+ *
+ * **It does not undo `seq:12`.** That item kept lanes OUT of the sessions list
+ * on a measurement — 264 lanes against 2 sessions would bury both real
+ * conversations — and that argument is about the DEFAULT list. This is a
+ * surface a reader asks for by name, on one session, and the sessions list is
+ * untouched.
+ *
+ * **It draws every row.** `boundedList`'s cap is what the sessions list wears,
+ * and it is right there: that list grows without bound across all time. This
+ * one is bounded by how many lanes ONE session dispatched, the endpoint says
+ * so in its own header and answers uncapped for the same reason, and a reader
+ * who came here to browse should not meet a pager. What the item asked to be
+ * measured first — what 264 rows cost to draw — is in the lane's report.
+ */
+async function renderRoster(ctx, root, session, openLane, back) {
+  // `.convlanes` carries no rule and is not meant to: it is a HANDLE, so a
+  // test can name THIS card rather than counting `.card` on a page that holds
+  // more than one. The look is `.card pane`'s, unchanged.
+  const card = el('div', 'card pane convlanes');
+  const title = el('h3');
+  title.append(...ctx.t('conv.lanes.h'));
+  card.append(title);
+
+  const backButton = el('button', 'tvback');
+  backButton.type = 'button';
+  backButton.append(...ctx.t('conv.lanes.back'));
+  backButton.addEventListener('click', back);
+  card.append(backButton);
+
+  const sub = el('p', 'small');
+  sub.append(...ctx.t('conv.lanes.sub'));
+  card.append(spaced(sub));
+
+  const of = el('p', 'small');
+  of.append(...ctx.t('conv.lanes.of'), ' ', mono(session));
+  card.append(of);
+  root.append(card);
+
+  let body;
+  try {
+    body = await ctx.api(`/api/conversations/${encodeURIComponent(session)}/subagents`);
+  } catch (error) {
+    // Drawn INSTEAD of a list, never beside an empty one: an endpoint that
+    // refused and a session that dispatched nothing are two facts.
+    card.append(errorNote(error.message));
+    return;
+  }
+
+  if (body.indexed === false) {
+    const note = el('p', 'small');
+    note.append(...ctx.t('conv.neverScanned'));
+    card.append(spaced(note));
+    const cmd = el('p', 'plate convcmd');
+    cmd.append(mono(body.rebuild));
+    card.append(cmd);
+    return;
+  }
+
+  const all = rosterOrder(body.subagents ?? []);
+  if (all.length === 0) {
+    const none = el('p', 'small');
+    const chip = el('span', 'chip unmeas glyphed');
+    chip.dataset.g = '◌';
+    chip.append(...ctx.t('conv.lanes.none'));
+    none.append(chip);
+    card.append(spaced(none));
+    return;
+  }
+
+  // The lanes NOTHING on a transcript page can open, said once here as well as
+  // on the document — this roster is the only route to them, so it is the one
+  // surface where the number changes what a reader does.
+  if (typeof body.unlinked === 'number' && body.unlinked > 0) {
+    const unlinked = el('p', 'small spill');
+    unlinked.append(...ctx.t('conv.doc.lanesUnlinked', {
+      n: body.unlinked, total: body.total,
+    }));
+    card.append(spaced(unlinked));
+  }
+
+  /**
+   * The box, and it filters IN THE PAGE.
+   *
+   * `seq:10`'s session filter is a query the server answers, because that list
+   * is a window over an index that may hold far more than is drawn. This
+   * answer is whole — the endpoint is uncapped and every row is already here —
+   * so a round trip per keystroke would buy nothing and would put a settle
+   * delay between the reader and their own answer.
+   */
+  const bar = el('div', 'convfilter');
+  bar.setAttribute('role', 'search');
+  bar.setAttribute('aria-label', ctx.tFlat('conv.lanes.find'));
+  const wrap = el('label', 'convfield');
+  const name = el('span', 'convfieldname');
+  name.append(...ctx.t('conv.lanes.find'));
+  const find = el('input', 'convfind');
+  find.type = 'search';
+  wrap.append(name, find);
+  bar.append(wrap);
+  card.append(bar);
+
+  const count = el('p', 'small');
+  count.setAttribute('aria-live', 'polite');
+  card.append(count);
+  const rows = el('div', 'rows');
+  card.append(rows);
+
+  const paint = () => {
+    const needle = find.value.trim().toLowerCase();
+    const shown = needle === '' ? all : all.filter((r) => laneMatches(r.lane, needle));
+    count.replaceChildren();
+    if (needle === '') count.append(...ctx.t('conv.lanes.all', { n: all.length }));
+    else if (shown.length === 0) count.append(...ctx.t('conv.lanes.noMatch', { total: all.length }));
+    else count.append(...ctx.t('conv.lanes.matched', { n: shown.length, total: all.length }));
+    rows.replaceChildren(...shown.map((row) => drawLaneRow(ctx, row, openLane)));
+  };
+  find.addEventListener('input', paint);
+  paint();
+}
+
 /* ══ THE SCREEN ════════════════════════════════════════════════════════════ */
 
 /** `#/conversations/<id>` — the id is the rest of the hash, or `null`. */
@@ -3341,6 +3981,18 @@ export async function render(root, ctx) {
   const session = sessionFromHash(location.hash);
   const open = (id) => { ctx.navigate(`#/conversations/${encodeURIComponent(id)}`); };
   const back = () => { ctx.navigate('#/conversations'); };
+
+  // **THE ROSTER, ASKED FOR BY ADDRESS** — `plan:archive seq:41`. Taken before
+  // the session branch because `sessionFromHash` cannot tell `lanes/<id>` from
+  // an id; `rosterFromHash` is the only code that knows the extra segment
+  // means anything, which is where `app.js`' router says that knowledge goes.
+  const roster = rosterFromHash(location.hash);
+  if (roster !== null) {
+    await renderRoster(ctx, root, roster, open, () => {
+      ctx.navigate(`#/conversations/${encodeURIComponent(roster)}`);
+    });
+    return;
+  }
 
   if (session === null) {
     // The LIST is an ordinary list and wears the app's own card. Only the
