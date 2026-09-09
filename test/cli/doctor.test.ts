@@ -353,8 +353,18 @@ test('the summary total matches the number of individually printed findings', ()
   withProject((cwd) => {
     for (let i = 0; i < 3; i++) writeItem(cwd, `CONST-${i}`, 'constraint', `scope:\n  - "src/gone${i}/**"\n`);
     const { out } = run(['doctor'], cwd);
-    // Six: one `dead_scope` and one `summary_absent` per raw-written item.
-    assert.match(out, /across 6 finding\(s\)/);
+    // Seven: one `dead_scope` and one `summary_absent` per raw-written item,
+    // plus one `contradiction_pair`.
+    //
+    // The seventh is not fixture noise and is left standing deliberately.
+    // `writeItem` gives all three items the body "Body." and a title that is
+    // their own id, so after `overlapTokens` drops the digits every pair of them
+    // is WORD-IDENTICAL — `{const, body}` against `{const, body}`, jaccard 1.0.
+    // Two governing normative items that say the same words are exactly what
+    // `checkCorpusContradictions` (plan:contra seq:3) exists to put in front of
+    // a person, and a check that stayed quiet here would be wrong. Its per-item
+    // cap is why three identical items produce ONE finding and not three.
+    assert.match(out, /across 7 finding\(s\)/);
   });
 });
 

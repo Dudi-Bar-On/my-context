@@ -11,6 +11,16 @@ import { scopePolicyFor, skippedKeyNotice, type Config } from '../core/config.ts
 import {
   governs, isEligible, itemCost, standDownFields, STOOD_DOWN_STATUSES,
 } from '../core/select.ts';
+// `plan:contra seq:3` — the DRAIN. The gate's own predicates, its own
+// measurement and its own verdict log, so the sweep and the write path cannot
+// come to different answers about the same pair. `verdict-store.ts` exists so
+// this module can read those rulings without importing the one that writes
+// items: `ui/read-model.ts` reaches this file for `/api/doctor`.
+import {
+  governsNow, inContradictionScope, latestVerdicts, overlapParts, pairKey,
+  CONTRADICTION_THRESHOLD, OVERLAP_THRESHOLD,
+} from '../core/overlap.ts';
+import { contradictionBasis, readVerdicts } from '../core/verdict-store.ts';
 import {
   BLOCKED_STATE, buildTaskIndex, DONE_STATE, NEEDS_FIELD, readNeeds, STATE_FIELD, taskState,
   workItems,
@@ -2980,6 +2990,254 @@ export function checkRetiredStillBinding(items: Item[]): Finding[] {
 }
 
 /**
+ * **THE DRAIN — the contradictions already in the corpus, found and REPORTED,
+ * NEVER GATED.**
+ *
+ * `plan:contra seq:3`; design of record
+ * `docs/superpowers/specs/2026-09-07-contradiction-gate-design.md` §9. The gate
+ * (`contradictionGate`, core/overlap.ts) guards NEW writes only, and turning it
+ * on did nothing about what was already written. In one working day this
+ * project found **five superseded instructions being acted on as current**,
+ * including two comment blocks in `e2e/app.ts` asserting opposite things about
+ * which corpus it uses, forty lines apart, both live. This is how that debt
+ * drains: a pairwise sweep over the items that currently govern, reporting the
+ * closest pairs for a person to settle.
+ *
+ * ── IT NEVER GATES, AND THE TITLE OF ITS OWN ITEM SAYS SO ───────────────────
+ *
+ * `info`, which keeps it off `exitCode` (which reads `counts.errors`), and it
+ * must never be anything else. The reason is the one this project keeps
+ * relearning rather than a preference: **a gate that fires on a large
+ * pre-existing population is a gate people mute, and a muted gate has stopped
+ * gating.** Measured twice in the week this was written — `cssom-restatement`
+ * spent a day red over a line number and four lanes recorded it as "the known
+ * pre-existing failure" and worked around it; two `palette-lib` failures sat in
+ * a "known-red" bucket for a day and turned out to need one row. It is the same
+ * ruling `check-cited-items` and `check-basis`' RETIRED tier already carry one
+ * layer up.
+ *
+ * ── ONE SET OF RULINGS, SHARED WITH THE GATE ───────────────────────────────
+ *
+ * §9 is explicit: *"a pair already ruled distinct must not be reported here
+ * either, and a verdict that has lapsed because one item changed meaning SHOULD
+ * be. Otherwise the drain and the gate would disagree about the same pair,
+ * which is the failure this whole subject exists to prevent."* So this reads
+ * the gate's own log through `readVerdicts` (core/verdict-store.ts), keys on
+ * `pairKey`, and lapses on `contradictionBasis` exactly as `verdictHolds` does.
+ * The log is the only state; nothing here writes.
+ *
+ * The POPULATION is the gate's too — `governsNow` and `inContradictionScope`
+ * for the candidates, `overlapScore >= CONTRADICTION_THRESHOLD` for the pair —
+ * so no pair the gate would raise on a write is invisible here.
+ *
+ * ── BUT THE RANKING IS NOT THE GATE'S, AND THAT IS A MEASUREMENT ───────────
+ *
+ * Measured over this corpus on 2026-09-10 — 1,076 items, 208 governing and in
+ * scope by §3, 21,528 pairs:
+ *
+ *   band   <0.10   0.10-0.20   0.20-0.30   0.30-0.35   0.35-0.40   0.40-0.45   0.45+
+ *   pairs    370       8,364      11,079       1,170         313         150      82
+ *
+ * Of the **82** pairs at or above `CONTRADICTION_THRESHOLD`, **72 involve one
+ * item**: `REF-the-d-numbers-what-each-one-means-and-which-are-only`, a pinned
+ * 808-token reference index (median in-scope item: 161 tokens). Its `jaccard`
+ * with those 72 partners is **0.13–0.16** — they are not about the same subject
+ * at all. The score is coming entirely from `containment * 0.8`, which is
+ * measuring LENGTH: almost any ordinary item's vocabulary is nearly a subset of
+ * an 808-token English body. Ranked by the gate's score, this report would be
+ * 88% one long item.
+ *
+ * **So it ranks by `jaccard`**, the symmetric half of the same measurement, and
+ * the difference is visible in the output: the top of the jaccard order is
+ * `DEC-the-ui-upkeep-is-off-unless-a-port-is-configured` against
+ * `REQ-the-ui-server-is-running-whenever-the-owner-looks`, and
+ * `RULE-drive-the-ui-through-playwright-while-doing-the-work` against
+ * `RULE-playwright-is-how-the-ui-is-tested-and-it-is-the-most` — real pairs of
+ * governing items about one subject, which is what a person can settle. Both
+ * numbers are printed on every finding so the reader can see which half carried
+ * it. `PER_ITEM` then caps one item to one finding, so no single hub can fill
+ * the report even within the jaccard order.
+ *
+ * ── THE LIMIT, STATED ONCE, BECAUSE THE NUMBER MUST NOT BE READ WIDER ──────
+ *
+ * **This cannot rank the corpus's own worked example into view, and that was
+ * measured, not feared.** `DEC-the-ui-is-developed-against-a-simulated-corpus-
+ * until-the` versus `INSTR-testing-happens-against-the-current-corpus-and-an-
+ * exception` is the contradiction §1 of the design opens with — it cost a
+ * morning of misdiagnosis, and both items were live at the time. It scores
+ * **0.267, jaccard 0.150**: far below the threshold, among 11,079 pairs in the
+ * 0.20–0.30 band, and **no lexical cutoff exists that admits it and excludes
+ * them**. The maximum jaccard between ANY two governing in-scope items in this
+ * corpus is 0.345.
+ *
+ * So what this check reports is *the closest pairs*, and that is all it claims.
+ * It is a FLOOR and not a census, the coverage line says so in as many words,
+ * and a contradiction between two items that share little vocabulary is
+ * invisible here. That is also why §12's ruling stands: no negation heuristics,
+ * no embedding model, no new dependency — the honest fix for the rest is a
+ * person reading, and this check exists to put the cheapest ten pairs in front
+ * of them rather than to pretend the other 21,446 were examined.
+ */
+export const CONTRADICTION_DRAIN_CAP = 10;
+export const CONTRADICTION_DRAIN_PER_ITEM = 1;
+
+/** One pair the sweep raised, with both halves of its measurement. */
+interface DrainPair {
+  a: Item;
+  b: Item;
+  score: number;
+  jaccard: number;
+}
+
+export function checkCorpusContradictions(root: string, items: Item[]): Finding[] {
+  const candidates = items.filter(
+    (i) => governsNow(i.status) && inContradictionScope(i.type, i.always),
+  );
+  // Nothing to compare is NOT a clean corpus, and it is not reported as one:
+  // with fewer than two governing in-scope items there is no pair, and the
+  // coverage line below says how many were compared rather than leaving a
+  // silence to be read as a verdict (`STD-a-measured-zero-is-drawn-and-named`).
+  let compared = 0;
+  const raised: DrainPair[] = [];
+  for (let i = 0; i < candidates.length; i++) {
+    for (let j = i + 1; j < candidates.length; j++) {
+      compared++;
+      const parts = overlapParts(candidates[i]!, candidates[j]!);
+      if (parts.score < CONTRADICTION_THRESHOLD) continue;
+      raised.push({
+        a: candidates[i]!, b: candidates[j]!, score: parts.score, jaccard: parts.jaccard,
+      });
+    }
+  }
+
+  // **The gate's own rulings, honoured here by reading the gate's own log.** A
+  // pair somebody already settled is gone from this report exactly as it is
+  // gone from the gate's refusal, and it comes back in both places on the same
+  // event: either item's `contradictionBasis` moving, which is what "the
+  // verdict lapsed because one item changed meaning" means.
+  //
+  // A verdict log that cannot be READ throws out of `readVerdicts` on purpose
+  // ("cannot read" and "nothing was ruled" are opposite facts), and `runChecks`
+  // turns a throwing check into one `check_failed` finding — which is the right
+  // outcome: the sweep reporting every settled pair again would be the wall §7
+  // exists to prevent, reached through a silent read.
+  const settled = latestVerdicts(readVerdicts(root));
+  const basis = new Map(candidates.map((i) => [i.id, contradictionBasis(i)]));
+  const holds = (p: DrainPair): boolean => {
+    const recorded = settled.get(pairKey(p.a.id, p.b.id));
+    if (recorded === undefined) return false;
+    const aFirst = recorded.a === p.a.id;
+    return (aFirst ? recorded.aBasis : recorded.bBasis) === basis.get(p.a.id) &&
+      (aFirst ? recorded.bBasis : recorded.aBasis) === basis.get(p.b.id);
+  };
+  const open = raised.filter((p) => !holds(p));
+
+  // ── THE JACCARD FLOOR, AND BOTH NUMBERS IN IT ALREADY EXISTED ─────────────
+  //
+  // A pair is in the POPULATION when it clears `CONTRADICTION_THRESHOLD` on the
+  // gate's own score, which is what makes the drain and the gate agree about
+  // which pairs exist. It is REPORTED only when its `jaccard` also clears
+  // `OVERLAP_THRESHOLD` — the 0.2 that has meant "this much lexical overlap is
+  // worth putting in front of a person" since the Capture screen's hint
+  // shipped, applied here to the symmetric half.
+  //
+  // **Neither number is invented for this check, and the floor was measured
+  // rather than chosen.** Without it the first run reported ten pairs and the
+  // bottom four carried jaccards of 0.16, 0.12, 0.09 and 0.05 —
+  // `CONST-node-24-no-build-step` against a requirement about README
+  // documentation, at jaccard 0.05, where the 0.46 score is the two bodies'
+  // lengths and nothing else. With it, the report is the six pairs of governing
+  // items that actually share a subject. The 76 it drops are counted and named
+  // in the coverage line, because "dropped" and "absent" are different facts.
+  const subject = open.filter((p) => p.jaccard >= OVERLAP_THRESHOLD);
+
+  // Jaccard first — see the docblock for the 72-of-82 measurement that decided
+  // it — then the gate's score, then the ids, so the order is a fact about the
+  // corpus rather than about the order two equal pairs happened to arrive in.
+  subject.sort((x, y) =>
+    y.jaccard - x.jaccard || y.score - x.score ||
+    (x.a.id === y.a.id ? x.b.id.localeCompare(y.b.id) : x.a.id.localeCompare(y.a.id)));
+
+  const shown: DrainPair[] = [];
+  const appearances = new Map<string, number>();
+  for (const p of subject) {
+    if (shown.length >= CONTRADICTION_DRAIN_CAP) break;
+    const na = appearances.get(p.a.id) ?? 0;
+    const nb = appearances.get(p.b.id) ?? 0;
+    if (na >= CONTRADICTION_DRAIN_PER_ITEM || nb >= CONTRADICTION_DRAIN_PER_ITEM) continue;
+    appearances.set(p.a.id, na + 1);
+    appearances.set(p.b.id, nb + 1);
+    shown.push(p);
+  }
+
+  const findings: Finding[] = [];
+  for (const p of shown) {
+    const said = (i: Item): string =>
+      i.summary === null ? '(no summary — read the item before ruling on it)' : `"${i.summary}"`;
+    findings.push({
+      // `info` and never anything else — see the docblock. The remedy is ACK
+      // because the question genuinely has an answer this reader can give: read
+      // the two items and decide. It is RULABLE in this file's own terms, and
+      // `ack` lapses on a content change exactly as a verdict does, so a pair
+      // whose meaning moves comes back.
+      level: 'info', code: 'contradiction_pair', item: p.a.id,
+      remedy: ACK,
+      message:
+        `may contradict ${p.b.id} (${p.b.severity === 'hard' ? `${p.b.type} · hard` : p.b.type}), ` +
+        `which also governs. Overlap ${p.score.toFixed(2)}, of which jaccard ` +
+        `${p.jaccard.toFixed(2)} — the lower the jaccard, the more of the score is the two ` +
+        `items' LENGTHS rather than their subject.\n` +
+        `    ${p.a.id}: ${said(p.a)}\n` +
+        `    ${p.b.id}: ${said(p.b)}\n` +
+        `    Nothing in this product can tell you whether these conflict: the match is LEXICAL, ` +
+        `and two items that AGREE score exactly as high as two that conflict. If both can be ` +
+        `true, record it with \`mycontext ack ${p.a.id} contradiction_pair\`; if one replaces ` +
+        `the other, \`mycontext supersede <the wrong one> --by <the right one>\`, which also ` +
+        `tells you which tests rest on it.`,
+    });
+  }
+
+  // ── THE COVERAGE LINE: ONE PER RUN, NEVER PER ITEM ─────────────────────────
+  //
+  // This file's rule is that what a check cannot measure is disclosed ONCE and
+  // never beside each finding, and §9's whole claim rests on the disclosure
+  // being honest: the 0.267 measurement below is what stops this report being
+  // read as "these are the contradictions in the corpus".
+  //
+  // It rides WITH the findings, like `body_review_limits`, for that check's
+  // stated reason: "a clean corpus's summary counts are exactly 0/0/0" is
+  // pinned in three test files and is what makes `doctor` usable in CI. The
+  // cost is named rather than hidden — on a corpus where no pair clears the
+  // threshold, this says nothing, and "nothing found" is still not "nothing
+  // present".
+  if (findings.length > 0) {
+    findings.push({
+      level: 'info', code: 'contradiction_drain_limits',
+      about: 'contradiction_pair',
+      remedy: NOTHING,
+      message:
+        `${compared} pair(s) of the ${candidates.length} item(s) that currently govern were ` +
+        `compared; ${raised.length} scored at or above ${CONTRADICTION_THRESHOLD}, ` +
+        `${raised.length - open.length} of those are already settled by a recorded ruling, ` +
+        `${open.length - subject.length} score below ${OVERLAP_THRESHOLD} on jaccard and are ` +
+        `dropped as LENGTH rather than subject, and ${shown.length} of the remaining ` +
+        `${subject.length} are shown (at most ${CONTRADICTION_DRAIN_PER_ITEM} per item and ` +
+        `${CONTRADICTION_DRAIN_CAP} in total, so one long item cannot fill the report). This ` +
+        `NEVER gates. It is a FLOOR and not a census: the one contradiction this project ` +
+        `actually measured — ` +
+        `DEC-the-ui-is-developed-against-a-simulated-corpus-until-the against ` +
+        `INSTR-testing-happens-against-the-current-corpus-and-an-exception, which cost a morning ` +
+        `of misdiagnosis while both were live — scores 0.267, below the cutoff and among ` +
+        `thousands of pairs that say nothing about each other. No lexical cutoff admits it and ` +
+        `excludes them, so a contradiction between two items that share little vocabulary is ` +
+        `INVISIBLE here. "None found" is not "none present".`,
+    });
+  }
+
+  return findings;
+}
+
+/**
  * **A second `.my_context` below this one, which would shadow it.**
  *
  * `findProjectRoot` walks UP from the session's working directory and stops at
@@ -4285,6 +4543,7 @@ export function runChecks(opts: {
     () => checkAssumptionOverdue(opts.root, opts.items),
     () => checkReferenceNoSource(opts.items),
     () => checkRetiredStillBinding(opts.items),
+    () => checkCorpusContradictions(opts.root, opts.items),
     () => checkNestedCorpus(opts.root, opts.repoRoot),
     () => checkForeignStore(opts.repoRoot),
   ];

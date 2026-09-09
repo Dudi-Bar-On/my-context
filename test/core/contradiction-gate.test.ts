@@ -37,9 +37,14 @@ import assert from 'node:assert/strict';
 import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs';
 import path from 'node:path';
 import { itemSummaryBasis } from '../../src/core/content-hash.ts';
+import { createItem, updateItem } from '../../src/core/mutate.ts';
+// The verdict log's read half moved to `core/verdict-store.ts` so the drain
+// (`checkCorpusContradictions`, doctor/checks.ts) can read the same rulings the
+// gate honours without importing the module that writes items —
+// `plan:contra seq:3`. Nothing about the contract changed.
 import {
-  contradictionBasis, contradictionLogPath, createItem, readVerdicts, updateItem,
-} from '../../src/core/mutate.ts';
+  contradictionBasis, contradictionLogPath, readVerdicts,
+} from '../../src/core/verdict-store.ts';
 import {
   contradictionGate, contradictionRefusal, inContradictionScope, pairKey, retiredButGoverning,
   unknownDispositionRefusal, CONTRADICTION_THRESHOLD, GATED_CATEGORIES, OVERLAP_CAP,

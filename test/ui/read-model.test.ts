@@ -1542,24 +1542,45 @@ test('/api/status is `status --json`\'s document, composed from the same functio
     // the four numbers are asserted to SUM to what the checker returned — the
     // property that stops the split from losing a finding between the two.
     const findings = checksFor(ws, items);
+    // ── THE DISCLOSURES ARE EXCLUDED, AND THIS TEST NOW SAYS SO ─────────────
+    //
+    // `apiStatus` has always dropped `about !== undefined` from the tally, and
+    // its own comment gives the reason: a note ABOUT A CHECK draws no row on
+    // the Doctor screen and `summarize` leaves it out of the terminal's counts,
+    // so a badge that counted it would state a number no surface a reader can
+    // open agrees with. The expectation below used to omit that clause and
+    // still passed, because this fixture produced no disclosure at all — so the
+    // assertion was agreeing with the endpoint by accident rather than
+    // verifying its contract.
+    //
+    // It produces one now. `checkCorpusContradictions` (plan:contra seq:3)
+    // reports a `contradiction_pair` here and rides a
+    // `contradiction_drain_limits` disclosure with it, and the pair is a TRUE
+    // one that this fixture builds on purpose: `enrich` clones `RULE-pin-me`
+    // into `RULE-a-captured-rule`, so the two items carry the same body
+    // word-for-word. Two governing normative items saying the same words is
+    // exactly what that check exists to surface.
+    const reportable = findings.filter((x) => x.about === undefined);
+    assert.equal(findings.length - reportable.length, 1, 'one disclosure, and it is excluded below');
     assert.deepEqual(body.health, {
-      errors: findings.filter((x) => x.level === 'error' && x.acknowledged !== true).length,
-      warnings: findings.filter((x) => x.level === 'warn' && x.acknowledged !== true).length,
-      infos: findings.filter((x) => x.level === 'info' && x.acknowledged !== true).length,
-      acknowledged: findings.filter((x) => x.acknowledged === true).length,
+      errors: reportable.filter((x) => x.level === 'error' && x.acknowledged !== true).length,
+      warnings: reportable.filter((x) => x.level === 'warn' && x.acknowledged !== true).length,
+      infos: reportable.filter((x) => x.level === 'info' && x.acknowledged !== true).length,
+      acknowledged: reportable.filter((x) => x.acknowledged === true).length,
     });
     assert.equal(
       body.health.errors + body.health.warnings + body.health.infos + body.health.acknowledged,
-      findings.length,
-      'every finding the checker returned is in exactly one of the four numbers: a split that '
-      + 'lost one would make the badge quietly under-report, which is the defect this whole '
-      + 'change is against',
+      reportable.length,
+      'every finding the checker returned that draws a row is in exactly one of the four '
+      + 'numbers: a split that lost one would make the badge quietly under-report, which is the '
+      + 'defect this whole change is against',
     );
-    assert.deepEqual(body.health, { errors: 1, warnings: 7, infos: 1, acknowledged: 0 },
+    assert.deepEqual(body.health, { errors: 1, warnings: 7, infos: 2, acknowledged: 0 },
       'all three levels are non-zero, so no field of the tally can be a hard-coded 0');
     assert.equal(
-      body.health.errors + body.health.warnings + body.health.infos, findings.length,
-      'every finding lands in exactly one level — a tally that drops one is the defect',
+      body.health.errors + body.health.warnings + body.health.infos, reportable.length,
+      'every finding that draws a row lands in exactly one level — a tally that drops one is '
+      + 'the defect',
     );
   } finally { f.done(); }
 });
@@ -1652,6 +1673,14 @@ test('/api/doctor is runChecks verbatim — unfiltered, ungrouped, unsorted', ()
       ['warn', 'summary_absent', 'RULE-always-use-posix-paths'],
       ['warn', 'summary_absent', 'RULE-never-log-the-customer-email'],
       ['warn', 'summary_absent', 'RULE-pin-me'],
+      // `checkCorpusContradictions` (plan:contra seq:3), and it is a TRUE
+      // finding this fixture builds on purpose: `enrich` clones `RULE-pin-me`
+      // into `RULE-a-captured-rule`, so the two carry the same body word for
+      // word. Two governing normative items saying the same words is the thing
+      // that check exists to put in front of a person. It reports at `info` and
+      // never gates, and the disclosure beside it states the limit once.
+      ['info', 'contradiction_pair', 'RULE-a-captured-rule'],
+      ['info', 'contradiction_drain_limits', null],
     ]);
     for (const finding of findings) {
       assert.ok(['error', 'warn', 'info'].includes(finding.level));

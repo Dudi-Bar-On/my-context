@@ -16,8 +16,19 @@ import {
   contradictionGate, contradictionRefusal, inContradictionScope, latestVerdicts,
   unknownDispositionRefusal, CONTRADICTION_PROTOCOL,
   type ContradictionCandidate, type ContradictionDisposition, type ContradictionDraft,
-  type ContradictionItem, type ContradictionSurface, type ContradictionVerdict,
+  type ContradictionItem, type ContradictionSurface,
 } from './overlap.ts';
+// The verdict log's READ half, lifted to a module that never writes so that
+// `doctor/checks.ts` — which the UI server's graph reaches — can read the same
+// log this file appends to. `plan:contra seq:3` requires the drain and the gate
+// to honour one set of rulings; one reader is how they cannot disagree.
+import {
+  contradictionBasis, contradictionLogPath, readVerdicts, verdictsDir,
+} from './verdict-store.ts';
+// `plan:contra seq:2` §8: the one moment somebody knows which tests rest on an
+// item is the moment it is retired. It READS and never writes — see that
+// module's header, and see `restingTestsSaid` for why it can never gate.
+import { restingTestsSaid, testsRestingOn } from './tests-resting-on.ts';
 import { normalizePosix } from './paths.ts';
 import {
   auditMutation, normalizeSource, persist, projectItem, projectItems, requireWritableItem,
@@ -397,92 +408,6 @@ function itemAtPath(ctx: MutationContext, filePath: string): Item {
 // and a bypass "would defeat §2 entirely". The two gates therefore sit at
 // different depths on purpose, and neither position is a mistake about the
 // other.
-
-/**
- * **What an item's meaning hashes to, for the purpose of remembering a
- * ruling about it.**
- *
- * `summary_of` is the field the product already maintains for exactly this
- * question — it is what `summary_stale` compares against and what the summary
- * gate fires on — so §7 keys verdicts to it. It has one hole, and the fallback
- * is the fix rather than a second mechanism:
- *
- * `stampSummary` writes `summaryOf: null` for an item with no summary, and
- * `null` never moves. A verdict keyed to it could therefore never lapse, and a
- * pair involving an unsummarised item would be silenced permanently by one
- * ruling — the exact failure §7 exists to prevent, arriving through the field
- * §7 chose. So an unsummarised item is keyed to its LIVE summarised-content
- * hash, which is the same value `summary_of` would hold if it had one. The
- * consequence is stated rather than hidden: on such an item the verdict lapses
- * on any content edit, including a mechanical one, because there is no summary
- * for `--summary-unchanged` to leave standing and so nothing to carry forward.
- */
-export function contradictionBasis(item: Item): string {
-  return item.summaryOf ?? itemSummaryBasis(item);
-}
-
-/** `.my_context/.verdicts/` — the audit log's shape, and its `.gitignore`. */
-export function verdictsDir(root: string): string {
-  return path.join(root, '.verdicts');
-}
-
-export function contradictionLogPath(root: string): string {
-  return path.join(verdictsDir(root), 'contradiction.jsonl');
-}
-
-/**
- * The log's read contract, and it is the audit log's, for the reason §7 gives:
- * append-only survived concurrent writers on this project where a
- * read-modify-write destroyed 1–21 rows per run.
- *
- * A damaged line THROWS rather than being skipped. "This log cannot be read"
- * and "nothing has been ruled" are opposite facts, and answering the first
- * with the second would re-raise every settled pair in the corpus at once —
- * which is the wall §7 exists to prevent, reached by a silent read.
- */
-function verdictSpec(root: string): JsonlLogSpec {
-  const file = contradictionLogPath(root);
-  return {
-    file,
-    protocol: CONTRADICTION_PROTOCOL,
-    validate: (row) => {
-      if (typeof row.a !== 'string' || row.a === '') return 'has no usable "a"';
-      if (typeof row.b !== 'string' || row.b === '') return 'has no usable "b"';
-      if (row.verdict !== 'distinct' && row.verdict !== 'supersedes') {
-        return 'has no usable "verdict"';
-      }
-      if (typeof row.aBasis !== 'string' || row.aBasis === '') return 'has no usable "aBasis"';
-      if (typeof row.bBasis !== 'string' || row.bBasis === '') return 'has no usable "bBasis"';
-      if (typeof row.ruledAt !== 'string' || row.ruledAt === '') return 'has no usable "ruledAt"';
-      return null;
-    },
-    refuse: (line, reason) => new Error(
-      `my_context: contradiction verdict log line ${line} ${reason} (${file}). Every ruling ` +
-      `about a pair of items is recorded there, so a line that cannot be read is a ruling ` +
-      `that cannot be honoured — and skipping it would re-open a pair somebody already ` +
-      `settled. Nothing was written. Repair or remove the line, then retry.`,
-    ),
-    unreadable: (err) => new Error(
-      `my_context: the contradiction verdict log could not be read (${file}): ${
-        err instanceof Error ? err.message : String(err)}. "Cannot read" is not "nothing was ` +
-        `ruled", so nothing was written.`,
-    ),
-  };
-}
-
-export function readVerdicts(root: string): ContradictionVerdict[] {
-  return readJsonlFile(verdictSpec(root)).map((row) => ({
-    protocol: String(row.protocol),
-    a: String(row.a),
-    b: String(row.b),
-    verdict: row.verdict as ContradictionDisposition,
-    aBasis: String(row.aBasis),
-    bBasis: String(row.bBasis),
-    ruledAt: String(row.ruledAt),
-    ruledBy: (row.ruledBy ?? 'human') as Origin,
-    ...(row.carried === true ? { carried: true } : {}),
-  }));
-}
 
 /** One ruling, appended. Ids are stored in lexicographic order — see `pairKey`. */
 function appendVerdict(
@@ -2428,6 +2353,39 @@ export function supersedeItem(ctx: MutationContext, input: SupersedeInput): Muta
     },
   );
 
+  // ── WHICH TESTS REST ON IT, ASKED WHEREVER RETIREMENT IS REACHED ────────
+  //
+  // `plan:contra seq:2` / design §8. The owner's ruling is that every test
+  // relying on a superseded item must be updated or deleted, and the reason it
+  // cannot be a scanner was measured: of the 26 fixtures `budget/16` reddened,
+  // ZERO named the rule they rested on. So the question is asked at the one
+  // moment a person knows the answer, and it is asked HERE rather than in
+  // `cli/commands/supersede.ts` alone, because this function is every door
+  // into retirement-with-a-successor — `mycontext supersede`, `add
+  // --supersedes`, `edit --supersedes`, MCP `supersede_item` and
+  // `ingest/apply.ts` all arrive through it, and a question asked on one door
+  // is the "fixed in one place, live in the next" gap this file keeps naming.
+  //
+  // BOTH ITEMS' SCOPES are consulted, in §8's own order of preference: the
+  // cheapest version of the answer needs no new field at all, because "the
+  // successor's existing `scope` can carry the test paths". The retiree's is
+  // read too — it is where the answer would already be if anybody recorded it
+  // before the retirement.
+  //
+  // IT CANNOT FAIL THE WRITE. Not "does not today" — cannot: the call is
+  // wrapped, and a tree that cannot be walked costs a sentence rather than a
+  // retirement. §8 requires that in as many words, and `restingTestsSaid`
+  // carries the reason to the reader.
+  let restingSaid = '';
+  try {
+    restingSaid = restingTestsSaid(
+      retired.id,
+      testsRestingOn(path.dirname(ctx.root), retired.id, [retired, replacement]),
+    );
+  } catch {
+    restingSaid = '';
+  }
+
   return {
     id: retired.id,
     created: true,
@@ -2436,6 +2394,7 @@ export function supersedeItem(ctx: MutationContext, input: SupersedeInput): Muta
     message:
       `my_context: ${retired.id} is now superseded by ${replacement.id}. ` +
       `Nothing was deleted — the file remains and the item stays searchable.` +
+      restingSaid +
       // SAID, not merely recorded — see `standDownSaid`, which is where the
       // sentence lives so that this path and `updateItem`'s cannot spell the
       // same act two ways.

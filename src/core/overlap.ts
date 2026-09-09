@@ -122,19 +122,59 @@ function overlapTokens(text: string): Set<string> {
  * candidates are a narrow view (`ContradictionItem`) and not whole items. An
  * `Item` still satisfies it, so `apiOverlap`'s call is unchanged.
  */
-export function overlapScore(
+export interface OverlapParts {
+  /** What `overlapScore` returns: `max(jaccard, containment * 0.8)`. */
+  score: number;
+  /** Symmetric similarity. Indifferent to which of the two texts is longer. */
+  jaccard: number;
+  /** `common / min(size)`, UNSCALED. A short text inside a long one scores 1. */
+  containment: number;
+  aTokens: number;
+  bTokens: number;
+}
+
+/**
+ * **The same measurement, with its two halves visible — and they are visible
+ * because the DRAIN needs to tell them apart.**
+ *
+ * `overlapScore` below is unchanged in value and is now one line over this, so
+ * the tokenizer, the 0.8 scale and the `max` live in exactly one place rather
+ * than two. The reason the halves had to be separable is measured on this
+ * corpus and is recorded on `checkCorpusContradictions` (doctor/checks.ts): of
+ * the 82 governing in-scope pairs that clear `CONTRADICTION_THRESHOLD`, **72
+ * involve one 808-token pinned reference item**, whose `jaccard` with each of
+ * those partners is 0.13–0.16. Containment is doing all the work there and it
+ * is measuring LENGTH rather than subject — which is exactly what containment
+ * is FOR at capture time (a short draft inside a long item should surface) and
+ * exactly wrong for ranking a corpus-wide sweep.
+ */
+export function overlapParts(
   draft: { title: string; body: string }, item: { title: string; body: string },
-): number {
+): OverlapParts {
   const a = overlapTokens(`${draft.title}\n${draft.body}`);
   const b = overlapTokens(`${item.title}\n${item.body}`);
   // Nothing to compare is 0, not NaN. A NaN sorts unpredictably and would put
   // an empty draft anywhere in the list.
-  if (a.size === 0 || b.size === 0) return 0;
+  if (a.size === 0 || b.size === 0) {
+    return { score: 0, jaccard: 0, containment: 0, aTokens: a.size, bTokens: b.size };
+  }
   let common = 0;
   for (const w of a) if (b.has(w)) common++;
   const jaccard = common / (a.size + b.size - common);
   const containment = common / Math.min(a.size, b.size);
-  return Math.max(jaccard, containment * 0.8);
+  return {
+    score: Math.max(jaccard, containment * 0.8),
+    jaccard,
+    containment,
+    aTokens: a.size,
+    bTokens: b.size,
+  };
+}
+
+export function overlapScore(
+  draft: { title: string; body: string }, item: { title: string; body: string },
+): number {
+  return overlapParts(draft, item).score;
 }
 
 export const OVERLAP_THRESHOLD = 0.2;

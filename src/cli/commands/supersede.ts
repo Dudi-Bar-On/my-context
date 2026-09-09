@@ -1,8 +1,13 @@
+import path from 'node:path';
 import { COMMAND_FLAGS } from '../../core/command-flags.ts';
 import { supersedeItem, supersedeQuestion, type MutationContext } from '../../core/mutate.ts';
 import { globalLayerRefusal } from '../../core/persist.ts';
 import { existingSuccessorRefusal } from '../../core/relations.ts';
 import { standDownFields } from '../../core/select.ts';
+// `plan:contra seq:2`: the count goes in the preview, the list goes in
+// `supersedeItem`'s result message. See `restingTestsLine` for why it is split
+// that way rather than printed twice around one confirm.
+import { restingTestsLine, testsRestingOn } from '../../core/tests-resting-on.ts';
 import type { Item } from '../../core/types.ts';
 import type { Workspace } from '../../core/workspace.ts';
 import { emitLoadErrors, openMutateContext } from './context.ts';
@@ -161,6 +166,26 @@ function cmdSupersede(ws: Workspace, args: string[], out: Emit): number {
             ? ` — promote it with \`mycontext review promote ${replacement.id}\``
             : ''}`);
     }
+
+    // ── WHICH TESTS REST ON IT, BEFORE THE CONFIRM ─────────────────────────
+    //
+    // `plan:contra seq:2` / design §8. The owner's ruling is that every test
+    // relying on a superseded item must be updated or deleted, and the reason
+    // it cannot be found by a scanner afterwards was measured: of the 26
+    // fixtures `budget/16` reddened, NOT ONE named the rule it rested on. So
+    // the count is put in front of the person while they can still say no, and
+    // the list itself arrives once, from `supersedeItem`, where every other
+    // door into retirement gets it too.
+    //
+    // It can never refuse this command, and the wrapper is how that is true
+    // rather than merely intended: "no tests named" is indistinguishable from
+    // "no tests affected", so a tree that cannot be walked costs one line of
+    // preview and never a retirement.
+    try {
+      out(`  tests       ${restingTestsLine(
+        testsRestingOn(path.dirname(ws.projectRoot), retired.id, [retired, replacement]),
+      )}`);
+    } catch { /* never a refusal — see above */ }
     out('');
 
     // `supersedeQuestion` (core/mutate.ts) owns this sentence now, and it is

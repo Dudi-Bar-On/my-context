@@ -136,6 +136,7 @@ import { loadLayer, type LoadError } from '../src/core/rebuild.ts';
 import { isMainEntry } from '../src/core/paths.ts';
 import { resolveWorkspace } from '../src/core/workspace.ts';
 import { RETIRED_STATUSES } from '../src/core/select.ts';
+import { BASIS_MARKER, COMMENT_PAYLOAD, headerLines } from '../src/core/tests-resting-on.ts';
 import { ITEM_ID, readCorpus, resolveId, type Corpus } from './check-handover.ts';
 import { successorChain } from './check-cited-items.ts';
 import type { Item } from '../src/core/types.ts';
@@ -156,21 +157,29 @@ export const TEST_ROOTS: Array<{ root: string; suffix: string }> = [
 export const BASELINE_FILE = 'scripts/basis-undeclared.txt';
 
 /**
- * The declaration marker, anchored to the START of a comment line.
+ * **The declaration grammar lives in `src/core/tests-resting-on.ts` now, and is
+ * imported rather than kept here.**
  *
- * Anchored, and read only inside the file's header (`headerLines` below), for
- * one reason: `test/scripts/basis-gate.test.ts` has to plant malformed
- * declarations to prove this refuses them, and a scanner that read whole files
- * would find its own fixtures and report the test that verifies it.
+ * `plan:contra seq:2` asks the inverse question at the moment an item is
+ * SUPERSEDED — which tests rest on it — and `supersedeItem` (core/mutate.ts)
+ * has to read the same `@basis` lines this gate reads. `scripts/` is not in the
+ * published package (`package.json` · `files`), so a `src/` module can never
+ * import from it and the grammar had to move the other way. Nothing about what
+ * is accepted changed, and `test/scripts/basis-gate.test.ts` still pins all of
+ * it from here.
+ *
+ * The anchoring is still load-bearing and the reason is still this one: that
+ * test has to plant malformed declarations to prove this refuses them, and a
+ * scanner that read whole files would find its own fixtures and report the test
+ * that verifies it.
+ *
+ * Re-exported so every existing importer keeps its spelling, and so there is
+ * exactly one anchored marker, one header rule and one continuation rule in the
+ * tree.
  */
-export const BASIS_MARKER =
-  /^[ \t]*(?:\/\/+|\/\*+|\*+(?!\/))[ \t]*@basis\b[ \t]*(.*?)[ \t]*(?:\*+\/)?[ \t]*$/;
-
-/** A comment or blank line: the two things a file header is made of. */
-const HEADER_LINE = /^[ \t]*(?:\/\/|\/\*|\*|$)/;
-
-/** The payload of any comment line, marker stripped, for reason continuation. */
-const COMMENT_PAYLOAD = /^[ \t]*(?:\/\/+|\/\*+|\*+(?!\/))[ \t]?(.*?)[ \t]*(?:\*+\/)?[ \t]*$/;
+export {
+  BASIS_MARKER, COMMENT_PAYLOAD, headerLines,
+} from '../src/core/tests-resting-on.ts';
 
 /**
  * A WHOLE item id, as a declaration must write it. `ITEM_ID` is a SCANNER — it
@@ -231,21 +240,6 @@ export interface Declaration {
 
 const NO_DECLARATION: Declaration =
   { kind: 'missing', line: 0, raw: '', ids: [], reason: '', why: '' };
-
-/**
- * The run of blank and comment lines at the top of the file, which is where a
- * declaration lives and the only place this looks. It ends at the first line of
- * code, so a planted string in a template literal below is out of reach by
- * construction rather than by a heuristic.
- */
-export function headerLines(text: string): string[] {
-  const out: string[] = [];
-  for (const line of text.split(/\r?\n/)) {
-    if (!HEADER_LINE.test(line)) break;
-    out.push(line);
-  }
-  return out;
-}
 
 function tokensOf(payload: string): string[] {
   return payload.split(/[,\s]+/).filter((t) => t !== '');
