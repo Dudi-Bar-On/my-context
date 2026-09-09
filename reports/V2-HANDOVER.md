@@ -1,3 +1,35 @@
+## ⏭ 2026-09-09, at 94% — DELTA. The CSS lane is STILL RUNNING. One thread open, and more feedback coming.
+
+### HE CONFIRMED THE SUBAGENT LINK WORKS, END TO END, HIMSELF
+
+Not my verification — his: *"i have searched for agent, then when i expanded it i sow a link and
+clicked on it and the transcription was opened in a new tab - correct"*. That closes his original
+question. `archive/49` remains a SECOND place to click (the notification row), not a fix for a
+broken path.
+
+### THE OPEN THREAD — unresolved, and do not assume either way
+
+His first improvement: **no name near the agent**, unlike the terminal, whose lane names are quoted.
+Measured: **all 223 `Agent` tool_use blocks carry a `description`**, and those ARE the terminal's
+names — "A5 retire ready parity excuse", "A9 measure and settle idle-ms contradiction". And
+`DETAIL_FIELDS` should already surface it: an `Agent` call has no `command`, so `description` wins
+and becomes the step's summary line, with `laneLink`'s anchor appended after it.
+
+**So either this is a real defect or the row he was on was not the one carrying it, and I did not
+resolve which.** What settles it is one fact I asked for and had not received: whether the row read
+`NNN Agent` with nothing after it, or `NNN Agent A5 retire ready parity excuse`. **Get that before
+building anything** — the data is present and the rule looks right, so a lane sent now could easily
+"fix" something that is not broken.
+
+**And his message was truncated** after "names i see on the terminal that mostly starts with", and he
+numbered it `1` — so there are further improvements he has not sent. Ask for the rest rather than
+acting on the one.
+
+### STILL RUNNING
+
+The CSS lane owns `styles.css` and `screens/conversations.js`. **D37 is 37 of 49**, tree clean,
+0 unpushed.
+
 ## ⏭ 2026-09-09, at 93% — DELTA. **A LANE IS RUNNING.** The 92% block says nothing is; that is now stale.
 
 Off his ruled cadence (90/92/94/96/97/98/99) on purpose: a lane in flight is the one fact a dying
