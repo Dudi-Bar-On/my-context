@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: A table's grid is as visible as the stylesheet says it is, instead of being half as visible on nearly half of its length.
-summary_of: bae44a97c900c16c
+summary_of: c774bb2a4bb82b5d
 scope:
   - src/ui/public/styles.css
   - e2e/code-hue.spec.ts
@@ -16,17 +16,17 @@ tags:
   - ui
   - "plan:archive"
   - "seq:47"
-  - "state:todo"
+  - "state:done"
 origin: human
 source_file: null
 source_anchor: null
 source_checksum: null
 valid_from: 2026-09-09
 valid_until: null
-checksum: 1e8712a67bb91e6c
+checksum: 9a6954cb1d7b91b4
 plan: archive
 seq: "47"
-state: todo
+state: done
 priority: "2"
 needs: archive/45
 ---
@@ -121,3 +121,33 @@ about a panel.
 IF AN EDGE IS MISSING, IT IS A DEFECT AND NOT A TASTE QUESTION: a table drawn with three sides is
 a table that looks unfinished, and he noticed its absence from a cropped picture, which is the
 strongest evidence that it would be noticed on a real screen.
+
+CLOSED 2026-09-09 BY OWNER INSTRUCTION ("close 47"), and closed as DONE rather than withdrawn,
+because the work shipped and the bar is met. Recorded here so nobody re-dispatches it from the
+state field alone.
+
+WHAT SHIPPED, in commit c8f5b3df: the four outer edges of a table in the viewer, measured from the
+PNG rather than read off the hex, both languages -
+
+  top 11.31:1   bottom 11.31:1   inline-start 11.31:1   inline-end 11.31:1
+
+AND THE 43% HALF NOW CLEARS THE BAR TOO, which is what makes this done rather than half-done. This
+item exists because border-collapse over fractional row heights paints 43% of a ruling as a 50%
+blend, and the three tokens measured at 1.82 (--edge-3), 2.85 (--dim) and 3.62 (--tvframe). The
+owner named #c9c6d4, so the blended half is 3.62:1 - above the 3.0 bar. Every painted pixel of a
+table ruling in this viewer clears it. His value was the measured answer, not a preference.
+
+AND THE BIGGER FINDING THIS ITEM PRODUCED WAS NOT ITS OWN SUBJECT: the block-end outer edge was
+NOT PAINTED AT ALL - the vertical rulings ran past the last row and ended in mid-air - because the
+app table base carries `tr:last-child td{border-block-end:0}` at (0,1,2) and `.tvsaid td` is
+(0,1,1). The primitive had won that border since seq:26, through seq:38 and seq:45, both of which
+measured a token and never looked at the paint. That is why he could see a missing line and the
+arithmetic could not.
+
+AND ONE THING THIS ITEM ARGUED THAT IS WRONG, left on the record rather than quietly dropped: it
+reasoned that the outer half-border was CLIPPED by overflow-x:auto on the anonymous table box.
+Driven in the page, padding-block-end, a 2px last-row border and a real display:table box each
+changed nothing. It was never a clip; it was a specificity loss.
+
+THE FENCE, THE THEMATIC BREAK AND THE TERMINAL BOX ARE NOT PART OF THIS ITEM and are not closed by
+it - they are archive/52, ruled 2px by the owner the same day and shipped. .tvjump is open there too.
