@@ -449,7 +449,20 @@ test('ui --no-open prints a URL that a real request can reach, and opens no brow
     const body = await ping.json() as {
       ok: boolean; staleCode: boolean; corpus: { drifted: boolean | null }; occupancy: unknown;
     };
-    assert.deepEqual(Object.keys(body).sort(), ['corpus', 'occupancy', 'ok', 'staleCode']);
+    // `session` joined this set on 2026-09-09 with `plan:archive seq:44`, which
+    // put the transcript's size and its lane count on the heartbeat's answer so
+    // the strip and the terminal status line could draw the same two facts. It is
+    // the FIFTH key, and this assertion is the second hand-kept list that had to
+    // be told — `test/ui/server-e2e.test.ts` pins the same shape and was updated
+    // in that lane while this one was missed, which is exactly the defect this
+    // corpus keeps finding: a list kept by hand that must agree with something
+    // derived. The set is asserted whole rather than by membership on purpose —
+    // a key ARRIVING unannounced is the thing worth failing over — so the cost of
+    // that is precisely this edit, and it is the right cost.
+    assert.deepEqual(
+      Object.keys(body).sort(),
+      ['corpus', 'occupancy', 'ok', 'session', 'staleCode'],
+    );
     assert.equal(body.ok, true);
     assert.equal(typeof body.staleCode, 'boolean');
     assert.ok(

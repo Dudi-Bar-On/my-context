@@ -157,7 +157,7 @@ import { commandActions } from '/lib/command-actions.js';
 // The argv-to-line spelling, shared with that control so the string a reader
 // sees in `.cmd` and the string the control copies cannot drift apart.
 import { composeCommand } from '/lib/command.js';
-import { startHeartbeat } from '/lib/heartbeat.js';
+import { startHeartbeat, startLookTicks } from '/lib/heartbeat.js';
 import { applyLanguage, pickLanguage, t as translate, tFlat as flat } from '/lib/i18n.js';
 // The pane's WIDTH — a preference, remembered per browser. Its own module for
 // spec §6's reason: the rule (what a drag means, which stored values are
@@ -2194,6 +2194,7 @@ async function request(path, method, body) {
     // silent reconnection would reintroduce the daemon by another name (§2).
     showExited();
     stopHeartbeat();
+    stopLiveLook();
     throw new Error('server exited');
   }
   // **The server ANSWERED — which is the only evidence left that it is there.**
@@ -2344,6 +2345,7 @@ function stream(path, onEvent, onEnd) {
       if (!controller.signal.aborted) {
         showExited();
         stopHeartbeat();
+        stopLiveLook();
       }
       end(controller.signal.aborted ? 'aborted' : 'closed');
       return;
@@ -2473,6 +2475,31 @@ let liveEnded = null;
  * because the feed does not come back either.
  */
 let liveProven = false;
+/**
+ * **Has the CURRENT connection finished — for any reason, including cleanly?**
+ *
+ * `liveEnded` is the server's own `fault` FRAME and it is not the same fact.
+ * Measured 2026-09-09 against a real server killed under a real held-open
+ * response: the client's read throws `terminated / ECONNRESET` rather than
+ * ending cleanly, so a fault frame is what a restart normally produces — but
+ * "normally" is not "always", and a connection that simply ends with `done:
+ * true` carries no frame at all. The reopen below is gated on THIS, so a
+ * silent ending is recovered from as surely as a loud one.
+ */
+let liveClosed = false;
+/**
+ * **Did the connection that just died ever actually WORK?**
+ *
+ * Set by the `hello` frame, cleared when a new connection is opened. It is
+ * the whole of the reopen's refusal to hammer: a stream that ended without
+ * ever saying `hello` was REFUSED — a token this server never issued, a Host
+ * that does not match — and reopening that on every glance at the tab is one
+ * `ui-refused` audit write per glance, which is the defect
+ * `CREDENTIAL_COOKIE` was invented to end (5,207 of `.demo-corpus`'s 6,156
+ * audit records were the app refusing its own boot). A reopen puts back a
+ * connection that was working; it does not retry one that never did.
+ */
+let liveEstablished = false;
 
 /**
  * **Chrome-owned, said once, regardless of which screen (if any) is showing
@@ -2520,6 +2547,28 @@ function showLiveState() {
 }
 
 /**
+ * **The chip comes DOWN when the feed is running again**, which is the half
+ * `plan:live seq:21` could not write because in its world the feed never came
+ * back (§2: the stream never reopened, so "not live" was permanent and true).
+ *
+ * It is not a third sentence and deliberately not a fourth chip: a feed that
+ * is live is the ordinary state of this page and the strip says nothing about
+ * it, exactly as it said nothing before the first fault. A "live again" chip
+ * would be a claim that decays — true for a second, then noise — and the two
+ * sentences that remain (`watch.streamFault`, `watch.streamNotLive`) are both
+ * about a feed that is NOT running.
+ *
+ * The separator goes with it. They were shown together and they are hidden
+ * together, or the strip keeps a divider with nothing on either side of it.
+ */
+function hideLiveState() {
+  const el = document.getElementById('livestate');
+  const sep = document.getElementById('livesep');
+  if (el !== null) { el.replaceChildren(); el.hidden = true; }
+  if (sep !== null) sep.hidden = true;
+}
+
+/**
  * **A later read came back — so the fault stops being NEWS and becomes a
  * state.** Called from `request()` for every answer the server gives, which
  * is the only evidence available that the process is still there: the stream
@@ -2550,7 +2599,31 @@ function noteServerAnswered() {
  * learn the connection it depends on has ended.
  */
 function dispatchLiveEvent(event, data) {
-  if (event === 'hello') liveHello = data;
+  if (event === 'hello') {
+    liveHello = data;
+    // **A `hello` is a WORKING connection, and that is the one thing that
+    // un-says everything the fault said.**
+    //
+    // `seq:21`'s rule — clear the CLAIM, keep the RECORD — was written for a
+    // stream that never came back: `liveEnded` had to survive, because it was
+    // all `subscribeStream()` could replay to a screen mounting after the
+    // fault, and dropping it would have left that screen a cheerful `hello`
+    // over a dead connection. That rule is kept exactly where it applies and
+    // it does not reach here. The frame being handled IS a new `hello` off a
+    // new connection, so the thing the record existed to prevent — a screen
+    // told the stream is healthy when it is not — cannot happen: the stream
+    // IS healthy, and a fault replayed over it would be the same lie in the
+    // other direction.
+    //
+    // `liveProven` goes with it. It is the switch between two sentences about
+    // a dead feed, and there is no dead feed left to describe.
+    liveEstablished = true;
+    if (liveEnded !== null) {
+      liveEnded = null;
+      liveProven = false;
+      hideLiveState();
+    }
+  }
   if (event === 'fault') {
     liveEnded = data !== null && typeof data === 'object' && typeof data.error === 'string'
       ? data.error : '';
@@ -2593,11 +2666,83 @@ function ensureLiveStream() {
   // certainty in the other direction. `route()` subscribes on every screen it
   // builds, so the redemption's own `route()` is what opens it for real.
   if (!credentialHeld()) return;
+  liveClosed = false;
+  liveEstablished = false;
   liveStop = stream(`/api/watch/stream?backlog=${SHARED_STREAM_BACKLOG}`, dispatchLiveEvent, () => {
     // An ended stream is not any one screen's to report — `dispatchLiveEvent`'s
     // `fault` branch above is where the one true, shell-owned account of it is
     // said, and it is said whether or not a screen is even listening.
+    //
+    // What IS recorded here is the bare fact that this connection is over, so
+    // that `reopenLiveStream()` can tell a stream that is running from one
+    // that has stopped. `onEnd` fires exactly once per connection and fires on
+    // EVERY ending — the clean `done: true` as well as the thrown one — which
+    // is why the reopen is gated on this rather than on `liveEnded`.
+    liveClosed = true;
   });
+}
+
+/**
+ * **THE READER LOOKED AT THE TAB, SO PUT THE FEED BACK.** `plan:live seq:22`.
+ *
+ * ── WHY THERE IS ANYTHING TO PUT BACK ──────────────────────────────────────
+ *
+ * The drop is OURS. Measured 2026-09-09: the server holds `FIN_WAIT_2` and the
+ * browser `CLOSE_WAIT`, which means this side closed first — and the closer is
+ * `restartStaleServer` (`src/core/ui-server-upkeep.ts`), which replaces a
+ * listening server whose code has gone stale. During active development that
+ * is after every commit: six restarts in one night, a down/up cycle every
+ * 14-15 minutes. So the connection did not fail; it was ended by this product,
+ * on purpose, and it will be ended again this afternoon.
+ *
+ * ── WHY THIS IS NOT THE RECONNECTION §2 FORBIDS, IN THREE PARTS ────────────
+ *
+ * §2 forbids SILENT reconnection of a held-open stream, and the reason it
+ * gives is that a page which quietly re-establishes a persistent connection
+ * keeps the server alive for ever — "the daemon by another name". All three
+ * words of that carry weight here:
+ *
+ *   - NOT SILENT. This runs on a LOOK — `visibilitychange` or `focus`, the
+ *     tick `plan:archive seq:22` measured at 8-50 ms. A reader is in front of
+ *     the tab when it fires. Nothing here is on a timer, and the heartbeat's
+ *     scheduled 60 s beat deliberately does not carry it (`startLookTicks` is
+ *     a separate export for exactly that reason).
+ *   - A HIDDEN TAB STILL ASKS FOR NOTHING. `shouldPing` is the gate inside
+ *     `startLookTicks`, unchanged and unmoved, so the idle monitor still exits
+ *     with a forgotten tab open — which is the property §2 was protecting.
+ *   - AND THE CONNECTION IT REPLACES WAS CLOSED BY US. §2 is about a page
+ *     papering over a server that went away. This puts back a stream that a
+ *     server which is still running, still answering, and newer than the one
+ *     that died closed on its own initiative.
+ *
+ * ── WHAT IT DELIBERATELY IS NOT: A RELOAD ──────────────────────────────────
+ *
+ * The owner's own instruction was *"i think we need to refresh the page on the
+ * same event we refreshing the status bar"*. The EVENT is right and the action
+ * is not. A reload discards everything `plan:archive seq:19`, `22`, `23` and
+ * `15` exist to protect — scroll position, open folds, the session being read,
+ * a marked passage, the text in the filter box. Four items guarantee a reader
+ * is never moved; a reload on a look tick moves them every time he glances at
+ * the tab. So the STREAM is reopened and the page is left exactly where it is.
+ *
+ * ── THE FOUR GUARDS, EACH FOR A DIFFERENT WAY THIS COULD GO WRONG ──────────
+ */
+function reopenLiveStream() {
+  // Never opened at all. `ensureLiveStream()` owns that case and `route()`
+  // calls it on every screen it builds — reopening here would open the ONE
+  // connection from a focus event instead of from a screen that wants it.
+  if (liveStop === null) return;
+  // Still running. A second connection would be two of the thing `seq:1`
+  // exists to make one of.
+  if (!liveClosed) return;
+  // Refused rather than dropped: see `liveEstablished`. Retrying a refusal on
+  // every glance is an audited write per glance.
+  if (!liveEstablished) return;
+  // And the same gate `ensureLiveStream()` applies: a page holding no
+  // credential opens no connection, and does not spend a request finding out.
+  if (!credentialHeld()) return;
+  liveStop = null;
+  ensureLiveStream();
 }
 
 /**
@@ -3630,6 +3775,17 @@ function setupLiveChrome() {
 }
 
 let stopHeartbeat = () => {};
+/**
+ * **Stops the look-tick that reopens the shared stream** — see
+ * `reopenLiveStream()`. A separate handle from `stopHeartbeat` because they
+ * are separate mechanisms with separate lifetimes in `startHeartbeat`'s own
+ * module, and CALLED IN THE SAME BREATH EVERY TIME, because they answer to
+ * the same fact: the moment a request proves the server is gone, nothing on
+ * this page may keep reaching for it. `test/ui/live-reopen.test.ts` asserts
+ * that pairing statically, so the next failure path added here cannot stop
+ * one and forget the other.
+ */
+let stopLiveLook = () => {};
 
 function currentSession() { return sessionValue; }
 
@@ -7843,6 +7999,14 @@ async function main() {
   // one beat OUT OF BAND without either of them owning a second copy of what a
   // beat does. Its header carries the reason and the ordering inside it.
   stopHeartbeat = startHeartbeat(document, heartbeatPing, 60_000, window);
+  // **AND THE SECOND LOOK-TICK, WHICH IS NOT A SECOND CADENCE** (`plan:live
+  // seq:22`). It has no interval at all: it fires only on the pair of events
+  // above and does one thing — put back the shared audit stream if our own
+  // `restartStaleServer` closed it. It is deliberately NOT folded into
+  // `heartbeatPing`, because that runs on the 60 s beat too, and a reopen on
+  // a timer is the silent reconnection §2 forbids. `reopenLiveStream()`
+  // carries the whole §2 argument.
+  stopLiveLook = startLookTicks(document, window, reopenLiveStream);
   installNonceRedemption();
   // **BEFORE `installItemPane()`, and the order is the contract.** Both install
   // a document-level `keydown`, listeners fire in registration order, and

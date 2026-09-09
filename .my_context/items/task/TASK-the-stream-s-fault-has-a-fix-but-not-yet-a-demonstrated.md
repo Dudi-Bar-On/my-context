@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: The live feed kept dying and the repair that was made is a sound one, but nothing has yet been caught doing the killing, so this records what was ruled out and what to look at next time it happens.
-summary_of: b878f1ca81a20b1b
+summary_of: f4293ba8b7f09415
 scope:
   - src/ui/watch-model.ts
   - src/ui/public/app.js
@@ -16,17 +16,17 @@ tags:
   - live
   - "plan:live"
   - "seq:22"
-  - "state:todo"
+  - "state:done"
 origin: human
 source_file: "C:/Users/UserC/AppData/Local/Temp/claude/D--Users-UserC-source-repos-my-context/595db3b1-a481-4553-b4c0-7248c31b2655/scratchpad/live22.md"
 source_anchor: null
 source_checksum: null
 valid_from: 2026-09-08
 valid_until: null
-checksum: a5ee11f24806a12a
+checksum: dc3fd4cb49e21512
 plan: live
 seq: "22"
-state: todo
+state: done
 priority: "2"
 ---
 
@@ -211,3 +211,79 @@ building.
 AND REMOVE THE KEEP-ALIVE, or say why it stays. It is harmless, so do not rush it - but a constant
 whose docblock explains a reaper nobody has ever observed is the kind of false explanation this
 corpus spends items removing.
+
+── BUILT 2026-09-09. THE LOOK TICK REOPENS THE STREAM, AND THE PAGE DOES NOT MOVE. ──────────
+
+WHAT SHIPPED, in four pieces:
+
+  - `src/ui/public/lib/heartbeat.js` gains `startLookTicks(doc, win, onLook)` and an internal
+    `attachLook` that is now the ONE place `visibilitychange` and `focus` are named. `startHeartbeat`
+    was rewritten onto it and behaves identically. A separate export rather than a fifth argument,
+    because the heartbeat also runs on a 60 s SCHEDULE and a reopen carried on that beat would be
+    the reconnection §2 forbids.
+  - `src/ui/public/app.js` gains `reopenLiveStream()`, hung off that tick, gated on four things:
+    a connection was opened at all, it has ENDED (`liveClosed`, set from `stream()`'s `onEnd` so a
+    clean `done: true` recovers as surely as a thrown one), it had actually WORKED
+    (`liveEstablished`, set by `hello` — a stream that was REFUSED is never retried, because
+    retrying a refusal on every glance is one audited `ui-refused` write per glance), and
+    `credentialHeld()`.
+  - A new `hello` clears `liveEnded`/`liveProven` and hides the chip (`hideLiveState()`).
+    seq:21's rule — clear the CLAIM, keep the RECORD — was written for a stream that never came
+    back and is kept exactly where it applies; a fault replayed over a WORKING connection is the
+    same lie in the other direction.
+  - `screens/watch.js` clears its own `faulted` on a second `hello`, one line, because `faulted`
+    gates `sayShown()` and would otherwise keep that screen on the fault sentence over a live feed
+    while the shell's chip had already come down.
+
+MEASURED, browser, both Playwright projects, `e2e/live-reopen.spec.ts`: from the reader looking at
+the tab to a new `/api/watch/stream` request, 5 ms and 10 ms; to it answered, 27 ms and 36 ms. Zero
+requests across three seconds of looking at a HIDDEN tab, which is the §2 half. A marker set on
+`window` before the outage survives, and `location.hash` is unchanged — that is the assertion that
+this is a stream reopen and not the page refresh the instinct asked for.
+
+── THE CREDENTIAL MEASUREMENT. THIS ITEM'S PREMISE WAS WRONG, AND SO WAS MINE. ──────────────
+
+This item said "THE CREDENTIAL IS IN MEMORY, redeemed from a one-shot nonce, so a reload logs the
+reader out", and asked whether `restartStaleServer`'s claim to the contrary is false. MEASURED over
+real HTTP, two servers on one ephemeral port, isolated sessions dir, the second started after the
+first was killed, presenting what a page holds while it is NOT reloaded:
+
+    header token (the in-memory one)     200 against server A     200 against server B
+    mycontext_token cookie alone         200                      200
+    GET /api/watch/stream                200                      200, answering with `hello`
+
+    server B answering 368 ms after the kill
+
+SO NOTHING ABOUT THE CREDENTIAL IS LOST. `restartStaleServer`'s comment is TRUE, and the design is
+not what this item and `live/23` both describe: the token has been carried in an `HttpOnly`,
+`SameSite=Strict` cookie since the owner's 2026-08-22 ruling (`src/ui/security.ts` — `TOKEN_COOKIE`),
+and `core/ui-sessions.ts` keeps the DIGESTS of issued tokens so a later process honours them.
+`e2e/app-restart.spec.ts` has proved the reload half in a browser all along.
+
+WHAT WAS LOST IS THE STREAM AND ONLY THE STREAM — `closeAllConnections()` on the way out — which is
+exactly what this lane built. So this ships "the feed comes back", not "you are logged out again",
+and `live/23`'s option B is NOT needed for this defect. The owner's ruling stands unchanged and is
+simply not reached.
+
+ONE BOUND FOUND WHILE MEASURING, and it is the likeliest explanation of the morning he lost his
+credential: `SESSION_MAX` is 64 and the store counts RESTARTS, not tabs. Sampled 2026-09-09 his
+file was FULL and its 64 digests spanned 63.5 hours. `SESSION_TTL_MS` promises thirty days; a
+development week delivers under three. A tab older than the last 64 restarts IS locked out.
+
+── THE KEEP-ALIVE STAYS, AND ITS FALSE EXPLANATION DOES NOT ────────────────────────────────
+
+Kept. Removing it would also remove the `keepalive` query parameter and the `test/ui/watch-e2e.ts`
+assertion that reads a real comment off a real connection — a measurable property of the route —
+and the one thing it still buys is that a connection blackholed WITHOUT a close is learnable at all:
+the recovery above can only put back a connection the client knows has ended, and a FIN or an RST is
+learnt at once while a blackhole is learnt only from a write that fails. Nothing on this machine has
+been caught blackholing anything, so it is kept at nine bytes a minute on that footing and NOT on a
+diagnosis. Its docblock has been rewritten to say so: the paragraph that offered "a silent socket is
+what gets reaped" as the cause of the owner's drops is now marked wrong and kept as history.
+
+── FOUND AND NOT FIXED ─────────────────────────────────────────────────────────────────────
+
+See plan:live seq:24, which carries all four with their evidence: the feed's ordering after ANY
+discontinuity (this is `resync`'s existing behaviour, not something the reopen introduced), the
+64-restart session window above, `stream()`'s 401/403 path forgetting the stored token but not the
+in-memory one, and `test/ui/open.test.ts` red on a `/api/ping` field another lane added the same day.

@@ -623,7 +623,9 @@ function due(last: number | null, now: number, interval: number): boolean {
  * `--no-open` always, for the same reason at a different surface: a hook that
  * launches a browser window mid-turn is a hook nobody keeps installed either.
  * The owner's already-open tab survives the restart anyway, because the new
- * server honours previously issued session digests out of `ui-sessions.json`.
+ * server honours previously issued session digests out of `ui-sessions.json` —
+ * re-measured over real HTTP on 2026-09-09, both the in-memory token and the
+ * cookie, and the bound on it, at `restartStaleServer` below.
  *
  * The `'error'` listener is `src/ui/open.ts`'s measured lesson, not defensive
  * tidiness: a `ChildProcess` whose spawn failed emits `'error'` on a later tick,
@@ -785,9 +787,39 @@ function recordServerSeen(
  * because the new server reads `ui-sessions.json` before it binds and honours
  * the digests of tokens earlier runs issued. So the owner's tab reconnects on
  * its own, and a confirmation step would be a question with one answer asked on
- * a hook nobody is looking at. What the owner loses is nothing; what they were
- * losing before this branch existed is a page served by code sixteen minutes
- * behind the disk.
+ * a hook nobody is looking at. What they were losing before this branch existed
+ * is a page served by code sixteen minutes behind the disk.
+ *
+ * ── RE-MEASURED 2026-09-09, BECAUSE THE OWNER LOST A CREDENTIAL ────────────
+ *
+ * `plan:live seq:22` was told to distrust the sentence above: the owner was
+ * handed a fresh nonce on the morning of 2026-09-09, which would mean this
+ * claim is false. **It is not false.** Two servers on one ephemeral port, the
+ * second started after the first was killed, with the credential a page holds
+ * while it is NOT reloaded:
+ *
+ *     header token (the in-memory one)   200 against server A, 200 against B
+ *     mycontext_token cookie alone        200 against A,        200 against B
+ *     GET /api/watch/stream               200 against A,        200 against B,
+ *                                         and B answers with a `hello` frame
+ *
+ * So every credential survives, and the restart itself took 368 ms from the
+ * kill to the new server answering. **"What the owner loses is nothing" was
+ * the one word too many, and this is where it was wrong**: he loses the
+ * held-open STREAM. `server.closeAllConnections()` on the way out sends a
+ * clean FIN to every open response, which is exactly the `FIN_WAIT_2` /
+ * `CLOSE_WAIT` pair `seq:22` caught on 58888, and nothing in the page put it
+ * back — §2 forbade it. `app.js`'s `reopenLiveStream()` is what now does,
+ * on a look tick rather than on a timer.
+ *
+ * ONE BOUND WORTH KNOWING RATHER THAN DISCOVERING. The digests are capped at
+ * `SESSION_MAX` (64) and evicted oldest-first, and the store counts RESTARTS
+ * rather than tabs. Sampled on this machine 2026-09-09 the file was FULL, and
+ * its 64 digests spanned 63.5 hours — so the promise `SESSION_TTL_MS` makes is
+ * thirty days and what a development week actually delivers is under three.
+ * That is a real ceiling on "a tab survives a restart" and it is not this
+ * function's to raise; it is recorded here because this is where the claim is
+ * made.
  *
  * ── THE GUARDS ARE THE SPAWN'S GUARDS, IN THE SPAWN'S ORDER ────────────────
  *

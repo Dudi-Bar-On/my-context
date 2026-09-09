@@ -2032,6 +2032,22 @@ export async function render(root, ctx) {
     }
     if (described.kind === 'hello') {
       connected = true;
+      // **A SECOND `hello` IS A SECOND CONNECTION, AND THE FAULT IS OVER.**
+      //
+      // `plan:live seq:22` reopens the shell's shared stream on a look tick
+      // after our own `restartStaleServer` closed it, so this branch is now
+      // reachable more than once per page. `faulted` gates `sayShown()` — it
+      // was set once and never cleared, because in `seq:21`'s world the feed
+      // never came back — and leaving it set would keep this screen on the
+      // fault sentence over a working feed while the shell's own chip had
+      // already come down. One fact, said the same way in both places.
+      //
+      // The REPLAY on the new connection is left exactly as it is: it appends
+      // through `remember(record, false)` and dedupes on `seen`, which is the
+      // same treatment `reloadBacklog()` gives the `resync` gap. Its ordering
+      // property is therefore whatever that path's already is, and this lane
+      // did not change it in either place — see the lane's report.
+      faulted = false;
       // **Read off `data`, not off `described`.** `describeStreamEvent` names
       // this frame and its poll interval and nothing else, and it lives in
       // `lib/viewmodel.js` — the module whose own rule is that a frame it

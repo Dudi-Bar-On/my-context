@@ -94,7 +94,6 @@ export const LOOK_GAP_MS = 250;
  * is a THIRD hand-written copy: a surface that wants this asks for `win`.
  */
 export function startHeartbeat(doc, pingFn, intervalMs, win) {
-  const looks = win !== undefined && win !== null;
   let stopped = false;
   /**
    * When the last beat actually ASKED — the half of the double-fire guard the
@@ -110,26 +109,88 @@ export function startHeartbeat(doc, pingFn, intervalMs, win) {
   };
   let timer = setInterval(beat, intervalMs);
 
-  const onLook = () => {
+  const detach = attachLook(doc, win, () => {
     if (stopped) return;
     if (!shouldPing(doc.visibilityState)) return;
     if (Date.now() - askedAt < LOOK_GAP_MS) return;
     clearInterval(timer);
     timer = setInterval(beat, intervalMs);
     ask();
-  };
-  if (looks) {
-    doc.addEventListener('visibilitychange', onLook);
-    win.addEventListener('focus', onLook);
-  }
+  });
 
   return () => {
     if (stopped) return;
     stopped = true;
     clearInterval(timer);
-    if (looks) {
-      doc.removeEventListener('visibilitychange', onLook);
-      win.removeEventListener('focus', onLook);
-    }
+    detach();
+  };
+}
+
+/**
+ * **Register the LOOK pair on both targets, and hand back the one removal.**
+ *
+ * The pair — `visibilitychange` on the document and `focus` on the window —
+ * is a single fact about how a return to a tab reaches a page, and it was
+ * written out twice the moment a second surface wanted it. This is the one
+ * place either name is spelled, so a surface that adopts the look tick cannot
+ * adopt half of it: `win` absent means NO listeners at all rather than one of
+ * the two, which is exactly the state `startHeartbeat`'s stand-in `doc` is in
+ * (`test/ui/viewmodel.test.ts` exercises the visibility rule against a
+ * two-field object with no `addEventListener` on it).
+ *
+ * It registers and removes and decides nothing: the gate (`shouldPing`) and
+ * the double-fire guard (`LOOK_GAP_MS`) stay with the CALLER, because the two
+ * callers debounce against different clocks — the heartbeat shares one
+ * `askedAt` with its scheduled beat so a look right after a beat is dropped,
+ * and a look-only ticker has no beat to share with.
+ */
+function attachLook(doc, win, handler) {
+  if (win === undefined || win === null) return () => {};
+  doc.addEventListener('visibilitychange', handler);
+  win.addEventListener('focus', handler);
+  return () => {
+    doc.removeEventListener('visibilitychange', handler);
+    win.removeEventListener('focus', handler);
+  };
+}
+
+/**
+ * **The look tick with no timer behind it: run `onLook` when the reader comes
+ * back to the tab, and at no other time.**
+ *
+ * `plan:live seq:22`. `app.js` uses this to REOPEN THE SHARED AUDIT STREAM
+ * after our own server closed it, and the whole reason it is a separate
+ * export rather than a second argument to `startHeartbeat` is that the
+ * heartbeat's scheduled beat must not carry it: a reopen on a 60 s timer
+ * would be the silent reconnection §2 forbids, and a reopen on a LOOK is not
+ * silent — a reader is standing in front of it.
+ *
+ * Same three rules as the heartbeat's own look tick, and they are the same
+ * code: `attachLook` registers the pair, `shouldPing` gates it so a hidden tab
+ * asks for nothing, and `LOOK_GAP_MS` drops the second of the
+ * `visibilitychange`/`focus` pair that ONE return fires. What it does not have
+ * is an interval to re-base, because there is no interval.
+ *
+ * `stop()` removes both listeners, for the reason `startHeartbeat`'s does and
+ * with more at stake: `app.js` stops this from the same place it stops the
+ * heartbeat — the moment a request proves the server is gone — and a look tick
+ * surviving that would be a dead page reopening a stream against a process
+ * that exited. Idempotent, because more than one failure path calls it.
+ */
+export function startLookTicks(doc, win, onLook) {
+  let stopped = false;
+  /** When this ticker last FIRED. `0` is "never", correct on the first look. */
+  let firedAt = 0;
+  const detach = attachLook(doc, win, () => {
+    if (stopped) return;
+    if (!shouldPing(doc.visibilityState)) return;
+    if (Date.now() - firedAt < LOOK_GAP_MS) return;
+    firedAt = Date.now();
+    onLook();
+  });
+  return () => {
+    if (stopped) return;
+    stopped = true;
+    detach();
   };
 }

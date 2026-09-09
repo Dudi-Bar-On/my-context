@@ -87,14 +87,44 @@ export const STREAM_POLL_MS = 1000;
 /**
  * **How long this stream may carry ZERO BYTES before it proves it is alive.**
  *
- * `TASK-one-dead-stream-is-announced-on-every-screen-for-ever-and-a`. Owner
- * report 2026-09-08: the status bar said *"the stream refused to continue:
- * network error"*, over and over, *"every few minutes"* — while every ordinary
- * read on the same page kept working, because those are short requests that
- * are never idle. `streamHandler` below sent a frame only when `tail.poll()`
- * had a `resync` or a record, and there was no `else`: through any quiet
- * period the connection carried nothing at all, and a silent socket is what
- * gets reaped.
+ * ── IT DOES NOT EXPLAIN THE DROPS THE OWNER REPORTED. THAT WAS US. ────────
+ *
+ * `plan:live seq:22`, measured 2026-09-09: the server held `FIN_WAIT_2` and
+ * the browser `CLOSE_WAIT`, so THIS side closed first, and the closer is
+ * `restartStaleServer` (`src/core/ui-server-upkeep.ts`) replacing a listening
+ * server whose code had gone stale — after every commit, six times in one
+ * night. `server.closeAllConnections()` sends exactly that. The owner's
+ * process already had this keep-alive when he reported the drop the second
+ * time, and it dropped anyway. **So nothing below is a fix for that**, and the
+ * paragraph that used to stand here — "a silent socket is what gets reaped",
+ * offered as the cause of *"every few minutes"* — was wrong. It is kept as
+ * history rather than deleted, because the shape of the mistake matters: the
+ * lane that shipped this could not reproduce a reaper over 11 and 14 minutes
+ * and said so, and the reading that turned "could not reproduce" into "not
+ * yet reproduced" is what put a mitigation in front of an undiagnosed cause.
+ *
+ * ── AND IT STAYS, FOR THE ONE THING IT STILL DOES ─────────────────────────
+ *
+ * A held-open response that carries zero bytes through a quiet hour cannot
+ * tell a live peer from a dead one, and the recovery `seq:22` builds
+ * (`app.js` · `reopenLiveStream` · the look tick) can only put back a
+ * connection the CLIENT knows has ended. A close that arrives as a FIN or an
+ * RST is learnt at once and needs nothing from this; a connection blackholed
+ * without a close is learnt only from a write that fails, and this is the only
+ * write an idle stream ever makes. Nothing on this machine has been caught
+ * blackholing anything — see the measurement below — so this buys an
+ * unobserved case at nine bytes a minute, and it is kept on that footing and
+ * not on a diagnosis. It is also the only thing that exercises
+ * `lib/sse.js`'s comment-skipping against a real server, which
+ * `test/ui/watch-e2e.test.ts` reads off a real connection through the
+ * `keepalive` parameter below.
+ *
+ * The original report, for the record. Owner, 2026-09-08: the status bar said
+ * *"the stream refused to continue: network error"*, over and over, *"every
+ * few minutes"* — while every ordinary read on the same page kept working.
+ * `streamHandler` below sent a frame only when `tail.poll()` had a `resync` or
+ * a record, and there was no `else`, so through any quiet period the
+ * connection carried nothing at all. That much was true and is still true.
  *
  * **THIS NUMBER IS NOT `STREAM_POLL_MS`, and the distance between them is the
  * whole point.** The poll cadence is how often the LOG is asked; this is how

@@ -862,6 +862,11 @@ interface HeartbeatModule {
     intervalMs: number,
     win?: FakeTarget,
   ) => () => void;
+  startLookTicks: (
+    doc: { visibilityState: string } & Partial<FakeTarget>,
+    win: FakeTarget | undefined,
+    onLook: () => void,
+  ) => () => void;
 }
 
 interface I18nModule {
@@ -1060,6 +1065,95 @@ test('startHeartbeat without a window is exactly the timer it always was', async
     assert.equal(doc.count('visibilitychange'), 0, 'no window, no listeners at all');
     doc.fire('visibilitychange');
     assert.equal(pings, 0);
+  } finally { stop(); }
+});
+
+// @basis TASK-the-stream-s-fault-has-a-fix-but-not-yet-a-demonstrated, TASK-one-dead-stream-is-announced-on-every-screen-for-ever-and-a
+/* ══ THE LOOK TICK WITH NO TIMER BEHIND IT ═════════════════════════════════
+ *
+ * `plan:live seq:22`. `app.js` reopens the shared audit stream on this and on
+ * nothing else, after `restartStaleServer` closed it — measured 2026-09-09,
+ * the server holding `FIN_WAIT_2` and the browser `CLOSE_WAIT`, so the close
+ * was ours.
+ *
+ * The three assertions below are the three halves of the §2 argument that
+ * lets a reopen exist at all, and each one is a way the reopen could stop
+ * being legal:
+ *
+ *   - it fires on a LOOK, so a reader is present (not silent);
+ *   - it does NOT fire while hidden, so a forgotten tab still asks nothing and
+ *     the idle monitor still exits under it;
+ *   - and it has no interval at all, so there is no cadence that could quietly
+ *     become the daemon by another name. That last one is asserted by the
+ *     shape of the module rather than by a clock: `startLookTicks` takes no
+ *     interval to give it.
+ */
+test('startLookTicks fires on either look event, once per return, and never while hidden', async () => {
+  const { startLookTicks, LOOK_GAP_MS } = await heartbeat();
+  assert.ok(LOOK_GAP_MS > 0, 'the same exported guard the heartbeat uses, not a second number');
+  const doc = { visibilityState: 'visible', ...target() };
+  const win = target();
+  let looks = 0;
+  const stop = startLookTicks(doc, win, () => { looks += 1; });
+  try {
+    // ONE return to the tab fires BOTH events, microseconds apart. Two reopens
+    // for one glance would be two connections where `plan:live seq:1` allows
+    // exactly one.
+    doc.fire('visibilitychange');
+    win.fire('focus');
+    assert.equal(looks, 1, 'one return to the tab is one reopen, not two');
+
+    // A window RAISED without a tab change fires only `focus`, and that is the
+    // return an owner watching a terminal beside a browser actually makes.
+    await new Promise((r) => setTimeout(r, LOOK_GAP_MS + 50));
+    win.fire('focus');
+    assert.equal(looks, 2, 'a window raised without a tab change must reopen too');
+
+    // **THE §2 GATE, AND IT IS THE ASSERTION THAT KEEPS THE REOPEN LEGAL.**
+    // `focus` fires on a window whose tab is not the front one. A hidden tab
+    // that reopened a held-open stream would hold the server up with nobody
+    // looking, which is the whole of what §2 forbids.
+    doc.visibilityState = 'hidden';
+    await new Promise((r) => setTimeout(r, LOOK_GAP_MS + 50));
+    win.fire('focus');
+    doc.fire('visibilitychange');
+    assert.equal(looks, 2, 'a hidden tab must not reopen anything, however loudly it is looked at');
+  } finally { stop(); }
+});
+
+test('startLookTicks stop() removes both listeners and is idempotent', async () => {
+  const { startLookTicks } = await heartbeat();
+  const doc = { visibilityState: 'visible', ...target() };
+  const win = target();
+  let looks = 0;
+  const stop = startLookTicks(doc, win, () => { looks += 1; });
+  assert.equal(doc.count('visibilitychange'), 1);
+  assert.equal(win.count('focus'), 1);
+  stop();
+  // `app.js` stops this in the same breath it stops the heartbeat — from the
+  // catch that proves the server is gone. A look tick surviving that would be
+  // a dead page reopening a stream against a process that exited, which is the
+  // silent reconnection §2 forbids arriving through the one channel that has
+  // no timer to clear.
+  assert.equal(doc.count('visibilitychange'), 0, 'a stopped look tick still listening is a leak');
+  assert.equal(win.count('focus'), 0, 'a stopped look tick still listening is a leak');
+  doc.fire('visibilitychange');
+  win.fire('focus');
+  assert.equal(looks, 0, 'a stopped look tick must not fire, on any signal');
+  stop();  // more than one failure path calls it
+});
+
+test('startLookTicks without a window registers nothing at all', async () => {
+  const { startLookTicks } = await heartbeat();
+  const doc = { visibilityState: 'visible', ...target() };
+  let looks = 0;
+  // Half the pair is worse than none: it would leave the reopen firing on tab
+  // switches and not on a raised window, which is the return this owner makes.
+  const stop = startLookTicks(doc, undefined, () => { looks += 1; });
+  try {
+    assert.equal(doc.count('visibilitychange'), 0, 'no window, no listeners at all');
+    doc.fire('visibilitychange');
+    assert.equal(looks, 0);
   } finally { stop(); }
 });
 
