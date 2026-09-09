@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: Decide whether the saved-session viewer hides passwords and keys that appear in the commands and files it shows, since one real key is already on screen today.
-summary_of: 061692b6ff08ee07
+summary_of: 82547aeae0efe773
 summary_was:
   - 2026-09-08 Whether the conversation archive redacts credentials, where, and how much — reported from a scan of every transcript on the machine rather than assumed.
 scope:
@@ -20,17 +20,17 @@ tags:
   - security
   - "plan:archive"
   - "seq:27"
-  - "state:todo"
+  - "state:done"
 origin: human
 source_file: "C:/Users/UserC/AppData/Local/Temp/claude/D--Users-UserC-source-repos-my-context/595db3b1-a481-4553-b4c0-7248c31b2655/scratchpad/body.md"
 source_anchor: null
-source_checksum: 839f88ec8e5812bd
+source_checksum: null
 valid_from: 2026-09-08
 valid_until: null
-checksum: 1a19498f73f88fb9
+checksum: d0b97dd3657b0c59
 plan: archive
 seq: "27"
-state: todo
+state: done
 priority: "1"
 needs: archive/24
 ---
@@ -49,20 +49,20 @@ URL userinfo).
 
 THE NEWLY EXPOSED SET IS EIGHT MATCHES, AND ONE OF THEM IS A REAL SECRET:
 
-    Bearer e4556318aca495f433a8081ef816afdf
+    Bearer <32 hex chars — redacted from this item>
 
 inside a `Bash` `command` in
 `D--Users-UserC-source-repos-test-mycontext-plugin/9e5b6b17-…/subagents/agent-a2add2e627aed6ebe.jsonl`
 — a lane curling `http://127.0.0.1:58888/api/watch/context` with the UI server's own auth token on
 the command line. Before seq:24 the archive kept only that call's `description`; after it, the
 token is on the screen. The other seven are synthetic probes a test wrote on purpose
-(`secret=leak-probe-4a7b2e`, `http://user:pw@`) and one match on the identifier `secret` in
+(`secret=<a test probe — redacted>`, `http://user:pw@`) and one match on the identifier `secret` in
 `secret = cryptoRandomBytes`.
 
 AND THE FINDING THAT MATTERS MORE, BECAUSE IT IS TRUE TODAY AND NOBODY FILED IT: the archive
 ALREADY serves a live-shaped Anthropic API key, and has since before seq:24 was written.
 
-    sk-ant-api03-B6y5StW2xdNgFEifpF489V1zrBqOphn109sDbRQObHxrQj-…
+    sk-ant-api03-<redacted from this item>…
 
 is the `primaryApiKey` of `~/.claude.json`, printed by a `cat` and captured in the `tool_result`
 of `D--Users-UserC-source-repos-test-mycontext-plugin/9e5b6b17-c186-4c93-a0a5-775b4eccd9e7.jsonl`.
@@ -101,6 +101,38 @@ WHAT TO DECIDE, and each of these is a ruling rather than an implementation deta
 
 MEASURE FIRST, DON'T INHERIT. The 8/15 split above is this machine on this date. Re-run the scan
 before designing, because a corpus with one `.env` `cat` in it changes the answer.
+
+── CLOSED 2026-09-09 BY OWNER RULING: THE CONTENT IS HIS, AND SO IS THE RESPONSIBILITY ─────
+
+His words: "the content in the conversation is the user property only, he should be responsible
+for what he put there."
+
+AND THE MEASUREMENT SUPPORTS IT RATHER THAN MERELY PERMITTING IT. Every string this item found was
+already sitting unencrypted in `~/.claude/projects` before this product read a byte of it. The
+archive is a READER of files in the reader’s own home, on a server bound to 127.0.0.1. So
+redaction at the display layer would not reduce exposure at rest by one byte - it would only stop
+a person seeing, in a viewer, what they can already see in a text editor. He named that first and
+he was right: "the same content could be found on the session file in clade code directory as
+well, so it is not much protected ther than mine files."
+
+WHAT IS THEREFORE NOT BUILT, so nobody re-files it: no scrubbing in the read model, no pattern
+list on the display path, no gate on `seq:24`’s input capture. A pattern list on a read surface
+would rot, would produce false positives that HIDE the owner’s own work, and would fight
+INV-nothing-is-dropped-silently on the one surface whose whole promise is that nothing is dropped.
+
+THE LITERAL CREDENTIALS HAVE BEEN REDACTED OUT OF THIS ITEM’S OWN BODY, which is the one action
+this finding did require. The lane that filed it wrote a real key prefix and a COMPLETE bearer
+token into a corpus item - and corpus items are committed and pushed to a remote. That would have
+turned a local exposure into a published one. The shapes are kept so the finding is still
+checkable; the values are gone. Filing a secret in order to report a secret is its own defect, and
+it is worth naming here because the next lane to find one will reach for the same reflex.
+
+AND ONE THING IS STILL THE OWNER’S ALONE: whether to rotate the key that was found. Not a
+product decision, not a lane’s, and not closed by this item.
+
+WHAT REPLACES IT IS NARROWER AND BETTER, and it is his design rather than mine: the EXPORT path,
+and only the export path, offers to replace sensitive values with placeholders - detection that
+proposes and never acts. See the successor item.
 
 ## Relations
 - depends_on [[TASK-a-tool-call-keeps-160-characters-of-its-input-and-drops-the]]

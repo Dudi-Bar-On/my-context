@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: The third copy hands over the whole record, including fields the screen never shows, so the credentials question now covers a little more than it was measured against.
-summary_of: 9c10ddade0734cc0
+summary_of: 8620677eadd0aac3
 scope:
   - src/ui/read-model-conversation-document.ts
 tags:
@@ -16,17 +16,17 @@ tags:
   - security
   - "plan:archive"
   - "seq:43"
-  - "state:todo"
+  - "state:done"
 origin: human
 source_file: null
 source_anchor: null
 source_checksum: null
 valid_from: 2026-09-09
 valid_until: null
-checksum: 53c186bb0955b962
+checksum: 4598f513e83b7e49
 plan: archive
 seq: "43"
-state: todo
+state: done
 priority: "2"
 needs: archive/27
 ---
@@ -68,6 +68,24 @@ MEASURED, so the size of the door is on the record: the route reads with `openSy
 `readSync`, refuses any slice over 8 MB rather than truncating, and is in
 `test/ui/server-e2e.test.ts`' read-only sweep, which snapshots every byte under the workspace and
 compares it after exercising every registered route.
+
+CLOSED 2026-09-09 WITH plan:archive seq:27, under the same ruling: the conversation’s content is
+the owner’s property and his responsibility.
+
+This item worried that the raw-record copy hands over `cwd`, `gitBranch`, `requestId` and absolute
+paths off his machine. Under that ruling it is not a defect: the raw form exists precisely to be
+the record EXACTLY AS CREATED - for reproducing a bug or feeding a tool - and a record with its
+envelope quietly removed would be a different thing wearing the same name. plan:archive seq:17
+ruled three copy formats named by purpose, and "the exact record" is the one whose purpose is
+exactness.
+
+AND IT IS NOT A WIDENING EITHER, which was this item’s actual claim: every one of those fields is
+already on screen or already in a file in the reader’s own home. The copy moves nothing that was
+not already movable.
+
+The export case - a copy that leaves the project - is handled by seq:27’s successor rather than
+here, and that is the right seam: a clipboard is the reader’s own hand, an export is a file
+somebody else may open.
 
 ## Relations
 - depends_on [[TASK-the-archive-already-serves-a-live-api-key-and-full-input]]
