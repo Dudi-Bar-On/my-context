@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: Copying a conversation out offers a list of things that look private, and replaces only what you tick with an obviously fake stand-in.
-summary_of: 7fd7306e453d70d7
+summary_of: a9a5026a70d8829a
 scope:
   - src/core/conversation-mirror.ts
   - src/cli/commands/conversation.ts
@@ -23,7 +23,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-09-09
 valid_until: null
-checksum: 672acc2339922b76
+checksum: 3f9a5402bee2a245
 plan: archive
 seq: "46"
 state: todo
@@ -90,3 +90,126 @@ a glance, from a list.
 
 WHAT IS EXPLICITLY NOT IN SCOPE: scrubbing the display, the clipboard, or the index. And rotating
 anything - that is his, and seq:27 says so.
+
+── STEPS 1, 2 AND 4 LANDED 2026-09-09 (commit 290023b7). THE FORM IS WHAT REMAINS ───────────
+
+STOPPED AT THE FORM ON PURPOSE. This lane was given the browser-free half so that a second lane
+could hold `src/ui/public/screens/conversations.js` at the same time. Nothing under `src/ui/` was
+touched, no UI string was added, and no browser was run.
+
+WHAT WAS BUILT, file by file:
+
+  - `src/core/conversation-secrets.ts` - PURE, no filesystem write, deliberately absent from
+    `test/ui/no-writes.test.ts`' WRITERS table. NINETEEN shapes: the thirteen this item names, plus
+    six added - Stripe keys and webhook secrets, npm tokens, Google OAuth client secrets, SendGrid
+    keys, A CREDENTIAL NAMED BY ITS JSON FIELD (primaryApiKey / accessToken / refreshToken /
+    clientSecret / private_key, which is the shape that would have caught the key seq:27 actually
+    found, because it matches the FIELD rather than the value), and a 32/40/64-char hex token gated
+    on an auth-ish word within 24 characters before it - the shape of the ONE true positive of
+    2026-09-08, gated because this corpus is full of 16-char checksums and 40-char git shas that an
+    ungated hex shape would propose one by one. Every shape carries `added: true|false`, so the set
+    can say which members are the thirteen; the item calls them a starting set, and a widened
+    detector that forgot to mark its additions is indistinguishable from one that misremembered the
+    original scan. Shapes are declaration-ordered and overlaps resolved narrowest-first, so
+    `Authorization: Bearer sk-ant-...` is proposed ONCE, as an Anthropic key.
+  - `src/core/conversation-redaction.ts` - the filesystem half, a new WRITERS key.
+  - `src/cli/commands/conversation.ts` - the two command lines.
+  - `src/core/conversation-mirror.ts` - `advanceMirrors` now projects the appended tail through the
+    choice, and `MirrorReport` gained `redacted` / `redactedBytesWritten`.
+  - `src/hooks/stop.ts` - `refreshNote` gained one clause, so the audit row says when a choice was
+    re-applied to an appended tail. A redacted copy that quietly stopped being projected would put
+    a ticked value back into the file on the next turn and nothing else in the row would differ.
+  - tests: `test/core/conversation-redaction.test.ts` (23) and
+    `test/cli/conversation-secrets.test.ts` (12).
+
+A CANDIDATE'S ID IS A HASH OF ITS VALUE, and that is a security property rather than a naming
+convention. The report, the `--json` a form renders, the accepted list handed back, and the plan on
+disk are ALL free of credential material - the redactor recovers the values by scanning the file
+again. It also answers this item's two hardest requirements for free: one value is one id is one
+placeholder, in every record and in every tail appended afterwards. The receipt for why that
+matters is in this project's own history: the lane that REPORTED the 2026-09-08 finding wrote a
+complete bearer token into a corpus item, and corpus items are committed and pushed.
+
+WHAT THE CLI NOW EXPOSES FOR THE FORM, which is the thing the next lane builds against:
+
+  `mycontext conversation secrets [<session>] [--json]`
+
+It writes nothing and takes no `--yes`, because detection proposes. `--json` carries, per candidate
+- and the unit is the distinct VALUE, not the occurrence, because that is the question a person is
+being asked:
+
+    id            the checkbox's value, and the only handle the redactor needs
+    shape         which of the nineteen, and `added` says whether it is past the thirteen
+    shapeTitle    what a person calls it
+    preview       first four and last four characters, with the length of the middle. NEVER the value
+    length        characters, which a mask cannot carry
+    occurrences   how many times, across the session
+    records       which record indexes, capped, with `recordsOmitted` saying how many are not listed
+    firstRecord / lastRecord
+    paths         where inside the record - `message.content[0].input.command`
+    contexts      the text around it, with every match in the window masked. THIS is what tells
+                  `secret = cryptoRandomBytes` from a credential, and it is the field that does the
+                  actual work of the form
+    placeholder   what it becomes if ticked, shown BEFORE the choice
+    accepted      whether it is already ticked. `false` for everything until somebody chooses
+
+plus `shapes` (the legend, ids/titles/added/notes, never the patterns), `records`, `unreadable`,
+`scannedBytes`, `truncated`, `occurrences`, `total`, `chosen` (the standing choice, or null), and
+`replaceCommand` - the Composer's payload, which is the exact line the screen hands back.
+
+  `mycontext conversation persist <session> --replace <id,id,...> [--yes]`
+
+The substitution's call site, on the command that already exports, because his design puts it ON
+EXPORT ONLY. `--replace=` with nothing after it TAKES THE CHOICE BACK and removes the derived copy;
+without that there is no way to untick a box. `--off` and `--replace` together are refused rather
+than half-applied.
+
+THE PLACEHOLDER IS `FAKE-<shape>-<id12>-NOT-A-REAL-VALUE`. Two readers are served at once: `FAKE-`
+in front for a person skimming, `-NOT-A-REAL-VALUE` at the end so it survives a middle truncation,
+and both made of characters JSON never escapes, so the stand-in occupies exactly the bytes it
+appears to and a diff against the original is readable. It is never proposed as a candidate itself,
+so a redacted copy cannot redact itself.
+
+ONE DESIGN DECISION TAKEN IN-LANE, AND IT IS REVERSIBLE. The redacted output is a SECOND FILE
+beside the mirror - `<session>.redacted.jsonl`, with an id-only plan at `<session>.redaction.json`
+- and the mirror itself stays byte-for-byte the transcript. Rewriting the mirror in place would
+have ended all three of seq:4's guarantees at once: the copy would stop being a prefix of anything,
+`PersistedRow.bytes` would stop being its length, and `stillPrefix` would report every mark as
+broken on the next turn. This is NOT the "two copies to disagree about" that seq:4 refused when it
+declined a separate `export` verb - those would have been two answers to one question; these are
+two different things, one derived from the other by a plan on disk. If he wants the mirror itself
+redacted instead, that is a change to this one module, not a rebuild.
+
+THE PLAN IS A SIDECAR FILE AND NOT A COLUMN ON `persisted`, deliberately: `openReadOnlyChecked`
+treats a missing column as an index built by an older build, so adding one would put every existing
+workspace through a rebuild in order to ship a feature nobody has turned on. `persist --off` leaves
+both the copy and the plan, exactly as it already leaves the mirror.
+
+NOTHING IS REPLACED BY DEFAULT, proved rather than argued. A copy of a file FULL of candidates with
+none of them accepted is asserted BYTE-IDENTICAL with `Buffer.equals`, and `redactString` returns
+its argument on an empty set. `advanceRedaction` answers null for a session nobody chose anything
+for, so the ordinary path costs one `existsSync` and produces no file.
+
+WHAT REMAINS - and it is ONE step, which is why this item is left open rather than split:
+
+  1. THE FORM. A checkbox list on the Conversations screen, drawing `conversation secrets --json`
+     and composing `persist --replace` back through the Composer. `test/ui/no-writes.test.ts` holds
+     `src/ui/` write bindings to an exact set of one, so the screen COMPOSES and the CLI RUNS -
+     that is the answer to this item's "where the form lives", and it is settled by that test
+     rather than by preference. Its catalogue row is already written in
+     `test/ui/palette-lib.test.ts`' UNCATALOGUED, naming the form as what it waits for.
+  2. Not blocking, and reported rather than filed: SUBAGENT TRANSCRIPTS ARE NOT SCANNED, because
+     they are not mirrored. The one true positive of 2026-09-08 was in a subagent transcript, so
+     that is a real gap in the coverage of this feature - it just is not a gap in the export, which
+     is what this item is about.
+  3. Also reported: the detector reads a session at `MAX_SCAN_BYTES` and says so when it stops
+     there, and a `truncated` list is a FLOOR. On the owner's 65 MB session that bound is not
+     reached; it is named because a list a reader believes is complete is worse than one that
+     admits it is not.
+
+FULL UNIT SUITE at the time of the commit: 7228 tests, 4 failures, all four known-red at HEAD and
+none of them this lane's - two `diagram-gate` (they need `npm run gen:docs`) and two
+`statusline-chain` (the pair that rotates with `ingest-lock` under contention and passes alone).
+`palette-lib`'s two were red before this lane and are GREEN now: one of them was the command
+catalogue, which this lane closed by writing the row above. `tsc --noEmit` is clean and
+`npm run check:basis` reports nothing outside the baseline.
