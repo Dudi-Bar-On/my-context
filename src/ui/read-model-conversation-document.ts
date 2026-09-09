@@ -715,6 +715,29 @@ export interface DocNodeBody {
   /** The label a synthetic person-side turn carries. See `DocOutlineNode.y`. */
   synthetic: string | null;
   /**
+   * **WHICH LANE REPORTED BACK** — `plan:archive seq:49`, and the field that
+   * lets the row where the work CAME BACK open the same transcript the row
+   * that ASKED for it already opens.
+   *
+   * The bare `<task-id>` of a `task-notification` turn `syntheticSpeaker`
+   * named `subagent`, and `null` on every other node in this document.
+   *
+   * ── WHY IT IS SET ONLY WHEN THE SPEAKER IS `subagent` ─────────────────────
+   *
+   * A task notification also announces a finished background SHELL command
+   * and a monitor tick, and those carry a `<task-id>` too — 811 of the 1,437
+   * ids on the owner's transcript resolve to no `agent-<id>.jsonl` at all, and
+   * that is correct rather than broken. So the id is taken from the payload
+   * only where `syntheticSpeaker` already ruled a lane spoke: the existing
+   * discriminator decides, and a Shell or unnamed row cannot link because it
+   * carries nothing to link WITH. A second rule here would be a second place
+   * for the speaker mapping to drift from `seq:28`'s ruling.
+   *
+   * **It is BARE.** `taskId` says why, and `laneKey` in `conversations.js` is
+   * the one place `agent-` is prepended.
+   */
+  lane: string | null;
+  /**
    * `work`: one entry per record folded — every record, since a run closes at
    * `WORK_RUN_CAP` before it takes another. `deed`: exactly one, the promoted
    * call. `said`: one when the turn ALSO carried a tool call, which is 3 records
@@ -787,6 +810,27 @@ function summaryLine(text: string): string | null {
   if (found === null) return null;
   const line = oneLine(found[1] ?? '', 160);
   return line === '' ? null : line;
+}
+
+/**
+ * The `<task-id>` a task notification carries — **the lane that reported
+ * back**, `plan:archive seq:49`.
+ *
+ * **It is BARE, and it is served bare on purpose.** The payload writes
+ * `a44d31ad683f4cb06`; the file on disk is `agent-a44d31ad683f4cb06.jsonl` and
+ * the roster reads its `agentId` off that name. That asymmetry is
+ * `plan:archive seq:48`'s and is normalised once at the reader by `laneKey`
+ * in `conversations.js` — prepending here as well would be the second spelling
+ * of one rule, which is the defect this project spends its days removing.
+ *
+ * **Measured on the owner's own transcript, 2026-09-09:** 1,440 records carry
+ * a `<task-notification>` payload and 1,437 of them carry a `<task-id>`. The
+ * three that do not are served `null` rather than guessed at.
+ */
+function taskId(text: string): string | null {
+  const found = /<task-id>([^<\s]+)<\/task-id>/.exec(text);
+  const id = found?.[1] ?? '';
+  return id === '' ? null : id;
 }
 
 /**
@@ -1204,11 +1248,13 @@ interface Shape {
   who: Speaker | null;
   read: Read;
   synthetic: string | null;
+  /** The lane that reported back. See `DocNodeBody.lane`. */
+  lane: string | null;
 }
 
 function shapeOf(row: Record<string, unknown> | null): Shape {
   if (row === null) {
-    return { said: false, deed: null, who: null, read: emptyRead(), synthetic: null };
+    return { said: false, deed: null, who: null, read: emptyRead(), synthetic: null, lane: null };
   }
   const message = row['message'];
   if (typeof message !== 'object' || message === null) {
@@ -1219,7 +1265,7 @@ function shapeOf(row: Record<string, unknown> | null): Shape {
     read.body = payload.text;
     read.subtype = payload.subtype;
     read.detail = summaryLine(payload.text);
-    return { said: false, deed: null, who: null, read, synthetic: null };
+    return { said: false, deed: null, who: null, read, synthetic: null, lane: null };
   }
   const content = (message as { content?: unknown }).content;
   // `classifyTurn` is IMPORTED rather than restated — `core/session-summary.ts`
@@ -1233,7 +1279,7 @@ function shapeOf(row: Record<string, unknown> | null): Shape {
     // A COMMAND, OR A QUESTION PUT TO HIM — lifted out of the fold rather than
     // counted into it. `classifyTurn` still calls this machinery and is right
     // to; what changes is which of the two jobs that bucket was doing.
-    return { said: false, deed: deedOf(read.tool), who: null, read, synthetic: null };
+    return { said: false, deed: deedOf(read.tool), who: null, read, synthetic: null, lane: null };
   }
   const read = readRecord(message);
   read.subtype = subtypeOf(row);
@@ -1244,7 +1290,12 @@ function shapeOf(row: Record<string, unknown> | null): Shape {
   // WORDS WIN over a call in the same record, and the call is served beside
   // them rather than dropped — 3 records of 31,101 carry both.
   if (synthetic !== null) who = syntheticSpeaker(synthetic, read.said);
-  return { said: true, deed: null, who, read, synthetic };
+  // THE ROW WHERE A LANE REPORTED BACK CARRIES WHOSE REPORT IT IS —
+  // `plan:archive seq:49`. `syntheticSpeaker` above has already ruled which
+  // rows those are; this reads the id off the same payload it read the summary
+  // off, and asks no second question. See `DocNodeBody.lane`.
+  const lane = who === 'subagent' ? taskId(read.said) : null;
+  return { said: true, deed: null, who, read, synthetic, lane };
 }
 
 /* ══ THE OUTLINE ═══════════════════════════════════════════════════════════ */
@@ -1494,6 +1545,7 @@ export function readNodes(file: string, want: NodeWindowRequest): DocNodeBody[] 
         totalChars: text.length,
         thinking,
         synthetic: shape.synthetic,
+        lane: shape.lane,
         // A turn that ALSO called a tool keeps the call beside its words —
         // 3 records of 31,101, and dropping them for being rare is the shape
         // `INV-nothing-is-dropped-silently` refuses.
@@ -1510,7 +1562,7 @@ export function readNodes(file: string, want: NodeWindowRequest): DocNodeBody[] 
         n: n++, kind: 'deed', deed: shape.deed,
         who: shape.deed === 'ran' ? 'shell' : 'claude',
         timestamp, first: step.index, span: 1,
-        text: '', totalChars: 0, thinking: shape.read.thinking, synthetic: null,
+        text: '', totalChars: 0, thinking: shape.read.thinking, synthetic: null, lane: null,
         steps: [asStep()],
         outcome: null, answers: [], answerText: '',
       };
@@ -1527,7 +1579,7 @@ export function readNodes(file: string, want: NodeWindowRequest): DocNodeBody[] 
       open = {
         n: n++, kind: 'work', deed: null, who: null, timestamp,
         first: step.index, span: 0, text: '', totalChars: 0,
-        thinking: '', synthetic: null,
+        thinking: '', synthetic: null, lane: null,
         steps: [], outcome: null, answers: [], answerText: '',
       };
     }

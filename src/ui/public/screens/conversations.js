@@ -1023,7 +1023,7 @@ function speakerGlyph(who) {
  * and because "a heading per turn" is the part of that format `seq:13` itself
  * says survives virtualisation.
  */
-function drawTurn(ctx, body) {
+function drawTurn(ctx, body, lanes = NO_LANES) {
   const who = body.who;
   const accent = SPEAKER_CLASS[who] ?? '';
   const turn = el('article', `tvturn ${accent}${body.synthetic !== null ? ' tvsyn' : ''}`.trim());
@@ -1085,6 +1085,14 @@ function drawTurn(ctx, body) {
     at.setAttribute('dir', 'ltr');
     head.append(at);
   }
+
+  // **AND WHOSE REPORT IT IS** — `plan:archive seq:49`. Last in the header, so
+  // the row still reads who / what / when before it offers the way in, and so
+  // the wrap `.tvwho` already does puts the control on its own line rather than
+  // between the chip and the stamp. `laneReport` carries the ruling on which
+  // rows reach it and on the second route to one lane.
+  for (const mark of laneReport(ctx, lanes, body.lane)) head.append(mark);
+
   turn.append(head);
 
   // **A synthetic turn is machinery, and it is drawn as machinery.** It is
@@ -1249,16 +1257,29 @@ export function rosterFromHash(hash) {
  */
 export function laneIndex(body) {
   const byCall = new Map();
+  // **AND BY THE LANE'S OWN ID** — `plan:archive seq:49`. The turn where a
+  // lane REPORTED BACK names it by `<task-id>` and carries no `tool_use` id at
+  // all, so `byCall` cannot answer for it. Same rows, second key, one fetch.
+  //
+  // Keyed through `laneKey` because the two sides spell the id differently:
+  // `agentId` is read off the file name (`agent-<id>.jsonl`) and the payload
+  // writes the bare id. That is `seq:48`'s asymmetry, normalised at the reader
+  // in the one place this file already normalises it — `rosterOrder` keys its
+  // parents the same way and for the same reason.
+  const byAgent = new Map();
   if (body === null || typeof body !== 'object' || !Array.isArray(body.subagents)) {
-    return { byCall, total: 0, unlinked: 0, owner: null, read: false };
+    return { byCall, byAgent, total: 0, unlinked: 0, owner: null, read: false };
   }
   for (const lane of body.subagents) {
     if (lane === null || typeof lane !== 'object') continue;
+    const key = laneKey(lane.agentId);
+    if (key !== null) byAgent.set(key, lane);
     if (typeof lane.toolUseId !== 'string' || lane.toolUseId === '') continue;
     byCall.set(lane.toolUseId, lane);
   }
   return {
     byCall,
+    byAgent,
     total: typeof body.total === 'number' ? body.total : byCall.size,
     unlinked: typeof body.unlinked === 'number' ? body.unlinked : 0,
     // The SESSION this roster belongs to, which for a lane document is not the
@@ -1271,7 +1292,8 @@ export function laneIndex(body) {
 
 /** An empty roster nobody has read yet, so a caller always holds the shape. */
 const NO_LANES = {
-  byCall: new Map(), total: 0, unlinked: 0, owner: null, read: false, notKept: false,
+  byCall: new Map(), byAgent: new Map(),
+  total: 0, unlinked: 0, owner: null, read: false, notKept: false,
 };
 
 /**
@@ -1354,6 +1376,57 @@ function laneMark(ctx, lanes, toolUseId) {
   if (lanes.notKept !== true) return [];
   const missing = el('span', 'tvcut');
   missing.append(...ctx.t('conv.doc.laneNotKept'));
+  return [missing];
+}
+
+/**
+ * **THE MARK ON THE ROW WHERE A LANE REPORTED BACK** — `plan:archive seq:49`.
+ *
+ * ── WHY THIS ROW AND NOT ONLY THE DISPATCHING ONE ─────────────────────────
+ *
+ * `laneMark` above draws the way in on the step that ASKED for the work. This
+ * one draws it on the turn where the work CAME BACK, and that is the row a
+ * reader reaches first: they are scrolling their own session, they meet
+ * *"Background task finished"*, and what they want next is the reasoning
+ * behind it. Before this they had to scroll BACKWARDS to find the `Agent` call
+ * — past everything the lane's report caused — or open the roster and match a
+ * one-line brief by eye.
+ *
+ * ── TWO ROUTES TO ONE LANE IN ONE DOCUMENT, ON PURPOSE ────────────────────
+ *
+ * A document that holds both the dispatching step and the notification now
+ * holds two links to the same transcript. **That is the decision and not an
+ * accident.** They are different MOMENTS — one is where the work was asked
+ * for, the other where it came back — and a reader at either one wants the
+ * same file without travelling to the other. Suppressing the second when the
+ * first is on screen would also be a lie in a virtualised document, where
+ * "on screen" is a few dozen rows out of ten thousand and the dispatching step
+ * is usually not in the DOM at all.
+ *
+ * ── WHICH ROWS, AND WHY NOTHING HERE DECIDES THAT ─────────────────────────
+ *
+ * Only a row `syntheticSpeaker` already named `subagent` carries `body.lane`
+ * at all — the read model sets it nowhere else, so a Background command row or
+ * a monitor tick has nothing to link with and this function is never reached
+ * with an id for one. `seq:28`'s speaker mapping stays the single ruling; this
+ * adds a link to a row it named and does not rename anything.
+ *
+ * ── AND A MISSING LANE IS SAID, NOT SWALLOWED ─────────────────────────────
+ *
+ * `INV-nothing-is-dropped-silently`, and `seq:15`'s three answers: the link,
+ * "it is gone", or "it was never in this copy". A lane can be pruned off disk
+ * after its report was written, and an exported copy carries the session
+ * without its lanes. The one silence left is a roster that never loaded, which
+ * the page already says once at the top (`conv.doc.lanesUnread`) — repeating
+ * it on 187 rows would be the same claim 187 times.
+ */
+function laneReport(ctx, lanes, id) {
+  const key = laneKey(id);
+  if (key === null || lanes.read !== true) return [];
+  const lane = lanes.byAgent.get(key);
+  if (lane !== undefined) return [laneLink(ctx, lane)];
+  const missing = el('span', 'tvcut');
+  missing.append(...ctx.t(lanes.notKept === true ? 'conv.doc.laneNotKept' : 'conv.doc.laneGone'));
   return [missing];
 }
 
@@ -2928,7 +3001,7 @@ function mountDocument(ctx, host, outline, back, roster = NO_LANES) {
       return drawWaiting(ctx, nodes[nodeIndex], heightOf(nodeIndex));
     }
     waiting.delete(nodeIndex);
-    if (body.kind === 'said') return drawTurn(ctx, body);
+    if (body.kind === 'said') return drawTurn(ctx, body, lanes);
     // A command, or a question put to him — drawn open. `plan:archive seq:16`.
     if (body.kind === 'deed') return drawDeed(ctx, body, lanes);
     return drawWork(ctx, body, lanes);

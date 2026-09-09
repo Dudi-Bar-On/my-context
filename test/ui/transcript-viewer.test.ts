@@ -3,6 +3,7 @@
 // TASK-the-viewer-renders-what-the-terminal-showed-with-its,
 // TASK-the-transcript-is-one-document-you-scroll-not-fifty-records,
 // TASK-a-subagent-is-opened-from-the-turn-that-dispatched-it-and,
+// TASK-the-row-where-a-lane-reports-back-cannot-say-whose-report-it,
 // INV-nothing-is-dropped-silently
 /**
  * The two pure halves of the transcript viewer: the escape-sequence renderer
@@ -172,6 +173,8 @@ interface ViewerModule {
   laneHref: (agentId: string) => string;
   laneIndex: (body: unknown) => {
     byCall: Map<string, { agentId: string }>;
+    /** `plan:archive seq:49` - the same rows keyed by the lane's own id. */
+    byAgent: Map<string | null, { agentId: string; records: number }>;
     total: number;
     unlinked: number;
     owner: string | null;
@@ -305,6 +308,46 @@ test('a lane is keyed by the call that dispatched it, and an unlinkable one is c
   assert.equal(index.byCall.has('toolu_MISSING'), false);
   assert.equal(index.total, 3, 'the roster is three even though two are reachable');
   assert.equal(index.unlinked, 1, 'INV-nothing-is-dropped-silently: the page says this number');
+
+  // **AND BY THE LANE'S OWN ID** - `plan:archive seq:49`. The turn where a
+  // lane REPORTED BACK names it by `<task-id>` and carries no `tool_use` id,
+  // so `byCall` cannot answer for it. Every row is keyed here, including the
+  // one whose sidecar was unreadable: nothing dispatched it that this document
+  // can see, and its report still names it.
+  assert.equal(index.byAgent.size, 3, 'every lane, not only the linkable ones');
+  assert.equal(index.byAgent.get('agent-three')?.records, 7,
+    'a lane with no dispatching call is still reachable from the row it reported on');
+});
+
+/**
+ * `plan:archive seq:49`, and the SAME asymmetry `laneKey` was written for one
+ * screen over.
+ *
+ * A task notification writes the id BARE - `a44d31ad683f4cb06` - and the
+ * roster reads `agentId` off the file name, `agent-a44d31ad683f4cb06.jsonl`.
+ * A map keyed by the raw `agentId` would therefore answer nothing for every
+ * one of the 187 rows on the owner's session where a lane reported back, and
+ * would answer it SILENTLY: the row would draw "there is nothing to open"
+ * beside a transcript that is sitting on disk. So the key goes through
+ * `laneKey`, which is `plan:archive seq:48`'s normalisation at the reader and
+ * the only place in this file that prepends anything.
+ */
+test('a lane is reachable by the bare id its own report names it with', async () => {
+  const { laneIndex, laneKey } = await viewer();
+  const index = laneIndex({
+    sessionId: 'sess-1',
+    ownerSessionId: 'sess-1',
+    total: 1,
+    unlinked: 0,
+    subagents: [
+      { agentId: 'agent-a44d31ad683f4cb06', toolUseId: 'toolu_ONE', records: 40, present: true },
+    ],
+  });
+
+  // What the payload carries, put through the one normaliser.
+  assert.equal(index.byAgent.get(laneKey('a44d31ad683f4cb06'))?.records, 40);
+  assert.equal(index.byAgent.has('a44d31ad683f4cb06'), false,
+    'the bare id is NOT a key of its own - one spelling, normalised at the reader');
 });
 
 test('a roster that failed to read is NOT an empty one, and says which it is', async () => {

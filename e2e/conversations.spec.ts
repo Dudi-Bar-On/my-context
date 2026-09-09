@@ -14,6 +14,7 @@
 // TASK-a-tool-call-keeps-160-characters-of-its-input-and-drops-the,
 // TASK-a-question-its-options-the-answer-chosen-and-a-shell-command,
 // TASK-a-task-notification-is-3-9-mb-of-what-a-lane-reported-drawn,
+// TASK-the-row-where-a-lane-reports-back-cannot-say-whose-report-it,
 // TASK-a-selected-passage-copies-as-something-a-terminal-will,
 // TASK-a-lane-is-named-by-what-it-did-and-never-by-what-it-is-so,
 // INV-nothing-is-dropped-silently
@@ -2450,9 +2451,40 @@ test.describe('the list is browsable', () => {
     ]));
 
     // Two minutes on `topic`, and the only one with a lane under it.
+    //
+    // **AND IT HOLDS THE ROW `plan:archive seq:49` IS ABOUT, IN THE ONE SHAPE
+    // THAT PROVES IT.** There is no `Agent` call anywhere in this session, so
+    // the dispatching link `seq:15` draws has nothing to hang on and the
+    // notification is the ONLY route from this document to `agent-probe`.
+    // Three notifications, because the claim has three halves:
+    //
+    //   1. A lane's report, naming a lane that is on disk — it links.
+    //   2. A lane's report naming a lane that is NOT — it SAYS SO.
+    //      `INV-nothing-is-dropped-silently`, and never a dead link.
+    //   3. A BACKGROUND COMMAND carrying the same id that resolves in (1).
+    //      It must not link, and the reason it does not is that
+    //      `syntheticSpeaker` named it `shell` — `seq:28`'s existing
+    //      discriminator, not a second rule. If the id ever escapes from
+    //      behind that ruling, this row grows a link and this test goes red.
+    //
+    // The ids are BARE, as the harness writes them: the file is
+    // `agent-probe.jsonl` and the payload says `probe`. That asymmetry is
+    // `seq:48`'s and `laneKey` is the one place it is closed.
+    const notify = (id: string, summary: string): string => [
+      '<task-notification>',
+      `<task-id>${id}</task-id>`,
+      `<summary>${summary}</summary>`,
+      '</task-notification>',
+    ].join('\n');
     writeFileSync(path.join(dir, 'sess-beta.jsonl'), jsonl([
       { type: 'user', timestamp: '2026-09-05T10:00:00.000Z', gitBranch: 'topic',
         message: { role: 'user', content: 'the beta session' } },
+      { type: 'user', timestamp: '2026-09-05T10:01:00.000Z', gitBranch: 'topic',
+        message: { role: 'user', content: notify('probe', 'Agent "read the sextant" finished') } },
+      { type: 'user', timestamp: '2026-09-05T10:01:10.000Z', gitBranch: 'topic',
+        message: { role: 'user', content: notify('prunedaway', 'Agent "a lane since pruned" finished') } },
+      { type: 'user', timestamp: '2026-09-05T10:01:20.000Z', gitBranch: 'topic',
+        message: { role: 'user', content: notify('probe', 'Background command "npm test" completed (exit code 0)') } },
       { type: 'assistant', timestamp: '2026-09-05T10:02:00.000Z', gitBranch: 'topic',
         message: { role: 'assistant', content: text('done') } },
     ]));
@@ -2582,6 +2614,62 @@ test.describe('the list is browsable', () => {
     await expect(page.locator('.convrow')).toHaveCount(0);
     await expect(card).toContainText('No session matches what you asked for');
     await expect(card).toContainText('all 2');
+  });
+
+  /**
+   * **THE ROW WHERE A LANE REPORTED BACK OPENS THAT LANE** — `plan:archive
+   * seq:49`, driven as a reader drives it.
+   *
+   * The unit tests own the id's journey — `test/ui/conversation-document.test.ts`
+   * proves it rides only the rows `syntheticSpeaker` named `subagent`, and
+   * `test/ui/transcript-viewer.test.ts` proves the roster answers to the bare
+   * spelling. Neither can prove there is an anchor on the screen, that it
+   * carries the address, or that the two rows beside it draw the disclosure
+   * instead — `render()` needs a real document, which is this file's whole
+   * reason to exist.
+   *
+   * **It opens in a NEW TAB and this test does not follow it.** That is
+   * `seq:15`'s answer to "return exactly to the cursor point": the reader's
+   * document is never unmounted, so their place is not restored — it was never
+   * lost. The lane document itself is already driven end to end above.
+   */
+  test('a lane is opened from the turn where it reported back', async ({ page }) => {
+    await land(page, 'en');
+    await page.evaluate(() => { location.hash = '#/conversations/sess-beta'; });
+    await page.waitForSelector('article.tvturn', { timeout: 20_000 });
+
+    // THE THREE SYNTHETIC ROWS, in the order the file wrote them.
+    const rows = page.locator('article.tvturn.tvsyn');
+    await expect(rows).toHaveCount(3);
+
+    // 1. A LANE REPORTED, AND THE ROW SAYS WHOSE REPORT IT IS. There is no
+    //    `Agent` call in this session at all, so before this the reader had
+    //    the roster and nothing else.
+    const reported = rows.nth(0);
+    await expect(reported).toContainText('Subagent');
+    await expect(reported).toContainText('Background task finished');
+    const open = reported.locator('a.tvlane');
+    await expect(open).toHaveAttribute('href', '#/conversations/agent-probe');
+    await expect(open).toHaveAttribute('target', '_blank');
+    await expect(open).toBeVisible();
+
+    // 2. A LANE THAT IS NOT ON DISK IS SAID, NOT SWALLOWED.
+    const pruned = rows.nth(1);
+    await expect(pruned).toContainText('Subagent');
+    await expect(pruned.locator('a.tvlane')).toHaveCount(0);
+    await expect(pruned).toContainText('no longer on disk');
+
+    // 3. A BACKGROUND COMMAND CARRIES A TASK ID TOO — this one is `probe`,
+    //    the id that resolves on row 1 — and it must NOT link. The row's name
+    //    is the owner's ruling and the link follows the name.
+    const shell = rows.nth(2);
+    await expect(shell).toContainText('Shell');
+    await expect(shell.locator('a.tvlane')).toHaveCount(0);
+    await expect(shell).not.toContainText('no longer on disk');
+
+    await page.screenshot({
+      path: 'e2e/screens/conversations-lane-reported-en.png', fullPage: true,
+    });
   });
 
   test('every row says how long its session lasted, at both ends of the range', async ({ page }) => {

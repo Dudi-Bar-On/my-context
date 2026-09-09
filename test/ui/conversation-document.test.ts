@@ -6,6 +6,7 @@
 // TASK-a-tool-call-keeps-160-characters-of-its-input-and-drops-the,
 // TASK-a-question-its-options-the-answer-chosen-and-a-shell-command,
 // TASK-a-task-notification-is-3-9-mb-of-what-a-lane-reported-drawn,
+// TASK-the-row-where-a-lane-reports-back-cannot-say-whose-report-it,
 // TASK-the-folded-run-s-stepsomitted-disclosure-can-never-fire,
 // STD-a-measured-zero-is-drawn-and-named-an-unmeasured-thing-is,
 // INV-nothing-is-dropped-silently
@@ -1189,6 +1190,64 @@ test('a synthetic turn names who CAUSED it, and never the assistant', () => {
       ['task-notification', 'task-notification', 'task-notification',
         'task-notification', 'task-notification', 'task-notification']);
     assert.equal(said[6]!.y, 'slash-command');
+  } finally { b.dispose(); }
+});
+
+/* ══ seq:49 — AND WHOSE REPORT IT IS ═══════════════════════════════════════ */
+
+/**
+ * `plan:archive seq:49`. The row where a lane REPORTS BACK could say that a
+ * lane reported and could not say WHICH — `synthetic` is a label string and
+ * nothing else, so the notification had no way to reach `laneHref` and a
+ * reader who met the report had to scroll backwards to the `Agent` call.
+ *
+ * **The claim this test makes is the one a comment cannot: the id is carried
+ * on exactly the rows `syntheticSpeaker` named `subagent`, and on no other.**
+ * A task notification also announces a finished background SHELL command and a
+ * monitor tick, and those carry a `<task-id>` too — 811 of the owner's 1,437
+ * ids resolve to no lane file, which is correct rather than broken. Setting
+ * `lane` on them would draw a link to nothing on 24 rows, and it is prevented
+ * by the EXISTING discriminator rather than by a second rule: if a later edit
+ * moves the id out from behind `who === 'subagent'`, the shell assertions
+ * below go red.
+ *
+ * **And it is BARE.** The payload writes `x`; the file is `agent-x.jsonl`.
+ * `laneKey` in `conversations.js` is the single place that prepends — `seq:48`
+ * — so a normalisation added here would be the second spelling of one rule.
+ */
+test('the row where a lane reported back carries WHICH lane, and only that row does', () => {
+  const b = box();
+  try {
+    b.write('sess-lane', [
+      { type: 'user', message: { role: 'user', content: NOTIFY('Agent "A9 measure the fold" finished') }, timestamp: '2026-09-09T09:00:00.000Z' },
+      { type: 'user', message: { role: 'user', content: NOTIFY('Agent "A5 retire the excuse" failed: Agent terminated early') }, timestamp: '2026-09-09T09:00:01.000Z' },
+      { type: 'user', message: { role: 'user', content: NOTIFY('Background command "npm test" completed (exit code 0)') }, timestamp: '2026-09-09T09:00:02.000Z' },
+      { type: 'user', message: { role: 'user', content: NOTIFY('Monitor event: "the file grew"') }, timestamp: '2026-09-09T09:00:03.000Z' },
+      { type: 'user', message: { role: 'user', content: '<command-name>/graphify</command-name>' }, timestamp: '2026-09-09T09:00:04.000Z' },
+      // A lane's report with no `<task-id>` at all — 3 of the owner's 1,440.
+      { type: 'user', message: { role: 'user', content: '<task-notification>\n<summary>Agent "A2 no id" finished</summary>\n</task-notification>' }, timestamp: '2026-09-09T09:00:05.000Z' },
+      { type: 'user', message: { role: 'user', content: 'a thing he actually typed' }, timestamp: '2026-09-09T09:00:06.000Z' },
+      { type: 'assistant', message: { role: 'assistant', content: text('and the answer') }, timestamp: '2026-09-09T09:00:07.000Z' },
+    ]);
+    const file = b.file('sess-lane');
+    const out = buildOutline(file);
+    const first = out.nodes[0]!;
+    const bodies = readNodes(file, { at: first.o, from: first.f, node: first.n, count: 10 });
+
+    assert.deepEqual(bodies.map((n) => [n.who, n.lane]), [
+      ['subagent', 'x'],   // a lane reporting back — the row that now links
+      ['subagent', 'x'],   // a lane that FAILED still reported, and still opens
+      ['shell', null],     // a background command: it has an id and no lane file
+      [null, null],        // a monitor tick: nobody caused it, nothing to open
+      ['you', null],       // he typed the slash command; it dispatched no lane
+      ['subagent', null],  // a report with no id is served null, never guessed
+      ['you', null],
+      ['claude', null],
+    ], 'the id rides the speaker `seq:28` already ruled, and rides nothing else');
+
+    assert.equal(bodies[0]!.lane, 'x',
+      'BARE, as the payload wrote it — `laneKey` in conversations.js is the one '
+      + 'place `agent-` is prepended (plan:archive seq:48)');
   } finally { b.dispose(); }
 });
 
