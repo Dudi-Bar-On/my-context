@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: The live feed kept dying and the repair that was made is a sound one, but nothing has yet been caught doing the killing, so this records what was ruled out and what to look at next time it happens.
-summary_of: 873224ce29384ff8
+summary_of: c4009047765c6795
 scope:
   - src/ui/watch-model.ts
   - src/ui/public/app.js
@@ -20,10 +20,10 @@ tags:
 origin: human
 source_file: "C:/Users/UserC/AppData/Local/Temp/claude/D--Users-UserC-source-repos-my-context/595db3b1-a481-4553-b4c0-7248c31b2655/scratchpad/live22.md"
 source_anchor: null
-source_checksum: 7be3eb7cac19d681
+source_checksum: null
 valid_from: 2026-09-08
 valid_until: null
-checksum: 5fb700602c1626e6
+checksum: 9defd2b01fc543fd
 plan: live
 seq: "22"
 state: todo
@@ -88,3 +88,66 @@ priority: "2"
 > many faults; he was seeing ONE fault many times, because nothing ever cleared it and every screen
 > re-announced it. That is fixed independently of the cause: the chip now says the feed is not
 > running - a state that stays true - instead of naming an error from a moment that has passed.
+
+── THE FIN MEASUREMENT, TAKEN 2026-09-09. THE SERVER CLOSES THE STREAM. ─────────────────────
+
+The owner reported the fault a second time - "the live feed is not running - reload to reconnect",
+which is the NEW `watch.streamNotLive` wording, so the sticky-fault half of seq:21 is working and
+the DROP is what recurred. This item asked for the one measurement seq:21 never took: which side
+sent FIN. Taken:
+
+    127.0.0.1:1148   -> 127.0.0.1:58888    CLOSE_WAIT     pid 18968   chrome.exe
+    127.0.0.1:58888  -> 0.0.0.0:0          LISTENING      pid 184220  node.exe  (the server)
+    127.0.0.1:58888  -> 127.0.0.1:1148     FIN_WAIT_2     pid 184220  node.exe
+
+FIN_WAIT_2 is held by the SERVER and CLOSE_WAIT by the BROWSER. FIN_WAIT_2 means this side sent FIN
+and had it acknowledged; CLOSE_WAIT means this side RECEIVED one. So the server sent FIN first and
+the browser is the one that had not yet closed.
+
+AND THAT ELIMINATES EVERY EXTERNAL HYPOTHESIS THIS ITEM WAS FILED TO TEST:
+  - NOT Chrome’s NetworkChangeNotifier teardown - that would close from the browser side.
+  - NOT a VPN, a Wi-Fi roam or a virtual adapter appearing - same reason.
+  - NOT Windows or an antivirus shim reaping an idle socket - a reaper sends RST from outside, and
+    it would not leave the server in FIN_WAIT_2.
+  - NOT the keep-alive being absent. His server started 2026-09-09T08:29:58Z, after the keep-alive
+    landed at 2026-09-08T21:00Z, so the running process HAS it. THE KEEP-ALIVE IS NOT THE CURE, and
+    that is now measured rather than suspected.
+
+IT IS A CLEAN FIN, WHICH NARROWS IT FURTHER. `res.destroy()` sends RST; a clean FIN with an ACK is
+`res.end()`. There are exactly two `res.end()` calls in `streamHandler` and BOTH are the fault
+path - the opening `tail.backlog()` throw and the per-tick `tail.poll()` throw.
+
+BUT THE OBVIOUS CAUSE OF THAT THROW IS RULED OUT TOO. `AuditTail.poll()` throws on a damaged audit
+line, and the log is clean: 8,511 lines, ZERO unparseable, and it ends with a newline, so there is
+no partial last line for a tail to trip on. Rotation is also not it - the log rotates at about
+8.39 MB (two segments on disk, 8,390,956 and 8,395,026 bytes) and the live file is 4,533,415, about
+half way. And a rotation answers `resync: true` rather than throwing, by that method’s own
+contract.
+
+── SO WHAT IS LEFT, AND THE MOST LIKELY IS THE ONE NOBODY TESTED ────────────────────────────
+
+THE seq:21 LANE PROBED SILENT STREAMS. Node to Node alive at 11 minutes; headed Chrome alive at 14.
+Both were IDLE connections carrying no frames. THE OWNER’S STREAM IS BUSY - this corpus writes
+audit rows continuously while he works, so his connection is sending `record` frames the whole
+time. A busy long-lived response is a materially different case and was never measured. That is
+where I would look first.
+
+THE OTHER LIVE CANDIDATE is the top-level handler catch in `src/ui/server.ts` -
+`if (res.headersSent) { res.destroy(); return; }` - which tears down any response whose handler
+rejects after the head is written. It should not reach a stream, because `streamHandler` writes its
+head and returns synchronously while the interval keeps the response open, so nothing is left to
+reject. But it is the only other place a live response dies, and "should not" is not a measurement.
+
+WHAT TO MEASURE NEXT, in this order:
+  1. INSTRUMENT THE TWO `res.end()` SITES AND THE `res.on('close')` HANDLER. One line each saying
+     which fired, with the error when there is one. This is a five-minute change that converts
+     every remaining guess into a fact, and it should have been the first thing seq:21 did rather
+     than shipping a mitigation.
+  2. HOLD A BUSY STREAM OPEN, not a silent one - write audit rows into it at the rate this corpus
+     really does - and see whether it dies where a silent one lived for 14 minutes.
+  3. Only if both come back clean, look outward again.
+
+AND THE MITIGATION SHOULD PROBABLY COME OUT IF THE CAUSE IS INTERNAL. A 20-second keep-alive on a
+connection nothing external was reaping is 9 bytes a minute buying nothing, and it now sits in the
+code implying a cause that has been measured false. Do not remove it before the real cause is
+known - it is harmless - but do not leave it there afterwards as an explanation either.
