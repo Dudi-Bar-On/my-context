@@ -2190,11 +2190,20 @@ async function request(path, method, body) {
       ...(body === undefined ? {} : { body: JSON.stringify(body) }),
     });
   } catch {
-    // The server has exited (idle or closed). Say so; NEVER reconnect —
-    // silent reconnection would reintroduce the daemon by another name (§2).
+    // The server did not answer. Say so; NEVER reconnect ON A TIMER — silent
+    // reconnection would reintroduce the daemon by another name (§2).
+    //
+    // THE LOOK TICK IS NOT A TIMER IN THAT SENSE and is deliberately left
+    // running. It fires only when the reader LOOKS at a visible tab, which is
+    // the channel `plan:live seq:22` opened so a dropped feed can come back
+    // without an F5. Stopping it here was the second door into the defect
+    // `liveUnreachable` describes: the heartbeat's own request failing inside
+    // the eight-second window `restartStaleServer` opens killed the only
+    // mechanism that could recover, so fixing `stream()` alone would have left
+    // the bug reachable through this catch instead.
+    liveUnreachable = true;
     showExited();
     stopHeartbeat();
-    stopLiveLook();
     throw new Error('server exited');
   }
   // **The server ANSWERED — which is the only evidence left that it is there.**
@@ -2343,9 +2352,19 @@ function stream(path, onEvent, onEnd) {
     } catch {
       // An abort is this page's own doing and says nothing about the server.
       if (!controller.signal.aborted) {
+        // NOT REFUSED — NOT REACHED. `fetch` threw, so no request was served
+        // and no audit line can exist. See `liveUnreachable`.
+        liveUnreachable = true;
         showExited();
         stopHeartbeat();
-        stopLiveLook();
+        // `stopLiveLook()` USED TO BE CALLED HERE AND IS THE OTHER HALF OF THE
+        // DEFECT. It stops the look tick -- the one thing that would put the
+        // feed back -- so a single failed reconnect during a server restart
+        // disabled recovery permanently. Keeping it running costs one failed
+        // `fetch` per GLANCE at a visible tab, and buys the case that matters:
+        // the server comes back, the reader looks, the feed returns without a
+        // reload. It is also what lets a deliberately restarted server be
+        // picked up, which previously needed F5 as well.
       }
       end(controller.signal.aborted ? 'aborted' : 'closed');
       return;
@@ -2502,6 +2521,30 @@ let liveClosed = false;
 let liveEstablished = false;
 
 /**
+ * **Did the last attempt fail because the server was not THERE, rather than
+ * because it said no?** `plan:live seq:22`'s recovery had a hole and this is
+ * the fact that closes it.
+ *
+ * `liveEstablished` refuses to retry a connection that never said `hello`, and
+ * that refusal is right for a REFUSAL — a token this server never issued costs
+ * one `ui-refused` audit write per glance, which is the defect
+ * `CREDENTIAL_COOKIE` was invented to end. But it is WRONG for a connection
+ * that never reached the server at all: `fetch()` threw, no request was
+ * served, and no audit line can exist for a write the server never saw.
+ *
+ * The two were conflated, and the window where it bites is one this project
+ * opens itself: `restartStaleServer` replaces the server after a commit and
+ * `closeAllConnections()` drops the feed. Measured 2026-09-09 — the gap is
+ * about EIGHT SECONDS. A look tick landing inside it reopens, the `fetch`
+ * throws because nothing is listening yet, `liveEstablished` is left false,
+ * and every later glance returns at that gate. The feed is then dead until the
+ * page is reloaded, which is exactly what the owner reported: "once in a while
+ * the viewer stops to get updates and the only thing that resolves it is
+ * refreshing the page".
+ */
+let liveUnreachable = false;
+
+/**
  * **Chrome-owned, said once, regardless of which screen (if any) is showing
  * — the "shell's version" of the fault `watch.js` already draws.**
  *
@@ -2618,6 +2661,7 @@ function dispatchLiveEvent(event, data) {
     // `liveProven` goes with it. It is the switch between two sentences about
     // a dead feed, and there is no dead feed left to describe.
     liveEstablished = true;
+    liveUnreachable = false;
     if (liveEnded !== null) {
       liveEnded = null;
       liveProven = false;
@@ -2668,6 +2712,7 @@ function ensureLiveStream() {
   if (!credentialHeld()) return;
   liveClosed = false;
   liveEstablished = false;
+  liveUnreachable = false;
   liveStop = stream(`/api/watch/stream?backlog=${SHARED_STREAM_BACKLOG}`, dispatchLiveEvent, () => {
     // An ended stream is not any one screen's to report — `dispatchLiveEvent`'s
     // `fault` branch above is where the one true, shell-owned account of it is
@@ -2737,7 +2782,15 @@ function reopenLiveStream() {
   if (!liveClosed) return;
   // Refused rather than dropped: see `liveEstablished`. Retrying a refusal on
   // every glance is an audited write per glance.
-  if (!liveEstablished) return;
+  //
+  // UNLESS THE SERVER WAS NEVER REACHED, which is not a refusal and cannot be
+  // audited, because no request was served. That case is the eight-second
+  // window `restartStaleServer` opens after every commit, and refusing to
+  // retry inside it is what left the feed dead until the reader pressed F5.
+  // (The word for that key press is kept out of this function on purpose: the
+  // test above forbids the substring here, because this is the one function
+  // that must never answer a dead stream by replacing the page.)
+  if (!liveEstablished && !liveUnreachable) return;
   // And the same gate `ensureLiveStream()` applies: a page holding no
   // credential opens no connection, and does not spend a request finding out.
   if (!credentialHeld()) return;
