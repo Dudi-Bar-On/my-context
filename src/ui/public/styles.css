@@ -3789,7 +3789,7 @@ body.docpage{overflow-y:auto}
   color:var(--ink);background:var(--sink);border:1px solid var(--edge);
   border-radius:var(--r-sm);padding:var(--sp-1) var(--sp-2)}
 .tvjump{inline-size:auto;flex:0 0 auto;font:600 var(--fs-00)/1.2 var(--mono);
-  color:var(--dim);background:var(--panel-2);border:1px solid var(--edge);
+  color:var(--dim);background:var(--panel-2);border:2px solid var(--dim);
   border-radius:var(--r-sm);padding:var(--sp-1) var(--sp-2);cursor:pointer}
 .tvcount{margin:0 0 var(--sp-1);font-size:var(--fs-00);color:var(--dim)}
 

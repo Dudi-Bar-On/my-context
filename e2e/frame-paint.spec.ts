@@ -709,7 +709,7 @@ for (const lang of ['en', 'he'] as const) {
 
     const bordered = reach.filter((r) => r.width !== '0px');
     expect(bordered.length, 'every .tvjump that keeps a border').toBeGreaterThan(0);
-    for (const control of bordered) expect(control.colour).toBe(rgb('#3a3a45'));
+    for (const control of bordered) expect(control.colour).toBe(rgb('#a9a6b8'));
 
     const jump = page.locator('.tvbar button.tvjump.tvend').first();
     const box = await jump.boundingBox();
@@ -805,14 +805,17 @@ for (const lang of ['en', 'he'] as const) {
     const shown = Object.keys(lines).map((k) => `${k}: ${paint[k]!.length === 0
       ? 'NOTHING' : `${best(k).toFixed(2)}:1 (${paint[k]!.join(', ')})`}`).join(' | ');
     // eslint-disable-next-line no-console
-    console.log(`MEASURED .tvjump border — token ${rgb('#3a3a45')} = `
-      + `${ratio(rgb('#3a3a45'), FILL).toFixed(2)}:1 on its own --panel-2 fill and `
-      + `${ratio(rgb('#3a3a45'), ground['top']!).toFixed(2)}:1 on the ground painted `
+    console.log(`MEASURED .tvjump border — token ${rgb('#a9a6b8')} (--dim, 2px) = `
+      + `${ratio(rgb('#a9a6b8'), FILL).toFixed(2)}:1 on its own --panel-2 fill and `
+      + `${ratio(rgb('#a9a6b8'), ground['top']!).toFixed(2)}:1 on the ground painted `
       + `outside it; the fill itself is ${ratio(FILL, ground['top']!).toFixed(2)}:1 on `
-      + `that ground, so it is no second channel | ${shown} | ${ladder}`);
+      + `that ground, so it is no second channel. It REPLACED --edge ${rgb('#3a3a45')}, `
+      + `which was ${ratio(rgb('#3a3a45'), ground['top']!).toFixed(2)}:1 on that same `
+      + `ground | ${shown} | ${ladder}`);
 
-    // The boundary exists in the paint at all — a border at 1.49:1 is faint,
-    // and "faint" is a different claim from "absent".
+    // The boundary exists in the paint at all. Kept after the raise, because it
+    // is the assertion that told "faint" from "absent" while this control WAS
+    // faint, and it is what would catch the border going missing altogether.
     for (const [name, found] of Object.entries(paint)) {
       expect(found.length, `${name}: ${shown}`).toBeGreaterThan(0);
     }
@@ -828,16 +831,27 @@ for (const lang of ['en', 'he'] as const) {
     // here would report 3.35 and deliver 1.63, which is `seq:38`'s table
     // ruling exactly, one box over. So this is a ruling for the owner: a
     // brighter token AND a 2px border, or neither.
+    // **RULED AND RAISED 2026-09-09: --dim AT 2px.** He ruled 2px for the three
+    // `--edge-3` boxes first, then "fix .tvjump with --dim" — and the WIDTH comes
+    // with the token rather than being a liberty taken on top of it, because
+    // `--dim` at 1px would be painted in its own 50% blend at a fractional
+    // offset and land back under the bar. That is the same trap `--dim` fell
+    // into on the collapsed table ruling twice. Two device rows means the token
+    // ITSELF is painted, so the ladder below reports what a reader meets.
     const worst = Math.max(...Object.keys(lines).map((k) => best(k)));
-    expect(worst, `.tvjump's boundary tops out at ${worst.toFixed(2)}:1 — `
-      + 'REPORTED, not raised: --edge-3 would deliver '
-      + `${ratio(rgb('#6e6e7e'), ground['top']!).toFixed(2)}:1 on this ground and `
-      + `${ratio(halfOf(rgb('#6e6e7e'), ground['top']!), ground['top']!).toFixed(2)}:1 `
-      + `on the two edges that are antialiased — ${shown}`).toBeLessThan(3);
-    // The two numbers that decision rests on, pinned so the day somebody rules
-    // on this they are looking at the same ladder this lane did.
+    expect(worst, `.tvjump's boundary tops out at ${worst.toFixed(2)}:1 and must clear 3 — `
+      + `${shown}`).toBeGreaterThanOrEqual(3);
+    // THE LADDER THAT DECIDED IT, measured against the ground READ OUT OF THE
+    // IMAGE rather than off `--panel`, which is the correction this test exists
+    // to make. `--edge-3` is the token that LOOKS like it works: it clears 3 on
+    // the fill and misses on the ground it is actually drawn over, which is
+    // `plan:archive seq:38`'s half-delivered fix one control over. `--dim` resolves to
+    // #a9a6b8 here -- NOT the #8b8b9a a palette table would suggest, which is why
+    // it is read off the control rather than assumed -- and it is the first token
+    // that clears the bar on the painted ground.
     expect(ratio(rgb('#6e6e7e'), FILL)).toBeGreaterThan(3);
     expect(ratio(rgb('#6e6e7e'), ground['top']!)).toBeLessThan(3);
+    expect(ratio(rgb('#a9a6b8'), ground['top']!)).toBeGreaterThan(3);
   });
 
   /* ══ THE FOUR OUTER EDGES OF A TABLE THAT IS NOT A TABLE BOX ═════════════ */
