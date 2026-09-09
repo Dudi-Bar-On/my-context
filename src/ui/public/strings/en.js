@@ -308,6 +308,30 @@ export const strings = {
   'conv.doc.static': 'This is a kept copy and it cannot grow, so nothing is being looked for. What you are reading is everything that was copied.',
   'conv.doc.isKept': 'A copy of this session is kept outside the project, and is brought up to date at the end of each of your turns. You are reading the original.',
   'conv.doc.isCopy': 'You are reading a KEPT COPY. The session this came from is no longer on your disk, so nothing here can be checked against it. The copy holds this conversation and nothing else — a helper agent it dispatched can be opened only while that agent’s own transcript is still on your disk.',
+  // ── THE FORM WITH CHECKBOXES ─────────────────────────────────────────
+  //
+  // `plan:archive seq:46`, and every one of these sentences is carrying the
+  // owner's rule that DETECTION PROPOSES AND NEVER ACTS. The lede is the most
+  // important string on the panel: measured over 333 MB of this machine's
+  // transcripts on 2026-09-09, 13 of 19 distinct candidates were identifiers,
+  // quotations, regex source or deliberate test probes. A reader who does not
+  // know that will tick things to be tidy.
+  'conv.secrets.h': 'Things that look private in this session',
+  'conv.secrets.reading': 'Reading the session…',
+  'conv.secrets.lede': 'Nothing here has been replaced, and nothing will be unless you tick it. This is a list of things that LOOK private, and most of a list like this is wrong: the same scan over this machine on 2026-09-09 proposed 19 things, of which 13 were function names, quotations, regular expressions or test values somebody wrote on purpose. Only you can tell them apart. Ticking one replaces it with an obviously fake stand-in in a SECOND copy of this session; the copy this product keeps stays byte-for-byte the original, because a record that was quietly altered is worth less than one that was not.',
+  'conv.secrets.none': 'nothing matched',
+  'conv.secrets.noneWhy': 'None of the {n} shapes this looks for appears in this session. That is a measured zero and NOT a promise that the session holds no secret — a credential that looks like an ordinary word is missed by every one of them, and this list is what lets you see that gap rather than be reassured about it.',
+  'conv.secrets.what': '{what} —',
+  'conv.secrets.time': 'once',
+  'conv.secrets.times': '{n} times',
+  'conv.secrets.chars': '{n} characters',
+  'conv.secrets.at': 'in records {records}, at',
+  'conv.secrets.becomes': 'becomes',
+  'conv.secrets.nothing': 'Nothing is ticked, so nothing would be replaced. Tick something above and the command to run appears here.',
+  'conv.secrets.run': 'Run this to keep a copy of this session with {n} of these replaced. It asks before it writes, and it prints what a copy of a session holds before it asks.',
+  'conv.secrets.floor': 'This session is longer than this scan reads. {bytes} were read, so this list is a FLOOR and not a total — something that appears only later in the file is not on it.',
+  'conv.secrets.unreadable': '{n} lines in this file would not parse and were not searched. They are counted, never skipped.',
+  'conv.secrets.chosen': 'You have already chosen {n} of these, and {replaced} occurrences have been replaced in the copy so far. The choice keeps being applied to everything appended afterwards.',
   'conv.doc.newBelow': '{n} new below — go to the end',
   'conv.doc.replaced': 'This transcript was replaced rather than added to, so what is on screen is no longer where the file is. Reload the page to read it as it stands.',
   'conv.doc.truncated': 'This session is longer than this reader walks. {bytes} bytes were read, and the document ends there.',

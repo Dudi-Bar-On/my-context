@@ -64,6 +64,8 @@ import { shouldPing } from '../lib/heartbeat.js';
 import { markdownNodes } from '../lib/markdown.js';
 import { ansiNodes, hasEscapes, stripEscapes } from '../lib/ansi.js';
 import { formatBytes } from '../lib/viewmodel.js';
+import { composeCommand } from '../lib/command.js';
+import { commandActions } from '../lib/command-actions.js';
 import {
   PASSAGE_NODE_CAP, PASSAGE_RAW_CAP, messagePassage, runsOf,
 } from '../lib/passage.js';
@@ -2053,6 +2055,256 @@ function drawWaiting(ctx, node, height) {
  * reader opened must survive a scroll of two pixels, and rebuilding would shut
  * every one of them. `live` is the map that makes that possible.
  */
+/**
+ * **THE FORM WITH CHECKBOXES** — `plan:archive seq:46`, step 3, and the
+ * owner's own words: *"we'll show the user a form with checkboxes and user
+ * could mark what to be replaced if it required."*
+ *
+ * ── THE SCREEN COMPOSES. THE CLI RUNS. ───────────────────────────────────
+ *
+ * This is not a preference and it is not a shortcut: `test/ui/no-writes.test.ts`
+ * holds `src/ui/` write bindings to an exact set of ONE, so no surface here
+ * can perform an export. `GET /api/conversations/:id/secrets` is a read — the
+ * scanner is a module with no `node:fs` write in it at all, deliberately split
+ * from the half that produces a file — and what this panel builds is a COMMAND
+ * LINE. That is the Composer pattern this product already has, and the item
+ * names it as one of the two acceptable answers to "where the form lives".
+ *
+ * ── AND IT IS COPY, NOT EXECUTE ──────────────────────────────────────────
+ *
+ * `commandActions` grows an Execute button when it is given a command id, and
+ * it is deliberately not given one. `test/ui/palette-lib.test.ts` withholds
+ * `conversation persist` from the palette in as many words — it is a write
+ * whose preview says something a reader must actually READ before confirming,
+ * namely what a copy of a session holds — so putting it one click from a
+ * browser would settle, silently, a decision that file says is still open.
+ *
+ * ── NOTHING IS TICKED ─────────────────────────────────────────────────────
+ *
+ * Every box starts clear unless a choice already on disk ticks it, and the
+ * command line is not even drawn until something is ticked. That is the rule
+ * this panel could most easily break by being helpful: an export he did not
+ * read must be byte-faithful, so a pre-ticked box would be this product
+ * deciding for him and calling it a default.
+ *
+ * ── AND NO CREDENTIAL REACHES THE SCREEN ─────────────────────────────────
+ *
+ * The payload carries a MASK, a length, a shape and a context window with
+ * every match inside it masked — never a value. So a reader who is
+ * screen-sharing while they judge this list is no worse off than before they
+ * opened it, which is the exact exposure `plan:archive seq:27` was closed on.
+ *
+ * The scan is not cheap (2.6 s over the 83.6 MB live session, measured
+ * 2026-09-09), so it runs when the fold is OPENED and never on the way in.
+ */
+function mountSecrets(ctx, host, outline) {
+  const details = el('details', 'help convsecrets');
+  const summary = el('summary');
+  summary.append(...ctx.t('conv.secrets.h'));
+  const box = el('div', 'helpbox');
+  details.append(summary, box);
+  host.append(details);
+
+  let loaded = false;
+  details.addEventListener('toggle', () => {
+    if (!details.open || loaded) return;
+    loaded = true;
+    void fillSecrets(ctx, box, outline.sessionId);
+  });
+  return details;
+}
+
+/** Fetch the candidates and draw them, or say why there are none to draw. */
+async function fillSecrets(ctx, box, sessionId) {
+  const waiting = el('p', 'small');
+  waiting.append(...ctx.t('conv.secrets.reading'));
+  box.append(waiting);
+
+  let body;
+  try {
+    body = await ctx.api(`/api/conversations/${encodeURIComponent(sessionId)}/secrets`);
+  } catch (error) {
+    waiting.remove();
+    box.append(errorNote(error.message));
+    return;
+  }
+  waiting.remove();
+
+  if (body.indexed === false) {
+    const note = el('p', 'small');
+    note.append(...ctx.t('conv.neverScanned'));
+    box.append(note);
+    const cmd = el('p', 'plate convcmd');
+    cmd.append(mono(body.rebuild));
+    box.append(cmd);
+    return;
+  }
+
+  // The sentence FIRST, above the list, because it is the thing that makes the
+  // list safe to be wrong: most of a list like this is wrong, and a reader who
+  // does not know that will tick things to be tidy.
+  const lede = el('p', 'small convsecrlede');
+  lede.append(...ctx.t('conv.secrets.lede'));
+  box.append(lede);
+
+  if ((body.candidates ?? []).length === 0) {
+    // **A MEASURED ZERO, AND NOT A PROMISE** —
+    // `STD-a-measured-zero-is-drawn-and-named-an-unmeasured-thing-is`. A
+    // credential that looks like an ordinary word is missed by every shape
+    // here, and a clean list that read as a clean session would be exactly the
+    // silent reassurance the whole design refuses.
+    const none = el('p', 'small convsecrnone');
+    const chip = el('span', 'chip unmeas glyphed');
+    chip.dataset.g = '◌';
+    chip.append(...ctx.t('conv.secrets.none'));
+    none.append(chip, ' ', ...ctx.t('conv.secrets.noneWhy', { n: (body.shapes ?? []).length }));
+    box.append(none);
+    boundedNote(ctx, box, body);
+    return;
+  }
+
+  const ticked = new Set(
+    (body.candidates ?? []).filter((c) => c.accepted === true).map((c) => c.id),
+  );
+  const list = el('div', 'convsecrlist');
+  for (const candidate of body.candidates ?? []) {
+    list.append(secretRow(ctx, candidate, ticked, () => redraw()));
+  }
+  box.append(list);
+
+  // The composed line lives in its own container so a tick can rebuild it
+  // without disturbing the boxes above — `commandActions` bakes its argv in at
+  // construction, so the row IS the selection and has to be built again when
+  // the selection changes.
+  const composed = el('div', 'convsecrcmd');
+  box.append(composed);
+  const redraw = () => {
+    composed.replaceChildren();
+    composed.append(...replaceRow(ctx, body, ticked));
+  };
+  redraw();
+  boundedNote(ctx, box, body);
+}
+
+/**
+ * One candidate: a checkbox, what it looks like, how often, where, and what it
+ * would become.
+ *
+ * The label is the whole row, so the hit target is the sentence rather than a
+ * 13px square — and the `<input>` is a real checkbox rather than a styled
+ * `<div>`, so a keyboard and a screen reader get the control the platform
+ * already knows how to describe.
+ */
+function secretRow(ctx, candidate, ticked, onChange) {
+  const row = el('label', 'convsecr');
+  const tick = el('input', 'convsecrtick');
+  tick.type = 'checkbox';
+  tick.value = candidate.id;
+  tick.checked = ticked.has(candidate.id);
+  tick.addEventListener('change', () => {
+    if (tick.checked) ticked.add(candidate.id);
+    else ticked.delete(candidate.id);
+    onChange();
+  });
+  row.append(tick);
+
+  const head = el('span', 'convsecrhead');
+  head.append(
+    ...ctx.t('conv.secrets.what', { what: candidate.shapeTitle }),
+    ' ', mono(candidate.preview),
+    // Two keys and not one with a variable, which is `conv.lane`/`conv.lanes`'
+    // own shape one screen up: "1 times" is the marker of a count formatted by
+    // a program that was not reading, and Hebrew does not agree with English
+    // about where the plural starts anyway.
+    ' · ', ...(candidate.occurrences === 1
+      ? ctx.t('conv.secrets.time')
+      : ctx.t('conv.secrets.times', { n: candidate.occurrences })),
+    ' · ', ...ctx.t('conv.secrets.chars', { n: candidate.length }),
+  );
+  row.append(head);
+
+  // WHERE it appears, because "how many times" without "where" is a number a
+  // reader cannot check. Capped in the payload, and the cap says so rather
+  // than being trimmed into a shorter list that looks complete.
+  const where = el('span', 'convsecrwhere');
+  const at = (candidate.records ?? []).join(', ')
+    + (candidate.recordsOmitted > 0 ? `+${candidate.recordsOmitted}` : '');
+  // Spelled `records: at` rather than as a shorthand `{ records }`: the slot
+  // checker in `test/ui/viewmodel.test.ts` reads object-literal KEYS out of
+  // this file, and ES shorthand hides the key from it — so a substitution that
+  // IS passed reads as one that is missing, and the test that exists to catch
+  // `{records}` reaching the screen goes red over the opposite.
+  where.append(...ctx.t('conv.secrets.at', { records: at }), ' ', mono(candidate.paths?.[0] ?? '—'));
+  row.append(where);
+
+  // **THE CONTEXT IS THE FIELD THAT DOES THE WORK.** The shape and the count
+  // say what a candidate is; this is what tells `secret = cryptoRandomBytes`
+  // from a credential. Measured over 333 MB of this machine's transcripts on
+  // 2026-09-09: of 19 distinct candidates, 13 were identifiers, quotations,
+  // regex source or test probes — and every one of them is dismissible at a
+  // glance from this line alone.
+  const context = el('span', 'convsecrctx');
+  context.append(mono(candidate.contexts?.[0] ?? ''));
+  row.append(context);
+
+  // What it BECOMES, shown before the choice rather than after it.
+  const becomes = el('span', 'convsecrinto');
+  becomes.append(...ctx.t('conv.secrets.becomes'), ' ', mono(candidate.placeholder));
+  row.append(becomes);
+  return row;
+}
+
+/** The command a tick composes, or the sentence that says nothing is ticked. */
+function replaceRow(ctx, body, ticked) {
+  const out = [];
+  if (ticked.size === 0) {
+    const note = el('p', 'small convsecrnothing');
+    note.append(...ctx.t('conv.secrets.nothing'));
+    out.push(note);
+    return out;
+  }
+  const argv = [
+    ...body.persistCommand.split(' '),
+    body.sessionId,
+    '--replace',
+    [...ticked].join(','),
+  ];
+  const heading = el('p', 'small convsecrrun');
+  heading.append(...ctx.t('conv.secrets.run', { n: ticked.size }));
+  const cmd = el('div', 'cmd');
+  cmd.append(el('code', null, composeCommand(argv)));
+  out.push(heading, cmd, commandActions({ argv, id: null, values: {}, ctx }));
+  return out;
+}
+
+/**
+ * The bound, drawn only when it BIT.
+ *
+ * A scan that read the whole file says nothing — a per-open line about a cap
+ * nobody reached is noise — and one that stopped at the cap says its counts
+ * are floors, because a list a reader believes is complete is worse than one
+ * that admits it is not.
+ */
+function boundedNote(ctx, box, body) {
+  if (body.truncated === true) {
+    const note = el('p', 'small convsecrfloor');
+    note.append(...ctx.t('conv.secrets.floor', { bytes: formatBytes(body.cap) }));
+    box.append(note);
+  }
+  if ((body.unreadable ?? 0) > 0) {
+    const note = el('p', 'small convsecrunread');
+    note.append(...ctx.t('conv.secrets.unreadable', { n: body.unreadable }));
+    box.append(note);
+  }
+  if (body.chosen !== null && body.chosen !== undefined) {
+    const note = el('p', 'small convsecrchosen');
+    note.append(...ctx.t('conv.secrets.chosen', {
+      n: body.chosen.accepted.length, replaced: body.chosen.replaced,
+    }));
+    box.append(note);
+  }
+}
+
 function mountDocument(ctx, host, outline, back, roster = NO_LANES) {
   const nodes = outline.nodes;
   /**
@@ -2241,6 +2493,22 @@ function mountDocument(ctx, host, outline, back, roster = NO_LANES) {
     }
     return;
   }
+
+  /**
+   * **THE CHECKBOX FORM, and only on a SESSION.** `plan:archive seq:46`.
+   *
+   * A lane is not persisted — `mycontext conversation persist` takes a session
+   * and the mirror is a session's — so there is no export for a choice to
+   * apply to and a form on a lane would compose a command the CLI refuses.
+   * `outline.source === 'subagent'` is the read model's own answer to "what is
+   * this document", so the screen asks it rather than guessing from the id.
+   *
+   * Above the bar and below the head, in a fold that is CLOSED: it is about
+   * the file rather than about the reading, it costs a scan to open, and a
+   * reader who came to read a conversation should not have to scroll past a
+   * list of things that look private in order to reach it.
+   */
+  if (outline.source !== 'subagent') mountSecrets(ctx, host, outline);
 
   /* ── bar ───────────────────────────────────────────────────────────────── */
   const bar = el('div', 'tvbar');

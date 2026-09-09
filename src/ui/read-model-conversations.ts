@@ -88,6 +88,10 @@ import {
   classifyTurn, spanMs, staleBy, transcriptDir, truncatedScan,
   type ConversationRow, type PersistedRow, type SubagentRow,
 } from '../core/conversation-index.ts';
+import { readRedactionPlan } from '../core/conversation-redaction.ts';
+import {
+  SECRET_SHAPES, scanSessionSecrets, type SecretCandidate,
+} from '../core/conversation-secrets.ts';
 import { closeSync, openSync, readdirSync, readSync, statSync } from 'node:fs';
 import path from 'node:path';
 import type { Workspace } from '../core/workspace.ts';
@@ -1356,7 +1360,194 @@ export function apiConversationSubagents(
   }
 }
 
+/**
+ * **The scan bound for this endpoint, and it is smaller than the CLI's.**
+ *
+ * `scanSessionSecrets` defaults to `MAX_SCAN_BYTES` (256 MiB), which is right
+ * for a command a person typed and waited for. This is a browser fetch, and
+ * the same 64 MiB `CONVERSATION_WALK_CAP` bounds the document walk beside it
+ * for the same reason: a request that cannot say how long it will take is one
+ * a reader cancels by leaving. Measured 2026-09-09 on this workspace, the 83.6
+ * MB live session scans in 2.6 s whole, so the cap costs a fraction of it and
+ * buys a stated ceiling.
+ *
+ * A scan that stopped at the cap says so — `truncated` — and the screen draws
+ * that as a FLOOR rather than as a total, because a list a reader believes is
+ * complete is worse than one that admits it is not.
+ */
+export const CONVERSATION_SECRET_CAP = CONVERSATION_WALK_CAP;
+
+/** One shape, as a legend needs it. Never the pattern — that is not a fact a reader can use. */
+export interface SecretShapeView {
+  id: string;
+  title: string;
+  /** `true` when this shape is one this build added past `seq:46`'s thirteen. */
+  added: boolean;
+  note: string;
+}
+
+/** One candidate, plus whether the standing choice already ticks it. */
+export type SecretCandidateView = SecretCandidate & { accepted: boolean };
+
+/**
+ * **What the checkbox form draws** — `plan:archive seq:46`, step 3.
+ *
+ * Every field here is one a person needs in order to JUDGE, and no field
+ * carries a credential: `preview` is a mask, `contexts` are windows with every
+ * match in them masked, and `id` is a hash of the value. That is what lets the
+ * form exist in a browser at all — the screen never holds a secret, so a
+ * reader who is screen-sharing is no worse off than before.
+ */
+export interface ConversationSecretsBody {
+  sessionId: string;
+  /** Nobody has scanned this workspace, so there is no session to read. */
+  indexed: boolean;
+  /** The file this was read from, which may be the copy rather than the original. */
+  file: string | null;
+  source: string | null;
+  records: number;
+  unreadable: number;
+  scannedBytes: number;
+  /** The scan stopped at `cap`, so every count is a floor. */
+  truncated: boolean;
+  cap: number;
+  occurrences: number;
+  total: number;
+  candidates: SecretCandidateView[];
+  shapes: SecretShapeView[];
+  /** The standing choice, or `null` when nobody has made one. */
+  chosen: { accepted: string[]; chosenAt: string; projectedAt: string; replaced: number } | null;
+  /** `true` when this session is being kept outside the project at all. */
+  kept: boolean;
+  /** The command that would apply a choice — the argv the screen composes. */
+  persistCommand: string;
+  rebuild: string;
+  ms: number;
+}
+
+/** The empty answer, so a caller holds one shape whatever happened. */
+function noSecrets(sessionId: string, indexed: boolean, ms: number): ConversationSecretsBody {
+  return {
+    sessionId,
+    indexed,
+    file: null,
+    source: null,
+    records: 0,
+    unreadable: 0,
+    scannedBytes: 0,
+    truncated: false,
+    cap: CONVERSATION_SECRET_CAP,
+    occurrences: 0,
+    total: 0,
+    candidates: [],
+    shapes: SECRET_SHAPES.map(({ id, title, added, note }) => ({ id, title, added, note })),
+    chosen: null,
+    kept: false,
+    persistCommand: PERSIST_COMMAND,
+    rebuild: REBUILD_COMMAND,
+    ms,
+  };
+}
+
+/** The verb the screen composes a choice onto. */
+const PERSIST_COMMAND = 'mycontext conversation persist';
+
+/**
+ * **`GET /api/conversations/:id/secrets` — what looks private in one session,
+ * and nothing else.** `plan:archive seq:46`, the read half of step 3.
+ *
+ * ── IT READS. THE SCREEN CANNOT ACT, AND THAT IS THE WHOLE ARRANGEMENT ────
+ *
+ * `test/ui/no-writes.test.ts` holds `src/ui/` write bindings to an exact set
+ * of ONE, so no endpoint here can perform an export and none tries.
+ * `scanSessionSecrets` is pure and touches no `node:fs` write API — it is
+ * deliberately a module of its own for that reason, and its writing half
+ * (`core/conversation-redaction.ts`) is a WRITERS key this file may not bind.
+ * So the screen DRAWS the candidates and COMPOSES the command; the CLI runs
+ * it. The item leaves "where the form lives" open and asks for both to be
+ * weighed, and this is the weighing settled by a test rather than by taste.
+ *
+ * `readRedactionPlan` IS bound, and it is a read: it answers which boxes are
+ * already ticked, so a reader who chose yesterday is not shown an empty form
+ * today. The plan holds ids and never values, so serving it exposes nothing.
+ *
+ * ── AND IT DECIDES NOTHING ────────────────────────────────────────────────
+ *
+ * `accepted` is `false` for every candidate until somebody has chosen, which
+ * is the owner's rule stated where a form could most easily break it: an
+ * export he did not read must be byte-faithful, so a pre-ticked box would be
+ * this product deciding on his behalf and calling it a default.
+ */
+export function apiConversationSecrets(
+  ws: Workspace, url: URL, params: { id: string },
+): JsonResult {
+  const startedMs = Date.now();
+  const bad = unknownParams(url, []) ?? repeatedParams(url);
+  if (bad) return badRequest(bad);
+
+  let index: ConversationIndex;
+  try {
+    index = ConversationIndex.openReadOnlyChecked(ws.dbPath);
+  } catch (err) {
+    if (err instanceof ConversationIndexUninitializedError
+      || err instanceof ConversationIndexIncompleteError) {
+      return { status: 200, body: noSecrets(params.id, false, Date.now() - startedMs) };
+    }
+    throw err;
+  }
+
+  let row: ConversationRow | null;
+  let mark: PersistedRow | null;
+  try {
+    row = index.get(params.id);
+    mark = row === null ? null : index.persistedOf(params.id);
+  } finally {
+    index.close();
+  }
+  if (row === null) return { status: 200, body: noSecrets(params.id, true, Date.now() - startedMs) };
+
+  const scan = scanSessionSecrets(row.file, { cap: CONVERSATION_SECRET_CAP });
+  const plan = mark === null ? null : readRedactionPlan(mark.file);
+  const accepted = new Set(plan?.accepted ?? []);
+  return {
+    status: 200,
+    body: {
+      sessionId: params.id,
+      indexed: true,
+      file: row.file,
+      source: row.source,
+      records: scan.records,
+      unreadable: scan.unreadable,
+      scannedBytes: scan.scannedBytes,
+      truncated: scan.truncated,
+      cap: CONVERSATION_SECRET_CAP,
+      occurrences: scan.occurrences,
+      total: scan.candidates.length,
+      candidates: scan.candidates.map((c) => ({ ...c, accepted: accepted.has(c.id) })),
+      shapes: SECRET_SHAPES.map(({ id, title, added, note }) => ({ id, title, added, note })),
+      chosen: plan === null ? null : {
+        accepted: plan.accepted,
+        chosenAt: plan.chosenAt,
+        projectedAt: plan.projectedAt,
+        replaced: plan.replaced,
+      },
+      kept: mark !== null,
+      persistCommand: PERSIST_COMMAND,
+      rebuild: REBUILD_COMMAND,
+      ms: Date.now() - startedMs,
+    },
+  };
+}
+
 export function registerConversationRoutes(): void {
+  // **`/secrets` before `/:id`**, exactly as `/subagents` is: the router
+  // matches in registration order and `/api/conversations/:id` would otherwise
+  // swallow `:id` = "…/secrets".
+  registerRoute('GET', '/api/conversations/:id/secrets', {
+    kind: 'json',
+    handle: (ctx: ApiContext) =>
+      apiConversationSecrets(ctx.ws, ctx.url, { id: ctx.params['id'] ?? '' }),
+  });
   registerRoute('GET', '/api/conversations/:id/subagents', {
     kind: 'json',
     handle: (ctx: ApiContext) =>

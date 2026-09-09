@@ -2053,6 +2053,55 @@ details.help[open]>summary{margin-block-end:6px}
 .helpbox .ex{color:var(--ink);font-style:normal}
 .helpbox .ex .exlabel{color:var(--gold)}
 
+/* ─── `plan:archive seq:46` — THE CHECKBOX FORM on a conversation document
+   (`mountSecrets`, screens/conversations.js).
+
+   It reuses `details.help`/`.helpbox` above rather than growing a panel of its
+   own: it IS a fold of explanation about the file, and the gold rule down its
+   inside edge is already this app's mark for exactly that.
+
+   What it adds is the ROW, and the row needed rules because it shipped without
+   them and was measured wrong: driven in Chromium on 2026-09-09 the four spans
+   of a candidate ran together into one paragraph with the next candidate, so
+   "44 characters" butted against "in records 0, 2" and against the context
+   window after it, and two candidates read as one sentence. A `<label>` is
+   inline by default and four inline spans have no reason to break.
+
+   So the row is a two-column grid: the checkbox in column one spanning the
+   whole row, and each fact on its own line in column two. That is also what
+   makes the hit target the SENTENCE rather than a 13px square, since the row
+   is the label.
+
+   Colour carries the hierarchy and nothing else does: `--ink` for what a
+   candidate IS, and `--dim` for where it sits, what it becomes and the context
+   window under it. Neither is a hue, so the panel survives the monochrome
+   print and the colour-blind reader that the archive's glyph vocabulary is
+   already built for.
+
+   `--faint` was reached for on the context line — the longest one, and the one
+   a reader skims — and `test/ui/faint-usage.test.ts` refused it by name: it
+   measures 3.83 against the glass, which clears 3:1 and fails 4.5, so it is
+   legal only at 24px. The context line is 16px inherited from `body`. So the
+   two dimmer levels collapse into one, and the hierarchy is carried by the
+   ORDER of the lines and the mono face instead — which is the answer that gate
+   exists to force.
+
+   `overflow-wrap:anywhere` on the context, because a context window is a slice
+   of somebody's command line and may hold a 200-character unbroken run; a
+   `pre` that could not break would push the document sideways, which
+   `styles.css` forbids everywhere else on this screen too. */
+.convsecrets .helpbox{gap:8px}
+.convsecrlist{display:grid;gap:8px}
+.convsecr{display:grid;grid-template-columns:auto 1fr;gap:2px 8px;
+  align-items:start;cursor:pointer}
+.convsecr+.convsecr{border-block-start:1px solid var(--rule);padding-block-start:8px}
+.convsecr>.convsecrtick{grid-column:1;grid-row:1 / span 4;margin-block-start:3px}
+.convsecr>span{grid-column:2}
+.convsecrhead{color:var(--ink)}
+.convsecrwhere,.convsecrinto{color:var(--dim)}
+.convsecrctx{color:var(--dim);white-space:pre-wrap;overflow-wrap:anywhere}
+.convsecrcmd{display:grid;gap:5px}
+
 /* ─── simulate.js's own controls (mockup ~852-861): `.segbar` is the tier
    picker's button row, `.simctl` wraps the budget slider. */
 .segbar{display:flex;gap:6px;flex-wrap:wrap;margin-block-start:var(--sp-2)}

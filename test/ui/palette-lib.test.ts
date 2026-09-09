@@ -1104,25 +1104,29 @@ const UNCATALOGUED: Record<string, string> = {
     + 'there, keeping the copy up to date. It is a write and needs a def with an Execute '
     + 'behind it, exactly as `conversation rebuild` above does — and, unlike the others, one '
     + 'that carries its own disclosure of what a copy of a session holds.',
+  // **THE ROW THAT WAS A NOT-YET AND IS NOW A DECISION** — `plan:archive
+  // seq:46`. It stood in UNCATALOGUED with its reason naming what it waited
+  // for: the owner's design is a form with checkboxes, so the surface that
+  // consumes this command is a screen rather than a Composer line. That form
+  // has since been built (`mountSecrets`, screens/conversations.js), and it
+  // does not compose this command at all — it READS
+  // `GET /api/conversations/:id/secrets`, because the scanner is a module with
+  // no `node:fs` write in it and a read surface may bind it. So the entry
+  // moved rather than being deleted, which is this file's own rule about a
+  // gap that closes: the absence is still real, and the reason for it is a
+  // different one.
+  'conversation secrets': 'a read, and its answer is already on the screen the reader is '
+    + 'looking at — the checkbox form on the Conversations document draws it from '
+    + '`GET /api/conversations/:id/secrets`. It is `conversation list`\'s case exactly. It is '
+    + 'worth having in the terminal at all because the whole point of the feature is that a '
+    + 'person JUDGES the list, and a person who lives in a terminal should not have to open a '
+    + 'browser to be offered one.',
   'conversation subagents': 'the lanes one session dispatched, in the terminal '
     + '(`plan:archive seq:12`). It is `conversation list`\'s case exactly and is withheld for '
     + 'the same reason — a def would compose a read whose answer is on the screen the reader '
     + 'is already looking at. It is worth having in the terminal at all because the LINK is '
     + 'the part most likely to be doubted: it prints the tool_use id beside each lane, so '
     + '"can this be opened from the turn that dispatched it" is answerable without a browser.',
-  // `plan:archive seq:46`. It is a NOT-YET rather than a decision, and the
-  // thing it is waiting for is named: the owner's design is a form with
-  // checkboxes, so the surface that consumes this command is a screen and not
-  // a Composer line. `conversation secrets --json` was built to be that
-  // form's source — a candidate per distinct value, each with the id a
-  // checkbox ticks, a masked preview, the records it appears in and the
-  // stand-in it would become — and the form itself is the remaining step of
-  // the item. A def that merely composed the read would offer a person a
-  // terminal table where the item asks for boxes to tick.
-  'conversation secrets': 'lists what looks private in one session so a person can judge it, '
-    + 'and replaces nothing. The surface it is FOR is a checkbox form, which is the remaining '
-    + 'step of `plan:archive seq:46`; `--json` exists so that form has something to render '
-    + 'without re-deriving anything.',
   // `ack` stood here until 2026-09-03 and its row named the condition that
   // closed it: "a control that composed a usable line would have to be driven
   // by the doctor read model rather than by a flag declaration". `Finding.remedy`

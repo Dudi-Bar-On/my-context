@@ -865,6 +865,16 @@ const READ_ROUTES = (from: { item: string; session: string | null }): Probe[] =>
   // on this unknown session id it answers 200 with an empty list, because a
   // session that dispatched no lanes is a measured zero rather than a 404.
   '/api/conversations/not-a-real-session-id/subagents',
+  // `plan:archive seq:46`. What looks private in one session — the read the
+  // checkbox form draws from. It is the endpoint on this list that most looks
+  // like it might write, because the feature it belongs to produces a file:
+  // the SCAN is a module with no `node:fs` write API in it at all and the half
+  // that writes is a separate module this surface may not bind, and the
+  // snapshot below is what proves the split held at runtime rather than only
+  // in the import graph. On an unknown session id it answers 200 with an empty
+  // list, because a session the index does not hold is an answer and not a
+  // 404.
+  '/api/conversations/not-a-real-session-id/secrets',
 ];
 
 /** Does a registered path template match this concrete pathname? */
