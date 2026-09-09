@@ -8,6 +8,13 @@
 Playwright lanes held **13.8 GB across 145 processes** and made his mouse crawl. He ruled: let them
 finish, then serialise. Parallelism is still fine for lanes touching no browser.
 
+**And do not infer "leaked" from a process count.** I told him 98 chrome processes with nothing
+running meant leaked test browsers. **86 of them were his own browser**; only 13 were Playwright.
+`tasklist` cannot tell them apart because it shows no command line — `Get-CimInstance Win32_Process`
+does, and matching `ms-playwright|--headless|--remote-debugging-pipe` on `CommandLine` separates
+them exactly. Stop only those. **Never `pkill chrome`**: his browser is in that list and closing it
+takes the viewer he is reading with it.
+
 **The next lane is CSS.** `archive/47` plus the **seven rules** the `39/40/41` lane needed and could
 not write (listed in its report, and worth re-deriving from the code rather than trusting my
 summary). The one that matters beyond tidiness: **`.tvjump`'s border is `--edge` at 1.49:1 on its own
