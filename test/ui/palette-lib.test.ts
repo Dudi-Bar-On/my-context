@@ -1186,6 +1186,24 @@ const UNCATALOGUED: Record<string, string> = {
   'procedure list': 'a read the Procedures screen already renders from `/api/procedures`.',
   'procedure show': 'a read already rendered from `/api/procedure/:id`.',
   'procedure step': 'a write, held with the other two `procedure` subcommands.',
+  // `mycontext contribution`, the thirty-sixth registry entry and the newest,
+  // landed 2026-09-08 as `plan:loop seq:1` (D36a). It reddened BOTH assertions
+  // below the moment it shipped: the generated coverage document lists it,
+  // because that document is regenerated from the registry, and this partition
+  // did not name it — so it was the exact shape the first assertion calls "the
+  // silent half of this drift", a command the CLI dispatches that nothing
+  // offers and nothing explains.
+  //
+  // It sat red long enough that four lanes recorded it as a known
+  // pre-existing failure and worked around it, which is the same way
+  // `cssom-restatement` stopped gating. Named here on the owner's 2026-09-09
+  // instruction to fix what is found rather than file it.
+  contribution: 'a read, and one whose answer no screen or endpoint serves. `every read def '
+    + 'names a screen or an endpoint` is the rule, and it is right — a read the UI cannot '
+    + 'execute is a command to copy, not a read — so a def is not writable until the per-item '
+    + 'delivery baseline is rendered somewhere. It is a not-yet and not a decision: it is the '
+    + 'CLI half of D36a, and the rest of D36 is unbuilt, so the screen that would give this def '
+    + 'a target does not exist yet either.',
   carry: 'a write with no screen yet. It shipped 2026-09-04 to mark one item for the next '
     + 'injection, and the picker it needs — the spilled-items list a reader would select from — '
     + 'is a separate, not-yet-landed surface; there is nothing for a catalogue entry to drive '
