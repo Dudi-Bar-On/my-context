@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: Three code and quote boxes draw a border that is half as visible as intended whenever it falls between screen pixels, so it needs either a brighter colour or a thicker line.
-summary_of: 72f9402ee0476bfb
+summary_of: 4c7c663f18684659
 scope:
   - src/ui/public/styles.css
   - e2e/frame-paint.spec.ts
@@ -23,7 +23,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-09-09
 valid_until: null
-checksum: b0a9aed4567c3edf
+checksum: 86ede386a96e9e05
 plan: archive
 seq: "52"
 state: todo
@@ -81,3 +81,41 @@ and .ghdoc td in styles.css are dead - doc.html deliberately loads no /styles.cs
 renders .ghdoc. They are (0,1,1), so they would lose to the app table base the same way .tvsaid td
 did if they ever became live. Decide whether they are deleted or made live; do not leave a rule
 that looks like it works.
+
+RULED 2026-09-09 BY THE OWNER: "2px border". Built and measured the same hour.
+
+THE THREE BOXES ARE DONE AND THE FIX IS TOTAL, not partial. At 2px every device row of the border is
+painted at the token and there is no blend anywhere - the antialiased half that WAS the whole line at
+1px now has a full pixel beside it. Measured after, both languages:
+
+  .tvsaid pre   top/bottom/start/end   token x2   3.79:1 on every edge
+  .tvsaid hr    line                   token x2   3.79:1 on the whole line
+  .tvterm       top/bottom/start/end   token x2   3.79:1 on every edge
+
+Before, each of these read 1.82:1 whenever it landed on a fractional row. The three tests in
+e2e/frame-paint.spec.ts that stood `fixme` on this item are LIVE again and assert the bar - 3:1 on
+PAINT - and they pass. That is the gate this ruling asked for.
+
+AND THE RULING IS BETTER THAN THE ALTERNATIVE FOR A REASON WORTH KEEPING. A brighter token would have
+raised the blend above 3.0 and left the line still painted in two colours depending on where it fell;
+2px removes the split itself, so the number no longer depends on layout. That is why the tests could
+go from "assert the defect" to "assert the bar" rather than to a wider tolerance.
+
+.tvjump IS STILL OPEN, AND 2px ALONE CANNOT CLOSE IT - measured, not assumed. Its border is --edge,
+not --edge-3, and width was never its problem: at 2px the painted colour is the token itself, which is
+1.20:1 on the ground actually painted outside it and 1.49:1 on its own --panel-2 fill. A thicker line
+in an invisible colour is a thicker invisible line, so 2px was NOT applied there - it would have been
+churn that looks like a fix.
+
+THE TOKEN THAT CLOSES IT, computed against the ground measured under the transcript bar, rgb(40,41,94),
+and against its own fill:
+
+  --edge     #3a3a45   1.19 on ground   1.49 on fill   (today - fails both)
+  --edge-3   #6e6e7e   2.67 on ground   3.35 on fill   (fails on the ground it is drawn over)
+  --dim      #8b8b9a   3.99 on ground   4.99 on fill   (clears the bar on both)
+  --tvframe  #c9c6d4   7.97 on ground   9.98 on fill   (clears, and is the table frame is weight)
+
+THE RECOMMENDATION IS --dim AT 2px, and the reason it is safe here although it was wrong twice before
+is exactly the ruling above: --dim failed on the TABLE because a collapsed 1px ruling painted 43% of
+itself as a 2.85:1 blend. At 2px there is no blend, so --dim is painted at 3.99 and not at its half.
+The same ruling that fixed the three boxes is what makes the token that failed twice work now.

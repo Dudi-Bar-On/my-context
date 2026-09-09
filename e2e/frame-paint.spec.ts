@@ -507,7 +507,7 @@ for (const lang of ['en', 'he'] as const) {
    * `--edge-3` #6e6e7e on the strength of 3.79:1, which is a number about the
    * token and not about the line.
    */
-  test.fixme(`the fence box's border, token against paint (${lang})`, async ({ page }) => {
+  test(`the fence box's border, token against paint (${lang})`, async ({ page }) => {
     await openDocument(page, lang);
     const fence = (await park(page, '.tvsaid', 'Below this sentence')).locator('pre').first();
 
@@ -519,7 +519,7 @@ for (const lang of ['en', 'he'] as const) {
         width: s.borderTopWidth, fill: s.backgroundColor,
       };
     });
-    expect(token.width).toBe('1px');
+    expect(token.width).toBe('2px');
     for (const side of [token.top, token.bottom, token.left, token.right]) {
       expect(side).toBe(EDGE3);
     }
@@ -565,7 +565,7 @@ for (const lang of ['en', 'he'] as const) {
    * question this file asks, and the one most exposed to a fractional offset,
    * because its position is decided by whatever prose precedes it.
    */
-  test.fixme(`the rule's border, token against paint (${lang})`, async ({ page }) => {
+  test(`the rule's border, token against paint (${lang})`, async ({ page }) => {
     await openDocument(page, lang);
     const rule = (await park(page, '.tvsaid', 'Below this sentence')).locator('hr').first();
 
@@ -573,7 +573,7 @@ for (const lang of ['en', 'he'] as const) {
       const s = getComputedStyle(el);
       return { colour: s.borderBlockStartColor, width: s.borderBlockStartWidth };
     });
-    expect(token.width).toBe('1px');
+    expect(token.width).toBe('2px');
     expect(token.colour).toBe(EDGE3);
 
     // `.tvsaid hr` carries `margin-block:var(--sp-3)`, so a band 5 rows either
@@ -604,7 +604,7 @@ for (const lang of ['en', 'he'] as const) {
    * on the well rather than inside `.tvsaid`, so its ground is `--sink` on all
    * four sides and its fill is `--paper` — the same 0.4% step.
    */
-  test.fixme(`terminal output's border, token against paint (${lang})`, async ({ page }) => {
+  test(`terminal output's border, token against paint (${lang})`, async ({ page }) => {
     await openDocument(page, lang);
     const term = await park(page, '.tvterm');
 
@@ -616,7 +616,7 @@ for (const lang of ['en', 'he'] as const) {
         width: s.borderTopWidth, fill: s.backgroundColor,
       };
     });
-    expect(token.width).toBe('1px');
+    expect(token.width).toBe('2px');
     for (const side of [token.top, token.bottom, token.left, token.right]) {
       expect(side).toBe(EDGE3);
     }

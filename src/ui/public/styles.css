@@ -4171,7 +4171,7 @@ body.docpage{overflow-y:auto}
 /* The link keeps its own hue through a code span — see the block above. */
 .tvsaid a .m{color:var(--gold)}
 .tvsaid pre{margin-block:0 var(--sp-3);padding:var(--sp-2) var(--sp-3);
-  background:var(--paper);border:1px solid var(--edge-3);
+  background:var(--paper);border:2px solid var(--edge-3);
   border-radius:var(--r-sm);overflow-x:auto}
 /* WHAT THE FENCE SAID IT WAS — drawn only where it said something.
    `lib/markdown.js`'s `fenceNode` sets `data-lang` to the word the author
@@ -4305,7 +4305,7 @@ body.docpage{overflow-y:auto}
    never being drawn, by any box. */
 .tvsaid th,.tvsaid td,.tvsaid tr:last-child td{border:1px solid var(--tvframe);
   padding:var(--sp-1) var(--sp-2);text-align:start}
-.tvsaid hr{border:0;border-block-start:1px solid var(--edge-3);
+.tvsaid hr{border:0;border-block-start:2px solid var(--edge-3);
   margin-block:var(--sp-3)}
 .tvsaid .refusal{display:inline-block;font:600 var(--fs-00)/1.4 var(--mono);
   color:var(--warn)}
@@ -4378,7 +4378,7 @@ body.docpage{overflow-y:auto}
 /* TERMINAL OUTPUT. Monospace, wrapped rather than clipped, and bounded so one
    40,000-character `git log` cannot own the whole well. */
 .tvterm{margin:0;padding:var(--sp-2) var(--sp-3);font:var(--fs-00)/1.5 var(--mono);
-  color:var(--ink);background:var(--paper);border:1px solid var(--edge-3);
+  color:var(--ink);background:var(--paper);border:2px solid var(--edge-3);
   border-radius:var(--r-sm);white-space:pre-wrap;overflow-wrap:anywhere;
   max-block-size:44vh;overflow-y:auto}
 

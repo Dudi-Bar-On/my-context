@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: true
 summary: The short numbers used to talk about work in progress and what each refers to, delivered every session so the same number never means two things.
-summary_of: 132f542901653629
+summary_of: 0b23659a28de3afc
 summary_was:
   - 2026-09-07 The short numbers used to talk about work in progress, and what each of them refers to, so the same number never means two things.
 acknowledged:
@@ -21,7 +21,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-09-07
 valid_until: null
-checksum: 1bb03c68b2107d0d
+checksum: 5ead5f698339b7a8
 ---
 
 # the D numbers: what each one means, and which are only proposed
@@ -156,3 +156,35 @@ position and a position needs a table to be in.
 AND DEFERRED IS NOT THE SAME AS UNDECIDED ABOUT PRIORITY: it sits below every open D, and nothing
 should pick it up without asking him first. The open question behind it stays active precisely
 because he has not answered it - unlike the four that were retired the same day, which he did.
+
+D37 WIDENED AGAIN 2026-09-09, BY OWNER RULING ("update the D map"), and recorded in the same act.
+
+  D37  the conversation archive rebuilt      plan:archive seq:1-54   (was seq:7-19, was seq:7-13)
+
+THE RANGE NOW STARTS AT 1, WHICH IS A CORRECTION AND NOT A WIDENING. seq:1-3 - the index and its
+scanner, the two read-only endpoints, and the screen - were always this subject; the row said 7-13
+because that was the batch being dispatched the day the number was assigned, not because 1-6 were
+something else. Reading the old row literally would have said the index the archive is built on is
+not part of the archive.
+
+AND THE UPPER END MOVED BECAUSE THE SUBJECT KEPT BEING USED. seq:20-54 were filed by the owner and by
+lanes WHILE READING the viewer, which is the same way seq:14-19 arrived - the widening he already
+ruled on, and whose precedent this item records: a D number names a SUBJECT, not a fixed list of
+items. Nothing that was D37 has become anything else.
+
+WHAT IS ACTUALLY DONE UNDER IT, as of 2026-09-09 and replacing the 2026-09-08 note above, which is
+now wrong in both directions: 39 of 54 are done. The seven that note listed as open - seq:4, 5, 6, 9,
+10, 11, 12 - have all shipped, and seq:7 is no longer half-closed.
+
+  OPEN (15):  29 30 34 36 37 42 46 47 48 49 50 51 52 53 54
+  RULED AND READY TO DISPATCH:  51 (only a LANE opens bare; the session keeps the app)
+                                52 (2px borders - ruled 2026-09-09; .tvjump token outstanding)
+
+THE STANDING ORDER HE GAVE FOR WHAT IS LEFT: 50, then 49, then 51, then the index items. One lane at
+a time whenever a lane drives a browser.
+
+AND A NOTE THIS TABLE OWES ITS OWN RULE. D37 has now grown twice. That is legal - the rule is that a
+number is never RENUMBERED or REUSED, not that its subject cannot reach further - but a number that
+keeps growing stops being a unit of work and becomes a heading. When the owner draws a line under it,
+the remainder should become a new D rather than a third widening, and this row should say so on that
+day.
