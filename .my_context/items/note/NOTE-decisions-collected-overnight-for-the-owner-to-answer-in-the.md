@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: One place holding the questions that need the owner rather than a measurement, so work continues overnight and he answers a list instead of being interrupted.
-summary_of: ad64a5f06cd2a752
+summary_of: 8c3e1d5489effe37
 scope: []
 tags:
   - v2
@@ -17,7 +17,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-09-08
 valid_until: null
-checksum: 906601740e923b1d
+checksum: eb6558f3c3f88004
 ---
 
 # decisions collected overnight for the owner to answer in the morning
@@ -139,3 +139,38 @@ and what changed tonight is the fenced blocks and their label, not the inline sp
      upgrade ritual.
   C. UNTAGGED FENCES GET NO MARK AT ALL, and the label appears only on the 25 that declared a
      language, so "coloured" and "declared" are visibly one set. Reversing it is one rule.
+
+── ANSWERED 2026-09-09, ONE BY ONE, ON HIS OWN INSTRUCTION "let's answer one by one: ask recommend" ──
+
+TWELVE PUT TO HIM, TWELVE ANSWERED. Ten confirmed what a lane had chosen; TWO changed it. That
+ratio is worth recording rather than glossed: the lanes’ cheaper-to-reverse default was right ten
+times out of twelve, and the two it got wrong were both about a READER’S OWN CONTEXT rather than
+about the code - his timezone, and his ability to name his own sessions. Neither is a thing a
+measurement could have settled, which is why they were on the list at all.
+
+CONFIRMED AS BUILT:
+  - Every shell command stays promoted, +80% outline accepted, because the walk time did not move
+    and it is what lets the filter find a command by what it ran.
+  - The pruned chip STAYS, after I explained the gap plainly and he confirmed a second time. His
+    2026-09-07 ruling stands for rebuild time; the chip covers the up-to-one-turn window in which
+    the row is served either way, and the only question was whether it explains itself.
+  - A no-speaker synthetic turn gets NO heading, the literal reading of "or none".
+  - A question row is headed Claude, because Claude composed it.
+  - The verb is `persist`, with source values live / persisted / exported.
+  - `--off` leaves the copy on disk.
+  - The mirror advances on the Stop hook, 9-28 ms a turn.
+  - No cap on the recovered 6.0 MB.
+
+CHANGED BY HIM:
+  - THE DATE FILTER MUST USE HIS OWN ZONE, not UTC days. Filed as plan:archive seq:37. This is his
+    own timezone defect one surface over, and the list currently draws times in his zone while
+    filtering dates in UTC - a row above and a control below.
+  - SESSION NAMING IS WANTED after all. plan:archive seq:34 moves from "worth asking" to build:
+    a name he sets wins over the harness’s, purely additive.
+
+STILL OPEN, AND ONLY BECAUSE IT NEEDS HIS EYES RATHER THAN HIS OPINION: whether the code
+colouring is good enough. He has not looked at it yet.
+
+AND ONE ANSWER THAT IS A NON-ANSWER BY DESIGN: the stream. He chose "not sure, will watch it",
+which is the correct answer to a mitigation whose cure was never demonstrated. plan:live seq:22
+stays filed with the FIN measurement as the next step if the message returns.
