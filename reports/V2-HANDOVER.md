@@ -1,3 +1,37 @@
+## ⏭ 2026-09-09, at 96% — DELTA. **CSS lane still running.** `archive/51` is RULED and ready.
+
+### `archive/51` RULED: only a LANE opens bare. The SESSION keeps the app.
+
+He chose after the distinction was explained plainly. A helper agent opens as a bare window; his own
+session keeps the rail, the strip and the header exactly as today.
+
+**The seam is the DOCUMENT KIND, and `rowFor` already knows it** — it resolves a session, a lane or a
+kept copy, so "is this a lane" is a fact the read model answers today. **No mode, no preference, no
+query parameter.** Which means **the session path must not change at all**: if a session document
+renders one pixel differently after this lands, that is a regression, and the 132 browser assertions
+over the session document are the guard.
+
+**Declined and recorded so neither is re-proposed:** both-bare (loses the strip and rail while he
+reviews his own work) and a per-reading toggle (a control plus a remembered preference). Both lost
+for the same reason — they treat the two documents as one thing when he uses them differently.
+
+**And the trap from the 95% delta still governs this item: `doc.html` is drawn by `githubNodes`, not
+`markdownNodes`.** Reuse the page shape, never the renderer, or the inline hue, the fences, the folds
+and the terminal rendering all vanish silently.
+
+### DISPATCH ORDER, ONE AT A TIME (his ruling)
+
+1. **`50`** the agent type — tiny; `agentType` is already served by the roster, just never drawn.
+2. **`49`** link the "Subagent finished" row — measured: 626 of 1,437 task-ids resolve, and `seq:28`'s
+   speaker mapping is already the discriminator.
+3. **`51`** the bare window — now ruled, so it is dispatchable.
+4. One index lane: **`48` `33` `35` `30`**. Then **`37` `34`** (his rulings), then **`42` `29` `36` `46`**.
+
+**D37 is 37 of 51** and grew from 13 open this morning. It will not finish by grinding down; at some
+point he draws a line and the rest becomes a new D. Behind it sits **D36 — `loop/1–5`, five plans, a
+17-section design, ZERO implementation** — the only D in that state, and `loop/1` must be first
+because library drift is detectable only as a CHANGE.
+
 ## ⏭ 2026-09-09, at 95% — DELTA. **CSS lane still running.** Two items filed, one carrying a trap.
 
 Off cadence (90/92/94/96/97/98/99) for one reason: `archive/51` holds a trap that would cost a lane
