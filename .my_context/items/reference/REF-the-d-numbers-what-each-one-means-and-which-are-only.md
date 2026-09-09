@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: true
 summary: The short numbers used to talk about work in progress and what each refers to, delivered every session so the same number never means two things.
-summary_of: 78d261cd049d4201
+summary_of: fa588dcb5f7f6abc
 summary_was:
   - 2026-09-07 The short numbers used to talk about work in progress, and what each of them refers to, so the same number never means two things.
 acknowledged:
@@ -21,7 +21,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-09-07
 valid_until: null
-checksum: fe2056ae3613485b
+checksum: daeb32408b42e670
 ---
 
 # the D numbers: what each one means, and which are only proposed
@@ -226,3 +226,54 @@ sent exactly that boundary.
 
 AND WHEN D37 CLOSES, THIS PARAGRAPH EXPIRES. It is scoped to closing one D, not a change to how the
 corpus works. Do not carry it into the next D without asking him.
+
+D40 ASSIGNED 2026-09-09, BY OWNER RULING, AND DEFERRED UNTIL D37 CLOSES. Recorded in the same act
+as the assignment, which is this item’s own obligation.
+
+  D40  a contrast ratio is computed against a colour that is not painted     STARTS WHEN D37 CLOSES
+
+WHAT WAS MEASURED, by the plan:archive seq:47 lane and confirmed in the main session. `--panel`,
+`--panel-2` and `--paper` are NOT what anything sitting on a card is painted on. `.card` and `.pane`
+are TRANSLUCENT - `--pane-tint` runs rgb(9 10 16/.56) to /.64 - over `body{background:var(--ground)}`,
+whose first radial blob is #433580 at 14% 6%, which is exactly where the transcript bar sits. Read
+out of the image four pixels outside a control’s own border box, the ground comes back near
+rgb(40,41,94): a purple-blue, not the near-black grey the token names.
+
+SO EVERY CONTRAST RATIO IN THIS PRODUCT COMPUTED AGAINST THOSE THREE TOKENS FOR ANYTHING ON A CARD
+IS A CLAIM ABOUT A COLOUR THAT IS NOT THERE. It is off by about 0.4 of a point in the WRONG
+direction, and - the part that makes it a subject rather than a constant - IT MOVES WITH THE
+CONTROL’S POSITION ON THE PAGE, because the ground is a radial gradient.
+
+IT IS NOT AN ARCHIVE PROBLEM, which is why it is its own D rather than another archive seq. The
+archive screen is only where it was caught. Any control on any card in this product is measured the
+same wrong way, and nothing today would notice.
+
+AND IT IS THE THIRD TIME THIS FAMILY HAS COST HIM A JUDGEMENT. `plan:archive seq:38` raised a frame
+on a token reading and delivered 1.82 in paint. seq:47 found a ruling painted in two colours, 57/43.
+Both were the same mistake in a different place: A TOKEN IS NOT A MEASUREMENT. This D is that lesson
+applied to the product rather than to one screen - and the owner has now judged this surface four
+times and been right four times against arithmetic that was computed instead of photographed.
+
+THE SHAPE OF THE WORK, so nobody starts it by guessing: the ground must be READ FROM THE RENDER at
+the position the control actually occupies, not taken from a token. `e2e/frame-paint.spec.ts`
+already does exactly this for four surfaces and is the worked example.
+
+AND ONE RELATED TRAP TO CARRY IN, recorded so it is not rediscovered: `wellClip` is not sufficient.
+The well is min(70vh,860px) in a 720px viewport, so `page.screenshot({clip})` cannot photograph its
+lower 104px, and the English rail puts the well 18px below the Hebrew one - which is how one crop
+was correct in one language and pure card chrome in the other. Place targets by offset inside a
+`locator(...).screenshot()` instead.
+
+
+QUEUED BEHIND D37, NOT YET A D AND NOT YET AN ITEM, by owner ruling 2026-09-09 ("hold them all,
+after D37"). Written here because closing mode forbids filing it now and a decision he has taken
+must not live only in a chat message:
+
+  README §12’s FLAG TABLES - 77 ROWS IN EACH DOCUMENT, 76 OF THEM HELD TO NOTHING.
+  Found by plan:archive seq:36 while holding the `--yes` row. That row was the ONLY one in either
+  language held to anything; the other 76 are hand-kept in both documents equally. This is not the
+  asymmetry seq:36 fixed - it is a symmetric gap, and a wider one. The fix is one generalised probe:
+  `approvalBoundary()`’s flag probe taken from `--yes` to an arbitrary flag, in
+  `test/helpers/approval-boundary.ts`, which then holds all 77 rows in both documents in both
+  directions. It is deliberately NOT folded into seq:36: that lane’s scope was two files, and this
+  is a change to a shared test helper.
