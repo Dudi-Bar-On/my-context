@@ -1,3 +1,24 @@
+## ⏭ 2026-09-09, at 92% — DELTA on the 91% block below. Read that one; this only adds.
+
+**Nothing has changed in the tree.** Still 37 of 48 on D37, nothing running, 0 unpushed. This is a
+delta rather than a block because his cadence ruling says so: a step update carries only what moved,
+capped near 25 lines, and eleven full blocks spent about a quarter of the runway once already.
+
+### ONE OPEN THREAD, worth a check before the CSS lane
+
+He asked whether a subagent is linked from where it appears in the viewer, rather than found through
+a list. **It is** — `laneLink` draws an anchor on the DISPATCHING STEP, joined by `toolUseId`, opening
+the lane in the same renderer in a new tab. `archive/41`'s roster is the SECONDARY route, for the
+**43 of 265 lanes dispatched from inside another lane**, which have no step in his session to hang a
+link on.
+
+**What I did not verify, and said so rather than claiming it:** whether the *"Subagent — Background
+task finished"* notification row also carries that link. `archive/28` named that row as the natural
+home for one; the `39/40/41` lane confirmed the `deed` row honours the `toolUseId` join and that the
+step-level link survives, but said nothing about the notification row. **That row is where a reader
+would most expect to click** — a lane reports back, and the report is the thing you want to open.
+Check it before the CSS lane; if it is missing it is small, and it belongs with `archive/41`.
+
 ## ⏭ READ THIS FIRST — 2026-09-09, at 91%. D37 IS 37 OF 48. NOTHING IS RUNNING.
 
 **Tree clean, 0 unpushed.** No lane in flight. The owner is at his office machine and awake.
