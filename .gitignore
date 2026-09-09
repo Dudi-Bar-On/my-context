@@ -37,3 +37,29 @@ blob-report/
 # Playwright MCP session artefacts.
 .playwright-mcp/
 e2e/screens/
+
+# A CONVERSATION COPY MUST NEVER REACH GIT — owner ruling 2026-09-09, "the
+# conversation files should be git ignored so no sensitive data would be saved
+# in git".
+#
+# Every path that holds conversation-derived data today is ALREADY covered and
+# was verified rather than assumed: `.my_context/.index.db` above,
+# `.my_context/.audit|.revisions|.staging|.statusline|.verdicts|state` by their
+# own `*` files, `e2e/screens/` directly above (which matters more than it
+# looks — those PNGs render his real transcript, and 0 are tracked), and
+# `mycontext conversation persist` writing to `~/.my-context/conversations/`,
+# outside the repository entirely. Checked with `git grep`: no tracked file
+# carries a credential shape, and no tracked `.jsonl` carries a transcript
+# record. The twelve tracked `.jsonl` are `harness/evidence/*` CLI captures.
+#
+# THIS RULE IS FOR THE ONE HOLE THAT REMAINED. `MYCONTEXT_MIRROR_DIR`
+# (`core/conversation-mirror.ts`) overrides the mirror root and can point it
+# ANYWHERE, including inside this tree — a test, a script or a slip. A mirror is
+# a WHOLE TRANSCRIPT, so that is the one case where a full conversation could
+# land in a tracked location, and nothing ignores `*.jsonl` generally (nor
+# should it: the harness evidence above is tracked deliberately).
+#
+# Named by directory rather than by extension for that reason. Verified nothing
+# tracked sits under a `conversations/` path before adding it.
+conversations/
+*.transcript.jsonl
