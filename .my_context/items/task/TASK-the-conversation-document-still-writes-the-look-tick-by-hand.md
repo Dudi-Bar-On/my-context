@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: Two screens each carry their own copy of the rule that refreshes a page the moment you look back at the tab, and one of them should simply use the other's.
-summary_of: 65ec240f6ef5a350
+summary_of: 263dac887a22dc60
 scope:
   - src/ui/public/screens/conversations.js
   - src/ui/public/lib/heartbeat.js
@@ -16,54 +16,34 @@ tags:
   - archive
   - "plan:archive"
   - "seq:29"
-  - "state:todo"
+  - "state:done"
 origin: human
 source_file: "C:/Users/UserC/AppData/Local/Temp/claude/D--Users-UserC-source-repos-my-context/595db3b1-a481-4553-b4c0-7248c31b2655/scratchpad/archive29.md"
 source_anchor: null
-source_checksum: 3ffeace2515ba123
+source_checksum: null
 valid_from: 2026-09-08
 valid_until: null
-checksum: e77f7641a0bb54b4
+checksum: d41bd6531da61c72
 plan: archive
 seq: "29"
-state: todo
+state: done
 priority: "3"
 ---
 
 # the conversation document still writes the look-tick by hand, one floor below the module that now owns it
 
-> FILED BY THE plan:live seq:21 / plan:archive seq:25 LANE, 2026-09-08, as the half of seq:25 it
-> could not finish inside its own file boundary.
->
-> WHAT SHIPPED. seq:25's chosen option was the item's first one: the four rules moved INTO
-> `src/ui/public/lib/heartbeat.js`, which is where they belong because that module already exists to
-> hold the RULE rather than the timer. `startHeartbeat(doc, pingFn, intervalMs, win)` now carries the
-> listener pair on `doc.visibilitychange` and `win.focus`, the `LOOK_GAP_MS` double-fire guard, the
-> interval re-base, and removal of both listeners in the same `stop()` that clears the timer -
-> `app.js` calls that `stop()` from `api()`'s catch the moment a request proves the server is gone,
-> so the tear-down is what keeps a dead page from pinging an exited process. `app.js` passes
-> `window`. Measured in both browser projects: 8-15 ms from the look to `/api/ping` being asked,
-> 23-24 ms to its answer being back, and exactly ONE request in the 300 ms after a return that fires
-> `visibilitychange` and `focus` together.
->
-> WHAT DID NOT. `screens/conversations.js` still carries its own hand-written copy of the same four
-> rules - `onLook`, its own `LOOK_GAP_MS`, its own re-base, its own removal in `stopFollowing`. Not
-> because the refactor is judged too wide: it is the right one, the shapes already match, and
-> `heartbeat.js` was written to be adopted. It is because that file was owned by another lane running
-> at the same hour, and editing it would have been a collision rather than a refactor.
->
-> SO THIS IS THE ADOPTION, AND IT IS SMALL. `conversations.js` follows a document with `tipTimer` at
-> `TIP_MS` and tears it down in `stopFollowing`; that is `startHeartbeat`'s shape with `tick` as the
-> `pingFn`. What it has and the shared one does not is the `scroll.isConnected` guard that stops a
-> document whose well was replaced - that belongs in the callback, not in the mechanism, and it is
-> the one thing to get right while moving.
->
-> WHAT THIS IS WORTH, so nobody reads it as urgent: nothing is broken and no reader waits. The value
-> is that the next surface that wants the behaviour asks for `win` instead of writing the rules a
-> third time, and that `test/ui/viewmodel.test.ts` is then the only place the guard and the tear-down
-> are asserted. seq:25 named the failure to avoid in as many words: a second hand-written copy of the
-> same four rules on a third surface.
->
-> AND ONE NUMBER MUST NOT MOVE WITH IT. The 60 s cadence was ruled, not inherited - `measureCorpusDrift`
-> rides `/api/ping` and its 6.24 ms/min budget is the argument that ruled out a file watcher. This is
-> about the return, never the interval, and the same holds for `TIP_MS` on the document side.
+DONE 2026-09-10, and the item's own prescription was corrected by measurement rather than followed.
+
+WHAT SHIPPED. `attachLook` in `src/ui/public/lib/heartbeat.js` is exported, and `screens/conversations.js` now takes THREE things from that module instead of one: `shouldPing` (as before), `attachLook` (the `visibilitychange`/`focus` pair, registered together and removed through the single handle it returns), and `LOOK_GAP_MS`. The local `const LOOK_GAP_MS = 250` is gone and neither event name is spelled in the screen any more - four hand-written lines and one re-chosen number, removed. `stopFollowing` calls `detachLook()`; a copy or a truncated document registers nothing, so the handle starts as a no-op.
+
+WHAT THE ITEM ASKED FOR AND WHY IT IS WRONG. The item names `startHeartbeat(document, tick, TIP_MS, window)` as the adoption. It cannot be, and the reason is an ORDER: `beat` asks `shouldPing` BEFORE calling `pingFn`, while this screen's `tick` asks `scroll.isConnected` FIRST and tears the whole follow down when the answer is no. Under `startHeartbeat` a hidden tab whose document well had been replaced would never reach that teardown, so the timer and both listeners would outlive the well - the per-conversation leak `stopFollowing`'s own comment is about. `startLookTicks` is not the answer either: it debounces against its private `firedAt`, and this screen debounces against the `askedAt` its SCHEDULED tick writes too. The item also predates the `plan:archive seq:19` rebuild branch and the `plan:live seq:22` repair, so its "four rules" description is now five behaviours; the dispatch brief's claim that `attachLook` was already exported was also wrong - it was module-private until this lane.
+
+MEASURED, on `/lane.html` in both browser projects. With the shared `askedAt`: a glance fired inside 250 ms of a scheduled `/tip` costs 0 extra requests. With `startLookTicks`' private-clock semantics installed: 1 extra request, both projects. That is the number that decided the shape.
+
+EVERY BEHAVIOUR THE ITEM PREDATES SURVIVES: `shouldPing`, `LOOK_GAP_MS`, the interval re-base, the rebuild-at-tail branch, the `conv.doc.replaced` notice above the tail, the pruned branch and `fillHead`. 202 archive e2e tests - `conversations`, `conversations-kept`, `conversation-secrets`, `archive-chrome-face`, `lane-link-face` - pass SERIALLY on `chromium` and `chrome`, 7.7 min, zero failures.
+
+AND THE LOOK TICK IS NOW MEASURED ON THE SECOND PAGE, which nothing did before. `lane.js` imports `mountDocument` and forks nothing, so a bare lane window runs the same follow - and it is the only page where the document's own pair is the ONLY thing that can answer a return, since there is no heartbeat and no stream there to cover for a lost one. The new e2e test drives `/lane.html`: it follows, asks nothing while hidden, answers one glance with exactly one `/tip`, and drops a look landing inside the gap of a scheduled ask.
+
+PROVED BY REMOVAL, five ways, red in both projects each time: un-export `attachLook` (2 unit tests red), re-inline the hand-written pair (cadence test red), drop `askedAt` from the scheduled tick (cadence test red), delete the adoption (`/lane.html` burst 1 to 0), install the private clock (extra asks 0 to 1). Unit suite 7276 tests, all green but `test/cli/statusline-chain.test.ts`, whose failure set rotated across three runs and which passes 28/28 alone - the known contention list.
+
+Commit 1613f3b0.
