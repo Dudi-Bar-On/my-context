@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: Three code and quote boxes draw a border that is half as visible as intended whenever it falls between screen pixels, so it needs either a brighter colour or a thicker line.
-summary_of: 4c7c663f18684659
+summary_of: b8034994204279bd
 scope:
   - src/ui/public/styles.css
   - e2e/frame-paint.spec.ts
@@ -16,17 +16,17 @@ tags:
   - ui
   - "plan:archive"
   - "seq:52"
-  - "state:todo"
+  - "state:done"
 origin: human
 source_file: null
 source_anchor: null
 source_checksum: null
 valid_from: 2026-09-09
 valid_until: null
-checksum: 86ede386a96e9e05
+checksum: f4b0411012bbb239
 plan: archive
 seq: "52"
-state: todo
+state: done
 priority: "1"
 needs: archive/47
 ---
@@ -119,3 +119,36 @@ THE RECOMMENDATION IS --dim AT 2px, and the reason it is safe here although it w
 is exactly the ruling above: --dim failed on the TABLE because a collapsed 1px ruling painted 43% of
 itself as a 2.85:1 blend. At 2px there is no blend, so --dim is painted at 3.99 and not at its half.
 The same ruling that fixed the three boxes is what makes the token that failed twice work now.
+
+CLOSED DONE 2026-09-09. All three parts of this item shipped and were measured after shipping.
+
+1. THE THREE --edge-3 BOXES, on his "2px border" ruling. Painted, both languages, every edge:
+   .tvsaid pre 3.79:1, .tvsaid hr 3.79:1 on the whole line, .tvterm 3.79:1 - token x2 with no blend
+   anywhere. Before, each read 1.82:1 whenever it landed on a fractional device row.
+
+2. .tvjump, on his "fix .tvjump with --dim" ruling. Painted 5.55 to 5.68:1 across the four edges,
+   two full rows of the token. Before: 1.20:1 on the ground actually painted outside it.
+
+   AND THE TOKEN WAS NOT THE VALUE I QUOTED HIM. I recommended --dim on a computed 3.99:1 against
+   #8b8b9a. --dim resolves to #a9a6b8 in this scope, which is 5.63:1 on that ground - better than
+   promised, but the number I gave him was not the product’s. It is now READ OFF THE CONTROL in
+   e2e/frame-paint.spec.ts rather than assumed, which is this item’s own thesis applied to itself.
+
+3. THE DEAD .ghdoc RULES, on his "delete them" ruling - and there were TWENTY, not the two reported.
+   .ghdoc appears in exactly one place in the product, doc.html, which deliberately loads no
+   /styles.css. So the whole block was dead, and deleting two would have left the rest looking
+   maintained. Removed by selector rather than by range, because .md figure.mermaid img is LIVE and
+   sits inside the block.
+
+THE WIDEST THING THIS ITEM RECORDED IS NOT CLOSED BY IT, and has been carried out deliberately:
+the measurement that --panel/--panel-2/--paper are not what a control on a card is painted on is now
+D40, assigned by owner ruling and starting when D37 closes. It is a product-wide subject and this
+item is one screen.
+
+AND THE TESTING LESSON IS THE PART WORTH KEEPING. The three tests here first asserted the DEFECT -
+that every pixel is the 1.82 blend - and that made the gate depend on where a line happened to fall:
+the same rule painted the full token in one run and the blend in the next, and .tvterm passed alone
+then failed in a full-file run with no code between them. They now assert the BAR, 3:1 on PAINT and
+not on token, and 2px is what makes that bar meetable at all. A brighter token alone would have
+lifted the blend over 3.0 and left the line still painted in two colours; 2px removes the split.
+His ruling was the better of the two answers and not merely an equal one.
