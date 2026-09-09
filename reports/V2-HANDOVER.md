@@ -1,3 +1,36 @@
+## ⏭ 2026-09-09, at 95% — DELTA. **CSS lane still running.** Two items filed, one carrying a trap.
+
+Off cadence (90/92/94/96/97/98/99) for one reason: `archive/51` holds a trap that would cost a lane
+hours if this session ends before it is written down.
+
+### D37 IS 37 OF 51. His two improvements, after he clicked through to a lane successfully.
+
+**`archive/50` — he means the agent TYPE, and my first reading was wrong.** He said the terminal
+names "mostly starts with general purpose". That is `agentType`, not `description`. Measured: all 223
+`Agent` blocks DO carry a description and `DETAIL_FIELDS` already surfaces it, because an Agent call
+has no `command` so `description` wins. What he cannot find is the KIND. Already served — the CLI
+roster prints it as its own column, so it reaches `laneIndex` with nothing new read. **Warning in the
+item: every lane in this corpus is `general-purpose`, which makes the field look useless and does
+not make it so.**
+
+**`archive/51` — a lane opens inside the WHOLE APP and he wants the transcript alone.** `seq:15`
+solved a different problem from the one he was describing: it made his place impossible to lose by
+never unmounting the document, which stands — but the tab is the entire application at a lane's
+address. Precedent exists: `doc.html` beside `index.html`, and `seq:19` records his earlier
+permission ("as we did for readme").
+
+**THE TRAP, AND IT IS WHY THIS DELTA EXISTS: `doc.html` IS DRAWN BY `githubNodes`, NOT
+`markdownNodes`.** `seq:38`'s lane found the difference — `markdownNodes` emits `span.m` for inline
+code, `githubNodes` emits a bare `code`. **A lane rendered through `doc.html`'s path would silently
+lose the inline hue, the fence colouring, the folds and the terminal rendering — every visible thing
+built on 8–9 September.** Reuse the page shape, NOT the renderer. A bare page also still needs the
+whole renderer (never a fork), i18n and the theme (both live in the shell; without them it draws
+English into an RTL window), and `p.tvlaneof`/`a.tvlanehome` as the minimum provenance. The
+credential is already free — it is an HttpOnly cookie.
+
+**HIS TO RULE:** whether the SESSION document also opens bare, or only a lane. He asked about a lane;
+the argument reads either way and guessing changes how he reads his own session.
+
 ## ⏭ 2026-09-09, at 94% — DELTA. The CSS lane is STILL RUNNING. One thread open, and more feedback coming.
 
 ### HE CONFIRMED THE SUBAGENT LINK WORKS, END TO END, HIMSELF
