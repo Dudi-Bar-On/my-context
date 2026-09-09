@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: The live feed kept dying and the repair that was made is a sound one, but nothing has yet been caught doing the killing, so this records what was ruled out and what to look at next time it happens.
-summary_of: c4009047765c6795
+summary_of: b878f1ca81a20b1b
 scope:
   - src/ui/watch-model.ts
   - src/ui/public/app.js
@@ -23,7 +23,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-09-08
 valid_until: null
-checksum: 9defd2b01fc543fd
+checksum: a5ee11f24806a12a
 plan: live
 seq: "22"
 state: todo
@@ -151,3 +151,63 @@ AND THE MITIGATION SHOULD PROBABLY COME OUT IF THE CAUSE IS INTERNAL. A 20-secon
 connection nothing external was reaping is 9 bytes a minute buying nothing, and it now sits in the
 code implying a cause that has been measured false. Do not remove it before the real cause is
 known - it is harmless - but do not leave it there afterwards as an explanation either.
+
+── CAUSE FOUND 2026-09-09, AND IT IS OURS. `restartStaleServer`. ────────────────────────────
+
+The upkeep DOES restart a server that is listening. `src/core/ui-server-upkeep.ts` -
+`restartStaleServer` - replaces a server whose CODE IS STALE, and its own comment says so. I had
+read the neighbouring sentence, "it does not restart a server that is listening but WEDGED", and
+generalised it to "it never restarts a listening server". That was wrong, and it is the second
+wrong root cause I gave this defect.
+
+SO THE SEQUENCE IS: a commit lands -> the running server’s code is now stale -> the next Stop hook
+calls `restartStaleServer` -> the restart calls `server.closeAllConnections()` -> every open stream
+gets a clean FIN from the server.
+
+EVERY OBSERVATION FITS, and none of them needed anything external:
+  - the server holds FIN_WAIT_2 and the browser CLOSE_WAIT -> closeAllConnections on exit
+  - six different pids across one night -> one per stale-code restart
+  - down/up gaps of 5 s, 11 s, 6 s -> the restart itself
+  - a longer gap 08:43:48Z to 08:52:03Z -> the server died with no turn ending, and came back on
+    the next Stop hook, which is the respawn path rather than the restart path
+  - "every few minutes" -> as often as somebody commits, which during this work was constantly
+
+AND seq:21’S KEEP-ALIVE WAS SOLVING A PROBLEM THAT DOES NOT EXIST. Nothing external was reaping
+anything, which is exactly why that lane could not reproduce a reaper over 11 and 14 minutes and
+said so. Its measurement was right and my reading of it was wrong: I treated "could not reproduce"
+as "not yet reproduced" and shipped a mitigation anyway. 20 seconds of keep-alive is 9 bytes a
+minute buying nothing, and left in place it asserts a cause that is now measured false.
+
+── WHAT THIS ITEM SHOULD NOW BUILD ─────────────────────────────────────────────────────────
+
+THE DROP IS LEGITIMATE, FREQUENT AND SELF-INFLICTED, so the work is no longer to prevent it - it is
+to RECOVER from it. Owner’s own instinct, 2026-09-09: "i think we need to refresh the page on the
+same event we refreshing the status bar."
+
+THE EVENT IS RIGHT AND THE ACTION IS NOT. plan:archive seq:22 already fires on
+`visibilitychange` + `window.focus` at a measured 8-50 ms. Use that event. But do NOT reload the
+page:
+  - THE CREDENTIAL IS IN MEMORY, redeemed from a one-shot nonce, so a reload logs the reader out.
+    He hit exactly this on the morning of 2026-09-09 and read it as the server being down while it
+    was answering HTTP 200.
+  - A RELOAD DISCARDS EVERYTHING seq:19, seq:22, seq:23 and seq:15 were built to protect: scroll
+    position, open folds, the session being read, a marked passage, text in the filter box. Those
+    four items exist to guarantee a reader is never moved; a periodic reload moves them on a timer.
+
+SO: REOPEN THE STREAM ON THE LOOK TICK, not the page. And section 2 is not violated, which is worth
+stating because it is the rule that froze `liveStop` in the first place: section 2 forbids SILENT
+reconnection of a held-open stream, on the ground that it keeps the server alive for ever. A
+reconnect fired by the reader looking at the tab is not silent, a hidden tab still asks for nothing,
+and the connection it replaces was closed by OUR OWN restart rather than lost to the network.
+
+ONE THING TO MEASURE RATHER THAN TRUST. `restartStaleServer`’s comment claims "the owner’s
+already-open tab survives the restart anyway, because the new server honours previously issued
+session digests out of `ui-sessions.json`". He LOST his credential on the morning of 2026-09-09 and
+had to be handed a fresh nonce. So either that claim is false, or the digest survives while the
+in-memory token does not and the page cannot use one without the other. That difference decides
+whether this item ships "the feed comes back" or "you are logged out again", so measure it before
+building.
+
+AND REMOVE THE KEEP-ALIVE, or say why it stays. It is harmless, so do not rush it - but a constant
+whose docblock explains a reaper nobody has ever observed is the kind of false explanation this
+corpus spends items removing.
