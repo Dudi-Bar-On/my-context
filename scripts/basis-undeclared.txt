@@ -65,14 +65,12 @@ e2e/injection-preview.spec.ts
 e2e/item-pane.spec.ts
 e2e/keyboard.spec.ts
 e2e/language.spec.ts
-e2e/live-refresh.spec.ts
 e2e/live-stream.spec.ts
 e2e/nocred-notice.spec.ts
 e2e/pane-size.spec.ts
 e2e/preview-compact-continuity.spec.ts
 e2e/preview-gate-counts.spec.ts
 e2e/preview-overlap.spec.ts
-e2e/preview-picks.spec.ts
 e2e/preview-retime.spec.ts
 e2e/preview-spilled.spec.ts
 e2e/primitives.spec.ts
@@ -87,7 +85,6 @@ e2e/served-shape.spec.ts
 e2e/session-picker.spec.ts
 e2e/simulate-question.spec.ts
 e2e/simulate-range.spec.ts
-e2e/simulate-slider.spec.ts
 e2e/states.spec.ts
 e2e/strip-fields.spec.ts
 e2e/strip-live-refresh.spec.ts
