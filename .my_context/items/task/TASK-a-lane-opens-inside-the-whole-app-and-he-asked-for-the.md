@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: Opening a helper agent gives you just the transcript in its own window, without the rails and bars of the surrounding application.
-summary_of: c1b57f7696566003
+summary_of: 672c4f6b137d944f
 scope:
   - src/ui/public/screens/conversations.js
   - src/ui/server.ts
@@ -23,7 +23,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-09-09
 valid_until: null
-checksum: 0d228ce83d6eed13
+checksum: 4a6ff6b542ca5974
 plan: archive
 seq: "51"
 state: todo
@@ -72,3 +72,33 @@ are the minimum that must survive. What he is asking to lose is the application,
 ONE THING THAT IS HIS TO RULE: whether the SESSION document keeps opening inside the app while only
 a LANE opens bare, or both do. He asked about a lane; the same argument reads either way, and
 guessing would change how he reads his own session.
+
+── RULED 2026-09-09: ONLY A LANE OPENS BARE. THE SESSION KEEPS THE APP. ─────────────────────
+
+Asked to choose after the distinction was explained plainly, he ruled: a helper agent opens as a
+bare window; his own session keeps the rail, the status strip and the header exactly as today.
+
+AND THE RULING MATCHES HOW HE USES EACH, which is why it is the right seam rather than merely the
+narrow one. A SESSION IS WHERE HE WORKS: the strip carries the context reading, the corpus drift,
+the size and the lane count he asked for only this morning, and the rail is how he leaves. A LANE IS
+SOMETHING HE VISITS - reached from a link, read, and closed. Stripping the chrome from the thing he
+works in would take away the instruments; stripping it from the thing he visits takes away nothing
+he was using.
+
+SO THE SEAM IS THE DOCUMENT KIND, AND `rowFor` ALREADY KNOWS IT. It resolves a session, a lane or a
+kept copy - so "is this a lane" is a fact the read model answers already, not a new flag. Do not
+add a mode, a preference or a query parameter: the shape follows from WHAT is being opened.
+
+AND THAT MEANS THE SESSION PATH MUST NOT CHANGE AT ALL. This item now touches only the route a lane
+is opened through. If a session document renders one pixel differently after this lands, that is a
+regression rather than a side effect - the browser suite has 132 assertions over the session
+document and they are the guard.
+
+HE WAS SHOWN AND DECLINED TWO ALTERNATIVES, recorded so neither is re-proposed. Both bare: one
+consistent shape, at the cost of losing the strip and the rail while reviewing his own work. And a
+toggle he chooses per reading: most flexible, and it costs a control on the screen plus a preference
+that has to be remembered or it becomes annoying. He took neither, and the reason both lost is the
+same - they treat the two documents as one thing when he uses them differently.
+
+WIDENING IT LATER IS ONE LINE, which is the property that made this the safe choice: if he decides
+his session should open bare too, the branch that asks "is this a lane" simply stops asking.
