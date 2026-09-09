@@ -1,7 +1,9 @@
 import { readSync } from 'node:fs';
 import { SUBCOMMAND_FLAGS } from '../../core/command-flags.ts';
 import { renderItem } from '../../core/item.ts';
-import { updateItem, type MutationContext, type UpdateInput } from '../../core/mutate.ts';
+import {
+  standDownSaid, updateItem, type MutationContext, type UpdateInput,
+} from '../../core/mutate.ts';
 import { inertFieldError } from '../../core/trust.ts';
 import { SEVERITIES } from '../../core/validate.ts';
 import {
@@ -10,7 +12,7 @@ import {
   type PendingRevision,
 } from '../../core/revision.ts';
 import type { LoadError } from '../../core/rebuild.ts';
-import { reviewQueue } from '../../core/select.ts';
+import { reviewQueue, standDownFields } from '../../core/select.ts';
 import { enumError, unknownIdError } from '../../core/teach.ts';
 import type { Item, Severity } from '../../core/types.ts';
 import { scopePolicyFor } from '../../core/config.ts';
@@ -1073,10 +1075,19 @@ function cmdReview(ws: Workspace, args: string[], out: Emit): number {
         args, out,
         `Discard ${item.id} (${item.type}: "${item.title}") — sets status to deprecated?`,
       )) return 1;
+      // Read BEFORE the write, because the write is what clears them: a
+      // discard is a retirement, and `updateItem` stands a retired item down
+      // in the same act. This command composes its own sentence rather than
+      // printing `updateItem`'s, so without this the pin on a pinned draft
+      // would be cleared with no word said at the surface that cleared it —
+      // `INV-nothing-is-dropped-silently`. `standDownSaid` is imported rather
+      // than respelled so `supersede`, `edit` and this all say it once.
+      const standingDown = standDownFields(item);
       // `origin: 'human'` is required, not decorative: updateItem refuses a
       // status change on a normative item from any non-human origin.
       updateItem(ctx, { id: item.id, status: 'deprecated', origin: 'human' });
-      out(`my_context: ${item.id} is now deprecated. It is kept as a trail rather than deleted.`);
+      out(`my_context: ${item.id} is now deprecated. It is kept as a trail rather than deleted.`
+        + standDownSaid(standingDown, item.id));
       emitLoadErrors(errors, out);
       return 0;
     }

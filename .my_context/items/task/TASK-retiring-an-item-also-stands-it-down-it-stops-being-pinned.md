@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: An item that has been replaced also stops asking to be shown every time and stops describing itself as binding.
-summary_of: 93ab37b60b58cdbf
+summary_of: 3f9c23bb1a1d31bd
 scope:
   - src/core/mutate.ts
   - src/doctor/**
@@ -17,17 +17,17 @@ tags:
   - corpus
   - "plan:governance"
   - "seq:8"
-  - "state:todo"
+  - "state:done"
 origin: human
 source_file: null
 source_anchor: null
 source_checksum: null
 valid_from: 2026-09-08
 valid_until: null
-checksum: ee3f14756be6a323
+checksum: b383eab613a5f509
 plan: governance
 seq: "8"
-state: todo
+state: done
 priority: "1"
 ---
 
@@ -69,3 +69,46 @@ silently is the standing form of this.
 AND ONE QUESTION TO ANSWER RATHER THAN ASSUME: `validated` is in RETIRED_STATUSES but means something
 different from superseded or deprecated - it may be a status where a hard severity is still
 meaningful. Measure whether any item uses it (today: none do) and say what you decided.
+
+BUILT, in two passes. 2026-09-08: `supersedeItem` stands the item down in the same act - clears
+`always`, drops a `hard` severity, and records what it cleared as an observation rather than
+clearing it silently; the predicate `standDownFields` lives once, beside `RETIRED_STATUSES`, so the
+write and the doctor check ask the identical question; `retired_still_binding` (warn, never gated)
+reports the ones already on disk; and the seven his ruling named were cleared the same day - eight
+fields across seven items, `RULE-delegate-to-subagents-by-default-to-preserve-the-context` carrying
+both. Re-measured 2026-09-10: 1,076 items, 64 retired, ZERO still pinned and ZERO still hard, and
+`doctor` reports no `retired_still_binding` finding at all.
+
+2026-09-10, AND THIS IS THE HALF THE FIRST PASS LEFT OPEN: `supersedeItem` IS NOT THE ONLY WAY TO
+RETIRE SOMETHING. Four supported commands retire through `updateItem` and never touch
+`supersedeItem` - `mycontext edit <id> --status deprecated`, `mycontext review discard`, `mycontext
+procedure done`, and the origin half of `mycontext inbox promote`. Measured on a sandbox before the
+fix: a pinned rule with `severity: hard`, deprecated through `updateItem`, came out `deprecated`
+with `always: true` and `severity: "hard"` intact - which is precisely the state
+`retired_still_binding` reports, so the product was still manufacturing its own findings after the
+seven were cleared, and the backlog could re-form through any of those four commands.
+
+`updateItem` now stands an item down when a status write CROSSES into `STOOD_DOWN_STATUSES`, for
+the reason the line above it already gives about `validUntil`: whichever path reaches "retired",
+the lifecycle fields move with it, or a direct `update_item({status: "deprecated"})` is a second,
+divergent way to be retired. Only on the crossing, never on a later write to an item already
+retired - that is `supersedeItem`'s own prospective ruling, and repairing a field inside an
+unrelated write would be a corpus edit nobody asked for. `validated` is outside the set and so is
+not a crossing. The note is categorised `retirement`, not `supersession`, because nothing replaced
+the item and a supersession category would assert a successor that does not exist. `mycontext edit`
+now previews the stand-down in the same two rows and the same words `mycontext supersede` uses, so
+a person learns their pin is being cleared BEFORE they answer.
+
+The `validated` question this item asked was answered by measurement and is recorded on
+`STOOD_DOWN_STATUSES` (select.ts): EXCLUDED. Zero items carry it, and it means a human AFFIRMED the
+item - on an affirmed item `hard` and a pin are a claim a person made, not bookkeeping debt.
+
+ONE THING FOUND AND NOT FIXED HERE, because it is outside this item's scope and is a decision about
+the summary basis rather than about retirement: `observations` is `summarised` in `SUMMARY_BASIS`
+(core/content-hash.ts), so the stand-down note this item requires makes the retired item's summary
+read STALE, and `doctor` reports `summary_stale` on it. The supersede `reason` observation has done
+the same to the replacement since long before this work. Recording an act on the item is what
+`INV-nothing-is-dropped-silently` asks for, and the summary did not stop describing the item -
+either lifecycle observations are excluded from the basis the way `WORKFLOW_EXTRA_KEYS` excludes
+tracking keys inside `extra`, or the staleness is accepted and said out loud. It needs a ruling and
+its own item.

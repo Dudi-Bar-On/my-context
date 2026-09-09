@@ -15,6 +15,7 @@ import {
   summaryReaffirmed, summaryRequired, summaryRequiredRefusal, summaryUnchangedRefusal,
 } from '../../core/summary-gate.ts';
 import { summaryState } from '../../core/content-hash.ts';
+import { standDownFields, STOOD_DOWN_STATUSES } from '../../core/select.ts';
 import { inertFieldError, scopeRequirementError } from '../../core/trust.ts';
 import {
   SEVERITIES, STATUSES, normalizeSummary, updatableValueError, validateExtra, validateSummary,
@@ -248,6 +249,35 @@ function afterShape(
     // preview must show the globs that will be WRITTEN, not the ones typed.
     scope: patch.scope === undefined ? item.scope : patch.scope.map((g) => normalizePosix(g)),
   };
+}
+
+/**
+ * **What this edit will stand down, asked the way the write asks it.**
+ *
+ * A status change into `STOOD_DOWN_STATUSES` retires the item, and `updateItem`
+ * clears `always` and drops a `hard` severity in the same act — the same act
+ * `supersedeItem` performs on the other retirement path. A person who pinned
+ * this item is entitled to learn that from the approval rather than from a diff
+ * afterwards (`INV-nothing-is-dropped-silently` reads on the moment of consent
+ * as much as on the record left behind), which is why `mycontext supersede`
+ * previews it too.
+ *
+ * Two predicates, both imported rather than respelled, so the preview cannot
+ * promise a clearing the write does not perform: the crossing test is
+ * `STOOD_DOWN_STATUSES` and the field test is `standDownFields`.
+ *
+ * Asked of the item this edit RESULTS IN, so `--status deprecated --severity
+ * hard` in one call previews the severity being stood down rather than showing
+ * a `hard` the write will not keep.
+ */
+function standingDownBy(item: Item, patch: UpdateInput): ('always' | 'severity')[] {
+  if (patch.status === undefined) return [];
+  if (!STOOD_DOWN_STATUSES.has(patch.status) || STOOD_DOWN_STATUSES.has(item.status)) return [];
+  return standDownFields({
+    ...item,
+    always: patch.always ?? item.always,
+    severity: patch.severity ?? item.severity,
+  });
 }
 
 /** Order-insensitive equality for the two fields that are sets rather than
@@ -946,6 +976,21 @@ function cmdEdit(ws: Workspace, args: string[], out: Emit): number {
         } else {
           labelled(out, change.field, `${change.before} -> ${change.after}`);
         }
+      }
+      // **The stand-down is part of what is being approved, so it is previewed
+      // here exactly as `mycontext supersede` previews its own.** One line per
+      // field and the same words, because the two commands perform the same act
+      // on the same fields and a second wording is how a person learns to read
+      // only one of them. The rows are drawn only when there is something to
+      // clear.
+      const standingDown = standingDownBy(item, patch);
+      standingDown.forEach((field, n) => {
+        out(`  ${n === 0 ? 'stood down' : '          '}  ${field === 'always'
+          ? '"always" -> false; it stops being pinned'
+          : '"severity" -> "soft"; it stops claiming to bind'}`);
+      });
+      if (standingDown.length > 0) {
+        out(`              recorded as an observation on the item, not cleared silently`);
       }
       out('');
       if (gate.reach) {

@@ -24,7 +24,7 @@ import {
   snapshotFields, movedFields, stampValidUntil, today,
 } from './persist.ts';
 import { isItemExistsError } from './rebuild.ts';
-import { standDownFields } from './select.ts';
+import { standDownFields, STOOD_DOWN_STATUSES } from './select.ts';
 import { existingSuccessorRefusal, SUPERSEDED_BY } from './relations.ts';
 // `revision.ts` imports `updateItem` back out of this module, so this edge
 // closes a cycle. It resolves under ESM because both sides only ever CALL
@@ -1783,6 +1783,11 @@ export function updateItem(
   // overwritten. Asked after the assignments it would answer about the item
   // this write produced, which is always "current" and always an echo.
   const reaffirmed = summaryReaffirmed(item, input);
+  // What the status assignment below stood down, if it retired the item —
+  // read again at the end of the call, by the message and by nothing else.
+  // `movedFields` needs no help from it: the fields move on `item` before the
+  // snapshot is compared, so the audit row names them on its own.
+  let stoodDown: ('always' | 'severity')[] = [];
 
   if (title !== undefined) item.title = title;
   if (body !== undefined) item.body = body;
@@ -1795,6 +1800,34 @@ export function updateItem(
   if (update.always !== undefined) item.always = update.always;
   if (update.continuity !== undefined) item.continuity = update.continuity;
   if (update.status !== undefined) {
+    // ── RETIRING AN ITEM STANDS IT DOWN HERE TOO, FOR `validUntil`'S REASON ──
+    //
+    // `supersedeItem` is not the only way to retire something, and the line
+    // below already says so about ONE field: whichever path reaches "retired",
+    // `validUntil` moves with it, or `update_item({status: 'deprecated'})`
+    // becomes a second, divergent way to be retired. `always` and `severity`
+    // are the same sentence about two more fields, and until this block they
+    // were left behind on FOUR supported commands — `mycontext edit <id>
+    // --status deprecated`, `review discard`, `procedure done` and `inbox
+    // promote` all reach retirement through `updateItem` and not through
+    // `supersedeItem`. Measured on a sandbox 2026-09-10: a pinned, hard rule
+    // deprecated through `updateItem` came out `deprecated` with `always:
+    // true` and `severity: "hard"` intact — which is precisely the state
+    // `doctor`'s `retired_still_binding` reports, so the product was still
+    // manufacturing its own findings after the seven were cleared.
+    //
+    // ONLY ON THE CROSSING, and never on a write to an item already retired.
+    // That is `supersedeItem`'s own ruling (see its idempotent early return):
+    // the stand-down belongs to the ACT of retiring, and a later edit to a
+    // long-deprecated item performs no such act — quietly repairing one there
+    // would be a corpus edit nobody asked for, hidden inside an unrelated
+    // write. `retired_still_binding` is where those surface, for a person.
+    //
+    // `validated` is outside `STOOD_DOWN_STATUSES` and so is not a crossing:
+    // it means a human AFFIRMED the item, and on an affirmed item `hard` and a
+    // pin are a claim a person made. The constant carries the measurement.
+    const retiring = STOOD_DOWN_STATUSES.has(update.status)
+      && !STOOD_DOWN_STATUSES.has(item.status);
     item.status = update.status;
     // Whichever write path retires an item, `validUntil` must move with it —
     // `supersedeItem` establishes this invariant at its own retirement point,
@@ -1803,6 +1836,31 @@ export function updateItem(
     // directions: see `stampValidUntil` for what the field is and why an
     // un-retired item must not keep the stamp.
     stampValidUntil(item);
+    if (retiring) {
+      // Read AFTER the `always`/`severity` assignments above, so it is the
+      // item this write LEAVES that is measured rather than the one it found.
+      // `mycontext edit <id> --status deprecated --severity hard` therefore
+      // retires and stands down in one act instead of landing a retired item
+      // that still binds: a call asking for both is asking for two things that
+      // cannot both be true, and the stand-down is the half that is not
+      // silent — it says so in the message and records itself on the item.
+      stoodDown = standDownFields(item);
+      if (stoodDown.length > 0) {
+        item.always = false;
+        item.severity = 'soft';
+        item.observations.push(...normalizeObservations([{
+          // `retirement`, NOT `supersedeItem`'s `supersession`, and the
+          // difference is the truth about this act: nothing replaced this
+          // item. A `supersession` category here would assert a successor
+          // that does not exist, on the one file a reader asking "what
+          // happened to this?" has open.
+          category: 'retirement',
+          text: standDownNote(stoodDown, `its status was set to "${item.status}"`),
+          tags: [],
+          context: null,
+        }]));
+      }
+    }
   }
   if (update.extra !== undefined) item.extra = { ...item.extra, ...update.extra };
 
@@ -1925,7 +1983,11 @@ export function updateItem(
     filePath: item.filePath,
     message:
       `my_context: updated ${item.id} (${item.status}).${inertFieldNote(ctx, item)}`
-      + `${retired}${audited}`,
+      // Before `retired`, because they are different acts on different items
+      // in the order they happened: this one is what THIS write did to THIS
+      // item, and `retired` is `supersedeItem`'s message about the OTHER item
+      // the contradiction gate disposed of.
+      + `${standDownSaid(stoodDown, item.id)}${retired}${audited}`,
   };
 }
 
@@ -2134,15 +2196,40 @@ export function acknowledgeFinding(ctx: MutationContext, input: AcknowledgeInput
  * (which the reader would silently lift into the observation's `context`
  * field). The closing clause is prose for that last reason and not decoration.
  */
-function standDownNote(fields: readonly ('always' | 'severity')[], by: string): string {
+function standDownNote(fields: readonly ('always' | 'severity')[], cause: string): string {
   const clauses = fields.map((f) => (f === 'always'
     ? 'the pin was cleared, so "always" is now false and it no longer asks to be injected every session'
     : 'the binding severity was dropped, so "severity" is now "soft" instead of "hard"'));
   return (
-    `Stood down on ${today()} when ${by} superseded it: ${clauses.join('; and ')}. ` +
+    `Stood down on ${today()} when ${cause}: ${clauses.join('; and ')}. ` +
     `Nothing else was changed and nothing was deleted — a retired item keeps its file, its body, ` +
     `its observations and its relations, and stops claiming to govern.`
   );
+}
+
+/**
+ * **What the person standing here is TOLD, on either retirement path.**
+ *
+ * The observation and the audit row are for a reader who comes back later;
+ * this is for the person who asked to retire an item and would otherwise learn
+ * only from a diff that the same act unpinned it. It is one function for the
+ * reason `standDownFields` is one predicate and `supersedeQuestion` is one
+ * sentence: `supersedeItem` and `updateItem` both stand an item down now, and
+ * two hand-kept spellings of "it was also stood down" is how the two surfaces
+ * come to describe the same act differently.
+ *
+ * EXPORTED for `mycontext review discard`, which composes its own sentence
+ * instead of printing `updateItem`'s and would otherwise stand a pinned draft
+ * down without a word — the same shape of defect as `add --supersedes`
+ * retiring an item and printing nothing, which is why the answer is this
+ * function rather than a third wording over there.
+ */
+export function standDownSaid(fields: readonly ('always' | 'severity')[], id: string): string {
+  if (fields.length === 0) return '';
+  const said = fields
+    .map((f) => (f === 'always' ? '"always" is now false' : '"severity" is now "soft"'))
+    .join(' and ');
+  return ` It was also stood down: ${said}, recorded as an observation on ${id}.`;
 }
 
 export function supersedeItem(ctx: MutationContext, input: SupersedeInput): MutationResult {
@@ -2290,7 +2377,7 @@ export function supersedeItem(ctx: MutationContext, input: SupersedeInput): Muta
     // `doctor` reports as a hand edit.
     retired.observations.push(...normalizeObservations([{
       category: 'supersession',
-      text: standDownNote(stoodDown, replacement.id),
+      text: standDownNote(stoodDown, `${replacement.id} superseded it`),
       tags: [],
       context: null,
     }]));
@@ -2349,14 +2436,9 @@ export function supersedeItem(ctx: MutationContext, input: SupersedeInput): Muta
     message:
       `my_context: ${retired.id} is now superseded by ${replacement.id}. ` +
       `Nothing was deleted — the file remains and the item stays searchable.` +
-      // SAID, not merely recorded. The observation and the audit row are for a
-      // reader who comes back later; this is for the person standing here, who
-      // asked to retire an item and would otherwise learn only from a diff
-      // that the same act unpinned it.
-      `${stoodDown.length === 0 ? '' : ` It was also stood down: ${
-        stoodDown.map((f) => (f === 'always'
-          ? '"always" is now false'
-          : '"severity" is now "soft"')).join(' and ')
-      }, recorded as an observation on ${retired.id}.`}${audited}`,
+      // SAID, not merely recorded — see `standDownSaid`, which is where the
+      // sentence lives so that this path and `updateItem`'s cannot spell the
+      // same act two ways.
+      `${standDownSaid(stoodDown, retired.id)}${audited}`,
   };
 }
