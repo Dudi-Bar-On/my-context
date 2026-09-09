@@ -227,10 +227,11 @@ restarting a listening server. `live/22` fixed the recovery: the feed reopens on
 5–10 ms to the request, 27–36 ms answered, zero requests while hidden.
 
 **And the credential was never the problem.** It has been an `HttpOnly SameSite=Strict` COOKIE since
-his 2026-08-22 ruling; measured surviving a restart, 200 across the board. **`live/23` — which I
-researched, filed and asked him to rule on — describes a design replaced three weeks ago, and
-recommends against the cookie model that is already shipped.** Read `security.ts` before searching
-the web. What actually locked him out: **`SESSION_MAX` is 64, evicted oldest-first, counting RESTARTS
+his 2026-08-22 ruling; measured surviving a restart, 200 across the board. **The research I did into
+replacing it describes a design replaced three weeks ago, and recommends against the cookie model
+that is already shipped — so no item was filed for it, and this block claimed one had been.** That
+claim is corrected here rather than by inventing the item to match the sentence: `check-handover`
+caught it, which is what it is for. Read `security.ts` before searching the web. What actually locked him out: **`SESSION_MAX` is 64, evicted oldest-first, counting RESTARTS
 not tabs** — his 64 digests spanned 63.5 hours where the TTL promises thirty days. Filed `live/24`.
 
 ### HIS RULINGS THIS SESSION, so nothing is re-asked
