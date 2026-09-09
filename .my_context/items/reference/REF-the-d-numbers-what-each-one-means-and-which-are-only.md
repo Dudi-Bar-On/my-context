@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: true
 summary: The short numbers used to talk about work in progress and what each refers to, delivered every session so the same number never means two things.
-summary_of: fa588dcb5f7f6abc
+summary_of: 2055ce5f6f8a8877
 summary_was:
   - 2026-09-07 The short numbers used to talk about work in progress, and what each of them refers to, so the same number never means two things.
 acknowledged:
@@ -21,7 +21,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-09-07
 valid_until: null
-checksum: d0389e7ca292dc51
+checksum: 5412ed53c249a6c5
 ---
 
 # the D numbers: what each one means, and which are only proposed
@@ -277,3 +277,40 @@ must not live only in a chat message:
   `test/helpers/approval-boundary.ts`, which then holds all 77 rows in both documents in both
   directions. It is deliberately NOT folded into seq:36: that lane’s scope was two files, and this
   is a change to a shared test helper.
+
+THE ORDER AFTER D37, RULED BY THE OWNER 2026-09-09 ("go with your order after D37"). Recorded here
+rather than left in a message, because an order he has approved is a decision and this item is what
+survives a compaction.
+
+  1. D38   the corpus lifecycle is enforced      governance/8 + contra/4
+  2. D33   the contradiction gate                contra/2, contra/3   (contra/1 is done)
+  3. D36   the agent self-improvement loop       loop/1-5, and loop/1 FIRST
+
+AND THE REASONS, so a later session can tell whether they still hold rather than obeying a list.
+
+D38 IS FIRST BECAUSE IT IS SMALL AND IT PAYS FOR THE ONE AFTER IT. Two items, and one of them IS
+contra/4 - so half of D38 is already half of D33. Retiring an item should stand it down (clear
+`always`, drop a normative severity) and ask before it happens, wherever it is triggered from. Both
+halves were found by lanes doing other work, which is the same way most of D37 was found.
+
+D33 IS SECOND BECAUSE EVERYTHING ELSE RESTS ON THE CORPUS BEING TRUSTWORTHY. The contradiction gate
+is what stops a create or an edit passing silently while it disagrees with an item that is already
+active. This project has already measured what that costs: two boards each claiming to be the single
+place, and five superseded instructions being acted on as current. A corpus that can hold two
+answers to one question is a corpus whose injection cannot be trusted, and every D after this one is
+built on that injection.
+
+D36 IS THIRD BECAUSE IT IS THE LARGEST AND THE ONLY ONE WITH NOTHING BUILT. Five plans and a
+17-section design on disk, `loop/1-5` all todo - the only D in that state. It is third rather than
+skipped: the two before it are small, and starting the biggest subject on an untrustworthy corpus
+would be building the measuring instrument inside the thing it measures.
+
+AND loop/1 IS FIRST WITHIN IT, WHICH IS NOT A PREFERENCE. Library drift is silent by construction and
+detectable only as a CHANGE, so instrumentation added after the first promotions has no baseline and
+the experiment has no control. D36e’s thresholds are DERIVED from D36a’s output and must not be
+copied from a paper. That was already recorded when D36 was assigned; it is repeated here because it
+is the one ordering constraint inside a D that a dispatcher can silently get wrong.
+
+WHAT IS NOT IN THIS ORDER AND WHY: D27 and D28 pair (D28 needs D27) and neither blocks anything;
+D30 and D32 are small and unblocked; D34 is one item from done; D39 is deferred by his own ruling and
+sits below every open D; D40 starts when D37 closes and is not part of this sequence.
