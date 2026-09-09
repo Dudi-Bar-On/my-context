@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: A conversation you are reading keeps up with the session while it is still being written, so new turns arrive at the bottom on their own - and a reader who has scrolled up is told there are new turns rather than dragged down to them.
-summary_of: 5324ca236d309257
+summary_of: 69b49cff6b479603
 scope:
   - src/ui/**
   - src/core/conversation-index.ts
@@ -23,7 +23,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-09-08
 valid_until: null
-checksum: 2042f886a62c4b15
+checksum: 71044232e0320cf3
 plan: archive
 seq: "19"
 state: done
@@ -148,3 +148,51 @@ SAME mtime for the same file.
 PINNED BY: e2e/conversations.spec.ts - at the end of the file, a new turn arrives on its own, and
 a reader who has scrolled up is told, not dragged - both languages, driven in a real browser
 against a transcript the test appends to itself.
+AMENDED 2026-09-09: THE REPLACED BRANCH NO LONGER SENDS HIM TO F5. Owner report, reading a session
+and meeting `conv.doc.replaced` - "This transcript was replaced rather than added to ... Reload the
+page to read it as it stands." - and his ruling was to fix it.
+
+THE DIAGNOSIS WAS RIGHT AND ONLY THE REMEDY WAS WRONG. A transcript only ever appends, so a smaller
+file, or the same length with a new mtime, is a REWRITE and every byte offset the open document
+holds points somewhere else. Saying so was honest, and the `resync` discipline this item stole from
+watch-model.ts is still the right instinct. What could not stand is that the only way forward was
+F5, on the one screen whose entire purpose is that nobody has to press it.
+
+AND THIS ITEM'S OWN RULE DECIDED WHO GETS WHICH ANSWER, which is why the repair needed no new
+policy: the follow moves only the reader who is already at the end, and `atTail()` is the gate the
+ordinary append already runs through. At the tail, `rebuildReplaced` re-reads the full outline and
+redraws against the file as it now stands, and the following carries on. Above the end, nothing
+changed at all - the notice stands and the follow stops, because rebuilding under a reader who is
+mid-document would move their place, which is what
+TASK-a-refresh-keeps-the-reader-s-place-or-it-asks forbids and what this item already refused once
+for the ordinary append.
+
+NO CHIP SAYING "REBUILT", DELIBERATELY. There is nothing for the reader to decide, and a mark like
+that is a claim that decays - true for a second, then noise. app.js makes the same argument for not
+drawing a "live again" chip when the shared stream recovers. `conv.doc.replaced` is kept, for the
+mid-document case only, and no string was added in either table.
+
+WHAT A REBUILD HAS TO THROW AWAY, and every one of them is load-bearing: `bodies`, `known` and
+`inflight` are keyed by node index against the OLD file, so a survivor would draw one file's text at
+another file's position - the hole this branch exists to refuse, one layer in. The marked passage
+goes for `applyFilter`'s stated reason: a passage marked on a document that no longer exists must
+not be copyable. `seenBytes`/`seenMtime` are re-seated from the rebuild, or the next tick fires the
+same branch for ever.
+
+THE PRUNED BRANCH IS UNTOUCHED - a file that is gone is not a file that moved - and a rebuild that
+comes back `truncated` falls back to the notice, because the mount path refuses to follow a
+truncated document at all and the reader is owed the reload that carries the truncation disclosure
+with it.
+
+ONE DEFECT THIS EXPOSED IN THE ORIGINAL BUILD, worth carrying because it was invisible while the
+only answer was a reload: the head's title, branch and SIZE were drawn once at mount. A rebuilt
+document would have sat under a head stating the size of a file that no longer exists - worse than
+the notice it replaced, because nothing on the page would have said so. `fillHead()` is now a
+function and both paths call it.
+
+PINNED BY: e2e/conversations.spec.ts - a transcript replaced under the reader - its own harness,
+home, cwd and transcript, because that block REPLACES its file while the six tests above it append
+to theirs. The at-the-tail test was MEASURED NON-VACUOUS rather than assumed: with the one
+`atTail()` line removed, both browser projects go red on the first rebuild assertion, still showing
+the record the replaced file ended on. The scrolled-up test is deliberately green either way - it is
+the guard that the repair did not widen past the reader it was ruled for.
