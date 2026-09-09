@@ -3644,6 +3644,62 @@ wa-tree .wa-count{margin-inline-start:var(--sp-2);color:var(--dim);
    channel available. */
 .convrow{flex-direction:column;align-items:stretch;gap:4px}
 .convhead{font-weight:600}
+
+/* ── THE LIST ROW IS A CONTAINER WITH TWO CONTROLS IN IT ───────────────────
+   `plan:archive seq:53`, and these are the rules `seq:47` was asked to write
+   and correctly refused to: `.convrowwrap` and `.convlanelink` had no wearers
+   then, because `drawRow` made the whole row one `<button>` and an anchor
+   cannot live inside one. The markup moved first; this is the other half.
+
+   THE WHOLE ROW IS STILL THE TARGET, and `.convrowopen::after` is the entire
+   mechanism. The control that opens the session wraps only the TITLE, and its
+   `::after` is stretched over the row — so every pixel that opened the session
+   before still does, the space either side of the lane count included, while
+   the count itself is a SIBLING control rather than a nested one. Two siblings
+   and an overlay, so a press on the count cannot also fire the row: there is
+   no propagation to stop, and therefore no exception to get wrong.
+
+   `inset:-1px` and not `inset:0`. An absolutely positioned box resolves its
+   insets against the containing block's PADDING box, and `.row` carries a 1px
+   border — so `0` would leave a one-pixel frame that is still the row and no
+   longer opens it. `border-radius` matches `.row`'s so the transparent overlay
+   does not overhang a corner it would then be pressable in.
+
+   `z-index` on the link ONLY, and the overlay does not answer it. Both boxes
+   are positioned and neither creates a stacking context of its own, so DOM
+   order already paints the link — written after the head — above the overlay.
+   The `1` is the statement being made explicit, not the thing making it true.
+
+   NO `font` SHORTHAND on the button, deliberately. `font:inherit` would set
+   font-weight too, and this element wears `.convhead` for its 600 — the
+   shorthand would resolve to the row's inherited 400 and win on order, and the
+   title would silently stop being bold. The longhands say what is actually
+   wanted: the row's family, size and measure, and nobody else's weight.
+
+   THE FOCUS RING IS ON THE WRAPPER. `:where(button,a,…):focus-visible` above
+   is this product's one focus ring and it would paint around the TITLE alone
+   here, which is a smaller ring on the same row a keyboard reader used to see
+   light up whole. `:has()` moves it back to the row's own border box, and the
+   button's own ring is turned off so there are not two. */
+.convrowwrap{position:relative}
+.convrowopen{display:block;inline-size:100%;margin:0;padding:0;border:0;
+  background:none;color:inherit;text-align:inherit;cursor:inherit;
+  font-family:inherit;font-size:inherit;line-height:inherit}
+.convrowopen::after{content:"";position:absolute;inset:-1px;border-radius:8px}
+.convrowopen:focus-visible{outline:none}
+.convrowwrap:has(>.convrowopen:focus-visible){outline:2px solid var(--gold);
+  outline-offset:2px}
+/* The count's face is the lane link's — gold, underlined, offset 2px — because
+   it goes to the same kind of place as `.tvlanes` does from the document's own
+   head, and a reader who has learnt one should not have to learn the other. It
+   is NOT added to that selector list: those three are BUTTONS being undressed
+   (`inline-size:auto`, `background:none`, `border:0`, `padding:0`, a `--sans`
+   face at `--fs-00`), and this is a real anchor inside a `.small` sentence
+   whose face it must keep. What is shared is the four declarations that carry
+   the meaning; what is not shared is the reset that has nothing to reset. */
+.convlanelink{position:relative;z-index:1;color:var(--gold);
+  text-decoration:underline;text-underline-offset:2px}
+.convlanelink:hover{text-decoration-thickness:2px}
 .convmeta{margin-block:0}
 .convcmd{overflow-x:auto;white-space:nowrap;margin-block-start:var(--sp-1)}
 .convlist{display:flex;flex-direction:column;gap:var(--sp-2);margin-block-start:var(--sp-2)}

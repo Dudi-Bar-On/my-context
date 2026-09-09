@@ -2,6 +2,7 @@
 // TASK-a-lane-opens-in-a-new-tab-with-no-warning-no-landing-and-no,
 // TASK-a-lane-opens-inside-the-whole-app-and-he-asked-for-the,
 // TASK-the-count-of-helper-agents-is-not-a-link-so-the-only-way-to,
+// TASK-the-list-row-cannot-link-its-lane-count-because-the-whole,
 // TASK-the-list-is-browsable-filter-search-and-duration-across,
 // TASK-the-transcript-is-one-document-you-scroll-not-fifty-records,
 // TASK-a-session-opens-at-its-end-because-the-end-is-where-the-work,
@@ -2568,6 +2569,151 @@ test('a session that dispatched lanes says so on its list row', async ({ page })
   // the session dispatched and the one its own lane did.
   await expect(page.locator('.convrow').first()).toContainText('2 helper agents');
 });
+
+/* ══ seq:53 — THE COUNT ON THE LIST ROW IS A LINK, AND THE ROW IS STILL ONE
+ *            TARGET ══════════════════════════════════════════════════════════
+ *
+ * `seq:41` made the count a control in the DOCUMENT and wrote down why it could
+ * not do the same on the list: the row was a `<button>`, and an anchor inside
+ * one is markup a browser un-nests. `seq:47` was then asked for the stylesheet
+ * and refused, because the control did not exist. So the row was rebuilt as a
+ * CONTAINER WITH TWO CONTROLS — and the risk that carries is that the second
+ * one makes the first harder to hit, which would be a worse screen than the one
+ * that had a dead number on it.
+ *
+ * Both tests below are therefore about the ROW as much as about the link, and
+ * each was run against the un-rebuilt row and watched go red in both projects.
+ */
+for (const lang of ['en', 'he'] as const) {
+  test(`the lane count on a list row opens the roster and not the session (${lang})`, async ({ page }) => {
+    await open(page, '#/conversations', lang);
+    const row = page.locator('[data-p]:not([hidden]) .convrow').first();
+    const count = row.locator('a.convlanelink');
+
+    // A REAL ANCHOR WITH A REAL ADDRESS, which is the half of this that a
+    // reader can copy, middle-click or bookmark without a line of script.
+    await expect(count).toHaveCount(1);
+    await expect(count).toHaveAttribute('href', '#/conversations/lanes/sess-archive');
+    // The same keyed words the document's own roster control uses, so the two
+    // controls that go to the same place cannot come to say different things.
+    await expect(count).toHaveText(lang === 'en' ? '2 helper agents' : '2 סוכני עזר');
+
+    // **EVERY ADDRESS THE PAGE PASSES THROUGH, not just the one it lands on.**
+    // A first draft of this asserted that the document viewer's well was never
+    // built, and that assertion was VACUOUS: with the row's handler put back on
+    // the container — the regression it is meant to catch — the row still fired,
+    // set the hash to the session, and the anchor's own default action then set
+    // it to the roster in the same task. The screen that ended up drawn was the
+    // right one and the test passed while the defect was present. `ctx.navigate`
+    // is `location.hash = …`, so the row firing is observable in the SEQUENCE
+    // and nowhere in the final state.
+    await page.evaluate(() => {
+      const seen: string[] = [location.hash];
+      (window as unknown as { seenHashes: string[] }).seenHashes = seen;
+      window.addEventListener('hashchange', (e) => { seen.push(new URL(e.newURL).hash); });
+    });
+
+    await count.click();
+
+    // IT REACHES THE ROSTER — the two lanes, one dispatched by the session and
+    // one by that lane.
+    await page.waitForSelector('.rows .convrow', { timeout: 20_000 });
+    expect(page.url()).toContain('#/conversations/lanes/sess-archive');
+    await expect(page.locator('[data-p]:not([hidden]) .rows .convrow')).toHaveCount(2);
+
+    // **AND THE ROW DID NOT ALSO FIRE.** The session's own address must never
+    // have been visited — not transiently, not as the loser of a race. This is
+    // what the two controls being SIBLINGS rather than nested buys, and it is
+    // asserted rather than argued: with the handler moved back onto the
+    // container this line goes red and the two below it stay green.
+    const seen = await page.evaluate(
+      () => (window as unknown as { seenHashes: string[] }).seenHashes);
+    expect(seen.join(' | '), 'the row must not have fired as well')
+      .not.toContain('#/conversations/sess-archive');
+    // And the well the document draws into was therefore never built either.
+    await expect(page.locator('.tvscroll')).toHaveCount(0);
+  });
+
+  test(`the whole row still opens the session, and the count is the tab stop after it (${lang})`, async ({ page }) => {
+    await open(page, '#/conversations', lang);
+    const row = page.locator('[data-p]:not([hidden]) .convrow').first();
+
+    // ── THE WHOLE-ROW TARGET, MEASURED RATHER THAN ASSUMED ────────────────
+    //
+    // The row is a `<div>` now, so "the whole row opens the session" is a claim
+    // about an overlay and not about a tag. `elementFromPoint` is what settles
+    // it: the row's own centre, its top corner, its far corner — AND a point on
+    // the count's OWN LINE, 24px to one side of it, which is the pixel the item
+    // warns about by name ("including the areas around the count").
+    const hits = await row.evaluate((n) => {
+      const r = n.getBoundingClientRect();
+      const a = (n.querySelector('a.convlanelink') as HTMLElement).getBoundingClientRect();
+      const beside = a.x - r.x > 40 ? a.x - 24 : a.x + a.width + 24;
+      const name = (x: number, y: number): string => {
+        const at = document.elementFromPoint(x, y);
+        return at === null ? 'nothing' : `${at.tagName}.${(at as HTMLElement).className}`;
+      };
+      return {
+        centre: name(r.x + r.width / 2, r.y + r.height / 2),
+        corner: name(r.x + 2, r.y + 2),
+        far: name(r.right - 3, r.bottom - 3),
+        beside: name(beside, a.y + a.height / 2),
+        onCount: name(a.x + a.width / 2, a.y + a.height / 2),
+        spot: { x: beside, y: a.y + a.height / 2 },
+      };
+    });
+    for (const where of ['centre', 'corner', 'far', 'beside'] as const) {
+      expect(hits[where], `${where} of the row must open the session`)
+        .toContain('convrowopen');
+    }
+    // And the count is the ONE hole in that overlay, or the test above proves
+    // nothing about a control a pointer can reach.
+    expect(hits.onCount).toContain('convlanelink');
+
+    // ── KEYBOARD, AND THE ORDER THE ITEM ASKS FOR ─────────────────────────
+    //
+    // "the row, then the count — not the count intercepting the row." Focus is
+    // put on the row's control and then moved with real key presses, because
+    // tab order is a property of the document and not of a locator.
+    await row.locator('.convrowopen').focus();
+    await expect(page.locator('.convrowopen:focus')).toHaveCount(1);
+    await page.keyboard.press('Tab');
+    await expect(page.locator('a.convlanelink:focus')).toHaveCount(1);
+    await page.keyboard.press('Shift+Tab');
+    await expect(page.locator('.convrowopen:focus')).toHaveCount(1);
+
+    // **AND THE RING IS STILL THE WHOLE ROW'S.** `Shift+Tab` then `Tab` is how
+    // the control is reached BY KEY rather than by script, which is what
+    // `:focus-visible` answers to. The ring moved to the wrapper when the row
+    // stopped being the button; a ring around the title alone would be a
+    // smaller mark on the same row a keyboard reader used to see light up.
+    await page.keyboard.press('Shift+Tab');
+    await page.keyboard.press('Tab');
+    const ring = await row.evaluate((n) => ({
+      focused: (document.activeElement as HTMLElement).className,
+      visible: (document.activeElement as HTMLElement).matches(':focus-visible'),
+      wrap: getComputedStyle(n).outline,
+      control: getComputedStyle(document.activeElement as HTMLElement).outlineStyle,
+    }));
+    expect(ring.focused).toContain('convrowopen');
+    expect(ring.visible).toBe(true);
+    expect(ring.wrap).toContain('2px');
+    expect(ring.wrap).toContain('solid');
+    // One ring and not two.
+    expect(ring.control).toBe('none');
+
+    // ── AND IT OPENS: BY KEY, AND BY A CLICK BESIDE THE COUNT ─────────────
+    await page.keyboard.press('Enter');
+    await page.waitForSelector('.tvscroll .tvturn', { timeout: 20_000 });
+    expect(page.url()).toContain('#/conversations/sess-archive');
+
+    await page.goBack();
+    await page.waitForSelector('[data-p]:not([hidden]) .convrow', { timeout: 20_000 });
+    await page.mouse.click(hits.spot.x, hits.spot.y);
+    await page.waitForSelector('.tvscroll .tvturn', { timeout: 20_000 });
+    expect(page.url()).toContain('#/conversations/sess-archive');
+  });
+}
 
 /* ══ seq:39 — THE RECORDS THAT SAY ONLY THEIR OWN NAME ═════════════════════
  *

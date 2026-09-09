@@ -188,13 +188,69 @@ function dayText(iso) {
 
 /* ══ THE LIST ══════════════════════════════════════════════════════════════ */
 
+/**
+ * One session's row on the list — **A CONTAINER WITH TWO CONTROLS IN IT, AND
+ * NOT A BUTTON, SINCE `plan:archive seq:53`.**
+ *
+ * ── WHAT WAS WRONG, AND WHY IT WAS NOT A STYLESHEET'S PROBLEM ────────────
+ *
+ * The row said "2 helper agents" and the number was not a link. `seq:41` made
+ * that count a control in the DOCUMENT and wrote down, in its own docblock,
+ * why it could not do the same here: *"an `<a>` or a second `<button>` nested
+ * inside a `<button>` is invalid markup that browsers un-nest"*. `seq:47` was
+ * then asked to write `.convrowwrap`/`.convlanelink` and correctly refused,
+ * because a rule nothing wears is dead CSS. Both were right, and both point at
+ * the same repair: **the ROW CONTROL had to change**, and that is what this is.
+ *
+ * ── THE SHAPE, AND WHY THIS ONE ──────────────────────────────────────────
+ *
+ *   `div.row.convrow.convrowwrap`   the row. Not focusable, no click handler.
+ *     `button.convhead.convrowopen` opens the session. Its `::after` is
+ *                                   stretched over the WHOLE row, so the
+ *                                   whole-row target is unchanged.
+ *     `p.convmeta`  … `a.convlanelink` … the roster of this session's lanes.
+ *     `p.small`     the chips.
+ *
+ * **The two controls are SIBLINGS, not one inside the other**, which is the
+ * whole reason this shape was chosen over "a div with a click handler that
+ * checks what was pressed". A click on the count cannot also fire the row
+ * because the count is not inside the row's control — there is no propagation
+ * to stop and therefore no `stopPropagation` to get wrong. `e2e/
+ * conversations.spec.ts` asserts both halves anyway (`a click on the lane
+ * count opens the roster and does NOT open the session`), because a structural
+ * argument that is never executed is a comment.
+ *
+ * **The whole row is still the target.** `.convrowopen::after` is an inset
+ * overlay over the row's padding box and its border, so every pixel a reader
+ * could press before still opens the session — the areas either side of the
+ * count included. The count sits above that overlay (`position:relative`) and
+ * is the only hole in it.
+ *
+ * **A `<button>` and not a `<div role="button">`**: the control keeps Enter,
+ * Space, the browser's own focus and the one accessible name a reader needs.
+ * The focus RING moves to the wrapper (`.convrowwrap:has(…:focus-visible)`) so
+ * a keyboard reader still sees the whole row light up, which is what the ring
+ * meant before this change.
+ *
+ * **Tab order is the row, then the count**, by DOM order and by nothing else:
+ * the button is the row's first child and the count is inside the second. A
+ * row that dispatched no lanes is one tab stop, exactly as it was.
+ *
+ * **The accessible NAME of the row control narrowed, deliberately.** It used
+ * to be every word on the row — title, counts, duration, branch, size and
+ * every chip — read out as one button label. It is now the title. The rest is
+ * still text in the row and still read; what it is not any more is a
+ * two-hundred-character button name.
+ */
 function drawRow(ctx, row, open) {
-  const button = el('button', 'row convrow');
-  button.type = 'button';
+  const wrap = el('div', 'row convrow convrowwrap');
 
-  const head = el('div', 'convhead');
+  // The control that opens the session. It wears `.convhead` because it IS the
+  // head — one element rather than a button wrapped round a div.
+  const head = el('button', 'convhead convrowopen');
+  head.type = 'button';
   head.append(...titleNodes(ctx, row));
-  button.append(head);
+  wrap.append(head);
 
   const meta = el('p', 'small convmeta');
   const day = dayText(row.endedAt);
@@ -216,9 +272,37 @@ function drawRow(ctx, row, open) {
   // never ran, and here the counts beside it already prove the row was scanned.
   if (typeof row.subagents === 'number' && row.subagents > 0) {
     meta.append(' · ');
-    meta.append(...ctx.t(row.subagents === 1 ? 'conv.lane' : 'conv.lanes', {
+    // **AND IT IS THE WAY TO THE ROSTER** — `plan:archive seq:53`, which is the
+    // half `seq:41` could not build. Until this, the count was a dead end on
+    // every list row and the roster was two clicks away: open the session, then
+    // press the count in its head.
+    //
+    // `rosterHref` and nothing else. It is the one place that knows a roster's
+    // address, exactly as `laneHref` is the one place that knows a lane's, and
+    // `button.tvlanes` in the document already spends it — a second spelling
+    // here would be the defect `archive/48` existed to remove, one screen over.
+    // The word is the same keyed string the document's control uses too, so the
+    // two controls that go to the same place cannot come to say different
+    // things in either language.
+    //
+    // **A real `<a>` with a real `href`, not a `<button>` calling `navigate`.**
+    // `laneLink` records the reasoning and it holds here: middle-click, "open
+    // in a new tab", "copy link address" and the keyboard all work by
+    // construction and none of them is coded here. The document's own roster
+    // control is a `<button>` only because it sits inside `.tvhead` where the
+    // face is a jump's; nothing constrains this one, and the cheaper shape is
+    // the better one.
+    //
+    // The same tab, like the document's control and unlike `laneLink`'s
+    // `target="_blank"`: `seq:15`'s new-tab ruling is about a virtualised
+    // transcript whose scroll position cannot be recomputed. A roster is a page
+    // of rows the browser's own Back restores.
+    const roster = el('a', 'convlanelink');
+    roster.href = rosterHref(row.sessionId);
+    roster.append(...ctx.t(row.subagents === 1 ? 'conv.lane' : 'conv.lanes', {
       n: row.subagents,
     }));
+    meta.append(roster);
     // **AND HOW MANY OF THEM CAN STILL BE OPENED** — `plan:archive seq:35`,
     // which built `openableSubagents` and could not draw it because this file
     // was held by another lane at the time.
@@ -281,7 +365,7 @@ function drawRow(ctx, row, open) {
       { n: row.matchedLanes },
     ));
   }
-  button.append(meta);
+  wrap.append(meta);
 
   const marks = el('p', 'small');
   // ── A COPY IS MARKED WHEREVER IT APPEARS, AND THE MARK SAYS WHICH KIND —
@@ -408,10 +492,15 @@ function drawRow(ctx, row, open) {
     chip.append(...ctx.t('conv.scanCapped'));
     marks.append(chip, ' ');
   }
-  if (marks.childNodes.length > 0) button.append(marks);
+  if (marks.childNodes.length > 0) wrap.append(marks);
 
-  button.addEventListener('click', () => open(row.sessionId));
-  return button;
+  // **ON THE CONTROL, NEVER ON THE CONTAINER.** The listener used to be on the
+  // row because the row was the button; putting it back on the container would
+  // make every click inside the row — the roster link's included — open the
+  // session, and the only way back would be a `stopPropagation` on the link.
+  // The overlay above does the same job with no exception to get wrong.
+  head.addEventListener('click', () => open(row.sessionId));
+  return wrap;
 }
 
 function drawList(ctx, host, body, open) {
@@ -2516,14 +2605,16 @@ export function mountDocument(ctx, host, outline, back, roster = NO_LANES) {
    * it was drawn and `mycontext conversation subagents` in a terminal was the
    * only way to see the list.
    *
-   * **Here rather than on the list row, and that is a limitation being
-   * disclosed rather than a design.** The list's row is a `<button>` — the
-   * whole row opens the session — and an `<a>` or a second `<button>` nested
-   * inside a `<button>` is invalid markup that browsers un-nest, so the count
-   * on that row cannot become a control without either restructuring the row
-   * or a new rule in `styles.css`, which is another lane's file tonight. The
-   * lane's report names the rule. From the LIST the roster is therefore two
-   * clicks away rather than one.
+   * **AND IT IS NO LONGER THE ONLY WAY IN — `plan:archive seq:53`.** What
+   * stood here said the list row could not carry this control, because the row
+   * was a `<button>` and an `<a>` inside one is markup a browser un-nests; the
+   * roster was therefore two clicks from the list rather than one. That was
+   * true and it was a limitation being disclosed, not a design, and `seq:53`
+   * removed it: `drawRow` is a container with the open-the-session control and
+   * `a.convlanelink` side by side in it, so the count on the LIST is a link to
+   * exactly this address. The paragraph is rewritten rather than deleted
+   * because the reason a nested anchor was refused is still the reason this
+   * control is shaped the way it is.
    *
    * **Drawn from `lanes.owner`, not from this document's own id**, which is
    * what makes it work on a lane as well as on a session: 43 of this
