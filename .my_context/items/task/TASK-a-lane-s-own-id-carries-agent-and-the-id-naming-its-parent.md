@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: The helper agents a session dispatched can be listed, but the record saying which one dispatched which is written two ways, so the list has to translate between them.
-summary_of: 9ba272f835996673
+summary_of: c372b1a3581e5837
 scope:
   - src/core/conversation-index.ts
   - src/ui/read-model-conversations.ts
@@ -17,17 +17,17 @@ tags:
   - ui
   - "plan:archive"
   - "seq:48"
-  - "state:todo"
+  - "state:done"
 origin: human
 source_file: null
 source_anchor: null
 source_checksum: null
 valid_from: 2026-09-09
 valid_until: null
-checksum: c783f99c29a63f71
+checksum: 6e557d8901831392
 plan: archive
 seq: "48"
-state: todo
+state: done
 priority: "2"
 needs: archive/41
 ---
@@ -55,3 +55,19 @@ WHAT IS LEFT TO DECIDE, and it is the reason this is an item rather than a comme
   - Leave both and keep normalising at every join, which is what is shipped. It is honest and it is the option that rots: the next consumer will not know to do it, and its failure mode is a silently flat list rather than an error.
 
 The measurement is in laneKey's own header so a reader meets it where the translation happens.
+
+CLOSED 2026-09-09, AND THE DECISION WAS TAKEN BY seq:33 RATHER THAN HERE. THE OPEN QUESTION WAS WHICH SPELLING IS THE PRODUCT'S, AND THE ANSWER SHIPPED IS THE FIRST OF THE THREE OPTIONS ABOVE: NORMALISE IN THE INDEX. subagents.dispatched_by holds the RESOLVABLE id, derived once in upsertSubagent from dispatchingAgentId; parent_agent_id keeps the harness's own bare spelling untouched, which is readSubagentMeta's stated job; and openReadOnlyChecked now REQUIRES the column, with ConversationIndex.open healing an older index through fillDispatchedBy. The option this item called the one that rots was not taken.
+
+MEASURED AFTER, ON THE OWNER'S OWN CORPUS, 2026-09-09, THROUGH openReadOnlyChecked AND THE SHIPPED READER FUNCTION rosterOrder ITSELF RATHER THAN A RESTATEMENT OF IT:
+
+    lane rows in the index, over 2 sessions               274
+    rows carrying a parentAgentId                          43
+    of those, whose dispatched_by resolves to an agentId   43   100%
+    of those, whose dispatched_by is null                   0
+    rows rosterOrder draws INDENTED                        43
+    ROWS THAT DRAW AS ORPHANS                               0
+    the same, comparing the two spellings verbatim         43
+
+SO THE DEFECT THIS ITEM WAS FILED FOR IS ZERO ON HIS MACHINE, AND THE 43 THE ITEM COUNTED ARE THE 43 THAT NOW DRAW UNDER THEIR DISPATCHER. The reader-side laneKey (seq:41, reused by seq:49) and the index-side dispatched_by (seq:33) agree on every one of them, and no third normalisation was added.
+
+WHAT IS STILL TRUE AND IS NOT A DEFECT, RECORDED SO NOBODY RE-FILES IT. summariseSubagent publishes parentAgentId BARE and does not publish dispatchedBy, so GET /api/conversations/:id/subagents still answers the harness's spelling and the reader still translates. That is the published-field boundary this item's second option would have changed, and it was deliberately not changed: the field is already parsed by other readers, laneKey is one pure exported function with the measurement in its own header, and the index — which is where a future consumer starts — now carries one vocabulary. If that boundary is ever revisited, the change is to ADD dispatchedBy beside parentAgentId, never to redefine it.

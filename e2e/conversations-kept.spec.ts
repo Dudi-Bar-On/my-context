@@ -1,4 +1,5 @@
-// @basis INV-nothing-is-dropped-silently, STD-a-measured-zero-is-drawn-and-named-an-unmeasured-thing-is
+// @basis INV-nothing-is-dropped-silently, STD-a-measured-zero-is-drawn-and-named-an-unmeasured-thing-is,
+// TASK-a-pruned-session-s-lane-rows-are-never-swept-so-an-exported
 /**
  * **A KEPT COPY, DRIVEN IN A REAL BROWSER** — `plan:archive seq:4`/`seq:5`.
  *
@@ -121,6 +122,24 @@ test.beforeAll(async () => {
     agentType: 'general-purpose', description: 'Read the thing', toolUseId: LANE_CALL, spawnDepth: 1,
   }));
 
+  // A SECOND LANE, INDEXED AND THEN PRUNED — `plan:archive seq:35`, whose
+  // `openableSubagents` had nothing drawing it until now.
+  //
+  // Its `toolUseId` matches NO step of the document on purpose: the two
+  // dispatching turns above are already the subject of the last test in this
+  // file, and a lane answering `UNKEPT_CALL` would turn that test's `.tvcut`
+  // into a gone-link and change what it measures. This lane exists only as a
+  // ROW — which is exactly the state the item is about, a row outliving the
+  // file it names.
+  writeFileSync(path.join(lanes, 'agent-gone.jsonl'), jsonl([
+    { type: 'user', message: { role: 'user', content: 'the lane whose file goes' }, timestamp: at(25) },
+    { type: 'assistant', message: { role: 'assistant', content: text('read while it was here') }, timestamp: at(26) },
+  ]));
+  writeFileSync(path.join(lanes, 'agent-gone.meta.json'), JSON.stringify({
+    agentType: 'general-purpose', description: 'The lane whose transcript was pruned',
+    toolUseId: 'toolu_KEPT_GONE', spawnDepth: 1,
+  }));
+
   process.env['CLAUDE_CONFIG_DIR'] = home;
   process.env[MIRROR_DIR_ENV] = kept;
   const previous = process.cwd();
@@ -134,6 +153,11 @@ test.beforeAll(async () => {
     // The harness prunes the transcript. The mark is the only thing that can
     // keep the session visible now, which is the whole of `seq:5`.
     rmSync(path.join(dir, `${ORPHAN}.jsonl`));
+    // And one of its two lanes goes with it. `removeMissingSubagents` is
+    // scoped to sessions FOUND on disk, so the rebuild below cannot sweep this
+    // row — which is `plan:archive seq:35`'s finding, not a contrivance: the
+    // row stays for ever and the list must not advertise it as openable.
+    rmSync(path.join(lanes, 'agent-gone.jsonl'));
     runCli(['conversation', 'rebuild'], cwd, () => {});
 
     // And the kept-and-present one grows AFTER the last rebuild, so the copy
@@ -230,6 +254,40 @@ test('a copy that has not caught up says how far behind it is', async ({ page })
   // be behind anything, and saying so would be a warning about nothing.
   const orphan = page.locator('.convrow').filter({ hasText: 'Exported copy' });
   await expect(orphan.locator('.chip.warn')).toHaveCount(0);
+});
+
+/**
+ * **A ROW MAY NOT ADVERTISE LANES THAT CANNOT BE OPENED** — `plan:archive
+ * seq:35`, which built `openableSubagents` and left the screen drawing the raw
+ * row count because `screens/conversations.js` was held by another lane.
+ *
+ * The two numbers are asserted TOGETHER and on one row: the count is true of
+ * the recording, the second is true of the archive right now, and a screen
+ * that had replaced the first with the second would pass a test that asked
+ * only "does it say 1". The control is the row beside it — the live sessions
+ * dispatched no lanes and must say nothing at all, because "0 helper agents"
+ * on every ordinary row is the noise this clause is conditional to avoid.
+ *
+ * Non-vacuity, proved rather than asserted: with the `openableSubagents`
+ * branch removed from `drawRow`, this test fails on `1 still on disk` and the
+ * row reads `2 helper agents` alone.
+ */
+test('a row says how many of its lanes are still on disk, when that is fewer', async ({ page }) => {
+  await open(page, '#/conversations');
+  const orphan = page.locator('.convrow').filter({ hasText: 'Exported copy' });
+  await expect(orphan).toHaveCount(1);
+
+  const meta = orphan.locator('p.convmeta');
+  await expect(meta).toContainText('2 helper agents');
+  await expect(meta).toContainText('1 still on disk');
+
+  // The rows whose lanes are all present say only the count — no second
+  // number, because there is nothing for a reader to act on.
+  const others = page.locator('.convrow').filter({ hasNotText: 'Exported copy' });
+  await expect(others).toHaveCount(2);
+  await expect(others.locator('p.convmeta').filter({ hasText: 'still on disk' })).toHaveCount(0);
+
+  await page.screenshot({ path: 'e2e/screens/conversations-kept-openable-en.png' });
 });
 
 /**

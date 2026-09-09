@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: removeMissingSubagents only runs for sessions found on disk, so the lane rows of a session whose transcript is gone stay in the index for ever and an exported document draws a 'gone' link for each of them.
-summary_of: 5d47953c3b6bd291
+summary_of: 34ee957c5fe3b779
 scope:
   - src/core/conversation-index.ts
 tags:
@@ -21,7 +21,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-09-09
 valid_until: null
-checksum: 6b09c4da07e06f17
+checksum: fe59991214cc4320
 plan: archive
 seq: "35"
 state: done
@@ -88,3 +88,11 @@ AND THE STATE THIS ITEM DESCRIBES IS REACHABLE BUT NOT YET REACHED HERE: measure
 (c) was not re-proposed. (a) was not taken.
 
 WHAT IS NOT DONE, AND IT IS ONE LINE. The screen still draws conv.lanes from subagents alone: src/ui/public/screens/conversations.js and src/ui/public/styles.css were being edited by another lane at the same minute and were not touched by this one. The field is served on every list row for that lane to read, and en.js has no string for it yet -- a string with nothing drawing it would be dead weight.
+
+AND THE ONE LINE IS NOW DRAWN, 2026-09-09, BY THE plan:archive seq:48 LANE. drawRow in src/ui/public/screens/conversations.js appends conv.lanesOpenable — "{n} still on disk", in en.js and he.js both — beside the lane count, and ONLY when openableSubagents is fewer than subagents. The two numbers are drawn together and neither replaces the other, which is the same shape bytes/fileBytes already have on that row: a screen that had swapped the count for the openable count would still have been unable to say that anything went missing.
+
+WHY IT IS CONDITIONAL AND THAT IS NOT THE MEASURED-ZERO RULE BEING BENT. The clause beside it IS the measurement, so "268 helper agents · 268 still on disk" on every ordinary row would be a number repeated to say nothing. When the two disagree the second number is the finding, and 0 still on disk is then drawn in full for exactly that reason.
+
+PROVEN IN A REAL BROWSER, IN BOTH PROJECTS, BECAUSE THE STATE IS STILL UNREACHABLE ON HIS OWN CORPUS (measured again today: 274 lane rows, 274 openable). e2e/conversations-kept.spec.ts grows a SECOND lane under the orphaned session, indexed and then pruned before the last rebuild — which is this item's own finding, that removeMissingSubagents is scoped to sessions found on disk and so cannot sweep it — and the row then reads 2 helper agents · 1 still on disk. Its toolUseId deliberately matches no step of the document, so the dispatching-step test in the same file keeps measuring what it measured. Both chromium and chrome green, 10 of 10 in that file and 170 of 170 across the conversation specs.
+
+NON-VACUOUS, PROVED RATHER THAN ASSERTED. With the openableSubagents branch removed from drawRow the new test goes red in BOTH projects on "1 still on disk", and the row reads 2 helper agents alone. The branch was then restored and the suites re-run.

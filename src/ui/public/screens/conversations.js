@@ -219,6 +219,28 @@ function drawRow(ctx, row, open) {
     meta.append(...ctx.t(row.subagents === 1 ? 'conv.lane' : 'conv.lanes', {
       n: row.subagents,
     }));
+    // **AND HOW MANY OF THEM CAN STILL BE OPENED** — `plan:archive seq:35`,
+    // which built `openableSubagents` and could not draw it because this file
+    // was held by another lane at the time.
+    //
+    // The count above is true of the RECORDING and can be false of what the
+    // archive holds: a session kept by the mirror keeps its lane rows for ever
+    // (`removeMissingSubagents` is scoped to sessions found on disk), so a row
+    // can advertise lanes that nothing can open. `bytes`/`fileBytes` on this
+    // same row already have this shape — what was recorded, and what is there
+    // now — and a surface carrying only the second could not say that anything
+    // had gone missing.
+    //
+    // Drawn ONLY when the two disagree, and that is not the measured-zero rule
+    // being bent: the clause beside it is the measurement, and "268 helper
+    // agents · 268 still on disk" on every ordinary row would be a number
+    // repeated to say nothing. When they disagree the second number IS the
+    // finding, and `0 still on disk` is drawn in full for exactly that reason.
+    if (typeof row.openableSubagents === 'number'
+      && row.openableSubagents < row.subagents) {
+      meta.append(' · ');
+      meta.append(...ctx.t('conv.lanesOpenable', { n: row.openableSubagents }));
+    }
   }
   // **How long it lasted** (`plan:archive seq:10`). On the counts line for the
   // lane count's own reason: it is another measure of how much session there

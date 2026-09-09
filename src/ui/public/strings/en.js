@@ -184,6 +184,11 @@ export const strings = {
   'conv.scanCapped': 'Counts are a minimum',
   'conv.lane': '{n} helper agent',
   'conv.lanes': '{n} helper agents',
+  // Drawn beside the count above only when they disagree — `plan:archive
+  // seq:35`. The count is true of the recording; this one is true of the
+  // archive right now, and a session kept by the mirror can hold lane rows
+  // whose transcripts were pruned years apart from the row itself.
+  'conv.lanesOpenable': '{n} still on disk',
   // ── THE ROSTER — plan:archive seq:41 ──────────────────────────────────────
   //
   // The count above was a dead end everywhere it was drawn: `mycontext
