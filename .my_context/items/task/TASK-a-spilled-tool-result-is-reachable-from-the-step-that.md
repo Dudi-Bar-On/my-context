@@ -6,7 +6,9 @@ status: active
 severity: soft
 always: false
 summary: Large tool outputs are saved to separate files; this makes those files findable from the conversation step that created them, instead of leaving a dead reference.
-summary_of: 1c4b7e65b6310a7b
+summary_of: 0495b1061de4a05e
+acknowledged:
+  - source_drift@30b0a3b3100a43a9
 scope:
   - src/core/conversation-index.ts
   - src/ui/**
@@ -19,10 +21,10 @@ tags:
 origin: human
 source_file: "C:/Users/UserC/AppData/Local/Temp/claude/D--Users-UserC-source-repos-my-context/595db3b1-a481-4553-b4c0-7248c31b2655/scratchpad/body.md"
 source_anchor: null
-source_checksum: 7aae2dc91f4dfa5b
+source_checksum: null
 valid_from: 2026-09-08
 valid_until: null
-checksum: a3751251a9f92a0f
+checksum: c48b930cc6a58b84
 plan: archive
 seq: "30"
 state: todo
@@ -82,3 +84,23 @@ needs: archive/12
 > place: `ConversationIndexIncompleteError` distinguishes "a schema behind" from damage, and
 > `stopConversationRefresh` treats the former as existing so the write path heals it on the next
 > turn. Whoever adds this table inherits that and should not re-derive it.
+
+DO NOT RUN `mycontext refresh` ON THIS ITEM. Its `source_file` points at a SCRATCHPAD path that is
+reused between pieces of work, and the file at that path now holds a DIFFERENT item’s text -
+`plan:archive seq:36`’s. Refreshing would replace this body with that one, silently, and the
+checksum would agree afterwards because the item would be self-consistent with the wrong content.
+
+`mycontext doctor` reports this as `source_drift` and its suggested repair is exactly the refresh
+that would destroy the item. That is the trap: the advice is right in general and wrong here,
+because the pointer is to a transient file rather than to a document.
+
+IT IS ACKNOWLEDGED RATHER THAN REPAIRED, because there is no repair available: `mycontext edit` has
+no flag that clears `source_file`, so the pointer cannot be removed through the product. The
+acknowledgement lapses the moment this item is edited, which is correct - and this note is why the
+next person to see the warning should re-acknowledge it rather than act on it.
+
+AND IT IS NOT ONE ITEM. Measured 2026-09-09: 60 items carry a `source_file` under a temp directory.
+Only this one is REPORTED, because reporting drift needs the file to still exist and to have
+changed; the rest are silent, not clean. That is a product question rather than an item’s defect -
+a capture that accepts a path in a temp directory records a provenance that cannot survive - and it
+is the owner’s to rule on, not this lane’s to fix while D37 is being closed.

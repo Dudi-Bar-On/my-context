@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: A helper agent shows the kind of agent it is beside what it was asked to do, matching the name you already recognise from the terminal.
-summary_of: bbbb73c64af7e0da
+summary_of: 1262277982d3f248
 scope:
   - src/ui/public/screens/conversations.js
   - src/ui/read-model-conversations.ts
@@ -23,12 +23,13 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-09-09
 valid_until: null
-checksum: 9c370373425f1c9f
+checksum: 10869816b0d2ad54
 plan: archive
 seq: "50"
 state: done
 priority: "1"
 needs: archive/15
+verified_on: 2026-09-09
 ---
 
 # a lane is named by what it did and never by what it is, so the terminal name is missing

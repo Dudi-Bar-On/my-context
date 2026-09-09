@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: A table's grid is as visible as the stylesheet says it is, instead of being half as visible on nearly half of its length.
-summary_of: c774bb2a4bb82b5d
+summary_of: 6da861bb3f7c2041
 scope:
   - src/ui/public/styles.css
   - e2e/code-hue.spec.ts
@@ -23,12 +23,13 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-09-09
 valid_until: null
-checksum: 9a6954cb1d7b91b4
+checksum: d262c90d692e8263
 plan: archive
 seq: "47"
 state: done
 priority: "2"
 needs: archive/45
+verified_on: 2026-09-09
 ---
 
 # a collapsed table ruling is painted in two colours, and 43% of it was measured at the wrong one

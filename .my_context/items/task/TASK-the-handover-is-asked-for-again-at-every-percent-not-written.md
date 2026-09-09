@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: The handover is requested once and then never again while the window fills for hours, so it describes work that stopped being current.
-summary_of: 283f62336645a4cf
+summary_of: 1b38d531a25d28a1
 scope:
   - src/hooks/stop.ts
   - src/core/handover-ask.ts
@@ -24,7 +24,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-09-06
 valid_until: null
-checksum: 8c84fe59a11047d2
+checksum: 7810a3ee5edc78ef
 plan: handover
 seq: "12"
 state: done

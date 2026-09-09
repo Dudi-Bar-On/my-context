@@ -7,6 +7,8 @@ severity: soft
 always: false
 summary: Whether signing in to the local viewer should last past a reload, and which of four ways of remembering it is worth its cost.
 summary_of: 69975d61ea392d4d
+acknowledged:
+  - body_ends_unfinished@65ce27217b21ccc9
 scope:
   - src/ui/security.ts
   - src/ui/public/app.js
@@ -20,7 +22,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-09-09
 valid_until: null
-checksum: 11bf216ad1320e7a
+checksum: 4bef981457d2bf22
 blocks: live/22
 ---
 

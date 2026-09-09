@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: Three code and quote boxes draw a border that is half as visible as intended whenever it falls between screen pixels, so it needs either a brighter colour or a thicker line.
-summary_of: b8034994204279bd
+summary_of: 21916878d9575b94
 scope:
   - src/ui/public/styles.css
   - e2e/frame-paint.spec.ts
@@ -23,12 +23,13 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-09-09
 valid_until: null
-checksum: f4b0411012bbb239
+checksum: 01173e190b443d43
 plan: archive
 seq: "52"
 state: done
 priority: "1"
 needs: archive/47
+verified_on: 2026-09-09
 ---
 
 # a 1px border in --edge-3 is painted at 1.82:1 whenever it lands on a half pixel, and it often does

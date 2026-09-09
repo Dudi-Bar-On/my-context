@@ -229,9 +229,15 @@ restarting a listening server. `live/22` fixed the recovery: the feed reopens on
 **And the credential was never the problem.** It has been an `HttpOnly SameSite=Strict` COOKIE since
 his 2026-08-22 ruling; measured surviving a restart, 200 across the board. **The research I did into
 replacing it describes a design replaced three weeks ago, and recommends against the cookie model
-that is already shipped — so no item was filed for it, and this block claimed one had been.** That
-claim is corrected here rather than by inventing the item to match the sentence: `check-handover`
-caught it, which is what it is for. Read `security.ts` before searching the web. What actually locked him out: **`SESSION_MAX` is 64, evicted oldest-first, counting RESTARTS
+that is already shipped.** It IS filed — as
+`OPENQ-should-the-credential-survive-a-reload-and-by-which-of-four` — but it carries no `plan`/`seq`,
+so the plan-and-seq pointer this block used to name it resolved to nothing, and `check-handover` was
+right to say so. That is not a defect in the item: the corpus REFUSES a `plan` field on an
+`open_question`, and it is right to — a question is answered, not scheduled. It is addressable by id
+and by nothing else, so its id is what this block now carries. **My first correction here said no
+item had been filed, and that was wrong**: the item exists, it is an open question rather than a
+task, and it was unaddressable rather than absent.
+Read `security.ts` before searching the web. What actually locked him out: **`SESSION_MAX` is 64, evicted oldest-first, counting RESTARTS
 not tabs** — his 64 digests spanned 63.5 hours where the TTL promises thirty days. Filed `live/24`.
 
 ### HIS RULINGS THIS SESSION, so nothing is re-asked
