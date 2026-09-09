@@ -32,6 +32,41 @@ function listedInProse(sentence: string, separator: RegExp): string[] {
 }
 
 /**
+ * The command strings a §7 `--yes` flag-table row names, read out of the row.
+ *
+ * One function for BOTH documents, because there is exactly one claim: this row
+ * names the command strings the parser accepts `--yes` on. The English row was
+ * held to `approvalBoundary().gated` and the Hebrew one was held to nothing at
+ * all — it named eleven strings while the parser accepted fifteen, and the five
+ * it was missing arrived over four separate rounds
+ * (`TASK-the-hebrew-readme-s-yes-row-is-hand-kept-and-had-drifted-by`). Two
+ * copies of this parser would have been the same defect one layer down.
+ *
+ * **The row is located by its own `--yes` cell**, never by the prose around it,
+ * which is what makes one parser reach a document written right-to-left: a
+ * command name is Latin in both, and nothing in the Hebrew sentence is read.
+ *
+ * `<span dir="ltr">` wrappers are stripped first. They are bidi typography the
+ * Hebrew mirror puts around every Latin run — including the `--yes` cell itself
+ * — so a locator that did not strip them would find no row in that document and
+ * would have to be told, by hand, what the row looks like there.
+ *
+ * The text is UNFLATTENED: the caller's `readme` has had every run of
+ * whitespace collapsed to one space, which is right for matching a sentence
+ * across a line break and wrong for a table.
+ */
+function yesRowCommands(markdown: string, where: string): string[] {
+  const row = markdown.split('\n')
+    .map((line) => line.replace(/<\/?span[^>]*>/g, ''))
+    .find((line) => line.startsWith('| `--yes` |'));
+  assert.ok(row, `the --yes row of ${where}'s flag table was not found; this parser is broken`);
+  const whereItWorks = row.split('|').filter((cell) => cell.trim() !== '').at(-1) ?? '';
+  return [...new Set(
+    [...whereItWorks.matchAll(/`([a-z][a-z -]*)`/g)].map((m) => m[1]),
+  )].sort();
+}
+
+/**
  * The /LoadMyContext command and the skill are the only parts of this plugin
  * that Claude Code loads from the filesystem rather than from the MCP server,
  * so nothing else can notice if they go missing — which is exactly what
@@ -711,18 +746,11 @@ test('the approval boundary names `add` and the Bash gap in the deny list', () =
   // too — a row naming a gate that is no longer there is the same defect
   // pointing the other way.
 
-  // The unflattened text: the row is located by being a ROW, and `readme` above
-  // has had every run of whitespace collapsed to one space — right for matching a
-  // sentence across a line break, wrong for a table.
-  const yesRow = read('README.md').split('\n')
-    .find((line) => line.startsWith('| `--yes` |'));
-  assert.ok(yesRow, 'the --yes row of the flag table was not found; this parser is broken');
-  const whereItWorks = yesRow.split('|').filter((cell) => cell.trim() !== '').at(-1) ?? '';
-  const namedInRow = [...new Set(
-    [...whereItWorks.matchAll(/`([a-z][a-z -]*)`/g)].map((m) => m[1]),
-  )].sort();
+  // `yesRowCommands` reads the UNFLATTENED file for it — see that function's
+  // header, and note that the Hebrew mirror's row is now held to this same set
+  // by the same parser rather than to nothing.
   assert.deepEqual(
-    namedInRow, [...approvalBoundary().gated].sort(),
+    yesRowCommands(read('README.md'), 'README.md'), [...approvalBoundary().gated].sort(),
     'the --yes row of the flag table must name exactly the command strings the parser ' +
     'accepts `--yes` on — no more and no fewer. It named twelve of fourteen once, and both ' +
     'of the missing two were on the deny list this same document recommends.',
@@ -821,6 +849,52 @@ test('the Hebrew mirror carries the same deny list and names the same gated comm
   assert.deepEqual(
     missing, [],
     `the Hebrew mirror does not name these gated commands at all: ${missing.join(', ')}`,
+  );
+});
+
+/**
+ * The Hebrew `--yes` row, held to the parser in both directions.
+ *
+ * **What this rests on:**
+ * `TASK-the-hebrew-readme-s-yes-row-is-hand-kept-and-had-drifted-by` is the
+ * measurement — the Hebrew row named eleven command strings while the parser
+ * accepted fifteen, and the five it lacked (`carry`, `config`, `conversation
+ * forget`, `statusline install`, `statusline uninstall`) arrived over four
+ * separate rounds with nothing reading that row. The derivation it is held to
+ * is `TASK-ruling-35-derive-the-readme-yes-flag-table-and-close-two`, the
+ * ruling that replaced the English row's literal regex with
+ * `approvalBoundary().gated`, and `TASK-ruling-32-derive-the-approval-boundary-count-from-the`,
+ * which established that §7's numbers are asked of the registry rather than
+ * remembered.
+ *
+ * **Why the test above does not cover it, which is the whole reason this one
+ * exists.** That test collects rows shaped `` | `mycontext <verb>` | `` out of
+ * the ENGLISH document and requires each command it finds to appear somewhere
+ * in the Hebrew text. The `--yes` row is shaped `` | `--yes` | ``, so that
+ * parser never collects it, and a command named only there was invisible. The
+ * asymmetry was sharp: the deny block IS compared element for element because
+ * it is JSON, so the half of the security section that is data was checked and
+ * the half that is prose was not.
+ *
+ * **Set equality in both directions, for the reason the English row records in
+ * its own comment:** that row once named twelve of fourteen, and the literal
+ * regex pinning it "could only notice a REMOVAL" — it went on matching after a
+ * thirteenth and a fourteenth became members. A row naming a gate that is no
+ * longer there is the same defect pointing the other way, so a command that
+ * stops taking `--yes` has to leave this row too.
+ *
+ * This is language-independent by construction and claims nothing more: a
+ * command name is Latin in both documents, the row is found by its own `--yes`
+ * cell, and no Hebrew sentence is read. Whether the sentence AROUND a command
+ * is right remains a review obligation.
+ */
+test('the Hebrew mirror\'s --yes row names exactly the commands the parser gates', () => {
+  assert.deepEqual(
+    yesRowCommands(read('docs', 'README.he.md'), 'docs/README.he.md'),
+    [...approvalBoundary().gated].sort(),
+    'the Hebrew mirror\'s --yes row must name exactly the command strings the parser accepts ' +
+    '`--yes` on — no more and no fewer, the same claim the English row is held to. It was ' +
+    'five commands behind across four rounds of hand-keeping with no test reading it at all.',
   );
 });
 
