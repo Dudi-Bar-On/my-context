@@ -300,6 +300,25 @@ const WRITERS: Record<string, string[]> = {
   'src/core/conversation-mirror.ts': [
     'persistSession', 'unpersistSession', 'advanceMirrors',
   ],
+  // **Landed 2026-09-09 with `plan:archive seq:46`, and the DERIVATION
+  // demanded this key too.** It writes the redacted copy of a mirror and the
+  // plan sidecar that explains it, both through `node:fs`, so every one of its
+  // calls is visible to the membership scan.
+  //
+  // It is a module of its own for `conversation-mirror.ts`' reason one level
+  // out: the SCAN that proposes candidates is pure and reads nothing but the
+  // transcript it is pointed at (`core/conversation-secrets.ts`, deliberately
+  // absent from this table because it holds no `node:fs` write at all), and
+  // the WRITE that acts on a person's choice is here. A read surface that
+  // wanted to LIST what looks private in a session could bind the scanner; it
+  // must not be able to bind the thing that produces a file.
+  //
+  // `redactedCopyPath` and `redactionPlanPath` are deliberately NOT named:
+  // they are pure path arithmetic, exactly as `mirrorPath` is, and a read
+  // surface that wanted to SAY where a redacted copy lives should be able to.
+  'src/core/conversation-redaction.ts': [
+    'chooseRedactions', 'advanceRedaction', 'clearRedactions',
+  ],
   'src/core/config.ts': [
     'deleteCustomCategory', 'disableCategory', 'setConfigField', 'unsetConfigListEntries',
   ],

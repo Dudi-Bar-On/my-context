@@ -4,16 +4,23 @@ import {
   type ConversationRow, type SubagentRow,
 } from '../../core/conversation-index.ts';
 import {
-  NotIndexedError, advanceMirrors, mirrorDir, persistSession, unpersistSession,
+  NotIndexedError, advanceMirrors, mirrorDir, mirrorPath, persistSession, unpersistSession,
   type MirrorReport,
 } from '../../core/conversation-mirror.ts';
+import {
+  NoMirrorError, chooseRedactions, clearRedactions, readRedactionPlan,
+  type RedactionResult,
+} from '../../core/conversation-redaction.ts';
+import {
+  SECRET_SHAPES, scanSessionSecrets, type SecretCandidate, type SecretScan,
+} from '../../core/conversation-secrets.ts';
 import { SUBCOMMAND_FLAGS } from '../../core/command-flags.ts';
 import type { Workspace } from '../../core/workspace.ts';
 import { toCliMessage } from './context.ts';
 import { confirmAction } from './review.ts';
 import { emitJson, refuseUnknownFlag, table, wantsJson, zonedStamp } from './format.ts';
 import path from 'node:path';
-import { flag, hasFlag, positionals, registerCommand, type Emit } from './registry.ts';
+import { flag, hasFlag, listFlag, positionals, registerCommand, type Emit } from './registry.ts';
 
 /**
  * `mycontext conversation` — the archive's write half, and the only thing that
@@ -34,12 +41,15 @@ import { flag, hasFlag, positionals, registerCommand, type Emit } from './regist
  * `docs/superpowers/specs/2026-09-04-conversation-archive-design.md`.
  */
 
-export const SUBCOMMANDS = ['rebuild', 'list', 'subagents', 'persist', 'forget'] as const;
+export const SUBCOMMANDS = [
+  'rebuild', 'list', 'subagents', 'secrets', 'persist', 'forget',
+] as const;
 
 const USAGE = `usage: mycontext conversation rebuild [--full] [--json]
        mycontext conversation list [--limit <n>] [--json]
        mycontext conversation subagents [<session>] [--json]
-       mycontext conversation persist [<session>] [--off] [--yes] [--json]
+       mycontext conversation secrets [<session>] [--json]
+       mycontext conversation persist [<session>] [--replace <ids>] [--off] [--yes] [--json]
        mycontext conversation forget [--yes] [--json]`;
 
 const CONVERSATION_FLAGS = SUBCOMMAND_FLAGS['conversation'];
@@ -187,6 +197,18 @@ function mirrorLines(report: MirrorReport): string[] {
       `my_context: ${report.cleared.length} mark(s) were dropped because their copy is no ` +
       'longer on disk. Nothing was re-copied — that is a decision to take, not one to make on ' +
       `your behalf: ${report.cleared.join(', ')}`,
+    );
+  }
+  // **THE CHOICE KEPT UP WITH THE APPEND** — `plan:archive seq:46`. Said out
+  // loud rather than left to be inferred from the mirror line, because the two
+  // are different promises and only one of them is about what a person ticked:
+  // a redacted copy that silently stopped being projected would reintroduce a
+  // value on the very next turn, which is the failure the item names.
+  if (report.redacted.length > 0) {
+    lines.push(
+      `my_context: ${report.redacted.length} redacted copy/copies took ` +
+      `${report.redactedBytesWritten} new byte(s), so the values you chose to fake are still ` +
+      `faked in everything appended since you chose: ${report.redacted.join(', ')}`,
     );
   }
   return lines;
@@ -478,6 +500,205 @@ function cmdConversationSubagents(ws: Workspace, root: string, args: string[], o
 }
 
 /**
+ * `mycontext conversation secrets [<session>]` — **the candidate list, and the
+ * whole of what a form will render.** `plan:archive seq:46`, step 2.
+ *
+ * ── IT PROPOSES. IT DOES NOT ACT, AND IT CANNOT ───────────────────────────
+ *
+ * This subcommand writes nothing. It reads one session and answers *what looks
+ * private, where, and how many times* — the three things the item asks for by
+ * name, because they are what a person needs in order to JUDGE. Replacing
+ * anything is a separate act with a separate flag on a separate, gated
+ * subcommand (`persist --replace`), and that separation is the design rather
+ * than an accident of layout: the owner's own argument against both of the
+ * shapes offered before his was that a pattern list must never be in charge of
+ * what a reader may see.
+ *
+ * ── WHY THE TERMINAL AND NOT ONLY THE SCREEN ──────────────────────────────
+ *
+ * The item leaves WHERE THE FORM LIVES open and asks for both to be weighed.
+ * This is the half that has to exist either way. A checkbox form is natural in
+ * a browser and awkward in a terminal, but `test/ui/no-writes.test.ts` holds
+ * `src/ui/` write bindings to an exact set of one — so a screen cannot perform
+ * the export itself, and the shape this product already has for that is the
+ * Composer: the screen composes a command and the CLI runs it. Either way the
+ * screen needs a derived list to draw and a stable handle to tick, and both
+ * are here, in `--json`, so nothing has to be re-derived in the browser.
+ *
+ * ── NO CANDIDATE'S VALUE IS EVER PRINTED ──────────────────────────────────
+ *
+ * Every candidate carries a mask, a length, a shape and a context window with
+ * every match in it masked. That is enough to tell `secret = cryptoRandomBytes`
+ * from a credential, and it means neither the terminal scrollback nor a
+ * `--json` file a form fetched becomes a new place a secret is written. This
+ * project has the receipt for why that matters: the lane that REPORTED the
+ * 2026-09-08 scan wrote a complete bearer token into a corpus item, and corpus
+ * items are committed and pushed.
+ */
+function cmdConversationSecrets(ws: Workspace, root: string, args: string[], out: Emit): number {
+  const [, asked] = positionals(args, ['limit']);
+  const json = wantsJson(args);
+
+  let index: ConversationIndex;
+  try {
+    index = ConversationIndex.openReadOnlyChecked(ws.dbPath);
+  } catch (err) {
+    if (err instanceof ConversationIndexUninitializedError
+      || err instanceof ConversationIndexIncompleteError) {
+      const dir = transcriptDir(process.env, workspaceCwd(root));
+      if (json) {
+        emitJson(out, { candidates: [], total: 0, indexed: false, dir, shapes: shapeSummary() });
+        return 0;
+      }
+      out('my_context: nothing is indexed in this workspace yet, so there is nothing to scan.');
+      out(`my_context: run \`mycontext conversation rebuild\` to scan ${dir}`);
+      return 0;
+    }
+    throw err;
+  }
+
+  let row: ConversationRow | null;
+  let sessionId: string | undefined;
+  try {
+    const sessions = index.all();
+    sessionId = asked ?? sessions[0]?.sessionId;
+    row = sessionId === undefined ? null : index.get(sessionId);
+  } finally {
+    index.close();
+  }
+  if (sessionId === undefined) {
+    if (json) {
+      emitJson(out, { candidates: [], total: 0, indexed: true, shapes: shapeSummary() });
+      return 0;
+    }
+    out('my_context: the conversation index is built and holds no sessions.');
+    return 0;
+  }
+  if (row === null) {
+    out(
+      `my_context: no indexed session "${sessionId}". \`mycontext conversation list\` names the ` +
+      'ones this workspace has scanned.',
+    );
+    return 1;
+  }
+
+  const scan = scanSessionSecrets(row.file);
+  const mirror = mirrorPath(process.env, workspaceCwd(root), sessionId);
+  const plan = readRedactionPlan(mirror);
+  const accepted = new Set(plan?.accepted ?? []);
+
+  if (json) {
+    // **THE SURFACE A FORM CONSUMES.** Every field a checkbox needs is here:
+    // `id` is the checkbox's value, `shapeTitle`/`preview`/`contexts` are its
+    // label, `occurrences` and `records` are the evidence, `placeholder` is
+    // what it becomes, and `accepted` is whether it is already ticked — which
+    // is `false` for everything until somebody chooses, because nothing is
+    // replaced by default. `replaceCommand` is the Composer's payload: the
+    // exact command the screen would hand back to the CLI.
+    emitJson(out, {
+      sessionId,
+      indexed: true,
+      file: scan.file,
+      source: row.source,
+      records: scan.records,
+      unreadable: scan.unreadable,
+      scannedBytes: scan.scannedBytes,
+      truncated: scan.truncated,
+      occurrences: scan.occurrences,
+      total: scan.candidates.length,
+      candidates: scan.candidates.map((candidate) => ({
+        ...candidate, accepted: accepted.has(candidate.id),
+      })),
+      shapes: shapeSummary(),
+      chosen: plan === null ? null : {
+        accepted: plan.accepted,
+        placeholders: plan.placeholders,
+        chosenAt: plan.chosenAt,
+        projectedAt: plan.projectedAt,
+        replaced: plan.replaced,
+      },
+      replaceCommand: `mycontext conversation persist ${sessionId} --replace <id,id,...>`,
+      ms: scan.ms,
+    });
+    return 0;
+  }
+
+  for (const line of secretsLines(sessionId, row, scan, accepted)) out(line);
+  return 0;
+}
+
+/** The shapes, as a reader or a form legend needs them — never the patterns. */
+function shapeSummary(): { id: string; title: string; added: boolean; note: string }[] {
+  return SECRET_SHAPES.map(({ id, title, added, note }) => ({ id, title, added, note }));
+}
+
+/**
+ * The report as a person reads it: a table of candidates, the context that
+ * makes each judgeable, and the bound of the scan said out loud.
+ */
+function secretsLines(
+  sessionId: string, row: ConversationRow, scan: SecretScan, accepted: ReadonlySet<string>,
+): string[] {
+  const thirteen = SECRET_SHAPES.filter((shape) => !shape.added).length;
+  const added = SECRET_SHAPES.length - thirteen;
+  const lines: string[] = [
+    `my_context: scanned session ${sessionId.slice(0, 8)} — ${scan.records} record(s), ` +
+    `${scan.scannedBytes} byte(s) of ${row.file} — for ${SECRET_SHAPES.length} credential ` +
+    `shape(s): the ${thirteen} the 2026-09-08 scan covered and ${added} added since.`,
+  ];
+  if (scan.candidates.length === 0) {
+    lines.push(
+      'my_context: nothing in this session matches any of them — a measured zero, and it is ' +
+      'NOT a promise that the session holds no secret. A credential that looks like an ' +
+      'ordinary word is missed by every shape here, and this list is what lets you see that ' +
+      'gap rather than be reassured about it.',
+    );
+    return lines;
+  }
+  lines.push(...table(
+    ['candidate', 'looks like', 'chars', 'times', 'records', 'preview'],
+    scan.candidates.map((candidate) => [
+      accepted.has(candidate.id) ? `${candidate.id} (chosen)` : candidate.id,
+      candidate.shapeTitle,
+      String(candidate.length),
+      String(candidate.occurrences),
+      candidate.records.join(',')
+        + (candidate.recordsOmitted > 0 ? `+${candidate.recordsOmitted}` : ''),
+      candidate.preview,
+    ]),
+  ));
+  for (const candidate of scan.candidates) {
+    lines.push(`my_context: ${candidate.id} — ${candidate.contexts[0] ?? '(no context)'}`);
+  }
+  if (scan.unreadable > 0) {
+    lines.push(
+      `my_context: ${scan.unreadable} line(s) of this transcript would not parse and were not ` +
+      'searched. They are counted rather than skipped, because an unsearched record is a gap ' +
+      'in this list and not an absence of candidates.',
+    );
+  }
+  if (scan.truncated) {
+    lines.push(
+      `my_context: the scan stopped at its ${MAX_SCAN_BYTES} byte cap, so this list is a FLOOR ` +
+      'and not a total — a candidate that appears only later in the transcript is not here.',
+    );
+  }
+  lines.push(
+    'my_context: NOTHING has been replaced. This is a list of things that LOOK private, and ' +
+    'most of a list like this is wrong: the same scan over 1.7 GB on 2026-09-08 found eight ' +
+    'matches of which one was a real secret, five were test probes and one was the word ' +
+    '`secret` in an assignment. Only you can tell them apart.',
+  );
+  lines.push(
+    'my_context: to fake the ones that are real: `mycontext conversation persist '
+    + `${sessionId.slice(0, 8)} --replace ${scan.candidates[0]?.id ?? '<id>'}\` — comma-separate `
+    + 'more ids. The copy this product keeps stays byte-faithful; the redacted copy is a second '
+    + 'file beside it.',
+  );
+  return lines;
+}
+
+/**
  * **The sentence a copy that leaves this machine has to carry, said FIRST.**
  *
  * `plan:archive seq:11`'s lane put exactly such a sentence (`conv.sensitive`)
@@ -566,10 +787,25 @@ function indexExists(ws: Workspace, out: Emit): boolean {
 
 function cmdConversationPersist(ws: Workspace, root: string, args: string[], out: Emit): number {
   const json = wantsJson(args);
-  const [, asked] = positionals(args, ['limit']);
+  const [, asked] = positionals(args, ['limit', 'replace']);
   const cwd = workspaceCwd(root);
+  // Three states, not two, and the middle one is the reason this is a LIST
+  // flag rather than a string: absent is "no choice given and none changed",
+  // `--replace=` is "present and empty", i.e. UNTICK EVERYTHING, and a list is
+  // the choice itself. Without the middle state there is no way to take a
+  // choice back, and a person who ticked something by mistake would have to
+  // delete files by hand to undo it.
+  const replace = listFlag(args, 'replace');
 
   if (hasFlag(args, 'off')) {
+    if (replace !== null) {
+      out(
+        'my_context: `--off` stops keeping the session and `--replace` changes what is faked ' +
+        'inside the copy it keeps. Those are opposite acts and running them together would ' +
+        'leave it ambiguous which one won, so neither is done. Run them one at a time.',
+      );
+      return 1;
+    }
     if (asked === undefined) {
       out('my_context: `--off` needs the session to stop keeping.\n\n' + USAGE);
       return 1;
@@ -599,7 +835,13 @@ function cmdConversationPersist(ws: Workspace, root: string, args: string[], out
     return 0;
   }
 
-  if (asked === undefined) return listPersisted(ws, cwd, out, json);
+  if (asked === undefined) {
+    if (replace !== null) {
+      out('my_context: `--replace` needs the session whose copy it is about.\n\n' + USAGE);
+      return 1;
+    }
+    return listPersisted(ws, cwd, out, json);
+  }
 
   let index: ConversationIndex;
   try {
@@ -645,12 +887,20 @@ function cmdConversationPersist(ws: Workspace, root: string, args: string[], out
       'the copying and leaves the file.',
     );
   }
+  if (replace !== null && !hasFlag(args, 'yes') && !json) {
+    for (const line of replacePreview(replace)) out(line);
+  }
   if (!confirmAction(args, out, 'Keep a copy of this session outside the project?')) return 1;
 
   try {
     const result = persistSession(ws.dbPath, process.env, cwd, asked);
     if (json) {
       emitJson(out, { ...result, already });
+      // The mark's own report first, then the choice's — two documents rather
+      // than one merged object, because they are two acts and only the first
+      // of them happened on a bare `persist`. A caller reading this stream
+      // gets the same two answers whether or not `--replace` was given.
+      if (replace !== null) return applyRedaction(result.file, asked, replace, out, json);
       return 0;
     }
     out(
@@ -672,6 +922,7 @@ function cmdConversationPersist(ws: Workspace, root: string, args: string[], out
       '`mycontext conversation rebuild`. If the original is ever deleted, this copy is what ' +
       'the archive reads and the session stays in the list, marked as the copy.',
     );
+    if (replace !== null) return applyRedaction(result.file, asked, replace, out, json);
     return 0;
   } catch (err) {
     if (err instanceof NotIndexedError) {
@@ -680,6 +931,95 @@ function cmdConversationPersist(ws: Workspace, root: string, args: string[], out
     }
     throw err;
   }
+}
+
+/** What `--replace` is about to do, said before the question rather than after. */
+function replacePreview(accepted: readonly string[]): string[] {
+  if (accepted.length === 0) {
+    return [
+      'my_context: `--replace=` is empty, so NOTHING will be faked: the redacted copy and the ' +
+      'choice behind it are removed and the byte-faithful copy is left exactly as it is. That ' +
+      'is the way to take a choice back.',
+    ];
+  }
+  return [
+    `my_context: and ${accepted.length} candidate(s) will be replaced by an obviously fake ` +
+    'stand-in in a SECOND file beside the copy — every occurrence of each, in this session and ' +
+    'in everything appended to it afterwards. The copy itself stays byte-for-byte the ' +
+    'transcript: it is the record, and a record that was quietly altered is worth less than ' +
+    'one that was not.',
+  ];
+}
+
+/**
+ * **The choice, applied** — `plan:archive seq:46`, step 4, at its call site.
+ *
+ * It runs AFTER the mirror is written and never instead of it, because the
+ * redacted copy is DERIVED from the mirror. That ordering is the whole reason
+ * the byte-faithful default survives a feature about replacing things: the
+ * record is written first and unconditionally, and this adds a second file
+ * beside it. An empty accepted set removes that second file rather than
+ * producing an identical one, so `--replace=` leaves exactly the state the
+ * session was in before anybody chose anything.
+ */
+function applyRedaction(
+  mirror: string, sessionId: string, accepted: readonly string[], out: Emit, json: boolean,
+): number {
+  if (accepted.length === 0) {
+    const removed = clearRedactions(mirror);
+    if (json) {
+      emitJson(out, { sessionId, accepted: [], cleared: removed, file: null });
+      return 0;
+    }
+    out(removed
+      ? 'my_context: the choice and the redacted copy it produced are gone. The byte-faithful ' +
+        'copy is untouched.'
+      : 'my_context: nothing was being faked in this session, so nothing changed.');
+    return 0;
+  }
+  let result: RedactionResult;
+  try {
+    result = chooseRedactions(mirror, sessionId, accepted);
+  } catch (err) {
+    if (err instanceof NoMirrorError) {
+      out(err.message);
+      return 1;
+    }
+    throw err;
+  }
+  if (json) {
+    emitJson(out, result);
+    return 0;
+  }
+  out(
+    `my_context: ${result.plan.replaced} occurrence(s) of ${result.plan.accepted.length} ` +
+    `candidate(s) were replaced across ${result.plan.records} record(s), ` +
+    `${result.written} byte(s) written in ${result.ms}ms.`,
+  );
+  out(`my_context: ${result.file}`);
+  for (const [id, placeholder] of Object.entries(result.plan.placeholders)) {
+    out(`my_context: ${id} is now ${placeholder}`);
+  }
+  if (result.unresolved.length > 0) {
+    // **NAMED, NEVER DROPPED.** An id that matches nothing in this session is
+    // either a typo or a value that has not been written yet, and the two are
+    // told apart by the person, not here. It is KEPT in the choice so that a
+    // value appearing in a later tail is still faked — silently forgetting a
+    // choice is the one thing this design must not do.
+    out(
+      `my_context: ${result.unresolved.length} of the ids you gave match nothing in this ` +
+      `session: ${result.unresolved.join(', ')}. They are kept in the choice anyway, so if ` +
+      'that value is appended later it is faked then. `mycontext conversation secrets ' +
+      `${sessionId.slice(0, 8)}\` lists the ids this session actually offers.`,
+    );
+  }
+  if (result.plan.unreadable > 0) {
+    out(
+      `my_context: ${result.plan.unreadable} line(s) would not parse and were copied VERBATIM ` +
+      'rather than searched. Nothing in them was replaced, and this line is how you know.',
+    );
+  }
+  return 0;
 }
 
 /** Every mark, and where the copy is — the answer to a bare `persist`. */
@@ -850,6 +1190,7 @@ function cmdConversation(ws: Workspace, args: string[], out: Emit): number {
   try {
     if (subcommand === 'rebuild') return cmdConversationRebuild(ws, root, args, out);
     if (subcommand === 'subagents') return cmdConversationSubagents(ws, root, args, out);
+    if (subcommand === 'secrets') return cmdConversationSecrets(ws, root, args, out);
     if (subcommand === 'persist') return cmdConversationPersist(ws, root, args, out);
     if (subcommand === 'forget') return cmdConversationForget(ws, root, args, out);
     return cmdConversationList(ws, root, args, out);
@@ -861,7 +1202,9 @@ function cmdConversation(ws: Workspace, args: string[], out: Emit): number {
 
 registerCommand({
   name: 'conversation',
-  usage: `conversation [${SUBCOMMANDS.join('|')}] [--full] [--limit <n>] [--yes] [--json]`,
+  usage:
+    `conversation [${SUBCOMMANDS.join('|')}] [--full] [--limit <n>] [--replace <ids>] [--yes] ` +
+    '[--json]',
   summary: 'index the conversation and subagent transcripts on disk, and list what it holds',
   run: (ws, args, out) => cmdConversation(ws, args, out),
 });

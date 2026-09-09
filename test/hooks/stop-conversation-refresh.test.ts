@@ -412,7 +412,8 @@ test('a copy that took bytes says so in the audit row, and a current one is sile
   };
   const mirror = {
     dir: '/kept', marked: 1, advanced: 0, bytesWritten: 0,
-    orphaned: [] as string[], broken: [] as string[], cleared: [] as string[], ms: 1,
+    orphaned: [] as string[], broken: [] as string[], cleared: [] as string[],
+    redacted: [] as string[], redactedBytesWritten: 0, ms: 1,
   };
 
   assert.equal(
@@ -439,6 +440,18 @@ test('a copy that took bytes says so in the audit row, and a current one is sile
   assert.match(
     refreshNote({ ...base, mirror: { ...mirror, cleared: ['s1'] } }),
     /1 mark\(s\) dropped because the copy is gone/,
+  );
+
+  // `plan:archive seq:46`. A choice about what to fake has to keep being
+  // applied to everything appended after it was made, and the row is where a
+  // reader finds out later that it was — the copy itself cannot say what it
+  // WOULD have held.
+  assert.match(
+    refreshNote({
+      ...base,
+      mirror: { ...mirror, advanced: 1, redacted: ['s1'], redactedBytesWritten: 512 },
+    }),
+    /1 redacted copy\(s\) took 512 new byte\(s\)/,
   );
 
   // A mirror pass that FAILED is not a pass that found nothing —

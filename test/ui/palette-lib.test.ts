@@ -1110,6 +1110,19 @@ const UNCATALOGUED: Record<string, string> = {
     + 'is already looking at. It is worth having in the terminal at all because the LINK is '
     + 'the part most likely to be doubted: it prints the tool_use id beside each lane, so '
     + '"can this be opened from the turn that dispatched it" is answerable without a browser.',
+  // `plan:archive seq:46`. It is a NOT-YET rather than a decision, and the
+  // thing it is waiting for is named: the owner's design is a form with
+  // checkboxes, so the surface that consumes this command is a screen and not
+  // a Composer line. `conversation secrets --json` was built to be that
+  // form's source — a candidate per distinct value, each with the id a
+  // checkbox ticks, a masked preview, the records it appears in and the
+  // stand-in it would become — and the form itself is the remaining step of
+  // the item. A def that merely composed the read would offer a person a
+  // terminal table where the item asks for boxes to tick.
+  'conversation secrets': 'lists what looks private in one session so a person can judge it, '
+    + 'and replaces nothing. The surface it is FOR is a checkbox form, which is the remaining '
+    + 'step of `plan:archive seq:46`; `--json` exists so that form has something to render '
+    + 'without re-deriving anything.',
   // `ack` stood here until 2026-09-03 and its row named the condition that
   // closed it: "a control that composed a usable line would have to be driven
   // by the doctor read model rather than by a flag declaration". `Finding.remedy`

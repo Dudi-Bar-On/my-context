@@ -1460,13 +1460,25 @@ export const SUBCOMMAND_FLAGS: Record<string, Record<string, FlagSpec>> = {
     // is bounded by how many that session dispatched, and a bound nobody needs
     // is a bound nobody maintains.
     subagents: { allowed: ['json'], values: [] },
+    // `secrets` (`plan:archive seq:46`) takes a POSITIONAL session id and
+    // nothing else. It has no `--yes` because it WRITES NOTHING — it lists
+    // what looks private so a person can judge it, and the item's whole design
+    // is that detection proposes and never acts. A gate on a report would say
+    // the report was the dangerous half.
+    secrets: { allowed: ['json'], values: [] },
     // `persist` (`plan:archive seq:4`) takes a POSITIONAL session id and
     // `--yes`, not `--count`: it performs ONE write about ONE session, and
     // this project spells that gate `--yes`. `--off` is the same command
     // stopping, and it is a switch on this subcommand rather than a
     // subcommand of its own because it acts on the same mark by the same id —
     // a second verb would be a second place to keep the argument in step.
-    persist: { allowed: ['off', 'yes', 'json'], values: [] },
+    //
+    // `--replace` (`plan:archive seq:46`) is here rather than on a `redact`
+    // verb of its own for the same reason `--off` is: it acts on the same copy
+    // of the same session by the same id, and the export is the act it belongs
+    // to. The owner's design puts the substitution ON EXPORT ONLY, so the flag
+    // sits on the command that exports.
+    persist: { allowed: ['off', 'replace', 'yes', 'json'], values: ['replace'] },
     // `forget` (`plan:archive seq:9`) is the OFF position of the archive's
     // opt-in and takes `--yes` for the reason every other destructive command
     // here does: it drops rows, and a command that drops rows asks first. It
@@ -1552,6 +1564,15 @@ export const SUBCOMMAND_FLAG_DECLARATIONS: Record<string, FlagDeclarations> = {
     // outside the project, which is an act that asks rather than one that
     // happens.
     yes: YES,
+    replace: {
+      format: 'comma-separated candidate ids from `conversation secrets`', example: 'a1b2c3d4e5f6',
+      note: 'Replace these values with an obviously fake stand-in in a second copy beside the '
+        + 'byte-faithful one, and keep replacing them in everything appended afterwards. '
+        + 'NOTHING is replaced unless it is named here — an export nobody read has to be '
+        + 'byte-faithful, because a silent alteration is worse than a silent inclusion when '
+        + 'the file exists to be a record. `--replace=` with nothing after it takes the choice '
+        + 'back and removes the second copy.',
+    },
     off: {
       note: 'Stop keeping a session outside the project. The copy is left exactly where it is '
         + 'and only the copying stops, because deleting it could destroy the only remaining '

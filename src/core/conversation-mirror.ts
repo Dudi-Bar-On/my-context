@@ -76,6 +76,7 @@ import {
   ConversationIndex, projectDirName, scanTranscript, transcriptDir,
   type ConversationRow, type PersistedRow,
 } from './conversation-index.ts';
+import { advanceRedaction } from './conversation-redaction.ts';
 import { GLOBAL_DIR } from './workspace.ts';
 
 /** Names the directory the mirrors live in, overriding the global root. */
@@ -407,6 +408,22 @@ export interface MirrorReport {
   broken: string[];
   /** Marks dropped because the mirror itself is not on disk any more. */
   cleared: string[];
+  /**
+   * **Mirrors whose REDACTED COPY was kept up on this pass** — `seq:46`.
+   *
+   * Separate from `advanced` because it is a different promise. `advanced`
+   * says the record kept up; this says the choice a person made about what to
+   * fake is still being applied to everything appended since they made it,
+   * which is the requirement `seq:46` names as the hardest part of the item:
+   * *"a choice made once must apply to everything appended AFTERWARDS, or the
+   * first tail after an export reintroduces the secret."*
+   *
+   * Empty on every workspace where nobody has chosen anything, which is the
+   * ordinary state and costs one `existsSync` per mark that took bytes.
+   */
+  redacted: string[];
+  /** Bytes written into those copies this run. */
+  redactedBytesWritten: number;
   ms: number;
 }
 
@@ -420,6 +437,8 @@ function emptyMirrorReport(dir: string, startedMs: number): MirrorReport {
     orphaned: [],
     broken: [],
     cleared: [],
+    redacted: [],
+    redactedBytesWritten: 0,
     ms: Date.now() - startedMs,
   };
 }
@@ -537,6 +556,19 @@ function advanceOne(
   });
   report.advanced += 1;
   report.bytesWritten += bytes - mark.bytes;
+
+  // **AFTER the mirror, and only when a choice exists** — `seq:46`. The
+  // redacted copy is derived from the mirror, so it cannot be projected past
+  // bytes the mirror does not hold yet; and `advanceRedaction` answers `null`
+  // for a session nobody has chosen anything for, which is every session until
+  // somebody runs `mycontext conversation persist --replace`. The mirror
+  // itself is never redacted: it is the record, and `stillPrefix` above is
+  // only meaningful while it stays a byte-for-byte prefix of the transcript.
+  const projected = advanceRedaction(mark.file, mark.sessionId);
+  if (projected !== null && projected.written > 0) {
+    report.redacted.push(mark.sessionId);
+    report.redactedBytesWritten += projected.written;
+  }
 }
 
 /**

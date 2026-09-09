@@ -933,6 +933,17 @@ export function refreshNote(report: ConversationRefresh | null): string {
     if (mirror.cleared.length > 0) {
       kept.push(`${mirror.cleared.length} mark(s) dropped because the copy is gone`);
     }
+    // **The choice kept up with the append** (`plan:archive seq:46`). It is a
+    // separate clause from the copy's own because it is a separate promise: a
+    // redacted copy that quietly stopped being projected would put a value the
+    // owner ticked back into the file on the very next turn, and nothing else
+    // in this row would look any different.
+    if (mirror.redacted.length > 0) {
+      kept.push(
+        `${mirror.redacted.length} redacted copy(s) took ${mirror.redactedBytesWritten} new ` +
+        'byte(s), so values chosen earlier are still faked in what was appended',
+      );
+    }
     parts.push(kept.join(', '));
   }
   return `; the conversation index was refreshed — ${parts.join(', ')}, `
