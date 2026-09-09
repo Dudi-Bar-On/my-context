@@ -1,3 +1,40 @@
+## ⏭ 2026-09-09, at 93% — DELTA. **A LANE IS RUNNING.** The 92% block says nothing is; that is now stale.
+
+Off his ruled cadence (90/92/94/96/97/98/99) on purpose: a lane in flight is the one fact a dying
+session must not lose, and the block below asserts the opposite.
+
+### THE CSS LANE IS RUNNING
+
+It owns **`src/ui/public/styles.css`** and **`src/ui/public/screens/conversations.js`**. Dispatch
+nothing touching either until it reports. It carries `archive/47` plus the **seven rules** the
+`39/40/41` lane could not write, and two things it must MEASURE rather than style:
+
+- **token-vs-painted for the three unmeasured borders** (`.tvsaid pre`, `.tvsaid hr`, `.tvterm`),
+  because a collapsed ruling paints 43% of itself as a 50% blend and every ratio in `seq:38`/`seq:45`
+  was computed a layer above the pixels.
+- **all four outer table edges, uncropped, both languages** — his question. `.tvsaid table` sets
+  `display:block`, so it is **not a table box**, and `border-collapse` on a non-table box's outer edge
+  must be photographed rather than reasoned about.
+
+`.tvjump`'s border is the one with reach beyond this screen: **`--edge` at 1.49:1 on its own fill**,
+so Top, End, "N new below" and the three copy buttons are effectively borderless.
+
+### FILED: `archive/49` — the answer to his subagent-link question is HALF yes
+
+The **dispatching** step links (`laneLink`, joined by `toolUseId`, since `seq:15`). The row where a
+lane **reports back** does not, and cannot: `DocNodeBody.synthetic` is a label string and nothing
+more, so the row says a lane finished and cannot say **whose** report it is. **That is the row a
+reader reaches for first** — the step is where work was asked for, the notification is where it came
+back.
+
+Measured: **1,437 of 1,440** notifications carry a `<task-id>`; **626 resolve to a real
+`agent-<id>.jsonl`**. The 811 that do not are correct — background shell commands and monitor events
+have task ids and no agent file. **And the discriminator already exists**: `seq:28`'s
+`syntheticSpeaker` reads the `<summary>` to pick Subagent/Shell/none, so the rows it labels
+**Subagent** are exactly the ones that should link. Do not build a second one.
+
+**D37 is 37 of 49.** Tree clean, 0 unpushed.
+
 ## ⏭ 2026-09-09, at 92% — DELTA on the 91% block below. Read that one; this only adds.
 
 **Nothing has changed in the tree.** Still 37 of 48 on D37, nothing running, 0 unpushed. This is a
