@@ -25,9 +25,11 @@ export function shouldPing(visibilityState) {
  * period, so a reader who genuinely leaves and returns inside one interval is
  * answered rather than debounced away.
  *
- * Exported so the second surface with this behaviour reads the number rather
- * than re-choosing it — see the block on `startHeartbeat` for why there is
- * still a second surface at all.
+ * **Exported, and since `plan:archive seq:29` actually READ by the second
+ * surface** rather than merely offered to it: `screens/conversations.js`
+ * imports this name instead of declaring its own `250`, so the number and the
+ * argument for it exist once. It was that screen's number first — the block
+ * above is its reasoning, kept here because this is now where it lives.
  */
 export const LOOK_GAP_MS = 250;
 
@@ -85,13 +87,21 @@ export const LOOK_GAP_MS = 250;
  * gated, and `stopped` closes the window between an event already queued and
  * the removal taking effect.
  *
- * **WHY `screens/conversations.js` STILL HAS ITS OWN COPY.** This module is
- * where the four rules now live, and it is written to be the one mechanism —
- * the shape it takes (`doc`, a callback, an interval, `win`) is the shape
- * that screen's `tick`/`stopFollowing` pair already has. It has not adopted
- * it yet only because that file is being edited by another lane; the item
- * that owns the adoption is named in this lane's report. What must not happen
- * is a THIRD hand-written copy: a surface that wants this asks for `win`.
+ * **WHAT `screens/conversations.js` ADOPTED, AND WHAT IT DID NOT** —
+ * `plan:archive seq:29`, which was filed expecting that screen to adopt THIS
+ * function with its `tick` as the `pingFn`. Measured against the code as it
+ * now stands, it cannot, and the reason is an ORDERING this function fixes:
+ * `beat` asks `shouldPing` BEFORE it calls `pingFn`, and that screen's `tick`
+ * asks `scroll.isConnected` FIRST and tears the whole follow down when the
+ * answer is no. Under `startHeartbeat` a hidden tab whose document well had
+ * been replaced would never reach that teardown — the timer and the listeners
+ * would outlive the well they were created for, which is the per-conversation
+ * leak `stopFollowing`'s own comment is about. So the screen keeps its
+ * interval, and what it adopted is `attachLook` and `LOOK_GAP_MS`: the event
+ * PAIR is spelled in one place and the number is chosen in one place, which is
+ * what the item was actually about. The rest of the divergence is argued on
+ * `attachLook` below, where it belongs — it is a fact about the two callers'
+ * clocks, not about this timer.
  */
 export function startHeartbeat(doc, pingFn, intervalMs, win) {
   let stopped = false;
@@ -139,12 +149,25 @@ export function startHeartbeat(doc, pingFn, intervalMs, win) {
  * two-field object with no `addEventListener` on it).
  *
  * It registers and removes and decides nothing: the gate (`shouldPing`) and
- * the double-fire guard (`LOOK_GAP_MS`) stay with the CALLER, because the two
+ * the double-fire guard (`LOOK_GAP_MS`) stay with the CALLER, because the
  * callers debounce against different clocks — the heartbeat shares one
  * `askedAt` with its scheduled beat so a look right after a beat is dropped,
  * and a look-only ticker has no beat to share with.
+ *
+ * **AND THAT SENTENCE IS WHY THIS IS EXPORTED** — `plan:archive seq:29`. The
+ * third caller is `screens/conversations.js`, whose look tick debounces
+ * against the `askedAt` its own ONE-SECOND `tick` writes, so a look landing
+ * 50 ms after a scheduled `/tip` is dropped. `startLookTicks` cannot express
+ * that: its `firedAt` is its own, it has never heard of the scheduled ask, and
+ * handing that screen a second private clock would make one return to the tab
+ * two `/tip` requests a quarter-second apart — the exact collision the number
+ * exists for, reintroduced by the refactor that was supposed to unify it. So
+ * the screen takes the PAIR from here and keeps its own clock, its own
+ * interval re-base and its own `scroll.isConnected` teardown. What is shared
+ * is what is genuinely one fact; what is not shared is different behaviour,
+ * not a second copy.
  */
-function attachLook(doc, win, handler) {
+export function attachLook(doc, win, handler) {
   if (win === undefined || win === null) return () => {};
   doc.addEventListener('visibilitychange', handler);
   win.addEventListener('focus', handler);

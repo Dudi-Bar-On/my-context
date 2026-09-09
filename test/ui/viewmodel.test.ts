@@ -867,6 +867,16 @@ interface HeartbeatModule {
     win: FakeTarget | undefined,
     onLook: () => void,
   ) => () => void;
+  /**
+   * Exported since `plan:archive seq:29`, when `screens/conversations.js` became
+   * the third caller. It decides nothing — no gate, no clock — so it is the only
+   * piece of the look tick that screen could take without changing behaviour.
+   */
+  attachLook: (
+    doc: Partial<FakeTarget>,
+    win: FakeTarget | undefined | null,
+    handler: () => void,
+  ) => () => void;
 }
 
 interface I18nModule {
@@ -1141,6 +1151,65 @@ test('startLookTicks stop() removes both listeners and is idempotent', async () 
   win.fire('focus');
   assert.equal(looks, 0, 'a stopped look tick must not fire, on any signal');
   stop();  // more than one failure path calls it
+});
+
+// @basis TASK-the-conversation-document-still-writes-the-look-tick-by-hand
+/* ══ THE PAIR ITSELF, AS A THING A THIRD CALLER CAN TAKE ═══════════════════
+ *
+ * `plan:archive seq:29`. `attachLook` was private while it had two callers
+ * inside its own module; the third is `screens/conversations.js`, which needs
+ * the REGISTRATION and cannot use either wrapper around it — `startHeartbeat`
+ * gates on visibility before its callback, and that screen's `tick` must reach
+ * its `scroll.isConnected` teardown even while hidden; `startLookTicks` keeps a
+ * private clock, and that screen debounces against the `askedAt` its scheduled
+ * `/tip` writes too.
+ *
+ * So what is asserted here is exactly what the screen relies on and nothing
+ * more: both targets or neither, and one handle that removes both. The three
+ * assertions are the three ways a caller could end up with half of it.
+ */
+test('attachLook registers the pair on both targets and hands back one removal', async () => {
+  const { attachLook } = await heartbeat();
+  assert.equal(typeof attachLook, 'function',
+    'the pair must be reachable from outside the module, or the third caller writes the event '
+    + 'names a third time — which is the defect seq:29 closed');
+  const doc = target();
+  const win = target();
+  let looks = 0;
+  const detach = attachLook(doc, win, () => { looks += 1; });
+  assert.equal(doc.count('visibilitychange'), 1, 'the tab-switch half must be registered');
+  assert.equal(win.count('focus'), 1, 'the raised-window half must be registered');
+
+  // It DECIDES nothing: no visibility gate and no gap guard live here, which is
+  // why a caller with its own clock can use it. Two events, two calls.
+  doc.fire('visibilitychange');
+  win.fire('focus');
+  assert.equal(looks, 2,
+    'attachLook must not debounce or gate — the caller owns both, because the callers do not '
+    + 'share a clock');
+
+  detach();
+  assert.equal(doc.count('visibilitychange'), 0, 'one removal takes the document half');
+  assert.equal(win.count('focus'), 0, 'one removal takes the window half');
+  doc.fire('visibilitychange');
+  win.fire('focus');
+  assert.equal(looks, 2, 'a detached pair must not fire, on either signal');
+});
+
+test('attachLook without a window registers nothing at all, not half', async () => {
+  const { attachLook } = await heartbeat();
+  const doc = target();
+  let looks = 0;
+  // Half the pair is the failure mode the single argument exists to make
+  // impossible: a surface that listened on `visibilitychange` alone would be
+  // fast on a tab switch and slow on the return this owner actually makes.
+  for (const absent of [undefined, null]) {
+    const detach = attachLook(doc, absent, () => { looks += 1; });
+    assert.equal(doc.count('visibilitychange'), 0, 'no window, no listeners at all');
+    doc.fire('visibilitychange');
+    assert.equal(looks, 0);
+    detach();
+  }
 });
 
 test('startLookTicks without a window registers nothing at all', async () => {

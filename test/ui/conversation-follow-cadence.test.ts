@@ -113,34 +113,72 @@ test('both string tables spell the cadence the constant actually runs at', async
   );
 });
 
-test('the document also asks the moment the reader comes back to the tab', () => {
+// @basis TASK-the-conversation-document-still-writes-the-look-tick-by-hand
+/**
+ * **THE DOCUMENT TAKES THE LOOK PAIR FROM THE MODULE THAT OWNS IT, and keeps
+ * the three things that module cannot hold** — `plan:archive seq:29`.
+ *
+ * Until that item this file asserted four hand-written lines:
+ * `document.addEventListener('visibilitychange', onLook)` and its `window`
+ * `focus` twin, and the two removals. Those assertions were true and they were
+ * also the measurement that the event names were spelled on two floors —
+ * `lib/heartbeat.js`' `attachLook` exists to be the only place either name
+ * appears, and a test demanding the second spelling is a test that would fail
+ * the unification it was written to protect.
+ *
+ * **SO THE ASSERTION MOVED UP A FLOOR RATHER THAN BEING DROPPED.** What the
+ * pair DOES is asserted against a stand-in in `test/ui/viewmodel.test.ts`,
+ * which can fire events; what this file can see is the seam — that the screen
+ * goes through `attachLook`, tears down through the handle it returns, and has
+ * stopped declaring its own copy of the number. A regression that re-inlines
+ * either fails here.
+ */
+test('the document registers the look pair through heartbeat.js and owns its own clock', () => {
   const source = readFileSync(path.join(PUBLIC, 'screens', 'conversations.js'), 'utf8');
 
   // THE TWO EVENTS, and they are not interchangeable: a tab switch fires
   // `visibilitychange`, a window raised without a tab change fires only
   // `focus`. Registering one leaves half the returns waiting for a THROTTLED
   // interval — browsers drop a hidden tab's `setInterval` to roughly once a
-  // minute — which is the latency the item measured.
-  assert.ok(
-    source.includes("document.addEventListener('visibilitychange', onLook)"),
-    'the open document must tick when it becomes visible',
+  // minute — which is the latency the item measured. `attachLook` registers
+  // both or neither, which is how adopting half of it became unwritable.
+  assert.match(
+    source,
+    /^import \{ LOOK_GAP_MS, attachLook, shouldPing \} from '\.\.\/lib\/heartbeat\.js';$/m,
+    'the document must take the look pair, the gate and the gap from lib/heartbeat.js — all '
+    + 'three, because a screen that imports the gate and re-writes the pair is the split this '
+    + 'item closed',
   );
-  assert.ok(
-    source.includes("window.addEventListener('focus', onLook)"),
-    'the open document must tick when its window is raised without a tab change',
+  assert.match(
+    source,
+    /detachLook = attachLook\(document, window, onLook\);/,
+    'the open document must register the look pair through attachLook, with the real document '
+    + 'and the real window',
   );
 
-  // AND BOTH ARE TORN DOWN. A document-level listener that outlives the well
-  // is one per conversation opened in a session, all firing on the next focus,
-  // and `tick`'s `isConnected` guard makes every one of them harmless — which
-  // is exactly why the leak would never be noticed without this line.
-  assert.ok(
-    source.includes("document.removeEventListener('visibilitychange', onLook)"),
-    'stopFollowing must remove the visibilitychange listener it added',
+  // AND NEITHER NAME IS SPELLED HERE ANY MORE. This is the non-vacuous half:
+  // the import above would still pass if the four hand-written lines sat beside
+  // it, which is two copies of one fact and exactly the defect.
+  assert.equal(
+    /addEventListener\((['"])(visibilitychange|focus)\1/.test(source), false,
+    'neither look event may be named in this screen again — `attachLook` is the one place either '
+    + 'is spelled, and a second spelling here is the duplicate seq:29 removed',
   );
+  assert.equal(
+    /^\s*const LOOK_GAP_MS = /m.test(source), false,
+    'the gap is imported, not re-chosen: a second declaration is a number that can drift from the '
+    + 'argument for it',
+  );
+
+  // THE TEARDOWN IS THE RETURNED HANDLE. A document-level listener that
+  // outlives the well is one per conversation opened in a session, all firing
+  // on the next focus, and `tick`'s `isConnected` guard makes every one of them
+  // harmless — which is exactly why the leak would never be noticed without it.
+  const stop = /const stopFollowing = \(\) => \{[\s\S]*?\n  \};/.exec(source);
+  assert.ok(stop !== null, 'stopFollowing is no longer a form this test can find');
   assert.ok(
-    source.includes("window.removeEventListener('focus', onLook)"),
-    'stopFollowing must remove the focus listener it added',
+    (stop as RegExpExecArray)[0].includes('detachLook()'),
+    'stopFollowing must remove the look pair through the handle attachLook returned',
   );
 
   // THE RULE ITSELF DOES NOT MOVE. `onLook` asks `shouldPing` before it asks
@@ -153,5 +191,34 @@ test('the document also asks the moment the reader comes back to the tab', () =>
     (look as RegExpExecArray)[0].includes('shouldPing(document.visibilityState)'),
     'onLook must keep `shouldPing` as the gate: this makes a VISIBLE tab faster and must never '
     + 'make a hidden one ask',
+  );
+
+  // **AND THE CLOCK IS STILL THE SHARED ONE, which is why `startLookTicks` is
+  // not what this screen uses.** That export debounces against its own last
+  // fire and has never heard of the scheduled `tick`; `askedAt` is written by
+  // BOTH, so a look landing inside `LOOK_GAP_MS` of a scheduled `/tip` is
+  // dropped. Adopting the look-only ticker here would turn one return to the
+  // tab into two requests a quarter-second apart, at a one-second cadence.
+  assert.ok(
+    (look as RegExpExecArray)[0].includes('Date.now() - askedAt < LOOK_GAP_MS'),
+    'the look tick must debounce against `askedAt` — the clock the SCHEDULED tick writes too — '
+    + 'and not against a private one',
+  );
+  const tick = /const tick = \(\) => \{[\s\S]*?\n  \};/.exec(source);
+  assert.ok(tick !== null, 'tick is no longer a form this test can find');
+  assert.ok(
+    (tick as RegExpExecArray)[0].includes('askedAt = Date.now()'),
+    'the scheduled tick must stamp the shared clock, or the guard above has nothing to compare '
+    + 'against and the pair of asks comes back',
+  );
+  // The teardown the gate ORDER exists for: `tick` asks `isConnected` BEFORE
+  // `shouldPing`, so a hidden tab whose well was replaced still stops. Under
+  // `startHeartbeat`, whose `beat` gates on visibility first, it would not —
+  // which is the measured reason this screen kept its own interval.
+  assert.ok(
+    (tick as RegExpExecArray)[0].indexOf('scroll.isConnected')
+      < (tick as RegExpExecArray)[0].indexOf('shouldPing'),
+    'a well that is gone must end the follow even while the tab is hidden, so the isConnected '
+    + 'teardown comes BEFORE the visibility gate',
   );
 });

@@ -11,6 +11,7 @@
 // TASK-the-archive-shows-what-is-on-disk-now-because-nothing-has,
 // TASK-the-open-document-follows-the-session-as-it-is-written-and,
 // TASK-looking-at-the-tab-is-the-fastest-signal-a-reader-can-send,
+// TASK-the-conversation-document-still-writes-the-look-tick-by-hand,
 // TASK-a-chip-s-data-g-never-renders-on-six-of-the-eight-chip-kinds,
 // TASK-a-timestamp-is-shown-in-the-reader-s-own-zone-and-says-which,
 // TASK-a-tool-call-keeps-160-characters-of-its-input-and-drops-the,
@@ -2456,6 +2457,134 @@ test('the bare address is not a way to strip a SESSION — the read model decide
   await page.goto(`http://127.0.0.1:${harness.port}/lane.html`);
   await expect(page.locator('#lane .tvroot p.spill')).toContainText('names none');
   await expect(page.locator('.rail'), 'and it is still not the application').toHaveCount(0);
+});
+
+/**
+ * **THE LOOK TICK IS EXERCISED ON TWO PAGES, AND THIS IS THE SECOND ONE** —
+ * `plan:archive seq:29`.
+ *
+ * `lane.js` imports `mountDocument` and forks nothing, so the follow timer, the
+ * visibility gate and the look pair all run in a window with no shell around
+ * them. Until now every assertion about any of that was made on `/#/conversations`
+ * — where `app.js` ALSO registers a look pair of its own, through
+ * `startHeartbeat` and `startLookTicks`. That is the measurement gap this
+ * closes: a conversation document that had quietly lost its own pair would
+ * still look fast on the app page, because the shell's `/api/ping` and the
+ * stream reopen fire on the same two events and the document's next scheduled
+ * tick is only a second behind. On `/lane.html` there is no heartbeat, no
+ * stream and no shell at all, so the only thing that can turn a return to the
+ * tab into a `/tip` is the document's own `onLook`.
+ *
+ * **Why this is the test seq:29 owed.** That item moved the event PAIR out of
+ * this screen and into `lib/heartbeat.js`' `attachLook` — one registration, one
+ * removal, taken from the module that already owned the rule. The unit tests
+ * prove the seam and the pair; what neither can prove is that the adoption
+ * still fires in a browser on the page that has nothing else to cover for it.
+ *
+ * `visibilityState` is overridden for `openLive`'s measured reason, recorded in
+ * full on `a reader coming back to the tab is not made to wait`: Playwright
+ * gives every page its own top-level window, so nothing in the harness can make
+ * a document genuinely hidden. Everything else here is real — the real events,
+ * the real gate, the real debounce against the shared `askedAt`, and real
+ * requests to `/tip`.
+ */
+test('the bare lane window runs the same look tick, and nothing else on it could', async ({ page }) => {
+  test.setTimeout(60_000);
+  await page.addInitScript(() => {
+    let forced: string | null = null;
+    Object.defineProperty(Document.prototype, 'visibilityState', {
+      configurable: true,
+      get(): string { return forced ?? 'visible'; },
+    });
+    Object.defineProperty(window, '__look', {
+      value: (state: string | null) => {
+        forced = state;
+        // BOTH events, because `attachLook` registers both — and the guard that
+        // stops one return asking twice is the thing worth measuring.
+        document.dispatchEvent(new Event('visibilitychange'));
+        window.dispatchEvent(new Event('focus'));
+      },
+    });
+  });
+
+  /** Every `/tip` this window asks for, by wall clock. */
+  const tips: number[] = [];
+  page.on('request', (r) => { if (r.url().includes('/tip')) tips.push(Date.now()); });
+
+  // **THE APP FIRST, FOR THE CREDENTIAL AND NOTHING ELSE** — the same order
+  // `the bare address is not a way to strip a SESSION` uses, and for the reason
+  // `lane.js` records: that page exchanges no nonce, it rides the `Path=/`
+  // `mycontext_token` cookie the shell's bootstrap set. A first visit straight
+  // to `/lane.html` has no cookie and draws the server's refusal instead of a
+  // document — measured here, 2026-09-10, as a 20 s wait for `.tvturn`.
+  await open(page, '#/conversations', 'en');
+  await page.goto(`http://127.0.0.1:${harness.port}/lane.html?id=agent-outer`);
+  await page.waitForSelector('.tvscroll .tvturn', { timeout: 20_000 });
+  // There is no application here to ask on this document's behalf, which is the
+  // whole point of measuring on this page.
+  await expect(page.locator('#strip')).toHaveCount(0);
+
+  // ── IT FOLLOWS AT ALL. A bare window is still a followed document. ───────
+  const opened = Date.now();
+  await page.waitForTimeout(2_500);
+  const polled = tips.filter((t) => t > opened).length;
+  expect(polled, 'a lane window follows its transcript like the screen does').toBeGreaterThan(0);
+
+  // ── AND A HIDDEN ONE ASKS NOTHING, which is §2 and not this page's to bend.
+  await page.evaluate(() => (window as unknown as { __look: (s: string | null) => void })
+    .__look('hidden'));
+  expect(await page.evaluate(() => document.visibilityState)).toBe('hidden');
+  const hiddenFrom = Date.now();
+  await page.waitForTimeout(3_000);
+  expect(tips.filter((t) => t > hiddenFrom).length,
+    'a forgotten lane window must not hold the server up').toBe(0);
+
+  // ── THE RETURN IS ONE ASK, AND IT ARRIVES AT ONCE ───────────────────────
+  // One ask is `attachLook` registering the pair and `onLook` debouncing it
+  // against the `askedAt` the scheduled tick writes; arriving at all is the
+  // registration not having been lost on the way into the shared module.
+  const t0 = Date.now();
+  await page.evaluate(() => (window as unknown as { __look: (s: string | null) => void })
+    .__look(null));
+  await page.waitForTimeout(300);
+  const burst = tips.filter((t) => t >= t0 && t < t0 + 300).length;
+  console.log(`[seq:29] /lane.html /tip requests in the 300 ms after the look: ${burst}`);
+  expect(burst,
+    'one look, one ask — the pair fires twice and the bare window must answer once')
+    .toBe(1);
+
+  // ── AND A LOOK THAT LANDS JUST AFTER A SCHEDULED TICK IS DROPPED ─────────
+  //
+  // **THIS IS THE ASSERTION THAT SAYS WHY `startLookTicks` IS NOT WHAT THIS
+  // SCREEN USES** — `plan:archive seq:29`. The block above passes under either
+  // clock: the tab was hidden for three seconds, so the last ask is long past
+  // and any debounce lets the first of the pair through. The collision that
+  // separates them is a look arriving while a SCHEDULED `/tip` is still fresh,
+  // and only a clock the scheduled tick also writes — `askedAt` — can see it.
+  // A look-only ticker's private `firedAt` would not, and this bare window
+  // would ask twice inside a quarter of a second for one glance at it.
+  //
+  // Staged rather than waited for: the look is fired the instant a scheduled
+  // ask is observed, which is the worst case and the one that is otherwise a
+  // one-in-four accident at this cadence.
+  const scheduled = tips.length;
+  for (let waited = 0; waited < 60 && tips.length === scheduled; waited += 1) {
+    await page.waitForTimeout(25);
+  }
+  expect(tips.length, 'the visible window is polling again, or there is no tick to collide with')
+    .toBeGreaterThan(scheduled);
+  const justAsked = tips[tips.length - 1] as number;
+  await page.evaluate(() => {
+    document.dispatchEvent(new Event('visibilitychange'));
+    window.dispatchEvent(new Event('focus'));
+  });
+  await page.waitForTimeout(250);
+  const doubled = tips.filter((t) => t > justAsked && t < justAsked + 250).length;
+  console.log(`[seq:29] extra /tip asks caused by a look within 250 ms of a tick: ${doubled}`);
+  expect(doubled,
+    'a look inside LOOK_GAP_MS of a SCHEDULED ask must be dropped — the gap is measured against '
+    + 'the clock the scheduled tick writes, not against a private one')
+    .toBe(0);
 });
 
 /**

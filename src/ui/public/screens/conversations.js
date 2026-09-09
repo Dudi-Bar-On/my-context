@@ -60,7 +60,7 @@ import {
   boundedList, el, errorNote, mono, screenHead, spaced, zonedStampOf,
 } from './parts.js';
 import { helpDisclosure } from '../lib/disclosure.js';
-import { shouldPing } from '../lib/heartbeat.js';
+import { LOOK_GAP_MS, attachLook, shouldPing } from '../lib/heartbeat.js';
 import { markdownNodes } from '../lib/markdown.js';
 import { ansiNodes, hasEscapes, stripEscapes } from '../lib/ansi.js';
 import { formatBytes } from '../lib/viewmodel.js';
@@ -870,8 +870,9 @@ const FETCH_PAGE = 24;
  * `shouldPing` is honoured on every tick, so a tab in the background stops
  * asking — the same rule, and the same reason, as the heartbeat's: a forgotten
  * tab must not hold the server up. The interval is not the only thing that
- * makes the screen ask, though: see `LOOK_GAP_MS` and `onLook` below, which
- * turn "the reader came back to the tab" into a tick of its own.
+ * makes the screen ask, though: see `onLook` below and the imported
+ * `LOOK_GAP_MS` it debounces against, which turn "the reader came back to the
+ * tab" into a tick of its own.
  *
  * **The cadence is DISCLOSED on screen**, in `conv.doc.follows` in both string
  * tables, and the two are held together by
@@ -3920,16 +3921,21 @@ export function mountDocument(ctx, host, outline, back, roster = NO_LANES) {
    */
   let askedAt = 0;
   /**
-   * How close to the last ask a look-tick is dropped as a duplicate.
+   * Remove the look pair this document registered. A no-op until it does —
+   * `stopFollowing` is reachable from `stopWith` before the bottom of
+   * `mountDocument` runs, and a copy or a truncated document never registers
+   * at all.
    *
-   * **Sized against the collision it exists for, not against the interval.**
-   * One tab switch fires `visibilitychange` and `focus` within the same task,
-   * so the gap this has to swallow is microseconds; a quarter second is two
-   * orders of magnitude of slack over that and still a quarter of `TIP_MS`, so
-   * a reader who genuinely leaves and returns inside one interval is answered
-   * rather than debounced away.
+   * **`LOOK_GAP_MS` IS IMPORTED AND NO LONGER DECLARED HERE** —
+   * `plan:archive seq:29`. This screen chose the number and wrote the argument
+   * for it; `lib/heartbeat.js` carries both now, and carrying them twice is
+   * what that item was filed about. The argument has not changed: one tab
+   * switch fires `visibilitychange` and `focus` within the same task, so the
+   * gap to swallow is microseconds, and a quarter second is a quarter of
+   * `TIP_MS` — a reader who genuinely leaves and returns inside one interval is
+   * answered rather than debounced away.
    */
-  const LOOK_GAP_MS = 250;
+  let detachLook = () => {};
 
   /**
    * Is the reader at the end of the document?
@@ -3962,15 +3968,20 @@ export function mountDocument(ctx, host, outline, back, roster = NO_LANES) {
   const stopFollowing = () => {
     if (tipTimer !== 0) { clearInterval(tipTimer); tipTimer = 0; }
     window.removeEventListener('hashchange', onLeave);
-    // **THREE LISTENERS ARE ADDED AND THREE ARE REMOVED, and the two below are
-    // the ones that would leak.** `hashchange` is on `window` and the two here
-    // are on `document` and `window` — none of them dies with the well, so a
+    // **THREE LISTENERS ARE ADDED AND THREE ARE REMOVED, and the pair below is
+    // the one that would leak.** `hashchange` is on `window` and the look pair
+    // is on `document` and `window` — none of them dies with the well, so a
     // reader who opens six conversations in one session would otherwise leave
     // six `onLook` handlers behind and fire all six on the next tab focus.
     // `tick`'s `scroll.isConnected` guard makes each of them harmless, which is
     // exactly why the leak would never be noticed.
-    document.removeEventListener('visibilitychange', onLook);
-    window.removeEventListener('focus', onLook);
+    //
+    // **AND THE REMOVAL IS THE ONE `attachLook` HANDED BACK**, not two lines
+    // that restate the event names. Half a teardown is the same leak with a
+    // line of evidence that it was thought about, and the only way to make that
+    // unwritable is for the registration and the removal to be one value.
+    detachLook();
+    detachLook = () => {};
   };
 
   /**
@@ -4279,6 +4290,20 @@ export function mountDocument(ctx, host, outline, back, roster = NO_LANES) {
    *   - re-basing the interval is what stops a look-tick colliding with a
    *     SCHEDULED one: after a manual ask the next scheduled ask is a full
    *     `TIP_MS` away rather than whatever was left of the old period.
+   *
+   * ── WHAT IS SHARED WITH `lib/heartbeat.js` AND WHAT IS NOT ──────────────
+   *
+   * `plan:archive seq:29`. Shared: `attachLook` registers the pair and hands
+   * back the one removal, `shouldPing` is the gate, `LOOK_GAP_MS` is the
+   * number. Not shared, and `startLookTicks` is therefore NOT what this uses:
+   * that export debounces against its OWN last fire, and this debounces against
+   * `askedAt` — which the SCHEDULED `tick` writes too. At `TIP_MS` a look
+   * landing 50 ms after a scheduled `/tip` has to be dropped, and a private
+   * clock would not know the scheduled ask happened, so one return to the tab
+   * would become two requests a quarter-second apart. The other three things
+   * this owns are `tipTimer === 0` (a stopped follow has no look), the
+   * `scroll.isConnected` teardown, and the interval re-base — none of which a
+   * module with no interval and no well can hold.
    */
   function onLook() {
     if (tipTimer === 0) return;
@@ -4333,11 +4358,15 @@ export function mountDocument(ctx, host, outline, back, roster = NO_LANES) {
   if (outline.truncated !== true && !isCopy) {
     tipTimer = setInterval(tick, TIP_MS);
     window.addEventListener('hashchange', onLeave);
-    // Both, for the reason `onLook` gives: a tab switch fires the first and a
-    // window raised without a tab change fires only the second. Removed
-    // together in `stopFollowing`.
-    document.addEventListener('visibilitychange', onLook);
-    window.addEventListener('focus', onLook);
+    // **THE PAIR COMES FROM `lib/heartbeat.js`, WHICH IS THE ONE PLACE EITHER
+    // EVENT NAME IS SPELLED** — `plan:archive seq:29`. Both, for the reason
+    // `onLook` gives: a tab switch fires the first and a window raised without
+    // a tab change fires only the second, and registering one of the two leaves
+    // half the returns waiting for a throttled interval. Taking them from a
+    // function that registers both or neither is what makes adopting half of it
+    // impossible rather than merely discouraged. Removed in `stopFollowing`
+    // through the handle it returns.
+    detachLook = attachLook(document, window, onLook);
   } else if (outline.truncated === true) {
     follows.hidden = true;
   }
