@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: removeMissingSubagents only runs for sessions found on disk, so the lane rows of a session whose transcript is gone stay in the index for ever and an exported document draws a 'gone' link for each of them.
-summary_of: 8c55965196deb7b1
+summary_of: 5d47953c3b6bd291
 scope:
   - src/core/conversation-index.ts
 tags:
@@ -14,17 +14,17 @@ tags:
   - archive
   - "plan:archive"
   - "seq:35"
-  - "state:todo"
+  - "state:done"
 origin: human
 source_file: null
 source_anchor: null
 source_checksum: null
 valid_from: 2026-09-09
 valid_until: null
-checksum: 3b88da4b2b33d3cb
+checksum: 6b09c4da07e06f17
 plan: archive
 seq: "35"
-state: todo
+state: done
 ---
 
 # a pruned session's lane rows are never swept, so an exported document names lanes that are gone
@@ -63,3 +63,28 @@ is one extra `stat` per lane per list request and is a cost the list currently d
 
 (b) is the one that drops nothing, and it is the one this lane would have taken if the cost of
 statting a roster on the list path had been measured. It has not been. Measure it first.
+
+MEASURED AND BUILT 2026-09-09. (b) IS AFFORDABLE AND IS BUILT -- at a quarter of the price this item quoted for it, because the cost it feared is per-LANE and the one that answers the same question is per-DIRECTORY.
+
+THE MEASUREMENT THIS ITEM ASKED FOR, on this workspace, 268 lane rows across 2 sessions, warm cache, p50 of 21 runs:
+
+    GET /api/conversations as it stood                    4.024 ms
+    the grouped row count alone, today's lane cost        0.024 ms
+    one stat per lane, which is what this item costed     3.704 ms   (+92% on the request)
+        the stats alone, without the query                3.255 ms   (12-17 us per lane)
+    one readdir per lane DIRECTORY, which is what shipped 0.991 ms   (+25% on the request)
+        the listings alone, without the query             0.603 ms   (2.2 us per lane)
+
+Both answers agreed exactly -- 267 openable under one session and 1 under the other -- so the cheaper one is not an approximation of the dearer one, it is the same count reached in one syscall per session instead of one per lane. Every lane of a session lives in that session's single subagents/ directory, and countSubagentFiles already answers a neighbouring question this way for the status line, under the same rule: top-level *.jsonl only, the extension test alone.
+
+SO THE FORK IS SETTLED AS THIS ITEM WANTED IT SETTLED. Nothing is dropped: the rows stay, ConversationSummary.subagents still counts them, and ConversationSummary.openableSubagents beside it counts the ones whose transcript is on disk right now. Two facts, two fields -- the same shape bytes and fileBytes already have on that row, and for the same reason: a surface that had only the second could not say that anything was missing.
+
+The count is taken over the PAGE and not the archive, which is ConversationListBody.missing's own rule: the filesystem is asked only about rows the answer carries, so no number here is an estimate about rows nobody looked at. ConversationIndex.subagentFilesOf is bounded to the page's session ids for that reason.
+
+WHAT IT COSTS IN PRECISION, STATED. A directory entry that is not a readable file counts as openable here and would be refused by summariseSubagent's real stat one screen down. Nothing on disk has ever been in that state, the roster a reader opens next re-checks every row with a stat, and the alternative was four times the price on every list request for a distinction no measurement has shown.
+
+AND THE STATE THIS ITEM DESCRIBES IS REACHABLE BUT NOT YET REACHED HERE: measured 268 rows and 268 openable, so today the two numbers agree on this machine. It is constructed end to end in test/ui/conversations-kept.test.ts instead -- a marked session, its transcript and its whole lane directory pruned, the mirror keeping the session -- and the row there says 2 lanes, 0 openable, which is the sentence this item is about.
+
+(c) was not re-proposed. (a) was not taken.
+
+WHAT IS NOT DONE, AND IT IS ONE LINE. The screen still draws conv.lanes from subagents alone: src/ui/public/screens/conversations.js and src/ui/public/styles.css were being edited by another lane at the same minute and were not touched by this one. The field is served on every list row for that lane to read, and en.js has no string for it yet -- a string with nothing drawing it would be dead weight.
