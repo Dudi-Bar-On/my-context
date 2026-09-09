@@ -168,7 +168,18 @@ export const strings = {
   'conv.untitled': 'Untitled session',
   'conv.titleByModel': '(named by the model)',
   'conv.counts': '{prompts} asked · {answers} answered · {machinery} tool steps',
+  // ── A SESSION KEPT OUTSIDE THE PROJECT — plan:archive seq:4 and seq:5 ──
+  //
+  // Two words for one column with three values. `conv.exported` shipped
+  // unreachable in seq:1 because `source` was hard-coded `'live'`; it is
+  // now the ORPHANED state — the transcript is gone and the copy is what a
+  // reader has — and `conv.persisted` is the state where both files exist.
+  // They must not blur: only one of them means the original can no longer
+  // be checked.
   'conv.exported': 'Exported copy',
+  'conv.persisted': 'Kept outside the project',
+  'conv.keptBehind': '{bytes} not copied yet',
+  'conv.keptStopped': 'The copy has stopped keeping up',
   'conv.pruned': 'File deleted',
   'conv.scanCapped': 'Counts are a minimum',
   'conv.lane': '{n} helper agent',
@@ -252,12 +263,23 @@ export const strings = {
   'conv.doc.noMatch': 'Nothing in this session matches.',
   'conv.doc.matched': '{shown} of {total} sections match. The search reads the first {peek} characters of each turn and the tools each run used, not every word of the file.',
   'conv.doc.follows': 'This session may still be being written. New turns are looked for every second while this tab is in front, and at once when you come back to it.',
+  // What the follow line says on a copy. It replaces the sentence above
+  // rather than being hidden: a document that says nothing about following
+  // cannot be told from one whose following broke.
+  'conv.doc.static': 'This is a kept copy and it cannot grow, so nothing is being looked for. What you are reading is everything that was copied.',
+  'conv.doc.isKept': 'A copy of this session is kept outside the project, and is brought up to date at the end of each of your turns. You are reading the original.',
+  'conv.doc.isCopy': 'You are reading a KEPT COPY. The session this came from is no longer on your disk, so nothing here can be checked against it. The copy holds this conversation and nothing else — a helper agent it dispatched can be opened only while that agent’s own transcript is still on your disk.',
   'conv.doc.newBelow': '{n} new below — go to the end',
   'conv.doc.replaced': 'This transcript was replaced rather than added to, so what is on screen is no longer where the file is. Reload the page to read it as it stands.',
   'conv.doc.truncated': 'This session is longer than this reader walks. {bytes} bytes were read, and the document ends there.',
   'conv.doc.unreadable': '{n} lines in this file would not parse. They are counted, never skipped.',
   'conv.doc.lane': 'Open this agent’s transcript in a new tab — {records} records',
   'conv.doc.laneGone': 'This agent’s transcript is no longer on disk, so there is nothing to open.',
+  // The third answer a dispatching step can carry, beside the link and the
+  // gone one. A copy holds the session and not its helper agents — 615.3 MB
+  // of lanes against 65 MB of session in this workspace — and a link that
+  // silently did nothing would be worse than one that says why.
+  'conv.doc.laneNotKept': 'This helper agent is not in the copy, so there is nothing to open.',
   'conv.doc.lanesUnlinked': '{n} of {total} helper transcripts here record no dispatching turn, so no turn on this page opens them.',
   'conv.doc.lanesUnread': 'The helper transcripts could not be read, so no turn on this page opens one.',
   'conv.doc.laneOf': 'A helper agent’s transcript, not a session of its own.',

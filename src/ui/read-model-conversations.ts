@@ -86,7 +86,7 @@
 import {
   ConversationIndex, ConversationIndexIncompleteError, ConversationIndexUninitializedError,
   classifyTurn, spanMs, staleBy, transcriptDir, truncatedScan,
-  type ConversationRow, type SubagentRow,
+  type ConversationRow, type PersistedRow, type SubagentRow,
 } from '../core/conversation-index.ts';
 import { closeSync, openSync, readSync, statSync } from 'node:fs';
 import path from 'node:path';
@@ -294,6 +294,30 @@ export interface ConversationSummary {
    * that count is the only thing on the row that explains why it is there.
    */
   matchedLanes: number | null;
+  /**
+   * **How much of this session the copy outside the project holds** —
+   * `plan:archive seq:4`, `null` when the session is not being kept.
+   *
+   * `null` and a number are different facts and the screen must not blur them
+   * (`STD-a-measured-zero-is-drawn-and-named-an-unmeasured-thing-is`): `null`
+   * is "nobody asked for this to be kept", and a number is a measured length.
+   * With `fileBytes` beside it — the same `stat` that answered `present` — the
+   * reader can see whether the copy is CURRENT with the file or behind it,
+   * which is the difference `seq:5` requires never to blur.
+   *
+   * On a row whose `source` is `'exported'` the two are the same file, so the
+   * difference is zero by construction and the screen says the original is
+   * gone rather than that the copy is current.
+   */
+  keptBytes: number | null;
+  /** When the copy last caught up, or `null` when the session is not kept. */
+  keptAt: string | null;
+  /**
+   * Why the copy stopped keeping up, or `null` while it is keeping up. A copy
+   * that can no longer follow its file must not look finished —
+   * `INV-nothing-is-dropped-silently`.
+   */
+  keptNote: string | null;
   scannedAt: string;
 }
 
@@ -399,6 +423,7 @@ export interface ConversationListBody {
  */
 function summarise(
   row: ConversationRow, subagents: number, matchedLanes: number | null,
+  kept: PersistedRow | null = null,
 ): ConversationSummary {
   let present = false;
   let fileBytes: number | null = null;
@@ -436,6 +461,9 @@ function summarise(
     subagents,
     durationMs: spanMs(row),
     matchedLanes,
+    keptBytes: kept === null ? null : kept.bytes,
+    keptAt: kept === null ? null : kept.mirroredAt,
+    keptNote: kept === null ? null : kept.note,
     scannedAt: row.scannedAt,
   };
 }
@@ -659,10 +687,16 @@ export function apiConversations(ws: Workspace, url: URL): JsonResult {
     });
 
     const page = matched.slice(offset, offset + limit);
+    // The standing marks, read once for the whole page rather than per row:
+    // `plan:archive seq:4` puts at most a handful of rows in this table, and a
+    // query per session would be a cost proportional to the LIST for a fact
+    // proportional to the marks.
+    const kept = new Map(index.persisted().map((mark) => [mark.sessionId, mark]));
     const conversations = page.map((row) => summarise(
       row,
       laneCounts.get(row.sessionId) ?? 0,
       laneMatches === null ? null : (laneMatches.get(row.sessionId) ?? 0),
+      kept.get(row.sessionId) ?? null,
     ));
     const body: ConversationListBody = {
       conversations,

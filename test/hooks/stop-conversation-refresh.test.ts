@@ -385,3 +385,64 @@ test('what the refresh did reaches the audit row, because stdout leaves no trace
     assert.match(String(rows[0]?.note), /the assistant turn ended/);
   });
 });
+
+/**
+ * **THE MIRRORS REACH THE AUDIT ROW, AND ONLY WHEN THEY MOVED** —
+ * `plan:archive seq:4`.
+ *
+ * The mark is a standing instruction acted on by a background hook, so the
+ * audit row is the ONLY place a person can later find out that bytes were
+ * copied out of the harness's directory on their behalf. `stdout` leaves no
+ * trace, and the copy itself carries no history.
+ *
+ * The same rule the refresh above lives by, in both directions: a turn on
+ * which every copy was already current says nothing — `Stop` fires on every
+ * assistant turn and a per-turn "still current" line would drown the one line
+ * that says where an exchange ended — and `marked > 0` on its own is NOT
+ * movement, which is the half a later reader is most likely to get wrong.
+ */
+test('a copy that took bytes says so in the audit row, and a current one is silent', () => {
+  const base: RebuildReport = {
+    dir: '/w', found: 1, scanned: 0, appended: 0, skipped: 1, removed: 0,
+    truncated: [], bytesRead: 0, ms: 2,
+    subagents: {
+      found: 0, scanned: 0, appended: 0, skipped: 0, removed: 0,
+      truncated: [], unlinked: 0, bytesRead: 0,
+    },
+  };
+  const mirror = {
+    dir: '/kept', marked: 1, advanced: 0, bytesWritten: 0,
+    orphaned: [] as string[], broken: [] as string[], cleared: [] as string[], ms: 1,
+  };
+
+  assert.equal(
+    refreshNote({ ...base, mirror }), '',
+    'a mark whose copy was already current is the ordinary turn and must stay silent',
+  );
+
+  const advanced = refreshNote({
+    ...base, mirror: { ...mirror, advanced: 1, bytesWritten: 19_153 },
+  });
+  assert.match(advanced, /1 kept copy\(s\) took 19153 new byte\(s\)/);
+
+  // The state the mark exists for, and it happens exactly once per session:
+  // the transcript is gone and the copy is now what the archive reads.
+  const orphaned = refreshNote({ ...base, mirror: { ...mirror, orphaned: ['s1'] } });
+  assert.match(orphaned, /now read from their copy because the transcript is gone/);
+
+  // And the two failures, which a reader must be able to find later: a copy
+  // that can no longer follow its file, and a mark whose copy was deleted.
+  assert.match(
+    refreshNote({ ...base, mirror: { ...mirror, broken: ['s1'] } }),
+    /1 copy\(s\) can no longer keep up/,
+  );
+  assert.match(
+    refreshNote({ ...base, mirror: { ...mirror, cleared: ['s1'] } }),
+    /1 mark\(s\) dropped because the copy is gone/,
+  );
+
+  // A mirror pass that FAILED is not a pass that found nothing —
+  // `STD-a-measured-zero-is-drawn-and-named-an-unmeasured-thing-is`. Neither
+  // says anything here, and the two are told apart by the field itself.
+  assert.equal(refreshNote({ ...base, mirror: null }), '');
+});

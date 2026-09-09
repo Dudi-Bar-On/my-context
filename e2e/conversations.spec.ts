@@ -1603,10 +1603,18 @@ test.describe('a conversation chip draws its own glyph, and only there', () => {
  * alive where a chip asks for it and the colour vocabulary is untouched
  * everywhere else.
  *
- * The two dead call sites this cannot reach are `conv.scanCapped` (needs a
- * 256 MB transcript) and `conv.exported` (needs the export `plan:archive`
- * seq:4/5 has not shipped — `source` is hard-coded `'live'` in
- * `conversation-index.ts` today, so no row can carry it yet).
+ * The one dead call site this cannot reach is `conv.scanCapped`, which needs a
+ * 256 MB transcript.
+ *
+ * **`conv.exported` WAS the second one, and it is not any more.** This comment
+ * read *"needs the export `plan:archive` seq:4/5 has not shipped — `source` is
+ * hard-coded `'live'` in `conversation-index.ts` today, so no row can carry it
+ * yet"*, which was exactly right when it was written and stopped being true on
+ * 2026-09-09: `source` now carries `'live'`, `'persisted'` and `'exported'`.
+ * The chip is drawn, and its glyph is read off the cascade the way the two
+ * below are, in `e2e/conversations-kept.spec.ts` — a fixture of its own,
+ * because reaching that state needs a copy taken and a transcript deleted
+ * afterwards, which is a different setup from this block's.
  */
 test.describe('the archive draws its own glyphs where the item said it did not', () => {
   let glyphs: UiHarness;

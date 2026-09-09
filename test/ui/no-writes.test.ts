@@ -280,6 +280,26 @@ const WRITERS: Record<string, string[]> = {
   // in order to call `openReadOnlyChecked`, and naming the class would redden
   // the ban on a binding that was routed AROUND the write.
   'src/core/conversation-index.ts': ['rebuildConversations', 'forgetConversations'],
+  // **Landed 2026-09-09 with `mycontext conversation persist` (`plan:archive
+  // seq:4`), and the DERIVATION demanded it** — unlike the entry above, which
+  // was judgement. This module writes a mirror of a session transcript through
+  // `node:fs`, outside the project, so the membership scan sees every one of
+  // its calls and the key is not optional.
+  //
+  // It is a module of its own for precisely that reason. Putting the mirror
+  // beside `rebuildConversations` would have put `node:fs` writes into a
+  // module whose `WRITES_WITHOUT_FS` entry rests on there being none, and that
+  // set's own header says what that costs: the orphan check would stop proving
+  // the entry earns its place. So the SQLite write and the filesystem write
+  // stay in separate modules and their callers compose them.
+  //
+  // `mirrorRoot`, `mirrorDir` and `mirrorPath` are deliberately NOT named:
+  // they are pure path arithmetic, and a read surface that wanted to SAY where
+  // a copy lives should be able to. Naming them would redden the ban on a
+  // binding that writes nothing — `ConversationIndex`' reason, one module out.
+  'src/core/conversation-mirror.ts': [
+    'persistSession', 'unpersistSession', 'advanceMirrors',
+  ],
   'src/core/config.ts': [
     'deleteCustomCategory', 'disableCategory', 'setConfigField', 'unsetConfigListEntries',
   ],

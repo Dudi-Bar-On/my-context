@@ -3,6 +3,7 @@ import {
   ConversationIndex, ConversationIndexIncompleteError, rebuildConversations,
   type RebuildReport,
 } from '../core/conversation-index.ts';
+import { advanceMirrors, type MirrorReport } from '../core/conversation-mirror.ts';
 import {
   occupancyStandDownLine, readOccupancy, type UnmeasurableWhy,
 } from '../core/context-occupancy.ts';
@@ -565,7 +566,7 @@ function discardedWriteClause(upkeep: Upkeep): string {
 
 export function observeStop(
   input: HookInput, root: string, upkeep: Upkeep | null = null,
-  refresh: RebuildReport | null = null,
+  refresh: ConversationRefresh | null = null,
 ): Observation | null {
   // `stop_hook_active` is the platform's re-entrancy guard: true when this turn
   // is continuing BECAUSE a stop hook asked it to. Nothing here ever asks — the
@@ -645,7 +646,7 @@ function askVerdictClause(
  * the same object it always was to every test that imports it.
  */
 export function stopSpec(
-  upkeep: Upkeep | null, refresh: RebuildReport | null = null,
+  upkeep: Upkeep | null, refresh: ConversationRefresh | null = null,
 ): ObservationSpec {
   return {
     hook: 'Stop',
@@ -746,7 +747,18 @@ export const REFRESH_BUSY_TIMEOUT_MS = 300;
  * Never throws (`INV-hooks-fail-open`). A refresh that failed is a turn whose
  * tail is read next turn instead.
  */
-export function stopConversationRefresh(input: HookInput): RebuildReport | null {
+/**
+ * What one turn's refresh did — the index scan, and the mirrors beside it.
+ *
+ * One value rather than two returns because they are one turn's worth of
+ * upkeep and `refreshNote` writes one clause about it. `mirror` is `null` when
+ * the mirror pass itself failed, which is a different fact from a pass that
+ * found nothing to do (`marked: 0`) and must not read as one —
+ * `STD-a-measured-zero-is-drawn-and-named-an-unmeasured-thing-is`.
+ */
+export type ConversationRefresh = RebuildReport & { mirror?: MirrorReport | null };
+
+export function stopConversationRefresh(input: HookInput): ConversationRefresh | null {
   try {
     if (input.agent_id !== undefined) return null;
     const root = findProjectRoot(input.cwd ?? process.cwd());
@@ -796,9 +808,39 @@ export function stopConversationRefresh(input: HookInput): RebuildReport | null 
       if (!(err instanceof ConversationIndexIncompleteError)) return null;
     }
 
-    return rebuildConversations(dbPath, process.env, path.dirname(root), {
+    const report = rebuildConversations(dbPath, process.env, path.dirname(root), {
       busyTimeoutMs: REFRESH_BUSY_TIMEOUT_MS,
     });
+    // ── THE MIRRORS, ON THE SAME TURN AND FOR THE SAME REASON ────────────
+    //
+    // `plan:archive seq:4`. The owner's ruling is that a session marked to be
+    // kept must be kept CURRENT — *"EVERY CHANGE IN A SESSION FILE SHOULD ALSO
+    // BE WRITTEN TO ITS PERSISTENT EXTERNAL FILE IN ORDER NOT TO LOSE
+    // CONTENT."* A mark is worthless if nothing acts on it, and this is the
+    // only writer in this product that runs by itself.
+    //
+    // **It is affordable for the reason the refresh above is**: a transcript
+    // only appends, so a marked session costs one `stat` when it has not
+    // moved and a write of the SAME delta the scan has just read when it has.
+    // A workspace with no marks costs one query of an empty table.
+    //
+    // AFTER the refresh, never inside it: `rebuildConversations` writes only
+    // through `node:sqlite` and `test/ui/no-writes.test.ts` names it in
+    // `WRITES_WITHOUT_FS` on exactly that basis, so the filesystem write is a
+    // separate module composed here.
+    //
+    // Its own `try`, because the two failures are different: a refresh that
+    // threw has left the index behind by one turn and the next turn fixes it,
+    // while a mirror that threw must not cost the refresh its report.
+    let mirror: MirrorReport | null = null;
+    try {
+      mirror = advanceMirrors(dbPath, process.env, path.dirname(root), {
+        busyTimeoutMs: REFRESH_BUSY_TIMEOUT_MS,
+      });
+    } catch {
+      mirror = null;
+    }
+    return { ...report, mirror };
   } catch {
     return null;
   }
@@ -823,7 +865,7 @@ export function stopConversationRefresh(input: HookInput): RebuildReport | null 
  * back to whole re-reads on every turn — which is a defect nothing else would
  * report.
  */
-export function refreshNote(report: RebuildReport | null): string {
+export function refreshNote(report: ConversationRefresh | null): string {
   if (report === null) return '';
   // **The lanes count as movement.** They have to be in this sum and not only
   // in the clause below: a turn in which the session's own transcript was
@@ -833,7 +875,15 @@ export function refreshNote(report: RebuildReport | null): string {
   // reading, which is why the assertion for it names this sentence.
   const agentsMoved = report.subagents.scanned + report.subagents.appended
     + report.subagents.removed;
-  const moved = report.appended + report.scanned + report.removed + agentsMoved;
+  // **The mirrors count as movement too, on the same rule** (`plan:archive
+  // seq:4`). A turn that copied bytes out of the harness's directory on the
+  // owner's standing instruction is a turn a person would want to find later;
+  // "every mirror was already current" is not. `marked > 0` alone is NOT
+  // movement, for that exact reason.
+  const mirror = report.mirror ?? null;
+  const mirrorMoved = mirror === null ? 0
+    : mirror.advanced + mirror.orphaned.length + mirror.broken.length + mirror.cleared.length;
+  const moved = report.appended + report.scanned + report.removed + agentsMoved + mirrorMoved;
   if (moved === 0) return '';
   const parts: string[] = [];
   if (report.appended > 0) {
@@ -863,6 +913,27 @@ export function refreshNote(report: RebuildReport | null): string {
       );
     }
     parts.push(`${lanes.join(', ')} (${agents.bytesRead} byte(s))`);
+  }
+  if (mirror !== null && mirrorMoved > 0) {
+    const kept: string[] = [];
+    if (mirror.advanced > 0) {
+      kept.push(
+        `${mirror.advanced} kept copy(s) took ${mirror.bytesWritten} new byte(s)`,
+      );
+    }
+    if (mirror.orphaned.length > 0) {
+      kept.push(
+        `${mirror.orphaned.length} session(s) are now read from their copy because the ` +
+        'transcript is gone',
+      );
+    }
+    if (mirror.broken.length > 0) {
+      kept.push(`${mirror.broken.length} copy(s) can no longer keep up`);
+    }
+    if (mirror.cleared.length > 0) {
+      kept.push(`${mirror.cleared.length} mark(s) dropped because the copy is gone`);
+    }
+    parts.push(kept.join(', '));
   }
   return `; the conversation index was refreshed — ${parts.join(', ')}, `
     + `${report.bytesRead} byte(s) in ${report.ms}ms`;

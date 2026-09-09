@@ -3,6 +3,10 @@ import {
   MAX_SCAN_BYTES, forgetConversations, rebuildConversations, transcriptDir, truncatedScan,
   type ConversationRow, type SubagentRow,
 } from '../../core/conversation-index.ts';
+import {
+  NotIndexedError, advanceMirrors, mirrorDir, persistSession, unpersistSession,
+  type MirrorReport,
+} from '../../core/conversation-mirror.ts';
 import { SUBCOMMAND_FLAGS } from '../../core/command-flags.ts';
 import type { Workspace } from '../../core/workspace.ts';
 import { toCliMessage } from './context.ts';
@@ -30,11 +34,12 @@ import { flag, hasFlag, positionals, registerCommand, type Emit } from './regist
  * `docs/superpowers/specs/2026-09-04-conversation-archive-design.md`.
  */
 
-export const SUBCOMMANDS = ['rebuild', 'list', 'subagents', 'forget'] as const;
+export const SUBCOMMANDS = ['rebuild', 'list', 'subagents', 'persist', 'forget'] as const;
 
 const USAGE = `usage: mycontext conversation rebuild [--full] [--json]
        mycontext conversation list [--limit <n>] [--json]
        mycontext conversation subagents [<session>] [--json]
+       mycontext conversation persist [<session>] [--off] [--yes] [--json]
        mycontext conversation forget [--yes] [--json]`;
 
 const CONVERSATION_FLAGS = SUBCOMMAND_FLAGS['conversation'];
@@ -155,15 +160,60 @@ function reportLines(report: ReturnType<typeof rebuildConversations>): string[] 
   return lines;
 }
 
+/**
+ * What the mirror pass did, printed only when there is a mark to print about.
+ *
+ * A workspace with nothing persisted says nothing here, and that is not an
+ * omission: `mycontext conversation persist` is the one thing that creates a
+ * mark, so "0 mirrors" on every rebuild in every workspace would be a line
+ * about a feature the reader has not turned on.
+ */
+function mirrorLines(report: MirrorReport): string[] {
+  if (report.marked === 0) return [];
+  const lines = [
+    `my_context: ${report.marked} session(s) are kept outside this project in ${report.dir} — ` +
+    `${report.advanced} mirror(s) took ${report.bytesWritten} new byte(s) this run`,
+  ];
+  if (report.orphaned.length > 0) {
+    lines.push(
+      `my_context: ${report.orphaned.length} of them no longer have a transcript on disk, so ` +
+      'the copy is now the only one there is and the archive reads it in place: ' +
+      `${report.orphaned.join(', ')}`,
+    );
+  }
+  if (report.broken.length > 0) {
+    lines.push(
+      `my_context: ${report.broken.length} mirror(s) can no longer keep up — the file they ` +
+      'were copied from was replaced rather than appended to. What they hold is everything up ' +
+      'to that point, and re-running `mycontext conversation persist <session>` starts a fresh ' +
+      `copy: ${report.broken.join(', ')}`,
+    );
+  }
+  if (report.cleared.length > 0) {
+    lines.push(
+      `my_context: ${report.cleared.length} mark(s) were dropped because their copy is no ` +
+      'longer on disk. Nothing was re-copied — that is a decision to take, not one to make on ' +
+      `your behalf: ${report.cleared.join(', ')}`,
+    );
+  }
+  return lines;
+}
+
 function cmdConversationRebuild(ws: Workspace, root: string, args: string[], out: Emit): number {
   const report = rebuildConversations(ws.dbPath, process.env, workspaceCwd(root), {
     full: hasFlag(args, 'full'),
   });
+  // AFTER the scan, never inside it. `rebuildConversations` writes only
+  // through `node:sqlite` and is named in `test/ui/no-writes.test.ts`'
+  // `WRITES_WITHOUT_FS` on exactly that basis; the filesystem write lives in
+  // `core/conversation-mirror.ts` and the two are composed here.
+  const mirror = advanceMirrors(ws.dbPath, process.env, workspaceCwd(root));
   if (wantsJson(args)) {
-    emitJson(out, report);
+    emitJson(out, { ...report, mirror });
     return 0;
   }
   for (const line of reportLines(report)) out(line);
+  for (const line of mirrorLines(mirror)) out(line);
   return 0;
 }
 
@@ -465,6 +515,266 @@ function cmdConversationSubagents(ws: Workspace, root: string, args: string[], o
 }
 
 /**
+ * **The sentence a copy that leaves this machine has to carry, said FIRST.**
+ *
+ * `plan:archive seq:11`'s lane put exactly such a sentence (`conv.sensitive`)
+ * at the top of the archive's own help on the screen, and this follows that
+ * precedent rather than inventing a policy of its own. It is not a gate and
+ * does not redact anything: the security work on the archive is not this
+ * lane's, and refusing to build the copy would not have made the transcript
+ * any less readable where it already sits.
+ *
+ * What it does is put the fact in front of the person at the one moment it is
+ * actionable — before they agree to make a file they can hand to somebody.
+ * A session transcript carries full tool-call inputs and full tool results, so
+ * a key that was pasted into a prompt, or read by a command whose output the
+ * transcript recorded, is in the copy verbatim.
+ */
+const WHAT_A_COPY_HOLDS =
+  'my_context: a copy of a session holds everything you and Claude typed AND every tool call '
+  + 'with its full input and its full result — so whatever was pasted, printed or read along '
+  + 'the way is in it verbatim: keys, tokens, someone else\'s data. This copy lives outside '
+  + 'your project and outside your repository, which means it is a file you can send and a '
+  + 'file no `.gitignore` is protecting.';
+
+/**
+ * `mycontext conversation persist` — **the standing mark, and the mirror that
+ * keeps up with it.** `plan:archive seq:4`.
+ *
+ * ── WHY THIS IS PERSISTENCE AND NOT AN EXPORT, WHICH THE ITEM RE-CUT ──────
+ *
+ * The owner's ruling of 2026-09-07: *"EVERY CHANGE IN A SESSION FILE SHOULD
+ * ALSO BE WRITTEN TO ITS PERSISTENT EXTERNAL FILE IN ORDER NOT TO LOSE
+ * CONTENT."* A one-shot export of a session still being written captures half
+ * of it and says nothing about which half. So the act here is a MARK, and
+ * `advanceMirrors` — on this command's `rebuild` sibling and on the `Stop`
+ * hook — is what keeps it true.
+ *
+ * **Export is not a second command, because the mirror IS the export.** It is
+ * one ordinary `.jsonl` at a stable path this command prints. A separate
+ * `export` verb would put two copies of one session on disk for the two
+ * commands to disagree about, which is the defect this repository spent
+ * 2026-09-07 measuring in its own documents, wearing a filesystem.
+ *
+ * ── `--yes` AND NOT `--count`, AND THE ITEM ASKED FOR THE ARGUMENT ────────
+ *
+ * The project's own distinction: `--yes` is for a command performing ONE
+ * write, `--count` for a command acting on N items, because stating the number
+ * IS the agreement. This takes one named session and writes one file. There is
+ * no `--all`, deliberately — a flag that persisted every session on the machine
+ * would be a single keystroke copying gigabytes of transcript out of the
+ * harness's directory, which is precisely the act that should be typed one
+ * session at a time.
+ *
+ * ── WHICH SIDE OF THE APPROVAL BOUNDARY, AND WHY ──────────────────────────
+ *
+ * It takes `--yes`, so it is GATED; it is not on the approval boundary, and
+ * `test/helpers/approval-boundary.ts`' `OUTSIDE_BOUNDARY` carries the reason.
+ * The boundary's own working definition is "changes what governs this project
+ * with no human in the loop". This creates no item, retires none, promotes
+ * none and puts no text in front of a model — it copies the reader's own
+ * transcript to the reader's own home directory. Putting it in §7's table
+ * would claim that keeping a copy of your own conversation changes what
+ * governs this corpus, which is a false claim in a document whose whole value
+ * is that it is exact. The gate is real and is about something else: a write
+ * that leaves the project is an act that asks.
+ */
+/**
+ * Has anybody scanned here? Asked through the READ door, which creates
+ * nothing — the whole of what makes the archive opt-in.
+ *
+ * `false` is answered with the sentence and the command that would change it,
+ * so a refusal is never a dead end.
+ */
+function indexExists(ws: Workspace, out: Emit): boolean {
+  try {
+    ConversationIndex.openReadOnlyChecked(ws.dbPath).close();
+    return true;
+  } catch (err) {
+    if (err instanceof ConversationIndexUninitializedError
+      || err instanceof ConversationIndexIncompleteError) {
+      out('my_context: nothing is indexed in this workspace yet, so no session is being kept.');
+      out('my_context: run `mycontext conversation rebuild` first.');
+      return false;
+    }
+    throw err;
+  }
+}
+
+function cmdConversationPersist(ws: Workspace, root: string, args: string[], out: Emit): number {
+  const json = wantsJson(args);
+  const [, asked] = positionals(args, ['limit']);
+  const cwd = workspaceCwd(root);
+
+  if (hasFlag(args, 'off')) {
+    if (asked === undefined) {
+      out('my_context: `--off` needs the session to stop keeping.\n\n' + USAGE);
+      return 1;
+    }
+    // **THE OPT-IN GATE, AND THIS BRANCH IS THE ONE THAT MOST WANTS TO SKIP
+    // IT.** `unpersistSession` opens the index for WRITE, and
+    // `ConversationIndex.open` is the only thing that creates these tables —
+    // so a bare `persist --off` in a workspace nobody has ever scanned would
+    // CREATE them, and the end-of-turn refresh, which gates on their
+    // existence, would start reading that machine's transcripts. Turning
+    // something off is the last act that should turn the archive on.
+    if (!indexExists(ws, out)) return 1;
+    const result = unpersistSession(ws.dbPath, asked);
+    if (json) {
+      emitJson(out, result);
+      return 0;
+    }
+    if (!result.unmarked) {
+      out(`my_context: session ${asked.slice(0, 8)} was not being kept, so nothing changed.`);
+      return 0;
+    }
+    out(
+      `my_context: session ${asked.slice(0, 8)} is no longer kept up to date. The copy is left ` +
+      `exactly where it is — ${result.file} — because deleting it could destroy the only ` +
+      'remaining record of a conversation, and this command only stops the copying.',
+    );
+    return 0;
+  }
+
+  if (asked === undefined) return listPersisted(ws, cwd, out, json);
+
+  let index: ConversationIndex;
+  try {
+    index = ConversationIndex.openReadOnlyChecked(ws.dbPath);
+  } catch (err) {
+    if (err instanceof ConversationIndexUninitializedError
+      || err instanceof ConversationIndexIncompleteError) {
+      out('my_context: nothing is indexed in this workspace yet, so there is no session to keep.');
+      out(
+        'my_context: run `mycontext conversation rebuild` to scan ' +
+        `${transcriptDir(process.env, cwd)}`,
+      );
+      return 1;
+    }
+    throw err;
+  }
+  let row: ConversationRow | null;
+  let already: boolean;
+  try {
+    row = index.get(asked);
+    already = row !== null && index.persistedOf(asked) !== null;
+  } finally {
+    index.close();
+  }
+  if (row === null) {
+    out(
+      `my_context: no indexed session "${asked}". \`mycontext conversation list\` names the ` +
+      'ones this workspace has scanned.',
+    );
+    return 1;
+  }
+
+  // The preview, then the question. The order every gated command in this
+  // product uses, and the sensitivity sentence is FIRST inside it.
+  if (!hasFlag(args, 'yes') && !json) {
+    out(WHAT_A_COPY_HOLDS);
+    out(
+      `my_context: about to copy session ${asked.slice(0, 8)} — ${row.records} record(s), ` +
+      `${row.bytes} byte(s) — from ${row.file} to ` +
+      `${mirrorDir(process.env, cwd)}, and to keep that copy up to date at the end of every ` +
+      'assistant turn from now on. Nothing is copied into your repository and nothing here is ' +
+      'sent anywhere; `mycontext conversation persist --off ' + asked.slice(0, 8) + '` stops ' +
+      'the copying and leaves the file.',
+    );
+  }
+  if (!confirmAction(args, out, 'Keep a copy of this session outside the project?')) return 1;
+
+  try {
+    const result = persistSession(ws.dbPath, process.env, cwd, asked);
+    if (json) {
+      emitJson(out, { ...result, already });
+      return 0;
+    }
+    out(
+      `my_context: ${result.written} byte(s) written; the copy holds ${result.bytes} of ` +
+      `${row.bytes} byte(s) in ${result.ms}ms.`,
+    );
+    out(`my_context: ${result.file}`);
+    if (result.bytes < row.bytes) {
+      // The tail stops at the last whole line, so a transcript caught
+      // mid-record is short by exactly that record and says so rather than
+      // letting a partial copy look complete — `INV-nothing-is-dropped-silently`.
+      out(
+        `my_context: ${row.bytes - result.bytes} byte(s) at the end were a record still being ` +
+        'written, so they were not copied. The next turn takes them whole.',
+      );
+    }
+    out(
+      'my_context: it is kept up to date at the end of every assistant turn, and by ' +
+      '`mycontext conversation rebuild`. If the original is ever deleted, this copy is what ' +
+      'the archive reads and the session stays in the list, marked as the copy.',
+    );
+    return 0;
+  } catch (err) {
+    if (err instanceof NotIndexedError) {
+      out(err.message);
+      return 1;
+    }
+    throw err;
+  }
+}
+
+/** Every mark, and where the copy is — the answer to a bare `persist`. */
+function listPersisted(ws: Workspace, cwd: string, out: Emit, json: boolean): number {
+  let index: ConversationIndex;
+  try {
+    index = ConversationIndex.openReadOnlyChecked(ws.dbPath);
+  } catch (err) {
+    if (err instanceof ConversationIndexUninitializedError
+      || err instanceof ConversationIndexIncompleteError) {
+      if (json) {
+        emitJson(out, { persisted: [], total: 0, indexed: false, dir: mirrorDir(process.env, cwd) });
+        return 0;
+      }
+      out('my_context: nothing is indexed in this workspace yet, so nothing is being kept.');
+      return 0;
+    }
+    throw err;
+  }
+  try {
+    const marks = index.persisted();
+    if (json) {
+      emitJson(out, {
+        persisted: marks, total: marks.length, indexed: true, dir: mirrorDir(process.env, cwd),
+      });
+      return 0;
+    }
+    if (marks.length === 0) {
+      out(
+        'my_context: no session in this workspace is being kept outside the project — a ' +
+        'measured zero, not a question nobody asked.',
+      );
+      out(`my_context: \`mycontext conversation persist <session>\` starts one. ${USAGE}`);
+      return 0;
+    }
+    const drawn = table(
+      ['session', 'kept since', 'last copied', 'bytes', 'file'],
+      marks.map((mark) => [
+        mark.sessionId.slice(0, 8),
+        zonedStamp(mark.markedAt) ?? mark.markedAt,
+        zonedStamp(mark.mirroredAt) ?? mark.mirroredAt,
+        String(mark.bytes),
+        mark.file,
+      ]),
+    );
+    for (const line of drawn) out(line);
+    const broken = marks.filter((mark) => mark.note !== null);
+    for (const mark of broken) {
+      out(`my_context: ${mark.sessionId.slice(0, 8)} — ${mark.note}`);
+    }
+    out(`my_context: showing all ${marks.length}.`);
+    return 0;
+  } finally {
+    index.close();
+  }
+}
+
+/**
  * `mycontext conversation forget` — **the OFF position of the archive's
  * opt-in**, `plan:archive seq:9`.
  *
@@ -541,6 +851,20 @@ function cmdConversationForget(ws: Workspace, root: string, args: string[], out:
     `${transcriptDir(process.env, workspaceCwd(root))} again until you run \`mycontext ` +
     'conversation rebuild\` yourself.',
   );
+  // **The marks go and the copies stay, said out loud.** This command's whole
+  // argument is that it drops a cache the transcripts can rebuild; a mirror is
+  // the opposite kind of thing, and for an orphaned session it may be the only
+  // copy left. Deleting one here would destroy knowledge under a confirmation
+  // that promises it destroys none — `INV-nothing-is-dropped-silently` in the
+  // direction that matters most.
+  if (report.persisted > 0) {
+    out(
+      `my_context: ${report.persisted} session(s) were being kept outside this project and are ` +
+      'no longer kept up to date. The copies themselves are UNTOUCHED, in ' +
+      `${mirrorDir(process.env, workspaceCwd(root))} — deleting them is yours to do, not this ` +
+      'command\'s.',
+    );
+  }
   return 0;
 }
 
@@ -563,6 +887,7 @@ function cmdConversation(ws: Workspace, args: string[], out: Emit): number {
   try {
     if (subcommand === 'rebuild') return cmdConversationRebuild(ws, root, args, out);
     if (subcommand === 'subagents') return cmdConversationSubagents(ws, root, args, out);
+    if (subcommand === 'persist') return cmdConversationPersist(ws, root, args, out);
     if (subcommand === 'forget') return cmdConversationForget(ws, root, args, out);
     return cmdConversationList(ws, root, args, out);
   } catch (err) {

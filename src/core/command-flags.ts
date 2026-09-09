@@ -1460,6 +1460,13 @@ export const SUBCOMMAND_FLAGS: Record<string, Record<string, FlagSpec>> = {
     // is bounded by how many that session dispatched, and a bound nobody needs
     // is a bound nobody maintains.
     subagents: { allowed: ['json'], values: [] },
+    // `persist` (`plan:archive seq:4`) takes a POSITIONAL session id and
+    // `--yes`, not `--count`: it performs ONE write about ONE session, and
+    // this project spells that gate `--yes`. `--off` is the same command
+    // stopping, and it is a switch on this subcommand rather than a
+    // subcommand of its own because it acts on the same mark by the same id —
+    // a second verb would be a second place to keep the argument in step.
+    persist: { allowed: ['off', 'yes', 'json'], values: [] },
     // `forget` (`plan:archive seq:9`) is the OFF position of the archive's
     // opt-in and takes `--yes` for the reason every other destructive command
     // here does: it drops rows, and a command that drops rows asks first. It
@@ -1541,8 +1548,16 @@ export const SUBCOMMAND_FLAG_DECLARATIONS: Record<string, FlagDeclarations> = {
   conversation: {
     json: DETAIL.json,
     // `forget` drops rows (`plan:archive seq:9`), so it asks first like every
-    // other destructive command here.
+    // other destructive command here — and `persist` (`seq:4`) writes a file
+    // outside the project, which is an act that asks rather than one that
+    // happens.
     yes: YES,
+    off: {
+      note: 'Stop keeping a session outside the project. The copy is left exactly where it is '
+        + 'and only the copying stops, because deleting it could destroy the only remaining '
+        + 'record of a conversation — that is a decision to take, not one to make on your '
+        + 'behalf.',
+    },
     full: {
       note: 'Re-read every transcript instead of only those whose size or mtime has changed '
         + 'since the last scan. Both forms end at the same rows; this one pays for the '

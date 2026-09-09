@@ -1086,6 +1086,24 @@ const UNCATALOGUED: Record<string, string> = {
   'conversation forget': 'drops this workspace\'s conversation index, which is what stops '
     + 'the end-of-turn refresh reading transcripts here. It is a write and needs a def with '
     + 'an Execute behind it, exactly as `conversation rebuild` above does.',
+  // `plan:archive seq:4`, landed 2026-09-09 — the standing mark that keeps a
+  // session outside the project. UNCATALOGUED rather than WITHHELD, and the
+  // distinction is the one this table is for: it is a write with an obvious
+  // def and no argument against having one, and there is a real reason it
+  // would be the MOST useful of the five. It is the only conversation
+  // subcommand a reader would want to reach FROM A ROW they are looking at —
+  // "keep this one" is a decision taken about a specific session on the list,
+  // which is exactly what a Composer entry pre-filled from a row is for.
+  //
+  // It is not closed here because the entry needs an Execute behind it and a
+  // browser test that drives it, both of which belong to the palette lane; and
+  // because its preview says something a reader must actually READ before
+  // confirming (what a copy of a session holds), so a one-click path to it is
+  // a UI decision rather than a def.
+  'conversation persist': 'marks one session to be kept outside the project and copies it '
+    + 'there, keeping the copy up to date. It is a write and needs a def with an Execute '
+    + 'behind it, exactly as `conversation rebuild` above does — and, unlike the others, one '
+    + 'that carries its own disclosure of what a copy of a session holds.',
   'conversation subagents': 'the lanes one session dispatched, in the terminal '
     + '(`plan:archive seq:12`). It is `conversation list`\'s case exactly and is withheld for '
     + 'the same reason — a def would compose a read whose answer is on the screen the reader '

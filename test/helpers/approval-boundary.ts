@@ -180,6 +180,35 @@ export const OUTSIDE_BOUNDARY: Record<string, string> = {
   // rebuildable cache of your own transcripts changes what governs this
   // corpus, which is exactly the false-but-exact-looking claim this record
   // was created to keep out of that document.
+  // `plan:archive seq:4`, and it is the case that most looks like a member and
+  // is not. It WRITES A FILE OUTSIDE THE PROJECT — a mirror of a session
+  // transcript, under the global root — which is why it is gated at all: a
+  // write that leaves the project is an act that asks. But the boundary is a
+  // narrower claim than "asks", and it always has been: `statusline install`
+  // writes Claude Code's own settings file and is not a member either.
+  //
+  // Measured against the working definition — *changes what governs this
+  // project, with no human in the loop* — it fails on both halves. It creates
+  // no item, retires none, promotes none, and puts no text in front of a
+  // model; the corpus is not read and not written. And there is a human in the
+  // loop by construction: it takes one named session and copies one file, so
+  // there is no form of it that runs unattended over a corpus.
+  //
+  // Putting it in §7's table would claim that keeping a copy of your own
+  // conversation changes what governs this corpus. That is the false-but-
+  // exact-looking claim this record exists to keep out of a document whose
+  // whole value is that it is exact — and it would ALSO put the wrong thing on
+  // the deny list the skill reads, telling a model never to run the one
+  // command in this product that prevents a conversation being lost.
+  //
+  // What it is NOT excused from is being said out loud where a reader looks
+  // for it: §7's `--yes` flag row names it, the command's own preview names
+  // what a copy holds before it asks, and `test/plugin-assets.test.ts` holds
+  // that row to the parser's answer in both directions.
+  'conversation persist': 'copies one named session out to the global root and keeps that copy '
+    + 'up to date. It is gated because the write leaves the project, and it is off the '
+    + 'boundary because it touches no item, no config and nothing that governs — the transcript '
+    + 'it copies is the reader\'s own, and it was already on their disk',
   'conversation forget': 'drops the conversation index, which is a cache of the transcripts '
     + 'already on disk and is rebuilt by `mycontext conversation rebuild`. It touches no item, '
     + 'no config and nothing that governs — see test/hooks/stop-conversation-refresh.test.ts, '

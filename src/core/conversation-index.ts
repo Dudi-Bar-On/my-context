@@ -114,14 +114,27 @@ const CONVERSATION_TABLE_COLUMNS: [string, string[]][] = [
     'started_at', 'ended_at', 'prompts', 'answers', 'machinery', 'records', 'unreadable',
     'branch', 'cwd', 'scanned_at',
   ]],
+  ['persisted', ['session_id', 'file', 'bytes', 'marked_at', 'mirrored_at', 'note']],
 ];
 
 /**
  * `source` is a column rather than something inferred from a path, because the
  * owner asked for a live session and an exported copy to be distinguishable
  * wherever either appears, and a fact that important should not be re-derived
- * by every reader. Only `'live'` is written today; `'exported'` is step 5's,
- * and the column exists now so step 5 adds rows rather than a migration.
+ * by every reader.
+ *
+ * **Three values, and they are three answers to ONE question** — which file
+ * this row was read from, `plan:archive seq:4`/`seq:5`:
+ *
+ *   - `'live'`      the transcript the harness wrote, and nothing else.
+ *   - `'persisted'` that same transcript, with a mirror kept beside it.
+ *   - `'exported'`  the MIRROR. The original is gone and this copy is all
+ *                   there is, which is the state the mark exists for.
+ *
+ * They are ordered by how much a reader can still check: `'live'` can be
+ * verified against the harness's own file, `'persisted'` can, and `'exported'`
+ * cannot, because the thing it would be checked against no longer exists. The
+ * screen draws the last two apart for that reason rather than for tidiness.
  *
  * `scanned_bytes` beside `bytes` is the truncation disclosure in the row
  * itself: they are equal for a transcript read whole, and `scanned_bytes <
@@ -152,11 +165,11 @@ const CONVERSATION_TABLE_COLUMNS: [string, string[]][] = [
  *     `session_id` pointed at somebody else's row — a field whose meaning
  *     flips on a discriminator, which is the defect this repository spent
  *     2026-09-07 measuring in its own documents.
- *   - **`source` cannot be the discriminator.** It is hard-coded to `'live'`
- *     and `'exported'` is reserved for step 5 (which is why `conv.exported`'s
- *     chip is unreachable — `seq:4`/`seq:5`). Spending that column on a third
- *     meaning would take the word step 5 was designed around and make one
- *     already-unreachable state into two.
+ *   - **`source` cannot be the discriminator.** It answers which FILE a row was
+ *     read from — `'live'`, `'persisted'`, `'exported'` (`seq:4`/`seq:5`) —
+ *     and spending that column on "is this a lane" would be a field whose
+ *     meaning flips on what is being looked at, which is the defect the bullet
+ *     above this one is about.
  *   - **The list is 2 sessions against 253 subagents**, and `all()` is capped
  *     at 200 rows. Merged, the two real conversations would sort below a
  *     hundred lanes and the archive screen would answer a question nobody
@@ -168,6 +181,39 @@ const CONVERSATION_TABLE_COLUMNS: [string, string[]][] = [
  * There is deliberately no `source` column here. A second hard-coded `'live'`
  * would be a second copy of a discriminator that is already known not to work,
  * and step 5 can add the column when it has a second value to put in it.
+ *
+ * ── `persisted` IS THE STANDING MARK, AND IT IS NOT A SECOND `source` ──────
+ *
+ * `plan:archive seq:4`. The owner's ruling of 2026-09-07 re-cut that item from
+ * a one-shot export into PERSISTENCE — a standing mark plus a mirror that
+ * keeps up — on the reasoning that *"EVERY CHANGE IN A SESSION FILE SHOULD
+ * ALSO BE WRITTEN TO ITS PERSISTENT EXTERNAL FILE IN ORDER NOT TO LOSE
+ * CONTENT."*
+ *
+ * The mark is a row here and NOT a column on `conversations`, and the reason
+ * is the one that keeps the two questions apart:
+ *
+ *   - `conversations.source` answers *which file this row was read from* —
+ *     `'live'`, `'persisted'` or `'exported'`. It is the one discriminator,
+ *     and `seq:5` spends the value that was reserved for it.
+ *   - `persisted` answers *what the owner asked us to keep*, and it outlives
+ *     the row: a session whose transcript the harness has pruned has no
+ *     `conversations` row to hang a column on until the mirror is read back
+ *     in, which is precisely the case the mark exists for. A column would be
+ *     deleted by `removeMissing` at the one moment it matters.
+ *
+ * `bytes` is how much of the ORIGINAL the mirror already holds, and it is the
+ * resume point: the mirror is byte-for-byte the first `bytes` bytes of the
+ * transcript, always ending on a line boundary. `note` is `NULL` or the one
+ * reason the mirror stopped keeping up, so a copy that is no longer current
+ * says so rather than looking finished — `INV-nothing-is-dropped-silently`.
+ *
+ * There is deliberately no `from_byte`. It was designed, and then measured
+ * away: a transcript only ever appends and the whole of it is on disk at the
+ * moment the mark is taken, so `mycontext conversation persist` copies from
+ * byte 0 and a mirror that begins late is not a state this build can reach.
+ * A column that can only ever hold one value is the unreachable-state defect
+ * `source` itself spent two items in.
  */
 const CONVERSATION_SCHEMA = `
 CREATE TABLE IF NOT EXISTS conversations (
@@ -223,6 +269,15 @@ CREATE TABLE IF NOT EXISTS subagents (
 CREATE INDEX IF NOT EXISTS idx_subagents_session ON subagents(session_id);
 CREATE INDEX IF NOT EXISTS idx_subagents_tooluse ON subagents(tool_use_id);
 CREATE INDEX IF NOT EXISTS idx_subagents_parent  ON subagents(parent_agent_id);
+
+CREATE TABLE IF NOT EXISTS persisted (
+  session_id  TEXT PRIMARY KEY,
+  file        TEXT NOT NULL,
+  bytes       INTEGER NOT NULL,
+  marked_at   TEXT NOT NULL,
+  mirrored_at TEXT NOT NULL,
+  note        TEXT
+) WITHOUT ROWID;
 `;
 
 /**
@@ -275,7 +330,10 @@ export class ConversationIndexIncompleteError extends Error {
 /** One indexed session, in the shape the row is stored and read back. */
 export interface ConversationRow {
   sessionId: string;
-  /** `'live'` — the harness writes it. `'exported'` is step 5's and unused here. */
+  /**
+   * Which file this row was read from: `'live'`, `'persisted'` or
+   * `'exported'`. See the header for why those three and not a boolean.
+   */
   source: string;
   /** Absolute path to the transcript this row was scanned from. */
   file: string;
@@ -307,6 +365,41 @@ export interface ConversationRow {
   /** `'custom'`, `'ai'`, or `null` when nothing named it — never a fabricated title. */
   titleSource: string | null;
   scannedAt: string;
+}
+
+/**
+ * **One session the owner asked us not to lose** — `plan:archive seq:4`, the
+ * standing mark and the mirror's bookkeeping in one row.
+ *
+ * The mark is separate from `ConversationRow` for the reason the schema header
+ * gives: it has to outlive the row. A session whose transcript the harness has
+ * pruned has no `conversations` row until the mirror is read back in, and that
+ * is the exact moment the mark is worth something.
+ */
+export interface PersistedRow {
+  sessionId: string;
+  /** Absolute path of the mirror — the file a person can hand to somebody. */
+  file: string;
+  /**
+   * **How much of the ORIGINAL transcript the mirror already holds**, and
+   * therefore where the next append resumes.
+   *
+   * The mirror is byte-for-byte the first `bytes` bytes of the transcript and
+   * always ends on a line boundary, so it is valid JSONL at every instant and
+   * an interrupted append costs the partial line rather than the file: the
+   * next advance truncates back to this number before it writes.
+   */
+  bytes: number;
+  /** When the owner asked. Never moved by an append. */
+  markedAt: string;
+  /** When the mirror last caught up. Moved by every advance. */
+  mirroredAt: string;
+  /**
+   * `null` while the mirror is keeping up; otherwise the one reason it
+   * stopped. A copy that is no longer current has to say so rather than look
+   * finished — `INV-nothing-is-dropped-silently`.
+   */
+  note: string | null;
 }
 
 /**
@@ -1397,7 +1490,23 @@ export class ConversationIndex {
   removeMissing(present: Set<string>): number {
     const known = (this.#db.prepare('SELECT session_id FROM conversations')
       .all() as { session_id: string }[]).map((r) => r.session_id);
-    const gone = known.filter((id) => !present.has(id));
+    // **A PERSISTED SESSION IS NEVER DROPPED, AND THAT IS THE WHOLE POINT OF
+    // THE MARK** — `plan:archive seq:4`/`seq:5`. `seq:11`'s ruling is that a
+    // session whose file the harness pruned leaves the list; `seq:5` records
+    // the consequence in as many words — *"the persisted copy is the ONLY
+    // thing that can keep it visible. Without this task, 'marked persistent'
+    // is a promise the product does not keep."* So the row survives here and
+    // `advanceMirrors` (`core/conversation-mirror.ts`) rewrites it against the
+    // mirror, with `source = 'exported'` saying which file a reader now has.
+    //
+    // A mark with no mirror on disk spares nothing: `advanceMirrors` clears
+    // the mark in that case, so this cannot pin a row to a file that is gone
+    // twice over.
+    const kept = new Set(
+      (this.#db.prepare('SELECT session_id FROM persisted')
+        .all() as { session_id: string }[]).map((r) => r.session_id),
+    );
+    const gone = known.filter((id) => !present.has(id) && !kept.has(id));
     const statement = this.#db.prepare('DELETE FROM conversations WHERE session_id = ?');
     for (const id of gone) statement.run(id);
     return gone.length;
@@ -1584,6 +1693,49 @@ export class ConversationIndex {
     return gone.length;
   }
 
+  /* ── THE STANDING MARK — `plan:archive seq:4` ──────────────────────────── */
+
+  /**
+   * Record, or move on, one session's mark. `bytes` is how much of the
+   * ORIGINAL the mirror now holds; see `PersistedRow`.
+   *
+   * `marked_at` is preserved across an update, because it answers *when did
+   * the owner ask for this* and no later append changes that. `mirrored_at`
+   * moves on every advance, which is what makes a mirror that has quietly
+   * stopped keeping up visible from the row alone.
+   */
+  markPersisted(row: PersistedRow): void {
+    this.#db.prepare(
+      `INSERT INTO persisted (session_id, file, bytes, marked_at, mirrored_at, note)
+       VALUES (?,?,?,?,?,?)
+       ON CONFLICT(session_id) DO UPDATE SET
+         file = excluded.file, bytes = excluded.bytes,
+         mirrored_at = excluded.mirrored_at, note = excluded.note`,
+    ).run(row.sessionId, row.file, row.bytes, row.markedAt, row.mirroredAt, row.note);
+  }
+
+  /** Every mark, oldest first — the order they were taken, which is the order they read. */
+  persisted(): PersistedRow[] {
+    const rows = this.#db.prepare(
+      'SELECT * FROM persisted ORDER BY marked_at ASC, session_id ASC',
+    ).all() as Record<string, unknown>[];
+    return rows.map(toPersisted);
+  }
+
+  persistedOf(sessionId: string): PersistedRow | null {
+    const row = this.#db.prepare(
+      'SELECT * FROM persisted WHERE session_id = ?',
+    ).get(sessionId) as Record<string, unknown> | undefined;
+    return row === undefined ? null : toPersisted(row);
+  }
+
+  /** Drop one mark. `false` when there was none — an answer, not a failure. */
+  unpersist(sessionId: string): boolean {
+    if (this.persistedOf(sessionId) === null) return false;
+    this.#db.prepare('DELETE FROM persisted WHERE session_id = ?').run(sessionId);
+    return true;
+  }
+
   transaction<T>(fn: () => T): T {
     this.#db.exec('BEGIN IMMEDIATE');
     try {
@@ -1601,6 +1753,18 @@ export class ConversationIndex {
     this.#closed = true;
     this.#db.close();
   }
+}
+
+function toPersisted(row: Record<string, unknown>): PersistedRow {
+  const note = row['note'];
+  return {
+    sessionId: String(row['session_id'] ?? ''),
+    file: String(row['file'] ?? ''),
+    bytes: Number(row['bytes'] ?? 0),
+    markedAt: String(row['marked_at'] ?? ''),
+    mirroredAt: String(row['mirrored_at'] ?? ''),
+    note: typeof note === 'string' ? note : null,
+  };
 }
 
 function toRow(row: Record<string, unknown>): ConversationRow {
@@ -1801,6 +1965,17 @@ export interface ForgetReport {
   conversations: number;
   /** Subagent rows dropped. */
   subagents: number;
+  /**
+   * **Standing persistence marks dropped** — `plan:archive seq:4`.
+   *
+   * The MIRRORS THEMSELVES ARE NOT DELETED, and the split is deliberate. This
+   * command's whole argument is that it drops a cache the transcripts on disk
+   * can rebuild; a mirror is the opposite kind of thing — it may be the only
+   * remaining copy of a session, and deleting it would destroy knowledge under
+   * a command whose own confirmation promises it destroys none. So the marks
+   * go, the files stay, and the caller is told where they are.
+   */
+  persisted: number;
 }
 
 /**
@@ -1878,14 +2053,19 @@ export function forgetConversations(dbPath: string, busyTimeoutMs = 3000): Forge
     // scanning.
     const hasConversations = has('conversations');
     const hasSubagents = has('subagents');
-    if (!hasConversations && !hasSubagents) {
-      return { indexed: false, conversations: 0, subagents: 0 };
+    const hasPersisted = has('persisted');
+    if (!hasConversations && !hasSubagents && !hasPersisted) {
+      return { indexed: false, conversations: 0, subagents: 0, persisted: 0 };
     }
     const conversations = hasConversations ? count('conversations') : 0;
     const subagents = hasSubagents ? count('subagents') : 0;
+    const persisted = hasPersisted ? count('persisted') : 0;
     db.exec('DROP TABLE IF EXISTS conversations');
     db.exec('DROP TABLE IF EXISTS subagents');
-    return { indexed: true, conversations, subagents };
+    // The marks, not the mirrors. See `ForgetReport.persisted` for why those
+    // two are not the same act and why this command may only do the first.
+    db.exec('DROP TABLE IF EXISTS persisted');
+    return { indexed: true, conversations, subagents, persisted };
   } finally {
     db.close();
   }

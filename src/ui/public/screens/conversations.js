@@ -262,12 +262,49 @@ function drawRow(ctx, row, open) {
   button.append(meta);
 
   const marks = el('p', 'small');
-  // An exported copy is marked wherever it appears — the owner asked for the
-  // two never to be confused, and `source` is a column for that reason.
-  if (row.source !== 'live') {
+  // ── A COPY IS MARKED WHEREVER IT APPEARS, AND THE MARK SAYS WHICH KIND —
+  //    `plan:archive seq:4`/`seq:5` ──────────────────────────────────────────
+  //
+  // The owner asked for a live session and a copy never to be confused, and
+  // `source` is a column for that reason. It carries THREE values and they are
+  // three answers to one question — which file this row was read from — so one
+  // chip serves them and the WORD is what differs:
+  //
+  //   `'live'`      nothing drawn. It is the ordinary case.
+  //   `'persisted'` the transcript is still here AND a copy is kept beside it.
+  //   `'exported'`  the transcript is gone; the copy is all there is.
+  //
+  // Until 2026-09-09 this line read `row.source !== 'live'` and could not fire:
+  // `'live'` was hard-coded in `conversation-index.ts` and `'exported'` was
+  // reserved for these two items, so three separate lanes reported the chip as
+  // dead-but-not-wrong. The value is now written, and the predicate names the
+  // two values it means rather than every value that is not `'live'` — the
+  // third, `'subagent'`, belongs to a row this list never carries and a
+  // negation would have quietly adopted it.
+  if (row.source === 'persisted' || row.source === 'exported') {
     const chip = el('span', 'chip carry glyphed');
     chip.dataset.g = '⎘';
-    chip.append(...ctx.t('conv.exported'));
+    chip.append(...ctx.t(row.source === 'exported' ? 'conv.exported' : 'conv.persisted'));
+    marks.append(chip, ' ');
+  }
+  // **PERSISTED AND CURRENT versus PERSISTED AND BEHIND, which `seq:5` requires
+  // never to blur.** `keptBytes` is what the copy holds and `fileBytes` is what
+  // the transcript holds right now, from the same `stat` that answered
+  // `present` — so the difference is measured rather than assumed, and a copy
+  // that is a turn behind says so instead of looking finished.
+  //
+  // A stopped copy takes precedence over a behind one, because "behind by
+  // 4 KB" invites waiting for the next turn and a stopped copy will never
+  // catch up. `INV-nothing-is-dropped-silently`.
+  if (typeof row.keptNote === 'string' && row.keptNote !== '') {
+    const chip = el('span', 'chip warn');
+    chip.append(...ctx.t('conv.keptStopped'));
+    chip.title = row.keptNote;
+    marks.append(chip, ' ');
+  } else if (row.source === 'persisted' && typeof row.keptBytes === 'number'
+    && typeof row.fileBytes === 'number' && row.fileBytes > row.keptBytes) {
+    const chip = el('span', 'chip warn');
+    chip.append(...ctx.t('conv.keptBehind', { bytes: sizeText(row.fileBytes - row.keptBytes) }));
     marks.append(chip, ' ');
   }
   // ── A SESSION WHOSE TRANSCRIPT IS GONE, AND WHY THE CHIP SURVIVED A RULING
@@ -1174,7 +1211,9 @@ export function laneIndex(body) {
 }
 
 /** An empty roster nobody has read yet, so a caller always holds the shape. */
-const NO_LANES = { byCall: new Map(), total: 0, unlinked: 0, owner: null, read: false };
+const NO_LANES = {
+  byCall: new Map(), total: 0, unlinked: 0, owner: null, read: false, notKept: false,
+};
 
 /**
  * The control that opens one lane — **a real `<a>` with `target="_blank"`, and
@@ -1220,6 +1259,39 @@ function laneLink(ctx, lane) {
   open.rel = 'noopener';
   open.append(...ctx.t('conv.doc.lane', { records: lane.records }));
   return open;
+}
+
+/**
+ * The mark a dispatching step carries — **the link, the "it is gone", or the
+ * "it was never in this copy", and never nothing** —
+ * `INV-nothing-is-dropped-silently`.
+ *
+ * ── WHY THE THIRD ANSWER EXISTS, `plan:archive seq:5` ────────────────────
+ *
+ * A copy kept outside the project holds the SESSION transcript and not its
+ * lanes, and that is a measurement rather than an oversight: this workspace's
+ * 253 lanes are 615.3 MB against 65 MB of session, so mirroring them would
+ * multiply the cost of keeping a session by ten for files the session's own
+ * turns already summarise. The consequence has to be VISIBLE: a reader of a
+ * copy meets `Agent` calls whose working they cannot open.
+ *
+ * Without this, the link would simply not be drawn — the roster has no entry
+ * for that call — and a control that silently does nothing is worse than one
+ * that says why. So an exported document says it on the step, where the reader
+ * is looking, as well as once at the top.
+ *
+ * The condition is deliberately narrow. In a LIVE document a step with no lane
+ * in the roster is the ordinary case — most tool calls dispatch nothing — and
+ * saying "not in the copy" there would be a false claim on almost every step.
+ */
+function laneMark(ctx, lanes, toolUseId) {
+  if (typeof toolUseId !== 'string' || toolUseId === '') return null;
+  const lane = lanes.byCall.get(toolUseId);
+  if (lane !== undefined) return laneLink(ctx, lane);
+  if (lanes.notKept !== true) return null;
+  const missing = el('span', 'tvcut');
+  missing.append(...ctx.t('conv.doc.laneNotKept'));
+  return missing;
 }
 
 /**
@@ -1285,8 +1357,8 @@ function stepParts(ctx, step, lanes) {
   //
   // Drawn on the SUMMARY LINE, above the arguments, so a reader who opens a
   // fold meets it before the brief rather than after 22 KB of it.
-  const lane = typeof step.toolUseId === 'string' ? lanes.byCall.get(step.toolUseId) : undefined;
-  if (lane !== undefined) line.append(' ', laneLink(ctx, lane));
+  const laneNode = laneMark(ctx, lanes, step.toolUseId);
+  if (laneNode !== null) line.append(' ', laneNode);
   parts.push(line);
 
   // WHAT THE TOOL WAS ASKED, before what came back. The owner pasted his own
@@ -1434,10 +1506,10 @@ function drawDeed(ctx, body, lanes = NO_LANES) {
 
   // The lane a promoted call dispatched — a shell command dispatches none
   // today, but the join is the step's and costs nothing to honour here.
-  const lane = typeof step.toolUseId === 'string' ? lanes.byCall.get(step.toolUseId) : undefined;
-  if (lane !== undefined) {
+  const laneNode = laneMark(ctx, lanes, step.toolUseId);
+  if (laneNode !== null) {
     const line = el('p', 'tvstephead');
-    line.append(laneLink(ctx, lane));
+    line.append(laneNode);
     turn.append(line);
   }
   return turn;
@@ -1663,8 +1735,19 @@ function drawWaiting(ctx, node, height) {
  * reader opened must survive a scroll of two pixels, and rebuilding would shut
  * every one of them. `live` is the map that makes that possible.
  */
-function mountDocument(ctx, host, outline, back, lanes = NO_LANES) {
+function mountDocument(ctx, host, outline, back, roster = NO_LANES) {
   const nodes = outline.nodes;
+  /**
+   * **A COPY IS STATIC, AND EVERY BEHAVIOUR ON THIS SCREEN THAT ASSUMES A LIVE
+   * FILE HAS TO KNOW** — `plan:archive seq:5`.
+   *
+   * `source === 'exported'` means the transcript the harness wrote is gone and
+   * this document is being read out of the copy that was kept. Such a file
+   * cannot grow: there is nothing appending to it, so there is nothing to
+   * poll, no Stop-hook refresh behind it, and no lane transcripts beside it.
+   */
+  const isCopy = outline.source === 'exported';
+  const lanes = { ...roster, notKept: isCopy };
 
   /* ── head ──────────────────────────────────────────────────────────────── */
   const head = el('div', 'tvhead');
@@ -1707,6 +1790,22 @@ function mountDocument(ctx, host, outline, back, lanes = NO_LANES) {
       from.append(' ', home);
     }
     host.append(from);
+  }
+
+  // **WHICH OF THE THREE FILES A READER IS LOOKING AT, SAID ON THE PAGE** —
+  // `plan:archive seq:5`: *"A copy that looks identical to a live session is
+  // worse than no copy, because a reader cannot tell which they are acting
+  // on."* The list marks it with a chip; a document opened in a tab of its own
+  // has no list beside it, so it says it in a sentence.
+  //
+  // The two are not one sentence with a variable in it, because they are not
+  // one fact: a persisted session can still be checked against the harness's
+  // own file, and an exported one cannot, and that difference is exactly what
+  // the reader needs in order to know what they are holding.
+  if (outline.source === 'persisted' || isCopy) {
+    const kept = el('p', 'tvnote tvkept');
+    kept.append(...ctx.t(isCopy ? 'conv.doc.isCopy' : 'conv.doc.isKept'));
+    host.append(kept);
   }
 
   if (outline.present === false) {
@@ -1835,7 +1934,12 @@ function mountDocument(ctx, host, outline, back, lanes = NO_LANES) {
   // a plural rule (`rail.cntSome`, `doctor` — see `en.js`). So the number is
   // written into the sentence in both languages, and what holds it to `TIP_MS`
   // is `test/ui/conversation-follow-cadence.test.ts` rather than memory.
-  follows.append(...ctx.t('conv.doc.follows'));
+  // A copy says what it does INSTEAD of following, rather than saying nothing.
+  // The list's own rule, quoted where it was written: "a screen that only
+  // speaks up when something is wrong leaves a reader unable to tell a fresh
+  // list from a check that has stopped running". A document with no follow
+  // note at all is exactly that — indistinguishable from a follow that broke.
+  follows.append(...ctx.t(isCopy ? 'conv.doc.static' : 'conv.doc.follows'));
   host.append(follows);
 
   if (outline.truncated === true) {
@@ -2557,7 +2661,20 @@ function mountDocument(ctx, host, outline, back, lanes = NO_LANES) {
   // the newest records onto a document that is missing the ones in between —
   // a hole, drawn as continuity. So it does not follow, and the note that
   // explains why is the one already on screen.
-  if (outline.truncated !== true) {
+  //
+  // **AND A COPY IS NOT POLLED AT ALL** — `plan:archive seq:5`. The file a
+  // copy is read from has nothing writing to it, so a `/tip` every second
+  // would be a `stat` per second per open tab asking a question whose answer
+  // cannot change. Worse than wasteful: `tick`'s own `shrank` branch treats
+  // "same length, different mtime" as a REPLACEMENT and would stop the
+  // document with `conv.doc.replaced` if anything ever touched the copy's
+  // mtime — a warning about a document that is perfectly intact.
+  //
+  // The note is NOT hidden here, unlike the truncated branch: a truncated
+  // document already carries `conv.doc.truncated` two lines below saying why
+  // it does not follow, and a copy has no such second sentence. It keeps the
+  // line and changes what it says.
+  if (outline.truncated !== true && !isCopy) {
     tipTimer = setInterval(tick, TIP_MS);
     window.addEventListener('hashchange', onLeave);
     // Both, for the reason `onLook` gives: a tab switch fires the first and a
@@ -2565,7 +2682,7 @@ function mountDocument(ctx, host, outline, back, lanes = NO_LANES) {
     // together in `stopFollowing`.
     document.addEventListener('visibilitychange', onLook);
     window.addEventListener('focus', onLook);
-  } else {
+  } else if (outline.truncated === true) {
     follows.hidden = true;
   }
 }
