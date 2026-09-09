@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: One place holding the questions that need the owner rather than a measurement, so work continues overnight and he answers a list instead of being interrupted.
-summary_of: 8c3e1d5489effe37
+summary_of: 6bab3e0aa6e612a8
 scope: []
 tags:
   - v2
@@ -17,7 +17,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-09-08
 valid_until: null
-checksum: eb6558f3c3f88004
+checksum: 53270ed6af357efb
 ---
 
 # decisions collected overnight for the owner to answer in the morning
@@ -174,3 +174,40 @@ colouring is good enough. He has not looked at it yet.
 AND ONE ANSWER THAT IS A NON-ANSWER BY DESIGN: the stream. He chose "not sure, will watch it",
 which is the correct answer to a mitigation whose cure was never demonstrated. plan:live seq:22
 stays filed with the FIN measurement as the next step if the message returns.
+
+── WHERE TO PICK UP, 2026-09-09 ──────────────────────────────────────────────────────────────
+
+He is moving to his office and asked to pause after the running lane ends. plan:archive seq:17 (the
+clipboard) is the only thing in flight; it will be verified, committed and closed, and then nothing
+is dispatched.
+
+THE QUEUE, IN ORDER, AND THE ORDER IS NOT A PREFERENCE - THREE ITEMS COLLIDE ON ONE FILE:
+
+  1. seq:38   the colour / TUI refactor. Owns src/ui/public/styles.css and lib/markdown.js.
+              This is the one he is waiting on: he judged seq:26 "not good enough" and the reason
+              is measured - --edge is 1.71:1 against the transcript ground where WCAG asks 3.0:1,
+              so the inline-code box AND every table frame are drawn in a border he cannot see.
+  2. seq:40 + seq:41 as ONE lane. Both need src/ui/public/screens/conversations.js and seq:40 also
+              needs styles.css, so it cannot run beside seq:38. Same subject either way: how a
+              reader reaches a lane.
+
+Everything queued needs conversations.js or styles.css, which is why nothing runs in parallel and
+why seq:17 had to finish first.
+
+AND ONE RULING TAKEN WHILE HE WAS ASKING, recorded so the lane does not re-open it: THE LANE ROSTER
+IS A FLAT LIST WITH THE CHILDREN INDENTED, NOT A FOLDER TREE. Measured from the index: 218 lanes at
+depth 1, 43 at depth 2, and only SEVENTEEN lanes have any children at all. A folder tree would be
+261 rows of which 17 are folders and 244 are leaves, spending its expand/collapse affordance on
+6.5% of the rows and putting the other 244 behind a level of nesting they do not need. The deciding
+argument is that finding a lane is a SEARCH problem rather than a navigation one - seq:10 just built
+that filter for sessions and a flat list inherits it, while filtering a tree either hides parents
+whose children match or shows parents that do not. He was told this and left it open; it is cheap
+to reverse if he wants folders.
+
+STILL ON HIM, AND ONLY THESE:
+  - Whether the colour refactor (seq:38) reads right once it lands. He has judged this surface
+    twice and overturned me once, so seq:38 is instructed to screenshot a real dense turn of his
+    own in both languages and show him BEFORE anything is committed.
+  - Whether the stream still drops. "Not sure, will watch it" - plan:live seq:22 holds the FIN
+    measurement for when it returns.
+  - Folders instead of a flat roster, if he disagrees with the ruling above.
