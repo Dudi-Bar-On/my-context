@@ -6,27 +6,31 @@ status: active
 severity: soft
 always: false
 summary: Copying a conversation out offers a list of things that look private, and replaces only what you tick with an obviously fake stand-in.
-summary_of: a9a5026a70d8829a
+summary_of: ed97f664c9c84f9b
 scope:
+  - src/core/conversation-secrets.ts
+  - src/core/conversation-redaction.ts
   - src/core/conversation-mirror.ts
   - src/cli/commands/conversation.ts
+  - src/ui/read-model-conversations.ts
+  - src/ui/public/screens/conversations.js
 tags:
   - v2
   - archive
   - security
   - "plan:archive"
   - "seq:46"
-  - "state:todo"
+  - "state:done"
 origin: human
 source_file: null
 source_anchor: null
 source_checksum: null
 valid_from: 2026-09-09
 valid_until: null
-checksum: 3f9a5402bee2a245
+checksum: b7ed5a1e78cf3c7c
 plan: archive
 seq: "46"
-state: todo
+state: done
 priority: "2"
 needs: archive/4
 ---
@@ -190,7 +194,8 @@ none of them accepted is asserted BYTE-IDENTICAL with `Buffer.equals`, and `reda
 its argument on an empty set. `advanceRedaction` answers null for a session nobody chose anything
 for, so the ordinary path costs one `existsSync` and produces no file.
 
-WHAT REMAINS - and it is ONE step, which is why this item is left open rather than split:
+WHAT REMAINED AT THAT POINT - and it was ONE step, which is why the item was left open rather
+than split (all three are settled below):
 
   1. THE FORM. A checkbox list on the Conversations screen, drawing `conversation secrets --json`
      and composing `persist --replace` back through the Composer. `test/ui/no-writes.test.ts` holds
@@ -213,3 +218,98 @@ none of them this lane's - two `diagram-gate` (they need `npm run gen:docs`) and
 `palette-lib`'s two were red before this lane and are GREEN now: one of them was the command
 catalogue, which this lane closed by writing the row above. `tsc --noEmit` is clean and
 `npm run check:basis` reports nothing outside the baseline.
+
+── THE FORM LANDED 2026-09-09 (commit 5ea917f0). THE ITEM IS COMPLETE ───────────────────────
+
+The step this item was left open for. `GET /api/conversations/:id/secrets` is the read; the panel
+is `mountSecrets` in `src/ui/public/screens/conversations.js`, a closed fold on a session document.
+
+THE SCREEN COMPOSES AND THE CLI RUNS, which is this item's own "where the form lives" question
+answered by a TEST rather than by preference. `test/ui/no-writes.test.ts` holds `src/ui/` write
+bindings to an exact set of ONE, so no surface there can perform an export — and that is precisely
+why the scanner shipped as a module holding no `node:fs` write API at all, separate from the half
+that produces a file. A read surface may bind the scan; it may not bind `chooseRedactions`. The
+panel therefore draws the candidates and builds a COMMAND LINE, which is the Composer pattern this
+product already has.
+
+AND IT IS COPY, NOT EXECUTE. `commandActions` is given no command id on purpose:
+`test/ui/palette-lib.test.ts` withholds `conversation persist` from the palette in as many words —
+it is a write whose preview says something a reader must actually READ before confirming, namely
+what a copy of a session holds — so putting it one click from a browser would settle that question
+in silence. That row is untouched and still true.
+
+NOTHING IS TICKED, asserted as a count of `:checked` inputs in the DOM the reader actually gets
+rather than as a field on a payload. A form that pre-ticked "the obvious ones" would look
+thoughtful and would be this product deciding on his behalf and calling it a default.
+
+NO CREDENTIAL IS IN THE PANEL, asserted by reading the whole panel back out of the browser. The
+transcript BELOW it does draw the values, and must — seq:27 is closed on the ruling that a viewer
+which hid what `cat` already printed would be lying about the record it claims to be. What is new
+here is the DERIVED list, so the derived list is what must hold only masks.
+
+The catalogue row MOVED rather than being deleted: `conversation secrets` stood in
+`test/ui/palette-lib.test.ts`' UNCATALOGUED naming this form as what it waited for, and is now in
+WITHHELD, because the form does not compose it — it reads it. The absence is still real and the
+reason for it is a different one.
+
+DRIVEN IN A REAL BROWSER before any of this was called done: `e2e/conversation-secrets.spec.ts`,
+10/10 across chromium and chrome, in English and in Hebrew RTL. The panel was WRONG the first time
+it rendered and the screenshot is what said so — four inline spans per candidate ran together into
+one paragraph with the next candidate — so the row got a two-column grid. `--faint` was then
+refused by `test/ui/faint-usage.test.ts` for a 16px line; the two dim levels collapsed into one and
+the hierarchy is carried by line order and the mono face instead.
+
+── AND THE MEASUREMENT THAT WAS OUTSTANDING: THE HIT RATE ON HIS REAL SESSIONS ──────────────
+
+Reported as never taken when the first half shipped, because an estimate would have been worse
+than an admission. Taken 2026-09-09, read-only, over every session transcript under
+`~/.claude/projects`: 31 files, 332,766,304 bytes, 106,732 records, 11.2 s. It found 21
+(session, candidate) rows — 19 DISTINCT candidates, 127 occurrences. This workspace's own live
+session alone is 83.6 MB and scans whole in 2.6 s.
+
+THE SPLIT, judged one by one from the masked context alone, which is the point:
+
+  PLAUSIBLY REAL — 6 of 19.
+    2 × `anthropic-key`. One is a 108-character key inside `{"primaryApiKey": "…"}` — the very
+      credential `seq:27` reported, still sitting in a transcript. The other is the truncated form
+      of it quoted in that report's own prose.
+    1 × `bearer-header`. The 32-character UI-server token, likewise quoted in the report.
+      Both had been redacted OUT of the corpus item and are still in the session file, which is
+      the whole case for this feature stated by accident.
+    3 × `local-auth-hex`. 64-character `{"token":"…"}` values from this product's own
+      `127.0.0.1` handoff responses, captured in the transcript.
+
+  FALSE POSITIVES — 13 of 19, and named by SHAPE so it is clear which are noisy:
+    `key-assignment`  10 of 10 WRONG. Five are identifiers or calls (`secret = cryptoRandomBytes`,
+      `const token = bearerToken(`, `= mintToken()`, `sessionStorage.getItem`); one is a value
+      inside a regex literal; one is the prose `key=/secret= assignments`; one is the word after
+      "API without a token:"; two are Playwright probe output. NOT ONE was a credential.
+    `local-auth-hex`   1 of 4 wrong — a deliberate `deadbeef…deadbeef` probe token from a test.
+    `google-api-key`   1 of 1 wrong, and it is the interesting one: `AIza` plus 35 legal characters
+      occurring INSIDE a base64 blob. A fixed-length vendor prefix is not proof against base64.
+    `url-userinfo`     1 of 1 wrong — the two-character password in the quoted example
+      `http://user:pw@`.
+
+  So: the two structured vendor shapes were 2 for 2, `local-auth-hex` 3 of 4, and the generic
+  assignment shape 0 of 10. That is almost exactly what this item PREDICTED — one real secret in
+  eight on 2026-09-08 — and it is the argument for the form rather than an argument against the
+  scan: 13 wrong candidates cost 13 unticked boxes, and every one of them is dismissible at a
+  glance from the context line, which is why that field exists.
+
+NOTHING WAS TUNED TO FLATTER THAT NUMBER, deliberately, and the decision is left to him.
+`key-assignment` could be made much quieter by one structural rule — reject a captured value
+immediately followed by `(`, which is a call and not a literal — and that alone would remove five
+of the ten. It was NOT added, because this item's own design says a false positive costs an
+unticked box while a false negative is invisible, and a guard that has never been measured against
+a real credential is a guess in the direction that cannot be seen. If he wants the noise cut, that
+is the one-line change and it belongs to him.
+
+AND TWO GAPS IN THE COVERAGE, measured rather than assumed:
+  - SUBAGENT TRANSCRIPTS ARE NOT SCANNED, because they are not mirrored — and the ONE true
+    positive of 2026-09-08 lived in a subagent transcript. Under this root today there are zero
+    subagent files at all (the harness has pruned them), so the shape that found it had nothing to
+    scan. It is a gap in this feature's coverage and not a gap in the export, which is what this
+    item is about.
+  - `MAX_SCAN_BYTES` bounds the CLI scan and `CONVERSATION_WALK_CAP` (64 MiB) bounds the endpoint's.
+    Neither was reached by the CLI here; the endpoint's cap DOES bite on the 83.6 MB live session,
+    and both surfaces say so and call their counts a floor.
