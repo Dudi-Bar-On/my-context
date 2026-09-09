@@ -17,17 +17,17 @@ tags:
   - statusline
   - "plan:archive"
   - "seq:44"
-  - "state:todo"
+  - "state:done"
 origin: human
 source_file: null
 source_anchor: null
 source_checksum: null
 valid_from: 2026-09-09
 valid_until: null
-checksum: 60c327752f9e21ad
+checksum: 94173df583d89642
 plan: archive
 seq: "44"
-state: todo
+state: done
 priority: "2"
 needs: archive/12
 ---
