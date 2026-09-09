@@ -1,4 +1,6 @@
-// @basis TASK-the-archive-shows-what-is-on-disk-now-because-nothing-has, INV-nothing-is-dropped-silently
+// @basis TASK-the-archive-shows-what-is-on-disk-now-because-nothing-has,
+// TASK-the-archive-is-opt-in-which-was-decided-and-never-built,
+// INV-nothing-is-dropped-silently
 /**
  * **`Stop` is what keeps the conversation index current, and this is where it
  * is decided that it may** — `plan:archive seq:14`.
@@ -45,7 +47,7 @@ import { DatabaseSync } from 'node:sqlite';
 import { runCli } from '../../src/cli/index.ts';
 import { readAudit } from '../../src/core/audit.ts';
 import {
-  ConversationIndex, projectDirName, rebuildConversations, type RebuildReport,
+  ConversationIndex, forgetConversations, projectDirName, rebuildConversations, type RebuildReport,
 } from '../../src/core/conversation-index.ts';
 import { resolveWorkspace } from '../../src/core/workspace.ts';
 import { observeAndRecord } from '../../src/hooks/observe.ts';
@@ -213,6 +215,64 @@ test('the refresh never builds an index nobody has ever asked for', () => {
       hasConversations(sb.dbPath), false,
       'and no table was created on the way to declining',
     );
+  });
+});
+
+/**
+ * **The opt-in has an OFF position, and this is what makes it one** —
+ * `plan:archive seq:9`.
+ *
+ * The item asks for the archive to be opt-in with a key defaulting to OFF, and
+ * reports that no such key exists. The OFF DEFAULT already held — the test
+ * above this one is the proof of it, and `forgetConversations`' own header
+ * names the three places that enforce it. What did not exist was a way BACK:
+ * once a workspace had been scanned, this hook refreshed for ever, and the
+ * only way to stop it was deleting `.index.db`, which is also the corpus's own
+ * item index.
+ *
+ * So the property worth testing is not "the rows are gone" — a `DELETE` would
+ * do that and would be an opt-out that silently undid itself on the next turn,
+ * because the gate asks whether the TABLES exist and not whether they hold
+ * anything. It is that the workspace ends up in exactly the state the test
+ * above proves the hook declines to act on.
+ */
+test('forgetting the index puts the workspace back where the refresh will not follow', () => {
+  const sb = sandbox();
+  withHome(sb, () => {
+    rebuildConversations(sb.dbPath, process.env, sb.cwd, {});
+    assert.equal(hasConversations(sb.dbPath), true, 'the fixture must start opted IN');
+    sb.append(exchange(2));
+    assert.notEqual(
+      stopConversationRefresh({ cwd: sb.cwd }), null,
+      'and the hook must be following it, or the opt-out below proves nothing',
+    );
+
+    const report = forgetConversations(sb.dbPath);
+    assert.equal(report.indexed, true, 'there was an index to forget');
+    assert.equal(report.conversations, 1, 'and it says what left, rather than shrinking quietly');
+
+    assert.equal(
+      hasConversations(sb.dbPath), false,
+      'the tables are DROPPED and not merely emptied — an empty index is one this hook still '
+      + 'opens, so it would refill on the next turn and the opt-out would have undone itself',
+    );
+    sb.append(exchange(3));
+    assert.equal(
+      stopConversationRefresh({ cwd: sb.cwd }), null,
+      'and the hook now declines exactly as it does in a workspace nobody ever scanned',
+    );
+    assert.equal(
+      hasConversations(sb.dbPath), false,
+      'having created nothing on the way to declining',
+    );
+
+    // Nothing was lost that the transcripts cannot give back: this index is a
+    // cache and the file on disk is the source of truth.
+    rebuildConversations(sb.dbPath, process.env, sb.cwd, {});
+    const back = ConversationIndex.openReadOnlyChecked(sb.dbPath);
+    const row = back.get(SESSION);
+    back.close();
+    assert.equal(row?.records, 9, 'and one rebuild brings the whole thing back from disk');
   });
 });
 

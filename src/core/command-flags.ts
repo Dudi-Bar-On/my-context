@@ -1460,6 +1460,13 @@ export const SUBCOMMAND_FLAGS: Record<string, Record<string, FlagSpec>> = {
     // is bounded by how many that session dispatched, and a bound nobody needs
     // is a bound nobody maintains.
     subagents: { allowed: ['json'], values: [] },
+    // `forget` (`plan:archive seq:9`) is the OFF position of the archive's
+    // opt-in and takes `--yes` for the reason every other destructive command
+    // here does: it drops rows, and a command that drops rows asks first. It
+    // takes no `--full`, because there is no partial forgetting — an index
+    // emptied but not dropped is one the Stop hook still refreshes, which
+    // would be an opt-out that silently undid itself.
+    forget: { allowed: ['yes', 'json'], values: [] },
   },
   /** `cli/commands/pack.ts`. `import` is the whole surface; `list` reports. */
   pack: {
@@ -1533,6 +1540,9 @@ export const SUBCOMMAND_FLAGS: Record<string, Record<string, FlagSpec>> = {
 export const SUBCOMMAND_FLAG_DECLARATIONS: Record<string, FlagDeclarations> = {
   conversation: {
     json: DETAIL.json,
+    // `forget` drops rows (`plan:archive seq:9`), so it asks first like every
+    // other destructive command here.
+    yes: YES,
     full: {
       note: 'Re-read every transcript instead of only those whose size or mtime has changed '
         + 'since the last scan. Both forms end at the same rows; this one pays for the '

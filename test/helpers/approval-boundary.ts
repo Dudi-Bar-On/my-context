@@ -170,6 +170,20 @@ export const OUTSIDE_BOUNDARY: Record<string, string> = {
     + 'refuses --yes',
   'statusline uninstall': 'restores the saved statusLine entry in that same settings.json; '
     + 'the other half of install, and off the boundary for the same reason',
+  // `plan:archive seq:9`, and it is the third case of the shape this record
+  // exists for. It drops the conversation index — the two SQLite tables the
+  // archive is served from — which is the OFF position of the archive's
+  // opt-in. It creates no item, retires none, promotes none and puts no text
+  // in front of a model: the transcripts on disk are untouched and are the
+  // source of truth, so `mycontext conversation rebuild` reconstructs every
+  // row it removed. Putting it in §7's table would claim that dropping a
+  // rebuildable cache of your own transcripts changes what governs this
+  // corpus, which is exactly the false-but-exact-looking claim this record
+  // was created to keep out of that document.
+  'conversation forget': 'drops the conversation index, which is a cache of the transcripts '
+    + 'already on disk and is rebuilt by `mycontext conversation rebuild`. It touches no item, '
+    + 'no config and nothing that governs — see test/hooks/stop-conversation-refresh.test.ts, '
+    + 'which asserts the whole of what it changes: the end-of-turn refresh stands down',
 };
 
 /**

@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: A session whose file is deleted disappears from the list unless it was kept, and a kept session is copied out as it grows so nothing is lost.
-summary_of: f49f58500e4c20dc
+summary_of: ccc281651d86a2b2
 summary_was:
   - 2026-09-07 When the original transcript file is deleted, the archive should show that it is gone rather than quietly forgetting the session existed.
 acknowledged:
@@ -28,7 +28,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-09-07
 valid_until: null
-checksum: 7898e74e648d2dff
+checksum: 29f53f1af8c09548
 plan: archive
 seq: "11"
 state: todo
@@ -99,3 +99,42 @@ It cited src/core/conversation-index.ts:890 by line and carried no fragment - an
 ALREADY DRIFTED: 890 is a fragment of a query, not the removeMissing call the sentence is about.
 The citation was wrong within a day of being written, which is the argument for the rule rather
 than an exception to it.
+
+────────────────────────────────────────────────────────────────────────────
+MEASURED 2026-09-09: THE RULING STANDS, ONE OF ITS PREMISES DOES NOT.
+────────────────────────────────────────────────────────────────────────────
+
+THE WRITE HALF IS UNTOUCHED AND WAS NEVER IN DOUBT. removeMissing stays, the list holds only
+sessions that still exist, and no row is kept for a pruned transcript. That is what the owner chose
+and it is what the code does.
+
+WHAT IS WRONG IS THE WORD UNREACHABLE. The ruling calls present:false, conv.pruned, conv.missingSome,
+conv.prunedBody and the 200-body branch DEAD CODE to remove rather than a state to make reachable.
+They are reachable, and they were reachable while that sentence was being written: removeMissing runs
+during a REBUILD, while the list is served FROM THE INDEX between rebuilds and stats each file at
+request time. Delete a transcript, load the screen before the next assistant turn, and the row is
+there with present:false.
+
+IT IS A TEST, NOT AN ARGUMENT, AND IT HAD BEEN GREEN SINCE seq:2. test/ui/conversations-endpoint
+.test.ts, now named `a transcript deleted between two rebuilds is disclosed, then dropped`,
+constructs the state in three lines and now asserts BOTH halves: before a rebuild the row is served
+with present:false and the document answers 200 with the reason in a sentence; after a rebuild the
+row is gone.
+
+SO THE READ HALF WAS NOT DEAD CODE, IT WAS THE DISCLOSURE FOR A ONE-TURN WINDOW. Removing it would
+have left, for exactly that window, a row on the list with nothing marking it, opening onto a
+document that cannot load - INV-nothing-is-dropped-silently failing at the one moment it exists for.
+So the chip is KEPT and what changed is what it claims: not that the archive keeps pruned sessions,
+which the ruling reversed, but that this one is already gone and leaves the list at the end of your
+next turn. conv.missingSome now says that, which is what reconciles it with the help text that took
+the deleting side - and that help text is kept, as the ruling asked.
+
+THIS IS THE CHEAPER-TO-REVERSE HALF AND IT IS FLAGGED AS PROVISIONAL. If the owner wants the
+deletion carried out literally, it is about forty lines and three string keys, and the window above
+is what he would be choosing to leave undisclosed.
+
+AND THE SECURITY SENTENCE IS DONE. conv.sensitive is drawn FIRST in the feature's own help
+disclosure, in both languages: what the files hold, that the app serves them over a local port to
+whoever holds its address, that an archive turned on WIDENS what a leaked link would show, and the
+two commands that turn it on and off. Before this there were zero mentions of sensitivity, pasted
+secrets or the local port across all 30 conv.* keys.

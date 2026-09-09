@@ -265,10 +265,58 @@ const WRITERS: Record<string, string[]> = {
   // through the same fresh-read-then-`assertStillResolves` shape — named here
   // for the identical reason: a symbol this table does not name is a symbol
   // `src/ui/` could bind with this file green.
+  // **Landed 2026-09-09 with `mycontext conversation forget` (`plan:archive
+  // seq:9`), and NOT because the derivation demanded it.** This module writes
+  // through `node:sqlite` rather than through `node:fs`, so the membership
+  // scan — which looks for filesystem-mutating APIs — cannot see it and never
+  // would have. It is named by judgement, for `store.ts`' reason one level
+  // out: `read-model-conversations.ts` and
+  // `read-model-conversation-document.ts` both bind readers out of this
+  // module, and the two symbols that WRITE sit beside them in the same export
+  // list where a later lane would reach for one without noticing.
+  //
+  // `ConversationIndex` itself is deliberately NOT named, exactly as `Store`
+  // is not: the writer is the static `open`, the read surfaces bind the class
+  // in order to call `openReadOnlyChecked`, and naming the class would redden
+  // the ban on a binding that was routed AROUND the write.
+  'src/core/conversation-index.ts': ['rebuildConversations', 'forgetConversations'],
   'src/core/config.ts': [
     'deleteCustomCategory', 'disableCategory', 'setConfigField', 'unsetConfigListEntries',
   ],
 };
+
+/**
+ * **WRITERS keys that write through something this derivation cannot see** —
+ * the "saying it out loud" the orphan assertion below asks for, rather than a
+ * table entry nobody can check.
+ *
+ * The membership scan recognises a write by the `node:fs` API it calls. That
+ * is the right detector for every other key here and it is BLIND to a module
+ * whose whole persistence is `node:sqlite`: `conversation-index.ts` imports
+ * only readers from `node:fs` (`readFileSync`, `readSync`, `statSync`,
+ * `readdirSync`, `openSync`, `closeSync`) and does all of its writing through
+ * `DatabaseSync.exec` and `prepare(...).run`.
+ *
+ * **So this module was invisible to BOTH directions of the derivation**, and
+ * the consequence was not theoretical: until 2026-09-09 a module under
+ * `src/ui/` could have bound `rebuildConversations` and this whole file would
+ * have stayed green, because `isWriter` answers from a table the scan never
+ * put it in. Naming it in WRITERS is what closes that, and this set is what
+ * lets it be named without the orphan check — which is asking a question about
+ * `node:fs` — reporting it as an entry covering nothing.
+ *
+ * Each member has to be a module that demonstrably writes by another route. It
+ * is deliberately not a general exemption: a module added here whose writes go
+ * through `node:fs` after all would silently lose the orphan check that proves
+ * its entry is still earning its place.
+ */
+const WRITES_WITHOUT_FS = new Set([
+  // Writes the conversation index — `ConversationIndex.open` creates the
+  // tables, `rebuildConversations` fills them and `forgetConversations` drops
+  // them, all through `node:sqlite`. `.my_context/.index.db` is a file, and no
+  // `node:fs` write API appears anywhere in the module.
+  'src/core/conversation-index.ts',
+]);
 
 const isWriter = (module: string, symbol: string): boolean =>
   (WRITERS[module] ?? []).includes(symbol);
@@ -1309,6 +1357,7 @@ test('a WRITERS key that does not call fs itself still reaches one that does', (
   const indirect: string[] = [];
   for (const module of Object.keys(WRITERS)) {
     if (writers.has(module)) continue;
+    if (WRITES_WITHOUT_FS.has(module)) continue;
     const trail = reachesADerivedWriter(module, writers);
     if (trail === null) orphaned.push(module);
     else indirect.push(`${module} → ${trail.slice(1).join(' → ')}`);

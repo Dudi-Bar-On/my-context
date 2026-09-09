@@ -1075,6 +1075,17 @@ const UNCATALOGUED: Record<string, string> = {
     + 'which is the reason `todo` gives a few rows down; it is here rather than withheld '
     + 'because the '
     + 'screen is new and whether that judgement holds has not been taken.',
+  // `plan:archive seq:9`, landed 2026-09-09 — the OFF position of the
+  // archive's opt-in. It is UNCATALOGUED and not WITHHELD for a reason worth
+  // recording: it is the only conversation subcommand that a palette entry
+  // would genuinely help with, because it is the only one a reader has no
+  // other way to find. The Conversations screen names it in its own help
+  // (`conv.sensitive`), so the string is already in front of the reader; what
+  // is missing is a def with an Execute behind it, which is the same
+  // not-yet `rebuild` above is waiting on and belongs to the same lane.
+  'conversation forget': 'drops this workspace\'s conversation index, which is what stops '
+    + 'the end-of-turn refresh reading transcripts here. It is a write and needs a def with '
+    + 'an Execute behind it, exactly as `conversation rebuild` above does.',
   'conversation subagents': 'the lanes one session dispatched, in the terminal '
     + '(`plan:archive seq:12`). It is `conversation list`\'s case exactly and is withheld for '
     + 'the same reason — a def would compose a read whose answer is on the screen the reader '

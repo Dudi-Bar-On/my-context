@@ -332,6 +332,25 @@ export const MAX_SCAN_BYTES = 256 * 1024 * 1024;
 /** Read granularity. Bounds memory independently of `MAX_SCAN_BYTES`. */
 const CHUNK_BYTES = 1024 * 1024;
 
+/**
+ * A search term as a literal for SQL `LIKE`.
+ *
+ * `%` and `_` are `LIKE`'s own wildcards, so a reader searching for `100%` or
+ * for `read_model` would otherwise be handed a pattern that matches far more
+ * than what they typed — and would have no way to tell, because the extra rows
+ * look exactly like real matches. The backslash is escaped first because it
+ * is what the other two are escaped WITH; every caller pairs this with
+ * `ESCAPE '\'`.
+ *
+ * There is deliberately no way to opt IN to wildcards. The box on the screen
+ * is a find box, not a query language, and a product that silently accepted
+ * one from a reader who meant a literal would be answering a different
+ * question from the one that was asked.
+ */
+function likeEscape(term: string): string {
+  return term.replace(/[\\%_]/g, (ch) => `\\${ch}`);
+}
+
 /** Did this row's scan stop at the cap? The one place the comparison is made. */
 export function truncatedScan(row: { bytes: number; scannedBytes: number }): boolean {
   return row.scannedBytes < row.bytes;
@@ -364,6 +383,54 @@ export function truncatedScan(row: { bytes: number; scannedBytes: number }): boo
 export function staleBy(row: { bytes: number }, onDiskBytes: number | null): number {
   if (onDiskBytes === null) return 0;
   return onDiskBytes > row.bytes ? onDiskBytes - row.bytes : 0;
+}
+
+/**
+ * **How long a session lasted, in milliseconds** — `plan:archive seq:10`,
+ * which names duration in the list's column set and observes that both stamps
+ * are already in the row, "so this is arithmetic".
+ *
+ * It is arithmetic, and it is here rather than on the screen for
+ * `truncatedScan`'s stated reason: a subtraction every surface re-derives is a
+ * subtraction two surfaces will eventually make differently. The list, the
+ * terminal and any later export all take it from this one function.
+ *
+ * ── THREE ANSWERS, AND `null` IS ONE OF THEM ──────────────────────────────
+ *
+ * `null` when either stamp is missing. A transcript that carried no timestamp
+ * at all is a real state — `all()`'s ordering already treats it as one, and
+ * sorts those rows last rather than at the epoch — and `0` would be a measured
+ * zero-length session, which is a different fact
+ * (`STD-a-measured-zero-is-drawn-and-named-an-unmeasured-thing-is`).
+ *
+ * `null` too when the stamps run backwards. It has not been observed and it is
+ * not impossible: `startedAt` and `endedAt` are the harness's own timestamps
+ * on the first and last records the SCAN read, and a clock that stepped back
+ * mid-session would produce it. A negative duration drawn as `-3h` is a
+ * screen asserting something absurd with total confidence; the absence is
+ * honest and is the same absence a missing stamp already produces.
+ *
+ * ── AND WHAT IT MEANS FOR A SESSION STILL BEING WRITTEN ───────────────────
+ *
+ * Exactly what every other number on the row means: **what the last scan
+ * saw.** `endedAt` is the stamp of the last record the index read, so a live
+ * session's duration is a FLOOR that grows each time the index is refreshed —
+ * and the row already carries the disclosure that says so, because
+ * `staleBy` is non-zero for precisely those rows. No second field is added to
+ * say it a second way; the list marks the duration with the staleness it
+ * already draws.
+ *
+ * Measured on this workspace 2026-09-09, which is why the range matters: the
+ * two indexed sessions are **84.553 seconds** and **6 days 21 minutes**
+ * (519,680,397 ms and 84,553 ms). A format that reads well for one of those
+ * and not the other is not a format.
+ */
+export function spanMs(row: { startedAt: string | null; endedAt: string | null }): number | null {
+  if (row.startedAt === null || row.endedAt === null) return null;
+  const from = Date.parse(row.startedAt);
+  const to = Date.parse(row.endedAt);
+  if (!Number.isFinite(from) || !Number.isFinite(to)) return null;
+  return to < from ? null : to - from;
 }
 
 /**
@@ -1304,10 +1371,28 @@ export class ConversationIndex {
   /**
    * Drop the rows for sessions no longer on disk, and say how many.
    *
+   * ── THIS DOES THE OPPOSITE OF THE SPEC, ON A RULING ───────────────────────
+   *
+   * The design says "a pruned transcript is a BROKEN ROW in the index" and
+   * that the list must keep showing it. This deletes it instead, and the
+   * disagreement was found and put to the owner: `plan:archive seq:11` records
+   * both sides and his ruling of 2026-09-07 — **the code is right**, the list
+   * shows only sessions that still exist, and the spec sentence is superseded.
+   * What replaces a broken row is his own better answer, persistence
+   * (`plan:archive seq:4` and `seq:5`), where a session worth keeping is
+   * mirrored out rather than remembered as a stub.
+   *
+   * The comment here used to cite that spec sentence in support of doing the
+   * opposite of what it says, which is how the contradiction survived. It now
+   * cites the ruling that settled it.
+   *
    * The count is returned rather than swallowed because a transcript the
-   * harness pruned is knowledge leaving the archive: the spec names it as the
-   * strongest argument for export, and a rebuild that quietly shrank would be
-   * exactly the silent loss `INV-nothing-is-dropped-silently` forbids.
+   * harness pruned is knowledge leaving the archive, and a rebuild that
+   * quietly shrank would be exactly the silent loss
+   * `INV-nothing-is-dropped-silently` forbids. Between one rebuild and the
+   * next, a deleted file is still disclosed on the list by
+   * `ConversationSummary.present`, which is a `stat` at request time and not
+   * this.
    */
   removeMissing(present: Set<string>): number {
     const known = (this.#db.prepare('SELECT session_id FROM conversations')
@@ -1390,6 +1475,85 @@ export class ConversationIndex {
     const rows = this.#db.prepare(
       'SELECT session_id, COUNT(*) AS n FROM subagents GROUP BY session_id',
     ).all() as { session_id: string; n: number }[];
+    return new Map(rows.map((r) => [r.session_id, Number(r.n)]));
+  }
+
+  /**
+   * **Every branch the archive holds a session from, in one query** —
+   * `plan:archive seq:10`, whose spec clause asks for the list to be
+   * "filterable by date and branch".
+   *
+   * A branch the reader can choose has to be a branch that EXISTS in the
+   * index: a free-text box would let somebody type `mian` and read the empty
+   * answer as "no sessions on that branch" rather than as a typo. Serving the
+   * roster is what makes the control a choice among facts.
+   *
+   * `NULL` is dropped rather than offered as a value. A session whose
+   * transcript recorded no branch is a real state, but it is not a branch, and
+   * putting it in a branch list would invent a repository named "unknown".
+   * The list's own count discloses it: filtering by branch narrows, and the
+   * screen says how many the filter left out.
+   *
+   * Measured on this workspace 2026-09-09: one branch, `master`, over 2
+   * sessions — 0.025 ms. The cost is stated because the control is drawn
+   * whether the answer is one branch or forty.
+   */
+  branches(): string[] {
+    const rows = this.#db.prepare(
+      'SELECT DISTINCT branch FROM conversations WHERE branch IS NOT NULL ORDER BY branch ASC',
+    ).all() as { branch: string }[];
+    return rows.map((r) => r.branch);
+  }
+
+  /**
+   * **How many of each session's LANES match a search term** — the half of
+   * `plan:archive seq:10`'s "searchable across content" that this archive can
+   * actually answer, and the measurement that decided which half.
+   *
+   * ── WHAT IS SEARCHED, AND WHAT COSTS WHAT ─────────────────────────────────
+   *
+   * This searches the INDEX — a lane's `description` (the line its dispatcher
+   * typed) and its `agent_type` — and never a transcript. Measured on this
+   * workspace, 2026-09-09, over 259 lanes and 2 sessions:
+   *
+   *     this query, median of 20             0.076 ms
+   *     GNU grep over the same transcripts   647 ms warm, 1,003 ms cold
+   *                                          (889,365,963 bytes, 261 files)
+   *
+   * **Eight thousand times**, for a keypress. And that 647 ms is C reading
+   * bytes; this build would have to `JSON.parse` every record to search what a
+   * reader would call the CONTENT rather than the punctuation of the JSON
+   * around it. `read-model-conversation-document.ts` already measures a full
+   * outline walk of ONE 74 MB session at 1,577 ms — one session of the 261
+   * files above.
+   *
+   * So the list's search is a search of NAMES, and the screen says so in the
+   * same breath as it reports what matched (`conv.searchScope`). The within-a-
+   * session search that DOES read content already exists, one level down, and
+   * is bounded to the session a reader has chosen to open.
+   *
+   * ── WHY LANES AT ALL, WHEN THE LIST IS OF SESSIONS ────────────────────────
+   *
+   * Because the archive is mostly lanes. 2 sessions against 259 subagent
+   * transcripts here: a search that read only the two session titles would be
+   * a control with almost nothing to match, and the thing a reader actually
+   * wants to find — "which session dispatched the lane about the index?" — is
+   * exactly the thing the sessions' own two rows cannot answer. Six lanes
+   * match `index` in this workspace, all under one session; that session is
+   * the answer, and the count is how the row says why it is on screen.
+   *
+   * The term is matched as a case-insensitive substring. SQLite's `LIKE` is
+   * ASCII-case-insensitive by default and is left that way rather than given a
+   * collation: a Hebrew or accented term still matches exactly, and inventing
+   * a folding rule here would be this build guessing at a reader's language.
+   */
+  subagentMatches(term: string): Map<string, number> {
+    const pattern = `%${likeEscape(term)}%`;
+    const rows = this.#db.prepare(
+      'SELECT session_id, COUNT(*) AS n FROM subagents ' +
+      "WHERE description LIKE ? ESCAPE '\\' OR agent_type LIKE ? ESCAPE '\\' " +
+      'GROUP BY session_id',
+    ).all(pattern, pattern) as { session_id: string; n: number }[];
     return new Map(rows.map((r) => [r.session_id, Number(r.n)]));
   }
 
@@ -1627,6 +1791,104 @@ export interface SubagentRebuildReport {
   unlinked: number;
   /** Bytes of subagent transcript actually read this run. */
   bytesRead: number;
+}
+
+/** What one `forget` removed. Zero and never-indexed are different answers. */
+export interface ForgetReport {
+  /** `false` when there was no conversation index here to begin with. */
+  indexed: boolean;
+  /** Session rows dropped. */
+  conversations: number;
+  /** Subagent rows dropped. */
+  subagents: number;
+}
+
+/**
+ * **Un-index this workspace: drop every conversation row and the tables
+ * themselves, so nothing scans a transcript here again until somebody asks.**
+ *
+ * `plan:archive seq:9`, and it is the half of that item that was genuinely
+ * missing. The item says the design settles the archive as "OPT-IN ... One key,
+ * defaulting to OFF ... A project that does not turn it on behaves exactly as
+ * it does today, AND NOTHING SCANS A TRANSCRIPT", and reports that no such key
+ * exists.
+ *
+ * ── THE OFF DEFAULT ALREADY HELD; WHAT WAS ABSENT WAS THE WAY BACK ─────────
+ *
+ * Checked against the code as it stands 2026-09-09 rather than as the item
+ * found it. `rebuildConversations` has exactly TWO callers in the whole
+ * product: `cli/commands/conversation.ts`, which is a person typing a command,
+ * and `hooks/stop.ts`' `stopConversationRefresh`, which opens with
+ * `openReadOnlyChecked` purely as a GATE and returns `null` when no index
+ * exists — its own comment says "a workspace nobody has ever scanned is still
+ * never opted in by a background hook". `ConversationIndex.open` — the only
+ * thing that creates these tables — is called from exactly one place, inside
+ * `rebuildConversations`. And the read surfaces cannot build one at all, by
+ * construction, which `test/ui/no-writes.test.ts` holds.
+ *
+ * So a project that never runs the command never has an index, and nothing
+ * ever reads its transcripts. That IS off-by-default, enforced in three places
+ * instead of declared in one — and it is stronger than a config key in the
+ * respect the item cares about most, because a key is a FILE and a file can
+ * arrive with a cloned repository. Nothing a repository ships can opt a
+ * reader's machine into scanning their transcripts; only their own keystroke
+ * can.
+ *
+ * What was missing is that the switch had no OFF position. Once scanned, the
+ * Stop hook refreshes for ever, and the only way to stop it was to delete
+ * `.index.db` — which is also the corpus's item index, so opting out of the
+ * archive meant discarding an unrelated cache. This is that missing half, and
+ * it is deliberately NOT a new key: it removes the state the existing gate
+ * reads, so the same three enforcement points do the work in both directions.
+ *
+ * ── WHY IT DROPS THE TABLES AND NOT JUST THE ROWS ─────────────────────────
+ *
+ * Because the gate asks whether the TABLES exist, not whether they hold
+ * anything. `DELETE FROM conversations` would leave an empty index that
+ * `openReadOnlyChecked` still opens, so the hook would keep scanning and
+ * re-fill it on the next assistant turn — an opt-out that silently undid
+ * itself, which is worse than none. Dropping returns the workspace to the
+ * `ConversationIndexUninitializedError` state it was in before the first scan,
+ * which is precisely the state the hook declines to act on.
+ *
+ * Nothing is lost that is not reconstructible: the transcripts are the source
+ * of truth and this index is a cache — the whole reason `rebuildConversations`
+ * can rebuild it from disk. The counts come back so the caller can say what
+ * left, because a cache shrinking in silence is what
+ * `INV-nothing-is-dropped-silently` forbids.
+ *
+ * **A WRITE, and therefore unreachable from `src/ui/`.** It lives beside
+ * `rebuildConversations` for that reason and is called from the CLI only.
+ */
+export function forgetConversations(dbPath: string, busyTimeoutMs = 3000): ForgetReport {
+  const db = new DatabaseSync(dbPath);
+  try {
+    db.exec(`PRAGMA busy_timeout = ${busyTimeoutMs}`);
+    const has = (table: string): boolean => (db.prepare(
+      "SELECT name FROM sqlite_master WHERE type = 'table' AND name = ?",
+    ).get(table) as { name: string } | undefined) !== undefined;
+    const count = (table: string): number => Number(
+      (db.prepare(`SELECT COUNT(*) AS n FROM ${table}`).get() as { n: number }).n,
+    );
+
+    // Either table alone is enough to have been opted in: an index holding
+    // `conversations` and not `subagents` is the "a schema behind" state the
+    // Stop hook deliberately treats as EXISTING, so an opt-out that only
+    // recognised the complete shape would leave exactly that workspace
+    // scanning.
+    const hasConversations = has('conversations');
+    const hasSubagents = has('subagents');
+    if (!hasConversations && !hasSubagents) {
+      return { indexed: false, conversations: 0, subagents: 0 };
+    }
+    const conversations = hasConversations ? count('conversations') : 0;
+    const subagents = hasSubagents ? count('subagents') : 0;
+    db.exec('DROP TABLE IF EXISTS conversations');
+    db.exec('DROP TABLE IF EXISTS subagents');
+    return { indexed: true, conversations, subagents };
+  } finally {
+    db.close();
+  }
 }
 
 /** What one rebuild did, in the numbers a caller has to be able to print. */

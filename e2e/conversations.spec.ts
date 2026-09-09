@@ -1,4 +1,5 @@
-// @basis TASK-the-transcript-is-one-document-you-scroll-not-fifty-records,
+// @basis TASK-the-list-is-browsable-filter-search-and-duration-across,
+// TASK-the-transcript-is-one-document-you-scroll-not-fifty-records,
 // TASK-a-session-opens-at-its-end-because-the-end-is-where-the-work,
 // TASK-the-viewer-renders-what-the-terminal-showed-with-its,
 // TASK-a-conversation-is-rendered-as-a-document-who-spoke-when-and,
@@ -2022,4 +2023,195 @@ test('a session that dispatched lanes says so on its list row', async ({ page })
   // second request; `seq:15` is what makes it worth having. Two lanes: the one
   // the session dispatched and the one its own lane did.
   await expect(page.locator('.convrow').first()).toContainText('2 helper agents');
+});
+
+/**
+ * **The list is browsable** — `plan:archive seq:10`, driven in a real browser.
+ *
+ * The item's complaint is that `drawList` has no filter control at all and
+ * that the single find box on the screen lives INSIDE a transcript, matching
+ * only the records that were loaded. What is asserted here is the LIST: three
+ * controls above it, a duration on every row, and — the part that decides
+ * whether the search is worth having on a corpus that is mostly lanes — a
+ * session reachable through the one-line description of a lane it dispatched.
+ *
+ * ── ITS OWN FIXTURE, FOR THE STALENESS BLOCK'S REASON ─────────────────────
+ *
+ * The shared fixture is ONE session, and a filter over one row can be green
+ * with the filter doing nothing at all. This block builds TWO, on two
+ * branches, four days apart, one of them carrying a lane — the smallest corpus
+ * in which every clause can be wrong.
+ *
+ * ── WHAT IS DRIVEN RATHER THAN ASSERTED FROM THE BODY ─────────────────────
+ *
+ * The typing, and it matters: `RULE-a-screen-shows-the-new-state-after-the-
+ * reader-acts-on-it` says the list refreshes with no button to press, and the
+ * bar is deliberately built ONCE so the caret survives that refresh. A test
+ * that fetched the URL directly would prove the endpoint — which
+ * `test/ui/conversations-endpoint.test.ts` already does — and would say
+ * nothing about the input still holding what was typed into it, which is the
+ * defect a rebuilt bar produces.
+ */
+test.describe('the list is browsable', () => {
+  let browsable: UiHarness;
+  let browseCwd: string;
+  let browseHome: string;
+
+  test.beforeAll(async () => {
+    browseHome = mkdtempSync(path.join(tmpdir(), 'e2e-browse-home-'));
+    browseCwd = mkdtempSync(path.join(tmpdir(), 'e2e-browse-cwd-'));
+    const dir = path.join(browseHome, 'projects', projectDirName(browseCwd));
+    mkdirSync(dir, { recursive: true });
+    const jsonl = (rows: unknown[]): string => rows.map((r) => JSON.stringify(r)).join('\n') + '\n';
+
+    // Ninety minutes on `main`, four days before the other.
+    writeFileSync(path.join(dir, 'sess-alpha.jsonl'), jsonl([
+      { type: 'user', timestamp: '2026-09-01T10:00:00.000Z', gitBranch: 'main',
+        message: { role: 'user', content: 'the alpha session' } },
+      { type: 'assistant', timestamp: '2026-09-01T11:30:00.000Z', gitBranch: 'main',
+        message: { role: 'assistant', content: text('done') } },
+    ]));
+
+    // Two minutes on `topic`, and the only one with a lane under it.
+    writeFileSync(path.join(dir, 'sess-beta.jsonl'), jsonl([
+      { type: 'user', timestamp: '2026-09-05T10:00:00.000Z', gitBranch: 'topic',
+        message: { role: 'user', content: 'the beta session' } },
+      { type: 'assistant', timestamp: '2026-09-05T10:02:00.000Z', gitBranch: 'topic',
+        message: { role: 'assistant', content: text('done') } },
+    ]));
+    const lanes = path.join(dir, 'sess-beta', 'subagents');
+    mkdirSync(lanes, { recursive: true });
+    writeFileSync(path.join(lanes, 'agent-probe.jsonl'), jsonl([
+      { type: 'user', timestamp: '2026-09-05T10:01:00.000Z',
+        message: { role: 'user', content: 'go' } },
+    ]));
+    // THE PHRASE THAT IS NOWHERE ON THE SESSION'S OWN ROW. Neither session's
+    // id, title or branch contains `sextant`, so a list that matched only its
+    // own rows answers nothing for it.
+    writeFileSync(path.join(lanes, 'agent-probe.meta.json'), JSON.stringify({
+      agentType: 'Explore', description: 'read the sextant', spawnDepth: 1,
+      toolUseId: 'toolu_browse_1',
+    }));
+
+    process.env['CLAUDE_CONFIG_DIR'] = browseHome;
+    const previous = process.cwd();
+    process.chdir(browseCwd);
+    try {
+      runCli(['init'], browseCwd, () => {});
+      runCli(['conversation', 'rebuild'], browseCwd, () => {});
+    } finally {
+      process.chdir(previous);
+    }
+    browsable = await startUiChild(browseCwd);
+  });
+
+  test.afterAll(async () => {
+    await browsable?.stop();
+    delete process.env['CLAUDE_CONFIG_DIR'];
+    if (browseCwd) removeTree(browseCwd);
+    if (browseHome) removeTree(browseHome);
+  });
+
+  const land = async (page: Page, lang: 'en' | 'he'): Promise<void> => {
+    await page.addInitScript((l) => {
+      try { localStorage.setItem('myctx-lang', l as string); } catch { /* private mode */ }
+    }, lang);
+    const nonce = await mintNonce(browsable.port);
+    await page.goto(`http://127.0.0.1:${browsable.port}/#${nonce}`);
+    await page.waitForSelector('.rail', { timeout: 20_000 });
+    await page.evaluate(() => { location.hash = '#/conversations'; });
+    await page.waitForSelector('.convrow', { timeout: 20_000 });
+    await expect(page.locator('#exited')).toBeHidden();
+  };
+
+  for (const lang of ['en', 'he'] as const) {
+    test(`the controls narrow the list where the reader is looking (${lang})`, async ({ page }) => {
+      await land(page, lang);
+      await expect(page.locator('.convrow')).toHaveCount(2);
+
+      // THE BRANCH CHOOSER OFFERS EVERY BRANCH THE ARCHIVE HOLDS — not the
+      // ones on this page, and not the ones surviving the current filter.
+      const branch = page.locator('select.convselect');
+      await expect(branch.locator('option')).toHaveCount(3);
+      await branch.selectOption('topic');
+      await expect(page.locator('.convrow')).toHaveCount(1);
+      // The BRANCH, not the id: neither session carries a title and the list
+      // never draws the id — a fact worth knowing, since the id is one of the
+      // things the search reads. It is on the URL and in the terminal, and a
+      // reader who has one can paste it; nobody reads one off this list.
+      await expect(page.locator('.convrow')).toContainText('topic');
+
+      // AND THE CHOOSER STILL OFFERS BOTH, so the filter is undoable. A
+      // control that erased itself on first use would be a trap.
+      await expect(branch.locator('option')).toHaveCount(3);
+      await branch.selectOption('');
+      await expect(page.locator('.convrow')).toHaveCount(2);
+
+      // THE DATE BOUNDS ARE INCLUSIVE OF THEIR WHOLE DAY, at both ends.
+      await page.locator('input.convdate').first().fill('2026-09-05');
+      await expect(page.locator('.convrow')).toHaveCount(1);
+      await expect(page.locator('.convrow')).toContainText('topic');
+      await page.locator('input.convdate').first().fill('');
+      await expect(page.locator('.convrow')).toHaveCount(2);
+
+      // CLEAR PUTS EVERYTHING BACK, in one press.
+      await page.locator('select.convselect').selectOption('main');
+      await expect(page.locator('.convrow')).toHaveCount(1);
+      await page.locator('button.convclear').click();
+      await expect(page.locator('.convrow')).toHaveCount(2);
+      await expect(page.locator('select.convselect')).toHaveValue('');
+    });
+  }
+
+  test('a session is found through a lane, and the row says why it is there', async ({ page }) => {
+    await land(page, 'en');
+
+    // Typed, character by character, into the real box — and the assertion
+    // below on the box's own value is what proves the bar was not rebuilt
+    // under the reader's hands when the answer came back.
+    const find = page.locator('input.convfind');
+    await find.click();
+    await find.type('sextant', { delay: 30 });
+
+    await expect(page.locator('.convrow')).toHaveCount(1);
+    await expect(page.locator('.convrow')).toContainText('topic');
+    await expect(page.locator('.convrow')).toContainText('matched in 1 helper agent');
+    // The input still holds what was typed. A bar rebuilt with the results
+    // would take the first letter and drop the rest.
+    await expect(find).toHaveValue('sextant');
+    await expect(find).toBeFocused();
+
+    // The narrowing is disclosed rather than left to be inferred from a
+    // shorter list, and the screen says what the search actually read.
+    // The RESULTS region, not "the card that has a row in it": the empty
+    // answer below has no rows, so a locator defined by the presence of one
+    // resolves to nothing exactly when the assertion matters most.
+    const card = page.locator('.convresults');
+    await expect(card).toContainText('1 of 2 sessions match');
+    // The scope sentence sits with the CONTROLS and not with the results,
+    // deliberately: it describes what the box does, so it has to be readable
+    // when the box has just answered nothing.
+    const pane = page.locator('.card.pane').filter({ has: page.locator('.convfilter') });
+    await expect(pane).toContainText('It does not read the transcripts');
+
+    await page.screenshot({
+      path: 'e2e/screens/conversations-filtered-en.png', fullPage: true,
+    });
+
+    // A term nothing matches is a NAMED empty state, not an empty list — the
+    // difference between "no session matches" and "the archive is empty".
+    await find.fill('');
+    await find.type('nothingmatchesthis', { delay: 10 });
+    await expect(page.locator('.convrow')).toHaveCount(0);
+    await expect(card).toContainText('No session matches what you asked for');
+    await expect(card).toContainText('all 2');
+  });
+
+  test('every row says how long its session lasted, at both ends of the range', async ({ page }) => {
+    await land(page, 'en');
+    const rows = page.locator('.convrow');
+    // Newest first — `all()`'s order, untouched by the filter.
+    await expect(rows.nth(0)).toContainText('took 2m');
+    await expect(rows.nth(1)).toContainText('took 1h 30m');
+  });
 });

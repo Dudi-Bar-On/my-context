@@ -163,11 +163,39 @@ export const strings = {
   'conv.lane': '{n} סוכן עוזר',
   'conv.lanes': '{n} סוכני עזר',
   'conv.outdated': 'הארכיון הזה נסרק בגרסה קודמת, ולכן אין עדיין מה להציג. שום דבר לא אבד — הוא נבנה מחדש מהקבצים שבדיסק, ומתקן את עצמו בסוף התור הבא שלכם. כדי לעשות זאת עכשיו:',
-  'conv.missingSome': 'ל‑{n} מאלה כבר אין קובץ בדיסק. המספרים שלהן הם מה שהסריקה האחרונה ראתה.',
+  'conv.sensitive': 'הקבצים האלה מכילים את כל מה שאתם ו‑Claude הקלדתם, כולל כל מה שהדבקתם — מפתחות, אסימונים, מידע של אחרים. האפליקציה מגישה אותם דרך פורט מקומי לכל מי שמחזיק בכתובת שלה, ולכן ארכיון שהופעל מרחיב את מה שקישור שדלף היה חושף. שום דבר לא נסרק כאן עד שתריצו בעצמכם את פקודת הבנייה, ו‑{m:mycontext conversation forget} מבטל את האינדוקס של הפרויקט ועוצר את הרענון.',
+  'conv.missingSome': 'ל‑{n} מאלה כבר אין קובץ בדיסק. המספרים שלהן הם מה שהסריקה האחרונה ראתה, והן יורדות מהרשימה בסוף התור הבא שלכם.',
   'conv.behind': '{n} מאלה גדלו מאז הקריאה האחרונה. {bytes} של תמליל עוד לא נמצאים ברשימה הזאת, ולכן כל מספר וכל זמן סיום למטה הם מה שהסריקה האחרונה ראתה.',
   'conv.behindRow': 'מפגר ב‑{bytes}',
   'conv.current': 'מעודכן מול כל קובץ בדיסק.',
   'conv.refreshedBy': 'הרשימה הזאת מתרעננת בסוף כל תור שלכם. אפשר לעדכן אותה גם בהרצה:',
+  'conv.filter.region': 'צמצום הרשימה',
+  'conv.filter.find': 'חיפוש שיחה',
+  'conv.filter.branch': 'ענף',
+  'conv.filter.anyBranch': 'כל הענפים',
+  'conv.filter.since': 'הסתיימו ביום הזה או אחריו',
+  'conv.filter.until': 'הסתיימו ביום הזה או לפניו',
+  'conv.filter.clear': 'ניקוי',
+  'conv.searchScope': 'החיפוש קורא את מה שהאינדקס מחזיק: שם השיחה, הענף שלה, המזהה שלה, והשורה שמתארת כל סוכן עוזר שהיא שיגרה. הוא אינו קורא את התמלילים — הם גדולים מכדי לחפש בהם בכל הקשה. כדי לחפש בתוך שיחה אחת, פתחו אותה.',
+  'conv.matchedList': '{n} מתוך {total} שיחות מתאימות.',
+  'conv.noMatchList': 'אף שיחה לא מתאימה למה שביקשתם. נקו את הסינון כדי לראות את כל {total}.',
+  'conv.laneMatch': 'התאמה ב‑{n} סוכני עזר',
+  'conv.laneMatch1': 'התאמה בסוכן עוזר אחד',
+  'conv.undated': 'ב‑{n} שיחות לא נרשם זמן סיום, ולכן שום תאריך לא יכול למקם אותן. הן מושמטות כל עוד מוגדר תאריך.',
+  'conv.took': 'נמשכה {d}',
+  'conv.tookFloor': 'נמשכה לפחות {d}',
+  // **ABBREVIATIONS, AND NOT THE FULL WORDS, because Hebrew inflects and one
+  // string cannot.** The full forms drew `‎1 שעות 30 דקות` on the ninety-minute
+  // session — plural nouns after the numeral 1, which is wrong in Hebrew and
+  // was on screen while every assertion passed. English is safe from it only
+  // because `1h` carries no number at all. A one-hour duration is reachable in
+  // one line of any session, so this is the ordinary case rather than an edge:
+  // שע׳ and דק׳ are the standard clipped forms and do not agree with
+  // anything.
+  'conv.dur.d': '{n} ימ׳',
+  'conv.dur.h': '{n} שע׳',
+  'conv.dur.m': '{n} דק׳',
+  'conv.dur.s': '{n} שנ׳',
   'conv.back': 'חזרה לכל השיחות',
   'conv.prunedBody': 'הקובץ של השיחה הזו כבר לא נמצא בדיסק, ולכן אין מה לקרוא. מה שמוצג למעלה הוא מה שהסריקה האחרונה רשמה.',
   'conv.unreadable': 'לא ניתן לקריאה',

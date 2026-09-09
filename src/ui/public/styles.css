@@ -3267,6 +3267,15 @@ wa-tree{
     --sheen-top:transparent; --sheen-bottom:transparent; --e1:none; --e3:none;
   }
   .hdr,.rail,.prov,.strip,.pop,.banner,.noprint{display:none!important}
+  /* The archive's date and branch controls declare `color-scheme:dark` so the
+     UA paints its calendar and dropdown glyphs for a dark field. On paper the
+     field is white and the ink is black — every token above says so — and a
+     UA drawing its furniture for dark would put a near-white chevron on white
+     paper. The controls THEMSELVES are kept rather than dropped as
+     `.noprint`: they are the only place the printout says WHAT the list was
+     narrowed by, and a narrowed list that prints as though it were the whole
+     archive is the silent loss `INV-nothing-is-dropped-silently` forbids. */
+  .convselect,.convdate{color-scheme:light}
   .app,.app.pane-open{display:block;block-size:auto;grid-template-columns:none}
   .body{overflow:visible;padding:0}
   body{overflow:visible;background:#fff;color:#000}
@@ -3622,6 +3631,49 @@ body.docpage{overflow-y:auto}
 .convfold>summary{cursor:pointer;font-size:var(--fs-0);color:var(--dim)}
 .convback{inline-size:auto;margin-block-end:var(--sp-2)}
 .convtitle{font-weight:600}
+
+/* ── Narrowing the list (plan:archive seq:10) ───────────────────────────────
+   Four controls and a button on one line, wrapping to as many lines as the
+   viewport needs rather than scrolling: a filter a reader cannot see all of is
+   a filter they cannot tell they have set. Logical properties throughout, so
+   the row reverses under `dir="rtl"` with no second rule, and every control
+   sits INSIDE its own `<label>` so the visible name and the accessible name
+   are the same node. */
+.convfilter{display:flex;flex-wrap:wrap;align-items:flex-end;gap:var(--sp-2);
+  margin-block:var(--sp-2)}
+.convfield{display:flex;flex-direction:column;gap:2px}
+.convfieldname{font-size:var(--fs-0);color:var(--dim)}
+/* `min-inline-size:0` on the flex child, or a long branch name makes the row
+   wider than the card instead of wrapping — the flex default is `auto`, which
+   refuses to shrink below the content. */
+/* **EVERY ONE OF THESE FOUR CONTROLS SETS ITS OWN COLOUR AND ITS OWN
+   BACKGROUND, and that is the defect the Execute block above documents,
+   caught here for the third time.** The only global button rule is
+   `button{font:inherit;color:inherit}`: it takes the app's LIGHT ink and sets
+   no background, so `.convclear` rendered as rgb(240,238,246) text on the UA's
+   own rgb(240,240,240) button face — a contrast ratio of about 1.0, INVISIBLE,
+   with a passing browser test clicking it by class. Found by looking at the
+   screen, exactly as the Composer's `run` button was on 2026-08-27. An input
+   and a select left to the UA are the same failure wearing the opposite
+   colours: readable, and glaringly unlike every other field in the app.
+
+   The shapes are the transcript viewer's own — `.tvfind` for a text field and
+   `.tvjump` for a button, twenty lines below — so the list's controls and the
+   document's find box are one vocabulary rather than two. */
+.convfind,.convselect,.convdate{min-inline-size:0;font:var(--fs-0)/1.4 var(--sans);
+  color:var(--ink);background:var(--sink);border:1px solid var(--edge);
+  border-radius:var(--r-sm);padding:var(--sp-1) var(--sp-2)}
+.convfind{inline-size:min(24ch,100%)}
+/* The native calendar and dropdown indicators are painted by the UA in its own
+   dark ink, which vanishes on `--sink`. `color-scheme:dark` is what tells the
+   UA to paint its widget furniture for a dark field — a declaration, not an
+   override, so the browser stays in charge of drawing its own control. */
+.convselect,.convdate{color-scheme:dark}
+.convclear{inline-size:auto;flex:0 0 auto;font:600 var(--fs-00)/1.2 var(--mono);
+  color:var(--dim);background:var(--panel-2);border:1px solid var(--edge);
+  border-radius:var(--r-sm);padding:var(--sp-1) var(--sp-2);cursor:pointer}
+.convclear:hover,.convclear:focus-visible{color:var(--gold);border-color:var(--gold)}
+.convresults{display:block}
 
 /* ══════════════════════════════════════════════════════════════════════════
    THE TRANSCRIPT VIEWER — `plan:archive seq:7`, `seq:8`, `seq:13`.

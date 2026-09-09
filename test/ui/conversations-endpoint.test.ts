@@ -1,5 +1,8 @@
 // @basis TASK-the-archive-shows-what-is-on-disk-now-because-nothing-has,
 // TASK-a-subagent-is-opened-from-the-turn-that-dispatched-it-and,
+// TASK-the-list-is-browsable-filter-search-and-duration-across,
+// TASK-a-pruned-session-is-a-row-that-says-so-not-a-row-that,
+// STD-a-measured-zero-is-drawn-and-named-an-unmeasured-thing-is,
 // INV-nothing-is-dropped-silently
 /**
  * `GET /api/conversations` and `GET /api/conversations/:id` — `plan:archive
@@ -37,6 +40,7 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 import {
   apiConversation, apiConversations, apiConversationSubagents, CONVERSATION_LIST_CAP,
+  CONVERSATION_QUERY_CAP,
   CONVERSATION_RECORD_CAP, CONVERSATION_RECORD_DEFAULT, CONVERSATION_TEXT_CAP,
   type ConversationBody, type ConversationListBody, type SubagentListBody,
 } from '../../src/ui/read-model-conversations.ts';
@@ -352,13 +356,42 @@ test('the list is bounded, and says what it held back in both directions', () =>
   } finally { b.dispose(); }
 });
 
-test('a pruned transcript is served as a pruned transcript, not as a failure', () => {
+/**
+ * **THE WINDOW IS ONE TURN WIDE, NOT ZERO — and this test is why
+ * `plan:archive seq:11`'s ruling could not be carried out as written.**
+ *
+ * That item records an owner ruling of 2026-09-07: a pruned session does NOT
+ * stay in the archive, `removeMissing` stays, and — this is the part that was
+ * wrong — `present: false`, the pruned chip and the 200-body branch are "DEAD
+ * CODE to remove rather than a state to make reachable".
+ *
+ * They are reachable, and they were reachable while that sentence was being
+ * written: this test had been green since `plan:archive seq:2` and constructs
+ * the state in three lines. `removeMissing` runs during a REBUILD. The list is
+ * served from the index BETWEEN rebuilds, and `summarise` stats each file at
+ * request time. So a transcript deleted after a scan is disclosed on the list
+ * until the next refresh, which on this build is the end of the reader's next
+ * assistant turn.
+ *
+ * Both halves are asserted here now, because the ruling is right about the
+ * second and the item is wrong only about the first:
+ *
+ *   1. Before a rebuild, the row is served with `present: false` and the
+ *      document answers 200 with the reason in a sentence.
+ *   2. After a rebuild, the row is GONE. `removeMissing` does what the owner
+ *      ruled, and the disclosure above is a window rather than a permanent
+ *      state.
+ *
+ * Deleting the read half would have left the row on the list for that window
+ * with nothing marking it, opening onto a document that cannot load — which is
+ * `INV-nothing-is-dropped-silently` failing at the one moment it exists for.
+ */
+test('a transcript deleted between two rebuilds is disclosed, then dropped', () => {
   const b = box();
   try {
     b.write('gone', [{ type: 'user', message: { role: 'user', content: 'hi' } }]);
     b.scan();
-    // The harness prunes it AFTER the scan — the state the spec names as the
-    // strongest argument for export.
+    // The harness prunes it AFTER the scan.
     rmSync(path.join(b.dir, 'gone.jsonl'));
 
     const list = apiConversations(b.ws, url()).body as ConversationListBody;
@@ -376,6 +409,14 @@ test('a pruned transcript is served as a pruned transcript, not as a failure', (
     assert.ok((body.uncounted ?? '').includes('no longer on disk'),
       'and the reason is a sentence, not a flag — an empty records array with no explanation '
       + 'is indistinguishable from an empty conversation');
+
+    // ── AND THEN THE RULING TAKES EFFECT ──────────────────────────────────
+    b.scan();
+    const after = apiConversations(b.ws, url()).body as ConversationListBody;
+    assert.deepEqual(after.conversations, [],
+      'the owner ruled that the archive holds only sessions that still exist, so the next '
+      + 'rebuild drops the row — the disclosure above is a window, not a kept state');
+    assert.equal(after.missing, 0, 'and nothing is left to count as missing');
   } finally { b.dispose(); }
 });
 
@@ -889,5 +930,204 @@ test('asking for a LANE answers the owning session\'s whole roster, so depth 2 s
     ).body as SubagentListBody;
     assert.equal(unknown.ownerSessionId, 'agent-nope');
     assert.equal(unknown.total, 0);
+  } finally { b.dispose(); }
+});
+
+/* ── plan:archive seq:10 — the list is browsable ──────────────────────────── */
+
+/**
+ * **The list narrows, and every clause of the narrowing is refused when it is
+ * malformed rather than accepted and ignored** — `plan:archive seq:10`.
+ *
+ * The item's complaint is exact: `/api/conversations` accepted `limit` and
+ * `offset` ONLY and "actively REFUSES any other parameter, so this cannot be
+ * added client-side and the endpoint must move first". These are the
+ * parameters it moved to, and the refusals are asserted in the same breath as
+ * the acceptances, because an endpoint that quietly ignored `?since=last week`
+ * would answer the unfiltered question and look right doing it.
+ */
+test('the list narrows by branch, date and text, and each malformed clause is refused', () => {
+  const b = box();
+  try {
+    b.write('old', [
+      { type: 'user', timestamp: '2026-09-01T10:00:00.000Z', gitBranch: 'main',
+        message: { role: 'user', content: 'the first session' } },
+      { type: 'assistant', timestamp: '2026-09-01T10:05:00.000Z', gitBranch: 'main',
+        message: { role: 'assistant', content: text('done') } },
+    ]);
+    b.write('new', [
+      { type: 'user', timestamp: '2026-09-05T10:00:00.000Z', gitBranch: 'topic',
+        message: { role: 'user', content: 'the second session' } },
+      { type: 'assistant', timestamp: '2026-09-05T11:30:00.000Z', gitBranch: 'topic',
+        message: { role: 'assistant', content: text('done') } },
+    ]);
+    b.scan();
+
+    const all = apiConversations(b.ws, url()).body as ConversationListBody;
+    assert.equal(all.total, 2);
+    assert.equal(all.matching, 2, 'with no filter, matching IS the total');
+    assert.deepEqual(all.filter, { q: null, branch: null, since: null, until: null });
+    assert.deepEqual(all.branches, ['main', 'topic'],
+      'every branch the ARCHIVE holds, so the chooser cannot offer a branch that does not '
+      + 'exist and cannot drop the one being filtered by');
+
+    const onBranch = apiConversations(b.ws, url('?branch=topic')).body as ConversationListBody;
+    assert.deepEqual(onBranch.conversations.map((c) => c.sessionId), ['new']);
+    assert.equal(onBranch.total, 2, 'the archive is still two sessions');
+    assert.equal(onBranch.matching, 1, 'and one of them answered');
+    assert.equal(onBranch.omitted, 0,
+      'omitted counts against what MATCHED, so conversations.length + omitted is the size of '
+      + 'the answer and no two fields disagree');
+    assert.deepEqual(onBranch.branches, ['main', 'topic'],
+      'and the chooser still offers both — a control that erased itself on first use would be '
+      + 'a filter a reader could not undo');
+
+    // Both bounds are inclusive of their whole day, which is the only reading
+    // that does not turn on a zone the server does not have.
+    const since = apiConversations(b.ws, url('?since=2026-09-05')).body as ConversationListBody;
+    assert.deepEqual(since.conversations.map((c) => c.sessionId), ['new']);
+    const until = apiConversations(b.ws, url('?until=2026-09-01')).body as ConversationListBody;
+    assert.deepEqual(until.conversations.map((c) => c.sessionId), ['old']);
+    const day = apiConversations(
+      b.ws, url('?since=2026-09-05&until=2026-09-05'),
+    ).body as ConversationListBody;
+    assert.deepEqual(day.conversations.map((c) => c.sessionId), ['new'],
+      'a single day includes every instant of it at both ends');
+
+    const byText = apiConversations(b.ws, url('?q=TOPIC')).body as ConversationListBody;
+    assert.deepEqual(byText.conversations.map((c) => c.sessionId), ['new'],
+      'the branch is searched, and case is not a distinction a reader intended');
+    const byId = apiConversations(b.ws, url('?q=old')).body as ConversationListBody;
+    assert.deepEqual(byId.conversations.map((c) => c.sessionId), ['old'],
+      'the id is searched, because it is what every other surface addresses a session by');
+
+    // ── AND THE REFUSALS ────────────────────────────────────────────────────
+    const refusals: [string, string][] = [
+      ['?since=last%20week', 'a date this endpoint cannot read'],
+      ['?until=2026-9-5', 'a date written loosely'],
+      ['?q=', 'an empty search is a question, answered here as no question at all'],
+      ['?branch=', 'and so is an empty branch'],
+      ['?sort=duration', 'a parameter this endpoint does not act on'],
+    ];
+    for (const [query, why] of refusals) {
+      const answer = apiConversations(b.ws, url(query));
+      assert.equal(answer.status, 400, `${query} must be refused — ${why}`);
+    }
+    const long = apiConversations(b.ws, url(`?q=${'x'.repeat(CONVERSATION_QUERY_CAP + 1)}`));
+    assert.equal(long.status, 400, 'a term past the cap is refused with the cap named');
+  } finally { b.dispose(); }
+});
+
+/**
+ * **The archive is mostly LANES, so a search that read only session titles
+ * would be a control with almost nothing to match.**
+ *
+ * Measured on this workspace 2026-09-09: 2 sessions against 259 subagent
+ * transcripts. The question a reader actually has — "which session dispatched
+ * the lane about the index?" — is precisely the one the two session rows
+ * cannot answer, so a session reaches the list through its lanes and the row
+ * says how many matched.
+ *
+ * `null` versus `0` is asserted in both directions, because they are different
+ * facts: nothing was searched for, against searched and none of this session's
+ * lanes matched.
+ */
+test('a session is found through its lanes, and the row says how many matched', () => {
+  const b = box();
+  try {
+    b.write('host', [{ type: 'user', message: { role: 'user', content: 'hi' } }]);
+    b.lane('host', 'agent-one',
+      { description: 'measure the conversation index', agentType: 'fork' },
+      [{ type: 'user', message: { role: 'user', content: 'go' } }]);
+    b.lane('host', 'agent-two',
+      { description: 'draw the archive list', agentType: 'general' },
+      [{ type: 'user', message: { role: 'user', content: 'go' } }]);
+    b.write('other', [{ type: 'user', message: { role: 'user', content: 'hi' } }]);
+    b.scan();
+
+    const none = apiConversations(b.ws, url()).body as ConversationListBody;
+    assert.equal(none.conversations[0]?.matchedLanes, null,
+      'no term was given, so there is no count — which is a different fact from a count of zero');
+
+    const hit = apiConversations(b.ws, url('?q=index')).body as ConversationListBody;
+    assert.deepEqual(hit.conversations.map((c) => c.sessionId), ['host'],
+      'the session is on the list because a LANE matched, and nothing on its own row did');
+    assert.equal(hit.conversations[0]?.matchedLanes, 1,
+      'and the count is the only thing on the row explaining why it is there');
+
+    const byType = apiConversations(b.ws, url('?q=fork')).body as ConversationListBody;
+    assert.equal(byType.conversations[0]?.matchedLanes, 1, 'the agent type is searched too');
+
+    const byId = apiConversations(b.ws, url('?q=host')).body as ConversationListBody;
+    assert.equal(byId.conversations[0]?.matchedLanes, 0,
+      'searched, and none of its lanes matched — a measured zero on a row that reached the '
+      + 'list through its own id');
+
+    // A wildcard typed into a find box is a literal, not a query language.
+    const literal = apiConversations(b.ws, url('?q=%25')).body as ConversationListBody;
+    assert.equal(literal.matching, 0,
+      'a bare % matches nothing, because it is escaped — otherwise it would match every row '
+      + 'and look exactly like a real answer');
+  } finally { b.dispose(); }
+});
+
+/**
+ * **Duration is arithmetic on two stamps the row already carries** — the item
+ * says so itself — and the interesting part is the three answers, not the
+ * subtraction.
+ */
+test('duration is served for a session that has both stamps, and is absent otherwise', () => {
+  const b = box();
+  try {
+    b.write('timed', [
+      { type: 'user', timestamp: '2026-09-01T10:00:00.000Z',
+        message: { role: 'user', content: 'start' } },
+      { type: 'assistant', timestamp: '2026-09-01T11:30:00.000Z',
+        message: { role: 'assistant', content: text('end') } },
+    ]);
+    b.write('untimed', [{ type: 'user', message: { role: 'user', content: 'no stamps at all' } }]);
+    b.scan();
+
+    const body = apiConversations(b.ws, url()).body as ConversationListBody;
+    const timed = body.conversations.find((c) => c.sessionId === 'timed');
+    assert.equal(timed?.durationMs, 90 * 60 * 1000, 'ninety minutes, to the millisecond');
+
+    const untimed = body.conversations.find((c) => c.sessionId === 'untimed');
+    assert.equal(untimed?.durationMs, null,
+      'a transcript that carried no timestamp has no duration — and `0` would be a session '
+      + 'that lasted no time, which is a different fact '
+      + '(STD-a-measured-zero-is-drawn-and-named-an-unmeasured-thing-is)');
+  } finally { b.dispose(); }
+});
+
+/**
+ * **A date bound cannot place a row with no end time, so those rows are
+ * dropped — and a drop is counted where the reader can see it.**
+ *
+ * `INV-nothing-is-dropped-silently`. Without `undated`, a reader who set a
+ * date would be shown a shorter list with no way to learn that a session had
+ * been excluded for a reason that has nothing to do with the dates they chose.
+ */
+test('a session with no end time is excluded by a date bound, and that is counted', () => {
+  const b = box();
+  try {
+    b.write('dated', [
+      { type: 'user', timestamp: '2026-09-01T10:00:00.000Z',
+        message: { role: 'user', content: 'a' } },
+    ]);
+    b.write('undated', [{ type: 'user', message: { role: 'user', content: 'b' } }]);
+    b.scan();
+
+    const open = apiConversations(b.ws, url()).body as ConversationListBody;
+    assert.equal(open.matching, 2, 'both are on the unfiltered list');
+    assert.equal(open.undated, 0,
+      'and no date was asked for, so this is a fact about a filter that excluded nothing');
+
+    const bounded = apiConversations(
+      b.ws, url('?since=2026-01-01'),
+    ).body as ConversationListBody;
+    assert.deepEqual(bounded.conversations.map((c) => c.sessionId), ['dated']);
+    assert.equal(bounded.undated, 1,
+      'the one that could not be placed is COUNTED, not merely missing');
   } finally { b.dispose(); }
 });

@@ -174,11 +174,50 @@ export const strings = {
   'conv.lane': '{n} helper agent',
   'conv.lanes': '{n} helper agents',
   'conv.outdated': 'This archive was indexed by an earlier version, so there is nothing to show yet. Nothing has been lost — it is rebuilt from the files on disk, and it repairs itself at the end of your next turn. To do it now:',
-  'conv.missingSome': '{n} of these no longer have a file on disk. Their counts are what the last scan saw.',
+  // ── WHAT THE ARCHIVE COSTS YOU TO TURN ON — plan:archive seq:11 and seq:9 ──
+  //
+  // The spec asks for this in the feature's own help and it was absent: across
+  // all 30 `conv.*` keys there was not one mention of sensitivity, of pasted
+  // secrets or of the local port, while `conv.help.body` said the reassuring
+  // half — "nothing here enters your repository" — and stopped. Both halves are
+  // true; only one of them was being said.
+  'conv.sensitive': 'What these files hold is everything you and Claude typed, including whatever you pasted — keys, tokens, someone else’s data. This app serves them over a local port to whoever holds its address, so an archive that has been turned on WIDENS what a leaked link would show. Nothing is scanned here until you run the rebuild command yourself, and {m:mycontext conversation forget} un-indexes this project and stops the refresh.',
+  // It says what a reader can DO about the row as well as what it is. The chip
+  // beside it and this sentence used to point opposite ways — the help text
+  // said a deleted session is gone from here too, and the chip claimed the row
+  // was kept — and the reconciliation is that both are right at different
+  // moments: the row survives until the next refresh drops it.
+  'conv.missingSome': '{n} of these no longer have a file on disk. Their counts are what the last scan saw, and they leave this list at the end of your next turn.',
   'conv.behind': '{n} of these have grown since they were last read. {bytes} of transcript is not in this list yet, so every count and end time below is what the last scan saw.',
   'conv.behindRow': 'Behind by {bytes}',
   'conv.current': 'Current with every file on disk.',
   'conv.refreshedBy': 'This list is refreshed at the end of each of your turns. It is also brought up to date by running:',
+  // ── NARROWING THE LIST — plan:archive seq:10 ──────────────────────────────
+  //
+  // Each control names itself, because a placeholder is not an accessible
+  // name and three unlabelled boxes in a row are a puzzle.
+  'conv.filter.region': 'Narrow this list',
+  'conv.filter.find': 'Find a session',
+  'conv.filter.branch': 'Branch',
+  'conv.filter.anyBranch': 'Every branch',
+  'conv.filter.since': 'Ended on or after',
+  'conv.filter.until': 'Ended on or before',
+  'conv.filter.clear': 'Clear',
+  'conv.searchScope': 'The search reads what the index holds: a session’s title, its branch, its id, and the one line describing each helper agent it dispatched. It does not read the transcripts — they are far too large to search on a keystroke. To search inside one session, open it.',
+  'conv.matchedList': '{n} of {total} sessions match.',
+  'conv.noMatchList': 'No session matches what you asked for. Clear the filter to see all {total}.',
+  'conv.laneMatch': 'matched in {n} helper agents',
+  'conv.laneMatch1': 'matched in 1 helper agent',
+  'conv.undated': '{n} session(s) recorded no end time, so no date can place them. They are left out while a date is set.',
+  // Duration. `took` for a session that has ended, `tookFloor` for one whose
+  // file has grown past the scan — the second is the same number said
+  // honestly, not a different measurement.
+  'conv.took': 'took {d}',
+  'conv.tookFloor': 'took at least {d}',
+  'conv.dur.d': '{n}d',
+  'conv.dur.h': '{n}h',
+  'conv.dur.m': '{n}m',
+  'conv.dur.s': '{n}s',
   'conv.back': 'Back to all sessions',
   'conv.prunedBody': 'The file for this session is no longer on disk, so there is nothing to read. What is shown above is what the last scan recorded.',
   'conv.unreadable': 'Could not be read',

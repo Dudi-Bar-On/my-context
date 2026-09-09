@@ -1,11 +1,12 @@
 import {
   ConversationIndex, ConversationIndexIncompleteError, ConversationIndexUninitializedError,
-  MAX_SCAN_BYTES, rebuildConversations, transcriptDir, truncatedScan,
+  MAX_SCAN_BYTES, forgetConversations, rebuildConversations, transcriptDir, truncatedScan,
   type ConversationRow, type SubagentRow,
 } from '../../core/conversation-index.ts';
 import { SUBCOMMAND_FLAGS } from '../../core/command-flags.ts';
 import type { Workspace } from '../../core/workspace.ts';
 import { toCliMessage } from './context.ts';
+import { confirmAction } from './review.ts';
 import { emitJson, refuseUnknownFlag, table, wantsJson, zonedStamp } from './format.ts';
 import path from 'node:path';
 import { flag, hasFlag, positionals, registerCommand, type Emit } from './registry.ts';
@@ -29,11 +30,12 @@ import { flag, hasFlag, positionals, registerCommand, type Emit } from './regist
  * `docs/superpowers/specs/2026-09-04-conversation-archive-design.md`.
  */
 
-export const SUBCOMMANDS = ['rebuild', 'list', 'subagents'] as const;
+export const SUBCOMMANDS = ['rebuild', 'list', 'subagents', 'forget'] as const;
 
 const USAGE = `usage: mycontext conversation rebuild [--full] [--json]
        mycontext conversation list [--limit <n>] [--json]
-       mycontext conversation subagents [<session>] [--json]`;
+       mycontext conversation subagents [<session>] [--json]
+       mycontext conversation forget [--yes] [--json]`;
 
 const CONVERSATION_FLAGS = SUBCOMMAND_FLAGS['conversation'];
 
@@ -462,6 +464,86 @@ function cmdConversationSubagents(ws: Workspace, root: string, args: string[], o
   }
 }
 
+/**
+ * `mycontext conversation forget` — **the OFF position of the archive's
+ * opt-in**, `plan:archive seq:9`.
+ *
+ * ── WHAT THE ITEM ASKED FOR, AND WHAT WAS ACTUALLY MISSING ────────────────
+ *
+ * The item says the design settles the archive as opt-in with "One key,
+ * defaulting to OFF" and that no such key exists. Checked against the code as
+ * it stands rather than as the item found it, the OFF DEFAULT already holds and
+ * is enforced in three places rather than declared in one:
+ *
+ *   - `ConversationIndex.open` is the only thing that creates these tables, and
+ *     it is called from exactly one place — inside `rebuildConversations`.
+ *   - `rebuildConversations` has exactly two callers: this command, which is a
+ *     person typing, and `hooks/stop.ts`' `stopConversationRefresh`, which uses
+ *     `openReadOnlyChecked` as a GATE and returns `null` when no index exists.
+ *     Its own comment: "a workspace nobody has ever scanned is still never
+ *     opted in by a background hook."
+ *   - No read surface can build one at all, which `test/ui/no-writes.test.ts`
+ *     holds by walking the import graph.
+ *
+ * So a project that never runs `rebuild` is never scanned — which is the whole
+ * of what the spec asked for, and is stronger than a config key in the respect
+ * the item cares about most: a key is a FILE, and a file arrives with a cloned
+ * repository. Nothing a repository ships can opt a reader's machine into
+ * reading their transcripts.
+ *
+ * **What was genuinely missing is this: the switch had no OFF position.** Once
+ * scanned, the Stop hook refreshed for ever, and the only way to stop it was
+ * to delete `.index.db` — which is also the corpus's own item index, so opting
+ * out of the archive meant discarding an unrelated cache. `forgetConversations`
+ * drops the two tables, which returns the workspace to the exact state the
+ * hook's gate declines to act on.
+ *
+ * **It is deliberately not a config key.** A key would be a fourth thing to
+ * keep in step with the three above, in a file this lane may not write
+ * (`.my_context/config.json` is the owner's), and it would put the decision in
+ * a place a repository can ship. Removing the state the existing gate already
+ * reads makes the same three enforcement points work in both directions.
+ *
+ * Nothing is lost that cannot be rebuilt: the transcripts are the source of
+ * truth and this index is a cache. The counts are printed because a cache
+ * shrinking in silence is what `INV-nothing-is-dropped-silently` forbids.
+ */
+function cmdConversationForget(ws: Workspace, root: string, args: string[], out: Emit): number {
+  const json = wantsJson(args);
+  if (!hasFlag(args, 'yes') && !json) {
+    out(
+      'my_context: about to drop this workspace\'s conversation index — every indexed session ' +
+      'and subagent row, and the tables themselves. The transcripts on disk are NOT touched: ' +
+      'they are the source of truth and this index is a cache, so `mycontext conversation ' +
+      'rebuild` reconstructs all of it. What changes until you do is that the archive screen ' +
+      'reports nothing scanned, and the end-of-turn refresh stands down — it only ever ' +
+      'refreshes an index that already exists, which is what makes this an opt-OUT and not ' +
+      'just a delete.',
+    );
+  }
+  if (!confirmAction(args, out, 'Drop the conversation index for this workspace?')) return 1;
+
+  const report = forgetConversations(ws.dbPath);
+  if (json) {
+    emitJson(out, report);
+    return 0;
+  }
+  if (!report.indexed) {
+    out(
+      'my_context: there is no conversation index in this workspace, so there was nothing to ' +
+      'forget. Nothing here has ever been scanned.',
+    );
+    return 0;
+  }
+  out(
+    `my_context: dropped ${report.conversations} session row(s) and ${report.subagents} ` +
+    'subagent row(s). Nothing scans the transcripts in ' +
+    `${transcriptDir(process.env, workspaceCwd(root))} again until you run \`mycontext ` +
+    'conversation rebuild\` yourself.',
+  );
+  return 0;
+}
+
 function cmdConversation(ws: Workspace, args: string[], out: Emit): number {
   if (!ws.projectRoot) {
     out('my_context: no workspace here. Run `mycontext init` to create one.');
@@ -481,6 +563,7 @@ function cmdConversation(ws: Workspace, args: string[], out: Emit): number {
   try {
     if (subcommand === 'rebuild') return cmdConversationRebuild(ws, root, args, out);
     if (subcommand === 'subagents') return cmdConversationSubagents(ws, root, args, out);
+    if (subcommand === 'forget') return cmdConversationForget(ws, root, args, out);
     return cmdConversationList(ws, root, args, out);
   } catch (err) {
     out(toCliMessage(err));
@@ -490,7 +573,7 @@ function cmdConversation(ws: Workspace, args: string[], out: Emit): number {
 
 registerCommand({
   name: 'conversation',
-  usage: `conversation [${SUBCOMMANDS.join('|')}] [--full] [--limit <n>] [--json]`,
+  usage: `conversation [${SUBCOMMANDS.join('|')}] [--full] [--limit <n>] [--yes] [--json]`,
   summary: 'index the conversation and subagent transcripts on disk, and list what it holds',
   run: (ws, args, out) => cmdConversation(ws, args, out),
 });

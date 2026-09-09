@@ -85,7 +85,7 @@
  */
 import {
   ConversationIndex, ConversationIndexIncompleteError, ConversationIndexUninitializedError,
-  classifyTurn, staleBy, transcriptDir, truncatedScan,
+  classifyTurn, spanMs, staleBy, transcriptDir, truncatedScan,
   type ConversationRow, type SubagentRow,
 } from '../core/conversation-index.ts';
 import { closeSync, openSync, readSync, statSync } from 'node:fs';
@@ -214,9 +214,22 @@ export interface ConversationSummary {
   /** The scan hit its cap, so every count above is a floor. */
   scanTruncated: boolean;
   /**
-   * The transcript is still on disk. `false` is the pruned-session state the
-   * spec names — the list must SHOW that a session's file is gone rather than
-   * failing to load, and it is the strongest argument for export.
+   * The transcript is still on disk.
+   *
+   * `false` is a session whose file has been deleted SINCE THE LAST REBUILD.
+   * The spec wanted such a row kept for ever and the owner ruled against it
+   * (`plan:archive seq:11`): `removeMissing` drops it on the next rebuild, and
+   * the archive holds only sessions that still exist.
+   *
+   * That ruling also called this field dead code, and that part of it was
+   * wrong. `removeMissing` runs on a REBUILD; this is served BETWEEN rebuilds
+   * from a `stat` taken at request time, so the state is reachable for exactly
+   * as long as the window between a file being deleted and the next assistant
+   * turn — `conversations-endpoint.test.ts` · `a transcript deleted between two
+   * rebuilds` constructs it. What the field means is therefore narrower than
+   * the spec's "the list shows pruned sessions" and wider than the ruling's
+   * "this cannot happen": it is the one-turn disclosure, and the screen says so
+   * in those words.
    */
   present: boolean;
   /**
@@ -254,13 +267,83 @@ export interface ConversationSummary {
    * absence: every row on this list carries the number.
    */
   subagents: number;
+  /**
+   * **How long this session lasted, in milliseconds** — `plan:archive seq:10`,
+   * whose spec clause names duration in the list's columns.
+   *
+   * `null` when either stamp is missing or they run backwards; `spanMs` in
+   * `core/conversation-index.ts` carries the whole argument for the three
+   * answers and for why the arithmetic lives there rather than on the screen.
+   *
+   * For a session still being written this is a FLOOR, for the reason every
+   * other number on this row is one: `endedAt` is the last record the SCAN
+   * read. Nothing new is added to say so — `staleBytes` beside it is already
+   * non-zero for exactly those rows, and the screen marks the duration with
+   * the disclosure it already draws rather than inventing a second.
+   */
+  durationMs: number | null;
+  /**
+   * **How many of this session's lanes matched the search term**, or `null`
+   * when no term was given.
+   *
+   * `null` and `0` are different facts and both occur: `null` is "nothing was
+   * searched for", and `0` is "this session is on the list because its own
+   * title, branch or id matched, and none of its lanes did"
+   * (`STD-a-measured-zero-is-drawn-and-named-an-unmeasured-thing-is`). A row
+   * that reached the list only through its lanes carries a positive count, and
+   * that count is the only thing on the row that explains why it is there.
+   */
+  matchedLanes: number | null;
   scannedAt: string;
+}
+
+/** What the caller asked the list to narrow to, echoed back verbatim. */
+export interface ConversationFilter {
+  /** The search term, or `null` when none was given. */
+  q: string | null;
+  /** An exact branch, or `null`. */
+  branch: string | null;
+  /** `YYYY-MM-DD`, inclusive from the start of that day, or `null`. */
+  since: string | null;
+  /** `YYYY-MM-DD`, inclusive through the end of that day, or `null`. */
+  until: string | null;
 }
 
 export interface ConversationListBody {
   conversations: ConversationSummary[];
-  /** Indexed sessions in total, however few this page carries. */
+  /**
+   * Indexed sessions in total, however few this page carries **and whatever
+   * the filter left out**. It is the size of the archive, not the size of the
+   * answer — `matching` is that — so a reader who has narrowed to one row can
+   * still see how much they narrowed from.
+   */
   total: number;
+  /**
+   * Indexed sessions that pass the filter. Equal to `total` when nothing was
+   * asked for, which is why `conversations.length + omitted === total` still
+   * holds on an unfiltered answer.
+   */
+  matching: number;
+  /** What the answer was narrowed by, echoed so the screen can prove it. */
+  filter: ConversationFilter;
+  /**
+   * Every branch the ARCHIVE holds a session from — not just the ones on this
+   * page, and not narrowed by the filter, because a branch chooser that
+   * dropped the branch you are filtering by would be a control that erases
+   * itself on first use.
+   */
+  branches: string[];
+  /**
+   * Sessions a date bound excluded for carrying **no end time at all**, rather
+   * than for falling outside the range.
+   *
+   * A transcript with no timestamp cannot be placed on either side of a date,
+   * so it is left out — and that is a drop, which under
+   * `INV-nothing-is-dropped-silently` has to be counted where the reader can
+   * see it. `0` when no date bound was asked for, and `0` is then a fact about
+   * a filter that excluded nothing rather than a check that did not run.
+   */
+  undated: number;
   limit: number;
   offset: number;
   /** Indexed sessions this answer does not carry — before AND after the page. */
@@ -314,7 +397,9 @@ export interface ConversationListBody {
  * could be served for a day with no surface anywhere able to notice. The stat
  * is now read for all three facts rather than for one.
  */
-function summarise(row: ConversationRow, subagents: number): ConversationSummary {
+function summarise(
+  row: ConversationRow, subagents: number, matchedLanes: number | null,
+): ConversationSummary {
   let present = false;
   let fileBytes: number | null = null;
   let fileMtimeMs: number | null = null;
@@ -349,14 +434,99 @@ function summarise(row: ConversationRow, subagents: number): ConversationSummary
     fileMtimeMs,
     staleBytes: staleBy(row, fileBytes),
     subagents,
+    durationMs: spanMs(row),
+    matchedLanes,
     scannedAt: row.scannedAt,
   };
 }
 
+/**
+ * A free-text parameter, or the refusal that names why.
+ *
+ * `undefined` = not asked. A present-but-EMPTY value is a 400 rather than a
+ * silent "no filter", for `unknownParams`' own stated reason: `?q=` is a
+ * caller asking a question, and answering the unfiltered one instead would be
+ * this endpoint silently answering something else. The bound is a bound
+ * because a `LIKE '%…%'` pattern is built from it.
+ */
+function textParam(url: URL, name: string, cap: number): string | null | undefined {
+  const raw = url.searchParams.get(name);
+  if (raw === null) return undefined;
+  const value = raw.trim();
+  if (value === '' || value.length > cap) return null;
+  return value;
+}
+
+/**
+ * A `YYYY-MM-DD` bound, or the refusal.
+ *
+ * A DATE and not a timestamp, deliberately. The stamps in the index are UTC
+ * instants and the reader's question is "which day was that session" in their
+ * own clock — a distinction this product has already paid for once
+ * (`TASK-a-timestamp-is-shown-in-the-reader-s-own-zone-and-says-which`). A
+ * whole-day bound is the coarsest thing that cannot be wrong by a rounding: it
+ * is compared as a STRING prefix against the stored ISO stamp, so `since`
+ * includes every instant of its day and `until` includes every instant of
+ * its own, with no zone arithmetic anywhere to disagree with the screen's.
+ *
+ * The cost of that honesty is stated rather than hidden: a reader in UTC+11
+ * asking for one day gets the UTC day, which can differ by a few hours at its
+ * edges. Naming a day is still the right control; guessing an offset the
+ * server does not have would be the wrong one.
+ */
+function dateParam(url: URL, name: string): string | null | undefined {
+  const raw = url.searchParams.get(name);
+  if (raw === null) return undefined;
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(raw)) return null;
+  return raw;
+}
+
+/** The longest search term this endpoint will build a pattern from. */
+export const CONVERSATION_QUERY_CAP = 200;
+
+/**
+ * **What a session's own row offers a search** — its title, its branch and its
+ * id, and nothing else.
+ *
+ * Not its transcript. `ConversationIndex.subagentMatches` carries the
+ * measurement that decided it: 0.076 ms to search the index against 647 ms for
+ * a warm `grep` over the 889,365,963 bytes of transcript the same two sessions
+ * and 259 lanes occupy on this machine. The screen says which of the two it
+ * did, in `conv.searchScope`, because a search box that quietly searched less
+ * than a reader assumed is how a real match gets read as an absence.
+ *
+ * The id is included because it is what every other surface addresses a
+ * session by — the URL, `mycontext conversation subagents <session>`, the
+ * terminal's own eight-character column — so a reader holding one from
+ * somewhere else can paste it here.
+ */
+function rowMatches(row: ConversationRow, needle: string): boolean {
+  const hay = [row.title, row.branch, row.sessionId];
+  return hay.some((v) => v !== null && v.toLowerCase().includes(needle));
+}
+
 const REBUILD_COMMAND = 'mycontext conversation rebuild';
 
+/**
+ * `GET /api/conversations` — **the list, and since `plan:archive seq:10` a
+ * BROWSABLE one.**
+ *
+ * The item found this endpoint accepting `limit` and `offset` only and
+ * actively refusing anything else, "so this cannot be added client-side and
+ * the endpoint must move first". It has moved: `q`, `branch`, `since` and
+ * `until`, each refused when malformed rather than accepted and ignored.
+ *
+ * **The narrowing is done HERE and not in the browser**, which is a choice
+ * with a reason rather than a habit. `subagentMatches` is a grouped SQL query
+ * over 259 lane rows — the half of the search that finds the sessions a reader
+ * is actually looking for — and shipping 259 lane descriptions to the client
+ * on every page load to filter them there would be moving the data to the code
+ * instead of the question to the data. The unfiltered path is unchanged and
+ * costs what it always did.
+ */
 export function apiConversations(ws: Workspace, url: URL): JsonResult {
-  const bad = unknownParams(url, ['limit', 'offset']) ?? repeatedParams(url);
+  const bad = unknownParams(url, ['limit', 'offset', 'q', 'branch', 'since', 'until'])
+    ?? repeatedParams(url);
   if (bad) return badRequest(bad);
 
   const askedLimit = boundedDigits(url, 'limit');
@@ -367,8 +537,36 @@ export function apiConversations(ws: Workspace, url: URL): JsonResult {
   if (askedOffset === null) {
     return badRequest('offset must be a whole number of rows, written in digits.');
   }
+  const askedQuery = textParam(url, 'q', CONVERSATION_QUERY_CAP);
+  if (askedQuery === null) {
+    return badRequest(
+      `q must be between 1 and ${CONVERSATION_QUERY_CAP} characters. An empty q would be a `
+      + 'search nobody asked for, answered as though nothing had been typed.',
+    );
+  }
+  const askedBranch = textParam(url, 'branch', CONVERSATION_QUERY_CAP);
+  if (askedBranch === null) {
+    return badRequest(
+      `branch must be between 1 and ${CONVERSATION_QUERY_CAP} characters, and is matched whole `
+      + '— it is chosen from the branches this archive holds, not typed.',
+    );
+  }
+  const askedSince = dateParam(url, 'since');
+  if (askedSince === null) {
+    return badRequest('since must be a date written YYYY-MM-DD.');
+  }
+  const askedUntil = dateParam(url, 'until');
+  if (askedUntil === null) {
+    return badRequest('until must be a date written YYYY-MM-DD.');
+  }
   const limit = Math.min(askedLimit ?? CONVERSATION_LIST_CAP, CONVERSATION_LIST_CAP);
   const offset = askedOffset ?? 0;
+  const filter: ConversationFilter = {
+    q: askedQuery ?? null,
+    branch: askedBranch ?? null,
+    since: askedSince ?? null,
+    until: askedUntil ?? null,
+  };
   const dir = transcriptDir(process.env, workspaceCwd(ws));
 
   let index: ConversationIndex;
@@ -396,7 +594,8 @@ export function apiConversations(ws: Workspace, url: URL): JsonResult {
       // 200 and 404 and nothing else, and more importantly a reader needs the
       // difference between "nothing scanned" and "nothing there".
       const body: ConversationListBody = {
-        conversations: [], total: 0, limit, offset, omitted: 0, more: false,
+        conversations: [], total: 0, matching: 0, filter, branches: [], undated: 0,
+        limit, offset, omitted: 0, more: false,
         indexed: false, dir, rebuild: REBUILD_COMMAND, missing: 0,
         stale: 0, staleBytes: 0,
         // An index a schema behind is a DIFFERENT empty state from one nobody
@@ -414,25 +613,77 @@ export function apiConversations(ws: Workspace, url: URL): JsonResult {
 
   try {
     const all = index.all();
-    const page = all.slice(offset, offset + limit);
     // ONE grouped query for the whole archive rather than one per row. The
-    // page is capped at 200 sessions and this workspace has 253 lanes under a
+    // page is capped at 200 sessions and this workspace has 259 lanes under a
     // single one of them, so a per-row `COUNT(*)` would be 200 statements to
     // answer what one `GROUP BY` answers.
     const laneCounts = index.subagentCounts();
-    const conversations = page.map((row) =>
-      summarise(row, laneCounts.get(row.sessionId) ?? 0));
+    const branches = index.branches();
+
+    // ── THE NARROWING, AND WHAT EACH CLAUSE COSTS ─────────────────────────
+    //
+    // One further grouped query when a term was given, and nothing at all when
+    // it was not — measured 0.076 ms over 259 lane rows on this workspace,
+    // 2026-09-09. The session clauses are plain JavaScript over `all()`, which
+    // is 0.025 ms for the whole table: pushing them into SQL would be a second
+    // spelling of `all()`'s ordering for no measurable gain, and this way the
+    // list has exactly one query that decides row order.
+    const needle = filter.q === null ? null : filter.q.toLowerCase();
+    const laneMatches = filter.q === null
+      ? null
+      : index.subagentMatches(filter.q);
+
+    // A date bound cannot place a row with no end time. Those rows are DROPPED
+    // rather than kept-because-unknown, and counted so the drop is visible —
+    // `INV-nothing-is-dropped-silently`. Counted only when a bound was asked
+    // for, so the number is never a comment on a filter nobody set.
+    const dated = filter.since !== null || filter.until !== null;
+    const undated = dated ? all.filter((r) => r.endedAt === null).length : 0;
+
+    const matched = all.filter((row) => {
+      if (filter.branch !== null && row.branch !== filter.branch) return false;
+      if (dated) {
+        if (row.endedAt === null) return false;
+        // A prefix comparison against the stored ISO stamp: `2026-09-04` is
+        // less than every instant of the 4th and `2026-09-04￿` is greater
+        // than all of them, so both bounds are inclusive of their whole day
+        // without parsing either side into a Date.
+        if (filter.since !== null && row.endedAt < filter.since) return false;
+        if (filter.until !== null && row.endedAt.slice(0, 10) > filter.until) return false;
+      }
+      if (needle !== null) {
+        const lanes = laneMatches?.get(row.sessionId) ?? 0;
+        if (!rowMatches(row, needle) && lanes === 0) return false;
+      }
+      return true;
+    });
+
+    const page = matched.slice(offset, offset + limit);
+    const conversations = page.map((row) => summarise(
+      row,
+      laneCounts.get(row.sessionId) ?? 0,
+      laneMatches === null ? null : (laneMatches.get(row.sessionId) ?? 0),
+    ));
     const body: ConversationListBody = {
       conversations,
       total: all.length,
+      matching: matched.length,
+      filter,
+      branches,
+      undated,
       limit,
       offset,
       // Every indexed session this answer does not carry — the ones `offset`
       // skipped AS WELL AS the ones past `limit`, so `conversations.length +
       // omitted` is the total and no second field can disagree with it.
       // `/api/coverage`'s rule, verbatim.
-      omitted: all.length - conversations.length,
-      more: offset + conversations.length < all.length,
+      // Counted against `matching` rather than `total`, so `conversations
+      // .length + omitted` is the size of the ANSWER and no field disagrees
+      // with another. On an unfiltered list the two are the same number, which
+      // is why `/api/coverage`'s rule — that the two add up — still holds
+      // exactly where it always did.
+      omitted: matched.length - conversations.length,
+      more: offset + conversations.length < matched.length,
       indexed: true,
       dir,
       rebuild: REBUILD_COMMAND,

@@ -104,6 +104,56 @@ function titleNodes(ctx, row) {
   return wrap;
 }
 
+/**
+ * **How long a session lasted, in at most two units** — `plan:archive seq:10`,
+ * whose spec clause names duration among the list's columns.
+ *
+ * The range is the whole design problem and it was measured before this was
+ * written: the two sessions indexed in this workspace on 2026-09-09 are
+ * **84.553 seconds** and **6 days 21 minutes**. A milliseconds field is
+ * unreadable for the second and a "days" field is a zero for the first, so the
+ * unit is chosen from the value and a second unit is added only when it
+ * carries information — the six-day session draws `6d`, because its 21 extra
+ * minutes round to a zero hour and a unit that says nothing is not shown.
+ *
+ * Two units and never three, which is the same judgement `sizeText` above
+ * makes with one decimal: `5d 23h` is a duration a person compares at a glance
+ * and `5d 23h 41m 12s` is a number they have to read. Nothing is rounded away
+ * silently — `durationMs` is in the body for anything that needs the exact
+ * value, and the SCREEN is where the reading happens.
+ *
+ * Every unit is a keyed string, in both languages. A screen that assembled
+ * `${n}d` in script would be permanently English on the Hebrew page, which is
+ * the defect class `STD-a-screen-explains-itself-in-plain-words-and-depth-hides`
+ * names in its last paragraph.
+ */
+function durationText(ctx, ms) {
+  const seconds = Math.floor(ms / 1000);
+  const minutes = Math.floor(seconds / 60);
+  const hours = Math.floor(minutes / 60);
+  const days = Math.floor(hours / 24);
+  const unit = (key, n) => ctx.tFlat(key, { n });
+  if (days > 0) {
+    const rest = hours - days * 24;
+    return rest === 0
+      ? unit('conv.dur.d', days)
+      : `${unit('conv.dur.d', days)} ${unit('conv.dur.h', rest)}`;
+  }
+  if (hours > 0) {
+    const rest = minutes - hours * 60;
+    return rest === 0
+      ? unit('conv.dur.h', hours)
+      : `${unit('conv.dur.h', hours)} ${unit('conv.dur.m', rest)}`;
+  }
+  if (minutes > 0) {
+    const rest = seconds - minutes * 60;
+    return rest === 0
+      ? unit('conv.dur.m', minutes)
+      : `${unit('conv.dur.m', minutes)} ${unit('conv.dur.s', rest)}`;
+  }
+  return unit('conv.dur.s', seconds);
+}
+
 /** `52,061,736` → `49.6 MB`. Sizes are read, not computed, by a person. */
 function sizeText(bytes) {
   if (bytes < 1024) return `${bytes} B`;
@@ -170,11 +220,45 @@ function drawRow(ctx, row, open) {
       n: row.subagents,
     }));
   }
+  // **How long it lasted** (`plan:archive seq:10`). On the counts line for the
+  // lane count's own reason: it is another measure of how much session there
+  // is, not a warning about the row.
+  //
+  // `tookFloor` rather than `took` when the file has grown past the scan or the
+  // scan hit its cap. The number is the same; what changes is the claim made
+  // about it, and a session still being written has an end time that is only
+  // the last record READ. No new chip and no second field says this — the row
+  // already carries `Behind by` for the same fact, and this is that fact
+  // reaching the one number a reader would otherwise take as final.
+  if (typeof row.durationMs === 'number') {
+    meta.append(' · ');
+    const floor = row.staleBytes > 0 || row.scanTruncated === true;
+    meta.append(...ctx.t(floor ? 'conv.tookFloor' : 'conv.took', {
+      d: durationText(ctx, row.durationMs),
+    }));
+  }
   if (row.branch !== null) {
     meta.append(' · ');
     meta.append(mono(row.branch));
   }
   meta.append(' · ', mono(sizeText(row.bytes)));
+  // **Why this row is in a filtered answer.** Drawn only when a search term
+  // matched LANES, because that is the only case a reader cannot see for
+  // themselves: a session matched by its own title has the title right there,
+  // and one matched by its lanes looks, without this, like a row that should
+  // not be on the list.
+  //
+  // `0` is deliberately not drawn. It is a real measured zero — searched, and
+  // none of this session's lanes matched — but it is the ordinary case for a
+  // row that matched by title, and the sentence "matched in 0 helper agents"
+  // on such a row would read as a contradiction of the row's own presence.
+  if (typeof row.matchedLanes === 'number' && row.matchedLanes > 0) {
+    meta.append(' · ');
+    meta.append(...ctx.t(
+      row.matchedLanes === 1 ? 'conv.laneMatch1' : 'conv.laneMatch',
+      { n: row.matchedLanes },
+    ));
+  }
   button.append(meta);
 
   const marks = el('p', 'small');
@@ -186,9 +270,39 @@ function drawRow(ctx, row, open) {
     chip.append(...ctx.t('conv.exported'));
     marks.append(chip, ' ');
   }
-  // A session whose transcript the harness has pruned. The list SHOWS this
-  // rather than failing to load it — the spec names it as the strongest
-  // argument for export.
+  // ── A SESSION WHOSE TRANSCRIPT IS GONE, AND WHY THE CHIP SURVIVED A RULING
+  //    THAT SAID TO DELETE IT — `plan:archive seq:11` ──────────────────────
+  //
+  // The spec said a pruned transcript should be a BROKEN ROW kept in the index.
+  // The owner ruled against that on 2026-09-07: `removeMissing` stays, the list
+  // shows only sessions that still exist, and the ruling records this chip and
+  // its siblings as "DEAD CODE to remove rather than a state to make
+  // reachable".
+  //
+  // **The write half of that ruling stands and is untouched.** No row is kept
+  // for a session whose file is gone; the next rebuild drops it, exactly as he
+  // decided.
+  //
+  // **The premise about THIS half was wrong, and it is measurable.** The state
+  // is not unreachable. `removeMissing` runs during a REBUILD; the list is
+  // served from the index between rebuilds, and `summarise` stats each file at
+  // request time. Delete a transcript and load this screen before the next
+  // assistant turn and the row is here with `present: false` —
+  // `test/ui/conversations-endpoint.test.ts` · `a transcript deleted between
+  // two rebuilds` builds exactly that and asserts it, so the claim is a test
+  // rather than a paragraph. The window is one turn wide, not zero.
+  //
+  // So what would have been deleted is not dead code, it is the DISCLOSURE FOR
+  // THAT WINDOW, and deleting it would have replaced a chip that says "this
+  // file is gone" with a row that opens onto a document that cannot load —
+  // `INV-nothing-is-dropped-silently` failing at the one moment it is about.
+  // The chip stays, and what changes is what it CLAIMS: not "the archive keeps
+  // pruned sessions", which the ruling reversed, but "this one is already gone
+  // and will leave the list at the end of your next turn", which is what
+  // `conv.missingSome` now says. The help text that took the deleting side —
+  // "A session your machine has deleted is gone from here too" — is correct and
+  // is kept; the contradiction the item found was real and this is the side of
+  // it that had to move.
   if (row.present === false) {
     const chip = el('span', 'chip warn glyphed');
     // **`⦸` AND NOT `⃠`, WHICH IS WHAT THIS LINE SAID WHILE IT WAS DEAD
@@ -293,6 +407,40 @@ function drawList(ctx, host, body, open) {
     return;
   }
 
+  // ── WHAT THE FILTER LEFT OUT, BEFORE ANYTHING ELSE IS SAID ───────────────
+  //
+  // `plan:archive seq:10`. A narrowed list that does not say it is narrowed is
+  // a list a reader will read as the whole archive — the same failure as a
+  // stale one that does not say it is stale, twenty lines below.
+  //
+  // Drawn only when something was actually asked for. On an unfiltered list
+  // `matching === total` and the sentence would be a count of nothing.
+  const filtered = body.filter !== undefined && (
+    body.filter.q !== null || body.filter.branch !== null
+    || body.filter.since !== null || body.filter.until !== null);
+  if (filtered) {
+    const summary = el('p', 'small');
+    summary.append(...ctx.t('conv.matchedList', {
+      n: body.matching, total: body.total,
+    }));
+    host.append(spaced(summary));
+    // Sessions a DATE could not place, named rather than merely absent.
+    if (body.undated > 0) {
+      const undated = el('p', 'small spill');
+      undated.append(...ctx.t('conv.undated', { n: body.undated }));
+      host.append(undated);
+    }
+    if (body.matching === 0) {
+      const none = el('p', 'small');
+      const chip = el('span', 'chip unmeas glyphed');
+      chip.dataset.g = '◌';
+      chip.append(...ctx.t('conv.noMatchList', { total: body.total }));
+      none.append(chip);
+      host.append(spaced(none));
+      return;
+    }
+  }
+
   if (body.missing > 0) {
     const gone = el('p', 'small spill');
     gone.append(...ctx.t('conv.missingSome', { n: body.missing }));
@@ -349,6 +497,144 @@ function drawList(ctx, host, body, open) {
     (row) => drawRow(ctx, row, open),
     { cap: 20, order: 'recent' },
   );
+}
+
+/**
+ * How long the box waits after the last keystroke before it asks the server.
+ *
+ * A request per character over a 200-row cap is work nobody reads: a person
+ * typing `conversation` at an ordinary pace would fire twelve queries and act
+ * on the twelfth. 250 ms is under the threshold at which a person notices a
+ * pause and above the gap between two keystrokes, and every one of those
+ * requests is a read of an index measured at 0.076 ms — so what this saves is
+ * not the server's time but a screen redrawn twelve times under the reader's
+ * hands.
+ */
+const FILTER_SETTLE_MS = 250;
+
+/**
+ * **The controls that narrow the list** — `plan:archive seq:10`, whose whole
+ * complaint is that "drawList has no filter control at all".
+ *
+ * ── BUILT ONCE AND NEVER REDRAWN, WHICH IS NOT AN OPTIMISATION ────────────
+ *
+ * The results below are replaced on every answer; this bar is not. Rebuilding
+ * an `<input>` a reader is typing into destroys its focus and its caret — the
+ * screen would take the first letter and drop the rest — so the bar is created
+ * before the first fetch and only the region under it is replaced.
+ * `RULE-a-screen-shows-the-new-state-after-the-reader-acts-on-it` is why the
+ * list refreshes with no button to press; keeping the caret is what makes that
+ * refresh usable rather than hostile.
+ *
+ * ── THE BRANCH LIST IS A CHOICE, NOT A TYPED STRING ───────────────────────
+ *
+ * `body.branches` is every branch the ARCHIVE holds, served unnarrowed. A text
+ * box would let a reader type `mian` and read the empty answer as "no sessions
+ * on that branch"; a `<select>` cannot express a branch that does not exist.
+ *
+ * ── AND EVERY CONTROL CARRIES ITS OWN NAME ────────────────────────────────
+ *
+ * A placeholder is not an accessible name, which this file has already paid
+ * for once on the document's own find box. Each control here is labelled by a
+ * real `<label>` element, so the name is visible to a reader who can see it as
+ * well as to one who cannot — four unlabelled boxes in a row are a puzzle
+ * (`STD-a-screen-explains-itself-in-plain-words-and-depth-hides`).
+ */
+function filterBar(ctx, branches, state, onChange) {
+  const bar = el('div', 'convfilter');
+  bar.setAttribute('role', 'search');
+  bar.setAttribute('aria-label', ctx.tFlat('conv.filter.region'));
+
+  const field = (labelKey, control) => {
+    const wrap = el('label', 'convfield');
+    const name = el('span', 'convfieldname');
+    name.append(...ctx.t(labelKey));
+    wrap.append(name, control);
+    return wrap;
+  };
+
+  const find = el('input', 'convfind');
+  // `search` and not `text`: it is the type this control IS, and the browser
+  // gives it a clear affordance for free rather than this screen drawing one.
+  find.type = 'search';
+  find.value = state.q ?? '';
+  bar.append(field('conv.filter.find', find));
+
+  const branch = el('select', 'convselect');
+  const any = el('option');
+  any.value = '';
+  any.append(...ctx.t('conv.filter.anyBranch'));
+  branch.append(any);
+  for (const name of branches) {
+    const option = el('option');
+    option.value = name;
+    option.textContent = name;
+    if (state.branch === name) option.selected = true;
+    branch.append(option);
+  }
+  bar.append(field('conv.filter.branch', branch));
+
+  const since = el('input', 'convdate');
+  since.type = 'date';
+  since.value = state.since ?? '';
+  bar.append(field('conv.filter.since', since));
+
+  const until = el('input', 'convdate');
+  until.type = 'date';
+  until.value = state.until ?? '';
+  bar.append(field('conv.filter.until', until));
+
+  const clear = el('button', 'convclear');
+  clear.type = 'button';
+  clear.append(...ctx.t('conv.filter.clear'));
+  bar.append(clear);
+
+  // An empty string is "not asked for" HERE and a 400 at the endpoint, which
+  // is not a disagreement: the endpoint refuses `?q=` because a caller who
+  // sent it asked a question, and this screen simply never sends it.
+  const read = () => ({
+    q: find.value.trim() === '' ? null : find.value.trim(),
+    branch: branch.value === '' ? null : branch.value,
+    since: since.value === '' ? null : since.value,
+    until: until.value === '' ? null : until.value,
+  });
+
+  let timer = null;
+  const settle = () => {
+    if (timer !== null) clearTimeout(timer);
+    timer = setTimeout(() => { timer = null; onChange(read()); }, FILTER_SETTLE_MS);
+  };
+  // Typing settles; choosing does not. A `<select>` or a date picker is one
+  // deliberate act with nothing following it, so waiting a quarter of a second
+  // after it would be a delay bought for nothing.
+  find.addEventListener('input', settle);
+  for (const control of [branch, since, until]) {
+    control.addEventListener('change', () => {
+      if (timer !== null) { clearTimeout(timer); timer = null; }
+      onChange(read());
+    });
+  }
+  clear.addEventListener('click', () => {
+    if (timer !== null) { clearTimeout(timer); timer = null; }
+    find.value = '';
+    branch.value = '';
+    since.value = '';
+    until.value = '';
+    onChange(read());
+  });
+
+  return bar;
+}
+
+/** The query string for one filter state. Absent keys are absent, never empty. */
+function filterQuery(state) {
+  const params = new URLSearchParams();
+  if (state.q !== null) params.set('q', state.q);
+  if (state.branch !== null) params.set('branch', state.branch);
+  if (state.since !== null) params.set('since', state.since);
+  if (state.until !== null) params.set('until', state.until);
+  const query = params.toString();
+  return query === '' ? '' : `?${query}`;
 }
 
 /* ══ THE DOCUMENT: MEASUREMENT AND ARITHMETIC ══════════════════════════════ */
@@ -2299,9 +2585,25 @@ export async function render(root, ctx) {
   root.replaceChildren();
   screenHead(ctx, root, 'conv.h', 'conv.v', 'conv.sub');
 
-  root.append(helpDisclosure(ctx, 'conv.help.summary', [
-    ...ctx.t('conv.help.body'),
-  ]));
+  // **Two paragraphs, and the second one is the one that was missing.**
+  //
+  // `plan:archive seq:11` asks for the security sentence in the feature's own
+  // help — the spec's words are that the archive "widens what a leaked nonce
+  // would show and THAT SHOULD BE SAID OUT LOUD IN THE FEATURE OWN HELP" — and
+  // measured across all 30 `conv.*` keys there was not one mention of
+  // sensitivity, of pasted secrets or of the local port. What the help did say
+  // was the reassuring half, "nothing here enters your repository", which is
+  // true and was the only half being said.
+  //
+  // It is in the disclosure rather than on the page because the page's own
+  // sentence has to stay short, and it is the FIRST thing in the disclosure
+  // rather than the last because it is the fact that decides whether a reader
+  // wants this feature at all.
+  const helpSecurity = el('p');
+  helpSecurity.append(...ctx.t('conv.sensitive'));
+  const helpBody = el('p');
+  helpBody.append(...ctx.t('conv.help.body'));
+  root.append(helpDisclosure(ctx, 'conv.help.summary', [helpSecurity, helpBody]));
 
   const session = sessionFromHash(location.hash);
   const open = (id) => { ctx.navigate(`#/conversations/${encodeURIComponent(id)}`); };
@@ -2325,7 +2627,45 @@ export async function render(root, ctx) {
       card.append(errorNote(error.message));
       return;
     }
-    drawList(ctx, card, body, open);
+
+    // ── THE FILTER, AND WHY IT IS NOT DRAWN ON AN EMPTY ARCHIVE ────────────
+    //
+    // `plan:archive seq:10`. A search box over nothing is a control that can
+    // only ever answer "no match", which a reader would read as a fact about
+    // their sessions rather than about an index nobody has built. The two
+    // empty states below say what is actually true instead, and `drawList`
+    // still owns both.
+    const results = el('div', 'convresults');
+    if (body.indexed === true && body.total > 0) {
+      const scope = el('p', 'small');
+      scope.append(...ctx.t('conv.searchScope'));
+      const state = { q: null, branch: null, since: null, until: null };
+      let inFlight = 0;
+      const refresh = async (next) => {
+        Object.assign(state, next);
+        const mine = ++inFlight;
+        let answer;
+        try {
+          answer = await ctx.api(`/api/conversations${filterQuery(state)}`);
+        } catch (error) {
+          // A LATER answer must never be overwritten by an earlier one that
+          // arrived late — a reader who typed `arc` then `archive` would
+          // otherwise be shown the `arc` answer. The counter is the whole
+          // mechanism: only the newest request paints.
+          if (mine !== inFlight) return;
+          results.replaceChildren();
+          results.append(errorNote(error.message));
+          return;
+        }
+        if (mine !== inFlight) return;
+        results.replaceChildren();
+        drawList(ctx, results, answer, open);
+      };
+      card.append(filterBar(ctx, body.branches ?? [], state, (next) => { void refresh(next); }));
+      card.append(spaced(scope));
+    }
+    card.append(results);
+    drawList(ctx, results, body, open);
     return;
   }
 
