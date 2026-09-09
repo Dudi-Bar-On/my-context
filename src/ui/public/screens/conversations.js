@@ -1186,14 +1186,60 @@ function shortArg(value) {
 /* ══ THE LANES A DOCUMENT DISPATCHED ═══════════════════════════════════════ */
 
 /**
- * The address of one lane's transcript — **the SAME document route a session
- * uses**, which is `plan:archive seq:15`'s "the same renderer, whichever shape
- * wins" spent rather than restated. `rowFor` in
- * `read-model-conversation-document.ts` resolves a lane, so `#/conversations/
- * <agentId>` is already a working address and nothing new renders it.
+ * The address of one lane's transcript — **a PAGE OF ITS OWN, and that is the
+ * whole of `plan:archive seq:51`.**
+ *
+ * ── WHAT WAS WRONG WITH THE OLD ADDRESS ──────────────────────────────────
+ *
+ * It was `#/conversations/<agentId>`, and it worked: `rowFor` in
+ * `read-model-conversation-document.ts` resolves a lane, so one route served
+ * both kinds and nothing new rendered it. What it opened, though, was THE
+ * WHOLE APPLICATION at a lane address — the rail, the status strip, the
+ * header, every visited screen still hidden in `#screen`. Owner, 2026-09-09,
+ * correcting what he meant by a new tab: *"what i meant is to only see the
+ * viewer with the transcript in it as a single window without all the app
+ * arround it"*.
+ *
+ * ── AND ONLY A LANE. THE SESSION KEEPS THE APP ───────────────────────────
+ *
+ * Ruled 2026-09-09 after both alternatives were put to him and declined —
+ * both-bare, and a toggle he chooses per reading. A SESSION is where he works
+ * and the strip and rail are the instruments; a LANE is something he visits,
+ * reads and closes. So the seam is the DOCUMENT KIND, and `rowFor` already
+ * answers it: `sessionHref` below is the app's own route and is unchanged.
+ * There is no mode, no preference and no parameter that chooses a shape — the
+ * shape follows from WHAT is being opened, and `lane.js` re-asks the read
+ * model on arrival rather than trusting the address it was reached by.
+ *
+ * ── THE PAGE SHAPE IS `doc.html`'s. THE RENDERER IS NOT ──────────────────
+ *
+ * `/doc.html` is the precedent for a second page beside `index.html`, and
+ * `seq:19`'s own item records his earlier permission for it — *"you can use a
+ * different browser tab as we did for readme"*. It is NOT the precedent for
+ * how to draw a transcript: `githubNodes` draws that page and `markdownNodes`
+ * draws this one, and they differ exactly where it matters (`span.m` against
+ * a bare `code`), so a lane rendered through it would silently lose the inline
+ * hue, the fence colouring, the folds and the terminal rendering. `lane.js`
+ * therefore imports `mountDocument` from this file and forks nothing.
+ *
+ * **Widening it later is one line**: if a session should open bare too,
+ * `sessionHref` stops being a separate answer.
  */
 export function laneHref(agentId) {
-  return `#/conversations/${encodeURIComponent(agentId)}`;
+  return `/lane.html?id=${encodeURIComponent(agentId)}`;
+}
+
+/**
+ * The address of one SESSION's document — the app's own route, and the half of
+ * `seq:51` that deliberately did not move.
+ *
+ * Root-absolute rather than a bare `#/…`, and that is not cosmetic: a bare
+ * fragment resolves against the page it is written on, and `a.tvlanehome` is
+ * written on `/lane.html`, where `#/conversations/<id>` would address the lane
+ * window itself. One spelling that means the same thing on both pages.
+ */
+export function sessionHref(id) {
+  return `/#/conversations/${encodeURIComponent(id)}`;
 }
 
 /**
@@ -1321,6 +1367,13 @@ const NO_LANES = {
  * `lib/disclosure.js` records for using a real `<details>`. A popup would also
  * have kept the reader's place, and is rejected for exactly these: it needs
  * script, it can be blocked, and it has no copyable address.
+ *
+ * **AND THE TAB IT OPENS IS BARE SINCE `seq:51`.** `laneHref` now names
+ * `/lane.html`, a page of its own with no rail, no header and no status strip
+ * — which is what the owner meant by a new tab and did not get the first time.
+ * Nothing here changes for that: the anchor, its `target`, its `rel` and its
+ * label are the same, because the SHAPE follows from the address and the
+ * address follows from the kind of document. See `laneHref`.
  *
  * `.tvjump` for the look it already has, and `.tvlane` so a test can name THIS
  * control rather than counting them — the note `toNew` already carries.
@@ -2378,7 +2431,18 @@ function boundedNote(ctx, box, body) {
   }
 }
 
-function mountDocument(ctx, host, outline, back, roster = NO_LANES) {
+/**
+ * **EXPORTED FOR `/lane.js` AND FOR NOTHING ELSE** — `plan:archive seq:51`.
+ *
+ * The bare lane window is a second PAGE, not a second VIEWER. It supplies a
+ * host element and the four-field `ctx` this function actually uses (`t`,
+ * `tFlat`, `api`, `navigate`) and then calls THIS — so the virtualised scroll,
+ * the byte-offset windowing, the landing at the end, the follow timer, the
+ * folds, the copy bar, the lane links and the agent type are the same code on
+ * both pages by construction. A page that forked any of it is what `seq:15`
+ * refused and what `rowFor` exists to prevent.
+ */
+export function mountDocument(ctx, host, outline, back, roster = NO_LANES) {
   const nodes = outline.nodes;
   /**
    * **A COPY IS STATIC, AND EVERY BEHAVIOUR ON THIS SCREEN THAT ASSUMES A LIVE
@@ -2465,7 +2529,7 @@ function mountDocument(ctx, host, outline, back, roster = NO_LANES) {
     from.append(...ctx.t('conv.doc.laneOf'));
     if (lanes.owner !== null) {
       const home = el('a', 'tvjump tvlanehome');
-      home.href = laneHref(lanes.owner);
+      home.href = sessionHref(lanes.owner);
       home.target = '_blank';
       home.rel = 'noopener';
       home.append(...ctx.t('conv.doc.laneHome'));

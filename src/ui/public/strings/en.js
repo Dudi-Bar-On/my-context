@@ -356,6 +356,11 @@ export const strings = {
   // beside it stays.
   'conv.doc.laneShut': 'Close this tab',
   'conv.doc.laneShutNo': 'This browser would not let the page close its own tab. Use the link beside this, or close the tab yourself.',
+  // ── The bare lane window's one refusal — plan:archive seq:51 ─────────────
+  // `/lane.html` shows ONE helper agent's transcript and takes the agent's id
+  // in its address. An address that names none is a fact about the address,
+  // and it is said in the window rather than left as a blank page.
+  'conv.doc.noLane': 'This window shows one helper agent’s transcript, and its address names none.',
   // Copying a marked passage — three forms, each NAMED BY WHAT IT IS FOR.
   // "A menu offering text / rendered / raw makes a reader guess; one offering
   // paste into a prompt / paste as it looks / the exact record does not."

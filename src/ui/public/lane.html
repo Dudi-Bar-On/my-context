@@ -1,0 +1,72 @@
+<!doctype html>
+<!-- THE BARE LANE WINDOW — `plan:archive seq:51`, owner ruling 2026-09-09
+     correcting what he meant by a new tab: "you did opened it on a new tab but
+     what you did is actually another tab of mycontext with focus on the viewer
+     where the linked transcript was opened, what i meant is to only see the
+     viewer with the transcript in it as a single window without all the app
+     arround it".
+
+     SO THERE IS NO SHELL HERE. No `.app` grid, no `#topbar`, no `.rail`, no
+     `#prov`, no `.strip`, no session picker, no focus dialog, no item pane, no
+     icon sprite, no heartbeat and no live stream. What is left is one host
+     element and the transcript inside it — the application removed, the
+     provenance kept: `p.tvlaneof` still says WHICH lane this is and
+     `a.tvlanehome` still leads to the session that dispatched it.
+
+     ── ONLY A LANE. HIS OWN SESSION KEEPS THE APP ─────────────────────────
+     Ruled the same day, after both alternatives were put to him and declined
+     (both documents bare, and a per-reading toggle). A session is where he
+     works — the strip carries the context reading, the corpus drift, the size
+     and the lane count, and the rail is how he leaves — while a lane is
+     something he visits, reads and closes. `screens/conversations.js`'
+     `laneHref` and `sessionHref` are that seam, and `lane.js` re-asks the read
+     model on arrival rather than trusting the address it was reached by, so
+     `/lane.html?id=<a session>` hands the reader back to the app instead of
+     drawing a session in a window with no instruments.
+
+     ── THIS IS `doc.html`'s PAGE SHAPE AND NOT ITS RENDERER ───────────────
+     `/doc.html` is the precedent for a second page beside `index.html`, and
+     `seq:19`'s own item records the owner's earlier permission for it. It is
+     NOT the precedent for how a transcript is DRAWN: `githubNodes` draws that
+     page while the archive is drawn by `markdownNodes`, and the two differ
+     exactly where it matters — `markdownNodes` emits `span.m` for inline code
+     and `githubNodes` a bare `code` — so a lane rendered through that path
+     would silently lose the inline hue, the fence colouring, the folds and the
+     terminal rendering. `lane.js` imports `mountDocument` from the screen and
+     forks nothing.
+
+     AND THAT IS WHY THIS PAGE LOADS `/styles.css`, WHERE `doc.html` REFUSES
+     IT. That refusal is `DEC-the-document-page-wears-github-styling-lists-the-
+     readmes-and`: a rendered Markdown document "should look exactly as it is
+     displayed in github", so it wears the vendored GitHub sheet instead. The
+     instruction that reaches HERE is the opposite one — this is the same
+     viewer, and every `.tv*` rule, every fence hue, every ANSI colour and the
+     `.m` run itself live in this product's own stylesheet. A lane window
+     without it would be the second viewer `rowFor` exists to prevent, wearing
+     no clothes.
+
+     EVERY TEXT NODE IS BUILT, none authored. There is no `data-t` sweep on
+     this page because there is no static text on it at all: the head, the
+     provenance line, the bar and the document all come out of `mountDocument`
+     through `ctx.t()`, and the language and direction are applied by `lane.js`
+     on the first frame from the same string tables the shell uses.
+
+     THE ADDRESS IS `?id=<agentId>`, a query string for `doc.html`'s reason:
+     the FRAGMENT on a viewer page is not the shell's router's to spend, and a
+     query is the one form of this address a reader can copy and paste. -->
+<html lang="en" dir="ltr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>mycontext</title>
+  <link rel="stylesheet" href="/styles.css">
+</head>
+<body class="lanewin">
+<!-- The one host. `lane.js` appends a `section.tvroot` into it — the same
+     element `screens/conversations.js` builds the document into inside the
+     app, so `.tvroot`'s own block in `styles.css` reaches it unchanged and
+     `e2e` can screenshot the same selector on both pages. -->
+<main id="lane"></main>
+<script type="module" src="/lane.js"></script>
+</body>
+</html>

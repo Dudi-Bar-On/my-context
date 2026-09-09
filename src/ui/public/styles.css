@@ -3915,6 +3915,38 @@ body.docpage{overflow-y:auto}
 .tvlane:hover,.tvlanehome:hover,.tvlanes:hover{color:var(--gold);
   text-decoration-thickness:2px}
 
+/* ─── THE BARE LANE WINDOW — `plan:archive seq:51`, `/lane.html`.
+
+   Owner ruling 2026-09-09: a helper agent opens as "a single window without
+   all the app arround it". That page carries no `.app` grid at all — no
+   header row, no rail column, no `prov` band, no `strip` — so the four rules
+   below are the whole of what replaces it, and they are LAYOUT ONLY. Not one
+   colour, face, border or radius is restated here: `.tvroot` and its block
+   below already dress the document, `body` already carries `--ground` and
+   `--ink`, and this page loads this stylesheet precisely so that none of it
+   has to be said twice. `check-cssom-restatement.ts`' own line.
+
+   WHY THE WELL IS RE-SIZED AND ONLY HERE. `.tvscroll` below is
+   `min(70vh,860px)`, a viewport FRACTION, and that number is right inside the
+   app: the well sits under a 46px header and above a 26+38px band, and a well
+   that took the whole viewport would push the document's own head off the top
+   of a page that also has to hold the shell. On a page whose entire content is
+   this one document, 70vh leaves a third of the window empty — the opposite of
+   what "only the viewer with the transcript in it" asks for. So the window
+   becomes a flex column and the well takes what is left after the head, the
+   provenance line, the bar and the notes have been laid out, with a floor so
+   it can never collapse to nothing on a short window. The app's own rule is
+   untouched; `body.lanewin` is the only selector that can reach this.
+
+   `100dvh` and not `100vh`: on a phone the URL bar's retraction changes the
+   viewport, and `vh` freezes the taller of the two, which is the well hanging
+   below the fold. */
+body.lanewin{display:flex;flex-direction:column;min-block-size:100dvh}
+.lanewin>main{display:flex;flex-direction:column;flex:1 1 auto;min-block-size:0;
+  padding:var(--sp-3) var(--sp-4) var(--sp-4)}
+.lanewin .tvroot{display:flex;flex-direction:column;flex:1 1 auto;min-block-size:0}
+.lanewin .tvscroll{flex:1 1 auto;block-size:auto;min-block-size:240px}
+
 /* THE SCROLL. One well, one document. Its height is a viewport fraction so a
    long session and a short one both read as a terminal rather than as a page
    that grew — `seq:7`'s "similar experience like SCROLLING OVER A TERMINAL".

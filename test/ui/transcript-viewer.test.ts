@@ -171,6 +171,8 @@ interface ViewerModule {
   matchesNode: (node: Record<string, unknown>, needle: string) => boolean;
   sessionFromHash: (hash: string) => string | null;
   laneHref: (agentId: string) => string;
+  /** `plan:archive seq:51` — the app's own route, which a lane no longer uses. */
+  sessionHref: (id: string) => string;
   laneIndex: (body: unknown) => {
     byCall: Map<string, { agentId: string }>;
     /** `plan:archive seq:49` - the same rows keyed by the lane's own id. */
@@ -369,7 +371,7 @@ test('a roster that failed to read is NOT an empty one, and says which it is', a
 });
 
 test('a lane document keeps the OWNING session, which is not its own id — the depth-2 trap', async () => {
-  const { laneIndex, laneHref } = await viewer();
+  const { laneIndex, laneHref, sessionHref } = await viewer();
 
   // The document is `agent-parent`; the roster answered for it is the whole
   // SESSION's, because a lane at depth 2 is filed under the session and its
@@ -389,14 +391,27 @@ test('a lane document keeps the OWNING session, which is not its own id — the 
   );
   assert.equal(index.byCall.get('toolu_DEEP')?.agentId, 'agent-child');
 
-  // ONE address for both, which is `seq:15`'s "the same renderer, whichever
-  // shape wins" spent rather than restated.
-  assert.equal(laneHref('agent-child'), '#/conversations/agent-child');
-  assert.equal(laneHref('sess-owner'), '#/conversations/sess-owner');
+  // ── TWO ADDRESSES SINCE `seq:51`, AND THE SPLIT IS THE RULING ──────────
+  //
+  // Owner ruling 2026-09-09: only a LANE opens bare, and his own SESSION keeps
+  // the rail, the strip and the header. So a lane's address is a page of its
+  // own and a session's is the app's route, and the two are separate functions
+  // rather than one with a flag — the shape follows from WHAT is being opened.
+  // They still share one renderer: `/lane.js` imports `mountDocument` from this
+  // very module, which is `seq:15`'s "the same renderer, whichever shape wins"
+  // spent rather than restated.
+  assert.equal(laneHref('agent-child'), '/lane.html?id=agent-child');
   assert.equal(
-    laneHref('a b/c'), '#/conversations/a%20b%2Fc',
-    'an id goes into the hash encoded, so nothing in it can be read as another route',
+    laneHref('a b/c'), '/lane.html?id=a%20b%2Fc',
+    'an id goes into the query encoded, so nothing in it can be read as another parameter',
   );
+
+  // The SESSION address is root-absolute, and that is load-bearing rather than
+  // tidy: `a.tvlanehome` is written on `/lane.html` too, where a bare
+  // `#/conversations/<id>` would resolve against the lane window itself and
+  // point the reader back at the page they are on.
+  assert.equal(sessionHref('sess-owner'), '/#/conversations/sess-owner');
+  assert.equal(sessionHref('a b/c'), '/#/conversations/a%20b%2Fc');
 });
 
 /* ══ WHAT A FOLD DRAWS AND WHAT IT COUNTS ══════════════════════════════════

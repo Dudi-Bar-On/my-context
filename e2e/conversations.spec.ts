@@ -1,5 +1,6 @@
 // @basis TASK-a-fold-spends-eleven-lines-saying-some-bookkeeping-happened,
 // TASK-a-lane-opens-in-a-new-tab-with-no-warning-no-landing-and-no,
+// TASK-a-lane-opens-inside-the-whole-app-and-he-asked-for-the,
 // TASK-the-count-of-helper-agents-is-not-a-link-so-the-only-way-to,
 // TASK-the-list-is-browsable-filter-search-and-duration-across,
 // TASK-the-transcript-is-one-document-you-scroll-not-fifty-records,
@@ -2003,7 +2004,13 @@ for (const lang of ['en', 'he'] as const) {
 
     // THE LINK IS ON THE STEP, beside the brief that step already carries.
     const link = fold.locator('a.tvlane').first();
-    await expect(link).toHaveAttribute('href', '#/conversations/agent-outer');
+    // **AND IT NAMES A PAGE OF ITS OWN SINCE `seq:51`.** It used to be
+    // `#/conversations/agent-outer` — the whole application at a lane address,
+    // which is the defect the owner reported: *"what i meant is to only see the
+    // viewer with the transcript in it as a single window without all the app
+    // arround it"*. `/lane.html` is that window; `a lane opens BARE` below is
+    // the assertion that it really has no shell around it.
+    await expect(link).toHaveAttribute('href', '/lane.html?id=agent-outer');
     await expect(link).toHaveAttribute('target', '_blank');
     await expect(link).toHaveAttribute('rel', 'noopener');
     // The label says where it opens rather than leaving that to be discovered,
@@ -2038,7 +2045,11 @@ for (const lang of ['en', 'he'] as const) {
     // A tab of its own, the SAME renderer, and it says what it is: a helper's
     // transcript rather than a session, with the session it came from named.
     await expect(lane.locator('p.tvlaneof')).toBeVisible();
-    await expect(lane.locator('a.tvlanehome')).toHaveAttribute('href', '#/conversations/sess-archive');
+    // Root-absolute since `seq:51`, and that is load-bearing rather than tidy:
+    // this link is now written on `/lane.html`, where a bare
+    // `#/conversations/<id>` would resolve against the lane window itself and
+    // point the reader back at the page they are already on.
+    await expect(lane.locator('a.tvlanehome')).toHaveAttribute('href', '/#/conversations/sess-archive');
     await lane.locator('.tvroot').screenshot({ path: `e2e/screens/conversations-lane-${lang}.png` });
     await lane.close();
 
@@ -2067,7 +2078,7 @@ test('a lane at depth 2 is reachable, because the roster is the SESSION own', as
   await expect(fold).toHaveCount(1);
   await fold.locator('summary.tvworksum').click();
   const deeper = fold.locator('a.tvlane').first();
-  await expect(deeper).toHaveAttribute('href', '#/conversations/agent-inner');
+  await expect(deeper).toHaveAttribute('href', '/lane.html?id=agent-inner');
 
   const [inner] = await Promise.all([
     page.waitForEvent('popup'),
@@ -2075,6 +2086,173 @@ test('a lane at depth 2 is reachable, because the roster is the SESSION own', as
   ]);
   await expect(inner.locator('.tvscroll')).toContainText(DEEP_PHRASE_LANE, { timeout: 20_000 });
   await inner.close();
+});
+
+/* ══ seq:51 — A LANE OPENS BARE, AND HIS SESSION DOES NOT ══════════════════
+ *
+ * Owner ruling 2026-09-09, correcting what he meant by a new tab: *"you did
+ * opened it on a new tab but what you did is actually another tab of mycontext
+ * with focus on the viewer where the linked transcript was opened, what i
+ * meant is to only see the viewer with the transcript in it as a single window
+ * without all the app arround it"* — and, taken the same day after both
+ * alternatives were put to him and declined (both documents bare, and a
+ * per-reading toggle), **only a LANE opens that way.**
+ *
+ * ── WHY THE SESSION HALF IS ASSERTED IN THE SAME TEST ────────────────────
+ *
+ * Because it is the half that can regress silently. A bare lane window is
+ * visible the moment anyone looks at it; a session that quietly lost its strip
+ * would only be noticed by the one person who uses those instruments. So the
+ * opener is measured HERE, in the same act, after the window it spawned has
+ * been proved bare: the same page, before and after, with the rail, the header
+ * and the strip still on it.
+ *
+ * ── AND THE ADDRESS DOES NOT DECIDE THE SHAPE ────────────────────────────
+ *
+ * The ruling's own words are that the shape follows from WHAT is being opened,
+ * and `rowFor` is what answers that. `/lane.html?id=<a session>` is therefore
+ * not a way to strip his session: `lane.js` re-asks the read model on arrival
+ * and hands a session back to the application. The last block drives exactly
+ * that, because an address that could take away the instruments would make the
+ * ruling a convention rather than a mechanism.
+ */
+for (const lang of ['en', 'he'] as const) {
+  test(`a lane opens BARE and the session it came from keeps its chrome (${lang})`, async ({ page }) => {
+    await openDocument(page, lang, 'default');
+
+    // THE SESSION, BEFORE. The three pieces of chrome the ruling names, on the
+    // document he works in.
+    await expect(page.locator('#topbar')).toBeVisible();
+    await expect(page.locator('.rail')).toBeVisible();
+    await expect(page.locator('#strip')).toBeVisible();
+
+    const fold = await reachTheLane(page);
+    const [lane] = await Promise.all([
+      page.waitForEvent('popup'),
+      fold.locator('a.tvlane').first().click(),
+    ]);
+    await lane.waitForSelector('.tvscroll .tvturn', { timeout: 20_000 });
+
+    // ── THE WINDOW IS A PAGE OF ITS OWN ───────────────────────────────────
+    expect(new URL(lane.url()).pathname).toBe('/lane.html');
+    await expect(lane.locator('body')).toHaveClass(/lanewin/);
+
+    // ── AND THERE IS NO APPLICATION IN IT ─────────────────────────────────
+    // Counted, not merely hidden: the shell keeps every visited screen inside
+    // `#screen` and merely flips `hidden`, so "not visible" is the assertion a
+    // second tab of the app would also pass. `toHaveCount(0)` is the one that
+    // says the shell was never built here at all.
+    for (const gone of ['#app', '#topbar', '.rail', '#screen', '#strip', '#prov', '#pane',
+      '#sesspop', '#focuspop', '#exited']) {
+      await expect(lane.locator(gone), `${gone} must not exist in a bare lane window`)
+        .toHaveCount(0);
+    }
+
+    // ── WHAT IT LOST IS THE APPLICATION, NOT THE PROVENANCE ───────────────
+    // A window with no rail still has to say WHICH lane it is and offer a way
+    // back. Both were already built by `seq:15` and `seq:40`; this is where
+    // they stop being decoration and become the only orientation there is.
+    await expect(lane.locator('p.tvlaneof')).toBeVisible();
+    await expect(lane.locator('a.tvlanehome')).toBeVisible();
+    await expect(lane.locator('button.tvback')).toBeVisible();
+
+    // ── THE SAME RENDERER, WHICH IS THE TRAP THIS ITEM CARRIES ────────────
+    // `/doc.html` is drawn by `githubNodes` and emits a bare `code` for inline
+    // code; this document is drawn by `markdownNodes` and emits `span.m`. A
+    // lane rendered through that page's renderer would have lost the inline
+    // hue, the fence colouring, the folds and the terminal rendering — and it
+    // would still have looked like a transcript. `.tvturn` and a fold are the
+    // cheap proof that `mountDocument` itself drew this.
+    await expect(lane.locator('.tvscroll .tvturn').first()).toBeVisible();
+    await expect(lane.locator('.tvbar button.tvtop')).toBeVisible();
+    // The reader's own language reached the window: the string tables and
+    // `applyLanguage` live on this page too, so an RTL reader is not handed an
+    // LTR window drawn in English.
+    await expect(lane.locator('html')).toHaveAttribute('dir', lang === 'he' ? 'rtl' : 'ltr');
+
+    // ── AND THE WELL TOOK THE ROOM THE CHROME GAVE UP ─────────────────────
+    // `.tvscroll` is `min(70vh,860px)` inside the app, which is right there
+    // and wrong here: a window whose whole content is one document would sit
+    // with a third of itself empty. `body.lanewin` re-sizes it and nothing
+    // else, so this is the assertion that the chrome was REPLACED rather than
+    // merely deleted.
+    const fit = await lane.evaluate(() => {
+      const root = document.querySelector('.tvroot') as HTMLElement;
+      const well = document.querySelector('.tvscroll') as HTMLElement;
+      return {
+        below: window.innerHeight - root.getBoundingClientRect().bottom,
+        share: well.getBoundingClientRect().height / window.innerHeight,
+        wide: document.documentElement.scrollWidth - window.innerWidth,
+      };
+    });
+    expect(fit.below, 'a band of nothing under the document is the defect `#prov` already cost once')
+      .toBeLessThan(60);
+    expect(fit.share, 'the well took the room the rail and the strip gave up')
+      .toBeGreaterThan(0.55);
+    // And the window does not scroll sideways. `.tvbar` wraps and `.tvscroll`
+    // is `contain:inline-size`, both for measured defects in the app; a page
+    // with no rail is a WIDER column than either was written against, so the
+    // guarantee is re-taken here rather than inherited.
+    expect(fit.wide, 'a lane window must not scroll sideways').toBeLessThanOrEqual(0);
+
+    // The WINDOW, not the element — this is the picture the owner asked for,
+    // so what is captured is what he would see.
+    await lane.screenshot({ path: `e2e/screens/lane-window-${lang}.png` });
+
+    // ── AND A LANE INSIDE A LANE IS BARE TOO, WHICH IS WHERE A RELATIVE
+    //    ADDRESS WOULD HAVE BROKEN ───────────────────────────────────────────
+    // `agent-outer` dispatched `agent-inner`, the shape 43 of this workspace's
+    // 264 lanes have. Every address written by `mountDocument` is now resolved
+    // against `/lane.html` rather than against `/`, so this is the assertion
+    // that none of them is a bare fragment: a `#/conversations/<id>` href here
+    // would silently address the lane window itself.
+    const inner = lane.locator('details.tvwork').filter({ has: lane.locator('a.tvlane') }).first();
+    await inner.locator('summary.tvworksum').click();
+    const deeper = inner.locator('a.tvlane').first();
+    await expect(deeper).toHaveAttribute('href', '/lane.html?id=agent-inner');
+    const [nested] = await Promise.all([
+      lane.waitForEvent('popup'),
+      deeper.click(),
+    ]);
+    await nested.waitForSelector('.tvscroll .tvturn', { timeout: 20_000 });
+    expect(new URL(nested.url()).pathname).toBe('/lane.html');
+    await expect(nested.locator('.rail')).toHaveCount(0);
+    await expect(nested.locator('p.tvlaneof')).toBeVisible();
+    await nested.close();
+
+    await lane.close();
+
+    // ── THE SESSION, AFTER. NOT ONE PIECE OF IT MOVED ─────────────────────
+    await expect(page.locator('#topbar')).toBeVisible();
+    await expect(page.locator('.rail')).toBeVisible();
+    await expect(page.locator('#strip')).toBeVisible();
+    await expect(page.locator('#app')).toHaveCount(1);
+  });
+}
+
+test('the bare address is not a way to strip a SESSION — the read model decides, not the URL', async ({ page }) => {
+  // The ruling forbids a mode, a preference or a query parameter that chooses
+  // the shape: it follows from WHAT is being opened, and `rowFor` is what
+  // answers that. So a session id handed to the lane window — a hand-typed
+  // address, a stale link, a bookmark from a future in which this widened —
+  // is handed back to the application rather than drawn with no instruments.
+  await open(page, '#/conversations', 'en');
+  await page.goto(`http://127.0.0.1:${harness.port}/lane.html?id=sess-archive`);
+  await page.waitForSelector('.tvscroll .tvturn', { timeout: 20_000 });
+
+  expect(page.url()).toContain('#/conversations/sess-archive');
+  expect(new URL(page.url()).pathname, 'a session is handed back to the app, not drawn bare')
+    .toBe('/');
+  await expect(page.locator('.rail')).toBeVisible();
+  await expect(page.locator('#strip')).toBeVisible();
+
+  // AND AN ADDRESS THAT NAMES NO LANE AT ALL SAYS SO, in the reader's own
+  // language, rather than leaving a blank window —
+  // `INV-nothing-is-dropped-silently`. It is also what keeps
+  // `conv.doc.noLane` from being a string nothing draws.
+  await page.goto(`http://127.0.0.1:${harness.port}/lane.html`);
+  await expect(page.locator('#lane .tvroot p.spill')).toContainText('names none');
+  await expect(page.locator('.rail'), 'and it is still not the application').toHaveCount(0);
 });
 
 /**
@@ -2649,7 +2827,7 @@ test.describe('the list is browsable', () => {
     await expect(reported).toContainText('Subagent');
     await expect(reported).toContainText('Background task finished');
     const open = reported.locator('a.tvlane');
-    await expect(open).toHaveAttribute('href', '#/conversations/agent-probe');
+    await expect(open).toHaveAttribute('href', '/lane.html?id=agent-probe');
     await expect(open).toHaveAttribute('target', '_blank');
     await expect(open).toBeVisible();
 
