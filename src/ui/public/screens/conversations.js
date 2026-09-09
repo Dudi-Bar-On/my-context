@@ -2465,13 +2465,27 @@ export function mountDocument(ctx, host, outline, back, roster = NO_LANES) {
   head.append(backButton);
 
   const title = el('h3', 'tvtitle');
-  title.append(...titleNodes(ctx, outline));
-  head.append(title);
-
   const facts = el('p', 'tvfacts');
-  facts.append(mono(outline.sessionId));
-  if (outline.branch !== null) facts.append(' · ', mono(outline.branch));
-  facts.append(' · ', mono(formatBytes(outline.bytes)));
+  /**
+   * The two lines of the head that describe the FILE rather than the screen —
+   * and they are a function because `seq:19`'s silent rebuild re-reads that
+   * file underneath them.
+   *
+   * A transcript that was REPLACED rather than appended to comes back at a
+   * different size, and possibly with a different title and branch. Drawing
+   * these once at mount and never again would leave a head stating the size of
+   * a file that no longer exists, beside a document built from the one that
+   * does — which is worse than the notice it replaced, because nothing on the
+   * page would say so. `INV-nothing-is-dropped-silently`.
+   */
+  const fillHead = () => {
+    title.replaceChildren(...titleNodes(ctx, outline));
+    facts.replaceChildren(mono(outline.sessionId));
+    if (outline.branch !== null) facts.append(' · ', mono(outline.branch));
+    facts.append(' · ', mono(formatBytes(outline.bytes)));
+  };
+  fillHead();
+  head.append(title);
   head.append(facts);
 
   /**
@@ -3959,14 +3973,122 @@ export function mountDocument(ctx, host, outline, back, roster = NO_LANES) {
   };
 
   /**
+   * **THE FILE WAS REPLACED AND THE READER IS AT THE END, SO IT IS SIMPLY
+   * REBUILT** — owner ruling 2026-09-09, on seeing `conv.doc.replaced` and
+   * being told to reload: fix it.
+   *
+   * ── THE DIAGNOSIS WAS RIGHT AND THE REMEDY WAS NOT ──────────────────────
+   *
+   * `tick`'s shrank branch is correct about the file: a transcript only ever
+   * appends, so a smaller one — or the same length with a new `mtime` — is a
+   * REWRITE, and every byte offset this document holds now points somewhere
+   * else. Saying so was honest. What was wrong is that the only way forward
+   * was `F5`, on a screen whose whole purpose is that the reader never has to
+   * press it.
+   *
+   * ── AND `seq:19`'s OWN RULE DECIDES WHO GETS WHICH ANSWER ───────────────
+   *
+   * *"if i am at the end of the file i could see the changes live near real
+   * time asap"* — which binds in both directions, and `atTail()` is the gate
+   * the append path already runs through. A reader AT THE TAIL was reading the
+   * live end of a file; the live end is what they still get, so the document
+   * is rebuilt against the file as it now stands and the following carries on.
+   * A reader ABOVE the end keeps today's behaviour exactly: the notice, and
+   * the follow stopped. Rebuilding under them would move their place, which is
+   * what `TASK-a-refresh-keeps-the-reader-s-place-or-it-asks` forbids and what
+   * `seq:19` already refused once for the ordinary append.
+   *
+   * ── NO CHIP SAYING "REBUILT", DELIBERATELY ──────────────────────────────
+   *
+   * There is nothing for the reader to decide, and a "rebuilt" mark is a claim
+   * that decays — true for a second, then noise. `app.js` makes the same
+   * argument for not drawing a "live again" chip when the stream recovers.
+   * `conv.doc.replaced` is kept, for the mid-document case only.
+   *
+   * ── WHAT IS THROWN AWAY, AND WHY EVERY ONE OF THEM HAS TO BE ────────────
+   *
+   * `bodies`, `known` and `inflight` are all keyed by node index against the
+   * OLD file, so a surviving entry would draw one file's text at another
+   * file's position — the hole this branch exists to refuse, one layer in.
+   * `marked` and `held` go for `applyFilter`'s reason, stated there: a passage
+   * marked on a document that no longer exists must not be copyable.
+   *
+   * A REPLACED FILE THAT IS NOW TOO BIG TO WALK falls back to the notice. The
+   * mount path refuses to follow a truncated document at all — it would append
+   * the newest records onto a document missing the ones between — so a rebuild
+   * that came back `truncated` has nothing to hand a follower, and the reader
+   * is owed the reload that gets them the truncation disclosure with it.
+   */
+  const rebuildReplaced = async () => {
+    if (asking) return;
+    asking = true;
+    try {
+      const fresh = await ctx.api(
+        `/api/conversations/${encodeURIComponent(outline.sessionId)}/outline`);
+      if (!scroll.isConnected) return;
+      if (fresh.present === false) { stopWith('conv.prunedBody'); return; }
+      if (fresh.truncated === true) { stopWith('conv.doc.replaced'); return; }
+      seenBytes = fresh.bytes;
+      seenMtime = fresh.mtimeMs;
+      bodies.clear();
+      known.clear();
+      inflight.clear();
+      marked = null;
+      held.clear();
+      armCopy(false);
+      nodes.length = 0;
+      for (const node of fresh.nodes ?? []) nodes.push(node);
+      // Re-derived from the nodes rather than read off the head, which is the
+      // spelling `refill` already uses and for its reason: `sum(span) ===
+      // records` is an invariant a test asserts, and one arithmetic for it
+      // means the two paths cannot disagree.
+      outline.said = 0;
+      outline.work = 0;
+      outline.deed = 0;
+      outline.records = 0;
+      for (const node of nodes) {
+        if (node.k === 'said') outline.said += 1;
+        else if (node.k === 'deed') outline.deed += 1;
+        else outline.work += 1;
+        outline.records += node.s;
+      }
+      outline.bytes = fresh.bytes;
+      outline.mtimeMs = fresh.mtimeMs;
+      outline.title = fresh.title;
+      outline.titleSource = fresh.titleSource;
+      outline.branch = fresh.branch;
+      fillHead();
+      unseen = 0;
+      sayArrived();
+      // `'end'` for the same reason the mount lands there: this reader WAS at
+      // the end, and `redraw` holds them there through the re-sum that follows
+      // the first measurements rather than setting a pixel and hoping.
+      redraw('end');
+    } catch (error) {
+      // A rebuild that will not load says so in the one place this screen
+      // already draws a window that refused, and the timer keeps running: the
+      // next tick is a second away and a transient refusal must not end the
+      // following silently. Same shape as `refill`'s own catch.
+      failed.replaceChildren(errorNote(error.message));
+      failed.hidden = false;
+    } finally {
+      asking = false;
+    }
+  };
+
+  /**
    * One tick: has the file moved?
    *
    * Four answers, and each is a state rather than an error.
    *   - gone      the harness pruned the transcript under the reader.
    *   - shrank    it was REPLACED rather than appended to, so every byte
-   *               offset on screen now points somewhere else. This is the
-   *               `resync` discipline borrowed from `watch-model.ts`: say the
-   *               tail cannot be trusted instead of drawing a hole.
+   *               offset on screen now points somewhere else. `seq:19`'s own
+   *               rule splits this in two: a reader AT THE TAIL gets the
+   *               document rebuilt against the file as it now stands and keeps
+   *               following, and a reader above the end gets the `resync`
+   *               discipline borrowed from `watch-model.ts` — say the tail
+   *               cannot be trusted rather than move them. See
+   *               `rebuildReplaced`.
    *   - grew      read the tail.
    *   - unchanged nothing, not even a repaint. `mtimeMs` is still recorded, so
    *               a touch that does not change the size does not read as
@@ -3987,12 +4109,20 @@ export function mountDocument(ctx, host, outline, back, roster = NO_LANES) {
         // against, and every `o` the outline holds now points somewhere else.
         // A transcript only ever appends, so both are a REPLACEMENT — the
         // index treats a shrink the same way, re-reading the whole file rather
-        // than resuming — and the honest answer is the `resync` one borrowed
-        // from `watch-model.ts`: say the tail cannot be trusted rather than
-        // draw a hole. The reader reloads and gets a document built against
-        // the file as it now is.
+        // than resuming.
+        //
+        // **AND WHO IS ASKING DECIDES WHAT HAPPENS NEXT**, which is `seq:19`'s
+        // own rule and not a new one: the follow moves only the reader who is
+        // at the end. At the tail the document is rebuilt against the file as
+        // it now stands and the following carries on, with no notice, because
+        // there is nothing to decide — the owner's ruling 2026-09-09, after
+        // meeting `conv.doc.replaced` and being told to press F5. Above the
+        // end, the `resync` discipline borrowed from `watch-model.ts` stands
+        // unchanged: say the tail cannot be trusted rather than move a reader
+        // who is mid-document. See `rebuildReplaced`.
         if (tip.bytes < seenBytes
           || (tip.bytes === seenBytes && tip.mtimeMs !== seenMtime)) {
+          if (atTail()) { void rebuildReplaced(); return; }
           stopWith('conv.doc.replaced');
           return;
         }

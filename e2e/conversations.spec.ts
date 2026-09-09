@@ -1500,6 +1500,208 @@ test.describe('the open document follows the session as it is written', () => {
     });
 });
 
+/* ══ seq:19 — A TRANSCRIPT REPLACED UNDER THE READER ══════════════════════
+ *
+ * Owner report 2026-09-09: he was reading a session and met
+ * `conv.doc.replaced` — *"This transcript was replaced rather than added to …
+ * Reload the page to read it as it stands."* — and ruled it be fixed.
+ *
+ * The DIAGNOSIS was right and only the remedy was wrong. A transcript only
+ * ever appends, so a smaller file, or the same length with a new `mtime`, is a
+ * REWRITE and every byte offset the open document holds points somewhere else.
+ * What could not stand is that the only way forward was `F5`, on the one
+ * screen whose entire purpose is that nobody has to press it.
+ *
+ * `seq:19`'s own rule decides who gets which answer, and it is the same gate
+ * the ordinary append already runs through: **the follow moves only the reader
+ * who is at the end.** At the tail the document is rebuilt against the file as
+ * it now stands and the following carries on; above the end, nothing moves and
+ * the notice stands.
+ *
+ * ── WHAT MAKES THE FIRST TEST NON-VACUOUS, WHICH IS THE POINT ────────────
+ *
+ * Against the code this replaces, `stopWith` cleared the interval and removed
+ * the listeners — so a turn appended AFTER the replacement could never arrive,
+ * ever, on that page load. The last assertion is therefore false against the
+ * old behaviour by construction rather than by luck, and the notice assertion
+ * is false against it too. The SECOND test asserts today's behaviour unchanged
+ * and is deliberately green either way: it is the guard that the repair did
+ * not widen past the reader it was ruled for.
+ *
+ * ── ITS OWN HARNESS, FOR THE REASON THE STALENESS BLOCK GIVES ────────────
+ *
+ * This block REPLACES its transcript, and the fixture above it is shared by
+ * six tests that append to theirs. A shorter file underneath them would take
+ * `LAST_PHRASE` — the phrase this whole file exists to assert on — off the end
+ * of a session another test is reading. So: its own home, its own cwd, its own
+ * transcript, its own server.
+ */
+test.describe('a transcript replaced under the reader', () => {
+  let swap: UiHarness;
+  let swapCwd: string;
+  let swapHome: string;
+  let swapFile: string;
+
+  /** The file the browser is reading, written SHORTER and with a new ending. */
+  const replaceTranscript = (phrase: string): void => {
+    const rows: unknown[] = [{ type: 'ai-title', aiTitle: 'The conversation archive' }];
+    for (let i = 0; i < 6; i += 1) {
+      rows.push({
+        type: 'user',
+        message: { role: 'user', content: i === 5 ? phrase : `rewritten round ${i}` },
+        timestamp: new Date(Date.UTC(2026, 8, 8, 12, 0, i)).toISOString(),
+        gitBranch: 'master',
+      });
+    }
+    // SHORTER than what it replaces, so the shrink is a fact about the size
+    // and this test never has to rely on filesystem `mtime` granularity.
+    writeFileSync(swapFile, rows.map((r) => JSON.stringify(r)).join('\n') + '\n');
+  };
+
+  const appendTo = (phrase: string): void => {
+    appendFileSync(swapFile, `${JSON.stringify({
+      type: 'user',
+      message: { role: 'user', content: phrase },
+      timestamp: new Date(Date.UTC(2026, 8, 8, 13, 0, 0)).toISOString(),
+    })}\n`);
+  };
+
+  /**
+   * The FULL fixture on disk, so the document is taller than the viewport and
+   * "scrolled up" is a state this block can actually be in.
+   *
+   * **Called per test, and that is a consequence of what these tests DO.** The
+   * three below share one transcript and one server per worker, and every one
+   * of them replaces that transcript with a six-round file — so the second
+   * test in a worker would open the leftovers of the first and find neither
+   * the round-zero answer it scrolls to nor enough document to scroll. Found
+   * by running the file rather than the test: both pass alone.
+   */
+  const restoreTranscript = (): void => {
+    writeFileSync(swapFile, session().map((r) => JSON.stringify(r)).join('\n') + '\n');
+  };
+
+  test.beforeAll(async () => {
+    swapHome = mkdtempSync(path.join(tmpdir(), 'e2e-swap-home-'));
+    swapCwd = mkdtempSync(path.join(tmpdir(), 'e2e-swap-cwd-'));
+    const dir = path.join(swapHome, 'projects', projectDirName(swapCwd));
+    mkdirSync(dir, { recursive: true });
+    swapFile = path.join(dir, 'sess-swap.jsonl');
+    restoreTranscript();
+
+    process.env['CLAUDE_CONFIG_DIR'] = swapHome;
+    const previous = process.cwd();
+    process.chdir(swapCwd);
+    try {
+      runCli(['init'], swapCwd, () => {});
+      runCli(['conversation', 'rebuild'], swapCwd, () => {});
+    } finally {
+      process.chdir(previous);
+    }
+    swap = await startUiChild(swapCwd);
+  });
+
+  test.afterAll(async () => {
+    await swap?.stop();
+    delete process.env['CLAUDE_CONFIG_DIR'];
+    if (swapCwd) removeTree(swapCwd);
+    if (swapHome) removeTree(swapHome);
+  });
+
+  test.beforeEach(() => { restoreTranscript(); });
+
+  const openSwap = async (page: Page, lang: 'en' | 'he'): Promise<void> => {
+    await page.addInitScript((l) => {
+      try { localStorage.setItem('myctx-lang', l as string); } catch { /* private mode */ }
+    }, lang);
+    const nonce = await mintNonce(swap.port);
+    await page.goto(`http://127.0.0.1:${swap.port}/#${nonce}`);
+    await page.waitForSelector('.rail', { timeout: 20_000 });
+    await page.evaluate(() => { location.hash = '#/conversations'; });
+    await page.waitForSelector('.convrow', { timeout: 20_000 });
+    await page.locator('.convrow').first().click();
+    await page.waitForSelector('.tvscroll .tvturn', { timeout: 20_000 });
+    await expect(page.locator('#exited')).toBeHidden();
+  };
+
+  test('at the end, a replaced transcript is rebuilt in place and the follow carries on', async ({ page }) => {
+    test.setTimeout(120_000);
+    await openSwap(page, 'en');
+    await page.locator('button.tvend').click();
+    await expect(page.locator('.tvscroll')).toContainText(LAST_PHRASE, { timeout: 20_000 });
+
+    // The head states the size of the file it is built from. It is read now so
+    // the rebuild can be shown to have moved it, rather than the test taking
+    // the document's own word that it re-read anything.
+    const sizeBefore = await page.locator('p.tvfacts').innerText();
+
+    const rewritten = 'the ending of the file that replaced the first one';
+    replaceTranscript(rewritten);
+
+    // ── REBUILT, IN PLACE, WITH NOBODY PRESSING ANYTHING ──────────────────
+    await expect(page.locator('.tvscroll'))
+      .toContainText(rewritten, { timeout: 60_000 });
+    // AND THE OLD FILE IS GONE FROM THE SCREEN. A document that spliced the
+    // new file onto the old one would still be showing this, and it is the
+    // hole the notice existed to refuse.
+    await expect(page.locator('.tvscroll')).not.toContainText(LAST_PHRASE);
+
+    // ── AND NO NOTICE, BECAUSE THERE IS NOTHING TO DECIDE ─────────────────
+    const follows = page.locator('p.tvfollows');
+    await expect(follows).toContainText('every second');
+    await expect(follows).not.toContainText('Reload the page');
+    await expect(follows).not.toHaveClass(/tvwarn/);
+
+    // ── THE HEAD FOLLOWED THE FILE ────────────────────────────────────────
+    // Drawn once at mount, this line would still state the size of a file that
+    // no longer exists — a head contradicting the document under it, which is
+    // worse than the notice it replaced because nothing would say so.
+    await expect.poll(async () => page.locator('p.tvfacts').innerText(), { timeout: 20_000 })
+      .not.toBe(sizeBefore);
+
+    // ── AND IT IS STILL FOLLOWING, WHICH IS THE ASSERTION THAT IS FALSE
+    //    AGAINST THE OLD BEHAVIOUR ────────────────────────────────────────
+    // `stopWith` cleared the interval and removed both look listeners, so this
+    // turn could never have arrived on this page load.
+    const after = 'appended after the replacement, on the same page load';
+    appendTo(after);
+    await expect(page.locator('.tvscroll')).toContainText(after, { timeout: 60_000 });
+
+    await page.screenshot({
+      path: 'e2e/screens/conversations-replaced-rebuilt.png', fullPage: true,
+    });
+  });
+
+  for (const lang of ['en', 'he'] as const) {
+    test(`a reader above the end is told the transcript was replaced, and not moved (${lang})`, async ({ page }) => {
+      // TODAY'S BEHAVIOUR, ASSERTED SO THE REPAIR CANNOT WIDEN PAST THE READER
+      // IT WAS RULED FOR. Rebuilding under someone who is mid-document would
+      // move their place — `TASK-a-refresh-keeps-the-reader-s-place-or-it-asks`
+      // — and `seq:19` already refused it once for the ordinary append.
+      test.setTimeout(120_000);
+      await openSwap(page, lang);
+      await page.locator('button.tvtop').click();
+      await expect(page.locator('.tvscroll'))
+        .toContainText('What the terminal showed', { timeout: 20_000 });
+      const before = await page.locator('.tvscroll')
+        .evaluate((n) => (n as HTMLElement).scrollTop);
+
+      const rewritten = `a rewrite they were not at the end for ${lang}`;
+      replaceTranscript(rewritten);
+
+      const follows = page.locator('p.tvfollows');
+      await expect(follows).toContainText(
+        lang === 'he' ? 'טענו מחדש את הדף' : 'Reload the page', { timeout: 60_000 });
+      await expect(follows).toHaveClass(/tvwarn/);
+
+      // AND THEY DID NOT MOVE, and are not shown the other file.
+      expect(await page.locator('.tvscroll')
+        .evaluate((n) => (n as HTMLElement).scrollTop)).toBe(before);
+      await expect(page.locator('.tvscroll')).not.toContainText(rewritten);
+    });
+  }
+});
+
 /* ══ seq:20 — THE CHIP GLYPHS, MEASURED IN THE CASCADE ════════════════════ */
 
 /**
