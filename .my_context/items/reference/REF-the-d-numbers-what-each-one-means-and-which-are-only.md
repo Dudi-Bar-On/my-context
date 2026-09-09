@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: true
 summary: The short numbers used to talk about work in progress and what each refers to, delivered every session so the same number never means two things.
-summary_of: 0b23659a28de3afc
+summary_of: 78d261cd049d4201
 summary_was:
   - 2026-09-07 The short numbers used to talk about work in progress, and what each of them refers to, so the same number never means two things.
 acknowledged:
@@ -21,7 +21,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-09-07
 valid_until: null
-checksum: 5ead5f698339b7a8
+checksum: fe2056ae3613485b
 ---
 
 # the D numbers: what each one means, and which are only proposed
@@ -188,3 +188,41 @@ number is never RENUMBERED or REUSED, not that its subject cannot reach further 
 keeps growing stops being a unit of work and becomes a heading. When the owner draws a line under it,
 the remainder should become a new D rather than a third widening, and this row should say so on that
 day.
+
+── D37 IS IN CLOSING MODE. OWNER INSTRUCTION 2026-09-09, IN FORCE UNTIL D37 COMPLETES ──────────
+
+His words: "i want close D37 so from now till it completes, do not open any new tasks only if it is
+a very new issue that requires one and could not be solved imidiatelly else fix what you found and
+close the task so we could decrease the left tasks till D37 completes".
+
+THE RULE. While D37 is open, a lane that finds something FIXES IT and closes its item. Filing is the
+exception and needs all three of: genuinely new, actually needs an item, and cannot be solved
+immediately. If any one of those is in doubt, the answer is not to file - it is to report it to him
+in conversation and let him decide.
+
+AND IT IS RECORDED HERE RATHER THAN AS A NEW ITEM ON PURPOSE, because filing an item to announce a
+policy of not filing items would be the joke version of this instruction. This item is always: true
+and delivered every session, so the policy travels with the D table it governs, which is the only
+place it needs to be.
+
+WHAT IT IS ACTUALLY FIXING, measured rather than felt. D37 has grown every day it has been worked:
+13 open, then 51 items, then 54. On 2026-09-09 alone 21 new archive items were filed while roughly
+two dozen closed. The filing rate has matched the closing rate for three days, so the subject cannot
+converge - not because the work is endless but because DISCOVERY WAS BEING BANKED INSTEAD OF SPENT.
+Every lane found real work outside its brief and wrote it down instead of doing it.
+
+THE TENSION THIS CREATES, AND WHICH WAY IT RESOLVES. RULE-no-lane-without-an-item and the standing
+habit that "the corpus records what was built, not only what is left" both push toward filing. They
+are not repealed - a lane still works against an item, and what it built is still recorded. What
+changes is that a NEW finding inside a lane is now discharged by FIXING it and writing the finding
+into the item being closed, rather than by opening a second one. The record is kept in the same
+number of items instead of in more of them.
+
+THE FAILURE MODE TO WATCH, because it is the obvious way to comply and be wrong: a lane that reads
+"fix what you found" as licence to widen without limit. A fix that reaches another lane’s files,
+needs a ruling from him, or is large enough to be its own piece of work is NOT to be built and NOT
+to be filed - it is to be left and reported in prose. Every lane running when this was given was
+sent exactly that boundary.
+
+AND WHEN D37 CLOSES, THIS PARAGRAPH EXPIRES. It is scoped to closing one D, not a change to how the
+corpus works. Do not carry it into the next D without asking him.
