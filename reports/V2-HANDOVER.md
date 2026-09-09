@@ -1,3 +1,95 @@
+## ⏭ READ THIS FIRST — 2026-09-09, at 91%. D37 IS 37 OF 48. NOTHING IS RUNNING.
+
+**Tree clean, 0 unpushed.** No lane in flight. The owner is at his office machine and awake.
+
+### DO THIS FIRST
+
+**Dispatch ONE lane, not three.** `memory/one-lane-at-a-time-not-three.md` — three parallel
+Playwright lanes held **13.8 GB across 145 processes** and made his mouse crawl. He ruled: let them
+finish, then serialise. Parallelism is still fine for lanes touching no browser.
+
+**The next lane is CSS.** `archive/47` plus the **seven rules** the `39/40/41` lane needed and could
+not write (listed in its report, and worth re-deriving from the code rather than trusting my
+summary). The one that matters beyond tidiness: **`.tvjump`'s border is `--edge` at 1.49:1 on its own
+fill**, so Top, End, "N new below" and the three copy buttons are all effectively borderless —
+`archive/38`'s finding one surface over.
+
+Then the index lane: `archive/48` (the `agent-` prefix join), `33`, `35`, `30`.
+
+### THE MEASUREMENT THAT MATTERS MOST, AND IT IS ABOUT HOW I WAS WRONG
+
+**A collapsed table ruling is painted in TWO colours, 57/43.** `border-collapse:collapse` over
+fractional row heights paints 43% of every ruling as a flat 50% blend over the ground. Sampled from
+the PNG rather than read off the hex:
+
+    --edge-3   token 3.79   painted half 1.82
+    --dim      token 7.99   painted half 2.85
+    --tvframe  token 11.31  painted half 3.62
+
+So `archive/38` never delivered a 3:1 frame — **1.82:1 on 43% of it**, within rounding of the
+`--edge` he said he could not see. That is why he looked at it and still asked for brighter. And
+**`--dim`, which I recommended twice, would have shipped 43% under the bar.** His number was the
+measured answer, not the preference. **He has judged that surface three times and been right three
+times against my arithmetic.** `archive/47` carries it, plus the outer table edges he asked about,
+which are still a claim rather than a measurement — `.tvsaid table` sets `display:block`, so it is
+not a table box and `border-collapse` on its outer edge must be photographed, not reasoned about.
+
+### FOUR THINGS THAT WERE RED AND SHOULD NOT HAVE BEEN
+
+1. **`cssom-restatement` is green for the first time in this session.** It pinned `parts.js:158`, the
+   file grew, the write moved to 183 — red for a day over a change unrelated to what it guards, and
+   **four lanes recorded it as "the known pre-existing failure" and worked around it.** A gate that
+   has stopped gating. Now pinned by FILE, which is the same argument
+   `RULE-a-citation-names-an-item-by-id-never-a-report-by-line-number` makes about the corpus.
+2. **`conversations.spec.ts` is 132/132**, up from rotating 6–15 failures. `open()` waited PAGE-WIDE
+   and matched an INVISIBLE `.spill` left in `#screen` by the boot screen, then waited on it for
+   ever. **A good share of the "load flakes" I dismissed all session were that one bug.** Be
+   suspicious of the phrase "load flake" — it hid a real defect for a day.
+3. **`open.test.ts` was red at HEAD because of me**: I committed `archive/44` without running the full
+   unit suite, so `/api/ping` gaining `session` left a pinned four-key set behind. `server-e2e` pins
+   the same shape and WAS updated in that lane. Second hand-kept list that had to be told.
+4. Still genuinely pre-existing: 2 × `diagram-gate` (needs `npm run gen:docs`), 2 × `palette-lib`
+   (`contribution` missing from the catalogue partition), `print-product`'s coverage disclosure
+   (~1 in 3, proved by swapping HEAD's stylesheet in).
+
+### THE STREAM: CAUSE FOUND, AND I WAS WRONG TWICE
+
+**Our own server closes it.** `FIN_WAIT_2` on the node pid, `CLOSE_WAIT` on chrome — the server sent
+the FIN. The reason is **`restartStaleServer`**: a commit makes the running code stale, the next Stop
+hook replaces the server, and the restart calls `closeAllConnections()`. **So the drops were caused by
+committing.** I first diagnosed a socket reaper (the `live/21` lane could not reproduce one over 11
+and 14 minutes and *told me so*, and I shipped a keep-alive anyway), then misread the upkeep as never
+restarting a listening server. `live/22` fixed the recovery: the feed reopens on the look tick,
+5–10 ms to the request, 27–36 ms answered, zero requests while hidden.
+
+**And the credential was never the problem.** It has been an `HttpOnly SameSite=Strict` COOKIE since
+his 2026-08-22 ruling; measured surviving a restart, 200 across the board. **`live/23` — which I
+researched, filed and asked him to rule on — describes a design replaced three weeks ago, and
+recommends against the cookie model that is already shipped.** Read `security.ts` before searching
+the web. What actually locked him out: **`SESSION_MAX` is 64, evicted oldest-first, counting RESTARTS
+not tabs** — his 64 digests spanned 63.5 hours where the TTL promises thirty days. Filed `live/24`.
+
+### HIS RULINGS THIS SESSION, so nothing is re-asked
+
+Near-white table frames (`#c9c6d4`), `.tvterm` stays white, green tint on untagged fences, **no
+auto-detection** of fence languages. Every shell command stays promoted (+80% outline). The pruned
+chip stays — his 2026-09-07 ruling stands for rebuild time, the chip covers the one-turn window.
+Synthetic speaker follows WHO CAUSED the turn: Subagent 175, Shell 24, none for 47, You for the 23
+slash commands, **Claude never**. The `cd` prefix stays — fidelity over the fold budget. Handover
+cadence 90/92/94/96/97/98/99 with a subagent writing the block (`handover/19`, code half unbuilt).
+Session naming wanted (`34`). Date filter in HIS zone (`37`). Lane roster is a **flat list with
+children indented, not a folder tree** — 17 of 265 lanes have any children. Export offers a
+**checkbox form of candidates and replaces only what he ticks with obvious fakes** (`46`) —
+detection proposes, never acts. **Security otherwise not handled** (`27` closed: the content is his
+and so is the responsibility).
+
+### ONE THING STILL OWED HIM
+
+**`governance/9`** — `ready` schedules work and never surfaces a decision, and `blocks` is declared
+but read by nothing. **Every decision that reached him in two days reached him because I asked in
+conversation.** He suggested the review queue as the better home and I agree: `ready` answers "what
+can be worked", the review queue answers "what needs me".
+
 ## ⏭ READ THIS FIRST — 2026-09-08, at 96%. A FALSE REPORT OF DATA LOSS, AND TWO THINGS I RECORDED BUT DID NOT SHIP.
 
 **`archive/14` is RUNNING** (the stale index). Tree otherwise clean at `db0a8b3`.
