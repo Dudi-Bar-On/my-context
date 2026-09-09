@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: Opening a helper agent gives you just the transcript in its own window, without the rails and bars of the surrounding application.
-summary_of: 3b3405e3d3da6765
+summary_of: b16888584988d909
 scope:
   - src/ui/public/screens/conversations.js
   - src/ui/server.ts
@@ -23,7 +23,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-09-09
 valid_until: null
-checksum: 8a4986366e04841a
+checksum: 1bdfd3c93649cfa9
 plan: archive
 seq: "51"
 state: done
@@ -177,3 +177,15 @@ not a link that spends a tab. So a lane can still render inside the shell - whic
 `button.tvlaneshut`'s `history.length === 1` gate and two existing specs already depend on, and what
 the item's own body anticipates ("a reader who reached this lane WITHOUT a new tab"). If he wants
 the roster row bare too, that is a one-line change to what `openLane` does and it is his to ask for.
+
+HE ASKED FOR THE ROSTER ROW TOO, 2026-09-09, AND THE BOUNDARY ABOVE IS NOW CLOSED. drawLaneRow's rows open a lane at /lane.html, through laneHref, which stays the only code that knows a lane's address — a second spelling written at the roster would be exactly the defect plan:archive seq:48 is about, one fact recorded twice with nothing comparing them.
+
+AND THE ARGUMENT FOR LEAVING IT WAS ANSWERED RATHER THAN OVERRULED. This item's reason was that a list's rows are not links that spend a tab, and that half is kept: openLane calls window.location.assign, so the CURRENT window goes bare, no tab is spent, and the browser's own Back returns to the roster. What changed is the SHAPE a lane arrives in and nothing else. location.assign rather than ctx.navigate because /lane.html is a different document and the app's router only moves a hash — the same move lane.js already makes in the other direction with location.replace(sessionHref(id)).
+
+THE IN-APP LANE ROUTE IS NOT REMOVED, AND THAT IS DELIBERATE. #/conversations/<agentId> still renders a lane inside the shell; rowFor resolves either kind; and button.tvlaneshut's history.length === 1 gate is written for precisely this reader — "a reader who reached this lane WITHOUT a new tab ... has somewhere to go back to". CHECKED RATHER THAN ASSUMED, in both browsers: a reader arriving from a roster row has a history entry behind them, so tvlaneshut correctly does NOT draw, and a.tvlanehome — drawn either way — is the route out. No gate was changed.
+
+NO NEW STRING. The row hands over an agent id and says nothing new; conv.lanes.sub's "Open one to read it in the same viewer a session uses" stays TRUE and stays as it is, because lane.js imports mountDocument and forks no renderer — the viewer really is the same one, and what differs is the chrome around it.
+
+THE TWO SPECS THAT RESTED ON THE OLD BEHAVIOUR WERE UPDATED, NOT DELETED. e2e/conversations.spec.ts' roster test asserted "a row opens the lane in the same viewer a session uses" and now asserts the row lands on /lane.html in the same window, that body.lanewin is set, that #app/#topbar/.rail/#screen/#strip have COUNT ZERO rather than merely being hidden, that tvlaneshut is absent and tvlanehome present, and that Back returns to the roster. The sibling test that reaches a lane by address gained the assertion the first one gave up: at #/conversations/agent-outer the rail and the strip are visible and body is NOT lanewin — so the in-app route that still exists is still covered by something.
+
+NON-VACUOUS, PROVED BY REMOVING THE FIX. Pointing renderRoster back at the in-app opener turns the roster test red in BOTH projects; flipping the surviving in-app assertion to its opposite turns the sibling test red in both. Both were then restored. Green after: 184 of 186 across conversations, conversations-kept, lane-link-face, archive-chrome-face and screen-parity in chromium AND chrome — the two reds being screen-parity's mockup ledger, which fails identically on the pre-session sources and names only screens this work never touched (preview, coverage, injected, watch, graph, learn, work, packs).

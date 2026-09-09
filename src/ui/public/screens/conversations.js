@@ -4440,6 +4440,11 @@ function drawLaneRow(ctx, row, open) {
 
   // A lane whose transcript is gone has nothing to open, and the row says so
   // rather than opening a document that cannot load.
+  //
+  // WHAT `open` DOES CHANGED on his ruling of 2026-09-09 and this line did
+  // not: the row hands over an agent id and the caller decides what a lane's
+  // address is. It is now `/lane.html` — bare, in this same window — and the
+  // whole of that decision is in `openLane` where the screen is mounted.
   if (row.lane.present === false) button.disabled = true;
   else button.addEventListener('click', () => open(row.lane.agentId));
   return button;
@@ -4606,13 +4611,46 @@ export async function render(root, ctx) {
   const open = (id) => { ctx.navigate(`#/conversations/${encodeURIComponent(id)}`); };
   const back = () => { ctx.navigate('#/conversations'); };
 
+  /**
+   * **A ROSTER ROW OPENS A LANE BARE** — owner ruling 2026-09-09, answering
+   * the one boundary `plan:archive seq:51` drew on purpose and reported in
+   * prose rather than deciding for him.
+   *
+   * `seq:51`'s argument for leaving this route alone was that a list's rows
+   * are not links that spend a tab. THAT ARGUMENT IS ANSWERED RATHER THAN
+   * OVERRULED: this navigates the CURRENT window, so no tab is spent, the
+   * browser's own Back returns to the roster, and what changes is only the
+   * SHAPE the lane arrives in — `/lane.html`, with no rail, no header and no
+   * status strip, which is what he asked a lane to look like.
+   *
+   * **Through `laneHref`, which is the only code that knows a lane's
+   * address.** A second spelling written here is precisely the class of defect
+   * `plan:archive seq:48` was filed about — one fact recorded two ways and
+   * nothing comparing them until a join quietly returns nothing.
+   *
+   * **`location.assign` and not `ctx.navigate`.** The app's router moves a
+   * HASH inside this page; `/lane.html` is a different document, and
+   * `lane.js` re-asks the read model on arrival rather than trusting the
+   * address — `window.location.replace(sessionHref(id))` there is the same
+   * move in the other direction. `assign` rather than `replace` because the
+   * roster is somewhere a reader wants to come back to.
+   *
+   * **AND THE IN-APP ROUTE IS NOT REMOVED.** `#/conversations/<agentId>` still
+   * renders a lane inside the shell — `rowFor` resolves either kind — which is
+   * what `button.tvlaneshut`'s `history.length === 1` gate calls "a reader who
+   * reached this lane WITHOUT a new tab". A reader arriving here now has a
+   * history entry behind them, so that control correctly does not draw, and
+   * `a.tvlanehome` — drawn either way — is their route back.
+   */
+  const openLane = (agentId) => { window.location.assign(laneHref(agentId)); };
+
   // **THE ROSTER, ASKED FOR BY ADDRESS** — `plan:archive seq:41`. Taken before
   // the session branch because `sessionFromHash` cannot tell `lanes/<id>` from
   // an id; `rosterFromHash` is the only code that knows the extra segment
   // means anything, which is where `app.js`' router says that knowledge goes.
   const roster = rosterFromHash(location.hash);
   if (roster !== null) {
-    await renderRoster(ctx, root, roster, open, () => {
+    await renderRoster(ctx, root, roster, openLane, () => {
       ctx.navigate(`#/conversations/${encodeURIComponent(roster)}`);
     });
     return;

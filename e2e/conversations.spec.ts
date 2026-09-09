@@ -2687,10 +2687,46 @@ test('the count of helper agents opens the roster, with a child under its parent
 
   await page.screenshot({ path: 'e2e/screens/conversations-roster-en.png', fullPage: true });
 
-  // And a row opens the lane in the same viewer a session uses.
+  // ── AND A ROW OPENS THE LANE BARE, IN THIS SAME WINDOW ─────────────────
+  //
+  // Owner ruling 2026-09-09, answering the boundary `seq:51` drew on purpose
+  // and reported rather than decided. This assertion USED TO READ "a row opens
+  // the lane in the same viewer a session uses", which was true of the app
+  // route; the viewer is still the same one — `lane.js` imports
+  // `mountDocument` and forks nothing — and what changed is the SHAPE it
+  // arrives in.
+  //
+  // NO TAB IS SPENT, which is the half of `seq:51`'s argument that was right:
+  // a list's rows are not links that spend a tab. So this is a navigation of
+  // the page under test, and `waitForEvent('popup')` would hang here.
   await rows.nth(1).click();
+  await page.waitForURL(/\/lane\.html/, { timeout: 20_000 });
   await page.waitForSelector('.tvscroll .tvturn', { timeout: 20_000 });
+  expect(new URL(page.url()).pathname).toBe('/lane.html');
   await expect(page.locator('.tvscroll')).toContainText(DEEP_PHRASE_LANE, { timeout: 20_000 });
+
+  // Bare, counted rather than merely not visible — the shell keeps every
+  // visited screen in `#screen` and flips `hidden`, so `toHaveCount(0)` is the
+  // only assertion that says it was never built here.
+  await expect(page.locator('body')).toHaveClass(/lanewin/);
+  for (const gone of ['#app', '#topbar', '.rail', '#screen', '#strip']) {
+    await expect(page.locator(gone), `${gone} must not exist in a bare lane window`)
+      .toHaveCount(0);
+  }
+
+  // **AND THE CLOSE-THIS-TAB CONTROL IS CORRECTLY ABSENT.** `button.tvlaneshut`
+  // gates on `history.length === 1` — "this tab was opened for this document
+  // and has shown nothing else" — and a reader who arrived by clicking a row
+  // has the roster behind them. Closing their only tab would take it away.
+  // `a.tvlanehome` is drawn either way and is their route out.
+  await expect(page.locator('button.tvlaneshut')).toHaveCount(0);
+  await expect(page.locator('a.tvlanehome')).toBeVisible();
+
+  // The browser's own Back is the return, which is what "no tab was spent"
+  // has to mean for a reader rather than for a specification.
+  await page.goBack();
+  await page.waitForSelector('.rows .convrow', { timeout: 20_000 });
+  expect(page.url()).toContain('#/conversations/lanes/sess-archive');
 });
 
 test('the roster is reachable from a lane too, because it is the SESSION own', async ({ page }) => {
@@ -2700,6 +2736,18 @@ test('the roster is reachable from a lane too, because it is the SESSION own', a
   // roster, which is where its siblings are.
   await open(page, '#/conversations/agent-outer', 'en');
   await page.waitForSelector('.tvscroll .tvturn', { timeout: 20_000 });
+
+  // **THE IN-APP LANE ROUTE STILL EXISTS, AND THIS IS WHERE THAT IS SAID.**
+  // The roster's rows now open `/lane.html` (the ruling of 2026-09-09), and
+  // that changed which route a ROW takes — not whether a lane can render
+  // inside the shell. `rowFor` still resolves either kind at
+  // `#/conversations/<agentId>`, `button.tvlaneshut`'s gate is written for a
+  // reader who arrives that way, and this address is what a reader who edits
+  // the hash or follows an old bookmark gets.
+  await expect(page.locator('.rail')).toBeVisible();
+  await expect(page.locator('#strip')).toBeVisible();
+  await expect(page.locator('body')).not.toHaveClass(/lanewin/);
+
   await page.locator('button.tvlanes').click();
   await page.waitForSelector('.rows .convrow', { timeout: 20_000 });
   expect(page.url()).toContain('#/conversations/lanes/sess-archive');
