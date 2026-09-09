@@ -47,6 +47,20 @@
  * `Ledger.openReadOnlyChecked` does, and refuses a shape it does not read
  * rather than migrating.
  *
+ * **And the WRITE door is the only thing that ever moves a shape** —
+ * `plan:archive seq:33`, which added the first column to a table that had
+ * already shipped and found the other half of that sentence missing.
+ * `openReadOnlyChecked` still migrates nothing; what it gained is the ability
+ * to say that an index merely LACKS what this build reads
+ * (`ConversationIndexIncompleteError`, the state every workspace is in on
+ * upgrade day) rather than calling it damage — because the read door's refusal
+ * is also the Stop hook's gate, and a refusal it cannot classify stops the
+ * only writer that runs by itself. `ConversationIndex.open` then reconciles:
+ * `CREATE TABLE IF NOT EXISTS` for a table, `fillDispatchedBy` for a column,
+ * which converges from any earlier shape because it asks what is ABSENT and
+ * never which build wrote the file. That is not a version ladder and must not
+ * become one.
+ *
  * The other inherited cost: `Store.open` deletes `.index.db` outright on
  * corruption. These rows go with it. That is acceptable here and would not be
  * for the audit projection (which is why THAT lives in its own file): every
@@ -97,10 +111,25 @@ import { homedir } from 'node:os';
 import path from 'node:path';
 
 /**
- * The tables this file owns, and the columns each declares. Read by exactly
- * one thing — `ConversationIndex.openReadOnlyChecked` — because on a read path
- * this shape IS the version; see the header for why there is no number to
- * compare instead.
+ * The tables this file owns, and the columns each declares. Read by
+ * `ConversationIndex.openReadOnlyChecked` — because on a read path this shape
+ * IS the version; see the header for why there is no number to compare
+ * instead — and by `ConversationIndex.open`, which is the only thing allowed
+ * to move an index onto it.
+ *
+ * ── A COLUMN IS A VERSION EXACTLY AS A TABLE IS — `plan:archive seq:33` ────
+ *
+ * `subagents.dispatched_by` is the first column this list gained after the
+ * table shipped, and it is why the two doors now BOTH walk this list rather
+ * than only the read one. The item's ruling, and it is the whole reason the
+ * repair is a shape change: normalising a value on the way in moves no shape,
+ * so nothing could tell a row written before the change from one written
+ * after it, and `rebuildConversations` skips any transcript whose bytes and
+ * mtime are unchanged — which a finished lane transcript never is again. The
+ * 43 rows already written would have kept one namespace while every new row
+ * arrived in another, in one column, undetectably. A missing COLUMN is
+ * therefore the same fact as a missing table: an index built before this
+ * build, repairable, and named as such rather than reported as damage.
  */
 const CONVERSATION_TABLE_COLUMNS: [string, string[]][] = [
   ['conversations', [
@@ -109,10 +138,10 @@ const CONVERSATION_TABLE_COLUMNS: [string, string[]][] = [
     'branch', 'cwd', 'title', 'title_source', 'scanned_at',
   ]],
   ['subagents', [
-    'agent_id', 'session_id', 'parent_agent_id', 'tool_use_id', 'agent_type', 'description',
-    'model', 'spawn_depth', 'is_fork', 'file', 'bytes', 'mtime_ms', 'scanned_bytes',
-    'started_at', 'ended_at', 'prompts', 'answers', 'machinery', 'records', 'unreadable',
-    'branch', 'cwd', 'scanned_at',
+    'agent_id', 'session_id', 'parent_agent_id', 'dispatched_by', 'tool_use_id', 'agent_type',
+    'description', 'model', 'spawn_depth', 'is_fork', 'file', 'bytes', 'mtime_ms',
+    'scanned_bytes', 'started_at', 'ended_at', 'prompts', 'answers', 'machinery', 'records',
+    'unreadable', 'branch', 'cwd', 'scanned_at',
   ]],
   ['persisted', ['session_id', 'file', 'bytes', 'marked_at', 'mirrored_at', 'note']],
 ];
@@ -244,6 +273,7 @@ CREATE TABLE IF NOT EXISTS subagents (
   agent_id        TEXT PRIMARY KEY,
   session_id      TEXT NOT NULL,
   parent_agent_id TEXT,
+  dispatched_by   TEXT,
   tool_use_id     TEXT,
   agent_type      TEXT,
   description     TEXT,
@@ -269,6 +299,11 @@ CREATE TABLE IF NOT EXISTS subagents (
 CREATE INDEX IF NOT EXISTS idx_subagents_session ON subagents(session_id);
 CREATE INDEX IF NOT EXISTS idx_subagents_tooluse ON subagents(tool_use_id);
 CREATE INDEX IF NOT EXISTS idx_subagents_parent  ON subagents(parent_agent_id);
+-- The self-join's own index. parent_agent_id keeps its own because it is
+-- still the harness's recorded value and mycontext query can filter on it;
+-- dispatched_by is the one that RESOLVES against agent_id, so it is the one a
+-- join is written on. plan:archive seq:33.
+CREATE INDEX IF NOT EXISTS idx_subagents_dispatched ON subagents(dispatched_by);
 
 CREATE TABLE IF NOT EXISTS persisted (
   session_id  TEXT PRIMARY KEY,
@@ -827,6 +862,75 @@ export function listSubagentFiles(dir: string): SubagentFile[] {
 }
 
 /**
+ * The prefix `listSubagentFiles` adopts above, spelled once. It is OURS — see
+ * `dispatchingAgentId`, which is the only thing that needs to know it.
+ */
+const AGENT_ID_PREFIX = 'agent-';
+
+/**
+ * **A `parentAgentId` in the spelling everything else in this product uses
+ * for a lane** — `plan:archive seq:32`, moved here and STORED by
+ * `plan:archive seq:33`.
+ *
+ * ── THE ASYMMETRY, AND WHOSE IT ACTUALLY IS ────────────────────────────────
+ *
+ * Re-measured on this workspace 2026-09-09, over all 268 sidecars: 43 carry
+ * `parentAgentId`, every one of them BARE hex — `a26cb0b87f4a6712a` where the
+ * file beside it is `agent-a26cb0b87f4a6712a.jsonl` — and every one of the 43
+ * resolves against `agent-<value>.jsonl` on disk. So the field is real, it is
+ * right, and it is in a different namespace from `agentId`.
+ *
+ * **The harness does not "drop" a prefix.** Its sidecar key set, across all
+ * 268 files, is exactly `agentType`, `description`, `isFork`, `model`,
+ * `parentAgentId`, `spawnDepth` and `toolUseId` — there is NO self-id field at
+ * all. A lane's own identity comes from its FILENAME, and `listSubagentFiles`
+ * adopts the whole stem. The `agent-` prefix is therefore ours: we chose the
+ * prefixed spelling for the primary key and copied the bare spelling for the
+ * key that points at it, one field apart in the same `upsertSubagent` call.
+ * Half the asymmetry is the harness's format and half is our own naming, and
+ * this function repairs our half.
+ *
+ * ── WHY IT LIVES HERE AND NOT AT A DISPLAY BOUNDARY ────────────────────────
+ *
+ * `seq:32` put it in `cli/commands/conversation.ts` and argued the index could
+ * not carry it, because a value normalised on the way in moves no shape and
+ * `THE SHAPE IS THE VERSION`. That argument was right about the mechanism and
+ * wrong about the conclusion, and `seq:33` is the correction: the answer is to
+ * MOVE THE SHAPE — `dispatched_by` is a column `openReadOnlyChecked` requires,
+ * so an index written before it refuses and is rebuilt rather than serving one
+ * column in two namespaces. The measurement that made a display-only fix
+ * insufficient is on the shipped read surface: `mycontext query` is read-only
+ * SQL over this same database, and
+ *
+ *     SELECT COUNT(*) FROM subagents c JOIN subagents p ON p.agent_id = c.parent_agent_id
+ *
+ * answered **0** where the true count is **43** — a count that says nothing is
+ * there, which is the worst shape a defect can take on a read surface. With
+ * the column it answers 43 on `dispatched_by`.
+ *
+ * It is therefore called at the seam that BUILDS the row — `upsertSubagent`,
+ * the one place every writer passes through — and never inside
+ * `readSubagentMeta`, whose header rules that reporting what the sidecar said
+ * is its job. The stored `parent_agent_id` stays exactly as the harness wrote
+ * it, so nothing is dropped and the two namespaces are two columns instead of
+ * one column with two meanings.
+ *
+ * ── IDEMPOTENT ON PURPOSE ──────────────────────────────────────────────────
+ *
+ * The prefix is added only when it is absent. This is an observation about a
+ * harness format that can change under us — the reason `readSubagentMeta`
+ * tolerates an unreadable sidecar at all — so the day the harness starts
+ * writing `agent-a26cb…` this keeps telling the truth instead of storing
+ * `agent-agent-a26cb…`.
+ */
+export function dispatchingAgentId(parentAgentId: string | null): string | null {
+  if (parentAgentId === null) return null;
+  return parentAgentId.startsWith(AGENT_ID_PREFIX)
+    ? parentAgentId
+    : `${AGENT_ID_PREFIX}${parentAgentId}`;
+}
+
+/**
  * **HOW MANY LANES RAN UNDER ONE SESSION — the count alone, and nothing
  * opened.** `TASK-the-session-field-names-a-session-and-says-nothing-about-its`.
  *
@@ -895,8 +999,26 @@ export interface SubagentRow {
   agentId: string;
   /** The session that OWNS this lane, however many hops dispatched it. */
   sessionId: string;
-  /** `null` when the session dispatched it directly. */
+  /**
+   * **What the sidecar said, verbatim** — bare hex for all 43 of this
+   * workspace's linked lanes, and `null` when the session dispatched this one
+   * directly. Kept in the harness's own spelling; `dispatchedBy` beside it is
+   * the spelling that resolves.
+   */
   parentAgentId: string | null;
+  /**
+   * **The same lane, spelled the way this table's own primary key spells a
+   * lane** — `plan:archive seq:33`. `null` for exactly the rows whose
+   * `parentAgentId` is `null`, which is a session dispatch and not a missing
+   * link.
+   *
+   * DERIVED, never supplied: `upsertSubagent` computes it with
+   * `dispatchingAgentId` and takes it from no caller, so no writer can put a
+   * third namespace in this column. That is the point of the column — the
+   * self-join `mycontext query` invites is written on it and answers 43 rather
+   * than 0.
+   */
+  dispatchedBy: string | null;
   /** The `Agent` tool_use block in the dispatching transcript. `seq:15`'s handle. */
   toolUseId: string | null;
   agentType: string | null;
@@ -1330,6 +1452,70 @@ export function scanTranscript(
   return result;
 }
 
+/**
+ * **Move an existing index onto this build's shape for the one column added
+ * after `subagents` shipped** — `plan:archive seq:33`. A WRITE, so it is
+ * reachable only from `ConversationIndex.open`.
+ *
+ * ── WHY THIS IS NOT A MIGRATION LADDER, WHICH THIS FILE REFUSES TO HAVE ───
+ *
+ * Because it asks whether the COLUMN IS ABSENT, and never which build wrote
+ * the file. There is no version to compare, no order between repairs to get
+ * wrong, and re-running it is a no-op — the header's ruling that the shape is
+ * the version is what makes that possible rather than what it works around.
+ * It converges from ANY earlier shape, including one this build has never
+ * seen.
+ *
+ * ── WHY IT FILLS THE COLUMN AND DOES NOT DROP THE TABLE ───────────────────
+ *
+ * Dropping and re-reading would also work — every column here is
+ * reconstructible from a transcript, which is what makes this index
+ * disposable — and it would be WRONG for two measured reasons:
+ *
+ *   - `dispatched_by` is derived from `parent_agent_id`, a column the row
+ *     already holds, so no transcript needs opening at all: 43 of this
+ *     workspace's 268 lane rows carry a parent, and filling them is 43
+ *     statements against 1,762 ms to re-read 646,837,699 bytes of lane.
+ *   - A dropped table cannot bring back the lane rows of a session whose own
+ *     transcript is gone, and those rows are kept ON PURPOSE —
+ *     `TASK-a-pruned-session-s-lane-rows-are-never-swept-so-an-exported`
+ *     rules that sweeping them "discards the only remaining record that those
+ *     lanes ever ran". A schema repair must not decide that question by
+ *     accident on upgrade day.
+ *
+ * The fill is convergent rather than one-shot: any row that lacks the value
+ * gets it, so a row written by some future path that forgot it is repaired on
+ * the next open rather than sitting in a second namespace. That is the defect
+ * the item forbade — one column holding two namespaces, undetectably — and
+ * `openReadOnlyChecked` requiring the column is the other half of the answer.
+ */
+function fillDispatchedBy(db: DatabaseSync): void {
+  const table = db.prepare(
+    "SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'subagents'",
+  ).get() as { name: string } | undefined;
+  // A fresh index has no table yet, and `CONVERSATION_SCHEMA` creates the
+  // column together with it. Nothing to move.
+  if (table === undefined) return;
+
+  const columns = (db.prepare("SELECT name FROM pragma_table_info('subagents')")
+    .all() as { name: string }[]).map((r) => r.name);
+  if (!columns.includes('dispatched_by')) {
+    db.exec('ALTER TABLE subagents ADD COLUMN dispatched_by TEXT');
+  }
+
+  // **The value is computed by `dispatchingAgentId` and not by SQL**, on
+  // purpose: a `CASE WHEN parent_agent_id LIKE 'agent-%'` here would be a
+  // second spelling of the one rule about our own prefix, in a second
+  // language, able to disagree with the first without anything noticing.
+  const rows = db.prepare(
+    'SELECT agent_id, parent_agent_id FROM subagents ' +
+    'WHERE parent_agent_id IS NOT NULL AND dispatched_by IS NULL',
+  ).all() as { agent_id: string; parent_agent_id: string }[];
+  if (rows.length === 0) return;
+  const update = db.prepare('UPDATE subagents SET dispatched_by = ? WHERE agent_id = ?');
+  for (const row of rows) update.run(dispatchingAgentId(row.parent_agent_id), row.agent_id);
+}
+
 /** The read-only handle plus the tables. `open` writes; `openReadOnlyChecked` cannot. */
 export class ConversationIndex {
   #db: DatabaseSync;
@@ -1348,6 +1534,12 @@ export class ConversationIndex {
     const db = new DatabaseSync(dbPath);
     try {
       db.exec(`PRAGMA busy_timeout = ${busyTimeoutMs};`);
+      // **BEFORE the schema, not after it.** `CREATE TABLE IF NOT EXISTS` is a
+      // no-op on a table that exists, so it can neither add a column nor
+      // create the index that names one — `CREATE INDEX … ON
+      // subagents(dispatched_by)` in `CONVERSATION_SCHEMA` would refuse on a
+      // table that predates the column. See `fillDispatchedBy`.
+      fillDispatchedBy(db);
       db.exec(CONVERSATION_SCHEMA);
       return new ConversationIndex(db);
     } catch (error) {
@@ -1451,16 +1643,47 @@ export class ConversationIndex {
       }
 
       for (const [table, columns] of CONVERSATION_TABLE_COLUMNS) {
-        const actual = (db.prepare('SELECT name FROM pragma_table_info(?)').all(table) as
-          { name: string }[]).map((r) => r.name).sort().join(', ');
+        const found = (db.prepare('SELECT name FROM pragma_table_info(?)').all(table) as
+          { name: string }[]).map((r) => r.name);
+        const actual = [...found].sort().join(', ');
         const expected = [...columns].sort().join(', ');
-        if (actual !== expected) {
-          throw new Error(
-            `my_context: ${dbPath} declares ${table}(${actual}) where this build reads ` +
-            `${table}(${expected}). The conversation tables carry no schema_version, so their ` +
-            'shape is the only version there is, and a read-only caller never migrates.',
+        if (actual === expected) continue;
+
+        // **A COLUMN THIS BUILD ADDED IS AN UPGRADE, EXACTLY AS A TABLE IS** —
+        // `plan:archive seq:33`, and the reasoning is the one the table branch
+        // above already carries, applied one level down.
+        //
+        // Every column of these tables is derived, and `dispatched_by` — the
+        // first one added after `subagents` shipped — is derived from a column
+        // the row already holds, so `ConversationIndex.open` fills it without
+        // reading a transcript. An index that merely LACKS columns this build
+        // reads was therefore written by an earlier build and is repairable,
+        // and reporting that as damage would be the self-sealing stall this
+        // class was created for: `stopConversationRefresh` declines on any
+        // other throw, and it is the only writer that runs by itself.
+        //
+        // An index carrying a column this build does NOT read is the other
+        // case and stays a hard refusal: either a LATER build wrote it — where
+        // rebuilding on this build's shape would discard whatever that column
+        // holds — or something that is not this code edited the file.
+        const missingColumns = columns.filter((name) => !found.includes(name));
+        const unexpected = found.filter((name) => !columns.includes(name));
+        if (missingColumns.length > 0 && unexpected.length === 0) {
+          throw new ConversationIndexIncompleteError(
+            `my_context: ${dbPath} declares ${table}(${actual}) and this build reads ` +
+            `${table}(${expected}) — an index built before this build added ` +
+            `${missingColumns.map((name) => `${table}.${name}`).join(', ')}, not a damaged one. ` +
+            'Run `mycontext conversation rebuild` to fill it; the automatic per-turn refresh ' +
+            'also fills it, because changing a table is a write and a read-only caller never ' +
+            'does.',
+            missingColumns.map((name) => `${table}.${name}`),
           );
         }
+        throw new Error(
+          `my_context: ${dbPath} declares ${table}(${actual}) where this build reads ` +
+          `${table}(${expected}). The conversation tables carry no schema_version, so their ` +
+          'shape is the only version there is, and a read-only caller never migrates.',
+        );
       }
 
       return new ConversationIndex(db);
@@ -1573,16 +1796,27 @@ export class ConversationIndex {
     return gone.length;
   }
 
-  /** Replace one subagent's row wholesale. A scan is a fact about a file at a time. */
-  upsertSubagent(row: SubagentRow): void {
+  /**
+   * Replace one subagent's row wholesale. A scan is a fact about a file at a
+   * time.
+   *
+   * **`dispatched_by` is DERIVED here and is not a parameter** — the caller
+   * passes what the sidecar said and this computes the spelling that resolves
+   * (`dispatchingAgentId`, `plan:archive seq:33`). One place, so the column
+   * cannot come to hold two namespaces the way `parent_agent_id` was found
+   * holding one that its own table's key did not answer to.
+   */
+  upsertSubagent(row: Omit<SubagentRow, 'dispatchedBy'>): void {
     this.#db.prepare(
       `INSERT INTO subagents (
-         agent_id, session_id, parent_agent_id, tool_use_id, agent_type, description, model,
-         spawn_depth, is_fork, file, bytes, mtime_ms, scanned_bytes, started_at, ended_at,
-         prompts, answers, machinery, records, unreadable, branch, cwd, scanned_at
-       ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+         agent_id, session_id, parent_agent_id, dispatched_by, tool_use_id, agent_type,
+         description, model, spawn_depth, is_fork, file, bytes, mtime_ms, scanned_bytes,
+         started_at, ended_at, prompts, answers, machinery, records, unreadable, branch, cwd,
+         scanned_at
+       ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
        ON CONFLICT(agent_id) DO UPDATE SET
          session_id = excluded.session_id, parent_agent_id = excluded.parent_agent_id,
+         dispatched_by = excluded.dispatched_by,
          tool_use_id = excluded.tool_use_id, agent_type = excluded.agent_type,
          description = excluded.description, model = excluded.model,
          spawn_depth = excluded.spawn_depth, is_fork = excluded.is_fork,
@@ -1593,7 +1827,8 @@ export class ConversationIndex {
          unreadable = excluded.unreadable, branch = excluded.branch, cwd = excluded.cwd,
          scanned_at = excluded.scanned_at`,
     ).run(
-      row.agentId, row.sessionId, row.parentAgentId, row.toolUseId, row.agentType,
+      row.agentId, row.sessionId, row.parentAgentId, dispatchingAgentId(row.parentAgentId),
+      row.toolUseId, row.agentType,
       row.description, row.model, row.spawnDepth, row.isFork ? 1 : 0, row.file, row.bytes,
       row.mtimeMs, row.scannedBytes, row.startedAt, row.endedAt, row.prompts, row.answers,
       row.machinery, row.records, row.unreadable, row.branch, row.cwd, row.scannedAt,
@@ -1646,6 +1881,39 @@ export class ConversationIndex {
       'SELECT session_id, COUNT(*) AS n FROM subagents GROUP BY session_id',
     ).all() as { session_id: string; n: number }[];
     return new Map(rows.map((r) => [r.session_id, Number(r.n)]));
+  }
+
+  /**
+   * **Where each named session's lane transcripts are, one query for the whole
+   * page** — `TASK-a-pruned-session-s-lane-rows-are-never-swept-so-an-exported`,
+   * `plan:archive seq:35`.
+   *
+   * The list needs these to say how many of a row's lanes can still be OPENED,
+   * which `subagentCounts` cannot answer: it counts rows, and a row outlives
+   * the file it names. A pruned session's lane rows are kept on purpose — the
+   * item rules that sweeping them "discards the only remaining record that
+   * those lanes ever ran" — so the number of rows and the number of openable
+   * lanes are two facts and the list must be able to say both.
+   *
+   * **Bounded to the sessions asked for**, unlike `subagentCounts`, because
+   * the caller pays a filesystem cost per path returned and the page is at
+   * most `CONVERSATION_LIST_CAP` rows. An empty list is answered without a
+   * query at all: `IN ()` is not SQL, and "no sessions" is a fact rather than
+   * an occasion to ask.
+   */
+  subagentFilesOf(sessionIds: string[]): Map<string, string[]> {
+    const found = new Map<string, string[]>();
+    if (sessionIds.length === 0) return found;
+    const rows = this.#db.prepare(
+      'SELECT session_id, file FROM subagents WHERE session_id IN (' +
+      sessionIds.map(() => '?').join(', ') + ')',
+    ).all(...sessionIds) as { session_id: string; file: string }[];
+    for (const row of rows) {
+      const list = found.get(row.session_id);
+      if (list === undefined) found.set(row.session_id, [row.file]);
+      else list.push(row.file);
+    }
+    return found;
   }
 
   /**
@@ -1866,6 +2134,7 @@ function toSubagentRow(row: Record<string, unknown>): SubagentRow {
     agentId: String(row['agent_id'] ?? ''),
     sessionId: String(row['session_id'] ?? ''),
     parentAgentId: text('parent_agent_id'),
+    dispatchedBy: text('dispatched_by'),
     toolUseId: text('tool_use_id'),
     agentType: text('agent_type'),
     description: text('description'),

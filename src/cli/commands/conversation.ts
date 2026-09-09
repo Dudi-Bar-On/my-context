@@ -68,13 +68,6 @@ function workspaceCwd(root: string): string {
 const LIST_DEFAULT_LIMIT = 20;
 
 /**
- * What a lane's transcript file is called before its id — and therefore what
- * `agentId` carries, since `listSubagentFiles` takes the whole filename stem.
- * `dispatchingAgentId` is the only thing that needs to know it.
- */
-const AGENT_ID_PREFIX = 'agent-';
-
-/**
  * The scan report, printed so the bound is visible rather than implied.
  *
  * Every number here is one a reader can check against the directory named on
@@ -344,61 +337,31 @@ function cmdConversationList(ws: Workspace, root: string, args: string[], out: E
 }
 
 /**
- * **The lane a `parentAgentId` names, spelled the way everything else in this
- * product spells a lane** — `plan:archive seq:32`.
+ * **`dispatched by` no longer computes anything — it reads a column** —
+ * `plan:archive seq:33`.
  *
- * ── THE ASYMMETRY, AND WHOSE IT ACTUALLY IS ────────────────────────────────
+ * `seq:32` put the normalisation here, at the point of display, and argued
+ * that the index could not carry it: a value normalised on the way in moves no
+ * shape, and `conversation-index.ts` rules that THE SHAPE IS THE VERSION, so
+ * nothing could tell a row written before the change from one written after
+ * it. That argument was right about the mechanism. Its conclusion was wrong,
+ * and `seq:33` is the correction — the answer was to MOVE THE SHAPE.
+ * `subagents.dispatched_by` is now a column `openReadOnlyChecked` REQUIRES, so
+ * an index written before it refuses and is rebuilt rather than serving one
+ * column in two namespaces, and `dispatchingAgentId` lives at the seam that
+ * builds the row.
  *
- * Re-measured 2026-09-09 on this workspace, over all 257 sidecars: 43 carry
- * `parentAgentId`, every one of them WITHOUT the `agent-` prefix, and every
- * one of the 43 resolves against `agent-<value>.jsonl` on disk. So the field
- * is real, it is right, and it is in a different namespace from `agentId`.
+ * What that buys here is nothing this file can see and everything a reader
+ * can: the same value is now answerable in SQL. `mycontext query`'s
+ * `SELECT COUNT(*) FROM subagents c JOIN subagents p ON p.agent_id =
+ * c.dispatched_by` answers 43 where the same join on `parent_agent_id`
+ * answered 0.
  *
- * **But the harness does not "drop" a prefix, and the item that filed this
- * said it did.** The sidecar's key set across all 257 files is exactly
- * `agentType`, `description`, `isFork`, `model`, `parentAgentId`, `spawnDepth`
- * and `toolUseId` — there is NO self-id field at all. A lane's own identity
- * comes from its FILENAME, and `listSubagentFiles` adopts the whole stem:
- * `const agentId = name.slice(0, -'.jsonl'.length)`. The `agent-` prefix is
- * therefore OURS. We chose the prefixed spelling for the primary key and
- * copied the bare spelling for the key that points at it, one field apart in
- * the same `upsertSubagent` call. Half the asymmetry is the harness's format
- * and half is our own naming, and this function repairs our half.
- *
- * ── WHY THE REPAIR IS HERE AND NOT AT THE READ BOUNDARY ────────────────────
- *
- * The item offers both and expects an argument, so: **the index cannot carry
- * this fix.** `conversation-index.ts`' own header rules that these tables hold
- * no version number and "THE SHAPE IS THE VERSION" — `openReadOnlyChecked`
- * walks `CONVERSATION_TABLE_COLUMNS` and refuses a shape it does not read.
- * Normalising on the way in changes a VALUE and not a shape, so nothing can
- * detect that a row predates the change; and `rebuildConversations` skips any
- * transcript whose bytes and mtime are unchanged, which a finished lane's
- * never are again. The 43 rows already written would keep the bare spelling
- * for ever, and new ones would arrive prefixed — one column holding two
- * namespaces at once, which is strictly worse than today's uniform defect and
- * would go undetected because no shape moved.
- *
- * Normalising on the way OUT is correct on the first run, in every workspace,
- * with no rebuild — and it keeps `readSubagentMeta` answering the question its
- * own header says it answers: what the sidecar said. That is the habit the
- * item predicted, reached here on the rebuild mechanics rather than on the
- * habit.
- *
- * ── IDEMPOTENT ON PURPOSE ──────────────────────────────────────────────────
- *
- * The prefix is added only when it is absent. This is an observation about a
- * harness format that can change under us — the reason `readSubagentMeta`
- * tolerates an unreadable sidecar at all — so the day the harness starts
- * writing `agent-a26cb…` this function keeps telling the truth instead of
- * printing `agent-agent-a26cb…`.
+ * `parentAgentId` is still carried verbatim in `--json` beside it, for
+ * `seq:32`'s reason, which the column did not change: the two are two
+ * questions — what the sidecar said, and what resolves — and one rewritten
+ * field would make them unanswerable apart.
  */
-export function dispatchingAgentId(parentAgentId: string | null): string | null {
-  if (parentAgentId === null) return null;
-  return parentAgentId.startsWith(AGENT_ID_PREFIX)
-    ? parentAgentId
-    : `${AGENT_ID_PREFIX}${parentAgentId}`;
-}
 
 /**
  * `mycontext conversation subagents [<session>]` — **the lanes a session
@@ -442,19 +405,18 @@ function cmdConversationSubagents(ws: Workspace, root: string, args: string[], o
     }
     const rows = index.subagentsOf(sessionId);
     if (wantsJson(args)) {
-      // `--json` gets the usable id as an ADDITIONAL field rather than in
-      // place of the stored one. `parentAgentId` stays byte-for-byte what the
-      // sidecar said and the index holds, so a reader checking this output
-      // against either still can; `dispatchedBy` is the same value the human
-      // column prints, and is what a caller pipes into another command. One
-      // rewritten field would have made those two questions unanswerable
-      // apart, which is the whole complaint this item is about.
+      // **BOTH ids, and both of them read from the row.** `parentAgentId` is
+      // byte-for-byte what the sidecar said and what the index holds, so a
+      // reader checking this output against either still can; `dispatchedBy`
+      // is the same value the human column prints and is what a caller pipes
+      // into another command. Since `plan:archive seq:33` neither is computed
+      // here — the row carries both, because `upsertSubagent` derived one from
+      // the other at the seam that builds it. One rewritten field would have
+      // made those two questions unanswerable apart, which is the whole
+      // complaint `seq:32` was about.
       emitJson(out, {
         sessionId,
-        subagents: rows.map((row: SubagentRow) => ({
-          ...row,
-          dispatchedBy: dispatchingAgentId(row.parentAgentId),
-        })),
+        subagents: rows,
         total: rows.length,
         indexed: true,
       });
@@ -482,10 +444,11 @@ function cmdConversationSubagents(ws: Workspace, root: string, args: string[], o
         // `parentAgentId` is present on exactly the deeper ones. Re-measured
         // 2026-09-09: 214 and 43 of 257, so the shape holds.
         //
-        // Through `dispatchingAgentId`, so the 43 print an id that `mycontext
-        // conversation show` and the viewer's own address both answer to —
-        // see that function for why the repair is here and not in the index.
-        dispatchingAgentId(row.parentAgentId) ?? 'the session',
+        // From `dispatched_by`, so the 43 print an id that `mycontext
+        // conversation show`, the viewer's own address and a SQL join over
+        // this table all answer to — see the note above for why the value is
+        // now stored rather than derived here.
+        row.dispatchedBy ?? 'the session',
         row.description ?? '—',
       ]),
     );

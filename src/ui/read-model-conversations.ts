@@ -88,7 +88,7 @@ import {
   classifyTurn, spanMs, staleBy, transcriptDir, truncatedScan,
   type ConversationRow, type PersistedRow, type SubagentRow,
 } from '../core/conversation-index.ts';
-import { closeSync, openSync, readSync, statSync } from 'node:fs';
+import { closeSync, openSync, readdirSync, readSync, statSync } from 'node:fs';
 import path from 'node:path';
 import type { Workspace } from '../core/workspace.ts';
 import { registerRoute, type ApiContext, type JsonResult } from './routes.ts';
@@ -268,6 +268,26 @@ export interface ConversationSummary {
    */
   subagents: number;
   /**
+   * **How many of those lanes can still be OPENED** — `plan:archive seq:35`.
+   *
+   * `subagents` counts the rows the index holds; this counts the ones whose
+   * transcript is on disk right now. The two differ for exactly one reason and
+   * it is deliberate: a pruned session's lane rows are KEPT — the item rules
+   * that sweeping them discards the only remaining record that those lanes
+   * ever ran — so a row can name a lane nothing can open, and the number of
+   * rows would otherwise be read as a number of readable things.
+   *
+   * Both are served rather than one being corrected into the other, which is
+   * the decision `bytes` and `fileBytes` above already embody: what the
+   * recording says and what the archive holds are two facts, and a screen that
+   * had only the second could not say that anything was missing.
+   *
+   * Equal to `subagents` in the ordinary case, and measured equal on this
+   * workspace 2026-09-09 (268 rows, 268 openable) — the defect is reachable,
+   * not yet reached here. `openableLanes` carries what the count costs.
+   */
+  openableSubagents: number;
+  /**
    * **How long this session lasted, in milliseconds** — `plan:archive seq:10`,
    * whose spec clause names duration in the list's columns.
    *
@@ -413,6 +433,90 @@ export interface ConversationListBody {
 }
 
 /**
+ * **How many of each session's indexed lanes can still be OPENED** —
+ * `TASK-a-pruned-session-s-lane-rows-are-never-swept-so-an-exported`,
+ * `plan:archive seq:35`.
+ *
+ * ── THE FACT IT SERVES, AND WHY THE ROW COUNT IS NOT IT ───────────────────
+ *
+ * `ConversationSummary.subagents` counts ROWS. A row outlives the file it
+ * names: `removeMissingSubagents` is scoped to one session for a reason its
+ * own docblock argues (a rebuild lists only the `subagents/` directories of
+ * the sessions it FOUND, so sweeping globally would delete every lane of a
+ * session whose transcript had just been pruned), and a PERSISTED session is
+ * now spared by `removeMissing` — so its lane rows stay beside it for ever and
+ * may name files deleted at any point since. The list row then says "N helper
+ * agents" about lanes none of which can be opened. The item's words: the
+ * number is true of the recording and false of what the archive holds.
+ *
+ * The item names three answers and rules on them: (a) sweep those rows on the
+ * pass that orphans the session — cheap, and it "discards the only remaining
+ * record that those lanes ever ran"; (b) keep them and let the row say how
+ * many are still openable; (c) grow the mirror to include lanes, measured and
+ * REJECTED at 615.3 MB of lanes against 65 MB of session. **(b) drops
+ * nothing**, and the item made it conditional on a cost nobody had measured.
+ *
+ * ── THE MEASUREMENT THAT DECIDED IT, 2026-09-09, 268 LANES / 2 SESSIONS ───
+ *
+ *     GET /api/conversations as it stands            p50 4.024 ms
+ *     one `stat` per lane, as the item proposed      p50 3.704 ms   (+92%)
+ *     one `readdir` per lane DIRECTORY, as built     p50 0.991 ms   (+25%)
+ *     the grouped row count alone, today's cost      p50 0.024 ms
+ *
+ * Both answers agreed exactly on this workspace (267 and 1 openable). So (b)
+ * is affordable and is built — at a QUARTER of the price the item quoted for
+ * it, because the cost it feared is per-lane and this one is per-directory.
+ *
+ * ── WHY A DIRECTORY LISTING RATHER THAN A `stat` PER LANE ─────────────────
+ *
+ * Every lane of a session lives in that session's one `subagents/` directory,
+ * so one `readdir` answers for all of them at once and the per-lane work drops
+ * to a `Set` lookup: 2.2 µs per lane against 12–17 µs. It is also the same
+ * question `countSubagentFiles` already answers this way for the status line,
+ * with the same rule — **top-level `*.jsonl` only, the extension test alone**
+ * — which is why the presence test here is membership of the listing rather
+ * than a second, subtly different notion of what an openable lane is.
+ *
+ * What it costs in precision is stated: a directory entry that is not a
+ * readable file would be counted here and refused by `summariseSubagent`'s
+ * `stat` one screen down. Nothing on disk has ever been in that state, the
+ * roster the reader opens next re-checks every row with a real `stat`, and the
+ * alternative was to pay four times the price on every list request for a
+ * distinction no measurement has ever shown.
+ *
+ * A directory that cannot be read at all is ZERO openable and not an absence,
+ * which is `countSubagentFiles`' contract for the same reason: a session that
+ * dispatched no lanes has no `subagents/` directory, that is a measured zero,
+ * and neither caller can act on the difference between that and a directory
+ * refusing to be read.
+ */
+function openableLanes(files: Map<string, string[]>): Map<string, number> {
+  const listings = new Map<string, Set<string>>();
+  const listing = (dir: string): Set<string> => {
+    const known = listings.get(dir);
+    if (known !== undefined) return known;
+    let names: Set<string>;
+    try {
+      names = new Set(readdirSync(dir));
+    } catch {
+      names = new Set();
+    }
+    listings.set(dir, names);
+    return names;
+  };
+
+  const open = new Map<string, number>();
+  for (const [sessionId, paths] of files) {
+    let found = 0;
+    for (const file of paths) {
+      if (listing(path.dirname(file)).has(path.basename(file))) found += 1;
+    }
+    open.set(sessionId, found);
+  }
+  return open;
+}
+
+/**
  * One row, plus what a `stat` of its transcript says about it NOW.
  *
  * **The stat was already here** — `present` has always needed it — and it has
@@ -422,8 +526,8 @@ export interface ConversationListBody {
  * is now read for all three facts rather than for one.
  */
 function summarise(
-  row: ConversationRow, subagents: number, matchedLanes: number | null,
-  kept: PersistedRow | null = null,
+  row: ConversationRow, subagents: number, openableSubagents: number,
+  matchedLanes: number | null, kept: PersistedRow | null = null,
 ): ConversationSummary {
   let present = false;
   let fileBytes: number | null = null;
@@ -459,6 +563,7 @@ function summarise(
     fileMtimeMs,
     staleBytes: staleBy(row, fileBytes),
     subagents,
+    openableSubagents,
     durationMs: spanMs(row),
     matchedLanes,
     keptBytes: kept === null ? null : kept.bytes,
@@ -692,9 +797,19 @@ export function apiConversations(ws: Workspace, url: URL): JsonResult {
     // query per session would be a cost proportional to the LIST for a fact
     // proportional to the marks.
     const kept = new Map(index.persisted().map((mark) => [mark.sessionId, mark]));
+    // **HOW MANY OF EACH ROW'S LANES CAN STILL BE OPENED** — `plan:archive
+    // seq:35`, and it is counted over the PAGE for `missing`'s reason: the
+    // filesystem is only asked about rows this answer carries, so no number
+    // here is an estimate about rows nobody looked at. One query bounded to
+    // the page's sessions, then one directory listing per session — measured
+    // p50 0.991 ms over 268 lanes against 4.024 ms for the whole request, and
+    // `openableLanes` carries why it is not the per-lane `stat` the item
+    // costed.
+    const laneOpenable = openableLanes(index.subagentFilesOf(page.map((r) => r.sessionId)));
     const conversations = page.map((row) => summarise(
       row,
       laneCounts.get(row.sessionId) ?? 0,
+      laneOpenable.get(row.sessionId) ?? 0,
       laneMatches === null ? null : (laneMatches.get(row.sessionId) ?? 0),
       kept.get(row.sessionId) ?? null,
     ));

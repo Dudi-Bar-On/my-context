@@ -1,4 +1,6 @@
-// @basis TASK-the-work-done-in-subagents-is-indexed-and-kept-because-that, INV-nothing-is-dropped-silently
+// @basis TASK-the-work-done-in-subagents-is-indexed-and-kept-because-that,
+// TASK-the-index-stores-a-foreign-key-in-one-namespace-and-its,
+// INV-nothing-is-dropped-silently
 /**
  * **Subagent transcripts are indexed, kept, and linked to the turn that
  * dispatched them** — `plan:archive seq:12`.
@@ -21,7 +23,14 @@
  *      Stop hook's gate then declined for ever — so nothing would ever have
  *      created the missing table. Both halves are asserted: the distinct error
  *      class, and that a rebuild heals it.
- *   3. **The counts account for every record.** `prompts + answers + machinery
+ *   3. **A lane joins to the lane that dispatched it.** `a lane joins to the
+ *      lane that dispatched it` runs the same `COUNT(*)` self-join `mycontext
+ *      query` invites, which answered 0 over 43 real parents until
+ *      `plan:archive seq:33` gave the resolvable id its own column — and `an
+ *      index built before `dispatched_by`` pins the other half, that a COLUMN
+ *      this build added is an upgrade rather than damage and is filled without
+ *      re-reading a transcript that will never change again.
+ *   4. **The counts account for every record.** `prompts + answers + machinery
  *      === records` on a subagent transcript, which is the identity
  *      `ConversationRow.machinery` always promised and did not hold: records
  *      of any other type landed in none of the three. `attachment` is 29% of a
@@ -434,9 +443,16 @@ test('a lane whose transcript is gone drops its row, and only for the session th
     // refresh after a session's transcript is pruned would delete every lane
     // it ever dispatched on the strength of a directory nobody looked in.
     const raw = new DatabaseSync(f.dbPath);
+    // NAMED columns, not positional values: this row is written straight into
+    // the table to reach a state no walk produces, and a positional INSERT
+    // would break on the next column the table gains — as it did when
+    // `plan:archive seq:33` added `dispatched_by`. Naming them keeps the test
+    // about the sweep rather than about the schema's width.
     raw.exec(
-      "INSERT INTO subagents VALUES ('agent-elsewhere','other-session',NULL,'toolu_E',NULL," +
-      "NULL,NULL,1,0,'/gone.jsonl',1,1,1,NULL,NULL,0,0,0,0,0,NULL,NULL,'2026-09-01T00:00:00Z')",
+      "INSERT INTO subagents (agent_id, session_id, tool_use_id, spawn_depth, is_fork, file, " +
+      'bytes, mtime_ms, scanned_bytes, prompts, answers, machinery, records, unreadable, ' +
+      "scanned_at) VALUES ('agent-elsewhere','other-session','toolu_E',1,0,'/gone.jsonl'," +
+      "1,1,1,0,0,0,0,0,'2026-09-01T00:00:00Z')",
     );
     raw.close();
 
@@ -481,6 +497,176 @@ test('the listing is keyed on the extension, so a lane and its sidecar are not t
 
     // A session that dispatched no lanes is an ordinary state, not a fault.
     assert.deepEqual(listSubagentFiles(subagentDir(f.env, f.cwd, 'never-ran')), []);
+  } finally {
+    f.dispose();
+  }
+});
+
+/**
+ * **The self-join answers 43 instead of 0** —
+ * `TASK-the-index-stores-a-foreign-key-in-one-namespace-and-its`,
+ * `plan:archive seq:33`.
+ *
+ * The measurement that filed the item was taken through `mycontext query`,
+ * which is read-only SQL over this same database, on the developer's own
+ * 268-lane workspace:
+ *
+ *     JOIN … ON p.agent_id = c.parent_agent_id                 0
+ *     JOIN … ON p.agent_id = 'agent-' || c.parent_agent_id    43
+ *
+ * Zero is the answer a person gets to the obvious question about this table
+ * and it is WRONG rather than empty, which is the worst shape a defect can
+ * take on a read surface. The assertion here is the same join over a fixture,
+ * because a `COUNT(*)` over two columns is exactly the claim — an
+ * `assert.equal` against a literal `agent-outer` would pass on a build that
+ * concatenated the wrong thing into the wrong place.
+ */
+test('a lane joins to the lane that dispatched it, which is what the index could not do', () => {
+  const f = fixture();
+  try {
+    f.session([
+      say('user', 'go', '2026-09-01T10:00:00.000Z'),
+      dispatch('toolu_OUTER', '2026-09-01T10:00:01.000Z'),
+    ]);
+    f.lane('agent-outer', { toolUseId: 'toolu_OUTER', spawnDepth: 1 }, [
+      say('assistant', 'a', '2026-09-01T10:00:02.000Z'),
+      dispatch('toolu_INNER', '2026-09-01T10:00:03.000Z'),
+    ]);
+    // BARE, exactly as the harness writes it — the sidecar carries no self-id
+    // field at all, so the `agent-` spelling on the file beside it is ours.
+    f.lane('agent-inner', { toolUseId: 'toolu_INNER', parentAgentId: 'outer', spawnDepth: 2 }, [
+      say('assistant', 'b', '2026-09-01T10:00:04.000Z'),
+    ]);
+    rebuildConversations(f.dbPath, f.env, f.cwd, {});
+
+    const raw = new DatabaseSync(f.dbPath, { readOnly: true });
+    try {
+      const joined = (on: string): number => Number((raw.prepare(
+        `SELECT COUNT(*) AS n FROM subagents c JOIN subagents p ON p.agent_id = c.${on}`,
+      ).get() as { n: number }).n);
+      assert.equal(
+        joined('dispatched_by'), 1,
+        'the shipped SQL surface answers the obvious question about this table, which is the '
+        + 'whole item: 0 of 43 became 43 of 43 on the workspace this was measured on',
+      );
+      assert.equal(
+        joined('parent_agent_id'), 0,
+        'and the harness\'s own value is STILL what the sidecar said — the two namespaces are '
+        + 'two columns now, not one column with two meanings. Nothing was rewritten.',
+      );
+    } finally {
+      raw.close();
+    }
+
+    const index = ConversationIndex.openReadOnlyChecked(f.dbPath);
+    try {
+      const inner = index.getSubagent('agent-inner');
+      assert.equal(inner?.parentAgentId, 'outer', 'what the sidecar said');
+      assert.equal(inner?.dispatchedBy, 'agent-outer', 'and what resolves against agent_id');
+      const outer = index.getSubagent('agent-outer');
+      assert.equal(outer?.parentAgentId, null);
+      assert.equal(
+        outer?.dispatchedBy, null,
+        'null stays null — "the session dispatched it" is a fact, not a missing id, and a row '
+        + 'with no parent must not acquire one that resolves to nothing',
+      );
+    } finally {
+      index.close();
+    }
+  } finally {
+    f.dispose();
+  }
+});
+
+/**
+ * **A COLUMN this build added is an upgrade, exactly as a table is** —
+ * `plan:archive seq:33`, and it is the half of the shape change that decides
+ * whether the change is an improvement or a stall.
+ *
+ * `an index built before the subagents table is OLD, not damaged` above pins
+ * the same property one level up, and the defect it was written for is the one
+ * this must not re-create: `stopConversationRefresh` gates on
+ * `openReadOnlyChecked` and declines on any throw that is not
+ * `ConversationIndexIncompleteError`, so reporting an older shape as damage
+ * stops the automatic refresh for ever — and that refresh is the only writer
+ * that runs by itself, so it is the only thing that would ever have moved the
+ * shape.
+ *
+ * Both halves are asserted: the class, and that a rebuild fills the column
+ * with the RIGHT value for a row written before it existed. The second is not
+ * a formality — a repair that added the column and left it `NULL` on the rows
+ * that predate it is precisely the "one column, two namespaces, undetectably"
+ * state the item ruled strictly worse than the defect it replaces.
+ */
+test('an index built before `dispatched_by` is OLD, not damaged, and the fill needs no re-scan', () => {
+  const f = fixture();
+  try {
+    f.session([
+      say('user', 'go', '2026-09-01T10:00:00.000Z'),
+      dispatch('toolu_OUTER', '2026-09-01T10:00:01.000Z'),
+    ]);
+    f.lane('agent-outer', { toolUseId: 'toolu_OUTER', spawnDepth: 1 }, [
+      say('assistant', 'a', '2026-09-01T10:00:02.000Z'),
+      dispatch('toolu_INNER', '2026-09-01T10:00:03.000Z'),
+    ]);
+    f.lane('agent-inner', { toolUseId: 'toolu_INNER', parentAgentId: 'outer', spawnDepth: 2 }, [
+      say('assistant', 'b', '2026-09-01T10:00:04.000Z'),
+    ]);
+    rebuildConversations(f.dbPath, f.env, f.cwd, {});
+
+    // Put the table back into the shape every existing workspace is in the
+    // moment this ships: the column gone, the rows otherwise untouched.
+    const raw = new DatabaseSync(f.dbPath);
+    raw.exec('DROP INDEX IF EXISTS idx_subagents_dispatched');
+    raw.exec('ALTER TABLE subagents DROP COLUMN dispatched_by');
+    raw.close();
+
+    assert.throws(
+      () => ConversationIndex.openReadOnlyChecked(f.dbPath).close(),
+      (err: unknown) => {
+        assert.ok(
+          err instanceof ConversationIndexIncompleteError,
+          'a column this build added is an index built before this build — the same fact a '
+          + 'missing table is, and the read door must not report it as damage or the Stop hook '
+          + 'declines for ever',
+        );
+        assert.deepEqual(
+          err.missing, ['subagents.dispatched_by'],
+          'and it NAMES the column, qualified by its table, because "subagents" alone would say '
+          + 'the table is missing when it is not',
+        );
+        assert.match(String(err.message), /rebuild/, 'the repair is composed, never run');
+        return true;
+      },
+    );
+
+    // THE HEAL, and it is the write path that does it: `ALTER TABLE` plus a
+    // fill computed from a column the row already holds, so no transcript is
+    // re-read and the lane rows of a session whose transcript is gone are not
+    // swept — see `fillDispatchedBy`.
+    const report = rebuildConversations(f.dbPath, f.env, f.cwd, {});
+    assert.equal(
+      report.subagents.scanned, 0,
+      'nothing was re-scanned: both lanes are byte-for-byte unchanged, which is exactly the '
+      + 'condition that made a write-side-only fix leave the existing rows bare for ever',
+    );
+    assert.equal(report.subagents.skipped, 2);
+
+    const index = ConversationIndex.openReadOnlyChecked(f.dbPath);
+    try {
+      assert.equal(
+        index.getSubagent('agent-inner')?.dispatchedBy, 'agent-outer',
+        'the row that predates the column carries the value ANYWAY — a skipped transcript is '
+        + 'why the column could not be filled by a re-scan, and the fill does not need one',
+      );
+      assert.equal(
+        index.getSubagent('agent-inner')?.parentAgentId, 'outer',
+        'and what the sidecar said was not touched by the repair',
+      );
+      assert.equal(index.getSubagent('agent-outer')?.dispatchedBy, null);
+    } finally {
+      index.close();
+    }
   } finally {
     f.dispose();
   }

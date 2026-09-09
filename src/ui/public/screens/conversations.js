@@ -3734,21 +3734,6 @@ export function laneMatches(lane, needle) {
   return hay.toLowerCase().includes(needle);
 }
 
-/**
- * How far one level of nesting moves a row's text, in pixels.
- *
- * **It is the one number this file invents, and it is here because
- * `styles.css` is another lane's tonight.** The rule that belongs in the sheet
- * is in the lane's report; what is written at runtime is a value COMPUTED from
- * the row's depth, which is what `check-cssom-restatement.ts` distinguishes
- * from a static restatement — and there is no `.convrow` declaration in the
- * sheet for it to restate. It is applied to the row's two inner lines rather
- * than to the row itself: `.row` is `inline-size:100%`, so a margin on the
- * button would push it past the edge of `.rows`, and a padding on a
- * `border-box` child cannot.
- */
-const LANE_INDENT_PX = 18;
-
 function drawLaneRow(ctx, row, open) {
   const button = el('button', 'row convrow');
   button.type = 'button';
@@ -3809,9 +3794,28 @@ function drawLaneRow(ctx, row, open) {
   }
   if (marks.childNodes.length > 0) button.append(marks);
 
+  /**
+   * **HOW FAR IN A CHILD IS DRAWN — and the number is no longer here.**
+   *
+   * `LANE_INDENT_PX = 18` stood at the top of this section, written as a
+   * computed `padding-inline-start` on the row's three inner lines, and its
+   * header said why: `styles.css` was another lane's the night the roster
+   * landed. It is not any more. `.convrow.lanechild` in the sheet owns the
+   * STEP (`--sp-3`) and the hairline that draws the relation; what is written
+   * here is the DEPTH, which is an integer read off the data and is the one
+   * part of this no stylesheet can hold — `check-cssom-restatement.ts`' own
+   * line between a value computed from data and a copy of a declaration.
+   *
+   * `depth - 1` rather than `depth`, so the custom property counts STEPS OUT
+   * from the top level and a depth-1 row would compute to zero if it ever
+   * reached here. It cannot, because of the guard — the property is never set
+   * on a row that has no parent, which is what keeps
+   * `e2e/conversations.spec.ts`' "parent === 0" half true by construction
+   * rather than by arithmetic.
+   */
   if (row.depth > 1) {
-    const inset = `${(row.depth - 1) * LANE_INDENT_PX}px`;
-    for (const line of [head, meta, marks]) line.style.paddingInlineStart = inset;
+    button.classList.add('lanechild');
+    button.style.setProperty('--lanedepth', String(row.depth - 1));
   }
 
   // A lane whose transcript is gone has nothing to open, and the row says so

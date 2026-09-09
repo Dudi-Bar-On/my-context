@@ -1,4 +1,6 @@
-// @basis TASK-dispatched-by-shows-an-id-nobody-can-paste-because, INV-nothing-is-dropped-silently
+// @basis TASK-dispatched-by-shows-an-id-nobody-can-paste-because,
+// TASK-the-index-stores-a-foreign-key-in-one-namespace-and-its,
+// INV-nothing-is-dropped-silently
 /**
  * **`dispatched by` prints an id that names a row in its own table** —
  * `plan:archive seq:32`.
@@ -35,13 +37,22 @@
  *
  * ── AND THE STORED VALUE IS STILL THERE ────────────────────────────────────
  *
- * The repair is at the point of display, so the index keeps what the sidecar
- * said. That is asserted too, in the same test, because it is the half of the
- * decision a later reader is most likely to undo by accident: `--json` carries
+ * Both ids are stored since `plan:archive seq:33`, in two columns, and the
+ * index keeps what the sidecar said in the one the sidecar filled. That is
+ * asserted too, in the same test, because it is the half of the decision a
+ * later reader is most likely to undo by accident: `--json` carries
  * `parentAgentId` verbatim AND `dispatchedBy` beside it, and the third test
  * proves they differ on exactly the rows where the namespaces differ.
- * `dispatchingAgentId`'s own docblock carries why the index cannot hold this
- * fix — `THE SHAPE IS THE VERSION`, and a value change no shape can detect.
+ *
+ * **`seq:32` said here that the index could not hold this fix, and `seq:33`
+ * corrected it.** The mechanism it named was real — a value normalised on the
+ * way in moves no shape, and `THE SHAPE IS THE VERSION` — but the answer was
+ * to move the shape rather than to give up on the column:
+ * `subagents.dispatched_by` is one `openReadOnlyChecked` requires, so an index
+ * written before it refuses and is rebuilt instead of serving one column in
+ * two namespaces. `test/core/conversation-subagents.test.ts` owns the
+ * self-join and the upgrade path; what stays here is the terminal's two
+ * columns.
  *
  * Everything runs against FIXTURES under the OS temp directory, with
  * `CLAUDE_CONFIG_DIR` passed as a value rather than set on the process —
@@ -55,9 +66,8 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { runCli } from '../../src/cli/index.ts';
 import { resolveWorkspace } from '../../src/core/workspace.ts';
-import { dispatchingAgentId } from '../../src/cli/commands/conversation.ts';
 import {
-  projectDirName, rebuildConversations,
+  dispatchingAgentId, projectDirName, rebuildConversations,
 } from '../../src/core/conversation-index.ts';
 import { removeTree } from '../helpers/tmp.ts';
 
@@ -159,7 +169,7 @@ test('the `dispatched by` column names a row in its own `agent` column', () => {
   }
 });
 
-test('`--json` keeps the stored value and adds the usable one beside it', () => {
+test('`--json` keeps what the sidecar said and carries the usable id beside it', () => {
   const f = fixture();
   try {
     f.run(['conversation', 'subagents', SESSION, '--json']);

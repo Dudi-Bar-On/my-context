@@ -1,4 +1,6 @@
-// @basis INV-nothing-is-dropped-silently, STD-a-measured-zero-is-drawn-and-named-an-unmeasured-thing-is
+// @basis INV-nothing-is-dropped-silently,
+// TASK-a-pruned-session-s-lane-rows-are-never-swept-so-an-exported,
+// STD-a-measured-zero-is-drawn-and-named-an-unmeasured-thing-is
 /**
  * **A session kept outside the project, served to the SAME viewer** —
  * `plan:archive seq:5`.
@@ -26,6 +28,14 @@
  * that field, and the mirror pass rewrites the field. `the document route
  * serves the copy through the route it already had` is that claim run —
  * `rowFor` is untouched by `seq:4`/`seq:5` and answers for a copy anyway.
+ *
+ * ── AND THE STATE `seq:4` CREATED WITHOUT MEANING TO ──────────────────────
+ *
+ * A session spared by `removeMissing` keeps its LANE rows too, and nothing
+ * sweeps those — `plan:archive seq:35`. The last two tests are that state: the
+ * rows stay, which the item rules is right because they are the only remaining
+ * record that those lanes ever ran, and the list row now carries BOTH numbers
+ * so "2 helper agents" cannot be read as two things a reader can open.
  */
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
@@ -64,7 +74,13 @@ interface Box {
   cwd: string;
   env: Record<string, string | undefined>;
   write: (session: string, lines: unknown[]) => void;
+  /** One lane transcript under a session, with the sidecar the harness writes. */
+  lane: (session: string, agentId: string, lines: unknown[]) => void;
   drop: (session: string) => void;
+  /** One lane's transcript, deleted; its sidecar goes with it, as a prune does. */
+  dropLane: (session: string, agentId: string) => void;
+  /** Every lane of a session, as the harness prunes a session's whole directory. */
+  dropLanes: (session: string) => void;
   scan: () => void;
   copy: (session: string) => string;
   list: () => ConversationListBody;
@@ -95,7 +111,25 @@ function box(): Box {
       path.join(dir, `${session}.jsonl`),
       lines.map((l) => JSON.stringify(l)).join('\n') + '\n',
     ),
+    lane: (session, agentId, lines) => {
+      const lanes = path.join(dir, session, 'subagents');
+      mkdirSync(lanes, { recursive: true });
+      writeFileSync(
+        path.join(lanes, `${agentId}.jsonl`),
+        lines.map((l) => JSON.stringify(l)).join('\n') + '\n',
+      );
+      writeFileSync(path.join(lanes, `${agentId}.meta.json`), JSON.stringify({
+        agentType: 'general-purpose', description: `the ${agentId} lane`,
+        toolUseId: `toolu_${agentId}`, spawnDepth: 1,
+      }));
+    },
     drop: (session) => rmSync(path.join(dir, `${session}.jsonl`)),
+    dropLane: (session, agentId) => {
+      const lanes = path.join(dir, session, 'subagents');
+      rmSync(path.join(lanes, `${agentId}.jsonl`));
+      rmSync(path.join(lanes, `${agentId}.meta.json`));
+    },
+    dropLanes: (session) => rmSync(path.join(dir, session), { recursive: true, force: true }),
     scan: () => {
       rebuildConversations(dbPath, env, cwd);
       advanceMirrors(dbPath, env, cwd);
@@ -248,6 +282,100 @@ test('the document route serves the copy through the route it already had', () =
       'the same renderer over the copy produced a different document',
     );
     assert.equal(after.bytes, before.bytes);
+  } finally {
+    b.dispose();
+  }
+});
+
+/**
+ * **AN EXPORTED SESSION'S LANE ROWS OUTLIVE THEIR FILES, AND THE ROW NOW SAYS
+ * SO** — `TASK-a-pruned-session-s-lane-rows-are-never-swept-so-an-exported`,
+ * `plan:archive seq:35`.
+ *
+ * This is the state the item describes, built end to end rather than argued:
+ * a session is marked, its transcript and every lane it dispatched are
+ * deleted, the mirror keeps the SESSION (615.3 MB of lanes against 65 MB of
+ * session is why the copy has never held them), and `removeMissingSubagents`
+ * never runs for it because `rebuildConversations` lists the `subagents/`
+ * directory only of the sessions it FOUND.
+ *
+ * So the rows stay — deliberately, because the item rules that sweeping them
+ * "discards the only remaining record that those lanes ever ran" — and the
+ * list row said "2 helper agents" about two lanes neither of which can be
+ * opened. Both numbers are asserted, because a build that fixed this by
+ * counting openable lanes INSTEAD of rows would pass a test that checked only
+ * the second and would have dropped the recording's own count to do it.
+ */
+test('an exported session keeps its lane rows, and the row says how many still open', () => {
+  const b = box();
+  try {
+    b.write(KEPT, [...turn(1), ...turn(2)]);
+    b.lane(KEPT, 'agent-one', [...turn(1)]);
+    b.lane(KEPT, 'agent-two', [...turn(2)]);
+    rebuildConversations(b.ws.dbPath, b.env, b.cwd);
+    persistSession(b.ws.dbPath, b.env, b.cwd, KEPT);
+
+    const before = b.list().conversations.find((c) => c.sessionId === KEPT);
+    assert.ok(before !== undefined);
+    assert.equal(before.subagents, 2, 'both lanes are indexed while the session is live');
+    assert.equal(
+      before.openableSubagents, 2,
+      'and both are openable, which is the ordinary case and must not be reported as a loss',
+    );
+
+    // The harness prunes the session: its transcript and the whole directory
+    // of lanes it owned go together, which is how a pruned session actually
+    // leaves a disk.
+    b.dropLanes(KEPT);
+    b.drop(KEPT);
+    b.scan();
+
+    const after = b.list().conversations.find((c) => c.sessionId === KEPT);
+    assert.ok(after !== undefined, 'the mark keeps the session on the list — `plan:archive seq:5`');
+    assert.equal(after.source, 'exported');
+    assert.equal(
+      after.subagents, 2,
+      'THE ROWS STAY. Sweeping them is option (a), which the item rules discards the only '
+      + 'remaining record that those lanes ever ran.',
+    );
+    assert.equal(
+      after.openableSubagents, 0,
+      'and this is the defect closed: the row said "2 helper agents" about two lanes nothing '
+      + 'can open. A measured zero, drawn as one — STD-a-measured-zero-is-drawn-and-named.',
+    );
+  } finally {
+    b.dispose();
+  }
+});
+
+/**
+ * The narrower case, and the one every workspace can reach: a lane deleted
+ * between two rebuilds, under a session that is otherwise ordinary. It is
+ * `ConversationSummary.present`'s own window — the list is served from a
+ * `stat` at request time, so the disclosure exists for exactly as long as it
+ * takes the next assistant turn to sweep the row.
+ */
+test('a lane deleted between two rebuilds is off the openable count before it is off the list', () => {
+  const b = box();
+  try {
+    b.write(LIVE, turn(1));
+    b.lane(LIVE, 'agent-one', [...turn(1)]);
+    b.lane(LIVE, 'agent-two', [...turn(2)]);
+    rebuildConversations(b.ws.dbPath, b.env, b.cwd);
+
+    b.dropLane(LIVE, 'agent-two');
+
+    const row = b.list().conversations.find((c) => c.sessionId === LIVE);
+    assert.ok(row !== undefined);
+    assert.equal(row.subagents, 2, 'the index still holds two rows — nothing has swept them yet');
+    assert.equal(row.openableSubagents, 1, 'and one of them can no longer be opened');
+
+    // The next refresh sweeps the row, and the two numbers agree again. The
+    // disclosure was never a permanent state; it is the window.
+    rebuildConversations(b.ws.dbPath, b.env, b.cwd);
+    const swept = b.list().conversations.find((c) => c.sessionId === LIVE);
+    assert.equal(swept?.subagents, 1);
+    assert.equal(swept?.openableSubagents, 1);
   } finally {
     b.dispose();
   }

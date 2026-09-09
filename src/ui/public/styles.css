@@ -3648,6 +3648,49 @@ body.docpage{overflow-y:auto}
 .convback{inline-size:auto;margin-block-end:var(--sp-2)}
 .convtitle{font-weight:600}
 
+/* ── A LANE DRAWN UNDER THE LANE THAT DISPATCHED IT ────────────────────────
+   `plan:archive seq:41`'s roster: a FLAT LIST WITH THE CHILDREN INDENTED, on
+   the owner's own ruling and on a measurement — 221 lanes at depth 1, 43 at
+   depth 2, and only 17 of 264 with any children at all, so a folder tree would
+   spend expand/collapse on 6.4% of the rows.
+
+   **THE ONE NUMBER THIS SCREEN INVENTED IS NOW HERE INSTEAD OF IN JS.**
+   `drawLaneRow` carried `LANE_INDENT_PX = 18` and wrote `padding-inline-start`
+   on the row's three inner lines at runtime, because this file was another
+   lane's the night the roster landed. What is left in JS is the DEPTH — an
+   integer read off the data, which no stylesheet can hold — passed in as
+   `--lanedepth`; the STEP and the relation line are declarations and live here.
+
+   **AND THE INDENT IS STILL ON THE INNER LINES, WHICH IS THE OPPOSITE OF WHAT
+   THE OBVIOUS RULE WOULD DO, DELIBERATELY.** `.convrow.lanechild{margin-inline
+   -start:var(--sp-3)}` is the rule that reads better and it is wrong twice
+   over. `.row` is `inline-size:100%` under `*{box-sizing:border-box}` inside a
+   `.rows` flex column, so a start margin makes the row 100% + the margin and it
+   overflows the list — which is the defect the JS was avoiding, and moving it
+   into CSS would only move it. And the row is a `<button>` whose hover and
+   `aria-pressed` states paint a full-width ground: shrinking that ground is a
+   change to what "this row is pressable" looks like, on rows nobody asked to
+   restyle. `padding-inline-start` on a border-box child cannot overflow
+   anything, and `e2e/conversations.spec.ts` measures exactly this property on
+   `.convhead` in both directions — child > 0, parent === 0.
+
+   THE HAIRLINE IS A PSEUDO-ELEMENT AND NOT A `border-inline-start`, for a
+   measured reason rather than a stylistic one: `.row:hover` and
+   `.row[aria-pressed="true"]` both set `border-color`, which is a shorthand and
+   would repaint all four edges — so a border here would be the tree line
+   everywhere except under the pointer, where the reader is looking. `.row`'s
+   own inline padding is 12px, which is `--sp-3`, so the line lands one step
+   outboard of the text it belongs to at every depth. `--edge-3` is the token
+   `.tvworksum::marker` and `.tvsaid blockquote` already spend on exactly this —
+   a relation mark beside a channel that also says it in words ("dispatched by
+   another helper agent", on the row itself). */
+.convrow.lanechild{position:relative}
+.convrow.lanechild>.convhead,.convrow.lanechild>.small{
+  padding-inline-start:calc(var(--lanedepth,1) * var(--sp-3))}
+.convrow.lanechild::before{content:"";position:absolute;inset-block:var(--sp-1);
+  inset-inline-start:calc(var(--lanedepth,1) * var(--sp-3));inline-size:1px;
+  background:var(--edge-3)}
+
 /* ── Narrowing the list (plan:archive seq:10) ───────────────────────────────
    Four controls and a button on one line, wrapping to as many lines as the
    viewport needs rather than scrolling: a filter a reader cannot see all of is
@@ -3815,11 +3858,37 @@ body.docpage{overflow-y:auto}
    2px gold ring and is exactly what this control should keep.
 
    `button.tvjump` is what every test that clicks Top, End or "N new below"
-   names, so nothing here reaches them. */
-.tvlane,.tvlanehome{inline-size:auto;font:var(--fs-00)/1.5 var(--sans);
+   names, so nothing here reaches them.
+
+   ── AND `.tvlanes` JOINS THEM, WHICH IS A SELECTOR AND NOT A NEW RULE ─────
+   `plan:archive seq:41`'s roster control — "2 helper agents" in the document's
+   own head — shipped wearing `.tvjump` for the same reason `laneLink` did: this
+   file was held. It is the same mistake with the same fix, and the reason is
+   sharper here than it was there. **`.tvjump`'s mono bordered box means "jump
+   inside THIS document"** — Top, End, "N new below" and the three copy controls
+   are all movements or reads within one transcript, and every one of them
+   leaves the reader where they are. The roster is a ROUTE CHANGE: it navigates
+   to `#/conversations/lanes/<id>`, a different surface with a different Back.
+   A navigation wearing the in-document jump's face tells the reader the
+   opposite of what pressing it does.
+
+   It is added to these two SELECTOR LISTS rather than given rules of its own,
+   which is the whole point: the previous lane's report proposed a third copy of
+   these seven declarations because `.tvlane`/`.tvlanehome` are page-scoped test
+   HANDLES and a second wearer would be a strict-mode violation. That objection
+   is about the MARKUP, not about the stylesheet — a class may appear in a
+   selector list any number of times. `button.tvlanes` stays the only handle for
+   this control and `e2e/conversations.spec.ts` still names it.
+
+   A `<button>` and not an `<a>`, unlike the other two, and the rules do not
+   care: everything `.tvjump` gives a button that a link should not have — the
+   mono face, the ground, the border, the radius, the padding — is answered
+   above, and `.tvhead` IS a flex container so `flex:0 0 auto` is live and
+   correct there. */
+.tvlane,.tvlanehome,.tvlanes{inline-size:auto;font:var(--fs-00)/1.5 var(--sans);
   color:var(--gold);background:none;border:0;border-radius:0;padding:0;
   text-decoration:underline;text-underline-offset:2px;cursor:pointer}
-.tvlane:hover,.tvlanehome:hover{color:var(--gold);
+.tvlane:hover,.tvlanehome:hover,.tvlanes:hover{color:var(--gold);
   text-decoration-thickness:2px}
 
 /* THE SCROLL. One well, one document. Its height is a viewport fraction so a
@@ -4195,7 +4264,46 @@ body.docpage{overflow-y:auto}
    which already clears the 3.0:1 WCAG asks. Raising the fence box and the rule
    with it would have been a change he did not ask for, on the surface he has
    corrected three times; it is reported instead. */
-.tvsaid th,.tvsaid td{border:1px solid var(--tvframe);
+/* ── AND THE TABLE HAD NO BOTTOM LINE AT ALL, WHICH THE OWNER SAW FIRST ────
+   `TASK-a-collapsed-table-ruling-is-painted-in-two-colours-and-43-of`.
+
+   Owner, looking at `seq:45`'s frame screenshots: *"just at the screenshots did
+   not see the top and bottom framwork lines, hope it is only because the screen
+   capture"*. **It was not the screen capture.** Sampled uncropped out of the
+   well in both languages, the top edge paints `--tvframe` at 11.31:1, the
+   inline-start edge at 11.31:1, the inline-end edge at 3.61:1 — and the BOTTOM
+   EDGE IS NOT PAINTED AT ALL. The vertical rulings run past the last row and
+   end in mid-air; `e2e/frame-paint.spec.ts` holds the picture and the pixels.
+
+   **THE CAUSE IS 2,236 LINES ABOVE THIS ONE AND IT IS A SPECIFICITY LOSS.**
+   `tr:last-child td{border-block-end:0}` sits in the app's own table base,
+   where it is right: an app card's table rules its rows with a
+   `border-block-end` each and must not end in a line under the last one. That
+   selector is (0,1,2). `.tvsaid td` is (0,1,1). **So the app's primitive wins
+   the block-end border on every last row in this viewer**, and has since
+   `seq:26` drew the first table here — through `seq:38`'s raise to `--edge-3`
+   and `seq:45`'s raise to `--tvframe`, both of which measured a token and
+   neither of which looked at the bottom of a table.
+
+   `.tvsaid tr:last-child td` is (0,2,2) and takes it back. It is added to the
+   SELECTOR LIST rather than written as a second rule so that `1px solid
+   var(--tvframe)` is still declared exactly once — the reason `--tvframe` is a
+   property on `.tvsaid` in the first place.
+
+   `th` is deliberately not in the added selector: the primitive only ever names
+   `td`, and a `tr:last-child th` can occur only in a table with a header and no
+   body, which `lib/markdown.js` cannot emit. An unmeasured case is named rather
+   than covered — `STD-a-measured-zero-is-drawn-and-named-an-unmeasured-thing-is`.
+
+   **AND `display:block` WAS A RED HERRING**, which is worth recording because
+   the item reasoned its way to it and it is wrong. The item's doubt was that
+   `.tvsaid table` is not a table box, so the outer half of a collapsed border
+   might be clipped by the `overflow-x:auto` scroll container. Driven in the
+   page: `padding-block-end` on the block (room for the clip) changes nothing,
+   `border-block-end-width:2px` on the last row's cells changes nothing, and
+   `display:table` — a real table box — changes nothing either. The line was
+   never being drawn, by any box. */
+.tvsaid th,.tvsaid td,.tvsaid tr:last-child td{border:1px solid var(--tvframe);
   padding:var(--sp-1) var(--sp-2);text-align:start}
 .tvsaid hr{border:0;border-block-start:1px solid var(--edge-3);
   margin-block:var(--sp-3)}
@@ -4208,6 +4316,30 @@ body.docpage{overflow-y:auto}
 .tvthink{margin-block-start:var(--sp-2)}
 .tvthink>summary{font:var(--fs-00)/1.4 var(--mono);color:var(--dim);
   cursor:pointer}
+
+/* ── THE QUIET LINE, WHICH ASKED FOR THREE RULES AND NEEDS TWO ─────────────
+   `plan:archive seq:39`/`41` built `quietLine` — one fold for a run of records
+   that carry nothing but their own indexes — on a night this file was another
+   lane's, and its report named the rules it wanted. Two of the three are here.
+
+   **The third is not, because the markup already has it.** The report asked for
+   `.tvquiet>summary{cursor:pointer;font:var(--fs-00)/1.4 var(--mono);color:
+   var(--dim)}`, borrowed from `.tvthink>summary` above. But `quietLine` ships
+   `el('details','tvthink tvquiet')` — it wears BOTH classes on purpose, and its
+   own header says so — so `.tvthink>summary` already dresses this summary and a
+   second rule saying the same three declarations would be a copy of the rule
+   directly above it. A copy cannot be superseded; only the original can. So the
+   borrow stays a borrow and `.tvquiet` adds only what `.tvthink` gets wrong.
+
+   `--sp-1` and not `.tvthink`'s `--sp-2`: a nested fold inside a step list is
+   airy at 8px. Same specificity as `.tvthink`, declared after it, so ORDER is
+   what wins — which is why this block sits below that rule and not above it.
+
+   The marker matches `.tvworksum::marker` rather than inheriting `--dim`: the
+   nested triangle would otherwise be BRIGHTER than the outer fold's, which
+   reads as the inner disclosure being the more important of the two. */
+.tvquiet{margin-block-start:var(--sp-1)}
+.tvquiet>summary::marker{color:var(--edge-3)}
 
 /* THE FOLD. One line for a whole run of machinery, and the run is the point:
    `seq:13`'s "the machinery is present but collapsed to one summarised line".
