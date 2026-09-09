@@ -337,7 +337,7 @@ export function isPlaceholder(text: string): boolean {
  * design's risk lives.
  */
 export function candidateId(shapeId: string, value: string): string {
-  return createHash('sha256').update(`${shapeId} ${value}`).digest('hex').slice(0, 12);
+  return createHash('sha256').update(`${shapeId}\u0000${value}`).digest('hex').slice(0, 12);
 }
 
 /**
