@@ -3508,19 +3508,6 @@ wa-tree .wa-count{margin-inline-start:var(--sp-2);color:var(--dim);
   font:var(--fs-00)/1 var(--mono)}
 
 /* — the page in the new tab — */
-body.docpage{overflow-y:auto}
-.docshell{max-inline-size:calc(72ch + 2 * var(--sp-6));margin-inline:auto;
-  padding:var(--sp-4) var(--sp-4) var(--sp-6)}
-.dochead{display:flex;align-items:center;gap:var(--sp-3);flex-wrap:wrap;
-  padding-block-end:var(--sp-2);border-block-end:1px solid var(--rule);
-  margin-block-end:var(--sp-3)}
-.backrow{inline-size:auto;flex:0 0 auto;text-decoration:none;font:var(--fs-1)/1 var(--sans)}
-.docwhere{display:flex;align-items:center;gap:var(--sp-2);flex:1;min-inline-size:0;
-  justify-content:flex-end}
-.docwhere .m{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--dim);
-  font-size:var(--fs-00)}
-.docfoot{margin-block-start:var(--sp-6);padding-block-start:var(--sp-3);
-  border-block-start:1px solid var(--rule);max-inline-size:72ch}
 /* The console renderer caps every ATX heading at h4 (`min(level+1,4)`) and the
    `.md` rules above stop there with it. A whole page renders h1 through h6, so
    the two the console could never emit get their step here. */
@@ -3568,9 +3555,11 @@ body.docpage{overflow-y:auto}
    README is nothing BUT links, so the document page cannot inherit that.
 
    Scoped to `.ghdoc`, deliberately, and not written as a global `a{}`: a
-   global rule would repaint `.docrow`, `.backrow` and every `.linkid` in the
-   console at the same time, which is a repaint of twenty screens hiding inside
-   a documentation change.
+   global rule would repaint `.docrow` and every `.linkid` in the console at the
+   same time, which is a repaint of twenty screens hiding inside a documentation
+   change. (It named `.backrow` too until 2026-09-09, when that rule and six
+   others left over from the doc page's move to GitHub styling were deleted as
+   dead — the reasoning is unchanged and one of its examples is not.)
 
    `--role-nav` rather than a sixth hue. The five meaning hues are budgeted and
    gated (`DEC-the-meaning-hue-budget-is-five-gold-ok-carry-crit-and-warn`) and
