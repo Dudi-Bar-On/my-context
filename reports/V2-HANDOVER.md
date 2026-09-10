@@ -1,3 +1,66 @@
+## ⏭ 2026-09-11, at 93% — DELTA. THREE LANES LIVE, D36 IS 3 OF 5, D41 IS 1 OF 5.
+
+**The 90% block below still governs.** This is what changed since it.
+
+### LANDED SINCE 90%
+
+- **D41 Phase 1 (`store/1`) — DONE and committed.** `src/rules/{schema,store,manifest}.ts`, one seed
+  entry (the numbering standard), `mycontext rules`.
+- **D36c (`loop/3`) — DONE and committed.** The proposal pass.
+- **D43 — closed earlier tonight.**
+
+### RUNNING NOW
+
+| lane | item | owns | browser |
+|---|---|---|---|
+| `archive/54` | closes D37 | `e2e/**` | **yes** |
+| `store/2` | D41 Phase 2 — delivery | `src/rules/**`, `src/hooks/**`, `src/core/inject.ts`, `test/ui/no-writes.test.ts` | no |
+| `loop/4` | D36d — the review queue | `src/review/**` UI, `doctor/checks.ts` | no |
+
+### TWO DEBTS TO SETTLE THE MOMENT THE BROWSER IS FREE
+
+1. **`npm run gen:docs`.** D41 Phase 1 moved the CLI command count **46 → 47**, so both READMEs'
+   surface diagram is stale and **2 `diagram-gate` tests are red — they belong to that work.**
+   `gen:docs` drives chromium, so it waits for `archive/54`.
+2. **`test/ui/no-writes.test.ts` is CONTESTED and deliberately uncommitted.** `loop/3` added its three
+   `WRITERS` keys; `store/2` owes the row for `src/rules/delivered.ts`. **`store/2` carries that file
+   in its commit** — do not stage it from anywhere else.
+
+### D36c's FINDING, which changed its own build and is the best thing tonight produced
+
+Its first dry run's five top candidates were **the owner's own instructions, proposed back to him as
+things this project had learned** — none naming a file. Requiring a target fixed the material, not
+the structural fact: **a lexical proposer can SELECT an observation and cannot COMPOSE a rule.**
+
+So `AUTHORABLE = ['check']` only, and a check becomes a **`task`**: a transcript sentence filed as a
+task is work somebody is asked to look at; filed as a rule or lesson it becomes law nobody
+generalised. Rule/lesson candidates are **counted, not written** — 136 on his real session, against
+**5 admitted from 1,282 observations**.
+
+It ships with **`maxProposalsPerPass: 0`** where §11 prints 5 — enable it and change nothing else and
+it reads, reports and writes nothing. Raising it is HIS, after a week of `state/review-last-pass.json`.
+
+### THE SERVER, CORRECTED — do not overstate this in the report
+
+58888 went down 21:57:38Z and **came back on its own at 22:19:26Z, 21m48s later.** Upkeep retried on
+its five-minute floor. **The upkeep is NOT broken.** The finding is the WINDOW: `restartStaleServer`
+stops the stale server before it knows the replacement will start, and under load that leaves a gap
+where its own floor comment says *"a stale server is a bad server and it is still a server"*. It
+opens exactly when the machine is busy — which is when lanes run and he is away. Full notes:
+scratchpad `night-notes.md`.
+
+### THE MORNING DELIVERABLE
+
+When he says **good morning**: a **night report** plus the **DETAILED grand D table**. He asked for
+both by name. The report needs: what closed, what each lane measured, **what contradicted its own
+item**, what is parked for his ruling, and where every D stands. Night notes are in the scratchpad.
+
+### DISPATCH ORDER FROM HERE
+
+`54` closes D37 → then **D40** and **`recall/1`** take the browser in turn, never together (and
+`gen:docs` goes first). Browser-free slots as they open: `store/3`→`store/4`, `store/5`, `loop/5`,
+`restore/2`, `walk/141`, `library/6`→`docsys/11`, `port/99`+`/100`.
+
 ## ⏭ 2026-09-11, at 90% — OVERNIGHT RUN IN PROGRESS. THREE LANES LIVE. READ THIS FIRST.
 
 **He authorised an autonomous night**: *"work all the way to the morning, if something needs me or
