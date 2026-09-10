@@ -105,6 +105,8 @@ const DEEP_PHRASE = 'a needle only the whole-session filter can find';
 const LANE_ROUND = 60;
 const LANE_CALL = 'toolu_LANE_MID';
 const ASK_CALL = 'toolu_ASK_LAST';
+/** A CHECKBOX question — `multiSelect`, several ticks in one answer. */
+const ASK_MANY = 'toolu_ASK_MANY';
 const DEEP_CALL = 'toolu_LANE_DEEP';
 const LANE_BRIEF = 'read the index and report what it holds';
 const LANE_PHRASE = 'the working that produced the lane report';
@@ -246,6 +248,44 @@ function session(): unknown[] {
           content: [{
             type: 'tool_result', tool_use_id: ASK_CALL,
             content: 'The user answered: "Which corpus should the suite read?"="The live corpus". Read the answers carefully.',
+          }],
+        },
+      });
+      // **A CHECKBOX QUESTION, AND ITS ANSWER IS WHY THIS FIXTURE EXISTS.**
+      // Owner report 2026-09-10: the ticks did not show. A multi-select answer
+      // quotes the picked labels INSIDE the value, so `", "` — the separator
+      // between one question and the next — occurs in the middle of the answer.
+      // The sentence below is that shape verbatim, and it also ends in trailing
+      // prose, which is what defeats a lookahead.
+      rows.push({
+        type: 'assistant',
+        message: {
+          role: 'assistant',
+          content: [{ type: 'tool_use', id: ASK_MANY, name: 'AskUserQuestion', input: {
+            questions: [{
+              question: 'Which modes ship first?',
+              header: 'Modes',
+              multiSelect: true,
+              options: [
+                { label: '1 — From selection', description: 'reconstruct from a copied passage' },
+                { label: '2 — Free text search', description: 'scoped by session and dates' },
+                { label: '3 — List the subjects', description: 'when you do not know what to ask' },
+                { label: '4 — List the anchors', description: 'the marked fixed points' },
+              ],
+            }],
+          } }],
+        },
+        timestamp: at(i * 4 + 3),
+      });
+      rows.push({
+        type: 'user',
+        message: {
+          role: 'user',
+          content: [{
+            type: 'tool_result', tool_use_id: ASK_MANY,
+            content: 'The user answered: "Which modes ship first?"="1 — From selection, '
+              + '"2 — Free text search", 3 — List the subjects, 4 — List the anchors". '
+              + 'Read the answers carefully.',
           }],
         },
         timestamp: at(i * 4 + 3),
@@ -609,6 +649,20 @@ for (const lang of ['en', 'he'] as const) {
     await expect(chosen.locator('.chip.ok')).toContainText(lang === 'he' ? 'נבחר' : 'chosen');
     const declined = ask.locator('li.tvstep').filter({ hasText: 'A fixture corpus' });
     await expect(declined.locator('.chip.ok')).toHaveCount(0);
+
+    // **EVERY TICK OF A CHECKBOX QUESTION, WHICH IS THE DEFECT HE REPORTED.**
+    // Only the FIRST used to be marked: the answer was split on `"`, and a
+    // multi-select answer quotes its picked labels inside the value, so it
+    // truncated at `1 — From selection, `. All four are asserted rather than
+    // one, because a fix that recovered two would still be broken.
+    const many = page.locator('.tvdeed').filter({ hasText: 'Which modes ship first?' }).first();
+    await expect(many).toBeVisible();
+    for (const label of ['1 — From selection', '2 — Free text search',
+      '3 — List the subjects', '4 — List the anchors']) {
+      const row = many.locator('li.tvstep').filter({ hasText: label });
+      await expect(row.locator('.chip.ok'), `"${label}" is not marked chosen`)
+        .toContainText(lang === 'he' ? 'נבחר' : 'chosen');
+    }
 
     // THE COMMAND THAT RAN, on its own row — `description` used to be the only
     // thing kept, and the command was invisible on this screen.
