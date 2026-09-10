@@ -850,6 +850,24 @@ const OVERSCAN = 6;
 const FETCH_PAGE = 24;
 
 /**
+ * How long a selection must stop changing before its records are pre-fetched —
+ * `TASK-the-reader-own-ctrl-c-still-gives-the-browser-rendered-form`.
+ *
+ * **The owner ruled PRE-FETCH ON SELECTION (2026-09-10)**, over three other
+ * shapes, so that `Ctrl+C` can serve MESSAGE TEXT synchronously and therefore
+ * means ONE thing. This constant is the one number that ruling did not fix,
+ * and it exists because `selectionchange` fires on every mouse move of a drag:
+ * asking per event would spend a request per pixel down a document the reader
+ * is still sweeping. A settle of 90ms is under the ~100ms a reader reads as
+ * instant, and shorter than the fastest measured mark-then-press.
+ *
+ * It is NOT a debounce on the KEY. Option 4 — fetch on the keypress — was put
+ * to him and declined for exactly that: he preferred to spend the request
+ * early and keep the key instant.
+ */
+const PREFETCH_SETTLE_MS = 90;
+
+/**
  * How often an OPEN conversation document asks whether its transcript moved —
  * `plan:archive seq:19`, and the number is the whole decision in that item.
  *
@@ -3700,6 +3718,9 @@ export function mountDocument(ctx, host, outline, back, roster = NO_LANES) {
     held.clear();
     for (const nodeIndex of boundaryRows()) held.add(nodeIndex);
     schedule();
+    // **THE RULED HALF OF `Ctrl+C`.** The records behind the mark are read NOW,
+    // so that the synchronous `copy` handler already has them — see `onCopy`.
+    schedulePrefetch();
   };
   document.addEventListener('selectionchange', onSelect);
   for (const button of copyButtons) {
@@ -3808,6 +3829,54 @@ export function mountDocument(ctx, host, outline, back, roster = NO_LANES) {
     return { from: first.f, to: last.f + last.s - 1 };
   };
 
+  /**
+   * MESSAGE TEXT for a passage whose bodies are already in hand, and the
+   * sentence that discloses whatever the payload could not carry.
+   *
+   * **It takes the bodies rather than fetching them, and that is what makes
+   * `Ctrl+C` possible at all.** The `copy` event is SYNCHRONOUS —
+   * `clipboardData.setData` must be called before the handler returns — so the
+   * key path cannot await anything. Splitting the build out from the fetch is
+   * how the button and the key produce THE SAME BYTES from the same code
+   * rather than two spellings of one format.
+   */
+  const messageForm = (list) => {
+    const built = messagePassage(list, openFolds(), passageLabels(ctx));
+    return {
+      text: built.text,
+      extra: () => {
+        if (built.notes.shutFolds === 1) {
+          alsoSay('conv.copy.leftFolds1', { n: built.notes.shutRecords });
+        } else if (built.notes.shutFolds > 1) {
+          alsoSay('conv.copy.leftFolds', {
+            n: built.notes.shutRecords, folds: built.notes.shutFolds,
+          });
+        }
+        if (built.notes.dropped.length > 0) {
+          alsoSay('conv.copy.leftArgs', { names: built.notes.dropped.join(', ') });
+        }
+      },
+    };
+  };
+
+  /**
+   * WHAT IT TOOK, in sections and in the record numbers every surface counts
+   * in. Three sentences rather than one with a count substituted into it:
+   * "Copied 1 sections" is what one sentence produces for a passage of one,
+   * and a fold of five records is a passage of ONE section spanning five, so
+   * "record" and "records" are both real cases.
+   */
+  const sayTook = (passage) => {
+    const span = recordSpan(passage);
+    if (passage.length > 1) {
+      say('conv.copy.took', { n: passage.length, from: span.from, to: span.to });
+    } else if (span.from === span.to) {
+      say('conv.copy.took1', { from: span.from });
+    } else {
+      say('conv.copy.took1span', { from: span.from, to: span.to });
+    }
+  };
+
   let copying = false;
 
   /**
@@ -3891,36 +3960,13 @@ export function mountDocument(ctx, host, outline, back, roster = NO_LANES) {
       } else {
         const list = await passageBodies(passage);
         if (list === null) { say('conv.copy.noBytes'); return; }
-        const built = messagePassage(list, openFolds(), passageLabels(ctx));
-        text = built.text;
-        extra = () => {
-          if (built.notes.shutFolds === 1) {
-            alsoSay('conv.copy.leftFolds1', { n: built.notes.shutRecords });
-          } else if (built.notes.shutFolds > 1) {
-            alsoSay('conv.copy.leftFolds', {
-              n: built.notes.shutRecords, folds: built.notes.shutFolds,
-            });
-          }
-          if (built.notes.dropped.length > 0) {
-            alsoSay('conv.copy.leftArgs', { names: built.notes.dropped.join(', ') });
-          }
-        };
+        const form = messageForm(list);
+        text = form.text;
+        extra = form.extra;
       }
 
       if (!await toClipboard(text)) { say('conv.copy.refused'); return; }
-      // WHAT IT TOOK, in sections and in the record numbers every other
-      // surface counts in. Three sentences rather than one with a count
-      // substituted into it: "Copied 1 sections" is what one sentence produces
-      // for a passage of one, and a fold of five records is a passage of ONE
-      // section spanning five, so "record" and "records" are both real cases.
-      const span = recordSpan(passage);
-      if (passage.length > 1) {
-        say('conv.copy.took', { n: passage.length, from: span.from, to: span.to });
-      } else if (span.from === span.to) {
-        say('conv.copy.took1', { from: span.from });
-      } else {
-        say('conv.copy.took1span', { from: span.from, to: span.to });
-      }
+      sayTook(passage);
       if (extra !== null) extra();
     } catch (error) {
       copied.replaceChildren(errorNote(error.message));
@@ -3933,6 +3979,160 @@ export function mountDocument(ctx, host, outline, back, roster = NO_LANES) {
   copyMessage.addEventListener('click', () => { void copy('message'); });
   copySeen.addEventListener('click', () => { void copy('seen'); });
   copyRaw.addEventListener('click', () => { void copy('raw'); });
+
+  /* ── Ctrl+C, AND WHY IT SPENDS A REQUEST BEFORE ANYBODY PRESSES IT ──────
+   *
+   * `TASK-the-reader-own-ctrl-c-still-gives-the-browser-rendered-form`.
+   *
+   * ── THE DEFECT, AND THE RULING THAT CLOSED IT ──────────────────────
+   *
+   * The three buttons above shipped without a keyboard shortcut, so a reader
+   * who marked a passage and pressed the key they have pressed for thirty
+   * years got the BROWSER's copy: speaker names, timestamps, a fold's summary
+   * line instead of its records, whitespace as CSS collapsed it — and NOTHING
+   * AT ALL from the rows this virtualised document has not drawn.
+   *
+   * **Owner ruling, 2026-09-10: PRE-FETCH ON SELECTION.** Four shapes were put
+   * to him in plain words and he took the first: fill `bodies` for a passage
+   * as it is MARKED, so that the `copy` handler already has everything it
+   * needs and `Ctrl+C` serves MESSAGE TEXT — the same format the first button
+   * serves, which is the default `seq:17` already ruled.
+   *
+   * **SO THE KEY MEANS ONE THING.** That is why option 1 beat option 2
+   * (intercept only when complete, and say which form you got): the item
+   * itself argues that a key which sometimes serves the record and sometimes
+   * falls through to the browser is the WORST of the three, because one
+   * gesture produces two formats with nothing on screen saying which. The
+   * ruling removes the ambiguity rather than labelling it. Option 3 (leave it,
+   * teach the buttons) and option 4 (fetch on the keypress, which spends
+   * nothing until a copy happens but puts the delay INSIDE the gesture) were
+   * declined with it and are not to be re-proposed.
+   *
+   * **AND THIS IS AN AFFORDANCE, NOT A FOURTH FORMAT.** Nothing above changed.
+   * The three buttons are untouched and the clipboard formats stay as `seq:17`
+   * and this item's parent ruled them; `messageForm` is the one builder both
+   * paths call, so the key and the first button cannot drift apart.
+   *
+   * ── WHAT IT COSTS, STATED RATHER THAN DISCOVERED LATER ───────────────
+   *
+   * Requests the reader did not ask for, on every drag that marks undrawn
+   * rows. The item bounds it — 10 requests and 207ms for a 274-section passage
+   * on the owner's own transcript — and that is the worst case for a very
+   * large mark, not the typical one. Nothing is spent for a passage the reader
+   * can see, because `passageBodies` asks only for what `bodies` is missing,
+   * and nothing at all above `PASSAGE_NODE_CAP`, where a copy refuses anyway.
+   *
+   * ── THE THREE THINGS THIS MUST NOT GET WRONG ───────────────────────
+   *
+   *   1. `bodies` IS NOT MONOTONIC. `refill` deletes the tail node's body when
+   *      a partial record is replaced, and `rebuildReplaced` clears the whole
+   *      map. So readiness is never remembered: `onCopy` re-reads `bodies` on
+   *      every press, and a miss re-arms the pre-fetch rather than trusting a
+   *      flag set minutes ago.
+   *   2. THE HANDLER STAYS HONEST WHEN THE PRE-FETCH HAS NOT LANDED. It does
+   *      NOT fall through to the browser — that is the ambiguity the ruling
+   *      deleted — and it does not serve a partial record, which
+   *      `INV-nothing-is-dropped-silently` calls worse than the browser's own
+   *      because it looks right. It refuses, in the payload AND on the screen,
+   *      and says the passage is still being read.
+   *   3. IT MOVES NOBODY. `passageBodies` does not repaint, so a pre-fetch
+   *      cannot pull the document out from under a reader mid-drag — the same
+   *      reason it exists rather than `fetchFrom`.
+   */
+
+  /** Node indices of `passage` whose body is not in hand. */
+  const missingOf = (passage) => passage.filter((n) => !bodies.has(n));
+
+  let prefetchTimer = null;
+  let prefetchBusy = false;
+  let prefetchAgain = false;
+
+  /**
+   * Fill `bodies` for whatever is marked, once.
+   *
+   * A run that finishes while the reader is still dragging leaves `marked`
+   * wider than the passage it just filled, so `prefetchAgain` runs it once
+   * more. Each run either fetches something missing or returns immediately, so
+   * the chain terminates.
+   */
+  const runPrefetch = async () => {
+    // A document that has been unmounted keeps whatever it had marked; it must
+    // not go on reading records for a screen nobody is looking at, which is the
+    // same test `onSelect` uses to take itself off `selectionchange`.
+    if (!scroll.isConnected) return;
+    if (prefetchBusy) { prefetchAgain = true; return; }
+    const passage = marked;
+    if (passage === null || passage.length === 0) return;
+    // Above the cap a copy REFUSES rather than truncates, so a pre-fetch here
+    // would buy the reader nothing and cost the server everything.
+    if (passage.length > PASSAGE_NODE_CAP) return;
+    if (missingOf(passage).length === 0) return;
+    prefetchBusy = true;
+    try {
+      await passageBodies(passage);
+    } catch {
+      // A refusal is the KEY's to report, at the moment it is pressed, in the
+      // reader's own language. Saying it here would put a sentence on screen
+      // about a copy nobody has asked for yet.
+    } finally {
+      prefetchBusy = false;
+      if (prefetchAgain) { prefetchAgain = false; void runPrefetch(); }
+    }
+  };
+
+  /** Wait for the drag to stop, then fill. See `PREFETCH_SETTLE_MS`. */
+  const schedulePrefetch = () => {
+    if (prefetchTimer !== null) clearTimeout(prefetchTimer);
+    prefetchTimer = setTimeout(() => {
+      prefetchTimer = null;
+      void runPrefetch();
+    }, PREFETCH_SETTLE_MS);
+  };
+
+  /**
+   * THE KEY. Synchronous from end to end, because the event is.
+   *
+   * It intercepts only a passage of THIS well: with nothing marked here the
+   * event is left entirely alone, so `Ctrl+C` in the filter box, in the head,
+   * or over the `clip` element the button path selects behaves as it always
+   * did.
+   */
+  const onCopy = (event) => {
+    const passage = marked;
+    if (passage === null || passage.length === 0) return;
+    // A button copy is mid-flight and owns both the payload and the line.
+    if (copying) return;
+    const data = event.clipboardData;
+    if (data === null || data === undefined) return;
+
+    let text = null;
+    let extra = null;
+    if (passage.length > PASSAGE_NODE_CAP) {
+      text = ctx.tFlat('conv.copy.keyTooMany', { n: passage.length, cap: PASSAGE_NODE_CAP });
+      say('conv.copy.tooMany', { n: passage.length, cap: PASSAGE_NODE_CAP });
+    } else if (missingOf(passage).length > 0) {
+      text = ctx.tFlat('conv.copy.keyNotYet');
+      say('conv.copy.keyNotYet');
+      // `bodies` may have been emptied under a pre-fetch that already ran, so
+      // the miss re-arms it rather than waiting for another `selectionchange`.
+      schedulePrefetch();
+    } else {
+      const form = messageForm(passage.map((n) => bodies.get(n)));
+      text = form.text;
+      extra = form.extra;
+    }
+
+    event.preventDefault();
+    // The same element the button path fills, and for the same reason: it is
+    // the payload the page put on the clipboard, readable by a suite that
+    // cannot reach the OS clipboard.
+    clip.textContent = text;
+    data.setData('text/plain', text);
+    if (extra === null) return;
+    sayTook(passage);
+    extra();
+  };
+  scroll.addEventListener('copy', onCopy);
 
   /* ── FOLLOWING A SESSION THAT IS STILL BEING WRITTEN ────────────────────
    *

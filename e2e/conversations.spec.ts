@@ -20,6 +20,7 @@
 // TASK-a-task-notification-is-3-9-mb-of-what-a-lane-reported-drawn,
 // TASK-the-row-where-a-lane-reports-back-cannot-say-whose-report-it,
 // TASK-a-selected-passage-copies-as-something-a-terminal-will,
+// TASK-the-reader-own-ctrl-c-still-gives-the-browser-rendered-form,
 // TASK-a-lane-is-named-by-what-it-did-and-never-by-what-it-is-so,
 // INV-nothing-is-dropped-silently
 /**
@@ -3926,5 +3927,343 @@ test.describe('a marked passage copies as something a terminal will accept', () 
 
     if (onClipboard !== null) expect(onClipboard).toBe(await payload(page));
     else expect(await payload(page)).toMatch(/^echo \d+$/);
+  });
+
+  /* ══ THE KEY, AND THE PRE-FETCH THAT MAKES IT POSSIBLE ════════════════
+   *
+   * `TASK-the-reader-own-ctrl-c-still-gives-the-browser-rendered-form`, and
+   * the owner's ruling of 2026-09-10: PRE-FETCH ON SELECTION, so that `Ctrl+C`
+   * serves MESSAGE TEXT and the key MEANS ONE THING.
+   *
+   * **These are browser tests for a reason no `node --test` can reach.** The
+   * `copy` event is SYNCHRONOUS — `clipboardData.setData` must be called
+   * before the handler returns — and that constraint only exists in a browser,
+   * over a real selection, over a real virtualised well. The arithmetic half
+   * is already asserted by the button tests above; what is measured here is
+   * that the KEY reaches records the DOM never drew, that it never falls
+   * through to the browser's own rendering, and that it refuses honestly while
+   * the pre-fetch is still in flight.
+   */
+
+  /** Every `/nodes` fetch this page makes, resettable around one measurement. */
+  function nodeFetches(page: Page): { count: number; last: number; reset: () => void } {
+    const trace = { count: 0, last: 0, reset: () => { trace.count = 0; trace.last = 0; } };
+    page.on('requestfinished', (r) => {
+      if (!r.url().includes('/nodes?')) return;
+      trace.count += 1;
+      trace.last = Date.now();
+    });
+    return trace;
+  }
+
+  /** Wait until no further `/nodes` fetch has finished for `quiet` ms. */
+  async function untilQuiet(
+    page: Page, trace: { count: number }, quiet = 600,
+  ): Promise<void> {
+    for (let i = 0; i < 40; i += 1) {
+      const seen = trace.count;
+      await page.waitForTimeout(quiet);
+      if (trace.count === seen) return;
+    }
+    throw new Error('the pre-fetch never stopped asking');
+  }
+
+  /** Extend the live selection to the end of a drawn row — a reader's shift-click. */
+  async function extendTo(page: Page, dataN: string): Promise<void> {
+    await page.evaluate((n) => {
+      const row = document.querySelector(`.tvrow[data-n="${n as string}"]`);
+      if (row === null) throw new Error('the far row is not drawn');
+      document.getSelection()?.extend(row, row.childNodes.length);
+    }, dataN);
+  }
+
+  /**
+   * Empty the payload element, so that what the NEXT copy writes into it can
+   * be told apart from what the last one left there.
+   *
+   * Without this, comparing the key's payload against the button's would be
+   * vacuous: the element already holds the key's bytes, so an assertion that
+   * it equals them passes whether the button ran or not.
+   */
+  const clearPayload = (page: Page): Promise<void> =>
+    page.locator('pre.tvclip').evaluate((n) => { n.textContent = ''; });
+
+  /** The numbered rounds present in a piece of text. The fixture numbers them. */
+  const rounds = (source: string): Set<number> => {
+    const out = new Set<number>();
+    for (const m of source.matchAll(/round (\d+): keep going/g)) out.add(Number(m[1]));
+    return out;
+  };
+
+  test('Ctrl+C serves the RECORD over rows the document never drew, and the pre-fetch pays for it',
+    async ({ page, context }) => {
+      // ── THE LOAD-BEARING TEST OF THIS ITEM ───────────────────────
+      //
+      // The defect is that the key gave the BROWSER's copy, and the browser has
+      // "nothing at all from the rows the virtualised document has not drawn".
+      // So the passage marked here MUST span undrawn rows, and how many is
+      // asserted BEFORE the key is pressed — a version of this test over a
+      // passage that happened to be fully drawn would pass with the defect
+      // reinstated, which is exactly the vacuous shape to avoid.
+      let granted = true;
+      try {
+        await context.grantPermissions(['clipboard-read', 'clipboard-write']);
+      } catch { granted = false; }
+
+      await openDocument(page, 'en', 'default');
+      const well = page.locator('.tvscroll');
+      const bar = copyBar(page);
+      await well.press('PageUp');
+
+      await parkAt(page, 0.20);
+      const near = await drawnNodes(page);
+      expect(near.length).toBeGreaterThan(0);
+      const from = Math.min(...near) + 2;
+      await markRow(page, String(from));
+
+      await parkAt(page, 0.55);
+      const far = await drawnNodes(page);
+      const to = Math.max(...far) - 2;
+      expect(to - from, 'this must span far more than one window or it proves nothing')
+        .toBeGreaterThan(100);
+
+      // WHAT THE PRE-FETCH COSTS, measured from the moment the mark is
+      // finished rather than repeated from the item's own numbers.
+      const trace = nodeFetches(page);
+      trace.reset();
+      const markedAt = Date.now();
+      await extendTo(page, String(to));
+      await untilQuiet(page, trace);
+      const spent = trace.last - markedAt;
+
+      // ── NON-VACUITY, ASSERTED BEFORE THE KEY IS PRESSED ──────────────
+      const inDom = new Set(await drawnNodes(page));
+      let missing = 0;
+      for (let n = from; n <= to; n += 1) if (!inDom.has(n)) missing += 1;
+      expect(missing,
+        'the middle of the passage has to be OUT of the DOM or this test is vacuous')
+        .toBeGreaterThan(80);
+      expect(trace.count,
+        'a passage of undrawn rows costs requests — zero would mean nothing was pre-fetched')
+        .toBeGreaterThan(0);
+
+      // WHAT THE BROWSER WOULD HAVE PUT ON THE CLIPBOARD, over the same
+      // selection, so the two forms are compared rather than assumed.
+      const rendered = await page.evaluate(() => document.getSelection()?.toString() ?? '');
+
+      // THE KEY ITSELF, and not a synthetic `ClipboardEvent`: the real
+      // `Control+c`, which is the gesture the item is about.
+      await clearPayload(page);
+      await page.keyboard.press('Control+c');
+      await expect(bar.said).toContainText('Copied', { timeout: 10_000 });
+      const text = await payload(page);
+      expect(text.length, 'the key wrote the payload, synchronously').toBeGreaterThan(0);
+
+      const onScreen = rounds(await well.evaluate((n) => n.textContent ?? ''));
+      const byKey = rounds(text);
+      const never = [...byKey].filter((r) => !onScreen.has(r));
+      expect(never.length,
+        'the key has to reach turns the DOM never drew — that is the whole defect')
+        .toBeGreaterThan(20);
+      // AND THE BROWSER'S OWN COPY REACHES NONE OF THEM. The defect measured
+      // rather than restated: every round the key delivered and the rendered
+      // form did not is a round `Ctrl+C` used to lose.
+      const byBrowser = rounds(rendered);
+      for (const r of never) {
+        expect(byBrowser.has(r),
+          `round ${r} is in the record copy and cannot be in the browser's`).toBe(false);
+      }
+
+      // THE COUNT IT REPORTS IS THE COUNT IT TOOK, in the same sentence the
+      // buttons use — one status line, not a second one for the key.
+      const said = await bar.said.textContent() ?? '';
+      expect(Number(/Copied (\d+) sections/.exec(said)?.[1] ?? '0')).toBe(to - from + 1);
+
+      // ── AND THE OS CLIPBOARD ITSELF, WHERE THE ENGINE ALLOWS IT ────────
+      //
+      // `pre.tvclip` proves the handler ran; only the real clipboard proves the
+      // handler WON — that `preventDefault` took the gesture away from the
+      // browser's own serializer. So what is asserted here is the one thing the
+      // browser could not have put there: a round from a row it never drew.
+      //
+      // NOT byte equality. This is the machine's clipboard, shared with every
+      // other process on it and with the previous test in the same headed
+      // window, and Windows stores clipboard text with its own line endings.
+      // An equality assertion over it fails for reasons that have nothing to do
+      // with this feature — measured, 2026-09-10, on the first draft of this
+      // test. Byte equality is asserted against `pre.tvclip`, which is this
+      // page's own record of what it wrote.
+      let onClipboard: string | null = null;
+      try {
+        onClipboard = await page.evaluate(() => navigator.clipboard.readText());
+      } catch { onClipboard = null; }
+      if (onClipboard !== null) {
+        const fromClipboard = rounds(onClipboard);
+        expect(never.some((r) => fromClipboard.has(r)),
+          'the clipboard has to hold a turn the browser could not have serialised')
+          .toBe(true);
+      }
+
+      // ── ONE FORMAT, NOT A FOURTH ───────────────────────────
+      //
+      // The ruling is that the key serves what the FIRST BUTTON serves. So the
+      // button is pressed over the same mark and the two payloads are compared
+      // byte for byte — with the element emptied first, or the comparison
+      // would be against what the key itself left there.
+      await clearPayload(page);
+      await bar.message.click();
+      await expect.poll(async () => (await payload(page)).length,
+        { timeout: 30_000 }).toBeGreaterThan(0);
+      expect(await payload(page), 'the key and the first button are ONE format').toBe(text);
+
+      // eslint-disable-next-line no-console
+      console.log('[ctrl-c] sections:', to - from + 1, '· undrawn when marked:', missing,
+        '· pre-fetch requests:', trace.count, '· pre-fetch ms:', spent,
+        '· turns the DOM never held:', never.length,
+        '· clipboard readable:', onClipboard !== null, '· permissions:', granted);
+    });
+
+  test('while the pre-fetch is still in flight the key REFUSES, and says so in the payload',
+    async ({ page }) => {
+      // *"If the pre-fetch has not landed yet, the handler must still be
+      // honest. A copy that silently serves a partial record is worse than the
+      // browser's own, because it looks right."*
+      //
+      // That window is a couple of hundred milliseconds wide against a local
+      // server, so it is WIDENED rather than raced for: `/nodes` is held for
+      // two seconds, the key is pressed inside the hold, and the same key is
+      // pressed again once the hold is lifted. One gesture, one mark: a
+      // refusal that says why, and then the record.
+      await openDocument(page, 'en', 'default');
+      const well = page.locator('.tvscroll');
+      const bar = copyBar(page);
+      await well.press('PageUp');
+
+      await parkAt(page, 0.20);
+      const near = await drawnNodes(page);
+      const from = Math.min(...near) + 2;
+      await markRow(page, String(from));
+
+      let slow = true;
+      await page.route(
+        (url) => url.pathname.endsWith('/nodes'),
+        async (route) => {
+          if (slow) await new Promise((done) => setTimeout(done, 2_000));
+          await route.continue();
+        });
+
+      await parkAt(page, 0.55);
+      const far = await drawnNodes(page);
+      const to = Math.max(...far) - 2;
+      expect(to - from).toBeGreaterThan(100);
+      await extendTo(page, String(to));
+      // Long enough for the 90 ms settle to have fired and a request to be in
+      // flight, far too short for a two-second hold to have landed.
+      await page.waitForTimeout(500);
+
+      const inDom = new Set(await drawnNodes(page));
+      let missing = 0;
+      for (let n = from; n <= to; n += 1) if (!inDom.has(n)) missing += 1;
+      expect(missing, 'without undrawn rows there is nothing to be waiting for')
+        .toBeGreaterThan(80);
+
+      await clearPayload(page);
+      await page.keyboard.press('Control+c');
+      const refused = await payload(page);
+      // IT REFUSES — in the payload, so the refusal travels into whatever the
+      // reader pastes into, and on the screen as well.
+      expect(refused).toContain('still being read from the record');
+      await expect(bar.said).toContainText('still being read from the record');
+      // AND IT IS NOT A PARTIAL RECORD, which the item calls worse than the
+      // browser's own copy because it looks right.
+      expect(rounds(refused).size, 'a refusal carries no half of the passage').toBe(0);
+      // AND IT IS NOT THE BROWSER'S RENDERED FORM EITHER: the key never falls
+      // through, because a key that sometimes falls through is precisely the
+      // ambiguity the ruling deleted.
+      const rendered = await page.evaluate(() => document.getSelection()?.toString() ?? '');
+      expect(rendered.length, 'the browser had plenty it would have given').toBeGreaterThan(200);
+      expect(refused).not.toBe(rendered);
+      expect(refused.length, 'and the refusal is a sentence, not a transcript')
+        .toBeLessThan(rendered.length);
+
+      // ── AND THEN, WITH NOTHING CHANGED BUT TIME, THE SAME KEY ─────────
+      //
+      // "press it again in a moment" is what the refusal tells the reader to
+      // do, so the test does exactly that and nothing else.
+      slow = false;
+      let took = '';
+      for (let i = 0; i < 40; i += 1) {
+        await page.waitForTimeout(500);
+        await clearPayload(page);
+        await page.keyboard.press('Control+c');
+        took = await payload(page);
+        if (!took.includes('still being read from the record')) break;
+      }
+      await expect(bar.said).toContainText('Copied');
+      const onScreen = rounds(await well.evaluate((n) => n.textContent ?? ''));
+      const never = [...rounds(took)].filter((r) => !onScreen.has(r));
+      expect(never.length, 'the second press is the whole record, undrawn rows included')
+        .toBeGreaterThan(20);
+    });
+
+  test('on the Hebrew page the key gives the RECORD, not the rendering', async ({ page }) => {
+    // The same argument `a marked turn copies its own words` makes about the
+    // first button, made about the key: this UI inserts direction wrappers,
+    // and the item's complaint is that `Ctrl+C` carried the page's rendering
+    // rather than the record. Measured here in the language where it costs
+    // something.
+    await openDocument(page, 'he');
+    const bar = copyBar(page);
+    const turn = page.locator('article.tvturn:not(.tvsyn)').first();
+    await markRow(page, await turn.evaluate((n) => (n as HTMLElement).dataset['n'] ?? ''));
+
+    await clearPayload(page);
+    await page.keyboard.press('Control+c');
+    await expect(bar.said).toContainText('\u05d4\u05d5\u05e2\u05ea\u05e7', { timeout: 10_000 });
+    const text = await payload(page);
+    expect(text.length).toBeGreaterThan(0);
+    expect(BIDI.test(text), 'the key carries no direction mark the record did not').toBe(false);
+
+    // And it is the same bytes the first button gives, in this language too.
+    await clearPayload(page);
+    await bar.message.click();
+    await expect.poll(async () => (await payload(page)).length,
+      { timeout: 20_000 }).toBeGreaterThan(0);
+    expect(await payload(page)).toBe(text);
+  });
+
+  test('the key works in a BARE lane window, which runs the same document', async ({ page }) => {
+    // `plan:archive seq:51` shipped `/lane.html`, which imports `mountDocument`
+    // and forks nothing — so an affordance added to the document has to be
+    // measured in the window with no application around it, or "it works" is a
+    // claim about one of the two pages it ships on.
+    //
+    // THE APP FIRST, FOR THE CREDENTIAL AND NOTHING ELSE: that page exchanges
+    // no nonce and rides the `Path=/` cookie the shell's bootstrap set.
+    await open(page, '#/conversations', 'en');
+    await page.goto(`http://127.0.0.1:${harness.port}/lane.html?id=agent-outer`);
+    await page.waitForSelector('.tvscroll .tvturn', { timeout: 20_000 });
+    await expect(page.locator('#strip'), 'there is no application here').toHaveCount(0);
+
+    const bar = copyBar(page);
+    const turn = page.locator('article.tvturn').first();
+    await markRow(page, await turn.evaluate((n) => (n as HTMLElement).dataset['n'] ?? ''));
+
+    await clearPayload(page);
+    await page.keyboard.press('Control+c');
+    await expect(bar.said).toContainText('Copied', { timeout: 10_000 });
+    const text = await payload(page);
+    expect(text).toContain(LANE_BRIEF);
+    // The record's own words with none of the page's furniture around them: a
+    // bare single-turn passage carries no speaker heading, which is
+    // `barePassage`'s whole rule and not something the browser's copy does.
+    expect(text).not.toContain('##');
+
+    // The same bytes the first button gives, on this page too.
+    await clearPayload(page);
+    await bar.message.click();
+    await expect.poll(async () => (await payload(page)).length,
+      { timeout: 20_000 }).toBeGreaterThan(0);
+    expect(await payload(page)).toBe(text);
   });
 });

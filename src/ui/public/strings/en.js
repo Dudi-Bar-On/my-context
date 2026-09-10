@@ -401,6 +401,14 @@ export const strings = {
   'conv.copy.tooMany': 'That marks {n} sections and one copy takes at most {cap}. Nothing was copied — mark less and copy again.',
   'conv.copy.tooLong': 'Those records are {bytes} bytes and one copy takes at most {cap}. Nothing was copied — a half-written record is not a record, so this refuses rather than cuts.',
   'conv.copy.noBytes': 'The transcript those records live in could not be read, so nothing was copied.',
+  // The two sentences `Ctrl+C` can refuse with, and they go on the CLIPBOARD
+  // as well as on the screen. A key that put nothing on the clipboard would
+  // leave whatever was there before, and a paste of that looks right — which
+  // `INV-nothing-is-dropped-silently` calls worse than a refusal. Bracketed,
+  // like `conv.copy.renderedIs` and `conv.copy.shutFold`, because that is
+  // already this document's shape for a sentence that travels with a paste.
+  'conv.copy.keyNotYet': '[Nothing was copied. The marked passage is still being read from the record. Ctrl+C serves the record and never the page’s own rendering, so it refuses rather than hand you a different form — press it again in a moment.]',
+  'conv.copy.keyTooMany': '[Nothing was copied: that marks {n} sections and one copy takes at most {cap}. Mark less and press Ctrl+C again.]',
   'conv.copy.refused': 'The browser refused the clipboard, so nothing was copied. The text is ready — press the button again, or use your browser’s own copy.',
   // Injection preview
   'preview.h': 'Injection preview',

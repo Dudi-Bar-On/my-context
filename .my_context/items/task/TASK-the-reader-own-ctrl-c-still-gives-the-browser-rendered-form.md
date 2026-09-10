@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: Pressing the usual copy key still copies what the screen looks like, not the clean text, so a reader has to know to use the new buttons.
-summary_of: 39f3654eaa114af7
+summary_of: 3fdeb890c6b91584
 scope:
   - src/ui/public/screens/conversations.js
 tags:
@@ -15,17 +15,17 @@ tags:
   - ui
   - "plan:archive"
   - "seq:42"
-  - "state:todo"
+  - "state:done"
 origin: human
 source_file: null
 source_anchor: null
 source_checksum: null
 valid_from: 2026-09-09
 valid_until: null
-checksum: ab4611e602b0816d
+checksum: 3e1c45b0bbd7b559
 plan: archive
 seq: "42"
-state: todo
+state: done
 priority: "2"
 needs: archive/17
 ---
@@ -102,6 +102,48 @@ THREE THINGS THE LANE THAT BUILDS IT MUST NOT GET WRONG:
     serves a partial record is worse than the browser’s own, because it looks right.
   - THE CLIPBOARD FORMATS ARE ALREADY RULED by the parent item and by seq:17. Ctrl+C is a new
     AFFORDANCE for an existing format, not a fourth format.
+
+
+BUILT 2026-09-10, EXACTLY THE RULING AND NOTHING BESIDE IT. A `copy` listener on the well
+(`onCopy`) plus the pre-fetch (`runPrefetch`/`schedulePrefetch`), in
+`src/ui/public/screens/conversations.js`. The three buttons were not touched. The one refactor is
+`messageForm`, which splits BUILDING message text from FETCHING it, so the button and the key emit
+the same bytes from one builder rather than two spellings of one format - and a browser test asserts
+that byte for byte in both languages.
+
+WHAT THE PRE-FETCH ACTUALLY COSTS, measured in both browser projects rather than carried over from
+the number above: a 231-section passage with 211 of its rows never drawn cost 8 REQUESTS and
+137-182 ms, over four runs. The item's own bound - 10 requests and 207 ms for 274 sections on the
+owner's transcript - is confirmed, not contradicted: the same ~1 request per 27 sections, and the
+cost lands entirely while marking. Nothing is spent for a passage the reader can already see,
+because the fill asks only for what `bodies` is missing, and nothing at all above
+`PASSAGE_NODE_CAP`, where a copy refuses anyway. The settle is 90 ms, which is the one number the
+ruling did not fix: `selectionchange` fires on every mouse move of a drag, so asking per event would
+spend a request per pixel.
+
+WHEN THE PRE-FETCH HAS NOT LANDED THE KEY REFUSES, and it refuses IN THE PAYLOAD as well as on the
+screen - `conv.copy.keyNotYet`, in both string tables. It does NOT fall through to the browser, which
+is the ambiguity this ruling deleted, and it does not serve a partial record, which
+`INV-nothing-is-dropped-silently` calls worse than the browser's own because it looks right. A key
+that changed nothing on the clipboard would leave the reader's PREVIOUS copy there to be pasted, so
+the refusal is written rather than withheld. Over the cap it refuses the same way, with
+`conv.copy.keyTooMany`. Both refusals re-arm the fill, so the reader's next press is the record -
+driven in a test that holds `/nodes` for two seconds, presses inside the hold, and presses again
+after it.
+
+`bodies` IS NOT MONOTONIC AND THE HANDLER NEVER ASSUMES IT IS. `refill` deletes the tail node's body
+when a partial record is replaced (seq:19) and `rebuildReplaced` clears the map outright, so
+readiness is re-read from `bodies` on every press rather than remembered in a flag.
+
+EVIDENCE. Four new tests in `e2e/conversations.spec.ts`, green on BOTH projects: the key over a
+231-section passage with 211 undrawn rows, asserted undrawn BEFORE the key is pressed and asserted
+again against the browser's own `Selection.toString()`, which reaches none of the 42 turns the key
+delivered; the refusal-then-record pair above; the Hebrew page, where the payload carries no
+direction mark; and `/lane.html`, because `seq:51` imports `mountDocument` and forks nothing. PROVED
+BY REMOVAL, twice: deleting the `copy` listener reddened all four in both projects (8 failures);
+deleting only the ON-SELECTION fill - leaving the keypress re-arm, which is the declined option 4 -
+reddened the load-bearing one in both projects while the others stayed green, which is what isolates
+the ruling from the shape it beat.
 
 ## Relations
 - depends_on [[TASK-a-selected-passage-copies-as-something-a-terminal-will]]
