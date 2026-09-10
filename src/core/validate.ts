@@ -35,7 +35,7 @@ export const SEVERITIES: Severity[] = ['hard', 'soft'];
  * three words until that declaration needed a single home. The vocabulary is
  * `Origin`'s, not the audit filter's — the filter is one of its two readers.
  */
-export const ORIGINS: Origin[] = ['human', 'agent', 'ingest'];
+export const ORIGINS: Origin[] = ['human', 'agent', 'ingest', 'review'];
 
 /**
  * Without this, `status: 'activ'` (or any other typo) persists happily —

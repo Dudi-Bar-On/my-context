@@ -232,8 +232,17 @@ const RECORD_KEYS = [
 ] as const;
 
 /**
- * `Origin`'s three members, as a table keyed BY the union rather than an array
+ * `Origin`'s four members, as a table keyed BY the union rather than an array
  * of it.
+ *
+ * **The closure check has now fired once, which is why it reads "four".**
+ * `plan:loop seq:3` added `'review'` — the self-improvement pass — and this
+ * line was one of exactly two places the compiler stopped. Admitted rather
+ * than refused: a history row saying a create happened with origin `review` is
+ * a true record of a create that happened, and dropping it would make an
+ * imported history quietly disagree with the one it was exported from. What
+ * `review` cannot do travels with the origin itself (`core/types.ts`), not
+ * with this list.
  *
  * **The two copies this comment used to cite are gone, and the reason it gave
  * for a third went with them.** `core/validate.ts` EXPORTS `ORIGINS`, and
@@ -253,7 +262,7 @@ const RECORD_KEYS = [
  * `import` member — and a pack whose history rows carried one would put that
  * refused value in front of every surface that renders an imported record.
  */
-const ORIGINS: Record<Origin, true> = { human: true, agent: true, ingest: true };
+const ORIGINS: Record<Origin, true> = { human: true, agent: true, ingest: true, review: true };
 
 /** UTC with milliseconds — `toISOString()`, the spelling every record carries. */
 const INSTANT = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/;

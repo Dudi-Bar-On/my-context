@@ -1,7 +1,29 @@
 export type Tier = 'normative' | 'rationale';
 export type Status = 'active' | 'draft' | 'superseded' | 'deprecated' | 'validated';
 export type Severity = 'hard' | 'soft';
-export type Origin = 'human' | 'agent' | 'ingest';
+/**
+ * Who is asking. **`'review'` is the self-improvement pass and it is a
+ * FOURTH member rather than a flavour of `'agent'`** — `plan:loop seq:3`,
+ * design §4/§13.
+ *
+ * Every existing guard in this product is written `origin !== 'human'`, never
+ * as an enumeration of the callers we happened to think of (`trustedStatus`
+ * says so in as many words), so `'review'` inherits all of them the moment it
+ * exists. What it needs that `'agent'` does not is STRICTLY MORE refusal, and
+ * that is what the separate member buys:
+ *
+ *  - it can never produce anything but a `draft`, on any tier, where an
+ *    `'agent'` capture of a rationale-tier item lands `active`;
+ *  - `updateItem` and `supersedeItem` refuse it outright — it proposes and
+ *    never edits;
+ *  - its files land outside `items/` (`core/drafts.ts`), so a proposal nobody
+ *    approved cannot reach anybody else's clone.
+ *
+ * Folding it into `'agent'` would have made all three conditional on a flag
+ * travelling beside the origin, and `audit --origin review` would have had
+ * nothing to filter on.
+ */
+export type Origin = 'human' | 'agent' | 'ingest' | 'review';
 export type Layer = 'project' | 'global';
 
 /**

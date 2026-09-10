@@ -5,6 +5,7 @@ import {
 } from 'node:fs';
 import path from 'node:path';
 import type { Config } from './config.ts';
+import { DRAFT_DIR } from './drafts.ts';
 import {
   CHECKSUM_BASIS_VERSION, classifyChecksumMismatch, computeItemChecksum, parseChecksumVersion,
   parseItem, renderItem,
@@ -129,7 +130,32 @@ export function loadLayer(
   // Sort by root-relative POSIX path so that duplicate-id resolution (below)
   // does not depend on filesystem enumeration order, which is not
   // guaranteed to be stable across platforms.
-  const files = walk(path.join(root, 'items'), root, [], errors, new Set())
+  // ── TWO ROOTS, ONE CORPUS ────────────────────────────────────────────────
+  //
+  // `items/` is the committed corpus. `.drafts/` holds what the
+  // self-improvement pass proposed and nobody has promoted (`core/drafts.ts`,
+  // design §4), and it is walked HERE rather than loaded by some second
+  // reader, because "same corpus, same id grammar, same index" is the whole
+  // claim: a proposal is listed, shown, searched and duplicate-checked exactly
+  // like an item, and `select` leaves it alone for the ordinary reason that
+  // its status is `draft`. A separate loader would be a second store wearing a
+  // directory's clothes, and the first thing to drift would be the duplicate-id
+  // check below — which is precisely the check a draft NEEDS, since a promoted
+  // draft moves into `items/` under the same id.
+  //
+  // One shared `visitedRealDirs` across both walks, not one per walk: a symlink
+  // from `.drafts/` into `items/` (or a workspace where one is a link to the
+  // other) would otherwise load every item twice and report every id as a
+  // duplicate of itself.
+  //
+  // A missing `.drafts/` costs one failed `realpathSync` and produces no error
+  // — `walk` returns on that, which is what makes this free for the workspaces
+  // that never turn the loop on. That is every workspace today.
+  const visited = new Set<string>();
+  const files = [
+    ...walk(path.join(root, 'items'), root, [], errors, visited),
+    ...walk(path.join(root, DRAFT_DIR), root, [], errors, visited),
+  ]
     .map((file) => ({ file, rel: relPosix(root, file) }))
     .sort((a, b) => (a.rel < b.rel ? -1 : a.rel > b.rel ? 1 : 0));
 

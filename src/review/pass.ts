@@ -2,17 +2,23 @@
  * **The pass: it reads, it writes one report, and it creates nothing** —
  * `plan:loop seq:2`, design §5.
  *
- * ── PHASE 2 ENDS AT A DRY RUN ON PURPOSE ───────────────────────────────────
+ * ── IT NOW PROPOSES, AND THE RATION IS WHAT DECIDES ───────────────────────
  *
- * `dryRun` is the ONLY mode this build has. The pass reads the whole session,
- * writes `state/review-last-pass.json`, and creates no item, no draft, no
- * staging entry and no revision. That is so it can run on real sessions for
- * days before `plan:loop seq:3` is allowed to propose anything — and the only
- * risk in the meantime is disk time.
+ * `plan:loop seq:2` shipped with `dryRun` as the only mode. `plan:loop seq:3`
+ * adds the proposing half (`propose.ts`), and what decides whether a pass
+ * writes anything is **`maxProposals`** — §11's `maxProposalsPerPass`, which
+ * ships at 0 and is the owner's to raise. Zero is the ration set to nothing,
+ * not a second kill switch: the switch is `review.enabled` and there is one of
+ * it, which is §11's rule and the reason upstream's issue #82708 happened.
  *
- * `created` is a FIELD on the report and always `[]`, rather than a sentence in
+ * `created` and `proposed` are FIELDS on the report rather than sentences in
  * this comment, because a reader checking whether the loop has started writing
  * to the corpus should be able to check it rather than trust it.
+ *
+ * **The reading half is unchanged.** Everything above the proposing block in
+ * `runPass` is seq:2's, and the report is built in full before anything can be
+ * written — a pass that lost its coverage record because the writing half
+ * failed would be the worst of both.
  *
  * ── THE ONE ASSERTION THAT PROTECTS THE PERSON ─────────────────────────────
  *
@@ -36,7 +42,10 @@ import { mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } from 'node
 import path from 'node:path';
 import { isMainEntry } from '../core/paths.ts';
 import { POINT_CATEGORIES, type PointCategory } from '../core/session-summary.ts';
+import { openRebuiltStore } from '../core/open-store.ts';
+import { resolveWorkspace } from '../core/workspace.ts';
 import { gather, wholenessLine, type PassInput, type SkippedSource } from './input.ts';
+import { propose } from './propose.ts';
 import { worthAPass, type RubricVerdict } from './rubric.ts';
 
 /** The report's name under `<corpusRoot>/state/`. */
@@ -58,8 +67,18 @@ export function passReportPath(stateRoot: string): string {
 export interface PassReport {
   at: string;
   sessionId: string | null;
-  /** Always `true` in this build. A field, not a promise. */
-  dryRun: true;
+  /**
+   * Whether this pass wrote anything. **A field, not a promise** — a reader
+   * checking whether the loop has started writing to the corpus checks
+   * `created` and this together rather than trusting a comment.
+   *
+   * `plan:loop seq:2` typed this as the literal `true` because a dry run was
+   * the only mode that existed. `plan:loop seq:3` gives it a second value and
+   * the type widens with the behaviour, which is the honest direction: a
+   * `dryRun: true` that could not be false was a claim about the whole
+   * product, and it has stopped being one.
+   */
+  dryRun: boolean;
   /** `wholenessLine(input)`. The first thing a reader should read. */
   wholeness: string;
   whole: boolean;
@@ -80,11 +99,37 @@ export interface PassReport {
     at: string | null; text: string;
   }[];
   /**
-   * **Always empty in this phase**, and a field rather than a sentence so that
-   * "the loop has not started writing to the corpus" is something a reader
-   * checks rather than believes.
+   * The draft ids this pass wrote. **Empty on a dry run by construction**, and
+   * a field rather than a sentence so that "the loop has not started writing
+   * to the corpus" is something a reader checks rather than believes.
    */
   created: string[];
+  /**
+   * What the proposing half did with what the reading half found — every
+   * candidate accounted for, in `propose.ts`'s own counters.
+   *
+   * Present on a dry run too, carrying what the pass WOULD have proposed.
+   * That is the whole point of a dry run: the way to find out what a proposer
+   * would say is to let it say it somewhere that costs nothing.
+   */
+  proposed: ProposeSummary | null;
+}
+
+/** `ProposeResult` without the drafts' full text. The report is read by people. */
+export interface ProposeSummary {
+  considered: number;
+  screened: number;
+  empty: number;
+  suppressed: number;
+  declined: number;
+  irrelevant: number;
+  rationed: number;
+  unauthored: Record<string, number>;
+  /** id (or `null` on a dry run), tier, target, title, and whether anything confirms it. */
+  drafts: {
+    id: string | null; artifact: string; category: string; target: string | null;
+    title: string; confirmed: boolean;
+  }[];
 }
 
 /**
@@ -148,8 +193,25 @@ export interface PassOptions {
   sessionId: string | null;
   subagentDir: string | null;
   includeSubagents: boolean;
-  /** The ONLY mode this build has. Typed as the literal so a caller cannot pass false. */
-  dryRun: true;
+  /**
+   * Read and report, and write NOTHING — no draft, no sighting ledger entry.
+   *
+   * No longer typed as the literal `true`: `plan:loop seq:3` gives the pass a
+   * second mode, and a type that forbade the second mode would be a claim the
+   * product no longer makes.
+   */
+  dryRun: boolean;
+  /**
+   * §11's `maxProposalsPerPass`. **The ration bounds VOLUME, never the
+   * rubric** — a pass that found ten things worth proposing still found ten;
+   * this decides how many reach a person in one go.
+   *
+   * `0` writes nothing, and it is a legal value rather than a disabled one, in
+   * exactly the way `maxFiresPerSession: 0` is (`core/config.ts`): it is the
+   * ration set to nothing, not a second kill switch. The switch is
+   * `review.enabled`, and there is one of it.
+   */
+  maxProposals: number;
   budgetBytes?: number;
   capBytes?: number;
 }
@@ -179,7 +241,7 @@ export async function runPass(options: PassOptions): Promise<PassReport> {
   const report: PassReport = {
     at: new Date().toISOString(),
     sessionId: options.sessionId,
-    dryRun: true,
+    dryRun: options.dryRun,
     wholeness: wholenessLine(input),
     whole: input.whole,
     sinceByte,
@@ -194,7 +256,64 @@ export async function runPass(options: PassOptions): Promise<PassReport> {
     byCategory: tally(input),
     points: input.points,
     created: [],
+    proposed: null,
   };
+
+  // ── THE PROPOSING HALF ────────────────────────────────────────────────────
+  //
+  // **Everything above this line is `plan:loop seq:2` and is unchanged.** The
+  // report is built first and in full, so a proposing step that throws still
+  // leaves a report saying what was read — a pass that lost its coverage
+  // record because the half that writes items failed would be the worst of
+  // both.
+  //
+  // `maxProposals: 0` skips the store open entirely rather than opening one
+  // and proposing nothing: the open is a rebuild of the whole corpus
+  // (`openRebuiltStore` says why it is unconditional), and paying for it to
+  // produce an empty list on every `Stop` is exactly the kind of cost that
+  // gets a subsystem turned off.
+  if (options.maxProposals > 0) {
+    try {
+      // `workspace` is the `.my_context` directory; `resolveWorkspace` takes
+      // the project cwd, which is its parent. Resolved rather than assumed so
+      // the config the pass writes under is the same one every other surface
+      // reads — category tiers, `scopePolicy` and the contradiction gate all
+      // come off it.
+      const ws = resolveWorkspace(path.dirname(options.workspace));
+      const opened = openRebuiltStore(ws);
+      try {
+        const outcome = await propose(input, {
+          workspace: options.workspace,
+          ctx: { root: options.workspace, store: opened.store, config: ws.config },
+          sessionId: options.sessionId,
+          max: options.maxProposals,
+          dryRun: options.dryRun,
+        });
+        report.created = outcome.created;
+        report.proposed = {
+          considered: outcome.considered,
+          screened: outcome.screened,
+          empty: outcome.empty,
+          suppressed: outcome.suppressed,
+          declined: outcome.declined,
+          irrelevant: outcome.irrelevant,
+          rationed: outcome.rationed,
+          unauthored: { ...outcome.unauthored },
+          drafts: outcome.proposals.map((p) => ({
+            id: p.id, artifact: p.artifact, category: p.category,
+            target: p.target, title: p.title, confirmed: p.confirmed,
+          })),
+        };
+      } finally {
+        opened.store.close();
+      }
+    } catch {
+      // A detached child has nobody to tell, and the report is the only thing
+      // anybody will read. `proposed` stays `null`, which is distinguishable
+      // from `proposed` with zero drafts — absent is not zero.
+    }
+  }
+
   writeReport(options.workspace, report);
   return report;
 }
@@ -224,6 +343,13 @@ export function spawnPass(options: PassOptions, spawnFn: typeof spawn = spawn): 
     ...(options.sessionId === null ? [] : ['--session', options.sessionId]),
     ...(options.subagentDir === null ? [] : ['--subagents', options.subagentDir]),
     ...(options.includeSubagents ? [] : ['--no-subagents']),
+    // The ration crosses the process boundary as a number rather than as a
+    // flag, so a child started with no `--max` proposes NOTHING. That is the
+    // safe direction for the one argument that decides whether a detached
+    // process writes to the corpus: a lost argument must cost a proposal, not
+    // produce one nobody asked for.
+    '--max', String(Math.max(0, options.maxProposals)),
+    ...(options.dryRun ? ['--dry-run'] : []),
   ];
   try {
     const child: ChildProcess = spawnFn(process.execPath, args, {
@@ -261,7 +387,11 @@ if (isMainEntry(import.meta.filename, process.argv[1])) {
       sessionId: flag(argv, '--session'),
       subagentDir: flag(argv, '--subagents'),
       includeSubagents: !argv.includes('--no-subagents'),
-      dryRun: true,
+      // Absent, unparseable or negative all mean 0 — see `spawnPass`. The
+      // child never infers a ration from the config: the parent read the
+      // config, and a second reader is a second answer.
+      maxProposals: Math.max(0, Number(flag(argv, '--max') ?? 0) || 0),
+      dryRun: argv.includes('--dry-run'),
     }).catch(() => { /* a detached child has nobody to tell */ });
   }
 }

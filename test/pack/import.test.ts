@@ -298,7 +298,7 @@ test('every imported item lands draft, on BOTH tiers', () => {
   assert.equal(box.ctx.store.get(LESSON_ID)?.type, 'lesson', 'the rationale half of the pair');
 });
 
-test('imported items carry origin ingest — no fourth origin is invented', () => {
+test('imported items carry origin ingest — import invents no origin of its own', () => {
   const box = workspace();
   const source = artefact();
   const outcome = applyImport(box.ctx, plan(box, source), options(source));
@@ -306,12 +306,19 @@ test('imported items carry origin ingest — no fourth origin is invented', () =
   for (const id of outcome.imported) assert.equal(box.ctx.store.get(id)?.origin, 'ingest');
 
   // The union is still closed, checked where a list cannot go stale: adding a
-  // fourth member to `Origin` fails this file's typecheck rather than leaving
-  // a retyped array quietly agreeing with itself.
-  const ORIGINS = ['human', 'agent', 'ingest'] as const satisfies readonly Origin[];
+  // member to `Origin` fails this file's typecheck rather than leaving a
+  // retyped array quietly agreeing with itself.
+  //
+  // **It has fired once, and that is the record of it.** `plan:loop seq:3`
+  // added `'review'` — the self-improvement pass — and this line and
+  // `pack/history.ts`'s `Record<Origin, true>` were the two places the compiler
+  // stopped, which is exactly the pair of places a fourth member had to be
+  // considered. Import is unaffected: an imported item is `'ingest'` whatever
+  // the pack says, and no route through this module can produce `'review'`.
+  const ORIGINS = ['human', 'agent', 'ingest', 'review'] as const satisfies readonly Origin[];
   type Assert<T extends true> = T;
   type _OriginIsClosed = Assert<[Origin] extends [(typeof ORIGINS)[number]] ? true : false>;
-  assert.deepEqual([...ORIGINS], ['human', 'agent', 'ingest']);
+  assert.deepEqual([...ORIGINS], ['human', 'agent', 'ingest', 'review']);
 });
 
 test('incoming ids are preserved verbatim, so the bucket rule means something on re-import', () => {

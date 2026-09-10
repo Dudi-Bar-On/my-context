@@ -29,6 +29,7 @@ import {
 // item is the moment it is retired. It READS and never writes — see that
 // module's header, and see `restingTestsSaid` for why it can never gate.
 import { restingTestsSaid, testsRestingOn } from './tests-resting-on.ts';
+import { draftFilePath, ensureDraftDir } from './drafts.ts';
 import { normalizePosix } from './paths.ts';
 import {
   auditMutation, normalizeSource, persist, projectItem, projectItems, requireWritableItem,
@@ -567,6 +568,37 @@ function updateSurface(origin: Origin): ContradictionSurface {
 }
 
 /**
+ * **The pass proposes; it never edits** — design §4, and the refusal names the
+ * ruling rather than only the rule, because a caller that reads only "refused"
+ * looks for the flag that turns it off.
+ *
+ * The reason is not a preference about tidiness. Continuous LLM updating
+ * causes progressive fidelity loss that ACCELERATES as it compounds
+ * (arXiv:2605.12978): each rewrite is taken over the previous rewrite rather
+ * than over the evidence, so the drift has no restoring force. A pass that may
+ * only ADD leaves every earlier statement exactly as its author left it, and a
+ * human comparing a draft against the item it wants to replace is comparing
+ * two things that were each written once.
+ *
+ * Shared by `updateItem` and `supersedeItem` deliberately. Superseding is not
+ * an edit of the retired item's TEXT, but it stamps its status and its
+ * `valid_until` and writes an edge onto it — which is a change to what
+ * governs, made by the caller least entitled to make one. One message for both
+ * so the two cannot drift into saying different things about the same
+ * boundary.
+ */
+function reviewNeverEditsError(verb: string, id: string): Error {
+  return new Error(
+    `my_context: the self-improvement pass cannot ${verb} ${id}. It carried origin "review", and ` +
+    `that origin PROPOSES — it creates drafts nobody has to trust and it changes nothing that ` +
+    `already exists. This is a ruling, not a permission that can be raised: an item rewritten by ` +
+    `each pass is rewritten over the last rewrite rather than over the evidence, and the drift ` +
+    `that produces has nothing pulling it back. Propose the change instead — create_item with ` +
+    `origin "review" lands a draft beside the corpus, and a person promotes it.`,
+  );
+}
+
+/**
  * **The one wording of the question that retires an item, so the gated path
  * cannot ask it differently from `mycontext supersede`.**
  *
@@ -964,7 +996,15 @@ export function createItem(
     observations,
     relations: input.relations ?? [],
     layer: 'project',
-    filePath: `items/${input.type}/${itemId}.md`,
+    // **`items/` is committed; `.drafts/` is not** — design §4, and
+    // `core/drafts.ts` carries the reasoning. The branch is here, at the one
+    // place an item's path is decided, rather than in `writeItem`: a path
+    // chosen at write time would be invisible to the `MutationResult` this
+    // function returns, and `filePath` is what every caller — the CLI's
+    // "created … at …", the audit row, `detectDivergence` — reads back.
+    filePath: origin === 'review'
+      ? draftFilePath(input.type, itemId)
+      : `items/${input.type}/${itemId}.md`,
     };
     // AFTER every field is in place, so a capture that carries a body and a
     // summary produces a summary that is `current` rather than one born stale.
@@ -995,6 +1035,15 @@ export function createItem(
    * workspace-scoped and already held around `applyCandidates`, which calls
    * `createItem` — taking it here would deadlock that path.
    */
+  // BEFORE the first `persist`, and unconditionally on this origin rather
+  // than once per workspace: `writeItem` creates `.drafts/<type>/` with a bare
+  // `mkdirSync`, so without this the FIRST proposal in a workspace would land
+  // in a directory no `.gitignore` covers. `ensureDraftDir` rewrites the `*`
+  // file every time for the reason `ensureLogDir` states — an emptied or
+  // hand-edited ignore self-heals — and here the cost of not self-healing is a
+  // proposal nobody approved arriving in somebody else's clone.
+  if (origin === 'review') ensureDraftDir(ctx.root);
+
   let item: Item;
   if (input.id !== undefined) {
     // An explicit id names an item this call must never silently overwrite.
@@ -1238,6 +1287,12 @@ export function updateItem(
 ): MutationResult {
   const item = requireWritableItem(ctx, input.id);
   const origin: Origin = input.origin ?? 'human';
+  // FIRST — above the normalisation block below, and above `requireWritableItem`
+  // in effect if not in line order, because this refusal is about the CALLER and
+  // not about the input. A `review` caller that got as far as a validation error
+  // would learn that its title was too long, which is an answer to a question it
+  // is not allowed to ask.
+  if (origin === 'review') throw reviewNeverEditsError('edit', input.id);
 
   // Every replacement value is normalized and validated up front, before
   // any trust-boundary check runs and before `item` is touched — the same
@@ -2178,6 +2233,11 @@ export function supersedeItem(ctx: MutationContext, input: SupersedeInput): Muta
   validateRelationTarget(input.by, '"by"');
 
   const origin: Origin = input.origin ?? 'human';
+  // The pass cannot retire anything either — see `reviewNeverEditsError`, and
+  // note this is WIDER than the `governsNormatively` refusal below: that one
+  // protects items that currently govern, and this one also covers superseding
+  // a draft, which every other non-human origin is allowed to do.
+  if (origin === 'review') throw reviewNeverEditsError('supersede', input.id);
   validateEnums(input);
   // `reason` becomes the text of an observation on the replacement (below),
   // so it goes through the same round-trip guard as any other observation

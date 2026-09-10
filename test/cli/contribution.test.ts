@@ -105,7 +105,12 @@ test('--json carries the caveat and the purpose as data, not as prose a script c
     assert.equal(doc.injectionRecords, 1);
     assert.match(doc.caveat, /INJECTION, never reading or reliance/);
     assert.match(doc.purpose, /BASELINE/);
-    assert.deepEqual(doc.cohorts.map((c) => c.origin), ['agent', 'human', 'ingest'],
+    // Sorted, and every member of `Origin` — including the ones this corpus
+    // has none of — so a script reading the JSON sees the zeros rather than
+    // inferring them from an absence. `'review'` joined the union in
+    // `plan:loop seq:3` (the self-improvement pass), and it appears here for
+    // exactly the reason the other three do: a cohort of zero is a measurement.
+    assert.deepEqual(doc.cohorts.map((c) => c.origin), ['agent', 'human', 'ingest', 'review'],
       'every origin the corpus could have, so a script sees the zeros too');
     assert.equal(doc.items.find((i) => i.id === 'CONST-shipped')?.delivered, 1);
   } finally { removeTree(cwd); }

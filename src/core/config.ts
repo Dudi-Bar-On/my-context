@@ -645,6 +645,23 @@ export interface ReviewConfig {
   readWholeTranscript: boolean;
   /** Read this session's subagent transcripts too (§3b). */
   includeSubagents: boolean;
+  /**
+   * **How many drafts one pass may write** — §11, landed by `plan:loop seq:3`,
+   * which is what finally gave it something to govern.
+   *
+   * It bounds VOLUME and never the rubric: a pass that found ten things worth
+   * proposing still found ten, and `review-last-pass.json` says how many it
+   * held back (`proposed.rationed`). That distinction is the same one
+   * `plan:loop seq:2` made about `maxFiresPerSession`, and it matters for the
+   * same reason — a cap that silently changed what the pass CONSIDERED would
+   * make the report a report of the cap.
+   *
+   * **0 is legal and means the pass proposes nothing.** It is the ration set
+   * to nothing, exactly as `maxFiresPerSession: 0` is, and it is not a second
+   * kill switch: `enabled: false` is the switch, and §11's rule is one switch
+   * for one subsystem.
+   */
+  maxProposalsPerPass: number;
 }
 
 /**
@@ -661,6 +678,25 @@ export const DEFAULT_REVIEW: ReviewConfig = {
   maxFiresPerSession: 3,
   readWholeTranscript: true,
   includeSubagents: true,
+  // ── A DELIBERATE DEVIATION FROM §11, AND THE REASON IS MEASURED ──────────
+  //
+  // §11 prints `"maxProposalsPerPass": 5`. This ships **0**, so a workspace
+  // that sets `enabled: true` and changes nothing else reads and reports and
+  // writes NOTHING.
+  //
+  // The reason is what the first dry run over the owner's own session found
+  // (`plan:loop seq:3`, and `review/propose.ts` · `AUTHORABLE` carries it in
+  // full): a model-free proposer selects an observation well and cannot
+  // COMPOSE one, so every draft it writes is a sentence lifted from a
+  // transcript. Filed as a `task` — work to be built, which is what a proposed
+  // check is — that is defensible. Filed unread into a corpus this project
+  // dogfoods, on a default nobody chose, it is not.
+  //
+  // So the number the design printed is the number to raise it to, and raising
+  // it is the owner's, after reading a week of `review-last-pass.json`. The
+  // plan says the same thing about the same moment: *"Do not proceed on green
+  // tests alone. Read the drafts."*
+  maxProposalsPerPass: 0,
 };
 
 export interface Config {
@@ -1534,14 +1570,32 @@ function requireDispatchGate(raw: unknown): DispatchGateConfig {
  */
 const REVIEW_KEYS = [
   'enabled', 'everyNToolCalls', 'onPreCompact', 'maxFiresPerSession',
-  'readWholeTranscript', 'includeSubagents',
+  'readWholeTranscript', 'includeSubagents', 'maxProposalsPerPass',
 ];
 
-/** The `review` keys the DESIGN names that this build does not yet act on. */
-const REVIEW_LATER_KEYS = ['maxProposalsPerPass', 'crossSessionSameCwd', 'model'];
+/**
+ * The `review` keys the DESIGN names that this build does not yet act on.
+ *
+ * `maxProposalsPerPass` left this list in `plan:loop seq:3`, which is what the
+ * comment above `ReviewConfig` promised would happen: *"They land when
+ * `plan:loop seq:3` gives them something to govern."* The other two have not,
+ * and refusing them is still the honest answer rather than a leftover:
+ *
+ *  - **`crossSessionSameCwd`** would say whether recurrence looks beyond this
+ *    workspace. It cannot: the sightings ledger (`review/propose.ts`) lives
+ *    INSIDE one corpus root, so "same cwd" is not a setting here, it is the
+ *    only thing the file can express. Accepting the key would promise a
+ *    comparison nothing performs.
+ *  - **`model`** is refused for exactly the reason it always was — nothing in
+ *    this product calls a model, `propose.ts` says so in its first paragraph,
+ *    and a user told their loop runs on Haiku would be told something untrue.
+ */
+const REVIEW_LATER_KEYS = ['crossSessionSameCwd', 'model'];
 
 /** The three `review` keys that are counts, with the bound each is held to. */
-const REVIEW_COUNTS: { key: 'everyNToolCalls' | 'maxFiresPerSession'; min: number; max: number }[] = [
+const REVIEW_COUNTS: {
+  key: 'everyNToolCalls' | 'maxFiresPerSession' | 'maxProposalsPerPass'; min: number; max: number;
+}[] = [
   // 1 is legal and means "consider on every tool call". It is not the same as
   // off — the rubric still decides, and the ration still bounds the session —
   // so it is admitted rather than refused, and 0 is refused with the rest
@@ -1553,6 +1607,13 @@ const REVIEW_COUNTS: { key: 'everyNToolCalls' | 'maxFiresPerSession'; min: numbe
   // unlike `"ui": false` it is not sugar for the switch — the switch is what
   // decides whether a child may be spawned at all.
   { key: 'maxFiresPerSession', min: 0, max: 1000 },
+  // 0 is legal here for `maxFiresPerSession`'s reason and one more of its own:
+  // it is the SHIPPED default (see `DEFAULT_REVIEW`), so refusing it would
+  // refuse the value every workspace already has. The ceiling is deliberately
+  // low — a review surface that a person is expected to read cannot absorb
+  // hundreds of drafts a session, and upstream's measured failure was a 74-item
+  // queue built out of 13 firings.
+  { key: 'maxProposalsPerPass', min: 0, max: 50 },
 ];
 
 /**

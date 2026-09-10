@@ -198,7 +198,15 @@ export function reviewTrigger(
       sessionId: input.session_id ?? null,
       subagentDir: lanes,
       includeSubagents: review.includeSubagents,
-      dryRun: true,
+      // §11's ration, read HERE and passed down rather than re-read by the
+      // child: the parent has the resolved config, and a second reader is a
+      // second answer. It ships at 0, so a workspace that turns `enabled` on
+      // and changes nothing else still writes nothing — see `DEFAULT_REVIEW`.
+      maxProposals: review.maxProposalsPerPass,
+      // A pass proposes only when it has a ration to spend. `dryRun` and a
+      // zero ration say the same thing from two directions and both are
+      // honoured, so neither can be the one that was forgotten.
+      dryRun: review.maxProposalsPerPass <= 0,
     }, spawnFn);
 
     return {

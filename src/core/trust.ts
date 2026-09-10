@@ -265,6 +265,24 @@ export function unknownExtraFieldError(
  * argument would defeat the whole boundary.
  */
 export function trustedStatus(origin: Origin, tier: Tier, requested: Status): Status {
+  // ── `'review'` IS TIER-BLIND, AND THAT IS THE ONE DIFFERENCE ─────────────
+  //
+  // The clause below is per-TIER, which is right for `'agent'` and
+  // `'ingest'`: a rationale-tier capture (a `lesson`, a `note`) governs
+  // nothing that gets injected as an instruction, so an agent landing one
+  // `active` costs a reader one paragraph and costs a future session no
+  // obedience. **The review pass is the caller that breaks that reasoning**,
+  // because `plan:loop seq:3`'s whole artifact order (design §4) exists to
+  // make it produce checks and rules, and a `lesson` is only its FALLBACK. A
+  // per-tier rule would mean the pass's least-preferred output was the one
+  // output that needed no approval — precisely inverted.
+  //
+  // So it is refused before the tier is consulted, and `plan` says why in as
+  // many words: *"A proposal is ALWAYS a draft… with no exception, including
+  // for the rationale tier."* First, so no later branch can undo it, and as a
+  // separate line rather than a widened condition so that removing it is a
+  // visible removal rather than an edited boolean.
+  if (origin === 'review') return 'draft';
   if (origin !== 'human' && tier === 'normative') return 'draft';
   return requested;
 }
