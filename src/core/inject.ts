@@ -205,6 +205,26 @@ export interface Injection {
   text: string;
   /** `Selection.pinnedSpill`, verbatim — see `core/select.ts`. */
   pinnedSpill: PinnedSpill | null;
+  /**
+   * **The corpus ids this injection actually put in front of the model** — in
+   * full or as an index line, which is the same fact for this field's one
+   * reader: an id the model is holding.
+   *
+   * It is `injected.map(r => r.id)`, the same list the audit record is written
+   * from, deduped. It is here for the same reason `pinnedSpill` is — a fact
+   * about the delivery whose reader is not the model — and it is READ rather
+   * than written from here for the same reason too: the caller decides.
+   *
+   * **Its one reader is D41's precedence check** (`src/rules/deliver.ts` ·
+   * `findConflicts`, spec §9), which asks whether any product constant
+   * disagrees with an item the reader is also holding. That check may not live
+   * in this module: `test/rules/isolation.test.ts` walks the import graph from
+   * this file and fails if it can reach `src/rules/`, because *"a store the
+   * corpus has never heard of needs no exceptions anywhere"* (spec §7). So the
+   * ids come OUT of here and the store's own module decides, exactly as
+   * `loadRules`'s `workspaceIsMyContext` is decided by its caller.
+   */
+  deliveredIds: string[];
 }
 
 /**
@@ -290,7 +310,7 @@ export function buildInjectionResult(cwd: string, options: InjectionOptions = {}
     // No workspace at all: no text, and no spill to disclose — nothing was
     // selected, so nothing was dropped. The caller's `noWorkspaceLine` is the
     // disclosure for this case and it is a different sentence.
-    if (stateRoot === null) return { text: '', pinnedSpill: null };
+    if (stateRoot === null) return { text: '', pinnedSpill: null, deliveredIds: [] };
 
     // 1. THE CORPUS, FROM MARKDOWN, PARSED ONCE. No database on the
     // injection-critical path: `select` is pure over Item[] (select.ts,
@@ -1033,7 +1053,16 @@ export function buildInjectionResult(cwd: string, options: InjectionOptions = {}
     // `selection.pinnedSpill` verbatim, never re-derived: it is the figure the
     // budget was measured against at THIS instant, and the audit record above
     // was written from the same object.
-    return { text: output, pinnedSpill: selection.pinnedSpill };
+    return {
+      text: output,
+      pinnedSpill: selection.pinnedSpill,
+      // Deduped, and derived from the SAME `injected` array the audit record
+      // was written from rather than recomputed from the selection: two
+      // spellings of "what did this injection deliver" would be free to
+      // disagree, and the one this field feeds is a check that REPORTS a
+      // disagreement. It must not be able to invent one.
+      deliveredIds: [...new Set(injected.map((ref) => ref.id))],
+    };
   } catch {
     // Fail open: a knowledge base that breaks a session is worse than one
     // that says nothing. The one failure that used to earn a disclosure here
@@ -1044,6 +1073,6 @@ export function buildInjectionResult(cwd: string, options: InjectionOptions = {}
     // No spill is claimed here either, and that is not a shrug: a selection that
     // never completed has no measurement, and reporting one would be inventing
     // it. `null` reads as "nothing recorded", which is exactly what happened.
-    return { text: '', pinnedSpill: null };
+    return { text: '', pinnedSpill: null, deliveredIds: [] };
   }
 }

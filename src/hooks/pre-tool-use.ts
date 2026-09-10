@@ -14,12 +14,16 @@ import { injectableTypes, select } from '../core/select.ts';
 import { Store } from '../core/store.ts';
 import type { Item } from '../core/types.ts';
 import { isUsableId } from '../core/vocabulary.ts';
-import { resolveWorkspace } from '../core/workspace.ts';
+import { findProjectRoot, resolveWorkspace } from '../core/workspace.ts';
+import { assertDoor } from '../rules/deliver.ts';
 import {
   hookParseErrorLine, ledgerKey, parseHookInput, preToolUseContext, preToolUseDeny, readStdin,
   type HookInput,
 } from './io.ts';
 import { capped, NOTE_MAX } from './observe.ts';
+
+/** One blank line between the assertion and whatever follows it. */
+const SEPARATOR = '\n\n';
 
 const FILE_PATH_KEYS = ['file_path', 'path', 'notebook_path'];
 
@@ -635,6 +639,54 @@ function agentDispatchVerdict(input: HookInput, cwd: string): string {
   return preToolUseDeny(agentDenyMessage(candidates));
 }
 
+/**
+ * **THE ASSERTION** — D41 spec §8.2, `plan:store seq:2` Task 7. Returns the
+ * sentence to disclose, or the empty string.
+ *
+ * Spec §8.2 is blunt about why this exists and about what it may not claim:
+ * *"Nothing can inspect a model's context window. What is verifiable is that
+ * we injected at every door and none was missed."* So this does not ask
+ * whether the constants are in memory. It asks whether any door wrote a row
+ * for this key, and reports when none did.
+ *
+ * **PreToolUse is the earliest hook that runs after every door.** A subagent
+ * reaches it at its first `Read`, `Edit`, `Write` or `Agent` call, which is
+ * the earliest moment anything downstream of `SubagentStart` can speak — and
+ * `subagent-start` is the door that carries the weight (1,082 dispatches
+ * against 54 session starts in 36,024 records). `SubagentStop` would be
+ * cheaper and would arrive after the agent had already done the work, which
+ * is a report rather than an assertion.
+ *
+ * **Its blind spot is named rather than left to be discovered:** this hook's
+ * `hooks.json` matcher is `Read|Edit|MultiEdit|Write|NotebookEdit|Agent`, so a
+ * session whose every tool call is a `Bash` never reaches it. That is why
+ * `hooks/pre-compact.ts` asserts as well — the two matchers between them cover
+ * both shapes of key, and `assertDelivered` latches on the row it writes so
+ * the second one to run says nothing.
+ *
+ * **It runs BEFORE the deny gate and before the JIT selection**, so a refused
+ * dispatch still gets asserted: a lane that is about to be blocked for naming
+ * no task item is exactly a lane whose constants are worth knowing about.
+ */
+function missedDoorNote(input: HookInput, cwd: string): string {
+  try {
+    // `ledgerKey`, not a composite spelled here — the same string the doors
+    // recorded under, for the same reason `buildJitOutput` below uses it for
+    // the seen file. A second spelling would report every subagent as missed.
+    const key = ledgerKey(input);
+    if (key === null) return '';
+    // `findProjectRoot`, not `resolveWorkspace`: that one THROWS on an
+    // unparseable `config.json`, and an assertion that cannot run is not a
+    // reason to lose a tool call. Same choice, same reason, as the attempt
+    // record in `hooks/subagent-start.ts`.
+    const root = findProjectRoot(cwd);
+    if (root === null) return '';
+    return assertDoor(root, key);
+  } catch {
+    return '';
+  }
+}
+
 /** Returns the JSON to print on stdout, or '' for "no opinion". */
 export function runPreToolUse(raw: string, fallbackCwd: string): string {
   try {
@@ -651,6 +703,23 @@ export function runPreToolUse(raw: string, fallbackCwd: string): string {
     const { input, parseError } = parseHookInput(raw);
     if (parseError !== null) process.stderr.write(hookParseErrorLine(parseError));
     const cwd = input.cwd ?? fallbackCwd;
+
+    // **STDERR ONLY, AND THE MODEL'S CHANNEL IS LEFT ALONE.** The first draft
+    // of this folded the sentence into `additionalContext` and reddened five
+    // tests whose subject is a property worth more than this disclosure:
+    // `runPreToolUse` says NOTHING about a file it has no opinion on, and a
+    // plugin that speaks on a tool call it was not asked about is its own
+    // defect (`test/hooks/pre-tool-use-jit.test.ts`). The measurement settled
+    // it, and it settled it the right way — the reader who can act on a door
+    // that did not run is the person, not the model: the fix is a hook
+    // registration or a permission, neither of which a model can change.
+    // Claude Code surfaces a hook's stderr to that person.
+    //
+    // What the MODEL gets instead is the durable half, and it is the half
+    // spec §8.2 actually asks for: the `missed` row, which turns "the store is
+    // always present" into a number anybody can count.
+    const missed = missedDoorNote(input, cwd);
+    if (missed !== '') process.stderr.write(missed);
 
     // `Agent` has no `file_path` at all, so the guard below would already
     // treat it as "no opinion" — this branch runs first so the dispatch gate

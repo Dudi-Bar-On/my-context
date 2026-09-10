@@ -2,8 +2,9 @@ import { recordAudit } from '../core/audit.ts';
 import {
   nestedCorpusComparison, nestedCorpusWaysOut, resolveCorpus,
 } from '../core/corpus-identity.ts';
-import { buildInjection } from '../core/inject.ts';
+import { buildInjectionResult } from '../core/inject.ts';
 import { isMainEntry } from '../core/paths.ts';
+import { deliverAtDoor } from '../rules/deliver.ts';
 import { CORPUS_DIR_ENV, DIR_NAME, findProjectRoot } from '../core/workspace.ts';
 import {
   hookBlockDecision, hookContext, hookParseErrorLine, ledgerKey, parseHookInput, readStdinAsync,
@@ -283,12 +284,42 @@ export function buildSubagentStartOutput(input: HookInput, fallbackCwd: string):
       note: `delivery=attempted agent=${agentId}`,
     });
 
-    const text = buildInjection(cwd, {
+    const injection = buildInjectionResult(cwd, {
       event: 'subagent',
       ...(input.session_id === undefined ? {} : { sessionId: input.session_id }),
       ...(dedupeKey === null ? {} : { dedupeKey }),
       agentId,
     });
+    /**
+     * **D41's third door, and the one that carries the weight** (spec §8.1,
+     * `plan:store seq:2` Task 7).
+     *
+     * Measured over the 36,024 audit records this workspace holds: **1,082
+     * `subagent-start` against 54 `session-start`**. A store delivered only at
+     * session start would be delivered at the rarest event in the log, and
+     * "pinned therefore delivered" is already measurably false in this very
+     * repository — `RULE-a-test-names-the-items-it-rests-on-or-says-it-rests-
+     * on-none` is pinned, `CLAUDE.md` says it arrives every session, and 71
+     * measured deliveries include not one at `session-start`. This phase
+     * exists so that does not become true of the store as well.
+     *
+     * **Keyed on `dedupeKey`, never on the bare `session_id`.** A subagent
+     * shares its parent's session id, so a record filed under the parent's key
+     * would tell the assertion in `pre-tool-use.ts` that the PARENT had been
+     * delivered to when only a child had — the same corruption `dedupeKey`
+     * exists to prevent for the seen file, arriving through the record instead
+     * of through the ledger.
+     *
+     * It is appended AFTER the corpus block and inside the SAME envelope: one
+     * `additionalContext` per dispatch, in the order a reader should meet them.
+     */
+    const store = deliverAtDoor({
+      stateRoot: projectRoot,
+      door: 'subagent-start',
+      key: dedupeKey,
+      itemIds: injection.deliveredIds,
+    }).text;
+    const text = [injection.text, store].filter((part) => part !== '').join('\n\n');
     // The empty guard is this hook's, not the envelope builder's: an envelope
     // carrying an empty `additionalContext` is a hook that speaks on every
     // dispatch and says nothing.

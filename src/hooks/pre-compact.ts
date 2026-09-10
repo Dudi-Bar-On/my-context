@@ -10,6 +10,7 @@ import { reviewNote, reviewTrigger, type TriggerVerdict } from '../review/trigge
 import { readSeen, seenIds } from '../core/seen-file.ts';
 import { Store } from '../core/store.ts';
 import { resolveWorkspace } from '../core/workspace.ts';
+import { assertDoor } from '../rules/deliver.ts';
 import { hookParseErrorLine, parseHookInput, readStdin, type HookInput } from './io.ts';
 
 /**
@@ -171,6 +172,51 @@ export function buildRestoreSnapshot(
     // for the same reason every other disclosure in this directory is once.
     if (measured.disclosure !== '') process.stderr.write(measured.disclosure);
 
+    /**
+     * **THE SECOND ASSERTION SITE, AND WHY THIS EVENT RATHER THAN A DELIVERY**
+     * — D41 spec §8.2, `plan:store seq:2` Task 7.
+     *
+     * §8.1 lists `PreCompact` among the doors the product rule store is
+     * injected at. **Measured against the platform, it is not one**, and the
+     * measurement is worth writing down because it reverses the instruction:
+     * on build 2.1.261 the PreCompact consumer reads each hook's stdout and
+     * returns it as `newCustomInstructions` —
+     *
+     *     let v = k.filter((F)=>F.succeeded&&!F.blocked&&F.output.trim().length>0)
+     *              .map((F)=>F.output.trim());
+     *     return { newCustomInstructions: v.length>0 ? v.join("\n\n") : void 0, ... }
+     *
+     * — which is not context handed to a model. It is the instruction the
+     * COMPACTION is run under, and it REPLACES the `custom_instructions` the
+     * payload arrived with, i.e. whatever the user typed after `/compact`. So
+     * emitting the store here would (a) hand a summariser a page of product
+     * rules as its brief, and (b) silently discard a user's own compaction
+     * instruction. The window that follows a compaction is opened by
+     * `SessionStart(source: 'compact')`, which IS a door and already delivers.
+     *
+     * What this event is genuinely good for is the other half of §8.2. It is
+     * the last moment before a window is rebuilt, it fires for the parent
+     * session, and its matcher is unconditional — so it catches the key
+     * `pre-tool-use.ts` cannot: a session whose every tool call was a `Bash`,
+     * which that hook's `Read|Edit|MultiEdit|Write|NotebookEdit|Agent` matcher
+     * never fires for. `assertDelivered` latches on the row it writes, so
+     * whichever of the two runs first is the only one that speaks.
+     *
+     * **THE ROW AND THE AUDIT NOTE, AND NOT ONE BYTE ON STDERR.** This file
+     * already rules on that channel for `occupancyStandDownLine`, and the
+     * ruling holds unchanged here: *"a compaction is the one moment where an
+     * unsolicited paragraph of ours competes with Claude Code's own compaction
+     * notice for a user who did not ask for either. The row carries it for
+     * whoever goes looking, which is what this record is for."* A first draft
+     * wrote the line to stderr and reddened `an ignored ask discloses on
+     * stderr; every other verdict is silent` — a test whose subject is exactly
+     * that ruling.
+     */
+    const missedStore = assertDoor(ws.projectRoot, sessionId);
+    const storeClause = missedStore === ''
+      ? ''
+      : 'PRODUCT RULE STORE NOT DELIVERED to this session — no door recorded one; ';
+
     // seen set ← the per-session file (parent-keyed: PreCompact is a
     // parent-only event by measurement — E2). Unreadable → empty set,
     // disclosed below: the transcript arm still captures, and under-capture
@@ -231,7 +277,7 @@ export function buildRestoreSnapshot(
         trigger: measured.trigger,
         occupancyPercent: measured.occupancyPercent,
         handoverAsk: measured.handoverAsk,
-        note: measured.note +
+        note: measured.note + storeClause +
           `SNAPSHOT WRITE FAILED (${reason}). ${itemIds.length} captured id(s) ` +
           `(${fromLedger.length} from the seen file, ${fromTranscript.length} cited in the ` +
           `transcript) were NOT persisted — this session's restore state will not survive ` +
@@ -270,7 +316,7 @@ export function buildRestoreSnapshot(
       trigger: measured.trigger,
       occupancyPercent: measured.occupancyPercent,
       handoverAsk: measured.handoverAsk,
-      note: measured.note +
+      note: measured.note + storeClause +
         `${fromLedger.length} from the seen file, ${fromTranscript.length} cited in the ` +
         `transcript, ${itemIds.length} captured` +
         (knownSkipReason === null

@@ -6,6 +6,7 @@ import { pruneSnapshots } from '../core/ledger.ts';
 import { isMainEntry } from '../core/paths.ts';
 import { SEEN_FILE_SUFFIX } from '../core/seen-file.ts';
 import { findProjectRoot, hasGlobalCorpus, resolveWorkspace } from '../core/workspace.ts';
+import { deliverAtDoor } from '../rules/deliver.ts';
 import {
   hookParseErrorLine, noWorkspaceLine, parseHookInput, pinnedSpillLine, readStdin,
 } from './io.ts';
@@ -21,6 +22,14 @@ export interface SessionStartOptions {
    * carries this, because it is the only one whose output the model reads.
    */
   parseError?: string | null;
+  /**
+   * D41: the product rule store to deliver from, when it is not the one that
+   * shipped inside the package. Only tests and the Phase 3 maintenance tool
+   * pass it — see `rules/deliver.ts` · `RULES_DIR_ENV`, which is the same
+   * choice stated through the environment for a caller that is a separate
+   * process.
+   */
+  storeDir?: string;
 }
 
 /**
@@ -61,6 +70,73 @@ export function buildSessionStartResult(
     sessionId: options.sessionId,
     parseError: options.parseError,
   });
+}
+
+/**
+ * **The product rule store's SessionStart door** (D41 spec §8, `plan:store
+ * seq:2` Task 7). Returns the block to append, or the empty string.
+ *
+ * -- WHY THIS IS A SECOND FUNCTION AND NOT PART OF `buildInjectionResult` ---
+ *
+ * `test/rules/isolation.test.ts` walks the import graph out of
+ * `src/core/inject.ts` and fails if it can reach `src/rules/`. That is spec
+ * §7's whole argument made structural: *"a store the corpus has never heard of
+ * needs no exceptions anywhere"*. So the corpus block and the store block are
+ * built by two modules that cannot see each other, and this hook — which is
+ * allowed to know about both — puts them in order. Same shape, and same
+ * reasoning, as `handoverAppendix` directly below.
+ *
+ * -- THE ORDER, AND IT IS NOT ARBITRARY -----------------------------------
+ *
+ * The store goes AFTER the corpus and BEFORE the handover. After the corpus
+ * because the corpus is what governs the project and is what the reader came
+ * for; before the handover because the handover is one session's message to
+ * another and reads as a closing note. The store's own precedence sentence is
+ * inside its block, so a reader who meets it after the corpus is told, at that
+ * moment, which of the two just outranked the other — which is spec §9's
+ * requirement that the win not be silent.
+ *
+ * -- TWO DOORS, ONE HOOK --------------------------------------------------
+ *
+ * `source: 'compact'` is `compact-restore`; every other source is
+ * `session-start`. They are recorded apart for the reason `core/audit.ts`
+ * already records their injections apart: 54 `session-start` against 23
+ * `compact-restore` in 36,024 records, and a design that cannot tell two doors
+ * apart cannot say which of them was missed.
+ *
+ * **A resumed session is a door too**, and it is the one most easily argued
+ * away: `resume` KEEPS the window it had, so the handover is deliberately not
+ * re-delivered to it (see `HANDOVER_SOURCES`). The store IS, and the asymmetry
+ * is deliberate — a handover is a message that was already read, and the store
+ * is a set of constants whose presence in that window nothing can verify. Spec
+ * §8.2 again: nothing can inspect a context window, so the only safe direction
+ * is to deliver and record.
+ *
+ * Never throws. A store that cannot be read costs the block, never the
+ * session — `INV-hooks-fail-open`, and the corpus block has already been
+ * computed by the time this runs.
+ */
+export function storeAppendix(
+  cwd: string, options: SessionStartOptions = {}, deliveredIds: readonly string[] = [],
+): string {
+  try {
+    const ws = resolveWorkspace(cwd);
+    const stateRoot = ws.projectRoot ?? (hasGlobalCorpus(ws.globalRoot) ? ws.globalRoot : null);
+    // No workspace at all: nowhere to write the record, and `noWorkspaceLine`
+    // in the binary below is already the disclosure for it. A block with no
+    // record behind it would be the one thing spec §8.2 forbids — a delivery
+    // nothing can count.
+    if (stateRoot === null) return '';
+    return deliverAtDoor({
+      stateRoot,
+      door: options.source === 'compact' ? 'compact-restore' : 'session-start',
+      key: options.sessionId ?? null,
+      itemIds: deliveredIds,
+      ...(options.storeDir === undefined ? {} : { storeDir: options.storeDir }),
+    }).text;
+  } catch {
+    return '';
+  }
 }
 
 /**
@@ -279,8 +355,17 @@ if (isMainEntry(import.meta.filename, process.argv[1])) {
     // verbatim with the `load_context` MCP tool and SubagentStart — neither of
     // which is crossing a compaction boundary, and neither of which should
     // start delivering a handover because this hook needed one.
+    // D41's door, between the two and for the reason `storeAppendix` gives.
+    // It is passed the ids the corpus block just delivered, because spec §9
+    // asks whether a product constant disagrees with an item THIS READER IS
+    // HOLDING — a disagreement with an item nobody was given is a fact about
+    // the workspace, not about this delivery.
+    const store = storeAppendix(cwd, {
+      source: input.source,
+      sessionId: input.session_id,
+    }, injection.deliveredIds);
     const handover = handoverAppendix(cwd, input.source, input.session_id);
-    const text = handover === '' ? corpus : `${corpus}${corpus === '' ? '' : '\n'}${handover}`;
+    const text = [corpus, store, handover].filter((part) => part !== '').join('\n');
     if (text) process.stdout.write(text);
     // **AFTER the injection reaches stdout, and the order is deliberate.** This
     // line is an account OF that delivery; nothing about composing or writing it

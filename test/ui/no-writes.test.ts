@@ -205,6 +205,25 @@ const WRITERS: Record<string, string[]> = {
   // check below, which had to learn the same form `definedIn` already knew.
   'src/cli/commands/export.ts': ['cmdExport'],
   'src/cli/commands/statusline-install.ts': ['cmdStatuslineInstall', 'cmdStatuslineUninstall'],
+  // `plan:store seq:1`, 2026-09-10 — the product rule store's integrity
+  // manifest. It writes only inside the INSTALLED PACKAGE (`src/rules/entries/`),
+  // never into a workspace, but the table's key is derived from "does this
+  // module call a filesystem-mutating API" and the answer is yes, so it is
+  // named here like every other. `verifyManifest`, `readManifest`,
+  // `assertStoreWritable` and `manifestPath` are deliberately NOT here: they
+  // read, throw or build a path, which is the same split `focus.ts` has had
+  // since day one and the reason the ban resolves symbols rather than files.
+  'src/rules/manifest.ts': ['writeManifest', 'writeEntry', 'restoreEntries'],
+  // `plan:store seq:2`, 2026-09-11 — the record that a door delivered the
+  // store, and the assertion that says when none did (D41 spec §8.2). It
+  // writes ONE thing, `<root>/.rules/delivered.jsonl` plus that directory's
+  // own `*` .gitignore, and it is named here for the reason the manifest
+  // above is: the key is derived from "does this module call a
+  // filesystem-mutating API", and judgement belongs to the symbol list, not
+  // to the key. `deliveries`, `wasDelivered` and `missedDoorLine` are
+  // deliberately NOT here — they read or build a sentence — and
+  // `assertDelivered` IS, because writing the `missed` row is how it latches.
+  'src/rules/delivered.ts': ['recordDelivery', 'assertDelivered'],
   // Already banned outright by BANNED_ENTRY_MODULES, and named here anyway:
   // the entry ban is about LOADING it, this is about binding out of it, and a
   // module that is covered twice for two different reasons is not covered once.
@@ -222,6 +241,24 @@ const WRITERS: Record<string, string[]> = {
   'src/core/ledger.ts': ['writeSnapshot', 'pruneSnapshots'],
   'src/core/lock.ts': ['acquireLock', 'reclaimStaleLock'],
   'src/core/rebuild.ts': ['writeItem', 'rebuild'],
+  // `plan:loop seq:3`, 2026-09-11 — the self-improvement pass's three writing
+  // modules. Named here BEFORE the derivation was run, and the derivation then
+  // named them anyway, which is this table working in the direction it was
+  // built for.
+  //
+  // `drafts.ts` is reached from `mutate.ts` and `rebuild.ts`, both of which the
+  // read model already binds. `ensureDraftDir` is the only writer in it —
+  // `DRAFT_DIR`, `draftFilePath` and `isDraftFilePath` build strings and are
+  // deliberately not here, which is `focus.ts`'s split and the reason the ban
+  // resolves symbols rather than files.
+  'src/core/drafts.ts': ['ensureDraftDir'],
+  // The decline ledger and the sightings ledger. `readDeclines`,
+  // `alreadyDeclined`, `readSightings`, `declinedPath`, `sightingsPath`,
+  // `claimKey`, `classify`, `antiLearning`, `targetOf` and
+  // `evidenceTouchesTarget` read, compare or build a path; only these four
+  // change bytes.
+  'src/review/declined.ts': ['recordDecline'],
+  'src/review/propose.ts': ['propose', 'noteSighting'],
   // `watch-model.ts` binds `classifyContext` and `readTee` from here; `writeTee`
   // and the stale-temp sweep are the writers sitting beside them.
   'src/core/statusline-tee.ts': ['writeTee', 'sweepStaleTeeTemps'],
