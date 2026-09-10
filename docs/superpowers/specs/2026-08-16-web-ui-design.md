@@ -1651,7 +1651,7 @@ destroyed audit history."*
 **`rebuild` drops `items` and nothing else.**
 `src/core/rebuild.ts` · `store.deleteByLayer(layer);` · ~500 calls `store.deleteByLayer`, which is
 `DELETE FROM items WHERE layer = ?`
-(`store.ts` · `this.#db.prepare('DELETE FROM items WHERE layer = ?').run(layer);` · ~548). The `ledger`
+(`core/store.ts` · `this.#db.prepare('DELETE FROM items WHERE layer = ?').run(layer);` · ~548). The `ledger`
 table (`ledger.ts` · `injected_at TEXT NOT NULL,` · ~66) lives in the same file and **survives a rebuild
 untouched.** The half of the claim that is true is the parenthesis: `query`
 (`cli/commands/query.ts` · `updated_at is INDEX WRITE TIME, not a Markdown timestamp: every query rebuilds the` · ~52) and `context`
@@ -1664,7 +1664,7 @@ here contradicted this project's own correction, in a document written after it.
 
 **The real destroyers, both of which delete the database file whole:**
 
-- **`Store.open`'s corruption self-heal** (`store.ts` · `rmSync(dbPath, { force: true });` · ~345): on
+- **`Store.open`'s corruption self-heal** (`core/store.ts` · `rmSync(dbPath, { force: true });` · ~345): on
   an unreadable file it `rmSync`s the db plus its `-wal` and `-shm` and recreates it. The code says so
   in a comment on the very branch — *"a successful clear here discards not just the disposable `items`
   cache but also whatever `ledger` rows the file held"*. It is the right behaviour: without it a corrupt

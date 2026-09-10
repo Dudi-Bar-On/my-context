@@ -99,7 +99,7 @@ test('the picker offers exactly the commands the CLI dispatches — the gate thi
 });
 
 /**
- * The ten that have no entry in `COMMAND_FLAGS`, named rather than counted.
+ * The eleven that have no entry in `COMMAND_FLAGS`, named rather than counted.
  *
  * The task's own measurement — "34 of the 43 commands declare flags in
  * COMMAND_FLAGS; nine do not" — was the gate, and the answer is that none of
@@ -114,13 +114,20 @@ test('the picker offers exactly the commands the CLI dispatches — the gate thi
  * puts a command in `SUBCOMMAND_FLAGS` rather than here. The list is EXTENDED
  * rather than loosened: the assertion is still an equality, so the next
  * arrival fails here too and is accounted for deliberately.
+ *
+ * `rules` made it eleven on 2026-09-10 (`plan:store seq:1`), joining the same
+ * group for the same condition: `verify` acts on the store's integrity and
+ * takes `--restore`, and `list`/`show` read its contents and would have
+ * nothing to do with that flag. It arrived exactly as the paragraph above
+ * predicted an arrival would — this equality went red the moment the command
+ * registered, and was widened deliberately rather than loosened.
  */
-test('the ten commands with no flat flag spec are exactly the ones the other records hold', () => {
+test('the eleven commands with no flat flag spec are exactly the ones the other records hold', () => {
   const withoutFlat = [...COMMANDS.keys()].filter((n) => !Object.hasOwn(COMMAND_FLAGS, n)).sort();
   assert.deepEqual(withoutFlat, [
-    'conversation', 'edit', 'help', 'pack', 'procedure', 'rebuild', 'review', 'session',
+    'conversation', 'edit', 'help', 'pack', 'procedure', 'rebuild', 'review', 'rules', 'session',
     'show', 'statusline',
-  ], 'the ten are the measurement this task gated itself on; a different ten is a different task');
+  ], 'the eleven are the measurement this task gated itself on; a different set is a different task');
 
   const surfaces: Record<string, string> = {};
   for (const name of withoutFlat) {
@@ -136,6 +143,7 @@ test('the ten commands with no flat flag spec are exactly the ones the other rec
     procedure: 'subcommand',
     rebuild: 'none',
     review: 'subcommand',
+    rules: 'subcommand',
     session: 'subcommand',
     show: 'none',
     statusline: 'subcommand',
@@ -151,7 +159,7 @@ interface FlagRow {
   values?: string[]; format?: string; example?: string;
 }
 
-/** Every flag row the card can draw, across all 43 commands. */
+/** Every flag row the card can draw, across every registered command. */
 function everyRow(): { where: string; row: FlagRow }[] {
   const rows: { where: string; row: FlagRow }[] = [];
   for (const name of commandNames()) {

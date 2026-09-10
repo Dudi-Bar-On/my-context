@@ -168,6 +168,12 @@ export const CLI_WITHOUT_SLASH: Record<string, string> = {
     + 'reader it must not be is the model whose deliveries it counts, which is the same '
     + 'shape as `conversation` below. It writes nothing and governs nothing, so a slash '
     + 'command would only put a table in front of a model that the table is about.',
+  rules: 'Reads the CONSTANTS that ship inside the package — the product rule store — and ' +
+    'checks them against the checksums that shipped with them. A slash command would be the ' +
+    'model asking whether the rules it has been given are the real ones, and that is the one ' +
+    'question its own answer cannot settle: the honest reader of a tamper check is the person ' +
+    'who installed the tool. Nothing it reads is in this corpus and nothing it does writes to ' +
+    'one, so the model has no corpus operation to gain either.',
   conversation: 'Reads the transcripts Claude Code has already written on disk and indexes ' +
     'them; it is the scanner behind the ARCHIVE, not a corpus operation. A model has no use ' +
     'for it — the conversation it would be asking about is the one it is having — and the ' +
@@ -325,6 +331,16 @@ export const CLI_WITHOUT_TOOL: Record<string, ToolAbsence> = {
       'one call site that writes the mark, unconditionally — there is no `--agent` escape ' +
       'hatch the way `mycontext lesson` has one — and a tool call would exist only to make ' +
       'the same judgement the command is written to keep with a person.',
+  },
+  rules: {
+    disposition: 'intended',
+    reason:
+      'Same fact `CLI_WITHOUT_SLASH.rules` cites, and a tool forecloses it harder than a ' +
+      'slash command does: the store exists so that a set of constants reaches the model ' +
+      'WITHOUT the model choosing what it reads, and a tool would be exactly that choice. ' +
+      'Delivery is a hook, not a query — `src/rules/` carries no runtime query API for an ' +
+      'agent at all, which the design states as a thing it is not building — so there is ' +
+      'nothing here for a tool to call that a door does not already hand over in full.',
   },
   ack: {
     disposition: 'intended',

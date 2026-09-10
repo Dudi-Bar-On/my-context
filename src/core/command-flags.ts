@@ -52,12 +52,13 @@
  * (`mycontext handover`, the ask on demand — `plan:handover seq:14`), and again 2026-09-07
  * (`mycontext conversation`, the archive's index and scanner — `plan:archive seq:1`), and
  * again 2026-09-08 (`mycontext contribution`, the per-item delivery baseline —
- * `plan:loop seq:1`),
- * over the **46** commands
- * the CLI dispatches: 39 registered by `cli/commands/index.ts`'s column of side-effect
+ * `plan:loop seq:1`), and again 2026-09-10 (`mycontext rules`, the product rule
+ * store's own read-and-verify surface — `plan:store seq:1`),
+ * over the **47** commands
+ * the CLI dispatches: 40 registered by `cli/commands/index.ts`'s column of side-effect
  * imports, and 7 more registered in `cli/index.ts` itself.
  *
- *   | 42 | have a SEPARABLE flag spec — a declarative list, liftable as it is |
+ *   | 43 | have a SEPARABLE flag spec — a declarative list, liftable as it is |
  *   |  0 | read their flags INLINE where they are used, with no spec to lift  |
  *   |  1 | resists: `edit`, whose accepted set is computed per workspace      |
  *   |  3 | take no flags at all — `show`, `rebuild`, `help`                   |
@@ -67,7 +68,7 @@
  * because they refused no unknown flag: a command with nothing to disagree
  * with cannot be checked, so nothing could tell a builder that the command it
  * had composed was wrong. They were given parsers rather than an exception,
- * and the row stays so that the partition still covers all 42 — and so that a
+ * and the row stays so that the partition still covers all 43 — and so that a
  * sixth command written the same way lands in a row that has a name.
  *
  * **This paragraph said 38, and 38 was neither number.** `COMMANDS` holds 33
@@ -75,7 +76,7 @@
  * has, because seven commands are registered in the entry module rather than in
  * a module of their own — `show`, `help` and `rebuild`, which take no flags,
  * and the four whose specs the map below now holds; both READMEs said 39 and
- * were right while this said 38 — they now say 46, which is `COMMANDS.size`
+ * were right while this said 38 — they now say 47, which is `COMMANDS.size`
  * once the entry module has been imported and the figure this paragraph's own
  * total is checked against.
  * A count in a comment is exactly the hand-kept number this repository keeps
@@ -85,7 +86,7 @@
  * commands named as absent, plus the keys of `COMMAND_FLAGS`, must be exactly
  * the registered set, so a command cannot arrive and be silently uncounted.
  *
- * **36** of the 42 are here. Twenty-one arrived with the first lift, and they
+ * **36** of the 43 are here. Twenty-one arrived with the first lift, and they
  * are the ones whose spec was already a declarative constant over a FLAT
  * surface — one command, one flag set. The other four arrived with
  * `plan:builder seq:1b` and came out of `src/cli/index.ts` itself — the entry
@@ -149,9 +150,11 @@
  * that its spec is ABSENT. What is absent is recorded rather than left to be
  * discovered:
  *
- *   - **`conversation`, `pack`, `procedure`, `review`, `session`, `statusline`** are keyed by
+ *   - **`conversation`, `pack`, `procedure`, `review`, `rules`, `session`, `statusline`** are keyed by
  *     SUBCOMMAND (`review promote`, `pack import`), so they are not entries in
- *     THIS map and never will be. They kept their specs in their own modules
+ *     THIS map and never will be. `rules` is the newest of them — 2026-09-10,
+ *     `plan:store seq:1` — and was born in `SUBCOMMAND_FLAGS` rather than
+ *     lifted into it, because the command did not exist before that map did. They kept their specs in their own modules
  *     until `plan:library seq:1`, on the grounds that lifting them meant
  *     deciding the key space here — a command STRING rather than a command
  *     NAME. That is no longer the choice on offer: they were lifted into
@@ -1547,6 +1550,25 @@ export const SUBCOMMAND_FLAGS: Record<string, Record<string, FlagSpec>> = {
     install: { allowed: ['yes', 'settings'], values: ['settings'] },
     uninstall: { allowed: ['yes', 'settings'], values: ['settings'] },
   },
+  /**
+   * `cli/commands/rules.ts` (`plan:store seq:1`, D41 Phase 1). Born here —
+   * the command did not exist before it — and keyed by SUBCOMMAND for the
+   * reason `conversation` is: `verify` acts on the store's integrity and
+   * `list`/`show` read its contents, so `--restore` on a reader would be a
+   * switch with nothing to do.
+   *
+   * **No `--yes` on any of the three**, and the absence is a decision rather
+   * than an omission. `--yes` is the approval boundary — the gate on an act
+   * that changes what governs the project — and `verify --restore` puts back
+   * the bytes the installed package shipped and can produce no other content.
+   * Publishing an entry, which IS such an act, belongs to the maintenance
+   * tool (spec §11) and does not ship.
+   */
+  rules: {
+    verify: { allowed: ['restore', 'json'], values: [] },
+    list: { allowed: ['json'], values: [] },
+    show: { allowed: ['json'], values: [] },
+  },
 };
 
 /**
@@ -1719,6 +1741,16 @@ export const SUBCOMMAND_FLAG_DECLARATIONS: Record<string, FlagDeclarations> = {
       note: 'Apply the change printed above; without it nothing is written and the command is '
         + 'a preview. The same approval boundary every other write wears, over a file that '
         + 'is not this project’s.',
+    },
+  },
+  rules: {
+    json: DETAIL.json,
+    restore: {
+      note: 'Put back the entries the installed package shipped, for any that are missing or '
+        + 'altered. It is a LOCAL operation — the rules ship inside the package, so if the '
+        + 'package is intact they are intact and the network is never consulted. A file the '
+        + 'package never shipped is named and left exactly where it is, because deleting a '
+        + 'file nobody asked to delete could destroy the only copy of something deliberate.',
     },
   },
 };

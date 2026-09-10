@@ -1241,6 +1241,25 @@ const UNCATALOGUED: Record<string, string> = {
   query: 'a read that takes SQL. Offering a text box that composes arbitrary SQL into a command '
     + 'line is a design decision about the Composer, not a missing row.',
   ready: 'a read with no screen. Readiness is derived per run and nothing in this UI renders it.',
+  // `plan:store seq:1`, 2026-09-10 — the product rule store's own surface. All
+  // three rows are NOT-YETs rather than decisions, and they share one blocker
+  // that is real work on the catalogue rather than on the store: a `kind: 'read'`
+  // def must name a screen or an endpoint (`every read def names a screen or an
+  // endpoint`), and the UI serves nothing from this store at all. It cannot: the
+  // store is deliberately invisible to every corpus surface (design §7), so a
+  // screen for it is a NEW surface — the maintenance tool of design §11, which
+  // is developer-only and does not ship — rather than a route added to one that
+  // exists.
+  'rules list': 'a read of the rule store that ships with the tool. No screen or endpoint serves '
+    + 'it, and the store is deliberately invisible to every existing one (design §7), so a def '
+    + 'has no target until the developer-only maintenance surface of design §11 exists.',
+  'rules show': 'one entry of that store, whole. `rules list` case exactly, and it would need a '
+    + 'picker over entry ids that nothing in this UI can supply for the same reason.',
+  'rules verify': 'checks the shipped rules against the checksums that shipped with them, and '
+    + 'with `--restore` puts back what was altered. It is the one of the three that is a WRITE '
+    + 'and so the one with the strongest case for an Execute — but it acts on the INSTALLED '
+    + 'PACKAGE rather than on this project, and a Composer button that repairs the tool a reader '
+    + 'is looking through is a decision about this UI rather than a missing row.',
   'review list': 'a read the Work screen already renders; `review revisions` is catalogued '
     + 'because the revision queue is the half that screen composes from.',
   'review show': 'a read of one queue entry, already rendered by the Work screen.',

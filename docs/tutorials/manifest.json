@@ -385,7 +385,8 @@
     "tier": "advanced",
     "cli": [
       "context.ts",
-      "repair.ts"
+      "repair.ts",
+      "rules.ts"
     ],
     "slash": [],
     "screens": [],

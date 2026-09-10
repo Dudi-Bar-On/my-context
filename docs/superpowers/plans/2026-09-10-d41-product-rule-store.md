@@ -53,7 +53,7 @@ Every task's requirements implicitly include these. They are not advice.
 **Interfaces:**
 - Produces: `parseEntry(text: string, path: string): Entry | EntryError`, `type Entry = { id, kind, tier, title, body, example, check, trigger?, request?, sourcePath }`, `type Kind = 'fact'|'prohibition'|'procedure'|'standard'|'definition'`, `type Check = { how: 'preventive'|'detective', name: string } | { how: 'none', why: string }`
 
-- [ ] **Step 1: Write the failing test — a prohibition without a `why` does not load**
+- [x] **Step 1: Write the failing test — a prohibition without a `why` does not load**
 
 ```ts
 // @basis none - the schema this file defines does not exist yet; it rests on
@@ -65,9 +65,9 @@ test('a prohibition without a why does not load', () => {
 });
 ```
 
-- [ ] **Step 2: Run it and watch it fail** — `node --import ./test/helpers/pin-rendering.ts --test test/rules/schema.test.ts`. Expected: `parseEntry is not defined`.
+- [x] **Step 2: Run it and watch it fail** — `node --import ./test/helpers/pin-rendering.ts --test test/rules/schema.test.ts`. Expected: `parseEntry is not defined`.
 
-- [ ] **Step 3: Implement `parseEntry` with the per-kind template table**
+- [x] **Step 3: Implement `parseEntry` with the per-kind template table**
 
 The table is the schema. Every kind additionally requires `example` and `check`:
 
@@ -82,9 +82,9 @@ const REQUIRED: Record<Kind, readonly string[]> = {
 const ALWAYS = ['example', 'check'] as const;
 ```
 
-- [ ] **Step 4: One test per kind, each asserting its own missing part** — five tests, five different messages. A single generic test would pass over four kinds silently.
+- [x] **Step 4: One test per kind, each asserting its own missing part** — five tests, five different messages. A single generic test would pass over four kinds silently.
 
-- [ ] **Step 5: `check` parses into its three shapes**, and `none` requires a reason:
+- [x] **Step 5: `check` parses into its three shapes**, and `none` requires a reason:
 
 ```ts
 test('check: none must carry a reason', () => { … });
@@ -103,7 +103,7 @@ test('check: detective names a check', () => { … });
 - Consumes: `parseEntry` from Task 1.
 - Produces: `loadRules(root: string, workspaceIsMyContext: boolean): { entries: Entry[]; refused: EntryError[] }`
 
-- [ ] **Step 1: Write the failing test — a developer entry is absent in a foreign workspace**
+- [x] **Step 1: Write the failing test — a developer entry is absent in a foreign workspace**
 
 Assert by **loading against a foreign workspace**, never by reading the flag:
 
@@ -114,9 +114,9 @@ assert.ok(inHere.includes('never-git-add-all'));
 assert.equal(elsewhere.includes('never-git-add-all'), false);
 ```
 
-- [ ] **Step 2: Run it, watch it fail.**
-- [ ] **Step 3: Implement `loadRules`** — read `*.md`, parse each, partition by tier.
-- [ ] **Step 4: An unparseable entry is REFUSED and NAMED, never skipped silently** (`INV-nothing-is-dropped-silently`). Assert the refusal carries the path.
+- [x] **Step 2: Run it, watch it fail.**
+- [x] **Step 3: Implement `loadRules`** — read `*.md`, parse each, partition by tier.
+- [x] **Step 4: An unparseable entry is REFUSED and NAMED, never skipped silently** (`INV-nothing-is-dropped-silently`). Assert the refusal carries the path.
 - [ ] **Step 5: Commit.**
 
 ### Task 3: The corpus never sees the store
@@ -124,9 +124,9 @@ assert.equal(elsewhere.includes('never-git-add-all'), false);
 **Files:**
 - Test: `test/rules/isolation.test.ts`
 
-- [ ] **Step 1: Write the tests first — one per surface.** `doctor`, `list`, `ready`, and the injection selector each return nothing from `src/rules/entries/`. Four separate assertions with four messages; a loop would hide which surface leaked.
-- [ ] **Step 2: Run them.** They should PASS immediately — nothing knows about the store yet. **That is a vacuous pass and it is expected**: this file's value is as a guard against a later task wiring the store into a corpus surface by accident.
-- [ ] **Step 3: Prove it can fail** — temporarily point `list` at the rules directory, watch it go red, revert. **Record that you did this**, because a guard nobody has seen fail is not a guard.
+- [x] **Step 1: Write the tests first — one per surface.** `doctor`, `list`, `ready`, and the injection selector each return nothing from `src/rules/entries/`. Four separate assertions with four messages; a loop would hide which surface leaked.
+- [x] **Step 2: Run them.** They should PASS immediately — nothing knows about the store yet. **That is a vacuous pass and it is expected**: this file's value is as a guard against a later task wiring the store into a corpus surface by accident.
+- [x] **Step 3: Prove it can fail** — temporarily point `list` at the rules directory, watch it go red, revert. **Record that you did this**, because a guard nobody has seen fail is not a guard.
 - [ ] **Step 4: Commit.**
 
 ### Task 4: The integrity manifest
@@ -138,11 +138,11 @@ assert.equal(elsewhere.includes('never-git-add-all'), false);
 **Interfaces:**
 - Produces: `writeManifest(dir): void`, `verifyManifest(dir): { ok: true } | { ok: false; entry: string; why: 'missing' | 'altered' }`
 
-- [ ] **Step 1: Failing test — an altered entry is named**, not merely reported. The message must contain the entry id.
-- [ ] **Step 2: Failing test — a missing entry is named**, and distinguished from an altered one.
-- [ ] **Step 3: Implement** using the existing checksum helper rather than a second hash.
-- [ ] **Step 4: Failing test — a damaged store REFUSES WRITES AND ALLOWS READS.** Two assertions, and the second matters as much as the first: blocking reads punishes a user for an install they can still recover from.
-- [ ] **Step 5: A comment states the distinction spec §13 draws** — this refusal is not §10's budget refusal. One refuses because we overspent; the other because we cannot say what is true.
+- [x] **Step 1: Failing test — an altered entry is named**, not merely reported. The message must contain the entry id.
+- [x] **Step 2: Failing test — a missing entry is named**, and distinguished from an altered one.
+- [x] **Step 3: Implement** using the existing checksum helper rather than a second hash.
+- [x] **Step 4: Failing test — a damaged store REFUSES WRITES AND ALLOWS READS.** Two assertions, and the second matters as much as the first: blocking reads punishes a user for an install they can still recover from.
+- [x] **Step 5: A comment states the distinction spec §13 draws** — this refusal is not §10's budget refusal. One refuses because we overspent; the other because we cannot say what is true.
 - [ ] **Step 6: Commit.**
 
 ### Task 5: `mycontext rules` — verify, restore, list, show
@@ -152,11 +152,11 @@ assert.equal(elsewhere.includes('never-git-add-all'), false);
 - Modify: `src/cli/commands/index.ts`, `src/core/command-flags.ts`
 - Test: `test/cli/rules.test.ts`
 
-- [ ] **Step 1: Failing test — `rules verify` exits non-zero on a planted mismatch and names the entry.**
-- [ ] **Step 2: Failing test — `--restore` restores from the installed package**, and the network is not consulted. Assert by running with no network path available at all.
-- [ ] **Step 3: Implement.**
-- [ ] **Step 4: Add the command to the catalogue partition** in `test/ui/palette-lib.test.ts` — either catalogued, or `UNCATALOGUED` with a reason. **`every command string is catalogued or named as a gap, in BOTH directions` will go red otherwise**, and that gate spent a day red in September because a command shipped without a row.
-- [ ] **Step 5: Both READMEs.** If the command is gated, the `--yes` row is held to `approvalBoundary().gated` in **both languages** and will fail otherwise. That is the mechanism working.
+- [x] **Step 1: Failing test — `rules verify` exits non-zero on a planted mismatch and names the entry.**
+- [x] **Step 2: Failing test — `--restore` restores from the installed package**, and the network is not consulted. Assert by running with no network path available at all.
+- [x] **Step 3: Implement.**
+- [x] **Step 4: Add the command to the catalogue partition** in `test/ui/palette-lib.test.ts` — either catalogued, or `UNCATALOGUED` with a reason. **`every command string is catalogued or named as a gap, in BOTH directions` will go red otherwise**, and that gate spent a day red in September because a command shipped without a row.
+- [x] **Step 5: Both READMEs.** If the command is gated, the `--yes` row is held to `approvalBoundary().gated` in **both languages** and will fail otherwise. That is the mechanism working.
 - [ ] **Step 6: Commit.**
 
 ---

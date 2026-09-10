@@ -236,7 +236,14 @@ const CLUSTERS: Cluster[] = [
     id: 'corpus-integrity-detecting-and-repairing-drift',
     title: 'Detect and repair a corpus that drifted from disk',
     tier: 'advanced',
-    cli: ['context.ts', 'repair.ts'],
+    // `rules.ts` is claimed here (2026-09-10, `plan:store seq:1`) because this
+    // page is where a reader will otherwise CONFUSE the two integrity checks.
+    // `mycontext rules verify` is the same act one layer over — detect and
+    // repair what drifted from what shipped — over the constants inside the
+    // package rather than over the reader's own items, and the tutorial's own
+    // section says so rather than leaving the reader to assume the checks are
+    // one thing.
+    cli: ['context.ts', 'repair.ts', 'rules.ts'],
     slash: [],
     screens: [],
   },

@@ -25,6 +25,7 @@ import './ready.ts';
 import './refresh.ts';
 import './repair.ts';
 import './review.ts';
+import './rules.ts';
 import './search.ts';
 import './session.ts';
 import './status.ts';

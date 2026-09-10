@@ -1,0 +1,11 @@
+{
+  "version": 1,
+  "algorithm": "sha256",
+  "entries": [
+    {
+      "file": "numbered-options-on-a-question-put-to-the-owner.md",
+      "id": "numbered-options-on-a-question-put-to-the-owner",
+      "checksum": "502cbf14e7c85505c3d7d43122c2ed648836a671de0fad48ae34b7fb324f5ca8"
+    }
+  ]
+}

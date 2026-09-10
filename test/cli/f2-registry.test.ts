@@ -179,6 +179,14 @@ const DOES_NOT_REBUILD = new Set([
   // A corrupt item file cannot reach any of those answers, so there is nothing
   // for it to disclose (verified by reading the command, not assumed).
   'statusline',
+  // `rules` reads a store that is not the corpus AT ALL — `src/rules/entries/`
+  // inside the installed package (D41 spec §7) — and every corpus surface is
+  // asserted to be unable to reach it, in both directions, by
+  // `test/rules/isolation.test.ts`. So a corrupt item file cannot reach its
+  // answer for a stronger reason than `audit`'s: not "it does not open the item
+  // index" but "it cannot see the corpus from where it stands". It is still
+  // required to exit 0 below, which is the half of F2 that applies to it.
+  'rules',
 ]);
 
 const SETUPS: Record<string, (cwd: string) => string[]> = {
@@ -625,6 +633,18 @@ const SETUPS: Record<string, (cwd: string) => string[]> = {
     run(['add', '--summary-omitted', 'constraint', 'A scoped item for the F2 guard', '--yes'], cwd);
     plantUnrelatedCorruptItem(cwd);
     return ['SELECT id FROM items'];
+  },
+
+  /**
+   * `rules` reads nothing from the corpus, so the plant is what makes the
+   * assertion mean anything: the command must still exit 0 with a corpus it
+   * would refuse to load if it ever looked. It is in `DOES_NOT_REBUILD`
+   * above, so the "and reports it" half is deliberately not asserted — there
+   * is nothing for it to report.
+   */
+  rules: (cwd) => {
+    plantUnrelatedCorruptItem(cwd);
+    return ['list'];
   },
 
   'ingest-apply': (cwd) => {

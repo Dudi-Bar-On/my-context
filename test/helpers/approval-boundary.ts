@@ -44,6 +44,7 @@ import { SUBCOMMANDS as CONVERSATION_SUBCOMMANDS } from '../../src/cli/commands/
 import { SUBCOMMANDS as PACK_SUBCOMMANDS } from '../../src/cli/commands/pack.ts';
 import { SUBCOMMANDS as PROCEDURE_SUBCOMMANDS } from '../../src/cli/commands/procedure.ts';
 import { SUBCOMMANDS as REVIEW_SUBCOMMANDS } from '../../src/cli/commands/review.ts';
+import { SUBCOMMANDS as RULES_SUBCOMMANDS } from '../../src/cli/commands/rules.ts';
 import { SUBCOMMANDS as SESSION_SUBCOMMANDS } from '../../src/cli/commands/session.ts';
 import { SUBCOMMANDS as STATUSLINE_SUBCOMMANDS } from '../../src/cli/commands/statusline.ts';
 import { removeTree } from './tmp.ts';
@@ -260,9 +261,9 @@ export const OUTSIDE_BOUNDARY: Record<string, string> = {
  * 1. **What each command ADVERTISES**, read off the registry: a `usage` line
  *    whose first token after the command name is an alternation of bare words
  *    — `pack [import|list] [<path>]` — is a command dispatched by subcommand,
- *    and the alternation names them. Three of the five build that line from
- *    their own `SUBCOMMANDS` constant already, so for them this is the
- *    executable list read through one indirection.
+ *    and the alternation names them. Most build that line from their own
+ *    `SUBCOMMANDS` constant already, so for them this is the executable list
+ *    read through one indirection.
  * 2. **What each command DISPATCHES**, asked of the running parser: every
  *    registered command is handed a bogus subcommand and the sentinel flag on
  *    one command line, and the ones that answer with a subcommand refusal are
@@ -285,7 +286,7 @@ export const OUTSIDE_BOUNDARY: Record<string, string> = {
  * command that dispatches on a subcommand, advertises it in some other shape
  * (`foo <sub>`), AND refuses an unknown one in words no other command uses,
  * would be missed by both halves at once. The refusal wording is the thin
- * part — every one of the five says "unknown … subcommand" today, and
+ * part — every one of them says "unknown … subcommand" today, and
  * `subcommandedByParser` matches exactly that.
  */
 
@@ -293,8 +294,14 @@ export const OUTSIDE_BOUNDARY: Record<string, string> = {
 const SUBCOMMAND_GROUP = /^\[([a-z][\w-]*(?:\|[a-z][\w-]*)+)\]$/;
 
 /**
- * The five commands' own exported lists, pinned against what their registry
- * `usage` advertises.
+ * The subcommanded commands' own exported lists, pinned against what their
+ * registry `usage` advertises.
+ *
+ * It read "the five" until 2026-09-07 and "the six" was never written down —
+ * the count in this sentence is exactly the hand-kept number this module's own
+ * header warns about, so it is gone rather than corrected. `rules`
+ * (`plan:store seq:1`, 2026-09-10) is the seventh member; the derivation below
+ * is what says how many there are.
  *
  * This is NOT the set — the set is derived below, and a sixth subcommanded
  * command joins it without this record being touched. What this buys is the
@@ -309,6 +316,7 @@ const DECLARED_SUBCOMMANDS: Record<string, readonly string[]> = {
   pack: PACK_SUBCOMMANDS,
   procedure: PROCEDURE_SUBCOMMANDS,
   review: REVIEW_SUBCOMMANDS,
+  rules: RULES_SUBCOMMANDS,
   session: SESSION_SUBCOMMANDS,
   statusline: STATUSLINE_SUBCOMMANDS,
 };

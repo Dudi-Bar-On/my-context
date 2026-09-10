@@ -205,7 +205,7 @@ a fragment and is re-checked by execution instead — the second table.
 | The injected block, which must emit steps or an `active` procedure arrives without the content it exists to deliver | `render-item.ts` · `export function renderItemBlock(item: Item): string {` · ~231 |
 | Budgeting is derived from that exact text, so emitting steps makes `itemCost` correct with no second change | `select.ts` · `function itemCost(item: Item): number {` · ~491 |
 | `Item` today | `types.ts` · `export interface Item {` · ~77 |
-| **No DDL change**: an item is stored as JSON in a `TEXT` column and `rebuild` re-parses from Markdown | `store.ts` · `  data        TEXT NOT NULL` · ~29 |
+| **No DDL change**: an item is stored as JSON in a `TEXT` column and `rebuild` re-parses from Markdown | `core/store.ts` · `  data        TEXT NOT NULL` · ~29 |
 | `observations` is create-only — the precedent `steps` follows | `mutate.ts` · `export interface UpdateInput {` · ~663 |
 | Where a create input declares its fields | `mutate.ts` · `export interface CreateInput {` · ~55 |
 | Revisions carry four fields, and `steps` must be explicitly none of them | `revision-log.ts` · `export const REVISION_FIELDS = ['title', 'body', 'summary', 'tags', 'extra'] as const;` · ~304 |

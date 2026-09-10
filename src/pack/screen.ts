@@ -321,7 +321,7 @@ export function screenItem(item: Item): ScreenFinding[] {
  * reaches a reader who never opened the artefact. `refusePackName` and
  * `refuseDescriptiveVersion` do not catch them: neither is a C0 or C1
  * control, none changes under NFC, and each costs one code point, so every
- * rule those functions have lets them through (`manifest.ts` ·
+ * rule those functions have lets them through (`pack/manifest.ts` ·
  * `export function refusePackName(v: unknown): string | null {` · ~230).
  */
 export function screenPackMeta(name: string, version: string): ScreenFinding[] {

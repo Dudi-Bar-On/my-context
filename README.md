@@ -1950,7 +1950,7 @@ draft, retiring a governing item. How far that separation actually holds is
 ```mermaid
 flowchart TB
   U(["<b>You</b>"]) --> SL["<b>/mycontext:…</b><br/>91 slash commands"]
-  U --> CL["<b>mycontext …</b><br/>46 CLI commands"]
+  U --> CL["<b>mycontext …</b><br/>47 CLI commands"]
   A(["<b>Claude</b>"]) --> TL["<b>MCP tools</b><br/>twenty-six, served over stdio"]
   SL -->|"add-* · search · link · LoadMyContext"| TL
   SL -->|"list-* · review · status · edit · query"| CL
@@ -2237,7 +2237,7 @@ listed with one. The remaining absences are in [section 8](#one-surface-for-ever
 
 ### What you run: the CLI
 
-46 commands. `mycontext help` prints the same list from the program itself, and
+47 commands. `mycontext help` prints the same list from the program itself, and
 `mycontext help <topic>` explains one of seven. Four are concepts — `categories`, `scope`,
 `capture`, `workflow` — and three are one page per invocation surface: `cli`, `tools` and
 `slash`, each generated from the registry, schema or directory it describes rather than
@@ -2652,6 +2652,7 @@ moves no count of what governs.
 | `mycontext session carry <id>` | choose which session a new one carries forward from — its index lines arrive marked and hoisted to the front of this session's index ([the carry](#the-index--so-nothing-is-invisible)). `--none` carries nothing, and is a state of its own rather than a return to the default; `--show` reads back what a new session would carry today and whether that is a choice or the default. An id the listing marks not `carryable` is refused rather than stored. Like `session name`, the id is explicit and never guessed — **the CLI is handed no session id at all**, because it runs in a terminal rather than inside a session |
 | `mycontext carry <id>` | mark **one item** for the very next injection, then forget it — a judgement about now, not `session carry`'s standing choice of which session to continue and not `pin`'s forever. It reuses the same front-of-queue index disclosure, and is spent the moment the next injection runs, whether or not the line was admitted under budget; a mark nobody spends simply waits, visible any time with `--show`, and never widens on its own. Marking an item already in your context costs nothing but a wasted line — this command has no way to know what one session's window currently holds, so it does not refuse on your behalf. `--clear` withdraws the whole pending queue |
 | `mycontext handover ask` | ask for the handover note **now**, at whatever the context window currently holds, instead of waiting for the `handover.thresholdPercent` the `Stop` hook watches. It fires the same ask that hook fires, so every reader of it is unchanged — the status line, the audit trail, and the mtime comparison that decides whether it was acted on. It can only be run from **inside a Claude Code session** — it asks the session you are in to write its handover, so outside one there is nothing to ask, and there is deliberately no flag that names a session by hand. It **refuses rather than guesses** otherwise too, and each refusal names what could not be established and says that nothing was written: when it cannot read how full that window is — no percentage is invented, and the message says whether the status-line bridge is missing, silent or stale; and when this session still has lanes running, which it names one by one, so the choice between waiting, stopping them yourself and going ahead with `--anyway` is yours. Nothing here writes the note, and nothing here stops a lane: my_context has no control that ends a subagent |
+| `mycontext rules [verify\|list\|show]` | the **product rule store** — a small set of constants about my_context itself (facts, prohibitions, procedures, standards, definitions) that ships inside the package and is **not** part of your corpus. It never appears in `list`, `ready`, `doctor` or an injection selected from your items, it spends none of your budget, and nothing here writes into `.my_context/`. Each entry is marked `product` — true for anyone who installs the tool — or `developer`, which applies only when the project being worked on is my_context itself, so a rule about how this repository chose to work is never shipped as the tool's law. `list` names the entries in force where you are standing; `show <id>` prints one whole, including the request that produced it in the asker's own words; `verify` checks every entry against the checksum that shipped with it and names the ones that are missing, altered or were never shipped at all. A store that does not verify refuses WRITES and still allows READS — blocking reads would punish you for an install you can still recover from. `--restore` puts back what shipped, from the installed package and never from the network. `--restore`, `--json` |
 | `mycontext ui` | the read-only web UI, served on `127.0.0.1` — `--port N`, `--no-open` to print the URL instead of opening a browser, and `--idle-ms N` to move the window before an untouched server exits. Loopback only: it refuses to start on any other address rather than warning. The page trades a one-shot URL fragment nonce for a token that reaches neither disk nor a process command line, and the server exits on its own after eight idle hours by default. [The web UI](#the-web-ui--mycontext-ui) describes the screens and what none of them can do |
 | `mycontext statusline` | the opt-in bridge to Claude Code's status line, and the only thing here that writes outside `.my_context/`. `mycontext statusline install` prints the `statusLine` setting you have now and exactly what would replace it, and writes **nothing** without `--yes`; `--settings <path>` chooses the file, defaulting to Claude Code's own (`CLAUDE_CONFIG_DIR`, else `~/.claude/settings.json`). Once installed, `mycontext statusline` runs on every assistant message: it prints the model, the context in use and how much of that came from project knowledge, and tees Claude Code's payload to a per-session file the web UI reads. `mycontext statusline uninstall --yes` puts the replaced setting back — the whole file is saved, not just the key, so an unchanged file is restored **byte for byte**, and one you have edited since keeps your edit and gets only its `statusLine` back. It refuses outright when the `statusLine` in the file is no longer this bridge, because a setting you made after installing is not ours to overwrite on the way out. [The status line bridge](#the-status-line-bridge-opt-in) |
 
@@ -6320,7 +6321,7 @@ command, or both; the map is `src/plugin/parity.ts` and `test/plugin/parity.test
 it against the usage banner the program prints and the files in `commands/`.
 
 What is left is asymmetry in the other direction — commands with no slash command — and it
-is **listed rather than discovered**. 17 of the 46 CLI commands have none, each for a reason
+is **listed rather than discovered**. 18 of the 47 CLI commands have none, each for a reason
 recorded beside it in `CLI_WITHOUT_SLASH`:
 
 - `ack` records that a **person** read a `doctor` finding and ruled on it, so a slash command
@@ -6370,6 +6371,11 @@ recorded beside it in `CLI_WITHOUT_SLASH`:
   that only *previewed* an import and then printed the `mycontext pack import` for you to
   run is the shape `/mycontext:lesson-stage` already uses, and it is what this row is
   waiting for.
+- `rules` reads the constants that ship inside the package — not your corpus — and checks them
+  against the checksums that shipped with them. A slash command would be the model asking whether
+  the rules it is being given are the real ones, which is a question only its answer can be
+  trusted on: the honest reader of a tamper check is the person who installed the tool. There is
+  no MCP tool either, and for the same reason.
 - `statusline` is Claude Code's own configuration rather than anything in this corpus. Run
   bare it reads a payload only Claude Code sends, on stdin, which a slash command has no way
   to produce; and `statusline install` edits `settings.json`, which is a decision about the
@@ -6586,7 +6592,7 @@ command prints; that the injected output quoted in sections 3, 4 and 6 is what t
 emit; that every section the table of contents links either has a line in the capabilities
 summary near the top or is listed, with a reason, as something the product does not *do*; and
 that both documents carry the same heading sequence and the same examples in the same order.
-Of those, `counts.test.ts` computes the "17 of the 46 CLI commands" ratio above from the
+Of those, `counts.test.ts` computes the "18 of the 47 CLI commands" ratio above from the
 running program and fails in **both** languages if either half drifts — it had drifted twice
 before the test existed — and it computes this paragraph's own file count the same way.
 `parity.test.ts` holds this section's heading sequence to the Hebrew mirror's. This paragraph

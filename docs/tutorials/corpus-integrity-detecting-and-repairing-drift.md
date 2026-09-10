@@ -98,6 +98,29 @@ intended, and only a person can make it.
 from a browser behind a confirm; acknowledging a finding cannot, and neither can
 `doctor --json` or `doctor --quiet`.
 
+### The other integrity check, and it is not about your corpus
+
+`mycontext rules verify` looks the same and answers about something else, so it
+is worth keeping the two apart from the first time you meet them.
+
+Everything above is about YOUR items: files in `.my_context/` that you and
+Claude wrote, where drift means somebody changed one outside the tool and the
+question is whether you meant to.
+
+`mycontext rules verify` is about the small set of constants that ship INSIDE
+the package — facts and prohibitions and standards about my_context itself. You
+did not write them and cannot edit them from here; they are not in your corpus,
+they never appear in `list`, `ready` or `doctor`, and they spend none of your
+budget. `verify` checks each one against the checksum that shipped with it and
+names any that is missing, altered, or was never shipped at all, and
+`--restore` puts back what shipped, from the installed package and never from
+the network.
+
+The one behaviour worth knowing: a store that does not verify refuses **writes**
+and still allows **reads**. Blocking reads would punish you for an install you
+can still recover from — and it is deliberately not the same thing as a budget
+refusal, which never happens in your install at all.
+
 ## From the UI
 
 The **Doctor** screen (`nav.ev`) is where drift is read in the browser: three
