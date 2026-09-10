@@ -1406,6 +1406,58 @@ test('the three measured shapes of an answer are read, and a fourth returns noth
     'an unrecognised sentence parses to nothing so the caller can serve it verbatim');
 });
 
+/**
+ * **A MULTI-SELECT ANSWER CARRIES QUOTES INSIDE ITSELF, AND THE SEPARATOR
+ * BETWEEN PAIRS IS THE SAME CHARACTERS.**
+ *
+ * Owner report 2026-09-10: the options of a checkbox question were not drawn as
+ * chosen. The sentence below is his, verbatim from his own transcript, and the
+ * value of the third pair contains `", "` — the exact string that separates one
+ * pair from the next.
+ *
+ * `"([^"]*)"="([^"]*)"` therefore stopped at the first inner quote and kept
+ * `1 — From selection, `, so only his FIRST tick matched an option and the other
+ * three drew as though he had not chosen them.
+ *
+ * Widening the pattern cannot fix it and the attempt is asserted here so it is
+ * not retried: no lexical rule can tell a separator from content when they are
+ * the same characters. The parser is given THE QUESTIONS THAT WERE ASKED, which
+ * the step's own input carries.
+ */
+test('a multi-select answer keeps every option the owner ticked', () => {
+  const asked = [
+    "Should 'reconstruct from what I copied' be the primary entry point, or one mode among several?",
+    'Of the round-one modes, which should exist in the first build?',
+  ];
+  const sentence = 'The user answered: "' + asked[0] + '"="1 — Primary, and the others are '
+    + 'secondary (Recommended)", "' + asked[1] + '"="1 — From selection, "2 — Free text search, '
+    + 'scoped by session and dates", 3 — List the subjects in a range, 4 — List the anchors in a '
+    + 'range". Read the answers carefully — they may request clarification.';
+
+  const parsed = parseAnswers(sentence, asked);
+  assert.equal(parsed.length, 2, 'both questions are found by their own markers');
+
+  const multi = parsed.find((one) => one.question === asked[1]);
+  assert.notEqual(multi, undefined);
+  for (const label of ['1 — From selection', '2 — Free text search, scoped by session and dates',
+    '3 — List the subjects in a range', '4 — List the anchors in a range']) {
+    assert.ok(multi?.answer.includes(label),
+      `the option "${label}" is missing from the answer, so the screen cannot mark it chosen`);
+  }
+
+  // THE CONTROL, and it is the whole point: without the questions the old shape
+  // truncates at the first inner quote. Asserted rather than described, so the
+  // fix cannot be silently reverted to a regex.
+  const blind = parseAnswers(sentence).find((one) => one.question === asked[1]);
+  assert.equal(blind?.answer, '1 — From selection, ',
+    'the fallback truncates a multi-select answer — which is why the questions are passed in');
+
+  // AND A SINGLE-SELECT SENTENCE IS UNTOUCHED by the change.
+  assert.deepEqual(
+    parseAnswers('The user answered: "How far?"="This workspace (Recommended)".', ['How far?']),
+    [{ question: 'How far?', answer: 'This workspace (Recommended)' }]);
+});
+
 /* ══ THE EVIDENCE BEHIND A SPILLED TOOL RESULT — plan:archive seq:30 ════════ */
 
 /**

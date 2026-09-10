@@ -1217,7 +1217,7 @@ function subtypeOf(row: Record<string, unknown>): string | null {
  * record. An unrecognised shape returns nothing and the caller serves the
  * sentence itself.
  */
-export function parseAnswers(text: string): DocAnswer[] {
+export function parseAnswers(text: string, asked: readonly string[] = []): DocAnswer[] {
   const out: DocAnswer[] = [];
 
   // The rejection paragraph — `Questions asked:` and then one `- "…"` per
@@ -1244,11 +1244,72 @@ export function parseAnswers(text: string): DocAnswer[] {
   // `The user answered:` / `Your questions have been answered:` — one
   // `"question"="answer"` pair per question, comma separated.
   if (!/^\s*(The user answered:|Your questions have been answered:)/.test(text)) return out;
+  // **THE SEPARATOR AND THE CONTENT ARE THE SAME CHARACTERS, SO PUNCTUATION
+  // CANNOT SPLIT THIS.** Owner report 2026-09-10: the options of a MULTI-SELECT
+  // question were not drawn as chosen. Measured on his own transcript, a
+  // multi-select answer is written with the picked labels quoted INSIDE it:
+  //
+  //     "…which should exist in the first build?"="1 — From selection, "2 — Free
+  //     text search, scoped by session and dates", 3 — List the subjects…"
+  //
+  // `"([^"]*)"="([^"]*)"` therefore stops at the first inner quote and keeps
+  // `1 — From selection, ` — so only his FIRST tick matched an option and the
+  // rest drew as though he had not chosen them. The pairs after it are scanned
+  // out of the answer's own text.
+  //
+  // Widening the regex does not work either, and the attempt is recorded so it
+  // is not retried: a lookahead for `", "` DROPPED the whole question, because
+  // the sentence ends in trailing prose rather than a quote. The separator
+  // between pairs (`", "`) occurs inside the value, so no lexical rule can tell
+  // them apart.
+  //
+  // **SO IT IS PARSED AGAINST THE QUESTIONS THAT WERE ASKED**, which the step's
+  // own input carries — derived from the record rather than inferred from
+  // quoting. Each known question is located by its own `"question"="` marker,
+  // and its answer runs to the closing quote before the NEXT question's marker.
+  // Nothing is guessed, and a question the sentence does not contain is simply
+  // absent rather than mis-split.
+  const markers = asked
+    .map((question) => ({ question, at: text.indexOf(`"${question}"="`) }))
+    .filter((m) => m.at >= 0)
+    .sort((a, b) => a.at - b.at);
+
+  if (markers.length > 0) {
+    for (let i = 0; i < markers.length; i += 1) {
+      const mark = markers[i]!;
+      // `"` + question + `"="` — the value begins after all four.
+      const from = mark.at + mark.question.length + 4;
+      const next = i + 1 < markers.length ? markers[i + 1]!.at : text.length;
+      const close = text.lastIndexOf('"', next - 1);
+      out.push({ question: mark.question, answer: close > from ? text.slice(from, close) : '' });
+    }
+    return out;
+  }
+
+  // NO QUESTIONS TO PARSE AGAINST — a resumed ask, where the tool call itself is
+  // not in this window. The old shape is kept for exactly that case: it reads a
+  // single-select sentence correctly, which is what a resumed ask almost always
+  // is, and a multi-select one imperfectly rather than not at all
+  // (`INV-nothing-is-dropped-silently`).
   const pair = /"([^"]*)"="([^"]*)"/g;
   for (;;) {
     const found = pair.exec(text);
     if (found === null) break;
     out.push({ question: found[1] ?? '', answer: found[2] ?? '' });
+  }
+  return out;
+}
+
+/** The question texts an `AskUserQuestion` step actually asked, in order. */
+function askedQuestions(step: DocStep | undefined): string[] {
+  if (step === undefined) return [];
+  const field = step.input.find((one) => one.name === 'questions');
+  if (field === undefined || !Array.isArray(field.value)) return [];
+  const out: string[] = [];
+  for (const asked of field.value) {
+    if (asked === null || typeof asked !== 'object') continue;
+    const text = (asked as Record<string, unknown>)['question'];
+    if (typeof text === 'string' && text !== '') out.push(text);
   }
   return out;
 }
@@ -1753,7 +1814,7 @@ export function readNodes(file: string, want: NodeWindowRequest): DocNodeBody[] 
       if (node === undefined) continue;
       node.outcome = result.failed ? 'failed' : 'ok';
       if (node.deed === 'ask') {
-        node.answers = parseAnswers(result.text);
+        node.answers = parseAnswers(result.text, askedQuestions(node.steps[0]));
         if (node.answers.length === 0) node.answerText = result.text;
       }
       pending.delete(result.id);
