@@ -56,11 +56,11 @@ function canonicalExtra(extra: Record<string, string>): Record<string, string> {
 
 /**
  * Identity of an item's *content*. `ContentShape` is the whole of it, so the
- * eleven `Item` fields absent from that interface are all excluded: `id`,
+ * twelve `Item` fields absent from that interface are all excluded: `id`,
  * `status`, `origin`, provenance (`sourceFile`/`sourceAnchor`/
  * `sourceChecksum`), lifecycle dates (`validFrom`/`validUntil`), the
- * `checksum` itself, and the storage location (`layer`/`filePath`). None of
- * them change what the item *asserts*. `severity` and
+ * `checksum` itself, the storage location (`layer`/`filePath`) — and
+ * `request`. None of them change what the item *asserts*. `severity` and
  * `always` and `continuity` ARE included: they are normative content, not
  * bookkeeping —
  * `computeItemChecksum` (item.ts) agrees, it hashes both too — so
@@ -252,6 +252,39 @@ export function itemContentHash(item: Item): string {
  * tag projection or a retirement is one readers learn to ignore — the
  * cry-wolf failure `droppedBodyText` (item.ts) refuses for whitespace, one
  * field further out.
+ *
+ * ── AND ONE FIELD THAT IS NOT IN THIS TABLE, ON PURPOSE ────────────────────
+ *
+ * **`Item.request` — the owner's own words, verbatim (D41 spec §16a) — is not
+ * `unsummarised`. It is not in `ContentShape` at all**, so it can never reach
+ * `itemSummaryBasis` and no entry here decides anything about it. That is a
+ * stronger exclusion than a `'unsummarised'` row would be, and it is the shape
+ * the spec asks for: a row in this table is a decision somebody can revise,
+ * whereas absence from `ContentShape` means there is nothing to revise.
+ *
+ * **Do not "complete" the table by adding it.** Three things would break at
+ * once, and the `satisfies` clause above cannot warn about any of them because
+ * the field is not a member of `ContentShape` to begin with:
+ *
+ *  1. **Every item that gains a request would report a STALE summary** — the
+ *     backfill is 1,076 items, so that is the whole corpus reporting stale for
+ *     a field that changed nothing about what any of them says. It is the
+ *     cry-wolf failure this docblock's last paragraph rejects, at maximum
+ *     radius.
+ *  2. **A summary written BEFORE the request was recorded would be judged
+ *     against a basis that includes it** — and the request is by definition
+ *     older than the summary, since the summary was derived from it. The
+ *     staleness signal would fire on the discovery of an existing fact.
+ *  3. **It would make the sweep irreversible.** `canonicalContent` feeds
+ *     `itemContentHash` as well, so clearing the field would move content
+ *     identity — and §16a requires the clear to touch nothing.
+ *
+ * `WORKFLOW_EXTRA_KEYS` and `LIFECYCLE_OBSERVATION_CATEGORIES` below are the
+ * shape to reach for when a field that IS content needs narrowing from the
+ * inside. This is the other case entirely: a field that is not content, kept
+ * out by not being content, and the test that proves it (`test/core/
+ * request-field.test.ts`) plants a request and asserts the recorded basis does
+ * not move.
  */
 type SummaryBasis = 'summarised' | 'unsummarised';
 

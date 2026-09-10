@@ -551,6 +551,46 @@ export function validateBody(body: string): void {
 }
 
 /**
+ * **The same guard for `## Request` — the owner's own words, verbatim (D41
+ * spec §16a, `Item.request`).**
+ *
+ * `validateBody` above refuses a heading in the body because the body is the
+ * prose BEFORE the first `## `. This refuses one in a request because the
+ * request is the prose INSIDE a `## Request` section: `splitSections` would
+ * read the line as the start of a NEW section, and everything after it would
+ * be filed under a heading nothing reads and deleted by the next write. Same
+ * loss, same silence, one section over.
+ *
+ * **It refuses rather than escaping, and that is the whole argument for this
+ * field.** Every other option repairs the text — escape the hashes, indent the
+ * block, fold it into one line — and every one of them stores something the
+ * person did not type. The field exists BECAUSE it is his words; a request
+ * that has been quietly rewritten to fit the file is worth less than no
+ * request at all, because nothing afterwards says it was rewritten. So a
+ * prompt this format cannot hold is refused at the write boundary and, in the
+ * backfill (`scripts/backfill-requests.ts`), SKIPPED and counted under its own
+ * reason — an empty field is honest and an edited one is not.
+ *
+ * `#{1,6}` and not just `##`, matching `validateBody`: `splitSections` also
+ * drops every `# ` line after the first, so a single-hash line inside a
+ * request is lost just as completely.
+ */
+export function validateRequest(request: string): void {
+  for (const line of request.split('\n')) {
+    if (!HEADING_LINE.test(line)) continue;
+    throw new Error(
+      `my_context: the request line ${JSON.stringify(line)} starts with a Markdown heading. ` +
+      `An item's request is stored verbatim inside its "## Request" section, so this line ` +
+      `would be read back as the start of a new section and everything under it would be ` +
+      `lost the next time the item is written, without any error. Nothing rewrites the text ` +
+      `to make it fit — the field's whole value is that it is the words that were actually ` +
+      `written — so a request carrying a heading is refused here and skipped by the ` +
+      `backfill rather than silently edited into something else.`,
+    );
+  }
+}
+
+/**
  * The sibling of `validateObservationText` for a `## Steps` line, and the
  * differences from it are the point.
  *

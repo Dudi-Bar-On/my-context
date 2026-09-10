@@ -581,8 +581,16 @@ function looksLikeTable(text: string): boolean {
  * Synthetic user turns — stage 3. Each returns its own name so the coverage
  * block can itemise them; a single boolean would report "246 dropped" and
  * leave nobody able to tell a task notification from a slash command.
+ *
+ * **Exported for `scripts/backfill-requests.ts`**, which asks the same
+ * question for a different reason: this module drops a synthetic turn because
+ * it is not worth summarising, and the backfill drops one because writing it
+ * into an item's `request` field would put the harness's words in the owner's
+ * mouth. A second copy of this list in that script could drift from this one,
+ * and the drift would be invisible — a `<task-notification>` recorded as a
+ * person's request reads exactly like a person's request.
  */
-function syntheticKind(text: string, isMeta: boolean, isCompactSummary: boolean):
+export function syntheticKind(text: string, isMeta: boolean, isCompactSummary: boolean):
 | 'task-notification' | 'slash-command' | 'meta' | 'system-reminder'
 | 'harness-compaction-summary' | null {
   if (isCompactSummary) return 'harness-compaction-summary';
@@ -607,8 +615,14 @@ function syntheticKind(text: string, isMeta: boolean, isCompactSummary: boolean)
  * difference IS the recipe: `tool_result` text is not returned here at all,
  * because design §4b skips tool outputs as reproducible. `thinking` is
  * returned separately so the caller decides rather than the flattener.
+ *
+ * **Exported for `scripts/backfill-requests.ts`** alongside `syntheticKind`
+ * above, and for the same reason: a second flattener would answer "what did
+ * the person actually say" differently — most obviously about `tool_result`
+ * blocks, which this one deliberately drops and a naive `JSON.stringify` of
+ * the content array would sweep straight into a recorded request.
  */
-function saidText(content: unknown): { text: string; thinking: string } {
+export function saidText(content: unknown): { text: string; thinking: string } {
   if (typeof content === 'string') return { text: content, thinking: '' };
   if (!Array.isArray(content)) return { text: '', thinking: '' };
   const said: string[] = [];

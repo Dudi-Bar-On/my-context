@@ -276,6 +276,63 @@ export interface Item {
   /** Prose between the title heading and the first `##` section. */
   body: string;
   /**
+   * **The free text a PERSON wrote when they asked for this item, verbatim,
+   * before any body or summary was derived from it.** The `## Request`
+   * section. D41 spec §16a.
+   *
+   * The owner's requirement, in his own words (2026-09-10): *"the user request
+   * prompt in free text should be also documented in the item before it's body
+   * and summary created, it will ease the user understanding about what the
+   * rule or instruction or other item type is because it was written by it's
+   * own words — this property is for documentation only and should not be
+   * injected to the context."* Every clause of that sentence is a decision,
+   * and each one is enforced somewhere different:
+   *
+   *  - **verbatim, including the mess** — nothing normalises it, nothing
+   *    reflows it, nothing spell-checks it. `validateRequest` (validate.ts)
+   *    REFUSES text this format cannot hold rather than repairing it, which is
+   *    `validateBody`'s rule one section over: the value of this field is that
+   *    it is HIS words, so a tidied one is not a smaller version of it, it is a
+   *    different thing wearing quotation marks.
+   *  - **before the body and summary** — it is what the item was derived FROM,
+   *    which is why it is not itself derived. Recording it makes a check
+   *    possible that nothing performs today: the summary standard governs the
+   *    SHAPE of the sentence and never asks whether the sentence answers the
+   *    request that produced it.
+   *  - **documentation only, never injected** — `renderItemBlock` and
+   *    `renderIndexLine` (render-item.ts) name the fields they emit and this is
+   *    not among them, so `itemCost` does not charge for it and no tier's
+   *    budget moves. That absence is STRUCTURAL, not a filter list: a filter is
+   *    a list somebody can forget to extend, and the same argument is written
+   *    out at length in `src/rules/deliver.ts` for the store's own copy of this
+   *    field. `test/core/request-field.test.ts` plants a distinctive request
+   *    and asserts it reaches no injected surface, because "structural" is a
+   *    claim and the test is the evidence.
+   *  - **never in the summary basis** — it is NOT part of `ContentShape`
+   *    (content-hash.ts), so `itemSummaryBasis` cannot see it and no summary
+   *    goes stale because a request was recorded. That is `summaryWas`'s own
+   *    treatment for `summaryWas`'s own reason, and content-hash.ts states it
+   *    beside `SUMMARY_BASIS` where somebody about to add a field will read it.
+   *  - **never in the checksum** — absent from `computeItemChecksum` (item.ts)
+   *    UNCONDITIONALLY, which is one step further than `summary`, `summaryWas`
+   *    and `acknowledged` go. Those are conditional so that an item predating
+   *    the field hashes unchanged; this one is excluded outright so that
+   *    ADDING a request and CLEARING it again both leave the recorded checksum
+   *    exactly where it was. Spec §16a requires the backfill to be reversible
+   *    *"without touching body, summary or checksum"*, and a field the checksum
+   *    covers could not be.
+   *  - **optional, and absent is not a defect** — `undefined` on every item
+   *    that no person asked for in writing, which is every agent-origin and
+   *    ingest-origin item and every item captured before this field existed.
+   *    Nothing requires one, no validator asks for one, and no reader may
+   *    assume one.
+   *  - **never edited after the fact** — absent from `UpdateInput`, the way
+   *    `steps` and `observations` are absent from it. A correction is a NEW
+   *    request, not a rewritten old one, and there is nothing to gain from a
+   *    surface that lets somebody improve what he actually typed.
+   */
+  request?: string;
+  /**
    * The `## Steps` section, in file order. Create-only: absent from
    * `UpdateInput` exactly as `observations` is, so a step is corrected by
    * editing the Markdown and running `mycontext repair`.

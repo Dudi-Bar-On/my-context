@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: Every item keeps the exact words that asked for it, so its summary can be compared against what was actually requested.
-summary_of: c2d48c73af6d770d
+summary_of: a494e272734b17d9
 scope:
   - src/core/content-hash.ts
   - src/core/**
@@ -17,17 +17,17 @@ tags:
   - store
   - "plan:store"
   - "seq:5"
-  - "state:todo"
+  - "state:done"
 origin: human
 source_file: null
 source_anchor: null
 source_checksum: null
 valid_from: 2026-09-10
 valid_until: null
-checksum: 6baedd2dbdcd837c
+checksum: 73338499e3a7e583
 plan: store
 seq: "5"
-state: todo
+state: done
 priority: "1"
 needs: store/1
 ---
@@ -55,3 +55,5 @@ the backfill must use it.
 
 The report says WHAT MADE ONE RELIABLE, not only how many. A coverage number nobody can
 interrogate is one nobody can trust.
+
+BUILT 2026-09-11, AND THE REAL BACKFILL HAS NOT BEEN RUN. Task 17 landed: `request` is a `## Request` section, outside `ContentShape` and outside `computeItemChecksum`, so it is structurally absent from the summary basis, from every injected surface and from the recorded checksum - and clearing it restores a file byte for byte. Task 18 is built and proved AGAINST A COPY of the corpus only: 36 of 1,085 items filled, 1,049 skipped with a named reason for each, and the copy restored byte-identically by --clear. NOT ONE REAL ITEM WAS WRITTEN. The owner did not authorise an unattended write to 1,076 live items overnight, so the apply run waits for him: `node scripts/backfill-requests.ts .my_context --apply`. Read the 36 matches and their evidence first - two of them quote text the MODEL wrote and the owner pasted back, which is the one class a reader should rule on before the sweep runs for real.

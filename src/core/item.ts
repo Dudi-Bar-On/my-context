@@ -179,8 +179,17 @@ function splitSections(body: string): { prose: string; sections: Map<string, str
  * section under any other name is not a field of an item at all: `parseItem`
  * puts its lines in `sections`, nothing reads them, and the next `renderItem`
  * writes the item back WITHOUT them.
+ *
+ * `request` is the fourth and the only one with no grammar inside it: the
+ * other three parse their lines into records, and this one is free text that
+ * must come back exactly as it went in (`Item.request`, types.ts). That is why
+ * it is a SECTION rather than a frontmatter key — `parseFrontmatter` is line
+ * based and has no block scalar, so a two-paragraph prompt could only be
+ * stored there by escaping it into one line, and an escaped blob is not
+ * something a person reads. It is also why `droppedBodyText` below returns
+ * early for it beside `steps`: there is no per-line grammar to fail.
  */
-const WRITABLE_SECTIONS = new Set(['steps', 'observations', 'relations']);
+const WRITABLE_SECTIONS = new Set(['steps', 'observations', 'relations', 'request']);
 
 /** What a canonical rewrite of an item file would not write back — see `droppedBodyText`. */
 export interface BodyLoss {
@@ -274,7 +283,12 @@ export function droppedBodyText(fileText: string): BodyLoss | null {
       dropped.push(block.heading, ...withoutTrailingBlanks(block.lines));
       return;
     }
-    if (block.name === 'steps') return;
+    // `steps` has already been refused outright by `parseItem` when repeated,
+    // and `request` is free text with no per-line grammar at all — running the
+    // observation or relation grammar over either would report every line of a
+    // recorded prompt as "text that would be dropped", which is the cry-wolf
+    // this function's own docblock refuses for whitespace.
+    if (block.name === 'steps' || block.name === 'request') return;
     const grammar = block.name === 'observations' ? OBSERVATION : RELATION;
     for (const line of block.lines) {
       if (line.trim() === '' || grammar.test(line.trim())) continue;
@@ -520,6 +534,10 @@ export function parseItem(text: string, filePath: string, layer: Layer): Item {
   const id = requireString(fm, rawBlock, 'id');
   validateLoadedId(id, filePath);
 
+  // The owner's own words, exactly as the file holds them — no grammar, no
+  // per-line parse, nothing dropped. `Item.request` (types.ts) argues why.
+  const requestText = (sections.get('request') ?? []).join('\n').trim();
+
   return {
     id,
     type: requireString(fm, rawBlock, 'type'),
@@ -575,6 +593,19 @@ export function parseItem(text: string, filePath: string, layer: Layer): Item {
     steps: parseSteps(sections.get('steps') ?? []),
     observations: parseObservations(sections.get('observations') ?? []),
     relations: parseRelations(sections.get('relations') ?? []),
+    // **Spread conditionally, so an item with no `## Request` carries no key
+    // at all** rather than `request: undefined`. The two are the same to
+    // `renderItem` and different to `JSON.stringify`, and this object is
+    // stringified — by `itemContentHash`'s canonical shape, by the UI read
+    // model and by the MCP surface. `undefined` disappears from a stringify
+    // today and would stop disappearing the moment somebody added a
+    // `?? null`, so the absence is made structural here instead.
+    //
+    // `''` is `null`: a heading with nothing under it is not a request, and
+    // the trim is `splitSections`' own convention for prose — it trims the
+    // leading block for the reason given in `droppedBodyText`, that a
+    // separator blank line is not content.
+    ...(requestText === '' ? {} : { request: requestText }),
     layer,
     filePath,
   };
@@ -773,6 +804,21 @@ export function computeItemChecksum(item: Item): string {
   if (item.steps.length > 0) shape.steps = item.steps;
   shape.observations = item.observations;
   shape.relations = item.relations;
+  // **`request` is NOT here, and its absence is the only unconditional one in
+  // this function.** Every other field above is added conditionally so that an
+  // item predating it hashes unchanged; that would not be enough for this one.
+  // Spec §16a requires the backfill of 1,076 items to be REVERSIBLE *"without
+  // touching body, summary or checksum"*, so recording a request and clearing
+  // it again must both leave this value exactly where it was — which is true
+  // only if the field never enters the hash at all, in either direction.
+  //
+  // **The cost is stated rather than discovered:** a hand edit to a `##
+  // Request` section leaves no stale checksum behind, so `doctor` will not
+  // report it. That is the one property the owner traded away to get a
+  // reversible sweep, and it is the smaller loss — the field is documentation
+  // that nothing reads at runtime, nothing injects, and no decision rests on,
+  // whereas an irreversible mass write to a live corpus is the failure the
+  // spec spent a paragraph refusing.
   return formatChecksum(CHECKSUM_BASIS_VERSION, checksum(JSON.stringify(shape)));
 }
 
@@ -855,6 +901,34 @@ export function renderItem(item: Item): string {
   }
   if (item.relations.length) {
     parts.push('## Relations', ...item.relations.map((r) => `- ${r.type} [[${r.target}]]`), '');
+  }
+  // **LAST, and the position is a decision rather than an accident.** The
+  // request is not part of what the item says — it is what somebody asked for
+  // before the item said anything — so it goes after everything the item
+  // asserts, where a reader who wants it can find it and a reader working from
+  // the item is not made to walk past it first. The order is fixed for the
+  // reason `## Steps` before `## Observations` is fixed: a floating order
+  // breaks byte-identity the first time an item carries both.
+  //
+  // Emitted only when there IS one, for `continuity`'s and `summary`'s reason
+  // in the frontmatter above — an unconditional heading would add two lines to
+  // every item in every corpus on the next write, which is
+  // `INV-markdown-is-the-source-of-truth`'s byte-identical round trip broken
+  // for all of them at once. `validateRequest` (validate.ts) is what keeps the
+  // text below the heading round-trippable; nothing here escapes or reflows
+  // it, because the field's whole value is that it was not touched.
+  //
+  // **A blank line after the heading, unlike the three sections above**, and
+  // the difference is the content rather than the taste: those three are line
+  // grammars where a blank line before the first `- ` would read as a mistake,
+  // and this one is prose. A person hand-writing a `## Request` writes the
+  // blank line — it is what every Markdown editor produces — so emitting it is
+  // what makes the hand-authored form and the rendered form the SAME bytes.
+  // The other spelling round-trips just as safely (`splitSections` trims the
+  // section's leading blank either way); it would simply reformat a file
+  // somebody wrote by hand, on a write they did not ask for.
+  if (item.request !== undefined && item.request !== '') {
+    parts.push('## Request', '', item.request, '');
   }
   return parts.join('\n');
 }

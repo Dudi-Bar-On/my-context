@@ -65,8 +65,8 @@ import type { Item, Observation, Origin, Relation, Severity, Status } from './ty
 import {
   normalizeObservations, normalizeSteps, normalizeSummary, validateBody, validateEnums,
   validateExplicitId, validateExtra, validateObservationText, validateRelations,
-  validateRelationTarget, validateScope, validateSummary, validateTags, validateTitle,
-  validateValidFrom,
+  validateRelationTarget, validateRequest, validateScope, validateSummary, validateTags,
+  validateTitle, validateValidFrom,
 } from './validate.ts';
 
 export interface MutationContext {
@@ -220,6 +220,27 @@ export interface CreateInput {
    */
   distinct?: string[];
   supersedes?: string;
+  /**
+   * **The free text a PERSON wrote when they asked for this item, verbatim.**
+   * D41 spec §16a; `Item.request` carries the full argument for every one of
+   * its exclusions and this comment does not repeat them.
+   *
+   * **CREATE-ONLY, and there is no `UpdateInput.request`.** The spec's rule is
+   * *"never edited after the fact — a correction is a new request, appended"*,
+   * and the shape enforces it the way `steps` and `observations` are enforced:
+   * the field simply is not on the update surface, so no caller can rewrite
+   * what somebody actually typed. That is also why it does not appear in
+   * `UPDATE_FIELD_POLICY` (trust.ts) — a field absent from `UpdateInput` is not
+   * an unclassified field, it is one the update path cannot reach.
+   *
+   * Omitted, empty and whitespace-only all mean the same thing and all store
+   * nothing: an agent- or ingest-origin item has no request, and that is not a
+   * defect. Nothing here generates one. `validateRequest` (validate.ts) is
+   * called at this boundary and not only at a surface, so
+   * `INV-a-validator-that-gates-writes-must-be-a-complete` holds: anything
+   * `createItem` accepts round-trips through `renderItem`/`parseItem`.
+   */
+  request?: string;
   scope?: string[];
   tags?: string[];
   origin?: Origin;
@@ -798,6 +819,20 @@ export function createItem(
   // second way of writing nothing.
   const summary = normalizeSummary(input.summary ?? '');
   validateSummary(summary);
+  // **Trimmed at the edges and NOT normalised in any other way** — no reflow,
+  // no whitespace collapse, no case change, nothing. `Item.request` (types.ts)
+  // argues why: the value of the field is that these are the words that were
+  // actually written, and a request improved on its way to disk is a paraphrase
+  // wearing quotation marks. The trim is the one exception and it is the format
+  // conceding rather than the text being edited — `splitSections` trims a
+  // section's own separator blank lines on the way back in, so storing them
+  // would produce a value that does not round-trip.
+  //
+  // `validateRequest` is called HERE, at the shared write boundary rather than
+  // at a surface, because `INV-a-validator-that-gates-writes-must-be-a-complete`
+  // requires that everything `createItem` accepts survives the round trip.
+  const request = (input.request ?? '').trim();
+  validateRequest(request);
   // Normalized ONCE, here, into a local both `contentHash` below and the
   // stored item read — the same discipline `body` gets just above, for the
   // same reason: hashing the raw text and storing the normalized text (or
@@ -986,6 +1021,15 @@ export function createItem(
     checksum: '',
     extra: input.extra ?? {},
     body,
+    // **Spread conditionally, so an item nobody asked for in writing carries
+    // no key at all** — `parseItem` does the same on the way back in, for the
+    // reason stated there: `undefined` disappears from a `JSON.stringify`
+    // today and stops disappearing the moment somebody writes `?? null`.
+    //
+    // `request` (the local) is `''` for omitted, empty and whitespace-only
+    // alike, collapsed once above, so all three store nothing — the treatment
+    // `summary` gets four fields up, for `summary`'s stated reason.
+    ...(request === '' ? {} : { request }),
     // Already validated and already `checked: false` throughout — see the
     // `normalizeSteps` call above. An input with no steps still produces `[]`,
     // which is what keeps a stepless item's `checksum` identical to what it
