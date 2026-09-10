@@ -599,6 +599,70 @@ export interface DispatchGateConfig {
  */
 export const DEFAULT_DISPATCH_GATE: DispatchGateConfig = { enabled: false };
 
+/**
+ * **The self-improvement loop's one switch** — design
+ * `docs/superpowers/specs/2026-09-08-self-improvement-loop-design.md` §11.
+ *
+ * ── ONE SWITCH, ONE SUBSYSTEM ──────────────────────────────────────────────
+ *
+ * §11 is blunt about why this is a single boolean and not a family of them:
+ * upstream's issue #82708 was a kill switch that did not kill, because zeroing
+ * one interval left a second path creating anyway. `enabled: false` here means
+ * NO CHILD IS SPAWNED, from any hook, on any path, and
+ * `test/review/pass.test.ts` asserts exactly that rather than asserting that
+ * the child did nothing once spawned.
+ *
+ * ── THE KEYS THIS BUILD ACTS ON, AND THE ONES IT REFUSES ───────────────────
+ *
+ * §11 prints a nine-key block. Six of them are here. `maxProposalsPerPass`,
+ * `crossSessionSameCwd` and `model` are NOT, and they are refused rather than
+ * accepted-and-ignored — `requireUi`'s boundary, applied to a case that makes
+ * it concrete. Phase 2 (`plan:loop seq:2`) ends at a DRY RUN: the pass reads,
+ * writes a report and proposes nothing, and no model is called at all. A
+ * `"model": "haiku"` accepted today would be a user told their loop runs on
+ * Haiku when nothing anywhere calls a model, which is the one-way failure this
+ * file refuses everywhere else. They land when `plan:loop seq:3` gives them
+ * something to govern.
+ */
+export interface ReviewConfig {
+  /** The whole subsystem. `false` means no child is spawned, ever. */
+  enabled: boolean;
+  /** Tool calls between two CONSIDERATIONS. The rubric still decides. */
+  everyNToolCalls: number;
+  /** Consider on `PreCompact` too — the moment context is about to be lost. */
+  onPreCompact: boolean;
+  /** The ration. `fires` in `core/review-counter.ts` is measured against it. */
+  maxFiresPerSession: number;
+  /**
+   * Read the transcript whole, and send only what is new (§3a).
+   *
+   * `false` reads ONLY the new stretch, and the pass then reports
+   * `whole: false` naming the prefix it did not read. That disclosure is the
+   * whole reason the key is allowed to exist: a pass that samples and says so
+   * is a different thing from a pass that samples silently, and this project
+   * has already measured what the second costs.
+   */
+  readWholeTranscript: boolean;
+  /** Read this session's subagent transcripts too (§3b). */
+  includeSubagents: boolean;
+}
+
+/**
+ * OFF, and every other value set to §11's own number.
+ *
+ * The defaults are live even when `enabled` is false, deliberately: a reader
+ * asking "what would it do if I turned it on" gets an answer from one object
+ * rather than from a switch statement.
+ */
+export const DEFAULT_REVIEW: ReviewConfig = {
+  enabled: false,
+  everyNToolCalls: 15,
+  onPreCompact: true,
+  maxFiresPerSession: 3,
+  readWholeTranscript: true,
+  includeSubagents: true,
+};
+
 export interface Config {
   profile: ProfileName;
   categories: Record<string, ResolvedCategory>;
@@ -623,6 +687,14 @@ export interface Config {
    * would, and the object shape is `ui.enabled`'s for that reason.
    */
   dispatchGate: DispatchGateConfig;
+  /**
+   * Whether the self-improvement loop may look at a session at all — see
+   * `ReviewConfig` for the one-switch rule this shape enforces. An object
+   * rather than `handover`'s `| null` for `dispatchGate`'s reason: `enabled:
+   * false` (the default) already says everything `null` would, and every other
+   * field is a number a reader may want to see without turning the loop on.
+   */
+  review: ReviewConfig;
   /**
    * The top-level keys this build did not understand, in the order the file
    * wrote them — R14.2's half of INV-nothing-is-dropped-silently. Empty for
@@ -1099,6 +1171,9 @@ export const TOP_LEVEL_KEYS = [
   // reader-facing reason: this list's order is what the CLI's and the MCP
   // schema's config surfaces show, derived from it rather than sorted.
   'dispatchGate',
+  // Appended 2026-09-10 by `plan:loop seq:2`, moving no existing member — the
+  // same discipline `dispatchGate` records above, for the same reason.
+  'review',
 ] as const;
 
 /**
@@ -1445,6 +1520,106 @@ function requireDispatchGate(raw: unknown): DispatchGateConfig {
     gate.enabled = raw.enabled;
   }
   return gate;
+}
+
+/**
+ * Every key the `review` section may carry — `UI_KEYS`' shape, and kept as its
+ * own list for that list's reason. **Extend this and `requireReview` together.**
+ *
+ * NOT derived from `DEFAULT_REVIEW`, and here the derivation would be actively
+ * wrong rather than merely risky: three of these are booleans and three are
+ * bounded integers, so a set derived from the defaults would accept
+ * `{"review": {"everyNToolCalls": true}}` the moment a fourth boolean arrived
+ * while the value check below still knew only the three it was written for.
+ */
+const REVIEW_KEYS = [
+  'enabled', 'everyNToolCalls', 'onPreCompact', 'maxFiresPerSession',
+  'readWholeTranscript', 'includeSubagents',
+];
+
+/** The `review` keys the DESIGN names that this build does not yet act on. */
+const REVIEW_LATER_KEYS = ['maxProposalsPerPass', 'crossSessionSameCwd', 'model'];
+
+/** The three `review` keys that are counts, with the bound each is held to. */
+const REVIEW_COUNTS: { key: 'everyNToolCalls' | 'maxFiresPerSession'; min: number; max: number }[] = [
+  // 1 is legal and means "consider on every tool call". It is not the same as
+  // off — the rubric still decides, and the ration still bounds the session —
+  // so it is admitted rather than refused, and 0 is refused with the rest
+  // because "every zero calls" has no reading a threshold could act on.
+  { key: 'everyNToolCalls', min: 1, max: 100000 },
+  // 0 IS legal here, and it is the one value in this block that reads as off:
+  // a session allowed no fires is a session the pass never looks at. It is a
+  // second spelling of `enabled: false` for one session's worth of scope, and
+  // unlike `"ui": false` it is not sugar for the switch — the switch is what
+  // decides whether a child may be spawned at all.
+  { key: 'maxFiresPerSession', min: 0, max: 1000 },
+];
+
+/**
+ * The `review` section: whether the self-improvement loop may look at a
+ * session, how often it considers it, and how much of it is read.
+ *
+ * Absent resolves to `DEFAULT_REVIEW` — OFF — which is §11's own ruling
+ * ("Opt-in. Run it on this repository for two weeks. Then decide.") and what
+ * keeps every config written before this key existed behaving exactly as it
+ * did. Everything else about this section is REFUSED rather than skipped, on
+ * `requireUi`'s boundary and for a failure direction that is one-way in BOTH
+ * directions here: a sub-key accepted and dropped leaves a user who turned the
+ * loop on with a loop that never fires, or one who narrowed its ration with a
+ * loop that fires as often as it likes.
+ */
+function requireReview(raw: unknown): ReviewConfig {
+  if (raw === undefined) return { ...DEFAULT_REVIEW };
+  if (!isObject(raw)) {
+    throw new Error(
+      `my_context: "review" is ${JSON.stringify(raw)}, not an object. Expected ` +
+      `{"review": {"enabled": true}} to let the self-improvement loop look at a session, ` +
+      `or no "review" key at all to leave it off. Nothing was loaded — a setting that ` +
+      `cannot be acted on is refused rather than ignored.`,
+    );
+  }
+  const unknown = Object.keys(raw).filter((key) => !REVIEW_KEYS.includes(key));
+  if (unknown.length > 0) {
+    const later = unknown.filter((key) => REVIEW_LATER_KEYS.includes(key));
+    throw new Error(
+      `my_context: review declares ${unknown.map((k) => JSON.stringify(k)).join(', ')}, ` +
+      `which ${unknown.length === 1 ? 'is not a key' : 'are not keys'} this build acts ` +
+      `on. review accepts: ${REVIEW_KEYS.join(', ')}. Nothing was loaded` +
+      (later.length === 0 ? '.' :
+        ` — and ${later.map((k) => JSON.stringify(k)).join(', ')} ` +
+        `${later.length === 1 ? 'is a key' : 'are keys'} the design names for a LATER ` +
+        `phase. This build's pass reads, writes a report and proposes nothing, and calls ` +
+        `no model at all, so accepting ${later.length === 1 ? 'it' : 'them'} would tell ` +
+        `you something is in force that nothing anywhere reads.`),
+    );
+  }
+  const review: ReviewConfig = { ...DEFAULT_REVIEW };
+  for (const key of ['enabled', 'onPreCompact', 'readWholeTranscript', 'includeSubagents'] as const) {
+    const value = raw[key];
+    if (value === undefined) continue;
+    if (typeof value !== 'boolean') {
+      throw new Error(
+        `my_context: review.${key} is ${JSON.stringify(value)}. Expected true or false. ` +
+        `Nothing was loaded — every non-boolean is truthy or falsy by accident, and ` +
+        `guessing which would decide whether the loop reads a session at all.`,
+      );
+    }
+    review[key] = value;
+  }
+  for (const { key, min, max } of REVIEW_COUNTS) {
+    const value = raw[key];
+    if (value === undefined) continue;
+    if (typeof value !== 'number' || !Number.isInteger(value) || value < min || value > max) {
+      throw new Error(
+        `my_context: review.${key} is ${JSON.stringify(value) ?? String(value)}. Expected a ` +
+        `whole number from ${min} to ${max}. Nothing was loaded — a ration that cannot be ` +
+        `read is a ration that does not hold, and the failure it produces is a loop firing ` +
+        `far more often than the number you wrote.`,
+      );
+    }
+    review[key] = value;
+  }
+  return review;
 }
 
 const BUDGET_KEYS = Object.keys(DEFAULT_BUDGETS) as (keyof Budgets)[];
@@ -1808,6 +1983,7 @@ export function resolveConfig(raw: unknown): Config {
     // `requireHandover` for why this key defaults the other way to `ui`.
     handover: requireHandover(input.handover),
     dispatchGate: requireDispatchGate(input.dispatchGate),
+    review: requireReview(input.review),
     skippedKeys,
   };
 }

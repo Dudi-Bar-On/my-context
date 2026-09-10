@@ -122,7 +122,11 @@ test('/api/packs on a workspace with no packs lists none and still answers the r
   // so they are served whether or not a pack has ever been imported here.
   assert.equal(body.artefact.protocol, 'my_context/pack@1');
   assert.equal(body.artefact.manifest, 'manifest.json');
-  assert.equal(body.carries.length, 7);
+  // Eight since 2026-09-10, when `plan:loop seq:2` appended `review` to
+  // `TOP_LEVEL_KEYS` and this row set — which is derived from that list —
+  // grew by one with no edit to `packs-model.ts`. That is the property, and
+  // the count is how it is checked.
+  assert.equal(body.carries.length, 8);
 });
 
 test('an imported pack is listed with its membership joined to the corpus', () => {
@@ -192,7 +196,7 @@ test('carries is refusePackConfig\'s own verdict, key by key and word for word',
   // watchedDocs never.
   assert.equal(rows.get('categories')?.travels, true);
   assert.deepEqual(rows.get('categories')?.refusals, []);
-  for (const key of ['budgets', 'watchedDocs', 'profile', 'ui', 'dispatchGate']) {
+  for (const key of ['budgets', 'watchedDocs', 'profile', 'ui', 'dispatchGate', 'review']) {
     assert.equal(rows.get(key)?.travels, false, `${key} must not travel in a pack`);
   }
 
@@ -203,13 +207,14 @@ test('carries is refusePackConfig\'s own verdict, key by key and word for word',
     assert.deepEqual(row.refusals, refusePackConfig({ [key]: {} }, ws.config), key);
   }
 
-  // The seven keys are the loader's top-level set, not a subset somebody
-  // chose. `handover` (2026-08-27) and `dispatchGate` (2026-09-04) each
-  // produced their own row with no edit to `packs-model.ts` at all, which is
-  // the property this assertion is for.
+  // The eight keys are the loader's top-level set, not a subset somebody
+  // chose. `handover` (2026-08-27), `dispatchGate` (2026-09-04) and `review`
+  // (2026-09-10) each produced their own row with no edit to `packs-model.ts`
+  // at all, which is the property this assertion is for.
   assert.deepEqual(
     body.carries.map((r) => r.key).toSorted(),
-    ['budgets', 'categories', 'dispatchGate', 'handover', 'profile', 'ui', 'watchedDocs'],
+    ['budgets', 'categories', 'dispatchGate', 'handover', 'profile', 'review', 'ui',
+      'watchedDocs'],
   );
 });
 

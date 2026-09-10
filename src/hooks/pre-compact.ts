@@ -6,6 +6,7 @@ import {
 } from '../core/handover-ask.ts';
 import { scanTranscriptIds, writeSnapshot } from '../core/ledger.ts';
 import { isMainEntry } from '../core/paths.ts';
+import { reviewNote, reviewTrigger, type TriggerVerdict } from '../review/trigger.ts';
 import { readSeen, seenIds } from '../core/seen-file.ts';
 import { Store } from '../core/store.ts';
 import { resolveWorkspace } from '../core/workspace.ts';
@@ -149,7 +150,7 @@ function measurement(
  * design forbids, so no failure below may shrink the capture silently.
  */
 export function buildRestoreSnapshot(
-  input: HookInput, fallbackCwd: string,
+  input: HookInput, fallbackCwd: string, review: TriggerVerdict | null = null,
 ): { path: string; itemIds: string[] } | null {
   try {
     const sessionId = input.session_id;
@@ -234,7 +235,7 @@ export function buildRestoreSnapshot(
           `SNAPSHOT WRITE FAILED (${reason}). ${itemIds.length} captured id(s) ` +
           `(${fromLedger.length} from the seen file, ${fromTranscript.length} cited in the ` +
           `transcript) were NOT persisted — this session's restore state will not survive ` +
-          `the coming compaction.`,
+          `the coming compaction.` + reviewClause(review),
       });
       process.stderr.write(
         `my_context: the PreCompact restore snapshot could not be written (${reason}); ` +
@@ -275,13 +276,23 @@ export function buildRestoreSnapshot(
         (knownSkipReason === null
           ? ''
           : `; known-id filter skipped (${knownSkipReason} — over-capture is safe)`) +
-        (seenState.error === null ? '' : '; seen file unreadable, transcript arm only'),
+        (seenState.error === null ? '' : '; seen file unreadable, transcript arm only')
+        + reviewClause(review),
     });
 
     return { path: snapshotFile, itemIds };
   } catch {
     return null;
   }
+}
+
+/**
+ * The review trigger's clause for THIS row's grammar — see `stop.ts`'s twin
+ * for why the separator lives at the call site and not inside `reviewNote`.
+ */
+function reviewClause(decision: TriggerVerdict | null): string {
+  const note = reviewNote(decision);
+  return note === '' ? '' : `; ${note}`;
 }
 
 if (isMainEntry(import.meta.filename, process.argv[1])) {
@@ -298,7 +309,16 @@ if (isMainEntry(import.meta.filename, process.argv[1])) {
     // snapshot-write failure this hook already discloses.
     const { input, parseError } = parseHookInput(readStdin());
     if (parseError !== null) process.stderr.write(hookParseErrorLine(parseError));
-    buildRestoreSnapshot(input, process.cwd());
+    // BEFORE the snapshot, and never awaited. Design §2: *"the moment context
+    // is about to be lost is when capture is worth most"* — and this is the
+    // one hook where the counter's interval is waived, because whatever is in
+    // the window is about to stop being readable from the window.
+    //
+    // It is synchronous, it spawns a detached child, and its verdict travels
+    // into the audit row `buildRestoreSnapshot` was already writing, so a
+    // compaction at which the loop declined to look says why.
+    const review = reviewTrigger(input, 'PreCompact');
+    buildRestoreSnapshot(input, process.cwd(), review);
   } catch {
     /* fail open */
   }

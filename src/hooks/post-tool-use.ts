@@ -1,5 +1,6 @@
 import path from 'node:path';
 import { recordAudit } from '../core/audit.ts';
+import { bumpCounter } from '../core/review-counter.ts';
 import { isMainEntry, managedSplit, matchesAnyGlob, relPosix, toPosix } from '../core/paths.ts';
 import { findProjectRoot, resolveWorkspace } from '../core/workspace.ts';
 import { capped, NOTE_MAX, subjectFor, SUBJECT_MAX } from './observe.ts';
@@ -249,6 +250,73 @@ export function agentStepNote(input: HookInput, fallbackCwd: string): void {
 }
 
 /**
+ * **One more tool call towards the next time anybody looks at this session** —
+ * `plan:loop seq:2`, design §2.
+ *
+ * ── WHY HERE ───────────────────────────────────────────────────────────────
+ *
+ * Design §2 names this hook because *"the workspace is already resolved and an
+ * audit row already written"*. Both halves are true of `agentStepNote` above,
+ * and this reuses the same resolution rather than paying for a second one.
+ *
+ * **And it is here rather than at `SessionEnd`, which is not a preference but
+ * a measurement.** `SessionEnd` fires on exit or `/clear`, not on compaction.
+ * Counted in this project's own audit log on 2026-09-10 — 36,084 rows over
+ * fifteen days — there is **not one `session-end` row in it**, while `stop`
+ * has 1,094 and `pre-compact` has 17. A trigger hung on that hook would have
+ * fired zero times in the entire life of this project.
+ *
+ * ── THE FOUR GATES, AND WHY THE LANE GATE IS ONE OF THEM ───────────────────
+ *
+ *  1. **`review.enabled`.** Off is the default and off writes NOTHING — not a
+ *     zeroed counter file, not a directory. §11's kill switch is one switch
+ *     for one subsystem, and a subsystem that leaves state behind when it is
+ *     off is a subsystem whose switch is being argued about later.
+ *  2. **A workspace**, because the count lives inside it.
+ *  3. **A config that parses.** A user who mistyped a comma has turned this
+ *     feature off, not broken their session — `stopUpkeep`'s own rule.
+ *  4. **Not inside a lane.** `agent_id` is present on every `PostToolUse`
+ *     caused by a tool call INSIDE a subagent and absent on the parent's own
+ *     (`agentStepNote` records the probe that measured it). Counting lane
+ *     calls would drive the PARENT past its threshold at fan-out speed on
+ *     work the parent's own transcript does not contain — measured here on
+ *     2026-09-10: 5,604 `agent-step` rows against 146 `post-tool-use` rows,
+ *     so a counter that did not gate would be running ~38x fast and firing on
+ *     stretches of the parent session in which nothing happened at all.
+ *
+ * **Never throws (`INV-hooks-fail-open`).** This is the highest-frequency hook
+ * in the product; the count is worth strictly less than the tool call it
+ * counts.
+ */
+export function reviewCount(input: HookInput, fallbackCwd: string): void {
+  try {
+    // Gate 4 first, because it is the only one that needs no I/O at all and it
+    // is TRUE on the majority of firings in a session that dispatches lanes.
+    if (typeof input.agent_id === 'string' && input.agent_id !== '') return;
+
+    const cwd = input.cwd && input.cwd !== '' ? input.cwd : fallbackCwd;
+    const root = findProjectRoot(cwd);
+    if (!root) return;
+
+    // `resolveWorkspace` rather than `findProjectRoot` alone, because the gate
+    // IS the config — and it is wrapped, because this is the one call on this
+    // path that can throw (a config this build refuses).
+    let review;
+    try {
+      review = resolveWorkspace(cwd).config.review;
+    } catch {
+      return;
+    }
+    if (!review.enabled) return;
+
+    bumpCounter(root, input.session_id);
+  } catch {
+    // INV-hooks-fail-open. A knowledge base that breaks a session is worse
+    // than one that says nothing.
+  }
+}
+
+/**
  * The envelope, from `io.ts`'s one builder — and the empty guard, which stays
  * here because it is this hook's rule and not the builder's. Almost every edit
  * in a session is one this hook has no opinion on; an envelope carrying an
@@ -303,6 +371,10 @@ if (isMainEntry(import.meta.filename, process.argv[1])) {
       // agentStepNote's own comment for the gate and the duplication
       // decision it is half of.
       agentStepNote(parsed, process.cwd());
+      // Likewise audit-only in spirit — it writes a count, not a row — and
+      // likewise gated so it does nothing at all on every workspace that has
+      // not opted in, which today is all of them. See `reviewCount`.
+      reviewCount(parsed, process.cwd());
     })
     .catch(() => { /* fail open */ })
     .finally(() => { process.exitCode = 0; });

@@ -322,6 +322,45 @@ const WRITERS: Record<string, string[]> = {
   'src/core/config.ts': [
     'deleteCustomCategory', 'disableCategory', 'setConfigField', 'unsetConfigListEntries',
   ],
+  // **Landed 2026-09-10 with the self-improvement loop's trigger (`plan:loop
+  // seq:2`), and the DERIVATION demanded both keys** — neither was written by
+  // somebody who remembered this table, which is the whole point of it being
+  // derived. Both copy `ui-server-upkeep.ts`' atomic temp-file-and-rename, so
+  // both hold four `node:fs` mutating calls the membership scan can see.
+  //
+  // `readCounter` and `reviewCounterPath` are deliberately NOT named:
+  // `focus.ts`' shape, for `focus.ts`' reason. The reader is what a surface
+  // would legitimately want, and it sits in the file that also exports the
+  // writers.
+  'src/core/review-counter.ts': ['bumpCounter', 'resetCounter'],
+  // `runPass` writes the pass report; `spawnPass` starts a detached process
+  // that writes it, which is a write one hop out and is named for
+  // `deriveEffect`'s reason — a binding-shaped ban that stopped at the fs call
+  // would let a caller reach the same file through a child process.
+  //
+  // `passReportPath`, `readPassReport` and `lastReadTo` are NOT named: a path
+  // and two readers, exactly as `mirrorPath` and `redactedCopyPath` are not.
+  //
+  'src/review/pass.ts': ['runPass', 'spawnPass'],
+  // **NAMED BY JUDGEMENT, and the judgement was a correction made while
+  // writing the comment above it.** The first draft left this module out and
+  // said the ban would catch it anyway, "because binding it drags
+  // `resetCounter` and `spawnPass` into the graph". That is false, and it is
+  // false in the exact way `ui-server-record.ts` was in 2026-08-27:
+  // `isWriter` answers from THIS table by DEFINING module, so a `src/ui/`
+  // module binding `reviewTrigger` would have it resolved here, found absent,
+  // and judged a non-writer — while the call spends a counter fire and starts
+  // a process that writes a report.
+  //
+  // The membership scan cannot see it either: this module holds no `node:fs`
+  // call of its own. It is not in `WRITES_WITHOUT_FS` because it does not need
+  // to be — it IMPORTS both writers above, so the orphan check follows the
+  // edge and finds one, which is the shape `mutate.ts` has had since day one.
+  //
+  // `reviewNote` is deliberately NOT named: it turns a verdict into a sentence
+  // and touches nothing. A surface that wanted to SHOW what the trigger
+  // decided should be able to.
+  'src/review/trigger.ts': ['reviewTrigger'],
 };
 
 /**

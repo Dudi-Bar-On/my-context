@@ -1,9 +1,12 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
-import { agentDispatchNote, agentStepNote, buildOutput, nudgeFor } from '../../src/hooks/post-tool-use.ts';
+import {
+  agentDispatchNote, agentStepNote, buildOutput, nudgeFor, reviewCount,
+} from '../../src/hooks/post-tool-use.ts';
+import { readCounter, reviewCounterPath } from '../../src/core/review-counter.ts';
 import { readAudit, type AuditRecord } from '../../src/core/audit.ts';
 import { resolveWorkspace } from '../../src/core/workspace.ts';
 import { observeAndRecord } from '../../src/hooks/observe.ts';
@@ -494,5 +497,93 @@ test('the dispatch row joins to the matching subagent-stop row on the agent id',
     assert.equal(dispatchId, 'agent-join-99');
     assert.equal(stopId, 'agent-join-99');
     assert.equal(dispatchId, stopId, 'the two rows do not join on the same agent id');
+  } finally { removeTree(cwd); }
+});
+
+// ─── plan:loop seq:2 — the counter, where the audit row is already written ───
+//
+// @basis TASK-decide-when-to-look-at-a-session-and-read-the-whole-of-it,
+// INV-hooks-fail-open
+//
+// The second assertion in each pair is the one that matters: the hook's
+// existing behaviour must not change when `review.enabled` is false, because
+// that is what a kill switch MEANS. Upstream's issue #82708 (design §11) was a
+// switch that did not kill, and it was not caught because every test asserted
+// what the feature did when it was ON.
+
+function reviewProject(review: Record<string, unknown> | null): string {
+  const cwd = mkdtempSync(path.join(tmpdir(), 'myctx-review-count-'));
+  runCli(['init'], cwd, () => {});
+  if (review !== null) {
+    writeFileSync(
+      path.join(cwd, '.my_context', 'config.json'),
+      JSON.stringify({ profile: 'standard', review }, null, 2) + '\n',
+    );
+  }
+  return cwd;
+}
+
+test('a tool call is counted when review is enabled', () => {
+  const cwd = reviewProject({ enabled: true });
+  try {
+    const root = path.join(cwd, '.my_context');
+    reviewCount({ tool_name: 'Read', cwd, session_id: 's-1' }, cwd);
+    assert.equal(readCounter(root).calls, 1);
+    reviewCount({ tool_name: 'Read', cwd, session_id: 's-1' }, cwd);
+    assert.equal(readCounter(root).calls, 2, 'the count is per tool call, not per session');
+    assert.equal(readCounter(root).sessionId, 's-1');
+  } finally { removeTree(cwd); }
+});
+
+test('with review off, nothing is counted and no state file is written', () => {
+  const cwd = reviewProject(null);
+  try {
+    const root = path.join(cwd, '.my_context');
+    reviewCount({ tool_name: 'Read', cwd, session_id: 's-1' }, cwd);
+    assert.equal(readCounter(root).calls, 0);
+    assert.equal(
+      existsSync(reviewCounterPath(root)), false,
+      'the switch is off, so the subsystem left no trace at all — not a zeroed file',
+    );
+  } finally { removeTree(cwd); }
+});
+
+test('review: false is as silent as review absent', () => {
+  const cwd = reviewProject({ enabled: false });
+  try {
+    const root = path.join(cwd, '.my_context');
+    reviewCount({ tool_name: 'Read', cwd, session_id: 's-1' }, cwd);
+    assert.equal(existsSync(reviewCounterPath(path.join(cwd, '.my_context'))), false);
+    assert.equal(readCounter(root).calls, 0);
+  } finally { removeTree(cwd); }
+});
+
+test('a lane\u2019s tool call does not count against the parent session', () => {
+  const cwd = reviewProject({ enabled: true });
+  try {
+    const root = path.join(cwd, '.my_context');
+    reviewCount({ tool_name: 'Read', cwd, session_id: 's-1', agent_id: 'agent-a1' }, cwd);
+    assert.equal(
+      readCounter(root).calls, 0,
+      'a fan-out of ten lanes would otherwise drive the parent past its threshold ten ' +
+      'times as fast, on work the parent transcript does not even contain',
+    );
+  } finally { removeTree(cwd); }
+});
+
+test('no workspace is not a throw and not a count', () => {
+  const dir = mkdtempSync(path.join(tmpdir(), 'myctx-review-nows-'));
+  try {
+    assert.doesNotThrow(() => reviewCount({ tool_name: 'Read', cwd: dir, session_id: 's' }, dir));
+  } finally { removeTree(dir); }
+});
+
+test('a config that will not parse turns the counter off rather than breaking the hook', () => {
+  const cwd = reviewProject({ enabled: true });
+  try {
+    const root = path.join(cwd, '.my_context');
+    writeFileSync(path.join(root, 'config.json'), '{ "review": { "enabled": tru', 'utf8');
+    assert.doesNotThrow(() => reviewCount({ tool_name: 'Read', cwd, session_id: 's' }, cwd));
+    assert.equal(readCounter(root).calls, 0);
   } finally { removeTree(cwd); }
 });

@@ -35,10 +35,23 @@ test('dispatchGate.enabled turns the gate on, and only that', () => {
   );
 });
 
+// This asserts what its name says — APPENDED, MOVING NOTHING — rather than
+// pinning the whole list, and the difference stopped being cosmetic on
+// 2026-09-10 when `plan:loop seq:2` appended `review` after it. A whole-list
+// copy here would have gone red for the one change the list is designed to
+// accept, and the exact list is already pinned once, in
+// `test/core/config-top-level-keys.test.ts`. Two copies of one list is the
+// defect this project spent 2026-09-07 measuring; what belongs HERE is the
+// property this key's own change had to have.
 test('dispatchGate joined TOP_LEVEL_KEYS, appended and moving nothing', () => {
+  const before = ['profile', 'categories', 'budgets', 'watchedDocs', 'ui', 'handover'];
   assert.deepEqual(
-    [...TOP_LEVEL_KEYS],
-    ['profile', 'categories', 'budgets', 'watchedDocs', 'ui', 'handover', 'dispatchGate'],
+    TOP_LEVEL_KEYS.slice(0, before.length), before,
+    'a key that was there before dispatchGate moved',
+  );
+  assert.equal(
+    TOP_LEVEL_KEYS[before.length], 'dispatchGate',
+    'dispatchGate is no longer the key that was appended after the original six',
   );
 });
 

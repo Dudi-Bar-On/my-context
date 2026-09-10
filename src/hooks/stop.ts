@@ -16,6 +16,7 @@ import {
   upkeepStandDownLine, upkeepUiServer, type Upkeep, type UpkeepDeps,
 } from '../core/ui-server-upkeep.ts';
 import { findProjectRoot } from '../core/workspace.ts';
+import { reviewNote, reviewTrigger, type TriggerVerdict } from '../review/trigger.ts';
 import path from 'node:path';
 import { observeAndRecord, type Observation, type ObservationSpec } from './observe.ts';
 import {
@@ -567,6 +568,7 @@ function discardedWriteClause(upkeep: Upkeep): string {
 export function observeStop(
   input: HookInput, root: string, upkeep: Upkeep | null = null,
   refresh: ConversationRefresh | null = null,
+  review: TriggerVerdict | null = null,
 ): Observation | null {
   // `stop_hook_active` is the platform's re-entrancy guard: true when this turn
   // is continuing BECAUSE a stop hook asked it to. Nothing here ever asks — the
@@ -577,7 +579,7 @@ export function observeStop(
   const base =
     `stop_hook_active=${active ? 'true' : 'false'}; the assistant turn ended` +
     (active ? ', continuing because another stop hook asked it to' : '') +
-    upkeepNote(upkeep) + refreshNote(refresh);
+    upkeepNote(upkeep) + refreshNote(refresh) + reviewClause(review);
 
   const ask = handoverAsk(input, root);
 
@@ -647,12 +649,27 @@ function askVerdictClause(
  */
 export function stopSpec(
   upkeep: Upkeep | null, refresh: ConversationRefresh | null = null,
+  review: TriggerVerdict | null = null,
 ): ObservationSpec {
   return {
     hook: 'Stop',
     op: 'stop',
-    observe: (input, root) => observeStop(input, root, upkeep, refresh),
+    observe: (input, root) => observeStop(input, root, upkeep, refresh, review),
   };
+}
+
+/**
+ * The review trigger's clause, prefixed for the row — `''` when the subsystem
+ * is off, which today is every workspace.
+ *
+ * A separate function from `reviewNote` because the SEPARATOR belongs to this
+ * row's grammar and not to the trigger: `reviewNote` is also read by
+ * `PreCompact`, whose row is built differently, and a `; ` baked into the
+ * trigger would put a stray semicolon there.
+ */
+function reviewClause(decision: TriggerVerdict | null): string {
+  const note = reviewNote(decision);
+  return note === '' ? '' : `; ${note}`;
 }
 
 export const STOP: ObservationSpec = stopSpec(null);
@@ -1029,7 +1046,12 @@ export async function runStopHook(): Promise<void> {
     // leaves no trace, and a refresh nothing recorded is the invisibility this
     // whole item is about, wearing a different hat.
     const refresh = stopConversationRefresh(input);
-    const { stdout } = observeAndRecord(stopSpec(upkeep, refresh), input, process.cwd());
+    // LAST of the three, and never awaited. `reviewTrigger` is synchronous, it
+    // spawns a detached and unref'ed child, and it returns — see its header for
+    // why the rubric is NOT run here. It is last so that its own `stat` sees a
+    // transcript the refresh above has already brought the index level with.
+    const review = reviewTrigger(input, 'Stop');
+    const { stdout } = observeAndRecord(stopSpec(upkeep, refresh, review), input, process.cwd());
     // Guarded rather than written unconditionally: this is `''` on all but at
     // most one turn of a session, and an unconditional `write('')` on a closed
     // or absent stdout is a throw on a path whose whole job is not to have one.
