@@ -75,6 +75,12 @@ those words — *"not a normative category"*. This workspace's `config.json`
 promotes `reference` to normative, so its five `REF-` items are candidates and
 the other rationale categories are not.
 
+> **Superseded by the second reading below (2026-09-10).** This correction was
+> made by hand, in prose; the instrument now makes it itself, and on the corrected
+> basis — which also requires `status: active`, as `select` does — the
+> never-delivered figure is **zero**, not twelve. Read *"Three things this
+> reading says that the first one could not"* before quoting the 6.3% below.
+
 Split on that line, the same measurement reads:
 
 | tier | items | delivered ≥ once | never delivered |
@@ -203,3 +209,153 @@ above reproducible rather than a claim in prose.
 whole-corpus percentage moves whenever somebody files a task, and a number that
 moves for a reason unrelated to the thing being measured is the number a drift
 report must not be built on.
+
+---
+
+# Second reading — 2026-09-10, with the correction moved into the instrument
+
+**Why this is appended here rather than filed as a second report.** A baseline
+is a series, and two documents each claiming to be the baseline is the defect
+this project spent 2026-09-07 measuring. The reading above stands exactly as it
+was taken. What follows is the next reading, plus the reason two of the numbers
+above should not be quoted again.
+
+## What changed in the instrument, and why
+
+**The correction under *"The correction that makes the table mean something"*
+above was done BY HAND, in prose, by a reader who knew `src/core/select.ts`.**
+That is the finding that mattered most about the first reading. `select` admits
+only categories whose tier is `normative`, so a `task`, `decision`, `lesson`,
+`note` or `adr` is never a candidate for injection — and 918 of 1,076 items are
+in that position today. Pooled with the rest they made the cohort table read
+"82% of this corpus has never been delivered" and put a median of zero in every
+row.
+
+**A number a report has to hand-correct in order to mean anything is a number a
+later reading cannot be compared against**, and comparison over time is this
+command's entire reason to exist. So `mycontext contribution` now takes
+`select`'s own gate — `isEligible` ∧ `isNormative`, the two exported functions,
+not a fourth spelling of the rule — and every count except `items` is taken over
+the injectable population. Three things came with it:
+
+- **`delivered, now ineligible`**, because eligibility is a verdict about TODAY
+  applied to a log about the PAST. An item delivered and since superseded leaves
+  the measured set while its deliveries stay on disk.
+- **The op breakdown**, because a record is one DELIVERY, not one session.
+- **`per chance`**, because the raw count turned out to be mostly age.
+
+## The reading
+
+Taken **2026-09-09T23:22:41Z** (`measuredAt` in the JSON; the machine's clock
+was a few hours behind the calendar date this work was done on). The log is
+live and grew while this was being written — 36,024 records at the last read.
+
+| | |
+|---|---|
+| Corpus size | **1,076 items** |
+| Of those, injectable today (`isEligible` ∧ `isNormative`) | **158** |
+| Not injectable — never a candidate, by construction | **918** |
+| Audit records, all kinds | **36,024** |
+| Of those, `kind: 'injection'` | **2,343** |
+| Distinct ids the log names | **180** |
+| Injectable items the log has NEVER delivered | **0** |
+| Delivered, and no longer injectable | **22** |
+
+```
+  ┌────────┬───────┬────────────┬─────────────────┬────────────────┬──────────────────┬───────────────────────────┐
+  │ origin │ items │ injectable │ never delivered │ always spilled │ median delivered │ delivered, now ineligible │
+  ├────────┼───────┼────────────┼─────────────────┼────────────────┼──────────────────┼───────────────────────────┤
+  │ agent  │ 38    │ 6          │ 0               │ 0              │ 710              │ 0                         │
+  │ human  │ 1038  │ 152        │ 0               │ 0              │ 641              │ 22                        │
+  │ ingest │ 0     │ 0          │ 0               │ 0              │ 0                │ 0                         │
+  └────────┴───────┴────────────┴─────────────────┴────────────────┴──────────────────┴───────────────────────────┘
+```
+
+## Three things this reading says that the first one could not
+
+**1. "Twelve normative items have never been delivered" is wrong, and the true
+answer is zero.** The list of twelve above was taken over category tier alone.
+Every one of the twelve is `deprecated` or `superseded` — they were stood down
+*before* they were ever delivered. `select` cannot choose any of them today, so
+their silence is not a finding about delivery. Measured over the items that
+actually govern: **all 158 have been delivered at least once.** Do not quote the
+6.3% figure again.
+
+**2. A delivery is not a session, and the gap is more than an order of
+magnitude.** The 2,343 injection records break down as **1,182 `jit`, 1,082
+`subagent-start`, 54 `session-start`, 23 `compact-restore`, 2 `manual`**. An item
+"delivered 641 times" was overwhelmingly delivered to delegated workers and hook
+fires. Only 54 records in twenty-three days are session starts.
+
+**3. The raw delivery count is age, and a threshold built on it would retire the
+newest governing items.** The twenty least-delivered injectable items are the
+twenty most recently created; the twenty most-delivered were all created in
+August. Correcting for exposure — deliveries over the injection records written
+since the item's `valid_from` — collapses the spread:
+
+| | min | p25 | median | p75 | max | spread |
+|---|---|---|---|---|---|---|
+| raw deliveries | 24 | 377 | 660 | 828 | 901 | **×37.5** |
+| per chance | 0.139 | 0.241 | 0.337 | 0.369 | 0.399 | **×2.9** |
+
+Most of a thirty-sevenfold spread was how long the item had existed. Only 7 of
+158 items move 40 or more rank places once exposure is accounted for, so the
+order among *old* items is real; what the correction rescues is the young ones.
+
+**And the rate's ceiling is 0.40, not 1.00.** A JIT delivery carries only
+path-scoped items and JIT is half this log, so no item can appear in much more
+than half the records. Compare rates with each other; never against 1.
+
+## For D36e, whose thresholds are supposed to be derived from this
+
+Stated plainly, because the D map records that those thresholds must come from
+this corpus rather than from a paper:
+
+- **A "never delivered" retirement rule would fire on nothing.** Zero injectable
+  items qualify. It is not a usable signal on this corpus.
+- **An "always spilled" rule would also fire on nothing**, still — 26,417 spill
+  events across 152 items, and not one item was ever spilled without also being
+  delivered.
+- **A raw-count threshold is a rule about age.** It would select the newest
+  governing items, which is the opposite of what retirement is for.
+- **The only distribution with any shape left after correction is `per
+  chance`**, and it is narrow: 0.139 to 0.399, a factor of 2.9. Whether a
+  threshold can be drawn across a spread that small is an open question this
+  reading does not answer, and answering it by picking a number would be exactly
+  the act of faith section 15 exists to prevent.
+
+## The cohort comparison, unchanged in its conclusion
+
+| origin | items | injectable | delivered at least once | median deliveries |
+|---|---|---|---|---|
+| human | 1,038 | 152 | 152 | 641 |
+| agent | 38 | 6 | 6 | 710 |
+
+**n = 6 for the agent cohort, and nothing may be concluded from it.** All six
+were captured by a person driving an MCP tool; no loop exists, so the
+experiment's treatment has not been applied. That is what makes this a control.
+
+## What this instrument still cannot see
+
+The three limits it now prints on every run, unchanged in force:
+
+1. **It records INJECTION, never reading or reliance.** An item opened as
+   Markdown, fetched with `show` or read through MCP `get_item` leaves no trace
+   and looks exactly like one nobody has ever used. Every delivery figure is a
+   floor on use.
+2. **A raw count is mostly age** — see above. `per chance` corrects for
+   exposure, not for the fact that a day's records are not evenly spread, and
+   `valid_from` is a date while `at` is a timestamp, so an item created midway
+   through a day is credited with that whole day. Both push a young item's rate
+   DOWN, so a high rate is trustworthy and a low one on a young item is not.
+3. **Eligibility is present-tense, applied to a historical log.** The
+   `delivered, now ineligible` column is how many items that has already
+   happened to: 22 today.
+
+And one more that no column can carry: **a quiet run is not a clean corpus.**
+"All 158 injectable items have been delivered" and "the log recorded nothing"
+produce the same shape of output, which is why the command prints the record
+count in the same sentence as the zero.
+
+The section 15 caveat above about the contested research stands unchanged, and
+applies to every number in this section too.
