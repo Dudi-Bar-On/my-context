@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: The tool speaks every version of the protocol a caller might use and settles on one per caller, so nobody had to first discover which version they speak.
-summary_of: 014e99699d863931
+summary_of: 7c4a110fd5e1871e
 scope:
   - src/mcp/**
 tags:
@@ -18,7 +18,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-08-14
 valid_until: null
-checksum: 4274c542346d9184
+checksum: f85a713893eef4e8
 ---
 
 # The MCP server speaks every revision from 2024-11-05 to 2026-07-28 and negotiates per client

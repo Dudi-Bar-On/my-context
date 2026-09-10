@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: The project description gains the two screens that were built and proven, in both languages, everywhere it lives.
-summary_of: 2852096dfdefc8c2
+summary_of: b0d7bdc71d152948
 scope:
   - README.md
   - docs/README.he.md
@@ -24,7 +24,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-09-06
 valid_until: null
-checksum: 83c0419efd3bbb1c
+checksum: e02688643a0622e8
 plan: docsys
 seq: "11"
 state: todo

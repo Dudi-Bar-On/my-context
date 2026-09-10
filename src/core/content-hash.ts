@@ -193,8 +193,13 @@ export function itemContentHash(item: Item): string {
  *  - **steps** · summarised. For a `procedure` the steps ARE the knowledge
  *    (`canonicalContent` above says so), so a summary of a procedure whose
  *    steps changed describes a procedure that no longer exists.
- *  - **observations** · summarised. They are the item's own limits, evidence
- *    and history; a summary that counts three of them is wrong at four.
+ *  - **observations** · summarised, AS A FIELD. They are the item's own
+ *    limits, evidence and history; a summary that counts three of them is
+ *    wrong at four. But the list is not uniform either:
+ *    `LIFECYCLE_OBSERVATION_CATEGORIES`, below, excludes specific CATEGORIES
+ *    inside it (`retirement`, `supersession`) by OWNER RULING 2026-09-10 —
+ *    the same test applied one level in, exactly as `WORKFLOW_EXTRA_KEYS`
+ *    applies it inside `extra`. See that table for the per-category reasoning.
  *  - **extra** · summarised, AS A FIELD — it holds `rule.directive`, which
  *    decides whether a rule prohibits or prescribes — the plainest possible
  *    case of changing what the item says, and the reason `UPDATE_FIELD_POLICY`
@@ -286,6 +291,17 @@ export const SUMMARY_BASIS = {
  * before changing this table again; the rule it enforces is the one that
  * matters, and it is short: a re-stamp may never turn a real stale into a false
  * current.
+ *
+ * **Narrowing a field from the INSIDE does the same thing to fewer items, and
+ * it is still a migration.** `WORKFLOW_EXTRA_KEYS` and
+ * `LIFECYCLE_OBSERVATION_CATEGORIES` do not touch this table at all, so the
+ * `satisfies` clause above cannot notice them — but they change what
+ * `itemSummaryBasis` hashes just as surely, for every item that carries one of
+ * the excluded keys or categories. The 2026-09-10 lifecycle ruling moved 12 of
+ * this corpus's 1077 recorded bases and was migrated by
+ * `scripts/restamp-summary-basis-lifecycle.ts` in the same act, under the same
+ * one rule. Adding a key or a category to either table is the same kind of
+ * deliberate act this docblock describes, at a smaller radius.
  */
 const SUMMARISED_FIELDS = (Object.keys(SUMMARY_BASIS) as (keyof ContentShape)[])
   .filter((field) => SUMMARY_BASIS[field] === 'summarised');
@@ -365,14 +381,111 @@ const WORKFLOW_EXTRA_KEYS: ReadonlySet<string> = new Set([
 
 /** `extra`, with `WORKFLOW_EXTRA_KEYS` removed — what the summary basis sees
  * of the bag. Iterates `canonicalExtra`'s already-sorted keys, so the result
- * stays in the same fixed order the rest of this module relies on. */
-function summarisedExtra(extra: Record<string, string>): Record<string, string> {
+ * stays in the same fixed order the rest of this module relies on.
+ *
+ * Exported for ONE caller and for one reason:
+ * `scripts/restamp-summary-basis-lifecycle.ts` has to recompute the basis
+ * formula as it stood before the 2026-09-10 lifecycle ruling, and that formula
+ * filtered `extra` with this exact set. A second copy of `WORKFLOW_EXTRA_KEYS`
+ * in the migration would be a list that can disagree with this one, which is
+ * the defect this file's own docblocks refuse in three other places. The
+ * export goes when that script does. */
+export function summarisedExtra(extra: Record<string, string>): Record<string, string> {
   const out: Record<string, string> = {};
   for (const key of Object.keys(extra)) {
     if (WORKFLOW_EXTRA_KEYS.has(key)) continue;
     out[key] = extra[key];
   }
   return out;
+}
+
+/**
+ * **Lifecycle categories inside `observations` — the same exclusion
+ * `WORKFLOW_EXTRA_KEYS` already makes, one field over.**
+ *
+ * OWNER RULING 2026-09-10, on `TASK-a-lifecycle-note-makes-an-item-s-summary-
+ * read-stale-because` (D43). Retiring an item WRITES an observation onto it:
+ * `updateItem`'s stand-down note (category `retirement`) and `supersedeItem`'s
+ * two notes (category `supersession` — the retiree's stand-down, and the
+ * replacement's `Replaces <id>: <reason>`). With `observations` summarised
+ * whole, correctly retiring an item moved its summary basis and `doctor`
+ * reported `summary_stale` on an item whose meaning had not changed. The
+ * ruling's own test, unchanged from 2026-09-04: does this change what the item
+ * SAYS, or only where it stands?
+ *
+ * `observations` as a whole stays `summarised` — a substantive observation IS
+ * part of what an item asserts, and dropping the field wholesale would let a
+ * real change pass without ever marking a summary stale. That is the same
+ * defect in the other direction and it would be silent, which is why the
+ * exclusion lives here as named CATEGORIES rather than by widening
+ * `SUMMARY_BASIS.observations` to `unsummarised`.
+ *
+ *  - **`retirement`** · lifecycle. Written only by `updateItem` when a status
+ *    change crosses into `STOOD_DOWN_STATUSES` and the item was pinned or
+ *    `hard`. Its whole text is `standDownNote` — *"the pin was cleared … the
+ *    binding severity was dropped … Nothing else was changed and nothing was
+ *    deleted"*. It is a record of the act of retiring, and it says in its own
+ *    words that what the item asserts is untouched. `SUMMARY_BASIS.always`
+ *    and `.severity` are already `unsummarised`; excluding the note that
+ *    RECORDS them moving is the same ruling applied to the same two fields.
+ *  - **`supersession`** · lifecycle, and it is the older half of the defect.
+ *    `supersedeItem` has written it since long before the stand-down note
+ *    existed, so every replacement in this corpus has been moving the
+ *    retiree's basis (and the replacement's, when a `reason` was given) for
+ *    the same non-reason. `SUMMARY_BASIS.relations` is already `unsummarised`
+ *    precisely so the `superseded_by` EDGE cannot do this; the note that
+ *    narrates the same edge must not do it either.
+ *  - **Everything else** · stays CONTENT by omission, the conservative
+ *    default `WORKFLOW_EXTRA_KEYS` sets. `limit`, `edge_case`, `evidence`,
+ *    `history`, `rule`, `note` and every category a person invents keep
+ *    counting toward the basis until a ruling excludes one by name.
+ *
+ * **Why by category and not by a marker the writer attaches.** The two shapes
+ * D43 put up were a marker ON the note (so the exclusion survives a third
+ * writer arriving) and an enumeration derived from the writers that exist. The
+ * category IS a marker on the note — it round-trips through
+ * `renderObservation`/`parseObservationLine`, it is chosen by whoever records
+ * the note, and `mutate.ts` already reasons about which of the two values is
+ * true of the act ("a `supersession` category here would assert a successor
+ * that does not exist"). What this table adds over a fresh marker is that the
+ * excluded VALUES are closed and named, and that decides the question in the
+ * only direction that matters: a NEW marker would be attachable to any
+ * observation by any writer, and an observation that quietly stops being able
+ * to invalidate a summary is a hole nothing reports — the exact permissive
+ * failure `WORKFLOW_EXTRA_KEYS`'s docblock warns against. This table's failure
+ * mode is the opposite one: a third writer inventing a third lifecycle
+ * category is not excluded until somebody names it here, and until then its
+ * items read `stale` — wrong, but LOUD, and `doctor` prints it. The second
+ * argument is retroactive reach: the notes already on disk carry their
+ * category, so this exclusion applies to every lifecycle note ever written
+ * without a single item file being touched to backfill a marker.
+ *
+ * Applied only inside `itemSummaryBasis`, below — `canonicalContent` and
+ * `contentHash`/`itemContentHash` (content IDENTITY, used by `createItem`'s
+ * dedupe) still see every observation. Two items that differ only in a
+ * stand-down note are still different content; they are the same thing for
+ * what a SUMMARY has to describe.
+ */
+const LIFECYCLE_OBSERVATION_CATEGORIES: ReadonlySet<string> = new Set([
+  'retirement', 'supersession',
+]);
+
+/**
+ * Whether an observation is a record of the item's LIFECYCLE rather than part
+ * of what it asserts — exported so the two write paths that mint one
+ * (`updateItem`'s stand-down and `supersedeItem`, both in mutate.ts) can be
+ * held to it by test rather than by a comment, and so nothing has to keep a
+ * second copy of the category names beside this one.
+ */
+export function isLifecycleObservation(o: Observation): boolean {
+  return LIFECYCLE_OBSERVATION_CATEGORIES.has(o.category);
+}
+
+/** `observations`, with the lifecycle notes removed — what the summary basis
+ * sees of the list. Order among the survivors is preserved, for the reason
+ * `canonicalContent` preserves it: the list renders in the sequence given. */
+function summarisedObservations(observations: readonly Observation[]): Observation[] {
+  return observations.filter((o) => !isLifecycleObservation(o));
 }
 
 /**
@@ -394,11 +507,19 @@ export function itemSummaryBasis(v: ContentShape): string {
   const canonical = canonicalContent(v) as unknown as Record<string, unknown>;
   const shape: Record<string, unknown> = {};
   for (const field of SUMMARISED_FIELDS) {
-    // `extra` alone gets the narrower cut: see `WORKFLOW_EXTRA_KEYS` above
-    // for which keys inside the bag are tracking rather than content.
-    shape[field] = field === 'extra'
-      ? summarisedExtra(canonical.extra as Record<string, string>)
-      : canonical[field];
+    // Two of the four summarised fields get a narrower cut than
+    // `canonicalContent` gives them, and both cuts are inside the field rather
+    // than a reclassification of it: `WORKFLOW_EXTRA_KEYS` for which keys in
+    // the bag are tracking rather than content, and
+    // `LIFECYCLE_OBSERVATION_CATEGORIES` for which notes record what happened
+    // TO the item rather than what it says. See both tables above.
+    if (field === 'extra') {
+      shape[field] = summarisedExtra(canonical.extra as Record<string, string>);
+    } else if (field === 'observations') {
+      shape[field] = summarisedObservations(canonical.observations as Observation[]);
+    } else {
+      shape[field] = canonical[field];
+    }
   }
   return checksum(JSON.stringify(shape));
 }

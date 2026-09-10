@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: "The design drawing is now read-only: it still guides unbuilt features and colours, but the product may run ahead of it without that being a fault."
-summary_of: 06939f1cdb1121ae
+summary_of: 23a7dd0f370e9af4
 scope: []
 tags:
   - v2
@@ -20,7 +20,7 @@ source_anchor: null
 source_checksum: c5b7c16cdff3b0ce
 valid_from: 2026-09-02
 valid_until: null
-checksum: 7df93107e15bb393
+checksum: 8550081ed0b4695b
 ---
 
 # the mockup is a frozen reference: it is read, never written, and only the mockup-ahead direction is a finding

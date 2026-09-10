@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: true
 summary: Leave the project on its main line whenever you stop working, and say where any unfinished work is parked, so the next person starts where they expect.
-summary_of: 88a843daa40baaf7
+summary_of: cd12e5e4f43b79a3
 scope: []
 tags:
   - workflow
@@ -17,7 +17,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-08-20
 valid_until: null
-checksum: db76c0a3ced89c33
+checksum: 161795562d6779ee
 ---
 
 # always return the working tree to master when work is not in progress

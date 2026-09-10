@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: Search is built on the database the project already runs, rather than on a separate search product.
-summary_of: f76c155af603f5f8
+summary_of: 30a94b29d5f70366
 scope: []
 tags:
   - search
@@ -16,7 +16,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-08-14
 valid_until: null
-checksum: e601eccf9a2f7682
+checksum: 2ef57549e7df6f94
 ---
 
 # Search with Postgres full text

@@ -6,7 +6,7 @@ status: active
 severity: hard
 always: false
 summary: Entries will not gain another grouping label on top of the ones they have, because nobody asked twice and every part of the tool would have to learn it.
-summary_of: df2457d491c78b1f
+summary_of: b980c04eeec72995
 scope:
   - src/core/types.ts
   - src/core/config.ts
@@ -21,7 +21,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-08-16
 valid_until: null
-checksum: 042c1db460687225
+checksum: d80c11630830fc16
 ---
 
 # No domain axis on items

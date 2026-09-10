@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: The design drawing decides how things look, never how they behave; consult it only when appearance is the question, and take any conflict to the owner.
-summary_of: e1df4d0c7d8558be
+summary_of: ce2067219deffc8d
 scope: []
 tags:
   - v2
@@ -18,7 +18,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-08-28
 valid_until: null
-checksum: bc848eb7f20ca0b9
+checksum: cad037e5c5fc4919
 ---
 
 # the mockup governs presentation, never behaviour, and a contradiction goes to the owner

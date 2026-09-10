@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: Notes that say which files they apply to get first claim on the space when you touch those files; everything else fills whatever room is left.
-summary_of: 750142f7d48ce687
+summary_of: f408b64ed930cfd1
 scope: []
 tags:
   - v2
@@ -17,7 +17,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-08-28
 valid_until: null
-checksum: 73d6f2f8089bd36f
+checksum: a7e3efe2aba222f6
 ---
 
 # the jit tier offers path-scoped items first, in two bands

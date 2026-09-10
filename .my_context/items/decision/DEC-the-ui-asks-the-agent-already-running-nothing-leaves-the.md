@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: When a page needs something written for it, it asks the assistant already running on your machine; nothing is sent out and no account is charged.
-summary_of: 8dbece68260743fd
+summary_of: 4dc0fc4bdc214fc3
 scope: []
 tags:
   - v2
@@ -18,7 +18,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-08-28
 valid_until: null
-checksum: 45d7188215d42260
+checksum: 4705cb8cba166b65
 ---
 
 # the UI asks the agent already running; nothing leaves the machine

@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: Three screens that have no verdict yet say so with the same mark used elsewhere, instead of leaving the slot empty.
-summary_of: 71188d788badc577
+summary_of: e53ae6deeb633abb
 scope:
   - src/ui/public/**
 tags:
@@ -21,7 +21,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-09-07
 valid_until: null
-checksum: 0f651f251b3fd61e
+checksum: 7aefeaed3f0b346f
 plan: screens
 seq: "24"
 state: todo

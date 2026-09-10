@@ -6,7 +6,7 @@ status: active
 severity: hard
 always: true
 summary: Hand long reading and searching to helpers and keep your own attention for judgement; check what they report, because a report is evidence and not proof.
-summary_of: 73f8f8a78d3d5824
+summary_of: 63e0768c6b2b8888
 scope: []
 tags:
   - process
@@ -18,7 +18,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-08-19
 valid_until: null
-checksum: a0649ad3cb2c9cb7
+checksum: 2253490fbe4ae8f2
 ---
 
 # Delegate to subagents; reserve the context window for judgement
