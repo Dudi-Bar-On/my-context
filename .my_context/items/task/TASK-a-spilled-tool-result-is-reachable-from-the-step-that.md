@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: Large tool outputs are saved to separate files; this makes those files findable from the conversation step that created them, instead of leaving a dead reference.
-summary_of: 0495b1061de4a05e
+summary_of: 012d98bc2e04bfef
 acknowledged:
   - source_drift@30b0a3b3100a43a9
 scope:
@@ -24,7 +24,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-09-08
 valid_until: null
-checksum: c48b930cc6a58b84
+checksum: 5dd84adcc9a37b51
 plan: archive
 seq: "30"
 state: todo
@@ -104,3 +104,53 @@ Only this one is REPORTED, because reporting drift needs the file to still exist
 changed; the rest are silent, not clean. That is a product question rather than an item’s defect -
 a capture that accepts a path in a temp directory records a provenance that cannot survive - and it
 is the owner’s to rule on, not this lane’s to fix while D37 is being closed.
+
+── PAUSED 2026-09-10, MID-LANE, BY OWNER INSTRUCTION. NOT FINISHED. ─────────────────────
+
+The owner had to close his machine. The lane was stopped mid-verification and could not write its
+own state, so this note is written from OUTSIDE it by the coordinator. Treat every claim here as
+observed rather than reported: what the lane knew and did not say is lost, and the files are the
+only reliable record.
+
+WHAT IS ON DISK, UNCOMMITTED - 9 files, 762 insertions, 23 deletions:
+
+  new       e2e/spill-evidence.spec.ts
+  modified  src/ui/read-model-conversation-document.ts
+  modified  src/ui/public/screens/conversations.js
+  modified  src/ui/public/styles.css
+  modified  src/ui/public/strings/en.js
+  modified  src/ui/public/strings/he.js
+  modified  test/ui/conversation-document.test.ts   (+243)
+  modified  test/ui/server-e2e.test.ts              (+21)
+  modified  docs/cli-ui-coverage.md
+
+So the shape it chose is legible from the file list even though its reasoning is not: it went
+through the DOCUMENT read model rather than the index alone, it drew something (both string tables
+and the stylesheet moved), and it wrote a dedicated browser spec. Read those before assuming a
+design; do not re-derive one and then discover the files disagree.
+
+THE LAST THING IT SAID IS THE MOST USEFUL THING IT LEFT, and it is a warning about its own
+evidence: "Exit 0 was `tail`’s, not Playwright’s. Let me get the real tallies and then re-run the
+parts that matter." It had piped a Playwright run through `tail` and read the PIPE’s exit code as
+the suite’s. So it was in verification, it had caught itself holding a FALSE GREEN, and it had not
+yet re-run. **No browser number from this lane may be trusted.** Whoever resumes starts by running
+the specs properly - both projects, serially, exit code read from Playwright itself.
+
+THAT MISTAKE IS WORTH KEEPING RATHER THAN JUST FIXING. A pipeline’s exit status is the LAST
+command’s, so `npx playwright test ... | tail -5` reports tail’s success whatever the suite did.
+The coordinator made the same class of error twice today in reverse - reading a passing count out
+of a grep and missing a failure line beneath it. Read the tally, not the exit code, or set
+`pipefail`.
+
+WHAT WAS ASKED OF IT AND IS THEREFORE STILL OPEN: re-measure `tool-results/` on the real corpus
+(the item’s 1,318 files / 144.4 MB predates a harness prune - 867 subagent transcripts appeared
+under scratchpad-probe project dirs on 2026-09-10, so the tree has moved); decide what to index and
+what deliberately not; make a missing spilled file a DISCLOSURE rather than a dead link the way
+`conv.doc.laneGone` does; and decide whether a spilled file belongs in a copied passage now that
+seq:42 has put Ctrl+C on the well.
+
+AND ONE THING THE RESUMING LANE SHOULD CHECK FIRST, because it is cheap and it changes the shape:
+whether the index needed a new TABLE. seq:34 proved hours earlier that a COLUMN on `conversations`
+is lost twice - `upsert` sets every column from `excluded` on every rebuild, and `removeMissing`
+deletes the whole row when the harness prunes. If this lane stored anything the scan does not
+produce, it needed a table, and the file list does not say whether it used one.
