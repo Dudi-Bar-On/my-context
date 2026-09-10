@@ -129,8 +129,36 @@ history.
 | `fact` | how the tool behaves | what is true · what breaks if you assume otherwise |
 | `prohibition` | what must not be done | the prohibition · **why** |
 | `procedure` | how something is done | ordered steps · how you know it worked |
-| `standard` | how something must LOOK | **trigger** (§5) · the shape · an example |
+| `standard` | how something must LOOK | **trigger** (§5) · the shape |
 | `definition` | what a word means here | the term · its meaning · what it is confused with |
+
+**AND TWO PARTS EVERY KIND REQUIRES**, added on owner review 2026-09-10 after he
+observed that most kinds had only two parts and asked whether more belonged:
+
+| part | every kind must carry |
+|---|---|
+| `example` | one concrete instance |
+| `check` | the automated check that enforces it, **or `none` with a reason** |
+
+**The example is what stops an entry being arguable.** *"Never `git add -A`"* is
+weak. *"Never `git add -A` — on 2026-09-09 a bare `git commit` swept another
+lane's staged work into a commit about a table border"* is not. Every strong item
+body in this corpus already carries a concrete instance; the template makes that
+the rule rather than the habit.
+
+**The `check` field is §4's own argument turned on this store.** If an enforced
+check beats prose 37.6% to 57.5%, then an entry that COULD be checked and is not
+is an entry choosing the weaker form. Requiring the field makes that choice
+visible instead of implicit, and `none — <reason>` is a legal answer written the
+way `@basis none — <reason>` already works here (`RULE-a-test-names-the-items-it-
+rests-on-or-says-it-rests-on-none`).
+
+**It also makes §14 fall out rather than needing invention.** Obedience telemetry
+needs to know what enforcement exists; this field is that inventory.
+
+**Rejected: a separate `origin`/`evidence` field.** It duplicates the `why` on a
+prohibition and the `what breaks` on a fact — one idea in two places, which §2
+forbids.
 
 **A template per kind, not one template for all five.** Each kind carries a
 different obligation, and a single shared template is either loose enough to
@@ -482,6 +510,65 @@ write.
 **Parked, by the owner, as its own subject:** the general product-update
 mechanism — how an install receives an updated ruleset (or any update) without
 reinstalling from scratch. §12.1 depends on it existing but does not design it.
+
+---
+
+## 16a. The corpus gains the same verbatim request field
+
+**Owner ruling 2026-09-10, on review of §6.** The `request` field is not only for
+this store: the corpus should carry it too, *"because it makes it more user
+explanatory and could be compared and measured against the summary and the body
+itself."*
+
+**The comparison is the point, and nothing checks it today.** The summary
+standard governs the SHAPE of the sentence; nothing asks whether the sentence
+answers the request that produced it. With the request recorded, that becomes a
+real check.
+
+**Same exclusions as §6:** verbatim including the mess, never edited, never
+injected, never in the summary basis, optional where no person asked (agent- and
+ingest-origin items have no request and must not be given one).
+
+### Backfill, by extraction and never by reconstruction
+
+The owner ruled to backfill: *"we now have the full conversation so
+reconstruction could be done on the base of best effort, means if found a user
+prompt and it's reliable reconstruct otherwise skip, after completion a report
+should be generated to display at least how much the reconstruction was
+successful."*
+
+**This is EXTRACTION, not reconstruction, and the distinction is the whole
+safeguard.** D37 indexes the sessions and the lane transcripts, so the literal
+prompt can be FOUND. Inventing a plausible request from memory would be a
+paraphrase wearing quotation marks and would destroy the field's only value.
+
+**THE TRAP THAT WOULD OTHERWISE POISON IT, measured by D36b on 2026-09-10:** a
+lane's **dispatch brief is stored as a `type:'user'` record**. A naive sweep for
+"user prompts" finds **1,453,700 characters of person-side text across 280 lanes
+— 33× the 44,006 the owner actually typed, and none of it his.** Backfilling from
+that would fill his field with the coordinator's briefs, and the result would be
+invisible afterwards because it would read like a real request.
+
+`loop/2` already built the filter — in a lane nobody typed anything, so every
+person-side point is dropped and the count is disclosed (`briefPoints`). **The
+backfill must use it.**
+
+**"Reliable" has to be defined before the sweep runs, not after:**
+
+- **Which message is THE request.** An item is often created several turns after
+  the ask; a request may span messages or be refined. Where the mapping is
+  ambiguous, **skip** — an empty field is honest and a wrong one is not.
+- **Skip is the default.** The bar is not "we found something plausible", it is
+  "we found the words that produced this item".
+
+**The report is part of the deliverable**, and it must say WHY rather than only
+how many: how many items were filled, how many skipped, and **what made one
+reliable and another not** — because a coverage number nobody can interrogate is
+a number nobody can trust. `state_unaudited`'s disclosure is the worked example:
+it names its unmeasured set rather than reporting it clean.
+
+**Reversible**, like the store's own migration (§15): if the sweep proves wrong,
+the field clears without touching body, summary or checksum.
 
 ---
 
