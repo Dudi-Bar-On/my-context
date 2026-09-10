@@ -1,3 +1,98 @@
+## ⏭ 2026-09-11, at 90% — OVERNIGHT RUN IN PROGRESS. THREE LANES LIVE. READ THIS FIRST.
+
+**He authorised an autonomous night**: *"work all the way to the morning, if something needs me or
+blocking, dispatch the next possible D, when I'll say good morning, prepare and display me night
+report and the Detaild D grand table so i could understand where we stand."* **Keep dispatching.
+Do not stop and wait.** Park anything needing his ruling, write the reasoning into its item, move to
+the next D.
+
+### THE RULE I BROKE ALL DAY, AND IT CHANGES EVERY DISPATCH
+
+`RULE-a-delegated-worker-runs-no-git-command-that-touches-the` is **hard and active**: a lane runs no
+`add`, `commit`, `push`, `stash`, `checkout` or `reset`. **"Who commits: the dispatching session, and
+nobody else, staging by explicit path."** I told ten lanes to "commit AND push". A research lane
+refused, cited it, and was right.
+
+**So every brief now ends: leave your work uncommitted and report the exact paths to stage.** I
+commit. It is also the strongest evidence for D41: that rule is `always: false`, delivered by scope
+match, and my briefs never matched its scope — a hard rule about dispatching lanes never reached the
+session that dispatches lanes.
+
+### RUNNING RIGHT NOW
+
+| lane | item | owns | browser |
+|---|---|---|---|
+| `archive/54` | closes D37 | `e2e/**` | **yes — only one at a time** |
+| `store/1` | D41 Phase 1 | `src/rules/**`, `cli/commands/rules.ts`, `command-flags.ts`, READMEs | no |
+| `loop/3` | D36 Phase C | proposals | no |
+
+**Rhythm to hold:** one browser lane, up to two browser-free beside it. When one lands: commit its
+named paths, then dispatch the next.
+
+### DISPATCH ORDER FORWARD
+
+`54` closes D37 → then **D40** and **`recall/1`** take the browser in turn (never together).
+Browser-free slots, in order: `store/2`→`3`→`4`, `store/5`, `loop/4`→`loop/5`, `restore/2` (D34),
+`walk/141` (D32), `library/6` (D27) then `docsys/11` (D28), `port/99`+`/100` (D30).
+
+### WHAT CLOSED TODAY
+
+**D33** (contradiction gate), **D38** (corpus lifecycle), **D43** (lifecycle note vs summary basis).
+D37 is 53 of 54. D36 is 2 of 5.
+
+**D43's lane found the mirror defect**: with its filter in and no migration, `summary_stale` went
+**0 → 12** — twelve items whose summaries had been stamped AFTER a supersession, so the note was
+already inside their recorded basis. Migrated with a script that re-stamps only items whose basis
+still matches the OLD formula (proof the content had not moved). Zero left stale under either.
+
+### THE THREE NEW Ds, ALL APPROVED BY HIM TODAY
+
+- **D41 the product rule store** — spec `docs/superpowers/specs/2026-09-10-product-rule-store-design.md`,
+  plan `docs/superpowers/plans/2026-09-10-d41-product-rule-store.md`, items **`plan:store` 1–5**.
+- **D42 conversation retrieval** — spec `…/2026-09-10-conversation-retrieval-design.md`, plan
+  `…/2026-09-10-d42-conversation-retrieval.md`, items **`plan:recall` 1–3**.
+- **D43** — done tonight.
+
+**D40** (a ratio computed against a colour that is not painted) is assigned and starts when D37 closes.
+
+### THE SERVER IS DOWN AND I DID NOT START IT
+
+**58888 went down 21:57:38Z and has not returned.** Upkeep ran, recorded `restarted-stale`, and the
+replacement never bound — no process runs `src/ui/server.ts --port 58888`. The machine was carrying
+27 node processes at the time (a full `npm test` plus Playwright workers from three lanes).
+
+**FINDING, worth an item:** `restartStaleServer` **stops the stale server before it knows the
+replacement will start.** Its own floor comment says *"a stale server is a bad server and it is still
+a server"* — and the restart breaks exactly that when the spawn fails, leaving nothing where there
+was something working. Under load that is not a rare path.
+
+**NEVER start it for him.** Notes for the report are in the scratchpad at `night-notes.md`.
+
+### FOUR THINGS THAT COST TIME TODAY — do not relearn them
+
+1. **A pipeline's exit code is the last command's.** `playwright … | tail` reported **exit 0 on a run
+   with 88 failures**. Redirect to a file and read `$?`.
+2. **A removal proof that comes back GREEN is a finding, not a pass.** Twice in one hour: assertions
+   inserted into a large spec had drifted across a test boundary, so `-g` ran a test that did not
+   contain them. **Plant an impossible value** to tell "unnecessary" from "not running".
+3. **`check:text-files` is not in `npm test`.** Two modules shipped a raw NUL as a hash separator and
+   git classified them binary — no diff, no review. I typed one into the D41 plan while writing the
+   rule against it.
+4. **The catalogue gate and the READMEs bite on any new command.** `every command string is
+   catalogued or named as a gap` went red for a day in September for exactly this.
+
+### HIS TWO STANDING FORMATS, BOTH NEW TODAY
+
+- **Explain simply → ask → recommend**, in that order, whenever a decision is his.
+- **NUMBER THE OPTIONS** `1 —`, `2 —`. He answers by number, so an unnumbered list makes his answer
+  depend on an order he had to infer.
+
+### KNOWN-RED IS CONTENTION ONLY
+
+`ingest-lock`, `statusline-chain`, `execute-route`, `execute-budgets-route`,
+`conversation-follow-cadence` — each passes alone. **Anything else red is yours.** The four real
+known-reds of yesterday are all fixed.
+
 ## ⏭ 2026-09-09, at 96% — DELTA. **CSS lane still running.** `archive/51` is RULED and ready.
 
 ### `archive/51` RULED: only a LANE opens bare. The SESSION keeps the app.
