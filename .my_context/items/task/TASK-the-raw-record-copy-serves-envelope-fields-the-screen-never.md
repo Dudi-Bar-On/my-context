@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: The third copy hands over the whole record, including fields the screen never shows, so the credentials question now covers a little more than it was measured against.
-summary_of: 8620677eadd0aac3
+summary_of: 9544482f2c53c3a2
 scope:
   - src/ui/read-model-conversation-document.ts
 tags:
@@ -23,12 +23,13 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-09-09
 valid_until: null
-checksum: 4598f513e83b7e49
+checksum: bd3403676fca05fb
 plan: archive
 seq: "43"
 state: done
 priority: "2"
 needs: archive/27
+verified_on: 2026-09-10
 ---
 
 # the raw record copy serves envelope fields the screen never draws, which seq:27 secrets scan did not cover

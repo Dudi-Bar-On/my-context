@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: Find out how often each piece of project knowledge is actually used, so later changes can be judged against a starting point rather than believed.
-summary_of: 7b72705785dc18e7
+summary_of: eeace38e04584785
 scope:
   - src/**
   - test/**
@@ -23,11 +23,12 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-09-08
 valid_until: null
-checksum: 03617e3c0f8d8315
+checksum: aaa538faaf7bde6d
 plan: loop
 seq: "1"
 state: done
 priority: "1"
+verified_on: 2026-09-10
 ---
 
 # measure which items are actually delivered, before anything is built on it

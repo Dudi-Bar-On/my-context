@@ -7,6 +7,8 @@ severity: soft
 always: false
 summary: The renderer is replaced by a small vendored library, and the diagrams are rendered ahead of time into files a test keeps in step.
 summary_of: 2c4fcba859e3207e
+acknowledged:
+  - body_disagrees_with_meta@b60f20760ba1b603
 scope:
   - src/ui/public/lib/**
   - scripts/**
@@ -23,7 +25,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-09-05
 valid_until: null
-checksum: a873865e0786f266
+checksum: abcbdf729a692fa3
 ---
 
 # markdown-it is vendored as the tokeniser, and the drawings ship as generated svg

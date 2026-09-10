@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: The words and tables in a saved conversation are as easy to pick out as they are in the terminal, instead of a frame you cannot see and code that is only a different typeface.
-summary_of: 48e38911afe7ed73
+summary_of: 49c126805c5459af
 scope:
   - src/ui/public/styles.css
   - src/ui/public/lib/markdown.js
@@ -23,12 +23,13 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-09-09
 valid_until: null
-checksum: 0b6f8f0db10ffc1a
+checksum: 35526d1276915be5
 plan: archive
 seq: "38"
 state: done
 priority: "1"
 needs: archive/26
+verified_on: 2026-09-10
 ---
 
 # inline code has no hue and a table frame is drawn at 1.71:1, so almost nothing reads as coloured

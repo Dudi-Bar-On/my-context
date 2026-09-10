@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: Marking a session to keep copies it outside the project and keeps that copy current as the session grows, so it survives the original being deleted.
-summary_of: aa8ee21d2707c7fb
+summary_of: 0a655a7d13c9aa27
 summary_was:
   - 2026-09-07 A reader looking at a conversation can take a copy of it, through the same consent gate every other write uses.
 scope:
@@ -25,11 +25,12 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-09-05
 valid_until: null
-checksum: bb85c266237d0ba0
+checksum: 192686d83fbc5797
 plan: archive
 seq: "4"
 state: done
 priority: "2"
+verified_on: 2026-09-10
 ---
 
 # mycontext conversation export, on the approval boundary

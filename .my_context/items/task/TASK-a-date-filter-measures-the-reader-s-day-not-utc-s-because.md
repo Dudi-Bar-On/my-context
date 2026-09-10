@@ -7,6 +7,9 @@ severity: soft
 always: false
 summary: Filtering the list by date covers the day as you lived it, matching the times shown next to it, instead of a day that starts three hours off.
 summary_of: 3a7c4a78474ea6b8
+acknowledged:
+  - citation_form@fd3f124e02a7831b
+  - task_unverified@fd3f124e02a7831b
 scope:
   - src/ui/read-model-conversations.ts
   - src/ui/public/screens/conversations.js
@@ -23,7 +26,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-09-09
 valid_until: null
-checksum: 7d0b1069157ea648
+checksum: f2485d7a63af77f6
 plan: archive
 seq: "37"
 state: done

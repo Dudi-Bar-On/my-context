@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: Table lines are bright enough to see at a glance, and a code block that never said what language it is still looks like code rather than prose.
-summary_of: 26f0c1aa51663aae
+summary_of: 88442efe9d476de4
 scope:
   - src/ui/public/styles.css
   - src/ui/public/lib/markdown.js
@@ -23,12 +23,13 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-09-09
 valid_until: null
-checksum: b3cec6e738610812
+checksum: c412695652d5559f
 plan: archive
 seq: "45"
 state: done
 priority: "1"
 needs: archive/38
+verified_on: 2026-09-10
 ---
 
 # the table frames want to be near-white, and an untagged code block wants a colour that is not a syntax claim

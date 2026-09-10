@@ -7,6 +7,8 @@ severity: soft
 always: false
 summary: A standard is cited across the corpus and the code by a short name that resolves to nothing, so a reader who follows the citation finds no item.
 summary_of: 7000ef7e548c0aa2
+acknowledged:
+  - body_disagrees_with_meta@661e0fde8ef46d43
 scope:
   - src/**
   - test/**
@@ -24,7 +26,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-09-08
 valid_until: null
-checksum: 45a45db944a1cf66
+checksum: a6ef65fc90a2f2de
 plan: rulings
 seq: "67"
 state: todo

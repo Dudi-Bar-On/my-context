@@ -9,6 +9,8 @@ summary: The simulator’s staircase says how much room is left, read from the r
 summary_of: b9f938fd0fb22bc0
 summary_was:
   - 2026-09-07 Show the room actually left in the conversation on the what-fits chart, so the setting stops being an abstract number, and say when it is unknown.
+acknowledged:
+  - body_disagrees_with_meta@d65086b9b1335fa5
 scope: []
 tags:
   - v2
@@ -24,7 +26,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-08-24
 valid_until: null
-checksum: 1149c8946c74d0d6
+checksum: d545f807fdd1606d
 plan: walk
 seq: "8"
 state: todo

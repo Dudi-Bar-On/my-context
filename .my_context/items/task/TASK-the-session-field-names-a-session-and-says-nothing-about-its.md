@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: The status line says how large the current conversation is and how many helper agents have run under it, beside the name it already shows.
-summary_of: c141ef47e095e7d9
+summary_of: 15a7b668a3b4efb6
 scope:
   - src/cli/commands/statusline.ts
   - src/ui/server.ts
@@ -24,12 +24,13 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-09-09
 valid_until: null
-checksum: 94173df583d89642
+checksum: a300f639f38af247
 plan: archive
 seq: "44"
 state: done
 priority: "2"
 needs: archive/12
+verified_on: 2026-09-10
 ---
 
 # the session field names a session and says nothing about its size or how many lanes ran under it

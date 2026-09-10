@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: A path or command written inside a sentence stands out from the words around it, the way it does in the terminal, instead of looking like ordinary prose.
-summary_of: 8a63f4967c602c28
+summary_of: 2acf328a6fa159a3
 scope:
   - src/ui/public/styles.css
   - src/ui/public/lib/markdown.js
@@ -23,12 +23,13 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-09-08
 valid_until: null
-checksum: b26d127e1040d1a5
+checksum: 80a86c58e3e4c6be
 plan: archive
 seq: "26"
 state: done
 priority: "2"
 needs: archive/8
+verified_on: 2026-09-10
 ---
 
 # inline code in a conversation gets a font change and nothing else, while the app own literals get a box

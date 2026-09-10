@@ -6,12 +6,12 @@ status: active
 severity: soft
 always: false
 summary: A session whose file is deleted disappears from the list unless it was kept, and a kept session is copied out as it grows so nothing is lost.
-summary_of: ccc281651d86a2b2
+summary_of: b0e11eae89eee34e
 summary_was:
   - 2026-09-07 When the original transcript file is deleted, the archive should show that it is gone rather than quietly forgetting the session existed.
 acknowledged:
-  - body_disagrees_with_meta@a4f0746fb32677e1
-  - citation_form@a21470bc168d8732
+  - body_disagrees_with_meta@95067a97ec49c3ef
+  - citation_form@95067a97ec49c3ef
 scope:
   - src/ui/**
   - src/core/conversation-index.ts
@@ -29,11 +29,12 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-09-07
 valid_until: null
-checksum: 37463f0b844194a9
+checksum: 95922a15b76a29a3
 plan: archive
 seq: "11"
 state: done
 priority: "2"
+verified_on: 2026-09-10
 ---
 
 # a pruned session is a row that says so, not a row that vanishes

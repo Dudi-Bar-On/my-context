@@ -7,6 +7,8 @@ severity: soft
 always: false
 summary: Which port should the viewing application use, and is the number that has only ever been typed by hand the one to write down as a setting?
 summary_of: f16bac74458d49f1
+acknowledged:
+  - open_question_blocks@5f8ef3ded0647622
 scope: []
 tags:
   - v2
@@ -19,7 +21,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-08-27
 valid_until: 2026-09-08
-checksum: c3e5294db0c15427
+checksum: caa77b505a49235f
 blocks: "plan:upkeep — the whole mechanism is off until a port is named"
 ---
 

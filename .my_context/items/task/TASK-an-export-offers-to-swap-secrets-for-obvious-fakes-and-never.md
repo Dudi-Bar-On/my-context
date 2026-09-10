@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: Copying a conversation out offers a list of things that look private, and replaces only what you tick with an obviously fake stand-in.
-summary_of: ed97f664c9c84f9b
+summary_of: 81a9cf61a7190f3c
 scope:
   - src/core/conversation-secrets.ts
   - src/core/conversation-redaction.ts
@@ -27,12 +27,13 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-09-09
 valid_until: null
-checksum: b7ed5a1e78cf3c7c
+checksum: 3e403dd27f49da58
 plan: archive
 seq: "46"
 state: done
 priority: "2"
 needs: archive/4
+verified_on: 2026-09-10
 ---
 
 # an export offers to swap secrets for obvious fakes, and never decides for you

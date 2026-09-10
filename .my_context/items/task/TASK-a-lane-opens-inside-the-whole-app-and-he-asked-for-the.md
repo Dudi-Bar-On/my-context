@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: Opening a helper agent gives you just the transcript in its own window, without the rails and bars of the surrounding application.
-summary_of: b16888584988d909
+summary_of: 7d81b3e62e6e58fa
 scope:
   - src/ui/public/screens/conversations.js
   - src/ui/server.ts
@@ -23,12 +23,13 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-09-09
 valid_until: null
-checksum: 1bdfd3c93649cfa9
+checksum: c252d09382eab7c2
 plan: archive
 seq: "51"
 state: done
 priority: "1"
 needs: archive/15
+verified_on: 2026-09-10
 ---
 
 # a lane opens inside the whole app, and he asked for the transcript alone in a window

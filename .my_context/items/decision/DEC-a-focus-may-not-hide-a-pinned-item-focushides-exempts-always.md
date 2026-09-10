@@ -7,6 +7,8 @@ severity: soft
 always: false
 summary: Narrowing what you see down to one topic must never hide the things you marked to stay in view at all times.
 summary_of: 4ca25a5a8820d0c8
+acknowledged:
+  - contradiction_pair@941e01031e2a4261
 scope: []
 tags:
   - v2
@@ -19,7 +21,7 @@ source_anchor: null
 source_checksum: 2b0b8c0134e4112a
 valid_from: 2026-08-27
 valid_until: null
-checksum: cde632dcc62436ee
+checksum: 3523981adc7e19d5
 ---
 
 # a focus may not hide a pinned item: focusHides exempts always: true

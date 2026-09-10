@@ -7,6 +7,8 @@ severity: soft
 always: false
 summary: Progress notes are taken less often early on and just as often near the end, and the writing itself is handed off, so keeping the notes stops using up the room they exist to protect.
 summary_of: 931862a48945e0e2
+acknowledged:
+  - body_disagrees_with_meta@0a25480d64b70fdd
 scope:
   - src/core/handover-ask.ts
 tags:
@@ -22,7 +24,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-09-08
 valid_until: null
-checksum: 8a61980450d2199d
+checksum: 4005070947251c15
 plan: handover
 seq: "19"
 state: todo

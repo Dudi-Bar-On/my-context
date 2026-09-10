@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: Following a helper agent tells you a new tab is opening, takes you there, and gives you a way back to where you were reading.
-summary_of: ffefb2432887f765
+summary_of: 9c117626af61ca36
 scope:
   - src/ui/public/screens/conversations.js
   - src/ui/public/styles.css
@@ -23,12 +23,13 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-09-09
 valid_until: null
-checksum: 3ce4d07c5bc757db
+checksum: 2158987d94f050e1
 plan: archive
 seq: "40"
 state: done
 priority: "1"
 needs: archive/15
+verified_on: 2026-09-10
 ---
 
 # a lane opens in a new tab with no warning, no landing and no way back

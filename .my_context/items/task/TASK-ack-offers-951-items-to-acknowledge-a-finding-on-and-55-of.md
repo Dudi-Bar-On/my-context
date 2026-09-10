@@ -7,6 +7,8 @@ severity: soft
 always: false
 summary: The id picker for ack offers every item in the corpus, and the command refuses all but the 55 doctor reports on.
 summary_of: 6b52ba79b5e47cef
+acknowledged:
+  - body_disagrees_with_meta@8f67d6a5a0fa01a6
 scope:
   - src/ui/public/screens/palette.js
   - src/ui/public/lib/palette-defs.js
@@ -23,7 +25,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-09-06
 valid_until: null
-checksum: ad70f3e8ada6accf
+checksum: 26e40a2a9967f493
 plan: builder
 seq: "12"
 state: todo

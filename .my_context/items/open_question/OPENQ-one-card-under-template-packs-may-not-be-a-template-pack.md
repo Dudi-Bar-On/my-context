@@ -7,6 +7,8 @@ severity: soft
 always: false
 summary: "One heading covers a list that can hold two different kinds of thing: should it stay as it is, split in two, or be renamed to something true of both?"
 summary_of: 5ce52cbc9d98efe6
+acknowledged:
+  - open_question_blocks@18fbcab166e7c3ba
 scope: []
 tags:
   - v2
@@ -20,7 +22,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-08-29
 valid_until: null
-checksum: 99a62c67b1fe4222
+checksum: 972e60f11d232fe7
 blocks: "the heading over the pack list on Template packs, and plan:port seq:14's third ruling"
 ---
 

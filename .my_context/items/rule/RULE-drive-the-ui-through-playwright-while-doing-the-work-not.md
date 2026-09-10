@@ -7,6 +7,8 @@ severity: hard
 always: true
 summary: Open and use the interface yourself while you build it, in a visible window and in the browser people really use, then leave behind a test that repeats it.
 summary_of: 925a8de3e0588a45
+acknowledged:
+  - contradiction_pair@7fbd2283e64cf1a6
 scope: []
 tags:
   - ui
@@ -19,7 +21,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-08-20
 valid_until: null
-checksum: c40436c88d9b8205
+checksum: 09c27af053b664bd
 ---
 
 # drive the UI through Playwright while doing the work, not only at merge

@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: Opening a step in a saved conversation shows what the tool was asked to do, not just a one-line label about it, so commands, written files and the questions you were asked are all there.
-summary_of: 1966a98409c74bed
+summary_of: 912af7792c12d9f7
 scope:
   - src/ui/read-model-conversation-document.ts
   - src/ui/public/screens/conversations.js
@@ -23,12 +23,13 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-09-08
 valid_until: null
-checksum: 54f97b43ec9f48d0
+checksum: 95628e56a6d41deb
 plan: archive
 seq: "24"
 state: done
 priority: "1"
 needs: archive/13
+verified_on: 2026-09-10
 ---
 
 # a tool call keeps 160 characters of its input and drops the rest, so 92.8% of what was done is not in the archive

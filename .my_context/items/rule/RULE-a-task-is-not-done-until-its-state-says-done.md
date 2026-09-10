@@ -7,6 +7,8 @@ severity: hard
 always: false
 summary: Mark a piece of work finished the moment it actually is, or the shared list of what is left will quietly mislead everyone who reads it afterwards.
 summary_of: f0cbdb2b79ca908b
+acknowledged:
+  - contradiction_pair@5e1d1db05e2075cd
 scope: []
 tags:
   - v2
@@ -18,7 +20,7 @@ source_anchor: null
 source_checksum: e9cd94188019d8af
 valid_from: 2026-08-28
 valid_until: null
-checksum: 5c38ba7599f1a7fa
+checksum: 33e35f066528a6a8
 ---
 
 # a task is not done until its state says done

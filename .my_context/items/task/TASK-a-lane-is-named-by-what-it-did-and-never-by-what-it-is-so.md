@@ -7,6 +7,8 @@ severity: soft
 always: false
 summary: A helper agent shows the kind of agent it is beside what it was asked to do, matching the name you already recognise from the terminal.
 summary_of: 1262277982d3f248
+acknowledged:
+  - body_disagrees_with_meta@d2b31a3d151aecef
 scope:
   - src/ui/public/screens/conversations.js
   - src/ui/read-model-conversations.ts
@@ -23,7 +25,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-09-09
 valid_until: null
-checksum: 10869816b0d2ad54
+checksum: 36a43f8570e7a03f
 plan: archive
 seq: "50"
 state: done

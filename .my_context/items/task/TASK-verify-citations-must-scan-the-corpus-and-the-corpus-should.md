@@ -9,6 +9,8 @@ summary: References in the knowledge base point at a place that keeps its name, 
 summary_of: e794e0a03a2b80d2
 summary_was:
   - 2026-09-07 The reference checker has three known blind spots; settle by rule what it covers, and stop pointing at line numbers that rot.
+acknowledged:
+  - body_disagrees_with_meta@92681859fd245dd8
 scope: []
 tags:
   - v2
@@ -24,7 +26,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-08-25
 valid_until: null
-checksum: cbad499f762d1ee9
+checksum: 861d6cea7e6be977
 plan: walk
 seq: "30"
 state: todo

@@ -7,6 +7,8 @@ severity: soft
 always: false
 summary: Will bringing material in ever be possible here, or is a third of that screen permanently a description of something the product cannot do?
 summary_of: bdcee763b61ea901
+acknowledged:
+  - open_question_blocks@ba59f2a2524b1ddc
 scope: []
 tags:
   - v2
@@ -21,7 +23,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-08-29
 valid_until: null
-checksum: 60cee8b79fb4865f
+checksum: 397ee60aa2b7929a
 blocks: "the import-buckets card on Export / import, and the size of plan:walk seq:89"
 ---
 

@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: The helper agents a session dispatched can be listed, but the record saying which one dispatched which is written two ways, so the list has to translate between them.
-summary_of: c372b1a3581e5837
+summary_of: 8d2c76ded9b51931
 scope:
   - src/core/conversation-index.ts
   - src/ui/read-model-conversations.ts
@@ -24,12 +24,13 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-09-09
 valid_until: null
-checksum: 6e557d8901831392
+checksum: 13eefe2f74c12d9d
 plan: archive
 seq: "48"
 state: done
 priority: "2"
 needs: archive/41
+verified_on: 2026-09-10
 ---
 
 # a lane's own id carries agent- and the id naming its parent does not, so a roster of 264 draws every one of them at the top level

@@ -7,6 +7,8 @@ severity: soft
 always: false
 summary: "Three commands can only be copied and not run from inside the application: should any of them become runnable, and each on its own terms?"
 summary_of: b2ba3c49954444db
+acknowledged:
+  - open_question_blocks@bcc1f76c357d204b
 scope: []
 tags:
   - v2
@@ -23,7 +25,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-08-29
 valid_until: null
-checksum: 303a4c6797ebae08
+checksum: 2c94f4641352bbd0
 blocks: "plan:builder seq:7, and the Copy-only command blocks on Procedures, Export / import and Template packs"
 ---
 

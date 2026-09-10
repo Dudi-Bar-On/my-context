@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: Finding the conflicts that are already there, since guarding new writes does nothing about the ones already written.
-summary_of: a2a0001072c072fa
+summary_of: 05b2f149a396a683
 scope:
   - src/core/**
   - src/cli/**
@@ -25,12 +25,13 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-09-07
 valid_until: null
-checksum: 8d6f5880e130469a
+checksum: 9cfd7231d12eaaca
 plan: contra
 seq: "3"
 state: done
 priority: "1"
 needs: contra/1
+verified_on: 2026-09-10
 ---
 
 # the contradictions already in the corpus are found and reported, never gated

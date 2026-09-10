@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: The helper agents a conversation used can be listed and opened from the browser, instead of the number being the end of the trail.
-summary_of: 2834d64ae9f0a4ae
+summary_of: 0cad41ac44622cef
 scope:
   - src/ui/read-model-conversations.ts
   - src/ui/public/screens/conversations.js
@@ -23,12 +23,13 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-09-09
 valid_until: null
-checksum: b3657a1114841978
+checksum: 66ba1f68ee6f8482
 plan: archive
 seq: "41"
 state: done
 priority: "1"
 needs: archive/12
+verified_on: 2026-09-10
 ---
 
 # the count of helper agents is not a link, so the only way to browse them is the terminal

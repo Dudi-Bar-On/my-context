@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: Decide whether the saved-session viewer hides passwords and keys that appear in the commands and files it shows, since one real key is already on screen today.
-summary_of: 82547aeae0efe773
+summary_of: 4641d84c817a625b
 summary_was:
   - 2026-09-08 Whether the conversation archive redacts credentials, where, and how much — reported from a scan of every transcript on the machine rather than assumed.
 scope:
@@ -27,12 +27,13 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-09-08
 valid_until: null
-checksum: d0b97dd3657b0c59
+checksum: 59b5057b483f84c3
 plan: archive
 seq: "27"
 state: done
 priority: "1"
 needs: archive/24
+verified_on: 2026-09-10
 ---
 
 # the archive already serves a live API key, and full input capture adds a bearer token to it

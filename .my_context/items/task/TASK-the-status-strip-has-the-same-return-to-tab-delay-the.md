@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: The status bar can show a stale reading for a while after you come back to the tab, instead of refreshing as soon as you look at it.
-summary_of: 22cfe9784bf677cf
+summary_of: 716df5096736860c
 scope:
   - src/ui/public/lib/heartbeat.js
   - src/ui/public/app.js
@@ -23,11 +23,12 @@ source_anchor: null
 source_checksum: 329b07951ae0fa2a
 valid_from: 2026-09-08
 valid_until: null
-checksum: fe693b28eafc4960
+checksum: 9b5e342681af0923
 plan: archive
 seq: "25"
 state: done
 priority: "3"
+verified_on: 2026-09-10
 ---
 
 # the status strip has the same return-to-tab delay the document just lost

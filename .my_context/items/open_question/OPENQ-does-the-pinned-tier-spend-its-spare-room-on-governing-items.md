@@ -8,7 +8,7 @@ always: false
 summary: Using leftover room for items that would otherwise arrive as titles is built and measured, and costs a large rewrite of existing tests.
 summary_of: 427f85eb64427d38
 acknowledged:
-  - body_disagrees_with_meta@69fb19d61b487009
+  - body_disagrees_with_meta@fa6a2eb285e70a59
 scope:
   - src/core/select.ts
   - test/core/**
@@ -22,7 +22,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-09-06
 valid_until: 2026-09-08
-checksum: 5f6d2b2ecb1aa731
+checksum: ff18caf4735f9e77
 ---
 
 # does the pinned tier spend its spare room on governing items, at the price of forty-nine fixtures

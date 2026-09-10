@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: The choices you were offered and the one you picked, and the commands that were run, are shown as part of the conversation instead of hidden as machinery.
-summary_of: da0279ba0144381b
+summary_of: 741e685a9d25f01d
 scope:
   - src/ui/**
   - src/core/conversation-index.ts
@@ -23,12 +23,13 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-09-08
 valid_until: null
-checksum: 2016c893ca0a0393
+checksum: 3fc4617210e1e077
 plan: archive
 seq: "16"
 state: done
 priority: "1"
 needs: archive/13
+verified_on: 2026-09-10
 ---
 
 # a question, its options, the answer chosen, and a shell command are turns you can read

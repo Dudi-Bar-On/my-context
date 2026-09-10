@@ -7,6 +7,8 @@ severity: soft
 always: false
 summary: The console can now open the project's own knowledge files, through a separate door with its own lock, and the rule that said it already could is corrected.
 summary_of: c973f3d05b6a986a
+acknowledged:
+  - contradiction_pair@4a8d2978c30700de
 scope:
   - src/doctor/checks.ts
   - src/ui/read-model.ts
@@ -25,7 +27,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-09-06
 valid_until: null
-checksum: 6858dee5d26ff30d
+checksum: a6053ae0bfaa1279
 ---
 
 # the UI serves the corpus through its own route, rather than by widening the document one

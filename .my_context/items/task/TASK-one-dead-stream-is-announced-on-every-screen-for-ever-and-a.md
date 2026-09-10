@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: A live feed that drops once keeps saying so on every screen until the page is reloaded, even though the server is still answering everything else.
-summary_of: b08907b4e93bd3ac
+summary_of: 19953aea0c1945b4
 scope:
   - src/ui/public/app.js
   - src/ui/watch-model.ts
@@ -23,11 +23,12 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-09-08
 valid_until: null
-checksum: 32120f1eac30553e
+checksum: 44529e2107dbed71
 plan: live
 seq: "21"
 state: done
 priority: "1"
+verified_on: 2026-09-10
 ---
 
 # one dead stream is announced on every screen for ever, and a poll would not have died at all

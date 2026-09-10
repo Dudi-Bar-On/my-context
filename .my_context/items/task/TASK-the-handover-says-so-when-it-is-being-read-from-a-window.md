@@ -7,6 +7,8 @@ severity: soft
 always: false
 summary: Notes written near the end of one session say plainly, when delivered, that their running commentary is history.
 summary_of: 820f1a03550ac2ad
+acknowledged:
+  - body_disagrees_with_meta@923e5b7e628110ba
 scope:
   - src/hooks/session-start.ts
   - src/core/handover-ask.ts
@@ -22,7 +24,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-09-06
 valid_until: null
-checksum: e6f0b81cec84ecad
+checksum: 09141626a801dd49
 plan: handover
 seq: "17"
 state: done

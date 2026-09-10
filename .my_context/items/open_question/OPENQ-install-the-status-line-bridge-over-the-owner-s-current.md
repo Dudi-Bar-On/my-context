@@ -7,6 +7,8 @@ severity: soft
 always: false
 summary: Should the tool take over the bar at the foot of the screen to get a reading it needs, or should the feature that needs it stay switched off?
 summary_of: 0325af60b30672f9
+acknowledged:
+  - open_question_blocks@f12fd0e31f6482a8
 scope: []
 tags:
   - v2
@@ -19,7 +21,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-08-27
 valid_until: 2026-09-08
-checksum: 085d0fdf9b3601b4
+checksum: 73e40fa41875d808
 blocks: the occupancy requirement measuring anything at all
 ---
 

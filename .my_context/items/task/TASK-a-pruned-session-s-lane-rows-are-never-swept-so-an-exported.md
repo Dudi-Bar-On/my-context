@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: removeMissingSubagents only runs for sessions found on disk, so the lane rows of a session whose transcript is gone stay in the index for ever and an exported document draws a 'gone' link for each of them.
-summary_of: 34ee957c5fe3b779
+summary_of: 6e5c1f6cf03be708
 scope:
   - src/core/conversation-index.ts
 tags:
@@ -21,10 +21,11 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-09-09
 valid_until: null
-checksum: fe59991214cc4320
+checksum: fdc46d7af9cd4769
 plan: archive
 seq: "35"
 state: done
+verified_on: 2026-09-10
 ---
 
 # a pruned session's lane rows are never swept, so an exported document names lanes that are gone

@@ -6,7 +6,9 @@ status: active
 severity: soft
 always: false
 summary: Opening the machinery under a turn shows the steps that did something, with the harness bookkeeping counted on one line instead of filling the list.
-summary_of: c025eee33fc36b04
+summary_of: c7752fe22209657f
+acknowledged:
+  - body_disagrees_with_meta@f7ab8c2021873d70
 scope:
   - src/ui/read-model-conversation-document.ts
   - src/ui/public/screens/conversations.js
@@ -23,12 +25,13 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-09-09
 valid_until: null
-checksum: 1cc084167e098daa
+checksum: 5bfa0a40ee71117f
 plan: archive
 seq: "39"
 state: done
 priority: "1"
 needs: archive/28
+verified_on: 2026-09-10
 ---
 
 # a fold spends eleven lines saying some bookkeeping happened, and eight of those rows can never hold anything

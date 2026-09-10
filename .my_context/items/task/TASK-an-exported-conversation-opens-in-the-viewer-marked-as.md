@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: A session kept outside the project opens in the same viewer as a live one, and says which it is.
-summary_of: e5cc162529632a6f
+summary_of: 7e0be96077bf94da
 summary_was:
   - 2026-09-07 A copy taken earlier can be read back, and never looks like a live session.
 scope:
@@ -25,11 +25,12 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-09-05
 valid_until: null
-checksum: 671a2c0180e3d77c
+checksum: 70701dd27f485ea0
 plan: archive
 seq: "5"
 state: done
 priority: "3"
+verified_on: 2026-09-10
 ---
 
 # an exported conversation opens in the viewer, marked as exported

@@ -7,6 +7,8 @@ severity: soft
 always: false
 summary: A table's grid is as visible as the stylesheet says it is, instead of being half as visible on nearly half of its length.
 summary_of: 6da861bb3f7c2041
+acknowledged:
+  - body_disagrees_with_meta@f3ab51d50f2aca97
 scope:
   - src/ui/public/styles.css
   - e2e/code-hue.spec.ts
@@ -23,7 +25,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-09-09
 valid_until: null
-checksum: d262c90d692e8263
+checksum: e0c83bf1ddcad7eb
 plan: archive
 seq: "47"
 state: done

@@ -6,7 +6,9 @@ status: active
 severity: soft
 always: false
 summary: A project chooses whether to keep a conversation archive at all; today every project has one whether it wanted it or not.
-summary_of: 31cb23c5d980d1b0
+summary_of: a6b512aa2711baa1
+acknowledged:
+  - body_disagrees_with_meta@e43f46356d8d051c
 scope:
   - src/ui/**
   - src/core/conversation-index.ts
@@ -24,11 +26,12 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-09-07
 valid_until: null
-checksum: 9461b31932c0916e
+checksum: 3b429348e5b4fdc3
 plan: archive
 seq: "9"
 state: done
 priority: "1"
+verified_on: 2026-09-10
 ---
 
 # the archive is opt-in, which was decided and never built

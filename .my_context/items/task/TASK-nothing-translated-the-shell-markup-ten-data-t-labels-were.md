@@ -11,6 +11,7 @@ summary_was:
   - 2026-09-07 Ten labels stayed in English on the Hebrew page for months; the fix is in, but nothing yet stops it happening again.
 acknowledged:
   - body_disagrees_with_meta@ac65ef6e0e6f5d91
+  - citation_form@0a4c9732509db820
 scope: []
 tags:
   - v2
@@ -26,7 +27,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-08-25
 valid_until: null
-checksum: 1c088e32e2223ced
+checksum: 4bb567900ff2bd58
 plan: walk
 seq: "43"
 state: todo

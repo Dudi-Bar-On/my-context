@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: An item that has been replaced also stops asking to be shown every time and stops describing itself as binding.
-summary_of: 3f9c23bb1a1d31bd
+summary_of: 232a2f5eec3a0ed4
 scope:
   - src/core/mutate.ts
   - src/doctor/**
@@ -24,11 +24,12 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-09-08
 valid_until: null
-checksum: b383eab613a5f509
+checksum: 697c51ba8e232337
 plan: governance
 seq: "8"
 state: done
 priority: "1"
+verified_on: 2026-09-10
 ---
 
 # retiring an item also stands it down: it stops being pinned and stops claiming to be binding

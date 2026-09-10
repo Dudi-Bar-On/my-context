@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: Coming back to the browser shows the latest turns straight away, instead of waiting for the next scheduled check before it even looks.
-summary_of: 0dc1d7aeb3c8dead
+summary_of: 792b9ae856712384
 scope:
   - src/ui/public/screens/conversations.js
 tags:
@@ -22,12 +22,13 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-09-08
 valid_until: null
-checksum: fea02166c43d5b29
+checksum: dad72ae9b8433004
 plan: archive
 seq: "22"
 state: done
 priority: "1"
 needs: archive/19
+verified_on: 2026-09-10
 ---
 
 # looking at the tab is the fastest signal a reader can send, and the follow ignores it until the next tick

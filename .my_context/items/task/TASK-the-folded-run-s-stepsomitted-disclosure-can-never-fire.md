@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: A folded run of machinery can never leave a step out, so the line that would say it had, and the string behind it, are unreachable.
-summary_of: 0a6cd02f579f160d
+summary_of: b0254e8393096306
 scope:
   - src/ui/read-model-conversation-document.ts
   - src/ui/public/screens/conversations.js
@@ -24,11 +24,12 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-09-08
 valid_until: null
-checksum: c71537c2e4246732
+checksum: 996ccced6b563e79
 plan: archive
 seq: "21"
 state: done
 priority: "3"
+verified_on: 2026-09-10
 ---
 
 # the folded run's stepsOmitted disclosure can never fire, because STEP_CAP equals the run cap

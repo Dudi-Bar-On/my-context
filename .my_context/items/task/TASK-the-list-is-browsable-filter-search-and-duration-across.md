@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: Finding the session you want among many, by when it was, which branch it was on, or what was said in it.
-summary_of: 5269190b6e4528c2
+summary_of: f1e86a479a58339c
 scope:
   - src/ui/**
   - src/core/conversation-index.ts
@@ -24,11 +24,12 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-09-07
 valid_until: null
-checksum: bd42134fecbe84d0
+checksum: 2107e99276a68a05
 plan: archive
 seq: "10"
 state: done
 priority: "2"
+verified_on: 2026-09-10
 ---
 
 # the list is browsable: filter, search and duration, across sessions

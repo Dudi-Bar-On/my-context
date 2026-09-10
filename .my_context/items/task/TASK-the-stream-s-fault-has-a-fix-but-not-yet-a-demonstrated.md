@@ -6,7 +6,9 @@ status: active
 severity: soft
 always: false
 summary: The live feed kept dying and the repair that was made is a sound one, but nothing has yet been caught doing the killing, so this records what was ruled out and what to look at next time it happens.
-summary_of: f4293ba8b7f09415
+summary_of: d977f2627f4327e5
+acknowledged:
+  - body_disagrees_with_meta@d2f8b036b5475b4e
 scope:
   - src/ui/watch-model.ts
   - src/ui/public/app.js
@@ -23,11 +25,12 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-09-08
 valid_until: null
-checksum: dc3fd4cb49e21512
+checksum: 622679dee752faee
 plan: live
 seq: "22"
 state: done
 priority: "2"
+verified_on: 2026-09-10
 ---
 
 # the stream's fault has a fix but not yet a demonstrated cause, and the keep-alive is a mitigation

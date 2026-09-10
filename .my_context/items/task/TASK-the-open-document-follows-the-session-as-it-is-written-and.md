@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: A conversation you are reading keeps up with the session while it is still being written, so new turns arrive at the bottom on their own - and a reader who has scrolled up is told there are new turns rather than dragged down to them.
-summary_of: 69b49cff6b479603
+summary_of: 008b5249a24cf714
 scope:
   - src/ui/**
   - src/core/conversation-index.ts
@@ -23,12 +23,13 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-09-08
 valid_until: null
-checksum: 71044232e0320cf3
+checksum: 878feac6bdd9ed99
 plan: archive
 seq: "19"
 state: done
 priority: "1"
 needs: archive/13,archive/14
+verified_on: 2026-09-10
 ---
 
 # the open document follows the session as it is written, and only moves the reader who is already at the end

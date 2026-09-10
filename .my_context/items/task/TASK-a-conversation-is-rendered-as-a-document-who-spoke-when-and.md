@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: A saved conversation reads like a transcript of a discussion, with each speaker and time marked and the tool activity tucked out of the way.
-summary_of: cbf431928e88ccb1
+summary_of: e57dc5699939318c
 scope:
   - src/ui/**
 tags:
@@ -22,12 +22,13 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-09-08
 valid_until: null
-checksum: 28d6bd7bed4cd9f7
+checksum: 997809e19888312b
 plan: archive
 seq: "13"
 state: done
 priority: "1"
 needs: archive/7
+verified_on: 2026-09-10
 ---
 
 # a conversation is rendered as a document: who spoke, when, and the machinery folded away

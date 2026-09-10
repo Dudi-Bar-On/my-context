@@ -7,6 +7,8 @@ severity: soft
 always: false
 summary: The background web server stays entirely off until you choose an address for it, so installing the tool never starts a server nobody asked for.
 summary_of: a12aac3acd6d52e1
+acknowledged:
+  - contradiction_pair@2087ace74b9acad6
 scope: []
 tags:
   - v2
@@ -20,7 +22,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-08-27
 valid_until: null
-checksum: 3d41daa56f5cbe4f
+checksum: 937b81b07e29406f
 ---
 
 # the UI upkeep is off unless a port is configured, and ui.enabled finally decides something

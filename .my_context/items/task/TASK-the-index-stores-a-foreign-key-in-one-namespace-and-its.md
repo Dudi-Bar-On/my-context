@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: The archive index cannot join a lane to the lane that dispatched it, because the two ids are spelled differently and the shipped SQL surface answers zero.
-summary_of: 9e102b554763e860
+summary_of: 65ca24e1fef50577
 scope:
   - src/core/conversation-index.ts
 tags:
@@ -22,11 +22,12 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-09-08
 valid_until: null
-checksum: 80a6652ab01faaf8
+checksum: 7794834e579f9267
 plan: archive
 seq: "33"
 state: done
 priority: "3"
+verified_on: 2026-09-10
 ---
 
 # the index stores a foreign key in one namespace and its target in another, so the archive cannot self-join

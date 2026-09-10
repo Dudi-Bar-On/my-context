@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: The results that helpers report back are readable in a saved conversation instead of appearing as a bare label, and a row that can never have content says so once rather than repeatedly.
-summary_of: c0059db1cb30ed26
+summary_of: 0c0e33e4c48cec14
 scope:
   - src/ui/read-model-conversation-document.ts
   - src/ui/public/screens/conversations.js
@@ -23,12 +23,13 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-09-08
 valid_until: null
-checksum: 93e5dc7c49093d59
+checksum: e781efa14c52b650
 plan: archive
 seq: "28"
 state: done
 priority: "1"
 needs: archive/24
+verified_on: 2026-09-10
 ---
 
 # a task notification is 3.9 MB of what a lane reported, drawn as the word queue-operation

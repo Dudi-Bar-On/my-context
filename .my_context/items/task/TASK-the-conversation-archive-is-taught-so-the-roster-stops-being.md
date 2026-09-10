@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: The new way of reading past conversations gets written up, in both languages, like every other feature.
-summary_of: a33f6a70b752dc13
+summary_of: 5ac6e3ed4240a1f5
 scope:
   - docs/tutorials/**
   - scripts/build-tutorial-manifest.ts
@@ -23,12 +23,13 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-09-06
 valid_until: null
-checksum: ea03db696312b555
+checksum: d803ae7eecdfd290
 plan: archive
 seq: "6"
 state: done
 priority: "2"
 needs: archive/7,archive/8
+verified_on: 2026-09-10
 ---
 
 # the conversation archive is taught, so the roster stops being red

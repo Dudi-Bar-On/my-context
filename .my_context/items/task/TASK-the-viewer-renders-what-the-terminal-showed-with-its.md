@@ -6,7 +6,9 @@ status: active
 severity: soft
 always: false
 summary: The saved conversation looks like the terminal it came from, colours and layout included, instead of plain text in boxes.
-summary_of: 10739274a188af94
+summary_of: ec3d855df737c39f
+acknowledged:
+  - body_disagrees_with_meta@9af8fcfe1b3522e3
 scope:
   - src/ui/**
   - src/core/conversation-index.ts
@@ -24,11 +26,12 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-09-07
 valid_until: null
-checksum: 09b25f6e77b2b266
+checksum: 53637a2584ddc97f
 plan: archive
 seq: "8"
 state: done
 priority: "1"
+verified_on: 2026-09-10
 ---
 
 # the viewer renders what the terminal showed, with its formatting and colour

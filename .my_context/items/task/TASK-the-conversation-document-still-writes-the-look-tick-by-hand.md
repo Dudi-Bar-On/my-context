@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: Two screens each carry their own copy of the rule that refreshes a page the moment you look back at the tab, and one of them should simply use the other's.
-summary_of: 263dac887a22dc60
+summary_of: fcbffdc60eb1ca56
 scope:
   - src/ui/public/screens/conversations.js
   - src/ui/public/lib/heartbeat.js
@@ -23,11 +23,12 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-09-08
 valid_until: null
-checksum: d41bd6531da61c72
+checksum: 99b448a47535100f
 plan: archive
 seq: "29"
 state: done
 priority: "3"
+verified_on: 2026-09-10
 ---
 
 # the conversation document still writes the look-tick by hand, one floor below the module that now owns it

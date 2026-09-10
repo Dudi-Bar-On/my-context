@@ -9,6 +9,8 @@ summary: The status screen shows how many things are waiting for a person, count
 summary_of: 16ceb999256af1f7
 summary_was:
   - 2026-09-07 Two screens draw a dash where a number would go and cannot say why it is missing, though the reasons behind them are entirely different.
+acknowledged:
+  - body_disagrees_with_meta@0518e18c6f7632fd
 scope: []
 tags:
   - v2
@@ -23,7 +25,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-08-29
 valid_until: null
-checksum: ba55364772b637c2
+checksum: cf683d93dde2fc42
 plan: walk
 seq: "89"
 state: todo

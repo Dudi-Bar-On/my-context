@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: Selecting part of a conversation and copying it puts text on the clipboard that can be pasted somewhere else without carrying invisible formatting.
-summary_of: ae26abd517f93bbd
+summary_of: 9fbdbf75c121bd80
 scope:
   - src/ui/**
   - src/core/conversation-index.ts
@@ -23,12 +23,13 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-09-08
 valid_until: null
-checksum: 8ebd8e82328ef940
+checksum: b2521e17ca291e5f
 plan: archive
 seq: "17"
 state: done
 priority: "1"
 needs: archive/13,archive/15
+verified_on: 2026-09-10
 ---
 
 # a selected passage copies as something a terminal will accept

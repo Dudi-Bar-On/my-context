@@ -10,7 +10,7 @@ summary_of: 2055ce5f6f8a8877
 summary_was:
   - 2026-09-07 The short numbers used to talk about work in progress, and what each of them refers to, so the same number never means two things.
 acknowledged:
-  - reference_no_source@03166065de3b276c
+  - reference_no_source@4e72d4cc9e0e40dc
 scope: []
 tags:
   - v2
@@ -21,7 +21,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-09-07
 valid_until: null
-checksum: 5412ed53c249a6c5
+checksum: b1571773a07f4382
 ---
 
 # the D numbers: what each one means, and which are only proposed

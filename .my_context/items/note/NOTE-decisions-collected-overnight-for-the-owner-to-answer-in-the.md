@@ -7,6 +7,8 @@ severity: soft
 always: false
 summary: One place holding the questions that need the owner rather than a measurement, so work continues overnight and he answers a list instead of being interrupted.
 summary_of: 6bab3e0aa6e612a8
+acknowledged:
+  - body_disagrees_with_meta@87f777216d28f1c9
 scope: []
 tags:
   - v2
@@ -17,7 +19,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-09-08
 valid_until: null
-checksum: 53270ed6af357efb
+checksum: c824d5ecef1deed3
 ---
 
 # decisions collected overnight for the owner to answer in the morning

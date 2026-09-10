@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: Following a link from a conversation into the work a helper did, and coming back to exactly where you were reading.
-summary_of: 579e7b1b11c09262
+summary_of: 5d15e0fae8a328b0
 scope:
   - src/core/conversation-index.ts
   - src/ui/**
@@ -23,12 +23,13 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-09-08
 valid_until: null
-checksum: fc5d7e859115feb5
+checksum: c58096cc32d7ff83
 plan: archive
 seq: "15"
 state: done
 priority: "1"
 needs: archive/12,archive/13
+verified_on: 2026-09-10
 ---
 
 # a subagent is opened from the turn that dispatched it, and closing it returns to the same place

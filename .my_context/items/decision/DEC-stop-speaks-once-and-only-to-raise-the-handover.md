@@ -7,6 +7,8 @@ severity: soft
 always: false
 summary: "The end-of-turn check stays silent except for one thing: asking, once, for a handover note when the conversation is nearly out of room."
 summary_of: cd71285c554551af
+acknowledged:
+  - contradiction_pair@373c17e304727682
 scope: []
 tags:
   - v2
@@ -19,7 +21,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-08-27
 valid_until: null
-checksum: 3f4535ea50011c88
+checksum: 01b93df2a0f9e821
 ---
 
 # Stop speaks once, and only to raise the handover

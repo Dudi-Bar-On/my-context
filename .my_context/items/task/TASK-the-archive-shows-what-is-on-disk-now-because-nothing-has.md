@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: The list of saved conversations keeps itself up to date instead of showing whatever it happened to hold the last time somebody rebuilt it by hand.
-summary_of: 55fd255f783b6389
+summary_of: 80f645b5c82edb9c
 scope:
   - src/core/conversation-index.ts
   - src/ui/**
@@ -23,11 +23,12 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-09-08
 valid_until: null
-checksum: 028737cd92498931
+checksum: 03482c7ef5103829
 plan: archive
 seq: "14"
 state: done
 priority: "1"
+verified_on: 2026-09-10
 ---
 
 # the archive shows what is on disk now, because nothing has ever refreshed it

@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: A glyph a screen puts on a coloured chip is silently replaced by the glyph its colour class carries, so several states in the conversation archive draw the same mark.
-summary_of: ff0c0da2216e0bbd
+summary_of: 604722b4e30256f8
 scope:
   - src/ui/public/styles.css
   - src/ui/public/screens/**
@@ -23,11 +23,12 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-09-08
 valid_until: null
-checksum: f7b8c86e25d089f8
+checksum: 163268884f4222c8
 plan: archive
 seq: "20"
 state: done
 priority: "2"
+verified_on: 2026-09-10
 ---
 
 # a chip's data-g never renders on six of the eight chip kinds, so five archive glyphs are dead markup

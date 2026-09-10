@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: Times in a saved conversation are shown in the reader's local clock and name the zone, instead of silently showing a different one.
-summary_of: 8566d99fb6a0d775
+summary_of: 1e7945362c2c35d8
 scope:
   - src/ui/**
   - src/cli/commands/conversation.ts
@@ -23,11 +23,12 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-09-08
 valid_until: null
-checksum: c546940ccd6fb9ab
+checksum: 1013b0d8dcfefe98
 plan: archive
 seq: "18"
 state: done
 priority: "1"
+verified_on: 2026-09-10
 ---
 
 # a timestamp is shown in the reader's own zone, and says which zone that is

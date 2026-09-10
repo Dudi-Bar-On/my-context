@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: Replacing a rule that is in force always asks first, not only when it is done through one particular command.
-summary_of: ace4236447e5eb58
+summary_of: de08b00edb0d6e6b
 scope:
   - src/core/mutate.ts
   - src/cli/**
@@ -24,11 +24,12 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-09-08
 valid_until: null
-checksum: da65d223c41a9760
+checksum: 857afde54d29b722
 plan: contra
 seq: "4"
 state: done
 priority: "1"
+verified_on: 2026-09-10
 ---
 
 # retiring an item asks before it happens, wherever it is triggered from

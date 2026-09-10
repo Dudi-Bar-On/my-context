@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: On the conversation list the number of helper agents is text you cannot click, and making it clickable means rebuilding the row control.
-summary_of: 492c9408ca49807f
+summary_of: da67d598a6f92a74
 scope:
   - src/ui/public/screens/conversations.js
   - src/ui/public/styles.css
@@ -23,12 +23,13 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-09-09
 valid_until: null
-checksum: 3a58ccb442c82a85
+checksum: 53bbda2050c29e3c
 plan: archive
 seq: "53"
 state: done
 priority: "2"
 needs: archive/41
+verified_on: 2026-09-10
 ---
 
 # the list row cannot link its lane count, because the whole row is already a button

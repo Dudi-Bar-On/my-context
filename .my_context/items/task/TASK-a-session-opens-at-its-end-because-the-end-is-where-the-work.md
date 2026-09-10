@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: Opening a conversation lands you at the newest turns rather than at the very first one, which is also what lets it start keeping up straight away.
-summary_of: 75cf5f8cbe2659c9
+summary_of: 78032e8dbc63ac5f
 scope:
   - src/ui/public/screens/conversations.js
 tags:
@@ -22,12 +22,13 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-09-08
 valid_until: null
-checksum: 03485c5254da7009
+checksum: 03acc9d6fa76f0d9
 plan: archive
 seq: "23"
 state: done
 priority: "1"
 needs: archive/19
+verified_on: 2026-09-10
 ---
 
 # a session opens at its end, because the end is where the work is and where the follow starts

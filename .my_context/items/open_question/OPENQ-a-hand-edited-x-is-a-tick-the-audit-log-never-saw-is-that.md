@@ -7,6 +7,8 @@ severity: soft
 always: false
 summary: When someone ticks a checklist box by hand and the record of activity never saw it, does that count as progress, as a fault, or as something to report?
 summary_of: c2a64775463491ca
+acknowledged:
+  - open_question_blocks@f55b216315917dc9
 scope: []
 tags:
   - v2
@@ -20,7 +22,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-08-29
 valid_until: null
-checksum: f4e0837512a38375
+checksum: c24d5303783d590a
 blocks: "the Procedures step table, plan:walk seq:96, and `pr.md`'s claim that a procedure cannot disagree with itself"
 ---
 

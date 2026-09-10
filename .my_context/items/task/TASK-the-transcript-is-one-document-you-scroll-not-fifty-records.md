@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: A saved session opens as one continuous scrollable view of the whole conversation instead of a first page you cannot move past.
-summary_of: 8f3652c802c8c177
+summary_of: 3702a2ab69512c36
 scope:
   - src/ui/**
   - src/core/conversation-index.ts
@@ -24,11 +24,12 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-09-07
 valid_until: null
-checksum: aaf21e3b4cb79345
+checksum: b8fa1a01a89c4255
 plan: archive
 seq: "7"
 state: done
 priority: "1"
+verified_on: 2026-09-10
 ---
 
 # the transcript is one document you scroll, not fifty records you cannot leave

@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: The English flag table's --yes row is held to the real parser in both directions; the Hebrew mirror's is not, and it was five command strings behind before anybody looked.
-summary_of: 660fc5f4a569e856
+summary_of: b388e44cb96274ab
 scope:
   - docs/README.he.md
   - test/plugin-assets.test.ts
@@ -22,10 +22,11 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-09-09
 valid_until: null
-checksum: b669ba04d648972c
+checksum: 50ded6d124b4b9db
 plan: archive
 seq: "36"
 state: done
+verified_on: 2026-09-10
 ---
 
 # the Hebrew README's --yes row is hand-kept and had drifted by five commands with nothing checking it

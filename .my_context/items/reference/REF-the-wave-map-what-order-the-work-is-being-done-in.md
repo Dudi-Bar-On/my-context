@@ -2,7 +2,7 @@
 id: REF-the-wave-map-what-order-the-work-is-being-done-in
 type: reference
 title: "the wave map: what order the work is being done in"
-status: active
+status: deprecated
 severity: soft
 always: false
 summary: The order of the work is now worked out by the tool itself; what stays here is why a group of work exists and how widely it may run.
@@ -11,6 +11,7 @@ summary_was:
   - 2026-09-07 The wave map is now the execution board in reports; what stays here is why a wave exists and how wide it may run.
   - 2026-09-05 The order the work is being tackled in, grouped so that jobs which do not touch each other can be done at the same time.
 acknowledged:
+  - body_disagrees_with_meta@7b97dcfdbb81c28c
   - reference_no_source@7b97dcfdbb81c28c
 scope: []
 tags:
@@ -21,8 +22,8 @@ source_file: null
 source_anchor: null
 source_checksum: null
 valid_from: 2026-08-28
-valid_until: null
-checksum: 9a750471dbdd0873
+valid_until: 2026-09-10
+checksum: 46d211d5fd0d339e
 ---
 
 # the wave map: what order the work is being done in

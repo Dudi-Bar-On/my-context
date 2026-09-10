@@ -9,6 +9,7 @@ summary: Whether signing in to the local viewer should last past a reload, and w
 summary_of: 69975d61ea392d4d
 acknowledged:
   - body_ends_unfinished@65ce27217b21ccc9
+  - open_question_blocks@65ce27217b21ccc9
 scope:
   - src/ui/security.ts
   - src/ui/public/app.js
@@ -22,7 +23,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-09-09
 valid_until: null
-checksum: 4bef981457d2bf22
+checksum: af61005d46246611
 blocks: live/22
 ---
 

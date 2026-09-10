@@ -9,6 +9,8 @@ summary: When part of a configuration file is ignored, the screen says so, becau
 summary_of: 6315a2b28c84b3fd
 summary_was:
   - 2026-09-07 The messages telling someone their settings file is broken appear only in English, on a screen that is otherwise blank and otherwise translated.
+acknowledged:
+  - body_disagrees_with_meta@40600859351935e7
 scope: []
 tags:
   - v2
@@ -25,7 +27,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-08-29
 valid_until: null
-checksum: 220b6bc54f5e84c4
+checksum: 6c453b9902ee96a5
 plan: walk
 seq: "105"
 state: todo

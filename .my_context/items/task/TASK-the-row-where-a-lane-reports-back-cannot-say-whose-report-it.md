@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: A finished helper agent is opened from the turn announcing it finished, not only from the turn that started it.
-summary_of: 8a1d79dea30a28f9
+summary_of: 9dcceb78e8c50bc1
 scope:
   - src/ui/read-model-conversation-document.ts
   - src/ui/public/screens/conversations.js
@@ -23,12 +23,13 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-09-09
 valid_until: null
-checksum: 9a739eef3447fa81
+checksum: 0bca2f5fa88276f4
 plan: archive
 seq: "49"
 state: done
 priority: "1"
 needs: archive/28
+verified_on: 2026-09-10
 ---
 
 # the row where a lane reports back cannot say whose report it is

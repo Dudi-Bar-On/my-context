@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: When a rule is replaced, the person replacing it says which tests assumed the old one, so those tests are not left quietly asserting something reversed.
-summary_of: 9b08ec568d973f4b
+summary_of: b56f23f7c9875ded
 scope:
   - src/core/**
   - src/cli/**
@@ -25,12 +25,13 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-09-07
 valid_until: null
-checksum: d49a6daa5131c59a
+checksum: b96a43663e540a9f
 plan: contra
 seq: "2"
 state: done
 priority: "1"
 needs: contra/1
+verified_on: 2026-09-10
 ---
 
 # superseding an item asks which tests rest on it, and proves the answer names real files
