@@ -138,7 +138,7 @@ observed that most kinds had only two parts and asked whether more belonged:
 | part | every kind must carry |
 |---|---|
 | `example` | one concrete instance |
-| `check` | the automated check that enforces it, **or `none` with a reason** |
+| `check` | `preventive:<name>` · `detective:<name>` · or `none` with a reason |
 
 **The example is what stops an entry being arguable.** *"Never `git add -A`"* is
 weak. *"Never `git add -A` — on 2026-09-09 a bare `git commit` swept another
@@ -155,6 +155,57 @@ rests-on-or-says-it-rests-on-none`).
 
 **It also makes §14 fall out rather than needing invention.** Obedience telemetry
 needs to know what enforcement exists; this field is that inventory.
+
+### A check is PREVENTIVE or DETECTIVE, and the difference is not cosmetic
+
+Owner ruling 2026-09-10, from the sharpest question asked of this design: *how do
+you enforce it?* — asked about the standard requiring numbered options on every
+question put to him.
+
+**The honest answer was that nothing enforced it.** It lived in a memory file, as
+prose, which is exactly the weak artifact §4 argues against. The design's own
+thesis was being violated by the person writing the design.
+
+| kind | means | available where |
+|---|---|---|
+| `preventive` | refuses before the fact | we own the write path — a body with a `##` heading is rejected before it is stored |
+| `detective` | reports after the fact, from the archive | everywhere else — and it is the ONLY kind available for rules about the assistant's own output |
+
+**Why the distinction is required rather than tidy.** Nothing gates what the
+assistant writes: there is no hook between deciding to ask a question and the
+owner reading it. So under a single-kind field, **every entry governing the
+assistant's behaviour would declare `none`** — and that would be false, because
+those entries are measurable, just not preventable. The store would understate
+its own enforceability, which is the failure it exists to prevent.
+
+**`none` therefore becomes rare**, and a `none` on an entry the archive could
+measure is a defect to be reported rather than a legal answer.
+
+**And detective checks are not a second mechanism.** They are §14's obedience
+telemetry under another name: the conversation archive already indexes every tool
+call, so "did the standard hold at its trigger" is a query, not a new subsystem.
+
+### The first seed entry, chosen deliberately
+
+`standard` · tier `developer` · **the numbering standard itself.**
+
+- **trigger** — putting a decision to the owner
+- **shape** — options numbered `1 —`, `2 —`; the recommendation first and marked
+- **example** — the question that produced this ruling
+- **check** — `detective:` every question in the archive carries numbered options
+  and exactly one marked recommendation
+
+**Why this one first.** It exercises the whole shape end to end — template,
+trigger, example, detective check, telemetry — on something small, where being
+wrong costs a badly formatted question rather than a corrupted corpus. And its
+own history is the argument for the store: the owner asked for it, it was written
+into a memory file, and within the same conversation nothing could say whether it
+was being obeyed.
+
+**Its rationale is also a measured one**, not a preference: he answers by number
+(*"1 is ok"*, *"2 because…"*), so an unnumbered list makes his answer depend on
+an order he inferred rather than one he can see. A mis-mapped number is a silent
+wrong ruling.
 
 **Rejected: a separate `origin`/`evidence` field.** It duplicates the `why` on a
 prohibition and the `what breaks` on a fact — one idea in two places, which §2
