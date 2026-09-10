@@ -3954,10 +3954,22 @@ wa-tree .wa-count{margin-inline-start:var(--sp-2);color:var(--dim);
    mono face, the ground, the border, the radius, the padding — is answered
    above, and `.tvhead` IS a flex container so `flex:0 0 auto` is live and
    correct there. */
-.tvlane,.tvlanehome,.tvlanes{inline-size:auto;font:var(--fs-00)/1.5 var(--sans);
+/* ── AND `.tvspill` JOINS THEM TOO — `plan:archive seq:30`.
+
+   The link to a spilled tool result, drawn on the same `.tvstephead` line as
+   `.tvlane` and meaning the same kind of thing: leave this document and open
+   what the transcript only points at. It is added to the two SELECTOR LISTS
+   rather than given rules of its own, which is the ruling the block above
+   already reasoned out for `.tvlanes` — a class may appear in a selector list
+   any number of times, and a third copy of these seven declarations is how two
+   controls that must look identical start to drift.
+
+   `a.tvspill` is its own test handle, so nothing here reaches the other
+   three. */
+.tvlane,.tvlanehome,.tvlanes,.tvspill{inline-size:auto;font:var(--fs-00)/1.5 var(--sans);
   color:var(--gold);background:none;border:0;border-radius:0;padding:0;
   text-decoration:underline;text-underline-offset:2px;cursor:pointer}
-.tvlane:hover,.tvlanehome:hover,.tvlanes:hover{color:var(--gold);
+.tvlane:hover,.tvlanehome:hover,.tvlanes:hover,.tvspill:hover{color:var(--gold);
   text-decoration-thickness:2px}
 
 /* ─── THE BARE LANE WINDOW — `plan:archive seq:51`, `/lane.html`.

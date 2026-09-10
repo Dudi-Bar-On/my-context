@@ -1477,6 +1477,79 @@ export function sessionHref(id) {
 }
 
 /**
+ * The address of one SPILLED TOOL RESULT — `plan:archive seq:30`.
+ *
+ * Root-absolute for `sessionHref`'s reason: this control is drawn by
+ * `stepParts`, which serves the app AND `/lane.html`, and a relative address
+ * would mean two different things on the two pages.
+ *
+ * The whole absolute path goes in the query string because that is what the
+ * transcript recorded — there is no id to name this file by. `/api/spill`
+ * confines it to a `tool-results` directory inside the harness's own project
+ * tree before it reads anything; see `serveSpill`.
+ */
+export function spillHref(file) {
+  return `/api/spill?file=${encodeURIComponent(file)}`;
+}
+
+/**
+ * **THE EVIDENCE BEHIND A STEP WHOSE OUTPUT WAS TOO LARGE TO CARRY** —
+ * `plan:archive seq:30`, and the same three-answers-never-nothing shape
+ * `laneMark` above already draws for a lane.
+ *
+ * The harness spills a large tool result to a file and leaves a stub naming it.
+ * The stub is the CONCLUSION and the file is the EVIDENCE, and a reader who met
+ * the sentence "Full output saved to: …" in a step could go no further, because
+ * nothing on this page knew the file existed.
+ *
+ * ── WHY IT IS DRAWN HERE AND NOT BESIDE THE TEXT ──────────────────────────
+ *
+ * On the SUMMARY LINE, beside the lane mark, for the reason that one is:
+ * a reader who opens a fold meets the way in before the body rather than after
+ * scrolling through a 2 KB preview of it. The stub's own text is still drawn
+ * below, in full, path included — this adds a control, it hides nothing.
+ *
+ * ── AND THE SIZES ARE BOTH SHOWN WHEN THEY DISAGREE ───────────────────────
+ *
+ * `said` is what the stub claimed at the time; `bytes` is what the file
+ * measures now, and they DISAGREE on 1,453 of the 1,814 spilled files on the
+ * owner's tree — always with the file the larger, because the harness counted
+ * CHARACTERS and the file system counts BYTES. `DocSpill.said` works one
+ * through. So the link draws `bytes`, which is the unit this archive counts in
+ * everywhere else, and `said` rides in the `title` so the record's own claim is
+ * recoverable without opening anything.
+ *
+ * A file that is GONE gets `conv.doc.spillGone` in `.tvcut`, the class
+ * `laneGone` already wears: a pruned spill and a pruned lane are the same fact
+ * about the same tree, and a reader should not have to learn two looks for it.
+ */
+function spillMarks(ctx, step) {
+  const spills = Array.isArray(step.spills) ? step.spills : [];
+  const marks = [];
+  for (const spill of spills) {
+    if (spill === null || typeof spill !== 'object') continue;
+    if (typeof spill.file !== 'string' || spill.file === '') continue;
+    if (spill.present !== true) {
+      const gone = el('span', 'tvcut tvspillgone');
+      gone.append(...ctx.t('conv.doc.spillGone'));
+      marks.push(gone);
+      continue;
+    }
+    const open = el('a', 'tvspill');
+    open.href = spillHref(spill.file);
+    open.target = '_blank';
+    // `noopener` and not `noreferrer`, exactly as `laneLink` argues: this app
+    // reads its own referrer nowhere, and hiding where a link came from would
+    // be inventing a policy.
+    open.rel = 'noopener';
+    if (typeof spill.said === 'string' && spill.said !== '') open.title = spill.said;
+    open.append(...ctx.t('conv.doc.spill', { bytes: formatBytes(spill.bytes) }));
+    marks.push(open);
+  }
+  return marks;
+}
+
+/**
  * The address of one session's ROSTER of lanes — `plan:archive seq:41`.
  *
  * **A real address, with no change to the shell's router.** `app.js`'
@@ -1903,6 +1976,15 @@ function stepParts(ctx, step, lanes) {
   // `laneKind`'s note carries why the type is drawn here at all and why it is
   // read off the roster rather than off this call's own arguments.
   for (const mark of laneMark(ctx, lanes, step.toolUseId)) line.append(' ', mark);
+
+  // **THE EVIDENCE THIS STEP'S OUTPUT WAS TOO LARGE TO CARRY** — `plan:archive
+  // seq:30`, beside the lane mark because it answers the same question one
+  // level down: the lane mark opens the WORKING behind a call, this opens the
+  // OUTPUT behind a result. Both belong on the line a reader meets first.
+  //
+  // It needs no roster and no second fetch — `DocStep.spills` is parsed by the
+  // read model out of the step's own text and arrives in the same window.
+  for (const mark of spillMarks(ctx, step)) line.append(' ', mark);
   parts.push(line);
 
   // WHAT THE TOOL WAS ASKED, before what came back. The owner pasted his own
@@ -2050,10 +2132,17 @@ function drawDeed(ctx, body, lanes = NO_LANES) {
 
   // The lane a promoted call dispatched — a shell command dispatches none
   // today, but the join is the step's and costs nothing to honour here.
-  const laneMarks = laneMark(ctx, lanes, step.toolUseId);
-  if (laneMarks.length > 0) {
+  //
+  // The spilled evidence joins it for the same reason and on the same terms.
+  // A promoted step is the CALL record, whose text is its thinking rather than
+  // a result, so this is expected to draw nothing on a shell command — the
+  // spilled OUTPUT of one lands in the `tool_result` record, which is a `work`
+  // step and reaches `stepParts`. It is honoured here so that a promoted step
+  // is not the one place on the page where a stub goes unanswered.
+  const marks = [...laneMark(ctx, lanes, step.toolUseId), ...spillMarks(ctx, step)];
+  if (marks.length > 0) {
     const line = el('p', 'tvstephead');
-    line.append(...laneMarks.flatMap((node, i) => (i === 0 ? [node] : [' ', node])));
+    line.append(...marks.flatMap((node, i) => (i === 0 ? [node] : [' ', node])));
     turn.append(line);
   }
   return turn;

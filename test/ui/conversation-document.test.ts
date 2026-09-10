@@ -45,11 +45,13 @@ import assert from 'node:assert/strict';
 import { appendFileSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
+import { createServer } from 'node:http';
 import {
-  DOCUMENT_WALK_CAP, WORK_RUN_CAP, buildOutline, parseAnswers, readNodes,
+  DOCUMENT_WALK_CAP, WORK_RUN_CAP, buildOutline, parseAnswers, readNodes, serveSpill,
   apiConversationOutline, apiConversationNodes, apiConversationTip,
   type DocOutlineBody, type DocOutlineNode, type DocStep, type DocTipBody,
 } from '../../src/ui/read-model-conversation-document.ts';
+import type { ApiContext } from '../../src/ui/routes.ts';
 import { iterateTranscript, projectDirName, rebuildConversations } from '../../src/core/conversation-index.ts';
 import { registeredRoutes } from '../../src/ui/routes.ts';
 import { registerReadRoutes } from '../../src/ui/server.ts';
@@ -1402,4 +1404,243 @@ test('the three measured shapes of an answer are read, and a fourth returns noth
 
   assert.deepEqual(parseAnswers('some shape nobody has seen yet'), [],
     'an unrecognised sentence parses to nothing so the caller can serve it verbatim');
+});
+
+/* ══ THE EVIDENCE BEHIND A SPILLED TOOL RESULT — plan:archive seq:30 ════════ */
+
+/**
+ * A `<persisted-output>` stub exactly as the harness writes one. Kept as a
+ * builder rather than as a literal because every assertion below varies only
+ * the path, and a copy of this block per test is how one of them ends up
+ * asserting a shape the harness does not produce.
+ */
+const stub = (file: string, said: string, preview: string): string => [
+  '<persisted-output>',
+  `Output too large (${said}). Full output saved to: ${file}`,
+  '',
+  'Preview (first 2KB):',
+  preview,
+  '</persisted-output>',
+].join('\n');
+
+/** The `tool-results` directory beside one session's transcript, created. */
+function spillDir(b: Box, session: string): string {
+  const dir = path.join(b.dir, session, 'tool-results');
+  mkdirSync(dir, { recursive: true });
+  return dir;
+}
+
+/**
+ * **THE STUB IS THE CONCLUSION AND THE FILE IS THE EVIDENCE**, and the step
+ * that names one now carries the way to it.
+ *
+ * The size is read off the file rather than off the sentence: `said` is what
+ * the harness claimed when it wrote the stub, `bytes` is what is there now, and
+ * they are two different claims a reader is entitled to see disagree.
+ */
+test('a spilled tool result is reachable from the step that names it', () => {
+  const b = box();
+  try {
+    const dir = spillDir(b, 'sess-spill');
+    const spilled = path.join(dir, 'b0h3g5h55.txt');
+    writeFileSync(spilled, 'x'.repeat(4096));
+    b.write('sess-spill', [
+      { type: 'user', message: { role: 'user', content: 'grep the whole tree' }, timestamp: '2026-09-10T09:00:00.000Z' },
+      { type: 'assistant', message: { role: 'assistant', content: toolUse('Grep', { pattern: 'x' }) }, timestamp: '2026-09-10T09:00:01.000Z' },
+      { type: 'user', message: { role: 'user', content: toolResult(stub(spilled, '146.3KB', 'the first two kilobytes')) }, timestamp: '2026-09-10T09:00:02.000Z' },
+    ]);
+    const carriers = stepsOf(b.file('sess-spill')).filter((s) => s.spills.length > 0);
+    assert.equal(carriers.length, 1, 'exactly the step whose text carries the stub');
+    const [spill] = carriers[0]!.spills;
+    assert.equal(spill!.file, spilled, 'the path is served as the transcript wrote it');
+    assert.equal(spill!.present, true);
+    // THE TWO NUMBERS ARE KEPT APART because they disagree on four spilled
+    // files in five: measured over the owner's 1,814, the stub matches on 361
+    // and is SMALLER on 1,453, never larger — the harness counted CHARACTERS
+    // and the file system counts BYTES, and this corpus is Hebrew from record
+    // 5. The fixture makes them disagree outright so a build that replaced one
+    // with the other cannot pass by accident.
+    assert.equal(spill!.bytes, 4096, 'what the file measures NOW, read off disk');
+    assert.equal(spill!.said, '146.3KB', 'and what the stub claimed, kept beside it');
+  } finally { b.dispose(); }
+});
+
+/**
+ * `INV-nothing-is-dropped-silently`, and `seq:15`'s three-answers ruling
+ * applied one level down: a spilled file can be pruned exactly as a lane can,
+ * and the reader is told so rather than handed a control that does nothing.
+ */
+test('a spilled file that is gone is disclosed, never a dead link', () => {
+  const b = box();
+  try {
+    const dir = spillDir(b, 'sess-pruned');
+    const gone = path.join(dir, 'never-written.txt');
+    b.write('sess-pruned', [
+      { type: 'user', message: { role: 'user', content: 'read it back' }, timestamp: '2026-09-10T09:00:00.000Z' },
+      { type: 'user', message: { role: 'user', content: toolResult(stub(gone, '2.1MB', 'gone')) }, timestamp: '2026-09-10T09:00:01.000Z' },
+    ]);
+    const [spill] = stepsOf(b.file('sess-pruned')).flatMap((s) => s.spills);
+    assert.equal(spill!.file, gone, 'the step still names what it named');
+    assert.equal(spill!.present, false, 'and says the bytes are not there');
+    assert.equal(spill!.bytes, 0, 'an unmeasurable size is zero, not the stub\'s claim restated');
+  } finally { b.dispose(); }
+});
+
+/**
+ * The two conditions, each with its own reason. Outside the harness's project
+ * tree is the trust boundary `/api/spill` reads on; inside the tree but not in
+ * a `tool-results` directory is what keeps this route away from transcripts,
+ * sidecars and titles.
+ *
+ * Neither is a silent drop: the stub's own text — absolute path and all — is
+ * still served on the step. What is withheld is a LINK, not a fact, and the
+ * assertion below checks exactly that.
+ */
+test('a stub outside the spill directory or outside the tree is not linked, and is still shown', () => {
+  const b = box();
+  try {
+    const outside = path.join(b.cwd, 'elsewhere.txt');
+    writeFileSync(outside, 'not the harness\'s');
+    // Inside the harness's tree, real, and NOT in a `tool-results` directory:
+    // the session's own transcript is the sharpest example of what this route
+    // must never be talked into reading.
+    const sibling = b.file('sess-bounds');
+    b.write('sess-bounds', [
+      { type: 'user', message: { role: 'user', content: 'two paths that must not link' }, timestamp: '2026-09-10T09:00:00.000Z' },
+      { type: 'user', message: { role: 'user', content: toolResult(stub(outside, '1KB', 'a')) }, timestamp: '2026-09-10T09:00:01.000Z' },
+      { type: 'user', message: { role: 'user', content: toolResult(stub(sibling, '1KB', 'b')) }, timestamp: '2026-09-10T09:00:02.000Z' },
+    ]);
+    const steps = stepsOf(b.file('sess-bounds'));
+    assert.deepEqual(steps.flatMap((s) => s.spills), [],
+      'neither path earns a link');
+    const shown = steps.map((s) => s.text).join('\n');
+    assert.ok(shown.includes(outside), 'the stub naming it is still drawn in full');
+    assert.ok(shown.includes(sibling), 'and so is the other');
+  } finally { b.dispose(); }
+});
+
+/**
+ * An `attachment` record carries the same injected block twice — once nested
+ * and once in the top-level `rendered[]` the read model actually reads — and
+ * 1,458 against 1,256 of them on the owner's tree hold a stub. A record that
+ * repeats one must offer ONE way in, not two identical controls.
+ */
+test('the same spilled file named twice in one record is one way in, not two', () => {
+  const b = box();
+  try {
+    const dir = spillDir(b, 'sess-twice');
+    const spilled = path.join(dir, 'hook-abc-2-additionalContext.txt');
+    writeFileSync(spilled, 'the injected block');
+    b.write('sess-twice', [
+      { type: 'user', message: { role: 'user', content: 'once is enough' }, timestamp: '2026-09-10T09:00:00.000Z' },
+      {
+        type: 'attachment',
+        attachment: { type: 'hook_additional_context', content: [{ content: stub(spilled, '95.7KB', 'a') }] },
+        rendered: [{ content: `${stub(spilled, '95.7KB', 'a')}\n${stub(spilled, '95.7KB', 'a')}` }],
+        timestamp: '2026-09-10T09:00:01.000Z',
+      },
+    ]);
+    const spills = stepsOf(b.file('sess-twice')).flatMap((s) => s.spills);
+    assert.equal(spills.length, 1, 'deduplicated by resolved path');
+    assert.equal(spills[0]!.present, true);
+  } finally { b.dispose(); }
+});
+
+/**
+ * One request against the real handler, over a real socket — `serveSpill`
+ * writes its own head and its own bytes, so a stubbed `ServerResponse` would
+ * assert a shape no browser ever receives.
+ */
+async function askSpill(target: string): Promise<{
+  status: number; type: string; length: string | null; body: string;
+}> {
+  const server = createServer((req, res) => {
+    const url = new URL(req.url ?? '/', 'http://127.0.0.1');
+    serveSpill({ url } as unknown as ApiContext, res);
+  });
+  await new Promise<void>((done) => server.listen(0, '127.0.0.1', done));
+  const address = server.address();
+  const port = typeof address === 'object' && address !== null ? address.port : 0;
+  try {
+    const answer = await fetch(`http://127.0.0.1:${port}${target}`);
+    return {
+      status: answer.status,
+      type: answer.headers.get('content-type') ?? '',
+      length: answer.headers.get('content-length'),
+      body: await answer.text(),
+    };
+  } finally {
+    await new Promise<void>((done) => server.close(() => done()));
+  }
+}
+
+test('the spill route is registered, so a step\'s link reaches something', () => {
+  registerReadRoutes();
+  const paths = registeredRoutes().map((r) => `${r.method} ${r.path}`);
+  assert.ok(paths.includes('GET /api/spill'), paths.join('\n'));
+});
+
+/**
+ * **THE BYTES, WHOLE AND UNCAPPED.** `PASSAGE_RAW_CAP` refuses a slice over
+ * 8 MB and is right to — a passage copy has an alternative. This is the
+ * evidence, the largest spilled file on the owner's tree is 23.0 MB, and a cap
+ * here would rebuild the wall this item exists to remove one order of magnitude
+ * further along.
+ */
+test('the spill route serves the file whole, as the text file it is', async () => {
+  const b = box();
+  try {
+    const dir = spillDir(b, 'sess-served');
+    const spilled = path.join(dir, 'served.txt');
+    // Hebrew, deliberately: `content-length` is BYTES and the body is
+    // characters, and a handler that measured the string would disagree with
+    // its own header on this corpus from record 5 onward.
+    const payload = `${'ש'.repeat(2048)}\n`;
+    writeFileSync(spilled, payload);
+    const answer = await askSpill(`/api/spill?file=${encodeURIComponent(spilled)}`);
+    assert.equal(answer.status, 200);
+    assert.equal(answer.type, 'text/plain; charset=utf-8');
+    assert.equal(answer.length, String(Buffer.byteLength(payload)), 'bytes, not characters');
+    assert.equal(answer.body, payload, 'and every one of them, uncut');
+  } finally { b.dispose(); }
+});
+
+/**
+ * The route's confinement is `spillsIn`'s confinement, called rather than
+ * restated — so a path the screen would never draw a link for is a path this
+ * route will never read. Both halves are asserted here because they refuse for
+ * different reasons and a reader of the refusal needs to be told which.
+ */
+test('the spill route reads only a tool-results file inside the harness\'s tree', async () => {
+  const b = box();
+  try {
+    const outside = path.join(b.cwd, 'secret.txt');
+    writeFileSync(outside, 'not the harness\'s to serve');
+    const sibling = b.file('sess-guard');
+    b.write('sess-guard', [
+      { type: 'user', message: { role: 'user', content: 'hello' }, timestamp: '2026-09-10T09:00:00.000Z' },
+    ]);
+
+    for (const [what, target] of [
+      ['outside the project tree', outside],
+      ['inside the tree but not a spill directory', sibling],
+      // `..` cannot climb out of a `tool-results` directory either: the check
+      // is on the RESOLVED path, so this lands on `sess-guard.jsonl` and is
+      // refused by the same condition the plain path above is.
+      ['a traversal dressed as a spill', path.join(b.dir, 'sess-guard', 'tool-results', '..', '..', 'sess-guard.jsonl')],
+    ] as const) {
+      const answer = await askSpill(`/api/spill?file=${encodeURIComponent(target)}`);
+      assert.equal(answer.status, 403, what);
+      assert.ok(!answer.body.includes(target),
+        `${what}: the submitted path is not echoed back into the refusal`);
+    }
+
+    const missing = path.join(b.dir, 'sess-guard', 'tool-results', 'pruned.txt');
+    mkdirSync(path.dirname(missing), { recursive: true });
+    const gone = await askSpill(`/api/spill?file=${encodeURIComponent(missing)}`);
+    assert.equal(gone.status, 404, 'a file that is allowed but not there is GONE, not forbidden');
+
+    assert.equal((await askSpill('/api/spill')).status, 400, 'no file named at all');
+    assert.equal((await askSpill('/api/spill?file=x&at=3')).status, 400, 'a parameter it cannot act on');
+  } finally { b.dispose(); }
 });

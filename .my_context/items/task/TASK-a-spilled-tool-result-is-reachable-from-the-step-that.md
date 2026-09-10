@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: Large tool outputs are saved to separate files; this makes those files findable from the conversation step that created them, instead of leaving a dead reference.
-summary_of: 012d98bc2e04bfef
+summary_of: e4aa958ae11a674e
 acknowledged:
   - source_drift@30b0a3b3100a43a9
 scope:
@@ -17,140 +17,51 @@ tags:
   - archive
   - "plan:archive"
   - "seq:30"
-  - "state:todo"
+  - "state:done"
 origin: human
 source_file: "C:/Users/UserC/AppData/Local/Temp/claude/D--Users-UserC-source-repos-my-context/595db3b1-a481-4553-b4c0-7248c31b2655/scratchpad/body.md"
 source_anchor: null
 source_checksum: null
 valid_from: 2026-09-08
 valid_until: null
-checksum: 5dd84adcc9a37b51
+checksum: 5a162032c9584066
 plan: archive
 seq: "30"
-state: todo
+state: done
 priority: "2"
 needs: archive/12
 ---
 
 # a spilled tool result is reachable from the step that produced it
 
-> Found while building `plan:archive seq:12`, and it corrects that item's own numbers.
->
-> SEQ:12 SAYS "478 subagent transcripts, 91 MB, in the harness temp directory". Measured on this
-> workspace 2026-09-08, all three parts of that sentence are wrong, and the third is wrong in a way
-> that matters:
->
->     subagent transcripts      254 files    615.3 MB   ~/.claude/projects/<proj>/<session>/subagents/
->     tool-result files       1,318 files    144.4 MB   ~/.claude/projects/<proj>/<session>/tool-results/
->     the session transcript      1 file      70.1 MB
->
-> So 91 MB was never the subagents figure - it was `tool-results/`, as `listTranscriptFiles`' own
-> header block had recorded a day earlier ("<session>/tool-results/ 1,149 files 91 MB"). The two got
-> crossed. And NEITHER directory is a temp directory: both sit under `~/.claude/projects/`, the same
-> durable tree the session transcript lives in. `%TEMP%` holds the SCRATCHPAD, which is a different
-> thing. Seq:12's urgency argument - "they are in a temp directory, so they will be deleted" - does
-> not hold. The VALUE argument holds completely and is why seq:12 was worth building.
->
-> WHAT IS STILL UNREACHABLE, which is the actual gap. `tool-results/` is where the harness spills a
-> tool result too large to inline: the transcript keeps a `<persisted-output>` stub naming the file,
-> and the bytes go to `tool-results/hook-<id>-<n>-<what>.txt`. 144.4 MB of them here. A reader in the
-> archive following a lane's step sees the stub and the sentence "Full output saved to: ..." and can
-> go no further, because the archive indexes neither the file nor the link to it. That is the same
-> shape of defect seq:12 just closed one level up, and the same argument applies: the stub is the
-> CONCLUSION and the spilled file is the EVIDENCE.
->
-> WHAT TO DECIDE RATHER THAN ASSUME, and seq:12's experience says to measure first:
->
->   - IS THE STUB PARSEABLE INTO A LINK? It carries an absolute path in prose, not a field. Measure
->     whether that path is stable and whether it always resolves, before designing anything that
->     depends on parsing a sentence. A correlation the data does not support must not be invented -
->     that instruction is what made seq:12's parent link trustworthy.
->   - IS A ROW PER FILE RIGHT? 1,318 files against 254 lanes and 2 sessions. seq:12 decided its own
->     table on the evidence that a subagent is not a session; a tool result is not a transcript
->     either - it has no records, no turns and no timestamps, so `scanTranscript` has nothing to say
->     about it. It may want size and mtime only, with no scan at all.
->   - COST. Seq:12's numbers are the precedent: 5.06 ms to stat 253 files against 1,577 ms to read
->     them, and the incremental path is what made a per-turn refresh affordable. A tool-result file
->     is written once and never appended to, so the steady state should be stats alone.
->
-> DEPENDS ON seq:12, which built the mechanism this extends: `subagents` is a second table in
-> `core/conversation-index.ts` owning its own DDL, joined to the same `(bytes, mtime_ms)` freshness
-> key and the same Stop-hook refresh. A third kind of file should be the same shape again rather than
-> a third mechanism.
->
-> AND ONE THING TO CARRY FORWARD: adding a table to `CONVERSATION_TABLE_COLUMNS` breaks every
-> existing index until something rebuilds it. Seq:12 met that on the owner's own running server - the
-> sessions list drew no files and printed the read door's refusal - and the repair is already in
-> place: `ConversationIndexIncompleteError` distinguishes "a schema behind" from damage, and
-> `stopConversationRefresh` treats the former as existing so the write path heals it on the next
-> turn. Whoever adds this table inherits that and should not re-derive it.
+BUILT 2026-09-10, across a pause. A step that names a spilled tool result now carries the way to it, on both pages, and a spilled file that has been pruned is said rather than left as a path in prose.
 
-DO NOT RUN `mycontext refresh` ON THIS ITEM. Its `source_file` points at a SCRATCHPAD path that is
-reused between pieces of work, and the file at that path now holds a DIFFERENT item’s text -
-`plan:archive seq:36`’s. Refreshing would replace this body with that one, silently, and the
-checksum would agree afterwards because the item would be self-consistent with the wrong content.
+DO NOT RUN `mycontext refresh` ON THIS ITEM, AND THE REASON HAS NOT CHANGED. Its `source_file` points at a SCRATCHPAD path reused between pieces of work, and the file at that path holds a DIFFERENT item’s text. Refreshing would replace this body with that one, silently, and the checksum would agree afterwards because the item would then be self-consistent with the wrong content. `mycontext doctor` reports this as `source_drift` and its suggested repair is exactly the refresh that would destroy the item: the advice is right in general and wrong here, because the pointer is to a transient file rather than to a document. The acknowledgement lapses on every edit and was re-taken after this one. It is acknowledged rather than repaired because `mycontext edit` has no flag that clears `source_file`. Measured 2026-09-09: 60 items carry a `source_file` under a temp directory and only this one is REPORTED, because reporting drift needs the file to still exist AND to have changed — the other 59 are silent, not clean. That is the owner’s to rule on, not this lane’s while D37 closes.
 
-`mycontext doctor` reports this as `source_drift` and its suggested repair is exactly the refresh
-that would destroy the item. That is the trap: the advice is right in general and wrong here,
-because the pointer is to a transient file rather than to a document.
+THE FALSE GREEN THIS LANE CAUGHT ITSELF HOLDING, KEPT BECAUSE THE CLASS RECURS. It piped a Playwright run through `tail` and read the PIPE’s exit code as the suite’s. A pipeline’s status is the LAST command’s, so `npx playwright test … | tail -45` reports tail’s success whatever the tests did — and it did: the run had 88 failures and reported exit 0. Every browser number taken that way was discarded and re-measured with the output redirected to a file and Playwright’s own exit code read directly. Read the tally, not the pipeline’s exit code, or set `pipefail`.
 
-IT IS ACKNOWLEDGED RATHER THAN REPAIRED, because there is no repair available: `mycontext edit` has
-no flag that clears `source_file`, so the pointer cannot be removed through the product. The
-acknowledgement lapses the moment this item is edited, which is correct - and this note is why the
-next person to see the warning should re-acknowledge it rather than act on it.
+DID IT NEED A TABLE — NO, AND IT NEEDED NO COLUMN EITHER, WHICH IS THE CHEAP CHECK THE HANDOVER ASKED FOR FIRST. `src/core/` is untouched by this change: `git diff --stat src/core/` is empty, `CONVERSATION_TABLE_COLUMNS` and `CONVERSATION_SCHEMA` are unmoved, and the only mention of `removeMissing` in the whole diff is a comment explaining why there is no row to delete. seq:34’s finding — that a column on `conversations` is lost twice, once because `upsert` sets every column from `excluded` on every rebuild and once because `removeMissing` deletes the row when the harness prunes — is the reason a store would have had to be a table, and it does not arise, because NOTHING IS STORED. So no index reports Incomplete and no corpus needs a rebuild, which seq:12, seq:33 and seq:34 each cost every corpus in the world.
 
-AND IT IS NOT ONE ITEM. Measured 2026-09-09: 60 items carry a `source_file` under a temp directory.
-Only this one is REPORTED, because reporting drift needs the file to still exist and to have
-changed; the rest are silent, not clean. That is a product question rather than an item’s defect -
-a capture that accepts a path in a temp directory records a provenance that cannot survive - and it
-is the owner’s to rule on, not this lane’s to fix while D37 is being closed.
+WHY NOTHING IS STORED: THE JOIN IS ALREADY IN THE RECORD. The absolute path is written in the step’s own text, so there is nothing to correlate and nothing a row could hold that is not re-derived from the same string on the way in. A table would have invented a key for a link the data already carries — the one thing that made seq:12’s parent link trustworthy by refusing. The cost measurement settles the rest. Over the owner’s 87.7 MB session — 10,875 nodes walked as 454 windows of NODE_WINDOW_DEFAULT, 33,519 steps, 9.6 M characters of step text — 30 stubs reach a step, worst single window 5, parsing 4.0 ms in total and `statSync` 1.8 ms in total: 0.009 ms and 0.004 ms per window. A table would hold 30 rows for the largest transcript in this corpus, be rebuilt every turn by the Stop hook, and save 0.013 ms per window; and it would still owe `removeMissing` an answer, where a deleted row cannot disclose that the evidence is gone, which is the one thing a reader needs to be told. Across the same session’s 284 lane transcripts, 1,405 stubs reach a step and the worst window is 12.
 
-── PAUSED 2026-09-10, MID-LANE, BY OWNER INSTRUCTION. NOT FINISHED. ─────────────────────
+RE-MEASURED, BECAUSE THIS ITEM ASKED FOR THAT AND ITS OWN NUMBERS HAVE MOVED TWICE. `~/.claude/projects` on 2026-09-10 holds 19 project directories and 900 transcripts — 31 sessions at 322.4 MB and 869 lane transcripts at 1,432.5 MB — over 368,585 records. Three of the 19 hold a `tool-results/` at all, eight in total: 1,945 files and 199.2 MB. 3,160 stubs parse out of the records; every one resolves; they name 1,814 distinct files holding 170.3 MB. This item’s own table said 254 lane transcripts / 615.3 MB and 1,318 spill files / 144.4 MB on 2026-09-08; the lane count has more than tripled and that same session’s spill directory now holds 1,434 files and 135.2 MB — MORE files holding FEWER bytes, so neither figure could have been carried forward from the other. AND THE TREE MOVES WHILE IT IS BEING MEASURED: the same sweep three times in one afternoon gave 1,943/3,091/1,812, then 1,945/3,160/1,814, then 1,947/3,164/1,816, because the session doing the measuring is itself spilling. Every figure is a reading with a timestamp, never a constant, and no assertion pins one. What has NOT moved is the shape, which is this item’s correction of seq:12 and still stands: `<session>/tool-results/`, beside the transcript, under `~/.claude/projects`, not a temp directory.
 
-The owner had to close his machine. The lane was stopped mid-verification and could not write its
-own state, so this note is written from OUTSIDE it by the coordinator. Treat every claim here as
-observed rather than reported: what the lane knew and did not say is lost, and the files are the
-only reliable record.
+IS THE STUB PARSEABLE INTO A LINK — YES, ANCHORED ON THE TAG AND NEVER ON THE SENTENCE, AND THE DIFFERENCE IS THE MEASUREMENT. A scan for the prose `Full output saved to:` over the same 900 transcripts returns 1,783 hits of which 12 do not resolve — and all 12 are PROSE: this item’s own text, quoted into a transcript, describing this very defect. A scan anchored on the `<persisted-output>` TAG returns 3,160 and every one resolves. A build that had parsed the sentence would have drawn twelve broken links out of this item’s own words.
 
-WHAT IS ON DISK, UNCOMMITTED - 9 files, 762 insertions, 23 deletions:
+WHAT SHIPPED. `DocSpill` and `DocStep.spills` in `ui/read-model-conversation-document.ts`, parsed by `spillsIn` from the step’s own text and from nothing else, so the link is drawn exactly where the stub is drawn and no correlation is invented. `GET /api/spill?file=…`, a `kind: 'stream'` route serving the file as `text/plain; charset=utf-8`, whole and UNCAPPED — `PASSAGE_RAW_CAP` refuses a slice over 8 MB and is right to, because a passage copy has an alternative, but the largest spilled file here is 23.0 MB and a cap would rebuild the wall one order of magnitude further along. `spillHref` and `spillMarks` in `screens/conversations.js`, drawn on `.tvstephead` beside the lane mark by `stepParts`, which serves the app’s document AND `/lane.html`. `conv.doc.spill` and `conv.doc.spillGone` in both string tables. `.tvspill` added to the two selector lists `.tvlane`/`.tvlanehome`/`.tvlanes` already share, rather than a third copy of the same seven declarations. A running `mycontext ui` keeps the old read model in memory and draws nothing new until restarted; `spillMarks` tolerates exactly that, drawing no control when a payload carries no `spills`.
 
-  new       e2e/spill-evidence.spec.ts
-  modified  src/ui/read-model-conversation-document.ts
-  modified  src/ui/public/screens/conversations.js
-  modified  src/ui/public/styles.css
-  modified  src/ui/public/strings/en.js
-  modified  src/ui/public/strings/he.js
-  modified  test/ui/conversation-document.test.ts   (+243)
-  modified  test/ui/server-e2e.test.ts              (+21)
-  modified  docs/cli-ui-coverage.md
+WHAT IS LINKED AND WHAT IS REFUSED, WITH A REASON EACH. A stub becomes a link only when the path resolves inside `claudeProjectsDir` AND its parent directory is called `tool-results`. Both are 100% of 1,814, and `/api/spill` calls the same function rather than restating the rule, so a path the screen would never draw is a path the route will never read. It is `claudeProjectsDir` and NOT `transcriptDir` — the project directory — and that is measured rather than chosen: 86 of 3,157 stubs name a file under a DIFFERENT project directory, because a session that changed its working directory keeps spilling where it started while its lane transcripts are filed where it moved to, so confining to one project would have refused 86 files that are plainly there. The second condition keeps the route away from everything else in that tree — a transcript, a `custom-title.json`, an `agent-*.meta.json` — and a traversal dressed as a spill is refused by it too, because the check is on the RESOLVED path. A stub failing either condition draws no link and its own text, absolute path included, is still on the step: what is withheld is a control, never a fact.
 
-So the shape it chose is legible from the file list even though its reasoning is not: it went
-through the DOCUMENT read model rather than the index alone, it drew something (both string tables
-and the stylesheet moved), and it wrote a dedicated browser spec. Read those before assuming a
-design; do not re-derive one and then discover the files disagree.
+WHAT A READER SEES WHEN THE SPILLED FILE IS GONE. `present: false` draws `conv.doc.spillGone` in `.tvcut`, the class `conv.doc.laneGone` already wears — because a pruned spill and a pruned lane are the same fact about the same tree and nobody should have to learn two looks for it. seq:15 ruled three answers and never nothing; this is the second of them, and the stub’s own sentence stays on the step beside it so the reader keeps the path even when the bytes are gone. The route answers the same way for the race where a file is pruned between the window and the click: 404 carrying a sentence, not a broken pipe. It is a measured zero today — all 3,160 stubs resolve — so the state is exercised from a fixture and named, never claimed to occur.
 
-THE LAST THING IT SAID IS THE MOST USEFUL THING IT LEFT, and it is a warning about its own
-evidence: "Exit 0 was `tail`’s, not Playwright’s. Let me get the real tallies and then re-run the
-parts that matter." It had piped a Playwright run through `tail` and read the PIPE’s exit code as
-the suite’s. So it was in verification, it had caught itself holding a FALSE GREEN, and it had not
-yet re-run. **No browser number from this lane may be trusted.** Whoever resumes starts by running
-the specs properly - both projects, serially, exit code read from Playwright itself.
+THE STUB’S SIZE AND THE FILE’S SIZE DISAGREE ON FOUR FILES IN FIVE, WHICH IS WHY BOTH ARE KEPT. Over the 1,814, the stub’s figure matches on 361 and is SMALLER on 1,453 — never larger. Worked through on one: the stub says `112.7KB`, the file holds 115,404 characters, which is 112.7 KB of them, and 116,319 BYTES. The harness counted the string it was about to write; the file system counted what UTF-8 made of it, and this corpus is Hebrew from record 5. So the link draws BYTES, the unit this archive counts in everywhere else and the reason `iterateTranscript` walks by byte offsets, and the record’s own claim rides in the link’s `title`.
 
-THAT MISTAKE IS WORTH KEEPING RATHER THAN JUST FIXING. A pipeline’s exit status is the LAST
-command’s, so `npx playwright test ... | tail -5` reports tail’s success whatever the suite did.
-The coordinator made the same class of error twice today in reverse - reading a passing count out
-of a grep and missing a failure line beneath it. Read the tally, not the exit code, or set
-`pipefail`.
+A SPILL IS NOT ONLY A TOOL RESULT, WHICH THIS ITEM DOES NOT SAY. Of the 3,160 stubs, only 362 sit in a `tool_result` block — the case described here. 1,458 sit in an `attachment` record’s nested `content[]` and 1,256 in the top-level `rendered[]` that `readPayload` actually reads, and those are HOOK additionalContext spills: this project’s OWN injection, too large to inline, saved into the same directory. A further 25 are `hook_success` output. Both kinds are steps, so both are answered by ONE rule — parse the step’s text — rather than by a list of record types the next kind would fall outside, which is `readPayload`’s field-sweep argument from seq:28 applied one field over. The nested and rendered copies are the same stub twice in one record, so `spillsIn` deduplicates by resolved path.
 
-WHAT WAS ASKED OF IT AND IS THEREFORE STILL OPEN: re-measure `tool-results/` on the real corpus
-(the item’s 1,318 files / 144.4 MB predates a harness prune - 867 subagent transcripts appeared
-under scratchpad-probe project dirs on 2026-09-10, so the tree has moved); decide what to index and
-what deliberately not; make a missing spilled file a DISCLOSURE rather than a dead link the way
-`conv.doc.laneGone` does; and decide whether a spilled file belongs in a copied passage now that
-seq:42 has put Ctrl+C on the well.
+DOES A SPILLED FILE BELONG IN A COPIED PASSAGE — NO, DELIBERATELY, AND seq:42 NEEDED NO CHANGE. `raw` is a BYTE SLICE of the transcript and the spilled bytes are not in the transcript, so carrying them would break the one property that copy has by construction. `message` is the record’s text, which already carries the stub with its absolute path and its size. `seen` is the browser’s own selection and now carries the link’s label, which says there is more and where. Megabytes of evidence arriving on a Ctrl+C would be a surprise, and the guarantee that the button and the key emit identical bytes is untouched.
 
-AND ONE THING THE RESUMING LANE SHOULD CHECK FIRST, because it is cheap and it changes the shape:
-whether the index needed a new TABLE. seq:34 proved hours earlier that a COLUMN on `conversations`
-is lost twice - `upsert` sets every column from `excluded` on every rebuild, and `removeMissing`
-deletes the whole row when the harness prunes. If this lane stored anything the scan does not
-produce, it needed a table, and the file list does not say whether it used one.
+PROVED BY REMOVAL, EVERY PROOF RE-RUN WITH PLAYWRIGHT’S OWN EXIT CODE. Taking the parse out of `asStep`: 8 of 8 browser tests fail in chromium and chrome (exit 1) and 3 of 4 read-model tests fail. Taking `spillMarks` out of `stepParts`: 8 of 8 browser tests fail and the node suite stays fully green at 46 of 46 — which is what separates the two halves rather than asserting them together. Dropping the `tool-results` condition from parser and route: exactly the two bounds tests fail and nothing else moves.
+
+AND THE SPEC CAUGHT ITSELF FLAKING, WHICH WAS A REAL DEFECT IN IT. Its first serial run under load failed one of its own tests on `waitForSelector('.tvscroll .tvturn')` — the UNSCOPED form that `e2e/conversations.spec.ts`’ `open` already records as a repair: `app.js` keeps every visited screen inside `#screen`, merely HIDDEN, so an unscoped wait can lock onto a match that will never become visible while the screen the reader is on has long since drawn. That note names its own history — 15 of 66, then 11, then 6 of 132, never twice the same test — and this file reproduced it by respelling the wait the old way. Scoping every app-page locator to `[data-p]:not([hidden])` fixed it; three consecutive serial runs pass 8 of 8 in both projects. `/lane.html` is deliberately left unscoped, because it has no rail and no router and its document is the only thing on the page.
+
+WHAT IT COST TO RUN. Unit: 7,364 tests, 1 failure — `statusline-chain`, contention, 28 of 28 alone. Archive browser subset (`conversation*`, `lane-link-face`, `archive-chrome-face`, `spill-evidence`), both projects, `--workers=1`: 230 tests, 229 passed, and the single failure ROTATED between two runs and passed 4 of 4 and 2 of 2 alone. The full browser suite serially is 851 passed and 88 failed, and those 88 are NOT this lane’s: a sample re-run alone still failed, and the same sample failed identically at HEAD with this change stashed. Their cause is corpus drift in a suite deliberately pointed at the live corpus — `graph-focus` expects the first item by id to be `CONST-a-correction-records-the-class-of-error-not-only-the` and the corpus now answers `ADR-build-rather-than-adopt`, with an ego graph of 2 edges where it wants more than 50, and `doctor-settle`’s fixture cannot re-add its probe rule. Reported here in prose rather than filed, because D37 is closing.

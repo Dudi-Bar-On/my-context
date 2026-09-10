@@ -135,14 +135,18 @@
  *     collect at in a scroll over 27,752 records, and a footer nobody can
  *     reach is not an affordance.
  */
-import { closeSync, openSync, readSync, statSync } from 'node:fs';
+import { closeSync, createReadStream, openSync, readSync, statSync } from 'node:fs';
+import path from 'node:path';
+import type { ServerResponse } from 'node:http';
 import {
   ConversationIndex, ConversationIndexIncompleteError, ConversationIndexUninitializedError,
-  MAX_SCAN_BYTES, classifyTurn, iterateTranscript, listTranscriptFiles, transcriptDir,
+  MAX_SCAN_BYTES, claudeProjectsDir, classifyTurn, iterateTranscript, listTranscriptFiles,
+  transcriptDir,
   type ConversationRow, type NameRow, type SubagentRow, type TranscriptCursor,
 } from '../core/conversation-index.ts';
 import { workspaceCwd } from './read-model-conversations.ts';
 import { registerRoute, type ApiContext, type JsonResult } from './routes.ts';
+import { SECURITY_HEADERS } from './security.ts';
 import type { Workspace } from '../core/workspace.ts';
 
 /**
@@ -542,6 +546,232 @@ export interface DocField {
   value: unknown;
 }
 
+/**
+ * **THE EVIDENCE BEHIND A CONCLUSION THE TRANSCRIPT ONLY SUMMARISES** —
+ * `plan:archive seq:30`.
+ *
+ * When a tool result is too large to inline, the harness writes the bytes to a
+ * file and leaves a stub in the record:
+ *
+ *     <persisted-output>
+ *     Output too large (146.3KB). Full output saved to: <absolute path>
+ *
+ *     Preview (first 2KB):
+ *     …
+ *     </persisted-output>
+ *
+ * The stub is the CONCLUSION and the named file is the EVIDENCE, and until this
+ * the archive indexed neither, so a reader following a step met a path in prose
+ * and could go no further. That is the defect `seq:12` closed one level up for
+ * lane transcripts, in the one place left where it still stood.
+ *
+ * ── MEASURED ON THE OWNER'S OWN TREE, 2026-09-10 ──────────────────────────
+ *
+ * `~/.claude/projects` — 19 project directories holding 900 transcripts
+ * (31 sessions, 322.4 MB; 869 lane transcripts, 1,432.5 MB) and 368,585
+ * records. Three of those 19 hold a `tool-results/` at all, eight in total:
+ *
+ *     `tool-results/` files on disk        1,945 files      199.2 MB
+ *     stubs parsed out of records          3,160
+ *     of those that RESOLVE                3,160            100%
+ *     distinct files they name             1,814            170.3 MB
+ *     under `~/.claude/projects`           1,814            100%
+ *     whose parent directory is
+ *       named `tool-results`               1,814            100%
+ *
+ * **THE TREE GROWS WHILE IT IS BEING MEASURED, which is why the table above is
+ * ONE RUN rather than several assembled.** The same sweep, three times in one
+ * afternoon:
+ *
+ *     files    stubs    distinct
+ *     1,943    3,091       1,812
+ *     1,945    3,160       1,814      (the table above)
+ *     1,947    3,164       1,816      three hours later
+ *
+ * The session doing the measuring is itself spilling. Every figure here is a
+ * reading with a timestamp, never a constant, and a build that pinned one of
+ * them into an assertion would go red on its own author's next tool call.
+ *
+ * **`seq:30` recorded 1,318 files / 144.4 MB on 2026-09-08 and both have
+ * moved** — 1,432 files / 135.0 MB in that same session directory today, MORE
+ * files holding FEWER bytes. The count and the size are independent, and a
+ * figure carried forward from either would have been wrong. What has not moved
+ * is the shape: still `<session>/tool-results/`, still beside the transcript
+ * under `~/.claude/projects`, still not a temp directory.
+ *
+ * ── THE STUB IS PARSEABLE, AND THE PROSE SENTENCE IS NOT ──────────────────
+ *
+ * The item asks this first and the answer is two different numbers. A scan for
+ * the SENTENCE `Full output saved to:` over the same 900 transcripts returns
+ * 1,783 hits of which 12 do not resolve — and all 12 are PROSE: this project's
+ * own item text, quoted into a transcript, describing the very defect this
+ * closes. A scan anchored on the `<persisted-output>` TAG returns 3,160 and
+ * every one resolves. So the sentence alone is not the handle; the tag is.
+ *
+ * ── AND THERE IS NO TABLE, WHICH IS THE ITEM'S OTHER QUESTION ─────────────
+ *
+ * `seq:12` gave `subagents` its own table on the evidence that a subagent is
+ * not a session. A spilled tool result is not a transcript either — no records,
+ * no turns, no timestamps, nothing `scanTranscript` can say — and the item
+ * suspected it might want size and mtime only. Measurement says it wants
+ * neither, because **the join is already in the record**: the path is written
+ * in the step's own text, so there is nothing to correlate and nothing a row
+ * could store that is not re-derived from the same string on the way in. A
+ * table here would invent a key for a link the data already carries — the one
+ * thing `seq:12`'s parent link was made trustworthy by refusing.
+ *
+ * The cost measurement settles the rest. Over the owner's 87.7 MB session —
+ * 10,875 nodes walked as 454 windows of `NODE_WINDOW_DEFAULT`, 33,519 steps,
+ * 9.6 M characters of step text:
+ *
+ *     stubs reaching a step                   30
+ *     worst single window                      5
+ *     parsing, all 454 windows               4.0 ms   (0.009 ms per window)
+ *     `statSync`, all 454 windows            1.8 ms   (0.004 ms per window)
+ *
+ * and across the same session's 284 lane transcripts, 1,405 stubs reach a step,
+ * worst window 12. **A table would hold 30 rows for the largest transcript in
+ * this corpus, be rebuilt every turn, and save 0.013 ms per window.** It would
+ * also have to answer `removeMissing` — and a deleted row cannot disclose that
+ * the evidence is gone, which is exactly what a reader needs to be told.
+ *
+ * ── AND A SPILL IS NOT ONLY A TOOL RESULT, WHICH THE ITEM DOES NOT SAY ────
+ *
+ * Of the 3,160 stubs, only 362 sit in a `tool_result` block — the case the
+ * item describes. 1,458 sit in an `attachment` record's nested `content[]` and
+ * 1,256 in the top-level `rendered[]` that `readPayload` actually reads, and
+ * those are HOOK additionalContext spills: this project's own injection, too
+ * large to inline, saved into the same directory. A further 25 are
+ * `hook_success` output.
+ *
+ * Both kinds are steps, so both are answered by ONE rule — parse the step's
+ * own text — rather than by a list of record types that the next kind to
+ * appear would leave out. That is `readPayload`'s field-sweep argument
+ * (`seq:28`) applied one field over.
+ *
+ * ── WHAT IS RECOGNISED, AND WHY THE TWO CONDITIONS ────────────────────────
+ *
+ * A stub becomes a `DocSpill` only when the path it names resolves inside
+ * `claudeProjectsDir` AND its parent directory is called `tool-results`. Both
+ * are 100% on the measurement above, and each answers a different question.
+ *
+ * The first is the TRUST BOUNDARY the serving route needs: `/api/spill` reads
+ * a path a page hands it, and the harness's own project tree is the same tree
+ * this archive already serves transcripts out of. It is `claudeProjectsDir`
+ * and not `transcriptDir` — the PROJECT directory — and that is measured
+ * rather than chosen: 86 of 3,157 stubs on this tree name a file under a
+ * DIFFERENT project directory, because a session that changed its working
+ * directory keeps spilling where it started while its lane transcripts are
+ * filed where it moved to. Confining to one project would have refused 86 real
+ * files that are plainly there.
+ *
+ * The second keeps this route away from everything else in that tree — a
+ * transcript, a `custom-title.json`, an `agent-*.meta.json`. A stub naming a
+ * path outside either condition is simply not recognised as a spill: nothing
+ * is hidden by that, because the stub's own text is drawn in full on the step
+ * regardless, absolute path included. What is withheld is a LINK, not a fact.
+ */
+export interface DocSpill {
+  /** The absolute path the stub names, exactly as the harness wrote it. */
+  file: string;
+  /**
+   * The size the STUB claims, verbatim — `146.3KB`. The conclusion's own
+   * account of itself, kept beside `bytes` rather than replaced by it.
+   *
+   * **AND THE TWO DISAGREE ON FOUR FILES IN FIVE, which is measured and not a
+   * hedge.** Over the 1,814 distinct spilled files on the owner's tree, the
+   * stub's figure matches the file's size on 361 and is SMALLER on 1,453 —
+   * never larger. Worked through on one of them: the stub says `112.7KB`, the
+   * file holds 115,404 characters (112.7 KB of them) and 116,319 BYTES. The
+   * harness counted the string it was about to write; the file system counted
+   * what UTF-8 made of it, and this corpus is Hebrew from record 5.
+   *
+   * So `bytes` is what the archive draws — `iterateTranscript` walks by byte
+   * offsets for exactly this reason — and `said` is kept because it is what the
+   * RECORD says, and a reader comparing a transcript against a file is entitled
+   * to see the record's own number rather than a corrected one.
+   */
+  said: string;
+  /** What the file measures on disk NOW. `0` when it is not there. */
+  bytes: number;
+  /**
+   * The named file is on disk. **`false` is a DISCLOSURE and not a dead link**
+   * — `seq:15` ruled three answers and never nothing, and `conv.doc.laneGone`
+   * is the worked example. A spilled file can be pruned exactly as a lane can,
+   * and a reader who is told so is better off than one handed a control that
+   * silently does nothing.
+   */
+  present: boolean;
+}
+
+/**
+ * The stub, anchored on its TAG rather than on its sentence. See `DocSpill`
+ * for the 1,783-against-3,160 measurement that is the reason for the anchor.
+ *
+ * Group 1 is the size the stub claims; group 2 is the path, to end of line.
+ */
+const SPILL_STUB = /<persisted-output>[ \t]*\r?\nOutput too large \(([^)\r\n]{0,64})\)\. Full output saved to:[ \t]*([^\r\n]{1,4096})/g;
+
+/** The directory a spilled tool result is written into, and the only one served. */
+const SPILL_DIR = 'tool-results';
+
+/**
+ * Where a spilled file must live for this build to link it. See `DocSpill`.
+ *
+ * Read from `process.env` at CALL time rather than captured once at import,
+ * because `CLAUDE_CONFIG_DIR` is what the e2e fixtures point at a throwaway
+ * home — a module-level constant would make every such test read the developer's
+ * own tree instead of the one it just built.
+ */
+function spillRoot(): string {
+  return path.resolve(claudeProjectsDir(process.env));
+}
+
+/** `child` is `root` itself or something inside it, compared as paths not strings. */
+function within(root: string, child: string): boolean {
+  const rel = path.relative(root, child);
+  return rel !== '' && !rel.startsWith('..') && !path.isAbsolute(rel);
+}
+
+/**
+ * The spilled files one step's text points at, in the order the stubs appear.
+ *
+ * **Deduplicated by resolved path**, which is not tidiness: an `attachment`
+ * record carries the same injected block twice — once under
+ * `attachment.content[]` and once under the top-level `rendered[]` that
+ * `readPayload` actually reads — and 1,458 against 1,256 of them on this tree
+ * hold a stub. Whichever one reaches `DocStep.text`, a reader must be offered
+ * one way in and not two identical ones.
+ */
+export function spillsIn(text: string): DocSpill[] {
+  if (!text.includes('<persisted-output>')) return [];
+  const root = spillRoot();
+  const out: DocSpill[] = [];
+  const seen = new Set<string>();
+  SPILL_STUB.lastIndex = 0;
+  let match: RegExpExecArray | null;
+  while ((match = SPILL_STUB.exec(text)) !== null) {
+    const named = (match[2] ?? '').trim();
+    if (named === '') continue;
+    let full: string;
+    try { full = path.resolve(named); } catch { continue; }
+    if (!within(root, full)) continue;
+    if (path.basename(path.dirname(full)) !== SPILL_DIR) continue;
+    if (seen.has(full)) continue;
+    seen.add(full);
+    let bytes = 0;
+    let present = false;
+    try {
+      const stat = statSync(full);
+      // A directory named where a file was promised is not the evidence, so it
+      // is reported ABSENT rather than linked into a route that cannot read it.
+      if (stat.isFile()) { bytes = stat.size; present = true; }
+    } catch { /* pruned, or never written. `present` stays false and says so. */ }
+    out.push({ file: named, said: (match[1] ?? '').trim(), bytes, present });
+  }
+  return out;
+}
+
 /** One record inside an opened fold. */
 export interface DocStep {
   /** Record index in the file — the number every other surface counts in. */
@@ -670,6 +900,17 @@ export interface DocStep {
    * label a step with a name and a link that disagree.
    */
   toolUseId: string | null;
+  /**
+   * **THE FILES THIS STEP'S OUTPUT WAS TOO LARGE TO CARRY** — `plan:archive
+   * seq:30`. Empty on the overwhelming majority of steps; see `DocSpill` for
+   * what is recognised, what it costs, and why there is no table behind it.
+   *
+   * Parsed from THIS STEP'S OWN `text` and from nothing else, so the link is
+   * drawn exactly where the stub is drawn and no correlation is invented. A
+   * step whose text carries no stub has nothing to point at, which is the
+   * ordinary case and not an omission.
+   */
+  spills: DocSpill[];
   /** This line would not parse. Served as a step so the gap is visible. */
   unreadable: boolean;
 }
@@ -1531,20 +1772,26 @@ export function readNodes(file: string, want: NodeWindowRequest): DocNodeBody[] 
     const timestamp = typeof step.record?.['timestamp'] === 'string'
       ? step.record['timestamp'] as string : null;
 
-    const asStep = (): DocStep => ({
-      index: step.index,
-      type: typeof step.record?.['type'] === 'string' ? step.record['type'] as string : 'unknown',
-      subtype: shape.read.subtype,
-      timestamp,
-      tool: shape.read.tool,
-      detail: shape.read.detail,
-      input: shape.read.input,
-      toolUseId: shape.read.toolUseId,
-      failed: shape.read.failed,
-      blocks: shape.read.blocks,
-      text: shape.read.body !== '' ? shape.read.body : shape.read.thinking,
-      unreadable: step.record === null,
-    });
+    const asStep = (): DocStep => {
+      const text = shape.read.body !== '' ? shape.read.body : shape.read.thinking;
+      return {
+        index: step.index,
+        type: typeof step.record?.['type'] === 'string' ? step.record['type'] as string : 'unknown',
+        subtype: shape.read.subtype,
+        timestamp,
+        tool: shape.read.tool,
+        detail: shape.read.detail,
+        input: shape.read.input,
+        toolUseId: shape.read.toolUseId,
+        failed: shape.read.failed,
+        blocks: shape.read.blocks,
+        text,
+        // Read off the text this step is about to serve, and off nothing else.
+        // See `DocStep.spills`.
+        spills: spillsIn(text),
+        unreadable: step.record === null,
+      };
+    };
 
     if (shape.said) {
       closeRun();
@@ -2170,6 +2417,119 @@ export function apiConversationRaw(
   };
 }
 
+/* ══ THE EVIDENCE ITSELF ═══════════════════════════════════════════════════ */
+
+/**
+ * **THE SPILLED FILE, SERVED AS THE FILE IT IS** — `plan:archive seq:30`.
+ *
+ * ── WHY A NEW TAB OF PLAIN TEXT AND NOT A RENDERER ────────────────────────
+ *
+ * A spilled tool result has no records, no turns and no timestamps — the item
+ * says so and the measurement agrees — so there is nothing here for the
+ * document renderer to fold, promote or classify. It is a text file. Handing
+ * it to the browser as one means find-in-page, select-all, save-as, the
+ * keyboard and the address bar all work by construction and none of them is
+ * coded here, which is `laneLink`'s argument for a real `<a target="_blank">`
+ * arriving at the same answer from the other end: there, because a new tab
+ * cannot lose the reader's place; here, because a viewer written in this file
+ * would be an imitation of one the browser already ships.
+ *
+ * **AND IT IS NOT CAPPED.** `PASSAGE_RAW_CAP` refuses a slice larger than 8 MB
+ * and is right to — a passage copy is a convenience with an alternative. This
+ * is the evidence, and the largest spilled file on the owner's tree is 23.0 MB.
+ * A cap here would rebuild the wall this item exists to remove, one order of
+ * magnitude further along. The bound that applies is the one the harness
+ * already applied when it decided to spill.
+ *
+ * ── THE TWO CONDITIONS, AND THAT THEY ARE THE SAME TWO ────────────────────
+ *
+ * Under `claudeProjectsDir`, and in a directory called `tool-results`. They are
+ * `spillsIn`'s conditions, called from here rather than restated, so a path the
+ * screen would never link is a path this route will never read: one rule, one
+ * place, and no way for the two to drift into disagreeing. `DocSpill` carries
+ * the measurement behind both, and behind `claudeProjectsDir` rather than
+ * `transcriptDir`.
+ *
+ * ── WHAT IS DELIBERATELY NOT HERE ─────────────────────────────────────────
+ *
+ * **No `:id`.** Every sibling route on this surface takes one and resolves it
+ * through `rowFor`, and that would be a second spelling of a check this route
+ * does not make: the confinement above is entirely about the PATH, and a
+ * session id contributes nothing to it. What it would contribute is a failure
+ * mode — `rowFor` answers 404 when the index is uninitialised or a schema
+ * behind, so a reader clicking the evidence behind a step would be told there
+ * is no conversation index for a file sitting plainly on disk. The archive's
+ * own repair path (`ConversationIndexIncompleteError`, `seq:12`/`33`) heals
+ * that within a turn; a reader who clicked in the meantime should still get
+ * their bytes.
+ *
+ * **And no `Content-Disposition`.** Inline is the point — a download is a
+ * second step between the reader and the evidence.
+ */
+export function serveSpill(ctx: ApiContext, res: ServerResponse): void {
+  const refuse = (status: number, error: string): void => {
+    res.writeHead(status, {
+      ...SECURITY_HEADERS, 'content-type': 'application/json; charset=utf-8',
+    });
+    res.end(JSON.stringify({ error }));
+  };
+
+  const bad = unknownParams(ctx.url, ['file']);
+  if (bad !== null) { refuse(400, bad); return; }
+
+  const named = ctx.url.searchParams.get('file');
+  if (named === null || named.trim() === '') {
+    refuse(400, 'file must name the spilled tool result to serve, as the absolute path the '
+      + 'transcript recorded for it.');
+    return;
+  }
+
+  let full: string;
+  try { full = path.resolve(named.trim()); } catch { full = ''; }
+  if (full === '' || !within(spillRoot(), full)
+    || path.basename(path.dirname(full)) !== SPILL_DIR) {
+    // The submitted path is NOT echoed. `security.ts` caps every caller-supplied
+    // string it writes for exactly this reason, and a refusal that repeats an
+    // arbitrary path back into a response body is the shape that rule exists to
+    // stop. The condition it failed is named instead, which is the fact a caller
+    // can act on.
+    refuse(403, `a spilled tool result is served only from a "${SPILL_DIR}" directory inside `
+      + 'the harness’s own project tree, and that path is not one.');
+    return;
+  }
+
+  let size: number;
+  try {
+    const stat = statSync(full);
+    if (!stat.isFile()) throw new Error('not a file');
+    size = stat.size;
+  } catch {
+    // GONE, and said so. The screen already draws `present: false` where the
+    // window knew — this is the race where it was pruned in between, and it
+    // gets the same answer rather than a broken pipe.
+    refuse(404, 'that spilled tool result is no longer on disk. The transcript still records '
+      + 'the path and the size it had, but the bytes are gone.');
+    return;
+  }
+
+  res.writeHead(200, {
+    ...SECURITY_HEADERS,
+    // Measured 1,814 of 1,814 `.txt` on the owner's tree — but the harness
+    // writes `webfetch-*.pdf` into the same directory, so the extension decides
+    // and an unknown one is handed over as bytes rather than mislabelled text.
+    'content-type': path.extname(full).toLowerCase() === '.txt'
+      ? 'text/plain; charset=utf-8'
+      : 'application/octet-stream',
+    'content-length': String(size),
+  });
+  const stream = createReadStream(full);
+  // A file that vanishes mid-read ends the response rather than crashing the
+  // server. The head is already written by then, so there is no status left to
+  // change and a short body is the only honest outcome available.
+  stream.on('error', () => { res.end(); });
+  stream.pipe(res);
+}
+
 export function registerConversationDocumentRoutes(): void {
   registerRoute('GET', '/api/conversations/:id/outline', {
     kind: 'json',
@@ -2191,4 +2551,12 @@ export function registerConversationDocumentRoutes(): void {
     handle: (ctx: ApiContext) =>
       apiConversationRaw(ctx.ws, ctx.url, { id: ctx.params['id'] ?? '' }),
   });
+  // `kind: 'stream'`, so it writes its own head and its own bytes — a JSON
+  // route cannot serve a 23 MB text file as the file it is. It inherits the
+  // dispatch loop's carve-out with it: spec §2 rules that an open stream is not
+  // activity, so a click here does not reset the idle timer. That costs nothing
+  // measurable — `IDLE_MS` is eight hours, and a reader who opens evidence is
+  // reading a document whose own window fetches touch it — and the alternative
+  // is a route that keeps a dead server alive because somebody left a tab open.
+  registerRoute('GET', '/api/spill', { kind: 'stream', handle: serveSpill });
 }

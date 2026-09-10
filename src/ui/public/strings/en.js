@@ -364,6 +364,18 @@ export const strings = {
   'conv.doc.laneNotKept': 'This helper agent is not in the copy, so there is nothing to open.',
   'conv.doc.lanesUnlinked': '{n} of {total} helper transcripts here record no dispatching turn, so no turn on this page opens them.',
   'conv.doc.lanesUnread': 'The helper transcripts could not be read, so no turn on this page opens one.',
+  // ── THE EVIDENCE BEHIND A STEP TOO LARGE TO INLINE — plan:archive seq:30 ─
+  //
+  // The harness saves a large tool result to a file and leaves a stub in the
+  // record. The stub is the conclusion; the file is the evidence. Two answers
+  // and never nothing, exactly as `conv.doc.lane` and `conv.doc.laneGone` are
+  // the two a lane gets — a spilled file can be pruned just as a lane can.
+  //
+  // "saved output" and not "spill": `preview.spill` on another screen already
+  // means an item that did NOT get delivered, and one word meaning two
+  // opposite things across two screens is the confusion a reader pays for.
+  'conv.doc.spill': 'Open the saved output in a new tab — {bytes}',
+  'conv.doc.spillGone': 'The saved output this step names is no longer on disk, so there is nothing to open.',
   'conv.doc.laneOf': 'A helper agent’s transcript, not a session of its own.',
   'conv.doc.laneHome': 'Open the session that dispatched it, in a new tab',
   // ── THE WAY BACK OUT OF THE TAB seq:15 OPENED — plan:archive seq:40 ───────

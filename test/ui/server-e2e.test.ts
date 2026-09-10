@@ -36,6 +36,7 @@ import path from 'node:path';
 import { removeTree } from '../helpers/tmp.ts';
 import { runCli } from '../../src/cli/index.ts';
 import { readAudit, recordAudit } from '../../src/core/audit.ts';
+import { claudeProjectsDir } from '../../src/core/conversation-index.ts';
 import { HELP_TOPICS } from '../../src/core/teach.ts';
 import { DIR_NAME } from '../../src/core/workspace.ts';
 import { registeredRoutes } from '../../src/ui/routes.ts';
@@ -875,6 +876,26 @@ const READ_ROUTES = (from: { item: string; session: string | null }): Probe[] =>
   // list, because a session the index does not hold is an answer and not a
   // 404.
   '/api/conversations/not-a-real-session-id/secrets',
+  // `plan:archive seq:30`. THE SPILLED TOOL RESULT BEHIND A STEP, and the one
+  // route on this list that is handed an absolute FILE PATH by the page rather
+  // than an id. That is precisely why it is here: it opens a file the corpus
+  // does not name, so the confinement to a `tool-results` directory inside the
+  // harness's own project tree is the only thing between this surface and any
+  // other file on the machine — and this sweep is what proves the read half of
+  // that promise leaves nothing behind. `createReadStream` is an open for
+  // reading and a `statSync` precedes it; a path that ever opened for writing,
+  // or that cached a copy beside the corpus, would land inside the snapshot
+  // below.
+  //
+  // Probed on a path the boundary ACCEPTS and disk does not hold, so it takes
+  // the 404 this sweep accepts — the same choice every `not-a-real-…` probe
+  // above makes, and the one that exercises the handler rather than bouncing
+  // off a refusal. The root is computed from the same `process.env` the child
+  // inherits, so the two agree by construction rather than by a literal.
+  `/api/spill?file=${encodeURIComponent(path.join(
+    claudeProjectsDir(process.env), 'not-a-real-project', 'not-a-real-session',
+    'tool-results', 'not-a-real-spill.txt',
+  ))}`,
 ];
 
 /** Does a registered path template match this concrete pathname? */
