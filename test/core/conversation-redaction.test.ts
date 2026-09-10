@@ -143,6 +143,90 @@ test('a value two shapes both match is proposed once, by the narrower shape', ()
 });
 
 /**
+ * **A call is not a credential** — the one structural rule `seq:46`'s
+ * measurement of 2026-09-09 identified and deliberately left unapplied, ruled
+ * in by the owner on 2026-09-10.
+ *
+ * `key-assignment` proposed eleven candidates across his 31 transcripts and
+ * not one was a credential. Five were `token = mintToken()`,
+ * `const token = bearerToken(req…)`, `sessionStorage.getItem(…)` and their
+ * kind: the assignment is real, the thing assigned is an expression, and what
+ * the pattern captured was the callee's NAME. Rejecting a captured value
+ * immediately followed by `(` removes those five and nothing else.
+ *
+ * The kept case is the one the item names in its own words: `secret =
+ * cryptoRandomBytes` written in PROSE is still proposed, because there is no
+ * bracket after it and *"that match is the point rather than a bug"*.
+ */
+test('a value immediately followed by ( is a call, and a call is not proposed', () => {
+  for (const call of [
+    'const token = mintToken()',
+    'const token = bearerToken(req.headers[TOKEN_HEADER])',
+    'token: sessionStorage.getItem(\'myctx-token\')',
+    'password = readPassword(process.env)',
+  ]) {
+    assert.deepEqual(matchSecrets(call), [], `a call was proposed: ${call}`);
+  }
+});
+
+test('only a bracket flush against the value is a call, so prose still proposes', () => {
+  const prose = matchSecrets('secret = cryptoRandomBytes');
+  assert.equal(prose.length, 1);
+  assert.equal(prose[0]!.shape, 'key-assignment');
+  const spaced = matchSecrets('secret = NOTAREALVALUE (rotated since)');
+  assert.equal(spaced.length, 1, 'a space before the bracket is not a call');
+  assert.equal(spaced[0]!.value, 'NOTAREALVALUE');
+});
+
+/**
+ * The veto belongs to ONE shape, and that is what bounds what it can cost.
+ *
+ * A credential with a recognisable prefix is proposed by the shape that
+ * recognises it, whatever character happens to follow — so the tightening
+ * cannot reach any of the six candidates the 2026-09-09 measurement judged
+ * plausibly real.
+ */
+test('a vendor-shaped credential is still proposed when a bracket follows it', () => {
+  for (const [text, shape] of [
+    [`key ${FAKE.anthropic}(rotated)`, 'anthropic-key'],
+    [`token ${FAKE.github}(old)`, 'github-token'],
+    [`Authorization: Bearer ${FAKE.bearer}(stale)`, 'bearer-header'],
+    [`"password": "NOT-REAL-PASSWORD(with-brackets)"`, 'json-credential-field'],
+    ['export MY_API_TOKEN=NOT-REAL-TOKEN(x)', 'exported-token'],
+  ] as [string, string][]) {
+    const found = matchSecrets(text);
+    assert.equal(found.length >= 1, true, `nothing matched in: ${text}`);
+    assert.equal(found[0]!.shape, shape, `${text} was labelled ${found[0]!.shape}`);
+  }
+});
+
+/**
+ * **WHAT THE TIGHTENING COSTS, asserted rather than argued away.**
+ *
+ * `seq:46` says a false positive costs an unticked box while a false negative
+ * is invisible, so the silence this rule buys is written down here as a
+ * failing case that PASSES — a real password containing a `(` past its eighth
+ * character, spelled as a bare assignment, is no longer proposed at all.
+ *
+ * Two things bound it, and both are asserted beside the miss. The same value
+ * spelled as JSON is still proposed, by a shape with no veto — and that is the
+ * spelling a harness actually writes, because a transcript is JSON. And the
+ * proposal this rule removes was already BROKEN: `(` is outside
+ * `key-assignment`'s value class, so the candidate it used to offer was the
+ * TRUNCATED PREFIX, and ticking it would have replaced twelve characters of a
+ * twenty-character password and reported the box as handled.
+ */
+test('the cost: a bare assignment whose value contains a bracket is now silent', () => {
+  const password = 'NOTAREALPASSWORD(with-brackets)';
+  assert.deepEqual(matchSecrets(`PASSWORD='${password}'`), [],
+    'this is the miss the call rule buys, and it is here so it is visible');
+  const asJson = matchSecrets(`"password": "${password}"`);
+  assert.equal(asJson.length, 1, 'the JSON spelling a transcript actually holds is unaffected');
+  assert.equal(asJson[0]!.shape, 'json-credential-field');
+  assert.equal(asJson[0]!.value, password, 'and it proposes the WHOLE value, not a prefix');
+});
+
+/**
  * `seq:46` calls the thirteen *"the starting set, not the finished one"*, so
  * the set has to be able to SAY which members are the thirteen. A widened
  * detector that forgot to mark its additions would be indistinguishable from
@@ -244,21 +328,50 @@ test('nothing the scan returns carries a value it found', () => {
   } finally { f.dispose(); }
 });
 
-test('the context is what tells an identifier from a credential', () => {
+/**
+ * **The `(32)` used to be the READER's tell, and is now the detector's** —
+ * which is the whole of the owner's 2026-09-10 ruling, expressed as the one
+ * assertion in this file that CHANGED rather than being added.
+ *
+ * Until then this test asserted that `const secret = cryptoRandomBytes(32)`
+ * was proposed, and its comment said the bracketed call after the value was
+ * the tell a person would spot. It was a fair description of a proposer that
+ * had never been measured. It has been: `key-assignment` was 0 for 11 on his
+ * own transcripts, and five of the eleven were exactly this — a callee's name.
+ * A tell a machine can read is not one to spend a reader's attention on.
+ */
+test('the call a reader used to have to spot is now spotted for them', () => {
   const f = fixture();
   try {
     f.write([say('user', 'const secret = cryptoRandomBytes(32)', '2026-09-09T10:00:00.000Z')]);
     const scan = scanSessionSecrets(f.mirror);
+    assert.deepEqual(scan.candidates, [], 'a callee name is not a candidate any more');
+    assert.equal(scan.occurrences, 0);
+  } finally { f.dispose(); }
+});
+
+/**
+ * And what the veto does NOT catch is still proposed with the evidence to
+ * judge it by — which matters because the corpus form of this false positive
+ * is the PROSE one, quoted without its brackets in the very item that reported
+ * it, twenty-three times.
+ */
+test('the context is what tells an identifier from a credential', () => {
+  const f = fixture();
+  try {
+    f.write([say('user', 'the match on `secret = cryptoRandomBytes` is the point',
+      '2026-09-09T10:00:00.000Z')]);
+    const scan = scanSessionSecrets(f.mirror);
     assert.equal(scan.candidates.length, 1, 'the false positive IS proposed — it is a proposer');
     // The mask covers the matched value even here — it has to, because
     // nothing knows yet that this one is a false positive. What makes it
-    // judgeable is everything AROUND it: the assignment, the `(32)` call that
-    // no credential ever carries, and the first four characters the mask
-    // leaves. That is the difference between a list a person can clear in a
-    // glance and one they have to guess at.
+    // judgeable is everything AROUND it: the assignment, the backticks that
+    // say it is being quoted rather than run, and the first four characters
+    // the mask leaves. That is the difference between a list a person can
+    // clear in a glance and one they have to guess at.
     const context = scan.candidates[0]!.contexts[0]!;
-    assert.match(context, /const secret = cryp/, 'the assignment itself has to be visible');
-    assert.match(context, /\(32\)/, 'the call after it is the tell, and it survives the mask');
+    assert.match(context, /secret = cryp/, 'the assignment itself has to be visible');
+    assert.match(context, /is the point/, 'and the words around it, which are what decide it');
   } finally { f.dispose(); }
 });
 

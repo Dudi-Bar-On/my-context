@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: Copying a conversation out offers a list of things that look private, and replaces only what you tick with an obviously fake stand-in.
-summary_of: 81a9cf61a7190f3c
+summary_of: 1d1825197553f30b
 scope:
   - src/core/conversation-secrets.ts
   - src/core/conversation-redaction.ts
@@ -27,7 +27,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-09-09
 valid_until: null
-checksum: 3e403dd27f49da58
+checksum: 4dc1a5f6eebd4749
 plan: archive
 seq: "46"
 state: done
@@ -314,3 +314,107 @@ AND TWO GAPS IN THE COVERAGE, measured rather than assumed:
   - `MAX_SCAN_BYTES` bounds the CLI scan and `CONVERSATION_WALK_CAP` (64 MiB) bounds the endpoint's.
     Neither was reached by the CLI here; the endpoint's cap DOES bite on the 83.6 MB live session,
     and both surfaces say so and call their counts a floor.
+
+── THE TIGHTENING HE RULED, AND THE RE-MEASUREMENT, 2026-09-10 ──────────────
+
+The paragraph above ends "if he wants the noise cut, that is the one-line change and it belongs to
+him." He ruled: apply it, then measure. Both halves are here, and the measurement is the
+deliverable rather than the change.
+
+WHAT WAS APPLIED, and only this. `SecretShape` gained an optional `reject` — a veto handed the
+string a match was found in and where the VALUE sits inside it, applied inside `matchSecrets` so
+the scan and the redactor see the same set (a veto that ran only on the reporting side would leave
+the redactor able to replace something no list ever offered). ONE shape declares one: a
+`key-assignment` value immediately followed by `(` is a call, not a literal. The veto's contract
+says in as many words that it may reject only on SYNTAX — on the bytes around the match, never on
+what the value looks like — because a rejected candidate never reaches the list he reads, and a
+guard asking "is this word plausible as a password" would be this module deciding in the one
+direction his design calls invisible.
+
+THE RE-RUN, same method, same 31 session transcripts under `~/.claude/projects`, read-only:
+336,480,362 bytes (the live session has grown since 2026-09-09), 108,733 records, 9.5 s. The
+before-run on today's bytes found 20 distinct candidates and 144 occurrences — the 19 of 2026-09-09
+plus one more `key-assignment`, which is a lane's own transcript quoting the earlier finding.
+
+  SHAPE             CANDIDATES        OCCURRENCES        TRUE   FALSE
+  anthropic-key       2 →  2            6 →   6            2      0
+  bearer-header       1 →  1            4 →   4            1      0
+  local-auth-hex      4 →  4           23 →  23            3      1
+  google-api-key      1 →  1            2 →   2            0      1
+  url-userinfo        1 →  1           12 →  12            0      1
+  key-assignment     11 →  6           97 →  42            0      6
+  ── total           20 → 15          144 →  89            6      9
+
+EVERY OTHER SHAPE IS UNCHANGED TO THE OCCURRENCE, which is the assertion that matters more than the
+totals: the veto is scoped to one shape, so it cannot reach any of the six candidates judged
+plausibly real, and it did not. Precision on distinct candidates moves 6/20 → 6/15; on occurrences,
+16/144 → 16/89. Nothing that was RIGHT was lost, and the diff of the two candidate sets says so
+directly: five removed, none added, and no surviving candidate's occurrence count changed by one.
+
+THE FIVE IT DROPPED ARE FIVE CALLEE NAMES — `mintToken`, `bearerToken`, `headerValue`,
+`rememberedToken` and `sessionStorage.getItem` — 55 occurrences of this project's own source
+identifiers, read back out of transcripts of lanes reading `src/ui/security.ts`.
+
+WHAT IT COSTS IN MISSES, argued rather than slipped in, because his design says a false positive
+costs an unticked box while a false negative is invisible.
+
+  THE MISS IS REAL AND IT IS WRITTEN INTO A TEST. A value containing `(` past its eighth character,
+  spelled as a bare assignment — `PASSWORD='…(…)'` — was proposed before and is silent now.
+  `test/core/conversation-redaction.test.ts` asserts that silence in a test named for it, so the
+  cost is visible in the suite rather than only in this paragraph.
+
+  TWO THINGS BOUND IT. First, the proposal this rule removes WAS ALREADY BROKEN: `(` is outside
+  `key-assignment`'s value class, so the candidate it used to offer was the truncated PREFIX of the
+  password, and ticking that box would have replaced twelve characters of a twenty-character
+  secret and reported it handled. A partial redaction that says it is complete is worse than a
+  proposal that never appears. Second, the spelling a transcript actually holds is JSON, and the
+  JSON spelling is caught by `json-credential-field`, which has no veto, matches on the FIELD name
+  and takes the whole quoted value — brackets included. Both are asserted.
+
+  AND THE OTHER SPELLINGS SURVIVE, also asserted: an Anthropic key, a GitHub token, a Bearer
+  header and an `export …_TOKEN=` are each still proposed with a `(` flush against them, because
+  each is explained by a shape that declares no veto. Only a bracket touching the last character
+  counts, so `…value (rotated since)` — a credential quoted mid-sentence in prose, which is how one
+  of the two true `anthropic-key` candidates got into that corpus at all — is untouched.
+
+THE THREE REMAINING FALSE-POSITIVE CLASSES, and which are structural and which are judgement:
+
+  PROSE ABOUT THIS FEATURE — LEFT, and it is judgement. Three of the six survivors are this item
+  and its lanes quoting themselves: `secret = cryptoRandomBytes` between backticks (23
+  occurrences, the single noisiest candidate in the whole corpus), the phrase `key=/secret=
+  assignments` from this item's own step 2, and a test probe's value quoted in the 2026-09-08
+  report. A quotation is textually identical to the thing it quotes; separating them needs to know
+  the surrounding text is a discussion of credential detection, which is judgement, and judgement
+  is his. It is also self-limiting in the direction that matters — this class grows only when
+  somebody writes about the detector.
+
+  A WORD AFTER A COLON IN A SENTENCE — LEFT, and it is judgement dressed as structure. The
+  candidate is `API without a token: /api/items` and the value is a URL PATH. Rejecting it means
+  claiming a path is not a credential, which is a claim about the VALUE, and the veto's contract
+  forbids exactly that. A password may be path-shaped.
+
+  A FRAGMENT INSIDE A REGEX LITERAL — LEFT, and this one IS structural, measured, and one line
+  away. `body.replace(/secret=<probe>[0-9a-z]+/g, …)` captures a fragment whose next character is
+  `[`. Extending the veto to `[` was measured on the same 31 transcripts and removes exactly that
+  candidate: 6 → 5 candidates, 42 → 40 occurrences. It is NOT applied, because `[` after a value
+  has no single meaning the way `(` does — it is an index as often as a pattern — and because one
+  rule at a time is what made any of this measurable. The line is `text[end] === '(' ||
+  text[end] === '['` and it belongs to him, exactly as the call rule did.
+
+  AND ONE RULE THAT LOOKS STRUCTURAL AND IS WRONG, recorded so nobody adds it later. The sixth
+  survivor is a Playwright probe's stdout, `token: <fifteen characters>`, and the value ENDS IN A
+  LITERAL `...` — it is a truncated echo, not a value. "Reject a value ending in an ellipsis"
+  looks like free precision. It is not: the measurement above counts a TRUNCATED Anthropic key,
+  quoted in a report's prose, as one of the two `anthropic-key` true positives. A rule that
+  discards truncations discards that one, and a truncated credential is still a credential prefix
+  he may want ticked.
+
+FULL UNIT SUITE after the change: 7345 tests, 0 failures, 2 skipped — zero red, with none of the
+contention-only pairs flaking on this run. `tsc --noEmit` clean, `npm run check:text-files` clean.
+
+PROVED BY REMOVAL. Taking `reject: rejectCallShape` off the shape turns three tests red — the one
+that names the calls, the one that asserts the cost, and the one whose expectation this ruling
+CHANGED rather than added: `const secret = cryptoRandomBytes(32)` used to be asserted as proposed,
+with a comment saying the `(32)` was the tell a reader would spot. It is now asserted as not
+proposed. A tell a machine can read is not one to spend his attention on, and that single flipped
+assertion is the whole ruling.

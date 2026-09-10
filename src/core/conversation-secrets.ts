@@ -36,6 +36,42 @@
  * detector here; it is a PROPOSER, and the ratio is the argument for the form
  * rather than an argument against the scan.
  *
+ * `seq:46` measured this module itself on 2026-09-09 over the owner's 31
+ * session transcripts — 332 MB — and found 19 distinct candidates of which 6
+ * were plausibly real. TEN of the thirteen wrong ones were `key-assignment`,
+ * and that shape was 0 for 10.
+ *
+ * ── AND WHAT WAS TIGHTENED, 2026-09-10, ON HIS RULING ─────────────────────
+ *
+ * One structural rule, `rejectCallShape` below: a captured value immediately
+ * followed by `(` is a call, not a literal. `seq:46` found it and left it
+ * unapplied because an unmeasured guard is a guess in the direction nobody can
+ * see; he ruled it in, and the re-run over the same 31 transcripts (336 MB,
+ * 108,733 records, 9.5 s) is what it bought:
+ *
+ *     candidates  20 → 15      occurrences  144 → 89
+ *     key-assignment  11 → 6 candidates, 97 → 42 occurrences
+ *     every other shape unchanged, to the occurrence
+ *
+ * The six judged plausibly real are untouched — two `anthropic-key`, one
+ * `bearer-header`, three `local-auth-hex` — so precision moves 6/20 → 6/15 and
+ * the rule cost nothing that was right. The five it dropped were `mintToken`,
+ * `bearerToken`, `headerValue`, `rememberedToken` and `sessionStorage.getItem`:
+ * five callee names.
+ *
+ * THE THREE FALSE-POSITIVE CLASSES LEFT, and they are left because they are
+ * judgement rather than syntax. A value quoted in PROSE ABOUT THIS FEATURE —
+ * `secret = cryptoRandomBytes` written between backticks in the item that
+ * reported it, 23 occurrences — is textually identical to the assignment it
+ * describes. A WORD AFTER A COLON in a sentence (`API without a token:
+ * /api/items`) can only be dismissed by knowing that a URL path is not a
+ * credential, which is a claim about the VALUE and not about the syntax around
+ * it — see `SecretShape.reject`, which forbids exactly that. And a fragment
+ * inside a REGEX LITERAL is rejectable by the `[` that follows it, which was
+ * measured (it would remove one more candidate, two occurrences) and not
+ * applied: `[` after a value has no single meaning the way `(` does, and one
+ * rule at a time is what made this measurable at all.
+ *
  * ── NO SECRET EVER LEAVES THIS MODULE WHOLE ───────────────────────────────
  *
  * A candidate carries a MASK, a shape, a context window and a count — enough
@@ -86,7 +122,59 @@ export interface SecretShape {
   pattern: RegExp;
   /** Which capture group holds the value itself. `0` is the whole match. */
   group: number;
+  /**
+   * **A structural veto: what this shape matched is not a value at all.**
+   *
+   * Given the string the match was found in and where the VALUE sits inside
+   * it, answer `true` to throw the match away as if the pattern had never
+   * fired. It is deliberately not a second pattern: what disqualifies a match
+   * here is what surrounds it, and a regex that tried to say *"…and the next
+   * character is not `(`"* would have to be repeated in every shape that ever
+   * wants the rule.
+   *
+   * A veto may only ever reject on SYNTAX — on what the bytes around the match
+   * are, not on what the value looks like. A guard that asked *"is this word
+   * plausible as a password"* would be this module deciding on the reader's
+   * behalf in the one direction `seq:46` says is invisible, since a rejected
+   * candidate never reaches the list he is reading.
+   */
+  reject?: (text: string, start: number, end: number) => boolean;
 }
+
+/**
+ * **A captured value immediately followed by `(` is a function CALL, and a
+ * call is not a credential.**
+ *
+ * `plan:archive seq:46`'s measurement of 2026-09-09 over the owner's own 31
+ * transcripts is the whole argument for this rule and the whole argument for
+ * its narrowness. `key-assignment` proposed ten candidates there and eleven on
+ * the re-run of 2026-09-10, and NOT ONE was a credential; five of the eleven
+ * were `token = mintToken()`,
+ * `const token = bearerToken(req.headers…)`, `sessionStorage.getItem(…)` and
+ * their kind — the assignment is real, the thing assigned is an expression,
+ * and what the pattern captured is the callee's NAME.
+ *
+ * That lane found the rule and deliberately did not apply it, on the grounds
+ * that an unmeasured guard is a guess in the direction nobody can see. The
+ * owner ruled on 2026-09-10 that it be applied and measured, and it is: the
+ * shape falls from eleven candidates to six, and the five it drops are five
+ * calls.
+ *
+ * **What it costs is a real value that a `(` happens to follow**, and the
+ * cases have been constructed rather than waved at: `token=abc123(` cannot
+ * arise in a shell, a `.env` file, a query string or JSON, because a bare `(`
+ * is a syntax error in the first two, percent-encoded in the third, and
+ * outside the string in the fourth. The way it CAN arise is a credential
+ * quoted mid-sentence in prose — *"the key sk-… (which I rotated)"* — and
+ * there `(` follows a SPACE, which this rule does not look past on purpose:
+ * only a bracket flush against the last character of the value counts, so the
+ * gap between `…value(` and `…value (` is the gap between a call and a
+ * parenthesis. And the loss is bounded to this shape alone: a credential with
+ * a recognisable vendor prefix is proposed by the shape that recognises it,
+ * whatever follows it.
+ */
+const rejectCallShape = (text: string, _start: number, end: number): boolean =>
+  text[end] === '(';
 
 /**
  * **The shapes, most specific first — and the order is load-bearing.**
@@ -273,10 +361,14 @@ export const SECRET_SHAPES: SecretShape[] = [
     added: false,
     note: 'The widest shape and the noisiest, declared LAST so anything a narrower shape '
       + 'explains is labelled by that one instead. This is where `secret = cryptoRandomBytes` '
-      + 'lands, and that match is the point rather than a bug: it costs one unticked box.',
+      + 'lands, and that match is the point rather than a bug: it costs one unticked box. A '
+      + 'value immediately followed by `(` is REJECTED, because that is a call and not a '
+      + 'literal — measured on 2026-09-10 as five of this shape\'s eleven candidates, all five '
+      + 'of them calls.',
     pattern:
       /\b(?:api[_-]?key|secret|password|passwd|passphrase|token|access[_-]?key)\s*[=:]\s*["']?([A-Za-z0-9._~+/=-]{8,})/gi,
     group: 1,
+    reject: rejectCallShape,
   },
 ];
 
@@ -347,6 +439,9 @@ export function candidateId(shapeId: string, value: string): string {
  * Pure, and the same function the scan and the redaction both call — which is
  * what makes an accepted id mean the same thing on both sides. A redactor with
  * its own matcher would eventually replace something the report never offered.
+ * A shape's `reject` is applied HERE, for the same reason: a veto that ran
+ * only on the reporting side would leave the redactor able to replace a match
+ * no list ever offered.
  */
 export function matchSecrets(text: string): SecretMatch[] {
   if (text.length < 8) return [];
@@ -359,6 +454,7 @@ export function matchSecrets(text: string): SecretMatch[] {
       if (isPlaceholder(value)) continue;
       const at = found.index + (shape.group === 0 ? 0 : whole.indexOf(value));
       const end = at + value.length;
+      if (shape.reject?.(text, at, end) === true) continue;
       if (taken.some((m) => at < m.end && m.start < end)) continue;
       taken.push({ shape: shape.id, value, start: at, end });
     }
