@@ -92,21 +92,69 @@ const KINDS = {
   machinery: { glyph: '⚙' },
 };
 
-/** A title, or the honest absence of one. Never a fabricated name. */
+/**
+ * A name, or the honest absence of one. Never a fabricated one.
+ *
+ * ── THREE SOURCES, AND THE HEADING SAYS WHICH — `plan:archive seq:34` ─────
+ *
+ * Until this, one field was drawn and it was always the harness's: the model's
+ * own `ai-title`, marked; or a title set in Claude Code, unmarked; and nothing
+ * anywhere could be the reader's. `seq:10`'s spec asked for the title to be
+ * *"taken from the transcript's own `aiTitle` AND OVERRIDABLE"* and `seq:34`
+ * recorded the missing half rather than leaving it silent.
+ *
+ * **`row.name` is drawn INSTEAD of the title and the title is drawn BESIDE
+ * it.** Not merged into one field, which is the shape that created the
+ * problem: a reader looking at a name has to be able to tell whose it is, and
+ * the only way to tell is to be shown the other one. So a named session reads
+ *
+ *     the archive lane  (named here)  Claude Code calls it MyContext V2.0
+ *
+ * and an unnamed one is exactly what it was before this change, to the node.
+ *
+ * **It is the same function on the list and in the document head**, which is
+ * what puts it on `/lane.html` too: `mountDocument` runs in the bare lane
+ * window, and a lane's `name` is `null` by construction — names are keyed by
+ * session and `mycontext conversation name` refuses a lane id — so a lane
+ * window draws the line its dispatcher typed, unmarked, exactly as it did.
+ */
 function titleNodes(ctx, row) {
-  if (row.title === null) return ctx.t('conv.untitled');
-  const wrap = [el('bdi', 'convtitle', row.title)];
-  // The model wrote it, and the reader is told so rather than left to assume a
-  // person did — the spec asks for the title to be shown as what it is.
-  if (row.titleSource === 'ai') {
-    const by = el('span', 'small');
-    by.append(...ctx.t('conv.titleByModel'));
-    // The separating space is a SIBLING of the span, not its first child. As a
-    // first child it is at the start of an inline box and the browser collapses
-    // it, which drew `archive(named by the model)` with no gap — seen in the
-    // screenshot in both languages, after the strings had been checked.
-    wrap.push(' ', by);
+  const own = typeof row.name === 'string' && row.name !== '' ? row.name : null;
+  if (own === null) {
+    if (row.title === null) return ctx.t('conv.untitled');
+    const borrowedOnly = [el('bdi', 'convtitle', row.title)];
+    // The model wrote it, and the reader is told so rather than left to assume a
+    // person did — the spec asks for the title to be shown as what it is.
+    if (row.titleSource === 'ai') {
+      const by = el('span', 'small');
+      by.append(...ctx.t('conv.titleByModel'));
+      // The separating space is a SIBLING of the span, not its first child. As a
+      // first child it is at the start of an inline box and the browser collapses
+      // it, which drew `archive(named by the model)` with no gap — seen in the
+      // screenshot in both languages, after the strings had been checked.
+      borrowedOnly.push(' ', by);
+    }
+    return borrowedOnly;
   }
+  const wrap = [el('bdi', 'convtitle', own)];
+  const mine = el('span', 'small');
+  mine.append(...ctx.t('conv.titleByYou'));
+  wrap.push(' ', mine);
+  // **What the harness still calls it, drawn rather than dropped.** The one
+  // rule this whole feature turns on is that Claude Code's record is reported
+  // and never rewritten — so the moment we draw a name of our own, the
+  // borrowed one has to stay visible or the screen has quietly replaced a fact
+  // it does not own. `{title}` is a value slot, so it is bidi-isolated and is
+  // text rather than markup, in a corpus that is half Hebrew.
+  const borrowed = el('span', 'small');
+  if (row.title === null) borrowed.append(...ctx.t('conv.borrowedNone'));
+  else {
+    borrowed.append(...ctx.t(
+      row.titleSource === 'ai' ? 'conv.borrowedByModel' : 'conv.borrowed',
+      { title: row.title },
+    ));
+  }
+  wrap.push(' · ', borrowed);
   return wrap;
 }
 
@@ -4436,6 +4484,12 @@ export function mountDocument(ctx, host, outline, back, roster = NO_LANES) {
       outline.mtimeMs = fresh.mtimeMs;
       outline.title = fresh.title;
       outline.titleSource = fresh.titleSource;
+      // The name this project gave it, carried over the silent rebuild with
+      // the two fields it sits beside — `plan:archive seq:34`. A head that
+      // kept the reader's name while re-reading everything around it would be
+      // the same staleness this loop exists to prevent, one field over.
+      outline.name = fresh.name;
+      outline.namedAt = fresh.namedAt;
       outline.branch = fresh.branch;
       fillHead();
       unseen = 0;

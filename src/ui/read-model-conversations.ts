@@ -86,7 +86,7 @@
 import {
   ConversationIndex, ConversationIndexIncompleteError, ConversationIndexUninitializedError,
   classifyTurn, spanMs, staleBy, transcriptDir, truncatedScan,
-  type ConversationRow, type PersistedRow, type SubagentRow,
+  type ConversationRow, type NameRow, type PersistedRow, type SubagentRow,
 } from '../core/conversation-index.ts';
 import { readRedactionPlan } from '../core/conversation-redaction.ts';
 import {
@@ -206,6 +206,20 @@ export interface ConversationSummary {
   source: string;
   title: string | null;
   titleSource: string | null;
+  /**
+   * **The name THIS PROJECT gave the session, or `null`** — `plan:archive
+   * seq:34`.
+   *
+   * It is a field of its own and does not replace `title`, which keeps
+   * carrying what Claude Code wrote. That is the whole requirement the item
+   * argues for: the archive drew a borrowed name with nothing beside it to say
+   * whose it was, and one field holding either answer would have reproduced
+   * exactly that. With two, the screen can draw this one and still say what
+   * the harness calls the same session.
+   */
+  name: string | null;
+  /** When the name was given. `null` when there is none. */
+  namedAt: string | null;
   startedAt: string | null;
   endedAt: string | null;
   prompts: number;
@@ -545,6 +559,7 @@ function openableLanes(files: Map<string, string[]>): Map<string, number> {
 function summarise(
   row: ConversationRow, subagents: number, openableSubagents: number,
   matchedLanes: number | null, kept: PersistedRow | null = null,
+  named: NameRow | null = null,
 ): ConversationSummary {
   let present = false;
   let fileBytes: number | null = null;
@@ -564,6 +579,8 @@ function summarise(
     source: row.source,
     title: row.title,
     titleSource: row.titleSource,
+    name: named === null ? null : named.name,
+    namedAt: named === null ? null : named.namedAt,
     startedAt: row.startedAt,
     endedAt: row.endedAt,
     prompts: row.prompts,
@@ -698,9 +715,16 @@ export const CONVERSATION_QUERY_CAP = 200;
  * session by — the URL, `mycontext conversation subagents <session>`, the
  * terminal's own eight-character column — so a reader holding one from
  * somewhere else can paste it here.
+ *
+ * **And the name this project gave it** — `plan:archive seq:34`, and it is
+ * FIRST in the list because it is the one word in it the reader chose. A name
+ * a person types and then cannot search for would be worse than no naming at
+ * all: they would look for their own word, find nothing, and read that as the
+ * session being gone. `conv.searchScope` says so on the screen, in both
+ * languages, for the reason that string exists.
  */
-function rowMatches(row: ConversationRow, needle: string): boolean {
-  const hay = [row.title, row.branch, row.sessionId];
+function rowMatches(row: ConversationRow, needle: string, named: string | null): boolean {
+  const hay = [named, row.title, row.branch, row.sessionId];
   return hay.some((v) => v !== null && v.toLowerCase().includes(needle));
 }
 
@@ -827,6 +851,13 @@ export function apiConversations(ws: Workspace, url: URL): JsonResult {
     // answer what one `GROUP BY` answers.
     const laneCounts = index.subagentCounts();
     const branches = index.branches();
+    // **The names this project gave, read ONCE for the whole archive** —
+    // `plan:archive seq:34`. Before the narrowing rather than after it,
+    // because the search reads them: a page-scoped read would find a name on
+    // the rows that survived a filter the name itself was supposed to satisfy.
+    // The table holds one row per session somebody bothered to name, which is
+    // a handful against the 200-row page cap.
+    const names = new Map(index.names().map((named) => [named.sessionId, named]));
 
     // ── THE NARROWING, AND WHAT EACH CLAUSE COSTS ─────────────────────────
     //
@@ -898,7 +929,8 @@ export function apiConversations(ws: Workspace, url: URL): JsonResult {
       }
       if (needle !== null) {
         const lanes = laneMatches?.get(row.sessionId) ?? 0;
-        if (!rowMatches(row, needle) && lanes === 0) return false;
+        const own = names.get(row.sessionId)?.name ?? null;
+        if (!rowMatches(row, needle, own) && lanes === 0) return false;
       }
       return true;
     });
@@ -924,6 +956,7 @@ export function apiConversations(ws: Workspace, url: URL): JsonResult {
       laneOpenable.get(row.sessionId) ?? 0,
       laneMatches === null ? null : (laneMatches.get(row.sessionId) ?? 0),
       kept.get(row.sessionId) ?? null,
+      names.get(row.sessionId) ?? null,
     ));
     const body: ConversationListBody = {
       conversations,

@@ -1,7 +1,7 @@
 import {
   ConversationIndex, ConversationIndexIncompleteError, ConversationIndexUninitializedError,
   MAX_SCAN_BYTES, forgetConversations, rebuildConversations, transcriptDir, truncatedScan,
-  type ConversationRow, type SubagentRow,
+  type ConversationRow, type NameRow, type SubagentRow,
 } from '../../core/conversation-index.ts';
 import {
   NotIndexedError, advanceMirrors, mirrorDir, mirrorPath, persistSession, unpersistSession,
@@ -42,7 +42,7 @@ import { flag, hasFlag, listFlag, positionals, registerCommand, type Emit } from
  */
 
 export const SUBCOMMANDS = [
-  'rebuild', 'list', 'subagents', 'secrets', 'persist', 'forget',
+  'rebuild', 'list', 'subagents', 'secrets', 'persist', 'name', 'forget',
 ] as const;
 
 const USAGE = `usage: mycontext conversation rebuild [--full] [--json]
@@ -50,6 +50,7 @@ const USAGE = `usage: mycontext conversation rebuild [--full] [--json]
        mycontext conversation subagents [<session>] [--json]
        mycontext conversation secrets [<session>] [--json]
        mycontext conversation persist [<session>] [--replace <ids>] [--off] [--yes] [--json]
+       mycontext conversation name [<session>] [<name>] [--clear] [--json]
        mycontext conversation forget [--yes] [--json]`;
 
 const CONVERSATION_FLAGS = SUBCOMMAND_FLAGS['conversation'];
@@ -243,10 +244,27 @@ function endedCell(endedAt: string | null): string {
   return zonedStamp(endedAt) ?? endedAt;
 }
 
-/** One row's title, or the honest absence of one. Never a fabricated title. */
-function titleCell(row: ConversationRow): string {
-  if (row.title === null) return '—';
-  return row.titleSource === 'ai' ? `${row.title} (model)` : row.title;
+/**
+ * One row's name, or the honest absence of one. Never a fabricated title.
+ *
+ * **Three sources and the cell says which** — `plan:archive seq:34`. `(you)`
+ * is a name typed into `mycontext conversation name`; `(model)` is the
+ * harness's own `ai-title`; an unmarked cell is a title a person set in Claude
+ * Code itself. A column that showed all three the same way would be the
+ * asymmetry `seq:34` argued from, moved from the screen into the terminal.
+ *
+ * When this project's name is shown, the harness's is shown BESIDE it rather
+ * than replaced, because the two are different facts and the borrowed one is
+ * what every other tool still calls this session.
+ */
+function titleCell(row: ConversationRow, named: NameRow | null): string {
+  const borrowed = row.title === null
+    ? null
+    : (row.titleSource === 'ai' ? `${row.title} (model)` : row.title);
+  if (named === null) return borrowed ?? '—';
+  return borrowed === null
+    ? `${named.name} (you)`
+    : `${named.name} (you) ← ${borrowed}`;
 }
 
 function cmdConversationList(ws: Workspace, root: string, args: string[], out: Emit): number {
@@ -298,9 +316,22 @@ function cmdConversationList(ws: Workspace, root: string, args: string[], out: E
   try {
     const all = index.all();
     const shown = all.slice(0, limit);
+    // ONE read of the name table for the whole page, the same shape
+    // `apiConversations` uses for the standing marks: this table holds one row
+    // per session a person has bothered to name, which is a handful, and a
+    // query per listed row would be a cost proportional to the LIST for a fact
+    // proportional to the names.
+    const named = new Map(index.names().map((row) => [row.sessionId, row]));
     if (wantsJson(args)) {
       emitJson(out, {
-        conversations: shown,
+        conversations: shown.map((row) => ({
+          ...row,
+          // Beside the row rather than folded into `title`, so a caller can
+          // still see what the harness called it — `plan:archive seq:34`. The
+          // stored `title`/`titleSource` are untouched in this document.
+          name: named.get(row.sessionId)?.name ?? null,
+          namedAt: named.get(row.sessionId)?.namedAt ?? null,
+        })),
         total: all.length,
         omitted: all.length - shown.length,
         limit,
@@ -332,7 +363,7 @@ function cmdConversationList(ws: Workspace, root: string, args: string[], out: E
         truncatedScan(row) ? `${row.prompts}+` : String(row.prompts),
         truncatedScan(row) ? `${row.answers}+` : String(row.answers),
         row.branch ?? '—',
-        titleCell(row),
+        titleCell(row, named.get(row.sessionId) ?? null),
       ]),
     );
     for (const line of drawn) out(line);
@@ -1121,6 +1152,257 @@ function listPersisted(ws: Workspace, cwd: string, out: Emit, json: boolean): nu
  * truth and this index is a cache. The counts are printed because a cache
  * shrinking in silence is what `INV-nothing-is-dropped-silently` forbids.
  */
+/**
+ * **How long a name this project gave a session may be.**
+ *
+ * 120 characters, and it is a READABILITY bound rather than a storage one:
+ * the name is drawn as the heading of a list row beside a day, five counts, a
+ * branch and a size, and anything longer stops being a name and becomes a
+ * sentence the row has to wrap. For comparison, the longest `ai-title` the
+ * harness has written in this workspace is 14 characters (`MyContext V2.0`).
+ */
+const NAME_CAP = 120;
+
+/**
+ * A name is ONE LINE, and this is what that means in characters.
+ *
+ * A newline would break the terminal table and the row heading both; the C0
+ * controls include the NUL that `npm run check:text-files` exists to keep out
+ * of this repository's own files, and there is no reason to let one into its
+ * database either. Refused by NAME rather than stripped, because silently
+ * storing something other than what was typed is the defect the whole of this
+ * item is about — a name whose source a reader cannot trust.
+ */
+const CONTROL_CHARACTERS = /[\u0000-\u001f\u007f]/;
+
+/**
+ * `mycontext conversation name` — **the one name this project owns**,
+ * `plan:archive seq:34`.
+ *
+ * -- WHAT THIS IS THE OTHER HALF OF ---------------------------------------
+ *
+ * `plan:archive seq:10`'s spec asked for the title to be *"taken from the
+ * transcript's own `aiTitle` AND OVERRIDABLE for a session worth naming"*, and
+ * shipped only the first half. `seq:34` recorded the silence as a choice
+ * rather than leaving it as one, costed the reversal, and left the decision
+ * with the owner. He asked for naming. This is it, built to the shape that
+ * item costed: a store, one subcommand, and the screen preferring it.
+ *
+ * -- WHY IT IS NOT `--yes`-GATED, WHICH EVERY OTHER WRITE HERE IS ----------
+ *
+ * `persist` asks because its write LEAVES THE PROJECT — a file in the home
+ * directory that no `.gitignore` protects. `forget` asks because it drops
+ * rows. This writes one short string into this workspace's own index, changes
+ * nothing on disk outside it, destroys nothing, and is undone by the same
+ * command with `--clear`. A confirmation on it would teach a reader that the
+ * gate means nothing, which is the cost of asking about something cheap.
+ *
+ * -- AND IT DOES NOT TOUCH THE TRANSCRIPT ---------------------------------
+ *
+ * Claude Code stores its own name for a session in `custom-title.json` beside
+ * the transcript, and writing there is what "overridable" most cheaply means.
+ * This does not do that, on the rule `readSubagentMeta` states for the
+ * sidecar and `seq:33`/`seq:48` both turned on: the harness's record is
+ * REPORTED and never rewritten. A name written into the harness's own file
+ * would come back as `titleSource = 'custom'` and be indistinguishable from
+ * one the reader set in Claude Code — so the screen could no longer tell them
+ * which of the two they were reading, which is exactly the confusion `seq:34`
+ * exists to end.
+ */
+function cmdConversationName(ws: Workspace, root: string, args: string[], out: Emit): number {
+  const json = wantsJson(args);
+  // Everything after the session id is the name, joined with single spaces, so
+  // `conversation name abc123 the archive lane` works unquoted. `positionals`
+  // has already removed the flags and their values, so nothing here can be one.
+  const [, asked, ...rest] = positionals(args, ['limit', 'replace']);
+  const clear = hasFlag(args, 'clear');
+
+  if (asked === undefined) {
+    if (clear) {
+      out('my_context: `--clear` needs the session whose name it is taking back.\n\n' + USAGE);
+      return 1;
+    }
+    return listNames(ws, out, json);
+  }
+
+  const typed = rest.join(' ').trim();
+  if (clear && typed !== '') {
+    out(
+      'my_context: `--clear` takes the name back and a name given here sets one. Those are ' +
+      'opposite acts and running them together would leave it ambiguous which one won, so ' +
+      'neither is done. Run them one at a time.',
+    );
+    return 1;
+  }
+  if (!clear && typed === '') {
+    out(
+      `my_context: \`conversation name ${asked.slice(0, 8)}\` with no name says nothing about ` +
+      'what to call it. Give the name, or `--clear` to take back the one it has.\n\n' + USAGE,
+    );
+    return 1;
+  }
+  if (typed.length > NAME_CAP) {
+    out(
+      `my_context: a name is at most ${NAME_CAP} characters and this one is ${typed.length}. It ` +
+      'is drawn as the heading of a list row, so a longer one stops being a name and becomes a ' +
+      'sentence the row has to wrap.',
+    );
+    return 1;
+  }
+  if (CONTROL_CHARACTERS.test(typed)) {
+    out(
+      'my_context: a name is one line of text — no newlines and no control characters. Nothing ' +
+      'was stored, rather than storing something other than what you typed.',
+    );
+    return 1;
+  }
+
+  // **THE OPT-IN GATE, and this branch wants to skip it exactly as
+  // `persist --off` did.** `ConversationIndex.open` is the only thing that
+  // creates these tables, so naming a session in a workspace nobody has ever
+  // scanned would CREATE them — and the end-of-turn refresh, which gates on
+  // their existence, would start reading that machine's transcripts. Naming
+  // something is not a way to turn the archive on.
+  if (!indexExists(ws, out)) return 1;
+
+  let row: ConversationRow | null;
+  let lane: SubagentRow | null;
+  let existing: NameRow | null;
+  const read = ConversationIndex.openReadOnlyChecked(ws.dbPath);
+  try {
+    row = read.get(asked);
+    lane = row === null ? read.getSubagent(asked) : null;
+    existing = read.nameOf(asked);
+  } finally {
+    read.close();
+  }
+
+  if (row === null) {
+    // **A lane is refused BY NAME, and the refusal is the interesting one.** A
+    // lane already carries a name nobody borrowed: the one line its dispatcher
+    // typed, which the index stores as `description` and the document draws
+    // with `titleSource = 'agent'`. So the asymmetry this command exists to
+    // fix is not present on a lane, and a second name there would compete with
+    // a real one rather than replace a borrowed one.
+    if (lane !== null) {
+      out(
+        `my_context: "${asked}" is a helper agent, not a session. A lane already carries the ` +
+        'name the agent that dispatched it typed' +
+        (lane.description === null ? '' : ` — "${lane.description}"`) +
+        ', so there is no borrowed name here to replace. Name the session that dispatched it: ' +
+        `\`mycontext conversation subagents ${lane.sessionId.slice(0, 8)}\` lists them.`,
+      );
+      return 1;
+    }
+    out(
+      `my_context: no indexed session "${asked}". \`mycontext conversation list\` names the ` +
+      'ones this workspace has scanned.',
+    );
+    return 1;
+  }
+
+  const index = ConversationIndex.open(ws.dbPath);
+  try {
+    if (clear) {
+      const cleared = index.clearName(asked);
+      if (json) {
+        emitJson(out, {
+          sessionId: asked, cleared, name: null,
+          title: row.title, titleSource: row.titleSource,
+        });
+        return 0;
+      }
+      if (!cleared) {
+        out(`my_context: session ${asked.slice(0, 8)} had no name here, so nothing changed.`);
+        return 0;
+      }
+      out(
+        `my_context: session ${asked.slice(0, 8)} is no longer named "${existing?.name ?? ''}" ` +
+        'here. Nothing was restored, because nothing was ever overwritten: the archive goes ' +
+        'back to showing ' + borrowedPhrase(row) + '.',
+      );
+      return 0;
+    }
+
+    const namedAt = new Date().toISOString();
+    index.setName({ sessionId: asked, name: typed, namedAt });
+    if (json) {
+      emitJson(out, {
+        sessionId: asked, name: typed, namedAt, renamed: existing !== null,
+        title: row.title, titleSource: row.titleSource,
+      });
+      return 0;
+    }
+    out(
+      existing === null
+        ? `my_context: session ${asked.slice(0, 8)} is now named "${typed}" in this project.`
+        : `my_context: session ${asked.slice(0, 8)} was named "${existing.name}" and is now ` +
+          `named "${typed}" in this project.`,
+    );
+    // **The borrowed name is still there, and saying so is the point.** The
+    // whole finding behind `seq:34` is that a reader could not tell this
+    // project's name from Claude Code's. Reporting both at the moment one is
+    // set is the cheapest place to make that difference legible.
+    out(
+      `my_context: Claude Code's own name for it is untouched — ${borrowedPhrase(row)} — and ` +
+      `the transcript at ${row.file} was not written to. The archive draws yours and says ` +
+      'whose it is. `--clear` takes it back.',
+    );
+    return 0;
+  } finally {
+    index.close();
+  }
+}
+
+/** What the harness calls a session, in a phrase both branches above can print. */
+function borrowedPhrase(row: ConversationRow): string {
+  if (row.title === null) return 'no name at all, which is what it had';
+  return row.titleSource === 'ai'
+    ? `"${row.title}", which the model wrote`
+    : `"${row.title}", which was set in Claude Code`;
+}
+
+/** Every name this project has given, and the answer to a bare `name`. */
+function listNames(ws: Workspace, out: Emit, json: boolean): number {
+  if (!indexExists(ws, out)) return 1;
+  const index = ConversationIndex.openReadOnlyChecked(ws.dbPath);
+  try {
+    const names = index.names();
+    if (json) {
+      emitJson(out, { named: names, total: names.length, indexed: true });
+      return 0;
+    }
+    if (names.length === 0) {
+      // A measured zero, named as one. The archive is full of sessions; what
+      // is empty is the set this project has bothered to name, and those are
+      // two different nothings.
+      out(
+        'my_context: no session in this workspace has been given a name here. The archive draws ' +
+        'the name Claude Code gave each one.',
+      );
+      out(`my_context: \`mycontext conversation name <session> "<name>"\` gives one. ${USAGE}`);
+      return 0;
+    }
+    const drawn = table(
+      ['session', 'named', 'name', 'claude code calls it'],
+      names.map((named) => {
+        const row = index.get(named.sessionId);
+        return [
+          named.sessionId.slice(0, 8),
+          zonedStamp(named.namedAt) ?? named.namedAt,
+          named.name,
+          row === null ? '— (not indexed)' : (row.title ?? '—'),
+        ];
+      }),
+    );
+    for (const line of drawn) out(line);
+    out(`my_context: showing all ${names.length}.`);
+    return 0;
+  } finally {
+    index.close();
+  }
+}
+
 function cmdConversationForget(ws: Workspace, root: string, args: string[], out: Emit): number {
   const json = wantsJson(args);
   if (!hasFlag(args, 'yes') && !json) {
@@ -1192,6 +1474,7 @@ function cmdConversation(ws: Workspace, args: string[], out: Emit): number {
     if (subcommand === 'subagents') return cmdConversationSubagents(ws, root, args, out);
     if (subcommand === 'secrets') return cmdConversationSecrets(ws, root, args, out);
     if (subcommand === 'persist') return cmdConversationPersist(ws, root, args, out);
+    if (subcommand === 'name') return cmdConversationName(ws, root, args, out);
     if (subcommand === 'forget') return cmdConversationForget(ws, root, args, out);
     return cmdConversationList(ws, root, args, out);
   } catch (err) {
@@ -1203,8 +1486,8 @@ function cmdConversation(ws: Workspace, args: string[], out: Emit): number {
 registerCommand({
   name: 'conversation',
   usage:
-    `conversation [${SUBCOMMANDS.join('|')}] [--full] [--limit <n>] [--replace <ids>] [--yes] ` +
-    '[--json]',
+    `conversation [${SUBCOMMANDS.join('|')}] [--full] [--limit <n>] [--replace <ids>] ` +
+    '[--clear] [--yes] [--json]',
   summary: 'index the conversation and subagent transcripts on disk, and list what it holds',
   run: (ws, args, out) => cmdConversation(ws, args, out),
 });

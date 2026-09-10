@@ -1479,6 +1479,18 @@ export const SUBCOMMAND_FLAGS: Record<string, Record<string, FlagSpec>> = {
     // to. The owner's design puts the substitution ON EXPORT ONLY, so the flag
     // sits on the command that exports.
     persist: { allowed: ['off', 'replace', 'yes', 'json'], values: ['replace'] },
+    // `name` (`plan:archive seq:34`) takes a POSITIONAL session id, the name
+    // itself as the positionals after it, and `--clear`. It takes no `--yes`:
+    // `persist`'s gate is there because its write leaves the project and
+    // `forget`'s because it drops rows, while this writes one short string
+    // into this workspace's own index and the same command takes it back.
+    //
+    // `--clear` and not a second `--off`. The flag would read the same and
+    // mean something else — `off` on `persist` stops a copy being kept up to
+    // date and leaves the file — and this map's own declaration layer is keyed
+    // by COMMAND on the claim that within one command a flag name means one
+    // thing.
+    name: { allowed: ['clear', 'json'], values: [] },
     // `forget` (`plan:archive seq:9`) is the OFF position of the archive's
     // opt-in and takes `--yes` for the reason every other destructive command
     // here does: it drops rows, and a command that drops rows asks first. It
@@ -1572,6 +1584,11 @@ export const SUBCOMMAND_FLAG_DECLARATIONS: Record<string, FlagDeclarations> = {
         + 'byte-faithful, because a silent alteration is worse than a silent inclusion when '
         + 'the file exists to be a record. `--replace=` with nothing after it takes the choice '
         + 'back and removes the second copy.',
+    },
+    clear: {
+      note: 'Take back the name this project gave the session. Nothing is restored, because '
+        + 'nothing was overwritten: the title Claude Code gave the session was never touched, '
+        + 'and the archive simply goes back to drawing it.',
     },
     off: {
       note: 'Stop keeping a session outside the project. The copy is left exactly where it is '

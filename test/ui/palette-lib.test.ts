@@ -1104,6 +1104,19 @@ const UNCATALOGUED: Record<string, string> = {
     + 'there, keeping the copy up to date. It is a write and needs a def with an Execute '
     + 'behind it, exactly as `conversation rebuild` above does — and, unlike the others, one '
     + 'that carries its own disclosure of what a copy of a session holds.',
+  // `plan:archive seq:34`, landed 2026-09-10 — the one name this project
+  // owns, and it is the conversation subcommand with the STRONGEST case for a
+  // def, for `persist`'s reason and more of it: naming is a decision taken
+  // about a specific session while looking at its row, and unlike `persist`
+  // it carries no disclosure a reader must read first and no write that leaves
+  // the project. It is UNCATALOGUED and not WITHHELD because nothing argues
+  // against the entry — what is missing is a def with an Execute behind it and
+  // a Composer field for the name, which is the palette lane's work and not
+  // the archive's.
+  'conversation name': 'gives one session a name this project owns, beside the one '
+    + 'Claude Code gave it. It is a write and needs a def with an Execute behind it, exactly '
+    + 'as `conversation rebuild` above does — and a text field for the name, which is the '
+    + 'first entry in this catalogue that would need one.',
   // **THE ROW THAT WAS A NOT-YET AND IS NOW A DECISION** — `plan:archive
   // seq:46`. It stood in UNCATALOGUED with its reason naming what it waited
   // for: the owner's design is a form with checkboxes, so the surface that

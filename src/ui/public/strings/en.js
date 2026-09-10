@@ -167,6 +167,17 @@ export const strings = {
   'conv.none': 'No sessions found — the scan ran and the folder above held none.',
   'conv.untitled': 'Untitled session',
   'conv.titleByModel': '(named by the model)',
+  // ── THE ONE NAME THIS PROJECT OWNS — plan:archive seq:34 ───────────────
+  //
+  // The archive drew the name Claude Code gave a session and offered no way
+  // to give it one of its own. It does now, and the row says WHOSE name it is
+  // drawing: `conv.titleByYou` marks ours, and the borrowed one is drawn
+  // beside it rather than replaced, because a reader who could not tell the
+  // two apart is the whole finding the item was written from.
+  'conv.titleByYou': '(named here)',
+  'conv.borrowed': 'Claude Code calls it {title}',
+  'conv.borrowedByModel': 'Claude Code calls it {title}, which the model wrote',
+  'conv.borrowedNone': 'Claude Code never named it',
   'conv.counts': '{prompts} asked · {answers} answered · {machinery} tool steps',
   // ── A SESSION KEPT OUTSIDE THE PROJECT — plan:archive seq:4 and seq:5 ──
   //
@@ -246,7 +257,7 @@ export const strings = {
   'conv.filter.since': 'Ended on or after',
   'conv.filter.until': 'Ended on or before',
   'conv.filter.clear': 'Clear',
-  'conv.searchScope': 'The search reads what the index holds: a session’s title, its branch, its id, and the one line describing each helper agent it dispatched. It does not read the transcripts — they are far too large to search on a keystroke. To search inside one session, open it.',
+  'conv.searchScope': 'The search reads what the index holds: the name you gave a session here, the title Claude Code gave it, its branch, its id, and the one line describing each helper agent it dispatched. It does not read the transcripts — they are far too large to search on a keystroke. To search inside one session, open it.',
   'conv.matchedList': '{n} of {total} sessions match.',
   'conv.noMatchList': 'No session matches what you asked for. Clear the filter to see all {total}.',
   'conv.laneMatch': 'matched in {n} helper agents',

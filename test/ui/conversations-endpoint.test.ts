@@ -45,7 +45,9 @@ import {
   type ConversationBody, type ConversationListBody, type SubagentListBody,
 } from '../../src/ui/read-model-conversations.ts';
 import { apiConversationOutline } from '../../src/ui/read-model-conversation-document.ts';
-import { projectDirName, rebuildConversations } from '../../src/core/conversation-index.ts';
+import {
+  ConversationIndex, projectDirName, rebuildConversations,
+} from '../../src/core/conversation-index.ts';
 import { registeredRoutes } from '../../src/ui/routes.ts';
 import { zonedDay } from '../../src/ui/zoned-day.ts';
 import { registerReadRoutes } from '../../src/ui/server.ts';
@@ -1251,5 +1253,124 @@ test('a session with no end time is excluded by a date bound, and that is counte
     assert.deepEqual(bounded.conversations.map((c) => c.sessionId), ['dated']);
     assert.equal(bounded.undated, 1,
       'the one that could not be placed is COUNTED, not merely missing');
+  } finally { b.dispose(); }
+});
+
+/* ── THE NAME THIS PROJECT OWNS — plan:archive seq:34 ─────────────────────── */
+
+/** Name a session the way the CLI does, through the write door the UI may not open. */
+function nameIt(dbPath: string, session: string, name: string): void {
+  const index = ConversationIndex.open(dbPath);
+  try {
+    index.setName({ sessionId: session, name, namedAt: '2026-09-10T09:00:00.000Z' });
+  } finally {
+    index.close();
+  }
+}
+
+/**
+ * **BESIDE the borrowed title and never instead of it** — `plan:archive
+ * seq:34`, whose whole finding is that a reader could not tell this project's
+ * name from Claude Code's. One field holding either answer would have
+ * reproduced exactly that, so the assertion here is on BOTH fields of one row:
+ * ours is served, and the harness's is served unchanged next to it.
+ */
+test('the list carries the name this project gave, beside the one Claude Code did', () => {
+  const b = box();
+  try {
+    b.write('sess-named', [
+      { type: 'user', message: { role: 'user', content: 'go' },
+        timestamp: '2026-09-10T09:00:00.000Z' },
+      { type: 'ai-title', aiTitle: 'what the model called it',
+        timestamp: '2026-09-10T09:00:01.000Z' },
+    ]);
+    b.scan();
+
+    const before = apiConversations(b.ws, url()).body as ConversationListBody;
+    assert.equal(before.conversations[0].name, null,
+      'a session nobody named carries null — not an empty string, which would be a name');
+    assert.equal(before.conversations[0].namedAt, null);
+
+    nameIt(b.ws.dbPath, 'sess-named', 'the archive lane');
+    const after = apiConversations(b.ws, url()).body as ConversationListBody;
+    const row = after.conversations[0];
+    assert.equal(row.name, 'the archive lane');
+    assert.equal(row.namedAt, '2026-09-10T09:00:00.000Z');
+    assert.equal(row.title, before.conversations[0].title,
+      'the harness\'s own title is REPORTED and never rewritten — the rule readSubagentMeta '
+      + 'states for the sidecar, and the reason the screen can still say whose name is whose');
+    assert.equal(row.titleSource, before.conversations[0].titleSource);
+    assert.equal(row.title, 'what the model called it');
+    assert.equal(row.titleSource, 'ai',
+      'and the row still says WHERE the borrowed name came from — a reader who cannot tell '
+      + 'a model-written name from their own is the defect plan:archive seq:34 came from');
+  } finally { b.dispose(); }
+});
+
+/**
+ * **A name a person types and then cannot search for would be worse than no
+ * naming at all**: they would look for their own word, find nothing, and read
+ * that as the session being gone. `conv.searchScope` says the search reads it,
+ * in both languages, and this is that sentence executed.
+ */
+test('the search finds a session by the name this project gave it', () => {
+  const b = box();
+  try {
+    b.write('sess-findable', [
+      { type: 'user', message: { role: 'user', content: 'go' },
+        timestamp: '2026-09-10T09:00:00.000Z' },
+    ]);
+    b.write('sess-other', [
+      { type: 'user', message: { role: 'user', content: 'go' },
+        timestamp: '2026-09-10T09:00:02.000Z' },
+    ]);
+    b.scan();
+    nameIt(b.ws.dbPath, 'sess-findable', 'Tuesday rewrite');
+
+    const hit = apiConversations(b.ws, url('?q=tuesday')).body as ConversationListBody;
+    assert.deepEqual(hit.conversations.map((c) => c.sessionId), ['sess-findable']);
+    assert.equal(hit.matching, 1);
+
+    const miss = apiConversations(b.ws, url('?q=wednesday')).body as ConversationListBody;
+    assert.equal(miss.matching, 0, 'and it is the NAME being matched, not everything');
+  } finally { b.dispose(); }
+});
+
+/**
+ * **The document head gets both facts too, and a LANE gets neither.**
+ *
+ * `mountDocument` draws this body inside the app and again in the bare
+ * `/lane.html` window, so one wrong field here is wrong on two pages. A lane's
+ * `name` is `null` BY CONSTRUCTION rather than by omission: names are keyed by
+ * session, and `mycontext conversation name` refuses a lane id in those words.
+ * The lane keeps the line its dispatcher typed, with `titleSource = 'agent'`.
+ */
+test('the document outline carries the name, and a lane inherits none', () => {
+  const b = box();
+  try {
+    b.write('sess-doc', [
+      { type: 'user', message: { role: 'user', content: 'go' },
+        timestamp: '2026-09-10T09:00:00.000Z' },
+    ]);
+    b.lane('sess-doc', 'agent-doc', laneMeta('toolu_DOC'), [
+      { type: 'assistant', message: { role: 'assistant', content: text('working') },
+        timestamp: '2026-09-10T09:00:01.000Z' },
+    ]);
+    b.scan();
+    nameIt(b.ws.dbPath, 'sess-doc', 'the named session');
+
+    const doc = apiConversationOutline(
+      b.ws, new URL('http://x/'), { id: 'sess-doc' },
+    ).body as { name: string | null; namedAt: string | null; title: string | null };
+    assert.equal(doc.name, 'the named session');
+    assert.equal(doc.namedAt, '2026-09-10T09:00:00.000Z');
+
+    const lane = apiConversationOutline(
+      b.ws, new URL('http://x/'), { id: 'agent-doc' },
+    ).body as { name: string | null; title: string | null; titleSource: string | null };
+    assert.equal(lane.name, null,
+      'a lane cannot be named here, so it must never be drawn as though it had been');
+    assert.equal(lane.title, 'a lane brief', 'and it keeps the line its dispatcher typed');
+    assert.equal(lane.titleSource, 'agent');
   } finally { b.dispose(); }
 });

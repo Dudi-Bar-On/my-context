@@ -144,6 +144,7 @@ const CONVERSATION_TABLE_COLUMNS: [string, string[]][] = [
     'unreadable', 'branch', 'cwd', 'scanned_at',
   ]],
   ['persisted', ['session_id', 'file', 'bytes', 'marked_at', 'mirrored_at', 'note']],
+  ['named', ['session_id', 'name', 'named_at']],
 ];
 
 /**
@@ -243,6 +244,45 @@ const CONVERSATION_TABLE_COLUMNS: [string, string[]][] = [
  * byte 0 and a mirror that begins late is not a state this build can reach.
  * A column that can only ever hold one value is the unreachable-state defect
  * `source` itself spent two items in.
+ *
+ * ── `named` IS THE ONE NAME THIS PROJECT OWNS — `plan:archive seq:34` ──────
+ *
+ * The archive drew the name Claude Code gave a session and offered no way to
+ * give it one of its own. `seq:10` left that open in as many words and
+ * `seq:34` recorded the silence as a choice; this table ends it, and where it
+ * sits is the whole of the design.
+ *
+ * **It is not written into the transcript.** The harness's file is the
+ * harness's record, reported and never rewritten — the rule `readSubagentMeta`
+ * states for the sidecar and `seq:33`/`seq:48` both turned on. A name is a
+ * fact about a session that WE hold, so it is held where we already hold facts
+ * about sessions.
+ *
+ * **It is a TABLE and not a column on `conversations`, which the item's own
+ * sketch proposed** — `seq:34` costed the reversal as *"a `title_override`
+ * column beside `title`, one CLI subcommand, and the screen preferring it"*
+ * and named the risk in the same breath: *"the override needs a column the
+ * rebuild must learn not to overwrite"*. Measured against the code, that
+ * column loses the name twice over rather than once:
+ *
+ *   - `upsert` sets EVERY column from `excluded`, so each of the two scan
+ *     paths would have to carry a value it never read out of any file. A name
+ *     a person typed would be erased by the next `mycontext conversation
+ *     rebuild` — which the Stop hook runs at the end of every assistant turn,
+ *     so the window is one turn, not one release.
+ *   - `removeMissing` DELETES the row when the harness prunes the transcript
+ *     (`seq:11`'s ruling), and a column goes with it. `persisted` is a table
+ *     for exactly that reason and this is the same fact about a different
+ *     thing: what the OWNER put there outlives what the scan found.
+ *
+ * So the rebuild needs to learn nothing, which is the point — a name survives
+ * because no writer of the scan can reach it, not because every writer of the
+ * scan remembered.
+ *
+ * A name is NOT a reason to keep a row alive: `removeMissing` consults
+ * `persisted` and not this, because keeping a copy is a promise to keep the
+ * session readable and naming one is not. The name simply waits, and a session
+ * whose transcript comes back — or whose mirror is read in — finds it again.
  */
 const CONVERSATION_SCHEMA = `
 CREATE TABLE IF NOT EXISTS conversations (
@@ -312,6 +352,12 @@ CREATE TABLE IF NOT EXISTS persisted (
   marked_at   TEXT NOT NULL,
   mirrored_at TEXT NOT NULL,
   note        TEXT
+) WITHOUT ROWID;
+
+CREATE TABLE IF NOT EXISTS named (
+  session_id TEXT PRIMARY KEY,
+  name       TEXT NOT NULL,
+  named_at   TEXT NOT NULL
 ) WITHOUT ROWID;
 `;
 
@@ -435,6 +481,24 @@ export interface PersistedRow {
    * finished — `INV-nothing-is-dropped-silently`.
    */
   note: string | null;
+}
+
+/**
+ * **The name this project gave one session** — `plan:archive seq:34`.
+ *
+ * Not the harness's. `ConversationRow.title` and `titleSource` keep carrying
+ * what Claude Code wrote, unchanged, so a reader can be told which of the two
+ * they are looking at; this is a second, separately-sourced answer to "what is
+ * this session called" and never a rewrite of the first.
+ *
+ * `namedAt` is when the person typed it. It is what lets the screen and the
+ * CLI say the name is theirs and when they gave it, rather than presenting a
+ * name with no provenance — which is the exact asymmetry `seq:34` argued from.
+ */
+export interface NameRow {
+  sessionId: string;
+  name: string;
+  namedAt: string;
 }
 
 /**
@@ -2065,6 +2129,55 @@ export class ConversationIndex {
     return true;
   }
 
+  /* ── THE NAME THIS PROJECT OWNS — `plan:archive seq:34` ────────────────── */
+
+  /**
+   * Give one session a name, or change the one it has.
+   *
+   * `named_at` MOVES on a rename, unlike `persisted.marked_at`, and the two
+   * differ because the questions do: a mark answers *when did the owner ask
+   * for this session to be kept*, which no later append changes, while this
+   * answers *when was this session last called this*, which a rename is
+   * precisely a change to. A stamp that stayed put would date the name a
+   * reader is looking at to a name they can no longer see.
+   */
+  setName(row: NameRow): void {
+    this.#db.prepare(
+      `INSERT INTO named (session_id, name, named_at) VALUES (?,?,?)
+       ON CONFLICT(session_id) DO UPDATE SET
+         name = excluded.name, named_at = excluded.named_at`,
+    ).run(row.sessionId, row.name, row.namedAt);
+  }
+
+  /** Every name, newest first — the order a list of a person's own names reads. */
+  names(): NameRow[] {
+    const rows = this.#db.prepare(
+      'SELECT * FROM named ORDER BY named_at DESC, session_id ASC',
+    ).all() as Record<string, unknown>[];
+    return rows.map(toName);
+  }
+
+  nameOf(sessionId: string): NameRow | null {
+    const row = this.#db.prepare(
+      'SELECT * FROM named WHERE session_id = ?',
+    ).get(sessionId) as Record<string, unknown> | undefined;
+    return row === undefined ? null : toName(row);
+  }
+
+  /**
+   * Take the name back. `false` when there was none — an answer, not a
+   * failure, exactly as `unpersist` reports the same shape.
+   *
+   * What is left is the harness's own title, which was never touched, so this
+   * needs no restore step: the row goes back to showing what it showed before
+   * anybody typed here.
+   */
+  clearName(sessionId: string): boolean {
+    if (this.nameOf(sessionId) === null) return false;
+    this.#db.prepare('DELETE FROM named WHERE session_id = ?').run(sessionId);
+    return true;
+  }
+
   transaction<T>(fn: () => T): T {
     this.#db.exec('BEGIN IMMEDIATE');
     try {
@@ -2093,6 +2206,14 @@ function toPersisted(row: Record<string, unknown>): PersistedRow {
     markedAt: String(row['marked_at'] ?? ''),
     mirroredAt: String(row['mirrored_at'] ?? ''),
     note: typeof note === 'string' ? note : null,
+  };
+}
+
+function toName(row: Record<string, unknown>): NameRow {
+  return {
+    sessionId: String(row['session_id'] ?? ''),
+    name: String(row['name'] ?? ''),
+    namedAt: String(row['named_at'] ?? ''),
   };
 }
 
@@ -2306,6 +2427,16 @@ export interface ForgetReport {
    * go, the files stay, and the caller is told where they are.
    */
   persisted: number;
+  /**
+   * **Names this project gave sessions, dropped** — `plan:archive seq:34`.
+   *
+   * Unlike a mirror, a name IS knowledge that only this table holds — nothing
+   * on disk can rebuild it, because nothing on disk ever held it. So it is
+   * counted and reported rather than dropped in silence
+   * (`INV-nothing-is-dropped-silently`), and `mycontext conversation forget`
+   * says the number out loud before it asks.
+   */
+  named: number;
 }
 
 /**
@@ -2384,18 +2515,22 @@ export function forgetConversations(dbPath: string, busyTimeoutMs = 3000): Forge
     const hasConversations = has('conversations');
     const hasSubagents = has('subagents');
     const hasPersisted = has('persisted');
-    if (!hasConversations && !hasSubagents && !hasPersisted) {
-      return { indexed: false, conversations: 0, subagents: 0, persisted: 0 };
+    const hasNamed = has('named');
+    if (!hasConversations && !hasSubagents && !hasPersisted && !hasNamed) {
+      return { indexed: false, conversations: 0, subagents: 0, persisted: 0, named: 0 };
     }
     const conversations = hasConversations ? count('conversations') : 0;
     const subagents = hasSubagents ? count('subagents') : 0;
     const persisted = hasPersisted ? count('persisted') : 0;
+    const named = hasNamed ? count('named') : 0;
     db.exec('DROP TABLE IF EXISTS conversations');
     db.exec('DROP TABLE IF EXISTS subagents');
     // The marks, not the mirrors. See `ForgetReport.persisted` for why those
     // two are not the same act and why this command may only do the first.
     db.exec('DROP TABLE IF EXISTS persisted');
-    return { indexed: true, conversations, subagents, persisted };
+    // And the names, which have no file to survive in — `ForgetReport.named`.
+    db.exec('DROP TABLE IF EXISTS named');
+    return { indexed: true, conversations, subagents, persisted, named };
   } finally {
     db.close();
   }

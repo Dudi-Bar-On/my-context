@@ -139,7 +139,7 @@ import { closeSync, openSync, readSync, statSync } from 'node:fs';
 import {
   ConversationIndex, ConversationIndexIncompleteError, ConversationIndexUninitializedError,
   MAX_SCAN_BYTES, classifyTurn, iterateTranscript, listTranscriptFiles, transcriptDir,
-  type ConversationRow, type SubagentRow, type TranscriptCursor,
+  type ConversationRow, type NameRow, type SubagentRow, type TranscriptCursor,
 } from '../core/conversation-index.ts';
 import { workspaceCwd } from './read-model-conversations.ts';
 import { registerRoute, type ApiContext, type JsonResult } from './routes.ts';
@@ -438,6 +438,19 @@ export interface DocOutlineBody {
   source: string;
   title: string | null;
   titleSource: string | null;
+  /**
+   * **The name this project gave the session, or `null`** — `plan:archive
+   * seq:34`. `title` above still carries Claude Code's own, untouched, so the
+   * head can draw the reader's name and still say what the harness calls it.
+   *
+   * On a LANE this is `null` by construction and not by omission: names are
+   * keyed by session, a lane already carries the line its dispatcher typed as
+   * its `title` with `titleSource = 'agent'`, and `mycontext conversation
+   * name` refuses a lane id in those words.
+   */
+  name: string | null;
+  /** When the name was given. `null` when there is none. */
+  namedAt: string | null;
   branch: string | null;
   startedAt: string | null;
   endedAt: string | null;
@@ -1653,7 +1666,9 @@ function unknownParams(url: URL, allowed: string[]): string | null {
  *     and it does not touch the `conversations` table's own `source` column,
  *     which stays `'live'`/`'exported'` for `seq:5`.
  */
-function rowFor(ws: Workspace, id: string): { row: ConversationRow } | { fail: JsonResult } {
+function rowFor(
+  ws: Workspace, id: string,
+): { row: ConversationRow; named: NameRow | null } | { fail: JsonResult } {
   let index: ConversationIndex;
   try {
     index = ConversationIndex.openReadOnlyChecked(ws.dbPath);
@@ -1673,12 +1688,19 @@ function rowFor(ws: Workspace, id: string): { row: ConversationRow } | { fail: J
     throw err;
   }
   let row: ConversationRow | null;
+  // **The name this project gave, read in the same open as the row** —
+  // `plan:archive seq:34`. Looked up by the id the route was ASKED for, which
+  // is the session id for a session and the agent id for a lane, so a lane can
+  // never inherit the name of the session that dispatched it: `named` is keyed
+  // by session and `mycontext conversation name` refuses a lane outright.
+  let named: NameRow | null = null;
   try {
     row = index.get(id);
     if (row === null) {
       const agent = index.getSubagent(id);
       if (agent !== null) row = subagentAsRow(agent);
     }
+    if (row !== null) named = index.nameOf(id);
   } finally {
     index.close();
   }
@@ -1692,7 +1714,7 @@ function rowFor(ws: Workspace, id: string): { row: ConversationRow } | { fail: J
       },
     };
   }
-  return { row };
+  return { row, named };
 }
 
 /** A lane in the shape the document routes read. See `rowFor` for the two choices. */
@@ -1788,7 +1810,14 @@ export function apiConversationOutline(
 
   const head = {
     sessionId: row.sessionId, source: row.source, title: row.title,
-    titleSource: row.titleSource, branch: row.branch,
+    titleSource: row.titleSource,
+    // Beside the harness's title and not instead of it — `plan:archive
+    // seq:34`. `mountDocument` draws this document on `/lane.html` as well as
+    // inside the app, so both windows get the same two facts and neither can
+    // present one of them as the other.
+    name: found.named === null ? null : found.named.name,
+    namedAt: found.named === null ? null : found.named.namedAt,
+    branch: row.branch,
     startedAt: row.startedAt, endedAt: row.endedAt,
     peekChars: PEEK_CHARS, resumed: resume !== undefined,
   };

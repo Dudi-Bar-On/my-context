@@ -4267,3 +4267,187 @@ test.describe('a marked passage copies as something a terminal will accept', () 
     expect(await payload(page)).toBe(text);
   });
 });
+
+/* ══ seq:34 — THE ONE NAME THIS PROJECT OWNS ═══════════════════════════════ */
+
+/**
+ * **The archive borrowed Claude Code's name for a session and offered none of
+ * its own** — `plan:archive seq:34`, which recorded that silence as a choice
+ * rather than leaving it as one. `seq:10`'s spec had asked for the title to be
+ * *"taken from the transcript's own `aiTitle` AND OVERRIDABLE for a session
+ * worth naming"* and shipped only the borrowing.
+ *
+ * **What this block asserts is the pair, never the name alone.** The finding
+ * behind the item is not that a reader had no name — it is that they could not
+ * tell whose the name was. So every assertion here is on THREE things in one
+ * row: our name, the mark that says it is ours, and what Claude Code still
+ * calls the same session, drawn beside it and not replaced. A screen that drew
+ * only the first would pass a weaker test and reproduce the defect exactly.
+ *
+ * **Its own harness**, for the reason the staleness block has one: the shared
+ * fixture's row text is asserted by a dozen tests above, and naming its session
+ * would rewrite the heading every one of them reads.
+ *
+ * The name is set through the CLI, because the server cannot set it — the same
+ * read/write split the index itself is built on, exercised the way a person
+ * meets it: run the command, then open the screen.
+ */
+test.describe('a session can be given a name of its own', () => {
+  let namedHarness: UiHarness;
+  let namedCwd: string;
+  let namedHome: string;
+
+  const NAMED_SESSION = 'sess-named';
+  const OURS = 'the Tuesday rewrite';
+  const THEIRS = 'What the model called it';
+  const LANE_LINE = 'Read the ledger';
+
+  test.beforeAll(async () => {
+    namedHome = mkdtempSync(path.join(tmpdir(), 'e2e-named-home-'));
+    namedCwd = mkdtempSync(path.join(tmpdir(), 'e2e-named-cwd-'));
+    const dir = path.join(namedHome, 'projects', projectDirName(namedCwd));
+    mkdirSync(dir, { recursive: true });
+    const jsonl = (rows: unknown[]): string => rows.map((r) => JSON.stringify(r)).join('\n') + '\n';
+
+    writeFileSync(path.join(dir, `${NAMED_SESSION}.jsonl`), jsonl([
+      { type: 'ai-title', aiTitle: THEIRS },
+      {
+        type: 'user', timestamp: '2026-09-10T09:00:00.000Z', gitBranch: 'master',
+        message: { role: 'user', content: 'name this one' },
+      },
+      {
+        type: 'assistant', timestamp: '2026-09-10T09:00:01.000Z', gitBranch: 'master',
+        message: {
+          role: 'assistant',
+          content: [{ type: 'tool_use', id: 'toolu_NAMED', name: 'Agent', input: { prompt: LANE_LINE } }],
+        },
+      },
+      {
+        type: 'assistant', timestamp: '2026-09-10T09:00:02.000Z', gitBranch: 'master',
+        message: { role: 'assistant', content: text('named, and the borrowed one is still here') },
+      },
+    ]));
+
+    const lanes = path.join(dir, NAMED_SESSION, 'subagents');
+    mkdirSync(lanes, { recursive: true });
+    writeFileSync(path.join(lanes, 'agent-named.jsonl'), jsonl([
+      { type: 'user', message: { role: 'user', content: LANE_LINE }, timestamp: '2026-09-10T09:00:03.000Z' },
+      { type: 'assistant', message: { role: 'assistant', content: text('the lane worked') }, timestamp: '2026-09-10T09:00:04.000Z' },
+    ]));
+    writeFileSync(path.join(lanes, 'agent-named.meta.json'), JSON.stringify({
+      agentType: 'general-purpose', description: LANE_LINE,
+      toolUseId: 'toolu_NAMED', spawnDepth: 1,
+    }));
+
+    process.env['CLAUDE_CONFIG_DIR'] = namedHome;
+    const previous = process.cwd();
+    process.chdir(namedCwd);
+    try {
+      runCli(['init'], namedCwd, () => {});
+      runCli(['conversation', 'rebuild'], namedCwd, () => {});
+      // **The write the server may not make.** `ConversationIndex.open` creates
+      // tables, so nothing under `src/ui/` may call it; the name arrives the
+      // way every other fact in this index does, through the CLI.
+      runCli(['conversation', 'name', NAMED_SESSION, OURS], namedCwd, () => {});
+    } finally {
+      process.chdir(previous);
+    }
+    namedHarness = await startUiChild(namedCwd);
+  });
+
+  test.afterAll(async () => {
+    await namedHarness?.stop();
+    delete process.env['CLAUDE_CONFIG_DIR'];
+    if (namedCwd) removeTree(namedCwd);
+    if (namedHome) removeTree(namedHome);
+  });
+
+  const openNamed = async (page: Page, lang: 'en' | 'he'): Promise<void> => {
+    await page.addInitScript((l) => {
+      try { localStorage.setItem('myctx-lang', l as string); } catch { /* private mode */ }
+    }, lang);
+    const nonce = await mintNonce(namedHarness.port);
+    await page.goto(`http://127.0.0.1:${namedHarness.port}/#${nonce}`);
+    await page.waitForSelector('.rail', { timeout: 20_000 });
+    await page.evaluate(() => { location.hash = '#/conversations'; });
+    await page.waitForSelector('.convrow', { timeout: 20_000 });
+    await expect(page.locator('#exited')).toBeHidden();
+  };
+
+  for (const lang of ['en', 'he'] as const) {
+    test(`the row draws our name, marks it ours, and still says what Claude Code calls it (${lang})`, async ({ page }) => {
+      await openNamed(page, lang);
+      const row = page.locator('.convrow').first();
+      await expect(row).toBeVisible();
+
+      // 1. OUR NAME is the heading — `bdi.convtitle`, the element the borrowed
+      //    title used to be alone in.
+      await expect(row.locator('bdi.convtitle')).toHaveText(OURS);
+      // 2. AND IT IS MARKED AS OURS, in the reader's own language.
+      await expect(row).toContainText(lang === 'he' ? 'השם ניתן כאן' : 'named here');
+      // 3. AND THE BORROWED NAME IS STILL DRAWN. This is the assertion the
+      //    item is actually about: the harness's record is REPORTED and never
+      //    rewritten, so the reader can tell the two names apart.
+      await expect(row).toContainText(lang === 'he' ? 'Claude Code קורא לה' : 'Claude Code calls it');
+      await expect(row).toContainText(THEIRS);
+      // And the model wrote that one, which the row still says — the borrowed
+      // name keeps its own provenance rather than losing it to ours.
+      await expect(row).toContainText(lang === 'he' ? 'המודל' : 'the model');
+
+      await page.screenshot({
+        path: `e2e/screens/conversations-named-${lang}.png`, fullPage: true,
+      });
+    });
+  }
+
+  /**
+   * A name a person types and then cannot search for would be worse than no
+   * naming at all: they would look for their own word, find nothing, and read
+   * that as the session being gone. `conv.searchScope` promises the search
+   * reads it; this is that promise driven.
+   */
+  test('the search finds the session by the name we gave it', async ({ page }) => {
+    await openNamed(page, 'en');
+    const card = page.locator('.card.pane').filter({ has: page.locator('.convfilter') });
+    const rows = card.locator('.convrow');
+    await expect(rows).toHaveCount(1);
+
+    await card.locator('.convfilter input').first().fill('tuesday');
+    await expect(rows).toHaveCount(1);
+    await expect(rows.first().locator('bdi.convtitle')).toHaveText(OURS);
+  });
+
+  /**
+   * **The document head, and the BARE LANE WINDOW beside it** — `plan:archive
+   * seq:51` ships `/lane.html`, which imports `mountDocument` and forks
+   * nothing, so `titleNodes` runs on two pages and one wrong branch is wrong on
+   * both.
+   *
+   * A lane carries no name of ours BY CONSTRUCTION: names are keyed by session
+   * and `mycontext conversation name` refuses a lane id in those words. So the
+   * lane window must draw the line its dispatcher typed, unmarked — exactly
+   * what it drew before this feature existed.
+   */
+  test('the document head carries all three, and a bare lane window carries none of them', async ({ page }) => {
+    await openNamed(page, 'en');
+    await page.locator('.convrow').first().click();
+    await page.waitForSelector('.tvscroll .tvturn', { timeout: 20_000 });
+
+    const head = page.locator('.tvtitle');
+    await expect(head.locator('bdi.convtitle')).toHaveText(OURS);
+    await expect(head).toContainText('named here');
+    await expect(head).toContainText('Claude Code calls it');
+    await expect(head).toContainText(THEIRS);
+
+    await page.goto(`http://127.0.0.1:${namedHarness.port}/lane.html?id=agent-named`);
+    await page.waitForSelector('.tvscroll .tvturn', { timeout: 20_000 });
+    await expect(page.locator('#strip'), 'there is no application here').toHaveCount(0);
+    const laneHead = page.locator('.tvtitle');
+    await expect(laneHead.locator('bdi.convtitle')).toHaveText(LANE_LINE);
+    await expect(laneHead, 'a lane must never be drawn as though we had named it')
+      .not.toContainText('named here');
+    await expect(laneHead).not.toContainText(OURS);
+
+    await page.screenshot({ path: 'e2e/screens/conversations-named-lane.png', fullPage: true });
+  });
+});
