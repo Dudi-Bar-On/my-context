@@ -5527,24 +5527,59 @@ async function fillItems(count) {
  */
 function corpusNoteButtons(status) {
   const out = [];
-  const open = (key, titleKey, count, route, field) => {
+  // **ONE OPTIONS OBJECT, AND `field:` IS WRITTEN AS A LITERAL PROPERTY.**
+  // `test/ui/strip-parity.test.ts` reads a field id out of both surfaces in
+  // exactly two forms — `field: '<id>'` or `.dataset.f = '<id>'` — and a
+  // positional argument assigned through a variable is neither. These two
+  // fields were invisible to that scan until `plan:loop seq:4` put the terminal
+  // bar's REVIEW block beside this one and the subset check failed on a field
+  // the strip has drawn since 2026-08-31. A declaration form that a derivation
+  // cannot see is a hand-kept list wearing a function.
+  const open = ({ key, titleKey, count, route, field, band, glyph }) => {
     const btn = document.createElement('button');
     btn.type = 'button';
     // A PILL like every other field — owner ruling, every field on the bar.
     // Still a button and still a door: the pill is a presentation, not a
     // downgrade of the affordance.
-    btn.className = 'linkid ufield';
+    btn.className = band ? `linkid ufield ${band}` : 'linkid ufield';
     btn.dataset.f = field;
     btn.dataset.k = key;
+    if (glyph) btn.dataset.g = glyph;
     btn.append(...translate(table.strings, key, { count: String(count) }));
     btn.title = flat(table.strings, titleKey);
     btn.onclick = () => { location.hash = `#/${route}`; };
     return btn;
   };
-  out.push(open('strip.doc', 'title.doc', doctorNoticeCount(status), 'doctor',
-    'doctor-notices'));
+  out.push(open({
+    key: 'strip.doc', titleKey: 'title.doc', count: doctorNoticeCount(status),
+    route: 'doctor', field: 'doctor-notices',
+  }));
   const queue = reviewQueueCount(status);
-  if (queue > 0) out.push(open('strip.queue', 'title.queue', queue, 'work', 'review-queue'));
+  // ── §10's INDICATOR: THE COUNT IS THE TEXT AND THE AGE IS THE COLOUR ──────
+  //
+  // *"Twelve drafts from today is a productive session; three from six weeks
+  // ago is the landfill, and a count alone cannot tell them apart."* So the
+  // band comes off `reviewQueue.age`, which `mycontext status` computed with
+  // `queueAge` (`src/review/pending.ts`) against thresholds read off this
+  // corpus's own settle latencies. **The browser derives no age of its own**:
+  // an oldest-timestamp turned into a colour here would be the second spelling
+  // of a verdict, which is the defect `strip-parity` exists about one level up.
+  // The terminal bar asks the same function directly, so the two surfaces
+  // cannot disagree about whether this queue is rotting.
+  //
+  // The glyph is drawn beside the count so the hue is never the only carrier
+  // (`06-a11y.html`), and the pill stays quiet in the fresh band: a queue that
+  // is being worked needs no alarm, and an alarm that is always on is one
+  // nobody reads.
+  if (queue > 0) {
+    const age = status?.reviewQueue?.age ?? null;
+    out.push(open({
+      key: 'strip.queue', titleKey: 'title.queue', count: queue, route: 'work',
+      field: 'review-queue',
+      band: age === 'stale' ? 'critical' : age === 'ageing' ? 'warning' : '',
+      glyph: age === 'stale' ? '■' : age === 'ageing' ? '▲' : '',
+    }));
+  }
   return out;
 }
 

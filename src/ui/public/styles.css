@@ -1496,6 +1496,24 @@ bdi{unicode-bidi:isolate}
    asked about. */
 .strip .chip.ok,.strip .chip.warn,.strip .chip.crit,.strip .chip.gov,
 .strip .chip.unmeas,.strip .chip.index{background:none}
+/* ── THE REVIEW QUEUE PILL IS COLOURED BY THE AGE OF ITS OLDEST ENTRY ────
+   `plan:loop seq:4`, design §10. The four rules below reach `.ubar`/`.uval`,
+   which are the parts of a METERED field; this pill has neither — it is a
+   count and a door — so the band has to reach the field itself, and reaching
+   the field is also what makes `border:1px solid currentColor` follow. Scoped
+   by `data-f` rather than adding a class, because two other fields already
+   wear `.warning`/`.critical` for a metered reading and must keep their
+   existing treatment.
+
+   THE GLYPH IS NOT DECORATION. `.linkid` carries no `::before`, so the rule
+   below is what puts `▲`/`■` in front of the count — and it is what keeps the
+   hue from being the only carrier of the verdict (`06-a11y.html`). The fresh
+   band sets no `data-g` at all, so this draws nothing for a queue that is
+   being worked: an alarm that is always on is one nobody reads. */
+.strip .ufield[data-f="review-queue"][data-g]::before{
+  content:attr(data-g) " ";font-family:var(--mono)}
+.strip .ufield[data-f="review-queue"].warning{color:var(--warn)}
+.strip .ufield[data-f="review-queue"].critical{color:var(--crit)}
 .strip .ufield.safe .ubar,.strip .ufield.safe .uval{color:var(--ok)}
 .strip .ufield.caution .ubar,.strip .ufield.caution .uval{color:var(--gold)}
 .strip .ufield.warning .ubar,.strip .ufield.warning .uval{color:var(--warn)}
@@ -2104,6 +2122,22 @@ details.help[open]>summary{margin-block-end:6px}
 
 /* ─── simulate.js's own controls (mockup ~852-861): `.segbar` is the tier
    picker's button row, `.simctl` wraps the budget slider. */
+/* ─── `work.js`'s REVIEW BRIEF — design §7, `plan:loop seq:4`.
+
+   A `<pre>` because `briefOf` (review/propose.ts) composes real line breaks
+   and closes with verbatim transcript quotes; reflowing those into a paragraph
+   would silently join two sentences that were never one. `pre-wrap` so the
+   long ones still wrap at the card's width instead of forcing a horizontal
+   scroll on the screen a person reads before deciding.
+
+   Its own class rather than `.card`'s type, because it is QUOTED MATERIAL: the
+   rule down its reading-start edge is the same treatment `td.m.stale` uses on
+   the revision table, and it is what stops the brief being mistaken for the
+   screen's own words. `--dim` for the same reason. */
+.reviewbrief{margin:0;white-space:pre-wrap;overflow-wrap:anywhere;
+  font:400 12px/1.55 var(--mono);color:var(--dim);
+  border-inline-start:2px solid var(--edge-3);padding-inline-start:var(--sp-2);
+  max-block-size:22em;overflow-y:auto}
 .segbar{display:flex;gap:6px;flex-wrap:wrap;margin-block-start:var(--sp-2)}
 .segbar button{border:1px solid var(--edge-3);background:var(--sink);border-radius:var(--r-md);
   padding-block:3px;padding-inline:var(--sp-2);font-size:var(--fs-0);cursor:pointer;color:var(--dim)}

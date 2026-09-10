@@ -889,8 +889,10 @@ export function isServableDocPath(relPath: string): boolean {
  *   - it must be exactly its own POSIX normalisation, so `./`, a trailing `/`
  *     and any `..` that `normalizePosix` would resolve are all refused rather
  *     than quietly rewritten into something servable;
- *   - it must sit under `items/`, which is the only directory `loadLayer`
- *     reads and therefore the only one that can be called the corpus;
+ *   - it must sit under `items/` or under `.drafts/`, which are the two
+ *     directories `loadLayer` reads and therefore the only two that can be
+ *     called the corpus — see the paragraph below, because that clause changed
+ *     and the reason it changed is the reason it was written that way;
  *   - it must end `.md`, because the corpus is Markdown and `state/` holds
  *     databases nobody should be handed;
  *   - and no segment may be empty, `.` or `..`, which catches a Windows-style
@@ -901,11 +903,61 @@ export function isServableDocPath(relPath: string): boolean {
  * can this server hand out" finds both answers side by side instead of one
  * here and one in the read model.
  */
+/**
+ * The corpus's own walk roots, and the whole of what `CORPUS_ROOTS` is for.
+ *
+ * ── WHY `.drafts/` JOINED IT, AND WHY IT IS A WIDENING RATHER THAN A ROUTE ─
+ *
+ * This predicate's `items/` clause was never about `items/` — it was about
+ * *"the only directory `loadLayer` reads"*. `plan:loop seq:3` gave `loadLayer`
+ * a SECOND walk root (`core/drafts.ts` · `DRAFT_DIR`), so a draft is loaded,
+ * indexed, listed, shown and duplicate-checked exactly like any other item and
+ * its `file_path` sits in the same `items.file_path` column this roster is
+ * built from. The stated reason for the narrow clause expired the moment that
+ * landed; leaving the clause would have kept the RULE while losing the reason,
+ * which is the defect this repository spends most of its comments on.
+ *
+ * **The alternative was a second route, and it was refused on the security
+ * argument rather than on the effort.** `/api/corpus/:id`'s defence is four
+ * things — an id that is a KEY and never a path, a roster built from the index
+ * rather than from a walk, this predicate over the hostile row, and a realpath
+ * check over the file. A `/api/drafts/:id` would have to reproduce all four,
+ * for the one class of file in this product that an AGENT wrote. A second
+ * implementation of a traversal defence, guarding the least trusted content
+ * the corpus holds, is the worst place in this codebase to have two of
+ * something.
+ *
+ * **What becomes reachable, said out loud.** A draft's Markdown — frontmatter
+ * included — is now readable by a browser holding the UI token, and appears in
+ * the Library's file tree. That is the same content `/api/review-queue`,
+ * `/api/items` and `/api/item/:id` already serve to the same holder of the
+ * same token, and it is what the review surface needs in order to open a draft
+ * in the right pane at all. Nothing else moves: `state/`, `config.json`,
+ * `.audit/` and every non-`.md` file are outside the roster by construction,
+ * and the `.gitignore` inside `.drafts/` still means none of it reaches
+ * anybody else's checkout.
+ */
+export const CORPUS_ROOTS = ['items/', '.drafts/'] as const;
+
 export function isCorpusFilePath(relPath: string): boolean {
   if (relPath !== normalizePosix(relPath)) return false;
-  if (!relPath.startsWith('items/')) return false;
+  if (!CORPUS_ROOTS.some((root) => relPath.startsWith(root))) return false;
   if (!relPath.endsWith('.md')) return false;
   return relPath.split('/').every((segment) => segment !== '' && segment !== '.' && segment !== '..');
+}
+
+/**
+ * Which of `CORPUS_ROOTS` a servable path sits under, or `null`.
+ *
+ * `apiCorpusFile` needs it because its realpath containment check is against
+ * the root directory the file claims to be in, and with two roots that is no
+ * longer a constant. Derived from the same list the predicate uses, so a third
+ * root can never be admitted by one and refused by the other.
+ */
+export function corpusRootOf(relPath: string): string | null {
+  if (!isCorpusFilePath(relPath)) return null;
+  const root = CORPUS_ROOTS.find((candidate) => relPath.startsWith(candidate));
+  return root === undefined ? null : root.slice(0, -1);
 }
 
 /**

@@ -31,6 +31,19 @@
  * field's worth. A bidirectional check would have forced that field OFF the web
  * to go green, which is parity by subtraction and is the opposite of the ruling.
  *
+ * **THE REVIEW QUEUE STOPPED BEING THAT EXAMPLE ON 2026-09-11**, and the
+ * paragraph above is kept because the ARGUMENT is still the right one — only
+ * the instance changed. `plan:loop seq:4` re-measured the read the refusal was
+ * about: a read-only open of `.index.db` plus one draft-narrowed `SELECT` plus
+ * the revision log is p50 2.9 ms / p95 4.3 ms over 60 runs on this
+ * repository's 1,085-item corpus, against a bar that already pays p95 26.6 ms
+ * for `myctxShare` on the same path. The case on the other side of the cost is
+ * design §1: *a queue nobody works* is the failure the whole review loop must
+ * not become, and an indicator that lives only on a surface a person has to go
+ * and open is that failure with one extra step. So the terminal draws it too,
+ * under the same field id, and this test's direction is what made that a
+ * one-line change rather than a second field.
+ *
  * ── WHAT IT DOES NOT ASSERT, DELIBERATELY ──────────────────────────────────
  *
  * **Presentation.** The two surfaces are entitled to say one fact differently:
@@ -160,6 +173,10 @@ const FULL: PowerlineInput = {
   // and a session that dispatched none — so the two fixtures between them reach
   // every branch `buildLines` has for this pair.
   sessionScale: { transcriptBytes: 52_061_736, lanes: 262 },
+  // §10's indicator. The LOUD band, deliberately: `reviewSegment` draws the
+  // day count only past `fresh`, so a fresh fixture would leave half the
+  // block's text unreached by every assertion in this file.
+  review: { count: 4, age: 'stale', days: 21, drafts: 3, revisions: 1 },
 };
 
 /** The same payload with the two NOTES present instead of what they qualify. */

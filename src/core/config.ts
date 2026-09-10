@@ -662,6 +662,44 @@ export interface ReviewConfig {
    * for one subsystem.
    */
   maxProposalsPerPass: number;
+  /**
+   * **How much may be WAITING before a pass proposes nothing at all** —
+   * §10, landed by `plan:loop seq:4`, and it is the half that modifies an
+   * owner ruling rather than implementing one.
+   *
+   * He chose an age-coloured count. The research §10 cites complicates it:
+   * oversight has a capacity, and past it reviewer reliability decays so that
+   * MORE escalation makes the system LESS safe — *"escalating everything is
+   * strictly worse than the optimum"* (arXiv:2606.08919). An age-coloured
+   * count is a PRESSURE mechanism: it pushes toward the fatigue regime rather
+   * than rationing. **So the colour tells him the queue is ageing, and this
+   * stops it becoming unworkable.** Both, not either.
+   *
+   * `maxProposalsPerPass` bounds ONE pass; this bounds the QUEUE. Without the
+   * second, twenty passes of five is a hundred pending, and every one of them
+   * arrived inside its ration.
+   *
+   * **The number is derived, not chosen.** It is §11's own printed pair
+   * multiplied: `maxProposalsPerPass` 5 × `maxFiresPerSession` 3 = 15, which
+   * is exactly ONE SESSION at full ration. The reading is the whole argument
+   * for the mechanism: if a full session's worth of proposals is still
+   * pending, the queue is not being worked, and the correct response to a
+   * queue nobody is working is to stop adding to it — not to add to it faster
+   * and colour it red.
+   *
+   * **Past the ceiling, capture continues and proposals wait.** Nothing is
+   * dropped: the pass still reads, still classifies and still reports what it
+   * would have proposed (`ProposeResult.rationed`, and `held` says the ceiling
+   * was the reason). §10's words are *"capture continues but proposals wait
+   * rather than escalating"*, and a ceiling that discarded would be a
+   * different mechanism wearing the same name.
+   *
+   * **0 is legal and means the queue is full at empty** — the ceiling set to
+   * nothing, exactly as `maxProposalsPerPass: 0` is the ration set to nothing.
+   * It is not a second kill switch: `enabled: false` is the switch, and §11's
+   * rule is one switch for one subsystem.
+   */
+  queueCeiling: number;
 }
 
 /**
@@ -697,6 +735,19 @@ export const DEFAULT_REVIEW: ReviewConfig = {
   // plan says the same thing about the same moment: *"Do not proceed on green
   // tests alone. Read the drafts."*
   maxProposalsPerPass: 0,
+  // ── DERIVED, AND LIVE EVEN THOUGH THE RATION ABOVE IS 0 ──────────────────
+  //
+  // 15 = §11's own `maxProposalsPerPass: 5` times its `maxFiresPerSession: 3`
+  // — one session at full ration. See `queueCeiling` for why that reading is
+  // the argument for the mechanism rather than a convenient product.
+  //
+  // It is a REAL number rather than 0 for the reason this whole object is
+  // live while `enabled` is false: a reader asking "what would it do if I
+  // turned it on" gets an answer from one object rather than from a switch
+  // statement. With the ration at 0 it governs nothing today, and the day the
+  // owner raises the ration it is already there — which is the point, because
+  // the raising is the moment a ceiling starts to matter.
+  queueCeiling: 15,
 };
 
 export interface Config {
@@ -1570,7 +1621,7 @@ function requireDispatchGate(raw: unknown): DispatchGateConfig {
  */
 const REVIEW_KEYS = [
   'enabled', 'everyNToolCalls', 'onPreCompact', 'maxFiresPerSession',
-  'readWholeTranscript', 'includeSubagents', 'maxProposalsPerPass',
+  'readWholeTranscript', 'includeSubagents', 'maxProposalsPerPass', 'queueCeiling',
 ];
 
 /**
@@ -1594,7 +1645,8 @@ const REVIEW_LATER_KEYS = ['crossSessionSameCwd', 'model'];
 
 /** The three `review` keys that are counts, with the bound each is held to. */
 const REVIEW_COUNTS: {
-  key: 'everyNToolCalls' | 'maxFiresPerSession' | 'maxProposalsPerPass'; min: number; max: number;
+  key: 'everyNToolCalls' | 'maxFiresPerSession' | 'maxProposalsPerPass' | 'queueCeiling';
+  min: number; max: number;
 }[] = [
   // 1 is legal and means "consider on every tool call". It is not the same as
   // off — the rubric still decides, and the ration still bounds the session —
@@ -1614,6 +1666,14 @@ const REVIEW_COUNTS: {
   // hundreds of drafts a session, and upstream's measured failure was a 74-item
   // queue built out of 13 firings.
   { key: 'maxProposalsPerPass', min: 0, max: 50 },
+  // 0 is legal for `maxProposalsPerPass`'s first reason — the ceiling set to
+  // nothing is not a second kill switch — and the maximum is deliberately an
+  // order of magnitude above the ration's rather than equal to it: a ceiling
+  // is a queue depth, and a person who raises the ration to 50 is entitled to
+  // let several passes' worth accumulate before the pass stops proposing.
+  // Above 500 the setting stops meaning anything a person can work down, and
+  // upstream's measured failure was a 74-item queue built out of 13 firings.
+  { key: 'queueCeiling', min: 0, max: 500 },
 ];
 
 /**

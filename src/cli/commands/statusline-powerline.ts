@@ -11,6 +11,7 @@ import type { CorpusResolution } from '../../core/corpus-identity.ts';
 // decides what became of an ask and this file renders the answer.
 import type { HandoverAskVerdict } from '../../core/handover-ask.ts';
 import { DIR_NAME } from '../../core/workspace.ts';
+import type { ReviewChip } from '../../review/pending.ts';
 
 // --- The status line, as powerline blocks -----------------------------------
 //
@@ -141,6 +142,17 @@ export const FIELD_NAME: Record<string, string> = {
   cwd: 'CWD',
   'corpus-root': 'CORPUS',
   clock: 'CLOCK',
+  /**
+   * **WHAT IS WAITING FOR A PERSON** — `plan:loop seq:4`, design §10.
+   *
+   * The id is the strip's own `review-queue` (`app.js` ·
+   * `corpusNoteButtons` · `'review-queue'`), taken verbatim rather than
+   * renamed, so `strip-parity` sees ONE field on two surfaces instead of two
+   * fields that happen to mean the same thing. The web pill is a door to
+   * `#/work`; a terminal has no doors, so this is the same fact without the
+   * affordance — which is what that test exists to permit.
+   */
+  'review-queue': 'REVIEW',
 };
 
 /** The separator with its spaces, which is how it is actually joined. */
@@ -1368,6 +1380,31 @@ export interface PowerlineInput {
    * looked.
    */
   sessionScale: SessionScale | null;
+  /**
+   * **WHAT IS WAITING FOR A PERSON TO RULE ON IT** — design §10, computed by
+   * `reviewChip` (`src/review/pending.ts`).
+   *
+   * `null` carries THREE facts at once, and that is deliberate rather than
+   * lossy: nobody asked (no corpus), nothing could be measured (no index this
+   * build can read), and a measured EMPTY queue. All three draw nothing, so
+   * collapsing them costs the bar nothing — and the distinction survives
+   * upstream, in `PendingReview`, for the surfaces that have room to say it.
+   * A bar that drew "review: unmeasurable" every message in a workspace with
+   * no corpus is the 74-of-74 doctor screen.
+   */
+  /**
+   * **OPTIONAL, and that is the one place on this interface where absent and
+   * `null` are allowed to mean the same thing.**
+   *
+   * `queueCeiling` on the proposing side is required for the opposite reason:
+   * an absent ration silently DISABLES a mechanism. Absent here disables
+   * nothing — it draws no block, which is precisely what a `null` chip and an
+   * empty queue both do. So the failure a required field would guard against
+   * does not exist, and what optionality buys is that every caller assembling
+   * a bar by hand — this repository has a dozen fixtures — keeps working
+   * unchanged. A status line that throws is a status line the user removes.
+   */
+  review?: ReviewChip | null;
 }
 
 /**
@@ -1448,7 +1485,7 @@ export interface SessionScale {
 export const NO_EXTRAS: Pick<
   PowerlineInput,
   'modes' | 'fiveHour' | 'sevenDay' | 'costUsd' | 'elapsedMs' | 'warmPercent' | 'sessionName'
-  | 'cwd' | 'projectDir' | 'handoverAsk' | 'sessionScale'
+  | 'cwd' | 'projectDir' | 'handoverAsk' | 'sessionScale' | 'review'
 > = {
   modes: { effort: null, thinking: null, fastMode: null, exceeds200k: null },
   /**
@@ -1474,6 +1511,8 @@ export const NO_EXTRAS: Pick<
    * answer entirely — `{ transcriptBytes, lanes: 0 }` — and it IS drawn.
    */
   sessionScale: null,
+  /** Nothing waiting, nothing measured, nothing drawn — see the field. */
+  review: null,
 };
 
 export const GIVE = {
@@ -1539,6 +1578,21 @@ export const GIVE = {
    * stays low.
    */
   lastAudit: 8,
+  /**
+   * **Ranked above every convenience and below the corpus pair.**
+   *
+   * It outranks the cost, the cache share, the elapsed clock and the audit
+   * clock because it is the only field on this bar that names a thing WAITING
+   * FOR THE READER rather than a thing that happened to the session. A number
+   * a person is meant to act on that a narrow terminal drops before it drops
+   * a cost figure is a number the terminal has decided is decoration.
+   *
+   * It is ranked below `corpusRoot`/`cwd` for their stated reason and it
+   * holds here too: a pending count read out of the wrong corpus is worse
+   * than no pending count, so the block that says WHICH corpus keeps its
+   * place above the block that counts inside it.
+   */
+  reviewQueue: 25,
   myctxShare: 20,
   project: 30,
   branch: 40,
@@ -2617,6 +2671,18 @@ export function buildLines(input: PowerlineInput, now: number = Date.now()): Sta
     });
   }
 
+  // **WHAT IS WAITING FOR A PERSON** — §10's indicator, and the whole of what
+  // `reviewSegment` will not do is draw at zero. See `reviewChip`
+  // (`src/review/pending.ts`), which returns `null` for an empty queue so that
+  // this line and the web strip cannot each remember the rule differently.
+  // `?? null` for the reason every field on this bar is absent-tolerant: a
+  // caller assembling a `PowerlineInput` by hand — a test, or a build that
+  // predates this field — must lose the block, never the line. A status line
+  // that throws is a status line the user removes, and then the measurement
+  // stops for good.
+  const waiting = reviewSegment(input.review ?? null);
+  if (waiting !== null) state.push(waiting);
+
   // **WHEN THIS LINE WAS DRAWN** — last of all, on the row that moves, for the
   // same reason the audit clock is on it: it IS a clock. `now` is render time
   // and is never carried in aged.
@@ -2633,6 +2699,61 @@ export function buildLines(input: PowerlineInput, now: number = Date.now()): Sta
   }
 
   return { identity, window, account: state };
+}
+
+/**
+ * **THE REVIEW QUEUE, COLOURED BY THE AGE OF THE OLDEST THING IN IT** — design
+ * §10, `plan:loop seq:4`.
+ *
+ * ── IT DRAWS NOTHING AT ZERO, AND THE NOTHING IS NOT DECIDED HERE ──────────
+ *
+ * `reviewChip` has already returned `null` for an empty queue and for one that
+ * could not be read. This function's `null` branch is that answer travelling,
+ * not a second copy of the rule — which matters because the rule is about
+ * SILENCE, and a rule about silence is exactly the one a second implementation
+ * forgets. The reason is on the item in the owner's own terms: *"an indicator
+ * that shows something when there is nothing pending trains a reader to ignore
+ * it"*, measured on a doctor screen where 74 of 74 findings offered no remedy
+ * and the control stopped being read.
+ *
+ * ── THE COLOUR IS THE AGE AND THE TEXT IS THE COUNT ───────────────────────
+ *
+ * Twelve drafts from today is a productive session and three from six weeks
+ * ago is landfill, and a count alone cannot tell them apart. So the NUMBER is
+ * what is drawn and the HUE is what judges — and the days ride along in the
+ * two loud states, because "3" in orange says something is wrong and "3 · 12d"
+ * says what.
+ *
+ * **The hue is never the only carrier** (`src/ui/public/06-a11y.html`): the
+ * glyph and the day count both change with the band, so
+ * `renderPowerline({ colour: false })` still says which of the three states
+ * this is. `LEVEL_GLYPH` and `INK` are the bar's existing four, not a fifth
+ * scale minted for this field.
+ *
+ * **No motion, in any state.** §10 spends motion on a TRANSITION and never on
+ * a steady state, and this bar re-renders on every assistant message — so a
+ * blink here would be a permanent blink, which is the thing a reader stops
+ * seeing. The blink this file already owns (`NO_BLINK_ENV`) stays where it is.
+ */
+export function reviewSegment(chip: ReviewChip | null): Segment | null {
+  if (chip === null) return null;
+  const label = FIELD_NAME['review-queue'];
+  const glyph = chip.age === 'stale' ? LEVEL_GLYPH.crit
+    : chip.age === 'ageing' ? LEVEL_GLYPH.warn : LEVEL_GLYPH.ok;
+  const ink = chip.age === 'stale' ? INK.crit : chip.age === 'ageing' ? INK.warn : INK.ok;
+  // The age is drawn only where it is the news. A fresh queue's count is the
+  // whole message — adding `· 0d` to it would spend three columns saying
+  // "nothing is wrong", every message, on the bar this project has twice
+  // measured people learning to ignore.
+  const age = chip.age === 'fresh' || chip.days === null ? '' : ` · ${chip.days}d`;
+  return {
+    text: `${glyph} ${chip.count}${age}`,
+    // A terminal too narrow for the age keeps the glyph and the count: the
+    // count is the request and the glyph is the verdict, and what a narrow
+    // terminal gives up is the explanation — `corpusSegment`'s own rule.
+    terse: `${glyph} ${chip.count}`,
+    label, ink, give: GIVE.reviewQueue, field: 'review-queue',
+  };
 }
 
 /**

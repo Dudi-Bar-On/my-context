@@ -203,6 +203,10 @@ export function reviewTrigger(
       // second answer. It ships at 0, so a workspace that turns `enabled` on
       // and changes nothing else still writes nothing — see `DEFAULT_REVIEW`.
       maxProposals: review.maxProposalsPerPass,
+      // §10's ceiling, read from the same resolved config and passed down the
+      // same way. The pass counts the queue itself when it has something to
+      // admit — this is only the number it counts against.
+      queueCeiling: review.queueCeiling,
       // A pass proposes only when it has a ration to spend. `dryRun` and a
       // zero ration say the same thing from two directions and both are
       // honoured, so neither can be the one that was forgotten.

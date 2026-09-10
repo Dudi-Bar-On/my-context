@@ -601,7 +601,15 @@ export const PALETTE = [
   },
   {
     name: 'review discard', kind: 'write', base: ['mycontext', 'review', 'discard'], boundary: true, runnable: true,
-    args: [{ name: 'id', source: 'drafts', required: true }], flags: [yes],
+    // `reason` joined this entry in `plan:loop seq:4`, when discarding a
+    // draft the REVIEW PASS wrote stopped being a deprecation and became a
+    // deletion (design §8): the draft's file goes, and the sentence saying why
+    // is — beside the canonical claim — the only thing that survives it. The
+    // flag is offered on every discard rather than only on a review-origin
+    // one, because a control that appeared and vanished with a property of the
+    // selected row would be a control a reader cannot learn.
+    args: [{ name: 'id', source: 'drafts', required: true }],
+    flags: [{ name: 'reason', input: 'text' }, yes],
   },
   {
     name: 'review promote-revision', kind: 'write', base: ['mycontext', 'review', 'promote-revision'],

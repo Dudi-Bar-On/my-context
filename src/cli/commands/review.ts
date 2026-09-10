@@ -21,6 +21,7 @@ import {
 } from '../../core/render-item.ts';
 import type { Workspace } from '../../core/workspace.ts';
 import { readImportRecords, type ImportRecord } from '../../pack/imported-audit.ts';
+import { declineDraft, declineRefusal } from '../../review/decline.ts';
 import { emitLoadErrors, openMutateContext } from './context.ts';
 import {
   DETAIL_FLAGS, DETAIL_USAGE, detailLevel, emitJson, paragraph, records, refuseUnknownFlag, table,
@@ -83,7 +84,9 @@ const USAGE = `usage: mycontext review [list] [--type <category>] ${DETAIL_USAGE
        mycontext review promote --all --pack <name> [--source <path>] [--yes]
              (every draft that pack imported, in one confirmation — no per-item flags;
               --source picks between two imports that call themselves the same thing)
-       mycontext review discard <id> [--yes]
+       mycontext review discard <id> [--reason "..."] [--yes]
+             (a draft the review pass wrote is DELETED and its claim remembered;
+              a draft a person or an ingest wrote is deprecated and kept as a trail)
        mycontext review revisions [<id>] ${DETAIL_USAGE}
        mycontext review promote-revision <id> [--revision REV-...] [--force] [--yes]
        mycontext review discard-revision <id> [--revision REV-...] [--reason "..."] [--yes]`;
@@ -1070,6 +1073,53 @@ function cmdReview(ws: Workspace, args: string[], out: Emit): number {
     }
 
     if (subcommand === 'discard') {
+      // ── §8: A REVIEW-PASS DRAFT IS DELETED, AND THE DECLINE IS KEPT ──────
+      //
+      // *"A declined draft never governed, so nothing is stranded and no
+      // successor is owed. It is deleted."* Everything below this block is
+      // the RETIREMENT, which is still the right act for a draft a person or
+      // an ingest wrote — that text was authored by somebody and the trail is
+      // worth something. `declineRefusal` is the discriminator and it is the
+      // trust boundary `plan:loop seq:3` already drew: `origin: 'review'`,
+      // in the gitignored draft region, in the project layer.
+      //
+      // **One command, two acts, and the preview says which one.** A separate
+      // `mycontext review decline` was considered and refused: the reader's
+      // question is "settle this queue entry", the CLI already has a verb for
+      // that, and a second verb would mean a reader has to know which kind of
+      // draft this is before they can pick the command that tells them.
+      if (declineRefusal(item) === null) {
+        const why = flag(args, 'reason');
+        out('about to decline:');
+        out(`  id     ${item.id}`);
+        out(`  type   ${item.type}`);
+        out(`  title  ${item.title}`);
+        out(`  file   ${item.filePath}`);
+        out('');
+        out(
+          'This draft was written by the review pass and has never governed anything, so it ' +
+          'is DELETED rather than deprecated. What is kept is the decline: the claim it made ' +
+          'goes to the decline ledger, and the pass will not propose it again in other words.',
+        );
+        if (why === null) {
+          out(
+            'No --reason given. The claim is still recorded, but the sentence saying why is ' +
+            'the only part a person can re-read.',
+          );
+        }
+        out('');
+        if (!confirmAction(
+          args, out, `Decline ${item.id} (${item.type}: "${item.title}") — deletes the draft?`,
+        )) return 1;
+        const declined = declineDraft(ctx, item, why);
+        out(
+          `my_context: ${item.id} is declined. ${declined.filePath} is deleted and the claim ` +
+          `"${declined.claim}" is on record, so the pass does not propose it again.` +
+          declined.audit,
+        );
+        emitLoadErrors(errors, out);
+        return 0;
+      }
       emitDraftRevisionNote(ctx, item, subcommand, out);
       if (!confirmAction(
         args, out,

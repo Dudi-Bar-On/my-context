@@ -550,8 +550,14 @@ test('every work. key the English table declares is placed by the screen', async
   // sentence of the design of record that silently does not render.
   assert.deepEqual(declared.filter((key) => !named.has(key)), [],
     'these work. keys are declared and drawn nowhere');
-  assert.equal(declared.length, 26,
-    `the English table declares ${declared.length} work. key(s); it has been 26 since `
+  assert.equal(declared.length, 30,
+    `the English table declares ${declared.length} work. key(s); it has been 30 since `
+    + '`plan:loop seq:4` put the REVIEW BRIEF on every draft card (design §7: the brief is '
+    + 'drawn inline, written at capture time, with no model call on this surface) — '
+    + '`work.brief`, `work.briefNone` and `work.briefCut` — and gave the reject sentence a '
+    + 'second spelling, `work.declineDraft`, because a draft the review pass wrote is DELETED '
+    + 'and one a person wrote is deprecated, and `work.discardDraft` says "the text is not '
+    + 'deleted" in as many words. 26 since '
     + '`plan:walk seq:31` gave `.cmdstate` an OPENING state — `work.uncopied`, the sentence '
     + 'beside a command nobody has copied yet, which `work.state` ("copied, not yet observed '
     + 'landing") had been standing in for unconditionally. 25 since the owner\'s 2026-08-29 '

@@ -45,7 +45,7 @@ import { POINT_CATEGORIES, type PointCategory } from '../core/session-summary.ts
 import { openRebuiltStore } from '../core/open-store.ts';
 import { resolveWorkspace } from '../core/workspace.ts';
 import { gather, wholenessLine, type PassInput, type SkippedSource } from './input.ts';
-import { propose } from './propose.ts';
+import { NO_QUEUE_CEILING, propose } from './propose.ts';
 import { worthAPass, type RubricVerdict } from './rubric.ts';
 
 /** The report's name under `<corpusRoot>/state/`. */
@@ -124,6 +124,13 @@ export interface ProposeSummary {
   declined: number;
   irrelevant: number;
   rationed: number;
+  /**
+   * The QUEUE was full, and how full — §10. `null` when the ceiling did not
+   * bite. Kept apart from `rationed` for `ProposeResult.held`'s reason: one
+   * says the next pass will carry on, the other says no pass will until a
+   * person works the queue down.
+   */
+  held: { pending: number; ceiling: number } | null;
   unauthored: Record<string, number>;
   /** id (or `null` on a dry run), tier, target, title, and whether anything confirms it. */
   drafts: {
@@ -212,6 +219,12 @@ export interface PassOptions {
    * `review.enabled`, and there is one of it.
    */
   maxProposals: number;
+  /**
+   * §10's `queueCeiling` — how much may already be waiting before this pass
+   * writes nothing. Read from the config by the PARENT and passed down, for
+   * `maxProposals`' own reason: a second reader is a second answer.
+   */
+  queueCeiling: number;
   budgetBytes?: number;
   capBytes?: number;
 }
@@ -287,6 +300,7 @@ export async function runPass(options: PassOptions): Promise<PassReport> {
           ctx: { root: options.workspace, store: opened.store, config: ws.config },
           sessionId: options.sessionId,
           max: options.maxProposals,
+          queueCeiling: options.queueCeiling,
           dryRun: options.dryRun,
         });
         report.created = outcome.created;
@@ -298,6 +312,7 @@ export async function runPass(options: PassOptions): Promise<PassReport> {
           declined: outcome.declined,
           irrelevant: outcome.irrelevant,
           rationed: outcome.rationed,
+          held: outcome.held,
           unauthored: { ...outcome.unauthored },
           drafts: outcome.proposals.map((p) => ({
             id: p.id, artifact: p.artifact, category: p.category,
@@ -349,6 +364,13 @@ export function spawnPass(options: PassOptions, spawnFn: typeof spawn = spawn): 
     // process writes to the corpus: a lost argument must cost a proposal, not
     // produce one nobody asked for.
     '--max', String(Math.max(0, options.maxProposals)),
+    // The ceiling crosses the boundary the same way and for the same reason,
+    // but it defaults in the OPPOSITE direction: a child started without one
+    // proposes into an unbounded queue, so the absent value has to be the
+    // permissive one for `--max` to still be the argument that decides whether
+    // anything is written. A lost `--ceiling` costs a ration; a lost `--max`
+    // costs nothing at all, which is the safe pair.
+    '--ceiling', String(Math.max(0, options.queueCeiling)),
     ...(options.dryRun ? ['--dry-run'] : []),
   ];
   try {
@@ -391,6 +413,10 @@ if (isMainEntry(import.meta.filename, process.argv[1])) {
       // child never infers a ration from the config: the parent read the
       // config, and a second reader is a second answer.
       maxProposals: Math.max(0, Number(flag(argv, '--max') ?? 0) || 0),
+      // Absent or unparseable means NO ceiling — see `spawnPass`. `--max` is
+      // the flag whose absence must cost a write; this one's absence must not
+      // cost a report.
+      queueCeiling: Math.max(0, Number(flag(argv, '--ceiling') ?? 0) || NO_QUEUE_CEILING),
       dryRun: argv.includes('--dry-run'),
     }).catch(() => { /* a detached child has nobody to tell */ });
   }

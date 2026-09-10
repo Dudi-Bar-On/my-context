@@ -22,7 +22,7 @@ import { claimKey } from '../../src/review/claim.ts';
 import { recordDecline } from '../../src/review/declined.ts';
 import {
   antiLearning, classify, evidenceTouchesTarget, noteSighting, propose, readSightings, targetOf,
-  ARTIFACT_CATEGORY, AUTHORABLE,
+  ARTIFACT_CATEGORY, AUTHORABLE, NO_QUEUE_CEILING,
 } from '../../src/review/propose.ts';
 import type { PassInput, Point } from '../../src/review/input.ts';
 import { sandbox } from '../helpers/workspace.ts';
@@ -77,7 +77,7 @@ test('this build authors checks only, and says so rather than skipping quietly',
   const s = sandbox();
   const out = await propose(input([
     point('Every relative import in src/core/mutate.ts must carry an explicit .ts extension.'),
-  ]), { workspace: s.root, ctx: s.ctx, sessionId: 'one', max: 5 });
+  ]), { workspace: s.root, ctx: s.ctx, sessionId: 'one', max: 5, queueCeiling: NO_QUEUE_CEILING });
 
   assert.equal(out.created.length, 0, 'a rule written from a transcript sentence is quoted, not composed');
   assert.equal(out.unauthored.rule, 1, 'and the candidate is COUNTED, not dropped');
@@ -91,7 +91,7 @@ test('a proposal that names no file, module or item is refused', async () => {
   const s = sandbox();
   const out = await propose(input([
     point('The whole thing feels much better now and everybody agrees it was worth doing.'),
-  ]), { workspace: s.root, ctx: s.ctx, sessionId: 'one', max: 5 });
+  ]), { workspace: s.root, ctx: s.ctx, sessionId: 'one', max: 5, queueCeiling: NO_QUEUE_CEILING });
 
   assert.equal(out.created.length, 0);
   assert.equal(out.irrelevant, 1);
@@ -128,7 +128,7 @@ test('a screened observation never reaches the corpus, and the reason is recorde
   const s = sandbox();
   const out = await propose(input([
     point('test/core/mutate.test.ts is flaky on this machine and passed on the retry.'),
-  ]), { workspace: s.root, ctx: s.ctx, sessionId: 'one', max: 5 });
+  ]), { workspace: s.root, ctx: s.ctx, sessionId: 'one', max: 5, queueCeiling: NO_QUEUE_CEILING });
 
   assert.equal(out.created.length, 0);
   assert.equal(out.screened, 1);
@@ -140,7 +140,7 @@ test('a narrative about a file is screened, because a story is not a rule', asyn
   const s = sandbox();
   const out = await propose(input([
     point('I spent the afternoon rewriting src/core/mutate.ts and it went fine in the end.'),
-  ]), { workspace: s.root, ctx: s.ctx, sessionId: 'one', max: 5 });
+  ]), { workspace: s.root, ctx: s.ctx, sessionId: 'one', max: 5, queueCeiling: NO_QUEUE_CEILING });
 
   assert.equal(out.created.length, 0);
   assert.equal(out.screened, 1, 'first person is a status update, and a status update is not knowledge');
@@ -155,7 +155,7 @@ const CHECKABLE =
 test('a proposal lands as an uncommitted draft, tagged unconfirmed, citing its evidence', async () => {
   const s = sandbox();
   const out = await propose(input([point(CHECKABLE)]), {
-    workspace: s.root, ctx: s.ctx, sessionId: 'session-one', max: 5,
+    workspace: s.root, ctx: s.ctx, sessionId: 'session-one', max: 5, queueCeiling: NO_QUEUE_CEILING,
   });
 
   assert.equal(out.created.length, 1);
@@ -179,7 +179,7 @@ test('a proposal lands as an uncommitted draft, tagged unconfirmed, citing its e
 test('a proposal never carries a heading, because a body is only the prose before one', async () => {
   const s = sandbox();
   const out = await propose(input([point(`## A heading\n${CHECKABLE}`)]), {
-    workspace: s.root, ctx: s.ctx, sessionId: 'one', max: 5,
+    workspace: s.root, ctx: s.ctx, sessionId: 'one', max: 5, queueCeiling: NO_QUEUE_CEILING,
   });
   for (const id of out.created) {
     assert.doesNotMatch(s.ctx.store.get(id)?.body ?? '', /^## /m,
@@ -193,7 +193,7 @@ test('a proposal never carries a heading, because a body is only the prose befor
 test('one session is unconfirmed; a second, independent session confirms', async () => {
   const s = sandbox();
   const first = await propose(input([point(CHECKABLE)]), {
-    workspace: s.root, ctx: s.ctx, sessionId: 'session-one', max: 5,
+    workspace: s.root, ctx: s.ctx, sessionId: 'session-one', max: 5, queueCeiling: NO_QUEUE_CEILING,
   });
   assert.equal(first.proposals[0]?.confirmed, false);
   assert.equal(first.created.length, 1, 'an unconfirmed observation is still PROPOSED — §3c labels, it does not gate');
@@ -203,14 +203,14 @@ test('one session is unconfirmed; a second, independent session confirms', async
   // review, not the sighting ledger — the ledger's job is the LABEL.
   const second = await propose(input([point(
     'Nothing asserts the handover, and test/scripts/handover-check.test.ts fails on it.',
-  )]), { workspace: s.root, ctx: s.ctx, sessionId: 'session-two', max: 5 });
+  )]), { workspace: s.root, ctx: s.ctx, sessionId: 'session-two', max: 5, queueCeiling: NO_QUEUE_CEILING });
   assert.equal(second.proposals[0]?.confirmed, true);
   assert.equal(second.proposals[0]?.sessionsSeen, 2);
 
   // And the same session twice is still ONE sighting: steps inside a session
   // are causally correlated and cannot confirm each other.
   const again = await propose(input([point(CHECKABLE)]), {
-    workspace: s.root, ctx: s.ctx, sessionId: 'session-one', max: 5,
+    workspace: s.root, ctx: s.ctx, sessionId: 'session-one', max: 5, queueCeiling: NO_QUEUE_CEILING,
   });
   assert.equal(again.proposals[0]?.sessionsSeen, 2, 'a repeat inside one session adds no independence');
   s.dispose();
@@ -219,7 +219,7 @@ test('one session is unconfirmed; a second, independent session confirms', async
 test('a dry run writes no draft and no sighting', async () => {
   const s = sandbox();
   const out = await propose(input([point(CHECKABLE)]), {
-    workspace: s.root, ctx: s.ctx, sessionId: 'one', max: 5, dryRun: true,
+    workspace: s.root, ctx: s.ctx, sessionId: 'one', max: 5, queueCeiling: NO_QUEUE_CEILING, dryRun: true,
   });
   assert.equal(out.created.length, 0);
   assert.equal(out.proposals.length, 1, 'a dry run still says what it WOULD propose');
@@ -245,7 +245,7 @@ test('two observations of one thing in one pass become one proposal', async () =
   const out = await propose(input([
     point(CHECKABLE),
     point('Nothing asserts the handover, so test/scripts/handover-check.test.ts fails on it.'),
-  ]), { workspace: s.root, ctx: s.ctx, sessionId: 'one', max: 5 });
+  ]), { workspace: s.root, ctx: s.ctx, sessionId: 'one', max: 5, queueCeiling: NO_QUEUE_CEILING });
 
   assert.equal(out.created.length, 1);
   assert.equal(out.suppressed, 1);
@@ -263,7 +263,7 @@ test('a claim the owner declined is not re-proposed after rewording', async () =
 
   const out = await propose(input([point(
     'Nothing asserts the handover, and test/scripts/handover-check.test.ts fails on it every run.',
-  )]), { workspace: s.root, ctx: s.ctx, sessionId: 'one', max: 5 });
+  )]), { workspace: s.root, ctx: s.ctx, sessionId: 'one', max: 5, queueCeiling: NO_QUEUE_CEILING });
 
   assert.equal(out.created.length, 0, 'the same transcript must not yield the same proposal forever');
   assert.equal(out.declined, 1);
@@ -280,7 +280,7 @@ test('the ration caps what is written and counts what it held back', async () =>
     point('The suite test/c-three.test.ts fails on the gamma budget and nothing asserts gamma.'),
   ];
   const out = await propose(input(many), {
-    workspace: s.root, ctx: s.ctx, sessionId: 'one', max: 1,
+    workspace: s.root, ctx: s.ctx, sessionId: 'one', max: 1, queueCeiling: NO_QUEUE_CEILING,
   });
   assert.equal(out.created.length, 1);
   assert.equal(out.rationed, 2, 'the two it held back are countable, not invisible');
@@ -298,7 +298,7 @@ test('every observation is accounted for — nothing is dropped silently', async
     point('The suite test/b-two.test.ts fails on the beta rebuild and nothing asserts beta.'),
   ];
   const out = await propose(input(points), {
-    workspace: s.root, ctx: s.ctx, sessionId: 'one', max: 1,
+    workspace: s.root, ctx: s.ctx, sessionId: 'one', max: 1, queueCeiling: NO_QUEUE_CEILING,
   });
   const accounted = out.proposals.length + out.rationed + out.screened + out.empty
     + out.suppressed + out.declined + out.irrelevant
@@ -311,7 +311,7 @@ test('propose never edits, retires or promotes anything that already exists', as
   const s = sandbox();
   const before = s.ctx.store.get('CONST-x') ?? null;
   const out = await propose(input([point(CHECKABLE)]), {
-    workspace: s.root, ctx: s.ctx, sessionId: 'one', max: 5,
+    workspace: s.root, ctx: s.ctx, sessionId: 'one', max: 5, queueCeiling: NO_QUEUE_CEILING,
   });
   for (const id of out.created) {
     assert.equal(s.ctx.store.get(id)?.status, 'draft');

@@ -22,6 +22,7 @@ import {
   wantsJson, type Detail,
 } from './format.ts';
 import { registerCommand, type Emit } from './registry.ts';
+import { pendingReview, queueAge } from '../../review/pending.ts';
 
 /**
  * This command's flag surface, LIFTED to `core/command-flags.ts` so a read
@@ -190,6 +191,12 @@ function cmdStatus(ws: Workspace, args: string[], out: Emit): number {
   // for items that already govern, and a draft governs nothing). So the count
   // is surfaced here, where the human is being pointed at the queue.
   const alwaysInQueue = queue.filter((i) => i.always).length;
+  // §10's indicator, computed HERE and not on the screen that draws it: the
+  // web strip's queue pill takes its colour from `oldestAt`, and a browser
+  // deriving an age from a list it fetched separately would be a second
+  // answer to "how old is this queue". `revisions` is handed in — this
+  // command has already read the log and already refused if it could not.
+  const pending = pendingReview(ws.projectRoot, items, revisions);
 
   try {
     const sessions = listSessions(ws.projectRoot).filter((s) => pendingAnchors(s).length > 0);
@@ -263,7 +270,26 @@ function cmdStatus(ws: Workspace, args: string[], out: Emit): number {
         // `globalLayerDrafts` — spelled out as its own field so a script does
         // not have to guess why the two disagree. `always` is the subset of
         // the queue that would be pinned into every session start on promotion.
-        reviewQueue: { drafts: queueCount, always: alwaysInQueue, globalLayerDrafts },
+        // `oldestAt` and `undated` are §10's half of this block: the COLOUR of
+        // the web strip's queue pill is keyed on the age of the oldest thing
+        // pending, never on the count — twelve drafts from today is a
+        // productive session and three from six weeks ago is landfill, and a
+        // count alone cannot tell them apart. Computed by `pendingReview`
+        // (`review/pending.ts`), the one definition the status line reads too,
+        // and handed the revisions THIS command already read rather than
+        // re-reading a log it has just refused on.
+        reviewQueue: {
+          drafts: queueCount, always: alwaysInQueue, globalLayerDrafts,
+          oldestAt: pending.oldestAt, undated: pending.undated,
+          // **The VERDICT, computed here rather than in the browser.** The
+          // bands are `review/pending.ts`'s and were read off this corpus's
+          // own settle latencies; a browser that turned `oldestAt` into a
+          // colour with numbers of its own would be the second spelling this
+          // project has measured going wrong eight times. The strip draws
+          // what this says; the terminal bar asks the same function directly.
+          // Two presentations, one verdict.
+          age: queueAge(pending, Date.now()),
+        },
         // The SECOND queue this command points at, counted in the one spelling
         // `review` uses (`pendingRevisionCounts` in core/revision.ts): revisions, not
         // items carrying one, with the item count beside it because an item

@@ -41,6 +41,7 @@ import type { Workspace } from '../core/workspace.ts';
  * the defect `RELATION_TYPES`'s own comment warns about.
  */
 import { STATUSES } from '../core/validate.ts';
+import { declineRefusal } from '../review/decline.ts';
 import { badRequest, coverageFiles, unknownParams, withStores } from './read-model.ts';
 import { registerRoute, type ApiContext, type JsonResult } from './routes.ts';
 import {
@@ -104,6 +105,23 @@ export function apiRevisions(ws: Workspace, url: URL): JsonResult {
   });
 }
 
+/**
+ * How much of a draft's brief travels with the queue: 1,200 characters.
+ *
+ * **The brief is drawn INLINE and without a second fetch** — design §7 — so
+ * this endpoint has to carry it, and a bound is what stops a queue of twenty
+ * becoming a page-weight decision. The number is read off what the pass
+ * actually writes: `briefOf` (`review/propose.ts`) composes five sentences
+ * plus its evidence quotes clipped at 400 characters each, which lands around
+ * 900–1,100 for a single-evidence proposal. 1,200 admits that whole and cuts
+ * only a brief carrying several quotes.
+ *
+ * **A cut brief SAYS it was cut** (`briefTruncated`), and the row keeps the
+ * door to the whole file. A silently short brief on a screen whose entire job
+ * is "read this, then decide" is the worst possible place for a quiet drop.
+ */
+export const BRIEF_MAX_CHARS = 1_200;
+
 export function apiReviewQueue(ws: Workspace, url: URL): JsonResult {
   const bad = unknownParams(url, []);
   if (bad) return badRequest(bad);
@@ -114,10 +132,36 @@ export function apiReviewQueue(ws: Workspace, url: URL): JsonResult {
       body: {
         drafts: drafts.map((i: Item) => {
           const verdict = injection(i, ws.config);
+          const body = typeof i.body === 'string' ? i.body : '';
           return {
             id: i.id, type: i.type, title: i.title, severity: i.severity,
             always: i.always, scope: i.scope, origin: i.origin,
             injected: verdict.injected, phrase: verdict.phrase, gate: verdict.gate,
+            // ── §7: THE REVIEW BRIEF, INLINE, AND NO MODEL CALL ANYWHERE ──
+            //
+            // The brief was written at CAPTURE TIME by the thing that had the
+            // transcript (`briefOf`, review/propose.ts) and is stored as the
+            // draft's body. It is served here, with the row, so the screen
+            // draws it without a second request and without asking anything
+            // to compose one now. A review surface that called a model would
+            // break the read surface's no-writes guarantee and would put a
+            // network dependency in an offline plugin.
+            brief: body.slice(0, BRIEF_MAX_CHARS),
+            briefTruncated: body.length > BRIEF_MAX_CHARS,
+            // **Where the file is, so the row can be a DOOR.** `/api/corpus/:id`
+            // takes this exact string as its key — `isCorpusFilePath` admits
+            // both corpus walk roots since `plan:loop seq:4`, so a draft under
+            // `.drafts/` opens in the right pane like any other item.
+            filePath: i.filePath,
+            // The date the age indicator is keyed on, carried so the row can
+            // say how long this has been waiting without a second derivation.
+            validFrom: i.validFrom,
+            // Whether settling this row DELETES it (§8) or deprecates it.
+            // Served rather than inferred from `origin` in the browser: the
+            // predicate is `declineRefusal`'s and it gates on the file region
+            // as well as on the origin, and a screen that guessed would offer
+            // the wrong sentence above a destructive button.
+            deletesOnDecline: declineRefusal(i) === null,
           };
         }),
       },

@@ -15,6 +15,7 @@ import { resolveCorpus, type CorpusResolution } from '../../core/corpus-identity
 import { isMainEntry } from '../../core/paths.ts';
 import { classifyContext, writeTee, type ContextSample } from '../../core/statusline-tee.ts';
 import { resolveWorkspace, type Workspace } from '../../core/workspace.ts';
+import { pendingReviewFromIndex, reviewChip } from '../../review/pending.ts';
 import { readStdin } from '../../hooks/io.ts';
 import { refuseUnknownFlag } from './format.ts';
 import { registerCommand, type Emit } from './registry.ts';
@@ -643,9 +644,15 @@ function cmdStatusline(ws: Workspace, args: string[], out: Emit, cwd: string): n
   // cannot name a file. `null` is the feature-off case and `checkHandoverAsk`
   // reports it as `off` rather than being skipped for it.
   let handoverConfig: HandoverConfig | null = null;
+  // Kept beside `projectRoot` rather than re-derived later: `resolveWorkspace`
+  // is the one place this product decides where the index lives, and a second
+  // `path.join(projectRoot, '.index.db')` here would be a second answer to a
+  // question that already has one.
+  let dbPath: string | null = null;
   try {
     const sessionWs = resolveWorkspace(sessionCwd);
     projectRoot = sessionWs.projectRoot;
+    dbPath = sessionWs.dbPath;
     handoverConfig = sessionWs.config.handover;
     threshold =
       sessionWs.config.handover === null ? null
@@ -833,10 +840,28 @@ function cmdStatusline(ws: Workspace, args: string[], out: Emit, cwd: string): n
   // absent-tolerant. `extras` is taken ONCE, near the top, because the corpus
   // resolution needs `cwd` before this point — one parse, one object.
 
+  // ── WHAT IS WAITING FOR A PERSON — §10's indicator, and the ONE new read
+  //    this bar takes for it.
+  //
+  // p50 2.9 ms / p95 4.3 ms over 60 runs on this repository's 1,085-item
+  // corpus (`review/pending.ts` carries the measurement and what it reverses).
+  // Guarded on `projectRoot` like every other corpus read here, and it never
+  // throws: `pendingReviewFromIndex` answers `null` for every failure, and
+  // `reviewChip` turns `null` — and a measured zero — into no block at all.
+  //
+  // Computed here rather than inside `buildLines` for the reason every other
+  // corpus fact on this bar is: the renderer takes a VIEW and reads no files,
+  // so `statusLineText` stays a pure function of its input and the tests that
+  // assert the line verbatim never touch a disk.
+  const review = projectRoot === null || dbPath === null
+    ? null
+    : reviewChip(pendingReviewFromIndex(projectRoot, dbPath), Date.now());
+
   const ownLine = statusLineText(
     {
       ...extras,
       model,
+      review,
       // `projectRoot` is the `.my_context` directory, so the NAME comes from the
       // session directory Claude Code named — which is the repository, and is what
       // the owner is reading when they look at this block.

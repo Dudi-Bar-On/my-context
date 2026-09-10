@@ -544,6 +544,26 @@ export class Store {
     return rows.map((r) => r.id);
   }
 
+  /**
+   * Forget one id.
+   *
+   * **The only caller is `declineDraft`** (`src/review/decline.ts`), and it is
+   * the only act in this product that deletes an item rather than retiring
+   * one. Every other removal is a status change, because a retired item is a
+   * trail somebody may need; a declined DRAFT never governed, so there is
+   * nothing to be a trail OF — design §8 — and what is kept instead is the
+   * decline, in a ledger the pass consults.
+   *
+   * Row-level rather than the file-level `rebuild` a deletion would otherwise
+   * need: the file is gone by the time this runs, so a rebuild would reach the
+   * same state at the cost of re-reading the whole corpus. Idempotent — a
+   * DELETE that matches nothing is not an error, and the caller has already
+   * decided the item should not be in the index.
+   */
+  deleteById(id: string): void {
+    this.#db.prepare('DELETE FROM items WHERE id = ?').run(id);
+  }
+
   deleteByLayer(layer: Layer): void {
     this.#db.prepare('DELETE FROM items WHERE layer = ?').run(layer);
   }

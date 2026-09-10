@@ -16,6 +16,7 @@ import path from 'node:path';
 import { runCli } from '../../src/cli/index.ts';
 import { passReportPath, runPass, spawnPass } from '../../src/review/pass.ts';
 import { reviewNote, reviewTrigger } from '../../src/review/trigger.ts';
+import { NO_QUEUE_CEILING } from '../../src/review/propose.ts';
 import { bumpCounter, readCounter } from '../../src/core/review-counter.ts';
 import { removeTree } from '../helpers/tmp.ts';
 
@@ -65,7 +66,7 @@ test('the pass writes a report and creates NOTHING', async () => {
     const before = runCli(['list'], cwd, () => {});
     const report = await runPass({
       workspace: root, transcript, sessionId: 's-1', subagentDir: null,
-      includeSubagents: false, dryRun: true, maxProposals: 0,
+      includeSubagents: false, dryRun: true, maxProposals: 0, queueCeiling: NO_QUEUE_CEILING,
     });
     assert.equal(report.dryRun, true);
     assert.deepEqual(report.created, [], 'phase 2 creates nothing, and it is a FIELD not a promise');
@@ -79,7 +80,7 @@ test('the report leads with what it read, and the wholeness line is a field', as
   try {
     const report = await runPass({
       workspace: root, transcript, sessionId: 's-1', subagentDir: null,
-      includeSubagents: false, dryRun: true, maxProposals: 0,
+      includeSubagents: false, dryRun: true, maxProposals: 0, queueCeiling: NO_QUEUE_CEILING,
     });
     assert.equal(report.whole, true);
     assert.match(report.wholeness, /^read WHOLE:/);
@@ -96,7 +97,7 @@ test('a second pass sends only the new stretch, and says where it stopped', asyn
   try {
     const first = await runPass({
       workspace: root, transcript, sessionId: 's-1', subagentDir: null,
-      includeSubagents: false, dryRun: true, maxProposals: 0,
+      includeSubagents: false, dryRun: true, maxProposals: 0, queueCeiling: NO_QUEUE_CEILING,
     });
     writeFileSync(
       transcript,
@@ -105,7 +106,7 @@ test('a second pass sends only the new stretch, and says where it stopped', asyn
     );
     const second = await runPass({
       workspace: root, transcript, sessionId: 's-1', subagentDir: null,
-      includeSubagents: false, dryRun: true, maxProposals: 0,
+      includeSubagents: false, dryRun: true, maxProposals: 0, queueCeiling: NO_QUEUE_CEILING,
     });
     assert.equal(second.sinceByte, first.readTo, 'the second pass resumed where the first stopped');
     assert.ok(second.readTo > first.readTo);
@@ -119,7 +120,7 @@ test('a pass over a transcript that is not there reports the shortfall, not an e
   try {
     const report = await runPass({
       workspace: root, transcript: path.join(cwd, 'gone.jsonl'), sessionId: 's-1',
-      subagentDir: null, includeSubagents: false, dryRun: true, maxProposals: 0,
+      subagentDir: null, includeSubagents: false, dryRun: true, maxProposals: 0, queueCeiling: NO_QUEUE_CEILING,
     });
     assert.equal(report.whole, false);
     assert.match(report.wholeness, /NOT read whole/);
@@ -135,7 +136,7 @@ test('the child is detached, silent, and unref’ed', () => {
     const { calls, fn } = recordingSpawn();
     const outcome = spawnPass({
       workspace: root, transcript, sessionId: 's-1', subagentDir: null,
-      includeSubagents: true, dryRun: true, maxProposals: 0,
+      includeSubagents: true, dryRun: true, maxProposals: 0, queueCeiling: NO_QUEUE_CEILING,
     }, fn);
     assert.equal(outcome.spawned, true);
     assert.equal(calls.length, 1);
@@ -154,7 +155,7 @@ test('a spawn that cannot start is a reported failure, never a throw', () => {
     const fn: any = () => ({ pid: undefined, on: () => {}, unref: () => {} });
     const outcome = spawnPass({
       workspace: root, transcript, sessionId: 's-1', subagentDir: null,
-      includeSubagents: true, dryRun: true, maxProposals: 0,
+      includeSubagents: true, dryRun: true, maxProposals: 0, queueCeiling: NO_QUEUE_CEILING,
     }, fn);
     assert.equal(outcome.spawned, false);
     assert.match(outcome.why ?? '', /could not be started/);

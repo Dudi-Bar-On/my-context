@@ -1529,7 +1529,13 @@ export const SUBCOMMAND_FLAGS: Record<string, Record<string, FlagSpec>> = {
       allowed: ['scope', 'severity', 'always', 'yes', 'all', 'pack', 'source'],
       values: ['scope', 'severity', 'pack', 'source'],
     },
-    discard: { allowed: ['yes'], values: [] },
+    // `reason` joined `discard` in `plan:loop seq:4`: a review-pass draft is
+    // DELETED rather than deprecated (design §8) and its claim goes to the
+    // decline ledger, so the sentence saying why is the only thing that
+    // survives the act. Accepted on every discard rather than only on a
+    // review-origin one — a flag whose legality depended on the item's origin
+    // would be refused or accepted by a fact the typist cannot see.
+    discard: { allowed: ['reason', 'yes'], values: ['reason'] },
     revisions: { allowed: [...DETAIL_FLAGS], values: [] },
     'promote-revision': { allowed: ['revision', 'force', 'yes'], values: ['revision'] },
     'discard-revision': {
@@ -1712,8 +1718,9 @@ export const SUBCOMMAND_FLAG_DECLARATIONS: Record<string, FlagDeclarations> = {
     reason: {
       format: 'one plain sentence',
       example: 'Superseded by the wider rule in RULE-no-pii-in-logs',
-      note: 'Why the revision was discarded, recorded with the discard. A discard with no '
-        + 'reason is a decision nobody can re-read afterwards.',
+      note: 'Why it was discarded, recorded with the discard. A discard with no reason is a '
+        + 'decision nobody can re-read afterwards — and on a review-pass draft, where the '
+        + 'draft itself is deleted, the reason and the claim are all that survive.',
     },
     yes: YES,
   },

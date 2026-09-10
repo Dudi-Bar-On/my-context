@@ -151,7 +151,7 @@ import { fieldView, MONO_FIELDS } from '/lib/viewmodel.js';
 import { helpDisclosure } from '/lib/disclosure.js';
 import { PALETTE, commandFor } from '/lib/palette-defs.js';
 import {
-  BOUND_CAP_LIST, BOUND_CAP_TABLE, boundedList, el, errorNote, mono, screenHead, spaced,
+  BOUND_CAP_LIST, BOUND_CAP_TABLE, boundedList, el, errorNote, linkId, mono, screenHead, spaced,
 } from '/screens/parts.js';
 
 /**
@@ -545,7 +545,7 @@ function landingHelp(ctx, kind, spec) {
  * card — its diff, which is the thing worth reading — to one missing field
  * would drop its reviewable half.
  */
-function settlementBlock(ctx, kind, planFor) {
+function settlementBlock(ctx, kind, planFor, deletes = false) {
   const block = document.createDocumentFragment();
   const bar = el('div', 'segbar');
   bar.setAttribute('role', 'group');
@@ -568,7 +568,23 @@ function settlementBlock(ctx, kind, planFor) {
       return;
     }
     const outcome = el('p', 'small');
-    outcome.append(...OUTCOME[kind][chosen](ctx));
+    // ── THE REJECT SENTENCE IS NOT ONE SENTENCE ANY MORE — design §8 ────────
+    //
+    // *"A declined draft never governed, so nothing is stranded and no
+    // successor is owed. It is deleted."* That is true of a draft the review
+    // pass wrote and FALSE of one a person or an ingest wrote, which is still
+    // deprecated and kept as a trail — and `work.discardDraft` says "the text
+    // is not deleted" in as many words. One sentence over both would be a
+    // screen promising the opposite of what its own button does, above a
+    // destructive act.
+    //
+    // `deletesOnDecline` is served by `/api/review-queue` and not inferred
+    // here: the predicate is `declineRefusal`'s and it gates on the file
+    // REGION as well as on the origin, so a browser reading `origin` alone
+    // would get it wrong for exactly the item where being wrong costs a file.
+    outcome.append(...(kind === 'draft' && chosen === 'reject' && deletes
+      ? ctx.t('work.declineDraft')
+      : OUTCOME[kind][chosen](ctx)));
     // Built before the command row so the row can be handed the flip. Both
     // belong to ONE verdict and are discarded together on the next press —
     // a `.cmdstate` reading "copied" above a line the reader has just changed
@@ -647,8 +663,18 @@ function draftCard(ctx, draft) {
   const card = el('div', 'card pane');
   card.dataset.queue = 'draft';
 
+  // ── THE ROW IS A DOOR — design §7, "the item openable in the right pane" ──
+  //
+  // `linkId` and not `mono`: the id was drawn as plain monospace text, so the
+  // one screen whose whole job is "read this, then decide" was the one screen
+  // where the item could not be opened. `linkId` sets `data-id`, and the
+  // shell's document delegation (`installItemPane`, app.js) does the rest —
+  // this file wires no listener, because a second one would open the pane
+  // twice. The pane fetches `/api/item/:id`, which answers for a DRAFT exactly
+  // as it does for anything else: `loadLayer` walks `.drafts/` as a second
+  // root, so a proposal is indexed like any item (`core/drafts.ts`).
   const head = el('h3');
-  head.append(mono(draft.id));
+  head.append(linkId(draft.id));
   card.append(head);
 
   const title = el('p');
@@ -663,8 +689,66 @@ function draftCard(ctx, draft) {
   }));
   card.append(spaced(meta));
 
-  card.append(settlementBlock(ctx, 'draft', (verdict) => draftPlan(draft, verdict)));
+  card.append(briefBlock(ctx, draft));
+  card.append(settlementBlock(
+    ctx, 'draft', (verdict) => draftPlan(draft, verdict), draft.deletesOnDecline === true,
+  ));
   return card;
+}
+
+/**
+ * **THE REVIEW BRIEF, INLINE, AND NOTHING COMPOSES IT HERE** — design §7 and
+ * §6, `plan:loop seq:4`.
+ *
+ * *"The brief was written at capture time by the thing that had the
+ * transcript."* It arrives on `/api/review-queue`'s row (`brief`), so this
+ * draws it with **no second fetch and no model call**. That is a constraint
+ * rather than an optimisation: a review surface that called a model would
+ * either break the read surface's no-writes guarantee — which a byte-snapshot
+ * test asserts — or put a network dependency inside an offline plugin.
+ *
+ * **A truncated brief says so and the door is right there.** `BRIEF_MAX_CHARS`
+ * bounds what the endpoint carries; a brief that was cut is announced rather
+ * than merely shorter, because a silently short brief on the one screen a
+ * person decides from is the worst place in this product for a quiet drop
+ * (`INV-nothing-is-dropped-silently`).
+ *
+ * **A draft with NO brief is named as having none**, never rendered as blank —
+ * `STD-a-measured-zero-is-drawn-and-named-an-unmeasured-thing-is`. An ingest
+ * draft has no brief by construction: nothing wrote one, and the honest
+ * sentence says that rather than leaving a hole where the reasoning should be.
+ *
+ * `pre` and not paragraphs: `briefOf` composes real line breaks and its
+ * evidence quotes are verbatim transcript text, which is authored content in
+ * an unknown direction — so it is isolated in a `<bdi>` for the same reason
+ * the title is.
+ */
+function briefBlock(ctx, draft) {
+  const wrap = el('div');
+  const brief = typeof draft.brief === 'string' ? draft.brief.trim() : '';
+  const head = el('p', 'small');
+  // Two LITERAL calls and not one `ctx.t(cond ? a : b)`: `test/ui/work-screen.
+  // test.ts` finds the keys this screen names by matching literal `t(` calls
+  // against these bytes, and a key reachable only through an expression is a
+  // key that test cannot prove is declared in BOTH tables — which throws at
+  // render time, in Hebrew only. The file's own `LABEL` thunks carry the same
+  // rule for the same reason.
+  head.append(...(brief === '' ? ctx.t('work.briefNone') : ctx.t('work.brief')));
+  wrap.append(spaced(head));
+  if (brief === '') return wrap;
+
+  const body = el('pre', 'reviewbrief');
+  const isolated = el('bdi');
+  isolated.textContent = brief;
+  body.append(isolated);
+  wrap.append(body);
+
+  if (draft.briefTruncated === true) {
+    const cut = el('p', 'small');
+    cut.append(...ctx.t('work.briefCut'));
+    wrap.append(spaced(cut));
+  }
+  return wrap;
 }
 
 /** A queue's headline sentence — the count, or the named zero. */

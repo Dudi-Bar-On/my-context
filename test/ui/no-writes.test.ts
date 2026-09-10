@@ -258,6 +258,7 @@ const WRITERS: Record<string, string[]> = {
   // `evidenceTouchesTarget` read, compare or build a path; only these four
   // change bytes.
   'src/review/declined.ts': ['recordDecline'],
+  'src/review/decline.ts': ['declineDraft'],
   'src/review/propose.ts': ['propose', 'noteSighting'],
   // `watch-model.ts` binds `classifyContext` and `readTee` from here; `writeTee`
   // and the stale-temp sweep are the writers sitting beside them.

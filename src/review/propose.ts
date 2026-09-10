@@ -44,6 +44,7 @@ import { createItem, type MutationContext } from '../core/mutate.ts';
 import { SUMMARY_MAX_CHARS } from '../core/validate.ts';
 import { claimKey, sameClaim } from './claim.ts';
 import { alreadyDeclined } from './declined.ts';
+import { reviewQueue } from '../core/select.ts';
 import { suppress, type Pending } from './dedupe.ts';
 import type { PassInput, Point } from './input.ts';
 
@@ -490,6 +491,16 @@ function briefOf(proposal: Omit<Proposal, 'id' | 'brief'>): string {
  */
 export const AUTHORABLE: readonly Artifact[] = ['check'];
 
+/**
+ * The ceiling for a caller that genuinely has none — an exploratory dry run,
+ * and the tests that assert the per-pass ration in isolation.
+ *
+ * A NAME rather than an optional field, so "this call has no queue ceiling" is
+ * a thing somebody wrote down and `grep` can find, instead of a thing nobody
+ * typed. See `ProposeOptions.queueCeiling`.
+ */
+export const NO_QUEUE_CEILING = Number.MAX_SAFE_INTEGER;
+
 export interface ProposeOptions {
   /** The corpus root — the `.my_context` directory. Drafts and ledgers live under it. */
   workspace: string;
@@ -498,6 +509,21 @@ export interface ProposeOptions {
   sessionId: string | null;
   /** §11's `maxProposalsPerPass`. The ration on VOLUME, never on the rubric. */
   max: number;
+  /**
+   * **§10's second ration: how much may be WAITING before this pass proposes
+   * nothing at all.** `max` bounds one pass; this bounds the queue, and
+   * without the second, twenty passes of five is a hundred pending with every
+   * one of them inside its ration.
+   *
+   * **Required rather than optional, and that is the whole reason it is
+   * spelled on every call site in this repository.** An optional ceiling
+   * defaulting to "none" is a mechanism that disappears the day a caller
+   * forgets it — this project's canonical defect, and the one `unknownParams`,
+   * `refuseUnknownFlag` and `requireReview` all exist to refuse in their own
+   * domains. A caller that genuinely has no ceiling says so by name
+   * (`NO_QUEUE_CEILING`), which greps.
+   */
+  queueCeiling: number;
   /**
    * Build every candidate and write NOTHING — no draft, no sighting.
    * `plan:loop seq:2` shipped a dry run as its only mode for the same reason
@@ -532,6 +558,18 @@ export interface ProposeResult {
   irrelevant: number;
   /** Beyond the ration. Candidates that would have been proposed on a bigger budget. */
   rationed: number;
+  /**
+   * **Why nothing was admitted, when the QUEUE rather than the pass was the
+   * reason** — §10. `null` when the ceiling did not bite.
+   *
+   * A separate field from `rationed` because they are two different facts with
+   * two different remedies: `rationed` says this pass found more than it may
+   * write at once and the next pass will carry on; `held` says the queue
+   * itself is full and NO pass will write anything until a person works it
+   * down. Folded into one number, the second would look like the first, and
+   * the reader would wait for a next pass that is never coming.
+   */
+  held: { pending: number; ceiling: number } | null;
   /**
    * Candidates whose tier this build will not author, by tier — see
    * `AUTHORABLE`. **Counted rather than merely skipped**: a proposer that
@@ -573,6 +611,7 @@ export async function propose(
   const result: ProposeResult = {
     created: [], proposals: [], considered: input.points.length,
     screened: 0, empty: 0, suppressed: 0, declined: 0, irrelevant: 0, rationed: 0,
+    held: null,
     unauthored: { check: 0, rule: 0, lesson: 0 },
     because: [],
   };
@@ -686,7 +725,41 @@ export async function propose(
   }
 
   ranked.sort((a, b) => b.weight - a.weight);
-  const admitted = ranked.slice(0, Math.max(0, options.max));
+
+  // ── §10's SECOND RATION, AND IT IS THE QUEUE'S RATHER THAN THE PASS'S ─────
+  //
+  // *"The pass proposes at most N per pass and the queue has a ceiling; past
+  // it, capture continues but proposals wait rather than escalating."*
+  //
+  // **Everything above this line has already run**, and that is the mechanism
+  // rather than an ordering accident. `capture continues` is not a slogan
+  // here: every observation has been screened, classified, keyed, checked
+  // against the decline ledger and NOTED as a sighting, so recurrence keeps
+  // accruing and the report still says what the pass found. What the ceiling
+  // stops is the WRITE. A ceiling checked at the top of this function would
+  // have produced a report of the ceiling instead of a report of the session —
+  // the same defect `core/config.ts` records about a cap that silently changed
+  // what the pass CONSIDERED.
+  //
+  // **The queue is counted through `reviewQueue`**, the one definition
+  // (core/select.ts), so the number the pass stops at is the number the screen
+  // shows and the number the chip draws. Counted only when there is something
+  // to admit: a pass with nothing ranked pays nothing for a ceiling it cannot
+  // hit.
+  let admitted = ranked.slice(0, Math.max(0, options.max));
+  if (ranked.length > 0) {
+    const pending = reviewQueue(options.ctx.store.all()).length;
+    if (pending >= options.queueCeiling) {
+      result.held = { pending, ceiling: options.queueCeiling };
+      admitted = [];
+      result.because.push(
+        `held: ${pending} item(s) already waiting for a person against a ceiling of ` +
+        `${options.queueCeiling}. Past the ceiling more review is less safe, so capture ` +
+        `continues and proposals wait — nothing here was dropped, and the next pass after ` +
+        `the queue is worked down will find it again.`,
+      );
+    }
+  }
   result.rationed = ranked.length - admitted.length;
 
   for (const { proposal } of admitted) {

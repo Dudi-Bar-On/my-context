@@ -126,7 +126,7 @@ import { searchableRelationTypes } from '../core/search.ts';
 // on `/api/items` — see `ItemsBody.retiredStatuses`.
 import { RETIRED_STATUSES } from '../core/select.ts';
 import {
-  isCorpusFilePath, isServableDocPath, listRepoFiles, runChecks, type Finding,
+  corpusRootOf, isCorpusFilePath, isServableDocPath, listRepoFiles, runChecks, type Finding,
 } from '../doctor/checks.ts';
 import { helpTopic, HELP_TOPICS } from '../help/index.ts';
 import { loadTutorialManifest, type TutorialManifestEntry, type TutorialTier } from '../core/tutorial-manifest.ts';
@@ -4093,7 +4093,16 @@ export function apiCorpusFile(ws: Workspace, url: URL, params: { id: string }): 
   // symlinks, so a symlinked item is a legal member of this corpus and its
   // target is the thing that has to be inside it.
   const absPath = path.join(projectRoot, ...params.id.split('/'));
-  const itemsDir = path.join(projectRoot, 'items');
+  // WHICH root, rather than `items/` — a draft is a corpus file under
+  // `.drafts/` since `plan:loop seq:3` gave `loadLayer` a second walk root,
+  // and `corpusRootOf` is the same list `isCorpusFilePath` admitted it by. The
+  // `null` branch is unreachable from here (the id came out of the roster,
+  // which is filtered by that same predicate) and is still narrowed rather
+  // than asserted away: an unreachable branch that resolves to `items` would
+  // become a containment check against the wrong directory the day the two
+  // lists drift.
+  const root = corpusRootOf(params.id);
+  const itemsDir = path.join(projectRoot, root ?? 'items');
   let real: string;
   let realItems: string;
   try {
@@ -4113,7 +4122,8 @@ export function apiCorpusFile(ws: Workspace, url: URL, params: { id: string }): 
       status: 404,
       body: {
         error: `"${params.id}" is in this corpus's index but resolves outside the corpus's own ` +
-          'items directory — a symlink pointing out of the workspace. It is refused rather than ' +
+          `${root ?? 'items'} directory — a symlink pointing out of the workspace. It is ` +
+          'refused rather than ' +
           'read: this route serves the corpus, and a file that is not in it is not one of its ' +
           'files however it came to be listed.',
       },

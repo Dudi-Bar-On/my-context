@@ -19,7 +19,7 @@ import assert from 'node:assert/strict';
 import { mkdtempSync, readFileSync, statSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
-import { isCorpusFilePath, isServableDocPath } from '../../src/doctor/checks.ts';
+import { corpusRootOf, isCorpusFilePath, isServableDocPath } from '../../src/doctor/checks.ts';
 import { apiCorpusFile, apiCorpusList } from '../../src/ui/read-model.ts';
 import { resolveWorkspace } from '../../src/core/workspace.ts';
 import { splitFrontmatter } from '../../src/core/item.ts';
@@ -44,22 +44,43 @@ const open = (id: string, ws = here()) =>
 
 /* ══ THE BOUNDARY PREDICATE ════════════════════════════════════════════════ */
 
-test('isCorpusFilePath admits Markdown under items/ and nothing else', () => {
+test('isCorpusFilePath admits Markdown under the corpus WALK ROOTS and nothing else', () => {
   assert.equal(isCorpusFilePath('items/task/TASK-x.md'), true);
   assert.equal(isCorpusFilePath('items/adr/ADR-y.md'), true);
   // Deeper is still inside: a corpus may nest its categories.
   assert.equal(isCorpusFilePath('items/a/b/c/d.md'), true);
 
-  // Not Markdown, not under items/, or not a file path at all.
+  // **The second walk root** — `plan:loop seq:3` made `.drafts/` one, and this
+  // predicate's `items/` clause was only ever shorthand for "what `loadLayer`
+  // reads". A draft is indexed, listed and shown like any other item, so a
+  // draft the review surface cannot open in the right pane is a queue row a
+  // person cannot read before deciding on it.
+  assert.equal(isCorpusFilePath('.drafts/task/TASK-proposed.md'), true);
+  assert.equal(corpusRootOf('.drafts/task/TASK-proposed.md'), '.drafts');
+  assert.equal(corpusRootOf('items/task/TASK-x.md'), 'items');
+  assert.equal(corpusRootOf('config.json'), null);
+
+  // Not Markdown, not under a walk root, or not a file path at all.
   assert.equal(isCorpusFilePath('config.json'), false);
   assert.equal(isCorpusFilePath('state/index.db'), false);
   assert.equal(isCorpusFilePath('items/task/x.json'), false);
+  assert.equal(isCorpusFilePath('.drafts/task/x.json'), false);
   assert.equal(isCorpusFilePath('items'), false);
   assert.equal(isCorpusFilePath('items/'), false);
+  assert.equal(isCorpusFilePath('.drafts'), false);
+  assert.equal(isCorpusFilePath('.drafts/'), false);
   assert.equal(isCorpusFilePath(''), false);
   assert.equal(isCorpusFilePath('.audit/audit.jsonl'), false);
-  // `itemsX/` starts with the letters but is not the directory.
+  // `itemsX/` starts with the letters but is not the directory. `.draftsish/`
+  // is the same trap one root over, and `core/drafts.ts` guards it for the
+  // same reason: the trailing slash is what makes the prefix a directory.
   assert.equal(isCorpusFilePath('itemsX/task/x.md'), false);
+  assert.equal(isCorpusFilePath('.draftsish/task/x.md'), false);
+  // The state directories that sit BESIDE `.drafts/` stay outside: widening to
+  // one gitignored directory is not widening to all of them.
+  assert.equal(isCorpusFilePath('.staging/lesson/x.md'), false);
+  assert.equal(isCorpusFilePath('.revisions/revisions.jsonl'), false);
+  assert.equal(isCorpusFilePath('.verdicts/x.md'), false);
 });
 
 test('isCorpusFilePath refuses every traversal spelling — a hostile INDEX ROW, not a hostile request', () => {
@@ -81,6 +102,14 @@ test('isCorpusFilePath refuses every traversal spelling — a hostile INDEX ROW,
     'C:/Windows/win.ini.md',
     'items/task/x.md/',
     'items/task/x.md/.',
+    // The second root gets every spelling too, because a hostile row can
+    // claim either prefix and the widening must not have bought a way in.
+    '.drafts/../config.json',
+    '.drafts/../../etc/shadow.md',
+    './.drafts/task/x.md',
+    '.drafts//task/x.md',
+    '.drafts/./task/x.md',
+    '/.drafts/task/x.md',
   ]) {
     assert.equal(isCorpusFilePath(hostile), false, `admitted a hostile path: ${hostile}`);
   }

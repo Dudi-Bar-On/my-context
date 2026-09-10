@@ -1172,6 +1172,17 @@ export const strings = {
   'work.revisions': '{b:Revisions proposed against items in force.} {n} in this queue. Items keep their current text until promoted.',
   'work.revisionsEmpty': '{b:Revisions proposed against items in force.} None — nothing has been proposed yet.',
   'work.draftMeta': '{mv:type} · {mv:severity} · captured by {mv:origin}',
+  // ── THE REVIEW BRIEF, INLINE (design §7). Written at CAPTURE TIME by the
+  //    thing that had the transcript, carried on the queue row, and drawn
+  //    without a second request and without a model call — the constraint
+  //    this surface is defined by.
+  'work.brief': '{b:Why this was proposed.} Written when it was captured, by the pass that read the session. Nothing here is composed now.',
+  'work.briefNone': '{b:Why this was proposed.} No brief was recorded — nothing wrote one for this draft, so the reasoning has to come from the item itself.',
+  'work.briefCut': 'The brief is longer than this. Open the id above to read the whole draft.',
+  // The reject sentence for a draft the REVIEW PASS wrote, which is deleted
+  // rather than deprecated (§8). `work.discardDraft` beside it is still the
+  // true sentence for a draft a person or an ingest wrote.
+  'work.declineDraft': '{b:Reject} declines the draft: the file is deleted, and what is kept is the decline — so the pass does not propose the same claim again in other words.',
   'work.outcome': 'Outcome',
   'work.accept': 'Accept',
   'work.reject': 'Reject',
