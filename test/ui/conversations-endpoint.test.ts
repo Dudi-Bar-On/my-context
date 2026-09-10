@@ -47,6 +47,7 @@ import {
 import { apiConversationOutline } from '../../src/ui/read-model-conversation-document.ts';
 import { projectDirName, rebuildConversations } from '../../src/core/conversation-index.ts';
 import { registeredRoutes } from '../../src/ui/routes.ts';
+import { zonedDay } from '../../src/ui/zoned-day.ts';
 import { registerReadRoutes } from '../../src/ui/server.ts';
 import { Store } from '../../src/core/store.ts';
 import type { Workspace } from '../../src/core/workspace.ts';
@@ -966,7 +967,7 @@ test('the list narrows by branch, date and text, and each malformed clause is re
     const all = apiConversations(b.ws, url()).body as ConversationListBody;
     assert.equal(all.total, 2);
     assert.equal(all.matching, 2, 'with no filter, matching IS the total');
-    assert.deepEqual(all.filter, { q: null, branch: null, since: null, until: null });
+    assert.deepEqual(all.filter, { q: null, branch: null, since: null, until: null, tz: null });
     assert.deepEqual(all.branches, ['main', 'topic'],
       'every branch the ARCHIVE holds, so the chooser cannot offer a branch that does not '
       + 'exist and cannot drop the one being filtered by');
@@ -982,8 +983,10 @@ test('the list narrows by branch, date and text, and each malformed clause is re
       'and the chooser still offers both — a control that erased itself on first use would be '
       + 'a filter a reader could not undo');
 
-    // Both bounds are inclusive of their whole day, which is the only reading
-    // that does not turn on a zone the server does not have.
+    // Both bounds are inclusive of their whole day. With no `tz` the day is
+    // UTC's, which is this endpoint's answer for a caller that has no clock of
+    // its own — `plan:archive seq:37` changed which zone a bound is READ in,
+    // not what a bound means.
     const since = apiConversations(b.ws, url('?since=2026-09-05')).body as ConversationListBody;
     assert.deepEqual(since.conversations.map((c) => c.sessionId), ['new']);
     const until = apiConversations(b.ws, url('?until=2026-09-01')).body as ConversationListBody;
@@ -1005,6 +1008,9 @@ test('the list narrows by branch, date and text, and each malformed clause is re
     const refusals: [string, string][] = [
       ['?since=last%20week', 'a date this endpoint cannot read'],
       ['?until=2026-9-5', 'a date written loosely'],
+      ['?since=2026-09-05&tz=Mars%2FOlympus', 'a zone no runtime knows'],
+      ['?since=2026-09-05&tz=%2B03%3A00', 'an OFFSET, which cannot carry a DST transition'],
+      ['?since=2026-09-05&tz=', 'an empty zone, asked about and silently answered as UTC'],
       ['?q=', 'an empty search is a question, answered here as no question at all'],
       ['?branch=', 'and so is an empty branch'],
       ['?sort=duration', 'a parameter this endpoint does not act on'],
@@ -1015,6 +1021,122 @@ test('the list narrows by branch, date and text, and each malformed clause is re
     }
     const long = apiConversations(b.ws, url(`?q=${'x'.repeat(CONVERSATION_QUERY_CAP + 1)}`));
     assert.equal(long.status, 400, 'a term past the cap is refused with the cap named');
+  } finally { b.dispose(); }
+});
+
+/* ── plan:archive seq:37 — the day is the READER'S, and it moves with DST ─── */
+
+/**
+ * **A DATE BOUND IS A DAY IN A CLOCK, AND THE CLOCK IS THE READER'S** —
+ * `TASK-a-date-filter-measures-the-reader-s-day-not-utc-s-because`.
+ *
+ * ── WHY BOTH ROWS ARE AT 21:30Z, AND WHY THAT IS THE WHOLE TEST ───────────
+ *
+ * The easy wrong fix here is an OFFSET: take the stored UTC instant, add three
+ * hours for a UTC+3 reader, slice ten characters. It passes every test anybody
+ * would write in September and is wrong from late October to late March.
+ *
+ * So the two sessions below sit at the SAME wall time on opposite sides of a
+ * transition. `Asia/Jerusalem` is GMT+2 in January and GMT+3 in July, so
+ * `21:30Z` is `23:30` on the 15th in winter and `00:30` on the 16th in summer.
+ * One instant-shape, two days — which no fixed offset can produce and which
+ * `Intl` produces for free.
+ *
+ *   - a `+3`-everywhere build files BOTH on the 16th, so `until=2026-01-15`
+ *     comes back empty and this test is red on the winter row.
+ *   - the shipped `seq:10` prefix build files BOTH on the 15th, so
+ *     `since=2026-07-16` comes back empty and it is red on the summer row.
+ *
+ * Neither half is redundant, and neither can pass by accident.
+ *
+ * ── AND THE FILTER IS ASSERTED AGAINST THE STAMP, NOT AGAINST A LITERAL ───
+ *
+ * The last assertion asks `zonedDay` — the function the SCREEN draws its date
+ * from — which day each row is, and requires the endpoint to have selected on
+ * exactly that. A future change that moved the filter's day without moving the
+ * stamp's is what this item was filed about; this is the assertion that sees
+ * it, and it would still see it if both literals above were edited to match a
+ * new wrong answer.
+ */
+test("a date bound is the reader's day, and its width follows the zone's DST", () => {
+  const b = box();
+  try {
+    // Winter: GMT+2, so 21:30Z is 23:30 on the 15th.
+    b.write('winter', [
+      { type: 'user', timestamp: '2026-01-15T21:00:00.000Z', gitBranch: 'main',
+        message: { role: 'user', content: 'the january session' } },
+      { type: 'assistant', timestamp: '2026-01-15T21:30:00.000Z', gitBranch: 'main',
+        message: { role: 'assistant', content: text('done') } },
+    ]);
+    // Summer: GMT+3, so the same wall time is 00:30 on the 16th.
+    b.write('summer', [
+      { type: 'user', timestamp: '2026-07-15T21:00:00.000Z', gitBranch: 'main',
+        message: { role: 'user', content: 'the july session' } },
+      { type: 'assistant', timestamp: '2026-07-15T21:30:00.000Z', gitBranch: 'main',
+        message: { role: 'assistant', content: text('done') } },
+    ]);
+    b.scan();
+
+    const ids = (q: string): string[] => (
+      apiConversations(b.ws, url(q)).body as ConversationListBody
+    ).conversations.map((c) => c.sessionId).sort();
+
+    const TZ = 'tz=Asia%2FJerusalem';
+    assert.deepEqual(
+      ids(`?since=2026-07-16&until=2026-07-16&${TZ}`), ['summer'],
+      "the July session ended at 00:30 on the reader's 16th. Under the shipped UTC prefix it "
+      + 'was filed on the 15th and this day came back empty — the defect, restated.',
+    );
+    assert.deepEqual(
+      ids(`?since=2026-07-15&until=2026-07-15&${TZ}`), [],
+      'and it is not on BOTH days. A bound that merely widened would pass the line above and '
+      + 'still be a filter that disagrees with the date printed on the row.',
+    );
+    assert.deepEqual(
+      ids(`?since=2026-01-15&until=2026-01-15&${TZ}`), ['winter'],
+      "the January session ended at 23:30 on the reader's 15th, because the zone is GMT+2 "
+      + 'then. Anything that added a fixed three hours files it on the 16th and this is red.',
+    );
+    assert.deepEqual(
+      ids(`?since=2026-01-16&until=2026-01-16&${TZ}`), [],
+      'and NOT on the 16th, which is precisely where a fixed +3 offset would put it.',
+    );
+
+    // The zone is what moved, so UTC still answers the way it always did.
+    assert.deepEqual(
+      ids('?since=2026-07-15&until=2026-07-15'), ['summer'],
+      'with no tz the bound is a UTC day, unchanged. A caller with no clock of its own — a '
+      + "script, curl — is not handed the server's zone instead.",
+    );
+
+    // ── THE FILTER AND THE DRAWN STAMP, ASKED THE SAME QUESTION ───────────
+    const both = apiConversations(
+      b.ws, url(`?since=2026-01-01&until=2026-12-31&${TZ}`),
+    ).body as ConversationListBody;
+    assert.equal(both.filter.tz, 'Asia/Jerusalem', 'the zone the answer was computed in is echoed');
+    assert.equal(both.conversations.length, 2, 'a whole year holds both');
+    let moved = 0;
+    for (const row of both.conversations) {
+      const day = zonedDay(row.endedAt, 'Asia/Jerusalem');
+      assert.notEqual(day, null, 'every row in this fixture ended at a real instant');
+      assert.deepEqual(
+        ids(`?since=${day}&until=${day}&${TZ}`), [row.sessionId],
+        `the day the SCREEN prints for ${row.sessionId} is ${day}, so asking the filter for `
+        + 'that day must return that row and only it. This is the assertion that fails if the '
+        + 'two derivations are ever separated again.',
+      );
+      if (day !== row.endedAt?.slice(0, 10)) moved += 1;
+    }
+    // ANTI-VACUITY. The winter row is the 15th in both clocks — that is what
+    // makes it the DST control — so only the summer row can move. A fixture in
+    // which NEITHER moved would make every assertion above green under the
+    // shipped UTC prefix, which is the exact way this test could rot.
+    assert.equal(
+      moved, 1,
+      'exactly one of these two rows falls on a different day in the reader’s clock than '
+      + 'in UTC. If that stops being true the fixture no longer discriminates and the whole '
+      + 'test passes for the wrong reason.',
+    );
   } finally { b.dispose(); }
 });
 

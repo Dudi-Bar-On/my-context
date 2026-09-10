@@ -1,4 +1,5 @@
-// @basis TASK-a-timestamp-is-shown-in-the-reader-s-own-zone-and-says-which
+// @basis TASK-a-timestamp-is-shown-in-the-reader-s-own-zone-and-says-which,
+// TASK-a-date-filter-measures-the-reader-s-day-not-utc-s-because
 /**
  * **THREE HOURS OF A SESSION WENT MISSING AND NOTHING WAS MISSING.**
  *
@@ -50,6 +51,7 @@ import assert from 'node:assert/strict';
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { zonedStamp as cliStamp } from '../../src/cli/commands/format.ts';
+import { zonedDay as serverDay } from '../../src/ui/zoned-day.ts';
 
 const PUBLIC = path.join(import.meta.dirname, '..', '..', 'src', 'ui', 'public');
 
@@ -58,6 +60,8 @@ const browserModule = async <T>(...segments: string[]): Promise<T> =>
 
 interface ViewModel {
   zonedStamp: (at: unknown, timeZone?: string) => string | null;
+  zonedDay: (at: unknown, timeZone?: string) => string | null;
+  zonedZone: (at: unknown, timeZone?: string) => string | null;
 }
 interface Parts {
   zonedStampOf: (at: unknown, timeZone?: string) => string | null;
@@ -151,6 +155,98 @@ test('the terminal and the screen spell every instant identically, in every zone
       );
     }
   }
+});
+
+/* ══ AND THE DAY THE FILTER COMPARES IS THE DAY THE STAMP PRINTS ══════════ */
+
+/**
+ * **THE ANTI-DRIFT PIN FOR `plan:archive seq:37`** —
+ * `TASK-a-date-filter-measures-the-reader-s-day-not-utc-s-because`.
+ *
+ * `seq:10` gave the archive list a date filter that compared a UTC prefix, and
+ * `seq:18` moved every stamp beside it into the reader's clock. Each was right
+ * about its own half; together they put a control under a column that
+ * disagreed with it, and a row could be hidden by a day boundary that did not
+ * match the date printed on the row.
+ *
+ * The repair is not "make the filter zoned too" — that is two zoned things
+ * that can still drift. It is ONE derivation: `zonedDay` produces the date,
+ * and `zonedStamp` does not compute one, it reads that. This test is what says
+ * so across the FILE BOUNDARY the language forces: the endpoint cannot import
+ * untyped JavaScript (`tsconfig.json` sets no `allowJs`), so `src/ui/zoned-day.ts`
+ * is a second spelling, and here is the sweep that stands in for the import.
+ *
+ * Three assertions per instant per zone, and each one can fail alone:
+ *   - the SERVER's day equals the BROWSER's day  — the copy has not drifted;
+ *   - the browser's day is the first ten characters of the browser's stamp —
+ *     the filter and the column are one derivation, not two;
+ *   - the same against the CLI's stamp, so `conversation list` is in it too.
+ *
+ * `ZONES` and `INSTANTS` already carry what this needs and were chosen for it
+ * before this item existed: `Asia/Jerusalem` on both sides of its DST change,
+ * `Pacific/Chatham` at `GMT+12:45` where the date rolls forward, and
+ * `America/New_York` where it rolls back.
+ */
+test('one derivation: the day a filter compares is the day a stamp prints', async () => {
+  const { zonedStamp, zonedDay } = await viewModel();
+  let moved = 0;
+  for (const zone of ZONES) {
+    for (const at of INSTANTS) {
+      const day = zonedDay(at, zone);
+      assert.notEqual(day, null, `refused a real instant: ${at} in ${zone}`);
+      assert.equal(
+        serverDay(at, zone), day,
+        `the endpoint and the browser disagree about WHICH DAY ${at} is in ${zone}. That `
+        + 'disagreement is the defect seq:37 was filed about, one file apart.',
+      );
+      assert.equal(
+        String(zonedStamp(at, zone)).slice(0, 10), day,
+        `the browser draws a date the browser's own filter would not select: ${at} in ${zone}`,
+      );
+      assert.equal(
+        String(cliStamp(at, zone)).slice(0, 10), day,
+        `the terminal prints a date the list filter would not select: ${at} in ${zone}`,
+      );
+      if (day !== at.slice(0, 10)) moved += 1;
+    }
+  }
+  // ANTI-VACUITY. If every instant here fell on its UTC day, all three
+  // assertions above would hold for a build that never left UTC — which is
+  // exactly the build this item replaced.
+  assert.ok(
+    moved >= 6,
+    `only ${moved} of these instant/zone pairs fall on a different day from UTC. The table has `
+    + 'stopped covering a day boundary, so this test can no longer tell a zoned day from a '
+    + 'UTC one.',
+  );
+});
+
+/**
+ * The zone a screen NAMES is the zone that instant is actually in — the same
+ * fields, read a third way.
+ *
+ * `conv.datesIn` draws this beside a date filter, so an empty answer can still
+ * say whose day it looked for. Pinned here rather than left to the browser
+ * because it is a reading of `zonedFields`, and a reading that drifted from
+ * the stamp's tail would put two different clock names on one screen.
+ */
+test("the clock a filter is named after is the stamp's own tail", async () => {
+  const { zonedStamp, zonedZone } = await viewModel();
+  for (const zone of ZONES) {
+    for (const at of INSTANTS) {
+      const named = zonedZone(at, zone);
+      assert.notEqual(named, null, `refused a real instant: ${at} in ${zone}`);
+      assert.ok(
+        String(zonedStamp(at, zone)).endsWith(` ${String(named)}`),
+        `the zone named beside a filter (${String(named)}) is not the zone the stamps carry `
+        + `for ${at} in ${zone}: ${String(zonedStamp(at, zone))}`,
+      );
+    }
+  }
+  // The transition itself, stated rather than swept: naming today's offset
+  // over a filter set months back is a small copy of the defect above.
+  assert.equal(zonedZone('2026-07-15T12:00:00Z', 'Asia/Jerusalem'), 'GMT+3');
+  assert.equal(zonedZone('2026-01-15T12:00:00Z', 'Asia/Jerusalem'), 'GMT+2');
 });
 
 /* ══ THE DATE MOVES TOO, WHICH A TIME-ONLY FIX WOULD NOT ══════════════════ */

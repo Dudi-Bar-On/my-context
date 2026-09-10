@@ -63,7 +63,7 @@ import { helpDisclosure } from '../lib/disclosure.js';
 import { LOOK_GAP_MS, attachLook, shouldPing } from '../lib/heartbeat.js';
 import { markdownNodes } from '../lib/markdown.js';
 import { ansiNodes, hasEscapes, stripEscapes } from '../lib/ansi.js';
-import { formatBytes } from '../lib/viewmodel.js';
+import { formatBytes, readerZone, zonedZone } from '../lib/viewmodel.js';
 import { composeCommand } from '../lib/command.js';
 import { commandActions } from '../lib/command-actions.js';
 import {
@@ -183,8 +183,26 @@ function durationText(ctx, ms) {
  * that cannot say which clock it is on.
  */
 function dayText(iso) {
-  return zonedStampOf(iso);
+  return zonedStampOf(iso, READER_ZONE);
 }
+
+/**
+ * **THE ONE ZONE THIS SCREEN IS IN — read once, drawn with, and SENT** —
+ * `TASK-a-date-filter-measures-the-reader-s-day-not-utc-s-because`.
+ *
+ * `zonedStampOf(iso)` with no second argument already rendered in the reader's
+ * zone, because `undefined` resolves to the runtime's. Naming that same value
+ * changes nothing on the screen and everything about what can be PROVED: the
+ * string passed to `filterQuery` as `tz` is character-for-character the string
+ * the stamps beside the filter were formatted in. A filter asking about
+ * `Asia/Jerusalem` while the column was drawn in "whatever the runtime says"
+ * is two answers that agree today and are not required to.
+ *
+ * Read at module load rather than per row: a browser's zone does not change
+ * under a mounted screen, and `zonedFormat`'s cache is keyed by exactly this
+ * string.
+ */
+const READER_ZONE = readerZone();
 
 /* ══ THE LIST ══════════════════════════════════════════════════════════════ */
 
@@ -572,6 +590,32 @@ function drawList(ctx, host, body, open) {
       n: body.matching, total: body.total,
     }));
     host.append(spaced(summary));
+    // ── WHICH CLOCK THOSE DAYS WERE COUNTED IN ──────────────────────────────
+    //
+    // `TASK-a-date-filter-measures-the-reader-s-day-not-utc-s-because`, and it
+    // is `seq:18`'s rule — never a zoned value without the name of the zone —
+    // applied to a CONTROL rather than to a stamp.
+    //
+    // The rows already carry `GMT+3` on every date they draw, so on a list
+    // with rows this repeats them. It is drawn anyway, because the one moment
+    // a reader most needs it is the one where there are NO rows to read it
+    // off: "I asked for my own Tuesday and got nothing" is the report this
+    // whole item began as, and an empty answer that cannot say whose Tuesday
+    // it looked for is the same silence one screen later.
+    //
+    // ANCHORED TO THE BOUND and not to now, for `zonedZone`'s stated reason: a
+    // zone's name moves with its transitions, and naming January's `GMT+2`
+    // over a July filter would be a small copy of the defect above. Noon UTC
+    // on the bound's own day is inside that day in every real zone.
+    const bound = body.filter.since ?? body.filter.until;
+    if (bound !== null && bound !== undefined) {
+      const label = zonedZone(new Date(`${bound}T12:00:00Z`), body.filter.tz ?? 'UTC');
+      if (label !== null) {
+        const clock = el('p', 'small');
+        clock.append(...ctx.t('conv.datesIn'), ' ', mono(label), '.');
+        host.append(clock);
+      }
+    }
     // Sessions a DATE could not place, named rather than merely absent.
     if (body.undated > 0) {
       const undated = el('p', 'small spill');
@@ -774,13 +818,25 @@ function filterBar(ctx, branches, state, onChange) {
   return bar;
 }
 
-/** The query string for one filter state. Absent keys are absent, never empty. */
+/**
+ * The query string for one filter state. Absent keys are absent, never empty.
+ *
+ * **`tz` rides with the DATES and only with them** —
+ * `TASK-a-date-filter-measures-the-reader-s-day-not-utc-s-because`. A bound is
+ * a day, and a day is a day only in some clock; the endpoint reads one in UTC
+ * when nobody says otherwise, and this screen is the party that knows
+ * otherwise. It is omitted when no bound is set for the reason every other key
+ * here is: a parameter that changes no answer is noise in a URL a reader may
+ * copy, and it would put a zone into the request an unfiltered list has no
+ * opinion about.
+ */
 function filterQuery(state) {
   const params = new URLSearchParams();
   if (state.q !== null) params.set('q', state.q);
   if (state.branch !== null) params.set('branch', state.branch);
   if (state.since !== null) params.set('since', state.since);
   if (state.until !== null) params.set('until', state.until);
+  if (state.since !== null || state.until !== null) params.set('tz', READER_ZONE);
   const query = params.toString();
   return query === '' ? '' : `?${query}`;
 }

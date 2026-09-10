@@ -242,13 +242,92 @@ export function wallStamp(ms) {
  * rather than a wrong one.
  */
 export function zonedStamp(at, timeZone) {
+  const fields = zonedFields(at, timeZone);
+  return fields === null ? null : `${fields.day} ${fields.time} ${fields.zone}`;
+}
+
+/**
+ * **WHICH DAY AN INSTANT FELL ON, IN THE READER'S OWN CLOCK — the same
+ * derivation that draws the date half of `zonedStamp`, and deliberately not a
+ * second one** —
+ * `TASK-a-date-filter-measures-the-reader-s-day-not-utc-s-because`.
+ *
+ * `2026-07-16` for `2026-07-15T21:30:00Z` read in `Asia/Jerusalem`.
+ *
+ * ── WHY THIS FUNCTION EXISTS AT ALL ───────────────────────────────────────
+ *
+ * The archive list drew its stamps in the reader's zone (`seq:18`) and
+ * filtered its dates by a STRING PREFIX of the stored UTC instant (`seq:10`).
+ * Both were defensible alone. Together they put a control under a column that
+ * disagreed with it: at UTC+3 a session at `01:00` local is stamped
+ * `2026-09-08 01:00 GMT+3` and filed by the filter under `2026-09-07`, so a
+ * reader asking for the day printed on the row is shown a row that is not
+ * there and hidden a row that is.
+ *
+ * The repair is not "shift by an offset". An offset applied to an instant is
+ * NOT a day computed in a zone: `Asia/Jerusalem` is GMT+2 in January and GMT+3
+ * in July, so `21:30Z` is the 15th in one and the 16th in the other. That is
+ * why the day comes out of `Intl` — which knows the transition — and never out
+ * of arithmetic.
+ *
+ * **AND IT IS THE SAME `zonedFields` THE STAMP READS.** `zonedStamp` does not
+ * compute a date; it reads `fields.day`, which is this. One derivation, two
+ * readings, so the filter cannot come to a different answer about which day a
+ * row is than the row itself prints.
+ */
+export function zonedDay(at, timeZone) {
+  const fields = zonedFields(at, timeZone);
+  return fields === null ? null : fields.day;
+}
+
+/**
+ * **WHAT THE READER'S CLOCK IS CALLED at a given instant** — `GMT+3` — read
+ * off the same `zonedFields` the stamp's own tail is.
+ *
+ * At an INSTANT because a zone's name is not constant: `Asia/Jerusalem` is
+ * `GMT+2` in January and `GMT+3` in July. A screen that named one of those for
+ * a day in the other would be a smaller version of the defect this pair of
+ * functions exists to end.
+ */
+export function zonedZone(at, timeZone) {
+  const fields = zonedFields(at, timeZone);
+  return fields === null ? null : fields.zone;
+}
+
+/**
+ * **THE ZONE THE READER IS IN, taken from the runtime and never guessed.**
+ *
+ * `seq:18` established that `undefined` means "whatever this runtime resolves"
+ * and that the server's zone never enters it. This names the same value so it
+ * can be SENT — the browser is the only party that knows which day a reader
+ * means, and a date bound with no zone beside it is a bound the server would
+ * have to guess at.
+ */
+export function readerZone() {
+  return new Intl.DateTimeFormat().resolvedOptions().timeZone;
+}
+
+/**
+ * The three fields every zoned rendering is built from, or `null`.
+ *
+ * `null` for an instant that is not one, and for a formatter that produced no
+ * zone name — the second guard is `zonedStamp`'s original and is kept here so
+ * that a caller who only wants the DAY still refuses in exactly the cases the
+ * stamp refuses in. A day that existed where a stamp did not would be the two
+ * disagreeing again, one row apart.
+ */
+function zonedFields(at, timeZone) {
   const when = at instanceof Date ? at : new Date(at);
   if (Number.isNaN(when.getTime())) return null;
   const parts = zonedFormat(timeZone).formatToParts(when);
   const field = (type) => parts.find((p) => p.type === type)?.value ?? '';
   const zone = field('timeZoneName');
   if (zone === '') return null;
-  return `${field('year')}-${field('month')}-${field('day')} ${field('hour')}:${field('minute')} ${zone}`;
+  return {
+    day: `${field('year')}-${field('month')}-${field('day')}`,
+    time: `${field('hour')}:${field('minute')}`,
+    zone,
+  };
 }
 
 /**

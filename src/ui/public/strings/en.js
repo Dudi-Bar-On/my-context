@@ -251,6 +251,9 @@ export const strings = {
   'conv.noMatchList': 'No session matches what you asked for. Clear the filter to see all {total}.',
   'conv.laneMatch': 'matched in {n} helper agents',
   'conv.laneMatch1': 'matched in 1 helper agent',
+  // Which clock a date bound was counted on — plan:archive seq:37. The
+  // offset follows in a `.m` span, so it stays LTR inside an RTL page.
+  'conv.datesIn': 'Dates are counted on your own clock,',
   'conv.undated': '{n} session(s) recorded no end time, so no date can place them. They are left out while a date is set.',
   // Duration. `took` for a session that has ended, `tookFloor` for one whose
   // file has grown past the scan — the second is the same number said

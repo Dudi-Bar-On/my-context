@@ -96,6 +96,7 @@ import { closeSync, openSync, readdirSync, readSync, statSync } from 'node:fs';
 import path from 'node:path';
 import type { Workspace } from '../core/workspace.ts';
 import { registerRoute, type ApiContext, type JsonResult } from './routes.ts';
+import { zoneIsKnown, zonedDay } from './zoned-day.ts';
 
 /**
  * `badRequest`, `unknownParams` and `repeatedParams` are spelled here rather
@@ -355,6 +356,18 @@ export interface ConversationFilter {
   since: string | null;
   /** `YYYY-MM-DD`, inclusive through the end of that day, or `null`. */
   until: string | null;
+  /**
+   * **The zone those two days are days OF**, as an IANA name the caller sent,
+   * or `null` when it sent none and the bounds were therefore read in UTC —
+   * `TASK-a-date-filter-measures-the-reader-s-day-not-utc-s-because`.
+   *
+   * Echoed for the same reason every other clause here is: a narrowed list
+   * that cannot say what it narrowed by is a list a reader reads as the whole
+   * archive. It is also what lets the screen NAME the clock its dates were
+   * counted in, which is `seq:18`'s standing rule applied to a control instead
+   * of to a stamp.
+   */
+  tz: string | null;
 }
 
 export interface ConversationListBody {
@@ -600,21 +613,70 @@ function textParam(url: URL, name: string, cap: number): string | null | undefin
  * A DATE and not a timestamp, deliberately. The stamps in the index are UTC
  * instants and the reader's question is "which day was that session" in their
  * own clock — a distinction this product has already paid for once
- * (`TASK-a-timestamp-is-shown-in-the-reader-s-own-zone-and-says-which`). A
- * whole-day bound is the coarsest thing that cannot be wrong by a rounding: it
- * is compared as a STRING prefix against the stored ISO stamp, so `since`
- * includes every instant of its day and `until` includes every instant of
- * its own, with no zone arithmetic anywhere to disagree with the screen's.
+ * (`TASK-a-timestamp-is-shown-in-the-reader-s-own-zone-and-says-which`).
  *
- * The cost of that honesty is stated rather than hidden: a reader in UTC+11
- * asking for one day gets the UTC day, which can differ by a few hours at its
- * edges. Naming a day is still the right control; guessing an offset the
- * server does not have would be the wrong one.
+ * ── WHAT `plan:archive seq:10` COMPARED, AND WHY IT WAS CHANGED ───────────
+ *
+ * It compared this against the stored ISO stamp as a STRING PREFIX, with no
+ * zone arithmetic anywhere, and said so rather than hiding it: the alternative
+ * looked like the server guessing an offset it does not have. The cost was
+ * stated too — "a reader in UTC+11 asking for one day gets the UTC day".
+ *
+ * That cost turned out to be a DEFECT ONE ROW UP. `seq:18` had already moved
+ * every stamp on this screen into the reader's clock and named it, so the list
+ * drew `2026-09-08 01:00 GMT+3` on a row that this filter filed under
+ * `2026-09-07`. A control and the column above it giving different answers to
+ * "which day is this" is not a documented limitation; it is the same shape as
+ * the three-hours-missing report that produced `seq:18`.
+ *
+ * **The server still guesses nothing.** The zone arrives in `tz`, from the
+ * only party that knows it — the browser that is already rendering in it. See
+ * `zoneParam` and `zonedDay`.
  */
 function dateParam(url: URL, name: string): string | null | undefined {
   const raw = url.searchParams.get(name);
   if (raw === null) return undefined;
   if (!/^\d{4}-\d{2}-\d{2}$/.test(raw)) return null;
+  return raw;
+}
+
+/**
+ * The IANA zone the date bounds are days of, or the refusal.
+ *
+ * ── AN IANA NAME AND NEVER AN OFFSET ──────────────────────────────────────
+ *
+ * A caller could send `+03:00` in a third of the characters, and it would be
+ * wrong for half of every year. `Asia/Jerusalem` — the owner's own — is GMT+2
+ * in January and GMT+3 in July, so an instant at `21:30Z` falls on the 15th
+ * under one and the 16th under the other. A NAME carries the transitions; an
+ * offset carries one side of them. `Intl` is what knows the difference, and
+ * `zonedDay` is where it is asked.
+ *
+ * ── AND IT IS REFUSED THE WAY EVERY OTHER CLAUSE IS ───────────────────────
+ *
+ * `seq:10`'s rule, restated by the item that asked for this: *"do not regress
+ * the refusal … whatever shape carries the zone must be refused the same way
+ * when it is wrong."* An empty `tz` is a caller asking about a zone and being
+ * answered about UTC; an unknown one would silently become the SERVER's zone,
+ * which is the exact substitution this whole item exists to end.
+ *
+ * `undefined` — not sent at all — is UTC, which is what this endpoint has
+ * always done and what a caller with no clock of its own (a script, `curl`)
+ * still means. It is not refused, because it is not wrong; it is simply the
+ * bound read in the one zone that needs no reader.
+ */
+function zoneParam(url: URL): string | null | undefined {
+  const raw = url.searchParams.get('tz');
+  if (raw === null) return undefined;
+  if (raw === '' || raw.length > 64) return null;
+  // **AND AN OFFSET IS REFUSED EVEN THOUGH `Intl` WOULD TAKE IT.** ECMA-402
+  // accepts `+03:00` as a time zone identifier, and it would work — for half
+  // the year, on the owner's own clock, failing silently at exactly the day
+  // boundary this endpoint is being asked about. A caller sending one has
+  // already thrown away the transitions, and there is no way for this side to
+  // tell that from a caller who meant the zone. So it is a refusal with the
+  // reason in it, not a quiet acceptance.
+  if (/^[+-]/.test(raw) || !zoneIsKnown(raw)) return null;
   return raw;
 }
 
@@ -662,7 +724,7 @@ const REBUILD_COMMAND = 'mycontext conversation rebuild';
  * costs what it always did.
  */
 export function apiConversations(ws: Workspace, url: URL): JsonResult {
-  const bad = unknownParams(url, ['limit', 'offset', 'q', 'branch', 'since', 'until'])
+  const bad = unknownParams(url, ['limit', 'offset', 'q', 'branch', 'since', 'until', 'tz'])
     ?? repeatedParams(url);
   if (bad) return badRequest(bad);
 
@@ -696,6 +758,14 @@ export function apiConversations(ws: Workspace, url: URL): JsonResult {
   if (askedUntil === null) {
     return badRequest('until must be a date written YYYY-MM-DD.');
   }
+  const askedZone = zoneParam(url);
+  if (askedZone === null) {
+    return badRequest(
+      'tz must be an IANA time zone name this runtime knows, such as Asia/Jerusalem — not a '
+      + 'fixed offset, which cannot carry the transitions a day boundary turns on. Omit it and '
+      + 'the date bounds are read in UTC.',
+    );
+  }
   const limit = Math.min(askedLimit ?? CONVERSATION_LIST_CAP, CONVERSATION_LIST_CAP);
   const offset = askedOffset ?? 0;
   const filter: ConversationFilter = {
@@ -703,6 +773,7 @@ export function apiConversations(ws: Workspace, url: URL): JsonResult {
     branch: askedBranch ?? null,
     since: askedSince ?? null,
     until: askedUntil ?? null,
+    tz: askedZone ?? null,
   };
   const dir = transcriptDir(process.env, workspaceCwd(ws));
 
@@ -770,23 +841,60 @@ export function apiConversations(ws: Workspace, url: URL): JsonResult {
       ? null
       : index.subagentMatches(filter.q);
 
-    // A date bound cannot place a row with no end time. Those rows are DROPPED
-    // rather than kept-because-unknown, and counted so the drop is visible —
-    // `INV-nothing-is-dropped-silently`. Counted only when a bound was asked
-    // for, so the number is never a comment on a filter nobody set.
+    // ── WHICH DAY EACH ROW IS, COMPUTED ONCE, IN THE READER'S ZONE ────────
+    //
+    // `TASK-a-date-filter-measures-the-reader-s-day-not-utc-s-because`. The
+    // day is `zonedDay`'s and nothing else's, because `zonedDay` is what draws
+    // the date half of the stamp the screen puts on the same row — one
+    // derivation with two readings rather than a filter and a column that can
+    // come to different answers about the same session.
+    //
+    // `filter.tz ?? 'UTC'` is stated here rather than defaulted inside
+    // `zonedDay`, because that function's `undefined` means "this runtime's
+    // zone" and this runtime is the SERVER. A caller that named no zone gets
+    // UTC — the endpoint's own long-standing answer — never the machine the
+    // server happens to be on.
+    //
+    // ONE PASS over the table, kept in a Map, because `undated` is counted
+    // over the whole archive while the branch and text clauses are not — two
+    // walks over `all()` that would otherwise format every stamp twice.
+    //
+    // AND IT IS NOT FREE, so the number is here rather than assumed. Measured
+    // 2026-09-10, best of nine, warm formatter: 0.009 ms over the 2 sessions
+    // this workspace holds, 0.952 ms over 259 rows, 7.571 ms over 2,000 —
+    // against the 4.024 ms `openableLanes` costs the whole request. It is paid
+    // ONLY when a bound was asked for; an unfiltered list does not build the
+    // map at all, which is why `dated` gates the loop rather than the lookup.
+    //
+    // A date bound cannot place a row with no end time — and cannot place one
+    // whose stamp is not an instant either, which `zonedDay` reports as `null`
+    // rather than guessing. Both are DROPPED rather than kept-because-unknown,
+    // and counted so the drop is visible — `INV-nothing-is-dropped-silently`.
+    // Counted only when a bound was asked for, so the number is never a
+    // comment on a filter nobody set.
     const dated = filter.since !== null || filter.until !== null;
-    const undated = dated ? all.filter((r) => r.endedAt === null).length : 0;
+    const zone = filter.tz ?? 'UTC';
+    const dayOf = new Map<string, string | null>();
+    if (dated) {
+      for (const row of all) {
+        dayOf.set(row.sessionId, row.endedAt === null ? null : zonedDay(row.endedAt, zone));
+      }
+    }
+    const undated = dated
+      ? all.filter((r) => (dayOf.get(r.sessionId) ?? null) === null).length
+      : 0;
 
     const matched = all.filter((row) => {
       if (filter.branch !== null && row.branch !== filter.branch) return false;
       if (dated) {
-        if (row.endedAt === null) return false;
-        // A prefix comparison against the stored ISO stamp: `2026-09-04` is
-        // less than every instant of the 4th and `2026-09-04￿` is greater
-        // than all of them, so both bounds are inclusive of their whole day
-        // without parsing either side into a Date.
-        if (filter.since !== null && row.endedAt < filter.since) return false;
-        if (filter.until !== null && row.endedAt.slice(0, 10) > filter.until) return false;
+        // Both bounds compare `YYYY-MM-DD` against `YYYY-MM-DD`, so both are
+        // INCLUSIVE of their whole day by construction — the item's first
+        // requirement, and the edge it names: an off-by-one at `until` hides
+        // the newest day, which is the day anybody filtering most wants.
+        const day = dayOf.get(row.sessionId) ?? null;
+        if (day === null) return false;
+        if (filter.since !== null && day < filter.since) return false;
+        if (filter.until !== null && day > filter.until) return false;
       }
       if (needle !== null) {
         const lanes = laneMatches?.get(row.sessionId) ?? 0;

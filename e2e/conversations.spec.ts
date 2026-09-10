@@ -14,6 +14,7 @@
 // TASK-the-conversation-document-still-writes-the-look-tick-by-hand,
 // TASK-a-chip-s-data-g-never-renders-on-six-of-the-eight-chip-kinds,
 // TASK-a-timestamp-is-shown-in-the-reader-s-own-zone-and-says-which,
+// TASK-a-date-filter-measures-the-reader-s-day-not-utc-s-because,
 // TASK-a-tool-call-keeps-160-characters-of-its-input-and-drops-the,
 // TASK-a-question-its-options-the-answer-chosen-and-a-shell-command,
 // TASK-a-task-notification-is-3-9-mb-of-what-a-lane-reported-drawn,
@@ -919,6 +920,187 @@ test.describe('the reader\'s own zone', () => {
       await page.evaluate(() => { location.hash = '#/conversations'; });
       await page.waitForSelector('.convrow', { timeout: 20_000 });
       await expect(page.locator('.convrow').first()).toContainText('2026-09-08 12:07 GMT+3');
+    });
+  }
+});
+
+/* == seq:37 - THE DATE FILTER MEASURES THE READER'S DAY =================== */
+
+/**
+ * **A FILTER AND THE COLUMN ABOVE IT, ASKED THE SAME QUESTION IN A BROWSER
+ * THAT IS NOT ON UTC** -
+ * `TASK-a-date-filter-measures-the-reader-s-day-not-utc-s-because`.
+ *
+ * `seq:10` gave the list `since` and `until` and compared them against the
+ * stored UTC instant as a STRING PREFIX. `seq:18` - the block above - moved
+ * every stamp on the same screen into the reader's clock and named it. So the
+ * list drew `GMT+3` on a row and filed that row under a day computed three
+ * hours away, and a reader asking for the date PRINTED ON THE ROW was shown
+ * nothing at all.
+ *
+ * -- ITS OWN ARCHIVE, AND WHY IT CANNOT BORROW THE SHARED ONE -------------
+ *
+ * The fixture every other test here reads is one session on 2026-09-08, whose
+ * UTC day and Jerusalem day are the SAME - under which this defect is
+ * invisible, exactly as `timezoneId: 'UTC'` makes it invisible. What is needed
+ * is a session whose two days disagree, and a second one on the other side of
+ * a DST transition, and neither can be added to the shared file without moving
+ * the last phrase that `the end of the session is reachable` rests on. So: its
+ * own home, its own cwd, its own server - `the archive says how far behind it
+ * is` reached the same conclusion for the same reason.
+ *
+ * -- WHY BOTH SESSIONS SIT AT 21:30Z --------------------------------------
+ *
+ * `Asia/Jerusalem` is `GMT+2` in January and `GMT+3` in July. The same wall
+ * time is therefore `23:30` on the 15th in one and `00:30` on the 16th in the
+ * other - one instant-shape, two days, which no fixed offset can produce.
+ *
+ *   - the shipped UTC-prefix build files BOTH on the 15th, so the July filter
+ *     below draws no row and this is red;
+ *   - a "+3 everywhere" build files BOTH on the 16th, so the January filter
+ *     draws no row and this is red.
+ *
+ * The DST half is asserted on the SCREEN as well as through the filter: the
+ * two rows carry `GMT+2` and `GMT+3` in one browser, in one session, so the
+ * transition is something a reader can see rather than a claim in a comment.
+ */
+test.describe('a date filter measures the reader’s day', () => {
+  test.use({ timezoneId: 'Asia/Jerusalem' });
+
+  let zoned: UiHarness;
+  let zonedCwd: string;
+  let zonedHome: string;
+
+  /** A short session that ends at `endsAt`. This block is about the LIST. */
+  const pair = (title: string, startsAt: string, endsAt: string): unknown[] => [
+    { type: 'ai-title', aiTitle: title },
+    {
+      type: 'user', timestamp: startsAt, gitBranch: 'master',
+      message: { role: 'user', content: 'what day is this' },
+    },
+    {
+      type: 'assistant', timestamp: endsAt, gitBranch: 'master',
+      message: { role: 'assistant', content: text('the day you are in') },
+    },
+  ];
+
+  test.beforeAll(async () => {
+    zonedHome = mkdtempSync(path.join(tmpdir(), 'e2e-zoned-home-'));
+    zonedCwd = mkdtempSync(path.join(tmpdir(), 'e2e-zoned-cwd-'));
+    const dir = path.join(zonedHome, 'projects', projectDirName(zonedCwd));
+    mkdirSync(dir, { recursive: true });
+    // 21:30Z in JANUARY is 23:30 on the 15th - the zone is GMT+2 then.
+    writeFileSync(
+      path.join(dir, 'sess-winter.jsonl'),
+      pair('The January session', '2026-01-15T21:00:00.000Z', '2026-01-15T21:30:00.000Z')
+        .map((r) => JSON.stringify(r)).join('\n') + '\n',
+    );
+    // 21:30Z in JULY is 00:30 on the 16th - the zone is GMT+3 then.
+    writeFileSync(
+      path.join(dir, 'sess-summer.jsonl'),
+      pair('The July session', '2026-07-15T21:00:00.000Z', '2026-07-15T21:30:00.000Z')
+        .map((r) => JSON.stringify(r)).join('\n') + '\n',
+    );
+
+    process.env['CLAUDE_CONFIG_DIR'] = zonedHome;
+    const previous = process.cwd();
+    process.chdir(zonedCwd);
+    try {
+      runCli(['init'], zonedCwd, () => {});
+      runCli(['conversation', 'rebuild'], zonedCwd, () => {});
+    } finally {
+      process.chdir(previous);
+    }
+    zoned = await startUiChild(zonedCwd);
+  });
+
+  test.afterAll(async () => {
+    await zoned?.stop();
+    delete process.env['CLAUDE_CONFIG_DIR'];
+    if (zonedCwd) removeTree(zonedCwd);
+    if (zonedHome) removeTree(zonedHome);
+  });
+
+  for (const lang of ['en', 'he'] as const) {
+    test(`the day a row is filed under is the day printed on it (${lang})`, async ({ page }) => {
+      await page.addInitScript((l) => {
+        try { localStorage.setItem('myctx-lang', l as string); } catch { /* private mode */ }
+      }, lang);
+      const nonce = await mintNonce(zoned.port);
+      await page.goto(`http://127.0.0.1:${zoned.port}/#${nonce}`);
+      await page.waitForSelector('.rail', { timeout: 20_000 });
+      await page.evaluate(() => { location.hash = '#/conversations'; });
+      await page.waitForSelector('.convrow', { timeout: 20_000 });
+      await expect(page.locator('#exited')).toBeHidden();
+
+      const card = page.locator('.card.pane').filter({ has: page.locator('.convfilter') });
+      const rows = card.locator('.convrow');
+      await expect(rows).toHaveCount(2);
+
+      // -- WHAT THE COLUMN SAYS, AND THAT THE ZONE MOVES WITH THE YEAR ------
+      await expect(rows.filter({ hasText: 'The July session' }))
+        .toContainText('2026-07-16 00:30 GMT+3');
+      await expect(rows.filter({ hasText: 'The January session' }))
+        .toContainText('2026-01-15 23:30 GMT+2');
+
+      const since = card.locator('.convdate').first();
+      const until = card.locator('.convdate').nth(1);
+      // The clock named beside the counts, drawn only once a bound is set.
+      const clock = card.locator('p.small', {
+        hasText: lang === 'he' ? 'התאריכים נספרים' : 'Dates are counted',
+      });
+      await expect(clock).toHaveCount(0);
+
+      // -- THE DEFECT, RESTATED AS A FILTER ---------------------------------
+      //
+      // The row above says 2026-07-16. Under the shipped build the same row was
+      // filed under 2026-07-15, so asking for the day printed on it drew an
+      // empty list.
+      await since.fill('2026-07-16');
+      await until.fill('2026-07-16');
+      await expect(rows).toHaveCount(1);
+      await expect(rows.first()).toContainText('The July session');
+      // And the screen NAMES the clock those days were counted on, so an empty
+      // answer can still say whose day it looked for - `seq:18`'s rule applied
+      // to a control instead of to a stamp.
+      await expect(clock).toContainText('GMT+3');
+
+      // Not on BOTH days: a bound that merely widened would pass the assertion
+      // above and still disagree with the column.
+      await since.fill('2026-07-15');
+      await until.fill('2026-07-15');
+      await expect(rows).toHaveCount(0);
+      await expect(card).toContainText(
+        lang === 'he' ? 'אף שיחה לא מתאימה' : 'No session matches',
+      );
+      // The empty answer still says whose day it looked for. This is the one
+      // moment the line is not a repeat of the rows, because there are none.
+      await expect(clock).toContainText('GMT+3');
+
+      // -- AND THE DST HALF, WHICH AN OFFSET WOULD FAIL ---------------------
+      //
+      // Same wall time, other side of the transition. Anything that added a
+      // fixed three hours files this row on the 16th and draws nothing here.
+      await since.fill('2026-01-15');
+      await until.fill('2026-01-15');
+      await expect(rows).toHaveCount(1);
+      await expect(rows.first()).toContainText('The January session');
+      // The named clock followed the transition too - GMT+2, and not the GMT+3
+      // this same browser was told a moment ago.
+      await expect(clock).toContainText('GMT+2');
+
+      await since.fill('2026-01-16');
+      await until.fill('2026-01-16');
+      await expect(rows).toHaveCount(0);
+
+      // -- BOTH ENDS INCLUSIVE, over a range that holds both ----------------
+      await since.fill('2026-01-15');
+      await until.fill('2026-07-16');
+      await expect(rows).toHaveCount(2);
+
+      await page.screenshot({
+        path: `e2e/screens/conversations-zoned-filter-${lang}.png`, fullPage: true,
+      });
     });
   }
 });
