@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: true
 summary: The short numbers used to talk about work in progress and what each refers to, delivered every session so the same number never means two things.
-summary_of: 2055ce5f6f8a8877
+summary_of: 25b6aa1689393211
 summary_was:
   - 2026-09-07 The short numbers used to talk about work in progress, and what each of them refers to, so the same number never means two things.
 acknowledged:
@@ -21,7 +21,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-09-07
 valid_until: null
-checksum: b1571773a07f4382
+checksum: 35aa608bc5d163a2
 ---
 
 # the D numbers: what each one means, and which are only proposed
@@ -314,3 +314,51 @@ is the one ordering constraint inside a D that a dispatcher can silently get wro
 WHAT IS NOT IN THIS ORDER AND WHY: D27 and D28 pair (D28 needs D27) and neither blocks anything;
 D30 and D32 are small and unblocked; D34 is one item from done; D39 is deferred by his own ruling and
 sits below every open D; D40 starts when D37 closes and is not part of this sequence.
+
+D41, D42 AND D43 ASSIGNED 2026-09-10, BY OWNER RULING ("approve the designs generate Ds for them"),
+and recorded in the same act as the assignment, which is this item’s own obligation.
+
+  D41  the product rule store                docs/superpowers/specs/2026-09-10-product-rule-store-design.md
+       A second store for what does NOT change: facts, prohibitions, procedures, standards and
+       definitions about the product itself. Shipped with my_context, invisible to a user,
+       maintained only by the owner. Two tiers - product entries always apply, developer entries
+       only when the workspace IS my_context - and an entry moves between them in both directions.
+       A template PER KIND which is at once the schema, the check and the maintenance form; every
+       entry carries an example and a `check` that is `preventive`, `detective`, or `none` with a
+       reason. Delivered at every door an agent starts through, with each injection RECORDED so a
+       later hook can assert it happened - because nothing can inspect a context window, and
+       "pinned therefore delivered" is already measurably false.
+
+       ITS §16a IS THE CORPUS HALF and is part of D41 rather than a D of its own: the corpus gains
+       the same verbatim `request` field, and it is BACKFILLED BY EXTRACTION from the archive -
+       never by reconstruction - using loop/2’s filter, because a lane’s dispatch brief is stored
+       as a `type:'user'` record and a naive sweep would fill his field with the coordinator’s
+       briefs: 1,453,700 characters of person-side text, 33× what he actually typed, none of it his.
+
+  D42  conversation retrieval               docs/superpowers/specs/2026-09-10-conversation-retrieval-design.md
+       Finding your way back. Built on D37’s archive, which holds 900 transcripts and 368,585
+       records. The primary way in is a passage he COPIED in the viewer - a selection is not a guess
+       at the subject, it IS the subject, and identifiers match 68% where headings match 4%.
+       Retrieval never writes into the live context: it writes a MISSION for a subagent that reads
+       in a fresh window, verifies against the CODEBASE AND GIT rather than against the corpus,
+       pulls complementary detail out of code and documents, and returns something small,
+       chronological and CITED. Results are files, rendered in the UI, and only what he chooses ever
+       returns to the context. Three phases: search plus anchors, then the four retrieval modes,
+       then drift detection.
+
+  D43  a lifecycle note stops making a summary stale
+       The small product fix that started D41’s whole conversation, kept separate because it is a
+       mechanism repair rather than a new subsystem. `observations` is `summarised` in
+       SUMMARY_BASIS, so the stand-down note `governance/8` REQUIRES makes the retired item’s
+       summary read stale and `doctor` reports it - and the supersede `reason` observation has done
+       the same to replacements since long before that. Owner ruling: lifecycle notes stop counting
+       toward the summary basis. The precedent is already in the file: `WORKFLOW_EXTRA_KEYS`
+       excludes `state`, `progress`, `last_change`, `plan`, `seq`, `priority` and `source` from what
+       the basis sees, for the same reason.
+
+AND ONE QUESTION IS SETTLED WITH NO WORK ATTACHED, recorded so nobody re-opens it: plan:contra
+seq:2 asked whether the tests that rest on an item should be STORED on it - a new frontmatter field,
+or an observation by convention, and whether an agent may write it. THE OWNER RULED: KEEP DERIVING
+IT. Nothing is stored, nothing can go stale, and it is always current by construction. The lane had
+already built the derived half from `@basis` declarations and test paths in `scope`, and measured
+that it needed no storage to work.

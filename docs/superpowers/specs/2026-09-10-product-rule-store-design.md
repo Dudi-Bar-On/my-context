@@ -1,8 +1,8 @@
 # The product rule store
 
-**Status:** design of record, awaiting owner review.
+**Status:** APPROVED by the owner 2026-09-10. Assigned **D41**.
 **Brainstormed:** 2026-09-10, with the owner, over one session.
-**Not started.** No code exists. No D number is assigned yet.
+**Not started.** No code exists. The D map carries the number and the reasoning.
 
 ---
 
