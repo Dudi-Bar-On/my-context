@@ -5,8 +5,10 @@ title: the id box filters well and shows less than half of what you picked
 status: active
 severity: soft
 always: false
-summary: You can type to find an item, and then cannot read back which one you chose.
-summary_of: aa0d6646ff84d903
+summary: "Done: the id picker shows what you actually chose rather than cutting it off halfway."
+summary_of: 426f7fc410ba57a0
+summary_was:
+  - 2026-09-11 You can type to find an item, and then cannot read back which one you chose.
 scope:
   - src/ui/public/styles.css
   - src/ui/public/screens/palette.js
@@ -16,17 +18,17 @@ tags:
   - composer
   - "plan:builder"
   - "seq:17"
-  - "state:todo"
+  - "state:done"
 origin: human
 source_file: null
 source_anchor: null
 source_checksum: null
 valid_from: 2026-09-07
 valid_until: null
-checksum: 76697d8890e452d6
+checksum: 12c148757d2cb089
 plan: builder
 seq: "17"
-state: todo
+state: done
 priority: "2"
 ---
 
@@ -64,3 +66,22 @@ That is a paragraph rather than a layout fight.
 BOTH LANGUAGES, and RTL is where this is worst rather than merely equal: the isolate makes the
 box render LTR inside an RTL page, so an overflowing value shows its end. Whatever lands must be
 looked at in Hebrew, not inferred from English.
+
+Landed in `1be21693`, alongside `builder/6` and `builder/8`.
+
+CLOSED 2026-09-11, FOUR DAYS LATE, AND THE LATENESS IS THE POINT. This shipped on 2026-09-07 and
+nobody set the state. It was found by the handover measurement, not by an audit: the handover
+checker flagged it as an instruction "carried into 3+ blocks with the work still open", and the
+lane checking whether that meant HARD or IMPOSSIBLE found it meant NEITHER — the work was done and
+the item was wrong.
+
+WHAT THE STALENESS COST, measured rather than supposed: `mycontext ready --plan builder` was
+offering these as dispatchable. A lane taking that list would have REBUILT SHIPPED, TESTED WORK —
+and would have found the code already there, which is the confusing version of the failure rather
+than the loud one.
+
+AND THE HANDOVER WAS NOT AT FAULT, which was checked before it was blamed: the next block written
+after the landing names none of these. The residual is a fossil of this item’s own `state` field,
+and the checker reads "still open" from there.
+
+Verified before closing: `test/ui/builder.test.ts` 24 of 24 green on 2026-09-11.
