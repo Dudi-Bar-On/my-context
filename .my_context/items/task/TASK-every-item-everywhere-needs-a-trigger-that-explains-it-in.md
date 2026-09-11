@@ -5,9 +5,10 @@ title: every item everywhere needs a trigger that explains it in one place, and 
 status: active
 severity: soft
 always: false
-summary: Four places where an item is shown without the one-line explanation of what it is.
-summary_of: 7342611b737d7fc0
+summary: Four gaps left in showing every item its one-line explanation, and the ruling that was blocking all four is now settled.
+summary_of: 683cdca44ce83068
 summary_was:
+  - 2026-09-11 Four places where an item is shown without the one-line explanation of what it is.
   - 2026-09-07 Every item can be opened to a short plain-language explanation, written ahead of time and stored with it, which says so when it is missing or out of date.
   - 2026-09-01 Every item gets a short plain-language explanation, written in advance and stored with it, so anyone can tell what it is at a glance.
 scope: []
@@ -25,7 +26,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-08-31
 valid_until: null
-checksum: 2df51f1603cf55c8
+checksum: 2b5ad53caab91753
 plan: walk
 seq: "119"
 state: todo
@@ -71,6 +72,21 @@ item; everything above it is the record of why.
 
 RE-CUT TO THE FOUR GAPS ONLY. The rest of the surface already carries the trigger.
 
-AND ONE CONTRADICTION INSIDE THIS ITEM STILL NEEDS THE OWNER’S RULING - it is named in this item’s row
-in reports/2026-09-07-walk-review.md and is NOT resolved by this re-cut. Do not start the four gaps
-assuming it away.
+THE CONTRADICTION IS SETTLED - 2026-09-11, owner ruling, recorded as
+`DEC-a-missing-summary-is-drawn-and-named-in-the-item-pane-and`. It was named in this item's row in
+reports/2026-09-07-walk-review.md and went THIS ITEM'S WAY.
+
+A missing summary is DRAWN and NAMED in the item pane, in the app's own words, with the command that
+would write one composed beside it - for every item, with no carve-out by status. `fillPaneSummary`'s
+opposing ABSENT IS ABSENT ruling is withdrawn; `src/ui/public/app.js` now agrees with the "drawn and
+named rather than blank" clause above, both string tables carry the sentence and the chip word, and
+`test/ui/pane-route.test.ts` pins it with nine assertions and a removal proof for each. The three
+pieces of evidence, the refused status carve-out, and the one place the implementation departs from
+this item's letter - the command is COMPOSED and SHOWN but NOT offered behind Execute, because its
+argv ends in the placeholder `<text>` and an Execute would write that word into the corpus as an
+item's summary - are all in the decision. Do not re-litigate it here; read it there.
+
+THE FOUR GAPS ARE NOW UNBLOCKED, and NONE of them has been started: the Relations graph, the budget
+ribbon's segments and ghosts, naming Composer and Capture as deliberately excluded, and the `e2e/`
+spec that drives the trigger from three screens. They were held on this ruling and are held on
+nothing now.

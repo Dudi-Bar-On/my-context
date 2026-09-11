@@ -810,9 +810,25 @@ export async function render(root, ctx) {
    * chip's WORD is the carrier; the colour is the second channel, never the
    * only one.
    *
-   * An item with no summary — every superseded and deprecated one, and any item
-   * older than the field — gets no line and no `hassum`, so the row is exactly
+   * An item with no summary gets no line and no `hassum`, so the row is exactly
    * the row it was before this existed.
+   *
+   * **Two corrections to that sentence, neither of which changes this code.**
+   * It used to read "every superseded and deprecated one, and any item older than
+   * the field", and that population claim is false here: measured 2026-09-11,
+   * this corpus holds 1101 items — 1032 active, 40 superseded, 29 deprecated —
+   * and every one of them carries a summary. And the ITEM PANE now draws the
+   * absence rather than hiding it (`DEC-a-missing-summary-is-drawn-and-named-in-
+   * the-item-pane-and`, 2026-09-11), which settled a contradiction between
+   * `plan:walk seq:119` and `fillPaneSummary`.
+   *
+   * That ruling is about the TRIGGER, and walk/119 puts the trigger in the pane
+   * and nowhere else — "one implementation, in the pane", against the
+   * hand-kept-list defect this project has measured five times. A row is not the
+   * trigger, and this one has its own constraint ("a row that grew to three would
+   * stop being a row"). So the list is deliberately unchanged and deliberately
+   * NOT claimed to be settled: whether a row should say it too is the owner's,
+   * and it is recorded in the decision above rather than decided here.
    */
   function addRowSummary(row, id) {
     const record = byId === null ? undefined : byId.get(id);

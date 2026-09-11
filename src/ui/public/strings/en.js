@@ -1748,6 +1748,24 @@ export const strings = {
   'sum.unanchored': 'unanchored summary',
   'sum.staleNote': 'This item changed after the sentence above was written, so it describes text that is no longer here. Read the body, not the summary.',
   'sum.unanchoredNote': 'The sentence above has no record of what it was written against, so nothing says it still describes this item. Read the body, not the summary.',
+  // ── THE ABSENT CASE (2026-09-11) — `DEC-a-missing-summary-is-drawn-and-named-in-the-item-pane-and`.
+  //
+  // These two exist because the pane used to say NOTHING here. `summary` is
+  // optional on `Item`, so a corpus older than the field — or one item never
+  // given one — reached the pane as three hidden elements, and a reader could
+  // not tell that apart from a block that failed to load. That is clause 3 of
+  // `STD-a-measured-zero-is-drawn-and-named-an-unmeasured-thing-is`, and the
+  // owner settled it against the pane on 2026-09-11.
+  //
+  // `sum.absent` is a chip WORD, two words like `sum.stale` beside it, and it
+  // spends the same budgeted `warn` hue `doctor` levels its own
+  // `summary_absent` finding at. `sum.absentNote` carries the REMEDY, and the
+  // command arrives as `{mv:cmd}` rather than as prose: it is composed by
+  // `composeCommand` from the item's own id, so the line a reader copies here
+  // and the line `doctor` prints are one spelling, and `{mv:}` is what keeps an
+  // LTR command line isolated inside RTL prose.
+  'sum.absent': 'no summary',
+  'sum.absentNote': 'No summary has been written for this item, so nothing here says what it is without reading the body. Write one with {mv:cmd}.',
   'sum.always': 'always injected',
   'sum.continuity': 'carries across sessions',
   'sum.agent': 'captured by an agent',

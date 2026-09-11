@@ -1193,6 +1193,13 @@ export const strings = {
   'sum.unanchored': 'תקציר ללא עוגן',
   'sum.staleNote': 'הפריט השתנה אחרי שהמשפט שלמעלה נכתב, ולכן הוא מתאר טקסט שאינו כאן עוד. קראו את הגוף, לא את התקציר.',
   'sum.unanchoredNote': 'למשפט שלמעלה אין רישום של מה שהוא נכתב מולו, ולכן אי אפשר לומר אם הוא עדיין מתאר את הפריט הזה. קראו את הגוף, לא את התקציר.',
+  // The absent case (2026-09-11). Hebrew prose around an LTR command line, so
+  // the command takes {mv:} — the monospace, bidi-ISOLATED value slot this
+  // table`s header names for exactly this: "an id, a branch, a commit SHA, a
+  // path, a glob or a scope" and a command line with them. Written as Hebrew
+  // rather than transcribed: the design of record declares no key for it.
+  'sum.absent': 'אין תקציר',
+  'sum.absentNote': 'לא נכתב תקציר לפריט הזה, ולכן שום דבר כאן אינו אומר מהו בלי לקרוא את הגוף. כתבו אחד עם {mv:cmd}.',
   'sum.always': 'מוזרק תמיד',
   'sum.continuity': 'נישא בין הפעלות',
   'sum.agent': 'נלכד על ידי סוכן',

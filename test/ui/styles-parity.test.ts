@@ -459,7 +459,12 @@ const SCREEN_SELECTORS = [
   // field that lets a reader understand an item without reading its body, and
   // `.itemsum.stale` / `.rowsum.stale` are the disclosure that stops a summary
   // the item has outgrown from being read as a current one.
-  '.itemsum', '.itemsum.stale', '.summstale',
+  // `.itemsum.absent` added 2026-09-11 with the block it styles — an item with
+  // NO summary now draws the absence and the command that writes one, rather
+  // than hiding it (`DEC-a-missing-summary-is-drawn-and-named-in-the-item-pane-
+  // and`). App-only on purpose: the design of record is frozen and declares no
+  // counterpart, which `mockupPins()` reports and no longer asserts.
+  '.itemsum', '.itemsum.stale', '.itemsum.absent', '.summstale',
   '.itemprops', '.itemprops[hidden]', '.row.hassum', '.rowsum', '.rowsum.stale',
   // The audit stream's own seven (ui3 Task 11, mockup ~907-923). Added with
   // the carry, per this file's own standing brief — "Extend that test with

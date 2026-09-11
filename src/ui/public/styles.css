@@ -2655,6 +2655,19 @@ tr.lanestep td:nth-child(3){padding-inline-start:14px}
    properties worth a chip draws NO empty strip. */
 .itemsum{margin:0 0 var(--sp-2);font:var(--fs-1)/1.5 var(--sans);color:var(--ink)}
 .itemsum.stale{padding-inline-start:var(--sp-2);border-inline-start:2px solid var(--warn)}
+/* `.itemsum.absent` is the same idiom for the state one step earlier — no
+   summary at all (2026-09-11, `DEC-a-missing-summary-is-drawn-and-named-in-
+   the-item-pane-and`). The paragraph is the APP speaking rather than the item,
+   so the text takes `--dim` and only the rule takes `--warn`, which is the
+   level `doctor` grades the same finding at. The chip beside it carries the
+   word; this is the second channel and never the only one.
+
+   It is in `SCREEN_SELECTORS` and NOT in the design of record, which is legal
+   and deliberate: `DEC-the-mockup-is-a-frozen-reference-it-is-read-never-
+   written` ended the mockup-first rule, and `styles-parity` asserts only that
+   styles.css declares what the list names. */
+.itemsum.absent{padding-inline-start:var(--sp-2);border-inline-start:2px solid var(--warn);
+  color:var(--dim)}
 .summstale{margin:0 0 var(--sp-2);color:var(--warn)}
 .itemprops{display:flex;flex-wrap:wrap;gap:5px;margin:0 0 var(--sp-2)}
 .itemprops[hidden]{display:none}

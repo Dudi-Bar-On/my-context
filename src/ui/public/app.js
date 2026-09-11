@@ -999,14 +999,63 @@ function paneEls() {
  * drew it. A reader had to read the body, which is the thing a summary exists
  * to spare them.
  *
- * ── ABSENT IS ABSENT ───────────────────────────────────────────────────────
+ * ── AN ABSENT SUMMARY IS DRAWN AND NAMED — RE-RULED 2026-09-11 ─────────────
  *
- * `summary` is optional on `Item` and always will be: every corpus predates the
- * field, and the sixteen superseded and deprecated items in this project's own
- * corpus carry none. So `null` hides all three elements rather than drawing an
- * empty paragraph, a blank line or a dash. Every path through here sets
- * `hidden` explicitly on every element, because the pane is REUSED — a second
- * item's summary must never sit under a first item's id.
+ * This section read ABSENT IS ABSENT until today and ruled the opposite: that
+ * `null` hides all three elements rather than drawing anything. It contradicted
+ * `TASK-every-item-everywhere-needs-a-trigger-that-explains-it-in` (walk/119),
+ * which requires a missing summary to be "drawn and named rather than blank"
+ * and the trigger to compose the command that would generate it. Neither knew
+ * about the other for four days. The owner settled it —
+ * `DEC-a-missing-summary-is-drawn-and-named-in-the-item-pane-and` — and
+ * walk/119 won, on three pieces of evidence rather than on seniority:
+ *
+ *   **The standard draws no line here.**
+ *   `STD-a-measured-zero-is-drawn-and-named-an-unmeasured-thing-is` is a hard
+ *   owner ruling over READ SURFACES, and its third clause is unconditional: a
+ *   measured zero and an unmeasured thing are both NAMED, and neither is ever
+ *   rendered as blank, "because a blank is indistinguishable from a failure to
+ *   load". Absence here is MEASURED — `summaryState` returns `absent` as a
+ *   first-class verdict from the server — and this function threw that
+ *   measurement away.
+ *
+ *   **The premise the old ruling rested on is gone.** It read "the sixteen
+ *   superseded and deprecated items in this project's own corpus carry none".
+ *   Measured 2026-09-11 over `.my_context/items/**`: 1101 items — 1032 active,
+ *   40 superseded, 29 deprecated — and ZERO with no summary. They were
+ *   backfilled, and `summaryRequiredAtCreate` (core/summary-gate.ts) now
+ *   refuses a capture that carries none, so nothing new can be born without
+ *   one. The noise this section existed to prevent no longer exists.
+ *
+ *   **`doctor` already ruled this way**, and on every item rather than on the
+ *   active ones: `checkSummary`'s `summary_absent` finding (doctor/checks.ts)
+ *   is a `warn` naming the same remedy composed below, and its own comment is
+ *   the argument — "silence was indistinguishable from health". The pane was
+ *   the one surface left dropping a measured state silently, which is what
+ *   `INV-nothing-is-dropped-silently` is for.
+ *
+ * **A STATUS CARVE-OUT WAS CONSIDERED AND REFUSED.** The tempting synthesis —
+ * draw it for an ACTIVE item, keep hiding it for a superseded or deprecated one
+ * that legitimately never had one — fails on its own terms twice. The standard
+ * makes no such distinction, and the item cannot carry one: `--summary-omitted`
+ * is "an instruction about a write, not a field of an item" (core/mutate.ts),
+ * so a deliberate omission and a legacy one both reach here as the same
+ * `absent`, and status would be a proxy for a fact the data does not hold.
+ *
+ * **And the command is COMPOSED but never EXECUTED**, which is the one place
+ * this departs from walk/119's letter. `commandActions` is the product's
+ * Copy-and-Execute control and it is deliberately not used here: the argv ends
+ * in the placeholder `<text>`, because the sentence is written by an agent as
+ * an ordinary prompt and this app cannot compose it. An Execute behind that
+ * would write the literal word `<text>` into the corpus as an item's summary —
+ * a corpus write of a lie, behind an approval that looked like any other. So it
+ * is SHOWN, the shape `showCodeSkew()` already uses for a remedy the reader
+ * runs themselves, and `composeCommand` builds it so this line and `doctor`'s
+ * cannot drift apart.
+ *
+ * Every path through here still sets `hidden` explicitly on every element,
+ * because the pane is REUSED — a second item's summary must never sit under a
+ * first item's id.
  *
  * ── A STALE SUMMARY IS SHOWN, AND SHOWN AS STALE ───────────────────────────
  *
@@ -1074,28 +1123,59 @@ function fillPaneSummary(els, item, state) {
   if (els.summary === null || els.stale === null || els.props === null) return;
   const stale = state === 'stale' || state === 'unanchored';
 
-  // The sentence. `textContent` because a summary is CORPUS text — never
-  // markdown, never nodes this app composed — and the same reason `#panebody`
-  // goes through one renderer rather than through `innerHTML`.
+  // The sentence, or the named absence where there is none.
+  //
+  // A summary that EXISTS goes through `textContent`, because it is CORPUS text
+  // — never markdown, never nodes this app composed — and that is the same
+  // reason `#panebody` goes through one renderer rather than through
+  // `innerHTML`. The absence sentence is the opposite kind of thing: it is the
+  // app's OWN words, in the reader's language, so it arrives as translated
+  // nodes, and `.absent` marks the paragraph as a note rather than as the item
+  // speaking. One assignment each, in the order that leaves the element holding
+  // exactly one of the two however the PREVIOUS item left it.
   const text = typeof item.summary === 'string' ? item.summary : '';
-  els.summary.textContent = text;
-  els.summary.className = stale ? 'itemsum stale' : 'itemsum';
-  els.summary.hidden = text === '';
-  // ── AND ITS LABEL, HIDDEN WITH IT — owner ruling 2026-09-01.
+  const absent = text === '';
+  if (absent) {
+    els.summary.textContent = '';
+    els.summary.replaceChildren(...translate(table.strings, 'sum.absentNote', {
+      // The item's OWN id, and `composeCommand` rather than a template literal:
+      // quoting lives in exactly one module (lib/command.js), so `<text>` is
+      // quoted by the same rule every other composed line in this product is,
+      // and the result is `doctor`'s own spelling to the byte.
+      cmd: composeCommand(['mycontext', 'edit', String(item.id ?? ''), '--summary', '<text>']),
+    }));
+  } else {
+    els.summary.replaceChildren();
+    els.summary.textContent = text;
+  }
+  els.summary.className = absent ? 'itemsum absent' : stale ? 'itemsum stale' : 'itemsum';
+  // Never hidden any more, and that is the whole of the re-ruling above: the
+  // block is drawn for every item, carrying either the sentence or the reason
+  // there is none.
+  els.summary.hidden = false;
+  // ── AND ITS LABEL, SHOWN WITH IT — owner ruling 2026-09-01, re-read
+  // 2026-09-11.
   //
   // The label carries no content of its own (`fillStaticText` writes it from
   // `pane.summary` once per language), so the only thing to decide here is
-  // whether it is SHOWN, and the answer is exactly when the sentence under it
-  // is. A `.welllabel` standing over an absent summary is a heading for
-  // nothing — the empty-band defect `#prov` and the 26+30px strip band both
-  // already cost this shell — and 16 of the 733 items in this corpus carry no
-  // summary at all, so it is not a hypothetical case.
+  // whether it is SHOWN, and the answer is exactly when the paragraph under it
+  // has something in it. That used to make it conditional: "a `.welllabel`
+  // standing over an absent summary is a heading for nothing — the empty-band
+  // defect `#prov` and the 26+30px strip band both already cost this shell",
+  // which was right while the absent case drew nothing.
+  //
+  // The absent case now draws the named absence and the command that would fix
+  // it, so the heading has something to head in every state — and it is the
+  // thing that makes the absence a LOCATED fact ("Summary: none was written")
+  // rather than a warning floating above the `<dl>`. The condition is gone
+  // rather than inverted: there is no longer a state in which this is a heading
+  // for nothing.
   //
   // Guarded rather than assumed present: `test/ui/pane-route.test.ts` drives
   // this shell through a fake document built from a fixture, and a pane built
   // before this element existed would otherwise throw here rather than draw an
   // unlabelled summary.
-  if (els.sumlab !== null) els.sumlab.hidden = text === '';
+  if (els.sumlab !== null) els.sumlab.hidden = false;
 
   // The disclosure. Hidden whenever there is nothing to disclose, so a good
   // summary is never shadowed by an empty warning.
@@ -1125,8 +1205,17 @@ function fillPaneSummary(els, item, state) {
   };
   // FIRST, because it qualifies everything after it: a reader who is about to
   // trust four properties should learn in the same glance that the sentence
-  // above them may no longer describe the item.
-  if (stale && text !== '') {
+  // above them may no longer describe the item — or that there is no sentence.
+  //
+  // The two are mutually exclusive by construction (`stale` is only consulted
+  // where a sentence exists), so the strip never carries both and the position
+  // is not contested. `absent` spends the same budgeted `warn` register the
+  // two staleness words spend, which is the level `doctor` already grades its
+  // own `summary_absent` finding at — no new hue, and the WORD is what tells
+  // the three states apart on a monochrome screen.
+  if (absent) {
+    chip('chip warn', '▲', translate(table.strings, 'sum.absent'));
+  } else if (stale) {
     chip('chip warn', '▲', translate(
       table.strings, state === 'unanchored' ? 'sum.unanchored' : 'sum.stale',
     ));

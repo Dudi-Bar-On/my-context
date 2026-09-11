@@ -439,10 +439,15 @@ interface Harness {
  * The four summary shapes, keyed by the id a test opens — everything else about
  * the payload is the same, so a test names one id and gets exactly one variable.
  *
- * `SUM-none` is the case that must render as ABSENT: `summary` is optional on
- * `Item`, and the sixteen superseded and deprecated items in this project's own
- * corpus carry none. `SUM-stale` and `SUM-unanch` are the two states in which
- * the sentence is still SERVED and must not be read as current.
+ * `SUM-none` is the case with NO summary, which the pane must draw and name
+ * rather than hide (re-ruled 2026-09-11 — see the test that drives it below).
+ * This comment used to justify the opposite with "the sixteen superseded and
+ * deprecated items in this project's own corpus carry none"; measured again on
+ * 2026-09-11 that is 1101 items and zero of them, so the fixture is now the only
+ * place this state exists here — which is exactly why it has to stay. `summary`
+ * is optional on `Item` and every corpus older than the field is full of it.
+ * `SUM-stale` and `SUM-unanch` are the two states in which the sentence is still
+ * SERVED and must not be read as current.
  */
 const SUMMARY_CASES: Record<string, { summary: string | null; summaryState: string }> = {
   'SUM-none': { summary: null, summaryState: 'absent' },
@@ -819,16 +824,63 @@ test('the summary block sits above the <dl> in index.html', () => {
   }
 });
 
-test('an item with no summary draws no summary — absent is absent, not an empty line', async () => {
+/**
+ * **THE ABSENT CASE, RE-RULED 2026-09-11 — it is DRAWN and NAMED, not hidden.**
+ *
+ * @basis TASK-every-item-everywhere-needs-a-trigger-that-explains-it-in,
+ *        STD-a-measured-zero-is-drawn-and-named-an-unmeasured-thing-is,
+ *        INV-nothing-is-dropped-silently
+ *
+ * This test asserted the opposite until today, under the heading ABSENT IS
+ * ABSENT: `hidden` on all three elements, "no box, no blank line, no dash".
+ * That reading was settled against `walk/119` by the owner's ruling recorded in
+ * `DEC-a-missing-summary-is-drawn-and-named-in-the-item-pane-and`, and the
+ * evidence that settled it is worth carrying here because it is what a reader
+ * of this test will want:
+ *
+ *   - `STD-a-measured-zero-…` draws no line by item status and its third clause
+ *     is unconditional — neither a measured zero nor an unmeasured thing is
+ *     ever rendered as blank.
+ *   - The premise ABSENT IS ABSENT rested on is gone. It read "the sixteen
+ *     superseded and deprecated items in this project's own corpus carry none";
+ *     measured 2026-09-11 over `.my_context/items/**`, 1101 items — 1032
+ *     active, 40 superseded, 29 deprecated — and ZERO of them carry no summary.
+ *     There is no noise left to protect the reader from.
+ *   - `doctor` already ruled this way and names the same remedy:
+ *     `checkSummary`'s `summary_absent` finding (doctor/checks.ts), at `warn`,
+ *     for every item with no summary and with no status carve-out.
+ *
+ * So the pane was the one surface that dropped a measured state silently.
+ */
+test('an item with NO summary is drawn and NAMED, with the command that would write one', async () => {
   const ui = await boot();
   await ui.goTo('#/coverage');
   await ui.openItem('SUM-none');
 
-  assert.equal(ui.el('panesummary').hidden, true, 'no box, no blank line, no dash');
-  assert.equal(ui.el('panesummary').textContent, '');
-  assert.equal(ui.el('panestale').hidden, true);
-  assert.equal(ui.el('paneprops').hidden, true,
-    'and no empty chip strip either: this item earns none of the four');
+  const sum = ui.el('panesummary');
+  assert.equal(sum.hidden, false,
+    'the absence is DRAWN — a hidden block is indistinguishable from a failure to load, which is '
+    + 'clause 3 of STD-a-measured-zero');
+  assert.equal(sum.className, 'itemsum absent',
+    'and marked as an absence rather than as a summary: the rule down its edge is the carrier '
+    + 'that survives a monochrome screen');
+  assert.match(textOf(sum), /No summary has been written/,
+    'it is NAMED in words — the app\'s own sentence, not corpus text and not a dash');
+  assert.match(textOf(sum), /mycontext edit SUM-none --summary "<text>"/,
+    'and it composes the command that would write one, for THIS item — walk/119\'s own clause, '
+    + 'and the same remedy doctor\'s summary_absent finding names');
+  assert.equal(ui.el('panesumlab').hidden, false,
+    'the label is shown with it: it is no longer a heading for nothing');
+  assert.equal(ui.el('panestale').hidden, true,
+    'and the STALENESS disclosure stays about staleness — there is no summary here to distrust');
+
+  const chips = ui.el('paneprops');
+  assert.equal(chips.hidden, false, 'the chip strip carries the state too');
+  assert.equal(chips.children[0]?.className, 'chip warn',
+    'FIRST, because it qualifies every chip after it — and in the register doctor already '
+    + 'levels this finding at; no new hue is spent');
+  assert.equal(textOf(chips.children[0]!), 'no summary',
+    'the WORD is the carrier; colour is only ever the second channel of it');
 });
 
 test('a STALE summary is shown, and shown as stale — in three carriers, not one', async () => {

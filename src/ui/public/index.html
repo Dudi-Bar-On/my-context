@@ -342,11 +342,17 @@
          is: what it is (id), what it is called (title), WHAT IT MEANS (summary),
          then the facts, then the body it spares you.
 
-         All three start `hidden`, and that is the absent case rather than a loading
-         state. `summary` is optional on `Item` — every corpus predates it, and the
-         superseded and deprecated items were never given one — so an item with none
-         must render as an item with none: no empty box, no blank line, no dash.
-         app.js unhides exactly what it has something to put in.
+         All three start `hidden`, and that is the NOT-YET-OPENED case rather than
+         the absent one. `summary` is optional on `Item` — every corpus predates it
+         — and an item with none used to render as nothing at all here. That was
+         re-ruled on 2026-09-11 (`DEC-a-missing-summary-is-drawn-and-named-in-the-
+         item-pane-and`, settling the contradiction `plan:walk seq:119` carried
+         against this block): a missing summary is DRAWN and NAMED, with the command
+         that would write one, because a hidden block is indistinguishable from one
+         that failed to load — clause 3 of `STD-a-measured-zero-is-drawn-and-named-
+         an-unmeasured-thing-is`. `fillPaneSummary` (app.js) carries the argument
+         and the measurement; it now unhides the sentence and its label for every
+         item and puts the reason in them when there is no summary.
 
          `#panestale` is the disclosure, and it is NOT decoration. `summary_of`
          records the content the summary was written against; when the item moves
@@ -370,11 +376,13 @@
          KIND of label. The key is translated by `fillStaticText`'s `[data-t]` sweep
          like the other nine in this file, so the א/A toggle reaches it.
 
-         `hidden` to start and hidden WITH the sentence: `summary` is optional on
-         `Item` and 16 items in this corpus carry none, so a label standing over an
-         absent summary would be a heading for nothing — which is the empty-band
-         defect this shell has already paid for twice. `fillPaneSummary` unhides the
-         two together. -->
+         `hidden` to start and shown WITH the sentence. It was hidden with it until
+         2026-09-11, on the argument that "a label standing over an absent summary
+         would be a heading for nothing — the empty-band defect this shell has
+         already paid for twice", and that was right while the absent case drew
+         nothing. It now draws the named absence and its remedy, so there is no
+         state left in which this heads nothing. `fillPaneSummary` unhides the two
+         together. -->
     <div class="welllabel" id="panesumlab" data-t="pane.summary" hidden>Summary</div>
     <p class="itemsum" id="panesummary" hidden></p>
     <p class="small summstale" id="panestale" hidden></p>
