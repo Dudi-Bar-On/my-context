@@ -417,7 +417,14 @@ test('the card holds no command name, flag name or roster of its own', () => {
   // against the second. Subtracted by name rather than by loosening the scan:
   // the whole value of this assertion is that it is crude, so an actual
   // hardcoded `--yes` or `--scope` cannot be argued past it.
-  for (const word of ['none', 'flat', 'dynamic', 'subcommand']) flagNames.delete(word);
+  //
+  // `label` joined them on 2026-09-11, when `mycontext conversation anchor
+  // --label` shipped (`plan:recall seq:1`). The only `'label'` in the card is
+  // `el('label', 'small')` — an HTML TAG NAME, which every screen in this
+  // product writes and which this scan cannot tell from a flag. Subtracted for
+  // `none`'s reason and on the same terms: the word is ambiguous, not the
+  // assertion.
+  for (const word of ['none', 'flat', 'dynamic', 'subcommand', 'label']) flagNames.delete(word);
   assert.deepEqual(
     literals.filter((literal) => flagNames.has(literal)), [],
     'a flag name is written into the screen, for the same reason.',

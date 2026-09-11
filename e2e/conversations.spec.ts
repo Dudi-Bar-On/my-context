@@ -22,6 +22,7 @@
 // TASK-a-selected-passage-copies-as-something-a-terminal-will,
 // TASK-the-reader-own-ctrl-c-still-gives-the-browser-rendered-form,
 // TASK-a-lane-is-named-by-what-it-did-and-never-by-what-it-is-so,
+// TASK-search-the-archive-properly-and-mark-the-anchors-you-want-to,
 // INV-nothing-is-dropped-silently
 /**
  * The conversation archive, driven in a real browser in both languages —
@@ -4503,5 +4504,129 @@ test.describe('a session can be given a name of its own', () => {
     await expect(laneHead).not.toContainText(OURS);
 
     await page.screenshot({ path: 'e2e/screens/conversations-named-lane.png', fullPage: true });
+  });
+});
+
+/**
+ * **SEARCHING WHAT WAS SAID** — `plan:recall seq:1`, Tasks 2 and 5.
+ *
+ * ── THE ASSERTION THAT DECIDES WHETHER THIS FEATURE EXISTS ────────────────
+ *
+ * `a phrase that lives only in a LANE is found from the list screen`. The list
+ * above it searches a session's ROW — its name, its title, its branch, its id,
+ * and the one line describing each lane — and `LANE_PHRASE` is in none of
+ * those: it is a sentence inside `agent-outer`'s transcript. So the same page
+ * is asked both questions in the same test, and the list's own box is asserted
+ * to find NOTHING while this one finds the turn. A test that only asserted
+ * "the search found something" would pass on a search quietly wired back to
+ * the row.
+ *
+ * ── AND IT IS DRIVEN IN BOTH LANGUAGES ───────────────────────────────────
+ *
+ * Not for the strings' sake. Under `dir="rtl"` the passage is the one element
+ * on this card whose own direction is NOT the page's — a turn is in whatever
+ * language it was typed in, and this archive is half Hebrew — so the Hebrew
+ * pass is where `dir="auto"` on the passage earns its place. This project has
+ * found a leading dot at the wrong end under RTL after every assertion passed.
+ */
+test.describe('searching what was said', () => {
+  const openSearch = async (page: Page, lang: 'en' | 'he'): Promise<void> => {
+    await open(page, '#/conversations', lang);
+    await page.waitForSelector('.convarchq', { timeout: 20_000 });
+  };
+
+  for (const lang of ['en', 'he'] as const) {
+    test(`a phrase that lives only in a LANE is found from the list screen · ${lang}`, async ({ page }) => {
+      await openSearch(page, lang);
+
+      // The LIST's own box first, so the contrast is measured in one test
+      // rather than asserted from memory of another one.
+      await page.locator('.convfind').first().fill(LANE_PHRASE);
+      await expect(
+        page.locator('.convresults .convrow'),
+        'the list searches a session\'s ROW. If it matched a phrase that exists only inside a '
+        + 'lane transcript, this file has stopped proving that the archive search reads '
+        + 'something the list cannot.',
+      ).toHaveCount(0);
+      await page.locator('.convfind').first().fill('');
+
+      await page.locator('.convarchq').fill(LANE_PHRASE);
+      const hits = page.locator('.convhit');
+      await expect(hits).toHaveCount(1, { timeout: 20_000 });
+      await expect(hits.first().locator('.convhitsnip')).toContainText(LANE_PHRASE);
+      // The hit names the LANE, not merely the session, or a reader cannot get
+      // to the transcript the words are actually in.
+      await expect(hits.first().locator('.convhitopen'))
+        .toHaveAttribute('href', /\/lane\.html\?id=/);
+      await expect(hits.first().locator('.convhitsnip'))
+        .toHaveAttribute('dir', 'auto');
+
+      await page.screenshot({ path: `e2e/screens/conversations-search-${lang}.png`, fullPage: true });
+    });
+
+    test(`a query too short to match is SAID, not answered as nothing found · ${lang}`, async ({ page }) => {
+      await openSearch(page, lang);
+
+      // Two characters. The index is a trigram index and cannot match it AT
+      // ALL — which is a fact about the index, and an empty list would say
+      // something false about the archive.
+      await page.locator('.convarchq').fill('ui');
+      const note = page.locator('.convarchnote');
+      await expect(note).toBeVisible({ timeout: 20_000 });
+      await expect(note).toContainText('3');
+      await expect(
+        page.locator('.convhit'), 'and it is not drawn as an empty result list',
+      ).toHaveCount(0);
+      await expect(
+        page.locator('.convarchnomatch'),
+        'nor as the measured zero, which is the OTHER empty answer and means the opposite',
+      ).toHaveCount(0);
+
+      // A query the index CAN match and the archive does not hold is the
+      // measured zero, and the two must look different on the screen.
+      await page.locator('.convarchq').fill('zzzqqqwww');
+      await expect(page.locator('.convarchnomatch')).toBeVisible({ timeout: 20_000 });
+      await expect(page.locator('.convarchnote')).toHaveCount(0);
+    });
+  }
+
+  /**
+   * Task 5, and the date half is the one worth driving: `archive/37`'s lane
+   * proved a fixed offset passes July and fails January, so the bound and the
+   * stamp beside it are compared AS DRAWN rather than trusted to agree.
+   */
+  test('the scope narrows by who spoke, by session and by date — and the stamps agree', async ({ page }) => {
+    await open(page, '#/conversations', 'en');
+    await page.waitForSelector('.convarchq', { timeout: 20_000 });
+
+    await page.locator('.convarchq').fill(DEEP_PHRASE);
+    await expect(page.locator('.convhit')).toHaveCount(1, { timeout: 20_000 });
+    // It is something the PERSON typed in this fixture, so narrowing to what
+    // was said back must lose it — and narrowing to what he typed must not.
+    await page.locator('.convarchkind').selectOption('answer');
+    await expect(page.locator('.convarchnomatch')).toBeVisible({ timeout: 20_000 });
+    await page.locator('.convarchkind').selectOption('prompt');
+    await expect(page.locator('.convhit')).toHaveCount(1, { timeout: 20_000 });
+    await page.locator('.convarchkind').selectOption('');
+
+    // A bound in the FUTURE loses everything; the same bound as a `since`
+    // keeps it. Read off the stamp the screen itself printed, so the filter
+    // and the column cannot come to different answers about one turn.
+    const stamp = await page.locator('.convhit').first().locator('.convhitwhere').innerText();
+    const day = /(\d{4}-\d{2}-\d{2})/.exec(stamp)?.[1];
+    expect(day, 'the hit must print a day, or there is nothing to compare the bound against')
+      .toBeTruthy();
+
+    await page.locator('.convarchuntil').fill('2020-01-01');
+    await expect(page.locator('.convarchnomatch')).toBeVisible({ timeout: 20_000 });
+    await page.locator('.convarchuntil').fill(day as string);
+    await expect(
+      page.locator('.convhit'),
+      'a bound set to the very day the screen printed must KEEP the turn — if it does not, the '
+      + 'filter is counting the day in a different clock from the stamp beside it',
+    ).toHaveCount(1, { timeout: 20_000 });
+
+    await page.locator('.convarchclear').click();
+    await expect(page.locator('.convarchidle')).toBeVisible({ timeout: 20_000 });
   });
 });

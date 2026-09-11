@@ -3,6 +3,8 @@
 // TASK-the-list-is-browsable-filter-search-and-duration-across,
 // TASK-a-pruned-session-is-a-row-that-says-so-not-a-row-that,
 // STD-a-measured-zero-is-drawn-and-named-an-unmeasured-thing-is,
+// TASK-search-the-archive-properly-and-mark-the-anchors-you-want-to,
+// TASK-a-date-filter-measures-the-reader-s-day-not-utc-s-because,
 // INV-nothing-is-dropped-silently
 /**
  * `GET /api/conversations` and `GET /api/conversations/:id` — `plan:archive
@@ -39,11 +41,17 @@ import {
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import {
-  apiConversation, apiConversations, apiConversationSubagents, CONVERSATION_LIST_CAP,
+  apiConversation, apiConversationAnchors, apiConversations, apiConversationSearch,
+  apiConversationSubagents,
+  CONVERSATION_LIST_CAP,
   CONVERSATION_QUERY_CAP,
   CONVERSATION_RECORD_CAP, CONVERSATION_RECORD_DEFAULT, CONVERSATION_TEXT_CAP,
-  type ConversationBody, type ConversationListBody, type SubagentListBody,
+  type ConversationAnchorsBody,
+  type ConversationBody, type ConversationListBody, type ConversationSearchBody,
+  type SubagentListBody,
 } from '../../src/ui/read-model-conversations.ts';
+import { buildSearchIndex, MIN_QUERY_CHARS } from '../../src/core/conversation-search.ts';
+import { markAnchor } from '../../src/core/anchors.ts';
 import { apiConversationOutline } from '../../src/ui/read-model-conversation-document.ts';
 import {
   ConversationIndex, projectDirName, rebuildConversations,
@@ -1372,5 +1380,514 @@ test('the document outline carries the name, and a lane inherits none', () => {
       'a lane cannot be named here, so it must never be drawn as though it had been');
     assert.equal(lane.title, 'a lane brief', 'and it keeps the line its dispatcher typed');
     assert.equal(lane.titleSource, 'agent');
+  } finally { b.dispose(); }
+});
+
+/* ══ THE ARCHIVE SEARCH — `plan:recall seq:1`, Tasks 2 and 5 ═══════════════ */
+
+/**
+ * **`GET /api/conversations/search` reads the TRANSCRIPTS, and the list
+ * endpoint beside it still does not.**
+ *
+ * That contrast is the whole point of Task 2 and it is asserted as a contrast
+ * rather than as a hit count: `rowMatches` reads a session's name, title,
+ * branch and id, so a phrase that exists only inside a turn is invisible to
+ * `/api/conversations` and must be findable here. A test that only asserted
+ * "the search found something" would pass on a search that had quietly been
+ * wired back to the row.
+ *
+ * **The fixtures plant their phrases in LANES as well as sessions**, because
+ * measured on this workspace 2026-09-11 the archive is 305 lanes against 2
+ * sessions — a search that read only session transcripts would be searching
+ * under one percent of it and would look like it worked.
+ */
+function fill(dbPath: string): void {
+  const index = ConversationIndex.open(dbPath);
+  try {
+    buildSearchIndex(index);
+  } finally {
+    index.close();
+  }
+}
+
+/** Where record `n` of a fixture transcript starts, in BYTES. */
+function offsetOf(lines: unknown[], n: number): number {
+  let at = 0;
+  for (let i = 0; i < n; i += 1) at += Buffer.byteLength(JSON.stringify(lines[i]), 'utf8') + 1;
+  return at;
+}
+
+const searchUrl = (q = ''): URL => new URL(`http://localhost/api/conversations/search${q}`);
+
+test('the archive search finds a phrase that no session ROW carries', () => {
+  const b = box();
+  try {
+    const lines = [
+      { type: 'user', message: { role: 'user', content: 'set it up' },
+        timestamp: '2026-09-10T09:00:00.000Z' },
+      { type: 'assistant',
+        message: { role: 'assistant', content: text('the vanishing point sat below the window') },
+        timestamp: '2026-09-10T09:00:01.000Z' },
+    ];
+    b.write('s-row', lines);
+    b.scan();
+    fill(b.ws.dbPath);
+
+    const list = apiConversations(b.ws, url('?q=vanishing')).body as ConversationListBody;
+    assert.equal(list.matching, 0,
+      'the LIST must still be blind to transcript text — if it matched, this file is no longer '
+      + 'proving that the archive search reads something the list cannot');
+
+    const found = apiConversationSearch(b.ws, searchUrl('?q=vanishing%20point'));
+    assert.equal(found.status, 200);
+    const body = found.body as ConversationSearchBody;
+    assert.equal(body.hits.length, 1);
+    assert.equal(body.hits[0]?.sessionId, 's-row');
+    assert.equal(body.hits[0]?.recordIndex, 1);
+    assert.equal(body.hits[0]?.byteOffset, offsetOf(lines, 1),
+      'the position is the BYTE the record starts at, which is what a reader seeks to');
+    assert.equal(body.hits[0]?.agentId, null, 'a session own transcript, not a lane');
+  } finally { b.dispose(); }
+});
+
+test('the archive search reads LANES, which are most of the archive', () => {
+  const b = box();
+  try {
+    b.write('s-lane', [
+      { type: 'user', message: { role: 'user', content: 'dispatch it' },
+        timestamp: '2026-09-10T09:00:00.000Z' },
+    ]);
+    const laneLines = [
+      { type: 'assistant',
+        message: { role: 'assistant', content: text('the porter tokenizer was measured') },
+        timestamp: '2026-09-10T09:00:02.000Z' },
+    ];
+    b.lane('s-lane', 'agent-lane', laneMeta('toolu_L'), laneLines);
+    b.scan();
+    fill(b.ws.dbPath);
+
+    const body = apiConversationSearch(
+      b.ws, searchUrl('?q=porter%20tokenizer'),
+    ).body as ConversationSearchBody;
+    assert.equal(body.hits.length, 1);
+    assert.equal(body.hits[0]?.agentId, 'agent-lane',
+      'the hit names the LANE it was found in, so a reader can open the right transcript');
+    assert.equal(body.hits[0]?.sessionId, 's-lane',
+      'and the session that dispatched it, so the hit can be placed');
+  } finally { b.dispose(); }
+});
+
+/**
+ * **A query too short for the index to match is SAID, not answered as an
+ * absence** — `INV-nothing-is-dropped-silently`, and the reason
+ * `searchArchive` answers with an object rather than a list.
+ */
+test('a query the index cannot match at all is distinguishable from no match', () => {
+  const b = box();
+  try {
+    b.write('s-short', [
+      { type: 'user', message: { role: 'user', content: 'the user interface' },
+        timestamp: '2026-09-10T09:00:00.000Z' },
+    ]);
+    b.scan();
+    fill(b.ws.dbPath);
+
+    const tooShort = apiConversationSearch(b.ws, searchUrl('?q=ui'));
+    assert.equal(tooShort.status, 200,
+      'it is an ANSWER about the index, not a bad request — the reader typed a real thing');
+    const short = tooShort.body as ConversationSearchBody;
+    assert.equal(short.searchable, false);
+    assert.equal(short.hits.length, 0);
+    assert.ok(
+      short.note !== null && short.note.includes(String(MIN_QUERY_CHARS)),
+      'the note names the floor, so the reader knows what to type instead',
+    );
+
+    const absent = apiConversationSearch(
+      b.ws, searchUrl('?q=zzzqqq'),
+    ).body as ConversationSearchBody;
+    assert.equal(absent.searchable, true, 'this one WAS searched');
+    assert.equal(absent.note, null, 'so there is nothing to disclose about the index');
+    assert.equal(absent.hits.length, 0, 'and the archive genuinely does not hold it');
+  } finally { b.dispose(); }
+});
+
+/**
+ * **Hebrew, and the offset is a BYTE offset.** The corpus is Hebrew from record
+ * 5 and this project own transcripts are half Hebrew; a character offset lands
+ * mid-record and reads as unreadable rather than throwing, which is the silent
+ * failure worth planting a fixture for.
+ */
+test('Hebrew is found, and the hit points at the byte the record starts on', () => {
+  const b = box();
+  try {
+    const lines = [
+      { type: 'user', message: { role: 'user', content: 'שלום, נתחיל בבקשה' },
+        timestamp: '2026-09-10T09:00:00.000Z' },
+      { type: 'assistant',
+        message: { role: 'assistant', content: text('הסריקה נמדדה על המאגר האמיתי') },
+        timestamp: '2026-09-10T09:00:01.000Z' },
+    ];
+    b.write('s-heb', lines);
+    b.scan();
+    fill(b.ws.dbPath);
+
+    const body = apiConversationSearch(
+      b.ws, searchUrl(`?q=${encodeURIComponent('נמדדה')}`),
+    ).body as ConversationSearchBody;
+    assert.equal(body.hits.length, 1);
+    assert.equal(body.hits[0]?.byteOffset, offsetOf(lines, 1),
+      'the offset counts BYTES — a character count would be short by the Hebrew in record 0 '
+      + 'and would land inside the record rather than at its start');
+    assert.ok(
+      offsetOf(lines, 1) > JSON.stringify(lines[0]).length,
+      'the fixture must actually have multi-byte text before the hit, or the assertion above '
+      + 'cannot tell a byte offset from a character offset',
+    );
+  } finally { b.dispose(); }
+});
+
+/* ── Task 5: the scope controls ──────────────────────────────────────────── */
+
+test('the search narrows by the NAME this project gave a session', () => {
+  const b = box();
+  try {
+    for (const id of ['s-named', 's-other']) {
+      b.write(id, [
+        { type: 'assistant',
+          message: { role: 'assistant', content: text('a shared phrase about anchors') },
+          timestamp: '2026-09-10T09:00:00.000Z' },
+      ]);
+    }
+    b.scan();
+    nameIt(b.ws.dbPath, 's-named', 'the retrieval lane');
+    fill(b.ws.dbPath);
+
+    const all = apiConversationSearch(
+      b.ws, searchUrl('?q=shared%20phrase'),
+    ).body as ConversationSearchBody;
+    assert.equal(all.hits.length, 2, 'unscoped, both sessions answer');
+
+    const scoped = apiConversationSearch(
+      b.ws, searchUrl('?q=shared%20phrase&name=retrieval'),
+    ).body as ConversationSearchBody;
+    assert.deepEqual(
+      scoped.hits.map((h) => h.sessionId), ['s-named'],
+      'the name narrows to the session it was given to, and to no other',
+    );
+    assert.equal(scoped.hits[0]?.sessionName, 'the retrieval lane',
+      'and the hit carries the name back, so the screen names what it narrowed to');
+
+    const unknown = apiConversationSearch(
+      b.ws, searchUrl('?q=shared%20phrase&name=nobody%20typed%20this'),
+    ).body as ConversationSearchBody;
+    assert.equal(unknown.hits.length, 0);
+    assert.ok(
+      unknown.scopeNote !== null,
+      'a name no session carries is a fact about the NAME, not about the archive — answered '
+      + 'as an unscoped search it would be a lie, and answered as a bare empty list it would '
+      + 'read as "the archive does not hold this"',
+    );
+  } finally { b.dispose(); }
+});
+
+/**
+ * **A date bound is a day, and a day is a day only in some clock** —
+ * `TASK-a-date-filter-measures-the-reader-s-day-not-utc-s-because`. The stamp
+ * below is 2026-09-09T22:30Z, which is already the 10th in Asia/Jerusalem, so
+ * the two zones disagree about which day this hit belongs to.
+ */
+test('a date bound is measured in the reader zone, not the server one', () => {
+  const b = box();
+  try {
+    b.write('s-day', [
+      { type: 'assistant',
+        message: { role: 'assistant', content: text('a late evening measurement') },
+        timestamp: '2026-09-09T22:30:00.000Z' },
+    ]);
+    b.scan();
+    fill(b.ws.dbPath);
+
+    const utc = apiConversationSearch(
+      b.ws, searchUrl('?q=late%20evening&since=2026-09-10'),
+    ).body as ConversationSearchBody;
+    assert.equal(utc.hits.length, 0, 'in UTC this turn happened on the 9th, so a bound of the '
+      + '10th excludes it');
+
+    const jerusalem = apiConversationSearch(
+      b.ws, searchUrl('?q=late%20evening&since=2026-09-10&tz=Asia%2FJerusalem'),
+    ).body as ConversationSearchBody;
+    assert.equal(jerusalem.hits.length, 1, 'and in the reader own zone it happened on the '
+      + '10th, which is the day printed beside it on the screen');
+    assert.equal(jerusalem.hits[0]?.day, '2026-09-10',
+      'the hit carries the day the filter used, so the bound and the printed stamp cannot '
+      + 'come to different answers about the same turn');
+  } finally { b.dispose(); }
+});
+
+test('a hit with no timestamp is left out under a date bound, and COUNTED', () => {
+  const b = box();
+  try {
+    b.write('s-undated', [
+      { type: 'assistant', message: { role: 'assistant', content: text('an unplaceable turn') } },
+    ]);
+    b.scan();
+    fill(b.ws.dbPath);
+
+    const open = apiConversationSearch(
+      b.ws, searchUrl('?q=unplaceable'),
+    ).body as ConversationSearchBody;
+    assert.equal(open.hits.length, 1, 'with no bound it is an ordinary hit');
+    assert.equal(open.undated, 0, 'and nothing was left out');
+
+    const bounded = apiConversationSearch(
+      b.ws, searchUrl('?q=unplaceable&since=2026-01-01'),
+    ).body as ConversationSearchBody;
+    assert.equal(bounded.hits.length, 0);
+    assert.equal(bounded.undated, 1,
+      'a turn a date cannot place is DISCLOSED rather than dropped — a reader who set a bound '
+      + 'and lost a result they had just seen is owed the reason');
+  } finally { b.dispose(); }
+});
+
+test('the search narrows to one session, to one lane, and to what he typed', () => {
+  const b = box();
+  try {
+    b.write('s-scope', [
+      { type: 'user', message: { role: 'user', content: 'a carried word from me' },
+        timestamp: '2026-09-10T09:00:00.000Z' },
+      { type: 'assistant',
+        message: { role: 'assistant', content: text('a carried word back') },
+        timestamp: '2026-09-10T09:00:01.000Z' },
+    ]);
+    b.lane('s-scope', 'agent-scope', laneMeta('toolu_S'), [
+      { type: 'assistant',
+        message: { role: 'assistant', content: text('a carried word in a lane') },
+        timestamp: '2026-09-10T09:00:02.000Z' },
+    ]);
+    b.write('s-elsewhere', [
+      { type: 'assistant',
+        message: { role: 'assistant', content: text('a carried word elsewhere') },
+        timestamp: '2026-09-10T09:00:03.000Z' },
+    ]);
+    b.scan();
+    fill(b.ws.dbPath);
+
+    const everywhere = apiConversationSearch(
+      b.ws, searchUrl('?q=carried%20word'),
+    ).body as ConversationSearchBody;
+    assert.equal(everywhere.hits.length, 4);
+
+    const oneSession = apiConversationSearch(
+      b.ws, searchUrl('?q=carried%20word&session=s-scope'),
+    ).body as ConversationSearchBody;
+    assert.equal(oneSession.hits.length, 3, 'one session and the lanes under it');
+
+    const ownFile = apiConversationSearch(
+      b.ws, searchUrl('?q=carried%20word&session=s-scope&agent=-'),
+    ).body as ConversationSearchBody;
+    assert.deepEqual(
+      ownFile.hits.map((h) => h.agentId), [null, null],
+      'a dash is the session OWN transcript, which is a different question from "this session"',
+    );
+
+    const oneLane = apiConversationSearch(
+      b.ws, searchUrl('?q=carried%20word&agent=agent-scope'),
+    ).body as ConversationSearchBody;
+    assert.deepEqual(oneLane.hits.map((h) => h.agentId), ['agent-scope']);
+
+    const typed = apiConversationSearch(
+      b.ws, searchUrl('?q=carried%20word&kind=prompt'),
+    ).body as ConversationSearchBody;
+    assert.deepEqual(
+      typed.hits.map((h) => h.recordIndex), [0],
+      'what HE typed is one record here, and the three answers are not it',
+    );
+  } finally { b.dispose(); }
+});
+
+/* ── Task 4 viewer half: a hit can be marked ─────────────────────────────── */
+
+test('every hit carries the command that would mark it and the id it would make', () => {
+  const b = box();
+  try {
+    const lines = [
+      { type: 'assistant',
+        message: { role: 'assistant', content: text('a point worth coming back to') },
+        timestamp: '2026-09-10T09:00:00.000Z' },
+    ];
+    b.write('s-mark', lines);
+    b.scan();
+    fill(b.ws.dbPath);
+
+    const body = apiConversationSearch(
+      b.ws, searchUrl('?q=coming%20back'),
+    ).body as ConversationSearchBody;
+    const hit = body.hits[0];
+    assert.ok(hit !== undefined);
+    assert.equal(hit.anchorId, `s-mark:-:${offsetOf(lines, 0)}`,
+      'the id is derived from WHERE the anchor is, which is what makes marking the same point '
+      + 'twice one row rather than two');
+    assert.equal(hit.anchored, false, 'nothing is marked here yet');
+    assert.deepEqual(
+      hit.anchorArgv,
+      ['mycontext', 'conversation', 'anchor', 's-mark', String(offsetOf(lines, 0)),
+        '--label', 'coming back'],
+      'the viewer composes the write and never performs it, and it composes an ARGV — asserted '
+      + 'whole rather than by substring, because the session id, the offset and the label are '
+      + 'each a string that appears elsewhere in this answer',
+    );
+  } finally { b.dispose(); }
+});
+
+test('the search route is registered, and before the one that would swallow it', () => {
+  registerReadRoutes();
+  const routes = registeredRoutes();
+  const search = routes.findIndex(
+    (r) => r.method === 'GET' && r.path === '/api/conversations/search');
+  const byId = routes.findIndex(
+    (r) => r.method === 'GET' && r.path === '/api/conversations/:id');
+  assert.ok(search !== -1, 'the archive search has a read model and nothing serves it');
+  assert.ok(
+    search < byId,
+    'the id route matches in registration order, so it would swallow "search" as a session id '
+    + 'and answer 404 — the same trap /secrets and /subagents are registered ahead of it for',
+  );
+});
+
+test('the search refuses a parameter it does not act on, by name', () => {
+  const b = box();
+  try {
+    b.scan();
+    const bad = apiConversationSearch(b.ws, searchUrl('?q=anything&branch=main'));
+    assert.equal(bad.status, 400);
+    assert.ok(
+      String((bad.body as { error: string }).error).includes('branch'),
+      'the refusal names the parameter, because a parameter accepted and ignored silently '
+      + 'answers a different question from the one that was asked',
+    );
+
+    const noQuery = apiConversationSearch(b.ws, searchUrl(''));
+    assert.equal(noQuery.status, 400, 'a search with nothing to search for is not a search');
+  } finally { b.dispose(); }
+});
+
+/**
+ * **The anchors the screen lists, and the write it composes to take one back.**
+ *
+ * §7 of the retrieval design gives Phase 1 *"the list and the search over
+ * them"*. The search here is over LABELS: it is a different question from
+ * `/api/conversations/search`, and the assertion below plants a label whose
+ * words are NOT in the transcript so the two cannot be passing for each other.
+ */
+function mark(dbPath: string, spec: {
+  sessionId: string; agentId?: string | null; byteOffset: number; label: string;
+  kind?: string; origin?: 'owner' | 'automatic';
+}): void {
+  const index = ConversationIndex.open(dbPath);
+  try {
+    markAnchor(index, spec);
+  } finally {
+    index.close();
+  }
+}
+
+const anchorsUrl = (q = ''): URL => new URL(`http://localhost/api/conversations/anchors${q}`);
+
+test('the anchors list is served, searched by label, and composes its own undo', () => {
+  const b = box();
+  try {
+    b.write('s-anch', [
+      { type: 'assistant', message: { role: 'assistant', content: text('a turn') },
+        timestamp: '2026-09-10T09:00:00.000Z' },
+    ]);
+    b.scan();
+    mark(b.ws.dbPath, { sessionId: 's-anch', byteOffset: 0, label: 'the tokenizer measurement' });
+    mark(b.ws.dbPath, {
+      sessionId: 's-anch', byteOffset: 120, label: 'tokenizer | hits',
+      kind: 'table', origin: 'automatic',
+    });
+
+    const all = apiConversationAnchors(b.ws, anchorsUrl()).body as ConversationAnchorsBody;
+    assert.equal(all.total, 2);
+    assert.deepEqual(
+      all.anchors.map((a) => a.origin).sort(), ['automatic', 'owner'],
+      'the two ways an anchor is set are both listed and are told apart, because one of them '
+      + 'is his and the other was done for him',
+    );
+
+    const found = apiConversationAnchors(
+      b.ws, anchorsUrl('?q=measurement'),
+    ).body as ConversationAnchorsBody;
+    assert.deepEqual(
+      found.anchors.map((a) => a.byteOffset), [0],
+      'the term is in one LABEL and in no transcript here, so a list that answered both rows '
+      + 'would be searching something other than the labels',
+    );
+    assert.deepEqual(
+      found.anchors[0]?.dropArgv,
+      ['mycontext', 'conversation', 'anchor', '--drop', 's-anch:-:0'],
+      'taking a mark back is a write, so the page composes the command and the person runs it',
+    );
+  } finally { b.dispose(); }
+});
+
+test('the anchors route is registered ahead of the one that would swallow it', () => {
+  registerReadRoutes();
+  const routes = registeredRoutes();
+  const anchors = routes.findIndex(
+    (r) => r.method === 'GET' && r.path === '/api/conversations/anchors');
+  const byId = routes.findIndex(
+    (r) => r.method === 'GET' && r.path === '/api/conversations/:id');
+  assert.ok(anchors !== -1, 'the anchors list has a read model and nothing serves it');
+  assert.ok(anchors < byId, 'or it is answered as a session whose id is the word "anchors"');
+});
+
+/**
+ * **The passage is read back from the TRANSCRIPT, not taken from the index.**
+ *
+ * `snippet()`'s last argument is a count of TOKENS, and on the `trigram`
+ * tokenizer this index uses a token is three characters — so the index's own
+ * extract is about eighteen characters wide. Measured in the browser against
+ * the live archive on 2026-09-11 it drew `…fy [byte offset]s on…`, which names
+ * the match and says nothing about the turn it is in.
+ *
+ * The fixture below is the assertion: the words either side of the match are
+ * in the TRANSCRIPT and could not have come from the index, and the match
+ * arrives as its own field so a `<mark>` cannot land on a bracket somebody
+ * typed.
+ */
+test('a hit carries the words around it, read back from the transcript', () => {
+  const b = box();
+  try {
+    const around = 'the delimiter row is what GFM asks for, and the header above it must have '
+      + 'the same number of cells, which is the rule that stops a shell pipeline being read as '
+      + 'a table by a detector that only counted pipes';
+    b.write('s-pass', [
+      { type: 'assistant',
+        message: { role: 'assistant', content: text(`${around} — a byte offset — ${around}`) },
+        timestamp: '2026-09-10T09:00:00.000Z' },
+    ]);
+    b.scan();
+    fill(b.ws.dbPath);
+
+    const body = apiConversationSearch(
+      b.ws, searchUrl('?q=byte%20offset'),
+    ).body as ConversationSearchBody;
+    const hit = body.hits[0];
+    assert.ok(hit !== undefined);
+    assert.equal(hit.passage?.match, 'byte offset',
+      'the match is its own field, so the screen never has to find it again');
+    assert.ok(
+      (hit.passage?.before.length ?? 0) > hit.snippet.length,
+      'the words BEFORE the match alone are wider than the whole of the index\'s own extract '
+      + '— compared against the snippet rather than against a number, so this stays true if '
+      + 'the radius is retuned and goes red if the passage ever falls back to it',
+    );
+    assert.ok(
+      hit.passage?.before.startsWith('…') === true
+      && hit.passage?.after.endsWith('…') === true,
+      'and it says on both sides that it is a window into a longer turn',
+    );
   } finally { b.dispose(); }
 });

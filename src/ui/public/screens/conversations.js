@@ -889,6 +889,483 @@ function filterQuery(state) {
   return query === '' ? '' : `?${query}`;
 }
 
+
+/* ══ SEARCH WHAT WAS SAID — `plan:recall seq:1`, Tasks 2, 4 and 5 ═════════ */
+
+/**
+ * **The second box on this screen, and it is a different question from the
+ * first.**
+ *
+ * `filterBar` above narrows the LIST of sessions by what their rows hold — the
+ * name, the title, the branch, the id, the lanes' briefs — and
+ * `conv.searchScope` says so out loud because a search box that quietly
+ * searched less than a reader assumed is how a real match gets read as an
+ * absence. This one reads the WORDS, through `/api/conversations/search` and
+ * the FTS5 index behind it, over every session and every helper agent at once.
+ *
+ * Both are drawn, and neither replaces the other, because they answer
+ * different questions and a reader holding one of them in mind would be badly
+ * served by the other silently taking over.
+ *
+ * ── WHAT THIS CARD MAY NOT DO ────────────────────────────────────────────
+ *
+ * It may not mark an anchor. Marking is a WRITE, this server does not write,
+ * and the treatment every other write on this screen gets is the one
+ * `conv.secrets.run` already uses: the command is COMPOSED and shown, from the
+ * argv the SERVER built, and the person runs it. `commandActions` with a
+ * `null` id offers Copy and no Execute, which is exactly right here — nothing
+ * in the catalogue licenses `conversation anchor` to run from a browser.
+ */
+const ARCH_SETTLE_MS = 250;
+
+/**
+ * The anchor kinds this build has a word for, in both languages.
+ *
+ * A SET rather than a lookup that falls back, because `t()` throws on a key it
+ * does not hold: asking it and catching would be a render that survives by
+ * exception handling, and this way the fallback is the ordinary path for a
+ * kind written by a later build.
+ */
+const ANCHOR_KIND_KEYS = new Set(['note', 'table', 'report', 'ruling']);
+
+/** The controls that scope a search — Task 5. Built once, never redrawn. */
+function archiveBar(ctx, sessions, state, onChange) {
+  const bar = el('div', 'convfilter convarchbar');
+  bar.setAttribute('role', 'search');
+  bar.setAttribute('aria-label', ctx.tFlat('conv.arch.region'));
+
+  const field = (labelKey, control) => {
+    const wrap = el('label', 'convfield');
+    const name = el('span', 'convfieldname');
+    name.append(...ctx.t(labelKey));
+    wrap.append(name, control);
+    return wrap;
+  };
+
+  const find = el('input', 'convfind convarchq');
+  find.type = 'search';
+  find.value = state.q ?? '';
+  bar.append(field('conv.arch.find', find));
+
+  // A CHOICE and not a typed id, for `filterBar`'s branch reason: a reader
+  // typing part of a session id would read the empty answer as a fact about
+  // their words rather than about their typing. The option text is the name
+  // this project gave it, then the one Claude Code gave it, then the id —
+  // `titleNodes`' own order of preference, because the name is the one word in
+  // it the reader chose.
+  const session = el('select', 'convselect convarchsession');
+  const anySession = el('option');
+  anySession.value = '';
+  anySession.append(...ctx.t('conv.arch.anySession'));
+  session.append(anySession);
+  for (const row of sessions) {
+    const option = el('option');
+    option.value = row.sessionId;
+    option.textContent = row.name ?? row.title ?? row.sessionId.slice(0, 8);
+    if (state.session === row.sessionId) option.selected = true;
+    session.append(option);
+  }
+  bar.append(field('conv.arch.session', session));
+
+  const kind = el('select', 'convselect convarchkind');
+  for (const [value, key] of [
+    ['', 'conv.arch.anyKind'], ['prompt', 'conv.arch.kindPrompt'], ['answer', 'conv.arch.kindAnswer'],
+  ]) {
+    const option = el('option');
+    option.value = value;
+    option.append(...ctx.t(key));
+    if ((state.kind ?? '') === value) option.selected = true;
+    kind.append(option);
+  }
+  bar.append(field('conv.arch.kind', kind));
+
+  const since = el('input', 'convdate convarchsince');
+  since.type = 'date';
+  since.value = state.since ?? '';
+  bar.append(field('conv.arch.since', since));
+
+  const until = el('input', 'convdate convarchuntil');
+  until.type = 'date';
+  until.value = state.until ?? '';
+  bar.append(field('conv.arch.until', until));
+
+  const clear = el('button', 'convclear convarchclear');
+  clear.type = 'button';
+  clear.append(...ctx.t('conv.filter.clear'));
+  bar.append(clear);
+
+  const read = () => ({
+    q: find.value.trim() === '' ? null : find.value.trim(),
+    session: session.value === '' ? null : session.value,
+    kind: kind.value === '' ? null : kind.value,
+    since: since.value === '' ? null : since.value,
+    until: until.value === '' ? null : until.value,
+  });
+
+  let timer = null;
+  const settle = () => {
+    if (timer !== null) clearTimeout(timer);
+    timer = setTimeout(() => { timer = null; onChange(read()); }, ARCH_SETTLE_MS);
+  };
+  find.addEventListener('input', settle);
+  for (const control of [session, kind, since, until]) {
+    control.addEventListener('change', () => {
+      if (timer !== null) { clearTimeout(timer); timer = null; }
+      onChange(read());
+    });
+  }
+  clear.addEventListener('click', () => {
+    if (timer !== null) { clearTimeout(timer); timer = null; }
+    find.value = '';
+    session.value = '';
+    kind.value = '';
+    since.value = '';
+    until.value = '';
+    onChange(read());
+  });
+  return bar;
+}
+
+/**
+ * The query string for one search state.
+ *
+ * `tz` rides with the DATES and only with them, exactly as `filterQuery`'s own
+ * header argues: a bound is a day, a day is a day only in some clock, and this
+ * screen is the party that knows which one.
+ */
+function archiveQuery(state) {
+  const params = new URLSearchParams();
+  params.set('q', state.q);
+  if (state.session !== null) params.set('session', state.session);
+  if (state.kind !== null) params.set('kind', state.kind);
+  if (state.since !== null) params.set('since', state.since);
+  if (state.until !== null) params.set('until', state.until);
+  if (state.since !== null || state.until !== null) params.set('tz', READER_ZONE);
+  return `?${params.toString()}`;
+}
+
+/** How a hit names the conversation it was found in. */
+function hitWhere(ctx, hit) {
+  const where = el('p', 'small convhitwhere');
+  const open = el('a', 'convhitopen');
+  if (hit.agentId === null) {
+    open.href = sessionHref(hit.sessionId);
+    open.textContent = hit.sessionName ?? hit.sessionTitle ?? hit.sessionId.slice(0, 8);
+    open.title = ctx.tFlat('conv.arch.open');
+  } else {
+    open.href = laneHref(hit.agentId);
+    open.textContent = hit.sessionName ?? hit.sessionTitle ?? hit.sessionId.slice(0, 8);
+    open.title = ctx.tFlat('conv.arch.openLane');
+  }
+  where.append(open);
+  if (hit.agentId !== null) {
+    const lane = el('span', 'convhitlane');
+    lane.append(' ', ...(hit.agentTitle === null
+      ? ctx.t('conv.arch.inLaneUnnamed')
+      : ctx.t('conv.arch.inLane', { title: hit.agentTitle })));
+    where.append(lane);
+  }
+  const stamp = zonedStampOf(hit.at, READER_ZONE);
+  if (stamp !== null) {
+    where.append(' · ');
+    where.append(mono(stamp));
+  }
+  // A plain span and NOT a chip. `.chip` spends one of five meaning hues and
+  // an unmodified one renders invisible — the defect `plan:screens 1s-c`
+  // measured and `chip-hue-authority.spec.ts` now gates. Who spoke is not a
+  // meaning hue; it is the same glyph-and-word pair `KINDS` already carries
+  // for the document, so this uses that and nothing new.
+  const kind = el('span', 'convhitkind');
+  kind.textContent = `${KINDS[hit.kind]?.glyph ?? ''} `;
+  kind.append(...ctx.t(hit.kind === 'prompt' ? 'conv.doc.you' : 'conv.doc.claude'));
+  where.append(' ', kind);
+  return where;
+}
+
+/**
+ * The composed `anchor` command for one hit, revealed on demand.
+ *
+ * **The argv is the SERVER'S** — `hit.anchorArgv` — and `composeCommand` is
+ * this product's one spelling of how an argv becomes shell text. A line
+ * assembled here out of the three fields beside it would be a second composer,
+ * and the two could disagree about which byte gets marked with neither being
+ * obviously wrong.
+ */
+function markRow(ctx, hit) {
+  const row = el('div', 'convhitmark');
+  if (hit.anchored === true) {
+    // `ok` and not a class of its own: "this point is already kept" is the
+    // settled-state meaning that hue already carries, and inventing a sixth
+    // would spend the five-hue budget `DEC-the-meaning-hue-budget-is-five-gold-
+    // ok-carry-crit-and-warn` sets.
+    const chip = el('span', 'chip ok glyphed convhitmarked');
+    chip.dataset.g = '⚑';
+    chip.append(...ctx.t('conv.arch.marked'));
+    row.append(chip);
+    return row;
+  }
+  const button = el('button', 'convhitmarkbtn');
+  button.type = 'button';
+  button.append(...ctx.t('conv.arch.mark'));
+  const box = el('div', 'convhitcmd');
+  box.hidden = true;
+  const note = el('p', 'small');
+  note.append(...ctx.t('conv.arch.markRun'));
+  const cmd = el('div', 'cmd');
+  cmd.append(el('code', null, composeCommand(hit.anchorArgv)));
+  box.append(note, cmd, commandActions({ argv: hit.anchorArgv, id: null, values: {}, ctx }));
+  button.addEventListener('click', () => {
+    box.hidden = !box.hidden;
+    button.replaceChildren(...ctx.t(box.hidden ? 'conv.arch.mark' : 'conv.arch.markShut'));
+  });
+  row.append(button, box);
+  return row;
+}
+
+/**
+ * **The freshness of the index, drawn on every answer.**
+ *
+ * The prose index is filled by a CLI write, so this card can be answering from
+ * an index that is behind the transcripts on disk — and an answer that was
+ * quietly stale would be indistinguishable from an archive that does not hold
+ * the words, which is the one confusion this whole feature exists to remove.
+ * So it is said, either way, and the command that changes it is composed
+ * beside it.
+ */
+function indexNote(ctx, body) {
+  const out = [];
+  const line = el('p', 'small convarchindex');
+  if (body.index.spans === 0 || body.index.indexedAt === null) {
+    line.append(...ctx.t('conv.arch.neverIndexed'));
+  } else {
+    line.append(...ctx.t('conv.arch.indexedAt', {
+      at: zonedStampOf(body.index.indexedAt, READER_ZONE) ?? body.index.indexedAt,
+      sources: body.index.sources,
+      spans: body.index.spans,
+    }));
+  }
+  out.push(spaced(line));
+  const cmd = el('p', 'plate convcmd');
+  cmd.append(mono(body.rebuild));
+  out.push(cmd);
+  return out;
+}
+
+/** One answer from `/api/conversations/search`, drawn. */
+function drawHits(ctx, host, body) {
+  host.replaceChildren();
+
+  // **Three empty answers, and they are three different facts.** A query the
+  // index cannot match at all, a scope that names nothing, and an archive that
+  // genuinely does not hold the words. Collapsing them into one "no results"
+  // is the defect `searchArchive` answers with an object to prevent.
+  if (body.searchable === false) {
+    const note = el('p', 'small convarchnote');
+    note.textContent = body.note ?? '';
+    host.append(note);
+    return;
+  }
+  if (body.scopeNote !== null && body.scopeNote !== undefined) {
+    const note = el('p', 'small convarchscopenote');
+    note.textContent = body.scopeNote;
+    host.append(note);
+    host.append(...indexNote(ctx, body));
+    return;
+  }
+  if (body.hits.length === 0) {
+    const zero = el('span', 'chip unmeas glyphed');
+    zero.dataset.g = '◌';
+    zero.append(...ctx.t('conv.arch.noMatch'));
+    const line = el('p', 'small convarchnomatch');
+    line.append(zero);
+    host.append(spaced(line));
+    if (body.undated > 0) {
+      const note = el('p', 'small convarchundated');
+      note.append(...ctx.t('conv.arch.undated', { n: body.undated }));
+      host.append(note);
+    }
+    host.append(...indexNote(ctx, body));
+    return;
+  }
+
+  const count = el('p', 'small convarchcount');
+  count.append(...ctx.t('conv.arch.matched', { n: body.hits.length }));
+  host.append(count);
+
+  const list = el('div', 'convhits');
+  for (const hit of body.hits) {
+    const row = el('div', 'convhit');
+    row.append(hitWhere(ctx, hit));
+    // `dir="auto"` and not the page's direction: a passage is in whatever
+    // language it was typed in, and this archive is half Hebrew. Without it a
+    // Hebrew snippet on the English page reads with its punctuation at the
+    // wrong end — `saidBody` below makes the same repair for the same reason.
+    const snip = el('p', 'convhitsnip');
+    snip.setAttribute('dir', 'auto');
+    // **The match is a STRUCTURE and not a marked string.** The index's own
+    // `snippet()` wraps its match in `[` and `]`, which are ordinary
+    // characters in this archive — a screen parsing them would draw a
+    // highlight over a bracket somebody typed. `hit.passage` arrives already
+    // cut into before/match/after, so the `<mark>` cannot land on the wrong
+    // characters. `hit.snippet` is the fallback for a record the server could
+    // not read back: narrow, and true.
+    if (hit.passage === null || hit.passage === undefined) {
+      snip.textContent = hit.snippet;
+    } else {
+      snip.append(hit.passage.before);
+      if (hit.passage.match !== '') snip.append(el('mark', 'convhitmatch', hit.passage.match));
+      snip.append(hit.passage.after);
+    }
+    row.append(snip);
+    row.append(markRow(ctx, hit));
+    list.append(row);
+  }
+  host.append(list);
+
+  if (body.more === true) {
+    const note = el('p', 'small convarchmore');
+    note.append(...ctx.t('conv.arch.more', { n: body.hits.length }));
+    host.append(note);
+  }
+  if (body.undated > 0) {
+    const note = el('p', 'small convarchundated');
+    note.append(...ctx.t('conv.arch.undated', { n: body.undated }));
+    host.append(note);
+  }
+  host.append(...indexNote(ctx, body));
+}
+
+/** The points that are marked — the list §7 asks Phase 1 to carry. */
+function drawAnchors(ctx, host, body) {
+  host.replaceChildren();
+  if (body.anchors.length === 0) {
+    const note = el('p', 'small convanchnone');
+    note.append(...ctx.t('conv.anchors.none'));
+    host.append(note);
+    return;
+  }
+  const list = el('div', 'convanchors');
+  for (const anchor of body.anchors) {
+    const row = el('div', 'convanchor');
+    const head = el('p', 'small convanchorwhere');
+    const open = el('a', 'convanchoropen');
+    open.href = anchor.agentId === null
+      ? sessionHref(anchor.sessionId) : laneHref(anchor.agentId);
+    open.textContent = anchor.sessionName ?? anchor.sessionTitle
+      ?? anchor.sessionId.slice(0, 8);
+    head.append(open, ' ');
+    const kind = el('span', 'convanchorkind');
+    // **A kind this build has no word for is drawn AS ITSELF**, and the set is
+    // checked here rather than by asking the string table, because `t()`
+    // THROWS on a key it does not hold — and a throw inside a render is the
+    // shape that leaves a tab showing nothing at all while every unit test
+    // passes. The `anchors` table takes any `kind` string, so an anchor
+    // written by a later build must still be readable on this one.
+    if (ANCHOR_KIND_KEYS.has(anchor.kind)) {
+      kind.append(...ctx.t(`conv.anchors.kind.${anchor.kind}`));
+    } else {
+      kind.textContent = anchor.kind;
+    }
+    head.append(kind);
+    const stamp = zonedStampOf(anchor.at, READER_ZONE);
+    if (stamp !== null) { head.append(' · '); head.append(mono(stamp)); }
+    row.append(head);
+
+    const label = el('p', 'convanchorlabel');
+    label.setAttribute('dir', 'auto');
+    label.textContent = anchor.label;
+    row.append(label);
+
+    const drop = el('details', 'convanchordrop');
+    const summary = el('summary', 'small');
+    summary.append(...ctx.t('conv.anchors.drop'));
+    const cmd = el('div', 'cmd');
+    cmd.append(el('code', null, composeCommand(anchor.dropArgv)));
+    drop.append(summary, cmd,
+      commandActions({ argv: anchor.dropArgv, id: null, values: {}, ctx }));
+    row.append(drop);
+    list.append(row);
+  }
+  host.append(list);
+}
+
+/**
+ * Mount both cards under the sessions list: the search over what was said, and
+ * the points that are marked.
+ *
+ * Drawn only for an archive that HAS something in it, for `filterBar`'s own
+ * reason: a search box over nothing can only ever answer "no match", which a
+ * reader would read as a fact about their sessions rather than about an index
+ * nobody has built. The two empty states above say what is actually true.
+ */
+function mountArchiveSearch(ctx, root, sessions) {
+  const card = el('div', 'card pane convarch');
+  const title = el('h3');
+  title.append(...ctx.t('conv.arch.h'));
+  const sub = el('p', 'small');
+  sub.append(...ctx.t('conv.arch.sub'));
+  card.append(title, spaced(sub));
+  root.append(card);
+
+  const results = el('div', 'convarchresults');
+  const state = { q: null, session: null, kind: null, since: null, until: null };
+  let inFlight = 0;
+
+  const anchorsCard = el('div', 'card pane convanch');
+  const anchorsTitle = el('h3');
+  anchorsTitle.append(...ctx.t('conv.anchors.h'));
+  const anchorsSub = el('p', 'small');
+  anchorsSub.append(...ctx.t('conv.anchors.sub'));
+  const anchorsBox = el('div', 'convanchorsbox');
+  anchorsCard.append(anchorsTitle, spaced(anchorsSub), anchorsBox);
+  root.append(anchorsCard);
+
+  const idle = () => {
+    results.replaceChildren();
+    const note = el('p', 'small convarchidle');
+    note.append(...ctx.t('conv.arch.idle', { n: 3 }));
+    results.append(note);
+  };
+
+  const refreshAnchors = async () => {
+    let body;
+    try {
+      body = await ctx.api('/api/conversations/anchors');
+    } catch (error) {
+      anchorsBox.replaceChildren(errorNote(error.message));
+      return;
+    }
+    drawAnchors(ctx, anchorsBox, body);
+  };
+
+  const refresh = async (next) => {
+    Object.assign(state, next);
+    if (state.q === null) { idle(); return; }
+    const mine = ++inFlight;
+    results.replaceChildren();
+    const waiting = el('p', 'small convarchwait');
+    waiting.append(...ctx.t('conv.arch.searching'));
+    results.append(waiting);
+    let body;
+    try {
+      body = await ctx.api(`/api/conversations/search${archiveQuery(state)}`);
+    } catch (error) {
+      // A later answer must never be overwritten by an earlier one that
+      // arrived late — `filterBar`'s counter, for the same reason.
+      if (mine !== inFlight) return;
+      results.replaceChildren(errorNote(error.message));
+      return;
+    }
+    if (mine !== inFlight) return;
+    drawHits(ctx, results, body);
+    void refreshAnchors();
+  };
+
+  card.append(archiveBar(ctx, sessions, state, (next) => { void refresh(next); }));
+  card.append(results);
+  idle();
+  void refreshAnchors();
+}
 /* ══ THE DOCUMENT: MEASUREMENT AND ARITHMETIC ══════════════════════════════ */
 
 /** Nodes kept in the DOM above and below the viewport, so a scroll is smooth. */
@@ -5232,6 +5709,16 @@ export async function render(root, ctx) {
     }
     card.append(results);
     drawList(ctx, results, body, open);
+
+    // **THE OTHER SEARCH, and the marks** — `plan:recall seq:1`, Tasks 2, 4
+    // and 5. Below the list rather than inside it, because it answers a
+    // different question: the box above narrows the sessions, this one reads
+    // inside them. Drawn on the same condition the filter is, for the same
+    // reason — a search over an index nobody has built can only ever answer
+    // "no match", and a reader would read that as a fact about their words.
+    if (body.indexed === true && body.total > 0) {
+      mountArchiveSearch(ctx, root, body.conversations ?? []);
+    }
     return;
   }
 

@@ -262,6 +262,51 @@ export const strings = {
   'conv.noMatchList': 'No session matches what you asked for. Clear the filter to see all {total}.',
   'conv.laneMatch': 'matched in {n} helper agents',
   'conv.laneMatch1': 'matched in 1 helper agent',
+  // ── SEARCH THE ARCHIVE — plan:recall seq:1, Tasks 2, 4 and 5 ─────────────
+  //
+  // The OTHER search, and the card says so in its own first sentence rather
+  // than leaving a reader to discover which of the two boxes they are in.
+  // `conv.searchScope` above tells them the list's box reads index cards; this
+  // one reads the words.
+  'conv.arch.h': 'Search what was said',
+  'conv.arch.sub': 'Every word of every session and every helper agent, searched at once. This is the other box: the one above narrows the list of sessions by their names, and this one reads inside them.',
+  'conv.arch.region': 'Search inside the conversations',
+  'conv.arch.find': 'Words you remember',
+  'conv.arch.session': 'In which session',
+  'conv.arch.anySession': 'All of them',
+  'conv.arch.kind': 'Whose words',
+  'conv.arch.anyKind': 'Anybody’s',
+  'conv.arch.kindPrompt': 'What you typed',
+  'conv.arch.kindAnswer': 'What was said back',
+  'conv.arch.since': 'Said on or after',
+  'conv.arch.until': 'Said on or before',
+  'conv.arch.idle': 'Type at least {n} characters. It looks for the words exactly as you type them, anywhere inside a turn, in any language.',
+  'conv.arch.searching': 'Reading the archive…',
+  'conv.arch.matched': '{n} passage(s) hold those words, best match first.',
+  'conv.arch.noMatch': 'No turn in this archive holds those words. This is a measured absence and not a bound: every transcript the archive has read was searched.',
+  'conv.arch.more': 'This is the first {n}. There are more behind them — narrow by session, by who spoke or by date to reach them.',
+  'conv.arch.undated': '{n} matching turn(s) carry no time of their own, so no date can place them. They are left out while a date is set — clear the dates to see them.',
+  'conv.arch.inLane': 'in the helper agent {title}',
+  'conv.arch.inLaneUnnamed': 'in a helper agent',
+  'conv.arch.open': 'Open this session',
+  'conv.arch.openLane': 'Open this helper agent',
+  'conv.arch.mark': 'Mark this point',
+  'conv.arch.markShut': 'Hide the command',
+  'conv.arch.marked': 'Already marked',
+  // The page composes the write and never performs it — the same treatment
+  // `conv.secrets.run` gives the only other write this screen can name.
+  'conv.arch.markRun': 'Run this to mark the point. This page only reads, so it writes the command for you and you run it — then it is in {m:mycontext conversation anchor} and in the list below.',
+  'conv.arch.indexedAt': 'The words were last read into the index {at} — {sources} transcript(s), {spans} passage(s). Anything said since then is not searchable here yet. To bring it up to date:',
+  'conv.arch.neverIndexed': 'The words of this archive have never been read into the index, so there is nothing here to search — which is a different fact from your words not being in the archive. To read them in, and to mark the tables, reports and rulings it finds on the way:',
+  // ── ANCHORS — plan:recall seq:1, Task 4 ─────────────────────────────────
+  'conv.anchors.h': 'Points you marked',
+  'conv.anchors.sub': 'Places in a conversation worth steering back to. You mark one from a search result above; a table, a report and a ruling you gave are marked for you whenever the archive is rebuilt.',
+  'conv.anchors.none': 'Nothing is marked yet. Search above and mark a point, or run the rebuild — it marks the tables, the reports and the rulings it passes.',
+  'conv.anchors.kind.note': 'you marked this',
+  'conv.anchors.kind.table': 'a table',
+  'conv.anchors.kind.report': 'a report',
+  'conv.anchors.kind.ruling': 'a ruling you gave',
+  'conv.anchors.drop': 'Run this to take it back:',
   // Which clock a date bound was counted on — plan:archive seq:37. The
   // offset follows in a `.m` span, so it stays LTR inside an RTL page.
   'conv.datesIn': 'Dates are counted on your own clock,',

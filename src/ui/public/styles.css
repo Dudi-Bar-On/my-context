@@ -3837,6 +3837,64 @@ wa-tree .wa-count{margin-inline-start:var(--sp-2);color:var(--dim);
 .convclear:hover,.convclear:focus-visible{color:var(--gold);border-color:var(--gold)}
 .convresults{display:block}
 
+/* ── SEARCH WHAT WAS SAID, AND THE POINTS THAT ARE MARKED ─────────────────
+   `plan:recall seq:1`, Tasks 2, 4 and 5.
+
+   It reuses the list's own controls — `.convfind`, `.convselect`, `.convdate`,
+   `.convclear` — rather than declaring a second set, because they are the same
+   four shapes doing the same four jobs one card lower, and a second vocabulary
+   for one idea is what the block above spent four paragraphs arguing against.
+   What is new here is only the RESULT: a hit, and a mark.
+
+   Logical properties throughout, and the accent that marks a hit is
+   `border-inline-start`, so under `dir="rtl"` it moves to the other edge on
+   its own — the transcript viewer's own rule, for the reason the block below
+   gives: this project has found a leading mark at the wrong end after every
+   assertion passed. */
+.convarchbar{margin-block-start:var(--sp-2)}
+.convarchresults{display:block}
+.convhits{display:flex;flex-direction:column;gap:var(--sp-2);
+  margin-block-start:var(--sp-2)}
+.convhit{border-inline-start:2px solid var(--edge);padding-inline-start:var(--sp-2);
+  padding-block:var(--sp-1)}
+.convhitwhere{margin:0;color:var(--dim)}
+.convhitopen{color:var(--gold)}
+.convhitlane{color:var(--dim)}
+.convhitkind{font-size:var(--fs-00);color:var(--dim)}
+/* The passage as the index marked it. `pre-wrap` because a turn's own line
+   breaks are part of what a reader recognises, and the FTS snippet keeps
+   them. */
+.convhitsnip{margin:var(--sp-1) 0 0;font-size:var(--fs-0);line-height:1.5;
+  white-space:pre-wrap;overflow-wrap:anywhere}
+/* The UA paints `mark` black-on-yellow, which is a light-theme assumption and
+   unreadable here. `--gold` is the hue this product already spends on "this is
+   the thing you were looking for", so the match wears it as INK on the panel
+   rather than as a slab — a filled highlight at this size reads as an error
+   state beside the five meaning hues. */
+.convhitmatch{color:var(--gold);background:transparent;font-weight:600}
+.convhitmark{margin-block-start:var(--sp-1)}
+.convhitmarkbtn{inline-size:auto;font:600 var(--fs-00)/1.2 var(--mono);
+  color:var(--dim);background:var(--panel-2);border:2px solid var(--dim);
+  border-radius:var(--r-sm);padding:var(--sp-1) var(--sp-2);cursor:pointer}
+.convhitmarkbtn:hover,.convhitmarkbtn:focus-visible{color:var(--gold);
+  border-color:var(--gold)}
+.convhitcmd{margin-block-start:var(--sp-1)}
+.convhitmarked{white-space:nowrap}
+.convarchidle,.convarchwait,.convarchnote,.convarchscopenote,.convarchcount,
+.convarchmore,.convarchundated,.convarchindex,.convarchnomatch,.convanchnone{
+  margin-block-start:var(--sp-1);color:var(--dim)}
+.convanchors{display:flex;flex-direction:column;gap:var(--sp-2);
+  margin-block-start:var(--sp-2)}
+.convanchor{border-inline-start:2px solid var(--edge);padding-inline-start:var(--sp-2);
+  padding-block:var(--sp-1)}
+.convanchorwhere{margin:0;color:var(--dim)}
+.convanchoropen{color:var(--gold)}
+.convanchorkind{font-size:var(--fs-00);color:var(--dim)}
+.convanchorlabel{margin:var(--sp-1) 0 0;font-size:var(--fs-0);line-height:1.5;
+  overflow-wrap:anywhere}
+.convanchordrop{margin-block-start:var(--sp-1);font-size:var(--fs-00)}
+.convanchordrop summary{cursor:pointer;color:var(--dim)}
+
 /* ══════════════════════════════════════════════════════════════════════════
    THE TRANSCRIPT VIEWER — `plan:archive seq:7`, `seq:8`, `seq:13`.
 

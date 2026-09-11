@@ -1,8 +1,15 @@
 import {
   ConversationIndex, ConversationIndexIncompleteError, ConversationIndexUninitializedError,
-  MAX_SCAN_BYTES, forgetConversations, rebuildConversations, transcriptDir, truncatedScan,
+  MAX_SCAN_BYTES, forgetConversations, iterateTranscript, rebuildConversations, transcriptDir,
+  truncatedScan,
   type ConversationRow, type NameRow, type SubagentRow,
 } from '../../core/conversation-index.ts';
+import {
+  allAnchors, anchorIdFor, anchorsFor, markAnchor, resolveAnchor, searchAnchors, unmarkAnchor,
+} from '../../core/anchors.ts';
+import {
+  buildSearchIndex, proseOf, searchArchive, type SearchBuildReport,
+} from '../../core/conversation-search.ts';
 import {
   NotIndexedError, advanceMirrors, mirrorDir, mirrorPath, persistSession, unpersistSession,
   type MirrorReport,
@@ -42,7 +49,7 @@ import { flag, hasFlag, listFlag, positionals, registerCommand, type Emit } from
  */
 
 export const SUBCOMMANDS = [
-  'rebuild', 'list', 'subagents', 'secrets', 'persist', 'name', 'forget',
+  'rebuild', 'list', 'subagents', 'secrets', 'persist', 'name', 'anchor', 'forget',
 ] as const;
 
 const USAGE = `usage: mycontext conversation rebuild [--full] [--json]
@@ -51,6 +58,8 @@ const USAGE = `usage: mycontext conversation rebuild [--full] [--json]
        mycontext conversation secrets [<session>] [--json]
        mycontext conversation persist [<session>] [--replace <ids>] [--off] [--yes] [--json]
        mycontext conversation name [<session>] [<name>] [--clear] [--json]
+       mycontext conversation anchor [<session>] [<byte offset>] [--label "<why>"]
+                                     [--agent <id>] [--find <term>] [--drop <id>] [--json]
        mycontext conversation forget [--yes] [--json]`;
 
 const CONVERSATION_FLAGS = SUBCOMMAND_FLAGS['conversation'];
@@ -224,12 +233,48 @@ function cmdConversationRebuild(ws: Workspace, root: string, args: string[], out
   // `WRITES_WITHOUT_FS` on exactly that basis; the filesystem write lives in
   // `core/conversation-mirror.ts` and the two are composed here.
   const mirror = advanceMirrors(ws.dbPath, process.env, workspaceCwd(root));
+
+  // ── THE WORDS AND THE ANCHORS, ON THE SAME COMMAND AND NOT ON THE HOOK ──
+  //
+  // `plan:recall seq:1` Task 2's decision, and it was taken with a
+  // measurement rather than from the plan's file list. `buildSearchIndex`
+  // costs 8.6 s to fill this workspace's 307 transcripts cold, and in steady
+  // state it costs a comparison per transcript plus the TAIL of whatever
+  // grew — measured here 2026-09-11 at 3-6 ms with nothing appended and 26 ms
+  // for a 256 KB append. That is affordable on a command a person typed.
+  //
+  // **It is deliberately NOT wired into `hooks/stop.ts`**, which is where the
+  // plan's shape invites it, because the same measurement found a second
+  // number: as the code stands a live transcript falls to a WHOLE re-read
+  // every run — 1.8-2.1 s and 95.7 MB per turn on this workspace — since
+  // `prose_sources.bytes` records where the walk actually reached, which runs
+  // PAST the `conversations` row whenever the file grew between the scan and
+  // the prose walk, and `source.bytes > previous.bytes` is then false for
+  // ever. Until that is repaired in `core/conversation-search.ts`, putting
+  // this on the end of every assistant turn would be paying two seconds a
+  // turn for something nobody asked to be automatic.
+  //
+  // The viewer's search says how fresh the index is with every answer
+  // (`read-model-conversations.ts`' `index.indexedAt`), so an archive behind
+  // its transcripts is DISCLOSED rather than quietly answering a smaller
+  // question than the one that was asked.
+  const index = ConversationIndex.open(ws.dbPath);
+  let search: SearchBuildReport;
+  let auto: AutoAnchorReport;
+  try {
+    search = buildSearchIndex(index, { full: hasFlag(args, 'full') });
+    auto = markAutomaticAnchors(index);
+  } finally {
+    index.close();
+  }
+
   if (wantsJson(args)) {
-    emitJson(out, { ...report, mirror });
+    emitJson(out, { ...report, mirror, search, anchors: auto });
     return 0;
   }
   for (const line of reportLines(report)) out(line);
   for (const line of mirrorLines(mirror)) out(line);
+  for (const line of searchLines(search, auto)) out(line);
   return 0;
 }
 
@@ -1453,6 +1498,429 @@ function cmdConversationForget(ws: Workspace, root: string, args: string[], out:
   return 0;
 }
 
+
+/* ══ ANCHORS — `plan:recall seq:1`, Task 4 ════════════════════════════════ */
+
+/**
+ * **What the automatic pass will mark, and why it is a grammar rather than a
+ * judgement.**
+ *
+ * §7 of the retrieval design records the owner's ruling that things which are
+ * anchors BY NATURE — *"a table, a report"*, a ruling he gave — are marked
+ * *"automatically by the assistant without requiring the user to initiate
+ * one"*. Everything below is the reading of "by nature" that this command is
+ * willing to defend: a shape the text either has or has not.
+ *
+ * Nothing here scores, thresholds or infers. That is deliberate, and the
+ * research this plan rests on is the reason: a lexical signal/noise classifier
+ * measured **AUC 0.499** on this corpus — a coin flip — and a two-rule version
+ * of the best single feature still admitted 47% of the noise. A detector that
+ * guessed would fill his list with turns he never wanted and he would stop
+ * reading the list, which costs more than marking nothing.
+ *
+ * Each finding also carries the EVIDENCE as its label — the table's header
+ * row, the path, the id — so a reader can see what fired without opening the
+ * turn, and a wrong mark is visibly wrong rather than merely present.
+ */
+export interface AutoAnchorFinding {
+  /** Which grammar matched. `'table'`, `'report'` or `'ruling'`. */
+  kind: string;
+  /** The evidence, verbatim — never a summary of the turn. */
+  label: string;
+}
+
+/** The cells of one Markdown table row, or `null` when the line is not one. */
+function cellsOf(line: string): string[] | null {
+  const trimmed = line.trim();
+  if (!trimmed.includes('|')) return null;
+  const inner = trimmed.replace(/^\|/, '').replace(/\|$/, '');
+  return inner.split('|').map((cell) => cell.trim());
+}
+
+/** GFM's delimiter row: every cell is dashes, with optional alignment colons. */
+function isDelimiter(cells: string[]): boolean {
+  return cells.length > 0 && cells.every((cell) => /^:?-{3,}:?$/.test(cell));
+}
+
+/**
+ * **The header row of the first GFM table in this text, or `null`.**
+ *
+ * The rule is GFM's own and not an approximation of it: a delimiter row, and a
+ * header row directly above it with THE SAME NUMBER OF CELLS. Both halves earn
+ * their place against shapes that occur in this archive constantly —
+ *
+ *   - a line full of `|` with no delimiter under it is a shell pipeline, and a
+ *     detector that marked those would mark most `Bash` turns in the corpus;
+ *   - a row of dashes whose count does not match the header is ASCII art or a
+ *     horizontal rule someone drew with pipes.
+ *
+ * Exported so the grammar can be tested on its own, in both directions. A
+ * detector whose only test is through the command is a detector whose FALSE
+ * side nobody checked.
+ */
+export function tableIn(text: string): string | null {
+  const lines = text.split('\n');
+  for (let i = 1; i < lines.length; i += 1) {
+    const delimiter = cellsOf(lines[i] ?? '');
+    if (delimiter === null || !isDelimiter(delimiter)) continue;
+    const header = cellsOf(lines[i - 1] ?? '');
+    if (header === null || header.length !== delimiter.length || header.length < 2) continue;
+    return header.join(' | ');
+  }
+  return null;
+}
+
+/**
+ * A dated Markdown path under this project's own narrative directories.
+ *
+ * The date is part of the shape rather than decoration: `reports/README.md`
+ * is not a report in this sense, and a detector that matched any `.md` under
+ * `reports/` would mark the index file on every turn that mentions it.
+ */
+const REPORT_PATH =
+  /(?:reports|docs\/superpowers\/(?:specs|plans))\/[0-9]{4}-[0-9]{2}-[0-9]{2}-[a-z0-9-]+\.md/;
+
+/**
+ * A NORMATIVE corpus id — the categories that carry a ruling.
+ *
+ * `TASK-` and `REQ-` are deliberately absent. They are ids of work, not of
+ * rulings, and this repository holds 728 of the former against 94 `DEC-`; a
+ * prefix set widened to catch them would mark nearly every turn of a working
+ * session, which is the point at which a list of bookmarks stops being one.
+ */
+const RULING_ID = /\b(?:DEC|RULE|INSTR|STD|CONST|INV)-[a-z0-9]+(?:-[a-z0-9]+){3,}\b/;
+
+/**
+ * **What, if anything, makes this turn an anchor by nature.**
+ *
+ * The order is the precedence, and first match wins: a turn that both holds a
+ * table and names a report is marked as the table, because the table is the
+ * thing in the turn rather than a thing the turn points at.
+ *
+ * `kind` is the turn's own — `classifyTurn`'s, already decided one layer down.
+ * A ruling is restricted to `'prompt'` because a ruling is something the owner
+ * GAVE; the same id in an answer is a citation, and citations are what this
+ * project's assistants write in nearly every turn.
+ */
+export function anchorInTurn(kind: string, text: string): AutoAnchorFinding | null {
+  const table = tableIn(text);
+  if (table !== null) return { kind: 'table', label: table };
+  const report = REPORT_PATH.exec(text);
+  if (report !== null) return { kind: 'report', label: report[0] };
+  if (kind === 'prompt') {
+    const ruling = RULING_ID.exec(text);
+    if (ruling !== null) return { kind: 'ruling', label: ruling[0] };
+  }
+  return null;
+}
+
+/**
+ * **The cheap probes that narrow the archive before the grammar decides.**
+ *
+ * The grammar above needs a turn's WHOLE text and the prose index stores it,
+ * but nothing exposes "every span" — and walking all 875 MB of transcript a
+ * second time to re-derive what the index already read would cost the rebuild
+ * its whole argument. So this uses the index as an index: each probe is a
+ * contiguous substring that a turn of that kind MUST contain, `searchArchive`
+ * returns the candidates, and the record at each candidate's byte offset is
+ * read — one seek, one line — and put to the grammar.
+ *
+ * **A probe is allowed to be loose and the grammar is not.** `---` appears in
+ * YAML front matter, in horizontal rules and in half the ASCII art in this
+ * archive; every one of those is a candidate and none of them is marked,
+ * because `tableIn` asks for a header row with a matching cell count. The
+ * probe decides what is READ; the grammar decides what is MARKED.
+ */
+const ANCHOR_PROBES: { probe: string; kind?: 'prompt' | 'answer' }[] = [
+  { probe: '|---' },
+  { probe: '| ---' },
+  { probe: 'reports/' },
+  { probe: 'docs/superpowers/' },
+  { probe: 'DEC-', kind: 'prompt' },
+  { probe: 'RULE-', kind: 'prompt' },
+  { probe: 'INSTR-', kind: 'prompt' },
+  { probe: 'STD-', kind: 'prompt' },
+  { probe: 'CONST-', kind: 'prompt' },
+  { probe: 'INV-', kind: 'prompt' },
+];
+
+/**
+ * How many candidates one probe brings back.
+ *
+ * A bound rather than everything, for `MAX_SCAN_BYTES`' reason: this runs on a
+ * command a person types and must not become the slow part of it. When a probe
+ * fills its bound the report SAYS so, because a capped pass and a complete one
+ * must not look the same.
+ */
+const ANCHOR_PROBE_LIMIT = 200;
+
+export interface AutoAnchorReport {
+  /** Candidate turns the probes brought back, before the grammar saw them. */
+  probed: number;
+  /** Turns the grammar recognised. */
+  found: number;
+  /** Anchors written — `found` minus the ones already standing at that point. */
+  marked: number;
+  /** At least one probe filled its bound, so there may be more behind it. */
+  capped: boolean;
+  ms: number;
+}
+
+/** The transcript one hit lives in, or `null` when the archive lost the row. */
+function fileOf(index: ConversationIndex, sessionId: string, agentId: string | null): string | null {
+  if (agentId === null) return index.get(sessionId)?.file ?? null;
+  return index.getSubagent(agentId)?.file ?? null;
+}
+
+/**
+ * **Mark what is an anchor by nature, without being asked.** A WRITE.
+ *
+ * Idempotent by construction rather than by remembering: `anchorIdFor` derives
+ * the id from the POSITION, so a point already marked is the same row again.
+ * That is what makes this safe to run on every rebuild, which is what the
+ * owner's ruling asks for — and it is why `markAnchor` is called even for an
+ * anchor that already stands, rather than this pass keeping its own notion of
+ * what it did last time. A second notion is a second thing to be wrong.
+ *
+ * **It never overwrites one HE made.** An anchor whose row says `origin:
+ * 'owner'` is left exactly as it is, label and all: the automatic half is
+ * allowed to add bookmarks and is not allowed to rewrite his.
+ */
+export function markAutomaticAnchors(index: ConversationIndex): AutoAnchorReport {
+  const startedMs = Date.now();
+  const report: AutoAnchorReport = { probed: 0, found: 0, marked: 0, capped: false, ms: 0 };
+  const mine = new Map(index.anchorRows(null).map((row) => [row.id, row.origin]));
+  const seen = new Set<string>();
+  const files = new Map<string, string | null>();
+
+  index.transaction(() => {
+    for (const { probe, kind } of ANCHOR_PROBES) {
+      const answer = searchArchive(index, probe, {
+        ...(kind === undefined ? {} : { kind }),
+        limit: ANCHOR_PROBE_LIMIT,
+      });
+      if (answer.hits.length >= ANCHOR_PROBE_LIMIT) report.capped = true;
+      for (const hit of answer.hits) {
+        const id = anchorIdFor(hit.sessionId, hit.agentId, hit.byteOffset);
+        if (seen.has(id)) continue;
+        seen.add(id);
+        report.probed += 1;
+        if (mine.get(id) === 'owner') continue;
+
+        const key = hit.agentId ?? hit.sessionId;
+        if (!files.has(key)) files.set(key, fileOf(index, hit.sessionId, hit.agentId));
+        const file = files.get(key) ?? null;
+        if (file === null) continue;
+
+        // One seek and one line, exactly as `resolveAnchor` reads: the
+        // generator's `finally` closes the descriptor when the loop breaks,
+        // so this costs the record and not the file.
+        let text: string | null = null;
+        for (const record of iterateTranscript(file, { startByte: hit.byteOffset })) {
+          text = record.record === null ? null : proseOf(record.record);
+          break;
+        }
+        if (text === null || text === '') continue;
+
+        const finding = anchorInTurn(hit.kind, text);
+        if (finding === null) continue;
+        report.found += 1;
+        if (!mine.has(id)) report.marked += 1;
+        markAnchor(index, {
+          sessionId: hit.sessionId,
+          agentId: hit.agentId,
+          byteOffset: hit.byteOffset,
+          label: finding.label,
+          kind: finding.kind,
+          origin: 'automatic',
+          at: hit.at ?? new Date().toISOString(),
+        });
+      }
+    }
+  });
+
+  report.ms = Date.now() - startedMs;
+  return report;
+}
+
+/** What `rebuild` says about the two passes it now runs after the scan. */
+function searchLines(search: SearchBuildReport, auto: AutoAnchorReport): string[] {
+  const lines = [
+    `my_context: the archive's words are searchable — ${search.spans} passage(s) from ` +
+    `${search.sources} transcript(s) (${search.indexed} read whole, ${search.appended} ` +
+    `appended, ${search.skipped} unchanged), in ${search.ms} ms.`,
+  ];
+  if (search.removed > 0) {
+    lines.push(
+      `my_context: ${search.removed} transcript(s) left the archive, and their words left ` +
+      'with them.',
+    );
+  }
+  lines.push(
+    `my_context: ${auto.marked} new anchor(s) were marked for you and ${auto.found - auto.marked} ` +
+    'were already marked — a table, a report or a ruling you gave. ' +
+    '`mycontext conversation anchor` lists them and `--drop <id>` takes one back.',
+  );
+  if (auto.capped) {
+    lines.push(
+      'my_context: at least one of the automatic passes reached its bound of ' +
+      `${ANCHOR_PROBE_LIMIT} candidates, so there may be more in the archive that were not ` +
+      'looked at. Nothing was lost; it was not reached.',
+    );
+  }
+  return lines;
+}
+
+/**
+ * `mycontext conversation anchor` — **the half he does himself.**
+ *
+ *     mycontext conversation anchor                      every anchor
+ *     mycontext conversation anchor <session>            one session's
+ *     mycontext conversation anchor --find <term>        by label
+ *     mycontext conversation anchor <session> <byte> --label "..."   mark one
+ *     mycontext conversation anchor --drop <id>          take one back
+ *
+ * **The position is a BYTE offset and the command says so when it is wrong**,
+ * because a character offset lands inside a record rather than at the start of
+ * one and reads as unreadable instead of throwing — on a corpus that is Hebrew
+ * from record 5, that is the failure worth refusing loudly.
+ *
+ * The viewer composes this line with the offset already in it
+ * (`read-model-conversations.ts`' `anchorCommand`), which is how the browser
+ * marks an anchor without the read-only server performing a write.
+ */
+function cmdConversationAnchor(ws: Workspace, args: string[], out: Emit): number {
+  const json = wantsJson(args);
+  const rest = positionals(args, ['label', 'agent', 'find', 'drop']).slice(1);
+  const label = flag(args, 'label');
+  const agentId = flag(args, 'agent');
+  const find = flag(args, 'find');
+  const drop = flag(args, 'drop');
+
+  // **THE OPT-IN GATE, and this branch wants to skip it exactly as `name` and
+  // `persist --off` did.** `ConversationIndex.open` is the only thing that
+  // creates these tables, so marking a point in a workspace nobody has ever
+  // scanned would CREATE them — and the end-of-turn refresh, which gates on
+  // their existence, would start reading that machine's transcripts. Marking
+  // a bookmark is not a way to turn the archive on, and LISTING one is even
+  // less of a way, which is why this gate is before the read branch too.
+  if (!indexExists(ws, out)) return 1;
+
+  const index = ConversationIndex.open(ws.dbPath);
+  try {
+    if (drop !== null) {
+      const gone = unmarkAnchor(index, drop);
+      if (json) {
+        emitJson(out, { dropped: gone, id: drop });
+        return 0;
+      }
+      out(gone
+        ? `my_context: took back the anchor at ${drop}.`
+        : `my_context: no anchor is at ${drop}, so there was nothing to take back. ` +
+          '`mycontext conversation anchor` lists what is marked.');
+      return 0;
+    }
+
+    const [session, offset] = rest;
+    if (offset !== undefined) {
+      // Unreachable through the parser — a second positional implies a first —
+      // and a REFUSAL rather than a silent 0 all the same, because the one
+      // thing worse than a command that cannot run is one that reports success
+      // for having done nothing.
+      if (session === undefined) {
+        out(`my_context: a byte offset needs the session it is in. ${USAGE}`);
+        return 1;
+      }
+      if (!/^\d+$/.test(offset)) {
+        out(
+          `my_context: "${offset}" is not a byte offset. An anchor's position is counted in ` +
+          'BYTES from the start of the transcript, written in digits — never in characters, ' +
+          'because this archive is half Hebrew and a character count lands inside a record ' +
+          'rather than at the start of one.',
+        );
+        return 1;
+      }
+      if (label === null || label.trim() === '') {
+        out(
+          'my_context: an anchor needs `--label "<why you kept it>"`. A bookmark that says ' +
+          'nothing about why it was kept is one you will not recognise when you come back.',
+        );
+        return 1;
+      }
+      const file = fileOf(index, session, agentId);
+      if (file === null) {
+        out(
+          `my_context: the archive holds no transcript for "${session}"` +
+          `${agentId === null ? '' : ` / "${agentId}"`}. ` +
+          'Run `mycontext conversation rebuild`, or check the id with `mycontext ' +
+          'conversation list`.',
+        );
+        return 1;
+      }
+      const row = markAnchor(index, {
+        sessionId: session,
+        agentId,
+        byteOffset: Number(offset),
+        label: label.trim(),
+      });
+      const resolved = resolveAnchor(index, row.id);
+      if (json) {
+        emitJson(out, { ...row, reads: resolved?.text ?? null });
+        return 0;
+      }
+      out(`my_context: marked ${row.id} — ${row.label}`);
+      // **What the offset actually lands on, read back before he walks away.**
+      // A record of `null` is what a character offset produces, and reporting
+      // it here is the difference between a bookmark that is wrong now and one
+      // that is found to be wrong in a month.
+      out(resolved?.record === null
+        ? 'my_context: nothing starts at that byte, so this anchor reads as unreadable. That ' +
+          'is what a CHARACTER offset produces on this archive. The mark is kept — take it ' +
+          `back with \`mycontext conversation anchor --drop ${row.id}\`.`
+        : `my_context: it reads: ${firstLine(resolved?.text ?? '')}`);
+      return 0;
+    }
+
+    const rows = find !== null
+      ? searchAnchors(index, find)
+      : (session === undefined ? allAnchors(index) : anchorsFor(index, session));
+    if (json) {
+      emitJson(out, { anchors: rows });
+      return 0;
+    }
+    if (rows.length === 0) {
+      out(find !== null
+        ? `my_context: no anchor's label contains "${find}". That is about the labels and not ` +
+          'about the archive — `mycontext conversation search` is the other question.'
+        : 'my_context: nothing is marked here yet. A table, a report and a ruling you gave are ' +
+          'marked for you by `mycontext conversation rebuild`; anything else you mark ' +
+          'yourself, from the Conversations screen or with `mycontext conversation anchor ' +
+          '<session> <byte> --label "<why>"`.');
+      return 0;
+    }
+    const drawn = table(
+      ['id', 'kind', 'set', 'marked', 'label'],
+      rows.map((row) => [
+        row.id,
+        row.kind,
+        row.origin,
+        zonedStamp(row.at) ?? row.at,
+        row.label,
+      ]),
+    );
+    for (const line of drawn) out(line);
+    out(`my_context: showing all ${rows.length}.`);
+    return 0;
+  } finally {
+    index.close();
+  }
+}
+
+/** The first line of a record's words, bounded — a label, not a transcript. */
+function firstLine(text: string): string {
+  const line = text.split('\n').find((one) => one.trim() !== '') ?? '';
+  return line.length > 120 ? `${line.slice(0, 120)}…` : line;
+}
 function cmdConversation(ws: Workspace, args: string[], out: Emit): number {
   if (!ws.projectRoot) {
     out('my_context: no workspace here. Run `mycontext init` to create one.');
@@ -1475,6 +1943,7 @@ function cmdConversation(ws: Workspace, args: string[], out: Emit): number {
     if (subcommand === 'secrets') return cmdConversationSecrets(ws, root, args, out);
     if (subcommand === 'persist') return cmdConversationPersist(ws, root, args, out);
     if (subcommand === 'name') return cmdConversationName(ws, root, args, out);
+    if (subcommand === 'anchor') return cmdConversationAnchor(ws, args, out);
     if (subcommand === 'forget') return cmdConversationForget(ws, root, args, out);
     return cmdConversationList(ws, root, args, out);
   } catch (err) {

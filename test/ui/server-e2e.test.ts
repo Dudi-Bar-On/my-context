@@ -876,6 +876,20 @@ const READ_ROUTES = (from: { item: string; session: string | null }): Probe[] =>
   // list, because a session the index does not hold is an answer and not a
   // 404.
   '/api/conversations/not-a-real-session-id/secrets',
+  // `plan:recall seq:1`. FTS5 over the prose of every transcript the archive
+  // holds a row for. It is on this list for `secrets`' reason turned around:
+  // the module it reads through, `core/conversation-search.ts`, also EXPORTS
+  // the write that fills the index — and this surface binds `searchArchive`
+  // and never `buildSearchIndex`. The import graph says so; this sweep is what
+  // proves it at runtime, because a search that ever "helpfully" filled its
+  // own index would leave 3.5 MB inside the snapshot below. On a corpus nobody
+  // has scanned it answers 200 with `indexed: false`, and on a query nothing
+  // matches it answers 200 with a measured zero.
+  '/api/conversations/search?q=nothing-in-any-archive-matches-this',
+  // The marked points, and the same argument one step along: `core/anchors.ts`
+  // exports `markAnchor`, and this surface binds `anchorIdFor` — a pure string
+  // derivation — and nothing else from it.
+  '/api/conversations/anchors',
   // `plan:archive seq:30`. THE SPILLED TOOL RESULT BEHIND A STEP, and the one
   // route on this list that is handed an absolute FILE PATH by the page rather
   // than an id. That is precisely why it is here: it opens a file the corpus

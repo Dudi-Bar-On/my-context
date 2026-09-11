@@ -1125,6 +1125,23 @@ const UNCATALOGUED: Record<string, string> = {
     + 'Claude Code gave it. It is a write and needs a def with an Execute behind it, exactly '
     + 'as `conversation rebuild` above does — and a text field for the name, which is the '
     + 'first entry in this catalogue that would need one.',
+  // **THE ONE CONVERSATION SUBCOMMAND THE SCREEN ALREADY COMPOSES** —
+  // `plan:recall seq:1`, landed 2026-09-11. The row it is missing from is not
+  // an oversight and the reason is different from every neighbour's: the
+  // Conversations screen builds this exact command on every search hit, from
+  // the argv the SERVER composed (`SearchHitView.anchorArgv`), and offers it
+  // to COPY. What it does not offer is Execute, and that is a decision rather
+  // than an omission — Execute needs a catalogue entry, and a catalogue entry
+  // is a licence for a browser to perform this write.
+  //
+  // So the gap here is narrower than `persist`'s and `name`'s: the composing
+  // half is built and driven in `e2e/anchors.spec.ts`; what is absent is the
+  // licence. Closing it is a ruling to take, not a def to write.
+  'conversation anchor': 'marks a point in a transcript worth coming back to, and lists what '
+    + 'is marked. The Conversations screen ALREADY composes this line on every search hit and '
+    + 'offers it to copy — what it does not do is run it, because running it needs an entry '
+    + 'here and an entry here is a licence for the browser to write. That licence is the '
+    + 'owner\'s to give; the composing half did not wait for it.',
   // **THE ROW THAT WAS A NOT-YET AND IS NOW A DECISION** — `plan:archive
   // seq:46`. It stood in UNCATALOGUED with its reason naming what it waited
   // for: the owner's design is a form with checkboxes, so the surface that

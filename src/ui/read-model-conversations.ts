@@ -85,9 +85,15 @@
  */
 import {
   ConversationIndex, ConversationIndexIncompleteError, ConversationIndexUninitializedError,
-  classifyTurn, spanMs, staleBy, transcriptDir, truncatedScan,
+  classifyTurn, iterateTranscript, spanMs, staleBy, transcriptDir, truncatedScan,
   type ConversationRow, type NameRow, type PersistedRow, type SubagentRow,
 } from '../core/conversation-index.ts';
+// `anchorIdFor` and nothing else from `anchors.ts`: it is the pure derivation
+// of an anchor's id FROM ITS POSITION, and a second spelling of it here is
+// exactly the one-fact-recorded-twice defect this project has already paid
+// for. `markAnchor` beside it is a write and is deliberately not bound.
+import { anchorIdFor } from '../core/anchors.ts';
+import { MIN_QUERY_CHARS, proseOf, searchArchive } from '../core/conversation-search.ts';
 import { readRedactionPlan } from '../core/conversation-redaction.ts';
 import {
   SECRET_SHAPES, scanSessionSecrets, type SecretCandidate,
@@ -1680,6 +1686,623 @@ export function apiConversationSecrets(
   };
 }
 
+
+/* ══ THE ARCHIVE SEARCH — `plan:recall seq:1`, Tasks 2 and 5 ═══════════════ */
+
+/** How many hits one search answer carries before it says it stopped. */
+export const CONVERSATION_SEARCH_CAP = 200;
+/** The window a caller gets without asking for one. */
+export const CONVERSATION_SEARCH_DEFAULT = 50;
+
+/**
+ * One hit, as the screen draws it.
+ *
+ * **`anchorArgv` is composed HERE and not in the browser**, and that is the
+ * same rule `execute-catalogue.ts` exists to keep one level out: the string a
+ * person reads and the argv that would run must be the same thing. A screen
+ * that assembled `mycontext conversation anchor …` out of three fields it
+ * happened to hold would be a second composer, and the two could come to
+ * disagree about which byte gets marked without either one being obviously
+ * wrong.
+ *
+ * **An ARGV and not a line**, for the half of that rule the browser owns:
+ * `public/lib/command.js`' `quoteArg` is this product's one spelling of how an
+ * argument becomes shell text, and it is what `conv.secrets.run` already draws
+ * its composed write with. Serving a pre-joined string would be a second
+ * quoting rule, in the module least able to see the first one.
+ *
+ * `anchorId` is not a convenience beside it. It is `anchorIdFor`'s derivation
+ * — the id an anchor at this point WOULD have — which is what lets `anchored`
+ * be a fact rather than a guess, and what makes marking the same point twice
+ * one row rather than two.
+ */
+export interface SearchHitView {
+  sessionId: string;
+  /** The name THIS PROJECT gave the session, or `null`. */
+  sessionName: string | null;
+  /** The title Claude Code gave it, or `null`. */
+  sessionTitle: string | null;
+  /** The lane this was found in, or `null` for the session's own transcript. */
+  agentId: string | null;
+  /** The dispatcher's one-line brief for that lane. Never fabricated. */
+  agentTitle: string | null;
+  recordIndex: number;
+  /** Bytes from the start of that transcript. Never characters. */
+  byteOffset: number;
+  kind: string;
+  at: string | null;
+  /** The day this turn fell on IN THE ZONE THE FILTER USED. */
+  day: string | null;
+  /** The matched text with its surroundings, marked by the index itself. */
+  /** The FTS index's own marked extract. Narrow — see `passageAt`. */
+  snippet: string;
+  /**
+   * The match in enough of its own turn to be readable — read back from the
+   * transcript rather than from the index. `null` when the record could not be
+   * reached inside `PASSAGE_READ_CAP`, and then `snippet` is all there is.
+   *
+   * Three fields and not one marked string: the FTS `snippet()` marks its
+   * match with `[` and `]`, which are ordinary characters in this archive's
+   * text, so a screen parsing them would draw a highlight over a bracket
+   * somebody typed. A structure cannot be misread.
+   */
+  passage: { before: string; match: string; after: string } | null;
+  score: number;
+  anchorId: string;
+  anchored: boolean;
+  /** The argv the viewer offers to copy — `quoteArg` joins it for display. */
+  anchorArgv: string[];
+}
+
+export interface ConversationSearchScope {
+  session: string | null;
+  name: string | null;
+  agent: string | null;
+  kind: string | null;
+  since: string | null;
+  until: string | null;
+  tz: string | null;
+  limit: number;
+}
+
+export interface ConversationSearchBody {
+  /** The query as it was searched — trimmed, never rewritten. */
+  query: string;
+  /** False when the index cannot match this query AT ALL. Then `hits` is empty. */
+  searchable: boolean;
+  /** Why not, in a sentence a reader can act on. `null` when it was searched. */
+  note: string | null;
+  minChars: number;
+  scope: ConversationSearchScope;
+  /**
+   * Why the SCOPE answered nothing, when the scope is the reason — a name no
+   * session here carries. Distinct from `note`, which is about the index, and
+   * from an empty `hits`, which would otherwise read as "the archive does not
+   * hold this".
+   */
+  scopeNote: string | null;
+  hits: SearchHitView[];
+  /** Hits the index returned, before a date bound removed any. */
+  matched: number;
+  /** Hits a date bound could not place, because the turn carried no stamp. */
+  undated: number;
+  /** The index answered a full page, so there may be more behind it. */
+  more: boolean;
+  indexed: boolean;
+  outdated: boolean;
+  dir: string;
+  rebuild: string;
+  /** What the prose index holds, so a stale answer is disclosed and not silent. */
+  index: { sources: number; spans: number; indexedAt: string | null };
+}
+
+
+/**
+ * **How much of a hit's own turn is read back, and why the index's own snippet
+ * is not enough.**
+ *
+ * `matchProse` asks SQLite for `snippet(conversation_prose, 7, '[', ']', '…',
+ * 16)`, and 16 is a count of TOKENS. On a `unicode61` index a token is a word
+ * and sixteen of them is a readable sentence; on the `trigram` tokenizer this
+ * index uses — chosen by measurement, because Hebrew glues its particles onto
+ * the front of a word — a token is THREE CHARACTERS. Measured in the browser
+ * 2026-09-11 against the live archive, the result is an extract like
+ * `…fy [byte offset]s on…`: about eighteen characters, which names the match
+ * and says nothing whatever about the turn it is in.
+ *
+ * So the passage is read back from the transcript at the byte offset the hit
+ * already carries — one seek, one record — and windowed around the match in
+ * CHARACTERS, which is the unit a reader reads in.
+ */
+const PASSAGE_RADIUS = 160;
+
+/**
+ * How far one hit's read may go to reach its record.
+ *
+ * A hit's `byteOffset` is the first byte of its line, so the record is
+ * whatever follows up to the next newline — normally a few hundred bytes and
+ * occasionally very large. The bound is what keeps a fifty-hit page from
+ * reading fifty megabytes: `iterateTranscript`'s chunk is 1 MiB and it would
+ * read one per hit without this. A record that does not fit yields nothing and
+ * the hit falls back to the index's own snippet, which is narrow and true.
+ */
+const PASSAGE_READ_CAP = 64 * 1024;
+
+/**
+ * The words around one hit, or `null` when the record could not be reached.
+ *
+ * The match is located case-insensitively because the FTS index matched
+ * case-insensitively — `[BYTE offset]` and `[byte offset]` are both real hits
+ * on this archive, seen in the browser — and a locator that only found the
+ * exact case would silently window from the start of the turn instead.
+ */
+function passageAt(
+  file: string, byteOffset: number, query: string,
+): { before: string; match: string; after: string } | null {
+  let text: string | null = null;
+  for (const record of iterateTranscript(file, { startByte: byteOffset, cap: PASSAGE_READ_CAP })) {
+    text = record.record === null ? null : proseOf(record.record);
+    break;
+  }
+  if (text === null || text === '') return null;
+  const at = text.toLowerCase().indexOf(query.toLowerCase());
+  if (at === -1) {
+    // The index matched and this read did not. That is a REAL state rather
+    // than an impossible one — the transcript may have been rewritten under
+    // the index — so the head of the turn is returned with an empty match
+    // rather than a window centred on nothing.
+    return { before: '', match: '', after: text.slice(0, PASSAGE_RADIUS * 2) };
+  }
+  const from = Math.max(0, at - PASSAGE_RADIUS);
+  const to = Math.min(text.length, at + query.length + PASSAGE_RADIUS);
+  return {
+    before: (from > 0 ? '…' : '') + text.slice(from, at),
+    match: text.slice(at, at + query.length),
+    after: text.slice(at + query.length, to) + (to < text.length ? '…' : ''),
+  };
+}
+/**
+ * The composed `anchor` command for one point.
+ *
+ * The label defaults to what the reader typed, because that is what they were
+ * looking for and it is the one string on screen they chose. Characters that
+ * would not display as they run are REMOVED from the label rather than
+ * escaped: this string is offered to be copied into a shell, and a label
+ * carrying a newline would compose two commands out of one line a reader read
+ * as one. `execute-catalogue.ts` refuses them for the same reason one level
+ * out; here there is no request to refuse, only a default to keep honest.
+ */
+function anchorCommandFor(
+  sessionId: string, agentId: string | null, byteOffset: number, label: string,
+): string[] {
+  // Written as code points rather than as a regular expression, because the
+  // characters this removes are exactly the ones that do not survive being
+  // typed into source: a literal control byte in this file would be invisible
+  // here and would still be in the shipped string.
+  const clean = [...label].map((ch) => {
+    const code = ch.codePointAt(0) ?? 0;
+    const deceptive = code < 0x20 || code === 0x7f
+      || (code >= 0x200b && code <= 0x200f)
+      || (code >= 0x202a && code <= 0x202e)
+      || (code >= 0x2066 && code <= 0x2069);
+    if (deceptive) return ' ';
+    return ch === '"' ? '\'' : ch;
+  }).join('').trim().slice(0, 80);
+  return [
+    'mycontext', 'conversation', 'anchor', sessionId, String(byteOffset),
+    ...(agentId === null ? [] : ['--agent', agentId]),
+    // An empty label would compose `--label ""`, which the command refuses —
+    // correctly, but as a refusal a reader has to decode. A query that cleans
+    // away to nothing is replaced by the ONE thing still known about the
+    // point, which is where it is.
+    '--label', clean === '' ? `byte ${byteOffset}` : clean,
+  ];
+}
+
+/**
+ * `GET /api/conversations/search` — **the archive's own words, not its index
+ * cards.**
+ *
+ * `/api/conversations?q=` searches a session's ROW — its name, its title, its
+ * branch, its id, and its lanes' briefs — and `conv.searchScope` says so on
+ * the screen precisely because searching less than a reader assumes is how a
+ * real match gets read as an absence. This route is the other half: FTS5 over
+ * the prose of every transcript the archive holds a row for, sessions and
+ * lanes together.
+ *
+ * ── IT READS WHAT A WRITE PUT THERE, AND SAYS HOW FRESH THAT IS ───────────
+ *
+ * The prose index is filled by `mycontext conversation rebuild`, which is a
+ * CLI write, for the same reason the archive itself is: `ConversationIndex.
+ * open` creates tables and nothing under `src/ui/` may call it. So this route
+ * can be answering from an index that is behind the transcripts on disk, and
+ * `index.indexedAt` is served with every answer so the screen can say so.
+ * **An answer that was quietly stale would be indistinguishable from an
+ * archive that does not hold the phrase**, which is the one confusion this
+ * whole feature exists to remove.
+ *
+ * ── A QUERY TOO SHORT IS A 200 AND NOT A 400 ─────────────────────────────
+ *
+ * `searchArchive` answers with an object carrying `searchable`, and this route
+ * passes that through unchanged. Two characters is a real thing for a reader
+ * to have typed — it is the second keystroke of every search — and a 400 would
+ * put an error in a box that is merely not finished being typed into. What is
+ * NOT acceptable is an empty list, because that says "not in the archive"
+ * about a query the index never matched at all.
+ */
+export function apiConversationSearch(ws: Workspace, url: URL): JsonResult {
+  const bad = unknownParams(
+    url, ['q', 'session', 'name', 'agent', 'kind', 'since', 'until', 'tz', 'limit'],
+  ) ?? repeatedParams(url);
+  if (bad) return badRequest(bad);
+
+  const askedQuery = textParam(url, 'q', CONVERSATION_QUERY_CAP);
+  if (askedQuery === null || askedQuery === undefined) {
+    return badRequest(
+      `q is required and must be between 1 and ${CONVERSATION_QUERY_CAP} characters. A search `
+      + 'with nothing to search for is not a search, and answering one as an empty archive '
+      + 'would be a measured zero this endpoint never measured.',
+    );
+  }
+  const askedSession = textParam(url, 'session', CONVERSATION_QUERY_CAP);
+  if (askedSession === null) {
+    return badRequest('session must be a session id, between 1 and '
+      + `${CONVERSATION_QUERY_CAP} characters.`);
+  }
+  const askedName = textParam(url, 'name', CONVERSATION_QUERY_CAP);
+  if (askedName === null) {
+    return badRequest('name must be between 1 and '
+      + `${CONVERSATION_QUERY_CAP} characters — it is the name this project gave a session.`);
+  }
+  if (askedSession !== undefined && askedName !== undefined) {
+    return badRequest(
+      'session and name are two ways of naming the same thing, so only one of them can be '
+      + 'the scope. Sending both would let them disagree, and this endpoint would have to '
+      + 'pick a winner nobody asked it to pick.',
+    );
+  }
+  const askedAgent = textParam(url, 'agent', CONVERSATION_QUERY_CAP);
+  if (askedAgent === null) {
+    return badRequest('agent must be a helper agent id, or "-" for the session\'s own '
+      + 'transcript.');
+  }
+  const askedKind = url.searchParams.get('kind');
+  if (askedKind !== null && askedKind !== 'prompt' && askedKind !== 'answer') {
+    return badRequest(
+      `kind is "${askedKind.slice(0, 40)}" and takes one of: prompt, answer. A third value `
+      + 'accepted and ignored would search everything while the screen said it had narrowed.',
+    );
+  }
+  const askedSince = dateParam(url, 'since');
+  if (askedSince === null) return badRequest('since must be a date written YYYY-MM-DD.');
+  const askedUntil = dateParam(url, 'until');
+  if (askedUntil === null) return badRequest('until must be a date written YYYY-MM-DD.');
+  const askedZone = zoneParam(url);
+  if (askedZone === null) {
+    return badRequest(
+      'tz must be an IANA time zone name this runtime knows, such as Asia/Jerusalem — not a '
+      + 'fixed offset, which cannot carry the transitions a day boundary turns on. Omit it and '
+      + 'the date bounds are read in UTC.',
+    );
+  }
+  const askedLimit = boundedDigits(url, 'limit');
+  if (askedLimit === null) {
+    return badRequest('limit must be a whole number of hits, written in digits.');
+  }
+  const limit = Math.min(askedLimit ?? CONVERSATION_SEARCH_DEFAULT, CONVERSATION_SEARCH_CAP);
+
+  const scope: ConversationSearchScope = {
+    session: askedSession ?? null,
+    name: askedName ?? null,
+    agent: askedAgent ?? null,
+    kind: askedKind,
+    since: askedSince ?? null,
+    until: askedUntil ?? null,
+    tz: askedZone ?? null,
+    limit,
+  };
+  const dir = transcriptDir(process.env, workspaceCwd(ws));
+  const empty = (over: Partial<ConversationSearchBody>): JsonResult => ({
+    status: 200,
+    body: {
+      query: askedQuery,
+      searchable: true,
+      note: null,
+      minChars: MIN_QUERY_CHARS,
+      scope,
+      scopeNote: null,
+      hits: [],
+      matched: 0,
+      undated: 0,
+      more: false,
+      indexed: true,
+      outdated: false,
+      dir,
+      rebuild: REBUILD_COMMAND,
+      index: { sources: 0, spans: 0, indexedAt: null },
+      ...over,
+    } as ConversationSearchBody,
+  });
+
+  let index: ConversationIndex;
+  try {
+    index = ConversationIndex.openReadOnlyChecked(ws.dbPath);
+  } catch (err) {
+    // The two empty states `apiConversations` already distinguishes, and for
+    // the same reason: neither is damage and neither is this surface's to
+    // repair, because creating a table is a write.
+    if (err instanceof ConversationIndexUninitializedError
+      || err instanceof ConversationIndexIncompleteError) {
+      return empty({
+        indexed: false,
+        outdated: err instanceof ConversationIndexIncompleteError,
+      });
+    }
+    throw err;
+  }
+
+  try {
+    // ── HOW FRESH THE WORDS ARE, READ ONCE ────────────────────────────────
+    //
+    // One query over a table with one row per transcript — 307 on this
+    // workspace. It is served with every answer rather than on demand,
+    // because the reader who needs it most is the one who searched for
+    // something they know they said and got nothing back.
+    const sources = [...index.proseSources().values()];
+    const spans = sources.reduce((n, row) => n + row.spans, 0);
+    const indexedAt = sources.reduce<string | null>(
+      (latest, row) => (latest === null || row.indexedAt > latest ? row.indexedAt : latest), null,
+    );
+    const shelf = { sources: sources.length, spans, indexedAt };
+
+    // ── THE NAME NARROWING, AND WHY A MISS IS ITS OWN ANSWER ──────────────
+    //
+    // Names exist since `plan:archive seq:34` and are the one word in a
+    // session a person chose, so they are what a person narrows by. A name
+    // nothing carries is a fact about the NAME: searched unscoped it would be
+    // a lie, and answered as a bare empty list it would read as the archive
+    // not holding the phrase. So it is stated.
+    let sessions: (string | undefined)[] = [askedSession];
+    const scopeNote: string | null = null;
+    if (askedName !== undefined) {
+      const needle = askedName.toLowerCase();
+      const named = index.names().filter((row) => row.name.toLowerCase().includes(needle));
+      if (named.length === 0) {
+        return empty({
+          scopeNote:
+            `No session in this archive is named "${askedName}". This is a fact about the `
+            + 'name and not about the archive — nothing was searched, so nothing being found '
+            + 'is not an answer about your words. `mycontext conversation name <session> '
+            + '"<name>"` gives a session a name here.',
+          index: shelf,
+        });
+      }
+      sessions = named.map((row) => row.sessionId);
+    }
+
+    const agentScope = askedAgent === undefined
+      ? undefined
+      : (askedAgent === '-' ? null : askedAgent);
+
+    // One search per named session, merged. Names are a handful — the table
+    // holds one row per session somebody bothered to name — and a single
+    // unscoped query filtered afterwards would silently lose the hits that
+    // fell outside the limit before the filter ran.
+    const answers = sessions.map((sessionId) => searchArchive(index, askedQuery, {
+      ...(sessionId === undefined ? {} : { sessionId }),
+      ...(agentScope === undefined ? {} : { agentId: agentScope }),
+      ...(askedKind === null ? {} : { kind: askedKind }),
+      limit,
+    }));
+    const first = answers[0];
+    if (first !== undefined && !first.searchable) {
+      return empty({ searchable: false, note: first.note, index: shelf });
+    }
+    const raw = answers.flatMap((answer) => answer.hits)
+      .sort((a, b) => (a.score - b.score)
+        || a.sessionId.localeCompare(b.sessionId)
+        || (a.recordIndex - b.recordIndex));
+
+    // ── WHICH DAY EACH HIT IS, IN THE READER'S ZONE ───────────────────────
+    //
+    // `zonedDay` and nothing else, for `apiConversations`' own reason: it is
+    // what draws the date half of the stamp beside the hit, so the filter and
+    // the printed stamp cannot come to different answers about one turn.
+    // `scope.tz ?? 'UTC'` is stated here rather than defaulted inside
+    // `zonedDay`, whose `undefined` means THIS RUNTIME — and this runtime is
+    // the server.
+    const bounded = scope.since !== null || scope.until !== null;
+    const names = new Map(index.names().map((row) => [row.sessionId, row.name]));
+    const marked = new Set(index.anchorRows(null).map((row) => row.id));
+    const lanes = new Map<string, string | null>();
+    const files = new Map<string, string | null>();
+    let undated = 0;
+    const hits: SearchHitView[] = [];
+    for (const hit of raw) {
+      const day = zonedDay(hit.at, scope.tz ?? 'UTC');
+      if (bounded) {
+        // A bound cannot place a turn with no stamp. Left out and COUNTED,
+        // never dropped — `INV-nothing-is-dropped-silently`.
+        if (day === null) { undated += 1; continue; }
+        if (scope.since !== null && day < scope.since) continue;
+        if (scope.until !== null && day > scope.until) continue;
+      }
+      if (hit.agentId !== null && !lanes.has(hit.agentId)) {
+        lanes.set(hit.agentId, index.getSubagent(hit.agentId)?.description ?? null);
+      }
+      const anchorId = anchorIdFor(hit.sessionId, hit.agentId, hit.byteOffset);
+      // The transcript is looked up once per SOURCE, not once per hit: a page
+      // of fifty hits is often a handful of transcripts, and `get` is a query.
+      const fileKey = hit.agentId ?? hit.sessionId;
+      if (!files.has(fileKey)) {
+        files.set(fileKey, hit.agentId === null
+          ? index.get(hit.sessionId)?.file ?? null
+          : index.getSubagent(hit.agentId)?.file ?? null);
+      }
+      const file = files.get(fileKey) ?? null;
+      hits.push({
+        sessionId: hit.sessionId,
+        sessionName: names.get(hit.sessionId) ?? null,
+        sessionTitle: index.get(hit.sessionId)?.title ?? null,
+        agentId: hit.agentId,
+        agentTitle: hit.agentId === null ? null : lanes.get(hit.agentId) ?? null,
+        recordIndex: hit.recordIndex,
+        byteOffset: hit.byteOffset,
+        kind: hit.kind,
+        at: hit.at,
+        day,
+        snippet: hit.snippet,
+        passage: file === null ? null : passageAt(file, hit.byteOffset, askedQuery),
+        score: hit.score,
+        anchorId,
+        anchored: marked.has(anchorId),
+        anchorArgv: anchorCommandFor(
+          hit.sessionId, hit.agentId, hit.byteOffset, askedQuery,
+        ),
+      });
+    }
+
+    const body: ConversationSearchBody = {
+      query: askedQuery,
+      searchable: true,
+      note: null,
+      minChars: MIN_QUERY_CHARS,
+      scope,
+      scopeNote,
+      hits,
+      matched: raw.length,
+      undated,
+      // The index answered a full page for at least one scope, so there may be
+      // more behind it. Said rather than implied: a capped answer and a
+      // complete one must not look the same.
+      more: answers.some((answer) => answer.hits.length >= limit),
+      indexed: true,
+      outdated: false,
+      dir,
+      rebuild: REBUILD_COMMAND,
+      index: shelf,
+    };
+    return { status: 200, body };
+  } finally {
+    index.close();
+  }
+}
+
+/**
+ * One marked point, as the screen draws it.
+ *
+ * `dropArgv` is here for `anchorArgv`'s reason and no other: taking a mark
+ * back is a WRITE, so the page composes the command and the person runs it.
+ * Composed on the server so the id in the line and the id in the row cannot
+ * come apart.
+ */
+export interface AnchorView {
+  id: string;
+  sessionId: string;
+  sessionName: string | null;
+  sessionTitle: string | null;
+  agentId: string | null;
+  byteOffset: number;
+  label: string;
+  kind: string;
+  origin: string;
+  at: string;
+  dropArgv: string[];
+}
+
+export interface ConversationAnchorsBody {
+  anchors: AnchorView[];
+  total: number;
+  /** The term the labels were searched for, or `null`. */
+  q: string | null;
+  session: string | null;
+  indexed: boolean;
+  outdated: boolean;
+  rebuild: string;
+}
+
+/**
+ * `GET /api/conversations/anchors` — **the points he marked, and the ones
+ * marked for him.**
+ *
+ * §7 of the retrieval design: an anchor is a fixed point he can steer back to,
+ * and Phase 1 carries *"the list and the search over them"* by owner ruling.
+ * The search here is over LABELS and not over the conversation — the two are
+ * different questions and `/api/conversations/search` is the other one, which
+ * `searchAnchors`' own header says one layer down.
+ */
+export function apiConversationAnchors(ws: Workspace, url: URL): JsonResult {
+  const bad = unknownParams(url, ['q', 'session']) ?? repeatedParams(url);
+  if (bad) return badRequest(bad);
+
+  const askedQuery = textParam(url, 'q', CONVERSATION_QUERY_CAP);
+  if (askedQuery === null) {
+    return badRequest(
+      `q must be between 1 and ${CONVERSATION_QUERY_CAP} characters. It searches the LABELS `
+      + 'you wrote, not the conversation — an empty one would be a search nobody asked for.',
+    );
+  }
+  const askedSession = textParam(url, 'session', CONVERSATION_QUERY_CAP);
+  if (askedSession === null) {
+    return badRequest('session must be a session id, between 1 and '
+      + `${CONVERSATION_QUERY_CAP} characters.`);
+  }
+
+  let index: ConversationIndex;
+  try {
+    index = ConversationIndex.openReadOnlyChecked(ws.dbPath);
+  } catch (err) {
+    if (err instanceof ConversationIndexUninitializedError
+      || err instanceof ConversationIndexIncompleteError) {
+      return {
+        status: 200,
+        body: {
+          anchors: [], total: 0, q: askedQuery ?? null, session: askedSession ?? null,
+          indexed: false, outdated: err instanceof ConversationIndexIncompleteError,
+          rebuild: REBUILD_COMMAND,
+        } as ConversationAnchorsBody,
+      };
+    }
+    throw err;
+  }
+
+  try {
+    const rows = askedQuery !== undefined
+      ? index.matchAnchors(askedQuery)
+      : index.anchorRows(askedSession ?? null);
+    // A label search is over the whole archive, so the session narrowing is
+    // applied after it rather than instead of it — two clauses that compose,
+    // which is what a reader who set both expects.
+    const kept = askedSession === undefined
+      ? rows
+      : rows.filter((row) => row.sessionId === askedSession);
+    const names = new Map(index.names().map((row) => [row.sessionId, row.name]));
+    const body: ConversationAnchorsBody = {
+      anchors: kept.map((row) => ({
+        id: row.id,
+        sessionId: row.sessionId,
+        sessionName: names.get(row.sessionId) ?? null,
+        sessionTitle: index.get(row.sessionId)?.title ?? null,
+        agentId: row.agentId,
+        byteOffset: row.byteOffset,
+        label: row.label,
+        kind: row.kind,
+        origin: row.origin,
+        at: row.at,
+        dropArgv: ['mycontext', 'conversation', 'anchor', '--drop', row.id],
+      })),
+      total: kept.length,
+      q: askedQuery ?? null,
+      session: askedSession ?? null,
+      indexed: true,
+      outdated: false,
+      rebuild: REBUILD_COMMAND,
+    };
+    return { status: 200, body };
+  } finally {
+    index.close();
+  }
+}
 export function registerConversationRoutes(): void {
   // **`/secrets` before `/:id`**, exactly as `/subagents` is: the router
   // matches in registration order and `/api/conversations/:id` would otherwise
@@ -1688,6 +2311,16 @@ export function registerConversationRoutes(): void {
     kind: 'json',
     handle: (ctx: ApiContext) =>
       apiConversationSecrets(ctx.ws, ctx.url, { id: ctx.params['id'] ?? '' }),
+  });
+  // **And `/search` before `/:id` too, for the same reason and no other.**
+  // The router matches in registration order; registered after, this route
+  // would be answered as a session whose id is the word "search" and would
+  // 404 — a 404 on a working feature, which is the worst kind.
+  registerRoute('GET', '/api/conversations/search', {
+    kind: 'json', handle: (ctx: ApiContext) => apiConversationSearch(ctx.ws, ctx.url),
+  });
+  registerRoute('GET', '/api/conversations/anchors', {
+    kind: 'json', handle: (ctx: ApiContext) => apiConversationAnchors(ctx.ws, ctx.url),
   });
   registerRoute('GET', '/api/conversations/:id/subagents', {
     kind: 'json',

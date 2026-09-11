@@ -1609,6 +1609,22 @@ export const SUBCOMMAND_FLAGS: Record<string, Record<string, FlagSpec>> = {
     // by COMMAND on the claim that within one command a flag name means one
     // thing.
     name: { allowed: ['clear', 'json'], values: [] },
+    // `anchor` (`plan:recall seq:1`) takes a POSITIONAL session id and a
+    // POSITIONAL byte offset — the position is the argument, and a flag would
+    // suggest it were optional when an anchor with no position is not an
+    // anchor. `--label` is required to MARK one and meaningless to list, which
+    // is why it is a flag rather than a third positional: the same verb both
+    // reads and writes here, exactly as `name` does.
+    //
+    // `--find` searches LABELS and `--drop` takes one back. Neither is a
+    // subcommand of its own for `persist --off`'s reason: they act on the same
+    // rows by the same ids, and a second verb would be a second place to keep
+    // the id space in step. It takes no `--yes`: `--drop` removes one bookmark
+    // from this workspace's own index and the same command puts it back.
+    anchor: {
+      allowed: ['label', 'agent', 'find', 'drop', 'json'],
+      values: ['label', 'agent', 'find', 'drop'],
+    },
     // `forget` (`plan:archive seq:9`) is the OFF position of the archive's
     // opt-in and takes `--yes` for the reason every other destructive command
     // here does: it drops rows, and a command that drops rows asks first. It
@@ -1749,6 +1765,29 @@ export const SUBCOMMAND_FLAG_DECLARATIONS: Record<string, FlagDeclarations> = {
       note: 'How many indexed conversations to print. The rest are counted and named as not '
         + 'shown rather than left out silently, so raising it can only reveal rows the '
         + 'previous run already told you were there.',
+    },
+    label: {
+      format: 'a short line saying why you kept this point', example: 'the tokenizer measurement',
+      note: 'What an anchor is FOR, in your own words. Required to mark one: a bookmark that '
+        + 'says nothing about why it was kept is one you will not recognise when you come '
+        + 'back to it, which is the whole thing an anchor exists to prevent.',
+    },
+    agent: {
+      format: 'a helper agent id from `conversation subagents`', example: 'agent-a2352511',
+      note: 'Mark a point inside a HELPER AGENT\'s transcript rather than the session\'s own. '
+        + 'Most of this archive is lanes, so most points worth marking are in one.',
+    },
+    find: {
+      format: 'any part of an anchor\'s label', example: 'tokenizer',
+      note: 'List the anchors whose LABEL contains this. It searches what you wrote, not the '
+        + 'conversation — `mycontext conversation rebuild` fills the index the Conversations '
+        + 'screen searches, and that is the other question.',
+    },
+    drop: {
+      format: 'an anchor id, as `conversation anchor` prints it',
+      example: 'session:-:94425015',
+      note: 'Take one anchor back. An id that is not marked is answered as such rather than '
+        + 'failing, because "it is already not there" is the outcome you asked for.',
     },
   },
   pack: {
