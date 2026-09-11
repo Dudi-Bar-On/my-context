@@ -5,8 +5,10 @@ title: the prose index re-reads 95 MB every run because its resume point runs pa
 status: active
 severity: soft
 always: false
-summary: Refreshing the conversation search index costs two seconds and a hundred megabytes every time instead of almost nothing, because it remembers a position slightly ahead of the one it compares against.
-summary_of: 70750c759c12ccf3
+summary: "Refreshing the conversation search index costs nothing when nothing has changed: the walk now stops where the archive itself stopped, turning a hundred-megabyte re-read on every run into no reading at all."
+summary_of: 392db2d4c79ea420
+summary_was:
+  - 2026-09-11 Refreshing the conversation search index costs two seconds and a hundred megabytes every time instead of almost nothing, because it remembers a position slightly ahead of the one it compares against.
 scope:
   - src/core/conversation-search.ts
 tags:
@@ -14,18 +16,18 @@ tags:
   - recall
   - "plan:recall"
   - "seq:4"
-  - "state:todo"
+  - "state:done"
   - perf
 origin: human
 source_file: "C:/Users/UserC/AppData/Local/Temp/claude/D--Users-UserC-source-repos-my-context/595db3b1-a481-4553-b4c0-7248c31b2655/scratchpad/skew-body.md"
 source_anchor: null
-source_checksum: 17f2f030f51876e9
+source_checksum: null
 valid_from: 2026-09-11
 valid_until: null
-checksum: 89dc846ce5ef4f7d
+checksum: 40178d8359b09fee
 plan: recall
 seq: "4"
-state: todo
+state: done
 priority: "1"
 ---
 
@@ -72,3 +74,35 @@ priority: "1"
 >
 > NOT FIXED BY THAT LANE because `src/core/**` was fenced to a concurrent lane for the whole of
 > its work.
+
+> CLOSED 2026-09-11. The repair is one clamp in `buildSearchIndex`: the walk's budget is
+> `Math.max(0, Math.min(appendable ? cap - from : cap, source.bytes - from))`, so it stops at
+> the archive row instead of at the true end of file. The proposed `cap: Math.min(cap,
+> source.bytes - from)` was right in substance; it needed the `appendable` arm of the existing
+> expression kept, and a floor at 0 for a transcript shorter than its row.
+>
+> MEASURED BEFORE AND AFTER, the same way both times - four consecutive `buildSearchIndex`
+> runs against a `VACUUM INTO` snapshot of `.my_context/.index.db`, whose rows point at the
+> real transcripts, so his index was never written to. 316 sources.
+>
+>   before  run 2  bytesRead 103,345,406  ms 2,066   (5 live transcripts re-read WHOLE)
+>   before  run 3  bytesRead 103,347,979  ms 2,060
+>   after   run 2  bytesRead           0  ms     4   (316 skipped)
+>   after   run 3  bytesRead           0  ms     3
+>
+> An index ALREADY in the skewed state heals in one run: 102,500,659 bytes and 3,909 ms once,
+> then 0 bytes and 6 ms. A real append, after the archive scan caught up, cost 1,594,380 bytes
+> and 24 ms.
+>
+> WHAT IS PINNED: two tests in `test/core/conversation-search.test.ts`, both asserting BYTES
+> READ and never elapsed time. One grows a transcript after the archive scanned it and requires
+> the prose row to come out level with the archive row and the next run to be a skip reading 0
+> bytes - and requires the deferred tail to be indexed once the archive does scan it, so the
+> clamp defers rather than drops. The other seeds a prose row already ahead, the state every
+> existing workspace is in, and requires one re-read and then a skip. Ten removal proofs, one
+> per assertion, all red at their own line.
+>
+> THE STOP HOOK WAS NOT MOVED, and the recommendation is to wait: this index is now 4 ms and
+> 0 bytes a turn and would be affordable there, but the same measurement found
+> `TASK-the-archive-s-own-scan-re-reads-96-mb-on-every-turn-for-the` - the scan that hook
+> ALREADY runs costs 96.7 MB and 421 ms a turn, for the same class of skew one layer down.

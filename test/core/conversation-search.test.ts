@@ -1,4 +1,5 @@
 // @basis TASK-search-the-archive-properly-and-mark-the-anchors-you-want-to,
+// TASK-the-prose-index-re-reads-95-mb-every-run-because-its-resume,
 // INV-nothing-is-dropped-silently, CONST-zero-runtime-dependencies
 /**
  * **An FTS5 index over the archive's prose** — `plan:recall seq:1`, Task 1 of
@@ -51,7 +52,9 @@
  */
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { appendFileSync, mkdirSync, mkdtempSync, openSync, closeSync, readSync, writeFileSync } from 'node:fs';
+import {
+  appendFileSync, mkdirSync, mkdtempSync, openSync, closeSync, readSync, statSync, writeFileSync,
+} from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
@@ -497,6 +500,137 @@ test('a session whose transcript is gone loses its prose, and the removal is cou
       const left = searchArchive(index, 'periscope');
       assert.equal(left.hits.length, 1, 'and the pruned session\'s prose is gone with its row');
       assert.equal(left.hits[0]!.sessionId, SESSION);
+    } finally {
+      index.close();
+    }
+  } finally {
+    f.dispose();
+  }
+});
+
+/**
+ * **THE SKEW, AND WHY IT NEVER HEALED** —
+ * `TASK-the-prose-index-re-reads-95-mb-every-run-because-its-resume`.
+ *
+ * The freshness comparison and the resume point were written from two
+ * different sources of truth. `prose_sources.bytes` recorded where the walk
+ * REACHED — the true end of file at the moment it read — and the comparison
+ * next run is against the `conversations`/`subagents` ROW, which is where the
+ * ARCHIVE's scan reached. A transcript that grows between the two ends up with
+ * a prose row LARGER than the archive row, `source.bytes > previous.bytes` is
+ * false from then on, and the source falls to a whole re-read that re-creates
+ * the same skew. Measured on this workspace 2026-09-11: five live transcripts,
+ * 103.3 MB and 2.0-2.6 s on EVERY run, for ever.
+ *
+ * The fixture reproduces it with two appends and one archive scan between
+ * them, which is the ordinary life of a live transcript and not a contrivance.
+ *
+ * **The assertions are on BYTES READ, never on elapsed time.** The defect is a
+ * 95 MB read; the seconds are its shadow. A timing assertion here would be a
+ * flake on a loaded machine and would pass on a fast one with the bug intact.
+ */
+test('a transcript that grew after the archive scanned it leaves the prose row level with it, not past it', () => {
+  const f = fixture();
+  try {
+    f.session([say('assistant', 'the periscope is up', '2026-09-01T10:00:00.000Z')]);
+    rebuildConversations(f.dbPath, f.env, f.cwd, {});
+    const index = ConversationIndex.open(f.dbPath);
+    try {
+      buildSearchIndex(index);
+
+      // The archive scans, and THEN the harness appends again. Nothing here is
+      // arranged for the test: this is what every live transcript does between
+      // one scan and the next.
+      f.append([say('assistant', 'a mid-scan bathyscaphe', '2026-09-01T10:01:00.000Z')]);
+      rebuildConversations(f.dbPath, f.env, f.cwd, {});
+      f.append([say('assistant', 'a later sonobuoy', '2026-09-01T10:02:00.000Z')]);
+
+      const caught = buildSearchIndex(index);
+      assert.equal(
+        caught.appended, 1,
+        'the part the archive HAS scanned is caught up by its tail, as it always was',
+      );
+
+      const row = index.get(SESSION)!;
+      const prose = index.proseSources().get(SESSION)!;
+      assert.equal(
+        prose.bytes, row.bytes,
+        'and the prose row stops exactly where the ARCHIVE row stops. It used to stop at the '
+        + 'true end of file, which is PAST the row the next run compares it against — and once '
+        + 'past, `source.bytes > previous.bytes` is false for ever.',
+      );
+
+      const settled = buildSearchIndex(index);
+      assert.equal(
+        settled.skipped, 1,
+        'so the very next run is a SKIP. With the row ahead it was a whole re-read, every run, '
+        + 'and the re-read put it ahead again.',
+      );
+      assert.equal(
+        settled.bytesRead, 0,
+        'and it reads NOTHING — the cost the module header promises for an unchanged '
+        + 'transcript. Measured on the live corpus this line is 103.3 MB against 0.',
+      );
+
+      // **The clamp DEFERS; it must not DROP.** A walk that stopped at the
+      // archive row and never came back would lose every record appended after
+      // the last scan, silently — a worse defect than the one being fixed.
+      assert.equal(
+        searchArchive(index, 'sonobuoy').hits.length, 0,
+        'what the archive has not scanned is not in the archive yet, which is `sourcesOf`\'s '
+        + 'own rule and the reason the walk may stop at the row',
+      );
+      rebuildConversations(f.dbPath, f.env, f.cwd, {});
+      buildSearchIndex(index);
+      assert.equal(
+        searchArchive(index, 'sonobuoy').hits.length, 1,
+        'and the moment the archive scans it, the prose walk picks it up — deferred by one '
+        + 'scan, never dropped',
+      );
+    } finally {
+      index.close();
+    }
+  } finally {
+    f.dispose();
+  }
+});
+
+/**
+ * The state EVERY EXISTING WORKSPACE is in the moment this ships: a
+ * `prose_sources` row written by the old walk, already past its archive row.
+ * The repair has to heal that, not merely stop causing it — an index that
+ * needed to be deleted to get the saving would be a fix nobody receives.
+ */
+test('a prose row already ahead of its archive row is re-read once and then settles', () => {
+  const f = fixture();
+  try {
+    f.session([say('assistant', 'the periscope is up', '2026-09-01T10:00:00.000Z')]);
+    rebuildConversations(f.dbPath, f.env, f.cwd, {});
+    const index = ConversationIndex.open(f.dbPath);
+    try {
+      buildSearchIndex(index);
+      // The transcript grows past what the archive scanned, and the prose row
+      // is put where the OLD walk would have left it: at the true end of file.
+      f.append([say('assistant', 'a later bathyscaphe', '2026-09-01T10:01:00.000Z')]);
+      const onDisk = statSync(f.file()).size;
+      const stale = index.proseSources().get(SESSION)!;
+      assert.ok(onDisk > index.get(SESSION)!.bytes, 'the file really is past the archive row');
+      index.putProseSource({ ...stale, bytes: onDisk });
+
+      const healed = buildSearchIndex(index);
+      assert.equal(
+        healed.indexed, 1,
+        'a row ahead of its archive row is neither a skip nor a tail, so it costs ONE whole '
+        + 're-read — and that re-read is the heal',
+      );
+
+      const settled = buildSearchIndex(index);
+      assert.equal(settled.skipped, 1, 'after which it is a skip');
+      assert.equal(
+        settled.bytesRead, 0,
+        'and reads nothing. Before the repair this second run read the whole transcript again, '
+        + 'and so did the third, and the four hundredth.',
+      );
     } finally {
       index.close();
     }

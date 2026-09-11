@@ -263,8 +263,9 @@ export function buildSearchIndex(
         continue;
       }
 
-      // `previous.bytes` is the position the last walk REACHED, so resuming
-      // from it is correct even when that walk stopped at the cap.
+      // `previous.bytes` is where the last walk STOPPED, which is the archive
+      // row's own count or the cap, whichever came first — see the clamp
+      // below. Resuming from it is correct on both.
       const appendable = options.full !== true && previous !== undefined
         && source.bytes > previous.bytes
         && previous.bytes < cap
@@ -277,7 +278,33 @@ export function buildSearchIndex(
       // correct and is the whole saving.
       if (!appendable) index.dropProse(source.key);
 
-      const walked = proseFrom(source, from, fromIndex, appendable ? cap - from : cap);
+      /**
+       * **The walk STOPS AT THE ARCHIVE ROW, not at the end of the file.**
+       *
+       * `source.bytes` is where the archive's own scan reached, and it is the
+       * number the NEXT run compares against. A walk that ran on to the true
+       * end of file wrote a `prose_sources.bytes` LARGER than that row for
+       * every transcript still being written — and from then on
+       * `source.bytes > previous.bytes` is false, so the source is neither a
+       * skip nor a tail but a whole re-read, which re-creates the same skew.
+       * It never healed. Measured on this workspace 2026-09-11, five live
+       * transcripts: 103.3 MB and 2.0-2.6 s on every single run, against 0
+       * bytes and single-digit milliseconds once the two numbers agree.
+       *
+       * Stopping here is also what `sourcesOf`'s header already says the
+       * archive means: a transcript the archive has not scanned is not part of
+       * the archive yet, so prose past the row would be words no other surface
+       * can show. It is DEFERRED to the next scan, not dropped.
+       *
+       * The row's count is a line boundary in practice, because the harness
+       * appends a record and its newline together; when it is not,
+       * `lineStartsAt` sends the next run down the whole re-read that is
+       * always correct.
+       */
+      const budget = Math.max(
+        0, Math.min(appendable ? cap - from : cap, source.bytes - from),
+      );
+      const walked = proseFrom(source, from, fromIndex, budget);
       index.putProse(walked.spans);
 
       const row: ProseSourceRow = {

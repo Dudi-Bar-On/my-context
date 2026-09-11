@@ -244,16 +244,21 @@ function cmdConversationRebuild(ws: Workspace, root: string, args: string[], out
   // grew — measured here 2026-09-11 at 3-6 ms with nothing appended and 26 ms
   // for a 256 KB append. That is affordable on a command a person typed.
   //
-  // **It is deliberately NOT wired into `hooks/stop.ts`**, which is where the
-  // plan's shape invites it, because the same measurement found a second
-  // number: as the code stands a live transcript falls to a WHOLE re-read
-  // every run — 1.8-2.1 s and 95.7 MB per turn on this workspace — since
-  // `prose_sources.bytes` records where the walk actually reached, which runs
-  // PAST the `conversations` row whenever the file grew between the scan and
-  // the prose walk, and `source.bytes > previous.bytes` is then false for
-  // ever. Until that is repaired in `core/conversation-search.ts`, putting
-  // this on the end of every assistant turn would be paying two seconds a
-  // turn for something nobody asked to be automatic.
+  // **It is still NOT wired into `hooks/stop.ts`**, which is where the plan's
+  // shape invites it — but the reason has CHANGED and the old one is gone, so
+  // it is recorded here rather than left standing.
+  //
+  // The old reason was cost: a live transcript fell to a WHOLE re-read every
+  // run because `prose_sources.bytes` recorded where the walk reached, which
+  // runs past the `conversations` row whenever the file grew between the two.
+  // `TASK-the-prose-index-re-reads-95-mb-every-run-because-its-resume` closed
+  // that on 2026-09-11 — the walk now stops at the archive row — and the same
+  // measurement, taken the same way before and after on this workspace's 316
+  // transcripts, is 103,345,406 bytes and 2,066 ms against 0 bytes and 4 ms.
+  //
+  // So the cost argument no longer refuses it, and what is left is a decision
+  // about the hook rather than about this function. It belongs to the owner
+  // and is not taken here.
   //
   // The viewer's search says how fresh the index is with every answer
   // (`read-model-conversations.ts`' `index.indexedAt`), so an archive behind
