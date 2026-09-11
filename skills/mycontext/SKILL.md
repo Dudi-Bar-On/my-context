@@ -84,7 +84,7 @@ Scope, `always`, `continuity`, severity and status stay refused either way; the 
 `mycontext supersede --yes`, `mycontext edit --yes`, `mycontext refresh --yes`,
 `mycontext review promote-revision --yes`, `mycontext procedure activate --yes`,
 `mycontext procedure done --yes`, `mycontext repair --yes`,
-`mycontext focus --yes`, `mycontext carry --yes`,
+`mycontext focus --yes`, `mycontext carry --yes`, `mycontext restore --approve --yes`,
 `mycontext pack import --yes --overwrite-changed` and
 `mycontext config --delete|--disable --yes` all change
 what governs here — `supersede` retires an active governing item; `edit` changes
@@ -115,6 +115,7 @@ confirmation prompt; it is an audit trail, not a lock.
 So: never run `add` on a normative category, `inbox-promote`, `supersede`,
 `edit` (`pin`/`unpin`/`harden`/`soften`), `refresh`, `repair`, `lesson-accept`,
 `procedure activate`, `procedure done`, `pack import`, `focus`, `carry`, `config`,
+`restore`,
 `review promote`, `review discard`, `review promote-revision` or
 `review discard-revision` — which governs nothing, but ends a proposal for
 good — on the user's behalf, and never route around a refusal with `--yes`.

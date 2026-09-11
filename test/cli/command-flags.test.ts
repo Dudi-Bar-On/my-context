@@ -130,6 +130,10 @@ const BORN_HERE: Record<string, string> = {
   contribution: 'cli/commands/contribution.ts — the command itself is newer than this module '
     + '(plan:loop seq:1, 2026-09-08, per-item delivery read backwards out of the audit log), '
     + 'so its spec was authored here and has never lived anywhere else.',
+  restore: 'cli/commands/restore.ts — the command itself is newer than this module '
+    + '(plan:restore seq:2, 2026-09-11, a session summary staged to disk and delivered into '
+    + 'the window after the owner clears), so its spec was authored here and has never lived '
+    + 'anywhere else.',
 };
 
 /**

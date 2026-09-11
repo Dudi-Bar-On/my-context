@@ -241,6 +241,12 @@ const WRITERS: Record<string, string[]> = {
   'src/core/ledger.ts': ['writeSnapshot', 'pruneSnapshots'],
   'src/core/lock.ts': ['acquireLock', 'reclaimStaleLock'],
   'src/core/rebuild.ts': ['writeItem', 'rebuild'],
+  // `plan:restore seq:2`, 2026-09-11 — the only restore module that writes.
+  // `core/restore-staging.ts` is the read half and binds no write API at all
+  // (`test/core/restore-stage.test.ts` asserts its `node:fs` bindings are
+  // exactly `existsSync`, `readFileSync`, `readdirSync`), and
+  // `core/restore-stage.ts` reaches disk only through this module.
+  'src/core/restore-store.ts': ['writeStagedRestore', 'discardStagedRestore', 'spendApprovedRestore'],
   // `plan:loop seq:3`, 2026-09-11 — the self-improvement pass's three writing
   // modules. Named here BEFORE the derivation was run, and the derivation then
   // named them anyway, which is this table working in the direction it was

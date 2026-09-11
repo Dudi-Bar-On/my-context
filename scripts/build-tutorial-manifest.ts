@@ -277,7 +277,14 @@ const CLUSTERS: Cluster[] = [
     // `sessions-and-continuity` files has taught `mycontext handover ask` and
     // `/mycontext:handover` since that day, so this is the generator catching
     // up with a claim the documents already honour — not a new one.
-    cli: ['session.ts', 'handover.ts', 'conversation.ts'],
+    //
+    // **`restore.ts` joins it for the same reason `conversation.ts` did**
+    // (`plan:restore seq:2`, 2026-09-11): `mycontext restore` summarises a past
+    // conversation from the archive's own transcripts and hands that summary to
+    // the NEXT session — which is both halves of this cluster's one question at
+    // once, and is the emergency form of the same act `mycontext handover`
+    // performs in the ordinary case.
+    cli: ['session.ts', 'handover.ts', 'conversation.ts', 'restore.ts'],
     slash: ['session-carry.md', 'session-name.md', 'handover.md'],
     screens: ['conversations.js'],
   },

@@ -53,12 +53,14 @@
  * (`mycontext conversation`, the archive's index and scanner — `plan:archive seq:1`), and
  * again 2026-09-08 (`mycontext contribution`, the per-item delivery baseline —
  * `plan:loop seq:1`), and again 2026-09-10 (`mycontext rules`, the product rule
- * store's own read-and-verify surface — `plan:store seq:1`),
- * over the **47** commands
- * the CLI dispatches: 40 registered by `cli/commands/index.ts`'s column of side-effect
+ * store's own read-and-verify surface — `plan:store seq:1`), and again 2026-09-11
+ * (`mycontext restore`, the session summary staged to disk and delivered after the
+ * owner clears — `plan:restore seq:2`),
+ * over the **48** commands
+ * the CLI dispatches: 41 registered by `cli/commands/index.ts`'s column of side-effect
  * imports, and 7 more registered in `cli/index.ts` itself.
  *
- *   | 43 | have a SEPARABLE flag spec — a declarative list, liftable as it is |
+ *   | 44 | have a SEPARABLE flag spec — a declarative list, liftable as it is |
  *   |  0 | read their flags INLINE where they are used, with no spec to lift  |
  *   |  1 | resists: `edit`, whose accepted set is computed per workspace      |
  *   |  3 | take no flags at all — `show`, `rebuild`, `help`                   |
@@ -68,7 +70,7 @@
  * because they refused no unknown flag: a command with nothing to disagree
  * with cannot be checked, so nothing could tell a builder that the command it
  * had composed was wrong. They were given parsers rather than an exception,
- * and the row stays so that the partition still covers all 43 — and so that a
+ * and the row stays so that the partition still covers all 44 — and so that a
  * sixth command written the same way lands in a row that has a name.
  *
  * **This paragraph said 38, and 38 was neither number.** `COMMANDS` holds 33
@@ -86,7 +88,7 @@
  * commands named as absent, plus the keys of `COMMAND_FLAGS`, must be exactly
  * the registered set, so a command cannot arrive and be silently uncounted.
  *
- * **36** of the 43 are here. Twenty-one arrived with the first lift, and they
+ * **37** of the 44 are here. Twenty-one arrived with the first lift, and they
  * are the ones whose spec was already a declarative constant over a FLAT
  * surface — one command, one flag set. The other four arrived with
  * `plan:builder seq:1b` and came out of `src/cli/index.ts` itself — the entry
@@ -417,6 +419,31 @@ export const COMMAND_FLAGS: Record<string, FlagSpec> = {
   refresh: { allowed: ['yes'], values: [] },
   /** `repair` also hand-rolls its refusal; same spec, same reading. */
   repair: { allowed: ['yes'], values: [] },
+  /**
+   * `mycontext restore` — `plan:restore seq:2`. FLAT, like `carry` and `focus`
+   * above: four forms sharing one accepted set, split in the body
+   * (`cli/commands/restore.ts`) rather than in this table.
+   *
+   * The VERB is a flag rather than a positional, and that is the one place
+   * this differs from `carry <id>`: `--approve <key>` and `--discard <key>`
+   * both take an operand, and a single positional slot shared between them
+   * could not say which act was meant. `--build`'s six option flags are design
+   * §4c's own axes — range, subjects, depth, include-code — plus the point
+   * count and the transcript to read; every one of them chooses what the
+   * summary CONTAINS, and none of them is a budget (see `core/restore-stage.ts`
+   * on why there is no budget here at all).
+   *
+   * `--yes` answers the two forms that ASK — approving and discarding. It is
+   * refused by name on `--build` and `--show`: a build stages a proposal that
+   * governs nothing and is delivered nowhere, and a show reports.
+   */
+  restore: {
+    allowed: [
+      'build', 'show', 'approve', 'discard', 'json', 'yes',
+      'session', 'range', 'subject', 'points', 'reasoning', 'code',
+    ],
+    values: ['approve', 'discard', 'session', 'range', 'subject', 'points'],
+  },
   search: {
     allowed: [
       'text', 'type', 'tag', 'path', 'status', 'relation', 'linked-to', 'direction', 'limit',
@@ -1110,6 +1137,73 @@ export const FLAG_DECLARATIONS: Record<string, FlagDeclarations> = {
   },
   refresh: { yes: YES },
   repair: { yes: YES },
+  restore: {
+    build: {
+      group: 'restore-form',
+      note: 'Build a summary of a transcript and stage it to disk as a PROPOSAL. Automatic: it '
+        + 'approves nothing, delivers nothing, and prints the numbered points for you to read.',
+    },
+    show: {
+      group: 'restore-form',
+      note: 'Print what is staged and in what state, and change nothing.',
+    },
+    approve: {
+      group: 'restore-form',
+      format: 'the key of a staged restore', example: 'restore-2026-09-11T09-00-00-000Z',
+      note: 'Release a staged summary to the next session start. The file is re-read off the '
+        + 'disk first, and only a verified re-read is told you it is safe to clear.',
+    },
+    discard: {
+      group: 'restore-form',
+      format: 'the key of a staged restore', example: 'restore-2026-09-11T09-00-00-000Z',
+      note: 'Withdraw a staged restore. It reaches no session.',
+    },
+    json: DETAIL.json,
+    /**
+     * **Not the shared `YES`, for `carry`'s reason.** "Can change what the next
+     * session receives with no human in the loop" is true of approving and of
+     * discarding, and false of building and showing — so the shared note would
+     * advertise a confirmation on two forms that have none to answer.
+     */
+    yes: {
+      refusedWith: ['build', 'show'],
+      note: 'Answer the confirmation on the two forms that DECIDE — approving a restore, and '
+        + 'discarding one. Refused by name on --build and --show. This is the approval '
+        + 'boundary, and approving is the act the whole feature exists to keep with a person.',
+    },
+    session: {
+      format: 'the path to a transcript .jsonl file', example: 'C:/Users/me/.claude/projects/p/s.jsonl',
+      source: 'sessions',
+      note: 'Which conversation to summarise. Defaults to the newest transcript this project has.',
+    },
+    range: {
+      // No "|" anywhere in a declaration: the flag reference renders into a
+      // GFM table and a pipe ends a cell, so the alternatives are spelled as
+      // a list rather than as an alternation.
+      format: 'one of whole, last-compaction, compaction:<n>, record:<index>, since:<ISO timestamp>',
+      example: 'last-compaction',
+      note: 'How much of the conversation to read. `last-compaction` is the usual emergency: '
+        + 'everything since the window was last rebuilt.',
+    },
+    subject: {
+      format: 'comma-separated words a record must mention', example: 'budget,injection',
+      note: 'Keep only records mentioning one of these. Every dropped record is counted and the '
+        + 'count appears on the review form, so a narrowed summary cannot read as a whole one.',
+    },
+    points: {
+      format: 'a whole number above zero', example: '60',
+      note: 'How many points to keep. Points cut by this are counted and disclosed as a '
+        + 'shortfall; it is a recipe choice, not a budget.',
+    },
+    reasoning: {
+      note: 'Print the reason under each point as well as the point. The same points either '
+        + 'way — depth is a rendering choice, so deepening costs no second read.',
+    },
+    code: {
+      note: 'Include fenced code. Off by default: a summary quoting a file is a second copy that '
+        + 'goes stale. On when the lost thing IS code that exists nowhere else.',
+    },
+  },
   search: {
     ...DETAIL,
     text: {

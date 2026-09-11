@@ -8,6 +8,7 @@ import {
   crossLayerCollisions, loadErrorNote, loadLayer, rebuild, type LoadError,
 } from './rebuild.ts';
 import { renderSelection, SUBAGENT_PREAMBLE } from './render.ts';
+import { spendApprovedRestore } from './restore-store.ts';
 import { agentRevisionNotice, pendingRevisions } from './revision.ts';
 import { select, type PinnedSpill } from './select.ts';
 import {
@@ -470,6 +471,61 @@ export function buildInjectionResult(cwd: string, options: InjectionOptions = {}
       ? clearWindowState(stateRoot, sessionId)
       : null;
 
+    // 1c. **THE STAGED SESSION RESTORE — step 7 of `plan:restore seq:2`'s
+    // sequence, and the reason steps 5 and 6 are in the order they are.**
+    //
+    // The owner approved a summary of an earlier conversation, it was written
+    // to disk and verified there (`core/restore-stage.ts`), and THEN he
+    // cleared the window. A clear destroys everything held only in the
+    // conversation, so this is where the summary comes back: out of a file,
+    // into the window that is now empty.
+    //
+    // **Read-and-spend in one call**, exactly as `foldOnceCarry` does for
+    // `mycontext carry` a few hundred lines below, and for the same reason: a
+    // restore is spent by being HANDED to an injection, so a second session
+    // start does not receive a summary built for a window that is no longer
+    // empty.
+    //
+    // **The three events it never reaches, each for a reason that already has
+    // a precedent in this function:**
+    //
+    //  - `manual` — `/LoadMyContext` is a load INTO a live window, and it has
+    //    no session id at all (see `sessionId` above), so a delivery here
+    //    could not be recorded against the window that received it.
+    //  - `subagent` — a child's window was never cleared by the owner, and its
+    //    payload carries the PARENT's session id. Delivering there would spend
+    //    the restore on a window the owner is not sitting in. This is point 6
+    //    of `InjectionEvent`'s list, applied to a third mechanism.
+    //  - `compact` — a compaction is the same window continuing, and the
+    //    restore tier is already re-delivering what that window held. The
+    //    cross-session carry is excluded from `'compact'` for exactly this
+    //    reason and says so in its own comment below.
+    //
+    // **No budget, by owner ruling, and this is where a budget would go if
+    // anybody added one.** The payload is placed in the block whole. It is not
+    // charged to `selection.tokens`, not offered to `select`, not trimmed and
+    // not tiered: *"it takes as much as it requires, because this is not
+    // ongoing behaviour but the last option for restoring things that would
+    // otherwise be lost."*
+    //
+    // A failure costs the restore and never the injection — `spendApprovedRestore`
+    // is documented never to throw — and it is DISCLOSED in the block rather
+    // than swallowed, because "your summary did not arrive" is indistinguishable
+    // from "you staged nothing" unless something says so.
+    const stagedRestore = !manual && !subagent && !compacting
+      ? spendApprovedRestore(stateRoot, sessionId ?? null)
+      : { payload: null, key: null, error: null };
+    const restoreBlock = stagedRestore.payload === null ? '' : [
+      '_A session summary YOU APPROVED, restored from an earlier conversation\'s own transcript.',
+      'It was staged to disk and verified there before that window was cleared, and this is its',
+      'one delivery — it is not part of this conversation\'s history, and nothing has re-read a',
+      'transcript to produce it just now._',
+      '',
+      stagedRestore.payload,
+    ].join('\n');
+    const restoreError = stagedRestore.error === null ? '' :
+      `_my_context: a staged session restore could not be delivered — ${stagedRestore.error}_`;
+
     // 2. RESTORE DEDUPE FROM THE SEEN FILE (was: the ledger's rows). The
     // identity-marker semantics carry over unchanged: the restored line is
     // stamped with the snapshot's own capturedAt and compared for EQUALITY,
@@ -722,7 +778,9 @@ export function buildInjectionResult(cwd: string, options: InjectionOptions = {}
     // It is NOT counted in `selection.tokens` — see `SUBAGENT_PREAMBLE`. That
     // field is what the selector charged its budgets, and this was never
     // charged to one.
-    const output = (subagent && rendered !== '' ? `${SUBAGENT_PREAMBLE}\n\n` : '') +
+    const output = (restoreBlock ? `${restoreBlock}\n\n` : '') +
+      (restoreError ? `${restoreError}\n\n` : '') +
+      (subagent && rendered !== '' ? `${SUBAGENT_PREAMBLE}\n\n` : '') +
       rendered +
       (corpusNote ? `\n${corpusNote}\n` : '') +
       (parseError ? `\n${parseError}\n` : '') +
@@ -937,6 +995,19 @@ export function buildInjectionResult(cwd: string, options: InjectionOptions = {}
       noteParts.push(`cross-layer duplicate id(s): ${collisions.map((c) => c.id).join(', ')}`);
     }
     if (refreshNote !== null) noteParts.push(refreshNote);
+    // The staged restore, as SCOPE and never as content: its key and its size,
+    // never a byte of the summary itself — `core/audit.ts`'s rule for this log,
+    // and it matters more here than anywhere else, because the payload is a
+    // verbatim account of a conversation.
+    if (stagedRestore.payload !== null) {
+      noteParts.push(
+        `staged session restore delivered (${stagedRestore.key}, ` +
+        `${Buffer.byteLength(stagedRestore.payload, 'utf8')} bytes, unbudgeted)`,
+      );
+    }
+    if (stagedRestore.error !== null) {
+      noteParts.push(`staged session restore: ${stagedRestore.error}`);
+    }
     if (seenState !== null && seenState.error !== null) {
       noteParts.push('seen file unreadable; restore dedupe skipped');
     }
@@ -962,7 +1033,15 @@ export function buildInjectionResult(cwd: string, options: InjectionOptions = {}
     // and the evidence the whole ordering was built for would be worthless.
     // So the completion is recorded even with `injected` and `spilled` both
     // empty. Do not tighten this back to "something was delivered".
-    if (subagent || injected.length > 0 || selection.spilled.length > 0) {
+    // A staged restore is also relaxed into the guard, and for the subagent
+    // event's reason rather than a new one: delivering one is an event whether
+    // or not the corpus had anything of its own to say, and it SPENDS a record
+    // the owner approved. A spend with no row in the log would leave "the
+    // summary was delivered" and "the summary vanished" looking identical.
+    if (
+      subagent || injected.length > 0 || selection.spilled.length > 0
+      || stagedRestore.payload !== null || stagedRestore.error !== null
+    ) {
       recordAudit(stateRoot, {
         kind: 'injection',
         // `subagent` is tested before `compacting` for the same reason it is

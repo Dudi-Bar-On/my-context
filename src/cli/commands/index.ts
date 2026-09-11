@@ -24,6 +24,7 @@ import './query.ts';
 import './ready.ts';
 import './refresh.ts';
 import './repair.ts';
+import './restore.ts';
 import './review.ts';
 import './rules.ts';
 import './search.ts';

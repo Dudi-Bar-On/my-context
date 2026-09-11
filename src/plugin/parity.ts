@@ -189,6 +189,14 @@ export const CLI_WITHOUT_SLASH: Record<string, string> = {
     'command to talk to, and the plugin\'s own SessionStart hook tells you to run it.',
   rebuild: 'Reconstructs the index from the Markdown. Every command that reads the corpus ' +
     'already rebuilds first, so a user reaches for this only when told to by `doctor`.',
+  restore: 'Summarises an earlier conversation from its own transcript and — once the owner ' +
+    'approves it — delivers that summary into the next session that starts. The approval is a ' +
+    'person deciding what a whole context window receives out of a verbatim record of a ' +
+    'conversation, which is the one act `plan:restore seq:2` exists to keep with him: ' +
+    '`core/restore-stage.ts` states it as *an agent may propose and may build; only the owner ' +
+    'injects*. A slash command would be a model taking that decision on its own, which is ' +
+    'the reason `carry` gives, exactly. The half that IS automatic — `--build` — needs no ' +
+    'approval and stages a proposal that governs nothing until he acts on it.',
   repair: 'Re-stamps checksums after a hand edit, and its preview is a page of consequences ' +
     'a person has to read. It is on the recommended deny list; a slash command for it ' +
     'would be a prompt whose only honest content is "do not let me do this".',
@@ -331,6 +339,17 @@ export const CLI_WITHOUT_TOOL: Record<string, ToolAbsence> = {
       'one call site that writes the mark, unconditionally — there is no `--agent` escape ' +
       'hatch the way `mycontext lesson` has one — and a tool call would exist only to make ' +
       'the same judgement the command is written to keep with a person.',
+  },
+  restore: {
+    disposition: 'intended',
+    reason:
+      'Same fact `CLI_WITHOUT_SLASH.restore` cites, and the code refuses rather than the prose: ' +
+      '`approveStagedRestore` (`core/restore-stage.ts`) takes an actor and returns a refusal ' +
+      'for every value but `human`, and `cli/commands/restore.ts` passes that literal ' +
+      'unconditionally at its one call site — there is no `--agent` escape hatch, the same shape ' +
+      '`carry` has. A tool would exist only to make the judgement the command is written to keep ' +
+      'with a person, and what it would release into a window is a verbatim account of an ' +
+      'earlier conversation.',
   },
   rules: {
     disposition: 'intended',

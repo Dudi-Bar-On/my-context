@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: Bringing a summary of an earlier conversation back into a cleared window, after the owner has read what it contains and approved it.
-summary_of: 6596765e333a1c18
+summary_of: e703e77422e54ee7
 scope:
   - src/core/**
   - src/cli/**
@@ -18,19 +18,20 @@ tags:
   - context
   - "plan:restore"
   - "seq:2"
-  - "state:todo"
+  - "state:done"
 origin: human
 source_file: null
 source_anchor: null
 source_checksum: null
 valid_from: 2026-09-07
 valid_until: null
-checksum: 86298a0c5e937447
+checksum: 571e7bff04fa0db9
 plan: restore
 seq: "2"
-state: todo
+state: done
 priority: "2"
 needs: restore/1
+verified_on: 2026-09-11
 ---
 
 # the summary is staged to disk, reviewed as numbered points, and injected only after the owner clears

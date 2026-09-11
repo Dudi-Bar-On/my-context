@@ -380,6 +380,14 @@ const NOT_IN_PALETTE: Record<string, string> = {
     + 'sources (items, categories, files, revisions, drafts, topics); there is no file-path '
     + 'picker and plan 2 gives packs no screen.',
   'procedure activate': 'procedure state, which plan 2 gives no screen and no picker source.',
+  restore: 'releases a staged summary of an EARLIER conversation into the next session — '
+    + '`plan:restore seq:2`, 2026-09-11. Its operand is a staged-restore key, and this '
+    + 'the pickers here are all corpus sources (items, categories, files, revisions, '
+    + 'drafts, topics): there is no `.staging/restore/` source to read one from. The deeper '
+    + 'reason is the one the item states, and it is not a missing picker: what `--approve` '
+    + 'releases is a verbatim account of a conversation, and the owner approves it against the '
+    + 'REVIEW FORM — numbered points he reads first. A palette entry that composed the line '
+    + 'without putting that form in front of him would be the approval without the review.',
 };
 
 // `procedure done` stood in NOT_IN_PALETTE until 2026-09-06 and its row said
@@ -1260,6 +1268,12 @@ const UNCATALOGUED: Record<string, string> = {
     + 'and so the one with the strongest case for an Execute — but it acts on the INSTALLED '
     + 'PACKAGE rather than on this project, and a Composer button that repairs the tool a reader '
     + 'is looking through is a decision about this UI rather than a missing row.',
+  restore: 'summarises an earlier conversation and, once the owner approves, hands that '
+    + 'summary to the next session that starts (`plan:restore seq:2`). It is in NOT_IN_PALETTE '
+    + 'above with the reason in full: the palette can compose the line but cannot put the '
+    + 'REVIEW FORM in front of the owner first, and the approval without the review is the one '
+    + 'shape design §5 refuses. The operand is a staged-restore key, for which there is also no '
+    + 'picker source here.',
   'review list': 'a read the Work screen already renders; `review revisions` is catalogued '
     + 'because the revision queue is the half that screen composes from.',
   'review show': 'a read of one queue entry, already rendered by the Work screen.',

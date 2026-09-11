@@ -179,6 +179,13 @@ const DOES_NOT_REBUILD = new Set([
   // A corrupt item file cannot reach any of those answers, so there is nothing
   // for it to disclose (verified by reading the command, not assumed).
   'statusline',
+  // `restore` reads TRANSCRIPTS and `.staging/restore/`, and never the item
+  // index: `cli/commands/restore.ts` opens no mutation context on any of its
+  // four forms, because what it reports on is a conversation the harness wrote
+  // and a staging file this project wrote beside it. A corrupt item file cannot
+  // reach its answer, exactly as for `audit`, `session` and `conversation`. It
+  // is still required to exit 0 below, which is the half of F2 that applies.
+  'restore',
   // `rules` reads a store that is not the corpus AT ALL — `src/rules/entries/`
   // inside the installed package (D41 spec §7) — and every corpus surface is
   // asserted to be unable to reach it, in both directions, by
@@ -645,6 +652,18 @@ const SETUPS: Record<string, (cwd: string) => string[]> = {
   rules: (cwd) => {
     plantUnrelatedCorruptItem(cwd);
     return ['list'];
+  },
+
+  /**
+   * `mycontext restore --show` — the one form that reads and changes nothing.
+   * `--build` is not used here on purpose: it would read whatever transcript
+   * the developer's own `~/.claude/projects` happens to hold for this cwd,
+   * which is neither a fixture nor this test's business. `--show` exercises
+   * the same registration, the same flag refusal and the same exit path.
+   */
+  restore: (cwd) => {
+    plantUnrelatedCorruptItem(cwd);
+    return ['--show'];
   },
 
   'ingest-apply': (cwd) => {

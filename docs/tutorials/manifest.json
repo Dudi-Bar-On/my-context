@@ -414,7 +414,8 @@
     "cli": [
       "conversation.ts",
       "handover.ts",
-      "session.ts"
+      "session.ts",
+      "restore.ts"
     ],
     "slash": [
       "handover.md",
