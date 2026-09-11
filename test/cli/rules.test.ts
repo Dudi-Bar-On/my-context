@@ -159,9 +159,21 @@ test('`rules list` in a foreign workspace withholds the developer tier', () => {
       'a developer-tier entry was listed outside my_context. Shipping a rule about how THIS ' +
       'repository works as the tool\'s law is what the tier exists to prevent.',
     );
-    // Two truths that must not collapse into one sentence: an empty store and
-    // a store with nothing that applies here.
-    assert.match(run.text, /applies in this workspace/);
+    // **The other half, and it is what stops this test passing on a store
+    // that simply failed to load.** Until 2026-09-11 the shipped store held no
+    // `product` entry at all, so "the developer entry is absent" was also what
+    // a broken store looked like, and the assertion here was on the empty-set
+    // sentence. `plan:store seq:4` published the first product constant, so
+    // the truthful assertion is now the positive one: the product tier IS
+    // listed outside my_context, the developer tier is not, and the two cannot
+    // collapse into one answer.
+    assert.match(
+      run.text, /an-unknown-category-means-a-possible-wrong-corpus/,
+      'no product-tier entry was listed outside my_context. A product constant is true for '
+      + 'everyone who installs the tool, so withholding it here would be the tier filter '
+      + 'withholding the wrong half.',
+    );
+    assert.match(run.text, /Developer-tier entries do not apply outside my_context/);
   });
 });
 

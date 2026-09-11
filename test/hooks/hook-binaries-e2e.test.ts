@@ -63,7 +63,7 @@
  * turns a slow machine into a red suite — see `test/helpers/stdio.ts` for the
  * same failure this project has already paid for once.
  */
-import { test } from 'node:test';
+import { after, test } from 'node:test';
 import assert from 'node:assert/strict';
 import { spawn } from 'node:child_process';
 import {
@@ -74,10 +74,33 @@ import path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { runCli } from '../../src/cli/index.ts';
 import { readAudit } from '../../src/core/audit.ts';
+import { RULES_DIR_ENV } from '../../src/rules/deliver.ts';
 import { removeTree } from '../helpers/tmp.ts';
 
 const HOOK = (name: string): string =>
   fileURLToPath(new URL(`../../src/hooks/${name}.ts`, import.meta.url));
+
+/**
+ * **THE PRODUCT RULE STORE IS TAKEN OUT OF THIS FILE**, for the reason
+ * `test/hooks/subagent-start.test.ts` sets down at length and does not need
+ * repeating: this file's subject is each binary's own stdio contract — exit
+ * code, envelope, silence — and two of its assertions read silence as "the
+ * corpus had nothing to say". D41's store is delivered at these same doors,
+ * from the package rather than from the workspace, and its `product` tier
+ * applies in every workspace, so the day the shipped store gained its first
+ * product entry (`plan:store seq:4`, 2026-09-11) `session-start` stopped
+ * being silent in a temp workspace and `pre-tool-use` started disclosing an
+ * undelivered store — both correctly.
+ *
+ * The store's own doors are asserted in `test/rules/delivery.test.ts`,
+ * including through these same binaries. Here the door is pointed at an EMPTY
+ * store by the product's documented variable, so a binary's stdio contract is
+ * not restated every time somebody publishes a constant. `runNode` inherits the
+ * environment, so one line covers every spawn in the file.
+ */
+const EMPTY_STORE = mkdtempSync(path.join(tmpdir(), 'myctx-binaries-no-store-'));
+process.env[RULES_DIR_ENV] = EMPTY_STORE;
+after(() => removeTree(EMPTY_STORE));
 
 /** Cold start plus the whole injection graph, with room to spare on a loaded box. */
 const EXIT_BUDGET_MS = 60_000;

@@ -1,5 +1,5 @@
 // @basis TASK-the-pinned-tier-sits-half-empty-while-sixty-nine-governing, OPENQ-does-the-pinned-tier-spend-its-spare-room-on-governing-items
-import { test } from 'node:test';
+import { after, test } from 'node:test';
 import assert from 'node:assert/strict';
 import { spawn } from 'node:child_process';
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
@@ -18,6 +18,7 @@ import { findProjectRoot } from '../../src/core/workspace.ts';
 import { ledgerKey, type HookInput } from '../../src/hooks/io.ts';
 import { buildJitOutput } from '../../src/hooks/pre-tool-use.ts';
 import { buildSubagentStartOutput } from '../../src/hooks/subagent-start.ts';
+import { RULES_DIR_ENV } from '../../src/rules/deliver.ts';
 import { removeTree } from '../helpers/tmp.ts';
 
 /**
@@ -44,6 +45,36 @@ const AGENT = 'agent-9';
 const KEY = ledgerKey({ session_id: PARENT, agent_id: AGENT })!;
 
 const BINARY = fileURLToPath(new URL('../../src/hooks/subagent-start.ts', import.meta.url));
+
+/**
+ * **THE PRODUCT RULE STORE IS TAKEN OUT OF THIS FILE, and the reason is that
+ * four assertions here read `''` as "the corpus selected nothing".**
+ *
+ * D41's store is delivered at this same door, from the package rather than
+ * from the workspace, and its `product` tier applies in EVERY workspace — so
+ * the moment the shipped store gained its first product entry (`plan:store
+ * seq:4`, 2026-09-11), `buildSubagentStartOutput` on an EMPTY corpus stopped
+ * returning `''` and started returning a perfectly correct envelope carrying
+ * one product constant. Four tests went red, and not one of them was wrong
+ * about its own subject.
+ *
+ * That subject is the CORPUS half: what `buildInjection` selected, the frame
+ * above it, the two audit records, and the envelope. The store's own delivery
+ * at this door is asserted where it belongs — `test/rules/delivery.test.ts`
+ * and `test/rules/lane-still-gets-the-no-git-rule.test.ts` — and repeating it
+ * here would make every assertion in this file depend on what happens to be
+ * in the shipped store on the day it runs.
+ *
+ * So the door is pointed at an EMPTY store for the whole file, by the
+ * product's own documented variable (`RULES_DIR_ENV`, `rules/deliver.ts`,
+ * which names the door tests as one of its two intended callers). Set on
+ * `process.env` rather than per call because `runBinary` inherits the
+ * environment, so one line covers the in-process path and the spawned binary
+ * alike.
+ */
+const EMPTY_STORE = mkdtempSync(path.join(tmpdir(), 'myctx-subagent-no-store-'));
+process.env[RULES_DIR_ENV] = EMPTY_STORE;
+after(() => removeTree(EMPTY_STORE));
 
 /** Cold start plus the whole injection import graph, on a loaded machine. */
 const EXIT_BUDGET_MS = 60_000;

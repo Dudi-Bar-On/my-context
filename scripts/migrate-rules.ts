@@ -82,6 +82,28 @@ export interface Candidate {
    * one day, but not as a retirement of that item.
    */
   broader?: string;
+  /**
+   * **The contradiction gate's `--distinct` answer, for the POINTER item this
+   * candidate mints — and it is here because without it the migration is not
+   * merely refused, it is unrunnable.**
+   *
+   * `pointerItem` creates a `decision`, and `decision` is in the owner's gated
+   * set (`core/overlap.ts` · `GATED_CATEGORIES`, 89 active items and the
+   * largest group the gate fires on). So every pointer goes to the gate,
+   * scored LEXICALLY against a corpus of a thousand items — and a lexical
+   * score cannot tell agreement from conflict, which is exactly why the gate
+   * asks a person instead of deciding. On the first rehearsal against a copy
+   * of this repository's own corpus it fired on the very first pointer.
+   *
+   * A verdict recorded here is recorded the same way the CLI's `--distinct`
+   * records one: against the PAIR and against what both items say today
+   * (`recordVerdicts`, core/mutate.ts), so this is answering the gate rather
+   * than routing around it. `--supersedes` is deliberately NOT offered: a
+   * pointer item that retires something is a decision about the corpus that
+   * has nothing to do with moving a rule into the store, and it would arrive
+   * disguised as a migration.
+   */
+  distinct?: readonly string[];
   /** The template's parts for this kind, plus `example` and `check`. */
   parts: Record<string, string | string[]>;
   /** Authored prose. Used only when `from` is `null`; otherwise the item's body. */
@@ -260,7 +282,31 @@ export function pointerIdFor(entryId: string): string {
   return `DEC-moved-${entryId}`;
 }
 
-function pointerItem(ctx: MutationContext, candidate: Candidate): string {
+/**
+ * **The dispositions this run supplies for itself, and why they are not in
+ * `Candidate.distinct` where a person could read them.**
+ *
+ * Every pointer is minted from the ONE template above, so two pointers differ
+ * in a title and an entry id and are otherwise the same paragraph — and the
+ * contradiction gate scores that lexically. Measured: the second of the three
+ * pointers this repository migrated was refused against the first, and the
+ * third against both.
+ *
+ * A person cannot answer that in the candidate list, because the item being
+ * disposed of DOES NOT EXIST when the list is written — it is minted halfway
+ * through the run that reads the list. Writing `DEC-moved-<previous entry>`
+ * down anyway would also break the moment somebody migrates a different
+ * subset: the id would then never be minted and the gate would refuse it as a
+ * stray, correctly, for a typo nobody made.
+ *
+ * So the run supplies them, and `Candidate.distinct` stays what it should be —
+ * the genuine disagreements with the STANDING corpus, which a person ruled on.
+ * The verdict is `distinct` and it is true rather than convenient: two
+ * pointers say where two different rules went, and both are true at once.
+ */
+function pointerItem(
+  ctx: MutationContext, candidate: Candidate, siblings: readonly string[],
+): string {
   const id = pointerIdFor(candidate.entryId);
   const existing = ctx.store.get(id);
   if (existing !== null && existing !== undefined) return id;
@@ -285,6 +331,10 @@ function pointerItem(ctx: MutationContext, candidate: Candidate): string {
     severity: 'soft',
     always: false,
     origin: 'human',
+    // Copied out of the readonly field because `CreateInput.distinct` is
+    // mutable, and handing a caller's array to a function that may keep it is
+    // the shape this repository has already had to unpick once.
+    distinct: [...(candidate.distinct ?? []), ...siblings],
   });
   return id;
 }
@@ -365,7 +415,10 @@ export function applyMigration(
       const from = row.candidate.from as string;
       const id = pointerIdFor(row.candidate.entryId);
       touch(path.join(ctx.root, 'items', 'decision', `${id}.md`));
-      pointers.push(pointerItem(ctx, row.candidate));
+      // `pointers` holds exactly what this run has already minted, which is
+      // the whole of what a new pointer can collide with that a person could
+      // not have ruled on in advance.
+      pointers.push(pointerItem(ctx, row.candidate, [...pointers]));
 
       const item = ctx.store.get(from);
       // `Item.filePath` is relative to the corpus root; `resolve` leaves an
@@ -572,6 +625,20 @@ export const CANDIDATES: readonly Candidate[] = [
     tier: 'product',
     title: 'an unknown-category error may mean the wrong corpus, not a misspelled flag',
     from: 'RULE-read-an-unknown-category-error-as-a-possible-wrong-corpus',
+    /**
+     * **Ruled `distinct` against the standing corpus, and measured rather than
+     * guessed** — these are the pairs the gate actually raised when this ran
+     * against a copy of the real corpus on 2026-09-11, one dry run per
+     * pointer.
+     *
+     * `REF-the-d-numbers-…` is the 808-token pinned reference `core/overlap.ts`
+     * already names in its own header: 72 of the 82 governing in-scope pairs
+     * that clear the threshold involve it, with a Jaccard of 0.13–0.16 —
+     * containment is measuring LENGTH, not subject. A map of which D number is
+     * which and a note saying where one rule went are about different things,
+     * and both are true.
+     */
+    distinct: ['REF-the-d-numbers-what-each-one-means-and-which-are-only'],
     parts: {
       truth: 'categories are per-corpus configuration, so a name valid in one corpus is invalid in '
         + 'another. The refusal names the accepted list and never names the corpus it consulted, '
@@ -590,6 +657,17 @@ export const CANDIDATES: readonly Candidate[] = [
     tier: 'developer',
     title: 'a lane runs no git command that writes the shared working tree',
     from: 'RULE-a-delegated-worker-runs-no-git-command-that-touches-the',
+    /**
+     * Both raised on the dry run. `STD-the-precedence-order-…` is the standard
+     * that says a product entry OUTRANKS a corpus item and that the conflict
+     * is reported rather than hidden — so far from contradicting this pointer,
+     * it is the standard this migration is carrying out. `distinct` is the
+     * honest verdict: they are about different things and both hold.
+     */
+    distinct: [
+      'REF-the-d-numbers-what-each-one-means-and-which-are-only',
+      'STD-the-precedence-order-when-four-sources-of-truth-disagree',
+    ],
     parts: {
       prohibition: 'a lane runs no git command that writes, moves or discards: `stash`, `checkout`, '
         + '`reset`, `clean`, `restore`, `add`, `commit`, `merge`, `rebase`, and anything with '
@@ -614,6 +692,11 @@ export const CANDIDATES: readonly Candidate[] = [
     tier: 'developer',
     title: 'the dispatching session commits by explicit path, never by the shared index',
     from: 'LESSON-stage-what-an-agent-reported-touching-not-what-you-told-it',
+    /** The same two, raised again on the dry run and ruled the same way. */
+    distinct: [
+      'REF-the-d-numbers-what-each-one-means-and-which-are-only',
+      'STD-the-precedence-order-when-four-sources-of-truth-disagree',
+    ],
     parts: {
       prohibition: 'with a lane running, never `git commit` bare and never stage the whole index — '
         + 'use `git commit -- <paths>`, or read `git diff --cached` first and know what is in it.',

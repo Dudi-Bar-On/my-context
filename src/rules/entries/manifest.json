@@ -2,9 +2,21 @@
   "version": 1,
   "algorithm": "sha256",
   "store": {
-    "version": 3,
-    "publishedAt": "2026-09-11T06:27:07.387Z",
+    "version": 4,
+    "publishedAt": "2026-09-11T08:40:29.091Z",
     "changelog": [
+      {
+        "version": 4,
+        "at": "2026-09-11T08:40:29.091Z",
+        "note": "the three rules the owner approved on 2026-09-11 move out of the corpus and into the store: an unknown category may mean the wrong corpus, a lane runs no git command that writes the shared tree, and the dispatching session commits by pathspec. Each source item is retired and points here.",
+        "added": [
+          "an-unknown-category-means-a-possible-wrong-corpus",
+          "commit-with-a-pathspec",
+          "never-a-git-command-that-writes-the-shared-tree"
+        ],
+        "changed": [],
+        "removed": []
+      },
       {
         "version": 3,
         "at": "2026-09-11T06:27:07.387Z",
@@ -57,6 +69,16 @@
   },
   "entries": [
     {
+      "file": "an-unknown-category-means-a-possible-wrong-corpus.md",
+      "id": "an-unknown-category-means-a-possible-wrong-corpus",
+      "checksum": "d43e3485303cdd1724d39e524602a81dedfead6a38867de4798edd87ca0e8148"
+    },
+    {
+      "file": "commit-with-a-pathspec.md",
+      "id": "commit-with-a-pathspec",
+      "checksum": "fa893cab1147b709464fc14a3b3371fb868aa0d10a80f434b1f858c01218f8ef"
+    },
+    {
       "file": "def-a-door.md",
       "id": "def-a-door",
       "checksum": "a22702589cfa82da2392e07a021f54338615bd9c68b663375c2fecab1792a76e"
@@ -95,6 +117,11 @@
       "file": "def-the-ration.md",
       "id": "def-the-ration",
       "checksum": "abd8cfe3129d77915d8187d8ffea3839a221b18138babdb016a45062fcb887b0"
+    },
+    {
+      "file": "never-a-git-command-that-writes-the-shared-tree.md",
+      "id": "never-a-git-command-that-writes-the-shared-tree",
+      "checksum": "7165f5bd7093f8d1ec02eeccabda96cc0d0f70da5dfb16d277dbc0813c7dedeb"
     },
     {
       "file": "numbered-options-on-a-question-put-to-the-owner.md",

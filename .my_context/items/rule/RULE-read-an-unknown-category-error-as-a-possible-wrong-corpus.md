@@ -2,7 +2,7 @@
 id: RULE-read-an-unknown-category-error-as-a-possible-wrong-corpus
 type: rule
 title: Read an unknown-category error as a possible wrong-corpus error before rewriting the flag
-status: active
+status: superseded
 severity: soft
 always: false
 summary: When a tool rejects a name as unknown, check that you are pointed at the right place before assuming you spelled it wrong; one message means both.
@@ -14,8 +14,8 @@ source_file: null
 source_anchor: null
 source_checksum: null
 valid_from: 2026-08-21
-valid_until: null
-checksum: 639e73cd893db3da
+valid_until: 2026-09-11
+checksum: 7e9342ca0a82d056
 directive: do
 ---
 
@@ -25,3 +25,4 @@ Categories are per-corpus configuration, so a category name that is valid in one
 
 ## Relations
 - derived_from [[LESSON-run-mycontext-against-this-repository-s-corpus-from-the]]
+- superseded_by [[DEC-moved-an-unknown-category-means-a-possible-wrong-corpus]]

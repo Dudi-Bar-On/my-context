@@ -1,27 +1,13 @@
 ---
-id: LESSON-stage-what-an-agent-reported-touching-not-what-you-told-it
-type: lesson
-title: stage what an agent reported touching, not what you told it it might touch
-status: superseded
-severity: soft
-always: false
-summary: Record the files a helper says it changed, not the ones you expected it to, or one person's work ends up filed under another's name.
-summary_of: 986f263f41fe2976
-scope: []
-tags:
-  - v2
-  - process
-  - subagents
-origin: human
-source_file: null
-source_anchor: null
-source_checksum: null
-valid_from: 2026-08-24
-valid_until: 2026-09-11
-checksum: 4c67826cfc57b8f5
+id: commit-with-a-pathspec
+kind: prohibition
+tier: developer
+title: the dispatching session commits by explicit path, never by the shared index
+prohibition: with a lane running, never `git commit` bare and never stage the whole index — use `git commit -- <paths>`, or read `git diff --cached` first and know what is in it.
+why: the index is shared with every lane on the machine. A bare commit takes whatever is staged, including work a lane staged for a different subject, and the commit message then describes a change it does not contain.
+example: a bare `git commit` on 2026-09-09 swept another lane’s staged work into a commit about a table border.
+check: none - git offers no hook that can tell a deliberate pathspec from a lucky one, and the archive sees the command only when it was run in a tool call it recorded.
 ---
-
-# stage what an agent reported touching, not what you told it it might touch
 
 2026-08-24, caught by the agent whose commit it polluted rather than by any gate.
 
@@ -37,5 +23,4 @@ CHEAPEST CHECK, and it costs one command: run `git status --short` BEFORE dispat
 
 WHY IT WAS NOT REWRITTEN. Both commits were pushed and the code is correct. Rewriting shared history to move nine lines of a mechanical lift costs every other clone a reset for a provenance nit. Recording it is the proportionate answer - and the record is what makes the next wave cheaper.
 
-## Relations
-- superseded_by [[DEC-moved-commit-with-a-pathspec]]
+*Moved from `LESSON-stage-what-an-agent-reported-touching-not-what-you-told-it` on 2026-09-11; that item is retired and points here.*

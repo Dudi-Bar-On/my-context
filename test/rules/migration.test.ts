@@ -36,6 +36,7 @@ import { existsSync, mkdtempSync, readFileSync, readdirSync, writeFileSync } fro
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { createItem } from '../../src/core/mutate.ts';
+import type { Severity } from '../../src/core/types.ts';
 import { loadRules } from '../../src/rules/store.ts';
 import { writeManifest } from '../../src/rules/manifest.ts';
 import {
@@ -81,16 +82,19 @@ function candidate(over: Partial<Candidate> = {}): Candidate {
 }
 
 /** The source item for `candidate()`, created in the sandbox. */
-function source(box: Sandbox, over: { always?: boolean; type?: string } = {}): string {
+function source(
+  box: Sandbox,
+  over: { always?: boolean; type?: string; id?: string; title?: string; severity?: Severity } = {},
+): string {
   const made = createItem(box.ctx, {
     type: over.type ?? 'rule',
-    id: 'RULE-a-lane-runs-no-git-command-that-writes',
-    title: 'a lane runs no git command that writes the shared working tree',
+    id: over.id ?? 'RULE-a-lane-runs-no-git-command-that-writes',
+    title: over.title ?? 'a lane runs no git command that writes the shared working tree',
     body: BODY,
     summary: 'Lanes share one working tree, so a git command that moves files can destroy work '
       + 'belonging to someone who never ran it.',
     status: 'active',
-    severity: 'hard',
+    severity: over.severity ?? 'hard',
     always: over.always ?? false,
     origin: 'human',
   });
@@ -375,4 +379,121 @@ test('the real candidate list is NOT applicable today, and the plan says why', (
     assert.notEqual(plan.refusal, null);
     assert.ok(plan.rows.some((r) => r.state === 'missing'));
   } finally { box.dispose(); }
+});
+
+/**
+ * **THE CONTRADICTION GATE FIRES ON THE POINTER ITEM, and until this the plan
+ * had no way to answer it.**
+ *
+ * `pointerItem` mints a `decision`, and `decision` is in the owner's gated set
+ * (`core/overlap.ts` · `GATED_CATEGORIES`) — so every pointer this migration
+ * writes is put to the gate, against a corpus of 1,000-odd items, on a LEXICAL
+ * score that cannot tell agreement from conflict. It fired on the real corpus
+ * on the first rehearsal run and there was nothing in `Candidate` to answer
+ * with, so the migration was unrunnable rather than merely refused.
+ *
+ * The answer is the product's own: `--distinct`, carried on the candidate and
+ * handed to `createItem`. Not routed around — a verdict is recorded for the
+ * pair exactly as it would be from the CLI, so the next write about either
+ * item is not asked again.
+ *
+ * **The collider below is short and every one of its tokens appears in the
+ * pointer item**, so `containment` is 1 and the score is 0.8 — well over
+ * `CONTRADICTION_THRESHOLD`. Shaped that way rather than copied from
+ * `pointerItem`'s body, because a copy of that text here would be a second
+ * copy of it in the repository and would go stale the day the pointer's
+ * wording changes.
+ */
+function collider(box: Sandbox): string {
+  return createItem(box.ctx, {
+    type: 'decision',
+    id: 'DEC-an-earlier-decision-about-the-product-rule-store',
+    title: 'moved into the product rule store',
+    summary: 'An earlier decision that happens to use the same words as the pointer this '
+      + 'migration mints, and means something else entirely.',
+    body: 'This rule is no longer maintained in this corpus.',
+    status: 'active',
+    severity: 'soft',
+    always: false,
+    origin: 'human',
+  }).id;
+}
+
+test('the pointer item is PUT TO the contradiction gate, and refused when nothing answers it', () => {
+  const box = sandbox();
+  const store = scratchStore();
+  try {
+    source(box);
+    collider(box);
+    assert.throws(
+      () => applyMigration(box.ctx, [candidate()], { storeDir: store, ...APPLY }),
+      /may contradict/,
+    );
+    // And the entry written before the pointer was attempted is gone again:
+    // a half-applied migration is the one outcome worse than none.
+    assert.deepEqual(loadRules(store, true).entries, []);
+  } finally { box.dispose(); removeTree(store); }
+});
+
+test('a candidate ANSWERS the gate with `distinct`, and the migration proceeds', () => {
+  const box = sandbox();
+  const store = scratchStore();
+  try {
+    source(box);
+    const other = collider(box);
+    applyMigration(
+      box.ctx, [candidate({ distinct: [other] })], { storeDir: store, ...APPLY },
+    );
+    assert.deepEqual(
+      loadRules(store, true).entries.map((e) => e.id),
+      ['never-a-git-command-that-writes-the-shared-tree'],
+    );
+  } finally { box.dispose(); removeTree(store); }
+});
+
+/**
+ * **TWO POINTERS IN ONE MIGRATION CONTRADICT EACH OTHER, and nothing a person
+ * types could have settled it — the second pointer does not exist when the
+ * candidate list is written.**
+ *
+ * `pointerItem` mints every pointer from ONE template, so two pointers differ
+ * only in a title and an entry id and are otherwise the same paragraph. The
+ * gate scores that LEXICALLY, so the second pointer of any multi-rule
+ * migration is raised against the first — measured on this repository's own
+ * corpus, where the second of three was refused against the first.
+ *
+ * Answering it by hand would mean writing `DEC-moved-<the previous entry>`
+ * into the candidate list, which is a disposition naming an item that does not
+ * exist until the run is half done: migrate a different subset and the same
+ * line becomes a stray id the gate refuses as a typo. So the dispositions
+ * between THIS RUN'S OWN pointers are supplied by the run, and only genuine
+ * disagreements with the standing corpus are written down by a person.
+ *
+ * The verdict is `distinct` and it is true rather than convenient: two
+ * pointers say where two DIFFERENT rules went, and both are true at once.
+ */
+test('two pointers in one migration do not refuse each other', () => {
+  const box = sandbox();
+  const store = scratchStore();
+  try {
+    source(box);
+    source(box, {
+      id: 'LESSON-stage-what-an-agent-reported-touching',
+      title: 'stage what an agent reported touching',
+      type: 'lesson',
+      severity: 'soft',
+    });
+    applyMigration(box.ctx, [
+      candidate(),
+      candidate({
+        entryId: 'commit-with-a-pathspec',
+        title: 'the dispatching session commits by explicit path',
+        from: 'LESSON-stage-what-an-agent-reported-touching',
+      }),
+    ], { storeDir: store, ...APPLY });
+    assert.deepEqual(
+      loadRules(store, true).entries.map((e) => e.id).sort(),
+      ['commit-with-a-pathspec', 'never-a-git-command-that-writes-the-shared-tree'],
+    );
+  } finally { box.dispose(); removeTree(store); }
 });
