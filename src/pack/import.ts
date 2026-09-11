@@ -50,7 +50,7 @@
  * ## Nothing in `identical` is applied
  *
  * The creator's explicit-id branch already treats identical content as a no-op
- * duplicate (`core/mutate.ts` · `      if (itemContentHash(existing) === hash) return duplicateOf(existing);` · ~579),
+ * duplicate (`core/mutate.ts` · `if (itemContentHash(explicitExisting) === hash) return duplicateOf(explicitExisting);` · ~928),
  * so re-running an import with nothing approved is idempotent by construction
  * rather than by a flag. Those ids are still MEMBERS of the pack — they are in
  * `imported` and in the import record — because `review promote --all --pack`

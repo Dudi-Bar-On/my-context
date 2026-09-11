@@ -264,7 +264,7 @@ says "establish by executing" instead of asserting it.
 | Every record already carries a protocol string. It is `@2` since 2026-08-21 — `@1` when this row was written — this is where §6n.5's version field goes, and it is not this plan's to write | `core/audit.ts` · `export const AUDIT_PROTOCOL = 'my_context/audit@2';` · ~98 |
 | …and a protocol mismatch is refused on **every** line, torn tail included, with "a different version" already in the message | `core/jsonl-log.ts` · `on EVERY line, torn tail included: unrecognised protocol is version skew,` · ~43 |
 | The audit write is deliberately ordered **before** the seen-file append, and the file says why | `core/inject.ts` · `// is JSONL beside the database, so nothing that stopped the refresh can` · ~768 |
-| The injection record is written **only** when something was injected or spilled — **except on `'subagent'`, where Task 9 relaxed it on 2026-08-21** and the record is written unconditionally | `core/inject.ts` · `if (subagent \|\| injected.length > 0 \|\| selection.spilled.length > 0) {` · ~945 |
+| The injection record is written **only** when something was injected or spilled — **except on `'subagent'`, where Task 9 relaxed it on 2026-08-21** and the record is written unconditionally | `core/inject.ts` · `subagent \|\| injected.length > 0 \|\| selection.spilled.length > 0` · ~1042 |
 
 ### Sessions
 
@@ -376,7 +376,7 @@ line, so there is nothing a carry could add.
    counting `subagent-start` rows counts each dispatch twice unless it reads the note. A delivery
    that legitimately carried nothing must therefore still write its `complete` record, or an empty
    corpus is indistinguishable from a kill — **Task 9 relaxed the guard on 2026-08-21** at
-   `core/inject.ts` · `if (subagent \|\| injected.length > 0 \|\| selection.spilled.length > 0) {` · ~945
+   `core/inject.ts` · `subagent \|\| injected.length > 0 \|\| selection.spilled.length > 0` · ~1042
    for this event alone. And a subagent dispatched while another process holds the index write lock still
    loses its context entirely: the record discloses that loss, it does not prevent it.
 6. **Async stdin bounds the wait, not the work.** `SubagentStart` copies `post-tool-use.ts`'s
@@ -1278,7 +1278,7 @@ Core-only. No hook yet, so the suite stays green with nothing calling the new pa
    decision 5).
 
    **And for this event the record is written unconditionally.** The guard —
-   `core/inject.ts` · `if (subagent \|\| injected.length > 0 \|\| selection.spilled.length > 0) {` · ~945,
+   `core/inject.ts` · `subagent \|\| injected.length > 0 \|\| selection.spilled.length > 0` · ~1042,
    which read `if (injected.length > 0 || selection.spilled.length > 0) {` before this task — skips the
    record when a selection delivered nothing. That is right for `session-start` and **wrong here**:
    §6n.3's evidence is an attempt with no matching completion, so "delivered nothing" and "was killed

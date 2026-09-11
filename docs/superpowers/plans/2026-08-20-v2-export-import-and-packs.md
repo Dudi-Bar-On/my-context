@@ -144,8 +144,8 @@ Nine items. Two are mechanical (the code says something different from the surve
 | The workspace directory name | `core/workspace.ts` · `export const DIR_NAME = '.my_context';` · ~6 |
 | `init` creates exactly three things | `cli/index.ts` · `mkdirSync(path.join(root, 'items'), { recursive: true });` · ~443 |
 | …the config it writes, verbatim | `cli/index.ts` · `const INIT_CONFIG = { profile: 'standard', categories: {}, budgets: {} } as const;` · ~150 |
-| …and a `.gitignore` for the index | `cli/index.ts` · `writeFileSync(path.join(root, '.gitignore')` · ~448 |
-| Item files live at `items/<type>/<ID>.md` | `core/mutate.ts` · ``filePath: `items/${input.type}/${itemId}.md`,`` · ~526 |
+| …and a `.gitignore` for the index | `cli/index.ts` · `path.join(root, '.gitignore'),` · ~454 |
+| Item files live at `items/<type>/<ID>.md` | `core/mutate.ts` · ``: `items/${input.type}/${itemId}.md`,`` · ~1051 |
 | …and are written by | `core/rebuild.ts` · `export function writeItem(root: string, item: Item, options?: WriteItemOptions): string {` · ~441 |
 | …read back by | `core/rebuild.ts` · `export function loadLayer(` · ~125 |
 | `.audit/` is here | `core/audit.ts` · `export function auditDir(root: string): string {` · ~1196 |
@@ -191,8 +191,8 @@ Nine items. Two are mechanical (the code says something different from the surve
 | Ids are slugs of titles, so two corpora disagree about which is `-2` | `core/slug.ts` · `export function makeId(prefix: string, title: string): string {` · ~50 |
 | **`createItem` accepts an explicit id** | `core/mutate.ts` · `  id?: string;` · ~66 |
 | …and its explicit-id branch *is* the three-bucket rule | `core/mutate.ts` · `  if (input.id !== undefined) {` · ~572 |
-| …identical content is a no-op duplicate | `core/mutate.ts` · `      if (itemContentHash(existing) === hash) return duplicateOf(existing);` · ~579 |
-| …different content at the same id throws — which is why an **overwrite is `updateItem`'s job**, not the creator's | `core/mutate.ts` · `      throw occupiedError(input.id);` · ~580 |
+| …identical content is a no-op duplicate | `core/mutate.ts` · `if (itemContentHash(explicitExisting) === hash) return duplicateOf(explicitExisting);` · ~928 |
+| …different content at the same id throws — which is why an **overwrite is `updateItem`'s job**, not the creator's | `core/mutate.ts` · `throw occupiedError(input.id as string);` · ~929 |
 | The second write path, and the one the §6n.7 overwrite uses | `core/mutate.ts` · `export function updateItem(` · ~765 |
 | …whose `origin` is the **caller's claim about who is acting**, read for the gates and written into the audit record — it never becomes the item's stored `origin` | `core/mutate.ts` · `  const audited = auditMutation(ctx, auditOp, origin, item.id, {` · ~1222 |
 | …a non-human origin is refused outright on a governing normative item's `scope`/`always`/`severity` | `core/mutate.ts` · `  if (origin !== 'human' && governsNormatively(ctx, item)) {` · ~915 |
@@ -200,7 +200,7 @@ Nine items. Two are mechanical (the code says something different from the surve
 | …and `UpdateInput` carries **no** `observations` and **no** `relations` | `core/mutate.ts` · `export interface UpdateInput {` · ~663 |
 | …though `CreateInput` does, so those two fields are settable only at creation | `core/mutate.ts` · `  observations?: Observation[];` · ~174 |
 | …while the content hash **includes** them — so a difference confined to those two fields buckets `changed` and has no write path here | `core/content-hash.ts` · `    observations: v.observations.map(canonicalObservation),` · ~112 |
-| `Origin` is closed | `core/types.ts` · `export type Origin = 'human' \| 'agent' \| 'ingest';` · ~4 |
+| `Origin` is closed | `core/types.ts` · `export type Origin = 'human' \| 'agent' \| 'ingest' \| 'review';` · ~26 |
 | …enforced twice | `core/validate.ts` · `export const ORIGINS: Origin[] = ['human', 'agent', 'ingest'];` · ~38 and `cli/commands/audit.ts` · `const ORIGINS: Origin[] = ['human', 'agent', 'ingest'];` · ~37 <!-- historical-citation: plan:builder seq:2 ended the duplication this row records. `audit --origin` declares `ORIGINS` as its legal values, and the only remaining declaration is `core/validate.ts`'s, which `cli/commands/audit.ts` now imports; the row surveys the two-copy state it replaced --> |
 | The demotion, with no parameter and no override | `core/trust.ts` · `export function trustedStatus(origin: Origin, tier: Tier, requested: Status): Status {` · ~267 |
 | …and it only fires on the **normative** tier — a rationale-tier item keeps the status it asked for | `core/trust.ts` · `  if (origin !== 'human' && tier === 'normative') return 'draft';` · ~268 |

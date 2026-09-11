@@ -305,7 +305,7 @@ go stale. `npm run verify:citations` resolves every fragment here.
 | `LedgerTier = 'pinned' \| 'jit' \| 'restored'` | `core/ledger.ts` · `export type LedgerTier = 'pinned' \| 'jit' \| 'restored';` · ~11 |
 | `Status = 'active' \| 'draft' \| 'superseded' \| 'deprecated' \| 'validated'` | `core/types.ts` · `export type Status = 'active' \| 'draft' \| 'superseded' \| 'deprecated' \| 'validated';` · ~2 |
 | `Layer = 'project' \| 'global'` | `core/types.ts` · `export type Layer = 'project' \| 'global';` · ~5 |
-| `Origin = 'human' \| 'agent' \| 'ingest'` | `core/types.ts` · `export type Origin = 'human' \| 'agent' \| 'ingest';` · ~4 |
+| `Origin = 'human' \| 'agent' \| 'ingest'` | `core/types.ts` · `export type Origin = 'human' \| 'agent' \| 'ingest';` · ~4 <!-- historical-citation: §7 surveys the union as it stood and the left column of this row records those three members, so re-anchoring would make the row contradict itself; `Origin` gained a fourth, 'review', for the staged-revision path --> |
 | `store.raw(sql)` — **no bind-parameter support today**, which Task 7 adds | `core/store.ts` · `raw(sql: string): Record<string, unknown>[] {` · ~460 <!-- historical-citation: §7 surveys the pre-change signature; Task 7 gives `raw` its `params` argument --> |
 | `Store.openReadOnly(dbPath)` — and see §2: `readOnly: true` does **not** stop `VACUUM INTO` | `core/store.ts` · `static openReadOnly(dbPath: string): Store {` · ~382 |
 | `assertSelectOnly(sql)` — the barrier the connection does not provide | `cli/commands/query.ts` · `export function assertSelectOnly(sql: string): void {` · ~266 |

@@ -436,7 +436,7 @@ safety**.
 
 > **CORRECTED 2026-08-19, by the conflict scan.** Point 2 originally landed imported items *"with a
 > new `origin: import`"*. §6m.5 refuses that carve-out and §6k found `Origin` is closed
-> (`src/core/types.ts` · `export type Origin = 'human' | 'agent' | 'ingest';` · ~4), enforced twice
+> (`src/core/types.ts` · `export type Origin = 'human' | 'agent' | 'ingest' | 'review';` · ~26), enforced twice
 > then and three times now (§6k). The ruling that matters is unchanged and turns out to be
 > already implemented — everything imported lands `draft`, regardless of any signature — so what is
 > gone is the invented origin and the branch inside `trustedStatus` it would have needed, not the
@@ -1283,9 +1283,9 @@ That is convenient in one direction and fatal in the other:
 - **§6h's active-at-`init` cannot be expressed.** And §6h itself forbids the obvious escape: *"There
   is no `--trust` flag; a boundary a flag can override is not a boundary."*
 
-`origin: 'import'` does not exist either — `Origin` is closed (`src/core/types.ts` · `export type Origin = 'human' | 'agent' | 'ingest';` · ~4) and enforced by
+`origin: 'import'` does not exist either — `Origin` is closed (`src/core/types.ts` · `export type Origin = 'human' | 'agent' | 'ingest' | 'review';` · ~26) and enforced by
 two separate `ORIGINS` lists when this was written — **three since**: the pack history reader added
-a `Record<Origin, true>` of its own (`pack/history.ts` · `const ORIGINS: Record<Origin, true> = { human: true, agent: true, ingest: true };` · ~256) rather than export either array, and says so in
+a `Record<Origin, true>` of its own (`pack/history.ts` · `const ORIGINS: Record<Origin, true> = { human: true, agent: true, ingest: true, review: true };` · ~265) rather than export either array, and says so in
 its docblock. The closure is unchanged; only the count of places enforcing it moved.
 
 **Not ruled on.** Three routes, and the owner picked the trust split so the owner should pick among

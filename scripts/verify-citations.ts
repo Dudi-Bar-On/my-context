@@ -281,6 +281,9 @@
  *   node scripts/verify-citations.ts --strict-source
  *                                               also FAIL on source findings,
  *                                               which are reported either way
+ *   node scripts/verify-citations.ts --corpus   also WALK `.my_context/items/`,
+ *                                               reported and never gated — see
+ *                                               `CORPUS_ROOT`
  */
 
 import { readFileSync, writeFileSync, readdirSync, statSync } from 'node:fs';
@@ -340,6 +343,60 @@ const DOC_FILES = ['README.md', 'docs/README.he.md'];
 const SOURCE_ROOTS = ['src', 'test', 'scripts', 'e2e'];
 
 /**
+ * **THE SEVENTH TREE, AND THE ONE THIS FILE REFUSED ON A MEASUREMENT THAT HAS
+ * SINCE EXPIRED: `.my_context/items/`.**
+ *
+ * The refusal is written out above under `.my_context/items/` and it was right
+ * when it was taken. Its whole weight rests on one number, measured
+ * 2026-08-29: 658 item files, **one** citation in this script's form, 165 bare
+ * `file.ts:123` pointers. Pointed at that corpus this walked 658 files and
+ * checked one claim, which is the appearance of coverage.
+ *
+ * **RE-MEASURED 2026-09-11, by the same script, and it is not that tree:**
+ *
+ *     1,093 item files
+ *       223 citations in this script's form
+ *            40 ok · 126 moved · 57 BROKEN
+ *         8 faults
+ *
+ * One became 223 in a fortnight, because the corpus did exactly what
+ * `TASK-verify-citations-must-scan-the-corpus-and-the-corpus-should` asked of
+ * it and normalised toward the form. **Fifty-seven of those claims are already
+ * wrong, and nothing has ever looked at any of them.** Normalising a tree into
+ * a gate's form without the gate does not end the silence; it manufactures a
+ * better-dressed version of it, which is this file's own argument turned around
+ * on the repair it asked for.
+ *
+ * **So the tree is walked on request, and never by default.** Both halves are
+ * deliberate and they are not the same decision:
+ *
+ *   - **Off by default**, because the GATE half of that task was CLOSED by
+ *     owner ruling on 2026-09-07 (`plan:walk seq:140`, option A), against
+ *     `STD-a-citation-names-a-file-a-verbatim-fragment-and-an-optional` and
+ *     `checkCitationForm` (`src/doctor/checks.ts`), which cover the corpus from
+ *     the writing side. A lane does not reopen an owner's ruling by shipping
+ *     code. What changed is the number the ruling was taken against, and a
+ *     number is a thing to put in front of him, not a licence.
+ *   - **Never gated, even when asked for**, because the 57 sit in items other
+ *     work owns, on the same argument `gated` makes for source below.
+ *
+ * What `--corpus` buys is that the measurement can be TAKEN — one command,
+ * repeatable, by anyone — instead of re-derived by hand from a header that was
+ * two weeks stale and governing. That is the only thing that was missing.
+ *
+ * **AND THE RULES THIS TREE DOES NOT BRING WITH IT.** A bare `file:line` in an
+ * item body, and every `historical-citation` marker that excuses one, belong to
+ * `checkCitationForm` and to it alone. It counts them, it judges the markers by
+ * rules of its own, and it is the check a person actually reads about an item.
+ * Raising `BARE` or `MARKER` here would report the same pointer twice under two
+ * owners — and worse, this script's marker rule 1 ("it must excuse a citation")
+ * is not that check's rule 1 ("it must excuse a bare pointer"), so every
+ * legitimate corpus marker would be reported as broken by the checker that does
+ * not own it. One rule, one owner. See `corpusRules` in `collect`.
+ */
+const CORPUS_ROOT = '.my_context/items';
+
+/**
  * **The gate's own specimens, which it must not report as defects.**
  *
  * This script's header documents the citation form by writing citations, and
@@ -370,6 +427,14 @@ const SOURCE_ROOTS = ['src', 'test', 'scripts', 'e2e'];
  * nineteen faults against text doing its job, and its one citation is itself a
  * fixture specimen of the three-part form.
  *
+ * **THE FIFTH, 2026-09-11: the corpus walk's own test**
+ * (`citations-in-corpus.test.ts`), for the same reason as its two siblings and
+ * on the same terms. It plants a citation in an item body, breaks it, excuses
+ * it with a real marker, and leaves a marker excusing nothing on purpose —
+ * because the assertion that a corpus marker excusing nothing is NOT reported
+ * here has to contain one. Walked as ordinary source it reported three faults
+ * against text doing its job, and the four paths above became five.
+ *
  * **`src/doctor/checks.ts` is deliberately NOT here**, and that is the more
  * interesting half. It documents the marker and it teaches the marker in the
  * text of two findings, so the obvious move was to exempt it too — a
@@ -384,6 +449,7 @@ const SOURCE_EXEMPT = new Set([
   'scripts/verify-citations.ts',
   'test/scripts/verify-citations.test.ts',
   'test/scripts/citations-in-source.test.ts',
+  'test/scripts/citations-in-corpus.test.ts',
   'test/doctor/citation-form.test.ts',
 ]);
 
@@ -966,7 +1032,13 @@ function scanBarePointers(doc: string, seg: Segment, out: DocScan): void {
   }
 }
 
-function collect(doc: string, joinComments: boolean): DocScan {
+/**
+ * `corpusRules` is the one axis on which an item file is not a document: the
+ * faults `checkCitationForm` owns are not raised here. See `CORPUS_ROOT`.
+ * Markers are still COLLECTED — a marker excusing a no-match citation is this
+ * script's own mechanism and works in an item exactly as it works in a plan.
+ */
+function collect(doc: string, joinComments: boolean, corpusRules = false): DocScan {
   const text = readFileSync(doc, 'utf8');
   const rel = path.relative(REPO, doc).split(path.sep).join('/');
   const out: DocScan = { citations: [], markers: [], faults: [] };
@@ -985,7 +1057,7 @@ function collect(doc: string, joinComments: boolean): DocScan {
         } else if (mark === fence.mark && fm[1]!.length >= fence.len && fm[2] === '') {
           fence = null;
         }
-      } else if (fence !== null && fence.source) {
+      } else if (fence !== null && fence.source && !corpusRules) {
         scanBarePointers(rel, seg, out);
       }
     }
@@ -1008,7 +1080,9 @@ function collect(doc: string, joinComments: boolean): DocScan {
       });
     }
     scanSeparators(rel, seg, spans, out);
+    const before = out.faults.length;
     scanMarkers(rel, seg, out);
+    if (corpusRules) out.faults.length = before;
   }
   return out;
 }
@@ -1032,6 +1106,7 @@ function main(): number {
   const fix = argv.includes('--fix');
   const asJson = argv.includes('--json');
   const strictSource = argv.includes('--strict-source');
+  const withCorpus = argv.includes('--corpus');
 
   indexFiles();
 
@@ -1061,18 +1136,27 @@ function main(): number {
   const sources = found.filter((f) => !SOURCE_EXEMPT.has(rel(f))).sort();
   const sourceFiles = new Set(sources.map(rel));
 
+  // A tree walked only when asked for, and an empty list when it is not — so
+  // every count below is the count for the trees actually read. See CORPUS_ROOT.
+  const corpus: string[] = [];
+  if (withCorpus) walk(path.join(REPO, CORPUS_ROOT), corpus, isMarkdown);
+  corpus.sort();
+  const corpusFiles = new Set(corpus.map(rel));
+
   const rows: Array<{ c: Citation; v: Verdict }> = [];
   const markers: Marker[] = [];
   const faults: Fault[] = [];
-  for (const file of [...docs, ...sources]) {
+  for (const file of [...docs, ...sources, ...corpus]) {
     // Only source is joined: in Markdown a wrapped citation is a fault, and
-    // joining it would hide the very thing the UNREAD check exists to say.
-    const scan = collect(file, sourceFiles.has(rel(file)));
+    // joining it would hide the very thing the UNREAD check exists to say. An
+    // item body is Markdown and is read as one.
+    const scan = collect(file, sourceFiles.has(rel(file)), corpusFiles.has(rel(file)));
     for (const c of scan.citations) rows.push({ c, v: judge(c) });
     markers.push(...scan.markers);
     faults.push(...scan.faults);
   }
   const fromSource = (doc: string): boolean => sourceFiles.has(doc);
+  const fromCorpus = (doc: string): boolean => corpusFiles.has(doc);
 
   // Markers are applied AFTER judging, never instead of it, so a marked
   // citation is still resolved against the tree and can still come back green
@@ -1097,6 +1181,10 @@ function main(): number {
   // written for.
   for (const mk of markers) {
     if ((excused.get(at(mk.doc, mk.docLine)) ?? 0) > 0) continue;
+    // Not in an item body: rule 1 there is `checkCitationForm`'s, and it is a
+    // DIFFERENT rule — a corpus marker earns itself by excusing a bare
+    // `file:line` pointer, which this script cannot see. See `CORPUS_ROOT`.
+    if (fromCorpus(mk.doc)) continue;
     faults.push({
       doc: mk.doc,
       docLine: mk.docLine,
@@ -1141,15 +1229,20 @@ function main(): number {
    * `--strict-source` is not decoration — it is how the repair proves itself,
    * and it is the whole of the change needed to flip.
    */
-  const gated = (doc: string): boolean => strictSource || !fromSource(doc);
+  const gated = (doc: string): boolean =>
+    fromCorpus(doc) ? false : strictSource || !fromSource(doc);
   const failing =
     broken.filter((r) => gated(r.c.doc)).length +
     ambiguous.filter((r) => gated(r.c.doc)).length +
     faults.filter((f) => gated(f.doc)).length;
-  const ungated =
-    broken.filter((r) => !gated(r.c.doc)).length +
-    ambiguous.filter((r) => !gated(r.c.doc)).length +
-    faults.filter((f) => !gated(f.doc)).length;
+  // Two ungated tiers, counted apart, because they are cleared by two different
+  // pieces of work and one number naming both would say which neither.
+  const ungatedIn = (tree: (doc: string) => boolean): number =>
+    broken.filter((r) => !gated(r.c.doc) && tree(r.c.doc)).length +
+    ambiguous.filter((r) => !gated(r.c.doc) && tree(r.c.doc)).length +
+    faults.filter((f) => !gated(f.doc) && tree(f.doc)).length;
+  const ungated = ungatedIn(fromSource);
+  const ungatedCorpus = ungatedIn(fromCorpus);
 
   if (asJson) {
     process.stdout.write(
@@ -1161,13 +1254,16 @@ function main(): number {
           // human summary counts the latter, and one number named for the other
           // is how a walk that quietly stopped covering half the tree hides.
           sourceFilesWalked: sources.length,
+          corpusItemsWalked: corpus.length,
           strictSource,
+          corpusWalked: withCorpus,
           ungatedFailures: ungated,
-          broken: broken.map((r) => ({ ...r.c, source: fromSource(r.c.doc), verdict: r.v })),
-          moved: moved.map((r) => ({ ...r.c, source: fromSource(r.c.doc), verdict: r.v })),
-          ambiguous: ambiguous.map((r) => ({ ...r.c, source: fromSource(r.c.doc), verdict: r.v })),
-          historical: historical.map((r) => ({ ...r.c, source: fromSource(r.c.doc), verdict: r.v })),
-          faults: faults.map((f) => ({ ...f, source: fromSource(f.doc) })),
+          ungatedCorpusFailures: ungatedCorpus,
+          broken: broken.map((r) => ({ ...r.c, source: fromSource(r.c.doc), corpus: fromCorpus(r.c.doc), verdict: r.v })),
+          moved: moved.map((r) => ({ ...r.c, source: fromSource(r.c.doc), corpus: fromCorpus(r.c.doc), verdict: r.v })),
+          ambiguous: ambiguous.map((r) => ({ ...r.c, source: fromSource(r.c.doc), corpus: fromCorpus(r.c.doc), verdict: r.v })),
+          historical: historical.map((r) => ({ ...r.c, source: fromSource(r.c.doc), corpus: fromCorpus(r.c.doc), verdict: r.v })),
+          faults: faults.map((f) => ({ ...f, source: fromSource(f.doc), corpus: fromCorpus(f.doc) })),
         },
         null,
         2,
@@ -1179,13 +1275,23 @@ function main(): number {
   // A wrapped citation's `raw` is the JOINED text, which appears nowhere in the
   // file. Rewriting by string replace would either miss it or, worse, hit some
   // other occurrence. `--fix` says so and leaves it to a human.
-  const unfixable = moved.filter((r) => r.c.wrapped);
-  const fixable = moved.filter((r) => !r.c.wrapped);
+  //
+  // **AND AN ITEM FILE IS NEVER FIXED IN PLACE, whatever its citation looks
+  // like.** `.my_context/items/**.md` carries a checksum and a stamped summary
+  // in its own front matter, and the CLI recalculates both on every write. A
+  // hint rewritten here with `writeFileSync` would leave the file asserting a
+  // checksum it no longer has — a corpus that fails `doctor` in exchange for a
+  // convenience nobody asked for. `--corpus` reads; it does not write.
+  const unfixable = moved.filter((r) => r.c.wrapped || fromCorpus(r.c.doc));
+  const fixable = moved.filter((r) => !r.c.wrapped && !fromCorpus(r.c.doc));
   if (fix && unfixable.length > 0) {
     for (const r of unfixable) {
       process.stdout.write(
         `skipped ${r.c.doc}:${r.c.docLine}  ${r.c.file}  ` +
-          'the citation wraps across lines — update the ~line hint by hand\n',
+          (fromCorpus(r.c.doc)
+            ? 'an item file is written by the CLI, which recalculates its checksum and its ' +
+              'summary — move the ~line hint with `mycontext edit --body`, never in place\n'
+            : 'the citation wraps across lines — update the ~line hint by hand\n'),
       );
     }
   }
@@ -1261,12 +1367,15 @@ function main(): number {
       `${hi} historical, ${b} broken\n`
     );
   };
-  const docRows = rows.filter((r) => !fromSource(r.c.doc));
+  const docRows = rows.filter((r) => !fromSource(r.c.doc) && !fromCorpus(r.c.doc));
   const srcRows = rows.filter((r) => fromSource(r.c.doc));
+  const corpusRows = rows.filter((r) => fromCorpus(r.c.doc));
   const srcFilesSeen = new Set(srcRows.map((r) => r.c.doc)).size;
+  const corpusItemsSeen = new Set(corpusRows.map((r) => r.c.doc)).size;
   process.stdout.write(
     `\n${line(`${docs.length} document(s)`, docRows)}` +
       `${line(`${srcFilesSeen} source file(s)`, srcRows)}` +
+      (withCorpus ? line(`${corpusItemsSeen} corpus item(s)`, corpusRows) : '') +
       `${markers.length} marker(s), ${faults.length} fault(s)\n`,
   );
   if (broken.length === 0 && ambiguous.length === 0 && moved.length === 0 && faults.length === 0) {
@@ -1284,6 +1393,24 @@ function main(): number {
       `\n${ungated} source failure(s) above are REPORTED, not gated — they do not set the ` +
         `exit code${failing > 0 ? ', which is 1 for the documentation failures above' : ' and this run exits 0'}.\n` +
         'Run with --strict-source to gate them; that flag is the whole of the flip.\n',
+    );
+  }
+  // The corpus tier. Reported when asked for, never gated — and when it was not
+  // asked for, the tree is NAMED rather than left to this file's header, which
+  // is where the previous version of this refusal sat while it went two weeks
+  // stale. `INV-nothing-is-dropped-silently` applies to a whole tree first.
+  if (ungatedCorpus > 0) {
+    process.stdout.write(
+      `\n${ungatedCorpus} corpus failure(s) above are REPORTED, not gated — they do not set the ` +
+        `exit code${failing > 0 ? ', which is 1 for the documentation failures above' : ' and this run exits 0'}.\n` +
+        'There is no flag that gates them: the gate half of `plan:walk seq:30` was closed by ' +
+        'owner ruling, and `checkCitationForm` (`mycontext doctor`) is what covers an item body.\n',
+    );
+  }
+  if (!withCorpus) {
+    process.stdout.write(
+      '\n.my_context/items/ is not walked on this run — pass --corpus to read the citations the ' +
+        'corpus writes in this form. They are reported, never gated.\n',
     );
   }
   // A moved hint is not a failure — the fragment resolved, which is the claim.
