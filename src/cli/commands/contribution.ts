@@ -4,6 +4,10 @@ import {
   cohorts, contributions, exposure, undelivered,
   type Cohort, type Contribution, type Exposure, type Injectable,
 } from '../../core/contribution.ts';
+import {
+  MIN_WINDOW_DAYS, RETIREABLE_ORIGIN, RETIREMENT_RULE, WHY_NO_RULE, derivability, payloadTrend,
+  separation, tierSkew, type DoorLoad, type RetirementEvidence,
+} from '../../core/retire.ts';
 import { isEligible, isNormative } from '../../core/select.ts';
 import { ORIGINS } from '../../core/validate.ts';
 import type { Item } from '../../core/types.ts';
@@ -13,7 +17,7 @@ import {
   DETAIL_USAGE, detailLevel, emitJson, paragraph, records, refuseUnknownFlag, table,
   wantsJson, type Detail,
 } from './format.ts';
-import { registerCommand, type Emit } from './registry.ts';
+import { hasFlag, registerCommand, type Emit } from './registry.ts';
 
 /**
  * This command's flag surface lives in `core/command-flags.ts` for the reason
@@ -173,13 +177,169 @@ function itemCells(
     : [item.id, item.origin, String(delivered), rateCell(chances), String(spilled), tiers];
 }
 
+/**
+ * **`--retire`: may anything be retired on these numbers, and what would it
+ * be?** `plan:loop seq:5`, design §9.
+ *
+ * The verb is missing on purpose and its absence is the guarantee. §13: *the
+ * owner promotes, always* — and a retirement is a stand-down that reaches
+ * every future session, so this surface names candidates and stops. There is
+ * no `--apply`, `core/retire.ts` imports no write path at all, and
+ * `test/core/retire.test.ts` holds both facts.
+ *
+ * **What it prints when the answer is no is the whole point.** A phase whose
+ * honest output is "the data does not support a threshold yet" has to be able
+ * to SAY that, in numbers, on a surface somebody will run again in a month —
+ * otherwise the next reader's only options are to trust a report or to invent
+ * a number, which is the failure §9 exists to prevent.
+ */
+const RETIRE_PURPOSE =
+  'This surface PROPOSES. It has no verb: there is no flag here that retires, deprecates or ' +
+  'deletes anything, and `core/retire.ts` imports no write path, because a retirement is a ' +
+  'stand-down that reaches every future session and the owner promotes, always.';
+
+/** Per-door growth, first measured day against last. The "bound the corpus" half of §9. */
+function doorGrowth(trend: DoorLoad[]): { op: string; from: DoorLoad; to: DoorLoad }[] {
+  const byOp = new Map<string, DoorLoad[]>();
+  for (const row of trend) {
+    const list = byOp.get(row.op) ?? [];
+    list.push(row);
+    byOp.set(row.op, list);
+  }
+  return [...byOp.entries()]
+    .map(([op, list]) => ({ op, from: list[0]!, to: list[list.length - 1]! }))
+    .sort((a, b) => b.to.injected - a.to.injected);
+}
+
+function emitRetirement(
+  out: Emit, json: boolean, evidence: RetirementEvidence, trend: DoorLoad[], ration: number,
+  loadErrors: { file: string; message: string }[],
+): void {
+  const verdict = derivability(evidence);
+  const growth = doorGrowth(trend);
+  if (json) {
+    // `loadErrors` travels INSIDE the document for the reason the reading
+    // surface below it records: a valid JSON document followed by plain-text
+    // lines is an unparseable stdout at the one moment the report matters.
+    emitJson(out, {
+      measuredAt: new Date().toISOString(),
+      purpose: RETIRE_PURPOSE,
+      evidence,
+      derivable: verdict.derivable,
+      because: verdict.because,
+      // `null` and it is the answer, not a missing field: a derivation this
+      // build does not have is a fact a script must be able to read.
+      rule: RETIREMENT_RULE,
+      whyNoRule: WHY_NO_RULE,
+      candidates: [],
+      bound: { maxProposalsPerPass: ration, doors: growth },
+      loadErrors,
+    });
+    return;
+  }
+
+  for (const line of paragraph(
+    'my_context contribution --retire — whether this corpus supports a retirement threshold, ' +
+    'and what one would name if it did.',
+  )) out(line);
+  out('');
+  for (const line of paragraph(RETIRE_PURPOSE, '  ')) out(line);
+
+  out('');
+  for (const line of paragraph('the evidence:')) out(line);
+  for (const line of table(
+    ['measure', 'value'],
+    [
+      [`items of origin \`${RETIREABLE_ORIGIN}\``, String(evidence.population)],
+      ['injectable items', String(evidence.injectable)],
+      ['of those, never delivered', String(evidence.neverDelivered)],
+      ['of those, only ever spilled', String(evidence.alwaysSpilled)],
+      ['days the log covers', `${evidence.windowDays} (need ${MIN_WINDOW_DAYS})`],
+      [
+        'widest gap in the rate distribution',
+        `x${evidence.separation.widestGapRatio.toFixed(0)} the typical spacing, leaving ` +
+        `${evidence.separation.below} of ${evidence.separation.of} below it`,
+      ],
+      [
+        'pinned items in the least-delivered half',
+        `${evidence.skew.pinnedInBottomHalf} of ${evidence.skew.pinned}`,
+      ],
+    ],
+    { indent: '  ' },
+  )) out(line);
+
+  out('');
+  if (verdict.derivable) {
+    for (const line of paragraph(
+      'a threshold MAY now be derived from this corpus — every clause the gate checks is ' +
+      'satisfied. It has not been: `RETIREMENT_RULE` is still null. Derive the two numbers ' +
+      'from the distribution above, write them down with the day they were measured, and put ' +
+      'the report\'s path beside them.',
+    )) out(line);
+  } else {
+    for (const line of paragraph(
+      `no retirement threshold may be derived from this corpus today, for ` +
+      `${verdict.because.length} measured reason(s):`,
+    )) out(line);
+    for (const because of verdict.because) {
+      for (const line of paragraph(`- ${because}`, '  ')) out(line);
+    }
+    out('');
+    for (const line of paragraph(
+      'so NOTHING is proposed for retirement, and that is a result rather than a gap. A ' +
+      'threshold picked anyway would be the badly-tuned retirement the design cites as ' +
+      'measuring WORSE than no retirement at all.', '  ',
+    )) out(line);
+  }
+
+  // **The other half of the title, and it is not about retirement at all.** A
+  // corpus that only grows does not announce itself as spill; it announces
+  // itself as a payload. This is the measurement a cap would one day have to
+  // be derived from, printed now so the day it becomes derivable is visible.
+  out('');
+  for (const line of paragraph(
+    'bounding the corpus — what each door actually carried, first measured day against last. ' +
+    'Growth here is the cost of a corpus that only grows: it is paid in every delivery, and ' +
+    'a door that is not spilling can still be growing.',
+  )) out(line);
+  // `table` renders nothing at all for zero rows, and a section that vanishes
+  // is a measurement stated by omission — the defect
+  // `STD-a-measured-zero-is-drawn-and-named-an-unmeasured-thing-is` names. An
+  // empty log is UNMEASURED here, not a corpus that grew by nothing.
+  if (growth.length === 0) {
+    for (const line of paragraph(
+      '(no injection records in this log, so no door has been measured at all — this is the '
+      + 'absence of a measurement, not a corpus that has stopped growing)', '  ',
+    )) out(line);
+  } else {
+    for (const line of table(
+      ['door', 'first day', 'items then', 'last day', 'items now', 'spilled now'],
+      growth.map((row) => [
+        row.op, row.from.day, row.from.injected.toFixed(1), row.to.day,
+        row.to.injected.toFixed(1), row.to.spilled.toFixed(1),
+      ]),
+      { indent: '  ' },
+    )) out(line);
+  }
+  out('');
+  for (const line of paragraph(
+    ration === 0
+      ? 'The only bound this build can defend is the one already in force: `review.' +
+        'maxProposalsPerPass` is 0, so the loop cannot add to the corpus at all, and a cap on ' +
+        'a population that cannot grow would be a number with nothing to measure it against.'
+      : `\`review.maxProposalsPerPass\` is ${ration}, so the loop may now add to the corpus. ` +
+        'A cap over `origin: `review`` items becomes derivable once that population has a ' +
+        'distribution of its own — re-run this then.', '  ',
+  )) out(line);
+}
+
 function cmdContribution(ws: Workspace, args: string[], out: Emit): number {
   if (!ws.projectRoot) {
     out('my_context: no workspace here. Run `mycontext init` to create one.');
     return 1;
   }
 
-  const usage = `usage: mycontext contribution ${DETAIL_USAGE}`;
+  const usage = `usage: mycontext contribution [--retire] ${DETAIL_USAGE}`;
   if (refuseUnknownFlag(args, ALLOWED, VALUE_FLAGS, usage, out)) return 1;
 
   let detail: Detail;
@@ -246,6 +406,37 @@ function cmdContribution(ws: Workspace, args: string[], out: Emit): number {
     const total = (pick: (row: Cohort) => number): number => rows.reduce((n, r) => n + pick(r), 0);
     const measurable = total((r) => r.injectable);
     const ineligible = items.length - measurable;
+
+    // **The retirement question is a different report over the same reading**,
+    // so it branches here rather than being appended: everything above it is
+    // the measurement it consumes, and nothing below it applies.
+    if (hasFlag(args, 'retire')) {
+      const days = injectionRecords.map((r) => r.at).sort();
+      const first = days[0];
+      const last = days[days.length - 1];
+      const ranked = items.filter(injectable).map((item) => ({
+        value: chances.get(item.id)?.rate ?? 0,
+        pinned: item.always,
+      }));
+      emitRetirement(out, json, {
+        population: items.filter((item) => item.origin === RETIREABLE_ORIGIN).length,
+        injectable: measurable,
+        neverDelivered: quiet.length,
+        alwaysSpilled: total((r) => r.alwaysSpilled),
+        // Whole days between the first and last injection record. A log with
+        // one record covers 0 days, which is the honest reading: a window is
+        // the distance between two observations, and one observation is not a
+        // window.
+        windowDays: first === undefined || last === undefined
+          ? 0
+          : Math.floor((Date.parse(last) - Date.parse(first)) / 86_400_000),
+        separation: separation(ranked.map((row) => row.value)),
+        skew: tierSkew(ranked),
+      }, payloadTrend(records_), ws.config.review.maxProposalsPerPass,
+      errors.map((e) => ({ file: e.file, message: e.message })));
+      if (!json) emitLoadErrors(errors, out);
+      return 0;
+    }
 
     if (json) {
       // `loadErrors` travels INSIDE the document, never as trailing plain-text

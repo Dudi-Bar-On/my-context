@@ -48,7 +48,15 @@ function fields(input: PowerlineInput): string[] {
 }
 
 function view(over: Partial<PendingReview>): PendingReview {
-  return { drafts: 0, revisions: 0, total: 0, oldestAt: null, undated: 0, ...over };
+  return {
+    drafts: 0, revisions: 0, total: 0, oldestAt: null, undated: 0,
+    // The chip is coloured by the COMBINED age, so a fixture that only sets
+    // `oldestAt` is setting the field this bar actually reads. `draftsOnly` is
+    // the drafts half, carried for `status --json`'s drafts block and default
+    // to the same value here so no test asserts a shape it did not choose.
+    draftsOnly: { oldestAt: over.oldestAt ?? null, undated: over.undated ?? 0 },
+    ...over,
+  };
 }
 
 test('zero pending draws nothing at all — no block, no label, no zero', () => {

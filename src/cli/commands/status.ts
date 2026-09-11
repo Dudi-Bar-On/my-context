@@ -280,7 +280,14 @@ function cmdStatus(ws: Workspace, args: string[], out: Emit): number {
         // re-reading a log it has just refused on.
         reviewQueue: {
           drafts: queueCount, always: alwaysInQueue, globalLayerDrafts,
-          oldestAt: pending.oldestAt, undated: pending.undated,
+          // **`draftsOnly`, not the combined view.** Every other field in this
+          // block is the DRAFT queue, and a revision is in no count of what
+          // governs and in no listing of items — so a staged revision moving
+          // `oldestAt` here made a block about drafts report a fact about
+          // something else (`test/cli/review-revisions.test.ts`). The combined
+          // age is still what the chip is coloured by; it just does not belong
+          // under a key that names one queue.
+          oldestAt: pending.draftsOnly.oldestAt, undated: pending.draftsOnly.undated,
           // **The VERDICT, computed here rather than in the browser.** The
           // bands are `review/pending.ts`'s and were read off this corpus's
           // own settle latencies; a browser that turned `oldestAt` into a
@@ -288,7 +295,14 @@ function cmdStatus(ws: Workspace, args: string[], out: Emit): number {
           // project has measured going wrong eight times. The strip draws
           // what this says; the terminal bar asks the same function directly.
           // Two presentations, one verdict.
-          age: queueAge(pending, Date.now()),
+          //
+          // Taken over `draftsOnly` for the same reason `oldestAt` above is: a
+          // verdict in a block whose every other field counts drafts must be
+          // about drafts, or the block says two things at once. The COMBINED
+          // verdict — both queues, which is what the chip's count is — is
+          // `reviewChip`'s, and the surfaces that draw a count of both ask that
+          // function rather than reading this key.
+          age: queueAge(pending.draftsOnly, Date.now()),
         },
         // The SECOND queue this command points at, counted in the one spelling
         // `review` uses (`pendingRevisionCounts` in core/revision.ts): revisions, not

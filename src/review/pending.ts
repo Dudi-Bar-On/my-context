@@ -97,14 +97,23 @@ export const STALE_DAYS = 10;
 /** The three states of the queue's age. `fresh` is the quiet one. */
 export type QueueAge = 'fresh' | 'ageing' | 'stale';
 
-/** What is waiting for a person, split the way §7 splits the screen. */
-export interface PendingReview {
-  /** Project-layer drafts, exactly `reviewQueue`'s definition. */
-  drafts: number;
-  /** Revisions staged against items that already govern, still unsettled. */
-  revisions: number;
-  /** The number a reader is being asked to work down. */
-  total: number;
+/**
+ * **How old one queue is, and how much of it could not be dated** — the two
+ * fields a colour is computed from, split out so that "how old is the DRAFT
+ * queue" and "how old is everything pending" are different values rather than
+ * one value two callers disagree about.
+ *
+ * They were one value until 2026-09-11, and it was wrong in a way a test
+ * caught: `mycontext status --json` publishes a `reviewQueue` block that
+ * describes drafts — `drafts`, `always`, `globalLayerDrafts` — and it was given
+ * the COMBINED `oldestAt`. So staging a revision, which creates no item and is
+ * in no count of what governs, moved a field in the drafts summary
+ * (`test/cli/review-revisions.test.ts`, *"a pending revision is in no count of
+ * what governs and in no listing of items"*). The combined view is still the
+ * right input for the CHIP, whose count is both queues; it is the wrong input
+ * for a block that names one of them.
+ */
+export interface QueueAges {
   /**
    * The oldest pending thing's own date, or `null` when nothing pending
    * carries one. An ISO instant for a revision (the log stamps it) and a
@@ -120,9 +129,27 @@ export interface PendingReview {
   undated: number;
 }
 
+/** What is waiting for a person, split the way §7 splits the screen. */
+export interface PendingReview extends QueueAges {
+  /** Project-layer drafts, exactly `reviewQueue`'s definition. */
+  drafts: number;
+  /** Revisions staged against items that already govern, still unsettled. */
+  revisions: number;
+  /** The number a reader is being asked to work down. */
+  total: number;
+  /**
+   * The DRAFT queue's own age, for a surface that reports on drafts alone.
+   * `oldestAt`/`undated` above cover BOTH queues, which is what the chip's
+   * colour needs and what a drafts-only block must not quote — see
+   * `QueueAges`.
+   */
+  draftsOnly: QueueAges;
+}
+
 /** The empty answer, so callers never build one by hand. */
 export const NOTHING_PENDING: PendingReview = {
   drafts: 0, revisions: 0, total: 0, oldestAt: null, undated: 0,
+  draftsOnly: { oldestAt: null, undated: 0 },
 };
 
 /**
@@ -154,24 +181,35 @@ export function pendingReview(
     revisions = [];
   }
 
-  let oldest: number | null = null;
-  let oldestAt: string | null = null;
-  let undated = 0;
-  const consider = (stamp: string | null): void => {
-    if (stamp === null || stamp === '') { undated++; return; }
-    const ms = Date.parse(stamp);
-    if (Number.isNaN(ms)) { undated++; return; }
-    if (oldest === null || ms < oldest) { oldest = ms; oldestAt = stamp; }
+  // Each queue is aged on its own and the two are combined afterwards, rather
+  // than one accumulator seeing both: a drafts-only answer derived by
+  // subtraction from a combined one is not derivable at all, which is how a
+  // revision's date reached the drafts summary in the first place.
+  const age = (stamps: (string | null)[]): QueueAges => {
+    let oldest: number | null = null;
+    let oldestAt: string | null = null;
+    let undated = 0;
+    for (const stamp of stamps) {
+      if (stamp === null || stamp === '') { undated++; continue; }
+      const ms = Date.parse(stamp);
+      if (Number.isNaN(ms)) { undated++; continue; }
+      if (oldest === null || ms < oldest) { oldest = ms; oldestAt = stamp; }
+    }
+    return { oldestAt, undated };
   };
-  for (const draft of drafts) consider(draft.validFrom);
-  for (const revision of revisions) consider(revision.stagedAt);
+  const draftsOnly = age(drafts.map((d) => d.validFrom));
+  const both = age([
+    ...drafts.map((d) => d.validFrom),
+    ...revisions.map((r) => r.stagedAt),
+  ]);
 
   return {
     drafts: drafts.length,
     revisions: revisions.length,
     total: drafts.length + revisions.length,
-    oldestAt,
-    undated,
+    oldestAt: both.oldestAt,
+    undated: both.undated,
+    draftsOnly,
   };
 }
 
@@ -183,7 +221,7 @@ export function pendingReview(
  * not one. A colour that stepped up half a day early would be a colour that
  * fires on the productive session §10 is trying to protect.
  */
-export function oldestAgeDays(view: PendingReview, now: number): number | null {
+export function oldestAgeDays(view: QueueAges, now: number): number | null {
   if (view.oldestAt === null) return null;
   const ms = Date.parse(view.oldestAt);
   if (Number.isNaN(ms)) return null;
@@ -196,7 +234,7 @@ export function oldestAgeDays(view: PendingReview, now: number): number | null {
  * evidence that the queue is young, and the cheap failure direction is the one
  * that makes a reader look.
  */
-export function queueAge(view: PendingReview, now: number): QueueAge {
+export function queueAge(view: QueueAges, now: number): QueueAge {
   const days = oldestAgeDays(view, now);
   if (days === null) return view.undated > 0 ? 'ageing' : 'fresh';
   if (days >= STALE_DAYS) return 'stale';

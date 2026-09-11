@@ -179,3 +179,44 @@ test('a non-draft, a non-project draft and a retired item are not pending', () =
     removeTree(dir);
   }
 });
+
+test('a pending revision dates the CHIP and never the drafts half', () => {
+  // The defect this split exists for: `mycontext status --json` publishes a
+  // `reviewQueue` block whose every other field counts drafts, and it was
+  // given the combined `oldestAt` — so staging a revision, which creates no
+  // item and is in no listing of items, moved a number in the drafts summary.
+  const dir = root();
+  try {
+    const staged = new Date(NOW - (STALE_DAYS + 1) * DAY).toISOString();
+    stage(dir, 'REV-1', staged);
+    const view = pendingReview(dir, []);
+    assert.equal(view.drafts, 0);
+    assert.equal(view.oldestAt, staged, 'the combined view is what colours a chip counting both');
+    assert.deepEqual(
+      view.draftsOnly, { oldestAt: null, undated: 0 },
+      'and the drafts half is untouched by it — no draft exists, so it has no age at all',
+    );
+    assert.equal(
+      queueAge(view.draftsOnly, NOW), 'fresh',
+      'the same verdict function answers for either half, so the two cannot drift apart',
+    );
+  } finally {
+    removeTree(dir);
+  }
+});
+
+test('the drafts half carries its own oldest and its own undated count', () => {
+  const dir = root();
+  try {
+    stage(dir, 'REV-1', new Date(NOW - (STALE_DAYS + 1) * DAY).toISOString());
+    const old = new Date(NOW - 3 * DAY).toISOString().slice(0, 10);
+    const view = pendingReview(dir, [draft('old', old), draft('undated', null)]);
+    assert.deepEqual(view.draftsOnly, { oldestAt: old, undated: 1 });
+    assert.equal(
+      view.undated, 1,
+      'the combined count is the same undated draft, counted once and not twice',
+    );
+  } finally {
+    removeTree(dir);
+  }
+});

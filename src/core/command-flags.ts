@@ -306,10 +306,17 @@ export const COMMAND_FLAGS: Record<string, FlagSpec> = {
   config: { allowed: ['delete', 'disable', 'set', 'unset', 'yes'], values: ['set', 'unset'] },
   /**
    * A read, and only a read: no target, no `--yes`, no switch that changes
-   * what is measured. The detail levels are the whole surface, so there is
-   * nothing here for a builder to get wrong.
+   * what is measured.
+   *
+   * **`--retire` is the one switch, and it changes the QUESTION rather than
+   * the measurement** — `plan:loop seq:5`, design §9: may a retirement
+   * threshold be derived from these numbers, and what would it name. It stays
+   * in this spec rather than becoming a command of its own precisely because
+   * it consumes this reading and nothing else, and it carries no verb: there
+   * is deliberately no `--apply` here, because the owner promotes, always
+   * (§13), and a retirement reaches every future session.
    */
-  contribution: { allowed: [...DETAIL_FLAGS], values: [] },
+  contribution: { allowed: [...DETAIL_FLAGS, 'retire'], values: [] },
   decay: { allowed: [...DETAIL_FLAGS, 'sessions', 'all'], values: ['sessions'] },
   doctor: { allowed: [...DETAIL_FLAGS, 'quiet'], values: [] },
   export: {
@@ -956,7 +963,16 @@ export const FLAG_DECLARATIONS: Record<string, FlagDeclarations> = {
     },
     yes: YES,
   },
-  contribution: { ...DETAIL },
+  contribution: {
+    ...DETAIL,
+    retire: {
+      note: 'Ask whether a retirement threshold may be derived from these numbers at all, and '
+        + 'what it would name if it could. It PROPOSES only: there is no flag that retires, '
+        + 'deprecates or deletes anything. It also reports what each injection door actually '
+        + 'carried on its first and last measured day, which is what a corpus that only grows '
+        + 'costs.',
+    },
+  },
   decay: {
     ...DETAIL,
     sessions: {
