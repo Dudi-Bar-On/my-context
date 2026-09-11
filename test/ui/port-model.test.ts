@@ -113,12 +113,15 @@ test('history: carriedKinds and withheld PARTITION the audit vocabulary, so no k
     assert.equal(new Set([...history.carriedKinds, ...history.withheld]).size, AUDIT_KINDS.length);
     assert.equal(history.withheld.includes('mutation'), false);
 
-    // The mockup's prose names three withheld kinds; this build has six. The
+    // The mockup's prose names three withheld kinds; this build has seven. The
     // gap is the reason `withheld` is served at all, so it is asserted rather
-    // than left as a comment — and it widened again on 2026-08-27, which is
-    // the gap doing what it is for.
-    assert.equal(history.withheld.length, 6);
-    for (const kind of ['injection', 'hook', 'focus', 'access', 'progress', 'execution']) {
+    // than left as a comment — and it widened again on 2026-08-27 and on
+    // 2026-09-11 (`read`, `budget/15`), which is the gap doing what it is for.
+    // A read record names one machine's reader and one machine's log, exactly
+    // like an injection or a hook firing, so it is withheld from an export for
+    // the reason `CARRIED_KINDS` states rather than by a new argument.
+    assert.equal(history.withheld.length, 7);
+    for (const kind of ['injection', 'hook', 'focus', 'access', 'progress', 'execution', 'read']) {
       assert.ok(history.withheld.includes(kind as (typeof AUDIT_KINDS)[number]), kind);
     }
     assert.equal(history.importedDir, 'imported/');

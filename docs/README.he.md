@@ -261,8 +261,13 @@ in one of the two existing steps or nowhere.
 - **הוא גדל עד שרק מרפרפים עליו** — שום דבר בו אינו מתעד מתי הוא היה רלוונטי לאחרונה. כאן לכל
   דרג יש תקציב טוקנים, ו-<span dir="ltr">`mycontext decay`</span> מדווח אילו פריטים לא
   *הוזרקו* בחלון הסשנים האחרון. הוזרקו, לא נעשה בהם שימוש: הדוח מדפיס את הסייג הזה על
-  עצמו, כי פריט שנקרא דרך <span dir="ltr">`mycontext show`</span> אינו מותיר עקבות ביומן
-  ההזרקות ונראה בדיוק כמו פריט נטוש.
+  עצמו, כי ספר ההזרקות שהוא קורא בנוי ממסירות בלבד, ולכן פריט שנקרא הרבה ומוזרק מעט נראה
+  בדיוק כמו פריט נטוש. החצי האחר של המדידה קיים עכשיו לצידו —
+  <span dir="ltr">`mycontext show <id>`</span> והכלי <span dir="ltr">`get_item`</span>
+  ב-MCP מוסיפים כל אחד רשומת <span dir="ltr">`read`</span> הנוקבת בפריט ובמשטח, כך
+  ש**נמסר ומעולם לא נקרא** הוא דבר בר-ספירה ולא דבר שאינו נמדד.
+  <span dir="ltr">`mycontext decay`</span> עדיין אינו קורא אותה, והוא אומר זאת במקום לרמוז
+  אחרת.
 
 ### החלקים החריגים
 
@@ -2962,7 +2967,7 @@ mycontext audit --since 7d              כל מה שקרה בשבוע האחרו
 mycontext audit --item RULE-x           כל מה שקרה לפריט אחד
 mycontext audit --session <id>          סשן אחד, לפי הסדר
 mycontext audit --op promote            פעולה אחת
-mycontext audit --kind progress         סוג רשומה אחד, מתוך השישה שלהלן
+mycontext audit --kind progress         סוג רשומה אחד, מתוך השמונה שלהלן
 mycontext audit --origin agent          רק מה שסוכן עשה
 mycontext audit --summary               ספירות לפי פעולה
 mycontext audit --items                 באילו פריטים היומן הזה נוקב הכי הרבה
@@ -2998,15 +3003,27 @@ mycontext audit --files                 קובצי היומן שעל הדיסק,
 שנכתבו לפני שהשדה הזה היה קיים פשוט חסרות אותו, וכל משטח קריאה מציג אותן כ**"tokens not
 recorded" — לעולם לא כאפס**. אפס הוא מדידה; היעדר אינו מדידה.
 
-##### שבעה סוגי רשומה, והגרסה שהיומן מצהיר עליה
+##### שמונה סוגי רשומה, והגרסה שהיומן מצהיר עליה
 
-<span dir="ltr">`--kind`</span> חותכת את היומן לפי מה שרשומה **היא**, והיא מקבלת בדיוק שבעה
-שמות: <span dir="ltr">`mutation`, `injection`, `hook`, `focus`, `access`, `progress`</span>
-ו-<span dir="ltr">`execution`</span>. שם שאינו בקבוצה הזאת מסורב עם הרשימה המלאה, ולא מתאים
-בשקט לכלום.
-<!-- `core/audit.ts` · `'mutation', 'injection', 'hook', 'focus', 'access', 'progress', 'execution',` · ~648 -->
+<span dir="ltr">`--kind`</span> חותכת את היומן לפי מה שרשומה **היא**, והיא מקבלת בדיוק שמונה
+שמות: <span dir="ltr">`mutation`, `injection`, `hook`, `focus`, `access`, `progress`,
+`execution`</span> ו-<span dir="ltr">`read`</span>. שם שאינו בקבוצה הזאת מסורב עם הרשימה
+המלאה, ולא מתאים בשקט לכלום.
+<!-- `core/audit.ts` · `'mutation', 'injection', 'hook', 'focus', 'access', 'progress', 'execution', 'read',` · ~730 -->
 
-החדש שבהם הוא <span dir="ltr">**`execution`**</span>, שרושם פקודה שהממשק הרשתי הריץ — ראו
+החדש שבהם הוא <span dir="ltr">**`read`**</span>, שרושם שגוף של פריט **נשלף**. פעולה אחת,
+<span dir="ltr">`item-read`</span>, שנכתבת בידי <span dir="ltr">`mycontext show <id>`</span>
+ובידי הכלי <span dir="ltr">`get_item`</span> ב-MCP, ונושאת את המזהה של הפריט עצמו ואת המשטח
+שדרכו הוא נשלף (<span dir="ltr">`cli`</span> או <span dir="ltr">`mcp`</span>). זהו ההיפוך של
+<span dir="ltr">`injection`</span> ובכוונה אינו מקופל לתוכו: הזרקה היא טקסט שהמוצר **דחף** אל
+מודל, וקריאה היא פריט שקורא **משך** אחרי שקיבל את שמו ותו לא. עד שהסוג הזה נולד היומן ידע
+לומר מה נמסר ולא ידע לומר מה נוצל, ולכן "האם הפריט הזה שווה החזקה" הוכרע לפי מסירה כמדד
+עקיף — מדד שאינו מפריד בין דבר לדבר כאן, שכן היומן מסר לפחות פעם אחת כל פריט בר-הזרקה.
+מסלולי הקריאה של הממשק הרשתי אינם רושמים דבר: הם משטח קריאה מכוח ערובה, ואדם שגולש במסך אינו
+הקורא שהנחת שכבת האינדקס עוסקת בו.
+<!-- `core/audit.ts` · `export const READ_OPS = ['item-read'] as const;` · ~630 -->
+
+לפניו בא <span dir="ltr">**`execution`**</span>, שרושם פקודה שהממשק הרשתי הריץ — ראו
 [הממשק יכול להריץ את מה שהוא מרכיב](#הממשק-יכול-להריץ-את-מה-שהוא-מרכיב). הוא זוג פעולות ולא
 אחת, <span dir="ltr">`execute`</span> ו-<span dir="ltr">`execute-done`</span>, שנכתבות באותו
 רגע עצמו ומחוברות דרך המזהה של הפקודה: הראשונה אומרת שהרצה אושרה והתחילה, השנייה אומרת איך
@@ -3014,7 +3031,7 @@ recorded" — לעולם לא כאפס**. אפס הוא מדידה; היעדר �
 ליומן הזה מהתהליך שלו עצמו ובלי נעילה, ולכן קריאה־שינוי־כתיבה הורסת כל מה שכותב אחר הוסיף
 בינתיים, במדידה בין שורה אחת ל-21 שורות אבודות להרצה. הרצה שסורבה אינה כאן כלל: הסירוב קורה
 בשער הבקשות והוא כבר <span dir="ltr">`ui-refused`</span> תחת <span dir="ltr">`access`</span>.
-<!-- `core/audit.ts` · `export const EXECUTION_OPS = ['execute', 'execute-done'] as const;` · ~548 -->
+<!-- `core/audit.ts` · `export const EXECUTION_OPS = ['execute', 'execute-done'] as const;` · ~560 -->
 
 לפניו הגיע <span dir="ltr">**`progress`**</span>, שרושם סימון של צעד ב-`procedure`. מקומו
 לצד <span dir="ltr">`focus`</span> ולא תחת <span dir="ltr">`mutation`</span>, מאותה סיבה
@@ -3045,10 +3062,10 @@ line 2 declares protocol "my_context/audit@3", expected "my_context/audit@1" or
 הפרוטוקול נבדק לפני שמסתכלים על ה-<span dir="ltr">`kind`</span> וה-<span dir="ltr">`op`</span>
 של הרשומה, וזה מה שמאפשר את ההודעה הזאת: האבחנה היא "היומן הזה חדש ממני" ולא תלונה על אוצר
 מילים שהקורא במקרה אינו מכיר. **שדרוג בטוח; שנמוך אינו.** יומן שמכיל רשומות
-<span dir="ltr">`progress`</span> או <span dir="ltr">`execution`</span> אינו קריא לבנייה
-שקדמה לסוגים האלה — אוצר המילים
+<span dir="ltr">`progress`</span>, <span dir="ltr">`execution`</span> או
+<span dir="ltr">`read`</span> אינו קריא לבנייה שקדמה לסוגים האלה — אוצר המילים
 של <span dir="ltr">`--kind`</span> סגור, ושם שאינו מוכר גורר איתו את כל המקטע במקום להידלג.
-שניהם הגיעו בתוך השבר ש-<span dir="ltr">`@2`</span> כבר מכריז עליו, ולכן אף אחד מהם לא העלה
+שלושתם הגיעו בתוך השבר ש-<span dir="ltr">`@2`</span> כבר מכריז עליו, ולכן אף אחד מהם לא העלה
 את הפרוטוקול פעם שנייה.
 
 ##### שני קבצים, ורק אחד מהם הוא הרישום

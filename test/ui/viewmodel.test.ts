@@ -371,9 +371,12 @@ test('describeRecord: tokens absence is the not-recorded STATE, zero is the numb
  * described by a branch written for something else: both must come back with
  * `tokens: null` — an injection-only field — and an empty spill list.
  */
-test('describeRecord describes all seven kinds, and invents an injection out of none of them', async () => {
+test('describeRecord describes all eight kinds, and invents an injection out of none of them', async () => {
   const { describeRecord } = await vm();
-  assert.equal(AUDIT_KINDS.length, 7);
+  // Eight since 2026-09-11 (`read`, `budget/15`). A read delivered nothing, so
+  // it is one more kind that must come back with `tokens: null` rather than
+  // being described by a branch written for an injection.
+  assert.equal(AUDIT_KINDS.length, 8);
   for (const kind of AUDIT_KINDS) {
     const d = describeRecord({ protocol: 'my_context/audit@1', at: '2026-08-16T10:00:00.000Z', kind, op: 'x' });
     assert.equal(d.kind, kind);

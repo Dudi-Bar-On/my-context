@@ -309,12 +309,13 @@ test('auditChips is the RESPONSE\'s partition of the audit vocabulary, hue and a
     'what is withheld is not drawn with the withheld hue, in the endpoint\'s own order');
 
   // The number `port.hist` asserted as three until 2026-08-23 and asserts as
-  // six today. The chips are the only place on this screen where it is
+  // seven today. The chips are the only place on this screen where it is
   // MEASURED rather than written — and the seventh kind DID land, on
-  // 2026-08-27: the screen grew a chip on its own and the sentence did not,
-  // exactly as this comment predicted. The prose is still three.
+  // 2026-08-27, and the eighth on 2026-09-11 (`read`, `budget/15`): the screen
+  // grew a chip on its own both times and the sentence did not, exactly as
+  // this comment predicted. The prose is still three.
   assert.equal(chips.length, AUDIT_KINDS.length);
-  assert.equal(chips.filter((c) => c.cls === 'chip warn').length, 6);
+  assert.equal(chips.filter((c) => c.cls === 'chip warn').length, 7);
 
   // A response with nothing in it draws nothing, rather than throwing on a
   // screen whose other two cards are fine.

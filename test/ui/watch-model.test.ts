@@ -53,6 +53,10 @@ function url(pathname: string, qs = ''): URL {
  */
 const NO_KINDS = {
   mutation: 0, injection: 0, hook: 0, focus: 0, access: 0, progress: 0, execution: 0,
+  // `read` (2026-09-11, `budget/15`): an item FETCHED by a reader, which the
+  // pulse buckets like any other kind because it derives its keys from
+  // `AUDIT_KINDS` rather than listing them.
+  read: 0,
 };
 
 test('recordVolume buckets by kind and drops nothing inside the window', () => {

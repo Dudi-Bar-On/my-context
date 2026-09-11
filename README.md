@@ -218,8 +218,12 @@ each of its four limits has an answer here.
 - **It grows until it is skimmed** — nothing in it records when it was last relevant. Here,
   every tier has a token budget, and `mycontext decay` reports which items have not been
   *injected* in the last window of sessions. Injected, not used: the report prints that
-  caveat about itself, because an item read through `mycontext show` leaves no trace in the
-  ledger and looks identical to an abandoned one.
+  caveat about itself, because the usage ledger it reads is built from deliveries alone, so
+  an item that is read often and injected rarely looks identical to an abandoned one. The
+  other half of that measurement now exists beside it — `mycontext show <id>` and the MCP
+  `get_item` each append a `read` record naming the item and the surface, so *delivered and
+  never followed* is a countable thing rather than an unmeasured one. `mycontext decay`
+  does not read it yet, and says so rather than implying it does.
 
 ### The unusual parts
 
@@ -2792,7 +2796,7 @@ mycontext audit --since 7d              everything in the last week
 mycontext audit --item RULE-x           everything that happened to one item
 mycontext audit --session <id>          one session, in order
 mycontext audit --op promote            one operation
-mycontext audit --kind progress         one kind of record, of the six below
+mycontext audit --kind progress         one kind of record, of the eight below
 mycontext audit --origin agent          only what an agent did
 mycontext audit --summary               counts by operation
 mycontext audit --items                 which items this log names most
@@ -2828,14 +2832,26 @@ for exactly the history being maintained most actively. Records written before t
 existed simply lack it, and every surface shows those as **"tokens not recorded" — never
 as zero**. Zero is a measurement; absent is not.
 
-##### Seven kinds, and the version the log declares
+##### Eight kinds, and the version the log declares
 
-`--kind` cuts the log by what a record *is*, and it accepts exactly seven names:
-`mutation`, `injection`, `hook`, `focus`, `access`, `progress` and `execution`. A name
-outside that set is refused with the whole list, rather than silently matching nothing.
-<!-- `core/audit.ts` · `'mutation', 'injection', 'hook', 'focus', 'access', 'progress', 'execution',` · ~648 -->
+`--kind` cuts the log by what a record *is*, and it accepts exactly eight names:
+`mutation`, `injection`, `hook`, `focus`, `access`, `progress`, `execution` and `read`. A
+name outside that set is refused with the whole list, rather than silently matching nothing.
+<!-- `core/audit.ts` · `'mutation', 'injection', 'hook', 'focus', 'access', 'progress', 'execution', 'read',` · ~730 -->
 
-The newest is **`execution`, which records a command the web UI ran** — see
+The newest is **`read`, which records that an item's body was fetched** — one op,
+`item-read`, written by `mycontext show <id>` and by the MCP `get_item` tool, carrying the
+item's own id and which of the two surfaces it came through (`cli` or `mcp`). It is the
+inverse of `injection` and deliberately not folded into it: an injection is text this
+product *pushed* at a model, and a read is an item a reader *pulled* after being handed
+nothing but its name. Until it existed the log could say what it handed over and never what
+was used, so "is this item worth keeping" was decided on delivery as a proxy — a proxy that
+separates nothing here, since the log has delivered every injectable item at least once. The
+web UI's read routes record nothing: they are a read surface by guarantee, and a person
+browsing a screen is not the reader the index tier's premise is about.
+<!-- `core/audit.ts` · `export const READ_OPS = ['item-read'] as const;` · ~630 -->
+
+Before it came **`execution`, which records a command the web UI ran** — see
 [the web UI can run what it composes](#the-web-ui-can-run-what-it-composes). It is a pair of
 operations rather than one, `execute` and `execute-done`, written at the same instant and
 joined by the command's id: the first says a run was authorised and started, the second says
@@ -2844,7 +2860,7 @@ refused — every hook appends to this log from its own process without a lock, 
 read-modify-write destroys whatever another writer appended in between, measured at between
 1 and 21 lost rows per run. A refused run is not here at all: refusal happens at the request
 gate and is already `ui-refused` under `access`.
-<!-- `core/audit.ts` · `export const EXECUTION_OPS = ['execute', 'execute-done'] as const;` · ~548 -->
+<!-- `core/audit.ts` · `export const EXECUTION_OPS = ['execute', 'execute-done'] as const;` · ~560 -->
 
 Before it came **`progress`, which records a step tick against a `procedure`**. It
 belongs beside `focus` rather than under `mutation` for the same reason `focus` does: a tick
@@ -2868,10 +2884,11 @@ line 2 declares protocol "my_context/audit@3", expected "my_context/audit@1" or
 The protocol is checked before the record's `kind` and `op` are looked at, which is what
 makes that message possible: the diagnosis is "this log is newer than I am" rather than a
 complaint about a vocabulary the reader happens not to know. **Upgrading is safe;
-downgrading is not.** A log containing `progress` or `execution` records cannot be read by a
-build that predates those kinds — `--kind`'s vocabulary is closed, and an unrecognised name
-takes the whole segment with it rather than being skipped. Both arrived inside the break
-`@2` already declares, so neither of them bumped the protocol a second time.
+downgrading is not.** A log containing `progress`, `execution` or `read` records cannot be
+read by a build that predates those kinds — `--kind`'s vocabulary is closed, and an
+unrecognised name takes the whole segment with it rather than being skipped. All three
+arrived inside the break `@2` already declares, so none of them bumped the protocol a second
+time.
 
 ##### Two files, and only one of them is the record
 

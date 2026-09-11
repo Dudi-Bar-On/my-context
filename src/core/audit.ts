@@ -168,9 +168,21 @@ export const AUDIT_PROTOCOLS_READ = ['my_context/audit@1', AUDIT_PROTOCOL] as co
  * other five kinds each claim something a run did not do — it put no corpus text
  * in front of a model, it ran in no hook, it refused no request, it ticked no
  * step. It is genuinely a seventh thing, so it is a seventh kind.
+ *
+ * **`read` is the eighth, and it is the inverse of `injection`.** An injection
+ * is text PUSHED at a model by this product; a read is an item PULLED out of
+ * the corpus by a reader who was handed nothing but its name. Until it existed
+ * the log could say what it handed over and could not say what was used, so
+ * every decision about what to pin, trim, retire or promote was taken on
+ * delivery as a proxy for use — and delivery discriminates nothing here: the
+ * self-improvement loop measured injectable items this log has NEVER delivered
+ * at 0 of 158. See `READ_OPS` for why it is not folded into `injection` (it
+ * would make `--kind injection` over-report what a model was shown) and not
+ * into `access` (whose two ops are the web UI's request gate, and neither of
+ * which names an item).
  */
 export type AuditKind =
-  'mutation' | 'injection' | 'hook' | 'focus' | 'access' | 'progress' | 'execution';
+  'mutation' | 'injection' | 'hook' | 'focus' | 'access' | 'progress' | 'execution' | 'read';
 
 /**
  * Every operation that changes an item. One record per act, not per write:
@@ -548,12 +560,82 @@ export type ProgressOp = (typeof PROGRESS_OPS)[number];
 export const EXECUTION_OPS = ['execute', 'execute-done'] as const;
 export type ExecutionOp = (typeof EXECUTION_OPS)[number];
 
+/**
+ * An item's body was FETCHED by a reader who resolved it from an id
+ * (`TASK-reading-an-item-is-not-audited-so-nobody-can-tell-whether-an`,
+ * `budget/15`; owner ruling 2026-09-07).
+ *
+ * **The premise this makes testable.** The index tier delivers a title and
+ * nothing else, on the premise that a name is enough BECAUSE it can be
+ * followed. Nothing tested that premise, so the middle of the mechanism this
+ * project is for was being taken on faith — and three separate measurements
+ * stopped at it in one week: a retirement rule that could only rank items by
+ * which door they came through, a pinned-set review that trimmed on
+ * "delivered" while writing its own caveat that delivered is not read, and a
+ * self-improvement loop that found 0 of 158 injectable items undelivered, i.e.
+ * a signal that separates nothing. `item-read` is the column that separates.
+ *
+ * **ONE op, not one per surface.** WHICH door a read came through is
+ * `AuditRecord.surface` — a value a reader filters and counts — and an op per
+ * surface would put the surface list inside a closed vocabulary that
+ * `parseAudit` refuses a whole SEGMENT over, so adding a read door would make
+ * yesterday's log unreadable. The op answers *was it followed*; the record
+ * answers *through what*. Same argument `EXECUTION_OPS` makes for `command.id`.
+ *
+ * **A `read` kind rather than an `injection` op, and this is the whole
+ * requirement.** `injection` means *this product put corpus text in front of a
+ * model*, and every reader of the log — `ledgerRows` below, `ui/port-model.ts`,
+ * the decay and occupancy surfaces — reads it that way. A fetch is the opposite
+ * direction: nothing was selected, no budget was spent, no tier was chosen, and
+ * the text went to whoever asked for it. Folding it in would make
+ * `mycontext audit --kind injection` over-report what models were shown, which
+ * is the one question this log exists to answer — and it would replace the
+ * delivery proxy with a proxy that also swallows its own control group.
+ *
+ * **And not an `ACCESS_OPS` member, which is the near miss worth naming.** That
+ * family is the web UI's request gate: `ui-refused` is a request the gate said
+ * no to, `nonce-minted` is a credential it handed out. Neither names an item —
+ * `refusal`'s own field note above says an `access` record carries no `itemId`
+ * — and both are security events. Filing item reads there would make
+ * `mycontext audit --kind access`, today "what the gate did", answer mostly
+ * with item fetches: a question with a wrong answer, which is the test
+ * `FOCUS_OPS`, `ACCESS_OPS` and `EXECUTION_OPS` each applied when they became
+ * kinds of their own.
+ *
+ * **What is recorded is ids and surfaces, and deliberately nothing else.** A
+ * fetch payload carries item text; the audit log is not the place to copy the
+ * corpus into, which is the same rule `injected` follows for the same two
+ * reasons (size, and a second unchecksummed copy of an item body).
+ *
+ * **Only a fetch that RESOLVED is recorded.** An id that answers to no item is
+ * not a read of anything, and recording one would let "was item X ever read"
+ * be answered yes by a lookup that failed — and would put a caller-supplied
+ * string in the field every reader treats as an item id.
+ *
+ * **CLI and MCP only. The UI read routes do not record**, by owner ruling
+ * 2026-09-07 taken after the conflict was measured rather than argued:
+ * `recordAudit` writes inside `.my_context/`, which `test/ui/server-e2e.test.ts`
+ * snapshots byte-for-byte, and `test/ui/no-writes.test.ts` holds an exact set
+ * of write bindings under `src/ui/` that a read module binding this would
+ * break before a request was ever made. The ruling costs the question nothing:
+ * an agent follows an index line through `get_item`, and a person browsing the
+ * web screen is not the reader this is asking about — so the UI is at once the
+ * only surface that conflicts and the one least relevant.
+ *
+ * Inside the break `@2` already declares, with `progress`, `execution` and the
+ * handover fields: an older reader refuses the whole v2.0 vocabulary widening
+ * through the same validator, and a second protocol bump would spend a
+ * downgrade break that has not been paid back yet.
+ */
+export const READ_OPS = ['item-read'] as const;
+export type ReadOp = (typeof READ_OPS)[number];
+
 export type AuditOp =
-  MutationOp | InjectionOp | HookOp | FocusOp | AccessOp | ProgressOp | ExecutionOp;
+  MutationOp | InjectionOp | HookOp | FocusOp | AccessOp | ProgressOp | ExecutionOp | ReadOp;
 
 export const AUDIT_OPS: AuditOp[] = [
   ...MUTATION_OPS, ...INJECTION_OPS, ...HOOK_OPS, ...FOCUS_OPS, ...ACCESS_OPS, ...PROGRESS_OPS,
-  ...EXECUTION_OPS,
+  ...EXECUTION_OPS, ...READ_OPS,
 ];
 
 /**
@@ -645,7 +727,7 @@ export const REGISTERED_HOOK_OPS: Record<string, AuditOp[]> = {
  * new kind slotted into the middle would silently renumber a list users read.
  */
 export const AUDIT_KINDS: AuditKind[] = [
-  'mutation', 'injection', 'hook', 'focus', 'access', 'progress', 'execution',
+  'mutation', 'injection', 'hook', 'focus', 'access', 'progress', 'execution', 'read',
 ];
 
 /** Which kind an op belongs to. One table, so no caller can classify one twice. */
@@ -670,6 +752,10 @@ const KIND_OF: Record<AuditOp, AuditKind> = {
   // Both halves of one run, and both `execution`: a reader filtering
   // `--kind execution` wants the run, not half of it.
   execute: 'execution', 'execute-done': 'execution',
+  // The inverse of `injection`: an item PULLED by a reader holding its name,
+  // rather than text pushed at a model. `READ_OPS` has the whole argument,
+  // including why it is neither an `injection` op nor an `access` one.
+  'item-read': 'read',
 };
 
 export function kindOf(op: AuditOp): AuditKind {
@@ -1188,7 +1274,44 @@ export interface AuditRecord {
    * `command` and the three `handover*` fields above.
    */
   handoverAsk?: HandoverAskVerdict;
+  /**
+   * `read` records only: WHICH door the item was fetched through.
+   *
+   * **A field, not a `note`.** *Did an agent ever follow an index line* is the
+   * premise the index tier rests on, asked across every row in the log by
+   * somebody who wants a count; a fact worth querying does not go behind a
+   * regex over English, the same argument `trigger`, `occupancyPercent` and
+   * `handoverState` already carry. The task that asked for this named the
+   * choice explicitly — note convention, or a field deliberately — and this is
+   * the deliberate field.
+   *
+   * **It is NOT `AuditRecord.origin`, and that is not a naming quibble.**
+   * `origin` is `human | agent | ingest` and means who made a MUTATION. A
+   * delivery lane running `mycontext show` from its shell is an agent on the
+   * `cli` surface, and a person can read through either; mapping surface onto
+   * origin would record a claim about WHO from a fact about WHERE. A read
+   * carries no `origin` at all for that reason.
+   *
+   * **Two members, because two surfaces record.** The UI read routes are
+   * excluded by owner ruling — see `READ_OPS` — so `ui` is deliberately absent
+   * rather than reserved: a member nothing writes is a value a reader would
+   * count zero of and misread as "the web was never used".
+   *
+   * ABSENT on every non-`read` record, and on nothing else.
+   */
+  surface?: ReadSurface;
 }
+
+/**
+ * The doors an item body can be fetched through and have it recorded.
+ *
+ * `cli` is `mycontext show <id>`; `mcp` is `get_item`. Spelled as the SURFACE
+ * rather than the command so that a second CLI read command does not become a
+ * second vocabulary for the same door — what a reader of this log wants to
+ * separate is the terminal from the tool interface, which is the separation
+ * the index tier's premise is actually about.
+ */
+export type ReadSurface = 'cli' | 'mcp';
 
 /** What a caller supplies; `protocol` and `at` are stamped here. */
 export type AuditInput = Omit<AuditRecord, 'protocol' | 'at'> & { at?: string };
@@ -1539,6 +1662,37 @@ export function recordAudit(root: string, input: AuditInput): AuditWriteResult {
   // the projection exactly where the old behaviour left it after EVERY append
   // — one record behind — and say so.
   return { written: true, projection: keepProjectionCurrent(root, rotatedTo) };
+}
+
+/**
+ * Records that one item's body was fetched, and through which door.
+ *
+ * **The ONE place a read is written**, so the two surfaces cannot drift into
+ * two shapes of the same fact — which is the defect this project keeps
+ * measuring and the reason nothing here wraps `recordAudit` with a second
+ * appender. `show` (`cli/index.ts`) and `get_item` (`mcp/tools.ts`) both come
+ * through here.
+ *
+ * **Call it only once the lookup has SUCCEEDED**, and pass the item's own id
+ * rather than the string the caller typed. Today those are the same characters
+ * — `Store.get` is an exact-match `WHERE id = ?` and resolves no abbreviation,
+ * alias or near miss — so this is not a bug being fixed but a shape that stays
+ * correct if lookup ever widens: a read recorded under what somebody typed
+ * could not be counted by asking for the item. A lookup that found NOTHING
+ * records nothing, and that one is load-bearing today — see `READ_OPS`.
+ *
+ * Never throws, and the result is RETURNED for the same reason `recordAudit`'s
+ * is: by the time this runs the body has already been rendered, so a failure
+ * here is a hole in the measurement and never a failed read. Both callers put
+ * `auditFailureNote` into what their reader sees, because a read that silently
+ * failed to record would make the eventual count a floor that looks like a
+ * measurement — the difference `STD-a-measured-zero-is-drawn-and-named` exists
+ * to keep.
+ */
+export function recordItemRead(
+  root: string, itemId: string, surface: ReadSurface,
+): AuditWriteResult {
+  return recordAudit(root, { kind: 'read', op: 'item-read', itemId, surface });
 }
 
 /**

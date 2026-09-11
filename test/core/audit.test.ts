@@ -170,12 +170,12 @@ test('a v1 log still reads after the bump — every kind v1 knew', () => {
 
   const records = readAudit(b.root);
   assert.equal(records.length, 5);
-  // v1 knew five kinds. `progress` and `execution` arrived after it, so the
-  // fixture cannot supply them and the expectation says which two and why
+  // v1 knew five kinds. `progress`, `execution` and `read` arrived after it, so
+  // the fixture cannot supply them and the expectation says which three and why
   // rather than shrinking to a count.
   assert.deepEqual(
     records.map((r) => r.kind),
-    AUDIT_KINDS.filter((k) => k !== 'progress' && k !== 'execution'),
+    AUDIT_KINDS.filter((k) => k !== 'progress' && k !== 'execution' && k !== 'read'),
   );
   // Read, not rewritten: the lines on disk still declare @1.
   assert.match(readFileSync(auditLogPath(b.root), 'utf8'), /my_context\/audit@1/);
@@ -385,10 +385,10 @@ test('every progress op is classified progress, and none is a mutation', () => {
  * from `AUDIT_KINDS` is refused by `specFor`'s validator on every line, and the
  * order is what the CLI's and MCP's enum listings show a reader.
  */
-test('the kind register is APPEND-ONLY — progress sixth, execution seventh, nothing moved', () => {
+test('the kind register is APPEND-ONLY — progress sixth, execution seventh, read eighth, nothing moved', () => {
   assert.deepEqual(
     AUDIT_KINDS,
-    ['mutation', 'injection', 'hook', 'focus', 'access', 'progress', 'execution'],
+    ['mutation', 'injection', 'hook', 'focus', 'access', 'progress', 'execution', 'read'],
   );
   assert.equal(new Set(AUDIT_KINDS).size, AUDIT_KINDS.length);
   assert.equal(new Set(AUDIT_OPS.map(kindOf)).size, AUDIT_KINDS.length,
@@ -460,9 +460,20 @@ test('no pre-existing op changed kind', () => {
       // (TASK-a-third-of-the-audit-feed-is-stop-rows-for-things-that-were,
       // hooks/34).
       'agent-dispatched', 'agent-step', 'agent-item-waived', 'subagent-stop-untyped',
-      'nonce-minted', 'execute', 'execute-done'],
+      'nonce-minted', 'execute', 'execute-done',
+      // `item-read` (2026-09-11, `budget/15`) ends AUDIT_OPS, appended after the
+      // execution pair because `READ_OPS` is spread last. It is the THIRD
+      // non-hook addition and is excluded from the loop below by name for the
+      // same reason as the other two: it is an item FETCHED by a reader who
+      // held only its name, which is neither an injection (nothing was pushed
+      // at a model, no budget was spent) nor a hook firing. See `READ_OPS` in
+      // `src/core/audit.ts` for why it founded a kind instead of joining
+      // `ACCESS_OPS`.
+      'item-read'],
   );
   assert.equal(kindOf('nonce-minted'), 'access', 'a mint is the access kind\'s second op, not a hook');
+  assert.equal(kindOf('item-read'), 'read',
+    'a fetch is the read kind, not the injection kind a delivery would claim');
   // The execution PAIR, and it is a pair because the log cannot be amended:
   // `execute` is appended before the process starts and `execute-done` after it
   // returns. An `execute` row with no `execute-done` beside it is a run that
@@ -470,7 +481,8 @@ test('no pre-existing op changed kind', () => {
   // `subagent-start` already use, for the same reason.
   for (const op of EXECUTION_OPS) assert.equal(kindOf(op), 'execution');
   for (const op of AUDIT_OPS.filter((o) =>
-    !(o in before) && !EXECUTION_OPS.includes(o as never) && o !== 'nonce-minted')) {
+    !(o in before) && !EXECUTION_OPS.includes(o as never)
+    && o !== 'nonce-minted' && o !== 'item-read')) {
     assert.equal(kindOf(op), 'hook', `${op} joined a family that claims something it did not do`);
   }
 });

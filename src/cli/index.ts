@@ -19,6 +19,7 @@ import { pruneSnapshots } from '../core/ledger.ts';
 import {
   largestFullTextBudget, readSnapshot, snapshotBudgetLine, snapshotSizeLine,
 } from '../core/reference.ts';
+import { auditFailureNote, recordItemRead } from '../core/audit.ts';
 import { openRebuiltStore } from '../core/open-store.ts';
 import type { LoadError } from '../core/rebuild.ts';
 import type { Store } from '../core/store.ts';
@@ -1414,7 +1415,8 @@ function cmdList(ws: Workspace, args: string[], out: Emit): number {
 }
 
 function cmdShow(ws: Workspace, args: string[], out: Emit): number {
-  if (!requireWorkspace(ws, out)) return 1;
+  const root = requireWorkspace(ws, out);
+  if (!root) return 1;
   const id = args[0];
   if (!id) { out('usage: mycontext show <id>'); return 1; }
 
@@ -1426,6 +1428,20 @@ function cmdShow(ws: Workspace, args: string[], out: Emit): number {
     emitLoadErrors(errors, out);
     return 1;
   }
+  // **This is where an index line gets FOLLOWED, so this is where it is
+  // recorded** (`budget/15`,
+  // `TASK-reading-an-item-is-not-audited-so-nobody-can-tell-whether-an`). The
+  // item's own id, never `args[0]` — the same characters today, because
+  // `Store.get` matches ids exactly and resolves nothing, and the shape that
+  // stays right if it ever stops.
+  // AFTER the lookup succeeded — a miss is not a read — and before the body is
+  // printed, so the ordering matches every other record in this log: the fact
+  // is written down at the moment it becomes true.
+  //
+  // Not on any hook path. `show` is an interactive command; the 50 ms p95
+  // PreToolUse ceiling is untouched by it, and `recordAudit`'s append does not
+  // read the log, so the cost is flat in its size.
+  const audit = recordItemRead(root, item.id, 'cli');
   out(renderItem(item));
   // **The one place a reader of an item meets its summary, so it is the one
   // place staleness has to be said.**
@@ -1441,6 +1457,14 @@ function cmdShow(ws: Workspace, args: string[], out: Emit): number {
   // nothing is redacted, exactly as a spilled item is named rather than hidden.
   const staleness = summaryStalenessNote(item);
   if (staleness !== null) { out(''); for (const line of paragraph(staleness)) out(line); }
+  // **Empty on the success path, so nothing here changes what a reader sees
+  // until something has actually gone wrong.** A read that failed to record is
+  // a hole in the measurement three separate reviews are waiting on, and a
+  // silent hole turns "nobody followed this item" into a claim nobody
+  // measured. The item was still found and still printed, so this is a note
+  // and not a failure — `show`'s exit code is unchanged.
+  const auditNote = auditFailureNote(audit);
+  if (auditNote !== '') { out(''); for (const line of paragraph(auditNote.trim())) out(line); }
   // F2: `show` found and printed the item it was asked for; an unrelated
   // load error is a warning, not a failure — see the comment in cmdAdd.
   emitLoadErrors(errors, out);

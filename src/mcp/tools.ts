@@ -2,7 +2,7 @@ import { existsSync, readFileSync } from 'node:fs';
 import path from 'node:path';
 import {
   AUDIT_KINDS, AUDIT_OPS, auditFailureNote, filterAudit, kindOf, parseWhen, PROGRESS_OPS,
-  readAudit, recordAudit,
+  readAudit, recordAudit, recordItemRead,
   type AuditFilter, type AuditKind, type AuditOp,
 } from '../core/audit.ts';
 import { RULE_DIRECTIVES } from '../core/command-flags.ts';
@@ -1032,6 +1032,19 @@ const SPECS: ToolSpec[] = [
     // user.
     run: (cwd, args) => withWorkspace(cwd, (ctx) => {
       const item = requireItem(ctx, str(args, 'id', 'get_item'));
+      // **The surface the index tier's premise is actually about**
+      // (`budget/15`,
+      // `TASK-reading-an-item-is-not-audited-so-nobody-can-tell-whether-an`).
+      // An agent handed a title and nothing else follows it through HERE, so
+      // this call is the evidence that a name was enough — and without it the
+      // log could say what it handed over and never what was used.
+      //
+      // `item.id`, never the string the model sent — the same characters
+      // today, because `requireItem` goes through `Store.get`, which matches
+      // ids exactly; this is the shape that stays right if that ever widens.
+      // AFTER the lookup succeeded: `requireItem` throws on a miss, and a miss
+      // is not a read.
+      const audit = recordItemRead(ctx.root, item.id, 'mcp');
       const notice = itemRevisionNotice(item.id, pendingRevisions(ctx));
       // The same disclosure `mycontext show` prints, from the same function
       // (content-hash.ts), and for a sharper reason on this surface: a model
@@ -1040,9 +1053,14 @@ const SPECS: ToolSpec[] = [
       // frontmatter lines no reader can hash in their head. The summary is
       // never withheld here — it is labelled.
       const stale = summaryStalenessNote(item);
+      // Empty unless the append or its projection actually failed — the same
+      // disclosure every mutation tool already appends, for a sharper reason
+      // here: a read that did not record makes the eventual count a floor
+      // wearing a measurement's clothes.
       return renderItem(item)
         + (stale ? `\n\n${stale}` : '')
-        + (notice ? `\n\n${notice}` : '');
+        + (notice ? `\n\n${notice}` : '')
+        + auditFailureNote(audit);
     }),
   },
   {

@@ -122,8 +122,16 @@ test('a run is TWO rows: execute before it, execute-done after, joined by at and
  */
 test('execute-done joins the closed register, appended after execute', () => {
   assert.ok(AUDIT_OPS.includes('execute-done'), 'the op is registered');
-  assert.equal(AUDIT_OPS[AUDIT_OPS.length - 1], 'execute-done');
-  assert.equal(AUDIT_OPS[AUDIT_OPS.length - 2], 'execute');
+  // **Position RELATIVE to `execute`, not absolute.** This used to read
+  // `AUDIT_OPS[length - 1]`, which said "appended" only for as long as
+  // `EXECUTION_OPS` was the last family spread into `AUDIT_OPS` — `READ_OPS`
+  // (`item-read`, 2026-09-11, `budget/15`) is spread after it, which moved the
+  // end of the list without moving this pair at all. The claim that matters is
+  // that the pair is in order and that nothing before it shifted, and that is
+  // what these two lines now assert.
+  assert.equal(AUDIT_OPS.indexOf('execute-done'), AUDIT_OPS.indexOf('execute') + 1);
+  assert.equal(AUDIT_OPS.indexOf('execute'), AUDIT_OPS.indexOf('step-reset') + 1,
+    'the execution pair still follows the progress family, moving no member before it');
   assert.equal(new Set(AUDIT_OPS).size, AUDIT_OPS.length);
   // Registration is not the same as writability: this proves a build that
   // WRITES an `execute-done` can also READ it back.
@@ -172,8 +180,12 @@ test('an execute row with no execute-done beside it reads as a run that never re
 test('execution joins the closed register as the seventh kind, appended not inserted', () => {
   assert.ok(AUDIT_KINDS.includes('execution'), 'the kind is registered');
   assert.ok(AUDIT_OPS.includes('execute'), 'the op is registered');
-  assert.equal(AUDIT_KINDS[AUDIT_KINDS.length - 1], 'execution',
-    'appended last, so no existing kind moved position in any enum a reader is shown');
+  // SEVENTH, by index — the claim is that nothing before it moved, and that
+  // survives a later kind being appended after it (`read`, 2026-09-11,
+  // `budget/15`). Asserting "last" made this test a hostage to whichever kind
+  // arrived most recently rather than a statement about `execution`.
+  assert.equal(AUDIT_KINDS.indexOf('execution'), 6,
+    'seventh, so no existing kind moved position in any enum a reader is shown');
   assert.equal(new Set(AUDIT_KINDS).size, AUDIT_KINDS.length);
   assert.equal(new Set(AUDIT_OPS).size, AUDIT_OPS.length);
 });
