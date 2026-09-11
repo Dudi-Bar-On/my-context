@@ -37,11 +37,13 @@
  * port". Both are refused below, from the occurrences rather than from the
  * collapsed answer.
  */
+import path from 'node:path';
 import { openProjection, syncProjection } from '../../core/audit-db.ts';
 import { COMMAND_FLAGS } from '../../core/command-flags.ts';
+import { canonicalizeNearestExisting } from '../../core/paths.ts';
 import { probeUiServer, type Liveness } from '../../core/ui-server-probe.ts';
 import { uiServerRecordPath } from '../../core/ui-server-record.ts';
-import type { Workspace } from '../../core/workspace.ts';
+import { repositoryRoot, type Workspace } from '../../core/workspace.ts';
 import { IDLE_MS, MAX_IDLE_MS } from '../../ui/idle.ts';
 import { openBrowser } from '../../ui/open.ts';
 import {
@@ -373,6 +375,17 @@ function deliverNonce(
  * is still missing, so the line before the URL says so rather than letting a
  * working `--nonce` hide a broken upkeep (`INV-nothing-is-dropped-silently`).
  *
+ * ── "A LIVE SERVER" IS NOT "YOUR LIVE SERVER" ─────────────────────────────
+ *
+ * The third thing this command was wrong about, and the worst of them, because
+ * it did not fail: an `alive` probe was treated as an answer when the record it
+ * probed can name any server on this machine. See `NonceCaller` for the
+ * measurement, for why one record per user is right and what follows from it,
+ * and for the ruling on which server `--nonce` answers for when several are
+ * running. The shape here is the same as the two states above — the widening
+ * to the configured `ui.port` is shared, and a refusal names what it could not
+ * confirm rather than answering about something else.
+ *
  * ── WHY THIS PRINTS RATHER THAN RETURNS ────────────────────────────────────
  *
  * Same shape as every other exit from `cmdUi`: `out` is the only channel, and
@@ -398,12 +411,19 @@ function deliverNonce(
 // spawning a real browser from a test or never covering that branch at all.
 export async function cmdUiNonce(
   out: Emit,
-  configuredPort: number | null,
+  caller: NonceCaller,
   noOpen: boolean,
   openFn: typeof openBrowser = openBrowser,
 ): Promise<void> {
   const liveness = await probeUiServer();
-  if (liveness.state === 'alive') {
+  // **The record is one per USER, so an `alive` verdict is not yet an answer
+  // to the question that was asked.** See `NonceCaller`. A live server that
+  // serves a different corpus is refused here rather than minted from, and the
+  // refusal happens BEFORE the mint so no credential for it ever exists.
+  const foreign = liveness.state === 'alive' && !sameWorkspace(liveness.workspace, caller.workspace)
+    ? liveness
+    : null;
+  if (liveness.state === 'alive' && foreign === null) {
     const minted = await mintNonceFrom(liveness.url, noOpen);
     if (minted.nonce === null) {
       out(minted.kind === 'unreachable'
@@ -422,22 +442,98 @@ export async function cmdUiNonce(
   // The one other address, and only when it is one the probe has not already
   // disproved: a `dead` verdict on the configured port is a connect that was
   // just refused, and repeating it would spend a second on a settled question.
+  //
+  // The foreign case adds the second exclusion, and it is the same argument
+  // from the other end: when the record's port IS the configured one, that
+  // address has just been proved to hold the OTHER workspace's server, so
+  // trying it would walk straight back into the defect this function refuses
+  // one branch up — by a different route and with the disclosure missing.
+  const configuredPort = caller.configuredPort;
   const fallbackPort = configuredPort !== null && configuredPort !== 0
     && !(liveness.state === 'dead' && liveness.port === configuredPort)
+    && !(foreign !== null && foreign.port === configuredPort)
     ? configuredPort
     : null;
   let fallback: NonceMint | null = null;
   if (fallbackPort !== null) {
     fallback = await mintNonceFrom(`http://127.0.0.1:${fallbackPort}/`, noOpen);
     if (fallback.nonce !== null) {
-      out(`mycontext ui: ${recoveredWithoutRecordLine(liveness, fallbackPort)}`);
+      out(`mycontext ui: ${recoveredWithoutRecordLine(liveness, foreign, fallbackPort)}`);
       deliverNonce(out, fallbackPort, fallback.nonce, noOpen, openFn);
       return;
     }
   }
 
-  out(noServerLine(liveness, fallbackPort, fallback));
+  out(foreign !== null
+    ? foreignServerLine(foreign, caller, fallbackPort, fallback)
+    : noServerLine(liveness, fallbackPort, fallback));
   process.exitCode = 1;
+}
+
+/**
+ * WHOSE server `--nonce` is asking about — the fact this command did not have,
+ * and the whole of `TASK-ui-nonce-falls-back-to-a-stale-record-and-hands-you-a`.
+ *
+ * ── WHY A WORKSPACE HAD TO BE PASSED IN AT ALL ─────────────────────────────
+ *
+ * `~/.my-context/ui-server.json` is ONE file per user. That is correct and is
+ * argued where it is written (`core/ui-server-record.ts`: a pid, a port and a
+ * URL are true of one process on one machine, and a record in a tracked
+ * `.my_context/` would travel). What follows from it is the part nobody had
+ * written down: **a second server is an unrecorded server**, and the record
+ * goes on naming whichever one wrote it last. Here that is the normal state,
+ * not an edge — lanes start throwaway servers on port 0 constantly.
+ *
+ * Measured twice on 2026-09-05. A lane started its own server; the record
+ * write failed with `EPERM` (a Windows share-mode rename conflict, the same
+ * one `retryTransientRenameOnce` exists for), so the previous record survived
+ * untouched; `--nonce` read it, probed it, found it genuinely alive, and
+ * minted. The lane got a WORKING credential for somebody else's server, exit
+ * 0, no sentence anywhere saying whose. It then killed that process believing
+ * it was cleaning up after itself. The staleness is not bounded by anything: a
+ * record is only rewritten by a server that starts and succeeds in writing it,
+ * so the one on disk can be arbitrarily old and still probe alive.
+ *
+ * ── WHICH SERVER IT ANSWERS FOR, WHEN SEVERAL ARE RUNNING ─────────────────
+ *
+ * **The one serving THIS workspace. Never the newest.** The record names the
+ * newest only by accident of write order, which is a race between unrelated
+ * processes; and a nonce is a credential FOR the server that mints it — it
+ * redeems at that server's `/api/handoff` for that server's session token, and
+ * that server is serving one corpus. Answering with the newest would be
+ * answering a question the caller did not ask, with a key to a corpus they did
+ * not name.
+ *
+ * So when the record names another workspace this command refuses, and the
+ * only widening left is the one the no-record path already allows: the single
+ * address a person wrote down in THIS workspace's own `ui.port`.
+ */
+export interface NonceCaller {
+  /**
+   * The repository root this nonce is being asked for, spelled the way
+   * `src/ui/server.ts` spells the `workspace` field it writes into the record
+   * (`repositoryRoot(cwd) ?? path.dirname(corpusRoot)`) — the same expression,
+   * so the two sides of the comparison below cannot drift apart.
+   */
+  workspace: string;
+  /** `ui.port` from this workspace's config, or `null`. The one widening. */
+  configuredPort: number | null;
+}
+
+/**
+ * Are these two paths the same workspace?
+ *
+ * `canonicalizeNearestExisting` on both sides rather than a string compare:
+ * the record is written by one process and read by another, and Windows alone
+ * offers a drive letter in either case, an 8.3 short name, and a junction — all
+ * three of which spell one directory three ways. It degrades to `path.resolve`
+ * for a path that no longer exists, which answers "different" for a recorded
+ * workspace that has since been deleted. That is the right direction to fail
+ * in: every uncertainty here becomes a refusal that names what it could not
+ * confirm, never a credential for a server the caller never asked about.
+ */
+function sameWorkspace(a: string, b: string): boolean {
+  return canonicalizeNearestExisting(a) === canonicalizeNearestExisting(b);
 }
 
 /** What `mintNonceFrom` found at one address. */
@@ -542,14 +638,80 @@ export async function mintNonceFrom(url: string, printed: boolean): Promise<Nonc
  * upkeep hook and the next `--nonce`. Printing the URL alone would be a working
  * command quietly hiding a broken one.
  */
-function recoveredWithoutRecordLine(liveness: Liveness, port: number): string {
+function recoveredWithoutRecordLine(
+  liveness: Liveness, foreign: ForeignServer | null, port: number,
+): string {
   const found = `a server answered on the configured ui.port ${port}, so here is a credential ` +
     'from it. The record is still missing: nothing else can find this server, so the upkeep ' +
     'hook will not put it back after it exits. Restarting `mycontext ui` is what rewrites it.';
+  // The foreign case FIRST: `liveness.state` is `alive` here, so neither branch
+  // below describes it, and falling through to the `no-record` wording would
+  // say a record is absent while holding one in its hand.
+  if (foreign !== null) {
+    return `the liveness record names port ${foreign.port}, which is serving ` +
+      `${foreign.workspace} and not this workspace, so it was not asked — but ` +
+      `a server answered on the configured ui.port ${port}, so here is a credential from it. ` +
+      'The record still names that other server: nothing else can find this one, so the upkeep ' +
+      'hook will not put it back after it exits. Restarting `mycontext ui` here is what ' +
+      'rewrites it.';
+  }
   return liveness.state === 'dead'
     ? `the liveness record named port ${liveness.port} and was disproved, so it has been ` +
       `removed — but ${found}`
     : `no liveness record — ${uiServerRecordPath()} is absent or unreadable — but ${found}`;
+}
+
+/** The `alive` liveness of a server that is serving someone else's corpus. */
+type ForeignServer = Extract<Liveness, { state: 'alive' }>;
+
+/**
+ * The refusal for the case this task exists for: a server is live, it is not
+ * yours, and no credential was minted from it.
+ *
+ * ── WHY THIS IS A REFUSAL AND NOT A WARNING BESIDE A URL ───────────────────
+ *
+ * A nonce is not advice. It redeems at ONE server's `/api/handoff` for that
+ * server's session token, which is read access to that server's corpus — and
+ * the URL printed beside it is an implied statement that this is the process
+ * you are working with. On 2026-09-05 a lane read exactly that implication and
+ * killed the process. A caution printed above a working link would have been
+ * read the same way; the only answer that cannot be misread is not producing
+ * the credential at all.
+ *
+ * Every fact the reader needs to act is named rather than summarised: WHICH
+ * record said it, which port and pid it names, which workspace that server is
+ * serving, which workspace asked, and the two commands that resolve it. This
+ * is the project's standing shape for a refusal
+ * (`STD-error-message-conventions`), and it applies here with unusual force —
+ * the reader of this message is, by construction, someone whose mental model
+ * of which server is theirs is already wrong.
+ */
+function foreignServerLine(
+  foreign: ForeignServer,
+  caller: NonceCaller,
+  fallbackPort: number | null,
+  fallback: NonceMint | null,
+): string {
+  // Said in every case, including when the port was excluded from the try
+  // rather than tried — "not tried, and why" is a fact, and dropping it would
+  // leave a reader who HAS set ui.port wondering whether it was consulted.
+  const tried = fallbackPort !== null && fallback !== null
+    ? ` The configured ui.port ${fallbackPort} was tried too, and it ${fallback.reason}.`
+    : caller.configuredPort !== null && caller.configuredPort === foreign.port
+      ? ` The configured ui.port ${foreign.port} was not tried separately: it is that same ` +
+        'server.'
+      : '';
+  return 'mycontext ui: the liveness record names a server for a different workspace, so no ' +
+    `credential was minted. ${uiServerRecordPath()} names port ${foreign.port} (pid ` +
+    `${foreign.pid}), which is up and is serving ${foreign.workspace}; you are asking from ` +
+    `${caller.workspace}. A nonce is a credential FOR the server that mints it, so answering ` +
+    'with that one would have handed you a way into another corpus and an implied licence to ' +
+    'stop a process that is not yours — which is what happened on 2026-09-05. There is one ' +
+    'record per user, because a pid and a port are facts about this machine rather than about ' +
+    `a corpus, so a second server is an unrecorded one.${tried} Run \`mycontext ui\` in this ` +
+    'workspace to start one — that rewrites the record — or, if a server for THIS workspace is ' +
+    'already up, set `ui.port` in .my_context/config.json to its port and run ' +
+    '`mycontext ui --nonce` again.';
 }
 
 /**
@@ -676,11 +838,28 @@ function cmdUi(ws: Workspace, args: string[], out: Emit, cwd: string): number {
     // to hold it open.
     //
     // `ws.config.ui.port` is the ONE address `--nonce` may try when the
-    // liveness record is missing. It is read here rather than inside
-    // `cmdUiNonce` because `ws` is already resolved and `cmdUiNonce` should
-    // depend on an address, not on a workspace — the same reason `resolvePort`
-    // hands back a number instead of consulting the config itself.
-    void cmdUiNonce(out, ws.config.ui.port, hasFlag(args, 'no-open'));
+    // liveness record is missing or names somebody else's server. It is read
+    // here rather than inside `cmdUiNonce` because `ws` is already resolved
+    // and `cmdUiNonce` should depend on an address, not on a workspace — the
+    // same reason `resolvePort` hands back a number instead of consulting the
+    // config itself.
+    //
+    // **And the workspace beside it, which is the fact that was missing.**
+    // `repositoryRoot(cwd) ?? path.dirname(ws.projectRoot)` is `server.ts`'s
+    // own expression for the `workspace` field it writes into the liveness
+    // record, copied deliberately and for the reason its author gives there:
+    // `repositoryRoot` ignores `CORPUS_DIR_ENV`, so it answers "where the
+    // person is" rather than "where the corpus was pointed", and the record
+    // must be comparable against the same question. Spelled the same on both
+    // sides, a workspace can never look foreign to itself.
+    void cmdUiNonce(
+      out,
+      {
+        workspace: repositoryRoot(cwd) ?? path.dirname(ws.projectRoot),
+        configuredPort: ws.config.ui.port,
+      },
+      hasFlag(args, 'no-open'),
+    );
     return 0;
   }
 

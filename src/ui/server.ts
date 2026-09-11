@@ -1415,9 +1415,12 @@ export async function startUiServer(options: UiServerOptions): Promise<RunningUi
         + `(${err instanceof Error ? err.message : String(err)}). The server still runs and this `
         + 'page still works; what is lost is that nothing else can find this server. '
         + '`mycontext ui --nonce` — the way to recover a tab that has lost its credential '
-        + 'WITHOUT restarting — reads that file and will report no record, and the upkeep hook '
-        + 'will neither probe this server nor put it back after it exits. Setting `ui.port` in '
-        + '.my_context/config.json gives `--nonce` an address to try when the record is missing.',
+        + 'WITHOUT restarting — reads that file and will not answer for THIS server: it reports '
+        + 'whatever the file still says, which is no record if the write never happened before, '
+        + "and a refusal naming another workspace's server if an older one wrote it. The upkeep "
+        + 'hook will neither probe this server nor put it back after it exits. Setting `ui.port` '
+        + 'in .my_context/config.json gives `--nonce` an address to try when the record cannot '
+        + 'be trusted.',
       );
     }
   }

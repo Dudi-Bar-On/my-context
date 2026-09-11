@@ -5,8 +5,10 @@ title: ui --nonce falls back to a stale record and hands you a credential for so
 status: active
 severity: soft
 always: false
-summary: When the liveness record cannot be written, the nonce command points at whatever server the global record last named.
-summary_of: 5beb95d6be5f5569
+summary: Asking for a web-UI credential now refuses when the only note of a running server points at somebody else's, instead of quietly handing you a working key to it.
+summary_of: e7c0d40acb4623f3
+summary_was:
+  - 2026-09-11 When the liveness record cannot be written, the nonce command points at whatever server the global record last named.
 scope:
   - src/cli/commands/ui.ts
   - src/ui/**
@@ -16,17 +18,17 @@ tags:
   - safety
   - "plan:live"
   - "seq:19"
-  - "state:todo"
+  - "state:done"
 origin: human
 source_file: null
 source_anchor: null
 source_checksum: null
 valid_from: 2026-09-05
 valid_until: null
-checksum: 371baf2539fb3e47
+checksum: 9e494875c0eddd7e
 plan: live
 seq: "19"
-state: todo
+state: done
 priority: "1"
 ---
 
@@ -47,3 +49,28 @@ What must be true at the end: a nonce request that cannot identify the caller's 
 Establish before building: why the EPERM happened, and whether the record path is per user, per workspace or global. If one server per user is the design, then a second server is the unhandled case and the fix is to say so. If it is meant to be per workspace, the fallback is reading the wrong scope entirely.
 
 And decide what --nonce should do when several servers are running, which is the normal state here: lanes start their own on port 0 constantly. Answering for the newest, or for the one matching this workspace, are different answers - state which and why.
+
+CLOSED 2026-09-11. Reproduced first, then fixed.
+
+WHAT THE EPERM WAS. Windows MoveFileEx onto a destination another handle holds, or onto a
+read-only one. It was reproduced directly: the record was made unwritable, the write failed
+after 56ms - one 50ms retry and then the real failure - and the PREVIOUS record survived
+untouched, because the write is temp-plus-rename. So a failed write does not clear the
+address; it leaves the old one standing.
+
+THE SCOPE, ESTABLISHED. The record is PER USER and global - one file in the home directory,
+holding one pid, one port and one workspace. That is right and stays: a pid is a fact about a
+machine. What follows from it is the part nobody had written down - a SECOND server is an
+unrecorded server, and the file goes on naming whichever one wrote it last. Nothing bounds how
+old that is; a record is only replaced by a server that starts AND succeeds in writing.
+
+THE RULING ON SEVERAL SERVERS. It answers for THE ONE SERVING THIS WORKSPACE, never the newest.
+The newest is the newest only by accident of write order, which is a race between unrelated
+processes; and a credential minted at a server redeems at THAT server for THAT server's corpus.
+So a live server whose recorded workspace is not the caller's is refused, before the mint, and
+the refusal names the record, the port, the pid, the workspace that server is serving and the
+workspace that asked. The one widening that stays is the address a person wrote down in this
+workspace's own ui.port - and it is skipped when it IS the foreign server's port.
+
+MEASURED BEFORE: exit 0, and a redeemable credential for another workspace's server, with no
+sentence saying whose. MEASURED AFTER, same fixture: exit 1 and no credential.

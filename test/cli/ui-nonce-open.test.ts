@@ -1,3 +1,6 @@
+// @basis TASK-ui-nonce-falls-back-to-a-stale-record-and-hands-you-a,
+// KNOWN-a-locked-out-tab-can-only-be-recovered-by-the-restart-that,
+// INV-nothing-is-dropped-silently
 /**
  * `mycontext ui --nonce`'s open/print decision (owner ruling 2026-09-03) —
  * IN-PROCESS, unlike `test/cli/ui-nonce.test.ts`'s spawned-CLI cases.
@@ -73,6 +76,24 @@ function fakeOpener(outcome: BrowserLaunch): { calls: string[]; fn: (url: string
   return { calls, fn: (url: string) => { calls.push(url); return outcome; } };
 }
 
+/**
+ * The `NonceCaller` for a fixture server started in THIS workspace — the
+ * argument that used to be a bare `configuredPort` and is now "whose server am
+ * I asking about", per
+ * `TASK-ui-nonce-falls-back-to-a-stale-record-and-hands-you-a`.
+ *
+ * `withServer` starts the server with this same `cwd`, so `workspace` here is
+ * the value that server writes into its own liveness record: these cases are
+ * the MATCHING case, and the mismatching one — where the record names another
+ * workspace and `--nonce` must refuse — is driven end-to-end by
+ * `test/cli/ui-nonce.test.ts`, which can run two workspaces at once.
+ *
+ * `configuredPort: null` keeps every case below on the record path alone: the
+ * `ui.port` widening is a different branch with its own coverage, and a port
+ * set here would let a case pass through it without saying so.
+ */
+const caller = (cwd: string) => ({ workspace: cwd, configuredPort: null });
+
 /** An `openFn` that fails the test if it is ever called — for the `--no-open` cases. */
 function neverCalled(url: string): BrowserLaunch {
   assert.fail(`openFn must not be called with --no-open, but was, with ${url}`);
@@ -82,7 +103,7 @@ test('--nonce (no --no-open) opens the browser and does not print the URL', asyn
   await withServer(async (h) => {
     const opener = fakeOpener({ opened: true, command: 'fake-browser', args: [] });
     const out: string[] = [];
-    await cmdUiNonce(out.push.bind(out), null, false, opener.fn);
+    await cmdUiNonce(out.push.bind(out), caller(h.cwd), false, opener.fn);
 
     assert.equal(opener.calls.length, 1, 'the browser must be opened exactly once');
     assert.match(opener.calls[0] ?? '',
@@ -102,7 +123,7 @@ test('--nonce (no --no-open) opens the browser and does not print the URL', asyn
 test('--nonce --no-open prints the URL and never touches the opener', async () => {
   await withServer(async (h) => {
     const out: string[] = [];
-    await cmdUiNonce(out.push.bind(out), null, true, neverCalled);
+    await cmdUiNonce(out.push.bind(out), caller(h.cwd), true, neverCalled);
 
     const joined = out.join('\n');
     assert.match(joined, new RegExp(`http://127\\.0\\.0\\.1:${h.server.port}/#[0-9a-f]{32}`), joined);
@@ -123,7 +144,7 @@ test('the no-browser fallback prints the URL it already minted, and mints only o
   await withServer(async (h) => {
     const opener = fakeOpener({ opened: false, reason: 'no browser opener on this machine' });
     const out: string[] = [];
-    await cmdUiNonce(out.push.bind(out), null, false, opener.fn);
+    await cmdUiNonce(out.push.bind(out), caller(h.cwd), false, opener.fn);
 
     assert.equal(opener.calls.length, 1, 'the open attempt must still happen exactly once');
     const openedUrl = opener.calls[0] ?? '';
@@ -143,13 +164,12 @@ test('the no-browser fallback prints the URL it already minted, and mints only o
 
 test('exit code stays 0 whether the browser opened or the fallback fired — a working session either way', async () => {
   await withServer(async (h) => {
-    void h;
     const savedExitCode = process.exitCode;
     process.exitCode = undefined;
     try {
-      await cmdUiNonce(() => {}, null, false, () => ({ opened: true, command: 'x', args: [] }));
+      await cmdUiNonce(() => {}, caller(h.cwd), false, () => ({ opened: true, command: 'x', args: [] }));
       assert.equal(process.exitCode, undefined, 'a successful open must not set an exit code');
-      await cmdUiNonce(() => {}, null, false, () => ({ opened: false, reason: 'no opener' }));
+      await cmdUiNonce(() => {}, caller(h.cwd), false, () => ({ opened: false, reason: 'no opener' }));
       assert.equal(process.exitCode, undefined, 'the printed fallback is still a working session, not a failure');
     } finally {
       process.exitCode = savedExitCode;

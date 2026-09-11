@@ -162,8 +162,6 @@ test/cli/supersede-global-layer.test.ts
 test/cli/supersede.test.ts
 test/cli/todo.test.ts
 test/cli/ui-enabled.test.ts
-test/cli/ui-nonce-open.test.ts
-test/cli/ui-nonce.test.ts
 test/cli/unknown-flag-refusal.test.ts
 test/core/agent-edits.test.ts
 test/core/audit-checksum.test.ts

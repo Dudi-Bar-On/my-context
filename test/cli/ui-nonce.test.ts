@@ -1,3 +1,6 @@
+// @basis TASK-ui-nonce-falls-back-to-a-stale-record-and-hands-you-a,
+// KNOWN-a-locked-out-tab-can-only-be-recovered-by-the-restart-that,
+// INV-nothing-is-dropped-silently
 /**
  * `mycontext ui --nonce`, spawned as the real CLI binary (owner ruling
  * 2026-08-28,
@@ -299,5 +302,102 @@ test('--nonce --no-open is accepted, not refused as a start-only flag', async (t
     assert.match(run.out, new RegExp(`http://127\\.0\\.0\\.1:${h.port}/#[0-9a-f]{32}`), run.out);
   } finally {
     await h.stop();
+  }
+});
+
+/**
+ * ── THE RECORD IS ONE PER MACHINE, SO IT CAN NAME SOMEBODY ELSE'S SERVER ────
+ *
+ * `TASK-ui-nonce-falls-back-to-a-stale-record-and-hands-you-a`, measured twice
+ * on 2026-09-05. `ui-server.json` lives in `~/.my-context/` and there is
+ * exactly ONE of it per user — a pid, a port and a URL are machine facts, not
+ * workspace facts (`src/core/ui-server-record.ts`). A lane that starts its own
+ * server on port 0 and whose record write fails with `EPERM` leaves that file
+ * untouched, still naming whatever server wrote it last. `--nonce` then read
+ * it, probed it, found it alive, and minted — a WORKING credential for a
+ * server serving a different corpus, delivered with exit 0 and no sentence
+ * saying so. The lane that reported it had gone on to kill that process
+ * believing it was its own.
+ *
+ * Reproduced here as the end state rather than through a manufactured `EPERM`,
+ * for `test/core/ui-server-record.test.ts`'s stated reason: a Windows
+ * share-mode rename conflict cannot be produced reliably on any platform. A
+ * record naming another workspace is the same state whether the write failed
+ * or the other server simply wrote last.
+ *
+ * The two halves of the assertion are both load-bearing. That no URL is
+ * printed is what says the credential was not minted; that the OTHER workspace
+ * is named is what makes the refusal actionable rather than a shrug.
+ */
+test('a record naming another workspace is refused, never minted from', async (t) => {
+  const theirs = project(t);
+  const mine = project(t);
+  const h = await startUiChild(theirs);
+  try {
+    // The record their server wrote, unmodified — this is the live state, not
+    // a fixture edited into place.
+    const record = readUiServerRecord();
+    assert.ok(record, 'the fixture server wrote no liveness record to refuse from');
+    assert.equal(record?.port, h.port, 'the record under test must be the fixture server\'s own');
+
+    const run = runNonce(mine, ['--no-open']);
+    assert.equal(run.code, 1, `a credential for another workspace's server is not a success: ${run.out}`);
+    assert.doesNotMatch(run.out, /http:\/\/127\.0\.0\.1:\d+\/#/,
+      `--nonce minted against a server serving ${theirs} while run from ${mine}: ${run.out}`);
+    assert.ok(run.out.includes(theirs),
+      `the refusal must name the workspace the record actually points at: ${run.out}`);
+    assert.ok(run.out.includes(mine),
+      `the refusal must name the workspace that asked, so the two can be compared: ${run.out}`);
+    assert.match(run.out, /ui-server\.json/,
+      'the reader must be told which record said this, so they can look at it');
+    assert.match(run.out, /mycontext ui`/,
+      'a refusal that cannot be acted on is a dead end; it must name the way forward');
+  } finally {
+    await h.stop();
+  }
+});
+
+/**
+ * ── WHICH SERVER `--nonce` ANSWERS FOR WHEN SEVERAL ARE RUNNING ────────────
+ *
+ * The normal state here: lanes start throwaway servers on port 0 constantly,
+ * and the one record holds whichever wrote last. The ruling this asserts is
+ * "the one serving THIS workspace", never "the newest" — the newest is a race
+ * between unrelated processes, and the caller asked about their own corpus.
+ *
+ * So with the record naming another workspace's live server AND this
+ * workspace's own server answering on its configured `ui.port`, the credential
+ * must come from the latter. That also keeps the refusal above actionable: the
+ * one address a person wrote down is still tried, exactly as it is when the
+ * record is missing altogether.
+ */
+test('with two servers up, --nonce answers for this workspace, not for the newest record', async (t) => {
+  const theirs = project(t);
+  const mine = project(t);
+  const ours = await startUiChild(mine);
+  const h = await startUiChild(theirs);
+  try {
+    assert.equal(readUiServerRecord()?.port, h.port,
+      'the fixture needs the record to name the OTHER server — theirs must have started last');
+    setConfiguredPort(mine, ours.port);
+
+    const run = runNonce(mine, ['--no-open']);
+    assert.equal(run.code, 0, run.out);
+    const match = /mycontext ui: http:\/\/127\.0\.0\.1:(\d+)\/#([0-9a-f]{32})/.exec(run.out);
+    assert.ok(match, `no credential was produced for this workspace's own server:\n${run.out}`);
+    assert.equal(Number(match?.[1]), ours.port,
+      'the URL must name the server serving THIS workspace, not the one the record happens to name');
+    assert.ok(run.out.includes(theirs),
+      `the record still names another workspace and that must be said, not hidden by a working mint: ${run.out}`);
+
+    const response = await fetch(`http://127.0.0.1:${ours.port}/api/handoff`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ nonce: match?.[2] ?? '' }),
+    });
+    assert.equal(response.status, 200, 'the credential must redeem at this workspace\'s own server');
+  } finally {
+    await h.stop();
+    await ours.stop();
   }
 });
