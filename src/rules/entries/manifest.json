@@ -1,11 +1,105 @@
 {
   "version": 1,
   "algorithm": "sha256",
+  "store": {
+    "version": 3,
+    "publishedAt": "2026-09-11T06:27:07.387Z",
+    "changelog": [
+      {
+        "version": 3,
+        "at": "2026-09-11T06:27:07.387Z",
+        "note": "def-lane becomes def-a-lane: an eight-character id is not distinctive enough to serve as a leak fingerprint",
+        "added": [
+          "def-a-lane"
+        ],
+        "changed": [],
+        "removed": [
+          "def-lane"
+        ]
+      },
+      {
+        "version": 2,
+        "at": "2026-09-11T06:26:35.958Z",
+        "note": "the definition titles are sentences, so a common word cannot double as a leak fingerprint",
+        "added": [],
+        "changed": [
+          "def-a-door",
+          "def-known-red",
+          "def-lane",
+          "def-prove-by-removal",
+          "def-spill",
+          "def-stand-down",
+          "def-the-corpus",
+          "def-the-ration"
+        ],
+        "removed": []
+      },
+      {
+        "version": 1,
+        "at": "2026-09-11T06:15:40.509Z",
+        "note": "seed: the numbering standard with its measured check, and this project’s working vocabulary",
+        "added": [
+          "def-a-door",
+          "def-known-red",
+          "def-lane",
+          "def-prove-by-removal",
+          "def-spill",
+          "def-stand-down",
+          "def-the-corpus",
+          "def-the-ration"
+        ],
+        "changed": [
+          "numbered-options-on-a-question-put-to-the-owner"
+        ],
+        "removed": []
+      }
+    ]
+  },
   "entries": [
+    {
+      "file": "def-a-door.md",
+      "id": "def-a-door",
+      "checksum": "a22702589cfa82da2392e07a021f54338615bd9c68b663375c2fecab1792a76e"
+    },
+    {
+      "file": "def-a-lane.md",
+      "id": "def-a-lane",
+      "checksum": "32501d518121cd3d5a846515459c54240569afdd5015f0572e91160aab9392f8"
+    },
+    {
+      "file": "def-known-red.md",
+      "id": "def-known-red",
+      "checksum": "cda85055e8413f8094c6cc209d691e95ef7f2267a00837d8304adaa9e5671d25"
+    },
+    {
+      "file": "def-prove-by-removal.md",
+      "id": "def-prove-by-removal",
+      "checksum": "d2150f76eb499cec957e093193bad3820273d4dcbc5a942fc679eeecd33ba530"
+    },
+    {
+      "file": "def-spill.md",
+      "id": "def-spill",
+      "checksum": "eb68212df7d3a991bd111aaa18b15ecf5ad586787ffc604276c803e72e18a1f0"
+    },
+    {
+      "file": "def-stand-down.md",
+      "id": "def-stand-down",
+      "checksum": "baafe9f71596cf15f6c20c496820ef94eeb23275072350a77c1950f6adcf0db4"
+    },
+    {
+      "file": "def-the-corpus.md",
+      "id": "def-the-corpus",
+      "checksum": "1d53d1cd5a109db6453368b4574da0b81e9446197892ca290a71055df6a657b2"
+    },
+    {
+      "file": "def-the-ration.md",
+      "id": "def-the-ration",
+      "checksum": "abd8cfe3129d77915d8187d8ffea3839a221b18138babdb016a45062fcb887b0"
+    },
     {
       "file": "numbered-options-on-a-question-put-to-the-owner.md",
       "id": "numbered-options-on-a-question-put-to-the-owner",
-      "checksum": "502cbf14e7c85505c3d7d43122c2ed648836a671de0fad48ae34b7fb324f5ca8"
+      "checksum": "3a150e4af137374aea0b04a127693da46d315642fbbf89c3ed78cc28674d7696"
     }
   ]
 }
