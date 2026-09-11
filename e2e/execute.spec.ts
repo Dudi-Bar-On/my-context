@@ -102,14 +102,43 @@
  * their text: "Execute", "Run it", "Cancel", "Copy".
  */
 import { execFileSync } from 'node:child_process';
-import { cpSync, mkdtempSync, rmSync } from 'node:fs';
-import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { test as base, type Page } from '@playwright/test';
-import { expect, test, CORPUS } from './app.ts';
+import { CORPUS } from './app.ts';
+import { expect, scratchCorpus, writingSeededTest } from './scratch-corpus.ts';
+import {
+  SEEDED_PINNABLE_TITLE, draftInQueue, driftedSource, pinnableItem, seeds, staleRevision,
+} from './seeds.ts';
+
+/**
+ * **WHAT THIS FILE REQUIRES, and it is three separate states at once.**
+ *
+ * Every one of them was in `.demo-corpus` and none of them is in this
+ * repository, re-measured 2026-09-11:
+ *
+ *   a STALE pending revision   `pendingRevisions.revisions` is 0 here — both
+ *                              revisions in `.revisions/` were promoted on
+ *                              2026-08-29 — and no `mycontext` command can
+ *                              stage another, because the CLI writes as
+ *                              `origin: human` and only a non-human origin is
+ *                              held. The Review-queue test needs the proposal
+ *                              to be stale as well as pending: its subject is
+ *                              the HONEST REFUSAL behind the confirm, and a
+ *                              revision that applies cleanly proves the
+ *                              opposite thing.
+ *   a DRAFT                    `reviewQueue.drafts` is 0.
+ *   a run-routed DOCTOR repair all 78 findings route to `acknowledge`, so
+ *                              Doctor's repair control cannot be reached here
+ *                              at all and "reaches a confirm" is unmeasurable.
+ *
+ * `writingSeededTest` rather than `seededTest`, and the difference is the
+ * whole point: these tests press Execute and RUN commands. The twin is
+ * test-scoped, so one test's write is never another's ground.
+ */
+const test = writingSeededTest(seeds(staleRevision(), draftInQueue(), driftedSource()));
 import { startUiChild, type UiHarness } from '../test/ui/helpers.ts';
-import { snapshot, worthCopying } from '../src/ui/execute-effect.ts';
-import { DIR_NAME } from '../src/core/workspace.ts';
+import { snapshot } from '../src/ui/execute-effect.ts';
+import { DIR_NAME, resolveWorkspace } from '../src/core/workspace.ts';
 
 /** The CLI entry the isolated workspace's own index gets built through. */
 const CLI = path.resolve(import.meta.dirname, '..', 'src', 'cli', 'index.ts');
@@ -392,52 +421,91 @@ test('the draft queue is drawn, and each draft composes both settlements', async
 
 /**
  * `mkdtemp`'d and thrown away — see this file's header for why a disposable
- * copy was chosen over restoring the shared corpus in place. Reuses
- * `worthCopying` from `src/ui/execute-effect.ts` (skip `.audit` and
- * `.index.db*`) rather than a second filter that could disagree with it, and
- * for the same reason that function needs it: another worker's server may hold
- * `.demo-corpus`'s own `.index.db` open under a mandatory Windows lock.
+ * copy was chosen over restoring the shared corpus in place.
  */
-function makeWriteWorkspace(): { root: string; myContextDir: string } {
-  const root = mkdtempSync(path.join(tmpdir(), 'myctx-e2e-write-'));
-  cpSync(CORPUS, root, { recursive: true, filter: worthCopying });
-  // `worthCopying` skips `.index.db`, so this workspace has no index at all
-  // yet. `rebuild` is the one command whose whole purpose is building it
-  // (`src/ui/public/lib/palette-defs.js`: "rewrites .index.db on disk"), and it
-  // is needed HERE rather than left to the server: the server's READ routes
-  // open the index `Store.openReadOnlyChecked` (`src/ui/read-model.ts`'s
-  // `withStores`), which cannot CREATE a database file that does not exist yet
-  // — measured directly, every SQLite-backed `/api/*` route answered `unable
-  // to open database file` on a workspace this step had not yet touched, while
-  // `/api/config` (which opens no store) answered fine. `audit` does NOT do
-  // this — it reads the JSONL log directly and never opens the item index, so
-  // `e2e/app.ts`'s own `syncProjection()` (also `audit --limit 1`) works there
-  // only because the REAL `.demo-corpus`'s index was already built when the
-  // fixture itself was generated (`scripts/demo-corpus.ts`'s many writes).
-  execFileSync(process.execPath, [CLI, 'rebuild'], {
-    cwd: root, encoding: 'utf8', stdio: 'pipe',
-  });
-  return { root, myContextDir: path.join(root, DIR_NAME) };
+function makeWriteWorkspace(): { root: string; myContextDir: string; env: NodeJS.ProcessEnv;
+  dispose: () => void } {
+  // **`scratchCorpus` since 2026-09-11, and the copy filter is why.**
+  //
+  // This used to be `cpSync(CORPUS, root, { filter: worthCopying })` — which
+  // drags `node_modules` along, because `worthCopying` excludes only `.audit`
+  // and `.index.db*`. `composer-write-execute.spec.ts` measured that at THIRTY
+  // SECONDS per workspace against 2.3s for the lean copy, and the three tests
+  // below have a 90-120s budget that has to cover a browser, a server and a
+  // real command as well: two of them were failing on it.
+  //
+  // `scratchCorpus` is the same copy `live-refresh.spec.ts` and friends take,
+  // and it brings three things this hand-rolled version lacked: the lean
+  // filter, a throwaway `HOME` so the machine's own `~/.my-context` is not
+  // read, and the two projections (`audit`, `replay-ledger`) a rebuilt index
+  // loses. The seed is `draftInQueue`, because the two tests that use a
+  // workspace of their own both settle a DRAFT and this corpus has none, and
+  // `pinnableItem`, because the third needs something `pin` will accept and
+  // neither the tier nor the contradiction gate will refuse.
+  //
+  // The `rebuild` this used to do by hand is `scratchCorpus`'s own, and it is
+  // still needed for the reason written here before: the copy carries no
+  // `.index.db`, and the server's READ routes open the index through
+  // `Store.openReadOnlyChecked`, which cannot CREATE a database file that does
+  // not exist — measured directly, every SQLite-backed `/api/*` route answered
+  // `unable to open database file` on a workspace nothing had rebuilt, while
+  // `/api/config`, which opens no store, answered fine.
+  const scratch = scratchCorpus(seeds(draftInQueue(), pinnableItem()));
+  return {
+    root: scratch.root,
+    myContextDir: scratch.myContextDir,
+    env: scratch.env,
+    dispose: scratch.dispose,
+  };
 }
 
 /**
- * The first item this workspace's own files say is not yet pinned. Read from
- * the FILES rather than trusted from a hard-coded id, so the fixture this
- * chooses stays true even if `.demo-corpus` is regenerated: `pin`-ing an
+ * The first item this workspace's own files say is not yet pinned **and that
+ * `pin` will actually accept**. Read from the FILES rather than trusted from a
+ * hard-coded id, so the choice stays true as the corpus changes: `pin`-ing an
  * already-pinned item is a documented no-op in this codebase
  * (`src/cli/commands/edit.ts`'s "nothing to change" refusal) and would leave
  * `deriveEffect` reporting an empty effect — the one thing this test exists to
  * show is NOT empty.
+ *
+ * ── AND THE TIER, WHICH IS THE HALF `.demo-corpus` HID ────────────────────
+ *
+ * `always` is a field on every item and governs only on the NORMATIVE tier.
+ * `pin` refuses a rationale-tier item outright, in its own words: *"`always:
+ * true` asks for the pinned tier, which selection admits only normative items
+ * to, so this would be stored and then do nothing at all. Nothing was
+ * changed."* That refusal is correct product behaviour and it is not what this
+ * test is about.
+ *
+ * Measured on this repository 2026-09-11: the first unpinned item on disk is
+ * `ADR-build-rather-than-adopt`, an `adr`, which is rationale-tier — so the
+ * confirm answered 400, drew nothing, and the test failed reporting a missing
+ * diff table. On `.demo-corpus` the first unpinned item happened to be
+ * normative, and the tier condition was therefore never written down.
+ *
+ * The tier is read from the WORKSPACE'S OWN CONFIG rather than from a list of
+ * category names kept here, because that list is a thing a project may change
+ * (`categories.<name>.tier`) and a second copy of it in a test is the
+ * duplicated-constant failure this project names as its own.
  */
-function firstUnpinnedItemId(myContextDir: string): string {
-  for (const [rel, text] of snapshot(myContextDir)) {
+function firstUnpinnedItemId(root: string, myContextDir: string): string {
+  const { config } = resolveWorkspace(root);
+  const rationale: string[] = [];
+  for (const [, text] of snapshot(myContextDir)) {
     const always = /^always:\s*(\S+)/m.exec(text)?.[1];
     const id = /^id:\s*(\S+)/m.exec(text)?.[1];
-    if (always === 'false' && id !== undefined) return id;
+    const type = /^type:\s*(\S+)/m.exec(text)?.[1];
+    if (always !== 'false' || id === undefined || type === undefined) continue;
+    if (config.categories[type]?.tier !== 'normative') { rationale.push(`${id} (${type})`); continue; }
+    // **And it must be THE SEEDED ONE.** See the docblock: any other item on
+    // this corpus may be refused by the contradiction gate, which is a fact
+    // about what else governs today rather than about `pin`.
+    if (!text.includes(SEEDED_PINNABLE_TITLE)) continue;
+    return id;
   }
   throw new Error(
-    `e2e: no item under ${myContextDir} has \`always: false\` — every item in this corpus is `
-    + 'already pinned, so `pin` has nothing left to prove',
+    `e2e: \`pinnableItem\` seeded no unpinned normative item under ${myContextDir}. Unpinned `
+    + `rationale items seen: ${rationale.slice(0, 5).join(', ')}`,
   );
 }
 
@@ -447,8 +515,8 @@ base('a boundary command shows every field that changes, before and after, and o
     const workspace = makeWriteWorkspace();
     let harness: UiHarness | undefined;
     try {
-      const itemId = firstUnpinnedItemId(workspace.myContextDir);
-      harness = await startUiChild(workspace.root);
+      const itemId = firstUnpinnedItemId(workspace.root, workspace.myContextDir);
+      harness = await startUiChild(workspace.root, [], workspace.env);
       const h = harness;
 
       await page.goto(`http://127.0.0.1:${h.port}/#${h.nonce}`);
@@ -496,7 +564,7 @@ base('a boundary command shows every field that changes, before and after, and o
       // Best-effort: a Windows SQLite handle can outlive the child's own
       // `exit` event by a beat, and a failed cleanup of a disposable temp
       // directory is not a reason to fail an assertion that already passed.
-      try { rmSync(workspace.root, { recursive: true, force: true }); } catch { /* see above */ }
+      workspace.dispose();
     }
   });
 
@@ -537,11 +605,35 @@ test("Doctor's repair reaches a confirm instead of refusing for want of a termin
   // now picks whichever row happens to sort first — on `.demo-corpus` that is a
   // `dead_scope` ack, and this test would report the absence of `--yes` on a
   // command that is correctly below the approval boundary and does not take it.
+  // **AND THE CARD IS NAMED BY ITS COMMAND, not taken by position.**
+  //
+  // `.first()` stood here until 2026-09-11 and it was reading the wrong card.
+  // Doctor draws one card per SEVERITY, each with its own card-level control,
+  // and the repair is a `warning` — so `.first()` picks whatever the `error`
+  // card happens to offer. Measured on the seeded twin: the error card offers
+  // `mycontext ack --all --code source_missing --count 46`, which is correctly
+  // below the approval boundary and correctly carries no `--yes`, and this test
+  // reported its absence as the defect it is about. `.demo-corpus` happened to
+  // sort the other way, which is exactly how a fixture's shape survives in a
+  // spec as a `.first()`.
+  //
+  // `driftedSource` guarantees EXACTLY ONE run-routed finding
+  // (`e2e/scratch-seeds.spec.ts` asserts the count), so naming the command is
+  // unambiguous rather than a second guess at position.
   const shared = '[data-p="doctor"] .card.pane';
-  const exec = page.locator(`${shared} > .cmdactions button`, { hasText: 'Execute' }).first();
+  const composed = page.locator(`${shared} > div.cmd`, { hasText: 'mycontext refresh ' });
+  await expect(
+    composed,
+    'the Doctor screen drew no repair to run. `driftedSource` seeds exactly one source_drift '
+    + 'finding, whose remedy routes to `run`; if this is 0 the seed did not take, and '
+    + 'e2e/scratch-seeds.spec.ts says so more precisely.',
+  ).toHaveCount(1, { timeout: 20_000 });
+  const exec = composed
+    .locator('xpath=following-sibling::div[contains(@class,"cmdactions")][1]')
+    .getByRole('button', { name: 'Execute', exact: true });
   await exec.waitFor({ state: 'visible', timeout: 20_000 });
 
-  const shown = await page.locator(`${shared} > div.cmd code`).first().innerText();
+  const shown = await composed.locator('code').innerText();
   expect(shown, 'the composed line must carry --yes, or the command cannot run from a UI at all: '
     + 'refresh gates on stdin and a child process has no terminal to answer through')
     .toContain('--yes');
@@ -613,7 +705,7 @@ base('an item settled through Execute leaves the queue, and the rail moves in th
     const workspace = makeWriteWorkspace();
     let harness: UiHarness | undefined;
     try {
-      harness = await startUiChild(workspace.root);
+      harness = await startUiChild(workspace.root, [], workspace.env);
       const h = harness;
       await page.goto(`http://127.0.0.1:${h.port}/#${h.nonce}`);
       await expect(
@@ -734,7 +826,7 @@ base('an item settled through Execute leaves the queue, and the rail moves in th
       if (harness !== undefined) await harness.stop();
       // Best-effort, for the reason the `pin` test states: a Windows SQLite
       // handle can outlive the child's own `exit` event by a beat.
-      try { rmSync(workspace.root, { recursive: true, force: true }); } catch { /* see above */ }
+      workspace.dispose();
     }
   });
 
@@ -761,7 +853,7 @@ base('a change made somewhere else still offers the affordance rather than redra
     let harness: UiHarness | undefined;
     const context = await browser.newContext();
     try {
-      harness = await startUiChild(workspace.root);
+      harness = await startUiChild(workspace.root, [], workspace.env);
       const h = harness;
       const page = await context.newPage();
       await page.goto(`http://127.0.0.1:${h.port}/#${h.nonce}`);
@@ -827,6 +919,6 @@ base('a change made somewhere else still offers the affordance rather than redra
     } finally {
       await context.close();
       if (harness !== undefined) await harness.stop();
-      try { rmSync(workspace.root, { recursive: true, force: true }); } catch { /* see above */ }
+      workspace.dispose();
     }
   });

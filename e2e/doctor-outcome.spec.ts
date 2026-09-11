@@ -47,14 +47,11 @@
  * viewport under it.
  */
 import { execFileSync } from 'node:child_process';
-import { cpSync, mkdtempSync, rmSync } from 'node:fs';
-import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { test as base, type Page } from '@playwright/test';
-import { expect, test, CORPUS } from './app.ts';
+import { expect, test } from './app.ts';
+import { scratchCorpus } from './scratch-corpus.ts';
 import { startUiChild, type UiHarness } from '../test/ui/helpers.ts';
-import { worthCopying } from '../src/ui/execute-effect.ts';
-import { DIR_NAME } from '../src/core/workspace.ts';
 
 /** The CLI entry the isolated workspace's own index gets built through. */
 const CLI = path.resolve(import.meta.dirname, '..', 'src', 'cli', 'index.ts');
@@ -297,22 +294,32 @@ test('the acknowledged mark and the ruling count are drawn in Hebrew too', async
  * same decision for `pin` and for `review promote`, and carries the full
  * argument for choosing a disposable copy over restoring in place.
  *
- * Reuses `worthCopying` from `src/ui/execute-effect.ts` (skip `.audit` and
- * `.index.db*`) rather than a second filter that could disagree with it, and
- * for the same reason that function needs it: another worker's server may hold
- * `.demo-corpus`'s own `.index.db` open under a mandatory Windows lock.
+ * Reuses `scratchCorpus` (`e2e/scratch-corpus.ts`) rather than a second copy
+ * filter that could disagree with it — the same one every other spec here that
+ * needs a workspace of its own now takes.
  */
-function makeWriteWorkspace(): { root: string; myContextDir: string } {
-  const root = mkdtempSync(path.join(tmpdir(), 'myctx-e2e-outcome-'));
-  cpSync(CORPUS, root, { recursive: true, filter: worthCopying });
-  // `worthCopying` skips `.index.db`, so this workspace has no index yet and
-  // every SQLite-backed `/api/*` route would answer `unable to open database
-  // file`: the read routes open the index read-only and cannot CREATE it.
-  // `rebuild` is the one command whose whole purpose is building it.
-  execFileSync(process.execPath, [CLI, 'rebuild'], {
-    cwd: root, encoding: 'utf8', stdio: 'pipe',
-  });
-  return { root, myContextDir: path.join(root, DIR_NAME) };
+function makeWriteWorkspace(): {
+  root: string; myContextDir: string; env: NodeJS.ProcessEnv; dispose: () => void;
+} {
+  // **`scratchCorpus` since 2026-09-11.** The copy this replaces used
+  // `worthCopying` alone, which excludes only `.audit` and `.index.db*` and
+  // therefore drags `node_modules` — thirty seconds per workspace, measured by
+  // `composer-write-execute.spec.ts`, out of a budget that also has to cover a
+  // browser, a server, a scroll and a real `mycontext ack`.
+  //
+  // It also brings a throwaway `HOME`, so an acknowledgement cannot reach the
+  // machine's own `~/.my-context`, and the `rebuild` this used to do by hand —
+  // still needed for the reason recorded here before: the copy carries no
+  // `.index.db`, the read routes open the index read-only and cannot CREATE
+  // one, and without it every SQLite-backed `/api/*` route answers `unable to
+  // open database file`.
+  const scratch = scratchCorpus();
+  return {
+    root: scratch.root,
+    myContextDir: scratch.myContextDir,
+    env: scratch.env,
+    dispose: scratch.dispose,
+  };
 }
 
 /**
@@ -343,7 +350,7 @@ base('the outcome of a run lands in the viewport, on the row it was run from', a
   const workspace = makeWriteWorkspace();
   let harness: UiHarness | undefined;
   try {
-    harness = await startUiChild(workspace.root);
+    harness = await startUiChild(workspace.root, [], workspace.env);
     const h = harness;
     await page.goto(`http://127.0.0.1:${h.port}/#${h.nonce}`);
     await expect(
@@ -601,6 +608,6 @@ base('the outcome of a run lands in the viewport, on the row it was run from', a
     // Best-effort: a Windows SQLite handle can outlive the child's own `exit`
     // event by a beat, and a failed cleanup of a disposable temp directory is
     // not a reason to fail an assertion that already passed.
-    try { rmSync(workspace.root, { recursive: true, force: true }); } catch { /* see above */ }
+    workspace.dispose();
   }
 });

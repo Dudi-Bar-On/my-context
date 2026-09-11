@@ -35,23 +35,39 @@
  * not a detail. (`#focuspop` is the opposite case and gets the opposite
  * treatment: it composes a line and one Execute runs it.)
  */
-import { test, expect } from './app.ts';
+import { seededTest, expect } from './scratch-corpus.ts';
+import { SEEDED_LONG, realInjections } from './seeds.ts';
+
+/**
+ * **WHAT THIS FILE REQUIRES: two sessions, one of them long enough that its
+ * `Injected now` table holds rows back.**
+ *
+ * The picker's whole subject is moving OFF the default, so a corpus with one
+ * session proves nothing and a corpus whose sessions all fit inside
+ * `BOUND_CAP_TABLE` proves nothing either — "Showing the 50 most recent of N"
+ * is the sentence that says the shell actually moved. Re-measured on the live
+ * corpus 2026-09-11: its 20 sessions are real, but the default is the session
+ * this very run is part of and none of the others is reliably long, so the
+ * precondition ("over the default session this table holds nothing back") is
+ * whatever the day happens to be.
+ *
+ * A private copy gets two sessions from the real hooks — one driven through
+ * four starts and four tool events, one `/clear`ed — and is deleted when the
+ * test ends. **No `squeezeBudgets`:** at the real budgets a session start
+ * delivers ~45 items, which is what carries the long session past the cap.
+ */
+const test = seededTest(realInjections());
 import type { Page } from '@playwright/test';
 
 /**
- * The long working session `scripts/demo-corpus.ts` drives through the real
- * hooks — sixty injection rows over four tiers, and the one session in the
- * fixture whose `Injected now` table crosses its own bound.
+ * The long working session the seed drives through the real hooks — four
+ * session starts across all four sources and a tool event after each, so its
+ * seen file holds ~100 rows against a `BOUND_CAP_TABLE` of 50.
  *
- * It is deliberately NOT the default: `/api/sessions` answers the freshly
- * started session 23 (six rows, one tier), because a long session's injection
- * preview recomputes to a delivery of zero and empties both of the preview's
- * panes. That gap is what makes this a real assertion — "Showing the 50 most
- * recent of 60" is a sentence the default session cannot produce, so a test
- * that sees it has proved the shell moved off the default rather than that a
- * label changed.
+ * It used to name `demo-session-a3f9c1-11`, which belonged to `.demo-corpus`
+ * and is in no corpus now.
  */
-const LONG = 'demo-session-a3f9c1-11';
+const LONG = SEEDED_LONG;
 
 /** Where focus is, and what the trigger claims — the two facts under test. */
 async function state(page: Page): Promise<{

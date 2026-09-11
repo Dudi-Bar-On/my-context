@@ -57,7 +57,24 @@
  * move under two reads would be a defect this comparison is entitled to find.
  */
 import type { Page } from '@playwright/test';
-import { test, expect } from './app.ts';
+import { seededTest, expect } from './scratch-corpus.ts';
+import { procedures } from './seeds.ts';
+
+/**
+ * **WHAT THIS FILE REQUIRES: a corpus that has at least one PROCEDURE.**
+ *
+ * Four of the five tests here need nothing — each compares what a screen drew
+ * against what the endpoint it drew from answered, so they are true over any
+ * corpus, including an empty one. The fifth is not: the Procedures screen draws
+ * one card per procedure, and `/api/procedures` lists NONE on this repository —
+ * measured 2026-09-11 — so the comparison compares two empty lists and the
+ * test's own anti-vacuity guard fires, correctly.
+ *
+ * The other four are left on the same twin rather than split onto two fixtures:
+ * the twin IS this corpus, with three procedures added, so what they compare is
+ * unchanged in kind and in scale.
+ */
+const test = seededTest(procedures());
 
 /** `parts.js` · `BOUND_CAP_LIST` — the display cap on a bounded list. */
 const BOUND_CAP_LIST = 20;

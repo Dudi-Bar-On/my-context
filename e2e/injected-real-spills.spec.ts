@@ -16,18 +16,22 @@
  * the day that split shipped, it never showed in either state a reader
  * actually opens: cold answered 91 spills that were all trivially absent, warm
  * answered zero spills at all. This file is not a second measurement of that
- * split; it measures a DIFFERENT one, over `.demo-corpus`'s real, already-
- * recorded audit history, on the two sessions `injected-empty.spec.ts` already
- * establishes the shape of.
+ * split; it measures a DIFFERENT one, over real, already-recorded audit
+ * history, on the two sessions `injected-empty.spec.ts` also establishes the
+ * shape of.
  *
- * ── WHY `.demo-corpus` ACTUALLY HAS SOMETHING TO SHOW ───────────────────────
+ * ── WHERE THE RECORDED SPILLS COME FROM NOW ────────────────────────────────
  *
- * Measured directly against `.demo-corpus/.my_context` before this file was
- * written: every numbered `demo-session-a3f9c1-N` carries 113-116 real spilled
- * ids across its own injection history (`kind: 'injection'` records with a
- * non-empty `spilled` array). That is real pressure from a real fixture, not a
- * budget dragged to 1 to force the shape — the fixture already produces the
- * case the simulator's split could never reach.
+ * They used to come from `.demo-corpus`, whose numbered sessions each carried
+ * 113-116 real spilled ids. That fixture was retired on 2026-09-07 and the
+ * live corpus records none, because at its real budgets nothing spills at all.
+ *
+ * They now come from the same mechanism against a private copy of the LIVE
+ * corpus: the real hooks, fed real payloads on stdin, under budgets turned
+ * down far enough that the corpus genuinely overflows them. The pressure is
+ * real pressure over the real items — what changed is that the budgets are
+ * small rather than that the corpus is invented, and the copy is deleted when
+ * the test ends.
  *
  * ── MOUNTED, FOR THE SAME REASON `injected-empty.spec.ts` MOUNTS ───────────
  *
@@ -39,15 +43,41 @@
  * screen itself uses actually returned — never a number typed in this file by
  * hand.
  */
-import { test, expect } from './app.ts';
+import { seededTest, expect } from './scratch-corpus.ts';
+import {
+  SEEDED_CLEARED, SEEDED_LONG, SEEDED_NEVER, TIGHT_BUDGETS, realInjections, seeds, squeezeBudgets,
+} from './seeds.ts';
 import type { Page } from '@playwright/test';
 
-/** The session `scripts/demo-corpus.ts` drives through a full working day. */
-const LONG = 'demo-session-a3f9c1-11';
-/** The session `scripts/demo-corpus.ts` replays `/clear` on — its seen file is gone. */
-const CLEARED = 'demo-session-a3f9c1-20';
-/** No fixture ever wrote this id anywhere — the true "nothing to report" case. */
-const NEVER = 'e2e-never-injected-into';
+/**
+ * **WHAT THIS FILE REQUIRES: injections that REALLY SPILLED, on sessions that
+ * really happened.**
+ *
+ * Two things it asked of `.demo-corpus` and cannot ask of this repository, both
+ * re-measured 2026-09-11:
+ *
+ *  1. The `demo-session-a3f9c1-*` ids below were named by hand and belong to a
+ *     fixture retired on 2026-09-07. No corpus holds them.
+ *  2. At this corpus's real budgets NOTHING SPILLS — `/api/select` answers
+ *     `spilled: 0` on every question — so `AuditRecord.spilled` is empty on
+ *     every injection ever recorded here and both halves of the split are
+ *     structurally unreachable.
+ *
+ * So the file asks a private copy for both at once: the budgets turned down so
+ * an injection genuinely overflows, and the real hooks fed real payloads so
+ * the overflow is RECORDED rather than simulated. Measured on the twin: the
+ * long session answers 7 already-in-context against 139 genuinely absent, and
+ * the cleared one keeps 131 absent with no window at all — which is the pair
+ * this file exists to tell apart.
+ */
+const test = seededTest(seeds(squeezeBudgets(TIGHT_BUDGETS), realInjections()));
+
+/** The session the seed drives through a working day. */
+const LONG = SEEDED_LONG;
+/** The session the seed replays `/clear` on — its seen file is gone. */
+const CLEARED = SEEDED_CLEARED;
+/** No seed ever writes this id anywhere — the true "nothing to report" case. */
+const NEVER = SEEDED_NEVER;
 
 interface SpillsBody {
   lines: unknown[];

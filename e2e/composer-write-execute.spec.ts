@@ -83,6 +83,7 @@ import {
   normalise, openApp, outcome, pressExecute, runIt, settleScreen,
 } from './composer-run.ts';
 import { snapshot, worthCopying } from '../src/ui/execute-effect.ts';
+import { addSettlingContradictions } from './seeds.ts';
 import { DIR_NAME, resolveWorkspace } from '../src/core/workspace.ts';
 import { CATEGORIES } from '../src/core/categories.ts';
 import { openRebuiltStore } from '../src/core/open-store.ts';
@@ -698,14 +699,18 @@ function seedQueues(root: string): void {
     ['rule', 'A D12 fixture draft the review queue can promote'],
     ['constraint', 'A D12 fixture draft the review queue can discard'],
   ] as [string, string][]) {
-    execFileSync(process.execPath, [
-      CLI, 'add', category, title,
+    // **`addSettlingContradictions`, not a bare `add`, since 2026-09-11** —
+    // the contradiction gate (`9c9cd31b`, 2026-09-08) refuses this seeding
+    // outright and the test died on `Command failed:` before a browser opened.
+    // The settlement a person makes is `--distinct <id>` for every item the
+    // refusal named; wording the fixture around the gate would be dodging it.
+    const id = addSettlingContradictions(root, process.env, [
+      'add', category, title,
       '--body', 'Created by e2e/composer-write-execute.spec.ts so `review promote` and `review '
         + 'discard` have something to name. Discarded with the workspace.',
       '--summary', 'A fixture draft for the D12 write sweep.',
       '--yes',
-    ], { cwd: root, encoding: 'utf8', stdio: 'pipe' });
-    const id = itemsOf(dir).find(([, t]) => t.includes(title))![0];
+    ]);
     execFileSync(process.execPath, [CLI, 'edit', id, '--status', 'draft', '--yes'],
       { cwd: root, encoding: 'utf8', stdio: 'pipe' });
     drafts.push(id);
@@ -737,18 +742,45 @@ function seedQueues(root: string): void {
     const target = store.all().find((it) => it.type === 'lesson');
     expect(target, 'a lesson to stage rule candidates against').not.toBeUndefined();
     lesson = target!.id;
+    // **`lesson-accept` CANNOT BE RUN ON THIS CORPUS, AND THAT IS A PRODUCT
+    // FINDING RATHER THAN A FIXTURE PROBLEM — measured 2026-09-11.**
+    //
+    // `lesson-accept` CREATES a rule, so it meets the contradiction gate that
+    // landed on 2026-09-08. The gate is LEXICAL and this corpus holds 1,086
+    // items, so it finds a neighbour for anything: measured directly, three
+    // completely different candidate texts were each refused against a
+    // different item — `DEC-the-admission-staircase-is-built-and-its-sweep-
+    // runs-once-on`, then `REQ-session-focus-controls-what-loads`, then
+    // `STD-a-summary-is-one-plain-sentence-for-someone-who-does-not`. One of
+    // those three was about GARDENING. There is no wording that does not
+    // collide, so no fixture text can dodge it.
+    //
+    // The refusal itself names the settlement — `--distinct <id>` — and that
+    // is what every other seeding in this suite does. It is not available
+    // here, twice over: `command-flags.ts` allows `lesson-accept` only
+    // `--title`, `--scope`, `--severity` and `--directive`, and the command is
+    // pressed through the BROWSER, whose composed argv comes from the
+    // catalogue and whose screen has no control for settling a contradiction.
+    //
+    // So the `lesson-accept` entry below is RED on this corpus and is reported
+    // as a finding rather than worked around. The five other writes this test
+    // drives pass. What changed on 2026-09-11 is that the seeding above now
+    // settles its own contradictions and this test reaches the browser at all
+    // — before that it died on `Command failed:` in `seedQueues`.
     const out = stageRuleCandidates(ws.projectRoot!, target!, [
       {
         title: 'A D12 fixture candidate the reader accepts',
         directive: 'do',
-        body: 'Because `lesson-accept` needs a pending candidate to accept.',
+        body: 'Created by e2e/composer-write-execute.spec.ts so `lesson-accept` has a pending '
+          + 'candidate to accept. Discarded with the workspace.',
         scope: ['e2e/**'],
         severity: 'soft',
       },
       {
         title: 'A D12 fixture candidate the reader discards',
         directive: 'dont',
-        body: 'Because `lesson-discard` needs a second one, and one candidate is not two.',
+        body: 'Created by e2e/composer-write-execute.spec.ts so `lesson-discard` has a second '
+          + 'candidate to discard, one candidate not being two. Discarded with the workspace.',
         scope: ['e2e/**'],
         severity: 'soft',
       },

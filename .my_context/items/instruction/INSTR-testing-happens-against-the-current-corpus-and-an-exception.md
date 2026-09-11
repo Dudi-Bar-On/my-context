@@ -5,8 +5,10 @@ title: Testing happens against the current corpus, and an exception is asked for
 status: active
 severity: hard
 always: false
-summary: Tests and verification run against this project real corpus rather than a fixture, and any exception is approved by the owner in advance.
-summary_of: ffc2b0db8e385107
+summary: Tests and verification run against this project real corpus rather than a fixture, and the one exception the owner approved is a private throwaway copy of that corpus, seeded with the single state a test needs and deleted afterwards.
+summary_of: 00fd5531a76a4346
+summary_was:
+  - 2026-09-11 Tests and verification run against this project real corpus rather than a fixture, and any exception is approved by the owner in advance.
 scope: []
 tags:
   - dogfooding
@@ -18,7 +20,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-09-03
 valid_until: null
-checksum: eaa7972eccdbc10e
+checksum: eadb4588d052d538
 ---
 
 # Testing happens against the current corpus, and an exception is asked for before it is taken
@@ -42,6 +44,37 @@ It does not licence writing to the corpus to see what happens. The neighbouring 
 THE DISTINCTION THAT MAKES BOTH TRUE
 
 Verification asks does this feature work for a person, and can only be answered on the thing the person uses. A probe asks how does this mechanism behave, and its records are litter. The first belongs here. The second belongs in a temporary workspace.
+
+THE EXCEPTION THAT WAS ASKED FOR, AND APPROVED — 2026-09-11
+
+The owner approved one exception, in these words: "Each of those tests makes a private throwaway
+copy of your corpus, puts the one thing it needs into the copy, runs, and deletes the copy. Your
+real corpus is never touched."
+
+IT IS RECORDED HERE SO A LATER SESSION DOES NOT HAVE TO REDISCOVER THAT IT WAS GIVEN. It was asked
+for before it was taken, which is the rule this instruction is about, and the asking is what makes
+it an exception rather than a breach.
+
+WHAT IT COVERS, AND NOTHING WIDER. A browser spec that needs ONE state this corpus does not hold
+today may copy this corpus, put that one state into the copy through the product's own commands,
+serve the copy, and delete it when the test ends. Four states needed it, each measured on this
+repository on 2026-09-11: a selection that overflows its budgets (`selection.spilled` is 0 here); a
+review queue with something in it (`reviewQueue.drafts` 0, `pendingRevisions.revisions` 0); a doctor
+finding whose remedy routes to `run` (all 78 findings route to `acknowledge`); and a session with a
+real injection history to draw.
+
+WHAT IT IS NOT. It is not the return of `.demo-corpus`, which was retired on 2026-09-07. It is not a
+second corpus. It is not a fixture anybody maintains by hand. The copy is of THIS corpus - the same
+items, the same ids, the same scale - and it is made per test and thrown away, so there is never a
+second answer to "what is the app looking at". `e2e/seeds.ts` is the whole of what may be put into
+one, and each seed says what it is for.
+
+AND THE REAL CORPUS BEING UNTOUCHED IS AN ASSERTION, NOT A PROMISE.
+`e2e/scratch-seeds.spec.ts` snapshots every authored byte under `.my_context/` - items, config,
+revisions, staging - builds and drives a fully seeded copy, and requires the snapshot to be
+byte-identical afterwards. A second test in that file proves the comparison can fail, by running it
+over a tree that really changed. The shape is the one `test/ui/read-model.test.ts` already uses for
+the read surface.
 
 ## Relations
 - supersedes [[DEC-the-ui-is-developed-against-a-simulated-corpus-until-the]]

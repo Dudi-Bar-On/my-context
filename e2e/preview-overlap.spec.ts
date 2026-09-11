@@ -43,7 +43,25 @@
  * a measurement of the settled screen and not of a window before the second
  * append.
  */
-import { test, expect } from './app.ts';
+import { seededTest, expect } from './scratch-corpus.ts';
+import { TIGHT_BUDGETS, realInjections, seeds, squeezeBudgets } from './seeds.ts';
+
+/**
+ * **WHAT THIS FILE REQUIRES: a spilled list to draw twice, and a second
+ * session to change to.**
+ *
+ * Every test here begins by waiting for the landing render to have drawn a
+ * spilled row, because the defect is two renders of that card standing at
+ * once — with nothing spilled there is no card, and the three tests fail on
+ * the precondition rather than on the overlap. Re-measured on the live corpus
+ * 2026-09-11: `/api/select` answers `spilled: 0` at the real budgets, and the
+ * ledger's session list is not what the seed puts there.
+ *
+ * So: a private copy with the budgets turned down, and two sessions produced
+ * by the real hooks, driven and deleted. `e2e/seeds.ts` carries the
+ * measurement.
+ */
+const test = seededTest(seeds(squeezeBudgets(TIGHT_BUDGETS), realInjections()));
 import type { Page } from '@playwright/test';
 
 /** The three cards a full render draws, each of which used to be drawn twice. */

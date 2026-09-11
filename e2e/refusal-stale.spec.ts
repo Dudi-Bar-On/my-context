@@ -99,6 +99,17 @@ const CLI = path.resolve(import.meta.dirname, '..', 'src', 'cli', 'index.ts');
  */
 function copyable(source: string): boolean {
   const name = path.basename(source);
+  // **And the four directories a corpus does not need**, added 2026-09-11.
+  // This filter kept them because it was written as "the opposite of
+  // `worthCopying`", and `node_modules` alone is 279 MB and THIRTY SECONDS per
+  // workspace — measured by `composer-write-execute.spec.ts` — against a test
+  // budget of thirty. This test was timing out in the copy, before a browser
+  // opened, and reporting it as the screen. Nothing here needs them: the
+  // server and the CLI are both started from the real repository by absolute
+  // path. Kept identical to `e2e/scratch-corpus.ts`'s own list.
+  if (['node_modules', '.git', 'test-results', 'playwright-report', '.demo-corpus'].includes(name)) {
+    return false;
+  }
   return !name.startsWith('.index.db') && !name.startsWith('audit.db');
 }
 
@@ -174,6 +185,12 @@ async function redrawWatch(page: Page): Promise<void> {
 }
 
 test('a projection behind its log puts the served corpus in refusal, and the app draws the refusal rather than zeroes', async ({ page }) => {
+  // Ninety seconds, and the copy is why: this test's workspace is a full copy
+  // of the served corpus INCLUDING its audit log, followed by a `rebuild` and
+  // an `audit` — about twelve seconds on the owner's machine even with the
+  // lean filter above, out of a thirty-second default that also has to cover a
+  // browser, a server and two full screen reads.
+  test.setTimeout(90_000);
   const root = isolatedCorpus();
   // What `recordAudit` and `appendUnprojected` both take: the workspace
   // directory, not the repository root the server is started in.

@@ -44,17 +44,17 @@
  * something it SEEDS it with the real commands rather than assuming it is there.
  */
 import { execFileSync } from 'node:child_process';
-import { cpSync, mkdtempSync, rmSync } from 'node:fs';
-import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { test as base, expect } from '@playwright/test';
 import { CORPUS } from './app.ts';
 import { startUiChild, type UiHarness } from '../test/ui/helpers.ts';
 import { throwawayHome } from './throwaway-home.ts';
+import { SEEDED_PINNABLE_TITLE, addSettlingContradictions, pinnableItem } from './seeds.ts';
+import { scratchCorpus } from './scratch-corpus.ts';
 import {
   normalise, openApp, openConfirm, outcome, outcomeFor, runIt,
 } from './composer-run.ts';
-import { snapshot, worthCopying } from '../src/ui/execute-effect.ts';
+import { snapshot } from '../src/ui/execute-effect.ts';
 import { DIR_NAME } from '../src/core/workspace.ts';
 import { CATEGORIES } from '../src/core/categories.ts';
 import { openRebuiltStore } from '../src/core/open-store.ts';
@@ -65,15 +65,17 @@ import {
   openComposer, setValue, settled, specsOf,
 } from './composer.ts';
 
-interface Workspace { root: string; myContextDir: string; env: NodeJS.ProcessEnv }
+interface Workspace {
+  root: string; myContextDir: string; env: NodeJS.ProcessEnv; dispose: () => void;
+}
 
 /**
- * A disposable copy of the live corpus, indexed. `worthCopying` (skip `.audit`
- * and `.index.db*`) is reused from `src/ui/execute-effect.ts` rather than
- * re-spelled, and `rebuild` is run here rather than left to the server because
- * the server's read routes open the index `openReadOnlyChecked`, which cannot
- * CREATE a database that does not exist — `e2e/execute.spec.ts` measured every
- * SQLite-backed route answering `unable to open database file` without it.
+ * A disposable, SEEDED copy of the live corpus, indexed. `scratchCorpus` owns
+ * the copy, the two rebuilds and the projections; the `rebuild` matters for the
+ * reason recorded here before — the server's read routes open the index
+ * `openReadOnlyChecked`, which cannot CREATE a database that does not exist,
+ * and `e2e/execute.spec.ts` measured every SQLite-backed route answering
+ * `unable to open database file` without it.
  *
  * **AND A THROWAWAY HOME, which is the second store and was not isolated.**
  * The copy above isolates the CORPUS; `~/.my-context` is a different directory,
@@ -83,10 +85,23 @@ interface Workspace { root: string; myContextDir: string; env: NodeJS.ProcessEnv
  * set on this process.
  */
 function makeWorkspace(): Workspace {
-  const root = mkdtempSync(path.join(tmpdir(), 'myctx-d12-'));
-  cpSync(CORPUS, root, { recursive: true, filter: worthCopying });
-  execFileSync(process.execPath, [CLI, 'rebuild'], { cwd: root, encoding: 'utf8', stdio: 'pipe' });
-  return { root, myContextDir: path.join(root, DIR_NAME), env: throwawayHome(root).env };
+  // **`scratchCorpus` since 2026-09-11**, for the two things this hand-rolled
+  // copy could not do. It copies LEAN — `worthCopying` alone drags
+  // `node_modules` and costs thirty seconds per workspace, measured by this
+  // file's own sibling — and it takes a SEED, so the state a test needs is
+  // arranged rather than hoped for. `pinnableItem` is the seed here: see
+  // `firstUnpinnedItemId` for why nothing already in this corpus is a safe
+  // thing to pin.
+  const scratch = scratchCorpus(pinnableItem());
+  return {
+    root: scratch.root,
+    myContextDir: scratch.myContextDir,
+    env: scratch.env,
+    // `dispose` rather than an `rmSync` of the root alone: `scratchCorpus` also
+    // mints a throwaway HOME directory, and removing only the workspace leaves
+    // that one in `%TEMP%` for every test that runs.
+    dispose: scratch.dispose,
+  };
 }
 
 /** The CLI's own answer to an argv, in the workspace under test. THE ORACLE. */
@@ -144,13 +159,31 @@ function firstUnpinnedItemId(dir: string): string {
     const always = /^always:\s*(\S+)/m.exec(text)?.[1];
     const id = /^id:\s*(\S+)/m.exec(text)?.[1];
     const type = /^type:\s*(\S+)/m.exec(text)?.[1];
-    if (always === 'false' && id !== undefined && type !== undefined && normative.has(type)) {
-      return id;
-    }
+    if (always !== 'false' || id === undefined || type === undefined) continue;
+    if (!normative.has(type)) continue;
+    // **AND A THIRD CONDITION, added 2026-09-11: it must be the item this
+    // workspace SEEDED.**
+    //
+    // The two above are not enough any more. The contradiction gate landed on
+    // 2026-09-08 (`9c9cd31b`) and it runs on `edit` as well as on `add`, so
+    // `pin` on an existing item is refused whenever that item reads as a near
+    // twin of something else governing: measured here, the first unpinned
+    // normative item is `CONST-a-correction-records-the-class-of-error-not-
+    // only-the` and pinning it answers *"may contradict 1 item that currently
+    // governs, and nothing was changed"*. Which item trips the gate is a
+    // property of what the corpus holds today, so no walk can dodge it — and
+    // the failure presents, again, as "the confirm never opened".
+    //
+    // `pinnableItem` (`e2e/seeds.ts`) makes one with text distinctive enough to
+    // be nobody's twin, settling the gate through `--distinct` if it still
+    // fires. That is the ruling a person makes rather than a reword.
+    if (!text.includes(SEEDED_PINNABLE_TITLE)) continue;
+    return id;
   }
   throw new Error(
-    `e2e: no item under ${dir} is both unpinned and on the normative tier — \`pin\` governs `
-    + 'only there, so there is nothing in this corpus the boundary test could pin',
+    `e2e: \`pinnableItem\` seeded no unpinned normative item under ${dir} — \`pin\` governs `
+    + 'only on the normative tier, and the contradiction gate refuses an existing item, so the '
+    + 'boundary test has nothing it could pin',
   );
 }
 
@@ -263,7 +296,7 @@ base('every read the catalogue licenses runs, and answers exactly what the CLI a
       expect(ran, 'reads executed and checked against the CLI').toBe(cases.length);
     } finally {
       await harness?.stop();
-      try { rmSync(ws.root, { recursive: true, force: true }); } catch { /* Windows lock */ }
+      ws.dispose();
     }
   });
 
@@ -354,7 +387,7 @@ base('the browser composes an argv and the server rebuilds it, and the two agree
       }
     } finally {
       await harness?.stop();
-      try { rmSync(ws.root, { recursive: true, force: true }); } catch { /* Windows lock */ }
+      ws.dispose();
     }
   });
 
@@ -416,7 +449,7 @@ base('a boundary write runs behind the confirm, and the corpus says what it did'
       expect(shown.code, 'the CLI can still read the item it just changed').toBe(0);
     } finally {
       await harness?.stop();
-      try { rmSync(ws.root, { recursive: true, force: true }); } catch { /* Windows lock */ }
+      ws.dispose();
     }
   });
 
@@ -492,7 +525,7 @@ base('a value the Composer refuses to COPY still executes as a literal, and is s
         .not.toMatch(/uid=\d+/);
     } finally {
       await harness?.stop();
-      try { rmSync(ws.root, { recursive: true, force: true }); } catch { /* Windows lock */ }
+      ws.dispose();
     }
   });
 
@@ -515,16 +548,23 @@ function seedQueues(ws: Workspace): void {
     ['constraint', 'A second D12 fixture draft, because one draft is not a list'],
   ];
   for (const [category, title] of drafts) {
-    execFileSync(process.execPath, [
-      CLI, 'add', category, title,
+    // **`addSettlingContradictions`, not a bare `add`, since 2026-09-11.**
+    //
+    // The contradiction gate landed on 2026-09-08 (`9c9cd31b`) and from that
+    // commit this seeding was refused outright — *"this item may contradict N
+    // items that currently govern, and nothing was created"* — so the test
+    // died on `Command failed:` before a browser opened. The refusal is the
+    // gate working; the fix is the settlement a person makes, `--distinct
+    // <id>` for each item it named, rather than wording the fixture around it.
+    // `e2e/doctor-workspace.ts` paid for this lesson first and names it as the
+    // failure it exists to prevent.
+    const id = addSettlingContradictions(ws.root, process.env, [
+      'add', category, title,
       '--body', 'Created by e2e/composer-execute.spec.ts to give `review promote` and `review '
         + 'discard` something to name. Discarded with the workspace.',
       '--summary', 'A fixture draft for the D12 composer sweep.',
       '--yes',
-    ], { cwd: ws.root, encoding: 'utf8', stdio: 'pipe' });
-    const made = [...snapshot(ws.myContextDir)]
-      .find(([, t]) => t.includes(title));
-    const id = /^id:\s*(\S+)/m.exec(made![1])![1]!;
+    ]);
     execFileSync(process.execPath, [CLI, 'edit', id, '--status', 'draft', '--yes'],
       { cwd: ws.root, encoding: 'utf8', stdio: 'pipe' });
   }
@@ -625,6 +665,6 @@ base('the four review entries, on a corpus that has a draft and a revision to na
       ).toBe(6);
     } finally {
       await harness?.stop();
-      try { rmSync(ws.root, { recursive: true, force: true }); } catch { /* Windows lock */ }
+      ws.dispose();
     }
   });

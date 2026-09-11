@@ -39,7 +39,26 @@ import { projectDirName } from '../src/core/conversation-index.ts';
 
 const SESSION = 'sess-anchors';
 
-const TABLE_HEADER = 'tokenizer | hits';
+/**
+ * **The table's label is its FIRST READABLE HEADER CELL, not the joined row.**
+ *
+ * Owner ruling 2026-09-11, landed as `440710b6`: the automatic pass keeps two
+ * kinds and the table labels that read as a bare `|` are fixed. `tableLabel`
+ * (`src/cli/commands/conversation.ts`) now answers `header.find(isReadable)`,
+ * so `| tokenizer | hits |` is anchored as `tokenizer` rather than as
+ * `tokenizer | hits`.
+ */
+const TABLE_HEADER = 'tokenizer';
+/**
+ * **Still in the transcript, and deliberately NOT an anchor any more.**
+ *
+ * The `report` detector was retired by the same ruling — 101 automatic
+ * `report` anchors went to zero. This turn names a dated report path and no
+ * normative id, so it is one of the 53 that were genuinely dropped rather than
+ * one of the 48 the retired grammar had been HIDING as rulings. It stays in
+ * the fixture as a NEGATIVE: a detector that came back would add a third row
+ * below and say so.
+ */
 const REPORT = 'reports/2026-09-10-lexical-selection-research.md';
 const RULING = 'RULE-a-citation-names-an-item-by-id-never-a-report-by-line-number';
 /** In the transcript and in NO label — so a label search cannot pass for a prose search. */
@@ -156,21 +175,23 @@ for (const lang of ['en', 'he'] as const) {
   });
 }
 
-test('a table, a report and a ruling are already marked, and nothing else is', async ({ page }) => {
+test('a table and a ruling are already marked, and nothing else is', async ({ page }) => {
   await open(page, 'en');
   const rows = page.locator('.convanchor');
-  await expect(rows).toHaveCount(3, { timeout: 20_000 });
+  await expect(rows).toHaveCount(2, { timeout: 20_000 });
 
   const labels = await rows.locator('.convanchorlabel').allInnerTexts();
   expect(
     labels.sort(),
-    'exactly the three turns that are anchors by NATURE, each labelled with the evidence that '
-    + 'fired — the header row, the path, the id. The prose turn, the Hebrew turn and the shell '
-    + 'pipeline are the negatives, and a detector that widened would add a fourth row here.',
-  ).toEqual([REPORT, RULING, TABLE_HEADER].sort());
+    'exactly the two turns that are anchors by NATURE, each labelled with the evidence that '
+    + 'fired — the first readable header cell, and the id. The REPORT turn is now a negative '
+    + 'alongside the prose turn, the Hebrew turn and the shell pipeline: the owner retired that '
+    + 'grammar on 2026-09-11 (441 of 613 anchors re-counted, `automatic/report` 101 to 0). A '
+    + 'detector that widened, or a report detector that came back, would add a row here.',
+  ).toEqual([RULING, TABLE_HEADER].sort());
 
   const kinds = await rows.locator('.convanchorkind').allInnerTexts();
-  expect(kinds.sort()).toEqual(['a report', 'a ruling you gave', 'a table']);
+  expect(kinds.sort()).toEqual(['a ruling you gave', 'a table']);
 
   await page.screenshot({ path: 'e2e/screens/anchors-automatic.png', fullPage: true });
 });

@@ -44,17 +44,30 @@
  * carries the position out of `fitToBudget` itself, and the two paths below
  * are chosen so that the same corpus answers both ways:
  *
- *   `src/api/handler.ts`   `RULE-handlers-validate-at-the-boundary` declares
- *                          `src/api/**`, so band 1 is occupied, it takes the
- *                          budget, and all 111 spills say `band 2` — the
- *                          displacement, visible.
- *   `docs/architecture.md` nothing in the corpus scopes there. Band 1 is
- *                          EMPTY, the candidates were never split, and no row
- *                          carries a band at all. A marker here would be
- *                          reporting a partition nobody made.
+ * **BOTH PATHS ARE DERIVED NOW, and the two constants they replace were both
+ * wrong by 2026-09-11.** `src/api/handler.ts` stood for the banded direction on
+ * the strength of `RULE-handlers-validate-at-the-boundary` declaring
+ * `src/api/**` — and both belonged to `.demo-corpus`; this repository has
+ * neither, so `selectOption` waited thirty seconds for an option that is not in
+ * the picker. `docs/architecture.md` stood for the unbanded direction on a
+ * 2026-08-29 reading that nothing scoped there — by today something does, and
+ * the "no partition was made" assertion was being made where a partition
+ * exists.
  *
- * Both directions are asserted, because a field that is always present and a
- * field that is never present both pass a one-sided check.
+ *   `scopedPath`     the first option the picker offers whose spills ALL carry
+ *                    a band: band 1 is occupied, it takes the budget, and every
+ *                    spill was offered second. Measured on the twin 2026-09-11:
+ *                    121 spills, all `band 2`.
+ *   `unscopedPath`   the first option whose spills carry NO band, and `null`
+ *                    when there is none. Measured on the twin the same day:
+ *                    there is none — every path this corpus offers puts
+ *                    something in band 1 — so that half SKIPS with a sentence
+ *                    naming what went unmeasured rather than asserting the
+ *                    opposite of what it says.
+ *
+ * Both directions are still written, because a field that is always present and
+ * a field that is never present both pass a one-sided check. One of them is
+ * unreachable on this corpus, and it says so out loud.
  *
  * ── AND THE WIDTH ────────────────────────────────────────────────────────
  *
@@ -67,13 +80,41 @@
  * `app-layout.spec.ts` makes for every screen, taken here with the list on
  * screen and its widest ids drawn.
  */
-import { test, expect } from './app.ts';
+import { seededTest, expect } from './scratch-corpus.ts';
+import { TIGHT_BUDGETS, realInjections, seeds, squeezeBudgets } from './seeds.ts';
 import type { Locator, Page } from '@playwright/test';
 
-/** The path a scoped item names, so band 1 is occupied. */
-const SCOPED_PATH = 'src/api/handler.ts';
-/** A path nothing in the corpus scopes to, so the banding degenerates. */
-const UNSCOPED_PATH = 'docs/architecture.md';
+/**
+ * **WHAT THIS FILE REQUIRES, said here so a reader need open nothing else: a
+ * selection that OVERFLOWS.**
+ *
+ * Re-measured on the live corpus 2026-09-11, at its real budgets (pinned
+ * 30,000 / jit 32,000 / index 8,000): `/api/select` answers `spilled: 0` for
+ * every question the preview asks. Every assertion below is about the spilled
+ * list, so on this repository as it stands the whole file measures an empty
+ * container — and that is 11 of the 41 browser failures
+ * `TASK-the-browser-suite-returns-to-the-real-corpus-and-the` set out to
+ * repair, not a defect in the screen.
+ *
+ * So this file gets the state it needs the way the owner's 2026-09-11
+ * exception describes: a private throwaway copy of THIS corpus — same items,
+ * same scale, same ids — with the budgets turned down, driven, and deleted.
+ * `e2e/seeds.ts` carries the measurement; `e2e/scratch-seeds.spec.ts` is the
+ * gate that the copy really overflows and that this repository's own corpus is
+ * byte-identical afterwards.
+ *
+ * **AND a session that has really been delivered something**, which is the
+ * second half and was easy to miss. Half this file is about the WARM question
+ * — what a named session would get now, given what it has already seen — and a
+ * twin whose corpus has never been injected into has no session for the
+ * question strip to name: `#qpick` draws no warm button at all, and
+ * `seenFiltered` is `[]` because no gate has anything to remove. Measured here
+ * on 2026-09-11, in exactly that shape, with the budgets squeezed and nothing
+ * else seeded. `realInjections` is what gives the twin a session with a
+ * history.
+ */
+const test = seededTest(seeds(squeezeBudgets(TIGHT_BUDGETS), realInjections()));
+
 
 /** `parts.js` · `BOUND_CAP_LIST` — the display cap this list is bounded by. */
 const BOUND_CAP_LIST = 20;
@@ -101,7 +142,7 @@ const spilledRows = (page: Page): Promise<string[]> =>
   );
 
 /** One `Spill` as `/api/select` serves it. */
-interface Spill { id: string; tier: string }
+interface Spill { id: string; tier: string; band?: number | null }
 
 /**
  * **What `/api/select` says this selection spilled, read through the page's
@@ -131,8 +172,8 @@ function spilledPayload(
     const session = isCold === true ? 'cold' : ctx.session();
     const body = await ctx.api(
       `/api/select?${vm.selectQuery(ev as string, p as string | null, session)}`,
-    ) as { spilled: { id: string; tier: string }[] };
-    return body.spilled.map((s) => ({ id: s.id, tier: s.tier }));
+    ) as { spilled: { id: string; tier: string; band?: number | null }[] };
+    return body.spilled.map((s) => ({ id: s.id, tier: s.tier, band: s.band ?? null }));
   }, [event, path, cold] as const);
 }
 
@@ -209,6 +250,93 @@ async function landing(page: Page): Promise<void> {
     'the landing render never drew a spilled row, so everything below would be measuring a '
     + 'screen that is still building',
   ).toBeVisible({ timeout: 15_000 });
+}
+
+/**
+ * **A path the picker offers that NOTHING in this corpus scopes to, derived
+ * from the payload rather than named.**
+ *
+ * The band marker exists because `DEC-the-jit-tier-offers-path-scoped-items-
+ * first-in-two-bands` made the selector split candidates in two whenever band
+ * 1 is occupied. A path nothing claims leaves band 1 empty, no split is made,
+ * and no row may carry a marker — the negative direction, without which a
+ * field that is ALWAYS present passes the positive check on its own.
+ *
+ * It used to be a constant (`docs/architecture.md`) and the constant went
+ * stale: by 2026-09-11 items scope under `docs/**`, so that path answers
+ * `band 2` and the "no partition" assertion was being made where a partition
+ * exists. Asking the payload which option is unclaimed cannot go stale in that
+ * direction — it either finds one or says it found none.
+ */
+async function unscopedPath(page: Page): Promise<string | null> {
+  return firstPathWhere(page, (spills) => spills.every((s) => typeof s.band !== 'number'));
+}
+
+/**
+ * **The first path the picker offers whose spills answer `matches` — or `null`
+ * when none of the ones it scans does.**
+ *
+ * One walk, shared by the two derivations below, and it stops at the first
+ * answer rather than measuring every option: each candidate costs an
+ * `/api/select` round trip, and the two derivations together were making
+ * eighty of them per test.
+ */
+async function firstPathWhere(
+  page: Page, matches: (spills: Spill[]) => boolean,
+): Promise<string | null> {
+  // **The picker only EXISTS for a tool event**, so the event has to move
+  // before its options can be read. Reading them first answers an empty list
+  // and every derivation below then reports "this corpus offers no such path"
+  // — which is a statement about the order of two lines in this file and not
+  // about the corpus. Measured here on 2026-09-11, four tests deep.
+  const was = await page.locator('#evsel').inputValue();
+  await page.selectOption('#evsel', 'tool');
+  await expect(page.locator('#pathsel')).toBeVisible();
+  const options = await page.locator('#pathsel option').evaluateAll(
+    (nodes) => nodes.map((n) => (n as HTMLOptionElement).value).filter((v) => v.length > 0),
+  );
+  let found: string | null = null;
+  for (const path of options.slice(0, PATHS_SCANNED)) {
+    const spills = await spilledPayload(page, 'tool', path);
+    if (spills.length > 0 && matches(spills)) { found = path; break; }
+  }
+  // **And the event is put BACK, because this is a derivation and not a
+  // step in the test.** Left on `tool`, the disjointness test's "at the
+  // session start" reading is taken off a screen already showing the tool
+  // event, so both of its lists are the same list and it reports 21 shared
+  // rows — the exact defect it exists to catch, manufactured by its own
+  // helper. Measured here on 2026-09-11.
+  if (was !== 'tool') {
+    await page.selectOption('#evsel', was);
+    await landing(page);
+  }
+  return found;
+}
+
+/** How many of the picker's options a derivation will scan before giving up. */
+const PATHS_SCANNED = 40;
+
+/**
+ * **A path this corpus DOES scope something to, so band 1 is occupied.**
+ *
+ * The constant this replaces was `src/api/handler.ts`, on the strength of
+ * `RULE-handlers-validate-at-the-boundary` declaring `src/api/**`. Both
+ * belonged to `.demo-corpus`: this repository has no `src/api` directory and
+ * no such rule, so the value was not among the 1,952 paths the coverage walk
+ * offers, `selectOption` waited for an option that would never appear, and
+ * four tests here died on a thirty-second timeout with nothing about the
+ * screen in the message. A named path is how a fixture's shape gets left
+ * behind in a spec; an asked-for one cannot be.
+ */
+async function scopedPath(page: Page): Promise<string> {
+  const found = await firstPathWhere(page, (spills) => spills.every((s) => typeof s.band === 'number'));
+  expect(
+    found,
+    'no path this corpus offers puts anything in band 1, so the displacement this test is about '
+    + 'never happens here and there is nothing to measure. `fitToBudget` only bands when band 1 '
+    + 'is occupied.',
+  ).not.toBeNull();
+  return found!;
 }
 
 /** Drive the event picker to a tool event against `path`, and settle. */
@@ -310,12 +438,13 @@ test('the list CHANGES with the selection — the defect this card exists to end
     + 'in the order the selector considered them',
   ).toEqual(asRows(startSpills).slice(0, BOUND_CAP_LIST));
 
-  await toolEvent(page, SCOPED_PATH);
+  const scoped = await scopedPath(page);
+  await toolEvent(page, scoped);
   const atTool = await spilledRows(page);
-  const toolSpills = await spilledPayload(page, 'tool', SCOPED_PATH);
+  const toolSpills = await spilledPayload(page, 'tool', scoped);
   expect(
     atTool,
-    `after the selection moved to a tool event on \`${SCOPED_PATH}\` the card drew `
+    `after the selection moved to a tool event on \`${scoped}\` the card drew `
     + `${atTool.length} rows; \`/api/select\` spilled ${toolSpills.length} items for THAT `
     + 'question. A panel stable against precisely the change the reader is making is the '
     + 'exemplar picker\'s defect restated',
@@ -364,8 +493,9 @@ test('a session start and a tool event share no spilled row, where they reached 
   const { page } = app;
 
   await landing(page);
+  const scoped = await scopedPath(page);
   const startSpills = await spilledPayload(page, 'session-start', null);
-  const toolSpills = await spilledPayload(page, 'tool', SCOPED_PATH);
+  const toolSpills = await spilledPayload(page, 'tool', scoped);
 
   const startTiers = [...new Set(startSpills.map((s) => s.tier))];
   const toolTiers = [...new Set(toolSpills.map((s) => s.tier))];
@@ -390,7 +520,7 @@ test('a session start and a tool event share no spilled row, where they reached 
   test.skip(sharedTiers.length > 0, unmeasured);
 
   const atStart = await spilledRows(page);
-  await toolEvent(page, SCOPED_PATH);
+  await toolEvent(page, scoped);
   const atTool = await spilledRows(page);
 
   expect(
@@ -403,10 +533,11 @@ test('a session start and a tool event share no spilled row, where they reached 
   ).toEqual([]);
 });
 
-test('a spilled row says which band it was offered in, and only where a band was made', async ({ app }) => {
+test('a spilled row says which band it was offered in', async ({ app }) => {
   const { page } = app;
 
-  await toolEvent(page, SCOPED_PATH);
+  const scoped = await scopedPath(page);
+  await toolEvent(page, scoped);
   const banded = await spilledList(page).locator('.row').evaluateAll(
     (rows) => rows.map((r) => [...r.querySelectorAll('.m')]
       .map((m) => m.textContent ?? '').filter((t) => t.startsWith('band '))),
@@ -416,8 +547,30 @@ test('a spilled row says which band it was offered in, and only where a band was
     'a scoped item names this path, so band 1 took the budget and every spill was offered '
     + 'second. The marker is read off `Spill.band`, never re-derived from the item and the path',
   ).toBe(true);
+});
 
-  await page.selectOption('#pathsel', UNSCOPED_PATH);
+/**
+ * **The negative direction, SPLIT OUT so that skipping it does not hide a pass.**
+ *
+ * It was the second half of the test above until 2026-09-11, and Playwright's
+ * `test.skip(condition, reason)` marks the WHOLE test skipped whichever line it
+ * is called on — so on a corpus that cannot reach this direction the banded
+ * assertion above was running, passing, and being reported as "skipped". A
+ * green half reported as unmeasured is the same defect as an unmeasured half
+ * reported as green, one sign flipped.
+ */
+test('and no spilled row carries a band where nothing was partitioned', async ({ app }) => {
+  const { page } = app;
+
+  const unscoped = await unscopedPath(page);
+  test.skip(
+    unscoped === null,
+    'every path this corpus offers the picker is scoped by something today, so band 1 is never '
+    + `empty and the "no partition was made" direction cannot be reached. Measured, not assumed: `
+    + `not one of the first ${PATHS_SCANNED} paths the picker offers answered an unbanded spill. `
+    + 'This direction went UNMEASURED; the banded one above is unconditional.',
+  );
+  await page.selectOption('#pathsel', unscoped!);
   await landing(page);
   const unbanded = await spilledList(page).locator('.row').evaluateAll(
     (rows) => rows.flatMap((r) => [...r.querySelectorAll('.m')]
@@ -425,14 +578,15 @@ test('a spilled row says which band it was offered in, and only where a band was
   );
   expect(
     unbanded,
-    'nothing scopes to this path, so band 1 is empty, the candidates were never split, and a '
+    `nothing scopes to ${unscoped}, so band 1 is empty, the candidates were never split, and a `
     + 'band marker would report a partition the selector did not make',
   ).toEqual([]);
 });
 
 test('a full-length id does not scroll the page sideways', async ({ app }) => {
   const { page } = app;
-  await toolEvent(page, SCOPED_PATH);
+  const scoped = await scopedPath(page);
+  await toolEvent(page, scoped);
 
   const measured = await page.evaluate(() => ({
     longest: Math.max(...[...([...document.querySelectorAll('#spilledRows')].at(-1)

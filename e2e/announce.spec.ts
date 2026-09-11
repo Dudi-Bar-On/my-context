@@ -52,8 +52,29 @@
  * refused write must leave the card saying "not copied", because a state
  * flipped by a click is the same lie one layer down.
  */
-import { test, expect } from './app.ts';
+import { seededTest, expect } from './scratch-corpus.ts';
+import { pendingRevision } from './seeds.ts';
 import { settleScreen } from './settle.ts';
+
+/**
+ * **WHAT THIS FILE REQUIRES: a revision waiting in the Review queue.**
+ *
+ * Every assertion here is made on a revision card's Copy button, and the card
+ * only draws when something is pending. Re-measured on the live corpus
+ * 2026-09-11: `pendingRevisions.revisions` is **0** — both revisions in
+ * `.my_context/.revisions/` were promoted on 2026-08-29 — so all three tests
+ * time out waiting for a control that has nothing to draw for. That is three
+ * of the 41 failures `TASK-the-browser-suite-returns-to-the-real-corpus-and-the`
+ * set out to repair, and none of them is a defect in the live region.
+ *
+ * It cannot be arranged on this repository at all: `mycontext edit` writes as
+ * `origin: 'human'` and a human's edit is APPLIED, so no command a person can
+ * type leaves a proposal pending. So the state is arranged in a private
+ * throwaway copy, through the same `updateItem` call the MCP surface makes —
+ * see `e2e/seed-agent-write.ts` — and the copy is deleted when the test ends.
+ * The owner approved exactly this on 2026-09-11.
+ */
+const test = seededTest(pendingRevision());
 
 const WORK = '[data-p="work"]';
 /** The shell's one region for a transient outcome. `app.js`' `ANNOUNCE_ID`. */

@@ -49,12 +49,39 @@
  * section: the router keeps every visited screen inside `#screen`, merely
  * hidden, and an unscoped `td` counts rows off four other screens.
  */
-import { test, expect } from './app.ts';
+import { seededTest, expect } from './scratch-corpus.ts';
+import { SEEDED_CLEARED, SEEDED_LONG, realInjections } from './seeds.ts';
 import type { Page } from '@playwright/test';
 import { settleScreen } from './settle.ts';
 
-/** The session `scripts/demo-corpus.ts` replays `/clear` on. */
-const CLEARED = 'demo-session-a3f9c1-20';
+/**
+ * **WHAT THIS FILE REQUIRES: sessions that have actually been injected into,
+ * including one a `/clear` destroyed the window of.**
+ *
+ * It named `demo-session-a3f9c1-20` and `demo-session-a3f9c1-11` by id until
+ * 2026-09-11. Those ids belonged to `.demo-corpus`, which was retired on
+ * 2026-09-07, and they are in no corpus anywhere now — so three of these tests
+ * were asking the live corpus about sessions that have never existed and
+ * getting, correctly, nothing. Re-measured on this repository the same day: 20
+ * sessions, and not one of them carries the cleared-window shape or a seen
+ * file long enough to trip `BOUND_CAP_TABLE`.
+ *
+ * The shape is not authored here; it is PRODUCED, by feeding the real hooks
+ * the real payloads on stdin in a private copy of this corpus — the method
+ * `scripts/demo-corpus.ts` used, kept, with the stand-in corpus underneath it
+ * dropped. `e2e/seeds.ts` · `realInjections` is the whole of it, and the copy
+ * is deleted when the test ends.
+ *
+ * **No `squeezeBudgets` here, deliberately.** At the real budgets a session
+ * start delivers ~45 items, so four of them leave a seen file long enough for
+ * the bounded table below to hold rows back — which is the state test 4 needs.
+ * `injected-real-spills.spec.ts` is the file that needs the budgets squeezed,
+ * because it is about what did NOT arrive.
+ */
+const test = seededTest(realInjections());
+
+/** The session the seed replays a real `/clear` on. */
+const CLEARED = SEEDED_CLEARED;
 
 /**
  * Navigate to `#/injected` and wait only for the SECTION to exist.
@@ -257,11 +284,11 @@ test('the picker\'s itemCount and the injected lines disagree about the cleared 
 /* ══ 4 · THE LONG SESSION, WHICH IS THE OTHER END OF THE SAME AXIS ═══════ */
 
 /**
- * The session `scripts/demo-corpus.ts` drives through a full working day —
- * fifteen tool events, three compactions and three resumes, all through the
- * real hooks on stdin.
+ * The session the seed drives through a working day — four session starts
+ * across all four sources and a tool event after each, all of them the real
+ * hooks fed real payloads on stdin.
  */
-const LONG = 'demo-session-a3f9c1-11';
+const LONG = SEEDED_LONG;
 
 /**
  * **A bounded list that holds something back, over data the product wrote.**

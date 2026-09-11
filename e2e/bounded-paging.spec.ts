@@ -67,8 +67,31 @@
  * against a corpus this product never serves, and `screen-parity`'s header
  * names that edit as the one that makes a gate worse than nothing.
  */
-import { test, expect } from './app.ts';
+import { seededTest, expect } from './scratch-corpus.ts';
+import { TIGHT_BUDGETS, squeezeBudgets } from './seeds.ts';
 import type { Page } from '@playwright/test';
+
+/**
+ * **WHAT THIS FILE REQUIRES: one SERVED list that really holds rows back.**
+ *
+ * The mounted tests below need nothing from the corpus — that is their whole
+ * point. The two served-screen tests do, and the measurement they were written
+ * on is now out of date in the direction that matters. Re-measured on the live
+ * corpus 2026-09-11: at its real budgets `/api/select` answers `spilled: 0`,
+ * so `#spilledRows` draws an empty list and the non-vacuity guard below fires
+ * exactly as it was written to — *a corpus whose spill list fits inside the cap
+ * would pass every assertion by drawing nothing.*
+ *
+ * That is the state `TASK-the-demo-corpus-cannot-trip-a-single-list-bound-so-
+ * paging-is` records, arriving from the other direction: it is not that a
+ * fixture was too small, it is that this corpus's budgets are large enough for
+ * it. So the served tests run over a private copy with the budgets turned down
+ * — the SAME items, at the SAME scale, overflowing — and the copy is deleted
+ * when the test ends. Measured on the twin: 156 spilled against a cap of 20,
+ * and 8 delivered against the same cap, so the pair this file has to tell
+ * apart is both on one screen.
+ */
+const test = seededTest(squeezeBudgets(TIGHT_BUDGETS));
 
 /** Navigate the rail to `preview` and wait for the screen to have drawn. */
 async function showPreview(page: Page): Promise<void> {

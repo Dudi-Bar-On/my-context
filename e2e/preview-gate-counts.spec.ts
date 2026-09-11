@@ -61,7 +61,20 @@
  *      same ids twice — and rung 4's event-path half, once measured, joins
  *      them there too.
  */
-import { test, expect } from './app.ts';
+import { seededTest, expect } from './scratch-corpus.ts';
+import { TIGHT_BUDGETS, realInjections, seeds, squeezeBudgets } from './seeds.ts';
+
+/**
+ * **WHAT THIS FILE REQUIRES: a ladder with a population at each rung.**
+ *
+ * The rungs count the items that FAIL at each gate, and on the live corpus at
+ * its real budgets nothing fails at the budget rung at all — `/api/select`
+ * answers `spilled: 0`, re-measured 2026-09-11 — so the counts the second test
+ * asks to see MOVE have nowhere to move from. A private copy with the budgets
+ * turned down and a session with a real history gives the ladder something to
+ * count, and is deleted when the test ends.
+ */
+const test = seededTest(seeds(squeezeBudgets(TIGHT_BUDGETS), realInjections()));
 import type { Page } from '@playwright/test';
 
 /** `parts.js` · `BOUND_CAP_LIST` — the display cap every list here is bounded by. */
