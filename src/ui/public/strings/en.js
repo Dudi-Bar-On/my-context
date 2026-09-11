@@ -816,6 +816,14 @@ export const strings = {
   // error and is right in the seconds after it; this is what is still true a
   // minute later, once a later request has proved the server is answering.
   'watch.streamNotLive': 'the live feed is not running — reload to reconnect',
+  // TASK-the-live-feed-notice-says-reload-when-the-server-is-stale: the same
+  // state, and the remedy above is actively wrong for it. When `staleCode` says
+  // the server's modules are older than the assets it is serving, a reload
+  // produces a brand-new client against the same fixed modules — for ever, which
+  // is what the owner met on 2026-09-12 after reloading repeatedly. The wording
+  // is `ex.codeSkew`'s own first clause on purpose: the banner and the chip are
+  // two lengths of one fact and must not read as two findings.
+  'watch.streamNotLiveStale': 'the live feed is not running — this page is newer than the server, so restart it',
   'watch.resync': 'the log rotated or moved — continuing from now; the history list below was refetched',
   // The four sentences the blank feed cost (plan:walk seq:52). A live tail that
   // is empty is UNMEASURED — "nothing since you opened this", never "no

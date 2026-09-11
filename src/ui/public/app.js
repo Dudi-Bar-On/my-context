@@ -535,6 +535,42 @@ function showDisconnected() {
 let codeSkewDismissed = false;
 
 /**
+ * **THE SAME FACT, REMEMBERED — because a second disclosure needs to READ it
+ * and the banner above only ever DREW it.**
+ *
+ * Owner report 2026-09-12: the strip said *"the live feed is not running —
+ * reload to reconnect"*, and reloading did not help. It could not. His server
+ * had been running since 01:56 the previous night, so every reload produced
+ * today's client — `src/ui/public/` is read from disk on every request —
+ * against yesterday's modules, which load once at start. The page was not
+ * guessing at that: `noteCodeSkew` had been told `staleCode: true` on the
+ * heartbeat all along. It simply had nowhere to put the answer, so
+ * `showLiveState()` went on offering the one remedy that cannot work while
+ * `ex.codeSkew`, which names the one that can, sat a function away.
+ *
+ * **A VARIABLE RATHER THAN A SECOND REQUEST, in the shape `corpusDriftAnswer`
+ * below already established, and the argument is stronger here.** `stream()`'s
+ * own catch calls `stopHeartbeat()`, so a page that failed to reach the server
+ * even once has no poll left at all — a notice that fetched its own answer
+ * would be asking down the channel that is down, which is precisely the
+ * failure it exists to explain.
+ *
+ * **NOT `codeSkewDismissed`, and the two must not be merged.** That one is the
+ * reader's answer to a BANNER — "I know, I will restart when I am ready" — and
+ * silencing a banner is not a claim that the server was restarted. The chip in
+ * the strip is not chrome anybody dismissed and goes on telling the truth.
+ *
+ * **CLEARED on an explicit `staleCode: false`, and only on that.** The reader
+ * restarts the server and leaves the tab open; the next ping answers from a
+ * current process. A chip still saying "restart it" at that point is a warning
+ * that has outlived its cause — the defect `request()`'s own ok-branch was
+ * written to end one banner up. An answer that carries no `staleCode` at all
+ * changes nothing: only `/api/ping` and `/api/meta` carry the field, and the
+ * twenty other requests this page makes say nothing about the server's code.
+ */
+let codeSkewSeen = false;
+
+/**
  * The sentence this banner needs, and the ONE thing this lane could not build.
  *
  * `plan:live seq:12` owns the server, the wire and this shell; the string
@@ -559,9 +595,35 @@ const CODE_SKEW_KEY = 'ex.codeSkew';
  */
 const SESS_NOT_PROJECTED_KEY = 'sess.notProjected';
 
-/** Any `/api` answer that carries `staleCode`. Anything else is ignored. */
+/**
+ * Any `/api` answer that carries `staleCode`. Anything else is ignored.
+ *
+ * **TWO CONSUMERS SINCE 2026-09-12, and they want different things from the
+ * same fact.** The banner is a MOMENT the reader can answer and dismiss;
+ * `codeSkewSeen` is the STATE the strip's live-feed chip consults before it
+ * dares recommend a reload. So the flag is written here and the banner is
+ * raised here, and neither reads the other.
+ *
+ * **`=== true` and `=== false` rather than a truth test**, which is the whole
+ * of "anything else is ignored" made to survive a second reader: only
+ * `/api/ping` and `/api/meta` answer this field, and a falsy test would let
+ * every other route on the page assert the server is current.
+ *
+ * `showLiveState()` is redrawn only when the answer CHANGED. It early-returns
+ * unless a stream has actually faulted, so this is a no-op on the ordinary
+ * path; what it buys is that the minute after a restart the chip stops naming
+ * a skew that has ended, rather than one `replaceChildren` per heartbeat.
+ */
 function noteCodeSkew(answer) {
-  if (answer !== null && typeof answer === 'object' && answer.staleCode === true) showCodeSkew();
+  if (answer === null || typeof answer !== 'object') return;
+  if (answer.staleCode === true) {
+    if (!codeSkewSeen) { codeSkewSeen = true; showLiveState(); }
+    showCodeSkew();
+    return;
+  }
+  if (answer.staleCode === false) {
+    if (codeSkewSeen) { codeSkewSeen = false; showLiveState(); }
+  }
 }
 
 /* ══ THE CORPUS HAS MOVED AND THE LOG DID NOT SEE IT ══════════════════
@@ -2670,9 +2732,33 @@ function showLiveState() {
   const chip = document.createElement('span');
   chip.className = 'chip warn';
   chip.dataset.g = '▲';
-  chip.append(...(liveProven
-    ? translate(table.strings, 'watch.streamNotLive')
-    : translate(table.strings, 'watch.streamFault', { error: liveEnded })));
+  // **THREE SENTENCES SINCE 2026-09-12, and the third is the only one whose
+  // REMEDY differs.** The split above is about WHEN; this one is about WHAT TO
+  // DO, and it is the owner's report of 2026-09-12: "reload to reconnect" was
+  // shown to a reader whose server was twenty-three hours old, and he reloaded
+  // repeatedly. A reload re-reads `src/ui/public/` from disk and re-runs
+  // `main()`, so it genuinely does put a dropped feed back — against a CURRENT
+  // server. Against a stale one it hands him a brand-new client talking to the
+  // same fixed modules, for ever, and the page knew that the whole time.
+  //
+  // Not folded into `ex.codeSkew`'s banner, which says the same thing at
+  // greater length: `banner()` is a `replaceChildren` on the single `#exited`
+  // node that `showDisconnected()` and `showExited()` also write, so the skew
+  // banner can be — and on the owner's page was — overwritten or hidden by a
+  // recovery that shares it. The chip is the strip's own element and survives
+  // that, which is exactly why the sentence has to be true HERE too.
+  //
+  // Two `translate` calls each naming its key as a LITERAL, rather than one
+  // call with the key chosen on the line above: `test/ui/viewmodel.test.ts`
+  // reads this file for that exact call shape to prove every key app.js names
+  // is in BOTH tables, and a key reached through a variable is a key that check
+  // cannot see. (Its scanner reads comments too — so this paragraph deliberately
+  // does not spell the shape out, or it would name a key that does not exist.)
+  chip.append(...(!liveProven
+    ? translate(table.strings, 'watch.streamFault', { error: liveEnded })
+    : codeSkewSeen
+      ? translate(table.strings, 'watch.streamNotLiveStale')
+      : translate(table.strings, 'watch.streamNotLive')));
   el.replaceChildren(chip);
   el.hidden = false;
   if (sep !== null) sep.hidden = false;
