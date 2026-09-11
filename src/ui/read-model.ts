@@ -93,6 +93,7 @@ import { isFocusActive, isLoadBearing, readFocus, type Focus } from '../core/foc
 import { normalizePosix } from '../core/paths.ts';
 import { renderSelection } from '../core/render.ts';
 import { pendingRevisionCounts, pendingRevisionSummaries } from '../core/revision-log.ts';
+import { pendingReview, queueAge, type QueueAge } from '../review/pending.ts';
 import {
   focusHides, isEligible, isNormative, itemCost, matchesFocus, matchesScope, mergeLayers,
   reviewQueue, select, tiersRun,
@@ -1557,7 +1558,36 @@ export interface StatusBody {
     byStatus: Record<string, number>;
     byOrigin: Record<string, number>;
   };
-  reviewQueue: { drafts: number; always: number; globalLayerDrafts: number };
+  /**
+   * The draft queue, counted AND dated — the same block `mycontext status
+   * --json` publishes, field for field, because the web strip and the
+   * terminal bar draw one queue and must not describe it differently.
+   *
+   * **`oldestAt`, `undated` and `age` are why the dates are here at all.**
+   * §10's ruling is that the queue pill's COLOUR is keyed on the age of the
+   * oldest thing pending and never on the count: twelve drafts from today is
+   * a productive session and three from six weeks ago is landfill, and a
+   * count alone cannot tell them apart. Until this block carried them, the
+   * strip had only `drafts` and so could only colour by the one number the
+   * ruling forbids.
+   *
+   * **All three are the DRAFTS-ONLY view**, matching the CLI's choice for the
+   * same reason it made it: every other field in this block counts drafts, so
+   * a date or a verdict drawn from the combined queue would make one block
+   * say two things at once (`test/cli/review-revisions.test.ts`). The
+   * combined age is still what a chip counting BOTH queues is coloured by;
+   * it just does not belong under a key that names one of them.
+   *
+   * **`age` is computed here rather than in the browser**, by `queueAge` —
+   * the bands are `review/pending.ts`'s and were read off this corpus's own
+   * settle latencies. A browser that turned `oldestAt` into a colour with
+   * numbers of its own would be the second spelling of a rule this project
+   * has already measured going wrong eight times.
+   */
+  reviewQueue: {
+    drafts: number; always: number; globalLayerDrafts: number;
+    oldestAt: string | null; undated: number; age: QueueAge;
+  };
   pendingRevisions: { revisions: number; items: number };
   /**
    * **The findings still OPEN, by level — and, separately, how many a person has
@@ -1640,6 +1670,13 @@ export function apiStatus(ws: Workspace, url: URL): JsonResult {
     const root = projectRootAfterOpen(ws, '/api/status');
     const items = store.all();
     const queue = reviewQueue(items);
+    // ONE read of the revision log, handed to both things that need it. The
+    // summaries carry `stagedAt` precisely so this can be a single reading:
+    // counting the queue from one read of the log and dating it from a second
+    // is how a block came to describe two different queues once already
+    // (`core/revision-log.ts`, `pendingRevisionSummaries`).
+    const revisions = pendingRevisionSummaries(root);
+    const pending = pendingReview(root, items, revisions);
     const findings = runChecks({
       root,
       // The repository, not the workspace: `projectRoot` IS
@@ -1664,8 +1701,15 @@ export function apiStatus(ws: Workspace, url: URL): JsonResult {
         drafts: queue.length,
         always: queue.filter((i) => i.always).length,
         globalLayerDrafts: items.filter((i) => i.status === 'draft').length - queue.length,
+        // COMPOSED, not re-derived — this module's first rule. The ages are
+        // `pendingReview`'s, the same function the terminal bar and the
+        // status line ask, and the drafts-only half of its answer for the
+        // reason `StatusBody` states above.
+        oldestAt: pending.draftsOnly.oldestAt,
+        undated: pending.draftsOnly.undated,
+        age: queueAge(pending.draftsOnly, Date.now()),
       },
-      pendingRevisions: pendingRevisionCounts(pendingRevisionSummaries(root)),
+      pendingRevisions: pendingRevisionCounts(revisions),
       health: {
         // `acknowledged` is set by `markAcknowledged`, which `runChecks` calls
         // after every check — so it is already on these findings and this is a

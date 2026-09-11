@@ -69,6 +69,11 @@ import type { Item, Relation } from '../../src/core/types.ts';
 import { VERSION } from '../../src/core/version.ts';
 import { listRepoFiles, runChecks, type Finding } from '../../src/doctor/checks.ts';
 import { commandList, helpTopic, HELP_TOPICS } from '../../src/help/index.ts';
+import { pendingReview, queueAge } from '../../src/review/pending.ts';
+import { appendJsonlLine } from '../../src/core/jsonl-log.ts';
+import {
+  REVISION_PROTOCOL, revisionDir, revisionLogPath,
+} from '../../src/core/revision-log.ts';
 import { stageIn } from '../helpers/revisions.ts';
 import {
   alreadyDeliveredIds, apiCoverage, apiDecay, apiDoctor, apiGraph, apiHelp, apiInjected, apiItem,
@@ -1626,6 +1631,81 @@ test('/api/status counts the project-layer QUEUE, and names its gap from the raw
     );
     assert.equal(body.reviewQueue.globalLayerDrafts, 1,
       'the gap between the two numbers is reported, not reconciled away');
+  } finally { f.done(); }
+});
+
+test('/api/status dates the draft queue, so the strip can colour by age and not by count', () => {
+  const f = fixture();
+  try {
+    // Three project-layer drafts, deliberately unlike one another, because a
+    // queue whose members share a date cannot tell a computed field from a
+    // constant: one old enough to be STALE, one from today, and one carrying
+    // no date at all. `undated` is a separate count for exactly this case —
+    // `INV-nothing-is-dropped-silently` applies to the denominator of a
+    // colour as much as to a list.
+    const writable = Store.open(f.ws.dbPath);
+    const base = f.items.find((i) => i.id === 'RULE-pin-me')!;
+    const draft = (id: string, title: string, validFrom: string | null): void => {
+      writable.upsert({
+        ...base, id, title, status: 'draft', layer: 'project', always: false,
+        validFrom, filePath: `items/${id.toLowerCase()}.md`,
+      });
+    };
+    draft('RULE-an-old-draft', 'An old draft', '2020-01-01');
+    draft('RULE-a-fresh-draft', 'A fresh draft', new Date().toISOString().slice(0, 10));
+    draft('RULE-an-undated-draft', 'An undated draft', null);
+    writable.close();
+
+    const items = withStores(f.ws, (store) => store.all());
+    const queue = reviewQueue(items);
+    assert.equal(queue.length, 3, 'the fixture must actually build the queue it describes');
+
+    // COMPOSITION, asserted the way property 5 asserts the rest of this
+    // endpoint: the same call, made here, compared whole. An endpoint that
+    // grew an arithmetic of its own fails rather than merely disagreeing.
+    assert.ok(f.ws.projectRoot, 'the fixture workspace must have found a corpus root');
+    const expected = pendingReview(f.ws.projectRoot, items).draftsOnly;
+    const body = apiStatus(f.ws, url('status', '')).body as StatusBody;
+    assert.deepEqual(
+      { oldestAt: body.reviewQueue.oldestAt, undated: body.reviewQueue.undated }, expected,
+      '/api/status reports pendingReview\u2019s drafts-only ages, not ages of its own',
+    );
+    assert.equal(body.reviewQueue.age, queueAge(expected, Date.now()));
+
+    // And the literal values, so no field of this block can be a constant
+    // that happens to match: DRAFTS-ONLY dates, and a band that is not the
+    // quiet one.
+    assert.equal(body.reviewQueue.oldestAt, '2020-01-01',
+      'the oldest DRAFT dates the block \u2014 every other field here counts drafts');
+    assert.equal(body.reviewQueue.undated, 1,
+      'a draft this product cannot date is counted, not skipped');
+    assert.equal(body.reviewQueue.age, 'stale',
+      'a five-year-old queue is stale, and a count alone could never say so');
+
+    // ── AND THE BLOCK STAYS ABOUT DRAFTS WHEN THE OTHER QUEUE IS OLDER ──────
+    //
+    // This is the defect that already shipped once on the terminal side: a
+    // staged revision — which creates no item, is in no count of what
+    // governs and draws no row in any listing — moved `oldestAt` in a block
+    // whose every other field counts drafts, so the block said two things at
+    // once (`test/cli/review-revisions.test.ts`). A revision stamped a year
+    // BEFORE the oldest draft is what tells the two views apart; with the two
+    // queues' dates interleaved the combined answer and the drafts-only
+    // answer coincide and nothing here would be load-bearing.
+    appendJsonlLine(revisionDir(f.ws.projectRoot), revisionLogPath(f.ws.projectRoot), {
+      protocol: REVISION_PROTOCOL, op: 'stage',
+      revisionId: 'REV-0a1b2c3d4e5f', itemId: 'RULE-pin-me', at: '2019-01-01T00:00:00.000Z',
+      changes: { body: 'A proposed body.' }, base: { body: 'Pinned body.' }, origin: 'agent',
+    });
+    const after = apiStatus(f.ws, url('status', '')).body as StatusBody;
+    assert.equal(after.pendingRevisions.revisions, 1,
+      'the revision must really be in the log, or the next assertion proves nothing');
+    assert.equal(after.reviewQueue.oldestAt, '2020-01-01',
+      'the older REVISION must not date a block whose every other field counts drafts');
+    assert.equal(
+      after.reviewQueue.undated, 1,
+      'and it must not be counted among the drafts this product could not date either',
+    );
   } finally { f.done(); }
 });
 

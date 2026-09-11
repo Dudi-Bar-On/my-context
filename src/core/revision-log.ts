@@ -212,11 +212,25 @@ export function foldLog(lines: LogLine[]): RevisionRecord[] {
   return [...byId.values()];
 }
 
-/** The pending queue as (revisionId, itemId) — no store, no staleness decoration. */
-export function pendingRevisionSummaries(root: string): { revisionId: string; itemId: string }[] {
+/**
+ * The pending queue as (revisionId, itemId, stagedAt) — no store, no staleness
+ * decoration.
+ *
+ * **`stagedAt` travels with the pair so that one read of the log answers both
+ * questions a surface asks of it.** `mycontext status --json` learned this the
+ * hard way and says so at its call site: a caller that reads the log for the
+ * COUNT and then lets `pendingReview` read it again for the DATES has taken
+ * two readings of a file that is appended to between them, and the two can
+ * disagree in the one direction that matters — an under-reported queue is a
+ * queue that rots without the chip saying so. Carrying the stamp here is what
+ * lets `/api/status` hand its summaries straight to `pendingReview` instead.
+ */
+export function pendingRevisionSummaries(
+  root: string,
+): { revisionId: string; itemId: string; stagedAt: string }[] {
   return foldLog(readLog(root))
     .filter((r) => r.state === 'pending')
-    .map((r) => ({ revisionId: r.revisionId, itemId: r.itemId }));
+    .map((r) => ({ revisionId: r.revisionId, itemId: r.itemId, stagedAt: r.stagedAt }));
 }
 
 /**

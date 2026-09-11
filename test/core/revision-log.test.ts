@@ -64,9 +64,17 @@ test('an absent log means no pending revisions; a staged line means one; a disca
     assert.deepEqual(pendingRevisionSummaries(root), []);
 
     stageLine(root, 'REV-0a1b2c3d4e5f', 'RULE-do-not-log-customer-email', '2026-08-16T10:00:00.000Z');
+    // The STAMP travels with the pair, and the assertion is whole rather than
+    // on two of three fields: a caller that has these summaries can date the
+    // queue from the read it already made, which is what stops `/api/status`
+    // reading the log a second time to ask how old the queue is.
     assert.deepEqual(
       pendingRevisionSummaries(root),
-      [{ revisionId: 'REV-0a1b2c3d4e5f', itemId: 'RULE-do-not-log-customer-email' }],
+      [{
+        revisionId: 'REV-0a1b2c3d4e5f',
+        itemId: 'RULE-do-not-log-customer-email',
+        stagedAt: '2026-08-16T10:00:00.000Z',
+      }],
     );
 
     discardLine(root, 'REV-0a1b2c3d4e5f', 'RULE-do-not-log-customer-email', '2026-08-16T10:05:00.000Z');
