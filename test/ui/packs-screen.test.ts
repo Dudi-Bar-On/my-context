@@ -23,8 +23,8 @@
  *
  * Everything else here is decidable without a document:
  *
- *   - `carriesRows` — five served config keys become five rows plus the
- *     mockup's static one. The task left this open ("`carries[]` serves FIVE
+ *   - `configKeyRows` — five served config keys become five rows plus the
+ *     mockup's static one. The task left this open ("`configKeys[]` serves FIVE
  *     config keys; the mockup drew two") and a filter is exactly the silent
  *     drop this project bans, so a filter is now a red test rather than a
  *     paragraph in a report;
@@ -102,13 +102,13 @@ function fakeDoc(): FakeDoc {
   };
 }
 
-interface CarriesRow { key: string; travels: boolean; refusals: string[] }
-interface CarriesView { key: string; labelKey: string | null; measured: boolean; travels: boolean }
+interface ConfigKeyRow { key: string; travels: boolean; refusals: string[] }
+interface ConfigKeyView { key: string; labelKey: string | null; measured: boolean; travels: boolean }
 interface PackRowView { label: string; text?: string; count?: number; ids?: string[] }
 
 interface PacksModule {
   isolated: (text: unknown, doc: FakeDoc) => FakeNode;
-  carriesRows: (carries: CarriesRow[]) => CarriesView[];
+  configKeyRows: (configKeys: ConfigKeyRow[]) => ConfigKeyView[];
   packRows: (pack: unknown) => PackRowView[];
   importCommand: () => string;
   IMPORT_ARGV: string[];
@@ -221,11 +221,11 @@ test('the untrusted name reaches no renderer other than isolated()', () => {
 });
 
 /* -------------------------------------------------------------------------- *
- * carriesRows — five served keys, five rows.
+ * configKeyRows — five served keys, five rows.
  * -------------------------------------------------------------------------- */
 
-/** What `/api/packs` serves for `carries`, in the shape `carriesFor` builds. */
-const FIVE_KEYS: CarriesRow[] = [
+/** What `/api/packs` serves for `configKeys`, in the shape `configKeysFor` builds. */
+const FIVE_KEYS: ConfigKeyRow[] = [
   { key: 'profile', travels: false, refusals: ['a profile is a fact about your machine'] },
   { key: 'categories', travels: true, refusals: [] },
   { key: 'budgets', travels: false, refusals: ['Budgets decide how much of YOUR corpus reaches'] },
@@ -233,24 +233,24 @@ const FIVE_KEYS: CarriesRow[] = [
   { key: 'ui', travels: false, refusals: ['ui is a preference'] },
 ];
 
-test('carriesRows draws one row per served key — all five, not the two the mockup drew', async () => {
-  const { carriesRows } = await packsModule();
-  const rows = carriesRows(FIVE_KEYS);
+test('configKeyRows draws one row per served key — all five, not the two the mockup drew', async () => {
+  const { configKeyRows } = await packsModule();
+  const rows = configKeyRows(FIVE_KEYS);
 
   assert.deepEqual(rows.map((r) => r.key),
     ['items/**', 'profile', 'categories', 'budgets', 'watchedDocs', 'ui'],
     'the pk.what table dropped or reordered a served key. Filtering to the rows the mockup had '
     + 'already thought of is the silent drop this project bans, arriving through a screen instead '
     + 'of through a file.');
-  // The order is the SERVED order and not a sort: `carriesFor` returns the
+  // The order is the SERVED order and not a sort: `configKeysFor` returns the
   // loader's own key order, and a screen that sorted it would be answering a
   // question about the config with an answer about the alphabet.
   assert.deepEqual(rows.slice(1).map((r) => r.key), FIVE_KEYS.map((r) => r.key));
 });
 
-test('carriesRows carries the verdict through, and marks the one row nobody measured', async () => {
-  const { carriesRows } = await packsModule();
-  const rows = carriesRows(FIVE_KEYS);
+test('configKeyRows carries the verdict through, and marks the one row nobody measured', async () => {
+  const { configKeyRows } = await packsModule();
+  const rows = configKeyRows(FIVE_KEYS);
   const byKey = new Map(rows.map((r) => [r.key, r]));
 
   assert.equal(byKey.get('categories')?.travels, true);
@@ -264,9 +264,9 @@ test('carriesRows carries the verdict through, and marks the one row nobody meas
   for (const row of rows.slice(1)) assert.equal(row.measured, true, row.key);
 });
 
-test('carriesRows keeps the mockup\'s own labelling split, which is not uniform', async () => {
-  const { carriesRows } = await packsModule();
-  const byKey = new Map(carriesRows(FIVE_KEYS).map((r) => [r.key, r]));
+test('configKeyRows keeps the mockup\'s own labelling split, which is not uniform', async () => {
+  const { configKeyRows } = await packsModule();
+  const byKey = new Map(configKeyRows(FIVE_KEYS).map((r) => [r.key, r]));
   const section = mockupSection();
 
   // One row of the four the mockup drew carries a translated label; the other

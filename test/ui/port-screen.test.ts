@@ -140,7 +140,7 @@ interface PortModule {
   BUCKET_CHIP: Record<string, ChipSpec>;
   rungView: (format: { id?: string; built?: boolean }) => RungView;
   bucketView: (name: string) => ChipSpec | null;
-  auditChips: (history: { carries?: unknown; withheld?: unknown } | undefined) => KindChip[];
+  auditChips: (history: { carriedKinds?: unknown; withheld?: unknown } | undefined) => KindChip[];
   exportArgv: (body: unknown) => string[];
   exportCommand: (body: unknown) => string;
   render: (root: unknown, ctx: unknown) => Promise<void>;
@@ -189,7 +189,7 @@ test('every verdict, rung and bucket /api/port serves has exactly one rendering 
   // the screen would draw blank or drop; an entry with no served name is dead
   // markup that nothing can reach, and the second is how a lookup table comes
   // to disagree with the endpoint without any test noticing.
-  const verdicts = [...new Set(body.travels.map((row) => row.verdict))].toSorted();
+  const verdicts = [...new Set(body.whatTravels.map((row) => row.verdict))].toSorted();
   assert.deepEqual(Object.keys(VERDICT_CHIP).toSorted(), verdicts,
     'VERDICT_CHIP and the verdicts /api/port computes have diverged');
 
@@ -302,7 +302,7 @@ test('auditChips is the RESPONSE\'s partition of the audit vocabulary, hue and a
   // response and the screen, and none invented on the way.
   assert.deepEqual(chips.map((c) => c.kind).toSorted(), [...AUDIT_KINDS].toSorted());
   assert.deepEqual(
-    chips.filter((c) => c.cls === 'chip ok').map((c) => c.kind), body.history.carries,
+    chips.filter((c) => c.cls === 'chip ok').map((c) => c.kind), body.history.carriedKinds,
     'what carries is not drawn with the travels hue, in the endpoint\'s own order');
   assert.deepEqual(
     chips.filter((c) => c.cls === 'chip warn').map((c) => c.kind), body.history.withheld,
@@ -319,7 +319,7 @@ test('auditChips is the RESPONSE\'s partition of the audit vocabulary, hue and a
   // A response with nothing in it draws nothing, rather than throwing on a
   // screen whose other two cards are fine.
   assert.deepEqual(auditChips(undefined), []);
-  assert.deepEqual(auditChips({ carries: null, withheld: 'mutation' }), []);
+  assert.deepEqual(auditChips({ carriedKinds: null, withheld: 'mutation' }), []);
 });
 
 test('no audit kind is transcribed into the screen — the list can only come from the wire', async () => {

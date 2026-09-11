@@ -81,7 +81,7 @@
  *
  * ── FIVE CONFIG KEYS, NOT THE TWO THAT WERE DRAWN ─────────────────────────
  *
- * `carries[]` answers all five top-level config keys, computed by
+ * `configKeys[]` answers all five top-level config keys, computed by
  * `refusePackConfig` itself; the mockup drew `budgets` and `watchedDocs`. One
  * row per served entry, in the order served — *"a table filtered to the rows
  * somebody had already thought of is the silent drop this project bans"*
@@ -104,7 +104,7 @@
  * answers, the mockup's static content is rendered rather than dropped. It is
  * the only row in the table nobody measured, and this file's report says so.
  *
- * **`carries[].refusals` is served and NOT drawn.** Each refusing key carries
+ * **`configKeys[].refusals` is served and NOT drawn.** Each refusing key carries
  * `refusePackConfig`'s own sentences, and the card the mockup drew is exactly
  * `h3 + table + p.small` — `pk.line` IS the design of record's answer to "why",
  * in both languages. Four paragraphs of untranslated server English under a
@@ -173,8 +173,9 @@
  * ── ONE REFUSAL, DRAWN INSTEAD OF EVERYTHING ──────────────────────────────
  *
  * Every card on this screen is fed by the response — the trust table by
- * `landing`, the carries table by `carries`, the pack cards by `packs`, and the
- * manifest card sits beneath a `pk.theatre` that paraphrases `artefact.meaning`.
+ * `landing`, the config-key table by `configKeys` and the pack cards by
+ * `packs`; the manifest card sits beneath a `pk.theatre` that paraphrases
+ * `artefact.meaning`.
  * So a refusal is drawn INSTEAD of the body and never beside an empty one, the
  * rule `status.js`, `doctor.js` and `work.js` all keep: a workspace with no
  * packs and a read that failed are opposite facts, and the explainer cards
@@ -214,7 +215,7 @@ export function isolated(text, doc = globalThis.document) {
  * config key itself. Its own split, transcribed: one entry, because the mockup
  * translates exactly one of the four rows it drew.
  */
-const CARRIES_LABEL = { categories: 'pk.cats' };
+const CONFIG_KEY_LABEL = { categories: 'pk.cats' };
 
 /**
  * The `pk.what` table's rows: the mockup's unmeasured `items/**` row, then one
@@ -224,7 +225,7 @@ const CARRIES_LABEL = { categories: 'pk.cats' };
  * task left open — that five served keys produce five rows. A filter here is
  * the silent drop, and a filter here is now a red test.
  */
-export function carriesRows(carries) {
+export function configKeyRows(configKeys) {
   const rows = [{
     key: 'items/**',
     labelKey: null,
@@ -234,10 +235,10 @@ export function carriesRows(carries) {
     measured: false,
     travels: true,
   }];
-  for (const row of carries) {
+  for (const row of configKeys) {
     rows.push({
       key: row.key,
-      labelKey: CARRIES_LABEL[row.key] ?? null,
+      labelKey: CONFIG_KEY_LABEL[row.key] ?? null,
       measured: true,
       travels: row.travels === true,
     });
@@ -399,13 +400,13 @@ function trustCard(ctx, landing) {
 }
 
 /** `pk.what` — one row per served config key, plus the mockup's static one. */
-function carriesCard(ctx, carries) {
+function configKeysCard(ctx, configKeys) {
   const card = el('div', 'card pane');
   const head = el('h3');
   head.append(...ctx.t('pk.what'));
 
   const tbody = el('tbody');
-  for (const entry of carriesRows(carries)) {
+  for (const entry of configKeyRows(configKeys)) {
     const left = entry.labelKey === null ? el('td', 'm', entry.key) : el('td');
     if (entry.labelKey !== null) left.append(...ctx.t(entry.labelKey));
     const right = el('td');
@@ -551,7 +552,7 @@ export async function render(root, ctx) {
   }
 
   const two = el('div', 'two');
-  two.append(trustCard(ctx, body.landing), carriesCard(ctx, body.carries));
+  two.append(trustCard(ctx, body.landing), configKeysCard(ctx, body.configKeys));
   root.append(two, manifestCard(ctx));
 
   // **Every row served, in the order served** — that part is unchanged and is

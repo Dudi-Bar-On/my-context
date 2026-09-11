@@ -246,7 +246,7 @@ export function bucketView(name) {
  * drift the endpoint was built to end. The sentence is corrected now and the
  * sentence is still prose: the day a seventh kind lands it will be wrong
  * again, and no test can catch a sentence. These chips cannot go stale,
- * because they are `history.carries` and `history.withheld` and the endpoint
+ * because they are `history.carriedKinds` and `history.withheld` and the endpoint
  * derives the second by subtracting the first from the audit vocabulary
  * itself.
  *
@@ -264,7 +264,7 @@ export function bucketView(name) {
 export function auditChips(history) {
   const list = (value) => (Array.isArray(value) ? value.filter((k) => typeof k === 'string') : []);
   return [
-    ...list(history?.carries).map((kind) => ({ kind, cls: 'chip ok', glyph: '●' })),
+    ...list(history?.carriedKinds).map((kind) => ({ kind, cls: 'chip ok', glyph: '●' })),
     ...list(history?.withheld).map((kind) => ({ kind, cls: 'chip warn', glyph: '▲' })),
   ];
 }
@@ -492,7 +492,7 @@ export async function render(root, ctx) {
   travelsHead.append(...ctx.t('port.what'));
   const travelsTable = el('table');
   const travelsBody = el('tbody');
-  for (const row of Array.isArray(body.travels) ? body.travels : []) {
+  for (const row of Array.isArray(body.whatTravels) ? body.whatTravels : []) {
     travelsBody.append(travelsRow(ctx, row));
   }
   travelsTable.append(travelsBody);

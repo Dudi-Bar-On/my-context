@@ -201,7 +201,7 @@ export interface WorkspaceNow {
  * with `/api/config` (which re-reads) answering `budgets.pinned: 9999` and
  * `/api/simulate` (which does not) answering `6000`, forever, after one
  * out-of-band edit. The endpoints disagreed, and every reader of `ws.config`
- * that decides admission or tier — `matchesFocus`, `injection`, `carriesFor`,
+ * that decides admission or tier — `matchesFocus`, `injection`, `configKeysFor`,
  * `select` — was deciding against the older of the two.
  *
  * The alternative already in the tree is worse rather than smaller: the UI's

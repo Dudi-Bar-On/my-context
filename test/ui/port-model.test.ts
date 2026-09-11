@@ -46,7 +46,7 @@ test('/api/port answers the six rows the port section draws, with one chip each'
   const { dir, done } = workspace();
   try {
     const body = bodyOf(dir);
-    assert.deepEqual(body.travels, [
+    assert.deepEqual(body.whatTravels, [
       { path: 'items/**', verdict: 'travels' },
       { path: 'config.json', verdict: 'travels' },
       { path: '.audit/', verdict: 'filtered' },
@@ -58,7 +58,7 @@ test('/api/port answers the six rows the port section draws, with one chip each'
     // that maps verdicts to `port.yes`/`port.filtered`/`port.no` can never be
     // handed one with no chip behind it.
     assert.deepEqual(
-      [...new Set(body.travels.map((r) => r.verdict))].toSorted(),
+      [...new Set(body.whatTravels.map((r) => r.verdict))].toSorted(),
       ['filtered', 'rebuilt', 'travels'],
     );
   } finally { done(); }
@@ -80,7 +80,7 @@ test('the travels table is TRUE of a real artefact, not merely consistent with i
     // And the other half, which is the half a receiver cannot check: nothing
     // this endpoint calls `rebuilt` is anywhere in the artefact.
     const rebuilt = new Set(
-      bodyOf(dir).travels.filter((r) => r.verdict === 'rebuilt').map((r) => r.path),
+      bodyOf(dir).whatTravels.filter((r) => r.verdict === 'rebuilt').map((r) => r.path),
     );
     assert.equal(rebuilt.size, 3);
     for (const name of entries) {
@@ -92,25 +92,25 @@ test('the travels table is TRUE of a real artefact, not merely consistent with i
     // the omission the first disclosure exists for, and it is derived from
     // ROOT_FILES rather than written down — so this asserts the derivation
     // found the real file rather than that someone typed the right name.
-    const unaccounted = bodyOf(dir).disclosures.filter((d) => d.where === 'travels');
+    const unaccounted = bodyOf(dir).disclosures.filter((d) => d.where === 'whatTravels');
     assert.ok(unaccounted.some((d) => d.message.includes('manifest.json')));
   } finally { removeTree(out); done(); }
 });
 
-test('history: carries and withheld PARTITION the audit vocabulary, so no kind can go missing', () => {
+test('history: carriedKinds and withheld PARTITION the audit vocabulary, so no kind can go missing', () => {
   const { dir, done } = workspace();
   try {
     const { history } = bodyOf(dir);
-    assert.deepEqual(history.carries, ['mutation']);
+    assert.deepEqual(history.carriedKinds, ['mutation']);
     // The whole point of deriving `withheld`: the two lists together are
     // exactly AUDIT_KINDS, and they do not overlap. A seventh audit kind
     // therefore lands in `withheld` with nobody editing this endpoint — and
     // if someone hand-lists it instead, this fails.
     assert.deepEqual(
-      [...history.carries, ...history.withheld].toSorted(),
+      [...history.carriedKinds, ...history.withheld].toSorted(),
       [...AUDIT_KINDS].toSorted(),
     );
-    assert.equal(new Set([...history.carries, ...history.withheld]).size, AUDIT_KINDS.length);
+    assert.equal(new Set([...history.carriedKinds, ...history.withheld]).size, AUDIT_KINDS.length);
     assert.equal(history.withheld.includes('mutation'), false);
 
     // The mockup's prose names three withheld kinds; this build has six. The
@@ -178,7 +178,7 @@ test('every omission is disclosed, and each disclosure points at a field of this
   try {
     const body = bodyOf(dir);
     const wheres = [...new Set(body.disclosures.map((d) => d.where))].toSorted();
-    assert.deepEqual(wheres, ['buckets', 'command.argv', 'formats', 'history', 'travels']);
+    assert.deepEqual(wheres, ['buckets', 'command.argv', 'formats', 'history', 'whatTravels']);
     for (const d of body.disclosures) {
       assert.ok(d.message.length > 0, `${d.where} discloses nothing`);
       // A `where` nobody can follow is a disclosure that does not disclose.

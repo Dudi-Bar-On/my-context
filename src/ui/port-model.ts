@@ -78,10 +78,21 @@ export interface PortDisclosure {
 }
 
 export interface PortBody {
-  travels: PortRow[];
+  /**
+   * One row per path in `.my_context/`, and what becomes of it — the `port.what`
+   * table. NOT named `travels`: three of the six rows are `rebuilt` and travel
+   * nowhere, and `/api/packs` serves a `travels` of its own that is a BOOLEAN
+   * about one config key (`plan:port seq:15`).
+   */
+  whatTravels: PortRow[];
   history: {
-    /** Audit kinds that travel. */
-    carries: AuditKind[];
+    /**
+     * The audit kinds that travel. NOT named `carries`: `/api/packs` served a
+     * `carries` too, holding config-key rows, and the shared name was read as a
+     * shared fact by the ruling that asked whether the two routes should merge
+     * (`plan:port seq:15`, `test/ui/artefact-field-names.test.ts`).
+     */
+    carriedKinds: AuditKind[];
     /** Every other kind this build has — derived, never listed by hand. */
     withheld: AuditKind[];
     /** Where a receiver's imported history lands, relative to `.audit/`. */
@@ -150,7 +161,7 @@ const verdictOf = (row: { becomes: string | null; filtered: boolean }): PortVerd
  * lists all five in its own words, and this endpoint agrees with the code
  * rather than with the prose.
  */
-const CARRIES: readonly AuditKind[] = ['mutation'];
+const CARRIED_KINDS: readonly AuditKind[] = ['mutation'];
 
 /**
  * The format ladder. `dir` and `zip` are the shipped pair; `bundle` is the rung
@@ -233,7 +244,7 @@ function disclosuresFor(withheld: readonly AuditKind[]): PortDisclosure[] {
 
   if (unaccounted.length > 0) {
     out.push({
-      where: 'travels',
+      where: 'whatTravels',
       message:
         `An artefact also holds ${unaccounted.join(', ')}, which no path in this table becomes: `
         + 'it is generated at export time rather than copied out of the workspace. The table '
@@ -242,7 +253,7 @@ function disclosuresFor(withheld: readonly AuditKind[]): PortDisclosure[] {
   }
 
   out.push({
-    where: 'travels',
+    where: 'whatTravels',
     message:
       'The three "rebuilt" rows are a hand-maintained list, not a derivation. The exporter '
       + 'assembles what travels and has no walk over what does not, so nothing in this build '
@@ -314,13 +325,13 @@ export function apiPort(ws: Workspace, url: URL): JsonResult {
   if (bad) return badRequest(bad);
   if (ws.projectRoot === null) return { status: 404, body: { error: 'no workspace here' } };
 
-  const carries = [...CARRIES];
-  const withheld = AUDIT_KINDS.filter((kind) => !carries.includes(kind));
+  const carriedKinds = [...CARRIED_KINDS];
+  const withheld = AUDIT_KINDS.filter((kind) => !carriedKinds.includes(kind));
 
   const body: PortBody = {
-    travels: TRAVELS.map((row) => ({ path: row.path, verdict: verdictOf(row) })),
+    whatTravels: TRAVELS.map((row) => ({ path: row.path, verdict: verdictOf(row) })),
     history: {
-      carries,
+      carriedKinds,
       withheld,
       // `.audit/imported/` — the directory the collision report names and
       // `imported-audit.ts` writes into, taken from the constant both of them

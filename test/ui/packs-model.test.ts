@@ -14,7 +14,7 @@
  *     items hold NOW, not the ones they had when it was imported — so
  *     promoting one member moves it between buckets, and an item that leaves
  *     the corpus is named rather than silently absent from the tally.
- *  2. **`carries` is the refuser's answer, verbatim.** Asserted by comparing
+ *  2. **`configKeys` is the refuser's answer, verbatim.** Asserted by comparing
  *     against a direct `refusePackConfig` call rather than against a string
  *     spelled here, which is the only form of the assertion that stays true
  *     when the refusal is reworded.
@@ -126,7 +126,7 @@ test('/api/packs on a workspace with no packs lists none and still answers the r
   // `TOP_LEVEL_KEYS` and this row set — which is derived from that list —
   // grew by one with no edit to `packs-model.ts`. That is the property, and
   // the count is how it is checked.
-  assert.equal(body.carries.length, 8);
+  assert.equal(body.configKeys.length, 8);
 });
 
 test('an imported pack is listed with its membership joined to the corpus', () => {
@@ -186,11 +186,11 @@ test('a member that has left the corpus is NAMED, not quietly missing from the t
   assert.deepEqual(pack.items.byStatus, { draft: 1 });
 });
 
-test('carries is refusePackConfig\'s own verdict, key by key and word for word', () => {
+test('configKeys is refusePackConfig\'s own verdict, key by key and word for word', () => {
   const dir = workspace();
   const ws = resolveWorkspace(dir);
   const { body } = packs(dir);
-  const rows = new Map(body.carries.map((r) => [r.key, r]));
+  const rows = new Map(body.configKeys.map((r) => [r.key, r]));
 
   // The mockup's `pk.what` rows: category configuration travels, budgets and
   // watchedDocs never.
@@ -212,7 +212,7 @@ test('carries is refusePackConfig\'s own verdict, key by key and word for word',
   // (2026-09-10) each produced their own row with no edit to `packs-model.ts`
   // at all, which is the property this assertion is for.
   assert.deepEqual(
-    body.carries.map((r) => r.key).toSorted(),
+    body.configKeys.map((r) => r.key).toSorted(),
     ['budgets', 'categories', 'dispatchGate', 'handover', 'profile', 'review', 'ui',
       'watchedDocs'],
   );

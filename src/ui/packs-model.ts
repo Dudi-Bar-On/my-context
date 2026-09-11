@@ -39,16 +39,19 @@
  * its own screen ("built without it, this screen is a documentation viewer and
  * should be cut"). The prose halves are still served, because each of them is
  * a claim the BUILD owns and the page would otherwise hard-code — see
- * `carries` and `landing` below.
+ * `configKeys` and `landing` below.
  *
- * ## Two screens, one plan
+ * ## Two screens, one plan, and the overlap that turned out not to be there
  *
  * The task pairs this with Export / import (`<section data-p="port">`) and asks
- * for one route rather than two. `carries` and `artefact` below are shared
- * facts — the same artefact format, the same protocol — but the port screen's
- * other rows (`.audit/` filtered, `.index.db` rebuilt, the dir/bundle/zip
- * preference) are `pack/bundle.ts`'s and belong to an export model this task
- * does not own. What is shared is served once, here; what is not is reported.
+ * for one route rather than two, on the grounds that both serve `carries` and
+ * `artefact` and that the shared pair is served once, from here. MEASURED on
+ * 2026-09-11 that was false in both halves: this route's `carries` held one row
+ * per top-level CONFIG KEY, `/api/port`'s `history.carries` held the AUDIT
+ * KINDS that travel, and `artefact` is served here and by nothing else. The
+ * name was the whole of the overlap, so the name is gone — it is `configKeys`
+ * below — and the merge question is open again with the two shapes honest
+ * (`plan:port seq:15`; `test/ui/artefact-field-names.test.ts` keeps them so).
  */
 import { readdirSync } from 'node:fs';
 import path from 'node:path';
@@ -91,7 +94,7 @@ import { registerRoute, type ApiContext, type JsonResult } from './routes.ts';
  */
 
 /** One row of the `pk.what` table: may a pack's `config.json` carry this key? */
-export interface CarriesRow {
+export interface ConfigKeyRow {
   key: string;
   travels: boolean;
   /** The refuser's own sentences, verbatim. Empty exactly when `travels`. */
@@ -134,7 +137,7 @@ export interface CarriesRow {
  * which. The five keys above never reach that branch, but passing a fabricated
  * config so that they could not is how the answer stops being the real one.
  */
-function carriesFor(local: Config): CarriesRow[] {
+function configKeysFor(local: Config): ConfigKeyRow[] {
   return TOP_LEVEL_KEYS.map((key) => {
     const refusals = refusePackConfig({ [key]: {} }, local);
     return { key, travels: refusals.length === 0, refusals };
@@ -377,7 +380,7 @@ export interface PacksBody {
   packs: PackRow[];
   dropped: Dropped[];
   landing: typeof LANDING;
-  carries: CarriesRow[];
+  configKeys: ConfigKeyRow[];
   artefact: typeof ARTEFACT;
 }
 
@@ -422,7 +425,7 @@ export function apiPacks(ws: Workspace, url: URL): JsonResult {
       packs: records.map((record) => packRow(record, status)),
       dropped: droppedFrom(root, records),
       landing: LANDING,
-      // `ws.config` and not a second read of the file spelled here: `carries`
+      // `ws.config` and not a second read of the file spelled here: `configKeys`
       // describes the rules an import would be judged by, and `ws.config` IS
       // the file as THIS request read it. There is no boot-time config left to
       // be behind — `liveWorkspace` re-resolves `config.json` once per request
@@ -434,7 +437,7 @@ export function apiPacks(ws: Workspace, url: URL): JsonResult {
       // that config is — a moment, not a boot. A re-read spelled here would be
       // a second read microseconds after the request's own, and two configs
       // answering one page is still worse than one that is a moment old.
-      carries: carriesFor(ws.config),
+      configKeys: configKeysFor(ws.config),
       artefact: ARTEFACT,
     };
     return { status: 200, body };
