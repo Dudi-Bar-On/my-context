@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: A note pointing at work that was deliberately retired should say so, instead of being reported as pointing at nothing.
-summary_of: 36d220233c2274ab
+summary_of: 566164e89f2f045c
 acknowledged:
   - citation_form@ca275ee181d4fda4
 scope:
@@ -25,7 +25,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-09-07
 valid_until: null
-checksum: 46823ccd012fdd02
+checksum: f0f1dff13ae4d2df
 plan: handover
 seq: "18"
 state: done
@@ -46,8 +46,9 @@ was done properly - a superseded_by edge naming what replaced it. Reporting it a
 RETIRED with ABSENT, which is the same conflation TASK-code-and-tests-that-speak-with-a-retired-item
 s-authority was filed about and which scripts/check-cited-items.ts deliberately does NOT make.
 
-THE MECHANISM. check-handover resolves a plan/seq through buildTaskIndex (src/core/needs.ts:211),
-which walks workItems(items, config) - active work only. A retired task leaves that index, so the
+THE MECHANISM. check-handover resolves a plan/seq through buildTaskIndex
+(`src/core/needs.ts` · `export function buildTaskIndex(` · ~211), which walks
+workItems(items, config) - active work only. A retired task leaves that index, so the
 lane key has no bucket, so `resolved` is null, so it is DANGLING, so the gate fails.
 
 WHAT TO BUILD. When a lane key has no ACTIVE item but the corpus holds a RETIRED one under that key,

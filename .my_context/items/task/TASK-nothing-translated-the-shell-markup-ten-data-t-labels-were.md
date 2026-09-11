@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: A test that catches English text left in the interface where a translation should be.
-summary_of: b4adb7e82abccf72
+summary_of: 979741fceb882652
 summary_was:
   - 2026-09-07 Ten labels stayed in English on the Hebrew page for months; the fix is in, but nothing yet stops it happening again.
 acknowledged:
@@ -27,7 +27,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-08-25
 valid_until: null
-checksum: 4bb567900ff2bd58
+checksum: 9c5ea960e3ba0ecd
 plan: walk
 seq: "43"
 state: todo
@@ -62,6 +62,6 @@ regression surface with NO GATE on them: nothing fails if they revert. A fix wit
 waiting for its second appearance.
 
 CITATION RE-ANCHORED 2026-09-08, under
-RULE-a-citation-names-an-item-by-id-never-a-report-by-line-number: it pointed at app.js:7448 by
-line with no fragment, and a bare path with no directory besides. The fragment is the identity;
+RULE-a-citation-names-an-item-by-id-never-a-report-by-line-number: it pointed at app.js, line
+7448, with no fragment, and a bare path with no directory besides. The fragment is the identity;
 the line is a convenience.

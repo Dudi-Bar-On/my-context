@@ -208,7 +208,12 @@
  * Markdown, so the citation must fit on ONE line even though the same comment
  * may legally wrap once it reaches `src/`. A plan may not pre-wrap it.
  *
- * **AND THE TREE THIS DELIBERATELY DOES NOT WALK: `.my_context/items/`.**
+ * **THE TREE THIS ONCE DELIBERATELY DID NOT WALK: `.my_context/items/`.**
+ *
+ * *Kept as the record of a refusal that has since expired. It is walked on
+ * every run now, by owner ruling of 2026-09-11; `CORPUS_ROOT` below is the
+ * current word and this paragraph is why it took two measurements to get
+ * there. Read it as history — the numbers in it are from 2026-08-29.*
  *
  * The standing request (`plan:walk seq:30`) is that this gate scan the corpus,
  * on the reasoning that items are where the project keeps its reasoning and a
@@ -281,9 +286,11 @@
  *   node scripts/verify-citations.ts --strict-source
  *                                               also FAIL on source findings,
  *                                               which are reported either way
- *   node scripts/verify-citations.ts --corpus   also WALK `.my_context/items/`,
- *                                               reported and never gated — see
- *                                               `CORPUS_ROOT`
+ *   node scripts/verify-citations.ts --no-corpus
+ *                                               SKIP `.my_context/items/`,
+ *                                               which is otherwise walked on
+ *                                               every run, reported and never
+ *                                               gated — see `CORPUS_ROOT`
  */
 
 import { readFileSync, writeFileSync, readdirSync, statSync } from 'node:fs';
@@ -367,22 +374,37 @@ const SOURCE_ROOTS = ['src', 'test', 'scripts', 'e2e'];
  * better-dressed version of it, which is this file's own argument turned around
  * on the repair it asked for.
  *
- * **So the tree is walked on request, and never by default.** Both halves are
+ * **So the tree is walked on EVERY run, and never gated.** Both halves are
  * deliberate and they are not the same decision:
  *
- *   - **Off by default**, because the GATE half of that task was CLOSED by
- *     owner ruling on 2026-09-07 (`plan:walk seq:140`, option A), against
+ *   - **Walked by default, by owner ruling on 2026-09-11.** It shipped that
+ *     morning behind `--corpus`, off by default, on the argument that a lane
+ *     does not reopen a ruling by shipping code. The number went in front of
+ *     him the same day, with three options — leave it opt-in, walk it every run
+ *     reported-not-gated, or repair the 57 and then gate — and he took the
+ *     second, on the reasoning that **the only way those 57 ever reached 57 is
+ *     that nobody could see them.** An opt-in measurement is taken by whoever
+ *     already suspects the answer, which is nobody, which is how a tree
+ *     normalises itself into a form no one is reading.
+ *
+ *     `--no-corpus` is the way back out, for a caller who wants only the gated
+ *     set. It is a SUBTRACTION and it is named for what it does: a flag whose
+ *     absence changes what is checked is the shape that let this tree go
+ *     unread, so the default is the full walk and the flag is the exception
+ *     that has to be typed.
+ *   - **Never gated**, because the GATE half of that task was CLOSED by owner
+ *     ruling on 2026-09-07 (`plan:walk seq:140`, option A), against
  *     `STD-a-citation-names-a-file-a-verbatim-fragment-and-an-optional` and
  *     `checkCitationForm` (`src/doctor/checks.ts`), which cover the corpus from
- *     the writing side. A lane does not reopen an owner's ruling by shipping
- *     code. What changed is the number the ruling was taken against, and a
- *     number is a thing to put in front of him, not a licence.
- *   - **Never gated, even when asked for**, because the 57 sit in items other
- *     work owns, on the same argument `gated` makes for source below.
+ *     the writing side. **Today's ruling did not reopen it** — it moved what is
+ *     PRINTED, not what is ENFORCED — and the 57 still sit in items other work
+ *     owns, on the same argument `gated` makes for source below. The exit code
+ *     is the documentation failures and nothing else, before this change and
+ *     after it; `citations-in-corpus.test.ts` pins that where it can fail.
  *
- * What `--corpus` buys is that the measurement can be TAKEN — one command,
- * repeatable, by anyone — instead of re-derived by hand from a header that was
- * two weeks stale and governing. That is the only thing that was missing.
+ * What the default buys is that the measurement is TAKEN — every run, by
+ * everyone — instead of re-derived by hand from a header that was two weeks
+ * stale and governing. Repairing the 57 is a separate, later act.
  *
  * **AND THE RULES THIS TREE DOES NOT BRING WITH IT.** A bare `file:line` in an
  * item body, and every `historical-citation` marker that excuses one, belong to
@@ -1106,7 +1128,9 @@ function main(): number {
   const fix = argv.includes('--fix');
   const asJson = argv.includes('--json');
   const strictSource = argv.includes('--strict-source');
-  const withCorpus = argv.includes('--corpus');
+  // Walked unless a caller asks for only the gated set. See `CORPUS_ROOT` for
+  // the ruling and for why the flag is a subtraction rather than an addition.
+  const withCorpus = !argv.includes('--no-corpus');
 
   indexFiles();
 
@@ -1136,7 +1160,7 @@ function main(): number {
   const sources = found.filter((f) => !SOURCE_EXEMPT.has(rel(f))).sort();
   const sourceFiles = new Set(sources.map(rel));
 
-  // A tree walked only when asked for, and an empty list when it is not — so
+  // A tree walked unless it is waived off, and an empty list when it is — so
   // every count below is the count for the trees actually read. See CORPUS_ROOT.
   const corpus: string[] = [];
   if (withCorpus) walk(path.join(REPO, CORPUS_ROOT), corpus, isMarkdown);
@@ -1281,7 +1305,7 @@ function main(): number {
   // in its own front matter, and the CLI recalculates both on every write. A
   // hint rewritten here with `writeFileSync` would leave the file asserting a
   // checksum it no longer has — a corpus that fails `doctor` in exchange for a
-  // convenience nobody asked for. `--corpus` reads; it does not write.
+  // convenience nobody asked for. The corpus walk READS; it does not write.
   const unfixable = moved.filter((r) => r.c.wrapped || fromCorpus(r.c.doc));
   const fixable = moved.filter((r) => !r.c.wrapped && !fromCorpus(r.c.doc));
   if (fix && unfixable.length > 0) {
@@ -1395,10 +1419,11 @@ function main(): number {
         'Run with --strict-source to gate them; that flag is the whole of the flip.\n',
     );
   }
-  // The corpus tier. Reported when asked for, never gated — and when it was not
-  // asked for, the tree is NAMED rather than left to this file's header, which
-  // is where the previous version of this refusal sat while it went two weeks
-  // stale. `INV-nothing-is-dropped-silently` applies to a whole tree first.
+  // The corpus tier. Reported on every run, never gated — and on the one run
+  // that waives it off, the tree is NAMED rather than left to this file's
+  // header, which is where the previous version of this refusal sat while it
+  // went two weeks stale. `INV-nothing-is-dropped-silently` applies to a whole
+  // tree first.
   if (ungatedCorpus > 0) {
     process.stdout.write(
       `\n${ungatedCorpus} corpus failure(s) above are REPORTED, not gated — they do not set the ` +
@@ -1409,8 +1434,8 @@ function main(): number {
   }
   if (!withCorpus) {
     process.stdout.write(
-      '\n.my_context/items/ is not walked on this run — pass --corpus to read the citations the ' +
-        'corpus writes in this form. They are reported, never gated.\n',
+      '\n.my_context/items/ is not walked on this run — `--no-corpus` was passed. Drop it to ' +
+        'read the citations the corpus writes in this form; they are reported, never gated.\n',
     );
   }
   // A moved hint is not a failure — the fragment resolved, which is the claim.

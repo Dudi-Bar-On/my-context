@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: References in the code point at things that keep their name, instead of line numbers that move the next time anyone writes.
-summary_of: 6a01f43f8837446b
+summary_of: 2a8c7bda17a25ef8
 acknowledged:
   - citation_form@9c5150f8dec53642
 scope:
@@ -24,17 +24,17 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-09-07
 valid_until: null
-checksum: d422ca6ed877169a
+checksum: 39f799b4c253f1cb
 ---
 
 # a citation names an item by id, never a report by line number
 
 OWNER RULING 2026-09-07, taken from two citations that had BOTH already rotted before anyone noticed.
 
-src/doctor/checks.ts cited reports/EXECUTION-BOARD.md:99 and reports/V2-HANDOVER.md:437 for a
-sentence about doctor findings declaring their own remedies. Line 99 held a paragraph about builder
-tasks; line 437 held a paragraph about a disconnected browser tool. Neither had held that sentence
-for days. It was found only because the board was being retired.
+src/doctor/checks.ts cited reports/EXECUTION-BOARD.md at line 99 and reports/V2-HANDOVER.md at
+line 437 for a sentence about doctor findings declaring their own remedies. Line 99 held a paragraph
+about builder tasks; line 437 held a paragraph about a disconnected browser tool. Neither had held
+that sentence for days. It was found only because the board was being retired.
 
 THE MECHANISM IS STRUCTURAL, NOT CARELESSNESS. reports/V2-HANDOVER.md is PREPENDED TO - every write
 adds a block at the top - so EVERY line number in it is invalidated by the next write. Now that the

@@ -21,14 +21,23 @@
  * are already wrong. Normalising a tree into a gate's form without the gate is
  * how you manufacture the exact silence the form was invented to end.
  *
- * So the tree is WALKABLE now, and the flag that walks it is `--corpus`. It is
- * off by default and it never sets the exit code, for two reasons that are not
- * the same reason. The gate half of that task was CLOSED by owner ruling on
- * 2026-09-07 (`plan:walk seq:140`, option A) and a lane does not reopen an
- * owner's ruling by shipping code; and the 57 sit in items other work owns, so
- * a default-on gate would be red on the night everyone else is writing. What
- * the flag buys is that the number can be TAKEN in one command instead of
- * re-argued from a header, which is the only thing that was actually missing.
+ * So the tree is WALKED. It shipped behind `--corpus` on 2026-09-11 and the
+ * number was put in front of the owner the same day; his ruling, that day, was
+ * that the walk runs on EVERY run, reported and NOT gated — **on the reasoning
+ * that the only way those 57 ever reached 57 is that nobody could see them.**
+ * An opt-in measurement is taken by whoever already suspects the answer.
+ *
+ * The two halves of that are still not the same decision:
+ *
+ *   - **Walked by default**, by the ruling above. `--no-corpus` puts the tree
+ *     back outside the walk for a caller who wants only the gated set, and it
+ *     is named for what it does.
+ *   - **Never gated**, because the GATE half of that task was CLOSED by owner
+ *     ruling on 2026-09-07 (`plan:walk seq:140`, option A) and today's ruling
+ *     did not reopen it — and because the 57 sit in items other work owns. The
+ *     exit code is the documentation failures and nothing else, which is the
+ *     property `THE EXIT CODE IS THE DOCUMENTATION FAILURES AND NOTHING ELSE`
+ *     below exists to keep provable.
  *
  * **What this file rests on** —
  * `RULE-a-test-names-the-items-it-rests-on-or-says-it-rests-on-none`:
@@ -128,7 +137,7 @@ function probe(files: Record<string, string>, args: string[] = []): Probe {
 function run(
   files: Record<string, string>,
   check: (p: Probe) => void,
-  args: string[] = ['--corpus'],
+  args: string[] = [],
 ): void {
   const p = probe(files, args);
   try {
@@ -182,19 +191,30 @@ test('the pair: a broken citation in an item body is REPORTED at its own file an
 });
 
 // ---------------------------------------------------------------------------
-// The flag, both ways. A tree that is walked only on request has to prove that
-// the request is what walks it — otherwise the default run is checking the
-// corpus and the header that says it does not is the thing that is wrong.
+// The default, and the flag that undoes it. A tree walked by ruling has to
+// prove that NO FLAG is what walks it — otherwise the number the owner ruled
+// on is still being taken by whoever already suspects the answer, and every
+// test above is passing on an argument nobody else's run receives.
 // ---------------------------------------------------------------------------
 
-test('WITHOUT the flag the same broken citation is invisible, and the run says so', () => {
+test('NO FLAG AT ALL walks the corpus, and the run never says the tree was skipped', () => {
+  run(
+    { [ITEM]: item('NOTE-probe', `It is at \`target.ts\` · \`${GONE}\`.`) },
+    (p) => {
+      assert.match(p.out, /BROKEN \.my_context\/items\/note\/NOTE-probe\.md:10/);
+      assert.doesNotMatch(p.out, /is not walked/);
+    },
+  );
+});
+
+test('`--no-corpus` puts the tree back outside the walk, and the run names the flag', () => {
   run(
     { [ITEM]: item('NOTE-probe', `It is at \`target.ts\` · \`${GONE}\`.`) },
     (p) => {
       assert.doesNotMatch(p.out, /NOTE-probe/);
-      assert.match(p.out, /\.my_context\/items\/ is not walked/);
+      assert.match(p.out, /\.my_context\/items\/ is not walked on this run — `--no-corpus`/);
     },
-    [],
+    ['--no-corpus'],
   );
 });
 
@@ -204,6 +224,30 @@ test('a corpus failure is REPORTED and never sets the exit code', () => {
     (p) => {
       assert.match(p.out, /1 corpus failure\(s\) above are REPORTED, not gated/);
       assert.equal(p.code, 0, p.out);
+    },
+  );
+});
+
+/**
+ * **The property the default must not have moved, stated where it can fail.**
+ *
+ * Walking the corpus on every run puts 57 pre-existing failures in front of
+ * every caller. The one thing that must not follow is that any of them reaches
+ * the exit code: it is the documentation failures and nothing else, before this
+ * change and after it. So this probe breaks BOTH trees at once and pins all
+ * three halves of the answer — the code, the corpus tier's own disclaimer, and
+ * the sentence that tells the reader whose the 1 is.
+ */
+test('THE EXIT CODE IS THE DOCUMENTATION FAILURES AND NOTHING ELSE', () => {
+  run(
+    {
+      [ITEM]: item('NOTE-probe', `It is at \`target.ts\` · \`${GONE}\`.`),
+      'docs/superpowers/plans/probe.md': `| a | \`target.ts\` · \`${GONE}\` |\n`,
+    },
+    (p) => {
+      assert.equal(p.code, 1, p.out);
+      assert.match(p.out, /1 corpus failure\(s\) above are REPORTED, not gated/);
+      assert.match(p.out, /exit code, which is 1 for the documentation failures above/);
     },
   );
 });
@@ -310,6 +354,6 @@ test('--fix REFUSES to rewrite a hint inside an item, and says why', () => {
         'an item file must be left exactly as written',
       );
     },
-    ['--corpus', '--fix'],
+    ['--fix'],
   );
 });

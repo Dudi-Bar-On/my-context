@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: Filtering the list by date covers the day as you lived it, matching the times shown next to it, instead of a day that starts three hours off.
-summary_of: 3a7c4a78474ea6b8
+summary_of: d49d05ebb7066d66
 acknowledged:
   - citation_form@fd3f124e02a7831b
   - task_unverified@fd3f124e02a7831b
@@ -26,7 +26,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-09-09
 valid_until: null
-checksum: f2485d7a63af77f6
+checksum: 224680b922a33a4a
 plan: archive
 seq: "37"
 state: done
@@ -46,7 +46,7 @@ THE CLIENT SENDS THE ZONE, THE SERVER GUESSES NOTHING. `READER_ZONE` is read onc
 
 BOTH ENDS INCLUSIVE BY CONSTRUCTION. Both bounds now compare YYYY-MM-DD against YYYY-MM-DD, so neither edge can be off by one; the `until` edge the item warned about is asserted on the screen over a range holding both fixtures. `undated` now also counts a stamp `zonedDay` cannot place, rather than only a missing one.
 
-DST EVIDENCE, WHICH IS THE POINT AND NOT A FORMALITY. Two sessions at the SAME wall time - 21:30Z - on opposite sides of the Israeli transition: 23:30 on the 15th in January (GMT+2), 00:30 on the 16th in July (GMT+3). One instant-shape, two days, which no fixed offset can produce. Both wrong fixes were PLANTED and both went red on the half each gets wrong: the shipped UTC-prefix build files both on the 15th and fails the July filter; a "+3 everywhere" build files both on the 16th and fails the January filter, at `conversations.spec.ts:1086` in all four browser runs. Removing the client's `tz` also reddens all four. Restored, all four green again.
+DST EVIDENCE, WHICH IS THE POINT AND NOT A FORMALITY. Two sessions at the SAME wall time - 21:30Z - on opposite sides of the Israeli transition: 23:30 on the 15th in January (GMT+2), 00:30 on the 16th in July (GMT+3). One instant-shape, two days, which no fixed offset can produce. Both wrong fixes were PLANTED and both went red on the half each gets wrong: the shipped UTC-prefix build files both on the 15th and fails the July filter; a "+3 everywhere" build files both on the 16th and fails the January filter, at `e2e/conversations.spec.ts` · `await until.fill('2026-01-15');` · ~1141 in all four browser runs. Removing the client's `tz` also reddens all four. Restored, all four green again.
 
 MEASURED. Browser, serial, both projects: 206 passed, 0 failed across `conversations`, `conversations-kept`, `conversation-secrets`, `lane-link-face`, `archive-chrome-face` - 4 of those 206 are new here (en and he, chromium and chrome). Node: 7,294 tests, 7,286 pass, 6 fail, and none of the six is this work - `ingest-lock`, `statusline-chain` and `execute-route` are the named contention set and each passes alone; `no-writes` and two pack tests fail on another lane's uncommitted `src/core/review-counter.ts` and its new `review` config key. Typecheck clean. The day pass costs 0.009 ms over this workspace's 2 sessions, 0.952 ms over 259 rows and 7.571 ms over 2,000 - best of nine, warm formatter - and is paid only when a bound is set.
 

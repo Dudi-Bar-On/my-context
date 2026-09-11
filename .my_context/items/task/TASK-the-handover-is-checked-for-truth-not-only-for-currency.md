@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: The notes handed from one session to the next are held to the same standard as everything else written down here.
-summary_of: a9de712ea9eff374
+summary_of: c9a9a3a6b0b5139a
 acknowledged:
   - citation_form@8a33aef3ce3adbf8
 scope:
@@ -26,7 +26,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-09-06
 valid_until: null
-checksum: 74dd5d03d2485097
+checksum: e8104d66f72d3fa9
 plan: handover
 seq: "15"
 state: done
@@ -41,7 +41,8 @@ it TRUE, and this is that half.
 
 THE EVIDENCE, and it is a real defect that shipped nothing only by luck. The handover carried the
 instruction "widen isServableDocPath to serve .my_context/items/**" SIX times across six
-compactions. It was wrong: SKIP_DIRS at src/doctor/checks.ts:297 contains `.my_context`, so
+compactions. It was wrong: SKIP_DIRS
+(`src/doctor/checks.ts` · `const SKIP_DIRS = new Set([` · ~312) contains `.my_context`, so
 listRepoFiles never yields a corpus path and the predicate would have been asked about no corpus
 file, ever. A lane following that instruction faithfully would have shipped a feature that served
 NOTHING, looked done, and passed every gate. It was caught only because a lane measured instead of

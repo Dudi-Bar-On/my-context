@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: A session whose file is deleted disappears from the list unless it was kept, and a kept session is copied out as it grows so nothing is lost.
-summary_of: b0e11eae89eee34e
+summary_of: 905ded0984272f69
 summary_was:
   - 2026-09-07 When the original transcript file is deleted, the archive should show that it is gone rather than quietly forgetting the session existed.
 acknowledged:
@@ -29,7 +29,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-09-07
 valid_until: null
-checksum: 95922a15b76a29a3
+checksum: ece945b1abfe84e3
 plan: archive
 seq: "11"
 state: done
@@ -45,9 +45,9 @@ justify the opposite.
 The spec: "A pruned transcript is a BROKEN ROW in the index. The list MUST SHOW that a session file
 is gone rather than failing to load, and that is the strongest argument for export."
 
-The code: rebuildConversations calls index.removeMissing(...) (`src/core/conversation-index.ts` ·
-`index.removeMissing(`,
-method at :740), which DELETES every row whose transcript is gone. And removeMissing own doc comment
+The code: rebuildConversations calls index.removeMissing(...)
+(`src/core/conversation-index.ts` · `index.removeMissing(` · ~3382), which DELETES every row
+whose transcript is gone. And removeMissing own doc comment
 CITES THAT SPEC SENTENCE to justify doing the opposite of what it says.
 
 SO A WHOLE STATE IS UNREACHABLE: present:false, missing, the conv.pruned "File deleted" chip,
@@ -97,7 +97,7 @@ the dead code is removed with the replacement understood rather than merely dele
 CITATION RE-ANCHORED 2026-09-08, under
 RULE-a-citation-names-an-item-by-id-never-a-report-by-line-number.
 
-It cited src/core/conversation-index.ts:890 by line and carried no fragment - and the line HAD
+It cited src/core/conversation-index.ts at line 890, carrying no fragment - and the line HAD
 ALREADY DRIFTED: 890 is a fragment of a query, not the removeMissing call the sentence is about.
 The citation was wrong within a day of being written, which is the argument for the rule rather
 than an exception to it.

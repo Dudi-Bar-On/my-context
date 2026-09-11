@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: References in the knowledge base point at a place that keeps its name, rather than a line number that moves.
-summary_of: e794e0a03a2b80d2
+summary_of: 1b25564364e623bd
 summary_was:
   - 2026-09-07 The reference checker has three known blind spots; settle by rule what it covers, and stop pointing at line numbers that rot.
 acknowledged:
@@ -26,7 +26,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-08-25
 valid_until: null
-checksum: 861d6cea7e6be977
+checksum: 775daa12add0698d
 plan: walk
 seq: "30"
 state: todo
@@ -75,3 +75,48 @@ WORDING CORRECTED 2026-09-08. This body opened a line with a verdict word - CLOS
 mean that ONE HALF of the item was settled, on an item that remains open. `body_disagrees_with_meta`
 read it as the item’s own verdict and was right to: a reader skimming sees the word before the
 qualifier. The half is still settled; only the wording moved.
+
+WHAT LANDED 2026-09-11, and what is left.
+
+THE WALK IS NO LONGER A FLAG. It shipped that morning behind --corpus, off by default, because a
+lane does not reopen an owner ruling by shipping code. The number went in front of him the same
+day and he ruled the walk ON for every run, REPORTED and NOT GATED, on the reasoning that the only
+way those 57 broken corpus citations ever reached 57 is that nobody could see them. --no-corpus is
+the way back out for a caller who wants only the gated set. The exit code did not move: it is the
+documentation failures and nothing else, and citations-in-corpus.test.ts pins that in a probe that
+breaks BOTH trees at once.
+
+THE RESIDUE, MEASURED AND THEN WORKED. 12 bare pointers stood in 8 items, beside 16 excused as
+quotations in 3 items and 6 naming files this repository does not have. Of the 12:
+
+- SIX became anchors and every one resolves exactly, against e2e/conversations.spec.ts,
+  src/core/needs.ts, docs/design/web-ui-mockup.html, src/ui/public/strings/en.js,
+  src/ui/public/strings/he.js and src/doctor/checks.ts. The two string tables are anchored on the
+  KEY and not on the copy, which is what lets them survive the correction this item asks for.
+- FOUR were never addresses. They are this corpus quoting the rotted pointers it filed AGAINST —
+  the rule’s own evidence, and two 2026-09-08 re-anchoring notes recording what they replaced. An
+  anchor there contradicts the sentence, so the line number stopped being SPELLED as an address
+  and is described in prose instead. The record is word for word what it was.
+- TWO ARE LEFT BARE ON PURPOSE, and are the only residue. One names docs/TUTORIAL-ADVANCED.md at
+  line 216, in a document since rewritten end to end that carries no reference capture at all now;
+  the other names src/ui/read-model.ts at 3054-3057, which held a usage expression on the day it
+  was written and holds nothing like the quoted sentence today. Deriving a fragment from what
+  stands there now is the trap this item named in its own words. They stay COUNTABLE under
+  citation_form rather than reworded into an unchecked assertion, which is the same argument the
+  walk was turned on for.
+
+ONE FAULT REPAIRED IN PASSING: the 2026-09-08 re-anchor in
+TASK-a-pruned-session-is-a-row-that-says-so-not-a-row-that wrapped its citation across two lines,
+so the gate read it as UNREAD rather than as a citation, and its hint named a line 2,600 short of
+the call. It is one line now and it resolves.
+
+THE WRITER HALF WAS ALREADY IN FORCE, and the search says so rather than assuming it. Nothing in
+this product writes a bare line pointer into an item body: provenance is captured as a SECTION
+ANCHOR (`src/ingest/apply.ts` · `sourceAnchor: anchor,` · ~274), and the only emitter of that
+shape in the tree is renderCitation
+(`src/core/retrieval/result.ts` · `function renderCitation(citation: Citation): string {` · ~137),
+a parsed bracket form for retrieval results under a gitignored directory that neither gate reads,
+and whose own validateResult already refuses a line citation into reports/. The writer this item
+means is the agent and the owner, and what changes them shipped before this lane:
+STD-a-citation-names-a-file-a-verbatim-fragment-and-an-optional is always:true with an empty
+scope, so it is delivered every session, and checkCitationForm counts what gets written anyway.

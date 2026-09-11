@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: Corrects a shipped screen sentence that still promises the README, three weeks after the owner ruled it should say it serves help topics instead.
-summary_of: bac72b7295910b1e
+summary_of: 1eb1209cfcae1a12
 acknowledged:
   - citation_form@9ccc54441c7f3bdc
 scope:
@@ -24,10 +24,10 @@ tags:
 origin: human
 source_file: "C:/Users/UserC/AppData/Local/Temp/claude/D--Users-UserC-source-repos-my-context/595db3b1-a481-4553-b4c0-7248c31b2655/scratchpad/docsys/1.md"
 source_anchor: null
-source_checksum: d6934660463ba297
+source_checksum: null
 valid_from: 2026-09-05
 valid_until: null
-checksum: 5c38a43d34d8abc8
+checksum: 0d8ab5102b8b76ac
 plan: docsys
 seq: "1"
 state: done
@@ -40,9 +40,10 @@ verified_on: 2026-09-05
 > Found 2026-09-05 under `reports/2026-09-05-documentation-screen-definition.md`, researching the
 > Documentation screen for `REQ-the-two-readmes-are-the-base-of-a-documentation-system-that`.
 >
-> `docs/design/web-ui-mockup.html:3690`, `src/ui/public/strings/en.js:1205` and
-> `src/ui/public/strings/he.js:830` (`dv.sub`) still read "The README in this repository, rendered
-> here … addressed by heading ordinal." `dv.v` still reads "cross-linked to your own corpus, which a
+> `docs/design/web-ui-mockup.html` · `data-t="dv.sub"` · ~3690,
+> `src/ui/public/strings/en.js` · `'dv.sub':` · ~1625 and
+> `src/ui/public/strings/he.js` · `'dv.sub':` · ~1103 still read "The README in this repository,
+> rendered here … addressed by heading ordinal." `dv.v` still reads "cross-linked to your own corpus, which a
 > docs site cannot do." Both were found false and RULED on 2026-08-25 by
 > `DEC-the-documentation-screen-serves-the-help-topics-and-says-so`: "the screen serves `mycontext
 > help` topics, and `dv.sub` is corrected to say so." That correction was never carried into the
