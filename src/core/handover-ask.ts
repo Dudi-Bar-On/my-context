@@ -271,6 +271,215 @@ export function askStep(percent: number): number | null {
   return Math.min(ASK_CEILING_PERCENT, Math.floor(percent));
 }
 
+/**
+ * **THE BANDS AN ASK CAN FIRE IN, WIDE EARLY AND NARROW AT THE END** —
+ * `plan:handover seq:19`, the owner's ruling of 2026-09-08.
+ *
+ * ── WHAT THIS CHANGES AND WHAT IT DOES NOT ────────────────────────────────
+ *
+ * `seq:12` (D14) replaced `MAX_ASKS` with a PROGRESS step: one ask per whole
+ * percent from the threshold to full. That fixed a measured staleness — three
+ * windows written once at 85% and carried to 96–99% — and it is not reversed
+ * here. The GOAL is unchanged: as little unrecorded work as possible at the
+ * moment the window dies. Only the spacing changes.
+ *
+ * What the owner then measured is the cost of the spacing: eleven handover
+ * updates between 85% and 96% in one window, ~3.5K tokens each all-in, about a
+ * quarter of the remaining runway spent by the mechanism that exists to protect
+ * it. An update written at 91% is superseded before the window dies; the last
+ * one is the only one that is ever read. A flat 1% step spends the same on both.
+ *
+ * So the steps WIDEN where a note would say little and NARROW where it is the
+ * only thing that survives:
+ *
+ *     90 .... 92 .... 94 .... 96 .. 97 .. 98 .. 99
+ *       2%     2%      2%      1%    1%    1%
+ *
+ * Seven asks from a threshold of 90, against eleven. The owner was asked
+ * directly and chose seven ("drop the 85 ask, keep it at 7"), and the 85 ask is
+ * dropped by MOVING `handover.thresholdPercent` to 90 rather than by suppressing
+ * a first ask — so the first boundary IS the threshold and "ask on crossing the
+ * threshold" survives untouched.
+ *
+ * ── WHY 100 IS NOT AN EIGHTH BOUNDARY ─────────────────────────────────────
+ *
+ * `ASK_CEILING_PERCENT` folds every reading at or above 100 onto the last band,
+ * so a window that reaches 100 does not earn one more ask than one that reaches
+ * 99.1. That is a real ask given up, and it is given up knowingly: seven is what
+ * was ruled, and a handover written at 99 is at most one percent behind at 100.
+ *
+ * ── WHY THE LADDER IS ABSOLUTE AND NOT THRESHOLD-RELATIVE ─────────────────
+ *
+ * A ladder measured DOWN from the threshold would move every boundary whenever
+ * the owner moved the threshold, and a user who set 50 would get a first ask and
+ * then a forty-point silence. Below the first boundary the schedule is therefore
+ * exactly what `seq:12` gave — one ask per whole percent — and the ladder takes
+ * over at 90. Nothing any existing threshold does can open a gap this way.
+ */
+export const ASK_BAND_BOUNDARIES: readonly number[] = [90, 92, 94, 96, 97, 98, 99];
+
+/**
+ * **Where the schedule stops widening and becomes `seq:12` again** — the first
+ * boundary whose band is one whole percent wide.
+ *
+ * It is named rather than spelled `96` at its use sites because it is the SAFETY
+ * line and not merely a number in a list: at and above it this mechanism is
+ * exactly as dense as the one it replaces, and nothing about it is delegated
+ * (`askPlan`). Measured on this session's nine real windows, eight of them died
+ * between 96.1% and 96.7% — so in practice this is where the handover that
+ * actually gets read is written, and it is deliberately the region where this
+ * item changes nothing at all.
+ */
+export const ASK_TAIL_FROM = 96;
+
+/**
+ * **The band an ask at this occupancy belongs to**, or `null` for a reading that
+ * is not a number at all.
+ *
+ * Built ON `askStep` rather than replacing it, and the distinction is the reason
+ * both exist. `askStep` answers *which whole percent is this* — the latch's
+ * unit, the number `handoverLag` subtracts, the number the browser twin in
+ * `ui/public/lib/viewmodel.js` is swept against percent by percent. `askBand`
+ * answers *is this an occasion to ask*. Collapsing the two would turn every
+ * percentage those surfaces print into a band identifier, which is a different
+ * claim from the one they are making.
+ *
+ * Every boundary is a whole percent, so `askBand(askBand(p)) === askBand(p)` and
+ * a latch that stores a band still stores a whole percent — which is what keeps
+ * `readLatch`'s normalisation, `lastRecordedAsk` and the audit row working
+ * unchanged. They only ever compare steps for equality.
+ */
+export function askBand(percent: number): number | null {
+  const step = askStep(percent);
+  if (step === null) return null;
+  let band = step;
+  for (const boundary of ASK_BAND_BOUNDARIES) {
+    if (step >= boundary) band = boundary;
+  }
+  return band;
+}
+
+/**
+ * **How many lines a step update may be.** The full narrative block is written
+ * on the first ask of a window and at every tail ask; the bands in between get
+ * only what CHANGED since the last block.
+ *
+ * Two of the eleven updates the owner measured added 11 and 14 lines because
+ * little had landed. A cap is not what makes those cheap — the turn is the cost,
+ * not the prose — but an uncapped "bring it up to date" is what turned the other
+ * nine into ~3.5K tokens each.
+ */
+export const DELTA_MAX_LINES = 25;
+
+/**
+ * Where in the schedule an ask sits. Three places and not "first/middle/last",
+ * because what decides how an ask is written is not its ordinal — it is HOW MUCH
+ * RUNWAY IS LEFT, and the ladder already encodes that.
+ */
+export type AskBandPlace = 'first' | 'early' | 'tail';
+
+export interface AskPlan {
+  /** The band this ask belongs to — `askBand`, and the latch's unit. */
+  band: number;
+  place: AskBandPlace;
+  /** A whole narrative block, or only what changed since the last one. */
+  shape: 'full' | 'delta';
+  /** Who composes it. `this-turn` means the model itself, here, now. */
+  writer: 'subagent' | 'this-turn';
+  /** The cap on a delta, or `null` for a full block. */
+  maxLines: number | null;
+}
+
+/**
+ * **What kind of handover this ask is asking for, and who writes it.**
+ *
+ * ── WHY THE WRITER IS PART OF THE SCHEDULE ────────────────────────────────
+ *
+ * The owner's second ruling is that a subagent composes the block, because the
+ * expensive half of an update is writing the prose and that cost is paid out of
+ * the very window the block exists to outlive. That is
+ * `RULE-delegate-to-subagents-by-default-to-preserve-the-context` applied to the
+ * one turn that was exempt from it by habit.
+ *
+ * **But a handover that is being written when the window closes does not
+ * exist.** A subagent is a round trip this session does not control: it can be
+ * slow, it can fail, and the session may be one turn from a compaction. So
+ * delegation is allowed only where there is runway to lose — below
+ * `ASK_TAIL_FROM` every band is at least two percentage points, roughly twenty
+ * thousand tokens, from the next ask. At and above it nothing is delegated and
+ * the block is written in the turn that was asked.
+ *
+ * The measurement is what forced that line. Eight of this session's nine windows
+ * ended between 96.1% and 96.7%, which means the LAST ask almost every window
+ * ever gets is the one at 96 — and under a rule that delegated by place in the
+ * ladder ("last means 99") that final, only-one-ever-read block would have been
+ * a 25-line delta handed to a writer that might not return. It is a full block,
+ * written here, instead.
+ *
+ * `first` is the ask on crossing the threshold: a full block, because there is
+ * nothing behind it for a delta to be against, and delegated, because at the
+ * threshold the runway is at its longest.
+ */
+export function askPlan(percent: number, threshold: number): AskPlan | null {
+  const band = askBand(percent);
+  if (band === null) return null;
+  if (band >= ASK_TAIL_FROM) {
+    return { band, place: 'tail', shape: 'full', writer: 'this-turn', maxLines: null };
+  }
+  const thresholdBand = askBand(threshold);
+  if (thresholdBand !== null && band <= thresholdBand) {
+    return { band, place: 'first', shape: 'full', writer: 'subagent', maxLines: null };
+  }
+  return { band, place: 'early', shape: 'delta', writer: 'subagent', maxLines: DELTA_MAX_LINES };
+}
+
+/**
+ * **The sentence the ask carries about HOW to write the block**, appended to
+ * whichever paragraph `hooks/stop.ts` chose.
+ *
+ * It lives here and not there because it is the SCHEDULE speaking rather than
+ * the occasion: the paragraph says why this turn is being interrupted, this says
+ * what the interruption is asking for. `stop.ts` appends one string.
+ *
+ * ── THE FAILURE MODE THIS WORDING EXISTS TO PREVENT ───────────────────────
+ *
+ * A lane told "write the handover" produces a CHANGELOG. A handover is worth
+ * reading because it carries a judgement about what mattered, and a subagent
+ * handed a diff does not have that judgement — so the delegation is always
+ * phrased as *carry this brief*, with the deciding left here. That is the half
+ * of this ruling that can fail quietly, and it fails by producing prose nobody
+ * can act on rather than by producing nothing.
+ *
+ * **And the delegated case always names its own fallback.** A subagent that does
+ * not come back this turn is a handover that was never written, and the next ask
+ * would only discover that a whole band later.
+ */
+export function compositionDirective(plan: AskPlan): string {
+  if (plan.writer === 'this-turn') {
+    return (
+      ' Write it yourself, in this turn, and hand it to nobody: the window may end before a '
+      + 'writer you dispatch comes back, and a handover that is being written when that '
+      + 'happens does not exist.'
+    );
+  }
+  if (plan.shape === 'delta') {
+    return (
+      ' Decide WHAT belongs in it yourself — what landed, what was ruled, what is still owed'
+      + ` — then hand that brief to a subagent and have it write at most ${plan.maxLines} lines`
+      + ' covering only what changed since the last block. Do not hand it a diff: a writer with'
+      + ' no judgement about what mattered returns a changelog. If it does not come back this'
+      + ' turn, write those lines yourself before you finish.'
+    );
+  }
+  return (
+    ' Decide WHAT belongs in it yourself — what you were doing, what you decided and why, what'
+    + ' the next session must do first — then hand that brief to a subagent and have it write'
+    + ' the block. Do not hand it a diff: a writer with no judgement about what mattered returns'
+    + ' a changelog. If it does not come back this turn, write the block yourself before you'
+    + ' finish.'
+  );
+}
+
 export const NO_LATCH: AskLatch = {
   askedAtThreshold: null,
   askedAtPercent: null,

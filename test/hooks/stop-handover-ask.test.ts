@@ -607,28 +607,35 @@ test('85 -> 86 -> 86 -> 87 asks at each new percent, and stays silent on the rep
 
 /**
  * **The cap is emergent, and this is what says what it comes to.** Nothing
- * declares fifteen or sixteen anywhere; the number falls out of there being
- * that many whole percentage points between the owner's threshold and a full
- * window. From 85 that is the first ask plus fifteen more, and the last of them
- * lands at 100 because `askStep` clamps there.
+ * declares a count anywhere; it falls out of the schedule and the threshold.
+ *
+ * **The number moved on 2026-09-08 and the reason it moved is the point.**
+ * `seq:12` gave one ask per whole percent, so a window from 85 was sixteen —
+ * the first and fifteen more. `seq:19` measured what those cost (about a
+ * quarter of the runway spent by the mechanism that exists to protect it) and
+ * widened the steps above 90 into the seven-band ladder. From 85 the count is
+ * therefore five whole percents (85–89), then the seven bands: TWELVE.
  *
  * It is a bound worth pinning precisely because it is emergent: the failure it
  * would catch is not "one ask too many" but a per-turn hook that asks forever,
- * which is the most expensive bug this design can ship.
+ * which is the most expensive bug this design can ship. So this asserts the
+ * SHAPE and not only the total — a count alone would pass for a schedule that
+ * asked twelve times in the wrong places.
  */
-test('a window filled from the threshold to 100 produces exactly one ask per whole percent',
+test('a window filled from the threshold to 100 asks once per whole percent, then once per band',
   () => {
     const sb = sandbox({ thresholdPercent: 85 });
-    let asked = 0;
+    const steps: number[] = [];
     // Half-percent steps, so every whole percent is READ twice and may only be
-    // ASKED at once — thirty-one turns for sixteen asks.
+    // ASKED at once — thirty-one turns for twelve asks.
     for (let percent = 85; percent <= 100; percent += 0.5) {
-      if (runStop(sb, { percent }).stdout !== '') asked += 1;
+      if (runStop(sb, { percent }).stdout === '') continue;
+      steps.push(readLatch(sb.root, sb.session).askedAtPercent as number);
     }
-    assert.equal(asked, 16,
-      'a window from 85 to 100 no longer produces one ask per whole percent — 85 through 100 ' +
-      'is sixteen: the first, and the fifteen the owner\'s instruction earns');
-    assert.equal(readLatch(sb.root, sb.session).asks, 16);
+    assert.deepEqual(steps, [85, 86, 87, 88, 89, 90, 92, 94, 96, 97, 98, 99],
+      'a window from 85 to 100 no longer follows the ruled schedule — one ask per whole ' +
+      'percent below the ladder, then 90, 92, 94, 96, 97, 98, 99');
+    assert.equal(readLatch(sb.root, sb.session).asks, 12);
   });
 
 /**
@@ -637,12 +644,18 @@ test('a window filled from the threshold to 100 produces exactly one ask per who
  * and the clamp is what keeps the mechanism bounded whatever arithmetic arrives
  * from the platform. Without it a bad divisor upstream turns a bounded hook
  * into one that asks on every turn for the rest of the session.
+ *
+ * **The latched number is 99 and not 100 since `seq:19`**, because the ceiling
+ * now folds into the last BAND rather than standing as a step of its own. The
+ * property under test is unchanged and is the only one that matters here: every
+ * reading at or above the ceiling lands on one step, so none of them can be a
+ * fresh one.
  */
 test('an occupancy above 100 is clamped, so a full window cannot keep earning asks', () => {
   const sb = sandbox({ thresholdPercent: 98 });
   assert.notEqual(runStop(sb, { percent: 100.4 }).stdout, '', 'a full window was not asked');
-  assert.equal(readLatch(sb.root, sb.session).askedAtPercent, 100,
-    'the latch recorded a percent above 100, so every higher reading is a fresh step');
+  assert.equal(readLatch(sb.root, sb.session).askedAtPercent, 99,
+    'the latch recorded a percent above the last band, so every higher reading is a fresh step');
   assert.equal(runStop(sb, { percent: 101.9 }).stdout, '', '101 was treated as a new percent');
   assert.equal(runStop(sb, { percent: 250 }).stdout, '', 'a nonsense reading earned an ask');
 });
@@ -798,4 +811,81 @@ test('a muted workspace still has its handover CONFIGURED — the delivery is un
   assert.equal(handover.path, 'reports/H.md');
   assert.equal(handover.thresholdPercent, 'never');
   assert.equal(handover.budgetTokens, 1200);
+});
+
+/* ---------------------------------------------------------------------------
+ * The widening-then-narrowing schedule, driven through the hook.
+ *
+ * @basis TASK-the-handover-asks-on-a-widening-then-narrowing-schedule-and, TASK-the-handover-is-asked-for-again-at-every-percent-not-written
+ *
+ * `plan:handover seq:19`. `seq:12` above asks once per whole percent; this
+ * measures what that costs and spaces the asks out where a note would say
+ * little, keeping the 1% step only in the tail. Every occupancy below is
+ * FABRICATED and handed to the hook — nothing here waits, and nothing here
+ * measures how long anything took.
+ * ------------------------------------------------------------------------- */
+
+/** The steps a rising window actually ASKED at, in order. */
+function askedSteps(sb: Sandbox, readings: number[]): number[] {
+  const out: number[] = [];
+  for (const percent of readings) {
+    if (runStop(sb, { percent }).stdout === '') continue;
+    const at = readLatch(sb.root, sb.session).askedAtPercent;
+    assert.equal(typeof at, 'number', `an ask at ${percent}% latched no step`);
+    out.push(at as number);
+  }
+  return out;
+}
+
+/**
+ * The readings one rising window reports. Two per whole percent, so a schedule
+ * that re-armed inside a percent would show up as a duplicate step rather than
+ * as a count nobody can locate.
+ */
+const RISING: number[] = [
+  90.1, 90.8, 91.2, 91.9, 92.3, 92.7, 93.1, 93.8, 94.2, 94.6, 95.1, 95.9,
+  96.4, 96.8, 97.1, 97.7, 98.2, 98.9, 99.2, 99.9,
+];
+
+test('a window rising from 90 to full asks SEVEN times, at the seven ruled bands', () => {
+  assert.deepEqual(
+    askedSteps(sandbox({ thresholdPercent: 90 }), RISING),
+    [90, 92, 94, 96, 97, 98, 99],
+    'the hook did not follow the ladder — eleven asks here is seq:12 still in force, and any ' +
+    'other set is a schedule nobody ruled',
+  );
+});
+
+test('the widening bands hand the writing off, with a cap and a fallback', () => {
+  const sb = sandbox({ thresholdPercent: 90 });
+  assert.ok(askedText(runStop(sb, { percent: 90.1 })), 'the threshold did not ask');
+  const early = askedText(runStop(sb, { percent: 92.3 }));
+  assert.ok(early, 'the second band did not ask');
+  assert.ok(early.includes('at most 25 lines'),
+    'a step update between the threshold and the tail is a DELTA and says how long it may be');
+  assert.match(early, /subagent/u,
+    'the ask that has runway to spare still pays for its own prose out of the window it is ' +
+    'trying to protect');
+});
+
+test('THE TAIL IS WRITTEN HERE — the last ask a window gets waits on nobody', () => {
+  const sb = sandbox({ thresholdPercent: 90 });
+  assert.ok(askedText(runStop(sb, { percent: 90.1 })), 'the threshold did not ask');
+  const tail = askedText(runStop(sb, { percent: 96.4 }));
+  assert.ok(tail, 'the tail did not ask');
+  assert.match(tail, /in this turn/u,
+    'the tail ask does not say who writes the block, so nothing in it rests on the schedule');
+  assert.doesNotMatch(tail, /subagent/iu,
+    'the ask at 96% was delegated. Eight of this session’s nine windows died between 96.1% ' +
+    'and 96.7%, so this is the LAST ask almost every window ever gets, and a block that is ' +
+    'still being written when the window closes does not exist');
+});
+
+test('a threshold below the ladder keeps the 1% step it has always had', () => {
+  assert.deepEqual(
+    askedSteps(sandbox({ thresholdPercent: 85 }), [85.1, 86.2, 87.4, 88.3, 89.6]),
+    [85, 86, 87, 88, 89],
+    'widening below the first boundary would open a stretch of window nothing asks in, which ' +
+    'is the defect seq:12 was written to end',
+  );
 });

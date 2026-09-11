@@ -9,7 +9,8 @@ import {
   occupancyStandDownLine, readOccupancy, type UnmeasurableWhy,
 } from '../core/context-occupancy.ts';
 import {
-  askStep, checkHandoverAsk, handoverConfigAt, readLatch, workspaceConfigAt, writeLatch,
+  askBand, askPlan, checkHandoverAsk, compositionDirective, handoverConfigAt, readLatch,
+  workspaceConfigAt, writeLatch,
   type AskLatch, type HandoverAskVerdict,
 } from '../core/handover-ask.ts';
 import { isMainEntry } from '../core/paths.ts';
@@ -389,12 +390,25 @@ function handoverAsk(
   if (threshold === null) return null;
   if (occupancy.percent < threshold) return null;
 
-  // The whole percent this reading belongs to, clamped at 100 and `null` for a
-  // reading that is not a number — see `askStep`, which carries the owner's
-  // instruction and the reason a non-finite reading must never read as "not yet
-  // asked at this step".
-  const step = askStep(occupancy.percent);
+  // The BAND this reading belongs to, clamped at 100 and `null` for a reading
+  // that is not a number — `plan:handover seq:19`, and `askBand` carries the
+  // owner's ruling, the measurement behind it, and the reason a non-finite
+  // reading must never read as "not yet asked at this step".
+  //
+  // `askBand` and not `askStep`, and the two are deliberately still separate.
+  // A band is an OCCASION TO ASK; a step is WHICH WHOLE PERCENT THIS IS, and the
+  // second is what `handoverLag`, the strip and the browser twin in
+  // `ui/public/lib/viewmodel.js` subtract to say how far behind the standing
+  // handover is. Every band is itself a whole percent, so the latch still holds
+  // one and everything that only compares steps for equality — `readLatch`'s
+  // normalisation, `lastRecordedAsk`, the audit row — is untouched.
+  const step = askBand(occupancy.percent);
   if (step === null) return null;
+
+  // What KIND of block this ask wants and who composes it — `seq:19`'s second
+  // half. Computed here, beside the band it is derived from, so the paragraph
+  // and the schedule cannot disagree about which ask this is.
+  const plan = askPlan(occupancy.percent, threshold);
 
   const latch = readLatch(root, sessionId);
 
@@ -453,7 +467,16 @@ function handoverAsk(
     percent: occupancy.percent,
     previous,
     previousAskedAt: latch.askedAt,
-    text: askParagraph(handover.path, occupancy.percent, step, latch, previous),
+    // The paragraph says WHY this turn is being interrupted; the directive says
+    // what the interruption is asking for and who writes it. They are appended
+    // rather than woven together because they answer to different rulings — the
+    // three paragraphs are `seq:12`'s and are chosen by the verdict on the last
+    // ask, the directive is `seq:19`'s and is chosen by where in the schedule
+    // this ask sits. A `null` plan cannot happen on this line (the band above is
+    // non-null, so `askPlan` over the same reading is too) and is still handled:
+    // an ask that loses its directive is worth less than one, never nothing.
+    text: askParagraph(handover.path, occupancy.percent, step, latch, previous)
+      + (plan === null ? '' : compositionDirective(plan)),
   };
 }
 
