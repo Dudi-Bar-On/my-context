@@ -301,7 +301,7 @@ export const strings = {
   // ── ANCHORS — plan:recall seq:1, Task 4 ─────────────────────────────────
   'conv.anchors.h': 'Points you marked',
   'conv.anchors.sub': 'Places in a conversation worth steering back to. You mark one from a search result above; a table, a report and a ruling you gave are marked for you whenever the archive is rebuilt.',
-  'conv.anchors.none': 'Nothing is marked yet. Search above and mark a point, or run the rebuild — it marks the tables, the reports and the rulings it passes.',
+  'conv.anchors.none': 'Nothing is marked yet. Search above and mark a point, or run the rebuild — it marks the tables and the rulings you gave that it passes.',
   'conv.anchors.kind.note': 'you marked this',
   'conv.anchors.kind.table': 'a table',
   'conv.anchors.kind.report': 'a report',

@@ -1,7 +1,7 @@
 import {
   ConversationIndex, ConversationIndexIncompleteError, ConversationIndexUninitializedError,
-  MAX_SCAN_BYTES, forgetConversations, iterateTranscript, rebuildConversations, transcriptDir,
-  truncatedScan,
+  MAX_SCAN_BYTES, classifyTurn, forgetConversations, iterateTranscript, rebuildConversations,
+  transcriptDir, truncatedScan,
   type ConversationRow, type NameRow, type SubagentRow,
 } from '../../core/conversation-index.ts';
 import {
@@ -1506,10 +1506,13 @@ function cmdConversationForget(ws: Workspace, root: string, args: string[], out:
  * judgement.**
  *
  * §7 of the retrieval design records the owner's ruling that things which are
- * anchors BY NATURE — *"a table, a report"*, a ruling he gave — are marked
- * *"automatically by the assistant without requiring the user to initiate
- * one"*. Everything below is the reading of "by nature" that this command is
- * willing to defend: a shape the text either has or has not.
+ * anchors BY NATURE are marked *"automatically by the assistant without
+ * requiring the user to initiate one"*, and names *"a table, a report"* and a
+ * ruling he gave. **The report half was withdrawn on 2026-09-11**, by him,
+ * after reading the 613 anchors the first night produced — see the note where
+ * that grammar used to be. What is left is a table and a ruling, and
+ * everything below is the reading of "by nature" that this command is willing
+ * to defend: a shape the text either has or has not.
  *
  * Nothing here scores, thresholds or infers. That is deliberate, and the
  * research this plan rests on is the reason: a lexical signal/noise classifier
@@ -1523,9 +1526,13 @@ function cmdConversationForget(ws: Workspace, root: string, args: string[], out:
  * turn, and a wrong mark is visibly wrong rather than merely present.
  */
 export interface AutoAnchorFinding {
-  /** Which grammar matched. `'table'`, `'report'` or `'ruling'`. */
+  /** Which grammar matched. `'table'` or `'ruling'`. */
   kind: string;
-  /** The evidence, verbatim — never a summary of the turn. */
+  /**
+   * The evidence — never a summary of the turn. A ruling's is the id,
+   * verbatim; a table's is its first readable header cell, which is the one
+   * place this stops being verbatim and says why (`tableLabel`).
+   */
   label: string;
 }
 
@@ -1543,16 +1550,54 @@ function isDelimiter(cells: string[]): boolean {
 }
 
 /**
- * **The header row of the first GFM table in this text, or `null`.**
+ * **A cell somebody can read: it carries a letter or a digit.**
  *
- * The rule is GFM's own and not an approximation of it: a delimiter row, and a
- * header row directly above it with THE SAME NUMBER OF CELLS. Both halves earn
- * their place against shapes that occur in this archive constantly —
+ * `\p{L}` and `\p{N}` rather than `[a-z0-9]`, and that is not tidiness — this
+ * archive is half Hebrew, and an ASCII test would have called every Hebrew
+ * header unreadable and thrown it onto the fallback below.
+ */
+function isReadable(cell: string): boolean {
+  return /[\p{L}\p{N}]/u.test(cell);
+}
+
+/**
+ * **What one table's anchor is CALLED.**
+ *
+ * The owner's ruling of 2026-09-11, on reading his own list: a table anchor
+ * must be labelled with something a person can read — *the table's first
+ * header cell*. It was the whole header row joined with `" | "` until then,
+ * which is why 25 of his anchors were labelled literally `|` and five more
+ * `|  |`: a header of empty cells joins to nothing but its own borders, and a
+ * bookmark called `|` is one he cannot recognise in a list.
+ *
+ * "First" therefore means the first cell there is anything to read IN. An
+ * empty corner cell over a row-label column is ordinary, and skipping it
+ * yields the table's own header rather than a fallback.
+ *
+ * **When no cell has anything in it, the label SAYS so** rather than drawing
+ * the border characters. It is a poor name and an honest one; the alternative
+ * is the defect this fixes.
+ */
+function tableLabel(header: string[]): string {
+  const named = header.find(isReadable);
+  return named ?? `a table of ${header.length} columns`;
+}
+
+/**
+ * **The label of the first GFM table in this text, or `null`.**
+ *
+ * The rule for what IS a table is GFM's own and not an approximation of it: a
+ * delimiter row, and a header row directly above it with THE SAME NUMBER OF
+ * CELLS. Both halves earn their place against shapes that occur in this
+ * archive constantly —
  *
  *   - a line full of `|` with no delimiter under it is a shell pipeline, and a
  *     detector that marked those would mark most `Bash` turns in the corpus;
  *   - a row of dashes whose count does not match the header is ASCII art or a
  *     horizontal rule someone drew with pipes.
+ *
+ * What comes back is `tableLabel`'s answer, which is never empty and never
+ * only punctuation.
  *
  * Exported so the grammar can be tested on its own, in both directions. A
  * detector whose only test is through the command is a detector whose FALSE
@@ -1565,20 +1610,30 @@ export function tableIn(text: string): string | null {
     if (delimiter === null || !isDelimiter(delimiter)) continue;
     const header = cellsOf(lines[i - 1] ?? '');
     if (header === null || header.length !== delimiter.length || header.length < 2) continue;
-    return header.join(' | ');
+    return tableLabel(header);
   }
   return null;
 }
 
 /**
- * A dated Markdown path under this project's own narrative directories.
+ * ── THERE WAS A THIRD GRAMMAR HERE, AND HE RULED IT OUT ────────────────────
  *
- * The date is part of the shape rather than decoration: `reports/README.md`
- * is not a report in this sense, and a detector that matched any `.md` under
- * `reports/` would mark the index file on every turn that mentions it.
+ * A **report** was a dated `.md` path under `reports/` or
+ * `docs/superpowers/{specs,plans}/`. It contributed 101 of the 613 anchors the
+ * pass wrote into his index overnight, and on 2026-09-11 he read them and
+ * ruled: it marks *a turn that mentions a report*, not a report, and those are
+ * not worth having. The regex is gone, the two probes that fed it are gone,
+ * and `markAutomaticAnchors` takes back the anchors it already wrote —
+ * `TASK-trim-the-automatic-anchor-pass-to-the-two-kinds-he-ruled`.
+ *
+ * `test/cli/anchors.test.ts` holds the removal from both ends: the grammar
+ * answers `null` for such a path, and a rebuild over a fixture that names two
+ * of them writes no anchor at either byte. Neither assertion alone would
+ * notice a probe put back without its regex, or a regex put back without its
+ * probe.
+ *
+ * The RULING grammar below is untouched. He judged those the useful ones.
  */
-const REPORT_PATH =
-  /(?:reports|docs\/superpowers\/(?:specs|plans))\/[0-9]{4}-[0-9]{2}-[0-9]{2}-[a-z0-9-]+\.md/;
 
 /**
  * A NORMATIVE corpus id — the categories that carry a ruling.
@@ -1605,8 +1660,6 @@ const RULING_ID = /\b(?:DEC|RULE|INSTR|STD|CONST|INV)-[a-z0-9]+(?:-[a-z0-9]+){3,
 export function anchorInTurn(kind: string, text: string): AutoAnchorFinding | null {
   const table = tableIn(text);
   if (table !== null) return { kind: 'table', label: table };
-  const report = REPORT_PATH.exec(text);
-  if (report !== null) return { kind: 'report', label: report[0] };
   if (kind === 'prompt') {
     const ruling = RULING_ID.exec(text);
     if (ruling !== null) return { kind: 'ruling', label: ruling[0] };
@@ -1634,8 +1687,6 @@ export function anchorInTurn(kind: string, text: string): AutoAnchorFinding | nu
 const ANCHOR_PROBES: { probe: string; kind?: 'prompt' | 'answer' }[] = [
   { probe: '|---' },
   { probe: '| ---' },
-  { probe: 'reports/' },
-  { probe: 'docs/superpowers/' },
   { probe: 'DEC-', kind: 'prompt' },
   { probe: 'RULE-', kind: 'prompt' },
   { probe: 'INSTR-', kind: 'prompt' },
@@ -1661,6 +1712,13 @@ export interface AutoAnchorReport {
   found: number;
   /** Anchors written — `found` minus the ones already standing at that point. */
   marked: number;
+  /**
+   * Anchors the pass had written before and TOOK BACK, because the grammar it
+   * runs today does not recognise what is at that byte. Never one of his.
+   */
+  dropped: number;
+  /** Anchors the pass had written before whose label or kind it re-derived. */
+  relabelled: number;
   /** At least one probe filled its bound, so there may be more behind it. */
   capped: boolean;
   ms: number;
@@ -1670,6 +1728,105 @@ export interface AutoAnchorReport {
 function fileOf(index: ConversationIndex, sessionId: string, agentId: string | null): string | null {
   if (agentId === null) return index.get(sessionId)?.file ?? null;
   return index.getSubagent(agentId)?.file ?? null;
+}
+
+/**
+ * The words at one byte offset of one transcript, and how that turn was
+ * classified — or `null` when nothing readable starts there.
+ *
+ * One seek and one line, exactly as `resolveAnchor` reads: the generator's
+ * `finally` closes the descriptor when the loop breaks, so this costs the
+ * record and not the file.
+ *
+ * The classification is `classifyTurn`'s, derived here from the record itself
+ * rather than read off the prose index, because the sweep below reaches
+ * anchors the prose index never offered as candidates. It is the SAME call the
+ * prose walk makes (`conversation-search.ts`' `proseFrom`), so the two cannot
+ * come to disagree about what a prompt is.
+ */
+function turnAt(file: string, byteOffset: number): { kind: string; text: string } | null {
+  for (const record of iterateTranscript(file, { startByte: byteOffset })) {
+    if (record.record === null) return null;
+    const text = proseOf(record.record);
+    if (text === '') return null;
+    const message = record.record['message'];
+    const content = typeof message === 'object' && message !== null
+      ? (message as { content?: unknown }).content
+      : undefined;
+    return { kind: classifyTurn(record.record['type'], content), text };
+  }
+  return null;
+}
+
+/**
+ * **The pass reads back what it wrote, and takes back what it no longer
+ * recognises.** A WRITE, and the only one in this command that DELETES.
+ *
+ * ── WHY A PASS THAT ONLY ADDS IS NOT ENOUGH ────────────────────────────────
+ *
+ * Marking is idempotent by construction, which made it safe to run every
+ * rebuild and made it incapable of carrying out a trim: when the owner
+ * withdrew the report grammar on 2026-09-11 its 101 anchors would have stood
+ * in his index for ever, and the 25 table anchors labelled `|` would have kept
+ * that label, because `ANCHOR_PROBE_LIMIT` stops at 200 candidates a probe and
+ * his archive holds 297 tables. So the pass owns its own anchors: each is read
+ * back AT ITS OWN BYTE — which no probe bound can hide — and put to the
+ * grammar as it stands today.
+ *
+ * ── AND IT NEVER TOUCHES ONE HE MADE ───────────────────────────────────────
+ *
+ * `origin` is the whole distinction between the two halves of §7, and here it
+ * is load-bearing rather than descriptive: an automatic pass that deleted a
+ * hand-made bookmark would be a far worse defect than any it could fix. An
+ * anchor whose row says `origin: 'owner'` is not read, not re-labelled and not
+ * dropped, whatever the grammar would say about the turn under it.
+ *
+ * ── SILENCE IS NOT EVIDENCE ────────────────────────────────────────────────
+ *
+ * A transcript the harness pruned, or an offset that reads as nothing, leaves
+ * its anchor exactly where it is. Those are the two states `resolveAnchor`
+ * already keeps distinct, and neither is the grammar saying no — deleting on
+ * them would turn a missing file into lost bookmarks.
+ */
+function sweepAutomaticAnchors(
+  index: ConversationIndex,
+  files: Map<string, string | null>,
+  keep: Set<string>,
+  report: AutoAnchorReport,
+): void {
+  for (const row of index.anchorRows(null)) {
+    if (row.origin !== 'automatic') continue;
+    if (keep.has(row.id)) continue;
+
+    const key = row.agentId ?? row.sessionId;
+    if (!files.has(key)) files.set(key, fileOf(index, row.sessionId, row.agentId));
+    const file = files.get(key) ?? null;
+    if (file === null) continue;
+
+    const turn = turnAt(file, row.byteOffset);
+    if (turn === null) continue;
+
+    const finding = anchorInTurn(turn.kind, turn.text);
+    if (finding === null) {
+      unmarkAnchor(index, row.id);
+      report.dropped += 1;
+      continue;
+    }
+    if (finding.kind === row.kind && finding.label === row.label) continue;
+    // The timestamp is the anchor's own and is carried over: re-deriving a
+    // label is not a new bookmark, and moving the stamp would reorder his list
+    // every time a grammar changed.
+    markAnchor(index, {
+      sessionId: row.sessionId,
+      agentId: row.agentId,
+      byteOffset: row.byteOffset,
+      label: finding.label,
+      kind: finding.kind,
+      origin: 'automatic',
+      at: row.at,
+    });
+    report.relabelled += 1;
+  }
 }
 
 /**
@@ -1688,9 +1845,16 @@ function fileOf(index: ConversationIndex, sessionId: string, agentId: string | n
  */
 export function markAutomaticAnchors(index: ConversationIndex): AutoAnchorReport {
   const startedMs = Date.now();
-  const report: AutoAnchorReport = { probed: 0, found: 0, marked: 0, capped: false, ms: 0 };
-  const mine = new Map(index.anchorRows(null).map((row) => [row.id, row.origin]));
+  const report: AutoAnchorReport = {
+    probed: 0, found: 0, marked: 0, dropped: 0, relabelled: 0, capped: false, ms: 0,
+  };
+  // The WHOLE row and not just its origin: `relabelled` is a count of anchors
+  // whose label actually moved, and the probe pass re-marks every candidate it
+  // recognises — so a counter that only watched the sweep would report 56 of a
+  // run that changed 345 labels, which reads as a total and is not one.
+  const mine = new Map(index.anchorRows(null).map((row) => [row.id, row]));
   const seen = new Set<string>();
+  const kept = new Set<string>();
   const files = new Map<string, string | null>();
 
   index.transaction(() => {
@@ -1705,27 +1869,25 @@ export function markAutomaticAnchors(index: ConversationIndex): AutoAnchorReport
         if (seen.has(id)) continue;
         seen.add(id);
         report.probed += 1;
-        if (mine.get(id) === 'owner') continue;
+        const standing = mine.get(id);
+        if (standing?.origin === 'owner') continue;
 
         const key = hit.agentId ?? hit.sessionId;
         if (!files.has(key)) files.set(key, fileOf(index, hit.sessionId, hit.agentId));
         const file = files.get(key) ?? null;
         if (file === null) continue;
 
-        // One seek and one line, exactly as `resolveAnchor` reads: the
-        // generator's `finally` closes the descriptor when the loop breaks,
-        // so this costs the record and not the file.
-        let text: string | null = null;
-        for (const record of iterateTranscript(file, { startByte: hit.byteOffset })) {
-          text = record.record === null ? null : proseOf(record.record);
-          break;
-        }
-        if (text === null || text === '') continue;
+        const turn = turnAt(file, hit.byteOffset);
+        if (turn === null) continue;
 
-        const finding = anchorInTurn(hit.kind, text);
+        const finding = anchorInTurn(turn.kind, turn.text);
         if (finding === null) continue;
         report.found += 1;
-        if (!mine.has(id)) report.marked += 1;
+        if (standing === undefined) report.marked += 1;
+        else if (standing.kind !== finding.kind || standing.label !== finding.label) {
+          report.relabelled += 1;
+        }
+        kept.add(id);
         markAnchor(index, {
           sessionId: hit.sessionId,
           agentId: hit.agentId,
@@ -1737,6 +1899,10 @@ export function markAutomaticAnchors(index: ConversationIndex): AutoAnchorReport
         });
       }
     }
+
+    // And the other direction, over what the pass already owns. `kept` is the
+    // ids it just re-derived, which are the only ones it need not read again.
+    sweepAutomaticAnchors(index, files, kept, report);
   });
 
   report.ms = Date.now() - startedMs;
@@ -1758,9 +1924,24 @@ function searchLines(search: SearchBuildReport, auto: AutoAnchorReport): string[
   }
   lines.push(
     `my_context: ${auto.marked} new anchor(s) were marked for you and ${auto.found - auto.marked} ` +
-    'were already marked — a table, a report or a ruling you gave. ' +
+    'were already marked — a table or a ruling you gave. ' +
     '`mycontext conversation anchor` lists them and `--drop <id>` takes one back.',
   );
+  // **THE DELETION IS SAID OUT LOUD**, `INV-nothing-is-dropped-silently` in the
+  // direction that matters here. A pass that quietly removes bookmarks is
+  // worse than one that keeps too many, so the count is reported and the
+  // sentence says whose anchors can and cannot be in it.
+  if (auto.dropped > 0) {
+    lines.push(
+      `my_context: ${auto.dropped} anchor(s) marked for you by an earlier build are no longer ` +
+      'recognised and were taken back. Nothing you marked yourself was touched.',
+    );
+  }
+  if (auto.relabelled > 0) {
+    lines.push(
+      `my_context: ${auto.relabelled} anchor(s) marked for you were given a clearer label.`,
+    );
+  }
   if (auto.capped) {
     lines.push(
       'my_context: at least one of the automatic passes reached its bound of ' +
@@ -1892,7 +2073,7 @@ function cmdConversationAnchor(ws: Workspace, args: string[], out: Emit): number
       out(find !== null
         ? `my_context: no anchor's label contains "${find}". That is about the labels and not ` +
           'about the archive — `mycontext conversation search` is the other question.'
-        : 'my_context: nothing is marked here yet. A table, a report and a ruling you gave are ' +
+        : 'my_context: nothing is marked here yet. A table and a ruling you gave are ' +
           'marked for you by `mycontext conversation rebuild`; anything else you mark ' +
           'yourself, from the Conversations screen or with `mycontext conversation anchor ' +
           '<session> <byte> --label "<why>"`.');
