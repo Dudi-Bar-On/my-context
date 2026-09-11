@@ -5,9 +5,10 @@ title: "verify:citations must scan the corpus, and the corpus should cite by anc
 status: active
 severity: soft
 always: false
-summary: References in the knowledge base point at a place that keeps its name, rather than a line number that moves.
-summary_of: 1b25564364e623bd
+summary: The citation checker now reads the corpus on every run and reports what it finds there, and the pointers that could be given a stable anchor have been.
+summary_of: 8c7736915008763e
 summary_was:
+  - 2026-09-11 References in the knowledge base point at a place that keeps its name, rather than a line number that moves.
   - 2026-09-07 The reference checker has three known blind spots; settle by rule what it covers, and stop pointing at line numbers that rot.
 acknowledged:
   - body_disagrees_with_meta@92681859fd245dd8
@@ -19,17 +20,17 @@ tags:
   - citations
   - "plan:walk"
   - "seq:30"
-  - "state:todo"
+  - "state:done"
 origin: human
 source_file: null
 source_anchor: null
 source_checksum: null
 valid_from: 2026-08-25
 valid_until: null
-checksum: 775daa12add0698d
+checksum: e3287ede2d2024b5
 plan: walk
 seq: "30"
-state: todo
+state: done
 priority: "1"
 source: "plan:walk seq:23, the reconciliation"
 ---
@@ -120,3 +121,35 @@ and whose own validateResult already refuses a line citation into reports/. The 
 means is the agent and the owner, and what changes them shipped before this lane:
 STD-a-citation-names-a-file-a-verbatim-fragment-and-an-optional is always:true with an empty
 scope, so it is delivered every session, and checkCitationForm counts what gets written anyway.
+
+CLOSED 2026-09-11 BY OWNER RULING, with the two pointers that cannot be anchored moved out to
+`plan:walk seq:142` rather than held here. His words when shown three ways to finish it: close
+this and file those two separately.
+
+WHAT THIS ITEM ASKED AND WHAT IT GOT. Both halves are answered. The checker walks
+`.my_context/items/` ON EVERY RUN, reported and never gated, with `--no-corpus` as the
+off-switch — shaped as a subtraction so the default is the full walk. And the corpus cites by
+ANCHOR: bare pointers went 12 → 2, and doctor’s `citation_form` went 8 findings → 2.
+
+THE NUMBER THAT JUSTIFIED TURNING THE WALK ON. The script had refused the corpus on 2026-08-29
+with a measurement — 658 item files, ONE citation in the checked form. Re-measured 2026-09-11
+over 1,093 items: 223 citations, of which 57 BROKEN and checked by nobody. One became 223 in a
+fortnight because the corpus did what this item asked and normalised toward the form.
+NORMALISING A TREE INTO A GATE’S FORM WITHOUT THE GATE DOES NOT END THE SILENCE, IT RE-DRESSES
+IT. The repository’s real broken count was never 47; it was 104.
+
+THE EXIT CODE STILL MEANS THE DOCUMENTATION FAILURES AND NOTHING ELSE, proved four ways, each
+red at its own line. The 57 are untouched — repairing them is a separate, later act.
+
+AND WHY FIVE LANES REPORTED FIVE DIFFERENT NUMBERS, which is worth keeping: ONE RUN PRINTS SIX
+FAILURE COUNTS AND ONLY ONE SETS THE EXIT CODE. 14 documentation (the gate), 33 source, 47 total
+broken lines, 19 faults, 52 combined, 2 under `e2e/`. Every figure the lanes quoted was a field
+of the same output. Nobody was wrong.
+
+FOUR OF THE TWELVE POINTERS WERE NEVER ADDRESSES. They are this corpus QUOTING THE ROTTED
+POINTERS IT FILED AGAINST — the pinned rule’s own evidence, and two re-anchoring notes recording
+what they replaced. An anchor there contradicts the sentence, whose whole claim is that these
+WERE line numbers. They describe the refused form now instead of spelling it.
+
+THE WRITER HALF WAS ALREADY IN FORCE, searched rather than assumed: nothing in the product writes
+a bare line pointer into an item body — provenance is captured as a section anchor.

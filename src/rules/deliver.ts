@@ -448,6 +448,90 @@ export function assertDoor(stateRoot: string, key: string, storeDir?: string): s
 /* ══ A STORE UPDATE UNDER A RUNNING SESSION — SPEC §12.3 ═══════════════════ */
 
 /**
+ * ── NOTHING IN `src/` CALLS THE TWO FUNCTIONS BELOW, AND THAT IS A MEASURED
+ *    FINDING RATHER THAN AN UNFINISHED STEP ─────────────────────────────────
+ *
+ * `plan:store seq:3` Task 13 asked for the correction and got it: the diff
+ * only, phrased as supersession, session-scope doors only, twelve assertions
+ * in `test/rules/update-correction.test.ts`. What it did not get is a caller,
+ * and this note records why, at the one place a reader goes looking for the
+ * missing wiring — the same service `hooks/pre-compact.ts` does for the door
+ * it is not.
+ *
+ * **1. EVERY DOOR IN `SESSION_SCOPE_DOORS` ALREADY DELIVERS THE WHOLE STORE.**
+ * `deliverAtDoor` renders the full set at `session-start`, at
+ * `compact-restore` and at `manual`, unconditionally — it has no dedupe and
+ * the door only decides what the row is labelled. So a correction emitted at
+ * any of those three arrives beside a complete copy of the very store it is
+ * correcting: 8,472 bytes of diff (the real v4→v5 change, three entries)
+ * stapled to 23,772 bytes of full delivery (twelve entries, developer tier).
+ * That is the second copy §12.3's own second bullet forbids — *"never the
+ * whole store … creates two versions to reconcile"* — and the defect
+ * `CLAUDE.md` opens with. The gate admits exactly the doors at which the
+ * correction is redundant.
+ *
+ * **2. THE ONLY DOOR WHERE IT WOULD ADD INFORMATION IS `resume`, AND THAT
+ * DUPLICATION IS ALREADY RULED ON.** `hooks/session-start.ts` ·
+ * `storeAppendix` argues it in full: a resumed session keeps the window it
+ * had, the handover is deliberately withheld from it, *"the store IS [re-
+ * delivered], and the asymmetry is deliberate — nothing can inspect a context
+ * window, so the only safe direction is to deliver and record."* Replacing
+ * that full re-delivery with a diff reverses a decision that was made
+ * deliberately and written down. It is the owner's to reverse, not a lane's.
+ *
+ * **3. THE ONE HOOK THAT FIRES MID-SESSION FOR A SESSION THAT ALREADY HOLDS
+ * THE STORE IS `PreToolUse`, AND IT IS NOT A DOOR.** It ASSERTS (`assertDoor`
+ * below), and the assertion is cheap precisely because it latches: past the
+ * first row, one read of `delivered.jsonl` and no store parse at all — p50
+ * 0.371 ms, p95 0.503 ms, measured 2026-09-11 on this repository. Making it a
+ * DELIVERY door costs three things that are not free:
+ *
+ *   a. **The model's channel, which was closed on purpose.** `runPreToolUse`
+ *      says nothing about a tool call it has no opinion on, and the missed-door
+ *      sentence went to stderr rather than `additionalContext` because folding
+ *      it in reddened five tests whose subject is that property. A correction
+ *      is FOR the model, so stderr cannot carry it — and `additionalContext`
+ *      and `preToolUseDeny` are one stdout object, so a correction pending on
+ *      a refused write into `.my_context/` loses one of the two.
+ *
+ *   b. **The `before` bytes, on the hot path.** `renderCorrection` takes the
+ *      old ENTRIES, because `deliveredShape` diffs what the renderer printed —
+ *      so that a change to `request`, which spec §6 keeps out of every context
+ *      window, cannot manufacture a supersession with nothing in it to act on.
+ *      Nothing holds those bytes: `delivered.jsonl` records a COUNT. Adding a
+ *      per-entry rendered-shape map takes the mean row from 145 to 715 bytes,
+ *      and `deliveries()` parses the whole file on every matched tool call: at
+ *      the 5,000-row cap that is p50 3.61 → 13.11 ms, p95 4.57 → 16.15 ms —
+ *      3.6×, +11.6 ms p95, on a hook held to a 50 ms p95 ceiling, to serve a
+ *      correction that is empty every time. Reading it from the manifest's
+ *      changelog instead is cheap (manifest.json is 5,131 bytes, p50 0.032 ms)
+ *      but wrong: `planPublish` diffs FILE checksums, not rendered shape, so a
+ *      `request`-only edit would tell a reader their copy is superseded when it
+ *      is byte-identical — the inverse of the defect the wording exists to
+ *      prevent, manufactured by the mechanism meant to prevent it.
+ *
+ *   c. **The measurement itself.** A `delivered` row written by `PreToolUse`
+ *      would satisfy `assertDelivered`, and §8.2's count — missed doors over
+ *      delivered doors — would start reporting the hook that asserts as the
+ *      door that delivered.
+ *
+ * **4. AND THE TRIGGER HAS OCCURRED FIVE TIMES, ALL OF THEM HERE.** The store
+ * has five published versions, all on 2026-09-10 and 2026-09-11, all cut from
+ * a maintenance tool that `package.json`'s `files` keeps out of the package.
+ * `mycontext rules` offers `verify`, `list` and `show` and no way to take an
+ * update; §12.1's store-update artifact is §16-parked. So a stranger's install
+ * cannot receive a store change at all, and the sessions that can are in this
+ * repository — where 1,082 of 1,136 doors are subagent starts, which §12.3
+ * excludes by design.
+ *
+ * The correction is therefore KEPT, TESTED AND UNCALLED, waiting on one
+ * ruling: whether a resumed session that already has a `delivered` row should
+ * get the diff instead of the whole store. Until that is answered, wiring it
+ * anywhere would be spending a hot path on an event that has never happened to
+ * anyone but us.
+ */
+
+/**
  * **The doors a correction may go through, and it is a list of what IS rather
  * than a list of what is not.**
  *
