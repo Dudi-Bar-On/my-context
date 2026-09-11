@@ -67,11 +67,38 @@ export function initWorkspace(prefix: string): string {
  * for it, read out of `add`'s own stdout — the same extraction
  * `test/cli/ack-all.test.ts` does, because the id is not knowable any other
  * way without inventing a second id scheme for a test to guess at.
+ *
+ * ── `distinctFrom` IS NOT OPTIONAL DECORATION — `plan:archive seq:54` ──────
+ *
+ * **Every rule seeded here shares `RETRACTING_BODY` VERBATIM.** The
+ * contradiction gate landed on 2026-09-08 (`9c9cd31b`), and from that commit
+ * onward the SECOND `add` into a workspace that already holds one of these is
+ * refused: *"this item may contradict 1 item that currently governs, and
+ * nothing was created"*. That is the gate working — two items whose bodies are
+ * byte-identical are near-identical text by construction — and the refusal
+ * names the settlement a person would make.
+ *
+ * The same commit fixed the node twin (`test/cli/ack-all.test.ts`'s `seed`,
+ * which passes `--distinct` for every rule already seeded) and did not fix this
+ * file. `e2e/doctor-settle.spec.ts` has therefore been red in FOUR tests, on
+ * both browser projects, since 2026-09-08 — measured 2026-09-10 over the full
+ * serial suite — and the failure is a `Command failed:` on the seeding step,
+ * before a browser is ever opened. Two copies of one helper that had to agree
+ * and did not: this file's own header names that as the failure it exists to
+ * prevent.
+ *
+ * So the caller says which already-seeded rules this one is DISTINCT FROM, and
+ * the fixture makes the ruling a person makes rather than dodging the gate by
+ * wording its way around it. They ARE distinct — the shared body is scaffolding
+ * for the doctor finding these specs are about, not a claim either rule makes.
  */
-export function seedRetractingRule(root: string, title: string): string {
+export function seedRetractingRule(
+  root: string, title: string, distinctFrom: readonly string[] = [],
+): string {
+  const settled = distinctFrom.flatMap((id) => ['--distinct', id]);
   const text = runCli(root, [
     'add', 'rule', title, '--body', RETRACTING_BODY,
-    '--summary', `A rule about ${title.toLowerCase()}.`, '--yes',
+    '--summary', `A rule about ${title.toLowerCase()}.`, ...settled, '--yes',
   ]);
   const id = /\b(RULE-[a-z0-9-]+)/.exec(text)?.[1];
   if (id === undefined) {

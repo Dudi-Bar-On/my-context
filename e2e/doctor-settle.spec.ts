@@ -111,8 +111,16 @@ interface Finding {
  */
 function makeSettleWorkspace(): string {
   const root = initWorkspace('myctx-e2e-settle-');
+  // **`--distinct` for every rule already seeded, and the fixture is honest
+  // rather than the gate wrong** — see `seedRetractingRule`'s own docblock.
+  // Both rules carry `RETRACTING_BODY` verbatim, so the contradiction gate
+  // (2026-09-08) refuses the second one and this file was red in all four
+  // tests, on both browser projects, from that day until 2026-09-10. The node
+  // twin `test/cli/ack-all.test.ts` has carried this exact line since the gate
+  // landed.
+  const seeded: string[] = [];
   for (const title of ['Settlement probe rule one', 'Settlement probe rule two']) {
-    seedRetractingRule(root, title);
+    seeded.push(seedRetractingRule(root, title, seeded));
   }
   runCli(root, ['rebuild']);
   return root;

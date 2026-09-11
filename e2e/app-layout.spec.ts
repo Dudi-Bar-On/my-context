@@ -894,30 +894,72 @@ test('the budget ribbon draws all five tiers, in the design\'s order, and hatche
     expect(track.hint, `${track.tier}: every track carries its own .hint sentence`).not.toBe('');
     if (!track.runs) {
       expect(track.segs, `${track.tier}: a tier that never ran must draw no admitted segment`).toBe(0);
+      expect(track.gaps + track.ghosts,
+        `${track.tier}: an absent tier has no lane at all — an empty one is a shape the design `
+        + 'of record does not draw here').toBe(0);
       continue;
     }
     expect(track.head, `${track.tier}: a running track needs its head filler, or the `
       + 'unspent budget reads as spent').toBe(1);
-    // **The `if (track.segs === 0) continue;` guard that stood here came out
-    // on 2026-08-28.** It existed because `.demo-corpus` carried no
-    // `continuity: true` item, so that one tier ran, admitted nothing, spilled
-    // nothing and correctly drew only its head — and a bare `gaps + ghosts > 0`
-    // read the fixture's own emptiness as a defect. `scripts/demo-corpus.ts`
-    // now authors a bounded continuity item, so every tier that runs over this
-    // corpus admits something and the guard is a gate that has stopped
-    // checking. A guard left standing after the path it excused can be
-    // exercised is worse than none: it silently forgives the case it was only
-    // ever meant to postpone.
+
+    // ── THE LANE IS ONE ENTRY PER SEGMENT, AND THAT IS WHAT IS ASSERTED
+    //    NOW — `plan:archive seq:54`, 2026-09-10. ──────────────────────────
     //
-    // What it guarded is unchanged and still binding: a tier that admitted
-    // something must draw the lane, because a bar without one claims the
-    // budget was spent with nothing left over.
-    expect(track.gaps + track.ghosts,
-      `${track.tier}: a running track that admitted something must draw a ghost lane`)
-      .toBeGreaterThan(0);
+    // This read `expect(track.gaps + track.ghosts).toBeGreaterThan(0)` under a
+    // comment reasoning about `.demo-corpus`: a guard had been removed on
+    // 2026-08-28 because `scripts/demo-corpus.ts` "now authors a bounded
+    // continuity item, so every tier that runs over this corpus admits
+    // something". That fixture was RETIRED on 2026-09-07 (`e2e/app.ts`), and
+    // over the repository's own corpus the preview's `pinned` tier RUNS and
+    // ADMITS NOTHING — every pinned item was already delivered to this session,
+    // so the `seen` gate holds them all back. `gaps + ghosts` is 0, and the
+    // assertion failed about the day rather than about the drawing.
+    //
+    // The intent it carried is unchanged and is now stated as an EQUALITY
+    // rather than a floor, which is both stronger and corpus-proof: `render()`
+    // builds the lane as `fits.map(...)` and the track as the same `fits` plus
+    // one head, so ONE GAP PER ADMITTED SEGMENT is a property of the code. A
+    // bar that admitted five and drew three ghosts passed the old floor; it
+    // fails here.
+    expect(track.gaps,
+      `${track.tier}: the ghost lane must hold one entry per admitted segment — a bar whose lane `
+      + 'is short claims the budget was spent with nothing left over')
+      .toBe(track.segs);
+
+    // …and both counts are checked against the LABEL's own `N in · M out`,
+    // which is the third place the same fact is written. Three numbers that
+    // must agree, none of them written down here.
+    const counted = /(\d[\d,]*) in · (\d[\d,]*) out/.exec(track.label);
+    expect(counted, `${track.tier}: the label must state its own in/out counts, and it says `
+      + `"${track.label}"`).not.toBeNull();
+    const inCount = Number(counted![1]!.replaceAll(',', ''));
+    const outCount = Number(counted![2]!.replaceAll(',', ''));
+    if (track.tier === 'index') {
+      // The index tier is ONE AGGREGATE segment and no ghosts — `preview.js`
+      // says so where it builds `fits` for it, and its `in` counts index LINES
+      // rather than segments. Named here rather than skipped, so a tier that
+      // stopped aggregating is still caught.
+      expect(track.segs, 'the index tier draws exactly one aggregate segment').toBe(1);
+      expect(track.ghosts, 'the index tier draws no ghost: its overflow is `truncated`, which the '
+        + 'label states and the lane does not').toBe(0);
+      continue;
+    }
+    expect(track.segs,
+      `${track.tier}: the track draws one segment per admitted item, and the label says ${inCount}`)
+      .toBe(inCount);
+    expect(track.ghosts,
+      `${track.tier}: the lane draws one ghost per spilled item, and the label says ${outCount}`)
+      .toBe(outCount);
   }
   expect(tracks.some((t) => t.runs),
     'no tier ran at all — the ribbon has nothing to say and the fixture is wrong').toBe(true);
+  // **Anti-vacuity, and it is what the old floor was really buying.** Every
+  // equality above is satisfied by 0 === 0, so a ribbon in which nothing at all
+  // was admitted would pass them all without measuring the drawing. At least
+  // one running tier has to have put a segment on its track.
+  expect(tracks.some((t) => t.runs && t.segs > 0),
+    'no tier admitted anything at all, so every relation above held on empty tracks and this '
+    + 'test measured nothing').toBe(true);
 });
 
 /**
@@ -1046,16 +1088,66 @@ test('the carried block names one id per carried line, matching the sentence abo
       .map((p) => p.textContent ?? '')
       .find((text) => /index lines carried from session/.test(text));
     if (sentence === undefined) return null;
+    // The bound the carried blocks are drawn through. `drawCarry` gives them a
+    // host of their own and appends `boundedList`'s own element straight after
+    // it, so the declaration is the host's next sibling — read from the blocks
+    // outward rather than by a position written down here.
+    const first = section?.querySelector('.carrieditem') ?? null;
+    const host = first === null ? null : first.parentElement;
+    const after = host === null ? null : host.nextElementSibling;
+    const line = after !== null && after.classList.contains('bound')
+      ? after.querySelector('p')
+      : null;
     return {
       claimed: Number((/(\d[\d,]*)/.exec(sentence)?.[1] ?? '0').replaceAll(',', '')),
       blocks: section?.querySelectorAll('.carrieditem').length ?? 0,
       linked: section?.querySelectorAll('.carrieditem .linkid').length ?? 0,
       chips: section?.querySelectorAll('.carrieditem .chip').length ?? 0,
+      bound: line === null ? null : (line.textContent ?? ''),
     };
   });
   test.skip(carry === null, 'nothing was carried into this selection — there is no carry to draw');
-  expect(carry!.blocks, 'the sentence claims carried lines and no id is named under it')
-    .toBe(carry!.claimed);
+
+  // ── THE COUNT AND THE IDS AGREE THROUGH THE BOUND, NOT AROUND IT ────────
+  //
+  // `plan:archive seq:54`, 2026-09-10. This read `blocks === claimed`, which is
+  // true only while the carry fits inside `BOUND_CAP_LIST`. Measured on this
+  // repository's own corpus that day: the sentence claimed 36 and the screen
+  // drew 20 — the cap, exactly — and the assertion reported a growing corpus as
+  // a screen dropping ids.
+  //
+  // It was not dropping them. `drawCarry` renders the blocks through
+  // `boundedList` (`{ cap: BOUND_CAP_LIST, order: 'admitted', displayOnly:
+  // true }`), which is `REQ-every-list-and-table-declares-what-leaves-it-and-
+  // when-and-says` doing its job: the remainder is DISCLOSED and reachable. So
+  // what this test is really about — `INV-nothing-is-dropped-silently`, pointed
+  // the other way, *"an item arriving from somewhere you cannot see is the same
+  // defect as one dropped silently"* — is asserted as the chain it actually is:
+  //
+  //     the sentence's count === the bound's total === (shown + held back)
+  //     the blocks on screen  === the bound's shown
+  //
+  // A screen that truncated in silence breaks the first link; a screen that
+  // drew fewer ids than its own bound says are shown breaks the second. Neither
+  // moves when the corpus grows.
+  const bound = carry!.bound;
+  expect(bound,
+    'the carried ids are drawn through boundedList and it must declare its own bound — a list '
+    + 'that shows everything and says nothing cannot be told apart from one that truncated')
+    .not.toBeNull();
+  const plain = /Showing all ([\d,]+)/.exec(bound ?? '');
+  const capped = /Showing the first ([\d,]+) of ([\d,]+)/.exec(bound ?? '');
+  const num = (s: string): number => Number(s.replaceAll(',', ''));
+  const shown = plain !== null ? num(plain[1]!) : capped !== null ? num(capped[1]!) : null;
+  const total = plain !== null ? num(plain[1]!) : capped !== null ? num(capped[2]!) : null;
+  expect(shown,
+    `the bound line is neither form boundedList composes: "${bound}"`).not.toBeNull();
+  expect(total,
+    'the sentence and the bound under it are counting different carries — one of the two numbers '
+    + 'is about a list nobody is looking at').toBe(carry!.claimed);
+  expect(carry!.blocks,
+    'the sentence claims carried lines and the block under it names fewer ids than its own bound '
+    + 'says are shown').toBe(shown);
   expect(carry!.linked, 'every carried id is a link to its item, as every id on every screen is')
     .toBe(carry!.blocks);
   expect(carry!.chips, 'every carried id wears the carried chip').toBe(carry!.blocks);

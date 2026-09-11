@@ -58,7 +58,6 @@ e2e/execute-output.spec.ts
 e2e/execute.spec.ts
 e2e/focus-picker.spec.ts
 e2e/focus-tags.spec.ts
-e2e/graph-focus.spec.ts
 e2e/injected-empty.spec.ts
 e2e/injected-real-spills.spec.ts
 e2e/injection-preview.spec.ts
