@@ -1,3 +1,84 @@
+## ⏭ 2026-09-12 — D41 CLOSED, 20 OF 25 DONE. `recall/2` IS RUNNING AND CLOSES D42. THE ANCHOR UI IS QUEUED BEHIND IT.
+
+**Read `reports/2026-09-11-v2-progress.md` for the numbers.** It is computed, not remembered — the
+old 93% was in no item and matched no ratio. 654 of 732 tracked tasks done (89.3%), and the figure
+that matters more: **89 open on 2026-09-05, 78 now, after five D numbers closed.** Filing nearly
+keeps pace with closing, so the percentage measures throughput, not distance.
+
+### DO THIS FIRST
+
+1. **`recall/2` is a live lane** (the retrieval screen, D42's last item). Commit its paths when it
+   reports. If it landed, **D42 closes and the table is 21 of 25.**
+2. **Then dispatch `REQ-every-anchor-capability-is-reachable-from-the-screen-and-a`** — owner ruling
+   2026-09-12, hard. It is queued ONLY because it touches `conversations.js`,
+   `read-model-conversations.ts` and both string tables — the exact four files `recall/2` holds.
+   **Build the READ half first** (anchors visible with their details while browsing); it is useful
+   before any write lands. Seven capabilities are named in the item; the seventh is a UI trigger
+   that RUNS the automatic pass, which today only starts from a terminal.
+3. **Browser proofs owed, both precisely named in their items:** the live-feed skew notice (five
+   states, both languages) and `port/15` (three screens, and the audit-chip one fails deceptively —
+   a miss drops only the single green chip while six warn chips still draw).
+
+### WHAT WAS DECIDED, AND WHY — none of this is re-derivable from the code
+
+- **The mockup stopped being a 1:1 target.** Owner ruling; `RULE-1-1-…` was AMENDED not superseded,
+  because its acceptance half (*a screen is done when the owner says so*) is the half he uses.
+  "Important" became three tests, every clause derived from an existing ruling. A clause I offered —
+  *a control that does something the other side cannot* — was REFUSED as underivable: everything
+  dynamic in the mockup is simulated, so a comparison can only say a control is **not there**.
+- **D41 Task 13 is built, tested and wired to nothing, by owner ruling.** The maintenance tool does
+  not ship, so only he can change the store mid-session, and he would know. Independently, the gate
+  admits exactly the doors at which a correction is redundant. **Do not re-open this on finding
+  tested code with no caller** — the revisit condition is the tool shipping.
+- **Anchors: the file is the truth**, the index table is derived. Deleting the index loses nothing.
+- **`walk/119` stands; `ABSENT IS ABSENT` falls.** A missing summary is drawn and named for EVERY
+  item, no status carve-out. My own proposed carve-out was tested and failed three ways — decisively,
+  `doctor` had already ruled the same way for every item. Its four gaps are now unblocked and none
+  is started.
+- **Automatic capture of the user's request is impossible in principle**, not merely hard: the
+  request must be recorded BEFORE the body exists, and every extraction scores against the body.
+  `--request` on `add`/`edit` and MCP is the answer; absence stays legal everywhere.
+
+### WAITING ON THE OWNER
+
+- **The scale widening.** Reducing a seeded twin's SCALE is a widening of the testing exception he
+  approved (it says *"the same items, the same ids, the same scale"*), not a use of it. It is what
+  took the parity walk from 7 comparable screens to 11.
+- `OPENQ-does-a-missing-mockup-string-key-stay-a-finding-under-the` — recommendation: keep.
+- `port/98`, the screen review — 33 tasks close only when he looks. `port/93` exists to make that
+  list short.
+- Whether to give the skew banner its own node (see below).
+
+### TRAPS THAT COST TIME TODAY — all measured, none theoretical
+
+- **Run one test file as `node --import ./test/helpers/pin-rendering.ts --test <file>`.** A bare run
+  loads no preload and reports GREEN tests as RED. I mis-called a lane's work because of this.
+- **Every removal proof carries `--test-timeout=60000` and kills its child.** One hung with
+  `--test-timeout=0` and burned **495 CPU-minutes** before the owner saw it on his terminal.
+  `LESSON-a-removal-proof-can-hang-instead-of-failing-and-nothing`.
+- **Exit codes through a pipe lie.** A Playwright run reported 845/127 with exit 1 while the shell
+  said 0.
+- **Do not compare a local-time file listing to a UTC clock.** I stopped a productive lane twice on
+  that mistake.
+- **The mockup raises a demo banner 54 seconds after load** and poisons any long capture run.
+- **All three banners share `#exited`**, and `request()` hides it on the first ok response after a
+  disconnect — so the sentence explaining a fault gets WIPED for up to 60s after every reload. That
+  is why the owner never saw the skew explanation. Routed around, not repaired.
+
+### THE MEASUREMENT WORTH CARRYING
+
+Seven of eight lanes, then nearly every lane since, found **at least one assertion of their own that
+could not fail** — around twenty-five this week. The commonest cause by far is asserting a substring
+that some OTHER part of the output also contains. **Prove per assertion, never per file**, and treat
+a green removal proof as a finding rather than a pass.
+
+And the one signal that distinguishes *used* from *merely delivered*: the handover's carry-list has
+an **off state with a cause** — it exists only because the handover's writer is also its reader.
+Injection has no such loop, which is D36e's fifth refusal from the other side. `budget/15` landed
+today and is the missing half.
+
+---
+
 ## ⏭ 2026-09-11 — THE PROGRESS REPORT IS REGENERATED, AND TWO NUMBERS BELOW WERE WRONG WHEN WRITTEN.
 
 **The full report is `reports/2026-09-11-v2-progress.md`.** It is the instance; this block is only
