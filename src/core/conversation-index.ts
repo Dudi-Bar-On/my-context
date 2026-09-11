@@ -1581,8 +1581,31 @@ export function* iterateTranscript(
         else carry = Buffer.concat([carry, rest]);
       }
     }
+    // ── A CAP THAT LANDS ON THE END OF THE FILE IS THE END OF THE FILE ────
+    //
+    // The loop above learns it reached the end by RUNNING OUT: `readSync`
+    // answers zero and sets `reachedEnd`. A cap that stops the loop at the
+    // exact byte the file ends on never gets that answer, so the walk would
+    // call a finished file truncated and — three lines down — drop its last
+    // record in silence.
+    //
+    // That case was unreachable while every caller passed `MAX_SCAN_BYTES`:
+    // the odds of a 256 MiB cap landing on a transcript's final byte are nil.
+    // `rebuildConversations` now clamps its read to the size the directory
+    // listing reported, which makes the cap land there ON PURPOSE and on every
+    // scan (`TASK-the-archive-s-own-scan-re-reads-96-mb-on-every-turn-for-the`)
+    // — so the walk ASKS instead of assuming, at the cost of one 1-byte read
+    // per capped walk.
+    //
+    // It only ever makes `reachedEnd` MORE true: a genuinely short cap finds a
+    // byte waiting and stays `false`, which is what `conversation-secrets.ts`
+    // reports as `truncated`.
+    if (!cursor.reachedEnd) {
+      const more = readSync(fd, buffer, 0, 1, position);
+      if (more <= 0) cursor.reachedEnd = true;
+    }
     // The trailing fragment is a whole line only when the read reached the end
-    // of the file. If the cap stopped us it is a record cut in half, and
+    // of the file. If the cap stopped us short it is a record cut in half, and
     // parsing it would turn the bound into a phantom `unreadable`.
     if (cursor.reachedEnd && carry !== null && carry.length > 0) yield parse(carry, carryAt);
   } catch {
@@ -3220,12 +3243,17 @@ export function rebuildConversations(
           && previous.bytes < cap
           && lineStartsAt(agent.file, previous.bytes);
 
+        // Clamped to the size the LISTING saw, for the session path's reason
+        // below and for the case its doc already names: a lane that is still
+        // running appends exactly as a session does, and was measured doing so
+        // on 2 of 254 lanes.
+        const readCap = Math.min(cap, agent.bytes);
         const tail = appendable && previous !== null
-          ? scanTranscript(agent.file, cap - previous.bytes, previous.bytes)
+          ? scanTranscript(agent.file, readCap - previous.bytes, previous.bytes)
           : null;
         const scan = tail !== null && previous !== null
           ? mergeScan(previous, tail, null)
-          : scanTranscript(agent.file, cap);
+          : scanTranscript(agent.file, readCap);
 
         index.upsertSubagent({
           agentId: agent.agentId,
@@ -3340,12 +3368,43 @@ export function rebuildConversations(
           && !(previous.titleSource === 'custom' && custom === null)
           && lineStartsAt(file.file, previous.bytes);
 
+        // ── THE READ IS CLAMPED TO THE STAT, SO THE ROW IS ONE MOMENT ─────
+        //
+        // `TASK-the-archive-s-own-scan-re-reads-96-mb-on-every-turn-for-the`.
+        // `bytes` below comes from the directory listing's `stat`; the scan
+        // that follows used to read to END OF FILE. A transcript being typed
+        // into grows between the two, so the read reached PAST the size the
+        // row recorded and the row landed `scanned_bytes > bytes` — which
+        // fails condition 2 above and costs the session a WHOLE RE-READ, and
+        // the re-read, being the slowest thing here, is the read most likely
+        // to be overtaken in its turn.
+        //
+        // Measured on this workspace from the Stop hook's own audit rows,
+        // 2026-09-08 to 2026-09-11, 203 per-turn refreshes of one live
+        // session: 65 of them (32.0%) read the transcript whole, averaging
+        // 70,470,780 bytes and 435 ms against 228,368 bytes and 119 ms for a
+        // tail — 99.3% of every byte this hook read in four days.
+        //
+        // The clamp is the fix and it is one line: the scan may not read past
+        // the size the row is about to record, so the two numbers describe ONE
+        // moment. Recording the position the scan REACHED instead would also
+        // level the row and was rejected — `bytes` is the file's size, which
+        // is what `staleBy` subtracts from and what `truncatedScan` compares
+        // against, and a row whose `bytes` was a read position would report a
+        // scan capped at `MAX_SCAN_BYTES` as complete.
+        //
+        // **What arrived during the scan is DEFERRED, never dropped.** It is
+        // not in this row and the row does not claim it; it is the next
+        // refresh's tail, reached by the append path at the cost of exactly
+        // itself, and `test/core/conversation-refresh.test.ts` asserts both
+        // halves of that sentence.
+        const readCap = Math.min(cap, file.bytes);
         const tail = appendable && previous !== null
-          ? scanTranscript(file.file, cap - previous.bytes, previous.bytes)
+          ? scanTranscript(file.file, readCap - previous.bytes, previous.bytes)
           : null;
         const scan = tail !== null && previous !== null
           ? mergeScan(previous, tail, previous.titleSource === 'ai' ? previous.title : null)
-          : scanTranscript(file.file, cap);
+          : scanTranscript(file.file, readCap);
 
         index.upsert({
           sessionId: file.sessionId,

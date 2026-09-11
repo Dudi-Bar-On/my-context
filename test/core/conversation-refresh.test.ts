@@ -1,4 +1,4 @@
-// @basis TASK-the-archive-shows-what-is-on-disk-now-because-nothing-has, INV-nothing-is-dropped-silently
+// @basis TASK-the-archive-shows-what-is-on-disk-now-because-nothing-has, INV-nothing-is-dropped-silently, TASK-the-archive-s-own-scan-re-reads-96-mb-on-every-turn-for-the
 /**
  * **The append-only refresh, and the staleness a `stat` can see** —
  * `plan:archive seq:14`.
@@ -51,9 +51,10 @@
  */
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import {
+import fs, {
   appendFileSync, mkdirSync, mkdtempSync, rmSync, statSync, writeFileSync,
 } from 'node:fs';
+import { syncBuiltinESMExports } from 'node:module';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import {
@@ -411,6 +412,256 @@ test('a refreshed index is no longer behind, and the same stat proves it both wa
       staleBy(f.row(), statSync(f.file).size), 0,
       'and the refresh is what makes it current again',
     );
+  } finally {
+    f.dispose();
+  }
+});
+
+/**
+ * ── THE SECOND DEFECT IN THIS PATH, AND IT IS THE SAME MISTAKE ─────────────
+ *
+ * `TASK-the-archive-s-own-scan-re-reads-96-mb-on-every-turn-for-the`.
+ *
+ * The row's `bytes` came from the DIRECTORY LISTING's `stat`; its
+ * `scanned_bytes` came from the read that followed. Those are two different
+ * moments, and a transcript being appended to grows between them — so the read
+ * reached PAST the size the row recorded and the row landed with
+ * `scanned_bytes > bytes`. Condition 2 above is
+ * `previous.scannedBytes === previous.bytes`; a scan-ahead row fails it, falls
+ * to a whole re-read, and the whole re-read — being four hundred milliseconds
+ * long — is likelier to be overtaken by the writer than the tail it replaced.
+ *
+ * MEASURED on this workspace from the Stop hook's own audit rows, 2026-09-08
+ * to 2026-09-11, over 203 per-turn refreshes of one live session:
+ *
+ *     read whole    65   32.0%    70,470,780 bytes avg   435 ms avg
+ *     tail         138   68.0%       228,368 bytes avg   119 ms avg
+ *
+ * and 4,580,600,730 of the 4,612,115,495 bytes the hook read over those four
+ * days — 99.3% — were those 65 re-reads. So it is ONE TURN IN THREE, not every
+ * turn, and the filed claim that the row never heals is wrong:
+ * `P(whole | previous whole) = 0.484` against
+ * `P(whole | previous tail) = 0.246`, which is a skew that recurs and clears
+ * rather than one that sticks.
+ *
+ * THE REPAIR is that the scan may not read past the size the row is about to
+ * record: the read is clamped to the listing's `stat`, so `scanned_bytes` and
+ * `bytes` describe ONE moment. What arrived after that moment is DEFERRED, not
+ * dropped — it is the next refresh's tail — and the tests below assert that
+ * distinction in both directions rather than only the cheap half.
+ */
+
+/** One exchange as the bytes a harness would append, newline and all. */
+function rendered(lines: unknown[]): string {
+  return lines.map((line) => JSON.stringify(line)).join('\n') + '\n';
+}
+
+/**
+ * **The harness writing between the listing's `stat` and the read that
+ * follows**, reproduced exactly rather than approximated.
+ *
+ * A racing writer in another process would reproduce this only sometimes, and
+ * only on a file big enough to be slow — a test that is green when the timing
+ * misses is worse than no test. Patching the ONE `stat` the listing takes
+ * makes the interleaving the point rather than the luck: the real `stat` is
+ * returned, honestly describing the moment it was taken, and the file grows
+ * immediately afterwards, which is precisely what a live transcript does.
+ *
+ * `grew()` is asserted by every caller and never assumed. If the scanner ever
+ * stops asking `statSync` for the size, the patch stops firing and the tests
+ * that rest on it go RED rather than quietly proving nothing.
+ */
+function appendAfterTheStat(target: string, tail: string): {
+  grew: () => boolean; restore: () => void;
+} {
+  // The builtin's own export object, which is what `syncBuiltinESMExports`
+  // republishes to every module holding a named import of it. `node:module`
+  // exists for exactly this and it is the reason no dependency is needed.
+  const builtin = fs as unknown as { statSync: unknown };
+  const real = fs.statSync as unknown as (p: unknown, options?: unknown) => unknown;
+  let fired = false;
+  builtin.statSync = (p: unknown, options?: unknown): unknown => {
+    const stat = real(p, options);
+    if (!fired && typeof p === 'string' && path.resolve(p) === path.resolve(target)) {
+      fired = true;
+      appendFileSync(target, tail);
+    }
+    return stat;
+  };
+  syncBuiltinESMExports();
+  return {
+    grew: () => fired,
+    restore: () => {
+      builtin.statSync = real;
+      syncBuiltinESMExports();
+    },
+  };
+}
+
+test('a transcript that grew between the stat and the read is recorded level, never scan-ahead', () => {
+  const f = fixture();
+  f.write(exchange(1));
+  const race = appendAfterTheStat(f.file, rendered(exchange(2)));
+  try {
+    rebuildConversations(f.dbPath, f.env, f.cwd, {});
+  } finally {
+    race.restore();
+  }
+  try {
+    assert.ok(race.grew(), 'the fixture really did append between the stat and the read');
+    const row = f.row();
+    // THE DEFECT, in one line. `scanned_bytes > bytes` is a row whose two
+    // numbers were taken at two different moments, and it costs the session a
+    // whole re-read on the next turn and every turn that follows it.
+    assert.equal(
+      row.scannedBytes, row.bytes,
+      'the size the row records and the position the scan reached are one moment',
+    );
+  } finally {
+    f.dispose();
+  }
+});
+
+test('the bytes that arrived during a scan are deferred to the next refresh, not dropped and not re-read whole', () => {
+  const f = fixture();
+  f.write(exchange(1));
+  const atStat = statSync(f.file).size;
+  const race = appendAfterTheStat(f.file, rendered(exchange(2)));
+  try {
+    rebuildConversations(f.dbPath, f.env, f.cwd, {});
+  } finally {
+    race.restore();
+  }
+  try {
+    assert.ok(race.grew(), 'the fixture really did append between the stat and the read');
+    const grown = statSync(f.file).size;
+
+    // NOT INDEXED YET, and the row says so: it accounts for the file as the
+    // listing saw it, and for nothing after.
+    assert.equal(f.row().bytes, atStat, 'the row accounts for the file the listing stat saw');
+    assert.equal(
+      f.row().records, 3,
+      'and for none of what arrived after it — the tail is deferred, not counted early',
+    );
+
+    // AND IT IS THE NEXT SCAN'S TAIL. The other half of the same promise:
+    // deferred is only honest if something later reaches it, and reaches it
+    // cheaply.
+    const refresh = rebuildConversations(f.dbPath, f.env, f.cwd, {});
+    assert.equal(refresh.appended, 1, 'the deferred bytes are the next refresh’s append path');
+    assert.equal(
+      refresh.bytesRead, grown - atStat,
+      'and cost exactly themselves — not the whole file the old skew re-read',
+    );
+    assert.equal(f.row().records, 6, 'nothing that arrived during the scan was lost');
+
+    // The composed row against a `--full` read of the same file, so the
+    // reference is produced rather than remembered.
+    rebuildConversations(f.otherDbPath, f.env, f.cwd, { full: true });
+    assert.deepEqual(
+      comparable(f.row()), comparable(f.row(f.otherDbPath)),
+      'and the row a deferred tail composes is the row a whole read produces',
+    );
+  } finally {
+    f.dispose();
+  }
+});
+
+test('an index left scan-ahead by an earlier build heals on the first refresh and stays cheap after it', () => {
+  const f = fixture();
+  try {
+    f.write(exchange(1));
+    rebuildConversations(f.dbPath, f.env, f.cwd, {});
+
+    // The state the old build left on this workspace's own index, measured
+    // 2026-09-11: `bytes 97,446,894  scanned_bytes 97,447,607` — 713 bytes of
+    // skew buying a 97 MB read. Written through the index's own `upsert`,
+    // because that is the shape the row actually has on disk.
+    const index = ConversationIndex.open(f.dbPath);
+    try {
+      const stale = index.get(SESSION);
+      assert.notEqual(stale, null);
+      const row = stale as ConversationRow;
+      index.upsert({ ...row, scannedBytes: row.bytes + 713 });
+    } finally {
+      index.close();
+    }
+    assert.ok(f.row().scannedBytes > f.row().bytes, 'the fixture really is scan-ahead');
+
+    // **AND THE HEAL HAPPENS WHILE THE SESSION IS STILL BEING TYPED INTO**,
+    // which is the only condition under which it was ever needed. A scan-ahead
+    // row read whole on a QUIET file was always levelled — that heal was never
+    // the problem and asserting it would prove nothing. The re-read is 435 ms
+    // on the live transcript, so in the field it is the read MOST likely to be
+    // overtaken, which is why the defect looked like it never healed: the cure
+    // re-created the disease.
+    f.append(exchange(2));
+    const race = appendAfterTheStat(f.file, rendered(exchange(3)));
+    let heal;
+    try {
+      heal = rebuildConversations(f.dbPath, f.env, f.cwd, {});
+    } finally {
+      race.restore();
+    }
+    assert.ok(race.grew(), 'the fixture really did append during the healing re-read');
+    assert.equal(heal.scanned, 1, 'a scan-ahead row cannot be resumed, so it is read whole ONCE');
+    assert.equal(
+      f.row().scannedBytes, f.row().bytes,
+      'and the row that re-read leaves behind is level, even though the file moved under it',
+    );
+
+    const after = rebuildConversations(f.dbPath, f.env, f.cwd, {});
+    assert.equal(
+      after.appended, 1,
+      'so the turn after it is a tail again — which is what "it heals" has to mean',
+    );
+  } finally {
+    f.dispose();
+  }
+});
+
+test('a lane transcript that grew between the stat and the read is recorded level too', () => {
+  const f = fixture();
+  const agentId = 'agent-0123456789abcdef';
+  const lane = path.join(f.dir, SESSION, 'subagents', `${agentId}.jsonl`);
+  f.write(exchange(1));
+  mkdirSync(path.dirname(lane), { recursive: true });
+  writeFileSync(lane, rendered(exchange(1)));
+  const race = appendAfterTheStat(lane, rendered(exchange(2)));
+  try {
+    rebuildConversations(f.dbPath, f.env, f.cwd, {});
+  } finally {
+    race.restore();
+  }
+  try {
+    assert.ok(race.grew(), 'the fixture really did append between the stat and the read');
+    const index = ConversationIndex.openReadOnlyChecked(f.dbPath);
+    try {
+      const row = index.getSubagent(agentId);
+      assert.notEqual(row, null, 'the lane should be indexed');
+      // A RUNNING lane appends exactly as a session does — the append path was
+      // measured firing on 2 of 254 lanes — so the same clamp has to hold here
+      // or the archive trades one scan-ahead row for three hundred.
+      const lit = row as { bytes: number; scannedBytes: number };
+      assert.equal(lit.scannedBytes, lit.bytes, 'a lane row records one moment too');
+    } finally {
+      index.close();
+    }
+  } finally {
+    f.dispose();
+  }
+});
+
+test('a transcript whose last record has no newline yet is counted, because a clamp that lands on the end of the file IS the end of the file', () => {
+  const f = fixture();
+  try {
+    // The harness had written the object and not yet the `\n`. The read now
+    // stops at the size the listing saw, so the walk can no longer learn that
+    // it reached the end by running out of file — it has to ASK, and this is
+    // the record that goes missing in silence if it does not.
+    f.write(exchange(1), false);
+    rebuildConversations(f.dbPath, f.env, f.cwd, {});
+    assert.equal(f.row().records, 3, 'the last record is read, not discarded by the clamp');
   } finally {
     f.dispose();
   }

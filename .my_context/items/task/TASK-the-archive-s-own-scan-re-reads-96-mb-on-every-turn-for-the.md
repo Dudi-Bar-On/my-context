@@ -5,8 +5,10 @@ title: the archive's own scan re-reads 96 MB on every turn, for the same reason 
 status: active
 severity: soft
 always: false
-summary: Every assistant turn re-reads the whole live transcript — a hundred megabytes — because the scan records reaching further than the size it noted a moment earlier, and never recovers.
-summary_of: 9b3a471f3e2c9066
+summary: About one assistant turn in three re-read the whole live transcript, because the size the scan recorded and the point it actually reached were taken a moment apart; the read now stops where the size says, and the rest waits for the next turn.
+summary_of: 3c4a887ce97a1342
+summary_was:
+  - 2026-09-11 Every assistant turn re-reads the whole live transcript — a hundred megabytes — because the scan records reaching further than the size it noted a moment earlier, and never recovers.
 scope:
   - src/core/conversation-index.ts
 tags:
@@ -14,13 +16,16 @@ tags:
   - recall
   - perf
   - archive
+  - "state:done"
 origin: human
 source_file: "C:/Users/UserC/AppData/Local/Temp/claude/D--Users-UserC-source-repos-my-context/595db3b1-a481-4553-b4c0-7248c31b2655/scratchpad/archive-skew-body.md"
 source_anchor: null
 source_checksum: 199abfac0d3ee1cf
 valid_from: 2026-09-11
 valid_until: null
-checksum: e2ce4a9e23a7d9a9
+checksum: 2f7fd97adae348e1
+state: done
+verified_on: 2026-09-11
 ---
 
 # the archive's own scan re-reads 96 MB on every turn, for the same reason the prose index did
