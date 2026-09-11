@@ -292,6 +292,25 @@ const WRITERS: Record<string, string[]> = {
   // "this module is PURE" in their headers, and the second only reads.
   'src/core/retrieval/mission.ts': ['writeMission'],
   'src/core/retrieval/result.ts': ['writeResult'],
+  // `plan:recall seq:6`, 2026-09-11 — the durable copy of the conversation
+  // bookmarks. `.my_context/.anchors.jsonl` is the truth and the `anchors`
+  // table is rebuilt from it, so this module writes one file and the index
+  // keeps writing only through `node:sqlite`.
+  //
+  // **It is the reason `anchorIdFor` moved out of `core/anchors.ts` and into
+  // `core/conversation-index.ts`**: the viewer derives an anchor's id to
+  // compose a command, `anchors.ts` now reaches this writer, and
+  // `conversations-endpoint.test.ts` caught the widened graph. The derivation
+  // is one fact in one place either way.
+  //
+  // `anchorFilePath`, `anchorTempPath` and `readAnchorFile` are deliberately
+  // NOT here — they build a path or read — which is `focus.ts`'s split and the
+  // reason the ban resolves symbols rather than files. `reconcileAnchors`,
+  // `anchorTransaction` and `withAnchorWrite` ARE, because each of them
+  // publishes the document.
+  'src/core/anchor-file.ts': [
+    'writeAnchorFile', 'reconcileAnchors', 'anchorTransaction', 'withAnchorWrite',
+  ],
   // `watch-model.ts` binds `classifyContext` and `readTee` from here; `writeTee`
   // and the stale-temp sweep are the writers sitting beside them.
   'src/core/statusline-tee.ts': ['writeTee', 'sweepStaleTeeTemps'],

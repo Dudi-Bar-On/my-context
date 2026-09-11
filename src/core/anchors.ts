@@ -32,9 +32,10 @@
  * (`ui/read-model-conversation-document.ts`).
  */
 import {
-  ConversationIndex, type AnchorRow, iterateTranscript,
+  ConversationIndex, anchorIdFor, type AnchorRow, iterateTranscript,
 } from './conversation-index.ts';
 import { proseOf } from './conversation-search.ts';
+import { withAnchorWrite } from './anchor-file.ts';
 
 /** What `markAnchor` is told. Everything but the position and the label has a default. */
 export interface AnchorSpec {
@@ -68,23 +69,31 @@ export interface ResolvedAnchor {
 }
 
 /**
- * The id of the anchor at one point. Deterministic, and the reason marking the
- * same point twice is one row rather than two.
+ * The id of the anchor at one point — the derivation this file's header argues
+ * for, re-exported from where it is defined.
  *
- * The lane segment is `-` rather than empty for a session's own transcript, so
- * a session id and a lane id can never compose the same string.
+ * It MOVED to `conversation-index.ts` (`plan:recall seq:6`) and is re-exported
+ * rather than copied, because a second spelling of an id rule is the
+ * one-fact-recorded-twice defect this project has already paid for. The move
+ * was forced by the same read-only guarantee that put the anchors FILE in its
+ * own module: this one can now write, and a viewer deriving an id must not
+ * have to load a module that writes to do it.
  */
-export function anchorIdFor(
-  sessionId: string, agentId: string | null, byteOffset: number,
-): string {
-  return `${sessionId}:${agentId ?? '-'}:${byteOffset}`;
-}
+export { anchorIdFor } from './conversation-index.ts';
 
 /**
  * Mark one point, or move the label on the one already there. A WRITE.
  *
  * Returns the row as it now stands, so a caller that needs the id — to resolve
  * it, to show it, to take it back — does not have to re-derive it.
+ *
+ * **This is the door, and it is the door because the write has two halves.**
+ * `plan:recall seq:6`: the anchors document is the truth and the table is
+ * rebuilt from it, so `withAnchorWrite` publishes the document in the same
+ * transaction that moves the row. A caller that reached past this to
+ * `index.putAnchor` would put a bookmark in a table that the next
+ * reconciliation deletes — which is why that path refuses inside a transaction
+ * it does not recognise, rather than quietly succeeding.
  */
 export function markAnchor(index: ConversationIndex, spec: AnchorSpec): AnchorRow {
   const agentId = spec.agentId ?? null;
@@ -98,7 +107,7 @@ export function markAnchor(index: ConversationIndex, spec: AnchorSpec): AnchorRo
     origin: spec.origin ?? 'owner',
     at: spec.at ?? new Date().toISOString(),
   };
-  index.putAnchor(row);
+  withAnchorWrite(index, () => index.putAnchor(row));
   return row;
 }
 
@@ -133,9 +142,15 @@ export function searchAnchors(index: ConversationIndex, query: string): AnchorRo
   return index.matchAnchors(trimmed);
 }
 
-/** Take one anchor back. `false` when there was none — an answer, not a failure. */
+/**
+ * Take one anchor back. `false` when there was none — an answer, not a failure.
+ *
+ * The door, for `markAnchor`'s reason: the removal has to reach the document
+ * too, and the existence check runs INSIDE the write so that it is asked of a
+ * table already brought up to the file rather than of a stale one.
+ */
 export function unmarkAnchor(index: ConversationIndex, id: string): boolean {
-  return index.dropAnchor(id);
+  return withAnchorWrite(index, () => index.dropAnchor(id));
 }
 
 /**

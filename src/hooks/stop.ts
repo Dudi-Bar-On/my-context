@@ -4,6 +4,7 @@ import {
   type RebuildReport,
 } from '../core/conversation-index.ts';
 import { advanceMirrors, type MirrorReport } from '../core/conversation-mirror.ts';
+import { reconcileAnchors, type AnchorReconcile } from '../core/anchor-file.ts';
 import {
   occupancyStandDownLine, readOccupancy, type UnmeasurableWhy,
 } from '../core/context-occupancy.ts';
@@ -773,7 +774,15 @@ export const REFRESH_BUSY_TIMEOUT_MS = 300;
  * found nothing to do (`marked: 0`) and must not read as one —
  * `STD-a-measured-zero-is-drawn-and-named-an-unmeasured-thing-is`.
  */
-export type ConversationRefresh = RebuildReport & { mirror?: MirrorReport | null };
+export type ConversationRefresh = RebuildReport & {
+  mirror?: MirrorReport | null;
+  /**
+   * What the anchors reconciliation did, or `null` when it failed — the same
+   * distinction `mirror` draws, and for the same reason: a pass that found
+   * nothing to do is not a pass that could not run.
+   */
+  anchors?: AnchorReconcile | null;
+};
 
 export function stopConversationRefresh(input: HookInput): ConversationRefresh | null {
   try {
@@ -857,7 +866,39 @@ export function stopConversationRefresh(input: HookInput): ConversationRefresh |
     } catch {
       mirror = null;
     }
-    return { ...report, mirror };
+
+    // ── THE ANCHORS, AND WHY THEY ARE RECONCILED HERE ────────────────────
+    //
+    // `plan:recall seq:6`, owner ruling *"file as truth, go with it"*. The
+    // `anchors` table is the one thing in `.index.db` that no rebuild can
+    // re-derive; `.my_context/.anchors.jsonl` is the durable copy and the
+    // table is rebuilt from it.
+    //
+    // **This hook is the only writer that runs by itself**, which is what the
+    // adoption needs: a corpus whose table holds bookmarks and whose file does
+    // not exist yet — every corpus in the world the moment this ships, his 565
+    // included — is written into one HERE, without him running anything. On
+    // every later turn this is the re-derive, so an index deleted between two
+    // turns comes back whole on the next one.
+    //
+    // Composed after the refresh and in its own `try`, for both of
+    // `advanceMirrors`' reasons: `rebuildConversations` writes only through
+    // `node:sqlite` and must stay that way, and a failure here must not cost
+    // the refresh its report. A reconciliation that threw leaves the file
+    // exactly as it was — it is renamed into place or not at all — and the
+    // next turn tries again.
+    let anchors: AnchorReconcile | null = null;
+    try {
+      const index = ConversationIndex.open(dbPath, REFRESH_BUSY_TIMEOUT_MS);
+      try {
+        anchors = reconcileAnchors(index);
+      } finally {
+        index.close();
+      }
+    } catch {
+      anchors = null;
+    }
+    return { ...report, mirror, anchors };
   } catch {
     return null;
   }

@@ -7,6 +7,7 @@ import {
 import {
   allAnchors, anchorIdFor, anchorsFor, markAnchor, resolveAnchor, searchAnchors, unmarkAnchor,
 } from '../../core/anchors.ts';
+import { anchorTransaction, reconcileAnchors } from '../../core/anchor-file.ts';
 import {
   buildSearchIndex, proseOf, searchArchive, type SearchBuildReport,
 } from '../../core/conversation-search.ts';
@@ -262,6 +263,14 @@ function cmdConversationRebuild(ws: Workspace, root: string, args: string[], out
   let search: SearchBuildReport;
   let auto: AutoAnchorReport;
   try {
+    // **The anchors come back from their file BEFORE anything else touches
+    // them** — `plan:recall seq:6`, the rebuild re-deriving the table the way
+    // it re-derives items from Markdown. It is first because the automatic
+    // pass below reads the standing anchors to decide what is his and must not
+    // be shown an empty table: an index deleted since the last run would
+    // otherwise have the pass re-mark everything it can find and leave every
+    // anchor he made by hand behind.
+    reconcileAnchors(index);
     search = buildSearchIndex(index, { full: hasFlag(args, 'full') });
     auto = markAutomaticAnchors(index);
   } finally {
@@ -1857,7 +1866,13 @@ export function markAutomaticAnchors(index: ConversationIndex): AutoAnchorReport
   const kept = new Set<string>();
   const files = new Map<string, string | null>();
 
-  index.transaction(() => {
+  // `anchorTransaction` and not `index.transaction`: this pass writes hundreds
+  // of anchors in one go — 345 relabelled in the last run — and the anchors
+  // DOCUMENT is the truth the table is rebuilt from (`plan:recall seq:6`). One
+  // transaction is one document write, at the end, and the reconciliation at
+  // the start is what stops a pass that has been running for seconds from
+  // erasing an anchor the owner marked at the terminal meanwhile.
+  anchorTransaction(index, () => {
     for (const { probe, kind } of ANCHOR_PROBES) {
       const answer = searchArchive(index, probe, {
         ...(kind === undefined ? {} : { kind }),
@@ -1989,6 +2004,11 @@ function cmdConversationAnchor(ws: Workspace, args: string[], out: Emit): number
 
   const index = ConversationIndex.open(ws.dbPath);
   try {
+    // Before the read branch as well as the write one: the anchors document is
+    // the truth (`plan:recall seq:6`), so a LIST run against an index that has
+    // been deleted since the last turn must show the bookmarks rather than an
+    // empty table with nothing said about it.
+    reconcileAnchors(index);
     if (drop !== null) {
       const gone = unmarkAnchor(index, drop);
       if (json) {

@@ -445,7 +445,15 @@ function cmdInit(cwd: string, args: string[], out: Emit): number {
       path.join(root, 'config.json'),
       JSON.stringify(planned ? planned.plan.config.document : INIT_CONFIG, null, 2) + '\n',
     );
-    writeFileSync(path.join(root, '.gitignore'), '.index.db\n.index.db-*\n');
+    // `.anchors.jsonl` is the durable copy of the conversation bookmarks
+    // (`core/anchor-file.ts`). It is ignored for a DIFFERENT reason from the
+    // index beside it: the index is disposable, and an anchor label quotes
+    // conversation text — owner ruling 2026-09-09, conversation content stays
+    // out of git.
+    writeFileSync(
+      path.join(root, '.gitignore'),
+      '.index.db\n.index.db-*\n.anchors.jsonl\n.anchors.jsonl.tmp-*\n',
+    );
     if (planned) applied = applyPack(cwd, planned, out);
   } catch (err) {
     // The failure first and on its own, then one sentence about what is on

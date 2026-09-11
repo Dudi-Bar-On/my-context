@@ -85,14 +85,19 @@
  */
 import {
   ConversationIndex, ConversationIndexIncompleteError, ConversationIndexUninitializedError,
-  classifyTurn, iterateTranscript, spanMs, staleBy, transcriptDir, truncatedScan,
+  anchorIdFor, classifyTurn, iterateTranscript, spanMs, staleBy, transcriptDir, truncatedScan,
   type ConversationRow, type NameRow, type PersistedRow, type SubagentRow,
 } from '../core/conversation-index.ts';
-// `anchorIdFor` and nothing else from `anchors.ts`: it is the pure derivation
-// of an anchor's id FROM ITS POSITION, and a second spelling of it here is
-// exactly the one-fact-recorded-twice defect this project has already paid
-// for. `markAnchor` beside it is a write and is deliberately not bound.
-import { anchorIdFor } from '../core/anchors.ts';
+// `anchorIdFor` comes from the INDEX module above and no longer from
+// `core/anchors.ts`, which is a change of import and not of fact: it is still
+// the one pure derivation of an anchor's id FROM ITS POSITION, and a second
+// spelling of it here would still be the one-fact-recorded-twice defect this
+// project has already paid for.
+//
+// It moved because `core/anchors.ts` can now WRITE the anchors file
+// (`plan:recall seq:6`), and this endpoint may not load a module that writes —
+// `conversations-endpoint.test.ts` is the gate and it caught exactly this.
+// `markAnchor` beside it is a write and is still deliberately not bound.
 import { MIN_QUERY_CHARS, proseOf, searchArchive } from '../core/conversation-search.ts';
 import { readRedactionPlan } from '../core/conversation-redaction.ts';
 import {

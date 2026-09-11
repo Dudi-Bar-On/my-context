@@ -712,6 +712,28 @@ export interface AnchorRow {
 }
 
 /**
+ * The id of the anchor at one point. Deterministic, and the reason marking the
+ * same point twice is one row rather than two — `core/anchors.ts`' header
+ * carries the argument and is not restated here.
+ *
+ * The lane segment is `-` rather than empty for a session's own transcript, so
+ * a session id and a lane id can never compose the same string.
+ *
+ * ── WHY IT LIVES HERE AND NOT BESIDE `markAnchor` ──────────────────────────
+ *
+ * It is the pure derivation, `AnchorRow.id` is the field it derives, and this
+ * module is the one that may be loaded by a READ-ONLY surface: the viewer
+ * composes an anchor command with an id in it and must be able to derive that
+ * id without loading a module that can write one. `core/anchors.ts` re-exports
+ * it, so every writer still reaches it where it always did.
+ */
+export function anchorIdFor(
+  sessionId: string, agentId: string | null, byteOffset: number,
+): string {
+  return `${sessionId}:${agentId ?? '-'}:${byteOffset}`;
+}
+
+/**
  * **The bound on a single scan, and the measurement behind the number.**
  *
  * The spec measured one of this project's transcripts at 13,095,349 bytes on
@@ -1794,9 +1816,35 @@ function fillDispatchedBy(db: DatabaseSync): void {
 export class ConversationIndex {
   #db: DatabaseSync;
   #closed = false;
+  /**
+   * The database this handle is on, so a caller that must find a file BESIDE
+   * it does not have to be told a path it could get wrong.
+   *
+   * `core/anchor-file.ts` is the one caller: the anchors document lives beside
+   * the index and is the truth the `anchors` table is rebuilt from, and it is
+   * composed OUTSIDE this module rather than inside it — see `putAnchor`.
+   */
+  #dbPath: string;
 
-  private constructor(db: DatabaseSync) {
+  private constructor(db: DatabaseSync, dbPath: string) {
     this.#db = db;
+    this.#dbPath = dbPath;
+  }
+
+  /** Where this index is. `':memory:'` for an index with no workspace. */
+  get dbPath(): string {
+    return this.#dbPath;
+  }
+
+  /**
+   * Whether a transaction is open on this handle right now.
+   *
+   * Read by `core/anchor-file.ts` to tell a single mark from one of the
+   * hundreds the automatic pass makes inside one transaction — the difference
+   * between writing the anchors document once and writing it 345 times.
+   */
+  get inTransaction(): boolean {
+    return this.#db.isTransaction;
   }
 
   /**
@@ -1815,7 +1863,7 @@ export class ConversationIndex {
       // table that predates the column. See `fillDispatchedBy`.
       fillDispatchedBy(db);
       db.exec(CONVERSATION_SCHEMA);
-      return new ConversationIndex(db);
+      return new ConversationIndex(db, dbPath);
     } catch (error) {
       try { db.close(); } catch { /* nothing usable to close */ }
       throw error;
@@ -1960,7 +2008,7 @@ export class ConversationIndex {
         );
       }
 
-      return new ConversationIndex(db);
+      return new ConversationIndex(db, dbPath);
     } catch (error) {
       try { db.close(); } catch { /* nothing usable to close */ }
       throw error;
@@ -2513,13 +2561,28 @@ export class ConversationIndex {
     return gone.length;
   }
 
-  /* ── ANCHORS — `plan:recall seq:1` ─────────────────────────────────────── */
+  /* ── ANCHORS — `plan:recall seq:1`, durable since `plan:recall seq:6` ──── */
 
   /**
    * Record one anchor, or move the label on the one already at that point.
    *
    * The id is the caller's and is derived from the POSITION (`anchors.ts`), so
    * this upsert is what makes automatic marking safe to run on every turn.
+   *
+   * ── THIS IS HALF OF A WRITE, AND THE OTHER HALF IS NOT HERE ───────────────
+   *
+   * `plan:recall seq:6`, owner ruling *"file as truth, go with it"*. The
+   * durable copy of an anchor is `.my_context/.anchors.jsonl`, this table is
+   * rebuilt from it, and **the file is written by `core/anchor-file.ts` from
+   * OUTSIDE this module** — `markAnchor`/`unmarkAnchor` are the doors, and
+   * nothing else may call this one.
+   *
+   * That is not tidiness, and it is the same arrangement `advanceMirrors`
+   * already has for the same reason: `test/ui/conversations-endpoint.test.ts`
+   * requires this module to load NOTHING from this project at runtime, which
+   * is what lets a read-only surface open the index at all. A `writeFileSync`
+   * reachable from here — even one that only ever writes bookmarks — would be
+   * the UI's read-only guarantee spent on a convenience import.
    */
   putAnchor(row: AnchorRow): void {
     this.#db.prepare(
@@ -2533,6 +2596,28 @@ export class ConversationIndex {
       row.id, row.sessionId, row.agentId, row.byteOffset, row.label, row.kind,
       row.origin, row.at,
     );
+  }
+
+  /**
+   * **Replace every anchor in the table with the set given** — the re-derive
+   * half of `plan:recall seq:6`, and the reason deleting `.index.db` now loses
+   * nothing.
+   *
+   * A DELETE and an INSERT of the whole set rather than a merge, because a
+   * merge would need a rule for a row the set does not carry, and *the file is
+   * the truth* is that rule already: a bookmark that is not in the document is
+   * a bookmark that was taken back.
+   *
+   * SQLite only, like every other write in this module — the rows come from
+   * `core/anchor-file.ts`, which reads the document and hands them here.
+   */
+  replaceAnchors(rows: readonly AnchorRow[]): void {
+    const apply = (): void => {
+      this.#db.exec('DELETE FROM anchors');
+      for (const row of rows) this.putAnchor(row);
+    };
+    if (this.#db.isTransaction) apply();
+    else this.transaction(apply);
   }
 
   /**
@@ -2557,7 +2642,12 @@ export class ConversationIndex {
     return row === undefined ? null : toAnchor(row);
   }
 
-  /** Take one anchor back. `false` when there was none — an answer, not a failure. */
+  /**
+   * Take one anchor back. `false` when there was none — an answer, not a failure.
+   *
+   * The other half of the write is `core/anchor-file.ts`, exactly as for
+   * `putAnchor`, and for the same reason. `unmarkAnchor` is the door.
+   */
   dropAnchor(id: string): boolean {
     if (this.anchorRow(id) === null) return false;
     this.#db.prepare('DELETE FROM anchors WHERE id = ?').run(id);
