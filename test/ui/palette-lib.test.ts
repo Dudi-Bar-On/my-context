@@ -741,6 +741,20 @@ const FLAGS_NOT_OFFERED: Record<string, Record<string, string>> = {
       + 'offered, and offering it alone would compose a flag the command refuses.',
   },
   add: {
+    // 2026-09-11: `add` and `edit` grew `--request`, which records the user's
+    // request in HIS OWN WORDS, verbatim. Not offered, and the reason is the
+    // field's own contract rather than a lane's convenience.
+    request: '--request stores the words the owner typed, byte for byte — `Item.request` '
+      + 'calls it "the owner’s own words, verbatim" and refuses to let a recorded one be '
+      + 'rewritten, at every surface, for every origin including a human. A FORM FIELD ASKING A '
+      + 'PERSON TO TYPE WHAT HE ASKED FOR CANNOT PRODUCE THAT. He would be quoting himself from '
+      + 'memory, a turn or an hour later, and what lands is a paraphrase wearing the shape of a '
+      + 'quotation — which the lane that cut this door measured as the worst outcome the field '
+      + 'can have: an absent request says nobody recorded one, a paraphrased request says he said '
+      + 'something he did not. It is an argument an AGENT passes through while it is still '
+      + 'holding his message, which is why both MCP tool descriptions say "if you do not have '
+      + 'the exact text they typed, OMIT this". The Composer composes a command for a person to '
+      + 'run; this is the one flag a person is the wrong author of.',
     // 2026-09-02: `mycontext add` began REFUSING without `--summary` (an item
     // created with none could never afterwards be asked for one), and the
     // palette composed `add` without it — a regression that handed the user a
@@ -783,6 +797,20 @@ const FLAGS_NOT_OFFERED: Record<string, Record<string, string>> = {
       + 'this row must move rather than stand over the opposite.',
   },
   edit: {
+    // 2026-09-11: `add` and `edit` grew `--request`, which records the user's
+    // request in HIS OWN WORDS, verbatim. Not offered, and the reason is the
+    // field's own contract rather than a lane's convenience.
+    request: '--request stores the words the owner typed, byte for byte — `Item.request` '
+      + 'calls it "the owner’s own words, verbatim" and refuses to let a recorded one be '
+      + 'rewritten, at every surface, for every origin including a human. A FORM FIELD ASKING A '
+      + 'PERSON TO TYPE WHAT HE ASKED FOR CANNOT PRODUCE THAT. He would be quoting himself from '
+      + 'memory, a turn or an hour later, and what lands is a paraphrase wearing the shape of a '
+      + 'quotation — which the lane that cut this door measured as the worst outcome the field '
+      + 'can have: an absent request says nobody recorded one, a paraphrased request says he said '
+      + 'something he did not. It is an argument an AGENT passes through while it is still '
+      + 'holding his message, which is why both MCP tool descriptions say "if you do not have '
+      + 'the exact text they typed, OMIT this". The Composer composes a command for a person to '
+      + 'run; this is the one flag a person is the wrong author of.',
     summary: '--summary is a first-class field on every item as of the summary plan phase 1, and '
       + 'both `add` and `edit` accept it. The palette does not offer it YET, and the reason is '
       + 'lane rather than design: `src/ui/public/lib/palette-defs.js` belongs to the web shell, and '
