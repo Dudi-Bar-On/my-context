@@ -292,6 +292,46 @@ as current**, because a document repeated one after it had been reversed.
 **Because the owner decides at the end, the question of an automatic trigger
 mostly dissolves** — his ruling. Nothing is injected without him.
 
+### 10a. TWO DESTINATIONS, NOT ONE — owner ruling 2026-09-11
+
+Added after the phase 1 and phase 2 code had landed and before the result screen
+was built, which is the only cheap moment it could have been added. His words:
+
+> *"when we restore and want to copy to a session findings and subjects that we
+> searched, it should allow us to bring the results to our current session or
+> allow us to create a new session and put it there."*
+
+Everything above this heading describes ONE destination: the window he is sitting
+in. That is still the default and still arrives marked. The second destination is
+**a fresh window**, and it exists because the two cases are genuinely different.
+A result brought into the current session competes with everything already in it
+— which is the situation a retrieval is often trying to escape. A result placed
+into a window that has been cleared arrives into room.
+
+**IT REUSES D34's CARRIER AND MUST NOT GROW A SECOND ONE.** `plan:restore seq:1`
+and `seq:2` built exactly this and shipped 2026-09-11: a payload is written to a
+FILE and verified present on disk, the owner clears his window — his act, and
+nobody else's — and the next injection reads the file into the empty window. A
+retrieval result is the same shape of payload, so the result screen STAGES it
+rather than inventing a delivery of its own.
+
+Three properties come with that carrier rather than having to be re-argued:
+staging before the clear, so a clear cannot destroy what it was meant to
+preserve; no budget management, because this is the last resort rather than
+ongoing behaviour; and the loop guard, so a delivered payload is not re-ingested
+by a later pass.
+
+**What does NOT change.** Nothing is injected without him — staging is not
+delivery, and the clear is still his act. A staged result still arrives MARKED,
+dated and stated as a record rather than a current instruction, with a reversed
+ruling saying so on arrival: a fresh window makes that MORE important, not less,
+because there is less context around it to contradict a stale claim.
+
+**The seam.** `src/core/restore-stage.ts` (`stageRestoreSummary`,
+`approveStagedRestore`) is what the result screen calls; the retrieval result is
+the payload and the review form is what he reads before approving. Task 11 builds
+both destinations; neither is a later phase.
+
 ---
 
 ## 11. Search comes first, and it is nearly free

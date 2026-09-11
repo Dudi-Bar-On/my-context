@@ -189,6 +189,9 @@
 - [ ] **Step 2: Failing test — a result is rendered, and NOTHING reaches the context until the owner chooses.** This is the rule that makes the feature safe; assert it directly.
 - [ ] **Step 3: Failing test — he can return part of a result** (a table alone), not only the whole thing.
 - [ ] **Step 4: Failing test — what returns is DATED, marked a record, and a superseded ruling says so on arrival.** Plant a supersession and assert the marking; this prevents the defect `CLAUDE.md` opens with.
+- [ ] **Step 4a: Failing test — a result can be STAGED FOR A FRESH WINDOW instead of returned here.** Spec §10a, owner ruling 2026-09-11. The screen offers two destinations: this session (steps 2–4) and a cleared one. The second calls `stageRestoreSummary` / `approveStagedRestore` in `src/core/restore-stage.ts` — D34's carrier, which shipped 2026-09-11. **Do not build a second delivery path**; staging, the verified-present check, the owner's clear and the loop guard all come with that carrier and are already tested.
+- [ ] **Step 4b: Failing test — staging is NOT delivery.** Assert that staging a result puts nothing into any context: the clear is still his act, and `driftCheck`'s shape is the precedent for asserting an inability rather than promising it.
+- [ ] **Step 4c: Failing test — a STAGED result is marked too.** Dated, a record rather than a current instruction, a superseded ruling saying so on arrival. A fresh window makes this more important, not less: there is less context around it to contradict a stale claim.
 - [ ] **Step 5: Implement.** Both string tables.
 - [ ] **Step 6: Browser proof, BOTH projects, serially**, and on `/lane.html` as well as the session document — both run the same `mountDocument`.
 - [ ] **Step 7: Commit.**
