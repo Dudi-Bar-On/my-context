@@ -1,4 +1,56 @@
-## ⏭ 2026-09-11, at 93% — DELTA. THREE LANES LIVE, D36 IS 3 OF 5, D41 IS 1 OF 5.
+## ⏭ 2026-09-11 — THE PROGRESS REPORT IS REGENERATED, AND TWO NUMBERS BELOW WERE WRONG WHEN WRITTEN.
+
+**The full report is `reports/2026-09-11-v2-progress.md`.** It is the instance; this block is only
+the correction. `STD-v2-0-progress-report-and-the-format-progress-reports-use` now carries the
+headline and points at that file, so the 2026-08-20 table that had been delivered at every session
+start for three weeks is gone.
+
+### THE CORRECTIONS, AND BOTH WERE CHECKABLE AT THE TIME
+
+- **D36 is 5 of 5, not 3 of 5.** `loop/1`–`loop/5` are all `state: done`. D36 is CLOSED.
+- **D41 is 3 of 5, not 1 of 5.** `store/1`, `store/2` and `store/5` are done; `store/3` and
+  `store/4` are todo and are both priority 1.
+- **There is no 93%.** That figure names no denominator, is not reproducible, and is not any ratio
+  in the corpus. The block below has been amended where it asserted these three things; the rest of
+  it stands and is not rewritten.
+
+### WHAT THE REPORT COMPUTES INSTEAD, WITH THE DENOMINATOR SAID OUT LOUD
+
+**626 of 716 tracked tasks — 87%.** The denominator is an owner ruling:
+`DEC-v2-0-is-everything-still-open-and-the-in-out-cut-s-forty-six` — *"put all of them in v2.0, so
+nothing remains out"* — so v2.0 is every open task and the `task` category is the set.
+
+**AND THE FIGURE THAT MATTERS MORE.** That same ruling recorded **89 open tasks on 2026-09-05**.
+There are **90 today.** D33, D37, D38, D36, D43 and most of D41 closed in between. The percentage
+moved and the count did not, because filing kept pace with closing. **Read the 87% as throughput,
+not as distance.**
+
+**33 of the 90 are not lane work at any rate of dispatch** — 31 `plan:walk` plus `port/98` and
+`port/99` close only when he looks at a screen and says it matches. The lane-able remainder is 57.
+
+### THREE THINGS THE REPORT FOUND THAT NOTHING ELSE WAS SAYING
+
+1. **R8 stopped being BLOCKED three weeks ago and nothing said so.** `hooks/1` was measured
+   2026-08-22. All three "blocked on a human" rows — `hooks/1`, `hooks/2`, `hooks/16` — are `done`.
+   **Nothing in this project is blocked on an interactive terminal.**
+2. **The D map is stale on D42.** It says `plan:recall seq:1-3`; the plan holds six items —
+   `recall/4`, `/5`, `/6` were filed by the lane working the subject. Widening a D is HIS ruling by
+   that item's own precedent, so nothing was changed. **Ask him: widen D42, or open a new D.**
+3. **Rule 3's second clause no longer works.** `grep -c "^## Task"` over the plan documents returns
+   186 against 716 tracked tasks; counting `### Task` too returns 314. Everything filed since about
+   2026-08-28 was captured directly as items. The `task` category is the count; the grep is now a
+   minority sample.
+
+### AND ONE QUESTION PARKED FOR HIM
+
+**Should the progress standard hold an instance at all, or only the format?** The recommendation is
+only the format, naming the newest dated report — `STD-the-progress-table-has-one-format-and-this-is-it`
+already works that way and has never gone stale. Not done: what a pinned item contains is a decision
+about what governs.
+
+Filed as `TASK-the-v2-0-progress-report-is-regenerated-from-computation-and` (`handover/20`).
+
+## ⏭ 2026-09-11, at 93% — DELTA. THREE LANES LIVE. **[CORRECTED ABOVE: D36 IS 5 OF 5, D41 IS 3 OF 5, AND 93% NAMES NO DENOMINATOR.]**
 
 **The 90% block below still governs.** This is what changed since it.
 
