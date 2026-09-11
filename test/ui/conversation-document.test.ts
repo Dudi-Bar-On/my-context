@@ -1441,7 +1441,7 @@ test('a multi-select answer keeps every option the owner ticked', () => {
   assert.notEqual(multi, undefined);
   for (const label of ['1 — From selection', '2 — Free text search, scoped by session and dates',
     '3 — List the subjects in a range', '4 — List the anchors in a range']) {
-    assert.ok(multi?.answer.includes(label),
+    assert.ok(multi?.answer !== null && multi?.answer.includes(label) === true,
       `the option "${label}" is missing from the answer, so the screen cannot mark it chosen`);
   }
 
