@@ -1269,6 +1269,10 @@ test('the create_item schema exposes exactly the extra fields the config declare
     // The contradiction gate's two answers — instructions about a write rather
     // than fields of an item, like `summary_omitted` beside them.
     'distinct', 'supersedes',
+    // The words a person wrote when they asked for the item (`Item.request`).
+    // A core field and not an extra one: it is on every category, because
+    // anything a person asks for in writing can be asked for in writing.
+    'request',
   ]);
   for (const key of Object.keys(props)) {
     assert.ok(core.has(key) || declared.includes(key), `schema has undeclared property "${key}"`);

@@ -41,7 +41,7 @@
  */
 import type { UpdatableName } from './categories.ts';
 import type { Config } from './config.ts';
-import { SUMMARY_FLAG, type FlagDeclaration, type FlagDeclarations, type FlagSpec } from './command-flags.ts';
+import { REQUEST_FLAG, SUMMARY_FLAG, type FlagDeclaration, type FlagDeclarations, type FlagSpec } from './command-flags.ts';
 import { SEVERITIES, STATUSES } from './validate.ts';
 import { updatesFor } from './tag-projection.ts';
 
@@ -73,11 +73,16 @@ export const EDIT_FLAGS: FlagSpec = {
     // line for the reason `summary-unchanged` has one: the lines above and
     // below it are cited verbatim by both READMEs.
     'distinct', 'supersedes',
+    // On its own line for the same reason, and added 2026-09-11 with the
+    // capture door. It takes a value and the empty value REMOVES the request,
+    // so it is in both lists.
+    'request',
     'extra', 'unlink', 'yes',
   ],
   values: [
     'title', 'body', 'summary', 'scope', 'tags', 'severity', 'status', 'extra',
     'distinct', 'supersedes',
+    'request',
   ],
 };
 
@@ -143,6 +148,20 @@ const BUILT_IN_DECLARATIONS: FlagDeclarations = {
       + 'something slightly different - that the item is being left without one, deliberately '
       + '- and the audit row records `summary-omitted` instead. It is refused beside '
       + '`--summary`, and on an edit that was never asked for one.',
+  },
+  request: {
+    // `REQUEST_FLAG`'s own format, example and shared note (command-flags.ts),
+    // because the field and the bar are identical on both commands. Only the
+    // NOTE is extended, with the two sentences that are true of `edit` and not
+    // of `add`: the empty value removes it, and a recorded one is never
+    // rewritten. `requestOverwriteRefusal` (validate.ts) is the refusal, and it
+    // applies to a human here exactly as it does to an agent.
+    ...REQUEST_FLAG,
+    note: `${REQUEST_FLAG.note} Use it to record a request on an item that has NONE - every `
+      + 'item captured before this field existed is one. `--request=` with nothing after it '
+      + 'REMOVES the request, and omitting the flag leaves it alone. An item that already '
+      + 'records one is refused: a correction is a new request, not an improved old one, so '
+      + 'remove it in so many words first if what is there is wrong.',
   },
   distinct: {
     format: 'the id of an item the refusal named', example: 'RULE-never-log-secrets',

@@ -24,7 +24,7 @@ declarations to a command and a route that both still exist.
 | command | what it does | UI route | what the UI offers |
 | --- | --- | --- | --- |
 | `mycontext ack` | record that a person has ruled on a doctor finding, anchored to the item as it stands | — | no UI route reads this — CLI only |
-| `mycontext add` | create an item (--body\|--file --note --observation --step --summary\|--summary-omitted --scope --tags --severity --always --valid-from --original-id --extra --yes) | — | no UI route reads this — CLI only |
+| `mycontext add` | create an item (--body\|--file --note --observation --step --summary\|--summary-omitted --scope --tags --severity --always --valid-from --original-id --request --extra --yes) | — | no UI route reads this — CLI only |
 | `mycontext audit` | the run-time log of mutations and hook actions | `GET /api/ask/audit` | a route reads the same data |
 | `mycontext carry` | mark one item for delivery at the next injection, then forget it (one-shot, not pin) | — | no UI route reads this — CLI only |
 | `mycontext config` | delete/disable a category, or set/unset one field, in config.json | `GET /api/config`<br>`POST /api/config/check`<br>`POST /api/config/preview` | a route reads the same data |

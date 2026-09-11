@@ -63,8 +63,8 @@ import {
 } from './trust.ts';
 import type { Item, Observation, Origin, Relation, Severity, Status } from './types.ts';
 import {
-  normalizeObservations, normalizeSteps, normalizeSummary, validateBody, validateEnums,
-  validateExplicitId, validateExtra, validateObservationText, validateRelations,
+  normalizeObservations, normalizeSteps, normalizeSummary, requestOverwriteRefusal, validateBody,
+  validateEnums, validateExplicitId, validateExtra, validateObservationText, validateRelations,
   validateRelationTarget, validateRequest, validateScope, validateSummary, validateTags,
   validateTitle, validateValidFrom,
 } from './validate.ts';
@@ -225,13 +225,16 @@ export interface CreateInput {
    * D41 spec §16a; `Item.request` carries the full argument for every one of
    * its exclusions and this comment does not repeat them.
    *
-   * **CREATE-ONLY, and there is no `UpdateInput.request`.** The spec's rule is
-   * *"never edited after the fact — a correction is a new request, appended"*,
-   * and the shape enforces it the way `steps` and `observations` are enforced:
-   * the field simply is not on the update surface, so no caller can rewrite
-   * what somebody actually typed. That is also why it does not appear in
-   * `UPDATE_FIELD_POLICY` (trust.ts) — a field absent from `UpdateInput` is not
-   * an unclassified field, it is one the update path cannot reach.
+   * **It is no longer create-only, and the rule it enforced did not change.**
+   * This said "CREATE-ONLY, and there is no `UpdateInput.request`" until
+   * 2026-09-11, when the owner ruled that `--request` belongs on `edit` as well
+   * as on `add`: the field had been storable for a day and writable by nothing,
+   * and 0 of 1,098 items carried one, so every item captured before the field
+   * existed had no route to a request at all. `UpdateInput.request` exists now.
+   * What enforces *"never edited after the fact"* is `requestOverwriteRefusal`
+   * (validate.ts) rather than the absence of the field — recording one where
+   * there is none is allowed, clearing one is allowed and is exactly
+   * reversible, and rewriting one is refused at every surface for every origin.
    *
    * Omitted, empty and whitespace-only all mean the same thing and all store
    * nothing: an agent- or ingest-origin item has no request, and that is not a
@@ -1292,6 +1295,24 @@ export interface UpdateInput {
   supersedes?: string;
   status?: Status;
   extra?: Record<string, string>;
+  /**
+   * **The words a person wrote when they asked for this item — RECORDED here,
+   * never rewritten.** `CreateInput.request` carries the history of why this
+   * field exists on an update surface at all; `Item.request` carries the field
+   * itself; `requestOverwriteRefusal` (validate.ts) carries the rule.
+   *
+   * **The empty string CLEARS it**, and absence leaves it alone — the two are
+   * different instructions, exactly as they are for `summary` above. The clear
+   * is exact rather than approximate: `request` is outside `computeItemChecksum`
+   * and outside `ContentShape`, so an item that has a request recorded and then
+   * cleared is byte-identical to the one that never had one.
+   *
+   * It is classified `documentation` in `UPDATE_FIELD_POLICY` (trust.ts) — the
+   * third class, added for this field — and the reason is worth reading there
+   * before anything is built on this: it is the one writable field that reaches
+   * no injected surface and no decision at all.
+   */
+  request?: string;
   origin?: Origin;
 }
 
@@ -1356,6 +1377,12 @@ export function updateItem(
   // anything can be staged, so every message downstream that says "nothing was
   // changed" is true.
   const summary = input.summary !== undefined ? normalizeSummary(input.summary) : undefined;
+  // **Trimmed at the edges and normalised in no other way** — the identical
+  // treatment `createItem` gives it, and `CreateInput.request` argues why: the
+  // trim is the format conceding (a section's separator blank lines do not
+  // survive `splitSections`, so storing them would not round-trip), and
+  // everything else about the text is left exactly as it was typed.
+  const request = input.request !== undefined ? input.request.trim() : undefined;
 
   validateEnums(input);
   if (input.extra !== undefined) validateExtra(input.extra);
@@ -1392,6 +1419,21 @@ export function updateItem(
     if (refusal) throw new Error(refusal);
   }
   if (input.tags !== undefined) validateTags(input.tags);
+  // **The two rules a request write has to pass, both before `item` is
+  // touched**, so every "nothing was changed" printed below this point is true.
+  //
+  // `validateRequest` first, because it is about the TEXT and the caller can
+  // fix it; `requestOverwriteRefusal` second, because it is about the ITEM and
+  // the caller cannot. Both are enforced at this shared boundary rather than at
+  // a surface, for `INV-a-validator-that-gates-writes-must-be-a-complete`'s
+  // reason: `mycontext edit` refuses both a second time, EARLIER, so a human is
+  // not shown a preview of an edit that was never going to land — that is a
+  // duplicated CALL, not a duplicated rule, and the wording lives in one place.
+  if (request !== undefined) {
+    validateRequest(request);
+    const refusal = requestOverwriteRefusal(item.id, item.request, request);
+    if (refusal) throw new Error(refusal);
+  }
   // Spec §3. Gated on the update actually MOVING the field to its governing
   // value — not on the value being present — for the reasons in
   // `inertFieldError`: an echo asserts nothing, and an item whose category was
@@ -1815,6 +1857,19 @@ export function updateItem(
 
   if (title !== undefined) item.title = title;
   if (body !== undefined) item.body = body;
+  // **DELETED rather than set to `''` when it is cleared**, and the difference
+  // is not cosmetic: `parseItem` spreads the key in conditionally so that an
+  // item with no request carries no key at all, because this object is
+  // `JSON.stringify`d — by `itemContentHash`'s canonical shape, by the UI read
+  // model and by the MCP surface — and `undefined` disappears from a stringify
+  // only until somebody adds a `?? null`. A cleared request must leave the item
+  // in exactly the state it was in before one was recorded, or the "clearing is
+  // byte-for-byte reversible" property this field was designed around holds for
+  // the file and not for the item.
+  if (request !== undefined) {
+    if (request === '') delete item.request;
+    else item.request = request;
+  }
   if (update.scope !== undefined) item.scope = update.scope.map((g) => normalizePosix(g));
   // The projected list when this call moved a projected field, and the
   // caller's own list otherwise — see the projection above for why an

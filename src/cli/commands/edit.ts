@@ -18,7 +18,8 @@ import { summaryState } from '../../core/content-hash.ts';
 import { standDownFields, STOOD_DOWN_STATUSES } from '../../core/select.ts';
 import { inertFieldError, scopeRequirementError } from '../../core/trust.ts';
 import {
-  SEVERITIES, STATUSES, normalizeSummary, updatableValueError, validateExtra, validateSummary,
+  SEVERITIES, STATUSES, normalizeSummary, requestOverwriteRefusal, updatableValueError,
+  validateExtra, validateRequest, validateSummary,
 } from '../../core/validate.ts';
 import { scopeField } from '../../core/render-item.ts';
 import { extraFlag } from './registry.ts';
@@ -92,6 +93,7 @@ const USAGE =
                         [--tags "a,b"] [--severity hard|soft] [--always[=false]]
                         [--continuity[=false]]
                         [--status active|draft|deprecated|validated]
+                        [--request "<text>"]
                         [--extra key=value] [--unlink <relation> <target>] [--yes]`;
 
 /* -------------------------------------------------------------------------- *
@@ -182,6 +184,17 @@ const FIELD_CLASS: Record<string, FieldClass> = {
   // body is, which is also what `UPDATE_FIELD_POLICY` (trust.ts) classifies it
   // as; the two tables agree because they are answering the same question.
   title: 'content', body: 'content', summary: 'content', tags: 'content', extra: 'content',
+  // `request` is CONTENT HERE and `documentation` in `UPDATE_FIELD_POLICY`
+  // (trust.ts), and the two tables are not in disagreement — they answer
+  // different questions. That one asks "may a non-human caller do this, and is
+  // it staged for a human"; the answer is that a request is never injected, so
+  // there is no gate to route around and nothing for a revision to carry. THIS
+  // one asks how heavily a HUMAN's edit is gated at this command, and the three
+  // classes it chooses between are content, reach and force. A request changes
+  // neither reach nor force — it is not injected at all — so content is the
+  // only honest answer, and it is the lightest of the three: previewed as a
+  // diff, never printed with the "what governs before and after" block.
+  request: 'content',
   // `summary_of` is the STAMP, and it is CONTENT for the same reason `summary`
   // is: moving it is what takes the STALE marker off the sentence, and that
   // marker is part of what a reader is told about the item — arguably the most
@@ -337,6 +350,16 @@ function changesOf(item: Item, patch: UpdateInput, scopeLabel: (globs: string[])
   // a re-affirmation of the sentence already on the item.
   if (summaryReaffirmed(item, patch)) {
     add('summary_of', summaryState(item), 're-affirmed, and the sentence is unchanged');
+  }
+  // `item.request ?? ''` on the "before" side and the trimmed value on the
+  // "after" side, because `''` is what `--request=` means and what
+  // `updateItem` stores an absence as — so both directions preview honestly:
+  // recording one on an item that has none, and removing the one it has. The
+  // trim matches the single normalisation the text receives on its way to
+  // disk, so an edit that changes only leading whitespace is the no-op it is
+  // rather than a confirmation prompt over invisible characters.
+  if (patch.request !== undefined && patch.request.trim() !== (item.request ?? '')) {
+    addContent('request', item.request ?? '', patch.request.trim());
   }
   if (patch.tags !== undefined && !sameSet(patch.tags, item.tags)) {
     addContent('tags', item.tags, patch.tags);
@@ -632,6 +655,11 @@ function cmdEdit(ws: Workspace, args: string[], out: Emit): number {
     // asserts nothing, and putting it there would make the "nothing to edit"
     // count below treat a decline as a field.
     const summaryUnchanged = boolFlag(args, 'summary-unchanged');
+    // `flag`, not `listFlag`: a request is one utterance, and two of them are
+    // two different accounts of what was asked for. Absent (`null`) and empty
+    // (`--request=`) are different instructions here — the second REMOVES the
+    // recorded request — exactly as they are for `--summary` and `--scope`.
+    const request = flag(args, 'request');
     const extraFields = extraFlag(args);
     // The declared flags, read with the same `flag` helper as everything else
     // so a repeat is refused in `repeatedFlagError`'s words rather than in a
@@ -691,6 +719,21 @@ function cmdEdit(ws: Workspace, args: string[], out: Emit): number {
       patch.summary = normalized;
     }
     if (summaryUnchanged === true) patch.summaryUnchanged = true;
+    // Validated before the preview and before the gate, on the same terms as
+    // `--summary` above: `updateItem` refuses an unstorable request anyway, but
+    // from inside the write — after a human has been shown what the edit would
+    // do and asked to approve it. `validateRequest` owns the wording, so this
+    // surface cannot drift from `create_item`'s. The overwrite refusal is
+    // checked further down, where the item has been loaded and can be named.
+    if (request !== null) {
+      try {
+        validateRequest(request.trim());
+      } catch (err) {
+        say(out, err instanceof Error ? err.message : String(err));
+        return 1;
+      }
+      patch.request = request;
+    }
     if (scope !== null) patch.scope = scope;
     if (tags !== null) patch.tags = tags;
     if (always !== null) patch.always = always;
@@ -908,6 +951,17 @@ function cmdEdit(ws: Workspace, args: string[], out: Emit): number {
     // The hatch's own refusals go FIRST, so a call that passes `--summary` and
     // `--summary-unchanged` together is told about the contradiction rather
     // than being waved through by the summary it carries.
+    // **A recorded request is never rewritten**, and the refusal is printed
+    // here rather than left to `updateItem` for the reason every refusal above
+    // it is placed here: a human must not be shown "about to edit" and a
+    // confirmation prompt for a write that was never going to land. The
+    // sentence is `requestOverwriteRefusal`'s (validate.ts), which is also what
+    // refuses the same call arriving through `update_item`, so the two surfaces
+    // cannot come to say different things about the same rule.
+    if (patch.request !== undefined) {
+      const refusal = requestOverwriteRefusal(item.id, item.request, patch.request.trim());
+      if (refusal) { say(out, refusal); return 1; }
+    }
     const hatchRefusal = summaryUnchangedRefusal(item, patch, 'edit');
     if (hatchRefusal) { say(out, hatchRefusal); return 1; }
     if (summaryRequired(item, patch)) {

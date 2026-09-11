@@ -42,7 +42,7 @@ routes are `mycontext review promote`/`discard` for a draft's status, and
 [--note "<text>"] [--observation kind=text] [--step "<text>"]
 [--summary "<text>"|--summary-omitted] [--scope "a/**,b/**"] [--tags "a,b"]
 [--severity hard|soft] [--always] [--valid-from YYYY-MM-DD] [--original-id <id>]
-[--extra key=value] [--yes]` is the user's capture command. `--scope` and
+[--request <text>] [--extra key=value] [--yes]` is the user's capture command. `--scope` and
 `--tags` are comma-separated; `--body` goes through the same round-trip guards
 described above, so a body containing a `#` heading is refused there exactly as
 it is here. `--file` snapshots a file instead of taking text somebody typed,
@@ -89,6 +89,18 @@ when omitted, which is right for something captured now and wrong for an item
 copied in from a corpus where it already existed — and `valid_from` is a
 reserved frontmatter name, so `--extra` cannot carry it. A date that does not
 exist is refused rather than rounded.
+
+`--request "<text>"` records the words a PERSON wrote when they asked for this
+item, copied verbatim — their spelling, their punctuation, their line breaks. It
+is documentation and nothing else: it is never injected, it is not part of what
+a summary is measured against, and it is outside the item's checksum, so
+recording one makes nothing stale and clearing one restores the file byte for
+byte. Do NOT paraphrase, tidy or translate it, and never write one from what the
+item says — an absent request truthfully means nobody recorded one, and an
+invented one is a quotation of something that was never said. `mycontext edit
+<id> --request "<text>"` records one on an item that has none, `--request=`
+removes one, and an item that already records one is refused: a correction is a
+new request, not an improved old one.
 
 `--original-id <id>` carries an existing item's id across instead of deriving a
 new one from its title, and it is for MIGRATION and nothing else. An id is a

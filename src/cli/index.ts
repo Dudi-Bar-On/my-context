@@ -10,7 +10,7 @@ import { createItem, type CreateInput, type MutationContext } from '../core/muta
 import { scopeRequirementError } from '../core/trust.ts';
 import {
   normalizeSteps, normalizeSummary, validateExplicitId, validateIdPrefix,
-  validateObservationCategory, validateRelationTarget, validateSummary,
+  validateObservationCategory, validateRelationTarget, validateRequest, validateSummary,
   validateValidFrom, SEVERITIES,
 } from '../core/validate.ts';
 import type { Observation, Severity } from '../core/types.ts';
@@ -507,7 +507,8 @@ const ADD_USAGE =
   'usage: mycontext add <category> <title> [--body <text>|--file <path>] [--note <text>] ' +
   '[--observation kind=text] [--step <text>] [--summary <text>|--summary-omitted] ' +
   '[--scope "a/**,b/**"] [--tags "a,b"] [--severity hard|soft] [--always] ' +
-  '[--valid-from YYYY-MM-DD] [--original-id <id>] [--extra key=value] [--yes]';
+  '[--valid-from YYYY-MM-DD] [--original-id <id>] [--request <text>] [--extra key=value] ' +
+  '[--yes]';
 
 /**
  * The flag list in `add`'s one-line entry in `mycontext help`, DERIVED from
@@ -967,6 +968,34 @@ function cmdAdd(ws: Workspace, args: string[], out: Emit, cwd: string): number {
     // give it meaning. `createItem` already accepted `extra`; only the flag
     // was missing. Keys are validated by `createItem`'s own `validateExtra`,
     // so a reserved name is refused here exactly as it is on `edit`.
+    // **`--request`: the words a PERSON wrote when they asked for this item**
+    // (`Item.request`, and `REQUEST_FLAG` for what a person is told it is for).
+    //
+    // `scalarFlag`, like `--summary` and for its reason: two `--request` flags
+    // are two different accounts of what was asked for, and keeping one of them
+    // silently would store a quotation that is missing half of itself.
+    //
+    // Nothing is done to the text here — no trim, no collapse, no case. The
+    // trim happens once, inside `createItem`, where the value validated and the
+    // value stored are the same string; doing it twice would be two places that
+    // could later disagree about what "verbatim" means.
+    //
+    // Validated HERE as well as inside `createItem`, for the ordering
+    // `--summary`, `--severity` and `--step` are all validated early for: a
+    // human must not be shown "create this item that governs the project?" and
+    // told only AFTER answering that the request was never storable. The
+    // duplication is of the CALL — `validateRequest` (validate.ts) owns the
+    // wording and the rule.
+    //
+    // `--request=` (empty) is not a clear here and needs no spelling for one: a
+    // capture that carries no request simply does not record one, so empty and
+    // absent are the same instruction at this surface. They are different
+    // instructions at `mycontext edit`, where there is something to remove.
+    const request = scalarFlag(args, 'request');
+    if (request !== null) {
+      validateRequest(request.trim());
+      input.request = request;
+    }
     const extra = extraFlag(args);
     if (extra !== null) input.extra = extra;
     // `--valid-from`, and it is a REAL field rather than an `--extra` key:

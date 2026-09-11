@@ -228,6 +228,12 @@ export const DETAIL_FLAGS = ['full', 'short', 'summary', 'json'];
 const ADD_VALUE_FLAGS = [
   'body', 'file', 'note', 'observation', 'step', 'summary', 'scope', 'tags', 'severity',
   'valid-from', 'original-id', 'extra',
+  // `request` joined on 2026-09-11, and it is the same kind of entry
+  // `--original-id` is: a field an item could HOLD and no write path could
+  // express. `Item.request` shipped on 2026-09-10 and 0 of 1,098 items carried
+  // one, because nothing anywhere could write it. It takes a value, it is not
+  // comma-split, and it is single-valued.
+  'request',
   // The contradiction gate's two answers (contradiction-gate design §5). Both
   // take a value — an item id — so they belong in the VALUE list rather than
   // beside `always`/`summary-omitted`, which are switches.
@@ -822,6 +828,31 @@ export const SUMMARY_FLAG: FlagDeclaration = {
   note: 'What this item is and why it matters, in plain words for somebody who does NOT know '
     + 'this codebase - no ids, no file paths, no measurements, and never how it was found. '
     + 'The body keeps all the precision.',
+};
+
+/**
+ * `--request`, declared ONCE and read by both `add` and `edit`, exactly as
+ * `SUMMARY_FLAG` above is — the two commands take the same field under the same
+ * bar, and two wordings of "what a request is for" is the drift this table
+ * exists to stop. `edit-flags.ts` imports this and adds only the sentence that
+ * is true of `edit` alone: the empty value removes it, and a recorded one is
+ * never rewritten.
+ *
+ * The note says VERBATIM twice on purpose. This is the one field in the product
+ * where the useful thing and the tidy thing are different things, and the
+ * person or agent typing the flag is the last point at which the difference can
+ * still be preserved.
+ */
+export const REQUEST_FLAG: FlagDeclaration = {
+  format: 'free text, exactly as the person wrote it',
+  example: 'dont log the customer email anywhere, i mean it - not in the debug logs either',
+  note: 'The words a PERSON wrote when they asked for this item, copied verbatim - their '
+    + 'spelling, their punctuation, their line breaks. It is documentation: nothing injects it, '
+    + 'no summary goes stale because of it, and it is outside the item\'s checksum. Do NOT '
+    + 'paraphrase, tidy or summarise what they said, and do not write one from what the item '
+    + 'says: an absent request means nobody recorded one, which is honest, and an invented one '
+    + 'is a quotation of something that was never said. Leave it out when you do not have the '
+    + 'exact words.',
 };
 
 const YES: FlagDeclaration = {
@@ -1423,6 +1454,16 @@ export const FLAG_DECLARATIONS: Record<string, FlagDeclarations> = {
         + '`summary_absent` and nothing else will ever ask. This is the named way to mean it: it '
         + 'is never a default, it is refused beside `--summary`, and the audit row records '
         + '`summary-omitted` so that nobody wrote one is visible rather than assumed.',
+    },
+    // `REQUEST_FLAG`'s shared declaration, plus the one sentence that is true
+    // of a CAPTURE and not of an edit - the mirror of what `add`'s `--summary`
+    // does just above, and of what `edit-flags.ts` does with the clear.
+    request: {
+      ...REQUEST_FLAG,
+      note: `${REQUEST_FLAG.note} This is the moment it is cheapest to get right: whoever is `
+        + 'capturing the item is holding the words that asked for it. `mycontext edit <id> '
+        + '--request "..."` records one on an item that has none, and a recorded request is '
+        + 'never rewritten afterwards.',
     },
     extra: {
       format: 'key=value, one key per flag', example: 'directive=do',

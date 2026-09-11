@@ -1436,9 +1436,18 @@ recall problem is real; the mechanism was the wrong size.
 
 ### F4 — the checkbox write path has no legal implementation, and there is a better design
 
-`FieldPolicy` is `'content' | 'gated'`, pinned by `satisfies` and four `Assert<>` types
-(`trust.ts` · `type FieldPolicy = 'content' | 'gated';` · ~454, pinned at `trust.ts` · `export const UPDATE_FIELD_POLICY = {` · ~456). §6g's third class fails to compile **by construction** — and that table exists
+`FieldPolicy` was `'content' | 'gated'` when this was written, pinned by `satisfies` and four
+`Assert<>` types
+(`trust.ts` · `type FieldPolicy = 'content' | 'gated' | 'documentation';` · ~454, pinned at `trust.ts` · `export const UPDATE_FIELD_POLICY = {` · ~456). §6g's third class fails to compile **by construction** — and that table exists
 because `extra` was once unclassified and an agent could rewrite a governing rule's directive.
+
+**A third member was added on 2026-09-11 and it does not weaken this argument.**
+`documentation` was added for `request` — the owner's own words, which reach no injected
+surface at all — and it arrived with two more `Assert<>` types saying it is neither
+stageable nor guarded. §6g's third class was for a field that IS injected (a ticked box
+inside an `active` procedure's text), and that is still what fails to compile here: a class
+whose members change the injected text and are neither staged nor refused is the hole this
+table exists to close. The count was never the argument.
 
 Worse, the table classifies by **effect**, not intent: *"`content` … changes what the agent is
 TOLD."* An `active` procedure is injected in full, so **flipping a box changes the injected text.**

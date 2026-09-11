@@ -467,14 +467,25 @@ const AUDITED_FIELDS = [
   // NOT here — it is derived from the item by `stampSummary` and never moves
   // on its own, so recording it would name a second field for every change to
   // the first.
-  'title', 'body', 'summary', 'scope', 'tags', 'severity', 'always', 'status', 'extra',
+  //
+  // `request` is here for the sharpest version of `summary`'s reason. It holds
+  // the words a PERSON wrote, so the question this log exists to answer — what
+  // did this session do — has to be answerable about it: "who recorded a
+  // request against this item, and when" is the only trace that a quotation
+  // inside the corpus was written by somebody who was not there. It matters
+  // more here than anywhere else because `request` is outside
+  // `computeItemChecksum` by design, so `doctor` cannot report a hand edit to
+  // one; the log is the only record there is. Values are never stored (this
+  // log keeps no copy of item content), so the row says that a request moved
+  // and never what it says.
+  'title', 'body', 'summary', 'request', 'scope', 'tags', 'severity', 'always', 'status', 'extra',
 ] as const;
 
 type AuditedSnapshot = Record<(typeof AUDITED_FIELDS)[number], unknown>;
 
 export function snapshotFields(item: Item): AuditedSnapshot {
   return {
-    title: item.title, body: item.body, summary: item.summary,
+    title: item.title, body: item.body, summary: item.summary, request: item.request,
     scope: [...item.scope], tags: [...item.tags],
     severity: item.severity, always: item.always, status: item.status, extra: { ...item.extra },
   };

@@ -469,7 +469,7 @@ export function guardedChange(item: Item, input: UpdateInput): keyof typeof GUAR
  * repeating it. It was a literal there, which meant a fifth content field
  * would have left the always-loaded sentence naming four and the test green.
  */
-type FieldPolicy = 'content' | 'gated';
+type FieldPolicy = 'content' | 'gated' | 'documentation';
 
 export const UPDATE_FIELD_POLICY = {
   title: 'content',
@@ -487,6 +487,47 @@ export const UPDATE_FIELD_POLICY = {
   continuity: 'gated',
   severity: 'gated',
   status: 'gated',
+  /**
+   * **`documentation` is the third class, and `request` is the only field in
+   * it. It was added rather than stretching one of the two above, because both
+   * of those are defined by a question this field cannot be asked.**
+   *
+   * `content` is "it changes what the agent is TOLD". `gated` is "it changes
+   * whether, where and how forcefully the item is injected at all". A request
+   * is NEVER INJECTED — `renderItemBlock` and `renderIndexLine` (render-item.ts)
+   * do not emit it, `itemCost` does not charge for it, and that absence is
+   * structural rather than a filter list somebody maintains (`Item.request`,
+   * and `test/core/request-field.test.ts` is the evidence for the claim). It is
+   * also outside `ContentShape` and outside `computeItemChecksum`. So no agent
+   * is ever told it, no budget moves for it, and no decision rests on it:
+   * calling it `content` would be false about the only thing `content` asserts,
+   * and calling it `gated` would be false about the only thing `gated` asserts.
+   *
+   * **What it is NOT is an exemption.** The three names excluded from this table
+   * below name no item data at all; `request` names item data and is classified
+   * here, which is what the header requires. The two assertions beneath this
+   * object are unchanged and still bind in both directions: `documentation` is
+   * neither stageable nor guarded, and it must not become either by accident.
+   *
+   * **What governs it instead is narrower than either class and applies to a
+   * HUMAN caller too**, which is more than `content` or `gated` can say:
+   * `requestOverwriteRefusal` (validate.ts) refuses to rewrite a request that is
+   * already recorded, at every surface and for every origin. Recording one
+   * where there is none, and clearing one, are the two writes that remain — and
+   * a clear restores the file byte for byte, so neither is a change an agent can
+   * make that a human cannot see or undo.
+   *
+   * **The one thing this class gives up, stated rather than discovered:** on a
+   * category set to `agentEdits: "review"`, an agent recording a request is
+   * applied rather than staged. That is the right trade for a field nothing
+   * injects — staging would put a human in front of a queue entry about text
+   * that governs nothing, and `REVISION_FIELDS` (revision-log.ts) is explicit
+   * that a field belongs there only when `promoteRevision` can apply it and a
+   * gate can be routed around without it. There is no gate here to route
+   * around. What keeps the mixed call honest is `nonContentChanges` below,
+   * which reads this class as well as `gated`.
+   */
+  request: 'documentation',
   // `summaryUnchanged` is excluded alongside `id` and `origin`, and the
   // exclusion is this table's own rule rather than an exemption from it: the
   // header says "every field of `UpdateInput` that names ITEM DATA", and those
@@ -534,6 +575,7 @@ type FieldOfPolicy<P extends FieldPolicy> =
   { [K in UpdateField]: (typeof UPDATE_FIELD_POLICY)[K] extends P ? K : never }[UpdateField];
 type ContentField = FieldOfPolicy<'content'>;
 type GatedField = FieldOfPolicy<'gated'>;
+type DocumentationField = FieldOfPolicy<'documentation'>;
 
 /** Compile-time only, and erased entirely: `Assert<false>` violates the
  * constraint and `tsc --noEmit` fails with the alias's name. */
@@ -554,6 +596,15 @@ type _GatedIsGuarded =
   Assert<GatedField extends keyof typeof GUARDED_FIELDS | 'status' ? true : false>;
 type _GuardedIsGated =
   Assert<keyof typeof GUARDED_FIELDS | 'status' extends GatedField ? true : false>;
+// And `documentation` must be NEITHER, in both directions. The class exists
+// because `request` reaches no injected surface and no decision; the day it
+// becomes stageable or guarded it has stopped being documentation and belongs
+// in one of the two classes above, with that move made on purpose rather than
+// discovered when a revision turns up carrying somebody's own words.
+type _DocumentationIsNotStageable =
+  Assert<DocumentationField extends RevisionField ? false : true>;
+type _DocumentationIsNotGuarded =
+  Assert<DocumentationField extends keyof typeof GUARDED_FIELDS | 'status' ? false : true>;
 
 const CONTENT_FIELDS = (Object.keys(UPDATE_FIELD_POLICY) as UpdateField[])
   .filter((field): field is ContentField => UPDATE_FIELD_POLICY[field] === 'content');
@@ -625,6 +676,29 @@ const GATED_READERS: Record<GatedField, (item: Item, input: UpdateInput) => bool
   ),
   severity: (item, input) => input.severity !== undefined && input.severity !== item.severity,
   status: (item, input) => input.status !== undefined && input.status !== item.status,
+};
+
+const DOCUMENTATION_FIELDS = (Object.keys(UPDATE_FIELD_POLICY) as UpdateField[])
+  .filter((f): f is DocumentationField => UPDATE_FIELD_POLICY[f] === 'documentation');
+
+/**
+ * Does this input MOVE a documentation field — the same question
+ * `GATED_READERS` asks of the gated ones, and asked the same way so that an
+ * echo is not a change.
+ *
+ * `.trim()` on the incoming value and `?? ''` on the stored one, because both
+ * are what `updateItem` compares: absence is spelled `''` on the input side
+ * (it is the CLEAR), and the trim is the one normalisation a request receives
+ * on its way to disk. Without both, `--request=` on an item that has no
+ * request would read as a change and put a human in front of a confirmation
+ * for a write that does nothing.
+ */
+const DOCUMENTATION_READERS: Record<
+  DocumentationField, (item: Item, input: UpdateInput) => boolean
+> = {
+  request: (item, input) => (
+    input.request !== undefined && input.request.trim() !== (item.request ?? '')
+  ),
 };
 
 /**
@@ -723,5 +797,17 @@ export function fieldList(changes: RevisionChanges): string {
  * discover the other two by retrying.
  */
 export function nonContentChanges(item: Item, input: UpdateInput): string[] {
-  return GATED_FIELDS.filter((field) => GATED_READERS[field](item, input));
+  return [
+    ...GATED_FIELDS.filter((field) => GATED_READERS[field](item, input)),
+    // **Every field a `RevisionChanges` cannot carry — which is what this
+    // function's name means, and `gated` stopped being all of them the day
+    // `documentation` was added.** A call that moved `body` and `request`
+    // together on an `agentEdits: "review"` category would otherwise have
+    // staged the body and applied the request, which is `updateItem`'s
+    // "applied by halves" failure exactly: a success message over an item in a
+    // state nobody asked for. Read off the same table, for the reason the
+    // gated half is: a list written out by hand here is how `extra` came to be
+    // described as unstageable by nothing that refused it.
+    ...DOCUMENTATION_FIELDS.filter((field) => DOCUMENTATION_READERS[field](item, input)),
+  ];
 }

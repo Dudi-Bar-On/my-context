@@ -663,6 +663,25 @@ const SPECS: ToolSpec[] = [
           'Stored as "- [ ] text" lines; progress is never stored in the item. A repeatable ' +
           'sequence is a `runbook`, and it keeps its steps in the body.',
       },
+      // **The words the USER wrote, and this description is the only thing
+      // standing between that and a paraphrase.** An agent filing an item on
+      // the owner's behalf is the common case for this tool, which makes this
+      // the path that decides whether the field is worth anything at all — so
+      // the description says verbatim, says do not invent, and says leaving it
+      // out is a legitimate answer. `Item.request` argues why an absent request
+      // is honest and a reconstructed one is not.
+      request: {
+        ...S_STRING,
+        description:
+          'The user\'s OWN WORDS asking for this item, copied byte for byte from their message '
+          + '- their spelling, punctuation and line breaks, not cleaned up. Documentation only: '
+          + 'it is never injected, never enters the summary, and is outside the checksum. DO NOT '
+          + 'write one from what the item says, do not summarise or translate what they asked '
+          + 'for, and do not pass your own words or a dispatch brief. If you do not have the '
+          + 'exact text they typed, OMIT this - an absent request means nobody recorded one, '
+          + 'which is true; an invented one is a quotation of something that was never said, '
+          + 'and nothing afterwards can tell the two apart',
+      },
       source_file: { ...S_STRING, description: 'Document this came from' },
       source_anchor: { ...S_STRING, description: 'Heading within that document' },
       // The contradiction gate's two answers, and they are ANSWERS: do not
@@ -751,6 +770,11 @@ const SPECS: ToolSpec[] = [
         // caller did not. `createItem` then refuses any text the Markdown
         // could not hold back byte-identically.
         steps: optList(args, 'steps'),
+        // `optStr`, so an omitted request is `undefined` and stores nothing —
+        // `createItem` treats omitted, empty and whitespace-only identically,
+        // which is what makes "I do not have his exact words" expressible here
+        // without a second spelling for it.
+        request: optStr(args, 'request'),
         sourceFile: optStr(args, 'source_file') ?? null,
         sourceAnchor: optStr(args, 'source_anchor') ?? null,
         // The contradiction gate's two answers (contradiction-gate design §5).
@@ -846,6 +870,22 @@ const SPECS: ToolSpec[] = [
           'Category-specific fields to merge in, e.g. kind, directive, likelihood. Content, so ' +
           'it is staged for review on a governing normative item like title, body and tags',
       },
+      // The same field `create_item` takes, on an item that already exists —
+      // which is the case the flag was asked for: every item captured before
+      // this field existed has no request and no other way to gain one. The
+      // description repeats `create_item`'s prohibition rather than pointing at
+      // it, because a model reading this schema is not reading that one, and
+      // adds the one rule that only applies here: it does not overwrite.
+      request: {
+        ...S_STRING,
+        description:
+          'The user\'s OWN WORDS asking for this item, copied byte for byte from their message. '
+          + 'Use it to record a request on an item that has NONE. DO NOT write one from what the '
+          + 'item says, do not tidy or summarise what they asked for, and do not pass your own '
+          + 'words or a dispatch brief - omit it instead, which truthfully means nobody recorded '
+          + 'one. An item that already records a request is REFUSED: a correction is a new '
+          + 'request, not an improved old one. Pass "" to remove a request that is wrong',
+      },
     }, ['id']),
     run: (cwd, args) => withWorkspace(cwd, (ctx) => {
       const id = str(args, 'id', 'update_item');
@@ -864,6 +904,12 @@ const SPECS: ToolSpec[] = [
         distinct: optList(args, 'distinct'),
         supersedes: optStr(args, 'supersedes'),
         extra: optExtra(args),
+        // `optStr`, so absent is `undefined` (leave it alone) and `""` is the
+        // CLEAR — the two different instructions `summary` above has, and for
+        // the same reason. `updateItem` refuses an overwrite in
+        // `requestOverwriteRefusal`'s words, at the shared boundary, so this
+        // handler carries no copy of that rule.
+        request: optStr(args, 'request'),
         origin: 'agent',
       };
       // **The summary gate, on the second of its two AUTHORED surfaces.**

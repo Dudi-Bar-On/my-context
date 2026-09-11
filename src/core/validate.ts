@@ -591,6 +591,62 @@ export function validateRequest(request: string): void {
 }
 
 /**
+ * **A request is RECORDED or CLEARED, and never rewritten. This is the refusal
+ * that makes the second one impossible** (owner ruling 2026-09-11, the ruling
+ * that cut the capture door; `Item.request` carries the reasoning).
+ *
+ * `store/5` built the field as create-only, and the shape enforced the rule:
+ * there was no `UpdateInput.request`, so nothing could reach it. The owner then
+ * asked for a `--request` flag on `edit` as well as on `add` — because 0 of
+ * 1,098 items carried a request and an item captured before the field existed
+ * had no route to one — and that flag reopens exactly the door the create-only
+ * shape was closing. So the rule moved from the SHAPE to this function, and it
+ * did not weaken on the way:
+ *
+ *  - **absent → text** is RECORDING one, which is the whole point of the flag;
+ *  - **text → `''`** is CLEARING it, which is `--summary=`'s spelling and is
+ *    exactly reversible: `request` is outside `computeItemChecksum` and outside
+ *    `ContentShape`, so the cleared file is byte-identical to the one before
+ *    the request was added (`test/core/request-capture.test.ts` asserts it);
+ *  - **text → the same text** is an ECHO and asserts nothing, so it is a no-op
+ *    rather than a refusal — the rule every other field in this product reads
+ *    an echo by;
+ *  - **text → DIFFERENT text is refused here**, at every surface and for every
+ *    origin, a human's `mycontext edit` included. A correction is a new request,
+ *    not an improved old one, and the one thing this field cannot survive is a
+ *    second writer tidying what the owner actually typed — a paraphrase inside
+ *    a quotation is undetectable afterwards precisely because it reads right.
+ *
+ * **The clear is not a loophole around that**, and it is worth saying why it is
+ * not: clearing and re-recording is two audited acts with two rows naming
+ * `request` in the log, and what it costs is that somebody had to decide, in
+ * words, to remove what was there. The refusal is not a lock; it is the removal
+ * of the silent path.
+ *
+ * Returns `null` when there is nothing to refuse, so a surface can print it
+ * BEFORE its preview and its confirmation — the shape `scopeRequirementError`
+ * has, for its reason: every message that says "nothing was changed" has to be
+ * true when it is printed.
+ */
+export function requestOverwriteRefusal(
+  id: string, current: string | undefined, next: string,
+): string | null {
+  if (current === undefined || current === '') return null;
+  if (next.trim() === '' || next === current) return null;
+  return (
+    `my_context: ${id} already records a request, and a recorded request is never rewritten. ` +
+    `The field holds the words a person actually wrote when they asked for this item, so the ` +
+    `one change that must not be possible is a second writer improving them — a paraphrase ` +
+    `inside quotation marks reads exactly like the real thing and nothing afterwards says it ` +
+    `is not. Nothing was changed. If what is recorded is WRONG, remove it in so many words ` +
+    `with \`mycontext edit ${id} --request=\` and then record the right one: that is two ` +
+    `audited acts instead of a silent overwrite, and both name "request" in the log. If you ` +
+    `are recording a LATER ask, it is a new request and it belongs on the item that ask ` +
+    `produced.`
+  );
+}
+
+/**
  * The sibling of `validateObservationText` for a `## Steps` line, and the
  * differences from it are the point.
  *
