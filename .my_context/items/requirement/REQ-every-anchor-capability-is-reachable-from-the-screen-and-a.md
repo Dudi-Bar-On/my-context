@@ -5,9 +5,10 @@ title: every anchor capability is reachable from the screen, and a copied comman
 status: active
 severity: hard
 always: false
-summary: Everything you can do with a bookmark must be doable in the viewer itself — including setting the automatic marking going — not only by copying a command out to a terminal.
-summary_of: 751b6554ca45e4b1
+summary: Bookmarks are made three ways — as the conversation grows, by one catch-up run, and by hand while reading — and every one of them, and everything else you can do with them, works from the viewer.
+summary_of: 8104fa861163c329
 summary_was:
+  - 2026-09-11 Everything you can do with a bookmark must be doable in the viewer itself — including setting the automatic marking going — not only by copying a command out to a terminal.
   - 2026-09-11 Everything you can do with a bookmark must be doable in the viewer itself, not only by copying a command out to a terminal.
 scope:
   - src/ui/**
@@ -23,7 +24,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-09-11
 valid_until: null
-checksum: 1835a11ecd8bded7
+checksum: 48e53b8672457656
 ---
 
 # every anchor capability is reachable from the screen, and a copied command is not a capability
@@ -89,3 +90,46 @@ its cost belongs on the control: cold fill measured at 8.6 s over 307 transcript
 disclosure `INV-nothing-is-dropped-silently` already requires — how many were newly marked,
 relabelled and taken back — is what the screen should show when it finishes. A button that runs a
 nine-second walk and says nothing is a button nobody presses twice.
+
+── THE THREE WAYS AN ANCHOR IS CREATED — OWNER, 2026-09-12, AND THIS IS THE DESIGN ──────
+
+His words: "1 ongoing appended payload to the conversation would have anchores created on the fly,
+2 for creating anchores on a conversation that doesn’t have them we should initiate a retroactive
+single run for adding anchores, 3 user could add anchores while he browses the conversation using
+the ui viewer. that’s exactly is how anchores should be added, i do not care how you implement it
+but you shouldn’t limit me because you decided to use the CLI and then you tell me that this is the
+way i need to use it — unacceptable."
+
+THE CRITICISM IS CORRECT AND IT IS RECORDED HERE RATHER THAN SOFTENED. Anchors shipped with the
+automatic pass bound to `mycontext conversation rebuild`, and when he asked how to create one in
+the viewer he was told to use the CLI — A CONSTRAINT PRESENTED AS AN ANSWER. No ruling ever made
+the CLI the place this lives. It was where the lane holding the work happened to put it.
+
+1. ON THE FLY, AS THE CONVERSATION GROWS. A transcript that is being appended to gets its anchors
+   as it goes. This is NOT what is built: the pass runs only on an explicit rebuild.
+
+   AND THE REASON IT WAS KEPT OFF THE PER-TURN PATH HAS EXPIRED. `plan:recall seq:1` deliberately
+   left the prose index off the Stop hook because it cost 1.8-2.1 s and 95.7 MB EVERY RUN. Both
+   causes were repaired on 2026-09-11: the index resume clamp took it to 3-6 ms and 0 bytes, and
+   the archive scan’s own skew took it from 96.7 MB / 421 ms to 571 B / 7.5 ms. The filing lane
+   said in as many words that if the steady state became single-digit milliseconds the reason for
+   that decision was gone. It has. THE COST OBJECTION NO LONGER EXISTS AND MUST NOT BE RE-QUOTED.
+
+2. A RETROACTIVE SINGLE RUN, for a conversation that has none — initiated from the screen, per the
+   trigger capability above. The pass is idempotent in both directions and never reads an
+   `origin: owner` row, so re-running it is safe and a button is honest.
+
+3. BY HAND WHILE READING, in the viewer, at the point he is looking at — not only from a search
+   hit, and not by copying a command out to a terminal.
+
+ALL THREE, NOT A CHOICE OF ONE. And every other anchor use — list, open one, search, go to,
+relabel, drop — is on the screen too, which is what the six capabilities above already say.
+
+NO WRITE LIMITATIONS. The screen writes the row itself through `markAnchor`/`unmarkAnchor`. The
+no-writes gate takes a narrow exception held to a test, the shape `src/ui/maintenance/**` already
+uses. A confirm dialog and a subprocess are the wrong ceremony for a bookmark, which he ruled on
+2026-09-11 and which the measurement supported: an anchor never touches the session file.
+
+AND THE FILE IS THE TRUTH, as he decided and as shipped 2026-09-11: `.my_context/.anchors.jsonl`,
+gitignored, with the index table derived from it. Deleting the index loses nothing. Any new
+creation path writes THROUGH that seam — none of the three may grow a second store.
