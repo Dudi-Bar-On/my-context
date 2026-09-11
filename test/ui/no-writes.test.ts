@@ -266,6 +266,30 @@ const WRITERS: Record<string, string[]> = {
   'src/review/declined.ts': ['recordDecline'],
   'src/review/decline.ts': ['declineDraft'],
   'src/review/propose.ts': ['propose', 'noteSighting'],
+  // `plan:recall seq:2`, 2026-09-11 — D42 phase 2's two writing modules. Found
+  // by the derivation below rather than by anybody remembering, which is the
+  // direction this table was rebuilt to work in: they landed on `master` naming
+  // themselves nowhere, and `every module in src/ that writes to the filesystem
+  // is named in WRITERS` was red on `master` until these two lines. Added by
+  // `plan:recall seq:3` while closing D42 rather than filed — D37's closing
+  // mode, and the phase that found it is the phase that owns it.
+  //
+  // One writer each, and both say so in their own headers: `mission.ts` writes
+  // ONE mission file and returns its path (its header's whole argument is that
+  // a module which cannot write cannot inject by accident), and `result.ts`
+  // writes one result under `RETRIEVAL_DIR`, which is gitignored because a
+  // result holds conversation text. `missionText`, `renderResult`,
+  // `parseResult`, `readResult`, `listResults`, `resultPathFor`,
+  // `validateResult`, `checkCitations` and `ignoresRetrievalDir` are
+  // deliberately NOT here: they render, parse, read or build a path. That is
+  // `focus.ts`'s split, and the reason the ban resolves symbols rather than
+  // files.
+  //
+  // `src/core/retrieval/from-selection.ts`, `subjects.ts` and `noise.ts` are
+  // absent because they bind no write API at all — the first and third say
+  // "this module is PURE" in their headers, and the second only reads.
+  'src/core/retrieval/mission.ts': ['writeMission'],
+  'src/core/retrieval/result.ts': ['writeResult'],
   // `watch-model.ts` binds `classifyContext` and `readTee` from here; `writeTee`
   // and the stale-temp sweep are the writers sitting beside them.
   'src/core/statusline-tee.ts': ['writeTee', 'sweepStaleTeeTemps'],
