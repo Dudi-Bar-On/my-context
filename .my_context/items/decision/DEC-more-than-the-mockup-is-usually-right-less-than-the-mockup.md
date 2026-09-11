@@ -2,7 +2,7 @@
 id: DEC-more-than-the-mockup-is-usually-right-less-than-the-mockup
 type: decision
 title: more than the mockup is usually right; less than the mockup is the gap
-status: active
+status: superseded
 severity: soft
 always: false
 summary: Where the working product does more than the old drawing, the product is presumed right; where it does less, that is the gap to close.
@@ -19,8 +19,8 @@ source_file: null
 source_anchor: null
 source_checksum: null
 valid_from: 2026-08-24
-valid_until: null
-checksum: 3a2af4a54e8de797
+valid_until: 2026-09-11
+checksum: 64dce3154f39e86c
 ---
 
 # more than the mockup is usually right; less than the mockup is the gap
@@ -38,3 +38,6 @@ WHY THIS IS NOT A RETREAT FROM 1:1. RULE-1-1-with-the-mockup still governs, and 
 WHAT WOULD REOPEN THIS: a surplus that nobody can name a reason for. Extra nodes with no feature behind them are drift, not development, and this ruling is not a licence to stop asking which one a surplus is.
 
 Measured the same day: proc draws 132 nodes to the mockup s 91, coverage 275 to 116, docs 106 to 47. Those three were being read as the worst screens on the board; under this ruling they are the ones furthest AHEAD.
+
+## Relations
+- superseded_by [[DEC-the-mockup-is-a-reference-to-initial-thoughts-and-only-a]]

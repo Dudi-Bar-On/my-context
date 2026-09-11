@@ -1,3 +1,4 @@
+// @basis DEC-the-mockup-is-a-reference-to-initial-thoughts-and-only-a, DEC-the-mockup-is-a-frozen-reference-it-is-read-never-written
 /**
  * **The page runs, and every screen renders.**
  *
@@ -13,7 +14,9 @@
  * browser said so.
  */
 import { test, expect } from '@playwright/test';
-import { SCREENS, expectNoFaults, openMockup, showScreen } from './mockup.ts';
+import {
+  MOCKUP_RAIL, RETIRED_FROM_THE_APP, SCREENS, expectNoFaults, openMockup, showScreen,
+} from './mockup.ts';
 
 test('the script ran — the page is not a corpse that reads correctly', async ({ page }) => {
   const faults = await openMockup(page);
@@ -64,19 +67,49 @@ test('the markdown renderer shows a script tag, it does not run one', async ({ p
   expectNoFaults(faults, 'while rendering markdown');
 });
 
-test('the rail offers exactly the twenty-one screens, in order', async ({ page }) => {
-  const faults = await openMockup(page);
+/**
+ * **Twenty-one drawn, twenty live — and the difference is one named
+ * retirement.**
+ *
+ * The name used to say "exactly the twenty-one screens" while the list it
+ * compared against held twenty, and it had been red on that for a week. Both
+ * halves of that are fixed here rather than one: the assertion now compares
+ * the mockup's rail against the MOCKUP's own list, and the gap between that
+ * list and the app's is asserted to be exactly `RETIRED_FROM_THE_APP` — so the
+ * exception proves itself instead of being a subtraction nobody checks.
+ *
+ * This is `DEC-the-mockup-is-a-reference-to-initial-thoughts-and-only-a` in
+ * its narrowest form: a missing SCREEN is a reportable difference, and this one
+ * is excused only because a dated, owner-approved ruling retired it.
+ */
+test('the mockup rail offers its twenty-one screens in order, and the app shares twenty of them',
+  async ({ page }) => {
+    const faults = await openMockup(page);
 
-  const rail = await page.evaluate(() =>
-    [...document.querySelectorAll<HTMLElement>('.nav')].map((b) => b.dataset['s'] ?? ''));
-  const panes = await page.evaluate(() =>
-    [...document.querySelectorAll<HTMLElement>('[data-p]')].map((p) => p.dataset['p'] ?? ''));
+    const rail = await page.evaluate(() =>
+      [...document.querySelectorAll<HTMLElement>('.nav')].map((b) => b.dataset['s'] ?? ''));
+    const panes = await page.evaluate(() =>
+      [...document.querySelectorAll<HTMLElement>('[data-p]')].map((p) => p.dataset['p'] ?? ''));
 
-  expect(rail, 'the rail is the specification of what screens exist').toEqual([...SCREENS]);
-  expect(panes, 'every rail entry has a section and nothing has a section without one')
-    .toEqual([...SCREENS]);
-  expectNoFaults(faults, 'while reading the rail');
-});
+    expect(rail, 'the rail is the specification of what screens the design of record drew')
+      .toEqual([...MOCKUP_RAIL]);
+    expect(panes, 'every rail entry has a section and nothing has a section without one')
+      .toEqual([...MOCKUP_RAIL]);
+
+    // ── THE EXCEPTION, PROVED RATHER THAN TRUSTED. Subtracting the ledger from
+    // the mockup's rail must land exactly on the shared list. A screen dropped
+    // from the app without an entry fails here — which is the finding this
+    // file must keep making — and an entry for a screen the app still draws
+    // fails here too, so the ledger cannot rot into a permanent excuse.
+    expect(MOCKUP_RAIL.filter((s) => !RETIRED_FROM_THE_APP.includes(s)),
+      'the mockup rail minus the named retirements is the set both sides draw. A difference here '
+      + 'is a SCREEN the app does not have and no ruling excuses — build it, or retire it with a '
+      + 'ruling and name it in RETIRED_FROM_THE_APP').toEqual([...SCREENS]);
+    expect(RETIRED_FROM_THE_APP.filter((s) => !(MOCKUP_RAIL as readonly string[]).includes(s)),
+      'a retirement is recorded for a screen the design of record never drew').toEqual([]);
+
+    expectNoFaults(faults, 'while reading the rail');
+  });
 
 test('every screen renders, and every screen runs clean', async ({ page }) => {
   const faults = await openMockup(page);

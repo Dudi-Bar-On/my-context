@@ -1,5 +1,7 @@
+// @basis DEC-the-mockup-is-a-reference-to-initial-thoughts-and-only-a, DEC-the-mockup-is-a-frozen-reference-it-is-read-never-written
 /**
- * The page under test, and the twenty-one screens it must draw.
+ * The page under test: the twenty-one screens the MOCKUP draws, and the twenty
+ * of them the app and the mockup still share.
  *
  * WHAT IS UNDER TEST IS THE MOCKUP, not an implementation. `docs/design/
  * web-ui-mockup.html` is the specification — its own header says so — and
@@ -77,11 +79,65 @@ export function declaredMonospace(): number {
  * and the test deletes the assertion with it. The list is the specification, so
  * it is spelled here, in the mockup's own order — three groups by tense, then
  * Read — and a screen that disappears fails at the count.
+ *
+ * **This is the SHARED set — the screens both sides draw.** `gaps` is in the
+ * mockup and not here; `MOCKUP_RAIL` below is the mockup's own twenty-one, and
+ * the two lists are checked against each other in `runs.spec.ts` so neither
+ * can drift without the other noticing.
  */
 export const SCREENS = [
   // Injection — what arrives. `gaps` retired 2026-09-04 (seq:22), folded
   // into `coverage`.
   'preview', 'coverage', 'simulate', 'injected',
+  // Evidence — why it did or didn't
+  'watch', 'ask', 'doctor', 'decay', 'graph', 'status',
+  // Change — composed, never run
+  'work', 'capture', 'palette', 'config', 'proc', 'port', 'packs',
+  // Read
+  'docs', 'tut', 'learn',
+] as const;
+
+/**
+ * **THE EXCEPTION LEDGER: screens the frozen mockup draws that the app retired
+ * on purpose.** One entry, named, dated, and carrying the ruling that excuses
+ * it.
+ *
+ * `gaps` — the mockup's rail lists a Coverage gaps screen; the app has none.
+ * That is a MOCKUP-AHEAD difference and its subject is a SCREEN, so under
+ * `DEC-the-mockup-is-a-reference-to-initial-thoughts-and-only-a` it is exactly
+ * the kind of difference that IS reportable — a missing screen is missing
+ * work. It is excused here not because it does not matter but because it was
+ * DECIDED: `TASK-coverage-gaps-folds-into-scope-coverage-keeping-the-one-fact`
+ * (`plan:screens seq:22`, done 2026-09-04), owner-approved against
+ * `reports/2026-09-04-scope-coverage-redesign-mockup.html`, folded the screen
+ * into `coverage`. `DEC-the-mockup-is-a-frozen-reference-it-is-read-never-
+ * written` is why the rail still shows it: the file is not edited to follow a
+ * retirement, and a stale rail is what "history" means.
+ *
+ * `test/ui/strings-parity.test.ts` carries the same exception for the ten
+ * string keys that went with the screen, in the same shape and for the same
+ * ruling. This is the second half of one retirement, not a second decision.
+ *
+ * **An entry here is not a licence.** It is a claim that a named ruling retired
+ * a named screen on a named date, and `runs.spec.ts` proves the claim rather
+ * than trusting it: an entry whose screen is NOT in the mockup's rail, or that
+ * is somehow also in `SCREENS`, fails there. A blanket "skip missing screens"
+ * would have excused the next screen somebody forgot to build.
+ */
+export const RETIRED_FROM_THE_APP: readonly string[] = ['gaps'];
+
+/**
+ * The mockup's OWN rail, in its own order — all twenty-one, `gaps` included.
+ *
+ * Spelled out for the same reason `SCREENS` is: reading the rail and then
+ * asserting the rail proves nothing. Two spelled lists and one subtraction is
+ * what makes the exception above self-checking — remove `gaps` from the mockup
+ * (which nobody may do) and this fails; add a screen to the app without
+ * removing it from the ledger and the subtraction fails.
+ */
+export const MOCKUP_RAIL = [
+  // Injection — what arrives
+  'preview', 'coverage', 'gaps', 'simulate', 'injected',
   // Evidence — why it did or didn't
   'watch', 'ask', 'doctor', 'decay', 'graph', 'status',
   // Change — composed, never run
