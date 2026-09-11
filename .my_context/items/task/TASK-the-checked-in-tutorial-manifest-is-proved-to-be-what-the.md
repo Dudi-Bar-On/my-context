@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: Nothing gates that docs/tutorials/manifest.json equals deriveTutorialManifest(repoRoot), so a hand-edit to the roster survives and the generator throws instead.
-summary_of: 964acf5c21ed9ec1
+summary_of: 64cbec28338028da
 scope:
   - docs/tutorials/manifest.json
   - scripts/build-tutorial-manifest.ts
@@ -14,18 +14,19 @@ scope:
 tags:
   - "plan:tuts"
   - "seq:9"
-  - "state:todo"
+  - "state:done"
 origin: human
 source_file: null
 source_anchor: null
 source_checksum: null
 valid_from: 2026-09-08
 valid_until: null
-checksum: 906fefb19bbd25f6
+checksum: a4e2e733082b94bd
 plan: tuts
 seq: "9"
-state: todo
+state: done
 priority: "3"
+verified_on: 2026-09-12
 ---
 
 # the checked-in tutorial manifest is proved to be what the generator derives

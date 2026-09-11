@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: Following an index line is recorded from the command line and the tool interface, so it becomes possible to tell whether an item was ever actually read.
-summary_of: 8c75093b2a2abeeb
+summary_of: 988b4645843eb070
 summary_was:
   - 2026-09-07 Item fetches leave no record, so whether a reader ever acted on an index line is unmeasurable rather than merely unknown.
 scope:
@@ -19,18 +19,19 @@ tags:
   - injection
   - "plan:budget"
   - "seq:15"
-  - "state:todo"
+  - "state:done"
 origin: human
 source_file: null
 source_anchor: null
 source_checksum: null
 valid_from: 2026-09-04
 valid_until: null
-checksum: 6ade6153e67edb84
+checksum: d0a5324182fd6882
 plan: budget
 seq: "15"
-state: todo
+state: done
 priority: "2"
+verified_on: 2026-09-12
 ---
 
 # reading an item is not audited, so nobody can tell whether an index line was ever followed
