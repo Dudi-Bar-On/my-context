@@ -63,3 +63,11 @@ e2e/screens/
 # tracked sits under a `conversations/` path before adding it.
 conversations/
 *.transcript.jsonl
+
+# RETRIEVAL RESULTS AND THE MISSIONS THAT PRODUCED THEM — `plan:recall seq:2`,
+# spec §9. Same ruling as the block above and the same reason, applied to a new
+# directory rather than restated: a result file is assembled FROM conversation
+# text, so it is conversation text, and it is a working artefact rather than
+# corpus. It is not `reports/` either, which is hand-written narrative and is
+# tracked on purpose.
+.my_context/.retrieval/
