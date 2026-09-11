@@ -402,3 +402,147 @@ export function assertDoor(stateRoot: string, key: string, storeDir?: string): s
     }
   });
 }
+
+/* ══ A STORE UPDATE UNDER A RUNNING SESSION — SPEC §12.3 ═══════════════════ */
+
+/**
+ * **The doors a correction may go through, and it is a list of what IS rather
+ * than a list of what is not.**
+ *
+ * Spec §12.3: *"A subagent starts fresh and simply receives the new store.
+ * Only a long-running session holds a stale copy."* So `subagent-start` is
+ * absent, and its absence is the decision: a correction at a subagent's door
+ * would be a paragraph about a delivery that subagent never had, spending its
+ * window to un-tell it something it was never told.
+ *
+ * Written as an allow-list because the alternative — `door !== 'subagent-start'`
+ * — silently admits every door added later, and the next door added will be
+ * added by somebody thinking about something else.
+ */
+export const SESSION_SCOPE_DOORS: readonly Door[] = ['session-start', 'compact-restore', 'manual'];
+
+export interface Correction {
+  /** The block to put in front of the model, or `''` when nothing changed. */
+  text: string;
+  /** Entries the session already holds whose text has been REPLACED. */
+  superseded: string[];
+  /** Entries that did not exist when the session started. */
+  added: string[];
+  /** Entries that no longer govern. */
+  removed: string[];
+}
+
+/**
+ * The bytes of an entry that a reader would be obeying — everything the
+ * renderer puts in front of the model, and nothing else.
+ *
+ * `renderEntry` is reused rather than comparing fields, so that "did this
+ * change" is answered about WHAT WAS DELIVERED. A field the renderer does not
+ * print — `sourcePath`, and `request`, which spec §6 keeps out of every
+ * context window — must not be able to produce a correction, because there
+ * would be nothing in it for a reader to act on.
+ */
+function deliveredShape(entry: Entry): string {
+  return renderEntry(entry);
+}
+
+const CORRECTION_PREAMBLE =
+  '_**CORRECTION — the product constants you were given earlier in this session have CHANGED, ' +
+  'and what follows REPLACES them.** Text cannot be removed from a context window, so the ' +
+  'earlier copy is still above you: it is SUPERSEDED, and where the two disagree this one ' +
+  'governs. Only the entries that moved are repeated here — everything else you were given ' +
+  'still stands, unchanged._';
+
+/**
+ * **The correction, and it is phrased as supersession because an update phrased
+ * as an addition is the defect `CLAUDE.md` opens with.**
+ *
+ * > *five superseded instructions being acted on as current because a document
+ * > repeated one after it had been reversed. A copy cannot be superseded; only
+ * > the original can.*
+ *
+ * That is why every line below names what it replaces rather than merely
+ * stating the new rule, and why a REMOVED entry is named and NOT re-rendered:
+ * re-rendering it would put the withdrawn text back in front of the reader one
+ * more time, which is the opposite of withdrawing it.
+ */
+export function renderCorrection(
+  before: readonly Entry[], after: readonly Entry[],
+): Correction {
+  const was = new Map(before.map((e) => [e.id, deliveredShape(e)]));
+  const now = new Map(after.map((e) => [e.id, e]));
+
+  const superseded: string[] = [];
+  const added: string[] = [];
+  const removed: string[] = [];
+  for (const entry of after) {
+    const previous = was.get(entry.id);
+    if (previous === undefined) { added.push(entry.id); continue; }
+    if (previous !== deliveredShape(entry)) superseded.push(entry.id);
+  }
+  for (const entry of before) if (!now.has(entry.id)) removed.push(entry.id);
+  superseded.sort(); added.sort(); removed.sort();
+
+  if (superseded.length === 0 && added.length === 0 && removed.length === 0) {
+    return { text: '', superseded, added, removed };
+  }
+
+  const blocks: string[] = [
+    `## my_context product rules — CORRECTION (${superseded.length + added.length + removed.length} change(s))`,
+    CORRECTION_PREAMBLE,
+  ];
+
+  if (removed.length > 0) {
+    blocks.push([
+      `**${removed.length} constant(s) no longer govern.** What you were given earlier for each ` +
+      'is SUPERSEDED and in force no longer. Nothing replaces them; stop applying them.',
+      '',
+      ...removed.map((id) =>
+        `- \`${id}\` — no longer in force. The earlier copy of it in this session is superseded.`),
+    ].join('\n'));
+  }
+
+  if (superseded.length > 0) {
+    blocks.push([
+      `**${superseded.length} constant(s) have been REPLACED.** For each one below, the copy you ` +
+      'were given earlier in this session is SUPERSEDED; the text under it is what governs now.',
+      '',
+      ...superseded.map((id) =>
+        `- \`${id}\` — the earlier version is superseded and replaced by the text below.`),
+    ].join('\n'));
+    for (const id of superseded) {
+      const entry = now.get(id);
+      if (entry !== undefined) blocks.push(renderEntry(entry));
+    }
+  }
+
+  if (added.length > 0) {
+    blocks.push([
+      `**${added.length} constant(s) are new** — they did not exist when this session started, ` +
+      'so nothing you hold is superseded by them.',
+      '',
+      ...added.map((id) => `- \`${id}\` — new.`),
+    ].join('\n'));
+    for (const id of added) {
+      const entry = now.get(id);
+      if (entry !== undefined) blocks.push(renderEntry(entry));
+    }
+  }
+
+  return { text: blocks.join('\n\n'), superseded, added, removed };
+}
+
+/**
+ * The correction a given door may carry: the block for a session-scope door,
+ * and `''` for every other.
+ *
+ * The gate is here rather than at each door for the reason `deliverAtDoor`
+ * exists at all — a second place that decides what a door delivers is a second
+ * answer to "what did we deliver", and only one of them would be recorded.
+ */
+export function correctionAtDoor(
+  door: Door, before: readonly Entry[], after: readonly Entry[],
+): string {
+  if (!SESSION_SCOPE_DOORS.includes(door)) return '';
+  return renderCorrection(before, after).text;
+}

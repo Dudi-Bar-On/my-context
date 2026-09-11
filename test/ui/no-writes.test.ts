@@ -117,6 +117,8 @@ import assert from 'node:assert/strict';
 import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs';
 import path from 'node:path';
 
+import { MAINTENANCE_DIR } from '../../src/ui/maintenance/server.ts';
+
 const REPO = path.join(import.meta.dirname, '..', '..');
 const abs = (name: string): string => path.join(REPO, ...name.split('/'));
 const rel = (file: string): string => path.relative(REPO, file).split(path.sep).join('/');
@@ -1109,13 +1111,53 @@ const OFF_SERVER_GRAPH: Record<string, string> = {
   'src/ui/open.ts': 'src/cli/commands/ui.ts',
 };
 
+/**
+ * **The one directory under `src/ui/` this gate does not cover, and the only
+ * reason that could ever justify one: IT DOES NOT SHIP.**
+ *
+ * The D41 maintenance tool (`src/ui/maintenance/`, spec §11) writes rule-store
+ * entries directly, and the spec says why it is allowed to in the same breath
+ * as naming this file:
+ *
+ * > *The Composer is the UI precedent, with one difference: the Composer
+ * > COMPOSES A COMMAND FOR A PERSON TO RUN because it lives in a shipped UI
+ * > under `test/ui/no-writes.test.ts`'s one-writer rule. **This tool does not
+ * > ship and writes directly.***
+ *
+ * So this is not a widening of the owner's ruling — the ruling is about the
+ * surface a user is served, and that surface is defined by what the package
+ * contains. A directory `package.json` refuses to publish is not part of it.
+ *
+ * **And the exclusion is held to that claim rather than trusted with it.** The
+ * test directly below asserts that this directory is the one `files` excludes,
+ * so the day somebody deletes that exclusion — the day the tool would ship —
+ * this gate stops skipping it and the maintenance tool falls back under the
+ * one-writer rule, red, here. `test/rules/maintenance-absent.test.ts` asserts
+ * the same fact from the other side, by asking npm.
+ */
+const DOES_NOT_SHIP = abs(MAINTENANCE_DIR);
+
+test('the one directory this gate skips is the one that does not ship', () => {
+  assert.ok(
+    existsSync(DOES_NOT_SHIP),
+    `${MAINTENANCE_DIR} is not on disk, so the exclusion below skips nothing and says nothing`,
+  );
+  const files = (JSON.parse(readFileSync(abs('package.json'), 'utf8')) as { files: string[] }).files;
+  assert.ok(
+    files.includes(`!${MAINTENANCE_DIR}/`),
+    `package.json's \`files\` no longer excludes ${MAINTENANCE_DIR}, so it would be published — ` +
+    `and a published surface that writes is exactly what this gate exists to refuse. Either put ` +
+    `the exclusion back, or delete the skip and bring the tool under the one-writer rule.`,
+  );
+});
+
 /** Every `.ts` file that exists under `src/ui/`, whether or not anything imports it. */
 function uiFilesOnDisk(): string[] {
   const out: string[] = [];
   const walk = (dir: string): void => {
     for (const entry of readdirSync(dir, { withFileTypes: true })) {
       const full = path.join(dir, entry.name);
-      if (entry.isDirectory()) walk(full);
+      if (entry.isDirectory()) { if (full !== DOES_NOT_SHIP) walk(full); }
       else if (entry.name.endsWith('.ts')) out.push(full);
     }
   };
@@ -1286,7 +1328,7 @@ function srcFilesOnDisk(): string[] {
   const walk = (dir: string): void => {
     for (const entry of readdirSync(dir, { withFileTypes: true })) {
       const full = path.join(dir, entry.name);
-      if (entry.isDirectory()) walk(full);
+      if (entry.isDirectory()) { if (full !== DOES_NOT_SHIP) walk(full); }
       else if (entry.name.endsWith('.ts')) out.push(full);
     }
   };

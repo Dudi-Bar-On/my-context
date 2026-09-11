@@ -26,7 +26,9 @@
  * leaks into `list`, `ready`, `doctor` or the injection selector.
  * `test/rules/isolation.test.ts` is the guard on that, in both directions.
  */
-import { parseFrontmatter, type FrontmatterValue } from '../core/frontmatter.ts';
+import {
+  parseFrontmatter, serializeFrontmatter, type FrontmatterValue,
+} from '../core/frontmatter.ts';
 
 export type Kind = 'fact' | 'prohibition' | 'procedure' | 'standard' | 'definition';
 
@@ -328,4 +330,66 @@ export function parseEntry(entryText: string, path: string): Entry | EntryError 
   if (kind === 'standard') entry.trigger = String(parts.trigger);
   if (request !== null) entry.request = request;
   return entry;
+}
+
+/**
+ * What the maintenance tool holds while an entry is being written: the frame,
+ * the parts, and the prose. Not an `Entry` — an `Entry` is something that
+ * PARSED, and a draft is what is about to be offered to `parseEntry`.
+ */
+export interface EntryDraft {
+  id: string;
+  kind: Kind;
+  tier: Tier;
+  title: string;
+  /** Keyed by part name. A `list` part may arrive as an array or as lines. */
+  parts: Record<string, string | string[] | undefined>;
+  /** Spec §6: the owner's own words. Optional, and never injected. */
+  request?: string;
+  body?: string;
+}
+
+/**
+ * **Write one entry file, with the field ORDER taken from the table.**
+ *
+ * This lives beside `TEMPLATE` rather than in the maintenance tool for the
+ * reason this module's header gives about `renderEntry`: the table is the only
+ * place a part is named, and a writer with its own field list would be a
+ * second table — the exact drift the store exists to end, arriving in the tool
+ * that maintains the store.
+ *
+ * A part that is MISSING is written as nothing at all rather than as an empty
+ * value, so that `parseEntry` refuses it by name. Writing `why: ""` would make
+ * the refusal say "empty" where the truth is "absent", and the two are
+ * different mistakes for a person to have made.
+ *
+ * `serializeFrontmatter` is the corpus' own serializer, from the one module
+ * `src/rules/` may import (`test/rules/isolation.test.ts`). One file format is
+ * the discipline; a second writer would be a second dialect.
+ */
+export function composeEntry(draft: EntryDraft): string {
+  const data: Record<string, FrontmatterValue> = {
+    id: draft.id,
+    kind: draft.kind,
+    tier: draft.tier,
+    title: draft.title,
+  };
+  for (const part of partsOf(draft.kind)) {
+    const value = draft.parts[part.name];
+    if (value === undefined) continue;
+    if (part.shape === 'list') {
+      const items = (Array.isArray(value) ? value : String(value).split(/\r?\n/))
+        .map((line) => String(line).trim())
+        .filter((line) => line !== '');
+      if (items.length === 0) continue;
+      data[part.name] = items;
+      continue;
+    }
+    const text = Array.isArray(value) ? value.join('\n') : String(value);
+    if (text.trim() === '') continue;
+    data[part.name] = text.trim();
+  }
+  if (draft.request !== undefined && draft.request.trim() !== '') data.request = draft.request.trim();
+  const body = (draft.body ?? '').trim();
+  return `---\n${serializeFrontmatter(data).trimEnd()}\n---\n${body === '' ? '' : `\n${body}\n`}`;
 }
