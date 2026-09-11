@@ -415,7 +415,9 @@ export const COMMAND_FLAGS: Record<string, FlagSpec> = {
    * about open work, and a flag that widened it to finished work would be
    * asking a different question under the same name.
    */
-  ready: { allowed: ['plan', 'limit', 'held', ...DETAIL_FLAGS], values: ['plan', 'limit'] },
+  ready: {
+    allowed: ['plan', 'limit', 'held', 'questions', ...DETAIL_FLAGS], values: ['plan', 'limit'],
+  },
   refresh: { allowed: ['yes'], values: [] },
   /** `repair` also hand-rolls its refusal; same spec, same reading. */
   repair: { allowed: ['yes'], values: [] },
@@ -1133,6 +1135,9 @@ export const FLAG_DECLARATIONS: Record<string, FlagDeclarations> = {
     limit: LIMIT,
     held: {
       note: 'Also list the tasks a blocker is holding, which the report otherwise only counts.',
+    },
+    questions: {
+      note: 'Also list the open questions the report otherwise only counts, with the reason for each.',
     },
   },
   refresh: { yes: YES },

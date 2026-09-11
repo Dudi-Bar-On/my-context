@@ -68,6 +68,38 @@ test('a superseded (settled) open_question with blocks is not reported — it is
   assert.deepEqual(checkOpenQuestionBlocks([item]), []);
 });
 
+/**
+ * **And so is every other RETIRED status, which this check used to miss.**
+ *
+ * It skipped `superseded` by name. `deprecated` and `validated` are retired by
+ * the same `RETIRED_STATUSES` (core/select.ts) that `isEligible`, the session
+ * banner and `reviewQueue`'s neighbours all read, and the reason the docblock
+ * gives for skipping a settled question — *"history, not a live dependency …
+ * exactly the stale noise this check exists to avoid adding"* — is a reason
+ * about being retired, not about one spelling of it.
+ *
+ * Found 2026-09-11 while building `core/questions.ts`, by measurement rather
+ * than by reading: on this corpus the check produced 7 findings and TWO of
+ * them named `deprecated` questions —
+ * `OPENQ-install-the-status-line-bridge-over-the-owner-s-current` and
+ * `OPENQ-which-port-does-the-ui-upkeep-use-and-is-58888-still-the`.
+ */
+test('a deprecated open_question with blocks is not reported either — retired is retired', () => {
+  const item = base({
+    id: 'OPENQ-a', type: 'open_question', status: 'deprecated',
+    extra: { blocks: 'the auth rewrite' },
+  });
+  assert.deepEqual(checkOpenQuestionBlocks([item]), []);
+});
+
+test('a validated open_question with blocks is not reported either', () => {
+  const item = base({
+    id: 'OPENQ-a', type: 'open_question', status: 'validated',
+    extra: { blocks: 'the auth rewrite' },
+  });
+  assert.deepEqual(checkOpenQuestionBlocks([item]), []);
+});
+
 // --- assumption.validate_by / validated_on --------------------------------
 
 function root(records: AuditInput[]): string {

@@ -4,6 +4,9 @@ import {
   type HeldRow, type ReadyRow,
 } from '../../core/needs.ts';
 import type { LoadError } from '../../core/rebuild.ts';
+import {
+  BLOCKS_FIELD, questionReport, type QuestionReason, type QuestionRow,
+} from '../../core/questions.ts';
 import type { Item } from '../../core/types.ts';
 import type { Workspace } from '../../core/workspace.ts';
 import { emitLoadErrors, openMutateContext, toCliMessage } from './context.ts';
@@ -46,10 +49,12 @@ import { flag, hasFlag, registerCommand, type Emit } from './registry.ts';
  */
 const { allowed: ALLOWED, values: VALUE_FLAGS } = COMMAND_FLAGS.ready;
 
-const USAGE = `usage: mycontext ready [--plan <plan>] [--held] [--limit <n>] ${DETAIL_USAGE}
+const USAGE =
+  `usage: mycontext ready [--plan <plan>] [--held] [--questions] [--limit <n>] ${DETAIL_USAGE}
 
 Open work whose \`${NEEDS_FIELD}\` are all done, highest priority first. Held work is
-counted by reason on every level and listed with --held.`;
+counted by reason on every level and listed with --held. Open questions standing in
+front of open work are listed; the rest are counted and listed with --questions.`;
 
 /** The row cap, and it is `todo`'s reason: this prints a table to a terminal,
  * and a hundred-row answer to "what can I start" is not an answer. A
@@ -60,12 +65,39 @@ const HEADERS = ['task', 'pri', 'state', 'title'];
 const FULL_HEADERS = ['id', 'task', 'pri', 'state', NEEDS_FIELD, 'title'];
 const HELD_HEADERS = ['task', 'pri', 'state', 'held by', 'title'];
 
+/**
+ * **A question's columns, and there is no `task`, `pri` or `state` among
+ * them.** The ruling this block rests on is that *a question is not a task and
+ * must not be drawn as one* — it has no `seq`, nothing depends on its
+ * completion, and it is finished by an ANSWER. Sharing `HEADERS` would have
+ * printed `(no plan/seq)` in a task column for every row, which is a report
+ * saying a question is a badly-filled-in task.
+ */
+const QUESTION_HEADERS = ['question', 'blocks', 'title'];
+const QUESTION_FULL_HEADERS = ['question', 'blocks', 'why', 'title'];
+
 /** One line a person reads about why a row is held, in the field's own terms. */
 const HELD_REASON: Record<HeldRow['reason'], string> = {
   pending: 'a blocker has not landed',
   unresolved: 'names a task this corpus does not have',
   malformed: `an unreadable "${NEEDS_FIELD}" entry`,
   blocked_without_needs: 'says blocked and names nothing',
+};
+
+/**
+ * Why a question is listed, or is only counted — in the field's own terms, the
+ * way `HELD_REASON` names a held row's.
+ *
+ * `blocking` is here for `--questions`, which lists every question side by
+ * side and would otherwise be the one table in this report whose rows do not
+ * say why they are there.
+ */
+const QUESTION_REASON: Record<QuestionReason, string> = {
+  blocking: 'naming open work',
+  landed: 'naming work that is already done',
+  unresolved: 'naming work this corpus does not have',
+  unparsed: 'naming what it blocks in prose this report cannot resolve',
+  unstated: 'naming nothing it blocks',
 };
 
 function say(out: Emit, text: string): void {
@@ -106,6 +138,39 @@ function heldCells(row: HeldRow): string[] {
   ];
 }
 
+/**
+ * A question's cells. The `blocks` column shows the still-open references when
+ * there are any and the raw field otherwise — a reader looking at a blocking
+ * row wants the reference they can act on, not the sentence it was buried in.
+ *
+ * `(none)` rather than a blank, for `needsCell`'s reason: at `--full` the
+ * value is a labelled line of its own, and an empty one reads as a field that
+ * failed to load rather than one that is empty.
+ */
+function questionCells(row: QuestionRow, detail: Detail): string[] {
+  const blocks = row.pending.length > 0
+    ? row.pending.join(', ')
+    : (row.blocks === '' ? '(none)' : row.blocks);
+  return detail === 'full'
+    ? [row.item.id, blocks, QUESTION_REASON[row.reason], row.item.title]
+    : [row.item.id, blocks, row.item.title];
+}
+
+/**
+ * One question, as JSON. `blocks` is the raw field and `null` when unstated —
+ * never `''`, so a reader can tell "the author wrote nothing" from "the author
+ * wrote something this report could not resolve", which is the distinction the
+ * two reasons below it are built on.
+ */
+function questionJson(row: QuestionRow): Record<string, unknown> {
+  return {
+    id: row.item.id, title: row.item.title, type: row.item.type,
+    reason: row.reason,
+    [BLOCKS_FIELD]: row.blocks === '' ? null : row.blocks,
+    pending: row.pending, unresolved: row.unresolved, unparsed: row.unparsed,
+  };
+}
+
 function cmdReady(ws: Workspace, args: string[], out: Emit): number {
   if (!ws.projectRoot) {
     out('my_context: no workspace here. Run `mycontext init` to create one.');
@@ -119,6 +184,7 @@ function cmdReady(ws: Workspace, args: string[], out: Emit): number {
   let detail: Detail;
   let json: boolean;
   let showHeld: boolean;
+  let showQuestions: boolean;
   let plan: string | null;
   let limit: number;
   try {
@@ -127,6 +193,7 @@ function cmdReady(ws: Workspace, args: string[], out: Emit): number {
     // `hasFlag`, so `--held=false` means false and `--held=maybe` is refused
     // rather than resolved to either answer — see `boolFlag` (registry.ts).
     showHeld = hasFlag(args, 'held');
+    showQuestions = hasFlag(args, 'questions');
     plan = flag(args, 'plan');
     const rawLimit = flag(args, 'limit');
     if (rawLimit === null) {
@@ -174,6 +241,32 @@ function cmdReady(ws: Workspace, args: string[], out: Emit): number {
   const heldByReason = new Map<HeldRow['reason'], number>();
   for (const row of held) heldByReason.set(row.reason, (heldByReason.get(row.reason) ?? 0) + 1);
 
+  /**
+   * **The open questions, derived on this run exactly as readiness is.**
+   *
+   * `core/questions.ts` carries the whole ruling — why this surface and not the
+   * review queue, why not every active question, and why an acknowledgement
+   * does not silence one. Nothing here re-decides any of it; this block only
+   * draws what that module split.
+   *
+   * **`--plan` narrows the questions through the work they name, not through a
+   * field of their own.** A question has no `plan` — that is the refusal this
+   * whole item began with — so the only honest reading of "questions in plan
+   * X" is "questions naming open work in plan X", and it is computed from the
+   * reference rather than stored. The QUIET ones are then left out entirely
+   * under `--plan`, and the disclosure says so rather than letting a narrowed
+   * report imply this corpus has no other questions: a question that names
+   * nothing, or names it in prose, belongs to no plan and cannot be attributed
+   * to one without inventing the attribution.
+   */
+  const questions = questionReport(corpus, ws.config);
+  const inQuestionPlan = (row: QuestionRow): boolean =>
+    plan === null || row.pending.some((ref) => ref.split('/')[0] === plan.toLowerCase());
+  const blocking = questions.blocking.filter(inQuestionPlan);
+  const quiet = plan === null ? questions.quiet : [];
+  const quietByReason = new Map<QuestionReason, number>();
+  for (const row of quiet) quietByReason.set(row.reason, (quietByReason.get(row.reason) ?? 0) + 1);
+
   if (json) {
     emitJson(out, {
       ready: shown.map((r) => ({
@@ -190,6 +283,20 @@ function cmdReady(ws: Workspace, args: string[], out: Emit): number {
         satisfied: r.reading.satisfied, pending: r.reading.pending,
         unresolved: r.reading.unresolved, malformed: r.reading.malformed,
       })),
+      /**
+       * The questions, from the SAME two arrays the text draws. A machine
+       * reader and a person get one split, because the one thing this item
+       * forbids is two lists that can disagree.
+       *
+       * `open` below is deliberately NOT widened to include them: it counts
+       * open TASKS, and a question is answered rather than worked.
+       */
+      questions: {
+        blocking: blocking.map((q) => questionJson(q)),
+        quiet: quiet.map((q) => questionJson(q)),
+        blockingTotal: blocking.length,
+        quietTotal: quiet.length,
+      },
       count: shown.length,
       readyTotal: ready.length,
       heldTotal: held.length,
@@ -226,6 +333,47 @@ function cmdReady(ws: Workspace, args: string[], out: Emit): number {
         .join(', ');
       blocks.push(`${held.length} open task(s) held and not listed above: ${by}. ` +
         '`mycontext ready --held` lists them.');
+    }
+    /**
+     * **The question count, on EVERY path including `--summary`.** That is the
+     * point of the whole item: a decision waiting on a person must not depend
+     * on the reader having chosen the detail level that happens to draw it.
+     */
+    if (blocking.length > 0) {
+      blocks.push(`${blocking.length} open question(s) stand between this list and open work` +
+        (plan === null ? '' : ` in plan "${plan}"`) +
+        '. A question is finished by an ANSWER, not by work: it carries no `' + SEQ_FIELD +
+        '`, nothing waits on its completion, and it leaves this report when somebody answers ' +
+        'it or when the work it names lands.');
+    }
+    if (quiet.length > 0) {
+      const by = [...quietByReason]
+        .sort((a, b) => a[0].localeCompare(b[0]))
+        .map(([reason, n]) => `${n} ${QUESTION_REASON[reason]}`)
+        .join(', ');
+      blocks.push(`${quiet.length} active open question(s) not listed above: ${by}. ` +
+        'They are not in front of open work, so they are counted rather than listed — a list ' +
+        'that showed every question every time would train a reader to skip it. ' +
+        '`mycontext ready --questions` lists them.');
+    }
+    /**
+     * **What `--plan` narrowed away, counted rather than dropped.**
+     *
+     * Two populations end up here and both have to be counted, which is the
+     * bug this paragraph was rewritten to fix: the questions naming open work
+     * in some OTHER plan are absent from `blocking` (narrowed out) AND from
+     * `quiet` (they are not quiet), so counting only `quiet` left them
+     * mentioned nowhere at all — `INV-nothing-is-dropped-silently`, breached
+     * by the narrowing rather than by the report.
+     */
+    const narrowed = plan === null
+      ? 0
+      : (questions.blocking.length - blocking.length) + questions.quiet.length;
+    if (narrowed > 0) {
+      blocks.push(`${narrowed} further open question(s) are not counted above: none of them ` +
+        `names open work in plan "${plan}", and a question carries no plan of its own, so a ` +
+        'narrowed report cannot honestly attribute them to this one. ' +
+        '`mycontext ready --questions` without `--plan` lists them.');
     }
     blocks.push(
       'Readiness is derived on every run from `' + NEEDS_FIELD + '` and the `' + STATE_FIELD +
@@ -282,6 +430,36 @@ function cmdReady(ws: Workspace, args: string[], out: Emit): number {
     for (const line of rendered) out(line);
     out('');
     out(`${ready.length} ready of ${ready.length + held.length} open task(s)`);
+    out('');
+  }
+
+  /**
+   * The questions, in a table of their own and ABOVE the held rows.
+   *
+   * Above, because the reader this report is for is asking "what now" and an
+   * unanswered decision is the one thing on this screen they can clear without
+   * writing any code. Its own table, because a question is not a task — see
+   * `QUESTION_HEADERS`.
+   *
+   * `--questions` widens the table to every active question rather than
+   * printing a second one: two tables of the same thing is the two-lists
+   * hazard this item exists to avoid, at the smallest possible scale.
+   */
+  const drawn = showQuestions ? [...blocking, ...quiet] : blocking;
+  if (drawn.length > 0) {
+    /**
+     * **`--questions` renders as RECORDS, not as a table, and it is the same
+     * arithmetic `records` was written for.** A blocking row's `blocks` cell
+     * is the resolved references and is short; a QUIET row's is the raw field,
+     * and on this corpus that is 110 characters of prose beside a 66-character
+     * id and a 130-character title. Measured 2026-09-11: as a table that is
+     * 1,095 columns wide — `list --full`'s 280-column defect, four times over,
+     * on the one level that exists to show the most.
+     */
+    const asRecords = detail === 'full' || showQuestions;
+    const headers = asRecords ? QUESTION_FULL_HEADERS : QUESTION_HEADERS;
+    const cells = drawn.map((r) => questionCells(r, asRecords ? 'full' : detail));
+    for (const line of (asRecords ? records(headers, cells) : table(headers, cells))) out(line);
     out('');
   }
 

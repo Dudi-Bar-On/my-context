@@ -9,7 +9,7 @@ import {
 import { openProjectionReadOnlyChecked, topItems } from '../core/audit-db.ts';
 import { scopePolicyFor, skippedKeyNotice, type Config } from '../core/config.ts';
 import {
-  governs, isEligible, itemCost, standDownFields, STOOD_DOWN_STATUSES,
+  governs, isEligible, itemCost, RETIRED_STATUSES, standDownFields, STOOD_DOWN_STATUSES,
 } from '../core/select.ts';
 // `plan:contra seq:3` — the DRAIN. The gate's own predicates, its own
 // measurement and its own verdict log, so the sweep and the write path cannot
@@ -2773,11 +2773,19 @@ export function checkOpenQuestionBlocks(items: Item[]): Finding[] {
   const findings: Finding[] = [];
   for (const item of items) {
     if (item.type !== 'open_question') continue;
-    // A superseded question was settled — its own `superseded_by` says by
-    // what — so a `blocks` note from before that is history, not a live
-    // dependency, and naming it here would be exactly the stale noise this
-    // check exists to avoid adding.
-    if (item.status === 'superseded') continue;
+    // A RETIRED question was settled — a superseded one's own `superseded_by`
+    // says by what — so a `blocks` note from before that is history, not a
+    // live dependency, and naming it here would be exactly the stale noise
+    // this check exists to avoid adding.
+    //
+    // Through `RETIRED_STATUSES` and not by naming `superseded` alone, which
+    // is what this line said until 2026-09-11. The reason above is a reason
+    // about being retired; `deprecated` and `validated` are retired by the
+    // same set every other surface reads, and the corpus was paying for the
+    // gap — two of this check's seven findings named `deprecated` questions.
+    // Found while building `core/questions.ts`, which resolves the same field
+    // for `mycontext ready` and deliberately did not copy this clause.
+    if (RETIRED_STATUSES.has(item.status)) continue;
     const blocks = (item.extra.blocks ?? '').trim();
     if (blocks === '') continue;
     findings.push({

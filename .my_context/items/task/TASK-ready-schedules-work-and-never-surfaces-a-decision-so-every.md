@@ -5,28 +5,33 @@ title: ready schedules work and never surfaces a decision, so every question rea
 status: active
 severity: soft
 always: false
-summary: Questions waiting on you appear where you look to see what is next, instead of depending on somebody remembering to raise them.
+summary: Questions waiting on you now appear in `mycontext ready`, where you already look to see what is next, instead of depending on somebody remembering to raise them.
 summary_of: 2170fe7b27c1a044
+summary_was:
+  - 2026-09-11 Questions waiting on you appear where you look to see what is next, instead of depending on somebody remembering to raise them.
 scope:
   - src/cli/commands/ready.ts
-  - src/core/categories.ts
+  - src/core/questions.ts
+  - src/core/command-flags.ts
+  - src/doctor/checks.ts
+  - test/cli/ready-questions.test.ts
 tags:
   - v2
   - cli
   - process
   - "plan:governance"
   - "seq:9"
-  - "state:todo"
+  - "state:done"
 origin: human
 source_file: null
 source_anchor: null
 source_checksum: null
 valid_from: 2026-09-09
 valid_until: null
-checksum: 228f382b0507cb6c
+checksum: e66ab54e64d89683
 plan: governance
 seq: "9"
-state: todo
+state: done
 priority: "1"
 ---
 
