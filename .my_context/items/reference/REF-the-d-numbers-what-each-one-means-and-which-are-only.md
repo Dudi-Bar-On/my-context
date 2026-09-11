@@ -5,9 +5,10 @@ title: "the D numbers: what each one means, and which are only proposed"
 status: active
 severity: soft
 always: true
-summary: The short numbers used to talk about work in progress and what each one refers to, kept as a bare map so the same number never means two things; the story behind them lives in a dated write-up.
-summary_of: 440472463336321f
+summary: The short numbers used to talk about work in progress and what each one refers to, kept as a bare map so the same number never means two things; D44 to D55 were added on 2026-09-12 to name the subjects today's open work sits under.
+summary_of: 3075133fcb2f254a
 summary_was:
+  - 2026-09-11 The short numbers used to talk about work in progress and what each one refers to, kept as a bare map so the same number never means two things; the story behind them lives in a dated write-up.
   - 2026-09-11 The short numbers used to talk about work in progress and what each refers to, delivered every session so the same number never means two things.
   - 2026-09-07 The short numbers used to talk about work in progress, and what each of them refers to, so the same number never means two things.
 acknowledged:
@@ -22,7 +23,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-09-07
 valid_until: null
-checksum: 122a6a68ee6ea064
+checksum: 6a1c0b43c3025ab4
 ---
 
 # the D numbers: what each one means, and which are only proposed
@@ -44,15 +45,15 @@ This item carries the MAP. That report carries the RECORD.
 
 RATIFIED - the owner has used these numbers himself.
   D1-D5   doctor perf | a cancelled dependency is discharged | builder re-cut | the 24 Hebrew tutorials
-  D6      the citation gate           plan:rulings seq:64
+  D6      the citation gate           plan:rulings seq:64, rulings/38, 47, 67          OPEN
   D7      the audit projection index
   D8      the Hebrew RTL convention   plan:docsys seq:12
   D9      the ins/del markers         ruled: the grammar stays at five markers
   D10     four Composer pickers
-  D11     long pickers                plan:builder seq:16 + seq:10
-  D12     the Composer tested as a user   plan:builder seq:11
+  D11     long pickers                plan:builder seq:16 + seq:10, builder/12         OPEN
+  D12     the Composer tested as a user   plan:builder seq:11, walk/129, screens/25    OPEN
   D13a/b  the CLI help browser        plan:library seq:1
-  D14     the handover re-asks at every percent
+  D14     the handover re-asks at every percent            handover/19                 OPEN
   D15     the ASK display
   D16     the dependency budget       plan:governance seq:5
   D17     the handover lag            plan:handover seq:17
@@ -61,14 +62,16 @@ RATIFIED - the owner has used these numbers himself.
   D20     an id in a result opens the item pane   plan:builder seq:13
   D21     the result card names the command       plan:builder seq:14
   D22     Run removed from the Composer           plan:builder seq:15
-  D23     pointers not claims - convention adopted, check declined
+  D23     pointers not claims - convention adopted, check declined   handover/16       OPEN
   D24-D26 the help skeleton, the worked lines, the cross-references
   D27     the help tested for truth   plan:library seq:6                       OPEN
   D28     both READMEs               plan:docsys seq:11                        OPEN (needs D27)
   D29     code citing a retired item is named     plan:governance seq:6
-  D30     the browser suite off the demo corpus   plan:port seq:99 + seq:100    OPEN
+  D30     the browser suite off the demo corpus   plan:port seq:99 + seq:100, port/101,
+          rulings/63                                                                    OPEN
   D31     the 42 walk items measured and ruled    plan:walk seq:140
-  D32     Ask and Capture reviewed, not merged    plan:walk seq:141             OPEN
+  D32     Ask and Capture reviewed, not merged    plan:walk seq:141, walk/76, walk/100,
+          ui3/15                                                                        OPEN
   D33     the contradiction gate                  plan:contra seq:2, seq:3
   D34     restoring a session from its transcript plan:restore seq:1-2
   D35     a test declares what it rests on        plan:basis seq:1-2
@@ -79,7 +82,7 @@ RATIFIED - the owner has used these numbers himself.
           loop/1 IS FIRST AND IT IS NOT A PREFERENCE: drift is detectable only as a CHANGE, so
           instrumentation added after the first promotions has no baseline and no control.
   D37     the conversation archive rebuilt        plan:archive seq:1-54   CLOSED 2026-09-11, 54 of 54
-  D38     the corpus lifecycle is enforced        governance/8 + contra/4
+  D38     the corpus lifecycle is enforced        governance/8 + contra/4, rulings/65  OPEN
   D39     Export / import: make the screen true   DEFERRED by owner ruling, below every open D
   D40     a contrast ratio is computed against a colour that is not painted   STARTS NOW (D37 closed)
           The ground under a card is a radial gradient, not `--panel`/`--panel-2`/`--paper`; every
@@ -87,7 +90,26 @@ RATIFIED - the owner has used these numbers himself.
           with position. Read the ground FROM THE RENDER; `e2e/frame-paint.spec.ts` is the example.
   D41     the product rule store      docs/superpowers/specs/2026-09-10-product-rule-store-design.md
   D42     conversation retrieval      docs/superpowers/specs/2026-09-10-conversation-retrieval-design.md
+          recall/2 is phase 2                                                           OPEN
   D43     a lifecycle note stops making a summary stale
+  D44-D55 ASSIGNED 2026-09-12 to give today's open work a subject; every one of them is OPEN.
+  D44     the app matched against its design of record  port/93 + 98, walk/4 + 15 + 55,
+          ui-gates/1, ui2/5r
+  D45     every standing refusal says what would unblock it   walk/11 + 12 + 32 + 33,
+          ui2/10p (the recorded exception under this subject, and not work)
+  D46     absent is not zero - a blank says why it is blank   screens/24, walk/57 + 89 + 139
+  D47     an English sentence reaches the screen with no key  walk/43 + 102 + 105
+  D48     Configure composes a change, and something confirms it took   budget/6, ui2/13,
+          walk/14 + 18 + 106
+  D49     the budget simulator measures the real window   walk/8 + 59, ui1/17b
+  D50     a surface built to carry an explanation, and nothing fills it  screens/23, walk/39 + 119
+  D51     a fact kept by hand in a second place, derived instead   tuts/9, repaint/12,
+          rulings/33d + 49 + 53 + 55 + 66
+  D52     what reaches the audit record, and whether its stores are current   budget/15,
+          walk/66, live/24
+  D53     a delegated lane is stopped by a mechanism, not an instruction   live/20
+  D54     what a skill is, and whether our 39 are skills   review/3 + 4
+  D55     mycontext helps from the first second, unconfigured   hooks/22
 
 THE ORDER AFTER D37, RULED BY THE OWNER 2026-09-09: D38, then D33, then D36 (loop/1 first).
 The reasons are in the dated report; they were: D38 is small and half of it IS contra/4; D33 makes
@@ -100,4 +122,5 @@ IT - nothing is stored, so nothing can go stale, and the answer is current by co
 WHAT IS MISSING HERE, said rather than guessed: several ratified rows have no item reference,
 because the D number was used in conversation and the work was never filed against a plan/seq - D1
 to D5, D7, D13b, D14, D15, D18, D19, D23, D24-D26. Do not invent one to make the table look even.
-Fill a row only from evidence.
+Fill a row only from evidence. Where such a row now carries one, that reference is
+the OPEN work that widened the subject, not its origin.
