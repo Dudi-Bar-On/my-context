@@ -34,21 +34,36 @@
  * ── WHY A WHOLE-SCREEN PIXEL DIFF WOULD BE DATA NOISE, AND WHAT IS DONE ────
  *
  * seq:93 `needs` seq:94 — *"the fixture mirrors the mockup's own scene, so the
- * two are comparable"* — and seq:94 is marked done. **Its deliverable is not
- * available to this file.** seq:94 built `.demo-corpus`, and
+ * two are comparable"* — and seq:94 is marked done. **Its deliverable was not
+ * available to this file when it landed.** seq:94 built `.demo-corpus`, and
  * `INSTR-testing-happens-against-the-current-corpus-and-an-exception`
  * retired `.demo-corpus` on 2026-09-07 in the owner's own words: *"supersede
  * the e2e tests that uses demo corpus, it should not be used anymore"*.
  * `e2e/app.ts` carries that ruling in full.
  *
- * So the precondition seq:93 was waiting for exists as an ARGUMENT and not as
- * a corpus, and the argument is still right: this repository holds 1,085 items
+ * So the precondition seq:93 was waiting for existed as an ARGUMENT and not as
+ * a corpus, and the argument is still right: this repository holds ~1,098 items
  * where the mockup's scene holds a handful, so an unrestricted diff of a
  * content column is a picture of how much corpus there is. It would be a large
- * red number with no defect in it.
+ * red number with no defect in it. **Measured on the first walk, 2026-09-11: 7
+ * of 21 screens comparable, 14 refused, and 11 of those refusals were scale
+ * and nothing else.**
  *
- * What this file does instead is diff **by region**, and only report the
- * regions where a difference can mean something:
+ * ── AND SINCE 2026-09-11, A SECOND SCALE THAT IS NOT A FIXTURE ─────────────
+ *
+ * `e2e/reduce.ts` builds a second throwaway twin: the SAME corpus, reduced by
+ * code to a bounded core sample of itself — real items, real ids, real
+ * relations, real repository files, nothing authored, deleted with the test.
+ * The walk asks full scale FIRST and consults the reduced twin only where full
+ * scale refuses, so a screen comparable against the corpus as it stands stays
+ * measured against the corpus as it stands. Every finding carries the `scale`
+ * it was taken at, because a difference measured at one scale is not a claim
+ * about the other. Read `e2e/reduce.ts` before changing any of it: it carries
+ * the whole argument, including the one sentence of the owner's exception that
+ * this widens and that he has not ruled on.
+ *
+ * What this file does with the content column either way is diff **by
+ * region**, and only report the regions where a difference can mean something:
  *
  *   `hdr`    the header — the same controls on both sides, data-independent
  *            except for one session label. Fully comparable.
@@ -95,11 +110,13 @@ import { chromium, test as plain } from '@playwright/test';
 import type { Browser, Page } from '@playwright/test';
 import { mkdirSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
-import { seededTest, expect } from './scratch-corpus.ts';
+import { openSeeded, scratchCorpus, seededTest, expect } from './scratch-corpus.ts';
 import {
   TIGHT_BUDGETS, draftInQueue, driftedSource, pendingRevision, procedures, realInjections,
   seeds, squeezeBudgets,
 } from './seeds.ts';
+import { MOCKUP_SCALE, coreSample, describeTwin } from './reduce.ts';
+import { startUiChild } from '../test/ui/helpers.ts';
 import { MOCKUP_URL } from './mockup.ts';
 import { settleScreen } from './settle.ts';
 import {
@@ -107,14 +124,26 @@ import {
   type Cluster, type DiffResult, type Raster, type Rect,
 } from './pixel-diff.ts';
 
-const test = seededTest(seeds(
+/**
+ * **The STATES both twins are given, named once and used twice.**
+ *
+ * A screen that draws nothing cannot be compared at any scale, so the same
+ * five states go into the full-scale twin and the reduced one. Naming them in
+ * one list is not tidiness: two lists that drifted apart would mean the two
+ * scales were showing different SCENES as well as different amounts, and every
+ * screen the walk then reported as comparable-at-mockup-scale would be
+ * comparable for the wrong reason.
+ */
+const SEED_STATES = [
   squeezeBudgets(TIGHT_BUDGETS),
   draftInQueue(),
   pendingRevision(),
   driftedSource(),
   procedures(),
   realInjections(),
-));
+] as const;
+
+const test = seededTest(seeds(...SEED_STATES));
 
 const REPO = path.resolve(import.meta.dirname, '..');
 
@@ -863,11 +892,44 @@ interface RegionFinding {
   readonly skipped: string | null;
 }
 
+/**
+ * **WHICH TWIN a screen was measured against.**
+ *
+ * `full` is this repository's corpus as it stands. `reduced` is the bounded
+ * core sample of it (`e2e/reduce.ts`) — the same items, a subset of them.
+ * Every finding carries this, because a difference measured at one scale is
+ * not a claim about the other and a report that did not say which would be
+ * two measurements wearing one name.
+ */
+type Scale = 'full' | 'reduced';
+
 interface ScreenFinding {
   readonly screen: string;
   readonly inAppRail: boolean;
   readonly appNodes: number;
+  /** What the reduced twin drew, when the full-scale twin was not comparable. */
+  readonly reducedNodes: number | null;
   readonly mockNodes: number;
+  readonly scale: Scale;
+  /**
+   * The refusal the app drew INSTEAD of the screen, when it drew one.
+   *
+   * `STD-a-measured-zero-is-drawn-and-named-an-unmeasured-thing-is`, applied to
+   * this instrument: "this screen draws 5 nodes" and "this screen's endpoint
+   * refused and it drew the refusal" are two different facts, and a node count
+   * alone reports the second as the first. Measured 2026-09-11 on the walk
+   * itself — the full-scale coverage screen drew **5** nodes on one run and
+   * **19,269** on the next, and the report said only "0.04x", which reads as a
+   * starved screen rather than as an endpoint that answered with an error. So
+   * the flake was invisible AS a flake: the two runs looked like two
+   * measurements of the same screen.
+   *
+   * **It found one on its first run**: at mockup scale the `watch` screen
+   * draws `errorNote`'s own wording with an empty message after it, while the
+   * rest of the screen renders — so `watch` is counted COMPARABLE with a
+   * refusal inside what was compared, and now says so.
+   */
+  readonly refusal: string | null;
   readonly settled: boolean;
   readonly bodyComparable: boolean;
   readonly bodyReason: string;
@@ -923,14 +985,34 @@ function bodyComparable(appNodes: number, mockNodes: number): { ok: boolean; why
 
 test('the walk: every screen, one viewport, region by region', async ({ app }, info) => {
   // **Bounded, and the bound is a budget rather than a hope.** 21 screens x
-  // two pages x a settle loop, plus a 1280x720 decode and diff per region.
-  // Measured shape: the settle loop dominates at 400ms a sample.
-  test.setTimeout(600_000);
+  // two pages x a settle loop, plus a 1280x720 decode and diff per region —
+  // and, since the second scale landed, a THIRD page settled on each of the
+  // screens the full-scale twin cannot compare, plus one more corpus copy and
+  // two more rebuilds (~25s, measured 2026-09-11) to build it.
+  test.setTimeout(900_000);
   const project = info.project.name;
 
+  // ── THE SECOND SCALE ─────────────────────────────────────────────────────
+  //
+  // `plan:port seq:93` needs seq:94, and seq:94's deliverable — a corpus sized
+  // to the mockup's own scene — was retired with `.demo-corpus`. This twin is
+  // the replacement that is not a fixture: the SAME corpus, reduced to a
+  // bounded core sample of itself by `e2e/reduce.ts`, with the SAME states
+  // seeded into it. Read that file before changing this: it carries the whole
+  // argument, including the one sentence of the owner's exception it widens.
+  //
+  // **Built inside the test rather than as a second fixture**, because the
+  // report is one report: a screen is comparable if there EXISTS a derived
+  // scale at which the two sides draw comparable amounts, and deciding that
+  // per screen needs both twins open at once.
+  const reducedScratch = scratchCorpus(seeds(coreSample(MOCKUP_SCALE), ...SEED_STATES));
+  const reducedScale = describeTwin(reducedScratch.root);
+  const reducedHarness = await startUiChild(reducedScratch.root, [], reducedScratch.env);
+  const reducedPage = await app.page.context().newPage();
   const mockupPage = await app.page.context().newPage();
   const findings: ScreenFinding[] = [];
   try {
+    await openSeeded(reducedPage, reducedHarness);
     await mockupPage.goto(MOCKUP_URL);
     await mockupPage.waitForLoadState('domcontentloaded');
 
@@ -973,28 +1055,69 @@ test('the walk: every screen, one viewport, region by region', async ({ app }, i
 
       const inAppRail = appRail.includes(screen);
       await app.page.evaluate((s) => { location.hash = `#/${s}`; }, screen);
-      const walk = await settleScreen(app.page, screen, { samples: 16 });
+      let walk = await settleScreen(app.page, screen, { samples: 16 });
       const appNodes = walk.count;
+
+      // ── WHICH SCALE THIS SCREEN IS MEASURED AT ───────────────────────────
+      //
+      // Full scale first, always, and the reduced twin is consulted ONLY when
+      // full scale refuses. Two reasons, and neither is cost:
+      //
+      //   1. **Monotonic.** A screen comparable against the corpus as it
+      //      stands stays measured against the corpus as it stands. A second
+      //      scale that could move a screen OFF the real corpus would be a
+      //      convenience dressed as a measurement.
+      //   2. **The design is not drawn at one scale.** Its sections run from
+      //      22 nodes (`capture`) to 546 (`decay`), so no single corpus size
+      //      makes every screen comparable and pretending otherwise is how a
+      //      screen gets made to LOOK comparable. Asking BOTH and saying which
+      //      answered is the honest version.
+      let scale: Scale = 'full';
+      let appPage = app.page;
+      let comparable = bodyComparable(appNodes, mockNodes);
+      let reducedNodes: number | null = null;
+      if (!comparable.ok && mockNodes > 0) {
+        await reducedPage.evaluate((s) => { location.hash = `#/${s}`; }, screen);
+        const reducedWalk = await settleScreen(reducedPage, screen, { samples: 16 });
+        reducedNodes = reducedWalk.count;
+        const atScale = bodyComparable(reducedNodes, mockNodes);
+        if (atScale.ok) {
+          scale = 'reduced';
+          appPage = reducedPage;
+          walk = reducedWalk;
+          comparable = {
+            ok: true,
+            why: `${atScale.why}, on a twin reduced to ${reducedScale.items} items and `
+              + `${reducedScale.files} files — at full scale it draws ${appNodes}`,
+          };
+        } else {
+          comparable = {
+            ok: false,
+            why: `${comparable.why}; reduced to ${reducedScale.items} items and `
+              + `${reducedScale.files} files it draws ${reducedNodes} (${
+                (reducedNodes / mockNodes).toFixed(2)}x), so neither scale is comparable`,
+          };
+        }
+      }
 
       // **BEFORE the boxes and before the pictures.** A modal on either side
       // moves nothing (it is `position:fixed`) but covers the middle of the
       // content column, and a capture taken under one is a capture of the
       // modal. See `quiesce`.
       const bannered = {
-        app: await quiesce(app.page),
+        app: await quiesce(appPage),
         mockup: await quiesce(mockupPage),
       };
       if (bannered.app !== 'clear' || bannered.mockup !== 'clear') {
-        await app.page.waitForTimeout(120);
+        await appPage.waitForTimeout(120);
       }
 
       const [appBoxes, mockBoxes] = await Promise.all([
-        boxes(app.page, screen), boxes(mockupPage, screen),
+        boxes(appPage, screen), boxes(mockupPage, screen),
       ]);
-      const appShot = await shot(app.page);
+      const appShot = await shot(appPage);
       const mockShot = await shot(mockupPage);
 
-      const comparable = bodyComparable(appNodes, mockNodes);
       const regions: RegionFinding[] = [];
 
       for (const region of [...REGIONS, 'section'] as const) {
@@ -1084,7 +1207,7 @@ test('the walk: every screen, one viewport, region by region', async ({ app }, i
           const base = { ...c, pageX, pageY };
           if (named.length >= 4) { named.push({ ...base, app: null, mockup: null }); continue; }
           const [appAt, mockAt] = await Promise.all([
-            app.page.evaluate(AT_POINT, [pageX, pageY] as const),
+            appPage.evaluate(AT_POINT, [pageX, pageY] as const),
             mockupPage.evaluate(AT_POINT, [pageX, pageY] as const),
           ]);
           named.push({
@@ -1125,7 +1248,7 @@ test('the walk: every screen, one viewport, region by region', async ({ app }, i
       // one `data-cmdkey` on Doctor). Rather than assert those three, this
       // asks the general question on every screen: what does the app draw
       // twice that the mockup draws once?
-      const duplicates = await app.page.evaluate((s) => {
+      const duplicates = await appPage.evaluate((s) => {
         const section = document.querySelector(`[data-p="${s}"]`);
         if (section === null) return [];
         const out: string[] = [];
@@ -1221,8 +1344,22 @@ test('the walk: every screen, one viewport, region by region', async ({ app }, i
         return out;
       }, screen);
 
+      // **WHAT THE APP DREW INSTEAD, when it drew a refusal.** `errorNote`
+      // (`public/screens/parts.js`) renders `<p class="small spill">`, and six
+      // screens draw it in place of their content when their endpoint throws.
+      const refusal = await appPage.evaluate((s) => {
+        const note = document.querySelector(`[data-p="${s}"] p.spill`);
+        const text = (note?.textContent ?? '').trim();
+        return text === '' ? null : text.slice(0, 300);
+      }, screen);
+
       const notes: string[] = [];
       if (!inAppRail) notes.push('the design of record names this screen; the app rail does not');
+      if (refusal !== null) {
+        notes.push(`THE APP DREW A REFUSAL rather than this screen's content, at ${scale} scale: `
+          + `"${refusal}" — its node count below is a count of the refusal, and a small number `
+          + 'here means an endpoint said no rather than a screen with little to draw');
+      }
       if (bannered.mockup !== 'clear') {
         notes.push('the mockup had raised its own demo "server has exited" banner '
           + '(web-ui-mockup.html, the `beats===60` interval) — '
@@ -1235,14 +1372,22 @@ test('the walk: every screen, one viewport, region by region', async ({ app }, i
           + 'is the app\'s own state and not a demo timer; worth reading `serverOutput`');
       }
       findings.push({
-        screen, inAppRail, appNodes, mockNodes, settled: walk.settled,
+        screen, inAppRail, appNodes, reducedNodes, mockNodes, scale, refusal, settled: walk.settled,
         bodyComparable: comparable.ok, bodyReason: comparable.why,
         regions, duplicates,
         note: notes.length === 0 ? null : notes.join('; '),
       });
     }
   } finally {
+    // **Every page, then the server, then the twin — and the twin LAST,
+    // because Windows keeps a mandatory lock on a SQLite file the server has
+    // open.** `dispose` retries and says so when it still fails; 9.59 GB of
+    // leaked twins were swept off this machine on 2026-09-11 and the leak was
+    // exactly this teardown running before the handle was released.
     await mockupPage.close();
+    await reducedPage.close();
+    await reducedHarness.stop();
+    reducedScratch.dispose();
   }
 
   const dir = path.join(OUT_ROOT, project);
@@ -1251,6 +1396,39 @@ test('the walk: every screen, one viewport, region by region', async ({ app }, i
   writeFileSync(path.join(dir, 'walk.md'), asMarkdown(findings, project));
   console.log(`[pixel-parity] ${project}: walked ${findings.length} screens → ${dir}`);
   console.log(summarise(findings));
+
+  // **THE HEADLINE NUMBER, PRINTED, because it is the one this instrument is
+  // judged on**: how many of the twenty-one can be compared to the design at
+  // all. Broken down by which scale answered, so a reader can see how much of
+  // the gain is the reduced twin's and how much was already there.
+  // **AND THE CENSUS THE PROPERTY GUARD IS JUDGED ON.**
+  //
+  // `asMarkdown` prints a property comparison only where the two sides name the
+  // SAME element. Printing how many clusters that leaves out is what stops the
+  // guard from being a silent behaviour change: a reader of the report can see
+  // at once how much of the old output was comparing two different things.
+  const named = findings.flatMap((f) => f.regions)
+    .flatMap((r) => r.pixels?.clusters ?? [])
+    .filter((c) => c.app !== null && c.mockup !== null);
+  const mismatched = named.filter((c) => c.app!.what !== c.mockup!.what);
+  const PROPS = ['colour', 'background', 'font', 'padding', 'border', 'radius'] as const;
+  const linesFor = (list: typeof named): number => list.reduce(
+    (n, c) => n + PROPS.filter((k) => c.app![k] !== c.mockup![k]).length, 0);
+  console.log(`[pixel-parity] ${project}: PROPERTY LINES — ${named.length} clusters name an `
+    + `element on both sides, ${mismatched.length} of them name DIFFERENT elements; `
+    + `${linesFor(named)} property lines would have been printed unguarded, `
+    + `${linesFor(named.filter((c) => c.app!.what === c.mockup!.what))} are printed now, `
+    + `${linesFor(mismatched)} suppressed as not-the-same-element`);
+
+  const atFull = findings.filter((f) => f.bodyComparable && f.scale === 'full');
+  const atReduced = findings.filter((f) => f.bodyComparable && f.scale === 'reduced');
+  const refused = findings.filter((f) => !f.bodyComparable);
+  console.log(`[pixel-parity] ${project}: COMPARABLE ${atFull.length + atReduced.length}/${
+    findings.length} — ${atFull.length} against the corpus as it stands (${
+    atFull.map((f) => f.screen).join(', ')}), ${atReduced.length} against a twin reduced to ${
+    reducedScale.items} items / ${reducedScale.files} files (${
+    atReduced.map((f) => f.screen).join(', ')}); ${refused.length} refused (${
+    refused.map((f) => f.screen).join(', ')})`);
 
   // **This file ends at an inventory**, exactly as `tree-parity.spec.ts` does
   // and for the owner's stated reason: a gate written before he has seen the
@@ -1262,6 +1440,31 @@ test('the walk: every screen, one viewport, region by region', async ({ app }, i
     + 'difference reported for it is a measurement of the clock')
     .toEqual([]);
   expect(findings.length, 'the mockup rail declared no screens to walk').toBeGreaterThan(0);
+
+  // **AND THE SECOND TWIN MUST ACTUALLY BE SMALLER THAN THE FIRST.**
+  //
+  // Every `scale: 'reduced'` finding above claims a comparison taken against a
+  // bounded core sample. If `coreSample` silently did nothing — a changed
+  // corpus layout, a rename, a swallowed error — the reduced twin would be a
+  // second copy of the corpus at full scale, every one of those screens would
+  // have been compared at 1,098 items after all, and the walk would say so
+  // nowhere. This is the one line that makes that impossible.
+  expect(
+    { items: reducedScale.items < 200, files: reducedScale.files < 200 },
+    `the reduced twin holds ${reducedScale.items} items and ${reducedScale.files} files, which `
+    + 'is not a reduction of a 1,098-item corpus. Every screen this walk reported as comparable '
+    + 'at mockup scale was compared at FULL scale instead, and the scale column is a fiction.',
+  ).toEqual({ items: true, files: true });
+
+  // And it must still be a corpus rather than a husk: a twin with no items
+  // draws nothing everywhere, and "drew nothing" is refused by
+  // `bodyComparable` rather than reported as a difference — so an empty twin
+  // would quietly cost screens instead of gaining them.
+  expect(
+    reducedScale.items,
+    'the reduced twin holds no items at all. Every screen on it draws the zero-data view, which '
+    + 'is a different picture from the design rather than a smaller one.',
+  ).toBeGreaterThan(10);
 });
 
 
@@ -1274,7 +1477,9 @@ function summarise(findings: readonly ScreenFinding[]): string {
       .map((r) => `${r.region}=${r.pixels!.solid}px/${r.pixels!.clusters.length}reg`);
     const bits = [
       `${f.screen}${f.inAppRail ? '' : ' [NOT IN APP RAIL]'}`,
-      `nodes ${f.appNodes}/${f.mockNodes}`,
+      `nodes ${f.appNodes}${f.reducedNodes === null ? '' : `/${f.reducedNodes}reduced`}/${
+        f.mockNodes}`,
+      `at ${f.scale} scale`,
       f.bodyComparable ? 'body COMPARABLE' : 'body NOT COMPARABLE',
       geo.length > 0 ? `geom ${geo.length}` : '',
       solid.length > 0 ? `solid ${solid.join(' ')}` : '',
@@ -1292,7 +1497,9 @@ function asMarkdown(findings: readonly ScreenFinding[], project: string): string
   const out: string[] = [
     `# Pixel parity — ${project} — 1280x720, deviceScaleFactor 1`,
     '',
-    'App on a seeded throwaway twin of this repository\'s corpus; mockup over `file://`.',
+    'App on a seeded throwaway twin of this repository\'s corpus — at FULL scale, or, where',
+    'that refuses a comparison, on a twin reduced to a bounded core sample of the same corpus',
+    '(`e2e/reduce.ts`). Every screen below says which. Mockup over `file://`.',
     'Regions compared at a shared origin and size. `solid` counts pixels surviving the',
     'erosion in `e2e/pixel-diff.ts` — a one-pixel rasterisation fringe cannot reach it.',
     '',
@@ -1300,7 +1507,10 @@ function asMarkdown(findings: readonly ScreenFinding[], project: string): string
   for (const f of findings) {
     out.push(`## ${f.screen}`, '');
     if (f.note !== null) out.push(`**NOTE:** ${f.note}`, '');
-    out.push(`- nodes: app ${f.appNodes}, mockup ${f.mockNodes}`);
+    out.push(`- nodes: app ${f.appNodes}${
+      f.reducedNodes === null ? '' : ` (${f.reducedNodes} at mockup scale)`}, mockup ${
+      f.mockNodes}`);
+    out.push(`- measured against the **${f.scale}**-scale twin`);
     out.push(`- body: ${f.bodyComparable ? 'COMPARABLE' : 'NOT COMPARABLE'} — ${f.bodyReason}`);
     if (f.duplicates.length > 0) {
       out.push('- **drawn more than once by the app:**');
@@ -1331,9 +1541,45 @@ function asMarkdown(findings: readonly ScreenFinding[], project: string): string
           body.push(`    - app:    ${c.app === null ? 'nothing' : c.app.what}`);
           body.push(`    - mockup: ${c.mockup === null ? 'nothing' : c.mockup.what}`);
           if (c.app !== null && c.mockup !== null) {
-            for (const key of ['colour', 'background', 'font', 'padding', 'border', 'radius'] as const) {
-              if (c.app[key] === c.mockup[key]) continue;
-              body.push(`    - ${key}: app \`${c.app[key]}\` vs mockup \`${c.mockup[key]}\``);
+            // **THE PROPERTY TABLE IS ONLY PRINTED WHEN THE TWO SIDES NAME THE
+            // SAME ELEMENT — and the missing line manufactured a whole lane's
+            // premise.**
+            //
+            // `AT_POINT` reads `elementFromPoint` at ONE page coordinate on
+            // each page. When the two pages are even slightly out of step, that
+            // coordinate lands on a `<b>` in the app and a `<span>` in the
+            // mockup, and a table headed "app `700 13px` vs mockup `400 12px`"
+            // then reads as a styling defect between two things that were never
+            // the same thing.
+            //
+            // **Measured 2026-09-11, both engines, identical counts: of 217
+            // named clusters, 152 name a DIFFERENT element on each side, and
+            // 479 of the 503 printed property lines — 95.2% — compared two
+            // elements that are not the same element.** A lane was dispatched
+            // on one of them: "the session-picker label is bold/bright where
+            // the design is regular/dim". Measured on the CORRESPONDING
+            // elements, `button.sel`, `button.sel > b` and `button.sel > span`
+            // are identical on all six properties, and `.sel`/`.sel b` are
+            // byte-identical between `styles.css` and the mockup. The whole
+            // finding was one coordinate landing on two tags.
+            //
+            // **The cluster is NOT suppressed, and that is deliberate.** A
+            // region where the two pages draw different elements is often
+            // exactly where a real difference lives — the geometry above is
+            // real and stays. It is only the property COMPARISON that is
+            // invalid, so the comparison is replaced by the reason it is
+            // invalid rather than by silence.
+            if (c.app.what !== c.mockup.what) {
+              body.push('    - **the two sides name DIFFERENT elements at this point, so their '
+                + 'properties are not comparable.** The region is real; read it as "these two '
+                + 'pages draw different things here", never as "this property differs". To '
+                + 'compare properties, find the element on each side that corresponds and read '
+                + 'those.');
+            } else {
+              for (const key of ['colour', 'background', 'font', 'padding', 'border', 'radius'] as const) {
+                if (c.app[key] === c.mockup[key]) continue;
+                body.push(`    - ${key}: app \`${c.app[key]}\` vs mockup \`${c.mockup[key]}\``);
+              }
             }
           }
         }

@@ -19,6 +19,10 @@
  *   `realInjections`   a session really has an injection history, a cleared
  *                      one really keeps it with no window, and an id nothing
  *                      wrote really reports a measured zero.
+ *   `coreSample`       the SCALE half, added 2026-09-11 for `plan:port
+ *                      seq:93`: a twin really is a bounded subset of this
+ *                      corpus, it is still a corpus, and reducing it invents
+ *                      none of the three doctor findings a subset can invent.
  *
  * If one of those goes red here, the specs that lean on it are measuring
  * nothing, and this file says which one rather than leaving five files to fail
@@ -43,7 +47,7 @@
  * function that walked nothing at all would pass the assertion above forever.
  */
 import { createHash } from 'node:crypto';
-import { existsSync, readFileSync, readdirSync, statSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, readdirSync, statSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import { test as base, expect } from '@playwright/test';
 import type { Page } from '@playwright/test';
@@ -51,6 +55,8 @@ import { CORPUS } from './app.ts';
 import { openSeeded, scratchCorpus, type Scratch } from './scratch-corpus.ts';
 import { startUiChild, type UiHarness } from '../test/ui/helpers.ts';
 import { DIR_NAME } from '../src/core/workspace.ts';
+import { coverageFiles } from '../src/ui/read-model.ts';
+import { MOCKUP_SCALE, coreSample, describeTwin, type TwinScale } from './reduce.ts';
 import {
   DRIFTED_DOC, DRIFTED_REF_TITLE, SEEDED_CLEARED, SEEDED_DRAFT_TITLE, SEEDED_LONG, SEEDED_NEVER,
   TIGHT_BUDGETS, draftInQueue, driftedSource, pendingRevision, realInjections, seeds,
@@ -113,8 +119,40 @@ function differences(before: Map<string, string>, after: Map<string, string>): s
  * parallel sibling reading the same one would see that write. One worker, in
  * order, and the write happens after everything that reads.
  */
+/**
+ * **Every repository file the coverage walk can see, by digest.**
+ *
+ * `snapshotAuthored` guards the CORPUS, and until 2026-09-11 that was the
+ * whole of what a twin could damage: every seed wrote inside `.my_context`.
+ * `coreSample` is the first one that DELETES, and what it deletes is the
+ * repository around the corpus — `src/`, `test/`, `e2e/`, `docs/`. A bug there
+ * would take the owner's source and leave every assertion in test 5 green,
+ * because not one of those paths is under `.my_context`.
+ *
+ * So the reduced twin's proof snapshots what `coverageFiles` walks — the
+ * coverage screen's own walk, and therefore exactly the set `coreSample`
+ * deletes from.
+ */
+function snapshotRepoFiles(root: string): Map<string, string> {
+  const out = new Map<string, string>();
+  for (const rel of coverageFiles(root).files) {
+    try {
+      out.set(rel, createHash('sha256')
+        .update(readFileSync(path.join(root, ...rel.split('/')))).digest('hex'));
+    } catch {
+      // A file another lane is rewriting mid-walk is that lane's business.
+      out.set(rel, 'unreadable-at-snapshot-time');
+    }
+  }
+  return out;
+}
+
 const test = base.extend<object, {
   twin: { scratch: Scratch; harness: UiHarness; before: Map<string, string> };
+  reduced: {
+    scratch: Scratch; harness: UiHarness; scale: TwinScale;
+    beforeCorpus: Map<string, string>; beforeFiles: Map<string, string>;
+  };
 }>({
   twin: [async ({}, use) => {
     const before = snapshotAuthored(CORPUS);
@@ -128,6 +166,36 @@ const test = base.extend<object, {
     const harness = await startUiChild(scratch.root, [], scratch.env);
     try {
       await use({ scratch, harness, before });
+    } finally {
+      await harness.stop();
+      scratch.dispose();
+    }
+  }, { scope: 'worker', timeout: 180_000 }],
+
+  /**
+   * **A twin reduced to the mockup's own scale — the SCALE half of the
+   * exception, and the only seed that deletes anything.**
+   *
+   * Built separately from `twin` rather than folded into it, because the four
+   * tests above assert states on a FULL-scale corpus and a reduced one would
+   * change what they are measuring. Two twins is the honest cost of testing
+   * two different claims.
+   */
+  reduced: [async ({}, use) => {
+    const beforeCorpus = snapshotAuthored(CORPUS);
+    const beforeFiles = snapshotRepoFiles(CORPUS);
+    const scratch = scratchCorpus(seeds(
+      coreSample(MOCKUP_SCALE),
+      squeezeBudgets(TIGHT_BUDGETS),
+      draftInQueue(),
+      pendingRevision(),
+      driftedSource(),
+      realInjections(),
+    ));
+    const scale = describeTwin(scratch.root);
+    const harness = await startUiChild(scratch.root, [], scratch.env);
+    try {
+      await use({ scratch, harness, scale, beforeCorpus, beforeFiles });
     } finally {
       await harness.stop();
       scratch.dispose();
@@ -317,6 +385,99 @@ test('every authored byte of THIS repository is identical after a seeded twin wa
   ).toEqual([]);
 });
 
+/* ══ 5b · THE SCALE HALF — A BOUNDED CORE SAMPLE ═══════════════════════════ */
+
+/**
+ * **The three findings a SUBSET can invent, and none of them may appear.**
+ *
+ * A reduction that drops one end of a relation answers `orphan_relation`; one
+ * that drops a `needs` target answers `needs_unresolved`; one that deletes the
+ * last file a `scope:` glob matches answers `dead_scope`. The owner's corpus
+ * answered **none of those three** on 2026-09-11 (81 findings, the codes being
+ * task_unverified, body_disagrees_with_meta, state_unaudited, contradiction_
+ * pair, open_question_blocks, citation_form, reference_no_source,
+ * body_ends_unfinished and source_drift), so any of them on a reduced twin is
+ * the reduction inventing a defect — and the pixel walk would then report a
+ * manufactured finding as a parity finding.
+ *
+ * **This is the gate that caught the real one.** A first version of
+ * `e2e/reduce.ts` grouped items over relations alone; the twin it built
+ * answered `needs_unresolved` for `archive/47` and `builder/1b`.
+ */
+test('reducing a twin invents none of the three findings a subset can invent', async ({ page, reduced }) => {
+  await openSeeded(page, reduced.harness);
+  const { findings } = await api<{ findings: Finding[] }>(page, '/api/doctor');
+  const invented = findings
+    .filter((f) => ['orphan_relation', 'needs_unresolved', 'dead_scope'].includes(f.code))
+    .map((f) => `${f.code} · ${f.item ?? '(no item)'}`)
+    .sort();
+
+  expect(
+    invented,
+    'a reduced twin must answer none of these three codes. Each one means the sample cut a link '
+    + 'the owner\'s corpus does not have cut — and the instrument reading that twin would file '
+    + 'the reduction itself as a defect in the product.',
+  ).toEqual([]);
+});
+
+/**
+ * A sample small enough to compare against the design, and still a corpus.
+ *
+ * Both halves matter and they pull in opposite directions: a twin that did not
+ * shrink leaves every screen at 1,098 items and the walk's `scale` column is a
+ * fiction; a twin reduced to nothing draws the zero-data view everywhere,
+ * which `bodyComparable` refuses as "the app drew nothing" — so it would COST
+ * screens rather than gain them.
+ */
+test('a reduced twin is bounded, and is still a corpus with every category in it', async ({ reduced }) => {
+  expect(
+    {
+      bounded: reduced.scale.items < 200 && reduced.scale.files < 200,
+      standing: reduced.scale.items > 10,
+      categories: reduced.scale.categories >= 10,
+      edges: reduced.scale.liveRelations > 0,
+    },
+    `the reduced twin holds ${reduced.scale.items} items in ${reduced.scale.categories} `
+    + `categories, ${reduced.scale.files} walked files and ${reduced.scale.liveRelations} live `
+    + 'relations. It must be all four things at once: small enough that the coverage and doctor '
+    + 'screens draw a comparable amount, large enough that no screen falls back to its zero-data '
+    + 'view, wide enough that no screen reads a missing category as an absence, and linked '
+    + 'enough that the graph screen has an edge to draw.',
+  ).toEqual({ bounded: true, standing: true, categories: true, edges: true });
+});
+
+/**
+ * **AND THE REPOSITORY IS UNTOUCHED, WHICH IS A WIDER CLAIM THAN TEST 5's.**
+ *
+ * `coreSample` is the first seed that deletes, and what it deletes is the
+ * repository AROUND the corpus. Test 5 hashes `.my_context` and would stay
+ * green while `src/` was removed from under it, so this hashes what
+ * `coverageFiles` walks — precisely the set the reduction deletes from.
+ */
+test('every repository file of THIS checkout is identical after a REDUCED twin was built and driven', async ({ page, reduced }) => {
+  await openSeeded(page, reduced.harness);
+  await api<Selection>(page, '/api/select?event=session-start&cold=1');
+
+  expect(
+    reduced.beforeFiles.size,
+    'the repository walk must actually see this checkout — an empty walk would satisfy the '
+    + 'comparison below forever.',
+  ).toBeGreaterThan(500);
+
+  expect(
+    differences(reduced.beforeFiles, snapshotRepoFiles(CORPUS)),
+    'building and driving a REDUCED twin deletes about 1,500 files — inside the copy. Anything '
+    + 'named here was deleted or rewritten in the OWNER\'S CHECKOUT instead, which is the one '
+    + 'way this reduction could do real damage. If a path here is a file another lane is editing '
+    + 'right now, this is reporting that lane; check before reading it as a leak.',
+  ).toEqual([]);
+
+  expect(
+    differences(reduced.beforeCorpus, snapshotAuthored(CORPUS)),
+    'and the corpus half, unchanged: "Your real corpus is never touched."',
+  ).toEqual([]);
+});
+
 /* ══ 6 · AND THE COMPARISON ITSELF ═════════════════════════════════════════ */
 
 test('the comparison is not vacuous: it names a file on a tree that really changed', async ({ twin }) => {
@@ -334,6 +495,33 @@ test('the comparison is not vacuous: it names a file on a tree that really chang
     'snapshotAuthored must NOTICE a file appearing under items/. If this is empty, the '
     + 'byte-identical assertion above is measuring nothing and must not be believed.',
   ).toEqual(['items/note/zz-proof-of-noticing.md']);
+});
+
+/**
+ * **The same proof for the REPOSITORY half, which is a different walk.**
+ *
+ * `snapshotAuthored` hashes `.my_context`; `snapshotRepoFiles` hashes what
+ * `coverageFiles` walks, and nothing above proves the second one can fail.
+ * Without this, a `coverageFiles` that returned an empty list — a renamed
+ * skip-set, a changed signature, a swallowed throw — would keep the reduced
+ * twin's "every repository file is identical" assertion green while
+ * `coreSample` deleted the owner's `src/`.
+ *
+ * A `.md` under `reports/`, because the walk skips `.my_context` and nothing
+ * else: the marker has to land somewhere the walk really goes.
+ */
+test('the repository comparison is not vacuous either: it names a file on a tree that really changed', ({ twin }) => {
+  const before = snapshotRepoFiles(twin.scratch.root);
+  const marker = path.join(twin.scratch.root, 'reports', 'zz-proof-of-noticing.md');
+  mkdirSync(path.dirname(marker), { recursive: true });
+  writeFileSync(marker, '# not a report, a proof that the repository walk notices a byte\n');
+
+  expect(
+    differences(before, snapshotRepoFiles(twin.scratch.root)),
+    'snapshotRepoFiles must NOTICE a file appearing in the repository. If this is empty, the '
+    + 'reduced twin\'s "every repository file is identical" assertion is measuring nothing, and '
+    + 'the reduction — which deletes about 1,500 repository files — is unguarded.',
+  ).toEqual(['reports/zz-proof-of-noticing.md']);
 });
 
 /* ══ 7 · AND THE COPY IS ACTUALLY GONE ═════════════════════════════════════ */
