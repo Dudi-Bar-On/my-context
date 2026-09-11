@@ -1061,7 +1061,8 @@ export interface AuditRecord {
    * **ABSENT means nothing pinned was dropped**, and never an empty-shaped
    * claim: a record written before this field existed and a record for a tier
    * that fitted perfectly are both silent here, and both are correctly read as
-   * "no undelivered pinned item is recorded". `STD-absent-vs-zero` — a reader
+   * "no undelivered pinned item is recorded".
+   * `STD-a-measured-zero-is-drawn-and-named-an-unmeasured-thing-is` — a reader
    * that turns an absence into `{ ids: [], cost: 0 }` would be asserting a
    * measurement nobody took.
    *
@@ -1136,7 +1137,8 @@ export interface AuditRecord {
    * wrong is dangerous.** `null` means the run did not finish under this
    * process's observation — it was killed on the run timeout, or (on an
    * `execute` row) the row was written before the process exited.
-   * `0` is a positive claim that the command succeeded. `STD-absent-vs-zero`
+   * `0` is a positive claim that the command succeeded.
+   * `STD-a-measured-zero-is-drawn-and-named-an-unmeasured-thing-is`
    * governs hardest here because the wrong reading is the reassuring one: a
    * reader that defaults a missing exit code to 0 reports "it worked" for a run
    * nobody watched end. So the field is written explicitly as `null` rather than
@@ -1209,7 +1211,9 @@ export interface AuditRecord {
    * **`handoverState` is not derivable from the other two, and that is the
    * point of the task.** It is tempting to read the state off the absences —
    * no `handoverPath` means off, a path with no lines means missing — and that
-   * is exactly the inference `STD-absent-vs-zero` forbids: an absent key also
+   * is exactly the inference
+   * `STD-a-measured-zero-is-drawn-and-named-an-unmeasured-thing-is` forbids: an absent
+   * key also
    * means "written before this field existed", so every historical row would
    * silently become `off`. And the two values it would confuse are the two
    * that matter most: `off` is "nobody configured a handover", `missing` is

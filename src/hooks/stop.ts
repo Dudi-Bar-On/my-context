@@ -123,7 +123,8 @@ import {
  *     transcript scan, no directory walk, no spawn — spec §5 — because the
  *     platform genuinely waits on this hook before ending the turn. And with no
  *     status-line bridge there is no percentage: the mechanism stands down and
- *     says so once, rather than inventing one (`STD-absent-vs-zero`, and
+ *     says so once, rather than inventing one
+ *     (`STD-a-measured-zero-is-drawn-and-named-an-unmeasured-thing-is`, and
  *     `core/context-occupancy.ts` on why there is no transcript fallback).
  *
  * **No matcher, and none is possible.** `Stop` is absent from the matcher-query
@@ -545,8 +546,20 @@ function actClause(upkeep: Upkeep): string {
     return `; no UI server was answering, so one was started on port ${upkeep.port}`;
   }
   if (upkeep.did === 'restarted') {
-    return `; the UI server on port ${upkeep.port} reported its own code stale, so it was `
-      + 'stopped and started again';
+    const restarted = `; the UI server on port ${upkeep.port} reported its own code stale, so `
+      + 'it was stopped and started again';
+    // **The row says which of the two happened, because they are not the same
+    // event.** A restart whose replacement answered is routine. One whose
+    // replacement never answered is an OUTAGE the upkeep caused and could not
+    // undo, and on 2026-09-11 the only trace of five of them was a pid trail
+    // somebody happened to be watching. Counting the rows that carry this
+    // clause is how a rate becomes readable — `discardedWriteClause`'s argument,
+    // applied to the failure that actually costs the owner a screen.
+    return upkeep.replacementUnconfirmed === true
+      ? `${restarted} — and NOTHING was listening on that port when this turn ended, so the `
+        + 'replacement did not come up; the next turn will try again rather than waiting out '
+        + 'the five-minute spawn floor'
+      : `${restarted}, and the replacement was confirmed listening`;
   }
   if (upkeep.did === 'stood-down') {
     const after = upkeep.why === 'stale'

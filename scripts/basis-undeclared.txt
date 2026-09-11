@@ -274,9 +274,7 @@ test/core/teach.test.ts
 test/core/tutorial-manifest.test.ts
 test/core/ui-server-probe.test.ts
 test/core/ui-server-record.test.ts
-test/core/ui-server-upkeep.test.ts
 test/core/ui-sessions.test.ts
-test/core/vocabulary-graph.test.ts
 test/core/write-divergence.test.ts
 test/core/write-exclusive.test.ts
 test/docs/capabilities.test.ts

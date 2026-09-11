@@ -5,24 +5,26 @@ title: two plan sentences to correct once batch 10 lands
 status: active
 severity: soft
 always: false
-summary: "Two sentences in the plans are wrong: one about what can be recovered afterwards, and one about what a file actually uses."
-summary_of: a62c297b99c764b2
+summary: Both corrected, and the first was wrong in three places rather than one; the code side had already been fixed and only the plans still said it.
+summary_of: b739bf5262ae841b
+summary_was:
+  - "2026-09-11 Two sentences in the plans are wrong: one about what can be recovered afterwards, and one about what a file actually uses."
 scope: []
 tags:
+  - v2
+  - "state:done"
   - "plan:rulings"
   - "seq:33d"
-  - "state:todo"
-  - v2
 origin: human
 source_file: null
 source_anchor: null
 source_checksum: null
 valid_from: 2026-08-21
 valid_until: null
-checksum: d0957faf910f3cf7
+checksum: f078e23888fc6d3d
 plan: rulings
 seq: 33d
-state: todo
+state: done
 priority: "2"
 ---
 
@@ -41,3 +43,5 @@ RECONCILED 2026-08-25 under plan:walk seq:23, against the precedence order.
 VERDICT: STANDS, and it is now UNBLOCKED and trivially small. Its only reason for waiting was that "agents are editing the same documents right now; fixing them mid-batch would conflict for no gain". No agent wave is running. Two one-line prose corrections. Do them with the six.
 
 IT IS ONE OF SIX TASKS ABOUT ONE GATE, and they have never been read together: plan:rulings seq:33c (thirty bare citations inside fenced code blocks, nearly all stale), seq:33d (two plan sentences), seq:38 (a plan that changes a command breaks the citations in its own survey table), seq:47 (no answer for .html, and six stale source citations), seq:48 (verify:citations does not scan either README), and plan:walk seq:30 (it does not scan the corpus either -- 104 of 109 plan pointers were wrong, corrected 2026-08-25). SIX OPEN TASKS, ONE GATE, THREE KNOWN BLIND SPOTS. That is a scope problem rather than three bugs: settle what the gate scans BY RULE -- every checked text file in the repository, exclusions named and justified -- instead of adding one directory at a time. DISPATCH THE SIX AS ONE PIECE OF WORK.
+
+CLOSED 2026-09-12. Both sentences corrected; batch 10 landed long ago and nothing was contended. SENTENCE ONE was wrong in THREE places rather than one, all of them the same claim: docs/superpowers/plans/2026-08-20-v2-export-import-and-packs.md stated `the prior content stays recoverable from the log and from git` in the section 0 summary bullet and again in the section 0 corrections table row 7, and `Prior content is then recoverable from the log` in the 6n.7 discharge table. All three now say what the record can actually support: it names the fields that moved and never their values, so the overwrite is attributable and dated in the log, and prior content is recoverable from git. The code side needed nothing - test/pack/import.test.ts already carries the correction in its own comment and had renamed its test to `the overwrite is attributable and dated in the log - what 6n.7 can actually ask for`, so only the plan was still wrong. SENTENCE TWO was exactly where this item said it would be: design decision 3 of docs/superpowers/plans/2026-08-16-web-ui-2-palette-and-work.md, the last place still claiming revision-view.ts value-imports REVISION_FIELDS. It imports changedFields; the file's current import block names changedFields and four types from core/revision-log.ts and REVISION_FIELDS nowhere. The sweep had corrected the Files bullet and Task 2's Why paragraph and missed this one, which is the coverage data point this item recorded. NOT DONE HERE, and named so it is not rediscovered: the same plan's Task 12 code block still titles a test `the prior content is recoverable from the log`. That block quotes what was PLANNED, and the shipped test deliberately asserts something narrower under a different name, so changing it would edit history rather than correct a claim.

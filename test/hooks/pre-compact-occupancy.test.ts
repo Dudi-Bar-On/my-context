@@ -195,7 +195,8 @@ test('the row carries the occupancy when it is measurable', () => {
 });
 
 /**
- * `STD-absent-vs-zero`, on the field where the wrong reading is the plausible
+ * `STD-a-measured-zero-is-drawn-and-named-an-unmeasured-thing-is`, on the field where
+ * the wrong reading is the plausible
  * one: `0` here says "the window was empty when the platform compacted", which
  * is the opposite of "nobody measured" and would poison the very number §4.4
  * exists to establish. Two unmeasurable reasons are checked because each takes
@@ -212,7 +213,8 @@ test('an unmeasurable occupancy is null, never zero and never a guess', () => {
     // The FIELD is `null` — asserted above — and the note says which of the
     // three reasons it was. Not merely absent: a reader who finds neither the
     // field nor a reason cannot tell this row from one written before the value
-    // existed, which is the failure `STD-absent-vs-zero` names.
+    // existed, which is the failure
+    // `STD-a-measured-zero-is-drawn-and-named-an-unmeasured-thing-is` names.
     assert.match(row.note, /occupancy unmeasurable \((no-bridge|no-sample|unknown-shape|stale)\)/u);
     assert.doesNotMatch(row.note, /occupancy 0/u);
   }

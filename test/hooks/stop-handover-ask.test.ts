@@ -20,7 +20,8 @@
  *    once-only test is the load-bearing one here, not the once-at-all test.
  *  - **It never blocks and it never guesses.** With no status-line bridge the
  *    mechanism stands down on stderr, once, and no percentage is invented
- *    (`STD-absent-vs-zero`, and `core/context-occupancy.ts` says why there is
+ *    (`STD-a-measured-zero-is-drawn-and-named-an-unmeasured-thing-is`, and
+ *    `core/context-occupancy.ts` says why there is
  *    deliberately no transcript fallback).
  *
  * And one thing that must NOT have changed: the audit row `Stop` has written on
@@ -678,7 +679,7 @@ test('unmeasurable stands down on STDERR once and never guesses a number', () =>
     'the mechanism asked for a handover with no measurement behind it');
   assert.match(first.stderr, /statusline/u);
   assert.doesNotMatch(first.stderr, /\d+(\.\d+)?%/u,
-    'the stand-down line quoted a percentage. There is no percentage: STD-absent-vs-zero, and ' +
+    'the stand-down line quoted a percentage. There is no percentage: STD-a-measured-zero-is-drawn-and-named-an-unmeasured-thing-is, and ' +
     'core/context-occupancy.ts refuses a transcript fallback for exactly this reason');
 
   const second = runStop(sb, { bridge: false });

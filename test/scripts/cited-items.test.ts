@@ -1,4 +1,4 @@
-// @basis TASK-code-and-tests-that-speak-with-a-retired-item-s-authority, RULE-a-test-names-the-items-it-rests-on-or-says-it-rests-on-none
+// @basis TASK-code-and-tests-that-speak-with-a-retired-item-s-authority, TASK-std-absent-vs-zero-is-a-nickname-22-citations-use-and-no, RULE-a-citation-names-an-item-by-id-never-a-report-by-line-number, RULE-a-test-names-the-items-it-rests-on-or-says-it-rests-on-none
 /**
  * **The retired-authority check, proved by planting what it must name.**
  *
@@ -427,6 +427,61 @@ test('the walk covers the four trees the task scoped and the browser modules in 
   assert.ok(isSourceFile('select.ts'));
   assert.ok(!isSourceFile('types.d.ts'), 'a declaration file is generated and cites nothing');
   assert.ok(!isSourceFile('web-ui-mockup.html'));
+});
+
+/**
+ * **The `absent-vs-zero` nickname, which no item has ever answered to.**
+ *
+ * `TASK-std-absent-vs-zero-is-a-nickname-22-citations-use-and-no`: the standard
+ * is really `STD-a-measured-zero-is-drawn-and-named-an-unmeasured-thing-is`, and
+ * twenty-five sites across `src/`, `test/` and `docs/` called it by a short name
+ * that resolves to nothing. `RULE-a-citation-names-an-item-by-id-never-a-report-by-line-number`
+ * is the rule it offends, and a citation that resolves to NOTHING is worse than
+ * one that names a moved line: a stale line still lands in the right file.
+ *
+ * **Why this names one id rather than gating every unresolved one.** The script
+ * above skips an id it cannot resolve, deliberately and with its reason printed:
+ * 2512 id-shaped strings in this tree answer to no item and almost all of them
+ * are fixtures inventing an id, which a corpus test must do. `--unresolved`
+ * shows 55 even under `src/` alone, and the majority are worked examples in help
+ * text (`INV-prices-are-integer-cents`, `CONST-postgres-pool-capped-at-20`).
+ * There is no property separating an invented id from a dangling one, so a
+ * general gate would be an allow-list — the shape this project keeps measuring
+ * as the defect. This asserts the one nickname that was measured, and reports
+ * every site by coordinate rather than by count.
+ *
+ * **The needle is assembled rather than written, and this file is NOT exempt.**
+ * Spelling the nickname out here would make this file its own twenty-sixth site,
+ * and exempting the file by path would leave the one hole a reader would never
+ * look in. So the literal appears nowhere: `NICKNAME` is built from two halves,
+ * and the prose above says `absent-vs-zero` without the prefix that makes it an
+ * id. The pattern tolerates a line break after any hyphen, because three of the
+ * twenty-five were wrapped across a comment break and a per-line match reads
+ * those as two different unknown ids; the coordinate reported is where the id
+ * STARTS.
+ */
+test('no source file cites the absent-vs-zero standard by a name no item answers to', () => {
+  const NICKNAME = 'STD-absent' + '-vs-zero';
+  const BROKEN = new RegExp(
+    NICKNAME.replace(/-/g, '-(?:\\r?\\n[ \\t]*(?:\\/\\/|\\*)?[ \\t]*)?'), 'g',
+  );
+  const sites: string[] = [];
+  for (const root of SOURCE_ROOTS) {
+    for (const file of walkSources(path.join(REPO, root), [])) {
+      if (!isSourceFile(path.basename(file))) continue;
+      const text = readFileSync(file, 'utf8');
+      const rel = path.relative(REPO, file).replace(/\\/g, '/');
+      for (const m of text.matchAll(BROKEN)) {
+        sites.push(`${rel}:${text.slice(0, m.index).split(/\r?\n/).length}`);
+      }
+    }
+  }
+  assert.deepEqual(
+    sites, [],
+    `these sites cite \`${NICKNAME}\`, which is a nickname and not an id — the standard is `
+    + '`STD-a-measured-zero-is-drawn-and-named-an-unmeasured-thing-is`. A reader who follows one '
+    + 'of these finds no item at all.',
+  );
 });
 
 /** `scanFile` is the one piece that decides what a citation IS; pinned directly. */

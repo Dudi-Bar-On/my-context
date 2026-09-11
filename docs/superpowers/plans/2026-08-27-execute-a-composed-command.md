@@ -409,7 +409,7 @@ test('an execution row is NOT a mutation, so no mutation reader picks it up', ()
 });
 ```
 
-`null` versus `0` is the `STD-absent-vs-zero` standard on a field where the wrong reading is "it succeeded".
+`null` versus `0` is the `STD-a-measured-zero-is-drawn-and-named-an-unmeasured-thing-is` standard on a field where the wrong reading is "it succeeded".
 
 - [ ] **Step 2: Run it to make sure it fails**
 

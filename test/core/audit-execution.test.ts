@@ -205,7 +205,8 @@ test('the record carries the id, the resolved argv and the exit code', () => {
 });
 
 /**
- * `STD-absent-vs-zero` on the one field where the wrong reading is the
+ * `STD-a-measured-zero-is-drawn-and-named-an-unmeasured-thing-is` on the one field
+ * where the wrong reading is the
  * dangerous one. A killed or unfinished run has NO exit code; zero is the claim
  * that it succeeded. The two must survive the JSON round trip as different
  * values, and `null` is what survives it — `undefined` would be dropped by

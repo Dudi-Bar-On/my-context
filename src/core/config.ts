@@ -761,7 +761,8 @@ export interface Config {
    * that is the type rather than a comment for a reason: `HandoverConfig` with
    * an `enabled` boolean, or a `DEFAULT_HANDOVER` beside `DEFAULT_UI`, would
    * both give the "off" state a `path` field that some caller eventually
-   * reads. There is nothing to read. Absent is absent (STD-absent-vs-zero),
+   * reads. There is nothing to read. Absent is absent
+   * (STD-a-measured-zero-is-drawn-and-named-an-unmeasured-thing-is),
    * and a consumer that wants to act has to narrow the `null` away first.
    */
   handover: HandoverConfig | null;

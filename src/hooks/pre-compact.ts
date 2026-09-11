@@ -70,8 +70,9 @@ function measurement(
   // PreCompact runs once per compaction, so even that bound is generous.
   const occupancy = readOccupancy(root, sessionId);
 
-  // `null`, spelled out, never `0` and never an omitted key. `STD-absent-vs-
-  // zero` governs hardest here because the wrong reading is the plausible one:
+  // `null`, spelled out, never `0` and never an omitted key.
+  // `STD-a-measured-zero-is-drawn-and-named-an-unmeasured-thing-is` governs hardest
+  // here because the wrong reading is the plausible one:
   // a `0` claims the window was EMPTY when the platform compacted, which is
   // the opposite of "nobody measured" and would poison the very number this
   // line exists to establish. Omitting the key instead is just as bad — a
@@ -122,8 +123,9 @@ function measurement(
 
   return {
     trigger,
-    // `null`, never 0 and never omitted, when unmeasurable. `STD-absent-vs-
-    // zero`, on the field where the reassuring wrong reading is "the window
+    // `null`, never 0 and never omitted, when unmeasurable.
+    // `STD-a-measured-zero-is-drawn-and-named-an-unmeasured-thing-is`, on the field
+    // where the reassuring wrong reading is "the window
     // was empty".
     occupancyPercent: occupancy.state === 'known' ? occupancy.percent : null,
     handoverAsk: ask.verdict,

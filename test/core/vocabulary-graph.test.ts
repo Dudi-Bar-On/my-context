@@ -1,3 +1,4 @@
+// @basis TASK-a-second-file-counts-the-no-writes-guarantee-in-prose-after, RULE-a-test-names-the-items-it-rests-on-or-says-it-rests-on-none
 /**
  * **Reading a vocabulary must not require a module that can write.**
  *
@@ -7,8 +8,9 @@
  * the list of legal relation names pulled the write machinery in behind it.
  *
  * That is not a stylistic complaint. The v2.0 web UI's central guarantee is
- * that no route reaches one of eight mutating functions, enforced by a static
- * import-graph test. Under that test, a browser-facing module importing
+ * that no route binds a function that writes, enforced by a static
+ * import-graph test (`test/ui/no-writes.test.ts`). Under that test, a
+ * browser-facing module importing
  * `RELATION_TYPES` from `relations.ts` fails the build — correctly, because
  * `relations.ts` exports `linkItems` and `unlinkItems` and imports
  * `persist.ts` at runtime. The vocabulary was going to have to move anyway;
@@ -30,10 +32,27 @@ import path from 'node:path';
 const SRC = path.resolve(import.meta.dirname, '../../src');
 
 /**
- * The eight functions the web UI's no-writes guarantee names. Resolved as
- * SYMBOLS, not as file paths: `linkItems` and `unlinkItems` have already moved
- * once, and a ban list written against files would have kept passing while the
- * symbol it meant to catch moved out from under it.
+ * **The CORPUS-MUTATION functions — a narrower question than the no-writes
+ * membership, and it says so here rather than reading as a second opinion on
+ * it** (`TASK-a-second-file-counts-the-no-writes-guarantee-in-prose-after`).
+ *
+ * `test/ui/no-writes.test.ts` bans every symbol that WRITES TO THE FILESYSTEM,
+ * and derives which modules those are from a property — a module is a writer
+ * when it calls, by an imported `node:fs` name, an API that mutates the disk.
+ * That derivation moved its answer from twelve modules to twenty-seven, and it
+ * will move again. This file asks something smaller and fixed: can a module
+ * that only wants the RELATION VOCABULARY reach a function that changes an
+ * ITEM? So the set below is the three corpus-mutation modules' exports —
+ * `WRITERS`'s `core/mutate.ts`, `core/relations.ts` and `core/revision.ts`
+ * keys — and never the whole guarantee. It is deliberately not a count of it:
+ * a number in prose beside a set that is now derived is where the next stale
+ * one comes from, which is the shape that item was filed about.
+ *
+ * Resolved as SYMBOLS, not as file paths: `linkItems` and `unlinkItems` have
+ * already moved once, and a ban list written against files would have kept
+ * passing while the symbol it meant to catch moved out from under it. That is
+ * also why the assertion below requires each name to still be DECLARED: a
+ * renamed mutator would leave `found` empty and this file green over a hole.
  */
 const MUTATORS = [
   'createItem', 'updateItem', 'supersedeItem', 'linkItems',
@@ -86,6 +105,31 @@ test('vocabulary.ts imports nothing — it cannot be in a cycle', () => {
     'vocabulary.ts gained an import. Everything validates against these lists, so whatever ' +
     'module holds them is reachable from everywhere — and a module with no imports cannot ' +
     'participate in a cycle.',
+  );
+});
+
+/**
+ * **Every name above must still be declared, or the reachability test below is
+ * vacuous.** It answers by FILTERING `MUTATORS` against the symbols the graph
+ * exports, so a mutator that was renamed — the thing that has already happened
+ * twice to `linkItems`/`unlinkItems` — makes the filter match nothing and this
+ * file green over a function nobody is checking any more. Proved by planting:
+ * change one entry to a name `src/` does not declare and this fails, naming it.
+ */
+test('every corpus-mutation symbol is still declared by one of the three modules', () => {
+  const MUTATION_MODULES = ['core/mutate.ts', 'core/relations.ts', 'core/revision.ts'];
+  const declaredIn = new Map<string, string[]>();
+  for (const rel of MUTATION_MODULES) {
+    for (const symbol of exportedSymbols(path.join(SRC, rel))) {
+      if (!MUTATORS.includes(symbol)) continue;
+      declaredIn.set(symbol, [...(declaredIn.get(symbol) ?? []), rel]);
+    }
+  }
+  assert.deepEqual(
+    MUTATORS.filter((m) => (declaredIn.get(m) ?? []).length !== 1), [],
+    'these names are not declared exactly once across ' + MUTATION_MODULES.join(', ')
+    + ' — a mutator that moved or was renamed leaves the reachability test below '
+    + 'filtering against a name nothing exports, which passes while checking nothing.',
   );
 });
 

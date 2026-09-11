@@ -137,7 +137,7 @@ built.** What is missing is a hook that reads it and something that can act.
 Using Claude Code's own figure rather than arithmetic over the transcript matters:
 `context_window_size` is not in the transcript, so computing a percentage there needs
 a model-to-window table, and a table like that goes stale silently. Under
-`STD-absent-vs-zero` an unmeasured thing is named as unmeasured and never guessed, so
+`STD-a-measured-zero-is-drawn-and-named-an-unmeasured-thing-is` an unmeasured thing is named as unmeasured and never guessed, so
 **there is no fallback that invents a percentage.** If the bridge is not installed the
 mechanism stands down and says so, once, on stderr.
 

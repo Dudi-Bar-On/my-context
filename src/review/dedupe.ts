@@ -40,7 +40,8 @@ import { claimKey, claimScore, sameClaim } from './claim.ts';
  *
  * `target` is what the proposal is ABOUT: a repository path, an item id, or
  * `null` when it names neither. `null` is a real value and not a missing one
- * (STD-absent-vs-zero): a claim about nothing in particular can only be
+ * (STD-a-measured-zero-is-drawn-and-named-an-unmeasured-thing-is): a claim about
+ * nothing in particular can only be
  * compared with other claims about nothing in particular.
  */
 export interface Pending {

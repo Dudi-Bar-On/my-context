@@ -209,6 +209,33 @@ export const RELATION_MEANINGS: Record<string, string> = {
  * edge. `blocks`/`unblocks` are not inverses — see their meanings. And
  * `superseded_by` has no entry because it is not in the vocabulary at all.
  */
+/**
+ * **Which end of a pair is the PASSIVE one — the one fact the vocabulary stated
+ * only in PROSE, now stated as data**
+ * (`TASK-passive-relations-is-a-hand-kept-list-duplicating-a-fact-the`).
+ *
+ * `INVERSE_RELATIONS` below is deliberately SYMMETRIC, so it cannot answer this:
+ * it says `enforces` and `enforced_by` are one pair and nothing about which of
+ * them, read off a stored row, points BACKWARDS. `RELATION_MEANINGS` answered it
+ * in words — both passive entries say, verbatim, *"the PASSIVE reading of"* — and
+ * a sentence is not something a read path can consult, so `core/search.ts` kept
+ * the two names a second time, by hand, as a `Set` literal.
+ *
+ * Keyed by the PASSIVE name and valued with the ACTIVE one, because that is the
+ * direction every reader needs: given a row's stored type, is it passive, and if
+ * so what does it read as once reversed.
+ *
+ * `test/core/relation-inverses.test.ts` holds this and the marked sentences to
+ * the same set in both directions, and drives every name in `RELATION_TYPES`
+ * through `relationLinks` to prove the DERIVED set is the one actually in force.
+ * A third inverse pair added without a marker, or a marker added without a
+ * field, fails there rather than being read as an ordinary relation.
+ */
+export const PASSIVE_OF: Record<string, string> = {
+  discovered_by: 'produced',
+  enforced_by: 'enforces',
+};
+
 export const INVERSE_RELATIONS: Record<string, string> = {
   produced: 'discovered_by',
   discovered_by: 'produced',

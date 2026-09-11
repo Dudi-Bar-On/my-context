@@ -2,7 +2,7 @@ import type { Config } from './config.ts';
 import { normalizePosix } from './paths.ts';
 import { matchesScope } from './select.ts';
 import type { Item, Status } from './types.ts';
-import { inverseOf, RELATION_TYPES } from './vocabulary.ts';
+import { inverseOf, PASSIVE_OF, RELATION_TYPES } from './vocabulary.ts';
 
 /**
  * **What a READ filter may ask about: the write vocabulary, plus whatever the
@@ -92,16 +92,18 @@ export interface RelationLink {
  *
  * Not derived from `INVERSE_RELATIONS` because that map cannot answer this
  * question by construction (it is symmetric on purpose — see above); this is
- * the one piece of information the vocabulary's own prose carries
- * (`RELATION_MEANINGS.discovered_by` and `.enforced_by` both say, verbatim,
- * "the PASSIVE reading of …") that no export currently states as data.
- * `test/core/relation-inverses.test.ts` pins `INVERSE_RELATIONS`'s two pairs;
- * a third pair added there without a matching addition here would silently
- * treat the new pair as an ordinary, non-reversing relation rather than fail
- * loudly, which is why the guard test added alongside this constant asserts
- * this set's members are exactly two and are both keys of `INVERSE_RELATIONS`.
+ * DERIVED from `vocabulary.ts`'s own `PASSIVE_OF`, and never hand-typed here
+ * (`TASK-passive-relations-is-a-hand-kept-list-duplicating-a-fact-the`). This
+ * used to be a second `Set` literal naming the same two relations the
+ * vocabulary already described in words — `RELATION_MEANINGS.discovered_by` and
+ * `.enforced_by` both say, verbatim, "the PASSIVE reading of …" — which made
+ * this file the only place that fact existed as data, and made a third inverse
+ * pair added to the vocabulary read here as an ordinary, non-reversing relation
+ * with nothing failing. `PASSIVE_OF` is that marker as data, and
+ * `test/core/relation-inverses.test.ts` holds it and the marked sentences to
+ * the same set in both directions.
  */
-const PASSIVE_RELATIONS = new Set(['discovered_by', 'enforced_by']);
+const PASSIVE_RELATIONS = new Set(Object.keys(PASSIVE_OF));
 
 /**
  * Every edge touching `anchorId`, direction resolved — ONE walk of the

@@ -543,7 +543,7 @@ git commit -m "hooks: post-compact records which handover it resolved, and stays
   ```
 
   The `unmeasurable` arm carries NO `percent` field at all, so a caller cannot
-  write `occupancy.percent ?? 0`. `STD-absent-vs-zero` enforced by the type
+  write `occupancy.percent ?? 0`. `STD-a-measured-zero-is-drawn-and-named-an-unmeasured-thing-is` enforced by the type
   rather than by a comment.
 
   **`classifyContext` has a FOURTH state the sketch below swallows.**

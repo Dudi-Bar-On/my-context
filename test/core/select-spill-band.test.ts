@@ -17,7 +17,8 @@
  *     this field and compare nothing; a second implementation of the
  *     partition is the two-spellings defect this project keeps paying for.
  *  2. It is ABSENT wherever the candidates were not actually split. That is
- *     `STD-absent-vs-zero`, and it is also the ruling's own decisive property
+ *     `STD-a-measured-zero-is-drawn-and-named-an-unmeasured-thing-is`, and it is also
+ *     the ruling's own decisive property
  *     restated: where nothing is scoped there is ONE run of candidates and the
  *     records are byte-identical to the pre-banding selector's — which
  *     `select-jit-bands.test.ts` holds against a verbatim capture taken before

@@ -279,7 +279,8 @@ test('the counts the hook already recorded are unchanged by the handover reading
  *
  * What it must NOT do is answer `off`. Nobody looked, and `off` is the claim
  * that somebody looked and found no `handover` key. Absent is absent
- * (`STD-absent-vs-zero`), and the reason a field cannot carry goes in the
+ * (`STD-a-measured-zero-is-drawn-and-named-an-unmeasured-thing-is`), and the reason a
+ * field cannot carry goes in the
  * note, which is where the reader is told which file to fix.
  */
 test('a config that cannot be read records the compaction and claims no handover state', (t) => {

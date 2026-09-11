@@ -29,14 +29,76 @@ import assert from 'node:assert/strict';
 import { createItem } from '../../src/core/mutate.ts';
 import { linkItems, unlinkItems } from '../../src/core/relations.ts';
 import {
-  INVERSE_RELATIONS, RELATION_MEANINGS, RELATION_TYPES, inverseOf,
+  INVERSE_RELATIONS, PASSIVE_OF, RELATION_MEANINGS, RELATION_TYPES, inverseOf,
 } from '../../src/core/vocabulary.ts';
+import { relationLinks } from '../../src/core/search.ts';
+import type { Item } from '../../src/core/types.ts';
 import { sandbox } from '../helpers/workspace.ts';
 
 /** The six adopted on 2026-09-03, named here so a silent removal fails. */
 const ADOPTED_2026_09_03 = [
   'produced', 'discovered_by', 'unblocks', 'enforces', 'enforced_by', 'answers',
 ];
+
+/**
+ * **Which side of a pair is the PASSIVE one was a fact only the PROSE carried,
+ * and a second hand-typed list in `search.ts` was the only thing that knew it**
+ * (`TASK-passive-relations-is-a-hand-kept-list-duplicating-a-fact-the`).
+ *
+ * `INVERSE_RELATIONS` says the two names are a pair and is deliberately
+ * symmetric, so it cannot say which end reverses on a read. `RELATION_MEANINGS`
+ * said it, in words — *"the PASSIVE reading of"* — and words are not something
+ * `relationLinks` can consult. `PASSIVE_OF` is that marker as data.
+ *
+ * This asserts the two cannot drift: the entries whose sentence carries the
+ * marker are exactly the keys of `PASSIVE_OF`, in both directions, and each key
+ * maps to the active name `INVERSE_RELATIONS` already declares for it. A third
+ * pair added to the vocabulary with a marked sentence and no field, or a field
+ * with no marked sentence, fails here rather than being read as an ordinary
+ * non-reversing relation.
+ */
+const PASSIVE_MARKER = 'the PASSIVE reading of';
+
+test('the passive marker in the vocabulary prose and PASSIVE_OF name the same relations', () => {
+  const marked = Object.keys(RELATION_MEANINGS)
+    .filter((type) => RELATION_MEANINGS[type]!.includes(PASSIVE_MARKER)).sort();
+  assert.deepEqual(
+    Object.keys(PASSIVE_OF).sort(), marked,
+    'PASSIVE_OF and the sentences carrying "' + PASSIVE_MARKER + '" disagree. They are one fact: '
+    + 'the field is the machine-readable form of the marker, and relationLinks reads the field.',
+  );
+  for (const [passive, active] of Object.entries(PASSIVE_OF)) {
+    assert.equal(
+      inverseOf(passive), active,
+      `PASSIVE_OF says ${passive} is the passive reading of ${active}, and INVERSE_RELATIONS does not agree.`,
+    );
+  }
+});
+
+/**
+ * **The behavioural half: the DERIVED set is what the read surface actually
+ * uses.** `relationLinks` reverses a stored row when its type is passive and
+ * reads it literally otherwise, so driving every name in `RELATION_TYPES`
+ * through it proves both that each marked name reverses and that no unmarked
+ * one does — which a test against the constant alone cannot say.
+ */
+test('relationLinks reverses exactly the relations PASSIVE_OF names', () => {
+  const reversed: string[] = [];
+  for (const type of RELATION_TYPES) {
+    const items = [{ id: 'ITEM-owner', relations: [{ type, target: 'ITEM-target' }] }] as unknown as Item[];
+    // Anchored on the OWNER: an ordinary relation points away from its owner, so
+    // the anchor sees an 'out' edge; a passive one points AT its owner, so the
+    // same row is read as an 'in' edge from the target.
+    const link = relationLinks(items, 'ITEM-owner').get('ITEM-target')?.[0];
+    assert.ok(link !== undefined, `${type} produced no link at all`);
+    if (link.direction === 'in') reversed.push(type);
+  }
+  assert.deepEqual(
+    reversed.sort(), Object.keys(PASSIVE_OF).sort(),
+    'the relations relationLinks reverses are not the ones PASSIVE_OF names. A passive relation '
+    + 'read literally points the wrong way on every screen that draws it.',
+  );
+});
 
 test('the six orphan relation types are in the vocabulary and each carries a meaning', () => {
   for (const type of ADOPTED_2026_09_03) {

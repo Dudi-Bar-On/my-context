@@ -916,7 +916,8 @@ test('ui present and false disables; present and true enables', () => {
  * `port` must be a PRESENT key with the value `null`, not an absent one. Under
  * `node:assert/strict` an absent field reads `undefined`, and "the user has not
  * chosen a port" would then be indistinguishable from "this build does not know
- * about ports" — `STD-absent-vs-zero` on the field that decides whether a
+ * about ports" — `STD-a-measured-zero-is-drawn-and-named-an-unmeasured-thing-is` on the
+ * field that decides whether a
  * process starts.
  */
 test('the resolved ui section is permission AND place, and place arrived 2026-08-27', () => {

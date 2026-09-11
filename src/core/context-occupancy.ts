@@ -17,7 +17,8 @@ import { classifyContext, readTee, statuslineDir } from './statusline-tee.ts';
 // `Occupancy` has no `percent: number | null` — an unmeasurable occupancy has
 // no percentage field at all, which is what stops a caller writing
 // `occupancy.percent ?? 0` and turning "we never measured" into "the window is
-// empty". That is `STD-absent-vs-zero` expressed in the type rather than in a
+// empty". That is `STD-a-measured-zero-is-drawn-and-named-an-unmeasured-thing-is`
+// expressed in the type rather than in a
 // comment a caller can skip.
 //
 // Callers: `Stop` (spec §4.3), which asks the model for a handover once at the

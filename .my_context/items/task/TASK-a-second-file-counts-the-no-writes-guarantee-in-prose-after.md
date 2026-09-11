@@ -5,8 +5,10 @@ title: a second file counts the no-writes guarantee in prose after the first sto
 status: active
 severity: soft
 always: false
-summary: A test still states a hand-counted number for a set that is now worked out automatically, so it will quietly disagree the moment the set grows.
-summary_of: ba79157f79843f7a
+summary: Answered as the narrower question it was really asking, the second count is gone too, and a renamed mutator would have left the old assertion green.
+summary_of: a375d9e88bb11675
+summary_was:
+  - 2026-09-11 A test still states a hand-counted number for a set that is now worked out automatically, so it will quietly disagree the moment the set grows.
 acknowledged:
   - citation_form@152ffae06a866632
 scope: []
@@ -15,19 +17,19 @@ tags:
   - gates
   - tests
   - rulings
+  - "state:done"
   - "plan:rulings"
   - "seq:53"
-  - "state:todo"
 origin: human
 source_file: "C:/Users/UserC/AppData/Local/Temp/vocab.md"
 source_anchor: null
 source_checksum: null
 valid_from: 2026-08-31
 valid_until: null
-checksum: fb5db23c85964b25
+checksum: 213ba1bbbb3e6423
 plan: rulings
 seq: "53"
-state: todo
+state: done
 priority: "2"
 source: "found by plan:rulings seq:50, 2026-08-31"
 ---
@@ -38,7 +40,7 @@ source: "found by plan:rulings seq:50, 2026-08-31"
 >
 > **The observation**
 >
-> `test/core/vocabulary-graph.test.ts` · `The eight functions the web UI's no-writes guarantee names.` · ~33 describes *"the eight functions the web UI's no-writes guarantee names"*.
+> `test/core/vocabulary-graph.test.ts` · `* **The CORPUS-MUTATION functions — a narrower question than the no-writes` · ~35 now names the narrower question outright; it used to read *"the eight functions the web UI's no-writes guarantee names"*.
 >
 > That is a **hand-kept count of a set that has just stopped being hand-kept.** `test/ui/no-writes.test.ts` now derives its membership from a property — a module is a writer when it calls, by an imported `node:fs` name, an API that mutates the filesystem — and that derivation moved the answer from **12 named modules to 27**.
 >
@@ -66,3 +68,5 @@ source: "found by plan:rulings seq:50, 2026-08-31"
 > **Done when**
 >
 > That assertion either derives its set, or names the narrower question it is asking and why that is not the no-writes membership; and no test states a count of that guarantee in prose.
+
+CLOSED 2026-09-12 by the second of the two answers this item allowed: it is a NARROWER question, and it now says so. THE ANSWER TO `is eight the same set at all` IS NO, and it is checkable. test/ui/no-writes.test.ts bans every symbol that writes to the FILESYSTEM, and its WRITERS table has twenty-seven keys since membership became derived. The eight names in test/core/vocabulary-graph.test.ts are exactly the symbols under three of those keys - core/mutate.ts, core/relations.ts and core/revision.ts - which is the ITEM-mutation question and not the disk-writing one. So it was describing something narrower, and per this item's own instruction the repair is that it says so rather than that it changes. WHAT CHANGED. The docblock over MUTATORS now names the narrower question, says why it is not the no-writes membership, and states no count. The second count in the same file - `no route reaches one of eight mutating functions` in the header - is gone the same way. No test in the file states a number about that guarantee any more, and the file now declares a basis where it declared none. AND A HOLE WAS FOUND WHILE LOOKING, which is the part worth keeping. The reachability assertion answers by FILTERING the eight names against the symbols the graph exports, so a mutator that was renamed makes the filter match nothing and the file stays green over a function nobody is checking. Proved by planting: renaming one entry to a name src/ does not declare left `reading the relation vocabulary reaches no mutating function` GREEN. A new assertion, `every corpus-mutation symbol is still declared by one of the three modules`, goes red at its own line and names the symbol. Six of six pass.

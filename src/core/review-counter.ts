@@ -70,7 +70,8 @@ export function reviewCounterPath(stateRoot: string): string {
  * The count, the ration, and whose session both belong to.
  *
  * `sessionId` is `null` for a state nobody has written, which is the honest
- * answer and not a sentinel session — `STD-absent-vs-zero`. A count with no
+ * answer and not a sentinel session —
+ * `STD-a-measured-zero-is-drawn-and-named-an-unmeasured-thing-is`. A count with no
  * session attached cannot be compared against the session in hand, so it is
  * continued rather than trusted as another session's.
  */

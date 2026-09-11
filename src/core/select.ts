@@ -180,8 +180,9 @@ export interface Spill {
    * `GateCode` exists to prevent, and it would answer for an item the selector
    * never even offered.
    *
-   * **ABSENT unless the candidates were actually SPLIT**, which is `STD-absent-
-   * vs-zero` and also what keeps the ruling's own property true. Where nothing
+   * **ABSENT unless the candidates were actually SPLIT**, which is
+   * `STD-a-measured-zero-is-drawn-and-named-an-unmeasured-thing-is` and also what keeps
+   * the ruling's own property true. Where nothing
    * is scoped, band 1 is empty, every candidate is offered in one run, and the
    * spill records stay byte-identical to the single-band selector's — the
    * property the ruling was decided on, and the one
@@ -751,7 +752,8 @@ const GOVERNING_TYPES: ReadonlySet<string> = new Set([
  * read: `needs.ts` already owns that field's meaning and is, like this file,
  * pure — its own header says it imports only `Config` and `Item` as TYPES,
  * nothing executable. A missing `state` reads as open, not as excluded —
- * `STD-absent-vs-zero`: a task that has never recorded being done has
+ * `STD-a-measured-zero-is-drawn-and-named-an-unmeasured-thing-is`: a task that has
+ * never recorded being done has
  * certainly not recorded being done.
  *
  * **This is inert on this repository's real corpus, and that is worth saying
@@ -1533,7 +1535,8 @@ export function select(items: Item[], ctx: SelectContext, config: Config): Selec
   // What the pinned tier was ASKED for, priced. `null` while the tier has not
   // run — which is not the same as 0, and `pinnedSpillOf` below relies on the
   // difference: a tool event never runs this tier, and a tier that did not run
-  // has no cost rather than a cost of nothing (`STD-absent-vs-zero`).
+  // has no cost rather than a cost of nothing
+  // (`STD-a-measured-zero-is-drawn-and-named-an-unmeasured-thing-is`).
   let pinnedCost: number | null = null;
   /** The same, for the continuity tier — see `continuitySpillOf`. */
   let continuityCost: number | null = null;
