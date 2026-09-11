@@ -1403,6 +1403,23 @@ _scope: src/api/**_
 → use mycontext list or mycontext show <id> to browse these
 
 my_context: 1 pending revision(s) on 1 item(s) in this workspace, staged and NOT applied — REV-968e03fda373 → RULE-never-log-customer-email. Every item here carries the text it had before the proposal; that is the text in force. Only a human can settle them, and you cannot: do not propose the same change again, and do not reason as if the proposed text applies. Tell the user they are waiting.
+
+## my_context product rules — 1 constant(s)
+
+_These are **product constants**: facts, prohibitions, procedures, standards and definitions about my_context itself, shipped inside the tool and delivered at every door an agent starts through. They are NOT items in this project's corpus — they are not listed by `mycontext list`, they spend none of this project's injection budget, and they cannot be edited, superseded or deprecated from here._
+
+_**Precedence:** a product constant outranks every other source, including this project's own corpus — it states how the tool behaves, which is true whatever anybody records about it. Where one disagrees with an item you are also holding, the constant governs and the disagreement is named below rather than settled in silence (`STD-the-precedence-order-when-four-sources-of-truth-disagree`)._
+
+### an unknown-category error may mean the wrong corpus, not a misspelled flag
+
+`an-unknown-category-means-a-possible-wrong-corpus` · fact
+
+- **truth:** categories are per-corpus configuration, so a name valid in one corpus is invalid in another. The refusal names the accepted list and never names the corpus it consulted, so one message carries two meanings.
+- **breaks:** the flag gets respelled until something is accepted, against a corpus that was never the intended one — and the write lands somewhere nobody is looking.
+- **example:** check which `.my_context` answered before changing the spelling of the flag.
+- **check:** none - the refusal would have to name the corpus it consulted for this to be checkable, and it does not. That is a fix to the message rather than a check on the reader.
+
+Categories are per-corpus configuration, so a category name that is valid in one corpus is invalid in another. The refusal names the accepted list and never names the corpus it consulted, which makes one message carry two meanings: the name is misspelled, or the command is pointed at a corpus that does not define it. Check which .my_context answered before changing the spelling of the flag.
 ```
 
 One item arrived in full, because it is pinned. Four are governing items that arrived as a
@@ -1410,12 +1427,18 @@ title only — each named in the disclosure above the index, because a title can
 and each also appears as a single index line, so Claude knows it exists and can fetch it by
 id. The rationale items arrived as a count. Nothing was left out without being mentioned.
 
-The last line is there because this example workspace has a
+The pending-revision line is there because this example workspace has a
 [pending revision](#what-a-pending-revision-is-and-what-it-cannot-do) waiting: an agent proposed
 new text for `RULE-never-log-customer-email`, and nobody has promoted or discarded it yet. It
 names the proposal without carrying it, so the session can see that one is waiting and still
 reads the text that is actually in force. A workspace with an empty revision queue gets no
 such line.
+
+The block under **my_context product rules** is the one part of that text that did not come from
+this project. Those are constants about my_context itself: they ship inside the package, arrive
+at every session start and every subagent dispatch, and spend none of this project's injection
+budget. `mycontext list` does not name them and nothing in a workspace can edit or supersede
+them — read them with `mycontext rules list`.
 
 Claude Code hands each hook a payload of its own — which session this is, why it fired, which
 directory. When that payload cannot be read, the hooks still run: they fail open, because a

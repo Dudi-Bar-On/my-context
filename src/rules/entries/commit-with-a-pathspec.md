@@ -7,6 +7,8 @@ prohibition: with a lane running, never `git commit` bare and never stage the wh
 why: the index is shared with every lane on the machine. A bare commit takes whatever is staged, including work a lane staged for a different subject, and the commit message then describes a change it does not contain.
 example: a bare `git commit` on 2026-09-09 swept another lane’s staged work into a commit about a table border.
 check: none - git offers no hook that can tell a deliberate pathspec from a lucky one, and the archive sees the command only when it was run in a tool call it recorded.
+movedFrom: LESSON-stage-what-an-agent-reported-touching-not-what-you-told-it
+movedOn: 2026-09-11
 ---
 
 2026-08-24, caught by the agent whose commit it polluted rather than by any gate.
@@ -22,5 +24,3 @@ THE RULE: stage by what the agent REPORTED touching, not by what the brief antic
 CHEAPEST CHECK, and it costs one command: run `git status --short` BEFORE dispatching and again before staging, and stage the difference the agent claims - not the difference the brief predicted. Better still, ask each agent to end its report with its own `git diff --name-only`, which the good ones already volunteer.
 
 WHY IT WAS NOT REWRITTEN. Both commits were pushed and the code is correct. Rewriting shared history to move nine lines of a mechanical lift costs every other clone a reset for a provenance nit. Recording it is the proportionate answer - and the record is what makes the next wave cheaper.
-
-*Moved from `LESSON-stage-what-an-agent-reported-touching-not-what-you-told-it` on 2026-09-11; that item is retired and points here.*

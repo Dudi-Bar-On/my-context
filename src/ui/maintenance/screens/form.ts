@@ -25,12 +25,20 @@
  *
  * ── WHAT THE FORM ADDS THAT THE TABLE DOES NOT HOLD ────────────────────────
  *
- * The FRAME — `id`, `title`, `kind`, `tier` — and the two optional fields
- * `request` and `body`. These are not parts of any kind's template; they are
- * what every entry carries regardless of kind, and `parseEntry` names them in
- * its own `FRAME`/`OPTIONAL` constants. They are listed here because a form
- * has to draw them, and they are drawn in a separate pass from the parts so
- * that the part pass has nothing in it but the table.
+ * The FRAME — `id`, `title`, `kind`, `tier` — and the optional fields
+ * `request`, `movedFrom`, `movedOn` and `body`. These are not parts of any
+ * kind's template; they are what every entry carries regardless of kind, and
+ * `parseEntry` names them in its own `FRAME`/`OPTIONAL` constants. They are
+ * listed here because a form has to draw them, and they are drawn in a
+ * separate pass from the parts so that the part pass has nothing in it but the
+ * table.
+ *
+ * **Every one of them has to be drawn, and that is not a style choice.**
+ * `saveFromForm` composes a WHOLE entry from what was posted, so a field the
+ * form does not draw is a field the next save deletes — silently, on an edit
+ * about something else. `test/rules/maintenance-form.test.ts` holds that for
+ * `movedFrom` and `movedOn`, which `deliver.ts` reads to decide whether a
+ * reader is told where an entry came from.
  */
 import { readFileSync, readdirSync } from 'node:fs';
 import path from 'node:path';
@@ -138,6 +146,27 @@ export function renderForm(options: RenderFormOptions): string {
     'the owner’s own words, verbatim — recorded, never injected (spec §6)',
     'textarea', value('request'),
   ));
+  /**
+   * **Drawn because a field the form does not draw is a field the next save
+   * DELETES** — `saveFromForm` composes a whole entry out of what was posted,
+   * so an unrendered field survives exactly until somebody edits the entry for
+   * an unrelated reason. That is the same argument that puts `request` above.
+   *
+   * It matters twice over here: `deliver.ts` reads `movedFrom` to decide
+   * whether the reader is told where an entry came from (developer yes,
+   * product no — owner's ruling, 2026-09-11), so losing it does not merely
+   * lose a note, it silently withdraws a developer entry's provenance from
+   * every session in this repository.
+   */
+  blocks.push(control(
+    'movedFrom', 'movedFrom (optional)',
+    'the corpus item this entry was moved out of, if it was — shown only to the developer tier',
+    'input', value('movedFrom'),
+  ));
+  blocks.push(control(
+    'movedOn', 'movedOn (optional)', 'the day of that move, YYYY-MM-DD',
+    'input', value('movedOn'),
+  ));
   blocks.push(control(
     'body', 'body (optional)', 'the prose under the frontmatter', 'textarea', value('body'),
   ));
@@ -216,6 +245,10 @@ export function saveFromForm(dir: string, values: Record<string, string>): SaveR
     parts,
     ...(values.request === undefined || values.request.trim() === ''
       ? {} : { request: values.request }),
+    ...(values.movedFrom === undefined || values.movedFrom.trim() === ''
+      ? {} : { movedFrom: values.movedFrom }),
+    ...(values.movedOn === undefined || values.movedOn.trim() === ''
+      ? {} : { movedOn: values.movedOn }),
     ...(values.body === undefined ? {} : { body: values.body }),
   });
 

@@ -125,6 +125,9 @@ function valuesOf(dir: string, id: string): Record<string, string> | null {
   const values: Record<string, string> = {
     id: parsed.id, kind: parsed.kind, tier: parsed.tier, title: parsed.title,
     body: parsed.body, request: parsed.request ?? '',
+    // Carried through for the reason `form.ts` draws them: a value the form is
+    // not filled with is a value the save writes back as absent.
+    movedFrom: parsed.movedFrom ?? '', movedOn: parsed.movedOn ?? '',
   };
   for (const part of partsOf(parsed.kind)) {
     const value = parsed.parts[part.name];

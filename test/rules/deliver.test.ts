@@ -1,4 +1,4 @@
-// @basis TASK-the-store-is-delivered-at-every-door-an-agent-starts-through, INV-nothing-is-dropped-silently
+// @basis TASK-the-store-is-delivered-at-every-door-an-agent-starts-through, INV-nothing-is-dropped-silently, TASK-seed-the-store-and-migrate-the-rules-that-already-exist
 /**
  * **The rendered set: every applicable entry, no inapplicable one, and NEVER
  * the owner's own words.**
@@ -305,4 +305,121 @@ test('`example` and `check` are rendered on every kind', () => {
       }
     },
   );
+});
+
+/* ══ 6. PROVENANCE IS DEVELOPER-TIER ONLY (owner's ruling, 2026-09-11) ═════ */
+
+/**
+ * **A product entry must not name the corpus item it was moved from, and a
+ * developer entry must.**
+ *
+ * The owner's ruling of 2026-09-11, on the first product-tier entry the
+ * migration produced. A migrated entry carries where it came from, and for the
+ * two `developer` entries that is useful provenance: they never leave this
+ * repository, and the reader of one can open the retired item. A `product`
+ * entry ships to every install, where the same line names an item the reader
+ * does not have and cannot fetch — a citation that resolves to nothing, in the
+ * one block this product says outranks everything else.
+ *
+ * He was offered three ways out — strip it for product entries, keep it and
+ * update both READMEs, or isolate the documentation fixture — and chose the
+ * first: **omitted for `product`, kept for `developer`.**
+ *
+ * ── WHY THE ASSERTION IS ON A PLANTED ID AND NOT ON THE WORD "Moved" ───────
+ *
+ * `deliver.ts`'s whole subject is text, and four assertions on this plan were
+ * lost in two days to a substring some other part of the same output also
+ * carried. The ids below are planted: nothing in this repository writes them,
+ * and `renderEntry` can only emit one of them from the provenance footer. So
+ * `includes(MOVED_FROM_A_DEVELOPER_ENTRY)` is an assertion about the footer
+ * and about nothing else, which `includes('Moved')` would not be — a body
+ * quoting the word, or a future preamble mentioning it, would satisfy that.
+ */
+const MOVED_FROM_A_PRODUCT_ENTRY = 'RULE-ZZQ-PLANTED-PROVENANCE-behind-the-product-entry';
+const MOVED_FROM_A_DEVELOPER_ENTRY = 'RULE-ZZQ-PLANTED-PROVENANCE-behind-the-developer-entry';
+
+const MIGRATED_PRODUCT = [
+  '---',
+  'id: a-migrated-product-fact',
+  'kind: fact',
+  'tier: product',
+  'title: a product fact that used to be a corpus item',
+  'truth: this entry was a corpus rule before it was a product constant',
+  'breaks: nothing — it is here to be rendered',
+  'example: the 2026-09-11 migration',
+  'check: "none - this is a fixture and the archive has nothing to measure it against"',
+  `movedFrom: ${MOVED_FROM_A_PRODUCT_ENTRY}`,
+  'movedOn: 2026-09-11',
+  '---',
+  '',
+  'The prose the item carried, which travels with it.',
+  '',
+].join('\n');
+
+const MIGRATED_DEVELOPER = [
+  '---',
+  'id: a-migrated-developer-prohibition',
+  'kind: prohibition',
+  'tier: developer',
+  'title: a developer prohibition that used to be a corpus item',
+  'prohibition: never do the thing this fixture is about',
+  'why: because the fixture says so',
+  'example: the 2026-09-11 migration',
+  'check: "none - this is a fixture and the archive has nothing to measure it against"',
+  `movedFrom: ${MOVED_FROM_A_DEVELOPER_ENTRY}`,
+  'movedOn: 2026-09-11',
+  '---',
+  '',
+  'The prose the item carried, which travels with it.',
+  '',
+].join('\n');
+
+test('a PRODUCT entry does not name the corpus item it was moved from', () => {
+  withFixture({ 'p.md': MIGRATED_PRODUCT }, (dir) => {
+    const [entry] = loadRules(dir, true).entries;
+    assert.equal(entry.tier, 'product', 'the fixture is not the tier this test is about');
+    const rendered = renderEntry(entry);
+    assert.ok(
+      !rendered.includes(MOVED_FROM_A_PRODUCT_ENTRY),
+      'a product constant named the corpus item it was moved from. It ships to every install, ' +
+      'where that id names an item the reader does not have and cannot fetch — a citation that ' +
+      'resolves to nothing, in the block this product says outranks every other source.',
+    );
+    // Anti-vacuity: the absence above is satisfied by an entry that rendered
+    // nothing at all, and this is the half that says it rendered.
+    assert.ok(
+      rendered.includes('a product fact that used to be a corpus item'),
+      'the entry did not render at all, so the absence above proves nothing',
+    );
+  });
+});
+
+test('a DEVELOPER entry DOES name the corpus item it was moved from', () => {
+  withFixture({ 'd.md': MIGRATED_DEVELOPER }, (dir) => {
+    const [entry] = loadRules(dir, true).entries;
+    assert.equal(entry.tier, 'developer', 'the fixture is not the tier this test is about');
+    assert.ok(
+      renderEntry(entry).includes(MOVED_FROM_A_DEVELOPER_ENTRY),
+      'a developer entry lost its provenance. It never leaves this repository, and the reader ' +
+      'of one can open the retired item it points at — dropping the pointer here would be ' +
+      'paying for the product tier\'s problem with the developer tier\'s evidence.',
+    );
+  });
+});
+
+test('ONE delivered block carries the developer entry\'s source and not the product entry\'s', () => {
+  withFixture({ 'p.md': MIGRATED_PRODUCT, 'd.md': MIGRATED_DEVELOPER }, (dir) => {
+    const set = loadRules(dir, true);
+    assert.equal(set.entries.length, 2, 'the fixture did not load, so nothing below means anything');
+    const { text } = renderRules(set);
+    assert.ok(
+      text.includes(MOVED_FROM_A_DEVELOPER_ENTRY),
+      'the developer entry\'s provenance is missing from the delivered block',
+    );
+    assert.ok(
+      !text.includes(MOVED_FROM_A_PRODUCT_ENTRY),
+      'the product entry\'s provenance reached the delivered block. The two tiers are rendered ' +
+      'by one function into one block, so this is the assertion the ruling is actually about.',
+    );
+  });
 });

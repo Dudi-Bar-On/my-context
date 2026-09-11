@@ -208,6 +208,53 @@ test('a complete prohibition saves, so the refusal above is about the missing wh
   });
 });
 
+/**
+ * **A form that cannot carry `movedFrom` is a form that deletes it** — and it
+ * would delete it silently, on a save about something else entirely.
+ *
+ * `saveFromForm` composes a whole entry out of what the form posted, so a field
+ * the form does not draw is a field the next edit drops. `request` is drawn for
+ * exactly this reason. `movedFrom` is now load-bearing in a second way: it is
+ * what `deliver.ts` reads to decide whether a reader is told where an entry
+ * came from, so losing it on a developer-tier entry silently withdraws its
+ * provenance from every session in this repository.
+ *
+ * Asserted by PARSING what was written rather than by reading the form back:
+ * the question is what survives to disk, and a control that rendered its value
+ * and posted nothing would pass the other test.
+ */
+test('a save through the form keeps where the entry was moved from', () => {
+  withStore((dir) => {
+    const answer = saveFromForm(dir, values('fact', {
+      id: 'probe-migrated',
+      movedFrom: 'RULE-the-item-this-entry-was-moved-out-of',
+      movedOn: '2026-09-11',
+    }));
+    assert.equal(answer.ok, true, `a migrated entry was refused: ${JSON.stringify(answer)}`);
+    const parsed = parseEntry(
+      readFileSync(path.join(dir, 'probe-migrated.md'), 'utf8'), 'probe-migrated.md',
+    );
+    assert.ok(!('error' in parsed), `what the form wrote does not parse: ${JSON.stringify(parsed)}`);
+    assert.equal(parsed.movedFrom, 'RULE-the-item-this-entry-was-moved-out-of');
+    assert.equal(parsed.movedOn, '2026-09-11');
+  });
+});
+
+/**
+ * And the form has to OFFER them, or the values above could only ever be
+ * posted by a test. Read structurally, the way every other control here is.
+ */
+test('the form draws a control for movedFrom and one for movedOn', () => {
+  const drawn = controlsOf(renderForm({ kind: 'fact', values: {}, action: '/save' }));
+  for (const name of ['movedFrom', 'movedOn']) {
+    assert.ok(
+      drawn.some((c) => c.name === name),
+      `the form draws no \`${name}\` control, so a saved entry loses it — silently, on an ` +
+      `edit about something else.`,
+    );
+  }
+});
+
 /* ══ 3. AN ENTRY MOVES BETWEEN TIERS, BOTH DIRECTIONS ══════════════════════ */
 
 /**

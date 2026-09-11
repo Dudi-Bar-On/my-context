@@ -390,19 +390,34 @@ export function applyMigration(
     for (const row of plan.rows) {
       const { candidate } = row;
       const item = candidate.from === null ? null : ctx.store.get(candidate.from);
+      // **The item's own body, verbatim.** Nothing is retyped, so the entry
+      // carries the evidence that made the rule worth having rather than a
+      // summary of it — and this file stays a plan rather than a second copy.
       const body = candidate.from === null
         ? (candidate.body ?? '')
-        // **The item's own body, verbatim.** Nothing is retyped, so the entry
-        // carries the evidence that made the rule worth having rather than a
-        // summary of it — and this file stays a plan rather than a second copy.
-        : `${String(item?.body ?? '').trim()}\n\n*Moved from \`${candidate.from}\` on `
-          + `${new Date().toISOString().slice(0, 10)}; that item is retired and points here.*`;
+        : String(item?.body ?? '').trim();
+      /**
+       * **Where it came from is a FIELD, never a sentence at the foot of the
+       * body** — the owner's ruling of 2026-09-11, and the reason it has to be
+       * structural rather than prose.
+       *
+       * A footer inside the body ships wherever the body ships, and a `product`
+       * entry ships to every install: there the pointer names a corpus item the
+       * reader does not have and cannot fetch. As a field, `deliver.ts` decides
+       * per tier who is told — `developer` yes, `product` no — and this script
+       * does not compose that sentence at all, so there is one place it is
+       * worded.
+       */
       const text = composeEntry({
         id: candidate.entryId,
         kind: candidate.kind,
         tier: candidate.tier,
         title: candidate.title,
         parts: candidate.parts,
+        ...(candidate.from === null ? {} : {
+          movedFrom: candidate.from,
+          movedOn: new Date().toISOString().slice(0, 10),
+        }),
         body,
       });
       touch(path.join(options.storeDir, `${candidate.entryId}.md`));

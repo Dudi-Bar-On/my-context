@@ -161,6 +161,19 @@ export interface Entry {
   trigger?: string;
   /** Spec §6: the owner's own words. Documentation only; never injected. */
   request?: string;
+  /**
+   * **Where this entry came from: the corpus item the migration retired.**
+   *
+   * A field rather than a sentence at the foot of `body`, and that is the whole
+   * of what makes the owner's 2026-09-11 ruling enforceable. Provenance is
+   * useful inside my_context — the reader of a `developer` entry can open the
+   * retired item — and is a dangling citation in a stranger's install, where
+   * the named item does not exist. `deliver.ts` renders it for one tier and
+   * not the other, which it could only guess at if the pointer were prose.
+   */
+  movedFrom?: string;
+  /** The day of that move, `YYYY-MM-DD`. Meaningless without `movedFrom`. */
+  movedOn?: string;
   sourcePath: string;
 }
 
@@ -176,7 +189,7 @@ export interface EntryError {
 /** The fields an entry carries that are not parts of its template. */
 const FRAME = ['id', 'kind', 'tier', 'title'] as const;
 /** Optional, on every kind. */
-const OPTIONAL = ['request'] as const;
+const OPTIONAL = ['request', 'movedFrom', 'movedOn'] as const;
 
 const FENCE = /^---\r?\n([\s\S]*?)\r?\n---(?:\r?\n([\s\S]*))?$/;
 
@@ -314,6 +327,19 @@ export function parseEntry(entryText: string, path: string): Entry | EntryError 
   }
 
   const request = text(data.request ?? null);
+  const movedFrom = text(data.movedFrom ?? null);
+  const movedOn = text(data.movedOn ?? null);
+  /**
+   * A date about nothing. `movedOn` is read ONLY beside `movedFrom` — see
+   * `deliver.ts` — so an entry carrying one alone has a field nothing will
+   * ever print, which is the silently-unread field this file's "the template
+   * is a ceiling" paragraph refuses everywhere else.
+   */
+  if (movedFrom === null && movedOn !== null) {
+    return refuse(path, '`movedOn` is a date with no `movedFrom` beside it. It records when this ' +
+      'entry was moved out of a corpus item, so without the item it names nothing and nothing ' +
+      'renders it. Add `movedFrom: <the retired item\'s id>`, or drop the date.', id);
+  }
   const entry: Entry = {
     id,
     kind,
@@ -329,6 +355,8 @@ export function parseEntry(entryText: string, path: string): Entry | EntryError 
   // `standard` template and this is a view over it, so the two cannot disagree.
   if (kind === 'standard') entry.trigger = String(parts.trigger);
   if (request !== null) entry.request = request;
+  if (movedFrom !== null) entry.movedFrom = movedFrom;
+  if (movedOn !== null) entry.movedOn = movedOn;
   return entry;
 }
 
@@ -346,6 +374,9 @@ export interface EntryDraft {
   parts: Record<string, string | string[] | undefined>;
   /** Spec §6: the owner's own words. Optional, and never injected. */
   request?: string;
+  /** The corpus item this entry was moved out of, and the day it moved. */
+  movedFrom?: string;
+  movedOn?: string;
   body?: string;
 }
 
@@ -390,6 +421,12 @@ export function composeEntry(draft: EntryDraft): string {
     data[part.name] = text.trim();
   }
   if (draft.request !== undefined && draft.request.trim() !== '') data.request = draft.request.trim();
+  if (draft.movedFrom !== undefined && draft.movedFrom.trim() !== '') {
+    data.movedFrom = draft.movedFrom.trim();
+    // Written only beside the pointer, for the reason `parseEntry` refuses the
+    // other order: a date with nothing to date is a field nothing reads.
+    if (draft.movedOn !== undefined && draft.movedOn.trim() !== '') data.movedOn = draft.movedOn.trim();
+  }
   const body = (draft.body ?? '').trim();
   return `---\n${serializeFrontmatter(data).trimEnd()}\n---\n${body === '' ? '' : `\n${body}\n`}`;
 }

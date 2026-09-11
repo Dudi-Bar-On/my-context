@@ -258,7 +258,22 @@ test('the entry carries the ITEM’S OWN BODY, so migrating loses no evidence', 
     const entry = loadRules(store, true).entries[0];
     assert.ok(entry.body.includes('blast radius'), 'the item’s argument did not travel');
     assert.ok(entry.body.includes('2026-09-05'), 'the item’s measurement did not travel');
-    assert.match(entry.body, /Moved from `RULE-a-lane-runs-no-git-command-that-writes`/);
+    /**
+     * Where it came from is a FIELD and not a sentence at the foot of the
+     * body — owner's ruling, 2026-09-11. The body ships wherever the entry
+     * ships, and a `product` entry ships to every install, where that pointer
+     * names an item the reader does not have; as a field, `deliver.ts` can
+     * disclose it to the developer tier and to nobody else.
+     */
+    assert.equal(
+      entry.movedFrom, 'RULE-a-lane-runs-no-git-command-that-writes',
+      'the entry does not record the corpus item it was moved out of',
+    );
+    assert.ok(
+      !entry.body.includes('Moved from'),
+      'the provenance is in the body as well as in the field. Two copies of it is the drift ' +
+      'this store exists to end, and only the field is tier-aware.',
+    );
   } finally { box.dispose(); removeTree(store); }
 });
 

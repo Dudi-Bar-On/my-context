@@ -45,7 +45,7 @@
  */
 import path from 'node:path';
 import { assertDelivered, recordDelivery, type Door } from './delivered.ts';
-import { partsOf, type Entry, type EntryError } from './schema.ts';
+import { partsOf, type Entry, type EntryError, type Tier } from './schema.ts';
 import { entriesDir, loadRules, packageRoot, type RuleSet } from './store.ts';
 
 /**
@@ -154,6 +154,46 @@ function renderValue(value: string | string[]): string {
 }
 
 /**
+ * **The tiers whose rendered entry names the corpus item it was moved from —
+ * owner's ruling, 2026-09-11.**
+ *
+ * A migrated entry carries `movedFrom`, and what that pointer is worth depends
+ * entirely on who is reading it. Inside my_context the retired item is on disk
+ * and one `mycontext show` away, so on a `developer` entry the line is
+ * provenance: it says the rule has one home now and where the argument that
+ * produced it can still be read. A `product` entry ships to every install,
+ * where the same id names an item the reader does not have, cannot fetch, and
+ * has no way to tell was ever real — a dangling citation inside the one block
+ * `PRECEDENCE` above claims outranks every other source.
+ *
+ * He was offered three ways out on 2026-09-11 — strip it for product entries,
+ * keep it and update both READMEs to quote it, or isolate the documentation
+ * fixture — and took the first.
+ *
+ * **Written as an allow-list, and that is the decision rather than an
+ * accident**, for the reason `SESSION_SCOPE_DOORS` is one: `!== 'product'`
+ * would disclose provenance to every tier added later, and the next tier will
+ * be added by somebody thinking about something else. A tier nobody has
+ * thought about yet gets the treatment that ships nothing.
+ */
+export const TIERS_THAT_DISCLOSE_PROVENANCE: readonly Tier[] = ['developer'];
+
+/**
+ * The provenance footer, or `''`.
+ *
+ * The sentence lives here and nowhere else — `scripts/migrate-rules.ts` writes
+ * the FIELDS and never this text — so there is one answer to what the footer
+ * says, which is the same argument this module's header makes about there
+ * being one renderer.
+ */
+function provenance(entry: Entry): string {
+  if (entry.movedFrom === undefined) return '';
+  if (!TIERS_THAT_DISCLOSE_PROVENANCE.includes(entry.tier)) return '';
+  const when = entry.movedOn === undefined ? '' : ` on ${entry.movedOn}`;
+  return `*Moved from \`${entry.movedFrom}\`${when}; that item is retired and points here.*`;
+}
+
+/**
  * One entry. Every line below `###` is derived from `partsOf` — see the header.
  */
 export function renderEntry(entry: Entry): string {
@@ -167,6 +207,8 @@ export function renderEntry(entry: Entry): string {
       : `- **${part.name}:** ${rendered}`);
   }
   if (entry.body !== '') lines.push('', entry.body);
+  const footer = provenance(entry);
+  if (footer !== '') lines.push('', footer);
   return lines.join('\n');
 }
 

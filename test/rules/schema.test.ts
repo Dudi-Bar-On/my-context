@@ -1,4 +1,4 @@
-// @basis TASK-the-store-loads-refuses-what-it-cannot-parse-and-proves-it, INV-nothing-is-dropped-silently
+// @basis TASK-the-store-loads-refuses-what-it-cannot-parse-and-proves-it, INV-nothing-is-dropped-silently, TASK-seed-the-store-and-migrate-the-rules-that-already-exist
 /**
  * **The template per kind IS the schema, and this file is what makes that one
  * thing rather than three.**
@@ -285,6 +285,34 @@ test('request is optional, kept verbatim, and its absence is not an error', () =
   const messy = 'make it   so the thing DOESNT happen again , pls';
   const withIt = parseEntry(entry('fact', { request: messy }), 'x.md');
   assert.equal('error' in withIt ? null : withIt.request, messy);
+});
+
+/**
+ * **`movedFrom` is a field because the renderer has to decide per tier who is
+ * told** — the owner's ruling of 2026-09-11, after the first product-tier
+ * entry shipped a footer naming a corpus item no install outside this
+ * repository holds. Written into the body it would ship wherever the body
+ * ships; written as a field, `deliver.ts` discloses it to the developer tier
+ * and to nobody else.
+ *
+ * `movedOn` alone is refused for the reason this file refuses a stray field
+ * everywhere else: nothing reads it, so it is a date about nothing sitting in
+ * a store whose whole claim is that a field it carries is a field it uses.
+ */
+test('movedFrom and movedOn are optional, kept verbatim, and absent is not an error', () => {
+  const withOut = parseEntry(entry('fact'), 'x.md');
+  assert.equal('error' in withOut ? null : withOut.movedFrom, undefined);
+  const withIt = parseEntry(
+    entry('fact', { movedFrom: 'RULE-where-this-came-from', movedOn: '2026-09-11' }), 'x.md',
+  );
+  assert.equal('error' in withIt ? null : withIt.movedFrom, 'RULE-where-this-came-from');
+  assert.equal('error' in withIt ? null : withIt.movedOn, '2026-09-11');
+});
+
+test('a movedOn with no movedFrom beside it is refused, and the refusal names both', () => {
+  const error = refusal(entry('fact', { movedOn: '2026-09-11' })).error;
+  assert.match(error, /\bmovedOn\b/);
+  assert.match(error, /\bmovedFrom\b/);
 });
 
 test('a standard surfaces its trigger, and no other kind has one', () => {

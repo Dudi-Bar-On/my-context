@@ -5,8 +5,10 @@ title: seed the store, and migrate the rules that already exist, reversibly
 status: active
 severity: soft
 always: false
-summary: Move the rules that already govern this project into the new store, once, carefully, and only when it is ready.
+summary: The rules that already governed this project now live inside the tool itself, one copy each, and a rule that ships to everyone no longer points at a note only this project has.
 summary_of: fd4eba6056f1655a
+summary_was:
+  - 2026-09-11 Move the rules that already govern this project into the new store, once, carefully, and only when it is ready.
 scope:
   - src/rules/entries/**
   - .my_context/items/**
@@ -17,17 +19,17 @@ tags:
   - store
   - "plan:store"
   - "seq:4"
-  - "state:todo"
+  - "state:done"
 origin: human
 source_file: null
 source_anchor: null
 source_checksum: null
 valid_from: 2026-09-10
 valid_until: null
-checksum: 2d5cde6f7674683c
+checksum: 817f3969ee9eb999
 plan: store
 seq: "4"
-state: todo
+state: done
 priority: "1"
 needs: store/3
 ---

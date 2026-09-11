@@ -2,9 +2,21 @@
   "version": 1,
   "algorithm": "sha256",
   "store": {
-    "version": 4,
-    "publishedAt": "2026-09-11T08:40:29.091Z",
+    "version": 5,
+    "publishedAt": "2026-09-11T09:50:41.624Z",
     "changelog": [
+      {
+        "version": 5,
+        "at": "2026-09-11T09:50:41.624Z",
+        "note": "the provenance of a migrated entry moves out of its body and into the `movedFrom` / `movedOn` fields, and the renderer discloses it to the DEVELOPER tier only. A product entry ships to every install, where \"moved from RULE-x\" names a corpus item the reader does not have and cannot fetch — a citation that resolves to nothing, inside the block this product says outranks every other source. Owner's ruling, 2026-09-11: strip it for product entries, keep it for developer ones.",
+        "added": [],
+        "changed": [
+          "an-unknown-category-means-a-possible-wrong-corpus",
+          "commit-with-a-pathspec",
+          "never-a-git-command-that-writes-the-shared-tree"
+        ],
+        "removed": []
+      },
       {
         "version": 4,
         "at": "2026-09-11T08:40:29.091Z",
@@ -71,12 +83,12 @@
     {
       "file": "an-unknown-category-means-a-possible-wrong-corpus.md",
       "id": "an-unknown-category-means-a-possible-wrong-corpus",
-      "checksum": "d43e3485303cdd1724d39e524602a81dedfead6a38867de4798edd87ca0e8148"
+      "checksum": "3b345c01bf4990c4af15ef114421dc0d31f0d505d3044dd2ac26cb7c180b3a89"
     },
     {
       "file": "commit-with-a-pathspec.md",
       "id": "commit-with-a-pathspec",
-      "checksum": "fa893cab1147b709464fc14a3b3371fb868aa0d10a80f434b1f858c01218f8ef"
+      "checksum": "679e2aed148bf55bda1f8486e5fb1030b707dd818a065a0101ec8457bf6c52fe"
     },
     {
       "file": "def-a-door.md",
@@ -121,7 +133,7 @@
     {
       "file": "never-a-git-command-that-writes-the-shared-tree.md",
       "id": "never-a-git-command-that-writes-the-shared-tree",
-      "checksum": "7165f5bd7093f8d1ec02eeccabda96cc0d0f70da5dfb16d277dbc0813c7dedeb"
+      "checksum": "34a54528e7b6ec8380f5e55210a0a82663ecb72a1992af629373f741b4725a69"
     },
     {
       "file": "numbered-options-on-a-question-put-to-the-owner.md",
