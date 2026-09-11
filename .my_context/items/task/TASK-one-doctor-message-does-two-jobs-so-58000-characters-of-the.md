@@ -5,9 +5,10 @@ title: one doctor message does two jobs so 58000 characters of the same paragrap
 status: active
 severity: soft
 always: false
-summary: One long explanation is written once and read by both the screen and the terminal, instead of only one of them showing it.
+summary: The long explanation in the health report is now written once and read by both the web page and the terminal, so the terminal stopped repeating it with every finding.
 summary_of: 3a4d44e3536b93df
 summary_was:
+  - 2026-09-11 One long explanation is written once and read by both the screen and the terminal, instead of only one of them showing it.
   - 2026-09-07 The health report repeats the same long explanation with every finding, so the page is almost all one paragraph and tells you nothing.
 acknowledged:
   - body_disagrees_with_meta@9acbb023e1537a53
@@ -20,17 +21,17 @@ tags:
   - walk
   - "plan:walk"
   - "seq:122"
-  - "state:todo"
+  - "state:done"
 origin: human
 source_file: "C:/Users/UserC/AppData/Local/Temp/msgsplit.md"
 source_anchor: null
 source_checksum: null
 valid_from: 2026-08-31
 valid_until: null
-checksum: 9b02aa012a428e46
+checksum: 12d57b85d7bb5c45
 plan: walk
 seq: "122"
-state: todo
+state: done
 priority: "1"
 needs: walk/121
 source: owner report, 2026-08-31

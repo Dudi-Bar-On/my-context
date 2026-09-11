@@ -11,6 +11,7 @@ import {
   refuseUnknownFlag, wantsJson, type Detail,
 } from './format.ts';
 import { hasFlag, registerCommand, type Emit } from './registry.ts';
+import { sharedTail } from '../../doctor/shared-tail.ts';
 
 /**
  * This command's flag surface, LIFTED to `core/command-flags.ts` so a read
@@ -525,7 +526,32 @@ function cmdDoctor(ws: Workspace, args: string[], out: Emit): number {
     const settled = bucket.filter((f) => f.acknowledged === true).length;
     const settledNote = settled ? `  ${settled} acknowledged` : '';
     out(`${code} (${bucket.length})  [${bucket[0].level}]${settledNote}`);
+    // **THE SENTENCE EVERY FINDING OF THIS CODE REPEATS, PRINTED ONCE.**
+    // `TASK-one-doctor-message-does-two-jobs-so-58000-characters-of-the`. The
+    // screen has made this cut since 2026-09-01 and the terminal got none of
+    // it: measured on this repo's own corpus on 2026-09-11, `mycontext doctor`
+    // printed 64,351 characters, of which one `citation_form` paragraph of 945
+    // was printed eight times and eight other codes repeated their own.
+    //
+    // `sharedTail` is the screen's decision, in `src/doctor/shared-tail.ts` —
+    // read its header for which of this project's two recorded answers to "a
+    // `.ts` file cannot import a `.js` one" this is, and why the other is not
+    // available to a synchronous `cmdDoctor`.
+    //
+    // `''` whenever factoring would lose something (fewer than two findings, a
+    // tail under `SHARED_MIN`, or any finding left with no words of its own),
+    // and then this level prints exactly what it printed before.
+    const tail = sharedTail(bucket.map((f) => f.message));
     for (const finding of bucket) {
+      // `slice`, and the tail is a suffix of every message in the bucket by
+      // construction, so what is dropped here is precisely what is printed
+      // once below. The screen's own comment for the same line: "the two
+      // halves must still join to the producer's message byte for byte".
+      // Byte-for-byte is already surrendered to WRAPPING on this surface —
+      // `paragraph` rewraps both halves — so the join is asserted on
+      // normalised whitespace in `test/cli/doctor-shared-tail.test.ts`, and
+      // the trailing space the cut leaves behind goes the same way.
+      const own = tail === '' ? finding.message : finding.message.slice(0, finding.message.length - tail.length);
       // Wrapped to the layout budget, exactly as `status` and `decay` wrap
       // their own prose, and with a hanging indent so a message that takes
       // four lines still reads as ONE finding. Unwrapped, these were the
@@ -533,9 +559,24 @@ function cmdDoctor(ws: Workspace, args: string[], out: Emit): number {
       // with an id in front of it, so at the widest id this project can mint
       // the default level measured 513 columns against a budget of 100.
       for (const line of paragraph(
-        `${finding.item ? `${finding.item}: ` : ''}${finding.acknowledged === true ? 'ACKNOWLEDGED — ' : ''}${finding.message}`,
+        `${finding.item ? `${finding.item}: ` : ''}${finding.acknowledged === true ? 'ACKNOWLEDGED — ' : ''}${own}`,
         '  ', outputWidth(), '    ',
       )) out(line);
+    }
+    // The note, under the findings it is the rest of, and headed so nobody
+    // meets an orphan paragraph. The heading says the CODE and the COUNT for
+    // the reason the screen's `doc.shared` summary says both — *"{code} — the
+    // rest of the note, same on {count} rows"*: a reader needs to know whose
+    // sentence this is and how many findings it answers for before deciding to
+    // read it. Indented one step deeper than the findings, because it belongs
+    // to all of them and to none of them alone.
+    if (tail !== '') {
+      out('');
+      for (const line of paragraph(
+        `${code} — the rest of the note, the same on all ${bucket.length} finding(s):`,
+        '  ', outputWidth(), '  ',
+      )) out(line);
+      for (const line of paragraph(tail, '    ', outputWidth(), '    ')) out(line);
     }
     out('');
   }
