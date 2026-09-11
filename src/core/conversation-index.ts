@@ -145,6 +145,15 @@ const CONVERSATION_TABLE_COLUMNS: [string, string[]][] = [
   ]],
   ['persisted', ['session_id', 'file', 'bytes', 'marked_at', 'mirrored_at', 'note']],
   ['named', ['session_id', 'name', 'named_at']],
+  ['conversation_prose', [
+    'source_key', 'session_id', 'agent_id', 'record_index', 'byte_offset', 'kind', 'at', 'text',
+  ]],
+  ['prose_sources', [
+    'key', 'session_id', 'agent_id', 'file', 'bytes', 'mtime_ms', 'records', 'spans', 'indexed_at',
+  ]],
+  ['anchors', [
+    'id', 'session_id', 'agent_id', 'byte_offset', 'label', 'kind', 'origin', 'at',
+  ]],
 ];
 
 /**
@@ -283,6 +292,92 @@ const CONVERSATION_TABLE_COLUMNS: [string, string[]][] = [
  * `persisted` and not this, because keeping a copy is a promise to keep the
  * session readable and naming one is not. The name simply waits, and a session
  * whose transcript comes back — or whose mirror is read in — finds it again.
+ *
+ * ── `conversation_prose` IS AN FTS5 INDEX AND IT COSTS NO DEPENDENCY ───────
+ *
+ * `plan:recall seq:1`. Node 24 bundles SQLite 3.51.2 with `ENABLE_FTS5`,
+ * `bm25()`, porter and trigram, and `node:sqlite` is already imported in ~14
+ * files here, so full-text search over the archive's prose is a `CREATE
+ * VIRTUAL TABLE` and nothing else — against `CONST-zero-runtime-dependencies`
+ * and `CONST-node-24-no-build-step`.
+ *
+ * **PROSE ONLY, and the filter is `classifyTurn`.** A prompt or an answer in
+ * words is indexed; machinery is not. That is the same thirteen lines the list
+ * screen's counts already rest on, reused rather than restated, so "what is
+ * noise" cannot come to mean two different things on two screens. Measured on
+ * this workspace 2026-09-11, over 2 sessions and 298 lane transcripts:
+ *
+ *     transcripts on disk      856,905,563 bytes   162,611 records
+ *     prose                      8,402,679 bytes     7,750 spans   0.98%
+ *
+ * which is the research's 0.97% reproduced, and the reason nothing here is a
+ * performance problem.
+ *
+ * **THE TOKENIZER IS `trigram`, AND THE REASON IS HEBREW, MEASURED.** A
+ * word-boundary tokenizer (`unicode61`) is the obvious choice and is wrong for
+ * this corpus, which is Hebrew from record 5: Hebrew glues its one-letter
+ * particles onto the front of a word, so the form a reader types is a
+ * SUBSTRING of the form the transcript holds. Measured on the real corpus,
+ * same day — the query, the form it is found inside, and the hit counts:
+ *
+ *     query   inside      unicode61   trigram
+ *     שורה    השורה               3        11
+ *     תוך     מתוך                0        14
+ *     שרה     עשרה                0         8
+ *     anchors                    54        58
+ *
+ * **What it costs, stated rather than left to be discovered:**
+ *
+ *     index built with   database bytes   build ms
+ *     unicode61              17,842,176        264
+ *     trigram                42,119,168      1,870
+ *
+ * — 42 MB beside a `.my_context/.index.db` that is 5.6 MB today, and 4.9% of
+ * the transcripts it indexes. The build is a one-shot walk, not a per-turn
+ * one: `prose_sources` below carries the `(bytes, mtime_ms)` freshness key, so
+ * a refresh re-reads only a transcript's TAIL, exactly as the scan does.
+ *
+ * **And the one thing trigram cannot do is a bound the reader must be TOLD
+ * about**: a term shorter than three characters matches nothing at all, ever —
+ * `"ui"` returns zero rows over a corpus in which the word is everywhere. An
+ * empty result would make "cannot be searched" look exactly like "not in the
+ * archive", so `searchArchive` reports it rather than returning silence
+ * (`INV-nothing-is-dropped-silently`).
+ *
+ * The identifying columns are `UNINDEXED`, so they are stored and returned but
+ * contribute no tokens; `source_key` is the transcript a span came from — the
+ * session id, or the agent id for a lane — and is what a re-index deletes by.
+ *
+ * ── `anchors` IS A TABLE FOR THE REASON `named` IS ONE ─────────────────────
+ *
+ * `plan:recall seq:1`, §7 of the retrieval design. An anchor is a fixed point
+ * the owner can steer back to, set two ways: he marks one, and things that are
+ * anchors by nature — a table, a report, a ruling he gave — are marked without
+ * him asking.
+ *
+ * The precedent is `named`'s, one item old and proved the hard way, and it is
+ * the same two losses: `upsert` sets EVERY column from `excluded` and the Stop
+ * hook rebuilds at the end of every assistant turn, so a value in a column of
+ * `conversations` lives ONE TURN and then vanishes silently; and
+ * `removeMissing` DELETES the whole row when the harness prunes the
+ * transcript. Both were re-read against this code before this table was
+ * designed and both still hold, and `test/core/anchors.test.ts` asserts the
+ * first of them beside the anchor that survives it — so if `upsert` ever stops
+ * overwriting, the test says so rather than the comment quietly ageing.
+ *
+ * **`byte_offset` is the position, and it is the ONLY position.** A character
+ * offset would be wrong from record 5 of this corpus onward, and wrong
+ * silently: it lands inside a record, which reads as unreadable rather than
+ * throwing. `iterateTranscript` walks byte offsets from the Buffer for exactly
+ * this reason and an anchor is stored in the units that walk produces. The
+ * record ORDINAL is deliberately not stored beside it — two positions that can
+ * disagree is the defect this repository spent 2026-09-07 measuring — and is
+ * derived by seeking, which a transcript that only ever appends makes stable.
+ *
+ * `agent_id` is `NULL` for the session's own transcript and names the lane
+ * otherwise, because the archive is mostly lanes: 298 against 2 sessions here.
+ * `kind` and `origin` exist now rather than in the task that fills them, so
+ * that automatic marking is not a second schema version.
  */
 const CONVERSATION_SCHEMA = `
 CREATE TABLE IF NOT EXISTS conversations (
@@ -359,6 +454,44 @@ CREATE TABLE IF NOT EXISTS named (
   name       TEXT NOT NULL,
   named_at   TEXT NOT NULL
 ) WITHOUT ROWID;
+
+CREATE VIRTUAL TABLE IF NOT EXISTS conversation_prose USING fts5(
+  source_key   UNINDEXED,
+  session_id   UNINDEXED,
+  agent_id     UNINDEXED,
+  record_index UNINDEXED,
+  byte_offset  UNINDEXED,
+  kind         UNINDEXED,
+  at           UNINDEXED,
+  text,
+  tokenize = 'trigram'
+);
+
+CREATE TABLE IF NOT EXISTS prose_sources (
+  key        TEXT PRIMARY KEY,
+  session_id TEXT NOT NULL,
+  agent_id   TEXT,
+  file       TEXT NOT NULL,
+  bytes      INTEGER NOT NULL,
+  mtime_ms   INTEGER NOT NULL,
+  records    INTEGER NOT NULL,
+  spans      INTEGER NOT NULL,
+  indexed_at TEXT NOT NULL
+) WITHOUT ROWID;
+
+CREATE TABLE IF NOT EXISTS anchors (
+  id          TEXT PRIMARY KEY,
+  session_id  TEXT NOT NULL,
+  agent_id    TEXT,
+  byte_offset INTEGER NOT NULL,
+  label       TEXT NOT NULL,
+  kind        TEXT NOT NULL,
+  origin      TEXT NOT NULL,
+  at          TEXT NOT NULL
+) WITHOUT ROWID;
+
+CREATE INDEX IF NOT EXISTS idx_anchors_session ON anchors(session_id);
+CREATE INDEX IF NOT EXISTS idx_anchors_at      ON anchors(at);
 `;
 
 /**
@@ -499,6 +632,83 @@ export interface NameRow {
   sessionId: string;
   name: string;
   namedAt: string;
+}
+
+/**
+ * One span of prose, as it is stored in `conversation_prose` — a single
+ * record's words, with the seek target they live at.
+ *
+ * `sourceKey` is the transcript: the session id, or the agent id for a lane.
+ * One key, one file, and it is what a re-index deletes by.
+ */
+export interface ProseSpan {
+  sourceKey: string;
+  sessionId: string;
+  /** `null` for the session's own transcript; the lane's id otherwise. */
+  agentId: string | null;
+  /** 0-based position in the file, the index every surface counts in. */
+  recordIndex: number;
+  /** Where this record's first byte sits in the file. A seek target. */
+  byteOffset: number;
+  kind: 'prompt' | 'answer';
+  /** The record's own timestamp, or `null` when it carried none. */
+  at: string | null;
+  text: string;
+}
+
+/** One search hit, in the shape the FTS table answers with. */
+export interface ProseHit {
+  sessionId: string;
+  agentId: string | null;
+  recordIndex: number;
+  byteOffset: number;
+  kind: string;
+  at: string | null;
+  /** The matched text with its surroundings, marked — what the reader reads. */
+  snippet: string;
+  /** `bm25()`. Lower is a better match, which is SQLite's own ordering. */
+  score: number;
+}
+
+/**
+ * What has been indexed into `conversation_prose`, and how far.
+ *
+ * `(bytes, mtime_ms)` is the same freshness key `conversations` carries, for
+ * the same reason: an unchanged transcript costs one comparison, and a grown
+ * one costs its TAIL. `records` is where the next walk resumes counting, so an
+ * appended record keeps the ordinal the whole-file walk would have given it
+ * rather than restarting at 0.
+ */
+export interface ProseSourceRow {
+  key: string;
+  sessionId: string;
+  agentId: string | null;
+  file: string;
+  bytes: number;
+  mtimeMs: number;
+  records: number;
+  spans: number;
+  indexedAt: string;
+}
+
+/**
+ * One anchor — a fixed point the owner can steer back to. §7 of the retrieval
+ * design; see the schema header for why this is a table and why the position
+ * is in bytes.
+ */
+export interface AnchorRow {
+  /** Derived from WHERE the anchor is, so marking one point twice is one row. */
+  id: string;
+  sessionId: string;
+  agentId: string | null;
+  /** Bytes from the start of the transcript. Never characters. */
+  byteOffset: number;
+  label: string;
+  /** What KIND of thing this is — `'note'`, `'table'`, `'report'`, `'ruling'`. */
+  kind: string;
+  /** `'owner'` when he marked it; `'automatic'` when it was marked for him. */
+  origin: string;
+  at: string;
 }
 
 /**
@@ -2178,6 +2388,198 @@ export class ConversationIndex {
     return true;
   }
 
+  /* ── THE PROSE INDEX — `plan:recall seq:1` ────────────────────────────── */
+
+  /**
+   * Add spans to the full-text index. The caller has already deleted whatever
+   * this source held, or is appending to it; this does not decide which.
+   */
+  putProse(spans: ProseSpan[]): void {
+    if (spans.length === 0) return;
+    const statement = this.#db.prepare(
+      `INSERT INTO conversation_prose
+         (source_key, session_id, agent_id, record_index, byte_offset, kind, at, text)
+       VALUES (?,?,?,?,?,?,?,?)`,
+    );
+    for (const span of spans) {
+      statement.run(
+        span.sourceKey, span.sessionId, span.agentId, span.recordIndex, span.byteOffset,
+        span.kind, span.at, span.text,
+      );
+    }
+  }
+
+  /** Drop every span one transcript contributed, and say how many. */
+  dropProse(sourceKey: string): number {
+    const result = this.#db.prepare(
+      'DELETE FROM conversation_prose WHERE source_key = ?',
+    ).run(sourceKey);
+    return Number(result.changes);
+  }
+
+  /**
+   * **The search.** `match` is an FTS5 query the CALLER has already made safe
+   * — see `searchArchive`, which quotes the reader's text into a phrase so
+   * that the characters FTS5 reserves are data rather than syntax.
+   *
+   * Ordered by `bm25()` ascending, which is SQLite's own "best first", then by
+   * session and record so that ties — which a trigram index produces often —
+   * come back in a stable order rather than whatever the storage layer felt
+   * like. A reader paging through results must not see them shuffle.
+   */
+  matchProse(
+    match: string,
+    scope: { sessionId?: string; agentId?: string | null; kind?: string } = {},
+    limit = 200,
+  ): ProseHit[] {
+    const where: string[] = ['conversation_prose MATCH ?'];
+    const params: (string | number)[] = [match];
+    if (scope.sessionId !== undefined) { where.push('session_id = ?'); params.push(scope.sessionId); }
+    if (scope.agentId !== undefined) {
+      if (scope.agentId === null) where.push('agent_id IS NULL');
+      else { where.push('agent_id = ?'); params.push(scope.agentId); }
+    }
+    if (scope.kind !== undefined) { where.push('kind = ?'); params.push(scope.kind); }
+    const rows = this.#db.prepare(
+      'SELECT session_id, agent_id, record_index, byte_offset, kind, at, ' +
+      // The literal `7` is the ordinal of `text` in the table's column list,
+      // and the arguments to `snippet` must be constants rather than bound
+      // parameters — so it is written here beside the schema it counts.
+      "snippet(conversation_prose, 7, '[', ']', '…', 16) AS snip, " +
+      'bm25(conversation_prose) AS score ' +
+      `FROM conversation_prose WHERE ${where.join(' AND ')} ` +
+      'ORDER BY score ASC, session_id ASC, record_index ASC LIMIT ?',
+    ).all(...params, limit) as Record<string, unknown>[];
+    return rows.map((row) => ({
+      sessionId: String(row.session_id),
+      agentId: row.agent_id === null ? null : String(row.agent_id),
+      recordIndex: Number(row.record_index),
+      byteOffset: Number(row.byte_offset),
+      kind: String(row.kind),
+      at: row.at === null ? null : String(row.at),
+      snippet: String(row.snip),
+      score: Number(row.score),
+    }));
+  }
+
+  /** What each transcript has already contributed, keyed by its source key. */
+  proseSources(): Map<string, ProseSourceRow> {
+    const rows = this.#db.prepare('SELECT * FROM prose_sources').all() as
+      Record<string, unknown>[];
+    return new Map(rows.map((row) => [String(row.key), {
+      key: String(row.key),
+      sessionId: String(row.session_id),
+      agentId: row.agent_id === null ? null : String(row.agent_id),
+      file: String(row.file),
+      bytes: Number(row.bytes),
+      mtimeMs: Number(row.mtime_ms),
+      records: Number(row.records),
+      spans: Number(row.spans),
+      indexedAt: String(row.indexed_at),
+    }]));
+  }
+
+  putProseSource(row: ProseSourceRow): void {
+    this.#db.prepare(
+      `INSERT INTO prose_sources
+         (key, session_id, agent_id, file, bytes, mtime_ms, records, spans, indexed_at)
+       VALUES (?,?,?,?,?,?,?,?,?)
+       ON CONFLICT(key) DO UPDATE SET
+         session_id = excluded.session_id, agent_id = excluded.agent_id,
+         file = excluded.file, bytes = excluded.bytes, mtime_ms = excluded.mtime_ms,
+         records = excluded.records, spans = excluded.spans,
+         indexed_at = excluded.indexed_at`,
+    ).run(
+      row.key, row.sessionId, row.agentId, row.file, row.bytes, row.mtimeMs,
+      row.records, row.spans, row.indexedAt,
+    );
+  }
+
+  /**
+   * Forget every transcript that is no longer indexed, and its prose with it,
+   * and say how many. A session the harness pruned leaves the archive; its
+   * words leaving with it is the same fact, and it is COUNTED rather than
+   * quietly shrunk — `INV-nothing-is-dropped-silently`.
+   */
+  dropProseSources(keep: Set<string>): number {
+    const known = (this.#db.prepare('SELECT key FROM prose_sources').all() as
+      { key: string }[]).map((r) => r.key);
+    const gone = known.filter((key) => !keep.has(key));
+    const statement = this.#db.prepare('DELETE FROM prose_sources WHERE key = ?');
+    for (const key of gone) {
+      this.dropProse(key);
+      statement.run(key);
+    }
+    return gone.length;
+  }
+
+  /* ── ANCHORS — `plan:recall seq:1` ─────────────────────────────────────── */
+
+  /**
+   * Record one anchor, or move the label on the one already at that point.
+   *
+   * The id is the caller's and is derived from the POSITION (`anchors.ts`), so
+   * this upsert is what makes automatic marking safe to run on every turn.
+   */
+  putAnchor(row: AnchorRow): void {
+    this.#db.prepare(
+      `INSERT INTO anchors (id, session_id, agent_id, byte_offset, label, kind, origin, at)
+       VALUES (?,?,?,?,?,?,?,?)
+       ON CONFLICT(id) DO UPDATE SET
+         session_id = excluded.session_id, agent_id = excluded.agent_id,
+         byte_offset = excluded.byte_offset, label = excluded.label,
+         kind = excluded.kind, origin = excluded.origin, at = excluded.at`,
+    ).run(
+      row.id, row.sessionId, row.agentId, row.byteOffset, row.label, row.kind,
+      row.origin, row.at,
+    );
+  }
+
+  /**
+   * One session's anchors — its own and its lanes' — in the order they appear
+   * in the conversation, which is the order a reader follows them. `null` asks
+   * for every anchor in the archive, newest first, which is how a list of a
+   * person's own bookmarks reads.
+   */
+  anchorRows(sessionId: string | null): AnchorRow[] {
+    const rows = sessionId === null
+      ? this.#db.prepare('SELECT * FROM anchors ORDER BY at DESC, id ASC').all()
+      : this.#db.prepare(
+        'SELECT * FROM anchors WHERE session_id = ? ' +
+        'ORDER BY agent_id ASC NULLS FIRST, byte_offset ASC',
+      ).all(sessionId);
+    return (rows as Record<string, unknown>[]).map(toAnchor);
+  }
+
+  anchorRow(id: string): AnchorRow | null {
+    const row = this.#db.prepare('SELECT * FROM anchors WHERE id = ?').get(id) as
+      Record<string, unknown> | undefined;
+    return row === undefined ? null : toAnchor(row);
+  }
+
+  /** Take one anchor back. `false` when there was none — an answer, not a failure. */
+  dropAnchor(id: string): boolean {
+    if (this.anchorRow(id) === null) return false;
+    this.#db.prepare('DELETE FROM anchors WHERE id = ?').run(id);
+    return true;
+  }
+
+  /**
+   * Anchors whose LABEL contains a term, newest first.
+   *
+   * A label is the one thing about an anchor a person wrote, so it is the one
+   * thing a search over anchors can match. `LIKE` is ASCII-case-insensitive by
+   * default and is left that way for `subagentMatches`' reason: a Hebrew or
+   * accented term still matches exactly, and inventing a folding rule here
+   * would be this build guessing at a reader's language.
+   */
+  matchAnchors(term: string): AnchorRow[] {
+    const rows = this.#db.prepare(
+      "SELECT * FROM anchors WHERE label LIKE ? ESCAPE '\\' ORDER BY at DESC, id ASC",
+    ).all(`%${likeEscape(term)}%`) as Record<string, unknown>[];
+    return rows.map(toAnchor);
+  }
+
   transaction<T>(fn: () => T): T {
     this.#db.exec('BEGIN IMMEDIATE');
     try {
@@ -2206,6 +2608,19 @@ function toPersisted(row: Record<string, unknown>): PersistedRow {
     markedAt: String(row['marked_at'] ?? ''),
     mirroredAt: String(row['mirrored_at'] ?? ''),
     note: typeof note === 'string' ? note : null,
+  };
+}
+
+function toAnchor(row: Record<string, unknown>): AnchorRow {
+  return {
+    id: String(row.id),
+    sessionId: String(row.session_id),
+    agentId: row.agent_id === null ? null : String(row.agent_id),
+    byteOffset: Number(row.byte_offset),
+    label: String(row.label),
+    kind: String(row.kind),
+    origin: String(row.origin),
+    at: String(row.at),
   };
 }
 
@@ -2300,7 +2715,7 @@ function toSubagentRow(row: Record<string, unknown>): SubagentRow {
  * A file that will not open is `false`: not a boundary anyone can vouch for,
  * and the full path reports the failure the way it always has.
  */
-function lineStartsAt(file: string, at: number): boolean {
+export function lineStartsAt(file: string, at: number): boolean {
   if (at === 0) return true;
   if (at < 0) return false;
   let fd: number;
