@@ -245,6 +245,76 @@ function fallbackLine(url: string, reason: string): string {
 }
 
 /**
+ * **What a start that DID open a browser prints — and why a URL is now one of
+ * the lines.**
+ *
+ * ── THE MEASUREMENT, 2026-09-12 ────────────────────────────────────────────
+ *
+ * The owner pasted a URL and said it did not work. It worked; it had EXPIRED.
+ * The URL a browser is launched on carries `OPENER_NONCE_TTL_MS` — ten seconds
+ * — and that is correct FOR THE OPENER: on Windows it goes onto a command line
+ * every local account can read for the lifetime of the spawn (`src/ui/open.ts`
+ * argues it), and a launch spends it in milliseconds. What nobody accounted for
+ * is that the launched URL does not stop existing once it is spent: it is
+ * sitting in the address bar of the tab that just opened, and a person who
+ * reloads it, copies it, or hands it to somebody else is holding the shortest-
+ * lived credential this product mints. Ten seconds, against `MINT_NONCE_TTL_MS`
+ * at thirty and `PRINTED_NONCE_TTL_MS` at ten minutes. **The one URL a human
+ * actually reads had the shortest life of the three.**
+ *
+ * ── WHY THIS IS NOT A REVERSAL OF THE 2026-09-03 RULING ───────────────────
+ *
+ * That ruling sized a credential by WHO SPENDS IT: a browser this process opens
+ * consumes it in milliseconds and gets thirty seconds; a human who has to carry
+ * it back to a window gets ten minutes (`deliverNonce`). Applied here, the two
+ * consumers are simply both present at once — the launch spends its own
+ * ten-second one, and the human gets a SECOND credential sized for a human.
+ * Neither window moves. The opener keeps its ten seconds and therefore keeps
+ * the command-line-exposure argument that set them; nothing printed here ever
+ * transits a command line, exactly as `fallbackLine` already says of the URL it
+ * prints when no browser opened.
+ *
+ * A second mint costs nothing worth naming: `urlWithNonce` mints from this
+ * server's own in-memory `NonceStore`, which is not the `POST /api/nonce` route
+ * and writes no `nonce-minted` audit row. Both nonces are one-shot, loopback
+ * only, and die with the process.
+ *
+ * ── WHY IT ALSO SAYS THE OPENER'S LINK IS ABOUT TO DIE ────────────────────
+ *
+ * Printing a good URL silently would leave the reader with two links and no way
+ * to tell which of them just stopped working — and the one in their address bar
+ * is the one they will reach for. So the line names the ten seconds, names the
+ * window this one gets, and names `mycontext ui --nonce` for after it is spent.
+ * That is the register `nonceOpenFailedLine` already set for a link handed out
+ * past its purpose: say what it is, rather than let a person discover it.
+ *
+ * Exported and taking `urlWithNonce` as a parameter so that
+ * `test/cli/ui-printed-url-ttl.test.ts` can prove WHICH window is asked for
+ * without starting a server or spawning a browser — the ttl is the whole claim,
+ * and a test that could only read the printed string could not see it.
+ */
+export function startedLines(
+  port: number, idleMs: number, urlWithNonce: (ttlMs: number) => string,
+): string[] {
+  const ttlMs = printedNonceTtl(idleMs);
+  return [
+    `mycontext ui: serving on http://127.0.0.1:${port} — opening your browser. `
+    + `Read-only; exits after ${idleMinutesText(idleMs)}.`,
+    `mycontext ui: the link the browser was handed is spent by that launch and lives `
+    + `${OPENER_NONCE_TTL_MS / 1_000}s — reloading it later will not let you in. If that tab `
+    + `asks for a credential, use this one instead (${nonceWindowText(ttlMs)}, one use, gone `
+    + `when the server exits): ${urlWithNonce(ttlMs)} — and after it is spent, `
+    + '`mycontext ui --nonce` mints another from the server that is already running.',
+  ];
+}
+
+/** How long a printed credential lasts, in whole minutes where that is exact. */
+function nonceWindowText(ttlMs: number): string {
+  const minutes = ttlMs / 60_000;
+  return Number.isInteger(minutes) ? `good for ${minutes} minutes` : `good for ${ttlMs}ms`;
+}
+
+/**
  * The fallback when opening a browser for a MINTED nonce fails — rare, since
  * this route only runs after `probeUiServer` or a configured `ui.port` has
  * already proved a server is there.
@@ -977,10 +1047,11 @@ function cmdUi(ws: Workspace, args: string[], out: Emit, cwd: string): number {
         out(fallbackLine(running.urlWithNonce(printedNonceTtl(idleMs)), launch.reason));
         return;
       }
-      out(
-        `mycontext ui: serving on http://127.0.0.1:${running.port} — opening your browser. ` +
-        `Read-only; exits after ${idleMinutesText(idleMs)}.`,
-      );
+      // Two lines, and the second one is a URL a human can actually use: the
+      // one the browser was handed lives ten seconds and is already spent.
+      // See `startedLines` for the measurement and for why this does not
+      // reverse the 2026-09-03 ruling.
+      for (const line of startedLines(running.port, idleMs, running.urlWithNonce)) out(line);
     })
     .catch((err: unknown) => {
       // `startUiServer` never throws synchronously and says so: every refusal

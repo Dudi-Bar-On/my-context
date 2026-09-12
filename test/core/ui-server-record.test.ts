@@ -74,12 +74,14 @@ test('unparseable, wrong-version and wrong-shape records are all null', () => {
 test('clear removes it, and clearing nothing is not an error', () => {
   inRoot((root) => {
     writeUiServerRecord(RECORD, root);
-    clearUiServerRecord(root);
+    // The identity is required since 2026-09-12 — see `clearUiServerRecord`.
+    // Here it is the record's own, which is the "this is mine" case.
+    assert.equal(clearUiServerRecord({ pid: RECORD.pid, port: RECORD.port }, root), 'removed');
     assert.equal(existsSync(uiServerRecordPath(root)), false);
     // Already-gone is the goal state. The probe clears a stale record it has
     // just disproved, and two probes racing must not turn the second into an
     // error on a hook that has to exit 0.
-    clearUiServerRecord(root);
+    assert.equal(clearUiServerRecord({ pid: RECORD.pid, port: RECORD.port }, root), 'no-record');
   });
 });
 

@@ -1049,8 +1049,32 @@ export async function startUiServer(options: UiServerOptions): Promise<RunningUi
    * be a branch no test can reach, and it would sit on the one path where a
    * thrown exception has nowhere to go — an event listener, on a process that
    * is already shutting down.
+   *
+   * ── AND IT REMOVES **THIS** SERVER'S RECORD, NOT WHATEVER IS THERE ────────
+   *
+   * Everything above argues about FORGETTING to clear. It was silent about
+   * clearing SOMEBODY ELSE'S, and that is what shipped: the record is one file
+   * per user, so a server closing after a newer one had written its own record
+   * deleted the newer one's — leaving a live server nothing could find and the
+   * upkeep unable to put it back (measured 2026-09-12, and the whole of
+   * `TASK-an-exiting-server-deletes-the-liveness-record-without`). The identity
+   * is now a required argument of `clearUiServerRecord`, so this line says
+   * whose record it is taking back and the function refuses if the file names
+   * anyone else.
+   *
+   * `boundPort` and not `options.port`, for `recordListeningAt`'s reason
+   * exactly: the requested port is `0` on almost every real start, and an
+   * identity built from it would match no record ever written — which fails
+   * SAFE (nothing removed) but would leave every exit leaking its own record.
+   * `boundPort` is still `0` here only when `listen` never succeeded, and a
+   * server that never bound wrote no record to take back.
+   *
+   * The outcome is discarded, and that is the same judgement `recordAudit`'s
+   * result gets on the refusal path: there is no one to tell. A
+   * `names-another-server` here is the mechanism working — a replacement is
+   * already up and its record is the right one to leave alone.
    */
-  server.once('close', () => { clearUiServerRecord(); });
+  server.once('close', () => { clearUiServerRecord({ pid: process.pid, port: boundPort }); });
 
   const idle = new IdleMonitor(options.idleMs ?? IDLE_MS, () => {
     // On idle the server closes; open sockets (a stream, in plan 3) are

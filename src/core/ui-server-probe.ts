@@ -67,6 +67,28 @@ export async function probeUiServer(
   const record = readUiServerRecord(globalRoot);
   if (record === null) return { state: 'no-record' };
 
+  /**
+   * **The record this call is about to disprove, carried to the removal.**
+   *
+   * This module's two `clearUiServerRecord` calls are the ONE caller that
+   * clears a record ON PURPOSE: it is removing a claim it has just measured to
+   * be false, which is the opposite of `src/ui/server.ts`'s exiting server
+   * removing a claim it no longer owns. That intent is correct and it stays.
+   *
+   * What it did not have was a bound on WHEN. The two removals below are up to
+   * `PROBE_TIMEOUT_MS` of connect after the read above, and a server that
+   * starts inside that window writes a record that is true — which the
+   * unguarded removal would then delete, reproducing the very defect measured
+   * on 2026-09-12 from the other end. Passing the identity that was read means
+   * the removal only ever takes the record it disproved: a record rewritten in
+   * the gap names a different pid or a different port and survives.
+   *
+   * It is the same shape `ui-server-upkeep.ts` uses before it signals a pid —
+   * re-read, and decline if the record has stopped naming what the probe
+   * proved.
+   */
+  const disproved = { pid: record.pid, port: record.port };
+
   // Step 2: the pid. Cheap, synchronous, and it catches the ordinary case — a
   // server the owner closed, or one that went with a reboot.
   //
@@ -80,7 +102,7 @@ export async function probeUiServer(
     process.kill(record.pid, 0);
   } catch (error) {
     if ((error as NodeJS.ErrnoException).code !== 'EPERM') {
-      clearUiServerRecord(globalRoot);
+      clearUiServerRecord(disproved, globalRoot);
       return { state: 'dead', why: 'pid', port: record.port };
     }
   }
@@ -88,7 +110,7 @@ export async function probeUiServer(
   // Step 3: the port. THIS is the measurement; everything above it is a claim.
   const listening = await portAccepts(record.host, record.port, timeoutMs);
   if (!listening) {
-    clearUiServerRecord(globalRoot);
+    clearUiServerRecord(disproved, globalRoot);
     return { state: 'dead', why: 'port', port: record.port };
   }
   return {

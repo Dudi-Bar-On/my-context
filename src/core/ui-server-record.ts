@@ -254,17 +254,105 @@ export function readUiServerRecord(globalRoot?: string): UiServerRecord | null {
 }
 
 /**
- * Remove the record.
+ * **Who a record must name before it may be removed.**
  *
- * Never throws, and an absent file is success rather than failure: the goal
- * state is "no record", and both callers are already in it when the file is
- * gone. A closing server and a probe that has just disproved a stale record can
- * race here, and the loser must not turn a hook red for arriving second.
+ * `pid` alone is not enough and the reason is the module header's own: a pid is
+ * reused, so a record left by a server that died can be "confirmed" by whatever
+ * the operating system handed that number to next. `port` alone is not enough
+ * either, and that is the case this project actually runs into — the node suite
+ * and the lanes start several servers inside ONE process, so every one of them
+ * has the same `pid` and only the bound port tells them apart. Both, together,
+ * are what identify a listening server on a machine.
  */
-export function clearUiServerRecord(globalRoot?: string): void {
+export interface UiServerIdentity {
+  pid: number;
+  /** The BOUND port, read back from `server.address()` — never the requested one. */
+  port: number;
+}
+
+/**
+ * What `clearUiServerRecord` did, said out loud rather than returned as a
+ * boolean nobody can read at the call site.
+ *
+ * `no-record` covers a file that is absent AND one that does not parse, because
+ * `readUiServerRecord` deliberately answers `null` to both (see the module
+ * header) and neither can be shown to name the caller. Nothing is removed for
+ * either, which is the safe reading: a record that cannot be understood cannot
+ * be proved to be mine, and the upkeep's next spawn overwrites it anyway.
+ */
+export type ClearOutcome =
+  /** The record named this server, and is gone. */
+  | 'removed'
+  /** There was nothing there to remove, or nothing readable. */
+  | 'no-record'
+  /** A record is there and it names a DIFFERENT server. Left exactly as it was. */
+  | 'names-another-server';
+
+/**
+ * Remove the record — **only if it still names the server the caller names.**
+ *
+ * ── THE DEFECT THIS EXISTS FOR, MEASURED 2026-09-12 ────────────────────────
+ *
+ * This used to take a root and nothing else, and it removed the file. The file
+ * is ONE per user (the module header argues why, and that argument stands), so
+ * "remove the record" and "remove MY record" are different operations that
+ * looked identical at every call site. `src/ui/server.ts` wanted the second and
+ * called the first from a `close` listener: server A shutting down AFTER server
+ * B had started and written its own record deleted B's record. B was listening,
+ * answering 200, and invisible — nothing could find it, so the upkeep hook
+ * would not put it back when it finally exited. The owner spent a morning
+ * reporting a server that was going down "again and again" and was in fact up
+ * the whole time.
+ *
+ * So the identity is a REQUIRED first parameter, not an option with a default.
+ * Every existing caller had to answer the question, and every future one has to
+ * — which is the same argument the `close` listener's own comment makes about
+ * having one listener rather than a copy per route: correctness that lives in
+ * one place cannot drift, and a caller cannot forget a parameter the type
+ * system asks it for. The alternative considered and rejected was a check at
+ * `src/ui/server.ts`'s call site, which leaves this function honest to a name
+ * no caller can obey safely and puts the guard exactly where the next caller
+ * will not look.
+ *
+ * ── THE SAME CHECK THE KILL PATH ALREADY MAKES ────────────────────────────
+ *
+ * `ui-server-upkeep.ts` re-reads this record immediately before it signals a
+ * pid and declines with `replaced-elsewhere` if it no longer names the pid the
+ * probe proved (2026-09-11). That is this check, at the other end of the same
+ * mechanism: **nothing acts on a record it has not just re-read.** The clear
+ * path was the half that did not ask.
+ *
+ * ── WHAT IT DOES NOT CLOSE, SAID RATHER THAN IMPLIED ──────────────────────
+ *
+ * Read-then-remove is two syscalls and there is no compare-and-delete in the
+ * filesystem, on Windows least of all. A server that writes its record in the
+ * gap between the read and the `rmSync` still loses it. What the check removes
+ * is the WINDOW that was the whole lifetime of a process — A's `close` firing
+ * minutes after B started — and what it leaves is a window of microseconds that
+ * the atomic temp-plus-rename write above already makes the loser of a race
+ * rather than a corruption. The probe's window was the wider of the two and is
+ * now bounded the same way: it passes the identity it disproved, so a
+ * replacement that arrives during its 250ms connect keeps its record.
+ *
+ * Never throws, for the reason it never did: a closing server and a probe that
+ * has just disproved a stale record can race here, and the loser must not turn
+ * a hook red for arriving second. An unremovable file answers `no-record` for
+ * the same reason — there is then nothing this process can do about it, and
+ * saying so is not the same as pretending it removed something.
+ */
+export function clearUiServerRecord(
+  owner: UiServerIdentity, globalRoot?: string,
+): ClearOutcome {
+  const record = readUiServerRecord(globalRoot);
+  if (record === null) return 'no-record';
+  // BOTH, and the conjunction is the point: see `UiServerIdentity`. `pid` alone
+  // is defeated by recycling, `port` alone by a machine that reuses a port.
+  if (record.pid !== owner.pid || record.port !== owner.port) return 'names-another-server';
   try {
     rmSync(uiServerRecordPath(globalRoot), { force: true });
   } catch {
-    /* already gone, or unremovable — either way there is nothing to aim at */
+    /* unremovable — nothing this process can do, and nothing it may claim */
+    return 'no-record';
   }
+  return 'removed';
 }

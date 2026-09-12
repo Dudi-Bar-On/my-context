@@ -17,7 +17,7 @@ tags:
   - upkeep
   - "plan:live"
   - "seq:26"
-  - "state:todo"
+  - "state:done"
   - v2
 origin: human
 source_file: "C:/Users/UserC/AppData/Local/Temp/clearbody.md"
@@ -25,10 +25,10 @@ source_anchor: null
 source_checksum: 19e7c01ac446f986
 valid_from: 2026-09-12
 valid_until: null
-checksum: c494063a198a4010
+checksum: 5cb27821155f4b4c
 plan: live
 seq: "26"
-state: todo
+state: done
 priority: "1"
 ---
 
