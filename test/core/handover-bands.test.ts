@@ -25,7 +25,8 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
   ASK_BAND_BOUNDARIES, ASK_CEILING_PERCENT, ASK_TAIL_FROM, DELTA_MAX_LINES,
-  askBand, askPlan, askStep, compositionDirective,
+  BRIEF_MAX_LINES, COMPOSER_DIRECTIVE_MAX_CHARS, COMPOSER_MAY_READ, COMPOSER_MUST_NOT_READ,
+  COMPOSER_REPORT_MAX_CHARS, askBand, askPlan, askStep, compositionDirective,
 } from '../../src/core/handover-ask.ts';
 
 /** The occupancies a window rising from `from` to `to` would have reported. */
@@ -150,4 +151,120 @@ test('the delta directive names its cap and the tail directive names no subagent
   const tail = compositionDirective(askPlan(99.1, 90)!);
   assert.doesNotMatch(tail, /subagent/iu,
     'the last ask a window ever gets must not depend on a writer that may not return');
+});
+
+// --- The subagent that composes the block ------------------------------------
+//
+// `plan:handover seq:19`'s second half. The schedule above decides WHEN; these
+// decide WHO WRITES IT AND OUT OF WHOSE CONTEXT — which is the half that can
+// look like it worked and have saved nothing, because a subagent handed the
+// session's transcript composes the same block over the same input and this
+// window has still paid to assemble it.
+//
+// So the assertions below are not "the text mentions a subagent". They pin the
+// three things that make the delegation real: the writer's read list is bounded
+// and names the transcript as forbidden, the block is written INTO THE FILE and
+// never returned as prose, and the ask itself is a pure function of the plan —
+// one of exactly three fixed strings, none of which grows with the session.
+
+test('the delegated writer may read two things, and both are bounded by the brief', () => {
+  assert.deepEqual([...COMPOSER_MAY_READ], [
+    "the handover's current top block",
+    '`mycontext show <id>` for any id your brief names',
+  ], 'a read list that grows is a writer re-deriving the session instead of being handed it');
+});
+
+// The transcript is the load-bearing entry and it is asserted BY NAME rather
+// than by counting the list: a writer handed the transcript is the exact failure
+// this ruling can suffer while appearing to have been implemented.
+test('the transcript, a diff and the audit log are forbidden to the writer, by name', () => {
+  assert.deepEqual([...COMPOSER_MUST_NOT_READ], ['this transcript', 'a git diff', 'the audit log'],
+    'a writer handed the transcript has saved this window nothing at all');
+});
+
+test('every allowed and every forbidden read actually reaches the delegated ask', () => {
+  for (const percent of [90.2, 92.5, 94.9]) {
+    const directive = compositionDirective(askPlan(percent, 90)!);
+    for (const allowed of COMPOSER_MAY_READ) {
+      assert.ok(directive.includes(allowed),
+        `the ask at ${percent}% never tells the writer it may read ${allowed}`);
+    }
+    for (const forbidden of COMPOSER_MUST_NOT_READ) {
+      assert.ok(directive.includes(forbidden),
+        `the ask at ${percent}% never forbids ${forbidden}, so the contract is only a comment`);
+    }
+  }
+});
+
+test('the block is written INTO THE FILE, and the one line back is capped and is not the block', () => {
+  const directive = compositionDirective(askPlan(92.5, 90)!);
+  assert.ok(directive.includes('into the file itself'),
+    'a writer that hands the block back has moved the composing, not the cost');
+  assert.ok(directive.includes('ONE line of at most 120 characters'),
+    'an uncapped report is the block arriving in this window by another door');
+  assert.ok(directive.includes('never the block text'),
+    'nothing forbids returning the prose, which is the only way this looks done and is not');
+  assert.equal(COMPOSER_REPORT_MAX_CHARS, 120, 'the one line back is capped at 120 characters');
+});
+
+// Eight is spelled as a literal in the expected string for the reason the delta
+// cap already is: an assertion built from the export compares the export with
+// itself and cannot fail for the one reason it exists.
+test('the dispatching session writes at most eight lines, and each names an id', () => {
+  assert.equal(BRIEF_MAX_LINES, 8, 'the brief is the session\'s half of the cost and it is capped');
+  const directive = compositionDirective(askPlan(92.5, 90)!);
+  assert.ok(directive.includes('at most 8 short lines'),
+    'an uncapped brief is this session re-emitting its own picture of the day');
+  assert.ok(
+    directive.includes('naming an item id or a plan/seq lane rather than a report line number'),
+    'RULE-a-citation-names-an-item-by-id-never-a-report-by-line-number is not carried into the block',
+  );
+});
+
+// THE PROOF THAT THE COMPOSING DOES NOT HAPPEN HERE, and it is a property rather
+// than a wording check. Sweep every occupancy the ladder can see: the ask this
+// window pays for is a pure function of the PLAN, so there are exactly three
+// strings it can ever be — full/delegated, delta/delegated, and the tail's
+// written-here — and not one of them carries a fact about the session. A
+// directive that grew with what happened would be this window composing after
+// all, and the set below would be larger than three.
+test('the delegated ask is one of three fixed strings, and none of them grows with the session', () => {
+  const seen = new Set<string>();
+  for (let tenths = 890; tenths <= 1000; tenths += 1) {
+    const plan = askPlan(tenths / 10, 90);
+    assert.notEqual(plan, null);
+    seen.add(compositionDirective(plan!));
+  }
+  assert.equal(seen.size, 3,
+    'the ask varies with something other than the plan, so it is carrying session facts');
+  for (const directive of seen) {
+    assert.ok(directive.length <= 1400,
+      `an ask of ${directive.length} characters is the contract costing what it was meant to save`);
+  }
+  assert.equal(COMPOSER_DIRECTIVE_MAX_CHARS, 1400,
+    'the budget is 1400 characters against a median committed block of 3,555');
+});
+
+// The roll-forward is offered at exactly the bands where declining costs
+// nothing. `first` has no previous block for "nothing since" to be measured
+// against; the tail is where this project gives nothing up. A roll-forward
+// offered everywhere would be an instruction to skip the only block that is ever
+// read, which is why this asserts all three places and not just the one.
+test('nothing-to-record rolls forward in the widening bands ONLY', () => {
+  assert.match(compositionDirective(askPlan(92.5, 90)!), /roll forward/u,
+    'an early band with nothing to record still spends a whole update');
+  assert.doesNotMatch(compositionDirective(askPlan(90.2, 90)!), /roll forward/u,
+    'the first block of a window has nothing behind it to be unchanged from');
+  assert.doesNotMatch(compositionDirective(askPlan(97.2, 90)!), /roll forward/u,
+    'the tail is the block that gets read, and it is never declined');
+});
+
+test('the tail ask carries no contract at all, because it delegates to nobody', () => {
+  const tail = compositionDirective(askPlan(97.2, 90)!);
+  for (const clause of [...COMPOSER_MAY_READ, ...COMPOSER_MUST_NOT_READ]) {
+    assert.ok(!tail.includes(clause),
+      `the tail ask carries "${clause}", so a contract for a writer it must not dispatch leaked in`);
+  }
+  assert.ok(!tail.includes('ONE line'),
+    'the tail ask asks for a report from a writer that does not exist');
 });

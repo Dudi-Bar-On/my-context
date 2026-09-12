@@ -434,6 +434,108 @@ export function askPlan(percent: number, threshold: number): AskPlan | null {
 }
 
 /**
+ * **What a delegated writer is allowed to open.** Two things, and every entry is
+ * bounded by something the brief already names.
+ *
+ * The top block is what a DELTA is written against — a writer that could not
+ * read it would be guessing at what *changed since the last block* means. The
+ * items are the claims themselves: the brief carries ids rather than quotations
+ * because `RULE-a-citation-names-an-item-by-id-never-a-report-by-line-number`
+ * says a citation names an item, and `mycontext show <id>` is how a writer that
+ * was handed an id turns it back into the claim without this session having to
+ * spend the claim's own text to pass it along.
+ */
+export const COMPOSER_MAY_READ: readonly string[] = [
+  "the handover's current top block",
+  '`mycontext show <id>` for any id your brief names',
+];
+
+/**
+ * **What a delegated writer must NOT open, and this is the half that makes the
+ * delegation worth anything.**
+ *
+ * A subagent handed the transcript has saved nothing. The composing would simply
+ * happen somewhere else over the same input, and this window would still have
+ * paid to assemble that input — the saving is not "a different model typed it",
+ * it is THAT THE SESSION'S OWN PICTURE OF THE DAY IS NEVER RE-EMITTED.
+ *
+ * A diff or an audit log fails for the mirror-image reason. Both are complete
+ * records of what CHANGED and carry no opinion about what MATTERED, which is
+ * precisely the input that produces a changelog — the failure mode the owner's
+ * ruling names as the way this half can fail quietly.
+ *
+ * So the writer's entire picture of the session is the brief, and what this
+ * window pays is the brief it writes plus the one line that comes back. Neither
+ * scales with how much work the window contained.
+ */
+export const COMPOSER_MUST_NOT_READ: readonly string[] = [
+  'this transcript',
+  'a git diff',
+  'the audit log',
+];
+
+/**
+ * **How many lines of judgement the dispatching session writes**, and it is the
+ * bound on this session's half of the cost.
+ *
+ * Eight, against a median committed block of 65 lines / 3,555 characters
+ * (measured over the 59 blocks in `reports/V2-HANDOVER.md`, 2026-09-12). The
+ * ruling's arithmetic is that an update costs ~3.5K tokens all-in and delegation
+ * takes it to ~500; eight short pointer lines is what ~500 tokens buys, so the
+ * cap is the ruling's own number expressed in the unit the writer writes in.
+ *
+ * It is a cap on the BRIEF and never on the block. A capped brief that produced
+ * a capped block would have traded the thing away instead of moving it.
+ */
+export const BRIEF_MAX_LINES = 8;
+
+/**
+ * **How long the one line that comes back may be.** The block belongs in the
+ * file; a writer that returns its prose has put the composing back in the window
+ * it was moved out of, which is the only way this delegation can look like it
+ * worked and have saved nothing.
+ */
+export const COMPOSER_REPORT_MAX_CHARS = 120;
+
+/**
+ * **The budget for the directive itself**, because the ask is also text in this
+ * window and a contract nobody can afford to send is not a contract.
+ *
+ * Paid once per delegated ask — three of the seven bands — against a median
+ * block of 3,555 characters moved out of the window each time. The directive is
+ * a pure function of the plan and of nothing else, so there are exactly three
+ * strings it can ever be and none of them grows with the session.
+ */
+export const COMPOSER_DIRECTIVE_MAX_CHARS = 1400;
+
+/**
+ * **The contract a delegated writer is dispatched under** — what it is given,
+ * what it may read, what it writes, and what it returns.
+ *
+ * It is spelled out in the ask rather than left to the dispatching model's
+ * judgement because every clause in it is a way this ruling fails: an unbounded
+ * brief re-emits the session, an unbounded read list re-derives it, and a block
+ * returned as prose rather than written to the file lands the whole cost back in
+ * the window it was supposed to leave.
+ */
+export function composerContract(plan: AskPlan): string {
+  const write = plan.shape === 'delta'
+    ? `at most ${plan.maxLines} lines covering only what changed since the last block`
+    : 'the block';
+  return (
+    ` Write that brief as at most ${BRIEF_MAX_LINES} short lines, each naming an item id or a`
+    + ' plan/seq lane rather than a report line number, then hand a subagent THOSE LINES and'
+    + ` nothing else and have it write ${write} into the file itself. It may read `
+    + COMPOSER_MAY_READ.join(' and ')
+    + '; it may not read ' + COMPOSER_MUST_NOT_READ.join(', ')
+    + ' — a writer with no judgement about what mattered returns a changelog, and the brief is'
+    + ` the judgement. It returns ONE line of at most ${COMPOSER_REPORT_MAX_CHARS} characters`
+    + ' saying which band it wrote and how many lines, and never the block text, which belongs'
+    + ' in the file and not back in this window.'
+  );
+}
+
+/**
  * **The sentence the ask carries about HOW to write the block**, appended to
  * whichever paragraph `hooks/stop.ts` chose.
  *
@@ -453,6 +555,38 @@ export function askPlan(percent: number, threshold: number): AskPlan | null {
  * **And the delegated case always names its own fallback.** A subagent that does
  * not come back this turn is a handover that was never written, and the next ask
  * would only discover that a whole band later.
+ *
+ * ── THE ROLL-FORWARD, AND WHY IT IS AN INSTRUCTION AND NOT A GATE ──────────
+ *
+ * The owner ruled that *a step with nothing to record rolls forward instead of
+ * firing*, on the evidence that two of the eleven measured updates added 11 and
+ * 14 lines because little had landed. This is that ruling in the only place this
+ * lane could put it, and the difference from the ruled shape is stated rather
+ * than glossed:
+ *
+ *   - RULED: the hook does not fire, so the band is not consumed and the ask
+ *     arrives at the next band instead.
+ *   - HERE: the ask fires and the model declines, so the band IS consumed.
+ *
+ * What that costs is one ask's worth of text — about fifty tokens. What it buys
+ * is that the judgement stays with the only party that has it. The audit log can
+ * see a corpus mutation and a lane stopping; it cannot see a window in which a
+ * great deal of code landed and nothing was written down, and a hook that read
+ * that as *nothing to record* would suppress exactly the ask that mattered most.
+ *
+ * The MECHANICAL gate the ruling describes — do not fire, so the band is not
+ * consumed — is one line in `hooks/stop.ts`, beside the progress gate and
+ * before the latch is taken. It is NOT LANDED, and the reason is stated so
+ * that nobody reads its absence as an oversight: that file was held by another
+ * lane when this was built, and whether it should land at all is a question
+ * for the owner rather than for a lane, because the paragraph above argues the
+ * instruction is the better shape and the owner ruled before that argument
+ * existed.
+ *
+ * **And it is offered only in the widening bands.** `first` has no previous
+ * block for "nothing since" to be measured against, and at and above
+ * `ASK_TAIL_FROM` this project gives nothing up: the same line that forbids
+ * delegation forbids declining.
  */
 export function compositionDirective(plan: AskPlan): string {
   if (plan.writer === 'this-turn') {
@@ -462,24 +596,23 @@ export function compositionDirective(plan: AskPlan): string {
       + 'happens does not exist.'
     );
   }
-  if (plan.shape === 'delta') {
-    return (
-      ' Decide WHAT belongs in it yourself — what landed, what was ruled, what is still owed'
-      + ` — then hand that brief to a subagent and have it write at most ${plan.maxLines} lines`
-      + ' covering only what changed since the last block. Do not hand it a diff: a writer with'
-      + ' no judgement about what mattered returns a changelog. If it does not come back this'
-      + ' turn, write those lines yourself before you finish.'
+  const decide = plan.shape === 'delta'
+    ? ' Decide WHAT belongs in it yourself — what landed, what was ruled, what is still owed.'
+    : (
+      ' Decide WHAT belongs in it yourself — what you were doing, what you decided and why,'
+      + ' what the next session must do first.'
     );
-  }
-  return (
-    ' Decide WHAT belongs in it yourself — what you were doing, what you decided and why, what'
-    + ' the next session must do first — then hand that brief to a subagent and have it write'
-    + ' the block. Do not hand it a diff: a writer with no judgement about what mattered returns'
-    + ' a changelog. If it does not come back this turn, write the block yourself before you'
-    + ' finish.'
-  );
+  const rollForward = plan.place === 'early'
+    ? (
+      ' If nothing has landed and nothing has been ruled since the last block, roll forward:'
+      + ' dispatch nobody, write nothing, and say so in one line.'
+    )
+    : '';
+  const fallback = plan.shape === 'delta'
+    ? ' If it does not come back this turn, write those lines yourself before you finish.'
+    : ' If it does not come back this turn, write the block yourself before you finish.';
+  return decide + rollForward + composerContract(plan) + fallback;
 }
-
 export const NO_LATCH: AskLatch = {
   askedAtThreshold: null,
   askedAtPercent: null,
