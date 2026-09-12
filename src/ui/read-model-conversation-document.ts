@@ -439,6 +439,17 @@ export interface DocOutlineNode {
 
 export interface DocOutlineBody {
   sessionId: string;
+  /**
+   * **The session an anchor in this document is filed under.**
+   *
+   * The same as `sessionId` on a session, and the lane's OWNING session on a
+   * lane — where `sessionId` is the lane's own id. An anchor row is keyed by
+   * `(sessionId, agentId, byteOffset)` and the viewer marks points while
+   * reading (`REQ-every-anchor-capability-is-reachable-from-the-screen-and-a`),
+   * so the document needs both halves of that key and `/lane.html` fetches no
+   * roster to derive one from. `subagentAsRow` carries the rest.
+   */
+  ownerSessionId: string;
   source: string;
   title: string | null;
   titleSource: string | null;
@@ -2025,9 +2036,27 @@ function rowFor(
   return { row, named };
 }
 
-/** A lane in the shape the document routes read. See `rowFor` for the two choices. */
-function subagentAsRow(agent: SubagentRow): ConversationRow {
+/**
+ * A lane in the shape the document routes read. See `rowFor` for the two
+ * choices.
+ *
+ * **`sessionId` becomes the LANE's id here, which is right for a document and
+ * wrong for an anchor** — so the owning session is carried beside it rather
+ * than lost. An anchor row is keyed by `(sessionId, agentId, byteOffset)`:
+ * marking a point inside a lane needs BOTH ids, and until 2026-09-12 the only
+ * surface that marked one was the CLI, where the reader typed `--agent` and
+ * supplied the pair themselves.
+ *
+ * `REQ-every-anchor-capability-is-reachable-from-the-screen-and-a` makes the
+ * VIEWER mark a point while reading, and `/lane.html` opens a lane with no
+ * roster fetched at all — so a document that knew only its own id could not
+ * name the session its bookmark belongs to. The index already holds the answer
+ * (`SubagentRow.sessionId`, "the session that OWNS this lane, however many
+ * hops dispatched it"); this stops throwing it away.
+ */
+function subagentAsRow(agent: SubagentRow): ConversationRow & { ownerSessionId: string } {
   return {
+    ownerSessionId: agent.sessionId,
     sessionId: agent.agentId,
     source: 'subagent',
     file: agent.file,
@@ -2119,6 +2148,12 @@ export function apiConversationOutline(
   const head = {
     sessionId: row.sessionId, source: row.source, title: row.title,
     titleSource: row.titleSource,
+    // **THE SESSION AN ANCHOR IN THIS DOCUMENT BELONGS TO** — the lane's owner
+    // when this is a lane, and the document's own id otherwise, so the viewer
+    // has one field to read rather than a branch it could get wrong.
+    // `subagentAsRow` carries the reasoning.
+    ownerSessionId: 'ownerSessionId' in row
+      ? (row as { ownerSessionId: string }).ownerSessionId : row.sessionId,
     // Beside the harness's title and not instead of it — `plan:archive
     // seq:34`. `mountDocument` draws this document on `/lane.html` as well as
     // inside the app, so both windows get the same two facts and neither can

@@ -291,22 +291,59 @@ export const strings = {
   'conv.arch.open': 'Open this session',
   'conv.arch.openLane': 'Open this helper agent',
   'conv.arch.mark': 'Mark this point',
-  'conv.arch.markShut': 'Hide the command',
+  'conv.arch.markShut': 'Never mind',
   'conv.arch.marked': 'Already marked',
-  // The page composes the write and never performs it — the same treatment
-  // `conv.secrets.run` gives the only other write this screen can name.
-  'conv.arch.markRun': 'Run this to mark the point. This page only reads, so it writes the command for you and you run it — then it is in {m:mycontext conversation anchor} and in the list below.',
+  // **THE PAGE MARKS THE POINT ITSELF SINCE 2026-09-12** — owner ruling,
+  // `REQ-every-anchor-capability-is-reachable-from-the-screen-and-a`. This
+  // sentence used to say "this page only reads, so it writes the command for
+  // you and you run it", beside a composed `mycontext conversation anchor`
+  // line. That was the UI describing a capability rather than having one, and
+  // he ruled it unacceptable in as many words.
+  'conv.arch.markRun': 'Give it a name you will recognise in a list. It is kept in this project, never in your repository, and you can rename it or take it back at any time.',
+  'conv.arch.markLabel': 'Why keep it?',
+  'conv.arch.markSave': 'Mark it',
+  'conv.arch.markNeedsLabel': 'A point needs a name. A bookmark that says nothing about why it was kept is one you will not recognise when you come back.',
+  'conv.arch.marking': 'Marking…',
   'conv.arch.indexedAt': 'The words were last read into the index {at} — {sources} transcript(s), {spans} passage(s). Anything said since then is not searchable here yet. To bring it up to date:',
   'conv.arch.neverIndexed': 'The words of this archive have never been read into the index, so there is nothing here to search — which is a different fact from your words not being in the archive. To read them in, and to mark the tables, reports and rulings it finds on the way:',
   // ── ANCHORS — plan:recall seq:1, Task 4 ─────────────────────────────────
   'conv.anchors.h': 'Points you marked',
-  'conv.anchors.sub': 'Places in a conversation worth steering back to. You mark one from a search result above; a table, a report and a ruling you gave are marked for you whenever the archive is rebuilt.',
-  'conv.anchors.none': 'Nothing is marked yet. Search above and mark a point, or run the rebuild — it marks the tables and the rulings you gave that it passes.',
+  'conv.anchors.sub': 'Places in a conversation worth steering back to. Mark one from a search result above, or while reading a conversation; open the name of any of them to land on the exact point. A table and a ruling you gave are marked for you.',
+  'conv.anchors.none': 'Nothing is marked yet. Search above and mark a point, open a conversation and mark one while you read, or press the button above — it marks the tables and the rulings you gave that it passes.',
+  'conv.anchors.findNone': 'No marked point has those words in its name. This searches the names you gave them, not the conversation — the box further up searches the words.',
+  'conv.anchors.count': '{n} marked.',
+  'conv.anchors.find': 'Find by name',
+  'conv.anchors.findRegion': 'Find a marked point by name',
   'conv.anchors.kind.note': 'you marked this',
   'conv.anchors.kind.table': 'a table',
   'conv.anchors.kind.report': 'a report',
   'conv.anchors.kind.ruling': 'a ruling you gave',
-  'conv.anchors.drop': 'Run this to take it back:',
+  'conv.anchors.origin.owner': 'you marked it',
+  'conv.anchors.origin.automatic': 'marked for you',
+  'conv.anchors.inLane': 'in the helper agent',
+  'conv.anchors.byte': 'at byte',
+  'conv.anchors.goto': 'Open the conversation at this point',
+  'conv.anchors.relabel': 'Rename',
+  'conv.anchors.relabelLabel': 'What to call it',
+  'conv.anchors.relabelSave': 'Save the name',
+  'conv.anchors.relabelNeedsLabel': 'A name cannot be empty — that is a bookmark you will not recognise.',
+  'conv.anchors.relabelled': 'Renamed.',
+  // **THE ONE THING A RENAME CHANGES BESIDES THE NAME, SAID RATHER THAN LEFT
+  // TO BE DISCOVERED.** Renaming a point that was marked for you makes it
+  // yours, because the automatic pass reads back every point IT marked and
+  // puts it to today's grammar — so a name typed onto one of those would be
+  // quietly replaced on the next run. `INV-nothing-is-dropped-silently`.
+  'conv.anchors.tookOwnership': 'Renamed — and this point is now yours. It was marked for you automatically, and the automatic pass never changes or takes back a point you named.',
+  'conv.anchors.saving': 'Saving…',
+  'conv.anchors.drop': 'Take it back',
+  'conv.anchors.dropping': 'Taking it back…',
+  // ── RUN THE AUTOMATIC PASS — owner ruling 2026-09-12 ───────────────────
+  'conv.anchors.sweep': 'Mark what is a point by nature',
+  'conv.anchors.sweepSub': 'Reads the whole archive and marks every table and every ruling you gave that it finds. Safe to press again: it only ever changes points it marked itself, and never one you marked or named. On a full archive this takes about nine seconds.',
+  'conv.anchors.sweepRunning': 'Reading the archive…',
+  'conv.anchors.sweepDone': '{marked} newly marked, {relabelled} renamed, {dropped} taken back — in {ms} ms. Nothing you marked yourself was touched.',
+  'conv.anchors.sweepNone': 'Nothing changed: every table and every ruling this archive holds is already marked. That is what running it twice is supposed to say.',
+  'conv.anchors.sweepCapped': 'At least one of the passes reached its bound, so there may be more in the archive it did not look at. Nothing was lost; it was not reached.',
   /* -- RECONSTRUCT: `plan:recall seq:2`, Tasks 11 and 12 -------------------
    *
    * The screen does NOT answer out of the archive. It writes a MISSION for a
@@ -421,6 +458,21 @@ export const strings = {
   'conv.doc.failed': '{n} failed',
   'conv.doc.loading': 'Reading…',
   'conv.doc.filter': 'Find in the whole session',
+  // ── MARKING A POINT WHILE READING — owner ruling 2026-09-12 ───────────
+  //
+  // Creation path 3 of `REQ-every-anchor-capability-is-reachable-from-the-
+  // screen-and-a`: "user could add anchores while he browses the conversation
+  // using the ui viewer". Until this, a point could be marked only from a
+  // search hit — so a reader who had found the turn by READING had to go and
+  // search for it first.
+  'conv.doc.mark': 'Mark this point',
+  'conv.doc.markLabel': 'Why keep it?',
+  'conv.doc.markSave': 'Mark it',
+  'conv.doc.markNeedsLabel': 'A point needs a name you will recognise in a list.',
+  'conv.doc.marked': 'Marked',
+  'conv.doc.landed': 'Opened at the point you marked:',
+  'conv.doc.landedUnmarked': 'Opened at the point this link names. Nothing is marked there any more — it may have been taken back.',
+  'conv.doc.landedNowhere': 'This link names a point past the end of what could be read of this conversation, so the document opens where it always does. Nothing was lost; it was not reached.',
   'conv.doc.top': 'Top',
   'conv.doc.end': 'End',
   'conv.doc.region': 'The session as one scrollable document',

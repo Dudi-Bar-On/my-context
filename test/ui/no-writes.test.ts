@@ -450,6 +450,38 @@ const WRITERS: Record<string, string[]> = {
   // and touches nothing. A surface that wanted to SHOW what the trigger
   // decided should be able to.
   'src/review/trigger.ts': ['reviewTrigger'],
+  // **NAMED BY JUDGEMENT ON 2026-09-12, AND THE NAMING WAS THE WHOLE FINDING** —
+  // `REQ-every-anchor-capability-is-reachable-from-the-screen-and-a`.
+  //
+  // The lane that made the viewer write anchors ran this file first and it was
+  // GREEN, over a `src/ui/` module binding `markAnchor`, `unmarkAnchor` and
+  // `markAutomaticAnchors`. That is the third instance of the exact defect
+  // `ui-server-record.ts` was on 2026-08-27 and `review/trigger.ts` was on
+  // 2026-09-10: `isWriter` answers from THIS table by defining module, so a
+  // writer that is not a key resolves correctly, is placed correctly, and is
+  // then judged harmless.
+  //
+  // The membership scan cannot see either module: neither holds a `node:fs`
+  // call. They write through `anchor-file.ts` — which IS a key, derived, since
+  // `plan:recall seq:6` — so both are covered by the orphan check the way
+  // `mutate.ts` is, by importing a writer rather than by being in
+  // `WRITES_WITHOUT_FS`.
+  //
+  // `anchorsFor`, `allAnchors`, `searchAnchors`, `resolveAnchor` and the
+  // re-exported `anchorIdFor` are deliberately NOT named: they read, or they
+  // derive a string. That is `focus.ts`' split and the reason this ban resolves
+  // symbols rather than files — the read surface has bound `anchorIdFor` since
+  // the viewer began composing anchor commands.
+  'src/core/anchors.ts': ['markAnchor', 'unmarkAnchor'],
+  // The automatic pass, moved out of `cli/commands/conversation.ts` on
+  // 2026-09-12 so the viewer could start it without importing a module that
+  // calls `registerCommand` at load. It marks, relabels and DROPS anchors, all
+  // through `markAnchor`/`unmarkAnchor` above.
+  //
+  // `anchorInTurn`, `tableIn` and `fileOf` are NOT named: two pure grammars
+  // and a lookup. A read surface that wanted to SAY why a turn was marked
+  // should be able to ask.
+  'src/core/anchor-pass.ts': ['markAutomaticAnchors'],
 };
 
 /**
@@ -503,6 +535,48 @@ const BANNED_NAMES = new Set(Object.values(WRITERS).flat());
  * proved in `test/ui/server-e2e.test.ts`.
  */
 const RULED_WRITES = [
+  // ── THE ANCHOR WRITES, owner ruling 2026-09-12 ─────────────────────────
+  //
+  // `REQ-every-anchor-capability-is-reachable-from-the-screen-and-a`: *"i want
+  // that everything relating to anchors will be available through the ui, cli
+  // is ok, mcp too but they are not a substitution for the ui capabilities"*,
+  // and the sentence that decides what counts — *"a composed command the reader
+  // must copy into a terminal is NOT the UI having the capability, it is the UI
+  // describing one."* The viewer could previously only compose
+  // `mycontext conversation anchor` for a person to run, only on a search hit,
+  // never while reading a document.
+  //
+  // This is NARROWED the way `execute.ts`' entries are, not widened: what has
+  // stopped being true is "the UI never writes an anchor", which the owner
+  // reversed deliberately after asking why a bookmark needed a confirm dialog
+  // and a subprocess when an anchor never touches the session file. What still
+  // holds, and still fails here, is that every READ module binds nothing —
+  // `src/ui/anchor-write.ts` is named one symbol at a time and is registered
+  // outside `registerReadRoutes`, so `server-e2e.test.ts`' byte-identical sweep
+  // over the read surface is untouched and still means what it says.
+  //
+  // Four properties bound it, each checkable rather than promised:
+  //
+  //   - THE SEAM IS THE CLI'S OWN. `markAnchor`/`unmarkAnchor` are the doors,
+  //     `withAnchorWrite` publishes `.my_context/.anchors.jsonl` in the same
+  //     transaction that moves the row, and `index.putAnchor` refuses a caller
+  //     that reached past them. None of the three creation paths can grow a
+  //     second store, because none of them can get past that door;
+  //   - WHAT IS GITIGNORED IS WHAT MOVES. An anchor is a row in a rebuildable
+  //     index and a line in a gitignored document. No corpus item, no
+  //     `config.json`, no session transcript —
+  //     `test/ui/anchor-write-route.test.ts` takes the byte snapshot that says
+  //     so, over a whole mark/relabel/drop/sweep round trip;
+  //   - THE SHAPE IS FIXED BY THE ROUTE, NOT BY THE CALLER. `kind` and `origin`
+  //     are not read off the body: a hand-made anchor is `note`/`owner`, so no
+  //     request can forge a row the automatic pass is forbidden to touch;
+  //   - IT CANNOT TURN THE ARCHIVE ON. `ConversationIndex.open` creates the
+  //     tables, so every handler opens the READ door first and answers the
+  //     never-indexed state rather than creating a database — `indexExists`'
+  //     refusal, one surface along.
+  'src/ui/anchor-write.ts binds markAnchor (defined in src/core/anchors.ts)',
+  'src/ui/anchor-write.ts binds markAutomaticAnchors (defined in src/core/anchor-pass.ts)',
+  'src/ui/anchor-write.ts binds unmarkAnchor (defined in src/core/anchors.ts)',
   // **NAMED AS ALLOWED, 2026-08-31, because the derived membership found it and
   // nothing else ever would have.** This binding is not new — `execute.ts` has
   // bound `deriveEffect` since the Execute preview shipped — but until

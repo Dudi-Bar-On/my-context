@@ -907,14 +907,22 @@ function filterQuery(state) {
  * different questions and a reader holding one of them in mind would be badly
  * served by the other silently taking over.
  *
- * ── WHAT THIS CARD MAY NOT DO ────────────────────────────────────────────
+ * ── WHAT THIS CARD DOES, AND WHAT IT USED TO ONLY DESCRIBE ───────────────
  *
- * It may not mark an anchor. Marking is a WRITE, this server does not write,
- * and the treatment every other write on this screen gets is the one
- * `conv.secrets.run` already uses: the command is COMPOSED and shown, from the
- * argv the SERVER built, and the person runs it. `commandActions` with a
- * `null` id offers Copy and no Execute, which is exactly right here — nothing
- * in the catalogue licenses `conversation anchor` to run from a browser.
+ * **It marks the point itself** — owner ruling 2026-09-12,
+ * `REQ-every-anchor-capability-is-reachable-from-the-screen-and-a`. What stood
+ * here said this card "may not mark an anchor", composed
+ * `mycontext conversation anchor …` from the server's own argv, and offered it
+ * for a person to copy into a terminal. That was a limitation being disclosed
+ * rather than a design, and he ruled on it in as many words: *"a composed
+ * command the reader must copy into a terminal is NOT the UI having the
+ * capability — it is the UI describing one."*
+ *
+ * So `markRow` writes, through `POST /api/conversations/anchors/mark`. The
+ * server-composed argv is gone from this path, and with it the reason it
+ * existed: there is no second composer to disagree with, because nothing is
+ * composed. `src/ui/anchor-write.ts` carries the four properties that bound
+ * the write and `test/ui/no-writes.test.ts` names the three bindings.
  */
 const ARCH_SETTLE_MS = 250;
 
@@ -1083,15 +1091,23 @@ function hitWhere(ctx, hit) {
 }
 
 /**
- * The composed `anchor` command for one hit, revealed on demand.
+ * **THE POINT IS MARKED FROM HERE** — creation path 3 as it reaches a search
+ * hit, owner ruling 2026-09-12.
  *
- * **The argv is the SERVER'S** — `hit.anchorArgv` — and `composeCommand` is
- * this product's one spelling of how an argv becomes shell text. A line
- * assembled here out of the three fields beside it would be a second composer,
- * and the two could disagree about which byte gets marked with neither being
- * obviously wrong.
+ * A button opens one field, and the field is the LABEL: an anchor with no
+ * label is a bookmark nobody recognises in a list, which is why the CLI has
+ * always refused one and why this asks rather than inventing a name. It is
+ * pre-filled with the words that were searched for, because those are the
+ * words that made this turn worth keeping — the same default the composed
+ * command carried, now typed into a box a person can correct.
+ *
+ * **Nothing here is composed.** The three fields the write needs —
+ * `sessionId`, `agentId`, `byteOffset` — go to the server as themselves. The
+ * old shape had to serve a pre-built argv precisely because a screen
+ * assembling a command line out of them would have been a second composer; a
+ * screen sending them as numbers and strings cannot be.
  */
-function markRow(ctx, hit) {
+function markRow(ctx, hit, term, onMarked) {
   const row = el('div', 'convhitmark');
   if (hit.anchored === true) {
     // `ok` and not a class of its own: "this point is already kept" is the
@@ -1111,13 +1127,72 @@ function markRow(ctx, hit) {
   box.hidden = true;
   const note = el('p', 'small');
   note.append(...ctx.t('conv.arch.markRun'));
-  const cmd = el('div', 'cmd');
-  cmd.append(el('code', null, composeCommand(hit.anchorArgv)));
-  box.append(note, cmd, commandActions({ argv: hit.anchorArgv, id: null, values: {}, ctx }));
+  const field = el('label', 'convfield');
+  const name = el('span', 'convfieldname');
+  name.append(...ctx.t('conv.arch.markLabel'));
+  const input = el('input', 'convmarklabel');
+  input.type = 'text';
+  input.value = term ?? '';
+  // `dir="auto"` for `saidBody`'s reason one card along: this archive is half
+  // Hebrew, and a Hebrew label typed into an LTR field reads with its
+  // punctuation at the wrong end.
+  input.setAttribute('dir', 'auto');
+  field.append(name, input);
+  const save = el('button', 'convmarksave');
+  save.type = 'button';
+  save.append(...ctx.t('conv.arch.markSave'));
+  const said = el('p', 'small convmarksaid');
+  said.setAttribute('aria-live', 'polite');
+  said.hidden = true;
+  box.append(note, field, save, said);
+
   button.addEventListener('click', () => {
     box.hidden = !box.hidden;
     button.replaceChildren(...ctx.t(box.hidden ? 'conv.arch.mark' : 'conv.arch.markShut'));
+    if (!box.hidden) input.focus();
   });
+
+  /**
+   * **A refusal is DRAWN, and the control comes back.** A button that appears
+   * to have worked and has not is the shape `INV-nothing-is-dropped-silently`
+   * forbids, and it is the shape a disabled button left disabled produces.
+   */
+  const write = async () => {
+    const label = input.value.trim();
+    said.hidden = false;
+    if (label === '') {
+      said.replaceChildren(...ctx.t('conv.arch.markNeedsLabel'));
+      input.focus();
+      return;
+    }
+    save.disabled = true;
+    said.replaceChildren(...ctx.t('conv.arch.marking'));
+    try {
+      await ctx.post('/api/conversations/anchors/mark', {
+        sessionId: hit.sessionId,
+        agentId: hit.agentId,
+        byteOffset: hit.byteOffset,
+        label,
+      });
+    } catch (error) {
+      said.replaceChildren(errorNote(error.message));
+      save.disabled = false;
+      return;
+    }
+    // The row redraws as MARKED rather than saying so beside a button that
+    // still offers to mark it — two statements about one point, one of them
+    // stale, is the state this screen already refuses on the automatic side.
+    hit.anchored = true;
+    row.replaceChildren(...markRow(ctx, hit, term, onMarked).childNodes);
+    onMarked();
+  };
+  save.addEventListener('click', () => { void write(); });
+  // Enter in the one field submits it. A single-field form that needs the
+  // mouse is a form that asks twice for one answer.
+  input.addEventListener('keydown', (event) => {
+    if (event.key === 'Enter') { event.preventDefault(); void write(); }
+  });
+
   row.append(button, box);
   return row;
 }
@@ -1151,8 +1226,17 @@ function indexNote(ctx, body) {
   return out;
 }
 
-/** One answer from `/api/conversations/search`, drawn. */
-function drawHits(ctx, host, body) {
+/**
+ * One answer from `/api/conversations/search`, drawn.
+ *
+ * `term` is the words that were searched for and it travels down to
+ * `markRow` as the default LABEL for a point marked from a hit — the same
+ * default the server-composed `--label` carried before the write moved here.
+ * `onMarked` refreshes the marked-points card, because a point that has just
+ * been marked and a list that does not show it are two statements about one
+ * archive.
+ */
+function drawHits(ctx, host, body, term = null, onMarked = () => {}) {
   host.replaceChildren();
 
   // **Three empty answers, and they are three different facts.** A query the
@@ -1217,7 +1301,7 @@ function drawHits(ctx, host, body) {
       snip.append(hit.passage.after);
     }
     row.append(snip);
-    row.append(markRow(ctx, hit));
+    row.append(markRow(ctx, hit, term, onMarked));
     list.append(row);
   }
   host.append(list);
@@ -1235,58 +1319,253 @@ function drawHits(ctx, host, body) {
   host.append(...indexNote(ctx, body));
 }
 
-/** The points that are marked — the list §7 asks Phase 1 to carry. */
-function drawAnchors(ctx, host, body) {
+/**
+ * **THE ADDRESS OF ONE MARKED POINT** — capability 4, "go to", owner ruling
+ * 2026-09-12.
+ *
+ * A session's document is the app's own route and a lane's is `/lane.html`,
+ * so this is two spellings of one idea and `sessionHref`/`laneHref` already
+ * own that split. What is added is WHERE IN the document, which both carry the
+ * same way: the byte offset the anchor holds.
+ *
+ * **A byte and not a node index**, and that is the whole reason this works at
+ * all. A node index is the viewer's own count of what it folded and would move
+ * the next time `work` runs are re-folded; the byte is what the anchor
+ * actually stores and what `resolveAnchor` seeks to. The document resolves it
+ * back to a row on arrival — `nodeAtByte` — so the two never have to agree in
+ * advance.
+ *
+ * It is an ADDRESS and not a panel, for `rosterHref`'s reason: a reader can
+ * copy it, bookmark it and open it in a tab of their own.
+ */
+export function anchorHref(anchor) {
+  if (anchor.agentId !== null) {
+    return `${laneHref(anchor.agentId)}&at=${encodeURIComponent(String(anchor.byteOffset))}`;
+  }
+  return `/#/conversations/at/${encodeURIComponent(anchor.sessionId)}/${anchor.byteOffset}`;
+}
+
+/** `#/conversations/at/<session>/<byte>`, or `null` when the hash is not one. */
+export function anchorFromHash(hash) {
+  const id = sessionFromHash(hash);
+  if (id === null || !id.startsWith('at/')) return null;
+  const rest = id.slice('at/'.length);
+  const cut = rest.lastIndexOf('/');
+  if (cut <= 0) return null;
+  const sessionId = rest.slice(0, cut);
+  const byte = rest.slice(cut + 1);
+  if (sessionId === '' || !/^\d+$/.test(byte)) return null;
+  return { sessionId, byteOffset: Number(byte) };
+}
+
+/**
+ * **EVERY ANCHOR CAPABILITY, ON ONE ROW** — owner ruling 2026-09-12,
+ * `REQ-every-anchor-capability-is-reachable-from-the-screen-and-a`.
+ *
+ * What stood here drew the label, the kind and the stamp, and offered a
+ * composed `--drop` command for a person to copy into a terminal. It is now
+ * the whole set:
+ *
+ *   SEE      label, kind, origin, when, session, lane, byte — all seven of the
+ *            details the item lists, because an anchor a reader cannot tell
+ *            apart from another anchor is a list they stop reading
+ *   GO TO    `a.convanchoropen`, the address above
+ *   RELABEL  one field, in place
+ *   DROP     a button that drops it
+ *
+ * **ORIGIN IS DRAWN, and it is the field that decides what the automatic pass
+ * is allowed to do to this row.** A point marked for him and a point he marked
+ * look identical until it is said, and the difference is exactly what the
+ * sweep button below acts on: the pass reads back every `automatic` row and
+ * never reads an `owner` one.
+ */
+function drawAnchors(ctx, host, body, onChanged) {
   host.replaceChildren();
+  // **THE ARCHIVE HAS NEVER BEEN BUILT, and that is a third state.** Not "no
+  // marked points" and not an error: there is nothing here to mark yet. The
+  // sentence is the one the search card already uses for the same fact, and
+  // the command that changes it is drawn beside it exactly as `indexNote`
+  // draws it — one answer to "how do I turn this on", not two.
+  if (body.indexed === false) {
+    const note = el('p', 'small convanchnone');
+    note.append(...ctx.t('conv.arch.neverIndexed'));
+    host.append(spaced(note));
+    const cmd = el('p', 'plate convcmd');
+    cmd.append(mono(body.rebuild));
+    host.append(cmd);
+    return;
+  }
   if (body.anchors.length === 0) {
     const note = el('p', 'small convanchnone');
-    note.append(...ctx.t('conv.anchors.none'));
+    // Two empty answers, and they are two different facts: nothing is marked
+    // at all, and nothing matches the words in the find box. Collapsing them
+    // would let a reader read their own typing as a fact about the archive —
+    // `drawHits`' three-empty-answers rule, one card along.
+    note.append(...ctx.t(body.q === null ? 'conv.anchors.none' : 'conv.anchors.findNone'));
     host.append(note);
     return;
   }
+
+  const count = el('p', 'small convanchcount');
+  count.append(...ctx.t('conv.anchors.count', { n: body.anchors.length }));
+  host.append(count);
+
   const list = el('div', 'convanchors');
   for (const anchor of body.anchors) {
-    const row = el('div', 'convanchor');
-    const head = el('p', 'small convanchorwhere');
-    const open = el('a', 'convanchoropen');
-    open.href = anchor.agentId === null
-      ? sessionHref(anchor.sessionId) : laneHref(anchor.agentId);
-    open.textContent = anchor.sessionName ?? anchor.sessionTitle
-      ?? anchor.sessionId.slice(0, 8);
-    head.append(open, ' ');
-    const kind = el('span', 'convanchorkind');
-    // **A kind this build has no word for is drawn AS ITSELF**, and the set is
-    // checked here rather than by asking the string table, because `t()`
-    // THROWS on a key it does not hold — and a throw inside a render is the
-    // shape that leaves a tab showing nothing at all while every unit test
-    // passes. The `anchors` table takes any `kind` string, so an anchor
-    // written by a later build must still be readable on this one.
-    if (ANCHOR_KIND_KEYS.has(anchor.kind)) {
-      kind.append(...ctx.t(`conv.anchors.kind.${anchor.kind}`));
-    } else {
-      kind.textContent = anchor.kind;
-    }
-    head.append(kind);
-    const stamp = zonedStampOf(anchor.at, READER_ZONE);
-    if (stamp !== null) { head.append(' · '); head.append(mono(stamp)); }
-    row.append(head);
-
-    const label = el('p', 'convanchorlabel');
-    label.setAttribute('dir', 'auto');
-    label.textContent = anchor.label;
-    row.append(label);
-
-    const drop = el('details', 'convanchordrop');
-    const summary = el('summary', 'small');
-    summary.append(...ctx.t('conv.anchors.drop'));
-    const cmd = el('div', 'cmd');
-    cmd.append(el('code', null, composeCommand(anchor.dropArgv)));
-    drop.append(summary, cmd,
-      commandActions({ argv: anchor.dropArgv, id: null, values: {}, ctx }));
-    row.append(drop);
-    list.append(row);
+    list.append(anchorRow(ctx, anchor, onChanged));
   }
   host.append(list);
+}
+
+/** One marked point, with everything it carries and everything it can do. */
+function anchorRow(ctx, anchor, onChanged) {
+  const row = el('div', 'convanchor');
+  const head = el('p', 'small convanchorwhere');
+  // **THE SESSION LINK IS THE GO-TO**, and not a second control beside one
+  // that opens the same document at the top. A reader clicking the name of the
+  // conversation a bookmark is in means the bookmark.
+  const open = el('a', 'convanchoropen');
+  open.href = anchorHref(anchor);
+  open.textContent = anchor.sessionName ?? anchor.sessionTitle
+    ?? anchor.sessionId.slice(0, 8);
+  open.title = ctx.tFlat('conv.anchors.goto');
+  head.append(open, ' ');
+  const kind = el('span', 'convanchorkind');
+  // **A kind this build has no word for is drawn AS ITSELF**, and the set is
+  // checked here rather than by asking the string table, because `t()`
+  // THROWS on a key it does not hold — and a throw inside a render is the
+  // shape that leaves a tab showing nothing at all while every unit test
+  // passes. The `anchors` table takes any `kind` string, so an anchor
+  // written by a later build must still be readable on this one.
+  if (ANCHOR_KIND_KEYS.has(anchor.kind)) {
+    kind.append(...ctx.t(`conv.anchors.kind.${anchor.kind}`));
+  } else {
+    kind.textContent = anchor.kind;
+  }
+  head.append(kind);
+  // **WHO MARKED IT.** The same two-value fact the sweep button acts on, said
+  // where a reader can see it rather than left for them to infer from the kind.
+  const origin = el('span', 'convanchororigin');
+  origin.append(...ctx.t(anchor.origin === 'owner'
+    ? 'conv.anchors.origin.owner' : 'conv.anchors.origin.automatic'));
+  head.append(' · ', origin);
+  const stamp = zonedStampOf(anchor.at, READER_ZONE);
+  if (stamp !== null) { head.append(' · '); head.append(mono(stamp)); }
+  // **THE LANE AND THE BYTE**, which are the two details a reader needs to
+  // tell two marks in one session apart. `mono` isolates both for the reason
+  // `.tvat` gives one screen along: an identifier inside a Hebrew paragraph
+  // takes the paragraph's direction unless it is isolated.
+  if (anchor.agentId !== null) {
+    head.append(' · ');
+    head.append(...ctx.t('conv.anchors.inLane'));
+    head.append(' ', mono(anchor.agentId));
+  }
+  head.append(' · ');
+  head.append(...ctx.t('conv.anchors.byte'));
+  head.append(' ', mono(String(anchor.byteOffset)));
+  row.append(head);
+
+  const label = el('p', 'convanchorlabel');
+  label.setAttribute('dir', 'auto');
+  label.textContent = anchor.label;
+  row.append(label);
+
+  const said = el('p', 'small convanchorsaid');
+  said.setAttribute('aria-live', 'polite');
+  said.hidden = true;
+
+  /* ── RELABEL, in place ───────────────────────────────────────────────── */
+  const rename = el('button', 'convanchorrename');
+  rename.type = 'button';
+  rename.append(...ctx.t('conv.anchors.relabel'));
+  const renameBox = el('div', 'convanchorrenamebox');
+  renameBox.hidden = true;
+  const field = el('label', 'convfield');
+  const fieldName = el('span', 'convfieldname');
+  fieldName.append(...ctx.t('conv.anchors.relabelLabel'));
+  const input = el('input', 'convanchorrenameinput');
+  input.type = 'text';
+  input.value = anchor.label;
+  input.setAttribute('dir', 'auto');
+  field.append(fieldName, input);
+  const saveName = el('button', 'convanchorrenamesave');
+  saveName.type = 'button';
+  saveName.append(...ctx.t('conv.anchors.relabelSave'));
+  renameBox.append(field, saveName);
+
+  rename.addEventListener('click', () => {
+    renameBox.hidden = !renameBox.hidden;
+    if (!renameBox.hidden) { input.value = anchor.label; input.focus(); }
+  });
+
+  const relabel = async () => {
+    const next = input.value.trim();
+    said.hidden = false;
+    if (next === '') {
+      said.replaceChildren(...ctx.t('conv.anchors.relabelNeedsLabel'));
+      input.focus();
+      return;
+    }
+    saveName.disabled = true;
+    said.replaceChildren(...ctx.t('conv.anchors.saving'));
+    let answer;
+    try {
+      answer = await ctx.post('/api/conversations/anchors/relabel', { id: anchor.id, label: next });
+    } catch (error) {
+      said.replaceChildren(errorNote(error.message));
+      saveName.disabled = false;
+      return;
+    }
+    // **THE ROW BECOMES HIS, AND THE SCREEN SAYS SO.** Naming a point the pass
+    // marked takes it out of the pass's hands — `apiAnchorRelabel` sets
+    // `origin: 'owner'` precisely so the next sweep cannot quietly put his
+    // label back to the grammar's. A reader who is not told that would find
+    // out by the row changing under them, which is the silent half
+    // `INV-nothing-is-dropped-silently` forbids.
+    if (answer !== null && typeof answer === 'object' && answer.tookOwnership === true) {
+      said.replaceChildren(...ctx.t('conv.anchors.tookOwnership'));
+    } else {
+      said.replaceChildren(...ctx.t('conv.anchors.relabelled'));
+    }
+    saveName.disabled = false;
+    renameBox.hidden = true;
+    onChanged();
+  };
+  saveName.addEventListener('click', () => { void relabel(); });
+  input.addEventListener('keydown', (event) => {
+    if (event.key === 'Enter') { event.preventDefault(); void relabel(); }
+  });
+
+  /* ── DROP ────────────────────────────────────────────────────────────── */
+  const drop = el('button', 'convanchordrop');
+  drop.type = 'button';
+  drop.append(...ctx.t('conv.anchors.drop'));
+  drop.addEventListener('click', () => {
+    void (async () => {
+      drop.disabled = true;
+      said.hidden = false;
+      said.replaceChildren(...ctx.t('conv.anchors.dropping'));
+      try {
+        await ctx.post('/api/conversations/anchors/drop', { id: anchor.id });
+      } catch (error) {
+        said.replaceChildren(errorNote(error.message));
+        drop.disabled = false;
+        return;
+      }
+      // **NO CONFIRM**, and that is the owner's ruling of 2026-09-11 rather
+      // than an omission: he asked why a bookmark needed a confirm dialog and
+      // a subprocess when an anchor never touches the session file. Taking one
+      // back costs one click to undo — the point is still there and the same
+      // byte marks it again — so a dialog would be ceremony spent on the one
+      // write in this product that is genuinely cheap to reverse.
+      onChanged();
+    })();
+  });
+
+  const actions = el('div', 'convanchoractions');
+  actions.append(rename, drop);
+  row.append(actions, renameBox, said);
+  return row;
 }
 
 /**
@@ -1317,7 +1596,68 @@ function mountArchiveSearch(ctx, root, sessions) {
   const anchorsSub = el('p', 'small');
   anchorsSub.append(...ctx.t('conv.anchors.sub'));
   const anchorsBox = el('div', 'convanchorsbox');
-  anchorsCard.append(anchorsTitle, spaced(anchorsSub), anchorsBox);
+  anchorsCard.append(anchorsTitle, spaced(anchorsSub));
+
+  /* ── FIND, ACROSS THE SET — capability 3 ──────────────────────────────────
+   *
+   * It searches the LABELS and not the conversation, and the placeholder says
+   * so, because the box above it searches the words and two search boxes on
+   * one screen that quietly mean different things is how a real match gets
+   * read as an absence. `searchAnchors`' own header draws the same line one
+   * layer down.
+   */
+  // **`.convanchbar` ALONE, and NOT `.convfilter` beside it.** Reusing the
+  // list's class for the look was the obvious move and it broke three tests in
+  // another file by a route nothing here could see: `e2e/conversations.spec.ts`
+  // finds the sessions card with `.card.pane` filtered by
+  // `has: .convfilter`, so a second card wearing that class turned a
+  // one-element locator into a strict-mode violation. A class is a HANDLE as
+  // well as a style, and a new control does not get to rename an existing one
+  // by sharing it — the same rule `.tvcount`, `.tvtop` and `.tvnew` are each
+  // named for, one screen along.
+  const findBar = el('div', 'convanchbar');
+  findBar.setAttribute('role', 'search');
+  findBar.setAttribute('aria-label', ctx.tFlat('conv.anchors.findRegion'));
+  const findField = el('label', 'convfield');
+  const findName = el('span', 'convfieldname');
+  findName.append(...ctx.t('conv.anchors.find'));
+  const find = el('input', 'convanchfind');
+  find.type = 'search';
+  find.setAttribute('dir', 'auto');
+  findField.append(findName, find);
+  findBar.append(findField);
+
+  /* ── RUN THE AUTOMATIC PASS — capability 7, creation path 2 ───────────────
+   *
+   * Owner, 2026-09-12: *"i need a trigger in the ui to initiate anchores
+   * creations if can't do it automatically which you told me you can."* Both
+   * halves of that are true at once. The pass IS automatic — it marked 564 of
+   * the 565 anchors in this workspace — and it could only ever START from a
+   * terminal, which is this requirement's own defect in its purest form.
+   *
+   * **THE COST IS ON THE CONTROL AND THE RESULT IS SAID.** A whole-archive
+   * walk measured at 8.6 s cold over 307 transcripts, so the button says so
+   * before it is pressed, and `INV-nothing-is-dropped-silently` decides what
+   * it says afterwards: newly marked, renamed, and TAKEN BACK. A button that
+   * runs a nine-second walk and says nothing is a button nobody presses twice.
+   *
+   * **No confirm**, because the pass is safe to press twice and that is
+   * measured rather than hoped: it reads back only `origin: automatic` rows,
+   * never reads one the reader marked, and a second run immediately after a
+   * first reports 0 new, 0 taken back, 0 renamed.
+   */
+  const sweep = el('button', 'convanchsweep');
+  sweep.type = 'button';
+  sweep.append(...ctx.t('conv.anchors.sweep'));
+  const sweepSub = el('p', 'small convanchsweepsub');
+  sweepSub.append(...ctx.t('conv.anchors.sweepSub'));
+  const sweepSaid = el('p', 'small convanchsweepsaid');
+  sweepSaid.setAttribute('aria-live', 'polite');
+  sweepSaid.hidden = true;
+  const sweepBox = el('div', 'convanchsweepbox');
+  sweepBox.append(sweep, spaced(sweepSub), sweepSaid);
+
+  anchorsCard.append(findBar, sweepBox, anchorsBox);
   root.append(anchorsCard);
 
   const idle = () => {
@@ -1327,16 +1667,83 @@ function mountArchiveSearch(ctx, root, sessions) {
     results.append(note);
   };
 
+  const anchorState = { q: null };
+  let anchorsInFlight = 0;
+
   const refreshAnchors = async () => {
+    const mine = ++anchorsInFlight;
     let body;
+    const query = anchorState.q === null ? '' : `?q=${encodeURIComponent(anchorState.q)}`;
     try {
-      body = await ctx.api('/api/conversations/anchors');
+      body = await ctx.api(`/api/conversations/anchors${query}`);
     } catch (error) {
+      if (mine !== anchorsInFlight) return;
       anchorsBox.replaceChildren(errorNote(error.message));
       return;
     }
-    drawAnchors(ctx, anchorsBox, body);
+    // A later answer must never be overwritten by an earlier one that arrived
+    // late — `filterBar`'s counter, for the same reason.
+    if (mine !== anchorsInFlight) return;
+    drawAnchors(ctx, anchorsBox, body, () => { void refreshAnchors(); });
   };
+
+  let findTimer = null;
+  find.addEventListener('input', () => {
+    if (findTimer !== null) clearTimeout(findTimer);
+    findTimer = setTimeout(() => {
+      findTimer = null;
+      const typed = find.value.trim();
+      anchorState.q = typed === '' ? null : typed;
+      void refreshAnchors();
+    }, ARCH_SETTLE_MS);
+  });
+
+  sweep.addEventListener('click', () => {
+    void (async () => {
+      sweep.disabled = true;
+      sweepSaid.hidden = false;
+      sweepSaid.replaceChildren(...ctx.t('conv.anchors.sweepRunning'));
+      let answer;
+      try {
+        answer = await ctx.post('/api/conversations/anchors/sweep', {});
+      } catch (error) {
+        sweepSaid.replaceChildren(errorNote(error.message));
+        sweep.disabled = false;
+        return;
+      }
+      sweep.disabled = false;
+      const report = answer === null || typeof answer !== 'object' ? null : answer.report;
+      if (report === null || report === undefined) {
+        sweepSaid.replaceChildren(...ctx.t('conv.arch.neverIndexed'));
+        return;
+      }
+      const said = [];
+      // **THE THREE COUNTS, ALWAYS**, including when every one of them is
+      // zero: "nothing changed" is the answer that proves the pass is
+      // idempotent, and a screen that drew nothing on a run that changed
+      // nothing would be indistinguishable from one whose button did not work.
+      const line = el('p', 'small');
+      line.append(...ctx.t(
+        report.marked === 0 && report.relabelled === 0 && report.dropped === 0
+          ? 'conv.anchors.sweepNone' : 'conv.anchors.sweepDone',
+        {
+          marked: report.marked, relabelled: report.relabelled,
+          dropped: report.dropped, ms: report.ms,
+        },
+      ));
+      said.push(line);
+      // A capped pass and a complete one must not look the same — the same
+      // disclosure `searchLines` makes at the terminal, on the screen that now
+      // starts the pass.
+      if (report.capped === true) {
+        const capped = el('p', 'small convanchsweepcapped');
+        capped.append(...ctx.t('conv.anchors.sweepCapped'));
+        said.push(capped);
+      }
+      sweepSaid.replaceChildren(...said);
+      void refreshAnchors();
+    })();
+  });
 
   const refresh = async (next) => {
     Object.assign(state, next);
@@ -1357,7 +1764,7 @@ function mountArchiveSearch(ctx, root, sessions) {
       return;
     }
     if (mine !== inFlight) return;
-    drawHits(ctx, results, body);
+    drawHits(ctx, results, body, state.q, () => { void refreshAnchors(); });
     void refreshAnchors();
   };
 
@@ -3811,7 +4218,7 @@ function boundedNote(ctx, box, body) {
  * both pages by construction. A page that forked any of it is what `seq:15`
  * refused and what `rowFor` exists to prevent.
  */
-export function mountDocument(ctx, host, outline, back, roster = NO_LANES) {
+export function mountDocument(ctx, host, outline, back, roster = NO_LANES, landAt = null) {
   const nodes = outline.nodes;
   /**
    * **A COPY IS STATIC, AND EVERY BEHAVIOUR ON THIS SCREEN THAT ASSUMES A LIVE
@@ -4462,6 +4869,223 @@ export function mountDocument(ctx, host, outline, back, roster = NO_LANES) {
     }
   };
 
+  /**
+   * **CREATION PATH 3: BY HAND WHILE READING, AT THE POINT HE IS LOOKING AT**
+   * — owner ruling 2026-09-12,
+   * `REQ-every-anchor-capability-is-reachable-from-the-screen-and-a`.
+   *
+   * His own words: *"user could add anchores while he browses the conversation
+   * using the ui viewer"*, and the ruling that decides what counts: *"you
+   * shouldn't limit me because you decided to use the CLI."* Until this,
+   * marking a point was reachable only from a SEARCH HIT — so a reader who had
+   * found the turn by reading had to go and search for it first.
+   *
+   * **The byte comes from the outline node and nothing derives it here.**
+   * `DocOutlineNode.o` is "byte offset of the first record's line — the seek
+   * target", which is the same number `anchorIdFor` hashes and the same one
+   * `resolveAnchor` seeks to. A control that counted characters would mark a
+   * point inside a record rather than at the start of one, which reads as
+   * unreadable instead of throwing — the failure this archive's Hebrew makes
+   * certain.
+   *
+   * **The session is `outline.ownerSessionId` and the lane is the document's
+   * own id when it is a lane.** A lane's anchor is filed under the session that
+   * owns it; `subagentAsRow` carries why the outline now says which.
+   */
+  const anchorSessionId = outline.ownerSessionId ?? outline.sessionId;
+  const anchorAgentId = outline.source === 'subagent' ? outline.sessionId : null;
+
+  /** Every anchor in THIS document, by byte offset. Refilled on every change. */
+  const anchorsHere = new Map();
+
+  const loadAnchors = async () => {
+    let body;
+    try {
+      body = await ctx.api(
+        `/api/conversations/anchors?session=${encodeURIComponent(anchorSessionId)}`);
+    } catch {
+      // A document whose anchors could not be read still draws. The control
+      // says "mark this point" and a mark that turns out to exist already is
+      // the SAME ROW — `anchorIdFor` derives the id from the position — so the
+      // worst a failed read costs is a button offering something already done.
+      return;
+    }
+    anchorsHere.clear();
+    for (const anchor of body.anchors ?? []) {
+      if ((anchor.agentId ?? null) !== anchorAgentId) continue;
+      anchorsHere.set(anchor.byteOffset, anchor);
+    }
+  };
+
+  /**
+   * **PUT EVERY DRAWN ROW'S CONTROL BACK IN STEP WITH THE ANCHORS FILE.**
+   *
+   * `paint` deliberately does NOT rebuild a row it has already drawn — a
+   * rebuilt row is a `<details>` a reader opened being shut, which is the one
+   * thing the scroll moves rows to avoid. So the anchors arriving after the
+   * first paint would leave a marked turn offering to mark itself, which is
+   * two statements about one point with one of them false. This replaces the
+   * BAR and nothing else, so nothing a reader opened is disturbed.
+   *
+   * It was found in the browser, not in review: the first eleven assertions of
+   * `e2e/anchors.spec.ts` passed and the twelfth — a turn the automatic pass
+   * had already marked — showed the unmarked control, because the rows were on
+   * screen before the fetch came back.
+   */
+  const refreshMarks = () => {
+    for (const [nodeIndex, row] of live) {
+      const bar = row.querySelector('.tvanchorbar');
+      if (bar !== null) bar.replaceWith(markControl(nodeIndex));
+    }
+    schedule();
+  };
+
+  /**
+   * The mark control for one node — three states, never two.
+   *
+   * NOT MARKED: a button that opens one field. MARKED: the label, with rename
+   * and take-back beside it. The third is the one a two-state control loses —
+   * a write that REFUSED — and it is drawn in place rather than swallowed.
+   */
+  const markControl = (nodeIndex) => {
+    const node = nodes[nodeIndex];
+    const bar = el('div', 'tvanchorbar');
+    const said = el('p', 'small tvanchorsaid');
+    said.setAttribute('aria-live', 'polite');
+    said.hidden = true;
+
+    const redrawMe = () => {
+      const row = live.get(nodeIndex);
+      if (row === undefined) return;
+      const old = row.querySelector('.tvanchorbar');
+      if (old !== null) old.replaceWith(markControl(nodeIndex));
+      schedule();
+    };
+
+    const standing = anchorsHere.get(node.o);
+    if (standing !== undefined) {
+      const chip = el('span', 'chip ok glyphed tvanchored');
+      chip.dataset.g = '⚑';
+      chip.append(...ctx.t('conv.doc.marked'));
+      const label = el('span', 'tvanchorlabel');
+      label.setAttribute('dir', 'auto');
+      label.textContent = standing.label;
+      const rename = el('button', 'tvjump tvanchorrename');
+      rename.type = 'button';
+      rename.append(...ctx.t('conv.anchors.relabel'));
+      const drop = el('button', 'tvjump tvanchordrop');
+      drop.type = 'button';
+      drop.append(...ctx.t('conv.anchors.drop'));
+      const box = el('div', 'tvanchorbox');
+      box.hidden = true;
+      const input = el('input', 'tvanchorinput');
+      input.type = 'text';
+      input.value = standing.label;
+      input.setAttribute('dir', 'auto');
+      input.setAttribute('aria-label', ctx.tFlat('conv.anchors.relabelLabel'));
+      const save = el('button', 'tvjump tvanchorsave');
+      save.type = 'button';
+      save.append(...ctx.t('conv.anchors.relabelSave'));
+      box.append(input, save);
+      rename.addEventListener('click', () => {
+        box.hidden = !box.hidden;
+        if (!box.hidden) input.focus();
+        schedule();
+      });
+      const relabel = async () => {
+        const value = input.value.trim();
+        said.hidden = false;
+        if (value === '') {
+          said.replaceChildren(...ctx.t('conv.anchors.relabelNeedsLabel'));
+          return;
+        }
+        save.disabled = true;
+        said.replaceChildren(...ctx.t('conv.anchors.saving'));
+        try {
+          await ctx.post('/api/conversations/anchors/relabel',
+            { id: standing.id, label: value });
+        } catch (error) {
+          said.replaceChildren(errorNote(error.message));
+          save.disabled = false;
+          return;
+        }
+        await loadAnchors();
+        redrawMe();
+      };
+      save.addEventListener('click', () => { void relabel(); });
+      input.addEventListener('keydown', (event) => {
+        if (event.key === 'Enter') { event.preventDefault(); void relabel(); }
+      });
+      drop.addEventListener('click', () => {
+        void (async () => {
+          drop.disabled = true;
+          said.hidden = false;
+          said.replaceChildren(...ctx.t('conv.anchors.dropping'));
+          try {
+            await ctx.post('/api/conversations/anchors/drop', { id: standing.id });
+          } catch (error) {
+            said.replaceChildren(errorNote(error.message));
+            drop.disabled = false;
+            return;
+          }
+          await loadAnchors();
+          redrawMe();
+        })();
+      });
+      bar.append(chip, label, rename, drop, box, said);
+      return bar;
+    }
+
+    const mark = el('button', 'tvjump tvanchormark');
+    mark.type = 'button';
+    mark.append(...ctx.t('conv.doc.mark'));
+    const box = el('div', 'tvanchorbox');
+    box.hidden = true;
+    const input = el('input', 'tvanchorinput');
+    input.type = 'text';
+    input.setAttribute('dir', 'auto');
+    input.setAttribute('aria-label', ctx.tFlat('conv.doc.markLabel'));
+    const save = el('button', 'tvjump tvanchorsave');
+    save.type = 'button';
+    save.append(...ctx.t('conv.doc.markSave'));
+    box.append(input, save);
+    mark.addEventListener('click', () => {
+      box.hidden = !box.hidden;
+      if (!box.hidden) input.focus();
+      schedule();
+    });
+    const write = async () => {
+      const label = input.value.trim();
+      said.hidden = false;
+      if (label === '') {
+        said.replaceChildren(...ctx.t('conv.doc.markNeedsLabel'));
+        return;
+      }
+      save.disabled = true;
+      said.replaceChildren(...ctx.t('conv.arch.marking'));
+      try {
+        await ctx.post('/api/conversations/anchors/mark', {
+          sessionId: anchorSessionId,
+          agentId: anchorAgentId,
+          byteOffset: node.o,
+          label,
+        });
+      } catch (error) {
+        said.replaceChildren(errorNote(error.message));
+        save.disabled = false;
+        return;
+      }
+      await loadAnchors();
+      redrawMe();
+    };
+    save.addEventListener('click', () => { void write(); });
+    input.addEventListener('keydown', (event) => {
+      if (event.key === 'Enter') { event.preventDefault(); void write(); }
+    });
+    bar.append(mark, box, said);
+    return bar;
+  };
+
   const buildRow = (nodeIndex) => {
     const body = bodies.get(nodeIndex);
     if (body === undefined) {
@@ -4469,10 +5093,16 @@ export function mountDocument(ctx, host, outline, back, roster = NO_LANES) {
       return drawWaiting(ctx, nodes[nodeIndex], heightOf(nodeIndex));
     }
     waiting.delete(nodeIndex);
-    if (body.kind === 'said') return drawTurn(ctx, body, lanes);
-    // A command, or a question put to him — drawn open. `plan:archive seq:16`.
-    if (body.kind === 'deed') return drawDeed(ctx, body, lanes);
-    return drawWork(ctx, body, lanes);
+    const row = body.kind === 'said' ? drawTurn(ctx, body, lanes)
+      // A command, or a question put to him — drawn open. `plan:archive seq:16`.
+      : body.kind === 'deed' ? drawDeed(ctx, body, lanes)
+        : drawWork(ctx, body, lanes);
+    // **THE CONTROL IS ON EVERY KIND OF ROW, not only on a turn somebody
+    // spoke.** A folded run of machinery is exactly the sort of place a reader
+    // wants a bookmark — it is where the work is — and a control that appeared
+    // on two of the three kinds would be a rule nobody could state.
+    row.append(markControl(nodeIndex));
+    return row;
   };
 
   /**
@@ -4787,7 +5417,87 @@ export function mountDocument(ctx, host, outline, back, roster = NO_LANES) {
     redraw('top');
   };
   find.addEventListener('input', applyFilter);
+
+  /**
+   * **THE NODE THE MARKED BYTE FALLS IN** — capability 4's other half.
+   *
+   * The anchor stores a BYTE and the document draws NODES, and the two are
+   * joined here rather than in the address: `DocOutlineNode.o` is the byte the
+   * node's first record begins at, so the node a byte belongs to is the last
+   * one whose `o` is at or before it. An exact hit is the ordinary case — an
+   * anchor is always at the start of a record — and the inequality is what
+   * keeps a mark inside a folded RUN landing on the fold that holds it rather
+   * than on nothing.
+   *
+   * `-1` when the byte is before the first node, which is a document whose
+   * walk resumed past it. The caller lands at the end instead of pretending.
+   */
+  const nodeAtByte = (byte) => {
+    let best = -1;
+    for (let i = 0; i < nodes.length; i += 1) {
+      if (nodes[i].o > byte) break;
+      best = i;
+    }
+    return best;
+  };
+
+  /**
+   * Land on one node and say so.
+   *
+   * **`stickUntil = 0` is what makes this survive the mount's three-second
+   * hold to the end.** `redraw('end')` pins the next paints to the tail
+   * precisely so the estimate-driven landing is not lost as rows are measured,
+   * and a scroll set inside that window would be dragged straight back down —
+   * the defect `button.tvtop`'s own comment records, one control along.
+   */
+  const landOn = (nodeIndex) => {
+    if (nodeIndex < 0) return false;
+    stickUntil = 0;
+    scroll.scrollTop = scroller.top(viewFrom(nodeIndex));
+    paint();
+    return true;
+  };
+
   redraw('end');
+
+  /**
+   * **OPENED AT THE POINT HE MARKED** — the far end of `anchorHref`.
+   *
+   * The landing is DISCLOSED rather than silent: a document that opened
+   * somewhere other than where it always opens, with nothing saying why, is a
+   * reader wondering whether the scroll broke. The line names the label, which
+   * is the one thing that says WHICH bookmark this is.
+   *
+   * A byte this document does not reach is said as itself — it is a real state
+   * on a transcript whose walk stopped at `DOCUMENT_WALK_CAP`, and reporting
+   * it as a successful landing at the end would be the silent half
+   * `INV-nothing-is-dropped-silently` forbids.
+   */
+  if (typeof landAt === 'number' && Number.isInteger(landAt) && landAt >= 0) {
+    const note = el('p', 'tvnote tvlanded');
+    note.setAttribute('aria-live', 'polite');
+    host.insertBefore(note, scroll);
+    void (async () => {
+      await loadAnchors();
+      const at = nodeAtByte(landAt);
+      if (!landOn(at)) {
+        note.append(...ctx.t('conv.doc.landedNowhere'));
+        return;
+      }
+      refreshMarks();
+      const anchor = anchorsHere.get(nodes[at].o);
+      if (anchor === undefined) {
+        note.append(...ctx.t('conv.doc.landedUnmarked'));
+        return;
+      }
+      note.append(...ctx.t('conv.doc.landed'));
+      const named = el('bdi', 'tvlandedlabel');
+      named.textContent = anchor.label;
+      note.append(' ', named);
+    })();
+  } else {
+    void loadAnchors().then(refreshMarks);
+  }
 
   /* ── A MARKED PASSAGE, AND THE THREE THINGS IT CAN BECOME ───────────────
    *
@@ -6237,7 +6947,20 @@ export async function render(root, ctx) {
   helpBody.append(...ctx.t('conv.help.body'));
   root.append(helpDisclosure(ctx, 'conv.help.summary', [helpSecurity, helpBody]));
 
-  const session = sessionFromHash(location.hash);
+  /**
+   * **`#/conversations/at/<session>/<byte>` — A DOCUMENT OPENED AT A MARKED
+   * POINT**, capability 4 of
+   * `REQ-every-anchor-capability-is-reachable-from-the-screen-and-a`.
+   *
+   * Read BEFORE `sessionFromHash`, for the reason `rosterFromHash` is: the
+   * shell's router splits at the FIRST `/` and hands the rest here untouched,
+   * so `at/<id>/<byte>` reaches this module as a session id of that shape and
+   * would open a session that does not exist. `anchorFromHash` is the only
+   * code that knows what the extra segments mean, which is where `app.js` says
+   * that knowledge goes.
+   */
+  const landing = anchorFromHash(location.hash);
+  const session = landing !== null ? landing.sessionId : sessionFromHash(location.hash);
   const open = (id) => { ctx.navigate(`#/conversations/${encodeURIComponent(id)}`); };
   const back = () => { ctx.navigate('#/conversations'); };
 
@@ -6388,5 +7111,6 @@ export async function render(root, ctx) {
     viewer.append(backButton);
     return;
   }
-  mountDocument(ctx, viewer, outline, back, await lanes);
+  mountDocument(ctx, viewer, outline, back, await lanes,
+    landing === null ? null : landing.byteOffset);
 }

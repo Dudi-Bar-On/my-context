@@ -1153,23 +1153,29 @@ const UNCATALOGUED: Record<string, string> = {
     + 'Claude Code gave it. It is a write and needs a def with an Execute behind it, exactly '
     + 'as `conversation rebuild` above does — and a text field for the name, which is the '
     + 'first entry in this catalogue that would need one.',
-  // **THE ONE CONVERSATION SUBCOMMAND THE SCREEN ALREADY COMPOSES** —
-  // `plan:recall seq:1`, landed 2026-09-11. The row it is missing from is not
-  // an oversight and the reason is different from every neighbour's: the
-  // Conversations screen builds this exact command on every search hit, from
-  // the argv the SERVER composed (`SearchHitView.anchorArgv`), and offers it
-  // to COPY. What it does not offer is Execute, and that is a decision rather
-  // than an omission — Execute needs a catalogue entry, and a catalogue entry
-  // is a licence for a browser to perform this write.
+  // **THE ONE CONVERSATION SUBCOMMAND THE SCREEN DOES NOT NEED A CATALOGUE
+  // ENTRY FOR, AND THE ONLY ROW HERE WHOSE ABSENCE IS AN ANSWER** — owner
+  // ruling 2026-09-12,
+  // `REQ-every-anchor-capability-is-reachable-from-the-screen-and-a`.
   //
-  // So the gap here is narrower than `persist`'s and `name`'s: the composing
-  // half is built and driven in `e2e/anchors.spec.ts`; what is absent is the
-  // licence. Closing it is a ruling to take, not a def to write.
+  // What stood here said the screen "ALREADY composes this line on every
+  // search hit and offers it to copy", that what was missing was the LICENCE
+  // to run it, and that closing the gap was "a ruling to take, not a def to
+  // write". The ruling was taken and it went the other way: *"a composed
+  // command the reader must copy into a terminal is NOT the UI having the
+  // capability, it is the UI describing one."*
+  //
+  // So the screen performs the write DIRECTLY — `src/ui/anchor-write.ts`, four
+  // POST routes, named in `test/ui/no-writes.test.ts`' `RULED_WRITES` — and it
+  // never composes an argv at all. A catalogue entry would be a second way to
+  // do one thing, and it would run the CLI in a child process to perform a
+  // write that is one row in a rebuildable index. The absence is now correct
+  // rather than pending.
   'conversation anchor': 'marks a point in a transcript worth coming back to, and lists what '
-    + 'is marked. The Conversations screen ALREADY composes this line on every search hit and '
-    + 'offers it to copy — what it does not do is run it, because running it needs an entry '
-    + 'here and an entry here is a licence for the browser to write. That licence is the '
-    + 'owner\'s to give; the composing half did not wait for it.',
+    + 'is marked. The Conversations screen does ALL of this itself since 2026-09-12 — marking, '
+    + 'renaming, dropping, finding, opening at the point, and running the automatic pass — '
+    + 'through its own POST routes rather than by composing this line. It needs no entry here, '
+    + 'because it never runs this command; the CLI is a peer, for a lane or a script.',
   // **THE ROW THAT WAS A NOT-YET AND IS NOW A DECISION** — `plan:archive
   // seq:46`. It stood in UNCATALOGUED with its reason naming what it waited
   // for: the owner's design is a form with checkboxes, so the surface that

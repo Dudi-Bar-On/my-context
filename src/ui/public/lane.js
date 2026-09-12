@@ -214,7 +214,24 @@ async function main() {
   if (typeof outline.title === 'string' && outline.title !== '') document.title = outline.title;
   else document.title = outline.sessionId;
 
-  mountDocument(ctx, viewer, outline, () => { ctx.navigate('#/conversations'); }, await lanes);
+  /**
+   * **AND THE POINT INSIDE IT, WHEN AN ANCHOR SENT THE READER HERE** —
+   * `REQ-every-anchor-capability-is-reachable-from-the-screen-and-a`,
+   * capability 4.
+   *
+   * `?at=<byte>` rides beside `?id=`, in the same query string and for the
+   * same reason the id is one: a fragment on a viewer page is not the shell
+   * router's to spend, and a query is the form of this address a reader can
+   * copy. `anchorHref` in `screens/conversations.js` is the only writer of it
+   * and this is the only reader — the same split `laneHref` already has.
+   *
+   * An unreadable value is `null` and the document opens where it always
+   * does. A hand-edited address is not a reason to refuse a lane.
+   */
+  const asked = new URLSearchParams(window.location.search).get('at');
+  const at = asked !== null && /^\d+$/.test(asked) ? Number(asked) : null;
+  mountDocument(ctx, viewer, outline, () => { ctx.navigate('#/conversations'); },
+    await lanes, at);
 }
 
 main().catch((error) => {

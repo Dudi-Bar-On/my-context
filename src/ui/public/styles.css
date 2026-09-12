@@ -3835,7 +3835,8 @@ wa-tree .wa-count{margin-inline-start:var(--sp-2);color:var(--dim);
    The shapes are the transcript viewer's own — `.tvfind` for a text field and
    `.tvjump` for a button, twenty lines below — so the list's controls and the
    document's find box are one vocabulary rather than two. */
-.convfind,.convselect,.convdate{min-inline-size:0;font:var(--fs-0)/1.4 var(--sans);
+.convfind,.convselect,.convdate,.convmarklabel,.convanchorrenameinput,.convanchfind{
+  min-inline-size:0;font:var(--fs-0)/1.4 var(--sans);
   color:var(--ink);background:var(--sink);border:1px solid var(--edge);
   border-radius:var(--r-sm);padding:var(--sp-1) var(--sp-2)}
 .convfind{inline-size:min(24ch,100%)}
@@ -3886,11 +3887,22 @@ wa-tree .wa-count{margin-inline-start:var(--sp-2);color:var(--dim);
    state beside the five meaning hues. */
 .convhitmatch{color:var(--gold);background:transparent;font-weight:600}
 .convhitmark{margin-block-start:var(--sp-1)}
-.convhitmarkbtn{inline-size:auto;font:600 var(--fs-00)/1.2 var(--mono);
+.convhitmarkbtn,.convmarksave,.convanchorrename,.convanchordrop,
+.convanchorrenamesave,.convanchsweep{
+  inline-size:auto;font:600 var(--fs-00)/1.2 var(--mono);
   color:var(--dim);background:var(--panel-2);border:2px solid var(--dim);
   border-radius:var(--r-sm);padding:var(--sp-1) var(--sp-2);cursor:pointer}
-.convhitmarkbtn:hover,.convhitmarkbtn:focus-visible{color:var(--gold);
+.convhitmarkbtn:hover,.convhitmarkbtn:focus-visible,
+.convmarksave:hover,.convmarksave:focus-visible,
+.convanchorrename:hover,.convanchorrename:focus-visible,
+.convanchordrop:hover,.convanchordrop:focus-visible,
+.convanchorrenamesave:hover,.convanchorrenamesave:focus-visible,
+.convanchsweep:hover,.convanchsweep:focus-visible{color:var(--gold);
   border-color:var(--gold)}
+/* A disabled control must still be legible — a write in flight that faded to
+   the UA's own grey would read as a broken button rather than a busy one. */
+.convmarksave:disabled,.convanchorrename:disabled,.convanchordrop:disabled,
+.convanchorrenamesave:disabled,.convanchsweep:disabled{opacity:.55;cursor:progress}
 .convhitcmd{margin-block-start:var(--sp-1)}
 .convhitmarked{white-space:nowrap}
 .convarchidle,.convarchwait,.convarchnote,.convarchscopenote,.convarchcount,
@@ -3905,8 +3917,76 @@ wa-tree .wa-count{margin-inline-start:var(--sp-2);color:var(--dim);
 .convanchorkind{font-size:var(--fs-00);color:var(--dim)}
 .convanchorlabel{margin:var(--sp-1) 0 0;font-size:var(--fs-0);line-height:1.5;
   overflow-wrap:anywhere}
-.convanchordrop{margin-block-start:var(--sp-1);font-size:var(--fs-00)}
-.convanchordrop summary{cursor:pointer;color:var(--dim)}
+/* ── EVERY ANCHOR CAPABILITY ON THE ROW — owner ruling 2026-09-12 ────────
+   `REQ-every-anchor-capability-is-reachable-from-the-screen-and-a`. What
+   stood here styled a `<details>` holding a command to copy; the row now
+   carries Rename and Take-it-back as real buttons, so the `summary` rule went
+   with the element it dressed rather than being left behind to style nothing.
+
+   `flex-wrap` on the actions, because these two controls sit under a label
+   that can be a whole sentence and a row that refused to wrap would widen the
+   card — the `min-inline-size:0` lesson thirty lines up, one element in. */
+.convanchororigin{font-size:var(--fs-00);color:var(--dim)}
+.convanchoractions{display:flex;flex-wrap:wrap;gap:var(--sp-1);
+  margin-block-start:var(--sp-1)}
+.convanchorrenamebox{display:flex;flex-wrap:wrap;align-items:flex-end;
+  gap:var(--sp-1);margin-block-start:var(--sp-1)}
+/* **NOT REDUNDANT WITH THE UA SHEET, and it was found by LOOKING at the card
+   rather than by any assertion.** An author rule that sets `display` beats the
+   user agent's `[hidden]{display:none}` at equal specificity, so the rename
+   field stood open on every row at once — two fields, two Save buttons, no
+   click. The same trap `.pop[hidden]`, `.strip [hidden]` and `.hdr [hidden]`
+   already dodge, three cards along. */
+.convanchorrenamebox[hidden]{display:none}
+.convanchorrenameinput{inline-size:min(36ch,100%)}
+.convanchorsaid,.convmarksaid,.convanchsweepsaid,.convanchsweepsub,
+.convanchsweepcapped,.convanchcount{margin-block-start:var(--sp-1);
+  color:var(--dim)}
+/* The list's own row shape, declared rather than borrowed through
+   `.convfilter`: that class is a test's handle for the sessions card, and
+   wearing it here made a one-card locator resolve to two. */
+.convanchbar{display:flex;flex-wrap:wrap;align-items:flex-end;gap:var(--sp-2);
+  margin-block:var(--sp-2)}
+.convanchfind{inline-size:min(28ch,100%)}
+.convanchsweepbox{margin-block:var(--sp-2)}
+.convhitcmd .convfield{margin-block-start:var(--sp-1)}
+.convmarklabel{inline-size:min(36ch,100%)}
+
+/* ── MARKING A POINT WHILE READING — owner ruling 2026-09-12 ──────────────
+   Creation path 3 of
+   `REQ-every-anchor-capability-is-reachable-from-the-screen-and-a`. The bar
+   sits at the foot of every drawn row, so it must cost the row as little
+   height as possible: one line, wrapping, at the smallest type this product
+   uses. A control that added forty pixels to every row would change what the
+   virtualised scroll's estimates mean.
+
+   The buttons wear `.tvjump`, which sets its own colour, background and
+   border — the class Top, End and the three copy controls already wear, and
+   the answer to the contrast-1.0 defect this file documents twice. Nothing new
+   is declared for them here. */
+.tvanchorbar{display:flex;flex-wrap:wrap;align-items:center;gap:var(--sp-1);
+  margin-block-start:var(--sp-1);font-size:var(--fs-00)}
+.tvanchorlabel{color:var(--dim);overflow-wrap:anywhere}
+.tvanchorbox{display:flex;flex-wrap:wrap;align-items:center;gap:var(--sp-1);
+  flex-basis:100%}
+/* `.convanchorrenamebox[hidden]`'s reason, in the document: an author
+   `display` outranks the UA sheet's `[hidden]`, and a field that stood open on
+   every row of a virtualised scroll would change what the height estimates
+   mean as well as being wrong. */
+.tvanchorbox[hidden]{display:none}
+.tvanchorinput{min-inline-size:0;inline-size:min(36ch,100%);
+  font:var(--fs-0)/1.4 var(--sans);color:var(--ink);background:var(--sink);
+  border:1px solid var(--edge);border-radius:var(--r-sm);
+  padding:var(--sp-1) var(--sp-2)}
+.tvanchorsaid{flex-basis:100%;margin:0;color:var(--dim)}
+.tvanchored{white-space:nowrap}
+/* The landing note, drawn above the well when an anchor address opened this
+   document. `border-inline-start` rather than `border-left`, so the accent
+   moves to the other edge under `dir="rtl"` on its own — the rule this file
+   states for every leading mark. */
+.tvlanded{border-inline-start:2px solid var(--gold);
+  padding-inline-start:var(--sp-2);margin-block:var(--sp-1)}
+.tvlandedlabel{color:var(--gold)}
 
 /* ── RECONSTRUCT — `plan:recall seq:2`, Tasks 11 and 12 ────────────────────
    The panel is mounted twice, on the archive screen and at the foot of a

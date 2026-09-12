@@ -97,7 +97,13 @@ import {
 // It moved because `core/anchors.ts` can now WRITE the anchors file
 // (`plan:recall seq:6`), and this endpoint may not load a module that writes —
 // `conversations-endpoint.test.ts` is the gate and it caught exactly this.
-// `markAnchor` beside it is a write and is still deliberately not bound.
+// `markAnchor` beside it is a write and is still deliberately not bound HERE.
+// It IS bound, since 2026-09-12, by `src/ui/anchor-write.ts` — a module of its
+// own, registered outside `registerReadRoutes`, named symbol by symbol in
+// `test/ui/no-writes.test.ts`' `RULED_WRITES` and held to a byte snapshot by
+// `test/ui/anchor-write-route.test.ts`. That split is the point: every READ
+// module still binds nothing, so this file's guarantee and the endpoint gate
+// that enforces it are unchanged.
 import { MIN_QUERY_CHARS, proseOf, searchArchive } from '../core/conversation-search.ts';
 import { readRedactionPlan } from '../core/conversation-redaction.ts';
 import {
@@ -1702,13 +1708,19 @@ export const CONVERSATION_SEARCH_DEFAULT = 50;
 /**
  * One hit, as the screen draws it.
  *
- * **`anchorArgv` is composed HERE and not in the browser**, and that is the
- * same rule `execute-catalogue.ts` exists to keep one level out: the string a
- * person reads and the argv that would run must be the same thing. A screen
- * that assembled `mycontext conversation anchor …` out of three fields it
- * happened to hold would be a second composer, and the two could come to
- * disagree about which byte gets marked without either one being obviously
- * wrong.
+ * **`anchorArgv` IS NO LONGER WHAT THE SCREEN USES, and it is kept as the
+ * CLI's equivalent of what the screen now does.** Owner ruling 2026-09-12,
+ * `REQ-every-anchor-capability-is-reachable-from-the-screen-and-a`: the viewer
+ * marks the point itself through `POST /api/conversations/anchors/mark`, which
+ * takes the three fields below as themselves. A composed command a reader must
+ * copy into a terminal is the UI describing a capability rather than having
+ * one.
+ *
+ * It survives because the CLI path stays — the rulings say the CLI and the MCP
+ * surface are peers, not retired — and because it is the one place the argv for
+ * this point is spelled by the party that knows the byte. Nothing on the screen
+ * reads it today; `test/ui/conversations-endpoint.test.ts` still holds its
+ * shape, so a CLI whose flags moved cannot leave a stale line here unnoticed.
  *
  * **An ARGV and not a line**, for the half of that rule the browser owns:
  * `public/lib/command.js`' `quoteArg` is this product's one spelling of how an
@@ -2196,10 +2208,11 @@ export function apiConversationSearch(ws: Workspace, url: URL): JsonResult {
 /**
  * One marked point, as the screen draws it.
  *
- * `dropArgv` is here for `anchorArgv`'s reason and no other: taking a mark
- * back is a WRITE, so the page composes the command and the person runs it.
- * Composed on the server so the id in the line and the id in the row cannot
- * come apart.
+ * `dropArgv` is here for `anchorArgv`'s reason and no other, and that reason
+ * has changed with it: taking a mark back is a write the SCREEN now performs
+ * (`POST /api/conversations/anchors/drop`, owner ruling 2026-09-12). This is
+ * the CLI's equivalent of that button, composed on the server so the id in the
+ * line and the id in the row cannot come apart.
  */
 export interface AnchorView {
   id: string;

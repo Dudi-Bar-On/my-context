@@ -86,6 +86,7 @@ import { registerAskRoutes } from './ask-model.ts';
 import { stampCodeIdentity, type CodeScope } from '../core/code-identity.ts';
 import { registerCaptureRoutes } from './capture-model.ts';
 import { CLI_ENTRY, registerExecuteRoutes } from './execute.ts';
+import { registerAnchorWriteRoutes } from './anchor-write.ts';
 import { ExecutionNonceStore } from './execute-nonce.ts';
 import { registerPacksRoutes } from './packs-model.ts';
 import { registerPortRoutes } from './port-model.ts';
@@ -984,6 +985,26 @@ export async function startUiServer(options: UiServerOptions): Promise<RunningUi
    * ban true while still letting every command in the catalogue run (§6.1).
    */
   registerExecuteRoutes(new ExecutionNonceStore(), CLI_ENTRY);
+
+  /**
+   * **THE FOUR ANCHOR WRITES** —
+   * `REQ-every-anchor-capability-is-reachable-from-the-screen-and-a`, owner
+   * ruling 2026-09-12: everything the product can do with an anchor is
+   * reachable from the screen, and a composed command a reader must copy into
+   * a terminal is the UI DESCRIBING a capability rather than having one.
+   *
+   * Registered HERE and not inside `registerReadRoutes` above, for the reason
+   * the execute routes are: `test/ui/server-e2e.test.ts` sweeps everything
+   * that set holds and then asserts the corpus is byte-identical. A write
+   * route inside it would either redden that sweep or force it to grow a hole,
+   * and the sweep is the runtime half of the no-writes guarantee. The static
+   * half names this module's three write bindings in `RULED_WRITES`.
+   *
+   * It takes no per-server state — an anchor write authorises nothing and
+   * mints nothing — so unlike the execute store there is nothing here that two
+   * servers in one test process could confuse.
+   */
+  registerAnchorWriteRoutes();
 
   /** Set once the socket is bound; the gate compares the submitted Host against it. */
   let boundPort = 0;

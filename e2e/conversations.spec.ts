@@ -861,7 +861,23 @@ for (const lang of ['en', 'he'] as const) {
     // made it DOCUMENT order so that a browser selection runs the way the
     // reader sees it, and `.first()` started tracking the top of the window.
     // A test that names the row it means cannot be moved by a scroll.
-    const foldN = await page.locator('.tvwork').first()
+    // **AND IT NAMES THE FOLD IT MEANS BY WHAT IS IN IT, not by being first**
+    // — 2026-09-12, under
+    // `REQ-every-anchor-capability-is-reachable-from-the-screen-and-a`.
+    //
+    // `.first()` after a fixed `scrollTop = 1600` still lets a PIXEL decide
+    // which fold this test opens, which is the same defect the paragraph above
+    // records one scroll along. It moved the day every row grew a control for
+    // marking the point it holds: the window at 1600px became a different set
+    // of rows, and the first fold in it carries no terminal output at all — so
+    // the assertion below waited on a `.tvterm` that was correctly absent.
+    //
+    // Filtering by `has: .tvterm` is NARROWER than what stood here, not
+    // looser: it picks a fold that really does carry terminal output, which is
+    // the only kind this assertion was ever about. A closed `<details>` still
+    // holds its content in the DOM, so the filter resolves before the click.
+    const foldN = await page.locator('.tvwork').filter({ has: page.locator('.tvterm') })
+      .first()
       .evaluate((n) => (n as HTMLElement).dataset['n'] ?? '');
     const opened = page.locator(`.tvwork[data-n="${foldN}"]`);
     await opened.locator('summary.tvworksum').click();

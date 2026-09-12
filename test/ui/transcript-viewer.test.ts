@@ -190,6 +190,10 @@ interface ViewerModule {
     lane: { agentId: string }; depth: number; children: number;
   }[];
   laneMatches: (lane: unknown, needle: string) => boolean;
+  /** `REQ-every-anchor-capability-is-reachable-from-the-screen-and-a` — the
+   * address of one marked point, and the read of it. */
+  anchorHref: (anchor: { sessionId: string; agentId: string | null; byteOffset: number }) => string;
+  anchorFromHash: (hash: string) => { sessionId: string; byteOffset: number } | null;
   rosterHref: (sessionId: string) => string;
   rosterFromHash: (hash: string) => string | null;
 }
@@ -556,4 +560,70 @@ test('the roster filter reads the brief, the type and the id — never a transcr
     laneMatches({ agentId: 'agent-b', agentType: null, description: null }, 'b'), true,
     'a lane with no brief is still findable by its id rather than unreachable',
   );
+});
+
+/* ══ THE ADDRESS OF A MARKED POINT ═════════════════════════════════════════
+ *
+ * `REQ-every-anchor-capability-is-reachable-from-the-screen-and-a`,
+ * capability 4 — "GO TO, opening the document at the marked point", owner
+ * ruling 2026-09-12.
+ *
+ * Pure and exported for this file's own stated bargain: the two halves of the
+ * viewer a mistake would be invisible in a screenshot. An address that dropped
+ * its byte still opens the right document, at the wrong place, and looks
+ * entirely correct — which is exactly the shape the browser cannot catch by
+ * eye. The browser half is driven in `e2e/anchors.spec.ts`, in both languages.
+ */
+
+test('a marked point has an address, and it carries the byte the anchor stores', async () => {
+  const { anchorHref, laneHref } = await viewer();
+
+  // A SESSION opens in the app, root-absolute for `sessionHref`'s reason: this
+  // control is also drawn on `/lane.html`, where a bare fragment would address
+  // the lane window itself.
+  assert.equal(
+    anchorHref({ sessionId: 'sess-a', agentId: null, byteOffset: 4096 }),
+    '/#/conversations/at/sess-a/4096',
+  );
+  // A LANE opens bare, at `laneHref`'s address with the byte beside the id —
+  // the same query string, because a fragment on a viewer page is not the
+  // shell router's to spend.
+  assert.equal(
+    anchorHref({ sessionId: 'sess-a', agentId: 'agent-b', byteOffset: 77 }),
+    `${laneHref('agent-b')}&at=77`,
+  );
+  // **BYTE 0 IS AN ADDRESS**, and it is the first turn of every conversation —
+  // the one a falsy check would drop. `anchorsFor` returns it, the CLI marks
+  // it, and an address builder that tested `byteOffset ? … : …` would send a
+  // reader to the end of the document instead.
+  assert.equal(
+    anchorHref({ sessionId: 'sess-a', agentId: null, byteOffset: 0 }),
+    '/#/conversations/at/sess-a/0',
+  );
+});
+
+test('the address is read back, and anything that is not one is not one', async () => {
+  const { anchorFromHash } = await viewer();
+  assert.deepEqual(
+    anchorFromHash('#/conversations/at/sess-a/4096'),
+    { sessionId: 'sess-a', byteOffset: 4096 },
+  );
+  assert.deepEqual(
+    anchorFromHash('#/conversations/at/sess-a/0'),
+    { sessionId: 'sess-a', byteOffset: 0 },
+    'byte 0 read back as an address, not as the absence of one',
+  );
+  // **THE THREE ADDRESSES THIS SCREEN NOW HAS MUST NOT READ AS EACH OTHER.**
+  // `app.js` splits at the first `/` and hands the rest here untouched, so
+  // every one of these reaches this module and only these two functions know
+  // what the extra segments mean.
+  assert.equal(anchorFromHash('#/conversations/sess-a'), null, 'a plain session document');
+  assert.equal(anchorFromHash('#/conversations/lanes/sess-a'), null, 'the roster');
+  assert.equal(anchorFromHash('#/conversations'), null, 'the list');
+  // A hand-edited address is refused rather than resolved to a guess: a byte
+  // that is not digits would be `NaN`, and `nodeAtByte(NaN)` answers -1 for
+  // every node — a document that opened nowhere and said nothing.
+  assert.equal(anchorFromHash('#/conversations/at/sess-a/many'), null);
+  assert.equal(anchorFromHash('#/conversations/at/sess-a/'), null);
+  assert.equal(anchorFromHash('#/conversations/at//12'), null);
 });

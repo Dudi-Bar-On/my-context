@@ -102,6 +102,24 @@ export interface SearchBuildReport {
   spans: number;
   /** Bytes actually read this run. */
   bytesRead: number;
+  /**
+   * **The `key` of every source this run actually read** — a session id, or a
+   * lane's `agentId`, exactly as `sourcesOf` keys them and exactly as an
+   * anchor row's `agentId ?? sessionId` spells the same thing.
+   *
+   * Added 2026-09-12 for the per-turn anchor pass
+   * (`core/anchor-pass.ts`' `markAnchorsOnTurn`,
+   * `REQ-every-anchor-capability-is-reachable-from-the-screen-and-a`), and it
+   * is a LIST rather than the count beside it because a count cannot answer
+   * the question that makes a per-turn pass affordable: *which* transcripts
+   * moved. Measured on this workspace, 2026-09-12: the automatic anchor pass
+   * over the whole archive costs ~550 ms of seeks in its steady state, and 341
+   * of 341 sources are unchanged on the overwhelming majority of turns.
+   *
+   * Empty means the archive's words did not move, and a grammar's answer over
+   * bytes that did not move cannot have changed either.
+   */
+  read: string[];
   ms: number;
 }
 
@@ -249,6 +267,7 @@ export function buildSearchIndex(
     removed: 0,
     spans: 0,
     bytesRead: 0,
+    read: [],
     ms: 0,
   };
 
@@ -270,6 +289,8 @@ export function buildSearchIndex(
         && source.bytes > previous.bytes
         && previous.bytes < cap
         && lineStartsAt(source.file, previous.bytes);
+
+      report.read.push(source.key);
 
       const from = appendable && previous !== undefined ? previous.bytes : 0;
       const fromIndex = appendable && previous !== undefined ? previous.records : 0;
