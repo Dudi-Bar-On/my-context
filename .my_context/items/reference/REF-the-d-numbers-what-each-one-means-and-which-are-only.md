@@ -5,12 +5,12 @@ title: "the D numbers: what each one means, and which are only proposed"
 status: active
 severity: soft
 always: true
-summary: The short numbers used to talk about work in progress and what each one refers to, kept as a bare map so the same number never means two things; the bookmarks subject closed on 2026-09-13.
-summary_of: 4d3cb2b75006144e
+summary: The short numbers used to talk about work in progress and what each one refers to, kept as a bare map so the same number never means two things; a number for the symbols on screen was added on 2026-09-13.
+summary_of: 2f9947145ba8ad22
 summary_was:
+  - 2026-09-12 The short numbers used to talk about work in progress and what each one refers to, kept as a bare map so the same number never means two things; the bookmarks subject closed on 2026-09-13.
   - 2026-09-12 The short numbers used to talk about work in progress and what each one refers to, kept as a bare map so the same number never means two things; D56 widened on 2026-09-12 to the record that says where the server is.
   - 2026-09-12 The short numbers used to talk about work in progress and what each one refers to, kept as a bare map so the same number never means two things; five more were added on 2026-09-12 for work that had no subject.
-  - 2026-09-12 The short numbers used to talk about work in progress and what each one refers to, kept as a bare map so the same number never means two things; a number for the bookmarks ruling was added on 2026-09-12.
 acknowledged:
   - reference_no_source@8e51ecb88264cf81
 scope: []
@@ -23,7 +23,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-09-07
 valid_until: null
-checksum: e9cbdd1975a3dd3e
+checksum: 5dac419122f868ab
 ---
 
 # the D numbers: what each one means, and which are only proposed
@@ -132,6 +132,10 @@ RATIFIED - the owner has used these numbers himself.
           that close.
   D61     a disclosure sits beside the card it qualifies   walk/2
   D62     search finds the same words in another order   walk/134
+  D63     a glyph makes a kind recognisable without reading   screens/26
+          ASSIGNED 2026-09-13, owner instruction. It also settles the glyphs ALREADY on screen:
+          every screen heading carries an internal design verdict, and a green tick beside a
+          title reads to a user as a health claim about the product.
           Distinct from D42: D42 retrieves from the conversation archive, this searches the
           corpus. The same verb over different stores.
 
