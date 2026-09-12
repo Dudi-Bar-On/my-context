@@ -19,17 +19,17 @@ tags:
   - i18n
   - "plan:walk"
   - "seq:108"
-  - "state:todo"
+  - "state:done"
 origin: agent
 source_file: null
 source_anchor: null
 source_checksum: null
 valid_from: 2026-08-29
 valid_until: 2026-09-07
-checksum: 2c67f8a4366492a4
+checksum: 92fa629399f61c1e
 plan: walk
 seq: "108"
-state: todo
+state: done
 priority: "2"
 progress: "0"
 needs: walk/92

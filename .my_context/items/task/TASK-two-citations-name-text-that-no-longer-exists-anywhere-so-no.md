@@ -14,7 +14,7 @@ tags:
   - corpus
   - citations
   - "plan:walk"
-  - "seq:142"
+  - "seq:143"
   - "state:todo"
 origin: human
 source_file: null
@@ -22,9 +22,9 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-09-11
 valid_until: null
-checksum: 794c4a5d382a1614
+checksum: 6924462885da8497
 plan: walk
-seq: "142"
+seq: "143"
 state: todo
 priority: "3"
 ---

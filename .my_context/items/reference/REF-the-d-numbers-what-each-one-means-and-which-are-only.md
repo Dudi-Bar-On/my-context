@@ -5,12 +5,12 @@ title: "the D numbers: what each one means, and which are only proposed"
 status: active
 severity: soft
 always: true
-summary: The short numbers used to talk about work in progress and what each one refers to, kept as a bare map so the same number never means two things; a number for the bookmarks ruling was added on 2026-09-12.
-summary_of: 738322ca8267fecf
+summary: The short numbers used to talk about work in progress and what each one refers to, kept as a bare map so the same number never means two things; five more were added on 2026-09-12 for work that had no subject.
+summary_of: 810c854195bf628d
 summary_was:
+  - 2026-09-12 The short numbers used to talk about work in progress and what each one refers to, kept as a bare map so the same number never means two things; a number for the bookmarks ruling was added on 2026-09-12.
   - 2026-09-12 The short numbers used to talk about work in progress and what each one refers to, kept as a bare map so the same number never means two things; D56 was added on 2026-09-12 for the upkeep mechanism that keeps losing the owner’s server.
   - 2026-09-12 The short numbers used to talk about work in progress and what each one refers to, kept as a bare map so the same number never means two things; D44 to D55 were added on 2026-09-12 to name the subjects today's open work sits under.
-  - 2026-09-11 The short numbers used to talk about work in progress and what each one refers to, kept as a bare map so the same number never means two things; the story behind them lives in a dated write-up.
 acknowledged:
   - reference_no_source@4e72d4cc9e0e40dc
 scope: []
@@ -23,7 +23,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-09-07
 valid_until: null
-checksum: 2e90f79167620c21
+checksum: 9c02745b3212335b
 ---
 
 # the D numbers: what each one means, and which are only proposed
@@ -45,7 +45,7 @@ This item carries the MAP. That report carries the RECORD.
 
 RATIFIED - the owner has used these numbers himself.
   D1-D5   doctor perf | a cancelled dependency is discharged | builder re-cut | the 24 Hebrew tutorials
-  D6      the citation gate           plan:rulings seq:64, rulings/38, 47, 67          OPEN
+  D6      the citation gate           plan:rulings seq:64, rulings/38, 47, 67, walk/143  OPEN
   D7      the audit projection index
   D8      the Hebrew RTL convention   plan:docsys seq:12
   D9      the ins/del markers         ruled: the grammar stays at five markers
@@ -102,9 +102,10 @@ RATIFIED - the owner has used these numbers himself.
   D48     Configure composes a change, and something confirms it took   budget/6, ui2/13,
           walk/14 + 18 + 106
   D49     the budget simulator measures the real window   walk/8 + 59, ui1/17b
-  D50     a surface built to carry an explanation, and nothing fills it  screens/23, walk/39 + 119
+  D50     a surface built to carry an explanation, and nothing fills it  screens/23, walk/39 +
+          119 + 144
   D51     a fact kept by hand in a second place, derived instead   tuts/9, repaint/12,
-          rulings/33d + 49 + 53 + 55 + 66
+          rulings/33d + 49 + 53 + 55 + 66, hooks/12q
   D52     what reaches the audit record, and whether its stores are current   budget/15,
           walk/66, live/24
   D53     a delegated lane is stopped by a mechanism, not an instruction   live/20
@@ -116,6 +117,25 @@ RATIFIED - the owner has used these numbers himself.
   D57     every anchor capability is reachable from the screen   REQ-every-anchor-capability-is-
           reachable-from-the-screen-and-a   ASSIGNED 2026-09-12. The only open subject whose work
           is a REQUIREMENT and not a plan/seq task, so it is cited by id. Owner ruling, hard.
+  D58-D62 ASSIGNED 2026-09-12 from the triage of the tasks that had no subject. The owner took
+          every recommendation: three tasks WIDENED existing rows above (walk/143 onto D6,
+          walk/144 onto D50, hooks/12q onto D51) and five needed subjects of their own.
+  D58     the UI is present and changes nothing   rulings/21
+  D59     a test binds its port through the guard, not by convention   walk/82
+  D60     a time on a screen says which clock it is in   walk/142
+          NOT a widening of D37: D37 closed at a counted 54 of 54 and widening it would falsify
+          that close.
+  D61     a disclosure sits beside the card it qualifies   walk/2
+  D62     search finds the same words in another order   walk/134
+          Distinct from D42: D42 retrieves from the conversation archive, this searches the
+          corpus. The same verb over different stores.
+
+THREE SEQ COLLISIONS WERE BROKEN 2026-09-12 and the new numbers are what the rows above cite.
+`walk/142` named two open tasks and `rulings/21` named two, one of them closed; one task carried
+`plan: walk` with NO seq at all, so nothing could cite it. The rule applied was LEAVE THE OLDER
+ITEM AT THE ADDRESS: the citations task moved to walk/143, the help task took walk/144, and the
+closed backlink task moved to rulings/68. Five collisions remain and are not mine to renumber
+here: handover/12, probe/0, rulings/20, ui3/11x (six items) and walk/138.
 
 THE ORDER AFTER D37, RULED BY THE OWNER 2026-09-09: D38, then D33, then D36 (loop/1 first).
 The reasons are in the dated report; they were: D38 is small and half of it IS contra/4; D33 makes

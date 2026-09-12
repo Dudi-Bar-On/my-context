@@ -16,17 +16,17 @@ tags:
   - tree-parity
   - "plan:walk"
   - "seq:21"
-  - "state:blocked"
+  - "state:done"
 origin: human
 source_file: null
 source_anchor: null
 source_checksum: null
 valid_from: 2026-08-25
 valid_until: 2026-09-07
-checksum: 3c3d49b5d69d8032
+checksum: e366cf769011e664
 plan: walk
 seq: "21"
-state: blocked
+state: done
 priority: "2"
 source: "plan:port seq:98"
 needs: walk/20

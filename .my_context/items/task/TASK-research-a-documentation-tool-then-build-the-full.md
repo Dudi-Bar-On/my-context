@@ -16,17 +16,17 @@ tags:
   - research
   - "plan:walk"
   - "seq:24"
-  - "state:todo"
+  - "state:done"
 origin: human
 source_file: null
 source_anchor: null
 source_checksum: null
 valid_from: 2026-08-25
 valid_until: 2026-09-07
-checksum: 9b3fe579d1c0380a
+checksum: 760086d7d2eaef46
 plan: walk
 seq: "24"
-state: todo
+state: done
 priority: "2"
 source: owner ruling 2026-08-25
 ---

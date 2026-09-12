@@ -16,17 +16,17 @@ tags:
   - mockup
   - "plan:walk"
   - "seq:95"
-  - "state:todo"
+  - "state:done"
 origin: agent
 source_file: null
 source_anchor: null
 source_checksum: null
 valid_from: 2026-08-29
 valid_until: 2026-09-07
-checksum: 7c82e76d50e36c06
+checksum: 14fd333e34f82aeb
 plan: walk
 seq: "95"
-state: todo
+state: done
 priority: "3"
 progress: "0"
 source: "plan:walk seq:27, measured against src/ui/public/screens/docs.js on 2026-08-29"

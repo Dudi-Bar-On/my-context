@@ -20,17 +20,17 @@ tags:
   - tree-parity
   - "plan:walk"
   - "seq:16"
-  - "state:todo"
+  - "state:done"
 origin: human
 source_file: null
 source_anchor: null
 source_checksum: null
 valid_from: 2026-08-25
 valid_until: 2026-09-07
-checksum: a371cf7382e627fb
+checksum: c69436d7c19c7c9f
 plan: walk
 seq: "16"
-state: todo
+state: done
 priority: "2"
 source: "plan:walk seq:1"
 verified_on: 2026-09-05

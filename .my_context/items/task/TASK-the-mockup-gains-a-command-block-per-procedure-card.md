@@ -16,17 +16,17 @@ tags:
   - mockup
   - "plan:walk"
   - "seq:3"
-  - "state:todo"
+  - "state:done"
 origin: human
 source_file: null
 source_anchor: null
 source_checksum: null
 valid_from: 2026-08-24
 valid_until: 2026-09-07
-checksum: 2e82022948c9abf8
+checksum: 1c3ed17df9fb376c
 plan: walk
 seq: "3"
-state: todo
+state: done
 priority: "2"
 source: "plan:port seq:98, proc"
 needs: port/94

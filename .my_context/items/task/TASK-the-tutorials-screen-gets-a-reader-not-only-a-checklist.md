@@ -18,17 +18,17 @@ tags:
   - docs
   - "plan:tuts"
   - "seq:4"
-  - "state:todo"
+  - "state:done"
 origin: human
 source_file: null
 source_anchor: null
 source_checksum: null
 valid_from: 2026-09-05
 valid_until: 2026-09-05
-checksum: 13d72832a02d453a
+checksum: d311573ad561fc20
 plan: tuts
 seq: "4"
-state: todo
+state: done
 priority: "2"
 needs: tuts/2, tuts/3
 ---

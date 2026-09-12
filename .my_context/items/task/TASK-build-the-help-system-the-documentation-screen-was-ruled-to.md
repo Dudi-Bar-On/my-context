@@ -20,17 +20,17 @@ tags:
   - "screen:docs"
   - "plan:docsys"
   - "seq:9"
-  - "state:todo"
+  - "state:done"
 origin: human
 source_file: null
 source_anchor: null
 source_checksum: null
 valid_from: 2026-09-05
 valid_until: 2026-09-05
-checksum: d4fd39fbb228cf06
+checksum: fda4759ceca6e42d
 plan: docsys
 seq: "9"
-state: todo
+state: done
 ---
 
 # build the help system the documentation screen was ruled to be, from the two readmes

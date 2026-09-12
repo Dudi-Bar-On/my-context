@@ -14,7 +14,7 @@ tags:
   - v2
   - backfill
   - "plan:rulings"
-  - "seq:21"
+  - "seq:68"
   - "state:done"
 origin: human
 source_file: null
@@ -22,9 +22,9 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-09-04
 valid_until: null
-checksum: 3737108df8d68af6
+checksum: a3c47389653a732d
 plan: rulings
-seq: "21"
+seq: "68"
 state: done
 verified_on: 2026-09-04
 priority: "3"

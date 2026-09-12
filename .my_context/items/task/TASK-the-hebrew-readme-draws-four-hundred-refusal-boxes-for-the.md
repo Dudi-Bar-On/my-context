@@ -21,17 +21,17 @@ tags:
   - rendering
   - "plan:docsys"
   - "seq:10"
-  - "state:todo"
+  - "state:done"
 origin: human
 source_file: null
 source_anchor: null
 source_checksum: null
 valid_from: 2026-09-05
 valid_until: 2026-09-05
-checksum: f092c82beaa809a1
+checksum: 2bc5a88e4a417cd0
 plan: docsys
 seq: "10"
-state: todo
+state: done
 ---
 
 # the hebrew readme draws four hundred refusal boxes for the markup that makes it hebrew
