@@ -338,7 +338,7 @@ function sweepAutomaticAnchors(
   files: Map<string, string | null>,
   keep: Set<string>,
   report: AutoAnchorReport,
-  only: Set<string> | null,
+  only: Map<string, number> | null,
 ): void {
   for (const row of index.anchorRows(null)) {
     if (row.origin !== 'automatic') continue;
@@ -352,7 +352,14 @@ function sweepAutomaticAnchors(
     // caller passes — `markAnchorsOnTurn` — and it is `null` for a full
     // `mycontext conversation rebuild`, where re-reading everything is the
     // point, because THAT is the run a changed grammar is trimmed by.
-    if (only !== null && !only.has(key)) continue;
+    if (only !== null) {
+      const from = only.get(key);
+      // Not a transcript that moved at all, or a row standing in bytes that
+      // were already indexed before this run. Both are the same argument:
+      // over bytes nobody appended to, the grammar's answer is the answer it
+      // already gave.
+      if (from === undefined || row.byteOffset < from) continue;
+    }
     if (!files.has(key)) files.set(key, fileOf(index, row.sessionId, row.agentId));
     const file = files.get(key) ?? null;
     if (file === null) continue;
@@ -398,20 +405,31 @@ function sweepAutomaticAnchors(
  * allowed to add bookmarks and is not allowed to rewrite his.
  */
 export function markAutomaticAnchors(
-  index: ConversationIndex, options: { only?: Set<string> } = {},
+  index: ConversationIndex, options: { only?: Map<string, number> } = {},
 ): AutoAnchorReport {
   /**
-   * **The transcripts this run is allowed to look at, or `null` for all of
-   * them** — added 2026-09-12 with the per-turn door.
+   * **WHERE this run is allowed to look: each transcript it may read, and the
+   * byte in it from which anything is new** — `null` for all of everything,
+   * which is what a rebuild passes. Added 2026-09-12 with the per-turn door.
    *
-   * Measured on this workspace: the full pass costs ~550 ms of seeks even when
-   * it changes nothing, because it re-reads 574 probe candidates and 621 of
-   * its own rows at their bytes. That is right for a rebuild and wrong for
-   * something that runs after every assistant turn, and the narrowing is not a
-   * shortcut: a grammar's answer over bytes that did not move cannot have
-   * changed. The one thing it cannot catch is a CHANGED GRAMMAR, which is a
-   * code change rather than a turn, and which the unscoped rebuild is exactly
-   * the run for.
+   * Measured on this workspace, on the day: the full pass costs 746-1457 ms of
+   * seeks even when it changes nothing (2997 ms against a cold page cache),
+   * because it re-reads 580 probe candidates and 623 of its own rows at their
+   * bytes. That is right for a rebuild and wrong for something that runs after
+   * every assistant turn.
+   *
+   * **The byte matters as much as the transcript, and that was a measurement
+   * rather than a refinement.** Narrowing to the transcripts that MOVED still
+   * cost 935 ms on the busiest turn, because one of them is always the session
+   * being typed into and it holds most of the archive's tables and rulings:
+   * 316 candidates came back from the probes every turn and were re-read and
+   * re-marked idempotently, every one of them an answer already given. With
+   * the byte floor the same turn puts 2-6 candidates to the grammar.
+   *
+   * The narrowing is not a shortcut in either dimension: a grammar's answer
+   * over bytes that did not move cannot have changed. The one thing it cannot
+   * catch is a CHANGED GRAMMAR, which is a code change rather than a turn, and
+   * which the unscoped rebuild is exactly the run for.
    */
   const only = options.only ?? null;
   const startedMs = Date.now();
@@ -441,7 +459,10 @@ export function markAutomaticAnchors(
       });
       if (answer.hits.length >= ANCHOR_PROBE_LIMIT) report.capped = true;
       for (const hit of answer.hits) {
-        if (only !== null && !only.has(hit.agentId ?? hit.sessionId)) continue;
+        if (only !== null) {
+          const from = only.get(hit.agentId ?? hit.sessionId);
+          if (from === undefined || hit.byteOffset < from) continue;
+        }
         const id = anchorIdFor(hit.sessionId, hit.agentId, hit.byteOffset);
         if (seen.has(id)) continue;
         seen.add(id);
@@ -487,28 +508,75 @@ export function markAutomaticAnchors(
 }
 
 /**
- * **THE PER-TURN DOOR — CREATION PATH 1, BUILT AND DELIBERATELY UNWIRED.**
+ * **How long the per-turn prose build may spend, and why the number is this
+ * one.**
+ *
+ * The `Stop` hook's platform timeout is **3 seconds** (`hooks/hooks.json`),
+ * and an overrun there is not a slow turn: the hook is killed with
+ * `taskkill /T` and the audit row for that turn is lost. Measured on this
+ * workspace, 2026-09-12, on the real corpus of 346 sources and 875 MB:
+ *
+ * ```
+ * node start + stop.ts module graph      ~200 ms
+ * stopUpkeep, restart path                ~1300 ms   (its own measurement)
+ * stopConversationRefresh, before this     293 ms    (4 lanes read whole)
+ * markAnchorsOnTurn, nothing moved           7 ms
+ * markAnchorsOnTurn, 7 sources / 25.9 MB   647 ms    (prose 229, anchors 409)
+ * ```
+ *
+ * That worst realistic turn lands near 2.5 s of the 3 s, and the number that
+ * can run away is the prose build's: it is proportional to bytes nobody has
+ * indexed yet, which is a few kilobytes on an ordinary turn and 875 MB on the
+ * first turn in a workspace scanned before the prose index existed. 400 ms is
+ * ~45 MB at this machine's measured 113 MB/s — comfortably more than the
+ * 25.9 MB a three-lane turn moved here — and it is a CEILING rather than a
+ * cost: an ordinary turn spends 3-6 ms and never comes near it.
+ *
+ * The anchor half beside it takes no clock of its own. What bounds it is the
+ * scope: candidates and owned rows BEHIND the byte each transcript was read
+ * from are skipped, so an ordinary turn puts two or three turns to the grammar
+ * rather than the 316 that came back from the probes when the scope was the
+ * whole transcript. Measured 2026-09-12, same corpus, same minute: 935 ms
+ * scoped by transcript, 266-311 ms scoped by byte — of which nearly all is the
+ * eight probe queries themselves.
+ */
+export const TURN_PROSE_BUDGET_MS = 250;
+
+/**
+ * **The largest read one transcript may cost a single turn.**
+ *
+ * `TURN_PROSE_BUDGET_MS` is checked BETWEEN sources — it has to be, because a
+ * walk cut off part-way writes a `prose_sources.bytes` that is not where the
+ * archive's scan reached, which is the skew that cost 103.3 MB a run until
+ * 2026-09-11 and never healed by itself. So without a second bound one
+ * transcript could start at the last millisecond of the budget and overrun it
+ * by its own whole size: the largest in this workspace is 106 MB, about a
+ * second at the 95 MB/s measured here.
+ *
+ * 16 MiB is ~170 ms at that rate, and it is larger than any delta a turn has
+ * actually produced here — the busiest measured, three lanes and the session
+ * together, moved 31.2 MB across ELEVEN sources, of which the largest single
+ * one was 14.9 MB. What it refuses is the first sight of a transcript already
+ * tens of megabytes long, which is a rebuild's work and not a turn's.
+ */
+export const TURN_PROSE_SOURCE_BYTES = 16 * 1024 * 1024;
+
+/**
+ * **THE PER-TURN DOOR — CREATION PATH 1, AND IT IS WIRED.**
  *
  * The owner's design, 2026-09-12: *"1 ongoing appended payload to the
  * conversation would have anchores created on the fly"*. A transcript that is
  * being appended to should get its anchors as it goes, rather than waiting for
  * somebody to type `mycontext conversation rebuild`.
  *
- * This is the whole of what that landing needs: ONE LINE, inside
- * `stopConversationRefresh`'s existing `try` in `src/hooks/stop.ts`, beside
- * `reconcileAnchors` and after `rebuildConversations` — the index is already
- * up to date with the transcript at that point, which is exactly what the pass
- * reads.
- *
- * ── WHY IT IS NOT CALLED FROM THERE YET ───────────────────────────────────
- *
- * Not a technical obstacle and not a cost objection. Another lane was
- * measuring `src/hooks/stop.ts` and `src/core/ui-server-upkeep.ts` on
- * 2026-09-12 (`TASK-the-guard-that-excludes-lanes-from-reaping-the-server-rests`)
- * because the owner's UI server kept dying and three explanations had been
- * wrong, and two lanes editing one file is how a measurement gets attributed
- * to the wrong change. So the door is built and proved here, and the one line
- * that opens it is left for after that lane reports.
+ * The caller is `stopConversationRefresh` in `src/hooks/stop.ts`, inside its
+ * existing `try` and beside `reconcileAnchors` — after `rebuildConversations`,
+ * because the index is only level with the transcript at that point and this
+ * pass reads the index. It was built here on 2026-09-12 and left uncalled for
+ * one day, while another lane held `src/hooks/stop.ts`
+ * (`TASK-the-guard-that-excludes-lanes-from-reaping-the-server-rests`), and
+ * the owner ruled the landing SCOPED when that lane reported: *"Yes,
+ * scoped"* — you pay only on turns where a transcript actually changed.
  *
  * ── AND THE COST OBJECTION IS DEAD, said once so it is not re-quoted ──────
  *
@@ -547,7 +615,8 @@ export interface TurnAnchorReport {
 }
 
 export function markAnchorsOnTurn(
-  dbPath: string, options: { busyTimeoutMs?: number } = {},
+  dbPath: string,
+  options: { busyTimeoutMs?: number; budgetMs?: number; maxSourceBytes?: number } = {},
 ): TurnAnchorReport | null {
   try {
     const index = options.busyTimeoutMs === undefined
@@ -572,14 +641,26 @@ export function markAnchorsOnTurn(
       // so an unchanged source costs one comparison of `(bytes, mtimeMs)` and
       // a grown one costs the delta. That clamp is the 2026-09-11 repair the
       // expired cost objection turned on.
-      const search = buildSearchIndex(index);
+      //
+      // **AND IT IS BOUNDED, because this one runs inside a 3-second hook.**
+      // Everything the incremental build does is proportional to what moved,
+      // which is the argument for the cadence and is NOT a ceiling: a
+      // workspace scanned before the prose index existed has the whole archive
+      // to read on the first turn that asks — 875 MB and 8.6 s here — and a
+      // hook that overruns is killed rather than slow. `TURN_PROSE_BUDGET_MS`
+      // argues the number; what the budget leaves unread is deferred to the
+      // next turn and counted, never dropped.
+      const search = buildSearchIndex(index, {
+        budgetMs: options.budgetMs ?? TURN_PROSE_BUDGET_MS,
+        maxSourceBytes: options.maxSourceBytes ?? TURN_PROSE_SOURCE_BYTES,
+      });
       // **NOTHING MOVED, SO NOTHING IS READ.** This is what makes the door
       // affordable and it is a measurement rather than a guess: on this
-      // workspace the full pass costs ~550 ms of seeks in its steady state
-      // (574 probe candidates and 621 of its own rows, each read at its byte),
-      // while the prose build over 341 unchanged sources costs 3 ms. A pass
-      // that ran unscoped after every assistant turn would spend half a second
-      // a turn re-deciding bytes nobody touched.
+      // workspace the full pass costs 746-1457 ms of seeks in its steady state
+      // (580 probe candidates and 623 of its own rows, each read at its byte),
+      // while the prose build over 346 unchanged sources costs 3-4 ms. A pass
+      // that ran unscoped after every assistant turn would spend a second a
+      // turn re-deciding bytes nobody touched.
       //
       // `null` is the honest answer for "there was nothing to do", and it is
       // distinct from the `null` this function returns on a FAILURE — that one
@@ -587,7 +668,9 @@ export function markAnchorsOnTurn(
       if (search.read.length === 0) return { search, anchors: null };
       return {
         search,
-        anchors: markAutomaticAnchors(index, { only: new Set(search.read) }),
+        anchors: markAutomaticAnchors(index, {
+          only: new Map(search.read.map((key, i) => [key, search.readFrom[i] ?? 0])),
+        }),
       };
     } finally {
       index.close();

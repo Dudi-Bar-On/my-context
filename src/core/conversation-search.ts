@@ -120,6 +120,34 @@ export interface SearchBuildReport {
    * bytes that did not move cannot have changed either.
    */
   read: string[];
+  /**
+   * **The byte each entry of `read` was read FROM**, index for index.
+   *
+   * `0` for a source read whole, and the resume point for one whose tail was
+   * read. Added 2026-09-12 with the per-turn anchor pass, which needs it for
+   * the same reason `read` exists and one level finer: knowing WHICH
+   * transcripts moved narrows the pass to six sources out of 346, and knowing
+   * where they moved narrows it to the handful of turns that actually arrived
+   * — measured on the real corpus, the difference between re-deciding 316
+   * candidates every turn (935 ms) and deciding the two or three that are new.
+   *
+   * Parallel to `read` rather than a map, so the two cannot be written apart:
+   * there is one `push` for each and they sit on consecutive lines.
+   */
+  readFrom: number[];
+  /**
+   * **Sources this run was out of time to read** — `budgetMs` stopped it, and
+   * they are DEFERRED to the next run rather than dropped.
+   *
+   * Added 2026-09-12 with the per-turn caller. A count rather than silence
+   * because a build that ran out of budget and one that had nothing to do are
+   * two different facts and the second is the one a reader assumes
+   * (`STD-a-measured-zero-is-drawn-and-named-an-unmeasured-thing-is`): a
+   * workspace whose prose index is permanently behind by a few sources is a
+   * workspace where the per-turn anchor pass never sees them, and nothing else
+   * in the report would say so. `0` on every run that had no budget at all.
+   */
+  deferred: number;
   ms: number;
 }
 
@@ -250,13 +278,57 @@ function proseFrom(
  * a file rewritten in place, a file replaced, a source whose previous walk
  * stopped at the cap on a byte that is not a line boundary — falls to a whole
  * re-read, which is always correct and never the only way to a row.
+ *
+ * ── `budgetMs`: THE BOUND THAT LETS A HOOK CALL THIS ──────────────────────
+ *
+ * Added 2026-09-12, when `markAnchorsOnTurn` put this on the `Stop` hook,
+ * whose platform timeout is **3 seconds** and whose overrun is not a slow turn
+ * but a `taskkill /T` that loses the audit row. Everything above is
+ * proportional to what MOVED, which is a few kilobytes on an ordinary turn and
+ * is the whole argument for the cadence — but it is not BOUNDED. A workspace
+ * whose archive was scanned before the prose index existed has 343 sources and
+ * 875 MB to read on the first run that asks (8.6 s, measured 2026-09-11), and
+ * a run that costs 8.6 s inside a 3-second hook is a killed hook every turn,
+ * for ever, because the work it was killed part-way through is the work it
+ * finds waiting next turn.
+ *
+ * So a caller may say how long it is willing to spend. The check is BETWEEN
+ * sources and never inside one: a source whose walk was cut short would write
+ * a `prose_sources.bytes` that is not where the archive's scan reached, which
+ * is the exact skew that cost 103.3 MB a run until 2026-09-11 and never healed
+ * (see the walk below). What is over budget is left completely unread, its row
+ * untouched, and read by the next run — `deferred` says how many.
+ *
+ * **The order the sources come in is what makes deferral safe rather than
+ * starvation**: `sourcesOf` takes `index.all()`, which is `ended_at DESC`, so
+ * the transcripts being appended to right now are the ones served first. A
+ * source can only be starved while something more recent keeps moving, and an
+ * unchanged source costs no budget at all — it is a comparison, not a read.
+ *
+ * `maxSourceBytes` is the same bound in the other dimension, and it is what
+ * makes `budgetMs` a CEILING rather than a hope: the clock is only ever read
+ * between sources, so without it one transcript that needs a whole re-read —
+ * 106 MB in this workspace, about a second — could start at the last
+ * millisecond of the budget and overrun it by its own whole size. A source
+ * whose pending read is larger is left for the run that has no bound, which is
+ * `mycontext conversation rebuild`, and counted in `deferred` meanwhile.
+ *
+ * **Neither bound is a `cap`, and that distinction is load-bearing.** `cap`
+ * stops a walk PART WAY and writes where it stopped, which is correct only
+ * because the next run is allowed to resume past it; a per-turn caller passing
+ * a small `cap` would write `bytes === cap`, fail `previous.bytes < cap` for
+ * ever after, and re-read the same first `cap` bytes on every single turn.
+ * These two skip a source ENTIRELY and touch nothing, which is why the next
+ * run finds it exactly as it was.
  */
 export function buildSearchIndex(
   index: ConversationIndex,
-  options: { full?: boolean; cap?: number } = {},
+  options: { full?: boolean; cap?: number; budgetMs?: number; maxSourceBytes?: number } = {},
 ): SearchBuildReport {
   const startedMs = Date.now();
   const cap = options.cap ?? MAX_SCAN_BYTES;
+  const deadline = options.budgetMs === undefined ? null : startedMs + options.budgetMs;
+  const maxSourceBytes = options.maxSourceBytes ?? null;
   const sources = sourcesOf(index);
   const known = index.proseSources();
   const report: SearchBuildReport = {
@@ -268,6 +340,8 @@ export function buildSearchIndex(
     spans: 0,
     bytesRead: 0,
     read: [],
+    readFrom: [],
+    deferred: 0,
     ms: 0,
   };
 
@@ -282,6 +356,16 @@ export function buildSearchIndex(
         continue;
       }
 
+      // **OUT OF TIME, SO THIS SOURCE IS NOT TOUCHED AT ALL.** `continue` and
+      // not `break`: the sources behind this one still get their free
+      // comparison, so `skipped` keeps meaning what it means and
+      // `dropProseSources` below still sees the whole set — a `break` would
+      // make a budgeted run forget every source it never reached.
+      if (deadline !== null && Date.now() >= deadline) {
+        report.deferred += 1;
+        continue;
+      }
+
       // `previous.bytes` is where the last walk STOPPED, which is the archive
       // row's own count or the cap, whichever came first — see the clamp
       // below. Resuming from it is correct on both.
@@ -290,9 +374,22 @@ export function buildSearchIndex(
         && previous.bytes < cap
         && lineStartsAt(source.file, previous.bytes);
 
-      report.read.push(source.key);
-
       const from = appendable && previous !== undefined ? previous.bytes : 0;
+
+      // **TOO BIG FOR A BOUNDED RUN, so it is left whole rather than read
+      // part-way.** Checked against what this source would actually READ —
+      // its tail on the appendable path and the whole of it otherwise — and
+      // before `read` records it, because a caller that scopes work to `read`
+      // (`markAnchorsOnTurn`) must not be told a transcript moved that this
+      // run never opened.
+      if (maxSourceBytes !== null && Math.max(0, source.bytes - from) > maxSourceBytes) {
+        report.deferred += 1;
+        continue;
+      }
+
+      report.read.push(source.key);
+      report.readFrom.push(from);
+
       const fromIndex = appendable && previous !== undefined ? previous.records : 0;
       // A whole re-read replaces what this source contributed; a tail adds to
       // it. Deleting on the tail path would throw away the prose that is still

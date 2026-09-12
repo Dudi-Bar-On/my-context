@@ -219,7 +219,36 @@ test('a table with rows and no file yet produces a file with every row', () => {
 
       const adopted = readAnchorFile(f.anchorFile);
       assert.equal(adopted.state, 'read');
-      assert.equal(adopted.rows.length, 565);
+      // **564 AND NOT 565, AND THE MISSING ONE IS NAMED RATHER THAN ROUNDED
+      // OFF** — 2026-09-12, when creation path 1 was wired and this same turn
+      // began running the automatic pass after the reconciliation above
+      // (`REQ-every-anchor-capability-is-reachable-from-the-screen-and-a`).
+      //
+      // The adoption still writes every one of the 565, which is what the
+      // report a few lines up says and what this test is for. What the pass
+      // then does is its own documented contract: it owns every `origin:
+      // automatic` row, reads each back AT ITS OWN BYTE, and takes back what
+      // today's grammar does not recognise. Exactly one seeded row resolves to
+      // a record at all — the one at byte 0, over a prompt that is neither a
+      // table nor a ruling — and it is taken back. The other 563 point past
+      // the end of a one-record transcript, where `turnAt` reads nothing, and
+      // SILENCE IS NOT EVIDENCE: they are left exactly where they are.
+      //
+      // The two named rows come BEFORE the count deliberately: a count is the
+      // assertion that reddens whichever half of this broke, and a reader of
+      // the failure would not know which.
+      assert.equal(
+        adopted.rows.filter((r) => r.origin === 'automatic' && r.byteOffset === 0).length, 0,
+        'the row at byte 0 stands over a turn the grammar does not recognise and should have '
+        + 'been taken back by the pass that ran on this same turn',
+      );
+      assert.equal(
+        adopted.rows.filter((r) => r.origin === 'automatic' && r.byteOffset === 100).length, 1,
+        'a row the pass could not READ was taken back anyway. A transcript that is shorter than '
+        + 'the offset is not the grammar saying no, and deleting on it turns a pruned session '
+        + 'into lost bookmarks.',
+      );
+      assert.equal(adopted.rows.length, 564);
 
       // BY ORIGIN, never by count: the count says nothing about WHICH row survived.
       const byHand = adopted.rows.filter((r) => r.origin === 'owner');

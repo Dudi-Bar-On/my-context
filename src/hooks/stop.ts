@@ -6,6 +6,9 @@ import {
 import { advanceMirrors, type MirrorReport } from '../core/conversation-mirror.ts';
 import { reconcileAnchors, type AnchorReconcile } from '../core/anchor-file.ts';
 import {
+  TURN_PROSE_BUDGET_MS, markAnchorsOnTurn, type TurnAnchorReport,
+} from '../core/anchor-pass.ts';
+import {
   occupancyStandDownLine, readOccupancy, type UnmeasurableWhy,
 } from '../core/context-occupancy.ts';
 import {
@@ -818,9 +821,144 @@ export type ConversationRefresh = RebuildReport & {
    * nothing to do is not a pass that could not run.
    */
   anchors?: AnchorReconcile | null;
+  /**
+   * **What the automatic anchor pass did on this turn** — creation path 1,
+   * `REQ-every-anchor-capability-is-reachable-from-the-screen-and-a`.
+   *
+   * `did` rather than a report-or-`null`, because there are four facts here
+   * and three of them are zero marks:
+   *
+   *  - `ran` — the pass ran. Its own `anchors` is `null` inside that report
+   *    when no transcript moved, which is a fifth fact and its own to tell.
+   *  - `failed` — the pass threw or answered `null`. `mirror`'s distinction.
+   *  - `stood-down` — there was not enough of the hook's 3 seconds left to
+   *    finish it, so it was not STARTED. Nothing is consumed by standing down
+   *    and the next turn does the work; `leftMs` is what it had.
+   *
+   * A single nullable report would have folded the last two together, and
+   * they are opposite: one is a defect and the other is the budget working.
+   */
+  autoAnchors?: TurnAnchors;
 };
 
-export function stopConversationRefresh(input: HookInput): ConversationRefresh | null {
+/**
+ * The three answers the per-turn anchor pass can give this hook.
+ *
+ * `did` is `Upkeep`'s vocabulary one module along, deliberately: the reader of
+ * an audit row meets the two together, and `stood-down` already means "it was
+ * within its rights not to act" there.
+ */
+export type TurnAnchors =
+  | { did: 'ran'; report: TurnAnchorReport }
+  | { did: 'failed' }
+  | { did: 'stood-down'; leftMs: number };
+
+/**
+ * What `stopConversationRefresh` takes beyond the payload.
+ *
+ * `budgetMs` is production's and is the whole of the overrun answer — see
+ * `ANCHOR_PASS_BUDGET_MS`. `markAnchors` is a test's, and it exists for one
+ * property that no real fault can produce: `markAnchorsOnTurn` catches
+ * everything inside itself and answers `null`, so a corrupted index, a missing
+ * directory and a locked database all reach this hook as a `null` rather than
+ * a throw. That makes the `try` around the call unfalsifiable from outside —
+ * and an unfalsifiable guard on the one hook that must never throw
+ * (`INV-hooks-fail-open`) is exactly the line that rots into a comment. So a
+ * test hands in a pass that throws, and the assertion is that the turn still
+ * gets its refresh report.
+ *
+ * `stopUpkeep`'s `deps` is the same shape and the same argument, one function
+ * along.
+ */
+export interface RefreshOptions {
+  budgetMs?: number;
+  markAnchors?: typeof markAnchorsOnTurn;
+}
+
+/**
+ * **How much of the `Stop` hook's 3 seconds the anchor pass may have, and the
+ * floor under which it does not start at all.**
+ *
+ * Measured 2026-09-12 on the real corpus — 346 sources, 875 MB of transcript,
+ * 623 anchors, and 23 node processes on the machine because three other lanes
+ * were running. Every number below is from that machine in that state:
+ *
+ * ```
+ * node start + this module's graph                     169-200 ms
+ * stopUpkeep, ordinary probe                             ≤ 250 ms  (its cap)
+ * stopUpkeep, restart + confirmation                    ≤ 1450 ms  (CONFIRM_*)
+ * refresh without the pass (scan, mirrors, reconcile)   141-225 ms
+ * the pass, nothing moved                                 5-20 ms
+ * the pass, 5 sources / 0.9 MB appended                     631 ms
+ * the pass, 11 sources / 31.2 MB appended                   700 ms
+ * ```
+ *
+ * The sum of the worst column is over 3 seconds, and an overrun is not a slow
+ * turn: the platform kills the hook with `taskkill /T`, which costs that turn
+ * its audit row. **So the pass is given what is LEFT rather than a fixed
+ * slice** — `runStopHook` times the upkeep, which is the one term that varies
+ * by more than a second, and hands the remainder here.
+ *
+ * **The floor is not an optimisation; it is what makes standing down honest.**
+ * The pass cannot be interrupted once its prose build has run, because that
+ * build is what CONSUMES the record of which transcripts moved: a run that
+ * indexed them and then skipped the grammar would lose those anchors until
+ * somebody typed `mycontext conversation rebuild`. It is all or nothing, so
+ * the decision has to be taken before it starts.
+ *
+ * ── THE NUMBER THE SCOPING IS ACTUALLY BUYING, and it is not the one the
+ * ── filing said ──────────────────────────────────────────────────────────
+ *
+ * The UNSCOPED pass — every probe candidate and every one of its own 623 rows
+ * re-read at its byte — was filed at 548-564 ms. It did not reproduce here:
+ * **746 ms and 1006 ms warm, 1457 ms after a write, and 2997 ms on the first
+ * run against a cold page cache.**
+ *
+ * Scoping to the transcripts that MOVED took that to 338-409 ms, and it was
+ * still the largest term in this hook, because one of the transcripts that
+ * moves is the session being typed into: **316 candidates came back from the
+ * probes every single turn and were re-read and re-marked, 935 ms on the
+ * busiest turn measured.** Scoping to the BYTES that moved took it to 2-6
+ * candidates and 266-311 ms, all of which is now the eight probe queries
+ * themselves rather than anything read back (`core/anchor-pass.ts`).
+ *
+ * So `ANCHOR_HALF_CEILING_MS` is that measured cost with headroom, and the
+ * residual risk is named rather than budgeted away: a turn on which nearly
+ * every source moves at once, or a first turn in a workspace whose whole
+ * archive is new to the prose index, is a turn on which the scoped pass
+ * approaches the unscoped one, and the only bound on THAT is the pass's own
+ * `ANCHOR_PROBE_LIMIT`. `refreshNote` therefore reports the pass's own
+ * milliseconds whenever they exceed this ceiling, so an overrun is a row a
+ * person can find rather than a hook that quietly stopped writing rows.
+ */
+export const ANCHOR_PASS_BUDGET_MS = 1600;
+export const ANCHOR_PASS_FLOOR_MS = 1100;
+/** What the anchor half is left, so the prose build takes only the rest. */
+export const ANCHOR_HALF_CEILING_MS = 1000;
+
+/**
+ * What is left for the anchor pass after an upkeep that cost `upkeepMs`.
+ *
+ * A named function for one line of subtraction, because the line is the whole
+ * budget argument and `runStopHook` — the only place it is applied — reads
+ * stdin and spawns processes, so nothing tests it. This is the half that can
+ * be held to the measurements it was derived from: the ordinary probe path
+ * leaves room and the restart path does not, which is the trade and not an
+ * accident.
+ */
+export function anchorPassBudget(upkeepMs: number): number {
+  return ANCHOR_PASS_BUDGET_MS - upkeepMs;
+}
+
+export function stopConversationRefresh(
+  input: HookInput, options: RefreshOptions = {},
+): ConversationRefresh | null {
+  // **The clock starts HERE and not at the pass**, so what the pass is offered
+  // is what is left after this function's own writes rather than what was left
+  // before them. Measured on the real corpus 2026-09-12: the scan alone is
+  // 141-225 ms on a quiet machine and 630-1223 ms with three lanes running, and
+  // a budget that ignored it would hand the pass a slice already spent.
+  const startedMs = Date.now();
   try {
     if (input.agent_id !== undefined) return null;
     const root = findProjectRoot(input.cwd ?? process.cwd());
@@ -934,7 +1072,49 @@ export function stopConversationRefresh(input: HookInput): ConversationRefresh |
     } catch {
       anchors = null;
     }
-    return { ...report, mirror, anchors };
+
+    // ── AND THE ANCHORS ARE MARKED HERE TOO — CREATION PATH 1 ────────────
+    //
+    // `REQ-every-anchor-capability-is-reachable-from-the-screen-and-a`, owner
+    // 2026-09-12: *"1 ongoing appended payload to the conversation would have
+    // anchores created on the fly"*, and, choosing between an unscoped pass
+    // and one that pays only for what moved, *"Yes, scoped"*.
+    //
+    // **AFTER the reconciliation and never before it.** `reconcileAnchors` is
+    // what adopts a table that has no file yet and re-derives a table from the
+    // file that has one; the pass then writes through `anchorTransaction`,
+    // which reconciles again inside its own `BEGIN IMMEDIATE`. Running the
+    // pass first would mark against a table that the very next line might
+    // replace from disk.
+    //
+    // **AFTER `rebuildConversations`** for the reason the pass's own header
+    // gives: it reads the INDEX, and the index is only level with the
+    // transcript once the scan above has run.
+    //
+    // Its own `try` for `advanceMirrors`' reason — a bookmark pass that threw
+    // must not cost this turn the refresh report that the two writes above
+    // have already earned. `markAnchorsOnTurn` swallows its own failures and
+    // answers `null`, so this is belt beside braces and is held to a test
+    // through `deps` rather than being asserted in a comment.
+    //
+    // The busy timeout is the one the two writers above use, and for the same
+    // reason: losing a lock costs this turn's anchors and the next turn marks
+    // them, because the transcript is append-only and the prose index records
+    // where it stopped.
+    const leftMs = (options.budgetMs ?? ANCHOR_PASS_BUDGET_MS) - (Date.now() - startedMs);
+    let autoAnchors: TurnAnchors = { did: 'stood-down', leftMs };
+    if (leftMs >= ANCHOR_PASS_FLOOR_MS) {
+      try {
+        const marked = (options.markAnchors ?? markAnchorsOnTurn)(dbPath, {
+          busyTimeoutMs: REFRESH_BUSY_TIMEOUT_MS,
+          budgetMs: Math.min(TURN_PROSE_BUDGET_MS, leftMs - ANCHOR_HALF_CEILING_MS),
+        });
+        autoAnchors = marked === null ? { did: 'failed' } : { did: 'ran', report: marked };
+      } catch {
+        autoAnchors = { did: 'failed' };
+      }
+    }
+    return { ...report, mirror, anchors, autoAnchors };
   } catch {
     return null;
   }
@@ -977,7 +1157,40 @@ export function refreshNote(report: ConversationRefresh | null): string {
   const mirror = report.mirror ?? null;
   const mirrorMoved = mirror === null ? 0
     : mirror.advanced + mirror.orphaned.length + mirror.broken.length + mirror.cleared.length;
-  const moved = report.appended + report.scanned + report.removed + agentsMoved + mirrorMoved;
+  // **The bookmarks count as movement, on the same rule as the mirrors.** A
+  // turn on which the product wrote a bookmark into the owner's list without
+  // being asked is a turn a person would want to find later; "the grammar
+  // recognised nothing in what was appended" is the ordinary turn and stays
+  // silent. `probed`/`found` are deliberately NOT in this sum — they are what
+  // the pass LOOKED at, and a clause that fired on those would appear on
+  // nearly every turn that read a byte.
+  //
+  // `deferred` is in it because it is the one thing here a reader cannot find
+  // any other way: it says the prose index is further behind than one turn's
+  // budget can carry, which is the state in which creation path 1 quietly
+  // stops seeing new turns until somebody runs `mycontext conversation
+  // rebuild`.
+  //
+  // And a pass that STOOD DOWN counts, for a different reason: it is the one
+  // state here that nothing else in the row would ever hint at, and it means
+  // the automation the owner asked for did not run on this turn.
+  const auto = report.autoAnchors ?? { did: 'failed' as const };
+  const ran = auto.did === 'ran' ? auto.report : null;
+  const autoAnchors = ran?.anchors ?? null;
+  const anchorsMoved = autoAnchors === null ? 0
+    : autoAnchors.marked + autoAnchors.dropped + autoAnchors.relabelled;
+  const anchorsDeferred = ran === null ? 0 : ran.search.deferred;
+  const stoodDown = auto.did === 'stood-down' ? auto.leftMs : null;
+  // **An overrun is a fact about the hook, not about the bookmarks**, and it
+  // is the one this whole budget exists over: the pass cannot be interrupted,
+  // so the only thing that can be done about a run that costs more than its
+  // ceiling is to make it findable. A row saying the pass took 1.9 s is what
+  // tells a reader why the turns around it lost theirs.
+  const overranMs = autoAnchors !== null && autoAnchors.ms > ANCHOR_HALF_CEILING_MS
+    ? autoAnchors.ms : null;
+  const moved = report.appended + report.scanned + report.removed + agentsMoved + mirrorMoved
+    + anchorsMoved + anchorsDeferred + (stoodDown === null ? 0 : 1)
+    + (overranMs === null ? 0 : 1);
   if (moved === 0) return '';
   const parts: string[] = [];
   if (report.appended > 0) {
@@ -1039,6 +1252,42 @@ export function refreshNote(report: ConversationRefresh | null): string {
       );
     }
     parts.push(kept.join(', '));
+  }
+  // The bookmarks the pass made on this turn, each half named separately
+  // because they are separate promises: marking is the automation the owner
+  // asked for, relabelling and taking back are the pass editing its OWN
+  // earlier answers, and `INV-nothing-is-dropped-silently` is about the third.
+  if (autoAnchors !== null && anchorsMoved > 0) {
+    const marks: string[] = [];
+    if (autoAnchors.marked > 0) {
+      marks.push(`${autoAnchors.marked} anchor(s) marked automatically in what was appended`);
+    }
+    if (autoAnchors.relabelled > 0) marks.push(`${autoAnchors.relabelled} re-labelled`);
+    if (autoAnchors.dropped > 0) {
+      marks.push(`${autoAnchors.dropped} taken back because the grammar no longer recognises them`);
+    }
+    parts.push(`${marks.join(', ')} (${autoAnchors.ms}ms)`);
+  }
+  if (anchorsDeferred > 0) {
+    parts.push(
+      `${anchorsDeferred} transcript(s) were left unread by the turn's search-index budget, so ` +
+      'anchors in them wait for a later turn or for `mycontext conversation rebuild`',
+    );
+  }
+  // The stand-down, which is the budget doing its job and must still be
+  // findable: it is the only line that would ever explain why a turn that
+  // appended a table carries no anchor for it.
+  if (stoodDown !== null) {
+    parts.push(
+      `the automatic anchor pass stood down with ${stoodDown}ms of the hook's budget left, so ` +
+      'anchors in what was appended wait for the next turn',
+    );
+  }
+  if (overranMs !== null) {
+    parts.push(
+      `the automatic anchor pass took ${overranMs}ms, past the ${ANCHOR_HALF_CEILING_MS}ms this ` +
+      "hook's budget is built on",
+    );
   }
   return `; the conversation index was refreshed — ${parts.join(', ')}, `
     + `${report.bytesRead} byte(s) in ${report.ms}ms`;
@@ -1133,14 +1382,23 @@ export async function runStopHook(): Promise<void> {
   try {
     const { input, parseError } = parseHookInput(readStdin());
     if (parseError !== null) process.stderr.write(hookParseErrorLine(parseError));
+    // **The upkeep is TIMED, and that is what keeps the anchor pass inside the
+    // 3-second timeout** (`ANCHOR_PASS_BUDGET_MS`). Everything else in this
+    // binary is within a couple of hundred milliseconds of itself run to run;
+    // the upkeep is 0 ms on the turn it decides it is too soon to probe and up
+    // to ~1.45 s on the turn it restarts a stale server and waits for the
+    // replacement to answer. Measuring it is cheaper than guessing at it, and
+    // the guess is the one that gets the hook killed.
+    const startedMs = Date.now();
     const upkeep = await stopUpkeep(input);
+    const budgetMs = anchorPassBudget(Date.now() - startedMs);
     // AFTER the upkeep and BEFORE the row. After, because the upkeep's probe
     // has a 250 ms cap of its own and a synchronous file read in front of it
     // would spend that budget before the socket was ever opened. Before,
     // because the row is where a refresh becomes visible at all — `stdout`
     // leaves no trace, and a refresh nothing recorded is the invisibility this
     // whole item is about, wearing a different hat.
-    const refresh = stopConversationRefresh(input);
+    const refresh = stopConversationRefresh(input, { budgetMs });
     // LAST of the three, and never awaited. `reviewTrigger` is synchronous, it
     // spawns a detached and unref'ed child, and it returns — see its header for
     // why the rubric is NOT run here. It is last so that its own `stat` sees a
