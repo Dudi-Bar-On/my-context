@@ -900,23 +900,44 @@ export function summariseTranscript(file: string, options: SummaryOptions = {}):
   }
 
   const buffer = Buffer.alloc(CHUNK_BYTES);
-  let carry = '';
+  /**
+   * Bytes of the line the last chunk ended in the middle of — **a `Buffer`,
+   * never a `string`.** `CHUNK_BYTES` and `upToBytes` both count BYTES, and a
+   * UTF-8 character is not one byte, so a chunk boundary lands inside a
+   * character whenever the transcript is not ASCII. Decoding each chunk on its
+   * own would split that character into two U+FFFD — one at this chunk's tail,
+   * one at the next chunk's head — and a point extracted across the seam would
+   * carry corrupted text that no search matches. Held as bytes, a line is
+   * decoded ONCE, whole. `iterateTranscript` in `core/conversation-index.ts`
+   * carries the same Buffer for the same reason.
+   */
+  let carry: Buffer = Buffer.alloc(0);
   try {
     while (coverage.readBytes < resolved.upToBytes) {
       const want = Math.min(CHUNK_BYTES, resolved.upToBytes - coverage.readBytes);
       const read = readSync(fd, buffer, 0, want, null);
       if (read <= 0) break;
       coverage.readBytes += read;
-      const parts = (carry + buffer.toString('utf8', 0, read)).split('\n');
-      carry = parts.pop() ?? '';
-      for (const part of parts) take(part);
+      // Split on the NEWLINE BYTE, then decode each whole line. `buffer` is
+      // reused by the next read, so the leftover is copied out of it.
+      const chunk = carry.length === 0
+        ? buffer.subarray(0, read)
+        : Buffer.concat([carry, buffer.subarray(0, read)]);
+      let from = 0;
+      for (;;) {
+        const nl = chunk.indexOf(0x0a, from);
+        if (nl === -1) break;
+        take(chunk.toString('utf8', from, nl));
+        from = nl + 1;
+      }
+      carry = from < chunk.length ? Buffer.from(chunk.subarray(from)) : Buffer.alloc(0);
     }
     // The trailing fragment is a whole line only when the read reached the end
     // of the FILE. If the snapshot offset stopped us mid-record, parsing it
     // would turn the bound into a phantom `unreadable` — `scanTranscript`'s own
     // rule, which is why the comparison is against the file size and not
     // against `upToBytes`.
-    if (coverage.readBytes >= fileBytes) take(carry);
+    if (coverage.readBytes >= fileBytes) take(carry.toString('utf8'));
   } catch {
     // A read that failed part-way keeps what it read. `readBytes` says how far
     // it got and the review form prints it beside `upToBytes`.

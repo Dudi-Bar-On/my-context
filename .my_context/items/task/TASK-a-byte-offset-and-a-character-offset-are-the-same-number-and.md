@@ -16,17 +16,17 @@ tags:
   - archive
   - "plan:rulings"
   - "seq:70"
-  - "state:todo"
+  - "state:done"
 origin: human
 source_file: "C:/Users/UserC/AppData/Local/Temp/offsetbody.md"
 source_anchor: null
 source_checksum: 05d64ee9036026d7
 valid_from: 2026-09-12
 valid_until: null
-checksum: 6471d882620efda2
+checksum: fa3555a47524b8dd
 plan: rulings
 seq: "70"
-state: todo
+state: done
 priority: "1"
 ---
 

@@ -1147,7 +1147,21 @@ function readWindow(
   }
 
   const buffer = Buffer.alloc(CHUNK_BYTES);
-  let carry = '';
+  /**
+   * Bytes of the line the last chunk ended in the middle of — **a `Buffer`,
+   * never a `string`, and the type of this one variable is the whole
+   * correctness argument.**
+   *
+   * `CHUNK_BYTES` counts BYTES and a UTF-8 character is not one byte, so a
+   * chunk boundary lands inside a character whenever the text is not ASCII —
+   * which this archive is from record 5. Decoding each chunk on its own would
+   * split that character into two U+FFFD, one at the tail of this chunk and
+   * one at the head of the next, and the text would be silently corrupted at a
+   * seam nobody reads. Held as bytes, a line is decoded ONCE, whole.
+   * `iterateTranscript` in `core/conversation-index.ts` carries the same Buffer
+   * for the same reason.
+   */
+  let carry: Buffer = Buffer.alloc(0);
 
   const take = (line: string): void => {
     if (line === '') return;
@@ -1204,14 +1218,25 @@ function readWindow(
       read = readSync(fd, buffer, 0, want, null);
       if (read <= 0) { reachedEnd = true; break; }
       walked += read;
-      const parts = (carry + buffer.toString('utf8', 0, read)).split('\n');
-      carry = parts.pop() ?? '';
-      for (const line of parts) take(line);
+      // Split on the NEWLINE BYTE, then decode each whole line. `buffer` is
+      // reused by the next read, so the leftover is copied out rather than
+      // kept as a view into it.
+      const chunk = carry.length === 0
+        ? buffer.subarray(0, read)
+        : Buffer.concat([carry, buffer.subarray(0, read)]);
+      let from = 0;
+      for (;;) {
+        const nl = chunk.indexOf(0x0a, from);
+        if (nl === -1) break;
+        take(chunk.toString('utf8', from, nl));
+        from = nl + 1;
+      }
+      carry = from < chunk.length ? Buffer.from(chunk.subarray(from)) : Buffer.alloc(0);
       // Stop as soon as the window is full AND the total is no longer needed —
       // which it always is, so the walk continues to count. The cap is what
       // bounds it.
     }
-    if (reachedEnd) take(carry);
+    if (reachedEnd) take(carry.toString('utf8'));
     else hitCap = true;
   } catch {
     // A read that failed part-way keeps what it built; `walked` says how far.
