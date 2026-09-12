@@ -98,6 +98,32 @@ export interface MissionRequest {
   /** The documents whose vocabulary named the subject. */
   documents?: string[];
   scope?: { sessionId?: string | null; from?: string | null; to?: string | null };
+  /**
+   * **Which round this is, and what he picked out of the last one** — Task 12,
+   * §4's *"Rounds compose."*
+   *
+   * Absent is round one: the mission asks its mode's own question. Present is
+   * a SECOND round, and it changes the instruction rather than decorating it —
+   * a second round that listed subjects again would read as working, return a
+   * file, and answer nothing he asked. `from` names the result the subject was
+   * listed in, so the chain is followable backwards and a round can be re-run
+   * rather than reconstructed.
+   */
+  round?: { n: number; subject: string; from: string };
+  /**
+   * **The shape the result file must take**, as `retrieval/result.ts` ·
+   * `resultContract` states it.
+   *
+   * The seam `plan:recall seq:2` recorded and left alone: a subagent was told
+   * WHERE to write and not HOW, so it could return a file no reader of this
+   * product can parse. It is PASSED rather than imported because `result.ts`
+   * already imports `RETRIEVAL_DIR` from here, and importing back would make
+   * the pair a cycle whose resolved values depend on which side ran first.
+   *
+   * Optional, because Task 9 shipped without it and a mission built by a
+   * caller that predates this field must still be a whole mission.
+   */
+  resultShape?: readonly string[];
   /** Where to write the mission. Defaults to `RETRIEVAL_DIR` under the repo. */
   dir?: string;
 }
@@ -204,6 +230,47 @@ export function missionText(request: MissionRequest): string {
     out.push('');
   }
 
+  if (request.round !== undefined && request.round.n > 1) {
+    out.push(`## Round ${request.round.n} — the subject he chose`);
+    out.push('');
+    out.push(
+      `He read the result of the round before this one and picked ONE subject out of it: `
+      + `**${request.round.subject}**. That subject, and not the list it came from, is what `
+      + 'this round is about.',
+    );
+    out.push('');
+    out.push(`- the subject: \`${request.round.subject}\``);
+    out.push(`- listed in: \`${request.round.from}\``);
+    out.push('');
+  }
+
+  out.push('## What to return');
+  out.push('');
+  if (request.round !== undefined && request.round.n > 1) {
+    out.push(
+      'Extract what the subject above actually holds — what was decided about it, what was '
+      + 'measured, what changed and in what order. **Do not list subjects again**: he has '
+      + 'already chosen, and a second list answers a question he is no longer asking.',
+    );
+  } else if (request.mode === 'list-subjects') {
+    out.push(
+      'Return a list of SUBJECTS — what was being worked on, one line each, newest last. This '
+      + 'is the round that answers *I am lost*, so it is a map rather than an account: he picks '
+      + 'one and a second round goes into it.',
+    );
+  } else if (request.mode === 'list-anchors') {
+    out.push(
+      'Return the fixed points — the anchors in scope, what each one marks, and what was going '
+      + 'on around it. One line each, chronological.',
+    );
+  } else {
+    out.push(
+      'Return an ACCOUNT of the subject the names above describe: small, concentrated, '
+      + 'chronological, and showing the chain of changes rather than only its end.',
+    );
+  }
+  out.push('');
+
   out.push('## What you must do');
   out.push('');
   out.push(
@@ -249,6 +316,12 @@ export function missionText(request: MissionRequest): string {
   out.push('');
   out.push(`Write your result to \`${request.resultPath}\` and return only that path.`);
   out.push('');
+  if ((request.resultShape ?? []).length > 0) {
+    out.push('It must take exactly this shape, or the reader that renders it cannot read it:');
+    out.push('');
+    for (const line of request.resultShape ?? []) out.push(`- ${line}`);
+    out.push('');
+  }
 
   out.push('## What must NOT happen');
   out.push('');

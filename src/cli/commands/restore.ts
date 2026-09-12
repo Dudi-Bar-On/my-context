@@ -5,6 +5,12 @@ import { listTranscriptFiles, transcriptDir } from '../../core/conversation-inde
 import {
   approveStagedRestore, buildRestoreProposal, discardStagedRestore, stageRestoreSummary,
 } from '../../core/restore-stage.ts';
+import { readResult } from '../../core/retrieval/result.ts';
+import {
+  markReturn, returnReviewForm, type RulingLookup,
+} from '../../core/retrieval/return.ts';
+import { stageableReturn } from '../../core/retrieval/return-stage.ts';
+import { Store } from '../../core/store.ts';
 import { loadStagedRestore, readRestoreStagingDir } from '../../core/restore-staging.ts';
 import type { SummaryOptions, SummaryRange } from '../../core/session-summary.ts';
 import type { Workspace } from '../../core/workspace.ts';
@@ -64,6 +70,7 @@ const { allowed: ALLOWED, values: VALUE_FLAGS } = COMMAND_FLAGS.restore;
 const USAGE = [
   'usage: mycontext restore --build [--session <file>] [--range <spec>] [--subject <text>]',
   '                        [--points <n>] [--reasoning] [--code]',
+  '       mycontext restore --build --from-result <file> [--claims <1,3,7>] [--json]',
   '       mycontext restore --show [--json]',
   '       mycontext restore --approve <key> [--yes]',
   '       mycontext restore --discard <key> [--yes]',
@@ -124,6 +131,147 @@ function newestTranscript(root: string): string | null {
   if (files.length === 0) return null;
   files.sort((a, b) => b.mtimeMs - a.mtimeMs);
   return files[0]!.file;
+}
+
+/**
+ * **Whether a ruling the result names still stands — read out of THIS corpus.**
+ *
+ * `markReturn` takes the lookup as an argument rather than opening a store
+ * itself, which is `CitationResolvers`' shape in `retrieval/result.ts` and is
+ * what keeps `retrieval/return.ts` free of a database handle. The read is
+ * read-only and one statement wide: a corpus that cannot be opened answers
+ * `null` for every id, which surfaces as *named, and not found* rather than as
+ * a silent pass — `INV-nothing-is-dropped-silently`.
+ */
+function rulingLookup(ws: Workspace): RulingLookup {
+  let byId: Map<string, { status: string; supersededBy: string | null }> | null = null;
+  try {
+    const store = Store.openReadOnlyChecked(ws.dbPath);
+    try {
+      byId = new Map(store.all().map((item) => [item.id, {
+        status: item.status as string,
+        supersededBy:
+          item.relations.find((r) => r.type === 'superseded_by')?.target ?? null,
+      }]));
+    } finally { store.close(); }
+  } catch {
+    byId = null;
+  }
+  return (id: string) => {
+    const row = byId?.get(id);
+    return row === undefined ? null : { id, status: row.status, supersededBy: row.supersededBy };
+  };
+}
+
+/** What a `--from-result` build produced, or `null` when it refused and said why. */
+interface BuiltReturn {
+  stage: ReturnType<typeof stageRestoreSummary>;
+  reviewForm: string;
+  shortfalls: string[];
+  payload: string;
+}
+
+/**
+ * **Read a retrieval result, mark what he chose, and stage it through D34's
+ * carrier.** Spec §10a.
+ *
+ * The refusals are the interesting half. A result file that is not there names
+ * the path it looked for; a claim number the file does not have refuses rather
+ * than returning a shorter account, because the two ends disagreeing about how
+ * many claims there are is exactly what a quietly-shorter answer would hide.
+ * Both come out of `markReturn` and `readResult` as thrown messages, and are
+ * printed rather than re-worded, so the CLI and the screen say the same thing.
+ */
+function buildFromResult(
+  ws: Workspace, root: string, file: string, claims: string | null, out: Emit,
+): BuiltReturn | null {
+  let result;
+  try {
+    result = readResult(file);
+  } catch (err) {
+    out(
+      `my_context: the retrieval result ${file} could not be read — `
+      + `${err instanceof Error ? err.message : String(err)}`,
+    );
+    return null;
+  }
+  if (result.claims.length === 0) {
+    out(
+      `my_context: ${file} holds no claims, so there is nothing to return. A result with an `
+      + 'empty `## What it found` is a subagent that found nothing, and staging it would put an '
+      + 'empty record into a window you cleared to make room for it.',
+    );
+    return null;
+  }
+
+  let chosen: number[];
+  if (claims === null) {
+    chosen = result.claims.map((_claim, index) => index + 1);
+  } else {
+    chosen = [];
+    for (const part of claims.split(',').map((piece) => piece.trim()).filter(Boolean)) {
+      const n = Number(part);
+      if (!Number.isInteger(n)) {
+        out(`my_context: --claims takes claim numbers, and "${part}" is not one.
+
+${USAGE}`);
+        return null;
+      }
+      chosen.push(n);
+    }
+  }
+
+  let marked;
+  try {
+    marked = markReturn(result, chosen, rulingLookup(ws));
+  } catch (err) {
+    out(`${err instanceof Error ? err.message : String(err)}`);
+    return null;
+  }
+
+  const stageable = stageableReturn(marked, file);
+  return {
+    stage: stageRestoreSummary(root, stageable),
+    reviewForm: returnReviewForm(marked, file),
+    shortfalls: stageable.shortfalls,
+    payload: marked.text,
+  };
+}
+
+/**
+ * **The build's own report, and the one sentence a reader acts on.**
+ *
+ * Shared by both builds — a transcript summary and a retrieval return —
+ * because the thing that must not drift between them is *nothing is injected
+ * yet*. Two copies of that sentence is the defect `CLAUDE.md` opens with, one
+ * level down.
+ */
+function reportStage(
+  stage: ReturnType<typeof stageRestoreSummary>,
+  reviewForm: string, shortfalls: string[], payload: string, json: boolean, out: Emit,
+): number {
+  if (!stage.verified) {
+    out(`my_context: it was built but NOT staged — ${stage.reason}`);
+    say(out,
+      'Do not clear your window. Nothing is on disk that a later session could read, so what '
+      + 'was built exists only in this conversation.');
+    return 1;
+  }
+  if (json) {
+    emitJson(out, {
+      key: stage.key, file: stage.file, verified: stage.verified, shortfalls,
+      payloadBytes: Buffer.byteLength(payload, 'utf8'), reviewForm,
+    });
+    return 0;
+  }
+  out(reviewForm);
+  out('');
+  out(`my_context: staged as ${stage.key} (${stage.file}), and verified on disk.`);
+  say(out,
+    'NOTHING IS INJECTED YET, and nothing will be until you approve it: run `mycontext restore '
+    + `--approve ${stage.key}\`. Read the form above first — the coverage headline says what `
+    + 'this does not hold.');
+  return 0;
 }
 
 function cmdRestore(ws: Workspace, args: string[], out: Emit): number {
@@ -274,6 +422,31 @@ function cmdRestore(ws: Workspace, args: string[], out: Emit): number {
       'session that starts in this project receives it once, and the record is then marked ' +
       'delivered.');
     return 0;
+  }
+
+  // ── mycontext restore --build --from-result <file> ────────────────────────
+  //
+  // **The second destination, spec §10a, owner ruling 2026-09-11.** A
+  // retrieval result is a payload of the same shape a session summary is, so
+  // it rides THIS carrier rather than growing one beside it. Everything below
+  // the stage is untouched and is reached by the same three forms a person
+  // already knows: `--show`, `--approve`, and his own clear.
+  const fromResult = flag(args, 'from-result');
+  if (fromResult !== null) {
+    const claims = flag(args, 'claims');
+    const staged = buildFromResult(ws, root, fromResult, claims, out);
+    if (staged === null) return 1;
+    return reportStage(staged.stage, staged.reviewForm, staged.shortfalls,
+      staged.payload, json, out);
+  }
+  if (flag(args, 'claims') !== null) {
+    out(
+      'my_context: --claims picks claims out of a RETRIEVAL RESULT and means nothing on its '
+      + `own. Name the result with --from-result <file>.
+
+${USAGE}`,
+    );
+    return 1;
   }
 
   // ── mycontext restore --build ─────────────────────────────────────────────

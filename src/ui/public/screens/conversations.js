@@ -1365,7 +1365,576 @@ function mountArchiveSearch(ctx, root, sessions) {
   card.append(results);
   idle();
   void refreshAnchors();
+
+  // **RECONSTRUCT, below search and anchors** — `plan:recall seq:2` Task 11.
+  // Search finds a turn; this reconstructs a SUBJECT out of many, and it is
+  // last because it is the heaviest thing on the screen and the one a reader
+  // reaches for when the two above have not been enough.
+  mountRetrieval(ctx, root);
 }
+/* ══ RECONSTRUCT — `plan:recall seq:2`, Tasks 11 and 12 ════════════════════
+ *
+ * THE SCREEN DOES NOT ANSWER OUT OF THE ARCHIVE. It composes a MISSION for a
+ * subagent that reads in a window of its own, verifies against the code and
+ * git, and writes back a small cited file; then the owner reads that file here
+ * and chooses what, if anything, comes back. §8, §9, §10 and §10a of
+ * `docs/superpowers/specs/2026-09-10-conversation-retrieval-design.md`.
+ *
+ * ── THE SAFETY BOUNDARY, AND WHY THIS FILE CANNOT BREAK IT ────────────────
+ *
+ * The plan's own self-review: Task 11 step 2 is *"the safety boundary.
+ * Everything else can be imperfect; this one cannot."* Nothing reaches the
+ * owner's context until he chooses it — and on this screen that is not a rule
+ * anybody has to keep, it is a fact about what the page can do. The server is
+ * read-only and proved so byte-for-byte by `test/ui/server-e2e.test.ts`; the
+ * two POSTs this screen makes RENDER text and write nothing; and the only
+ * route any of that text has into a context window is the owner's own copy and
+ * paste. `conv.recall.safe` says exactly that, on screen, in both languages,
+ * beside the text it is true of.
+ *
+ * ── WHAT IS DRAWN, IN THE ORDER IT IS DRAWN ───────────────────────────────
+ *
+ *   1. THE FOUR MODES (§4, step 1), scoped by session and date. All four ship
+ *      by owner ruling, and they come from the SERVER rather than being typed
+ *      here, so "which modes exist" has one answer.
+ *   2. THE BRIEF. `missionText` is pure, so the page shows the owner exactly
+ *      what a subagent would be told before anything is dispatched — including
+ *      the *nothing to match on* answer, which is SHOWN rather than hidden: a
+ *      guess that resolves is worse than silence.
+ *   3. THE RESULTS, and one read: its claims numbered, its findings, and
+ *      whether its citations still resolve.
+ *   4. THE CHOICE (steps 3 and 4). He ticks what returns — one line is a legal
+ *      answer, which is his own example — and what comes back is MARKED:
+ *      dated, stated a record rather than an instruction, and a ruling since
+ *      reversed says so at the top.
+ *   5. THE SECOND DESTINATION (§10a, steps 4a-4c): a fresh window, through
+ *      D34's carrier, staged before the clear and delivered only after his
+ *      approval and his clear.
+ *
+ * ── AND IT IS MOUNTED TWICE, WHICH IS STEP 6's REASON ─────────────────────
+ *
+ * Once on the archive screen and once inside `mountDocument`, which is what
+ * `/lane.html` and the session document both run. The document's copy of it is
+ * SEEDED from the marked passage, because §3's whole finding is that a
+ * selection is not a guess at the subject — it IS the subject — and the moment
+ * he has one marked is the moment the offer is worth making.
+ */
+
+/** The mode picked when the panel opens, and the reason it is this one. */
+const DEFAULT_MODE = 'from-selection';
+
+/**
+ * **The retrieval panel.** `seed` is a function returning the passage the host
+ * can offer — the document's marked selection, or nothing on the archive
+ * screen, which is why it is a function rather than a string: the selection
+ * changes under the panel and reading it at mount would pin the first one.
+ */
+function mountRetrieval(ctx, host, seed = () => '', collapsed = false) {
+  /**
+   * **On a DOCUMENT it starts closed, and that is a measurement rather than a
+   * taste.** `e2e/conversations.spec.ts`' bare-lane test asserts that the well
+   * takes the room the rail and the strip gave up — `share > 0.55` — and
+   * mounting this panel open at the foot of `/lane.html` dropped that to
+   * **0.333**. The panel is chrome, and a window whose whole purpose is one
+   * document may not spend two thirds of itself on chrome nobody asked for.
+   *
+   * So the document mounts it closed and the copy bar's control opens it,
+   * which is the better shape anyway: the offer is made at the moment he has a
+   * passage marked, and costs nothing until then. The archive screen, whose
+   * subject IS this, mounts it open.
+   */
+  const box = el('div', 'convrecallbox');
+  box.hidden = collapsed;
+  host.append(box);
+  host = box;
+
+  const card = el('div', 'card pane convrecall');
+  const title = el('h3');
+  title.append(...ctx.t('conv.recall.h'));
+  const sub = el('p', 'small');
+  sub.append(...ctx.t('conv.recall.sub'));
+  card.append(title, spaced(sub));
+  host.append(card);
+
+  const state = { mode: DEFAULT_MODE, round: null, result: null };
+
+  /* ── 1. the four modes ─────────────────────────────────────────────────── */
+  const modeHead = el('p', 'small convrecallmodeh');
+  modeHead.append(...ctx.t('conv.recall.mode.h'));
+  const modes = el('div', 'convrecallmodes');
+  modes.setAttribute('role', 'radiogroup');
+  modes.setAttribute('aria-label', ctx.tFlat('conv.recall.mode.h'));
+  card.append(modeHead, modes);
+
+  const passageBox = el('div', 'convrecallpassagebox');
+  const passageLabel = el('label', 'small convrecallpassagel');
+  passageLabel.append(...ctx.t('conv.recall.passage.label'));
+  const passage = el('textarea', 'convrecallpassage');
+  passage.rows = 4;
+  passageLabel.htmlFor = 'convrecallpassage';
+  passage.id = 'convrecallpassage';
+  const passageHint = el('p', 'small convrecallpassagehint');
+  passageHint.append(...ctx.t('conv.recall.passage.hint'));
+  passageBox.append(passageLabel, passage, passageHint);
+  card.append(passageBox);
+
+  /**
+   * A mode button. `aria-checked` rather than a class alone, because the group
+   * is a radiogroup and a reader who cannot see the highlight has to be told
+   * which one is armed — and because a test can then name the ARMED one rather
+   * than counting styles.
+   */
+  const drawModes = () => {
+    modes.replaceChildren();
+    for (const entry of state.modes ?? []) {
+      const button = el('button', 'tvjump convrecallmode');
+      button.type = 'button';
+      button.dataset.mode = entry.mode;
+      button.setAttribute('role', 'radio');
+      button.setAttribute('aria-checked', entry.mode === state.mode ? 'true' : 'false');
+      button.append(...ctx.t(`conv.recall.mode.${entry.mode}`));
+      button.addEventListener('click', () => {
+        state.mode = entry.mode;
+        // Picking a mode drops any round-2 the last one set up: a second round
+        // is about a subject he chose, and choosing a different way IN is
+        // starting over rather than narrowing.
+        state.round = null;
+        round.hidden = true;
+        drawModes();
+      });
+      modes.append(button);
+      if (entry.mode === state.mode) passageBox.hidden = entry.needsText !== true;
+    }
+  };
+
+  /* ── the scope, §12 ────────────────────────────────────────────────────── */
+  const scope = el('div', 'convrecallscope');
+  const scopeHead = el('span', 'small');
+  scopeHead.append(...ctx.t('conv.recall.scope.h'));
+  const session = el('input', 'convrecallsession');
+  session.type = 'text';
+  session.placeholder = ctx.tFlat('conv.recall.scope.any');
+  session.setAttribute('aria-label', ctx.tFlat('conv.recall.scope.session'));
+  const since = el('input', 'convrecallsince');
+  since.type = 'date';
+  since.setAttribute('aria-label', ctx.tFlat('conv.recall.scope.from'));
+  const until = el('input', 'convrecalluntil');
+  until.type = 'date';
+  until.setAttribute('aria-label', ctx.tFlat('conv.recall.scope.to'));
+  scope.append(scopeHead, session, since, until);
+  card.append(scope);
+
+  /** The round-2 banner. Hidden until he has picked a subject out of a list. */
+  const round = el('p', 'small convrecallround');
+  round.hidden = true;
+  card.append(round);
+
+  const prepare = el('button', 'tvjump convrecallprepare');
+  prepare.type = 'button';
+  prepare.append(...ctx.t('conv.recall.prepare'));
+  card.append(prepare);
+
+  const brief = el('div', 'convrecallbrief');
+  brief.setAttribute('aria-live', 'polite');
+  card.append(brief);
+
+  /* ── 2. the brief ──────────────────────────────────────────────────────── */
+  const drawBrief = (body) => {
+    brief.replaceChildren();
+
+    // **The query, and the refusal, both drawn.** `matchable: false` is a
+    // STATED answer and not an empty list: `queryFromPassage` refuses a
+    // word-bag fallback because a guess that resolves is worse than silence,
+    // and a screen that drew nothing here would turn that refusal back into
+    // silence one layer up.
+    const q = el('div', 'convrecallquery');
+    const qh = el('h4');
+    qh.append(...ctx.t('conv.recall.query.h'));
+    q.append(qh);
+    if (body.query.matchable !== true) {
+      const none = el('p', 'small convrecallnomatch');
+      none.append(...ctx.t('conv.recall.query.none'));
+      q.append(none);
+      if (body.query.note !== null) {
+        const note = el('p', 'small convrecallnote');
+        note.append(body.query.note);
+        q.append(note);
+      }
+    } else {
+      if (body.query.names.length > 0) {
+        const names = el('p', 'small convrecallnames');
+        names.append(...ctx.t('conv.recall.query.names'), ' ');
+        for (const name of body.query.names) names.append(mono(name), ' ');
+        q.append(names);
+      }
+      if (body.query.terms.length > 0) {
+        const terms = el('p', 'small convrecallterms');
+        terms.append(...ctx.t('conv.recall.query.terms'), ' ');
+        for (const term of body.query.terms) terms.append(mono(term), ' ');
+        q.append(terms);
+      }
+    }
+    brief.append(q);
+
+    const mh = el('h4');
+    mh.append(...ctx.t('conv.recall.mission.h'));
+    const hint = el('p', 'small');
+    hint.append(...ctx.t('conv.recall.mission.hint'));
+    const text = el('pre', 'convrecallmission');
+    text.append(body.text);
+    brief.append(mh, spaced(hint), text, copyButton(ctx, 'conv.recall.mission.copy',
+      () => body.text, 'convrecallmissioncopy'));
+    const where = el('p', 'small');
+    where.append(...ctx.t('conv.recall.mission.where'));
+    brief.append(where);
+  };
+
+  prepare.addEventListener('click', async () => {
+    brief.replaceChildren(waiting(ctx, 'conv.recall.preparing'));
+    const request = {
+      mode: state.mode,
+      passage: passage.value,
+      scope: {
+        sessionId: session.value.trim() === '' ? null : session.value.trim(),
+        from: since.value === '' ? null : since.value,
+        to: until.value === '' ? null : until.value,
+      },
+    };
+    if (state.round !== null) request.round = state.round;
+    let body;
+    try {
+      body = await ctx.post('/api/retrieval/mission', request);
+    } catch (error) {
+      brief.replaceChildren(errorNote(error.message));
+      return;
+    }
+    drawBrief(body);
+  });
+
+  /* ── 3. the results, and one read ──────────────────────────────────────── */
+  const resultsCard = el('div', 'card pane convrecallresults');
+  const resultsTitle = el('h3');
+  resultsTitle.append(...ctx.t('conv.recall.results.h'));
+  const resultsBox = el('div', 'convrecallresultsbox');
+  resultsCard.append(resultsTitle, resultsBox);
+  host.append(resultsCard);
+
+  const readBox = el('div', 'convrecallread');
+  readBox.setAttribute('aria-live', 'polite');
+  resultsCard.append(readBox);
+
+  const drawResults = (body) => {
+    resultsBox.replaceChildren();
+    // **The privacy boundary, said on the workspace the reader is looking at.**
+    // A test proves `.gitignore` holds the rule today; this proves it here, in
+    // a copy, a worktree, or a checkout somebody has edited. It is a WARNING
+    // and not a silent absence, because what leaks is conversation text.
+    const where = el('p', body.ignored === true ? 'small convrecalldir' : 'small warn convrecallleak');
+    where.append(...ctx.t(body.ignored === true ? 'conv.recall.results.dir'
+      : 'conv.recall.results.leak', { dir: body.dir }));
+    resultsBox.append(where);
+
+    if (body.results.length === 0) {
+      const none = el('p', 'small convrecallnoresults');
+      none.append(...ctx.t('conv.recall.results.none'));
+      resultsBox.append(none);
+      return;
+    }
+    for (const row of body.results) {
+      const line = el('div', 'convrecallrow');
+      // **`data-result`, and NOT `data-id`.** `installItemPane` in `app.js`
+      // opens the item pane on a click anywhere inside ANY `[data-id]`, so the
+      // first draft of this row hijacked every press of its own Read button
+      // and opened a pane reading "no item recall-0001 in this corpus". A
+      // retrieval result is not a corpus item and has no id in that namespace.
+      // Found by looking at the screen; no unit test could have seen it.
+      line.dataset.result = row.id;
+      const name = el('span', 'convrecallrowid');
+      name.append(mono(row.id));
+      const facts = el('span', 'small convrecallrowfacts');
+      facts.append(...ctx.t('conv.recall.results.row',
+        { n: row.claims, mode: row.mode, at: row.at }));
+      const open = el('button', 'tvjump convrecallopen');
+      open.type = 'button';
+      open.append(...ctx.t('conv.recall.open'));
+      open.addEventListener('click', () => { void openResult(row.id); });
+      line.append(name, facts, open);
+      resultsBox.append(line);
+    }
+  };
+
+  const refreshResults = async () => {
+    let body;
+    try {
+      body = await ctx.api('/api/retrieval');
+    } catch (error) {
+      resultsBox.replaceChildren(errorNote(error.message));
+      return;
+    }
+    state.modes = body.modes;
+    drawModes();
+    drawResults(body);
+  };
+
+  async function openResult(id) {
+    readBox.replaceChildren(waiting(ctx, 'conv.recall.returning'));
+    let body;
+    try {
+      body = await ctx.api(`/api/retrieval/${encodeURIComponent(id)}`);
+    } catch (error) {
+      readBox.replaceChildren(errorNote(error.message));
+      return;
+    }
+    state.result = body;
+    drawResult(body);
+  }
+
+  const drawResult = (body) => {
+    readBox.replaceChildren();
+    const head = el('h4');
+    head.append(...ctx.t('conv.recall.result.h'));
+    readBox.append(head);
+
+    // **A result that has aged SAYS SO**, and `unchecked` is said separately
+    // rather than folded in. Citations nothing could check are not citations
+    // that checked out — `INV-nothing-is-dropped-silently`, and `aged` is
+    // driven by `unresolved` alone for exactly that reason.
+    if (body.age.aged === true) {
+      const aged = el('p', 'small warn convrecallaged');
+      aged.append(...ctx.t('conv.recall.result.aged', { n: body.age.unresolved }));
+      readBox.append(aged);
+    }
+    if (body.age.unchecked > 0) {
+      const unchecked = el('p', 'small convrecallunchecked');
+      unchecked.append(...ctx.t('conv.recall.result.unchecked', { n: body.age.unchecked }));
+      readBox.append(unchecked);
+    }
+    for (const finding of body.findings) {
+      const line = el('p', 'small warn convrecallfinding');
+      line.append(...ctx.t('conv.recall.result.finding'), ' ', finding.detail);
+      readBox.append(line);
+    }
+
+    const pick = el('p', 'small convrecallpick');
+    pick.append(...ctx.t('conv.recall.result.pick'));
+    readBox.append(pick);
+
+    const list = el('div', 'convrecallclaims');
+    for (const claim of body.claims) {
+      const row = el('div', 'convrecallclaim');
+      row.dataset.n = String(claim.n);
+      const tick = el('input', 'convrecalltick');
+      tick.type = 'checkbox';
+      tick.checked = true;
+      tick.dataset.n = String(claim.n);
+      tick.setAttribute('aria-label', claim.text);
+      // **`<bdi>`, which is what archive-supplied text wears on this screen.**
+      // A claim is a sentence a subagent wrote about a conversation that may be
+      // in either language, and the page it is drawn on may be in either too.
+      // A bare span took the PARAGRAPH's direction, and the Hebrew screenshot
+      // showed an English claim with its full stop at the left-hand end.
+      // `<bdi>` infers direction from the text's own first strong character —
+      // the same treatment `convtitle` already gives a session title, and the
+      // reason `bdi{unicode-bidi:isolate}` is in the stylesheet at all.
+      const text = el('bdi', 'convrecallclaimtext');
+      text.append(claim.text);
+      row.append(tick, text);
+      for (const citation of claim.citations) {
+        const chip = el('span', 'chip convrecallcite');
+        chip.dataset.kind = citation.kind;
+        chip.append(mono(`${citation.kind} ${citation.where}`));
+        row.append(chip);
+      }
+      // **Task 12 — rounds compose.** One claim of a subject list is a subject,
+      // and this is where he picks it: the next brief names it and tells the
+      // helper not to answer with another list.
+      const deeper = el('button', 'tvjump convrecalldeeper');
+      deeper.type = 'button';
+      deeper.append(...ctx.t('conv.recall.result.deeper'));
+      deeper.addEventListener('click', () => {
+        state.round = { n: 2, subject: claim.text, from: body.path };
+        round.replaceChildren();
+        round.append(...ctx.t('conv.recall.round2'), ' ');
+        round.append(...ctx.t('conv.recall.round2.of', { subject: claim.text }));
+        round.hidden = false;
+        brief.replaceChildren();
+        round.scrollIntoView({ block: 'nearest' });
+      });
+      row.append(deeper);
+      list.append(row);
+    }
+    readBox.append(list);
+
+    const show = el('button', 'tvjump convrecallreturn');
+    show.type = 'button';
+    show.append(...ctx.t('conv.recall.return'));
+    const marked = el('div', 'convrecallmarked');
+    marked.setAttribute('aria-live', 'polite');
+    show.addEventListener('click', async () => {
+      const chosen = [...list.querySelectorAll('input.convrecalltick')]
+        .filter((box) => box.checked).map((box) => Number(box.dataset.n));
+      marked.replaceChildren(waiting(ctx, 'conv.recall.returning'));
+      let answer;
+      try {
+        answer = await ctx.post('/api/retrieval/return', { id: body.id, claims: chosen });
+      } catch (error) {
+        marked.replaceChildren(errorNote(error.message));
+        return;
+      }
+      drawMarked(marked, answer);
+    });
+    readBox.append(show, marked);
+  };
+
+  /* ── 4 and 5. what returns, marked — and the two destinations ──────────── */
+  const drawMarked = (host2, body) => {
+    host2.replaceChildren();
+    const head = el('h4');
+    head.append(...ctx.t('conv.recall.marked.h'));
+    host2.append(head);
+
+    // **THE SENTENCE THE WHOLE FEATURE RESTS ON**, drawn before the text it is
+    // true of rather than under it. A reader who stops reading after the first
+    // line has still been told.
+    const safe = el('p', 'small convrecallsafe');
+    safe.append(...ctx.t('conv.recall.safe'));
+    host2.append(safe);
+
+    // The reversals, as their own region — never only inside the text. The
+    // text says it too, and it must: the text is what travels. This is for the
+    // reader who is deciding whether to send it at all.
+    if (body.reversed.length > 0) {
+      const box = el('div', 'convrecallreversed');
+      const rh = el('h5');
+      rh.append(...ctx.t('conv.recall.reversed.h'));
+      box.append(rh);
+      for (const ruling of body.reversed) {
+        const line = el('p', 'small warn convrecallreversedone');
+        line.append(...ctx.t(
+          ruling.supersededBy === null ? 'conv.recall.reversed.orphan' : 'conv.recall.reversed.one',
+          { id: ruling.id, status: ruling.status, by: ruling.supersededBy ?? '' },
+        ));
+        box.append(line);
+      }
+      host2.append(box);
+    }
+    if (body.unknown.length > 0) {
+      const box = el('div', 'convrecallunknown');
+      const uh = el('h5');
+      uh.append(...ctx.t('conv.recall.unknown.h'));
+      const hint = el('p', 'small');
+      hint.append(...ctx.t('conv.recall.unknown.hint'));
+      box.append(uh, hint);
+      for (const id of body.unknown) {
+        const line = el('p', 'small convrecallunknownone');
+        line.append(mono(id));
+        box.append(line);
+      }
+      host2.append(box);
+    }
+
+    const text = el('pre', 'convrecallmarkedtext');
+    text.append(body.text);
+    host2.append(text);
+
+    const portion = el('p', 'small convrecallportion');
+    portion.append(...ctx.t('conv.recall.marked.portion', {
+      chosen: body.chosen.length, total: body.chosen.length + body.left, left: body.left,
+    }));
+    host2.append(portion);
+    host2.append(copyButton(ctx, 'conv.recall.marked.copy', () => body.text,
+      'convrecallmarkedcopy'));
+
+    /* ── the SECOND destination, §10a ───────────────────────────────────── */
+    const fresh = el('div', 'convrecallfresh');
+    const fh = el('h5');
+    fh.append(...ctx.t('conv.recall.fresh.h'));
+    const fhint = el('p', 'small');
+    fhint.append(...ctx.t('conv.recall.fresh.hint'));
+    const cmd = el('div', 'cmd convrecallstagecmd');
+    cmd.append(el('code', null, composeCommand(body.stageArgv)));
+    const then = el('p', 'small convrecallfreshthen');
+    then.append(...ctx.t('conv.recall.fresh.then'));
+    fresh.append(fh, spaced(fhint), cmd,
+      commandActions({ argv: body.stageArgv, id: null, values: {}, ctx }), then);
+
+    const formHead = el('h5');
+    formHead.append(...ctx.t('conv.recall.form.h'));
+    const form = el('pre', 'convrecallform');
+    form.append(body.reviewForm);
+    fresh.append(formHead, form);
+    host2.append(fresh);
+  };
+
+  /* ── seeding, which is §3's primary way in ─────────────────────────────── */
+  const seedPassage = () => {
+    const text = seed();
+    if (typeof text === 'string' && text.trim() !== '') passage.value = text;
+  };
+  // **`focusin`, and no listener on the textarea itself.** `focusin` bubbles,
+  // so entering the panel anywhere seeds it once and a second listener would
+  // buy nothing. `test/ui/conversation-follow-cadence.test.ts` also forbids
+  // registering either LOOK event by name anywhere in this screen — one of
+  // them shares its name with the non-bubbling form of this one — because
+  // `attachLook` is the single place either may be spelled. It caught the
+  // redundant listener rather than a bug, which is the gate reaching past its
+  // own subject and worth leaving that way.
+  card.addEventListener('focusin', seedPassage, { once: true });
+
+  drawModes();
+  // **Nothing is asked of the server until the panel is on screen.** A closed
+  // panel on every open document would fire a request per document for a list
+  // nobody is looking at, which is the cost `TIP_MS`' own table says has to be
+  // counted per open document rather than once.
+  if (!collapsed) void refreshResults();
+  return {
+    seedPassage,
+    open: () => {
+      const first = box.hidden;
+      box.hidden = false;
+      if (first) void refreshResults();
+    },
+  };
+}
+
+/** A button that puts text on the clipboard, and SAYS when the browser refused. */
+function copyButton(ctx, key, textOf, className) {
+  const wrap = el('div', 'convrecallcopywrap');
+  const button = el('button', `tvjump ${className}`);
+  button.type = 'button';
+  button.append(...ctx.t(key));
+  // The same element `mountDocument` keeps for the same reason: a suite with no
+  // clipboard permission should assert the payload the page WOULD write rather
+  // than pretend to read the OS clipboard, and this is that payload.
+  const clip = el('pre', 'convrecallclip');
+  clip.hidden = true;
+  clip.setAttribute('aria-hidden', 'true');
+  const said = el('span', 'small convrecallcopied');
+  said.setAttribute('aria-live', 'polite');
+  button.addEventListener('click', async () => {
+    const text = textOf();
+    clip.replaceChildren(text);
+    let went = false;
+    try {
+      if (navigator.clipboard !== undefined
+        && typeof navigator.clipboard.writeText === 'function') {
+        await navigator.clipboard.writeText(text);
+        went = true;
+      }
+    } catch { went = false; }
+    said.replaceChildren(...ctx.t(went ? 'conv.recall.copied' : 'conv.copy.refused'));
+  });
+  wrap.append(button, clip, said);
+  return wrap;
+}
+
+/** The waiting line, one shape for all three requests this panel makes. */
+function waiting(ctx, key) {
+  const line = el('p', 'small convrecallwait');
+  line.append(...ctx.t(key));
+  return line;
+}
+
 /* ══ THE DOCUMENT: MEASUREMENT AND ARITHMETIC ══════════════════════════════ */
 
 /** Nodes kept in the DOM above and below the viewport, so a scroll is smooth. */
@@ -3520,7 +4089,26 @@ export function mountDocument(ctx, host, outline, back, roster = NO_LANES) {
   const copyRaw = el('button', 'tvjump tvcopy tvcopyraw');
   copyRaw.type = 'button';
   copyRaw.append(...ctx.t('conv.copy.raw'));
-  bar.append(copyLabel, copyMessage, copySeen, copyRaw);
+  /**
+   * **"Reconstruct from this"** — `plan:recall seq:2` Task 11, and §3's
+   * primary way in.
+   *
+   * It sits in the copy bar because that is where a reader already is the
+   * moment he has a passage marked, and because the finding it rests on is
+   * exactly about this moment: *"every extraction method is a guess at what he
+   * cares about. A selection is not a guess."* Measured against this archive
+   * as FTS5 queries, item-id slugs matched 68% where headings matched 4%, and
+   * a passage worth marking is dense in those.
+   *
+   * It COPIES NOTHING and sends nothing. It fills the panel at the foot of
+   * this document with the message text of what is marked and takes the reader
+   * to it, which is one scroll rather than a screen change — the reader has a
+   * position in this virtualised document and following a link would cost it.
+   */
+  const recall = el('button', 'tvjump tvcopy tvrecall');
+  recall.type = 'button';
+  recall.append(...ctx.t('conv.recall.h'));
+  bar.append(copyLabel, copyMessage, copySeen, copyRaw, recall);
   host.append(bar);
 
   const count = el('p', 'tvcount');
@@ -5246,6 +5834,52 @@ export function mountDocument(ctx, host, outline, back, roster = NO_LANES) {
   } else if (outline.truncated === true) {
     follows.hidden = true;
   }
+
+  /**
+   * **RECONSTRUCT, at the foot of the document, seeded from the marked
+   * passage** — Task 11 step 6, which asks for it *"on `/lane.html` as well as
+   * the session document — both run the same `mountDocument`"*. One mount
+   * serves both, because both are this function.
+   *
+   * The seed is `clip.textContent`, which is the payload the page WOULD put on
+   * the clipboard and is written before either clipboard path is attempted.
+   * Reading it rather than rebuilding the passage is deliberate twice over: it
+   * is the SAME BYTES the three copy buttons and `Ctrl+C` produce, so the
+   * panel can never be handed a fourth spelling of one format; and it needs no
+   * await, so the control below is instant.
+   */
+  /**
+   * The marked passage as MESSAGE TEXT, synchronously — `onCopy`'s three
+   * branches and not a fourth spelling of them.
+   *
+   * `messageForm` is the one builder, so what the panel is seeded with is byte
+   * for byte what the first copy button and `Ctrl+C` produce. The two refusals
+   * are kept rather than smoothed over: a passage past the cap and a passage
+   * whose records are still being read both say so, because a panel seeded
+   * with half a passage looks exactly like one seeded with a whole one, and
+   * `INV-nothing-is-dropped-silently` calls that worse than an empty box.
+   */
+  const builtText = () => {
+    const passage = marked;
+    if (passage === null || passage.length === 0) return clip.textContent ?? '';
+    if (passage.length > PASSAGE_NODE_CAP) {
+      return ctx.tFlat('conv.copy.keyTooMany', { n: passage.length, cap: PASSAGE_NODE_CAP });
+    }
+    if (missingOf(passage).length > 0) {
+      schedulePrefetch();
+      return ctx.tFlat('conv.copy.keyNotYet');
+    }
+    return messageForm(passage.map((n) => bodies.get(n))).text;
+  };
+
+  const panel = mountRetrieval(ctx, host, () => clip.textContent ?? '', true);
+  recall.addEventListener('click', () => {
+    clip.textContent = builtText();
+    panel.open();
+    panel.seedPassage();
+    host.querySelector('.convrecallpassage')?.scrollIntoView({ block: 'center' });
+    host.querySelector('.convrecallpassage')?.focus();
+  });
 }
 
 /* ══ THE ROSTER: EVERY LANE ONE SESSION DISPATCHED ═════════════════════════ */

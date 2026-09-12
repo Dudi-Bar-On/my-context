@@ -81,12 +81,12 @@
 import {
   RESTORE_STAGING_PROTOCOL, loadStagedRestore, restoreStagingDir, restoreStagingFile,
   verifyStagedRestore,
-  type RestoreVerification, type StagedRestore,
+  type RestoreVerification, type StagedRestore, type StagedRestoreSource,
 } from './restore-staging.ts';
 import { writeStagedRestore } from './restore-store.ts';
 import {
   POINT_CATEGORIES, renderPayload, renderReviewForm, summariseTranscript,
-  type SessionSummary, type SummaryOptions,
+  type SessionSummary, type SummaryCoverage, type SummaryOptions,
 } from './session-summary.ts';
 
 /* ── step 2: BUILD ────────────────────────────────────────────────────────── */
@@ -255,6 +255,69 @@ function keyFor(now: Date): string {
 }
 
 /**
+ * **What `stageRestoreSummary` actually needs — so a SECOND kind of payload
+ * can use this carrier instead of growing one of its own.**
+ *
+ * `plan:recall seq:2`, spec §10a, owner ruling 2026-09-11: a retrieval result
+ * may be placed into a FRESH window, and *"IT REUSES D34's CARRIER AND MUST
+ * NOT GROW A SECOND ONE."* Everything below step 5 — the re-read that proves
+ * the file survived, the owner's `'human'` approval, the clear that is his act
+ * alone, the one-shot spend and the loop guard — is what that ruling is
+ * protecting, and none of it may be re-implemented beside this file.
+ *
+ * The obstacle was a TYPE and nothing else: `RestoreProposal.summary` is a
+ * `SessionSummary`, which is transcript-shaped down to `speaker` and `cues`,
+ * and a retrieval result has none of that. `stageRestoreSummary` never read
+ * those fields — it reads four facts off the summary and stores them — so the
+ * fix is to name the four rather than to fabricate thirty. **Nothing is
+ * widened at the STAGING end**: the record written is byte-for-byte the shape
+ * it always was, `RestoreProposal` satisfies this interface through
+ * `stageableProposal` below, and every existing caller is untouched.
+ *
+ * Fabricating a `SessionSummary` was the alternative and is refused for this
+ * project's usual reason: thirty transcript-shaped counters set to zero would
+ * read, on the Status screen and in `restore --show`, as a transcript that was
+ * read and yielded nothing — which is precisely the `STD-a-measured-zero-is-
+ * drawn-and-named` confusion, manufactured on purpose.
+ */
+export interface StageableRestore {
+  /** What would be injected. As long as it needs to be. */
+  payload: string;
+  /** The short form the owner reads and approves. NOT the payload. */
+  reviewForm: string;
+  /** Every way this is PARTIAL, in words. Empty means complete. */
+  shortfalls: string[];
+  /** What it was built from, as `restore --show` prints it. */
+  source: StagedRestoreSource;
+  /** The loop guard's marker the payload carries. */
+  marker: string;
+  /** `seq:1`'s coverage block. A payload with no transcript behind it says so. */
+  coverage: SummaryCoverage;
+}
+
+/** A built proposal, in the shape the stage reads. The only lossy step is the one nothing reads. */
+export function stageableProposal(proposal: RestoreProposal): StageableRestore {
+  return {
+    payload: proposal.payload,
+    reviewForm: proposal.reviewForm,
+    shortfalls: proposal.shortfalls,
+    source: {
+      file: proposal.summary.file,
+      upToBytes: proposal.summary.coverage.upToBytes,
+      records: proposal.summary.coverage.records,
+      points: proposal.summary.points.length,
+    },
+    marker: proposal.summary.marker,
+    coverage: proposal.summary.coverage,
+  };
+}
+
+/** True for the shape `buildRestoreProposal` returns, false for a bare stageable. */
+function isProposal(value: RestoreProposal | StageableRestore): value is RestoreProposal {
+  return (value as RestoreProposal).summary !== undefined;
+}
+
+/**
  * **Step 5. Write the record, then READ IT BACK and compare.**
  *
  * The re-read is the whole function. A write that returns is not a summary
@@ -267,8 +330,9 @@ function keyFor(now: Date): string {
  * `approveStagedRestore` has been called by a person.
  */
 export function stageRestoreSummary(
-  root: string, proposal: RestoreProposal, now: Date = new Date(),
+  root: string, proposal: RestoreProposal | StageableRestore, now: Date = new Date(),
 ): StageResult {
+  const staging = isProposal(proposal) ? stageableProposal(proposal) : proposal;
   const key = keyFor(now);
   const file = restoreStagingFile(root, key);
   const record: StagedRestore = {
@@ -280,17 +344,12 @@ export function stageRestoreSummary(
     approvedBy: null,
     deliveredAt: null,
     deliveredTo: null,
-    source: {
-      file: proposal.summary.file,
-      upToBytes: proposal.summary.coverage.upToBytes,
-      records: proposal.summary.coverage.records,
-      points: proposal.summary.points.length,
-    },
-    marker: proposal.summary.marker,
-    payload: proposal.payload,
-    reviewForm: proposal.reviewForm,
-    shortfalls: proposal.shortfalls,
-    coverage: proposal.summary.coverage,
+    source: staging.source,
+    marker: staging.marker,
+    payload: staging.payload,
+    reviewForm: staging.reviewForm,
+    shortfalls: staging.shortfalls,
+    coverage: staging.coverage,
   };
 
   try {
@@ -305,7 +364,7 @@ export function stageRestoreSummary(
     };
   }
 
-  const verification = verifyStagedRestore(root, key, proposal);
+  const verification = verifyStagedRestore(root, key, staging);
   return { key, file, verified: verification.ok, reason: verification.reason, verification };
 }
 

@@ -128,6 +128,44 @@ export function ignoresRetrievalDir(gitignore: string): boolean {
   });
 }
 
+/**
+ * **The result file's shape, in the words a subagent is given — the seam Task
+ * 9 left open, closed from THIS side.**
+ *
+ * `plan:recall seq:2` recorded it as the one thing deliberately left alone:
+ * *"`MissionRequest` carries no field naming the RESULT FILE'S SHAPE for the
+ * subagent. Task 11 or 12 should either pass one or have `mission.ts` import
+ * `result.ts`'s renderer contract; it was left alone rather than guessed."*
+ *
+ * **It is PASSED, not imported, and the direction is forced.** `result.ts`
+ * already imports `RETRIEVAL_DIR` from `mission.ts`, so a mission that
+ * imported this module back would make the two a cycle — legal under ESM and
+ * a trap, because the value a cyclic import sees depends on which side was
+ * entered first. So the contract is a value this module exports and the
+ * CALLER hands to `MissionRequest.resultShape`. One definition, one direction,
+ * and `missionText` stays pure.
+ *
+ * Derived from `renderResult` and `parseResult` rather than written beside
+ * them: every line below names something one of those two functions actually
+ * does, so a subagent told this produces a file `parseResult` can read back.
+ */
+export function resultContract(): string[] {
+  return [
+    'A markdown file. One heading line: `# Retrieval result — <the id above>`.',
+    'Then a `**Written** <ISO stamp> · **mode** `<the mode above>`` line, and a '
+    + '`**Mission** `<this file>`` line so the round can be re-run rather than guessed at.',
+    'Then `## What it found`, and under it ONE CLAIM PER LINE, each starting `- `, '
+    + 'in chronological order.',
+    'Each claim ends with its citations in brackets, and there are exactly three shapes: '
+    + '`[turn <session>/<lane>@<byte offset>]`, `[commit <hash>]`, `[file <path>:<line>]`. '
+    + 'A lane is omitted where there is none: `[turn <session>@<byte offset>]`.',
+    'A line with no bracket is read back as a claim with NO citations — it is not skipped, '
+    + 'it is REPORTED as uncited. Do not write one: a claim you cannot cite is a claim you drop.',
+    'Never cite a file under `reports/`. A report is prepended to, so its line numbers move '
+    + 'on the next write.',
+  ];
+}
+
 /** Where one result belongs under a workspace root. */
 export function resultPathFor(root: string, id: string): string {
   return path.join(root, RETRIEVAL_DIR, `${id}${RESULT_SUFFIX}`);

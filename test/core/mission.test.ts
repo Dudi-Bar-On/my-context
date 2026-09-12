@@ -50,11 +50,18 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { mkdtempSync, readFileSync, readdirSync } from 'node:fs';
+import { after } from 'node:test';
+import { removeTree } from '../helpers/tmp.ts';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import {
   missionText, writeMission, type MissionRequest,
 } from '../../src/core/retrieval/mission.ts';
+import { resultContract } from '../../src/core/retrieval/result.ts';
+
+/** Every temporary root this file makes, removed when it is done. */
+const madeDirs: string[] = [];
+after(() => { for (const dir of madeDirs) removeTree(dir); });
 
 /** A marker that could only appear in the mission if the raw words were copied in. */
 const SECRET = 'ZEBRAFISH-CAROUSEL-9317 the owner pasted his production token here by mistake';
@@ -159,7 +166,12 @@ test('the mission is dated', () => {
 });
 
 test('writeMission writes exactly one file, and it is the one it reports', () => {
+  // Removed when the file is done: this left one directory in `%TEMP%` per
+  // run, and 214 of them had accumulated across this lane's runs before
+  // anybody counted. A leak nobody is told about is how 9.59 GB of them were
+  // cleaned off this machine the day before.
   const dir = mkdtempSync(path.join(tmpdir(), 'mycontext-mission-'));
+  madeDirs.push(dir);
   const written = writeMission(request({ dir }));
   assert.equal(path.dirname(written.path), dir);
   assert.deepEqual(readdirSync(dir), [path.basename(written.path)]);
@@ -199,3 +211,78 @@ test('no hook reaches the retrieval path', () => {
     );
   }
 });
+
+/* ── Task 12: ROUNDS COMPOSE ─────────────────────────────────────────────── */
+
+/**
+ * **A first round returns a subject LIST; a second goes into one of them** —
+ * Task 12 step 1, and §4's *"Rounds compose. A first round may return a list of
+ * subjects; the owner picks one; a second round extracts what he actually
+ * wants from it."*
+ *
+ * The two rounds are asserted to be DIFFERENT INSTRUCTIONS rather than the
+ * same mission with a subject appended, because the failure this guards is a
+ * second round that lists subjects again — which reads as working, returns a
+ * file, and answers nothing he asked.
+ */
+test('a first round asks for a list of subjects and names no subject of its own', () => {
+  const text = missionText(request({ mode: 'list-subjects', round: undefined }));
+  assert.match(text, /^## What to return$/m, 'a round must say what shape its answer takes');
+  const section = sectionOf(text, 'What to return');
+  assert.match(section, /list of SUBJECTS/, 'round 1 of list-subjects must ask for the list');
+  assert.ok(
+    !/^## Round 2/m.test(text),
+    'a first round announced itself as a second one',
+  );
+});
+
+test('a second round names the subject he chose and the result it came out of', () => {
+  const text = missionText(request({
+    mode: 'list-subjects',
+    round: { n: 2, subject: 'the anchors table', from: '.my_context/.retrieval/r1.result.md' },
+  }));
+  const section = sectionOf(text, 'Round 2 — the subject he chose');
+  // **On the two BULLET LINES, not on the section.** A removal proof caught
+  // the looser form: the section's opening paragraph also names the subject,
+  // so deleting the `- the subject:` line left `assert.match(section, …)`
+  // green. That is the commonest false-green in this repository — asserting a
+  // substring some other part of the same output also carries — so both facts
+  // are now asserted on the line that is supposed to carry them.
+  const bullets = section.split(String.fromCharCode(10))
+    .map((line) => line.trimEnd())
+    .filter((line) => line.startsWith('- '));
+  assert.equal(bullets.length, 2, 'round 2 states the subject and where it was listed');
+  assert.match(bullets[0] ?? '', /^- the subject: `the anchors table`$/,
+    'the subject line does not carry the subject');
+  assert.match(bullets[1] ?? '', /^- listed in: `[^`]*r1\.result\.md`$/,
+    'the provenance line does not carry the result it came out of');
+  assert.match(
+    sectionOf(text, 'What to return'),
+    /do not list subjects again/i,
+    'a second round must be told not to answer with another list',
+  );
+});
+
+test('the mission tells the subagent the SHAPE the result file must take', () => {
+  // The seam the item named: `MissionRequest` carried no field naming the
+  // result file's shape, so a subagent was told where to write and not how.
+  const text = missionText(request({ resultShape: resultContract() }));
+  const section = sectionOf(text, 'Where to write it');
+  assert.match(section, /^- /m, 'the contract reached the mission as nothing at all');
+  assert.match(section, /\[commit /, 'the citation bracket form is not in the contract');
+  assert.match(section, /## What it found/, 'the section the parser reads back is not named');
+
+  // And a mission built without one still works — the field is optional
+  // because Task 9 shipped without it and nothing may break on its absence.
+  assert.ok(!/\[commit /.test(sectionOf(missionText(request()), 'Where to write it')));
+});
+
+/** One `##` section's body. The same split `sectionsOf` makes in `return.ts`. */
+function sectionOf(text: string, heading: string): string {
+  const lines = text.split(/\r?\n/);
+  const at = lines.indexOf(`## ${heading}`);
+  if (at === -1) return '';
+  const rest = lines.slice(at + 1);
+  const end = rest.findIndex((line) => line.startsWith('## '));
+  return (end === -1 ? rest : rest.slice(0, end)).join('\n');
+}

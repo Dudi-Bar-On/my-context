@@ -890,6 +890,37 @@ const READ_ROUTES = (from: { item: string; session: string | null }): Probe[] =>
   // exports `markAnchor`, and this surface binds `anchorIdFor` — a pure string
   // derivation — and nothing else from it.
   '/api/conversations/anchors',
+  // ── `plan:recall seq:2` Tasks 11 and 12: the retrieval screen ───────────
+  //
+  // Four routes, and this sweep is the ASSERTION behind Task 11 step 2 —
+  // *"nothing reaches the context until the owner chooses it"* — rather than a
+  // sentence in a header promising it. A route that wrote a mission, staged a
+  // return or delivered anything would land inside the byte-identical
+  // comparison below and go red here.
+  //
+  // The list is probed on a workspace with no `.my_context/.retrieval` at all,
+  // which is the case that most tempts a read into creating one; `:id` is
+  // probed with an id nothing holds, for the same reason every `not-a-real-…`
+  // probe above is.
+  '/api/retrieval',
+  '/api/retrieval/no-such-result-was-ever-written',
+  // The two POSTs carry real bodies, not bodies that bounce off the 400: a
+  // probe that 400s proves the guard ran and nothing else, and both of these
+  // reach code that renders text out of the corpus. `mission` is handed the
+  // mode that needs no passage so it reaches `missionText`; `return` is handed
+  // an id that does not resolve, which is as far as it can be taken on a
+  // fixture holding no results — and is still past the body validation and
+  // into the loader that must not create what it cannot find.
+  {
+    path: '/api/retrieval/mission',
+    method: 'POST',
+    body: { mode: 'list-subjects', scope: { sessionId: null, from: null, to: null } },
+  },
+  {
+    path: '/api/retrieval/return',
+    method: 'POST',
+    body: { id: 'no-such-result-was-ever-written', claims: [1] },
+  },
   // `plan:archive seq:30`. THE SPILLED TOOL RESULT BEHIND A STEP, and the one
   // route on this list that is handed an absolute FILE PATH by the page rather
   // than an id. That is precisely why it is here: it opens a file the corpus

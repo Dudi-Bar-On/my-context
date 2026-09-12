@@ -449,8 +449,10 @@ export const COMMAND_FLAGS: Record<string, FlagSpec> = {
     allowed: [
       'build', 'show', 'approve', 'discard', 'json', 'yes',
       'session', 'range', 'subject', 'points', 'reasoning', 'code',
+      'from-result', 'claims',
     ],
-    values: ['approve', 'discard', 'session', 'range', 'subject', 'points'],
+    values: ['approve', 'discard', 'session', 'range', 'subject', 'points',
+      'from-result', 'claims'],
   },
   search: {
     allowed: [
@@ -1193,6 +1195,25 @@ export const FLAG_DECLARATIONS: Record<string, FlagDeclarations> = {
       group: 'restore-form',
       format: 'the key of a staged restore', example: 'restore-2026-09-11T09-00-00-000Z',
       note: 'Withdraw a staged restore. It reaches no session.',
+    },
+    'from-result': {
+      format: 'the path of a retrieval result file',
+      example: '.my_context/.retrieval/recall-0001.result.md',
+      note: 'Build from a RETRIEVAL RESULT instead of from a transcript, so what a subagent '
+        + 'reconstructed can be placed into a window you are about to empty (spec §10a). It is '
+        + 'a flag on this command and not a command of its own, deliberately: staging before '
+        + 'the clear, the re-read that proves the file survived, the owner-only approval and '
+        + 'the loop guard are this command’s already, and a second carrier would have to '
+        + 'argue all four again. What is staged arrives MARKED — dated, stated a record '
+        + 'rather than a current instruction, and a ruling since reversed says so on arrival.',
+    },
+    claims: {
+      format: 'claim numbers, comma separated',
+      example: '1,3,7',
+      note: 'Which claims of the result to take. Only with --from-result. Without it, all of '
+        + 'them — and either way the record says how many of how many it holds, because a '
+        + 'part of an account that reads as the whole of it is the defect this marking exists '
+        + 'to prevent.',
     },
     json: DETAIL.json,
     /**

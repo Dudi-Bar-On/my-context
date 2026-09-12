@@ -101,6 +101,7 @@ import {
 import { registerCliHelpRoutes } from './read-model-cli-help.ts';
 import { registerCommandRoutes } from './read-model-command.ts';
 import { registerConversationRoutes, workspaceCwd } from './read-model-conversations.ts';
+import { registerRetrievalRoutes } from './read-model-retrieval.ts';
 import {
   registerConversationDocumentRoutes,
 } from './read-model-conversation-document.ts';
@@ -695,6 +696,17 @@ export function registerReadRoutes(): void {
   // does that. `test/ui/conversations-endpoint.test.ts` holds it to both.
   // Registered here for the same two reasons as the calls above.
   registerConversationRoutes();
+  // `plan:recall seq:2` Tasks 11 and 12 — the retrieval screen: what has been
+  // asked before, one result read and judged, a mission COMPOSED, and a choice
+  // MARKED for either destination. Its own module for the reason above and one
+  // more: the marking has to ask the corpus whether a ruling has been reversed,
+  // which needs a store handle, and `read-model-conversations.ts`' graph walk
+  // in `test/ui/conversations-endpoint.test.ts` forbids exactly that there.
+  // Every route reads: `missionText` and `markReturn` are pure, the writing
+  // halves (`writeMission`, `stageRetrievalReturn`) are not reachable from
+  // here, and `test/ui/server-e2e.test.ts`' byte-identical sweep is what says
+  // so rather than this comment.
+  registerRetrievalRoutes();
   // `plan:archive seq:7`/`seq:8`/`seq:13` — the same transcript read as ONE
   // DOCUMENT rather than as a page of records: an outline the scroll places
   // rows from, and a node window it seeks to. Its graph is the same one the

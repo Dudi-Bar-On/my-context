@@ -129,30 +129,21 @@ import { closeSync, openSync, readSync, statSync } from 'node:fs';
 import { classifyTurn } from './conversation-index.ts';
 
 /**
- * The loop guard's sentinel, in this project's protocol-string form —
- * `CARRY_ONCE_PROTOCOL` (`core/ledger.ts`) is `mycontext-carry-once/1` and
- * this is its neighbour.
+ * **The loop guard's sentinel and its reader, re-exported from where they now
+ * live** — `core/summary-marker.ts`, which imports nothing.
  *
- * The version suffix is not decoration. When the payload's shape changes, a
- * reader that only knows `/1` must still recognise a `/2` payload as ours and
- * skip it, which is why `isMarkedSummary` matches the stem and not the whole
- * string.
- */
-export const SESSION_SUMMARY_MARKER = 'mycontext-session-summary/1';
-
-/** The stem every version of the marker shares. Matched, not the full string. */
-const MARKER_STEM = 'mycontext-session-summary/';
-
-/**
- * Does this text carry a summary this feature produced?
+ * They moved because a module that must NOT be able to reach a writer needs
+ * the string: `retrieval/return.ts` puts it at the head of every marked return,
+ * and that marking is rendered on the UI's read surface. Importing this file
+ * for one constant pulled `crossCheckAgainstIndex`' dynamic `import()` — and,
+ * behind it, `core/restore-stage.ts`' writer — into the server's reachable
+ * graph, and `test/ui/no-writes.test.ts` said so.
  *
- * Deliberately a substring test on the STEM. A record holding the payload
- * carries the marker somewhere in it; a record holding a future `/2` payload
- * carries a different version of it; both are ours and both must be skipped.
+ * Re-exported rather than moved-and-updated: every caller that reads the
+ * marker off this module keeps working, and there is exactly one definition.
  */
-export function isMarkedSummary(text: string): boolean {
-  return text.includes(MARKER_STEM);
-}
+import { SESSION_SUMMARY_MARKER, isMarkedSummary } from './summary-marker.ts';
+export { SESSION_SUMMARY_MARKER, isMarkedSummary };
 
 /** Read granularity, matching `scanTranscript`'s. Bounds memory, not the read. */
 const CHUNK_BYTES = 1024 * 1024;

@@ -3908,6 +3908,57 @@ wa-tree .wa-count{margin-inline-start:var(--sp-2);color:var(--dim);
 .convanchordrop{margin-block-start:var(--sp-1);font-size:var(--fs-00)}
 .convanchordrop summary{cursor:pointer;color:var(--dim)}
 
+/* ── RECONSTRUCT — `plan:recall seq:2`, Tasks 11 and 12 ────────────────────
+   The panel is mounted twice, on the archive screen and at the foot of a
+   document, so nothing here may assume either host's width. The three `<pre>`
+   blocks hold a brief, a marked payload and a review form: each SCROLLS
+   INSIDE ITSELF rather than widening the page, which is the rule every wide
+   block on this screen already follows — a body that scrolls sideways drags
+   the whole layout with it, and in RTL it drags it the other way. */
+.convrecallmodes{display:flex;flex-wrap:wrap;gap:var(--sp-1);
+  margin-block-start:var(--sp-1)}
+.convrecallmode[aria-checked="true"]{color:var(--gold);border-color:var(--gold)}
+.convrecallpassagebox{margin-block-start:var(--sp-2)}
+.convrecallpassage{inline-size:100%;box-sizing:border-box;font-family:var(--mono);
+  font-size:var(--fs-00);color:var(--ink);background:var(--panel-2);
+  border:2px solid var(--edge);border-radius:var(--r-sm);padding:var(--sp-1)}
+.convrecallscope{display:flex;flex-wrap:wrap;gap:var(--sp-1);align-items:center;
+  margin-block-start:var(--sp-2)}
+.convrecallscope input{color:var(--ink);background:var(--panel-2);
+  border:2px solid var(--edge);border-radius:var(--r-sm);padding:var(--sp-1)}
+.convrecallprepare,.convrecallreturn{margin-block-start:var(--sp-2)}
+.convrecallmission,.convrecallmarkedtext,.convrecallform{max-block-size:22rem;
+  overflow:auto;white-space:pre-wrap;overflow-wrap:anywhere;
+  font-family:var(--mono);font-size:var(--fs-00);color:var(--ink);
+  background:var(--panel-2);border:2px solid var(--edge);border-radius:var(--r-sm);
+  padding:var(--sp-2);margin-block-start:var(--sp-1);
+  /* The payload is English machine text in both languages; forcing LTR here
+     keeps a bracketed citation from being reordered around Hebrew chrome. */
+  direction:ltr;text-align:start}
+.convrecallrow{display:flex;flex-wrap:wrap;gap:var(--sp-1);align-items:center;
+  padding-block:var(--sp-1);border-block-end:1px solid var(--edge)}
+.convrecallclaims{display:flex;flex-direction:column;gap:var(--sp-1);
+  margin-block-start:var(--sp-1)}
+.convrecallclaim{display:flex;flex-wrap:wrap;gap:var(--sp-1);align-items:baseline;
+  border-inline-start:2px solid var(--edge);padding-inline-start:var(--sp-2)}
+.convrecallclaimtext{flex:1 1 20rem;overflow-wrap:anywhere;text-align:start}
+/* A citation is an identifier and must not be laid out as prose, but it must
+   still WRAP: `white-space:nowrap` here put a file-and-line citation on one
+   unbreakable line and pushed the page into a horizontal scroll with the item
+   pane open. Wide content scrolls inside its own box on this screen; the body
+   never scrolls sideways, and in RTL it would scroll the other way. */
+.convrecallcite{font-size:var(--fs-00);overflow-wrap:anywhere;min-inline-size:0}
+.convrecallrow,.convrecallclaim{min-inline-size:0}
+.convrecallsafe{border-inline-start:3px solid var(--gold);
+  padding-inline-start:var(--sp-2);color:var(--ink)}
+.convrecallreversed,.convrecallunknown,.convrecallfresh{margin-block-start:var(--sp-2)}
+.convrecallreversedone{overflow-wrap:anywhere}
+.convrecallwait,.convrecallnoresults,.convrecalldir,.convrecallnomatch,
+.convrecallunchecked,.convrecallpick,.convrecallportion,.convrecallnote,
+.convrecallcopied,.convrecallround{margin-block-start:var(--sp-1);color:var(--dim)}
+.convrecallclip{position:absolute;inline-size:1px;block-size:1px;overflow:hidden;
+  clip-path:inset(50%);white-space:pre}
+
 /* ══════════════════════════════════════════════════════════════════════════
    THE TRANSCRIPT VIEWER — `plan:archive seq:7`, `seq:8`, `seq:13`.
 
