@@ -5,12 +5,12 @@ title: "the D numbers: what each one means, and which are only proposed"
 status: active
 severity: soft
 always: true
-summary: The short numbers used to talk about work in progress and what each one refers to, kept as a bare map so the same number never means two things; a number for the symbols on screen was added on 2026-09-13.
-summary_of: 2f9947145ba8ad22
+summary: The short numbers used to talk about work in progress and what each one refers to, kept as a bare map so the same number never means two things; two more were added on 2026-09-13 from the type review.
+summary_of: 5b921b78e85901f9
 summary_was:
+  - 2026-09-12 The short numbers used to talk about work in progress and what each one refers to, kept as a bare map so the same number never means two things; a number for the symbols on screen was added on 2026-09-13.
   - 2026-09-12 The short numbers used to talk about work in progress and what each one refers to, kept as a bare map so the same number never means two things; the bookmarks subject closed on 2026-09-13.
   - 2026-09-12 The short numbers used to talk about work in progress and what each one refers to, kept as a bare map so the same number never means two things; D56 widened on 2026-09-12 to the record that says where the server is.
-  - 2026-09-12 The short numbers used to talk about work in progress and what each one refers to, kept as a bare map so the same number never means two things; five more were added on 2026-09-12 for work that had no subject.
 acknowledged:
   - reference_no_source@8e51ecb88264cf81
 scope: []
@@ -23,7 +23,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-09-07
 valid_until: null
-checksum: 5dac419122f868ab
+checksum: 87d91cf629ff3f18
 ---
 
 # the D numbers: what each one means, and which are only proposed
@@ -136,6 +136,14 @@ RATIFIED - the owner has used these numbers himself.
           ASSIGNED 2026-09-13, owner instruction. It also settles the glyphs ALREADY on screen:
           every screen heading carries an internal design verdict, and a green tick beside a
           title reads to a user as a health claim about the product.
+  D64     a value reaching a gate unchecked makes the gate answer no   rulings/69
+          ASSIGNED 2026-09-13. The class, not the case: "the unlisted input takes the benign
+          branch" has at least six members. This one is distinct from `isWriter` -- there the
+          key is `string` and the compiler could never have formed the proposition; HERE THE
+          UNION EXISTS AND THE TABLE IS TOTAL, and a cast walked past it.
+  D65     a byte offset and a character offset are not the same number   rulings/70
+          ASSIGNED 2026-09-13. The doctrine is settled and lives in COMMENTS rather than in
+          types, so every author must re-make a correct decision at every seam. Two did not.
           Distinct from D42: D42 retrieves from the conversation archive, this searches the
           corpus. The same verb over different stores.
 
