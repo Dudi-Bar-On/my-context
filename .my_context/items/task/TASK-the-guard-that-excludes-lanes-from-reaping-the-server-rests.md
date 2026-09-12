@@ -15,7 +15,7 @@ tags:
   - upkeep
   - "plan:live"
   - "seq:25"
-  - "state:todo"
+  - "state:done"
   - v2
 origin: human
 source_file: "C:/Program Files/Git/reap-body.md"
@@ -23,10 +23,10 @@ source_anchor: null
 source_checksum: bbe08607473ef9fa
 valid_from: 2026-09-12
 valid_until: null
-checksum: 97c9d1b8f1b86b1c
+checksum: 82009d73a50c0f9f
 plan: live
 seq: "25"
-state: todo
+state: done
 priority: "1"
 ---
 

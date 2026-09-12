@@ -1056,6 +1056,24 @@ export function refreshNote(report: ConversationRefresh | null): string {
  *     `ui-server-upkeep.ts` are a file on disk rather than a lock — they bound a
  *     sequence of turns, not a stampede. `agent_id` is the only subagent
  *     discriminator on the payload (`io.ts` measured it).
+ *
+ *     **AND IT HAS NEVER DECLINED ANYTHING, WHICH IS WORTH SAYING OUT LOUD**
+ *     (`TASK-the-guard-that-excludes-lanes-from-reaping-the-server-rests`,
+ *     2026-09-12). A lane's turn ending is not a `Stop` event at all — the
+ *     platform picks the event name from the SAME value it would put in
+ *     `agent_id`, so a firing that has one is a `SubagentStop` and goes to
+ *     `hooks/subagent-stop.ts`, which never touches the upkeep. Read off build
+ *     2.1.261: `let P = d ? "SubagentStop" : "Stop"`, and the `Stop` branch
+ *     spreads a base payload whose `agent_id` is that same undefined `d`. So
+ *     this line is belt beside braces, and **it is not the reason lanes do not
+ *     reap the server.** It was cited as that reason on 2026-09-11 and the
+ *     citation was argued from the audit log, which is written downstream of
+ *     this very line and so cannot tell a firing that was excluded from one
+ *     that never arrived.
+ *
+ *     The kept line is cheap and is kept for one honest reason: it is the only
+ *     thing that would still hold if the platform ever routed a lane here.
+ *     What is NOT kept is the claim that it is doing work today.
  *  2. **No workspace**, so there is nowhere for the clocks to live and no
  *     config to have opted in.
  *  3. **A config that will not parse.** A user who mistyped a comma has turned

@@ -1,4 +1,5 @@
 // @basis TASK-the-upkeep-stops-the-ui-server-before-it-knows-a-replacement,
+//        TASK-the-guard-that-excludes-lanes-from-reaping-the-server-rests,
 //        RULE-anything-you-start-for-a-human-to-look-at-must-outlive-the
 /**
  * **The two floors, the stand-down, and the machine that never asked.**
@@ -40,7 +41,7 @@
  */
 import test, { after } from 'node:test';
 import assert from 'node:assert/strict';
-import type { ChildProcess, spawn } from 'node:child_process';
+import { execFileSync, spawn as realSpawn, type ChildProcess, type spawn } from 'node:child_process';
 import { EventEmitter } from 'node:events';
 import { mkdirSync, mkdtempSync, readFileSync, readdirSync, writeFileSync } from 'node:fs';
 import net from 'node:net';
@@ -389,8 +390,10 @@ test('a successful probe resets the failure counter', async () => {
 test('the spawn is detached, ignores its stdio, and never opens a browser', async () => {
   const sb = sandbox();
   const spawner = fakeSpawn();
-  await upkeepUiServer(sb.root, CONFIGURED, NOW,
-    { globalRoot: sb.globalRoot, spawnFn: spawner.fn, portAcceptsFn: NOTHING_ON_THE_PORT });
+  await upkeepUiServer(sb.root, CONFIGURED, NOW, {
+    globalRoot: sb.globalRoot, spawnFn: spawner.fn, portAcceptsFn: NOTHING_ON_THE_PORT,
+    platform: 'linux',
+  });
 
   assert.equal(spawner.calls.length, 1);
   const call = spawner.calls[0];
@@ -403,6 +406,170 @@ test('the spawn is detached, ignores its stdio, and never opens a browser', asyn
   assert.deepEqual(call.args.slice(1), ['ui', '--port', String(PORT), '--no-open'],
     'a hook that launches a browser window mid-turn is a hook nobody keeps installed');
 });
+
+/* ---------------------------------------------------------------------------
+ * The breakaway: a server the hook's own death may not take with it.
+ *
+ * `TASK-the-guard-that-excludes-lanes-from-reaping-the-server-rests`. The
+ * hook's spawn was `detached: true` + `unref()` and that answers only "does it
+ * survive a parent that EXITS". Claude Code 2.1.261 kills an overrunning hook
+ * on Windows with `taskkill.exe /PID <hook> /T /F`, and `/T` takes every live
+ * descendant with it. So on Windows the launch goes through a `cmd.exe` that
+ * exits at once, and the server is nobody's live descendant by the time the
+ * kill lands.
+ * ------------------------------------------------------------------------- */
+
+test('on Windows the server is launched through a parent that exits, not as the hook\'s own child', async () => {
+  const sb = sandbox();
+  const spawner = fakeSpawn();
+  await upkeepUiServer(sb.root, CONFIGURED, NOW, {
+    globalRoot: sb.globalRoot, spawnFn: spawner.fn, portAcceptsFn: NOTHING_ON_THE_PORT,
+    platform: 'win32',
+  });
+
+  assert.equal(spawner.calls.length, 1);
+  const call = spawner.calls[0];
+  assert.ok(/cmd\.exe$/i.test(call.command), `the launcher must be cmd.exe, got ${call.command}`);
+  assert.deepEqual(call.args.slice(0, 6),
+    ['/d', '/s', '/c', 'start', '""', '/b'],
+    'start is what creates a process cmd does not stay the parent of; /b keeps it out of a '
+    + 'console window, /d and /s keep cmd from running AutoRun or re-parsing the quotes');
+  assert.equal(call.args[6], process.execPath,
+    'the server itself is still this Node, only reached through a launcher');
+  assert.deepEqual(call.args.slice(8), ['ui', '--port', String(PORT), '--no-open'],
+    'the breakaway may not change what the server is asked to be');
+  assert.equal(call.options.detached, true,
+    'the launcher still may not hold the hook open for the three seconds it is waited on');
+  assert.equal(call.options.stdio, 'ignore',
+    'the platform waits on a hook whose stdio a grandchild is holding');
+  assert.equal(call.options.windowsHide, true, 'no console window may flash mid-turn');
+  assert.equal(spawner.unrefs, 1, 'detached without unref keeps the parent alive anyway');
+});
+
+test(
+  'a child launched the breakaway way outlives the exact kill the platform uses, and the old shape does not',
+  {
+    skip: process.platform !== 'win32'
+      ? 'Windows-only: taskkill /T is the Windows reaper this proof is about'
+      : false,
+  },
+  async () => {
+    // Two parents, one launched each way, each with a long-lived child; then
+    // the command Claude Code's hook watchdog runs on a timeout, read off
+    // build 2.1.261 (`taskkill.exe /PID <pid> /T /F`). The OLD shape is run
+    // beside the new one on purpose: without it the survival below proves only
+    // that this machine did not happen to kill anything.
+    //
+    // **Both shapes are taken from what `upkeepUiServer` ACTUALLY EMITS**, not
+    // written out again here. A copy of the launch line in a test file is a
+    // second place for the launch line to live, and this whole item exists
+    // because a conclusion was drawn from a record written downstream of the
+    // thing it described. Only the tail — the server argv — is swapped for a
+    // sleeper, because a test may not start a real UI server on the owner's
+    // port. So a production change that drops `/b`, or the `cmd.exe` launcher
+    // altogether, turns the survival assertion below red.
+    const base = mkdtempSync(path.join(tmpdir(), 'uibreakaway-'));
+    bases.push(base);
+    const sleeper = path.join(base, 'sleeper.mjs');
+    writeFileSync(sleeper,
+      'import { writeFileSync } from "node:fs";\n'
+      + 'writeFileSync(process.argv[2], String(process.pid));\n'
+      + 'setInterval(() => {}, 1000);\n');
+
+    /** What production emits for one platform, with the server argv removed. */
+    const launchPrefix = async (
+      platform: NodeJS.Platform,
+    ): Promise<{ command: string; prefix: string[]; options: Record<string, unknown> }> => {
+      const sb = sandbox();
+      const spawner = fakeSpawn();
+      await upkeepUiServer(sb.root, CONFIGURED, NOW, {
+        globalRoot: sb.globalRoot, spawnFn: spawner.fn, portAcceptsFn: NOTHING_ON_THE_PORT,
+        platform,
+      });
+      const call = spawner.calls[0]!;
+      // `serverArgv` is five entries — the CLI entry plus `ui --port N
+      // --no-open` — and it is always the tail, on either shape.
+      return { command: call.command, prefix: call.args.slice(0, -5), options: call.options };
+    };
+
+    const shapes = {
+      old: await launchPrefix('linux'), // what the hook did before this change
+      breakaway: await launchPrefix('win32'), // what it does now
+    };
+
+    const parentSource = (
+      shape: { command: string; prefix: string[]; options: Record<string, unknown> },
+    ): string =>
+      'import { spawn } from "node:child_process";\n'
+      + 'import { writeFileSync } from "node:fs";\n'
+      // Its OWN pid first, before the spawn: a shape that fails to launch
+      // anything must still leave a pid this test can reap, or a broken
+      // production line would leak a process that runs until the machine is
+      // rebooted. That is not hypothetical — it happened while this test was
+      // being written.
+      + 'writeFileSync(process.argv[2], String(process.pid));\n'
+      + `const c = spawn(${JSON.stringify(shape.command)}, `
+      + `[...${JSON.stringify(shape.prefix)}, ${JSON.stringify(sleeper)}, process.argv[3]], `
+      + `${JSON.stringify(shape.options)});\n`
+      + 'c.on("error", () => {});\n'
+      + 'c.unref();\n'
+      + 'setInterval(() => {}, 1000);\n';
+
+    const alive = (pid: number): boolean => {
+      try { process.kill(pid, 0); return true; } catch { return false; }
+    };
+    const TASKKILL = path.join(
+      process.env.SYSTEMROOT ?? 'C:\\Windows', 'System32', 'taskkill.exe');
+    // `RULE-a-delegated-worker-never-runs-a-command-that-reaches-beyond`: every
+    // pid this reaches is one this test created and wrote down itself.
+    const reap = (pid: number): void => {
+      try {
+        execFileSync(TASKKILL, ['/PID', String(pid), '/T', '/F'], { stdio: 'ignore' });
+      } catch { /* already gone, which is the goal state */ }
+    };
+    const readPidWhenWritten = async (file: string): Promise<number> => {
+      for (let i = 0; i < 120; i += 1) {
+        try { return Number(readFileSync(file, 'utf8')); } catch { /* not yet */ }
+        await new Promise((r) => { setTimeout(r, 50); });
+      }
+      throw new Error(`nothing ever wrote ${file}`);
+    };
+
+    const outcome: Record<string, { parent: boolean; child: boolean }> = {};
+    for (const [name, shape] of Object.entries(shapes)) {
+      const parentFile = path.join(base, `${name}-parent.mjs`);
+      const parentPidFile = path.join(base, `${name}-parent.pid`);
+      const childPidFile = path.join(base, `${name}-child.pid`);
+      writeFileSync(parentFile, parentSource(shape));
+      const launched = realSpawn(
+        process.execPath, [parentFile, parentPidFile, childPidFile], { stdio: 'ignore' });
+      const parentPid = await readPidWhenWritten(parentPidFile);
+      let childPid: number | null = null;
+      try {
+        childPid = await readPidWhenWritten(childPidFile);
+        assert.ok(alive(childPid), `${name}: the child never came up at all`);
+
+        // The command Claude Code's hook watchdog runs on a timeout.
+        execFileSync(TASKKILL, ['/PID', String(parentPid), '/T', '/F'], { stdio: 'ignore' });
+        await new Promise((r) => { setTimeout(r, 1500); });
+        outcome[name] = { parent: alive(parentPid), child: alive(childPid) };
+      } finally {
+        // In a `finally`, because an assertion that throws above must not leave
+        // a never-exiting process behind — and a leaked one holds `node:test`
+        // open for as long as it lives.
+        if (childPid !== null) reap(childPid);
+        reap(parentPid);
+        launched.unref();
+      }
+    }
+
+    assert.equal(outcome.old!.child, false,
+      'the shape this change replaced must still die with its parent — if it survives, this '
+      + 'machine is not reaping and the survival below proves nothing');
+    assert.equal(outcome.breakaway!.child, true,
+      'a server launched through a parent that exits must outlive `taskkill /T` on the hook — '
+      + 'this is the whole of the defect that took the owner\'s server down on 2026-09-12');
+  });
 
 test('the spawn goes to the CONFIGURED port, never to an ephemeral one', async () => {
   const sb = sandbox();
@@ -893,7 +1060,11 @@ test('a server that answers and reports itself STALE is stopped and started agai
       'the stale server was not stopped, so the spawn on the next line can only ever answer ' +
       'EADDRINUSE — the port is held by the process being replaced');
     assert.equal(spawner.calls.length, 1);
-    assert.deepEqual(spawner.calls[0].args.slice(1),
+    // The TAIL of the argv, not `slice(1)`: on Windows the same server argv is
+    // reached through a `cmd.exe` launcher (see the breakaway tests above), and
+    // the claim this assertion makes — that a restart starts the same thing a
+    // cold spawn does — is about the server, not about how it is reached.
+    assert.deepEqual(spawner.calls[0].args.slice(-4),
       ['ui', '--port', String(PORT), '--no-open'],
       'the replacement is not the same command the cold spawn starts');
   } finally {
@@ -1200,7 +1371,10 @@ test('a workspace that is no longer there is not passed to spawn', async () => {
       freshnessFn: answering('stale').fn,
       killFn: fakeKill().fn,
     });
-    assert.deepEqual(spawner.calls[0].options, { detached: true, stdio: 'ignore' },
+    // The absent KEY, not the whole options object: the object also carries
+    // the launch shape, which differs by platform (see the breakaway tests
+    // above) and is not what this test is about.
+    assert.ok(!('cwd' in spawner.calls[0].options),
       'a cwd that does not exist was handed to spawn, which refuses it — so the restart could ' +
       'never succeed, and it would fail the same way on every attempt until the stand-down');
   } finally {

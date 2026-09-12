@@ -81,7 +81,7 @@
  * still works and is still what that disclosure names, because a stand-down
  * whose cause never resolves still needs a person.
  */
-import { spawn } from 'node:child_process';
+import { spawn, type SpawnOptions } from 'node:child_process';
 import {
   existsSync, mkdirSync, readFileSync, renameSync, rmSync, writeFileSync,
 } from 'node:fs';
@@ -403,6 +403,17 @@ export interface UpkeepDeps {
    * because it is a wait rather than a comparison, so it is a seam instead.
    */
   sleepFn?: (ms: number) => Promise<unknown>;
+  /**
+   * Which launch shape `startServer` uses, injected for the reason
+   * `src/ui/open.ts` injects the same value: the two command lines are a real
+   * difference in behaviour and one machine has to be able to run both of them.
+   *
+   * Production passes nothing and gets `process.platform`. It is NOT a way to
+   * ask for a shape — a Windows machine given `'linux'` here would spawn a
+   * server whose parent never exits, which is the defect this seam exists to
+   * hold a test against.
+   */
+  platform?: NodeJS.Platform;
 }
 
 /**
@@ -761,15 +772,94 @@ function due(last: number | null, now: number, interval: number): boolean {
  * only witness**, and treating a throw differently from a silent death would be
  * two failure paths for one fact.
  */
-function startServer(port: number, spawnFn: typeof spawn, cwd?: string): void {
+/**
+ * The argument vector, which is the same on both launch shapes below and is
+ * therefore written once. `--no-open` and the CONFIGURED port are the two
+ * things `startServer`'s header and the tests are actually about.
+ */
+function serverArgv(port: number): string[] {
+  return [CLI_ENTRY, 'ui', '--port', String(port), '--no-open'];
+}
+
+/**
+ * ── WHY `detached: true` IS NOT ENOUGH ON WINDOWS, MEASURED 2026-09-12 ──────
+ *
+ * `detached: true` + `unref()` answers ONE question — does the child survive a
+ * parent that EXITS — and the answer is yes; that was measured on 2026-09-11
+ * and is not re-opened here. It says nothing about the question that was
+ * actually killing the owner's server, which is whether the child survives a
+ * parent that is **killed**, and on this platform it does not.
+ *
+ * Claude Code 2.1.261 kills a hook that overruns its timeout by running, on
+ * Windows, `taskkill.exe /PID <hook pid> /T /F` — read off the build itself
+ * (the module exporting `ep`, whose Windows body is `P()`; the hook watchdog
+ * `hWe.#S` calls `ep(pid, 'SIGTERM')` from its timeout). **`/T` terminates the
+ * named process AND every live descendant of it**, and `detached` does not take
+ * a Windows process out of its parent's descendant walk. Measured directly:
+ * a child spawned exactly as the line below used to spawn one, from a parent
+ * then killed with that exact command, died with it — `AFTER: hook alive=false
+ * child alive=false`.
+ *
+ * That is the whole of the defect this branch exists for. On 2026-09-12 at
+ * 00:10:27.167Z this function put a replacement up, `confirmListening` saw it
+ * bind, and it was gone inside two seconds; the same firing wrote NO `stop`
+ * audit row although `hooks/stop.ts` writes one on every firing, because the
+ * hook never reached the line that writes it. One fact explains both: the
+ * platform reaped the hook, and the reap took the server with it. Every server
+ * that survived that night was started by hand, and a hand-started one is
+ * exactly a server that is nobody's live descendant.
+ *
+ * ── THE SHAPE, AND WHY IT IS `cmd.exe` RATHER THAN A FLAG ──────────────────
+ *
+ * There is no Node option that breaks a Windows process out of its parent's
+ * tree (`detached` sets the console, not the parentage), so the parentage is
+ * broken by putting a process between us that EXITS AT ONCE:
+ * `cmd.exe /d /s /c start "" /b <node> …`. `start` creates the server and
+ * `cmd` returns within milliseconds, so by the time the timeout kill runs —
+ * three seconds later, an eternity — the server's recorded parent is gone and
+ * the walk from the hook's pid never reaches it. Measured with the same probe
+ * that condemned the old shape: `AFTER: hook alive=false child alive=true`,
+ * and `taskkill` reported no descendant at all.
+ *
+ * `""` is the window title `start` insists on before an executable path it
+ * will quote, `/b` keeps it out of a new console window, `/d` and `/s` keep
+ * `cmd` from running an AutoRun profile or re-parsing the quotes. `stdio:
+ * 'ignore'` stays on the `cmd` we spawn and is inherited through `start`, so
+ * the server still holds no pipe belonging to the hook — which matters for its
+ * own reason: the platform waits on a hook whose stdio a grandchild is holding.
+ *
+ * **The non-Windows branch is left exactly as it was, and that is deliberate
+ * rather than complete.** The POSIX reaper in the same build enumerates
+ * descendants by ppid too, so the hole is very likely there as well — but no
+ * POSIX machine was available to measure it on, and this file does not get to
+ * carry a change nobody ran. It is named in the report rather than guessed at
+ * here.
+ *
+ * Nothing is reported back, and a synchronous throw is swallowed, because
+ * nothing this function could learn would be trustworthy: a `pid` says libuv
+ * accepted the exec, not that a server bound the port. **The next probe is the
+ * only witness**, and treating a throw differently from a silent death would be
+ * two failure paths for one fact. That is unchanged by the breakaway, and one
+ * degree more true of it: the pid we now hold is `cmd`'s, not the server's.
+ */
+function startServer(
+  port: number,
+  spawnFn: typeof spawn,
+  cwd?: string,
+  platform: NodeJS.Platform = process.platform,
+): void {
   try {
-    const child = spawnFn(
-      process.execPath,
-      [CLI_ENTRY, 'ui', '--port', String(port), '--no-open'],
-      cwd !== undefined && existsSync(cwd)
-        ? { detached: true, stdio: 'ignore', cwd }
-        : { detached: true, stdio: 'ignore' },
-    );
+    // Built once and then narrowed, so the two shapes cannot drift on the
+    // three options that are not about the breakaway at all.
+    const base: SpawnOptions = { detached: true, stdio: 'ignore' };
+    if (cwd !== undefined && existsSync(cwd)) base.cwd = cwd;
+    const child = platform === 'win32'
+      ? spawnFn(
+        process.env.COMSPEC ?? 'cmd.exe',
+        ['/d', '/s', '/c', 'start', '""', '/b', process.execPath, ...serverArgv(port)],
+        { ...base, windowsHide: true },
+      )
+      : spawnFn(process.execPath, serverArgv(port), base);
     child.on('error', () => { /* the next probe is the answer; see above */ });
     child.unref();
   } catch {
@@ -1029,7 +1119,7 @@ async function restartStaleServer(
   // stop can only ever answer EADDRINUSE — the same measurement that put the
   // occupancy check below where it is.
   stopServer(server.pid, deps.killFn ?? process.kill);
-  startServer(port, deps.spawnFn ?? spawn, server.workspace);
+  startServer(port, deps.spawnFn ?? spawn, server.workspace, deps.platform);
 
   // ── AND THEN FIND OUT, RATHER THAN ASSUMING ───────────────────────────────
   //
@@ -1049,7 +1139,7 @@ async function restartStaleServer(
   // away and needs another session to exist.
   let listening = await confirmListening(port, deps);
   if (!listening) {
-    startServer(port, deps.spawnFn ?? spawn, server.workspace);
+    startServer(port, deps.spawnFn ?? spawn, server.workspace, deps.platform);
     listening = await confirmListening(port, deps);
   }
   if (listening) {
@@ -1290,7 +1380,7 @@ export async function upkeepUiServer(
       root, { ...next, lastOutcome: 'too-soon' }, { did: 'nothing', why: 'too-soon' });
   }
 
-  startServer(port, deps.spawnFn ?? spawn);
+  startServer(port, deps.spawnFn ?? spawn, undefined, deps.platform);
   return recorded(
     root,
     { ...next, lastSpawnAt: now, spawnPending: true, lastOutcome: 'spawned' },
