@@ -5,8 +5,10 @@ title: more than half the delivery log is tests, and the file has no reader
 status: active
 severity: soft
 always: false
-summary: A log that records what the product delivered is mostly records of tests, and nothing reads it, so the one count it exists to support is fiction.
+summary: The recorder now forks a test-written row into a sibling file, so delivered.jsonl holds product deliveries only; the 157 legacy test rows were moved rather than deleted, and the file does have a reader - the assertion - but no reporting surface.
 summary_of: c0c11f85e55985c3
+summary_was:
+  - 2026-09-12 A log that records what the product delivered is mostly records of tests, and nothing reads it, so the one count it exists to support is fiction.
 scope:
   - src/rules/deliver.ts
   - test/rules/**
@@ -16,17 +18,17 @@ tags:
   - store
   - "plan:rulings"
   - "seq:71"
-  - "state:todo"
+  - "state:done"
 origin: human
 source_file: "C:/Users/UserC/AppData/Local/Temp/pollute.md"
 source_anchor: null
 source_checksum: 1687f342b35a86bc
 valid_from: 2026-09-12
 valid_until: null
-checksum: a740feb5c3fecfa9
+checksum: deebcc3f0fd980fd
 plan: rulings
 seq: "71"
-state: todo
+state: done
 priority: "1"
 ---
 

@@ -33,7 +33,7 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { runCli } from '../../src/cli/index.ts';
 import { buildSessionStartResult, storeAppendix } from '../../src/hooks/session-start.ts';
-import { DELIVERED_DIR, DELIVERED_FILE, type DeliveryRecord } from '../../src/rules/delivered.ts';
+import { deliveredFile, type DeliveryRecord } from '../../src/rules/delivered.ts';
 import { removeTree } from '../helpers/tmp.ts';
 
 const ENTRY_ID = 'a-body-stops-at-the-first-heading';
@@ -85,9 +85,17 @@ function workspace(withItem: boolean): string {
   return cwd;
 }
 
+/**
+ * **Through `deliveredFile`, never through `path.join(…, DELIVERED_FILE)`.** A
+ * row this process writes goes to the sibling `delivered.test.jsonl`, because
+ * `rules/delivered.ts` · `isTestProcess` forks the record inside a test run
+ * (`TASK-more-than-half-the-delivery-log-is-tests-and-the-file-has-no`).
+ * Rebuilding the name here would be a second answer to *"which file"*, and it
+ * would read an empty one.
+ */
 function rows(cwd: string): DeliveryRecord[] {
   try {
-    return readFileSync(path.join(cwd, '.my_context', DELIVERED_DIR, DELIVERED_FILE), 'utf8')
+    return readFileSync(deliveredFile(path.join(cwd, '.my_context')), 'utf8')
       .split('\n').filter((l) => l.trim() !== '').map((l) => JSON.parse(l) as DeliveryRecord);
   } catch { return []; }
 }

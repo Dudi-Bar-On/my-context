@@ -43,6 +43,59 @@
  * already takes: a lost row costs a FALSE `missed` report later, which is
  * noisy; a throw would cost the session its injection, which is the failure
  * this store exists to prevent. Noise over silence, disclosed either way.
+ *
+ * ── A TEST'S ROW IS A REAL ROW, AND IT IS NOT A PRODUCTION ROW ─────────────
+ *
+ * `TASK-more-than-half-the-delivery-log-is-tests-and-the-file-has-no`,
+ * measured 2026-09-13. Spec §8.2 defines a COUNT over `delivered.jsonl`, and
+ * in this repository 157 of its 278 rows had been written by the test suite:
+ * 105 under keys a test spelled `test::…`, 51 under the synthetic session
+ * `lane-still-gets-the-no-git-rule::proof`, one under `eyeball::x`. The count
+ * spec §8.2 exists to produce was more than half fiction — and those same
+ * three synthetic keys were the ONLY three rows in the file that failed to
+ * join against the audit log, so they corrupted the join as well as the count.
+ *
+ * **The delivery is not the problem and must not be touched.**
+ * `test/rules/lane-still-gets-the-no-git-rule.test.ts` runs the real door
+ * against the real store in the ONE directory where the developer tier is in
+ * force (`deliver.ts` · `workspaceIsMyContext`), and that is the only proof
+ * that a dispatched lane actually receives the `hard` no-git prohibition. What
+ * had to stop was the RECORD. So the record forks and the delivery does not.
+ *
+ * **The fork is decided by the RECORDER, from a signal a test cannot forget to
+ * send.** `NODE_TEST_CONTEXT` is set by Node's own test runner in every test
+ * file's child process (`child-v8` on Node 24) and is inherited by every
+ * process a test spawns — including this suite's own hook binaries, which
+ * `test/rules/delivery.test.ts` starts through `spawnSync` with
+ * `{ ...process.env }`. A row is therefore marked test-written by the FACT of
+ * being written inside a test, never by the spelling of a key somebody chose.
+ * The previous state of this file is the argument: the `test::` prefix was
+ * already there on 105 rows and 52 further test rows carried no prefix at all,
+ * because a convention a person has to remember is a convention half the
+ * callers forget. `test/helpers/pin-rendering.ts` reaches the same conclusion
+ * about the real home directory in its own words — *"The two pins above are
+ * conventions — a person has to know to write them"* — and turns the property
+ * into a check rather than a habit.
+ *
+ * **A SECOND FILE rather than a flag every reader filters out.** `deliver.ts`
+ * states this project's doctrine in its own header, about `request`: a filter
+ * is *"a list somebody can forget to extend"*, and structural absence is what
+ * it uses instead. A `test: true` field would leave the production count one
+ * forgotten `.filter()` away from being wrong again, and would oblige every
+ * future reader — including one written by somebody who never heard of this
+ * decision — to know about it. A sibling `delivered.test.jsonl` makes
+ * `delivered.jsonl` mean what spec §8.2 says with no reader doing anything at
+ * all. Nothing is lost: the rows are still written, still complete, still
+ * timestamped, one file over.
+ *
+ * **The routing is symmetric, and that is what keeps the suite honest.**
+ * `deliveredFile` is the ONE place the name is decided, so `recordDelivery`,
+ * `deliveries`, `wasDelivered` and `assertDelivered` all take the same fork:
+ * inside a test process a write and the read that asserts it land on the same
+ * file, outside one they land on the production file. A test that wrote to the
+ * sibling and read from the production log would prove nothing, and a reader
+ * routed by a different rule from the writer would be the second answer this
+ * module has spent its whole header refusing.
  */
 import { appendFileSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
@@ -65,6 +118,40 @@ import path from 'node:path';
  */
 export const DELIVERED_DIR = '.rules';
 export const DELIVERED_FILE = 'delivered.jsonl';
+
+/**
+ * **Where a row written inside a test goes instead** — the header section
+ * *"A TEST'S ROW IS A REAL ROW"* carries the argument and the measurement.
+ *
+ * Beside the production log rather than under `tmpdir()`, deliberately: these
+ * rows record a real door really running, they are the evidence when a test
+ * and the product disagree, and a reader who opens `.rules/` should be able to
+ * see both halves of what this mechanism wrote. The directory already carries
+ * its own `*` .gitignore (`ensureDir`), so neither file is ever staged.
+ */
+export const DELIVERED_TEST_FILE = 'delivered.test.jsonl';
+
+/**
+ * **Is this process a test?** The whole convention, in one predicate, and the
+ * reason it is a predicate and not a parameter: a parameter is something a
+ * caller passes, and every caller that forgets it writes a production row that
+ * is a lie. Node's test runner sets `NODE_TEST_CONTEXT` in each test file's
+ * child process and the value is inherited by anything that child spawns, so
+ * no test can opt out of being marked and no hook Claude Code runs can be
+ * marked by accident.
+ *
+ * **What it does NOT cover, said out loud:** a harness that is not Node's test
+ * runner — the Playwright suite under `e2e/`, or a person running a probe by
+ * hand, which is what this file's one `eyeball::x` row was. Neither has ever
+ * written into this repository's production log (all 157 polluting rows
+ * measured on 2026-09-13 were `node --test` rows but for that single
+ * hand-run probe), but if one ever starts a real door against a real
+ * workspace, the fix belongs HERE, in the one predicate — not in a key its
+ * caller has to remember to spell a particular way.
+ */
+export function isTestProcess(): boolean {
+  return process.env.NODE_TEST_CONTEXT !== undefined;
+}
 
 /**
  * The doors, and they are spelled the way `core/audit.ts` already spells the
@@ -100,8 +187,17 @@ export interface DeliveryRecord {
   note?: string;
 }
 
-function filePath(root: string): string {
-  return path.join(root, DELIVERED_DIR, DELIVERED_FILE);
+/**
+ * The file this process reads and writes — the production log, or the sibling
+ * that holds what the test suite wrote.
+ *
+ * Exported because the tests that assert on this file's BYTES have to ask the
+ * same question the recorder asked. A test that rebuilt the path out of
+ * `DELIVERED_FILE` by hand would be a second answer to *"which file"*, and the
+ * first thing it would be wrong about is itself.
+ */
+export function deliveredFile(root: string): string {
+  return path.join(root, DELIVERED_DIR, isTestProcess() ? DELIVERED_TEST_FILE : DELIVERED_FILE);
 }
 
 /**
@@ -159,7 +255,7 @@ function trim(file: string): void {
 export function recordDelivery(root: string, record: Omit<DeliveryRecord, 'at'> & { at?: string }): boolean {
   try {
     ensureDir(root);
-    const file = filePath(root);
+    const file = deliveredFile(root);
     const row: DeliveryRecord = { at: record.at ?? new Date().toISOString(), ...record };
     appendFileSync(file, `${JSON.stringify(row)}\n`, 'utf8');
     trim(file);
@@ -173,7 +269,7 @@ export function recordDelivery(root: string, record: Omit<DeliveryRecord, 'at'> 
 export function deliveries(root: string, key: string): DeliveryRecord[] {
   try {
     const rows: DeliveryRecord[] = [];
-    for (const line of readFileSync(filePath(root), 'utf8').split('\n')) {
+    for (const line of readFileSync(deliveredFile(root), 'utf8').split('\n')) {
       if (line.trim() === '') continue;
       try {
         const row = JSON.parse(line) as DeliveryRecord;

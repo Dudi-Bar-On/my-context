@@ -1,4 +1,4 @@
-// @basis TASK-the-store-is-delivered-at-every-door-an-agent-starts-through, INV-hooks-fail-open
+// @basis TASK-the-store-is-delivered-at-every-door-an-agent-starts-through, INV-hooks-fail-open, TASK-more-than-half-the-delivery-log-is-tests-and-the-file-has-no
 /**
  * **Every door records a delivery, and a later hook says when none did.**
  *
@@ -37,7 +37,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
-import { mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -46,7 +46,8 @@ import { storeAppendix } from '../../src/hooks/session-start.ts';
 import { buildSubagentStartOutput } from '../../src/hooks/subagent-start.ts';
 import { runPreToolUse } from '../../src/hooks/pre-tool-use.ts';
 import {
-  DELIVERED_DIR, DELIVERED_FILE, deliveries, recordDelivery, wasDelivered, type DeliveryRecord,
+  DELIVERED_DIR, DELIVERED_FILE, DELIVERED_TEST_FILE, deliveredFile, deliveries, isTestProcess,
+  recordDelivery, wasDelivered, type DeliveryRecord,
 } from '../../src/rules/delivered.ts';
 import { RULES_DIR_ENV } from '../../src/rules/deliver.ts';
 import { removeTree } from '../helpers/tmp.ts';
@@ -88,8 +89,16 @@ function workspace(): string {
   return cwd;
 }
 
+/**
+ * **Through `deliveredFile`, not through `path.join(…, DELIVERED_FILE)`.** This
+ * process is a test, so the recorder routes every row it writes to
+ * `delivered.test.jsonl` (`rules/delivered.ts` · `isTestProcess`) — including
+ * the rows the hook BINARIES below write, because `spawnHook` passes
+ * `{ ...process.env }` and `NODE_TEST_CONTEXT` is inherited. Asking the module
+ * which file it used is the only reading that cannot drift from the writing.
+ */
 function rows(cwd: string): DeliveryRecord[] {
-  const file = path.join(cwd, '.my_context', DELIVERED_DIR, DELIVERED_FILE);
+  const file = deliveredFile(path.join(cwd, '.my_context'));
   try {
     return readFileSync(file, 'utf8').split('\n').filter((l) => l.trim() !== '')
       .map((l) => JSON.parse(l) as DeliveryRecord);
@@ -409,7 +418,7 @@ test('an unreadable record answers "not delivered" rather than throwing', () => 
   const root = path.join(cwd, '.my_context');
   try {
     mkdirSync(path.join(root, DELIVERED_DIR), { recursive: true });
-    writeFileSync(path.join(root, DELIVERED_DIR, DELIVERED_FILE), 'not json at all\n{"key":\n', 'utf8');
+    writeFileSync(deliveredFile(root), 'not json at all\n{"key":\n', 'utf8');
     assert.equal(
       wasDelivered(root, 'anything'), false,
       'reporting a delivery nobody can find is the wrong reading of a record that cannot be read',
@@ -423,8 +432,8 @@ test('one damaged line does not cost the rows around it', () => {
   const root = path.join(cwd, '.my_context');
   try {
     recordDelivery(root, { kind: 'delivered', key: 'k', door: 'session-start', entries: 1 });
-    writeFileSync(path.join(root, DELIVERED_DIR, DELIVERED_FILE), `{ not json\n${
-      readFileSync(path.join(root, DELIVERED_DIR, DELIVERED_FILE), 'utf8')}`, 'utf8');
+    writeFileSync(deliveredFile(root), `{ not json\n${
+      readFileSync(deliveredFile(root), 'utf8')}`, 'utf8');
     assert.equal(wasDelivered(root, 'k'), true, 'a damaged first line cost every row after it');
   } finally { removeTree(cwd); }
 });
@@ -438,6 +447,78 @@ test('a record written into a root that does not exist fails without throwing', 
     'the directory is created on demand — a first delivery must not be lost to a missing state/',
   );
   removeTree(path.join(tmpdir(), 'myctx-nope'));
+});
+
+/* ══ 7. A TEST'S OWN ROW NEVER REACHES THE PRODUCTION COUNT ═════════════ */
+
+/**
+ * **Spec §8.2's count is taken over `delivered.jsonl`, and on 2026-09-13 that
+ * count was 157/278 fiction** — `TASK-more-than-half-the-delivery-log-is-
+ * tests-and-the-file-has-no`. The rows were real deliveries through the real
+ * door; they were just not the product's. `rules/delivered.ts` · `isTestProcess`
+ * now forks the RECORD on a signal the test runner sets and no caller supplies,
+ * and these two assertions are what a reader should delete to see the count go
+ * back to being a lie.
+ *
+ * Both run in a SANDBOX, which is the right place for the recorder-level
+ * claim: the question here is *"does the module route"*, and a tmpdir answers
+ * it without touching anybody's data. The claim that matters about the OWNER's
+ * log — that a real door, run against the real workspace where the developer
+ * tier is in force, adds nothing to it — is asserted where that door is already
+ * being run, in `test/rules/lane-still-gets-the-no-git-rule.test.ts`.
+ */
+test('a row written inside a test lands in the SIBLING file and `delivered.jsonl` is never created', () => {
+  const cwd = workspace();
+  const root = path.join(cwd, '.my_context');
+  try {
+    assert.equal(
+      isTestProcess(), true,
+      'this process does not recognise itself as a test, so every row the suite writes from here '
+      + 'on is being counted as a product delivery — which is the whole defect this section exists '
+      + 'for. Node sets NODE_TEST_CONTEXT in each test file\'s child process; a runner that does '
+      + 'not is a runner `isTestProcess` has to learn about.',
+    );
+    assert.equal(
+      recordDelivery(root, { kind: 'delivered', key: 'routed', door: 'subagent-start', entries: 3 }),
+      true, 'the row was not written at all, so this case is not the routing one',
+    );
+    assert.equal(
+      existsSync(path.join(root, DELIVERED_DIR, DELIVERED_FILE)), false,
+      `a test wrote into ${DELIVERED_FILE}. Spec §8.2 counts that file, and a suite that appends `
+      + 'to it makes the count grow with the number of times somebody ran the tests.',
+    );
+    const sibling = path.join(root, DELIVERED_DIR, DELIVERED_TEST_FILE);
+    assert.deepEqual(
+      readFileSync(sibling, 'utf8').split('\n').filter((l) => l.trim() !== '')
+        .map((l) => (JSON.parse(l) as DeliveryRecord).key),
+      ['routed'],
+      `the row did not reach ${DELIVERED_TEST_FILE} either, so it was not routed — it was lost, `
+      + 'which is worse than polluting: a delivery this suite cannot find is a delivery it cannot '
+      + 'prove happened',
+    );
+  } finally { removeTree(cwd); }
+});
+
+/**
+ * **The read takes the same fork as the write, and this is the assertion that
+ * stops the fix from breaking the mechanism it protects.** If `deliveries` read
+ * `delivered.jsonl` while `recordDelivery` wrote the sibling, every door test
+ * above would still pass its TEXT assertion and silently lose its ROW
+ * assertion — and `assertDelivered` would report a missed door for every
+ * delivery the suite makes.
+ */
+test('and the read follows it, so a test can still assert the delivery it just made', () => {
+  const cwd = workspace();
+  const root = path.join(cwd, '.my_context');
+  try {
+    recordDelivery(root, { kind: 'delivered', key: 'sym', door: 'session-start', entries: 1 });
+    assert.equal(
+      wasDelivered(root, 'sym'), true,
+      'the recorder and the reader disagree about which file holds a delivery, so a door that ran '
+      + 'perfectly reads as a door that never ran',
+    );
+    assert.equal(deliveredFile(root), path.join(root, DELIVERED_DIR, DELIVERED_TEST_FILE));
+  } finally { removeTree(cwd); }
 });
 
 /* ══ 6. THE SECOND ASSERTION SITE, WHICH COVERS THE KEY THE FIRST CANNOT ══ */

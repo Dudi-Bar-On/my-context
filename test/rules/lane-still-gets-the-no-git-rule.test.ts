@@ -1,4 +1,4 @@
-// @basis RULE-a-delegated-worker-runs-no-git-command-that-touches-the, TASK-seed-the-store-and-migrate-the-rules-that-already-exist, TASK-the-store-is-delivered-at-every-door-an-agent-starts-through
+// @basis RULE-a-delegated-worker-runs-no-git-command-that-touches-the, TASK-seed-the-store-and-migrate-the-rules-that-already-exist, TASK-the-store-is-delivered-at-every-door-an-agent-starts-through, TASK-more-than-half-the-delivery-log-is-tests-and-the-file-has-no
 /**
  * **THE MIGRATION'S ONE UNFORGIVING CONDITION: the rule that stops a lane
  * running `git checkout --` on this shared tree must still REACH a lane.**
@@ -32,10 +32,31 @@
  * `packageRoot()`, so the developer tier is in force in EXACTLY ONE directory
  * on the machine and a temporary workspace cannot stand in for it. A fixture
  * store under `MYCONTEXT_RULES_DIR` would prove the renderer works and prove
- * nothing about the entry that shipped. The cost is accepted and bounded: the
- * door appends one row to `.my_context/.rules/delivered.jsonl` and one audit
- * record, both in directories this product keeps a `*` .gitignore in, and it
- * writes no item and no entry.
+ * nothing about the entry that shipped.
+ *
+ * ── THE COST WAS SAID TO BE BOUNDED AND IT WAS BOUNDED PER RUN ─────────────
+ *
+ * What stood here until 2026-09-13 was *"the cost is accepted and bounded: the
+ * door appends one row to `.my_context/.rules/delivered.jsonl`"*. One row per
+ * run is bounded; a thousand runs is not. Measured that day
+ * (`TASK-more-than-half-the-delivery-log-is-tests-and-the-file-has-no`): of
+ * 278 rows in the owner's production log, **157 had been written by the test
+ * suite** — 105 under `test::…` keys, 51 under this file's own synthetic
+ * session `lane-still-gets-the-no-git-rule::proof`, one under a hand-run
+ * `eyeball::x`. Spec §8.2 defines a count over that file, so the count was
+ * more than half fiction; and those three synthetic keys were the only rows in
+ * it that would not join against the audit log.
+ *
+ * **The delivery stayed. The record moved.** `rules/delivered.ts` ·
+ * `isTestProcess` forks the RECORD on `NODE_TEST_CONTEXT`, which Node's test
+ * runner sets and which no caller here passes, so every row the tests below
+ * cause goes to the sibling `delivered.test.jsonl`. This file still runs
+ * the real door against the real store in the one directory where the
+ * developer tier is in force — which is the whole reason it exists — and the
+ * last test in the file asserts, against the owner's actual log, that doing so
+ * adds nothing to it. The audit record this door also writes is untouched and
+ * still lands in the owner's `.audit/` under the synthetic session id; that is
+ * named as a known remaining cost rather than quietly left unsaid.
  *
  * ── WHAT MAKES IT GO RED ───────────────────────────────────────────────────
  *
@@ -45,6 +66,7 @@
  */
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 import path from 'node:path';
 import { Store } from '../../src/core/store.ts';
 import { rebuild } from '../../src/core/rebuild.ts';
@@ -52,6 +74,7 @@ import { resolveWorkspace } from '../../src/core/workspace.ts';
 import { RETIRED_STATUSES } from '../../src/core/select.ts';
 import { entriesDir, loadRules } from '../../src/rules/store.ts';
 import { deliverAtDoor, renderEntry, workspaceIsMyContext } from '../../src/rules/deliver.ts';
+import { DELIVERED_DIR, DELIVERED_FILE, deliveries } from '../../src/rules/delivered.ts';
 import { buildSubagentStartOutput } from '../../src/hooks/subagent-start.ts';
 import type { Entry } from '../../src/rules/schema.ts';
 
@@ -187,4 +210,60 @@ test('ONE PLACE: the corpus item it came from is RETIRED, and points at where it
       'the retired item does not point at where the rule went, in one hop',
     );
   } finally { store.close(); }
+});
+
+/**
+ * **THE COST, ASSERTED AGAINST THE OWNER'S OWN LOG.**
+ * `TASK-more-than-half-the-delivery-log-is-tests-and-the-file-has-no`.
+ *
+ * Everything above runs a real door against the real workspace on purpose.
+ * This asserts the price of that: `.my_context/.rules/delivered.jsonl` — the
+ * file spec §8.2 counts — does not grow by a byte when it happens.
+ *
+ * **It is the only assertion here that can be made nowhere else.** The
+ * sandbox proof in `test/rules/delivery.test.ts` §7 shows the recorder ROUTES;
+ * this shows the routing holds in the one directory where the developer tier
+ * is in force, where the store is the shipped one, and where the file being
+ * protected belongs to somebody. Delete the fork in `deliveredFile` and this
+ * goes red on its own line at the next run.
+ *
+ * It reads the production log and writes nothing to it. If the file does not
+ * exist — a fresh clone, or an installation that has never started a door —
+ * the count is 0 before and 0 after, and the assertion still means what it
+ * says.
+ */
+test('and the OWNER\'s production log does not grow when this file runs a real door', () => {
+  const production = path.join(PROJECT_ROOT, DELIVERED_DIR, DELIVERED_FILE);
+  const count = (): number => {
+    try {
+      return readFileSync(production, 'utf8').split('\n').filter((l) => l.trim() !== '').length;
+    } catch { return 0; }
+  };
+  const before = count();
+  const delivered = deliverAtDoor({
+    stateRoot: PROJECT_ROOT,
+    door: 'subagent-start',
+    key: 'test::lane-still-gets-the-no-git-rule-c',
+  });
+  assert.equal(
+    delivered.recorded, true,
+    'the door did not record its delivery anywhere at all. The record is what spec §8.2 counts; '
+    + 'routing it away from the production log must not mean dropping it.',
+  );
+  assert.equal(
+    count(), before,
+    `this test file appended to ${DELIVERED_FILE}. That file is the owner's, spec §8.2 defines a `
+    + 'count over it, and on 2026-09-13 157 of its 278 rows were this suite\'s — which is the '
+    + 'measurement that put the fork in `rules/delivered.ts` · `deliveredFile`.',
+  );
+  // `>= 1` and not `=== 1`: the sibling log is APPEND-ONLY and outlives the run,
+  // exactly as the production one does, so this key carries one row per run this
+  // repository has ever made. Pinning the count would be asserting how many
+  // times somebody ran the suite.
+  assert.ok(
+    deliveries(PROJECT_ROOT, 'test::lane-still-gets-the-no-git-rule-c')
+      .some((r) => r.kind === 'delivered'),
+    'the delivery this test just made is not readable back, so the record was not routed — it '
+    + 'was lost. A door whose delivery cannot be found is the exact state a `missed` row reports.',
+  );
 });
