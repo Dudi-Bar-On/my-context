@@ -9,6 +9,8 @@ summary: The rules that already governed this project now live inside the tool i
 summary_of: fd4eba6056f1655a
 summary_was:
   - 2026-09-11 Move the rules that already govern this project into the new store, once, carefully, and only when it is ready.
+acknowledged:
+  - task_unverified@465439b833e07f91
 scope:
   - src/rules/entries/**
   - .my_context/items/**
@@ -26,7 +28,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-09-10
 valid_until: null
-checksum: 817f3969ee9eb999
+checksum: a400482ec66268c1
 plan: store
 seq: "4"
 state: done

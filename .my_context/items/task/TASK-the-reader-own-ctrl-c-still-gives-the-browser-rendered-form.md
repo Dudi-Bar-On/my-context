@@ -7,6 +7,8 @@ severity: soft
 always: false
 summary: Pressing the usual copy key still copies what the screen looks like, not the clean text, so a reader has to know to use the new buttons.
 summary_of: 3fdeb890c6b91584
+acknowledged:
+  - task_unverified@28062537d1e9fd3a
 scope:
   - src/ui/public/screens/conversations.js
 tags:
@@ -22,7 +24,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-09-09
 valid_until: null
-checksum: 3e1c45b0bbd7b559
+checksum: 3dfa06a2819ac10b
 plan: archive
 seq: "42"
 state: done

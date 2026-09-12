@@ -9,6 +9,9 @@ summary: The 565 conversation bookmarks now live in a plain file that survives t
 summary_of: 04173c1a95baf31e
 summary_was:
   - "2026-09-11 Make the 565 bookmarks durable: the file is the truth, the anchors table is rebuilt from it, and deleting the index loses nothing."
+acknowledged:
+  - source_drift@2da0212826099217
+  - task_unverified@2da0212826099217
 scope:
   - src/core/anchor-file.ts
   - src/core/anchors.ts
@@ -28,7 +31,7 @@ source_anchor: null
 source_checksum: 4c8c4def1164644c
 valid_from: 2026-09-11
 valid_until: null
-checksum: 70c8b3068b20c572
+checksum: 712fe51610c7ea7b
 plan: recall
 seq: "6"
 state: done

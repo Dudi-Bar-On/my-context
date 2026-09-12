@@ -9,6 +9,8 @@ summary: "Done: what a field will accept is shown beside it, so nobody has to le
 summary_of: b1d093f6925becfb
 summary_was:
   - 2026-09-11 Show what a command does and which values it will accept, with a worked example, right where someone is filling it in.
+acknowledged:
+  - task_unverified@0ded2d6722f2e9bc
 scope: []
 tags:
   - "plan:builder"
@@ -22,7 +24,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-08-24
 valid_until: null
-checksum: 03dab64d9628a99b
+checksum: daa22cb4e2d44697
 plan: builder
 seq: "8"
 state: done

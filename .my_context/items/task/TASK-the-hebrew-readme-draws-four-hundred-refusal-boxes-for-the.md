@@ -9,6 +9,8 @@ summary: "Cancelled unbuilt: the screen this belonged to was replaced by a list 
 summary_of: c763b9d664ff70a8
 summary_was:
   - 2026-09-05 Rendering the Hebrew documentation now fills the page with warnings about the direction wrappers the document is built from.
+acknowledged:
+  - task_unverified@a01590b2e13aa15e
 scope:
   - src/ui/public/lib/markdown.js
   - docs/README.he.md
@@ -28,7 +30,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-09-05
 valid_until: 2026-09-05
-checksum: 2bc5a88e4a417cd0
+checksum: 2f1bd656de23051c
 plan: docsys
 seq: "10"
 state: done

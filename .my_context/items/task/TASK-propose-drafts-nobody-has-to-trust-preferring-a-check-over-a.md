@@ -7,6 +7,8 @@ severity: soft
 always: false
 summary: Turn what was learned into suggestions that are never in force until approved, favouring something that can be checked over something that must be believed.
 summary_of: a874e4556ded26a8
+acknowledged:
+  - task_unverified@40c2e076e83bd173
 scope:
   - src/**
   - test/**
@@ -23,7 +25,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-09-08
 valid_until: null
-checksum: 033267d409e1a308
+checksum: 2d78a21de33dfa38
 plan: loop
 seq: "3"
 state: done

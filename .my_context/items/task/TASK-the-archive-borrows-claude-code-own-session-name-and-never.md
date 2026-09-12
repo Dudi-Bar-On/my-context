@@ -7,6 +7,8 @@ severity: soft
 always: false
 summary: "The archive shows the name Claude Code gave a session and offers no way to give it one of its own; seq:10 says that silence is not defensible either way."
 summary_of: e40356d4e126548f
+acknowledged:
+  - task_unverified@171cf3295315e5ea
 scope:
   - src/ui/**
   - src/core/conversation-index.ts
@@ -24,7 +26,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-09-09
 valid_until: null
-checksum: f90e4b1b57947320
+checksum: c218411a41822b18
 plan: archive
 seq: "34"
 state: done

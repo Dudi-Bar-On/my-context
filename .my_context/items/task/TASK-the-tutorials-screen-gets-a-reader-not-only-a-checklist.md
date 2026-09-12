@@ -9,6 +9,8 @@ summary: "Cancelled unbuilt: the screen this belonged to was replaced by a list 
 summary_of: b1d5c025f4c5527d
 summary_was:
   - 2026-09-05 The Tutorials screen gains a reader that opens one tutorial's markdown through the app's existing renderer, instead of only listing checkmarks.
+acknowledged:
+  - task_unverified@1d96f6bdcfeca9dd
 scope:
   - src/ui/public/screens/tut.js
 tags:
@@ -25,7 +27,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-09-05
 valid_until: 2026-09-05
-checksum: d311573ad561fc20
+checksum: e987fa5d4cd2e65c
 plan: tuts
 seq: "4"
 state: done

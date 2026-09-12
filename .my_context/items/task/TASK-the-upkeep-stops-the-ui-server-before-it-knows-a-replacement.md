@@ -7,6 +7,9 @@ severity: soft
 always: false
 summary: The background upkeep that keeps the web UI running can stop the running server and then fail to start its replacement, leaving nobody with a server at all.
 summary_of: 35d97ed22b4a5d7b
+acknowledged:
+  - tag_projection_unprojected@ceec96965d2974c9
+  - task_unverified@ceec96965d2974c9
 scope: []
 tags:
   - ui-server
@@ -19,7 +22,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-09-11
 valid_until: null
-checksum: 1e0e94a508456948
+checksum: 1b6c40e499fa66f0
 state: done
 ---
 

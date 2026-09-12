@@ -12,7 +12,7 @@ summary_was:
   - 2026-09-12 The short numbers used to talk about work in progress and what each one refers to, kept as a bare map so the same number never means two things; a number for the bookmarks ruling was added on 2026-09-12.
   - 2026-09-12 The short numbers used to talk about work in progress and what each one refers to, kept as a bare map so the same number never means two things; D56 was added on 2026-09-12 for the upkeep mechanism that keeps losing the owner’s server.
 acknowledged:
-  - reference_no_source@4e72d4cc9e0e40dc
+  - reference_no_source@8e51ecb88264cf81
 scope: []
 tags:
   - v2
@@ -23,7 +23,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-09-07
 valid_until: null
-checksum: be93b0d60f7cd0e2
+checksum: f74b63412cbbe230
 ---
 
 # the D numbers: what each one means, and which are only proposed

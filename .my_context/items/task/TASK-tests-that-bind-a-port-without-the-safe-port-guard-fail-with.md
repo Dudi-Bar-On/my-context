@@ -7,6 +7,9 @@ severity: soft
 always: false
 summary: Under load, tests grab network ports that cannot be connected to, so a few fail at random and teach people to re-run instead of read.
 summary_of: 919e50c517975da7
+acknowledged:
+  - citation_form@ec06ca49f8eff00a
+  - task_unverified@ec06ca49f8eff00a
 scope: []
 tags:
   - v2
@@ -22,7 +25,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-08-29
 valid_until: null
-checksum: 4402a9bb5668f986
+checksum: b098919d979241bd
 plan: walk
 seq: "82"
 state: done

@@ -9,7 +9,7 @@ summary: Filtering the list by date covers the day as you lived it, matching the
 summary_of: d49d05ebb7066d66
 acknowledged:
   - citation_form@fd3f124e02a7831b
-  - task_unverified@fd3f124e02a7831b
+  - task_unverified@e1cf9da56105e3f9
 scope:
   - src/ui/read-model-conversations.ts
   - src/ui/public/screens/conversations.js
@@ -26,7 +26,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-09-09
 valid_until: null
-checksum: 224680b922a33a4a
+checksum: 9994daf3e27e5998
 plan: archive
 seq: "37"
 state: done

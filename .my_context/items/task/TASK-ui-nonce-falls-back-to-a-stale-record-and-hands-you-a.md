@@ -9,6 +9,8 @@ summary: Asking for a web-UI credential now refuses when the only note of a runn
 summary_of: e7c0d40acb4623f3
 summary_was:
   - 2026-09-11 When the liveness record cannot be written, the nonce command points at whatever server the global record last named.
+acknowledged:
+  - task_unverified@a2d86e7b89c84fd3
 scope:
   - src/cli/commands/ui.ts
   - src/ui/**
@@ -25,7 +27,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-09-05
 valid_until: null
-checksum: 9e494875c0eddd7e
+checksum: a273e532a4c39cfb
 plan: live
 seq: "19"
 state: done

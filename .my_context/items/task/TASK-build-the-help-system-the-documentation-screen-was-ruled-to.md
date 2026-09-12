@@ -9,6 +9,8 @@ summary: "Cancelled unbuilt: the screen this belonged to was replaced by a list 
 summary_of: 9bde7fb5aac89261
 summary_was:
   - 2026-09-05 The screen that teaches a reader from the README, in both languages and with its drawings, has been decided and never written down as work.
+acknowledged:
+  - task_unverified@f9c7991a0218708b
 scope:
   - src/ui/public/screens/docs.js
   - README.md
@@ -27,7 +29,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-09-05
 valid_until: 2026-09-05
-checksum: fda4759ceca6e42d
+checksum: aa4765dca58e32e8
 plan: docsys
 seq: "9"
 state: done

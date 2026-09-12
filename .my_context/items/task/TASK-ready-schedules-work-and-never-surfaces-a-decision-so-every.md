@@ -9,6 +9,8 @@ summary: Questions waiting on you now appear in `mycontext ready`, where you alr
 summary_of: 2170fe7b27c1a044
 summary_was:
   - 2026-09-11 Questions waiting on you appear where you look to see what is next, instead of depending on somebody remembering to raise them.
+acknowledged:
+  - task_unverified@1dc45190dc5346f1
 scope:
   - src/cli/commands/ready.ts
   - src/core/questions.ts
@@ -28,7 +30,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-09-09
 valid_until: null
-checksum: e66ab54e64d89683
+checksum: 70ee2e0cca3de19f
 plan: governance
 seq: "9"
 state: done

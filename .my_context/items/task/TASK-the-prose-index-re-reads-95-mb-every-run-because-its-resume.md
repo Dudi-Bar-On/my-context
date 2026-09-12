@@ -9,6 +9,8 @@ summary: "Refreshing the conversation search index costs nothing when nothing ha
 summary_of: 392db2d4c79ea420
 summary_was:
   - 2026-09-11 Refreshing the conversation search index costs two seconds and a hundred megabytes every time instead of almost nothing, because it remembers a position slightly ahead of the one it compares against.
+acknowledged:
+  - task_unverified@6a5a1d76c0376ada
 scope:
   - src/core/conversation-search.ts
 tags:
@@ -24,7 +26,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-09-11
 valid_until: null
-checksum: 40178d8359b09fee
+checksum: 0e19e1619bd9cc04
 plan: recall
 seq: "4"
 state: done

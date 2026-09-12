@@ -7,6 +7,8 @@ severity: soft
 always: false
 summary: The product rules reach every worker that starts, and the system can prove they arrived rather than assume it.
 summary_of: f7a88f1fe48e1a90
+acknowledged:
+  - task_unverified@bca51e8afed1b817
 scope:
   - src/rules/**
   - src/hooks/**
@@ -23,7 +25,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-09-10
 valid_until: null
-checksum: 5596ce75561204b6
+checksum: e811263de1fabf74
 plan: store
 seq: "2"
 state: done

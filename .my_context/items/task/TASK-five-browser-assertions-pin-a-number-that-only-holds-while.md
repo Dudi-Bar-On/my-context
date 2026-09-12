@@ -9,6 +9,8 @@ summary: "Measured: the five conversations failures do not reproduce, and the br
 summary_of: 9a2f9b9a5ab3fb1a
 summary_was:
   - 2026-09-11 Five tests fail because the conversation files grew while the tests were reading them, which is what dogfooding means.
+acknowledged:
+  - task_unverified@b79979e3cce1d8c7
 scope:
   - e2e/graph-focus.spec.ts
   - e2e/app-layout.spec.ts
@@ -27,7 +29,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-09-09
 valid_until: null
-checksum: cf7095b826cf3c43
+checksum: a1d5ba7f5f4eaef4
 plan: archive
 seq: "54"
 state: done

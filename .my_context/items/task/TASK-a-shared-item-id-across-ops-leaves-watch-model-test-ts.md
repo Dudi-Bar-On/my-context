@@ -7,6 +7,8 @@ severity: soft
 always: false
 summary: A web-UI test fixture reuses one item id across several deliveries, so a token total the fix now correctly halves still expects the old, larger number.
 summary_of: a987ac556fa88a10
+acknowledged:
+  - source_drift@af81c678d36319ed
 scope:
   - test/ui/watch-model.test.ts
 tags:
@@ -19,7 +21,7 @@ source_anchor: null
 source_checksum: 8b18037df83561ca
 valid_from: 2026-09-04
 valid_until: null
-checksum: ec764a84787e3fed
+checksum: c735bdc7cf3fd946
 ---
 
 # a shared item id across ops leaves watch-model.test.ts asserting a sum the new per-item dedupe correctly no longer gives

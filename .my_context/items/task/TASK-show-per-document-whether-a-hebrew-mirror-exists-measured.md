@@ -9,6 +9,8 @@ summary: "Cancelled unbuilt: the screen this belonged to was replaced by a list 
 summary_of: ae4058acb9a3b8f4
 summary_was:
   - 2026-09-05 Each document in the new index shows whether it has a Hebrew mirror, reusing the Tutorials screen's own to-write chip rather than a blank or a silent fallback.
+acknowledged:
+  - task_unverified@01f7df103ee041b0
 scope:
   - src/ui/public/screens/docs.js
 tags:
@@ -26,7 +28,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-09-05
 valid_until: 2026-09-05
-checksum: 60d01948de14ac3a
+checksum: b000fad43d1b79b6
 plan: docsys
 seq: "6"
 state: done

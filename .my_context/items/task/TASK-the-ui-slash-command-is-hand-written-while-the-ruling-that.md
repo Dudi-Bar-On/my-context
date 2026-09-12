@@ -9,6 +9,8 @@ summary: The generator has emitted this command since 2026-08-21, two weeks befo
 summary_of: bf8534d397be3f73
 summary_was:
   - 2026-09-11 One slash command sits outside the generator that produces the other eighty-seven, against the ruling that authored it.
+acknowledged:
+  - task_unverified@917e779665b4db72
 scope:
   - scripts/gen-commands.ts
   - commands/**
@@ -25,7 +27,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-09-05
 valid_until: null
-checksum: 7da65635bfc7e269
+checksum: 91fad381f4c6d257
 plan: rulings
 seq: "66"
 state: done

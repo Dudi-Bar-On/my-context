@@ -7,6 +7,8 @@ severity: soft
 always: false
 summary: Remove suggestions that were never used, based on whether they were ever needed rather than on how old they are, and stop the collection growing without limit.
 summary_of: 60c0904ae88d8d12
+acknowledged:
+  - task_unverified@0d7262ed0fd3fce9
 scope:
   - src/**
   - test/**
@@ -23,7 +25,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-09-08
 valid_until: null
-checksum: c17c39a09f8e3c84
+checksum: 73fbaa6318beda8b
 plan: loop
 seq: "5"
 state: done

@@ -9,6 +9,8 @@ summary: Stopped bookmarking every turn that merely mentions a write-up, gave ea
 summary_of: bc0b25c322b9175f
 summary_was:
   - 2026-09-11 Stop bookmarking every turn that mentions a write-up, and give a bookmarked table a name a person can read instead of a stray border character — and take back the bookmarks a retired rule left behind, without touching the ones he made himself.
+acknowledged:
+  - task_unverified@c5a823d088e77c0a
 scope:
   - src/cli/commands/conversation.ts
   - test/cli/**
@@ -25,7 +27,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-09-11
 valid_until: null
-checksum: 4973108c7dda1784
+checksum: 03e790051e90c161
 plan: recall
 seq: "5"
 state: done

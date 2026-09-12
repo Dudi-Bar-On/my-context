@@ -9,6 +9,8 @@ summary: The end-to-end tests stop running against a stand-in and run against th
 summary_of: 7fd8aaa7909ad806
 summary_was:
   - 2026-09-11 The end-to-end tests stop running against a stand-in and run against the project itself, like everything else.
+acknowledged:
+  - body_disagrees_with_meta@96d2224d11c20ae6
 scope:
   - e2e/**
   - scripts/demo-corpus.ts
@@ -25,7 +27,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-09-07
 valid_until: null
-checksum: 3d8e7b3cb45e7d3e
+checksum: 411c1f8dba7fb69f
 plan: port
 seq: "100"
 state: done

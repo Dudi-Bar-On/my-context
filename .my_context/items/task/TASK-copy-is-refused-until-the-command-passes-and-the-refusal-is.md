@@ -9,6 +9,8 @@ summary: "Done: you cannot copy a command the product knows is wrong, and the re
 summary_of: ce81b3fad14596de
 summary_was:
   - 2026-09-11 When a command is not yet valid to copy, show the reason in plain words instead of just hiding the button and leaving the reader to guess.
+acknowledged:
+  - task_unverified@a696a6d2d9e608b6
 scope: []
 tags:
   - "plan:builder"
@@ -22,7 +24,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-08-24
 valid_until: null
-checksum: fcef9c0d50ab107d
+checksum: 618507cd48e29f5a
 plan: builder
 seq: "6"
 state: done

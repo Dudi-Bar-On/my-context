@@ -8,7 +8,7 @@ always: false
 summary: Corrects a shipped screen sentence that still promises the README, three weeks after the owner ruled it should say it serves help topics instead.
 summary_of: 1eb1209cfcae1a12
 acknowledged:
-  - citation_form@9ccc54441c7f3bdc
+  - citation_form@15bc2645865b8f7b
 scope:
   - docs/design/web-ui-mockup.html
   - src/ui/public/strings/en.js
@@ -27,7 +27,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-09-05
 valid_until: null
-checksum: 0d8ab5102b8b76ac
+checksum: 7b8b6a5590bfc32d
 plan: docsys
 seq: "1"
 state: done

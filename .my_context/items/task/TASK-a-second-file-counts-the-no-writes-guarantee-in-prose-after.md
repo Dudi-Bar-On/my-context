@@ -11,6 +11,7 @@ summary_was:
   - 2026-09-11 A test still states a hand-counted number for a set that is now worked out automatically, so it will quietly disagree the moment the set grows.
 acknowledged:
   - citation_form@152ffae06a866632
+  - task_unverified@59677b133b9f9a53
 scope: []
 tags:
   - v2
@@ -26,7 +27,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-08-31
 valid_until: null
-checksum: 213ba1bbbb3e6423
+checksum: 01be4beff2961967
 plan: rulings
 seq: "53"
 state: done

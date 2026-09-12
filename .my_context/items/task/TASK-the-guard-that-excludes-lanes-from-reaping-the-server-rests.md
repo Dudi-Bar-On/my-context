@@ -7,6 +7,9 @@ severity: soft
 always: false
 summary: The owner's server died again after the fix, and the reason the last lane gave for ruling lanes out cannot be checked from the record it checked it against.
 summary_of: 8587f7afec5a3cf8
+acknowledged:
+  - source_missing@f41a3ebb98ad433e
+  - task_unverified@f41a3ebb98ad433e
 scope:
   - src/core/ui-server-upkeep.ts
   - src/hooks/stop.ts
@@ -23,7 +26,7 @@ source_anchor: null
 source_checksum: bbe08607473ef9fa
 valid_from: 2026-09-12
 valid_until: null
-checksum: 82009d73a50c0f9f
+checksum: 9e7ea1396ec72349
 plan: live
 seq: "25"
 state: done

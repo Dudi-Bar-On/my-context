@@ -7,6 +7,8 @@ severity: soft
 always: false
 summary: Two old pointers refer to wording that has since been deleted, so somebody has to work out what was meant before they can be fixed.
 summary_of: 61e2a6e3db185f36
+acknowledged:
+  - citation_form@203353354911f63c
 scope:
   - .my_context/**
 tags:
@@ -22,7 +24,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-09-11
 valid_until: null
-checksum: 6924462885da8497
+checksum: b9595a1e3b4fc55b
 plan: walk
 seq: "143"
 state: todo

@@ -11,6 +11,8 @@ summary_was:
   - 2026-09-11 The owner's private tool for writing and publishing the rules, kept out of the package as the store's whole security model, with the mid-session correction built and deliberately left unwired.
   - 2026-09-11 The tool that edits the product rules, which never ships to anyone, and the mid-session correction that is built, tested and deliberately connected to nothing.
   - 2026-09-11 A private tool for the product owner to write and publish the rules, with the size limit enforced where it cannot hurt a user.
+acknowledged:
+  - task_unverified@abf78c1d5daa9dce
 scope:
   - src/ui/maintenance/**
   - src/rules/**
@@ -29,7 +31,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-09-10
 valid_until: null
-checksum: 805df079179179c9
+checksum: 3a8c790eedf99cfe
 plan: store
 seq: "3"
 state: done

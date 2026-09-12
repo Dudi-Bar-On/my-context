@@ -9,6 +9,8 @@ summary: Both corrected, and the first was wrong in three places rather than one
 summary_of: b739bf5262ae841b
 summary_was:
   - "2026-09-11 Two sentences in the plans are wrong: one about what can be recovered afterwards, and one about what a file actually uses."
+acknowledged:
+  - task_unverified@354a8acec45d091c
 scope: []
 tags:
   - v2
@@ -21,7 +23,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-08-21
 valid_until: null
-checksum: f078e23888fc6d3d
+checksum: d908c6d61fc15113
 plan: rulings
 seq: 33d
 state: done

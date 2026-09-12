@@ -10,7 +10,7 @@ summary_of: d77f70bc0baadaef
 summary_was:
   - 2026-09-05 One sentence in the design has fallen behind the app, and another needs a decision about how it shows the formatting it describes.
 acknowledged:
-  - body_disagrees_with_meta@7cd76abea95df3a7
+  - body_disagrees_with_meta@f279c290b9cb0e66
 scope: []
 tags:
   - v2
@@ -27,7 +27,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-08-25
 valid_until: 2026-09-07
-checksum: c69436d7c19c7c9f
+checksum: d1870e73b97c77ac
 plan: walk
 seq: "16"
 state: done

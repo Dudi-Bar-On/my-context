@@ -7,6 +7,8 @@ severity: soft
 always: false
 summary: Work out when a session is worth reviewing and read everything that happened in it, without ever making the user wait.
 summary_of: bdaa33022c505b0e
+acknowledged:
+  - task_unverified@50b153639a16092d
 scope:
   - src/**
   - test/**
@@ -23,7 +25,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-09-08
 valid_until: null
-checksum: 76a46db595cfc4c5
+checksum: 13bff3a5f7958db1
 plan: loop
 seq: "2"
 state: done

@@ -9,6 +9,8 @@ summary: Copy something from the viewer and get back a short, cited account of i
 summary_of: 93eb81deaced3d11
 summary_was:
   - 2026-09-11 Copy something from the viewer and get back a short, cited account of it, checked against the code and the history.
+acknowledged:
+  - body_disagrees_with_meta@3fc96c0ab42d5b71
 scope:
   - src/core/retrieval/**
   - src/ui/**
@@ -27,7 +29,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-09-10
 valid_until: null
-checksum: 2698a451b89cc82d
+checksum: 90c8fe443e1bc1bc
 plan: recall
 seq: "2"
 state: todo

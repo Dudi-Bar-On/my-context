@@ -7,6 +7,8 @@ severity: soft
 always: false
 summary: The product ships its own set of rules, and refuses to run against a set that has been changed or is missing pieces.
 summary_of: 949ad2f0abf98901
+acknowledged:
+  - task_unverified@9d78ee8b7fcab41c
 scope:
   - src/rules/**
   - src/cli/commands/rules.ts
@@ -23,7 +25,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-09-10
 valid_until: null
-checksum: d49be55c361b42d9
+checksum: d332922bdde4877e
 plan: store
 seq: "1"
 state: done

@@ -9,6 +9,8 @@ summary: Derived from a new structured field in the vocabulary instead of hand-t
 summary_of: bc0b3bc92168fa98
 summary_was:
   - 2026-09-11 A two-member set in the search module repeats, as a second hand-typed list, exactly what the relation vocabulary's own descriptions already say in words.
+acknowledged:
+  - task_unverified@33807fe34d247d74
 scope:
   - src/core/search.ts
   - src/core/vocabulary.ts
@@ -25,7 +27,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-09-04
 valid_until: null
-checksum: ff4bc40e9db80029
+checksum: 0acc21c7623c08f9
 plan: rulings
 seq: "55"
 state: done

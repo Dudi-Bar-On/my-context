@@ -9,6 +9,8 @@ summary: "Done: the ruling is captured, two rules are amended, one named excepti
 summary_of: 2b6a0e446a3eedc8
 summary_was:
   - 2026-09-11 Record the owner's ruling that the design drawing is only a reference to early thinking, and make the tests report only the differences that actually matter.
+acknowledged:
+  - task_unverified@9ab5ee1a2487f64c
 scope: []
 tags:
   - v2
@@ -23,7 +25,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-09-11
 valid_until: null
-checksum: e57a27d325041c17
+checksum: 8c36f3d5a6527106
 state: done
 ---
 

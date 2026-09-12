@@ -2,7 +2,7 @@
 id: STD-what-earns-being-a-claude-code-skill-read-from-the-authority
 type: standard
 title: what earns being a Claude Code skill, read from the authority
-status: draft
+status: active
 severity: soft
 always: false
 summary: The documented contract a skill must meet, established from Claude Code's own documentation rather than from the skills already written here.
@@ -18,7 +18,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-09-11
 valid_until: null
-checksum: f2e03b87556d0dda
+checksum: 35fbeb3017a89b9e
 ---
 
 # what earns being a Claude Code skill, read from the authority

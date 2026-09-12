@@ -9,6 +9,8 @@ summary: "Done: the id picker shows what you actually chose rather than cutting 
 summary_of: 426f7fc410ba57a0
 summary_was:
   - 2026-09-11 You can type to find an item, and then cannot read back which one you chose.
+acknowledged:
+  - task_unverified@35be1d7d4a37d49d
 scope:
   - src/ui/public/styles.css
   - src/ui/public/screens/palette.js
@@ -25,7 +27,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-09-07
 valid_until: null
-checksum: 12c148757d2cb089
+checksum: 9b86aeb51f79d2df
 plan: builder
 seq: "17"
 state: done

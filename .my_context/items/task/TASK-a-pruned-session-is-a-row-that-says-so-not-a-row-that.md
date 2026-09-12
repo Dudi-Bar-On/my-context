@@ -10,7 +10,7 @@ summary_of: 905ded0984272f69
 summary_was:
   - 2026-09-07 When the original transcript file is deleted, the archive should show that it is gone rather than quietly forgetting the session existed.
 acknowledged:
-  - body_disagrees_with_meta@95067a97ec49c3ef
+  - body_disagrees_with_meta@077471839af08980
   - citation_form@95067a97ec49c3ef
 scope:
   - src/ui/**
@@ -29,7 +29,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-09-07
 valid_until: null
-checksum: ece945b1abfe84e3
+checksum: af12260b8e046b37
 plan: archive
 seq: "11"
 state: done

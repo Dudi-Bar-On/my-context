@@ -8,7 +8,7 @@ always: false
 summary: "Three board capabilities shipped together: what points at an item, which commands have no tool, and what every flag takes."
 summary_of: 2a3e0ba7aab48ca7
 acknowledged:
-  - state_unaudited@b718f572851c28ec
+  - state_unaudited@7c030344bb41d44f
 scope: []
 tags:
   - v2
@@ -22,7 +22,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-09-04
 valid_until: null
-checksum: a3c47389653a732d
+checksum: b4a46ad70adc89ef
 plan: rulings
 seq: "68"
 state: done

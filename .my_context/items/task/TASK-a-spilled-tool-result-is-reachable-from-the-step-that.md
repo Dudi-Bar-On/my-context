@@ -9,6 +9,7 @@ summary: Large tool outputs are saved to separate files; this makes those files 
 summary_of: e4aa958ae11a674e
 acknowledged:
   - source_drift@30b0a3b3100a43a9
+  - task_unverified@301d7254fc42cdc1
 scope:
   - src/core/conversation-index.ts
   - src/ui/**
@@ -24,7 +25,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-09-08
 valid_until: null
-checksum: 5a162032c9584066
+checksum: b98005d3851f957e
 plan: archive
 seq: "30"
 state: done

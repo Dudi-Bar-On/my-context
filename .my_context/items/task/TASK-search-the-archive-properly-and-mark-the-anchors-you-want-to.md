@@ -10,6 +10,8 @@ summary_of: ebaf4c38f93da8ea
 summary_was:
   - 2026-09-11 Real search across every recorded session and a way to mark the points you want to find again — the index and the anchors have landed, the viewer half has not.
   - 2026-09-11 Real search across every recorded session, and a way to mark the points you want to find again.
+acknowledged:
+  - task_unverified@e80b3d53d6b37ea0
 scope:
   - src/core/conversation-search.ts
   - src/core/anchors.ts
@@ -30,7 +32,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-09-10
 valid_until: null
-checksum: 20403c7f3184e9f3
+checksum: 49f0ed2738da503a
 plan: recall
 seq: "1"
 state: done

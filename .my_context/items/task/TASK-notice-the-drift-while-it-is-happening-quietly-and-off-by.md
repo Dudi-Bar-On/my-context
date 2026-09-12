@@ -9,6 +9,8 @@ summary: A quiet check, off unless you switch it on, that tells you when the wor
 summary_of: 1bc94dd4e242da6c
 summary_was:
   - 2026-09-11 A warning when the work has wandered from the plan you set, before you notice you are lost.
+acknowledged:
+  - task_unverified@584deb3d89d9f832
 scope:
   - src/review/**
   - test/**
@@ -24,7 +26,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-09-10
 valid_until: null
-checksum: 7b0b156eb96c501e
+checksum: 79b55a106868757d
 plan: recall
 seq: "3"
 state: done

@@ -7,6 +7,8 @@ severity: soft
 always: false
 summary: A server shutting down erases the note that says where the CURRENT server is, so a live server becomes invisible and nothing puts it back when it dies.
 summary_of: d21ca3bb46f86b82
+acknowledged:
+  - task_unverified@523b2665c8f73c4a
 scope:
   - src/ui/server.ts
   - src/core/ui-server-record.ts
@@ -25,7 +27,7 @@ source_anchor: null
 source_checksum: 19e7c01ac446f986
 valid_from: 2026-09-12
 valid_until: null
-checksum: 5cb27821155f4b4c
+checksum: b83ef797d428c70d
 plan: live
 seq: "26"
 state: done

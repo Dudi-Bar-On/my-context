@@ -12,6 +12,7 @@ summary_was:
   - 2026-09-07 The reference checker has three known blind spots; settle by rule what it covers, and stop pointing at line numbers that rot.
 acknowledged:
   - body_disagrees_with_meta@92681859fd245dd8
+  - task_unverified@d708b98ec416da89
 scope: []
 tags:
   - v2
@@ -27,7 +28,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-08-25
 valid_until: null
-checksum: e3287ede2d2024b5
+checksum: 070ef0cd1813c36a
 plan: walk
 seq: "30"
 state: done

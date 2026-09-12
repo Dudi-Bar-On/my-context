@@ -9,6 +9,8 @@ summary: "Done: one shared control builds every picker from its catalogue entry,
 summary_of: 6f26a287ea19ef6f
 summary_was:
   - 2026-09-11 Build one reusable set of command inputs so every screen that offers a command draws it the same way instead of inventing its own.
+acknowledged:
+  - task_unverified@2b02fb0a5f86f89a
 scope: []
 tags:
   - "plan:builder"
@@ -22,7 +24,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-08-24
 valid_until: null
-checksum: 005bf1b44199387f
+checksum: 86a6bca6c865d8c6
 plan: builder
 seq: "5"
 state: done

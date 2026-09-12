@@ -10,6 +10,8 @@ summary_of: 748bb3cc6cd4fa13
 summary_was:
   - 2026-09-12 Its blocker is discharged - ui.enabled now has enforcement sites on both sides - and nothing of the test itself has been built.
   - 2026-09-11 Prove that having the web view switched on changes nothing about what the tool does, by running the same work both ways.
+acknowledged:
+  - task_unverified@7413ed9564f63fe5
 scope: []
 tags:
   - "plan:rulings"
@@ -22,7 +24,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-08-20
 valid_until: null
-checksum: 00eb1319f6f0abb1
+checksum: 7d31d7993778cd53
 plan: rulings
 seq: "21"
 state: done

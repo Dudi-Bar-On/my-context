@@ -7,6 +7,8 @@ severity: soft
 always: false
 summary: Every item keeps the exact words that asked for it, so its summary can be compared against what was actually requested.
 summary_of: a494e272734b17d9
+acknowledged:
+  - task_unverified@620c5f8262f32837
 scope:
   - src/core/content-hash.ts
   - src/core/**
@@ -24,7 +26,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-09-10
 valid_until: null
-checksum: 73338499e3a7e583
+checksum: c3019903ac014a31
 plan: store
 seq: "5"
 state: done

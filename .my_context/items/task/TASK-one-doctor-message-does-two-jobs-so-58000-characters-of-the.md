@@ -13,6 +13,7 @@ summary_was:
 acknowledged:
   - body_disagrees_with_meta@9acbb023e1537a53
   - citation_form@9acbb023e1537a53
+  - task_unverified@76cdedd3a1cf9377
 scope: []
 tags:
   - v2
@@ -28,7 +29,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-08-31
 valid_until: null
-checksum: 12d57b85d7bb5c45
+checksum: cb0c61ddb41b1725
 plan: walk
 seq: "122"
 state: done

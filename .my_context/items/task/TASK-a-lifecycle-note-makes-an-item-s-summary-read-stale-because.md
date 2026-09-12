@@ -9,6 +9,8 @@ summary: Retiring or replacing an entry used to mark its one-line description ou
 summary_of: 378ba92616c01931
 summary_was:
   - 2026-09-10 Retiring or replacing an item leaves its one-line description marked out of date, even though nothing it describes has changed.
+acknowledged:
+  - task_unverified@a397fcc58ab40853
 scope:
   - src/core/content-hash.ts
   - src/core/mutate.ts
@@ -26,7 +28,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-09-10
 valid_until: null
-checksum: 8552f14dfbb616bb
+checksum: 96987be1eb1f1e39
 plan: governance
 seq: "10"
 state: done

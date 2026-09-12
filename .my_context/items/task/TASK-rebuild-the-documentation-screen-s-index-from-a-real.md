@@ -9,6 +9,8 @@ summary: "Cancelled unbuilt: the screen this belonged to was replaced by a list 
 summary_of: 51ec4f88ba062be8
 summary_was:
   - 2026-09-05 Replace the screen's five hard-coded contents entries with a real, derived document index and a link that lands on one section.
+acknowledged:
+  - task_unverified@c600b38b5412c4a1
 scope:
   - src/ui/public/screens/docs.js
   - src/ui/read-model.ts
@@ -27,7 +29,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-09-05
 valid_until: 2026-09-05
-checksum: e5f7c35a46433003
+checksum: 59de8457b38b4651
 plan: docsys
 seq: "5"
 state: done

@@ -10,7 +10,8 @@ summary_of: 53b1113f03afb435
 summary_was:
   - 2026-09-11 A standard is cited across the corpus and the code by a short name that resolves to nothing, so a reader who follows the citation finds no item.
 acknowledged:
-  - body_disagrees_with_meta@661e0fde8ef46d43
+  - body_disagrees_with_meta@e47d775a72bb0d47
+  - citation_form@e47d775a72bb0d47
 scope:
   - src/**
   - test/**
@@ -28,7 +29,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-09-08
 valid_until: null
-checksum: 2c31b4ea1c41e1b2
+checksum: d300d5b855601ef7
 plan: rulings
 seq: "67"
 state: todo

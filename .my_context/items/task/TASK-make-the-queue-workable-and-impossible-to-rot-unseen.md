@@ -7,6 +7,8 @@ severity: soft
 always: false
 summary: Two buttons and a clear summary for each suggestion, a memory of what was turned down, and a visible count that cannot be missed.
 summary_of: 8a1d985c7508e014
+acknowledged:
+  - task_unverified@a2507b3e71c48bc2
 scope:
   - src/**
   - test/**
@@ -23,7 +25,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-09-08
 valid_until: null
-checksum: d50ad3af5bfff27b
+checksum: a3f405ed8c097c8b
 plan: loop
 seq: "4"
 state: done
