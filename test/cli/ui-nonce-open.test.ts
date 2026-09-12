@@ -38,7 +38,8 @@ import { cmdUiNonce } from '../../src/cli/commands/ui.ts';
 import type { BrowserLaunch } from '../../src/ui/open.ts';
 import { readAudit } from '../../src/core/audit.ts';
 import { runCli } from '../../src/cli/index.ts';
-import { startUiServer, type RunningUiServer } from '../../src/ui/server.ts';
+import type { RunningUiServer } from '../../src/ui/server.ts';
+import { startSafeUiServer } from '../helpers/safe-ui-server.ts';
 import { removeTree } from '../helpers/tmp.ts';
 // Spawns a real UI server, which mints a session token; pins the store out of
 // the developer's real `~/.my-context`. See the module.
@@ -58,7 +59,7 @@ interface Harness {
 /** One initialised workspace, one server — torn down whatever the body does. */
 async function withServer(body: (h: Harness) => Promise<void>): Promise<void> {
   const cwd = project();
-  const server = await startUiServer({ cwd, idleMs: 60_000 });
+  const server = await startSafeUiServer({ cwd, idleMs: 60_000 });
   try {
     await body({ cwd, server });
   } finally {

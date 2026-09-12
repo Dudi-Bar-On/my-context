@@ -46,7 +46,8 @@ import path from 'node:path';
 import { removeTree } from '../helpers/tmp.ts';
 import { runCli } from '../../src/cli/index.ts';
 import { readUiServerRecord } from '../../src/core/ui-server-record.ts';
-import { startUiServer, type RunningUiServer } from '../../src/ui/server.ts';
+import type { RunningUiServer } from '../../src/ui/server.ts';
+import { startSafeUiServer } from '../helpers/safe-ui-server.ts';
 
 /** A workspace, the spelling `test/ui/server.test.ts` uses. */
 function project(): string {
@@ -90,7 +91,7 @@ async function startForTest(options: { port?: number; idleMs?: number } = {}): P
   const globalRoot = pinnedGlobalRoot();
   let signalIdle: () => void = () => { /* replaced below, before any exit can fire */ };
   const idleExit = new Promise<void>((resolve) => { signalIdle = resolve; });
-  const server = await startUiServer({
+  const server = await startSafeUiServer({
     cwd,
     port: options.port ?? 0,
     idleMs: options.idleMs ?? 60_000,
@@ -175,7 +176,7 @@ test('a record that cannot be written costs the record, never the server', async
   process.env['MYCONTEXT_UI_SESSIONS_DIR'] = path.join(notADirectory, 'inside');
 
   const issues: string[] = [];
-  const server = await startUiServer({
+  const server = await startSafeUiServer({
     cwd, port: 0, idleMs: 60_000, onSessionStoreIssue: (message) => { issues.push(message); },
   });
   try {

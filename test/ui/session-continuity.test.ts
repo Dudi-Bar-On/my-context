@@ -48,7 +48,7 @@ import path from 'node:path';
 import { removeTree } from '../helpers/tmp.ts';
 import { runCli } from '../../src/cli/index.ts';
 import { TOKEN_COOKIE } from '../../src/ui/security.ts';
-import { redeemNonce, spawnUiChild, type UiHarness } from './helpers.ts';
+import { redeemNonce, spawnUiChild, startUiChild, type UiHarness } from './helpers.ts';
 
 function project(): string {
   const dir = mkdtempSync(path.join(tmpdir(), 'myctx-ui-sess-'));
@@ -86,7 +86,14 @@ async function withRestart(
     // `--port 0` for the first, then the SAME port for the second: a restart a
     // person performs lands on the port they typed, and that is the case where
     // a browser still holds a cookie for the origin.
-    first = await spawnUiChild(cwd, ['--port', '0']);
+    //
+    // **`startUiChild`, not a bare `spawnUiChild`**, because `--port 0` is the
+    // OS choosing — and the OS can choose a port `withCookie`'s `fetch` refuses
+    // outright with `bad port`. `startUiChild` is `spawnUiChild` with that
+    // screen applied. The SECOND spawn keeps the raw call on purpose: it is
+    // asked for the first one's port, which has already been screened, and
+    // retrying it would only rebind the same number.
+    first = await startUiChild(cwd);
     const token = await redeemNonce(first.port, first.nonce);
     const port = first.port;
     await first.stop();

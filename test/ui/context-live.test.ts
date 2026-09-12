@@ -48,7 +48,8 @@ import { runCli } from '../../src/cli/index.ts';
 import { writeTee } from '../../src/core/statusline-tee.ts';
 import { CONTEXT_SAMPLE_FRESH_MS } from '../../src/core/context-occupancy.ts';
 import { TOKEN_HEADER } from '../../src/ui/security.ts';
-import { startUiServer, type RunningUiServer } from '../../src/ui/server.ts';
+import type { RunningUiServer } from '../../src/ui/server.ts';
+import { startSafeUiServer } from '../helpers/safe-ui-server.ts';
 // Pins the session store out of the real `~/.my-context`; see the module.
 import '../helpers/pin-sessions-dir.ts';
 
@@ -74,7 +75,7 @@ interface Harness { server: RunningUiServer; token: string; cwd: string; project
 async function withServer(body: (h: Harness) => Promise<void>): Promise<void> {
   const cwd = mkdtempSync(path.join(tmpdir(), 'myctx-live-'));
   assert.equal(runCli(['init'], cwd, () => {}), 0);
-  const server = await startUiServer({ cwd, idleMs: 60_000 });
+  const server = await startSafeUiServer({ cwd, idleMs: 60_000 });
   try {
     const nonce = new URL(server.urlWithNonce(10_000)).hash.slice(1);
     const handoff = await fetch(`http://127.0.0.1:${server.port}/api/handoff`, {

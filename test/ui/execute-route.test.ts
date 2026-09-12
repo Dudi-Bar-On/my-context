@@ -33,7 +33,8 @@ import { removeTree } from '../helpers/tmp.ts';
 import { runCli } from '../../src/cli/index.ts';
 import { auditLogPath, readAudit, recordAudit, type AuditRecord } from '../../src/core/audit.ts';
 import { TOKEN_HEADER } from '../../src/ui/security.ts';
-import { startUiServer, type RunningUiServer } from '../../src/ui/server.ts';
+import type { RunningUiServer } from '../../src/ui/server.ts';
+import { startSafeUiServer } from '../helpers/safe-ui-server.ts';
 import { ExecutionNonceStore } from '../../src/ui/execute-nonce.ts';
 // Pins the session store out of the real `~/.my-context`; see the module.
 import '../helpers/pin-sessions-dir.ts';
@@ -93,7 +94,7 @@ interface Harness {
  */
 async function withServer(body: (h: Harness) => Promise<void>): Promise<void> {
   const cwd = project();
-  const server = await startUiServer({ cwd, idleMs: 60_000 });
+  const server = await startSafeUiServer({ cwd, idleMs: 60_000 });
   try {
     await body({ cwd, server, token: await tokenFor(server) });
   } finally {
@@ -783,7 +784,7 @@ test('the default runner really does kill on the timeout, and maps it to null', 
 
 test('a nonce is only ever redeemable against the store that minted it', async () => {
   const cwd = project();
-  const first = await startUiServer({ cwd, idleMs: 60_000 });
+  const first = await startSafeUiServer({ cwd, idleMs: 60_000 });
   try {
     const h: Harness = { cwd, server: first, token: await tokenFor(first) };
     const shown = await confirm(h, '/api/execute/confirm?id=doctor');
@@ -791,7 +792,7 @@ test('a nonce is only ever redeemable against the store that minted it', async (
     // A second server in the same process, with its own store. The store is
     // created in `startUiServer` and closed over — it is not module-global —
     // so the nonce the first server minted is in a store nothing consults now.
-    const second = await startUiServer({ cwd, idleMs: 60_000 });
+    const second = await startSafeUiServer({ cwd, idleMs: 60_000 });
     try {
       const res = await postRaw(h, { id: 'doctor', values: {}, nonce: shown.nonce });
       assert.equal(res.status, 403,

@@ -46,6 +46,7 @@ import { appendFileSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } f
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { createServer } from 'node:http';
+import { listenOnSafePort } from '../helpers/safe-port.ts';
 import {
   DOCUMENT_WALK_CAP, WORK_RUN_CAP, buildOutline, parseAnswers, readNodes, serveSpill,
   apiConversationOutline, apiConversationNodes, apiConversationTip,
@@ -1606,15 +1607,17 @@ test('the same spilled file named twice in one record is one way in, not two', (
 async function askSpill(target: string): Promise<{
   status: number; type: string; length: string | null; body: string;
 }> {
-  const server = createServer((req, res) => {
+  // **Through `listenOnSafePort`, not a bare `server.listen(0)`.** The OS
+  // answers from an ephemeral range that contains ports node's own `fetch`
+  // refuses outright — `bad port`, raised before a socket is opened — so a
+  // one-handler server is exposed to exactly the lottery the UI server is.
+  // See `test/helpers/safe-port.ts`.
+  const listening = await listenOnSafePort(() => createServer((req, res) => {
     const url = new URL(req.url ?? '/', 'http://127.0.0.1');
     serveSpill({ url } as unknown as ApiContext, res);
-  });
-  await new Promise<void>((done) => server.listen(0, '127.0.0.1', done));
-  const address = server.address();
-  const port = typeof address === 'object' && address !== null ? address.port : 0;
+  }));
   try {
-    const answer = await fetch(`http://127.0.0.1:${port}${target}`);
+    const answer = await fetch(`http://127.0.0.1:${listening.port}${target}`);
     return {
       status: answer.status,
       type: answer.headers.get('content-type') ?? '',
@@ -1622,7 +1625,7 @@ async function askSpill(target: string): Promise<{
       body: await answer.text(),
     };
   } finally {
-    await new Promise<void>((done) => server.close(() => done()));
+    await listening.stop();
   }
 }
 

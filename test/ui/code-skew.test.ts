@@ -52,7 +52,8 @@ import { removeTree } from '../helpers/tmp.ts';
 import { runCli } from '../../src/cli/index.ts';
 import { codeScope, stampCodeIdentity, type CodeScope } from '../../src/core/code-identity.ts';
 import { TOKEN_HEADER } from '../../src/ui/security.ts';
-import { CODE_FREEZE_NOTICE, startUiServer, type RunningUiServer } from '../../src/ui/server.ts';
+import { CODE_FREEZE_NOTICE, type RunningUiServer } from '../../src/ui/server.ts';
+import { startSafeUiServer } from '../helpers/safe-ui-server.ts';
 // Pins the session store out of the real `~/.my-context`; see the module.
 import '../helpers/pin-sessions-dir.ts';
 
@@ -324,7 +325,7 @@ async function tokenFor(server: RunningUiServer): Promise<string> {
 async function withServer(body: (h: Harness) => Promise<void>): Promise<void> {
   const cwd = project();
   const codeRoot = codeTree();
-  const server = await startUiServer({ cwd, idleMs: 60_000, code: scopeOf(codeRoot) });
+  const server = await startSafeUiServer({ cwd, idleMs: 60_000, code: scopeOf(codeRoot) });
   try {
     await body({ server, codeRoot, token: await tokenFor(server) });
   } finally {

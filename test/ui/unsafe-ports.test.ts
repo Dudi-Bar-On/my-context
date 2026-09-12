@@ -17,12 +17,16 @@
  */
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
+import { createServer } from 'node:http';
 import { mkdtempSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { runCli } from '../../src/cli/index.ts';
 import { removeTree } from '../helpers/tmp.ts';
 import { spawnUiChild, startUiChild, type UiHarness } from './helpers.ts';
+import { listenOnSafePort } from '../helpers/safe-port.ts';
+import { startSafeUiServer } from '../helpers/safe-ui-server.ts';
+import type { RunningUiServer } from '../../src/ui/server.ts';
 import {
   CHROME_UNSAFE_PORTS, FETCH_ONLY_BLOCKED_PORTS, isChromeUnsafePort, isUnusableTestPort,
   startOnSafePort, type PortHarness,
@@ -240,4 +244,97 @@ test('the ordinary path still returns a working, browser-openable child', async 
     const response = await fetch(`http://127.0.0.1:${h.port}/api/ping`);
     assert.equal(response.status, 401, 'a real server answered on that port');
   } finally { await h.stop(); removeTree(cwd); }
+});
+
+// ── The two starters added when the guard stopped being a convention ───────
+
+/**
+ * **The in-process starter is screened, and the screen SEES its port.**
+ *
+ * The adapter in `test/helpers/safe-ui-server.ts` is three lines, and every one
+ * of them fails silently if it is wrong: a `port` that does not reach
+ * `startOnSafePort` makes `isUnusableTestPort(undefined)` answer `false`, so a
+ * broken wrapper does not throw — it quietly screens nothing and hands back the
+ * first port it drew, which is the exact state the twenty migrated call sites
+ * were in before. So the port is forced rather than drawn: `port: 6669` is
+ * refused every single time, and a wrapper that screens nothing would resolve.
+ *
+ * **`idleMs` is THREE SECONDS here, and that is the difference between a red
+ * and a hang.** Every broken shape of this wrapper leaks a listening server
+ * this test has no handle on — a `stop()` that does not close leaves attempt
+ * one holding 6669, a `port` that never reaches the screen leaves the resolved
+ * server unclosed — and a live server keeps `node --test`'s event loop open.
+ * Measured while proving this file: the broken case ran for ten minutes with no
+ * output and had to be killed. A short idle window makes the leak collect
+ * itself, so a broken wrapper fails in seconds and SAYS SO. The retry it is
+ * testing finishes in well under one second.
+ */
+test('startSafeUiServer screens the port it bound in process, and lets the server go', async () => {
+  const cwd = workspace();
+  let leaked: RunningUiServer | null = null;
+  try {
+    await assert.rejects(
+      async () => { leaked = await startSafeUiServer({ cwd, port: 6669, idleMs: 3_000 }); },
+      /attempt\(s\) in a row: 6669/,
+      'the in-process port was never checked against the refused list',
+    );
+    // And every discarded server was CLOSED, which is the other half: a retry
+    // that leaks the listener cannot rebind, and the next attempt would fail
+    // EADDRINUSE rather than reporting the refused port. Proved by binding it.
+    //
+    // Taken down through `after.server` rather than `after.stop()`: `stop()` is
+    // under test one test below, and a probe that depends on it turns THAT
+    // defect into a hang HERE, blaming the wrong line. Measured — it did.
+    const after = await listenOnSafePort(() => createServer((_req, res) => { res.end('free'); }));
+    after.server.closeAllConnections();
+    await new Promise<void>((done) => { after.server.close(() => { done(); }); });
+  } finally {
+    if (leaked !== null) await (leaked as RunningUiServer).close();
+    removeTree(cwd);
+  }
+});
+
+test('startSafeUiServer hands back a working server on an ordinary drawn port', async () => {
+  const cwd = workspace();
+  const server = await startSafeUiServer({ cwd, idleMs: 60_000 });
+  try {
+    assert.equal(isUnusableTestPort(server.port), false, `${server.port} is a refused port`);
+    const response = await fetch(`http://127.0.0.1:${server.port}/api/ping`);
+    assert.equal(response.status, 401, 'a real server answered on that port');
+  } finally { await server.close(); removeTree(cwd); }
+});
+
+/**
+ * `listenOnSafePort` cannot be handed a port to force — it always asks for 0 —
+ * so what is proved here is the adapter around the screen: the port it reports
+ * is the one it actually bound, and `stop()` really gives it back. A `stop()`
+ * that resolved early would leave the listener up, and `startOnSafePort` would
+ * then be retrying into its own leaked socket.
+ */
+test('listenOnSafePort reports the port it bound and releases it on stop', async () => {
+  const first = await listenOnSafePort(() => createServer((_req, res) => { res.end('one'); }));
+  try {
+    assert.equal(isUnusableTestPort(first.port), false, `${first.port} is a refused port`);
+    const answer = await fetch(`http://127.0.0.1:${first.port}/`);
+    assert.equal(await answer.text(), 'one', 'the reported port is the one serving');
+    await first.stop();
+    await assert.rejects(
+      () => fetch(`http://127.0.0.1:${first.port}/`),
+      'stop() resolved while the listener was still up',
+    );
+  } finally {
+    // Reached through `first.server`, NOT through `first.stop()` — the thing
+    // under test here is exactly whether `stop()` closes anything, so relying
+    // on it to clean up would let the broken case hang this file instead of
+    // reddening it. `close()` on an already-closed server still calls back.
+    //
+    // **`closeAllConnections()` first, and it is not belt-and-braces.**
+    // `close()` stops accepting and then WAITS for every open connection, and
+    // a `fetch` whose body was never read leaves a keep-alive socket open — so
+    // on the broken path (`stop()` closing nothing, the second fetch therefore
+    // succeeding) `close()` waits forever. Measured: a 240-second removal proof
+    // that produced no output at all until this line was added.
+    first.server.closeAllConnections();
+    await new Promise<void>((done) => { first.server.close(() => { done(); }); });
+  }
 });

@@ -37,7 +37,8 @@ import { runCli } from '../../src/cli/index.ts';
 import { DEFAULT_BUDGETS, type Budgets } from '../../src/core/config.ts';
 import { BUDGETS_ID } from '../../src/ui/execute.ts';
 import { TOKEN_HEADER } from '../../src/ui/security.ts';
-import { startUiServer, type RunningUiServer } from '../../src/ui/server.ts';
+import type { RunningUiServer } from '../../src/ui/server.ts';
+import { startSafeUiServer } from '../helpers/safe-ui-server.ts';
 // Pins the session store out of the real `~/.my-context`; see the module.
 import '../helpers/pin-sessions-dir.ts';
 
@@ -74,7 +75,7 @@ async function tokenFor(server: RunningUiServer): Promise<string> {
 
 async function withServer(body: (h: Harness) => Promise<void>): Promise<void> {
   const cwd = project();
-  const server = await startUiServer({ cwd, idleMs: 60_000 });
+  const server = await startSafeUiServer({ cwd, idleMs: 60_000 });
   try {
     await body({ cwd, server, token: await tokenFor(server) });
   } finally {
@@ -255,7 +256,7 @@ test('a corrupt config.json at START still refuses to start — the safe moment 
   try {
     writeFileSync(configFile(cwd), '{ this is not json', 'utf8');
     await assert.rejects(
-      startUiServer({ cwd, idleMs: 60_000 }),
+      startSafeUiServer({ cwd, idleMs: 60_000 }),
       /is not valid JSON/,
       'a server that cannot load its config must refuse to start, not start and then fail',
     );

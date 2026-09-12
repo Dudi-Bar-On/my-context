@@ -26,8 +26,9 @@ import { removeTree } from '../helpers/tmp.ts';
 import { runCli } from '../../src/cli/index.ts';
 import { readAudit } from '../../src/core/audit.ts';
 import {
-  MINT_NONCE_TTL_MS, PRINTED_NONCE_TTL_MS, startUiServer, type RunningUiServer,
+  MINT_NONCE_TTL_MS, PRINTED_NONCE_TTL_MS, type RunningUiServer,
 } from '../../src/ui/server.ts';
+import { startSafeUiServer } from '../helpers/safe-ui-server.ts';
 // Spawns a real UI server, which mints a session token; pins the store out of
 // the developer's real `~/.my-context`. See the module.
 import '../helpers/pin-sessions-dir.ts';
@@ -50,7 +51,7 @@ interface Harness {
  */
 async function withServer(body: (h: Harness) => Promise<void>): Promise<void> {
   const cwd = project();
-  const server = await startUiServer({ cwd, idleMs: 60_000 });
+  const server = await startSafeUiServer({ cwd, idleMs: 60_000 });
   try {
     await body({ cwd, server });
   } finally {

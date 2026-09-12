@@ -26,7 +26,8 @@ import { runCli } from '../../src/cli/index.ts';
 import { readAudit, type AuditRecord } from '../../src/core/audit.ts';
 import { DEFAULT_BUDGETS } from '../../src/core/config.ts';
 import { TOKEN_HEADER } from '../../src/ui/security.ts';
-import { startUiServer, type RunningUiServer } from '../../src/ui/server.ts';
+import type { RunningUiServer } from '../../src/ui/server.ts';
+import { startSafeUiServer } from '../helpers/safe-ui-server.ts';
 // Pins the session store out of the real `~/.my-context`; see the module.
 import '../helpers/pin-sessions-dir.ts';
 import { BUDGETS_ID } from '../../src/ui/execute.ts';
@@ -52,7 +53,7 @@ interface Harness { cwd: string; server: RunningUiServer; token: string }
 
 async function withServer(body: (h: Harness) => Promise<void>): Promise<void> {
   const cwd = project();
-  const server = await startUiServer({ cwd, idleMs: 60_000 });
+  const server = await startSafeUiServer({ cwd, idleMs: 60_000 });
   try {
     await body({ cwd, server, token: await tokenFor(server) });
   } finally {

@@ -30,7 +30,8 @@ import { removeTree } from '../helpers/tmp.ts';
 import { runCli } from '../../src/cli/index.ts';
 import { registerRoute } from '../../src/ui/routes.ts';
 import { TOKEN_HEADER } from '../../src/ui/security.ts';
-import { startUiServer, type RunningUiServer } from '../../src/ui/server.ts';
+import type { RunningUiServer } from '../../src/ui/server.ts';
+import { startSafeUiServer } from '../helpers/safe-ui-server.ts';
 // Pins the session store out of the real `~/.my-context`; see the module.
 import '../helpers/pin-sessions-dir.ts';
 
@@ -142,7 +143,7 @@ test('an open stream is not activity; a json request is', async (t) => {
   /** `null` means the sample measured nothing, not that the server misbehaved. */
   const measure = async (route: string): Promise<Reading | null> => {
     let exitedAt = 0;
-    const server = await startUiServer({
+    const server = await startSafeUiServer({
       cwd, idleMs: IDLE, onExit: (reason) => { if (reason === 'idle') exitedAt = Date.now(); },
     });
     // `listen()`'s callback touched the monitor and started it, and it resolved
@@ -203,7 +204,7 @@ test('an open stream is not activity; a json request is', async (t) => {
 
 test('a handler that throws answers 500; one that throws after writing tears the connection down', async () => {
   const cwd = project();
-  const server = await startUiServer({ cwd, idleMs: 60_000 });
+  const server = await startSafeUiServer({ cwd, idleMs: 60_000 });
   try {
     const token = await tokenFor(server);
     const get = (route: string): Promise<Response> =>
@@ -232,7 +233,7 @@ test('a handler that throws answers 500; one that throws after writing tears the
 test('close() resolves, reports `closed`, and the port stops answering', async () => {
   const cwd = project();
   const reasons: string[] = [];
-  const server = await startUiServer({ cwd, idleMs: 60_000, onExit: (r) => reasons.push(r) });
+  const server = await startSafeUiServer({ cwd, idleMs: 60_000, onExit: (r) => reasons.push(r) });
   try {
     assert.ok(server.port > 0);
     assert.equal((await fetch(`http://127.0.0.1:${server.port}/`)).status, 200);
@@ -244,7 +245,7 @@ test('close() resolves, reports `closed`, and the port stops answering', async (
 
 test('every urlWithNonce is a different one-shot nonce, on this server`s own port', async () => {
   const cwd = project();
-  const server = await startUiServer({ cwd, idleMs: 60_000 });
+  const server = await startSafeUiServer({ cwd, idleMs: 60_000 });
   try {
     const first = new URL(server.urlWithNonce(10_000));
     const second = new URL(server.urlWithNonce(10_000));
@@ -273,10 +274,10 @@ test('a bind beyond loopback is refused, and refused as a REJECTION', async () =
   try {
     // A rejection rather than a throw is the property: the entry point prints
     // `err.message` from a `.catch`, and a synchronous throw would skip it.
-    const attempt = startUiServer({ cwd, host: '0.0.0.0' });
+    const attempt = startSafeUiServer({ cwd, host: '0.0.0.0' });
     assert.ok(attempt instanceof Promise);
     await assert.rejects(attempt, /refusing to bind 0\.0\.0\.0/);
-    await assert.rejects(startUiServer({ cwd, host: 'localhost' }), /refusing to bind localhost/);
-    await assert.rejects(startUiServer({ cwd, idleMs: Number.NaN }), /idle window/);
+    await assert.rejects(startSafeUiServer({ cwd, host: 'localhost' }), /refusing to bind localhost/);
+    await assert.rejects(startSafeUiServer({ cwd, idleMs: Number.NaN }), /idle window/);
   } finally { removeTree(cwd); }
 });
