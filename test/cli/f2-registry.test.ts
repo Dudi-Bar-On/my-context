@@ -449,7 +449,14 @@ const SETUPS: Record<string, (cwd: string) => string[]> = {
     const staged = run(['lesson-stage', id, '--file', 'stage.json'], cwd);
     const key = stagedKey(staged.out);
     plantUnrelatedCorruptItem(cwd);
-    return [id, key];
+    // `--summary` because an accept is now refused without one or without
+    // `--summary-omitted` (`core/summary-gate.ts`, fifth authored surface).
+    // F2 is about an UNRELATED load error not turning a successful write into
+    // a failure, so the accept has to actually succeed.
+    return [
+      id, key,
+      '--summary', 'A standing instruction the project keeps, written down so a later reader knows what it asks for.',
+    ];
   },
 
   'lesson-discard': (cwd) => {

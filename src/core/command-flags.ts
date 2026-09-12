@@ -603,8 +603,20 @@ export const COMMAND_FLAGS: Record<string, FlagSpec> = {
    * is a security boundary rather than a typo check.
    */
   'lesson-accept': {
-    allowed: ['title', 'scope', 'severity', 'directive'],
-    values: ['title', 'scope', 'severity', 'directive'],
+    // `--summary` and `--summary-omitted` joined the four on 2026-09-12
+    // (`TASK-lesson-accept-creates-a-rule-with-no-summary-so-the-accept`), and
+    // unlike the four they are not a lift either: accepting a candidate was the
+    // one creation route that produced an item `mycontext add` would have
+    // refused. `lesson-accept` is now the fifth AUTHORED surface of the summary
+    // gate (`core/summary-gate.ts`), and it takes the gate's two flags under
+    // `add`'s spellings.
+    //
+    // `summary-omitted` is in `allowed` and NOT in `values`, for the reason
+    // `ADD_VALUE_FLAGS` keeps it out of `add`'s: it is a switch, and a
+    // `--summary-omitted <key>` that consumed the next token would swallow the
+    // positional this command cannot run without.
+    allowed: ['title', 'scope', 'severity', 'directive', 'summary', 'summary-omitted'],
+    values: ['title', 'scope', 'severity', 'directive', 'summary'],
   },
   /**
    * Two positionals and no flags — the empty set is the fact, and stating it
@@ -1553,6 +1565,31 @@ export const FLAG_DECLARATIONS: Record<string, FlagDeclarations> = {
       values: RULE_DIRECTIVES,
       note: '"do" prescribes; "dont" prohibits. It is the field that decides which, so a '
         + 'silently dropped value would invert the rule.',
+    },
+    // The summary gate's two flags, on its fifth authored surface
+    // (`core/summary-gate.ts`). `SUMMARY_FLAG`'s shared format, example and
+    // note, plus the sentence that is true HERE and of neither `add` nor
+    // `edit`: the text being summarised was written by a deriver rather than
+    // by the person approving it, and it is printed immediately above the ask.
+    summary: {
+      ...SUMMARY_FLAG,
+      group: 'summary-source',
+      note: `${SUMMARY_FLAG.note} An accept must carry one, or say \`--summary-omitted\` in `
+        + 'so many words. It is asked for HERE rather than at staging because the candidate '
+        + 'was derived rather than written: nobody has yet put what this rule is into their '
+        + 'own words, and this command prints the body directly above the ask, which is the '
+        + 'one moment somebody is reading it in order to decide.',
+    },
+    'summary-omitted': {
+      group: 'summary-source',
+      note: 'Say that this rule is being created with NO summary, and that it is deliberate. '
+        + 'An accept without one is otherwise refused, because an item born with no summary can '
+        + 'never afterwards be required to have one - `mycontext doctor` reports it as '
+        + '`summary_absent` and nothing else will ever ask. It is never a default, it is refused '
+        + 'beside `--summary`, and the audit row records `summary-omitted` so that nobody wrote '
+        + 'one is visible rather than assumed. Reach for it when the rule genuinely says nothing '
+        + 'in one sentence that its title does not - never to get past the refusal, which on '
+        + 'this command guards an item that is about to govern the repository.',
     },
   },
   'lesson-discard': {},

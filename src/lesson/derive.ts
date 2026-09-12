@@ -30,6 +30,26 @@ import {
 
 export const RULE_REQUEST_PROTOCOL = 'my_context/rule-derivation-request@1';
 
+/**
+ * The summary half of an accept, carried from the command that asked for it to
+ * the `createItem` call that stores it.
+ *
+ * It is NOT a field of `RuleCandidate`, and that is deliberate. A candidate is
+ * what the deriver returned, `RULE_CANDIDATE_SCHEMA` is
+ * `additionalProperties: false`, and `acceptStagedRule` re-validates the merged
+ * candidate through `validateRuleCandidates` — so a summary smuggled in as an
+ * edit would be rejected as an unknown field, and a summary ADDED to the schema
+ * would be a sentence a model wrote that nobody was required to read, which is
+ * the one answer `TASK-lesson-accept-creates-a-rule-with-no-summary-so-the-accept`
+ * rules out by name. The sentence comes from the person at the approval gate, so
+ * it travels beside the candidate rather than inside it.
+ *
+ * The two fields are `CreateInput`'s own (`summary`, `summaryOmitted`), under
+ * their own names, so the gate that reads them and the write that stores them
+ * are talking about the same pair.
+ */
+export type AcceptedSummary = { summary?: string; summaryOmitted?: boolean };
+
 function ensureDir(root: string): string {
   const dir = stagingDir(root);
   mkdirSync(dir, { recursive: true });
@@ -347,9 +367,27 @@ export function stageRuleCandidates(
  * This is *intended* to be reachable only from an explicit human command
  * (`mycontext lesson-accept`) — that is an intention about how this function
  * gets wired up, not a guarantee this function itself can make.
+ *
+ * **`summary` is CARRIED, not decided here, and the distinction is the same
+ * one `origin` makes one paragraph up.** The rule this function creates used
+ * to reach `createItem` with neither a summary nor a recorded omission — the
+ * one creation route in the product that produced an item `mycontext add`
+ * would have refused, and `summary_absent` said so in the next doctor run
+ * (`TASK-lesson-accept-creates-a-rule-with-no-summary-so-the-accept`). The
+ * REQUIREMENT now lives on `cmdLessonAccept`, where a person is present and
+ * has just read the candidate, and is spelled with the project's one predicate
+ * (`summaryRequiredAtCreate`, core/summary-gate.ts) rather than a second one
+ * written here. This function takes whichever of the two that gate let
+ * through and passes it to `createItem` unexamined, exactly as it passes the
+ * merged candidate's title and body: a gate in this function would be a gate
+ * in the shared road, which is the placement `summaryRequiredAtCreate`'s own
+ * comment rules out. A caller that reaches this function by import and passes
+ * neither still creates a summary-less rule — the same statement the paragraph
+ * above makes about the approval gate itself, and true for the same reason.
  */
 export function acceptStagedRule(
   ctx: MutationContext, root: string, lessonId: string, key: string, edits: Partial<RuleCandidate> = {},
+  summary: AcceptedSummary = {},
 ): string {
   const staging = loadOrThrowStaging(root, lessonId);
 
@@ -393,6 +431,13 @@ export function acceptStagedRule(
     origin: 'human',
     severity: merged.severity,
     scope: merged.scope,
+    // The two the approval gate decided between (`AcceptedSummary` above).
+    // Spread rather than assigned, so an accept that passed neither reaches
+    // `createItem` with the fields ABSENT rather than present-and-undefined —
+    // `summaryOmitted === true` is what `auditMutation` keys the
+    // `summary-omitted` note off, and an explicit `undefined` would read the
+    // same but say something different about what this call was handed.
+    ...summary,
     extra: { directive: merged.directive },
     // The only edge spec §7.4 asks for — not the only edge createItem would
     // accept. `createItem`'s own relation validation (`validateRelations`,

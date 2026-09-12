@@ -37,6 +37,20 @@ const CANDIDATES = JSON.stringify([
   { title: 'Never deploy a migration on a Friday', directive: 'dont', body: 'Nobody is available to roll it back.' },
 ]);
 
+/**
+ * The sentence `lesson-accept` now requires, in one place so the tests that
+ * are ABOUT something else do not each invent one.
+ *
+ * It is spelled out on every accept below rather than defaulted inside `run`,
+ * because the gate's own tests turn on its ABSENCE and a helper that supplied
+ * it silently would make those assertions unreachable — the same reason
+ * `--summary` is not folded into `stage`.
+ */
+const ACCEPT_SUMMARY = [
+  '--summary',
+  'A standing instruction about when schema changes may run, so the lock they take never lands in the busiest hour.',
+];
+
 function stage(cwd: string): { lessonId: string; keys: string[] } {
   const created = run(['lesson', 'Migrations deadlock when run during peak traffic'], cwd);
   const lessonId = /LESSON-[a-z0-9-]+/.exec(created.out)![0];
@@ -245,7 +259,7 @@ test('re-staging says which pending candidates it dropped', () => {
 test('lesson-accept creates exactly the accepted rule, with derived_from', () => {
   withProject((cwd) => {
     const { lessonId, keys } = stage(cwd);
-    const { code, out } = run(['lesson-accept', lessonId, keys[1]], cwd);
+    const { code, out } = run(['lesson-accept', lessonId, keys[1], ...ACCEPT_SUMMARY], cwd);
     assert.equal(code, 0);
     assert.match(out, /RULE-never-deploy-a-migration-on-a-friday/);
 
@@ -259,7 +273,7 @@ test('lesson-accept creates exactly the accepted rule, with derived_from', () =>
 test('lesson-accept honours --title and --scope edits', () => {
   withProject((cwd) => {
     const { lessonId, keys } = stage(cwd);
-    run(['lesson-accept', lessonId, keys[0], '--title', 'Run migrations between 02:00 and 05:00 UTC', '--scope', 'migrations/**,ops/**'], cwd);
+    run(['lesson-accept', lessonId, keys[0], '--title', 'Run migrations between 02:00 and 05:00 UTC', '--scope', 'migrations/**,ops/**', ...ACCEPT_SUMMARY], cwd);
     const shown = run(['show', 'RULE-run-migrations-between-02-00-and-05-00-utc'], cwd).out;
     // Unquoted: serializeFrontmatter's NEEDS_QUOTES fires on leading/trailing
     // whitespace, `:`, `#`, and a leading `-`/`[`/`{` — never on `/` or `*` — so
@@ -411,7 +425,7 @@ test('lesson-accept persists the rule and reports an unrelated corrupt item as a
   withProject((cwd) => {
     const { lessonId, keys } = stage(cwd);
     plantUnrelatedCorruptItem(cwd);
-    const { code, out } = run(['lesson-accept', lessonId, keys[1]], cwd);
+    const { code, out } = run(['lesson-accept', lessonId, keys[1], ...ACCEPT_SUMMARY], cwd);
     assert.equal(code, 0, 'lesson-accept created the rule; the unrelated corpus problem is a warning, not a failure');
     assert.match(out, /my_context: error\s+.*CONST-broken\.md/);
     assert.match(out, /RULE-never-deploy-a-migration-on-a-friday/);
@@ -439,7 +453,7 @@ test('lesson-accept prints the edited candidate — not the pre-edit one — bef
     const { code, out } = run([
       'lesson-accept', lessonId, keys[0],
       '--title', 'Run migrations between 02:00 and 05:00 UTC',
-      '--scope', 'migrations/**,ops/**',
+      '--scope', 'migrations/**,ops/**', ...ACCEPT_SUMMARY,
     ], cwd);
     assert.equal(code, 0);
 
@@ -510,7 +524,7 @@ test('lesson-accept still takes every flag it had, including a repeated --scope'
       'lesson-accept', lessonId, keys[0],
       '--title', 'Run migrations off-peak',
       '--scope', 'migrations/**', '--scope', 'ops/**',
-      '--severity', 'hard', '--directive', 'do',
+      '--severity', 'hard', '--directive', 'do', ...ACCEPT_SUMMARY,
     ], cwd);
     assert.equal(code, 0, out);
     assert.doesNotMatch(out, /unknown option/);
@@ -531,7 +545,7 @@ test('lesson-accept refuses a bogus --severity instead of dropping it and creati
   withProject((cwd) => {
     const { lessonId, keys } = stage(cwd);
     const { code, out } = run(
-      ['lesson-accept', lessonId, keys[0], '--severity', 'critical'], cwd,
+      ['lesson-accept', lessonId, keys[0], '--severity', 'critical', ...ACCEPT_SUMMARY], cwd,
     );
     assert.equal(code, 1, out);
     assert.match(out, /"severity" must be "hard" or "soft"/);
@@ -543,7 +557,7 @@ test('lesson-accept refuses a bogus --directive on the same terms', () => {
   withProject((cwd) => {
     const { lessonId, keys } = stage(cwd);
     const { code, out } = run(
-      ['lesson-accept', lessonId, keys[0], '--directive', 'maybe'], cwd,
+      ['lesson-accept', lessonId, keys[0], '--directive', 'maybe', ...ACCEPT_SUMMARY], cwd,
     );
     assert.equal(code, 1, out);
     assert.match(out, /"directive" is required and must be "do" or "dont"/);
@@ -555,7 +569,7 @@ test('lesson-accept keeps every --scope, not just the first', () => {
   withProject((cwd) => {
     const { lessonId, keys } = stage(cwd);
     const { code, out } = run(
-      ['lesson-accept', lessonId, keys[0], '--scope', 'migrations/**', '--scope', 'ops/**'], cwd,
+      ['lesson-accept', lessonId, keys[0], '--scope', 'migrations/**', '--scope', 'ops/**', ...ACCEPT_SUMMARY], cwd,
     );
     assert.equal(code, 0, out);
     assert.match(out, /scope:\s+migrations\/\*\*, ops\/\*\*/);
@@ -684,7 +698,7 @@ test('lesson-accept has no --agent — refused by name in every spelling, and no
 test('the rule lesson-accept creates is origin: human and active — read off disk', () => {
   withProject((cwd) => {
     const { lessonId, keys } = stage(cwd);
-    const { code, out } = run(['lesson-accept', lessonId, keys[0]], cwd);
+    const { code, out } = run(['lesson-accept', lessonId, keys[0], ...ACCEPT_SUMMARY], cwd);
     assert.equal(code, 0, out);
     const ruleId = /RULE-[a-z0-9-]+/.exec(out);
     assert.ok(ruleId, `no rule id in:\n${out}`);

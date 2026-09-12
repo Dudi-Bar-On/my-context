@@ -1,11 +1,15 @@
 import { COMMAND_FLAGS } from '../../core/command-flags.ts';
-import { createItem } from '../../core/mutate.ts';
+import { createItem, type CreateInput } from '../../core/mutate.ts';
 import { makeId } from '../../core/slug.ts';
+import {
+  summaryAtCreateRefusal, summaryOmittedRefusal, summaryRequiredAtCreate,
+} from '../../core/summary-gate.ts';
+import { normalizeSummary, validateSummary } from '../../core/validate.ts';
 import type { Item } from '../../core/types.ts';
 import type { Workspace } from '../../core/workspace.ts';
 import {
   acceptStagedRule, buildRuleRequest, discardStagedRule,
-  renderRuleRequest, stageRuleCandidates,
+  renderRuleRequest, stageRuleCandidates, type AcceptedSummary,
 } from '../../lesson/derive.ts';
 // The READ half, from the module that imports nothing which writes
 // (`DEC-the-read-half-of-lesson-derive-ts-is-split-out-so-a-read`). This
@@ -17,7 +21,7 @@ import { scopePolicyFor } from '../../core/config.ts';
 import { scopeField } from '../../core/render-item.ts';
 import { emitLoadErrors, openMutateContext, readPayload, toCliMessage } from './context.ts';
 import { refuseUnknownFlag, table } from './format.ts';
-import { flag, hasFlag, listFlag, positionals, registerCommand, type Emit } from './registry.ts';
+import { boolFlag, flag, hasFlag, listFlag, positionals, registerCommand, type Emit } from './registry.ts';
 
 /**
  * This command's flag surface, LIFTED to `core/command-flags.ts` so a read
@@ -45,7 +49,8 @@ const LESSON_DISCARD = COMMAND_FLAGS['lesson-discard'];
 
 const LESSON_STAGE_USAGE = 'usage: mycontext lesson-stage <LESSON-id> (--file <path> | --stdin)';
 const LESSON_ACCEPT_USAGE =
-  'usage: mycontext lesson-accept <LESSON-id> <key> [--title "…"] [--scope "a/**,b/**"] '
+  'usage: mycontext lesson-accept <LESSON-id> <key> (--summary "<one plain sentence>" | '
+  + '--summary-omitted) [--title "…"] [--scope "a/**,b/**"] '
   + '[--severity hard|soft] [--directive do|dont]';
 const LESSON_DISCARD_USAGE = 'usage: mycontext lesson-discard <LESSON-id> <key>';
 
@@ -251,7 +256,15 @@ function cmdLessonStage(ws: Workspace, args: string[], out: Emit, cwd: string): 
     }
 
     out('');
-    out(`Accept with:  mycontext lesson-accept ${lessonId} <key> [--title "…"] [--scope "a/**,b/**"]`);
+    // `--summary` is shown as REQUIRED rather than bracketed, because it is:
+    // an accept carries one or says `--summary-omitted`, and a hint that a
+    // reader copies and is then refused by is worse than no hint. The four
+    // amendments stay optional and stay after it, so the line reads in the
+    // order the command insists on.
+    out(
+      `Accept with:  mycontext lesson-accept ${lessonId} <key> --summary "<one plain sentence>" `
+      + `[--title "…"] [--scope "a/**,b/**"]`,
+    );
     out(`Discard with: mycontext lesson-discard ${lessonId} <key>`);
     // F2 — see the identical comment in cmdLesson above: staging succeeded at
     // its own job, so an unrelated load error elsewhere is a warning, not a
@@ -293,6 +306,54 @@ function edits(args: string[]): Partial<RuleCandidate> {
   const directive = flag(args, 'directive');
   if (directive !== null) patch.directive = directive as RuleCandidate['directive'];
   return patch;
+}
+
+/**
+ * The value flags `positionals` must step over on `lesson-accept` — `edits()`'s
+ * four, plus `--summary`, whose value is a whole sentence and would otherwise
+ * be read as the `<key>` positional.
+ *
+ * `--summary-omitted` is NOT here and must not be: it is a bare switch, and
+ * listing it would make `lesson-accept <id> --summary-omitted <key>` swallow
+ * the key as its value. Same split as `add`'s, and the same reason
+ * `core/command-flags.ts` keeps `summary-omitted` out of `ADD_VALUE_FLAGS`.
+ *
+ * Named once and shared with `cmdLessonDiscard`, which passes accept's list for
+ * the reason its own comment gives: the two sibling commands read one argv the
+ * same way, and a list that drifted on one of them would resolve a flag's value
+ * as a key on that one alone.
+ */
+const ACCEPT_VALUE_FLAGS = ['title', 'scope', 'severity', 'directive', 'summary'];
+
+/**
+ * **The summary a person writes at the approval gate, read off argv.**
+ *
+ * Read here rather than in `edits()` above because it is not an edit to the
+ * CANDIDATE: `edits()`'s four are re-validated through
+ * `validateRuleCandidates`, whose schema is `additionalProperties: false`, and
+ * a summary is not one of a candidate's fields (see `AcceptedSummary`,
+ * lesson/derive.ts). It travels beside the candidate instead.
+ *
+ * `validateSummary(normalizeSummary(...))` is called HERE as well as inside
+ * `createItem`, for the reason `cmdAdd` calls it early: a person must not read
+ * "about to create this rule" and be told only afterwards that the sentence was
+ * over the bound. The normalized value is discarded — `createItem` re-derives
+ * it through the same two functions, so this is a duplicated CALL, not a
+ * duplicated rule.
+ *
+ * `boolFlag` rather than `hasFlag`, matching `add`: `--summary-omitted=false`
+ * is the same as leaving it out, and giving it as true and false at once is
+ * refused rather than resolved to one of them.
+ */
+function acceptedSummary(args: string[]): AcceptedSummary {
+  const accepted: AcceptedSummary = {};
+  const summary = flag(args, 'summary');
+  if (summary !== null) {
+    validateSummary(normalizeSummary(summary));
+    accepted.summary = summary;
+  }
+  if (boolFlag(args, 'summary-omitted') === true) accepted.summaryOmitted = true;
+  return accepted;
 }
 
 /**
@@ -347,9 +408,22 @@ function cmdLessonAccept(ws: Workspace, args: string[], out: Emit): number {
     return 1;
   }
 
-  const [lessonId, key] = positionals(args, ['title', 'scope', 'severity', 'directive']);
+  const [lessonId, key] = positionals(args, ACCEPT_VALUE_FLAGS);
   if (!lessonId || !key) {
     out(LESSON_ACCEPT_USAGE);
+    return 1;
+  }
+
+  // Parsed BEFORE staging is peeked and before any store is opened, the way
+  // `cmdLesson` parses `--agent` early: `--summary` given twice and
+  // `--summary-omitted=maybe` are both refusals, and they are worth making
+  // without a staging file having been read or a mutation context having
+  // existed.
+  let summaryInput: AcceptedSummary;
+  try {
+    summaryInput = acceptedSummary(args);
+  } catch (err) {
+    out(toCliMessage(err));
     return 1;
   }
 
@@ -412,7 +486,56 @@ function cmdLessonAccept(ws: Workspace, args: string[], out: Emit): number {
 
   const patch = edits(args);
   const merged: RuleCandidate = { ...staged.candidate, ...patch };
-  out('my_context: about to create this rule — review before it becomes active:');
+
+  // **THE SUMMARY GATE, ON THE APPROVAL SURFACE**
+  // (`TASK-lesson-accept-creates-a-rule-with-no-summary-so-the-accept`).
+  //
+  // Until 2026-09-12 this command was the one creation route in the product
+  // that produced an item `mycontext add` would have refused: the rule it
+  // created carried no summary and no recorded omission, and `summary_absent`
+  // reported it in the very next doctor run. The predicates below are the
+  // project's ONE answer to that question (core/summary-gate.ts), called here
+  // rather than restated — the field table, the bound, the opt-out and the
+  // audit note are all decided in that module and in `createItem`, and nothing
+  // about them is repeated in this file.
+  //
+  // The gate is built from the MERGED candidate, not the staged one, because
+  // `--title` changes what the rule says and so changes what a summary of it
+  // would say. **Today that choice is unobservable and it is written down
+  // rather than claimed**: a removal proof that swapped `merged.title` for
+  // `staged.candidate.title` killed no assertion, because neither predicate
+  // reads the title (`summaryRequiredAtCreate` looks at the summary alone) and
+  // the `lesson-accept` remedy in `summaryAtCreateRefusal` names the command
+  // rather than quoting the title the way `add`'s does — the preview two lines
+  // below is where a reader sees it. It is merged anyway, so that the day
+  // anything here does read the title it reads the one about to be written.
+  // `type: 'rule'` because `acceptStagedRule` always creates one.
+  const gateInput: CreateInput = { type: 'rule', title: merged.title, ...summaryInput };
+
+  // The contradiction first — a capture passing both spellings must be told
+  // so rather than waved through by the summary it carries — and before the
+  // preview, because it is a fact about argv alone: nothing about the
+  // candidate would help a reader who said both "here is the sentence" and
+  // "there is no sentence". Same order `cmdAdd` puts these two in.
+  const omittedRefusal = summaryOmittedRefusal(gateInput, 'lesson-accept');
+  if (omittedRefusal) {
+    out(omittedRefusal);
+    return 1;
+  }
+
+  // The missing-summary refusal, by contrast, comes AFTER the candidate is
+  // printed, and that ordering is the whole reason the gate belongs on this
+  // command rather than on the staging that precedes it. The sentence has to
+  // describe a body the writer has read, and this is the moment — and the only
+  // moment — at which they are holding it. So the block prints either way and
+  // only its opening line branches: "about to create" would be a false claim
+  // above a refusal, and a refusal with the candidate withheld would ask for a
+  // sentence about text the reader cannot see.
+  const missing = summaryRequiredAtCreate(gateInput);
+  out(missing
+    ? 'my_context: nothing was created — this candidate carries no summary. Read it, then send '
+      + 'the same command again with the sentence it needs:'
+    : 'my_context: about to create this rule — review before it becomes active:');
   out(`  title:     ${merged.title}`);
   out(`  directive: ${merged.directive}`);
   out(`  severity:  ${merged.severity}`);
@@ -422,12 +545,19 @@ function cmdLessonAccept(ws: Workspace, args: string[], out: Emit): number {
   out(`  scope:     ${scopeField(merged.scope, scopePolicyFor(ws.config, 'rule'), ', ')}`);
   out(`  body:      ${merged.body}`);
   out('');
+  if (missing) {
+    // `${lessonId} ${key}` so the remedy is the command this caller can retype
+    // rather than a shape they have to fill in — the same courtesy
+    // `summaryAtCreateRefusal` pays `add` by quoting the type and title back.
+    out(summaryAtCreateRefusal(gateInput, 'lesson-accept', `${lessonId} ${key}`));
+    return 1;
+  }
 
   const { ctx, errors } = openMutateContext(ws);
   try {
     // `acceptStagedRule` reloads staging from disk itself by (root,
     // lessonId) — the object peeked above is never handed to it.
-    const ruleId = acceptStagedRule(ctx, root, lessonId, key, patch);
+    const ruleId = acceptStagedRule(ctx, root, lessonId, key, patch, summaryInput);
     out(`my_context: created ${ruleId} (active) with derived_from [[${lessonId}]].`);
     // F2 — see the identical comment in cmdLesson above: accept did what it
     // was asked (the rule was created and staging was updated) — so an
@@ -458,7 +588,7 @@ function cmdLessonDiscard(ws: Workspace, args: string[], out: Emit): number {
     args, LESSON_DISCARD.allowed, LESSON_DISCARD.values, LESSON_DISCARD_USAGE, out,
   )) return 1;
 
-  const [lessonId, key] = positionals(args, ['title', 'scope', 'severity', 'directive']);
+  const [lessonId, key] = positionals(args, ACCEPT_VALUE_FLAGS);
   if (!lessonId || !key) {
     out(LESSON_DISCARD_USAGE);
     return 1;
@@ -490,7 +620,7 @@ registerCommand({
 
 registerCommand({
   name: 'lesson-accept',
-  usage: 'lesson-accept <id> <key>',
+  usage: 'lesson-accept <id> <key> (--summary "<text>" | --summary-omitted)',
   summary: 'approve a staged rule and create it',
   run: cmdLessonAccept,
 });

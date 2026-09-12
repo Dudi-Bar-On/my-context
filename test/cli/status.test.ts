@@ -220,7 +220,10 @@ test('an accepted rule candidate does not keep counting as awaiting approval', (
     ]), 'utf8');
     const staged = run(['lesson-stage', id, '--file', 'r.json'], cwd);
     const keys = [...staged.out.matchAll(firstCell('[0-9a-f]{8}', 'gm'))].map((m) => m[1]);
-    run(['lesson-accept', id, keys[0]], cwd);
+    // `--summary` because an accept now carries one or says `--summary-omitted`
+    // (`core/summary-gate.ts`). This test is about the PENDING count, so the
+    // accept simply has to succeed.
+    run(['lesson-accept', id, keys[0], '--summary', 'Schema changes are held back to a quiet window so the lock they take never blocks live traffic.'], cwd);
 
     const { out } = run(['status'], cwd);
     // One candidate was accepted (now a real rule) and one is still pending —

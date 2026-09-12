@@ -229,7 +229,14 @@ test('the lesson walkthrough runs against the fixture with --file alone', () => 
     assert.match(staged.out, /2 rule candidate\(s\) staged/, staged.out);
     assert.match(staged.out, /99eb0e3d/, staged.out);
 
-    const accepted = run(['lesson-accept', lesson, '99eb0e3d'], dir);
+    // `--summary` for the reason the README walkthrough now carries one: an
+    // accept is the fifth authored surface of the summary gate
+    // (`core/summary-gate.ts`), and the sentence is the same one the marker in
+    // both READMEs passes.
+    const accepted = run([
+      'lesson-accept', lesson, '99eb0e3d',
+      '--summary', 'Retries wait a randomised extra moment before trying again, so a crowd of clients does not all come back at once and knock the service over.',
+    ], dir);
     assert.equal(accepted.code, 0, accepted.out);
     assert.match(accepted.out, /created RULE-retries-add-jitter-to-backoff \(active\)/, accepted.out);
 

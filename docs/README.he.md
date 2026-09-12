@@ -625,7 +625,7 @@ my_context: 2 rule candidate(s) staged for LESSON-retry-storms-need-jitter. None
   │ 47c76d53 │ dont      │ Never retry on a fixed interval │
   └──────────┴───────────┴─────────────────────────────────┘
 
-Accept with:  mycontext lesson-accept LESSON-retry-storms-need-jitter <key> [--title "…"] [--scope "a/**,b/**"]
+Accept with:  mycontext lesson-accept LESSON-retry-storms-need-jitter <key> --summary "<one plain sentence>" [--title "…"] [--scope "a/**,b/**"]
 Discard with: mycontext lesson-discard LESSON-retry-storms-need-jitter <key>
 ```
 <!-- /example -->
@@ -638,11 +638,17 @@ Discard with: mycontext lesson-discard LESSON-retry-storms-need-jitter <key>
 את המועמדים הממתינים שהקבוצה החדשה לא ייצרה שוב במקום להשמיט אותם בשקט. כל מה שכבר אישרת
 או דחית עובר הלאה כמות שהוא: מועמד שנדחה אינו יכול לחזור.
 
-<span dir="ltr">`mycontext lesson-accept`</span> נוקבת במפתח אחד ויוצרת את הכלל.
+<span dir="ltr">`mycontext lesson-accept`</span> נוקבת במפתח אחד ויוצרת את הכלל. היא גם מבקשת
+את הדבר האחד שהגוזר לא יכול היה לספק: <span dir="ltr">`--summary`</span>. כל נתיב יצירה אחר
+במוצר הזה מסרב ללכידה שאינה נושאת לא תקציר ולא <span dir="ltr">`--summary-omitted`</span>, והנתיב
+הזה היה היוצא מן הכלל — <span dir="ltr">`mycontext doctor`</span> דיווח על הכללים שנוצרו כאן
+כ-<span dir="ltr">`summary_absent`</span> ברגע שנוצרו. זה גם הנתיב שבו המשפט חשוב יותר מכל,
+מפני שמועמד נגזר ולא נכתב: עד שתקלידו אותו, איש עדיין לא אמר במילים שלו מהו הכלל. גוף המועמד
+מודפס ישירות מעל הבקשה בדיוק מהסיבה הזאת.
 
 </div>
 
-<!-- example: lesson LESSON-retry-storms-need-jitter && lesson-stage LESSON-retry-storms-need-jitter --file docs/lesson-rule-candidates.json && lesson-accept LESSON-retry-storms-need-jitter 99eb0e3d -->
+<!-- example: lesson LESSON-retry-storms-need-jitter && lesson-stage LESSON-retry-storms-need-jitter --file docs/lesson-rule-candidates.json && lesson-accept LESSON-retry-storms-need-jitter 99eb0e3d --summary "Retries wait a randomised extra moment before trying again, so a crowd of clients does not all come back at once and knock the service over." -->
 ```text
 my_context: about to create this rule — review before it becomes active:
   title:     Retries add jitter to backoff
@@ -677,7 +683,7 @@ my_context: created RULE-retries-add-jitter-to-backoff (active) with derived_fro
 
 </div>
 
-<!-- example: lesson LESSON-retry-storms-need-jitter && lesson-stage LESSON-retry-storms-need-jitter --file docs/lesson-rule-candidates.json && lesson-accept LESSON-retry-storms-need-jitter 99eb0e3d && show RULE-retries-add-jitter-to-backoff -->
+<!-- example: lesson LESSON-retry-storms-need-jitter && lesson-stage LESSON-retry-storms-need-jitter --file docs/lesson-rule-candidates.json && lesson-accept LESSON-retry-storms-need-jitter 99eb0e3d --summary "Retries wait a randomised extra moment before trying again, so a crowd of clients does not all come back at once and knock the service over." && show RULE-retries-add-jitter-to-backoff -->
 ```text
 ---
 id: RULE-retries-add-jitter-to-backoff
@@ -686,6 +692,8 @@ title: Retries add jitter to backoff
 status: active
 severity: hard
 always: false
+summary: Retries wait a randomised extra moment before trying again, so a crowd of clients does not all come back at once and knock the service over.
+summary_of: 2375f22f32ab3804
 scope: []
 tags: []
 origin: human
@@ -694,7 +702,7 @@ source_anchor: null
 source_checksum: null
 valid_from: <today>
 valid_until: null
-checksum: 66d3ef277acdc7ee
+checksum: 50e1ee00ab37f2fe
 directive: do
 ---
 

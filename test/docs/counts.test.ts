@@ -770,7 +770,14 @@ test('the ungated member of the approval boundary is real', () => {
 
     // No --yes, and `node --test` gives the process no TTY, so every GATED
     // member of this set would refuse here and write nothing.
-    const accepted = run(['lesson-accept', lesson[0], key[0]]);
+    // `--summary` is the summary gate, not a confirmation gate, and the
+    // distinction is this test's whole subject: it refuses a capture that says
+    // nothing about itself, and it asks nothing about whether to proceed. A
+    // GATED member would still decline here for want of a TTY.
+    const accepted = run([
+      'lesson-accept', lesson[0], key[0],
+      '--summary', 'Retries wait a randomised extra moment, so a crowd of clients does not come back all at once.',
+    ]);
     assert.doesNotMatch(accepted, /refusing without confirmation/, accepted);
     const rules = JSON.parse(run(['list', 'rule', '--json'])) as { count: number };
     assert.equal(

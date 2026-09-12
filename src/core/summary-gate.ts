@@ -77,14 +77,38 @@
  * import would be a regression: none of those callers is a person holding new
  * prose, and refusing them would leave the corpus unmaintainable in order to
  * protect one sentence. So this module exports predicates and refusals and is
- * imported by exactly the four AUTHORED surfaces — `mycontext edit` and the MCP
- * `update_item` tool for the edit gate, `mycontext add` and the MCP
- * `create_item` tool for the creation gate. It is deliberately NOT called from
- * `updateItem` or from `createItem`, which are the two shared roads every
- * internal caller drives down: `ingest`, pack import, `mycontext lesson`,
- * `mycontext inbox-promote` and `lesson-accept` all reach `createItem` with no
- * person holding new prose, and none of them starts refusing because of this
- * file.
+ * imported by exactly the five AUTHORED surfaces — `mycontext edit` and the MCP
+ * `update_item` tool for the edit gate, `mycontext add`, the MCP `create_item`
+ * tool and `mycontext lesson-accept` for the creation gate. It is deliberately
+ * NOT called from `updateItem` or from `createItem`, which are the two shared
+ * roads every internal caller drives down: `ingest`, pack import, `mycontext
+ * lesson` and `mycontext inbox-promote` all reach `createItem` with no person
+ * holding new prose, and none of them starts refusing because of this file.
+ *
+ * ── AND THE FIFTH, WHICH WAS ON THE OTHER LIST UNTIL 2026-09-12 ────────────
+ *
+ * `lesson-accept` was named above as a mechanical caller, and that was wrong
+ * in the one way this module cares about. Accepting a staged candidate created
+ * an `active`, governing `rule` with no summary and no recorded omission — the
+ * one creation route in the product that produced an item `mycontext add`
+ * would have refused, and `summary_absent` reported both rules created on
+ * 2026-09-05 in the very next doctor run
+ * (`TASK-lesson-accept-creates-a-rule-with-no-summary-so-the-accept`).
+ *
+ * The ordering was backwards rather than merely incomplete. A candidate is
+ * DERIVED rather than written, so it is exactly the case where a human
+ * sentence matters most — and `lesson-accept` is the one moment a person is
+ * present, has just read the body printed above the gate, and is deciding on
+ * it. That is the same argument `summaryRequiredAtCreate` makes for `add`,
+ * arriving at the command that IS the approval gate. So the gate moved to it,
+ * rather than a second one being written beside it: the predicate is the same
+ * predicate, the opt-out is the same `summary_omitted`, and only the SPELLING
+ * of the remedy is new (`CreateSurface`).
+ *
+ * `acceptStagedRule` itself (lesson/derive.ts) still does not call any of
+ * this, for the reason every other internal road does not: it is reachable by
+ * import, the CLI is the only thing that reaches it, and a gate inside it
+ * would be the gate in the shared road this paragraph exists to keep out.
  */
 import { itemSummaryBasis, type ContentShape } from './content-hash.ts';
 import { normalizePosix } from './paths.ts';
@@ -92,6 +116,22 @@ import { normalizeEol } from './text.ts';
 import { normalizeSummary } from './validate.ts';
 import type { CreateInput, UpdateInput } from './mutate.ts';
 import type { Item } from './types.ts';
+
+/**
+ * **Which authored surface is being refused — a SPELLING, never a rule.**
+ *
+ * The predicates (`summaryRequiredAtCreate`, `summaryOmittedRefusal`'s first
+ * clause) are identical on all three; what differs is the command or call a
+ * reader can actually retype, and a refusal that names one they cannot run is
+ * worse than one that names nothing. That is the whole of what this type
+ * decides, and it is stated as a type so a fourth surface has to come here and
+ * choose rather than defaulting into `add`'s wording.
+ *
+ * `lesson-accept` takes the CLI's flag spellings — it IS a CLI command — and
+ * differs from `add` only in the command line it prints, which is why
+ * `summaryOmittedRefusal` branches on `create_item` rather than on `add`.
+ */
+export type CreateSurface = 'add' | 'create_item' | 'lesson-accept';
 
 /**
  * The item's content as this edit would leave it — every field of
@@ -264,10 +304,11 @@ export function summaryRequired(item: Item, patch: UpdateInput): boolean {
  *
  * Like `summaryRequired`, this is exported for the AUTHORED surfaces alone and
  * is deliberately NOT called from `createItem`. Every mechanical caller —
- * ingest, pack import, `lesson`, `inbox-promote`, `lesson-accept` — drives down
- * that shared road, and a gate placed there would refuse writes with no human
- * or agent anywhere near them, which is a worse regression than the hole it
- * closes.
+ * ingest, pack import, `lesson`, `inbox-promote` — drives down that shared
+ * road, and a gate placed there would refuse writes with no human or agent
+ * anywhere near them, which is a worse regression than the hole it closes.
+ * `lesson-accept` was on that list and is now on the authored one; the module
+ * header says why.
  */
 export function summaryRequiredAtCreate(input: CreateInput): boolean {
   if (input.summaryOmitted === true) return false;
@@ -441,15 +482,17 @@ export function summaryUnchangedRefusal(
  * one that names nothing.
  */
 export function summaryAtCreateRefusal(
-  input: CreateInput, surface: 'add' | 'create_item',
+  input: CreateInput, surface: CreateSurface, invocation = '<LESSON-id> <key>',
 ): string {
   const title = (input.title ?? '').trim();
   const write = surface === 'add'
     ? `\`mycontext add ${input.type} "${title}" … --summary "<one plain sentence>"\``
-    : `create_item({ type: "${input.type}", title: "${title}", …, summary: "<one plain sentence>" })`;
-  const hatch = surface === 'add'
-    ? '`--summary-omitted`'
-    : '`summary_omitted: true`';
+    : surface === 'create_item'
+      ? `create_item({ type: "${input.type}", title: "${title}", …, summary: "<one plain sentence>" })`
+      : `\`mycontext lesson-accept ${invocation} … --summary "<one plain sentence>"\``;
+  const hatch = surface === 'create_item'
+    ? '`summary_omitted: true`'
+    : '`--summary-omitted`';
   return (
     `my_context: this capture carries no summary, and an item created without one can never ` +
     `afterwards be asked for it. \`summary_stale\` compares a summary against the content it ` +
@@ -484,12 +527,12 @@ export function summaryAtCreateRefusal(
  * refusal beside a perfectly good capture.
  */
 export function summaryOmittedRefusal(
-  input: CreateInput, surface: 'add' | 'create_item',
+  input: CreateInput, surface: CreateSurface,
 ): string | null {
   if (input.summaryOmitted !== true) return null;
   if (normalizeSummary(input.summary ?? '') === '') return null;
-  const hatch = surface === 'add' ? '--summary-omitted' : 'summary_omitted: true';
-  const wrote = surface === 'add' ? '--summary' : 'summary';
+  const hatch = surface === 'create_item' ? 'summary_omitted: true' : '--summary-omitted';
+  const wrote = surface === 'create_item' ? 'summary' : '--summary';
   return (
     `my_context: this capture passes both "${wrote}" and ${hatch}, which say that a summary ` +
     `was written and that none was. There is no reading of that which honours both, and ` +

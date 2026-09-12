@@ -1076,9 +1076,16 @@ What the user typed: $ARGUMENTS
    each — and **stop until the user says which they want.**
 5. For each one they choose, print the command for the USER to run:
 
-   \`${CLI} lesson-accept <lesson id> <key>\`
+   \`${CLI} lesson-accept <lesson id> <key> --summary "<one plain sentence>"\`
 
    and, for any they reject, \`${CLI} lesson-discard <lesson id> <key>\`.
+
+   The \`--summary\` is required, and it is THEIRS to write for the same reason the accept
+   is: one plain sentence saying what the rule IS and why it matters, for a reader who does
+   not know this codebase. You derived the candidate, so you are the one party who cannot
+   also be the one who says in their own words what it turned out to be — and an item created
+   with no summary can never afterwards be asked for one. \`--summary-omitted\` creates it
+   with none deliberately, and that is their call as well.
 
    Do not run either yourself. \`lesson-accept\` is what turns a staged candidate into a
    rule that governs this repository, it claims \`origin: "human"\`, and it is on the deny

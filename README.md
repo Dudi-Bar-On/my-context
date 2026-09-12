@@ -578,7 +578,7 @@ my_context: 2 rule candidate(s) staged for LESSON-retry-storms-need-jitter. None
   │ 47c76d53 │ dont      │ Never retry on a fixed interval │
   └──────────┴───────────┴─────────────────────────────────┘
 
-Accept with:  mycontext lesson-accept LESSON-retry-storms-need-jitter <key> [--title "…"] [--scope "a/**,b/**"]
+Accept with:  mycontext lesson-accept LESSON-retry-storms-need-jitter <key> --summary "<one plain sentence>" [--title "…"] [--scope "a/**,b/**"]
 Discard with: mycontext lesson-discard LESSON-retry-storms-need-jitter <key>
 ```
 <!-- /example -->
@@ -590,9 +590,15 @@ pending set on each run, and it prints the pending candidates the new set did no
 again rather than dropping them silently. Anything you have already accepted or discarded is
 carried forward untouched: a discarded candidate cannot come back.
 
-`mycontext lesson-accept` names one key and creates the rule.
+`mycontext lesson-accept` names one key and creates the rule. It also asks for the one thing
+the deriver could not supply: a `--summary`. Every other creation path in this product refuses
+a capture that carries neither a summary nor `--summary-omitted`, and this one used to be the
+exception — the rules it created were reported by `mycontext doctor` as `summary_absent` the
+moment they existed. It is also the path where the sentence matters most, because a candidate
+is *derived* rather than written: until you type it, nobody has said in their own words what
+the rule is. The candidate's body is printed directly above the ask for exactly that reason.
 
-<!-- example: lesson LESSON-retry-storms-need-jitter && lesson-stage LESSON-retry-storms-need-jitter --file docs/lesson-rule-candidates.json && lesson-accept LESSON-retry-storms-need-jitter 99eb0e3d -->
+<!-- example: lesson LESSON-retry-storms-need-jitter && lesson-stage LESSON-retry-storms-need-jitter --file docs/lesson-rule-candidates.json && lesson-accept LESSON-retry-storms-need-jitter 99eb0e3d --summary "Retries wait a randomised extra moment before trying again, so a crowd of clients does not all come back at once and knock the service over." -->
 ```text
 my_context: about to create this rule — review before it becomes active:
   title:     Retries add jitter to backoff
@@ -618,7 +624,7 @@ my_context: created RULE-retries-add-jitter-to-backoff (active) with derived_fro
 The rule that comes out is an ordinary item — the same Markdown as the next step describes,
 with one relation recording where it came from.
 
-<!-- example: lesson LESSON-retry-storms-need-jitter && lesson-stage LESSON-retry-storms-need-jitter --file docs/lesson-rule-candidates.json && lesson-accept LESSON-retry-storms-need-jitter 99eb0e3d && show RULE-retries-add-jitter-to-backoff -->
+<!-- example: lesson LESSON-retry-storms-need-jitter && lesson-stage LESSON-retry-storms-need-jitter --file docs/lesson-rule-candidates.json && lesson-accept LESSON-retry-storms-need-jitter 99eb0e3d --summary "Retries wait a randomised extra moment before trying again, so a crowd of clients does not all come back at once and knock the service over." && show RULE-retries-add-jitter-to-backoff -->
 ```text
 ---
 id: RULE-retries-add-jitter-to-backoff
@@ -627,6 +633,8 @@ title: Retries add jitter to backoff
 status: active
 severity: hard
 always: false
+summary: Retries wait a randomised extra moment before trying again, so a crowd of clients does not all come back at once and knock the service over.
+summary_of: 2375f22f32ab3804
 scope: []
 tags: []
 origin: human
@@ -635,7 +643,7 @@ source_anchor: null
 source_checksum: null
 valid_from: <today>
 valid_until: null
-checksum: 66d3ef277acdc7ee
+checksum: 50e1ee00ab37f2fe
 directive: do
 ---
 

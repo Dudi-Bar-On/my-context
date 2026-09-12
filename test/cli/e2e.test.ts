@@ -103,8 +103,15 @@ test('the approval gate: staging creates no rule, accepting creates exactly one'
     const keys = [...staged.out.matchAll(firstCell('[0-9a-f]{8}', 'gm'))].map((m) => m[1]);
     assert.equal(keys.length, 2);
 
-    const accepted = run(['lesson-accept', lessonId, keys[0]], cwd);
-    assert.equal(accepted.code, 0);
+    // `--summary` because the approval gate this test is named for now asks
+    // for one: a rule accepted out of a DERIVED candidate is the one creation
+    // route where nobody has yet said in their own words what it is
+    // (`core/summary-gate.ts`, fifth authored surface).
+    const accepted = run([
+      'lesson-accept', lessonId, keys[0],
+      '--summary', 'Session hooks swallow their own failures, so a broken one never takes the session down with it.',
+    ], cwd);
+    assert.equal(accepted.code, 0, accepted.out);
     // Counted through `list --json`, not by counting text lines: the text
     // table now carries a header and a rule above the data, so a count
     // derived from line arithmetic would drift with the layout.
