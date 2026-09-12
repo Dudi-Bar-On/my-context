@@ -86,11 +86,13 @@ import {
   existsSync, mkdirSync, readFileSync, renameSync, rmSync, writeFileSync,
 } from 'node:fs';
 import path from 'node:path';
+import { setTimeout as waitMs } from 'node:timers/promises';
 import { fileURLToPath } from 'node:url';
 import type { Config } from './config.ts';
 import {
   askServerFreshness, portAccepts, probeUiServer, type Freshness,
 } from './ui-server-probe.ts';
+import { readUiServerRecord } from './ui-server-record.ts';
 
 /**
  * The host the upkeep's occupancy check aims at.
@@ -150,6 +152,33 @@ export const SPAWN_INTERVAL_MS = 5 * 60_000;
 export const MAX_CONSECUTIVE_SPAWN_FAILURES = 3;
 
 /**
+ * How many times the confirmation asks whether the replacement is listening,
+ * and how long it waits between asks.
+ *
+ * **This is the number that makes "never stop a server you cannot replace"
+ * mean something.** Until 2026-09-11 `restartStaleServer` stopped a server,
+ * started a replacement and returned — and `startServer` says in as many words
+ * that a pid means libuv accepted the exec and nothing more. The only witness
+ * was the NEXT probe, one turn or one minute later, and the only remedy was a
+ * spawn five minutes after that, on a hook that only fires while somebody is
+ * working. The owner was asleep.
+ *
+ * Twelve asks a hundred milliseconds apart is 1.2 seconds. **The upper bound is
+ * set by the hook, not by the server**: `Stop` runs on a 3-second timeout the
+ * platform genuinely waits on, and the probe (250ms cap) and the freshness
+ * exchange are already inside it. The lower bound is set by the measurement in
+ * `restartStaleServer`'s header — 368ms from the kill to the new server
+ * answering, on this machine — so 1.2 seconds is that with room for a machine
+ * under the load this whole defect was measured under.
+ *
+ * A refused connection on loopback returns at once, so the cost of the answer
+ * being NO is the poll interval and nothing else; the 250ms connect cap is only
+ * ever paid by a port that is filtered, which `127.0.0.1` is not.
+ */
+export const CONFIRM_ATTEMPTS = 12;
+export const CONFIRM_POLL_MS = 100;
+
+/**
  * The CLI this module starts, resolved from its own location rather than from
  * `process.argv` or a `node_modules/.bin` lookup: the caller is a hook binary
  * whose `argv[1]` is the hook, and the plugin may be installed anywhere.
@@ -194,10 +223,27 @@ export type Upkeep = (
     did: 'nothing';
     why:
       | 'off' | 'disabled' | 'too-soon' | 'alive' | 'stood-down'
-      | 'port-already-serving' | 'stood-down-lifted';
+      | 'port-already-serving' | 'stood-down-lifted' | 'replaced-elsewhere';
   }
   | { did: 'spawned'; port: number }
-  | { did: 'restarted'; port: number }
+  | {
+    did: 'restarted';
+    port: number;
+    /**
+     * **Set, and set to `true`, exactly when the replacement was started and
+     * nothing was listening on the port by the time the call gave up asking**
+     * — `TASK-the-upkeep-stops-the-ui-server-before-it-knows-a-replacement`.
+     * Absent when a socket answered, which is a MEASURED yes rather than an
+     * assumed one.
+     *
+     * It rides on `restarted` rather than being a fifth `did` because the act
+     * is the same act: a server was stopped and a replacement was started.
+     * What differs is what is known about the result, and that is the whole
+     * of this field. `stateWriteDiscarded` below is the precedent and the
+     * argument is the same one.
+     */
+    replacementUnconfirmed?: true;
+  }
   | { did: 'stood-down'; why: 'spawn' | 'stale'; failures: number }
 ) & {
   /**
@@ -206,7 +252,8 @@ export type Upkeep = (
    * paths that attempt no write at all.
    *
    * It is a report of an event rather than a measurement of a quantity, which
-   * is why absent is a complete answer here where `STD-absent-vs-zero` would
+   * is why absent is a complete answer here where
+   * `STD-a-measured-zero-is-drawn-and-named-an-unmeasured-thing-is` would
    * demand a number elsewhere: at most one write happens per call, so the fact
    * is binary, and every path that could have produced it goes through
    * `recorded`. The rate this is really about is recovered by COUNTING the
@@ -282,7 +329,30 @@ export type UpkeepOutcome =
   | 'stood-down'
   | 'stood-down-stale'
   | 'stood-down-lifted'
-  | 'too-soon';
+  | 'too-soon'
+  /**
+   * A stale server was stopped, a replacement was started TWICE, and nothing
+   * was listening on the configured port by the time the call gave up asking.
+   *
+   * Its own value and not `restart-failed`, because the two are opposite
+   * measurements and `UpkeepOutcome`'s whole argument is that a count cannot
+   * carry a cause: `restart-failed` says something IS serving and still
+   * reports itself stale, and this says NOTHING is serving at all. A reader
+   * who cannot tell them apart cannot tell a page that is out of date from a
+   * page that is not there.
+   */
+  | 'restart-unconfirmed'
+  /**
+   * The server the probe proved alive was no longer the recorded one by the
+   * time the freshness answer came back, so this call stopped nothing.
+   *
+   * Somebody else — another session's `Stop` hook — replaced it inside the
+   * three round trips of the credential exchange. Recorded rather than
+   * silent, because a workspace whose log fills with this is a workspace
+   * where several sessions are reaching for one port, which is a fact about
+   * the machine that nothing else would report.
+   */
+  | 'replaced-elsewhere';
 
 /**
  * The two seams a test needs and production never passes.
@@ -322,6 +392,17 @@ export interface UpkeepDeps {
    * cannot be undone by the next probe.
    */
   killFn?: (pid: number, signal: NodeJS.Signals) => void;
+  /**
+   * The pause between the confirmation's asks, injected so that no test in this
+   * product's suite ever waits out a real one.
+   *
+   * The suite's standing rule is that not one test sleeps — an interval test
+   * that waits for its own interval is a test that takes minutes and still
+   * cannot say which side of a boundary it landed on. Every other clock in this
+   * module is passed in as `now` for exactly that reason; this one cannot be,
+   * because it is a wait rather than a comparison, so it is a seam instead.
+   */
+  sleepFn?: (ms: number) => Promise<unknown>;
 }
 
 /**
@@ -349,6 +430,26 @@ interface UpkeepState {
   spawnPending: boolean;
   consecutiveSpawnFailures: number;
   stoodDown: boolean;
+  /**
+   * WHY the mechanism stood down, or `null` when it has not.
+   *
+   * **The flag alone was not enough, and the file already said so about
+   * everything else.** `upkeepStandDownLine` has spoken two different sentences
+   * since 2026-08-31 because the two causes make opposite claims — one says
+   * nothing would start, the other says something is serving and will not be
+   * replaced — and `lastOutcome` records which one was last written. But
+   * `lastOutcome` is overwritten by the very next call, and the FLAG outlives
+   * it; so a workspace that stood down over a stale server, and whose server
+   * then died, arrived at the cold spawn carrying a refusal whose reason no
+   * longer existed, and declined to start anything. That is how a mechanism
+   * built to keep a server up ends up being the reason there is none.
+   *
+   * The cause is therefore stored beside the flag and read where the flag is
+   * acted on. `upkeepUiServer` voids a `stale` stand-down the moment it reaches
+   * the cold path at all, because reaching it means nothing is serving, which
+   * is the one fact that refusal claimed.
+   */
+  stoodDownWhy: 'spawn' | 'stale' | null;
   /**
    * When the FRESHNESS question was last put to a server that answered, or
    * `null` for a workspace that has never asked it.
@@ -395,6 +496,7 @@ const FRESH: UpkeepState = {
   spawnPending: false,
   consecutiveSpawnFailures: 0,
   stoodDown: false,
+  stoodDownWhy: null,
   lastFreshnessAt: null,
   lastOutcome: null,
 };
@@ -408,9 +510,12 @@ const FRESH: UpkeepState = {
  */
 const OUTCOMES: readonly UpkeepOutcome[] = [
   'alive', 'port-already-serving', 'spawned', 'spawn-failed',
-  'restarted-stale', 'restart-failed',
+  'restarted-stale', 'restart-failed', 'restart-unconfirmed', 'replaced-elsewhere',
   'stood-down', 'stood-down-stale', 'stood-down-lifted', 'too-soon',
 ];
+
+/** `stoodDown`'s cause, read back by name for `OUTCOMES`' reason. */
+const STAND_DOWN_CAUSES = ['spawn', 'stale'] as const;
 
 export function upkeepStatePath(root: string): string {
   return path.join(root, 'state', STATE_FILE);
@@ -501,6 +606,7 @@ function readState(root: string): UpkeepState {
     spawnPending: value.spawnPending === true,
     consecutiveSpawnFailures: num('consecutiveSpawnFailures') ?? 0,
     stoodDown: value.stoodDown === true,
+    stoodDownWhy: STAND_DOWN_CAUSES.find((known) => known === value['stoodDownWhy']) ?? null,
     lastFreshnessAt: num('lastFreshnessAt'),
     lastOutcome: OUTCOMES.find((known) => known === value['lastOutcome']) ?? null,
   };
@@ -772,6 +878,7 @@ function recordServerSeen(
     spawnPending: false,
     consecutiveSpawnFailures: 0,
     stoodDown: false,
+    stoodDownWhy: null,
     lastOutcome: lifted ? 'stood-down-lifted' : seen,
   }, { did: 'nothing', why: lifted ? 'stood-down-lifted' : seen });
 }
@@ -853,14 +960,14 @@ function recordServerSeen(
  * believing a restart that plainly did not produce current code, is the failure
  * that has no floor at all.
  */
-function restartStaleServer(
+async function restartStaleServer(
   root: string,
   next: UpkeepState,
   port: number,
   server: { pid: number; workspace: string },
   now: number,
   deps: UpkeepDeps,
-): Upkeep {
+): Promise<Upkeep> {
   // The stand-down, first, exactly as below. A stale server that will not be
   // replaced is left alone and said so about; the probe and the ask keep
   // running, so a server that comes back FRESH still lifts this through
@@ -877,7 +984,7 @@ function restartStaleServer(
     if (next.consecutiveSpawnFailures >= MAX_CONSECUTIVE_SPAWN_FAILURES) {
       return recorded(
         root,
-        { ...next, stoodDown: true, lastOutcome: 'stood-down-stale' },
+        { ...next, stoodDown: true, stoodDownWhy: 'stale', lastOutcome: 'stood-down-stale' },
         { did: 'stood-down', why: 'stale', failures: next.consecutiveSpawnFailures },
       );
     }
@@ -892,16 +999,104 @@ function restartStaleServer(
       root, { ...next, lastOutcome: 'too-soon' }, { did: 'nothing', why: 'too-soon' });
   }
 
+  // ── IS THIS STILL THE SERVER THE PROBE PROVED? ────────────────────────────
+  //
+  // **The window is the freshness exchange, and it is three HTTP round trips
+  // wide.** `liveness.pid` was read off the record before `askServerFreshness`
+  // ran; by the time the answer comes back another session's `Stop` hook may
+  // have stopped that server and started its own replacement, which records
+  // itself. Signalling the pid we hold would then kill a server seconds after
+  // it bound — a hook believing it was ending the stale one.
+  //
+  // The record is read again rather than re-probed: the question here is not
+  // "is something listening" (the confirmation below asks that) but "is the
+  // thing I am about to signal still the thing I decided about", and the record
+  // is where that identity lives. One small file read.
+  //
+  // Declining is the whole response. Somebody else has just replaced this
+  // server, so the work this call was going to do is already done; doing it
+  // again is the churn, and the second kill is the damage.
+  const stillRecorded = readUiServerRecord(deps.globalRoot);
+  if (stillRecorded === null || stillRecorded.pid !== server.pid) {
+    return recorded(
+      root,
+      { ...next, lastOutcome: 'replaced-elsewhere' },
+      { did: 'nothing', why: 'replaced-elsewhere' },
+    );
+  }
+
   // Stop, then start. The old process holds the port, so a spawn without the
   // stop can only ever answer EADDRINUSE — the same measurement that put the
   // occupancy check below where it is.
   stopServer(server.pid, deps.killFn ?? process.kill);
   startServer(port, deps.spawnFn ?? spawn, server.workspace);
+
+  // ── AND THEN FIND OUT, RATHER THAN ASSUMING ───────────────────────────────
+  //
+  // Everything above this line is what the function did before 2026-09-11, and
+  // the line below is the fix. The two statements above give the owner's port
+  // away and hand it to a process about which NOTHING is known: `startServer`
+  // says so itself — a pid means libuv accepted the exec, and a detached child
+  // that dies a second later throws nothing anywhere. Measured that night: five
+  // replacements in thirty-nine minutes and, after the fifth, no server, no
+  // record, and nothing due to look again for five minutes on a hook that only
+  // fires while somebody is working.
+  //
+  // A second start before giving up, because the likeliest reason a replacement
+  // does not bind is the socket just released not having finished releasing,
+  // which is over in milliseconds, and this call is the cheapest place there
+  // will ever be to try again — every other remedy is at least a probe interval
+  // away and needs another session to exist.
+  let listening = await confirmListening(port, deps);
+  if (!listening) {
+    startServer(port, deps.spawnFn ?? spawn, server.workspace);
+    listening = await confirmListening(port, deps);
+  }
+  if (listening) {
+    return recorded(
+      root,
+      { ...next, lastSpawnAt: now, spawnPending: true, lastOutcome: 'restarted-stale' },
+      { did: 'restarted', port },
+    );
+  }
+
+  // **`lastSpawnAt` is left where it was, and that is the point rather than an
+  // omission.** The spawn floor's entire argument is that a stale server is
+  // still a server and replacing one every minute is a storm bought for a page
+  // that is merely out of date. That argument has just been measured false:
+  // nothing is serving. Holding the floor here would make the mechanism wait
+  // out five minutes over a hole it created itself, which is what left the
+  // owner with a dead tab overnight. The probe floor still applies, so the next
+  // attempt is a minute away and no sooner.
   return recorded(
     root,
-    { ...next, lastSpawnAt: now, spawnPending: true, lastOutcome: 'restarted-stale' },
-    { did: 'restarted', port },
+    { ...next, spawnPending: true, lastOutcome: 'restart-unconfirmed' },
+    { did: 'restarted', port, replacementUnconfirmed: true },
   );
+}
+
+/**
+ * Ask, repeatedly and briefly, whether anything is listening where the
+ * replacement was told to bind.
+ *
+ * Aimed at `config.ui.port` because that is the port `startServer` was passed,
+ * and answered by the same occupancy check the cold path uses — one function
+ * for "would a spawn be able to bind" and "did the spawn bind", because they
+ * are the same measurement asked at two moments, and two implementations of it
+ * would be two things that could disagree about what listening means.
+ *
+ * Never throws: `portAccepts` resolves a boolean for every outcome there is.
+ */
+async function confirmListening(port: number, deps: UpkeepDeps): Promise<boolean> {
+  const accepts = deps.portAcceptsFn ?? portAccepts;
+  const wait = deps.sleepFn ?? waitMs;
+  for (let attempt = 0; attempt < CONFIRM_ATTEMPTS; attempt += 1) {
+    // Asked BEFORE the first wait, so a replacement that is already up costs
+    // one loopback connect and no delay at all — the ordinary case.
+    if (await accepts(SPAWN_HOST, port)) return true;
+    await wait(CONFIRM_POLL_MS);
+  }
+  return false;
 }
 
 /**
@@ -1035,6 +1230,28 @@ export async function upkeepUiServer(
   // `did: 'nothing'` rather than `did: 'stood-down'`, unchanged: the caller
   // discloses on the latter, and it is emitted on exactly one call — the one
   // that gives up, below.
+  // ── A STALE STAND-DOWN DOES NOT REACH THIS FAR, AND NEVER DID ────────────
+  //
+  // `stood-down-stale` means, in the product's own words, that *the port is
+  // being served and it is the REPLACEMENT that failed*. Reaching this line
+  // means both proofs above have just failed — the recorded server is gone and
+  // the configured port answers nothing — so every claim that refusal rests on
+  // has been measured false. Carrying it further would refuse to START a server
+  // on the strength of having refused to REPLACE one, which is the mechanism
+  // built to keep a server up becoming the reason there is none.
+  //
+  // The counter goes with it. Those failures were counted against restarts of a
+  // server that no longer exists; keeping them would build toward a stand-down
+  // over a situation that has ended. A `spawn` stand-down is untouched, because
+  // its claim — that nothing would start here — is exactly the claim this line
+  // is about to act on.
+  if (next.stoodDown && next.stoodDownWhy === 'stale') {
+    next.stoodDown = false;
+    next.stoodDownWhy = null;
+    next.consecutiveSpawnFailures = 0;
+    next.spawnPending = false;
+  }
+
   if (next.stoodDown) {
     return recorded(
       root, { ...next, lastOutcome: 'stood-down' }, { did: 'nothing', why: 'stood-down' });
@@ -1054,7 +1271,7 @@ export async function upkeepUiServer(
     if (next.consecutiveSpawnFailures >= MAX_CONSECUTIVE_SPAWN_FAILURES) {
       return recorded(
         root,
-        { ...next, stoodDown: true, lastOutcome: 'stood-down' },
+        { ...next, stoodDown: true, stoodDownWhy: 'spawn', lastOutcome: 'stood-down' },
         { did: 'stood-down', why: 'spawn', failures: next.consecutiveSpawnFailures },
       );
     }

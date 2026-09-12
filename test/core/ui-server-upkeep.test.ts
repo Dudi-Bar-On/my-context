@@ -1,3 +1,5 @@
+// @basis TASK-the-upkeep-stops-the-ui-server-before-it-knows-a-replacement,
+//        RULE-anything-you-start-for-a-human-to-look-at-must-outlive-the
 /**
  * **The two floors, the stand-down, and the machine that never asked.**
  *
@@ -46,7 +48,7 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { resolveConfig, type Config } from '../../src/core/config.ts';
 import type { Freshness } from '../../src/core/ui-server-probe.ts';
-import { writeUiServerRecord } from '../../src/core/ui-server-record.ts';
+import { readUiServerRecord, writeUiServerRecord } from '../../src/core/ui-server-record.ts';
 import {
   MAX_CONSECUTIVE_SPAWN_FAILURES, PROBE_FLOOR_MS, SPAWN_INTERVAL_MS,
   upkeepStandDownLine, upkeepStatePath, upkeepUiServer,
@@ -80,6 +82,20 @@ const DISABLED: Config = resolveConfig({ ui: { enabled: false, port: PORT } });
  * which binds its own listener on an ephemeral port and configures that.
  */
 const NOTHING_ON_THE_PORT = async (): Promise<boolean> => false;
+
+/**
+ * The configured port answers — the replacement came up.
+ *
+ * The counterpart to `NOTHING_ON_THE_PORT`, and every restart test that is not
+ * ABOUT the confirmation needs it: the confirmation aims the occupancy check at
+ * `config.ui.port`, so a restart test left with `NOTHING_ON_THE_PORT` is a test
+ * whose replacement never comes up — a different situation from the one it was
+ * written for.
+ */
+const REPLACEMENT_COMES_UP = async (): Promise<boolean> => true;
+
+/** Nothing waits in this file, so the confirmation's poll may not either. */
+const NO_WAITING = async (): Promise<void> => {};
 
 interface Sandbox {
   /** The workspace directory, as every hook builder is handed it. */
@@ -864,7 +880,7 @@ test('a server that answers and reports itself STALE is stopped and started agai
       await upkeepUiServer(sb.root, CONFIGURED, NOW, {
         globalRoot: sb.globalRoot,
         spawnFn: spawner.fn,
-        portAcceptsFn: NOTHING_ON_THE_PORT,
+        portAcceptsFn: REPLACEMENT_COMES_UP,
         freshnessFn: stale.fn,
         killFn: kill.fn,
       }),
@@ -895,7 +911,7 @@ test('a restart is not recorded as a spawn — the log can tell them apart', asy
     await upkeepUiServer(restarted.root, CONFIGURED, NOW, {
       globalRoot: restarted.globalRoot,
       spawnFn: spawner.fn,
-      portAcceptsFn: NOTHING_ON_THE_PORT,
+      portAcceptsFn: REPLACEMENT_COMES_UP,
       freshnessFn: answering('stale').fn,
       killFn: kill.fn,
     });
@@ -999,7 +1015,7 @@ test('a stale restart is refused by the SPAWN floor, exactly as a cold spawn is'
   const deps = {
     globalRoot: sb.globalRoot,
     spawnFn: spawner.fn,
-    portAcceptsFn: NOTHING_ON_THE_PORT,
+    portAcceptsFn: REPLACEMENT_COMES_UP,
     freshnessFn: stale.fn,
     killFn: fakeKill().fn,
   };
@@ -1035,7 +1051,7 @@ test('three restarts that leave it stale stand the mechanism down', async () => 
   const deps = {
     globalRoot: sb.globalRoot,
     spawnFn: spawner.fn,
-    portAcceptsFn: NOTHING_ON_THE_PORT,
+    portAcceptsFn: REPLACEMENT_COMES_UP,
     freshnessFn: answering('stale').fn,
     killFn: fakeKill().fn,
   };
@@ -1075,6 +1091,7 @@ test('a server that comes back FRESH clears the restarts counted against it', as
     globalRoot: sb.globalRoot,
     spawnFn: spawner.fn,
     portAcceptsFn: NOTHING_ON_THE_PORT,
+      sleepFn: NO_WAITING,
     killFn: fakeKill().fn,
   };
   const close = await serverAt(sb.globalRoot, process.ppid);
@@ -1109,7 +1126,7 @@ test('the upkeep never signals the process it is running in', async () => {
       await upkeepUiServer(sb.root, CONFIGURED, NOW, {
         globalRoot: sb.globalRoot,
         spawnFn: spawner.fn,
-        portAcceptsFn: NOTHING_ON_THE_PORT,
+        portAcceptsFn: REPLACEMENT_COMES_UP,
         freshnessFn: answering('stale').fn,
         killFn: kill.fn,
       }),
@@ -1155,7 +1172,7 @@ test('the replacement is started in the workspace the old server named', async (
     await upkeepUiServer(sb.root, CONFIGURED, NOW, {
       globalRoot: sb.globalRoot,
       spawnFn: spawner.fn,
-      portAcceptsFn: NOTHING_ON_THE_PORT,
+      portAcceptsFn: REPLACEMENT_COMES_UP,
       freshnessFn: answering('stale').fn,
       killFn: fakeKill().fn,
     });
@@ -1179,6 +1196,7 @@ test('a workspace that is no longer there is not passed to spawn', async () => {
       globalRoot: sb.globalRoot,
       spawnFn: spawner.fn,
       portAcceptsFn: NOTHING_ON_THE_PORT,
+      sleepFn: NO_WAITING,
       freshnessFn: answering('stale').fn,
       killFn: fakeKill().fn,
     });
@@ -1298,4 +1316,196 @@ test('a discard on a QUIET turn is reported too — the common case, and the one
   } finally {
     await close();
   }
+});
+
+/* ---------------------------------------------------------------------------
+ * NEVER STOP A SERVER YOU CANNOT REPLACE.
+ *
+ * The declaration for this section is the file's own, at the top.
+ *
+ * **Measured on the owner's own machine, 2026-09-11.** The audit log holds five
+ * `stop` rows between 22:35:12Z and 23:14:24Z, each one saying the UI server on
+ * 58888 *"reported its own code stale, so it was stopped and started again"* —
+ * and at 23:18Z nothing was listening on 58888 and no liveness record existed
+ * at all. The working tree held thirteen modified files, `src/ui/server.ts` and
+ * `src/ui/public/` among them, so `staleCode` was permanently true and every
+ * turn boundary past the spawn floor reached this branch.
+ *
+ * `restartStaleServer` stopped the server and started the replacement, and the
+ * call ended there. **Nothing in it ever learned whether the replacement bound
+ * the port**, and nothing could: `startServer` documents that a pid says libuv
+ * accepted the exec and nothing more. When the replacement did not come up the
+ * owner had no server, the next attempt was five minutes away by the spawn
+ * floor, and it would only happen if some session fired another `Stop` hook —
+ * which, with the owner asleep, is a condition nothing in this product controls.
+ *
+ * Everything below asserts the same property from a different side: **the call
+ * that stops a server does not return until it has measured whether one is
+ * listening, and it never leaves the owner behind a five-minute floor when the
+ * answer was no.**
+ * ------------------------------------------------------------------------- */
+
+test('a replacement that never comes up is MEASURED, not assumed', async () => {
+  const sb = sandbox();
+  const close = await serverAt(sb.globalRoot, process.ppid);
+  try {
+    const result = await upkeepUiServer(sb.root, CONFIGURED, NOW, {
+      globalRoot: sb.globalRoot,
+      spawnFn: fakeSpawn().fn,
+      // Nothing ever answers on the configured port: the replacement was
+      // started and did not bind. A spawn that dies leaves no trace anywhere
+      // else — this is the only moment the mechanism can find out.
+      portAcceptsFn: NOTHING_ON_THE_PORT,
+      freshnessFn: answering('stale').fn,
+      killFn: fakeKill().fn,
+      sleepFn: NO_WAITING,
+    });
+    assert.equal((result as { replacementUnconfirmed?: true }).replacementUnconfirmed, true,
+      'the upkeep stopped a server and reported a restart without ever asking whether anything '
+      + 'was listening afterwards. A pid says libuv accepted the exec; the owner needs a socket, '
+      + 'and on 2026-09-11 he was left with neither and no record that anything was wrong');
+  } finally {
+    await close();
+  }
+});
+
+test('a replacement that never comes up is started ONCE MORE before the call gives up', async () => {
+  const sb = sandbox();
+  const spawner = fakeSpawn();
+  const close = await serverAt(sb.globalRoot, process.ppid);
+  try {
+    await upkeepUiServer(sb.root, CONFIGURED, NOW, {
+      globalRoot: sb.globalRoot,
+      spawnFn: spawner.fn,
+      portAcceptsFn: NOTHING_ON_THE_PORT,
+      freshnessFn: answering('stale').fn,
+      killFn: fakeKill().fn,
+      sleepFn: NO_WAITING,
+    });
+    assert.equal(spawner.calls.length, 2,
+      'the port was given up and exactly one attempt was made to fill it. The commonest reason '
+      + 'a replacement does not bind is the socket the process just killed not yet being '
+      + 'released, which is over in milliseconds — and the call that created the hole is the '
+      + 'cheapest place there will ever be to try again');
+  } finally {
+    await close();
+  }
+});
+
+test('a restart whose replacement never came up does NOT hold the five-minute floor', async () => {
+  const sb = sandbox();
+  const spawner = fakeSpawn();
+  const deps = {
+    globalRoot: sb.globalRoot,
+    spawnFn: spawner.fn,
+    portAcceptsFn: NOTHING_ON_THE_PORT,
+    freshnessFn: answering('stale').fn,
+    killFn: fakeKill().fn,
+    sleepFn: NO_WAITING,
+  };
+  const close = await serverAt(sb.globalRoot, process.ppid);
+  try {
+    await upkeepUiServer(sb.root, CONFIGURED, NOW, deps);
+  } finally {
+    // The record now points at a port nothing is on, exactly as it did on the
+    // owner's machine: the server was stopped and the replacement never bound.
+    await close();
+  }
+
+  // One PROBE interval later — a minute, not five. The spawn floor exists to
+  // stop a bad server being replaced every minute; there is no server here.
+  assert.equal(
+    (await upkeepUiServer(sb.root, CONFIGURED, NOW + PROBE_FLOOR_MS + 1_000, deps)).did,
+    'spawned',
+    'the owner was left with nothing and the mechanism waited out a floor whose whole argument '
+    + 'is that a stale server is still a server. It was not still a server — the call before '
+    + 'this one had just measured that nothing was listening');
+});
+
+test('two hooks racing to replace ONE server stop it once, not twice', async () => {
+  const sb = sandbox();
+  const other = sandbox();
+  const kill = fakeKill();
+  let nextPid = 90_001;
+  // A replacement that behaves like a real one: it takes the port and RECORDS
+  // ITSELF, which is the only way a second hook can tell that the server it
+  // probed a moment ago is not the server on the port now.
+  const spawnFn = ((): unknown => {
+    const current = readUiServerRecord(sb.globalRoot);
+    nextPid += 1;
+    if (current !== null) writeUiServerRecord({ ...current, pid: nextPid }, sb.globalRoot);
+    const child = new EventEmitter() as FakeChild;
+    child.pid = nextPid;
+    child.unref = (): void => {};
+    return child;
+  }) as unknown as typeof spawn;
+
+  // The barrier is the freshness ask itself, and that is where the window
+  // really is: `askServerFreshness` is a THREE-REQUEST credential exchange, so
+  // between the probe that proved a pid and the signal sent to it there are
+  // three round trips in which another hook can replace the whole server.
+  let arrived = 0;
+  let release = (): void => {};
+  const bothArrived = new Promise<void>((resolve) => { release = resolve; });
+  const freshnessFn = async (): Promise<Freshness> => {
+    arrived += 1;
+    if (arrived === 2) release();
+    await bothArrived;
+    return 'stale';
+  };
+
+  const close = await serverAt(sb.globalRoot, process.ppid);
+  try {
+    const deps = {
+      globalRoot: sb.globalRoot,
+      spawnFn,
+      portAcceptsFn: REPLACEMENT_COMES_UP,
+      freshnessFn,
+      killFn: kill.fn,
+      sleepFn: NO_WAITING,
+    };
+    // Two workspaces, because the state file is per workspace and this hazard
+    // is not about the clocks — it is about two processes signalling one pid.
+    await Promise.all([
+      upkeepUiServer(sb.root, CONFIGURED, NOW, deps),
+      upkeepUiServer(other.root, CONFIGURED, NOW, deps),
+    ]);
+    assert.deepEqual(kill.signalled, [{ pid: process.ppid, signal: 'SIGTERM' }],
+      'both hooks signalled, and the second one signalled a pid it had proved alive before a '
+      + 'three-request exchange it then waited through. Tonight that second signal lands on the '
+      + 'replacement the first hook had just started — a server killed seconds after it bound, '
+      + 'by a hook that believed it was killing the stale one');
+  } finally {
+    await close();
+  }
+});
+
+test('a stale stand-down never stops an ABSENT server being put back', async () => {
+  const sb = sandbox();
+  const spawner = fakeSpawn();
+  // The state a stale stand-down leaves: the mechanism has refused to REPLACE a
+  // server three times. It has never said a server could not be STARTED — the
+  // stand-down line says so in as many words, and the two causes are separate
+  // values in the file for exactly that reason.
+  writeFileSync(upkeepStatePath(sb.root), JSON.stringify({
+    lastProbeAt: NOW - PROBE_FLOOR_MS - 1,
+    lastSpawnAt: NOW - SPAWN_INTERVAL_MS - 1,
+    spawnPending: false,
+    consecutiveSpawnFailures: MAX_CONSECUTIVE_SPAWN_FAILURES,
+    stoodDown: true,
+    stoodDownWhy: 'stale',
+    lastFreshnessAt: NOW - SPAWN_INTERVAL_MS - 1,
+    lastOutcome: 'stood-down-stale',
+  }), 'utf8');
+
+  // No record and nothing on the port: the server the stand-down was declared
+  // over is gone. Every claim the refusal rests on is now false.
+  assert.equal(
+    (await upkeepUiServer(sb.root, CONFIGURED, NOW, {
+      globalRoot: sb.globalRoot, spawnFn: spawner.fn, portAcceptsFn: NOTHING_ON_THE_PORT,
+    })).did,
+    'spawned',
+    'a refusal that meant "something is serving and will not be replaced" was read as "no '
+    + 'server will be started", and the owner was left with nothing until a person deleted a '
+    + 'state file. The two stand-downs make opposite claims and this is the one that matters');
 });
