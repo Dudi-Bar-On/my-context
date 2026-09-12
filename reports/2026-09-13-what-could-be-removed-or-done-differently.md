@@ -489,11 +489,11 @@ pass doesn't re-open a closed decision.
   not a ceiling. A second pass built on actual import resolution (a type-checker API, not grep)
   would be the way to get a ceiling, and wasn't attempted here.
 - **`src/core/retrieval/` (7 files, 2,344 lines) was not assigned to any lane and got only a
-  docblock skim from me directly**, not a full read. Each file opens with a strong, specific,
-  measured argument for its own existence (FTS5 match-rate numbers, an explicit safety-boundary
-  rationale, a named rejection of clustering in favor of a vocabulary match) — nothing read as an
-  obvious problem, but "nothing obvious on a skim" is weaker evidence than what the rest of this
-  report rests on, and should be stated as such.
+  docblock skim.** That skim has since been followed up on the one question a skim can answer
+  mechanically — which of the seven modules anything actually reaches — and it found the report's
+  one wholly-missed finding. See **Addendum: two built, measured, tested retrieval modules that
+  nothing reaches** below. The rest of the directory (the internals of the five wired modules) still
+  has not had a full read.
 - **The frontend (`src/ui/public/screens/*.js`, `src/ui/public/lib/*.js`) got only targeted
   pattern checks** — the `post()`/anchor-route count, a couple of helper-name greps (no shared
   `escapeHtml`-style helper found by name, but this wasn't chased further) — not a full read for
@@ -511,3 +511,83 @@ pass doesn't re-open a closed decision.
   "evidence it's safe" claim above rests on import-graph tracing and reading the cited tests' intent,
   not a green run after the change. `npm test` and `npm run typecheck` should gate any of the
   mechanical splits above before they're considered done.
+
+---
+
+# Addendum — two built, measured, tested retrieval modules that nothing reaches
+
+**Could not assess** above recorded `src/core/retrieval/` as skimmed rather than read. A
+whole-repo orphan sweep (every `src/**/*.ts` basename checked for at least one importer under
+`src/`) was then run against that gap. It returned 24 files, of which 21 are expected entry points
+— the 20 hook binaries under `src/hooks/`, which `hooks.json` registers by path and no module
+imports, plus `src/plugin/commands.ts` and `src/core/cli-ui-coverage.ts`, both reached from
+`scripts/gen-*.ts` — and one is the known deliberately-unwired `src/review/prompt.ts`.
+
+**Two are not explainable that way.**
+
+| Module | Lines | Reached from `src/` | Reached from |
+|---|---|---|---|
+| `src/core/retrieval/subjects.ts` | 336 | nothing | `test/core/subjects.test.ts` only |
+| `src/core/retrieval/noise.ts` | 326 | nothing | `test/core/noise.test.ts`, `test/core/retrieval-return.test.ts` |
+
+The other five modules in that directory are all wired: `from-selection.ts` → `review/drift.ts` +
+`ui/read-model-retrieval.ts`; `mission.ts` → `result.ts` + `read-model-retrieval.ts`; `result.ts` →
+`cli/commands/restore.ts` + `return.ts` + `read-model-retrieval.ts`; `return.ts` and
+`return-stage.ts` → `restore.ts` + `ui/retrieval-write.ts`. So this is not a directory that is off;
+it is a shipped feature with two of its seven pieces disconnected.
+
+**What is disconnected is not incidental.** These are Tasks 7 and 8 of `plan:recall seq:2`, and
+both carry owner rulings and measurements in their own docblocks:
+
+- `subjects.ts` is the document-derived subject vocabulary — the owner's ruling that *"the specs,
+  designs, plans and roadmaps a session references **are** the developer-domain vocabulary"*, built
+  on the vendored markdown-it tokeniser because a regex *"misses 44% of the inline code"*, with the
+  `shallow`/`deep` knob his ruling asked for.
+- `noise.ts` is the noise filter — the thing the parent item is *named* after
+  (`TASK-reconstruct-a-subject-from-a-passage-you-copied-without-the`, "without the noise reaching
+  your context"), routing by tool name because a lexical classifier measured **AUC 0.499**, with the
+  exact-8-gram repeat rule chosen over MinHash/LSH on measured timings.
+
+**The consequence, stated precisely.** `src/core/retrieval/mission.ts` imports exactly two things:
+`node:fs` and `node:path` (`:46-47`). `src/ui/read-model-retrieval.ts` imports `mission`,
+`from-selection`, `result`, `return`, `conversation-index`, `conversation-search`, `store`,
+`workspace` and `routes` (`:59-77`) — neither `noise` nor `subjects`. `cli/commands/restore.ts`
+reaches `result`/`return`/`return-stage` and neither of these. So every mission this product
+composes today is composed **without** the noise filter and **without** the document vocabulary.
+Nothing is broken and nothing errors; the two measured qualities simply are not in the path.
+
+**Why this is a finding and not the deliberately-unwired category.** This report's own test for
+that category is *"a recorded ruling, a revisit condition, and passing tests over the unwired
+code"* (as `src/ui/maintenance/**`, `renderCorrection` and `review/prompt.ts` each have). These two
+have the tests but neither of the other two. Their parent item closed on 2026-09-12 and lists both
+under **DONE, 2026-09-11**, by file path, with no statement that either is intentionally left
+unconnected — while the same item is meticulous about recording what was deliberately *not* built
+(*"WHAT WAS DELIBERATELY NOT BUILT: a DISCARD route"*) and about one seam it did close (*"ONE SEAM
+WAS CLOSED IN 121b01b0: `MissionRequest` now carries `resultShape`"*). An item that careful about
+naming its own omissions did not name this one. The item's caveat that *"NOTHING IS WIRED TO A
+HOOK, and that is unchanged"* is about hooks, and the three UI routes it describes are reached by a
+person pressing a button — that sentence does not cover these two modules.
+
+**Recommendation: ask, don't wire.** The same shape as top five #5. Two readings are open and they
+have different answers, and I found no record choosing between them:
+
+1. **The mission was always meant to carry pointers, not prose** (plan Task 9 step 2: *"the mission
+   NEVER contains the raw material inline"*), so filtering could have been intended to happen in the
+   subagent that reads in the fresh window, making these two modules a library for a consumer that
+   has not been written. If so, the gap is a missing consumer, and that is a task to file.
+2. **They were meant to shape the mission and the wiring was missed** when Tasks 11-12 rebuilt the
+   destination as a staged UI write. If so, this is a small wiring fix on a feature whose measured
+   qualities are currently inert.
+
+Either way the corpus should say which, because the current state is the one this project is least
+willing to tolerate: a closed item, a green suite, and a capability that is real in the source and
+absent from the product. **Size:** filing, small; wiring, small if ruled for. **Risk:** low —
+`noise.ts`'s own docblock closes with *"This module is PURE. It opens nothing and writes nothing."*
+
+**Method note.** The orphan sweep that found this is the cheap, mechanical half of the exhaustive
+import-resolution pass that **Could not assess** #1 says is still owed — file-level rather than
+symbol-level, so it is subject to none of the substring-matching caveats recorded there. It cost
+one script and found one thing five directory-scoped lanes and a symbol-level sweep all missed,
+because each lane reviewed the files it was given and no lane was given this directory. That is
+worth recording on its own: **a review partitioned by directory cannot find the thing that is wrong
+with a directory nobody was assigned.**
