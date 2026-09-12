@@ -2,7 +2,9 @@ import { parseAcknowledged, renderAcknowledged } from './acknowledge.ts';
 import { parseSummaryWas, renderSummaryWas } from './summary-history.ts';
 import { parseFrontmatter, serializeFrontmatter, type FrontmatterValue } from './frontmatter.ts';
 import { checksum } from './slug.ts';
-import { validateLoadedId } from './vocabulary.ts';
+import {
+  ENUM_READ, ENUM_READ_POLICIES, readEnum, validateLoadedId, type EnumReadPolicy,
+} from './vocabulary.ts';
 import type { Item, Layer, Observation, Origin, Relation, Severity, Status, Step } from './types.ts';
 
 const DELIM = /^---\r?\n([\s\S]*?)\r?\n---\r?\n?/;
@@ -484,6 +486,66 @@ export function splitFrontmatter(text: string): { frontmatter: string; body: str
   return { frontmatter: match[1], body: normalized.slice(match[0].length) };
 }
 
+/**
+ * **What `parseItem` had to launder, so that somebody can say so.**
+ *
+ * The parse itself is silent by necessity: it has no channel to report on, and
+ * refusing the file outright would make a one-character typo delete an item
+ * from every surface at once. But `INV-nothing-is-dropped-silently` is not
+ * satisfied by a fallback nobody mentions, so the fact is available as a VALUE
+ * here and the two callers that can speak decide what to do with it:
+ *
+ *  - **`pack/reader.ts` REFUSES the artefact.** An artefact somebody else
+ *    wrote does not get to define a status, the refusal costs one import that
+ *    was never going to be right, and it is loud at the boundary rather than
+ *    quiet forever after.
+ *  - **`doctor`'s `checkLaunderedEnum` REPORTS the local file.** A corrupt
+ *    file in the owner's own corpus should neither vanish nor be trusted, and
+ *    the owner is the one person who can fix it.
+ *
+ * It re-reads the file text rather than being handed the parsed `Item`,
+ * because the parsed item is exactly where the evidence has been erased: the
+ * whole point is to see the value the parse refused. It re-reads it through
+ * `splitFrontmatter`, `parseFrontmatter` and `optString` — the same three
+ * `parseItem` uses — so there is no second spelling of "what does this file
+ * say for status".
+ *
+ * `[]` for a file with no frontmatter at all: `parseItem` throws on that and
+ * its refusal names the real defect, which is not this one.
+ */
+export interface LaunderedEnum {
+  /** The frontmatter key, as the file spells it. */
+  field: string;
+  /** The value the file carries, verbatim. */
+  value: string;
+  /** The whole vocabulary it is not in. */
+  legal: readonly string[];
+  /** What `parseItem` read it as instead. */
+  read: string;
+}
+
+export function launderedEnums(text: string): LaunderedEnum[] {
+  const split = splitFrontmatter(text);
+  if (split === null) return [];
+  const fm = parseFrontmatter(split.frontmatter);
+  const out: LaunderedEnum[] = [];
+  for (const policy of ENUM_READ_POLICIES as readonly EnumReadPolicy<string>[]) {
+    const raw = optString(fm, split.frontmatter, policy.field);
+    if (raw === null || policy.legal.includes(raw)) continue;
+    out.push({ field: policy.field, value: raw, legal: policy.legal, read: policy.laundered });
+  }
+  return out;
+}
+
+/**
+ * The refusal/report sentence for one laundered enum, written once so the pack
+ * boundary and the doctor row cannot describe the same value differently.
+ */
+export function launderedEnumSentence(bad: LaunderedEnum): string {
+  return `${bad.field} is ${JSON.stringify(bad.value)}, which is not one of `
+    + `${bad.legal.map((v) => JSON.stringify(v)).join(', ')}`;
+}
+
 export function parseItem(text: string, filePath: string, layer: Layer): Item {
   // Normalize once, up front: the global constraint is LF everywhere, so a
   // CRLF- OR lone-CR- (classic Mac) authored file must never let a `\r`
@@ -542,8 +604,30 @@ export function parseItem(text: string, filePath: string, layer: Layer): Item {
     id,
     type: requireString(fm, rawBlock, 'type'),
     title: requireString(fm, rawBlock, 'title'),
-    status: (optString(fm, rawBlock, 'status') ?? 'active') as Status,
-    severity: (optString(fm, rawBlock, 'severity') ?? 'soft') as Severity,
+    // **Read against the vocabulary, never cast into it** — the same boundary
+    // `validateLoadedId` is, four lines up, and it is here because that
+    // argument was made for the id and stopped there.
+    //
+    // `GOVERNING_STATUS` (trust.ts) is a `Record<Status, boolean>` written
+    // TOTAL on purpose — its docblock says a sixth member must fail to compile
+    // rather than quietly answer `false`. A cast walks straight past that:
+    // `status: activ` indexed the table with a non-member, got `undefined`,
+    // and `governsNormatively` returned `undefined` from a function declared
+    // `boolean`. Measured 2026-09-13 on a throwaway corpus: the supersede
+    // preflight, the guarded-field refusal, `supersedeItem`'s own refusal, the
+    // contradiction gate's candidate filter and the pack-collision judgement
+    // all stopped firing on one mistyped byte.
+    //
+    // What each field falls back to, and why the three answers are not the
+    // same answer, is `ENUM_READ` (vocabulary.ts). Nothing is reported from
+    // HERE — a parse has nowhere to say it, and `parseItem` must keep loading
+    // the item rather than making a wordy typo invisible, which is the choice
+    // `summary` makes three fields down for the same reason. `launderedEnums`
+    // below is what the two callers who must speak up ask: `pack/reader.ts`
+    // refuses the artefact, and `doctor`'s `checkLaunderedEnum` reports the
+    // local file.
+    status: readEnum(optString(fm, rawBlock, 'status'), ENUM_READ.status),
+    severity: readEnum(optString(fm, rawBlock, 'severity'), ENUM_READ.severity),
     always: fm.always === true,
     // `=== true` and never a truthiness test, exactly as `always` above: an
     // item that predates this field carries no key at all and must read false.
@@ -581,7 +665,9 @@ export function parseItem(text: string, filePath: string, layer: Layer): Item {
     acknowledged: parseAcknowledged(stringList(fm, 'acknowledged')),
     scope: stringList(fm, 'scope'),
     tags: stringList(fm, 'tags'),
-    origin: (optString(fm, rawBlock, 'origin') ?? 'human') as Origin,
+    // Read against `ORIGINS` for the reason given at `status` above, and
+    // falling back to `human` for a reason of its own — see `ENUM_READ`.
+    origin: readEnum(optString(fm, rawBlock, 'origin'), ENUM_READ.origin),
     sourceFile: optString(fm, rawBlock, 'source_file'),
     sourceAnchor: optString(fm, rawBlock, 'source_anchor'),
     sourceChecksum: optString(fm, rawBlock, 'source_checksum'),

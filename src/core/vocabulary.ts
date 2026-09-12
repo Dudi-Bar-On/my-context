@@ -1,11 +1,18 @@
 /**
  * **The closed vocabularies, and the id grammar, with nothing behind them.**
  *
- * This module imports nothing. That is its entire purpose, and it is a
+ * This module imports no CODE. That is its entire purpose, and it is a
  * property to preserve rather than a coincidence: every surface in this
  * project validates against these lists, so whatever module holds them is
  * reachable from everywhere. A vocabulary that lives next to an operation
  * drags the operation's dependencies along with it.
+ *
+ * The one `import type` is `types.ts`, which is declarations and has no
+ * imports of its own; it is erased before this module is evaluated, so it
+ * cannot pull code in and cannot form a cycle — which is the property
+ * `test/core/vocabulary-graph.test.ts` asserts, in those terms. It is here so
+ * that `STATUSES`, `SEVERITIES` and `ORIGINS` can carry their unions'
+ * annotations, which is what makes a typo in one of them fail to compile.
  *
  * Two concrete defects made that abstract point real:
  *
@@ -28,6 +35,7 @@
  * `test/core/vocabulary-graph.test.ts` asserts the no-imports property, so
  * the next person to reach for a helper from here finds out immediately.
  */
+import type { Origin, Severity, Status } from './types.ts';
 
 /**
  * The relation vocabulary. Closed deliberately: an open vocabulary produces
@@ -326,4 +334,133 @@ export function validateLoadedId(id: string, file: string): void {
     `would be interpreted by your shell. This item was not loaded; ${file} is otherwise ` +
     `untouched. Rename the id in the file to load it.`,
   );
+}
+
+// --- The frontmatter enums, and how a value outside one is READ -------------
+
+/**
+ * **`Status`, `Severity` and `Origin` live here for the same reason
+ * `ID_GRAMMAR` does, and they arrived by the same route.**
+ *
+ * They were declared in `validate.ts`, which is a WRITE-boundary module and
+ * imports `item.ts`. `parseItem` — the READ boundary — therefore could not
+ * reach them without re-forming the cycle this module was carved out to break
+ * (see the header), so it cast instead: `(optString(fm, 'status') ?? 'active')
+ * as Status`. A file saying `status: activ` then produced an `Item` whose
+ * `status` was `'activ'`, which is not a member of the union its type claims,
+ * and `GOVERNING_STATUS[item.status]` — a `Record<Status, boolean>` written
+ * TOTAL precisely so every status has an answer — returned `undefined`.
+ * Measured 2026-09-13 against a throwaway corpus: five gates that ask that
+ * question all stopped firing, and `governsNormatively` returned `undefined`
+ * from a function declared `boolean`.
+ *
+ * So the lists moved to the one module both boundaries can import, and
+ * `validate.ts` re-exports them so every surface that already names them —
+ * `mycontext edit --status`, `--severity`, `audit --origin`, the MCP create
+ * and update tools — keeps the single spelling it had.
+ *
+ * **The `import type` above is not a weakening of "this module imports
+ * nothing".** The property that matters, and the one
+ * `test/core/vocabulary-graph.test.ts` actually asserts, is that no CODE is
+ * pulled in: `import type` is erased before the module is evaluated and cannot
+ * form a cycle. `types.ts` is declarations and nothing else — it has no
+ * imports of its own — and the annotations are what make a typo in one of
+ * these lists fail to compile.
+ */
+
+/** Exported for the same reason `SEVERITIES` is: `mycontext edit --status`
+ * has to refuse a bad value BEFORE it prints a preview and asks for
+ * confirmation, and it must refuse it against this list, in `enumError`'s
+ * words, rather than keeping a second copy of the vocabulary. */
+export const STATUSES: Status[] = ['active', 'draft', 'superseded', 'deprecated', 'validated'];
+/** Exported so every surface that takes a severity — the `create_item` and
+ * `update_item` tools, `mycontext add --severity`, `review promote --severity`
+ * — refuses a bad one against this list and `enumError`, rather than each
+ * growing its own copy of the vocabulary and its own wording for the refusal. */
+export const SEVERITIES: Severity[] = ['hard', 'soft'];
+/**
+ * Exported for the same reason `STATUSES` and `SEVERITIES` are, and for one
+ * more that arrived with plan:builder seq:2: `audit --origin` declares this as
+ * its legal values, and `cli/commands/audit.ts` kept a second copy of the same
+ * three words until that declaration needed a single home. The vocabulary is
+ * `Origin`'s, not the audit filter's — the filter is one of its two readers.
+ */
+export const ORIGINS: Origin[] = ['human', 'agent', 'ingest', 'review'];
+
+/**
+ * **How one frontmatter enum is read, including what a value outside the
+ * vocabulary becomes — declared once, because three readers have to agree
+ * about it.**
+ *
+ * `parseItem` performs the fallback; `pack/reader.ts` refuses rather than
+ * performing it; `doctor`'s `checkLaunderedEnum` reports it. If each wrote its
+ * own answer to "what does `status: activ` mean", the parser's silence and the
+ * doctor's sentence could disagree about the very value the reader is being
+ * shown.
+ *
+ * `absent` and `laundered` are SEPARATE fields and only one of the three has
+ * them equal. That is the whole content of this table:
+ *
+ *  - **`status`: absent is `active`, laundered is `draft`.** The absent
+ *    default is the PERMISSIVE member — an item with no `status:` line governs
+ *    — so reading a corrupt one as `active` would let a mistyped byte hand out
+ *    the strongest thing this field grants. `draft` is the one status that
+ *    governs nothing, is where `trustedStatus` already lands every untrusted
+ *    capture, and is visible: the item appears in the draft queue a person
+ *    promotes from, rather than vanishing.
+ *  - **`severity`: absent is `soft`, laundered is `soft`.** `hard` is an
+ *    escalation — it exempts the item from focus narrowing (`focusHides`,
+ *    select.ts), it is a `GUARDED_FIELDS` member, and `createItem` treats it
+ *    specially — so a corrupt byte must not be able to grant it. `soft` is
+ *    both the weaker member and the absent default, which is why this is the
+ *    one row where the two agree.
+ *  - **`origin`: absent is `human`, laundered is `human`, and this is NOT the
+ *    same argument as `status`'s even though it lands on the absent default
+ *    too.** A stored `origin` never grants the ITEM authority: `trustedStatus`
+ *    reads the CALLER's origin, never the item's. Every reader of the stored
+ *    value asks whether an automatic mechanism may act on the item —
+ *    `retire.ts` (`item.origin === RETIREABLE_ORIGIN`, which is `'review'`)
+ *    and `review/decline.ts` (which refuses anything that is not `'review'`).
+ *    `human` answers no to both, so a corrupt origin cannot make an item
+ *    sweepable or declinable. Falling back to `review` — the member that reads
+ *    as least trusted — would be exactly backwards here.
+ */
+export interface EnumReadPolicy<T extends string> {
+  /** The frontmatter key, as the file spells it. */
+  field: 'status' | 'severity' | 'origin';
+  /** The whole vocabulary, and the list every refusal teaches against. */
+  legal: readonly T[];
+  /** What the field means when the file carries no such key at all. */
+  absent: T;
+  /** What a value OUTSIDE `legal` is read as. See the table above. */
+  laundered: T;
+}
+
+export const ENUM_READ: {
+  status: EnumReadPolicy<Status>;
+  severity: EnumReadPolicy<Severity>;
+  origin: EnumReadPolicy<Origin>;
+} = {
+  status: { field: 'status', legal: STATUSES, absent: 'active', laundered: 'draft' },
+  severity: { field: 'severity', legal: SEVERITIES, absent: 'soft', laundered: 'soft' },
+  origin: { field: 'origin', legal: ORIGINS, absent: 'human', laundered: 'human' },
+};
+
+/** The three policies in frontmatter order, for a caller that checks all of them. */
+export const ENUM_READ_POLICIES: readonly EnumReadPolicy<string>[] = [
+  ENUM_READ.status, ENUM_READ.severity, ENUM_READ.origin,
+];
+
+/**
+ * **One frontmatter enum, read — and the one place the cast used to be.**
+ *
+ * `null` (the key is absent) is not the same fact as a value outside the
+ * vocabulary, so the two get different answers: see `EnumReadPolicy`. Nothing
+ * here reports the laundering; `launderedEnums` (item.ts) is what a caller
+ * that must say something asks, because this function is called during a parse
+ * that has nowhere to say it.
+ */
+export function readEnum<T extends string>(raw: string | null, policy: EnumReadPolicy<T>): T {
+  if (raw === null) return policy.absent;
+  return policy.legal.includes(raw as T) ? (raw as T) : policy.laundered;
 }

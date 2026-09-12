@@ -52,7 +52,7 @@
 import { Buffer } from 'node:buffer';
 import { closeSync, openSync, readFileSync, readSync, readdirSync, realpathSync, statSync } from 'node:fs';
 import path from 'node:path';
-import { parseItem } from '../core/item.ts';
+import { launderedEnums, launderedEnumSentence, parseItem } from '../core/item.ts';
 import type { Item } from '../core/types.ts';
 import { parseHistory, type PackHistoryRecord, type UnknownHistoryRow } from './history.ts';
 import {
@@ -307,7 +307,35 @@ export function readArtefact(source: string): Artefact {
   const items: Item[] = [];
   for (const file of files) {
     if (!file.path.startsWith(`${ITEMS_DIR}/`)) continue;
-    items.push(parseItem(file.bytes.toString('utf8'), file.path, 'project'));
+    const text = file.bytes.toString('utf8');
+    // **An artefact someone else wrote does not get to define a status.**
+    //
+    // `parseItem` reads a value outside `Status`, `Severity` or `Origin` as a
+    // safe member and keeps loading (`ENUM_READ`, core/vocabulary.ts), which
+    // is the right answer for a file in the OWNER's corpus: it is his to
+    // repair, and losing the item would be a heavier punishment than the
+    // defect. It is the wrong answer here. This is the one read path reachable
+    // from input nobody in this project wrote, the fallback would plant an
+    // item in the corpus carrying a status the sender chose and the reader
+    // never saw, and `status` is the field five separate gates ask about
+    // before they refuse anything (`GOVERNING_STATUS`, core/trust.ts).
+    //
+    // So it is refused, on the same terms as every other refusal in this
+    // function: named artefact, named rule, and nothing partially read. It is
+    // cheap — an artefact this product wrote cannot fail it, because every
+    // write path runs `validateEnums` — and it is loud, which is the half the
+    // fallback cannot be.
+    const laundered = launderedEnums(text);
+    if (laundered.length > 0) {
+      refuse(`${JSON.stringify(inside(source, format, file.path))} carries a field this build `
+        + `cannot read: ${laundered.map(launderedEnumSentence).join('; ')}. Its bytes matched the `
+        + 'manifest, so this is how it was written rather than damage in transit. A value outside '
+        + 'one of these vocabularies does not become a member by being read, and this build will '
+        + 'not guess which member was meant — a status, in particular, is what decides whether '
+        + 'the item governs and whether a non-human caller may retire it. Nothing was imported. '
+        + 'Ask whoever built the artefact to write a value from the list.');
+    }
+    items.push(parseItem(text, file.path, 'project'));
   }
 
   // `history.jsonl` is the one root file an artefact may legitimately lack:

@@ -25,7 +25,7 @@ import {
   BLOCKED_STATE, buildTaskIndex, DONE_STATE, NEEDS_FIELD, readNeeds, STATE_FIELD, taskState,
   workItems,
 } from '../core/needs.ts';
-import { droppedBodyText } from '../core/item.ts';
+import { droppedBodyText, launderedEnumSentence, launderedEnums } from '../core/item.ts';
 import { globToRegExp, matchesAnyGlob, normalizePosix, relPosix } from '../core/paths.ts';
 import { summaryState } from '../core/content-hash.ts';
 import { isSnapshot, snapshotText } from '../core/reference.ts';
@@ -4232,6 +4232,98 @@ export function checkBodyTruncation(root: string, items: Item[]): Finding[] {
 }
 
 /**
+ * **A `status:`, `severity:` or `origin:` on disk that is not a member of its
+ * own vocabulary — reported here because `parseItem` cannot report it and must
+ * not drop the item.**
+ *
+ * The read boundary reads a value outside one of the three unions as a safe
+ * member and keeps loading (`ENUM_READ`, core/vocabulary.ts). That is the
+ * right answer for the owner's own corpus — refusing the file would make a
+ * one-character typo delete an item from every surface at once — but it is
+ * only half an answer, because the item then reads as something the file does
+ * not say and nothing anywhere mentions it. This is the other half.
+ *
+ * **It is an `error` and not a warning, and `status` is why.** An item whose
+ * file says `status: activ` used to load as `'activ'`: a value outside
+ * `Status`, indexed into `GOVERNING_STATUS` — a `Record<Status, boolean>`
+ * written total precisely so every status has an answer — which returned
+ * `undefined`. Measured 2026-09-13 on a throwaway corpus: the supersede
+ * preflight, the guarded-field refusal, `supersedeItem`'s own refusal, the
+ * contradiction gate's candidate filter and the pack-collision judgement all
+ * stopped firing. The fallback makes the item honest; it does NOT restore
+ * those protections, because `draft` does not govern either. Only repairing
+ * the file does, which is what makes this row work a person actually owes.
+ *
+ * **Two remedies, because the routes genuinely differ.** `mycontext edit`
+ * carries `--status` and `--severity` (core/edit-flags.ts) and carries no
+ * `--origin`, so the first two are FIXABLE by a command a reader can copy and
+ * the third is RULABLE and nothing more — which is this module's own
+ * three-way rule applied rather than a remedy chosen for uniformity.
+ *
+ * **The evidence is destructible, and the message says so.** Every write path
+ * re-renders the whole item from the parsed value, so the next
+ * `mycontext repair` or `mycontext edit` on this item writes the FALLBACK into
+ * the file and this finding stops firing with the original value gone. That is
+ * not a reason to suppress the row; it is a reason for the row to name it.
+ *
+ * Project layer only, exactly as `checkBodyTruncation` above: `item.filePath`
+ * is relative to the project root, and a global-layer item's file is not under
+ * it.
+ */
+export function checkLaunderedEnum(root: string, items: Item[]): Finding[] {
+  const findings: Finding[] = [];
+  for (const item of items) {
+    if (item.layer !== 'project') continue;
+    let text: string;
+    try {
+      text = readFileSync(path.join(root, ...item.filePath.split('/')), 'utf8');
+    } catch {
+      // Unreadable is `loadLayer`'s report to make, not this check's — the
+      // same division `checkBodyTruncation` keeps.
+      continue;
+    }
+    for (const bad of launderedEnums(text)) {
+      const fixable = bad.field === 'status' || bad.field === 'severity';
+      findings.push({
+        level: 'error',
+        code: 'laundered_enum',
+        item: item.id,
+        remedy: fixable
+          ? {
+            route: 'copy',
+            argv: ['mycontext', 'edit', item.id, `--${bad.field}`, bad.read, '--yes'],
+          }
+          : ACK,
+        message:
+          `${item.filePath} says ${launderedEnumSentence(bad)}. This build does not guess which ` +
+          `one was meant, so it reads the field as ${JSON.stringify(bad.read)} — which is what ` +
+          `every surface is showing you for this item right now, including \`mycontext show\`` +
+          (bad.field === 'status'
+            ? ' and the session injection. A status outside the vocabulary is the one that costs ' +
+              'most: it is the field five separate gates ask about before they refuse a non-human ' +
+              'caller anything, and none of them fires for an item that does not govern — so ' +
+              'until the file is repaired this item is not protected by any of them. '
+            : '. ') +
+          (fixable
+            ? `\`mycontext edit ${item.id} --${bad.field} ${bad.read} --yes\` writes that reading ` +
+              'into the file and settles this row; pass a different value if a different one is ' +
+              'what you meant.'
+            : 'There is no `mycontext edit --origin` — origin records who wrote the item and no ' +
+              'command restamps it — so this is a ruling rather than a repair. Note that ' +
+              `${JSON.stringify(bad.read)} is the protective reading: it is the one origin the ` +
+              'retirement sweep may not touch and the one `review decline` refuses, so nothing ' +
+              'automatic acts on this item while it stands.') +
+          ' Repair it before the next `mycontext repair` or `mycontext edit` on this item: every ' +
+          'write path re-renders the whole file from the value above, so the next one replaces ' +
+          `${JSON.stringify(bad.value)} with ${JSON.stringify(bad.read)} and this row stops ` +
+          'firing with nothing left to read.',
+      });
+    }
+  }
+  return findings;
+}
+
+/**
  * List and blockquote scaffolding a line may open with before its first word.
  * Stripped so "does this line OPEN with a shouted clause" is asked of the
  * prose rather than of the Markdown wrapped around it.
@@ -4579,6 +4671,7 @@ export function runChecks(opts: {
     () => checkIndexFreshness(opts.root, opts.dbPath),
     () => checkOrphanRelations(opts.items),
     () => checkBodyTruncation(opts.root, opts.items),
+    () => checkLaunderedEnum(opts.root, opts.items),
     () => checkBodyAgreement(opts.items, opts.config),
     () => checkCitationForm(opts.repoRoot, opts.items),
     () => checkSourceDrift(opts.repoRoot, opts.items),

@@ -15,27 +15,24 @@ import {
   isValidObservationCategory, parseObservationLine, renderObservation, splitObservationTags,
 } from './item.ts';
 import { enumError } from './teach.ts';
-import { ID_GRAMMAR, isUsableId } from './vocabulary.ts';
+import { ID_GRAMMAR, isUsableId, ORIGINS, SEVERITIES, STATUSES } from './vocabulary.ts';
 import type { Observation, Origin, Relation, Severity, Status, Step } from './types.ts';
 
-/** Exported for the same reason `SEVERITIES` is: `mycontext edit --status`
- * has to refuse a bad value BEFORE it prints a preview and asks for
- * confirmation, and it must refuse it against this list, in `enumError`'s
- * words, rather than keeping a second copy of the vocabulary. */
-export const STATUSES: Status[] = ['active', 'draft', 'superseded', 'deprecated', 'validated'];
-/** Exported so every surface that takes a severity — the `create_item` and
- * `update_item` tools, `mycontext add --severity`, `review promote --severity`
- * — refuses a bad one against this list and `enumError`, rather than each
- * growing its own copy of the vocabulary and its own wording for the refusal. */
-export const SEVERITIES: Severity[] = ['hard', 'soft'];
 /**
- * Exported for the same reason `STATUSES` and `SEVERITIES` are, and for one
- * more that arrived with plan:builder seq:2: `audit --origin` declares this as
- * its legal values, and `cli/commands/audit.ts` kept a second copy of the same
- * three words until that declaration needed a single home. The vocabulary is
- * `Origin`'s, not the audit filter's — the filter is one of its two readers.
+ * **The three vocabularies now live in `vocabulary.ts`, and this is the
+ * re-export, not a second copy** — the same arrangement `relations.ts` keeps
+ * for `RELATION_TYPES`, and for the same reason: every surface that already
+ * names them here keeps working, and there is still exactly one list.
+ *
+ * They moved because the READ boundary needed them. `parseItem` (item.ts)
+ * could not import this module — `validate.ts` imports `item.ts`, and the
+ * cycle that makes is the one `vocabulary.ts` was carved out to break — so it
+ * cast instead, and `status: activ` became an `Item.status` outside its own
+ * union. `vocabulary.ts` states the whole measurement, and `ENUM_READ` beside
+ * the lists states what a value outside one is READ as, which is a question
+ * this module never had to answer because a write is refused outright.
  */
-export const ORIGINS: Origin[] = ['human', 'agent', 'ingest', 'review'];
+export { ORIGINS, SEVERITIES, STATUSES } from './vocabulary.ts';
 
 /**
  * Without this, `status: 'activ'` (or any other typo) persists happily —
