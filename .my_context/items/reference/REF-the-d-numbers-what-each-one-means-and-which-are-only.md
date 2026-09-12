@@ -5,12 +5,12 @@ title: "the D numbers: what each one means, and which are only proposed"
 status: active
 severity: soft
 always: true
-summary: The short numbers used to talk about work in progress and what each one refers to, kept as a bare map so the same number never means two things; two more were added on 2026-09-13 from the type review.
-summary_of: 5b921b78e85901f9
+summary: The short numbers used to talk about work in progress and what each one refers to, kept as a bare map so the same number never means two things; D52 widened on 2026-09-13 to the log that records what was delivered.
+summary_of: 6d4438bb3452be5c
 summary_was:
+  - 2026-09-12 The short numbers used to talk about work in progress and what each one refers to, kept as a bare map so the same number never means two things; two more were added on 2026-09-13 from the type review.
   - 2026-09-12 The short numbers used to talk about work in progress and what each one refers to, kept as a bare map so the same number never means two things; a number for the symbols on screen was added on 2026-09-13.
   - 2026-09-12 The short numbers used to talk about work in progress and what each one refers to, kept as a bare map so the same number never means two things; the bookmarks subject closed on 2026-09-13.
-  - 2026-09-12 The short numbers used to talk about work in progress and what each one refers to, kept as a bare map so the same number never means two things; D56 widened on 2026-09-12 to the record that says where the server is.
 acknowledged:
   - reference_no_source@8e51ecb88264cf81
 scope: []
@@ -23,7 +23,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-09-07
 valid_until: null
-checksum: 87d91cf629ff3f18
+checksum: 4083392d4dad8246
 ---
 
 # the D numbers: what each one means, and which are only proposed
@@ -107,7 +107,7 @@ RATIFIED - the owner has used these numbers himself.
   D51     a fact kept by hand in a second place, derived instead   tuts/9, repaint/12,
           rulings/33d + 49 + 53 + 55 + 66, hooks/12q
   D52     what reaches the audit record, and whether its stores are current   budget/15,
-          walk/66, live/24
+          walk/66, live/24, rulings/71
   D53     a delegated lane is stopped by a mechanism, not an instruction   live/20
   D54     what a skill is, and whether our 39 are skills   review/3 + 4
   D55     mycontext helps from the first second, unconfigured   hooks/22
