@@ -5,12 +5,12 @@ title: "the D numbers: what each one means, and which are only proposed"
 status: active
 severity: soft
 always: true
-summary: The short numbers used to talk about work in progress and what each one refers to, kept as a bare map so the same number never means two things; five more were added on 2026-09-12 for work that had no subject.
-summary_of: 810c854195bf628d
+summary: The short numbers used to talk about work in progress and what each one refers to, kept as a bare map so the same number never means two things; D56 widened on 2026-09-12 to the record that says where the server is.
+summary_of: e511ecadba3b963a
 summary_was:
+  - 2026-09-12 The short numbers used to talk about work in progress and what each one refers to, kept as a bare map so the same number never means two things; five more were added on 2026-09-12 for work that had no subject.
   - 2026-09-12 The short numbers used to talk about work in progress and what each one refers to, kept as a bare map so the same number never means two things; a number for the bookmarks ruling was added on 2026-09-12.
   - 2026-09-12 The short numbers used to talk about work in progress and what each one refers to, kept as a bare map so the same number never means two things; D56 was added on 2026-09-12 for the upkeep mechanism that keeps losing the owner’s server.
-  - 2026-09-12 The short numbers used to talk about work in progress and what each one refers to, kept as a bare map so the same number never means two things; D44 to D55 were added on 2026-09-12 to name the subjects today's open work sits under.
 acknowledged:
   - reference_no_source@4e72d4cc9e0e40dc
 scope: []
@@ -23,7 +23,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-09-07
 valid_until: null
-checksum: 9c02745b3212335b
+checksum: be93b0d60f7cd0e2
 ---
 
 # the D numbers: what each one means, and which are only proposed
@@ -111,7 +111,7 @@ RATIFIED - the owner has used these numbers himself.
   D53     a delegated lane is stopped by a mechanism, not an instruction   live/20
   D54     what a skill is, and whether our 39 are skills   review/3 + 4
   D55     mycontext helps from the first second, unconfigured   hooks/22
-  D56     the mechanism that keeps the server up is what keeps taking it down   live/25
+  D56     the mechanism that keeps the server up is what keeps taking it down   live/25 + 26
           ASSIGNED 2026-09-12. Distinct from D53, which is about STOPPING a lane; this is about
           a hook keeping a server ALIVE. Filed after the 2026-09-11 fix was live and did not hold.
   D57     every anchor capability is reachable from the screen   REQ-every-anchor-capability-is-
