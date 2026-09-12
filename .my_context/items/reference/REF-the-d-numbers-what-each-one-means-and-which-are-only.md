@@ -5,12 +5,12 @@ title: "the D numbers: what each one means, and which are only proposed"
 status: active
 severity: soft
 always: true
-summary: The short numbers used to talk about work in progress and what each one refers to, kept as a bare map so the same number never means two things; D56 widened on 2026-09-12 to the record that says where the server is.
-summary_of: e511ecadba3b963a
+summary: The short numbers used to talk about work in progress and what each one refers to, kept as a bare map so the same number never means two things; the bookmarks subject closed on 2026-09-13.
+summary_of: 4d3cb2b75006144e
 summary_was:
+  - 2026-09-12 The short numbers used to talk about work in progress and what each one refers to, kept as a bare map so the same number never means two things; D56 widened on 2026-09-12 to the record that says where the server is.
   - 2026-09-12 The short numbers used to talk about work in progress and what each one refers to, kept as a bare map so the same number never means two things; five more were added on 2026-09-12 for work that had no subject.
   - 2026-09-12 The short numbers used to talk about work in progress and what each one refers to, kept as a bare map so the same number never means two things; a number for the bookmarks ruling was added on 2026-09-12.
-  - 2026-09-12 The short numbers used to talk about work in progress and what each one refers to, kept as a bare map so the same number never means two things; D56 was added on 2026-09-12 for the upkeep mechanism that keeps losing the owner’s server.
 acknowledged:
   - reference_no_source@8e51ecb88264cf81
 scope: []
@@ -23,7 +23,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-09-07
 valid_until: null
-checksum: f74b63412cbbe230
+checksum: e9cbdd1975a3dd3e
 ---
 
 # the D numbers: what each one means, and which are only proposed
@@ -117,6 +117,11 @@ RATIFIED - the owner has used these numbers himself.
   D57     every anchor capability is reachable from the screen   REQ-every-anchor-capability-is-
           reachable-from-the-screen-and-a   ASSIGNED 2026-09-12. The only open subject whose work
           is a REQUIREMENT and not a plan/seq task, so it is cited by id. Owner ruling, hard.
+          CLOSED 2026-09-13. All seven capabilities and all three creation paths are live and
+          proved. THE CLOSURE IS RECORDED HERE AND NOWHERE ELSE, by owner ruling: `state` is
+          declared by `plan` and `task` and NOT by `requirement`, so the item itself has no
+          field to carry it, and the lane refused to force one. A requirement has no lifecycle
+          state on purpose; THIS MAP IS WHERE A SUBJECT CLOSES.
   D58-D62 ASSIGNED 2026-09-12 from the triage of the tasks that had no subject. The owner took
           every recommendation: three tasks WIDENED existing rows above (walk/143 onto D6,
           walk/144 onto D50, hooks/12q onto D51) and five needed subjects of their own.
