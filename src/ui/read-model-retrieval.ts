@@ -9,24 +9,32 @@
  * ── THE SAFETY BOUNDARY IS THE SERVER'S OWN SHAPE ─────────────────────────
  *
  * The plan's self-review calls Task 11 step 2 the boundary that cannot be got
- * wrong: **nothing reaches the owner's context until he chooses it.** On this
- * surface that is not a rule anybody has to remember, it is what the server
- * already is. `test/ui/server-e2e.test.ts` snapshots every byte under the
- * workspace, sweeps every registered route, and compares — so a route here
- * that wrote a mission, staged a return, or delivered anything would turn that
- * assertion red. The four routes below therefore answer with TEXT and with
- * COMPOSED COMMANDS, and a person runs the commands.
- *
- * That is not a limitation being worked around; it is the same treatment
- * `plan:recall seq:1` gave the anchor mark on the same screen — *"the command
- * is COMPOSED from the argv the server built, shown, and run by a person"* —
- * and it is the strongest possible form of the rule, because the browser is
- * physically unable to break it.
+ * wrong: **nothing reaches the owner's context until he chooses it.** Every
+ * route in THIS module reads, and that is held to a measurement rather than to
+ * this sentence: `registerRetrievalRoutes` is called from `registerReadRoutes`,
+ * and `test/ui/server-e2e.test.ts` sweeps everything that set holds and then
+ * compares every byte under the workspace. A route here that wrote a mission,
+ * staged a return, or delivered anything would go red there.
  *
  * `missionText` and `markReturn` are both PURE, which is what makes this
  * possible at all: the screen can show the owner exactly what a subagent would
  * be told, and exactly what would arrive in a window, before anything at all
  * has happened.
+ *
+ * ── AND THE STAGING THAT USED TO BE A COPIED COMMAND IS NEXT DOOR ────────
+ *
+ * Until 2026-09-12 the second destination — a FRESH window, spec §10a — ended
+ * here in a `stageArgv` the reader copied into a terminal. The owner ruled that
+ * out (*"Yes — screen stages it"*), under the sentence
+ * `REQ-every-anchor-capability-is-reachable-from-the-screen-and-a` decides it
+ * by: a composed command a reader copies to a terminal is not the UI having a
+ * capability, it is the UI describing one.
+ *
+ * So the two writes live in `src/ui/retrieval-write.ts`, registered from
+ * `startUiServer` and NOT from `registerReadRoutes`, exactly as
+ * `src/ui/anchor-write.ts` is — which is what keeps the sweep above meaning
+ * what it says. `markedReturnFor` below is exported for it, so that what is
+ * staged is the marking that was shown and not a second one built beside it.
  *
  * ── ITS OWN MODULE, FOR `read-model-staging.ts`'s MEASURED REASON ─────────
  *
@@ -510,25 +518,41 @@ export interface RetrievalReturnBody {
   chosen: number[];
   left: number;
   at: string;
-  /**
-   * **The command that puts it in a FRESH window** — spec §10a, D34's carrier.
-   *
-   * Composed and never run. `mycontext restore --build --from-result` stages
-   * it as a PROPOSAL; `--approve` is the owner's act and refuses any actor but
-   * him; the clear is his and has no verb anywhere in this product. A browser
-   * that could run this would be the read-only guarantee failing at the one
-   * place a new feature most wants to break it.
-   */
-  stageArgv: string[];
 }
 
-export function apiRetrievalReturn(ws: Workspace, raw: unknown): JsonResult {
+/**
+ * **THE ONE MARKING, and both destinations read it** — owner ruling
+ * 2026-09-12, *“Yes — screen stages it”*.
+ *
+ * Destination one (this session) is `apiRetrievalReturn` below; destination
+ * two (a fresh window) is `src/ui/retrieval-write.ts` · `apiRetrievalStage`.
+ * Until the screen could stage, only the first of those existed here and the
+ * second was a composed command a person retyped into a terminal — which
+ * `REQ-every-anchor-capability-is-reachable-from-the-screen-and-a` calls the
+ * UI DESCRIBING a capability rather than having one.
+ *
+ * **It is exported so that what is STAGED is what was SHOWN**, computed by one
+ * function from one result and one set of claim numbers rather than by two
+ * that agree today. A second marking beside this one is the defect `CLAUDE.md`
+ * opens with, at the one place it would be most expensive: the text this
+ * returns is the text that lands in the next window.
+ *
+ * **The refusal half is a `JsonResult` and not a throw**, because every way
+ * this can fail is a thing the reader is told in words — an id naming no file
+ * is a 404 that creates nothing, and a claim number the result does not have
+ * is a 400 that refuses rather than quietly returning a shorter account.
+ */
+export type MarkedReturnResult =
+  | { ok: true; marked: MarkedReturn; file: string; relative: string }
+  | { ok: false; refusal: JsonResult };
+
+export function markedReturnFor(ws: Workspace, raw: unknown): MarkedReturnResult {
   if (raw === null || typeof raw !== 'object' || Array.isArray(raw)) {
-    return badRequest('the body must be an object');
+    return { ok: false, refusal: badRequest('the body must be an object') };
   }
   const input = raw as Record<string, unknown>;
   const loaded = loadFor(ws, String(input['id'] ?? ''));
-  if (refused(loaded)) return loaded;
+  if (refused(loaded)) return { ok: false, refusal: loaded };
   const { result, file } = loaded;
 
   const asked = input['claims'];
@@ -540,12 +564,24 @@ export function apiRetrievalReturn(ws: Workspace, raw: unknown): JsonResult {
   try {
     marked = markReturn(result, chosen, rulingLookup(ws));
   } catch (err) {
-    return badRequest(err instanceof Error ? err.message : String(err));
+    return {
+      ok: false,
+      refusal: badRequest(err instanceof Error ? err.message : String(err)),
+    };
   }
 
-  const relative = path.relative(repoRootOf(ws), file).split(path.sep).join('/');
-  const stageArgv = ['mycontext', 'restore', '--build', '--from-result', relative];
-  if (marked.left > 0) stageArgv.push('--claims', marked.chosen.join(','));
+  return {
+    ok: true,
+    marked,
+    file,
+    relative: path.relative(repoRootOf(ws), file).split(path.sep).join('/'),
+  };
+}
+
+export function apiRetrievalReturn(ws: Workspace, raw: unknown): JsonResult {
+  const outcome = markedReturnFor(ws, raw);
+  if (!outcome.ok) return outcome.refusal;
+  const { marked, relative } = outcome;
 
   const body: RetrievalReturnBody = {
     text: marked.text,
@@ -556,7 +592,6 @@ export function apiRetrievalReturn(ws: Workspace, raw: unknown): JsonResult {
     chosen: marked.chosen,
     left: marked.left,
     at: marked.at,
-    stageArgv,
   };
   return { status: 200, body };
 }
@@ -565,10 +600,12 @@ export function registerRetrievalRoutes(): void {
   registerRoute('GET', '/api/retrieval', {
     kind: 'json', handle: (ctx: ApiContext) => apiRetrieval(ctx.ws),
   });
-  // **`/mission` and `/return` before `/:id`.** The router matches in
-  // registration order, and `/api/retrieval/:id` would otherwise swallow them
-  // and answer 404 on a working feature — the worst kind of 404, and the same
-  // reason `/search` is registered before `/:id` one module over.
+  // **`/mission` and `/return` before `/:id`**, and it is a reader's ordering
+  // rather than the router's: `matchRoute` picks the MOST SPECIFIC candidate
+  // and says in its own header that "the order routes were registered in never
+  // decides anything", precisely so a literal cannot be shadowed by an import
+  // order. Registering them in this order is how the file reads as what it
+  // does; it is not what makes it work.
   registerRoute('POST', '/api/retrieval/mission', {
     kind: 'json', handle: (ctx: ApiContext) => apiRetrievalMission(ctx.ws, ctx.body),
   });

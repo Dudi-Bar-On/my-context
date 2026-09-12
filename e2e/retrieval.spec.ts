@@ -1,4 +1,5 @@
 // @basis TASK-reconstruct-a-subject-from-a-passage-you-copied-without-the,
+// REQ-every-anchor-capability-is-reachable-from-the-screen-and-a,
 // INV-nothing-is-dropped-silently,
 // RULE-drive-the-ui-through-playwright-while-doing-the-work-not
 /**
@@ -12,9 +13,11 @@
  * *nothing has been sent anywhere* is on the screen beside the text it is true
  * of, that the reversed ruling is drawn as its own region rather than only
  * buried in a `<pre>` a reader may not scroll, that unticking a claim actually
- * removes it from what comes back, or that a second round is offered on the
- * claim he picked. Those are the four things this file drives, in both
- * languages, because they are the four a reader acts on.
+ * removes it from what comes back, that a second round is offered on the claim
+ * he picked, or that STAGING a return for a fresh window is now one click on
+ * this screen rather than a command copied into a terminal. Those are the five
+ * things this file drives, in both languages, because they are the five a
+ * reader acts on.
  *
  * ── THE FIXTURE IS PLANTED, AND THE SUPERSESSION IS REAL ─────────────────
  *
@@ -31,13 +34,14 @@
  */
 import { test, expect } from '@playwright/test';
 import type { Page } from '@playwright/test';
-import { mkdirSync, mkdtempSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, readdirSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { removeTree } from '../test/helpers/tmp.ts';
 import { mintNonce, startUiChild, type UiHarness } from '../test/ui/helpers.ts';
 import { runCli } from '../src/cli/index.ts';
 import { projectDirName } from '../src/core/conversation-index.ts';
+import { approvedRestore, loadStagedRestore } from '../src/core/restore-staging.ts';
 
 const SESSION = 'sess-recall';
 const REVERSED = 'DEC-the-ui-is-developed-against-a-simulated-corpus-until-the';
@@ -145,6 +149,16 @@ test.afterAll(async () => {
   if (cwd) removeTree(cwd);
   if (home) removeTree(home);
 });
+
+/** Every restore key `.staging/restore/` holds right now. Empty is a state. */
+function stagedKeys(root: string): string[] {
+  try {
+    return readdirSync(path.join(root, '.staging', 'restore'))
+      .filter((name) => name.endsWith('.json'))
+      .map((name) => name.slice(0, -'.json'.length))
+      .sort();
+  } catch { return []; }
+}
 
 async function open(page: Page, lang: 'en' | 'he'): Promise<void> {
   await page.addInitScript((l) => {
@@ -278,11 +292,16 @@ for (const lang of ['en', 'he'] as const) {
     // is the assertion that "part of a result" is real rather than cosmetic.
     await expect(marked).not.toContainText(STANDING);
 
-    // **§10a — the second destination**, composed and not run.
-    const stage = page.locator('.convrecallstagecmd code');
-    await expect(stage).toBeVisible();
-    await expect(stage).toContainText('restore --build --from-result');
-    await expect(stage).toContainText('--claims 1,3');
+    // **§10a — the second destination, and the screen STAGES it.** Owner
+    // ruling 2026-09-12: the composed command is GONE, and its absence is the
+    // assertion — a reader still shown a line to copy into a terminal has been
+    // given a description of the capability rather than the capability
+    // (`REQ-every-anchor-capability-is-reachable-from-the-screen-and-a`).
+    await expect(
+      page.locator('.convrecallstagecmd'),
+      'the screen still composes a command for a terminal',
+    ).toHaveCount(0);
+    await expect(page.locator('button.convrecallstage')).toBeVisible();
     // What he would be approving, which is NOT the payload — D34's two
     // artefacts, kept two.
     const form = page.locator('pre.convrecallform');
@@ -290,6 +309,79 @@ for (const lang of ['en', 'he'] as const) {
     await expect(form).toContainText('COVERAGE: PARTIAL');
 
     await page.screenshot({ path: `e2e/screens/retrieval-marked-${lang}.png`, fullPage: true });
+  });
+
+  /**
+   * **THE SECOND DESTINATION, DRIVEN — owner ruling 2026-09-12, *"Yes — screen
+   * stages it"*.**
+   *
+   * Only a browser can say that the two acts are two: that staging leaves
+   * something the injection cannot see, that approving is a SEPARATE confirm
+   * with what he is approving drawn in it, and that his click is what turns one
+   * into the other. The disk is read from this process between the clicks,
+   * because the sentence the whole destination rests on — *staging is not
+   * delivery* — is a fact about `.staging/restore/`, not about the page.
+   *
+   * **Keyed by the record the click created, never by "the newest"**: this file
+   * runs twice, once per language, against one workspace per worker, so an
+   * assertion over `approvedRestore` alone would be reading the OTHER run's
+   * approval on the second pass and would pass for the wrong reason.
+   */
+  test(`the screen stages it, and his click is the approval · ${lang}`, async ({ page }) => {
+    const root = path.join(cwd, '.my_context');
+    const before = stagedKeys(root);
+
+    await open(page, lang);
+    await page.locator('button.convrecallopen').first().click();
+    await expect(page.locator('div.convrecallclaim')).toHaveCount(3, { timeout: 20_000 });
+    await page.locator('button.convrecallreturn').click();
+    await expect(page.locator('pre.convrecallmarkedtext')).toBeVisible({ timeout: 20_000 });
+
+    // **The stage. One click, no terminal.**
+    await page.locator('button.convrecallstage').click();
+    const said = page.locator('p.convrecallstagedok');
+    await expect(said).toBeVisible({ timeout: 20_000 });
+
+    const fresh = stagedKeys(root).filter((key) => !before.includes(key));
+    expect(fresh, 'the click staged no record, or staged more than one').toHaveLength(1);
+    const key = fresh[0]!;
+    await expect(said, 'the screen does not name the record it just wrote').toContainText(key);
+
+    // **STAGING IS NOT DELIVERY**, read off the disk rather than off the page.
+    expect(loadStagedRestore(root, key)?.state).toBe('proposed');
+    expect(
+      approvedRestore(root).record?.key,
+      'a return staged from the browser was visible to the injection before he approved it',
+    ).not.toBe(key);
+
+    await page.screenshot({ path: `e2e/screens/retrieval-staged-${lang}.png`, fullPage: true });
+
+    // **The approval is a SECOND act, and what he is approving is drawn.** The
+    // review form here is read back off the staged record, so a page that
+    // re-rendered its own copy would be showing him something the disk does
+    // not hold.
+    await page.locator('button.convrecallapprove').click();
+    const form = page.locator('pre.convrecallapproveform');
+    await expect(form).toBeVisible({ timeout: 20_000 });
+    await expect(form).toContainText('COVERAGE:');
+
+    await page.locator('button.convrecallapproveyes').click();
+    const safe = page.locator('p.convrecallsafetoclear');
+    await expect(safe).toBeVisible({ timeout: 20_000 });
+    await expect(safe).toContainText(key);
+
+    // His click, spent as the `'human'` `approveStagedRestore` insists on.
+    const record = loadStagedRestore(root, key);
+    expect(record?.state).toBe('approved');
+    expect(record?.approvedBy).toBe('human');
+    // And the other direction of the "staging is not delivery" assertion above:
+    // without this, a build that staged nothing at all would satisfy it.
+    expect(
+      approvedRestore(root).record,
+      'nothing at all is approved, so the click reached the disk in no way the injection sees',
+    ).not.toBeNull();
+
+    await page.screenshot({ path: `e2e/screens/retrieval-approved-${lang}.png`, fullPage: true });
   });
 
   test(`rounds compose: a subject is picked and the next brief is about it · ${lang}`, async ({ page }) => {

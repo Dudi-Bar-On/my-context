@@ -87,6 +87,7 @@ import { stampCodeIdentity, type CodeScope } from '../core/code-identity.ts';
 import { registerCaptureRoutes } from './capture-model.ts';
 import { CLI_ENTRY, registerExecuteRoutes } from './execute.ts';
 import { registerAnchorWriteRoutes } from './anchor-write.ts';
+import { registerRetrievalWriteRoutes } from './retrieval-write.ts';
 import { ExecutionNonceStore } from './execute-nonce.ts';
 import { registerPacksRoutes } from './packs-model.ts';
 import { registerPortRoutes } from './port-model.ts';
@@ -703,10 +704,12 @@ export function registerReadRoutes(): void {
   // more: the marking has to ask the corpus whether a ruling has been reversed,
   // which needs a store handle, and `read-model-conversations.ts`' graph walk
   // in `test/ui/conversations-endpoint.test.ts` forbids exactly that there.
-  // Every route reads: `missionText` and `markReturn` are pure, the writing
-  // halves (`writeMission`, `stageRetrievalReturn`) are not reachable from
-  // here, and `test/ui/server-e2e.test.ts`' byte-identical sweep is what says
-  // so rather than this comment.
+  // Every route in THAT module reads: `missionText` and `markReturn` are pure,
+  // neither `writeMission` nor `stageRetrievalReturn` is reachable from it, and
+  // `test/ui/server-e2e.test.ts`' byte-identical sweep is what says so rather
+  // than this comment. The screen's two WRITES live in `retrieval-write.ts` and
+  // are registered from `startUiServer` below, outside this set, which is what
+  // keeps that sweep meaning what it says.
   registerRetrievalRoutes();
   // `plan:archive seq:7`/`seq:8`/`seq:13` — the same transcript read as ONE
   // DOCUMENT rather than as a page of records: an outline the scroll places
@@ -1005,6 +1008,30 @@ export async function startUiServer(options: UiServerOptions): Promise<RunningUi
    * servers in one test process could confuse.
    */
   registerAnchorWriteRoutes();
+
+  /**
+   * **THE TWO RETRIEVAL WRITES** — owner ruling 2026-09-12, *"Yes — screen
+   * stages it"*, closing `plan:recall seq:2`'s second destination.
+   *
+   * Staging a retrieval return for a FRESH window writes a file, so until
+   * today the screen could only COMPOSE `mycontext restore --build
+   * --from-result` for a person to run — which
+   * `REQ-every-anchor-capability-is-reachable-from-the-screen-and-a` calls the
+   * UI describing a capability rather than having one. The same narrow
+   * exception the anchor writes take is reused rather than a second one grown,
+   * which was the building lane's own recommendation and what he took.
+   *
+   * Registered HERE and not inside `registerReadRoutes` for the reason the two
+   * calls above are: `test/ui/server-e2e.test.ts` sweeps everything that set
+   * holds and then asserts the corpus is byte-identical.
+   *
+   * It takes its OWN nonce store, per server, exactly as the execute routes
+   * do and unlike the anchor writes — because this pair authorises something.
+   * `GET /api/retrieval/approve/confirm` mints, `POST /api/retrieval/approve`
+   * redeems, and two servers in one test process must not authorise each
+   * other's release into a context window.
+   */
+  registerRetrievalWriteRoutes(new ExecutionNonceStore());
 
   /** Set once the socket is bound; the gate compares the submitted Host against it. */
   let boundPort = 0;

@@ -4007,7 +4007,8 @@ wa-tree .wa-count{margin-inline-start:var(--sp-2);color:var(--dim);
 .convrecallscope input{color:var(--ink);background:var(--panel-2);
   border:2px solid var(--edge);border-radius:var(--r-sm);padding:var(--sp-1)}
 .convrecallprepare,.convrecallreturn{margin-block-start:var(--sp-2)}
-.convrecallmission,.convrecallmarkedtext,.convrecallform{max-block-size:22rem;
+.convrecallmission,.convrecallmarkedtext,.convrecallform,
+.convrecallapproveform{max-block-size:22rem;
   overflow:auto;white-space:pre-wrap;overflow-wrap:anywhere;
   font-family:var(--mono);font-size:var(--fs-00);color:var(--ink);
   background:var(--panel-2);border:2px solid var(--edge);border-radius:var(--r-sm);
@@ -4035,7 +4036,21 @@ wa-tree .wa-count{margin-inline-start:var(--sp-2);color:var(--dim);
 .convrecallreversedone{overflow-wrap:anywhere}
 .convrecallwait,.convrecallnoresults,.convrecalldir,.convrecallnomatch,
 .convrecallunchecked,.convrecallpick,.convrecallportion,.convrecallnote,
-.convrecallcopied,.convrecallround{margin-block-start:var(--sp-1);color:var(--dim)}
+.convrecallcopied,.convrecallround,.convrecallfreshthen{margin-block-start:var(--sp-1);
+  color:var(--dim)}
+/* The stage and the approval — `plan:recall seq:2`, owner ruling 2026-09-12.
+   Both sentences carry a KEY and a byte count, which are Latin runs inside a
+   Hebrew paragraph, so they wrap at any character rather than pushing the panel
+   into a horizontal scroll the body must never have. */
+.convrecallstage,.convrecallapprove,.convrecallapproveyes{margin-block-start:var(--sp-2)}
+.convrecallstaged,.convrecallapprovebox{margin-block-start:var(--sp-1)}
+.convrecallstagedok,.convrecallstagefailed,.convrecallsafetoclear,
+.convrecallapproveunsafe{margin-block-start:var(--sp-1);overflow-wrap:anywhere}
+/* The one that says it is safe to clear wears the same gold rule
+   `conv.recall.safe` does: they are the two sentences on this panel a reader
+   acts on, and they must read as one kind of statement. */
+.convrecallsafetoclear{border-inline-start:3px solid var(--gold);
+  padding-inline-start:var(--sp-2);color:var(--ink)}
 .convrecallclip{position:absolute;inline-size:1px;block-size:1px;overflow:hidden;
   clip-path:inset(50%);white-space:pre}
 

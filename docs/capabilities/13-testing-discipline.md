@@ -321,7 +321,7 @@ $ node scripts/check-vendor.ts
 $ node scripts/check-text-files.ts
 NUL  src\ui\retrieval-write.ts  at byte 8280
      …6')\n    .update(record.payload).update(' ').update(record.re…
-     Write it as an escape instead. In a TypeScript string, ` ` sends the same byte and leaves the file diffable.
+     Write it as an escape instead. In a TypeScript string, `<NUL>` sends the same byte and leaves the file diffable.
 
 1309 text file(s) scanned: 1 contain(s) a NUL byte, so git treats them as binary — no diff, no review, and an unresolvable merge conflict.
 

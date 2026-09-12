@@ -1792,12 +1792,20 @@ function mountArchiveSearch(ctx, root, sessions) {
  * The plan's own self-review: Task 11 step 2 is *"the safety boundary.
  * Everything else can be imperfect; this one cannot."* Nothing reaches the
  * owner's context until he chooses it — and on this screen that is not a rule
- * anybody has to keep, it is a fact about what the page can do. The server is
- * read-only and proved so byte-for-byte by `test/ui/server-e2e.test.ts`; the
- * two POSTs this screen makes RENDER text and write nothing; and the only
- * route any of that text has into a context window is the owner's own copy and
- * paste. `conv.recall.safe` says exactly that, on screen, in both languages,
- * beside the text it is true of.
+ * anybody has to keep, it is a fact about what the page can do. The two POSTs
+ * that RENDER — the brief and the marking — write nothing, and the read
+ * surface behind them is proved byte-for-byte by `test/ui/server-e2e.test.ts`.
+ * The only route the marked text has into THIS window is the owner's own copy
+ * and paste, and `conv.recall.safe` says exactly that, on screen, in both
+ * languages, beside the text it is true of.
+ *
+ * **What changed on 2026-09-12 is the OTHER destination, and it did not move
+ * this boundary.** The screen now stages a return for a FRESH window
+ * (`POST /api/retrieval/stage`) instead of composing a command for a terminal.
+ * Staging is not delivery: the record is a PROPOSAL, the question the injection
+ * asks — `approvedRestore` — still answers nothing afterwards, approving is a
+ * separate confirm behind a single-use nonce, and clearing the window has no
+ * verb anywhere in this product.
  *
  * ── WHAT IS DRAWN, IN THE ORDER IT IS DRAWN ───────────────────────────────
  *
@@ -1815,8 +1823,10 @@ function mountArchiveSearch(ctx, root, sessions) {
  *      dated, stated a record rather than an instruction, and a ruling since
  *      reversed says so at the top.
  *   5. THE SECOND DESTINATION (§10a, steps 4a-4c): a fresh window, through
- *      D34's carrier, staged before the clear and delivered only after his
- *      approval and his clear.
+ *      D34's carrier, STAGED BY THIS SCREEN before the clear and delivered
+ *      only after his approval and his clear. Both acts are on the screen —
+ *      the stage, and the confirm that spends his click as the `'human'`
+ *      `approveStagedRestore` insists on.
  *
  * ── AND IT IS MOUNTED TWICE, WHICH IS STEP 6's REASON ─────────────────────
  *
@@ -2188,13 +2198,19 @@ function mountRetrieval(ctx, host, seed = () => '', collapsed = false) {
         marked.replaceChildren(errorNote(error.message));
         return;
       }
-      drawMarked(marked, answer);
+      drawMarked(marked, answer, { id: body.id, claims: chosen });
     });
     readBox.append(show, marked);
   };
 
   /* ── 4 and 5. what returns, marked — and the two destinations ──────────── */
-  const drawMarked = (host2, body) => {
+  /**
+   * `asked` is the SAME `{ id, claims }` the preview was computed from, carried
+   * here so the stage below re-sends it rather than re-deriving it off the
+   * ticks — which would let the reader change a tick after reading the text and
+   * then stage something he never read.
+   */
+  const drawMarked = (host2, body, asked) => {
     host2.replaceChildren();
     const head = el('h4');
     head.append(...ctx.t('conv.recall.marked.h'));
@@ -2252,25 +2268,170 @@ function mountRetrieval(ctx, host, seed = () => '', collapsed = false) {
     host2.append(copyButton(ctx, 'conv.recall.marked.copy', () => body.text,
       'convrecallmarkedcopy'));
 
-    /* ── the SECOND destination, §10a ───────────────────────────────────── */
+    /* ── the SECOND destination, §10a — AND THE SCREEN STAGES IT ──────────
+     *
+     * **This was a command a reader copied into a terminal until 2026-09-12**,
+     * and the owner ruled it out: *"Yes — screen stages it"*, under the
+     * sentence `REQ-every-anchor-capability-is-reachable-from-the-screen-and-a`
+     * decides by — a composed command is not the UI having a capability, it is
+     * the UI describing one. The write is `POST /api/retrieval/stage`, through
+     * the same narrow no-writes exception the anchor writes on this very screen
+     * already take, and never through a second mechanism.
+     *
+     * **Two acts, and both are his.** Staging leaves a PROPOSAL on disk;
+     * approving it is what lets the NEXT session read it, and
+     * `approveStagedRestore` refuses any actor but a human. So the approval is
+     * a confirm: the button opens what he would be approving — read back off
+     * the disk — and a second press spends a single-use nonce only that confirm
+     * can mint. The CLEAR is still his, and there is no verb for it here or
+     * anywhere in this product.
+     */
     const fresh = el('div', 'convrecallfresh');
     const fh = el('h5');
     fh.append(...ctx.t('conv.recall.fresh.h'));
     const fhint = el('p', 'small');
     fhint.append(...ctx.t('conv.recall.fresh.hint'));
-    const cmd = el('div', 'cmd convrecallstagecmd');
-    cmd.append(el('code', null, composeCommand(body.stageArgv)));
+    const stageButton = el('button', 'tvjump convrecallstage');
+    stageButton.type = 'button';
+    stageButton.append(...ctx.t('conv.recall.fresh.stage'));
+    const stagedBox = el('div', 'convrecallstaged');
+    stagedBox.setAttribute('aria-live', 'polite');
     const then = el('p', 'small convrecallfreshthen');
     then.append(...ctx.t('conv.recall.fresh.then'));
-    fresh.append(fh, spaced(fhint), cmd,
-      commandActions({ argv: body.stageArgv, id: null, values: {}, ctx }), then);
-
     const formHead = el('h5');
     formHead.append(...ctx.t('conv.recall.form.h'));
     const form = el('pre', 'convrecallform');
     form.append(body.reviewForm);
-    fresh.append(formHead, form);
+
+    // **The coverage disclosure comes BEFORE the button, not after it.** What
+    // this return does not cover is what `INV-nothing-is-dropped-silently`
+    // requires him to have in front of him at the moment he decides, and a
+    // form drawn under the control is a form read after the decision. The
+    // confirm draws it again later, read back off the DISK — two renderings of
+    // two different facts, which is why both are here.
+    fresh.append(fh, spaced(fhint), formHead, form, then, stageButton, stagedBox);
     host2.append(fresh);
+
+    /**
+     * **A refusal is DRAWN and the control comes back** — `markRow`'s rule on
+     * this same screen, and the shape `INV-nothing-is-dropped-silently`
+     * requires: a button that appears to have worked and has not is what a
+     * disabled button left disabled produces.
+     */
+    const stageIt = async () => {
+      stageButton.disabled = true;
+      stagedBox.replaceChildren(waiting(ctx, 'conv.recall.fresh.staging'));
+      let staged;
+      try {
+        staged = await ctx.post('/api/retrieval/stage', asked);
+      } catch (error) {
+        stagedBox.replaceChildren(errorNote(error.message));
+        stageButton.disabled = false;
+        return;
+      }
+      drawStaged(stagedBox, staged);
+    };
+    stageButton.addEventListener('click', () => { void stageIt(); });
+  };
+
+  /**
+   * **What is on disk NOW, and the one sentence a reader may act on.**
+   *
+   * `verified` is the ONLY basis for saying anything about clearing —
+   * `stageRestoreSummary` re-reads the record it has just written for exactly
+   * that, and its header refuses every other basis in as many words. So an
+   * unverified stage draws the refusal and offers NO approval: approving a
+   * record that could not be read back would be releasing bytes nobody saw.
+   */
+  const drawStaged = (host2, staged) => {
+    host2.replaceChildren();
+    if (staged.verified !== true) {
+      const bad = el('p', 'small warn convrecallstagefailed');
+      bad.append(...ctx.t('conv.recall.staged.failed', { reason: staged.reason ?? '' }));
+      host2.append(bad);
+      return;
+    }
+    const ok = el('p', 'small convrecallstagedok');
+    ok.append(...ctx.t('conv.recall.staged.ok',
+      { key: staged.key, bytes: staged.payloadBytes, file: staged.file }));
+    const approve = el('button', 'tvjump convrecallapprove');
+    approve.type = 'button';
+    approve.append(...ctx.t('conv.recall.approve'));
+    const confirmBox = el('div', 'convrecallapprovebox');
+    confirmBox.setAttribute('aria-live', 'polite');
+    host2.append(ok, approve, confirmBox);
+
+    const openConfirm = async () => {
+      approve.disabled = true;
+      confirmBox.replaceChildren(waiting(ctx, 'conv.recall.approve.opening'));
+      let confirmed;
+      try {
+        confirmed = await ctx.api(
+          `/api/retrieval/approve/confirm?key=${encodeURIComponent(staged.key)}`);
+      } catch (error) {
+        confirmBox.replaceChildren(errorNote(error.message));
+        approve.disabled = false;
+        return;
+      }
+      drawConfirm(confirmBox, confirmed, approve);
+    };
+    approve.addEventListener('click', () => { void openConfirm(); });
+  };
+
+  /**
+   * **The confirm — and the nonce it carries is the whole of what makes a
+   * click count as the owner's own act.**
+   *
+   * The form drawn here is read back off the STAGED RECORD, not the one
+   * rendered before it was written: what he approves is what is on disk. The
+   * nonce is minted only by the request that produced this block, is bound to
+   * the key AND to a digest of those bytes, and is spent on attempt — so a page
+   * that never drew this cannot approve, and a record that changed underneath
+   * it cannot be approved as the one he read.
+   */
+  const drawConfirm = (host2, confirmed, approve) => {
+    host2.replaceChildren();
+    const head = el('h5');
+    head.append(...ctx.t('conv.recall.approve.h'));
+    const hint = el('p', 'small');
+    hint.append(...ctx.t('conv.recall.approve.hint', { bytes: confirmed.payloadBytes }));
+    const form = el('pre', 'convrecallapproveform');
+    form.append(confirmed.reviewForm);
+    const yes = el('button', 'tvjump convrecallapproveyes');
+    yes.type = 'button';
+    yes.append(...ctx.t('conv.recall.approve.yes'));
+    const said = el('div', 'convrecallapproved');
+    said.setAttribute('aria-live', 'polite');
+    host2.append(head, spaced(hint), form, yes, said);
+
+    yes.addEventListener('click', () => {
+      void (async () => {
+        yes.disabled = true;
+        said.replaceChildren(waiting(ctx, 'conv.recall.approving'));
+        let answer;
+        try {
+          answer = await ctx.post('/api/retrieval/approve',
+            { key: confirmed.key, nonce: confirmed.nonce });
+        } catch (error) {
+          // **The nonce is spent either way** — `redeem` deletes on ATTEMPT —
+          // so what comes back is the control that mints a NEW confirm. Leaving
+          // this button live would be offering a credential that is gone.
+          host2.replaceChildren(errorNote(error.message));
+          approve.disabled = false;
+          return;
+        }
+        if (answer.safeToClear !== true) {
+          const bad = el('p', 'small warn convrecallapproveunsafe');
+          bad.append(...ctx.t('conv.recall.approve.unsafe', { reason: answer.reason ?? '' }));
+          said.replaceChildren(bad);
+          return;
+        }
+        const good = el('p', 'small convrecallsafetoclear');
+        good.append(...ctx.t('conv.recall.approved',
+          { key: answer.key, bytes: answer.payloadBytes }));
+        said.replaceChildren(good);
+      })();
+    });
   };
 
   /* ── seeding, which is §3's primary way in ─────────────────────────────── */

@@ -5,9 +5,10 @@ title: reconstruct a subject from a passage you copied, without the noise reachi
 status: active
 severity: soft
 always: false
-summary: Copy something from the viewer and get back a short, cited account of it, checked against the code and the history — the five core modules have landed, the screen has not.
-summary_of: 93eb81deaced3d11
+summary: Copy something from the viewer and get back a short, cited account of it, checked against the code and the history — and the screen now STAGES what returns for a fresh window rather than composing a command.
+summary_of: 6df8efeba8555795
 summary_was:
+  - 2026-09-12 Copy something from the viewer and get back a short, cited account of it, checked against the code and the history — the five core modules have landed, the screen has not.
   - 2026-09-11 Copy something from the viewer and get back a short, cited account of it, checked against the code and the history.
 acknowledged:
   - body_disagrees_with_meta@3fc96c0ab42d5b71
@@ -22,17 +23,17 @@ tags:
   - recall
   - "plan:recall"
   - "seq:2"
-  - "state:todo"
+  - "state:done"
 origin: human
 source_file: null
 source_anchor: null
 source_checksum: null
 valid_from: 2026-09-10
 valid_until: null
-checksum: 90c8fe443e1bc1bc
+checksum: b9d8f6c5502e602a
 plan: recall
 seq: "2"
-state: todo
+state: done
 priority: "1"
 needs: recall/1
 ---
@@ -63,28 +64,54 @@ lexical noise classifier: punctuation density measured AUC 0.499, a coin flip. D
 or LSH: an exact 8-gram index found 60 pairs in 629ms against 4,065ms, and brute force over
 3,136,260 pairs took 20ms.
 
-PART OF THIS HAS LANDED, 2026-09-11, AND THE ITEM STAYS `todo` FOR THE REST. Recorded here
-for the reason `plan:budget seq:16` gives: an item whose code shipped while its state still
-said todo went unnoticed for four days, and the half that was missed is exactly the half a
-person reads when deciding what to dispatch.
+CLOSED 2026-09-12. WHAT WAS BUILT, recorded here rather than only in a report, for the reason
+`plan:budget seq:16` gives: an item whose code shipped while its state still said todo went
+unnoticed for four days, and the half that was missed is exactly the half a person reads when
+deciding what to dispatch.
 
-DONE, on master:
+DONE, 2026-09-11:
   Task 6   a selection becomes a query   `src/core/retrieval/from-selection.ts`
   Task 7   subjects from documents       `src/core/retrieval/subjects.ts`
   Task 8   noise removal                 `src/core/retrieval/noise.ts`
   Task 9   the mission                   `src/core/retrieval/mission.ts`
   Task 10  results are files, and cite   `src/core/retrieval/result.ts` + `.gitignore`
 
-NOT DONE, and this is what keeps the item open:
-  Task 11  the UI — read the result, choose what returns
-  Task 12  rounds compose
-Both touch `src/ui/**`, both string tables and `e2e/retrieval.spec.ts`, and were held because
-a browser lane held Playwright. THE PLAN’S OWN SELF-REVIEW CALLS TASK 11 STEP 2 THE SAFETY
-BOUNDARY — "everything else can be imperfect; this one cannot" — so it is not a task to hurry.
+DONE, 121b01b0:
+  Task 11  the UI — the four modes, the brief, a result read and judged, the choice marked
+  Task 12  rounds compose — a subject picked out of one result becomes the next round
 
-NOTHING IS WIRED. No command, route or hook reaches retrieval, and two source scans assert it
-in both directions, so a hook that reaches for it later turns them red.
+DONE, 2026-09-12 — AND IT IS WHY THE ITEM COULD NOT CLOSE BEFORE TODAY. The building lane
+refused to close its own item against `REQ-every-anchor-capability-is-reachable-from-the-
+screen-and-a`: destination two, a FRESH window, ended in a `mycontext restore --build
+--from-result` the reader copied into a terminal, and that requirement's deciding sentence is
+that a composed command a reader copies to a terminal is NOT the UI having a capability — it is
+the UI describing one. THE OWNER RULED: *"Yes — screen stages it"*, and accepted the condition
+that came with it — a click in his own browser counts as the `'human'` `approveStagedRestore`
+insists on.
 
-ONE SEAM LEFT DELIBERATELY: `MissionRequest` carries no field naming the RESULT FILE’S SHAPE
-for the subagent. Task 11 or 12 should either pass one or have `mission.ts` import
-`result.ts`’s renderer contract; it was left alone rather than guessed.
+  `src/ui/retrieval-write.ts`      POST /api/retrieval/stage, GET /api/retrieval/approve/confirm,
+                                   POST /api/retrieval/approve. Registered from `startUiServer`
+                                   and NOT from `registerReadRoutes`, so `server-e2e.test.ts`'
+                                   byte-identical sweep over the read surface still means what
+                                   it says.
+  the no-writes exception          THE SAME NARROW ONE THE ANCHORS TOOK, not a second one — the
+                                   building lane's own recommendation. Two RULED_WRITES lines,
+                                   two new WRITERS keys, and
+                                   `test/ui/retrieval-write-route.test.ts` is what bounds it.
+  what still cannot happen         STAGING IS NOT DELIVERY. The record is `proposed` and
+                                   `approvedRestore` — the question `core/inject.ts` asks at
+                                   every session start — still answers nothing after it.
+                                   The CLEAR has no verb here or anywhere in this product.
+
+NOTHING IS WIRED TO A HOOK, and that is unchanged. No command and no hook reaches retrieval; the
+three routes above are reached by a person pressing a button, and the two source scans that
+assert the hook side still assert it in both directions.
+
+ONE SEAM WAS CLOSED IN 121b01b0: `MissionRequest` now carries `resultShape` from
+`result.ts`'s `resultContract()`, so the brief names the file it asks for rather than the
+subagent guessing.
+
+WHAT WAS DELIBERATELY NOT BUILT: a DISCARD route. A staged proposal nobody approves is inert —
+`approvedRestore` only ever returns an `approved` record — so withdrawing one is
+`mycontext restore --discard`, on the CLI, and adding an unasked-for write to this surface is
+the widening the exception exists to refuse.

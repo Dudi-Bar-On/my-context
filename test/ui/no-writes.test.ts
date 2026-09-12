@@ -249,6 +249,36 @@ const WRITERS: Record<string, string[]> = {
   // exactly `existsSync`, `readFileSync`, `readdirSync`), and
   // `core/restore-stage.ts` reaches disk only through this module.
   'src/core/restore-store.ts': ['writeStagedRestore', 'discardStagedRestore', 'spendApprovedRestore'],
+  // **NAMED BY JUDGEMENT ON 2026-09-12, AND THE NAMING WAS THE WHOLE FINDING
+  // AGAIN** — owner ruling *"Yes — screen stages it"*, `plan:recall seq:2`.
+  //
+  // `src/ui/retrieval-write.ts` binds `approveStagedRestore` out of this module
+  // and `stageRetrievalReturn` out of the one below, and with neither module a
+  // key here this whole file was GREEN over both. That is the FOURTH instance
+  // of the defect `ui-server-record.ts` was on 2026-08-27, `review/trigger.ts`
+  // on 2026-09-10 and `core/anchors.ts` on 2026-09-12: `isWriter` answers from
+  // THIS table by defining module, so a writer that is not a key resolves
+  // correctly, is placed correctly, and is then judged harmless.
+  //
+  // The membership scan cannot see either module — neither holds a `node:fs`
+  // call. Both write through `core/restore-store.ts`, which IS a key and IS
+  // derived, so both are covered by the orphan check the way `mutate.ts` is:
+  // by importing a writer rather than by being in `WRITES_WITHOUT_FS`.
+  //
+  // `buildRestoreProposal`, `coverageShortfalls`, `renderStagedReviewForm` and
+  // `stageableProposal` are deliberately NOT named: they read a transcript,
+  // count, render or re-shape, and every byte they put anywhere goes through
+  // one of the two above. `discardStagedRestore` and `restoreStagingDir` are
+  // re-exports whose DEFINING modules are named already — `restore-store.ts`
+  // above and `restore-staging.ts`, which writes nothing at all.
+  'src/core/restore-stage.ts': ['stageRestoreSummary', 'approveStagedRestore'],
+  // The three-line seam §10a's staging goes through, and the reason it is a
+  // module of its own: `core/retrieval/return.ts` is PURE and stays pure, so
+  // the one function on the return path that writes sits where the read
+  // surface cannot reach it by accident. It is a key for its neighbour's
+  // reason — it holds no `node:fs` call, it reaches `restore-store.ts` through
+  // `restore-stage.ts`, and without the key `src/ui/` could bind it green.
+  'src/core/retrieval/return-stage.ts': ['stageRetrievalReturn'],
   // `plan:loop seq:3`, 2026-09-11 — the self-improvement pass's three writing
   // modules. Named here BEFORE the derivation was run, and the derivation then
   // named them anyway, which is this table working in the direction it was
@@ -658,6 +688,49 @@ const RULED_WRITES = [
   // resolves `BUDGETS_ID` — so an agent scripting the CLI still cannot reach
   // this write; only a person, in the browser, past the confirm, can.
   'src/ui/execute.ts binds writeBudgets (defined in src/core/budgets-write.ts)',
+  // ── THE RETRIEVAL STAGE AND ITS APPROVAL, owner ruling 2026-09-12 ──────
+  //
+  // *"Yes — screen stages it"*, closing `plan:recall seq:2`'s second
+  // destination under the sentence
+  // `REQ-every-anchor-capability-is-reachable-from-the-screen-and-a` decides
+  // by: a composed command a reader copies to a terminal is not the UI having
+  // a capability, it is the UI describing one. The screen could previously
+  // only compose `mycontext restore --build --from-result` for him to run.
+  //
+  // The owner took the building lane's own recommendation — reuse the SAME
+  // narrow exception the anchor writes above already take, one exception and
+  // not two — and he explicitly accepted the condition that came with it: a
+  // click in his own browser counts as the `'human'` `approveStagedRestore`
+  // insists on.
+  //
+  // NARROWED, not widened, exactly as the anchors are. What has stopped being
+  // true is "the UI never stages a restore". What still holds, and still fails
+  // here, is that every READ module binds nothing: `src/ui/retrieval-write.ts`
+  // is named one symbol at a time, `read-model-retrieval.ts` beside it binds
+  // only pure renderers, and the write module registers from `startUiServer`
+  // rather than `registerReadRoutes` so `server-e2e.test.ts`' byte-identical
+  // sweep over the read surface is untouched.
+  //
+  // Four properties bound it, each checkable rather than promised:
+  //
+  //   - STAGING IS NOT DELIVERY. The record is left `proposed`, and the
+  //     question the injection asks — `approvedRestore` — must still answer
+  //     nothing afterwards. `test/ui/retrieval-write-route.test.ts` asserts
+  //     that of the ROUTE and `test/core/retrieval-return.test.ts` of the seam;
+  //   - WHAT MOVES IS `.staging/restore/`. A staged restore is one JSON file in
+  //     a gitignored directory — no corpus item, no `config.json`, no
+  //     transcript, no result file — and the same test takes the byte snapshot
+  //     over a whole stage/confirm/approve round trip that says so;
+  //   - THE ACTOR IS THE ROUTE'S. `'human'` is a literal at the one call site;
+  //     no body field reaches it, so no request can approve as anything else;
+  //   - THE APPROVAL IS AUTHORISED BY A CONFIRM NOBODY CAN MINT. The nonce
+  //     comes from `GET /api/retrieval/approve/confirm` and from no other line,
+  //     is bound to the key AND to a digest of the staged bytes recomputed from
+  //     DISK at both ends, and is spent on attempt. A page that never rendered
+  //     the confirm cannot approve, which is `execute.ts` §3.3's property in
+  //     the same store — including the residual §6.3 states out loud.
+  'src/ui/retrieval-write.ts binds approveStagedRestore (defined in src/core/restore-stage.ts)',
+  'src/ui/retrieval-write.ts binds stageRetrievalReturn (defined in src/core/retrieval/return-stage.ts)',
   'src/ui/security.ts binds recordAudit (defined in src/core/audit.ts)',
   // Owner requirement, 2026-08-27:
   // `REQ-the-ui-server-is-running-whenever-the-owner-looks-or-it-says`. The
@@ -1764,7 +1837,7 @@ test('no star form anywhere in the reachable graph', () => {
 });
 
 /**
- * The one dynamic import in the graph, named with the module it loads and the
+ * The dynamic imports in the graph, each named with the module it loads and the
  * reason the walk cannot be made to follow it.
  *
  * `src/ui/execute-catalogue.ts` loads the BROWSER's command catalogue so that
@@ -1784,9 +1857,30 @@ test('no star form anywhere in the reachable graph', () => {
  * evaluation, no navigation and no import of any kind. The guarantee moved to a
  * test that can read that file; it did not evaporate.
  *
+ * ── THE SECOND ONE ARRIVED ON 2026-09-12, AND IT ARRIVED AS A FAILURE ──────
+ *
+ * `src/core/session-summary.ts:1308` is `crossCheckAgainstIndex`, which loads
+ * `core/conversation-index.ts` lazily so that a summary run does not pay for a
+ * second 61 MB walk unless somebody asked for the comparison. It became part of
+ * this graph the moment `src/ui/retrieval-write.ts` bound
+ * `approveStagedRestore`, because `core/restore-stage.ts` imports the summary
+ * renderers — and this assertion caught it on the first run, over a module
+ * nobody had thought about.
+ *
+ * **What it loads is NOT outside this file's assertions, and that is the whole
+ * of why it can be named here.** `src/core/conversation-index.ts` is already a
+ * WRITERS key (by judgement — it writes through `node:sqlite`, which the
+ * membership scan is blind to) and is already reached STATICALLY from
+ * `read-model-conversations.ts`, `read-model-conversation-document.ts` and
+ * `src/ui/anchor-write.ts`. So its symbols are placed, its writers are named,
+ * and the ban below already decides every `src/ui/` binding of them. A lazy
+ * edge to a module the walk enters anyway hides nothing; an edge to a module it
+ * never enters is what this assertion is for, and that is still refused.
+ *
  * Verified in BOTH directions below, so a stale entry fails as itself.
  */
 const DYNAMIC_EDGES: Record<string, string> = {
+  'src/core/session-summary.ts': 'src/core/conversation-index.ts',
   'src/ui/execute-catalogue.ts': 'src/ui/public/lib/palette-defs.js',
 };
 
