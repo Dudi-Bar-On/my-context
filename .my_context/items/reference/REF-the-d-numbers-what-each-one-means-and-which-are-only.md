@@ -5,12 +5,12 @@ title: "the D numbers: what each one means, and which are only proposed"
 status: active
 severity: soft
 always: true
-summary: The short numbers used to talk about work in progress and what each one refers to, kept as a bare map so the same number never means two things; D56 was added on 2026-09-12 for the upkeep mechanism that keeps losing the owner’s server.
-summary_of: b881ad5869072bdb
+summary: The short numbers used to talk about work in progress and what each one refers to, kept as a bare map so the same number never means two things; a number for the bookmarks ruling was added on 2026-09-12.
+summary_of: 738322ca8267fecf
 summary_was:
+  - 2026-09-12 The short numbers used to talk about work in progress and what each one refers to, kept as a bare map so the same number never means two things; D56 was added on 2026-09-12 for the upkeep mechanism that keeps losing the owner’s server.
   - 2026-09-12 The short numbers used to talk about work in progress and what each one refers to, kept as a bare map so the same number never means two things; D44 to D55 were added on 2026-09-12 to name the subjects today's open work sits under.
   - 2026-09-11 The short numbers used to talk about work in progress and what each one refers to, kept as a bare map so the same number never means two things; the story behind them lives in a dated write-up.
-  - 2026-09-11 The short numbers used to talk about work in progress and what each refers to, delivered every session so the same number never means two things.
 acknowledged:
   - reference_no_source@4e72d4cc9e0e40dc
 scope: []
@@ -23,7 +23,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-09-07
 valid_until: null
-checksum: e9402b6087f6984f
+checksum: 2e90f79167620c21
 ---
 
 # the D numbers: what each one means, and which are only proposed
@@ -113,6 +113,9 @@ RATIFIED - the owner has used these numbers himself.
   D56     the mechanism that keeps the server up is what keeps taking it down   live/25
           ASSIGNED 2026-09-12. Distinct from D53, which is about STOPPING a lane; this is about
           a hook keeping a server ALIVE. Filed after the 2026-09-11 fix was live and did not hold.
+  D57     every anchor capability is reachable from the screen   REQ-every-anchor-capability-is-
+          reachable-from-the-screen-and-a   ASSIGNED 2026-09-12. The only open subject whose work
+          is a REQUIREMENT and not a plan/seq task, so it is cited by id. Owner ruling, hard.
 
 THE ORDER AFTER D37, RULED BY THE OWNER 2026-09-09: D38, then D33, then D36 (loop/1 first).
 The reasons are in the dated report; they were: D38 is small and half of it IS contra/4; D33 makes
