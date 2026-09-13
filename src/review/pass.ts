@@ -45,7 +45,12 @@ import { POINT_CATEGORIES, type PointCategory } from '../core/session-summary.ts
 import { openRebuiltStore } from '../core/open-store.ts';
 import { resolveWorkspace } from '../core/workspace.ts';
 import { gather, wholenessLine, type PassInput, type SkippedSource } from './input.ts';
-import { NO_QUEUE_CEILING, propose } from './propose.ts';
+import {
+  callAgentCli, isUsableModelName, parseReply, rulesMissing, MODEL_TIMEOUT_MS,
+  type ModelCall, type ModelCandidate,
+} from './model.ts';
+import { reviewPrompt } from './prompt.ts';
+import { NO_QUEUE_CEILING, propose, type Proposer } from './propose.ts';
 import { worthAPass, type RubricVerdict } from './rubric.ts';
 
 /** The report's name under `<corpusRoot>/state/`. */
@@ -113,6 +118,46 @@ export interface PassReport {
    * would say is to let it say it somewhere that costs nothing.
    */
   proposed: ProposeSummary | null;
+  /**
+   * **What happened when this pass tried to reach a model**, or `null` when
+   * none was configured — `plan:loop seq:6`.
+   *
+   * `null` is the shipped state and it reads as "no model was called". Every
+   * other value says a call was attempted and how it went, including the ways
+   * it can fail without a model ever seeing anything: no CLI on this machine,
+   * a non-zero exit, a timeout, a reply that did not follow the output
+   * contract, and the one this build refuses on its own — a prompt that had
+   * lost an anti-learning rule.
+   */
+  model: ModelPassRecord | null;
+}
+
+/** One pass's attempt to reach a model. Every failure is a named field, never a silence. */
+export interface ModelPassRecord {
+  /** The model name from config. */
+  requested: string;
+  /** The argv, without the prompt — the prompt goes on stdin. */
+  command: string;
+  /** Bytes of prompt handed to the transport. */
+  promptBytes: number;
+  /**
+   * **The five anti-learning rules, verified present in the exact text that
+   * was about to be sent.** Design §12 calls the list a scar record; a
+   * pipeline that delivered four of five would be indistinguishable from one
+   * that delivered five, so this is a count taken at the last moment before
+   * the bytes leave the process and not a restatement of a constant.
+   */
+  antiLearningRulesDelivered: number;
+  /** Named, when any rule was missing. The call is refused in that case. */
+  antiLearningRulesMissing: string[];
+  ok: boolean;
+  /** Why no answer was used. `null` when one was. */
+  why: string | null;
+  ms: number;
+  /** Candidates `parseReply` accepted. */
+  returned: number;
+  /** Elements of the reply that were not usable, with a reason each. */
+  rejected: string[];
 }
 
 /** `ProposeResult` without the drafts' full text. The report is read by people. */
@@ -133,10 +178,37 @@ export interface ProposeSummary {
   held: { pending: number; ceiling: number } | null;
   unauthored: Record<string, number>;
   /** id (or `null` on a dry run), tier, target, title, and whether anything confirms it. */
-  drafts: {
-    id: string | null; artifact: string; category: string; target: string | null;
-    title: string; confirmed: boolean;
-  }[];
+  drafts: DraftLine[];
+  /**
+   * **What the pass WOULD have proposed and did not, because of the ration or
+   * the ceiling** — `plan:loop seq:6`.
+   *
+   * `maxProposalsPerPass` ships at 0, so until the owner raises it `drafts` is
+   * always empty and `rationed` was the only trace a proposer left. That made
+   * a proposer that worked and a proposer that found nothing look identical in
+   * this file, which is the one thing a report whose entire job is to be read
+   * for a week must not do.
+   *
+   * **These were not written.** `created` is still the field that answers
+   * whether the loop has started writing to the corpus, and it is still empty.
+   */
+  withheld: DraftLine[];
+  /** The model path's own accounting, or `null` when no model ran. */
+  model: {
+    returned: number; screened: number; irrelevant: number; suppressed: number;
+    declined: number; empty: number; unauthored: number; ranked: number;
+  } | null;
+}
+
+/** One proposal as the report names it. `by` is the provenance axis — see `Proposer`. */
+export interface DraftLine {
+  id: string | null;
+  by: Proposer;
+  artifact: string;
+  category: string;
+  target: string | null;
+  title: string;
+  confirmed: boolean;
 }
 
 /**
@@ -183,6 +255,17 @@ function writeReport(stateRoot: string, report: PassReport): boolean {
   }
 }
 
+/** One `Proposal`, minus its body, as the report names it. */
+function draftLine(p: {
+  id: string | null; by: Proposer; artifact: string; category: string;
+  target: string | null; title: string; confirmed: boolean;
+}): DraftLine {
+  return {
+    id: p.id, by: p.by, artifact: p.artifact, category: p.category,
+    target: p.target, title: p.title, confirmed: p.confirmed,
+  };
+}
+
 /** How many points of each category the pass found. Zeros are drawn, not omitted. */
 function tally(input: PassInput): Record<string, number> {
   const counts: Record<string, number> = {};
@@ -225,6 +308,31 @@ export interface PassOptions {
    * `maxProposals`' own reason: a second reader is a second answer.
    */
   queueCeiling: number;
+  /**
+   * **§11's `model`, and the key that decides whether a model is called at
+   * all** — `plan:loop seq:6`.
+   *
+   * `null` — the shipped default, and what every workspace has until somebody
+   * writes the key — means NO model is reached, by any path, and `pass.model`
+   * in the report is `null` rather than a zero. Set, it is the name handed to
+   * the CLI.
+   *
+   * **It is not a second kill switch and it is not the ration.** `enabled`
+   * decides whether a pass runs (§11: one switch, one subsystem);
+   * `maxProposalsPerPass` decides whether anything is written; this decides
+   * whether the pass composes with a model or only selects lexically. The
+   * three are orthogonal on purpose, and the combination the owner's config
+   * has today — enabled, ration 0, model set — is the one this task was built
+   * to make provable: the model runs, the report says what it would have
+   * proposed, and nothing is written.
+   */
+  model: string | null;
+  /**
+   * How the model is reached. Injected so the pass is testable on a machine
+   * with no CLI and no network; production passes none and gets `callAgentCli`.
+   */
+  modelCall?: ModelCall;
+  modelTimeoutMs?: number;
   budgetBytes?: number;
   capBytes?: number;
 }
@@ -270,7 +378,76 @@ export async function runPass(options: PassOptions): Promise<PassReport> {
     points: input.points,
     created: [],
     proposed: null,
+    model: null,
   };
+
+  // ── REACHING A MODEL ─────────────────────────────────────────────────────
+  //
+  // **This is the half `plan:loop seq:3` left unbuilt and said so**:
+  // `propose.ts` opens with *"Nothing in this product calls a model, and this
+  // module does not either"*, and `prompt.ts` — the file the design calls the
+  // most important in the change — was imported by its own test and by nothing
+  // else. `review/model.ts` carries the argument for the mechanism.
+  //
+  // It runs BEFORE the proposing block and its result is folded in, rather
+  // than living inside `propose`, for the reason the report is built before
+  // anything can be written: a model call that fails must still leave a report
+  // saying it was attempted and why it failed. `propose` stays synchronous in
+  // spirit and testable without a transport.
+  const modelCandidates: ModelCandidate[] = [];
+  if (options.model !== null) {
+    const prompt = reviewPrompt(input);
+    const missing = rulesMissing(prompt);
+    const call = options.modelCall ?? callAgentCli;
+    const record: ModelPassRecord = {
+      requested: options.model,
+      command: '',
+      promptBytes: Buffer.byteLength(prompt, 'utf8'),
+      antiLearningRulesDelivered: 5 - missing.length,
+      antiLearningRulesMissing: missing,
+      ok: false,
+      why: null,
+      ms: 0,
+      returned: 0,
+      rejected: [],
+    };
+    if (!isUsableModelName(options.model)) {
+      record.why = `"${options.model}" is not a usable model name, so no call was made`;
+    } else {
+      // `callAgentCli` refuses a prompt with a rule missing, and refuses it
+      // again rather than trusting this caller to have checked. Two checks,
+      // one for the report and one at the boundary the bytes actually cross.
+      try {
+        const outcome = await call(prompt, {
+          model: options.model,
+          cwd: path.dirname(options.workspace),
+          timeoutMs: options.modelTimeoutMs ?? MODEL_TIMEOUT_MS,
+        });
+        record.command = outcome.command;
+        record.ms = outcome.ms;
+        if (!outcome.ok) {
+          record.why = outcome.why;
+        } else {
+          const parsed = parseReply(outcome.text);
+          record.rejected = parsed.rejected;
+          if (parsed.unparseable !== null) {
+            record.why = parsed.unparseable;
+          } else {
+            record.ok = true;
+            record.returned = parsed.candidates.length;
+            modelCandidates.push(...parsed.candidates);
+          }
+        }
+      } catch (err) {
+        // A transport that throws is still a transport that answered nothing,
+        // and the report is the only thing anybody will read. `ok` stays false
+        // and `why` names it, which is the difference between "the model found
+        // nothing" and "nothing reached a model".
+        record.why = `the model transport threw: ${err instanceof Error ? err.message : String(err)}`;
+      }
+    }
+    report.model = record;
+  }
 
   // ── THE PROPOSING HALF ────────────────────────────────────────────────────
   //
@@ -285,7 +462,22 @@ export async function runPass(options: PassOptions): Promise<PassReport> {
   // (`openRebuiltStore` says why it is unconditional), and paying for it to
   // produce an empty list on every `Stop` is exactly the kind of cost that
   // gets a subsystem turned off.
-  if (options.maxProposals > 0) {
+  //
+  // ── AND WHY THE RATION NO LONGER DECIDES WHETHER THIS BLOCK RUNS ─────────
+  //
+  // `plan:loop seq:3` skipped it entirely at `maxProposals: 0`, and the reason
+  // was cost: the store open is a full rebuild, and paying for it on every
+  // `Stop` to produce an empty list is how a subsystem gets turned off. That
+  // reason is intact and the skip is intact — for a pass with no model.
+  //
+  // **A pass that called a model has already paid the expensive thing.** It
+  // holds candidates that cost real tokens to produce, and throwing them away
+  // unexamined because the ration is 0 would make the model path unobservable
+  // at precisely the setting it ships on. So: the block runs when there is a
+  // ration to spend OR when a model returned something, and the report then
+  // carries `proposed.withheld` — what it would have proposed — while
+  // `created` stays empty because the ration is what stops the write.
+  if (options.maxProposals > 0 || modelCandidates.length > 0) {
     try {
       // `workspace` is the `.my_context` directory; `resolveWorkspace` takes
       // the project cwd, which is its parent. Resolved rather than assumed so
@@ -302,6 +494,7 @@ export async function runPass(options: PassOptions): Promise<PassReport> {
           max: options.maxProposals,
           queueCeiling: options.queueCeiling,
           dryRun: options.dryRun,
+          modelCandidates,
         });
         report.created = outcome.created;
         report.proposed = {
@@ -314,10 +507,9 @@ export async function runPass(options: PassOptions): Promise<PassReport> {
           rationed: outcome.rationed,
           held: outcome.held,
           unauthored: { ...outcome.unauthored },
-          drafts: outcome.proposals.map((p) => ({
-            id: p.id, artifact: p.artifact, category: p.category,
-            target: p.target, title: p.title, confirmed: p.confirmed,
-          })),
+          drafts: outcome.proposals.map(draftLine),
+          withheld: outcome.withheld.map(draftLine),
+          model: outcome.model === null ? null : { ...outcome.model },
         };
       } finally {
         opened.store.close();
@@ -371,6 +563,15 @@ export function spawnPass(options: PassOptions, spawnFn: typeof spawn = spawn): 
     // anything is written. A lost `--ceiling` costs a ration; a lost `--max`
     // costs nothing at all, which is the safe pair.
     '--ceiling', String(Math.max(0, options.queueCeiling)),
+    // The model name crosses the boundary in `--max`'s safe direction, not
+    // `--ceiling`'s: a child started without one calls NO model. The absent
+    // value has to be the one that spends nothing and reaches nothing, and a
+    // name that is not usable is not passed at all rather than passed and
+    // rejected downstream — an argv value beginning with "-" is an option to
+    // the program being spawned, which is `src/ui/open.ts`'s lesson.
+    ...(options.model === null || !isUsableModelName(options.model)
+      ? []
+      : ['--model', options.model]),
     ...(options.dryRun ? ['--dry-run'] : []),
   ];
   try {
@@ -417,6 +618,10 @@ if (isMainEntry(import.meta.filename, process.argv[1])) {
       // the flag whose absence must cost a write; this one's absence must not
       // cost a report.
       queueCeiling: Math.max(0, Number(flag(argv, '--ceiling') ?? 0) || NO_QUEUE_CEILING),
+      // Absent means NO model, which is `--max`'s direction and for `--max`'s
+      // reason: the argument that decides whether a detached process spends
+      // tokens must cost nothing when it is lost.
+      model: flag(argv, '--model'),
       dryRun: argv.includes('--dry-run'),
     }).catch(() => { /* a detached child has nobody to tell */ });
   }

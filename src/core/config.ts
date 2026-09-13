@@ -700,6 +700,33 @@ export interface ReviewConfig {
    * rule is one switch for one subsystem.
    */
   queueCeiling: number;
+  /**
+   * **Which model the pass hands its prompt to, or `null` for none** — §11,
+   * landed by `plan:loop seq:6`, which is what finally gave it something to
+   * govern.
+   *
+   * This key was REFUSED by name until now, and the refusal's reason was
+   * printed in the error: *"nothing in this product calls a model,
+   * `propose.ts` says so in its first paragraph, and a user told their loop
+   * runs on Haiku would be told something untrue."* `src/review/model.ts`
+   * reaches one by spawning the harness's own CLI — no runtime dependency,
+   * because `node:child_process` is a builtin and the CLI is the ambient
+   * program that invoked the hook rather than a package this product depends
+   * on. So the sentence is no longer true and the key is no longer refused.
+   *
+   * **`null` is the shipped default and means no model is reached by any
+   * path.** It is not a second kill switch, for `maxProposalsPerPass: 0`'s
+   * reason and §11's rule: `enabled` is the switch. It decides something
+   * different from both of the others — `enabled` whether a pass runs at all,
+   * `maxProposalsPerPass` whether anything is WRITTEN, and this whether the
+   * pass composes with a model or only selects lexically. A workspace with
+   * `enabled: true`, this set, and the ration at 0 calls a model, reports what
+   * it would have proposed in `review-last-pass.json`, and writes nothing —
+   * which is exactly the evidence-gathering position §11 asks for ("Run it on
+   * this repository for two weeks. Then decide.") for the half of the loop
+   * that costs tokens.
+   */
+  model: string | null;
 }
 
 /**
@@ -748,6 +775,14 @@ export const DEFAULT_REVIEW: ReviewConfig = {
   // owner raises the ration it is already there — which is the point, because
   // the raising is the moment a ceiling starts to matter.
   queueCeiling: 15,
+  // ── NULL, AND IT IS THE SHIPPED ANSWER RATHER THAN A PLACEHOLDER ─────────
+  //
+  // §11 prints `"model": "haiku"`. This ships `null`, which means no model is
+  // reached by any path, for `maxProposalsPerPass: 0`'s reason: a workspace
+  // that sets `enabled: true` and changes nothing else must not start spending
+  // tokens on a subsystem nobody has read the output of yet. The name §11
+  // printed is the name to set it to; setting it is the owner's.
+  model: null,
 };
 
 export interface Config {
@@ -1623,6 +1658,7 @@ function requireDispatchGate(raw: unknown): DispatchGateConfig {
 const REVIEW_KEYS = [
   'enabled', 'everyNToolCalls', 'onPreCompact', 'maxFiresPerSession',
   'readWholeTranscript', 'includeSubagents', 'maxProposalsPerPass', 'queueCeiling',
+  'model',
 ];
 
 /**
@@ -1638,11 +1674,31 @@ const REVIEW_KEYS = [
  *    INSIDE one corpus root, so "same cwd" is not a setting here, it is the
  *    only thing the file can express. Accepting the key would promise a
  *    comparison nothing performs.
- *  - **`model`** is refused for exactly the reason it always was — nothing in
- *    this product calls a model, `propose.ts` says so in its first paragraph,
- *    and a user told their loop runs on Haiku would be told something untrue.
+ *  - **`model`** LEFT THIS LIST in `plan:loop seq:6`. It was refused for as
+ *    long as the refusal was true — *"nothing in this product calls a model"*
+ *    — and `src/review/model.ts` ended that by spawning the harness's own CLI,
+ *    with no runtime dependency added. The refusal was never about the key; it
+ *    was about telling a user something untrue, and there is now something
+ *    true to tell them.
  */
-const REVIEW_LATER_KEYS = ['crossSessionSameCwd', 'model'];
+const REVIEW_LATER_KEYS = ['crossSessionSameCwd'];
+
+/**
+ * **What `review.model` may be, as a grammar** — `plan:loop seq:6`.
+ *
+ * It lives here rather than beside the spawn in `src/review/model.ts` because
+ * this is where it is ENFORCED, and a validator that imported the spawning
+ * module would pull `node:child_process` into the import graph of every
+ * surface that reads a config — including the read-only UI server, whose
+ * `test/ui/no-writes.test.ts` exists to keep that graph honest. `model.ts`
+ * imports it from here, so there is one grammar and one reader of it.
+ *
+ * A name beginning with `-` is an OPTION to the program being spawned. The
+ * refusal is by grammar rather than by hunting for dangerous characters, which
+ * is `assertOpenable`'s rule in `src/ui/open.ts` and the lesson
+ * `KNOWN-repo-containment-guard-is-defeated-across-windows-drive` records.
+ */
+export const MODEL_NAME_GRAMMAR = /^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/;
 
 /** The three `review` keys that are counts, with the bound each is held to. */
 const REVIEW_COUNTS: {
@@ -1740,6 +1796,25 @@ function requireReview(raw: unknown): ReviewConfig {
       );
     }
     review[key] = value;
+  }
+  // ── THE MODEL NAME, WHICH BECOMES AN ARGV VALUE ──────────────────────────
+  //
+  // Refused rather than escaped, and refused against a GRAMMAR rather than by
+  // looking for dangerous characters — `src/ui/open.ts`'s `assertOpenable`
+  // records what shape-inspection of an untrusted string costs this project,
+  // and a name beginning with "-" is an OPTION to the program being spawned
+  // rather than a value. `null` is legal and means no model is called.
+  if (raw.model !== undefined && raw.model !== null) {
+    if (typeof raw.model !== 'string' || !MODEL_NAME_GRAMMAR.test(raw.model)) {
+      throw new Error(
+        `my_context: review.model is ${JSON.stringify(raw.model) ?? String(raw.model)}. Expected ` +
+        `a model name — letters, digits, dot, dash and underscore, starting with a letter or a ` +
+        `digit, e.g. "haiku" — or null to call no model at all. Nothing was loaded: this value ` +
+        `is handed to a process as an argument, and a name beginning with "-" is an option to ` +
+        `that process rather than a model.`,
+      );
+    }
+    review.model = raw.model;
   }
   return review;
 }

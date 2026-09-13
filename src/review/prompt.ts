@@ -175,6 +175,48 @@ export const BOUNDARY = [
   'most confident mistakes; approval by a person is the only break in that loop.',
 ].join('\n');
 
+/**
+ * **What the answer must look like, which nothing in the design ever said.**
+ *
+ * `plan:loop seq:6`. This file shipped in seq:3 with no output contract at
+ * all, because nothing called it: a prompt that reaches no model needs no
+ * reply format, and the omission was invisible for exactly as long as the
+ * caller was. `review/model.ts` parses what comes back, so the shape is now
+ * load-bearing and lives here beside the rules it has to coexist with.
+ *
+ * **`[]` is spelled out as an answer rather than left to be inferred.** §5c
+ * already says proposing nothing is correct and most passes should propose
+ * nothing; a format section that only described how to report a proposal would
+ * quietly contradict it, and the contradiction would fall on the side that
+ * produces output. The two say the same thing in two places on purpose.
+ */
+export const OUTPUT_CONTRACT = [
+  'ANSWER WITH JSON AND NOTHING ELSE:',
+  '',
+  '  A JSON array. Every element is one proposal, and every field is required:',
+  '',
+  '    {"artifact": "check" | "rule" | "lesson",',
+  '     "target":   "the path, the module or the item id this is about",',
+  '     "title":    "one line naming the claim, at most 100 characters",',
+  '     "summary":  "one plain sentence for a reader who does not know this",',
+  '                 "codebase, at most 250 characters",',
+  '     "brief":    "several sentences for the person deciding: what was",',
+  '                 "observed, where, what it would take to check, and what",',
+  '                 "you are unsure of",',
+  '     "evidence": [{"source": "the file named beside the observation",',
+  '                   "recordIndex": the number after the # beside it}]}',
+  '',
+  '  A proposal citing no evidence is dropped unread, and so is one naming no',
+  '  target. Neither is softened.',
+  '',
+  '  WRITE `[]` WHEN NOTHING HERE IS WORTH WRITING DOWN. That is the expected',
+  '  answer, not a failed run. Do not explain it and do not apologise for it —',
+  '  return the two characters.',
+  '',
+  '  No prose outside the array. A sentence before or after it is a sentence',
+  '  nobody will ever read, because what reads this answer is a parser.',
+].join('\n');
+
 /** How many observations of one category are shown. Bounds the prompt, not the read. */
 const PER_CATEGORY = 12;
 
@@ -241,6 +283,9 @@ export function reviewPrompt(input: PassInput): string {
     '',
     '─────────────────────────────────────────────────────────────────────────',
     BOUNDARY,
+    '',
+    '─────────────────────────────────────────────────────────────────────────',
+    OUTPUT_CONTRACT,
     '',
     '─────────────────────────────────────────────────────────────────────────',
     'WHAT THIS PASS READ:',

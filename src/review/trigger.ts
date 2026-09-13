@@ -207,6 +207,11 @@ export function reviewTrigger(
       // same way. The pass counts the queue itself when it has something to
       // admit — this is only the number it counts against.
       queueCeiling: review.queueCeiling,
+      // §11's `model`, read from the same resolved config and passed down the
+      // same way. `null` — the shipped default — means the child calls no
+      // model at all, and `spawnPass` drops the flag entirely rather than
+      // passing an empty one.
+      model: review.model,
       // A pass proposes only when it has a ration to spend. `dryRun` and a
       // zero ration say the same thing from two directions and both are
       // honoured, so neither can be the one that was forgotten.

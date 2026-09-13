@@ -47,6 +47,38 @@ import { alreadyDeclined } from './declined.ts';
 import { reviewQueue } from '../core/select.ts';
 import { suppress, type Pending } from './dedupe.ts';
 import type { PassInput, Point } from './input.ts';
+import type { ModelCandidate } from './model.ts';
+
+/**
+ * **Which of the two proposers wrote a draft** — `plan:loop seq:6`.
+ *
+ * ── WHY THIS IS NOT `origin`, WHICH IS WHAT WAS ASKED FOR ──────────────────
+ *
+ * The request was that an item's `origin` say which proposer produced it.
+ * **It is refused, and the refusal is the safer reading of the same
+ * requirement.** `origin: 'review'` is not a label; it is THE trust boundary,
+ * and it is spelled as a literal comparison in ten places — `trust.ts`
+ * (`origin === 'review'` is what forces `draft` and is the only thing that
+ * does), `mutate.ts` four times (the draft region, the draft directory, and
+ * the outright refusal of `edit` and `supersede`), `retire.ts`
+ * (`RETIREABLE_ORIGIN`), `decline.ts`, `vocabulary.ts`, and `propose.ts`
+ * itself. A second origin would have to be added to every one of them, and the
+ * one that got missed would not fail loudly: a model draft whose origin
+ * `trustedStatus` did not recognise would come out `active` and GOVERN.
+ *
+ * So the boundary stays one value with one meaning, and provenance travels on
+ * an axis that cannot be mistaken for it: the `proposer:` tag on the item, the
+ * first line of the review brief a person actually reads, and `by` on every
+ * row of `review-last-pass.json`. The requirement — *an item says which
+ * produced it* — is met three times over; the mechanism that would have met it
+ * by widening a trust boundary is the one thing that is not done.
+ */
+export type Proposer = 'deterministic' | 'model';
+
+/** The `proposer:` tag written onto a draft. One spelling, one reader. */
+export function proposerTag(by: Proposer): string {
+  return `proposer:${by}`;
+}
 
 // ── §4: WHAT IT PROPOSES ────────────────────────────────────────────────────
 
@@ -345,6 +377,8 @@ export interface Proposal {
   evidence: Evidence[];
   /** `classify`'s reason. Why this tier and not the one above it. */
   because: string;
+  /** Which proposer wrote it. See `Proposer` for why this is not `origin`. */
+  by: Proposer;
 }
 
 /** Markdown, list markers and runs of whitespace, removed. */
@@ -438,8 +472,24 @@ function briefOf(proposal: Omit<Proposal, 'id' | 'brief'>): string {
       `found by whoever writes it.`
     : `Proposed as a ${proposal.artifact} because ${proposal.because}.`;
 
+  // **The proposer is the FIRST line of the brief**, before the tier and
+  // before the evidence. The brief is what a person reads before approving,
+  // and "a model wrote this after reading a transcript" changes how the rest
+  // of it should be weighed — §13's Echo Gap is the reason, and a provenance
+  // note further down would be read after the argument it is supposed to
+  // qualify.
+  const provenance = proposal.by === 'model'
+    ? `WRITTEN BY A MODEL reading this session's transcripts, then passed through the same ` +
+      `anti-learning screen, relevance gate, decline ledger and near-duplicate suppression as ` +
+      `every other proposal. A model composes rather than quotes, which is why it may propose a ` +
+      `rule or a lesson at all — and it is also why nothing it says here is evidence for itself.`
+    : `Written by the DETERMINISTIC proposer, which selects a sentence from a transcript and ` +
+      `cannot compose one. That is why it authors a task and nothing else: the sentence below is ` +
+      `quoted, so it is offered as work to look at rather than as law.`;
+
   return [
     `A draft from the self-improvement pass. It governs nothing and is not committed.`,
+    provenance,
     tierLine,
     targetLine,
     confirmation,
@@ -492,6 +542,33 @@ function briefOf(proposal: Omit<Proposal, 'id' | 'brief'>): string {
 export const AUTHORABLE: readonly Artifact[] = ['check'];
 
 /**
+ * **What the MODEL path may author, and why the set above does not bind it** —
+ * `plan:loop seq:6`.
+ *
+ * `AUTHORABLE`'s argument is one sentence long and it is about a lexical
+ * proposer: *"A lexical proposer can select an observation. It cannot write a
+ * rule."* Every candidate `classify` produces is a SENTENCE FROM THE
+ * TRANSCRIPT, so filing it as a `rule` would make a quoted sentence into law.
+ * That premise is false of a model, which composes, and `AUTHORABLE`'s own
+ * closing line says what would lift the restriction: *"Widening this set is
+ * not a config change; it waits for the writer §5 describes."* `model.ts` is
+ * that writer.
+ *
+ * **So the two sets differ because the two proposers differ, and that is the
+ * whole reason the model path was built.** It is not a relaxation: a model
+ * proposal passes every gate the deterministic one does — §12's screen, §5c's
+ * relevance gate checked against the evidence the model itself cited, §8's
+ * decline ledger, §5b's near-duplicate suppression against the same `pending`
+ * list — and then §4's order still applies to what it returns, because the
+ * prompt states it and `parseReply` refuses any tier outside it.
+ *
+ * And the ration is unchanged. Widening WHAT may be authored does not widen
+ * HOW MUCH: `maxProposalsPerPass` ships at 0 and a model proposal is subject
+ * to it exactly as a deterministic one is.
+ */
+export const MODEL_AUTHORABLE: readonly Artifact[] = ['check', 'rule', 'lesson'];
+
+/**
  * The ceiling for a caller that genuinely has none — an exploratory dry run,
  * and the tests that assert the per-pass ration in isolation.
  *
@@ -500,6 +577,12 @@ export const AUTHORABLE: readonly Artifact[] = ['check'];
  * typed. See `ProposeOptions.queueCeiling`.
  */
 export const NO_QUEUE_CEILING = Number.MAX_SAFE_INTEGER;
+
+/**
+ * How many held candidates are listed in full in `ProposeResult.withheld`.
+ * `rationed` is the true count and is never bounded by this.
+ */
+export const WITHHELD_CAP = 20;
 
 export interface ProposeOptions {
   /** The corpus root — the `.my_context` directory. Drafts and ledgers live under it. */
@@ -537,6 +620,23 @@ export interface ProposeOptions {
    * earning it.
    */
   authors?: readonly Artifact[];
+  /**
+   * **What a model returned for this same pass**, already parsed and bounded
+   * by `review/model.ts`. Absent or empty means the deterministic proposer is
+   * the only one that ran, which is the default and what every workspace does
+   * until `review.model` is set.
+   *
+   * They are ADDED to the deterministic candidates rather than replacing them,
+   * and they share the `pending` list, so a model proposal that says the same
+   * thing as a lexical one about the same target is suppressed by §5b like any
+   * other near-duplicate — whichever of the two got there first.
+   */
+  modelCandidates?: readonly ModelCandidate[];
+  /**
+   * Which tiers the MODEL path may author. Defaults to `MODEL_AUTHORABLE`,
+   * which is wider than `authors` and says why in its own comment.
+   */
+  modelAuthors?: readonly Artifact[];
 }
 
 export interface ProposeResult {
@@ -579,6 +679,41 @@ export interface ProposeResult {
   unauthored: Record<Artifact, number>;
   /** The reasons, in order, so a pass that proposed nothing can say why. */
   because: string[];
+  /**
+   * **What survived every gate and was stopped only by the ration or the
+   * ceiling** — `plan:loop seq:6`, and it is what makes a pass at
+   * `maxProposalsPerPass: 0` provable rather than merely safe.
+   *
+   * `rationed` has always said HOW MANY were held. It could not say WHAT, so
+   * the shipped default — ration 0 — produced a report in which a proposer
+   * that worked and a proposer that found nothing looked identical. These are
+   * the same `Proposal` objects the admitted ones are, with `id: null`,
+   * because nothing was written.
+   *
+   * `created` stays the field that answers "has the loop started writing to
+   * the corpus", and it is still empty here. Holding is not writing.
+   */
+  withheld: Proposal[];
+  /**
+   * What the model path contributed, or `null` when no model ran. Kept apart
+   * from the totals above so that "the model returned nothing" and "no model
+   * was called" are two different readings rather than one zero.
+   */
+  model: ModelCounts | null;
+}
+
+/** The model path's own accounting. Every candidate it returned is in exactly one field. */
+export interface ModelCounts {
+  /** Candidates `parseReply` handed over. The denominator. */
+  returned: number;
+  screened: number;
+  irrelevant: number;
+  suppressed: number;
+  declined: number;
+  empty: number;
+  unauthored: number;
+  /** Reached the ranking. Whether any was WRITTEN is the ration's answer, not this one. */
+  ranked: number;
 }
 
 /** Ranking inside the ration. Highest first. */
@@ -614,14 +749,17 @@ export async function propose(
     held: null,
     unauthored: { check: 0, rule: 0, lesson: 0 },
     because: [],
+    withheld: [],
+    model: null,
   };
   const authors = options.authors ?? AUTHORABLE;
+  const modelAuthors = options.modelAuthors ?? MODEL_AUTHORABLE;
 
   // `pending` starts with this pass's own survivors and grows as they are
   // accepted, so two observations of one thing inside a single pass collapse
   // to one proposal — the failure §5b names first.
   const pending: Pending[] = [];
-  const ranked: { point: Point; proposal: Omit<Proposal, 'id' | 'brief'>; weight: number }[] = [];
+  const ranked: { proposal: Omit<Proposal, 'id' | 'brief'>; weight: number }[] = [];
 
   for (const point of input.points) {
     const text = clean(point.text);
@@ -705,9 +843,9 @@ export async function propose(
       : noteSighting(options.workspace, claim, target, options.sessionId, at);
 
     ranked.push({
-      point,
       weight: weigh(point, artifact, seen.confirmed),
       proposal: {
+        by: 'deterministic',
         artifact,
         category: ARTIFACT_CATEGORY[artifact],
         title,
@@ -722,6 +860,142 @@ export async function propose(
         }],
       },
     });
+  }
+
+  // ── THE MODEL PATH — AN ADDITION, NEVER A SUBSTITUTION ───────────────────
+  //
+  // **Everything above this line ran unchanged.** The deterministic proposer
+  // is not a prototype this replaces; its own header's argument stands and is
+  // the reason the loop below exists at all: *"asking a model to prefer checks
+  // is a request that fails silently."* So the model's answers are put through
+  // the SAME gates, in the same cost order, sharing the SAME `pending` list —
+  // which is what makes a model proposal and a lexical one about the same
+  // target collapse to one under §5b rather than arriving as two.
+  //
+  // What the model is trusted with is composition, and nothing else. It is not
+  // trusted about relevance (§5c is re-checked against the evidence IT cited),
+  // not about novelty (§8's ledger and §5b's suppression are re-run), not
+  // about the anti-learning rules (§12's screen is re-run over its own text,
+  // because a prompt is a request and a screen is a gate), and not about
+  // volume (the ration is unchanged).
+  if (options.modelCandidates !== undefined && options.modelCandidates.length > 0) {
+    const counts: ModelCounts = {
+      returned: options.modelCandidates.length,
+      screened: 0, irrelevant: 0, suppressed: 0, declined: 0, empty: 0, unauthored: 0, ranked: 0,
+    };
+    for (const candidate of options.modelCandidates) {
+      const title = clip(candidate.title, 100);
+      const body = clean(`${candidate.title} ${candidate.summary} ${candidate.brief}`);
+      if (title === '' || body === '') { counts.empty++; result.empty++; continue; }
+
+      // §12, over what the MODEL wrote rather than over the transcript. The
+      // prompt asks; this decides. A screen that ran only on the input would
+      // be checking the wrong text.
+      const screened = antiLearning(body);
+      if (screened !== null) {
+        counts.screened++; result.screened++;
+        result.because.push(`model: screened — ${screened}`);
+        continue;
+      }
+
+      // §5c, and **here the gate does real work for the first time.** The
+      // deterministic path DERIVES its target from the evidence, so the gate
+      // could never fire on it — `evidenceTouchesTarget`'s own comment says
+      // so and keeps the check anyway for the sake of tomorrow's caller. This
+      // is tomorrow's caller: a model NAMES a target, and a named target that
+      // its own cited evidence does not contain is upstream issue #66350
+      // exactly — content from an unrelated task written against an existing
+      // item. Refused, not softened.
+      const cited = candidate.evidence.map((e) => `${e.source}#${e.recordIndex}`);
+      const quoted: string[] = [];
+      for (const e of candidate.evidence) {
+        const found = input.points.find(
+          (p) => p.recordIndex === e.recordIndex && p.source.endsWith(e.source.split(/[\\/]/).pop() ?? e.source),
+        );
+        if (found !== undefined) quoted.push(found.text);
+      }
+      if (quoted.length === 0) {
+        counts.irrelevant++; result.irrelevant++;
+        result.because.push(
+          `model: refused — it cited ${cited.join(', ')}, and no observation this pass read ` +
+          `carries that source and record index`,
+        );
+        continue;
+      }
+      if (!evidenceTouchesTarget(candidate.target, quoted)) {
+        counts.irrelevant++; result.irrelevant++;
+        result.because.push(
+          `model: refused — the evidence it cited does not mention ${candidate.target}, which ` +
+          `is the proposal's own target`,
+        );
+        continue;
+      }
+
+      const claim = claimKey(title, body, candidate.target);
+      if (claim === '') { counts.empty++; result.empty++; continue; }
+
+      const declinedBefore = alreadyDeclined(options.workspace, claim, candidate.target);
+      if (declinedBefore !== null) {
+        counts.declined++; result.declined++;
+        result.because.push(`model: declined before${declinedBefore.why === null ? '' : ' by the owner'}`);
+        continue;
+      }
+
+      const entry: Pending = {
+        id: `model:${counts.ranked}`, target: candidate.target, title, body,
+      };
+      const dropped = suppress(entry, pending);
+      if (dropped.drop) {
+        counts.suppressed++; result.suppressed++;
+        result.because.push(`model: suppressed — ${dropped.because ?? 'near-duplicate'}`);
+        continue;
+      }
+      pending.push(entry);
+
+      if (!modelAuthors.includes(candidate.artifact)) {
+        counts.unauthored++;
+        result.unauthored[candidate.artifact]++;
+        result.because.push(`model: not authored — ${candidate.artifact} is outside MODEL_AUTHORABLE`);
+        continue;
+      }
+
+      const seen = options.dryRun === true
+        ? { confirmed: false, sessions: 1 }
+        : noteSighting(options.workspace, claim, candidate.target, options.sessionId, at);
+
+      // Weighed on the same scale as a lexical candidate, through the same
+      // function, using the observation it cited. A separate scale would make
+      // the ration a contest between two units.
+      const anchor = input.points.find(
+        (p) => p.recordIndex === candidate.evidence[0]?.recordIndex,
+      ) ?? input.points[0];
+      counts.ranked++;
+      ranked.push({
+        weight: anchor === undefined
+          ? (candidate.artifact === 'check' ? 3 : candidate.artifact === 'rule' ? 2 : 1)
+          : weigh(anchor, candidate.artifact, seen.confirmed),
+        proposal: {
+          by: 'model',
+          artifact: candidate.artifact,
+          category: ARTIFACT_CATEGORY[candidate.artifact],
+          title,
+          summary: clip(candidate.summary, SUMMARY_MAX_CHARS),
+          target: candidate.target,
+          claim,
+          confirmed: seen.confirmed,
+          sessionsSeen: seen.sessions,
+          because:
+            `a model reading this session proposed it as a ${candidate.artifact}, and it ` +
+            `survived the anti-learning screen, the relevance gate against its own cited ` +
+            `evidence, the decline ledger and near-duplicate suppression`,
+          evidence: candidate.evidence.map((e, i) => ({
+            source: e.source, recordIndex: e.recordIndex, at: null,
+            quote: quoted[i] ?? candidate.brief,
+          })),
+        },
+      });
+    }
+    result.model = counts;
   }
 
   ranked.sort((a, b) => b.weight - a.weight);
@@ -762,6 +1036,26 @@ export async function propose(
   }
   result.rationed = ranked.length - admitted.length;
 
+  // **What was held, in full** — see `ProposeResult.withheld`. Highest-weight
+  // first, because `ranked` is already sorted and the ones a bigger ration
+  // would have admitted next are the ones a reader wants to see.
+  //
+  // Bounded, for the reason the sightings ledger and the decline ledger are
+  // bounded: this ends up in `review-last-pass.json`, which is a file a person
+  // opens. Over the owner's own session the deterministic proposer ranked
+  // enough candidates that an unbounded list would be the report. `rationed`
+  // remains the true count and is not affected by this bound, so nothing is
+  // hidden — the count and the sample disagree only in length.
+  for (const { proposal } of ranked.slice(admitted.length, admitted.length + WITHHELD_CAP)) {
+    result.withheld.push({ ...proposal, id: null, brief: briefOf(proposal) });
+  }
+  if (result.rationed > result.withheld.length) {
+    result.because.push(
+      `${result.rationed} held, of which the ${result.withheld.length} highest-weighted are ` +
+      `listed in full — the rest are counted and not sampled`,
+    );
+  }
+
   for (const { proposal } of admitted) {
     const brief = briefOf(proposal);
     if (options.dryRun === true) {
@@ -779,7 +1073,15 @@ export async function propose(
       summary: proposal.summary,
       body: brief,
       origin: 'review',
-      tags: ['review-pass', proposal.confirmed ? 'confirmed' : 'unconfirmed'],
+      // `proposer:` is where provenance lives on the item. It is NOT `origin`,
+      // and `Proposer`'s comment argues at length why widening that trust
+      // boundary to carry a label would have been the wrong way to answer the
+      // same requirement.
+      tags: [
+        'review-pass',
+        proposerTag(proposal.by),
+        proposal.confirmed ? 'confirmed' : 'unconfirmed',
+      ],
       ...(proposal.target === null || !proposal.target.includes('/')
         ? {}
         : { scope: [proposal.target] }),
