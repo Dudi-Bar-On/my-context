@@ -450,6 +450,16 @@ for (const lang of ['en', 'he'] as const) {
       // The GROUND a cell sits on: the cell declares no background of its own,
       // so the colour a reader sees behind the ruling is the first painted
       // ancestor's — the well's `--sink`. Walked rather than assumed.
+      //
+      // **DO NOT COPY THIS WALK TO A CONTROL THAT IS NOT IN THE WELL.** It reads
+      // the `background-color` PROPERTY, and it is only sound here because it
+      // terminates on `.tvscroll{background:var(--sink)}` — a flat opaque fill
+      // that occludes everything under it — which the `drawn.ground` assertion
+      // 20 lines below PINS rather than hopes for. Anywhere the walk reaches
+      // `body` it answers `#0b0c11`, the colour UNDER `--ground`'s three
+      // `radial-gradient()`s, which is a colour the screen does not paint:
+      // `TASK-nine-contrast-ratios-are-computed-against-a-colour-the`, and
+      // `e2e/button-contrast.spec.ts` is that walk replaced by a PNG read.
       let node: HTMLElement | null = el as HTMLElement;
       let ground = 'rgba(0, 0, 0, 0)';
       while (node !== null) {

@@ -18,17 +18,17 @@ tags:
   - gates
   - "plan:ui-gates"
   - "seq:2"
-  - "state:todo"
+  - "state:done"
 origin: human
 source_file: "C:/Users/UserC/AppData/Local/Temp/d40body.md"
 source_anchor: null
 source_checksum: d471244a07bd2570
 valid_from: 2026-09-13
 valid_until: null
-checksum: dfdaffde408c11dd
+checksum: 84a94948ba934275
 plan: ui-gates
 seq: "2"
-state: todo
+state: done
 priority: "2"
 ---
 

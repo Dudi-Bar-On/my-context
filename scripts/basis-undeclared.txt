@@ -36,7 +36,6 @@ e2e/bidi.spec.ts
 e2e/boot-refusals.spec.ts
 e2e/bounded-paging.spec.ts
 e2e/budgets.spec.ts
-e2e/button-contrast.spec.ts
 e2e/capture-execute.spec.ts
 e2e/chart-css-authority.spec.ts
 e2e/chart-scale.spec.ts
