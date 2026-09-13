@@ -1,3 +1,54 @@
+## ⏭ 2026-09-13 — THE LOOP CALLS A MODEL. THE BACKLOG TRIPLED ON PURPOSE, 59 → 170. TWO LANES ARE RUNNING.
+
+### DO THIS FIRST
+
+1. **Two lanes are live and their work is UNCOMMITTED.** Lane A holds six blockers — `unread/1`,
+   `swallow/2`, `swallow/3`, `swallow/4`, `swallow/5`, `gates/1`. Lane B holds `conversations.js`:
+   the 1,200 ms un-debounced find box and the 684 unpaged anchors FIRST, three mechanical splits
+   second, and **`mountDocument` is off limits as a split** — 2,370 lines sharing a dozen variables.
+   **Commit each the moment it reports.** A lane's whole tree was lost once this week.
+2. `swallow/3` and `swallow/4` are `inferred — reproduce first`. **Reproducing and closing one as a
+   false premise is a good outcome**, not a failure.
+
+### THE SELF-IMPROVEMENT LOOP IS LIVE, AND IT CALLS A MODEL
+
+`review.enabled: true`, `maxProposalsPerPass: 5`, `model: claude-opus-5`. **`loop/6`** wired the
+harness's own CLI — `claude --print`, prompt on stdin — and `CONST-zero-runtime-dependencies` holds
+because `child_process` is a builtin and the CLI is the ambient program that invoked the hook, not a
+package. Provenance travels on `by`, **never on `origin`**, which is the trust boundary compared as a
+literal in seven modules.
+
+**`loop/7`** added `emptyReply`, and on its first real pass Opus returned `'[]'` — **a considered
+refusal, not an unreadable answer.** Before it, three different silences were the same two zeros.
+
+### WHAT CHANGED, AND WHY NONE OF IT IS RE-DERIVABLE
+
+- **The backlog tripled deliberately.** Six reviews produced 119 consolidated findings; the owner
+  chose to file all of them rather than leave them where **a finding cannot be superseded and cannot
+  be found by `mycontext show`**. **D66–D76** were minted for them. **26 priority-1 remain.**
+- **`docs/capabilities/` is verified and revised**, 6,073 lines, 73 defects corrected. The worst was a
+  security claim in the permissive direction — "three exceptions" where `RULED_WRITES` holds **twelve
+  bindings across five files**.
+- **The store is 15 entries**, three added today: *a scanner names what it skips*, *a fixture must not
+  be what makes a proof pass*, *a gate that cannot be shown to fail is not a gate*. **A fourth was
+  proposed and refused** — already present in `def-prove-by-removal`.
+- **`gates/2` wired four gates and deliberately refused the fifth**; `core.hooksPath` is `.githooks`,
+  proved live against a planted `left-pad`.
+- **D40 closed and its premise was half wrong**: seven of seventeen contrast signatures were already
+  measured correctly and **the UI does not fail contrast** — the defect was in the instrument. **The
+  nine `wcag` items were written against that old instrument and must be RE-READ** before anyone
+  spends a day on them.
+
+### THE TRAP THAT COST MOST TODAY
+
+**A removal proof that reports green must first prove the removal LANDED — and that its detector can
+SEE a red.** Two lanes reported false greens from edits that silently matched nothing; this
+session's own harness reported four more from a detector blind to failure. And when a proof strands
+a mutation, **repair it by hand, never with `git checkout`** — `def-prove-by-removal` records a lane
+destroying its own work that way.
+
+---
+
 ## ⏭ 2026-09-12 — D41 CLOSED, 20 OF 25 DONE. `recall/2` IS RUNNING AND CLOSES D42. THE ANCHOR UI IS QUEUED BEHIND IT.
 
 **Read `reports/2026-09-11-v2-progress.md` for the numbers.** It is computed, not remembered — the
