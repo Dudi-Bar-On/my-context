@@ -1,3 +1,48 @@
+## ⏭ 2026-09-14 00:25 — WAVE 1 LANDED AND IS COMMITTED. WAVE 2 IS RUNNING. THE NIGHT RUNS TO 06:00.
+
+### DO THIS FIRST
+
+**Three lanes are live and their work is UNCOMMITTED. Commit each the moment it reports** — a
+lane's whole tree was lost once this week.
+- **C** — `readmodel/1` + `readmodel/2`: where the four seconds in `/api/status` and `/api/doctor`
+  actually go, **measured before anything changes**.
+- **D** — `store/6`–`store/9`: the dangling citation every consumer install receives inside the block
+  this product says outranks every other source, **and why store v5 fixed that class and missed this
+  line three rows above the one it repaired**.
+- **E** — `dxfindings/1`–`/4`: the grandfather cutoff hard-coded into shipped code, **after** a
+  derived-membership guard on `runChecks`, which has already caused one silent-miss incident.
+
+**Then wave 3 (~02:30): `unread/2`–`/5` + `swallow/6`–`/8`, `cliscript/1`–`/4`, `invariant/1`–`/4`.
+Wave 4 (~04:15): `confirm/1`–`/4`, `mcpsurface/1`–`/3`, `accretion/2`.** At most one browser lane at
+a time — three at once held 13.8 GB and made the machine unusable.
+
+### WHAT LANDED SINCE THE LAST BLOCK
+
+- **Six blockers closed** — `unread/1`, `swallow/2`–`/5`, `gates/1`. **Both `inferred` items
+  REPRODUCED**, neither a false premise: the CLI wrote **301 bytes of 136,063 and exited 0**, and an
+  ACL denial turned **three items into one with `errors.length === 0`**.
+- **`accretion/5`** — `conversations.js`: the anchors card went **16,799 elements → 392**, redraws per
+  search **10 → 1**. It **corrected the map that sent it**: the 1,200 ms belonged to the anchors
+  filter, not the document's find box. It found the sessions list **capped at 20 with no way to reach
+  21** — the defect that file's own header opens with. It **refused splits 2–3 with a scan**: a
+  straight move makes a circular import.
+
+### THE LESSON THE NIGHT KEEPS RE-TEACHING
+
+**A proof that reports green must first prove it could have gone red.** The icon-sprite rewrite left
+everything green because **the JSDoc above the function quotes the markup it emits** — the sentence
+*about* the code was counted as the code. And one repair **manufactured a silent failure of its own**
+(an exit code overwritten), caught only by three unrelated tests reddening. **Repair a stranded
+mutation by hand, never with `git checkout`.**
+
+### STILL HELD, DELIBERATELY
+
+**`wcag/1`–`/4`.** D40 showed **the instrument was wrong more often than the paint** — the UI does not
+fail contrast. Those four were written against the old instrument and **want the owner's eye before a
+lane's**.
+
+---
+
 ## ⏭ 2026-09-13 — TWO LANES ARE RUNNING. THE REVIEW LOOP CALLS A MODEL NOW. THE BACKLOG TRIPLED ON PURPOSE, 59 → 170.
 
 ### DO THIS FIRST — both lanes are live as this is written, and their work is UNCOMMITTED

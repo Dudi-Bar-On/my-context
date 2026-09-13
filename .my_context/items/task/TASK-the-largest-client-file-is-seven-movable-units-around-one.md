@@ -18,14 +18,17 @@ tags:
   - refactor
   - "plan:accretion"
   - "seq:5"
-  - "state:todo"
+  - "state:done"
 origin: human
 source_file: "C:/Users/UserC/AppData/Local/Temp/lane-item.md"
 source_anchor: null
 source_checksum: null
 valid_from: 2026-09-13
 valid_until: null
-checksum: 0b0578937ab003b7
+checksum: 5924ef786fea1519
+plan: accretion
+seq: "5"
+state: done
 ---
 
 # the largest client file is seven movable units around one 2370-line closure
