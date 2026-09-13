@@ -19,6 +19,7 @@ import { ledgerKey, type HookInput } from '../../src/hooks/io.ts';
 import { buildJitOutput } from '../../src/hooks/pre-tool-use.ts';
 import { buildSubagentStartOutput } from '../../src/hooks/subagent-start.ts';
 import { RULES_DIR_ENV } from '../../src/rules/deliver.ts';
+import { writeManifest } from '../../src/rules/manifest.ts';
 import { removeTree } from '../helpers/tmp.ts';
 
 /**
@@ -73,6 +74,16 @@ const BINARY = fileURLToPath(new URL('../../src/hooks/subagent-start.ts', import
  * alike.
  */
 const EMPTY_STORE = mkdtempSync(path.join(tmpdir(), 'myctx-subagent-no-store-'));
+/**
+ * **PUBLISHED empty, not merely empty** — and since `store/6` the two are
+ * different facts. A door now consults the manifest and discloses what it
+ * finds (`rules/deliver.ts` · `renderStoreIntegrity`), so a directory with no
+ * `manifest.json` is a store nothing can vouch for and the door says so. That
+ * sentence is correct, and it is not what this file is about: writing an empty
+ * manifest makes the fixture the empty STORE it claims to be instead of a
+ * damaged one, so the assertions below stay assertions about the corpus half.
+ */
+writeManifest(EMPTY_STORE);
 process.env[RULES_DIR_ENV] = EMPTY_STORE;
 after(() => removeTree(EMPTY_STORE));
 

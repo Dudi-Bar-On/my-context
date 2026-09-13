@@ -1,4 +1,4 @@
-// @basis TASK-the-store-is-delivered-at-every-door-an-agent-starts-through, STD-the-precedence-order-when-four-sources-of-truth-disagree
+// @basis TASK-the-store-is-delivered-at-every-door-an-agent-starts-through, STD-the-precedence-order-when-four-sources-of-truth-disagree, TASK-the-block-that-outranks-every-other-source-ships-a-citation, TASK-a-file-dropped-into-the-rule-store-entries-directory-is
 /**
  * **A product constant wins, AND the conflict is reported.**
  *
@@ -34,6 +34,7 @@ import path from 'node:path';
 import { runCli } from '../../src/cli/index.ts';
 import { buildSessionStartResult, storeAppendix } from '../../src/hooks/session-start.ts';
 import { deliveredFile, type DeliveryRecord } from '../../src/rules/delivered.ts';
+import { writeManifest } from '../../src/rules/manifest.ts';
 import { removeTree } from '../helpers/tmp.ts';
 
 const ENTRY_ID = 'a-body-stops-at-the-first-heading';
@@ -61,9 +62,16 @@ const CONSTANT = [
   '',
 ].join('\n');
 
+/**
+ * **Published, not merely written.** Since `store/6` a door consults the
+ * manifest and discloses a disagreement, so a fixture with no `manifest.json`
+ * is a damaged store and every block below would open with a damage notice —
+ * a fixture shaping the text its own assertions then read.
+ */
 function storeFixture(): string {
   const dir = mkdtempSync(path.join(tmpdir(), 'myctx-prec-store-'));
   writeFileSync(path.join(dir, 'fact.md'), CONSTANT, 'utf8');
+  writeManifest(dir);
   return dir;
 }
 
@@ -218,10 +226,33 @@ test('the block states the precedence order even when nothing conflicts', () => 
   try {
     const { store: block } = door(cwd, store);
     assert.match(block, /Precedence/, 'the block never states which source outranks which');
-    assert.match(
-      block, /STD-the-precedence-order-when-four-sources-of-truth-disagree/,
-      'the block does not cite the item that carries the full order, so a reader who wants the ' +
-      'rest of it has nowhere to go (RULE-a-citation-names-an-item-by-id-never-a-report-by-line-number)',
+    /**
+     * **THIS ASSERTION WAS REVERSED ON 2026-09-14, AND THE REVERSAL IS THE
+     * POINT** — `rulings/75`, `TASK-the-block-that-outranks-every-other-source-
+     * ships-a-citation`.
+     *
+     * It used to require the id to be HERE, citing
+     * `RULE-a-citation-names-an-item-by-id-never-a-report-by-line-number`, and
+     * it was green for three days while shipping
+     * `STD-the-precedence-order-when-four-sources-of-truth-disagree` into every
+     * consumer install — an id that exists only in this repository, inside the
+     * one paragraph this product says outranks every other source. The rule it
+     * cited is not wrong; it was read half-way. A citation names an item by id
+     * AND an id that cannot be resolved where it is read is not a citation, so
+     * the two halves settle it: cite it where the reader can open it, withhold
+     * it where they cannot.
+     *
+     * `cwd` here is a throwaway workspace, so this block is what a STRANGER's
+     * install receives. The developer half — that the id IS delivered inside
+     * my_context, where the item is on disk — is asserted in
+     * `test/rules/consumer-citation.test.ts`, which renders both sides.
+     */
+    assert.ok(
+      !block.includes('STD-the-precedence-order-when-four-sources-of-truth-disagree'),
+      'a consumer install was handed a corpus id it cannot resolve, inside the block this ' +
+      'product says outranks every other source (rulings/75). The order still has to be ' +
+      'STATED here — the assertion above — but the pointer to the rest of it belongs only ' +
+      'where the reader can follow it.',
     );
   } finally { removeTree(cwd); removeTree(store); }
 });

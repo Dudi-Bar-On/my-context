@@ -17,17 +17,17 @@ tags:
   - consumer-install
   - "plan:rulings"
   - "seq:75"
-  - "state:todo"
+  - "state:done"
 origin: human
 source_file: null
 source_anchor: null
 source_checksum: null
 valid_from: 2026-09-13
 valid_until: null
-checksum: 31ee36a32532ee27
+checksum: 52d529bb63a75fe0
 plan: rulings
 seq: "75"
-state: todo
+state: done
 priority: "1"
 ---
 

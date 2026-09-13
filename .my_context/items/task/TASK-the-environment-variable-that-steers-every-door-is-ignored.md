@@ -17,17 +17,17 @@ tags:
   - divergence
   - "plan:store"
   - "seq:8"
-  - "state:todo"
+  - "state:done"
 origin: human
 source_file: null
 source_anchor: null
 source_checksum: null
 valid_from: 2026-09-13
 valid_until: null
-checksum: 05d1dcb9705151df
+checksum: a734754d3e7e2305
 plan: store
 seq: "8"
-state: todo
+state: done
 priority: "2"
 ---
 

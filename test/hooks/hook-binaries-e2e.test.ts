@@ -75,6 +75,7 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 import { runCli } from '../../src/cli/index.ts';
 import { readAudit } from '../../src/core/audit.ts';
 import { RULES_DIR_ENV } from '../../src/rules/deliver.ts';
+import { writeManifest } from '../../src/rules/manifest.ts';
 import { removeTree } from '../helpers/tmp.ts';
 
 const HOOK = (name: string): string =>
@@ -99,6 +100,15 @@ const HOOK = (name: string): string =>
  * environment, so one line covers every spawn in the file.
  */
 const EMPTY_STORE = mkdtempSync(path.join(tmpdir(), 'myctx-binaries-no-store-'));
+/**
+ * **PUBLISHED empty.** Since `store/6` a door consults the manifest and
+ * discloses a disagreement, so a directory with no `manifest.json` is a store
+ * nothing can vouch for and every binary here would print the sentence saying
+ * so — correctly, and about the fixture rather than about the stdio contract
+ * these tests are for. An empty manifest makes it the empty STORE it claims
+ * to be.
+ */
+writeManifest(EMPTY_STORE);
 process.env[RULES_DIR_ENV] = EMPTY_STORE;
 after(() => removeTree(EMPTY_STORE));
 

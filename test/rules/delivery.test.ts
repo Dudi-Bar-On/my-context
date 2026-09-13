@@ -50,6 +50,7 @@ import {
   recordDelivery, wasDelivered, type DeliveryRecord,
 } from '../../src/rules/delivered.ts';
 import { RULES_DIR_ENV } from '../../src/rules/deliver.ts';
+import { writeManifest } from '../../src/rules/manifest.ts';
 import { removeTree } from '../helpers/tmp.ts';
 
 /** The one entry every door in this file is expected to carry. */
@@ -72,13 +73,24 @@ const PRODUCT_ENTRY = [
 ].join('\n');
 
 /** A store with nothing in it, for a case that is about the record and not the text. */
+/**
+ * **Every store fixture here is PUBLISHED**, because since `store/6` a door
+ * consults the manifest and says so when the two disagree. A fixture with no
+ * `manifest.json` is a DAMAGED store, not a plain one, and would put a damage
+ * notice at the top of every block these tests read — noise that could hide
+ * the thing being asserted, and a fixture doing work its subject should be
+ * doing.
+ */
 function storeFixtureEmpty(): string {
-  return mkdtempSync(path.join(tmpdir(), 'myctx-store-empty-'));
+  const dir = mkdtempSync(path.join(tmpdir(), 'myctx-store-empty-'));
+  writeManifest(dir);
+  return dir;
 }
 
 function storeFixture(): string {
   const dir = mkdtempSync(path.join(tmpdir(), 'myctx-store-'));
   writeFileSync(path.join(dir, 'fact.md'), PRODUCT_ENTRY, 'utf8');
+  writeManifest(dir);
   return dir;
 }
 
@@ -267,6 +279,17 @@ test('door: the subagent-start BINARY writes the row and puts the block in its e
 test('a delivery that carried NOTHING still writes a row', () => {
   const cwd = workspace();
   const empty = mkdtempSync(path.join(tmpdir(), 'myctx-empty-'));
+  /**
+   * An EMPTY STORE, not a directory that merely happens to hold no entries —
+   * and since `store/6` the two are different facts. A door now consults the
+   * manifest and discloses what it finds (`deliver.ts` · `renderStoreIntegrity`),
+   * so a directory with no `manifest.json` renders the sentence saying nothing
+   * can vouch for what is below, which is correct and is a DIFFERENT case from
+   * the one this test is about. Publishing an empty manifest makes the fixture
+   * the thing it claims to be, rather than making the assertion below pass by
+   * being malformed.
+   */
+  writeManifest(empty);
   try {
     const text = storeAppendix(cwd, { sessionId: 's-e', source: 'startup', storeDir: empty });
     assert.equal(text, '', 'the empty store rendered something, so this case is not the empty one');

@@ -2,8 +2,9 @@ import path from 'node:path';
 import { SUBCOMMAND_FLAGS } from '../../core/command-flags.ts';
 import type { Workspace } from '../../core/workspace.ts';
 import {
-  restoreEntries, verifyManifest, type Problem, type RestoreReport,
+  restoreEntries, storeMeta, verifyManifest, type Problem, type RestoreReport,
 } from '../../rules/manifest.ts';
+import { RULES_DIR_ENV, resolveStoreDir } from '../../rules/deliver.ts';
 import { entriesDir, loadRules, packageRoot } from '../../rules/store.ts';
 import type { Entry } from '../../rules/schema.ts';
 import { emitJson, paragraph, refuseUnknownFlag, table, wantsJson } from './format.ts';
@@ -56,6 +57,63 @@ function workspaceIsMyContext(ws: Workspace): boolean {
   return path.resolve(ws.projectRoot, '..') === packageRoot();
 }
 
+/**
+ * **The store these three subcommands answer about — the one a DOOR would read
+ * right now, resolved by the door's own function** (`store/8`).
+ *
+ * They called `entriesDir()` directly until 2026-09-14, so with
+ * `MYCONTEXT_RULES_DIR` set the doors delivered directory X while `rules list`
+ * and `rules verify` described the package's own. That is worse than an
+ * inconsistency: `missedDoorLine` sends whoever reads it to exactly these two
+ * commands, so the product's own advice for "find out what you were given"
+ * was guaranteed to answer about a different store, with nothing saying so.
+ *
+ * `resolveStoreDir` is `deliver.ts`'s, not a second copy, for the reason its
+ * own comment gives — a second resolution is a second answer to *"which store
+ * is this"*, which is the defect being repaired.
+ */
+function storeDir(): string {
+  return resolveStoreDir();
+}
+
+/**
+ * The line that says this command is not describing the installed package, or
+ * `''`. Same argument as `deliver.ts` · `substitutedStoreLine`: a reader
+ * holding an answer about somewhere other than the package needs telling, and
+ * a sentence printed every time is a sentence nobody reads.
+ */
+function substitutionLines(dir: string): string[] {
+  if (path.resolve(dir) === path.resolve(entriesDir())) return [];
+  return paragraph(
+    `NOT the installed package: \`${RULES_DIR_ENV}\` points at ${dir}, and that is the store ` +
+    `every door reads too. Unset it to ask about the package's own.`,
+  );
+}
+
+/**
+ * **Which store version this install has** (`store/9`), or `[]`.
+ *
+ * The version, the publish date and five changelog rows existed and their only
+ * readers were under `src/ui/maintenance/`, which `package.json` excludes from
+ * the published package — so in a real install there was no way to answer the
+ * question at all. This is a SHIPPED surface, which is the whole of the fix;
+ * the exclusion of the maintenance tool is correct and is untouched.
+ *
+ * `null` prints nothing rather than "unknown": a store published before the
+ * field existed is not a store with a problem.
+ */
+function versionLines(dir: string): string[] {
+  const meta = storeMeta(dir);
+  if (meta === null) return [];
+  const when = meta.publishedAt === null ? '' : `, published ${meta.publishedAt}`;
+  const lines = [`store version ${meta.version}${when}`];
+  const latest = meta.changelog[0];
+  if (latest !== undefined && latest.note !== undefined) {
+    for (const line of paragraph(latest.note, '  ')) lines.push(line);
+  }
+  return lines;
+}
+
 function partLines(entry: Entry): string[] {
   const lines: string[] = [];
   for (const [name, value] of Object.entries(entry.parts)) {
@@ -77,11 +135,16 @@ function checkLine(entry: Entry): string {
 }
 
 function cmdRulesList(ws: Workspace, args: string[], out: Emit): number {
-  const { entries, refused } = loadRules(entriesDir(), workspaceIsMyContext(ws));
+  const dir = storeDir();
+  const { entries, refused } = loadRules(dir, workspaceIsMyContext(ws));
+  const meta = storeMeta(dir);
 
   if (wantsJson(args)) {
     emitJson(out, {
-      store: entriesDir(),
+      store: dir,
+      substituted: path.resolve(dir) !== path.resolve(entriesDir()),
+      storeVersion: meta === null ? null : meta.version,
+      publishedAt: meta === null ? null : meta.publishedAt,
       workspaceIsMyContext: workspaceIsMyContext(ws),
       entries: entries.map((e) => ({
         id: e.id, kind: e.kind, tier: e.tier, title: e.title, check: checkLine(e),
@@ -90,6 +153,10 @@ function cmdRulesList(ws: Workspace, args: string[], out: Emit): number {
     });
     return refused.length > 0 ? 1 : 0;
   }
+
+  for (const line of substitutionLines(dir)) out(line);
+  for (const line of versionLines(dir)) out(line);
+  if (substitutionLines(dir).length > 0 || versionLines(dir).length > 0) out('');
 
   if (entries.length === 0 && refused.length === 0) {
     // Two different truths would otherwise collapse into one sentence: the
@@ -133,7 +200,7 @@ function cmdRulesShow(ws: Workspace, args: string[], out: Emit): number {
     out(`my_context: \`rules show\` needs an entry id.\n\n${USAGE}`);
     return 1;
   }
-  const { entries } = loadRules(entriesDir(), workspaceIsMyContext(ws));
+  const { entries } = loadRules(storeDir(), workspaceIsMyContext(ws));
   const entry = entries.find((e) => e.id === id);
   if (entry === undefined) {
     out(
@@ -211,14 +278,17 @@ function restoreLines(report: RestoreReport, from: string, to: string): string[]
 
 function cmdRulesVerify(_ws: Workspace, args: string[], out: Emit): number {
   /**
-   * Two names for what is, in this phase, one directory — and they are two
-   * names rather than one so that the day a workspace-side store exists
-   * (spec §12.3, Phase 2) this function changes where `store` comes from and
-   * nothing else. `restoreLines` reports the identity honestly rather than
-   * claiming a restore it could not perform.
+   * Two names, and as of `store/8` they can genuinely differ.
+   *
+   * The package's store is the pristine copy — a fact about the installation,
+   * never about where the caller stands. `store` is the one a DOOR would read
+   * right now, which `MYCONTEXT_RULES_DIR` may point elsewhere. Until 2026-09-14
+   * both were `entriesDir()`, so `restoreEntries` was unreachable code and this
+   * command verified a store no door was reading; `restoreLines` was already
+   * written for both branches and said so honestly.
    */
   const packageStore = entriesDir();
-  const store = entriesDir();
+  const store = storeDir();
   const restore = hasFlag(args, 'restore');
   const restored: RestoreReport | null = restore && path.resolve(packageStore) !== path.resolve(store)
     ? restoreEntries(packageStore, store)
@@ -228,9 +298,14 @@ function cmdRulesVerify(_ws: Workspace, args: string[], out: Emit): number {
   const answer = verifyManifest(dir);
   const problems: Problem[] = answer.ok ? [] : answer.problems;
 
+  const meta = storeMeta(dir);
+
   if (wantsJson(args)) {
     emitJson(out, {
       store: dir,
+      substituted: path.resolve(dir) !== path.resolve(packageStore),
+      storeVersion: meta === null ? null : meta.version,
+      publishedAt: meta === null ? null : meta.publishedAt,
       ok: answer.ok,
       problems: problems.map((p) => ({ entry: p.entry, why: p.why, detail: p.detail })),
       restored: restored === null ? null : restored.restored,
@@ -238,6 +313,8 @@ function cmdRulesVerify(_ws: Workspace, args: string[], out: Emit): number {
     });
     return answer.ok ? 0 : 1;
   }
+
+  for (const line of substitutionLines(dir)) out(line);
 
   if (restore) {
     const report = restored ?? { restored: [], unexpected: [] };
@@ -247,6 +324,9 @@ function cmdRulesVerify(_ws: Workspace, args: string[], out: Emit): number {
   if (answer.ok) {
     out(`my_context: the rule store is intact — every entry matches the checksum that shipped with it.`);
     out(`  ${dir}`);
+    // AFTER the verdict, never before it: the answer to "is this intact" is
+    // what the command was asked, and a paragraph above it buries the answer.
+    for (const line of versionLines(dir)) out(line);
     return 0;
   }
 

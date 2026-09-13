@@ -1505,7 +1505,7 @@ my_context: 1 pending revision(s) on 1 item(s) in this workspace, staged and NOT
 
 _These are **product constants**: facts, prohibitions, procedures, standards and definitions about my_context itself, shipped inside the tool and delivered at every door an agent starts through. They are NOT items in this project's corpus — they are not listed by `mycontext list`, they spend none of this project's injection budget, and they cannot be edited, superseded or deprecated from here._
 
-_**Precedence:** a product constant outranks every other source, including this project's own corpus — it states how the tool behaves, which is true whatever anybody records about it. Where one disagrees with an item you are also holding, the constant governs and the disagreement is named below rather than settled in silence (`STD-the-precedence-order-when-four-sources-of-truth-disagree`)._
+_**Precedence:** a product constant outranks every other source, including this project's own corpus — it states how the tool behaves, which is true whatever anybody records about it. Where one disagrees with an item you are also holding, the constant governs and the disagreement is named below rather than settled in silence._
 
 ### an unknown-category error may mean the wrong corpus, not a misspelled flag
 

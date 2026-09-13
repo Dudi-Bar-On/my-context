@@ -7,6 +7,9 @@ severity: soft
 always: false
 summary: Anything placed in one folder is handed to every assistant as an official rule of this tool, and the check that would notice is run by nothing.
 summary_of: b6bbb21b08ba42e8
+summary_was:
+  - 2026-09-13 Any Markdown file dropped into the rule store's folder is handed to every model as a rule of the product, and nothing checks it against the list of what shipped.
+  - 2026-09-13 Anything placed in one folder is handed to every assistant as an official rule of this tool, and the check that would notice is run by nothing.
 scope:
   - src/rules/**
 tags:
@@ -16,17 +19,17 @@ tags:
   - gate
   - "plan:store"
   - "seq:6"
-  - "state:todo"
+  - "state:done"
 origin: human
 source_file: null
 source_anchor: null
 source_checksum: null
 valid_from: 2026-09-13
 valid_until: null
-checksum: 363e071ed5b65040
+checksum: bba939f57ad54881
 plan: store
 seq: "6"
-state: todo
+state: done
 priority: "1"
 ---
 

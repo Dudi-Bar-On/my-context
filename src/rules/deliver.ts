@@ -45,6 +45,13 @@
  */
 import path from 'node:path';
 import { assertDelivered, recordDelivery, type Door } from './delivered.ts';
+// `integrity.ts` AND NEVER `manifest.ts`, which re-exports the same two names.
+// The distinction is load-bearing and `test/rules/budget.test.ts` enforces it:
+// `manifest.ts` holds the budget and the publish step, and a budget reachable
+// from the delivery path is a refusal waiting for a store one byte larger
+// (spec §10). `integrity.ts` holds the read, imports nothing, and writes
+// nothing — so this module's header still says the truth.
+import { verifyManifest, type Problem } from './integrity.ts';
 import { partsOf, type Entry, type EntryError, type Tier } from './schema.ts';
 import { entriesDir, loadRules, packageRoot, type RuleSet } from './store.ts';
 
@@ -139,13 +146,58 @@ const PREAMBLE =
   'list`, they spend none of this project\'s injection budget, and they cannot be edited, ' +
   'superseded or deprecated from here._';
 
-/** The precedence sentence, delivered whether or not a conflict was found. */
-const PRECEDENCE =
+/**
+ * The precedence sentence, delivered whether or not a conflict was found.
+ *
+ * **It is a function of the READER's tier for the same reason `provenance` is
+ * a function of the ENTRY's**, and the two are one decision written twice
+ * because v5 made it once and missed here. See `TIERS_THAT_CITE_THE_CORPUS`.
+ */
+const PRECEDENCE_SENTENCE =
   '_**Precedence:** a product constant outranks every other source, including this project\'s ' +
   'own corpus — it states how the tool behaves, which is true whatever anybody records about it. ' +
   'Where one disagrees with an item you are also holding, the constant governs and the ' +
-  'disagreement is named below rather than settled in silence ' +
-  '(`STD-the-precedence-order-when-four-sources-of-truth-disagree`)._';
+  'disagreement is named below rather than settled in silence';
+
+/**
+ * The corpus item this sentence extends — a fifth source added to it by spec
+ * §9, which is why naming it is worth anything at all to a reader who can
+ * open it.
+ */
+const PRECEDENCE_SOURCE = ' (`STD-the-precedence-order-when-four-sources-of-truth-disagree`)';
+
+/**
+ * **The tiers whose frame text may cite a corpus item by id — the same ruling
+ * as `TIERS_THAT_DISCLOSE_PROVENANCE`, applied to the paragraph v5 missed.**
+ *
+ * The owner ruled on 2026-09-11 that a corpus id must not ship to a stranger's
+ * install: the reader does not have the item, cannot fetch it, and has no way
+ * to tell it was ever real. That ruling was built against `movedFrom`, which
+ * hangs off an ENTRY and therefore off a tier. `PRECEDENCE` hangs off nothing
+ * — it is frame text, composed once for whoever is reading — so the mechanism
+ * had no surface to act on here and the paragraph shipped the citation for two
+ * more days (`rulings/75`, report 6 §S1).
+ *
+ * The reader's tier closes that gap: it is `developer` only inside my_context,
+ * where `STD-the-precedence-order-when-four-sources-of-truth-disagree` is on
+ * disk and one `mycontext show` away, and `product` everywhere else.
+ *
+ * **An allow-list, for the reason the other one is** — `!== 'product'` would
+ * hand the citation to every tier added later, and a tier nobody has thought
+ * about yet gets the treatment that ships nothing.
+ *
+ * **The pointer is not destroyed, only not delivered**: it is two lines above
+ * this comment, in `PRECEDENCE_SOURCE`, and in the spec section that put it
+ * there — exactly as a product entry still carries `movedFrom` on disk.
+ */
+export const TIERS_THAT_CITE_THE_CORPUS: readonly Tier[] = ['developer'];
+
+/** The precedence paragraph as `readerTier` may read it. */
+function precedence(readerTier: Tier): string {
+  return TIERS_THAT_CITE_THE_CORPUS.includes(readerTier)
+    ? `${PRECEDENCE_SENTENCE}${PRECEDENCE_SOURCE}._`
+    : `${PRECEDENCE_SENTENCE}._`;
+}
 
 function renderValue(value: string | string[]): string {
   return Array.isArray(value)
@@ -231,6 +283,59 @@ function renderRefusals(refused: readonly EntryError[]): string {
   ].join('\n');
 }
 
+/**
+ * **The store's tamper-evidence, said at the door instead of waiting for a
+ * command nobody runs** — `store/6`, report 6 §S2.
+ *
+ * A Markdown file dropped into the entries directory is delivered to every
+ * model at every door as a governing constant of this product. The manifest
+ * already knows: `verifyManifest` calls it `unexpected`. `loadRules` does not
+ * ask, and neither did any door — so the one mechanism that could catch it was
+ * reachable only by somebody choosing to run `mycontext rules verify`, which
+ * no hook, no door, no `doctor` check and no CI job runs.
+ *
+ * **DISCLOSING IS NOT BLOCKING, and the distinction is the whole of why this
+ * is allowed to exist.** `manifest.ts` is emphatic that the integrity catch
+ * refuses WRITES ONLY — *"blocking reads punishes a user for a damaged install
+ * they can still recover from, and a tool that has stopped answering is one
+ * they cannot recover from at all"*. That ruling is untouched here. Every
+ * entry that loaded is still delivered, in full, including the unexpected one;
+ * what changes is that the reader is TOLD, which is exactly the shape
+ * `renderRefusals` already has for the entries that did not load.
+ *
+ * **It reads. It does not write.** This module's header says nothing in it
+ * writes, and that stays true: `verifyManifest` hashes what is on disk and
+ * returns; `writeManifest`, `writeEntry` and `restoreEntries` are the writes,
+ * and none of them is imported here.
+ *
+ * A throw is disclosed rather than swallowed, for the reason everything else
+ * in this block is: a door that could not check is not a door that found
+ * nothing.
+ */
+export function renderStoreIntegrity(dir: string): string {
+  let problems: readonly Problem[];
+  try {
+    const answer = verifyManifest(dir);
+    if (answer.ok) return '';
+    problems = answer.problems;
+  } catch (err) {
+    return '**The product constants below could NOT be checked against the manifest that ' +
+      `shipped with them** (${err instanceof Error ? err.message : String(err)}). They are ` +
+      'delivered anyway — reads are never blocked — but nothing here can say they are the ones ' +
+      'that shipped. Run `mycontext rules verify`.';
+  }
+  const rows = problems.map((p) => `- \`${p.entry}\` — ${p.why}: ${p.detail}`);
+  return [
+    `**${problems.length} product constant(s) do NOT match the manifest that shipped with ` +
+    'them.** They are delivered anyway, because a damaged install is one you can still recover ' +
+    'from and a tool that stopped answering is not. But an entry nobody shipped loads exactly ' +
+    'like one that did, so treat what follows as unverified until this is resolved. Run ' +
+    '`mycontext rules verify`.',
+    '',
+    ...rows,
+  ].join('\n');
+}
+
 /** Spec §9's second half, and the whole reason the first half is safe. */
 function renderConflicts(conflicts: readonly Conflict[]): string {
   if (conflicts.length === 0) return '';
@@ -271,7 +376,9 @@ export function renderRules(set: RuleSet, itemIds: readonly string[] = []): Deli
   const blocks: string[] = [
     `## my_context product rules — ${set.entries.length} constant(s)`,
     PREAMBLE,
-    PRECEDENCE,
+    // `?? 'product'` is the omission failing towards shipping nothing; see
+    // `RuleSet.readerTier`.
+    precedence(set.readerTier ?? 'product'),
   ];
   if (conflictBlock !== '') blocks.push(conflictBlock);
   if (refusals !== '') blocks.push(refusals);
@@ -386,12 +493,24 @@ export function deliverAtDoor(ctx: DoorContext): Delivery & { recorded: boolean 
   const dir = resolveStoreDir(ctx.storeDir);
   const set = loadRules(dir, workspaceIsMyContext(ctx.stateRoot));
   const rendered = renderRules(set, ctx.itemIds ?? []);
-  const substituted = rendered.text === '' ? '' : substitutedStoreLine(dir, shipped);
-  const delivery: Delivery = substituted === ''
-    ? rendered
-    : { ...rendered, text: `${substituted}
-
-${rendered.text}` };
+  /**
+   * **The manifest is consulted HERE and not in `renderRules`**, for the
+   * reason `substitutedStoreLine` is composed here: both are facts about the
+   * DIRECTORY, and `renderRules` is handed a set that no longer knows which
+   * directory it came from. Keeping them together also keeps one answer to
+   * "what did this door put in front of the model".
+   *
+   * **And it speaks even when `rendered.text` is `''`.** An entries directory
+   * that has been emptied renders nothing at all — the `text: ''` case
+   * `renderRules` documents — while its manifest still lists fifteen entries.
+   * That is the WORST damage the store can take, and suppressing the notice
+   * with the block would make it the only damage nobody is told about.
+   */
+  const integrity = renderStoreIntegrity(dir);
+  const substituted = rendered.text === '' && integrity === ''
+    ? '' : substitutedStoreLine(dir, shipped);
+  const text = [substituted, integrity, rendered.text].filter((b) => b !== '').join('\n\n');
+  const delivery: Delivery = text === rendered.text ? rendered : { ...rendered, text };
   const recorded = recordDelivery(ctx.stateRoot, {
     kind: 'delivered',
     key: ctx.key ?? '',
@@ -413,8 +532,15 @@ ${rendered.text}` };
  * One resolution, used by `deliverAtDoor` and by `assertDoor` below, because a
  * second one would let the assertion count a different store from the one the
  * door delivered.
+ *
+ * **Exported for `mycontext rules`** (`store/8`): the three subcommands used to
+ * call `entriesDir()` directly, so with `MYCONTEXT_RULES_DIR` set the doors
+ * delivered directory X while `rules list` and `rules verify` answered about
+ * the package's own — and `missedDoorLine` sends the reader to exactly those
+ * two commands. A second resolution there was a second answer to "which store
+ * is this", which is the defect this function exists to prevent.
  */
-function resolveStoreDir(storeDir?: string): string {
+export function resolveStoreDir(storeDir?: string): string {
   if (storeDir !== undefined) return storeDir;
   const named = process.env[RULES_DIR_ENV];
   return named !== undefined && named !== '' ? named : entriesDir();

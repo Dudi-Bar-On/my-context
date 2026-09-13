@@ -17,17 +17,17 @@ tags:
   - consumer-install
   - "plan:store"
   - "seq:9"
-  - "state:todo"
+  - "state:done"
 origin: human
 source_file: null
 source_anchor: null
 source_checksum: null
 valid_from: 2026-09-13
 valid_until: null
-checksum: b87a45b11b0f44a4
+checksum: fe22392a973b8733
 plan: store
 seq: "9"
-state: todo
+state: done
 priority: "2"
 ---
 

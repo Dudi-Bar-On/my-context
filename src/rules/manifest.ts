@@ -1,135 +1,55 @@
 /**
- * **The integrity manifest — a checksum per entry, and the refusal that rests
- * on it.**
+ * **The manifest's WRITES, the budget, and the publish step — everything that
+ * a user's install must never reach.**
  *
- * D41 spec §13. The rules ship inside the package, so restoring them is a
- * LOCAL operation: if the package is intact, they are intact, and the network
- * is not a dependency. Nothing in this module reaches outside the two
+ * D41 spec §12 and §13. The rules ship inside the package, so restoring them
+ * is a LOCAL operation: if the package is intact, they are intact, and the
+ * network is not a dependency. Nothing in this module reaches outside the two
  * directories it is handed.
  *
- * ── WHY node:crypto AND NOT `core/content-hash.ts` ─────────────────────────
+ * ── WHAT MOVED OUT, AND WHY THE LINE IS DRAWN WHERE IT IS ──────────────────
  *
- * The plan (Task 4 step 3) says to use "the existing checksum helper rather
- * than a second hash", and the same plan's File Structure section says
- * `src/rules/` imports nothing from `src/core/` except the frontmatter parser,
- * *"because the corpus must not depend on it and it must not depend on the
- * corpus"*. Those two instructions cannot both be honoured: the helper lives
- * in `core/content-hash.ts`.
+ * The manifest's SHAPE and the one read that answers *"is this the store that
+ * shipped"* are in `integrity.ts`, which imports nothing and holds no budget.
+ * They are re-exported below, so every existing import site is unchanged.
  *
- * The isolation rule wins, because it is the one spec §7 argues for at length
- * and the one `test/rules/isolation.test.ts` guards. `node:crypto` is not a
- * second hash *implementation* — it is the platform's, and it is what the
- * corpus helper is built on too. What is deliberately NOT reused is the
- * corpus' *content shape*: an item's hash covers a chosen set of fields
- * because an item has fields that are not part of what it says. An entry has
- * no such distinction, so this hashes the FILE, and the difference between the
- * two is a reason to keep them apart rather than to share one function.
+ * The split exists because `test/rules/budget.test.ts` forbids the delivery
+ * path from reaching this file — spec §10: *"a user's install NEVER refuses on
+ * size, because a user cannot fix a store that grew"* — and while verification
+ * lived here that gate also forbade a door from asking whether the entries it
+ * was about to deliver were the ones that shipped. It could not, and `store/6`
+ * is what that cost. Reading the manifest is a read a door may do; the budget,
+ * the publish step and every write stay here and stay unreachable.
  *
- * ── LINE ENDINGS ARE NORMALIZED BEFORE HASHING, DELIBERATELY ───────────────
+ * ── THE WRITES ─────────────────────────────────────────────────────────────
  *
- * A checkout with `core.autocrlf` on rewrites every `\n` to `\r\n` on the way
- * to disk. Hashing raw bytes would then report every entry in the store as
- * ALTERED on a Windows clone — a verification command whose first answer on a
- * clean install is "your rules have been tampered with" is a command people
- * turn off. The manifest therefore hashes the text with `\r\n` folded to `\n`,
- * which is the same normalization the file's own meaning already has.
+ * `writeManifest` regenerates the manifest; `writeEntry` changes an entry and
+ * is gated on the store being intact; `restoreEntries` puts back what shipped.
+ * `store.ts` and `deliver.ts` perform no write at all, which is why those two
+ * and this one are separate modules: "does the store write here" stays
+ * answerable by reading an import list.
  */
-import { createHash } from 'node:crypto';
-import { readFileSync, readdirSync, writeFileSync } from 'node:fs';
+import { readFileSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
+import {
+  ALGORITHM, MANIFEST_FILE, checksum, entryFiles, manifestPath, readManifest, verifyManifest,
+  type ChangelogRow, type Manifest, type ManifestRow, type Problem, type StoreMeta,
+} from './integrity.ts';
 import { parseEntry, type Tier } from './schema.ts';
 
-export const MANIFEST_FILE = 'manifest.json';
-const ALGORITHM = 'sha256';
-const VERSION = 1;
-
-export interface ManifestRow {
-  /** The file's name inside the store directory. */
-  file: string;
-  /** The entry's id, so a refusal can name the ENTRY and not only a path. */
-  id: string;
-  checksum: string;
-}
-
 /**
- * One published version of the store, and what moved in it. Spec §12.1: the
- * store is versioned independently of the product, *"so the store carries its
- * own version and its own changelog, and a store update is an artifact a
- * user's install can take on its own."*
+ * Re-exported so the split is invisible to every caller that already knew
+ * where to find them — the alternative is thirteen import sites edited to say
+ * the same thing in a different place.
  */
-export interface ChangelogRow {
-  version: number;
-  /** ISO instant of the publish. */
-  at: string;
-  /** What the owner said this publish was for. Optional. */
-  note?: string;
-  added: string[];
-  changed: string[];
-  removed: string[];
-}
+export {
+  ALGORITHM, MANIFEST_FILE, checksum, entryFiles, manifestPath, readManifest, storeMeta,
+  verifyManifest,
+  type ChangelogRow, type Damage, type Manifest, type ManifestRow, type Problem,
+  type StoreMeta, type Verification,
+} from './integrity.ts';
 
-export interface StoreMeta {
-  /** The STORE's version — not the product's, and not `Manifest.version`. */
-  version: number;
-  publishedAt: string | null;
-  /** Newest first, so the top of the list is what an install just took. */
-  changelog: ChangelogRow[];
-}
-
-export interface Manifest {
-  /**
-   * The manifest FORMAT's version. Deliberately not the store's — a reader
-   * that conflated the two would refuse a store whose contents had merely been
-   * republished. `store.version` below is the one spec §12.1 is about.
-   */
-  version: number;
-  algorithm: string;
-  /**
-   * **The last PUBLISHED state**, and therefore what `verifyManifest` answers
-   * against. It is regenerated at publish (spec §12.2) and at no other time,
-   * which is what makes `planPublish` able to show a diff at all.
-   */
-  entries: ManifestRow[];
-  /**
-   * **Changes made since that publish through the sanctioned write path.**
-   *
-   * Without this the FIRST edit the maintenance tool makes leaves the store
-   * disagreeing with its manifest and the SECOND edit is refused by the §13
-   * catch — the safety catch firing on the owner's own work, in the one tool
-   * whose purpose is to change the store. See `writeEntry`.
-   *
-   * It is absent from a freshly published manifest rather than present and
-   * empty, so a shipped manifest carries no field describing work in progress.
-   */
-  working?: ManifestRow[];
-  store?: StoreMeta;
-}
-
-export type Damage = 'missing' | 'altered' | 'unexpected';
-
-export interface Problem {
-  /** The entry id where one is known, and the file name where it is not. */
-  entry: string;
-  why: Damage;
-  /** One sentence a person can act on. */
-  detail: string;
-}
-
-export type Verification =
-  | { ok: true }
-  | { ok: false; entry: string; why: Damage; problems: Problem[] };
-
-export function manifestPath(dir: string): string {
-  return path.join(dir, MANIFEST_FILE);
-}
-
-function checksum(text: string): string {
-  return createHash(ALGORITHM).update(text.replace(/\r\n/g, '\n'), 'utf8').digest('hex');
-}
-
-function entryFiles(dir: string): string[] {
-  return readdirSync(dir).filter((name) => name.endsWith('.md')).sort();
-}
+const VERSION = 1;
 
 /**
  * Regenerate the manifest from what is on disk. Spec §12.2: this is what the
@@ -173,78 +93,6 @@ export function writeManifest(dir: string, store?: StoreMeta): Manifest {
   };
   writeFileSync(manifestPath(dir), `${JSON.stringify(manifest, null, 2)}\n`, 'utf8');
   return manifest;
-}
-
-export function readManifest(dir: string): Manifest {
-  const raw = JSON.parse(readFileSync(manifestPath(dir), 'utf8')) as Manifest;
-  if (!Array.isArray(raw.entries)) throw new Error(`${MANIFEST_FILE} carries no entry list`);
-  return raw;
-}
-
-/**
- * Verify the store against its manifest, and say **which** entry is missing,
- * altered or unexpected.
- *
- * Every problem is returned, not only the first (`INV-nothing-is-dropped-
- * silently`): naming one of three damaged entries makes a repair look complete
- * when it has fixed a third of the damage. `entry` and `why` name the first in
- * sorted order so that a caller wanting one sentence has one.
- */
-export function verifyManifest(dir: string, sanctionedBy?: Map<string, string>): Verification {
-  let manifest: Manifest;
-  try {
-    manifest = readManifest(dir);
-  } catch (err) {
-    const problem: Problem = {
-      entry: MANIFEST_FILE,
-      why: 'missing',
-      detail: `the integrity manifest could not be read (${err instanceof Error ? err.message : String(err)}). ` +
-        `Without it nothing can say whether the rules are the ones that shipped.`,
-    };
-    return { ok: false, entry: problem.entry, why: problem.why, problems: [problem] };
-  }
-
-  const problems: Problem[] = [];
-  const listed = new Set<string>();
-  for (const row of manifest.entries) {
-    listed.add(row.file);
-    let text: string;
-    try {
-      text = readFileSync(path.join(dir, row.file), 'utf8');
-    } catch {
-      problems.push({
-        entry: row.id,
-        why: 'missing',
-        detail: `${row.file} is not there. It shipped with the package, so this is an incomplete ` +
-          `install rather than a configuration mistake.`,
-      });
-      continue;
-    }
-    const now = checksum(text);
-    if (now !== row.checksum && sanctionedBy?.get(row.file) !== now) {
-      problems.push({
-        entry: row.id,
-        why: 'altered',
-        detail: `${row.file} does not match the checksum that shipped with it. Somebody changed ` +
-          `it, or something did.`,
-      });
-    }
-  }
-  for (const file of entryFiles(dir)) {
-    if (listed.has(file)) continue;
-    // A file the maintenance tool CREATED is not yet published and is not
-    // damage — it is the change `planPublish` is about to show.
-    if (sanctionedBy?.has(file) === true) continue;
-    problems.push({
-      entry: file,
-      why: 'unexpected',
-      detail: `${file} is in the store and the manifest never listed it. An entry nobody shipped ` +
-        `loads exactly like one that did, so this is the damage most worth seeing.`,
-    });
-  }
-
-  if (problems.length === 0) return { ok: true };
-  return { ok: false, entry: problems[0].entry, why: problems[0].why, problems };
 }
 
 /**

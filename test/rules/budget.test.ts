@@ -168,6 +168,36 @@ test('nothing on the delivery path can even reach the budget', () => {
       `integrity catch off the read path for the same reason — "loadRules never calls this and ` +
       `must never call it" — and the budget is the one refusal a user can do nothing about.`,
     );
+
+    /**
+     * **The same question asked about the SYMBOLS, because the file name is
+     * not the invariant.**
+     *
+     * `deliver.ts` reaches `integrity.ts` on purpose since `store/6` — a door
+     * has to be able to ask whether the entries it is about to deliver are the
+     * ones that shipped. The moment one file in `src/rules/` is legitimately
+     * on the delivery path, "manifest.ts is unreachable" stops being the whole
+     * of the rule: moving `budgetReport` into that file would satisfy the
+     * assertion above and defeat it completely. So the budget is named here by
+     * what it IS.
+     */
+    const BUDGET_SYMBOLS = ['DEFAULT_BUDGET_BYTES', 'budgetReport', 'planPublish', 'publishStore'];
+    const defines = /(?:^|\n)\s*export\s+(?:const|function|async function)\s+([A-Za-z_$][\w$]*)/g;
+    const found: string[] = [];
+    for (const module of reached) {
+      let text: string;
+      try { text = readFileSync(module, 'utf8'); } catch { continue; }
+      defines.lastIndex = 0;
+      for (const match of text.matchAll(defines)) {
+        if (BUDGET_SYMBOLS.includes(match[1])) found.push(`${path.relative(REPO, module)}:${match[1]}`);
+      }
+    }
+    assert.deepEqual(
+      found, [],
+      `${entry} can reach the budget itself, wherever it now lives. A user's install NEVER ` +
+      `refuses on size, and a budget on the delivery path is a refusal waiting for a store one ` +
+      `byte larger (spec §10).`,
+    );
   }
 });
 

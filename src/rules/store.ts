@@ -22,7 +22,7 @@
 import { readFileSync, readdirSync, statSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { parseEntry, type Entry, type EntryError } from './schema.ts';
+import { parseEntry, type Entry, type EntryError, type Tier } from './schema.ts';
 
 /**
  * The shipped store, resolved from THIS FILE rather than from the workspace.
@@ -61,6 +61,23 @@ export interface RuleSet {
    * entry would be a store whose rules are a subset nobody can name.
    */
   refused: EntryError[];
+  /**
+   * **The highest tier in force for whoever this set was loaded for** —
+   * `developer` inside my_context, `product` everywhere else.
+   *
+   * It rides on the SET rather than being a second argument to `renderRules`
+   * because an argument is something a call site can forget, and the thing it
+   * decides is whether a corpus id ships to a stranger's install
+   * (`deliver.ts` · `TIERS_THAT_CITE_THE_CORPUS`). `loadRules` already asked
+   * the question to filter the entries, so the answer is carried out rather
+   * than asked again — the same discipline `workspaceIsMyContext` itself is
+   * under, one level up.
+   *
+   * **Optional, so a hand-built set reads as `product`.** A test or a future
+   * caller that composes a `RuleSet` literally gets the tier that ships
+   * nothing, which is the direction an omission must fail in.
+   */
+  readerTier?: Tier;
 }
 
 /**
@@ -79,6 +96,7 @@ export interface RuleSet {
  * able to notice.
  */
 export function loadRules(root: string, workspaceIsMyContext: boolean): RuleSet {
+  const readerTier: Tier = workspaceIsMyContext ? 'developer' : 'product';
   let names: string[];
   try {
     if (!statSync(root).isDirectory()) throw new Error('not a directory');
@@ -86,6 +104,7 @@ export function loadRules(root: string, workspaceIsMyContext: boolean): RuleSet 
   } catch {
     return {
       entries: [],
+      readerTier,
       refused: [{
         error: `no rule store at ${root}. The rules ship inside the package, so this means the ` +
           `installation is incomplete rather than that anything is misconfigured — ` +
@@ -132,5 +151,5 @@ export function loadRules(root: string, workspaceIsMyContext: boolean): RuleSet 
   }
 
   entries.sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0));
-  return { entries, refused };
+  return { entries, refused, readerTier };
 }
