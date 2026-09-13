@@ -12,7 +12,10 @@
  * Imports from `mutate.ts` and `revision.ts` are TYPE-ONLY, so this module
  * adds no runtime edge to the existing mutate↔revision cycle.
  */
+import { readFileSync } from 'node:fs';
+import path from 'node:path';
 import { agentEditsFor, type Config, type ResolvedCategory } from './config.ts';
+import { launderedEnums, launderedEnumSentence, type LaunderedEnum } from './item.ts';
 import { normalizePosix } from './paths.ts';
 import type { MutationContext, UpdateInput } from './mutate.ts';
 import type { RevisionChanges, RevisionField, RevisionValue } from './revision.ts';
@@ -372,6 +375,145 @@ export const GOVERNING_STATUS: Record<Status, boolean> = {
   superseded: false,
   deprecated: false,
 };
+
+// --- The THIRD answer: "we cannot tell what this item is" -------------------
+
+/**
+ * **`governsNormatively` answers two things — it governs, it does not. This is
+ * the third, and it exists because the second one was being given for a
+ * question nobody had asked.**
+ *
+ * `parseItem` reads a `status:` outside the vocabulary as `draft`
+ * (`ENUM_READ`, vocabulary.ts). That fallback is right and it is honest — the
+ * item stays visible, it is in the draft queue, and `doctor`'s
+ * `laundered_enum` row names the file. What it is NOT is a protection:
+ * `GOVERNING_STATUS.draft` is `false`, so every gate that asks
+ * `governsNormatively` still answers no on a corrupt local file, which is the
+ * SAME OUTCOME the cast produced before the fallback existed. Measured
+ * 2026-09-13 by the lane that built the fallback and reported it in those
+ * words: gates 1, 2 and 3 still let an agent through.
+ *
+ * The fix is not to make `governsNormatively` lie. `GOVERNING_STATUS` is a
+ * total `Record<Status, boolean>` and its docblock argues for exactly that
+ * shape; teaching it to answer `true` for a `draft` that might have been an
+ * `active` would corrupt the one table in this project that is written so
+ * every status has an answer, and it would do it for every reader, including
+ * the ones (selection, the draft queue, `doctor`) that must go on treating the
+ * item as the draft it now reads as.
+ *
+ * So the gates ask a SECOND question instead of a different first one: not
+ * "does this item govern" but "can this build tell what this item is at all".
+ * The three `mutate.ts` gates hold `ctx.root` and `item.filePath`, so they can
+ * ask the file directly, and the table above stays total and honest.
+ *
+ * **WHO IS REFUSED, AND THIS IS THE LOAD-BEARING HALF.** Only a non-human
+ * caller — `origin !== 'human'`, the same widening `trustedStatus` and all
+ * three existing refusals already use, and it reads the CALLER's declared
+ * origin and never the item's stored one (which is itself a laundered field
+ * here, so reading it would be circular). A person editing their own corrupt
+ * file must still be able to repair it: `mycontext edit`, `mycontext repair`
+ * and `mycontext supersede` all pass origin `"human"` and are untouched by
+ * this, and a refusal that locked the owner out of fixing his own corpus would
+ * be a worse defect than the one it closes.
+ *
+ * **The tier is deliberately NOT consulted, unlike `governsNormatively`.**
+ * `inContradictionScope`'s own `GATED_CATEGORIES` (overlap.ts) includes
+ * `decision`, which is RATIONALE tier and is the largest single group that
+ * gate fires on — so a normative-tier restriction here would leave gate 4 open
+ * on exactly the items it mostly protects. An illegible file is illegible
+ * whatever its category.
+ *
+ * **An UNREADABLE file is not treated as illegible here, and that is a
+ * disclosed limit rather than an oversight.** An item in the store whose file
+ * has since vanished is a different defect with a different owner —
+ * `loadLayer` (rebuild.ts) reports the read failure, the same division
+ * `checkLaunderedEnum` and `checkBodyTruncation` keep — and refusing every
+ * non-human write on a missing file would be this gate ruling on a question it
+ * was not given. It is named here so the next reader sees the branch rather
+ * than discovering it.
+ */
+export function launderedEnumsOf(root: string, item: Item): LaunderedEnum[] {
+  // `item.filePath` is relative to the PROJECT root. Every caller reaches this
+  // through `requireWritableItem` or `projectItems` (persist.ts), both of
+  // which are already project-only, so this is a belt on a fastened belt
+  // rather than a branch that fires — but a global item's path joined to
+  // `root` would name a file that is not this item's, and answering from the
+  // wrong file is worse than answering nothing.
+  if (item.layer !== 'project') return [];
+  try {
+    return launderedEnums(readFileSync(path.join(root, ...item.filePath.split('/')), 'utf8'));
+  } catch {
+    return [];
+  }
+}
+
+/**
+ * The same question asked with a `MutationContext` in hand, which is what the
+ * four gates hold. `root` alone is what the import report holds
+ * (`illegibleExisting`, pack/collide.ts), and one function answering both is
+ * what stops the two surfaces reading different files.
+ */
+export function illegibleEnums(ctx: MutationContext, item: Item): LaunderedEnum[] {
+  return launderedEnumsOf(ctx.root, item);
+}
+
+/**
+ * The refusal a non-human caller reads, written ONCE for all four gates.
+ *
+ * Four gates asking one question must not describe the answer four ways: the
+ * same defect this whole item is an instance of ("fixed in one place, live in
+ * the next") would arrive as four sentences that drift. `act` is the only
+ * thing that differs, and it is the verb of the thing being refused.
+ *
+ * It says three things a shorter message would leave out, and each one is
+ * there because its absence was a bug in an earlier refusal on this path:
+ * WHAT the file says (so the caller can tell the user which byte), that this
+ * is NOT "the item does not govern" (so the caller does not report a corrupt
+ * item as a draft), and that a HUMAN is not refused (so the caller asks rather
+ * than concluding the corpus is locked).
+ */
+export function illegibleRefusal(item: Item, bad: LaunderedEnum[], act: string): string {
+  // The doctor's own division, applied rather than restated: `mycontext edit`
+  // carries `--status` and `--severity` and carries no `--origin`, so the
+  // first two are a repair a person can copy and the third is a ruling.
+  const fixable = bad.filter((b) => b.field === 'status' || b.field === 'severity');
+  const remedy = fixable.length > 0
+    ? `\`mycontext edit ${item.id} ${fixable.map((b) => `--${b.field} ${b.read}`).join(' ')} ` +
+      `--yes\` writes this build's reading into the file, and a different value if a different ` +
+      `one was meant.`
+    : `There is no \`mycontext edit --origin\`, so this one is a ruling rather than a repair.`;
+  return (
+    `my_context: this build cannot tell what ${item.id} IS, so a non-human caller cannot ${act}. ` +
+    `${item.filePath} says ${bad.map(launderedEnumSentence).join('; and ')}. ` +
+    `**This is not the same as "${item.id} does not govern".** A value outside its vocabulary is ` +
+    `read as ${bad.map((b) => `${b.field} ${JSON.stringify(b.read)}`).join(', ')} so that the ` +
+    `item stays visible rather than vanishing — it is in the draft queue and \`mycontext doctor\` ` +
+    `reports it as "laundered_enum" — but nothing here knows what the file was MEANT to say, and ` +
+    `the gates that protect a governing item all answer no for a draft. Nothing was written. ` +
+    `A human is NOT refused by this: ask the user to run \`mycontext doctor\`, which names this ` +
+    `file. ${remedy} Do not run it yourself — it passes origin "human", which is the one claim ` +
+    `you cannot make. See mycontext_help("capture").`
+  );
+}
+
+/**
+ * The whole gate in one call: `null` when the caller is a human or the file is
+ * legible, and the refusal otherwise.
+ *
+ * **One call site for the phrase "non-human caller", deliberately.** Four
+ * gates each writing `origin !== 'human' && …` is four places for the
+ * condition to be widened or narrowed independently, and the existing
+ * `governsNormatively` refusals have already been through one such widening
+ * (`'ingest'` reaching the same door as `'agent'`). The origin test is FIRST
+ * so that a human's write pays no file read at all.
+ */
+export function illegibleItemRefusal(
+  ctx: MutationContext, item: Item, origin: Origin, act: string,
+): string | null {
+  if (origin === 'human') return null;
+  const bad = illegibleEnums(ctx, item);
+  return bad.length === 0 ? null : illegibleRefusal(item, bad, act);
+}
 
 /**
  * The fields that decide whether — and how forcefully — an item is injected:

@@ -31,7 +31,9 @@ import {
 } from '../core/summary-gate.ts';
 import { procedureProgress, progressLine, unreadableProgress } from '../core/progress.ts';
 import { STAGES, stageOf, type Stage } from '../core/procedure-stage.ts';
-import { linkItems } from '../core/relations.ts';
+import {
+  forgedSupersessionRefusal, linkItems, unsupersedeRefusal,
+} from '../core/relations.ts';
 import { RELATION_TYPES } from '../core/vocabulary.ts';
 import {
   extraFieldNames, resolveConfig, scopePolicyFor, skippedKeyNotice, type Config,
@@ -59,7 +61,7 @@ import {
   buildRuleRequest, renderRuleRequest, stageRuleCandidates,
 } from '../lesson/derive.ts';
 import { listStaging } from '../lesson/staging.ts';
-import { renderCollisionReport, type CollisionReport } from '../pack/collide.ts';
+import { illegibleExisting, renderCollisionReport, type CollisionReport } from '../pack/collide.ts';
 import { planImport } from '../pack/import.ts';
 import { readImportRecords } from '../pack/imported-audit.ts';
 import { readArtefact } from '../pack/reader.ts';
@@ -932,12 +934,32 @@ const SPECS: ToolSpec[] = [
       // `ctx.store.get` rather than a second lookup helper: `updateItem` will
       // refuse an unknown id in its own words a line later, so a null here just
       // falls through to that refusal instead of growing a second one.
+      // **`superseded` is not a value this tool sets, and it used to be.**
+      // `mycontext edit --status superseded` has refused it since it shipped,
+      // in words that lived inline in that command. Measured here 2026-09-13:
+      // `update_item({id, status: "superseded"})` was ACCEPTED — it returned
+      // "updated (superseded)", stamped `valid_until`, and wrote no relation at
+      // all. That is "retirement without a successor", which the README says
+      // plainly is not offered, forged through the door the MODEL drives rather
+      // than the one a human does. Refused ahead of the id lookup for the same
+      // reason `edit` refuses it ahead of its own: the value is wrong whatever
+      // item it names.
+      if (patch.status === 'superseded') throw new Error(forgedSupersessionRefusal(id, 'update_item'));
       const item = ctx.store.get(id);
       if (item) {
         const hatchRefusal = summaryUnchangedRefusal(item, patch, 'update_item');
         if (hatchRefusal) throw new Error(hatchRefusal);
         if (summaryRequired(item, patch)) {
           throw new Error(summaryRequiredRefusal(item, 'update_item'));
+        }
+        // The other half of the same hatch, and the reason this tool needed
+        // both: `status: "active"` on an item that IS superseded flipped two of
+        // the supersession's four facts and left the other two standing.
+        // `unsupersedeRefusal` (relations.ts) carries the measurement and the
+        // owner ruling behind refusing rather than building an inverse.
+        if (patch.status !== undefined) {
+          const stale = unsupersedeRefusal(item, patch.status, 'update_item');
+          if (stale) throw new Error(stale);
         }
       }
       return updateItem(ctx, patch).message;
@@ -2187,6 +2209,12 @@ const SPECS: ToolSpec[] = [
         applied: false,
         overwriteApproved: false,
         overwritten: [],
+        // Gate 5's disclosure, and this surface needs it MORE than the CLI
+        // does rather than less: what this tool returns is what a non-human
+        // caller will relay to the user, so an under-stated line here becomes
+        // the agent's own sentence about the user's corpus. See
+        // `CollisionReport.illegible` (pack/collide.ts).
+        illegible: illegibleExisting(ctx.root, plan.buckets),
         loadErrors: [],
       };
 

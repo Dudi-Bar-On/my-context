@@ -66,7 +66,8 @@
  */
 import { canonicalContent, itemContentHash } from '../core/content-hash.ts';
 import { normalizeForSlug } from '../core/slug.ts';
-import { GOVERNING_STATUS, UPDATE_FIELD_POLICY } from '../core/trust.ts';
+import { launderedEnumSentence } from '../core/item.ts';
+import { launderedEnumsOf, GOVERNING_STATUS, UPDATE_FIELD_POLICY } from '../core/trust.ts';
 import { col, paragraph } from '../cli/commands/format.ts';
 import type { Item, Status } from '../core/types.ts';
 import { comparePaths, IMPORTED_DIR, UNKNOWN_PACK_DIR, type ArtefactKind } from './layout.ts';
@@ -140,7 +141,54 @@ export interface CollisionReport {
   overwriteApproved: boolean;
   /** The ids actually replaced. A subset of `buckets.changed`, often empty. */
   overwritten: string[];
+  /**
+   * **GATE 5's third answer, and it is a DISCLOSURE rather than a refusal
+   * because this gate has no non-human caller to refuse.**
+   *
+   * The other four gates in `TASK-a-status-cast-out-of-frontmatter-makes-five-gates-answer-no`
+   * are refusals, taken on `origin !== 'human'`. This one cannot be: the call
+   * graph has exactly two callers of `applyImport` — `cmdPackImport`
+   * (cli/commands/pack.ts), behind a TTY confirmation, and `cli/index.ts`'s
+   * clone path with `overwriteApproved: false` — and the overwrite itself
+   * passes `origin: 'human'` deliberately (`updateInputFor`, pack/import.ts)
+   * because a human approved it one prompt ago. The MCP tool previews and
+   * says so. So there is nobody here to refuse, and the whole of this gate's
+   * power is what it SAYS to the person deciding.
+   *
+   * What it was saying was wrong by omission. `consequence` below prints "it
+   * stops governing" only for an item `GOVERNING_STATUS` calls governing, and
+   * a local item whose `status:` is outside the vocabulary reads `draft` — so
+   * the person approving an overwrite of a possibly-active item was told it
+   * was a draft, and the approval then re-renders the file and replaces the
+   * corrupt byte with this build's reading, taking the evidence with it
+   * (`checkLaunderedEnum`'s own warning, doctor/checks.ts).
+   *
+   * Carried as DATA and computed by `illegibleExisting`, never by the
+   * renderer: `renderCollisionReport` and `collisionJson` must not disagree
+   * about the same artefact, and a report that reached the filesystem itself
+   * would stop being the pure value `ui/port-model.ts` relies on.
+   */
+  illegible: IllegibleExisting[];
   loadErrors: string[];
+}
+
+/** One LOCAL item, already here, whose own file this build cannot read as itself. */
+export interface IllegibleExisting {
+  id: string;
+  /** `launderedEnumSentence`'s wording, so the import and `doctor` agree. */
+  says: string;
+}
+
+/**
+ * The `changed` entries whose LOCAL item's file carries a value outside its
+ * vocabulary — the ones `consequence` would otherwise describe as drafts.
+ *
+ * Only the `changed` bucket, because it is the only one where a local item is
+ * at stake: `new` has no local item, and `identical` is not written at all.
+ */
+export function illegibleExisting(root: string, buckets: Buckets): IllegibleExisting[] {
+  return buckets.changed.flatMap((c) => launderedEnumsOf(root, c.existing)
+    .map((bad) => ({ id: c.existing.id, says: launderedEnumSentence(bad) })));
 }
 
 /**
@@ -388,9 +436,18 @@ export function renderCollisionReport(report: CollisionReport): string[] {
     ]),
     (row) => {
       const c = report.buckets.changed[row];
+      // **GATE 5.** Above `consequence`, because it says that the sentence
+      // `consequence` is about to print rests on a status this build read
+      // rather than one the file spells. See `CollisionReport.illegible`.
+      const illegible = report.illegible.filter((i) => i.id === c.existing.id);
       const detail = [
         `here ${c.existingHash}  incoming ${c.incomingHash}`,
         `differs in: ${c.differs.join(', ')}`,
+        ...illegible.map((i) => `ILLEGIBLE HERE — your ${c.existing.filePath} says ${i.says}, so `
+          + `this build cannot tell what your copy IS; it is READ as `
+          + `"${c.existing.status}" and the line below says what happens to THAT reading. `
+          + 'Approving replaces the file and the value above goes with it — settle it first '
+          + `with \`mycontext doctor\``),
         ...consequence(c),
       ];
       if (c.familyCollision) {
@@ -509,6 +566,10 @@ export function collisionJson(report: CollisionReport): unknown {
     applied: report.applied,
     overwriteApproved: report.overwriteApproved,
     overwritten: report.overwritten,
+    // Gate 5's disclosure reaches `--json` too. A text report that warns and a
+    // JSON document that does not would be two answers about one artefact,
+    // which is the defect this whole function exists to prevent.
+    illegible: report.illegible.map((i) => ({ id: i.id, says: i.says })),
     loadErrors: report.loadErrors,
   };
 }

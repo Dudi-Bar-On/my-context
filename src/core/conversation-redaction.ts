@@ -51,14 +51,13 @@
  * in `test/core/conversation-redaction.test.ts` rather than argued here.
  */
 import {
-  closeSync, existsSync, ftruncateSync, mkdirSync, openSync, readFileSync, readSync, renameSync,
+  closeSync, existsSync, ftruncateSync, mkdirSync, openSync, readFileSync, renameSync,
   rmSync, statSync, unlinkSync, writeFileSync, writeSync,
 } from 'node:fs';
+import { forEachLine } from './line-walk.ts';
 import path from 'node:path';
 import { redactLine, scanSessionSecrets, type SecretScan } from './conversation-secrets.ts';
 
-/** How much is read per pass. The 1 MiB every reader in the archive uses. */
-const CHUNK_BYTES = 1024 * 1024;
 
 /** The plan's own shape version. A plan this build cannot read is regenerated. */
 export const REDACTION_PLAN_VERSION = 1;
@@ -215,10 +214,6 @@ function project(
     const dst = openSync(target, existsSync(target) ? 'r+' : 'w');
     try {
       ftruncateSync(dst, outputFrom);
-      const buffer = Buffer.alloc(CHUNK_BYTES);
-      /** The bytes of a line the last chunk ended in the middle of. */
-      let carry: Buffer | null = null;
-      let at = from;
       let outAt = outputFrom;
       const emit = (line: Buffer): void => {
         done.records += 1;
@@ -238,31 +233,25 @@ function project(
         writeSync(dst, NEWLINE, 0, 1, outAt);
         outAt += 1;
       };
-      while (at < to) {
-        const want = Math.min(CHUNK_BYTES, to - at);
-        const read = readSync(src, buffer, 0, want, at);
-        if (read <= 0) break;
-        const view = buffer.subarray(0, read);
-        const chunkAt = at;
-        at += read;
-        let cut = 0;
-        for (;;) {
-          const nl = view.indexOf(0x0a, cut);
-          if (nl === -1) break;
-          const line = carry === null
-            ? view.subarray(cut, nl)
-            : Buffer.concat([carry, view.subarray(cut, nl)]);
-          carry = null;
-          cut = nl + 1;
-          emit(line);
-          done.sourceBytes = chunkAt + cut;
-          done.outputBytes = outAt;
-        }
-        if (cut < read) {
-          const rest = view.subarray(cut, read);
-          carry = carry === null ? Buffer.from(rest) : Buffer.concat([carry, rest]);
-        }
-      }
+      // **The chunk walk and its `Buffer` carry belong to `core/line-walk.ts`**,
+      // where the byte-versus-character decision is made once for the four
+      // readers that had each written it out
+      // (`TASK-a-byte-offset-and-a-character-offset-are-the-same-number-and`).
+      // A line arrives as BYTES, which is what this copier wants: it re-encodes
+      // only the lines redaction actually changed, and an untouched line is
+      // written straight back without a decode/encode round trip.
+      //
+      // No `try` around it, deliberately: two of the four readers catch a
+      // part-way read failure and keep what they got, and this one must NOT —
+      // half a JSON record in the copy would be a silent corruption of the one
+      // file this whole feature exists to make safe to hand to somebody.
+      forEachLine(src, { cap: to - from, from }, (line, at) => {
+        emit(line);
+        // The byte after this line's newline — the same value `chunkAt + cut`
+        // carried, expressed from the line's own offset instead of the chunk's.
+        done.sourceBytes = at + line.length + 1;
+        done.outputBytes = outAt;
+      });
       // The trailing fragment is deliberately NOT emitted. It is a record
       // still being written, and half a JSON object in the copy would be a
       // silent corruption of the one file this whole feature exists to make

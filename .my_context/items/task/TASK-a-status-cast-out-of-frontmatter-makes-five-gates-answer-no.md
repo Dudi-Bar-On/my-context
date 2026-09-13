@@ -18,17 +18,17 @@ tags:
   - gates
   - "plan:rulings"
   - "seq:69"
-  - "state:todo"
+  - "state:done"
 origin: human
 source_file: "C:/Users/UserC/AppData/Local/Temp/statusbody.md"
 source_anchor: null
 source_checksum: 5d4c3d66c6eae797
 valid_from: 2026-09-12
 valid_until: null
-checksum: bd3b0cc738097367
+checksum: c2e9d7c4c029f259
 plan: rulings
 seq: "69"
-state: todo
+state: done
 priority: "1"
 ---
 

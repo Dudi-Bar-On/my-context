@@ -107,6 +107,7 @@
  */
 import { DatabaseSync } from 'node:sqlite';
 import { closeSync, openSync, readdirSync, readFileSync, readSync, statSync } from 'node:fs';
+import { eachLine, newLineWalk } from './line-walk.ts';
 import { homedir } from 'node:os';
 import path from 'node:path';
 
@@ -753,8 +754,6 @@ export function anchorIdFor(
  */
 export const MAX_SCAN_BYTES = 256 * 1024 * 1024;
 
-/** Read granularity. Bounds memory independently of `MAX_SCAN_BYTES`. */
-const CHUNK_BYTES = 1024 * 1024;
 
 /**
  * A search term as a literal for SQL `LIKE`.
@@ -1490,8 +1489,6 @@ export interface TranscriptWalkOptions {
   cursor?: TranscriptCursor;
 }
 
-/** Read granularity for the walk. Bounds memory, never the read. */
-const WALK_CHUNK_BYTES = 1024 * 1024;
 
 /**
  * Walk a transcript line by line, in bounded chunks, yielding every record
@@ -1521,12 +1518,6 @@ export function* iterateTranscript(
     return;
   }
 
-  const buffer = Buffer.alloc(WALK_CHUNK_BYTES);
-  /** Bytes of a line the last chunk ended in the middle of. */
-  let carry: Buffer | null = null;
-  /** Where that partial line began in the file. */
-  let carryAt = 0;
-
   const parse = (bytes: Buffer, at: number): TranscriptRecord => {
     let record: unknown;
     try {
@@ -1545,41 +1536,31 @@ export function* iterateTranscript(
     };
   };
 
+  // **The chunk walk and its `Buffer` carry belong to `core/line-walk.ts`**,
+  // where the byte-versus-character decision is made once for the four readers
+  // that had each re-derived it — two of them wrongly
+  // (`TASK-a-byte-offset-and-a-character-offset-are-the-same-number-and`).
+  //
+  // `eachLine` rather than `forEachLine`, and that is not a style choice: this
+  // is itself a lazy generator, and `anchors.ts` and `anchor-pass.ts` both
+  // `return` out of the `for…of` after the FIRST record. A callback cannot stop
+  // a walk, so driving this one with `forEachLine` would read a 52 MB
+  // transcript to answer a question the first line settles.
+  const walk = newLineWalk();
   try {
-    while (cursor.scannedBytes < cap) {
-      const want = Math.min(WALK_CHUNK_BYTES, cap - cursor.scannedBytes);
-      const read = readSync(fd, buffer, 0, want, position);
-      if (read <= 0) { cursor.reachedEnd = true; break; }
-      const chunkAt = position;
-      position += read;
-      cursor.scannedBytes += read;
-
-      const view = buffer.subarray(0, read);
-      let from = 0;
-      for (;;) {
-        const nl = view.indexOf(0x0a, from);
-        if (nl === -1) break;
-        let bytes: Buffer;
-        let at: number;
-        if (carry !== null) {
-          bytes = Buffer.concat([carry, view.subarray(from, nl)]);
-          at = carryAt;
-          carry = null;
-        } else {
-          bytes = view.subarray(from, nl);
-          at = chunkAt + from;
-        }
-        from = nl + 1;
+    try {
+      for (const line of eachLine(fd, { cap: cap - cursor.scannedBytes, from: position }, walk)) {
         // An empty line is not a record. `scanTranscript` skipped one and so
         // does this, so the index a record carries is unchanged by the blank
         // line a transcript may end with.
-        if (bytes.length > 0) yield parse(bytes, at);
+        if (line.bytes.length > 0) yield parse(line.bytes, line.at);
       }
-      if (from < read) {
-        const rest = view.subarray(from, read);
-        if (carry === null) { carryAt = chunkAt + from; carry = Buffer.from(rest); }
-        else carry = Buffer.concat([carry, rest]);
-      }
+    } finally {
+      // In a `finally` so a consumer that breaks out of THIS generator still
+      // leaves a true cursor — `walk` is filled in as the walk runs, and the
+      // count used to be kept inside the loop for the same reason.
+      cursor.scannedBytes += walk.readBytes;
+      if (walk.reachedEnd) cursor.reachedEnd = true;
     }
     // ── A CAP THAT LANDS ON THE END OF THE FILE IS THE END OF THE FILE ────
     //
@@ -1600,14 +1581,23 @@ export function* iterateTranscript(
     // It only ever makes `reachedEnd` MORE true: a genuinely short cap finds a
     // byte waiting and stays `false`, which is what `conversation-secrets.ts`
     // reports as `truncated`.
+    //
+    // It stays HERE rather than inside `eachLine`, because it is a rule about
+    // this function's CURSOR and not about walking lines: the other three
+    // readers answer "did I reach the end" their own way — the summary compares
+    // its read against the file size it stat-ed, the redaction copier never
+    // asks — and a probe folded into the shared walk would change what they
+    // each call truncated.
     if (!cursor.reachedEnd) {
-      const more = readSync(fd, buffer, 0, 1, position);
+      const more = readSync(fd, Buffer.alloc(1), 0, 1, position + walk.readBytes);
       if (more <= 0) cursor.reachedEnd = true;
     }
     // The trailing fragment is a whole line only when the read reached the end
     // of the file. If the cap stopped us short it is a record cut in half, and
     // parsing it would turn the bound into a phantom `unreadable`.
-    if (cursor.reachedEnd && carry !== null && carry.length > 0) yield parse(carry, carryAt);
+    if (cursor.reachedEnd && walk.trailing !== null) {
+      yield parse(walk.trailing.bytes, walk.trailing.at);
+    }
   } catch {
     // A read that failed part-way keeps what it yielded. `scannedBytes` says
     // how far it got.

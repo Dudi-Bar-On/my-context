@@ -135,11 +135,21 @@ const FORBIDDEN_BARE = ['node:child_process', 'child_process'];
 
 test('the index module this endpoint reads through loads nothing from this project', () => {
   const { files, bare } = runtimeGraph(INDEX_MODULE);
+  // `core/line-walk.ts` joined this graph on 2026-09-13 and it is the ONE
+  // addition this assertion has taken. It is a leaf: `node:fs` and nothing
+  // else, no exported write, no transitive project import — which the `bare`
+  // assertion below re-checks over the whole graph rather than taking on trust.
+  // It is here because the four chunked line-walks in this repository were the
+  // same twenty lines written four times and two of them got the seam wrong
+  // (`TASK-a-byte-offset-and-a-character-offset-are-the-same-number-and`), so
+  // the alternative to this import is `iterateTranscript` keeping a fifth
+  // private copy of the decision. That is the trade this line records: one leaf
+  // in the graph, against a correctness rule each author re-derives.
   assert.deepEqual(
-    [...files].map(rel).sort(), ['src/core/conversation-index.ts'],
-    'core/conversation-index.ts must load NOTHING but itself at runtime. That is what lets a '
-    + 'read-only surface reach the conversation index at all, and it is the property a later '
-    + 'convenience import would quietly spend.',
+    [...files].map(rel).sort(), ['src/core/conversation-index.ts', 'src/core/line-walk.ts'],
+    'core/conversation-index.ts must load nothing from this project at runtime but the '
+    + 'line-walk leaf. That is what lets a read-only surface reach the conversation index at '
+    + 'all, and it is the property a later convenience import would quietly spend.',
   );
   assert.deepEqual(
     [...bare].sort(), ['node:fs', 'node:os', 'node:path', 'node:sqlite'],

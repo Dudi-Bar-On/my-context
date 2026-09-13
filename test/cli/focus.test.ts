@@ -406,8 +406,15 @@ test('--json never emits a document beside the refusal prose', () => {
     seed(p.cwd);
     const refused = run(['focus', 'billing', '--json'], p.cwd);
     assert.equal(refused.code, 1);
-    assert.doesNotMatch(refused.out, /^\{/m, 'a refused --json run emits no partial document');
-    assert.match(refused.out, /refusing without confirmation/);
+    // This read `doesNotMatch(/^\{/m)` — "a refused --json run emits no partial
+    // document" — until 2026-09-13. It was the right half of the rule and the
+    // wrong answer to it: suppressing the preview left the refusal as PROSE on
+    // the channel a consumer was promised JSON on, which is
+    // `TASK-a-json-run-that-fails-prints-english-on-the-json-channel`. Still one
+    // document, and the sentence is now inside it rather than beside it.
+    const envelope = JSON.parse(refused.out) as { error: { message: string; exit: number } };
+    assert.match(envelope.error.message, /refusing without confirmation/);
+    assert.equal(envelope.error.exit, 1, 'the exit code is reported, not softened');
 
     const applied = run(['focus', 'billing', '--json', '--yes'], p.cwd);
     assert.equal(applied.code, 0);

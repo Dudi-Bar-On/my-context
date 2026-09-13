@@ -6,7 +6,8 @@ import { normalizePosix } from '../../core/paths.ts';
 import { updateItem, type MutationContext, type UpdateInput } from '../../core/mutate.ts';
 import { globalLayerRefusal } from '../../core/persist.ts';
 import {
-  missingRelationRefusal, retirementEdgeRefusal, unlinkItems,
+  forgedSupersessionRefusal, missingRelationRefusal, retirementEdgeRefusal, unlinkItems,
+  unsupersedeRefusal,
 } from '../../core/relations.ts';
 import {
   handWrittenProjectionError, projectFieldUpdate, updatableFor, updatesFor,
@@ -754,19 +755,14 @@ function cmdEdit(ws: Workspace, args: string[], out: Emit): number {
         return 1;
       }
       // `superseded` is refused, and this is the one status this command does
-      // not set. Retirement in this system names its replacement in both
-      // directions — `supersede_item` writes `superseded_by` on the retiree
-      // and `supersedes` on the replacement — and the README states plainly
-      // that "retirement without a successor is not offered". A bare `--status
-      // superseded` here would produce exactly that: an item marked as
-      // replaced by nothing, with no edge for a reader to follow back. The
-      // command that does it properly is named rather than the door merely
-      // shut.
+      // not set. The reasoning, and the wording, now live in
+      // `forgedSupersessionRefusal` (relations.ts) beside the other three
+      // supersession refusals — because `update_item` needed the SAME sentence
+      // and did not have it: measured 2026-09-13, that tool accepted `status:
+      // "superseded"` and wrote the successor-less retirement this line has
+      // refused since it shipped.
       if (status === 'superseded') {
-        say(out, `my_context: "superseded" is not set through \`mycontext edit\` — a retirement ` +
-          `names its replacement, and both items record the relation. Use \`mycontext supersede ` +
-          `${id} --by <replacement id>\`. To retire an item with no replacement, ` +
-          `\`--status deprecated\` is the status that means exactly that.`);
+        say(out, forgedSupersessionRefusal(id, 'edit'));
         return 1;
       }
       patch.status = status as Status;
@@ -794,6 +790,18 @@ function cmdEdit(ws: Workspace, args: string[], out: Emit): number {
       // ordering.
       say(out, globalLayerRefusal(item.id));
       return 1;
+    }
+
+    // **The half-inverse nobody designed, closed here rather than completed.**
+    // `--status superseded` is refused above; `--status active` on an item that
+    // IS superseded was not, and it flipped two of the supersession's four
+    // facts and left the other two standing. `unsupersedeRefusal` carries the
+    // measurement and the owner ruling behind refusing rather than building an
+    // inverse. It reads the item, so it cannot sit with the flag checks above —
+    // but it is still ahead of the preview, which is the rule this block keeps.
+    if (patch.status !== undefined) {
+      const stale = unsupersedeRefusal(item, patch.status, 'edit');
+      if (stale) { say(out, stale); return 1; }
     }
 
     // `Object.hasOwn` for the prototype-pollution reason `tierOf` documents; a

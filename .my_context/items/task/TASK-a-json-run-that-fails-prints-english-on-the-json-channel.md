@@ -14,17 +14,17 @@ tags:
   - cli
   - "plan:rulings"
   - "seq:72"
-  - "state:todo"
+  - "state:done"
 origin: human
 source_file: "C:/Users/UserC/AppData/Local/Temp/jsonenv.md"
 source_anchor: null
 source_checksum: 3051ea06d5725735
 valid_from: 2026-09-13
 valid_until: null
-checksum: c7533fd1763cfb20
+checksum: 02e86b2b8b2d9bd5
 plan: rulings
 seq: "72"
-state: todo
+state: done
 priority: "2"
 ---
 

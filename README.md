@@ -2331,7 +2331,10 @@ an edge cannot change what governs — which is why `link_items` has no `origin`
 that is the class of change an agent is refused outright. **`supersedes` and `superseded_by`
 cannot be removed:** a supersession is written together with the retired item's status, so
 removing the edge alone would leave an item marked as replaced by nothing. If a retirement
-was itself wrong, the route is `mycontext edit <id> --status active`. **A relation from
+was itself wrong, the route is to retire the **successor** in turn — `mycontext supersede
+<successor id> --by <what stands now>` — which records the second act as well as the first;
+`--status` on a superseded item is refused, because it would change two of the
+supersession's four facts and leave the other two standing. **A relation from
 outside the closed vocabulary can still be removed**, because that vocabulary governs what
 may be *written* — removing it there too would leave exactly the edges most in need of
 cleaning up with no way out. It is repeatable, composes with any other flag in one preview
@@ -3683,6 +3686,19 @@ them recognises is refused, not silently ignored — all six, checked against th
 registry by `test/cli/unknown-flag-refusal.test.ts` rather than command by command.
 `review promote` and `review discard` are checked against their own flag sets, so a
 `--json` meant for the queue does not pass silently on a subcommand that writes.
+
+**A `--json` run that FAILS emits JSON too.** A bad id, a refused flag, a confirmation this
+run cannot give and an absent corpus are four different code paths, and every one of them
+used to print an English sentence on the channel you asked for a document on — which is
+worse than printing nothing, because a script that parses what it was promised gets a
+parser error naming `my_context` with the real reason inside the string that broke it. They
+now emit `{"error": {"command", "subcommand", "exit", "argv", "message"}}` on **stdout**,
+where the consumer is already reading, with `message` the exact sentence the human form
+prints. **The exit code does not change** — this makes the channel honest, not the failure
+quiet — and the human form is untouched, because the envelope is only reached when `--json`
+was actually typed. A failing run that already answered in JSON (`doctor --json` exits
+non-zero with a real report) is passed through as it is. Which commands this covers is read
+off the same flag tables the parser uses, never a list kept by hand.
 
 `--summary` is the one to reach for when you want the shape rather than the rows. The same
 report as above, at one level down:

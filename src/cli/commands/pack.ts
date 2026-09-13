@@ -3,7 +3,7 @@ import path from 'node:path';
 import type { LoadError } from '../../core/rebuild.ts';
 import type { Workspace } from '../../core/workspace.ts';
 import {
-  collisionJson, renderCollisionReport, type CollisionReport,
+  collisionJson, illegibleExisting, renderCollisionReport, type CollisionReport,
 } from '../../pack/collide.ts';
 import {
   applyImport, planImport, type ImportOutcome, type ImportPlan,
@@ -187,6 +187,13 @@ export function approveOverwrite(
  */
 export function reportOf(
   plan: ImportPlan,
+  /**
+   * The project root the plan was computed against — gate 5's disclosure needs
+   * the local items' FILES, not their parsed values, because a `status:`
+   * outside the vocabulary is exactly the thing that is gone by the time an
+   * `Item` exists. See `CollisionReport.illegible` (pack/collide.ts).
+   */
+  root: string,
   name: string,
   outcome: ImportOutcome | null,
   overwriteApproved: boolean,
@@ -213,6 +220,7 @@ export function reportOf(
     applied: outcome !== null,
     overwriteApproved,
     overwritten: outcome?.overwritten ?? [],
+    illegible: illegibleExisting(root, plan.buckets),
     loadErrors: errors.map((e) => `${e.file}: ${e.message}`),
   };
 }
@@ -553,7 +561,7 @@ function cmdImport(
 
     const dryRun = hasFlag(args, 'dry-run');
     // Always, and regardless of `--yes`: see the module comment.
-    if (!json) for (const line of renderCollisionReport(reportOf(plan, name, null, false, [], errors))) out(line);
+    if (!json) for (const line of renderCollisionReport(reportOf(plan, ctx.root, name, null, false, [], errors))) out(line);
 
     if (!dryRun && !confirmAction(
       args, gate,
@@ -561,7 +569,7 @@ function cmdImport(
       + 'governs nothing until you promote it.',
       isTTY, readLine,
     )) {
-      if (json) emitJson(out, collisionJson(reportOf(plan, name, null, false, refused, errors)));
+      if (json) emitJson(out, collisionJson(reportOf(plan, ctx.root, name, null, false, refused, errors)));
       else emitLoadErrors(errors, out);
       return 1;
     }
@@ -575,7 +583,7 @@ function cmdImport(
 
     if (dryRun) {
       if (json) {
-        emitJson(out, collisionJson(reportOf(plan, name, null, false, refused, errors)));
+        emitJson(out, collisionJson(reportOf(plan, ctx.root, name, null, false, refused, errors)));
         return 0;
       }
       say(out,
@@ -591,7 +599,7 @@ function cmdImport(
 
     if (json) {
       emitJson(out, collisionJson(
-        reportOf(plan, name, outcome, overwriteApproved, refused, errors),
+        reportOf(plan, ctx.root, name, outcome, overwriteApproved, refused, errors),
       ));
       return 0;
     }

@@ -209,8 +209,29 @@ test('DETAIL_FLAGS still reaches its old home, so every importer of it is unmove
 // ─── assertion 1: the lifted values, against the real parser ────────────────
 
 const SENTINEL = '--zzz-not-a-flag-any-command-accepts';
+
+/**
+ * **The refusal SENTENCE, wherever the CLI is currently putting it.**
+ *
+ * Since `TASK-a-json-run-that-fails-prints-english-on-the-json-channel`, a
+ * failing run that was given `--json` emits an `{"error": …}` envelope rather
+ * than prose — so the `--json=x` probes below would look for `unknown option
+ * "--zzz…"` in text whose quotes are JSON-escaped, find nothing, and report
+ * "unreadable" about a refusal that happened exactly as it should. Unwrapped
+ * here, once, so both probes and both matchers keep asking one question about
+ * one sentence.
+ */
+const sentence = (text: string): string => {
+  try {
+    const parsed = JSON.parse(text) as { error?: { message?: unknown } };
+    if (typeof parsed.error?.message === 'string') return parsed.error.message;
+  } catch { /* not an envelope — the ordinary prose path */ }
+  return text;
+};
+
 const refuses = (text: string, flag: string): boolean =>
-  text.includes(`unknown flag "${flag}"`) || text.includes(`unknown option "${flag}"`);
+  sentence(text).includes(`unknown flag "${flag}"`)
+  || sentence(text).includes(`unknown option "${flag}"`);
 
 /**
  * **Commands that refuse in words of their own, and how they NAME what they
@@ -252,7 +273,7 @@ const OWN_REFUSAL: Record<string, { why: string; quote: (arg: string) => string 
 /** Did `command` refuse `arg`, in whichever words that command refuses in? */
 const refusedBy = (command: string, text: string, arg: string): boolean => {
   const own = OWN_REFUSAL[command];
-  return own === undefined ? refuses(text, arg) : text.includes(own.quote(arg));
+  return own === undefined ? refuses(text, arg) : sentence(text).includes(own.quote(arg));
 };
 
 /**

@@ -9,8 +9,21 @@ Only `active` items are injected. `draft`, `superseded`, `deprecated` and
 corpus stays small without losing history.
 
 Nothing is ever deleted through these tools. There is no delete. An item that is
-wrong is superseded or deprecated, both of which are reversible and both of
-which leave a trail.
+wrong is superseded or deprecated, and both leave a trail.
+
+**A supersession is not un-written, it is superseded back.** Retiring A in
+favour of B writes four facts across two files — `status: superseded` and
+`valid_until` on A, `superseded_by B` on A, `supersedes A` on B — and it is a
+dated claim about something that happened. `--status` on a superseded item is
+therefore refused on every surface: it would change the first two facts and
+leave the other two saying A is retired. If B should no longer stand, retire B
+in turn — `mycontext supersede <B> --by <what stands now>` — which records the
+second act as well as the first and keeps the chain followable. "What stands
+now" is usually a NEW item saying what A said; naming A itself is accepted and
+leaves both retired, with nothing governing until something does.
+
+A `deprecated` item has no successor recorded, so nothing is being contradicted
+and `mycontext edit <id> --status active` still brings it back.
 
 ## Relations
 

@@ -109,7 +109,8 @@ import { readRedactionPlan } from '../core/conversation-redaction.ts';
 import {
   SECRET_SHAPES, scanSessionSecrets, type SecretCandidate,
 } from '../core/conversation-secrets.ts';
-import { closeSync, openSync, readdirSync, readSync, statSync } from 'node:fs';
+import { closeSync, openSync, readdirSync, statSync } from 'node:fs';
+import { forEachLine, newLineWalk } from '../core/line-walk.ts';
 import path from 'node:path';
 import type { Workspace } from '../core/workspace.ts';
 import { registerRoute, type ApiContext, type JsonResult } from './routes.ts';
@@ -215,7 +216,6 @@ export const CONVERSATION_TEXT_CAP = 20_000;
  */
 export const CONVERSATION_WALK_CAP = 64 * 1024 * 1024;
 
-const CHUNK_BYTES = 1024 * 1024;
 
 /** One indexed session as the list serves it. */
 export interface ConversationSummary {
@@ -1146,23 +1146,6 @@ function readWindow(
     return { records, counted, walked, hitCap, reachedEnd: true };
   }
 
-  const buffer = Buffer.alloc(CHUNK_BYTES);
-  /**
-   * Bytes of the line the last chunk ended in the middle of — **a `Buffer`,
-   * never a `string`, and the type of this one variable is the whole
-   * correctness argument.**
-   *
-   * `CHUNK_BYTES` counts BYTES and a UTF-8 character is not one byte, so a
-   * chunk boundary lands inside a character whenever the text is not ASCII —
-   * which this archive is from record 5. Decoding each chunk on its own would
-   * split that character into two U+FFFD, one at the tail of this chunk and
-   * one at the head of the next, and the text would be silently corrupted at a
-   * seam nobody reads. Held as bytes, a line is decoded ONCE, whole.
-   * `iterateTranscript` in `core/conversation-index.ts` carries the same Buffer
-   * for the same reason.
-   */
-  let carry: Buffer = Buffer.alloc(0);
-
   const take = (line: string): void => {
     if (line === '') return;
     const at = counted;
@@ -1211,36 +1194,29 @@ function readWindow(
     });
   };
 
+  // **The chunk walk and its `Buffer` carry belong to `core/line-walk.ts`.**
+  // The byte-versus-character decision — a chunk boundary is counted in BYTES,
+  // a UTF-8 character is not one byte, and decoding a chunk on its own splits
+  // the character at the seam into two U+FFFD — is made ONCE there, for the
+  // four readers that had each re-derived it and the two that got it wrong
+  // (`TASK-a-byte-offset-and-a-character-offset-are-the-same-number-and`). A
+  // line arrives here as bytes and is decoded exactly once, whole.
+  //
+  // The walk never stops early: the window may be full long before the cap, but
+  // `counted` has to keep going or `total` would be a lie. The cap is what
+  // bounds it.
+  const walk = newLineWalk();
   try {
-    let read = 0;
-    while (walked < CONVERSATION_WALK_CAP) {
-      const want = Math.min(CHUNK_BYTES, CONVERSATION_WALK_CAP - walked);
-      read = readSync(fd, buffer, 0, want, null);
-      if (read <= 0) { reachedEnd = true; break; }
-      walked += read;
-      // Split on the NEWLINE BYTE, then decode each whole line. `buffer` is
-      // reused by the next read, so the leftover is copied out rather than
-      // kept as a view into it.
-      const chunk = carry.length === 0
-        ? buffer.subarray(0, read)
-        : Buffer.concat([carry, buffer.subarray(0, read)]);
-      let from = 0;
-      for (;;) {
-        const nl = chunk.indexOf(0x0a, from);
-        if (nl === -1) break;
-        take(chunk.toString('utf8', from, nl));
-        from = nl + 1;
-      }
-      carry = from < chunk.length ? Buffer.from(chunk.subarray(from)) : Buffer.alloc(0);
-      // Stop as soon as the window is full AND the total is no longer needed —
-      // which it always is, so the walk continues to count. The cap is what
-      // bounds it.
-    }
-    if (reachedEnd) take(carry.toString('utf8'));
+    forEachLine(
+      fd, { cap: CONVERSATION_WALK_CAP }, (bytes) => { take(bytes.toString('utf8')); }, walk,
+    );
+    reachedEnd = walk.reachedEnd;
+    if (reachedEnd) { if (walk.trailing !== null) take(walk.trailing.bytes.toString('utf8')); }
     else hitCap = true;
   } catch {
     // A read that failed part-way keeps what it built; `walked` says how far.
   } finally {
+    walked = walk.readBytes;
     try { closeSync(fd); } catch { /* nothing usable to close */ }
   }
 

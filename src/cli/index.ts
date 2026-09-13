@@ -2,6 +2,7 @@
 import { mkdirSync, writeFileSync, existsSync, rmSync } from 'node:fs';
 import path from 'node:path';
 import { COMMAND_FLAGS } from '../core/command-flags.ts';
+import { isJsonAlready, jsonEnvelopeFor, renderJsonError } from './json-envelope.ts';
 import { resolveConfig, scopePolicyFor, type Config } from '../core/config.ts';
 import { summaryStalenessNote } from '../core/content-hash.ts';
 import { renderItem } from '../core/item.ts';
@@ -328,7 +329,7 @@ interface AppliedPack {
 function applyPack(cwd: string, planned: PlannedPack, out: Emit): AppliedPack {
   const { ctx, errors } = openMutateContext(resolveWorkspace(cwd));
   try {
-    const report = reportOf(planned.plan, planned.name, null, false, [], errors);
+    const report = reportOf(planned.plan, ctx.root, planned.name, null, false, [], errors);
     for (const line of renderCollisionReport(report)) out(line);
     const outcome = applyImport(ctx, planned.plan, {
       name: planned.name, source: planned.source, origin: planned.origin,
@@ -1595,7 +1596,41 @@ function cmdExamples(ws: Workspace, args: string[], out: Emit): number {
   }
 }
 
+/**
+ * **The one boundary a `--json` failure cannot get past as prose.**
+ *
+ * `runCli` is the single entry point every CLI invocation crosses — the bin
+ * script, the hooks, the UI's command runner and 600 test files all arrive
+ * here — so it is the only place an envelope can be applied to every refusal
+ * path at once: a bad id, a bad flag, a gate refusal and an absent corpus are
+ * four different code paths in four different modules, and a guard in any of
+ * them covers one. `src/cli/json-envelope.ts` carries the measurement, the
+ * stream decision and the reason the command set is DERIVED rather than listed.
+ *
+ * Output is buffered only on a `--json` run, and only until the exit code is
+ * known — on 0 it is replayed verbatim, so nothing about a successful run
+ * changes, streaming included (there is none: `emitJson` is one
+ * `JSON.stringify`).
+ */
 export function runCli(argv: string[], cwd: string, out: Emit): number {
+  const envelope = jsonEnvelopeFor(argv, wantsJson);
+  if (envelope === null) return dispatchCli(argv, cwd, out);
+
+  const lines: string[] = [];
+  const code = dispatchCli(argv, cwd, (s) => { lines.push(s); });
+  const text = lines.join('\n');
+  // A failing run that already answered in JSON is left exactly as it is —
+  // `doctor --json` exits non-zero WITH a valid report, and replacing it with a
+  // complaint about itself would be a regression dressed as a fix.
+  if (code === 0 || isJsonAlready(text)) {
+    for (const line of lines) out(line);
+    return code;
+  }
+  out(renderJsonError(envelope, argv, code, text));
+  return code;
+}
+
+function dispatchCli(argv: string[], cwd: string, out: Emit): number {
   const [command, ...args] = argv;
 
   try {

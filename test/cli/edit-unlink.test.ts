@@ -143,7 +143,16 @@ test('neither retirement edge can be removed, and the refusal names the real rem
     const back = run(['edit', old, '--unlink', 'superseded_by', next, '--yes'], cwd);
     assert.equal(back.code, 1);
     assert.match(back.out, /cannot be removed/);
-    assert.match(back.out, /--status active/, 'the refusal names the route that does work');
+    // This line read `/--status active/` until 2026-09-13. It named a route
+    // that half-worked: `edit --status active` on a retired item flipped
+    // `status` and `valid_until` and left both relation edges standing, and
+    // `TASK-supersede-has-no-inverse-and-edit-status-active-is-a-half` closed it
+    // rather than completing it — a supersession is a dated claim, unwound by
+    // superseding the SUCCESSOR back so both acts stay on the record. The
+    // refusal had to stop naming a door that is now shut.
+    assert.match(back.out, /mycontext supersede <successor id> --by/,
+      'the refusal names the route that does work');
+    assert.doesNotMatch(back.out, /--status active/);
 
     const forward = run(['edit', next, '--unlink', 'supersedes', old, '--yes'], cwd);
     assert.equal(forward.code, 1);

@@ -9,7 +9,7 @@
 import { auditMutation, persist, requireWritableItem } from './persist.ts';
 import { enumError } from './teach.ts';
 import { validateRelationTarget } from './validate.ts';
-import type { Item, Origin } from './types.ts';
+import type { Item, Origin, Status } from './types.ts';
 import type { MutationContext, MutationResult } from './mutate.ts';
 
 /**
@@ -270,9 +270,111 @@ export function retirementEdgeRefusal(relation: string): string | null {
     `item's status and validUntil). Removing the edge would leave an item marked as retired ` +
     `with nothing recording what replaced it — retirement without a successor, which this ` +
     `system does not offer — and would break the route a reader follows from a retired item ` +
-    `to the one that answers it. If the retirement itself was wrong, change the retired ` +
-    `item's status with \`mycontext edit <id> --status active\`, which previews what starts ` +
-    `governing again before it writes. See mycontext_help("workflow").`
+    `to the one that answers it. If the retirement itself was wrong, retire the SUCCESSOR in ` +
+    `turn — \`mycontext supersede <successor id> --by <what stands now>\` — which records the ` +
+    `second act as well as the first. See mycontext_help("workflow").`
+  );
+}
+
+/**
+ * "A status flag does not un-write a supersession" — the refusal, or null when
+ * there is no supersession to protect.
+ *
+ * ── WHAT WAS MEASURED, 2026-09-13, ON A THROWAWAY CORPUS ────────────────────
+ *
+ * A supersession is FOUR facts across TWO files: `status: superseded` and
+ * `validUntil` on the retired item, `superseded_by` on it, and `supersedes` on
+ * the replacement. `mycontext edit <retired id> --status active` was accepted
+ * and exited 0, and it changed TWO of the four — `status` back to `active`, and
+ * `validUntil` back to `null`, because `updateItem` calls `stampValidUntil`
+ * unconditionally and that helper moves the field in both directions. The other
+ * two were left standing: a live item still carrying `superseded_by`, and a
+ * replacement still claiming to have replaced something that is governing
+ * again. `update_item({status: "active"})` on the MCP surface did the same.
+ * `mycontext doctor` reported zero errors and zero warnings on the result.
+ *
+ * ── WHY A REFUSAL AND NOT AN INVERSE COMMAND ────────────────────────────────
+ *
+ * Owner ruling, 2026-09-13
+ * (`TASK-supersede-has-no-inverse-and-edit-status-active-is-a-half`): **a
+ * supersession is a dated historical claim, and unwinding it means superseding
+ * the successor back** — which leaves a true record of BOTH acts. An inverse
+ * that flips the four facts off would make the corpus lie about its own
+ * history, which is the defect its whole lifecycle exists to prevent. So the
+ * hatch is closed rather than completed, and nothing new is built.
+ *
+ * ── THE ONE CASE IT DELIBERATELY LETS THROUGH ───────────────────────────────
+ *
+ * An item marked `superseded` with NO `superseded_by` edge is not a supersession
+ * — it is "retirement without a successor", which this system does not offer and
+ * which `retirementEdgeRefusal` and `mycontext edit --status superseded` both
+ * refuse by name. There is nothing there to protect, and refusing a status
+ * change on it would be the only state in the corpus with no route out. It
+ * passes, and `mycontext edit <id> --status deprecated` is the honest name for
+ * what it already is.
+ *
+ * `surface` decides the spelling of the remedy only. A model reading a refusal
+ * thrown from `update_item` is not holding a shell, and the same sentence with
+ * `mycontext supersede` in it would name a route it cannot take.
+ */
+export function unsupersedeRefusal(
+  item: Item, nextStatus: Status, surface: 'edit' | 'update_item',
+): string | null {
+  if (item.status !== 'superseded' || nextStatus === item.status) return null;
+  const edge = item.relations.find((r) => r.type === SUPERSEDED_BY);
+  if (edge === undefined) return null;
+  const successor = edge.target;
+  const flag = surface === 'edit' ? `\`--status ${nextStatus}\`` : `\`status: "${nextStatus}"\``;
+  const remedy = surface === 'edit'
+    ? `\`mycontext supersede ${successor} --by <what stands now>\``
+    : `supersede_item({ id: "${successor}", by: "<what stands now>" })`;
+  return (
+    `my_context: ${item.id} is superseded by ${successor}, and ${flag} does not undo that. ` +
+    `A supersession is four facts across two files — \`status: superseded\` and \`valid_until\` ` +
+    `on ${item.id}, "${SUPERSEDED_BY} ${successor}" on it, and "supersedes ${item.id}" on ` +
+    `${successor} — and this would change the first two and leave the other two saying it is ` +
+    `retired: a governing item carrying a past \`valid_until\`, pointing at its own replacement, ` +
+    `with the replacement still claiming to have replaced it. Nothing was written. ` +
+    `A supersession is a DATED CLAIM about what happened, so it is unwound by superseding the ` +
+    `successor back rather than by erasing the first act: ${remedy} records BOTH, and the chain ` +
+    `${item.id} → ${successor} → <what stands now> stays followable. "<what stands now>" is ` +
+    `usually a NEW item saying what ${item.id} said; naming ${item.id} itself is accepted and ` +
+    `leaves both items retired, with nothing governing in their place until something does. ` +
+    `See mycontext_help("workflow").`
+  );
+}
+
+/**
+ * "A retirement names its replacement" — the refusal `--status superseded` and
+ * `update_item({status: "superseded"})` share.
+ *
+ * `superseded` is the one status no editing surface sets. Retirement here names
+ * its replacement in both directions — `supersedeItem` writes `superseded_by` on
+ * the retiree and `supersedes` on the replacement — and the README states
+ * plainly that "retirement without a successor is not offered". Setting the
+ * field alone produces exactly that: an item marked as replaced by nothing, with
+ * no edge for a reader to follow back. The command that does it properly is
+ * named rather than the door merely shut.
+ *
+ * **Two surfaces, measured separately, 2026-09-13.** `mycontext edit --status
+ * superseded` had refused this since it shipped, in words that lived inline in
+ * `edit.ts`. `update_item({id, status: "superseded"})` did NOT: it was accepted,
+ * exited with "updated (superseded)", stamped `valid_until`, and wrote no
+ * relation at all — the forged retirement the CLI refuses by name, through the
+ * door the MODEL drives. One wording, two call sites, so they cannot drift
+ * apart again.
+ */
+export function forgedSupersessionRefusal(id: string, surface: 'edit' | 'update_item'): string {
+  const remedy = surface === 'edit'
+    ? `\`mycontext supersede ${id} --by <replacement id>\``
+    : `supersede_item({ id: "${id}", by: "<replacement id>" })`;
+  const noSuccessor = surface === 'edit'
+    ? '`--status deprecated` is the status that means exactly that'
+    : '`status: "deprecated"` is the status that means exactly that';
+  return (
+    `my_context: "superseded" is not set through \`${surface === 'edit' ? 'mycontext edit' : 'update_item'}\` — a retirement ` +
+    `names its replacement, and both items record the relation. Use ${remedy}. ` +
+    `To retire an item with no replacement, ${noSuccessor}.`
   );
 }
 

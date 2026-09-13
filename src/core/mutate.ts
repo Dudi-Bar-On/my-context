@@ -57,10 +57,12 @@ import { projectFieldUpdate, projectOntoTags } from './tag-projection.ts';
 import { enumError, missingFieldError } from './teach.ts';
 import { normalizeEol } from './text.ts';
 import {
-  contentChange, governsNormatively, guardedChange, inertFieldError, inertFieldNote,
+  contentChange, governsNormatively, guardedChange, illegibleEnums, illegibleItemRefusal,
+  illegibleRefusal, inertFieldError, inertFieldNote,
   nonContentChanges, openContentPhrase, scopeRequirementError, stagedContentCaveat,
   fieldList, tierOf, trustedStatus, unknownExtraFieldError, GOVERNING_STATUS, GUARDED_FIELDS,
 } from './trust.ts';
+import { ENUM_READ } from './vocabulary.ts';
 import type { Item, Observation, Origin, Relation, Severity, Status } from './types.ts';
 import {
   normalizeObservations, normalizeSteps, normalizeSummary, requestOverwriteRefusal, validateBody,
@@ -469,11 +471,55 @@ function contradictionCandidates(ctx: MutationContext): ContradictionItem[] {
  * second time afterwards would let the two answers disagree — the item on disk
  * would then carry a ruling the refusal never raised, or miss one it did.
  */
+/**
+ * **GATE 4 — the third answer, over the gate's POPULATION rather than over one
+ * named item, because that is the shape of this gate's failure.**
+ *
+ * The other three gates are asked about an item the caller named. This one is
+ * asked about every item the caller did NOT name: `contradictionGate` drops a
+ * candidate that does not `governsNow`, so an item whose `status:` is corrupt
+ * reads `draft`, leaves the candidate set, and the capture that contradicts it
+ * lands with nothing said. The caller never mentioned the item, so there is
+ * nothing to check unless the population is checked.
+ *
+ * **The `status` pre-filter is EXACT and not an optimisation.** `parseItem`
+ * reads a status outside the vocabulary as `ENUM_READ.status.laundered`
+ * (vocabulary.ts), so an item whose status is anything else was read from a
+ * value its file actually spells and cannot be a candidate this gate has lost.
+ * It is read off `ENUM_READ` rather than written as `'draft'` so that moving
+ * the policy moves the filter with it. Without it this would open every
+ * project item's file on every gated capture.
+ *
+ * **Only `status` is reported, unlike the single-item gates.** `governsNow`
+ * (overlap.ts) reads the status and nothing else, so a laundered severity or
+ * origin cannot hide an item from this filter; those are already refused by
+ * gates 1–3 at the moment somebody tries to write such an item.
+ */
+function illegibleCandidateRefusal(ctx: MutationContext, origin: Origin): string | null {
+  if (origin === 'human') return null;
+  for (const item of projectItems(ctx)) {
+    if (item.status !== ENUM_READ.status.laundered) continue;
+    if (!inContradictionScope(item.type, item.always)) continue;
+    const bad = illegibleEnums(ctx, item).filter((b) => b.field === 'status');
+    if (bad.length > 0) {
+      return illegibleRefusal(
+        item, bad, `capture an item that would be checked for contradiction against ${item.id}`,
+      );
+    }
+  }
+  return null;
+}
+
 function contradictionCheck(
   ctx: MutationContext,
   draft: ContradictionDraft,
   surface: ContradictionSurface,
+  origin: Origin,
 ): readonly ContradictionCandidate[] {
+  // Before the gate runs, not after: the gate's answer is computed from a
+  // candidate set this item may have silently left.
+  const illegible = illegibleCandidateRefusal(ctx, origin);
+  if (illegible !== null) throw new Error(illegible);
   const outcome = contradictionGate(draft, contradictionCandidates(ctx), readVerdicts(ctx.root));
   // Before the refusal, deliberately: a caller that typo'd an id would
   // otherwise read the refusal, see its own disposition ignored, and have no
@@ -666,6 +712,13 @@ function preflightSupersede(
   ctx: MutationContext, id: string, origin: Origin, by: string,
 ): void {
   const target = requireWritableItem(ctx, id);
+  // **GATE 1 — and the third answer is asked BEFORE the second.** "It does not
+  // govern" is only an answer when the file can be read as something; on a
+  // laundered file `governsNormatively` answers `false` for a `draft` this
+  // build invented, and that `false` is what let a non-human caller retire a
+  // possibly-governing item. See `illegibleItemRefusal` (trust.ts).
+  const illegible = illegibleItemRefusal(ctx, target, origin, `retire ${target.id}`);
+  if (illegible !== null) throw new Error(illegible);
   if (origin !== 'human' && governsNormatively(ctx, target)) {
     throw new Error(
       `my_context: this write disposes of ${target.id} with "supersedes", which retires it — and ` +
@@ -971,7 +1024,7 @@ export function createItem(
     supersedes: input.supersedes ?? null,
   };
   const gated = inContradictionScope(draft.type, draft.always) && GOVERNING_STATUS[status];
-  const settled = gated ? contradictionCheck(ctx, draft, createSurface(origin)) : [];
+  const settled = gated ? contradictionCheck(ctx, draft, createSurface(origin), origin) : [];
   // The pre-flight §6 path 2 needs, and it has to happen here rather than
   // after the write — see `preflightSupersede`.
   // The label, not an id: nothing has been minted yet on this path — see
@@ -1524,6 +1577,13 @@ export function updateItem(
     ? input
     : { ...input, tags: nextTags };
 
+  // **GATE 2 — the third answer, above the second, for gate 1's reason.**
+  // Asked on the WHOLE update rather than only when `guardedChange` fires: a
+  // caller that cannot be told what the item is cannot be told which of its
+  // fields are guarded either, and the `false` this refusal used to get back
+  // was about an item this build had invented.
+  const illegibleEdit = illegibleItemRefusal(ctx, item, origin, `change ${item.id}`);
+  if (illegibleEdit !== null) throw new Error(illegibleEdit);
   if (origin !== 'human' && governsNormatively(ctx, item)) {
     const field = guardedChange(item, update);
     if (field) {
@@ -1833,7 +1893,7 @@ export function updateItem(
     supersedes: update.supersedes ?? null,
   };
   const editSettled = contradictionGated
-    ? contradictionCheck(ctx, editDraft, updateSurface(origin))
+    ? contradictionCheck(ctx, editDraft, updateSurface(origin), origin)
     : [];
   if (contradictionGated && editDraft.supersedes !== null) {
     preflightSupersede(ctx, editDraft.supersedes, origin, item.id);
@@ -2359,6 +2419,20 @@ export function supersedeItem(ctx: MutationContext, input: SupersedeInput): Muta
   // an already `deprecated`/`superseded` item, or any rationale-tier item is
   // harmless and stays allowed — a later task legitimately supersedes one
   // agent- or ingest-authored draft with another.
+  // **GATE 3 — the third answer, above the second, for gate 1's reason.**
+  //
+  // BOTH sides are asked, not only the retiree. This call writes the
+  // replacement too (the `supersedes` edge) and every write path re-renders
+  // the whole file from the parsed value — so a non-human caller superseding
+  // WITH a laundered item would overwrite the corrupt byte with this build's
+  // guess and take the evidence with it, which is the destruction
+  // `checkLaunderedEnum`'s own message warns a reader about.
+  for (const side of [retired, replacement]) {
+    const bad = illegibleItemRefusal(
+      ctx, side, origin, side === retired ? `retire ${retired.id}` : `supersede with ${side.id}`,
+    );
+    if (bad !== null) throw new Error(bad);
+  }
   if (origin !== 'human' && governsNormatively(ctx, retired)) {
     throw new Error(
       `my_context: a non-human caller cannot supersede a governing normative item. ${retired.id} is ` +

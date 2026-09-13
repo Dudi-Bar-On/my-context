@@ -83,6 +83,11 @@ function report(over: Partial<CollisionReport> = {}): CollisionReport {
     applied: false,
     overwriteApproved: false,
     overwritten: [],
+    // Gate 5's disclosure list, empty here: every fixture in this file is a
+    // hand-built `Item` with no file behind it, so "what does the local file
+    // say" has no answer to give. The tests that DO corrupt a real file live
+    // in `test/core/enum-read-boundary.test.ts`, which owns that gate.
+    illegible: [],
     loadErrors: [],
     ...over,
   };
@@ -345,7 +350,13 @@ test('the json document carries every field the text does, in a fixed key order'
   assert.deepEqual(Object.keys(collisionJson(mixed()) as object), [
     'pack', 'version', 'kind', 'source', 'format', 'manifest', 'buckets',
     'config', 'history', 'notCarried', 'refused', 'applied',
-    'overwriteApproved', 'overwritten', 'loadErrors',
+    // `illegible` is gate 5's disclosure (2026-09-13,
+    // `TASK-a-status-cast-out-of-frontmatter-makes-five-gates-answer-no`):
+    // which LOCAL items' own files carry a value outside their vocabulary, so
+    // that the `--json` consumer is told what the text report says. Appended
+    // before `loadErrors` because both are about the corpus rather than the
+    // artefact, and this test is what makes the key order a decision.
+    'overwriteApproved', 'overwritten', 'illegible', 'loadErrors',
   ]);
 });
 

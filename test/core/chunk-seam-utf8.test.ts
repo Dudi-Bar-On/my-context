@@ -15,17 +15,25 @@
  * readers shipped wrong and survived review. Every seam assertion below puts a
  * two-byte Hebrew character ACROSS the 1 MiB boundary and reads the text back.
  *
- * **Three readers, one fixture.** `WALK_CHUNK_BYTES`, `CHUNK_BYTES` in
- * `src/ui/read-model-conversations.ts` and `CHUNK_BYTES` in
- * `src/core/session-summary.ts` are all 1 MiB and all three walks start at byte
- * zero, so one transcript whose seam record straddles byte 1 048 576 exercises
- * all three at the same character:
+ * **Three readers, one fixture.** They used to be three private 1 MiB
+ * constants — `WALK_CHUNK_BYTES` and two called `CHUNK_BYTES` — and since
+ * 2026-09-13 they are one, `LINE_WALK_CHUNK_BYTES` in `src/core/line-walk.ts`,
+ * which is where the carry now lives. This file did not change with it, and
+ * that is the point: it drove these three readers before the extraction and it
+ * drives them after, which is what makes it the extraction's own proof. All
+ * three walks still start at byte zero, so one transcript whose seam record
+ * straddles byte 1 048 576 exercises all three at the same character:
  *
  *   1. `iterateTranscript` — the reader that was already RIGHT, and had no test
  *      saying so. A correct implementation with no falsifiable test is one
  *      refactor away from joining the other two.
  *   2. `apiConversation` → `readWindow` — was carrying a `string`.
  *   3. `summariseTranscript` — was carrying a `string`.
+ *
+ * A FOURTH reader existed and is not here: `conversation-redaction.ts` walked
+ * the same chunks and had no seam assertion at all. It is proved in
+ * `test/core/line-walk.test.ts` beside the shared walk itself, because its
+ * fixture is a redacted COPY on disk rather than a record read back.
  *
  * **The fixture guards itself.** `the fixture really does split a Hebrew
  * character at the 1 MiB boundary` asserts that byte 1 048 576 of the file is a

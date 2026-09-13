@@ -91,13 +91,21 @@
  *      asserts the list is empty. If this walk ever drifts from that one, a
  *      test goes red rather than two screens quietly disagreeing.
  *
- * What is NOT shared is the walk itself, and that is a real defect rather than
- * a choice: `scanTranscript` consumes records and returns only counts, and
- * `readWindow` (`ui/read-model-conversations.ts`) is private to the UI read
- * model and would drag the UI graph into core. **Neither exposes a seam that
- * yields records.** The repair is one record-iterator in
- * `conversation-index.ts` that all three consume; it belongs to the lane that
- * owns that file, which is why it is reported here and not done here.
+ * **The walk itself is now shared too, and this paragraph used to say it was
+ * not.** It reported the gap as "a real defect rather than a choice" and left
+ * it, on the grounds that the repair belonged to the lane that owns
+ * `conversation-index.ts`. It was done on 2026-09-13, and NOT where that
+ * sentence expected: the seam is `core/line-walk.ts`, a leaf that imports
+ * `node:fs` and nothing else, because putting it in `conversation-index.ts`
+ * would have been the very thing that paragraph objected to — dragging a
+ * module with a schema and a database into the UI read model's graph.
+ *
+ * What is shared is the CHUNKED READ and its `Buffer` carry, not the
+ * classification: four readers each wrote that walk out and two of them
+ * corrupted Hebrew at the chunk seam
+ * (`TASK-a-byte-offset-and-a-character-offset-are-the-same-number-and`). What
+ * stays separate is what each reader does with a line, which is the difference
+ * the paragraph above is really about.
  *
  * ── THE SNAPSHOT, AND WHY IT IS A PARAMETER ────────────────────────────────
  *
@@ -125,7 +133,8 @@
  * stage 3 for the same reason and counted separately, so a reader can tell our
  * loop guard firing from the harness's.
  */
-import { closeSync, openSync, readSync, statSync } from 'node:fs';
+import { closeSync, openSync, statSync } from 'node:fs';
+import { forEachLine, newLineWalk } from './line-walk.ts';
 import { classifyTurn } from './conversation-index.ts';
 
 /**
@@ -145,8 +154,6 @@ import { classifyTurn } from './conversation-index.ts';
 import { SESSION_SUMMARY_MARKER, isMarkedSummary } from './summary-marker.ts';
 export { SESSION_SUMMARY_MARKER, isMarkedSummary };
 
-/** Read granularity, matching `scanTranscript`'s. Bounds memory, not the read. */
-const CHUNK_BYTES = 1024 * 1024;
 
 /**
  * The snapshot offset for a repeatable run: the file's size right now.
@@ -899,49 +906,31 @@ export function summariseTranscript(file: string, options: SummaryOptions = {}):
     };
   }
 
-  const buffer = Buffer.alloc(CHUNK_BYTES);
-  /**
-   * Bytes of the line the last chunk ended in the middle of — **a `Buffer`,
-   * never a `string`.** `CHUNK_BYTES` and `upToBytes` both count BYTES, and a
-   * UTF-8 character is not one byte, so a chunk boundary lands inside a
-   * character whenever the transcript is not ASCII. Decoding each chunk on its
-   * own would split that character into two U+FFFD — one at this chunk's tail,
-   * one at the next chunk's head — and a point extracted across the seam would
-   * carry corrupted text that no search matches. Held as bytes, a line is
-   * decoded ONCE, whole. `iterateTranscript` in `core/conversation-index.ts`
-   * carries the same Buffer for the same reason.
-   */
-  let carry: Buffer = Buffer.alloc(0);
+  // **The chunk walk and its `Buffer` carry belong to `core/line-walk.ts`**,
+  // where the byte-versus-character decision is made once for the four readers
+  // that had each re-derived it — and where two of the four had got it wrong
+  // (`TASK-a-byte-offset-and-a-character-offset-are-the-same-number-and`). A
+  // line arrives here as BYTES and is decoded exactly once, whole.
+  const walk = newLineWalk();
   try {
-    while (coverage.readBytes < resolved.upToBytes) {
-      const want = Math.min(CHUNK_BYTES, resolved.upToBytes - coverage.readBytes);
-      const read = readSync(fd, buffer, 0, want, null);
-      if (read <= 0) break;
-      coverage.readBytes += read;
-      // Split on the NEWLINE BYTE, then decode each whole line. `buffer` is
-      // reused by the next read, so the leftover is copied out of it.
-      const chunk = carry.length === 0
-        ? buffer.subarray(0, read)
-        : Buffer.concat([carry, buffer.subarray(0, read)]);
-      let from = 0;
-      for (;;) {
-        const nl = chunk.indexOf(0x0a, from);
-        if (nl === -1) break;
-        take(chunk.toString('utf8', from, nl));
-        from = nl + 1;
-      }
-      carry = from < chunk.length ? Buffer.from(chunk.subarray(from)) : Buffer.alloc(0);
-    }
+    forEachLine(
+      fd, { cap: resolved.upToBytes }, (bytes) => { take(bytes.toString('utf8')); }, walk,
+    );
     // The trailing fragment is a whole line only when the read reached the end
     // of the FILE. If the snapshot offset stopped us mid-record, parsing it
     // would turn the bound into a phantom `unreadable` — `scanTranscript`'s own
     // rule, which is why the comparison is against the file size and not
     // against `upToBytes`.
-    if (coverage.readBytes >= fileBytes) take(carry.toString('utf8'));
+    if (coverage.readBytes + walk.readBytes >= fileBytes && walk.trailing !== null) {
+      take(walk.trailing.bytes.toString('utf8'));
+    }
   } catch {
     // A read that failed part-way keeps what it read. `readBytes` says how far
     // it got and the review form prints it beside `upToBytes`.
   } finally {
+    // Counted ONCE, on every path — `walk` is filled in as the walk runs, so a
+    // read that threw part-way still reports the bytes it consumed.
+    coverage.readBytes += walk.readBytes;
     try { closeSync(fd); } catch { /* nothing usable to close */ }
   }
 

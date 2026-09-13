@@ -558,7 +558,17 @@ test('review revisions --json refuses an unknown id rather than emitting an empt
   withProject((cwd) => {
     const { code, out } = run(['review', 'revisions', 'RULE-nope', '--json'], cwd);
     assert.equal(code, 1);
-    assert.match(out, phrase('no item with id "RULE-nope"'));
+    // The sentence used to arrive as bare prose on the JSON channel, which is
+    // `TASK-a-json-run-that-fails-prints-english-on-the-json-channel`: a script
+    // parsing what it asked for got a `SyntaxError` naming `my_context` instead
+    // of the reason. It is the same sentence, now inside the document, and the
+    // subcommand form is named — this is the only test that proves one.
+    const envelope = JSON.parse(out) as {
+      error: { command: string; subcommand: string; message: string };
+    };
+    assert.equal(envelope.error.command, 'review');
+    assert.equal(envelope.error.subcommand, 'revisions');
+    assert.match(envelope.error.message, phrase('no item with id "RULE-nope"'));
     assert.doesNotMatch(out, /"pendingRevisions"/);
   });
 });
