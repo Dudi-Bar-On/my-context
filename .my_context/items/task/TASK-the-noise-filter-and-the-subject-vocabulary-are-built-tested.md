@@ -16,17 +16,17 @@ tags:
   - recall
   - "plan:recall"
   - "seq:7"
-  - "state:todo"
+  - "state:done"
 origin: human
 source_file: "C:/Users/UserC/AppData/Local/Temp/d42body.md"
 source_anchor: null
 source_checksum: 01b1ec698787e1b4
 valid_from: 2026-09-13
 valid_until: null
-checksum: de0bd29e97f40987
+checksum: d5e22a4ad1e6f000
 plan: recall
 seq: "7"
-state: todo
+state: done
 priority: "1"
 ---
 

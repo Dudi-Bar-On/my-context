@@ -62,8 +62,13 @@ export interface MaterialPointer {
   sessionId: string;
   /** The lane, or `null` for the session's own transcript. */
   agentId: string | null;
-  /** The transcript to open. */
+  /**
+   * The transcript to open — the LANE's file when `agentId` is set, never the
+   * session's. `read-model-retrieval.ts` · `TranscriptFiles` carries the
+   * measurement behind that sentence being written down.
+   */
   file: string;
+  /** 0-based, or NEGATIVE when the caller holds a byte offset and no ordinal. */
   recordIndex: number;
   byteOffset: number;
   /** `said` or `deed`, as `retrieval/noise.ts` sorted it. */
@@ -95,6 +100,19 @@ export interface MissionRequest {
   pointers: MaterialPointer[];
   /** Anchor ids the owner chose, which sharpen the search — his ruling. */
   anchors?: string[];
+  /**
+   * **How many anchors were in scope, when `anchors` is only the newest of
+   * them** — `plan:recall seq:7`.
+   *
+   * A brief is bounded (`POINTER_CAP`) and this workspace holds 697 anchors
+   * measured 2026-09-13, so `list-anchors` carries a WINDOW. A window that does
+   * not say it is one reads as the whole set, and a reader who does not find
+   * his fixed point concludes it was never marked —
+   * `INV-nothing-is-dropped-silently`, in the form this feature can break it.
+   *
+   * Omitted, or equal to `anchors.length`, means the list IS the whole set.
+   */
+  anchorsInScope?: number;
   /** The documents whose vocabulary named the subject. */
   documents?: string[];
   scope?: { sessionId?: string | null; from?: string | null; to?: string | null };
@@ -199,7 +217,14 @@ export function missionText(request: MissionRequest): string {
       String(index + 1),
       pointer.sessionId,
       pointer.agentId ?? '—',
-      String(pointer.recordIndex),
+      // **A negative ordinal means the caller does not know it**, and the dash
+      // says so rather than printing `-1` as though it were a position. §7's
+      // anchors are the case: an anchor stores a BYTE OFFSET and no record
+      // index, so the seek target is exact and the ordinal was never recorded.
+      // Printing `-1` would be a citation to a record that cannot exist, which
+      // is worse than an absent one — `INV-nothing-is-dropped-silently` cuts
+      // both ways, and a fabricated field is a drop wearing a value.
+      pointer.recordIndex < 0 ? '—' : String(pointer.recordIndex),
       String(pointer.byteOffset),
       pointer.stance ?? '—',
       pointer.tool ?? '—',
@@ -219,6 +244,17 @@ export function missionText(request: MissionRequest): string {
       + 'looking for — start from them.',
     );
     out.push('');
+    const carried = (request.anchors ?? []).length;
+    const inScope = request.anchorsInScope ?? carried;
+    if (inScope > carried) {
+      out.push(
+        `**These are the ${carried} most recent of ${inScope} in scope.** A brief is bounded, so `
+        + 'this is a window rather than the whole set — if what you are looking for is not here, '
+        + 'narrow the scope by session or by date and ask again rather than concluding it was '
+        + 'never marked.',
+      );
+      out.push('');
+    }
     for (const anchor of request.anchors ?? []) out.push(`- \`${anchor}\``);
     out.push('');
   }

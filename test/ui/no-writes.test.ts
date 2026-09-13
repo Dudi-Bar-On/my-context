@@ -1882,6 +1882,29 @@ test('no star form anywhere in the reachable graph', () => {
 const DYNAMIC_EDGES: Record<string, string> = {
   'src/core/session-summary.ts': 'src/core/conversation-index.ts',
   'src/ui/execute-catalogue.ts': 'src/ui/public/lib/palette-defs.js',
+  // ── THE THIRD ARRIVED ON 2026-09-13, AND ALSO AS A FAILURE ──────────────
+  //
+  // `src/core/retrieval/subjects.ts:90` reaches the vendored markdown tokeniser
+  // through a URL computed from `import.meta.url`, which is the bridge
+  // `cli/commands/statusline-powerline.ts` already builds to `viewmodel.js`:
+  // `src/ui/public/lib/vendor/` is a browser asset directory with no type
+  // declarations, and a computed URL is what lets a typed module import one
+  // without inventing a declaration file. It became part of this graph the
+  // moment `plan:recall seq:7` wired §5's subject vocabulary into
+  // `read-model-retrieval.ts` — Task 7 had been built and imported by nothing
+  // but its own test for two days — and this assertion caught it on the first
+  // run, exactly as it caught the second one.
+  //
+  // **What it loads is a browser asset, and the test that holds it is
+  // `test/core/subjects.test.ts`.** The module itself refuses to trust the
+  // import: `loadMarkdown` checks the default export is callable, constructs
+  // it, and PARSES A PROBE, so a file that has been moved or replaced by
+  // something that is no longer a tokeniser answers `null` — and then
+  // `readVocabulary` returns an empty vocabulary carrying a note saying why,
+  // rather than falling back to a regex that misses 44% of inline code. There
+  // is no write API anywhere down this edge: the vendor file is a parser, and
+  // `subjects.ts` binds `readFileSync` and nothing else.
+  'src/core/retrieval/subjects.ts': 'src/ui/public/lib/vendor/markdown-it.esm.min.js',
 };
 
 test('no dynamic escape hatch anywhere in the reachable graph', () => {

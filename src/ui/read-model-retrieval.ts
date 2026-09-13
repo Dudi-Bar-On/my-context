@@ -56,15 +56,20 @@
  * retrieval result, being a model's account of what was once said, is the most
  * likely document in this product to carry one back.
  */
-import { existsSync, readFileSync } from 'node:fs';
+import { existsSync, readdirSync, readFileSync, type Dirent } from 'node:fs';
 import path from 'node:path';
 
 import { RETRIEVAL_DIR } from '../core/retrieval/mission.ts';
 import { missionText, type MaterialPointer, type MissionRequest, type RetrievalMode }
   from '../core/retrieval/mission.ts';
 import { queryFromPassage } from '../core/retrieval/from-selection.ts';
-import { ConversationIndex } from '../core/conversation-index.ts';
+import { ConversationIndex, iterateTranscript, type AnchorRow }
+  from '../core/conversation-index.ts';
 import { searchArchive } from '../core/conversation-search.ts';
+import { removeNoise, type NoiseReport } from '../core/retrieval/noise.ts';
+import {
+  matchSubjects, readVocabulary, type Depth, type Subject, type Vocabulary,
+} from '../core/retrieval/subjects.ts';
 import {
   checkCitations, listResults, readResult, resultContract, resultPathFor, validateResult,
   type AgeReport, type Claim, type ResultSummary, type RetrievalResult,
@@ -287,6 +292,24 @@ export interface MissionComposeBody {
   /** Where the subagent would be told to write. */
   resultPath: string;
   id: string;
+  /**
+   * **How many points the brief names, and what the noise filter took out** —
+   * `plan:recall seq:7`.
+   *
+   * Reported rather than only done. §6's removal is a BEHAVIOUR CHANGE to what
+   * a brief carries, and a filter whose effect is invisible is one nobody can
+   * tell from a filter that is not running — which is exactly the state Task 8
+   * spent two days in. `removed` accounts for every point that was found and
+   * is not named: `points + work + tool + repeat + empty` equals `seen`.
+   */
+  points: number;
+  noise: NoiseReport['removed'] & { seen: number };
+  /** How many fixed points the brief CARRIES. Zero is an answer, not a failure. */
+  anchors: number;
+  /** How many were in scope before the cap — see `MissionRequest.anchorsInScope`. */
+  anchorsInScope: number;
+  /** What `list-subjects` read out of the documents. `null` for the other three modes. */
+  subjects: SubjectPass | null;
 }
 
 /** The scope a mission request asked for, normalised. */
@@ -335,64 +358,507 @@ const POINTER_CAP = 60;
  * name simply contributes no points here.
  */
 function pointersFor(
-  ws: Workspace,
+  index: ConversationIndex,
+  files: TranscriptFiles,
   names: readonly string[],
   scope: { sessionId: string | null; from: string | null; to: string | null },
 ): MaterialPointer[] {
   if (names.length === 0) return [];
+  const seen = new Set<string>();
+  const out: MaterialPointer[] = [];
+  for (const name of names) {
+    if (out.length >= POINTER_CAP) break;
+    const found = searchArchive(index, name, {
+      sessionId: scope.sessionId ?? undefined,
+      limit: POINTER_CAP,
+    });
+    for (const hit of found.hits) {
+      if (out.length >= POINTER_CAP) break;
+      // Two names matching one turn is one point, not two.
+      const key = `${hit.sessionId}\u0000${hit.agentId ?? ''}\u0000${hit.byteOffset}`;
+      if (seen.has(key)) continue;
+      // The date scope, applied here because `matchProse` does not take one:
+      // a turn with no stamp is KEPT rather than dropped, since "undated" is
+      // not "outside the range" and dropping it would lose it silently.
+      if (hit.at !== null) {
+        const day = hit.at.slice(0, 10);
+        if (scope.from !== null && day < scope.from) continue;
+        if (scope.to !== null && day > scope.to) continue;
+      }
+      const file = files.of(hit.sessionId, hit.agentId);
+      if (file === null) continue;
+      seen.add(key);
+      out.push({
+        sessionId: hit.sessionId,
+        agentId: hit.agentId,
+        file,
+        recordIndex: hit.recordIndex,
+        byteOffset: hit.byteOffset,
+        stance: hit.kind,
+        tool: null,
+        at: hit.at,
+      });
+    }
+  }
+  // Chronological, because the mission asks for a chronological account and
+  // a table in score order would be asking the subagent to sort it.
+  out.sort((a, b) => (a.at ?? '').localeCompare(b.at ?? '') || a.byteOffset - b.byteOffset);
+  return out;
+}
+
+/**
+ * **Which transcript a hit is IN — and the bug that made 58 of 60 rows point
+ * nowhere.**
+ *
+ * A `ProseHit` carries a session id AND a lane id, and the two name DIFFERENT
+ * FILES: a lane's turns live in `subagents/<agentId>.jsonl`, not in the
+ * session's own transcript. Until `plan:recall seq:7` this resolved the file
+ * from the session id alone, so every lane hit was handed the SESSION's
+ * transcript with the LANE's byte offset — an offset into the wrong file.
+ *
+ * It is not an edge: measured on this workspace 2026-09-13, a `from-selection`
+ * compose produced 60 pointers of which 58 WERE LANE HITS, and reading the
+ * session file at one of their offsets yields a different record entirely.
+ * `conversation-search.ts` · `sourcesOf` already carries the reason the archive
+ * is mostly lanes — 298 of them against 2 sessions — so "most rows" was always
+ * the expected case rather than the rare one.
+ *
+ * Keyed by session AND lane and memoised, because a compose asks for the same
+ * handful of lanes dozens of times and each miss is a query.
+ */
+class TranscriptFiles {
+  readonly #index: ConversationIndex;
+  readonly #byKey = new Map<string, string | null>();
+
+  constructor(index: ConversationIndex) { this.#index = index; }
+
+  of(sessionId: string, agentId: string | null): string | null {
+    const key = `${sessionId}\u0000${agentId ?? ''}`;
+    const already = this.#byKey.get(key);
+    if (already !== undefined) return already;
+    const file = agentId === null
+      ? this.#index.get(sessionId)?.file ?? null
+      : this.#index.getSubagent(agentId)?.file ?? null;
+    this.#byKey.set(key, file);
+    return file;
+  }
+}
+
+/** How far a single record read may reach past its own offset. One chunk is plenty. */
+const RECORD_READ_CAP = 4 * 1024 * 1024;
+
+/**
+ * **The noise filter, applied to the points the mission is about to name** —
+ * Task 8 of the D42 plan, wired 2026-09-13 by `plan:recall seq:7` after being
+ * built on 2026-09-11 and reaching no mission for two days.
+ *
+ * ── WHAT IT ACTUALLY REMOVES HERE, MEASURED BEFORE IT WAS WIRED ────────────
+ *
+ * Two of `removeNoise`'s three rules can never fire on this input, and saying
+ * so is the honest half of wiring it. `conversation-search.ts` · `proseFrom`
+ * indexes a span only when `classifyTurn` calls it a prompt or an answer, and
+ * `noise.ts` · `stanceOf` DERIVES `said` from that same `classifyTurn`. So
+ * every point a search can produce is already `said`: measured over three real
+ * passages on this archive the stance histogram was 60/60, 25/25 and 14/14
+ * `said`, and the `work` and `tool` columns came back 0, 0 and 0. The
+ * machinery filter is real and it is already applied one layer down.
+ *
+ * **The repeat rule is the one that fires, and it fires hard.** On the passage
+ * naming `pointersFor` and `searchArchive`, 8 of 25 points — 32% — were turns
+ * every 8-gram of which had already been seen, and all eight were the SAME
+ * injected harness notification at eight different byte offsets. That is §6's
+ * own measurement arriving in production: the top repeated 8-gram in this
+ * corpus is an injected harness note appearing 195 times. Without this, a
+ * subagent opens eight of its twenty-five assigned points and reads the same
+ * boilerplate eight times.
+ *
+ * ── AND IT COULD NOT HAVE BEEN WIRED BEFORE THE FILE FIX ───────────────────
+ *
+ * `removeNoise` takes RECORDS, so the record at each pointer has to be read —
+ * and with `TranscriptFiles`' bug above, 58 of 60 reads landed in the wrong
+ * file and came back empty. Wired onto that, the filter would have dropped
+ * almost every point as `empty` and looked like it was working. The order is
+ * not an accident of this lane's day: it is why the file bug had to be found
+ * first.
+ *
+ * Reading is bounded and cheap — 60 records in 135 ms on this archive, one
+ * buffered chunk per point, measured 2026-09-13 — and it is a READ: a
+ * generator that is broken out of closes its descriptor in `finally`.
+ */
+function withoutNoise(
+  pointers: readonly MaterialPointer[],
+): { pointers: MaterialPointer[]; report: NoiseReport } {
+  const candidates = pointers.map((pointer) => {
+    let record: Record<string, unknown> | null = null;
+    for (const walked of iterateTranscript(pointer.file, {
+      startByte: pointer.byteOffset,
+      startIndex: Math.max(0, pointer.recordIndex),
+      cap: RECORD_READ_CAP,
+    })) {
+      record = walked.record;
+      break;
+    }
+    return { record: record ?? {} };
+  });
+  const report = removeNoise(candidates);
+  const kept = report.kept.map((turn) => {
+    const pointer = pointers[turn.index] as MaterialPointer;
+    // **`text` is carried and `missionText` refuses to print it.** That field
+    // exists for exactly this: `test/core/mission.test.ts` asserts the mission
+    // never contains the raw material, and an assertion over a request whose
+    // pointers carry no text is one no implementation could fail. Filling it
+    // from the caller that really composes missions is what arms it.
+    return { ...pointer, stance: turn.stance, tool: turn.tool, text: turn.text };
+  });
+  return { pointers: kept, report };
+}
+
+/**
+ * **The fixed points, for the mode that asks for them** — `list-anchors`, and
+ * the plain bug behind *684 anchors on the screen and 0 in the brief*.
+ *
+ * The mode declares `needsText: false` and correctly hides the passage box, and
+ * then the composer had exactly one way to find material: names extracted from
+ * a passage. With no passage there are no names, so `queryFromPassage('')`
+ * answered *nothing to match on* and the brief told the subagent to report that
+ * the passage named nothing AND STOP — on a workspace holding 697 anchors
+ * (measured 2026-09-13; 684 when the defect was filed) that
+ * `read-model-conversations.ts` renders on the same screen from the same table.
+ *
+ * It needs no vocabulary and no passage. §7: an anchor carries a session, a
+ * lane, a byte offset and a label, which is a `MaterialPointer` in everything
+ * but name — so the anchors in scope ARE the material, and their labels are
+ * what the archive is being queried with.
+ *
+ * The date scope is applied here for `pointersFor`'s reason, and an anchor with
+ * no stamp is kept rather than dropped.
+ */
+function anchorsFor(
+  index: ConversationIndex,
+  files: TranscriptFiles,
+  scope: { sessionId: string | null; from: string | null; to: string | null },
+): { anchors: AnchorRow[]; pointers: MaterialPointer[]; inScope: number } {
+  const anchors: AnchorRow[] = [];
+  const pointers: MaterialPointer[] = [];
+  // **Counted before the cap, not after.** The bound makes a brief readable;
+  // it must not make the brief claim the archive holds only what it carries.
+  let inScope = 0;
+  for (const row of index.anchorRows(scope.sessionId)) {
+    if (row.at !== '') {
+      const day = row.at.slice(0, 10);
+      if (scope.from !== null && day < scope.from) continue;
+      if (scope.to !== null && day > scope.to) continue;
+    }
+    const file = files.of(row.sessionId, row.agentId);
+    if (file === null) continue;
+    inScope += 1;
+    if (pointers.length >= POINTER_CAP) continue;
+    anchors.push(row);
+    pointers.push({
+      sessionId: row.sessionId,
+      agentId: row.agentId,
+      file,
+      // **An anchor stores WHERE and not WHICH.** §7's fields are a byte offset
+      // and no record ordinal, so -1 says *this is a seek target and the
+      // ordinal is not known* rather than claiming record 0 — which is a real
+      // record, and pointing at it would be a wrong citation rather than an
+      // absent one.
+      recordIndex: -1,
+      byteOffset: row.byteOffset,
+      stance: row.kind,
+      tool: null,
+      at: row.at === '' ? null : row.at,
+    });
+  }
+  pointers.sort((a, b) => (a.at ?? '').localeCompare(b.at ?? '') || a.byteOffset - b.byteOffset);
+  return { anchors, pointers, inScope };
+}
+
+/**
+ * **The documents whose vocabulary names this project's subjects** — §5, and
+ * the owner's ruling that the specs, designs, plans and roadmaps a session
+ * references ARE the developer-domain vocabulary, already written down.
+ *
+ * `docs/` under the repository, recursively, markdown only. It is STATED rather
+ * than discovered from the session's own references because a session that
+ * references nothing would then have no vocabulary at all, and *I am lost* is
+ * exactly the state in which a reader cannot tell you what to read.
+ */
+function documentsUnder(repo: string): string[] {
+  const out: string[] = [];
+  const walk = (dir: string): void => {
+    let entries: Dirent[];
+    try { entries = readdirSync(dir, { withFileTypes: true }); } catch { return; }
+    for (const entry of entries) {
+      const here = path.join(dir, entry.name);
+      if (entry.isDirectory()) walk(here);
+      else if (entry.name.endsWith('.md')) out.push(here);
+    }
+  };
+  walk(path.join(repo, 'docs'));
+  out.sort();
+  return out;
+}
+
+/**
+ * **How deep to read them. His ruling, and `shallow` is the default BY
+ * MEASUREMENT.**
+ *
+ * *"how deep to go and how much effort to put on it may be a selectable option
+ * that the user could choose from."* `subjects.ts` implements both depths and
+ * `deep` is a strict superset, so the knob never loses a name — but the two are
+ * not interchangeable as a SUBJECT LIST, and the measurement is one-sided.
+ *
+ * Measured 2026-09-13 over this repository's 153 documents against the 400
+ * newest prose spans in this archive:
+ *
+ *   - `shallow` (titles and headings): 1,732 terms, 55 subjects matched, and
+ *     the list reads `Doctor`, `Bytes`, `MINOR`, `Tier`, `Hebrew`, `Ledger`,
+ *     `No-writes`, `Rulings`, `Packs` — this project's own subjects.
+ *   - `deep` (every inline-code span too): 13,355 terms, 2,468 subjects, and
+ *     ranked by hits the list reads `and`, `test`, `file`, `WITH`, `for`,
+ *     `---`. Inline code in this corpus is very often a single ordinary word,
+ *     so a frequency ranking over it measures COMMONNESS and not subject —
+ *     D33's failure mode (containment measured length, not subject) in a new
+ *     dress.
+ *
+ * So the default is `shallow` and `deep` stays reachable through the request. A
+ * narrowing heuristic that rescued `deep` — "only names that look like
+ * identifiers" — was written, measured (it returns `src/cli`, `index.ts`,
+ * `config.ts`: the files touched, not the subjects worked on) and DELIBERATELY
+ * NOT SHIPPED: it is a threshold with no derivation behind it, which is what
+ * `core/retire.ts` refuses on the record.
+ */
+const DEFAULT_DEPTH: Depth = 'shallow';
+
+/** How many spans one `list-subjects` pass reads. See `proseSpans` for why bounded. */
+const SUBJECT_SPANS = 400;
+
+/** How many subjects a brief names, and how many of them are searched for material. */
+const SUBJECTS_NAMED = 25;
+const SUBJECTS_SEARCHED = 8;
+
+/** What one `list-subjects` pass found, and everything it had to say about how. */
+interface SubjectPass {
+  subjects: Subject[];
+  /** The subject names, which are what the archive is then queried with. */
+  terms: string[];
+  /** The documents those names came from, repository-relative. */
+  documents: string[];
+  /** Spans no document named. The leftovers are themselves a signal. */
+  unnamed: number;
+  /** How many spans were read at all. */
+  spans: number;
+  /** How many documents the vocabulary was compiled from. */
+  documentsRead: number;
+  /** False when the vendored tokeniser did not load. Then `subjects` is empty. */
+  derived: boolean;
+  /** Why it is empty, when it is. */
+  note: string | null;
+}
+
+/**
+ * **What was being worked on — read out of the documents, not clustered** —
+ * `list-subjects`, §5, Task 7, wired 2026-09-13.
+ *
+ * The vocabulary is compiled from the documents; the archive's own prose is
+ * matched against it; what matched, ranked, is the answer to *I am lost*. What
+ * did NOT match is counted too and is not decoration:
+ * `INV-nothing-is-dropped-silently`, and here the leftovers are the design's
+ * own signal — work happening that no document names.
+ *
+ * When the vendored tokeniser does not load, `readVocabulary` says so through
+ * `derived: false` and a note, and this passes that note straight through
+ * rather than answering with an empty list that reads like *these documents
+ * name nothing*.
+ */
+function subjectsFor(
+  index: ConversationIndex,
+  repo: string,
+  depth: Depth,
+  scope: { sessionId: string | null; from: string | null; to: string | null },
+): SubjectPass {
+  const vocabulary: Vocabulary = readVocabulary(documentsUnder(repo), depth);
+  const spans = index.proseSpans({ sessionId: scope.sessionId }, SUBJECT_SPANS)
+    .filter((span) => {
+      if (span.at === null) return true;
+      const day = span.at.slice(0, 10);
+      if (scope.from !== null && day < scope.from) return false;
+      if (scope.to !== null && day > scope.to) return false;
+      return true;
+    });
+  const report = matchSubjects(vocabulary, spans);
+  const subjects = report.matched.slice(0, SUBJECTS_NAMED).map((match) => match.subject);
+  return {
+    subjects,
+    terms: subjects.map((subject) => subject.name),
+    documents: [...new Set(subjects.map(
+      (subject) => path.relative(repo, subject.file).split(path.sep).join('/'),
+    ))],
+    unnamed: report.unnamed.length,
+    spans: report.spans,
+    documentsRead: vocabulary.documents,
+    derived: vocabulary.derived,
+    note: vocabulary.note,
+  };
+}
+
+
+/** Everything one compose found, before any of it is rendered. */
+interface ComposedMaterial {
+  query: { names: string[]; terms: string[]; matchable: boolean; note: string | null };
+  pointers: MaterialPointer[];
+  noise: NoiseReport['removed'] & { seen: number };
+  /** Anchor ids, for the mode that is about them. */
+  anchors: string[];
+  /** How many anchors were in scope before the cap. */
+  anchorsInScope: number;
+  /** Repository-relative document paths whose vocabulary named the subjects. */
+  documents: string[];
+  subjects: SubjectPass | null;
+}
+
+/**
+ * **Where the four modes stop being the same question** — `plan:recall seq:7`.
+ *
+ * Until 2026-09-13 every mode took one path: names out of the passage, points
+ * out of a search for those names. For the two modes that declare
+ * `needsText: false` there IS no passage, so that path produced no names, no
+ * points, and a brief instructing the subagent to report that the passage named
+ * nothing and stop. Two of four modes could not succeed, and the screen showed
+ * it: 697 anchors rendered on one half of the page and 0 in the brief composed
+ * on the other.
+ *
+ * So the material each mode is about is found where that mode's own material
+ * lives — anchors in the anchors table, subjects in the documents — and only
+ * then do they converge again on the one thing they share: the noise filter.
+ *
+ * ── AND THE VOCABULARY REACHES THE OTHER TWO MODES TOO ────────────────────
+ *
+ * `queryFromPassage(text, vocabulary)` has taken a vocabulary since Task 6 and
+ * every caller passed none, which is why its own refusal note ends *"and no
+ * term from the vocabulary it was given"* — a clause that could not become true.
+ * A passage that names no identifier but talks about the doctor gate in words
+ * was unmatchable; with §5's vocabulary it is matchable on a term. That is the
+ * third seam Task 7 left, and it costs one argument.
+ *
+ * **It is a READ.** `openReadOnlyChecked` cannot build the index it reads, so
+ * an archive nobody has scanned yields no points and SAYS so through an empty
+ * table rather than being quietly filled in.
+ */
+function composeMaterial(
+  ws: Workspace,
+  repo: string,
+  mode: RetrievalMode,
+  passage: string,
+  depth: Depth,
+  scope: { sessionId: string | null; from: string | null; to: string | null },
+): ComposedMaterial {
+  const empty: ComposedMaterial = {
+    query: queryFromPassage(passage),
+    pointers: [],
+    noise: { work: 0, tool: 0, repeat: 0, empty: 0, seen: 0 },
+    anchors: [],
+    anchorsInScope: 0,
+    documents: [],
+    subjects: null,
+  };
+
   let index: ConversationIndex;
   try {
     index = ConversationIndex.openReadOnlyChecked(ws.dbPath);
   } catch {
     // An archive nobody has scanned. The mission then carries no points, which
     // is honest: there is nothing to open.
-    return [];
+    return empty;
   }
+
   try {
-    const seen = new Set<string>();
-    const out: MaterialPointer[] = [];
-    const files = new Map<string, string | null>();
-    for (const name of names) {
-      if (out.length >= POINTER_CAP) break;
-      const found = searchArchive(index, name, {
-        sessionId: scope.sessionId ?? undefined,
-        limit: POINTER_CAP,
-      });
-      for (const hit of found.hits) {
-        if (out.length >= POINTER_CAP) break;
-        // Two names matching one turn is one point, not two.
-        const key = `${hit.sessionId}\u0000${hit.agentId ?? ''}\u0000${hit.byteOffset}`;
-        if (seen.has(key)) continue;
-        // The date scope, applied here because `matchProse` does not take one:
-        // a turn with no stamp is KEPT rather than dropped, since "undated" is
-        // not "outside the range" and dropping it would lose it silently.
-        if (hit.at !== null) {
-          const day = hit.at.slice(0, 10);
-          if (scope.from !== null && day < scope.from) continue;
-          if (scope.to !== null && day > scope.to) continue;
-        }
-        if (!files.has(hit.sessionId)) {
-          files.set(hit.sessionId, index.get(hit.sessionId)?.file ?? null);
-        }
-        const file = files.get(hit.sessionId) ?? null;
-        if (file === null) continue;
-        seen.add(key);
-        out.push({
-          sessionId: hit.sessionId,
-          agentId: hit.agentId,
-          file,
-          recordIndex: hit.recordIndex,
-          byteOffset: hit.byteOffset,
-          stance: hit.kind,
-          tool: null,
-          at: hit.at,
-        });
-      }
+    const files = new TranscriptFiles(index);
+
+    if (mode === 'list-anchors') {
+      const found = anchorsFor(index, files, scope);
+      const filtered = withoutNoise(found.pointers);
+      return {
+        // The labels ARE what the archive is being queried with here, so the
+        // brief's "what you are looking for" says the fixed points' own names
+        // rather than falling through to *nothing was matched on*.
+        query: found.anchors.length === 0
+          ? {
+            names: [], terms: [], matchable: false,
+            note:
+              'my_context: this workspace holds no anchors in the scope asked for, so there '
+              + 'are no fixed points to return. It is an answer about the archive, not a '
+              + 'refusal to search: mark one while reading a document and ask again.',
+          }
+          : {
+            names: [], terms: [...new Set(found.anchors.map((row) => row.label))],
+            matchable: true, note: null,
+          },
+        pointers: filtered.pointers,
+        noise: { ...filtered.report.removed, seen: filtered.report.seen },
+        anchors: found.anchors.map((row) => row.id),
+        anchorsInScope: found.inScope,
+        documents: [],
+        subjects: null,
+      };
     }
-    // Chronological, because the mission asks for a chronological account and
-    // a table in score order would be asking the subagent to sort it.
-    out.sort((a, b) => (a.at ?? '').localeCompare(b.at ?? '') || a.byteOffset - b.byteOffset);
-    return out;
+
+    if (mode === 'list-subjects') {
+      const pass = subjectsFor(index, repo, depth, scope);
+      const raw = pointersFor(index, files, pass.terms.slice(0, SUBJECTS_SEARCHED), scope);
+      const filtered = withoutNoise(raw);
+      return {
+        query: pass.terms.length === 0
+          ? {
+            names: [], terms: [], matchable: false,
+            note: pass.note
+              ?? 'my_context: the documents under `docs/` name nothing this archive also '
+              + 'mentions in the scope asked for, so there is no subject list to return. '
+              + 'Widen the scope, or ask with a passage.',
+          }
+          : { names: [], terms: pass.terms, matchable: true, note: null },
+        pointers: filtered.pointers,
+        noise: { ...filtered.report.removed, seen: filtered.report.seen },
+        anchors: [],
+        anchorsInScope: 0,
+        documents: pass.documents,
+        subjects: pass,
+      };
+    }
+
+    // `from-selection` and `free-text`: the passage is the question, and §5's
+    // vocabulary is now offered to it as terms.
+    const vocabulary: Vocabulary = readVocabulary(documentsUnder(repo), depth);
+    const query = queryFromPassage(passage, vocabulary.terms);
+    // **NAMES FIRST, THEN THE VOCABULARY TERMS — and the terms are searched.**
+    //
+    // Caught by measurement rather than by a test, 2026-09-13, and it was the
+    // defect this whole item is about reappearing inside its own repair: with
+    // the vocabulary offered to `queryFromPassage` but only `query.names` handed
+    // on, a passage naming no identifier became MATCHABLE and still produced
+    // zero points. Measured on three such passages ("we talked about the doctor
+    // notices and the ledger…"): matchable went false → true with terms
+    // `Doctor`, `Ledger`, `Packs`, and the material table stayed EMPTY. A brief
+    // that says what it is looking for and then tells a subagent to open
+    // nothing reads as working and answers nothing.
+    //
+    // §3's 68%-against-32% measurement is not an argument against searching
+    // these: it compared item-id names against a WORD BAG, and a vocabulary term
+    // is neither — it is a name a document gave, matched exactly. Names still go
+    // first because `pointersFor` fills up to `POINTER_CAP` in order, so the
+    // better signal is never crowded out by the weaker one.
+    const raw = pointersFor(index, files, [...query.names, ...query.terms], scope);
+    const filtered = withoutNoise(raw);
+    return {
+      query,
+      pointers: filtered.pointers,
+      noise: { ...filtered.report.removed, seen: filtered.report.seen },
+      anchors: [],
+      anchorsInScope: 0,
+      documents: [],
+      subjects: null,
+    };
   } finally {
     index.close();
   }
@@ -443,9 +909,14 @@ export function apiRetrievalMission(ws: Workspace, raw: unknown): JsonResult {
   const repo = repoRootOf(ws);
   const at = new Date().toISOString();
   const id = `recall-${at.replace(/[:.]/g, '-')}`;
-  const query = queryFromPassage(passage);
+  const scoped = request0Scope(input);
+  const askedDepth = input['depth'];
+  const depth: Depth = askedDepth === 'deep' || askedDepth === 'shallow'
+    ? askedDepth : DEFAULT_DEPTH;
 
-  const pointers = pointersFor(ws, query.names, request0Scope(input));
+  const composed = composeMaterial(ws, repo, mode as RetrievalMode, passage, depth, scoped);
+  const { query, pointers, noise, anchors, anchorsInScope, documents, subjects } = composed;
+
   const request: MissionRequest = {
     id,
     mode: mode as RetrievalMode,
@@ -456,6 +927,11 @@ export function apiRetrievalMission(ws: Workspace, raw: unknown): JsonResult {
     pointers,
     resultShape: resultContract(),
   };
+  if (anchors.length > 0) {
+    request.anchors = anchors;
+    request.anchorsInScope = anchorsInScope;
+  }
+  if (documents.length > 0) request.documents = documents;
   const scope = input['scope'];
   if (scope !== null && typeof scope === 'object' && !Array.isArray(scope)) {
     const asked = scope as Record<string, unknown>;
@@ -474,6 +950,11 @@ export function apiRetrievalMission(ws: Workspace, raw: unknown): JsonResult {
     },
     resultPath: request.resultPath,
     id,
+    points: pointers.length,
+    noise,
+    anchors: anchors.length,
+    anchorsInScope,
+    subjects,
   };
   return { status: 200, body };
 }

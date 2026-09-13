@@ -2533,6 +2533,58 @@ export class ConversationIndex {
     }));
   }
 
+  /**
+   * **Prose spans in scope, newest first, WITHOUT a query** — `plan:recall
+   * seq:7`.
+   *
+   * `matchProse` answers *which spans contain this string*, and there is one
+   * question it therefore cannot be asked: *what was being worked on at all*.
+   * That is `list-subjects`' whole question, and §5's answer to it is to match
+   * the session text against the vocabulary the project's own documents carry
+   * — one automaton pass per span, in `retrieval/subjects.ts` ·
+   * `matchSubjects`. A pass needs the spans, and an FTS `MATCH` cannot return
+   * them because there is nothing yet to match on.
+   *
+   * **`ORDER BY at DESC` and a limit, deliberately.** The question is what has
+   * been worked on lately, so a bounded newest-first window is the answer's own
+   * shape rather than a truncation of a larger one — and the alternative, a
+   * whole-archive scan, is 103 MB of text through an Aho–Corasick pass on every
+   * compose. Spans that carried no timestamp sort last rather than being
+   * dropped (`INV-nothing-is-dropped-silently`); `at` is nullable and SQLite
+   * sorts NULL lowest, which under DESC is exactly last.
+   *
+   * It READS. Nothing here writes, which is what lets `src/ui/` bind it.
+   */
+  proseSpans(
+    scope: { sessionId?: string | null; agentId?: string | null } = {}, limit = 400,
+  ): ProseSpan[] {
+    const where: string[] = [];
+    const params: (string | number)[] = [];
+    if (scope.sessionId !== undefined && scope.sessionId !== null) {
+      where.push('session_id = ?');
+      params.push(scope.sessionId);
+    }
+    if (scope.agentId !== undefined) {
+      if (scope.agentId === null) where.push('agent_id IS NULL');
+      else { where.push('agent_id = ?'); params.push(scope.agentId); }
+    }
+    const rows = this.#db.prepare(
+      'SELECT source_key, session_id, agent_id, record_index, byte_offset, kind, at, text '
+      + `FROM conversation_prose${where.length === 0 ? '' : ` WHERE ${where.join(' AND ')}`} `
+      + 'ORDER BY at DESC, session_id ASC, record_index DESC LIMIT ?',
+    ).all(...params, limit) as Record<string, unknown>[];
+    return rows.map((row) => ({
+      sourceKey: String(row.source_key),
+      sessionId: String(row.session_id),
+      agentId: row.agent_id === null ? null : String(row.agent_id),
+      recordIndex: Number(row.record_index),
+      byteOffset: Number(row.byte_offset),
+      kind: String(row.kind) === 'prompt' ? 'prompt' : 'answer',
+      at: row.at === null ? null : String(row.at),
+      text: String(row.text),
+    }));
+  }
+
   /** What each transcript has already contributed, keyed by its source key. */
   proseSources(): Map<string, ProseSourceRow> {
     const rows = this.#db.prepare('SELECT * FROM prose_sources').all() as
