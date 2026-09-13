@@ -18,17 +18,17 @@ tags:
   - vacuous
   - "plan:gates"
   - "seq:1"
-  - "state:todo"
+  - "state:done"
 origin: human
 source_file: null
 source_anchor: null
 source_checksum: null
 valid_from: 2026-09-13
 valid_until: null
-checksum: 885a13dc67543d63
+checksum: 6e51a163245d58e1
 plan: gates
 seq: "1"
-state: todo
+state: done
 priority: "1"
 ---
 

@@ -43,7 +43,7 @@ import { auditMutation } from '../core/persist.ts';
 import type { MutationContext } from '../core/mutate.ts';
 import type { Item } from '../core/types.ts';
 import { claimKey } from './claim.ts';
-import { recordDecline } from './declined.ts';
+import { declinedPath, recordDecline } from './declined.ts';
 
 /** What a decline did, for the surface that has to say it. */
 export interface DeclineResult {
@@ -100,6 +100,12 @@ export function declineRefusal(item: Item): string | null {
  * whole of §8 is that second failure**, so the write that prevents it goes
  * first.
  *
+ * **And the write is CHECKED, which is what makes the order worth anything.**
+ * Ordering only helps against a crash; against a ledger that cannot be written
+ * at all, a delete that runs regardless reaches the same second failure by the
+ * ordinary path. `recordDecline` returns whether it landed and this function
+ * throws when it did not, deleting nothing.
+ *
  * `why` is the owner's own words and is stored for PEOPLE. Nothing hands it to
  * the pass — `declined.ts` says so in its header, and the reason is that the
  * ledger is untrusted input the pass reads on every run.
@@ -118,7 +124,32 @@ export function declineDraft(
   // and a second derivation is a second answer.
   const target = item.scope.length > 0 ? (item.scope[0] ?? null) : null;
   const claim = claimKey(item.title, item.body, target);
-  recordDecline(ctx.root, { claim, target, at: now.toISOString(), why });
+  // **THE DELETE IS CONDITIONAL ON THIS WRITE.** The header above already
+  // argued the order; `plan:unread seq:1` is the half the order could not buy
+  // on its own. Writing first only helps if a FAILED write stops the delete,
+  // and `recordDecline` used to return `void` - so the unwritable-ledger case
+  // took exactly the branch the header calls "the whole of §8": the draft
+  // gone, the decline unrecorded, the pass free to propose it forever.
+  //
+  // Refusal rather than disclosure, and this is the one place in today's six
+  // where that is right. `KNOWN-an-unparseable-hook-payload-injects-plausibly-
+  // and-discloses` says keep failing open and disclose - but failing open
+  // means letting the WORK continue past a failed OBSERVATION. Here the failed
+  // write is not an observation of the act; it IS the act. §8's durable record
+  // is the decline, not the deletion. So nothing is deleted, the draft is
+  // still on the queue, and the owner declines it again - the survivable
+  // direction the header names, now actually reachable.
+  const recorded = recordDecline(ctx.root, { claim, target, at: now.toISOString(), why });
+  if (!recorded.written) {
+    throw new Error(
+      `my_context: ${item.id} is NOT declined and its draft is NOT deleted. The decline could ` +
+      `not be written to ${declinedPath(ctx.root)} (${recorded.error}), and deleting the draft ` +
+      `on top of that would destroy the decision with no record that it was ever taken — the ` +
+      `review pass would propose the same claim again with nothing to stop it. The draft is ` +
+      `untouched and still on the queue. Fix the underlying write (permissions, disk space) ` +
+      `and run the same command again.`,
+    );
+  }
 
   rmSync(path.join(ctx.root, ...item.filePath.split('/')), { force: true });
   ctx.store.deleteById(item.id);

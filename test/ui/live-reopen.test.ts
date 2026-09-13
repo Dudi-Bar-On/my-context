@@ -67,7 +67,17 @@ test('the look tick reopens the STREAM, and the only reloads on the page are a r
     + '(`TASK-a-refresh-keeps-the-reader-s-place-or-it-asks`)');
   assertMatches(app, /refresh\.onclick = \(\) => \{ location\.reload\(\); \};/,
     'the disconnected banner\'s refresh is one of them, and it is a button');
-  assertMatches(app, /langButton\.onclick = [\s\S]{0,120}?location\.reload\(\);/,
+  // **Matched by CONTAINMENT, not by proximity.** This was
+  // `/langButton\.onclick = [\s\S]{0,120}?location\.reload\(\);/` and it went
+  // red on `plan:swallow seq:2` -- which guarded the `localStorage.setItem`
+  // inside this handler and pushed the reload past the 120-character window.
+  // The property was untouched; the BUDGET was the thing that failed, which
+  // is a fixture carrying a proof its subject should. Extracting the handler
+  // and asserting the reload is INSIDE it says the same thing and cannot be
+  // broken by a comment.
+  const langHandler = /langButton\.onclick = \(\) => \{[\s\S]*?\n  \};/.exec(app)?.[0] ?? '';
+  assert.notEqual(langHandler, '', 'the language switch handler is gone');
+  assertMatches(langHandler, /location\.reload\(\);/,
     'the language switch is the other, and it is a button too');
 });
 

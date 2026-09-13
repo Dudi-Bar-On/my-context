@@ -1,5 +1,4 @@
-// @basis TASK-make-the-queue-workable-and-impossible-to-rot-unseen,
-// INV-nothing-is-dropped-silently
+// @basis TASK-make-the-queue-workable-and-impossible-to-rot-unseen, INV-nothing-is-dropped-silently, TASK-declining-a-draft-deletes-it-even-when-the-decline-could-not
 //
 // §8: "A declined draft never governed, so nothing is stranded and no
 // successor is owed. It is deleted." This is the only act in this product that
@@ -14,10 +13,10 @@
 // which is the whole failure §8 exists about.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { existsSync } from 'node:fs';
+import { existsSync, mkdirSync } from 'node:fs';
 import path from 'node:path';
 import { createItem } from '../../src/core/mutate.ts';
-import { alreadyDeclined, readDeclines } from '../../src/review/declined.ts';
+import { alreadyDeclined, declinedPath, readDeclines, recordDecline } from '../../src/review/declined.ts';
 import { declineDraft, declineRefusal } from '../../src/review/decline.ts';
 import { claimKey } from '../../src/review/claim.ts';
 import { reviewQueue } from '../../src/core/select.ts';
@@ -164,6 +163,104 @@ test('a draft with no scope declines against a null target rather than refusing'
       alreadyDeclined(s.root, result.claim, 'src/other.ts'), null,
       'and the same words about a different target are a different claim',
     );
+  } finally {
+    s.dispose();
+  }
+});
+
+
+// ── plan:unread seq:1 — the ledger write is OBSERVED, and the delete waits on it ──
+//
+// The three tests below are one proposition split at the three places it can
+// be broken, because a single end-to-end assertion would stay green if any one
+// of them regressed on its own:
+//
+//   1. `recordDecline` can say it failed at all. It returned `void`, so no
+//      caller could have asked. This is the observation point.
+//   2. `declineDraft` reads that answer and refuses. The write-first ORDER
+//      (asserted above) is worthless without this: a delete that runs anyway
+//      reaches "draft gone, decline unrecorded" by the ordinary path, which
+//      `decline.ts`'s own header calls "the whole of §8".
+//   3. The refusal SAYS the ledger is why, and says the draft survived. A
+//      refusal that does not is one a reader cannot act on.
+//
+// An unwritable ledger is produced by putting a DIRECTORY where the ledger
+// file goes: `mkdirSync` and both `writeFileSync` calls still succeed and only
+// the final `renameSync` fails, so what is exercised is a write that gets all
+// the way to the last step — not a workspace that was never openable.
+
+/** Make `state/review-declined.json` impossible to rename onto. */
+function jamTheLedger(root: string): void {
+  mkdirSync(declinedPath(root), { recursive: true });
+}
+
+test('recordDecline reports a ledger it could not write, rather than returning nothing', () => {
+  const s = sandbox();
+  try {
+    const ok = recordDecline(s.root, { claim: 'a', target: null, at: '2026-01-01T00:00:00.000Z', why: null });
+    assert.equal(ok.written, true, 'the happy path still reports success');
+    assert.equal(ok.error, undefined, 'and carries no error when there was none');
+
+    const s2 = sandbox();
+    try {
+      jamTheLedger(s2.root);
+      const bad = recordDecline(s2.root, { claim: 'b', target: null, at: '2026-01-01T00:00:00.000Z', why: null });
+      assert.equal(bad.written, false, 'a ledger that cannot be written says so');
+      assert.match(
+        String(bad.error), /review-declined\.json/,
+        'and names the path, because "it failed" is not something a reader can fix',
+      );
+      assert.equal(readDeclines(s2.root).length, 0, 'nothing landed, which is the fact being reported');
+    } finally {
+      s2.dispose();
+    }
+  } finally {
+    s.dispose();
+  }
+});
+
+test('an unwritable ledger leaves the draft on disk, in the index and on the queue', () => {
+  const s = sandbox();
+  try {
+    const draft = proposal(s.ctx);
+    const file = path.join(s.root, ...draft.filePath.split('/'));
+    assert.ok(existsSync(file));
+    jamTheLedger(s.root);
+
+    assert.throws(
+      () => declineDraft(s.ctx, draft, 'the gate is deliberately advisory'),
+      /is NOT declined/,
+      'the act refuses rather than proceeding on an unrecorded decision',
+    );
+
+    assert.ok(existsSync(file), 'the draft file survives — deleting it would destroy the decision');
+    assert.ok(s.ctx.store.get(draft.id), 'and it is still in the index, not merely still on disk');
+    assert.equal(
+      reviewQueue(s.ctx.store.all()).length, 1,
+      'so the owner is asked again, which is the cheap failure decline.ts chose',
+    );
+    assert.equal(readDeclines(s.root).length, 0, 'and nothing claims to have been recorded');
+  } finally {
+    s.dispose();
+  }
+});
+
+test('the refusal names the ledger, the error and the fact that nothing was deleted', () => {
+  const s = sandbox();
+  try {
+    const draft = proposal(s.ctx);
+    jamTheLedger(s.root);
+    let message = '';
+    try {
+      declineDraft(s.ctx, draft, null);
+    } catch (err) {
+      message = err instanceof Error ? err.message : String(err);
+    }
+    assert.notEqual(message, '', 'it must throw at all');
+    assert.match(message, /review-declined\.json/, 'the reader is told WHICH write failed');
+    assert.match(message, /EPERM|EACCES|EISDIR|ENOTDIR|EEXIST|ENOENT/, 'and the underlying errno is passed through, not swallowed');
+    assert.match(message, /draft is NOT deleted|draft is untouched/, 'and that the draft survived');
+    assert.match(message, /again/, 'and what to do next — a refusal with no way forward is a dead end');
   } finally {
     s.dispose();
   }

@@ -108,14 +108,41 @@ export function readDeclines(stateRoot: string): Decline[] {
 }
 
 /**
+ * What an append to the decline ledger did.
+ *
+ * Deliberately `AuditWriteResult`'s shape (`core/audit.ts`) rather than a new
+ * one: both answer the same question - did the durable record land? - and a
+ * caller that has learned to read one should not have to learn a second
+ * spelling to read the other.
+ *
+ * It is RETURNED rather than thrown for `recordAudit`'s reason as well: what a
+ * failed write MEANS belongs to the caller, and the callers want different
+ * things. `declineDraft` must refuse to delete the draft; a surface that only
+ * notes a decline may carry on and say so.
+ */
+export interface DeclineWriteResult {
+  written: boolean;
+  /** The failure, when `written` is false. Never swallowed - callers disclose it. */
+  error?: string;
+}
+
+/**
  * Append one decline, evicting the oldest first once `DECLINE_CAP` is reached.
  *
  * Written whole and atomically (temp file, rename) rather than appended: the
  * cap means a write is a rewrite anyway, and a torn append would leave a
  * half-line that `readDeclines` would drop — silently losing a decline the
  * owner made, which is the one record in this subsystem nobody can reconstruct.
+ *
+ * **Whether it landed is RETURNED, and that is the repair of `plan:unread
+ * seq:1`.** This returned `void`, so the one caller that deletes a file on the
+ * strength of this write had no way to ask whether the write happened - and
+ * deleted anyway. The `catch` below is unchanged and still never throws: the
+ * posture stays the project's own KEEP FAILING OPEN, BUT DISCLOSE
+ * (`KNOWN-an-unparseable-hook-payload-injects-plausibly-and-discloses`). What
+ * changed is that the failure now has somewhere to be SEEN.
  */
-export function recordDecline(stateRoot: string, decline: Decline): void {
+export function recordDecline(stateRoot: string, decline: Decline): DeclineWriteResult {
   const kept = [...readDeclines(stateRoot), decline]
     .sort((a, b) => (a.at < b.at ? -1 : a.at > b.at ? 1 : 0))
     .slice(-DECLINE_CAP);
@@ -130,8 +157,10 @@ export function recordDecline(stateRoot: string, decline: Decline): void {
     writeFileSync(path.join(path.dirname(target), '.gitignore'), '*\n', 'utf8');
     writeFileSync(tmp, `${JSON.stringify(kept, null, 2)}\n`, 'utf8');
     renameSync(tmp, target);
-  } catch {
+    return { written: true };
+  } catch (err) {
     try { rmSync(tmp, { force: true }); } catch { /* survivable litter */ }
+    return { written: false, error: err instanceof Error ? err.message : String(err) };
   }
 }
 

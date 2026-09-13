@@ -67,6 +67,10 @@ export function loadErrorNote(errors: LoadError[]): string {
  * symlinked item file or an entire symlinked `items/` subtree. A broken or
  * unreadable symlink is reported as a `LoadError`, never skipped in silence.
  *
+ * So is a DIRECTORY the walk cannot enter — see `reportUnwalkableDir`, which
+ * is the half of that sentence this function did not implement until
+ * `plan:swallow seq:4`.
+ *
  * `visitedRealDirs` is seeded on *every* directory visited, not just
  * symlinked ones: a symlink pointing at an already-walked ORDINARY ancestor
  * (`items/link -> items`) would otherwise not be recognised as a repeat —
@@ -74,6 +78,43 @@ export function loadErrorNote(errors: LoadError[]): string {
  * would be enumerated twice, producing spurious `duplicate id` errors that
  * blame the user for a problem the walker created.
  */
+/**
+ * A directory the walk could not enter, disclosed rather than dropped.
+ *
+ * **`plan:swallow seq:4`.** Both `catch`es in `walk` used to `return out` with
+ * nothing pushed, so denying read on one `items/` subdirectory removed a whole
+ * corpus layer and produced ZERO `LoadError`s — measured, on a real ACL: three
+ * items became one and `errors` stayed `[]`. The function's own docstring said
+ * the walk is "never skipped in silence" and a broken SYMLINK in the same loop
+ * was reported properly, so the doctrine was written down and half implemented.
+ *
+ * **The load still continues.** This is the resolution
+ * `KNOWN-an-unparseable-hook-payload-injects-plausibly-and-discloses` already
+ * settled between `INV-hooks-fail-open` and `INV-nothing-is-dropped-silently`:
+ * KEEP FAILING OPEN, BUT DISCLOSE. An unreadable `items/rule` must not take
+ * the session down; it must not be invisible either. Nothing here throws.
+ *
+ * **`ENOENT` is silent and that is not an exception to the rule.** A directory
+ * that is not there is an ABSENCE, not a failure to read one, and `loadLayer`
+ * walks `.drafts/` unconditionally on every workspace that has never turned
+ * the review loop on — which is every workspace today. Reporting that would
+ * put a load error on the clean path for the whole product, which is how a
+ * disclosure stops being read. The message a reader needs — "there is no
+ * `.drafts/` here" — is not a fault and has no fix.
+ */
+function reportUnwalkableDir(
+  dir: string, root: string, errors: LoadError[], err: unknown,
+): void {
+  if ((err as NodeJS.ErrnoException | null)?.code === 'ENOENT') return;
+  errors.push({
+    file: relPosix(root, dir),
+    message:
+      `directory could not be read: ${err instanceof Error ? err.message : String(err)}. ` +
+      `Every item file beneath it is MISSING from this load — the corpus is short a whole ` +
+      `subtree, not one file.`,
+  });
+}
+
 function walk(
   dir: string, root: string, out: string[], errors: LoadError[],
   visitedRealDirs: Set<string>,
@@ -81,7 +122,8 @@ function walk(
   let real: string;
   try {
     real = realpathSync(dir);
-  } catch {
+  } catch (err) {
+    reportUnwalkableDir(dir, root, errors, err);
     return out;
   }
   if (visitedRealDirs.has(real)) return out;
@@ -90,7 +132,8 @@ function walk(
   let entries;
   try {
     entries = readdirSync(dir, { withFileTypes: true });
-  } catch {
+  } catch (err) {
+    reportUnwalkableDir(dir, root, errors, err);
     return out;
   }
   for (const entry of entries) {

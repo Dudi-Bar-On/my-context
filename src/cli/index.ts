@@ -16,6 +16,7 @@ import {
 } from '../core/validate.ts';
 import type { Observation, Severity } from '../core/types.ts';
 import { isMainEntry } from '../core/paths.ts';
+import { stdoutSink } from './stdout.ts';
 import { pruneSnapshots } from '../core/ledger.ts';
 import {
   largestFullTextBudget, readSnapshot, snapshotBudgetLine, snapshotSizeLine,
@@ -1730,5 +1731,43 @@ registerCommand({
 });
 
 if (isMainEntry(import.meta.filename, process.argv[1])) {
-  process.exitCode = runCli(process.argv.slice(2), process.cwd(), (s) => console.log(s));
+  // **The binary's three observation points, and until `plan:swallow seq:5`
+  // there were none of them.** `runCli` is exported and its callers pass their
+  // own `out`, so what is installed here is installed for the BINARY only —
+  // nothing below changes what a test or the MCP server sees.
+  //
+  // A rejected promise nobody awaited and a throw that escaped every `catch`
+  // both used to reach Node's default, which prints a stack and exits 1 — or,
+  // for a rejection on older defaults, printed a warning and exited 0. Neither
+  // says which command was running, and the second is the same defect as the
+  // stdout one: the caller is told the run succeeded. Both are answered here
+  // in one sentence a reader can act on, and both keep a NON-ZERO exit.
+  const failLoudly = (kind: string) => (err: unknown): never => {
+    process.stderr.write(
+      `my_context: the command did not finish — ${kind} (${err instanceof Error ? err.stack ?? err.message : String(err)}). ` +
+      `Any output above is INCOMPLETE.
+`,
+    );
+    process.exit(70);
+  };
+  process.on('unhandledRejection', failLoudly('an unhandled promise rejection'));
+  process.on('uncaughtException', failLoudly('an uncaught exception'));
+
+  const sink = stdoutSink();
+  const commandExit = runCli(process.argv.slice(2), process.cwd(), sink.out);
+  // **Assigned SYNCHRONOUSLY, exactly as it was before `plan:swallow seq:5`.**
+  // `ui --nonce` returns 0 from `runCli` and then sets `process.exitCode = 1`
+  // itself from an async path, because its probe outlives the call. Moving
+  // this assignment into the `.then` below overwrote that 1 with a 0 and turned
+  // three `test/cli/ui-nonce.test.ts` cases red — a repair for one silent
+  // failure manufacturing another, in the same field.
+  process.exitCode = commandExit;
+  // The stdout verdict arrives later and may only RAISE. A pipe reports its
+  // failure in a write callback, so asking before the flush would answer
+  // before the answer exists; and when the flush is clean `exitCode` equals
+  // `commandExit`, so nothing here touches a code another path has set.
+  void sink.settle(commandExit).then(({ exitCode, note }) => {
+    if (note !== '') process.stderr.write(note);
+    if (exitCode !== commandExit) process.exitCode = exitCode;
+  });
 }

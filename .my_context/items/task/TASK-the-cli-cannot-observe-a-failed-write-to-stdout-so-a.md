@@ -17,17 +17,17 @@ tags:
   - stdout
   - "plan:swallow"
   - "seq:5"
-  - "state:todo"
+  - "state:done"
 origin: human
 source_file: null
 source_anchor: null
 source_checksum: null
 valid_from: 2026-09-13
 valid_until: null
-checksum: c9a586da05dca23c
+checksum: b6122292f2e59b05
 plan: swallow
 seq: "5"
-state: todo
+state: done
 priority: "1"
 ---
 

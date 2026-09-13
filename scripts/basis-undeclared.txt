@@ -432,7 +432,6 @@ test/ui/fonts.test.ts
 test/ui/git-info.test.ts
 test/ui/github-render.test.ts
 test/ui/graph-screen.test.ts
-test/ui/icon-sprite.test.ts
 test/ui/idle.test.ts
 test/ui/injected-endpoints.test.ts
 test/ui/learn-screen.test.ts

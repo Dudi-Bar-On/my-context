@@ -18,17 +18,17 @@ tags:
   - boot
   - "plan:swallow"
   - "seq:2"
-  - "state:todo"
+  - "state:done"
 origin: human
 source_file: null
 source_anchor: null
 source_checksum: null
 valid_from: 2026-09-13
 valid_until: null
-checksum: 7b8bc1493d39bae3
+checksum: 10792fa93649d791
 plan: swallow
 seq: "2"
-state: todo
+state: done
 priority: "1"
 ---
 

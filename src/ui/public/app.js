@@ -2243,7 +2243,19 @@ function installPopovers() {
   paintFocusCommand();
 }
 
+/**
+ * **Which of this shell's own banners `#exited` is currently carrying.**
+ *
+ * `plan:swallow seq:3`. `disconnectedShown` used to be the only flag, and the
+ * "clear it once we are connected" branch in `request()` therefore hid
+ * whatever happened to be in the element -- including the EXIT banner, which
+ * says a different thing and was raised by a different fact. One flag for one
+ * banner, and the clearing branch names both.
+ */
+let exitedShown = false;
+
 function showExited() {
+  exitedShown = true;
   const msg = document.createElement('span');
   msg.append(...translate(table.strings, 'ex.msg'));
   const cmd = document.createElement('code');
@@ -2251,7 +2263,10 @@ function showExited() {
   const ok = document.createElement('button');
   ok.className = 'icon';
   ok.append(...translate(table.strings, 'ex.ok'));
-  ok.onclick = () => { document.getElementById('exited').hidden = true; };
+  ok.onclick = () => {
+    exitedShown = false;
+    document.getElementById('exited').hidden = true;
+  };
   banner(msg, cmd, ok);
 }
 
@@ -2355,6 +2370,11 @@ async function request(path, method, body) {
     liveUnreachable = true;
     showExited();
     stopHeartbeat();
+    // `plan:swallow seq:3`: RECORDED, so the next proven answer can put it
+    // back. Stopping was always right -- the server is gone and §2 forbids
+    // reaching for it -- but nothing re-armed it, and the banner that
+    // explained the stop was then hidden by the next 200.
+    heartbeatStopped = true;
     throw new Error('server exited');
   }
   // **The server ANSWERED — which is the only evidence left that it is there.**
@@ -2392,15 +2412,29 @@ async function request(path, method, body) {
     // dead credential — which is exactly what the owner met on 2026-08-23.
     showDisconnected();
   }
-  if (response.ok && disconnectedShown) {
+  if (response.ok && (disconnectedShown || exitedShown)) {
     // **The banner says "not connected", so it must stop saying it the moment
     // the page IS connected.** Found by looking, not by reasoning: after a
     // nonce redeemed the tab in place and every pane filled with real data, the
     // red bar was still sitting across the bottom claiming otherwise — a stale
     // warning is its own defect, and a warning that outlives its cause teaches
     // the reader to ignore the next one.
+    //
+    // **AND THE EXIT BANNER IS CLEARED HERE TOO, WHICH IS WHAT `plan:swallow
+    // seq:3` FOUND.** It was already being cleared -- the condition read
+    // `disconnectedShown` alone and the statement hid `#exited` whatever was
+    // in it, so a 403 earlier in the page's life silently licensed the removal
+    // of a banner raised by something else entirely. The repair is not to stop
+    // hiding it: a server that just answered has not exited, and leaving the
+    // sentence up would be the stale warning this branch exists against. The
+    // repair is that the hide is now CONDITIONED ON THE FACT IT ASSERTS and
+    // that `rearmHeartbeat()` runs in the same breath -- so the page that
+    // stops saying it is degraded stops BEING degraded at the same instant.
+    // Hiding without re-arming is what made it look healthy and not be.
     disconnectedShown = false;
+    exitedShown = false;
     document.getElementById('exited').hidden = true;
+    rearmHeartbeat();
   }
   if (!response.ok) {
     // A refusal from the security gate carries the status and nothing else, so
@@ -2508,6 +2542,10 @@ function stream(path, onEvent, onEnd) {
         liveUnreachable = true;
         showExited();
         stopHeartbeat();
+        // Recorded here for the same reason as in `request()`'s catch, and in
+        // the same breath, so the two failure paths cannot disagree about
+        // whether the page still has a heartbeat.
+        heartbeatStopped = true;
         // `stopLiveLook()` USED TO BE CALLED HERE AND IS THE OTHER HALF OF THE
         // DEFECT. It stops the look tick -- the one thing that would put the
         // feed back -- so a single failed reconnect during a server restart
@@ -4003,6 +4041,74 @@ function setupLiveChrome() {
 }
 
 let stopHeartbeat = () => {};
+
+/**
+ * The beat, once, so the boot and `rearmHeartbeat()` cannot drift apart.
+ *
+ * It was a bare `60_000` at a single call site until `plan:swallow seq:3` gave
+ * it a second one. The number is RULED, not inherited -- `measureCorpusDrift`
+ * rides this request and its once-a-minute budget is the argument that ruled
+ * out a file watcher for the whole product -- so the reasoning stays at the
+ * boot call site and only the value lives here.
+ */
+const HEARTBEAT_MS = 60_000;
+
+/**
+ * **Whether the heartbeat has been stopped and not put back.**
+ *
+ * `plan:swallow seq:3`, and the flag exists because the answer could not be
+ * asked: `stopHeartbeat` is a function, and a stopped timer and a running one
+ * are the same closure from outside.
+ */
+let heartbeatStopped = false;
+
+/**
+ * **Put the heartbeat back, on evidence rather than on a timer.**
+ *
+ * ── WHAT WAS REPRODUCED, IN A BROWSER, BEFORE THIS EXISTED ────────────────
+ *
+ * Four steps, driven on a live server on 2026-09-13:
+ *
+ *   1. one 403 -- the shell draws "Not connected";
+ *   2. one request whose `fetch` rejects -- `showExited()` draws "The server
+ *      has exited", and `api()`'s catch calls `stopHeartbeat()`;
+ *   3. the next 200 -- `#exited` is HIDDEN again;
+ *   4. and then nothing. No `/api/ping` for 80 seconds. A control page, same
+ *      build, same server, no failure: one `/api/ping` at +56 s.
+ *
+ * So the page came out of that sequence with no banner, no staleness
+ * detection, no drift chip and no occupancy -- looking healthy, for the rest
+ * of its life. The failure was observed once and then un-said.
+ *
+ * ── WHY RE-ARMING IS NOT THE THING §2 FORBIDS ─────────────────────────────
+ *
+ * §2 rules out reconnecting ON A TIMER: a page that keeps reaching for a
+ * server that is gone is the daemon this product refuses to be, by another
+ * name. Nothing here reaches for anything. This runs only on a response the
+ * page ALREADY HAS IN ITS HANDS -- `response.ok`, from a request the reader's
+ * own navigation made -- which is the same evidence `noteServerAnswered()`
+ * acts on two lines above. The page pings again because the server answered,
+ * not in the hope that it might.
+ *
+ * One beat is asked immediately, out of band, for `heartbeatPing`'s own
+ * reason: the scheduled beat is a whole period out, and until it lands the
+ * session's size and lane count say `not read` -- which is honest and looks
+ * broken.
+ */
+function rearmHeartbeat() {
+  // The guard is the whole safety argument, and there is deliberately no
+  // defensive `stopHeartbeat()` above the restart. One was written and taken
+  // out: `heartbeatStopped` is set only by a path that has just STOPPED the
+  // timer and is cleared here before anything starts, so a second interval
+  // cannot be layered over a live one -- and a third `stopHeartbeat()` call
+  // site in this file would break `test/ui/live-reopen.test.ts`'s count, which
+  // pairs every stop with the `liveUnreachable` that says WHY the page gave
+  // up. A stop that is not a giving-up does not belong in that count.
+  if (!heartbeatStopped) return;
+  heartbeatStopped = false;
+  stopHeartbeat = startHeartbeat(document, heartbeatPing, HEARTBEAT_MS, window);
+  void heartbeatPing();
+}
 /**
  * **Stops the look-tick that reopens the shared stream** — see
  * `reopenLiveStream()`. A separate handle from `stopHeartbeat` because they
@@ -8100,8 +8206,28 @@ function applyStatic(root) {
   }
 }
 
+/**
+ * The remembered language, or `null` when the browser will not say.
+ *
+ * **Reading `localStorage` can throw** -- a sandboxed frame, private mode, or
+ * a browser configured to block site data raises a SecurityError on the ACCESS
+ * itself, before any method is called on it. `lane.js` guards this exact line
+ * and `lib/pane-resize.js` carries the same reasoning in `defaultStorage()`;
+ * the shell did not, and it was the FIRST statement of `main()`, so a browser
+ * with site data blocked never booted at all. `plan:swallow seq:2`.
+ */
+function rememberedLanguage() {
+  try {
+    return localStorage.getItem('myctx-lang');
+  } catch {
+    // The navigator still answers, and a page that threw here would be blank
+    // rather than merely English.
+    return null;
+  }
+}
+
 async function main() {
-  const lang = pickLanguage(localStorage.getItem('myctx-lang'), navigator.language);
+  const lang = pickLanguage(rememberedLanguage(), navigator.language);
   table = await import(`/strings/${lang}.js`);
   applyLanguage(document.documentElement, table);
   // The wordmark is not a translated string: the mockup renders it as a bare
@@ -8115,14 +8241,42 @@ async function main() {
   // both string tables.
   const langButton = document.getElementById('lang');
   langButton.onclick = () => {
-    localStorage.setItem('myctx-lang', lang === 'he' ? 'en' : 'he');
+    // Guarded for `rememberedLanguage()`'s reason, and the reload happens
+    // EITHER WAY: a browser that will not remember the choice still honours it
+    // for this document, which is better than a button that does nothing and
+    // says nothing about why.
+    try {
+      localStorage.setItem('myctx-lang', lang === 'he' ? 'en' : 'he');
+    } catch { /* site data blocked: this tab only */ }
     location.reload();
   };
 
   const nonce = extractNonce(location.hash);
   if (nonce !== null) {
-    token = await exchangeNonce(fetch.bind(window), nonce);
-    history.replaceState(null, '', location.pathname); // the fragment dies here (§2)
+    // **The exchange can REJECT, and its own docstring says it cannot.**
+    // `lib/bootstrap.js` promises `null` "on any refusal ... not throw into an
+    // unhandled rejection the shell never shows the user" -- true of a refusal,
+    // false of a `fetch` that never reached anything. Pasting the printed URL
+    // while the server is still binding took the whole boot down here, which
+    // is the second symptom `plan:swallow seq:2` names.
+    try {
+      token = await exchangeNonce(fetch.bind(window), nonce);
+    } catch {
+      // A `fetch` that threw is a server that never saw the nonce, so the
+      // credential is simply absent — which is a state this shell is built to
+      // survive and already draws: `credentialHeld()` is false, the first
+      // `api()` call raises `showDisconnected()`, and that sentence already
+      // says "the printed link is the way" back. Nothing new is invented here;
+      // what changed is only that the boot reaches the line that draws it.
+      token = null;
+    }
+    // The fragment dies either way (§2). Preserving it on the unreachable
+    // branch was TRIED and does not work: this app addresses its screens by
+    // fragment, so `route()` at the tail of `main()` overwrites it within the
+    // same boot — measured in a browser, `location.hash` was `''` a few
+    // hundred milliseconds later. A comment claiming the nonce survives would
+    // have been a claim the code cannot keep.
+    history.replaceState(null, '', location.pathname);
     if (token !== null) rememberToken(token);
   }
   // A reload has no nonce: the fragment died on the first load and the nonce
@@ -8409,4 +8563,30 @@ function installNonceRedemption() {
   });
 }
 
-main();
+/**
+ * **A boot that throws must SAY so rather than leave a blank page** -- the rule
+ * `lane.js` and `doc.js` each say in as many words that they follow "the same
+ * rule the shell follows". The shell did not follow it. `plan:swallow seq:2`.
+ *
+ * With site data blocked, `main()`'s first statement threw, `main()` returned a
+ * rejected promise nobody was holding, and the page stayed exactly as the HTML
+ * left it: no error, no empty state, nothing that said the browser had refused.
+ * It reads as a dead server, and the reader's next move is to restart a server
+ * that was never the problem.
+ *
+ * The message is the error's own words with nothing invented around them, for
+ * `doc.js`'s reason: a boot can fail before the string table is loaded, and a
+ * key that is not there yet would turn a disclosure into a second blank page.
+ * `#exited` is the shell's own alert region (`role="alert"`), so a reader using
+ * a screen reader is told without having to go looking.
+ */
+main().catch((error) => {
+  const host = document.getElementById('exited');
+  if (host === null) return;
+  const said = document.createElement('span');
+  said.textContent = error instanceof Error ? error.message : String(error);
+  const hint = document.createElement('code');
+  hint.textContent = 'mycontext ui';
+  host.replaceChildren(said, hint);
+  host.hidden = false;
+});
