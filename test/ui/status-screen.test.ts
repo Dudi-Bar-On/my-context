@@ -321,6 +321,15 @@ const BODY = (): Record<string, unknown> => ({
   reviewQueue: { drafts: 7, always: 2, globalLayerDrafts: 1 },
   pendingRevisions: { revisions: 0, items: 0 },
   health: { errors: 5, warnings: 3, infos: 1 },
+  // Served since the doctor sweep stopped being run twice per page load
+  // (`ui/read-model-health.ts`): it says whether the `health` tally was
+  // computed for this request or reused, and what proved the reuse current.
+  // The status screen draws none of it — the assertion below is the
+  // measurement of that, not a gap to fill.
+  reading: {
+    source: 'reused', computedAt: '2026-09-14T00:00:00.000Z', ageMs: 412,
+    basis: 'workspace-fingerprint', proofMs: 118, unprovable: null,
+  },
 });
 
 /** The top-level fields `StatusBody` declares, read off the interface itself. */

@@ -127,8 +127,9 @@ import { searchableRelationTypes } from '../core/search.ts';
 // on `/api/items` — see `ItemsBody.retiredStatuses`.
 import { RETIRED_STATUSES } from '../core/select.ts';
 import {
-  corpusRootOf, isCorpusFilePath, isServableDocPath, listRepoFiles, runChecks, type Finding,
+  corpusRootOf, isCorpusFilePath, isServableDocPath, listRepoFiles, type Finding,
 } from '../doctor/checks.ts';
+import { healthSnapshot, type HealthReading } from './read-model-health.ts';
 import { helpTopic, HELP_TOPICS } from '../help/index.ts';
 import { loadTutorialManifest, type TutorialManifestEntry, type TutorialTier } from '../core/tutorial-manifest.ts';
 import type { Budgets, Config } from '../core/config.ts';
@@ -1617,6 +1618,24 @@ export interface StatusBody {
    * returned.
    */
   health: { errors: number; warnings: number; infos: number; acknowledged: number };
+  /**
+   * **Where the `health` tally came from, because it is no longer guaranteed to
+   * have been computed for this request.**
+   *
+   * The doctor sweep costs ~3.1 s on the owner's corpus and both this endpoint
+   * and `/api/doctor` ran it, so a page load paid it twice. It is now computed
+   * once and REUSED while a fingerprint of everything the checks read proves
+   * nothing moved (`ui/read-model-health.ts`). That is a measurement claim, and
+   * `STD-a-measured-zero-is-drawn-and-named-an-unmeasured-thing-is` is why it
+   * is made in the response rather than assumed: `source` says whether these
+   * numbers were computed now or reused, `computedAt`/`ageMs` say how old they
+   * are, and `basis` says what proved them current — or that nothing did.
+   *
+   * **It has no `status --json` counterpart, and that is not a parity break**:
+   * the CLI runs the checks once per invocation and has nothing to disclose.
+   * Every other field in this body is still `status --json`'s, name for name.
+   */
+  reading: HealthReading;
 }
 
 /**
@@ -1677,7 +1696,12 @@ export function apiStatus(ws: Workspace, url: URL): JsonResult {
     // (`core/revision-log.ts`, `pendingRevisionSummaries`).
     const revisions = pendingRevisionSummaries(root);
     const pending = pendingReview(root, items, revisions);
-    const findings = runChecks({
+    // `healthSnapshot` and never `runChecks` directly — see `read-model-health.ts`
+    // for the 3,121 ms measurement and for what proves a reuse current. The
+    // arguments are unchanged; what changed is that `/api/status` and
+    // `/api/doctor` now share one reading of them instead of computing the same
+    // sweep twice per page load.
+    const health = healthSnapshot({
       root,
       // The repository, not the workspace: `projectRoot` IS
       // `<repo>/.my_context` (`findProjectRoot`), so the checks that walk
@@ -1688,6 +1712,7 @@ export function apiStatus(ws: Workspace, url: URL): JsonResult {
       items,
       config: ws.config,
     });
+    const findings = health.findings;
     const body: StatusBody = {
       version: VERSION,
       profile: ws.config.profile,
@@ -1737,13 +1762,23 @@ export function apiStatus(ws: Workspace, url: URL): JsonResult {
         acknowledged: findings.filter((f) => f.acknowledged === true
           && f.about === undefined).length,
       },
+      reading: health.reading,
     };
     return { status: 200, body };
   });
 }
 
-/** `GET /api/doctor`' body — `runChecks` output, carried and not reshaped. */
-export interface DoctorBody { findings: Finding[] }
+/**
+ * `GET /api/doctor`' body — `runChecks` output, carried and not reshaped, and
+ * the provenance of the reading it came from.
+ *
+ * `reading` is the one field here that is not a finding, and it is not a
+ * reshaping of one: it says whether `findings` was computed for this request or
+ * reused from an earlier one, how old it is, and what proved it current. See
+ * `HealthReading` and `ui/read-model-health.ts`. A findings list is a
+ * measurement of the corpus at a moment, and this names the moment.
+ */
+export interface DoctorBody { findings: Finding[]; reading: HealthReading }
 
 /**
  * `GET /api/doctor` — **`runChecks` verbatim: unfiltered, ungrouped, unsorted.**
@@ -1800,15 +1835,18 @@ export function apiDoctor(ws: Workspace, url: URL): JsonResult {
   if (bad) return badRequest(bad);
   return withStores(ws, (store): JsonResult => {
     const root = projectRootAfterOpen(ws, '/api/doctor');
-    const body: DoctorBody = {
-      findings: runChecks({
-        root,
-        repoRoot: path.dirname(root),
-        dbPath: ws.dbPath,
-        items: store.all(),
-        config: ws.config,
-      }),
-    };
+    // `healthSnapshot` wraps `runChecks` and nothing else — same arguments,
+    // same findings, and `reading` saying whether this request computed them.
+    // `/api/status` asks the same function, which is the whole point: the sweep
+    // is ~3.1 s and a page load asked for it twice.
+    const health = healthSnapshot({
+      root,
+      repoRoot: path.dirname(root),
+      dbPath: ws.dbPath,
+      items: store.all(),
+      config: ws.config,
+    });
+    const body: DoctorBody = { findings: health.findings, reading: health.reading };
     return { status: 200, body };
   });
 }
