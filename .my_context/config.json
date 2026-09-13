@@ -28,6 +28,7 @@
     "enabled": true
   },
   "review": {
-    "enabled": true
+    "enabled": true,
+    "maxProposalsPerPass": 5
   }
 }
