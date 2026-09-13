@@ -57,8 +57,10 @@
 // The outline costs one 358 ms walk; every scroll after it costs 2 ms.
 
 import {
-  boundedList, el, errorNote, glyphed, mono, screenHead, spaced, zonedStampOf,
+  BOUND_CAP_LIST, boundedList, el, errorNote, glyphed, mono, screenHead, spaced,
+  zonedStampOf,
 } from './parts.js';
+import { estimateHeight, matchesNode, Scroller } from '../lib/transcript-scroll.js';
 import { helpDisclosure } from '../lib/disclosure.js';
 import { LOOK_GAP_MS, attachLook, shouldPing } from '../lib/heartbeat.js';
 import { markdownNodes } from '../lib/markdown.js';
@@ -732,11 +734,66 @@ function drawList(ctx, host, body, open) {
   // step. Found by driving the screen, not by reading the signature.
   const rows = el('div', 'rows');
   host.append(rows);
-  boundedList(
+  // **THE BOUND LINE IS PLACED, and for two weeks it was not.** `boundedList`
+  // draws the rows into `rows` and RETURNS the line and the two step buttons
+  // for the caller to place — `preview.js`, `work.js`, `packs.js`, `ask.js`
+  // and `config.js` all append the return; this call discarded it. The result
+  // was 20 session rows and no control of any kind: measured 2026-09-13 with
+  // 31 sessions seeded, 20 rows drawn and ZERO `.bound` elements on the
+  // screen.
+  //
+  // That is exactly the defect THIS FILE'S OWN HEADER opens with — "Showing
+  // entries 0–50 of 24,757 with NO WAY TO REACH ENTRY 51" — reintroduced on
+  // the half of the screen the rebuild did not touch, and it is what
+  // `REQ-a-bounded-list-gives-the-reader-a-way-to-reach-what-it-held`
+  // forbids. A discarded return value is invisible in review and invisible in
+  // a screenshot of the first page, which is why it survived.
+  //
+  // **`order: 'position'` and not `'recent'`, which is what stood here.**
+  // `orderKeyFor` picks the bound line's sentence from `order` alone, and its
+  // `recent` pair is written for `take: 'last'` — the append-order reading
+  // every other `recent` caller passes (`injected.js`, `packs.js`,
+  // `work.js`). This answer is the opposite: `/api/conversations` is
+  // `ORDER BY ended_at DESC`, newest FIRST, so the head slice is correct and
+  // `list.rowsRecent`'s "oldest first — the newest are last" would be a FALSE
+  // sentence on page two. It was never seen because the bound line was never
+  // placed. `position` claims nothing about order, which is the honest answer
+  // while the shared part has no sentence for a head-take recent list, and
+  // every row already carries its own date.
+  host.append(boundedList(
     ctx, rows, body.conversations,
     (row) => drawRow(ctx, row, open),
-    { cap: 20, order: 'recent' },
-  );
+    { cap: BOUND_CAP_LIST, order: 'position' },
+  ));
+}
+
+/**
+ * **ONE SETTLE, USED BY EVERY FIND BOX ON THIS SCREEN.**
+ *
+ * There are four: the list's filter, the archive search, the find over anchor
+ * labels, and the document's own. Three of them hand-rolled the same six lines
+ * — a `let timer = null`, a `clearTimeout`, a `setTimeout` — and the fourth
+ * had no settle at all, which is the defect below. Writing a fifth copy to fix
+ * the fourth would have been the shape this file argues against everywhere
+ * else: one idea with several implementations, which drift.
+ *
+ *   `settle()`  the reader is still typing; run after the quiet gap.
+ *   `now()`     the reader has finished deciding — a `<select>`, a date, the
+ *               clear button. Cancels any pending settle and runs at once,
+ *               because a deliberate act with nothing following it should not
+ *               be made to wait.
+ *   `cancel()`  drop what is pending and run nothing.
+ */
+function settler(ms, run) {
+  let timer = null;
+  const cancel = () => {
+    if (timer !== null) { clearTimeout(timer); timer = null; }
+  };
+  return {
+    settle: () => { cancel(); timer = setTimeout(() => { timer = null; run(); }, ms); },
+    now: () => { cancel(); run(); },
+    cancel,
+  };
 }
 
 /**
@@ -839,28 +896,20 @@ function filterBar(ctx, branches, state, onChange) {
     until: until.value === '' ? null : until.value,
   });
 
-  let timer = null;
-  const settle = () => {
-    if (timer !== null) clearTimeout(timer);
-    timer = setTimeout(() => { timer = null; onChange(read()); }, FILTER_SETTLE_MS);
-  };
+  const typing = settler(FILTER_SETTLE_MS, () => { onChange(read()); });
   // Typing settles; choosing does not. A `<select>` or a date picker is one
   // deliberate act with nothing following it, so waiting a quarter of a second
   // after it would be a delay bought for nothing.
-  find.addEventListener('input', settle);
+  find.addEventListener('input', typing.settle);
   for (const control of [branch, since, until]) {
-    control.addEventListener('change', () => {
-      if (timer !== null) { clearTimeout(timer); timer = null; }
-      onChange(read());
-    });
+    control.addEventListener('change', typing.now);
   }
   clear.addEventListener('click', () => {
-    if (timer !== null) { clearTimeout(timer); timer = null; }
     find.value = '';
     branch.value = '';
     since.value = '';
     until.value = '';
-    onChange(read());
+    typing.now();
   });
 
   return bar;
@@ -1054,26 +1103,18 @@ function archiveBar(ctx, sessions, state, onChange) {
     until: until.value === '' ? null : until.value,
   });
 
-  let timer = null;
-  const settle = () => {
-    if (timer !== null) clearTimeout(timer);
-    timer = setTimeout(() => { timer = null; onChange(read()); }, ARCH_SETTLE_MS);
-  };
-  find.addEventListener('input', settle);
+  const typing = settler(ARCH_SETTLE_MS, () => { onChange(read()); });
+  find.addEventListener('input', typing.settle);
   for (const control of [session, kind, since, until]) {
-    control.addEventListener('change', () => {
-      if (timer !== null) { clearTimeout(timer); timer = null; }
-      onChange(read());
-    });
+    control.addEventListener('change', typing.now);
   }
   clear.addEventListener('click', () => {
-    if (timer !== null) { clearTimeout(timer); timer = null; }
     find.value = '';
     session.value = '';
     kind.value = '';
     since.value = '';
     until.value = '';
-    onChange(read());
+    typing.now();
   });
   return bar;
 }
@@ -1134,6 +1175,158 @@ function hitWhere(ctx, hit) {
   return where;
 }
 
+/* ══ NAMING A POINT — ONE IMPLEMENTATION, THREE PLACES ════════════════════
+ *
+ * **This was written three times.** `markRow` for a search hit, `anchorRow`
+ * for the marked-points list, and `markControl` inside the document each
+ * hand-built their own input, their own save button, their own `aria-live`
+ * region and their own write against the same three endpoints — and the map
+ * of 2026-09-13 (`reports/2026-09-13-conversations-js-mapped.md`) called that
+ * the strongest drift risk in the file. Three copies of one behaviour do not
+ * stay the same: they had already diverged on whether a refused empty label
+ * returns the caret to the field, which is the smallest possible symptom of
+ * exactly the failure and the reason this is worth a shared function rather
+ * than a comment asking three people to remember.
+ *
+ * **What is shared is the BEHAVIOUR, not the layout.** The three surfaces
+ * genuinely differ — a search hit's field is wrapped in a real `<label>`
+ * because it sits beside three other unlabelled boxes, a document row's is
+ * named by `aria-label` because it sits inside a scrolling well where a
+ * visible label would cost a line per turn — so the shape is a parameter and
+ * the sequence is not. The sequence is the part that must not drift:
+ *
+ *   1. an empty label is REFUSED, in words, and nothing is written;
+ *   2. the save button is disabled for the duration and comes BACK, because
+ *      "a refusal is drawn and the control comes back" —
+ *      `INV-nothing-is-dropped-silently` forbids the button that appears to
+ *      have worked and has not;
+ *   3. the live region says what is happening, then what happened;
+ *   4. Enter in the one field submits it — a single-field form that needs the
+ *      mouse asks twice for one answer;
+ *   5. success hands back to the caller, which is the only part the three
+ *      surfaces answer differently.
+ */
+
+/**
+ * A box holding one named field and its save button, and the write behind it.
+ *
+ * `said` is the caller's live region rather than one built here, because the
+ * three callers place it in three different parents — inside the box, under
+ * the row's actions, at the end of the bar — and where a message appears is a
+ * layout decision.
+ */
+function labelWrite(ctx, spec) {
+  const box = el('div', spec.boxClass);
+  box.hidden = true;
+  const input = el('input', spec.inputClass);
+  input.type = 'text';
+  input.value = spec.value ?? '';
+  // `dir="auto"` for `saidBody`'s reason: this archive is half Hebrew, and a
+  // Hebrew label typed into an LTR field reads with its punctuation at the
+  // wrong end.
+  input.setAttribute('dir', 'auto');
+  const save = el('button', spec.saveClass);
+  save.type = 'button';
+  save.append(...ctx.t(spec.saveKey));
+
+  // **A placeholder is not an accessible name**, which this file has already
+  // paid for once on the document's own find box. `'label'` is a real
+  // `<label>` element, visible to a reader who can see it as well as to one
+  // who cannot; `'aria'` is the name without the line, for a control drawn on
+  // every row of a scrolling document.
+  let field = input;
+  if (spec.named === 'label') {
+    const wrap = el('label', 'convfield');
+    const name = el('span', 'convfieldname');
+    name.append(...ctx.t(spec.labelKey));
+    wrap.append(name, input);
+    field = wrap;
+  } else {
+    input.setAttribute('aria-label', ctx.tFlat(spec.labelKey));
+  }
+  if (spec.note !== undefined) box.append(spec.note);
+  box.append(field, save);
+
+  const run = async () => {
+    const label = input.value.trim();
+    spec.said.hidden = false;
+    if (label === '') {
+      spec.said.replaceChildren(...ctx.t(spec.emptyKey));
+      // The caret goes back to the field it was refused over. Two of the three
+      // copies did this and the third did not; a reader told "this needs a
+      // name" and left with focus nowhere has to find the box again.
+      input.focus();
+      return;
+    }
+    save.disabled = true;
+    spec.said.replaceChildren(...ctx.t(spec.busyKey));
+    let answer;
+    try {
+      answer = await ctx.post(spec.endpoint, spec.body(label));
+    } catch (error) {
+      spec.said.replaceChildren(errorNote(error.message));
+      save.disabled = false;
+      return;
+    }
+    save.disabled = false;
+    await spec.done(answer, label);
+  };
+  save.addEventListener('click', () => { void run(); });
+  input.addEventListener('keydown', (event) => {
+    if (event.key === 'Enter') { event.preventDefault(); void run(); }
+  });
+
+  return { box, input, save, run };
+}
+
+/**
+ * The button that opens and shuts one of those boxes.
+ *
+ * `onToggle` runs after the box has moved and before the field takes focus,
+ * which is the order the three callers need: one renames its own button, one
+ * puts the standing label back before the caret arrives, and one asks the
+ * document to re-measure the row that just grew.
+ */
+function boxToggle(button, box, input, onToggle = () => {}) {
+  button.addEventListener('click', () => {
+    box.hidden = !box.hidden;
+    onToggle(box.hidden);
+    if (!box.hidden) input.focus();
+  });
+}
+
+/**
+ * The button that takes a marked point back.
+ *
+ * **NO CONFIRM**, and that is the owner's ruling of 2026-09-11 rather than an
+ * omission: he asked why a bookmark needed a confirm dialog and a subprocess
+ * when an anchor never touches the session file. Taking one back costs one
+ * click to undo — the point is still there and the same byte marks it again —
+ * so a dialog would be ceremony spent on the one write in this product that is
+ * genuinely cheap to reverse.
+ */
+function dropWrite(ctx, spec) {
+  const drop = el('button', spec.dropClass);
+  drop.type = 'button';
+  drop.append(...ctx.t('conv.anchors.drop'));
+  drop.addEventListener('click', () => {
+    void (async () => {
+      drop.disabled = true;
+      spec.said.hidden = false;
+      spec.said.replaceChildren(...ctx.t('conv.anchors.dropping'));
+      try {
+        await ctx.post('/api/conversations/anchors/drop', { id: spec.id });
+      } catch (error) {
+        spec.said.replaceChildren(errorNote(error.message));
+        drop.disabled = false;
+        return;
+      }
+      await spec.done();
+    })();
+  });
+  return drop;
+}
+
 /**
  * **THE POINT IS MARKED FROM HERE** — creation path 3 as it reaches a search
  * hit, owner ruling 2026-09-12.
@@ -1167,74 +1360,46 @@ function markRow(ctx, hit, term, onMarked) {
   const button = el('button', 'convhitmarkbtn');
   button.type = 'button';
   button.append(...ctx.t('conv.arch.mark'));
-  const box = el('div', 'convhitcmd');
-  box.hidden = true;
   const note = el('p', 'small');
   note.append(...ctx.t('conv.arch.markRun'));
-  const field = el('label', 'convfield');
-  const name = el('span', 'convfieldname');
-  name.append(...ctx.t('conv.arch.markLabel'));
-  const input = el('input', 'convmarklabel');
-  input.type = 'text';
-  input.value = term ?? '';
-  // `dir="auto"` for `saidBody`'s reason one card along: this archive is half
-  // Hebrew, and a Hebrew label typed into an LTR field reads with its
-  // punctuation at the wrong end.
-  input.setAttribute('dir', 'auto');
-  field.append(name, input);
-  const save = el('button', 'convmarksave');
-  save.type = 'button';
-  save.append(...ctx.t('conv.arch.markSave'));
   const said = el('p', 'small convmarksaid');
   said.setAttribute('aria-live', 'polite');
   said.hidden = true;
-  box.append(note, field, save, said);
 
-  button.addEventListener('click', () => {
-    box.hidden = !box.hidden;
-    button.replaceChildren(...ctx.t(box.hidden ? 'conv.arch.mark' : 'conv.arch.markShut'));
-    if (!box.hidden) input.focus();
+  const { box, input } = labelWrite(ctx, {
+    // Pre-filled with the words that were searched for, because those are the
+    // words that made this turn worth keeping — the same default the composed
+    // command carried, now typed into a box a person can correct.
+    value: term ?? '',
+    named: 'label',
+    labelKey: 'conv.arch.markLabel',
+    saveKey: 'conv.arch.markSave',
+    emptyKey: 'conv.arch.markNeedsLabel',
+    busyKey: 'conv.arch.marking',
+    boxClass: 'convhitcmd',
+    inputClass: 'convmarklabel',
+    saveClass: 'convmarksave',
+    note,
+    said,
+    endpoint: '/api/conversations/anchors/mark',
+    body: (label) => ({
+      sessionId: hit.sessionId,
+      agentId: hit.agentId,
+      byteOffset: hit.byteOffset,
+      label,
+    }),
+    done: () => {
+      // The row redraws as MARKED rather than saying so beside a button that
+      // still offers to mark it — two statements about one point, one of them
+      // stale, is the state this screen already refuses on the automatic side.
+      hit.anchored = true;
+      row.replaceChildren(...markRow(ctx, hit, term, onMarked).childNodes);
+      onMarked();
+    },
   });
-
-  /**
-   * **A refusal is DRAWN, and the control comes back.** A button that appears
-   * to have worked and has not is the shape `INV-nothing-is-dropped-silently`
-   * forbids, and it is the shape a disabled button left disabled produces.
-   */
-  const write = async () => {
-    const label = input.value.trim();
-    said.hidden = false;
-    if (label === '') {
-      said.replaceChildren(...ctx.t('conv.arch.markNeedsLabel'));
-      input.focus();
-      return;
-    }
-    save.disabled = true;
-    said.replaceChildren(...ctx.t('conv.arch.marking'));
-    try {
-      await ctx.post('/api/conversations/anchors/mark', {
-        sessionId: hit.sessionId,
-        agentId: hit.agentId,
-        byteOffset: hit.byteOffset,
-        label,
-      });
-    } catch (error) {
-      said.replaceChildren(errorNote(error.message));
-      save.disabled = false;
-      return;
-    }
-    // The row redraws as MARKED rather than saying so beside a button that
-    // still offers to mark it — two statements about one point, one of them
-    // stale, is the state this screen already refuses on the automatic side.
-    hit.anchored = true;
-    row.replaceChildren(...markRow(ctx, hit, term, onMarked).childNodes);
-    onMarked();
-  };
-  save.addEventListener('click', () => { void write(); });
-  // Enter in the one field submits it. A single-field form that needs the
-  // mouse is a form that asks twice for one answer.
-  input.addEventListener('keydown', (event) => {
-    if (event.key === 'Enter') { event.preventDefault(); void write(); }
+  box.append(said);
+  boxToggle(button, box, input, (hidden) => {
+    button.replaceChildren(...ctx.t(hidden ? 'conv.arch.mark' : 'conv.arch.markShut'));
   });
 
   row.append(button, box);
@@ -1422,8 +1587,54 @@ export function anchorFromHash(hash) {
  * look identical until it is said, and the difference is exactly what the
  * sweep button below acts on: the pass reads back every `automatic` row and
  * never reads an `owner` one.
+ *
+ * ── AND IT IS PAGED, THROUGH THE HOUSE'S ONE `boundedList` ────────────────
+ *
+ * `TASK-684-anchors-render-unpaged-as-92-percent-of-the-document-and`
+ * (`plan:confirm seq:3`). This drew every row: measured 2026-09-13 on a seeded
+ * archive of **884 marked points — 16,799 elements in this box, 97.8% of every
+ * element on the screen**, which reproduces the item's own 11,996 / 92% at a
+ * larger count. The item's words for why that is a defect rather than a scale
+ * problem: *"the anchors list is the first list in the product to break"* a
+ * pattern every other list here holds.
+ *
+ * **PAGED AND NOT VIRTUALISED, and the choice is against the document two
+ * hundred lines below rather than in ignorance of it.** `Scroller` virtualises
+ * because a transcript node is inert text a reader only looks at. A row here
+ * is not: it carries a rename field a reader may be typing into, a drop
+ * button, and an `aria-live` region mid-sentence. Virtualisation destroys a
+ * row the moment it leaves the viewport, which is the same failure `paint`
+ * refuses one screen along — *"a rebuilt row is a `<details>` a reader opened
+ * being shut"* — except here what is thrown away is a half-typed label. A page
+ * step is a deliberate act, so nothing is destroyed under anybody's hands.
+ *
+ * It also costs nothing new to read: `boundedList` is the control the product
+ * already has, already bilingual, already styled by `.bound button`, already
+ * decided by `pageWindow` in `test/ui/bounded-list.test.ts`, and already
+ * driven in the browser by `e2e/bounded-paging.spec.ts`.
+ *
+ * **`order: 'position'`, and it is a refusal rather than a default.** The
+ * answer IS ordered — `ConversationIndex.anchorRows` reads the whole archive
+ * `at DESC` and `matchAnchors` orders a label search the same way — so
+ * `'recent'` looks right and its page-one sentence, *"Showing the 20 most
+ * recent of 684"*, is true. Its PAGE-TWO sentence is not: `list.rowsRecent`
+ * reads *"oldest first — the newest are last"*, which is written for
+ * `take: 'last'`, the append-order reading every other `recent` caller in this
+ * app passes. A list that is newest-FIRST has no sentence in the shared part,
+ * and `orderKeyFor` picks by `order` alone. Claiming nothing on both pages
+ * beats claiming the truth on one and its reverse on the other, and every row
+ * here already carries its own stamp.
+ *
+ * `whole` is how many points there are when nothing is being searched for, or
+ * `null` before that is known. It exists for the second half of the same item:
+ * a filtered list said *"1 marked."* where every other list in the product
+ * says *"the first N of M"*, so a reader who narrowed the list lost the size
+ * of the thing they were narrowing. It is remembered by the caller from its
+ * own unfiltered read rather than asked of the server, because the endpoint
+ * answers with the count of what MATCHED and a second request to learn the
+ * total would be a request spent on a number the screen already had.
  */
-function drawAnchors(ctx, host, body, onChanged) {
+function drawAnchors(ctx, host, body, onChanged, whole = null) {
   host.replaceChildren();
   // **THE ARCHIVE HAS NEVER BEEN BUILT, and that is a third state.** Not "no
   // marked points" and not an error: there is nothing here to mark yet. The
@@ -1451,14 +1662,27 @@ function drawAnchors(ctx, host, body, onChanged) {
   }
 
   const count = el('p', 'small convanchcount');
-  count.append(...ctx.t('conv.anchors.count', { n: body.anchors.length }));
+  // A search that narrowed the list says what it narrowed. With no search, or
+  // before the unfiltered read has answered once, the plain count is the whole
+  // truth and "684 of 684" would be ceremony.
+  if (body.q !== null && whole !== null) {
+    count.append(...ctx.t('conv.anchors.countOf', { n: body.anchors.length, total: whole }));
+  } else {
+    count.append(...ctx.t('conv.anchors.count', { n: body.anchors.length }));
+  }
   host.append(count);
 
+  // `boundedList` OWNS the element it is given — it calls `replaceChildren` on
+  // every page step — so it gets a container of its own and its returned bound
+  // line is APPENDED. Discarding that return is what left the sessions list
+  // above with twenty rows and no way to reach twenty-one.
   const list = el('div', 'convanchors');
-  for (const anchor of body.anchors) {
-    list.append(anchorRow(ctx, anchor, onChanged));
-  }
   host.append(list);
+  host.append(boundedList(
+    ctx, list, body.anchors,
+    (anchor) => anchorRow(ctx, anchor, onChanged),
+    { cap: BOUND_CAP_LIST, order: 'position' },
+  ));
 }
 
 /** One marked point, with everything it carries and everything it can do. */
@@ -1527,88 +1751,46 @@ function anchorRow(ctx, anchor, onChanged) {
   const rename = el('button', 'convanchorrename');
   rename.type = 'button';
   rename.append(...ctx.t('conv.anchors.relabel'));
-  const renameBox = el('div', 'convanchorrenamebox');
-  renameBox.hidden = true;
-  const field = el('label', 'convfield');
-  const fieldName = el('span', 'convfieldname');
-  fieldName.append(...ctx.t('conv.anchors.relabelLabel'));
-  const input = el('input', 'convanchorrenameinput');
-  input.type = 'text';
-  input.value = anchor.label;
-  input.setAttribute('dir', 'auto');
-  field.append(fieldName, input);
-  const saveName = el('button', 'convanchorrenamesave');
-  saveName.type = 'button';
-  saveName.append(...ctx.t('conv.anchors.relabelSave'));
-  renameBox.append(field, saveName);
 
-  rename.addEventListener('click', () => {
-    renameBox.hidden = !renameBox.hidden;
-    if (!renameBox.hidden) { input.value = anchor.label; input.focus(); }
+  const renamer = labelWrite(ctx, {
+    value: anchor.label,
+    named: 'label',
+    labelKey: 'conv.anchors.relabelLabel',
+    saveKey: 'conv.anchors.relabelSave',
+    emptyKey: 'conv.anchors.relabelNeedsLabel',
+    busyKey: 'conv.anchors.saving',
+    boxClass: 'convanchorrenamebox',
+    inputClass: 'convanchorrenameinput',
+    saveClass: 'convanchorrenamesave',
+    said,
+    endpoint: '/api/conversations/anchors/relabel',
+    body: (label) => ({ id: anchor.id, label }),
+    done: (answer) => {
+      // **THE ROW BECOMES HIS, AND THE SCREEN SAYS SO.** Naming a point the
+      // pass marked takes it out of the pass's hands — `apiAnchorRelabel` sets
+      // `origin: 'owner'` precisely so the next sweep cannot quietly put his
+      // label back to the grammar's. A reader who is not told that would find
+      // out by the row changing under them, which is the silent half
+      // `INV-nothing-is-dropped-silently` forbids.
+      said.replaceChildren(...ctx.t(
+        answer !== null && typeof answer === 'object' && answer.tookOwnership === true
+          ? 'conv.anchors.tookOwnership' : 'conv.anchors.relabelled',
+      ));
+      renamer.box.hidden = true;
+      onChanged();
+    },
   });
-
-  const relabel = async () => {
-    const next = input.value.trim();
-    said.hidden = false;
-    if (next === '') {
-      said.replaceChildren(...ctx.t('conv.anchors.relabelNeedsLabel'));
-      input.focus();
-      return;
-    }
-    saveName.disabled = true;
-    said.replaceChildren(...ctx.t('conv.anchors.saving'));
-    let answer;
-    try {
-      answer = await ctx.post('/api/conversations/anchors/relabel', { id: anchor.id, label: next });
-    } catch (error) {
-      said.replaceChildren(errorNote(error.message));
-      saveName.disabled = false;
-      return;
-    }
-    // **THE ROW BECOMES HIS, AND THE SCREEN SAYS SO.** Naming a point the pass
-    // marked takes it out of the pass's hands — `apiAnchorRelabel` sets
-    // `origin: 'owner'` precisely so the next sweep cannot quietly put his
-    // label back to the grammar's. A reader who is not told that would find
-    // out by the row changing under them, which is the silent half
-    // `INV-nothing-is-dropped-silently` forbids.
-    if (answer !== null && typeof answer === 'object' && answer.tookOwnership === true) {
-      said.replaceChildren(...ctx.t('conv.anchors.tookOwnership'));
-    } else {
-      said.replaceChildren(...ctx.t('conv.anchors.relabelled'));
-    }
-    saveName.disabled = false;
-    renameBox.hidden = true;
-    onChanged();
-  };
-  saveName.addEventListener('click', () => { void relabel(); });
-  input.addEventListener('keydown', (event) => {
-    if (event.key === 'Enter') { event.preventDefault(); void relabel(); }
+  const renameBox = renamer.box;
+  // The standing label goes back in every time the box opens, so a reader who
+  // typed, shut it and came back is not handed their abandoned draft as if it
+  // were the name the point has.
+  boxToggle(rename, renameBox, renamer.input, (hidden) => {
+    if (!hidden) renamer.input.value = anchor.label;
   });
 
   /* ── DROP ────────────────────────────────────────────────────────────── */
-  const drop = el('button', 'convanchordrop');
-  drop.type = 'button';
-  drop.append(...ctx.t('conv.anchors.drop'));
-  drop.addEventListener('click', () => {
-    void (async () => {
-      drop.disabled = true;
-      said.hidden = false;
-      said.replaceChildren(...ctx.t('conv.anchors.dropping'));
-      try {
-        await ctx.post('/api/conversations/anchors/drop', { id: anchor.id });
-      } catch (error) {
-        said.replaceChildren(errorNote(error.message));
-        drop.disabled = false;
-        return;
-      }
-      // **NO CONFIRM**, and that is the owner's ruling of 2026-09-11 rather
-      // than an omission: he asked why a bookmark needed a confirm dialog and
-      // a subprocess when an anchor never touches the session file. Taking one
-      // back costs one click to undo — the point is still there and the same
-      // byte marks it again — so a dialog would be ceremony spent on the one
-      // write in this product that is genuinely cheap to reverse.
-      onChanged();
-    })();
+  const drop = dropWrite(ctx, {
+    id: anchor.id, said, dropClass: 'convanchordrop', done: onChanged,
   });
 
   const actions = el('div', 'convanchoractions');
@@ -1718,6 +1900,15 @@ function mountArchiveSearch(ctx, root, sessions) {
 
   const anchorState = { q: null };
   let anchorsInFlight = 0;
+  /**
+   * How many marked points there are with nothing being searched for.
+   *
+   * `null` until the unfiltered read at mount has answered, and re-learned on
+   * every later unfiltered read, so a point marked or dropped while the card
+   * is open moves it. `drawAnchors`' own header says why the screen keeps this
+   * rather than asking for it.
+   */
+  let anchorsWhole = null;
 
   const refreshAnchors = async () => {
     const mine = ++anchorsInFlight;
@@ -1733,19 +1924,16 @@ function mountArchiveSearch(ctx, root, sessions) {
     // A later answer must never be overwritten by an earlier one that arrived
     // late — `filterBar`'s counter, for the same reason.
     if (mine !== anchorsInFlight) return;
-    drawAnchors(ctx, anchorsBox, body, () => { void refreshAnchors(); });
+    if (anchorState.q === null) anchorsWhole = body.anchors.length;
+    drawAnchors(ctx, anchorsBox, body, () => { void refreshAnchors(); }, anchorsWhole);
   };
 
-  let findTimer = null;
-  find.addEventListener('input', () => {
-    if (findTimer !== null) clearTimeout(findTimer);
-    findTimer = setTimeout(() => {
-      findTimer = null;
-      const typed = find.value.trim();
-      anchorState.q = typed === '' ? null : typed;
-      void refreshAnchors();
-    }, ARCH_SETTLE_MS);
+  const findTyping = settler(ARCH_SETTLE_MS, () => {
+    const typed = find.value.trim();
+    anchorState.q = typed === '' ? null : typed;
+    void refreshAnchors();
   });
+  find.addEventListener('input', findTyping.settle);
 
   sweep.addEventListener('click', () => {
     void (async () => {
@@ -2665,111 +2853,23 @@ const PREFETCH_SETTLE_MS = 90;
  */
 const TIP_MS = 1_000;
 
-/**
- * The first guess at a node's height, in pixels, before it has been drawn.
+/* ── THE SCROLL'S ARITHMETIC LIVES IN `lib/transcript-scroll.js` ──────────
  *
- * **A guess is all this can be, and the design depends on it being replaced
- * rather than on it being right.** Every drawn row is measured and its true
- * height written back (`Scroller.measure`), so the estimate only has to be
- * good enough that the scrollbar is not absurd on first paint and that the
- * jump when a row is measured is small.
+ * Moved 2026-09-13, the first of the cuts
+ * `TASK-the-largest-client-file-is-seven-movable-units-around-one` sets out,
+ * because it was the one part of this file with no closure coupling at all.
  *
- * The numbers are read off the drawn stylesheet rather than invented:
- * `--fs-1` at 14.5px on a 1.45 line-height is a ~21px line, a turn's heading
- * plus timestamp plus padding is ~58px, and a folded run is one line in a
- * bordered box, ~34px. `CHARS_PER_LINE` is the one honest fudge — prose wraps
- * at a width this function cannot see.
+ * **It is RE-EXPORTED here and that is not a convenience.** `Scroller`,
+ * `estimateHeight` and `matchesNode` were already this module's public
+ * surface: `test/ui/transcript-viewer.test.ts` imports all three from this
+ * path, and 22 of its assertions are about them. Re-exporting means the move
+ * changed no importer, so the test file is UNCHANGED and its staying green is
+ * a proof the arithmetic went across whole rather than a test rewritten to
+ * agree with a new shape.
  */
-const LINE_PX = 21;
-const CHARS_PER_LINE = 92;
-const TURN_CHROME_PX = 58;
-const WORK_PX = 34;
-
-export function estimateHeight(node) {
-  if (node.k === 'work') return WORK_PX;
-  const lines = Math.max(1, Math.ceil((node.c || 0) / CHARS_PER_LINE));
-  // A `deed` is a heading, the command or the question, and the arguments
-  // under it — closer to a turn than to a folded line, and its `c` is what was
-  // ASKED rather than what came back, so the same arithmetic reads it.
-  return TURN_CHROME_PX + Math.min(lines, 400) * LINE_PX;
-}
-
-/**
- * Does this outline node match what the reader typed?
- *
- * **It searches the WHOLE SESSION, and that is the change.** The old filter
- * matched the fifty records that happened to be loaded and the count line said
- * "Showing all {total} entries on this page" — a phrase `seq:7` singles out
- * for presuming a second page the product did not have. The outline holds
- * every node, so there is no page to be on.
- *
- * **What it can and cannot see, stated rather than implied.** The outline
- * carries each turn's OPENING (`p`, 140 characters) and the tools a run ran,
- * not every word of a 61 MB file. So this finds a turn by how it starts and by
- * what ran in it, and the count line says so in as many words. Full text
- * search over the whole transcript is a server-side index this feature does
- * not have and does not pretend to — `INV-nothing-is-dropped-silently` applies
- * to a search's reach as much as to a count's.
- */
-export function matchesNode(node, needle) {
-  if (needle === '') return true;
-  const hay = `${node.p ?? ''} ${(node.x ?? []).join(' ')} ${node.y ?? ''} ${node.w ?? ''}`;
-  return hay.toLowerCase().includes(needle);
-}
-
-/**
- * The scroll's arithmetic, kept apart from its drawing so it can be reasoned
- * about — and tested — without a browser.
- *
- * It owns one array of heights over the VIEW (the nodes currently shown, which
- * is every node until a filter narrows it) and the running sum over them.
- * `prefix[i]` is the pixel at which view row `i` begins, so `prefix[view]` is
- * the document's whole height and a binary search over it turns a scroll
- * position into a row index.
- *
- * A plain array and a full re-sum, rather than a Fenwick tree: the owner's
- * session is 4,916 nodes, a re-sum is 4,916 additions, and it runs only when a
- * measurement actually changed something. The clever structure would be real
- * work to read and would save microseconds.
- */
-export class Scroller {
-  constructor(heights) {
-    this.heights = heights;
-    this.prefix = new Float64Array(heights.length + 1);
-    this.resum();
-  }
-
-  resum() {
-    const { heights, prefix } = this;
-    let total = 0;
-    for (let i = 0; i < heights.length; i += 1) {
-      prefix[i] = total;
-      total += heights[i];
-    }
-    prefix[heights.length] = total;
-  }
-
-  get total() { return this.prefix[this.heights.length]; }
-
-  /** Pixel where view row `i` begins. `i === length` is the document's end. */
-  top(i) { return this.prefix[Math.max(0, Math.min(i, this.heights.length))]; }
-
-  /**
-   * The first view row whose box contains pixel `y` — a binary search, so a
-   * scroll over 4,916 nodes costs thirteen comparisons rather than 4,916.
-   */
-  at(y) {
-    const { prefix, heights } = this;
-    if (heights.length === 0) return 0;
-    let lo = 0;
-    let hi = heights.length - 1;
-    while (lo < hi) {
-      const mid = (lo + hi + 1) >> 1;
-      if (prefix[mid] <= y) lo = mid; else hi = mid - 1;
-    }
-    return lo;
-  }
-}
+export {
+  estimateHeight, matchesNode, Scroller,
+} from '../lib/transcript-scroll.js';
 
 /* ══ THE DOCUMENT: DRAWING ONE NODE ════════════════════════════════════════ */
 
@@ -5183,65 +5283,32 @@ export function mountDocument(ctx, host, outline, back, roster = NO_LANES, landA
       const rename = el('button', 'tvjump tvanchorrename');
       rename.type = 'button';
       rename.append(...ctx.t('conv.anchors.relabel'));
-      const drop = el('button', 'tvjump tvanchordrop');
-      drop.type = 'button';
-      drop.append(...ctx.t('conv.anchors.drop'));
-      const box = el('div', 'tvanchorbox');
-      box.hidden = true;
-      const input = el('input', 'tvanchorinput');
-      input.type = 'text';
-      input.value = standing.label;
-      input.setAttribute('dir', 'auto');
-      input.setAttribute('aria-label', ctx.tFlat('conv.anchors.relabelLabel'));
-      const save = el('button', 'tvjump tvanchorsave');
-      save.type = 'button';
-      save.append(...ctx.t('conv.anchors.relabelSave'));
-      box.append(input, save);
-      rename.addEventListener('click', () => {
-        box.hidden = !box.hidden;
-        if (!box.hidden) input.focus();
-        schedule();
+      // **The same `labelWrite` the archive list and the search hit use**, in
+      // its `'aria'` shape: a visible `<label>` would cost a line on every
+      // marked turn of a scrolling document, and the name is still there.
+      const { box, input } = labelWrite(ctx, {
+        value: standing.label,
+        named: 'aria',
+        labelKey: 'conv.anchors.relabelLabel',
+        saveKey: 'conv.anchors.relabelSave',
+        emptyKey: 'conv.anchors.relabelNeedsLabel',
+        busyKey: 'conv.anchors.saving',
+        boxClass: 'tvanchorbox',
+        inputClass: 'tvanchorinput',
+        saveClass: 'tvjump tvanchorsave',
+        said,
+        endpoint: '/api/conversations/anchors/relabel',
+        body: (label) => ({ id: standing.id, label }),
+        done: async () => { await loadAnchors(); redrawMe(); },
       });
-      const relabel = async () => {
-        const value = input.value.trim();
-        said.hidden = false;
-        if (value === '') {
-          said.replaceChildren(...ctx.t('conv.anchors.relabelNeedsLabel'));
-          return;
-        }
-        save.disabled = true;
-        said.replaceChildren(...ctx.t('conv.anchors.saving'));
-        try {
-          await ctx.post('/api/conversations/anchors/relabel',
-            { id: standing.id, label: value });
-        } catch (error) {
-          said.replaceChildren(errorNote(error.message));
-          save.disabled = false;
-          return;
-        }
-        await loadAnchors();
-        redrawMe();
-      };
-      save.addEventListener('click', () => { void relabel(); });
-      input.addEventListener('keydown', (event) => {
-        if (event.key === 'Enter') { event.preventDefault(); void relabel(); }
+      const drop = dropWrite(ctx, {
+        id: standing.id,
+        said,
+        dropClass: 'tvjump tvanchordrop',
+        done: async () => { await loadAnchors(); redrawMe(); },
       });
-      drop.addEventListener('click', () => {
-        void (async () => {
-          drop.disabled = true;
-          said.hidden = false;
-          said.replaceChildren(...ctx.t('conv.anchors.dropping'));
-          try {
-            await ctx.post('/api/conversations/anchors/drop', { id: standing.id });
-          } catch (error) {
-            said.replaceChildren(errorNote(error.message));
-            drop.disabled = false;
-            return;
-          }
-          await loadAnchors();
-          redrawMe();
-        })();
-      });
+      // A box that opens changes the row's height, so the well re-measures.
+      boxToggle(rename, box, input, () => { schedule(); });
       bar.append(chip, label, rename, drop, box, said);
       return bar;
     }
@@ -5249,49 +5316,26 @@ export function mountDocument(ctx, host, outline, back, roster = NO_LANES, landA
     const mark = el('button', 'tvjump tvanchormark');
     mark.type = 'button';
     mark.append(...ctx.t('conv.doc.mark'));
-    const box = el('div', 'tvanchorbox');
-    box.hidden = true;
-    const input = el('input', 'tvanchorinput');
-    input.type = 'text';
-    input.setAttribute('dir', 'auto');
-    input.setAttribute('aria-label', ctx.tFlat('conv.doc.markLabel'));
-    const save = el('button', 'tvjump tvanchorsave');
-    save.type = 'button';
-    save.append(...ctx.t('conv.doc.markSave'));
-    box.append(input, save);
-    mark.addEventListener('click', () => {
-      box.hidden = !box.hidden;
-      if (!box.hidden) input.focus();
-      schedule();
+    const { box, input } = labelWrite(ctx, {
+      named: 'aria',
+      labelKey: 'conv.doc.markLabel',
+      saveKey: 'conv.doc.markSave',
+      emptyKey: 'conv.doc.markNeedsLabel',
+      busyKey: 'conv.arch.marking',
+      boxClass: 'tvanchorbox',
+      inputClass: 'tvanchorinput',
+      saveClass: 'tvjump tvanchorsave',
+      said,
+      endpoint: '/api/conversations/anchors/mark',
+      body: (label) => ({
+        sessionId: anchorSessionId,
+        agentId: anchorAgentId,
+        byteOffset: node.o,
+        label,
+      }),
+      done: async () => { await loadAnchors(); redrawMe(); },
     });
-    const write = async () => {
-      const label = input.value.trim();
-      said.hidden = false;
-      if (label === '') {
-        said.replaceChildren(...ctx.t('conv.doc.markNeedsLabel'));
-        return;
-      }
-      save.disabled = true;
-      said.replaceChildren(...ctx.t('conv.arch.marking'));
-      try {
-        await ctx.post('/api/conversations/anchors/mark', {
-          sessionId: anchorSessionId,
-          agentId: anchorAgentId,
-          byteOffset: node.o,
-          label,
-        });
-      } catch (error) {
-        said.replaceChildren(errorNote(error.message));
-        save.disabled = false;
-        return;
-      }
-      await loadAnchors();
-      redrawMe();
-    };
-    save.addEventListener('click', () => { void write(); });
-    input.addEventListener('keydown', (event) => {
-      if (event.key === 'Enter') { event.preventDefault(); void write(); }
-    });
+    boxToggle(mark, box, input, () => { schedule(); });
     bar.append(mark, box, said);
     return bar;
   };
@@ -5626,7 +5670,37 @@ export function mountDocument(ctx, host, outline, back, roster = NO_LANES, landA
     armCopy(false);
     redraw('top');
   };
-  find.addEventListener('input', applyFilter);
+  /**
+   * **AND IT SETTLES, LIKE THE OTHER THREE.**
+   *
+   * This was wired straight to `applyFilter`, alone among the four find boxes
+   * on this screen, and what one keystroke costs is not the handler's own
+   * milliseconds — measured 4.6 to 23.6 ms on a seeded 28,001-record session,
+   * so the 1,200 ms in `TASK-the-conversation-document-s-find-box-has-no-debounce`
+   * did NOT reproduce on this build and is recorded here as not reproduced
+   * rather than quietly repeated. What it costs is everything `applyFilter`
+   * does AROUND the search, per character:
+   *
+   *   - every drawn row torn out of the DOM and rebuilt, folds a reader opened
+   *     shut with them;
+   *   - the reader thrown back to `scrollTop = 0`, mid-word;
+   *   - the marked passage and the held selection DISCARDED — `marked = null`
+   *     — so a copy being composed is lost to the second letter of a search;
+   *   - a refill round trip for whatever the new top of the view needs.
+   *
+   * Measured over "keep going" typed at 120 ms a character on that session:
+   * **10 keystrokes, 10 whole-document redraws, 4 fetches, 1,350 ms before the
+   * screen settled.** Settled, the same burst is ONE redraw.
+   *
+   * The number is `FILTER_SETTLE_MS`'s own, and deliberately the same one: the
+   * argument there — that 250 ms is under the pause a person notices and above
+   * the gap between two keystrokes — is about the READER, not about the list,
+   * so it transfers whole and a second number would be a second thing to
+   * justify. `settler` is the shared mechanism, so there is no fourth copy of
+   * it.
+   */
+  const typing = settler(FILTER_SETTLE_MS, applyFilter);
+  find.addEventListener('input', typing.settle);
 
   /**
    * **THE NODE THE MARKED BYTE FALLS IN** — capability 4's other half.

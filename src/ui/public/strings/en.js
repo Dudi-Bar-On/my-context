@@ -312,6 +312,10 @@ export const strings = {
   'conv.anchors.none': 'Nothing is marked yet. Search above and mark a point, open a conversation and mark one while you read, or press the button above — it marks the tables and the rulings you gave that it passes.',
   'conv.anchors.findNone': 'No marked point has those words in its name. This searches the names you gave them, not the conversation — the box further up searches the words.',
   'conv.anchors.count': '{n} marked.',
+  // The same count while a name search narrows the list. A filtered list that
+  // said only "1 marked." lost the reader the size of what they narrowed —
+  // `TASK-684-anchors-render-unpaged-as-92-percent-of-the-document-and`.
+  'conv.anchors.countOf': '{n} of {total} marked points match.',
   'conv.anchors.find': 'Find by name',
   'conv.anchors.findRegion': 'Find a marked point by name',
   'conv.anchors.kind.note': 'you marked this',
