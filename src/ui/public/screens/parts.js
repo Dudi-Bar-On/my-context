@@ -43,6 +43,62 @@ export function mono(text) {
 }
 
 /**
+ * ── ONE GLYPH, BESIDE ONE WORD, IN ONE ISOLATED RUN ────────────────────────
+ *
+ * `<span class="gw"><span class="g" aria-hidden="true">📌</span><…the word…></span>`
+ *
+ * The shape every member of this app's glyph set is drawn in, written once so
+ * that no screen can invent a second spelling of it.
+ * `TASK-a-glyph-makes-a-kind-recognisable-without-reading-in-every` names four
+ * constraints and three of them are discharged HERE rather than at each call
+ * site, which is the only place they can be discharged once:
+ *
+ * **The glyph is never the only carrier.** `nodes` is what `ctx.t()` answered
+ * for the word the glyph marks, and it is required — there is no one-argument
+ * form. A glyph with no word fails a screen reader, fails a reader who does not
+ * know the convention, and fails `screen-literals`, which is this project's
+ * gate that a sentence on screen has a key.
+ *
+ * **`aria-hidden="true"` on the glyph, and the word is the accessible name.**
+ * The verdict tick this function replaces carried none, so nineteen screens
+ * announced "white heavy check mark" before their verdict. A glyph needs no
+ * string key precisely because it says nothing a reader must read; the word
+ * beside it keeps the key it already had.
+ *
+ * **Isolation for bidi, and it is not optional.** Emoji are bidi-neutral
+ * (Unicode class `ON`), so a glyph next to a Latin word inside a Hebrew
+ * paragraph resolves against the PARAGRAPH's direction and lands on the wrong
+ * end of the pair. `.gw` is `unicode-bidi: isolate` — the same treatment `.m`,
+ * `.v` and `bdi` already get one rule above it in `styles.css`, and the same
+ * reason `anchorRow` already isolates a lane id. Without it the Hebrew mirror
+ * puts the glyph on the wrong side of every row in a 684-row list.
+ *
+ * **What this deliberately is NOT: a chip's `data-g`.** Owner ruling
+ * 2026-09-08 (`TASK-a-chip-s-data-g-never-renders-on-six-of-the-eight-chip-
+ * kinds`) confines `data-g` to the conversation archive's chips, because
+ * re-pointing it would change the glyph on chips in Doctor, Decay, Work, Watch
+ * and Status that he has been reading for weeks. This adds a mark beside a
+ * word; it re-teaches nothing.
+ */
+export function glyphed(g, nodes) {
+  // **THE CONSTRAINT IS ENFORCED, NOT DOCUMENTED.** A caller that reaches here
+  // with nothing to say is asking for a mark alone, and a mark alone is the one
+  // thing the item forbids — it fails a screen reader, it fails a reader who
+  // does not know the convention, and `aria-hidden` above would make the whole
+  // run invisible to assistive tech. Thrown rather than tolerated, because the
+  // tolerant version is a silent regression that no census can see: the glyph
+  // still renders and the row still looks right.
+  if (!Array.isArray(nodes) || nodes.length === 0) {
+    throw new Error(`glyphed: ${g} was given no word to sit beside`);
+  }
+  const wrap = el('span', 'gw');
+  const mark = el('span', 'g', g);
+  mark.setAttribute('aria-hidden', 'true');
+  wrap.append(mark, ...nodes);
+  return wrap;
+}
+
+/**
  * Group separators, `en-US`, exactly as the mockup's `num` does it. Not the
  * page language: the mockup draws `4,260` in both languages, and a token count
  * that changes its separators with the UI language is a second thing to
@@ -492,53 +548,62 @@ function drawnSpan(host) {
 }
 
 /**
- * `<div class="phd"><h2>…</h2><span class="verdict">✅ <span>…</span></span></div>`
+ * `<div class="phd"><h2>…</h2><span class="verdict"><span class="chip index">…</span></span></div>`
  * followed by `<p class="psub">…</p>`, which is how all 21 screens open.
  *
- * The ✅ is a SIBLING of the translated span, never inside it — the mockup's
- * own arrangement, and the reason it matters is the defect `e2e/language.spec.ts`
- * pins: a translated element's children are replaced wholesale from the string
- * table, which knows nothing of a glyph someone nested inside one.
+ * ── THE TICK IS GONE, AND THIS IS THE ROLLOUT THAT WAS RULED CORRECT IN 2026-08 ──
  *
- * **`glyph` exists because the design of record uses two of them, and this
- * composite shipped able to draw only one.** Nineteen of the twenty-one screens
- * open ✅; `data-p="status"` and `data-p="learn"` open ⚠️ — a recorded
- * exception and a conditional pass, which is a different verdict and says so
- * (`docs/design/web-ui-mockup.html` · `<span class="verdict">⚠️ <span data-t="st.v">` · ~3259).
- * Defaulted rather than required, so the three screens already calling this
- * function are untouched.
+ * Until 2026-09-13 this function drew a bare emoji text node before the
+ * translated span: nineteen screens opened `✅` and `data-p="learn"` opened
+ * `⚠️`. Three facts about that, all measured by the round-two UI review
+ * (`reports/2026-09-13-the-ui-reviewed-round-two.md`, "The glyph survey and
+ * proposed set"):
  *
- * **Nineteen of twenty-one stayed the emoji; Status did not, and this is why.**
- * The ui1 Task 19 reconciliation said the emoji verdict "is replaced by the
- * `.chip` primitive", reading repaint spec §6 — arguably about CATEGORY
- * glyphs on item ids rather than the verdict, which is why this stayed an
- * open disagreement rather than a settled one for a time (repaint 9.2,
- * 2026-08-22, repainted `.card.gloss` to `.card.pane` on these lines and left
- * every `✅`/`⚠️` in place). **`TASK-ui1-task-19-doctor-decay-status-and-
- * learn-screens`'s own VERIFIED PARTIAL pass, 2026-08-26, settled it the other
- * way**: Status specifically — not Learn, whose emoji verdict is untouched —
- * was marked NOT MET for exactly this, in so many words: "a real verdict chip
- * is the `.chip` primitive with a meaning hue, not an emoji." No later ruling
- * reopened that. `verdictChip` is therefore opt-in rather than a change to
- * `glyph`'s default: passing it swaps the emoji sibling for a `.chip` of the
- * named hue carrying the verdict text itself, and every caller that does not
- * pass it — nineteen screens, Learn included — is byte-for-byte unaffected.
+ *   - **It read as a health claim about the product.** "✅ real pickers and a
+ *     live glob tester" beside a screen title is a status light to a user, and
+ *     what it actually carried was the team's own design verdict.
+ *   - **It was a bare text node with no `aria-hidden` and no string key**, so a
+ *     screen reader announced "white heavy check mark" on nineteen screens and
+ *     `screen-literals`' rule — every sentence on screen has a key — was met
+ *     only because a lone emoji carries no letters and so is not prose.
+ *   - **It blocked the glyph set the owner asked for on 2026-09-13.** `⚠️`
+ *     meant "this screen is a conditional pass"; a severity vocabulary needs it
+ *     to mean *warning*. One glyph cannot mean both, which is why
+ *     `TASK-a-glyph-makes-a-kind-recognisable-without-reading-in-every` makes
+ *     settling the verdicts a PRECONDITION of adding a single new glyph.
+ *
+ * **The mechanism was already here and the question was already ruled on.**
+ * `TASK-ui1-task-19-doctor-decay-status-and-learn-screens`' verification pass,
+ * 2026-08-26, marked Status NOT MET for exactly this, in so many words: "a real
+ * verdict chip is the `.chip` primitive with a meaning hue, not an emoji."
+ * Status was migrated; the other sixteen call sites were left on the emoji
+ * because the change was made opt-in to avoid touching them. This finishes it.
+ * `verdictChip` is no longer opt-in and there is no glyph parameter to pass.
+ *
+ * **The default hue is `index`, the stylesheet's declared SECOND NEUTRAL, and
+ * that is a decision rather than a fallback.**
+ * `DEC-the-meaning-hue-budget-is-five-gold-ok-carry-crit-and-warn` caps the
+ * meaning hues at five, and a verdict drawn on sixteen screens in `ok` green
+ * would be the health claim again in a second channel — the tick's own defect,
+ * repainted. `index` spends `--dim`/`--edge-3`/`--sink` — decoration and
+ * structure, no meaning hue at all — and its documented meaning is exactly what
+ * a screen's own note about itself is: *"PRESENT, and quieter than the things
+ * around it"* (`styles.css`, `.chip.index`). `screens/status.js` keeps `warn`,
+ * which is the hue its own 2026-08-26 ruling gave it.
+ *
+ * The chip carries the SAME keyed text the emoji sat beside, so nothing on
+ * screen loses its string key and `e2e/language.spec.ts`' wholesale-replacement
+ * pin is satisfied by construction: there is no longer any sibling node for a
+ * re-translation to lose.
  */
-export function screenHead(ctx, root, titleKey, verdictKey, subKey, glyph = '✅', verdictChip = null) {
+export function screenHead(ctx, root, titleKey, verdictKey, subKey, verdictChip = 'index') {
   const phd = el('div', 'phd');
   const h = el('h2');
   h.append(...ctx.t(titleKey));
   const verdict = el('span', 'verdict');
-  if (verdictChip === null) {
-    verdict.append(`${glyph} `);
-    const vtext = el('span');
-    vtext.append(...ctx.t(verdictKey));
-    verdict.append(vtext);
-  } else {
-    const chip = el('span', `chip ${verdictChip}`);
-    chip.append(...ctx.t(verdictKey));
-    verdict.append(chip);
-  }
+  const chip = el('span', `chip ${verdictChip}`);
+  chip.append(...ctx.t(verdictKey));
+  verdict.append(chip);
   phd.append(h, verdict);
   const sub = el('p', 'psub');
   sub.append(...ctx.t(subKey));

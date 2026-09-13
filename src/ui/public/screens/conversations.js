@@ -57,7 +57,7 @@
 // The outline costs one 358 ms walk; every scroll after it costs 2 ms.
 
 import {
-  boundedList, el, errorNote, mono, screenHead, spaced, zonedStampOf,
+  boundedList, el, errorNote, glyphed, mono, screenHead, spaced, zonedStampOf,
 } from './parts.js';
 import { helpDisclosure } from '../lib/disclosure.js';
 import { LOOK_GAP_MS, attachLook, shouldPing } from '../lib/heartbeat.js';
@@ -936,6 +936,50 @@ const ARCH_SETTLE_MS = 250;
  */
 const ANCHOR_KIND_KEYS = new Set(['note', 'table', 'report', 'ruling']);
 
+/**
+ * ── THE GLYPH EACH ANCHOR KIND WEARS ───────────────────────────────────────
+ *
+ * `TASK-a-glyph-makes-a-kind-recognisable-without-reading-in-every`, owner
+ * instruction 2026-09-13, and this is the case he asked about. The design of
+ * record is the glyph survey in
+ * `reports/2026-09-13-the-ui-reviewed-round-two.md`; these four are its table.
+ *
+ * **Why this list and not another surface.** A marked point carries SIX facts
+ * in one line of words and, until this, not one glyph: the session name as the
+ * link, the kind, who marked it, the stamp, the lane where there is one, and
+ * the byte. Nothing on that row was scannable — a reader told two kinds apart
+ * by reading. It is a CLOSED four-member set, repeated across a list measured
+ * at 684 rows, which is the strongest case in the product for a glyph and the
+ * exact shape the survey's rule admits: members of a closed set, told apart at
+ * a glance, repeatedly, in a dense list.
+ *
+ *   U+1F4CC  note    a pin — the one a person placed by hand, and the only
+ *                    kind the sweep will never touch.
+ *   U+25A6   table   tabular data. **Deliberately not the bar-chart emoji**:
+ *                    that reads as "chart", and Decay is this app's chart
+ *                    screen. A geometric mark sits on the text baseline and
+ *                    needs no colour font. Keeping `table` and `chart` apart
+ *                    matters more than a uniform emoji style.
+ *   U+1F4C4  report  a document.
+ *   U+2696   ruling  scales — a judgement, and the kind carrying most weight.
+ *
+ * **Written as escapes, not as pasted emoji**, so that a codepoint cannot be
+ * silently changed by an editor normalising a variation selector — the
+ * difference between U+2696 and U+2696 U+FE0F is text presentation against
+ * emoji presentation, and it is invisible in a diff.
+ *
+ * **A kind this build has no word for gets NO glyph**, for the same reason the
+ * word falls back to the raw string one function below: there is no mark for
+ * "unknown", and inventing one would be a second meaning for a glyph nobody
+ * could look up. The row is still complete — it carries the kind as itself.
+ */
+const ANCHOR_KIND_GLYPH = {
+  note: '\u{1F4CC}',
+  table: '\u25A6',
+  report: '\u{1F4C4}',
+  ruling: '\u2696\uFE0F',
+};
+
 /** The controls that scope a search — Task 5. Built once, never redrawn. */
 function archiveBar(ctx, sessions, state, onChange) {
   const bar = el('div', 'convfilter convarchbar');
@@ -1438,7 +1482,12 @@ function anchorRow(ctx, anchor, onChanged) {
   // passes. The `anchors` table takes any `kind` string, so an anchor
   // written by a later build must still be readable on this one.
   if (ANCHOR_KIND_KEYS.has(anchor.kind)) {
-    kind.append(...ctx.t(`conv.anchors.kind.${anchor.kind}`));
+    // **The glyph is a MARK BESIDE the word, never instead of it.** `glyphed`
+    // hides it from assistive tech and isolates the pair for bidi; the keyed
+    // word stays exactly where it was and keeps its key, so `screen-literals`
+    // and `strings-parity` measure the same thing they measured before.
+    kind.append(glyphed(ANCHOR_KIND_GLYPH[anchor.kind],
+      ctx.t(`conv.anchors.kind.${anchor.kind}`)));
   } else {
     kind.textContent = anchor.kind;
   }

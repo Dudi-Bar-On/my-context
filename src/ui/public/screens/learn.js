@@ -316,7 +316,7 @@ function unmeasuredMark(ctx) {
 
 export async function render(root, ctx) {
   root.replaceChildren();
-  screenHead(ctx, root, 'ln.h', 'ln.v', 'ln.sub', '⚠️');
+  screenHead(ctx, root, 'ln.h', 'ln.v', 'ln.sub');
 
   const card = el('div', 'card pane');
   const table = el('table');

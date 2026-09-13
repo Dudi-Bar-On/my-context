@@ -360,6 +360,40 @@ export function commandActions({ argv, id, values = {}, ctx, copyBlocked = false
   root.append(copy);
 
   /**
+   * ── AND NOW A READER WHO IS LOOKING IS TOLD TOO ────────────────────────
+   *
+   * Owner approval 2026-09-13, `TASK-a-glyph-makes-a-kind-recognisable-
+   * without-reading-in-every`, third piece.
+   *
+   * Until this, "Copied to the clipboard." went ONLY into `span#announce` —
+   * measured at 1x1 px with `clip-path: inset(50%)`, which is screen-reader
+   * only. `app.js`' own `announceRegion()` says why in so many words: the
+   * design of record had no shell slot for a transient outcome, so drawing
+   * words into the 26px provenance band "would be inventing visible chrome the
+   * owner has not approved". **He has now approved it** — and it lands beside
+   * the control, not in the provenance band, which is what he approved and
+   * where the newer Conversations code already puts it.
+   *
+   * **The precedent followed is `screens/conversations.js`' recall-copy
+   * control** (`convrecallcopied`) and the transcript viewer's `tvcopied`: a
+   * quiet `.small` line beside the button, filled on SETTLEMENT with the same
+   * keyed sentence, never a label swapped on the button itself. Inventing a
+   * second pattern for the same fact is how a product ends up with two.
+   *
+   * **It carries NO `aria-live`, and that is the one place this deliberately
+   * differs from that precedent.** There, the visible line is the only carrier
+   * and must therefore be live. Here `ctx.announce` already puts the identical
+   * sentence into the shell's one live region four lines below, and a second
+   * live region holding the same words means a reader hears them twice. One
+   * announcement, one home; this is the sighted half of the same outcome.
+   *
+   * Built once and empty rather than created on click, for the reason the
+   * confirm block below gives: a node that exists from the start is a node the
+   * shell's language toggle can find.
+   */
+  const said = el('span', 'small cmdsaid');
+
+  /**
    * **The copy, and the only two things it can end as.**
    *
    * Written once and shared by both branches below, because the branch is
@@ -387,6 +421,7 @@ export function commandActions({ argv, id, values = {}, ctx, copyBlocked = false
         // has to be looking at the button to receive, and this defect is
         // precisely about the reader who is not.
         ctx.announce?.(ctx.t('live.copied'));
+        said.replaceChildren(...ctx.t('live.copied'));
         onCopied?.();
       },
       (error) => {
@@ -395,6 +430,7 @@ export function commandActions({ argv, id, values = {}, ctx, copyBlocked = false
         // paste whatever WAS on it into a shell, and a polite queue can hold
         // that news until after they have.
         ctx.announce?.(ctx.t('live.copyFailed'), true);
+        said.replaceChildren(...ctx.t('live.copyFailed'));
         // And the platform's own words stay on screen, unedited, for the
         // reader who is looking — the announcement says WHAT happened, this
         // says why, and neither is a substitute for the other.
@@ -406,6 +442,10 @@ export function commandActions({ argv, id, values = {}, ctx, copyBlocked = false
   // Nothing composed outside the catalogue may run. Asserted, not assumed.
   if (typeof id !== 'string' || id === '') {
     copy.addEventListener('click', onCopyClick((error) => root.append(errorNote(message(error)))));
+    // Last, so the sentence follows every control rather than sitting BETWEEN
+    // two of them: `.cmdactions` is a wrapping flex row, and a line that lands
+    // mid-row pushes Execute sideways the moment a copy succeeds.
+    root.append(said);
     return root;
   }
 
@@ -657,6 +697,8 @@ export function commandActions({ argv, id, values = {}, ctx, copyBlocked = false
     confirm.focus();
   });
 
+  // Last, after Copy, Execute and the confirm — see the early return above.
+  root.append(said);
   return root;
 }
 

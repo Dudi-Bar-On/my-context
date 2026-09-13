@@ -1123,7 +1123,7 @@ export const strings = {
   'ask.recall2': '{b:The case is recall, not ranking.} {m:core/search.ts} decided against ranking here. A parity test ships with it: one naive swap dropped a query from {b:14 hits to 1}.',
   // Doctor
   'doc.h': 'Doctor',
-  'doc.v': '"exit 1" loses the findings list',
+  'doc.v': 'every finding, with its repair beside it',
   'doc.sub': 'Grouped by code, in three levels. Each row links its item. A repair command sits under the table it answers for; a finding only a person can settle carries mycontext ack on its own row, which records the ruling and changes nothing else.',
   'doc.d1': 'its source document changed since the snapshot',
   'doc.d2': 'scope {mv:scope} matches no file',
@@ -1520,7 +1520,7 @@ export const strings = {
   'exec.nochange': '{b:This changes nothing.} It was run against a copy of the corpus and no item came out different. It is still a write, and it still runs.',
   // Configure
   'cfg.h': 'Configure',
-  'cfg.v': 'the strongest "a terminal cannot do this"',
+  'cfg.v': 'nothing is written until you apply it',
   'cfg.sub': 'Every change is previewed as a diff, checked against the same {m:resolveConfig} that reads it.',
   'cfg.budgets': 'Budgets',
   // The two hard stops `/api/config` carries as FIELDS rather than as a 500.
@@ -1814,6 +1814,7 @@ export const strings = {
   'tu.1': 'First twenty minutes',
   'tu.j1': 'I have just installed this',
   'tu.todo': 'to write',
+  'tu.written': 'written',
   'tu.2': 'When it did not fire',
   'tu.j2': 'the model did the banned thing',
   'tu.3': 'Scope and the empty scope',
@@ -1827,7 +1828,7 @@ export const strings = {
   'tu.gap': 'Hebrew is shown as {b:to write}, not a language toggle that would silently fall back to English. The changelog already notes tutorials have no parity test — this is that gap, drawn.',
   // Learn
   'ln.h': 'Learn',
-  'ln.v': 'conditional pass — the corpus cross-links earn it',
+  'ln.v': 'help that cites your own items',
   'ln.sub': 'The four help topics, each linked to the items in {i:this} corpus that demonstrate it. That join is what a docs page cannot do.',
   'ln.c': 'which are normative',
   'ln.s': 'how scope restricts',

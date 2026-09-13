@@ -77,7 +77,7 @@
  * reading surface).
  */
 import { paintCliHelp } from '/screens/cli-help.js';
-import { el, errorNote, openIcon, screenHead, spaced } from '/screens/parts.js';
+import { el, errorNote, glyphed, openIcon, screenHead, spaced } from '/screens/parts.js';
 // The DATA half of the Coverage tree, and only the data half: `buildTree`
 // takes a flat file list, knows nothing about scope, and returns a genuinely
 // nested structure. `treeRows` — which flattens that structure back into a
@@ -145,12 +145,34 @@ export function docHref(kind, id, lang) {
   return lang === 'he' ? `${base}&lang=he` : base;
 }
 
-/** ✅ where a Hebrew mirror exists, and the "to write" chip where it does not
- *  — never a blank cell. The `title` carries the sentence, because a bare
- *  glyph beside a title is not a statement anyone can read. */
+/**
+ * U+2705 where a Hebrew mirror exists, and the "to write" chip where it does
+ * not — never a blank cell.
+ *
+ * ── THE TICK NOW HAS A WORD BESIDE IT ──────────────────────────────────────
+ *
+ * It used to be the glyph alone with the sentence in a `title`, which is the
+ * shape `TASK-a-glyph-makes-a-kind-recognisable-without-reading-in-every`
+ * forbids in so many words: **the glyph is never the only carrier**. A `title`
+ * is not reachable from a keyboard, never appears on a touch device, and the
+ * bare text node carried no `aria-hidden`, so a screen reader announced "white
+ * heavy check mark" and then nothing. Its own SIBLING already did it right —
+ * the negative case is a chip with `tu.todo` in it — so this is the two halves
+ * of one column finally agreeing.
+ *
+ * `tu.written` is the word, and it is the exact opposite of `tu.todo` rather
+ * than a new vocabulary. The `title` keeps the longer sentence, which is what a
+ * title is for.
+ *
+ * **And this is the ONE meaning U+2705 has in this product**, which is a fact
+ * that only became true in the same pass: until 2026-09-13 the same tick opened
+ * nineteen screen headings as the team's internal design verdict. Retiring that
+ * is what left this one free to mean "the file exists" and nothing else.
+ */
 function mirrorMark(ctx, hasMirror) {
   if (hasMirror) {
-    const yes = el('span', 'lang ok', '✅');
+    const yes = el('span', 'lang ok');
+    yes.append(glyphed('\u2705', ctx.t('tu.written')));
     yes.title = ctx.tFlat('dv.heyes');
     return yes;
   }
@@ -166,7 +188,11 @@ function mirrorMark(ctx, hasMirror) {
  *  sends — the same rule `t()` follows for a key it cannot find. */
 function langMark(ctx, state, label) {
   if (state === DONE) {
-    const yes = el('span', 'lang ok', `${label} ✅`);
+    // The same pairing as `mirrorMark` above and as the two branches below:
+    // the language label, then the glyph, then the WORD. A tick with a column
+    // label beside it says which column, not what the state is.
+    const yes = el('span', 'lang ok');
+    yes.append(`${label} `, glyphed('✅', ctx.t('tu.written')));
     yes.title = ctx.tFlat('tu.donemeans');
     return yes;
   }

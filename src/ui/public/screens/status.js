@@ -98,7 +98,7 @@ import { el, errorNote, num, screenHead, spaced } from '/screens/parts.js';
 
 export async function render(root, ctx) {
   root.replaceChildren();
-  screenHead(ctx, root, 'st.h', 'st.v', 'st.sub', undefined, 'warn');
+  screenHead(ctx, root, 'st.h', 'st.v', 'st.sub', 'warn');
 
   const card = el('div', 'card pane');
   root.append(card);

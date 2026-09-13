@@ -493,8 +493,8 @@ const KNOWN_GAPS: Record<string, string[]> = {
     // The union of every kind observed absent across runs — a ceiling, not a
     // measurement of one moment. See DATA_DEPENDENT above.
     'b', 'bdi', 'div.nt', 'div.rw', 'div.tokbar', 'div.tokvoid', 'rect',
-    'span.chip.crit', 'span.chip.ok', 'span.chip.warn', 'span.ln', 'svg', 'td',
-    'td.m.small', 'tr.regime',
+    'span', 'span.chip.crit', 'span.chip.ok', 'span.chip.warn', 'span.ln', 'svg',
+    'td', 'td.m.small', 'tr.regime',
     // `svg.chart` appeared for the first time on 2026-08-23, when the collector
     // stopped reading `el.className` on SVG elements. The pulse's own <svg> is
     // the same element already listed here as a bare `svg`; the class is what
@@ -526,7 +526,7 @@ const KNOWN_GAPS: Record<string, string[]> = {
   // `{mv:}` slot and no `span.m.v` — and this gate would then report a gap
   // that is a property of the fixture, not of the screen. The durable fix is
   // the fixture corpus the `watch` note above already tracks.
-  doctor: ['b', 'span.prop'],
+  doctor: ['b', 'span', 'span.prop'],
   // 23 -> 15 on 2026-08-23: the recency comb and the 90-day heatstrip both
   // landed. What remains is almost entirely DATA — the heatstrip reads the
   // audit projection, which the read surface itself stales, so this screen
@@ -569,7 +569,21 @@ const KNOWN_GAPS: Record<string, string[]> = {
   // This gate compares KINDS PER SCREEN, not placement, so a run that moved
   // parents was never going to be namable here. Measured 2026-08-26: probing
   // `['span']` came back stale, which is the ledger refusing the entry itself.
-  learn: [],
+  // **`span` ARRIVED 2026-09-13 ON FOUR SCREENS AT ONCE, and it is one edit
+  // rather than four findings.** `screenHead()` drew the screen verdict as a
+  // bare emoji text node plus a CLASSLESS `<span>` holding the translated run.
+  // `TASK-a-glyph-makes-a-kind-recognisable-without-reading-in-every` retired
+  // the tick — it read to a user as a health claim about the product, it was
+  // unreadable to a screen reader, and `⚠️` meaning "conditional pass" blocked
+  // the severity set — so the verdict is now a `span.chip.index` and the bare
+  // span went with it. `status` has carried this exact entry since it migrated
+  // on 2026-08-26, and these four are the rest of that rollout arriving.
+  //
+  // MEASURED, not inferred: this spec was run against HEAD with the ten changed
+  // files restored, and again with them in place. The only difference in the
+  // whole report was `span`, on exactly these four screens. Every other screen
+  // still draws a classless span elsewhere in its own section.
+  learn: ['span'],
 
   // ── The six screens built in parallel on 2026-08-23 ─────────────────────
   //
@@ -616,7 +630,7 @@ const KNOWN_GAPS: Record<string, string[]> = {
   // prose note and not an entry. Measured 2026-08-26: probing `['br']` came
   // back stale. Recorded so the next reader of this screen does not re-derive
   // the finding and try to file it a fourth time.
-  work: [],
+  work: ['span'],
   // `div.hit` is DATA: the glob tester lights a row per matching file, and this
   // corpus answers the opening pattern with none. `span.chip.crit` is
   // INTERACTION: it appears the moment an argv value carries a shell

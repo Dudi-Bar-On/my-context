@@ -108,7 +108,7 @@ import { composeCommand } from '/lib/command.js';
 import { PALETTE, commandFor, runnableFor } from '/lib/palette-defs.js';
 import { commandActions } from '/lib/command-actions.js';
 import { helpDisclosure } from '/lib/disclosure.js';
-import { el, errorNote, linkId, mono, screenHead, spaced } from '/screens/parts.js';
+import { el, errorNote, glyphed, linkId, mono, screenHead, spaced } from '/screens/parts.js';
 
 /**
  * The catalogue, by name. A Map rather than a repeated `PALETTE.find`, because
@@ -243,10 +243,44 @@ export function repairFor(finding) {
  * `info`, the mockup writes "warning" and "notice". The level is the join key,
  * the heading is the label, and they are allowed to differ.
  */
+/**
+ * ── AND EACH HEADING NOW CARRIES A GLYPH ───────────────────────────────────
+ *
+ * `TASK-a-glyph-makes-a-kind-recognisable-without-reading-in-every`, and the
+ * survey in `reports/2026-09-13-the-ui-reviewed-round-two.md` admits this case
+ * for two reasons this screen already argues for itself.
+ *
+ * **Severity is said by the card heading and nowhere else** — this file's own
+ * rule, stated twice below (`noRepairChip`, `acknowledgedChip`) as the reason
+ * neither of them may wear a meaning hue. The glyph therefore goes exactly
+ * where the word already is, and to no row.
+ *
+ * **SHAPE carries it, not colour.** Three coloured dots down a screen round one
+ * measured at 20,180px with no filter would be `#37 Color Only` — an octagon, a
+ * triangle and a circle survive a monochrome print and a reader who cannot tell
+ * red from amber.
+ *
+ *   U+1F6D1  error    octagon
+ *   U+26A0   warning  triangle — **available only because the screen-heading
+ *                     verdict tick was retired in the same pass.** Until then
+ *                     U+26A0 meant "this screen is a conditional pass" on Learn
+ *                     and Status, and one glyph cannot mean two things. That
+ *                     dependency is why the item makes the verdicts a
+ *                     precondition rather than a companion change.
+ *   U+2139   notice   circle
+ *
+ * **Not U+2705 for `doc.acked`, and that is a deliberate omission.** The survey
+ * proposed a tick for the acknowledged chip; `acknowledgedChip` draws U+25CF
+ * through `data-g`, and owner ruling 2026-09-08
+ * (`TASK-a-chip-s-data-g-never-renders-on-six-of-the-eight-chip-kinds`) settled
+ * that a chip glyph on THIS screen is not to be re-pointed, because re-teaching
+ * a symbol a reader has used for weeks costs more than it buys. Adding a mark
+ * beside a word is not that; changing the mark a chip already draws is.
+ */
 const CARDS = [
-  { level: 'error', key: 'doc.error' },
-  { level: 'warn', key: 'doc.warning' },
-  { level: 'info', key: 'doc.notice' },
+  { level: 'error', key: 'doc.error', glyph: '\u{1F6D1}' },
+  { level: 'warn', key: 'doc.warning', glyph: '\u26A0\uFE0F' },
+  { level: 'info', key: 'doc.notice', glyph: '\u2139\uFE0F' },
 ];
 
 /**
@@ -1054,7 +1088,7 @@ export async function render(root, ctx) {
   for (const card of CARDS) {
     const pane = el('div', 'card pane');
     const heading = el('h3');
-    heading.append(...ctx.t(card.key));
+    heading.append(glyphed(card.glyph, ctx.t(card.key)));
 
     const table = el('table');
     const tbody = el('tbody');

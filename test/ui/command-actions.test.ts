@@ -606,6 +606,58 @@ test('a copy that REJECTS is announced as a failure, and that one interrupts', a
   clipboard.fail = null;
 });
 
+/* --------------------------------------------------------------------------
+ * **AND NOW A READER WHO IS LOOKING IS TOLD TOO** — owner approval 2026-09-13,
+ * `TASK-a-glyph-makes-a-kind-recognisable-without-reading-in-every`, third
+ * piece.
+ *
+ * The three tests above prove the SENTENCE is right and that it is keyed to the
+ * settlement. What none of them could prove is that anybody SEES it: until this,
+ * "Copied to the clipboard." went only into `span#announce`, which `app.js`
+ * builds at 1x1 px with `clip-path: inset(50%)`. A sighted reader got nothing,
+ * which is the original 2026-08-25 defect surviving its own repair for everyone
+ * who is not using a screen reader.
+ *
+ * So these two read the VISIBLE line, and they read it on both settlements —
+ * the same shape as the pair above, for the same reason: a line filled from the
+ * click handler would say "copied" for a write the browser refused.
+ * -------------------------------------------------------------------------- */
+
+test('a copy that RESOLVES writes the same sentence where a reader can SEE it', async () => {
+  clipboard.written.length = 0;
+  clipboard.fail = null;
+  const { root } = await draw({ argv: ['mycontext', 'doctor'], id: 'doctor' });
+
+  const said = findOne(root, 'span.cmdsaid.small');
+  assert.equal(textOf(said), '',
+    'a line that already reads "Copied" at first paint is the announcement defect with a '
+    + 'different audience');
+
+  await click(findButton(root, COPY));
+
+  assert.equal(textOf(said), 'Copied to the clipboard.',
+    'the visible half of the acknowledgement. It is the SAME keyed sentence the live region '
+    + 'gets — a second wording for one outcome is how a product ends up with two');
+  // And it carries no `aria-live` of its own. `ctx.announce` already put this
+  // sentence in the shell's one live region; a second live region holding the
+  // same words means a reader hears them twice. This is the sighted half.
+  assert.equal(said.attributes['aria-live'], undefined,
+    'two live regions for one outcome is a reader hearing it twice');
+});
+
+test('a copy that REJECTS says so on screen, and does not claim a copy', async () => {
+  clipboard.written.length = 0;
+  clipboard.fail = 'clipboard write permission denied';
+  const { root } = await draw({ argv: ['mycontext', 'doctor'], id: 'doctor' });
+  await click(findButton(root, COPY));
+
+  const said = findOne(root, 'span.cmdsaid.small');
+  assert.equal(textOf(said), 'Copy failed. Nothing was written to the clipboard.',
+    'the visible line follows the SETTLEMENT. A line keyed to the click would read "Copied to '
+    + 'the clipboard." here, over a clipboard the browser never wrote to');
+  clipboard.fail = null;
+});
+
 test('the announcement is the SETTLEMENT and not the click — the two clicks differ', async () => {
   // The one assertion that a click-keyed handler cannot pass. Same button, same
   // press, two platform answers; if what is said were a function of the click,

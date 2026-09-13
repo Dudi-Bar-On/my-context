@@ -421,6 +421,25 @@ bdi{unicode-bidi:isolate}
 /* A VALUE SLOT: the isolation and nothing else — carries no colour or weight
    of its own, so marking a value changes nothing on screen by itself. */
 .v{unicode-bidi:isolate}
+/* ─── THE GLYPH RUN — `parts.js`' `glyphed()`, and the reason it is a WRAPPER
+   and not a margin on the glyph alone.
+   (`TASK-a-glyph-makes-a-kind-recognisable-without-reading-in-every`)
+
+   Emoji are bidi-neutral (Unicode class `ON`). A neutral between a Latin word
+   and the surrounding Hebrew paragraph resolves against the PARAGRAPH, so
+   `📌 you marked this` inside an RTL row draws the pin on the right of the
+   phrase in English and on the left of it in Hebrew — the glyph detached from
+   the word it marks, on every row of a 684-row list. Isolating the PAIR fixes
+   both: `.gw` is one directional run, the word inside it keeps its own
+   resolution, and the glyph stays where it was written. Same mechanism as `.m`,
+   `.v` and `bdi` three rules up, applied for the same reason.
+
+   `.g` carries the space, so no call site appends one and no two call sites
+   disagree about whether there is one. `1em` and not a px gap: the glyph is
+   drawn in the reader's own emoji font at whatever size the row is, and a fixed
+   gap beside a variable mark is the shape that goes wrong at the edges. */
+.gw{unicode-bidi:isolate}
+.g{margin-inline-end:.3em}
 /* Paths and code stay LTR inside an RTL page — a path is not prose (spec §3,
    "honestly out of scope"). Not in the mockup verbatim (nothing there is
    RTL-conditional for code/pre — the rule above already makes them
@@ -1868,6 +1887,16 @@ bdi{unicode-bidi:isolate}
    of it and a 1px border. Measured off the control, not chosen. */
 .phd{display:flex;flex-wrap:wrap;gap:6px var(--sp-3);align-items:baseline;margin-block-end:3px;min-block-size:37px}
 .verdict{font-size:var(--fs-0);color:var(--dim)}
+/* THE VERDICT CHIP DRAWS NO GLYPH AT ALL — and this rule is what says so.
+   `screenHead` writes `chip index`, and `.chip.index` carries no `::before` of
+   its own precisely so a call site can name one through `data-g`. The verdict
+   names none, and bare `.chip::before{content:attr(data-g) " "}` would then
+   resolve `attr(data-g)` on an element with no such attribute to the empty
+   string and draw a lone leading SPACE inside the border. Suppressed rather
+   than papered over with a `data-g` nobody wants: a screen's note about itself
+   is text, and the tick that used to sit there is exactly what
+   `TASK-a-glyph-makes-a-kind-recognisable-without-reading-in-every` retired. */
+.verdict .chip::before{content:none}
 .psub{color:var(--dim);font-size:var(--fs-1);margin:0 0 var(--sp-4);max-inline-size:78ch}
 
 /* ─── Cards, the two-plane scene, and tables. `.card` (mockup ~507-508) is

@@ -544,8 +544,9 @@ test('both languages draw the italic run — the Hebrew emphasis has landed', as
   // emphasis run has been dropped from the Hebrew table — that is a regression,
   // not a pending translation.
   const built = [
-    'button.linkid.m', 'div.card.pane', 'div.phd', 'h2', 'i', 'p.psub', 'span',
-    'span.chip.unmeas', 'span.verdict', 'table', 'tbody', 'td.m', 'td.small', 'tr',
+    'button.linkid.m', 'div.card.pane', 'div.phd', 'h2', 'i', 'p.psub',
+    'span.chip.index', 'span.chip.unmeas', 'span.verdict', 'table', 'tbody', 'td.m',
+    'td.small', 'tr',
   ];
   const { root: enRoot } = await renderLearn('en');
   assert.deepEqual(renderedKinds(enRoot), built,
@@ -554,13 +555,20 @@ test('both languages draw the italic run — the Hebrew emphasis has landed', as
   assert.deepEqual(renderedKinds(heRoot), built,
     'the Hebrew render no longer draws the italic run. `ln.sub` carries `{i:}` in he.js as of '
     + '2026-08-27; losing it is a dropped emphasis run, not unfinished work.');
-  // The one kind the drawing has and the screen does not, stated rather than
-  // asserted away: `span.m`, which BECAME `button.linkid.m`. Naming it here is
-  // what stops the next reader from "fixing" the difference in the wrong
-  // direction — by editing a frozen file, or by demoting a working button back
-  // to inert text.
-  assert.deepEqual(drawn.filter((kind) => !built.includes(kind)), ['span.m'],
-    'the drawing and the screen now differ by something other than the walk/88 upgrade');
+  // The kinds the drawing has and the screen does not, stated rather than
+  // asserted away. Naming them here is what stops the next reader from "fixing"
+  // the difference in the wrong direction — by editing a frozen file, or by
+  // demoting working work back to the drawing.
+  //
+  //   `span.m`  BECAME `button.linkid.m` (`walk/88`, 2026-09-05).
+  //   `span`    was the classless wrapper the retired emoji verdict put around
+  //             `ln.v`'s translated run. `screenHead` draws `span.chip.index`
+  //             now and no bare `span` at all — the tick and its sibling went
+  //             together, 2026-09-13, `TASK-a-glyph-makes-a-kind-recognisable-
+  //             without-reading-in-every`.
+  assert.deepEqual(drawn.filter((kind) => !built.includes(kind)), ['span', 'span.m'],
+    'the drawing and the screen now differ by something other than the walk/88 upgrade and '
+    + 'the retired verdict tick');
 
   // And the italic really is in `ln.sub`, in BOTH tables: it is carried in the
   // string values, never in the screen, so neither language can drift from the
@@ -868,20 +876,44 @@ test('a refusal is drawn per row, in the server\'s own words, and the other thre
     ['INV-prices-are-integer-cents']);
 });
 
-// ── 8. The heading, and the verdict that is not the other twenty screens' ──
+// ── 8. The heading, and the verdict chip that replaced the tick ──────────
 
-test('the screen opens with the mockup\'s ⚠️ verdict, the glyph outside the translated span', async () => {
+test('the verdict is a chip with a keyed sentence in it, and no glyph anywhere', async () => {
   const { root } = await renderLearn('en');
   const phd = root.children.find((child) => child.className === 'phd')!;
   const verdict = phd.children.find((child) => child.className === 'verdict')!;
-  // The glyph is a SIBLING of the translated span, never inside it: a
-  // translated element's children are replaced wholesale from the string table,
-  // which knows nothing of a glyph someone nested inside one.
-  assert.equal(verdict.children[0]!.tag, '#text');
-  assert.equal(verdict.children[0]!.textContent, '⚠️ ');
-  assert.equal(verdict.children[1]!.tag, 'span');
-  assert.equal(verdict.children[1]!.className, '');
-  // And it is the mockup's glyph for THIS screen — nineteen of twenty-one open
-  // ✅, and `status` and `learn` open ⚠️.
-  assert.match(learnSection(), /<span class="verdict">⚠️ <span data-t="ln\.v">/);
+
+  // **THE TICK IS GONE, AND THE SHAPE IS WHAT SAYS SO.** Until 2026-09-13 this
+  // screen's `.verdict` opened with a bare `#text` node holding `⚠️ ` and the
+  // translated span came second — nineteen other screens opened `✅` the same
+  // way. `TASK-a-glyph-makes-a-kind-recognisable-without-reading-in-every`
+  // retired both: a tick beside a title reads to a user as a health claim about
+  // the product, the node carried no `aria-hidden` so a screen reader announced
+  // "white heavy check mark", and `⚠️` meaning "conditional pass" made the glyph
+  // unavailable to mean WARNING in the severity set on Doctor.
+  //
+  // A `#text` child here again is that regression, which is why the FIRST
+  // assertion is that there is exactly one child and it is an element.
+  assert.equal(verdict.children.length, 1,
+    'the verdict holds the chip and nothing else — a second child is the emoji sibling back');
+  assert.equal(verdict.children[0]!.tag, 'span');
+  assert.equal(verdict.children[0]!.className, 'chip index',
+    'the neutral chip, not a meaning hue: `DEC-the-meaning-hue-budget-is-five-gold-ok-carry-'
+    + 'crit-and-warn` caps the hues, and an `ok` green here would be the health claim again');
+
+  // And the sentence inside it is `ln.v`'s own, reworded in the same pass from
+  // the internal design argument it used to be ("conditional pass — the corpus
+  // cross-links earn it") to something addressed to the reader.
+  assert.equal(textOf(verdict), 'help that cites your own items');
+  assert.ok(!/[⚠✅]/u.test(textOf(verdict)),
+    'no tick and no warning sign survive in the heading of any screen');
+
+  // **The frozen mockup still carries the emoji, and that is not a failure.**
+  // `DEC-the-mockup-is-a-frozen-reference-it-is-read-never-written` and
+  // `DEC-the-app-is-what-is-built-the-mockup-is-history-and-a-gap`: the drawing
+  // is read and never written, so it keeps the 2026-08 arrangement for ever and
+  // the app is allowed to run ahead of it. Asserted rather than deleted so that
+  // a later reader does not "restore parity" in the wrong direction.
+  assert.match(learnSection(), /<span class="verdict">⚠️ <span data-t="ln\.v">/,
+    'the frozen drawing still shows the retired arrangement — it is history, not a target');
 });
