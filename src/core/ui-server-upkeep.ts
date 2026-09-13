@@ -809,24 +809,88 @@ function serverArgv(port: number): string[] {
  * that survived that night was started by hand, and a hand-started one is
  * exactly a server that is nobody's live descendant.
  *
- * ── THE SHAPE, AND WHY IT IS `cmd.exe` RATHER THAN A FLAG ──────────────────
+ * ── THE SHAPE, AND WHY IT IS A PROCESS RATHER THAN A FLAG ──────────────────
  *
  * There is no Node option that breaks a Windows process out of its parent's
  * tree (`detached` sets the console, not the parentage), so the parentage is
- * broken by putting a process between us that EXITS AT ONCE:
- * `cmd.exe /d /s /c start "" /b <node> …`. `start` creates the server and
- * `cmd` returns within milliseconds, so by the time the timeout kill runs —
- * three seconds later, an eternity — the server's recorded parent is gone and
- * the walk from the hook's pid never reaches it. Measured with the same probe
- * that condemned the old shape: `AFTER: hook alive=false child alive=true`,
- * and `taskkill` reported no descendant at all.
+ * broken by putting a process between us that EXITS AT ONCE. Anything that
+ * starts the server and returns will do it; what matters is that by the time
+ * the timeout kill runs — three seconds later, an eternity — the server's
+ * recorded parent is gone and the walk from the hook's pid never reaches it.
+ * Measured with the same probe that condemned the old shape: `AFTER: hook
+ * alive=false child alive=true`, and `taskkill` reported no descendant at all.
  *
- * `""` is the window title `start` insists on before an executable path it
- * will quote, `/b` keeps it out of a new console window, `/d` and `/s` keep
- * `cmd` from running an AutoRun profile or re-parsing the quotes. `stdio:
- * 'ignore'` stays on the `cmd` we spawn and is inherited through `start`, so
- * the server still holds no pipe belonging to the hook — which matters for its
- * own reason: the platform waits on a hook whose stdio a grandchild is holding.
+ * **The go-between was `cmd.exe /d /s /c start "" /b <node> …` until
+ * 2026-09-13, and what replaced it is a Node stub, for the reason below.**
+ *
+ * ── WHY THE `cmd.exe` GO-BETWEEN HAD TO GO: IT PUT A WINDOW ON THE SCREEN ──
+ *
+ * OWNER REPORT 2026-09-13: *"when you execute the server under a new process
+ * it opens a kind of cmd window"* — and the launch above carried two separate
+ * flags meant to prevent exactly that. `/b` means START WITHOUT CREATING A NEW
+ * WINDOW; `windowsHide: true` asks Windows to hide the process outright. Both
+ * were asserted. **A window appeared anyway, and the reason is that neither
+ * flag was ever about the process the window belongs to.**
+ *
+ * MEASURED 2026-09-13, by enumerating every top-level window on the desktop
+ * across the launch and attributing each one to its owning pid (the real
+ * production launch, with the server argv swapped for a sleeper):
+ *
+ *     class=ConsoleWindowClass  pid=<THE SERVER>  visible=True
+ *     minimized=False  stillPresent=yes  (for the life of the server)
+ *
+ * The window is the SERVER's own console, not `cmd`'s, and `cmd` never had one
+ * at all. `detached: true` is `DETACHED_PROCESS`, so the `cmd` we spawn is
+ * created with NO console — `windowsHide` has nothing to hide and is honoured
+ * vacuously. `start /b` then declines to create a *new* console for the server
+ * and hands it the console `cmd` has, which is none; so Windows does what it
+ * always does for a console application with no console to inherit, and
+ * creates one, with default show state. **VISIBLE. And it stays up as long as
+ * the server does.** Both flags were on the go-between; the window was the
+ * grandchild's.
+ *
+ * ── THE VARIANTS THAT WERE TRIED, AND WHY THIS IS THE ONE KEPT ─────────────
+ *
+ * Each was fired for real and watched, because three earlier accounts of this
+ * mechanism were wrong about it:
+ *
+ *  - **drop `detached` on this branch** — the suspect named on the item, since
+ *    `start ""` breaks the parent chain by itself. It is not the fix and it is
+ *    worse than the defect: with the launcher sharing the hook's console the
+ *    SERVER NEVER CAME UP AT ALL when the parent exited promptly (three runs,
+ *    no pid ever written), and `spawn` then held the parent ~850-1500 ms
+ *    instead of ~30 ms — on a hook the platform waits three seconds for. The
+ *    server appeared only when the parent was made to linger two full seconds,
+ *    which a hook does not do.
+ *  - **`/min` in place of `/b`** — works as advertised and is the owner's
+ *    stated fallback: `visible=True minimized=True foreground=False`. Rejected
+ *    only because the shape below shows nothing at all, and a minimised window
+ *    is still a taskbar button per restart on his machine.
+ *  - **the Node stub, below** — no new top-level window on the desktop, no
+ *    window owned by the server at any point, the server up, and the survival
+ *    proof green. Kept.
+ *
+ * ── THE SHAPE THAT IS THERE NOW ────────────────────────────────────────────
+ *
+ * `node -e <stub> <cli> ui --port N --no-open`. The stub re-spawns its own
+ * argv and exits, so the server is created by a process that passes
+ * `windowsHide` TO THE SERVER — which is the one thing the `cmd` shape could
+ * not do — and that process is gone milliseconds later, which is the whole of
+ * the breakaway. `relaunchStub` builds it from the very options object the
+ * stub itself is spawned with, so the two cannot drift; the copy of a launch
+ * line living in a second place is this repository's most-repeated defect.
+ *
+ * `cwd` needs no forwarding: the stub inherits ours and the server inherits
+ * the stub's. `stdio: 'ignore'` is passed at both hops, so the server still
+ * holds no pipe belonging to the hook — which matters for its own reason: the
+ * platform waits on a hook whose stdio a grandchild is holding.
+ *
+ * **What this costs, named rather than hidden:** one extra Node start per
+ * spawn, and the window in which the go-between is still a live descendant of
+ * the hook grows from `cmd`'s ~30 ms to a Node boot's ~200 ms. Both are
+ * bounded far below the three-second timeout that fires the kill, and the
+ * measurement above put the parent's own return back at ~21-30 ms, unchanged
+ * from the `cmd` shape.
  *
  * **The non-Windows branch is left exactly as it was, and that is deliberate
  * rather than complete.** The POSIX reaper in the same build enumerates
@@ -842,6 +906,35 @@ function serverArgv(port: number): string[] {
  * two failure paths for one fact. That is unchanged by the breakaway, and one
  * degree more true of it: the pid we now hold is `cmd`'s, not the server's.
  */
+/**
+ * The go-between's whole program: start what I was told to start, the way I
+ * was started, and get out of the way.
+ *
+ * **Built from the options the go-between itself is spawned with, and that is
+ * the point rather than a flourish.** The server must be created with
+ * `windowsHide` — that is the entire reason this hop exists, measured above —
+ * and a launch line written out a second time here is a launch line that can
+ * disagree with the one beside it. `startServer` passes the same object to
+ * `spawnFn` and to this function, so there is one source and a test can say so.
+ *
+ * `cwd` is dropped rather than forwarded: the stub inherits ours from `spawn`
+ * and the server inherits the stub's, so passing it again would be a second
+ * copy of a value that is already correct — and a stale one on any path that
+ * ever sets `cwd` without going through here.
+ *
+ * The `'error'` listener is `startServer`'s reason applied one hop down: a
+ * `ChildProcess` whose spawn failed emits `'error'` on a later tick, and an
+ * `EventEmitter` with no listener for it rethrows as an uncaught exception.
+ * `unref()` so the stub can exit the moment the server exists, which is what
+ * makes the server nobody's live descendant.
+ */
+function relaunchStub(options: SpawnOptions): string {
+  const { cwd: _inherited, ...forwarded } = options;
+  return 'const{spawn}=require("node:child_process");'
+    + `const c=spawn(process.execPath,process.argv.slice(1),${JSON.stringify(forwarded)});`
+    + 'c.on("error",()=>{});c.unref();';
+}
+
 function startServer(
   port: number,
   spawnFn: typeof spawn,
@@ -853,13 +946,17 @@ function startServer(
     // three options that are not about the breakaway at all.
     const base: SpawnOptions = { detached: true, stdio: 'ignore' };
     if (cwd !== undefined && existsSync(cwd)) base.cwd = cwd;
-    const child = platform === 'win32'
-      ? spawnFn(
-        process.env.COMSPEC ?? 'cmd.exe',
-        ['/d', '/s', '/c', 'start', '""', '/b', process.execPath, ...serverArgv(port)],
-        { ...base, windowsHide: true },
-      )
-      : spawnFn(process.execPath, serverArgv(port), base);
+    let child;
+    if (platform === 'win32') {
+      // `windowsHide` on BOTH hops, and the second one is the fix: it is the
+      // hop that creates the server, and the server's own console is the
+      // window the owner was seeing.
+      const hidden: SpawnOptions = { ...base, windowsHide: true };
+      child = spawnFn(
+        process.execPath, ['-e', relaunchStub(hidden), ...serverArgv(port)], hidden);
+    } else {
+      child = spawnFn(process.execPath, serverArgv(port), base);
+    }
     child.on('error', () => { /* the next probe is the answer; see above */ });
     child.unref();
   } catch {

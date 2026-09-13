@@ -1,5 +1,6 @@
 // @basis TASK-the-upkeep-stops-the-ui-server-before-it-knows-a-replacement,
 //        TASK-the-guard-that-excludes-lanes-from-reaping-the-server-rests,
+//        TASK-the-breakaway-launch-shows-a-console-window-it-believes-it,
 //        RULE-anything-you-start-for-a-human-to-look-at-must-outlive-the
 /**
  * **The two floors, the stand-down, and the machine that never asked.**
@@ -61,7 +62,47 @@ const NOW = 1_756_300_000_000;
 const PORT = 58888;
 
 const bases: string[] = [];
-after(() => { for (const base of bases) removeTree(base); });
+
+/**
+ * Kill anything this suite wrote a pid file for and then lost track of.
+ *
+ * MEASURED 2026-09-13, `TASK-the-breakaway-launch-shows-a-console-window-it`:
+ * a launch variant under a removal proof brought its child up AFTER the test
+ * had given up waiting for its pid, and the sleeper it left was still running
+ * on the owner's machine minutes later. The `finally` inside that test reaps
+ * what it knows about; this reaps what arrived too late to be known about, at
+ * the one moment — suite end — by which a slow child has certainly written its
+ * pid or will never write one.
+ *
+ * **`RULE-a-delegated-worker-never-runs-a-command-that-reaches-beyond`
+ * applies, and this obeys it**: every pid reached here was written into a file
+ * inside a temp directory by a process this suite started, `process.kill(pid,
+ * 0)` is asked first so nothing already gone is signalled, and this process's
+ * own pid is refused outright — `stopServer` refuses it for the same reason,
+ * because the suite's own liveness records name it.
+ */
+function reapStrayPidFiles(base: string): void {
+  let entries: string[];
+  try { entries = readdirSync(base); } catch { return; }
+  for (const name of entries) {
+    if (!name.endsWith('.pid')) continue;
+    let pid: number;
+    try { pid = Number(readFileSync(path.join(base, name), 'utf8')); } catch { continue; }
+    if (!Number.isInteger(pid) || pid <= 0 || pid === process.pid) continue;
+    try { process.kill(pid, 0); } catch { continue; /* already gone, the goal state */ }
+    try {
+      if (process.platform === 'win32') {
+        execFileSync(
+          path.join(process.env.SYSTEMROOT ?? 'C:\\Windows', 'System32', 'taskkill.exe'),
+          ['/PID', String(pid), '/T', '/F'], { stdio: 'ignore' });
+      } else {
+        process.kill(pid, 'SIGKILL');
+      }
+    } catch { /* gone between the ask and the kill */ }
+  }
+}
+
+after(() => { for (const base of bases) { reapStrayPidFiles(base); removeTree(base); } });
 
 const OFF: Config = resolveConfig({});
 const CONFIGURED: Config = resolveConfig({ ui: { port: PORT } });
@@ -408,15 +449,37 @@ test('the spawn is detached, ignores its stdio, and never opens a browser', asyn
 });
 
 /* ---------------------------------------------------------------------------
- * The breakaway: a server the hook's own death may not take with it.
+ * The breakaway: a server the hook's own death may not take with it, and no
+ * window on the owner's screen for it.
  *
  * `TASK-the-guard-that-excludes-lanes-from-reaping-the-server-rests`. The
  * hook's spawn was `detached: true` + `unref()` and that answers only "does it
  * survive a parent that EXITS". Claude Code 2.1.261 kills an overrunning hook
  * on Windows with `taskkill.exe /PID <hook> /T /F`, and `/T` takes every live
- * descendant with it. So on Windows the launch goes through a `cmd.exe` that
+ * descendant with it. So on Windows the launch goes through a go-between that
  * exits at once, and the server is nobody's live descendant by the time the
  * kill lands.
+ *
+ * ── AND WHAT THIS FILE CANNOT ASSERT, SAID PLAINLY ─────────────────────────
+ *
+ * `TASK-the-breakaway-launch-shows-a-console-window-it-believes-it`. That
+ * go-between was `cmd.exe /d /s /c start "" /b` until 2026-09-13 and it put a
+ * console window on the owner's desktop for the whole life of the server —
+ * while THIS FILE asserted `/b` and `windowsHide`, both of which were present,
+ * both of which were about the go-between, and neither of which was ever about
+ * the process the window belonged to. **An assertion on the flags is not an
+ * assertion on the screen, and no assertion in a `node:test` file is**: whether
+ * a window appears is a fact about the desktop, measured by walking every
+ * top-level window on it and attributing each to its owning pid. That
+ * measurement was made by hand on 2026-09-13 and is recorded on the item and in
+ * `startServer`'s header — the old shape showed `class=ConsoleWindowClass
+ * pid=<the server> visible=True`, and the shape below shows no window owned by
+ * the server at all.
+ *
+ * What the tests here CAN do, and now do, is pin the two things the fix rests
+ * on: that the server is created by the go-between rather than by us, and that
+ * the options it is created with are the ones the go-between itself was given
+ * rather than a second copy that can drift from them.
  * ------------------------------------------------------------------------- */
 
 test('on Windows the server is launched through a parent that exits, not as the hook\'s own child', async () => {
@@ -429,21 +492,49 @@ test('on Windows the server is launched through a parent that exits, not as the 
 
   assert.equal(spawner.calls.length, 1);
   const call = spawner.calls[0];
-  assert.ok(/cmd\.exe$/i.test(call.command), `the launcher must be cmd.exe, got ${call.command}`);
-  assert.deepEqual(call.args.slice(0, 6),
-    ['/d', '/s', '/c', 'start', '""', '/b'],
-    'start is what creates a process cmd does not stay the parent of; /b keeps it out of a '
-    + 'console window, /d and /s keep cmd from running AutoRun or re-parsing the quotes');
-  assert.equal(call.args[6], process.execPath,
-    'the server itself is still this Node, only reached through a launcher');
-  assert.deepEqual(call.args.slice(8), ['ui', '--port', String(PORT), '--no-open'],
+  assert.equal(call.command, process.execPath,
+    'the go-between must be this Node: a shell launcher cannot pass windowsHide to the server, '
+    + 'which is the whole of the window the owner reported on 2026-09-13');
+  assert.equal(call.args[0], '-e',
+    'the go-between carries its program inline — there is no build step and no second file to '
+    + 'ship');
+  assert.ok(call.args[2].endsWith(path.join('cli', 'index.ts')), call.args[2]);
+  assert.deepEqual(call.args.slice(3), ['ui', '--port', String(PORT), '--no-open'],
     'the breakaway may not change what the server is asked to be');
   assert.equal(call.options.detached, true,
-    'the launcher still may not hold the hook open for the three seconds it is waited on');
+    'the go-between still may not hold the hook open for the three seconds it is waited on — '
+    + 'measured 2026-09-13, dropping it left the launcher blocking ~850-1500ms and the server '
+    + 'never came up at all');
   assert.equal(call.options.stdio, 'ignore',
     'the platform waits on a hook whose stdio a grandchild is holding');
   assert.equal(call.options.windowsHide, true, 'no console window may flash mid-turn');
   assert.equal(spawner.unrefs, 1, 'detached without unref keeps the parent alive anyway');
+});
+
+test('the go-between starts the server the way it was started itself, from one source', async () => {
+  const sb = sandbox();
+  const spawner = fakeSpawn();
+  await upkeepUiServer(sb.root, CONFIGURED, NOW, {
+    globalRoot: sb.globalRoot, spawnFn: spawner.fn, portAcceptsFn: NOTHING_ON_THE_PORT,
+    platform: 'win32',
+  });
+  const call = spawner.calls[0];
+  const stub = call.args[1];
+
+  assert.match(stub, /spawn\(process\.execPath,process\.argv\.slice\(1\),/,
+    'the go-between must start OUR argv and nothing it composed for itself');
+  const forwarded = JSON.parse(stub.slice(stub.indexOf('slice(1),') + 'slice(1),'.length,
+    stub.indexOf(');c.on')));
+  assert.deepEqual(forwarded, call.options,
+    'the options the SERVER is created with must be the options the go-between was created '
+    + 'with — windowsHide on this hop is what suppresses the server\'s own console window, and a '
+    + 'second copy of the launch line here is a second place for it to drift');
+  assert.match(stub, /c\.unref\(\)/,
+    'a go-between that waits on the server is a go-between that is still the server\'s live '
+    + 'parent when taskkill /T walks the tree');
+  assert.match(stub, /c\.on\("error",\(\)=>\{\}\)/,
+    'a ChildProcess whose spawn failed emits error on a later tick, and an EventEmitter with no '
+    + 'listener for it rethrows as an uncaught exception');
 });
 
 test(
@@ -557,7 +648,18 @@ test(
         // In a `finally`, because an assertion that throws above must not leave
         // a never-exiting process behind — and a leaked one holds `node:test`
         // open for as long as it lives.
-        if (childPid !== null) reap(childPid);
+        //
+        // **The pid file is read ONE LAST TIME when we never got a pid**, and
+        // that is not belt-and-braces: MEASURED 2026-09-13, a variant under a
+        // removal proof brought its child up AFTER `readPidWhenWritten` had
+        // given up waiting, and the sleeper it left was still running on the
+        // owner's machine minutes later. A child that is slow is exactly the
+        // child a broken production line produces, so the path that gives up on
+        // one is the path that most needs to reap it.
+        if (childPid === null) {
+          try { childPid = Number(readFileSync(childPidFile, 'utf8')); } catch { /* none */ }
+        }
+        if (childPid !== null && Number.isInteger(childPid)) reap(childPid);
         reap(parentPid);
         launched.unref();
       }
@@ -1061,7 +1163,7 @@ test('a server that answers and reports itself STALE is stopped and started agai
       'EADDRINUSE — the port is held by the process being replaced');
     assert.equal(spawner.calls.length, 1);
     // The TAIL of the argv, not `slice(1)`: on Windows the same server argv is
-    // reached through a `cmd.exe` launcher (see the breakaway tests above), and
+    // reached through a go-between launcher (see the breakaway tests above), and
     // the claim this assertion makes — that a restart starts the same thing a
     // cold spawn does — is about the server, not about how it is reached.
     assert.deepEqual(spawner.calls[0].args.slice(-4),
