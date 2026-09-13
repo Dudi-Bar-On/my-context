@@ -17,17 +17,17 @@ tags:
   - anonymous
   - "plan:dxfindings"
   - "seq:3"
-  - "state:todo"
+  - "state:done"
 origin: human
 source_file: null
 source_anchor: null
 source_checksum: null
 valid_from: 2026-09-13
 valid_until: null
-checksum: 6c420db7a0299280
+checksum: c4ba1214c7042c46
 plan: dxfindings
 seq: "3"
-state: todo
+state: done
 priority: "2"
 ---
 

@@ -2252,15 +2252,69 @@ export function checkStateUnaudited(root: string, items: Item[], config: Config)
 const VERIFIED_ON_FIELD = 'verified_on';
 
 /**
- * **The instant `task.verified_on` became a legal field.**
+ * What a record naming this item's `verified_on` says — `STATE_AUDITED_FIELD`'s
+ * sibling, one key over, and true under the same condition: `movedFields`
+ * (core/persist.ts) reports `extra` per key, so a record carrying this moved
+ * `verified_on` and a record not carrying it did not. A record old enough to
+ * say only `extra` is unmeasured here exactly as it is there.
+ */
+const VERIFIED_ON_AUDITED_FIELD = `${EXTRA_AUDITED_FIELD}.${VERIFIED_ON_FIELD}`;
+
+/**
+ * **The instant THIS WORKSPACE first demonstrably wrote a `verified_on`** —
+ * derived from its own audit log, and `null` where the log never saw one.
  *
- * Owner ruling, 2026-09-03: *"`task.verified_on` WITH its doctor check ...
- * Shipping a field without its consumer repeats that."* This constant is the
- * half of the check that makes the consumer honest about a field that
- * shipped onto a corpus already holding 406 tasks at `state: done` — every
- * one of them incapable of ever having carried `verified_on`, because the
- * write that could have set it had nothing to write it INTO until this
- * moment.
+ * ── IT USED TO BE A DATE TYPED INTO SHIPPED CODE, AND THE DATE WAS OURS ────
+ *
+ * Until 2026-09-14 this was `VERIFIED_ON_INTRODUCED_AT =
+ * '2026-09-03T12:00:00.000Z'` — the instant `task.verified_on` became a legal
+ * field **in this repository**, compiled into the product every consumer
+ * installs. A stranger's corpus has no 2026-09-03 in it, so over there the
+ * comparison below could only ever answer "after", for every task, forever.
+ *
+ * **And it answered "after" for every task HERE too, which is the measurement
+ * that retired it.** Run against this repository's own corpus on 2026-09-14:
+ * 494 closed tasks carrying no `verified_on`, of which 413 have no recorded
+ * `state` write at all (the `noTransition` branch below, which is
+ * `checkStateUnaudited`'s population) and 81 have one. **All 81 are after the
+ * cutoff. The grandfathered count is ZERO**, and it is zero under every cutoff
+ * that could be typed here — the same 81 are reported with the constant set to
+ * the epoch. `doctor` prints no grandfathered disclosure on this corpus and
+ * never has.
+ *
+ * That is not an accident of today's numbers, it is structural. The cutoff was
+ * set *behind the moment the check was written* and the log's past does not
+ * grow: every record written from then on carries `now`, which is after it.
+ * The set the constant protected was empty when it was written — its own
+ * docblock said so, measuring ZERO of 413 done tasks with a recorded `state`
+ * write on 2026-09-04 — and nothing can ever put a record into it. **A
+ * grandfather clause that grandfathers nobody here, and cannot fire at all
+ * over there, is this repository's history shipped as a rule about somebody
+ * else's.**
+ *
+ * ── WHAT REPLACES IT, AND WHY IT IS A DERIVATION RATHER THAN A BETTER DATE ──
+ *
+ * The question the cutoff was reaching for is real, and it is not about a
+ * date: *could the person who made this write have set `verified_on`?* The
+ * honest form of that is per-workspace — **had this workspace started using
+ * the field yet** — and a workspace can answer it about itself. So the line is
+ * the earliest record whose `fields` names `extra.verified_on`: the first time
+ * anybody here demonstrably wrote one. Before that instant nobody in this
+ * project was setting the field, and a task closed then is not faulted for it.
+ *
+ * On this corpus that instant is `2026-09-04T07:56:02.599Z`, twenty hours
+ * after the constant it replaces, and it changes nothing here: 81 reported
+ * either way, 0 grandfathered either way. In a workspace created today it is
+ * whatever moment the user first uses the field, which is the only answer that
+ * was ever true of a stranger's install.
+ *
+ * **`null` where the log names no such write.** A task minted with
+ * `--extra verified_on=…` already set leaves no `fields` at all (`create`
+ * records carry none — `auditMutation`, persist.ts), so adoption can be real
+ * and undated. `null` grandfathers nothing, which is exactly what the constant
+ * did, and the adoption gate in `checkTaskUnverified` is what keeps that from
+ * becoming a wall: a corpus where nothing carries the field never reaches this
+ * function at all.
  *
  * **`checkStateUnaudited` faced the identical shape of problem and is the
  * model this check follows**: a fact unknowable for items that predate the
@@ -2332,13 +2386,26 @@ const VERIFIED_ON_FIELD = 'verified_on';
  * unwarned: `checkStateUnaudited`'s own divergence machinery is what would
  * catch the bypass itself, on the same item, under its own code.
  *
- * Set with a five-hour margin ahead of every `TASK-*` `create` record
- * measured in this repository's own audit log on 2026-09-03 (the latest at
- * `10:43:33.824Z`) and behind the moment this check was written. Unchanged by
- * the 2026-09-04 ruling — the ruling moved WHAT is compared against this
- * instant, not the instant itself.
+ * The 2026-09-04 ruling is untouched by any of this: it moved WHAT is compared
+ * against the line — the recorded `done` transition rather than the `create`
+ * record — and that is still what is compared. Only the line itself stopped
+ * being a date somebody typed.
  */
-export const VERIFIED_ON_INTRODUCED_AT = '2026-09-03T12:00:00.000Z';
+export function verifiedOnAdoptedAt(records: AuditRecord[]): string | null {
+  let earliest: string | null = null;
+  for (const record of records) {
+    if (record.kind !== 'mutation') continue;
+    if (!Array.isArray(record.fields)) continue;
+    if (!record.fields.includes(VERIFIED_ON_AUDITED_FIELD)) continue;
+    // `readAudit` delivers oldest-first across every segment, so the first hit
+    // is already the earliest — the comparison is kept anyway because that
+    // ordering is a contract of another module, and a derivation that quietly
+    // depends on it is the kind of thing that breaks when a segment is
+    // restored out of order.
+    if (earliest === null || record.at < earliest) earliest = record.at;
+  }
+  return earliest;
+}
 
 /** `mycontext edit <id> --extra verified_on=<date>`, after checking the work. */
 const VERIFIED_ON_EDIT_COMMAND = `mycontext edit <id> --extra ${VERIFIED_ON_FIELD}=<date>`;
@@ -2351,13 +2418,38 @@ function taskVerifiedOn(item: Item): string {
 /**
  * **`task.verified_on`'s only consumer.** A `done` task with nothing in
  * `verified_on` is reported — unless the log's newest recorded write to
- * `state` for it predates the field, in which case it is counted into a
- * single coverage disclosure and never named; and unless the log holds NO
- * recorded write to `state` for it at all, in which case it is
- * `checkStateUnaudited`'s population and not reported HERE either. See
- * `VERIFIED_ON_INTRODUCED_AT` for the cutoff and the argument for keying it
- * on the recorded transition, and for why the two checks partition rather
- * than overlap.
+ * `state` for it predates this workspace's first recorded `verified_on`, in
+ * which case it is counted into a single coverage disclosure and never named;
+ * and unless the log holds NO recorded write to `state` for it at all, in
+ * which case it is `checkStateUnaudited`'s population and not reported HERE
+ * either. See `verifiedOnAdoptedAt` for the line, the measurement that
+ * replaced a hard-coded date with it, and the argument for keying on the
+ * recorded transition; and for why the two checks partition rather than
+ * overlap.
+ *
+ * ── AND IT IS SILENT IN A PROJECT THAT DOES NOT USE THE FIELD ───────────────
+ *
+ * `verified_on` is an OPTIONAL field on `task`. A workspace where no item has
+ * ever carried one has not adopted the convention, and there **every** closed
+ * task lacks it — so the check's population is not "the tasks with a problem",
+ * it is "the tasks". Measured on a workspace created from `mycontext init` on
+ * 2026-09-14: two tasks closed through `mycontext edit`, two `task_unverified`
+ * warnings, 100%, on day one, on work the tool had just been told about.
+ *
+ * That is the shape the `RULE` at the top of this file refuses — *a row only
+ * an accident can clear is noise wearing work's clothes* — and a newcomer
+ * cannot clear these rows at all except by adopting a convention nobody has
+ * asked them about. **So adoption is the gate, and the corpus answers it**: if
+ * one item anywhere carries a `verified_on`, this project uses the field and a
+ * closed task without one is a real gap; if none does, the check reports
+ * nothing and says so in one line. It switches itself on the first time the
+ * user sets one, and from that moment `verifiedOnAdoptedAt` grandfathers
+ * everything they closed before.
+ *
+ * The silence is DISCLOSED rather than silent — `INV-nothing-is-dropped-
+ * silently`, and `STD-a-measured-zero-is-drawn-and-named`: the line names how
+ * many closed tasks went unexamined and the command that would start using the
+ * field, so nothing is hidden and nothing is owed.
  *
  * Structured identically to `checkStateUnaudited` immediately above:
  * read-failure falls back to one `PERSON`-remedy disclosure.
@@ -2365,6 +2457,28 @@ function taskVerifiedOn(item: Item): string {
 export function checkTaskUnverified(root: string, items: Item[], config: Config): Finding[] {
   const closed = workItems(items, config).filter((i) => taskState(i) === DONE_STATE);
   if (closed.length === 0) return [];
+
+  // Asked of the WHOLE corpus and before the log is read: the question is
+  // whether this project uses the field at all, which a closed task cannot
+  // answer (it is the population being judged) and which needs no audit log.
+  if (!items.some((i) => taskVerifiedOn(i) !== '')) {
+    return [{
+      level: 'info', code: 'task_verification_coverage',
+      about: 'task_unverified',
+      // NOTHING: there is no defect here and no ruling to ask for. A project
+      // that does not use `verified_on` is not failing to use it.
+      remedy: NOTHING,
+      message:
+        `${closed.length} task(s) carry \`${STATE_FIELD}: ${DONE_STATE}\` and none of them was ` +
+        `examined for \`${VERIFIED_ON_FIELD}\`, because no item in this corpus has ever carried ` +
+        `one. \`${VERIFIED_ON_FIELD}\` is an optional field that records you checked the work a ` +
+        `closed task claims; a project that does not use it has every closed task without one, ` +
+        `so reporting them would be reporting the corpus rather than anything wrong with it. ` +
+        `Set one — \`${VERIFIED_ON_EDIT_COMMAND}\` — and this check starts reporting closed ` +
+        `tasks from that moment on, leaving everything closed before it alone. Nothing is owed ` +
+        `on this line.`,
+    }];
+  }
 
   let records: AuditRecord[];
   try {
@@ -2408,7 +2522,7 @@ export function checkTaskUnverified(root: string, items: Item[], config: Config)
   // Records arrive oldest-first across every segment (`readAudit`'s own
   // contract), so a plain overwrite of the map below leaves the NEWEST
   // matching record for each id — see the docblock on
-  // `VERIFIED_ON_INTRODUCED_AT` for what a task that goes
+  // `verifiedOnAdoptedAt` for what a task that goes
   // `done` → `todo` → `done` does to this timestamp.
   const stateTransitionAt = new Map<string, string>();
   for (const record of records) {
@@ -2420,6 +2534,13 @@ export function checkTaskUnverified(root: string, items: Item[], config: Config)
     }
   }
 
+  // The line, derived from this workspace's own log rather than typed into
+  // the product — see `verifiedOnAdoptedAt` for the measurement that retired
+  // the constant this replaced. `null` means the log never witnessed a
+  // `verified_on` write, so nothing is grandfathered; the adoption gate above
+  // has already established that the field IS in use here.
+  const adoptedAt = verifiedOnAdoptedAt(records);
+
   const findings: Finding[] = [];
   let noTransition = 0;
   let grandfathered = 0;
@@ -2428,7 +2549,7 @@ export function checkTaskUnverified(root: string, items: Item[], config: Config)
 
     const transitionAt = stateTransitionAt.get(item.id);
     if (transitionAt === undefined) { noTransition++; continue; }
-    if (transitionAt < VERIFIED_ON_INTRODUCED_AT) { grandfathered++; continue; }
+    if (adoptedAt !== null && transitionAt < adoptedAt) { grandfathered++; continue; }
 
     findings.push({
       level: 'warn', code: 'task_unverified', item: item.id,
@@ -2472,18 +2593,19 @@ export function checkTaskUnverified(root: string, items: Item[], config: Config)
       about: 'task_unverified',
       // NOTHING: there is no command, and no ruling to ask for either — the
       // newest write this log ever recorded moving this item's `state`
-      // predates `verified_on`, so the person who made that write had no
-      // field to set. The set can only shrink, by turnover, as these tasks
-      // are superseded, replaced, or eventually re-closed by a write the
-      // field already exists for.
+      // predates the first `verified_on` anybody in this workspace wrote, so
+      // the person who made that write was not yet using the field. The set
+      // can only shrink, by turnover, as these tasks are superseded,
+      // replaced, or eventually re-closed by a later write.
       remedy: NOTHING,
       message:
         `${grandfathered} task(s) carry \`${STATE_FIELD}: ${DONE_STATE}\` and the newest write ` +
         `this log records moving \`${STATE_AUDITED_FIELD}\` for each of them predates ` +
-        `\`${VERIFIED_ON_FIELD}\`, so \`task_unverified\` does not report them one by one. That is ` +
-        `not a clean set — nothing is asserted about these items in either direction — it is a ` +
-        `set this check cannot fault: the field these items lack did not exist to be filled in at ` +
-        `the moment each was last recorded moving. Nothing is owed on this line.`,
+        `${adoptedAt}, which is the earliest write this workspace's own log records setting a ` +
+        `\`${VERIFIED_ON_FIELD}\` — so \`task_unverified\` does not report them one by one. That ` +
+        `is not a clean set — nothing is asserted about these items in either direction — it is ` +
+        `a set this check cannot fault: nobody here was filling the field in at the moment each ` +
+        `was last recorded moving. Nothing is owed on this line.`,
     });
   }
   return findings;
@@ -2805,15 +2927,18 @@ export function checkOpenQuestionBlocks(items: Item[]): Finding[] {
 /**
  * **The instant this check became able to flag an overdue `assumption`.**
  *
- * Mirrors `VERIFIED_ON_INTRODUCED_AT` (below `checkTaskUnverified`) for the
- * same reason: `assumption.validate_by` has been a real field since the
+ * Mirrors what `checkTaskUnverified`'s cutoff used to be — and it is still a
+ * hard-coded date, which is now the only one left in this file; see
+ * `verifiedOnAdoptedAt` for why that one went and the paragraph at the end of
+ * this docblock for why this one could not follow it. The reason it was
+ * written is the same: `assumption.validate_by` has been a real field since the
  * category shipped, but nothing has ever compared it against today's date
  * until this check exists to do it. Without a cutoff, every assumption whose
  * deadline already passed BEFORE this check was written would surface at
  * once — not because anyone missed a deadline the product was watching, but
  * because the product had never watched before. That is the same "406 tasks
  * suddenly missing a field nothing could have written yet" shape
- * `VERIFIED_ON_INTRODUCED_AT`'s own docblock argues from, one category over.
+ * `verifiedOnAdoptedAt`'s own docblock argues from, one category over.
  *
  * Keyed on the assumption's own CREATION, read off its `create` audit
  * record — simpler than `checkTaskUnverified`'s transition-keyed cutoff, and
@@ -2823,6 +2948,25 @@ export function checkOpenQuestionBlocks(items: Item[]): Finding[] {
  * on — becoming overdue is not a write anything makes, only a calendar date
  * passing — so the fact this check can actually ask about is when the item
  * itself first existed, which is exactly what a `create` record answers.
+ *
+ * ── WHY THIS ONE IS STILL A DATE, WHEN THE OTHER STOPPED BEING ONE ──────────
+ *
+ * `verifiedOnAdoptedAt` could be derived because the question underneath it —
+ * *had this workspace started using the field* — is one the workspace's own
+ * log answers. This cutoff's question is not: it is *when was the version of
+ * this product containing this check installed here*, and nothing in a corpus
+ * records that. No derivation was invented to stand in for it, because a
+ * plausible wrong line is worse than an honest hard-coded one.
+ *
+ * **And the consumer consequence is the opposite of the other one's, which is
+ * why it is not urgent.** In an install created today every `create` record
+ * postdates this instant, so the branch grandfathers nothing — and nothing
+ * needs grandfathering, because the check was watching from that workspace's
+ * first second. The population is "assumptions whose deadline passed", which
+ * is small and is a real finding wherever it is non-empty. Contrast the task
+ * cutoff, whose population over there was *every closed task*. The cost here
+ * is one stale-looking date in shipped code; it is filed, not fixed, and this
+ * paragraph is the reason.
  */
 export const ASSUMPTION_OVERDUE_INTRODUCED_AT = '2026-09-05T12:00:00.000Z';
 
@@ -3332,7 +3476,21 @@ export function checkNestedCorpus(root: string, repoRoot: string): Finding[] {
   // three were a test fixture, a generated demo corpus and a harness scratch
   // directory. A check whose true positives are outnumbered three to one is a
   // check people learn to scroll past, which is worse than not having it.
-  const FIXTURE_DIRS = ['test', 'tests', 'fixtures', 'harness', '.scratch', '.demo-corpus'];
+  //
+  // The list was this repository's own directory names until 2026-09-14, and
+  // a stranger's were missing from it. Measured on a workspace created that
+  // day by `mycontext init`: a corpus planted under `__fixtures__/`, `spec/`
+  // and `e2e/` produced three `nested_corpus` findings, and the identical
+  // corpus under `test/` produced none — three false positives against zero,
+  // the same three-to-one ratio the paragraph above says makes a check people
+  // scroll past, only pointed at somebody else's repository. The four names
+  // added here are the ones a JavaScript project actually uses; `fixture` is
+  // the singular nobody writes and is added for the same cost as reading this
+  // sentence.
+  const FIXTURE_DIRS = [
+    'test', 'tests', '__tests__', 'spec', 'specs', 'e2e',
+    'fixture', 'fixtures', '__fixtures__', 'harness', '.scratch', '.demo-corpus',
+  ];
   const skip = new Set([
     ...[...SKIP_DIRS].filter((d) => d !== '.my_context'),
     ...FIXTURE_DIRS,
@@ -4664,6 +4822,51 @@ export function anchorAcknowledgeRemedies(findings: Finding[]): void {
   }
 }
 
+/**
+ * **Which check a registry entry calls, READ OFF THE ENTRY ITSELF.**
+ *
+ * `check_failed` is the one finding in the whole set whose meaning is "a gate
+ * is broken" — every other finding says something about the corpus and can be
+ * traced from the item it names, and this one says something about the tool.
+ * It was also the only one that could not say which part: the message read
+ * `a doctor check threw: <message>` with no check, no index and no frame,
+ * although the array being iterated was right there (raised twice
+ * independently on 2026-09-12/13, as row 67 of the consolidated findings).
+ *
+ * **Derived, never a parallel array of labels.** A second list of names beside
+ * the registry is one more hand-kept inclusion list — the exact shape
+ * `a-scanner-names-what-it-skips-not-what-it-scans` exists against — and it
+ * would drift silently, mislabelling a failure, which is worse than not
+ * naming it. The entries are arrow closures whose whole body is one call, so
+ * their SOURCE names the callee and cannot disagree with what they call.
+ * `CONST-node-24-no-build-step` is what makes this safe: the `.ts` file is
+ * executed as shipped, there is no minifier between this and the reader, and
+ * `test/doctor/registry-membership.test.ts` derives the same names the same
+ * way over the same array.
+ *
+ * Exported for its test alone, the same way `markAcknowledged` below is: the
+ * composition of this message is the whole of what row 67 asked for, and a
+ * test that could only reach it by making a real check throw would be pinning
+ * whichever check happens to be fragile today rather than the naming.
+ */
+export function registeredCheckName(entry: () => Finding[]): string {
+  const match = /\bcheck[A-Za-z0-9_]*/.exec(entry.toString());
+  return match === null ? 'an unnamed check' : match[0];
+}
+
+/**
+ * The first stack frame inside this project — `node:internal` frames and the
+ * `Error:` header line say nothing a reader can act on, and the frame that
+ * matters is the line in a check that threw.
+ */
+export function firstOwnFrame(stack: string): string {
+  for (const line of stack.split('\n').slice(1)) {
+    const trimmed = line.trim();
+    if (trimmed.startsWith('at ') && !trimmed.includes('node:internal')) return trimmed;
+  }
+  return 'no frame outside node internals';
+}
+
 export function runChecks(opts: {
   root: string; repoRoot: string; dbPath: string; items: Item[]; config: Config;
 }): Finding[] {
@@ -4702,7 +4905,8 @@ export function runChecks(opts: {
   ];
 
   const findings: Finding[] = [];
-  for (const check of checks) {
+  for (let i = 0; i < checks.length; i++) {
+    const check = checks[i]!;
     try {
       findings.push(...check());
     } catch (err) {
@@ -4710,7 +4914,14 @@ export function runChecks(opts: {
       findings.push({
         level: 'error', code: 'check_failed',
         remedy: PERSON,
-        message: `a doctor check threw: ${err instanceof Error ? err.message : String(err)}`,
+        message:
+          `\`${registeredCheckName(check)}\` (entry ${i + 1} of ${checks.length} in ` +
+          `\`runChecks\`, src/doctor/checks.ts) threw, so this run reports NOTHING that check ` +
+          `would have found — its whole population is missing from the counts above, and the ` +
+          `other ${checks.length - 1} checks ran normally. ` +
+          `${err instanceof Error ? err.message : String(err)}` +
+          `${err instanceof Error && typeof err.stack === 'string'
+            ? ` — first frame: ${firstOwnFrame(err.stack)}` : ''}`,
       });
     }
   }

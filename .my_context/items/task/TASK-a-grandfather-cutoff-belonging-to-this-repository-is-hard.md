@@ -16,17 +16,17 @@ tags:
   - noise
   - "plan:dxfindings"
   - "seq:1"
-  - "state:todo"
+  - "state:done"
 origin: human
 source_file: null
 source_anchor: null
 source_checksum: null
 valid_from: 2026-09-13
 valid_until: null
-checksum: 155ead1922733f58
+checksum: b53ca5b825fee88d
 plan: dxfindings
 seq: "1"
-state: todo
+state: done
 priority: "1"
 ---
 

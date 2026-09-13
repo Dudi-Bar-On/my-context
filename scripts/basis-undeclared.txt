@@ -298,7 +298,6 @@ test/doctor/corpus-size.test.ts
 test/doctor/governing-spill-pressure.test.ts
 test/doctor/state-unaudited.test.ts
 test/doctor/task-needs.test.ts
-test/doctor/task-unverified.test.ts
 test/doctor/three-unread-fields.test.ts
 test/doctor/tutorial-roster.test.ts
 test/doctor/watched-docs-servable.test.ts

@@ -485,9 +485,11 @@ export const CATEGORIES: Record<string, CategoryDef> = {
       // The owner ruling this whole entry exists to satisfy: "verified_on
       // WITH its doctor check ... a field without a consumer repeats that."
       // `checkTaskUnverified` (doctor/checks.ts) is the consumer -- a `done`
-      // task with no `verified_on` is reported, once the task was created
-      // after the field existed to be filled in (`VERIFIED_ON_INTRODUCED_AT`
-      // is the cutoff; `checkStateUnaudited`'s birth cutoff is the model).
+      // task with no `verified_on` is reported, once this workspace had
+      // started using the field at all (`verifiedOnAdoptedAt` derives that
+      // line from this workspace's own audit log; `checkStateUnaudited`'s
+      // birth cutoff is the model). A project that has never set one is not
+      // reported at all -- the check is silent until the field is adopted.
       verified_on: {
         store: 'field',
         note: 'The date a person checked this task\'s work and confirmed it actually does what `state: done` claims. Not stamped by finishing the work - by someone looking at it afterwards. `checkTaskUnverified` reports a done task that lacks it.',
