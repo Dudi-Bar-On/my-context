@@ -158,6 +158,42 @@ export interface ModelPassRecord {
   returned: number;
   /** Elements of the reply that were not usable, with a reason each. */
   rejected: string[];
+  /**
+   * **The reply itself, kept ONLY when a model answered and no candidate came
+   * out of it.** Three different events produce `returned: 0` with
+   * `rejected: []` — a model that returned an empty array, a model that
+   * returned prose the parser never saw as a candidate, and a model that
+   * returned nothing at all — and before this field they were the same three
+   * zeros. A loop whose whole purpose is to propose could not tell a
+   * considered refusal from an unreadable answer, and the evidence to tell
+   * them apart was discarded at the moment it existed.
+   *
+   * `null` when a candidate WAS produced: the answer is then visible as the
+   * proposal, and keeping the text as well would put a model's prose in every
+   * report for no question it answers. Truncated at
+   * `EMPTY_REPLY_BYTES` with the dropped count stated, because a bound that
+   * hides how much it dropped is the defect this product files against others.
+   *
+   * The report is gitignored (`.my_context/state/.gitignore`), so this stays
+   * on the machine that wrote it.
+   */
+  emptyReply: string | null;
+}
+
+/**
+ * How much of an unusable reply is kept. Enough to see whether the model
+ * refused, rambled or answered in a shape the parser does not read — and not
+ * so much that a report a person opens is mostly somebody else's prose.
+ */
+export const EMPTY_REPLY_BYTES = 2000;
+
+/** One reply, bounded, saying how much it dropped rather than hiding it. */
+export function boundedReply(text: string): string {
+  const bytes = Buffer.byteLength(text, 'utf8');
+  if (bytes <= EMPTY_REPLY_BYTES) return text;
+  const kept = Buffer.from(text, 'utf8').subarray(0, EMPTY_REPLY_BYTES).toString('utf8');
+  return `${kept}
+[... ${bytes - EMPTY_REPLY_BYTES} more byte(s) not kept]`;
 }
 
 /** `ProposeResult` without the drafts' full text. The report is read by people. */
@@ -410,6 +446,7 @@ export async function runPass(options: PassOptions): Promise<PassReport> {
       ms: 0,
       returned: 0,
       rejected: [],
+      emptyReply: null,
     };
     if (!isUsableModelName(options.model)) {
       record.why = `"${options.model}" is not a usable model name, so no call was made`;
@@ -437,6 +474,11 @@ export async function runPass(options: PassOptions): Promise<PassReport> {
             record.returned = parsed.candidates.length;
             modelCandidates.push(...parsed.candidates);
           }
+          // **Kept on BOTH zero paths, and only on them.** An unparseable
+          // reply and a clean empty array are different answers to the same
+          // question a reader asks of a pass that proposed nothing, and
+          // `why` distinguishes them only when the parser had a complaint.
+          if (record.returned === 0) record.emptyReply = boundedReply(outcome.text);
         }
       } catch (err) {
         // A transport that throws is still a transport that answered nothing,
