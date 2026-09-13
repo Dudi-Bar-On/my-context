@@ -81,6 +81,21 @@
   },
   "entries": [
     {
+      "file": "a-fixture-must-not-be-what-makes-a-proof-pass.md",
+      "id": "a-fixture-must-not-be-what-makes-a-proof-pass",
+      "checksum": "1419d9d8623fc36f43cc2b6810a4f81957dd5acd32452c4b8b5ba4bd17f4389f"
+    },
+    {
+      "file": "a-gate-that-cannot-be-shown-to-fail-is-not-a-gate.md",
+      "id": "a-gate-that-cannot-be-shown-to-fail-is-not-a-gate",
+      "checksum": "e4a5273457170896d389aa23b065a133cee33273c9158adddc7a76a24d730ad2"
+    },
+    {
+      "file": "a-scanner-names-what-it-skips-not-what-it-scans.md",
+      "id": "a-scanner-names-what-it-skips-not-what-it-scans",
+      "checksum": "5b01dad9db0fd9a417383eef43cc70076befdd74c3ef513a972f8bbf4d60a7d7"
+    },
+    {
       "file": "an-unknown-category-means-a-possible-wrong-corpus.md",
       "id": "an-unknown-category-means-a-possible-wrong-corpus",
       "checksum": "3b345c01bf4990c4af15ef114421dc0d31f0d505d3044dd2ac26cb7c180b3a89"
