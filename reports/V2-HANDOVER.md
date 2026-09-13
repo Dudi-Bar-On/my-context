@@ -1,51 +1,64 @@
-## ⏭ 2026-09-13 — THE LOOP CALLS A MODEL. THE BACKLOG TRIPLED ON PURPOSE, 59 → 170. TWO LANES ARE RUNNING.
+## ⏭ 2026-09-13 — TWO LANES ARE RUNNING. THE REVIEW LOOP CALLS A MODEL NOW. THE BACKLOG TRIPLED ON PURPOSE, 59 → 170.
 
-### DO THIS FIRST
+### DO THIS FIRST — both lanes are live as this is written, and their work is UNCOMMITTED
 
-1. **Two lanes are live and their work is UNCOMMITTED.** Lane A holds six blockers — `unread/1`,
-   `swallow/2`, `swallow/3`, `swallow/4`, `swallow/5`, `gates/1`. Lane B holds `conversations.js`:
-   the 1,200 ms un-debounced find box and the 684 unpaged anchors FIRST, three mechanical splits
-   second, and **`mountDocument` is off limits as a split** — 2,370 lines sharing a dozen variables.
-   **Commit each the moment it reports.** A lane's whole tree was lost once this week.
-2. `swallow/3` and `swallow/4` are `inferred — reproduce first`. **Reproducing and closing one as a
-   false premise is a good outcome**, not a failure.
+1. **Lane A holds six blockers:** `unread/1`, `swallow/2`, `swallow/3`, `swallow/4`, `swallow/5`,
+   `gates/1`. `swallow/3` and `swallow/4` are `inferred — reproduce first`; **reproducing one and
+   closing it as a false premise is a good outcome**, not a failure.
+2. **Lane B holds `conversations.js`.** The order is fixed in its brief: the **1,200 ms un-debounced
+   find box** and the **684 unpaged anchors** FIRST, the **three mechanical splits** second.
+   **`mountDocument` is OFF LIMITS** — 2,370 lines sharing a dozen variables, and it is not a split
+   at any point in that lane's brief.
+3. **Commit each the moment it reports.** A lane's whole tree was lost once this week; the window
+   between "it reported" and "it is committed" is the entirety of the risk.
 
-### THE SELF-IMPROVEMENT LOOP IS LIVE, AND IT CALLS A MODEL
+### THE SELF-IMPROVEMENT LOOP IS LIVE AND CALLS A MODEL
 
-`review.enabled: true`, `maxProposalsPerPass: 5`, `model: claude-opus-5`. **`loop/6`** wired the
-harness's own CLI — `claude --print`, prompt on stdin — and `CONST-zero-runtime-dependencies` holds
-because `child_process` is a builtin and the CLI is the ambient program that invoked the hook, not a
-package. Provenance travels on `by`, **never on `origin`**, which is the trust boundary compared as a
-literal in seven modules.
+Config carries `review.enabled: true`, `maxProposalsPerPass: 5`, `model: claude-opus-5`. The
+`maxProposalsPerPass: 0` of 2026-09-11 is over — **it reads, it writes, and it costs.**
 
-**`loop/7`** added `emptyReply`, and on its first real pass Opus returned `'[]'` — **a considered
-refusal, not an unreadable answer.** Before it, three different silences were the same two zeros.
+- **`loop/6` wired the harness's own CLI** — `claude --print`, prompt on stdin.
+  `CONST-zero-runtime-dependencies` **holds**: `child_process` is a builtin and the CLI is the
+  ambient program that invoked the hook, not a package. Provenance travels on `by`, **never on
+  `origin`** — that is the trust boundary, compared as a literal in seven modules.
+- **`loop/7` added `emptyReply`**, and on its first real pass Opus returned `'[]'`. Read that as
+  **a considered refusal, not an unreadable answer.** Before it, three different silences were the
+  same two zeros.
 
-### WHAT CHANGED, AND WHY NONE OF IT IS RE-DERIVABLE
+### WHAT CHANGED, AND WHY NONE OF IT IS RE-DERIVABLE FROM THE CODE
 
-- **The backlog tripled deliberately.** Six reviews produced 119 consolidated findings; the owner
-  chose to file all of them rather than leave them where **a finding cannot be superseded and cannot
-  be found by `mycontext show`**. **D66–D76** were minted for them. **26 priority-1 remain.**
-- **`docs/capabilities/` is verified and revised**, 6,073 lines, 73 defects corrected. The worst was a
-  security claim in the permissive direction — "three exceptions" where `RULED_WRITES` holds **twelve
-  bindings across five files**.
-- **The store is 15 entries**, three added today: *a scanner names what it skips*, *a fixture must not
-  be what makes a proof pass*, *a gate that cannot be shown to fail is not a gate*. **A fourth was
-  proposed and refused** — already present in `def-prove-by-removal`.
-- **`gates/2` wired four gates and deliberately refused the fifth**; `core.hooksPath` is `.githooks`,
-  proved live against a planted `left-pad`.
-- **D40 closed and its premise was half wrong**: seven of seventeen contrast signatures were already
-  measured correctly and **the UI does not fail contrast** — the defect was in the instrument. **The
-  nine `wcag` items were written against that old instrument and must be RE-READ** before anyone
-  spends a day on them.
+- **The backlog tripled deliberately, 59 open → 170 open.** Six reviews produced **119 consolidated
+  findings**, and the owner chose to **file all of them** rather than leave them where a finding
+  cannot be superseded and cannot be found by `mycontext show`. **D66–D76** were minted to hold
+  them. **26 priority-1 remain.** The count rose because the work became addressable.
+- **`docs/capabilities/` is verified and revised** — 6,073 lines, **73 defects corrected.** The worst
+  was a security claim in the **permissive** direction: *"three exceptions"* where `RULED_WRITES`
+  holds **twelve bindings across five files.**
+- **The store is 15 entries, three added today:** `a-scanner-names-what-it-skips-not-what-it-scans`,
+  `a-fixture-must-not-be-what-makes-a-proof-pass`,
+  `a-gate-that-cannot-be-shown-to-fail-is-not-a-gate`. **A fourth was proposed and refused** as
+  already present in `def-prove-by-removal` — the refusal is the store working.
+- **`gates/2` wired four gates and deliberately refused the fifth** — that refusal is recorded in the
+  item, so do not re-file it as a gap. `core.hooksPath` is `.githooks`; the hook refuses a runtime
+  dependency and **was proved live against a planted `left-pad`**, which is the only reason it counts
+  as wired (`a-gate-that-cannot-be-shown-to-fail-is-not-a-gate`).
+- **D40 closed and its premise was half wrong.** Seven of seventeen contrast signatures were already
+  measured correctly, and **the UI does not fail contrast** — the defect was in the **instrument**.
+  **The nine `wcag` items were written against that old instrument and must be RE-READ** before
+  anyone spends a day on them; what they describe may not exist.
 
 ### THE TRAP THAT COST MOST TODAY
 
-**A removal proof that reports green must first prove the removal LANDED — and that its detector can
-SEE a red.** Two lanes reported false greens from edits that silently matched nothing; this
-session's own harness reported four more from a detector blind to failure. And when a proof strands
-a mutation, **repair it by hand, never with `git checkout`** — `def-prove-by-removal` records a lane
-destroying its own work that way.
+**A removal proof that reports green must first prove the removal LANDED, and that its detector can
+SEE a red.** Both halves, every time.
+
+- **Two lanes reported false greens** from edits that silently matched nothing — the removal never
+  landed, so the proof measured an untouched tree.
+- **The dispatcher's own harness reported four more** from a detector blind to failure: it could not
+  have gone red for any input.
+- **When a proof strands a mutation, repair it BY HAND, never with `git checkout`** —
+  `def-prove-by-removal` records a lane destroying its own work that way, and
+  `never-a-git-command-that-writes-the-shared-tree` holds for as long as a lane is running.
 
 ---
 
