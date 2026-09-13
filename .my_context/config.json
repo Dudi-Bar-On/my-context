@@ -29,6 +29,7 @@
   },
   "review": {
     "enabled": true,
-    "maxProposalsPerPass": 5
+    "maxProposalsPerPass": 5,
+    "model": "claude-opus-5"
   }
 }
