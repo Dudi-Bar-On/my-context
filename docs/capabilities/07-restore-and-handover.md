@@ -51,7 +51,19 @@ the top of `restore.ts`):
 | 4 APPROVE | commits to delivering it | `mycontext restore --approve <key>` — **the owner only**; there is no `--agent` flag |
 | 5 STAGE | writes the record, then **re-reads it off disk** to prove it survived | `approveStagedRestore` |
 | 6 CLEAR | the owner clears the window | **no command exists for this, and none is meant to** |
-| 7 DELIVER | delivers the staged, approved summary once, at the next session start | `core/inject.ts` |
+| 7 DELIVER | delivers the staged, approved summary once, at the next **ordinary** session start | `core/inject.ts` |
+
+**Step 7 is narrower than "the next session start", and the gap matters given
+how this chapter opens.** Delivery is gated on `!manual && !subagent &&
+!compacting` (`src/core/inject.ts:566–568`), so **a PostCompact start, a
+subagent start and a manual injection all get nothing.** A reader who took the
+opening sentence — a window ends "cleared **or** compacts" — to mean `restore`
+covers both boundaries would be wrong: `restore` covers the **cleared**
+boundary. The compaction boundary is `handover`'s and the continuity tier's
+(chapter 2). A failure at this step costs the restore and never the injection —
+`spendApprovedRestore` is documented never to throw — and it is disclosed in
+the injected block rather than swallowed, because "your summary did not arrive"
+is otherwise indistinguishable from "you staged nothing".
 
 Only steps 2–5 have commands. Step 1 is a sentence a person types; step 6 is
 an action Claude Code's UI takes, not something `restore` could do even if it
@@ -99,7 +111,9 @@ my_context: nothing is staged. `mycontext restore --build` builds one from a tra
 Nothing is staged in this project right now — confirmed by reading the code
 path rather than assumed: `--show` reads `readRestoreStagingDir(root)` and
 this call returned an empty `staged` array. With something staged, `--show`
-prints, per entry, the key, state (`PROPOSED`/`approved`/`delivered`), when it
+prints, per entry, the key, state (stored lowercase as `proposed`/`approved`/
+`delivered`; `--show` uppercases all three with `s.state.toUpperCase()`,
+`restore.ts:330`), when it
 was built and from which transcript, how many records/points/bytes it holds,
 and a coverage line — `COMPLETE` or `PARTIAL — N thing(s) it does not cover`.
 A staged file that exists on disk but cannot be parsed is reported explicitly
@@ -214,10 +228,20 @@ section boundary it can find. Either way it is capped to a token budget
 compete for one window, and two different estimators would make the two
 budgets incomparable in a way nothing would ever surface"), and it **always
 declares what it left behind**: the rendered block ends with a line like
-`_N of M lines, from the head of reports/V2-HANDOVER.md. K lines are NOT
+`_N of M lines, from <where> of reports/V2-HANDOVER.md. K lines are NOT
 here; read the file for them._` — an instance of the general rule
 (`REQ-every-list-and-table-declares-what-leaves-it-and-when-and`) that no
 list or table in this product may quietly truncate.
+
+`<where>` is `the head` **or** `the marked section`, and the branch is
+`read.source` (`src/core/handover.ts:203–209`). **In this repository the marker
+branch is what fires**: the default marker is U+23ED (⏭, `src/core/config.ts:483`,
+a *default* rather than a constant "because the convention is this project's
+own … and a project that marks its handover differently should not have to
+rename its headings to be read"), and line 1 of `reports/V2-HANDOVER.md` is
+`## ⏭ 2026-09-12 — …`. So the real line here reads *"from the marked section
+of `reports/V2-HANDOVER.md`"*, and §7.4 below quotes that ⏭ line without
+connecting it. Only a handover file carrying no marker falls back to the head.
 
 A **missing** configured file is the loud case, not a silent one: the block
 renders `my_context: handover.path is 'X' and there is no file there.` This
@@ -262,8 +286,17 @@ opened themselves is *refused*, deliberately: *"an id typed by hand that
 happens to be wrong succeeds silently against another session's latch...from
 inside Claude Code...the session names itself."*
 
-**The other refusals, each stated rather than defaulted:**
+**The other refusals, each stated rather than defaulted.** `OnDemandAskVerdict`
+(`src/core/handover-ask.ts:1382–1384`) has **seven** values —
+`off | outside-session | no-occupancy | work-in-flight | work-unknown |
+unwritable | asked` — of which `asked` is the success. `outside-session` is
+covered above; the other five:
 
+- **off** — and it is the **first** gate, before the session check: no
+  `handover.path` is configured, so the feature is not on in this workspace at
+  all. A reader whose `handover ask` says nothing should check this before
+  anything else.
+- **unwritable** — the configured file cannot be written.
 - **no occupancy** — the context-percentage bridge can't be read; the
   command explains why (the same sentence the status line's own stand-down
   message uses, printed verbatim rather than reworded a second time).
@@ -273,12 +306,20 @@ inside Claude Code...the session names itself."*
   complete or choose to stop or pause it in order to execute the update
   handover command."* Each running lane is printed **by name and description**
   (never just a count) so a person can actually decide what they'd be
-  stopping. `--anyway` proceeds past this refusal explicitly; there is
-  deliberately no code anywhere in my_context that can itself stop or pause a
-  lane — *"the only thing that can end it is Claude Code killing it"* — so the
-  choice offered is wait, or stop it yourself in Claude Code, or `--anyway`.
+  stopping. There is deliberately no code anywhere in my_context that can
+  itself stop or pause a lane — *"the only thing that can end it is Claude Code
+  killing it"* — so the choice offered is wait, stop it yourself in Claude
+  Code, or `--anyway`.
 - **work unknown** — the audit log couldn't say whether anything is running;
   distinct from "nothing is running."
+
+**`--anyway` proceeds past exactly two of these, and its own declaration says
+which:** *"Proceed past `work-in-flight` **and** `work-unknown`. Never past the
+other refusals"* (`handover-ask.ts:1452`). So a reader who hits **work
+unknown** is not stuck — which an earlier draft of this section, stating
+`--anyway` only under *work in flight*, implied they were. `off`,
+`outside-session`, `no-occupancy` and `unwritable` are not overridable, and
+each names its own remedy instead.
 
 Running `handover ask` for real **stamps a per-session latch** (recording
 that this session was asked, and when) even though it does not itself write
@@ -396,6 +437,18 @@ document is stale before the next commit.
 - Nothing is currently staged in this workspace (`restore --show` returned
   empty), so no real `--approve` review-form example could be captured
   without creating one — left undemonstrated rather than fabricated.
+- **`restore` does not cover the compaction boundary.** Delivery is excluded on
+  `manual`, `subagent` and `compacting` starts (`inject.ts:566–568`), so a
+  session resumed after a compaction receives nothing from `restore`. This is
+  the one place where the chapter's opening framing ("cleared **or** compacts")
+  and the code disagree, and the code is right.
+- **`restore`'s own flag surface is wider than this chapter demonstrates.**
+  `USAGE` (`src/cli/commands/restore.ts:71–76`) carries
+  `--session`, `--range`, `--subject`, `--points`, `--reasoning`, `--code`,
+  `--from-result` and `--claims`; only some are exercised above.
+- **Every `mycontext` subcommand refuses `--help`.** `restore --help` exits 1
+  with `my_context: unknown option "--help"` — and then prints the usage banner
+  anyway. Reading a usage string this way works; expecting exit 0 does not.
 
 ## See also
 

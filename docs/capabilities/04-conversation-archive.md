@@ -13,15 +13,17 @@ archive": `REQ-the-conversation-archive-is-a-terminal-you-can-scroll-not-a` stat
 is held to — a terminal the owner can scroll and search, not a black box he has to `grep` by hand.
 
 The reason this is worth a whole subsystem rather than "search the files with `grep`": the archive
-is Hebrew from early on (`src/core/conversation-index.ts:318`), it is huge (one live session here
-is **106,591,470 bytes**, 43,854 records), and most of every transcript is tool machinery, not
-prose worth searching. Doing this naively — decode-then-split, word-boundary tokenizer, character
+is Hebrew from early on — "Hebrew from record 5", `src/core/conversation-index.ts:317` — it is huge
+(one live session here measured **106,591,470 bytes / 43,854 records on 2026-09-11**, and a live
+session only grows: the same `sessionId` was past 112 MB and 45,900 records two days later, so
+treat every figure in this chapter's live blocks as a dated reading and not as current state), and
+most of every transcript is tool machinery, not prose worth searching. Doing this naively — decode-then-split, word-boundary tokenizer, character
 offsets — is wrong in ways that are each individually measured in the source and described below.
 
 ## Indexing: what gets scanned, and from where
 
 `mycontext conversation rebuild` walks every transcript file in the workspace's Claude Code
-project directory. Running `conversation list --json` in this repo shows the real shape of one row:
+project directory. Running `conversation list --json` in this repo showed the real shape of one row (2026-09-11):
 
 ```
 sessionId   : 595db3b1-a481-4553-b4c0-7248c31b2655
@@ -34,7 +36,7 @@ branch      : master   cwd: D:\Users\UserC\source\repos\my-context
 title       : "MyContext V2.0"   titleSource: custom
 ```
 
-Every record is classified by `classifyTurn` (`src/core/conversation-index.ts:1391`) into
+Every record is classified by `classifyTurn` (`src/core/conversation-index.ts:1390`) into
 `prompt`, `answer`, or `machinery` — the same thirteen lines the list screen's own counts rest on,
 reused rather than re-implemented so "what counts as noise" cannot mean two different things on two
 screens. Only `prompt` and `answer` text is indexed for search. Measured on this workspace on
@@ -86,7 +88,7 @@ CREATE VIRTUAL TABLE IF NOT EXISTS conversation_prose USING fts5(
 );
 ```
 
-(`src/core/conversation-index.ts:458-468`). Node 24 bundles SQLite 3.51.2 with `ENABLE_FTS5`,
+(`src/core/conversation-index.ts:459–468`). Node 24 bundles SQLite 3.51.2 with `ENABLE_FTS5`,
 `bm25()`, porter *and* trigram tokenizers built in, and `node:sqlite` was already imported in
 ~14 files — so full-text search over the archive is a `CREATE VIRTUAL TABLE` and nothing else,
 which is what lets it exist under `CONST-zero-runtime-dependencies` and `CONST-node-24-no-build-step`
@@ -134,23 +136,47 @@ are obeyed as literal text rather than parsed as query syntax — a reader typin
 literal-text match, not an `fts5: syntax error`. Because the tokenizer is `trigram`, a quoted phrase
 search is a genuine contiguous-substring match, which is exactly the property the Hebrew case needs.
 
-**Use it:**
+**How you actually reach it — and it is not the CLI.**
+
+This is the sharpest asymmetry in the product, and it needs saying plainly: **there is no CLI path
+to FTS5 archive search at all.** `mycontext search` searches the *Markdown item corpus* only —
+`src/cli/commands/search.ts` imports `filterItems` from `core/search.ts` and never imports or
+calls `searchArchive`. And `mycontext conversation`'s own `USAGE` (`src/cli/commands/conversation.ts:59–67`)
+has no `search` subcommand: its eight subcommands are `rebuild`, `list`, `subagents`, `secrets`,
+`persist`, `name`, `anchor`, `forget`.
+
+`searchArchive` (`src/core/conversation-search.ts`) has **zero callers under `src/cli/`**. Its
+callers are:
+
+- `src/core/anchor-pass.ts:456` — the per-turn automatic anchor pass (chapter 5);
+- `src/ui/read-model-conversations.ts:2109` — the Conversations screen's search box;
+- `src/ui/read-model-retrieval.ts:371` — subject reconstruction (chapter 6).
+
+So the trigram measurement above is real and it is what those three surfaces get. A reader who
+wants to run a query themselves does it **in the browser**, on the Conversations screen
+(`mycontext ui`, chapter 8), not at a shell.
+
+**What the CLI does give you:**
 
 ```
-mycontext search "some words" [--type|--tag|--path|--status|--relation|--linked-to|--direction|--limit]
+mycontext search "some words" [--type|--tag|--path|--status|--relation|--linked-to|--direction|--limit|--text]
 mycontext conversation list [--limit <n>] [--json]
 mycontext conversation subagents [<session>] [--json]
+mycontext conversation anchor [<session>] [<byte offset>] [--label "<why>"] [--agent <id>]
+                              [--find <term>] [--drop <id>] [--json]
 ```
 
-`search` covers both the Markdown item corpus and the conversation archive from one command;
-`conversation list`/`subagents` are the archive's own inventory views.
+`search` is the item corpus; `conversation list`/`subagents` are the archive's own inventory
+views; `conversation anchor --find <term>` is the nearest thing to an archive text query on the
+CLI, and it resolves a term to a position in order to place an anchor rather than returning a
+result set.
 
 ## Byte offsets, never character offsets
 
 Positions into a transcript — where a record starts, where an anchor points — are stored as **byte
 offsets into the file**, never character offsets, and this is asserted directly in code comments as
-a correctness requirement, not a style preference (`src/core/conversation-index.ts:368-376`,
-`:1419-1436`). The reason: `iterateTranscript` (`src/core/conversation-index.ts:1509`) walks the
+a correctness requirement, not a style preference (`src/core/conversation-index.ts:369–377`,
+`:1417–1436`). The reason: `iterateTranscript` (`src/core/conversation-index.ts:1506`) walks the
 file as a raw `Buffer` in 1 MiB chunks, finds the newline delimiter *inside the buffer*, and decodes
 each line individually — because splitting an already-decoded string on `'\n'` loses byte positions
 the moment a record contains a non-ASCII character, and this corpus is half Hebrew: **every offset
@@ -161,10 +187,36 @@ true first byte of a line, so a caller (e.g. re-seeking to resume a scan, or an 
 
 This is also the performance argument for the whole approach: because JSONL records are
 variable-length, there is no way to seek to "record 27,686" without having walked the file once and
-remembered where each record began. `iterateTranscript` is written once and shared by the rebuild
-scan, the UI's virtualized transcript scroller, and anchor placement, so the walk happens once per
-freshness window (per-turn, tail-only) rather than once per scroll — on the owner's own 61 MB
-transcript, that is "read once" instead of "read per scroll."
+remembered where each record began. The walk happens once per freshness window (per-turn,
+tail-only) rather than once per scroll — on the owner's own 61 MB transcript, that is "read once"
+instead of "read per scroll."
+
+### The walk is shared *now*, and the reason it had to become shared
+
+**`src/core/line-walk.ts` (new 2026-09-13, `86a0c840`) is where the chunk carry lives**, and it is
+worth naming because the previous state of this sentence was a documentation hazard. There were
+**four** independent buffer-carry loops, each with its own private 1 MiB constant
+(`WALK_CHUNK_BYTES` and two separately named `CHUNK_BYTES`), and **two of them were wrong**:
+`ui/read-model-conversations.ts`' `readWindow` and `session-summary.ts`' `summariseTranscript`
+carried a **string** across the seam rather than a `Buffer`. `chunk.toString('utf8')` decodes each
+chunk on its own, so a character straddling the 1 MiB boundary becomes two U+FFFD — one at the tail
+of one chunk, one at the head of the next. A fourth reader, `conversation-redaction.ts`, had no
+seam assertion at all.
+
+**On ASCII this defect cannot fail a test**, because a byte offset and a character offset are then
+the same number — which is exactly why two of the readers shipped wrong and survived review. The
+fix (`ae4984d7`) is `test/core/chunk-seam-utf8.test.ts`, written **in Hebrew**, putting a two-byte
+character *across* byte 1,048,576 and reading the text back. The fixture guards itself: one
+assertion checks that byte 1,048,576 of the fixture really is a UTF-8 **continuation** byte, so a
+fixture that drifted by one byte cannot make the suite green by no longer testing anything.
+
+Today the four are one: `LINE_WALK_CHUNK_BYTES = 1024 * 1024`, with `eachLine` (a generator) and
+`forEachLine` (a callback) exported from `src/core/line-walk.ts:70, 109, 172`. `iterateTranscript`
+delegates to `eachLine` (`conversation-index.ts:110, 1552`) — deliberately the generator rather
+than `forEachLine`, because `iterateTranscript` is itself lazy and a callback driver would read a
+whole 52 MB transcript to answer a question about its first page. The importers are
+`conversation-index.ts`, `conversation-redaction.ts`, `session-summary.ts` and
+`ui/read-model-conversations.ts`.
 
 ## Subagent transcripts
 
@@ -182,14 +234,18 @@ extra bookkeeping.
 `conversation secrets [<session>] [--json]` scans a session's transcript for text that *looks*
 private — API keys, bearer tokens, key-assignments — and returns a report. It never redacts, never
 blocks, never modifies anything on its own; per the module's own stated rule
-(`src/core/conversation-secrets.ts:1-24`), quoting the owner: *"when user requesting export it
-should be asked to list private details or sensitive info from the conversation and upon its
-selection the exported version will include a replacement faked placeholder."* **Detection
+(`src/core/conversation-secrets.ts:1–24`), quoting the owner **exactly as the source carries him,
+misspellings and all** — this project treats a verbatim quotation as evidence, so tidying one is
+the wrong kind of edit: *"when user requesting export it should be askd to list private details or
+sensitive info from the conversation and uppon it's selection the exported version will include a
+replacement faked place holder"*. **Detection
 proposes, it never acts** — automatic scrubbing was considered and rejected because a false
 positive silently hides the owner's own work and a false negative silently reassures him; a
 candidate list he reads himself has neither failure mode.
 
-Real output from this workspace (`conversation secrets --json`, current live session):
+Output from this workspace (`conversation secrets --json`, run 2026-09-12 against the then-live
+session). **This is abridged: seven of `SecretCandidate`'s fourteen fields are shown**, and the
+elision is marked so the shape is not mistaken for the whole:
 
 ```json
 {
@@ -204,10 +260,18 @@ Real output from this workspace (`conversation secrets --json`, current live ses
       "preview": "cryp…9 more…ytes",
       "occurrences": 28,
       "contexts": ["…the identifier `secret` in `secret = cryp…9 more…ytes`. AND THE FINDING..."]
+      // … omitted here: length, records, recordsOmitted, firstRecord, lastRecord, paths, placeholder
     }
   ]
 }
 ```
+
+The full interface is `SecretCandidate` at `src/core/conversation-secrets.ts:611–634`:
+`id`, `shape`, `shapeTitle`, `added`, `preview`, `length`, `occurrences`, `records`,
+`recordsOmitted`, `firstRecord`, `lastRecord`, `paths`, `contexts`, `placeholder`. Two of the
+omitted ones carry design weight: `length` is "characters in the value — the part a mask cannot
+carry", and `placeholder` is "what it becomes if it is ticked. **Shown BEFORE the choice, not
+after.**"
 
 This is a candidate about the module's own doc comments discussing `secret = cryptoRandomBytes` —
 exactly the kind of false positive the module's own header describes as unavoidable from syntax
@@ -247,13 +311,26 @@ that cache, and they do different, narrower things than a rebuild:
   the mirror copy already on disk, because deleting could destroy the only remaining record of a
   conversation the harness has since pruned.
 
-- **`conversation forget [--yes] [--json]`** drops the *entire index* for the workspace — every
-  session and subagent row, and the tables themselves — without touching a single transcript file on
-  disk. It is described in the command's own confirmation prompt as an opt-**out**, not a delete: the
+- **`conversation forget [--yes] [--json]`** drops the session/subagent **inventory** for the
+  workspace, without touching a single transcript file on disk. Be precise about what it removes,
+  because the name is wider than the act: `forgetConversations`
+  (`src/core/conversation-index.ts:3096–3102`) issues exactly four `DROP TABLE IF EXISTS`
+  statements — `conversations`, `subagents`, `persisted`, `named`. The conversation schema has
+  **seven** tables (`:384, 408, 444, 453, 459, 471, 483`). **`conversation_prose` — the ~42 MB FTS5
+  table this chapter's longest section is about — survives, and so do `prose_sources` and
+  `anchors`.** So `forget` does not un-index the archive's prose; it removes the inventory and the
+  freshness bookkeeping's consumers.
+
+  What it *does* destroy, and this is worth knowing before typing it, is both of the things the
+  paragraph above is about: the `persisted` table holds the **`persist` marks** and `named` holds
+  the **session names**, and both go. The source says why that is allowed: *"The marks, not the
+  mirrors"* — a mirror copy on disk is untouched, because it may be the only surviving record; a
+  name "has no file to survive in" and is simply lost.
+
+  It is described in the command's own confirmation prompt as an opt-**out**, not a delete: the
   end-of-turn `Stop`-hook refresh only ever refreshes an index that already exists, so `forget`
   is how a workspace stops indexing conversations at all until `conversation rebuild` is run again
-  by hand. Mirrored copies from `persist` are explicitly left untouched by `forget` as well, for the
-  same "the copy may be the only surviving record" reason.
+  by hand.
 
 Both commands' mutating paths were read from source for this chapter and **not executed** — they
 require `--yes` or an interactive confirmation, and running them would have changed this workspace's
@@ -261,6 +338,13 @@ persisted/indexed state, which is outside a documentation pass's remit.
 
 ## What's NOT built / built but off
 
+- **There is no CLI path to FTS5 archive search.** This is the largest missing surface in the
+  chapter's own subject: `searchArchive` has zero callers under `src/cli/`, `mycontext search` is
+  the item corpus only, and `conversation` has no `search` subcommand. The capability is reachable
+  from the web UI and from the automatic anchor pass, and from nowhere else. See "How you actually
+  reach it" above.
+- **`conversation forget` does not drop `conversation_prose`.** Four of seven tables go. A reader
+  wanting the FTS5 index gone needs to delete `.my_context/.index.db`, not run `forget`.
 - There is no automatic redaction on display or on export — confirmed directly from the module's
   own design rationale: automatic scrubbing was considered and explicitly rejected.
 - Trigram search has a hard floor: queries under three characters return zero results, always, by
@@ -268,6 +352,12 @@ persisted/indexed state, which is outside a documentation pass's remit.
 - This chapter did not verify the full mechanics of how an accepted `secrets` candidate list flows
   into an actual `export`'s placeholder substitution (see `TASK-an-export-offers-to-swap-secrets-for-obvious-fakes-and-never`,
   read as a title only) — do not treat the export-side wiring as confirmed by this document.
+- **The UI's virtualized transcript scroller is named here but not described.** It lives in
+  `src/ui/public/screens/conversations.js`, which `reports/2026-09-13-conversations-js-mapped.md`
+  (`826c7b55`) maps into seven units and one 2,370-line closure. Chapter 8 does not describe it
+  either.
+- Every live figure in this chapter is a **dated reading**, not current state; the session
+  measurements in particular grow with every turn.
 
 ## See also
 

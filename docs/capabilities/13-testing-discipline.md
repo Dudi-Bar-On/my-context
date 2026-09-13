@@ -8,7 +8,8 @@ state — are enforced by the same corpus/gate/checker machinery documented in
 id the same way everything else in this codebase is, per
 `RULE-a-citation-names-an-item-by-id-never-a-report-by-line-number`. Every
 claim below is grounded in a file this pass actually read, or a command it
-actually ran (output pasted verbatim, dated 2026-09-12). This chapter did
+actually ran (output pasted verbatim and dated — 2026-09-12 originally, with
+the counted ones re-run 2026-09-13 and re-dated in place). This chapter did
 **not** run `npm test`, `npm run test:e2e`, or `npm run mutate` — those are
 excluded by the constraints this whole documentation effort works under. What
 follows comes from reading `test/`, `scripts/`, and `docs/mutation-testing.md`,
@@ -223,11 +224,13 @@ wider than it is**: a declaration says what a test *verifies*, never what it
 failure. Two of those fixtures live in `README.md` and `docs/README.he.md`,
 which carry no comment syntax and can never declare anything.
 
-**Real output, run 2026-09-12** (`node scripts/check-basis.ts`, tail):
+**Real output, re-run 2026-09-13** (`node scripts/check-basis.ts`, tail). The
+2026-09-12 reading was `150 of 611 … 138 distinct … 461 predate`; these numbers
+move with every test file added, so read them as dated:
 
 ```
-150 of 611 test file(s) declare a basis: 150 name item(s), 0 say `none` with a reason · 138 distinct item(s) are named
-461 predate the rule and are exempt via scripts/basis-undeclared.txt; 0 do not and are gated.
+162 of 622 test file(s) declare a basis: 162 name item(s), 0 say `none` with a reason · 157 distinct item(s) are named
+460 predate the rule and are exempt via scripts/basis-undeclared.txt; 0 do not and are gated.
 no test file outside the baseline is missing a basis or malformed.
 10 declaration(s) name a RETIRED item. Reported, never gated — the successors are printed above.
 scripts/basis-undeclared.txt: 0 entr(ies) name a file that no longer exists and 1 name a file that now declares a basis. Both are spent lines and deleting them is the whole repair.
@@ -300,6 +303,75 @@ pass ran for real (output pasted below), four were read from source only
 because running them either mutates state or duplicates work another chapter
 already verified live.
 
+### Where each one runs — which is a different question from whether it works
+
+This chapter previously described nine gates and never said **where any of them
+ran**, which is precisely the vacuous-gate failure the rest of it is about. As
+of `deb3d809` (2026-09-13):
+
+| Gate | `ci.yml` | `release.yml` | `.githooks/pre-commit` |
+|---|---|---|---|
+| `check:test-glob` | yes | yes | — |
+| `check:basis` | yes | yes | — |
+| `check:retired` | yes | yes | — |
+| `check:text-files` | yes | yes | — |
+| `check:vendor` | yes | yes | — |
+| `check:dependencies` | yes | yes | **yes** |
+| `check:needs-cycles` | yes | yes | — |
+| `check:handover` | yes | yes | — |
+| `check:cited-items` | **no, deliberately** | no | — |
+
+Plus `verify:citations`, then `typecheck`, `npm test` and `test:perf` in both
+workflows, and `test:e2e` in `ci.yml` only.
+
+**Before that commit, four of them ran nowhere.** `check:needs-cycles`,
+`check:handover`, `check:dependencies` and `check:cited-items` were in neither
+workflow, and `verify:citations` was in `release.yml` alone **and was red** — so
+the one gate that was failing was the one only a tag cut would have run. Four of
+the twelve blockers found by six reviews that week would have been caught by
+gates that already existed.
+
+**`check:cited-items`' absence is a ruling, not an omission.** `7d10c14d`, in
+its own words: *"a never-gating check there prints 224 lines into a green log
+and manufactures the appearance of coverage."* Its only three non-zero exits are
+anti-vacuity guards, so no finding it reports can fail a run — and a step that
+cannot go red is the vacuous gate this repository keeps catching. It stays a
+thing a person runs and reads.
+
+**The gap the whole table closes is named in a test file this chapter did not
+previously mention.** `test/scripts/workflow-gates.test.ts` asserts that gates
+are *reached*, not that they are correct: *"a green `dependency-budget.test.ts`
+says the dependency budget can be computed, never that anything computes it
+before a merge."* It reads the workflows with a line scan (this project has no
+YAML parser and none of its four devDependencies is one), so its anti-vacuity
+tests come first: the reader must find the steps that already existed **and
+their exact count**, so a scan that matched everything is refused too. It also
+**pins `check:cited-items`' absence with its reason**, because "an exclusion
+nobody wrote down is indistinguishable from the omission this whole item was
+filed about". That is the sharpest instance of this chapter's own thesis.
+
+### The pre-commit hook
+
+`.githooks/pre-commit` (new 2026-09-13) is installed by `npm run hooks:install`,
+which is `git config core.hooksPath .githooks`. **It runs exactly one gate**,
+`check:dependencies`, on a staged `package.json` or a staged
+`CONST-zero-runtime-dependencies`, and the restraint is the design:
+
+> "a hook that costs two seconds and can redden on another lane's uncommitted
+> work gets `--no-verify`'d once, then aliased away, and then it is a gate
+> wired to nothing wearing the clothes of a gate that runs."
+
+Why that one: `npm i --save` is a **working-tree act**, and the commit is the
+last moment the write is still cheap to undo — CI means a push, a red run and a
+revert; here it means deleting a line. And it is **never the only line of
+defence** — the same check runs in both workflows, deliberately, "so that
+disabling this hook costs you speed and never safety."
+
+Two limits the hook states rather than leaves to be discovered: a pre-commit
+hook reads the **working tree**, not the index, so a manifest edited but not
+staged is judged anyway (the safe direction, but not the question `git commit`
+is asking); and `git commit --no-verify` skips it, as it skips every hook.
+
 | Script | What it enforces |
 |---|---|
 | `check-test-glob.ts` | That `package.json`'s test glob is double-quoted (unquoted, `sh` on Linux CI expands `**` as plain `*` and silently ran **2 of 4** test files at exit code 0 — a green matrix over half a suite), and that the quoted pattern still resolves to every real `*.test.ts` under `test/` (catches a pattern that stays correctly quoted but stops matching the tree). |
@@ -312,18 +384,20 @@ already verified live.
 | `check-basis.ts` | Covered in its own section above. |
 | `check-handover.ts` | Covered in [07 · Restore and handover](./07-restore-and-handover.md). |
 
-**Real output, run 2026-09-12:**
+**Real output** — `check-vendor`, `check-needs-cycles` and
+`check-dependency-budget` run 2026-09-12 and reproducing unchanged;
+`check-text-files` re-run 2026-09-13:
 
 ```
 $ node scripts/check-vendor.ts
 28 vendored file(s) match src/ui/public/lib/vendor/VENDOR.md.
 
-$ node scripts/check-text-files.ts
-NUL  src\ui\retrieval-write.ts  at byte 8280
-     …6')\n    .update(record.payload).update(' ').update(record.re…
-     Write it as an escape instead. In a TypeScript string, `<NUL>` sends the same byte and leaves the file diffable.
-
-1309 text file(s) scanned: 1 contain(s) a NUL byte, so git treats them as binary — no diff, no review, and an unresolvable merge conflict.
+$ node scripts/check-text-files.ts        # re-run 2026-09-13 — the finding is gone
+1330 text file(s) scanned: none contains a NUL byte.
+every one of them still diffs.
+# exit 0. On 2026-09-12 this run reported:
+#   NUL  src\ui\retrieval-write.ts  at byte 8280
+#   1309 text file(s) scanned: 1 contain(s) a NUL byte…
 
 $ node scripts/check-needs-cycles.ts
 724 work item(s), 63 open · 702 plan/seq node(s) · 108 carrying "needs" · 141 edge(s) walked · 0 reference(s) nothing answers to, not walked · 15 item(s) carry no plan/seq and can be needed by nothing
@@ -333,11 +407,15 @@ $ node scripts/check-dependency-budget.ts
 package.json declares no runtime dependency, and 4 devDependencies (typescript, @types/node, @playwright/test, mermaid) — exactly what CONST-zero-runtime-dependencies enumerates.
 ```
 
-Note the live, currently-failing finding from `check-text-files.ts`: this
-run genuinely found one NUL byte in `src/ui/retrieval-write.ts` at byte 8280,
-in the corpus's own working tree, at the moment this chapter was written —
-not a constructed example. This documentation task's constraints forbid
-touching source, so the finding is reported here rather than fixed.
+**That finding was real and it has since been fixed.** On 2026-09-12
+`check-text-files.ts` genuinely found one NUL byte in
+`src/ui/retrieval-write.ts` at byte 8280, in this repository's own working tree,
+at the moment this chapter was written — not a constructed example. Re-run
+2026-09-13: `1330 text file(s) scanned: none contains a NUL byte`, exit 0. It is
+kept here as history, dated, rather than deleted, because a checker catching a
+real defect in the tree it guards is the evidence that it is not vacuous —
+which is the whole subject of this chapter.
+
 `check-cited-items.ts` and `check-test-glob.ts` were read from source only
 (the former's read half is already exercised safely by `check-basis.ts`
 importing it; the latter needs no live run to state its rule precisely).
@@ -444,23 +522,50 @@ this gap was found.
 
 ## What's NOT built / built but off
 
-- **`check:basis` is scoped, not universal.** 461 of 611 test files (75%)
-  are exempt via the baseline and carry no `@basis` line at all — this is a
-  deliberate design (retrofitting a guess is worse than silence), not a gap
-  nobody noticed, but it means the majority of the suite currently has no
-  basis declaration.
+- **`check:basis` is scoped, not universal.** **460 of 622 test files (74%)**
+  are exempt via the baseline and carry no `@basis` line at all (re-run
+  2026-09-13; it read 461 of 611 on 2026-09-12 — `8aa489fc` removed one
+  baseline line and the suite grew). This is a deliberate design (retrofitting
+  a guess is worse than silence), not a gap nobody noticed, but it means the
+  majority of the suite currently has no basis declaration. **0 files are
+  gated and undeclared**, which is the number that would be a defect.
 - **`@basis` cannot see what a test *assumes***, only what it *verifies* —
   stated as a known limitation in the checker's own summary output, not
   something this documentation is inferring.
-- **A live, unfixed finding exists right now**: `check-text-files.ts` found
-  one real NUL byte in `src/ui/retrieval-write.ts` at byte 8280, in this
-  repository's current working tree, at the moment this chapter was
-  written — left unfixed here because this documentation task's constraints
-  forbid editing source.
-- **Mutation testing is a tool a person runs deliberately, not a CI gate**
-  in what this chapter read — `npm run mutate` was not found wired into any
-  `check:*` script or `test:*` script; it is invoked by hand or referenced
-  from a code-review workflow.
+- **The NUL-byte finding this chapter reported on 2026-09-12 is fixed.**
+  `check-text-files.ts` exits 0 as of 2026-09-13 over 1,330 files. The account
+  above is kept, dated, as evidence the checker catches real defects.
+- **Mutation testing is a tool a person runs deliberately, not a CI gate** —
+  re-checked at HEAD on 2026-09-13 against every `package.json` script and both
+  workflows: `npm run mutate` is wired into no `check:*` or `test:*` script and
+  appears in neither `ci.yml` nor `release.yml`. It is invoked by hand or
+  referenced from a code-review workflow.
+- **Fourteen npm scripts are named nowhere in this reference**, several of them
+  gates: `test:perf` (which runs in **both** workflows), `test:e2e:single-phase`,
+  `test:e2e:install`, `typecheck`, `gen:commands`, `gen:docs`,
+  `verify:citations`, `check:retired`, `check:text-files`, `check:vendor`,
+  `check:needs-cycles`, `check:dependencies`, `check:cited-items`,
+  `hooks:install`. The table above fixes the "where does it run" half; naming
+  them as scripts is still thin.
+- **Nineteen files in `scripts/` have no coverage anywhere**, including
+  `e2e-gate.ts` (what `npm run test:e2e` actually runs), `gen-commands.ts`,
+  `gen-doc-examples.ts`, `check-faint-usage.ts`, `check-ask-numbering.ts`,
+  `check-cssom-restatement.ts`, `gen-cli-ui-coverage.ts`, `gen-diagrams.ts`,
+  `migrate-rules.ts`, `seed-dogfood.ts`, `backfill-requests.ts`,
+  `vendor-webawesome.ts`, `convert-hebrew-bidi-marks.ts`, `set-version.ts`,
+  `changelog-section.ts`, the three `restamp-summary-basis*.ts`, and
+  `doc-clock.ts` / `doc-fixture.ts` / `repair-openq-filters.ts`.
+- **`test/rules/*` (16 files) is not described here**, though
+  `test/rules/isolation.test.ts` is what makes chapter 10's isolation claim
+  checkable rather than argued.
+- **The UTF-8 chunk-seam fixture guard is a `@basis`-shaped proof this chapter
+  does not carry.** `test/core/chunk-seam-utf8.test.ts` is written in Hebrew
+  precisely because on ASCII the defect it catches *cannot* fail a test, and it
+  asserts that byte 1,048,576 of its own fixture is a UTF-8 continuation byte —
+  so a fixture that drifted by one byte cannot go green by no longer testing
+  anything. That is `a-fixture-must-not-be-what-makes-a-proof-pass` (the product
+  rule store, [chapter 10](./10-rule-store.md)) in one file. See
+  [chapter 4](./04-conversation-archive.md).
 - **`check-retired.ts`'s retired-phrase contract only covers documents that
   opt in** with an explicit `<!-- retired-phrases -->` HTML comment block —
   it does not scan every document for staleness generally.

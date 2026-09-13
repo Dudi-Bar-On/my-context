@@ -37,8 +37,8 @@ So `.my_context/.anchors.jsonl` — one JSON object per line, protocol-tagged
 anything else. Confirmed on this workspace:
 
 ```
-$ wc -l .my_context/.anchors.jsonl
-636 .my_context/.anchors.jsonl
+$ wc -l .my_context/.anchors.jsonl      # 2026-09-13; it was 636 on 2026-09-12
+715 .my_context/.anchors.jsonl
 
 $ head -n 1 .my_context/.anchors.jsonl
 {"protocol":"my_context/anchor@1","id":"595db3b1-a481-4553-b4c0-7248c31b2655:-:100522902",
@@ -46,9 +46,10 @@ $ head -n 1 .my_context/.anchors.jsonl
  "label":"today","kind":"table","origin":"automatic","at":"2026-09-11T22:35:10.797Z"}
 ```
 
-Every row has the same seven fields: `id`, `sessionId`, `agentId` (a lane id, or `null` for the
-session's own transcript), `byteOffset` (bytes, **never characters** — see §5.5), `label`, `kind`,
-`origin`, `at`. `readAnchorFile` refuses a damaged line rather than silently reading it as "fewer
+Every row has the same **eight** fields, plus the `protocol` tag shown above that makes nine keys on
+the wire: `id`, `sessionId`, `agentId` (a lane id, or `null` for the session's own transcript),
+`byteOffset` (bytes, **never characters** — see §5.5), `label`, `kind`, `origin`, `at`.
+`readAnchorFile` refuses a damaged line rather than silently reading it as "fewer
 bookmarks", because — per `INV-nothing-is-dropped-silently` — the bookmarks are exactly the thing
 nothing else can put back.
 
@@ -206,6 +207,18 @@ that **every byte of the corpus except the anchors document and the index** is u
   one"* — which is why `src/ui/anchor-write.ts` exists at all. The CLI's own `anchor` command
   header records this history and states plainly it is "not retired": CLI, MCP, and UI are peers,
   per the owner's ruling ("cli is ok, mcp too").
+- **`list-anchors` is a retrieval mode, and it is the one anchor capability this chapter does not
+  reach** (chapter 6 names it among the four modes; this cross-reference is the link that was
+  missing). `RetrievalMode` is
+  `'from-selection' | 'free-text' | 'list-subjects' | 'list-anchors'`
+  (`src/core/retrieval/mission.ts:50`), and `list-anchors` is the mode that answers "what fixed
+  points exist" rather than "where did this passage come from". It carries a **window** (`:108`,
+  measured 2026-09-13), and it is registered as `needsText: false` on the UI side
+  (`src/ui/read-model-retrieval.ts:105`, with the fixed-point handling at `:517`). It is reachable
+  **only from the retrieval surface** — not from `mycontext conversation anchor`, which lists the
+  file. See [06 — Retrieval](./06-retrieval.md).
+- **The anchor count moves constantly** — 636 on 2026-09-12, 715 on 2026-09-13, because the
+  automatic pass runs every turn. Read any figure in this chapter as a dated reading.
 
 ## 5.8 Worked examples
 
@@ -221,8 +234,11 @@ the code's own comment, "marking a bookmark is not a way to turn the archive on.
 ```
 $ mycontext conversation anchor --find "D42"
 ```
-Searches anchor *labels* only — a different question from `mycontext conversation search`, which
-searches the archive's prose (chapter 4).
+Searches anchor *labels* only — a different question from searching the archive's **prose**, which
+(chapter 4) has **no CLI surface at all**: `searchArchive` is reachable from the Conversations
+screen in the web UI and from the automatic pass, and `mycontext conversation` has no `search`
+subcommand. `--find` is therefore the only text query over the archive a terminal offers, and what
+it matches is the label a person wrote, not the transcript.
 
 **Mark one by hand:**
 ```
@@ -240,11 +256,12 @@ $ mycontext conversation anchor --drop <anchor-id>
 ```
 
 **Use case.** Mid-session, the owner is told the archive holds a ruling he gave weeks ago about a
-budget number. `mycontext conversation search "budget spare band"` finds the turn; rather than
-re-running that search every time it matters, he anchors the exact byte with a label, and from then
-on `mycontext conversation anchor --find "budget"` — or the Conversations screen — takes him
-straight back, without re-walking the transcript or re-trusting search ranking to surface the same
-hit twice.
+budget number. He finds the turn by searching the archive's prose **on the Conversations screen** —
+that search has no CLI form — and rather than re-running it every time it matters, he anchors the
+exact byte with a label. From then on `mycontext conversation anchor --find "budget"` takes him
+straight back **from a terminal**, without re-walking the transcript or re-trusting search ranking
+to surface the same hit twice. That asymmetry is the practical value of an anchor: it is the one
+handle on the archive that both surfaces can hold.
 
 ## See also
 

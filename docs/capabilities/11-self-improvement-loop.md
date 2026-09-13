@@ -8,21 +8,35 @@ A background pass — triggered from the `Stop` and `PreCompact` hooks — reads
 session's own transcript, classifies what it finds against a fixed rubric, and
 *could* draft proposals for a person to review. It ships wired end to end, and
 it ships **off**: the loop's own default configuration guarantees it writes
-nothing to this or any other workspace unless a person deliberately turns two
-separate dials.
+nothing to any workspace unless a person deliberately turns separate dials —
+`enabled`, `maxProposalsPerPass`, and (since 2026-09-13) `model`, each shipped
+at the value that does nothing.
 
 This is not "planned" or "coming soon." Every module described below exists,
 is imported, is exercised by `test/review/*`, and runs today in this very
 repository's own hook path — it runs, decides there is nothing to do (or that
 it isn't even switched on), and returns. The engineering is finished; the
-authorization is not.
+authorization is granted one dial at a time, and **this repository has now
+turned two of the three** (`enabled: true`, `maxProposalsPerPass: 5`; `model`
+is unset). A fresh install still has all three closed.
 
-**Source root:** `src/review/` — `trigger.ts`, `pass.ts`, `input.ts`,
-`rubric.ts`, `propose.ts`, `dedupe.ts`, `claim.ts`, `decline.ts`,
-`declined.ts`, `prompt.ts`. Configuration lives in `src/core/config.ts`
-(`ReviewConfig`, `DEFAULT_REVIEW`). The design document the code repeatedly
-cites by section number is
+**Source root:** `src/review/` holds **thirteen** modules at HEAD (`870e57c5`) —
+`trigger.ts`, `pass.ts`, `input.ts`, `rubric.ts`, `propose.ts`, `dedupe.ts`,
+`claim.ts`, `decline.ts`, `declined.ts`, `prompt.ts`, **`pending.ts`**,
+**`drift.ts`** and **`model.ts`**. The last three are described below and were
+absent from an earlier draft of this list; `drift.ts` is a **third off-switch**
+this chapter's "what's built but off" section has to account for, and
+`model.ts` — landed 2026-09-13 — reverses this chapter's single most repeated
+claim (see "Reaching a model").
+
+Configuration lives in `src/core/config.ts` (`ReviewConfig`, `DEFAULT_REVIEW`).
+The design document the code repeatedly cites by section number is
 `docs/superpowers/specs/2026-09-08-self-improvement-loop-design.md`.
+
+*(This chapter describes `src/review/` **as committed at HEAD**, which moved
+three times during this revision — `0d683f2b`, `5388f018`, `870e57c5`, all on
+2026-09-13. Where a claim here is newer than the rest of the chapter, it says
+so and names the commit.)*
 
 ## Why it exists
 
@@ -52,7 +66,8 @@ self-improvement loop" might expect them to be one thing:
 ### 1. Contribution — delivery counts read from the audit log
 
 `node src/cli/index.ts contribution --short`, run against this repository's
-live corpus, prints:
+live corpus on **2026-09-12**, printed (every count rises with every hook fire,
+so this is a reading rather than a constant):
 
 ```
 my_context contribution — how often each item was actually delivered into a session, read backwards
@@ -74,7 +89,7 @@ here, so a "cold" item may simply be one nobody has needed to re-fetch.
 ### 2. Decay — items that have gone quiet
 
 `node src/cli/index.ts decay --full` reports items not auto-injected across a
-window of recent sessions. On this corpus, right now:
+window of recent sessions. On this corpus, **2026-09-12**:
 
 ```
 my_context decay — items not injected in the last 20 session(s). The ledger holds 26 session(s).
@@ -119,8 +134,9 @@ gates run in this order, cheapest first:
 6. **Something new to read** — one `stat` against the byte offset the last
    pass stopped at.
 
-Two configuration values gate *whether the pass runs at all* and are
-themselves off by default. `DEFAULT_REVIEW` in `src/core/config.ts`:
+Three configuration values gate *whether the pass runs, proposes, or reaches a
+model*, and all three ship at the value that does nothing. `DEFAULT_REVIEW` in
+`src/core/config.ts`:
 
 ```ts
 export const DEFAULT_REVIEW: ReviewConfig = {
@@ -132,22 +148,49 @@ export const DEFAULT_REVIEW: ReviewConfig = {
   includeSubagents: true,
   maxProposalsPerPass: 0,
   queueCeiling: 15,
+  model: null,          // added 870e57c5 — see "Reaching a model"
 };
 ```
 
 `enabled: false` is the first, blunter off-switch — with it unset, the trigger
 returns `null` before it ever reads a byte of transcript, and no child is ever
-spawned. This repository's own `.my_context/config.json` carries **no
-`review` key at all**, meaning `def-the-corpus`'s own project runs on the
-shipped default: `review.enabled` is `false` here too. `node src/cli/index.ts
-review list` confirms the observable consequence:
+spawned. Those are the **shipped defaults**, and they are what a fresh install
+gets.
 
-```
-my_context: no drafts pending review.
+**This repository no longer runs on them, and both gates are now open here.**
+`.my_context/config.json` at HEAD carries:
+
+```json
+  "review": {
+    "enabled": true,
+    "maxProposalsPerPass": 5
+  }
 ```
 
-Once `enabled: true` is set, a second, independent gate still stands —
-`maxProposalsPerPass: 0` — covered under **The ration**, below.
+Two commits, sixteen minutes apart on 2026-09-13: `0d683f2b` (20:17, *"the
+self-improvement loop is on — and the ration stays at 0, which is what the code
+argues for"*) opened gate one, and `5388f018` (20:33, *"the ration goes to the
+number the design printed, and the loop is proved end to end"*) raised gate two
+to **5** — the figure §11 of the design document printed all along, which
+`DEFAULT_REVIEW` deliberately ships as `0`.
+
+`review list` still answers `my_context: no drafts pending review` on this
+workspace (run 2026-09-13, after both commits) — an open ration is permission to
+propose, not a proposal.
+
+**The argument this chapter is built on is unchanged, and it is worth being
+precise about what did and did not move.** Two independent dials, not one, is
+still the design — that claim is about `DEFAULT_REVIEW`, and `DEFAULT_REVIEW`
+still ships `enabled: false` **and** `maxProposalsPerPass: 0`, so a workspace
+that turns the loop on and changes nothing else still reads, reports and writes
+nothing. What changed is one workspace's answer to those dials: this one, the
+project that dogfoods the tool, after a dry run. The source's own condition for
+raising it was *"the owner's, after reading a week of `review-last-pass.json`"*
+— so read this repository's config as the exercise of that judgement, not as a
+new default.
+
+A reader checking the loop's state **in their own project** should run
+`node src/cli/index.ts review list` rather than infer it from here.
 
 ### Why `Stop` and `PreCompact`, and not `SessionEnd`
 
@@ -158,9 +201,11 @@ was **not one `session-end` row**, against 1,094 `stop`, 17 `pre-compact`,
 and 54 `session-start` rows. A trigger keyed to `SessionEnd` would have fired
 zero times in this project's own life so far.
 
-### The rubric — deciding a *stretch* is worth reading, without a model call
+### The rubric — deciding a *stretch* is worth reading, before any model is involved
 
 `src/review/rubric.ts::worthAPass` is a fixed heuristic, not a model call —
+and it stays one now that a model path exists, because it is the gate that
+decides whether the expensive half runs at all.
 the design's own arXiv citation (`arXiv:2606.23525`) is used to justify gating
 by trajectory content rather than a raw tool-call counter, but the rubric here
 is deterministic classification over what the trigger already read cheaply,
@@ -215,11 +260,18 @@ contradicts what a reader might assume "AI-generated proposals" means.
 > built, tested and unused by the code path below. What runs today is a
 > DETERMINISTIC proposer."
 
-So: `src/review/prompt.ts` exists — it is a fully-built prompt template meant
-for a future model-backed proposer — but nothing in the current code path
-ever sends it anywhere. What actually runs is rule-based classification of
-observations already gathered, with no generation step. And it is
-deliberately narrower than the design imagines in one more way:
+**That quote is still `propose.ts`'s header verbatim, and it is still true of
+`propose.ts`** — the deterministic proposer is what that module is. It is **no
+longer true of the product**, as of `870e57c5` (2026-09-13): the model path
+lives in `src/review/pass.ts`, beside `propose`, not inside it. See "Reaching a
+model" below, and read the header as a statement about one module rather than
+about the tool.
+
+`src/review/prompt.ts` — a fully-built, 250-line model prompt, pinned for
+structure by its own test — was for days imported by nothing but that test.
+What the deterministic proposer does is rule-based classification of
+observations already gathered, with no generation step, and it is deliberately
+narrower than the design imagines in one more way:
 
 ```ts
 export type Artifact = 'check' | 'rule' | 'lesson';
@@ -227,19 +279,100 @@ export const AUTHORABLE: readonly Artifact[] = ['check'];
 ```
 
 Of the three kinds of draft the design imagines this loop could eventually
-author, the shipped proposer is restricted to `check` (landing as a `task`
-item) alone. The code's own reasoning: a model-free proposer can *select* an
-observation well, but it cannot *compose* — every draft it could write for
+author, **the deterministic proposer** is restricted to `check` (landing as a
+`task` item) alone. The code's own reasoning: a model-free proposer can *select*
+an observation well, but it cannot *compose* — every draft it could write for
 `rule` or `lesson` would just be a sentence lifted verbatim out of a
 transcript, and the project judged that acceptable for a `task` ("work to be
 built") but not acceptable to file, unread, into a corpus this very project
 governs itself by.
 
+**The model path has its own, wider set**, and the two differ because the two
+proposers differ:
+
+```ts
+export const MODEL_AUTHORABLE: readonly Artifact[] = ['check', 'rule', 'lesson'];
+```
+
+`AUTHORABLE`'s argument was one sentence long and it was about a *lexical*
+proposer — "A lexical proposer can select an observation. It cannot write a
+rule" — a premise that is false of something that composes. The source is
+explicit that this is not a relaxation: a model proposal passes **every** gate
+the deterministic one does — §12's screen, §5c's relevance gate checked against
+the evidence the model itself cited, §8's decline ledger, §5b's near-duplicate
+suppression against the same `pending` list — and §4's artifact order still
+applies, because the prompt states it and `parseReply` refuses any tier outside
+it. **And the ration is unchanged:** widening *what* may be authored does not
+widen *how much*.
+
+## Reaching a model
+
+*(New at `870e57c5`, 2026-09-13. This section post-dates the rest of the
+chapter.)*
+
+**The mechanism is the harness's own CLI, headless.** `src/review/model.ts`
+spawns `claude --print --model <name> --output-format text` through
+`node:child_process`, with the prompt on **stdin** — never in argv, because the
+prompt carries transcript excerpts and runs to tens of kilobytes, Windows caps
+a command line near 32K, and a Windows command line is readable by every local
+account for the lifetime of the spawn. `cliInvocation(model)` is exported
+precisely so a test can read the argv without spawning.
+
+**`CONST-zero-runtime-dependencies` is untouched, and the source argues it
+rather than asserting it.** `node:child_process` is a builtin, so nothing
+enters `dependencies`. The CLI is not a package this product depends on — *"it
+is the ambient program that INVOKED the hook in the first place, so its
+presence is the precondition for the pass existing rather than an assumption
+the pass adds."* It carries the user's own credentials, so this product still
+holds none. Three alternatives were refused, each by name: `node:https` by hand
+(needs an API key this product must never hold), the MCP surface (inverted —
+MCP makes this product a tool *provider*, not a caller), and a prompt written
+to disk for someone to carry (*"the thing that looks like calling a model and
+does not"*). A fourth, dispatching a subagent, is **unavailable by
+construction**: the pass is a detached child of a hook with `stdio: 'ignore'`,
+so there is no agent in that process to dispatch anything.
+
+**`review.model` is a real config key now**, `string | null`, defaulting to
+**`null`** — which `DEFAULT_REVIEW`'s own comment says means "no model is
+reached by any path", for the same reason `maxProposalsPerPass` ships at 0: *"a
+workspace that sets `enabled: true` and changes nothing else must not start
+spending tokens on a subsystem nobody has read the output of yet."* §11 printed
+`"model": "haiku"`; the name §11 printed is the name to set it to, and setting
+it is the owner's. **It is no longer a refused key** — `model` left
+`REVIEW_LATER_KEYS`, which now holds only `crossSessionSameCwd`, and the source
+records why: *"It was refused for as long as the refusal was true."*
+
+**The call site is in `pass.ts:397–430`, not in `propose.ts`**, and the
+placement is argued: it runs *before* the proposing block and its result is
+folded in, so that **a model call that fails still leaves a report saying it
+was attempted and why**, and so `propose` stays testable without a transport.
+`options.model === null` short-circuits the whole block. The call is bounded by
+`MODEL_TIMEOUT_MS = 180_000` and `MAX_REPLY_BYTES = 1_000_000`, and
+`isUsableModelName` is checked twice — once for the report, once at the
+boundary the bytes actually cross — with the grammar imported from
+`core/config.ts` rather than restated, "so the name a config accepts and the
+name a spawn accepts cannot drift apart".
+
+**Provenance travels on `by`, and `origin` was deliberately not split.**
+`origin === 'review'` is the trust boundary, compared as a literal in seven
+modules; widening it to distinguish a model-written draft would have widened a
+trust boundary to carry an unrelated fact. Instead `Proposer` is
+`'deterministic' | 'model'` and the requirement — *an item says which produced
+it* — is met three times over on an axis that cannot be mistaken for trust: the
+`proposer:` tag on the item (`proposerTag`), the first line of the review brief
+a person actually reads, and a `by` column on every row of
+`review-last-pass.json`.
+
+**Measured:** two live runs on 2026-09-13, 79.2 s, returning 2 candidates the
+rule-based half could not have composed. **Nothing activates in this
+workspace** — `review.model` is unset in `.my_context/config.json`, so the loop
+behaves exactly as the rest of this chapter describes.
+
 ## The ration — the exact mechanism, and why it is not a budget
 
 The term **the ration** is a defined term in the shipped [product rule
 store](./10-rule-store.md), entry `def-the-ration` (tier: `developer` — one
-of the twelve entries that apply in this repository specifically):
+of the entries that apply in this repository specifically):
 
 ```
 means: "the cap on how much the self-improvement pass may put in front of a
@@ -262,7 +395,8 @@ past their real capacity makes oversight *less* reliable, not more.
 
 Two numbers implement it, both live in `ReviewConfig`:
 
-- **`maxProposalsPerPass`** bounds one pass. **It ships at `0`.**
+- **`maxProposalsPerPass`** bounds one pass. **It ships at `0`** — though this
+  repository now sets it to `5`; see the config block above.
 - **`queueCeiling`** bounds the whole pending queue. It ships at `15` — which
   the code states is *derived*, not chosen: the design's own printed example
   values are `maxProposalsPerPass: 5` × `maxFiresPerSession: 3` = 15, i.e.
@@ -367,32 +501,83 @@ default.
 ## What's NOT built / built but off
 
 This entire chapter describes a mechanism that is **built, tested, and
-wired into the real hook path — and off by two independent defaults**:
+wired into the real hook path — and shipped off by two independent defaults**
+(three, counting `drift` below):
 
 - **`review.enabled` defaults to `false`.** No child process is ever spawned
-  from any hook until a workspace explicitly sets this. This repository's own
-  `.my_context/config.json` does not set it, so the loop is off here too.
+  from any hook until a workspace explicitly sets this. **This repository sets
+  it to `true`** as of `0d683f2b`; the default is what a fresh install gets.
 - **`maxProposalsPerPass` defaults to `0`**, even once `enabled` is turned
   on. A workspace that flips only `enabled` still writes nothing — the ration
   is a second, independent dial, and the code comment says explicitly this is
-  intentional and not "a second kill switch."
-- **No model is ever called.** `src/review/prompt.ts` — a full prompt
-  template for a hypothetical model-backed proposer — exists in the source
-  tree, is exercised by its own tests, and is never invoked by the live code
-  path. The shipped proposer is a deterministic classifier, not a generator.
-- **Only `check` (task) drafts can be authored today**, of the three kinds
-  (`check`, `rule`, `lesson`) the type system already models. `rule` and
-  `lesson` authoring are typed but not enabled (`AUTHORABLE` names only
-  `'check'`), because the deterministic proposer cannot compose prose well
-  enough to be trusted with the normative tier.
+  intentional and not "a second kill switch." **This repository now sets it to
+  `5`** as of `5388f018`, which is the design's own printed figure.
+- **`drift.enabled` defaults to `false`, and it is a third off-switch this
+  chapter previously did not name.** `DEFAULT_DRIFT: DriftConfig = { enabled:
+  false }` (`src/review/drift.ts:122`). Two things about it are worth knowing
+  before looking for it in the wrong place:
+  - **The key is top-level `drift`, not `review.drift`**, and that is forced
+    rather than chosen: `requireReview` refuses any key it does not know inside
+    the `review` block, so `{"review": {"drift": …}}` would not switch it on —
+    it would **stop the whole config loading**. A top-level key is the one shape
+    an unknown key survives in, because unknown top-level keys are skipped and
+    disclosed (see `skippedKeys`, [chapter 2](./02-injection.md)).
+  - Every unreadable state resolves to off, deliberately, and `DEFAULT_DRIFT` is
+    a value rather than an inline `false` so that "what does this do if I do
+    nothing" has an answer you can read rather than infer.
+  Drift measures a session against an **anchor** ([chapter 5](./05-anchors.md))
+  — two texts the owner produced — never against a guess at intent, and each
+  refusal (no anchor, an anchor with no name in it, a stretch the rubric
+  declined) is stated rather than returned as a bare `false`.
+- **A model CAN now be called, and `review.model` defaults to `null` so that
+  nothing reaches one.** This bullet used to read "No model is ever called";
+  `870e57c5` (2026-09-13) made that false. `src/review/model.ts` spawns the
+  harness's own CLI headless and `src/review/prompt.ts` — unimported by the
+  product for days — is now what it sends. See "Reaching a model" above. What
+  remains off is the **switch**: `DEFAULT_REVIEW.model` is `null`, which means
+  no model is reached by any path, and this workspace does not set it.
+- **`src/review/drift.ts` is still imported by nothing but tests** — its only
+  importers anywhere are `test/review/drift.test.ts` and
+  `test/core/retrieval-return.test.ts`. At 18.5 KB it is the larger of the two
+  modules this chapter used to describe as unwired, and it is now the only one.
+- **`src/review/pending.ts`, by contrast, IS wired**, and this chapter
+  discusses `queueCeiling` at length without naming the module that computes
+  the queue: `src/cli/commands/status.ts`, `statusline.ts`,
+  `statusline-powerline.ts`, `src/core/questions.ts`, `src/ui/read-model.ts` and
+  `src/ui/public/app.js` all read it.
+- **The deterministic proposer authors `check` (task) drafts only**
+  (`AUTHORABLE = ['check']`), because it cannot compose prose well enough to be
+  trusted with the normative tier. **The model path authors all three**
+  (`MODEL_AUTHORABLE = ['check', 'rule', 'lesson']`) — two sets, because two
+  proposers, and every gate applies to both.
 - **No retirement rule exists.** `RETIREMENT_RULE` is `null`, with the exact
   measured reasons recorded in `WHY_NO_RULE` rather than left implicit.
-- **`crossSessionSameCwd` and `model`** are keys the design document (§11)
-  prints as part of a nine-key config block, but the config schema explicitly
-  **refuses** them rather than silently accepting and ignoring them — the
-  same boundary this file calls out for `maxProposalsPerPass` itself: a
-  config key that looks live but does nothing is treated as worse than a
-  parse error.
+- **`crossSessionSameCwd` is the one key the design document (§11) prints that
+  the config schema still refuses** — `REVIEW_LATER_KEYS = ['crossSessionSameCwd']`.
+  It is refused rather than silently accepted and ignored, on the same boundary
+  this file calls out for `maxProposalsPerPass`: a config key that looks live
+  but does nothing is worse than a parse error. The stated reason is specific —
+  the sightings ledger lives *inside* one corpus root, so "same cwd" is not a
+  setting, it is the only thing the file can express, and accepting the key
+  "would promise a comparison nothing performs."
+  **`model` used to be on that list and is not any more** (`870e57c5`). The
+  source records the transition rather than erasing it: *"It was refused for as
+  long as the refusal was true — 'nothing in this product calls a model' — and
+  `src/review/model.ts` ended that."* Any sentence saying `review.model` is
+  refused is now wrong; it is accepted, validated against a name grammar, and
+  defaults to `null`.
+- **`src/lesson/` (`derive.ts`, `staging.ts`) is not described in this
+  reference at all**, despite `mycontext lesson` / `lesson-stage` /
+  `lesson-accept` being the human-authored half of the same pipeline this
+  chapter is about.
+- **A third off-by-default gate exists outside this subsystem and the index's
+  roll-up misses it:** `dispatchGate` / `dispatchGate.enabled`
+  (`src/core/config.ts:600`, `DEFAULT_DISPATCH_GATE = { enabled: false }`) —
+  whether an `Agent` dispatch must name a task item. Like `review` it is
+  shipped off, refused rather than skipped on an unknown sub-key, and — like
+  `review` — **this repository turns it on** (`"dispatchGate": {"enabled":
+  true}` in `.my_context/config.json`). It belongs in the same roll-up as the
+  two dials above.
 
 ## See also
 

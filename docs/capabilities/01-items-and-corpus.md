@@ -7,12 +7,16 @@
 my_context's normative knowledge lives as Markdown files under `.my_context/items/<category>/<id>.md`.
 Every other surface — the SQLite index, the web UI, the injected context, the CLI's `show`/`list`/`search`
 — is a *read* of those files or of a table built from them. The proof, verified on this repo: the index
-database sits at `.my_context/.index.db` (`resolveWorkspace` in `src/core/workspace.ts:169`, confirmed on
+database sits at `.my_context/.index.db` (`resolveWorkspace` in `src/core/workspace.ts:224`, confirmed on
 disk — `find . -iname "*.db"` turns up `.my_context/.index.db`, `.my_context/.audit/audit.db`, and matching
 files in the `.my_context.nested-44/` and `.demo-corpus/` fixture workspaces). Deleting `.index.db` and
 running `mycontext rebuild` reconstructs it from the Markdown with nothing lost — the index is a cache, the
-Markdown is the source of truth. There is no second copy of a rule's *text* anywhere else in the project; a
-category's job is to hold exactly one.
+Markdown is the source of truth. **The Markdown is the only *authoritative* copy of a rule's text, and a
+category's job is to hold exactly one** — but it is not literally the only copy on disk, and the difference
+matters to anyone reasoning about redaction or about what a stale artefact can still say: `items.data TEXT
+NOT NULL` in the index schema (`src/core/store.ts:29`) stores the whole serialised item, body included, and
+`.my_context/.revisions/` holds staged bodies awaiting promotion. Both are derived and both are rebuilt
+from the Markdown; neither is consulted as truth.
 
 An **item** is one Markdown file: a frontmatter block (YAML between `---` fences) followed by a body in
 prose. The id is also the filename stem, and it is generated from the title — never chosen freely — so an
@@ -32,7 +36,7 @@ in 16 of the 29 (the rest are defined and available but this project hasn't popu
 |---|---|---|---|
 | constraint | CONST | normative | 7 |
 | invariant | INV | normative | 6 |
-| rule | RULE | normative | 55 |
+| rule | RULE | normative | 56 |
 | requirement | REQ | normative | 32 |
 | standard | STD | normative | 15 |
 | pattern | PAT | normative | 0 |
@@ -56,12 +60,13 @@ in 16 of the 29 (the rest are defined and available but this project hasn't popu
 | measurement | MEAS | rationale | 1 |
 | reference | REF | rationale | 5 |
 | plan | PLAN | rationale | 0 |
-| task | TASK | rationale | 740 |
+| task | TASK | rationale | 866 |
 | todo | TODO | rationale | 0 |
 | note | NOTE | rationale | 27 |
 
-(Counts are `ls .my_context/items/<category> | wc -l`, taken 2026-09-12. `task` dwarfs everything else at
-740 items because it is the corpus's own project-management ledger — every unit of work this project has
+(Counts are `ls .my_context/items/<category> | wc -l`, re-taken **2026-09-13**; the corpus totals 1,235
+item files. They move daily — `ee4a3a4a` alone turned 113 findings into task items — so read any count
+here as a dated reading. `task` dwarfs everything else at 866 items because it is the corpus's own project-management ledger — every unit of work this project has
 ever tracked, per `RULE-a-citation-names-an-item-by-id-never-a-report-by-line-number` and its neighbours in
 `src/rules/`.)
 
@@ -78,14 +83,29 @@ declared as authorable by a human, per `REQ-every-category-declares-what-may-be-
 buys:
 
 - **normative** — this is a rule the work must satisfy. An `active` normative item with `always: true` is
-  injected into every session in full; every other `active` normative item is at least named in the
-  session's index line so an agent can pull it. See [Injection](./02-injection.md) for the mechanics —
-  `select.ts`'s `buildIndex` is where the tier is actually read (`isNormative` gates whether `always` and
-  `scope` are even consulted).
+  injected into every session in full; every other `active` normative item is named in the session's index
+  line so an agent can pull it — **budget permitting.** The index tier has its own budget like every other
+  tier, overflow is recorded as a `Spill` at `tier: 'index'`, and `GoverningSpill.untitled`
+  (`src/core/select.ts:431–440`) exists precisely to name governing ids that "reached this session in NO
+  form — not delivered in full, and spilled the index tier's own budget too, so no title, no line,
+  nothing." On this repository's corpus that list is measured **empty** at every index budget tried (the
+  carry probe: `displaced` is `0` from 1,200 **down to** 470), and the code says in its own words that it
+  is "computed rather than assumed empty" because a growing corpus or a lowered `budgets.index` can make it
+  non-empty. See [Injection](./02-injection.md) for the mechanics — `select.ts`'s `buildIndex` is where the
+  tier is actually read (`isNormative` gates whether `always` and `scope` are consulted).
 - **rationale** — this is reasoning *about* work or a record of a past decision, never itself an
-  instruction to obey. A rationale item is never injected in full and is never named in the session index;
-  `buildIndex` reduces the whole tier to a bare count (e.g. "3 decision, 1 lesson"). Nothing an agent does
-  is wrong *because* a rationale item exists.
+  instruction to obey. A rationale item is never named in the session index; `buildIndex` reduces the whole
+  tier to a bare count (e.g. "3 decision, 1 lesson"). Nothing an agent does is wrong *because* a rationale
+  item exists.
+  **One exception, and it is deliberate rather than a leak: the `continuity` tier.** That tier draws its
+  candidates from `eligible`, not from `injectable`, and never consults `isNormative`
+  (`src/core/select.ts:1663–1669`), so **a rationale-tier item carrying `continuity: true` is delivered in
+  full.** The source states this as the point of the tier, not a side effect: *"The item this tier exists
+  for is a `reference`, which is rationale-tier by catalogue; gating here would have shipped a tier that
+  could never deliver the one item it was built to deliver, and would have done it silently."*
+  `categories.ts:125` says the same from the field side — `continuity` is accepted on the rationale tier
+  "unlike severity and always", because "the continuity tier is not a governance tier". Continuity delivers
+  what the next session needs in order not to start over; it does not make the item govern.
 
 The category comments in `categories.ts` argue this per-category rather than asserting it once, and the
 arguments are concrete rather than taxonomic:
@@ -97,7 +117,7 @@ arguments are concrete rather than taxonomic:
 - `exception` is **normative** for the same reason turned around: an exception is read at exactly the
   moment the rule it waives is being applied, so it has to arrive by the same route and against the same
   budget as that rule, or a reader is told the rule and never told the carve-out.
-- `task` and `plan` are **rationale**, deliberately, even though this corpus alone holds 740 task items:
+- `task` and `plan` are **rationale**, deliberately, even though this corpus alone holds 866 task items:
   "515 open tasks arriving as 515 things a model is told to care about is exactly the failure the tier
   boundary exists to prevent." Views that *do* need them — `mycontext ready`, `mycontext doctor`'s
   task checks — query the store directly and never go through `select`.
@@ -106,9 +126,12 @@ arguments are concrete rather than taxonomic:
   [Creation and the gates](./03-creation-and-gates.md)) "would defeat the reason both exist."
 - `reference` is **rationale** as a *trust boundary*, not a judgement call: its body is a snapshot of a
   file, so making it normative would let anyone who can edit that source file change what governs the
-  project by editing an unrelated file — reopening the staged-revision gate through a side door. `select`
-  filters `isNormative` before it ever reads `always`/`scope`, so the question of whether a reference could
-  govern never even arises.
+  project by editing an unrelated file — reopening the staged-revision gate through a side door. On the
+  governance tiers `select` filters `isNormative` before it ever reads `always`/`scope`, so a reference
+  cannot arrive as something that governs. It **can** still arrive in full, through the `continuity` tier,
+  which by design does not consult `isNormative` — `categories.ts:125`, in its own words: *"the continuity
+  tier is not a governance tier and never consults isNormative, so a reference can carry it."* Being
+  delivered and governing are two different things, and the tier boundary is about the second.
 
 `DEC-status-is-the-governance-axis-state-is-the-workflow-axis-and` names a second, orthogonal axis worth
 knowing here: **`status`** (draft / active / validated / deprecated / superseded) says whether a record
@@ -143,6 +166,62 @@ what keeps `status` as the one field every category shares and `state` as one `t
 | `extra` | map | Category-specific fields — `directive` on `rule`, `waives`/`until`/`granted_by`/`reason` on `exception`, `state`/`plan`/`seq`/`priority`/`needs`/`verified_on` on `task`, etc. |
 | `request` (body section, not frontmatter) | free text | The person's own words when they asked for this item, verbatim, captured **before** any body/summary is derived — "documentation only… should not be injected." Structurally excluded from rendering, from the summary basis, and from the checksum. |
 | body | prose | What the item actually says; median 1,693 characters in this corpus. |
+
+Two fields the table above does not carry, and both are load-bearing:
+
+- **`layer`** (`project | global`, `src/core/types.ts:343`) — which root the file was loaded from.
+  `mergeLayers` (`src/core/select.ts:1309–1318`) makes **a project item shadow a global item with the
+  same id**, so a global corpus can ship a default that a repository quietly overrides. The field is
+  derived from where the file sits, never written in frontmatter.
+- **`WRITABLE_SECTIONS`** (`src/core/item.ts:194`) is `{steps, observations, relations, request}` — the
+  four *body* sections a command may rewrite. Only `request` is described above; the other three are how
+  `procedure step`, the observation ledger and the relation graph get onto disk.
+
+## The read boundary: what `status: activ` becomes
+
+This is the most recently hardened thing about an item, and it is worth its own section because it decides
+whether a typo can silently hand out authority. `Status`, `Severity` and `Origin` are declared in
+`src/core/vocabulary.ts` (they used to live in `validate.ts`, a **write**-boundary module that the read
+boundary could not import without re-forming a cycle), and **the read boundary no longer casts.** It used
+to: `(optString(fm, 'status') ?? 'active') as Status`. A file saying `status: activ` then produced an
+`Item` whose `status` was `'activ'` — not a member of the union its own type claimed — and
+`GOVERNING_STATUS[item.status]`, a `Record<Status, boolean>` written *total* precisely so every status has
+an answer, returned `undefined`. Measured 2026-09-13 against a throwaway corpus: **five gates that ask
+that question all stopped firing**, and `governsNormatively` returned `undefined` from a function declared
+`boolean`.
+
+`readEnum(raw, policy)` (`src/core/vocabulary.ts:463`) replaces the cast, and `ENUM_READ` (`:439`) is the
+table. **`absent` and `laundered` are separate fields, and only one row has them equal:**
+
+| Field | Absent (no such key) | Laundered (a value outside the vocabulary) |
+|---|---|---|
+| `status` | `active` | **`draft`** |
+| `severity` | `soft` | `soft` |
+| `origin` | `human` | `human` |
+
+The asymmetry on `status` is the whole point: the *absent* default is the permissive member — an item with
+no `status:` line governs — so reading a corrupt one the same way "would let a mistyped byte hand out the
+strongest thing this field grants." `draft` governs nothing, is where untrusted capture already lands, and
+is **visible** (the item appears in the draft queue rather than vanishing). `severity` agrees with itself
+because `hard` is the escalation and `soft` is both the weaker member and the absent default. `origin`
+lands on `human` for a different reason than `status` does: a stored `origin` never grants the *item*
+authority — the readers of it ask whether an automatic mechanism may act (`retire.ts` wants `'review'`,
+`review/decline.ts` refuses anything that is not `'review'`) — so `human` answers no to both, and falling
+back to `review` would be exactly backwards.
+
+Three surfaces agree about this by construction, which is why the table lives in one place:
+
+- **`parseItem` performs the fallback** and says nothing — it is called during a parse that has nowhere to
+  report.
+- **`doctor` reports it.** `launderedEnums` (`src/core/item.ts:527`) feeds the `laundered_enum` finding
+  (`src/doctor/checks.ts:4289`), at **`error`** level, with a copy-ready
+  `mycontext edit <id> --status|--severity <read value> --yes` remedy for the two fixable fields and an
+  `ack` route for `origin`.
+- **`pack import` refuses rather than laundering.** `src/pack/reader.ts:310–337` rejects the **whole**
+  artefact if any item carries an unreadable enum — *"Nothing was imported."* The reasoning is stated in
+  the source: the fallback is right for a file in the owner's own corpus, which is his to repair, and
+  wrong for "the one read path reachable from input nobody in this project wrote", because it would plant
+  an item carrying a status the sender chose and the reader never saw.
 
 **Fields vs. tags — one owner ruling, one measurement.** `UpdateStore` (`categories.ts:22`) draws a hard
 line: *"if you would ever want to update it, it is a field."* A tag is a membership, and "what looks like an
@@ -222,7 +301,7 @@ instance of "name the item, don't restate it," the same discipline this document
   Bodies carry passwords and reset tokens; logs are retained for 90 days.
   ```
   *Use case*: encode a security or process do/don't so it's re-asserted at every session start rather than
-  living only in a teammate's memory. 55 items here — the largest normative category by volume.
+  living only in a teammate's memory. 56 items here (2026-09-13) — the largest normative category by volume.
 - **`requirement`** — what must be built; extra field `kind` (only `functional` attested so far —
   deliberately no closed vocabulary was declared from one observed value: "four statements in the design
   of record were measured false in one week" by exactly that kind of inference). 32 items here.
@@ -245,7 +324,7 @@ instance of "name the item, don't restate it," the same discipline this document
 - **`procedure`** — a *one-shot* ordered operation, performed once and then finished (a data backfill, a
   migration cleanup). 0 items here; carries a checklist body and a lifecycle (`mycontext procedure
   list|show|activate|done|step`) that `runbook` does not — see [Restore and handover](./07-restore-and-handover.md)
-  and [Packs, procedures, and runbooks](./12-packs-procedures.md) for the mechanics.
+  and [Packs, procedures, and runbooks](./12-packs-export-import-procedures.md) for the mechanics.
 - **`environment`** — how the environments differ: what production does that local does not. 0 items here.
 - **`known_issue`** — broken, flaky, or a dead end right now; do not spend effort on it. 32 items here —
   the second-largest normative category, which tracks with a project that dogfoods itself hard.
@@ -283,7 +362,7 @@ instance of "name the item, don't restate it," the same discipline this document
 - **`task`** — a unit of planned work; `state` (todo/doing/blocked/done, projects to a tag), `plan`, `seq`,
   `priority` (1 highest), `needs` (comma-separated plan/seq references gating readiness — shape checked,
   existence not, because plans are written before their tasks), `verified_on` (stamped by a person
-  reviewing a `done` task afterward, not by finishing it). 740 items here — this is the category
+  reviewing a `done` task afterward, not by finishing it). 866 items here (2026-09-13) — this is the category
   `mycontext ready` and three `doctor` checks (`blocked_without_needs`, `blocked_needs_met`,
   `needs_unresolved`) are built for.
 - **`todo`** — the inbox: captured the instant a thought occurs, zero friction. 0 items here (this project

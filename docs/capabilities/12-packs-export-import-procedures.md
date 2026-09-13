@@ -61,7 +61,7 @@ one, and `mycontext export --as-pack` writes one.
   ]
 }
 ```
-One of its items, verbatim, showing the shape an item takes inside a pack —
+One of its items, ABRIDGED — seven frontmatter lines (`scope`, `tags`, `source_file`, `source_anchor`, `source_checksum`, `valid_from`, `valid_until`) are omitted and the body is re-wrapped, so read it as a shape and not as bytes. It shows the shape an item takes inside a pack —
 `origin: human`, a fresh `checksum`, and no live `source_file`:
 ```markdown
 ---
@@ -97,8 +97,29 @@ you described" is not "consent to replacing an item you wrote yourself."
 Declining that second gate is not an error: new items still land, and the
 changed ones are reported and skipped, never silently.
 
-`src/pack/` splits the work by concern: `reader.ts` reads and verifies an
-artefact (dir or zip) against its manifest hashes; `collide.ts` computes the
+**A seventh step now runs before all six, and it is the strongest guarantee on
+this surface.** As of `44b3623b` (2026-09-13), `readArtefact`
+(`src/pack/reader.ts:310–337`) **refuses the whole artefact** if any item
+carries a `status`, `severity` or `origin` outside its vocabulary —
+*"Nothing was imported."* The refusal lands **before** `planImport`, so it is
+not a bucket the collision report sorts; it is the artefact not being read at
+all. The source states the asymmetry it is built on: `parseItem` reads an
+out-of-vocabulary value as a safe member and keeps loading, which is the right
+answer for a file in the **owner's** corpus — "it is his to repair, and losing
+the item would be a heavier punishment than the defect" — and the wrong answer
+here, because this is "the one read path reachable from input nobody in this
+project wrote", and the fallback "would plant an item in the corpus carrying a
+status the sender chose and the reader never saw". It is cheap (an artefact
+this product wrote cannot fail it, since every write path runs `validateEnums`)
+and loud, "which is the half the fallback cannot be". `doctor` reports the
+same condition on disk as `laundered_enum`, at `error` level — see
+[chapter 1](./01-items-and-corpus.md) for the read boundary and
+[chapter 3](./03-creation-and-gates.md) for the finding code.
+
+`src/pack/` splits the work by concern — **twelve files; `layout.ts` is the one
+this list omitted** and carries the pack's on-disk path layout. `reader.ts`
+reads and verifies an artefact (dir or zip) against its manifest hashes;
+`collide.ts` computes the
 three-way collision buckets and renders the report (`collisionJson` /
 `renderCollisionReport`); `import.ts` holds `planImport` (pure) and
 `applyImport` (the write); `manifest.ts` builds and validates `manifest.json`,
@@ -143,24 +164,25 @@ therefore absent from the approval-boundary set that chapter 13's test harness
 (`test/helpers/approval-boundary.ts`) derives by asking the parser which
 commands accept `--yes`.
 
-**Worked example — real output, run read-only against this repository's own
-corpus (1,108 items, confirmed live):**
+**Worked example — real output, re-run read-only against this repository's own
+corpus on 2026-09-13 (1,235 items; it was 1,108 on 2026-09-12, so read the
+figures as a dated reading):**
 ```
 $ node src/cli/index.ts export --dry-run
-my_context: about to export 1108 item(s) as a full export
+my_context: about to export 1235 item(s) as a full export
   adr 3   constraint 7   decision 99   instruction 11   invariant 6   known_issue 32   lesson 43
-  measurement 1   non_goal 3   note 27   open_question 29   reference 5   requirement 32   rule 55
-  standard 15   task 740
-  history: 4274 mutation record(s), filtered to mutations and joined to these items
+  measurement 1   non_goal 3   note 27   open_question 29   reference 5   requirement 32   rule 56
+  standard 15   task 866
+  history: 4466 mutation record(s), filtered to mutations and joined to these items
   not travelling: injections, hook actions, focus records, the index, session state,
                   revisions, ingest sessions and staged lessons
   nothing was written — this was a --dry-run. Run it again without --dry-run to write the artefact
   above.
 
 $ node src/cli/index.ts export --dry-run --as-pack --pack-name test-preview --pack-version 1.0.0
-my_context: about to export 1108 item(s) as a pack named "test-preview", version "1.0.0"
-  adr 3   constraint 7   decision 99   ...   task 740
-  history: 4274 mutation record(s), filtered to mutations and joined to these items
+my_context: about to export 1235 item(s) as a pack named "test-preview", version "1.0.0"
+  adr 3   constraint 7   decision 99   ...   task 866
+  history: 4466 mutation record(s), filtered to mutations and joined to these items
   not travelling: injections, hook actions, focus records, the index, session state,
                   revisions, ingest sessions and staged lessons
   dropped for a pack: source_file on 67 item(s), source_checksum on 97 item(s)
@@ -283,9 +305,9 @@ product (chapter 1's `INV-nothing-is-dropped-silently`, cited by a sibling
 chapter).
 
 Real entry, `capturing-an-item-and-the-categories` (first in the manifest):
-title *"Capture what you just decided, before you forget it"*, claims all 30
-`add-*.md` slash commands, the `capture.js` screen, and all 29 `CATEGORIES`
-keys. Every tutorial has the same four sections per `docs/TUTORIAL.md`: what
+title *"Capture what you just decided, before you forget it"*, claims **30 slash
+files — 29 `add-*.md` plus `add.md`** — the `capture.js` screen, and all 29
+`CATEGORIES` keys. Every tutorial has the same four sections per `docs/TUTORIAL.md`: what
 it's for, how it works, how to use it from the CLI, and how to use it from the
 UI — "with each surface saying what it can and cannot do, because they are not
 the same."
@@ -343,10 +365,12 @@ its content is exactly this file.
 
 `mycontext:LoadMyContext` (also visible in this session's skill listing)
 corresponds to `commands/LoadMyContext.md` at the repository root. Alongside
-it, `commands/` ships **95 slash command files** (confirmed by listing the
-directory): one per CLI command family plus one `add-<category>.md` and
-`list-<category>.md` per category (`add-adr.md` … `add-tradeoff.md`,
-`list-adr.md` … `list-tradeoff.md`), plus single-word commands mirroring `add`,
+it, `commands/` ships **91 slash command files** — `ls commands/*.md | wc -l`,
+2026-09-13, and the directory holds nothing but `.md` files. The arithmetic on
+this page is its own check: **29 `add-*.md` + 29 `list-*.md` + 32 single-word +
+`LoadMyContext.md` = 91.** One `add-<category>.md` and `list-<category>.md` per
+category (`add-adr.md` … `add-tradeoff.md`, `list-adr.md` … `list-tradeoff.md`),
+plus single-word commands mirroring `add`,
 `audit`, `decay`, `discard`, `doctor`, `edit`, `focus`, `handover`,
 `harden`, `inbox-promote`, `ingest`, `lesson`, `lesson-stage`, `link`, `pin`,
 `procedure`, `promote`, `query`, `ready`, `refresh`, `review`, `search`,
@@ -358,6 +382,11 @@ skill and the slash commands when this plugin is installed.
 
 ## What's NOT built / built but off
 
+- **A failing `pack import --json` or `export --json` emits a JSON envelope on
+  stdout, not prose** — `src/cli/json-envelope.ts`, new 2026-09-13, with the
+  exit code unchanged and a non-zero run whose body already parses as JSON
+  passed through untouched. Every `--json` block in this chapter is a *success*
+  shape; see [chapter 3](./03-creation-and-gates.md) for the failure one.
 - **No pack registry, index, or update channel** — `docs/TEMPLATES.md` states
   this is deliberate, not a gap to be filled: *"no registry, no re-fetch, no
   update channel and no version check over the network."* Updating a pack

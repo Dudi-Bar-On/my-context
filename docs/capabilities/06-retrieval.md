@@ -37,34 +37,63 @@ covered in [`09-cli-and-mcp.md`](./09-cli-and-mcp.md)): `search` finds *items in
 words, tags, paths or relations, and its matches are safe to inject because items are already the
 distilled, governed record. Retrieval works one layer down — over the raw **conversation
 archive** (transcripts, not items) — which is exactly the layer that is *not* safe to put in front
-of a model unfiltered, because it is mostly machinery and repetition. `conversation search`
-(`mycontext conversation ...`, chapter 4) finds *turns* in the archive by FTS5 text match; this
+of a model unfiltered, because it is mostly machinery and repetition. Archive **prose search**
+(`searchArchive`, chapter 4 — reachable from the Conversations screen and from the automatic anchor
+pass, and from **no CLI command**) finds *turns* in the archive by FTS5 text match; this
 retrieval pipeline is the layer above that turns a turn (or a copied passage) into a bounded,
 verified, citable account of a *subject*, and refuses to let the raw material travel with it.
 
-## Status: built, largely unwired
+## Status: built, and wired on two of three surfaces
 
-This matters enough to state before anything else. Five of the seven modules under
-`src/core/retrieval/` are complete and tested; nothing in the CLI or MCP surface calls any of
-them yet, and no hook can reach them (that second fact is itself asserted by a test, see below).
-The web UI **does** now have routes registered for it (`GET /api/retrieval`,
-`POST /api/retrieval/mission`, `GET /api/retrieval/:id`, `POST /api/retrieval/return`,
-`POST /api/retrieval/stage`, `GET /api/retrieval/approve/confirm`, `POST /api/retrieval/approve`
-— all in `src/ui/read-model-retrieval.ts` and `src/ui/retrieval-write.ts`, registered from
-`src/ui/server.ts`), and `src/ui/public/screens/conversations.js` contains real client code for
-composing a mission, reading a result, and staging a return. This is **more wired than the
-governing task item currently says**: `TASK-reconstruct-a-subject-from-a-passage-you-copied-without-the`
-still reads "NOTHING IS WIRED. No command, route or hook reaches retrieval," with `state: todo`,
-while the UI route registration and the client screen code are already on disk. That gap between
-an item's recorded state and what has since shipped is precisely the failure mode
-`docs/superpowers/CLAUDE.md`'s own opening measurement is about — treat the item's prose as
-slightly behind the code it describes, not as current truth, and see
+This matters enough to state before anything else, and it is the claim in this chapter that has
+moved most. **As of 2026-09-13, all seven modules under `src/core/retrieval/` have a real consumer
+in `src/`** — not only a test:
+
+| Module | Consumers outside `src/core/retrieval/` |
+|---|---|
+| `mission.ts` | `src/ui/read-model-retrieval.ts`, `src/review/drift.ts` |
+| `from-selection.ts` | `src/ui/read-model-retrieval.ts`, `src/review/drift.ts` |
+| `noise.ts` | `src/ui/read-model-retrieval.ts`, `src/review/drift.ts` |
+| `subjects.ts` | `src/ui/read-model-retrieval.ts`, `src/core/conversation-index.ts`, `src/review/drift.ts` |
+| `result.ts` | **`src/cli/commands/restore.ts`**, `src/ui/read-model-retrieval.ts` |
+| `return.ts` | **`src/cli/commands/restore.ts`**, `src/ui/read-model-retrieval.ts`, `src/ui/retrieval-write.ts`, `src/core/session-summary.ts` |
+| `return-stage.ts` | **`src/cli/commands/restore.ts`**, `src/ui/retrieval-write.ts` |
+
+**There IS a CLI path, and it is `mycontext restore`.** `src/cli/commands/restore.ts:8–12` imports
+`readResult`, `markReturn`/`returnReviewForm` and `stageableReturn`, and the command carries a
+second usage form built specifically for this pipeline:
+
+```
+mycontext restore --build --from-result <file> [--claims <1,3,7>] [--json]
+```
+
+Those imports landed in `121b01b0` on **2026-09-12 at 03:13**. The last two unwired modules
+(`noise.ts`, `subjects.ts`) were wired into `src/ui/read-model-retrieval.ts:69, 72` by `11f6655e`
+on 2026-09-13. An earlier draft of this chapter said "nothing in the CLI or MCP surface calls any
+of them yet"; that was already false when it was written, and it is the kind of claim — a negative
+absolute about wiring — this reference should state by grepping for importers rather than by
+recalling a design intent.
+
+**What remains true:** no **MCP tool** exposes retrieval, and **no hook** can reach it — the
+second is asserted by a test, not merely observed (see the isolation tests below).
+
+The web UI is the fullest surface: `GET /api/retrieval`, `POST /api/retrieval/mission`,
+`GET /api/retrieval/:id`, `POST /api/retrieval/return`, `POST /api/retrieval/stage`,
+`GET /api/retrieval/approve/confirm`, `POST /api/retrieval/approve` — in
+`src/ui/read-model-retrieval.ts` and `src/ui/retrieval-write.ts`, registered from
+`src/ui/server.ts` — with real client code in `src/ui/public/screens/conversations.js` for
+composing a mission, reading a result, and staging a return.
+
+**The governing task item is behind all of this, and that is worth saying rather than smoothing
+over:** `TASK-reconstruct-a-subject-from-a-passage-you-copied-without-the` still reads "NOTHING IS
+WIRED. No command, route or hook reaches retrieval," with `state: todo`, while the CLI imports,
+the UI routes and the client screen code are all on disk. Treat the item's prose as behind the
+code it describes, not as current truth, and see
 [`01-items-and-corpus.md`](./01-items-and-corpus.md) for how an item's `state:` tag is meant to
 track this.
 
-No `mycontext` CLI command and no MCP tool currently exposes retrieval. Everything below is
-demonstrated from the TypeScript modules and their tests directly, because that is the only way
-to exercise the capability today.
+Everything below is demonstrated from the TypeScript modules and their tests directly, which is
+how the mechanism is best read — not because it is the only way to exercise it.
 
 ## The mechanism, module by module
 
@@ -442,10 +471,13 @@ that surrounds it.
 
 ## What's NOT built / built but off
 
-- **No CLI command, MCP tool, or hook triggers retrieval.** It can only be exercised by importing
-  the modules directly (as in this chapter, and as the tests do). This is asserted as intentional,
-  not merely incomplete — the whole point of the isolation tests above is that nothing *can*
-  reach it unasked while it's in this state.
+- **No MCP tool and no hook triggers retrieval**, and the hook half is asserted as intentional
+  rather than merely incomplete — that is what the isolation tests above are for: nothing *can*
+  reach it unasked. **The CLI half is no longer true**: `mycontext restore --build --from-result
+  <file> [--claims <1,3,7>]` is a real path into `result.ts`, `return.ts` and `return-stage.ts`
+  (see "Status" above). What the CLI does **not** offer is the front of the pipeline — there is no
+  command that composes a mission or runs `from-selection`/`noise`/`subjects`; that is the web UI's
+  Conversations screen only.
 - **Task 11 ("the UI — read the result, choose what returns") is only partly landed** against
   what the governing task item describes. The routes and the client screen code
   (`src/ui/public/screens/conversations.js`) exist and are tested at the route level

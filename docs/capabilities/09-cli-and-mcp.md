@@ -14,18 +14,53 @@ This chapter is the full command/tool reference. Commands and tools with deep in
 
 ## 1. How commands are registered
 
-`src/cli/commands/registry.ts` defines `CommandDef` and `registerCommand()`. Every command file that is a real top-level command calls `registerCommand(...)` at module load. Grepping `src/cli/commands/*.ts` for that call turns up exactly 33 files that register a command:
+`src/cli/commands/registry.ts` defines `CommandDef` and `registerCommand()`. Every command file that is a real top-level command calls `registerCommand(...)` at module load. Grepping `src/cli/commands/*.ts` for that call turns up 33 files, but **32 of them register a command** — `registry.ts` matches the grep because it *defines* `registerCommand` at `src/cli/commands/registry.ts:46`, not because it calls it. Confirmed by running it: `node src/cli/index.ts registry` answers `my_context: unknown command "registry"`, exit 1.
+
+The 32:
 
 ```
 ack, audit, carry, config, contribution, conversation, decay, doctor, edit, export,
 focus, handover, inbox-promote, ingest, lesson, link, pack, procedure, query, ready,
-refresh, registry, repair, restore, review, rules, search, session, status,
+refresh, repair, restore, review, rules, search, session, status,
 statusline, supersede, todo, ui
 ```
 
-`init`, `add`, `list`, `show`, `rebuild`, `help`, `examples`, `harden`, `soften`, `pin`, and `unpin` are the remaining top-level commands from `--help`, registered directly in `src/cli/index.ts` rather than their own file. **`revision-view.ts`, `format.ts`, `context.ts`, `injection.ts`, `statusline-install.ts`, and `statusline-powerline.ts` are not commands at all** — they are internal helpers: `revision-view.ts` is imported only by `review.ts` (`fieldDiff`, `renderRevision`, `renderSettled` — it renders a pending revision as a diff, never a table, because a diff column is prose of unbounded width); `format.ts`/`context.ts` are shared CLI plumbing (output width, workspace resolution); `injection.ts` is a helper `inbox-promote.ts` reuses; `statusline-install.ts`/`statusline-powerline.ts` are dispatched from inside `statusline.ts`'s subcommand switch, not registered separately. Worth naming because the task brief listed several of these as if they were independent commands — they are not, and documenting them as such would be exactly the kind of second copy this project spends its effort deleting.
+(A grep artefact reproduced without running the command is exactly the defect this
+reference keeps finding elsewhere, so it is worth flagging as one rather than
+quietly deleting the name.)
 
-The real, current top-level usage line (run yourself with `node src/cli/index.ts --help`):
+`init`, `add`, `list`, `show`, `rebuild`, `help`, `examples`, `harden`, `soften`, `pin`, and `unpin` are the remaining top-level commands from `--help`, registered directly in `src/cli/index.ts` rather than their own file. **`revision-view.ts`, `format.ts`, `context.ts`, `injection.ts`, `statusline-install.ts`, and `statusline-powerline.ts` are not commands at all** — they are internal helpers: `revision-view.ts` is imported only by `review.ts` (`fieldDiff`, `renderRevision`, `renderSettled` — it renders a pending revision as a diff, never a table, because a diff column is prose of unbounded width); `format.ts`/`context.ts` are shared CLI plumbing (output width, workspace resolution); `injection.ts` is a helper `inbox-promote.ts` reuses; `statusline-install.ts`/`statusline-powerline.ts` are dispatched from inside `statusline.ts`'s subcommand switch, not registered separately. **`registry.ts` belongs on this list too** — see above. Worth naming because the task brief listed several of these as if they were independent commands — they are not, and documenting them as such would be exactly the kind of second copy this project spends its effort deleting.
+
+The top-level banner from `node src/cli/index.ts --help`, reproduced below, is
+**abridged**: six entries were shortened to `[...]` when this chapter was
+written, and the per-subcommand flag tables were never transcribed at all. Flags
+the block silently drops include `ready --questions`;
+`focus --tag/--category/--scope/--relations/--preview/--yes`;
+`restore --session/--range/--subject/--points/--reasoning/--code/--from-result/--claims`;
+`export --type/--status/--tag/--pack-name/--pack-version/--no-history`;
+`statusline install|uninstall --settings`; `session carry --none/--show`;
+`search --text`; `audit --until/--kind/--origin/--role/--files`;
+`contribution --retire`; `--title` on `edit`, `inbox-promote` and `lesson-accept`
+(on `add` the title is a positional, not a flag);
+`--stdin` on `ingest-apply`/`lesson-stage`; `lesson-accept --directive`;
+`procedure step --undo`; `review promote-revision --revision/--force`;
+`review discard-revision --revision`; `review promote --source`; and — the costly
+one — **`edit --summary-unchanged`** and `edit --continuity` (see
+[chapter 3](./03-creation-and-gates.md), where `--summary-unchanged` is the edit
+gate's actual escape hatch).
+
+**The single source of truth for every CLI flag is `src/core/command-flags.ts`
+and `src/core/edit-flags.ts`** — the same tables `refuseUnknownFlag` and the
+`--json` failure envelope both read. This chapter was not written from them, and
+that is why the list above exists. A future revision of this section should be
+derived from those two files rather than from a banner.
+
+**One warning before you run it yourself: every subcommand refuses `--help`.**
+`mycontext restore --help` prints `my_context: unknown option "--help"`, then
+prints the usage banner anyway, and **exits 1**. The usage text is real; the exit
+code is not success.
+
+The (abridged) banner:
 
 ```
 usage: mycontext <command> [args]
@@ -102,7 +137,7 @@ decision, lesson, tradeoff, assumption, edge_case, risk, measurement, reference,
 
 ### Corpus inspection — `list`, `show`, `search`, `query`, `status`
 
-**`status`** — counts, review queue size, ingest progress, decay/health summary in one screen. Read-only. Worked example, real output from this repo today:
+**`status`** — counts, review queue size, ingest progress, decay/health summary in one screen. Read-only. Worked example, **real output captured 2026-09-12**. Every figure in it is a reading: the corpus was 1,235 items by 2026-09-13 (`rule` 56, `task` 866), so re-run it rather than quoting these numbers:
 
 ```
 $ node src/cli/index.ts status
@@ -237,7 +272,7 @@ my_context: 5 audit record(s), oldest first (most recent 5):
 ```
 This is the same log Chapter 2's `governingSpill` and Chapter 11's contribution/decay figures are read back out of. Use case: "what actually happened in this session's hooks", forensic debugging of injection or a hook misfire.
 
-**`contribution [--full|--short|--summary]`** — per-item delivery counts, read backwards out of the audit log, explicitly framed as a *baseline for change-over-time comparison* rather than a usage ranking. Real output:
+**`contribution [--full|--short|--summary]`** — per-item delivery counts, read backwards out of the audit log, explicitly framed as a *baseline for change-over-time comparison* rather than a usage ranking. Real output, **2026-09-12**; every count in it rises with every hook fire:
 
 ```
 $ node src/cli/index.ts contribution --short
@@ -295,7 +330,7 @@ The server (`src/mcp/server.ts`) is a 60-line stdio entry point: it resolves the
 }
 ```
 
-`src/mcp/tools.ts` (2,728 lines) defines every tool. Grepping for `name: '...'` finds **26 tools**, matching the set already visible in this session's own tool list exactly:
+`src/mcp/tools.ts` (2,756 lines) defines every tool. Grepping for `name: '...'` finds **26 tools**, matching the set already visible in this session's own tool list exactly:
 
 | Tool | Backing core module(s) | What it does |
 |---|---|---|
@@ -328,14 +363,32 @@ The server (`src/mcp/server.ts`) is a 60-line stdio entry point: it resolves the
 
 No MCP tool wraps `carry`, `inbox-promote`, `config`, `registry`, `statusline`, `rules`, `restore`, `pack import` (only its *preview* has an MCP tool), `harden`/`soften`/`pin`/`unpin`, or the `conversation`/`export`/`ui` command families — those remain CLI/UI-only today. This is a real, verified asymmetry, not an oversight to paper over: several of the missing ones (`pin`, `restore --approve`, `pack import`) are exactly the mutating, human-judgment-gated operations this project is generally careful to keep a person in the loop for.
 
-Worked example (constructed precisely from the `ready` tool's schema and its shared implementation with the CLI command — the MCP transport itself was not invoked live, since the registered server showed as disconnected in this session's own tool list, an unrelated connection issue, not a documentation gap):
+**Worked example — and the important thing about it is that the MCP tool and the
+CLI flag do *not* return the same shape.** (The MCP transport was not invoked
+live; the registered server showed as disconnected. The tool's implementation was
+read directly.)
 
 ```
 tool: ready
-args: { "limit": 3 }
-→ same payload shape CLI `ready --json --limit 3` would print: a "ready" array of
-  {task, pri, state, title}, plus counts of ready/open/held tasks and blocking open questions.
+args: { "limit": 3 }          // limit defaults to 50 when omitted
+→ PLAIN TEXT, not JSON. `run` ends `return lines.join('\n')` (src/mcp/tools.ts:1434),
+  composing one line per task at :1400 as
+  `${row.item.id} · ${taskCell(row)} · pri ${priority} · ${state} · ${title}`,
+  followed by the readiness-is-derived disclosure. `limit` is read at :1370.
 ```
+
+There is **no JSON payload at any point** on the MCP side. The CLI's
+`ready --json`, by contrast, emits rows shaped
+`{id, title, type, plan, seq, priority, state, needs}` — verified live — with
+top-level counts (`readyTotal`, `open`, `heldTotal`,
+`openQuestions.blockingTotal`). **No field is named `task` or `pri`** in either
+shape; those were a guess made from the tool's summary line and are recorded here
+as a correction rather than deleted, because the failure mode — describing a
+payload from a schema without running either side — is the one this reference is
+most prone to.
+
+The tool/CLI counts themselves *do* agree: ready, open and held totals, and
+blocking open questions, are the same numbers computed by the same code.
 
 ---
 
@@ -344,7 +397,29 @@ args: { "limit": 3 }
 - `revision-view`, `format`, `context`, `injection` (the CLI helper, distinct from the injection *mechanism* in Chapter 2), `statusline-install`, `statusline-powerline` are **not independent commands** — they are internal modules other commands import. Documenting them as top-level surface would be inaccurate.
 - The MCP surface has **no tool** for `carry`, `inbox-promote`, `config`, `registry`, `statusline`, `rules`, `restore`, `harden`/`soften`/`pin`/`unpin`, the `conversation` family, `export`, or `ui` — an agent needing any of those must go through the CLI (or, for `restore`/config-editing, a human).
 - `pack import` has a full MCP *preview* (`preview_pack_import`) but no MCP *commit* path — committing a pack import is CLI/UI-only, consistent with keeping human judgment in the loop for corpus-altering imports.
-- `mycontext help tools` / `help slash` are listed as `help` topics but were not independently verified in this chapter — see Chapter 12 for skills/slash-command coverage.
+- **`src/help/` is not described anywhere in this reference.** `mycontext help [topic]` is backed by
+  `src/help/index.ts`, which reads Markdown from `src/help/topics/` — **seven English topics**
+  (`capture.md`, `categories.md`, `cli.md`, `scope.md`, `slash.md`, `tools.md`, `workflow.md`) plus
+  one Hebrew source (`categories.he.md`) and `src/help/he.ts`. A localized topic lives beside its
+  English source as `<topic>.<locale>.md`, and asking for a locale a topic has no source for is
+  **refused by name** ("Translate the topic before asking for it in that locale") rather than
+  silently falling back to English. The same registry is what the UI's `cli-help` pane renders
+  (chapter 8). None of the seven topics' content is covered here; see Chapter 12 for
+  skills/slash-command coverage.
+- **`src/lesson/` (`derive.ts`, `staging.ts`) has no coverage anywhere in this reference**, despite
+  `lesson`/`lesson-stage`/`lesson-accept` being listed above and chapter 11 being about the loop
+  those modules feed.
+- **The `MYCONTEXT_*` environment variables are almost entirely undocumented.** Twelve exist across
+  `src/`; three are mentioned in this reference (`MYCONTEXT_WIDTH`, `MYCONTEXT_ASCII`,
+  `MYCONTEXT_UNICODE`). The nine absent ones include two that change what the product *is*:
+  **`MYCONTEXT_CORPUS_DIR`** (which corpus is in use) and **`MYCONTEXT_RULES_DIR`** (replaces the
+  entire product rule store — see [chapter 10](./10-rule-store.md)). The rest are
+  `MYCONTEXT_MIRROR_DIR`, `MYCONTEXT_UI_SESSIONS_DIR`, `MYCONTEXT_ITEM_EXISTS`,
+  `MYCONTEXT_DOC_CLOCK`, `MYCONTEXT_DOC_LOCALE`, `MYCONTEXT_STATUSLINE_NO_BLINK` and
+  `MYCONTEXT_STATUSLINE_ONE_LINE`.
+- **The `--json` failure envelope applies to every command listed here.** A failing `--json` run
+  emits a JSON envelope on stdout rather than prose; the exit code is unchanged. See
+  [chapter 3](./03-creation-and-gates.md).
 
 ## See also
 

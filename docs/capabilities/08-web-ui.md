@@ -18,36 +18,88 @@ connecting to the live server. The owner's UI server was up on port 58888 with o
 attached while this was written, and this chapter does not touch it in any way (no browser tool,
 no HTTP request, no navigation).
 
-## The no-writes guarantee, and its three named exceptions
+## The no-writes guarantee, and the twelve bindings it actually admits
 
 The plan this surface was built against (`docs/superpowers/specs/2026-08-16-web-ui-design.md` §2)
 states a "mutator-free rule", and `src/ui/security.ts`'s header says explicitly that the rule is
 "enforced by the import-graph test, not by this file" — i.e. it's a build-time, checkable
-guarantee (a static test asserting which modules under `src/ui/` are allowed to bind `recordAudit`
-at all), not a runtime promise taken on faith.
+guarantee (a static test asserting which modules under `src/ui/` are allowed to bind a writing
+symbol at all), not a runtime promise taken on faith.
 
-Three writes exist inside this "read-only" surface, and all three are individually named, ruled by
-the owner, and covered by that same static test (`security.ts`'s header: *"Task 14's static test
-asserts the SET of write bindings under `src/ui/` is exactly the owner-ruled set... so an unruled
-third binding anywhere in this directory fails the build"*):
+**The enforced number is twelve, not three.** `RULED_WRITES` in `test/ui/no-writes.test.ts:567`
+is a literal list of twelve binding strings, and the assertion at `:2030` is
+`assert.deepEqual(bound.sort(), RULED_WRITES, …)` — **set equality**, so twelve is the exact
+admitted set, not a floor and not a ceiling a reader should round down. Adding a thirteenth fails
+the build; so does removing one without editing the list. The twelve sit in **five files**:
 
-1. **`recordRefusal`** (`src/ui/security.ts`) — the *only* write on the security gate's refusal
-   path. Every `/api/*` request passes a gate that checks Host/Origin headers and the session
-   token; a request the gate refuses gets exactly one audit record (`kind: 'access', op:
-   'ui-refused'`), built field-by-field from an allow-list that can never carry the token itself.
-   The function is structurally incapable of recording a *served* read: it refuses to write
-   anything whose `status` isn't `401`/`403` or whose `check` isn't one of
-   `['host', 'origin', 'token-missing', 'token-mismatch']`.
-2. **`recordNonceMint`** (`src/ui/security.ts`, `POST /api/nonce`) — a tab that loses its token
-   (e.g. after a server restart) needs one way back in without forcing a full server restart. This
-   route mints a fresh one-shot nonce, and the mint is itself audited (owner ruling
-   2026-08-28, tied to `KNOWN-a-locked-out-tab-can-only-be-recovered-by-the-restart-that-locks-out-the-next-one`).
-3. **`execute.ts`** — the one module that runs a real, mutating command on the person's behalf.
-   See "The Composer" below; this is the substantive exception, not a bookkeeping one.
+| File | Bindings | What they are |
+|---|---|---|
+| `src/ui/anchor-write.ts` | `markAnchor`, `markAutomaticAnchors`, `unmarkAnchor` | the anchor write surface (below) — **composes no command and starts no process** |
+| `src/ui/execute.ts` | `recordAudit`, `writeBudgets`, `deriveEffect` | the Composer's run path, its budget write, and the tmpdir-only Execute preview |
+| `src/ui/retrieval-write.ts` | `stageRetrievalReturn`, `approveStagedRestore` | the retrieval stage/approve surface (below) — also composes no command |
+| `src/ui/security.ts` | `recordAudit` | **one** binding, shared by `recordRefusal` and `recordNonceMint` |
+| `src/ui/server.ts` | `writeUiServerRecord`, `clearUiServerRecord`, `recordSessionDigest` | machine state under the global root, outside every corpus |
 
-Nothing else under `src/ui/` writes to disk. `execute.ts`'s own header underlines the same point
-from a different angle: *"It composes nothing (that is `execute-catalogue.ts`), it decides nothing
-about which confirm a command gets ... and it records no OUTPUT anywhere."*
+Each entry in `RULED_WRITES` carries its own owner ruling and its own bounding properties in a
+comment above it; the list is the documentation of record, and this table is an index into it.
+Three of them are worth stating in full because they are the ones a reader auditing "can this
+local web surface write to my corpus?" is asking about:
+
+1. **`recordAudit` via `src/ui/security.ts`** — the security gate's refusal path. Every `/api/*`
+   request passes a gate that checks Host/Origin headers and the session token; a request the gate
+   refuses gets exactly one audit record (`kind: 'access', op: 'ui-refused'`), built field-by-field
+   from an allow-list that can never carry the token itself. The function is structurally incapable
+   of recording a *served* read: it refuses to write anything whose `status` isn't `401`/`403` or
+   whose `check` isn't one of `['host', 'origin', 'token-missing', 'token-mismatch']`. The nonce
+   mint (`POST /api/nonce`, owner ruling 2026-08-28, tied to
+   `KNOWN-a-locked-out-tab-can-only-be-recovered-by-the-restart-that-locks-out-the-next-one`) is
+   audited through the *same* binding — it is not a second entry in the set, which is why counting
+   "refusal" and "mint" as two exceptions does not match the shape the test counts in.
+2. **`src/ui/execute.ts`** — the module that runs a real, mutating command on the person's behalf.
+   See "The Composer" below.
+3. **`src/ui/anchor-write.ts` and `src/ui/retrieval-write.ts`** — two write surfaces that reach the
+   disk **without composing a command at all**. See "The two command-free write surfaces" below.
+
+`execute.ts`'s own header underlines a different property, and it is about output rather than
+about being the only writer: *"It composes nothing (that is `execute-catalogue.ts`), it decides
+nothing about which confirm a command gets ... and it records no OUTPUT anywhere."*
+
+## The two command-free write surfaces
+
+These are the part of the surface the "read-only window" framing hides, and they are the reason
+the count above matters. Both were ruled by the owner under one sentence —
+`REQ-every-anchor-capability-is-reachable-from-the-screen-and-a`: *a composed command a reader
+copies to a terminal is not the UI having a capability, it is the UI describing one.*
+
+**`src/ui/anchor-write.ts`** registers four routes —
+`POST /api/conversations/anchors/{mark,relabel,drop,sweep}` (`:357–366`) — and its own header says
+in capitals what distinguishes it from the Composer: *"NOTHING HERE COMPOSES A COMMAND OR STARTS A
+PROCESS. There is no argv, no nonce, no child. The whole write is one row."* Four properties bound
+it, stated in that header: it goes through the **same seam the CLI uses** (`markAnchor` /
+`unmarkAnchor`, with `withAnchorWrite` publishing `.my_context/.anchors.jsonl` in the transaction
+that moves the row); **what is gitignored is what moves** — an anchor row and a gitignored
+document, no corpus item, no `config.json`, no transcript, with
+`test/ui/anchor-write-route.test.ts` taking the byte snapshot over a whole
+mark/relabel/drop/sweep round trip; **the shape is fixed by the route, not the caller** (a
+hand-made anchor is `kind: 'note'`, `origin: 'owner'`, so no request can forge a row the automatic
+pass is forbidden to touch); and **it cannot turn the archive on** — every handler opens the read
+door first and answers the never-indexed state rather than creating a database.
+
+**`src/ui/retrieval-write.ts`** registers three (`:420–427`): `POST /api/retrieval/stage`,
+`GET /api/retrieval/approve/confirm`, `POST /api/retrieval/approve`. This is a **second
+confirm+nonce pair, outside `execute.ts`** — so the Composer's "there is no second code path" is a
+statement about `execute.ts`'s interior, not about the server. The nonce here comes from
+`GET /api/retrieval/approve/confirm` and from no other line, is bound to the key **and** to a
+digest of the staged bytes recomputed from disk at both ends, and is spent on attempt. Its four
+bounding properties, from `RULED_WRITES`' own comment: **staging is not delivery** (the record is
+left `proposed`, and `approvedRestore` must still answer nothing afterwards); **what moves is
+`.staging/restore/`**, one JSON file in a gitignored directory; **the actor is the route's** —
+`'human'` is a literal at the one call site, reachable from no body field; and the approval is
+authorised by a confirm nobody can mint.
+
+Both modules register from `startUiServer` rather than from `registerReadRoutes`, which is how
+`server-e2e.test.ts`'s byte-identical sweep over the read surface stays meaningful: every *read*
+module still binds nothing.
 
 ## The rail: exactly 20 screens
 
@@ -89,12 +141,20 @@ ids resolves 1:1 to the 20 given screen names via `strings/en.js`'s `s.<id>` key
 | `learn` | Learn | `screens/learn.js` |
 
 A note on a discrepancy worth being honest about: `app.js`'s own comment above the `SCREENS`
-import map says *"TWENTY-ONE OF TWENTY-ONE"*, counting `cli-help` as a screen in its own right —
-but `cli-help` has no entry in `NAV` or `SCREENS`; it is imported *inside* `library.js`
-(`import { paintCliHelp } from '/screens/cli-help.js'`) as the CLI-topics pane of the Help screen,
-not a rail destination of its own. So there are 20 navigable rail screens and one additional
-screen-shaped module folded into one of them. The comment is stale relative to the current
-`NAV`/`SCREENS` wiring — flagged here rather than silently reconciled.
+import map still says *"TWENTY-ONE OF TWENTY-ONE"*, and the `NAV` comment below it still says
+*"ALL TWENTY-ONE SCREENS"*, against a `NAV` that now totals 20. **The 21st was never `cli-help`.**
+At `e8a8177416d8`, when those comments were written, `NAV` really did list 21 ids: `nav.inj`
+carried a fifth entry, `gaps`, and `nav.read` was `['docs', 'tut', 'learn']`. Three retirements
+and a merge took it to 20 — `gaps` was absorbed into `coverage` on 2026-09-04, `docs` and `tut`
+became the single `library` screen on 2026-09-05, and `conversations` was added — so the count in
+the comment is one screen behind, for reasons that have nothing to do with `cli-help`.
+
+`cli-help` is separately *not* a rail screen, and never was one: it has no entry in `NAV` or
+`SCREENS`, and is imported *inside* `library.js`
+(`import { paintCliHelp } from '/screens/cli-help.js'`) as the CLI-topics pane of the Help screen.
+So there are 20 navigable rail screens and one additional screen-shaped module folded into one of
+them. Both facts are flagged here rather than silently reconciled; the comment is a code defect,
+not a chapter one.
 
 Every screen is always listed on the rail, even ones with "no module behind them" — the comment on
 `NAV` explains why: *"Hiding a screen because its content is not written yet tells the reader the
@@ -166,8 +226,15 @@ pending-count is worth badging on the rail itself.
 **Capture** (`capture`) — backed by `capture-model.ts`; the UI-side entry point for jotting down a
 todo/note, the same inbox `mycontext todo` and `mycontext inbox-promote` operate on.
 
-**Composer** (`palette`) — see its own section below; the most consequential screen on the rail
-because it is the one place the "read-only" UI can actually cause a write.
+**Composer** (`palette`) — see its own section below; the screen where a person runs a real
+catalogue command from the browser. It is **not** the only place the "read-only" UI causes a
+write: the Conversations screen writes anchors and stages retrievals through routes that compose
+no command at all (see "The two command-free write surfaces"), and the Copy+Execute control
+`lib/command-actions.js` provides is imported by **eight screens** — `config`, `conversations`,
+`coverage`, `doctor`, `packs`, `port`, `proc`, `work` — plus `app.js` and `lib/builder.js`
+(which is how `palette` reaches it; `palette.js`'s own comment at `:193` records that it imported
+the module directly until the shared builder took it over). The Composer is where the catalogue is
+*browsed*; it is not a chokepoint.
 
 **Configure** (`config`) — backed by `read-model-config.ts`; shows `config.json` as it stands
 (including the `configError`/"serving the last good config" fallback described in `routes.ts`'s
@@ -189,6 +256,11 @@ previewing packs before import (chapter 12).
 [`./04-conversation-archive.md`](./04-conversation-archive.md)) and anchors (chapter 5,
 [`./05-anchors.md`](./05-anchors.md)). Opening a transcript document opens `/lane.html` — a
 dedicated page outside the SPA shell, not a rail screen — for reading one conversation in full.
+**It sits in the `nav.read` ("Read") group and is nevertheless the product's largest write
+surface**: it performs four anchor writes (`screens/conversations.js:1215, 1562, 1598, 1757`,
+and again from the `/lane.html`-side handlers at `:5215, 5235, 5277`) and a retrieval
+stage/confirm/approve cycle (`:2375, 2419, 2462`). The group label describes the tense of what the
+screen is *about*, not the reachability of a write from it.
 
 **Help** (`library`) — per its own file header, this is deliberately **the one console page that
 replaces what used to be separate Documentation and Tutorials screens** (owner ruling
@@ -224,7 +296,10 @@ The file's header states the one property the whole module exists to protect: **
 person reads in the confirm and the argv that runs are the same thing."** Both routes go through
 the same `resolveCommand`, and the nonce cryptographically binds the second call to exactly what
 the first one returned — there is no second code path anywhere in the module that could compose an
-argv a different way. The POST handler's own ordering *is* the security story, spelled out in the
+argv a different way. (That is a statement about `execute.ts`'s interior, and only about it: a
+**second** confirm+nonce pair exists on the server, in `retrieval-write.ts`, binding its nonce to a
+digest of staged bytes rather than to an argv. See "The two command-free write surfaces".) The
+POST handler's own ordering *is* the security story, spelled out in the
 file: body-shape check → `resolveCommand` → nonce redemption (checked against the server's own
 resolved argv, never against anything the client claims) → an `execute` audit row is written
 *before* anything runs (**"a run that cannot be recorded does not happen"** — a failed audit write
@@ -262,37 +337,66 @@ Injection preview, a node in Relations, a queue entry in Review queue, or a matc
 ## The Hebrew RTL mirror and the string tables
 
 Every user-facing string in the UI is looked up by key from `src/ui/public/strings/en.js` and
-`src/ui/public/strings/he.js`, rather than hard-coded in the screen modules. Both files measure
-**exactly 1,313 lines** (`grep -c "^\s*'" ... `on each) — strong, directly-measured evidence the
-two tables are kept in lock-step key-for-key, consistent with `library.js`'s own description of
-tracking "the measured EN/HE state beside each" document/tutorial, i.e. this project treats
-locale-completeness itself as a measured, checkable fact rather than an assumption. (This chapter
-did not locate a dedicated `scripts/check-*` parity script by name — several `test/ui/*.test.ts`
-files reference both string files, e.g. `static.test.ts`, `viewmodel.test.ts`,
-`config-screen.test.ts`, `execute-route.test.ts`, `bounded-list.test.ts`,
-`config-error-strip.test.ts` — but this chapter did not read those tests in full to confirm the
-exact assertion each makes, so the *mechanism* enforcing parity should be taken as "at least
-partially test-covered, exact enforcement unverified from this chapter's reading" rather than
-fully pinned down.)
+`src/ui/public/strings/he.js`, rather than hard-coded in the screen modules. `grep -c "^\s*'"`
+extracts **1,314 key lines from each** (measured 2026-09-13; the files themselves are 2,386 and
+1,629 lines, most of the difference being comment prose in the English table). That is a
+measurement, not the enforcement.
+
+The enforcement is a named test, and it is not in `scripts/`: **`test/ui/strings-parity.test.ts`**
+has existed since 2026-08-20 — its first commit is titled "…with key-parity test" — and asserts
+three separate things. Key sets, **in both directions**: *"en and he string tables declare
+identical key sets — in both directions"* diffs `enKeys \ heKeys` and `heKeys \ enKeys` and
+requires both to be empty (`:116–123`). Monospace slots (`{m:…}`) match key for key (`:204`).
+Value slots (`{name}`) match key for key (`:229`), with the comment recording why the second was
+added: `t()` substitutes by *name*, so a renamed slot leaves a literal `{lines}` on screen and a
+dropped one loses the number the sentence is about. Four sibling parity tests live in the same
+directory — `strip-parity`, `styles-parity`, `duration-parity`, `zoned-stamp-parity`.
 
 `docs/README.he.md` is the Hebrew mirror of the project's own top-level README, following the same
 "mirror, don't fork" discipline as the UI strings.
 
 ## What's NOT built / built but off
 
-- **`cli-help` is not an independent rail screen**, despite `app.js`'s own comment claiming
-  "TWENTY-ONE OF TWENTY-ONE" screens — it is a module folded into the Help (`library`) screen. The
-  comment appears stale relative to the current `NAV`/`SCREENS` tables as read.
+- **`cli-help` is not an independent rail screen** — it is a module folded into the Help
+  (`library`) screen. Separately, `app.js`'s "TWENTY-ONE OF TWENTY-ONE" comment is one screen
+  behind the current 20-entry `NAV`, for the reasons traced above (`gaps` retired, `docs`+`tut`
+  merged, `conversations` added). Both are live code defects, not facts about the product.
 - This chapter could not confirm, without connecting to the live server, whether every one of the
   20 `SCREENS` entries currently renders real content versus a `PROPOSED` placeholder — the source
   comment describing the badge logic (`Object.hasOwn(SCREENS, name)`) implies none should be
   proposed-only today since all 20 ids have loaders, but this is inferred from source, not observed
   live.
-- The exact automated check that enforces en/he key parity was not pinned to one named script from
-  source alone — flagged above rather than asserted.
-- No further capability beyond the three named write exceptions was found; nothing suggests a
-  fourth undocumented write path exists (the owner-ruled static test would fail the build if one
-  were added, per `security.ts`'s own description).
+- **No write path beyond the twelve in `RULED_WRITES` exists as of 2026-09-13**, and a thirteenth
+  cannot be added silently: the assertion is set equality, so an unruled binding fails the build
+  and so does a removal the list was not told about. What this does *not* say is that twelve is
+  small — see the count and the two command-free surfaces above.
+- **This chapter does not cover most of the HTTP surface.** `src/ui/` registers **76 routes**
+  (`grep -c 'registerRoute(' src/ui/*.ts`, 2026-09-13); this chapter names sixteen distinct
+  paths. Uncovered families include the whole `/api/watch/*` SSE stream set, `/api/ask/*`,
+  `/api/render`, `/api/glob`, `/api/overlap`, `/api/command/check`, `/api/config/{check,preview}`
+  and `/api/handoff`.
+- **Uncovered modules**, named here so a reader knows they exist rather than inferring they do
+  not: `git-info.ts`, `idle.ts`, `zoned-day.ts`, `execute-nonce.ts`, `maintenance/`,
+  `read-model-{flags,cli-help,work,staging,retrieval}.ts`; the client libraries under
+  `lib/` (`sse`, `heartbeat`, `live-invalidation`, `disclosure`, `pane-resize`, `sanitize`,
+  `highlight`, `markdown`, `diagrams`, `wa-tree`, `palette-defs`, `builder`); `screens/parts.js`,
+  the shared screen-chrome module every screen imports; and the two non-SPA pages
+  `tree-proof.html` and `doc.html`.
+- **The RTL mirroring mechanism itself is not described here** — only key parity is. `lib/i18n.js`,
+  `translate()`, the `.m` / `unicode-bidi: isolate` spans and the `{mv:…}` monospace value slots
+  are what make a Hebrew screen render a Latin identifier correctly, and they are a gap in this
+  chapter rather than a gap in the product.
+- **The token/nonce bootstrap and its `sessionStorage` lifetime** (`app.js:310–340`) and the CSP
+  `style-src 'self'` / no-`innerHTML` discipline that shapes every DOM builder are both
+  undescribed here.
+- **`clearUiServerRecord` takes an identity, and this matters to anyone reasoning about the
+  server-record write.** Since `fe4086c1` the signature is
+  `clearUiServerRecord(owner: UiServerIdentity, globalRoot?): ClearOutcome`
+  (`src/core/ui-server-record.ts:343–357`): it re-reads the record and returns
+  `'names-another-server'` unless **both** `pid` and `port` match — the conjunction is deliberate,
+  since "`pid` alone is defeated by recycling, `port` alone by a machine that reuses a port". A
+  closing server can therefore no longer delete a *replacement's* record. The function never
+  throws; an unremovable file answers `'no-record'`.
 
 ## See also
 

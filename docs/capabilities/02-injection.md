@@ -7,7 +7,7 @@ cannot. Injection is the answer to "given a corpus too large to paste in whole, 
 budget that is a small fraction of it, what gets shown, and how does a reader know what
 was left out?"
 
-The engine lives in `src/core/inject.ts` (`buildInjectionResult`, 1,157 lines) and
+The engine lives in `src/core/inject.ts` (`buildInjectionResult`, 1,231 lines) and
 `src/core/select.ts` (`select`, `fitToBudget`, `buildGoverningSpill`, 1,833 lines).
 `inject.ts` is the orchestration layer: it resolves config, calls `select` once per
 event, and renders the result into text. `select.ts` is the pure selection algorithm —
@@ -24,24 +24,104 @@ A **door**, in this project's own vocabulary (`def-a-door`, the product rule sto
 see `docs/capabilities/10-rule-store.md`), is *"a hook at which an agent's context
 window BEGINS or is rebuilt, and therefore a place [delivery] must happen."* The
 definition is explicit about what is *not* a door: `PreToolUse` "is not a door: it is
-the earliest hook that runs AFTER every door" — it runs inside an already-established
-window and carries no delivery obligation of its own. The doors, read from the hook
-sources that actually call the injection path:
+the earliest hook that runs AFTER every door, which is what makes it the place to assert
+that some door fired." A hook running inside an already-established window carries no
+obligation to deliver.
+
+**Two vocabularies overlap here and this chapter keeps them apart**, because conflating
+them is how the previous draft of this table went wrong. A **door** is a place with a
+*delivery obligation* — for the product rule store, `deliverAtDoor` (chapter 10). An
+**injection site** is a hook that calls `buildInjectionResult` or `select` for the
+*corpus*. They are not the same list.
+
+### Where corpus injection actually runs
 
 | Hook | File | Event passed to `select` | What it delivers |
 |---|---|---|---|
 | Session start (new/resumed/cleared) | `src/hooks/session-start.ts` | `'session-start'` | Full injection: pinned tier, continuity tier, index — via `buildInjectionResult` (shared verbatim with the MCP `load_context` tool, per that file's own header) |
-| Session start after compaction | same file, `source: 'compact'` | `'session-start'` (`source: 'compact'` is the proxy) | The real re-injection point after a compaction — `post-compact.ts` itself does *not* inject; it is bookkeeping (audit records, `restoredFor` accounting) around the boundary that `SessionStart(source: 'compact')` re-opens |
-| Subagent start | `src/hooks/subagent-start.ts` | `'subagent'` (inside `buildInjectionResult`) | The pinned tier plus the index, into a subagent's empty window — a subagent inherits none of the parent's context and no `SessionStart` fires for it, so this hook is, in the file's own words, the only thing standing between a dispatched subagent and "no knowledge of the project's own constraints" |
-| A tool call, mid-session | `src/hooks/pre-tool-use.ts` (`select(...)` at line 308) | `'tool'` | The **JIT tier** — items scoped to the path the tool is about to touch, offered in two bands (`DEC-the-jit-tier-offers-path-scoped-items-first-in-two-bands`) — plus the product rule store's *assertion* pass (chapter 10), not delivery |
+| Session start after compaction | same file, `source: 'compact'` | **`'compact'`** | The real re-injection point after a compaction — `post-compact.ts` itself does *not* inject; it is bookkeeping (audit records, `restoredFor` accounting) around the boundary that `SessionStart(source: 'compact')` re-opens |
+| Subagent start | `src/hooks/subagent-start.ts` | **`'session-start'`** | The pinned tier plus the index, into a subagent's empty window — a subagent inherits none of the parent's context and no `SessionStart` fires for it, so this hook is, in the file's own words, the only thing standing between a dispatched subagent and "no knowledge of the project's own constraints" |
+| A tool call, mid-session | `src/hooks/pre-tool-use.ts` (`select(...)` at line 308) | `'tool'` | The **JIT tier** — items scoped to the path the tool is about to touch, offered in two bands (`DEC-the-jit-tier-offers-path-scoped-items-first-in-two-bands`). This row is an injection site and **not a door**: the rule store's pass here is an *assertion* (`assertDoor`, `pre-tool-use.ts:703`), not a delivery. |
 
-`PreCompact` (`src/hooks/pre-compact.ts`) is worth naming precisely because it looks
-like a door and is not one for injection purposes: it writes a *snapshot* of what item
-ids were in play (`injected: itemIds.map((id) => ({ id, tier: 'snapshot' }))`) so that
-the re-injection at the next `SessionStart(source:'compact')` knows what to re-offer —
-"a PreCompact snapshot injects nothing, but it decides what a session [receives next]"
-(the file's own comment). The restore mechanism this feeds is covered in
+**`SelectEvent` has exactly four members** —
+`'session-start' | 'compact' | 'tool' | 'manual'` (`src/core/select.ts:18`) — and the
+mapping is the one ternary at `src/core/inject.ts:699–700`:
+
+```ts
+event: manual ? 'manual' : subagent ? 'session-start'
+     : compacting ? 'compact' : 'session-start',
+```
+
+Two consequences a reader should not have to derive:
+
+- **`'compact'` is a real `SelectEvent` member**, not a proxy. `source: 'compact'` is
+  what `inject.ts` branches on; the event it then passes is `'compact'`.
+- **`'subagent'` is never a `SelectEvent`.** It is an `InjectionEvent`
+  (`'session-start' | 'manual' | 'subagent'`, `inject.ts:65`), and the subagent branch
+  selects as `'session-start'`. The source states the reason in capitals: *"`SelectEvent`
+  deliberately gains no member: a distinct one would need three new branches in `select`
+  to arrive at the same answer."*
+
+### `PreCompact`, and a disagreement this chapter does not resolve
+
+`PreCompact` (`src/hooks/pre-compact.ts`) writes a *snapshot* of what item ids were in
+play (`injected: itemIds.map((id) => ({ id, tier: 'snapshot' }))`) so that the
+re-injection at the next `SessionStart(source:'compact')` knows what to re-offer — "a
+PreCompact snapshot injects nothing, but it decides what a session [receives next]" (the
+file's own comment). The restore mechanism this feeds is covered in
 `docs/capabilities/07-restore-and-handover.md`.
+
+**It is not a corpus injection site. Whether it is a *door* is genuinely disputed
+between the product rule store's own definition and the code that implements it**, and
+this chapter reports the disagreement rather than picking a side:
+
+- `def-a-door`'s `means` lists it: *"session start — new, resumed and compact-restore —
+  `PreCompact`, and subagent start."*
+- The code does the opposite. `deliverAtDoor` has exactly two call sites —
+  `session-start.ts:131` and `subagent-start.ts:318` — and `pre-compact.ts:219` calls
+  **`assertDoor`**, the same thing `pre-tool-use.ts` does. So `PreCompact` asserts that
+  some door fired; it does not deliver.
+
+That is a constant and an implementation contradicting each other about the product's
+own vocabulary. It needs an owner ruling, not a documentation edit, and naming it here
+is the most this chapter can honestly do.
+
+### All eighteen registered hooks
+
+`hooks/hooks.json` — a file no chapter previously named — is the single declaration of
+every hook this plugin registers, with its matcher and its timeout. Only the four in the
+table above touch corpus injection; the rest are named here so a reader knows the surface
+exists.
+
+| Event | Matcher | Handler (`src/hooks/`) | Timeout |
+|---|---|---|---|
+| `SessionStart` | `startup\|clear\|resume\|compact\|fork` | `session-start.ts` | 10 |
+| `SubagentStart` | — | `subagent-start.ts` | 5 |
+| `PreToolUse` | `Read\|Edit\|MultiEdit\|Write\|NotebookEdit\|Agent` | `pre-tool-use.ts` | 10 |
+| `PostToolUse` | `Write\|Edit\|MultiEdit\|Agent\|Bash\|Read\|Grep` | `post-tool-use.ts` | 5 |
+| `PostToolUseFailure` | — | `post-tool-use-failure.ts` | 5 |
+| `PreCompact` | — | `pre-compact.ts` | 10 |
+| `PostCompact` | — | `post-compact.ts` | 5 |
+| `Stop` | — | `stop.ts` | 3 |
+| `SubagentStop` | — | `subagent-stop.ts` | 3 |
+| `SessionEnd` | — | `session-end.ts` | 2 |
+| `Setup` | — | `setup.ts` | 3 |
+| `FileChanged` | `.my_context/items\|.my_context/config.json`, and an unmatched second group | `file-changed.ts` | 3 |
+| `InstructionsLoaded` | — | `instructions-loaded.ts` | 3 |
+| `ConfigChange` | — | `config-change.ts` | 3 |
+| `PermissionDenied` | — | `permission-denied.ts` | 3 |
+| `TaskCreated` | — | `task-created.ts` | 3 |
+| `TaskCompleted` | — | `task-completed.ts` | 3 |
+| `UserPromptExpansion` | `^mycontext:` | `user-prompt-expansion.ts` | 3 |
+
+**The matcher on `PreToolUse` matters and is easy to miss**: it fires on six tool names,
+not on every tool call. A `Bash` call reaches `PostToolUse` and not `PreToolUse`.
+
+Three shared modules under `src/hooks/` are not hooks and are described nowhere in this
+reference: `io.ts` (`parseHookInput`, `hookContext`, `hookBlockDecision`, `preToolUseDeny`,
+`pinnedSpillLine`, the `HookEventName` union), `observe.ts` (the shared observation runner
+imported by nine hooks), `self-register.ts` (generates the Claude Code settings hooks block
+from `hooks/hooks.json`, and is what `npm run hooks:install` runs), and `task-events.ts`.
 
 ## The budget model
 
@@ -56,7 +136,8 @@ export const DEFAULT_BUDGETS: Budgets = {
 };
 ```
 
-This repository's own `.my_context/config.json` overrides all but `continuity`:
+This repository's own `.my_context/config.json` sets all five explicitly; four are raised
+and `continuity` is written at a value that happens to equal the shipped default:
 
 ```json
 "budgets": {
@@ -68,10 +149,19 @@ This repository's own `.my_context/config.json` overrides all but `continuity`:
 }
 ```
 
-A budget is validated key by key: an unknown key is refused outright (typo protection —
-`"budgets" for "budgets"` is named in the source as the concrete case this guards), and
-a bad value throws rather than silently falling back — *"keeping the default silently
-would mean the limit you set was never in force."*
+A budget is validated key by key: an unknown key is refused outright, and a bad value
+throws rather than silently falling back. The source names the concrete cases it guards
+— a typo'd key **`"pined": 9000`**, or an invalid value (`"6000"`, `-1`, `null`) — and
+says why refusing beats skipping: these "used to be skipped by the merge loop, so the
+user thought they raised a limit, the default stayed in force, and the only symptom was
+items quietly missing from their context" (`src/core/config.ts:1824–1831`). The refusal
+text itself ends *"accepting the key and keeping the default would mean the limit you set
+was never in force and items were silently missing from sessions."*
+
+Note the asymmetry with the rest of the config: an unknown key **inside `budgets`** is
+fatal, while some unknown keys elsewhere are recorded and skipped. The field that records
+those is `Config.skippedKeys` (`config.ts:805`), and `doctor` reports them under the
+`config_key_skipped` finding code.
 
 Each tier's admissions are computed by `fitToBudget(bands, budget, tier, spareFrom)`,
 which does **first-fit, not strict priority truncation**: candidates are sorted by
@@ -87,9 +177,15 @@ Pinning guarantees an item is offered at the `pinned` tier at **every** session 
 `mycontext pin <id>` is documented in `--help` as literally `edit --always=true`, and
 `mycontext unpin <id>` as `edit --always=false`; there is no separate `pin` subcommand
 in `src/cli/commands/` — both are aliases dispatched onto `edit`. Only a `normative`-tier
-category may carry `always` (`TIER_UPDATES.normative` in `src/core/categories.ts`
-declares it; the `rationale` tier's table has no `always` entry at all, so setting it on
-a `decision` or `lesson` is refused).
+category may carry `always: true`, and the refusal is worth stating exactly, because the
+mechanism is not absence. `TIER_UPDATES.rationale` **does** carry an `always` entry
+(`src/core/categories.ts:125`) — with `values: ['false']` and the note *"Only false.
+`--always true` is REFUSED here — pinning governs on the normative tier only."* So
+`--always true` on a `decision` or `lesson` is refused by a **closed value set** plus
+`inertFieldError` in `cli/commands/edit.ts`, not by the field being unknown on that tier.
+The conclusion is the same; the mechanism matters because a reader looking for "no entry"
+will not find one, and because the same table is what lets `mycontext unpin` work on a
+rationale item at all.
 
 ```
 mycontext pin CONST-zero-runtime-dependencies
@@ -148,11 +244,14 @@ whether the ruling worked, not a side effect of it.
 
 ## What arrives in full versus as an index line — and `governingSpill.titled`
 
-Every full-text admission goes into `Selection.full` as a `SelectionEntry` tagged with
-its tier (`'pinned' | 'jit' | 'restored' | 'continuity'`, or `'index'` for the
-title-only fallback). An item that misses every full-text tier but still fits
-`budgets.index` is rendered as one line — a title, not a body — via `renderIndexLine`.
-An item that misses the index budget too is not rendered at all.
+Every full-text admission goes into `Selection.full` as a `SelectionEntry`, and
+`SelectionEntry.tier` has exactly four members — `'pinned' | 'jit' | 'restored' |
+'continuity'` (`src/core/select.ts:155–157`). **There is no fifth.** A title-only line is
+not a `SelectionEntry` at all: it is an `IndexLine` in `Selection.index.normative`,
+rendered by `renderIndexLine`. `'index'` exists only as an extra member of
+`Spill['tier']` (`:162`) — i.e. as a place something can be *recorded as having missed*,
+never as a tier something is delivered at. An item that misses the index budget too is
+not rendered at all.
 
 `GoverningSpill` (`select.ts`, `Selection.governingSpill`) is the disclosure built
 specifically to make that degradation impossible to miss, for the six governing
@@ -179,8 +278,9 @@ export interface GoverningSpill {
 
 - **`untitled`** — a governing item that missed the index tier's own budget too: no
   title, no line, nothing. Measured on this repository's own corpus as empty at every
-  budget the index has ever been set to, from 1,200 up to 470 (`select.ts`'s own
-  comment) — but it is *computed*, not assumed empty, because a corpus that grows more
+  budget the index has ever been set to — the carry probe lowered it, and `select.ts`'s
+  own comment reads *"`displaced` is `0` from 1200 **down to** 470"* (`:436`), 470 being
+  the tighter end — but it is *computed*, not assumed empty, because a corpus that grows more
   governing items, or an operator who lowers `budgets.index`, can make it non-empty.
   Rendered with a `⚠` marker when non-empty, distinct from the plain `titled` sentence.
 
@@ -231,11 +331,126 @@ budget, so nothing on that screen is a second implementation of this algorithm.
   governing, it is not fitting the ordinary governing budget, and pinning puts it in
   the one tier evaluated first.
 
+## The rest of `config.json` — the eight top-level keys
+
+`budgets` is one of eight, and `TOP_LEVEL_KEYS` (`src/core/config.ts:1290`) is
+the list every config surface derives from — the CLI's and the MCP schema's
+both — which is why its **order** is meaningful and an appended key goes at the
+end rather than into sorted position:
+
+```
+profile  categories  budgets  watchedDocs  ui  handover  dispatchGate  review
+```
+
+Three of these are described elsewhere: `categories` in
+[chapter 1](./01-items-and-corpus.md), `handover` in
+[chapter 7](./07-restore-and-handover.md), `review` in
+[chapter 11](./11-self-improvement-loop.md). `ui.enabled` / `ui.port`
+(`DEFAULT_UI = { enabled: true, port: null }`) back `mycontext ui`
+([chapter 8](./08-web-ui.md)). `dispatchGate.enabled` is a third off-by-default
+gate, covered in chapter 11. **`watchedDocs` is documented nowhere else, so it
+is here.**
+
+### `watchedDocs` — the whole feature, in one place
+
+`Config.watchedDocs` (`config.ts:792`) is an array of repo-relative globs
+naming the documents this corpus **claims**. It defaults to
+
+```ts
+export const DEFAULT_WATCHED_DOCS = [
+  'docs/superpowers/specs/**',
+  'docs/superpowers/plans/**',
+  'docs/prd/**',
+];
+```
+
+and this repository sets it to `["docs/**/*.md", "README.md"]`.
+
+**It replaces the default rather than extending it**, and the source calls that
+asymmetry out by name against `extraFields`, which *does* extend: "The two
+dangers point opposite ways. For `watchedDocs` the hazard is silently GAINING
+globs the user never wrote, and the worst case of replacing is watching fewer
+files."
+
+`requireWatchedDocs` (`config.ts:1879`) **refuses rather than filters.** A
+non-string entry used to be dropped by a `filter`, so
+`"watchedDocs": ["docs/prd/**", 42]` quietly watched one glob fewer than it
+said. The refusal's own sentence is the argument: *"dropping the entry silently
+would mean a document you asked to be watched was not."*
+
+Two things read the list:
+
+- **`src/hooks/post-tool-use.ts:89`** — the capture nudge. Edit a file matching
+  a watched glob and the hook says so, "because `watchedDocs` is a PROMISE the
+  user configured in the very file" it names back to them.
+- **`doctor`'s `checkWatchedDocsServable`** (`src/doctor/checks.ts:1002`) —
+  which raises **`watched_doc_unserved`** (`warn`) for a watched file the UI's
+  document route cannot serve. That route reaches `README.md` and every `.md`
+  under `docs/` or `reports/`; a watched file outside all three "is claimed as
+  one of this corpus's documents [but] no reader can open it". The remedy is to
+  move the file or drop the glob — and the finding names the consequence rather
+  than leaving it to be discovered: dropping the glob also stops the capture
+  nudge on that file, "a consequence, not a coincidence". A second code,
+  **`watched_doc_coverage`** (`info`), fires when the repository walk hits its
+  file bound, so a partial answer is disclosed rather than read as a zero.
+
+### Writing config from the CLI
+
+`mycontext config` is the only CLI-driven writer of `config.json`
+([chapter 9](./09-cli-and-mcp.md)), and its write surface is
+`setConfigField` / `unsetConfigListEntries` with `FieldWriteOptions` and
+`FieldWriteResult` (`config.ts:2636–2658`), plus `CategoryWriteResult` for
+`--delete`/`--disable` (`:2394`). Two properties are worth stating because they
+are what make the command safe to run: **`dryRun`** validates fully and reports
+what would change without touching disk, and every real write takes a
+**backup first** — `FieldWriteResult.backupPath` names it, and is `null` both
+when there was no existing file and always on a dry run. `wrote` is `false`
+when `before` already equals `after`, so "nothing needed writing" is a reported
+answer rather than a silent success.
+
+## Four mechanisms this chapter's purity argument depends on, named rather than described
+
+Each of these decides what reaches the model, and each deserves the treatment the budget
+model gets above. They are named here so a reader knows to go and read them, rather than
+concluding from this chapter's silence that they do not exist.
+
+- **The `seen` gate** (`src/core/select.ts:20–77`). `seen` is not "an id was delivered".
+  `SeenLine` carries two verifiable facts and deliberately not a third: **`checksum`**
+  (currency — an item edited or superseded since delivery no longer matches, so "a stale
+  delivery cannot excuse a session from ever seeing the new text") and **`whole`**
+  (completeness — true only for a delivery that carried the full body, never for a
+  title-only index line, reusing `governingSpill`'s own `titled`/`untitled` distinction
+  rather than inventing a second notion of whole). The third fact — is the item still in
+  the window — is not knowable from a delivery record, and the type says so.
+- **Focus narrowing** (`isFocusActive`, `focusHides` at `:683`, `focusMatchesScope` at
+  `:625`, and `buildFocusReport` at `:1330`, producing the `FocusReport` disclosure at
+  `:472`). An active focus narrows the universe an event delivers from. Note the
+  interaction with chapter 1's read boundary: `severity: hard` **exempts** an item from
+  focus narrowing, which is one of the reasons a laundered severity must never read as
+  `hard`.
+- **The one-shot carry** (`mycontext carry`, `IndexSummary.carried`, `select.ts:1147–1160`).
+  A carried id is ordered ahead of every other index candidate for one delivery, which
+  changes *which* lines fit under the same budget — and the code makes the point that this
+  second half is the one a plan usually loses. It has its own disclosure.
+- **What injection does when config is unreadable.** `injectionFailureNote`
+  (`inject.ts:188`, returned at `:1228` with `pinnedSpill: null` and `deliveredIds: []`)
+  and `configUnreadableLine` (`src/hooks/io.ts:426`) are how a session is told it got
+  nothing, rather than being handed a silently empty block.
+
+The **continuity tier** — one of the five budgets listed above, and the only full-text
+tier not gated on `isNormative` — is described in
+[`./01-items-and-corpus.md`](./01-items-and-corpus.md) under Tiers rather than here.
+
 ## What's NOT built / built but off
 
 - There is no CLI command that prints a `Selection` directly; inspecting one requires
   either a live hook run (via the audit log, `docs/capabilities/09-cli-and-mcp.md`) or
   the web UI's simulated screens.
+- **`PreCompact`'s status as a door is unresolved** between `def-a-door`'s `means` and the
+  code that implements delivery. See "The doors" above. This chapter does not pick a
+  side, and nothing in the reference should be read as having settled it.
+- The four mechanisms in the section above are **named and not described** in this
+  chapter. That is a documentation gap, not a product one.
 - The spare band's "most-spilled first" ordering, suggested in the owner's own ruling,
   is explicitly **not implemented** — `select.ts` states this is because ranking by
   historical spill count would require reading the audit log, which `INV-select-is-pure`

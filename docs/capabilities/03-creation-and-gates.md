@@ -11,8 +11,9 @@ retirement (supersession) is recorded, and the two commands that audit and
 repair the corpus's own bookkeeping: `doctor` and `repair`.
 
 Everything below is read from `src/core/summary-gate.ts`, `src/core/mutate.ts`
-(the contradiction gate, ~L395–580), `src/cli/index.ts` (the `add` command,
-~L820–1010), `src/cli/commands/edit.ts`, `src/cli/commands/supersede.ts`,
+(the contradiction gate, from `:416` through `carryVerdicts` at `:575`),
+`src/cli/index.ts` (`cmdAdd`, `:808–1299`), `src/cli/commands/edit.ts`
+(1,320 lines), `src/cli/commands/supersede.ts`,
 `src/cli/commands/repair.ts`, `src/core/content-hash.ts`, `src/core/rebuild.ts`,
 and `src/doctor/checks.ts`, plus a real `mycontext doctor` run against this
 repository's own corpus on 2026-09-12.
@@ -72,14 +73,25 @@ enforced path out. The fix moved the requirement to the one moment the
 caller is holding the text and the item does not yet exist:
 `summaryRequiredAtCreate`.
 
-**`--summary-omitted`, the explicit escape hatch.** Rather than silently
-allowing "no summary," the gate requires the *absence* to be asserted:
-`--summary-omitted` (stored as `summary_omitted: true`) tells the gate "a
-person considered this and chose not to write one," and it is recorded so
-that "nobody wrote one" is visible in the audit trail rather than assumed.
-Passing both `--summary` and `--summary-omitted` is refused
-(`summaryOmittedRefusal`) as a contradiction of its own — you cannot both
-supply a summary and assert you skipped it.
+**Two escape hatches, one per gate, and they are different flags.** This is the
+single easiest thing to get wrong in this chapter, so both are named here:
+
+- **`--summary-omitted`** answers the **creation** gate. Rather than silently
+  allowing "no summary," it requires the *absence* to be asserted: stored as
+  `summary_omitted: true`, it tells the gate "a person considered this and chose
+  not to write one," and it is recorded so that "nobody wrote one" is visible in
+  the audit trail rather than assumed. Passing both `--summary` and
+  `--summary-omitted` is refused (`summaryOmittedRefusal`) as a contradiction of
+  its own. **It is a creation-surface flag only** — `src/cli/index.ts:509` (the
+  `add` usage line) and `:904`, plus `lesson-accept`. **`mycontext edit` does not
+  accept it.**
+- **`--summary-unchanged`** answers the **edit** gate, and is the flag a reader
+  hitting a refused edit actually needs: `src/cli/commands/edit.ts:93` (usage),
+  `:658` (parse), `:973` (`summaryUnchangedRefusal`). On the MCP side the same
+  hatch is `summary_unchanged: true` on `update_item`. Passing both `--summary`
+  and `--summary-unchanged` is refused in the same shape the creation pair is —
+  *"which say that the summary changed and that it did not. There is no reading of
+  that which honours both"* (`summary-gate.ts:403–418`).
 
 **A related repair path: re-affirmation.** A summary can go *stale* (fail to
 match the current basis) even though it is still correct — for example, a
@@ -90,7 +102,9 @@ opens a third door instead of widening the gate: reproducing the sentence is
 allowed as an explicit re-affirmation, which is more expensive to fake than
 a silent bypass would be — "the hatch is a flag and a flag can be typed over
 a whole corpus without a word being read, while a re-affirmation can only be
-spelled by reproducing the sentence."
+spelled by reproducing the sentence." **The hatch that sentence is about is
+`--summary-unchanged`**, the edit gate's own — not `--summary-omitted`, which
+`edit` does not accept.
 
 **Which callers the gate does and does not see.** It is imported by exactly
 five authored surfaces: `mycontext add`, `mycontext edit`, the MCP
@@ -226,18 +240,65 @@ successor.
 
 ## Checksums and content identity
 
-**What is hashed.** `computeItemChecksum` (`src/core/item.ts`) and
-`itemSummaryBasis`/`contradictionBasis` (`content-hash.ts`) all hash a
-canonicalised `ContentShape`: `type`, `title`, `body`, `steps`, `severity`,
-`always`, `continuity`, `scope`, `tags`, `observations`, `relations`,
-`extra` — deliberately excluding bookkeeping fields (`id`, `status`,
-`origin`, provenance, lifecycle dates, storage location, `request`). Unordered
-collections (`scope`, `tags`) are sorted before hashing; ordered ones
-(`steps`, `observations`, `relations`) preserve command-line order because,
-for a `procedure`, "the order IS the knowledge." `severity`/`always`/
-`continuity` are included on purpose — they are treated as normative content,
-not metadata, so flipping an item from `soft` to `hard` is not a silently
-swallowed no-op.
+**There are three different hashes here, over three different shapes, and
+conflating them is the mistake to avoid.**
+
+**1. `computeItemChecksum` (`src/core/item.ts:802`) — the file-integrity hash**,
+the one stamped into every item's frontmatter. Its shape is **wider** than the
+content shape, and it deliberately **includes** `id`, `status` and `origin`:
+
+```ts
+{ id, type, title, status, severity, always, scope, tags, origin, extra, body }
+```
+
+plus, **only when present** — `continuity` (when true), `summary` and `summary_of`
+(when the item has a summary), `summary_was` (when it has history), `acknowledged`,
+`steps` (when non-empty) — then unconditionally `observations` and `relations`.
+Every optional key is conditional for one reason, stated three times in the source:
+this hash is *recorded in every item's frontmatter*, so an unconditional new key
+"would change it for every item in every corpus at once — reddening `doctor`
+everywhere and destroying the stale-checksum signal that is the only evidence a
+file was altered outside my_context."
+
+**`request` is the only unconditional exclusion**, and the source says so in those
+words. Spec §16a required the backfill of 1,076 items to be reversible *"without
+touching body, summary or checksum"*, which is true only if the field never enters
+the hash in either direction. The cost is stated rather than discovered: **a hand
+edit to a `## Request` section leaves no stale checksum behind, so `doctor` will
+not report it.**
+
+Note also what this shape does *not* do: `scope` and `tags` are passed through
+**unsorted** here (`item.ts:806`). Sorting is `canonicalContent`'s behaviour
+(`content-hash.ts:110–111`), which is the next hash, not this one.
+
+**2. `itemSummaryBasis` (`content-hash.ts:539`) — the summary-staleness hash**,
+and it is much **narrower**. It hashes only the four fields `SUMMARY_BASIS`
+(`:291–304`) marks `summarised` — **`body`, `steps`, `observations`, `extra`** —
+and two of those get a narrower cut still: `summarisedExtra` drops
+`WORKFLOW_EXTRA_KEYS` (tracking rather than content) and `summarisedObservations`
+drops the lifecycle categories (what happened *to* the item rather than what it
+says). `type`, `title`, `severity`, `always`, `continuity`, `scope`, `tags` and
+`relations` are all marked `unsummarised` and do **not** move a summary's basis.
+This is what makes the "derived, not a flag list" design in the summary gate above
+work: the classification lives in exactly one table.
+
+It runs over `canonicalContent`, which is where `scope` and `tags` **are** sorted,
+and where ordered collections (`steps`, `observations`, `relations`) preserve
+command-line order because, for a `procedure`, "the order IS the knowledge."
+
+**3. `contradictionBasis` — and it is not in `content-hash.ts`.** It lives at
+`src/core/verdict-store.ts:59` and is a one-line delegation, not an independent
+hash:
+
+```ts
+return item.summaryOf ?? itemSummaryBasis(item);
+```
+
+So a verdict is anchored to the item's recorded summary basis when it has one, and
+recomputed from content when it does not — with the consequence the source states
+out loud: on an item with no summary the verdict lapses on *any* content edit,
+including a mechanical one, "because there is no summary for `--summary-unchanged`
+to leave standing and so nothing to carry forward."
 
 **When it's checked.** Every write path stamps a checksum
 (`writeItem`). On every index rebuild, `loadLayer` (`src/core/rebuild.ts`,
@@ -288,12 +349,20 @@ observation directly and re-persisting it — a different act from what
 `repair` performs.
 
 **Verified against this repository's corpus, 2026-09-12:** a real
-`mycontext doctor --json` run reports **zero** `checksum_mismatch` and
-**zero** `checksum_basis_migration` findings — this corpus is currently
-clean on both counts. (It does report two `source_drift` findings, which is
-a different, unrelated check — see below.) `repair` was **not run** for this
-document, since it is a state-changing command and there is nothing for it
-to fix right now.
+`mycontext doctor --json` run reports **zero `checksum_basis_migration`**
+findings — this corpus is clean on that count. (It does report two
+`source_drift` findings, which is a different, unrelated check — see below.)
+`repair` was **not run** for this document, since it is a state-changing
+command and there is nothing for it to fix right now.
+
+**`checksum_mismatch` is not a finding code**, and an earlier draft of this
+paragraph reported zero of them as though it were. The only checksum-related
+`code:` literal in `src/doctor/checks.ts` is `checksum_basis_migration`
+(`:470`). A **real** same-basis mismatch does not surface as a coded finding
+at all — it is a `LoadError` from `rebuild.ts:226`, which drives `doctor`'s
+non-zero exit code, exactly as the two-outcome list above already says. A
+reader hunting for `checksum_mismatch` in `--json` output, or trying to
+`mycontext ack <id> checksum_mismatch` it, will find nothing.
 
 ## Supersession edges
 
@@ -309,10 +378,55 @@ remaining route was hand-editing the file and running `repair --yes`, which
 the project's own documentation calls out as "leaving no evidence it
 happened."
 
-It also fires as the direct answer to the contradiction gate's
-`--supersedes` flag on `add`/`edit` — the same mechanism, reached from two
-different moments (proactively retiring something old, or resolving a
-conflict at the moment a new item is created).
+The contradiction gate's `--supersedes` flag on `add`/`edit` reaches the
+**same shared function**, `supersedeItem` — but it is the function, not the
+command, and it fires only under two conditions this chapter should not leave
+implicit:
+
+1. The write must be **in contradiction scope and governing**:
+   `const gated = inContradictionScope(draft.type, draft.always) &&
+   GOVERNING_STATUS[status]` (`src/core/mutate.ts:1026`). On an ungated write,
+   `--supersedes` records nothing.
+2. The id named by `--supersedes` must actually have been **raised as a
+   candidate** by the gate: `settled.some((c) => c.id === draft.supersedes)`
+   (`:1213` on create, `:2100` on edit). Naming an id the gate never surfaced
+   records no edge at all.
+
+Both call sites carry the retirement's own message forward rather than
+discarding it, and the source says why that hole mattered: the gated path
+"retired an item, stood it down and wrote two relation edges, and the only
+thing printed was `created <id>`."
+
+**Three refusals around retirement, all of them new on 2026-09-13
+(`86a0c840`), and each closes a way to half-undo a supersession:**
+
+- **`unsupersedeRefusal`** (`src/core/relations.ts:320`) — `mycontext edit
+  <superseded id> --status <anything>` is now **refused**. It previously
+  flipped two of the supersession's four facts and exited 0. The four facts are
+  `status: superseded` and `valid_until` on the retired item, `superseded_by`
+  on it, and `supersedes` on the successor; changing the first two leaves "a
+  governing item carrying a past `valid_until`, pointing at its own
+  replacement, with the replacement still claiming to have replaced it." The
+  same refusal exists on the MCP side for `update_item`.
+- **`retirementEdgeRefusal`** (`:264`) — `supersedes` and `superseded_by`
+  cannot be removed as relations. Its remedy was **rewritten** in the same
+  commit, away from `edit <id> --status active` and toward retiring the
+  successor in turn: *"retire the SUCCESSOR — `mycontext supersede <successor
+  id> --by <what stands now>` — which records the second act as well as the
+  first."* The governing item is
+  `RULE-a-supersession-is-unwound-by-superseding-the-successor-back`.
+- **`existingSuccessorRefusal`** (`supersede.ts:114`, and twice in
+  `mutate.ts`) — an item that already has a successor cannot quietly acquire a
+  second one.
+
+**The stand-down.** `supersedeItem` does more than write edges: it **clears
+`always` and drops a `hard` severity** in the same act (`standDownFields`,
+`src/cli/commands/supersede.ts:133–150`). The preview prints it before the
+confirmation, using the same predicate the write and `doctor` both ask, "so
+the preview cannot promise a clearing the write does not perform", and the
+change is recorded as an observation on the item rather than cleared silently.
+A person who pinned the item is entitled to learn that from the approval
+rather than from a diff afterwards.
 
 **What it prints before acting.** `testsRestingOn`/`restingTestsLine`
 (`src/core/tests-resting-on.ts`) is consulted so the operator is told, before
@@ -364,7 +478,9 @@ source_missing (1)  [error]
   Restore the file, or retire ... with `mycontext supersede`.
 ```
 
-The finding codes present in this run, by count (`doctor --json`, grouped):
+The finding codes present in this run, by count (`doctor --json`, grouped,
+2026-09-12 — a snapshot, and it predates `laundered_enum`, which `44b3623b`
+registered the next day):
 `task_unverified` (50), `body_disagrees_with_meta` (24), `state_unaudited`
 (7), `contradiction_pair` (6), `citation_form` (5), `open_question_blocks`
 (5), `reference_no_source` (3), `source_drift` (2), `body_ends_unfinished`
@@ -377,6 +493,57 @@ the finding reopens. Doctor's own summary output states this design choice
 explicitly rather than leaving it implicit: an acknowledged finding is still
 printed and still counted, "acknowledging a finding distinguishes it, it
 does not silence it."
+
+### The finding-code vocabulary — all 61
+
+`<code>` above is not free text: it is one of the `code:` literals `runChecks`
+emits, and without the list a reader who wants to rule on a finding has nothing
+to type. Enumerated from `src/doctor/checks.ts` and `src/doctor/shared-tail.ts`
+on **2026-09-13**, with the level each is raised at. Eleven of these appear in
+the live run above; the other fifty are simply not firing on this corpus today.
+
+**error (10)** — these are what drive a non-zero exit:
+`body_truncation`, `check_failed`, `cli_path_mismatch`, `continuity_overflow`,
+`index_unreadable`, `laundered_enum`, `not_writable`, `session_id_mismatch`,
+`source_missing`, `tag_projection_drift`.
+
+**warn (27):**
+`assumption_overdue`, `blocked_needs_met`, `blocked_without_needs`,
+`checksum_basis_migration`, `citation_marker`, `cli_not_on_path`,
+`config_key_skipped`, `continuity_inert`, `corpus_size_fallback_ceiling`,
+`dead_scope`, `index_not_ignored`, `index_stale`, `needs_malformed`,
+`orphan_relation`, `reference_no_source`, `retired_still_binding`,
+`source_anchor_missing`, `source_drift`, `summary_absent`, `summary_stale`,
+`summary_too_long`, `summary_unanchored`, `task_unverified`,
+`tutorial_roster_unreadable`, `tutorial_unlisted`, `unknown_category`,
+`watched_doc_unserved`.
+
+**info (24):**
+`assumption_overdue_coverage`, `audit_log_size`, `body_disagrees_with_meta`,
+`body_ends_unfinished`, `body_review_limits`, `citation_form`,
+`citation_form_excused`, `cli_lookup_failed`, `cli_path_unverifiable`,
+`contradiction_drain_limits`, `contradiction_pair`, `foreign_store`,
+`governing_spill_pressure`, `index_missing`, `needs_unresolved`,
+`nested_corpus`, `open_question_blocks`, `scope_policy_inert`,
+`scope_policy_required`, `state_audit_coverage`, `state_unaudited`,
+`tag_projection_unprojected`, `task_verification_coverage`,
+`watched_doc_coverage`.
+
+(10 + 27 + 24 = **61**, and the three lists are exhaustive as of the date above.)
+
+Three of these are worth pointing at, because each is the only documentation of
+a feature elsewhere in this reference:
+
+- **`laundered_enum`** (error) — a frontmatter `status`/`severity`/`origin`
+  outside its vocabulary. See the read boundary in
+  [`./01-items-and-corpus.md`](./01-items-and-corpus.md). Its remedy for the two
+  fixable fields is a copy-ready
+  `mycontext edit <id> --status|--severity <value> --yes`.
+- **`watched_doc_coverage` / `watched_doc_unserved`** — the only trace in this
+  reference of the `watchedDocs` config key, an otherwise undocumented feature.
+- **`config_key_skipped`** — pairs with `Config.skippedKeys`; see
+  [`./02-injection.md`](./02-injection.md) on why `budgets` refuses an unknown
+  key while other sections record and skip.
 
 **Use case.** Run `mycontext doctor` after a batch of edits (by a human or
 an agent) to catch drift before it compounds: a checksum that has fallen
@@ -404,11 +571,54 @@ was never dispositioned.
   verdict is carried forward across edits that don't change meaning, but
   there is no separate TTL/expiry on a verdict the way `exception` items
   carry an `until` date.
+- **The workflow-gate layer is not described here.** `test/scripts/workflow-gates.test.ts`
+  asserts that gates are *reached* rather than merely correct; it is chapter 13's
+  subject and is covered there.
+- **Not described here, and each is a real surface:** `repair`'s loss holdback
+  (`repair.ts:81–91`); `preflightSupersede` / `supersedeQuestion`
+  (`mutate.ts:1033, 1898`), which are what put the retirement question to a
+  person before an id has been minted; and the `--json` failure envelope
+  (`src/cli/json-envelope.ts`) — see below.
+
+## The `--json` failure envelope
+
+This chapter quotes `doctor --json` output above, and until 2026-09-13 nothing
+in this reference said what a **failing** `--json` run emits. What it used to
+emit was measured: `mycontext query --json --nosuchflag` put **380 bytes of
+plain English prose on stdout** and exited 1 — worse than empty, because a
+consumer that parses what it asked for gets a `SyntaxError` at character 0 with
+the real reason sitting inside the string that broke the parser.
+
+Since `86a0c840`, `src/cli/json-envelope.ts` emits a JSON envelope instead.
+Four properties, each decided rather than assumed:
+
+- **stdout, not stderr.** `runCli` has exactly one emit and no stderr channel
+  beneath it; more to the point, moving the prose would leave stdout *empty* on
+  failure, which is the original complaint. **The exit code is what separates
+  success from failure and it is untouched** — "this makes the channel honest,
+  not the failure quiet."
+- **Which commands is derived, never listed.** `jsonEnvelopeFor` reads
+  `COMMAND_FLAGS` and `SUBCOMMAND_FLAGS`, the same tables `refuseUnknownFlag`
+  uses, so a command that gains `--json` gains the envelope in the same edit.
+  The three `FLAGLESS_COMMANDS` — `show` among them — are not given a JSON
+  contract they do not honour on success.
+- **A non-zero run whose output already parses as JSON is passed through
+  untouched.** `doctor --json` exits non-zero when it finds errors and its body
+  is a perfectly good report; wrapping that would replace a machine-readable
+  answer with a machine-readable complaint. So the `doctor --json` output quoted
+  above is unaffected.
+- **The envelope carries** `command`, `subcommand`, `exit`, `argv` and
+  `message` — the verbatim sentence the human form prints, newlines and all.
+  The human form is unchanged, because the envelope is only reached when
+  `--json` was actually typed.
+
+This matters to every `--json` consumer in this reference, including chapter 9's
+and chapter 12's.
 
 ## What I could not fully verify
 
-`edit.ts` is 1,312 lines and shares much of the same flag-parsing and gate
-logic as `add`'s block in `src/cli/index.ts`; I traced the summary-gate and
+`edit.ts` is 1,320 lines and shares much of the same flag-parsing and gate
+logic as `cmdAdd` in `src/cli/index.ts`; I traced the summary-gate and
 contradiction-gate call sites there but did not exhaustively trace every one
 of `edit.ts`'s ~30 flags. I did not run `add`, `edit`, or `repair` for real
 against this corpus (all three are state-changing), so the gate-triggering
