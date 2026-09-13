@@ -179,7 +179,7 @@ a fragment and is re-checked by execution instead — the second table.
 | Fact | Where verified |
 |---|---|
 | Five members, and this plan adds none | `types.ts` · `export type Status = 'active' \| 'draft' \| 'superseded' \| 'deprecated' \| 'validated';` · ~2 |
-| Second copy | `validate.ts` · `export const STATUSES: Status[] = ['active', 'draft', 'superseded', 'deprecated', 'validated'];` · ~25 |
+| Second copy | `validate.ts` · `export const STATUSES: Status[] = ['active', 'draft', 'superseded', 'deprecated', 'validated'];` · ~25 <!-- historical-citation: 44b3623b moved this const to core/vocabulary.ts on 2026-09-13, so validate.ts holds no second copy today; this row counts the copies as of 2026-08-20 --> |
 | Third copy | `mcp/tools.ts` · `const STATUSES = ['active', 'draft', 'superseded', 'deprecated', 'validated'];` · ~69 |
 | `deprecated` is counted in `retired`, so a finished procedure stays in a session-visible number | `select.ts` · `const RETIRED_STATUSES = new Set(['superseded', 'deprecated', 'validated']);` · ~876 |
 | `validated` would be **wrong** for `done` — it still governs | `trust.ts` · `export function governsNormatively(ctx: MutationContext, item: Item): boolean {` · ~331 |

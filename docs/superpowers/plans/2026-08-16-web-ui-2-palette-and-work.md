@@ -216,7 +216,7 @@ the task says "establish by executing" instead of asserting it.
 | The deny hook's config wording | `hooks/pre-tool-use.ts` · `changes to ` · ~120 |
 | `filterItems(items, filters, config)` — the ONE corpus filter | `core/search.ts` · `export function filterItems(items: Item[], filters: ItemFilters, config: Config): Item[] {` · ~235 |
 | `core/search.ts` imports no mutator module | `core/search.ts` · `import type { Config } from './config.ts';` · ~1 |
-| **`STATUSES` lives in `core/validate.ts`** — whose graph reaches no mutator | `core/validate.ts` · `export const STATUSES: Status[] = ['active', 'draft', 'superseded', 'deprecated', 'validated'];` · ~25 |
+| **`STATUSES` lives in `core/validate.ts`** — whose graph reaches no mutator | `core/validate.ts` · `export const STATUSES: Status[] = ['active', 'draft', 'superseded', 'deprecated', 'validated'];` · ~25 <!-- historical-citation: 44b3623b moved this const to core/vocabulary.ts on 2026-09-13 and left validate.ts re-exporting it; this row records where it lived on 2026-08-16, which is the claim the survey makes --> |
 | **`RELATION_TYPES` moved to `core/vocabulary.ts`**, a module that imports nothing; `relations.ts` re-exports it | `core/vocabulary.ts` · `export const RELATION_TYPES = [` · ~102 |
 | `relations.ts` imports `persist.ts` at runtime | `core/relations.ts` · `import { auditMutation, persist, requireWritableItem } from './persist.ts';` · ~9 |
 | `Status = 'active'\|'draft'\|'superseded'\|'deprecated'\|'validated'` | `core/types.ts` · `export type Status = 'active' \| 'draft' \| 'superseded' \| 'deprecated' \| 'validated';` · ~2 |

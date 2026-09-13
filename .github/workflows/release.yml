@@ -57,10 +57,34 @@ jobs:
       # you nothing about whether the tasks agree with it.
       - run: npm run check:retired
       - run: npm run check:text-files
+      # ── This list must be a SUPERSET of `ci.yml`'s, and on 2026-09-13 it was
+      # not. ────────────────────────────────────────────────────────────────
+      #
+      # The job above says why this workflow re-verifies at all: "a tag can be
+      # placed on any commit, and the one thing that must never happen is a
+      # release page pointing at a tree nobody verified." A gate that master
+      # runs and a tag does not turns that sentence into its opposite — the
+      # release is verified LESS than the commits it is cut from.
+      #
+      # `check:vendor` was exactly that hole, found by report 6: it was in
+      # `ci.yml` and not here, so a tagged build could publish a patched
+      # vendored asset that master would have rejected. The four beside it were
+      # in neither workflow. `check:cited-items` is in neither, deliberately —
+      # it can never exit non-zero on a finding; see the paragraph in `ci.yml`.
+      # `test/scripts/workflow-gates.test.ts` pins the superset relation so this
+      # cannot drift apart again in silence.
+      - run: npm run check:vendor
+      - run: npm run check:dependencies
+      - run: npm run check:needs-cycles
+      - run: npm run check:handover
+      # Moved ABOVE `npm test` from the bottom of this list. It costs two
+      # seconds and the suite costs twelve minutes, and `ci.yml` already argues
+      # the ordering in its own words: the cheap check fails first. Nothing
+      # about the verdict changes — only how long a tag cut waits to hear it.
+      - run: npm run verify:citations
       - run: npm run typecheck
       - run: npm test
       - run: npm run test:perf
-      - run: npm run verify:citations
 
   release:
     needs: verify

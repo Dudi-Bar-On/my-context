@@ -38,7 +38,8 @@
     "check:handover": "node scripts/check-handover.ts",
     "check:dependencies": "node scripts/check-dependency-budget.ts",
     "check:cited-items": "node scripts/check-cited-items.ts",
-    "check:basis": "node scripts/check-basis.ts"
+    "check:basis": "node scripts/check-basis.ts",
+    "hooks:install": "git config core.hooksPath .githooks"
   },
   "devDependencies": {
     "@playwright/test": "^1.62.1",

@@ -87,6 +87,59 @@ jobs:
       # src/ui/public/lib/vendor/VENDOR.md and re-scans for fetch/eval, so a
       # patched or silently upgraded asset is red here rather than a surprise.
       - run: npm run check:vendor
+      # ── The four below were written as gates and run by nothing. ──────────
+      #
+      # Measured 2026-09-13 (report 6, G1): `check:needs-cycles`,
+      # `check:handover`, `check:dependencies` and `check:cited-items` appeared
+      # in NEITHER workflow, and `verify:citations` only in `release.yml` — so
+      # the one gate that was red was the one gate only a tag cut ran. Four of
+      # that day's twelve blockers would have been caught by gates that already
+      # existed. Each runs in well under two seconds; the reason they are here
+      # rather than in a hook is that a hook running five checks on every commit
+      # gets disabled by the first person it annoys.
+      #
+      # `check:cited-items` is DELIBERATELY NOT IN THIS LIST, and that is a
+      # ruling rather than an omission — 7d10c14d, in its own words: "a
+      # never-gating check there prints 224 lines into a green log and
+      # manufactures the appearance of coverage". Its only three non-zero exits
+      # are anti-vacuity guards; no finding it reports can ever fail a run. A
+      # step that cannot go red is the vacuous gate this repository keeps
+      # catching, so it stays a thing a person runs and reads.
+      # `test/scripts/workflow-gates.test.ts` pins that absence with its reason,
+      # so removing this paragraph alone does not quietly reverse it.
+
+      # `CONST-zero-runtime-dependencies` is the promise a user installs on, and
+      # until now nothing in either workflow read `package.json` against it.
+      # `npm test` does carry the condition — `dependency-budget.test.ts` audits
+      # the real manifest against the real constraint — but a test failure says
+      # "expected [] to deepEqual [...]" where this names the offending field and
+      # the constraint sentence it breaks. This is also the one gate the
+      # pre-commit hook runs (`.githooks/pre-commit`), because `npm i --save` is
+      # a working-tree act and the commit is where it can still be cheaply undone.
+      - run: npm run check:dependencies
+      # A cycle in `needs:` is invisible to every other check: both ends are
+      # well-shaped, both resolve, neither is done, so both rows sit in `ready`'s
+      # held list saying "a blocker has not landed" — true, ordinary-looking, and
+      # permanent. THIS IS THE ONLY ONE OF THE FIVE WITH NO TEST FILE, so before
+      # this line it was gated by nothing anywhere: 3dba1964 wired the npm script
+      # and said in as many words that it stayed local "until two lines are added
+      # to ci.yml and release.yml". These are those lines.
+      - run: npm run check:needs-cycles
+      # A handover pointer that names nothing sends the next lane to a lane or an
+      # item that does not exist. Only the DANGLING tier gates; RETIRED and
+      # CARRIED are reported and never gate, argued at length in eded62f1 — a
+      # handover is a historical document and a block written before a retirement
+      # was true when it was written.
+      - run: npm run check:handover
+      # Before `npm test` because it is two seconds, and in CI at all because the
+      # alternative is what this repository just lived through: it exits on the
+      # DOCUMENTATION tier only, it was red on 2026-09-13, and `release.yml` was
+      # the only place it ran — so every tag cut that day would have failed at a
+      # gate no pull request exercised. Two of the four breaks were opened by
+      # 44b3623b THAT SAME DAY, hours after the review counted two, by a commit
+      # that moved `STATUSES` out of `validate.ts`. Nothing noticed, because on
+      # master nothing was looking.
+      - run: npm run verify:citations
       - run: npm run typecheck
       - run: npm test
       - run: npm run test:perf

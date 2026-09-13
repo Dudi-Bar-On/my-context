@@ -17,17 +17,17 @@ tags:
   - ci
   - "plan:gates"
   - "seq:2"
-  - "state:todo"
+  - "state:done"
 origin: human
 source_file: null
 source_anchor: null
 source_checksum: null
 valid_from: 2026-09-13
 valid_until: null
-checksum: 32f6060e9ca4e889
+checksum: 15568cb47935066e
 plan: gates
 seq: "2"
-state: todo
+state: done
 priority: "1"
 ---
 

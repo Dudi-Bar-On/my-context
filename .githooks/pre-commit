@@ -1,0 +1,84 @@
+#!/bin/sh
+#
+# ONE GATE. That is the whole design, and the restraint is the point.
+#
+# Five checks in this repository were written as gates and run by nothing
+# (report 6, 2026-09-13, G1). The obvious repair — run all five on every
+# commit — is the wrong one, and it fails in a way this repository can already
+# name: a hook that costs two seconds and can redden on another lane's
+# uncommitted work gets `--no-verify`'d once, then aliased away, and then it is
+# a gate wired to nothing wearing the clothes of a gate that runs. The four
+# others live in `ci.yml` and `release.yml`, where a full tree and a full
+# minute are things you actually have.
+#
+# WHY THIS ONE. `check:dependencies` guards `CONST-zero-runtime-dependencies`,
+# the promise a user installs on, and its failure mode is a WORKING-TREE ACT:
+# `npm i --save` writes the manifest, and the commit is the last moment the
+# write is still cheap to undo. Catching it in CI means a push, a red run and a
+# revert; catching it here means deleting a line.
+#
+# AND IT IS NEVER THE ONLY LINE OF DEFENCE. The same check runs in both
+# workflows. Nothing is gated HERE AND NOWHERE ELSE — deliberately, so that
+# disabling this hook costs you speed and never safety. A hook carrying a gate
+# CI does not carry is a gate whose coverage depends on every developer's local
+# configuration, which is not coverage.
+#
+# WHY IT CANNOT BE SET OFF BY SOMEBODY ELSE'S WORK. This reads two files:
+# `package.json` and one corpus item. Several lanes hold uncommitted work in
+# this tree at once, routinely. A hook that walked the corpus or the source
+# tree would go red on a neighbour's half-finished edit, blame the wrong
+# person, and be gone within the week. Narrow surface is what makes it
+# survivable.
+#
+# TWO LIMITS, STATED RATHER THAN DISCOVERED.
+#
+#   1. A pre-commit hook reads the WORKING TREE, not the index. A manifest
+#      edited but not staged is judged here anyway. That is the safe direction
+#      — it complains about a breach that exists on disk — but it is not the
+#      same question `git commit` is asking, and pretending otherwise is how a
+#      hook earns false confidence.
+#   2. `git commit --no-verify` skips this, as it skips every hook. That is
+#      git's escape hatch and naming it is better than leaving somebody to find
+#      it while annoyed. CI does not have one.
+#
+# INSTALL: `npm run hooks:install` (one `git config core.hooksPath .githooks`).
+# UNINSTALL: `git config --unset core.hooksPath`.
+#
+# An UNINSTALLED hook is itself a gate wired to nothing, which is the defect
+# this file exists to repair — so the install is one command, it is in
+# `package.json`, and the gate it runs is in CI regardless.
+
+# The manifest cannot have changed in a commit that does not touch it, and the
+# budget is PARSED OUT OF the constraint rather than copied into the script, so
+# editing that item can widen the budget without the manifest moving at all.
+# Either one staged is the trigger; neither means there is nothing to ask.
+CONSTRAINT='.my_context/items/constraint/CONST-zero-runtime-dependencies.md'
+staged=$(git diff --cached --name-only --diff-filter=ACMR)
+
+case "$staged" in
+  *package.json*) run=1 ;;
+  *"$CONSTRAINT"*) run=1 ;;
+  *) run=0 ;;
+esac
+
+[ "$run" = "0" ] && exit 0
+
+# Loud, never silent. A hook that exits 0 because it could not run is the
+# vacuous pass this repository has caught in six other shapes, and it would be
+# indistinguishable from a clean bill of health at exactly the moment the
+# manifest is being edited.
+if ! command -v node >/dev/null 2>&1; then
+  echo "pre-commit: node is not on PATH, so the dependency budget was NOT checked." >&2
+  echo "pre-commit: that is not the same as nothing being wrong. Commit with" >&2
+  echo "pre-commit: --no-verify if you have decided to accept that." >&2
+  exit 1
+fi
+
+echo "pre-commit: the manifest moved — checking the dependency budget."
+if ! node scripts/check-dependency-budget.ts; then
+  echo "" >&2
+  echo "pre-commit: CONST-zero-runtime-dependencies is the promise this plugin" >&2
+  echo "pre-commit: ships on. Unstage the dependency, or amend the constraint" >&2
+  echo "pre-commit: first if the budget is genuinely meant to change." >&2
+  exit 1
+fi
