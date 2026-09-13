@@ -1111,11 +1111,14 @@ for (const mode of FAILURE_MODES) {
  * removed: the injection that arrives without the fault must be missing with
  * it, and the write that succeeds without it must fail with it.
  *
- * These two assertions also record, by execution, an asymmetry this task did
- * not introduce and does not fix: an unwritable corpus is disclosed on stderr
- * by `pre-compact`, while an unparseable `config.json` is disclosed by nobody.
- * A user with a typo in `config.json` gets a session with no knowledge in it
- * and not one byte saying why.
+ * These two assertions used to record, by execution, an asymmetry that task
+ * did not introduce and did not fix: an unwritable corpus was disclosed on
+ * stderr by `pre-compact`, while an unparseable `config.json` was disclosed by
+ * nobody — *"a user with a typo in `config.json` gets a session with no
+ * knowledge in it and not one byte saying why"*. **That is closed as of
+ * 2026-09-13** (`TASK-a-malformed-config-returns-an-empty-injection-from-six`),
+ * and the second test below is the execution of the closure rather than of the
+ * gap. The asymmetry sentence is kept here as the reason the test exists.
  */
 test('the unwritable-corpus mode really does break a write', async () => {
   const healthy = project();
@@ -1131,7 +1134,7 @@ test('the unwritable-corpus mode really does break a write', async () => {
   } finally { removeTree(healthy); removeTree(broken); }
 });
 
-test('the config.json mode really does reach the throw, and nothing says so', async () => {
+test('the config.json mode really does reach the throw, and BOTH channels say so', async () => {
   const healthy = project();
   pinned(healthy);
   const broken = FAILURE_MODES[1].prepare();
@@ -1139,14 +1142,23 @@ test('the config.json mode really does reach the throw, and nothing says so', as
     const ok = await runHook(HOOK('session-start'), anyPayload(healthy), healthy);
     assert.equal(ok.code, 0);
     assert.match(ok.stdout, /CONST-pool/, 'premise: the same corpus injects when config.json parses');
+    assert.doesNotMatch(ok.stderr, /config could not be read/,
+      'and a healthy config says nothing about itself');
 
     const bad = await runHook(HOOK('session-start'), anyPayload(broken), broken);
     assert.equal(bad.code, 0, 'an unparseable config.json must not become a failed hook');
-    // The whole injection is gone. Asserted as it IS, not as it should be:
-    // `resolveWorkspace` throws a perfectly good message and every path from
-    // here swallows it, so this is the shape of the product today.
-    assert.equal(bad.stdout, '', 'the corpus injected despite an unreadable config.json');
-    assert.equal(bad.stderr, '');
+    // Still gone, and that half has not changed: `INV-hooks-fail-open` says a
+    // hook delivers nothing rather than breaking the session on a corrupt
+    // config, and this suite would be the first to complain if it started
+    // guessing at items instead.
+    assert.doesNotMatch(bad.stdout, /CONST-pool/,
+      'nothing is invented in place of the corpus that could not be read');
+    // What changed is that the loss is now NAMED, on both channels, because
+    // `INV-nothing-is-dropped-silently` is `severity: hard` as well and
+    // `KNOWN-an-unparseable-hook-payload-injects-plausibly-and-discloses` ruled
+    // how the two hold together: keep failing open, and disclose.
+    assert.match(bad.stdout, /knowledge base could not be read/, "the model's copy");
+    assert.match(bad.stderr, /config could not be read/, "the user's copy");
   } finally { removeTree(healthy); removeTree(broken); }
 });
 

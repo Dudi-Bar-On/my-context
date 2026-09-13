@@ -17,17 +17,17 @@ tags:
   - windows
   - "plan:swallow"
   - "seq:1"
-  - "state:todo"
+  - "state:done"
 origin: human
 source_file: null
 source_anchor: null
 source_checksum: null
 valid_from: 2026-09-13
 valid_until: null
-checksum: c0847c3b44e2ee4d
+checksum: 249baa986aca91d5
 plan: swallow
 seq: "1"
-state: todo
+state: done
 priority: "1"
 ---
 

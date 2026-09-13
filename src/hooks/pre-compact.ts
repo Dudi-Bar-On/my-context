@@ -9,9 +9,11 @@ import { isMainEntry } from '../core/paths.ts';
 import { reviewNote, reviewTrigger, type TriggerVerdict } from '../review/trigger.ts';
 import { readSeen, seenIds } from '../core/seen-file.ts';
 import { Store } from '../core/store.ts';
-import { resolveWorkspace } from '../core/workspace.ts';
+import { configLoadFailure, resolveWorkspace } from '../core/workspace.ts';
 import { assertDoor } from '../rules/deliver.ts';
-import { hookParseErrorLine, parseHookInput, readStdin, type HookInput } from './io.ts';
+import {
+  configUnreadableLine, hookParseErrorLine, parseHookInput, readStdin, type HookInput,
+} from './io.ts';
 
 /**
  * What this compaction fired at, as a `note` fragment (spec §4.4).
@@ -330,6 +332,19 @@ export function buildRestoreSnapshot(
 
     return { path: snapshotFile, itemIds };
   } catch {
+    // The most expensive of the six to lose silently, because the loss is
+    // DEFERRED: no snapshot is written now, and what the user notices is the
+    // session AFTER the compaction coming back with nothing restored — by
+    // which time the window that would have explained it has been summarised
+    // away. So it is said at the moment it happens, on the channel this
+    // function already writes its ignored-handover disclosure to.
+    const failure = configLoadFailure(input.cwd ?? fallbackCwd);
+    if (failure !== null) {
+      process.stderr.write(configUnreadableLine(
+        failure, 'no snapshot was captured for this compaction, so the session that follows it ' +
+        'will restore nothing',
+      ));
+    }
     return null;
   }
 }

@@ -394,6 +394,43 @@ export function noWorkspaceLine(cwd: string): string {
   );
 }
 
+/**
+ * **The line a hook writes when this project's config could not be read.**
+ *
+ * `noWorkspaceLine`'s sibling, and it closes the same silence through the other
+ * door. That one covers "there is no corpus HERE"; this one covers "there is
+ * one and it could not be loaded", which until 2026-09-13 was the quieter of
+ * the two by far — `findProjectRoot` SUCCEEDS on a broken config, so the
+ * `findProjectRoot(cwd) === null` gate that guards `noWorkspaceLine` never
+ * fired, `storeAppendix` and `handoverAppendix` caught to `''`, and the hook
+ * exited 0 with empty stdout and empty stderr. Meanwhile the recording paths,
+ * which read no config precisely so they cannot throw, kept the audit log full
+ * of healthy rows. The evidence exonerated the failure.
+ *
+ * **`lost` is per hook, and the rest is shared.** One sentence would be wrong
+ * here in a way it is not wrong for `hookParseErrorLine`: a malformed payload
+ * costs every hook the same two fields, while a malformed config costs each of
+ * these six a different thing — the whole injection, the JIT tier, the
+ * compaction snapshot, the watched-doc nudge. A line that named all six on
+ * every tool call would be a line nobody reads by the end of the first minute.
+ * So each caller names what IT could not do, in its own voice, and the file,
+ * the reason and the fix are shared so they cannot drift.
+ *
+ * **It ends by saying nothing was blocked**, for `hookParseErrorLine`'s reason:
+ * a user who reads this mid-task needs to know their session is still running.
+ * `INV-hooks-fail-open` is not weakened by any of this — nothing here refuses
+ * to start, and that is the ruling in
+ * `KNOWN-an-unparseable-hook-payload-injects-plausibly-and-discloses`: keep
+ * failing open, and disclose.
+ */
+export function configUnreadableLine(failure: string, lost: string): string {
+  return (
+    `my_context: this project's config could not be read — ${failure} — so ${lost}. ` +
+    'Nothing was blocked and nothing else changed; the corpus stays unreadable until the file ' +
+    'is fixed. `mycontext doctor` names the file and the fault.\n'
+  );
+}
+
 export function hookParseErrorLine(parseError: string | null): string {
   if (parseError === null) return '';
   return (

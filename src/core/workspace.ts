@@ -159,6 +159,68 @@ function loadConfig(configPath: string | null): Config {
   return resolveConfig(raw);
 }
 
+/**
+ * **Why `resolveWorkspace(cwd)` would throw on the config right now, or `null`
+ * when it would not.** Never throws, and reads nothing but `config.json`.
+ *
+ * ── WHAT THIS EXISTS FOR ───────────────────────────────────────────────────
+ *
+ * A trailing comma in `.my_context/config.json` makes `loadConfig` throw, and
+ * SIX delivery paths catch that throw and return an empty value: the injection
+ * (`core/inject.ts`), the session-start store and handover appendices, the
+ * per-tool-call JIT tier, the compaction snapshot and the watched-doc nudge. A
+ * session therefore starts with zero project knowledge, every tool call gets no
+ * JIT tier, every compaction restores nothing, and every subagent dispatches
+ * with no rules — and until 2026-09-13 **nothing on any surface said so**.
+ *
+ * **The recording paths make it worse, and deliberately so.** `observe.ts`,
+ * `post-compact.ts`, `session-end.ts`, `post-tool-use.ts` and `pre-tool-use.ts`
+ * resolve their roots with `findProjectRoot` precisely BECAUSE it reads no
+ * config and cannot throw — each of them says so in a comment, and each of them
+ * is right to. The consequence nobody had joined up: on a broken config the
+ * audit log keeps filling with healthy rows while every delivery returns empty.
+ * **The evidence actively exonerates the failure.**
+ *
+ * ── WHY A PROBE RATHER THAN A THROWN VALUE ────────────────────────────────
+ *
+ * The catches this serves are catch-ALLs — `INV-hooks-fail-open`'s last resort
+ * — and they must stay that way. Inspecting the caught error would make each of
+ * the six sites decide what a config error looks like, which is six spellings
+ * of one question and the way `/api/config` came to disagree with everything
+ * else about what a config is. This asks the ONE loader instead, once, on the
+ * failure path only.
+ *
+ * ── FAIL OPEN, BUT DISCLOSE ────────────────────────────────────────────────
+ *
+ * `INV-hooks-fail-open` and `INV-nothing-is-dropped-silently` are both
+ * `severity: hard` and they pull in opposite directions here.
+ * `KNOWN-an-unparseable-hook-payload-injects-plausibly-and-discloses` settled
+ * it — *keep failing open, and disclose* — and settled it for the hook PAYLOAD.
+ * This is that resolution propagated to the config, which is the same failure
+ * with a larger blast radius. **Nothing here refuses to start.**
+ *
+ * The reason is returned one-line and un-prefixed: `loadConfig` throws in
+ * `toCliMessage`'s voice (`my_context: <path> is not valid JSON: …`), which is
+ * right for a CLI that is about to exit 1 and wrong inside a sentence that
+ * already begins `my_context:`. `JSON.parse` also QUOTES the offending input,
+ * so a config with a newline near the fault would otherwise turn a one-line
+ * stderr disclosure into several — the same hazard `hooks/io.ts`'s `oneLine`
+ * was written for, and flattened here rather than there so that the block note
+ * and the stderr line cannot drift apart.
+ */
+export function configLoadFailure(cwd: string): string | null {
+  try {
+    const projectRoot = findProjectRoot(cwd);
+    loadConfig(projectRoot === null ? null : path.join(projectRoot, 'config.json'));
+    return null;
+  } catch (err) {
+    const raw = err instanceof Error ? err.message : String(err);
+    const bare = raw.startsWith('my_context: ') ? raw.slice('my_context: '.length) : raw;
+    const flat = bare.replace(/\s+/gu, ' ').trim();
+    return flat.length > 240 ? `${flat.slice(0, 237)}...` : flat;
+  }
+}
+
 export function resolveWorkspace(cwd: string): Workspace {
   const projectRoot = findProjectRoot(cwd);
   const configPath = projectRoot ? path.join(projectRoot, 'config.json') : null;

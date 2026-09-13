@@ -2,9 +2,9 @@ import path from 'node:path';
 import { recordAudit } from '../core/audit.ts';
 import { bumpCounter } from '../core/review-counter.ts';
 import { isMainEntry, managedSplit, matchesAnyGlob, relPosix, toPosix } from '../core/paths.ts';
-import { findProjectRoot, resolveWorkspace } from '../core/workspace.ts';
+import { configLoadFailure, findProjectRoot, resolveWorkspace } from '../core/workspace.ts';
 import { capped, NOTE_MAX, subjectFor, SUBJECT_MAX } from './observe.ts';
-import { hookContext, readStdinAsync } from './io.ts';
+import { configUnreadableLine, hookContext, readStdinAsync } from './io.ts';
 
 /**
  * Narrower than `io.ts`'s `HookInput` on purpose, and not merged with it in
@@ -113,6 +113,20 @@ export function nudgeFor(input: HookInput, fallbackCwd: string): string {
       `above). Skip if nothing new was decided.`
     );
   } catch {
+    // The smallest loss of the six and the one most easily argued into silence
+    // — a nudge is a suggestion, not a delivery. It is disclosed anyway,
+    // because `watchedDocs` is a PROMISE the user configured in the very file
+    // that would not load: from outside, "my_context stopped asking me to
+    // capture things" and "I stopped editing watched documents" are the same
+    // observation, and the second is the one a person will assume.
+    const cwd = input.cwd && input.cwd !== '' ? input.cwd : fallbackCwd;
+    const failure = configLoadFailure(cwd);
+    if (failure !== null) {
+      process.stderr.write(configUnreadableLine(
+        failure, 'no capture nudge can be raised for an edit to a watched document, because ' +
+        '`watchedDocs` is in that file',
+      ));
+    }
     return '';
   }
 }

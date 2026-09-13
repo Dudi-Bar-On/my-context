@@ -16,7 +16,7 @@ import {
 } from './seen-file.ts';
 import { HOOK_OPEN_PROFILE, isBusyError, Store } from './store.ts';
 import { clearWindowState } from './window-state.ts';
-import { hasGlobalCorpus, resolveWorkspace } from './workspace.ts';
+import { configLoadFailure, hasGlobalCorpus, resolveWorkspace } from './workspace.ts';
 import type { Item, Layer } from './types.ts';
 
 /**
@@ -167,6 +167,34 @@ export function hookParseErrorNote(parseError: string | null | undefined): strin
 }
 
 /**
+ * The block a session gets INSTEAD of its corpus when the corpus could not be
+ * read at all.
+ *
+ * The third sibling of `hookParseErrorNote`, and the one with the largest blast
+ * radius: an unparseable payload costs a session `source` and `session_id`, an
+ * unparseable `config.json` costs it everything. An empty injection is the
+ * strongest possible case of `STD-a-measured-zero-is-drawn-and-named-an-
+ * unmeasured-thing-is` — an UNMEASURED corpus rendered as an empty one — so it
+ * is named rather than returned as `''`.
+ *
+ * **It is the whole `text`, not an appendix to it.** Every other note here
+ * rides along beside items that WERE delivered; there are none to ride beside.
+ *
+ * The sentence tells the model the one thing it needs and cannot otherwise
+ * know — that the absence of rules here is not evidence that there are none —
+ * and then stops. The instruction to go and fix the file is on stderr, where
+ * the person who can fix it is.
+ */
+export function injectionFailureNote(failure: string): string {
+  return (
+    `_my_context: this project's knowledge base could not be read — ${failure} — so NOTHING ` +
+    'from it was injected into this session. Treat this as "the corpus is unavailable", not as ' +
+    '"this project has no rules": items that govern this work exist and were not delivered. ' +
+    '`mycontext doctor` names the file and the fault._'
+  );
+}
+
+/**
  * The line a cleared window carries into the block the model reads.
  *
  * The sibling of `focusErrorNote` and `hookParseErrorNote`, and it is here for
@@ -226,6 +254,26 @@ export interface Injection {
    * `loadRules`'s `workspaceIsMyContext` is decided by its caller.
    */
   deliveredIds: string[];
+  /**
+   * **The reason this injection was CAUGHT rather than built**, and `null` when
+   * it was built — including when it was built and had nothing to say.
+   *
+   * Until 2026-09-13 those two were the same value. `text: ''` meant both "the
+   * corpus is quiet" and "`config.json` has a trailing comma and none of it was
+   * read", and no caller could tell them apart because there was nothing to
+   * tell them apart WITH. A session that started with zero project knowledge
+   * looked exactly like a session that needed none — while the recording paths,
+   * which use `findProjectRoot` and never touch the config, went on writing
+   * healthy audit rows for the whole of it.
+   *
+   * It is a FACT ABOUT THE DELIVERY rather than part of it, exactly like
+   * `pinnedSpill` beside it, and for the same reason: the block above is read
+   * by the model and this is also owed to the USER, who is the only one who can
+   * fix a config file. The caller that has a stderr a person watches writes it
+   * there (`hooks/io.ts` · `configUnreadableLine`); the MCP surface, which has
+   * no such channel, does not. The model's copy travels inside `text`.
+   */
+  failure: string | null;
 }
 
 /**
@@ -311,7 +359,10 @@ export function buildInjectionResult(cwd: string, options: InjectionOptions = {}
     // No workspace at all: no text, and no spill to disclose — nothing was
     // selected, so nothing was dropped. The caller's `noWorkspaceLine` is the
     // disclosure for this case and it is a different sentence.
-    if (stateRoot === null) return { text: '', pinnedSpill: null, deliveredIds: [] };
+    // A MEASURED absence, not a caught one: the walk ran and found no corpus,
+    // which `noWorkspaceLine` already discloses at the hook. `failure` stays
+    // `null` because nothing was dropped — there was nothing to drop.
+    if (stateRoot === null) return { text: '', pinnedSpill: null, deliveredIds: [], failure: null };
 
     // 1. THE CORPUS, FROM MARKDOWN, PARSED ONCE. No database on the
     // injection-critical path: `select` is pure over Item[] (select.ts,
@@ -1141,8 +1192,9 @@ export function buildInjectionResult(cwd: string, options: InjectionOptions = {}
       // disagree, and the one this field feeds is a check that REPORTS a
       // disagreement. It must not be able to invent one.
       deliveredIds: [...new Set(injected.map((ref) => ref.id))],
+      failure: null,
     };
-  } catch {
+  } catch (err) {
     // Fail open: a knowledge base that breaks a session is worse than one
     // that says nothing. The one failure that used to earn a disclosure here
     // — a locked index — can no longer reach this catch: the critical path
@@ -1152,6 +1204,28 @@ export function buildInjectionResult(cwd: string, options: InjectionOptions = {}
     // No spill is claimed here either, and that is not a shrug: a selection that
     // never completed has no measurement, and reporting one would be inventing
     // it. `null` reads as "nothing recorded", which is exactly what happened.
-    return { text: '', pinnedSpill: null, deliveredIds: [] };
+    //
+    // ── AND IT SAYS SO NOW ────────────────────────────────────────────────
+    //
+    // `INV-hooks-fail-open` is kept exactly as it was — this still returns
+    // rather than throws, and the session still starts. What changes is that
+    // `INV-nothing-is-dropped-silently` is kept TOO, which is what
+    // `KNOWN-an-unparseable-hook-payload-injects-plausibly-and-discloses`
+    // ruled: *keep failing open — but disclose*. Applied there to the payload
+    // and never propagated; this is the propagation, at the site where the
+    // loss is total.
+    //
+    // `configLoadFailure` is asked rather than `err` inspected, so that the six
+    // delivery paths share ONE answer to "is the config the reason" — see its
+    // docstring. When it is not the reason the caught error is reported as
+    // itself, because an injection that was caught is an injection that was not
+    // measured, whatever caught it.
+    const failure = configLoadFailure(cwd)
+      ?? `the injection could not be built (${
+        (err instanceof Error ? err.message : String(err)).replace(/\s+/gu, ' ').trim().slice(0, 200)
+      })`;
+    return {
+      text: injectionFailureNote(failure), pinnedSpill: null, deliveredIds: [], failure,
+    };
   }
 }

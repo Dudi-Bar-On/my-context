@@ -8,7 +8,8 @@ import { SEEN_FILE_SUFFIX } from '../core/seen-file.ts';
 import { findProjectRoot, hasGlobalCorpus, resolveWorkspace } from '../core/workspace.ts';
 import { deliverAtDoor } from '../rules/deliver.ts';
 import {
-  hookParseErrorLine, noWorkspaceLine, parseHookInput, pinnedSpillLine, readStdin,
+  configUnreadableLine, hookParseErrorLine, noWorkspaceLine, parseHookInput, pinnedSpillLine,
+  readStdin,
 } from './io.ts';
 
 export interface SessionStartOptions {
@@ -135,6 +136,14 @@ export function storeAppendix(
       ...(options.storeDir === undefined ? {} : { storeDir: options.storeDir }),
     }).text;
   } catch {
+    // Silent HERE, and disclosed by the binary below. `resolveWorkspace` above
+    // throws on an unparseable `config.json`, which is the one failure that
+    // reaches this catch and costs the model something it cannot see missing —
+    // and it costs the corpus block and the handover in the same breath, so the
+    // user's copy is ONE line naming all three (`configUnreadableLine`) rather
+    // than three lines arriving separately. A note appended to the block would
+    // be a second copy of `injectionFailureNote`, which the block already
+    // carries, addressed to the same reader.
     return '';
   }
 }
@@ -248,7 +257,12 @@ function handoverAppendix(
     );
     return `${block}\n${ended}`;
   } catch {
-    /* Never a reason to fail — or to shorten — a session start. */
+    /* Never a reason to fail — or to shorten — a session start. An unparseable
+       `config.json` is the one failure here that silently withdraws a promise
+       rather than merely finding nothing: the `handover` key lives in the very
+       file that would not load, so "no handover was configured" and "the
+       configuration could not be read" arrive identically. The binary below
+       tells them apart on stderr — see `configUnreadableLine` there. */
     return '';
   }
 }
@@ -380,6 +394,34 @@ if (isMainEntry(import.meta.filename, process.argv[1])) {
     // A tier that fitted writes nothing at all. A line that appears every
     // session is a line that stops being read, which would cost exactly the
     // sessions this exists for.
+    // **THE SAME SILENCE, THROUGH THE OTHER DOOR** — and `noWorkspaceLine`'s
+    // gate above is exactly why it survived. `findProjectRoot` SUCCEEDS on a
+    // corpus whose `config.json` has a trailing comma: the directory is there.
+    // So the one disclosure that could have said "you are getting nothing" was
+    // gated on a check that passes, `buildSessionStartResult` came back empty
+    // from a catch, `storeAppendix` and `handoverAppendix` caught to `''`, and
+    // this hook exited 0 with nothing on either channel — while
+    // `sweepStaleState` below, and every recording path in this directory, went
+    // on working normally because they read no config.
+    //
+    // **Read off the injection, never probed for.** `Injection.failure` already
+    // holds the reason, so the healthy path — every session that ever starts
+    // correctly — pays nothing at all for this, and the user's line and the
+    // model's block cannot disagree about why.
+    //
+    // Here rather than beside `noWorkspaceLine`, for the reason stated two
+    // comments up: this is an account OF a delivery, so it comes after it.
+    //
+    // Three losses on ONE line, because they have one cause and one fix — and
+    // named individually, because "the corpus did not load" does not tell a
+    // user that the handover their last session left is also not coming.
+    if (injection.failure !== null) {
+      process.stderr.write(configUnreadableLine(
+        injection.failure,
+        'this session starts with NO project knowledge: no rules or other items, no product ' +
+        'rule store, and no handover from the previous session',
+      ));
+    }
     if (injection.pinnedSpill !== null) {
       process.stderr.write(pinnedSpillLine(injection.pinnedSpill));
     }

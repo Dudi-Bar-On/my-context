@@ -98,11 +98,31 @@ test('non-pinned items appear only in the index', () => {
   removeTree(cwd);
 });
 
-test('a corrupt config yields empty output rather than throwing', () => {
+/**
+ * **This assertion used to be `=== ''`, and that `''` was the defect written
+ * down as a requirement** (see
+ * `TASK-a-malformed-config-returns-an-empty-injection-from-six`, 2026-09-13).
+ * The property it was protecting is the one kept below — a corrupt config must
+ * not throw, `INV-hooks-fail-open` — and the empty string was never part of it:
+ * it made an unread corpus indistinguishable from a quiet one at the only place
+ * a caller could have told them apart. `INV-nothing-is-dropped-silently` is
+ * `severity: hard` too, and
+ * `KNOWN-an-unparseable-hook-payload-injects-plausibly-and-discloses` ruled how
+ * the two live together — keep failing open, and disclose.
+ *
+ * The disclosure itself, on all six delivery paths and with a healthy-config
+ * control, is `test/hooks/config-unreadable-disclosure.test.ts`. This one keeps
+ * the half that was always right.
+ */
+test('a corrupt config fails OPEN — it does not throw, and it does not pretend', () => {
   const cwd = sandbox();
   runCli(['init'], cwd, () => {});
   writeFileSync(path.join(cwd, '.my_context', 'config.json'), '{ not json');
-  assert.equal(buildSessionStartOutput(cwd), '');
+  const out = buildSessionStartOutput(cwd);
+  assert.match(out, /could not be read/,
+    'an unread corpus says so rather than reading as an empty one');
+  assert.equal(/CONST-|REQ-|lesson/.test(out), false,
+    'and invents no items in its place');
   removeTree(cwd);
 });
 

@@ -5,10 +5,12 @@ import {
 import { buildInjectionResult } from '../core/inject.ts';
 import { isMainEntry } from '../core/paths.ts';
 import { deliverAtDoor } from '../rules/deliver.ts';
-import { CORPUS_DIR_ENV, DIR_NAME, findProjectRoot } from '../core/workspace.ts';
 import {
-  hookBlockDecision, hookContext, hookParseErrorLine, ledgerKey, parseHookInput, readStdinAsync,
-  type HookInput,
+  configLoadFailure, CORPUS_DIR_ENV, DIR_NAME, findProjectRoot,
+} from '../core/workspace.ts';
+import {
+  configUnreadableLine, hookBlockDecision, hookContext, hookParseErrorLine, ledgerKey,
+  parseHookInput, readStdinAsync, type HookInput,
 } from './io.ts';
 
 /**
@@ -375,6 +377,44 @@ if (isMainEntry(import.meta.filename, process.argv[1])) {
       }
       const line = buildSubagentStartOutput(input, process.cwd());
       if (line) process.stdout.write(line + '\n');
+      // **The user's copy of a config that would not load.** The MODEL's copy
+      // travels the other way, inside the envelope the builder just returned:
+      // `buildInjectionResult` now renders `injectionFailureNote` as the whole
+      // block rather than `''` (see `Injection.failure`), so a dispatched agent
+      // is told that the absence of rules here is not evidence that there are
+      // none.
+      //
+      // Measured, and it is why this event is not an afterthought: **1,082
+      // `subagent-start` rows against 54 `session-start`** in this workspace's
+      // own audit log. A disclosure that fired only at session start would miss
+      // the door this product actually delivers through, twenty times over.
+      //
+      // **AFTER the dispatch has its context, and the order is measured rather
+      // than preferred.** `hook-binaries-e2e.test.ts` kills this binary partway
+      // through its work to prove `delivery=attempted` is written before
+      // anything that can fail, and it triggers the kill on the first parse of
+      // `config.json`. Reading the config here but ABOVE the builder moved that
+      // first parse ahead of the attempt record, and the kill then left no row
+      // at all. It is also the right place on its own terms: this is an account
+      // OF a delivery, which is the same rule that puts `pinnedSpillLine` after
+      // stdout in `session-start.ts`.
+      //
+      // Recomputed rather than threaded out of the builder, for the reason the
+      // refusal above gives — the builder's contract is one string for stdout.
+      // The cost is one small extra read of a file the healthy path has already
+      // parsed, beside a corpus parse and a selection this hook has just done.
+      // Gated on `agent_id` for the reason the builder is: no agent, no
+      // dispatch to disclose about.
+      if (input.agent_id) {
+        const failure = configLoadFailure(input.cwd ?? process.cwd());
+        if (failure !== null) {
+          process.stderr.write(configUnreadableLine(
+            failure,
+            'this subagent was dispatched with NO project knowledge: no rules, standards or ' +
+            'other items, and no product rule store',
+          ));
+        }
+      }
     })
     .catch(() => { /* fail open */ })
     .finally(() => { process.exitCode = 0; });

@@ -1,4 +1,4 @@
-import { mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdirSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { homedir } from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -701,27 +701,54 @@ export function delegateFor(ws: Workspace): Delegate | null {
   return { argv: parsed.argv, command };
 }
 
-type ReadResult =
+export type ReadResult =
   | { ok: true; text: string | null; value: Record<string, unknown> }
   | { ok: false };
 
 /**
  * The settings file, as bytes AND as an object.
  *
- * A file that does not exist is `text: null` with an empty object — a user who
- * never configured Claude Code, which is a state to install into rather than
- * an error. A file that exists and does not parse as a JSON OBJECT is refused
- * whole: it is a document someone maintains, this command cannot tell a typo
- * from a format it does not know, and overwriting it would destroy the only
- * copy. An array parses as JSON and is not a settings file, so it is refused
- * by the same sentence.
+ * A file that does not exist — ENOENT, and NOTHING ELSE — is `text: null` with
+ * an empty object: a user who never configured Claude Code, which is a state to
+ * install into rather than an error. A file that exists and does not parse as a
+ * JSON OBJECT is refused whole: it is a document someone maintains, this command
+ * cannot tell a typo from a format it does not know, and overwriting it would
+ * destroy the only copy. An array parses as JSON and is not a settings file, so
+ * it is refused by the same sentence.
+ *
+ * ── WHY THE READ CATCH IS NARROWED, MEASURED RATHER THAN REASONED ──────────
+ *
+ * That first paragraph argued exactly one case and the catch below covered
+ * every errno, so an UNREADABLE file became an ABSENT one. **Reproduced on
+ * Windows 11 on 2026-09-13**, at a throwaway path: a second process holding the
+ * file open with `FileShare::Write` — which is what an editor, a sync client or
+ * an indexer does, and which still permits writers — makes this `readFileSync`
+ * throw `EBUSY`. The install then printed `Current statusLine: (none)`,
+ * reported `Installed.` and exited 0, and the file it left behind held the
+ * `statusLine` key ALONE: permissions, hooks, env, model and `mcpServers` gone.
+ * `previousText` was saved as `null` in the same breath, so the backup built
+ * for exactly this case had nothing to give back. `EACCES` after a permissions
+ * change reaches it by the same door.
+ *
+ * So every errno but `ENOENT` is refused here, in the parse branch's own voice
+ * below and for the parse branch's own reason: a file this command cannot see
+ * into is a file it must not write over.
  */
-function readSettings(file: string, out: Emit): ReadResult {
+export function readSettings(file: string, out: Emit): ReadResult {
   let raw: string;
   try {
     raw = readFileSync(file, 'utf8');
-  } catch {
-    return { ok: true, text: null, value: {} };
+  } catch (err) {
+    const code = (err as NodeJS.ErrnoException).code;
+    if (code === 'ENOENT') return { ok: true, text: null, value: {} };
+    out(
+      `my_context: ${file} exists but could not be read (${code ?? 'unknown error'}). Refusing ` +
+      `to touch it — a file this command cannot read is a file it cannot save a copy of, so ` +
+      `installing over it would replace your settings with no way back. On Windows this is ` +
+      `usually another process holding the file open; otherwise it is a permissions problem. ` +
+      `Close whatever has it, or fix the permissions, and run this again. Nothing was written.`,
+    );
+    return { ok: false };
   }
   try {
     const parsed = JSON.parse(raw) as unknown;
@@ -735,6 +762,45 @@ function readSettings(file: string, out: Emit): ReadResult {
       `it — fix the file first. Nothing was written.`,
     );
     return { ok: false };
+  }
+}
+
+/**
+ * Whether `previousText: null` would be a claim this command cannot prove.
+ *
+ * ── `previousText: null` IS AN INSTRUCTION, NOT A MISSING FIELD ────────────
+ *
+ * `cmdStatuslineUninstall` reads it through `removesFile`
+ * (`byteClean && saved.previousText === null`) as *"this install created the
+ * file, so undoing the install DELETES it"* and calls `rmSync`. A `null` that
+ * is wrong therefore does not merely fail to restore the user's settings — it
+ * authorises their deletion. That is the half of this defect that makes the
+ * damage unrecoverable, and it is a SECOND fact, not a restatement of the
+ * first: an install that overwrote a file it could not read would still have
+ * lost it even with a read that refused, if this claim were ever made on
+ * anything weaker than evidence.
+ *
+ * ── WHY IT IS ASKED AGAIN, WHEN `readSettings` ALREADY ANSWERED ────────────
+ *
+ * Because the entire defect was one `catch` quietly meaning more than its
+ * docstring claimed, and what that `catch` never had was a second reading of
+ * its own assumption. This one is a different syscall at a different moment,
+ * and it covers what the first cannot: a settings file CREATED between the
+ * read and the write.
+ *
+ * **Only `ENOENT` is proof.** `statSync` failing for any other reason —
+ * `EACCES`, `EPERM`, `EBUSY`, `ENOTDIR` — says the path could not be examined,
+ * which is not the same as saying nothing is there, and `existsSync` would
+ * flatten exactly that distinction back into `false`. It is the same collapse
+ * one function up, so it is refused the same way.
+ */
+export function absenceIsUnproven(file: string, text: string | null): boolean {
+  if (text !== null) return false;
+  try {
+    statSync(file);
+    return true;
+  } catch (err) {
+    return (err as NodeJS.ErrnoException).code !== 'ENOENT';
   }
 }
 
@@ -885,6 +951,23 @@ export function cmdStatuslineInstall(ws: Workspace, args: string[], out: Emit): 
       '--yes` puts it back byte for byte.',
     );
     return 0;
+  }
+
+  // ── THE SECOND GUARD, AND IT IS DELIBERATELY NOT THE FIRST ONE AGAIN ─────
+  //
+  // Asked HERE rather than beside the read, because this is the moment the
+  // claim is made: the line below writes `previousText: settings.text`, and a
+  // `null` there tells `uninstall` it may delete the file. See
+  // `absenceIsUnproven` for why that is a separate fact from the read, and why
+  // `ENOENT` is the only proof of absence this command accepts.
+  if (absenceIsUnproven(file, settings.text)) {
+    out(
+      `my_context: ${file} is there but this command could not read it, so it cannot save a ` +
+      `copy of it. Saving "there was no file" would be false, and \`statusline uninstall\` ` +
+      `reads that as permission to DELETE this file. Refusing. Nothing was written — not the ` +
+      `settings file, and not the saved copy.`,
+    );
+    return 1;
   }
 
   const installedText = serialize({ ...settings.value, statusLine: INSTALLED });

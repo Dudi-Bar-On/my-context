@@ -14,11 +14,11 @@ import { injectableTypes, select } from '../core/select.ts';
 import { Store } from '../core/store.ts';
 import type { Item } from '../core/types.ts';
 import { isUsableId } from '../core/vocabulary.ts';
-import { findProjectRoot, resolveWorkspace } from '../core/workspace.ts';
+import { configLoadFailure, findProjectRoot, resolveWorkspace } from '../core/workspace.ts';
 import { assertDoor } from '../rules/deliver.ts';
 import {
-  hookParseErrorLine, ledgerKey, parseHookInput, preToolUseContext, preToolUseDeny, readStdin,
-  type HookInput,
+  configUnreadableLine, hookParseErrorLine, ledgerKey, parseHookInput, preToolUseContext,
+  preToolUseDeny, readStdin, type HookInput,
 } from './io.ts';
 import { capped, NOTE_MAX } from './observe.ts';
 
@@ -421,6 +421,25 @@ export function buildJitOutput(input: HookInput, cwd: string, filePath: string):
     })));
     return text;
   } catch {
+    // **Stderr, and deliberately NOT the injected block.** This tier's output
+    // goes straight into the model's context on every Read/Edit, so a note
+    // here would be paid for once per tool call for the whole of a broken
+    // session — and the model already met `injectionFailureNote` at session
+    // start. The USER is the one who can fix a config file, and Claude Code
+    // surfaces a hook's stderr to them.
+    //
+    // Once per tool call is loud, and that is the correct volume: it fires
+    // only while the config is unparseable, and it is what stops a session
+    // spending a day editing a governed file with no rule ever arriving —
+    // which is `noWorkspaceLine`'s nine days, reopened through a door that
+    // `findProjectRoot` walks straight past.
+    const failure = configLoadFailure(path.dirname(path.resolve(cwd, filePath)));
+    if (failure !== null) {
+      process.stderr.write(configUnreadableLine(
+        failure, 'nothing was injected for this tool call — no rule, standard or other item ' +
+        'that governs this file reached the session',
+      ));
+    }
     return '';
   } finally {
     try { store?.close(); } catch { /* fail open */ }

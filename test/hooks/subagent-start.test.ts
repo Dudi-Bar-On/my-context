@@ -484,19 +484,26 @@ test('the attempt record carries no item text and no payload', () => {
  * reaches its own record. The attempt is left standing alone — the same shape
  * a killed process leaves, produced without a race and without a sleep.
  *
- * This is also the only place in the product where an unparseable
- * `config.json` leaves any trace at all: every binary exits 0 with both
- * streams empty, and a full corpus injects nothing and says nothing
- * (`test/hooks/hook-binaries-e2e.test.ts` pins that as it is). The attempt
- * record does not fix that — it is evidence after the fact, which is what
- * §6n.3 asked for and all it asked for.
+ * **This used to be the only place in the product where an unparseable
+ * `config.json` left any trace at all** — every binary exited 0 with both
+ * streams empty, and a full corpus injected nothing and said nothing. That is
+ * closed as of 2026-09-13
+ * (`TASK-a-malformed-config-returns-an-empty-injection-from-six`): the builder
+ * now returns `injectionFailureNote` rather than `''`, and the binary writes
+ * the user's copy to stderr. The attempt record is unchanged and still does
+ * what §6n.3 asked of it — evidence after the fact — and the assertion below
+ * is narrowed to that, because "the output was empty" was never what this test
+ * was about.
  */
 test('work that fails after the attempt record leaves the attempt behind, alone', () => {
   const cwd = sandbox();
   try {
     corpus(cwd);
     writeFileSync(path.join(cwd, '.my_context', 'config.json'), '{ "watchedDocs": ', 'utf8');
-    assert.equal(buildSubagentStartOutput(payload(cwd), cwd), '');
+    const out = buildSubagentStartOutput(payload(cwd), cwd);
+    assert.match(out, /knowledge base could not be read/,
+      'the dispatch is told the corpus was unreadable, not left to infer it was empty');
+    assert.doesNotMatch(out, /CONST-pool/, 'and no item is invented in its place');
     const rows = records(cwd);
     assert.equal(rows.length, 1);
     assert.match(rows[0]!.note ?? '', /^delivery=attempted agent=agent-9$/u);
@@ -758,14 +765,27 @@ test('the binary exits on its own when stdin is never closed', async () => {
  * is developed on is worse than no test. A directory replaced by a regular
  * FILE is refused by `mkdirSync` everywhere.
  */
-const FAILURE_MODES: { name: string; prepare: () => string; expectInjection: boolean }[] = [
+/**
+ * `expectEnvelope` and `expectItems` are TWO questions since 2026-09-13, and
+ * they used to be one. An envelope now also carries a DISCLOSURE — a corpus
+ * that could not be read says so instead of returning `''`
+ * (`TASK-a-malformed-config-returns-an-empty-injection-from-six`) — so
+ * "something was emitted" and "the corpus arrived" stopped being the same fact
+ * exactly at the mode this matrix exists for.
+ */
+const FAILURE_MODES: {
+  name: string; prepare: () => string; expectEnvelope: boolean; expectItems: boolean;
+}[] = [
   {
     // No `.my_context` above the cwd: no workspace, nowhere to record, nothing
     // to inject — and no attempt record either, because the log lives inside
     // the workspace that is not there.
     name: 'no workspace at all',
     prepare: () => mkdtempSync(path.join(tmpdir(), 'myctx-sub-nows-')),
-    expectInjection: false,
+    // No workspace means no log to record against and nothing to disclose TO a
+    // corpus that was never found — `noWorkspaceLine` at the session hook is
+    // where that one is said. Nothing at all is emitted here.
+    expectEnvelope: false, expectItems: false,
   },
   {
     // The one call on this path that THROWS rather than returning a falsy
@@ -779,7 +799,9 @@ const FAILURE_MODES: { name: string; prepare: () => string; expectInjection: boo
       writeFileSync(path.join(cwd, '.my_context', 'config.json'), '{ "watchedDocs": ', 'utf8');
       return cwd;
     },
-    expectInjection: false,
+    // An envelope WITHOUT items: the dispatch is told the corpus could not be
+    // read, which is the whole of the 2026-09-13 change on this path.
+    expectEnvelope: true, expectItems: false,
   },
   {
     // Every directory this hook writes into replaced by a regular file, so the
@@ -797,7 +819,7 @@ const FAILURE_MODES: { name: string; prepare: () => string; expectInjection: boo
       }
       return cwd;
     },
-    expectInjection: true,
+    expectEnvelope: true, expectItems: true,
   },
 ];
 
@@ -813,8 +835,12 @@ for (const mode of FAILURE_MODES) {
       // a non-zero exit.
       if (run.stdout.trimStart().startsWith('{')) JSON.parse(run.stdout);
       assert.equal(
-        run.stdout.includes('additionalContext'), mode.expectInjection,
-        `injection presence for "${mode.name}" is not what this mode was built to show`,
+        run.stdout.includes('additionalContext'), mode.expectEnvelope,
+        `envelope presence for "${mode.name}" is not what this mode was built to show`,
+      );
+      assert.equal(
+        run.stdout.includes('CONST-pool'), mode.expectItems,
+        `item delivery for "${mode.name}" is not what this mode was built to show`,
       );
     } finally { removeTree(cwd); }
   });
