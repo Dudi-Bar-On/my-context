@@ -64,3 +64,7 @@ forbids it — "on exit the server closes the stream and the page says so, and d
 auto-reconnect. Silent reconnection would reintroduce the daemon by another name" — and that case
 already has its own shipped answer in the `#exited` banner. This item is about a read in flight
 against a server that IS answering.
+
+## Request
+
+if the server is loading and it takes sometime, use some ui indication when user waits for the server to come up

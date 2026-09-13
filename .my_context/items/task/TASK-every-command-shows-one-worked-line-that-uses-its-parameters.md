@@ -81,3 +81,7 @@ follow-up worth naming rather than smuggling in.
 HIS SCOPE IS "all the help subjects", so this covers the 44 commands. Slash commands carry a
 one-line `argument-hint` and no per-parameter data, and MCP tools already draw a full argument
 table from their schemas - both are different shapes and neither should be forced into this one.
+
+## Request
+
+about the help refactoring: we need to add below the syntax help a comprehansive example that will use most if not all the parameters and will show actual values so a date would show how date looks like because other then the user does not know the correct format and actually we need to add to all the help subjects from the command line list of subjects for every parameter also it's data type and format should be displayed with an example value - this will close all the missing help gaps, at least i think so

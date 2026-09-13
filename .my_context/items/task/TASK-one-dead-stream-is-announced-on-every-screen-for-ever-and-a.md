@@ -136,3 +136,7 @@ is not automatically the right heartbeat - too long and the reaper still wins, t
 noise on a socket that already exists. Find what is actually cutting it before picking the number,
 and if the interval has to be short enough to be suspicious, SAY SO, because that would mean the
 reaper is aggressive enough to deserve its own answer.
+
+## Request
+
+1 small thing: on the web status bar i see many times the message "the stream refused to continue: network error", is it a refresh issue and could it be solved like we did with other auto refresh solutions ?

@@ -58,3 +58,7 @@ viewer.
 
 DEPENDS ON seq:12, which indexes and persists the subagent transcripts. Without that there is
 nothing to link TO.
+
+## Request
+
+conversation browsing looks great just why couldn't i see the up to date conversation - missing about 3.5 hours ? and also a message at the bottom "A turn longer than 60000 characters is shown up to there and says so; tool output, up to 4000." - if there is a size restriction it must be removed, i want no restriciton or limitation, also when subagents transcripts will be supported as archived files, i want every subagent that was used from the conversation to allow a link that browsing it too either as a popup window with the same renderer or a different way, what's important is to let the user return exactly to the cursor point from where it requested to view the subagent content.

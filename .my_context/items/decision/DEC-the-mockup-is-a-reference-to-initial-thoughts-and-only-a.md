@@ -105,3 +105,7 @@ THE STRIP'S ROW COUNT -- NOT REPORTABLE AT ALL, AND NEEDS NO EXCEPTION. The mock
 - depends_on [[RULE-take-the-mockup-s-design-never-its-behaviour-behaviour-comes]]
 - constrains [[TASK-the-mockup-stops-being-a-1-1-target-and-becomes-a-reference]]
 - relates_to [[OPENQ-does-a-missing-mockup-string-key-stay-a-finding-under-the]]
+
+## Request
+
+just change or update the rule based on the mockup add an exception for the cases you found so it will not fail the test only, in general mockup should stay as a reference to initial toughts and designs, currentlly the app is far away from it and most of the chances that we did some things different and it's ok, the only request is to identify a diff between the mockup and the app and only if it is important like core functionality or similar

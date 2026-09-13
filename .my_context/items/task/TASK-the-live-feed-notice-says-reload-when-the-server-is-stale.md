@@ -32,3 +32,7 @@ The product already knows this state and already has the sentence for it: `ex.co
 2. The two disclosures overwrite each other. `banner()` does `replaceChildren` on `#exited`, so `showCodeSkew`, `showDisconnected` and `showExited` are one slot; and `request()`'s ok-branch hides `#exited` when `disconnectedShown`. `showCodeSkew`'s own comment already records this. The message that would explain the failure can be wiped by the one that cannot help, and only the 60s heartbeat puts it back.
 
 Make the stream's own notice consult the skew state before telling him to reload, without a second request, and without weakening either disclosure — `codeSkewDismissed` stays a module-level, non-persisted flag that a reload restores.
+
+## Request
+
+the live feed is not running — reload to reconnect: reload does not work

@@ -56,3 +56,8 @@ HIS OWN BROADER SUSPICION - "it may be relevant for all the commands in general"
 as `builder/3`, the bidirectional catalogue test: does the Composer catalogue cover every command
 and every parameter the product actually has, checked in both directions rather than asserted. That
 item is ready and undispatched, and it is the systematic form of this one question.
+
+## Request
+
+dispatch D20, just before because you already touch composer, i have a request and a question, the request: on the results card above it you write "exit 0
+What the command said" and it would be helpfull to display also the command that was ran for the displayed results, the question is: i have asked for help slash and i gave me for results a list of all the commands, does'nt help has more parameters for example to get help for a specific command ? if yes, why the composer does not support this input ? - i think that it may be relevant for all the commands in general but i let you answer first

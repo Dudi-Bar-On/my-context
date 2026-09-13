@@ -48,3 +48,7 @@ THE STRIP'S ROW COUNT NEEDED NO EXCEPTION and none was written. The app drawing 
 ONE QUESTION HANDED BACK, because it could not be derived: `OPENQ-does-a-missing-mockup-string-key-stay-a-finding-under-the`. Wording is the one axis this corpus argues both ways on. Until it is answered, a missing key still fails and different prose under the same key still does not -- which is where the gates already stand.
 
 WHAT IS STILL OWED, and it is browser proof: `e2e/runs.spec.ts` runs in Playwright and this lane did not hold the browser. The four assertions were proved node-side against the mockup's own bytes, one break per assertion, and the replaced assertion was confirmed red. What no one has watched is the rail test passing in a browser.
+
+## Request
+
+just change or update the rule based on the mockup add an exception for the cases you found so it will not fail the test only, in general mockup should stay as a reference to initial toughts and designs, currentlly the app is far away from it and most of the chances that we did some things different and it's ok, the only request is to identify a diff between the mockup and the app and only if it is important like core functionality or similar

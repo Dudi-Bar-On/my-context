@@ -97,3 +97,7 @@ FOUR THINGS THAT MUST NOT BREAK:
   - THE TERMINAL LINE IS THE OWNER’S SCREEN. `mycontext statusline` is installed over his own
     status line, so a change here changes what he looks at all day. Keep the existing fields in
     their existing order.
+
+## Request
+
+another very small improvement that could be done to statusline and the web status bar - nwo staus line shows SESSION MyContext V2.0, we could add here the session size and the amount of subagents files, if you agree

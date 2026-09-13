@@ -50,3 +50,7 @@ WHAT IS STILL NOT LICENSED
 Acknowledgement remains a MARK and never a filter (`INV-nothing-is-dropped-silently`, `core/acknowledge.ts`): a settled finding stays in the list, stays in the counts, and moves the exit code exactly as before. Bulk changes how many rulings a person can record in one act. It does not change what a ruling means, and it does not make findings disappear.
 
 Auto-repair of findings whose remedy is a human judgement is still refused. `dead_scope` knows the dead glob and never the replacement; the four `summary_*` codes need a written sentence. A command line that cannot be pasted without editing is not a composed command.
+
+## Request
+
+why still i see the same warning item in doctor ?, did'nt you fixed it ?, also for notices that could be many items, we need to have a capability to fix all of them at once using doctor

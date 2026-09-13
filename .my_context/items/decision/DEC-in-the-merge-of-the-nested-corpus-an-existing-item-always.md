@@ -42,3 +42,7 @@ Nor does it mean the incoming item is worthless where it does not contradict. Mo
 WHAT TO DO WHEN IT FIRES
 
 Migrate the item faithfully, then supersede it by the existing one and say so in the migration report. A contradiction discovered mid-merge is not a reason to stop and ask; it is a reason to record the supersession and continue. If an incoming item contradicts an existing one on a point where the EXISTING item is plainly stale rather than merely older, that is worth naming in the report - but it is reported after the fact, not resolved during.
+
+## Request
+
+migrate the 42 once --always lands, if they contradicts to existing corpus items, existing are always newer so they take

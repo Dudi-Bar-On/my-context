@@ -55,3 +55,7 @@ ONE PRACTICAL CONSEQUENCE, learned the same day: stage EXPLICIT PATHS, never `gi
 lane is running. Pushing more often means committing more often, and a bare `-A` swept a lane’s
 half-finished work into an unrelated commit three times on 2026-09-06 - once by me, after a day of
 telling workers not to touch git.
+
+## Request
+
+add a rule if currently there isn't one: every time you commit, also merge if required and push to remote

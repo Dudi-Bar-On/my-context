@@ -193,3 +193,7 @@ AND THE MEASUREMENT THIS ITEM ALREADY ASKED FOR STILL COMES FIRST: render a real
 choosing between the box and a tint for inline code. 4.9 spans per block is dense enough that a box
 on each could read as noise, and that is the kind of thing that looks right in a mock-up and wrong
 on a transcript.
+
+## Request
+
+e2e/playwright.config.ts - this is an example of colored text on the terminal, could you do the same in the session browser ?

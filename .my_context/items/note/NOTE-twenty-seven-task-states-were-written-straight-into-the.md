@@ -56,3 +56,7 @@ WHY THE PAST IS NOT REWRITTEN
 No audit records were manufactured for these twenty-seven. Writing records now, dated now, for changes made days ago would be forging provenance, and `RULE-do-not-amend-an-append-only-log-append-a-second-record` refuses exactly that. This note is the second record.
 
 The owner ruling that follows from it, in his words: "i never allow to do that only using create and edit that updates properties, generates summary and calculates checksum."
+
+## Request
+
+go ahead and build the bulk settlement, also the 27 markdown direct changes were made by agent maybe in the migration from nested corpus as a shortcut, i nevver allow to do that only using create and edit that updates properties, generates summary and calculates checksum. the 27 should be fixed to be normal system managed markdown files. and also you said that the table displayed done but the file showed not, it means that the table generation is not reliable and also we should look at how the done is updated in files, maybe we need to refactor this activity

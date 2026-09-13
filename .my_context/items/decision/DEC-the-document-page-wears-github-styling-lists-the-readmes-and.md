@@ -79,3 +79,7 @@ work. Note the current allow-list ^(https?:|#|\./|/) refuses bare relative paths
 LICENSE and docs/ROADMAP.md are refused today — twelve such links in README alone. A bare sibling
 filename is the most ordinary link a README contains, and it is the exact case this ruling is
 about.
+
+## Request
+
+i reviewd tutorial and documentation, 1: i requested to get the original documents as it is in the github, README.md and README.he.md, 2: i requested that the renderer will be the same one as github uses, 3: i requested that you will open the documents on a new tab without the style of mycontex, the page should look exactly as it is displayed in github - all my requests were ignored by you

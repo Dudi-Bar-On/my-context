@@ -161,3 +161,7 @@ Execute-driven refresh, while `/api/doctor` answers no duplicate (item, code) pa
 both ways, 82 findings live and 93 on a twin, zero duplicates in either. The duplication is the
 SCREEN's, and it is the same shape as the two-renders defect `preview-overlap.spec.ts` was written
 for.
+
+## Request
+
+fix the spec's assertion and supersede the e2e tests that uses demo corpus it should not be used anymore, i hope it did not harm the project and thr ways you went, actually i am not sur about D table, you had to complete all the batches from last night and now i fill a little bit lost without a solid base to count on

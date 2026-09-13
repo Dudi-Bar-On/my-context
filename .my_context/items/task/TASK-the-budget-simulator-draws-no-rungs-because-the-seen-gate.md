@@ -62,3 +62,7 @@ genuinely absent while the gate that decides that is what empties the tier.
 
 Do not fix this by deleting the message. It is the only reason the failure was visible at
 all, and a graph that silently drew nothing would have been worse.
+
+## Request
+
+1 commit, 2 test the audit stream using playwright - still do not observed all the hooks you have registered, 3 budget simulator now displays "No rung to draw. The seen gate removed 134 item(s) before this tier picked candidates, leaving none to admit — empty for a measured reason, not unknown." and not the graph it supposed to, 4 continue next tasks

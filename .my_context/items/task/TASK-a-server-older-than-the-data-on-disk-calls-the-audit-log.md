@@ -74,3 +74,7 @@ so the skew banner appears mid-run, covers the page and physically intercepts cl
 tests that were never about skew. The banner itself belongs to live/12; what belongs here is that
 both symptoms come from one fact, which is that a long-lived reader and the code on disk drift
 apart and nothing reconciles them.
+
+## Request
+
+i got "the stream refused to continue: my_context: the audit log at D:\Users\UserC\source\repos\my-context\.my_context\.audit\audit.jsonl cannot be trusted — line 18" on the web status bar - why ?

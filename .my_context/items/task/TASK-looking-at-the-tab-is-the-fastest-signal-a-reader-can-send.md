@@ -168,3 +168,7 @@ AND THE DISCLOSURE SENTENCE LOST ITS SLOT. At 1000 ms it spelled "every 1 second
 and this string table has already refused count-plural constructions twice for want of a plural
 rule. The number is written into both translations, and test/ui/conversation-follow-cadence.test.ts
 holds them to TIP_MS - so the interval cannot move without both sentences moving with it.
+
+## Request
+
+ok good, before dispatching next, i sow that the session opened on the browser was updated as we go, it just took it some time to be updated, what is the trigger that make it refreshed ?

@@ -49,3 +49,7 @@ Leaving a row on screen that names a condition the reader has just repaired. Req
 WHAT IT DOES NOT REQUIRE
 
 It does not require a finding to vanish when it was ACKNOWLEDGED rather than repaired. Acknowledgement is a mark and not a filter, by the ruling of 2026-08-27: the finding is still true, still reported and still counted, and it is drawn as ruled-on rather than removed. Disappearing is what a REPAIR earns, because a repaired defect is genuinely no longer found.
+
+## Request
+
+after doctor repairs an item, it should disapear from it's list and the screen should auto refreshed not waiting for user to reload the page, this rule is true for every other case whhen handling somthing on screen, the screen should be refreshed to represent the new state

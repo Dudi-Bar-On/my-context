@@ -54,3 +54,7 @@ behaving like one, not by being listed.
 Read before designing: the existing composed-command pattern on the doctor screen, the config
 writer command and its refusals, and the ruling that the app is what is built while the mockup is
 history, which is what permits a screen the mockup never drew.
+
+## Request
+
+dispatch rulings/57, in general i want to refactor the config - a requirement for later, part of it is that i want everything relating to the config to be editable from the web including updating the config file itself, may be we'll add a user approval before but i want him to work more comfortable, other improvement are to structure the editing maybe by forms or simmilar ways

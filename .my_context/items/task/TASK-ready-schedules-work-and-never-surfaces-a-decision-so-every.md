@@ -96,3 +96,7 @@ ONE THING TO DECIDE RATHER THAN ASSUME: WHICH questions surface. All active `ope
 or only those something depends on? There are seven active today and they are not equally urgent -
 one blocks `live/22` right now, others have sat for weeks. A queue that lists all seven every time
 trains a reader to skip it, which is how the audit stream earned 5,207 rows nobody read.
+
+## Request
+
+"One process note worth mentioning: the corpus refused my first attempt because I'd put a plan field on an open_question, which that category doesn't declare — "it would be stored on an item whose category never promises it and read back by nothing." It was right; a question gets answered, not scheduled. Good example of the guard working on me rather than on a lane." - this is very interesting from mycontext categories point of view, did you use a different category for that ? or you did it differentlly ? or maybe a new category type should be added for such cases ? or should we be more flexible about requird fields for a specific usage ?. it's very important answer me clear and simple just bottom lines

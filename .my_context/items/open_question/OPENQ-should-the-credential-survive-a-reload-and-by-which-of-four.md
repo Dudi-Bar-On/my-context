@@ -137,3 +137,7 @@ SOURCES, so the reasoning can be checked rather than trusted:
     https://bugzilla.mozilla.org/show_bug.cgi?id=469287
   - Storing session tokens in a browser:
     https://blog.ropnop.com/storing-tokens-in-browser/
+
+## Request
+
+i also want you to make a deep research over the internet a find a more reliable and cheaper mechanism to replace the one we use based on the tokens in memory, it makes auser very an happy that he should aleays needs to handle it, maybe some socket protocols between mycontext app and the web server or our MCP server, just raise some ideas not realy know what's possible, that's why i requested the research

@@ -78,3 +78,7 @@ the first row does not link. Then his real session driven end to end on both pro
 new tab - 167 records`, the anchor carries `target=_blank rel=noopener`, clicking it opened
 `#/conversations/agent-a996c4fb38c4e4833` in a new tab while the reader's own URL never moved, and
 the lane document drew its own head.
+
+## Request
+
+did you implemented links at subagents ? where asubagent occures in the viewer alink should open it's file directly from the viewer without browsing it's file from the list ?

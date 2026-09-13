@@ -123,3 +123,7 @@ TWO PRODUCT DEFECTS ONLY EXECUTING COULD FIND: the glob tester seeded `**` into 
 writes impossible from the screen’s opening state and silently stamping scope:["**"] on three others;
 and ack --clear reported a withdrawal as an acknowledgement. The composed line was right, the exit
 code was 0, and the sentence was wrong - which is the whole argument for this item’s bar.
+
+## Request
+
+file it as D10 and dispatch the four fields, but add the others and file as D11 that would be dispatched next, also i want you to selecte the best tools for testing the ui ux as a user, tools should plan the tests, they should test every single feature and input of the composer, all fields, all values all combination actualy everything nothig should be skipped then you should execute the tests plan and fix using systematic debugging or simillar tools until all the tests pass. all these activities should be filed as D12 and dispatched after all the composer related tasks are previouslly completed.

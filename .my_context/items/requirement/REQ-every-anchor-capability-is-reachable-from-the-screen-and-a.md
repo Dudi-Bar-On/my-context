@@ -133,3 +133,7 @@ uses. A confirm dialog and a subprocess are the wrong ceremony for a bookmark, w
 AND THE FILE IS THE TRUTH, as he decided and as shipped 2026-09-11: `.my_context/.anchors.jsonl`,
 gitignored, with the index table derived from it. Deleting the index loses nothing. Any new
 creation path writes THROUGH that seam — none of the three may grow a second store.
+
+## Request
+
+i want that everything relating to anchors will be available throught the ui, cli is ok, mcp too but they are not a substitution for the ui capabilities

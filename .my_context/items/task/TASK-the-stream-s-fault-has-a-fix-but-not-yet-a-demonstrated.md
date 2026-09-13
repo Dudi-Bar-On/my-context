@@ -290,3 +290,124 @@ See plan:live seq:24, which carries all four with their evidence: the feed's ord
 discontinuity (this is `resync`'s existing behaviour, not something the reopen introduced), the
 64-restart session window above, `stream()`'s 401/403 path forgetting the stored token but not the
 in-memory one, and `test/ui/open.test.ts` red on a `/api/ping` field another lane added the same day.
+
+## Request
+
+this kind of text is ommited from the session i see in the browser ● Write(C:\Users\UserC\AppData\Local\Temp\claude\D--Users-UserC-source-repos-my-context\595db3b1-a481-4553-b4c0-7248c31b2655\scratchpad\l21fix.mjs)
+Wrote 71 lines to C:\Users\UserC\AppData\Local\Temp\claude\D--Users-UserC-source-repos-my-context\595db3b1-a481-4553-b4c0-7248c31b2655\scratchpad\l21fix.mjs
+import { execFileSync } from 'node:child_process';
+import fs from 'node:fs';
+const REPO = 'D:/Users/UserC/source/repos/my-context';
+const ID = 'TASK-one-dead-stream-is-announced-on-every-screen-for-ever-and-a';
+const F = REPO + '/.my_context/items/task/' + ID + '.md';
+const a = fs.readFileSync(F, 'utf8').split(/^---$/m).slice(2).join('---').replace(/^\s*\n# [^\n]*\n/, '');
+const cut = a.search(/\n## /);
+const prose = (cut < 0 ? a : a.slice(0, cut)).trim();
+const add = [
+  '',
+  'ROOT CAUSE FOUND 2026-09-08, AND IT IS NOT A DESIGN PROBLEM. The owner supplied the one fact that',
+  'decided it - the drop happens "every few minutes" - and that frequency pointed at a cause rather',
+  'than at a trade-off.',
+  '',
+  'THE STREAM WRITES NOTHING TO THE SOCKET WHEN THE AUDIT LOG IS QUIET. streamHandler',
+  '(src/ui/watch-model.ts - function streamHandler) polls tail.poll() on a timer and sends a frame',
+  'only when there is a resync or a record - it sends resync when the tail says so, then one frame',
+  'per record, AND THERE IS NO ELSE BRANCH.',
+  '',
+  'Measured: no keep-alive, comment frame or heartbeat exists anywhere in that file. So through any',
+  'quiet period the connection carries ZERO bytes, and a silent socket is what Windows, an antivirus',
+  'shim or any intermediary reaps. "Every few minutes" is exactly that signature, and it also',
+  'explains why every ordinary read keeps working: those are short requests that are never idle.',
+  '',
+  'SO THE FIX IS THE STANDARD ONE AND IT IS THREE BYTES A TICK: send an SSE comment line on ticks',
+  'with nothing to report. A comment is ignored by every SSE consumer by specification - and by',
+  'lib/sse.js, which must be CHECKED rather than assumed to skip it - so it proves the connection is',
+  'alive without inventing a frame describeStreamEvent cannot name. That constraint is already',
+  'recorded on this route: an unnameable frame "must not reach the feed as though it were audited',
+  'history".',
+  '',
+  'AND THIS REVERSES MY OWN RECOMMENDATION, which is worth recording rather than quietly dropping. I',
+  'proposed replacing the stream with a poll, on the reasoning that a poll recovers by construction.',
+  'That reasoning is sound and the conclusion was still wrong: the stream is not inherently fragile,',
+  'it was missing a keep-alive. Replacing a working subsystem to work around a three-byte omission',
+  'would have cost the immediacy that is the entire point of an audit feed, and left the real defect',
+  'in place for anything else that ever holds a connection open.',
+  '',
+  'THE STICKY FAULT IS STILL A DEFECT AND IS STILL FIXED, as defence in depth rather than as the',
+  'cure - a genuine network drop can still happen, and one drop must not poison the page for its',
+  'whole life. liveEnded is cleared when a subsequent read succeeds, and the chip then says the feed',
+  'is NOT LIVE rather than that it just failed, because those are different claims and only the',
+  'first is still true a minute later.',
+  '',
+  'WHAT IS NO LONGER PROPOSED, and the earlier text above is left standing because it was the honest',
+  'reasoning at the time: no poll replaces this stream, no fallback path is built, and section 2 is',
+  'not touched. Nothing silently reconnects, because nothing needs to - the connection stops dying.',
+  '',
+  'ONE THING TO MEASURE, NOT ASSUME: the keep-alive interval. STREAM_POLL_MS is the tail cadence and',
+  'is not automatically the right heartbeat - too long and the reaper still wins, too short and it is',
+  'noise on a socket that already exists. Find what is actually cutting it before picking the number,',
+  'and if the interval has to be short enough to be suspicious, SAY SO, because that would mean the',
+  'reaper is aggressive enough to deserve its own answer.',
+].join('\n');
+const args = ['edit', ID, '--body', prose + '\n' + add, '--summary-unchanged', '--yes'];
+try {
+  execFileSync('node', ['src/cli/index.ts', ...args], { cwd: REPO, encoding: 'utf8' });
+  console.log('OK  live/21 carries the root cause');
+} catch (e) {
+  const s = String(e.stdout || '') + String(e.stderr || '');
+  const ids = s.split('\n').filter((l) => /^  [A-Z]+-/.test(l)).map((l) => l.trim().split(/\s+/)[0]);
+  if (!ids.length) { console.log('FAIL :: ' + s.slice(0, 600)); process.exit(1); }
+  const w = [...args];
+  for (const c of ids) w.push('--distinct', c);
+  try {
+    execFileSync('node', ['src/cli/index.ts', ...w], { cwd: REPO, encoding: 'utf8' });
+    console.log('OK  (gate ' + ids.length + ')');
+  } catch (e2) {
+    console.log('FAIL :: ' + String(e2.stdout || e2.stderr || '').slice(0, 600));
+  }
+}
+
+● Bash(cd "D:/Users/UserC/source/repos/my-context" && node "C:/Users/UserC/AppData/Local/Temp/claude/D--Users-UserC-source-repos-my-context/595db3b1-a481-4553-b4c0-7248c31b2655/scratchpad/l21fix.mjs" 2>&1 | grep -v Experimental | grep -v trace-warn)
+OK  live/21 carries the root cause
+
+● Bash(cd "D:/Users/UserC/source/repos/my-context" && git add .my_context/items/task/TASK-one-dead-stream-is-announced-on-every-screen-for-ever-and-a.md && git commit -q -F - <<'MSGEOF'
+  live/21: the root cause is a silent socket, and my recommendation was wrong
+
+  The owner supplied the fact that decided it: the drop happens "every few
+  minutes". That frequency pointed at a cause rather than at a trade-off.
+
+  streamHandler sends a frame only when there is a resync or a record. There is no
+  else branch, and no keep-alive, comment frame or heartbeat exists anywhere in
+  watch-model.ts. So through any quiet period the connection carries ZERO bytes,
+  and a silent socket is what Windows, an antivirus shim or any intermediary
+  reaps. That is exactly the observed signature, and it also explains why every
+  ordinary read kept working -- those are short requests that are never idle.
+
+  The fix is the standard one and it is three bytes a tick: an SSE comment on ticks
+  with nothing to report. A comment is ignored by specification, so it proves
+  liveness without inventing a frame describeStreamEvent cannot name -- a
+  constraint already recorded on this route.
+
+  AND THIS REVERSES MY OWN RECOMMENDATION. I proposed replacing the stream with a
+  poll because a poll recovers by construction. The reasoning was sound and the
+  conclusion was wrong: the stream is not inherently fragile, it was missing a
+  keep-alive. Replacing a working subsystem to route around a three-byte omission
+  would have cost the immediacy that is the whole point of an audit feed, and left
+  the real defect in place for anything else that ever holds a connection open.
+  The earlier reasoning stays in the item rather than being edited away.
+
+  The sticky fault is still fixed, as defence in depth rather than as the cure: a
+  real drop can still happen, and one must not poison the page for its whole life.
+
+  So section 2 is not touched and nothing silently reconnects, because nothing
+  needs to -- the connection stops dying.
+
+  Queued rather than dispatched: it needs a string change and the running lane
+  holds both string tables.
+
+  Co-Authored-By: Claude Opus 5 (1M context) <noreply@anthropic.com>
+  Claude-Session: https://claude.ai/code/session_01LW6HUopV3KWFkLWG8CEhsY
+  MSGEOF
+  git push -q origin master && echo pushed)
+pushed
+ - fix it. and if there are more alike fix them too

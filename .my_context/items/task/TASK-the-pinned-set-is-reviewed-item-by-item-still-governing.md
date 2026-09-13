@@ -92,3 +92,7 @@ THE NOTE ABOUT budget/15 STILL STANDS. Reading an item is not audited, so every 
 on what an item says and what still constrains it, never on evidence that anybody acted on it.
 
 RECOMMEND, DO NOT ACT was honoured. Every edit named in the report is the owner's to make or refuse.
+
+## Request
+
+also you can increase the budget to make room for more important items like rules and standards, in a later time we'll go over what's pinned and consider if they still relevant or should be superseded and not ocuure constantly in the context

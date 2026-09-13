@@ -82,3 +82,7 @@ diverged before by abridgement rather than by error.
 
 ## Relations
 - supersedes [[TASK-research-a-documentation-tool-then-build-the-full]]
+
+## Request
+
+show me the D table, and then add D28, it should be dispatched after D27 and D12 and it's task should be to update readme in english and in hebrew in the corpus but at the same time the files from the github repo. more readme updates will be required later but this one should be about the composer and the help we implemented and tested very well (after success of D27 and D12)

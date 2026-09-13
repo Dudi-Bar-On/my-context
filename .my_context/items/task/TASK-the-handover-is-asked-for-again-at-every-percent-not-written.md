@@ -79,3 +79,7 @@ belongs to, or the log stops being able to answer "was this ask acted on" at all
 
 ## Relations
 - supersedes [[DEC-the-ask-and-the-writing-are-two-turns-apart-so-a-flag-is]]
+
+## Request
+
+by the way if it currentlly not like my instruction you should change it, the instruction is: when handover file is triggerd at 85%, every change up till the context window is 100% occupy, i mean when the percentage increasing by 1%, you should always trigger the handover update to stay as much updated as we could before compaction or new session start. if not implemented as such, do it now using a subagent, do no deffer it unless i colides with current subagents, in this case wait for the first oportunity and dispatch it

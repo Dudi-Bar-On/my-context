@@ -48,3 +48,7 @@ WHAT IT DOES NOT RULE OUT
 History, said as history. "Blocked until 2026-08-22, when the measurement was taken" is a dated record of something that happened, and it is worth keeping - the reasoning that made a decision obvious at the time is the first thing lost. What is refused is the PRESENT-TENSE claim, which competes with the field.
 
 Nor does it touch other categories. A `known_issue` whose body says RESOLVED is a different question, answered by `status`, and a decision that records what was rejected is doing exactly its job.
+
+## Request
+
+1 fix as you said, 2 body should not contain state like BLOCKED for this purpose we use a state field not the body that should instruct what and how the task would be implemented - the fix is editing / rewriting the body, it should be compatible with it's summary

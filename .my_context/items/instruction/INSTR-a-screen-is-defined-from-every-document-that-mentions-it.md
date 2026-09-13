@@ -58,3 +58,7 @@ plan behind it, and that fact is itself the most useful thing anyone has learned
 
 This runs for every screen still to be walked, and produces a gap list that can be acted on
 rather than a task list that has to be re-verified before it can be trusted.
+
+## Request
+
+i want to bring another option - make a deep reaserch over all and i mean all the documents in this project, starting from the campaign and findout requirements, toghts, brainstoming, decisions, specs, plans, declarations, mockups and everything else that relates to tutorials - the goal is to have a definition and requirements of tutorials screen, then we could say and create tasks that implement it. this method should be done later for every screen we need to walk and implement so we will have a reliable gaps list that we could actualy act to close them.

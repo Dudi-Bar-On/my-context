@@ -116,3 +116,7 @@ agent and its brief as two fields` asserts `general-purpose` on the parent row a
 the child, each beside its own brief. `the turn that dispatched a lane opens it, and the reader
 does not move` (en + he) gained the same assertion on the SESSION's own 120-round document, half
 way down, which is the screen he was on. All six green in chromium.
+
+## Request
+
+ok so i have searched for agent, then when i expanded it i sow a link and clicked on it and the transcription was opened in a new tab - correct, what need improvement: 1 near the agent there was no name like the names i see on the terminal that mostly starts with general purpose, 2 - you did opened it on a new tab but what you did is actually another tab of mycontext with focus on the viewer where the linked transcript was opened, what i meant is to only see the viewer with the transcript in it as a single window without all the app arround it

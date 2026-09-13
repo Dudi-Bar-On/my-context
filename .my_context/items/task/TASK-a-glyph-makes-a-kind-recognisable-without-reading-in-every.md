@@ -54,3 +54,7 @@ priority: "2"
 > 5. THE SCREEN-HEADING VERDICTS ARE SETTLED IN THE SAME PASS - keep, hide or reword - because they are the existing glyph usage and they are the one the review called misleading.
 >
 > WHERE THIS MUST NOT GO: a glyph is not a substitute for a sentence that is missing. `walk/144` records that 75 buttons across the screens carry 5 titles between them, and D50 is the subject for surfaces built to carry an explanation that nothing fills. AN EMOJI ON A CONTROL THAT STILL CANNOT SAY WHAT IT DOES IS THE DEFECT WEARING A NEW HAT.
+
+## Request
+
+yes, add emoji per kind, and for the ui if there are other cases in the viewer that emoji will make them more distinguishable and clearer, then find for every case it's suitable emoji and add

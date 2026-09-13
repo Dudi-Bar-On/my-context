@@ -213,3 +213,7 @@ STILL ON HIM, AND ONLY THESE:
   - Whether the stream still drops. "Not sure, will watch it" - plan:live seq:22 holds the FIN
     measurement for when it returns.
   - Folders instead of a flat roster, if he disagrees with the ruling above.
+
+## Request
+
+go and do not stop until all D37 tasks complete or is morning, at night i can not decide so if decisions required and not blocking collect them for me to answer in the morning

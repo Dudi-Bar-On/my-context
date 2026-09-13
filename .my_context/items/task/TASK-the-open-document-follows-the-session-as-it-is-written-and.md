@@ -197,3 +197,7 @@ to theirs. The at-the-tail test was MEASURED NON-VACUOUS rather than assumed: wi
 `atTail()` line removed, both browser projects go red on the first rebuild assertion, still showing
 the record the replaced file ended on. The scrolled-up test is deliberately green either way - it is
 the guard that the repair did not widen past the reader it was ruled for.
+
+## Request
+
+also if the session is updated and the browser is opend on the current session, update the browser to so if i am at the end of the file i could see the changes live near real time asap

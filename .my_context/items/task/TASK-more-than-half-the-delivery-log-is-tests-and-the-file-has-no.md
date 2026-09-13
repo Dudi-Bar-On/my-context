@@ -53,3 +53,7 @@ priority: "1"
 > 4. A REMOVAL PROOF THAT A TEST ROW CANNOT REACH THE PRODUCTION COUNT. Deleting the guard must redden an assertion at its own line.
 >
 > AND WHILE THIS IS OPEN, TWO FACTS FROM THE SAME MEASUREMENT that belong to this subject rather than a separate one: NOTHING READS `delivered.jsonl` AT ALL - not the CLI, not MCP, not doctor, not the UI - so a file written at every door has no reader; and THE `session-start` DOOR HAS NEVER ONCE DELIVERED SUCCESSFULLY, zero rows in its whole life against one `missed`, while the subagent door joins cleanly against the audit log at 83 injections to 81 rows with one real miss the assertion caught. The second of those is either a real hole or a recording gap, and this item is where the question sits until it is answered.
+
+## Request
+
+fix the test that writes into my workspace

@@ -101,3 +101,7 @@ in the spec now takes at: top | default and DEFAULTS TO PRESSING TOP, because si
 read the BEGINNING of the document - first speaker, first timestamp, first ANSI colours. Those
 tests are about the document, not about where it opens. The default landing is asserted in its own
 describe, and the comment says exactly that.
+
+## Request
+
+1 small thing to add, when the session is opened in conversation, scroll it to the end by default

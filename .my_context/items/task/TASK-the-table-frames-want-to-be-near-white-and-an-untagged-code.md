@@ -178,3 +178,7 @@ argued against it twice. The lane sampled the PNG rather than the hex and found 
 ruling is TWO colours in a 57/43 split - so `--dim`, which I recommended, would have shipped 43%
 of every ruling at 2.85:1, UNDER the bar. #c9c6d4 is the first value where every pixel clears 3.0.
 See seq:47.
+
+## Request
+
+file it, also consider another potential use of the preview queue ?, about the colors: in general it looks better, what requires some changes is the tables frames i want them brighter than the current color not white but near it and what i did not see in the screenshots is examples of code colored differently - best wuold be as intelisene by syntax but if not at least different bright than white like green or yello kind of as it is on the TUI
