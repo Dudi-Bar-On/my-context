@@ -26,5 +26,8 @@
   },
   "dispatchGate": {
     "enabled": true
+  },
+  "review": {
+    "enabled": true
   }
 }
