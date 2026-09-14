@@ -63,6 +63,36 @@ import { projectDirName } from '../src/core/conversation-index.ts';
 import { writeAnchorFile } from '../src/core/anchor-file.ts';
 import { anchorIdFor } from '../src/core/anchors.ts';
 
+/**
+ * **THESE TESTS SHARE ONE STORE, SO THEY MUST NOT RUN AT ONCE.**
+ *
+ * Every test in this file drives ONE workspace and ONE server, built once in
+ * `beforeAll`, and almost every one of them WRITES an anchor. The project sets
+ * `fullyParallel: true`, which parallelises tests inside a file as well as
+ * across files — so fourteen tests were mutating one `.anchors.jsonl` and one
+ * index concurrently.
+ *
+ * Measured 2026-09-14, this file alone at `--workers=2`, three runs back to
+ * back: 2 failed, then 1 failed, then 14 passed — and a DIFFERENT test each
+ * time (`:426`, `:539`, then `:479`). Every one of them passes alone. That
+ * signature is a data race between tests, not a slow machine.
+ *
+ * **This is not the contention the config warns against hiding.**
+ * `e2e/playwright.config.ts` deliberately refuses to lower `workers` to mask a
+ * saturated box, and that reasoning stands and is untouched — this file still
+ * runs in parallel with every OTHER spec, and the worker count is unchanged.
+ * What is serialised is only the set of tests that share one mutable store,
+ * which is a correctness property of this fixture and not a performance dial.
+ *
+ * `mode: default` rather than `serial` on purpose: serial SKIPS the rest of
+ * the file after a failure, which would turn one red into thirteen silences —
+ * the opposite of what this suite is for.
+ *
+ * The durable fix is a store per test, or a distinct point per test. The
+ * second is already required here for another reason, recorded at the
+ * document-side test below.
+ */
+test.describe.configure({ mode: 'default' });
 const SESSION = 'sess-writes';
 /** In the transcript, in no label — the words a search hit is found by. */
 const PROSE = 'the weather in the afternoon was ordinary and worth nothing';
