@@ -442,7 +442,13 @@ test('ingest-apply locks in two different workspaces do not block each other', a
   const cwdA = project();
   const cwdB = project();
 
-  const first = spawnHolder(cwdA, 1500);
+  /**
+   * **The threshold below is derived from THIS number, not written beside it.**
+   * A workspace that genuinely blocked on A would wait out A’s whole hold, so
+   * half of it separates blocked from not-blocked with room to spare.
+   */
+  const HOLD_MS = 1500;
+  const first = spawnHolder(cwdA, HOLD_MS);
   await first.ready;
 
   const second = spawnHolder(cwdB, 0);
@@ -455,7 +461,12 @@ test('ingest-apply locks in two different workspaces do not block each other', a
     'holding, so this run proves nothing about cross-workspace blocking',
   );
   assert.ok(
-    (b.acquireMs ?? Infinity) < 300,
+    // Was a flat `< 300`, which is far tighter than the property needs and is
+    // a WALL-CLOCK assertion on a shared machine: measured 2026-09-14 red in
+    // the full suite at 4,163 ms and green 17/17 alone, because a starved
+    // process can spend longer than 300 ms acquiring a lock nothing holds.
+    // Half the hold still catches a B that waited for A — proved by mutation.
+    (b.acquireMs ?? Infinity) < HOLD_MS / 2,
     `workspace B spent ${b.acquireMs}ms inside acquireApplyLock while workspace A held its own ` +
     'lock — looks blocked',
   );
