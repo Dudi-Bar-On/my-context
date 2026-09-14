@@ -91,6 +91,45 @@ interface Entry {
   binding: string;
 }
 
+declare const EXECUTION_NONCE: unique symbol;
+
+/**
+ * **An execution nonce, and NOT a handoff nonce.**
+ *
+ * The sibling relationship this file's header names was, until this type
+ * existed, a structural IDENTITY: `HandoffNonce`'s store and this one both
+ * took a plain `string`, so `executionNonces.redeem(handoffNonce, id, argv)`
+ * compiled and so did the reverse. Neither would have SUCCEEDED — the stores
+ * are separate Maps — but a credential that the compiler cannot tell from
+ * another credential is not a credential, and the whole argument in this
+ * file's header is that this nonce authorises *one specific command* where the
+ * handoff nonce authorises *a session*. That difference is now in the type.
+ *
+ * Erasable by construction (`CONST-node-24-no-build-step`): a `declare const
+ * … : unique symbol` and an intersection with a phantom property. Nothing is
+ * emitted, the value stays a `string` for the `Map` key and the JSON body, and
+ * `asExecutionNonce` below is the only way to make one from the wire.
+ *
+ * See `HandoffNonce` (`security.ts`) for the same shape argued at length; the
+ * two are deliberately DIFFERENT brands rather than one shared `Nonce`, which
+ * would have re-created exactly the interchangeability being removed.
+ */
+export type ExecutionNonce = string & { readonly [EXECUTION_NONCE]: true };
+
+/**
+ * **The one door**, and the counterpart of `asHandoffNonce`. Call it where a
+ * `string` claimed to be an execution nonce arrives from outside this process
+ * — today `POST /api/execute`'s body (`execute.ts`) and the approval body
+ * (`retrieval-write.ts`), which are the two routes this store guards.
+ *
+ * Not a validator: it checks nothing, and a string that was never minted still
+ * refuses at `redeem`. What it buys is one greppable name at each boundary
+ * instead of an implicit claim at every call.
+ */
+export function asExecutionNonce(raw: string): ExecutionNonce {
+  return raw as ExecutionNonce;
+}
+
 export class ExecutionNonceStore {
   #entries = new Map<string, Entry>(); // nonce -> what it authorises, until when
 
@@ -107,11 +146,11 @@ export class ExecutionNonceStore {
     argv: readonly string[],
     ttlMs: number = EXECUTION_NONCE_TTL_MS,
     now: number = Date.now(),
-  ): string {
+  ): ExecutionNonce {
     this.#sweep(now);
     const nonce = randomBytes(16).toString('hex');
     this.#entries.set(nonce, { expiry: now + ttlMs, binding: bind(id, argv) });
-    return nonce;
+    return nonce as ExecutionNonce;
   }
 
   /**
@@ -128,7 +167,7 @@ export class ExecutionNonceStore {
    * one more way to be wrong.
    */
   redeem(
-    nonce: string,
+    nonce: ExecutionNonce,
     id: string,
     argv: readonly string[],
     now: number = Date.now(),

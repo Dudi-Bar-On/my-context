@@ -18,7 +18,7 @@ import { configLoadFailure, findProjectRoot, resolveWorkspace } from '../core/wo
 import { assertDoor } from '../rules/deliver.ts';
 import {
   configUnreadableLine, hookParseErrorLine, ledgerKey, parseHookInput, preToolUseContext,
-  preToolUseDeny, readStdin, type HookInput,
+  preToolUseDeny, readStdin, payloadOf, type HookPayload,
 } from './io.ts';
 import { capped, NOTE_MAX } from './observe.ts';
 
@@ -27,7 +27,10 @@ const SEPARATOR = '\n\n';
 
 const FILE_PATH_KEYS = ['file_path', 'path', 'notebook_path'];
 
-export function extractFilePath(input: HookInput): string | null {
+// `HookPayload<'PreToolUse'>`, not `HookInput`: this process is spawned for
+// one event, so the fields it may read are that event's —
+// `TASK-one-flat-input-type-spans-fifteen-events-so-a-handler`.
+export function extractFilePath(input: HookPayload<'PreToolUse'>): string | null {
   const toolInput = input.tool_input;
   if (typeof toolInput !== 'object' || toolInput === null) return null;
   for (const key of FILE_PATH_KEYS) {
@@ -203,7 +206,9 @@ export function denyReason(absNative: string): string | null {
  * Returns '' — never throws — so a corrupt index means "no items today"
  * rather than a blocked edit.
  */
-export function buildJitOutput(input: HookInput, cwd: string, filePath: string): string {
+export function buildJitOutput(
+  input: HookPayload<'PreToolUse'>, cwd: string, filePath: string,
+): string {
   let store: Store | null = null;
   try {
     const sessionId = input.session_id;
@@ -463,7 +468,7 @@ export function buildJitOutput(input: HookInput, cwd: string, filePath: string):
  * refused, so nothing about the event is lost. No workspace at `cwd` means
  * there is nowhere legitimate to record, and the deny still stands.
  */
-function recordDeny(input: HookInput, cwd: string, abs: string): void {
+function recordDeny(input: HookPayload<'PreToolUse'>, cwd: string, abs: string): void {
   const home = resolveWorkspace(cwd).projectRoot;
   if (!home) return;
   const denied = managedSplit(toPosix(abs)) ?? managedSplit(toPosix(canonicalize(abs)));
@@ -618,7 +623,7 @@ export function agentDenyMessage(candidates: string[]): string {
  * same reason: a decision function that also has side effects is a decision
  * a caller cannot preview.
  */
-function agentDispatchVerdict(input: HookInput, cwd: string): string {
+function agentDispatchVerdict(input: HookPayload<'PreToolUse'>, cwd: string): string {
   const ws = resolveWorkspace(cwd);
   if (!ws.config.dispatchGate.enabled) return '';
   if (!ws.projectRoot) return '';
@@ -687,7 +692,7 @@ function agentDispatchVerdict(input: HookInput, cwd: string): string {
  * dispatch still gets asserted: a lane that is about to be blocked for naming
  * no task item is exactly a lane whose constants are worth knowing about.
  */
-function missedDoorNote(input: HookInput, cwd: string): string {
+function missedDoorNote(input: HookPayload<'PreToolUse'>, cwd: string): string {
   try {
     // `ledgerKey`, not a composite spelled here — the same string the doors
     // recorded under, for the same reason `buildJitOutput` below uses it for
@@ -719,7 +724,8 @@ export function runPreToolUse(raw: string, fallbackCwd: string): string {
     // PreToolUse has no channel of its own to the model here: a malformed
     // payload yields no `file_path`, so there is nothing to attach an
     // `additionalContext` block to. stderr is the whole disclosure.
-    const { input, parseError } = parseHookInput(raw);
+    const { input: rawInput, parseError } = parseHookInput(raw);
+    const input = payloadOf(rawInput, 'PreToolUse');
     if (parseError !== null) process.stderr.write(hookParseErrorLine(parseError));
     const cwd = input.cwd ?? fallbackCwd;
 

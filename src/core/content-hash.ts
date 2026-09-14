@@ -8,7 +8,9 @@ import { normalizePosix } from './paths.ts';
 import { checksum } from './slug.ts';
 import { normalizeEol } from './text.ts';
 import { normalizeSteps } from './validate.ts';
-import type { Item, Observation, Relation, Severity, Step } from './types.ts';
+import type {
+  ContentHash, Item, Observation, Relation, Severity, Step, SummaryBasisHash,
+} from './types.ts';
 import type { CreateInput } from './mutate.ts';
 
 /**
@@ -120,11 +122,14 @@ export function canonicalContent(v: ContentShape): ContentShape {
  * split in two so that the projection has a name, and the split is the whole
  * reason `differs` cannot lie.
  */
-function hashContent(v: ContentShape): string {
-  return checksum(JSON.stringify(canonicalContent(v)));
+function hashContent(v: ContentShape): ContentHash {
+  // The one cast that makes a `ContentHash`. Sound because it is taken over
+  // `canonicalContent` — the projection that DEFINES this kind — so what comes
+  // out is a content hash by construction rather than by the caller's promise.
+  return checksum(JSON.stringify(canonicalContent(v))) as ContentHash;
 }
 
-export function contentHash(input: CreateInput): string {
+export function contentHash(input: CreateInput): ContentHash {
   return hashContent({
     type: input.type,
     title: input.title,
@@ -163,7 +168,7 @@ export function contentHash(input: CreateInput): string {
   });
 }
 
-export function itemContentHash(item: Item): string {
+export function itemContentHash(item: Item): ContentHash {
   return hashContent(item);
 }
 
@@ -536,7 +541,7 @@ function summarisedObservations(observations: readonly Observation[]): Observati
  * the duplicate it is. That is correct — a description of an assertion is not
  * a second assertion.
  */
-export function itemSummaryBasis(v: ContentShape): string {
+export function itemSummaryBasis(v: ContentShape): SummaryBasisHash {
   const canonical = canonicalContent(v) as unknown as Record<string, unknown>;
   const shape: Record<string, unknown> = {};
   for (const field of SUMMARISED_FIELDS) {
@@ -554,7 +559,11 @@ export function itemSummaryBasis(v: ContentShape): string {
       shape[field] = canonical[field];
     }
   }
-  return checksum(JSON.stringify(shape));
+  // The one cast that makes a `SummaryBasis`, and it is taken over `shape` —
+  // the SUMMARISED projection, which is what defines this kind and is a
+  // deliberately different cut from `canonicalContent`. So the value is a
+  // summary basis by construction, not by assertion.
+  return checksum(JSON.stringify(shape)) as SummaryBasisHash;
 }
 
 /**

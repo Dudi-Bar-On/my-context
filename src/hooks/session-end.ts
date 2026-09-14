@@ -5,7 +5,9 @@ import {
 import { isMainEntry } from '../core/paths.ts';
 import { clearWindowState } from '../core/window-state.ts';
 import { findProjectRoot } from '../core/workspace.ts';
-import { hookParseErrorLine, parseHookInput, readStdin, type HookInput } from './io.ts';
+import {
+  hookParseErrorLine, parseHookInput, payloadOf, readStdin, type HookPayload,
+} from './io.ts';
 
 /**
  * The one firing that carries the id of the context window `/clear` destroyed.
@@ -143,7 +145,15 @@ const RETAIN_REASONS: Record<string, string> = {
  * choice `session-start.ts` makes for its sweep and `subagent-start.ts` makes
  * for its attempt record, and for the same reason.
  */
-export function buildSessionEndOutcome(input: HookInput, fallbackCwd: string): SessionEndOutcome {
+// `HookPayload<'SessionEnd'>`, not `HookInput`: this hook is a separate process
+// spawned for exactly one event, so the fields it may read are that event's —
+// `TASK-one-flat-input-type-spans-fifteen-events-so-a-handler`.
+// `reason` here is `SESSION_END_REASONS`; `PreCompact`/`PostCompact` spell
+// their own vocabulary `trigger` for exactly this reason, and now the two
+// cannot be confused by a handler either.
+export function buildSessionEndOutcome(
+  input: HookPayload<'SessionEnd'>, fallbackCwd: string,
+): SessionEndOutcome {
   try {
     const reason = typeof input.reason === 'string' ? input.reason : '';
     // An empty payload is an interactive run with no stdin, not a platform
@@ -254,7 +264,11 @@ if (isMainEntry(import.meta.filename, process.argv[1])) {
   // after the work it was meant to preempt already returned. The bound is the
   // platform's 1.5 s abort, described at the top of this file.
   try {
-    const { input, parseError } = parseHookInput(readStdin());
+    const { input: raw, parseError } = parseHookInput(readStdin());
+    // The narrowing, at the process boundary: from here on this handler can only
+    // read `SessionEnd`'s own fields. The literal is passed rather than read from
+    // `hook_event_name`, which is caller-supplied — see `payloadOf`.
+    const input = payloadOf(raw, 'SessionEnd');
     // Written even though the platform discards a successful hook's stderr:
     // the line costs nothing, it is the shared one every hook writes, and the
     // day Claude Code starts surfacing this channel it will be there. What

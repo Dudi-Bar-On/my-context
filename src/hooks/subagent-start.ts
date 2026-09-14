@@ -5,6 +5,7 @@ import {
 import { buildInjectionResult } from '../core/inject.ts';
 import { isMainEntry } from '../core/paths.ts';
 import { deliverAtDoor } from '../rules/deliver.ts';
+import { unrecordedDeliveryLine } from '../rules/delivered.ts';
 import {
   configLoadFailure, CORPUS_DIR_ENV, DIR_NAME, findProjectRoot,
 } from '../core/workspace.ts';
@@ -315,12 +316,34 @@ export function buildSubagentStartOutput(input: HookInput, fallbackCwd: string):
      * It is appended AFTER the corpus block and inside the SAME envelope: one
      * `additionalContext` per dispatch, in the order a reader should meet them.
      */
-    const store = deliverAtDoor({
+    const delivered = deliverAtDoor({
       stateRoot: projectRoot,
       door: 'subagent-start',
       key: dedupeKey,
       itemIds: injection.deliveredIds,
-    }).text;
+    });
+    // **`recorded` is READ here** —
+    // `TASK-deliveratdoor-returns-whether-it-recorded-the-delivery-and`, which
+    // measured both doors ending `}).text;` and no consumer of the flag
+    // anywhere. `recordDelivery`'s contract puts the disclosure on the caller.
+    //
+    // **Written from inside the builder rather than recomputed in the binary**,
+    // which is the opposite of the choice made for `nestedCorpusRefusal` below
+    // — and the reason is stated there in its own words: that one is
+    // recomputable from one `existsSync` walk. This one is not. A write that
+    // failed leaves nothing on disk to ask again, so the only moment the fact
+    // exists is this one. The builder's contract — one string for stdout — is
+    // unchanged.
+    //
+    // **It matters MORE at this door than at the other two**, measured: 1,082
+    // `subagent-start` rows against 54 `session-start` in this workspace's own
+    // audit log, and `pre-tool-use.ts` asserts against this very record at the
+    // lane's first tool call. An unwritten row here is a missed-door sentence
+    // aimed at a lane that was delivered to perfectly.
+    if (!delivered.recorded) {
+      process.stderr.write(unrecordedDeliveryLine('subagent-start', dedupeKey));
+    }
+    const store = delivered.text;
     const text = [injection.text, store].filter((part) => part !== '').join('\n\n');
     // The empty guard is this hook's, not the envelope builder's: an envelope
     // carrying an empty `additionalContext` is a hook that speaks on every

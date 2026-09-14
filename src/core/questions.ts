@@ -135,7 +135,7 @@
  */
 import type { Config } from './config.ts';
 import {
-  buildTaskIndex, isWorkCategory, parseNeeds, refStatus,
+  buildTaskIndex, isWorkCategory, parseNeeds, refStatus, type WorkItem,
 } from './needs.ts';
 import { RETIRED_STATUSES } from './select.ts';
 import type { Item } from './types.ts';
@@ -251,7 +251,7 @@ export interface QuestionReport {
  * `blocks` reading `live/22, and the thing about the pane` is a live
  * dependency with a note attached, not an unreadable field.
  */
-export function readQuestion(item: Item, index: Map<string, Item[]>): QuestionRow {
+export function readQuestion(item: Item, index: Map<string, WorkItem[]>): QuestionRow {
   const blocks = (item.extra[BLOCKS_FIELD] ?? '').trim();
   const { refs, malformed } = parseNeeds(blocks === '' ? undefined : blocks);
 

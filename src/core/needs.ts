@@ -158,24 +158,118 @@ export function isWorkCategory(config: Config, type: string): boolean {
     && declared.includes(STATE_FIELD);
 }
 
+/* -------------------------------------------------------------------------- *
+ * WHAT A WORK ITEM IS, IN THE TYPE
+ *
+ * `TASK-a-function-that-reads-a-task-field-accepts-any-item-and` measured the
+ * defect this section removes: `taskState(item: Item)` accepted ANY item and
+ * answered the empty string for a `requirement` — a category that has no
+ * `state` field at all — which is indistinguishable from a task that declares
+ * `state` and has not set it. The measured-zero-versus-unmeasured defect
+ * (`STD-a-measured-zero-is-drawn-and-named-an-unmeasured-thing-is`), expressed
+ * in a function signature.
+ *
+ * **And the proof was already computed and thrown away.** `isWorkCategory`
+ * below works out exactly the fact the signature needs — does this item's
+ * category declare `plan`, `seq` and `state`, and is it enabled — and the
+ * signature did not use it. `WorkItem` is that answer, carried.
+ *
+ * **THE LIVE INSTANCE.** D57 closed ON THE MAP rather than on its item, because
+ * *"a requirement has no field to close on"* — recorded as an owner ruling in
+ * `REF-the-d-numbers-what-each-one-means-and-which-are-only`. That is the same
+ * fact seen from the corpus side: the state read on a requirement answered the
+ * empty string, and nothing anywhere said the question did not apply.
+ *
+ * **Erasable** (`CONST-node-24-no-build-step`): an intersection with a phantom
+ * property keyed on an unexported `unique symbol`. A `WorkItem` IS an `Item` at
+ * run time, in every array, every `Map` and every `JSON.stringify`; the brand
+ * emits nothing.
+ * -------------------------------------------------------------------------- */
+
+declare const WORK_ITEM: unique symbol;
+
 /**
- * The `plan/seq` key an item answers to, or `null` when it does not carry
+ * **An item whose category plans work** — one whose `plan`, `seq` and `state`
+ * fields are declared by the config and can therefore be READ rather than
+ * guessed at. The only functions that may ask an item for a task field take
+ * this, not `Item`.
+ *
+ * Produced by `asWorkItem`, `isWorkItem` and `workItems`, and by nothing else.
+ */
+export type WorkItem = Item & { readonly [WORK_ITEM]: true };
+
+/**
+ * The proof, made once and carried: `item` if its category plans work, `null`
+ * otherwise.
+ *
+ * This is `isWorkCategory` with its answer KEPT instead of discarded. A caller
+ * that gets `null` has been told something real — *this category has no such
+ * field* — which is the answer `taskState` used to hide inside an empty string.
+ */
+export function asWorkItem(config: Config, item: Item): WorkItem | null {
+  return isWorkCategory(config, item.type) ? item as WorkItem : null;
+}
+
+/** The same proof as a guard, for a caller narrowing in place. */
+export function isWorkItem(config: Config, item: Item): item is WorkItem {
+  return isWorkCategory(config, item.type);
+}
+
+/**
+ * **The state read for the one caller that cannot hold the proof.**
+ *
+ * `core/select.ts` is pure by declaration — its header records that it imports
+ * only `Config` and `Item` as TYPES, nothing executable — and `governs`, the
+ * exported function that reaches this, is called from `doctor/checks.ts` with
+ * one argument. Threading a `Config` through it is a signature change in a file
+ * this lane does not own, so the escape is NAMED rather than taken silently,
+ * and its name says that no proof was presented.
+ *
+ * **It has exactly one non-test caller** — `isOpenWork` in `core/select.ts` —
+ * and `test/core/needs.test.ts` pins that count, so a second one is a failing
+ * test rather than a quiet return of the defect this section removed.
+ *
+ * Everything true of `taskState` is true here, including the part that is
+ * wrong: an empty string for a work item that declares no `state`, AND an empty
+ * string for a category that has no such field. Telling those two apart is
+ * exactly what a caller gives up by not presenting a `Config`.
+ */
+export function unprovenTaskState(item: Item): string {
+  return (item.extra[STATE_FIELD] ?? '').trim().toLowerCase();
+}
+
+/**
+ * The `plan/seq` key a work item answers to, or `null` when it does not carry
  * both halves.
  *
- * Not every work item has one — this corpus holds a task whose `plan` and
- * `seq` were never filled in — and a `null` key is a real answer rather than
- * an error: such an item can still HAVE needs, it just cannot BE needed.
+ * **`WorkItem`, not `Item`** — see the section above. A `requirement` has no
+ * `plan` and no `seq`, so `null` out of here used to mean two different things
+ * and now means one.
+ *
+ * Not every work item has a key — this corpus holds a task whose `plan` and
+ * `seq` were never filled in — and that `null` is a real answer rather than an
+ * error: such an item can still HAVE needs, it just cannot BE needed.
  */
-export function taskKey(item: Item): string | null {
+export function taskKey(item: WorkItem): string | null {
   const plan = (item.extra[PLAN_FIELD] ?? '').trim().toLowerCase();
   const seq = (item.extra[SEQ_FIELD] ?? '').trim().toLowerCase();
   if (plan === '' || seq === '') return null;
   return `${plan}/${seq}`;
 }
 
-/** The `state` of a work item, lowercased, or `''` when it declares none. */
-export function taskState(item: Item): string {
-  return (item.extra[STATE_FIELD] ?? '').trim().toLowerCase();
+/**
+ * The `state` of a work item, lowercased, or the empty string when it declares
+ * none.
+ *
+ * **`WorkItem`, not `Item`, and that is the whole of
+ * `TASK-a-function-that-reads-a-task-field-accepts-any-item-and`.** The empty
+ * string now has ONE reading — a work item that has not recorded a state —
+ * instead of two that no caller could tell apart. An item of a category with no
+ * `state` field cannot reach this function: it fails to produce a `WorkItem`,
+ * and being told that is the point.
+ */
+export function taskState(item: WorkItem): string {
+  return unprovenTaskState(item);
 }
 
 /**
@@ -194,8 +288,13 @@ export function taskState(item: Item): string {
  * resolving here, so the target stays visible, addressable and reportable
  * instead of vanishing out of the index and reading as a typo.
  */
-export function workItems(items: Item[], config: Config): Item[] {
-  return items.filter((i) => i.status !== 'superseded' && isWorkCategory(config, i.type));
+export function workItems(items: Item[], config: Config): WorkItem[] {
+  // `WorkItem[]`, so every caller of this function — including the three in
+  // `doctor/checks.ts` — carries the proof onward for free and needed no edit.
+  // That is what made this migration landable at all: the boundary is HERE, at
+  // the one filter every consumer already passes through.
+  return items.filter((i): i is WorkItem =>
+    i.status !== 'superseded' && isWorkCategory(config, i.type));
 }
 
 /**
@@ -208,8 +307,8 @@ export function workItems(items: Item[], config: Config): Item[] {
  * satisfied only when every one of them is done — the reading that cannot
  * quietly under-report a blocker.
  */
-export function buildTaskIndex(items: Item[], config: Config): Map<string, Item[]> {
-  const index = new Map<string, Item[]>();
+export function buildTaskIndex(items: Item[], config: Config): Map<string, WorkItem[]> {
+  const index = new Map<string, WorkItem[]>();
   for (const item of workItems(items, config)) {
     const key = taskKey(item);
     if (key === null) continue;
@@ -259,10 +358,10 @@ export type RefStatus = 'satisfied' | 'pending' | 'unresolved';
  * cancelled — so this changed nothing observable on the day it landed, which is
  * the safest moment to make it true.
  */
-export function refStatus(ref: string, index: Map<string, Item[]>): RefStatus {
+export function refStatus(ref: string, index: Map<string, WorkItem[]>): RefStatus {
   const matches = index.get(ref);
   if (matches === undefined || matches.length === 0) return 'unresolved';
-  const met = (i: Item): boolean => taskState(i) === DONE_STATE || i.status === 'deprecated';
+  const met = (i: WorkItem): boolean => taskState(i) === DONE_STATE || i.status === 'deprecated';
   return matches.every(met) ? 'satisfied' : 'pending';
 }
 
@@ -282,7 +381,7 @@ export interface NeedsReading {
   unresolved: string[];
 }
 
-export function readNeeds(item: Item, index: Map<string, Item[]>): NeedsReading {
+export function readNeeds(item: WorkItem, index: Map<string, WorkItem[]>): NeedsReading {
   const { refs, malformed } = parseNeeds(item.extra[NEEDS_FIELD]);
   const satisfied: string[] = [];
   const pending: string[] = [];
@@ -307,7 +406,7 @@ export function readNeeds(item: Item, index: Map<string, Item[]>): NeedsReading 
 export type HeldReason = 'pending' | 'unresolved' | 'malformed' | 'blocked_without_needs';
 
 export interface ReadyRow {
-  item: Item;
+  item: WorkItem;
   reading: NeedsReading;
 }
 

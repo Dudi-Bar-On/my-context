@@ -159,7 +159,7 @@ import path from 'node:path';
 import { loadLayer, type LoadError } from '../src/core/rebuild.ts';
 import { isMainEntry } from '../src/core/paths.ts';
 import {
-  buildTaskIndex, DONE_STATE, isWorkCategory, taskKey, taskState, workItems,
+  asWorkItem, buildTaskIndex, DONE_STATE, taskKey, taskState, workItems, type WorkItem,
 } from '../src/core/needs.ts';
 import { RETIRED_STATUSES } from '../src/core/select.ts';
 import { SUPERSEDED_BY } from '../src/core/relations.ts';
@@ -285,8 +285,14 @@ export function blockOf(blocks: Block[], line: number): number {
 }
 
 export interface Corpus {
+  /**
+   * The config every work-item question is asked of — kept on the corpus
+   * rather than re-derived, because `asWorkItem` needs it at the point where a
+   * prose id is resolved and that is far from where the corpus was read.
+   */
+  config: Parameters<typeof buildTaskIndex>[1];
   /** `plan/seq` → the ACTIVE items answering to it. */
-  lanes: Map<string, Item[]>;
+  lanes: Map<string, WorkItem[]>;
   /**
    * `plan/seq` → the RETIRED items answering to it, and the reason this index
    * exists at all.
@@ -312,7 +318,7 @@ export interface Corpus {
    * RETIRED rather than DANGLING on the same day instead of reddening HEAD the
    * way this tier was written to stop.
    */
-  retiredLanes: Map<string, Item[]>;
+  retiredLanes: Map<string, WorkItem[]>;
   /**
    * Every plan name the corpus uses, retired plans included.
    *
@@ -332,10 +338,14 @@ export interface Corpus {
 
 export function readCorpus(items: Item[], config: Parameters<typeof buildTaskIndex>[1]): Corpus {
   const lanes = buildTaskIndex(items, config);
-  const retiredLanes = new Map<string, Item[]>();
-  for (const item of items) {
-    if (!RETIRED_STATUSES.has(item.status)) continue;
-    if (!isWorkCategory(config, item.type)) continue;
+  const retiredLanes = new Map<string, WorkItem[]>();
+  for (const candidate of items) {
+    if (!RETIRED_STATUSES.has(candidate.status)) continue;
+    // `asWorkItem` rather than `isWorkCategory` plus a cast: it is the same
+    // question, asked once, with its answer kept — which is the whole of
+    // `TASK-a-function-that-reads-a-task-field-accepts-any-item-and`.
+    const item = asWorkItem(config, candidate);
+    if (item === null) continue;
     const key = taskKey(item);
     if (key === null) continue;
     const bucket = retiredLanes.get(key);
@@ -349,7 +359,7 @@ export function readCorpus(items: Item[], config: Parameters<typeof buildTaskInd
   for (const item of items) byId.set(item.id, item);
   const ids = [...byId.keys()].sort();
   const prefixes = new Set(ids.map((id) => id.split('-')[0]!));
-  return { lanes, retiredLanes, plans, ids, byId, prefixes };
+  return { config, lanes, retiredLanes, plans, ids, byId, prefixes };
 }
 
 /**
@@ -522,7 +532,20 @@ export function scan(text: string, blocks: Block[], corpus: Corpus): Pointer[] {
         const { id, why } = resolveId(corpus, written);
         if (id === null) return { resolved: null, why, retired: null, open: null, states: [] };
         const item = corpus.byId.get(id)!;
-        const state = taskState(item);
+        // **Two different nothings, now told apart** —
+        // `TASK-a-function-that-reads-a-task-field-accepts-any-item-and`. An id
+        // written in prose can name ANY item, and `byId` holds every one of
+        // them, so this is the exact site that item describes: a `requirement`
+        // has no `state` field, a task may have one and not have set it, and
+        // reading both as the empty string made them the same fact.
+        //
+        // `asWorkItem` answers the first question with a proof; `null` means
+        // the category has no such field. What the two branches PRODUCE is
+        // deliberately unchanged (see `open` below), so this gate reports
+        // exactly what it reported before — the collapse is now visible in the
+        // code instead of hidden inside an empty string.
+        const work = asWorkItem(corpus.config, item);
+        const state = work === null ? null : taskState(work);
         return {
           resolved: id,
           why: null,
@@ -538,12 +561,19 @@ export function scan(text: string, blocks: Block[], corpus: Corpus): Pointer[] {
           // because a live comment speaks with present authority and a handover
           // block written in August does not.
           retired: null,
-          // No `state` means nothing to close. A decision or a requirement
-          // repeated across blocks is a standing fact being restated, not an
-          // instruction that cannot land, and reporting it would bury the
-          // signal this whole check exists to raise.
-          open: state === '' ? null : state !== DONE_STATE,
-          states: state === '' ? [] : [state],
+          // **`null` — the category has no `state` field.** A decision or a
+          // requirement repeated across blocks is a standing fact being
+          // restated, not an instruction that cannot land, and reporting it
+          // would bury the signal this whole check exists to raise.
+          //
+          // **`''` — a work item that declares `state` and has not set one.**
+          // That is an UNMEASURED value, not a measured zero
+          // (`STD-a-measured-zero-is-drawn-and-named-an-unmeasured-thing-is`),
+          // and it is folded in with the case above only because changing what
+          // this gate reports is a separate decision from typing it. Named
+          // here rather than left as the silent half of a `=== ''`.
+          open: state === null || state === '' ? null : state !== DONE_STATE,
+          states: state === null || state === '' ? [] : [state],
         };
       });
     }

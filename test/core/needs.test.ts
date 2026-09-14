@@ -2,8 +2,8 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { resolveConfig } from '../../src/core/config.ts';
 import {
-  buildTaskIndex, isWorkCategory, parseNeeds, readNeeds, readyReport, refStatus, taskKey,
-  taskState, workItems,
+  asWorkItem, buildTaskIndex, isWorkCategory, parseNeeds, readNeeds, readyReport, refStatus,
+  taskKey, taskState, unprovenTaskState, workItems, type WorkItem,
 } from '../../src/core/needs.ts';
 import type { Item } from '../../src/core/types.ts';
 
@@ -41,9 +41,17 @@ const CONFIG_WITHOUT_NEEDS = resolveConfig({
 });
 
 let n = 0;
-function task(extra: Record<string, string>, over: Partial<Item> = {}): Item {
+/**
+ * A task fixture, returned as a `WorkItem` — the proof made the way production
+ * makes it, through `asWorkItem` against `CONFIG`, rather than by a cast.
+ *
+ * `TASK-a-function-that-reads-a-task-field-accepts-any-item-and`: `taskState`
+ * and `taskKey` take a `WorkItem`, so a fixture that reached them through an
+ * `as` would be a test proving nothing about the door it was bypassing.
+ */
+function task(extra: Record<string, string>, over: Partial<Item> = {}): WorkItem {
   n++;
-  return {
+  const item: Item = {
     id: `TASK-${extra.plan ?? 'p'}-${extra.seq ?? n}-${n}`, type: 'task', title: `T${n}`,
     status: 'active', severity: 'soft', always: false, continuity: false, summary: null, summaryOf: null, summaryWas: [], acknowledged: {},
     scope: [], tags: [], origin: 'human',
@@ -52,6 +60,32 @@ function task(extra: Record<string, string>, over: Partial<Item> = {}): Item {
     body: '', steps: [], observations: [], relations: [],
     layer: 'project', filePath: `items/task/TASK-${n}.md`,
     ...over,
+  };
+  const work = asWorkItem(CONFIG, item);
+  if (work === null) throw new Error(`fixture type "${item.type}" is not a work category`);
+  return work;
+}
+
+/**
+ * The same fixture WITHOUT the proof — for the one case that plants an item of
+ * a category that plans no work and expects `workItems` to drop it.
+ *
+ * It cannot go through `task()`, because `asWorkItem` refuses it, which is the
+ * point: a `constraint` carrying `plan`/`seq`/`state` in `extra` is exactly the
+ * item `TASK-a-function-that-reads-a-task-field-accepts-any-item-and` is about,
+ * and the type now says so before the filter ever runs.
+ */
+function nonWork(type: string, extra: Record<string, string>): Item {
+  n++;
+  return {
+    id: `${type.toUpperCase()}-${n}`, type, title: `T${n}`,
+    status: 'active', severity: 'soft', always: false, continuity: false,
+    summary: null, summaryOf: null, summaryWas: [], acknowledged: {},
+    scope: [], tags: [], origin: 'human',
+    sourceFile: null, sourceAnchor: null, sourceChecksum: null,
+    validFrom: null, validUntil: null, checksum: 'x', extra,
+    body: '', steps: [], observations: [], relations: [],
+    layer: 'project', filePath: `items/${type}/${n}.md`,
   };
 }
 
@@ -134,7 +168,7 @@ test('workItems excludes superseded tasks and non-work categories', () => {
   const items = [
     task({ plan: 'walk', seq: '7', state: 'done' }),
     task({ plan: 'walk', seq: '8', state: 'todo' }, { status: 'superseded' }),
-    task({ plan: 'walk', seq: '9', state: 'todo' }, { type: 'constraint' }),
+    nonWork('constraint', { plan: 'walk', seq: '9', state: 'todo' }),
   ];
   const kept = workItems(items, CONFIG);
   assert.deepEqual(kept.map((i) => taskKey(i)), ['walk/7']);

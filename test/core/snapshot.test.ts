@@ -12,7 +12,7 @@ import {
 import { removeTree } from '../helpers/tmp.ts';
 
 function readSnapshot(root: string, sessionId: string): string[] {
-  return readSnapshotMeta(root, sessionId)?.itemIds ?? [];
+  return readSnapshotMeta(root, sessionId).meta?.itemIds ?? [];
 }
 
 function sandbox(): string {

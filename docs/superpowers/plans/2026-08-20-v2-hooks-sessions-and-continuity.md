@@ -241,7 +241,7 @@ says "establish by executing" instead of asserting it.
 | Sanitisation is lossy for a composite key — a digest, not reversible | `core/ledger.ts` · `export function sanitizeSessionId(sessionId: string): string {` · ~711 |
 | The restore snapshot lives beside the seen file, keyed the same way | `core/ledger.ts` · `export function snapshotPath(root: string, sessionId: string): string {` · ~719 |
 | `state/` is gitignored by the file that writes into it | `core/ledger.ts` · `writeFileSync(path.join(dir, '.gitignore'), '*\n', 'utf8');` · ~764 |
-| Reading a snapshot never throws | `core/ledger.ts` · `export function readSnapshotMeta(root: string, sessionId: string): SnapshotMeta` · ~861 |
+| Reading a snapshot never throws | `core/ledger.ts` · `export function readSnapshotMeta(root: string, sessionId: string): SnapshotMeta` · ~861 | <!-- historical-citation: the signature as this plan found it; readSnapshotMeta now answers SnapshotRead so an unreadable snapshot can be told from an absent one (TASK-unreadable-is-collapsed-into-absent-and-the-next-message, 2026-09-14) -->
 | The only cleanup is age-based, 30 days by mtime | `core/ledger.ts` · `export const SNAPSHOT_MAX_AGE_MS = 30 * 24 * 60 * 60 * 1000;` · ~792 |
 | …its signature, including the per-file callback a caller needs to disclose what went | `core/ledger.ts` · `export function pruneSnapshots(` · ~814 |
 | …and its production callers are `mycontext rebuild` and `SessionStart`'s stale-state sweep | `cli/index.ts` · `const pruned = pruneSnapshots(root, undefined, (name) => {` · ~1431 |
@@ -391,7 +391,7 @@ line, so there is nothing a carry could add.
 8. **A clear removes the restore snapshot as well as the seen files.** A pre-clear snapshot describes
    a context window that no longer exists; a post-clear compaction restoring it would deliver items
    the current window never had. That is not over-restore within one window, it is restoring a
-   different one. Deleting is safe — `core/ledger.ts` · `export function readSnapshotMeta(root: string, sessionId: string): SnapshotMeta` · ~861
+   different one. Deleting is safe — `core/ledger.ts` · `export function readSnapshotMeta(root: string, sessionId: string): SnapshotMeta` · ~861 <!-- historical-citation: the signature as this plan found it; readSnapshotMeta now answers SnapshotRead so an unreadable snapshot can be told from an absent one (TASK-unreadable-is-collapsed-into-absent-and-the-next-message, 2026-09-14) -->
    degrades a missing file to `null`.
 9. **Carry is a priority and a marker, never an added index line — and the ordering is ruled by
    §6n.2, not proposed here.** See §0. A carried id that is already a candidate is hoisted to the

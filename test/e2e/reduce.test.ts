@@ -23,6 +23,9 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { chooseFiles, chooseItems, dependencyComponents } from '../../e2e/reduce.ts';
 import type { Item, Relation } from '../../src/core/types.ts';
+// The boundary doors for the branded hash kinds (core/types.ts): a fixture
+// states a hash the same way a file does — by claiming it, unverified.
+import { recordedSourceChecksum } from '../../src/core/item.ts';
 
 let n = 0;
 function item(over: Partial<Item> = {}): Item {
@@ -155,7 +158,7 @@ test('every scope glob of a kept item keeps a file it really matches, so no dead
 
 test('a kept item\'s source_file survives, so no source_missing is invented', () => {
   const walked = ['docs/a.md', 'docs/b.md'];
-  const kept = [item({ id: 'A', sourceFile: 'docs/b.md', sourceChecksum: 'abc' })];
+  const kept = [item({ id: 'A', sourceFile: 'docs/b.md', sourceChecksum: recordedSourceChecksum('abc') })];
   assert.ok(
     chooseFiles(walked, kept, BUDGET).has('docs/b.md'),
     'a reference item whose snapshotted document was deleted answers source_missing, which is '

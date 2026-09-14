@@ -8,7 +8,9 @@ import { readSnapshotMeta, scanTextIds } from '../core/ledger.ts';
 import { isMainEntry } from '../core/paths.ts';
 import { readSeen, restoredFor } from '../core/seen-file.ts';
 import { findProjectRoot } from '../core/workspace.ts';
-import { hookParseErrorLine, parseHookInput, readStdin, type HookInput } from './io.ts';
+import {
+  hookParseErrorLine, parseHookInput, payloadOf, readStdin, type HookPayload,
+} from './io.ts';
 
 /**
  * The event, where `SessionStart(source: 'compact')` was only ever the proxy.
@@ -241,7 +243,12 @@ function handoverFields(read: HandoverRead | null): {
  * workspace whose compaction should be recorded.
  */
 export function recordPostCompact(
-  input: HookInput, fallbackCwd: string,
+  // `HookPayload<'PostCompact'>`: `compact_summary` is the field this whole
+  // module exists for and it is carried by THIS event and no other — the
+  // measured example in
+  // `TASK-one-flat-input-type-spans-fifteen-events-so-a-handler` is that the
+  // same read compiled on a `SessionStart` handler and yielded `undefined`.
+  input: HookPayload<'PostCompact'>, fallbackCwd: string,
 ): PostCompactOutcome | null {
   try {
     const sessionId = input.session_id;
@@ -256,7 +263,8 @@ export function recordPostCompact(
       ? input.trigger
       : '<absent>';
 
-    const snapshot = readSnapshotMeta(root, sessionId);
+    const read = readSnapshotMeta(root, sessionId);
+    const snapshot = read.meta;
     const captured = snapshot === null ? null : snapshot.itemIds.length;
 
     // THE HANDOVER ASK BUDGET, RETURNED TO THE WINDOW THIS COMPACTION REBUILT.
@@ -296,11 +304,43 @@ export function recordPostCompact(
     parts.push(summary === null
       ? 'no compact_summary on the payload, so nothing could be checked against it'
       : `summary ${summary.length} chars`);
+    /**
+     * **The sentence that was confident and wrong** —
+     * `TASK-unreadable-is-collapsed-into-absent-and-the-next-message`.
+     *
+     * `readSnapshotMeta` answered `null` for a snapshot that was NOT THERE and
+     * for one that was there and would not be read, and this line asserted the
+     * first of those in capitals. The operator is then sent to their hook
+     * configuration to debug a `PreCompact` that fired perfectly, while the
+     * fault is on their disk. A confident sentence with the wrong cause costs
+     * more than silence, because it directs the search.
+     *
+     * Three outcomes now, and they are three different pieces of advice:
+     * the file is missing (look at the hook), the file is there and refused
+     * (look at the disk), and the file read but its id list did not (the
+     * snapshot is corrupt, and the zero beside it is not a measurement).
+     */
     parts.push(captured === null
-      ? 'NO PreCompact snapshot for this session — the compaction restored nothing, and ' +
-        'whatever this window held is not coming back'
+      ? (read.defect === 'unreadable'
+        ? 'a PreCompact snapshot for this session IS on disk and could not be read, so the ' +
+          'compaction restored nothing — the hook ran and wrote it; what failed is reading it ' +
+          'back, which is a fault on this disk and not in the hook configuration'
+        : 'NO PreCompact snapshot for this session — the compaction restored nothing, and ' +
+          'whatever this window held is not coming back')
       : `snapshot ${captured} id(s), ${restored} re-delivered by the restore tier` +
         (survived === null ? '' : `, ${survived} still named in the summary`));
+    // The second defect at the same site, and it is named separately because
+    // it is a different fact: the snapshot READ, so `capturedAt` is real and
+    // the restore window is right, but its id list was not a list. `captured`
+    // above therefore says 0 about a file that recorded an unknown number —
+    // a measured zero drawn over an unmeasured one, which the clause above
+    // cannot distinguish from a compaction that genuinely captured nothing.
+    if (read.defect === 'malformed-ids') {
+      parts.push(
+        'the snapshot\'s `itemIds` was not a list of ids, so the 0 above is what could be ' +
+        'recovered from a corrupt file and NOT what the compaction captured',
+      );
+    }
     if (snapshot !== null && seenState !== null && seenState.error !== null) {
       parts.push('the seen file could not be read, so the re-delivered count is a floor');
     }
@@ -338,7 +378,8 @@ if (isMainEntry(import.meta.filename, process.argv[1])) {
   // which this event — unlike `SessionEnd` — really does honour: the emitter
   // passes the compaction's own abort signal and no timer of its own.
   try {
-    const { input, parseError } = parseHookInput(readStdin());
+    const { input: raw, parseError } = parseHookInput(readStdin());
+    const input = payloadOf(raw, 'PostCompact');
     // On stderr, which on THIS event does reach the user: Claude Code folds a
     // PostCompact hook's output into the message the compaction prints. That is
     // also why nothing is written on the happy path — a line there would be a

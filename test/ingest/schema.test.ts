@@ -10,6 +10,9 @@ import { createItem } from '../../src/core/mutate.ts';
 import { computeItemChecksum, parseItem, renderItem } from '../../src/core/item.ts';
 import { SUMMARY_MAX_CHARS } from '../../src/core/validate.ts';
 import { sandbox } from '../helpers/workspace.ts';
+// The boundary doors for the branded hash kinds (core/types.ts): a fixture
+// states a hash the same way a file does — by claiming it, unverified.
+import { recordedSourceChecksum } from '../../src/core/item.ts';
 
 const CONFIG = resolveConfig({});
 
@@ -18,7 +21,7 @@ const CHUNK: Chunk = {
   anchor: 'password-policy',
   heading: 'Password policy',
   text: '# Password policy\n\nPasswords must be at least 12 characters.\nSessions expire after 30 minutes.',
-  checksum: 'abc123',
+  checksum: recordedSourceChecksum('abc123'),
 };
 
 function candidate(over: Record<string, unknown> = {}): Record<string, unknown> {

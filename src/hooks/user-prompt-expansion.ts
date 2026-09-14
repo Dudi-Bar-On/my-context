@@ -1,6 +1,6 @@
 import { isMainEntry } from '../core/paths.ts';
 import { capped, runObservationHook, type Observation, type ObservationSpec } from './observe.ts';
-import type { HookInput } from './io.ts';
+import type { HookPayload } from './io.ts';
 
 /**
  * The second event a slash command fires, and the one that says what it was.
@@ -71,7 +71,12 @@ import type { HookInput } from './io.ts';
 /** The `expansion_type` values build 2.1.239's schema accepts, in its order. */
 export const EXPANSION_TYPES = ['slash_command', 'mcp_prompt'] as const;
 
-export function observePromptExpansion(input: HookInput): Observation | null {
+// `HookPayload<'UserPromptExpansion'>`, not `HookInput`: this hook is a separate process
+// spawned for exactly one event, so the fields it may read are that event's —
+// `TASK-one-flat-input-type-spans-fifteen-events-so-a-handler`.
+export function observePromptExpansion(
+  input: HookPayload<'UserPromptExpansion'>,
+): Observation | null {
   const name = typeof input.command_name === 'string' && input.command_name !== ''
     ? input.command_name : null;
   // The parsed name is the whole of what this event adds over `UserPromptSubmit`,

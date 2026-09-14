@@ -7,6 +7,7 @@ import { isMainEntry } from '../core/paths.ts';
 import { SEEN_FILE_SUFFIX } from '../core/seen-file.ts';
 import { findProjectRoot, hasGlobalCorpus, resolveWorkspace } from '../core/workspace.ts';
 import { deliverAtDoor } from '../rules/deliver.ts';
+import { unrecordedDeliveryLine } from '../rules/delivered.ts';
 import {
   configUnreadableLine, hookParseErrorLine, noWorkspaceLine, parseHookInput, pinnedSpillLine,
   readStdin,
@@ -128,13 +129,31 @@ export function storeAppendix(
     // record behind it would be the one thing spec §8.2 forbids — a delivery
     // nothing can count.
     if (stateRoot === null) return '';
-    return deliverAtDoor({
+    const door = options.source === 'compact' ? 'compact-restore' : 'session-start';
+    const key = options.sessionId ?? null;
+    const delivered = deliverAtDoor({
       stateRoot,
-      door: options.source === 'compact' ? 'compact-restore' : 'session-start',
-      key: options.sessionId ?? null,
+      door,
+      key,
       itemIds: deliveredIds,
       ...(options.storeDir === undefined ? {} : { storeDir: options.storeDir }),
-    }).text;
+    });
+    // **`recorded` is READ here, and for nine days it was not**
+    // (`TASK-deliveratdoor-returns-whether-it-recorded-the-delivery-and`).
+    // `recordDelivery` says in writing that the caller discloses; this line is
+    // that disclosure, and `unrecordedDeliveryLine` carries the argument for
+    // what it says and why stderr is the channel.
+    //
+    // **Written HERE rather than threaded out to the binary**, which is the
+    // opposite of the choice `pinnedSpillLine` makes one function along, and
+    // the difference is that this value cannot be recomputed: a failed write
+    // leaves nothing behind to ask a second time. `subagent-start.ts`'s own
+    // door reasons the same way in its own words, and `standDownOnce` in
+    // `hooks/stop.ts` is the precedent for a helper that writes the user's
+    // copy itself. The builder's contract — one string for stdout — is
+    // unchanged, and every test that reads it that way still does.
+    if (!delivered.recorded) process.stderr.write(unrecordedDeliveryLine(door, key));
+    return delivered.text;
   } catch {
     // Silent HERE, and disclosed by the binary below. `resolveWorkspace` above
     // throws on an unparseable `config.json`, which is the one failure that

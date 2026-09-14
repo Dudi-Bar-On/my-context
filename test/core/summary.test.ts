@@ -45,6 +45,9 @@ import type { Item } from '../../src/core/types.ts';
 import { sandbox, type Sandbox } from '../helpers/workspace.ts';
 import { runCli } from '../../src/cli/index.ts';
 import { createRegistry } from '../../src/mcp/tools.ts';
+// The boundary doors for the branded hash kinds (core/types.ts): a fixture
+// states a hash the same way a file does — by claiming it, unverified.
+import { recordedSummaryBasis } from '../../src/core/item.ts';
 
 const PLAIN = 'A screen says it checked a session and found nothing, when it never checked at all.';
 
@@ -225,7 +228,7 @@ test('the staleness note is one wording, and says nothing when there is nothing 
     const item = itemOf(box, rule(box, { summary: PLAIN }));
     assert.equal(summaryStalenessNote(item), null);
     assert.equal(summaryStalenessNote({ ...item, summary: null }), null);
-    assert.match(summaryStalenessNote({ ...item, summaryOf: 'deadbeefdeadbeef' })!, /STALE/);
+    assert.match(summaryStalenessNote({ ...item, summaryOf: recordedSummaryBasis('deadbeefdeadbeef') })!, /STALE/);
     assert.match(summaryStalenessNote({ ...item, summaryOf: null })!, /summary_of/);
   } finally { box.dispose(); }
 });

@@ -16,17 +16,17 @@ tags:
   - hooks
   - "plan:invariant"
   - "seq:3"
-  - "state:todo"
+  - "state:done"
 origin: human
 source_file: null
 source_anchor: null
 source_checksum: null
 valid_from: 2026-09-13
 valid_until: null
-checksum: 34ed1f17aeae47e8
+checksum: 45990bccbd854769
 plan: invariant
 seq: "3"
-state: todo
+state: done
 priority: "2"
 ---
 

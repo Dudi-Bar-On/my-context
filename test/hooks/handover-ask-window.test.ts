@@ -202,7 +202,7 @@ function compact(sb: Sandbox, options: { snapshot?: boolean } = {}): {
   ));
   return {
     outcome: run.value,
-    capturedAt: readSnapshotMeta(sb.root, sb.session)?.capturedAt ?? null,
+    capturedAt: readSnapshotMeta(sb.root, sb.session).meta?.capturedAt ?? null,
     stderr: stderr + run.stderr,
   };
 }

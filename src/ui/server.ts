@@ -117,8 +117,8 @@ import {
   clearUiServerRecord, uiServerRecordPath, writeUiServerRecord,
 } from '../core/ui-server-record.ts';
 import {
-  cookieValue, CREDENTIAL_COOKIE, mintToken, NonceStore, recordNonceMint, recordRefusal,
-  SECURITY_HEADERS, TOKEN_COOKIE, TOKEN_HEADER, tokenDigest, validateApiRequest,
+  asHandoffNonce, cookieValue, CREDENTIAL_COOKIE, mintToken, NonceStore, recordNonceMint,
+  recordRefusal, SECURITY_HEADERS, TOKEN_COOKIE, TOKEN_HEADER, tokenDigest, validateApiRequest,
 } from './security.ts';
 import { serveStatic } from './static.ts';
 import { registerWatchRoutes } from './watch-model.ts';
@@ -1279,7 +1279,14 @@ export async function startUiServer(options: UiServerOptions): Promise<RunningUi
       } catch {
         nonce = undefined;
       }
-      if (typeof nonce !== 'string' || !nonces.redeem(nonce)) {
+      // `asHandoffNonce` is the boundary coercion and the ONLY one on this
+      // route: what arrived is untyped JSON, the line above is what proves it
+      // is a string at all, and this is where the claim "and it is a handoff
+      // nonce" is written down. It validates nothing — an unminted value still
+      // refuses one call later — but it is what stops an `ExecutionNonce`, or
+      // a session token, or any other 32 hex characters in scope, being passed
+      // to this store by a later edit without somebody typing this name.
+      if (typeof nonce !== 'string' || !nonces.redeem(asHandoffNonce(nonce))) {
         // A4 again: no body. A nonce refusal is not one of the gate's four
         // exits and is deliberately NOT audited (plan §0.4 item 10), but what
         // goes on the wire is the same status-and-nothing-else.

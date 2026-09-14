@@ -1,5 +1,5 @@
 import { capped, type Observation, type ObservationSpec } from './observe.ts';
-import type { HookInput } from './io.ts';
+import type { HookPayload } from './io.ts';
 
 /**
  * The harness's own tasks, observed — `TaskCreated` and `TaskCompleted`.
@@ -40,7 +40,13 @@ import type { HookInput } from './io.ts';
  * caller text, and a log line that scrolls the terminal discloses less than one
  * that fits on it.
  */
-function observeTask(input: HookInput): Observation | null {
+// `TaskCreated` and `TaskCompleted` carry the same two fields, so ONE union
+// parameter serves both readers — which is what a per-event map buys that a
+// flat interface could not say: these two events are the same shape, and the
+// other thirteen are not.
+function observeTask(
+  input: HookPayload<'TaskCreated'> | HookPayload<'TaskCompleted'>,
+): Observation | null {
   const id = typeof input.task_id === 'string' && input.task_id !== '' ? input.task_id : null;
   // The id is the gate, not the subject: a row that cannot name the task cannot
   // be joined to anything, which is the only reason to keep it.

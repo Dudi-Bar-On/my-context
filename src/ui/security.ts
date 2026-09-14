@@ -190,16 +190,57 @@ export function cookieValue(header: string | string[] | undefined, name: string)
  * bounded by the handful of `mint` calls a single invocation makes, and it
  * dies with the process.
  */
+declare const HANDOFF_NONCE: unique symbol;
+
+/**
+ * **A handoff nonce, and NOT any other 32 hex characters.**
+ *
+ * The type exists because the alternative was measured and it was not a type
+ * at all: both this credential and `ExecutionNonce` (`execute-nonce.ts`) were
+ * plain `string`, so `handoffNonces.redeem(executionNonce)` compiled, as did
+ * the mirror image. Two credentials that a compiler cannot tell apart are one
+ * credential wearing two names — and this file's own header says *the nonce is
+ * the credential on this route*.
+ *
+ * **A phantom property on an intersection, so the whole thing erases.**
+ * `CONST-node-24-no-build-step` allows only syntax Node's type stripping can
+ * delete, which rules out the classic runtime carriers of an invariant (a
+ * wrapper class, an enum, a private constructor). A `declare const … : unique
+ * symbol` plus `string & { readonly [S]: true }` costs zero bytes at run time,
+ * stays a `string` everywhere a `string` is what goes on the wire or into a
+ * `Map` key, and is unforgeable anywhere except the one function below.
+ *
+ * The brand is NOT exported and the symbol is NOT exported: `asHandoffNonce`
+ * is the only way in, which is what makes the coercions greppable instead of
+ * scattered `as` casts.
+ */
+export type HandoffNonce = string & { readonly [HANDOFF_NONCE]: true };
+
+/**
+ * **The one door.** Call it where a `string` genuinely arrives from outside
+ * this process and is CLAIMED to be a handoff nonce — today that is exactly
+ * one place, `POST /api/handoff`'s body in `server.ts`.
+ *
+ * It asserts nothing about the value and is not a validator: an unminted
+ * string coerced here still refuses at `redeem`, exactly as before. What it
+ * buys is that the claim is written down at the boundary rather than assumed
+ * everywhere after it, so a future `redeem(someOtherToken)` is a compile error
+ * unless somebody deliberately writes this name next to it.
+ */
+export function asHandoffNonce(raw: string): HandoffNonce {
+  return raw as HandoffNonce;
+}
+
 export class NonceStore {
   #nonces = new Map<string, number>(); // nonce -> expiry epoch ms
 
-  mint(ttlMs: number, now: number = Date.now()): string {
+  mint(ttlMs: number, now: number = Date.now()): HandoffNonce {
     const nonce = randomBytes(16).toString('hex');
     this.#nonces.set(nonce, now + ttlMs);
-    return nonce;
+    return nonce as HandoffNonce;
   }
 
-  redeem(nonce: string, now: number = Date.now()): boolean {
+  redeem(nonce: HandoffNonce, now: number = Date.now()): boolean {
     const expiry = this.#nonces.get(nonce);
     if (expiry === undefined) return false;
     this.#nonces.delete(nonce); // one-shot: spent OR expired, it is gone either way

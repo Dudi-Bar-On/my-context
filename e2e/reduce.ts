@@ -86,7 +86,8 @@ import { readFileSync, readdirSync, rmSync, statSync } from 'node:fs';
 import path from 'node:path';
 import { parseItem } from '../src/core/item.ts';
 import { globToRegExp, normalizePosix } from '../src/core/paths.ts';
-import { NEEDS_FIELD, parseNeeds, taskKey } from '../src/core/needs.ts';
+import { asWorkItem, NEEDS_FIELD, parseNeeds, taskKey } from '../src/core/needs.ts';
+import { resolveConfig } from '../src/core/config.ts';
 import { coverageFiles } from '../src/ui/read-model.ts';
 import { DIR_NAME } from '../src/core/workspace.ts';
 import type { Item } from '../src/core/types.ts';
@@ -214,9 +215,28 @@ export function dependencyComponents(items: readonly Item[]): string[][] {
   };
   // `plan/seq` → the items answering to it, superseded excluded exactly as
   // `workItems` excludes them: a replaced task is not an unmet dependency.
+  //
+  // **And now the CATEGORY check too, which this loop was missing.** `taskKey`
+  // takes a `WorkItem` (`core/needs.ts`,
+  // `TASK-a-function-that-reads-a-task-field-accepts-any-item-and`), so
+  // `asWorkItem` has to be asked, and asking it revealed that this loop had
+  // only half of what it said it had: it excluded superseded items exactly as
+  // `workItems` does and did NOT exclude non-work categories, which `workItems`
+  // also does. A `note` carrying a stray `plan`/`seq` in `extra` would have
+  // been indexed here and is not indexed by `buildTaskIndex` — so the component
+  // graph could join through a key `checkNeeds` does not resolve, which is the
+  // exact class of disagreement the `needs` edge was added to remove.
+  //
+  // `resolveConfig({})` — the shipped catalogue, which is what a twin corpus is
+  // reduced against. A twin carries no `config.json` overrides, so the shipped
+  // answer is the right one, and it is resolved once rather than threaded
+  // through `chooseItems` and `coreSample` for a fact that cannot vary here.
+  const config = resolveConfig({});
   const answering = new Map<string, string[]>();
-  for (const item of items) {
-    if (item.status === 'superseded') continue;
+  for (const candidate of items) {
+    if (candidate.status === 'superseded') continue;
+    const item = asWorkItem(config, candidate);
+    if (item === null) continue;
     const key = taskKey(item);
     if (key === null) continue;
     answering.set(key, [...(answering.get(key) ?? []), item.id]);

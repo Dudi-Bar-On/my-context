@@ -9,6 +9,9 @@ import { withRetry } from '../../src/core/persist.ts';
 import { computeItemChecksum, parseItem } from '../../src/core/item.ts';
 import type { Item } from '../../src/core/types.ts';
 import { sandbox } from '../helpers/workspace.ts';
+// The boundary doors for the branded hash kinds (core/types.ts): a fixture
+// states a hash the same way a file does — by claiming it, unverified.
+import { recordedSourceChecksum } from '../../src/core/item.ts';
 
 test('createItem writes a Markdown file and indexes it', () => {
   const s = sandbox();
@@ -597,7 +600,7 @@ test('sourceChecksum is stored and round-trips through the file', () => {
   const s = sandbox();
   const result = createItem(s.ctx, {
     type: 'requirement', title: 'Checksum carrier', body: 'X.',
-    sourceFile: 'docs/prd/auth.md', sourceAnchor: '## X', sourceChecksum: 'abc123deadbeef01',
+    sourceFile: 'docs/prd/auth.md', sourceAnchor: '## X', sourceChecksum: recordedSourceChecksum('abc123deadbeef01'),
   });
 
   assert.equal(s.ctx.store.get(result.id)?.sourceChecksum, 'abc123deadbeef01');

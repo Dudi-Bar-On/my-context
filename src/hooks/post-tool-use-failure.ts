@@ -1,7 +1,9 @@
 import { recordAudit, type AuditWriteResult } from '../core/audit.ts';
 import { isMainEntry } from '../core/paths.ts';
 import { resolveWorkspace } from '../core/workspace.ts';
-import { hookParseErrorLine, parseHookInput, readStdin, type HookInput } from './io.ts';
+import {
+  hookParseErrorLine, parseHookInput, payloadOf, readStdin, type HookPayload,
+} from './io.ts';
 
 /**
  * One audit row per failed tool call — the empirical check on a fail-open
@@ -75,7 +77,13 @@ function flatten(value: unknown): string | null {
 }
 
 /** The first usable reason the payload offers, or `null` when it offers none. */
-function reasonFrom(input: HookInput): string | null {
+// **`HookInput` stays here, deliberately and as the exception that proves the
+// rule.** This function does not read named fields at all: it sweeps
+// `REASON_KEYS` across an untyped bag looking for whatever the platform
+// happened to put a failure reason in, which is precisely the shape a
+// per-event type cannot describe and must not pretend to. It casts to
+// `Record<string, unknown>` on its first line and says so.
+function reasonFrom(input: HookPayload<'PostToolUseFailure'>): string | null {
   const bag = input as Record<string, unknown>;
   for (const key of REASON_KEYS) {
     const direct = flatten(bag[key]);
@@ -116,7 +124,10 @@ function reasonFrom(input: HookInput): string | null {
  * wrong thing.
  */
 export function recordToolFailure(
-  input: HookInput, fallbackCwd: string,
+// `HookPayload<'PostToolUse'>`, not `HookInput`: this hook is a separate process
+// spawned for exactly one event, so the fields it may read are that event's —
+// `TASK-one-flat-input-type-spans-fifteen-events-so-a-handler`.
+  input: HookPayload<'PostToolUseFailure'>, fallbackCwd: string,
 ): AuditWriteResult | null {
   try {
     if (Object.keys(input as Record<string, unknown>).length === 0) return null;
@@ -190,7 +201,8 @@ if (isMainEntry(import.meta.filename, process.argv[1])) {
   // unref'd `setTimeout` set before it can only fire after it already
   // returned. The real bound is `hooks.json`'s 5s kill.
   try {
-    const { input, parseError } = parseHookInput(readStdin());
+    const { input: raw, parseError } = parseHookInput(readStdin());
+    const input = payloadOf(raw, 'PostToolUseFailure');
     if (parseError !== null) {
       process.stderr.write(hookParseErrorLine(parseError));
       process.stderr.write(LOST_RECORD_LINE);

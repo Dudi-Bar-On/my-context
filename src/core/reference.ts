@@ -5,7 +5,7 @@ import { relPosix } from './paths.ts';
 import { estimateTokens } from './select.ts';
 import { checksum } from './slug.ts';
 import { normalizeEol } from './text.ts';
-import type { Item } from './types.ts';
+import type { Item, SourceChecksum } from './types.ts';
 
 /**
  * A `reference` item's body is a SNAPSHOT of a file, taken at capture, and
@@ -58,9 +58,44 @@ export function snapshotText(raw: string): string {
   return normalizeEol(raw).trim();
 }
 
-/** The checksum of a file's content as a snapshot stores it — see `snapshotText`. */
-export function snapshotChecksum(raw: string): string {
-  return checksum(snapshotText(raw));
+/**
+ * The checksum of a file's content as a snapshot stores it — see
+ * `snapshotText`.
+ *
+ * `SourceChecksum`, not `string`: this is one of the four hash kinds
+ * (`core/types.ts`), and it is the one whose subject is a DIFFERENT document
+ * from the item carrying it. The cast is sound by construction — the value is
+ * taken over `snapshotText`, which is what defines the kind.
+ */
+export function snapshotChecksum(raw: string): SourceChecksum {
+  return checksum(snapshotText(raw)) as SourceChecksum;
+}
+
+/**
+ * **The same value, recovered from the item's own body instead of from the
+ * file** — the second of the two routes to a source checksum, and the reason
+ * it has a name is that until 2026-09-14 it did not.
+ *
+ * `reconcileSnapshot` (persist.ts) compares what the FILE hashes to against
+ * what the BODY hashes to, and computed the second one inline as
+ * `checksum(snapshotSource(body))` — a third spelling of a hash the module
+ * already owned, which is exactly the two-spellings defect this project keeps
+ * finding. Branding the kind made it visible: an inline `checksum()` produces a
+ * plain `string`, and a plain string is no longer assignable to
+ * `Item.sourceChecksum`.
+ *
+ * **It is NOT `snapshotChecksum(snapshotSource(body))`, and the difference is
+ * left alone deliberately.** That spelling would additionally apply
+ * `snapshotText` (normalise line endings, then trim). On every body this
+ * product writes that is a no-op — the body was produced from
+ * `snapshotText(fileText)` in the first place — but on a HAND-EDITED body with
+ * trailing blank lines it is not, and it would flip such an item from `ended`
+ * to `resnapshotted`. Changing what a live corpus's provenance records say is a
+ * separate decision from naming a function, so this preserves the existing
+ * computation byte for byte and says so here instead.
+ */
+export function bodySourceChecksum(body: string): SourceChecksum {
+  return checksum(snapshotSource(body)) as SourceChecksum;
 }
 
 /**
@@ -154,7 +189,12 @@ export interface Snapshot {
   text: string;
   /** The item body to store: `text`, quoted — see `snapshotBody`. */
   body: string;
-  checksum: string;
+  /**
+   * `SourceChecksum` (core/types.ts), which is what `Item.sourceChecksum`
+   * takes: this is a hash of ANOTHER document, and the brand is what stops it
+   * being written into a field that holds a hash of the item.
+   */
+  checksum: SourceChecksum;
   /**
    * Measured over `body`, not `text`. The quoting adds two characters per line
    * and those characters are injected along with everything else, so charging
@@ -263,7 +303,11 @@ export function readSnapshot(repoRoot: string, cwd: string, target: string): Sna
     absolute,
     text,
     body,
-    checksum: checksum(text),
+    // `snapshotChecksum(text)` and not `checksum(text)`: `text` is already
+    // `snapshotText`-normalised above, so the value is byte-identical, and
+    // going through the named producer is what makes it a `SourceChecksum`
+    // rather than a bare string cast here.
+    checksum: snapshotChecksum(text),
     cost: snapshotCost(body),
   };
 }

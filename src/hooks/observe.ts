@@ -104,6 +104,26 @@ export interface ObservationSpec {
    * It must never throw; `recordObservation` catches anyway, but a builder that
    * relies on that catch has given up its own disclosure.
    */
+  /**
+   * **`HookInput`, and it STAYS `HookInput` — this is the dispatcher.**
+   *
+   * `TASK-one-flat-input-type-spans-fifteen-events-so-a-handler` moved every
+   * handler onto `HookPayload<E>`, a per-event view that refuses a field its
+   * event never sends. This signature is the one place that must not be
+   * narrowed: `runObservationHook` is handed a spec and a raw payload and has
+   * no idea which event it holds until the spec says so, and a `HookPayload`
+   * here would need a type parameter threaded through `ObservationSpec`,
+   * `recordObservation` and `observeAndRecord` to say something none of the
+   * three actually knows.
+   *
+   * Nothing is lost by that, because the narrowing happens ONE CALL DOWN: each
+   * spec's own `observe` declares its event's payload (`observeFileChanged`
+   * takes `HookPayload<'FileChanged'>`, and so on), and a function whose
+   * parameter is narrower than this one's is assignable here — contravariance
+   * under `strictFunctionTypes`, which is why no spec needed a cast. So the
+   * dispatcher stays honest about what it does not know, and every builder
+   * stays honest about what it does.
+   */
   observe: (input: HookInput, root: string) => Observation | null;
 }
 

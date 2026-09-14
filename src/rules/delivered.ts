@@ -365,6 +365,40 @@ export function assertDelivered(
 }
 
 /**
+ * **The door ran and the RECORD did not** — the disclosure `recordDelivery`'s
+ * own contract asks its callers for: *"Returns whether it was written — the
+ * caller discloses, this module does not, because only the caller knows which
+ * channel a person is watching."*
+ *
+ * For nine days both doors ended `}).text;` and no consumer of `.recorded`
+ * existed anywhere in `src/`
+ * (`TASK-deliveratdoor-returns-whether-it-recorded-the-delivery-and`). The
+ * cost is a CONTRADICTION the product prints at itself: the constants were
+ * delivered, nothing said the record of that failed, and later in the same
+ * session `assertDoor` tells the reader *"this session has no record of the
+ * product rule store being delivered to it"* — a sentence that is true about
+ * the log and false about the session.
+ *
+ * **So this line says the half `missedDoorLine` cannot know**: the delivery
+ * HAPPENED, it is the writing-down that failed, and the missed-door sentence
+ * that follows later is therefore expected rather than evidence of a door that
+ * did not run.
+ *
+ * **stderr, and not the block.** The model already has the constants — there
+ * is nothing to tell it — and the person watching the session is the only one
+ * who can do anything about a directory that will not take a write.
+ * `session-start.ts` · `noWorkspaceLine` is the precedent for the channel.
+ */
+export function unrecordedDeliveryLine(door: Door, key: string | null): string {
+  return 'my_context: the product rule store WAS delivered at this ' + door +
+    ` door (key \`${key ?? '<no session id>'}\`) and the record of it could not be written to ` +
+    `\`${DELIVERED_DIR}/\`. Nothing is missing from this session's context — what is missing is ` +
+    'the evidence. A later hook may report that this session has no record of the store being ' +
+    'delivered to it; that report will be about this failed write, not about a door that did ' +
+    `not run. Check that \`${DELIVERED_DIR}/\` is writable. Nothing was blocked.\n`;
+}
+
+/**
  * What a missed door costs, said in the terms the reader can act on.
  *
  * It names the KEY rather than paraphrasing it, because the key is what makes

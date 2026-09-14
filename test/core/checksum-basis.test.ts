@@ -5,6 +5,9 @@ import {
   parseChecksumVersion,
 } from '../../src/core/item.ts';
 import type { Item } from '../../src/core/types.ts';
+// The boundary doors for the branded hash kinds (core/types.ts): a fixture
+// states a hash the same way a file does — by claiming it, unverified.
+import { recordedContentHashes, recordedSummaryBasis } from '../../src/core/item.ts';
 
 /**
  * **The basis-pinning fixture — every conditional key `computeItemChecksum`
@@ -31,9 +34,9 @@ const FIXTURE: Item = {
   always: true,
   continuity: true,
   summary: 'A fixed sentence a golden checksum test pins forever.',
-  summaryOf: 'deadbeefdeadbeef',
+  summaryOf: recordedSummaryBasis('deadbeefdeadbeef'),
   summaryWas: [{ at: '2026-01-01', text: 'An earlier fixed sentence.' }],
-  acknowledged: { some_finding_code: 'cafebabecafebabe' },
+  acknowledged: recordedContentHashes({ some_finding_code: 'cafebabecafebabe' }),
   scope: ['src/db/**'],
   tags: ['golden', 'fixture'],
   origin: 'human',

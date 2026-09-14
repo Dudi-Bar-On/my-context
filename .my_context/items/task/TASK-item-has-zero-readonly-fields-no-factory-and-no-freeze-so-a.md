@@ -18,17 +18,17 @@ tags:
   - checksum
   - "plan:invariant"
   - "seq:2"
-  - "state:todo"
+  - "state:done"
 origin: human
 source_file: null
 source_anchor: null
 source_checksum: null
 valid_from: 2026-09-13
 valid_until: null
-checksum: 5391754b43c17771
+checksum: cee6996394ae0232
 plan: invariant
 seq: "2"
-state: todo
+state: done
 priority: "2"
 ---
 

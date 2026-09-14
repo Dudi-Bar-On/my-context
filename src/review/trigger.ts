@@ -63,7 +63,9 @@
  * in the life of this project.
  */
 import { snapshotBytes } from '../core/session-summary.ts';
-import { readCounter, resetCounter } from '../core/review-counter.ts';
+import {
+  counterWritable, readCounter, resetCounter, reviewCounterPath,
+} from '../core/review-counter.ts';
 import { subagentDir } from '../core/conversation-index.ts';
 import { findProjectRoot } from '../core/workspace.ts';
 import { workspaceConfigAt } from '../core/handover-ask.ts';
@@ -78,7 +80,17 @@ export interface TriggerInput {
   transcript_path?: string;
 }
 
-/** What the trigger decided, and why. `null` from `reviewTrigger` means OFF. */
+/**
+ * What the trigger decided, and why.
+ *
+ * **`null` from `reviewTrigger` means OFF and means nothing else.** It used to
+ * mean two things — the kill switch, and any exception thrown anywhere in the
+ * decision — which made a broken loop and a loop nobody asked for produce the
+ * identical silence
+ * (`TASK-four-failure-states-are-modelled-in-the-type-and-read-by`). The catch
+ * now returns a verdict; `null` is reserved for the three gates that run
+ * before the switch is known and for the switch itself.
+ */
 export interface TriggerVerdict {
   fire: boolean;
   /**
@@ -122,6 +134,19 @@ export function reviewTrigger(
   spawnFn?: typeof spawn,
   env: Record<string, string | undefined> = process.env,
 ): TriggerVerdict | null {
+  /**
+   * **Has the kill switch been passed?** Set the instant gate 3 lets this
+   * through, and read only by the catch at the bottom.
+   *
+   * The catch has to tell two failures apart that look identical from inside
+   * it: a throw on a workspace that never switched the loop on — where silence
+   * is the promise `review.enabled` makes, and a clause per turn would be the
+   * product nagging everyone in the world about a feature they declined — and
+   * a throw past that gate, where silence is the defect the item names. A flag
+   * rather than re-deriving the config in the catch, because re-deriving it is
+   * running the thing that just threw.
+   */
+  let switchedOn = false;
   try {
     // 1. A lane is not a session. Ten lanes finishing at once must not become
     //    ten passes over the parent's transcript.
@@ -137,6 +162,7 @@ export function reviewTrigger(
     // 3. THE SWITCH. Off is off: no verdict, no row, no state, no child.
     const review = config.review;
     if (!review.enabled) return null;
+    switchedOn = true;
 
     const counter = readCounter(root);
 
@@ -152,6 +178,38 @@ export function reviewTrigger(
     // 5. The interval — waived on PreCompact, where context is about to go.
     const compacting = hook === 'PreCompact' && review.onPreCompact;
     if (!compacting && counter.calls < review.everyNToolCalls) {
+      /**
+       * **A count that is FROZEN is not a count that is low** —
+       * `TASK-a-counter-that-can-no-longer-be-written-reads-as-not-enough`,
+       * and the two are the same sentence until something asks.
+       *
+       * `bumpCounter` has returned `written` since the day it was written and
+       * nothing read it; `core/review-counter.ts`' own header says why it
+       * could not be read where it is produced — `PostToolUse` has no channel
+       * — and names this hook as the place with one. So the question is asked
+       * HERE, at the one moment the answer changes what the reader is told.
+       *
+       * **The cost, and why it is paid on this line and no other.** It is one
+       * small atomic write per turn, on a workspace that has switched the loop
+       * on, past a gate that has already refused. `PostToolUse` writes this
+       * same file once per TOOL CALL, so on the cadence that matters this is
+       * strictly the cheaper of the two writes already happening. Every
+       * workspace with the loop off has returned at gate 3 and pays nothing.
+       *
+       * **Not on the ration refusal above**, deliberately: "the ration is
+       * spent" is true whether or not the file can be written, and a probe
+       * there would buy a sentence nobody needs.
+       */
+      if (!counterWritable(root, counter)) {
+        return verdict(
+          false,
+          `the review counter at ${reviewCounterPath(root)} cannot be written, so this count is ` +
+          `FROZEN at ${counter.calls} rather than low: tool calls are no longer being counted, ` +
+          `${review.everyNToolCalls} will never be reached, and no pass can become due in this ` +
+          'session until that file is writable again',
+          counter.calls, counter.fires,
+        );
+      }
       return verdict(
         false,
         `${counter.calls} of ${review.everyNToolCalls} tool call(s) since the last pass`,
@@ -222,15 +280,65 @@ export function reviewTrigger(
       fire: true,
       because:
         `${counter.calls} tool call(s) since the last pass, ${bytes - since} new byte(s) to ` +
-        `read${compacting ? ', and context is about to be compacted' : ''}`,
+        `read${compacting ? ', and context is about to be compacted' : ''}` +
+        // **`resetCounter`'s `written` read at the second place it was
+        // dropped.** `review-counter.ts` spends a paragraph on why the ration
+        // is spent BEFORE the spawn — *"a machine that cannot spawn retries on
+        // every subsequent threshold crossing for the rest of the session"* —
+        // and that argument holds only if the spending LANDS. A discarded
+        // write leaves `fires` where it was, so the very next turn past the
+        // threshold fires again, and the ration this hook reports as spent is
+        // not spent at all. `calls` is not reset either, so the flooding is
+        // per turn rather than per interval.
+        (spent.written ? '' :
+          `; the counter could not be written, so this fire was NOT deducted from the session's ` +
+          `ration of ${review.maxFiresPerSession} and a pass will be due again on the next turn`),
       calls: counter.calls,
       fires: spent.fires,
       spawned: outcome.spawned,
       ...(outcome.why === undefined ? {} : { why: outcome.why }),
     };
-  } catch {
-    // INV-hooks-fail-open.
-    return null;
+  } catch (err) {
+    /**
+     * **Failing open is not the same as answering `null`** —
+     * `TASK-four-failure-states-are-modelled-in-the-type-and-read-by`, third
+     * bullet: *"`reviewTrigger`'s bug-caused `null` is indistinguishable from
+     * 'review is switched off'."*
+     *
+     * `null` has ONE meaning on this function and it is stated at
+     * `TriggerVerdict` — OFF — and `reviewNote` acts on it: `''`, no clause,
+     * no row, because a workspace that never asked for the loop must not be
+     * told about it every turn. A bug that returned the same value therefore
+     * bought itself the silence the kill switch earned.
+     *
+     * So the catch returns a VERDICT. `INV-hooks-fail-open` is untouched —
+     * nothing throws, nothing blocks, no child is spawned — and
+     * `INV-nothing-is-dropped-silently` gets the one thing it asks for: the
+     * failure reaches the audit row the hook was already writing.
+     *
+     * **`calls` and `fires` are 0 and the sentence does not quote them**, on
+     * `STD-a-measured-zero-is-drawn-and-named-an-unmeasured-thing-is`: the
+     * throw may have come from anywhere above, including before the counter
+     * was read, so those two numbers are unmeasured rather than zero and
+     * `reviewNote` prints `because` alone.
+     *
+     * **And a throw BEFORE the switch was read still answers `null`.** Gates 1
+     * and 2 run on every workspace on the machine, including every one that
+     * has never heard of this feature; a clause from there would be the loop
+     * announcing itself to people who switched it off, which is the exact
+     * thing `review.enabled` promises not to do.
+     */
+    if (!switchedOn) return null;
+    return {
+      fire: false,
+      because: 'the trigger could not decide — ' +
+        (err instanceof Error ? err.message : String(err)) +
+        '. This is a fault in the loop itself, not the kill switch: the loop is ON for this ' +
+        'workspace and looked at nothing this turn',
+      calls: 0,
+      fires: 0,
+      spawned: false,
+    };
   }
 }
 

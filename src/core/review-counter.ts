@@ -187,6 +187,35 @@ function idFor(base: CounterState, sessionId: string | undefined): string | null
 }
 
 /**
+ * **Can this state still be written at all?** — the probe that turns a frozen
+ * counter from an invisible fault into a sentence.
+ *
+ * `TASK-a-counter-that-can-no-longer-be-written-reads-as-not-enough`: with
+ * `state/` unwritable every turn printed *"review: no pass — 0 of 25 tool
+ * call(s)"*, which is a true statement about the file and a false one about
+ * the session. A reader takes it as *not enough activity yet*; the truth is
+ * that the subsystem can never fire again. This module's own header names the
+ * reason the disclosure cannot happen where the loss happens — *"there is
+ * nowhere on the `PostToolUse` path to say it"* — and points at the hook that
+ * has a channel. This is what that hook asks.
+ *
+ * **It writes the state it was handed, unchanged.** Handed `readCounter`'s own
+ * answer, a successful probe is a no-op on the bytes and a failed one is the
+ * fact the caller needed. It is NOT a fresh state: zeroing a readable counter
+ * to find out whether it is writable would be a probe that causes the damage
+ * it looks for.
+ *
+ * **Where it may be called from, and where it may not.** `Stop` and
+ * `PreCompact` only — once per turn, past a gate that already refused, on a
+ * workspace that has switched the loop on. Never `PostToolUse`: that is the
+ * highest-frequency hook in the product and this would double its writes to
+ * learn something it has no channel to say.
+ */
+export function counterWritable(stateRoot: string, state: CounterState): boolean {
+  return writeCounter(stateRoot, state);
+}
+
+/**
  * One more tool call. Returns the count INCLUDING this one.
  *
  * The returned value is correct for this call even when the write was

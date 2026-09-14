@@ -13,6 +13,9 @@ import { chunkDocument } from '../../src/ingest/chunk.ts';
 import { SESSION_PROTOCOL, ingestDir } from '../../src/ingest/session.ts';
 import type { Item } from '../../src/core/types.ts';
 import { removeTree } from '../helpers/tmp.ts';
+// The boundary doors for the branded hash kinds (core/types.ts): a fixture
+// states a hash the same way a file does — by claiming it, unverified.
+import { recordedSourceChecksum } from '../../src/core/item.ts';
 
 const DOC = `# Password policy\n\nPasswords must be at least 12 characters.\n`;
 
@@ -171,7 +174,8 @@ test('source drift: a deleted source file is an error', () => {
   const { repoRoot, cleanup } = repo();
   try {
     const findings = checkSourceDrift(repoRoot, [item({
-      id: 'REQ-pw', sourceFile: 'gone.md', sourceAnchor: 'password-policy', sourceChecksum: 'abc',
+      id: 'REQ-pw', sourceFile: 'gone.md', sourceAnchor: 'password-policy',
+      sourceChecksum: recordedSourceChecksum('abc'),
     })]);
     assert.equal(findings[0].code, 'source_missing');
     assert.equal(findings[0].level, 'error');
@@ -185,7 +189,8 @@ test('source drift: a renamed heading loses the anchor and says so', () => {
   try {
     writeFileSync(path.join(repoRoot, 'prd.md'), DOC.replace('# Password policy', '# Credentials'));
     const findings = checkSourceDrift(repoRoot, [item({
-      id: 'REQ-pw', sourceFile: 'prd.md', sourceAnchor: 'password-policy', sourceChecksum: 'abc',
+      id: 'REQ-pw', sourceFile: 'prd.md', sourceAnchor: 'password-policy',
+      sourceChecksum: recordedSourceChecksum('abc'),
     })]);
     assert.equal(findings[0].code, 'source_anchor_missing');
     assert.equal(findings[0].level, 'warn');
@@ -459,7 +464,7 @@ test('runChecks aggregates every check and one failing check does not hide the o
       dbPath: path.join(root, '.index.db'),
       items: [
         item({ id: 'CONST-a', scope: ['src/gone/**'], relations: [{ type: 'derived_from', target: 'ADR-gone' }] }),
-        item({ id: 'REQ-b', sourceFile: 'gone.md', sourceAnchor: 'x', sourceChecksum: 'y' }),
+        item({ id: 'REQ-b', sourceFile: 'gone.md', sourceAnchor: 'x', sourceChecksum: recordedSourceChecksum('y') }),
       ],
     });
     const codes = new Set(findings.map((f) => f.code));

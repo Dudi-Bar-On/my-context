@@ -4,12 +4,29 @@ import { bumpCounter } from '../core/review-counter.ts';
 import { isMainEntry, managedSplit, matchesAnyGlob, relPosix, toPosix } from '../core/paths.ts';
 import { configLoadFailure, findProjectRoot, resolveWorkspace } from '../core/workspace.ts';
 import { capped, NOTE_MAX, subjectFor, SUBJECT_MAX } from './observe.ts';
-import { configUnreadableLine, hookContext, readStdinAsync } from './io.ts';
+import {
+  configUnreadableLine, hookContext, payloadOf, readStdinAsync, type HookPayload,
+} from './io.ts';
 
 /**
- * Narrower than `io.ts`'s `HookInput` on purpose, and not merged with it in
- * this task: this hook reads a handful of specific fields rather than the
- * whole payload shape `pre-tool-use.ts`'s `extractFilePath` needs.
+ * **The second `HookInput`, and it is now the SAME declaration as the first.**
+ *
+ * `TASK-one-flat-input-type-spans-fifteen-events-so-a-handler` names this file
+ * explicitly: *"there is a second, divergent `HookInput` under the same name in
+ * `post-tool-use.ts`."* It was divergent because the alternative was worse —
+ * the shared type was one flat interface spanning fifteen events, so importing
+ * it meant accepting ~25 fields this hook can never receive, and declaring a
+ * local one meant two types under one name that nothing kept in step. The
+ * original comment here said so: *"narrower than `io.ts`'s `HookInput` on
+ * purpose, and not merged with it in this task."*
+ *
+ * `HookPayload<'PostToolUse'>` removes the choice. It IS the narrow shape — the
+ * base fields plus exactly what `PostToolUse` carries — and it is declared once,
+ * in `io.ts`, beside the other fourteen. The name is kept as an alias so that
+ * every signature in this file reads as it did.
+ *
+ * The original notes on the two fields that needed an argument, kept because
+ * both are still true:
  *
  * `tool_input` is `Record<string, unknown>` — not a struct of named optional
  * strings — because, since `hooks/33` widened this hook's matcher to
@@ -24,15 +41,7 @@ import { configUnreadableLine, hookContext, readStdinAsync } from './io.ts';
  * on the wire, on every `PostToolUse` firing INSIDE a subagent, and absent
  * (not merely falsy) on the parent's own tool calls — see `agentStepNote`.
  */
-export interface HookInput {
-  tool_name?: string;
-  tool_input?: Record<string, unknown>;
-  tool_response?: { agentId?: string };
-  cwd?: string;
-  session_id?: string;
-  agent_id?: string;
-  agent_type?: string;
-}
+export type HookInput = HookPayload<'PostToolUse'>;
 
 // NotebookEdit is deliberately excluded: `hooks.json`'s matcher
 // (`Write|Edit|MultiEdit|Agent`) never spawns this process for it, and its
@@ -371,7 +380,10 @@ if (isMainEntry(import.meta.filename, process.argv[1])) {
     .then((raw) => {
       let parsed: HookInput = {};
       try {
-        parsed = JSON.parse(raw) as HookInput;
+        // `payloadOf` and not a bare cast: this process is spawned for exactly
+        // one event, and naming it is what makes the narrowing a fact a reader
+        // can check rather than an assertion.
+        parsed = payloadOf(JSON.parse(raw) as HookInput, 'PostToolUse');
       } catch {
         return;
       }

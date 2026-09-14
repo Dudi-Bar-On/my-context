@@ -15,6 +15,9 @@ import {
 } from '../../src/core/overlap.ts';
 import { contradictionLogPath, verdictsDir } from '../../src/core/verdict-store.ts';
 import type { Item } from '../../src/core/types.ts';
+// The boundary doors for the branded hash kinds (core/types.ts): a fixture
+// states a hash the same way a file does — by claiming it, unverified.
+import { recordedSummaryBasis } from '../../src/core/item.ts';
 
 /**
  * `plan:contra seq:3` / contradiction-gate design §9 — THE DRAIN.
@@ -38,7 +41,7 @@ import type { Item } from '../../src/core/types.ts';
 function base(over: Partial<Item> & { id: string; type: string; body: string }): Item {
   return {
     title: over.id, status: 'active', severity: 'soft', always: false,
-    continuity: false, summary: 'A summary.', summaryOf: 'basis-of-this-item',
+    continuity: false, summary: 'A summary.', summaryOf: recordedSummaryBasis('basis-of-this-item'),
     summaryWas: [], acknowledged: {},
     scope: [], tags: [], origin: 'human', sourceFile: null, sourceAnchor: null,
     sourceChecksum: null, validFrom: null, validUntil: null, checksum: 'x', extra: {},
@@ -148,7 +151,10 @@ test('only items that currently GOVERN and are in scope are compared', () => {
     // A `note` is not one of the categories that can contradict, and is not
     // pinned, so it is out of §3's scope.
     const note = pair();
-    note[1]!.type = 'note';
+    // Replaced, not mutated: `Item.type` is `readonly` — the product's own
+    // words, in `loadLayer`'s unknown-type error, are that type is fixed at
+    // creation. This fixture is a DIFFERENT item, so it is built as one.
+    note[1] = { ...note[1]!, type: 'note' };
     assert.deepEqual(checkCorpusContradictions(root, note), []);
     // Pinning it puts it back in scope whatever its category — §3's derived half.
     note[1]!.always = true;

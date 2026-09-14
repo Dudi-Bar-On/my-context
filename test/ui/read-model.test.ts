@@ -84,6 +84,9 @@ import {
   type InjectedBody, type ItemBody, type ItemsBody, type SessionsBody, type StatusBody,
 } from '../../src/ui/read-model.ts';
 import { matchRoute, registerRoute } from '../../src/ui/routes.ts';
+// The boundary doors for the branded hash kinds (core/types.ts): a fixture
+// states a hash the same way a file does — by claiming it, unverified.
+import { recordedSourceChecksum } from '../../src/core/item.ts';
 
 interface Fixture { dir: string; ws: Workspace; items: Item[]; done(): void }
 
@@ -1494,7 +1497,7 @@ function enrich(f: Fixture): { ws: Workspace; items: Item[] } {
   writable.upsert({
     ...f.items.find((i) => i.id === 'RULE-pin-me')!,
     id: 'RULE-a-captured-rule', title: 'A captured rule', always: false,
-    sourceFile: 'docs/gone.md', sourceAnchor: null, sourceChecksum: 'deadbeef',
+    sourceFile: 'docs/gone.md', sourceAnchor: null, sourceChecksum: recordedSourceChecksum('deadbeef'),
     filePath: 'items/rule-a-captured-rule.md',
   });
   writable.close();

@@ -121,14 +121,56 @@ export function mirrorPath(
   return path.join(mirrorDir(env, cwd), `${sessionId}.jsonl`);
 }
 
-/** A file's size on disk, or `null` when it is not there. */
-function sizeOf(file: string): number | null {
+/**
+ * **A file's size, and — when there is none — whether that is because the file
+ * is GONE or because it would not answer.**
+ *
+ * `TASK-a-transient-read-error-permanently-breaks-a-conversation`, reproduced
+ * 2026-09-14 on two throwaway workspaces. This used to be `sizeOf`, returning
+ * `null` for both, and `advanceOne` reads that `null` as *the file is gone* —
+ * which is the mark's whole reason for existing and so triggers its most
+ * destructive branches:
+ *
+ *     ORIGINAL unreadable    row 'persisted' → 'exported', reported as
+ *                            "the transcript is gone"
+ *     MIRROR  unreadable     THE OWNER'S STANDING PERSIST MARK IS DELETED,
+ *                            row → 'live', reported as "the copy is gone"
+ *
+ * Both sentences are false and both states are unrecoverable without the owner
+ * noticing and re-taking the mark. The instruction *do not lose this* is
+ * destroyed by a failure that has nothing to do with it.
+ *
+ * **`ENOENT` is the only absence, and a path that is not a FILE is not one.**
+ * A directory (or a socket, or a device) where a transcript belongs is a path
+ * that is wrong, not a transcript that was deleted — and it is the shape the
+ * reproduction above used, because it is the one an ACL refusal is
+ * indistinguishable from at this call. The mark stands and the next pass tries
+ * again.
+ */
+interface FileSize {
+  /** The size, or `null` when there is nothing to measure. */
+  bytes: number | null;
+  /**
+   * Why it could not be measured, or `null`. `null` with `bytes: null` is the
+   * one honest absence: the file is not there.
+   */
+  unreadable: string | null;
+}
+
+function sizeOf(file: string): FileSize {
+  let stat;
   try {
-    const stat = statSync(file);
-    return stat.isFile() ? stat.size : null;
-  } catch {
-    return null;
+    stat = statSync(file);
+  } catch (err) {
+    const code = (err as NodeJS.ErrnoException).code;
+    return {
+      bytes: null,
+      unreadable: code === 'ENOENT' ? null : (err instanceof Error ? err.message : String(err)),
+    };
   }
+  return stat.isFile()
+    ? { bytes: stat.size, unreadable: null }
+    : { bytes: null, unreadable: `${file} is on disk and is not a file` };
 }
 
 /**
@@ -202,14 +244,34 @@ function windowEndingAt(file: string, end: number, count: number): Buffer | null
  * What it reliably catches is truncation, a shorter replacement, a rewrite in
  * place, and — the case that actually occurs — a file that was started over.
  */
-function stillPrefix(original: string, mirror: string, bytes: number): boolean {
-  if (bytes === 0) return true;
+/**
+ * **Three answers, not two** — `TASK-a-transient-read-error-permanently-breaks
+ * -a-conversation`.
+ *
+ * `windowEndingAt` answers `null` for a read that FAILED and for a read that
+ * came up short, and this function used to fold both into `false`. `false`
+ * here means *the file was replaced*, and `advanceOne` acts on it by stamping
+ * `REPLACED_NOTE` — which is STICKY, by its own comment: *"Already broken. It
+ * is not retried."* So one refused read permanently retires a mirror under an
+ * explanation naming a cause that did not happen, and the only way back is for
+ * the owner to notice and re-take the mark from byte 0.
+ *
+ * `'unreadable'` says the question could not be ASKED. Nothing is stamped,
+ * nothing is dropped, and the next pass asks again — which is the right answer
+ * for a condition that may have lasted one turn.
+ */
+type PrefixCheck = 'prefix' | 'replaced' | 'unreadable';
+
+function stillPrefix(original: string, mirror: string, bytes: number): PrefixCheck {
+  if (bytes === 0) return 'prefix';
   const window = Math.min(bytes, WITNESS_BYTES);
   const here = windowEndingAt(original, bytes, window);
   const kept = windowEndingAt(mirror, bytes, window);
-  if (here === null || kept === null) return false;
-  if (here[window - 1] !== 0x0a) return false;
-  return here.equals(kept);
+  if (here === null || kept === null) return 'unreadable';
+  // Past this line both files answered, so a disagreement is a disagreement
+  // about CONTENT and the verdict is the one this check exists to give.
+  if (here[window - 1] !== 0x0a) return 'replaced';
+  return here.equals(kept) ? 'prefix' : 'replaced';
 }
 
 /**
@@ -313,13 +375,19 @@ export function persistSession(
     // this command. Resuming from `bytes` here would splice the tail of one
     // conversation onto the body of another, in silence, and every count on
     // the row would still add up.
+    // **`'prefix'` and not merely "not replaced".** `stillPrefix`' third answer
+    // means the check could not be made, and the safe direction HERE is the
+    // opposite of the one `advanceMirrors` takes: this command is allowed to
+    // start a fresh copy from byte 0, so an unanswerable check costs bytes,
+    // where on the per-turn pass it would cost the mark. A copy resumed on an
+    // unverified offset is the splice this whole guard exists to prevent.
     const resumable = existing !== null
       && existing.note === null
       && existing.file === target
-      && sizeOf(target) === existing.bytes
-      && stillPrefix(row.file, target, existing.bytes);
+      && sizeOf(target).bytes === existing.bytes
+      && stillPrefix(row.file, target, existing.bytes) === 'prefix';
     const from = resumable && existing !== null ? existing.bytes : 0;
-    const size = sizeOf(row.file);
+    const size = sizeOf(row.file).bytes;
     if (size === null) {
       throw new NotIndexedError(
         `my_context: the transcript for "${sessionId}" is not on disk at ${row.file}. There is ` +
@@ -409,6 +477,23 @@ export interface MirrorReport {
   /** Marks dropped because the mirror itself is not on disk any more. */
   cleared: string[];
   /**
+   * **Marks this pass DID NOTHING to, because a file it needed would not
+   * answer** — `TASK-a-transient-read-error-permanently-breaks-a-conversation`.
+   *
+   * It is the one list here that records inaction, and it exists because the
+   * three lists above all record a DECISION taken about a mark. Before this,
+   * an unreadable file was routed into whichever of them matched "the file is
+   * gone" — so a refused read produced `orphaned` or `cleared` (which deletes
+   * the owner's mark) or `broken` (which is sticky and never retried), each
+   * under a sentence naming a cause that had not happened.
+   *
+   * Nothing on this list is damage. Every entry is a mark that still stands,
+   * a mirror that is untouched, and a question the next pass will ask again.
+   * A session that stays on it turn after turn is a real fault and is visible
+   * as one.
+   */
+  unreadable: { sessionId: string; why: string }[];
+  /**
    * **Mirrors whose REDACTED COPY was kept up on this pass** — `seq:46`.
    *
    * Separate from `advanced` because it is a different promise. `advanced`
@@ -437,6 +522,7 @@ function emptyMirrorReport(dir: string, startedMs: number): MirrorReport {
     orphaned: [],
     broken: [],
     cleared: [],
+    unreadable: [],
     redacted: [],
     redactedBytesWritten: 0,
     ms: Date.now() - startedMs,
@@ -512,7 +598,25 @@ function advanceOne(
   const original = row?.source === 'exported' || row === null
     ? path.join(transcriptDir(env, cwd), `${mark.sessionId}.jsonl`)
     : row.file;
-  const originalBytes = sizeOf(original);
+  const measured = sizeOf(original);
+
+  /**
+   * **A transcript that would not answer is NOT a transcript that is gone**,
+   * and this branch is where the difference used to be lost. Reproduced
+   * 2026-09-14: an original that stats and is not a file sent this mark
+   * straight to `orphan`, which rewrote the archive row as `'exported'` and
+   * reported *"the transcript is gone"*.
+   *
+   * Nothing at all is done: the mark stands, the row stands, the mirror is
+   * untouched, and the pass says so. A transcript only appends, so a turn
+   * skipped costs one turn's delta and the next pass takes it — which is the
+   * same trade every other path in this file already makes for a lost lock.
+   */
+  if (measured.bytes === null && measured.unreadable !== null) {
+    report.unreadable.push({ sessionId: mark.sessionId, why: measured.unreadable });
+    return;
+  }
+  const originalBytes = measured.bytes;
 
   if (originalBytes === null) {
     orphan(index, mark, row, report);
@@ -530,7 +634,21 @@ function advanceOne(
     report.broken.push(mark.sessionId);
     return;
   }
-  const mirrorBytes = sizeOf(mark.file);
+  const measuredMirror = sizeOf(mark.file);
+  /**
+   * **And the same distinction on the copy, where it costs the most.**
+   * Reproduced 2026-09-14: a mirror that stats and is not a file took the
+   * branch below and DELETED THE OWNER'S STANDING PERSIST MARK — the row went
+   * back to `'live'`, `persistedOf` answered `null`, and the pass reported
+   * *"the copy is gone"*. The copy was not gone. The owner's instruction *do
+   * not lose this* was destroyed by a failure that had nothing to do with it,
+   * and nothing would ever put it back.
+   */
+  if (measuredMirror.bytes === null && measuredMirror.unreadable !== null) {
+    report.unreadable.push({ sessionId: mark.sessionId, why: measuredMirror.unreadable });
+    return;
+  }
+  const mirrorBytes = measuredMirror.bytes;
   if (mirrorBytes === null) {
     // The copy is gone from under the mark. Nothing is silently re-created:
     // the mark is dropped and named, because re-copying 65 MB on a background
@@ -542,7 +660,32 @@ function advanceOne(
     }
     return;
   }
-  if (originalBytes < mark.bytes || !stillPrefix(original, mark.file, mark.bytes)) {
+  // The two halves are separated because they answer different questions.
+  // `originalBytes < mark.bytes` is a MEASUREMENT — the file is shorter than
+  // the copy, so it cannot be the file the copy came from — and needs no read.
+  // The prefix check needs two reads, and either of them may simply not
+  // happen, which is the third answer `stillPrefix` now gives.
+  if (originalBytes < mark.bytes) {
+    index.markPersisted({ ...mark, mirroredAt: new Date().toISOString(), note: REPLACED_NOTE });
+    report.broken.push(mark.sessionId);
+    return;
+  }
+  const prefix = stillPrefix(original, mark.file, mark.bytes);
+  if (prefix === 'unreadable') {
+    // **Nothing is stamped**, and that is the whole of this branch:
+    // `REPLACED_NOTE` is sticky by design — *"Already broken. It is not
+    // retried."* — so writing it on a read that never happened retires a
+    // healthy mirror permanently, under a sentence naming a cause that did not
+    // occur. The witness pages could not be read; that is all that is known,
+    // and it is what the report says.
+    report.unreadable.push({
+      sessionId: mark.sessionId,
+      why: 'the witness bytes could not be read from the transcript or from the copy, so ' +
+        'whether the copy is still a prefix of it is unknown',
+    });
+    return;
+  }
+  if (prefix === 'replaced') {
     index.markPersisted({ ...mark, mirroredAt: new Date().toISOString(), note: REPLACED_NOTE });
     report.broken.push(mark.sessionId);
     return;
@@ -591,7 +734,16 @@ function orphan(
   row: ConversationRow | null,
   report: MirrorReport,
 ): void {
-  const mirrorBytes = sizeOf(mark.file);
+  const measured = sizeOf(mark.file);
+  // The copy could not be measured and is not absent. `advanceOne`'s rule,
+  // and it matters more here than there: the original is already gone, so
+  // dropping the mark on an unreadable copy would throw away the ONLY record
+  // that this conversation was ever kept.
+  if (measured.bytes === null && measured.unreadable !== null) {
+    report.unreadable.push({ sessionId: mark.sessionId, why: measured.unreadable });
+    return;
+  }
+  const mirrorBytes = measured.bytes;
   if (mirrorBytes === null) {
     index.unpersist(mark.sessionId);
     report.cleared.push(mark.sessionId);

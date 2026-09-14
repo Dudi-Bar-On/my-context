@@ -578,10 +578,11 @@ test('retryOnTransientFsError rethrows the original error, unchanged, once attem
  * be given genuinely different content under the same id. */
 function writeLayerItem(root: string, id: string, title: string): void {
   mkdirSync(path.join(root, 'items', 'constraint'), { recursive: true });
-  const item = parseItem(ITEM, `items/constraint/${id}.md`, 'project');
-  item.id = id;
-  item.title = title;
-  writeItem(root, item);
+  // Constructed rather than mutated: `Item.id` is `readonly` (see types.ts),
+  // and a spread says what this fixture is actually doing — inventing a second
+  // item under a chosen id — instead of editing one that already exists.
+  const parsed = parseItem(ITEM, `items/constraint/${id}.md`, 'project');
+  writeItem(root, { ...parsed, id, title });
 }
 
 test('on a conflicting id the project layer wins, not the global one', () => {

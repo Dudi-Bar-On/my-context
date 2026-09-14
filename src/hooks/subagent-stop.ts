@@ -8,7 +8,9 @@ import {
   capped, NOTE_MAX, observeAndRecord, subjectFor, SUBJECT_MAX,
   type Observation, type ObservationSpec,
 } from './observe.ts';
-import { hookParseErrorLine, parseHookInput, readStdin, type HookInput } from './io.ts';
+import {
+  hookParseErrorLine, parseHookInput, payloadOf, readStdin, type HookPayload,
+} from './io.ts';
 
 /**
  * The end of the dispatch `SubagentStart` opened.
@@ -97,7 +99,12 @@ import { hookParseErrorLine, parseHookInput, readStdin, type HookInput } from '.
  * See `HOOK_OPS`'s own comment in `core/audit.ts` for the three options this
  * task weighed and why this one won.
  */
-export function observeSubagentStop(input: HookInput): Observation | null {
+// `HookPayload<'SubagentStop'>`, not `HookInput`: this hook is a separate process
+// spawned for exactly one event, so the fields it may read are that event's —
+// `TASK-one-flat-input-type-spans-fifteen-events-so-a-handler`.
+export function observeSubagentStop(
+  input: HookPayload<'SubagentStop'>,
+): Observation | null {
   const agentId = input.agent_id;
   if (typeof agentId !== 'string' || agentId === '') return null;
 
@@ -319,7 +326,9 @@ export function transcriptSteps(transcriptPath: string, agentId: string): AgentS
  * not throw on a broken `config.json`, so a broken config costs this backfill
  * rather than the whole hook.
  */
-export function recordAgentSteps(input: HookInput, fallbackCwd: string): void {
+export function recordAgentSteps(
+  input: HookPayload<'SubagentStop'>, fallbackCwd: string,
+): void {
   try {
     const agentId = input.agent_id;
     if (!agentId) return;
@@ -358,7 +367,8 @@ export function recordAgentSteps(input: HookInput, fallbackCwd: string): void {
 // lane while it ran.
 if (isMainEntry(import.meta.filename, process.argv[1])) {
   try {
-    const { input, parseError } = parseHookInput(readStdin());
+    const { input: raw, parseError } = parseHookInput(readStdin());
+    const input = payloadOf(raw, 'SubagentStop');
     if (parseError !== null) process.stderr.write(hookParseErrorLine(parseError));
     observeAndRecord(SUBAGENT_STOP, input, process.cwd());
   } catch {

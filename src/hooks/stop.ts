@@ -465,7 +465,45 @@ function handoverAsk(
     asks: latch.asks + 1,
     satisfied: false,
   };
-  if (!writeLatch(root, sessionId, next)) return null;
+  if (!writeLatch(root, sessionId, next)) {
+    /**
+     * **The ask is withheld and the person is TOLD, which for nine days it was
+     * not** — `TASK-four-failure-states-are-modelled-in-the-type-and-read-by`,
+     * fourth bullet: *"the handover ask is withheld at 99% occupancy when the
+     * latch will not write, and nothing says so."*
+     *
+     * The withholding itself is right and is not being reopened: the latch is
+     * what stops the ask repeating on every turn, and an ask with no latch
+     * behind it is the loop `writeLatch`'s own contract refuses. What was
+     * wrong is that the whole mechanism the user is relying on — at the moment
+     * their window is nearly full — went quiet with no trace on any channel.
+     *
+     * **It repeats per turn, deliberately, and that is the one place this
+     * differs from `standDownOnce` above.** `standDownOnce` can latch because
+     * its failure is a missing MEASUREMENT and the disk is fine; here the disk
+     * IS the failure, so there is nothing to latch on and the choice is
+     * between saying it every turn and never saying it. Every turn wins on
+     * three counts: it is reached only past the occupancy threshold, which
+     * most sessions never cross at all; it is reached only on a percent the
+     * window has newly GROWN into, so a stalled window is silent; and the
+     * thing it is reporting is not a one-off event but an ongoing condition
+     * that is still true on the next turn. A hook that nags about a state that
+     * has gone away is the failure to avoid; this one nags about a state that
+     * has not.
+     *
+     * stderr, because the person can fix a directory and the model cannot, and
+     * because the model's channel is the ask itself — which is exactly what is
+     * not being sent.
+     */
+    process.stderr.write(
+      `my_context: the context window has passed ${step}% and the handover ask was WITHHELD — ` +
+      `the latch under \`${root}/state/\` could not be written, and an ask that cannot record ` +
+      'having been made would be made again on every turn for the rest of this session. So ' +
+      `nothing will prompt you to bring ${handover.path} up to date: do it by hand, now. Check ` +
+      'that the state directory is writable. Nothing was blocked.\n',
+    );
+    return null;
+  }
 
   return {
     percent: occupancy.percent,
@@ -1155,8 +1193,15 @@ export function refreshNote(report: ConversationRefresh | null): string {
   // "every mirror was already current" is not. `marked > 0` alone is NOT
   // movement, for that exact reason.
   const mirror = report.mirror ?? null;
+  // `unreadable` is in the sum, and it is the only term here that is not work
+  // done: it says a mark was left exactly as it was because a file would not
+  // answer. It belongs in the sum for the same reason the stand-down does —
+  // nothing else in this row would ever hint at it — and it is what those
+  // other four counts used to be inflated by
+  // (`TASK-a-transient-read-error-permanently-breaks-a-conversation`).
   const mirrorMoved = mirror === null ? 0
-    : mirror.advanced + mirror.orphaned.length + mirror.broken.length + mirror.cleared.length;
+    : mirror.advanced + mirror.orphaned.length + mirror.broken.length + mirror.cleared.length
+      + mirror.unreadable.length;
   // **The bookmarks count as movement, on the same rule as the mirrors.** A
   // turn on which the product wrote a bookmark into the owner's list without
   // being asked is a turn a person would want to find later; "the grammar
@@ -1181,6 +1226,48 @@ export function refreshNote(report: ConversationRefresh | null): string {
     : autoAnchors.marked + autoAnchors.dropped + autoAnchors.relabelled;
   const anchorsDeferred = ran === null ? 0 : ran.search.deferred;
   const stoodDown = auto.did === 'stood-down' ? auto.leftMs : null;
+  /**
+   * **The pass that FAILED, which had no clause at all while its neighbour
+   * `stood-down` had one** —
+   * `TASK-four-failure-states-are-modelled-in-the-type-and-read-by`, first
+   * bullet. `TurnAnchors`' own docblock says the two are opposite — *"one is a
+   * defect and the other is the budget working"* — and the row said only one
+   * of them, so a failed pass read as a row with no anchor clause, which is
+   * also what an ordinary quiet turn looks like.
+   *
+   * **Read off `report.autoAnchors` rather than off `auto`.** `auto` defaults
+   * an ABSENT field to `{ did: 'failed' }` so the `ran` extraction below it
+   * has one shape to handle; that default is a convenience for this function
+   * and not a measurement. A caller that never set the field — every
+   * `RebuildReport` composed before the pass existed, and the test fixtures
+   * that build one by hand — has not reported a failure, and turning its
+   * silence into one would be the unmeasured-drawn-as-measured defect
+   * (`STD-a-measured-zero-is-drawn-and-named-an-unmeasured-thing-is`) in the
+   * line that exists to prevent it.
+   */
+  const autoFailed = report.autoAnchors?.did === 'failed';
+  /**
+   * **The anchors reconciliation, WRITTEN AND RETURNED AND READ BY NOTHING** —
+   * the same item's second bullet, and report 4's `TurnAnchors` case.
+   *
+   * `ConversationRefresh.anchors` carries `reconcileAnchors`' answer and its
+   * field comment already draws the distinction that makes it worth carrying:
+   * `null` is a pass that could not run, which is not a pass that had nothing
+   * to do. Nothing in `src/` or `test/` had ever looked at it.
+   *
+   * What it is worth saying, and what it is not: `restored` is the ordinary
+   * per-turn state and stays silent, exactly as "every mirror was already
+   * current" does. `adopted` happens ONCE per corpus in the world — the turn
+   * `.anchors.jsonl` comes into existence — and is the single most findable
+   * moment this mechanism has. `none` is a `:memory:` run with no workspace to
+   * hold a file, which is a fact about the run and not about the turn, so it
+   * is silent too. `null` is the failure, and it means the durable copy of the
+   * one table no rebuild can re-derive did not get written this turn.
+   */
+  const anchorFile = report.anchors === undefined ? null : report.anchors;
+  const anchorsAdopted = anchorFile !== null && anchorFile.direction === 'adopted'
+    ? anchorFile.rows : null;
+  const anchorFileFailed = report.anchors === null;
   // **An overrun is a fact about the hook, not about the bookmarks**, and it
   // is the one this whole budget exists over: the pass cannot be interrupted,
   // so the only thing that can be done about a run that costs more than its
@@ -1190,9 +1277,30 @@ export function refreshNote(report: ConversationRefresh | null): string {
     ? autoAnchors.ms : null;
   const moved = report.appended + report.scanned + report.removed + agentsMoved + mirrorMoved
     + anchorsMoved + anchorsDeferred + (stoodDown === null ? 0 : 1)
-    + (overranMs === null ? 0 : 1);
+    + (overranMs === null ? 0 : 1)
+    + (autoFailed ? 1 : 0) + (anchorsAdopted === null ? 0 : 1) + (anchorFileFailed ? 1 : 0)
+    // **A refusal counts as movement even though nothing moved**, and it is
+    // the one entry in this sum that is not about work done. It is the
+    // opposite: it says the archive was not looked at, so every other number
+    // on this row describes a run that measured nothing
+    // (`TASK-one-unreadable-transcript-directory-empties-the-conversation`).
+    + (report.unreadable === null ? 0 : 1);
   if (moved === 0) return '';
   const parts: string[] = [];
+  // **FIRST, because it changes how every clause after it must be read.** The
+  // sentence it replaces was the defect the item is named for: with the
+  // directory unlistable the index used to be emptied and this row said "N
+  // indexed session(s) no longer on disk" — a cause that is wrong, stated with
+  // the confidence of one that is right, sending the reader to look for
+  // deleted files. Nothing is dropped now, so this clause appears INSTEAD of
+  // that one rather than beside it.
+  if (report.unreadable !== null) {
+    parts.push(
+      `the transcript directory ${report.dir} could not be read (${report.unreadable}), so ` +
+      'nothing on disk was measured this turn and NO indexed session was dropped — the sessions ' +
+      'are still indexed and are not gone',
+    );
+  }
   if (report.appended > 0) {
     parts.push(`${report.appended} transcript(s) had grown and only the appended tail was read`);
   }
@@ -1240,6 +1348,17 @@ export function refreshNote(report: ConversationRefresh | null): string {
     if (mirror.cleared.length > 0) {
       kept.push(`${mirror.cleared.length} mark(s) dropped because the copy is gone`);
     }
+    // Named apart from all three above because it is their opposite: nothing
+    // was decided about these marks and nothing was written. The clause says
+    // so in those words, because the three sentences beside it are about
+    // damage and this one must not be read as a fourth kind.
+    if (mirror.unreadable.length > 0) {
+      kept.push(
+        `${mirror.unreadable.length} mark(s) left untouched because a file would not answer ` +
+        `(${mirror.unreadable.map((u) => u.sessionId).join(', ')}) — nothing dropped, nothing ` +
+        'stamped, retried next turn',
+      );
+    }
     // **The choice kept up with the append** (`plan:archive seq:46`). It is a
     // separate clause from the copy's own because it is a separate promise: a
     // redacted copy that quietly stopped being projected would put a value the
@@ -1281,6 +1400,33 @@ export function refreshNote(report: ConversationRefresh | null): string {
     parts.push(
       `the automatic anchor pass stood down with ${stoodDown}ms of the hook's budget left, so ` +
       'anchors in what was appended wait for the next turn',
+    );
+  }
+  // The failure, beside the stand-down it was being confused with. It says
+  // what the stand-down's clause says about the anchors — they wait — and then
+  // the half the stand-down cannot say: nothing about the next turn is
+  // different, so a run of these rows is a pass that is not going to recover
+  // on its own.
+  if (autoFailed) {
+    parts.push(
+      'the automatic anchor pass FAILED — it was started and answered nothing, so anchors in ' +
+      'what was appended were not marked and the next turn will try again against the same ' +
+      'transcript',
+    );
+  }
+  // Once per corpus in the world, and it is the turn the durable copy of the
+  // bookmarks starts existing.
+  if (anchorsAdopted !== null) {
+    parts.push(
+      `${anchorsAdopted} anchor(s) were written into \`.anchors.jsonl\` for the first time, so ` +
+      'the one table no rebuild can re-derive now has a durable copy',
+    );
+  }
+  if (anchorFileFailed) {
+    parts.push(
+      'the anchors file could not be reconciled with the table this turn, so the durable copy ' +
+      'of the bookmarks is whatever it was and an index deleted before the next turn would ' +
+      'lose what has been marked since',
     );
   }
   if (overranMs !== null) {

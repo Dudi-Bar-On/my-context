@@ -5,7 +5,56 @@ import { checksum } from './slug.ts';
 import {
   ENUM_READ, ENUM_READ_POLICIES, readEnum, validateLoadedId, type EnumReadPolicy,
 } from './vocabulary.ts';
-import type { Item, Layer, Observation, Origin, Relation, Severity, Status, Step } from './types.ts';
+import type {
+  ContentHash, Item, ItemChecksum, Layer, Observation, Origin, Relation, Severity,
+  SourceChecksum, Status, Step, SummaryBasisHash,
+} from './types.ts';
+
+/* -------------------------------------------------------------------------- *
+ * THE DOORS FOR WHAT A FILE CLAIMS
+ *
+ * Markdown is the source of truth (`INV-markdown-is-the-source-of-truth`), so
+ * three of the four hash kinds (`src/core/types.ts`) arrive as untyped text out
+ * of a frontmatter block — written by this product, by a person, or by a
+ * version of this product that no longer exists. These three functions are the
+ * only way such a string becomes one of the branded kinds.
+ *
+ * **They verify nothing, and that is deliberate rather than a shortcut.** A
+ * recorded hash that disagrees with the content is not a parse error — it is
+ * precisely the state `doctor` exists to report (`source_drift`, a stale
+ * summary, a lapsed acknowledgement), and a parser that refused it would delete
+ * the evidence. What they buy is that the CLAIM is made once, at the boundary,
+ * under a name somebody can grep for, instead of being assumed at every read.
+ *
+ * There is no fourth door: `Item.checksum` is still declared `string`, for the
+ * measured reason written on that field.
+ * -------------------------------------------------------------------------- */
+
+/** What a file claims a summary was written against. Unverified — see above. */
+export function recordedSummaryBasis(raw: string): SummaryBasisHash;
+export function recordedSummaryBasis(raw: null): null;
+export function recordedSummaryBasis(raw: string | null): SummaryBasisHash | null;
+export function recordedSummaryBasis(raw: string | null): SummaryBasisHash | null {
+  return raw as SummaryBasisHash | null;
+}
+
+/** What a file claims a snapshot was taken from. Unverified — see above. */
+export function recordedSourceChecksum(raw: string): SourceChecksum;
+export function recordedSourceChecksum(raw: null): null;
+export function recordedSourceChecksum(raw: string | null): SourceChecksum | null;
+export function recordedSourceChecksum(raw: string | null): SourceChecksum | null {
+  return raw as SourceChecksum | null;
+}
+
+/**
+ * What a file claims a person acknowledged, per finding code. Unverified — see
+ * above, and note that `parseAcknowledged` has ALREADY dropped every entry it
+ * could not read, so what arrives here is well-shaped without being true.
+ */
+export function recordedContentHashes(raw: Record<string, string>): Record<string, ContentHash> {
+  return raw as Record<string, ContentHash>;
+}
+
 
 const DELIM = /^---\r?\n([\s\S]*?)\r?\n---\r?\n?/;
 const OBSERVATION = /^-\s+\[([a-z0-9_-]+)\]\s+(.*)$/i;
@@ -643,7 +692,7 @@ export function parseItem(text: string, filePath: string, layer: Layer): Item {
     // basis with no summary is inert, and a summary with no basis must read as
     // `unanchored` rather than as a summary written against nothing in
     // particular. Both cases are `summaryState`'s to name, not this parser's.
-    summaryOf: optString(fm, rawBlock, 'summary_of'),
+    summaryOf: recordedSummaryBasis(optString(fm, rawBlock, 'summary_of')),
     // `[]` for every item that predates the field, which is every item in every
     // corpus — and `[]` is "nothing has been replaced yet", which is the honest
     // state rather than a missing one. Nothing is backfilled from anywhere:
@@ -662,7 +711,7 @@ export function parseItem(text: string, filePath: string, layer: Layer): Item {
     // `parseAcknowledged` drops an entry it cannot read rather than storing a
     // broken one; its docblock argues why dropping is the SAFE direction here
     // and nowhere else in this parser.
-    acknowledged: parseAcknowledged(stringList(fm, 'acknowledged')),
+    acknowledged: recordedContentHashes(parseAcknowledged(stringList(fm, 'acknowledged'))),
     scope: stringList(fm, 'scope'),
     tags: stringList(fm, 'tags'),
     // Read against `ORIGINS` for the reason given at `status` above, and
@@ -670,7 +719,7 @@ export function parseItem(text: string, filePath: string, layer: Layer): Item {
     origin: readEnum(optString(fm, rawBlock, 'origin'), ENUM_READ.origin),
     sourceFile: optString(fm, rawBlock, 'source_file'),
     sourceAnchor: optString(fm, rawBlock, 'source_anchor'),
-    sourceChecksum: optString(fm, rawBlock, 'source_checksum'),
+    sourceChecksum: recordedSourceChecksum(optString(fm, rawBlock, 'source_checksum')),
     validFrom: optString(fm, rawBlock, 'valid_from'),
     validUntil: optString(fm, rawBlock, 'valid_until'),
     checksum: optString(fm, rawBlock, 'checksum') ?? '',
@@ -799,7 +848,7 @@ export function classifyChecksumMismatch(recorded: string): 'migration' | 'alter
  * `formatChecksum` — see that function and `CHECKSUM_BASIS_VERSION` itself
  * for why version 1 renders with no visible tag at all.
  */
-export function computeItemChecksum(item: Item): string {
+export function computeItemChecksum(item: Item): ItemChecksum {
   const shape: Record<string, unknown> = {
     id: item.id, type: item.type, title: item.title, status: item.status,
     severity: item.severity, always: item.always, scope: item.scope, tags: item.tags,
@@ -905,7 +954,10 @@ export function computeItemChecksum(item: Item): string {
   // that nothing reads at runtime, nothing injects, and no decision rests on,
   // whereas an irreversible mass write to a live corpus is the failure the
   // spec spent a paragraph refusing.
-  return formatChecksum(CHECKSUM_BASIS_VERSION, checksum(JSON.stringify(shape)));
+  // The one cast that makes an `ItemChecksum`, and it is sound by construction:
+  // `shape` IS the checksum basis — this function's own projection — so what
+  // comes back is an item checksum, not a string somebody promised was one.
+  return formatChecksum(CHECKSUM_BASIS_VERSION, checksum(JSON.stringify(shape))) as ItemChecksum;
 }
 
 export function renderItem(item: Item): string {

@@ -49,6 +49,7 @@ import {
 } from '../../scripts/check-cited-items.ts';
 import { removeTree } from '../helpers/tmp.ts';
 import type { Item } from '../../src/core/types.ts';
+import { resolveConfig } from '../../src/core/config.ts';
 
 const REPO = path.resolve(fileURLToPath(new URL('.', import.meta.url)), '..', '..');
 const SCRIPT = path.join(REPO, 'scripts', 'check-cited-items.ts');
@@ -80,6 +81,10 @@ function corpusOf(items: Item[]): Corpus {
     // Both lane indexes empty: nothing here asks a lane question, and a
     // `readCorpus` that grew a second one for retired work (`check-handover`'s
     // RETIRED tier) must not silently change what these plants mean.
+    // The shipped catalogue. `readCorpus` now keeps its config on the corpus,
+    // because `asWorkItem` has to be asked at the point a prose id is resolved
+    // — see `TASK-a-function-that-reads-a-task-field-accepts-any-item-and`.
+    config: resolveConfig({}),
     lanes: new Map(), retiredLanes: new Map(), plans: new Set(), ids, byId,
     prefixes: new Set(ids.map((id) => id.split('-')[0]!)),
   };

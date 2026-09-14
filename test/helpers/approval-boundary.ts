@@ -73,7 +73,13 @@ export const NO_FLAG_PROBE: Record<string, string> = {
     + 'on it to find either way: `init --pack` creates the corpus it imports into, so there is '
     + 'nothing yet to protect, and everything a pack brings in still lands `draft`',
   rebuild: 're-indexes what is on disk and takes no flags at all',
-  show: 'takes an id, not flags — it reads the sentinel as the id and says so',
+  // `show` left this table on 2026-09-14. It read "takes an id, not flags — it
+  // reads the sentinel as the id and says so", and that was true until
+  // `TASK-show-accepts-json-and-silently-drops-it-and-closing-that` gave it
+  // `--json` and therefore a parser. The probe now REACHES its flag surface,
+  // so the row would be a false excuse — and a false excuse here is worse than
+  // none, because it answers for a case nobody tested. The probe finds no
+  // `--yes` on `show`, which is correct: it reads.
 };
 
 /**

@@ -17,17 +17,17 @@ tags:
   - inferred
   - "plan:swallow"
   - "seq:6"
-  - "state:todo"
+  - "state:done"
 origin: human
 source_file: null
 source_anchor: null
 source_checksum: null
 valid_from: 2026-09-13
 valid_until: null
-checksum: 1a827535b25760b3
+checksum: 10a13bec8bbcbe00
 plan: swallow
 seq: "6"
-state: todo
+state: done
 priority: "2"
 ---
 

@@ -16,17 +16,17 @@ tags:
   - types
   - "plan:unread"
   - "seq:5"
-  - "state:todo"
+  - "state:done"
 origin: human
 source_file: null
 source_anchor: null
 source_checksum: null
 valid_from: 2026-09-13
 valid_until: null
-checksum: 0560ddaff88bb4c1
+checksum: 103278647c8964a1
 plan: unread
 seq: "5"
-state: todo
+state: done
 priority: "2"
 ---
 

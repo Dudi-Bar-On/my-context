@@ -12,7 +12,8 @@ import { Store } from '../core/store.ts';
 import { configLoadFailure, resolveWorkspace } from '../core/workspace.ts';
 import { assertDoor } from '../rules/deliver.ts';
 import {
-  configUnreadableLine, hookParseErrorLine, parseHookInput, readStdin, type HookInput,
+  configUnreadableLine, hookParseErrorLine, parseHookInput, payloadOf, readStdin,
+  type HookPayload,
 } from './io.ts';
 
 /**
@@ -47,7 +48,8 @@ import {
  * its five values — see `disclosure` below.
  */
 function measurement(
-  root: string, input: HookInput, sessionId: string, handover: HandoverConfig | null,
+  root: string, input: HookPayload<'PreCompact'>, sessionId: string,
+  handover: HandoverConfig | null,
 ): {
   trigger: string;
   occupancyPercent: number | null;
@@ -155,7 +157,11 @@ function measurement(
  * design forbids, so no failure below may shrink the capture silently.
  */
 export function buildRestoreSnapshot(
-  input: HookInput, fallbackCwd: string, review: TriggerVerdict | null = null,
+// `HookPayload<'PreCompact'>`, not `HookInput`: this hook is a separate process
+// spawned for exactly one event, so the fields it may read are that event's —
+// `TASK-one-flat-input-type-spans-fifteen-events-so-a-handler`.
+  input: HookPayload<'PreCompact'>, fallbackCwd: string,
+  review: TriggerVerdict | null = null,
 ): { path: string; itemIds: string[] } | null {
   try {
     const sessionId = input.session_id;
@@ -370,7 +376,8 @@ if (isMainEntry(import.meta.filename, process.argv[1])) {
     // line — not one byte anywhere saying the coming compaction would lose
     // everything. Same channel and same fail-open exit 0 as the
     // snapshot-write failure this hook already discloses.
-    const { input, parseError } = parseHookInput(readStdin());
+    const { input: raw, parseError } = parseHookInput(readStdin());
+    const input = payloadOf(raw, 'PreCompact');
     if (parseError !== null) process.stderr.write(hookParseErrorLine(parseError));
     // BEFORE the snapshot, and never awaited. Design §2: *"the moment context
     // is about to be lost is when capture is worth most"* — and this is the

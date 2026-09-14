@@ -37,6 +37,9 @@ import { markAcknowledged, REMEDY, type Finding } from '../../src/doctor/checks.
 import { acknowledgedCount, summarize } from '../../src/cli/commands/doctor.ts';
 import type { Item } from '../../src/core/types.ts';
 import { sandbox, type Sandbox } from '../helpers/workspace.ts';
+// The boundary doors for the branded hash kinds (core/types.ts): a fixture
+// states a hash the same way a file does — by claiming it, unverified.
+import { recordedContentHashes } from '../../src/core/item.ts';
 
 /** A body whose own wording retracts its premise, so `checkBodyAgreement`
  *  reports `body_disagrees_with_meta` and NO edit to the item can clear it —
@@ -100,7 +103,9 @@ test('an acknowledged item round-trips byte for byte, and its checksum covers th
       'lapsed ruling to the current hash with nothing reporting it');
 
     // The forgery this coverage exists to catch, made explicit.
-    const forged = { ...reparsed, acknowledged: { some_other_code: 'deadbeefdeadbeef' } };
+    const forged = {
+      ...reparsed, acknowledged: recordedContentHashes({ some_other_code: 'deadbeefdeadbeef' }),
+    };
     assert.notEqual(computeItemChecksum(forged), forged.checksum);
   } finally { box.dispose(); }
 });

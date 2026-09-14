@@ -1,6 +1,8 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { EXECUTION_NONCE_TTL_MS, ExecutionNonceStore } from '../../src/ui/execute-nonce.ts';
+import {
+  asExecutionNonce, EXECUTION_NONCE_TTL_MS, ExecutionNonceStore,
+} from '../../src/ui/execute-nonce.ts';
 
 /*
  * Every assertion here compares a boolean, so every one carries a message: a
@@ -63,9 +65,13 @@ test('it expires, and an expired nonce is gone rather than reusable', () => {
 
 test('an unminted nonce never redeems, whatever it looks like', () => {
   const store = new ExecutionNonceStore();
-  assert.equal(store.redeem('', 'pin', ['pin', 'A']), false,
+  // `asExecutionNonce` is what a wire boundary does with a string somebody
+  // CLAIMS is a nonce, and this test is that claim at its most hostile. The
+  // brand is not a validator and this is the assertion that says so: coercing
+  // still leaves both of these refusals exactly where they were.
+  assert.equal(store.redeem(asExecutionNonce(''), 'pin', ['pin', 'A']), false,
     'the empty string is not a credential');
-  assert.equal(store.redeem('0'.repeat(32), 'pin', ['pin', 'A']), false,
+  assert.equal(store.redeem(asExecutionNonce('0'.repeat(32)), 'pin', ['pin', 'A']), false,
     'a value shaped exactly like a nonce this store mints is still not one it minted');
 });
 

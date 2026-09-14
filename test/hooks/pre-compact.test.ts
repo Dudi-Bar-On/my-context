@@ -79,7 +79,7 @@ test('the snapshot captures everything the seen file recorded this session', () 
 
   const result = buildRestoreSnapshot(input(cwd), cwd);
   assert.deepEqual(result?.itemIds, ['CONST-a']);
-  assert.deepEqual(readSnapshotMeta(ws.projectRoot!, 's1')?.itemIds, ['CONST-a']);
+  assert.deepEqual(readSnapshotMeta(ws.projectRoot!, 's1').meta?.itemIds, ['CONST-a']);
 
   removeTree(cwd);
 });
@@ -125,7 +125,7 @@ test('an empty session still writes an empty snapshot', () => {
   const result = buildRestoreSnapshot(input(cwd), cwd);
   assert.deepEqual(result?.itemIds, []);
   const ws = resolveWorkspace(cwd);
-  assert.deepEqual(readSnapshotMeta(ws.projectRoot!, 's1')?.itemIds, []);
+  assert.deepEqual(readSnapshotMeta(ws.projectRoot!, 's1').meta?.itemIds, []);
   removeTree(cwd);
 });
 

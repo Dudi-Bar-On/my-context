@@ -16,17 +16,17 @@ tags:
   - silent-drop
   - "plan:unread"
   - "seq:4"
-  - "state:todo"
+  - "state:done"
 origin: human
 source_file: null
 source_anchor: null
 source_checksum: null
 valid_from: 2026-09-13
 valid_until: null
-checksum: 76a3fc08996e74e1
+checksum: ad7ae903b76e5c40
 plan: unread
 seq: "4"
-state: todo
+state: done
 priority: "2"
 ---
 

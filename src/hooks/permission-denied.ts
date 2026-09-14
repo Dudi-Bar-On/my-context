@@ -1,6 +1,6 @@
 import { isMainEntry } from '../core/paths.ts';
 import { capped, runObservationHook, type Observation, type ObservationSpec } from './observe.ts';
-import type { HookInput } from './io.ts';
+import type { HookPayload } from './io.ts';
 
 /**
  * A tool call was refused — and most often this project is what refused it.
@@ -44,7 +44,12 @@ import type { HookInput } from './io.ts';
 /** Every denial my_context issues opens with this; nothing else's does. */
 const OWN_PREFIX = 'my_context: ';
 
-export function observePermissionDenied(input: HookInput): Observation | null {
+// `HookPayload<'PermissionDenied'>` and not `HookInput`: this function only ever sees a
+// `PermissionDenied` payload, and typing it as one is what stops it reading a field
+// that event never sends — `TASK-one-flat-input-type-spans-fifteen-events-so-a-handler`.
+export function observePermissionDenied(
+  input: HookPayload<'PermissionDenied'>,
+): Observation | null {
   const tool = typeof input.tool_name === 'string' && input.tool_name !== ''
     ? input.tool_name : '<absent>';
   const reason = typeof input.reason === 'string' ? input.reason : '';

@@ -108,7 +108,7 @@ import { loadStagedRestore, type StagedRestore } from '../core/restore-staging.t
 import { stageRetrievalReturn } from '../core/retrieval/return-stage.ts';
 import { returnReviewForm, returnShortfalls } from '../core/retrieval/return.ts';
 import { markedReturnFor } from './read-model-retrieval.ts';
-import { ExecutionNonceStore } from './execute-nonce.ts';
+import { asExecutionNonce, ExecutionNonceStore } from './execute-nonce.ts';
 import { registerRoute, type ApiContext, type JsonResult } from './routes.ts';
 import type { Workspace } from '../core/workspace.ts';
 
@@ -366,8 +366,13 @@ export function apiRetrievalApprove(
   // attempt, and taking the 404 first would leave a live authority behind a
   // refusal — `handleConfirm`'s "no nonce is minted on a refusal", turned
   // around to the redeeming end.
+  // `asExecutionNonce` is the boundary coercion: `nonce` came out of an
+  // untyped JSON body, and this is where the claim that it is THIS store's
+  // credential — not the handoff nonce, which is the other 32 hex characters
+  // in scope on this server — is written down once, in a name a reader can
+  // grep for.
   const bound = nonces.redeem(
-    nonce, APPROVE_ID, [key, record === null ? '' : shownDigest(record)],
+    asExecutionNonce(nonce), APPROVE_ID, [key, record === null ? '' : shownDigest(record)],
   );
   if (record === null) {
     return { status: 404, body: { error: `nothing is staged under "${key}".` } };

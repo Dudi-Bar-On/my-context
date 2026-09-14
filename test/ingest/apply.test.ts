@@ -14,6 +14,9 @@ import { createItem, updateItem, type MutationContext } from '../../src/core/mut
 import { checksum } from '../../src/core/slug.ts';
 import { summaryState } from '../../src/core/content-hash.ts';
 import { removeTree } from '../helpers/tmp.ts';
+// The boundary doors for the branded hash kinds (core/types.ts): a fixture
+// states a hash the same way a file does — by claiming it, unverified.
+import { recordedSourceChecksum } from '../../src/core/item.ts';
 
 const DOC = `# Password policy\n\nPasswords must be at least 12 characters.\nSessions expire after 30 minutes.\n`;
 
@@ -574,7 +577,7 @@ test('an anchor literally "__proto__" writes an own applied-map entry, not the o
     chunks: [{
       index: 0, anchor: '__proto__', heading: null,
       text: 'All passwords must be salted before hashing.',
-      checksum: 'deadbeefdeadbeef',
+      checksum: recordedSourceChecksum('deadbeefdeadbeef'),
     }],
     applied: {},
     rejected: [],

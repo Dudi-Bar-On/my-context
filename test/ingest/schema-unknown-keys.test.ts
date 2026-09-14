@@ -17,6 +17,9 @@ import {
 } from '../../src/ingest/schema.ts';
 import { resolveConfig } from '../../src/core/config.ts';
 import type { Chunk } from '../../src/ingest/chunk.ts';
+// The boundary doors for the branded hash kinds (core/types.ts): a fixture
+// states a hash the same way a file does — by claiming it, unverified.
+import { recordedSourceChecksum } from '../../src/core/item.ts';
 
 const CONFIG = resolveConfig({});
 
@@ -25,7 +28,7 @@ const CHUNK: Chunk = {
   anchor: 'password-policy',
   heading: 'Password policy',
   text: '# Password policy\n\nPasswords must be at least 12 characters.',
-  checksum: 'abc123',
+  checksum: recordedSourceChecksum('abc123'),
 };
 
 function candidate(over: Record<string, unknown> = {}): Record<string, unknown> {

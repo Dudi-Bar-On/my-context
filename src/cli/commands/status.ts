@@ -10,7 +10,7 @@ import { VERSION } from '../../core/version.ts';
 import type { Workspace } from '../../core/workspace.ts';
 import { runChecks } from '../../doctor/checks.ts';
 import { listSessions, pendingAnchors } from '../../ingest/session.ts';
-import { listStaging } from '../../lesson/staging.ts';
+import { readStagingDir } from '../../lesson/staging.ts';
 import { summarize } from './doctor.ts';
 import type { PendingRevision } from '../../core/revision.ts';
 import {
@@ -200,7 +200,16 @@ function cmdStatus(ws: Workspace, args: string[], out: Emit): number {
 
   try {
     const sessions = listSessions(ws.projectRoot).filter((s) => pendingAnchors(s).length > 0);
-    const pendingRules = listStaging(ws.projectRoot)
+    // **`readStagingDir`, not `listStaging`** —
+    // `TASK-liststaging-discards-its-skip-list-against-its-own-twenty`.
+    // `listStaging` is this call with the skip list thrown away, and
+    // `readStagingDir`'s own docblock spends twenty lines arguing that exactly
+    // this surface must not do that: *"a status line reading 'three staged
+    // lessons' over a directory of five files was indistinguishable from a
+    // correct one"*. `listStaging` survives for callers with nowhere to put
+    // the sentence; this one has a whole screen.
+    const staged = readStagingDir(ws.projectRoot);
+    const pendingRules = staged.staging
       .flatMap((s) => s.candidates.filter((c) => c.state === 'pending').map((c) => ({ lesson: s.lessonId, candidate: c })));
 
     // The ledger records INJECTION, not USE — a new item that has simply
@@ -333,6 +342,14 @@ function cmdStatus(ws: Workspace, args: string[], out: Emit): number {
         stagedRules: pendingRules.map((e) => ({
           lesson: e.lesson, key: e.candidate.key, title: e.candidate.candidate.title,
         })),
+        // A FIELD of the document rather than a trailing line, on this
+        // command's own standing rule for load errors directly below: `--json`
+        // exists to be piped, and a count that silently left files out is the
+        // same defect as a load error that did — `INV-nothing-is-dropped-
+        // silently`. Present at every detail level and empty when nothing was
+        // skipped, so a script can tell "nothing was left out" from "this
+        // build does not say".
+        stagedRulesSkipped: staged.skipped,
         usage: {
           sessionsRecorded: ledger.sessionsRecorded,
           window: DECAY_WINDOW,
@@ -456,6 +473,23 @@ function cmdStatus(ws: Workspace, args: string[], out: Emit): number {
           }
         }
       }
+    }
+
+    // **BEFORE the count, and printed even when the count is zero.** A skipped
+    // file may be the only staging file there is, in which case the block
+    // below does not print at all — and a directory holding one unreadable
+    // file would otherwise look exactly like an empty one, which is the state
+    // `readStagingDir` was built to make impossible. The file is named and the
+    // reason is quoted verbatim: the reason is what says whether this is junk
+    // to delete or a lesson to re-stage.
+    if (staged.skipped.length) {
+      out('');
+      say(
+        out,
+        `${staged.skipped.length} staging file(s) could NOT be read, so they are not in the ` +
+        'count below and their candidates cannot be accepted:',
+      );
+      for (const s of staged.skipped) say(out, `${s.file} — ${s.reason}`, '  ');
     }
 
     if (pendingRules.length) {

@@ -14,7 +14,7 @@ import {
 import { classifyChecksumMismatch, computeItemChecksum, parseItem } from './item.ts';
 import { normalizePosix } from './paths.ts';
 import { writeItem, type WriteItemOptions } from './rebuild.ts';
-import { isSnapshot, snapshotChecksum, snapshotSource } from './reference.ts';
+import { bodySourceChecksum, isSnapshot, snapshotChecksum } from './reference.ts';
 import { checksum } from './slug.ts';
 import { sleepMs } from './sleep.ts';
 import { unknownIdError } from './teach.ts';
@@ -234,7 +234,7 @@ function reconcileSnapshot(root: string, item: Item): SnapshotReconciliation | n
     return { kind: 'unconfirmed', sourceFile };
   }
 
-  const body = checksum(snapshotSource(item.body));
+  const body = bodySourceChecksum(item.body);
   if (body === live) {
     // A no-op when the item was already in sync, and the whole point of this
     // function's existence when it was not.

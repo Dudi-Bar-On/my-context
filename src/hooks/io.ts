@@ -193,6 +193,210 @@ export interface HookInput {
   command_source?: string;
 }
 
+/* ========================================================================== *
+ * THE PER-EVENT PAYLOAD SHAPES
+ *
+ * `TASK-one-flat-input-type-spans-fifteen-events-so-a-handler` measured what is
+ * above this line: `HookInput` is ONE FLAT INTERFACE with ~25 optional fields
+ * spanning fifteen platform events, so `input.compact_summary` COMPILES on a
+ * `SessionStart` handler and yields `undefined` at run time — a field that
+ * cannot exist on that event, accepted by the compiler. Every handler can read
+ * fields from events it never receives, and nothing anywhere says which fields
+ * its own event actually carries.
+ *
+ * **The comparison that settles the design question was already in this file.**
+ * `HookEventName` below is a closed union for the OUTPUT envelope, with the
+ * argument for it written out: *"A union rather than a `string` parameter makes
+ * that a compile error instead of a hook whose injection arrives as
+ * punctuation."* The shape was known, argued and applied on one side of the
+ * boundary only. This is the other side.
+ *
+ * ── THE LIVE INSTANCE, found while typing this ─────────────────────────────
+ *
+ * `HookInput.source` is documented above as *"SessionStart only"*. It is not:
+ * `ConfigChange` carries a `source` too, and `hooks/config-change.ts` reads it
+ * — with a COMPLETELY DIFFERENT vocabulary (`CONFIG_SOURCES`:
+ * `user_settings | project_settings | local_settings | policy_settings |
+ * skills`, against `SessionStart`'s `startup | resume | clear | compact |
+ * fork`). One key name, two vocabularies, and a docblock four fields up that
+ * warns about exactly this for `reason`/`trigger`: *"one field spelling both
+ * would let a `PostCompact` matcher silently accept a `SessionEnd` word."* A
+ * flat interface cannot hold two types under one key. A per-event map can, and
+ * `HookEventFields` below does — `SessionStart.source` and
+ * `ConfigChange.source` are two separate declarations that cannot be confused.
+ *
+ * ── HOW THIS LANDS WITHOUT BREAKING EVERY CALL SITE AT ONCE ────────────────
+ *
+ * `HookInput` stays exactly as it is and stays the type `parseHookInput`
+ * returns, because that function is handed untyped JSON and genuinely does not
+ * know which event it has until it reads `hook_event_name`. What is new is a
+ * NARROWING at each handler's entry: `payloadOf(input, 'PostCompact')` returns
+ * a view carrying the base fields plus that event's own, and nothing else. From
+ * that line on, reading a foreign field is a compile error IN THAT HANDLER,
+ * with no effect on any other.
+ *
+ * So the migration is per handler and each one is independently landable, which
+ * is the property a widening of `HookInput` itself would not have had. Handlers
+ * not yet migrated behave exactly as before; `test/hooks/hook-payload.test.ts`
+ * records which ones are done and which are not, by name.
+ *
+ * Everything here is types plus one identity function: erasable
+ * (`CONST-node-24-no-build-step`), and it costs the hot hook path nothing.
+ * ========================================================================== */
+
+/**
+ * The EIGHTEEN platform events this product registers a hook for, and the
+ * per-event fields each one actually carries.
+ *
+ * **Eighteen, not fifteen.** The item that raised this counted fifteen when it
+ * was written; `hooks/hooks.json` registers eighteen today, and the list here
+ * was checked against that file rather than against the item. `Setup` and
+ * `PostToolUseFailure` are the two most recently added, and both were reading
+ * fields off the flat `HookInput` with nothing saying which event they belong
+ * to — which is the defect, arriving again, in the two newest handlers.
+ *
+ * **Every entry was read off build 2.1.239's own payload schema** — the same
+ * provenance the field comments above record, `grep -a -b -o
+ * 'hook_event_name:kt("<Event>")'` and the bytes that follow — so this is what
+ * the platform VALIDATES, which is not quite the same as what it sends. Every
+ * field is therefore still optional and every handler still treats an absent
+ * one as absent. What the map adds is the other half: a field that is not
+ * listed for an event cannot be READ on that event at all.
+ */
+export interface HookEventFields {
+  /** `startup | resume | clear | compact | fork` — see `HookInput.source`. */
+  SessionStart: { source?: string };
+  /** `clear | resume | logout | prompt_input_exit | other` — `SESSION_END_REASONS`. */
+  SessionEnd: { reason?: string };
+  /**
+   * `manual | auto`.
+   *
+   * **A THIRD vocabulary is spelled `trigger`** — see `Setup` below, whose
+   * `trigger` is `init | maintenance`. `HookInput.trigger` above declares it
+   * once, as *"`PreCompact` and `PostCompact` only"*, which is false. That is
+   * the same defect `HookInput.source` carries, found the same way, and the map
+   * is where the two stop being one declaration.
+   */
+  PreCompact: { trigger?: string };
+  /** `manual | auto`, plus the summary compaction produced. */
+  PostCompact: { trigger?: string; compact_summary?: string };
+  PreToolUse: {
+    tool_name?: string;
+    tool_input?: Record<string, unknown>;
+    tool_use_id?: string;
+    agent_id?: string;
+    agent_type?: string;
+    prompt_id?: string;
+  };
+  PostToolUse: {
+    tool_name?: string;
+    tool_input?: Record<string, unknown>;
+    tool_response?: { agentId?: string };
+    tool_use_id?: string;
+    agent_id?: string;
+    agent_type?: string;
+  };
+  /** `tool_name,tool_input,tool_use_id,reason` — a denial paired with its call. */
+  PermissionDenied: {
+    tool_name?: string;
+    tool_input?: Record<string, unknown>;
+    tool_use_id?: string;
+    reason?: string;
+  };
+  Stop: { stop_hook_active?: boolean };
+  SubagentStart: { agent_id?: string; agent_type?: string; prompt_id?: string };
+  SubagentStop: {
+    stop_hook_active?: boolean;
+    agent_id?: string;
+    agent_type?: string;
+    agent_transcript_path?: string;
+    prompt_id?: string;
+  };
+  /** `file_path:L(),event:Or(["change","add","unlink"])`. */
+  FileChanged: { file_path?: string; event?: string };
+  InstructionsLoaded: {
+    file_path?: string;
+    memory_type?: string;
+    load_reason?: string;
+    globs?: string[];
+  };
+  /**
+   * **`source` here is NOT `SessionStart.source`**, and the whole reason this
+   * map exists rather than a flat interface is that the two cannot both live
+   * under one key. `CONFIG_SOURCES` (`hooks/config-change.ts`) is
+   * `user_settings | project_settings | local_settings | policy_settings |
+   * skills`; `SessionStart`'s is `startup | resume | clear | compact | fork`.
+   * `file_path` is optional in the schema — a `skills` change carries no single
+   * file, which `observeConfigChange` relies on.
+   */
+  ConfigChange: { source?: string; file_path?: string };
+  /**
+   * The failure counterpart of `PostToolUse`. Its payload is swept rather than
+   * read field by field — see `reasonFrom` (`post-tool-use-failure.ts`), which
+   * looks for a reason under several keys and inside several containers — so
+   * the named fields here are the ones the handler DOES read directly.
+   */
+  PostToolUseFailure: {
+    tool_name?: string;
+    tool_input?: Record<string, unknown>;
+    tool_use_id?: string;
+  };
+  /**
+   * `init | maintenance` (`SETUP_TRIGGERS`, `hooks/setup.ts`) — and the third
+   * thing named `trigger` in this map, after `PreCompact` and `PostCompact`'s
+   * `manual | auto`. `hooks.json` registers this event with NO matcher exactly
+   * because the matcher is tested against this field; see `setup.ts`.
+   */
+  Setup: { trigger?: string };
+  TaskCreated: { task_id?: string; task_subject?: string };
+  TaskCompleted: { task_id?: string; task_subject?: string };
+  UserPromptExpansion: {
+    expansion_type?: string;
+    command_name?: string;
+    command_args?: string;
+    command_source?: string;
+  };
+}
+
+/** One of the fifteen. A closed union, derived from the map so it cannot drift. */
+export type HookEvent = keyof HookEventFields;
+
+/**
+ * What EVERY event carries, whatever it is. Four fields, and no more — the
+ * platform stamps these on every payload, and anything else belongs to an
+ * event.
+ */
+export interface HookBaseFields {
+  session_id?: string;
+  transcript_path?: string;
+  cwd?: string;
+  hook_event_name?: string;
+}
+
+/** The payload of exactly one event: the base fields plus that event's own. */
+export type HookPayload<E extends HookEvent> = HookBaseFields & HookEventFields[E];
+
+/**
+ * **Narrow a parsed payload to the event this handler is registered for.**
+ *
+ * The event name is passed as a literal by the handler — `payloadOf(input,
+ * 'PostCompact')` — because the handler is a separate process spawned by
+ * `hooks.json` for exactly one event and therefore KNOWS which it is. It is not
+ * read from `input.hook_event_name`: that field is caller-supplied, a handler
+ * that trusted it would narrow to whatever a malformed payload claimed, and
+ * `parseHookInput` already documents that a `{}` is indistinguishable from a
+ * real payload downstream.
+ *
+ * It validates nothing and converts nothing — it is an identity function whose
+ * return TYPE is narrower than its argument's. Every field stays optional and
+ * every absent field stays absent, so no handler's behaviour changes on the
+ * line it is added; what changes is what the compiler will let the lines after
+ * it read.
+ */
+export function payloadOf<E extends HookEvent>(input: HookInput, _event: E): HookPayload<E> {
+  return input;
+}
+
 /**
  * The key the JIT ledger dedupes on. A subagent shares the parent's
  * `session_id` (see `HookInput.agent_id`), but it starts with an EMPTY

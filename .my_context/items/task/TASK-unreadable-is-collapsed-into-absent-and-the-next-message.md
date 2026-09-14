@@ -17,17 +17,17 @@ tags:
   - false-assertion
   - "plan:swallow"
   - "seq:8"
-  - "state:todo"
+  - "state:done"
 origin: human
 source_file: null
 source_anchor: null
 source_checksum: null
 valid_from: 2026-09-13
 valid_until: null
-checksum: b0f0bfd2d0802832
+checksum: 7d5e7d871bac2311
 plan: swallow
 seq: "8"
-state: todo
+state: done
 priority: "2"
 ---
 

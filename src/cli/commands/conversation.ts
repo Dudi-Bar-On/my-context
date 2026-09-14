@@ -131,7 +131,21 @@ function reportLines(report: ReturnType<typeof rebuildConversations>): string[] 
       `stopped, not where the conversation did: ${report.truncated.join(', ')}`,
     );
   }
-  if (report.found === 0) {
+  // **BEFORE the "no transcripts here" line, and it REPLACES it.** That
+  // sentence offers a reader two explanations — never opened, or pruned — and
+  // for as long as an unlistable directory answered the empty list, a third
+  // one was silently folded into them
+  // (`TASK-one-unreadable-transcript-directory-empties-the-conversation`).
+  // Nothing was dropped from the index either, and that is said outright,
+  // because the counts above describe a run that measured nothing.
+  if (report.unreadable !== null) {
+    lines.push(
+      `my_context: the transcript directory could NOT be read (${report.unreadable}). Nothing ` +
+      'on disk was measured, so the numbers above are not a count of what is there — and NO ' +
+      'indexed session was dropped: what this archive already holds is untouched and is not ' +
+      'gone. Fix the path or its permissions and run this again.',
+    );
+  } else if (report.found === 0) {
     lines.push(
       'my_context: no transcripts here. That is either a project the harness has never opened ' +
       'or transcripts it has pruned — the directory named above is where this looked, so the ' +
@@ -211,6 +225,22 @@ function mirrorLines(report: MirrorReport): string[] {
       `my_context: ${report.cleared.length} mark(s) were dropped because their copy is no ` +
       'longer on disk. Nothing was re-copied — that is a decision to take, not one to make on ' +
       `your behalf: ${report.cleared.join(', ')}`,
+    );
+  }
+  // **The only line here about marks nothing HAPPENED to**, and it is directly
+  // under the three that report decisions because that is what it has to be
+  // told apart from. Each of those used to swallow this case under a sentence
+  // naming a cause that had not occurred
+  // (`TASK-a-transient-read-error-permanently-breaks-a-conversation`); a mark
+  // that appears here still stands, and the reason is quoted verbatim because
+  // the reason is the only actionable part.
+  if (report.unreadable.length > 0) {
+    lines.push(
+      `my_context: ${report.unreadable.length} mark(s) could not be checked this run because a ` +
+      'file would not answer. NOTHING was changed — the marks stand, the copies are untouched, ' +
+      'and the next run tries again. If the same session appears here every time, that is a ' +
+      `real fault and this is the reason it gives: ` +
+      report.unreadable.map((u) => `${u.sessionId} (${u.why})`).join('; '),
     );
   }
   // **THE CHOICE KEPT UP WITH THE APPEND** — `plan:archive seq:46`. Said out

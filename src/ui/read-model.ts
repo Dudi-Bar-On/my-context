@@ -395,7 +395,7 @@ export function parseSelectQuery(
     // an input the hook resolves and this one skipped would make the preview
     // show a delivery the session will not receive — or hide one it will.
     const window = event === 'compact'
-      ? readSnapshotMeta(root, session)?.capturedAt ?? null
+      ? readSnapshotMeta(root, session).meta?.capturedAt ?? null
       : CONTINUITY_WINDOW_SESSION;
     const facts = deliveryFacts(state, window);
     ctx.seen = facts.seen;

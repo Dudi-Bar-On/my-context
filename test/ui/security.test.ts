@@ -9,8 +9,8 @@ import {
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import {
-  mintToken, NonceStore, recordNonceMint, recordRefusal, REFUSAL_VALUE_MAX, TOKEN_HEADER,
-  validateApiRequest,
+  asHandoffNonce, mintToken, NonceStore, recordNonceMint, recordRefusal, REFUSAL_VALUE_MAX,
+  TOKEN_HEADER, validateApiRequest,
 } from '../../src/ui/security.ts';
 import {
   auditLogPath, readAudit,
@@ -47,7 +47,10 @@ test('a nonce is dead after its window', () => {
 test('an unknown nonce never redeems', () => {
   const store = new NonceStore();
   store.mint(10_000, 0);
-  assert.equal(store.redeem('not-a-nonce', 0), false, 'a nonce the store never minted must not redeem');
+  // Coerced through the boundary door on purpose: the brand is not a
+  // validator, and a string that was never minted must still refuse.
+  assert.equal(store.redeem(asHandoffNonce('not-a-nonce'), 0), false,
+    'a nonce the store never minted must not redeem');
 });
 
 /**

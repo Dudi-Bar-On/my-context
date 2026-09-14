@@ -17,17 +17,17 @@ tags:
   - measured-zero
   - "plan:invariant"
   - "seq:1"
-  - "state:todo"
+  - "state:done"
 origin: human
 source_file: null
 source_anchor: null
 source_checksum: null
 valid_from: 2026-09-13
 valid_until: null
-checksum: abb17e0ec1a7183d
+checksum: e321e58f00688f87
 plan: invariant
 seq: "1"
-state: todo
+state: done
 priority: "2"
 ---
 

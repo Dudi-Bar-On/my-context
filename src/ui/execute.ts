@@ -75,7 +75,7 @@ import { EffectRefusal, deriveEffect, type ItemEffect } from './execute-effect.t
 // as "either dead code or a route nobody wired". A type-only import here would
 // leave `execute-nonce.ts` exactly that, while the store it defines is the only
 // thing standing between a silent local page and a corpus mutation (§6.3).
-import { ExecutionNonceStore } from './execute-nonce.ts';
+import { asExecutionNonce, type ExecutionNonce, ExecutionNonceStore } from './execute-nonce.ts';
 import { registerRoute, type ApiContext, type JsonResult } from './routes.ts';
 
 /**
@@ -388,7 +388,13 @@ const BODY_KEYS = new Set(['id', 'values', 'nonce']);
 interface ExecuteBody {
   id: string;
   values: Record<string, unknown>;
-  nonce: string;
+  /**
+   * `ExecutionNonce`, not `string`, so that the value `readBody` hands on has
+   * already passed the ONE coercion this route performs. Nothing downstream
+   * can substitute a handoff nonce — or any other string — for it without
+   * writing `asExecutionNonce` in plain sight.
+   */
+  nonce: ExecutionNonce;
 }
 
 /**
@@ -434,7 +440,14 @@ function readBody(raw: unknown): ExecuteBody {
   // zero-argument entries need. A PRESENT one of the wrong shape is not
   // defaulted away — `resolveCommand` refuses it and says why.
   const values = body['values'] ?? {};
-  return { id: body['id'], values: values as Record<string, unknown>, nonce };
+  // The boundary coercion, and the only one on this route. `nonce` is a
+  // `string` two lines up because the body is untyped JSON; it becomes an
+  // `ExecutionNonce` HERE, where the claim is made, rather than by assumption
+  // at `redeem`. It asserts nothing — `''` (the absent case above) still
+  // refuses at step 3 as a 403, which is the whole point of defaulting it.
+  return {
+    id: body['id'], values: values as Record<string, unknown>, nonce: asExecutionNonce(nonce),
+  };
 }
 
 /**

@@ -217,7 +217,7 @@ test('PostCompact stays under the 50ms p95 ceiling over a 64KB summary', () => {
   // The marker `restoredFor` compares for EQUALITY. Read it back off the
   // snapshot rather than stamping `new Date()`: a fixture that guessed would
   // time an empty result set and prove nothing about the comparison.
-  const capturedAt = readSnapshotMeta(root, SESSION)!.capturedAt;
+  const capturedAt = readSnapshotMeta(root, SESSION).meta!.capturedAt;
   appendSeen(root, SESSION, ids.map((id) => ({ id, tier: 'restored' as const, at: capturedAt })));
 
   const input = {

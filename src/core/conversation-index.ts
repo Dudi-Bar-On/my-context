@@ -940,11 +940,56 @@ export interface TranscriptFile {
  * so "nothing here" can be told from "looked in the wrong place".
  */
 export function listTranscriptFiles(dir: string): TranscriptFile[] {
+  return readTranscriptDir(dir).files;
+}
+
+/**
+ * **The same listing, plus the one thing `listTranscriptFiles` throws away:
+ * whether the directory could be READ at all.**
+ *
+ * `TASK-one-unreadable-transcript-directory-empties-the-conversation`,
+ * reproduced 2026-09-14 on a throwaway workspace. Two indexed sessions, the
+ * transcript directory then made unlistable, one `rebuildConversations`:
+ *
+ *     first rebuild    found=2  scanned=2  removed=0     rows in index: 2
+ *     second rebuild   found=0  scanned=0  removed=2     rows in index: 0
+ *     the Stop hook's row: "2 indexed session(s) no longer on disk"
+ *
+ * Every row in the archive dropped, every retrieval pointer with it, and the
+ * sentence the reader is given is CONFIDENT, SPECIFIC and WRONG — the sessions
+ * are on disk; the directory could not be read. A person sent to look for
+ * deleted files will not find a permissions problem.
+ *
+ * **`unreadable` is `null` for a directory that is not THERE**, and that is
+ * the distinction the whole fix rests on. An absent directory is an archive
+ * with nothing in it — a project whose transcripts were pruned, or a cwd the
+ * harness has never opened — and `listTranscriptFiles`' own docblock has said
+ * so since it was written. Anything else (a permission refusal, a path that is
+ * a file, a disk that will not answer) is a directory that exists and would
+ * not talk, which is the case nothing could tell apart until now.
+ *
+ * **`ENOENT` is the ONLY code treated as absence, and `ENOTDIR` deliberately
+ * is not.** A path that is a file where a directory belongs — or whose parent
+ * is — is not an archive with nothing in it; it is a path that is wrong, and a
+ * reader told "no conversations" about it would go looking for the wrong
+ * thing. It is also the shape the reproduction above used, so the one case
+ * that has actually been observed is the one that reports.
+ */
+export function readTranscriptDir(dir: string): {
+  files: TranscriptFile[];
+  /** The reason the directory would not list, or `null` — including for one that is simply not there. */
+  unreadable: string | null;
+} {
   let names: string[];
   try {
     names = readdirSync(dir);
-  } catch {
-    return [];
+  } catch (err) {
+    const code = (err as NodeJS.ErrnoException).code;
+    return {
+      files: [],
+      unreadable: code === 'ENOENT' ? null
+        : `${err instanceof Error ? err.message : String(err)}`,
+    };
   }
   const found: TranscriptFile[] = [];
   for (const name of names) {
@@ -966,7 +1011,7 @@ export function listTranscriptFiles(dir: string): TranscriptFile[] {
       continue;
     }
   }
-  return found.sort((a, b) => (a.sessionId < b.sessionId ? -1 : 1));
+  return { files: found.sort((a, b) => (a.sessionId < b.sessionId ? -1 : 1)), unreadable: null };
 }
 
 /**
@@ -3124,6 +3169,17 @@ export interface RebuildReport {
   skipped: number;
   /** Rows dropped because their transcript is gone from disk. */
   removed: number;
+  /**
+   * **Why the transcript directory would not list, or `null`.**
+   *
+   * `null` covers both the clean read and a directory that is simply not there
+   * — see `readTranscriptDir`, which is where that equivalence is argued. A
+   * non-null value means the archive on disk was NOT measured this run, so
+   * `found` is not a count of what is there and `removed` is `0` by refusal
+   * rather than by finding nothing missing
+   * (`TASK-one-unreadable-transcript-directory-empties-the-conversation`).
+   */
+  unreadable: string | null;
   /** Sessions whose scan hit `MAX_SCAN_BYTES`; their counts are floors. */
   truncated: string[];
   /** Bytes actually read this run. */
@@ -3179,7 +3235,7 @@ export function rebuildConversations(
 ): RebuildReport {
   const startedMs = Date.now();
   const dir = transcriptDir(env, cwd);
-  const files = listTranscriptFiles(dir);
+  const { files, unreadable } = readTranscriptDir(dir);
   const cap = options.cap ?? MAX_SCAN_BYTES;
 
   // `busyTimeoutMs` is the caller's, because the two callers have opposite
@@ -3200,6 +3256,7 @@ export function rebuildConversations(
       appended: 0,
       skipped: 0,
       removed: 0,
+      unreadable,
       truncated: [],
       bytesRead: 0,
       subagents: {
@@ -3480,7 +3537,29 @@ export function rebuildConversations(
         }
         if (scan.scannedBytes < file.bytes) report.truncated.push(file.sessionId);
       }
-      report.removed = index.removeMissing(new Set(files.map((f) => f.sessionId)));
+      /**
+       * **A directory that would not list is NOT a directory with nothing in
+       * it, and this line is where the difference became data loss.**
+       *
+       * `removeMissing` is handed the set of session ids found on disk and
+       * drops every row outside it. With `files` empty because the listing was
+       * REFUSED, that set is empty and the call drops the whole archive —
+       * measured on a throwaway workspace, 2026-09-14: two indexed sessions,
+       * one unlistable directory, `removed=2` and nothing left in the index.
+       * The search index's `sourcesOf` and every retrieval pointer go with it,
+       * and the Stop hook then reports *"2 indexed session(s) no longer on
+       * disk"*, which is confident, specific and wrong.
+       * (`TASK-one-unreadable-transcript-directory-empties-the-conversation`.)
+       *
+       * An ABSENT directory still sweeps, and that is deliberate rather than
+       * an omission: a project whose transcripts were pruned really has none,
+       * and rows for them really are stale — `readTranscriptDir` reports that
+       * case as readable (`unreadable: null`) precisely so this line keeps
+       * working for it.
+       */
+      report.removed = unreadable === null
+        ? index.removeMissing(new Set(files.map((f) => f.sessionId)))
+        : 0;
     });
 
     report.ms = Date.now() - startedMs;

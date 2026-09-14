@@ -209,7 +209,7 @@ export interface SkippedStaging {
  * the same reasons — including two the old loop did not make: `candidates`
  * being an array, and the file's own `lessonId` agreeing with its filename.
  * Both were latent: `status.ts` calls `.filter` on `candidates` (`cli/commands/status.ts`
- * · `listStaging(ws.projectRoot)`), which is a TypeError on a string, and a
+ * · `const staged = readStagingDir(ws.projectRoot);`), which is a TypeError on a string, and a
  * file whose contents name another lesson would have offered a `key` under the
  * wrong lesson id — composing `mycontext lesson-accept <wrong-lesson> <key>`,
  * which the CLI then refuses in a sentence about a candidate that does exist.
@@ -265,9 +265,24 @@ export function readStagingDir(root: string): { staging: LessonStaging[]; skippe
 
 /**
  * The staged lessons, for callers that only want a count or a list and have
- * nowhere to put what was skipped (`status --json`, the MCP `ready` tool).
- * `readStagingDir` is the one that can say what it left out; prefer it on any
- * surface that has room for the sentence.
+ * nowhere to put what was skipped. `readStagingDir` is the one that can say
+ * what it left out; prefer it on any surface that has room for the sentence.
+ *
+ * ── IT HAS NO CALLER IN `src/` TODAY, AND THAT IS THE FIX RATHER THAN A GAP ─
+ *
+ * `TASK-liststaging-discards-its-skip-list-against-its-own-twenty`, closed
+ * 2026-09-14. The two callers this docblock used to name — `cli/commands/
+ * status.ts` and the MCP `status_report` — were the two surfaces
+ * `readStagingDir`'s own twenty-line argument is ABOUT: *"a status line
+ * reading 'three staged lessons' over a directory of five files was
+ * indistinguishable from a correct one"*. Both had room for the sentence and
+ * neither printed it, so both now call `readStagingDir` and print the skips.
+ *
+ * It is kept rather than deleted because the sentence above is still true of a
+ * surface that has genuinely nowhere to put a reason, and because deleting it
+ * would take `test/lesson/derive-guards.test.ts`' recorded surviving mutant
+ * with it. A caller reaching for it now is choosing to drop the skip list, and
+ * this paragraph is what that caller has to read first.
  */
 export function listStaging(root: string): LessonStaging[] {
   return readStagingDir(root).staging;

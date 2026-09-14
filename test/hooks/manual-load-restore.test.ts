@@ -96,7 +96,7 @@ function snapshot(cwd: string, sessionId: string, transcriptPath: string): strin
   assert.ok(result, 'PreCompact must produce a snapshot');
   const ws = resolveWorkspace(cwd);
   assert.deepEqual(
-    readSnapshotMeta(ws.projectRoot!, sessionId)?.itemIds, result.itemIds,
+    readSnapshotMeta(ws.projectRoot!, sessionId).meta?.itemIds, result.itemIds,
     'the snapshot on disk is what the restore will read',
   );
   return result.itemIds;

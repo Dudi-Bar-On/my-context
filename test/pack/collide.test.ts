@@ -20,6 +20,9 @@ import assert from 'node:assert/strict';
 import { itemContentHash } from '../../src/core/content-hash.ts';
 import { comparePaths } from '../../src/pack/layout.ts';
 import type { Item } from '../../src/core/types.ts';
+// `type` is `readonly` on `Item` and this table moves it deliberately — see
+// the helper for why the escape is a fixture-only one.
+import type { FabricatedItem } from '../helpers/fabricate.ts';
 import {
   bucketise, collisionJson, diffFields, renderCollisionReport,
   type CollisionReport,
@@ -217,7 +220,7 @@ test('a field cannot appear in differs without having moved the hash, and none c
   // composes: one at a time, moved, and then asserted BOTH ways round. The
   // field list is read off `diffFields` itself rather than retyped, so a
   // field added to the hash and forgotten here is not possible.
-  const moves: readonly { field: string; move: (i: Item) => void }[] = [
+  const moves: readonly { field: string; move: (i: FabricatedItem) => void }[] = [
     { field: 'type', move: (i) => { i.type = 'standard'; } },
     { field: 'title', move: (i) => { i.title = 'another title'; } },
     { field: 'body', move: (i) => { i.body = 'another body'; } },

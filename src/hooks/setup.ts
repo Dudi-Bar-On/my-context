@@ -1,6 +1,6 @@
 import { isMainEntry } from '../core/paths.ts';
 import { capped, runObservationHook, type Observation, type ObservationSpec } from './observe.ts';
-import type { HookInput } from './io.ts';
+import type { HookPayload } from './io.ts';
 
 /**
  * The event `hooks seq:21` calls *"the natural home for init and doctor"* — and
@@ -50,7 +50,11 @@ import type { HookInput } from './io.ts';
 /** The `trigger` values build 2.1.239's schema accepts, in its order. */
 export const SETUP_TRIGGERS = ['init', 'maintenance'] as const;
 
-export function observeSetup(input: HookInput): Observation | null {
+// `HookPayload<'Setup'>`: `trigger` HERE is `init | maintenance`, and
+// `trigger` on a `PreCompact` handler is `manual | auto`. The flat
+// `HookInput` declared that key once and said it belonged to the compaction
+// events — `TASK-one-flat-input-type-spans-fifteen-events-so-a-handler`.
+export function observeSetup(input: HookPayload<'Setup'>): Observation | null {
   const trigger = typeof input.trigger === 'string' && input.trigger !== ''
     ? input.trigger : '<absent>';
   const unknown = !(SETUP_TRIGGERS as readonly string[]).includes(trigger);

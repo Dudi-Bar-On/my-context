@@ -61,6 +61,7 @@
 import { loadLayer, type LoadError } from '../src/core/rebuild.ts';
 import {
   buildTaskIndex, DONE_STATE, NEEDS_FIELD, parseNeeds, taskKey, taskState, workItems,
+  type WorkItem,
 } from '../src/core/needs.ts';
 import type { Item } from '../src/core/types.ts';
 import { resolveWorkspace } from '../src/core/workspace.ts';
@@ -68,7 +69,9 @@ import { resolveWorkspace } from '../src/core/workspace.ts';
 /** One node of the graph: a `plan/seq` key and everything that answers to it. */
 interface Node {
   key: string;
-  items: Item[];
+  // `WorkItem[]`: the nodes come out of `buildTaskIndex`, which now hands back
+  // the proof, so `taskState` below needs no second check and no cast.
+  items: WorkItem[];
   /** Resolvable references, de-duplicated across every item under this key. */
   out: string[];
   /** Well-shaped references nothing answers to. Counted, never walked. */

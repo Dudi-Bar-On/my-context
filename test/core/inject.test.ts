@@ -211,7 +211,7 @@ test('restore idempotency now lives in the seen file: same compaction never rest
   const first = buildInjection(cwd, { event: 'session-start', source: 'compact', sessionId: 'sess-c' });
   assert.match(first, /Distinct restorable body sentence\./);
   // The restored marker is a seen-file line stamped with the snapshot's capturedAt:
-  const meta = readSnapshotMeta(ws.projectRoot!, 'sess-c')!;
+  const meta = readSnapshotMeta(ws.projectRoot!, 'sess-c').meta!;
   const state = readSeen(ws.projectRoot!, 'sess-c');
   assert.ok(restoredFor(state, meta.capturedAt).size > 0);
   // A repeat firing of the SAME compaction must not re-inject the restored tier:

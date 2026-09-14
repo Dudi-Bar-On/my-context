@@ -3,7 +3,7 @@ import { isMainEntry, relPosix, toPosix } from '../core/paths.ts';
 import {
   runObservationHook, type Observation, type ObservationSpec,
 } from './observe.ts';
-import type { HookInput } from './io.ts';
+import type { HookPayload } from './io.ts';
 
 /**
  * A corpus file changed on disk without going through my_context.
@@ -113,7 +113,12 @@ function workspaceRelative(root: string, filePath: string): string | null {
 /** `change | add | unlink`, the three the schema declares. */
 export const FILE_CHANGED_EVENTS = ['change', 'add', 'unlink'] as const;
 
-export function observeFileChanged(input: HookInput, root: string): Observation | null {
+// `HookPayload<'FileChanged'>` and not `HookInput`: this function only ever sees a
+// `FileChanged` payload, and typing it as one is what stops it reading a field
+// that event never sends — `TASK-one-flat-input-type-spans-fifteen-events-so-a-handler`.
+export function observeFileChanged(
+  input: HookPayload<'FileChanged'>, root: string,
+): Observation | null {
   if (typeof input.file_path !== 'string' || input.file_path === '') return null;
   // `toPosix` first so a Windows payload and a POSIX one take the same branch,
   // exactly as `post-tool-use.ts` normalises before its managed check.

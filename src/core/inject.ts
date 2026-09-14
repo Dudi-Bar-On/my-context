@@ -595,7 +595,12 @@ export function buildInjectionResult(cwd: string, options: InjectionOptions = {}
     // here would look for a snapshot no PreCompact ever wrote, and (worse) a
     // write under one would leave dedupe records no restore can find.
     if (compacting && sessionId) {
-      const snapshot = readSnapshotMeta(stateRoot, sessionId);
+      // `.meta` — `readSnapshotMeta` now separates a snapshot that is not
+      // there from one that would not be read. This path deliberately does not
+      // act on the difference: a restore whose snapshot cannot be read
+      // restores nothing either way, and the disclosure belongs on the surface
+      // that SPEAKS about it, which is `hooks/post-compact.ts`.
+      const snapshot = readSnapshotMeta(stateRoot, sessionId).meta;
       if (snapshot) {
         snapshotCapturedAt = snapshot.capturedAt;
         const already = seenState !== null && seenState.error === null

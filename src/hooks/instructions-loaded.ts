@@ -3,7 +3,7 @@ import { isMainEntry } from '../core/paths.ts';
 import {
   capped, repoRelative, runObservationHook, type Observation, type ObservationSpec,
 } from './observe.ts';
-import type { HookInput } from './io.ts';
+import type { HookPayload } from './io.ts';
 
 /**
  * The OTHER thing that reaches a session's context, finally visible to us.
@@ -55,7 +55,12 @@ function known(list: readonly string[], value: string): string {
   return list.includes(value) ? '' : ` (not one of ${list.join(', ')})`;
 }
 
-export function observeInstructionsLoaded(input: HookInput, root: string): Observation | null {
+// `HookPayload<'InstructionsLoaded'>` and not `HookInput`: this function only ever sees a
+// `InstructionsLoaded` payload, and typing it as one is what stops it reading a field
+// that event never sends — `TASK-one-flat-input-type-spans-fifteen-events-so-a-handler`.
+export function observeInstructionsLoaded(
+  input: HookPayload<'InstructionsLoaded'>, root: string,
+): Observation | null {
   if (typeof input.file_path !== 'string' || input.file_path === '') return null;
 
   const tier = typeof input.memory_type === 'string' && input.memory_type !== ''

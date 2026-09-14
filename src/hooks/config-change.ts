@@ -2,7 +2,7 @@ import { isMainEntry } from '../core/paths.ts';
 import {
   capped, repoRelative, runObservationHook, type Observation, type ObservationSpec,
 } from './observe.ts';
-import type { HookInput } from './io.ts';
+import type { HookPayload } from './io.ts';
 
 /**
  * Claude Code's own settings changed mid-session — including, possibly, the
@@ -49,7 +49,16 @@ export const CONFIG_SOURCES = [
   'user_settings', 'project_settings', 'local_settings', 'policy_settings', 'skills',
 ] as const;
 
-export function observeConfigChange(input: HookInput, root: string): Observation | null {
+// `HookPayload<'ConfigChange'>`, and this event is the one that made the case.
+// `input.source` HERE is `CONFIG_SOURCES` — `user_settings | project_settings
+// | local_settings | policy_settings | skills` — and `input.source` on a
+// `SessionStart` handler is `startup | resume | clear | compact | fork`. One
+// key name, two vocabularies, which a flat `HookInput` declared once (as
+// *"SessionStart only"*, wrongly) and a per-event map declares twice.
+// `TASK-one-flat-input-type-spans-fifteen-events-so-a-handler`.
+export function observeConfigChange(
+  input: HookPayload<'ConfigChange'>, root: string,
+): Observation | null {
   const source = typeof input.source === 'string' && input.source !== ''
     ? input.source : '<absent>';
   // Gated on the source rather than on `file_path`, which the schema marks

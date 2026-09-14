@@ -32,6 +32,9 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import type { Item } from '../../src/core/types.ts';
+// `id` is `readonly` on `Item`, and two cases below plant a control character
+// INTO an id — the one field the product never edits. See the helper.
+import type { FabricatedItem } from '../helpers/fabricate.ts';
 import {
   SCREENED_RANGES, screenItem, screenPackMeta, screenText, type ScreenedRange,
 } from '../../src/pack/screen.ts';
@@ -179,7 +182,7 @@ test('an astral screened code point reports the offset of its first code unit', 
 // screenItem — the silence audit
 // ---------------------------------------------------------------------------
 
-function clean(): Item {
+function clean(): FabricatedItem {
   return {
     id: 'RULE-clean',
     type: 'rule',
@@ -218,7 +221,7 @@ function clean(): Item {
  * field added to `Item` and not to `screenItem` is caught by the plant that
  * produces no finding, which is what a silence audit is for.
  */
-const PLANTS: readonly { field: string; plant: (i: Item) => void }[] = [
+const PLANTS: readonly { field: string; plant: (i: FabricatedItem) => void }[] = [
   { field: 'title', plant: (i) => { i.title += MARK; } },
   { field: 'body', plant: (i) => { i.body += MARK; } },
   { field: 'observation 1 text', plant: (i) => { i.observations[0].text += MARK; } },

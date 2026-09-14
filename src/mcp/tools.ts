@@ -60,7 +60,7 @@ import { listSessions, pendingAnchors, rejectionsForAnchor } from '../ingest/ses
 import {
   buildRuleRequest, renderRuleRequest, stageRuleCandidates,
 } from '../lesson/derive.ts';
-import { listStaging } from '../lesson/staging.ts';
+import { readStagingDir } from '../lesson/staging.ts';
 import { illegibleExisting, renderCollisionReport, type CollisionReport } from '../pack/collide.ts';
 import { planImport } from '../pack/import.ts';
 import { readImportRecords } from '../pack/imported-audit.ts';
@@ -2266,7 +2266,14 @@ const SPECS: ToolSpec[] = [
 
       const globalLayerDrafts = items.filter((i) => i.status === 'draft').length - queueCount;
       const sessions = listSessions(projectRoot).filter((s) => pendingAnchors(s).length > 0);
-      const pendingRules = listStaging(projectRoot)
+      // `readStagingDir`, not `listStaging` — see the identical change in
+      // `cli/commands/status.ts`, which this tool mirrors and whose numbers it
+      // may not drift from. A count that quietly omitted the files it could
+      // not read would be this tool disagreeing with the CLI about the same
+      // directory, which is the one thing its own docblock above forbids
+      // (`TASK-liststaging-discards-its-skip-list-against-its-own-twenty`).
+      const staged = readStagingDir(projectRoot);
+      const pendingRules = staged.staging
         .flatMap((s) => s.candidates.filter((c) => c.state === 'pending')
           .map((c) => ({ lesson: s.lessonId, candidate: c })));
 
@@ -2310,6 +2317,19 @@ const SPECS: ToolSpec[] = [
 
       if (sessions.length) {
         lines.push('', `ingest: ${sessions.length} unfinished session(s).`);
+      }
+
+      // Before the count and independent of it: a directory whose only file is
+      // unreadable produces no count at all, and without this line it would
+      // read to the model as an empty staging directory. The CLI prints the
+      // same thing in the same order.
+      if (staged.skipped.length) {
+        lines.push(
+          '',
+          `${staged.skipped.length} staging file(s) could NOT be read, so they are not in the ` +
+          'count below and their candidates cannot be accepted:',
+          ...staged.skipped.map((s) => `  ${s.file} — ${s.reason}`),
+        );
       }
 
       if (pendingRules.length) {

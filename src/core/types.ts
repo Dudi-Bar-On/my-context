@@ -1,3 +1,93 @@
+/* -------------------------------------------------------------------------- *
+ * THE FOUR HASH KINDS
+ *
+ * `TASK-two-nonces-are-both-plain-strings-so-either-store-redeems` measured a
+ * second instance of its own subject here: *"four hash kinds are mutually
+ * assignable, so a mis-stamp is silent in both directions."* Three of the four
+ * are stored SIDE BY SIDE on `Item` — `checksum`, `summaryOf`,
+ * `sourceChecksum` — with `acknowledged`'s values a fourth kind one field
+ * along. Every one is hex of the same length, every one looks right in a file,
+ * and while they were all `string` every one was assignable to every other.
+ * A transposition was a silent write, and it stayed silent: what a wrong hash
+ * in `summaryOf` produces is a summary that reports `stale` forever, or worse
+ * `current` when it is not, and nothing anywhere says a hash of the wrong KIND
+ * was stored.
+ *
+ * Each kind is now its own brand: `string` intersected with a phantom property
+ * keyed on a `unique symbol` that is not exported. Fully erasable
+ * (`CONST-node-24-no-build-step`) — no runtime representation, still a
+ * primitive `string` in the frontmatter, in `JSON.stringify`, in a `Map` key
+ * and in every comparison — and unforgeable outside the one function that
+ * produces each.
+ *
+ * **What is closed and what is not, counted rather than implied.** Three of the
+ * four DESTINATIONS are branded below (`summaryOf`, `sourceChecksum`,
+ * `acknowledged`), so an unbranded string or a hash of another kind cannot be
+ * written into any of them: eleven of the twelve wrong pairings are now compile
+ * errors. The twelfth is `Item.checksum`, which stays `string` — not because it
+ * matters less (it is the subject of
+ * `TASK-item-has-zero-readonly-fields-no-factory-and-no-freeze-so-a`) but
+ * because branding it was MEASURED at 77 assignment sites across 61 test files,
+ * which is a migration and not an edit. It is named as open in that item rather
+ * than half-done here.
+ * -------------------------------------------------------------------------- */
+
+declare const ITEM_CHECKSUM: unique symbol;
+/**
+ * **The checksum over an item's semantic content**, tagged with
+ * `CHECKSUM_BASIS_VERSION`. Produced by `computeItemChecksum` (item.ts) and by
+ * nothing else; it is what `Item.checksum` records and what `mycontext repair`
+ * recomputes.
+ *
+ * `Item.checksum` is still declared `string`, so this brand currently guards
+ * the PRODUCING end only — it is what makes `item.summaryOf =
+ * computeItemChecksum(x)` a compile error. See the block above for the count
+ * that left the other end open.
+ */
+export type ItemChecksum = string & { readonly [ITEM_CHECKSUM]: true };
+
+declare const SUMMARY_BASIS_HASH_BRAND: unique symbol;
+/**
+ * **What a summary was written against** — `itemSummaryBasis(item)`
+ * (content-hash.ts), stored in `Item.summaryOf`, and the value `summaryState`
+ * compares the item against to decide whether the summary has gone stale.
+ *
+ * It covers a DIFFERENT set of fields from `ItemChecksum` (the summary itself
+ * is excluded from it, deliberately and at length in `content-hash.ts`), which
+ * is exactly why the two being interchangeable was a defect and not a
+ * redundancy: a `checksum` written here would disagree with every basis this
+ * item will ever compute, so the summary would read `stale` forever with no
+ * edit able to clear it.
+ */
+export type SummaryBasisHash = string & { readonly [SUMMARY_BASIS_HASH_BRAND]: true };
+
+declare const SOURCE_CHECKSUM_BRAND: unique symbol;
+/**
+ * **A snapshot's provenance**: the hash of the SOURCE TEXT an item was
+ * captured from, not of the item. `Item.sourceChecksum`, stamped by
+ * `reconcileSnapshot` (persist.ts) from `checksum(snapshotSource(item.body))`.
+ *
+ * The one kind here whose subject is not the item at all, which is what makes
+ * a transposition into it the most misleading of the four: `source_drift`
+ * reads this field to answer *"has the file this was copied from moved?"*, and
+ * an item checksum stored here answers that question about the wrong document.
+ */
+export type SourceChecksum = string & { readonly [SOURCE_CHECKSUM_BRAND]: true };
+
+declare const CONTENT_HASH_BRAND: unique symbol;
+/**
+ * **The anchor of a human acknowledgement**: `itemContentHash(item)`
+ * (content-hash.ts) as of the moment a person ruled on a doctor finding, stored
+ * as the VALUE in `Item.acknowledged`.
+ *
+ * The mechanism is `summaryOf`'s and the consequence of a mis-stamp is the
+ * worst of the four, because it fails in the permissive direction: an
+ * acknowledgement whose anchor matches by accident certifies a body nobody has
+ * read as one already judged. `acknowledge.ts` states that at length; this is
+ * the same statement made to the compiler.
+ */
+export type ContentHash = string & { readonly [CONTENT_HASH_BRAND]: true };
+
 export type Tier = 'normative' | 'rationale';
 export type Status = 'active' | 'draft' | 'superseded' | 'deprecated' | 'validated';
 export type Severity = 'hard' | 'soft';
@@ -97,8 +187,37 @@ export interface PreviousSummary {
 }
 
 export interface Item {
-  id: string;
-  type: string;
+  /**
+   * **`readonly`, and it is the first of five on this interface.** Before
+   * 2026-09-14 there were none at all —
+   * `TASK-item-has-zero-readonly-fields-no-factory-and-no-freeze-so-a`
+   * measured exactly that: ten invariants of this record held in comments and
+   * conventions, and zero compiler guarantees.
+   *
+   * An id is the item's name in every index, every relation, every audit row
+   * and every citation. It is assigned once, by `createItem`, and a rename is a
+   * NEW file and a supersession — never an assignment. Nothing in `src/` ever
+   * assigned it (measured: zero), so the modifier pins what was already true
+   * rather than changing any behaviour, which is the only kind of `readonly`
+   * worth adding to a shipped record.
+   *
+   * `readonly` is a TYPE modifier and erases to nothing, so it costs zero bytes
+   * and zero microseconds — unlike `Object.freeze`, which was measured on this
+   * repository's own 1,244-item corpus (4.3% of load time shallow, 11.1% deep)
+   * AND breaks `applyUpdate`, `persist` and `stampSummary`, all of which mutate
+   * the very objects the loader produced. The compiler can hold the parts of
+   * this that are genuinely immutable; the rest is a timing property and is
+   * named on `checksum` below.
+   */
+  readonly id: string;
+  /**
+   * `readonly` for `id`'s reason and one of its own: the product already SAYS
+   * this field is immutable, in prose, where only a human can read it —
+   * `loadLayer`'s unknown-type error (rebuild.ts) ends *"`type` is fixed at
+   * creation, so it cannot be re-filed in place"*. That sentence is now also a
+   * compiler rule. Zero assignments in `src/`.
+   */
+  readonly type: string;
   title: string;
   status: Status;
   severity: Severity;
@@ -184,7 +303,7 @@ export interface Item {
    * hand, where a `summary:` with no `summary_of:` reads as `unanchored`,
    * which is a stale summary and is reported as one.
    */
-  summaryOf: string | null;
+  summaryOf: SummaryBasisHash | null;
   /**
    * **The summaries this item used to carry, newest first, capped at three.**
    *
@@ -261,15 +380,58 @@ export interface Item {
    * `summary` above are conditional: an unconditional key would move every
    * recorded checksum in every corpus at once.
    */
-  acknowledged: Record<string, string>;
+  acknowledged: Record<string, ContentHash>;
   scope: string[];
   tags: string[];
   origin: Origin;
   sourceFile: string | null;
   sourceAnchor: string | null;
-  sourceChecksum: string | null;
+  sourceChecksum: SourceChecksum | null;
   validFrom: string | null;
   validUntil: string | null;
+  /**
+   * **The recorded checksum: what this item's content hashed to at the moment
+   * it was last written or last read off disk.**
+   *
+   * `ItemChecksum` rather than `string`, so the only values assignable here are
+   * the two the type documents — a freshly computed one, or one read out of a
+   * file through the named door. A `summaryOf`, a `sourceChecksum` or an
+   * `itemContentHash` can no longer be written into this field by a slip.
+   *
+   * **Deliberately NOT `readonly`, and the reason is the whole of
+   * `TASK-item-has-zero-readonly-fields-no-factory-and-no-freeze-so-a`.**
+   * `persist` re-stamps it on every write, from the same `computeItemChecksum`
+   * the renderer uses, precisely so the object handed to `store.upsert` agrees
+   * with the bytes that landed. A `readonly` here would only move that one
+   * assignment behind a cast, which is a convention wearing a modifier. The
+   * honest statement is that freshness is a timing guarantee this type does not
+   * make, and the four fields that ARE fixed at creation (`id`, `type`,
+   * `layer`, `filePath`) carry the modifier where it is true.
+   */
+  /**
+   * **The recorded checksum of this item's content.**
+   *
+   * Still `string` rather than `ItemChecksum`, and that is a measured decision
+   * rather than an oversight: branding this field reddens 77 assignment sites
+   * across 61 test files, almost all of them `checksum: 'x'` in a fixture. The
+   * brand is defined (see `ItemChecksum` above) and `computeItemChecksum`
+   * already returns it, so the PRODUCER end is typed and nothing can put this
+   * value into `summaryOf`, `sourceChecksum` or `acknowledged` by a slip. The
+   * consuming end is named as open in
+   * `TASK-item-has-zero-readonly-fields-no-factory-and-no-freeze-so-a`.
+   *
+   * **Not `readonly` either, and for a reason no modifier can fix.** `persist`
+   * re-stamps this on every write so the object handed to `store.upsert`
+   * agrees with the bytes that landed; `applyUpdate` mutates the item field by
+   * field before that happens. Between those two points the value here
+   * describes content the item no longer has. That window is a TIMING property,
+   * a `readonly` would only push the one legitimate assignment behind a cast,
+   * and `Object.freeze` was measured (4.3% of load time shallow, 11.1% deep, on
+   * this repository's 1,244-item corpus) and would break all three write paths
+   * outright. The four fields that genuinely are fixed at creation — `id`,
+   * `type`, `layer`, `filePath` — carry `readonly` where it is TRUE, which is
+   * the only place it is worth having.
+   */
   checksum: string;
   /** Category-specific fields, e.g. kind, directive, likelihood, impact. */
   extra: Record<string, string>;
@@ -340,7 +502,20 @@ export interface Item {
   steps: Step[];
   observations: Observation[];
   relations: Relation[];
-  layer: Layer;
-  /** POSIX, relative to the layer root. */
-  filePath: string;
+  /**
+   * `readonly`: which root this item was loaded from is a fact about WHERE it
+   * was found, decided by the loader that found it, and moving an item between
+   * layers is a copy plus a delete rather than a field write. Zero assignments
+   * in `src/`.
+   */
+  readonly layer: Layer;
+  /**
+   * POSIX, relative to the layer root.
+   *
+   * `readonly`, and it is `layer`'s argument exactly: it is what the loader
+   * read the item OUT of. A write that changed it would leave the object
+   * claiming a path nothing wrote, which is the same class of lie
+   * `checksum`'s window is. Zero assignments in `src/`.
+   */
+  readonly filePath: string;
 }

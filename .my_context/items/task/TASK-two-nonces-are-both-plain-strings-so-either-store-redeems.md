@@ -17,17 +17,17 @@ tags:
   - security
   - "plan:invariant"
   - "seq:4"
-  - "state:todo"
+  - "state:done"
 origin: human
 source_file: null
 source_anchor: null
 source_checksum: null
 valid_from: 2026-09-13
 valid_until: null
-checksum: e7def5a37bc99703
+checksum: a80e9c7ee8367999
 plan: invariant
 seq: "4"
-state: todo
+state: done
 priority: "2"
 ---
 

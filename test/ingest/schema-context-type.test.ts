@@ -3,6 +3,9 @@ import assert from 'node:assert/strict';
 import { resolveConfig } from '../../src/core/config.ts';
 import type { Chunk } from '../../src/ingest/chunk.ts';
 import { validateCandidates } from '../../src/ingest/schema.ts';
+// The boundary doors for the branded hash kinds (core/types.ts): a fixture
+// states a hash the same way a file does — by claiming it, unverified.
+import { recordedSourceChecksum } from '../../src/core/item.ts';
 
 /**
  * The same silent-drop class as I9 (unknown observation keys), one field over,
@@ -23,7 +26,7 @@ const CHUNK: Chunk = {
   anchor: 'pool',
   heading: 'Pool',
   text: '# Pool\n\nThe pool is capped at 20 connections.',
-  checksum: 'abc123',
+  checksum: recordedSourceChecksum('abc123'),
 };
 
 function candidate(context: unknown): unknown {

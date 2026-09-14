@@ -63,7 +63,9 @@ import {
   fieldList, tierOf, trustedStatus, unknownExtraFieldError, GOVERNING_STATUS, GUARDED_FIELDS,
 } from './trust.ts';
 import { ENUM_READ } from './vocabulary.ts';
-import type { Item, Observation, Origin, Relation, Severity, Status } from './types.ts';
+import type {
+  Item, Observation, Origin, Relation, Severity, SourceChecksum, Status,
+} from './types.ts';
 import {
   normalizeObservations, normalizeSteps, normalizeSummary, requestOverwriteRefusal, validateBody,
   validateEnums, validateExplicitId, validateExtra, validateObservationText, validateRelations,
@@ -125,7 +127,7 @@ export interface CreateInput {
    * it against the live source to detect drift; hardcoding null here would make
    * drift undetectable for every ingested item.
    */
-  sourceChecksum?: string | null;
+  sourceChecksum?: SourceChecksum | null;
   status?: Status;
   severity?: Severity;
   always?: boolean;

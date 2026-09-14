@@ -70,6 +70,9 @@ import { comparePaths, refuseArtefactPaths } from '../../src/pack/layout.ts';
 import { parseManifest, verifyManifest } from '../../src/pack/manifest.ts';
 import { removeTree } from '../helpers/tmp.ts';
 import { sandbox, type Sandbox } from '../helpers/workspace.ts';
+// The boundary doors for the branded hash kinds (core/types.ts): a fixture
+// states a hash the same way a file does — by claiming it, unverified.
+import { recordedSourceChecksum } from '../../src/core/item.ts';
 
 /** A fixed instant, so `createdAt` is the only field a clock could move. */
 const NOW = Date.UTC(2026, 7, 20, 12, 0, 0);
@@ -91,7 +94,7 @@ const PACK_OPTS: BundleOptions = {
 function corpus(box: Sandbox): void {
   createItem(box.ctx, {
     type: 'rule', title: 'from a doc', body: 'B',
-    sourceFile: 'docs/x.md', sourceAnchor: '## A', sourceChecksum: 'deadbeefdeadbeef',
+    sourceFile: 'docs/x.md', sourceAnchor: '## A', sourceChecksum: recordedSourceChecksum('deadbeefdeadbeef'),
   });
   createItem(box.ctx, {
     type: 'rule', title: 'half sourced', body: 'B', sourceFile: 'docs/y.md',

@@ -850,31 +850,74 @@ export interface SnapshotMeta {
 }
 
 /**
+ * **Why there is no usable snapshot, or what was wrong with the one there
+ * is** — `TASK-unreadable-is-collapsed-into-absent-and-the-next-message`.
+ *
+ *  - `null`            a clean read, or (with `meta: null`) no snapshot file.
+ *  - `'unreadable'`    the file IS there and would not be read or parsed.
+ *  - `'malformed-ids'` it read, and `itemIds` was not a list of ids. `meta` is
+ *                      returned with an EMPTY list, which is what could be
+ *                      recovered — not what was captured.
+ */
+export type SnapshotDefect = 'unreadable' | 'malformed-ids';
+
+/** A snapshot read, and everything the reader learned that is not in it. */
+export interface SnapshotRead {
+  /** The snapshot, or `null` when there is none to be had. */
+  meta: SnapshotMeta | null;
+  /** `null` on a clean read AND on a file that is simply not there. */
+  defect: SnapshotDefect | null;
+}
+
+/**
  * Reads back a snapshot written by `writeSnapshot`, surfacing `capturedAt`
  * alongside the id list. Callers that need to tell "this compaction's
  * snapshot" apart from "the previous one" — i.e. anything doing idempotent
- * restore — need `capturedAt`; this is the only reader in `src/`, so there
- * is no separate id-only variant to keep in sync. Never throws: missing
- * file, corrupt JSON, or a wrong-shaped payload all degrade to `null` (no
- * usable snapshot).
+ * restore — need `capturedAt`. Never throws.
+ *
+ * ── IT USED TO COLLAPSE "UNREADABLE" INTO "ABSENT", AND THE NEXT SENTENCE
+ *    THE READER SAW ASSERTED THE ABSENCE ─────────────────────────────────────
+ *
+ * Every failure answered `null`, and `hooks/post-compact.ts` renders that
+ * `null` as *"NO PreCompact snapshot for this session — the compaction
+ * restored nothing, and whatever this window held is not coming back"*. That
+ * sentence is loud, specific, and points at the hook configuration; the fault
+ * is on the disk. **A confident sentence with the wrong cause costs more than
+ * silence, because it directs the search.**
+ *
+ * **A FILE THAT IS NOT THERE IS STILL `null`, deliberately.** Almost every
+ * session never compacts, so an absent snapshot is the ordinary state and not
+ * a defect — the same absence/refusal split `readTranscriptDir` and
+ * `conversation-mirror.ts` · `sizeOf` draw, and for the same reason: only the
+ * refusal is news.
+ *
+ * **AND A MALFORMED `itemIds` IS NO LONGER A SUCCESSFUL READ OF AN EMPTY
+ * SNAPSHOT.** It answered `{ itemIds: [] }`, which is indistinguishable from a
+ * compaction that genuinely captured nothing — a measured zero drawn over an
+ * unmeasured one (`STD-a-measured-zero-is-drawn-and-named-an-unmeasured-thing-
+ * is`). The empty list is still returned, because over-restoring nothing is
+ * the safe direction and a caller that only wants `capturedAt` still gets it;
+ * what changed is that the caller can now say which of the two it is holding.
  */
-export function readSnapshotMeta(root: string, sessionId: string): SnapshotMeta | null {
+export function readSnapshotMeta(root: string, sessionId: string): SnapshotRead {
+  let parsed: Partial<Snapshot>;
   try {
-    const parsed = JSON.parse(readFileSync(snapshotPath(root, sessionId), 'utf8')) as
-      Partial<Snapshot>;
-    const itemIds = Array.isArray(parsed.itemIds)
-      ? parsed.itemIds.filter((v): v is string => typeof v === 'string')
-      : [];
-    // A missing/non-string capturedAt degrades to "now": nothing recorded
-    // yet can be after it, so the restore filter below excludes nothing —
-    // the safe direction is over-restoring, never under-restoring.
-    const capturedAt = typeof parsed.capturedAt === 'string'
-      ? parsed.capturedAt
-      : new Date().toISOString();
-    return { itemIds, capturedAt };
-  } catch {
-    return null;
+    parsed = JSON.parse(readFileSync(snapshotPath(root, sessionId), 'utf8')) as Partial<Snapshot>;
+  } catch (err) {
+    const code = (err as NodeJS.ErrnoException).code;
+    return { meta: null, defect: code === 'ENOENT' ? null : 'unreadable' };
   }
+  const wellFormed = Array.isArray(parsed.itemIds);
+  const itemIds = wellFormed
+    ? (parsed.itemIds as unknown[]).filter((v): v is string => typeof v === 'string')
+    : [];
+  // A missing/non-string capturedAt degrades to "now": nothing recorded
+  // yet can be after it, so the restore filter below excludes nothing —
+  // the safe direction is over-restoring, never under-restoring.
+  const capturedAt = typeof parsed.capturedAt === 'string'
+    ? parsed.capturedAt
+    : new Date().toISOString();
+  return { meta: { itemIds, capturedAt }, defect: wellFormed ? null : 'malformed-ids' };
 }
 
 const MAX_TRANSCRIPT_BYTES = 8 * 1024 * 1024;

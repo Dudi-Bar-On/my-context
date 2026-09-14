@@ -175,7 +175,7 @@ test('restored counts this compaction\'s re-delivery, not the previous one\'s', 
   // Read back through the product's own reader, not by rebuilding the path:
   // `capturedAt` is the marker `restoredFor` compares for equality, and a
   // fixture that guessed at it would be testing the guess.
-  const capturedAt = readSnapshotMeta(r, SESSION)!.capturedAt;
+  const capturedAt = readSnapshotMeta(r, SESSION).meta!.capturedAt;
 
   // One id restored by an older compaction, one by this one.
   appendSeen(r, SESSION, [{ id: 'CONST-a', tier: 'restored', at: '2020-01-01T00:00:00.000Z' }]);

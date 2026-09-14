@@ -2,7 +2,7 @@ import { scopePolicyFor, type Config } from './config.ts';
 import {
   danglingEdges, isFocusActive, type Focus, type FocusAxes, type FocusReport,
 } from './focus.ts';
-import { DONE_STATE, taskState } from './needs.ts';
+import { DONE_STATE, unprovenTaskState } from './needs.ts';
 import { matchesAnyGlob, normalizePosix } from './paths.ts';
 import { renderIndexLine, renderItemBlock } from './render-item.ts';
 import type { Item } from './types.ts';
@@ -748,10 +748,14 @@ const GOVERNING_TYPES: ReadonlySet<string> = new Set([
  * DONE ... open work binds what happens next as surely as a rule does, while
  * a finished task only records."*
  *
- * `taskState`/`DONE_STATE` (`needs.ts`) rather than a second `item.extra.state`
- * read: `needs.ts` already owns that field's meaning and is, like this file,
- * pure — its own header says it imports only `Config` and `Item` as TYPES,
- * nothing executable. A missing `state` reads as open, not as excluded —
+ * `unprovenTaskState`/`DONE_STATE` (`needs.ts`) rather than a second
+ * `item.extra.state` read: `needs.ts` already owns that field's meaning and is,
+ * like this file, pure — its own header says it imports only `Config` and
+ * `Item` as TYPES, nothing executable. **The `unproven` prefix arrived on
+ * 2026-09-14 and is the disclosure, not a rename**: the proved reader takes a
+ * `WorkItem`, this module holds no `Config` to produce one, and the function
+ * below says which of the two it is calling. A missing `state` reads as open,
+ * not as excluded —
  * `STD-a-measured-zero-is-drawn-and-named-an-unmeasured-thing-is`: a task that has
  * never recorded being done has
  * certainly not recorded being done.
@@ -773,7 +777,21 @@ const GOVERNING_TYPES: ReadonlySet<string> = new Set([
  */
 function isOpenWork(item: Item): boolean {
   if (item.type !== 'task' && item.type !== 'plan') return false;
-  return taskState(item) !== DONE_STATE;
+  // **`unprovenTaskState`, not `taskState`, and the name is the disclosure.**
+  // `taskState` takes a `WorkItem` — an item whose category the CONFIG says
+  // declares `plan`, `seq` and `state`
+  // (`TASK-a-function-that-reads-a-task-field-accepts-any-item-and`). This
+  // module holds no `Config`: its header records that it imports `Config` and
+  // `Item` as TYPES only, nothing executable, and `governs` above is exported
+  // and called from `doctor/checks.ts` with one argument. So the proof cannot
+  // be presented here without a signature change in a file this did not own.
+  //
+  // What is given up is named rather than hidden: the two `item.type` literals
+  // above are a NAME check, and `isWorkCategory` is a FIELD check, so a project
+  // that renamed its work category would read false here and true there. That
+  // gap existed before this line was typed and is unchanged by it; what changed
+  // is that it now has a function name a reader trips over.
+  return unprovenTaskState(item) !== DONE_STATE;
 }
 
 /**

@@ -1,5 +1,6 @@
 import { checksum, slugify } from '../core/slug.ts';
 import { normalizeEol } from '../core/text.ts';
+import type { SourceChecksum } from '../core/types.ts';
 
 /** Re-exported so existing consumers (`src/ingest/schema.ts`, tests) keep
  * importing it from here — the canonical implementation now lives in
@@ -104,7 +105,13 @@ export interface Chunk {
   anchor: string;
   heading: string | null;
   text: string;
-  checksum: string;
+  /**
+   * `SourceChecksum` (core/types.ts): a chunk is a piece of a SOURCE document,
+   * and this value is what `Item.sourceChecksum` records for an item ingested
+   * from it. The brand keeps it out of the three fields that hold a hash of the
+   * item itself.
+   */
+  checksum: SourceChecksum;
 }
 
 export const DEFAULT_MAX_CHARS = 6000;
@@ -371,7 +378,7 @@ export function chunkDocument(text: string, opts: { maxChars?: number } = {}): C
         anchor: allocateAnchor(base, used),
         heading: section.heading,
         text: whole,
-        checksum: checksum(whole),
+        checksum: checksum(whole) as SourceChecksum,
       });
       continue;
     }
@@ -387,7 +394,7 @@ export function chunkDocument(text: string, opts: { maxChars?: number } = {}): C
         anchor,
         heading: section.heading,
         text: part,
-        checksum: checksum(part),
+        checksum: checksum(part) as SourceChecksum,
       });
     }
   }

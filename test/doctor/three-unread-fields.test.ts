@@ -10,6 +10,9 @@ import {
 } from '../../src/doctor/checks.ts';
 import type { Item } from '../../src/core/types.ts';
 import { removeTree } from '../helpers/tmp.ts';
+// The boundary doors for the branded hash kinds (core/types.ts): a fixture
+// states a hash the same way a file does — by claiming it, unverified.
+import { recordedSourceChecksum } from '../../src/core/item.ts';
 
 /**
  * TASK-three-item-fields-can-be-filled-in-but-nothing-ever-reads: three item
@@ -222,7 +225,7 @@ test('an unreadable audit log falls back to one disclosure rather than throwing'
 test('a reference with source_file set draws nothing from this check — checkSourceDrift owns it', () => {
   const item = base({
     id: 'REF-a', type: 'reference',
-    sourceFile: 'docs/roadmap.md', sourceAnchor: null, sourceChecksum: 'abc',
+    sourceFile: 'docs/roadmap.md', sourceAnchor: null, sourceChecksum: recordedSourceChecksum('abc'),
   });
   assert.deepEqual(checkReferenceNoSource([item]), []);
 });

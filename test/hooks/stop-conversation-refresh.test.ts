@@ -306,7 +306,7 @@ test('the note says what the refresh moved, and says nothing at all when nothing
 
   const base: RebuildReport = {
     dir: '/w', found: 1, scanned: 0, appended: 0, skipped: 1, removed: 0,
-    truncated: [], bytesRead: 0, ms: 2,
+    unreadable: null, truncated: [], bytesRead: 0, ms: 2,
     subagents: {
       found: 0, scanned: 0, appended: 0, skipped: 0, removed: 0,
       truncated: [], unlinked: 0, bytesRead: 0,
@@ -409,7 +409,7 @@ test('what the refresh did reaches the audit row, because stdout leaves no trace
 test('a copy that took bytes says so in the audit row, and a current one is silent', () => {
   const base: RebuildReport = {
     dir: '/w', found: 1, scanned: 0, appended: 0, skipped: 1, removed: 0,
-    truncated: [], bytesRead: 0, ms: 2,
+    unreadable: null, truncated: [], bytesRead: 0, ms: 2,
     subagents: {
       found: 0, scanned: 0, appended: 0, skipped: 0, removed: 0,
       truncated: [], unlinked: 0, bytesRead: 0,
@@ -418,6 +418,7 @@ test('a copy that took bytes says so in the audit row, and a current one is sile
   const mirror = {
     dir: '/kept', marked: 1, advanced: 0, bytesWritten: 0,
     orphaned: [] as string[], broken: [] as string[], cleared: [] as string[],
+    unreadable: [] as { sessionId: string; why: string }[],
     redacted: [] as string[], redactedBytesWritten: 0, ms: 1,
   };
 
@@ -681,7 +682,7 @@ test('a hook that has already spent its budget stands the pass down, and loses n
 test('the row says what the anchor pass marked, and says nothing on the ordinary turn', () => {
   const base: RebuildReport = {
     dir: '/w', found: 1, scanned: 0, appended: 0, skipped: 1, removed: 0,
-    truncated: [], bytesRead: 0, ms: 2,
+    unreadable: null, truncated: [], bytesRead: 0, ms: 2,
     subagents: {
       found: 0, scanned: 0, appended: 0, skipped: 0, removed: 0,
       truncated: [], unlinked: 0, bytesRead: 0,
@@ -744,9 +745,25 @@ test('the row says what the anchor pass marked, and says nothing on the ordinary
     new RegExp(`took ${ANCHOR_HALF_CEILING_MS + 1}ms, past the ${ANCHOR_HALF_CEILING_MS}ms`),
   );
 
-  // A pass that FAILED is not a pass that found nothing — the same distinction
-  // `mirror` draws, told apart by the field and not by the clause.
-  assert.equal(refreshNote({ ...base, autoAnchors: { did: 'failed' } }), '');
+  /**
+   * **A pass that FAILED is not a pass that found nothing, and this assertion
+   * used to say the opposite.**
+   *
+   * It asserted `''` — no clause at all — which made a failed pass
+   * indistinguishable from an ordinary quiet turn on the one row where a
+   * per-turn failure can be found later. `TurnAnchors`' own docblock had
+   * already written down why that is wrong: `failed` and `stood-down` are
+   * *"opposite — one is a defect and the other is the budget working"*, and
+   * only `stood-down` had a clause.
+   * (`TASK-four-failure-states-are-modelled-in-the-type-and-read-by`, closed
+   * 2026-09-14. The full set of assertions on the new clause, including that
+   * an ABSENT `autoAnchors` is still silent, is in
+   * `test/hooks/stop-says-what-it-could-not-do.test.ts`.)
+   */
+  assert.match(
+    refreshNote({ ...base, autoAnchors: { did: 'failed' } }),
+    /automatic anchor pass FAILED/,
+  );
 });
 
 /**
