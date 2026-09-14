@@ -64,11 +64,15 @@ import { readStagingDir } from '../lesson/staging.ts';
 import { illegibleExisting, renderCollisionReport, type CollisionReport } from '../pack/collide.ts';
 import { planImport } from '../pack/import.ts';
 import { readImportRecords } from '../pack/imported-audit.ts';
+import { RULES_DIR_ENV, resolveStoreDir, workspaceIsMyContext } from '../rules/deliver.ts';
+import { storeMeta, verifyManifest } from '../rules/manifest.ts';
+import { entriesDir, loadRules } from '../rules/store.ts';
+import type { Entry } from '../rules/schema.ts';
 import { readArtefact } from '../pack/reader.ts';
 import { INGEST_DOCUMENT_SCHEMA, runIngestDocument } from './tools/ingest.ts';
 import { toolResultProvenance } from './provenance.ts';
 import type { CodeIdentity } from '../core/code-identity.ts';
-import type { ToolDefinition, ToolRegistry } from './protocol.ts';
+import type { ToolAnnotations, ToolDefinition, ToolRegistry } from './protocol.ts';
 
 const STATUSES = ['active', 'draft', 'superseded', 'deprecated', 'validated'];
 const SEVERITIES = ['hard', 'soft'];
@@ -430,9 +434,121 @@ function decayLine(row: { id: string; type: string; title: string; useCount: num
   return `${row.id} · ${row.type} · ${row.title} · ${usage}`;
 }
 
+/**
+ * ── THE FOUR SHAPES A TOOL ON THIS SURFACE CAN HAVE ─────────────────────────
+ *
+ * `mcpsurface/2`: no tool carried `annotations`, so a client could not tell
+ * `get_item` from `supersede_item` without parsing English — and because every
+ * `ToolAnnotations` default is the cautious one (see the interface in
+ * `protocol.ts`), silence did not read as "unknown", it read as
+ * *not-read-only, possibly-destructive, non-idempotent, open-world*. All
+ * twenty-six tools claimed that, including the ones that open a file and close
+ * it again. A host could therefore offer no safe read-only mode, and could
+ * raise a confirmation only everywhere or nowhere.
+ *
+ * They are FOUR NAMED SHAPES rather than a per-tool literal because the
+ * question a tool has to answer is not "what are my five booleans" but "which
+ * kind of act am I", and a literal per tool is twenty-six chances to get a
+ * default wrong silently. The name is the reasoning; the booleans follow from
+ * it.
+ *
+ * ── THE ONE CARVE-OUT, STATED ONCE AND APPLYING TO BOTH HINTS ───────────────
+ *
+ * **An audit row does not count as modifying the environment.** `get_item`
+ * appends a read record (`recordItemRead`) and `read_procedure` appends one
+ * (`recordAudit`), and both are still `READS`. Taken literally — *"does not
+ * modify its environment"* — that is a deviation, and it is deliberate: the
+ * question the hint exists to answer is the one a host asks before
+ * auto-approving, and "may I write down that you looked at this" is not a
+ * question a person needs to be woken for. Counting telemetry would make
+ * `readOnlyHint` false for almost every read on this surface and destroy the
+ * only distinction it was added to carry. The same carve-out is what lets
+ * `idempotentHint` be true below: repeating a write converges on the same
+ * corpus even though it appends a second audit row.
+ *
+ * Nothing here is derived, because nothing can be: whether an act is
+ * destructive is a judgement about what a person would want to be asked about,
+ * and there is no property of the code that answers it. What IS derived is the
+ * cross-check — `test/mcp/tool-annotations.test.ts` asks the real CLI parser
+ * which commands are behind `--yes` and refuses to let any tool whose
+ * counterpart is one of them claim to be read-only.
+ */
+
+/**
+ * Opens something and closes it again. The corpus is the same afterwards.
+ *
+ * `openWorldHint: false` on every shape below, and it is a real claim rather
+ * than a formality: this server reaches the project's own corpus, the rule
+ * store that ships inside the package, and files the caller names by path.
+ * It opens no socket and consults no service, so its "world" is closed in the
+ * sense the specification means (*"the world of a web search tool is open,
+ * whereas that of a memory tool is not"*) — and this is a memory tool.
+ */
+const READS: ToolAnnotations = {
+  readOnlyHint: true,
+  openWorldHint: false,
+};
+
+/**
+ * Writes something NEW and takes nothing away. Calling it twice produces two
+ * of whatever it makes, which is why it is not idempotent.
+ */
+const ADDS: ToolAnnotations = {
+  readOnlyHint: false,
+  destructiveHint: false,
+  idempotentHint: false,
+  openWorldHint: false,
+};
+
+/**
+ * Writes something new, and writing it again changes nothing further — an edge
+ * that already exists is still one edge.
+ */
+const ADDS_IDEMPOTENT: ToolAnnotations = {
+  readOnlyHint: false,
+  destructiveHint: false,
+  idempotentHint: true,
+  openWorldHint: false,
+};
+
+/**
+ * **Replaces or retires something that was already there**, which is the act
+ * `destructiveHint` exists to name. Four tools qualify and each for a stated
+ * reason:
+ *
+ * - `update_item` overwrites an item's fields with the ones passed.
+ * - `refresh_item` replaces a governing item's body with the current text of
+ *   the file it snapshots — the act `src/cli/index.ts` describes as going
+ *   "through this same gate" as `add --file`.
+ * - `supersede_item` retires an item. This is the one the item's own title
+ *   reaches for ("a read from a retirement").
+ * - `focus_context` replaces the focus, and a focus decides what loads
+ *   (`REQ-session-focus-controls-what-loads`). Narrowing one can HIDE a hard
+ *   constraint from the session that follows, and a host that can raise a
+ *   confirmation on exactly one class of act should raise it on that.
+ *
+ * Idempotent, all four: applying the same replacement twice lands on the same
+ * corpus (a superseded item is already superseded, a re-snapshot of an
+ * unchanged file is the same body). See the audit-row carve-out above.
+ */
+const REPLACES: ToolAnnotations = {
+  readOnlyHint: false,
+  destructiveHint: true,
+  idempotentHint: true,
+  openWorldHint: false,
+};
+
 export interface ToolSpec {
   name: string;
   schema: Record<string, unknown>;
+  /**
+   * REQUIRED, and required is the whole mechanism. `refuseUnknownArgs`'
+   * comment makes the same argument about the same failure: "a per-tool check
+   * is a list eleven tools have to remember to keep, and the twelfth tool
+   * would ship without one". An optional `annotations` would have been that
+   * list. A missing one is a type error before it is a review comment.
+   */
+  annotations: ToolAnnotations;
   run(cwd: string, args: Args): string;
 }
 
@@ -605,9 +721,101 @@ function extraFieldSchema(config: Config): Record<string, unknown> {
  */
 const DEFAULT_CONFIG = resolveConfig({});
 
+/* ─── THE RULE STORE, REACHABLE WITHOUT A TERMINAL (`mcpsurface/1`) ──────────
+ *
+ * There was no MCP path to the rule store at all — while `missedDoorLine`, a
+ * sentence written FOR A MODEL, told it to run `mycontext rules list` and
+ * `mycontext rules verify`. An agent whose Bash tool is denied could do
+ * neither, so the product's own advice for "find out what you were given"
+ * pointed at a door that surface does not have. Report 6 called it the largest
+ * CLI-to-MCP gap in the product that nothing argues for, and `parity.ts` is
+ * where the DELIBERATE absences are named — this was not among them.
+ *
+ * ── WHAT IS REUSED, AND WHY NONE OF IT IS REIMPLEMENTED ─────────────────────
+ *
+ * Every question below is answered by the function the CLI and the doors
+ * already ask. `resolveStoreDir` in particular is `deliver.ts`'s, for the
+ * reason `cli/commands/rules.ts` records after being caught by exactly this:
+ * with `MYCONTEXT_RULES_DIR` set, resolving the store a second way would
+ * describe a directory no door reads, with nothing saying so. A third
+ * resolution here would be a third answer to *"which store is this"*.
+ *
+ * `workspaceIsMyContext` is `deliver.ts`'s export, not the CLI's private copy
+ * of the same comparison — the tier decides whether developer-tier entries are
+ * law, and two answers to that is the shape spec §3 exists to prevent.
+ *
+ * ── READ ONLY, DELIBERATELY, AND THE ABSENCE IS THE POINT ───────────────────
+ *
+ * `mycontext rules verify --restore` writes. `verify_rules` offers no such
+ * argument and never will: `refuseUnknownArgs` refuses it by name, so a model
+ * that reaches for it is told where the act lives instead of being quietly
+ * ignored. The gap this item names is a READ an agent cannot perform; putting
+ * a write beside the fix would be answering a different question.
+ */
+
+/** The store a DOOR would read right now — never resolved a second way. */
+function ruleStoreDir(): string {
+  return resolveStoreDir();
+}
+
+/** Whether developer-tier entries are law here. `false` without a workspace. */
+function rulesReaderIsMyContext(cwd: string): boolean {
+  const ws = resolveWorkspace(cwd);
+  return ws.projectRoot ? workspaceIsMyContext(ws.projectRoot) : false;
+}
+
+/**
+ * The line that says this answer is not about the installed package, or `''`.
+ * Same argument as `substitutedStoreLine` and the CLI's `substitutionLines`: a
+ * reader holding an answer about somewhere else needs telling, and a sentence
+ * printed every time is a sentence nobody reads.
+ */
+function ruleStoreSubstitution(dir: string): string {
+  return path.resolve(dir) === path.resolve(entriesDir()) ? ''
+    : `NOT the installed package: \`${RULES_DIR_ENV}\` points at ${dir}, and that is the ` +
+      'store every door reads too.\n';
+}
+
+/** `store version N, published YYYY-MM-DD`, or `''` for a store published before the field. */
+function ruleStoreVersion(dir: string): string {
+  const meta = storeMeta(dir);
+  if (meta === null) return '';
+  return `store version ${meta.version}` +
+    `${meta.publishedAt === null ? '' : `, published ${meta.publishedAt}`}\n`;
+}
+
+function ruleCheckLine(entry: Entry): string {
+  return entry.check.how === 'none' ? `none - ${entry.check.why}` : `${entry.check.how}:${entry.check.name}`;
+}
+
+/** One entry in full — the `rules show` answer, for a reader with no terminal. */
+function renderRuleEntry(entry: Entry): string {
+  const lines = [`${entry.id} · ${entry.kind} · ${entry.tier}`, entry.title, ''];
+  for (const [name, value] of Object.entries(entry.parts)) {
+    if (name === 'check' || name === 'example') continue;
+    if (Array.isArray(value)) {
+      lines.push(`${name}:`);
+      for (const step of value) lines.push(`  - ${step}`);
+      continue;
+    }
+    lines.push(`${name}: ${value}`);
+  }
+  lines.push(`example: ${entry.example}`, `check: ${ruleCheckLine(entry)}`);
+  if (entry.body !== '') lines.push('', entry.body);
+  // Spec §6, the owner's own words: "for documentation only and should not be
+  // injected to the context". This tool is a documentation surface a model
+  // asked for by name, which is the one place it belongs — the same line
+  // `mycontext rules show` draws.
+  if (entry.request !== undefined) {
+    lines.push('', 'asked for as (verbatim, never injected):', entry.request);
+  }
+  return lines.join('\n');
+}
+
 const SPECS: ToolSpec[] = [
   {
     name: 'create_item',
+    annotations: ADDS,
     schema: object({
       type: { ...S_STRING, description: 'Category — see mycontext_help("categories")' },
       title: { ...S_STRING, description: 'One sentence, the item as a claim' },
@@ -808,6 +1016,7 @@ const SPECS: ToolSpec[] = [
   },
   {
     name: 'update_item',
+    annotations: REPLACES,
     schema: object({
       id: S_STRING,
       title: S_STRING,
@@ -988,6 +1197,7 @@ const SPECS: ToolSpec[] = [
     // is the part that recurs, and is therefore the part an agent can help
     // with.
     name: 'refresh_item',
+    annotations: REPLACES,
     schema: object({
       id: {
         ...S_STRING,
@@ -1026,6 +1236,7 @@ const SPECS: ToolSpec[] = [
   },
   {
     name: 'supersede_item',
+    annotations: REPLACES,
     schema: object({
       id: { ...S_STRING, description: 'The item being retired' },
       by: { ...S_STRING, description: 'The replacement, which must already exist' },
@@ -1045,6 +1256,7 @@ const SPECS: ToolSpec[] = [
   },
   {
     name: 'link_items',
+    annotations: ADDS_IDEMPOTENT,
     schema: object({
       from: S_STRING,
       to: S_STRING,
@@ -1087,6 +1299,7 @@ const SPECS: ToolSpec[] = [
   },
   {
     name: 'get_item',
+    annotations: READS,
     schema: object({ id: S_STRING }, ['id']),
     // The item, and then whether a proposal is waiting to rewrite it.
     //
@@ -1133,6 +1346,7 @@ const SPECS: ToolSpec[] = [
   },
   {
     name: 'query_items',
+    annotations: READS,
     schema: object({
       type: { ...S_STRING, description: 'Category — see mycontext_help("categories")' },
       status: { ...S_STRING, enum: STATUSES },
@@ -1210,6 +1424,7 @@ const SPECS: ToolSpec[] = [
   },
   {
     name: 'list_drafts',
+    annotations: READS,
     schema: object({ type: S_STRING, limit: { type: 'number' } }),
     // Newest first, as the tool description promises — `store.all()` comes
     // back `ORDER BY id`, which is alphabetical, not chronological.
@@ -1263,6 +1478,7 @@ const SPECS: ToolSpec[] = [
      * there is none.
      */
     name: 'list_items',
+    annotations: READS,
     schema: object({
       category: {
         ...S_STRING,
@@ -1333,6 +1549,7 @@ const SPECS: ToolSpec[] = [
      * on every call.
      */
     name: 'ready',
+    annotations: READS,
     schema: object({
       plan: {
         ...S_STRING,
@@ -1454,6 +1671,7 @@ const SPECS: ToolSpec[] = [
      * must still read as ZERO findings, never as a lone unexplained note.
      */
     name: 'doctor',
+    annotations: READS,
     schema: object({}),
     run: (cwd) => {
       const ws = resolveWorkspace(cwd);
@@ -1539,6 +1757,7 @@ const SPECS: ToolSpec[] = [
   },
   {
     name: 'load_context',
+    annotations: READS,
     // No properties at all, and none may be added: the one argument this
     // tool could plausibly want is a session id, and the model has no way to
     // know it — it would have to invent one, and a fabricated ledger key is
@@ -1576,6 +1795,7 @@ const SPECS: ToolSpec[] = [
      * ever recorded and answer "nothing happened" for a busy session.
      */
     name: 'audit_log',
+    annotations: READS,
     schema: object({
       item: { ...S_STRING, description: 'Records naming this item id, in any role' },
       session: { ...S_STRING, description: 'Records from one session id' },
@@ -1651,6 +1871,7 @@ const SPECS: ToolSpec[] = [
   },
   {
     name: 'mycontext_help',
+    annotations: READS,
     schema: object({
       // Derived, like `audit_log`'s ops. The hand-written four stopped being
       // right the moment `tools` and `slash` landed, and a hand-written enum
@@ -1666,6 +1887,7 @@ const SPECS: ToolSpec[] = [
   },
   {
     name: 'mycontext_examples',
+    annotations: READS,
     schema: object({ type: S_STRING }, ['type']),
     run: (cwd, args) => exampleItem(
       str(args, 'type', 'mycontext_examples'), resolveWorkspace(cwd).config,
@@ -1698,6 +1920,7 @@ const SPECS: ToolSpec[] = [
      * possible default here.
      */
     name: 'focus_context',
+    annotations: REPLACES,
     schema: object({
       tags: { ...S_STRINGS, description: 'Keep items carrying any of these tags' },
       categories: {
@@ -1792,6 +2015,7 @@ const SPECS: ToolSpec[] = [
   },
   {
     name: 'ingest_document',
+    annotations: ADDS,
     schema: INGEST_DOCUMENT_SCHEMA,
     // No `origin` argument, here or in the schema: applyCandidates writes as
     // 'ingest' and asserts the result is a draft. See create_item's note above.
@@ -1817,6 +2041,7 @@ const SPECS: ToolSpec[] = [
      * so far.
      */
     name: 'decay_report',
+    annotations: READS,
     schema: object({
       sessions: {
         type: 'number',
@@ -1929,6 +2154,7 @@ const SPECS: ToolSpec[] = [
      * discover.
      */
     name: 'list_ingest_sessions',
+    annotations: READS,
     schema: object({}),
     run: (cwd) => {
       const ws = resolveWorkspace(cwd);
@@ -1992,6 +2218,7 @@ const SPECS: ToolSpec[] = [
      * rationale tier is injected in the first place.
      */
     name: 'create_lesson',
+    annotations: ADDS,
     schema: object({
       subject: {
         ...S_STRING,
@@ -2061,6 +2288,7 @@ const SPECS: ToolSpec[] = [
      * exactly that reason).
      */
     name: 'stage_rule_candidates',
+    annotations: ADDS,
     schema: object({
       lesson: { ...S_STRING, description: 'The LESSON item id these candidates were derived from' },
       candidates: {
@@ -2143,6 +2371,7 @@ const SPECS: ToolSpec[] = [
      * against at all, the other half of what `mycontext pack` answers.
      */
     name: 'preview_pack_import',
+    annotations: READS,
     schema: object({
       path: {
         ...S_STRING,
@@ -2239,6 +2468,7 @@ const SPECS: ToolSpec[] = [
      * module scope — so its numbers cannot drift from the CLI's own.
      */
     name: 'status_report',
+    annotations: READS,
     schema: object({}),
     run: (cwd) => {
       const ws = resolveWorkspace(cwd);
@@ -2379,6 +2609,7 @@ const SPECS: ToolSpec[] = [
      * imports — every function this tool calls lives under `core/`.
      */
     name: 'list_todos',
+    annotations: READS,
     schema: object({
       tag: { ...S_STRING, description: 'Only todos carrying this tag' },
       all: {
@@ -2475,6 +2706,7 @@ const SPECS: ToolSpec[] = [
      * reintroduce exactly the lock this design avoids.
      */
     name: 'read_procedure',
+    annotations: READS,
     schema: object({
       action: {
         type: 'string',
@@ -2657,7 +2889,104 @@ const SPECS: ToolSpec[] = [
    * in a shell that was started after the reset.
    */
   {
+    name: 'list_rules',
+    annotations: READS,
+    schema: object({
+      id: {
+        ...S_STRING,
+        description:
+          'One entry id, to read that entry in full instead of listing them. Omit it to list ' +
+          'every entry in force here.',
+      },
+    }),
+    run: (cwd, args) => {
+      const dir = ruleStoreDir();
+      const isMyContext = rulesReaderIsMyContext(cwd);
+      const { entries, refused } = loadRules(dir, isMyContext);
+      const preamble = ruleStoreSubstitution(dir) + ruleStoreVersion(dir);
+      // A blank line only when there IS a preamble — the answer must not open
+      // on whitespace in the ordinary case.
+      const head = preamble === '' ? '' : `${preamble}\n`;
+
+      const id = optStr(args, 'id');
+      if (id !== undefined) {
+        const entry = entries.find((e) => e.id === id);
+        if (entry === undefined) {
+          throw new Error(
+            `my_context: no rule entry "${id}" applies here. ` +
+            `list_rules with no id names the ${entries.length} that do.`,
+          );
+        }
+        return `${head}${renderRuleEntry(entry)}`;
+      }
+
+      // Two different truths that must not collapse into one sentence: the
+      // store holds nothing, and the store holds nothing that applies HERE.
+      // The second is the ordinary case outside my_context, and reading it as
+      // the first looks exactly like a broken install.
+      if (entries.length === 0 && refused.length === 0) {
+        return head + (isMyContext
+          ? 'my_context: the rule store is empty.'
+          : 'my_context: no rule entry applies in this workspace. Developer-tier entries apply ' +
+            'only inside my_context itself; product-tier entries apply everywhere, and there ' +
+            'are none.');
+      }
+
+      const lines = [
+        `my_context rules — ${entries.length} entry(s) in force here. ${isMyContext
+          ? 'This workspace IS my_context, so developer-tier entries apply too.'
+          : 'Developer-tier entries do not apply outside my_context and are not listed.'}`,
+        '',
+        ...entries.map((e) => `${e.id} · ${e.kind} · ${e.tier} · ${e.title}`),
+      ];
+      // A file that did not load is NAMED, never counted and dropped
+      // (`INV-nothing-is-dropped-silently`), and — as on the CLI — naming it is
+      // not the same as failing: `verify_rules` is the one that answers whether
+      // the store is intact.
+      if (refused.length > 0) {
+        lines.push('', `could not be read (${refused.length}):`);
+        for (const r of refused) lines.push(`  ${path.basename(r.path)}: ${r.error}`);
+        lines.push(
+          '',
+          'This listed what it could read. verify_rules answers whether the store is intact.',
+        );
+      }
+      return head + lines.join('\n');
+    },
+  },
+  {
+    name: 'verify_rules',
+    annotations: READS,
+    // No arguments, and `--restore` is deliberately not among them — see the
+    // block above `ruleStoreDir`. `refuseUnknownArgs` refuses one by name.
+    schema: object({}),
+    run: () => {
+      const dir = ruleStoreDir();
+      const answer = verifyManifest(dir);
+      const head = ruleStoreSubstitution(dir);
+
+      if (answer.ok) {
+        return `${head}my_context: the rule store is intact — every entry matches the checksum ` +
+          `that shipped with it.\n  ${dir}\n${ruleStoreVersion(dir)}`.trimEnd();
+      }
+      const lines = [
+        `my_context: the rule store has been changed since it was installed — ` +
+        `${answer.problems.length} problem(s). Writes to it are refused while that is true; ` +
+        `reads still work, because a damaged install is one you can still recover from.`,
+        '',
+        ...answer.problems.map((p) => `  ${p.entry} — ${p.why}: ${p.detail}`),
+        '',
+        // The act that repairs it writes, and this surface does not. Naming the
+        // command is the honest answer — not an apology for an absent argument.
+        'Putting back what shipped is `mycontext rules verify --restore` in a terminal, or a ' +
+        'reinstall of the package. Nothing on this surface writes to the store.',
+      ];
+      return head + lines.join('\n');
+    },
+  },
+  {
     name: 'ask_handover',
+    annotations: ADDS,
     schema: object({
       anyway: {
         type: 'boolean',
@@ -2749,6 +3078,10 @@ export function createRegistry(cwd: string, code: CodeIdentity | null = null): T
       name: spec.name,
       description,
       inputSchema: { ...spec.schema, additionalProperties: false },
+      // Copied, not shared: four shapes serve twenty-six tools, so handing out
+      // the constant itself would let a client — or a later handler — mutate
+      // every tool that answers to the same shape by editing one object.
+      annotations: { ...spec.annotations },
     };
   });
 

@@ -78,6 +78,9 @@ test('the tool reference is generated from the registry, not written into tools.
   const rendered = toolReference([{
     name: 'zzz_probe',
     description: 'a tool invented by this test',
+    // Not what this test is about; `annotations` is required on every
+    // ToolDefinition since mcpsurface/2, so an invented tool declares one too.
+    annotations: {},
     inputSchema: {
       type: 'object',
       properties: { probe: { type: 'string', description: 'invented too' } },

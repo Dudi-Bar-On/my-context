@@ -196,4 +196,6 @@ rebuild, silently:
 - `list_items`: Census of the corpus by category — counts, not items. With `category`, lists that category's items instead. Not for: finding items by text, tag or relation — query_items.
 - `create_lesson`: Record a lesson, or re-derive from one's id, and get back the request to convert it into candidate rules. Always `origin: "agent"`. Not for: creating a rule directly.
 - `read_procedure`: List every procedure by stage, show one with its ticks overlaid, or tick/un-tick a step. Not for: activating or finishing one — those stay a human act.
+- `list_rules`: Read the product rule store that ships with this tool: every entry in force in this workspace, or one entry in full with "id". Not for: the project corpus — query_items and get_item read that.
+- `verify_rules`: Answer whether the rule store still matches the checksums that shipped with it, naming every entry that does not. Not for: repairing it — that writes, and lives in `mycontext rules verify --restore`.
 - `ask_handover`: Ask for the handover NOW, at whatever the context window currently holds, instead of waiting for the threshold. Not for: writing it — the ask reaches you, and you write the file.

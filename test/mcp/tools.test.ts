@@ -45,13 +45,13 @@ function promoteToActive(cwd: string, id: string): void {
   }
 }
 
-test('the registry exposes exactly the twenty-six implemented tools', () => {
+test('the registry exposes exactly the twenty-eight implemented tools', () => {
   assert.deepEqual([...TOOL_NAMES].sort(), [
     'ask_handover', 'audit_log', 'create_item', 'create_lesson', 'decay_report', 'doctor',
     'focus_context', 'get_item', 'ingest_document', 'link_items', 'list_drafts', 'list_ingest_sessions',
-    'list_items', 'list_todos', 'load_context', 'mycontext_examples', 'mycontext_help',
+    'list_items', 'list_rules', 'list_todos', 'load_context', 'mycontext_examples', 'mycontext_help',
     'preview_pack_import', 'query_items', 'read_procedure', 'ready', 'refresh_item',
-    'stage_rule_candidates', 'status_report', 'supersede_item', 'update_item',
+    'stage_rule_candidates', 'status_report', 'supersede_item', 'update_item', 'verify_rules',
   ]);
 });
 

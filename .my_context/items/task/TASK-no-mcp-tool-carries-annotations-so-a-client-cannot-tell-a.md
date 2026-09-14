@@ -15,17 +15,17 @@ tags:
   - annotations
   - "plan:mcpsurface"
   - "seq:2"
-  - "state:todo"
+  - "state:done"
 origin: human
 source_file: null
 source_anchor: null
 source_checksum: null
 valid_from: 2026-09-13
 valid_until: null
-checksum: f1e2f4499a52e6f8
+checksum: f14fb520eacd2091
 plan: mcpsurface
 seq: "2"
-state: todo
+state: done
 priority: "2"
 ---
 

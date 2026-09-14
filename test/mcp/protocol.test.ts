@@ -33,6 +33,7 @@ const registry: ToolRegistry = {
       name: 'echo',
       description: 'Echo the text back. Not for: anything useful.',
       inputSchema: { type: 'object', properties: { text: { type: 'string' } }, required: ['text'] },
+      annotations: { readOnlyHint: true, openWorldHint: false },
     },
   ],
   call: (name, args) => {
@@ -143,7 +144,12 @@ test('server/discover advertises every supported version', () => {
   const result = session().handle({ jsonrpc: '2.0', id: 9, method: 'server/discover' })!
     .result as Record<string, unknown>;
   assert.deepEqual(result.supportedVersions, SUPPORTED_PROTOCOL_VERSIONS);
-  assert.deepEqual(result.capabilities, { tools: {} });
+  // `{ tools: {} }` until 2026-09-14, while `initialize` two tests up answered
+  // `{ tools: { listChanged: false } }` — this assertion was the one that held
+  // the divergence `mcpsurface/3` names in place. The two routes now read one
+  // declaration; `test/mcp/null-id-and-capabilities.test.ts` compares them
+  // against EACH OTHER, which is the check a literal here cannot make.
+  assert.deepEqual(result.capabilities, { tools: { listChanged: false } });
   assert.equal(result.resultType, 'complete');
   const meta = result._meta as Record<string, { name: string }>;
   assert.equal(meta['io.modelcontextprotocol/serverInfo'].name, 'mycontext');

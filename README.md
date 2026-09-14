@@ -1970,7 +1970,7 @@ my_context has two surfaces over one corpus. One is for you, one is for the mode
 split is deliberate rather than historical.
 
 **You** type slash commands inside a Claude Code session, or run the `mycontext` command in
-a terminal. **The model** calls the twenty-six MCP tools. Both surfaces read and write the same
+a terminal. **The model** calls the twenty-eight MCP tools. Both surfaces read and write the same
 Markdown files under `.my_context/`, so an item you capture in the terminal is in the
 model's index the next time it looks, and an item the model captures shows up in
 `mycontext list` at once.
@@ -1986,7 +1986,7 @@ draft, retiring a governing item. How far that separation actually holds is
 flowchart TB
   U(["<b>You</b>"]) --> SL["<b>/mycontext:…</b><br/>91 slash commands"]
   U --> CL["<b>mycontext …</b><br/>48 CLI commands"]
-  A(["<b>Claude</b>"]) --> TL["<b>MCP tools</b><br/>twenty-six, served over stdio"]
+  A(["<b>Claude</b>"]) --> TL["<b>MCP tools</b><br/>twenty-eight, served over stdio"]
   SL -->|"add-* · search · link · LoadMyContext"| TL
   SL -->|"list-* · review · status · edit · query"| CL
   TL --> CO["<b>.my_context/</b><br/>one corpus of Markdown,<br/>in your repository"]
@@ -3736,7 +3736,7 @@ with a `--` comment.
 
 ### What the model calls: the MCP tools
 
-Twenty-six tools, served over stdio by `src/mcp/server.ts`. The model reaches them without a
+Twenty-eight tools, served over stdio by `src/mcp/server.ts`. The model reaches them without a
 shell, and every item write it makes through them is stamped as an agent write — which is
 what makes the draft rule in [section 7](#7-the-trust-boundary) enforceable at all on this
 surface.
@@ -3768,6 +3768,8 @@ surface.
 | `status_report` | the composed dashboard: counts, review queue, ingest progress, decay and health |
 | `list_todos` | list the inbox — items captured as `todo` — and what its tier means for them |
 | `ask_handover` | ask for the handover note **now**, at whatever the context window currently holds, instead of waiting for `handover.thresholdPercent`. It fires the same ask the `Stop` hook fires, so nothing downstream changes: the comparison that decides whether it was acted on is the same one. It refuses rather than guesses — when this server was not started by Claude Code and so answers for no session, when it cannot read how full that window is (no percentage is invented), and when the session still has lanes running, which it names so the person can choose between waiting and going ahead with `anyway` |
+| `list_rules` | read the **product rule store** — the constants `mycontext rules` describes, which ship inside the package and are not part of your corpus: every entry in force in this workspace, or one entry in full with `id`. It is the tool half of `mycontext rules list` / `mycontext rules show`, and it exists because `missedDoorLine` — text written for the model — tells it to check the store when a door failed to deliver, which an agent with no shell could not do |
+| `verify_rules` | answer whether the rule store still matches the checksums that shipped with it, naming every entry that does not. It offers no `restore`: putting bytes back is a write, it lives in `mycontext rules verify --restore`, and the refusal names it rather than ignoring the argument |
 | `read_procedure` | the read half of `mycontext procedure`: list every procedure by stage, show one with its ticks overlaid, or tick/un-tick a step. `activate` and `done` are not here — those hardcode a human origin and stay a human act, the same split `review` draws between `list_drafts` and `review promote` |
 
 The tool list is sorted and byte-stable across calls, which is what lets Claude Code cache
@@ -6383,7 +6385,7 @@ than one that is always typed by hand.
 
 **The requirement, in the user's words:** anything the model can do through a tool, you
 should be able to do through a command. **This is now satisfied, and enforced by a test
-rather than by review.** Every one of the twenty-six MCP tools has a CLI command, a slash
+rather than by review.** Every one of the twenty-eight MCP tools has a CLI command, a slash
 command, or both; the map is `src/plugin/parity.ts` and `test/plugin/parity.test.ts` checks
 it against the usage banner the program prints and the files in `commands/`.
 
@@ -6715,7 +6717,7 @@ is what the word means *here* — several of them are ordinary English elsewhere
 | **item** | one captured piece of knowledge: one Markdown file, one id, one category, one status |
 | **JIT** / **just in time** | the injection tier that fires when Claude is about to read or edit a file the item applies to — one matching its scope, or any file at all if it declares none. Spelled `jit` in the budgets configuration |
 | **layer** | where an item's file lives. `.my_context/` in the project you are working in is the *project* layer; a `.my-context` directory in your home folder, when one exists, is read as a *global* layer alongside it. Project items win ties and shadow a global item of the same id — [the global layer](#the-global-layer--knowledge-that-follows-you-across-projects) |
-| **MCP** | Model Context Protocol — the interface Claude reaches tools through. my_context serves twenty-six of them over stdio, and they are the model's only surface short of a shell |
+| **MCP** | Model Context Protocol — the interface Claude reaches tools through. my_context serves twenty-eight of them over stdio, and they are the model's only surface short of a shell |
 | **normative** | the tier for what must hold: constraints, invariants, rules, requirements, standards, and the rest. Normative text is injected, unprompted, phrased as an instruction — which is why a human approves it first |
 | **origin** | who wrote an item: `human`, `agent` or `ingest`. The trust boundary is built on this field |
 | **pending revision** | a change to an item's title, body, tags or `extra` that an agent proposed and that has **not** been applied. The item keeps governing its current text; the proposal waits in an append-only log for `mycontext review promote-revision` or `discard-revision`. Created by the `agentEdits: "review"` policy, never by a human's edit, and never injected |

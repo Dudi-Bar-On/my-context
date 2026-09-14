@@ -97,6 +97,9 @@ test('the tool reference prints an enum it was never told about', () => {
   const rendered = toolReference([{
     name: 'zzz_probe',
     description: 'a tool invented by this test',
+    // Not what this test is about; `annotations` is required on every
+    // ToolDefinition since mcpsurface/2, so an invented tool declares one too.
+    annotations: {},
     inputSchema: {
       type: 'object',
       properties: { relation: { type: 'string', enum: ['zzz_only_here'] } },

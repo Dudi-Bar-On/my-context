@@ -16,17 +16,17 @@ tags:
   - hang
   - "plan:mcpsurface"
   - "seq:3"
-  - "state:todo"
+  - "state:done"
 origin: human
 source_file: null
 source_anchor: null
 source_checksum: null
 valid_from: 2026-09-13
 valid_until: null
-checksum: a06d0448c7aab983
+checksum: 5ce368bb90a75be9
 plan: mcpsurface
 seq: "3"
-state: todo
+state: done
 priority: "2"
 ---
 

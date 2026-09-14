@@ -139,6 +139,56 @@ export const TOOL_PARITY: ToolParity[] = [
   // entry points onto `askHandoverNow`, which decides everything all three
   // report.
   { tool: 'ask_handover', cli: 'handover', slash: 'handover' },
+  /**
+   * ── `rules` GAINS TWO TOOLS, AND THIS REVERSES A REASON WRITTEN HERE ───────
+   *
+   * `CLI_WITHOUT_TOOL.rules` stood on this file from 2026-09-11 (D41 Phase 1)
+   * until 2026-09-14, `disposition: 'intended'`, arguing that "delivery is a
+   * hook, not a query" and that there is therefore "nothing here for a tool to
+   * call that a door does not already hand over in full". The row is gone,
+   * because `TASK-there-is-no-mcp-path-to-the-rule-store-and-the-text-written`
+   * measured the case that reason does not cover.
+   *
+   * **The refutation is the product's own text.** `missedDoorLine`
+   * (`src/rules/delivered.ts`) exists for exactly the session where a door did
+   * NOT hand the constants over — and what it tells the model to do about it is
+   * *"Run `mycontext rules list` to read them, and `mycontext rules verify` if
+   * you suspect the store itself."* An agent whose Bash tool is denied can do
+   * neither. So the absence was not "a query the model has no business making";
+   * it was a query the product instructs the model to make, through a door that
+   * surface does not have.
+   *
+   * The half of the old reason that SURVIVES is the half about choosing: the
+   * store still reaches a model by delivery, in full, without the model picking
+   * what it reads. Neither tool changes that. They answer the second question —
+   * *did I get them, and are they the ones that shipped* — which is the one a
+   * missed door leaves open and which no amount of delivery can answer.
+   *
+   * NO SLASH COMMAND, and that absence IS still intended:
+   * `CLI_WITHOUT_SLASH.rules` is untouched and its reasoning is undisturbed by
+   * this change. It is about who the honest reader of a tamper check is — the
+   * person who installed the tool — and a slash command is that person asking
+   * the model to answer it for them. A tool is the model answering it for
+   * ITSELF, having been told to by `missedDoorLine`, which is a different act.
+   */
+  {
+    tool: 'list_rules', cli: 'rules', slash: null,
+    note:
+      'Answered for a user by `mycontext rules list` / `mycontext rules show <id>`. No slash ' +
+      'command, for the reason `CLI_WITHOUT_SLASH.rules` gives and which this tool does not ' +
+      'disturb: a slash command would be a PERSON asking the model whether the rules it was ' +
+      'given are real, and the honest reader of that answer is the person who installed the ' +
+      'tool. This tool is the model checking its own delivery, which `missedDoorLine` tells it ' +
+      'in so many words to do.',
+  },
+  {
+    tool: 'verify_rules', cli: 'rules', slash: null,
+    note:
+      'Answered for a user by `mycontext rules verify`. Same absent slash command and same ' +
+      'reason as `list_rules`. It deliberately does NOT mirror `--restore`: that writes, and ' +
+      'this surface offers no route to it — `refuseUnknownArgs` refuses the argument by name ' +
+      'and the failure text names the terminal command that performs it.',
+  },
 ];
 
 /**
@@ -350,16 +400,6 @@ export const CLI_WITHOUT_TOOL: Record<string, ToolAbsence> = {
       '`carry` has. A tool would exist only to make the judgement the command is written to keep ' +
       'with a person, and what it would release into a window is a verbatim account of an ' +
       'earlier conversation.',
-  },
-  rules: {
-    disposition: 'intended',
-    reason:
-      'Same fact `CLI_WITHOUT_SLASH.rules` cites, and a tool forecloses it harder than a ' +
-      'slash command does: the store exists so that a set of constants reaches the model ' +
-      'WITHOUT the model choosing what it reads, and a tool would be exactly that choice. ' +
-      'Delivery is a hook, not a query — `src/rules/` carries no runtime query API for an ' +
-      'agent at all, which the design states as a thing it is not building — so there is ' +
-      'nothing here for a tool to call that a door does not already hand over in full.',
   },
   ack: {
     disposition: 'intended',
