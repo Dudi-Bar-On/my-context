@@ -266,8 +266,29 @@ test('bin.mycontext resolves to the real CLI entry point, and running it runs th
   assert.ok(existsSync(resolved), `bin.mycontext names a file that does not exist: ${resolved}`);
 
   const firstLine = readFileSync(resolved, 'utf8').split('\n')[0];
+  /**
+   * **The flag on this line is `cliscript/5`, and it is still pinned LITERALLY.**
+   *
+   * It became `env -S node --disable-warning=ExperimentalWarning` because the
+   * SQLite experimental warning is emitted while Node LINKS the module graph,
+   * before any project code evaluates — so no in-process filter can suppress
+   * it, and a command-line flag is the only lever. Every other entry point
+   * already carries one; the CLI is the one with no parent of ours to put it on.
+   *
+   * The docblock above is WHY this is asserted literally rather than loosely,
+   * and that reasoning is unchanged — only the literal moved. The risk it names
+   * is real, and it was MEASURED rather than assumed, on Windows, 2026-09-14: a
+   * scratch package carrying exactly this shebang was installed with npm, and
+   * cmd-shim carried the flag through verbatim into the generated .cmd, next to
+   * the .ps1 and the POSIX sh shim. Running the generated shim printed the flag
+   * back out of process.execArgv. The one line still does its double duty.
+   *
+   * --disable-warning needs Node 21.3+, this project requires 24
+   * (CONST-node-24-no-build-step), and env -S is older than every Node that can
+   * run this source — so the shebang cannot outrun its own runtime.
+   */
   assert.equal(
-    firstLine, '#!/usr/bin/env node',
+    firstLine, '#!/usr/bin/env -S node --disable-warning=ExperimentalWarning',
     'cmd-shim reads this exact line to build the Windows .cmd/.ps1 shims, and POSIX execs the ' +
     'linked file by reading the same line',
   );
