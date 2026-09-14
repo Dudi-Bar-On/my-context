@@ -461,8 +461,26 @@ test('a write inside the document leaves the caret on the row, and a take-back i
   await open(page);
   await page.evaluate((id) => { location.hash = `#/conversations/${id}`; }, SESSION);
   await page.waitForSelector('.tvscroll', { timeout: 20_000 });
-  await page.locator('.tvfind').fill('the weather in the afternoon');
-  const turn = page.locator('.tvturn').filter({ hasText: 'the weather in the afternoon' });
+  /**
+   * **A turn NOTHING ELSE IN THIS FILE MARKS, and that is the point.**
+   *
+   * This test used to reach for the PROSE turn — but
+   * `marking a search hit leaves the caret on the row that changed`, above,
+   * searches `afternoon` and marks the FIRST hit, which is that same turn.
+   * The file shares one workspace and one server across all its tests, so by
+   * the time this one runs the point is already taken, `.tvanchormark` is
+   * not drawn, and the fill on the next line has nothing to fill.
+   *
+   * Measured 2026-09-14: this test PASSES ALONE and FAILS IN ITS OWN FILE at
+   * both --workers=1 and --workers=2, and the failing pair differed between
+   * runs — the signature of order dependence, not of a defect in what it
+   * asserts. A filler turn is marked by nothing else here, carries no table,
+   * no pipe and no normative id, so the automatic pass leaves it alone too.
+   * Nothing about the subject changes: the assertion is about where the caret
+   * lands after a write, and any turn serves for that.
+   */
+  await page.locator('.tvfind').fill('Filler turn number 7');
+  const turn = page.locator('.tvturn').filter({ hasText: 'Filler turn number 7' });
   await expect(turn).toBeVisible({ timeout: 20_000 });
 
   await turn.locator('.tvanchormark').click();
