@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: The health-check file is large enough to split along a line its tests already draw, provided a safeguard goes in first so no check is lost on the way.
-summary_of: 3703a04c4eb459a4
+summary_of: 7cfc26eb2745f40f
 scope:
   - src/doctor/checks.ts
   - test/doctor/**
@@ -17,18 +17,19 @@ tags:
   - refactor
   - "plan:accretion"
   - "seq:2"
-  - "state:todo"
+  - "state:done"
 origin: human
 source_file: null
 source_anchor: null
 source_checksum: null
 valid_from: 2026-09-13
 valid_until: null
-checksum: 7917696865257d4f
+checksum: e5625e8a11f57cf5
 plan: accretion
 seq: "2"
-state: todo
+state: done
 priority: "2"
+verified_on: 2026-09-14
 ---
 
 # the checks file splits along a boundary its own tests already draw, but the registry guard goes in first
