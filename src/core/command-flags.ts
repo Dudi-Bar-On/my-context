@@ -60,10 +60,10 @@
  * the CLI dispatches: 41 registered by `cli/commands/index.ts`'s column of side-effect
  * imports, and 7 more registered in `cli/index.ts` itself.
  *
- *   | 44 | have a SEPARABLE flag spec — a declarative list, liftable as it is |
+ *   | 45 | have a SEPARABLE flag spec — a declarative list, liftable as it is |
  *   |  0 | read their flags INLINE where they are used, with no spec to lift  |
  *   |  1 | resists: `edit`, whose accepted set is computed per workspace      |
- *   |  3 | take no flags at all — `show`, `rebuild`, `help`                   |
+ *   |  2 | take no flags at all — `rebuild` and `help`                        |
  *
  * **The second row is kept at zero rather than deleted, and the zero is the
  * news.** It read 5 until `plan:builder seq:1c`, and those five had no spec
@@ -76,7 +76,8 @@
  * **This paragraph said 38, and 38 was neither number.** `COMMANDS` holds 33
  * when only `cli/commands/index.ts` has been imported and 40 once `cli/index.ts`
  * has, because seven commands are registered in the entry module rather than in
- * a module of their own — `show`, `help` and `rebuild`, which take no flags,
+ * a module of their own — `help` and `rebuild`, which take no flags, plus the
+ * command that took none until 2026-09-14 and now takes one,
  * and the four whose specs the map below now holds; both READMEs said 39 and
  * were right while this said 38 — they now say 47, which is `COMMANDS.size`
  * once the entry module has been imported and the figure this paragraph's own
@@ -88,7 +89,7 @@
  * commands named as absent, plus the keys of `COMMAND_FLAGS`, must be exactly
  * the registered set, so a command cannot arrive and be silently uncounted.
  *
- * **37** of the 44 are here. Twenty-one arrived with the first lift, and they
+ * **38** of the 45 are here. Twenty-one arrived with the first lift, and they
  * are the ones whose spec was already a declarative constant over a FLAT
  * surface — one command, one flag set. The other four arrived with
  * `plan:builder seq:1b` and came out of `src/cli/index.ts` itself — the entry
@@ -169,7 +170,10 @@
  *     `[...ALLOWED, ...declaredFlags(ws.config)]`, computed per workspace from
  *     the flags this project's categories declare. A read surface can only
  *     have `edit`'s spec by being told which workspace it is asking about.
- *   - **`show`, `rebuild`, `help`** take no flags. The absence is the fact.
+ *   - **`rebuild` and `help`** take no flags. The absence is the fact, and it
+ *     is one shorter than it was: the third member grew `--json` on
+ *     2026-09-14 and moved into the map, which is the direction this record
+ *     was built to make visible.
  */
 
 import { AUDIT_KINDS, AUDIT_OPS } from './audit.ts';
@@ -547,6 +551,33 @@ export const COMMAND_FLAGS: Record<string, FlagSpec> = {
    * command parses with; the hints are what it says. Only the first is here.
    */
   init: { allowed: ['pack'], values: ['pack'] },
+  /**
+   * **The thirty-eighth entry, and the first one to arrive by a command
+   * LEAVING `FLAGLESS_COMMANDS`** — 2026-09-14,
+   * `TASK-show-accepts-json-and-silently-drops-it-and-closing-that`.
+   *
+   * `show` took no flags and refused none. `mycontext show <id> --json` put
+   * `--json` in no slot at all: the token was neither read nor refused, and
+   * the command printed Markdown on the success path and 44 bytes of English
+   * prose on the failing one. That is a breach of
+   * `INV-nothing-is-dropped-silently` rather than a mis-typed channel, and it
+   * was the headline example of the consolidation that produced `rulings/72`
+   * — the one form left that did not do what its flag promised.
+   *
+   * **`--json` is the whole surface, and the id stays a POSITIONAL** — the
+   * shape `list` states above for its category filter. The command is about
+   * one item; there is nothing else here to name with a flag.
+   *
+   * `values` is empty: `--json` is a bare switch read by `boolFlag`, exactly
+   * as it is on every other command that takes it, so `mycontext show --json
+   * <id>` does not swallow the id.
+   *
+   * `test/cli/command-flags.test.ts` anticipated this migration in as many
+   * words — *"the day `mycontext show` grows `--json`, nothing about the three
+   * names in that array changes"* — which is why the disposition record it
+   * guards is the thing that moved with it rather than a thing that broke.
+   */
+  show: { allowed: ['json'], values: [] },
 
   /**
    * ── THE FIVE THAT HAD NO SPEC AT ALL (plan:builder seq:1c) ───────────────
@@ -1518,6 +1549,22 @@ export const FLAG_DECLARATIONS: Record<string, FlagDeclarations> = {
         + 'in lands `draft` and governs nothing until a person promotes it.',
     },
   },
+  /**
+   * NOT `DETAIL.json`, and the difference is the reason this note is written
+   * out rather than shared. Every other `--json` in this table replaces a
+   * TABLE — the detail levels are four ways to ask for one report, and its
+   * note says so. `show` has no table and no detail levels: it prints one
+   * item, and `--json` prints the same item as a record. Reusing the shared
+   * note would put "instead of a table" on a command that never printed one.
+   */
+  show: {
+    json: {
+      note: 'The item as one JSON document — every field the Markdown form prints, plus the '
+        + 'notes printed beside it (a summary that no longer describes the item, an audit '
+        + 'append that failed, an item file that could not be read). It carries no detail '
+        + 'levels, because `show` has none: this is the whole item either way.',
+    },
+  },
   ingest: {
     anchor: {
       format: 'a heading from the document', example: 'Authentication',
@@ -2016,7 +2063,15 @@ export const SUBCOMMAND_FLAG_DECLARATIONS: Record<string, FlagDeclarations> = {
 };
 
 /**
- * The three registered commands that accept NO flag at all.
+ * The two registered commands that accept NO flag at all.
+ *
+ * **It read three until 2026-09-14**, and `show` is the one that left. It did
+ * not leave because the list was wrong: it left because `show` grew `--json`
+ * (`TASK-show-accepts-json-and-silently-drops-it-and-closing-that`), which is
+ * the migration the test guarding this array anticipated in its own words.
+ * That is what this record is for — an absence written down is the kind of
+ * fact that goes quietly false, and this one was made to go loudly false
+ * instead.
  *
  * Written as data rather than left in the header's prose, because "takes no
  * flags" is an answer a Library screen has to be able to GIVE. A command
@@ -2029,7 +2084,7 @@ export const SUBCOMMAND_FLAG_DECLARATIONS: Record<string, FlagDeclarations> = {
  * with a sentinel flag and requires a refusal, so a command that grows a flag
  * cannot quietly stay on this list.
  */
-export const FLAGLESS_COMMANDS: string[] = ['help', 'rebuild', 'show'];
+export const FLAGLESS_COMMANDS: string[] = ['help', 'rebuild'];
 
 /**
  * The commands whose accepted set is computed per WORKSPACE, and can therefore

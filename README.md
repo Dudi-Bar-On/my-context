@@ -2347,7 +2347,7 @@ a success.
 |---|---|
 | `mycontext list [category]` | the corpus as a table |
 | `mycontext search "<words>"` | find items by text, and by `--type`, `--tag`, `--path`, `--status`, `--relation`. The same filter `query_items` runs, and the same code: one predicate, two surfaces |
-| `mycontext show <id>` | one item in full, exactly as it is on disk |
+| `mycontext show <id>` | one item in full, exactly as it is on disk. `--json` prints the same item as one JSON document, carrying every note the Markdown form prints beside it — a summary that no longer describes the item, an audit append that failed, a file that could not be read |
 | `mycontext todo` | the inbox: everything captured as `todo`, in the id order every other listing uses. `--tag`, `--all`, `--limit`. Retired ones are hidden and counted, not dropped. This is not the review queue — nothing in it is waiting to govern |
 | `mycontext ready` | open tasks whose `needs` are all `done`, highest priority first — `--plan`, `--held`, `--limit`. It answers "what can I start now" for a project whose category declares `plan`, `seq` and `state`; a project with no such category is told that rather than shown an empty list. Readiness is **derived on every run** from `needs` and the states of what it names, so there is no `ready` state to go stale, and every open task it cannot clear is counted by reason and listed with `--held` |
 | `mycontext query "SELECT …"` | read-only SQL over the index — [the schema, and worked queries](#the-index-schema-and-how-to-query-it) |

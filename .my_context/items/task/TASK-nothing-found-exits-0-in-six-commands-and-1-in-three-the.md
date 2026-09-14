@@ -16,17 +16,17 @@ tags:
   - contract
   - "plan:cliscript"
   - "seq:4"
-  - "state:todo"
+  - "state:done"
 origin: human
 source_file: null
 source_anchor: null
 source_checksum: null
 valid_from: 2026-09-13
 valid_until: null
-checksum: 843a8caeb85d0a9c
+checksum: 6e6610eb3f3f3ef7
 plan: cliscript
 seq: "4"
-state: todo
+state: done
 priority: "2"
 ---
 

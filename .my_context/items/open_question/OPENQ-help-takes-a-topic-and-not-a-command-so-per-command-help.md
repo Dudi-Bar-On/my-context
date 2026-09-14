@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: Asking the tool to explain one specific command works on the screen but not at the command line.
-summary_of: ec0bf7b0640a337b
+summary_of: 246aa26779aaeafa
 scope:
   - src/help/**
   - src/cli/index.ts
@@ -20,10 +20,30 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-09-06
 valid_until: null
-checksum: 0eea1a3de1728021
+checksum: 307af4a122e2a54b
 ---
 
 # help takes a topic and not a command, so per-command help exists in the web UI and nowhere else
+
+ANSWERED IN PART, 2026-09-14, AND THE PART THAT IS ANSWERED IS THE CAPABILITY RATHER THAN THE
+SURFACE THIS ITEM PROPOSED. `mycontext <command> --help` now prints that command's own usage,
+summary and complete flag surface — every switch with what it means — and EXITS 0, on all 48
+registered commands. It is one intercept in `dispatchCli` (`src/cli/command-help.ts`), and every
+word of it is derived from the same four records `/api/cli-help` reads, so the browser and the
+terminal cannot come to disagree. That shipped with
+`TASK-asking-a-command-for-help-exits-1-on-all-38-commands-that`, whose subject was the exit code
+rather than this question — the page was already being printed, behind `unknown option "--help"`
+and a status that told every wrapper the command did not exist.
+
+WHAT IS STILL OPEN IS THE QUESTION AS ASKED: does `help` grow a second SHAPE — `mycontext help
+<command>` beside `mycontext help <topic>` — and does the Composer offer that input? A flag on the
+command is not the same affordance as a verb a person can type when they do not yet know which
+command they want, and the Composer question is untouched. Both costs the paragraph below names
+are also untouched: the shared positional slot, and what a third surface withholds.
+
+The paragraph that follows is the 2026-09-06 state this question was written against. Its sentence
+"there is no per-command help ANYWHERE in the CLI" was true then and is no longer true; everything
+else in it still is.
 
 Owner question 2026-09-06: he ran `help slash` in the Composer, got a list of every slash command,
 and asked whether help takes more parameters - help for ONE command - and if so why the Composer

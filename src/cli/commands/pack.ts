@@ -597,11 +597,33 @@ function cmdImport(
       name, source, origin, now: Date.now(), overwriteApproved,
     });
 
+    // **Entirely refused is a failure; partly refused is not**
+    // (`CONST-the-cli-exit-code-contract`, rule 4). Measured 2026-09-13 and
+    // again 2026-09-14: an import in which every id the pack carries was left
+    // exactly as it is — `overwriteBlocked`, the case this command's own
+    // sentence calls "item(s) that differ in a field no write path here can
+    // reach", or `overwriteSkipped`, the same outcome with an approval that
+    // was never given — printed that report and exited 0. A caller reading
+    // nothing but the status was told the pack had been imported.
+    //
+    // `imported` is the landing test rather than `created`, because its own
+    // doc comment says what it means: every id this pack has in the corpus
+    // NOW, including ones already here carrying the pack's content. A
+    // re-import of an unchanged pack lands everything and refuses nothing.
+    // A partial import stays 0 — the items that arrived really are there, and
+    // `outcomeLines` names the ones that did not.
+    //
+    // Computed BEFORE the `--json` branch so the two channels cannot come to
+    // disagree about the same import.
+    const landed = outcome.imported.length + outcome.overwritten.length;
+    const leftAlone = outcome.overwriteBlocked.length + outcome.overwriteSkipped.length;
+    const code = landed === 0 && leftAlone > 0 ? 1 : 0;
+
     if (json) {
       emitJson(out, collisionJson(
         reportOf(plan, ctx.root, name, outcome, overwriteApproved, refused, errors),
       ));
-      return 0;
+      return code;
     }
     // Read back rather than inferred: whether this name resolves to one record
     // is a fact about what is on disk NOW, and this import has just changed it.
@@ -610,7 +632,7 @@ function cmdImport(
     const filed = readImportRecords(root).filter((r) => r.pack === name);
     outcomeLines(out, name, outcome, filed.length > 1 ? source : null);
     emitLoadErrors(errors, out);
-    return 0;
+    return code;
   } catch (err) {
     out(toCliMessage(err));
     // Reported even on the failure path: an item file that could not be read

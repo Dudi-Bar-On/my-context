@@ -162,6 +162,16 @@ const WRITTEN_HERE: Record<string, string> = {
   'lesson-accept': 'read four overrides that each change the text of a rule about to govern '
     + 'this repository, and dropped any of them that was misspelt while reporting success.',
   'lesson-discard': 'took no flags and said nothing about the ones it was handed.',
+  // 2026-09-14, `TASK-show-accepts-json-and-silently-drops-it-and-closing-that`.
+  // The sixth, and the first to arrive here from `FLAGLESS_COMMANDS` rather
+  // than from a module that had a list to lift. It belongs in THIS record and
+  // not in the other two for the reason the header above gives: the command is
+  // far older than this module (so not `BORN_HERE`), and no module ever held a
+  // spec for it (so not `LIFTED_FROM`) — its accepted set was written, and
+  // writing it is a behaviour change.
+  show: 'took no flags at all: `--json` was neither honoured nor refused, so `mycontext show '
+    + '<id> --json` printed Markdown on the success path and 44 bytes of English prose on the '
+    + 'failing one — on the channel a consumer had just asked for JSON on.',
 };
 
 const PROVENANCE: Record<string, string>[] = [LIFTED_FROM, BORN_HERE, WRITTEN_HERE];
@@ -1015,15 +1025,24 @@ test('every lifted subcommand flag is one the real CLI accepts, and a sentinel i
  * that array changes and a Library screen goes on printing "this command takes
  * no flags" over a flag it takes.
  *
+ * **AND THE ANTICIPATED DAY ARRIVED: 2026-09-14.** `show` grew `--json`
+ * (`TASK-show-accepts-json-and-silently-drops-it-and-closing-that`) and left
+ * this array for `COMMAND_FLAGS`, which is exactly the move the paragraph
+ * above says an absence written down exists to make visible. Nothing here was
+ * relaxed to let it through: the array shrank, this record shrank with it, and
+ * the equality assertion below is what required both edits in the same commit.
+ * The `show` row is kept in the prose because the sentence it makes is still
+ * the reason this test exists.
+ *
  * So each of the three was probed with a sentinel flag (2026-09-06,
  * `plan:library seq:1`), and **none of them refuses it as a flag**, because
  * none of them calls `refuseUnknownFlag` at all. What they do instead splits
  * two ways, and the split is the fact this record now carries:
  *
- *   - `show` and `help` take an OPERAND, and the sentinel lands in that slot.
- *     Both then refuse it, in their own words — "no item with id
- *     \"--zzz…\"", and the topic enum error. The refusal is real and a user
- *     sees it; it is simply about the wrong thing.
+ *   - `show` (until it grew a parser) and `help` take an OPERAND, and the
+ *     sentinel lands in that slot. Both then refuse it, in their own words —
+ *     "no item with id \"--zzz…\"", and the topic enum error. The refusal is
+ *     real and a user sees it; it is simply about the wrong thing.
  *   - `rebuild` takes nothing at all, so the sentinel is **silently dropped**:
  *     `mycontext rebuild --zzz-not-a-flag` prints "indexed N item(s)" and
  *     exits 0. That is the exact shape `plan:builder seq:1c` removed from five
@@ -1040,7 +1059,6 @@ test('every lifted subcommand flag is one the real CLI accepts, and a sentinel i
 const FLAGLESS_DISPOSITION: Record<string, 'operand' | 'swallowed'> = {
   help: 'operand',
   rebuild: 'swallowed',
-  show: 'operand',
 };
 
 test('the flagless commands dispose of an unknown flag exactly as recorded', () => {
@@ -1071,7 +1089,7 @@ test('the flagless commands dispose of an unknown flag exactly as recorded', () 
     }
     assert.deepEqual(
       observed, FLAGLESS_DISPOSITION,
-      'one of the three commands that take no flags has changed what it does with a token it '
+      'one of the commands that take no flags has changed what it does with a token it '
       + 'does not understand. The Library screen states this per command, so a change here is '
       + 'a change to what a reader is told.',
     );

@@ -152,25 +152,39 @@ test('every command that declares --json answers a refusal in JSON', () => {
 /**
  * The other direction, and the reason the gate reads the flag tables rather
  * than argv alone: a command with no `--json` is not handed a JSON contract it
- * does not honour on success. `mycontext show <id> --json` prints Markdown when
- * it succeeds, so an error envelope would promise a format the success path has
- * never produced.
+ * does not honour on success.
+ *
+ * **THE FINDING THIS TEST CARRIED IS CLOSED, AND THE SUBJECT MOVED WITH IT.**
+ * Until 2026-09-14 the flagless half of this test was `show`, and it asserted
+ * the DEFECT rather than the rule: `mycontext show <id> --json` dropped the
+ * flag on both paths, and the assertion said so out loud instead of passing
+ * quietly. `TASK-show-accepts-json-and-silently-drops-it-and-closing-that`
+ * ruled that `show` gains a parser and a `--json` form, so `show` is no longer
+ * an example of this rule at all — it is an example of the rule in
+ * `test/cli/show-json.test.ts`.
+ *
+ * `rebuild` takes its place, and it is the stricter example: it is not merely
+ * flagless, it SWALLOWS an unknown flag (`FLAGLESS_DISPOSITION`,
+ * test/cli/command-flags.test.ts), so it is the command a gate reading argv
+ * alone would most easily hand a JSON contract to.
  */
 test('a command that does not take --json is untouched by it', () => {
   const cwd = project();
   try {
-    assert.ok(FLAGLESS_COMMANDS.includes('show'), 'show is the flagless command this rests on');
-    const { code, out } = run(['show', 'NO-SUCH-ITEM', '--json'], cwd);
-    assert.equal(code, 1);
-    assert.match(out, /^my_context: no item with id "NO-SUCH-ITEM"/);
-    // A FINDING, not a pass: `show` silently ignores `--json` on BOTH paths,
-    // which is a different defect from this item's — a dropped flag
-    // (`INV-nothing-is-dropped-silently`), not a mis-typed channel. The item's
-    // own headline example was this command, and closing it needs `show` to
-    // gain a flag parser or a `--json` form. Deliberately out of scope here:
-    // `core/command-flags.ts` records that giving a flagless command a parser
-    // is "a behaviour change, not a migration".
-    assert.doesNotMatch(out, /"error"/);
+    assert.ok(FLAGLESS_COMMANDS.includes('rebuild'), 'rebuild is the flagless command this rests on');
+    assert.ok(
+      !FLAGLESS_COMMANDS.includes('show'),
+      'show left FLAGLESS_COMMANDS when it grew --json; if it is back, this test is guarding '
+      + 'the wrong command and test/cli/show-json.test.ts is guarding nothing.',
+    );
+    // `rebuild` exits 0 and cannot be made to fail from argv, so the assertion
+    // is about the SHAPE of what it emits: the envelope is only ever reached
+    // on a non-zero exit, and a command that answers 0 to everything must
+    // still not be printing JSON at a caller who typed `--json`.
+    const { code, out } = run(['rebuild', '--json'], cwd);
+    assert.equal(code, 0);
+    assert.match(out, /^my_context: indexed \d+ item\(s\)/);
+    assert.doesNotMatch(out, /^\{/, 'rebuild does not declare --json and must not answer in it');
 
     // The sharper half, and the one the gate exists for: `link` HAS a flag spec
     // and `json` is not in it, so it refuses `--json` by name. Answering that

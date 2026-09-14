@@ -17,17 +17,17 @@ tags:
   - exit-code
   - "plan:cliscript"
   - "seq:2"
-  - "state:todo"
+  - "state:done"
 origin: human
 source_file: null
 source_anchor: null
 source_checksum: null
 valid_from: 2026-09-13
 valid_until: null
-checksum: b2f80ea5e708c33f
+checksum: 7bd19118251b7eb6
 plan: cliscript
 seq: "2"
-state: todo
+state: done
 priority: "2"
 ---
 

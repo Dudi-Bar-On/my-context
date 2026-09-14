@@ -60,6 +60,49 @@ Two things are authoritative beyond this table, in this order:
    it is the second authority rather than the first, but it is per-command and
    it is complete in a way the one-line usage column above is not.
 
+## Exit codes — what a script reads when it parses nothing
+
+`CONST-the-cli-exit-code-contract`. Eight rules, and the reason they are here
+rather than only in a test is that until 2026-09-14 the split was written down
+nowhere: "nothing found" exited 0 in six commands and 1 in three, and there was
+nothing a script author could read and nothing a new command could be checked
+against.
+
+1. **`0` means the command did what it was asked.** Nothing else — not "no
+   problems were found", not "the corpus is healthy".
+2. **An empty result is a result, and it exits `0`.** `list`, `search`,
+   `query`, `todo`, `ready`, `review`, `audit`, `decay`, `pack list`,
+   `session list`, `conversation list`, `ingest-status` and `rules list` all
+   exit 0 on finding nothing, and each says so in words rather than printing
+   nothing at all.
+3. **A target you named that is not there exits `1`.** `show <id>`,
+   `edit <id>`, `carry <id>`, `supersede <id>`, `rules show <id>`. The
+   difference from rule 2 is whose expectation was wrong: an empty filter is a
+   true answer, a missing id means you asked about something absent.
+4. **Work entirely refused exits `1`; work partly refused exits `0`.**
+   `ingest-apply` fails when every candidate was rejected and succeeds when
+   any one of them landed; `pack import` fails when nothing at all landed and
+   something was left alone. A partial run names what did not land on stdout.
+5. **A file that could not be read is disclosed, not failed.** An unparseable
+   item is printed and changes no exit code. The exceptions are the three
+   commands whose whole job is to answer whether something is intact —
+   `status`, `doctor` and `rules verify` — where the damage *is* the answer.
+6. **`mycontext <command> --help` exits `0`** on every registered command, and
+   prints that command's flags with what each one means. It exited 1 on 47 of
+   48 commands until 2026-09-14, which meant every wrapper that checked the
+   status of `--help` concluded the command did not exist.
+7. **`--json` changes the format, never the code.** A refusal under `--json`
+   is a JSON envelope on stdout at the same non-zero code the human form
+   returns, so a parser never meets English at character 0.
+8. **`70` means the process did not finish** — an unhandled rejection or an
+   uncaught exception, reported on stderr, with any output above it
+   incomplete. It is the one code that says nothing about the work, because
+   nothing observed the work.
+
+What this does **not** distinguish is "refused" from "broken": a bad flag, a
+declined confirmation and an unreadable database all exit 1. Read stdout for
+which it was.
+
 ## The three refusals, read
 
 **`--always` was `edit`'s flag and is now `add`'s as well** — the refusal above

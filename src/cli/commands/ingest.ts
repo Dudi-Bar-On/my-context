@@ -256,7 +256,17 @@ function cmdIngestApply(ws: Workspace, args: string[], out: Emit, cwd: string): 
       // and `doctor` exit non-zero on one; every command in this plan that
       // did its job, including this one, exits 0.
       emitLoadErrors(errors, out);
-      return 0;
+      // **Entirely refused is a failure; partly refused is not**
+      // (`CONST-the-cli-exit-code-contract`, rule 4). Measured 2026-09-13 and
+      // again on 2026-09-14: a submission whose every candidate was rejected
+      // printed the rejection report above and exited 0, so a script that
+      // reads nothing but the status was told the chunk had been applied.
+      // `deduped` counts as landed — the candidate exists in the corpus,
+      // which is what the caller asked for — and a partial apply stays 0,
+      // because the created items are really there and the report names what
+      // is not. The condition is the one the item's own title states.
+      const landed = result.created.length + result.deduped.length + result.superseded.length;
+      return landed === 0 && result.issues.length > 0 ? 1 : 0;
     } catch (err) {
       out(toCliMessage(err));
       return 1;

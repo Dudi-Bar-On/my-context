@@ -38,6 +38,7 @@ import {
 } from '../pack/import.ts';
 import { readArtefact } from '../pack/reader.ts';
 import './commands/index.ts';
+import { asksForHelp, commandHelp, valueFlagsOf } from './command-help.ts';
 import { emitLoadErrors, openMutateContext, toCliMessage } from './commands/context.ts';
 import { outcomeLines, reportOf } from './commands/pack.ts';
 import {
@@ -1445,16 +1446,43 @@ function cmdList(ws: Workspace, args: string[], out: Emit): number {
   return 0;
 }
 
+const SHOW_USAGE = 'usage: mycontext show <id> [--json]';
+
 function cmdShow(ws: Workspace, args: string[], out: Emit): number {
   const root = requireWorkspace(ws, out);
   if (!root) return 1;
-  const id = args[0];
-  if (!id) { out('usage: mycontext show <id>'); return 1; }
+  // **`show` has a parser as of 2026-09-14, and this is the line that gave it
+  // one** — `TASK-show-accepts-json-and-silently-drops-it-and-closing-that`.
+  //
+  // Before it, `--json` landed in no slot at all: `args[0]` read it as the id
+  // on `mycontext show --json <id>`, and `mycontext show <id> --json` dropped
+  // it without a word. Both are `INV-nothing-is-dropped-silently`, and the
+  // second was the consolidation's own headline example — the one form left
+  // in the CLI that did not do what its flag promised.
+  //
+  // The refusal comes FIRST, before the missing-operand check, for the reason
+  // `ingest` states at the same position: a line carrying both a missing id
+  // and a misspelt flag has two faults, and the flag is the one in front of
+  // the reader.
+  if (refuseUnknownFlag(args, COMMAND_FLAGS.show.allowed, COMMAND_FLAGS.show.values, SHOW_USAGE, out)) {
+    return 1;
+  }
+  const json = wantsJson(args);
+  // `positionals`, not `args[0]`: `mycontext show --json <id>` must find the
+  // id, and it is the same walk `refuseUnknownFlag` just made.
+  const id = positionals(args, COMMAND_FLAGS.show.values)[0];
+  if (!id) { out(SHOW_USAGE); return 1; }
 
   const { store, errors } = openStore(ws);
   const item = store.get(id);
   store.close();
   if (!item) {
+    // Prose, on stdout, at exit 1 — unchanged, and deliberately so: this is
+    // the path `rulings/72` settled, and now that `show` DECLARES `--json`,
+    // `jsonEnvelopeFor` picks this up at the boundary and wraps it in the
+    // error envelope every other `--json` command already emits. The 44 bytes
+    // of English a parser used to get at character 0 are gone without a
+    // second rendering of the same sentence being written here.
     out(`my_context: no item with id "${id}".`);
     emitLoadErrors(errors, out);
     return 1;
@@ -1473,6 +1501,28 @@ function cmdShow(ws: Workspace, args: string[], out: Emit): number {
   // PreToolUse ceiling is untouched by it, and `recordAudit`'s append does not
   // read the log, so the cost is flat in its size.
   const audit = recordItemRead(root, item.id, 'cli');
+  // **The JSON form carries every note the Markdown form prints, and it is
+  // assembled from the SAME three calls a line below.** A `--json` form that
+  // dropped the staleness note, the audit-append failure or the load errors
+  // would be `INV-nothing-is-dropped-silently` reintroduced by the commit
+  // that closed it — a machine reader would be the one consumer that never
+  // learns the summary it is about to quote no longer describes the item.
+  //
+  // The item goes out whole rather than through a field list: `Item` is a
+  // plain record with nothing withheld (`core/types.ts`), `renderItem` prints
+  // all of it, and a hand-kept projection here would be a second spelling of
+  // the item shape that goes stale the day a field is added. `list --json`
+  // projects because it prints a TABLE and the table has columns; this prints
+  // one item, and the item is the answer.
+  if (json) {
+    emitJson(out, {
+      item,
+      summaryStale: summaryStalenessNote(item),
+      auditNote: auditFailureNote(audit).trim() || null,
+      loadErrors: errors.map((e) => ({ file: e.file, message: e.message })),
+    });
+    return 0;
+  }
   out(renderItem(item));
   // **The one place a reader of an item meets its summary, so it is the one
   // place staleness has to be said.**
@@ -1636,6 +1686,34 @@ function dispatchCli(argv: string[], cwd: string, out: Emit): number {
 
   try {
     const registered = command === undefined ? undefined : COMMANDS.get(command);
+
+    // **`<command> --help` prints that command's help and exits 0** —
+    // `TASK-asking-a-command-for-help-exits-1-on-all-38-commands-that`, and
+    // see `cli/command-help.ts` for the measurement (47 of 48 exited 1) and
+    // for why this is one intercept here rather than an edit in 48 commands.
+    //
+    // It sits ABOVE the bare-command branch so that `init --help` answers
+    // from a directory with no workspace at all, which is the only place
+    // `init` is ever typed.
+    //
+    // The cheap `some` is a deliberate SUPERSET of `asksForHelp`: it decides
+    // only whether the careful question is worth asking, so a command line
+    // without the token reaches the dispatch below having paid nothing and
+    // having resolved no workspace — which is what keeps this a new answer to
+    // `--help` rather than a new step in every command.
+    if (registered !== undefined && command !== undefined
+      && args.some((a) => a === '--help' || a.startsWith('--help='))) {
+      // Resolved, and a failure to resolve is not fatal on this path: help is
+      // the one answer that must survive a corpus too broken to open, and
+      // `edit`'s flag surface — the only per-workspace one — is reported as
+      // uncomputable rather than printed short. See `commandHelp`.
+      let config: Config | null = null;
+      try { config = resolveWorkspace(cwd).config; } catch { /* answered by commandHelp */ }
+      if (asksForHelp(args, valueFlagsOf(command, config))) {
+        commandHelp(out, registered, config);
+        return 0;
+      }
+    }
 
     // Bare commands run BEFORE `resolveWorkspace` — see `CommandDef.workspace`
     // in registry.ts: `init` must work from inside a directory whose ancestor

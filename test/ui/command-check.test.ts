@@ -426,11 +426,20 @@ test('edit is checked against the flags this workspace declares', () => {
  * So the answer is `ok: true` with the limit named, and both halves are
  * asserted here: the verdict, and the sentence that keeps `ok` from being read
  * as more than it is.
+ *
+ * **`show` is no longer one of the three, as of 2026-09-14** —
+ * `TASK-show-accepts-json-and-silently-drops-it-and-closing-that` gave it
+ * `--json` and therefore a parser, so the CLI now refuses `show --nosuchflag`
+ * by name and this endpoint MUST refuse it too. The last assertion in the loop
+ * below said what to do on the day that happened ("give it a spec in
+ * COMMAND_FLAGS and this branch stops being right") and it is the assertion
+ * that went red; the second test underneath is the other direction, kept so
+ * that the departure is asserted rather than only subtracted.
  */
 test('a command that validates no flags is accepted, and the limit is named', () => {
   const box = sandbox();
   try {
-    for (const name of ['rebuild', 'help', 'show']) {
+    for (const name of ['rebuild', 'help']) {
       const verdict = check(box.cwd, line(name, '--nosuchflag'));
       assert.equal(
         verdict.ok, true,
@@ -451,6 +460,29 @@ test('a command that validates no flags is accepted, and the limit is named', ()
         'COMMAND_FLAGS and this branch stops being right.',
       );
     }
+  } finally { box.dispose(); }
+});
+
+/**
+ * The other direction of the departure above, asserted rather than assumed: a
+ * command that HAS grown a parser is refused here, in the CLI's own sentence.
+ * Subtracting `show` from the loop above without this would leave the endpoint
+ * free to answer `ok: true` for a line the terminal rejects, which is the
+ * agreement failure the sweep at the top of this file exists to catch.
+ */
+test('show grew a parser, so the endpoint refuses what the CLI refuses', () => {
+  const box = sandbox();
+  try {
+    const verdict = check(box.cwd, line('show', '--nosuchflag'));
+    assert.equal(verdict.ok, false, 'the CLI refuses this line and the endpoint accepted it');
+    assert.equal(verdict.code, 'unknown-option');
+    const out: string[] = [];
+    runCli(['show', '--nosuchflag'], box.cwd, (s) => out.push(s));
+    assert.ok(
+      out.join('\n').includes('unknown option "--nosuchflag"'),
+      'the CLI no longer refuses it, so the endpoint is now refusing a line a terminal takes — ' +
+      'which is the dangerous direction this file names',
+    );
   } finally { box.dispose(); }
 });
 

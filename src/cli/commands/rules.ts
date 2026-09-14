@@ -151,7 +151,12 @@ function cmdRulesList(ws: Workspace, args: string[], out: Emit): number {
       })),
       refused: refused.map((r) => ({ path: r.path, error: r.error })),
     });
-    return refused.length > 0 ? 1 : 0;
+    // A file that could not be read is DISCLOSED, not failed
+    // (`CONST-the-cli-exit-code-contract`, rule 5). `list` listed what it
+    // could and named the rest in `refused`; the command whose job is to
+    // answer "is this store intact" is `rules verify`, and that one still
+    // exits 1. See the text branch below for the measurement this closes.
+    return 0;
   }
 
   for (const line of substitutionLines(dir)) out(line);
@@ -185,11 +190,29 @@ function cmdRulesList(ws: Workspace, args: string[], out: Emit): number {
   }
   // A file that did not load is NAMED, never counted and dropped
   // (`INV-nothing-is-dropped-silently`).
+  //
+  // **It is named at exit 0, and until 2026-09-14 it was named at exit 1.**
+  // That was the one place this binary broke its own rule about damaged
+  // reads: an unparseable ITEM under `.my_context/` is printed by
+  // `emitLoadErrors` and changes nothing about the exit code of `list`,
+  // `show`, `rebuild` or `ingest-apply`, while an unparseable ENTRY under the
+  // rule store failed `rules list` outright — the same damage, answered two
+  // ways by one program, with the split written down nowhere
+  // (`TASK-nothing-found-exits-0-in-six-commands-and-1-in-three-the`). The
+  // contract is now written down — `CONST-the-cli-exit-code-contract`, rule 5
+  // — and this is the side of it that moved, because `list` did list: the
+  // command that exists to answer "is the store intact" is `rules verify`,
+  // and it still exits 1 on exactly this damage.
   if (refused.length > 0) {
     out('');
     out(`could not be read (${refused.length}):`);
     for (const r of refused) for (const line of paragraph(`${path.basename(r.path)}: ${r.error}`, '  ')) out(line);
-    return 1;
+    out('');
+    for (const line of paragraph(
+      'This listed what it could read. `mycontext rules verify` is the command that answers '
+      + 'whether the store is intact, and it exits non-zero on exactly this.',
+    )) out(line);
+    return 0;
   }
   return 0;
 }

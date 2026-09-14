@@ -121,13 +121,21 @@ test('the picker offers exactly the commands the CLI dispatches — the gate thi
  * nothing to do with that flag. It arrived exactly as the paragraph above
  * predicted an arrival would — this equality went red the moment the command
  * registered, and was widened deliberately rather than loosened.
+ *
+ * **`show` LEFT on 2026-09-14, and it is the first departure rather than an
+ * arrival** — `TASK-show-accepts-json-and-silently-drops-it-and-closing-that`
+ * gave it `--json`, so it has a flat spec now and the screen must stop saying
+ * it takes no switch at all. That is exactly the sentence the second assertion
+ * below calls "the failure this gate exists to make impossible", and it went
+ * red here on the same edit that changed the tables, which is the whole point
+ * of asserting the split rather than a count. Ten.
  */
-test('the eleven commands with no flat flag spec are exactly the ones the other records hold', () => {
+test('the ten commands with no flat flag spec are exactly the ones the other records hold', () => {
   const withoutFlat = [...COMMANDS.keys()].filter((n) => !Object.hasOwn(COMMAND_FLAGS, n)).sort();
   assert.deepEqual(withoutFlat, [
     'conversation', 'edit', 'help', 'pack', 'procedure', 'rebuild', 'review', 'rules', 'session',
-    'show', 'statusline',
-  ], 'the eleven are the measurement this task gated itself on; a different set is a different task');
+    'statusline',
+  ], 'the set is the measurement this task gated itself on; a different set is a different task');
 
   const surfaces: Record<string, string> = {};
   for (const name of withoutFlat) {
@@ -145,7 +153,6 @@ test('the eleven commands with no flat flag spec are exactly the ones the other 
     review: 'subcommand',
     rules: 'subcommand',
     session: 'subcommand',
-    show: 'none',
     statusline: 'subcommand',
   }, 'a command changed which record answers for its flags, and the screen states that per '
     + 'command — "takes no switch at all" over a command that has grown one is the failure this '
@@ -616,7 +623,15 @@ test('no composed line spends two members of one declared exclusivity group', ()
  */
 test('a command whose operands are declared spends them; one whose are not says so', () => {
   const show = subject('command', 'show') as { worked: { command: string; asks: string[]; catalogued: boolean }[] };
-  assert.equal(show.worked[0]?.command, 'mycontext show <id>', 'show takes no flag and one operand');
+  // `show` gained `--json` on 2026-09-14
+  // (`TASK-show-accepts-json-and-silently-drops-it-and-closing-that`), so the
+  // composed line now spends BOTH halves — the declared operand and the one
+  // flag. That is the property under test rather than a widening of it: the
+  // operand is still spent, and it is still spent FIRST.
+  assert.equal(
+    show.worked[0]?.command, 'mycontext show <id> --json',
+    'show takes one operand and one flag',
+  );
   assert.deepEqual(show.worked[0]?.asks, ['id'], 'and the operand names the reader\'s own corpus');
 
   const add = subject('command', 'add') as { worked: { command: string; catalogued: boolean }[] };

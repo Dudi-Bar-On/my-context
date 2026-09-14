@@ -17,17 +17,17 @@ tags:
   - needs-ruling
   - "plan:cliscript"
   - "seq:3"
-  - "state:todo"
+  - "state:done"
 origin: human
 source_file: null
 source_anchor: null
 source_checksum: null
 valid_from: 2026-09-13
 valid_until: null
-checksum: 212a1baad5dd5bd2
+checksum: e15c2a7c18f15680
 plan: cliscript
 seq: "3"
-state: todo
+state: done
 priority: "2"
 ---
 
