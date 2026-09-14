@@ -2,7 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { PassThrough } from 'node:stream';
 import {
-  LATEST_PROTOCOL_VERSION, SUPPORTED_PROTOCOL_VERSIONS,
+  ERROR_UNSUPPORTED_VERSION, LATEST_PROTOCOL_VERSION, SUPPORTED_PROTOCOL_VERSIONS,
   MAX_PENDING_LINE_LENGTH, createSession, serveStdio,
 } from '../../src/mcp/protocol.ts';
 import type { ToolRegistry, JsonRpcMessage, JsonRpcResponse } from '../../src/mcp/protocol.ts';
@@ -312,4 +312,62 @@ test('a session that throws handling a notification gets no reply at all', async
     throwingSession,
   );
   assert.deepEqual(lines, []);
+});
+
+/* ══ `mcpsurface/4`: WHICH OF THE TWO BRANCHES IS ACTUALLY DEAD ════════════
+ *
+ * The header over `SUPPORTED_PROTOCOL_VERSIONS` used to say the fallback to
+ * `LATEST_PROTOCOL_VERSION` was the unreachable one. It is the live one, and
+ * a reader who believed the old sentence would have deleted the branch that
+ * both ships and is required. The two tests above already pin each answer
+ * separately — echo, and fallback — and this pins the CLAIM the corrected
+ * header now makes, which neither of them says: that `initialize` cannot
+ * reach -32022 through `protocolVersion` AT ALL.
+ *
+ * It rests on `protocolVersion` and `_meta` being two different fields with
+ * two different dispositions, so it drives both in one test: the same
+ * unsupported string is an ANSWER through one and a REFUSAL through the other.
+ * Asserting only the first half would go green if the refusal were deleted
+ * outright, which is the neighbouring wrong repair.
+ */
+// @basis TASK-a-module-header-names-the-wrong-branch-as-unreachable-and, RULE-a-test-names-the-items-it-rests-on-or-says-it-rests-on-none
+test('initialize never refuses a version — the refusal is reachable only through _meta', () => {
+  const UNSUPPORTED = ['2099-01-01', '1900-01-01', '2026-07-29', 'not-a-date', ''];
+  // Anti-vacuity: none of these may be a supported revision, or the loop below
+  // would be asserting that supported versions are accepted.
+  for (const version of UNSUPPORTED) {
+    assert.equal(
+      SUPPORTED_PROTOCOL_VERSIONS.includes(version), false,
+      `${JSON.stringify(version)} is a supported revision, so it proves nothing here`,
+    );
+  }
+
+  for (const version of UNSUPPORTED) {
+    const answered = session().handle({
+      jsonrpc: '2.0', id: 1, method: 'initialize', params: { protocolVersion: version },
+    })!;
+    assert.equal(
+      answered.error, undefined,
+      `initialize refused protocolVersion ${JSON.stringify(version)}. It must ANSWER with a ` +
+      'revision it does support and let the client decide — the fallback is the live branch ' +
+      '(mcpsurface/4).',
+    );
+    assert.equal(
+      (answered.result as Record<string, unknown>).protocolVersion, LATEST_PROTOCOL_VERSION,
+      'the answer did not carry the latest supported revision',
+    );
+
+    // THE SAME STRING, in the other field, on the same method. This is the
+    // branch that IS reachable, and keeping both halves in one test is what
+    // stops a repair from deleting the refusal and leaving this green.
+    const refused = session().handle({
+      jsonrpc: '2.0', id: 2, method: 'initialize',
+      params: { _meta: { 'io.modelcontextprotocol/protocolVersion': version } },
+    })!;
+    assert.equal(
+      refused.error?.code, ERROR_UNSUPPORTED_VERSION,
+      `announcing ${JSON.stringify(version)} in _meta was not refused with ` +
+      `${ERROR_UNSUPPORTED_VERSION}; the header's claim about which field refuses is wrong again`,
+    );
+  }
 });

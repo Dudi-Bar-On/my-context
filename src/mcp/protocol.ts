@@ -3,12 +3,37 @@ import { VERSION } from '../core/version.ts';
 export const LATEST_PROTOCOL_VERSION = '2026-07-28';
 
 /**
- * Newest first. Advertised verbatim by server/discover and in -32022 data,
- * and every entry here is echoed back unchanged by `initialize` (see
- * "every supported protocol version is echoed back verbatim by
- * initialize") — the unsupported-version fallback to
- * LATEST_PROTOCOL_VERSION is unreachable for any client announcing a
- * revision actually on this list.
+ * Newest first. Advertised verbatim by `server/discover` and in -32022 data,
+ * and every entry here is echoed back unchanged by `initialize` (test: "every
+ * supported protocol version is echoed back verbatim by initialize").
+ *
+ * ── WHICH BRANCH IS DEAD, corrected 2026-09-14 (`mcpsurface/4`) ─────────────
+ *
+ * This comment used to end *"the unsupported-version fallback to
+ * LATEST_PROTOCOL_VERSION is unreachable for any client announcing a revision
+ * actually on this list"* — which is a tautology wearing the clothes of a
+ * finding, and it reads as *the fallback is dead code*. It is the opposite way
+ * round, and there are two DIFFERENT fields, which is what the old sentence
+ * collapsed. Measured:
+ *
+ *   initialize · `params.protocolVersion` unsupported
+ *       → answered with LATEST_PROTOCOL_VERSION. The fallback is the LIVE
+ *         branch, and `2099-01-01` is answered `2026-07-28`. It is also what
+ *         the spec asks for: a server that does not support the requested
+ *         revision responds with one it does, and lets the client decide.
+ *         Test: "initialize with an unknown version answers with the latest
+ *         supported", three lines below the test cited above.
+ *
+ *   any message · `params._meta['…/protocolVersion']` unsupported
+ *       → ERROR_UNSUPPORTED_VERSION (-32022) with this list. Test: "an
+ *         unsupported announced version is rejected with -32022 and the
+ *         supported list".
+ *
+ * **So -32022 is the branch `initialize` cannot reach through its own field**,
+ * not the fallback — a request is refused for what it announced in `_meta`,
+ * never for what it asked for in `protocolVersion`. A reader who believes the
+ * old sentence deletes the fallback, which is the one of the two that is both
+ * reachable and required.
  */
 export const SUPPORTED_PROTOCOL_VERSIONS = [
   '2026-07-28', '2025-11-25', '2025-06-18', '2025-03-26', '2024-11-05',

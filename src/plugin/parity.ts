@@ -151,12 +151,14 @@ export const TOOL_PARITY: ToolParity[] = [
    *
    * **The refutation is the product's own text.** `missedDoorLine`
    * (`src/rules/delivered.ts`) exists for exactly the session where a door did
-   * NOT hand the constants over — and what it tells the model to do about it is
-   * *"Run `mycontext rules list` to read them, and `mycontext rules verify` if
-   * you suspect the store itself."* An agent whose Bash tool is denied can do
-   * neither. So the absence was not "a query the model has no business making";
-   * it was a query the product instructs the model to make, through a door that
-   * surface does not have.
+   * NOT hand the constants over — and what it told the model to do about it
+   * was to run two TERMINAL commands, `mycontext rules list` and `mycontext
+   * rules verify`. An agent whose Bash tool is denied can do neither. So the
+   * absence was not "a query the model has no business making"; it was a query
+   * the product instructs the model to make, through a door that surface does
+   * not have. That sentence now names these two tools first and the terminal
+   * commands second — read it there rather than from a copy here, because a
+   * copy cannot be superseded and the original can.
    *
    * The half of the old reason that SURVIVES is the half about choosing: the
    * store still reaches a model by delivery, in full, without the model picking

@@ -15,17 +15,17 @@ tags:
   - comment-drift
   - "plan:mcpsurface"
   - "seq:4"
-  - "state:todo"
+  - "state:done"
 origin: human
 source_file: null
 source_anchor: null
 source_checksum: null
 valid_from: 2026-09-13
 valid_until: null
-checksum: 0cd62100c1b72853
+checksum: 6982d22b61bc0740
 plan: mcpsurface
 seq: "4"
-state: todo
+state: done
 priority: "3"
 ---
 

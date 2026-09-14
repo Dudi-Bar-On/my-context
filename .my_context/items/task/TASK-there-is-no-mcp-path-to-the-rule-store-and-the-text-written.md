@@ -17,17 +17,17 @@ tags:
   - parity
   - "plan:mcpsurface"
   - "seq:1"
-  - "state:todo"
+  - "state:done"
 origin: human
 source_file: null
 source_anchor: null
 source_checksum: null
 valid_from: 2026-09-13
 valid_until: null
-checksum: 406b7a0897b6fbf3
+checksum: 971366952885e35f
 plan: mcpsurface
 seq: "1"
-state: todo
+state: done
 priority: "2"
 ---
 

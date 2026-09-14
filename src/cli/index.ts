@@ -1,4 +1,49 @@
-#!/usr/bin/env node
+#!/usr/bin/env -S node --disable-warning=ExperimentalWarning
+/**
+ * **THE SHEBANG CARRIES THE FLAG, AND THAT LINE IS `cliscript/5`.**
+ *
+ * `node:sqlite` prints `ExperimentalWarning: SQLite is an experimental feature`
+ * on every start, and this project silences it at every node invocation IT
+ * starts. Counted from the tree rather than taken from the item, which said
+ * twelve:
+ *
+ *     hooks/hooks.json                      19 command strings, 19 with the flag
+ *                                           (18 distinct hook scripts)
+ *     .mcp.json                             the MCP server
+ *     src/cli/commands/statusline-install   the installed statusline command
+ *     src/review/pass.ts                    the review pass it spawns
+ *
+ * 22 invocations across 21 distinct programs. The sharpest is the statusline
+ * one: it is THIS FILE, and the project adds the flag every time it starts it.
+ * The only invocation without the flag was the one a PERSON types, because
+ * there is no parent of ours between the user and node to insert it. A
+ * `bin`'s shebang is the one place it can put it itself.
+ *
+ * **AN IN-PROCESS FILTER CANNOT WORK HERE, and this was measured rather than
+ * assumed.** The warning is emitted while node LINKS the module graph — before
+ * the first line of this project's code evaluates. A module imported first in
+ * this file, printing at evaluation, prints AFTER the warning; so does the
+ * same trick in a two-module reduction outside the repo. No `process.on(
+ * 'warning')` filter installed from inside this graph can be in place in time,
+ * whatever it is imported before.
+ *
+ * **WHAT THIS LINE DOES NOT COVER, said plainly rather than left to be
+ * discovered.** A shebang is read when the FILE is executed — `mycontext …`,
+ * through the shim npm generates from this very line. It is not read by `node
+ * src/cli/index.ts …`, which is how every test, every doc example and every
+ * lane in this repository runs the CLI, and those still print the warning.
+ * Closing that would mean either putting the flag on those command lines or
+ * making `node:sqlite` load dynamically in `src/core/` — it is statically
+ * imported by `store.ts`, `ledger.ts`, `audit-db.ts` and
+ * `conversation-index.ts` — which is a change to how the store loads, not a
+ * change to how a warning prints.
+ *
+ * `env -S` is what lets a shebang carry an argument at all; it is coreutils
+ * ≥ 8.30 (2018) and has been in BSD/macOS `env` far longer, and this package
+ * already requires a 2025 node. npm's `cmd-shim` parses the same form into the
+ * argument slot of the Windows shims — which are regenerated on install, so an
+ * ALREADY-linked `mycontext` keeps printing the warning until it is relinked.
+ */
 import { mkdirSync, writeFileSync, existsSync, rmSync } from 'node:fs';
 import path from 'node:path';
 import { COMMAND_FLAGS } from '../core/command-flags.ts';

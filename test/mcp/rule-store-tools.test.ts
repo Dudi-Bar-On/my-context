@@ -31,6 +31,7 @@ import path from 'node:path';
 import { createRegistry } from '../../src/mcp/tools.ts';
 import { TOOL_PARITY } from '../../src/plugin/parity.ts';
 import { RULES_DIR_ENV, workspaceIsMyContext } from '../../src/rules/deliver.ts';
+import { missedDoorLine } from '../../src/rules/delivered.ts';
 import { entriesDir, loadRules } from '../../src/rules/store.ts';
 import { verifyManifest } from '../../src/rules/manifest.ts';
 import { removeTree } from '../helpers/tmp.ts';
@@ -230,4 +231,58 @@ test('the tool descriptions come from the one source that generates them', () =>
     assert.equal(source.includes(tool.description), true, `${tool.name}'s description is not in capture.md`);
     assert.match(tool.description, /Not for:/, 'every description states what it is not for');
   }
+});
+
+/* ══ THE SECOND HALF OF `mcpsurface/1`: WHAT THE TEXT SENDS A MODEL TO DO ═══
+ *
+ * The tools above close the gap; this closes the sentence that pointed at it.
+ * `missedDoorLine` is the product's own advice for *"find out what you were
+ * given"*, written for a model, fired exactly when a door did not deliver —
+ * and it offered two terminal commands and nothing else. A lane closed
+ * everything but this line and said so rather than closing the item on it.
+ *
+ * **The list is DERIVED, never typed here.** The tools the sentence must name
+ * are read out of `TOOL_PARITY` — every row whose CLI counterpart is `rules` —
+ * so a third rule-store tool added tomorrow reddens this test until the advice
+ * mentions it, and a renamed tool reddens it the same day it is renamed. A
+ * literal `['list_rules', 'verify_rules']` here would be a total that goes
+ * stale silently, which is the defect this item is an instance of.
+ */
+test('the advice a missed door gives names every rule-store tool this surface has', () => {
+  const sentence = missedDoorLine('some-session-key');
+
+  const expected = TOOL_PARITY.filter((r) => r.cli === 'rules').map((r) => r.tool).sort();
+  // Anti-vacuity: an empty derived set would make every assertion below free.
+  assert.ok(
+    expected.length >= 2,
+    `TOOL_PARITY names ${expected.length} tool(s) against the \`rules\` command; the derivation ` +
+    'is broken rather than the sentence',
+  );
+  for (const tool of expected) {
+    assert.ok(
+      sentence.includes(tool),
+      `\`${tool}\` exists on this surface and the advice for a missed door does not mention it. ` +
+      'An agent whose Bash tool is denied is told to open a terminal (mcpsurface/1).',
+    );
+  }
+
+  // The other direction: a snake_case name in backticks that is NOT a tool
+  // would send a model at something this server does not answer to. Compared
+  // against the live registry, so a rename breaks the advice rather than the
+  // reader.
+  const registered = new Set(registry().list().map((t) => t.name));
+  const claimed = [...sentence.matchAll(/`([a-z][a-z0-9]*(?:_[a-z0-9]+)+)`/g)].map((m) => m[1]);
+  assert.deepEqual(
+    claimed.filter((n) => !registered.has(n)), [],
+    'the advice names something that looks like an MCP tool and is not one',
+  );
+  assert.deepEqual(
+    [...claimed].sort(), expected,
+    'the tools the sentence names and the rule-store tools this surface has are not the same set',
+  );
+
+  // The TERMINAL route survives in the same sentence — the other reader of this
+  // line is the person watching the session, and they have a shell.
+  assert.match(sentence, /mycontext rules list/);
+  assert.match(sentence, /mycontext rules verify/);
 });

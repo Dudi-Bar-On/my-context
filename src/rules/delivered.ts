@@ -406,13 +406,25 @@ export function unrecordedDeliveryLine(door: Door, key: string | null): string {
  * nothing here knows whether the constants reached the model by some other
  * route, and claiming they did not would be the same unmeasured claim this
  * mechanism exists to replace.
+ *
+ * **BOTH SURFACES ARE NAMED, and that is `mcpsurface/1`'s second half.** This
+ * sentence is written FOR A MODEL — it fires precisely when a door did not
+ * hand the constants over — and until 2026-09-14 the only route it offered was
+ * two terminal commands. An agent whose Bash tool is denied could follow
+ * neither, so the product's own advice for *"find out what you were given"*
+ * pointed at a door that surface does not have. `list_rules` and
+ * `verify_rules` (`src/mcp/tools.ts`) are that door, and the reader is told
+ * about the one it can actually use by being told about both. The terminal
+ * commands stay, in the same sentence and unchanged in meaning, because the
+ * other reader of this line is the person watching the session, and the
+ * substitution disclosure both surfaces print is the same either way.
  */
 export function missedDoorLine(key: string): string {
   return 'my_context: this session has no record of the product rule store being delivered to ' +
     `it (key \`${key}\`). Every door that starts an agent — session start, including resume and ` +
     'compact-restore, and subagent start — records one, so a key with none means a door did not ' +
     'run or could not write. The constants may still be absent from this context window; ' +
-    'nothing can inspect a context window, which is why the record exists. Run ' +
-    '`mycontext rules list` to read them, and `mycontext rules verify` if you suspect the store ' +
-    'itself. Nothing was blocked.\n';
+    'nothing can inspect a context window, which is why the record exists. Read them with the ' +
+    '`list_rules` MCP tool, or `mycontext rules list` in a terminal; if you suspect the store ' +
+    'itself, `verify_rules` or `mycontext rules verify`. Nothing was blocked.\n';
 }
