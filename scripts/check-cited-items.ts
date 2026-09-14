@@ -614,7 +614,12 @@ export function summary(report: Report, showUnresolved: boolean): string {
         'retired decision is often CORRECT AS HISTORY — "this was ruled X, then superseded by Y" ' +
         'is reasoning this codebase keeps on purpose — so the repair is almost never to delete a ' +
         'citation. It is to make the LIVE lines above say what is printed over them: name the ' +
-        'successor where the reader is, so nobody has to look it up to find out the ruling moved.',
+        'successor where the reader is, so nobody has to look it up to find out the ruling moved.' +
+        '\nWHAT WOULD MAKE IT A GATE is not a flag and not this exit code: it is a rule that a ' +
+        'citation of a retired item must NAME its successor in the same breath. Then the ' +
+        '"reads as a live ruling" column above — and only that column — is a defect with a ' +
+        'mechanical repair, and gating it deletes no history. Until that rule exists, gating ' +
+        'here would force the thirty-one edits the owner ruled against on 2026-09-07.',
     );
   }
   if (!showUnresolved && report.unresolved.length > 0) {

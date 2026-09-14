@@ -40,7 +40,7 @@
  */
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { readFileSync, existsSync } from 'node:fs';
+import { readFileSync, existsSync, readdirSync } from 'node:fs';
 import path from 'node:path';
 
 const REPO = path.join(import.meta.dirname, '..', '..');
@@ -278,5 +278,83 @@ test('the hook wakes for the manifest and for the constraint the budget is parse
   assert.ok(
     existsSync(path.join(REPO, '.my_context', 'items', 'constraint', 'CONST-zero-runtime-dependencies.md')),
     'the constraint file the hook watches for does not exist at that path',
+  );
+});
+
+/* ── A GATE'S TEST CAN BE REACHED AND STILL NOT RUN ────────────────────────── */
+
+/**
+ * **A script that exits at module scope deletes the test file that imports it,
+ * silently and green.**
+ *
+ * Six of this project's checkers are proved by a test that IMPORTS the script
+ * and calls its pure functions. That only works because each script guards its
+ * own entry point — `scripts/e2e-gate.ts` has said so in a comment since it was
+ * written. `scripts/check-needs-cycles.ts` did not, and the measurement is
+ * exact: with its guard removed, `node --test test/scripts/needs-cycles.test.ts`
+ * reports `tests 1 · pass 1 · fail 0` and exits 0. Eleven cases were gone. The
+ * suite was green. The import killed the process before the first assertion ran.
+ *
+ * That is why this lives HERE and not in the file it protects: no assertion
+ * inside an importing test file survives the defect. This file imports no
+ * script, so it still runs.
+ *
+ * The set is DERIVED from the tree on every run — every `../../scripts/<x>.ts`
+ * any test file imports — never a list. A seventh checker proved the same way
+ * tomorrow is covered the day it is written.
+ */
+test('every script a test imports guards its entry point, or importing it ends the run', () => {
+  const testFiles = (dir: string): string[] => {
+    const out: string[] = [];
+    for (const entry of readdirSync(dir, { withFileTypes: true })) {
+      const full = path.join(dir, entry.name);
+      if (entry.isDirectory()) out.push(...testFiles(full));
+      else if (entry.name.endsWith('.test.ts')) out.push(full);
+    }
+    return out;
+  };
+
+  const imported = new Set<string>();
+  const files = testFiles(path.join(REPO, 'test'));
+  assert.ok(files.length > 0, 'no test files were found at all, so this scan measured nothing');
+  for (const file of files) {
+    const src = readFileSync(file, 'utf8');
+    // An `import`, never a mention. Measured: `test/scripts/verify-citations.test.ts`
+    // holds that script's path in a `new URL(...)` in order to SPAWN it, and a
+    // spawned script's module-scope exit is its job rather than a hazard. A
+    // matcher that read any quoted path reported it as an offender on the first
+    // run — a checker wrong on its first run is a checker switched off on its
+    // second, so the matcher asks for the import keyword.
+    for (const m of src.matchAll(
+      /(?:from|import)\s*\(?\s*['"](?:\.\.\/)+scripts\/([A-Za-z0-9-]+\.ts)['"]/g,
+    )) {
+      imported.add(m[1]!);
+    }
+  }
+  // Anti-vacuity. A regex that stopped matching would report zero imported
+  // scripts and conclude every one of them is guarded.
+  assert.ok(
+    imported.size > 0,
+    'no test file imports any script under scripts/, which cannot be true of this tree — the '
+    + 'import scan is broken, not the scripts',
+  );
+
+  const unguarded: string[] = [];
+  for (const name of [...imported].sort()) {
+    const p = path.join(REPO, 'scripts', name);
+    if (!existsSync(p)) { unguarded.push(`${name}: imported by a test and does not exist`); continue; }
+    for (const [i, line] of readFileSync(p, 'utf8').split('\n').entries()) {
+      // Column 0 is module scope: an `if (isMain())` guard, or any function
+      // body, indents. This is the whole discrimination and it is exact for
+      // this tree's style.
+      if (/^process\.exit\(/.test(line)) unguarded.push(`scripts/${name}:${i + 1}: ${line.trim()}`);
+    }
+  }
+  assert.deepEqual(
+    unguarded, [],
+    'these scripts exit at module scope and are imported by a test file. Importing one ends the '
+    + 'importing process: every case in that file disappears from the run and the runner reports '
+    + 'GREEN over it. Guard the call — `if (isMain()) process.exit(main());`, as scripts/e2e-gate.ts '
+    + `and scripts/check-needs-cycles.ts do:\n${unguarded.join('\n')}`,
   );
 });

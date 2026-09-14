@@ -736,7 +736,11 @@ function main(): number {
         + 'mentioned, and the second is how a corpus quietly stops retiring things at all. '
         + 'A retired item EXISTS — it has a file, a status, and an edge naming what replaced '
         + 'it — and calling that "nothing" is the retired/absent conflation this project ruled '
-        + 'against in TASK-code-and-tests-that-speak-with-a-retired-item-s-authority.');
+        + 'against in TASK-code-and-tests-that-speak-with-a-retired-item-s-authority. '
+        + 'WHAT WOULD MAKE IT A GATE, so this is a decision and not a shrug: a handover block '
+        + 'that names a retired item AND is still being carried forward as live instruction. '
+        + 'This check cannot see that second half — it reads pointers, not whether the next '
+        + 'lane acted on one — so the tier stays a report until something can.');
     }
     if (carried.length > 0) {
       out('');
@@ -744,7 +748,10 @@ function main(): number {
         + 'REPORTED, never gated: repetition is a question about the work, and only a person '
         + 'knows whether a line has been repeated five times because it is hard or because it '
         + 'is impossible. Six carries and no closure is what the `isServableDocPath` defect '
-        + 'looked like from outside.');
+        + 'looked like from outside.\n         WHAT WOULD MAKE IT A GATE: a ceiling on the carry '
+        + 'count, committed and gated on INCREASE only. It is not taken today because the '
+        + 'number moves for a legitimate reason — a new handover block repeats every open '
+        + 'instruction — so the ratchet would redden on writing a handover at all.');
     }
     out('An instruction written in prose that names no lane and no item is invisible here — '
       + 'which is the argument for writing pointers rather than claims, not a gap in this check.');

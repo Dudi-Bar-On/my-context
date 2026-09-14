@@ -129,6 +129,15 @@ test('`ready` returns nothing from the rule store', () => {
   const p = probe();
   try {
     const out = p.run(['ready']);
+    // The floor its three siblings already have — `list` at the assertion
+    // above, `doctor` below it, the injection below that. Without it a `ready`
+    // that printed NOTHING (a crash swallowed into an empty string, a flag
+    // renamed, a corpus the probe failed to seed) satisfies every
+    // `!out.includes(...)` under it and this test reports green having read an
+    // empty string. This file's own opening test is titled "the store is
+    // non-empty, or every assertion in this file is vacuous"; this is the same
+    // claim one level down, and it was the one surface missing it.
+    assert.ok(out.trim().length > 0, '`ready` printed nothing at all, so nothing was checked');
     for (const fingerprint of FINGERPRINTS) {
       assert.ok(
         !out.includes(fingerprint),

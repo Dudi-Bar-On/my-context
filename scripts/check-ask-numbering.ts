@@ -325,6 +325,20 @@ function main(argv: string[]): number {
   // **Reporting is the whole job; a non-zero exit is not.** A detective check
   // that failed a gate would turn the archive's own history into a build
   // failure nobody can fix — the violations are already written.
+  //
+  // PRINTED, not only commented. Until now that decision lived here alone, so
+  // a reader of the output had no way to tell a green run from a check that
+  // cannot go red — which is the whole of
+  // `TASK-five-checks-print-red-and-exit-zero-and-most-have-a-written`. A
+  // report that does not say it is a report is indistinguishable from a gate.
+  process.stdout.write(
+    '\nREPORTED, never gated: this run exits 0 however many violations are above, and no flag '
+    + 'changes that. The archive is HISTORY — every turn counted here was written before this '
+    + 'check existed, so a non-zero exit would be a build failure nobody can clear by editing '
+    + 'code.\nWhat would make it a gate is a different subject: a check over the turns of the '
+    + 'CURRENT session, where the ask has not been written yet and the author can still number '
+    + 'it. Nothing here can become that by changing this return value.\n',
+  );
   return 0;
 }
 

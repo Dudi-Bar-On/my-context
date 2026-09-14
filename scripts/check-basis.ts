@@ -559,6 +559,13 @@ export function render(report: Report): string {
       }
       out.push('        REPORTED, NEVER GATED. A test resting on a superseded ruling is often');
       out.push('        correct as history. The repair is to say so where the reader is.');
+      // The half this used to leave out: a reader could see "never gated" and
+      // not know whether that was a ruling or an omission.
+      out.push('        WHAT WOULD MAKE IT A GATE: a committed ceiling on this count, gated on');
+      out.push('        INCREASE only. It is not taken yet because the same owner ruling covers');
+      out.push('        this tier as covers `check-cited-items.ts` — forcing the edits would');
+      out.push('        delete history to go green — and a ratchet is a second baseline to keep,');
+      out.push('        which this file already argues against for `basis-undeclared.txt`.');
     }
     out.push('');
   }

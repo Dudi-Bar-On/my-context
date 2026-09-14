@@ -195,7 +195,6 @@ test/core/context-occupancy.test.ts
 test/core/context-share-epoch.test.ts
 test/core/continuity-tier.test.ts
 test/core/continuity.test.ts
-test/core/corpus-checksums.test.ts
 test/core/create-concurrency.test.ts
 test/core/decay.test.ts
 test/core/draft-queue.test.ts
@@ -226,7 +225,6 @@ test/core/mutate-revise.test.ts
 test/core/mutate-trust.test.ts
 test/core/needs.test.ts
 test/core/observation-roundtrip.test.ts
-test/core/open-readonly-checked.test.ts
 test/core/open-store.test.ts
 test/core/paths.test.ts
 test/core/procedure-stage.test.ts
@@ -369,7 +367,6 @@ test/mcp/provenance.test.ts
 test/mcp/refresh-item.test.ts
 test/mcp/server-e2e.test.ts
 test/mcp/update-item-projection.test.ts
-test/no-bare-rmsync.test.ts
 test/pack/bundle-screen.test.ts
 test/pack/bundle.test.ts
 test/pack/collide.test.ts
@@ -430,7 +427,6 @@ test/ui/faint-usage.test.ts
 test/ui/fonts.test.ts
 test/ui/git-info.test.ts
 test/ui/github-render.test.ts
-test/ui/graph-screen.test.ts
 test/ui/idle.test.ts
 test/ui/injected-endpoints.test.ts
 test/ui/learn-screen.test.ts
@@ -469,7 +465,6 @@ test/ui/server-e2e.test.ts
 test/ui/server-record.test.ts
 test/ui/server.test.ts
 test/ui/session-continuity.test.ts
-test/ui/sessions-pin.test.ts
 test/ui/simulate-screen.test.ts
 test/ui/staging-endpoint.test.ts
 test/ui/static.test.ts

@@ -17,17 +17,17 @@ tags:
   - positive-control
   - "plan:gates"
   - "seq:3"
-  - "state:todo"
+  - "state:done"
 origin: human
 source_file: null
 source_anchor: null
 source_checksum: null
 valid_from: 2026-09-13
 valid_until: null
-checksum: 41facba9a78b3e49
+checksum: 6def2ce97d3889f0
 plan: gates
 seq: "3"
-state: todo
+state: done
 priority: "2"
 ---
 

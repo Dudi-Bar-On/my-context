@@ -136,6 +136,47 @@ function listBlock(files: string[]): string {
   return files.map((f) => `  - ${f}`).join('\n');
 }
 
+/**
+ * Why phase 2 must NOT run, or `null` when it may.
+ *
+ * ── THE DEFECT THIS FUNCTION EXISTS TO NAME ─────────────────────────────────
+ *
+ * The guard here used to read `report1 === null || total1 === 0` — is there a
+ * report, and did it mention any spec at all. That answers "did anything run",
+ * and it is the wrong question. The question is **"is there a failing set for
+ * `--last-failed` to retry"**, and the two come apart exactly where it matters:
+ * a phase 1 that RAN a hundred specs, marked none of them failed and still
+ * exited non-zero — a `globalTeardown` that threw, a worker killed after its
+ * last test passed, a Playwright fatal after the run — produced
+ * `total1 = 100`, `failed1 = []`, and was handed to phase 2.
+ *
+ * `--last-failed` then reads `.last-run.json`, which THIS run did not write a
+ * failing set into, so it reruns whatever some EARLIER invocation left there —
+ * possibly nothing at all. That run exits 0, `stillFailing` is empty, and the
+ * gate prints *"GREEN on phase 2. Every retried spec passed serially."* over a
+ * red phase 1. The hazard is the one the guard's own comment already named;
+ * the guard just tested for the wrong half of it.
+ *
+ * So the condition is `failed1.length === 0`, which subsumes the old one: no
+ * report and no specs both produce an empty failing set.
+ */
+export function stopAfterPhaseOne(
+  phase1Code: number, report1: JsonReport | null, failed1: string[],
+): string | null {
+  if (phase1Code === 0) return null;
+  if (report1 === null) {
+    return 'produced no readable spec report — nothing ran to completion';
+  }
+  if (failed1.length === 0) {
+    return allSpecFiles(report1).size === 0
+      ? 'produced a report naming no spec at all — nothing ran'
+      : `ran ${allSpecFiles(report1).size} spec(s) and marked NONE of them failed, yet exited `
+        + 'non-zero — the failure is outside the specs (a fatal error, a crashed worker, a '
+        + 'global teardown), so there is no failing set for `--last-failed` to retry';
+  }
+  return null;
+}
+
 function runPhase(label: string, extraArgs: string[], jsonPath: string): number {
   console.log(`\nmy_context e2e gate: ${label}\n`);
   const result = spawnSync(process.execPath, [
@@ -170,22 +211,20 @@ function main(): void {
     }
 
     const report1 = readReport(phase1Json);
-    const total1 = report1 ? [...allSpecFiles(report1)].length : 0;
-    if (report1 === null || total1 === 0) {
-      // Nothing ran, or the report never got written — a global-setup crash
-      // or a fatal Playwright error look this way. There is no failing SET
-      // for phase 2 to retry, and running `--last-failed` here would rerun
-      // whatever `.last-run.json` some EARLIER invocation left behind, which
-      // is not this run's failure at all. RED, immediately.
+    const failed1 = report1 === null ? [] : [...failingSpecFiles(report1)].sort();
+    const stop = stopAfterPhaseOne(phase1Code, report1, failed1);
+    if (stop !== null) {
+      // There is no failing SET for phase 2 to retry, and running
+      // `--last-failed` here would rerun whatever `.last-run.json` some
+      // EARLIER invocation left behind, which is not this run's failure at
+      // all. RED, immediately. See `stopAfterPhaseOne` for why the condition
+      // is the failing set and not the spec total.
       console.log(
-        `\nmy_context e2e gate: RED. Phase 1 exited ${phase1Code} and produced no readable spec ` +
-        `report — nothing ran to completion, so there is no failing set for phase 2 to retry. ` +
+        `\nmy_context e2e gate: RED. Phase 1 exited ${phase1Code} and ${stop}. ` +
         `See the output above for what phase 1 actually reported.\n`,
       );
       process.exit(phase1Code);
     }
-
-    const failed1 = [...failingSpecFiles(report1)].sort();
     console.log(
       `\nmy_context e2e gate: phase 1 (default workers) failed (exit ${phase1Code}), ` +
       `${failed1.length} spec(s):\n${listBlock(failed1)}\n\n` +

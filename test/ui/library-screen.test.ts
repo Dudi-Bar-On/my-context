@@ -29,7 +29,7 @@
  */
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import { registerHooks } from 'node:module';
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
@@ -532,9 +532,25 @@ test('the new sentences carry the same slots in both languages, and no unkeyed E
 /* ══ THE RETIREMENT ════════════════════════════════════════════════════════ */
 
 test('the two screens this replaces are GONE, and their addresses land on the Library', () => {
+  // ── WHY THIS IS existsSync AND NOT assert.throws ─────────────────────────
+  //
+  // It was `assert.throws(fn, '<a sentence>')`, and Node reads a STRING second
+  // argument as the assertion's own message, never as a matcher. So every
+  // error passed — including the `ENOENT` a wrong `PUBLIC` would raise for
+  // every file in the tree, which is the one failure that makes the whole file
+  // meaningless. The absence of a file is a question about the filesystem, so
+  // it is asked of the filesystem directly.
+  //
+  // The control comes first: a `PUBLIC` pointing at nothing would otherwise
+  // satisfy every absence below by being empty.
+  assert.ok(
+    existsSync(path.join(PUBLIC, 'screens', 'library.js')),
+    `${PUBLIC} does not hold the screen that REPLACED these two, so "they are gone" below is `
+    + 'a statement about a directory this test cannot find, not about the retirement',
+  );
   for (const retired of ['docs.js', 'tut.js']) {
-    assert.throws(
-      () => readFileSync(path.join(PUBLIC, 'screens', retired), 'utf8'),
+    assert.equal(
+      existsSync(path.join(PUBLIC, 'screens', retired)), false,
       `src/ui/public/screens/${retired} still exists — the ruling replaced both screens, and an `
       + 'unreachable screen module is exactly what the rail\'s PROPOSED badge exists to make visible',
     );

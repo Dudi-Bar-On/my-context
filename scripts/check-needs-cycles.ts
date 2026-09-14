@@ -58,6 +58,8 @@
  * `mycontext` command does, so it reads whichever corpus the CLI would read.
  * Exit 0 when the graph is acyclic, 1 when it is not.
  */
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { loadLayer, type LoadError } from '../src/core/rebuild.ts';
 import {
   buildTaskIndex, DONE_STATE, NEEDS_FIELD, parseNeeds, taskKey, taskState, workItems,
@@ -67,7 +69,7 @@ import type { Item } from '../src/core/types.ts';
 import { resolveWorkspace } from '../src/core/workspace.ts';
 
 /** One node of the graph: a `plan/seq` key and everything that answers to it. */
-interface Node {
+export interface Node {
   key: string;
   // `WorkItem[]`: the nodes come out of `buildTaskIndex`, which now hands back
   // the proof, so `taskState` below needs no second check and no cast.
@@ -78,14 +80,14 @@ interface Node {
   dangling: string[];
 }
 
-interface Cycle {
+export interface Cycle {
   /** The keys of the cycle, in the order the walk closed it. */
   keys: string[];
   /** One line per member: the key, its state(s) and its title(s). */
   members: string[];
 }
 
-function buildGraph(items: Item[], config: Parameters<typeof buildTaskIndex>[1]): Map<string, Node> {
+export function buildGraph(items: Item[], config: Parameters<typeof buildTaskIndex>[1]): Map<string, Node> {
   const index = buildTaskIndex(items, config);
   const graph = new Map<string, Node>();
 
@@ -120,7 +122,7 @@ function buildGraph(items: Item[], config: Parameters<typeof buildTaskIndex>[1])
  * A component is a cycle when it holds more than one node, or when a single
  * node names itself.
  */
-function findCycles(graph: Map<string, Node>): string[][] {
+export function findCycles(graph: Map<string, Node>): string[][] {
   const indexOf = new Map<string, number>();
   const lowlink = new Map<string, number>();
   const onStack = new Set<string>();
@@ -182,7 +184,7 @@ function findCycles(graph: Map<string, Node>): string[][] {
   return cycles;
 }
 
-function describe(graph: Map<string, Node>, keys: string[]): Cycle {
+export function describe(graph: Map<string, Node>, keys: string[]): Cycle {
   const members: string[] = [];
   for (const key of keys) {
     for (const item of graph.get(key)!.items) {
@@ -294,4 +296,14 @@ function main(): number {
   return cycles.length > 0 ? 1 : 0;
 }
 
-process.exit(main());
+// Guarded so `test/scripts/needs-cycles.test.ts` can import `buildGraph`,
+// `findCycles` and `describe` without this module walking the real corpus and
+// CALLING `process.exit` as a side effect of the import — which is what an
+// unguarded top-level `process.exit(main())` does: the importing test process
+// dies mid-run and the runner reports it as a crash rather than a failure.
+// Same guard, same reason, as `scripts/e2e-gate.ts`.
+const isMain = (): boolean => {
+  const invoked = process.argv[1];
+  return typeof invoked === 'string' && fileURLToPath(import.meta.url) === path.resolve(invoked);
+};
+if (isMain()) process.exit(main());

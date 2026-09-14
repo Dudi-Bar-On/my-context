@@ -16,7 +16,7 @@ import { unlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import {
-  allSpecFiles, failingSpecFiles, readReport, type JsonReport,
+  allSpecFiles, failingSpecFiles, readReport, stopAfterPhaseOne, type JsonReport,
 } from '../../scripts/e2e-gate.ts';
 
 /** A JSON report shaped the way `@playwright/test`'s built-in `json`
@@ -103,4 +103,53 @@ test('readReport returns null for unparseable JSON, the same way an absent file 
   } finally {
     unlinkSync(file);
   }
+});
+
+/* ── THE DECISION, NOT ONLY THE PARSING ───────────────────────────────────────
+ *
+ * `report 3 (reports/2026-09-12-silent-failures-reviewed.md)` found the gate
+ * guarding on `total1 === 0` — "did anything run" — where the question it
+ * needs answered is "is there a failing set to retry". The two come apart on
+ * the one run that matters: phase 1 ran, marked nothing failed, and exited
+ * non-zero anyway. `--last-failed` then reruns a STALE `.last-run.json` from
+ * an earlier invocation and the gate prints GREEN over a red run.
+ *
+ * `stopAfterPhaseOne` is that decision, extracted so it can be asked directly.
+ * `main()` itself spawns real Playwright processes and cannot be.
+ */
+
+test('a green phase 1 never stops the gate — there is nothing to stop for', () => {
+  assert.equal(stopAfterPhaseOne(0, report({ file: 'a.spec.ts', ok: true }), []), null);
+});
+
+test('a red phase 1 with a failing set proceeds to phase 2', () => {
+  const r = report({ file: 'a.spec.ts', ok: false }, { file: 'b.spec.ts', ok: true });
+  assert.equal(stopAfterPhaseOne(1, r, ['a.spec.ts']), null);
+});
+
+test('THE DEFECT: phase 1 ran, failed nothing, and exited non-zero — the gate must STOP', () => {
+  // `total1` is 2 here, so the old `total1 === 0` guard let this through to
+  // `--last-failed` against a stale `.last-run.json`. Every spec in the report
+  // passed; the exit code did not.
+  const r = report({ file: 'a.spec.ts', ok: true }, { file: 'b.spec.ts', ok: true });
+  const stop = stopAfterPhaseOne(1, r, []);
+  assert.notEqual(stop, null, 'a red phase 1 with an empty failing set must not reach phase 2');
+  assert.match(stop!, /marked NONE of them failed/);
+  assert.match(stop!, /no failing set/);
+});
+
+test('a red phase 1 with no report at all still stops, as it always did', () => {
+  const stop = stopAfterPhaseOne(1, null, []);
+  assert.notEqual(stop, null);
+  assert.match(stop!, /no readable spec report/);
+});
+
+test('a red phase 1 whose report names no spec stops, and says which of the two it was', () => {
+  // A report that parsed but is empty — a global-setup crash after the file
+  // was created. Distinct wording from "marked none failed", because the
+  // repair is different: one is a setup failure, the other is a failure
+  // outside the specs.
+  const stop = stopAfterPhaseOne(1, { suites: [] }, []);
+  assert.notEqual(stop, null);
+  assert.match(stop!, /naming no spec at all/);
 });

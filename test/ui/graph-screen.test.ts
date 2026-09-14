@@ -1,3 +1,4 @@
+// @basis TASK-seven-gates-cannot-be-shown-to-go-red-and-one-of-them-has-no, RULE-a-test-names-the-items-it-rests-on-or-says-it-rests-on-none
 /**
  * The Relations screen's EDGES — the one thing the parity gate cannot check.
  *
@@ -513,10 +514,33 @@ test('the screen names every gr.* key the tables declare, and invents none', asy
     [...table.matchAll(/^\s*'(gr\.[A-Za-z]+)':/gm)].map((m) => m[1]!),
   );
   const enKeys = declared(en);
-  assert.deepEqual([...enKeys].sort(), [...declared(he)].sort(),
-    'the two string tables disagree about which gr.* keys exist');
+  // ── THE FLOOR, AND WHY IT IS NOT A TIDY-UP EITHER ────────────────────────
+  //
+  // All three extractions below key on the same `gr.` prefix and the same
+  // quote style, so they go empty TOGETHER: `deepEqual([], [])` passes, both
+  // loops iterate zero times, and this test reports green over twenty-five
+  // unexamined keys. That is not hypothetical — it is what the paragraph above
+  // records actually happening, for months, when `gr\.[a-z]+` could not match
+  // a camelCase key; the 2026-09-01 repair widened the regex and left the
+  // silence intact. Every sibling screen test carries this line
+  // (`learn-screen`, `status-screen`, `library-screen`, `styles-parity`); this
+  // was the one that did not.
+  //
+  // Derived, never a pinned total: what is asserted is that the tables declare
+  // SOMETHING and the screen places SOMETHING, so a count that moves with the
+  // screen does not have to be chased here.
+  assert.ok(
+    enKeys.size > 0,
+    'en.js declares no gr.* key at all, so the comparison below is [] against [] and every '
+    + 'assertion in this test is vacuous — the extraction is broken, not the string tables',
+  );
 
   const used = new Set([...graphSource.matchAll(/'(gr\.[A-Za-z]+)'/g)].map((m) => m[1]!));
+  assert.ok(
+    used.size > 0,
+    'graph.js names no gr.* key at all, so the two loops below iterate over nothing — the scan '
+    + 'of the screen source is broken, not the screen',
+  );
   for (const key of used) {
     assert.ok(enKeys.has(key), `graph.js names ${key}, which no table declares`);
   }

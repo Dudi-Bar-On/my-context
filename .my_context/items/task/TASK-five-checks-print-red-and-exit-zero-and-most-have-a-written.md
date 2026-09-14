@@ -16,17 +16,17 @@ tags:
   - report-only
   - "plan:gates"
   - "seq:4"
-  - "state:todo"
+  - "state:done"
 origin: human
 source_file: null
 source_anchor: null
 source_checksum: null
 valid_from: 2026-09-13
 valid_until: null
-checksum: 031437e2369d82f7
+checksum: ba8685700d31fae7
 plan: gates
 seq: "4"
-state: todo
+state: done
 priority: "2"
 ---
 

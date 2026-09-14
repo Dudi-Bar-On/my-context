@@ -286,6 +286,12 @@
  *   node scripts/verify-citations.ts --strict-source
  *                                               also FAIL on source findings,
  *                                               which are reported either way
+ *   node scripts/verify-citations.ts --strict-corpus
+ *                                               also FAIL on `.my_context/`
+ *                                               findings, which are reported
+ *                                               either way; OFF by default,
+ *                                               and that default is an owner
+ *                                               ruling rather than an omission
  *   node scripts/verify-citations.ts --no-corpus
  *                                               SKIP `.my_context/items/`,
  *                                               which is otherwise walked on
@@ -1128,6 +1134,18 @@ function main(): number {
   const fix = argv.includes('--fix');
   const asJson = argv.includes('--json');
   const strictSource = argv.includes('--strict-source');
+  /**
+   * The corpus tier's opposite number, and the answer to *"there is no flag
+   * that gates them at all"* (report 6, G5).
+   *
+   * OFF by default, and the default is not what this flag changes: the gate
+   * half of `plan:walk seq:30` was closed by owner ruling, and nothing here
+   * reopens it. What it changes is that report-only becomes a CHOICE a caller
+   * can make — a cleanup lane can gate its own run, and anyone can see in one
+   * command what gating this tier would cost — rather than a state with no
+   * lever at all, which is the shape this project keeps finding rots unread.
+   */
+  const strictCorpus = argv.includes('--strict-corpus');
   // Walked unless a caller asks for only the gated set. See `CORPUS_ROOT` for
   // the ruling and for why the flag is a subtraction rather than an addition.
   const withCorpus = !argv.includes('--no-corpus');
@@ -1254,7 +1272,7 @@ function main(): number {
    * and it is the whole of the change needed to flip.
    */
   const gated = (doc: string): boolean =>
-    fromCorpus(doc) ? false : strictSource || !fromSource(doc);
+    fromCorpus(doc) ? strictCorpus : strictSource || !fromSource(doc);
   const failing =
     broken.filter((r) => gated(r.c.doc)).length +
     ambiguous.filter((r) => gated(r.c.doc)).length +
@@ -1280,6 +1298,7 @@ function main(): number {
           sourceFilesWalked: sources.length,
           corpusItemsWalked: corpus.length,
           strictSource,
+          strictCorpus,
           corpusWalked: withCorpus,
           ungatedFailures: ungated,
           ungatedCorpusFailures: ungatedCorpus,
@@ -1416,7 +1435,9 @@ function main(): number {
     process.stdout.write(
       `\n${ungated} source failure(s) above are REPORTED, not gated — they do not set the ` +
         `exit code${failing > 0 ? ', which is 1 for the documentation failures above' : ' and this run exits 0'}.\n` +
-        'Run with --strict-source to gate them; that flag is the whole of the flip.\n',
+        'Run with --strict-source to gate them; that flag is the whole of the flip. WHAT WOULD ' +
+        'MAKE IT A GATE on an ordinary run is the repair itself: fix the findings, flip one ' +
+        'expression to true, delete this sentence.\n',
     );
   }
   // The corpus tier. Reported on every run, never gated — and on the one run
@@ -1428,8 +1449,10 @@ function main(): number {
     process.stdout.write(
       `\n${ungatedCorpus} corpus failure(s) above are REPORTED, not gated — they do not set the ` +
         `exit code${failing > 0 ? ', which is 1 for the documentation failures above' : ' and this run exits 0'}.\n` +
-        'There is no flag that gates them: the gate half of `plan:walk seq:30` was closed by ' +
-        'owner ruling, and `checkCitationForm` (`mycontext doctor`) is what covers an item body.\n',
+        'Run with --strict-corpus to gate them; that flag is the whole of the flip, and it is ' +
+        'OFF by default DELIBERATELY. WHAT WOULD MAKE IT A GATE on an ordinary run is not a ' +
+        'change here: the gate half of `plan:walk seq:30` was closed by owner ruling, and ' +
+        '`checkCitationForm` (`mycontext doctor`) is what covers an item body.\n',
     );
   }
   if (!withCorpus) {

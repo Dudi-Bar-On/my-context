@@ -357,3 +357,56 @@ test('--fix REFUSES to rewrite a hint inside an item, and says why', () => {
     ['--fix'],
   );
 });
+
+/* ── THE LEVER: `--strict-corpus` ────────────────────────────────────────────
+ *
+ * `TASK-five-checks-print-red-and-exit-zero-and-most-have-a-written` names
+ * this tier as the one with "no flag that gates them at all". The default is
+ * unchanged and is an owner ruling — the gate half of `plan:walk seq:30` was
+ * closed — so what is added is a LEVER, not a new default: a cleanup lane can
+ * gate its own run, and anybody can see in one command what gating this tier
+ * would cost.
+ *
+ * Both directions on the SAME fixture, so the power is in the flag.
+ */
+
+test('--strict-corpus gates the corpus tier, and the default still does not', () => {
+  const body = { [ITEM]: item('NOTE-probe', `It is at \`target.ts\` · \`${GONE}\`.`) };
+
+  run(body, (p) => {
+    assert.equal(p.code, 0, `the DEFAULT must stay report-only — that is an owner ruling.\n${p.out}`);
+    assert.match(p.out, /1 corpus failure\(s\) above are REPORTED, not gated/);
+  });
+
+  run(body, (p) => {
+    assert.equal(p.code, 1, `--strict-corpus must gate the same failure.\n${p.out}`);
+    assert.doesNotMatch(
+      p.out, /corpus failure\(s\) above are REPORTED, not gated/,
+      'a gated failure must not also be announced as ungated',
+    );
+  }, ['--strict-corpus']);
+});
+
+test('the report-only message NAMES the flag and says the default is a ruling', () => {
+  // The item's ask in one line: say it is a report, and name what would make
+  // it a gate. A disclaimer with no lever in it is the half that rots.
+  run(
+    { [ITEM]: item('NOTE-probe', `It is at \`target.ts\` · \`${GONE}\`.`) },
+    (p) => {
+      assert.match(p.out, /--strict-corpus/);
+      assert.match(p.out, /OFF by default DELIBERATELY/);
+      assert.match(p.out, /owner ruling/);
+    },
+  );
+});
+
+test('--strict-corpus changes NOTHING when the corpus is clean', () => {
+  // A flag that reddens a clean tree is a flag nobody turns on.
+  run(
+    { [ITEM]: item('NOTE-probe', `It is at \`target.ts\` · \`${PRESENT}\`.`) },
+    (p) => {
+      assert.equal(p.code, 0, p.out);
+    },
+    ['--strict-corpus'],
+  );
+});
