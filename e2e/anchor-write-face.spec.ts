@@ -1,4 +1,5 @@
-// @basis TASK-every-write-on-conversations-throws-focus-to-the-document,
+// @basis TASK-rename-has-no-cancel-and-ignores-escape-and-filtering-the,
+// TASK-every-write-on-conversations-throws-focus-to-the-document,
 // TASK-take-it-back-deletes-immediately-with-no-confirm-no-undo-and,
 // TASK-the-anchor-write-routes-answer-indexed-false-and-no-client,
 // TASK-684-anchors-render-unpaged-as-92-percent-of-the-document-and,
@@ -60,6 +61,7 @@ import { mintNonce, startUiChild, type UiHarness } from '../test/ui/helpers.ts';
 import { runCli } from '../src/cli/index.ts';
 import { projectDirName } from '../src/core/conversation-index.ts';
 import { writeAnchorFile } from '../src/core/anchor-file.ts';
+import { anchorIdFor } from '../src/core/anchors.ts';
 
 const SESSION = 'sess-writes';
 /** In the transcript, in no label — the words a search hit is found by. */
@@ -129,7 +131,24 @@ test.beforeAll(async () => {
     // which re-marks the table and the ruling and never reads these.
     writeAnchorFile(path.join(cwd, '.my_context', '.anchors.jsonl'),
       Array.from({ length: OWNED }, (_, i) => ({
-        id: `owned${String(i).padStart(4, '0')}`,
+        /**
+         * **THE ID IS DERIVED, because in this product it always is.**
+         *
+         * This read `owned0000`…`owned0023` until 2026-09-14, and
+         * `writeAnchorFile` takes whatever id it is handed. Nothing the
+         * product can do produces such a row: `markAnchor` composes
+         * `anchorIdFor(sessionId, agentId, byteOffset)` — "the reason marking
+         * the same point twice is one row rather than two" — and a relabel IS
+         * `markAnchor` at the same point.
+         *
+         * So a rename of one of those rows wrote a SECOND row at the derived
+         * id and left the hand-written one standing: measured in the browser
+         * on a copy of this fixture, 26 marked points became 27, with
+         * `owned0015` ("a point I kept 15") and `sess-…:-:100480` ("a name
+         * that DID land") both in the list at the same byte. Every assertion
+         * in this file finds its row by LABEL, so not one of them could see it.
+         */
+        id: anchorIdFor(SESSION, null, 100_000 + i * 32),
         sessionId: SESSION,
         agentId: null,
         byteOffset: 100_000 + i * 32,
@@ -549,4 +568,239 @@ test('the marked points are a part of the page rather than most of it', async ({
    * elements to 392, and 97.8% of the screen to 51.7%, on 884 marked points.
    */
   expect(pct, 'the share is a recorded measurement, not a bound').toBeGreaterThan(0);
+});
+
+/* ══ confirm/5 — THE WAY OUT, AND THE COUNT THAT KEPT THE WHOLE ═══════════ */
+
+/**
+ * `TASK-rename-has-no-cancel-and-ignores-escape-and-filtering-the`, driven in
+ * a browser because every claim in it is a fact about a live document.
+ *
+ * ── WHY EACH OF THESE NEEDS A BROWSER ─────────────────────────────────────
+ *
+ *   - **"Escape shut the field" is a key event reaching a listener on a
+ *     subtree.** A unit test can call a handler; only a browser can say that
+ *     the key a reader actually presses arrives where this code put its
+ *     listener, and that `app.js`' own document-level Escape — the one that
+ *     closes the item pane — never sees it. That second half is asserted with
+ *     a counter whose liveness is proven in the same test, because a counter
+ *     reading 0 because it was never wired says nothing at all.
+ *   - **"And nothing was written" is a fact about the wire.** It is measured
+ *     twice and in two places: no POST leaves the page at all, and the server
+ *     is asked afterwards what it holds. A cancel that quietly commits is
+ *     worse than no cancel, and only the second question catches the version
+ *     of that defect where the request goes out under some other name.
+ *   - **The count is a sentence about two lists at once** — the one that
+ *     matched and the one that exists — and its numbers are composed from a
+ *     filtered fetch and a remembered unfiltered one. The compounding the item
+ *     names appears only on a screen where the page ALSO holds rows back.
+ */
+
+/**
+ * A label nothing may ever store, spelled so that a grep over the list or the
+ * anchors file finds it at once if a cancel ever writes one.
+ */
+const FORBIDDEN = 'THIS DRAFT MUST NEVER BE STORED';
+/** `BOUND_CAP_LIST`, which this file may not import: the page is served, not linked. */
+const CAP = 20;
+
+/** Every anchor write that left the page, at the network rather than at `fetch`. */
+function anchorWrites(page: Page): string[] {
+  const seen: string[] = [];
+  page.on('request', (request) => {
+    if (request.method() !== 'POST') return;
+    if (!request.url().includes('/api/conversations/anchors')) return;
+    seen.push(request.url().replace(/^https?:\/\/[^/]+/, ''));
+  });
+  return seen;
+}
+
+/** What the server holds, asked of it rather than read off the screen. */
+async function storedLabels(page: Page): Promise<string[]> {
+  return await page.evaluate(async () => {
+    const answer = await fetch('/api/conversations/anchors');
+    const body = await answer.json() as { anchors: { label: string }[] };
+    return body.anchors.map((a) => a.label);
+  });
+}
+
+test('Escape leaves a rename with nothing written, and the caret back on the row', async ({ page }) => {
+  await open(page);
+  const writes = anchorWrites(page);
+  /*
+   * **THE KEY MUST NOT REACH THE DOCUMENT.** `app.js` closes the item pane on
+   * a document-level Escape, so a box that let the key bubble would shut
+   * itself AND the pane behind it — one keystroke, two levels. This listener
+   * stands exactly where that one stands, and it is asked twice: once with the
+   * caret inside the box, once with it outside, so a zero means "stopped here"
+   * rather than "never wired".
+   */
+  await page.evaluate(() => {
+    (window as unknown as { escapes: number }).escapes = 0;
+    document.addEventListener('keydown', (event) => {
+      if (event.key === 'Escape') (window as unknown as { escapes: number }).escapes += 1;
+    });
+  });
+
+  const row = rowOf(page, 'a point I kept 17');
+  await expect(row).toBeVisible({ timeout: 20_000 });
+  await row.locator('.convanchorrename').click();
+  const field = row.locator('.convanchorrenameinput');
+  await expect(field, 'the box opened without the caret in the field').toBeFocused();
+  await field.fill(FORBIDDEN);
+  await field.press('Escape');
+
+  await expect(row.locator('.convanchorrenamebox'),
+    'Escape left the rename field open — the field this item says swallows it').toBeHidden();
+  await expect(row.locator('.convanchorlabel'),
+    'the draft reached the row').toHaveText('a point I kept 17');
+  expect(writes, 'a cancel sent a write to the server').toEqual([]);
+  const stored = await storedLabels(page);
+  // **THE INSTRUMENT PROVES ITSELF IN THE SAME RUN.** An absence asserted
+  // against a list that came back empty — a 404, a route stub left installed,
+  // a field renamed — is an assertion no mutation could ever redden.
+  expect(stored, 'the archive read back empty, so the absence below measures nothing')
+    .toContain('a point I kept 17');
+  expect(stored, 'a cancel wrote the draft to the archive').not.toContain(FORBIDDEN);
+
+  const escapedToDocument = await page.evaluate(
+    () => (window as unknown as { escapes: number }).escapes);
+  expect(escapedToDocument,
+    'the key reached the document, where it also closes the item pane').toBe(0);
+  /*
+   * **THE CARET, MEASURED BEFORE ANYTHING ELSE TOUCHES IT.** The liveness
+   * check below moves it deliberately, so it runs after this: the first draft
+   * of this test asked the question afterwards and could only report a
+   * 26-stop walk from the sweep button, which says nothing about where the
+   * cancel PUT the caret.
+   */
+  const cost = await focusCost(page,
+    { inRowNamed: 'a point I kept 17', sel: '.convanchorrename' });
+  console.log(`[confirm/5 escape] landed=${cost.landed} stopsBack=${cost.stopsBack}`);
+  expect(cost.landed, 'the cancel threw the caret to the document body').not.toBe('BODY');
+  expect(cost.sameElement,
+    'the caret did not land on the control that opened the box').toBe(true);
+  expect(cost.stopsBack, 'the reader has to walk back to where they were').toBe(0);
+
+  // The same counter with the caret outside any box: a 0 above is the key
+  // being stopped here, and not the counter being dead.
+  await page.locator('.convanchsweep').focus();
+  await page.keyboard.press('Escape');
+  expect(await page.evaluate(() => (window as unknown as { escapes: number }).escapes),
+    'the counter cannot see an Escape at all, so the zero above measured nothing').toBe(1);
+
+  // **AND THE ABANDONED DRAFT IS NOT HANDED BACK AS THE NAME.** A box that
+  // reopened holding what a reader threw away is the same defect one gesture
+  // later.
+  await row.locator('.convanchorrename').click();
+  await expect(field, 'the draft a cancel threw away came back in the field')
+    .toHaveValue('a point I kept 17');
+  await field.press('Escape');
+});
+
+test('Cancel leaves a rename and takes its own refusal down with it', async ({ page }) => {
+  await open(page);
+  const writes = anchorWrites(page);
+  const row = rowOf(page, 'a point I kept 16');
+  await expect(row).toBeVisible({ timeout: 20_000 });
+  /*
+   * **A REAL DRAFT FIRST, and the removal proof is why it is here.** This
+   * test opened straight onto the empty-name refusal, and under the mutation
+   * that makes a cancel call the write (`void run()` at the top of
+   * `abandon`) it stayed GREEN: an empty name is refused by `labelWrite`
+   * before any request leaves, so `writes` was empty for a reason that had
+   * nothing to do with the cancel. A cancel over a name the server WOULD have
+   * accepted is the only gesture that can tell those two apart.
+   */
+  await row.locator('.convanchorrename').click();
+  await row.locator('.convanchorrenameinput').fill(FORBIDDEN);
+  await row.locator('.convanchorrenamecancel').click();
+  await expect(row.locator('.convanchorlabel'),
+    'Cancel wrote the draft to the row').toHaveText('a point I kept 16');
+
+  await row.locator('.convanchorrename').click();
+  // The refusal this box draws for itself, so that what the cancel takes down
+  // is known to have been there.
+  await row.locator('.convanchorrenameinput').fill('   ');
+  await row.locator('.convanchorrenamesave').click();
+  const said = row.locator('.convanchorsaid');
+  await expect(said, 'an empty name was not refused').toContainText('A name cannot be empty');
+
+  await row.locator('.convanchorrenamecancel').click();
+  await expect(row.locator('.convanchorrenamebox'), 'Cancel left the field open').toBeHidden();
+  await expect(said,
+    'the refusal outlived the box it was about — a sentence about a field '
+    + 'nobody can see any more').toBeHidden();
+  await expect(row.locator('.convanchorrenameinput'),
+    'the cancelled draft is still in the field').toHaveValue('a point I kept 16');
+  expect(writes, 'a cancel sent a write to the server').toEqual([]);
+  expect(await storedLabels(page), 'Cancel wrote the draft to the archive')
+    .not.toContain(FORBIDDEN);
+
+  const cost = await focusCost(page,
+    { inRowNamed: 'a point I kept 16', sel: '.convanchorrename' });
+  console.log(`[confirm/5 cancel] landed=${cost.landed} stopsBack=${cost.stopsBack}`);
+  expect(cost.landed, 'the cancel threw the caret to the document body').not.toBe('BODY');
+  expect(cost.sameElement,
+    'the caret did not land on the control that opened the box').toBe(true);
+});
+
+test('Escape leaves a mark inside the document without marking anything', async ({ page }) => {
+  await open(page);
+  const writes = anchorWrites(page);
+  await page.evaluate((id) => { location.hash = `#/conversations/${id}`; }, SESSION);
+  await page.waitForSelector('.tvscroll', { timeout: 20_000 });
+  // **A turn nothing else in this file marks** — the rule the document test
+  // above states and paid for. Filler 7 is that test's; this is 12.
+  await page.locator('.tvfind').fill('Filler turn number 12');
+  const turn = page.locator('.tvturn').filter({ hasText: 'Filler turn number 12' });
+  await expect(turn).toBeVisible({ timeout: 20_000 });
+
+  await turn.locator('.tvanchormark').click();
+  await turn.locator('.tvanchorinput').fill(FORBIDDEN);
+  await turn.locator('.tvanchorinput').press('Escape');
+
+  await expect(turn.locator('.tvanchorbox'), 'Escape left the field open').toBeHidden();
+  await expect(turn.locator('.tvanchormark'),
+    'the row stopped offering to mark a point that was never marked').toBeVisible();
+  await expect(turn.locator('.tvanchored'),
+    'a cancelled mark drew the row as marked').toHaveCount(0);
+  expect(writes, 'a cancelled mark sent a write').toEqual([]);
+  const stored = await storedLabels(page);
+  expect(stored, 'the archive read back empty, so the absence below measures nothing')
+    .toContain('a point I kept 00');
+  expect(stored, 'a cancelled mark reached the archive').not.toContain(FORBIDDEN);
+  await expect(turn.locator('.tvanchorinput'),
+    'the abandoned draft is still in the field').toHaveValue('');
+});
+
+test('a filter says what it narrowed, and the page bound says what it held back', async ({ page }) => {
+  await open(page);
+  const count = page.locator('.convanchcount');
+  const whole = Number(/(\d+)/.exec(await count.textContent() ?? '')?.[1]);
+  expect(whole, 'the unfiltered list does not hold enough points to hide any')
+    .toBeGreaterThan(CAP);
+
+  await page.locator('input.convanchfind').fill('a point I kept');
+  await expect(count, 'the narrowed count never learned to carry the whole')
+    .toContainText(' of ', { timeout: 20_000 });
+  const said = await count.textContent() ?? '';
+  const matched = Number(/(\d+) of (\d+)/.exec(said)?.[1]);
+  const carried = Number(/(\d+) of (\d+)/.exec(said)?.[2]);
+  const bound = await page.locator('.convanchorsbox .bound p').textContent() ?? '';
+  console.log(`[confirm/5 count] count="${said.trim()}" bound="${bound.trim()}" whole=${whole}`);
+
+  expect(matched, 'the filter hid nothing, so this measures nothing').toBeLessThan(whole);
+  expect(carried, 'the count lost the size of the thing that was narrowed').toBe(whole);
+  /*
+   * **THE COMPOUNDING THE ITEM NAMES.** The list already holds rows back at a
+   * cap of 20, so a count that ALSO hid the filter's effect would put two
+   * silent subtractions on one screen. Here there are three numbers and all
+   * three are said: twenty drawn, of the matched, of the whole.
+   */
+  expect(matched, 'the filtered list fits on one page, so nothing is held back '
+    + 'and the compounding this asserts cannot occur').toBeGreaterThan(CAP);
+  expect(bound, 'the page bound describes a list other than the one on screen')
+    .toContain(`of ${matched}`);
+  await page.screenshot({ path: 'e2e/screens/anchor-count-narrowed.png', fullPage: true });
 });

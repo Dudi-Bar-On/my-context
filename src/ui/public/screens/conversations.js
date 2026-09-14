@@ -1204,7 +1204,11 @@ function hitWhere(ctx, hit) {
  *   4. Enter in the one field submits it — a single-field form that needs the
  *      mouse asks twice for one answer;
  *   5. success hands back to the caller, which is the only part the three
- *      surfaces answer differently.
+ *      surfaces answer differently;
+ *   6. **there is a way out that writes nothing** — a Cancel beside the Save
+ *      and Escape anywhere in the box — because a field a reader can only
+ *      leave by saving something is a field that traps them
+ *      (`TASK-rename-has-no-cancel-and-ignores-escape-and-filtering-the`).
  */
 
 /**
@@ -1247,7 +1251,8 @@ function anchorRefusal(ctx, answer, wants = 'anchor') {
 }
 
 /**
- * A box holding one named field and its save button, and the write behind it.
+ * A box holding one named field, its save button, its way out, and the write
+ * behind it.
  *
  * `said` is the caller's live region rather than one built here, because the
  * three callers place it in three different parents — inside the box, under
@@ -1268,6 +1273,32 @@ function labelWrite(ctx, spec) {
   save.type = 'button';
   save.append(...ctx.t(spec.saveKey));
 
+  /*
+   * ── THE WAY OUT, AND IT IS NOT A CONFIRM ─────────────────────────────────
+   *
+   * `TASK-rename-has-no-cancel-and-ignores-escape-and-filtering-the`. Until
+   * this existed the only way out of one of these boxes was to SAVE one: the
+   * button that opened it does toggle it shut, and it still reads "Rename"
+   * while the box is open, so nothing on the screen says so. A reader who
+   * opened a rename by mistake had a field, a Save, and no stated route back.
+   *
+   * **A cancel is not a gate.** The owner's ruling of 2026-09-11 — a bookmark
+   * does not get a confirm dialog and a subprocess — is about what stands
+   * BEFORE an act. This is on the other side: nothing here asks permission,
+   * and nothing here is written. It is the sixth step of the sequence this
+   * function exists to keep from drifting, and it is shared for the same
+   * reason as the other five, because three hand-written copies of a way out
+   * would be three different ways out.
+   *
+   * `exec.cancel` ("Cancel") is REUSED rather than re-spelled — the same
+   * deliberate reuse `cfg.savebtn`'s own note records, and for its stated
+   * test: the string names no command, so a second spelling of it would be
+   * exactly the two-tables-that-can-disagree this UI keeps refusing.
+   */
+  const cancel = el('button', spec.cancelClass);
+  cancel.type = 'button';
+  cancel.append(...ctx.t('exec.cancel'));
+
   // **A placeholder is not an accessible name**, which this file has already
   // paid for once on the document's own find box. `'label'` is a real
   // `<label>` element, visible to a reader who can see it as well as to one
@@ -1284,11 +1315,20 @@ function labelWrite(ctx, spec) {
     input.setAttribute('aria-label', ctx.tFlat(spec.labelKey));
   }
   if (spec.note !== undefined) box.append(spec.note);
-  box.append(field, save);
+  box.append(field, save, cancel);
+
+  /**
+   * Whether the sentence now standing in `spec.said` is one THIS box put
+   * there. The document's bar shares one region between its mark, its rename
+   * and its take-back, so a cancel that cleared it unconditionally would wipe
+   * "Marked." — a sentence about a write that did happen — off the screen.
+   */
+  let mine = false;
 
   const run = async () => {
     const label = input.value.trim();
     spec.said.hidden = false;
+    mine = true;
     if (label === '') {
       spec.said.replaceChildren(...ctx.t(spec.emptyKey));
       // The caret goes back to the field it was refused over. Two of the three
@@ -1327,7 +1367,51 @@ function labelWrite(ctx, spec) {
     if (event.key === 'Enter') { event.preventDefault(); void run(); }
   });
 
-  return { box, input, save, run };
+  const writer = { box, input, save, cancel, run, opened: input.value, shut: null };
+
+  /**
+   * **LEAVE WITHOUT WRITING.** The draft goes back to what the box opened
+   * with, this box's own sentence comes down, and NOTHING IS SENT — there is
+   * no request on this path at all, which is the half of a cancel that has to
+   * be true before the half a reader can see is worth anything.
+   *
+   * **A write in flight is not cancellable, and it says so by doing nothing.**
+   * `save.disabled` is exactly the window between the request leaving and the
+   * answer arriving. Shutting the box there would leave the screen claiming a
+   * rename was abandoned while the row was being renamed on disk — a cancel
+   * that quietly commits, which is worse than no cancel. The window is one
+   * request long, `done` shuts the box on success, and a refusal re-enables
+   * the button, so the way out is back within the same gesture.
+   */
+  const abandon = () => {
+    if (box.hidden || save.disabled) return;
+    input.value = writer.opened;
+    if (mine) {
+      spec.said.replaceChildren();
+      spec.said.hidden = true;
+      mine = false;
+    }
+    if (writer.shut !== null) { writer.shut(); return; }
+    box.hidden = true;
+  };
+  cancel.addEventListener('click', abandon);
+  /*
+   * **ESCAPE ANYWHERE IN THE BOX**, and not only in the field: a reader who
+   * has tabbed to Save and thought better of it is the reader this is for.
+   *
+   * `stopPropagation` because `app.js` listens for the same key on
+   * `document` and closes the item pane with it. Without this, one Escape
+   * over an open rename would shut the box AND the pane behind it — the same
+   * one-key-one-level rule that listener already states for the popovers.
+   */
+  box.addEventListener('keydown', (event) => {
+    if (event.key !== 'Escape') return;
+    event.preventDefault();
+    event.stopPropagation();
+    abandon();
+  });
+
+  return writer;
 }
 
 /**
@@ -1338,12 +1422,34 @@ function labelWrite(ctx, spec) {
  * puts the standing label back before the caret arrives, and one asks the
  * document to re-measure the row that just grew.
  */
-function boxToggle(button, box, input, onToggle = () => {}) {
+function boxToggle(button, box, input, onToggle = () => {}, writer = null) {
   button.addEventListener('click', () => {
     box.hidden = !box.hidden;
     onToggle(box.hidden);
-    if (!box.hidden) input.focus();
+    if (box.hidden) return;
+    // What the field holds AT THE MOMENT IT OPENS, which is what a cancel puts
+    // back. Read after `onToggle`, because that is where the caller that
+    // restores the standing label restores it.
+    if (writer !== null) writer.opened = input.value;
+    input.focus();
   });
+  if (writer === null) return;
+  /**
+   * Shut it from the inside, for a cancel.
+   *
+   * `onToggle(true)` runs for the same three callers' sake it runs for on the
+   * way in — one puts its own word back on the button, one asks the document
+   * to re-measure the row that just shrank — and the caret goes to the control
+   * that opened the box, which is the row the reader was on.
+   * `TASK-every-write-on-conversations-throws-focus-to-the-document` is about
+   * a write; this is not a write, and it lands the caret in the same place for
+   * the same reason.
+   */
+  writer.shut = () => {
+    box.hidden = true;
+    onToggle(true);
+    button.focus();
+  };
 }
 
 /**
@@ -1543,7 +1649,7 @@ function markRow(ctx, hit, term, onMarked) {
   said.setAttribute('aria-live', 'polite');
   said.hidden = true;
 
-  const { box, input } = labelWrite(ctx, {
+  const marker = labelWrite(ctx, {
     // Pre-filled with the words that were searched for, because those are the
     // words that made this turn worth keeping — the same default the composed
     // command carried, now typed into a box a person can correct.
@@ -1556,6 +1662,7 @@ function markRow(ctx, hit, term, onMarked) {
     boxClass: 'convhitcmd',
     inputClass: 'convmarklabel',
     saveClass: 'convmarksave',
+    cancelClass: 'convmarkcancel',
     note,
     said,
     endpoint: '/api/conversations/anchors/mark',
@@ -1577,10 +1684,15 @@ function markRow(ctx, hit, term, onMarked) {
       onMarked();
     },
   });
+  const { box, input } = marker;
   box.append(said);
+  // **THE BUTTON'S OWN WORD IS PUT BACK BY A CANCEL TOO**, because `boxToggle`
+  // runs this on the way out as well as on the way in. A box shut by Escape
+  // that left "Never mind" standing over a closed field would be the screen
+  // describing a state it is not in.
   boxToggle(button, box, input, (hidden) => {
     button.replaceChildren(...ctx.t(hidden ? 'conv.arch.mark' : 'conv.arch.markShut'));
-  });
+  }, marker);
 
   row.append(button, box);
   return row;
@@ -1947,6 +2059,7 @@ function anchorRow(ctx, anchor, onChanged) {
     boxClass: 'convanchorrenamebox',
     inputClass: 'convanchorrenameinput',
     saveClass: 'convanchorrenamesave',
+    cancelClass: 'convanchorrenamecancel',
     said,
     endpoint: '/api/conversations/anchors/relabel',
     body: (label) => ({ id: anchor.id, label }),
@@ -2001,7 +2114,7 @@ function anchorRow(ctx, anchor, onChanged) {
   // were the name the point has.
   boxToggle(rename, renameBox, renamer.input, (hidden) => {
     if (!hidden) renamer.input.value = anchor.label;
-  });
+  }, renamer);
 
   /* ── DROP ────────────────────────────────────────────────────────────── */
   // The whole row and not its id: the take-back has to name what went, decide
@@ -5609,7 +5722,7 @@ export function mountDocument(ctx, host, outline, back, roster = NO_LANES, landA
       // **The same `labelWrite` the archive list and the search hit use**, in
       // its `'aria'` shape: a visible `<label>` would cost a line on every
       // marked turn of a scrolling document, and the name is still there.
-      const { box, input } = labelWrite(ctx, {
+      const renamer = labelWrite(ctx, {
         value: standing.label,
         named: 'aria',
         labelKey: 'conv.anchors.relabelLabel',
@@ -5619,6 +5732,7 @@ export function mountDocument(ctx, host, outline, back, roster = NO_LANES, landA
         boxClass: 'tvanchorbox',
         inputClass: 'tvanchorinput',
         saveClass: 'tvjump tvanchorsave',
+        cancelClass: 'tvjump tvanchorcancel',
         said,
         endpoint: '/api/conversations/anchors/relabel',
         body: (label) => ({ id: standing.id, label }),
@@ -5643,8 +5757,11 @@ export function mountDocument(ctx, host, outline, back, roster = NO_LANES, landA
           redrawMe({ focus: ['.tvanchorputback', '.tvanchormark'], taken });
         },
       });
-      // A box that opens changes the row's height, so the well re-measures.
-      boxToggle(rename, box, input, () => { schedule(); });
+      // A box that opens changes the row's height, so the well re-measures —
+      // and one that a cancel SHUTS changes it back, which is why `schedule`
+      // is called on both edges rather than only on the way in.
+      const { box, input } = renamer;
+      boxToggle(rename, box, input, () => { schedule(); }, renamer);
       bar.append(chip, label, rename, drop, box, said);
       carry();
       return bar;
@@ -5653,7 +5770,7 @@ export function mountDocument(ctx, host, outline, back, roster = NO_LANES, landA
     const mark = el('button', 'tvjump tvanchormark');
     mark.type = 'button';
     mark.append(...ctx.t('conv.doc.mark'));
-    const { box, input } = labelWrite(ctx, {
+    const marker = labelWrite(ctx, {
       named: 'aria',
       labelKey: 'conv.doc.markLabel',
       saveKey: 'conv.doc.markSave',
@@ -5662,6 +5779,7 @@ export function mountDocument(ctx, host, outline, back, roster = NO_LANES, landA
       boxClass: 'tvanchorbox',
       inputClass: 'tvanchorinput',
       saveClass: 'tvjump tvanchorsave',
+      cancelClass: 'tvjump tvanchorcancel',
       said,
       endpoint: '/api/conversations/anchors/mark',
       body: (label) => ({
@@ -5675,7 +5793,8 @@ export function mountDocument(ctx, host, outline, back, roster = NO_LANES, landA
         redrawMe({ focus: ['.tvanchorrename'], say: 'conv.anchors.marked' });
       },
     });
-    boxToggle(mark, box, input, () => { schedule(); });
+    const { box, input } = marker;
+    boxToggle(mark, box, input, () => { schedule(); }, marker);
     bar.append(mark, box, said);
     carry();
     return bar;

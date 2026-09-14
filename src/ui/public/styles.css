@@ -3916,13 +3916,23 @@ wa-tree .wa-count{margin-inline-start:var(--sp-2);color:var(--dim);
    state beside the five meaning hues. */
 .convhitmatch{color:var(--gold);background:transparent;font-weight:600}
 .convhitmark{margin-block-start:var(--sp-1)}
-.convhitmarkbtn,.convmarksave,.convanchorrename,.convanchordrop,
-.convanchorrenamesave,.convanchsweep,.convanchputback{
+/* The two cancels wear the SAME dress as the saves beside them, deliberately:
+   a way out drawn quieter than the way on is a way out a reader does not find,
+   and that absence is the defect
+   `TASK-rename-has-no-cancel-and-ignores-escape-and-filtering-the` names. They
+   are listed here rather than left classless for `e2e/button-contrast.spec.ts`'
+   own reason — a classless button takes the app's light ink and the user
+   agent's near-white ground, and is invisible precisely because the half-reset
+   succeeded at one half. */
+.convhitmarkbtn,.convmarksave,.convmarkcancel,.convanchorrename,.convanchordrop,
+.convanchorrenamesave,.convanchorrenamecancel,.convanchsweep,.convanchputback{
   inline-size:auto;font:600 var(--fs-00)/1.2 var(--mono);
   color:var(--dim);background:var(--panel-2);border:2px solid var(--dim);
   border-radius:var(--r-sm);padding:var(--sp-1) var(--sp-2);cursor:pointer}
 .convhitmarkbtn:hover,.convhitmarkbtn:focus-visible,
 .convmarksave:hover,.convmarksave:focus-visible,
+.convmarkcancel:hover,.convmarkcancel:focus-visible,
+.convanchorrenamecancel:hover,.convanchorrenamecancel:focus-visible,
 .convanchorrename:hover,.convanchorrename:focus-visible,
 .convanchordrop:hover,.convanchordrop:focus-visible,
 .convanchorrenamesave:hover,.convanchorrenamesave:focus-visible,
