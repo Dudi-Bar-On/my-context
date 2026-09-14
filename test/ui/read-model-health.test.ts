@@ -272,13 +272,41 @@ test('a reused reading reports an age, and a computed one reports zero', () => {
   const f = fixture();
   try {
     assert.equal(statusOf(f.ws).reading.ageMs, 0, 'computed now is zero old');
+    /**
+     * **The age is BRACKETED rather than equated, and that is a repair, not a
+     * weakening.** This assertion used to read `reused.ageMs === Date.now() -
+     * Date.parse(reused.computedAt)`, taking a SECOND `Date.now()` here in the
+     * test after the module had already taken its own at
+     * `read-model-health.ts` · `ageMs: Date.now() - memo.computedAt`. One
+     * millisecond between those two readings turns it red for a reason that
+     * has nothing to do with its subject — measured 2026-09-14: green alone,
+     * red inside the full suite, on a contended machine.
+     *
+     * The bracket keeps every bit of the discriminating power. An age counted
+     * SEPARATELY — from a tick counter, a second clock, or any instant other
+     * than the recorded one — falls outside [before, after], which is the
+     * whole thing this test exists to catch. Proved by mutation below.
+     */
+    // A REAL GAP, because without one the bracket cannot discriminate. With
+    // the reuse happening a millisecond after the compute, [before-recorded,
+    // after-recorded] is about [0, 5] and a wrong CONSTANT of 5 sits inside
+    // it — measured 2026-09-14, the first version of this repair passed its
+    // own mutation. A 40 ms wait puts the bracket around [40, 42], where any
+    // age not derived from the recorded instant falls outside. Synchronous on
+    // purpose: a timer would hand the gap to the event loop the memo shares.
+    Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 40);
+    const before = Date.now();
     const reused = doctorOf(f.ws).reading;
+    const after = Date.now();
     assert.equal(reused.source, 'reused');
     assert.ok(reused.ageMs >= 0,
       'a reuse must report how old the findings it is serving are');
-    assert.equal(
-      reused.ageMs, Date.now() - Date.parse(reused.computedAt),
-      'the age must be derived from the recorded instant, not counted separately from it',
+    const recorded = Date.parse(reused.computedAt);
+    assert.ok(
+      reused.ageMs >= before - recorded && reused.ageMs <= after - recorded,
+      `the age must be derived from the recorded instant, not counted `
+      + `separately from it (ageMs ${reused.ageMs} outside `
+      + `[${before - recorded}, ${after - recorded}])`,
     );
   } finally { f.done(); }
 });
