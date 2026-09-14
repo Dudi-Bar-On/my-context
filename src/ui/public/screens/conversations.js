@@ -1208,6 +1208,45 @@ function hitWhere(ctx, hit) {
  */
 
 /**
+ * **WHAT THE SERVER ACTUALLY SAID ABOUT THE WRITE, READ BEFORE ANYTHING IS
+ * DRAWN AS A SUCCESS** —
+ * `TASK-the-anchor-write-routes-answer-indexed-false-and-no-client`.
+ *
+ * The four write routes in `src/ui/anchor-write.ts` answer three shapes that
+ * are `200` and are NOT the write having happened, and until this existed not
+ * one client call site read any of them. `post()` throws on a refusal, so
+ * every 400 and 404 already reached a `catch`; these three do not throw,
+ * because they are STATES rather than failures — and the relabel path read
+ * only `tookOwnership`, so it drew **"Renamed" for a rename that did not
+ * happen.** That is `INV-nothing-is-dropped-silently` on the screen.
+ *
+ *   - `{ indexed: false }` — the archive has never been built in this
+ *     workspace, so there is nothing to mark and nothing was written. It is
+ *     `NOT_INDEXED`, the one shape every verb answers that with.
+ *   - `{ indexed: true, anchor: null }` — a success envelope around an absent
+ *     result: the row was written and could not be read back. The screen then
+ *     knows that what it is showing is not known to be what is stored, which
+ *     is a different and worse thing than a refusal.
+ *   - `{ indexed: true, dropped: false }` — the row was already gone. An
+ *     answer, not a failure (`apiAnchorDrop` says so in as many words), and
+ *     not a removal either, so it must not be announced as one.
+ *
+ * Returns the nodes of the sentence to draw, or `null` when the answer is one
+ * a success may be drawn for. `wants` is `'anchor'` for the three writes that
+ * answer with a row, `'dropped'` for the one that does not.
+ */
+function anchorRefusal(ctx, answer, wants = 'anchor') {
+  if (answer === null || typeof answer !== 'object') return ctx.t('conv.anchors.writeUnread');
+  if (answer.indexed === false) return ctx.t('conv.anchors.writeNotIndexed');
+  if (answer.indexed !== true) return ctx.t('conv.anchors.writeUnread');
+  if (wants === 'dropped') {
+    return answer.dropped === true ? null : ctx.t('conv.anchors.dropNone');
+  }
+  return answer.anchor === null || typeof answer.anchor !== 'object'
+    ? ctx.t('conv.anchors.writeNoRow') : null;
+}
+
+/**
  * A box holding one named field and its save button, and the write behind it.
  *
  * `said` is the caller's live region rather than one built here, because the
@@ -1269,6 +1308,18 @@ function labelWrite(ctx, spec) {
       return;
     }
     save.disabled = false;
+    // **THE ANSWER IS READ HERE AND NOT IN THE FOUR CALLERS**, because that is
+    // the sequence this function exists to keep from drifting: three copies of
+    // it had already diverged on a smaller question than this one. A refusal
+    // is drawn in the live region, the caret goes back to the field it was
+    // refused over, and `done` — the half that draws "Renamed", replaces the
+    // row, or redraws the document — is NOT reached.
+    const refusal = anchorRefusal(ctx, answer);
+    if (refusal !== null) {
+      spec.said.replaceChildren(...refusal);
+      input.focus();
+      return;
+    }
     await spec.done(answer, label);
   };
   save.addEventListener('click', () => { void run(); });
@@ -1298,12 +1349,42 @@ function boxToggle(button, box, input, onToggle = () => {}) {
 /**
  * The button that takes a marked point back.
  *
- * **NO CONFIRM**, and that is the owner's ruling of 2026-09-11 rather than an
- * omission: he asked why a bookmark needed a confirm dialog and a subprocess
- * when an anchor never touches the session file. Taking one back costs one
- * click to undo — the point is still there and the same byte marks it again —
- * so a dialog would be ceremony spent on the one write in this product that is
- * genuinely cheap to reverse.
+ * ── **STILL NO CONFIRM, AND THAT IS THE RULING** ──────────────────────────
+ *
+ * Owner, 2026-09-11: he asked why a bookmark needed a confirm dialog and a
+ * subprocess when an anchor never touches the session file. It does not — it
+ * is a row in a rebuildable index plus a line in a gitignored document — so
+ * **a dialog and a subprocess are the wrong ceremony for a bookmark**, and
+ * nothing here gates the act. One click, as before.
+ *
+ * ── WHAT `TASK-take-it-back-deletes-immediately-with-no-confirm-no-undo-and`
+ *    ACTUALLY ASKED FOR, WHICH IS NOT A DIALOG ─────────────────────────────
+ *
+ * The item names three absences and only one of them is a confirm: **no
+ * confirm, no undo, and NO ANNOUNCEMENT.** The proportion it asks for is on
+ * the act's far side, and it is spent where the class of thing decides:
+ *
+ *   1. **It is announced, always, in a region that outlives the row.** The
+ *      sentence used to be written into `spec.said` — which lives ON the row
+ *      the write removes — so the redraw took the announcement out with the
+ *      element before any reader or any screen reader could reach it. That is
+ *      why the item reads "no announcement" over code that plainly writes one.
+ *      So `done` is handed the row that went, and the CALLER places the
+ *      sentence somewhere that survives.
+ *   2. **A way back, on the one class nothing regenerates.** An
+ *      `origin: 'owner'` point is the owner's own work and the automatic pass
+ *      never reads one, so nothing in this product can recreate it. That row,
+ *      and only that row, is offered "Put it back". An `origin: 'automatic'`
+ *      point IS regenerated — by the pass, from the button four lines above
+ *      this list — so it is told so instead of being given a second button
+ *      that would re-file it as a hand-made note of his.
+ *   3. **The answer is read.** `{ dropped: false }` is the row having been
+ *      already gone, and announcing that as a removal is the same defect one
+ *      verb along.
+ *
+ * `spec.anchor` is the whole row and not its id, because every one of those
+ * three needs a field of it: the label to name what went, the origin to
+ * decide, and the session/lane/byte to put it back at.
  */
 function dropWrite(ctx, spec) {
   const drop = el('button', spec.dropClass);
@@ -1314,17 +1395,105 @@ function dropWrite(ctx, spec) {
       drop.disabled = true;
       spec.said.hidden = false;
       spec.said.replaceChildren(...ctx.t('conv.anchors.dropping'));
+      let answer;
       try {
-        await ctx.post('/api/conversations/anchors/drop', { id: spec.id });
+        answer = await ctx.post('/api/conversations/anchors/drop', { id: spec.anchor.id });
       } catch (error) {
         spec.said.replaceChildren(errorNote(error.message));
         drop.disabled = false;
         return;
       }
-      await spec.done();
+      const refusal = anchorRefusal(ctx, answer, 'dropped');
+      if (refusal !== null) {
+        spec.said.replaceChildren(...refusal);
+        drop.disabled = false;
+        return;
+      }
+      await spec.done(spec.anchor);
     })();
   });
   return drop;
+}
+
+/**
+ * **THE SENTENCE A TAKE-BACK LEAVES BEHIND, AND THE WAY BACK WHEN THERE IS
+ * ONE** — written into a live region the CALLER owns.
+ *
+ * `said` must already be in the document when this runs: an `aria-live` region
+ * announces a CHANGE to its contents, and a region built at the moment of the
+ * write is a region with nothing to change from. Both callers hand in a region
+ * that was mounted long before and that the write's own redraw does not touch.
+ *
+ * Returns the "Put it back" button when one was drawn, so the caller can put
+ * the caret on it — the take-back removed the control the reader's caret was
+ * on, and this is the nearest thing that is still true.
+ */
+function sayTakenBack(ctx, said, anchor, backClass, onPutBack) {
+  const own = anchor.origin === 'owner';
+  const line = el('p', 'small');
+  line.append(...ctx.t(own ? 'conv.anchors.droppedOwn' : 'conv.anchors.droppedAuto'));
+  // **WHICH POINT WENT, said rather than left to be inferred from a list that
+  // is one row shorter.** `dir="auto"` for `saidBody`'s reason: this archive is
+  // half Hebrew and a label is the half a person wrote.
+  const name = el('p', 'small convtakenname');
+  name.setAttribute('dir', 'auto');
+  name.textContent = anchor.label;
+  const kids = [line, name];
+  let back = null;
+  if (own) {
+    back = el('button', backClass);
+    back.type = 'button';
+    back.append(...ctx.t('conv.anchors.putBack'));
+    back.addEventListener('click', () => { void onPutBack(back); });
+    kids.push(back);
+  }
+  said.hidden = false;
+  said.replaceChildren(...kids);
+  return back;
+}
+
+/**
+ * Put one point back where it was — the same transcript, the same byte, the
+ * same name — through the door the screen already marks points with.
+ *
+ * **IT IS A MARK AND NOT AN UN-DELETE, and the screen says so.**
+ * `apiAnchorMark` fixes `kind: 'note'`, `origin: 'owner'` and the stamp,
+ * precisely so that no request can forge a row the automatic pass is forbidden
+ * to read — a property this path is not entitled to spend. So a point put back
+ * is dated now and filed as his, and `conv.anchors.putBackDone` states both.
+ *
+ * **Nothing is stored to make this work.** The whole undo is the row the
+ * button closed over, held for as long as the sentence is on screen and no
+ * longer. There is no second store, which is the standing constraint on
+ * everything about anchors: the file is the truth and the table is derived
+ * from it.
+ */
+async function putBackAnchor(ctx, said, anchor, button, done) {
+  button.disabled = true;
+  const busy = el('p', 'small');
+  busy.append(...ctx.t('conv.anchors.puttingBack'));
+  said.replaceChildren(busy);
+  let answer;
+  try {
+    answer = await ctx.post('/api/conversations/anchors/mark', {
+      sessionId: anchor.sessionId,
+      agentId: anchor.agentId,
+      byteOffset: anchor.byteOffset,
+      label: anchor.label,
+    });
+  } catch (error) {
+    said.replaceChildren(errorNote(error.message));
+    return;
+  }
+  const refusal = anchorRefusal(ctx, answer);
+  if (refusal !== null) {
+    said.replaceChildren(...refusal);
+    return;
+  }
+  const line = el('p', 'small');
+  line.append(...ctx.t('conv.anchors.putBackDone'));
+  said.replaceChildren(line);
+  await done(answer.anchor);
 }
 
 /**
@@ -1353,6 +1522,14 @@ function markRow(ctx, hit, term, onMarked) {
     // ok-carry-crit-and-warn` sets.
     const chip = el('span', 'chip ok glyphed convhitmarked');
     chip.dataset.g = '⚑';
+    // **FOCUSABLE, AND DELIBERATELY OUT OF THE TAB ORDER.** Saving the name
+    // destroys the control the caret was on, and before this the caret fell to
+    // `document.body` — `TASK-every-write-on-conversations-throws-focus-to-the-
+    // document`. There is nothing left on this row to act on, so the caret goes
+    // to the thing that REPLACED the control, which is also the sentence saying
+    // the write landed. `-1` because a settled chip is not a stop a reader
+    // tabbing through the results should have to pass.
+    chip.tabIndex = -1;
     chip.append(...ctx.t('conv.arch.marked'));
     row.append(chip);
     return row;
@@ -1394,6 +1571,9 @@ function markRow(ctx, hit, term, onMarked) {
       // stale, is the state this screen already refuses on the automatic side.
       hit.anchored = true;
       row.replaceChildren(...markRow(ctx, hit, term, onMarked).childNodes);
+      // The caret follows the row rather than falling to the top of the page.
+      const chip = row.querySelector('.convhitmarked');
+      if (chip !== null) chip.focus();
       onMarked();
     },
   });
@@ -1688,6 +1868,11 @@ function drawAnchors(ctx, host, body, onChanged, whole = null) {
 /** One marked point, with everything it carries and everything it can do. */
 function anchorRow(ctx, anchor, onChanged) {
   const row = el('div', 'convanchor');
+  // **THE ROW SAYS WHICH POINT IT IS**, so that a write which does redraw the
+  // list can put the caret back on the row it changed —
+  // `TASK-every-write-on-conversations-throws-focus-to-the-document`. The id
+  // is derived from the position, so it survives a rename and a put-back.
+  row.dataset.anchor = anchor.id;
   const head = el('p', 'small convanchorwhere');
   // **THE SESSION LINK IS THE GO-TO**, and not a second control beside one
   // that opens the same document at the top. A reader clicking the name of the
@@ -1766,18 +1951,48 @@ function anchorRow(ctx, anchor, onChanged) {
     endpoint: '/api/conversations/anchors/relabel',
     body: (label) => ({ id: anchor.id, label }),
     done: (answer) => {
+      /*
+       * **THE ROW IS CORRECTED IN PLACE AND THE LIST IS NOT REDRAWN** —
+       * `TASK-every-write-on-conversations-throws-focus-to-the-document`.
+       *
+       * This called `onChanged()`, which re-fetched and rebuilt the whole box.
+       * That tore out the subtree the caret was in, so the browser dropped
+       * focus to `document.body` — measured at **47 tab stops** back to this
+       * very button, on a 26-point list in Chromium at 1280x720. It also reset
+       * the page: a reader who renamed a row on page two was returned to page
+       * one, holding a sentence about a row they can no longer see.
+       *
+       * Nothing about the LIST changed, so nothing about the list needs
+       * redrawing. A rename moves a label and, at most, the origin; membership,
+       * order and count are all untouched — `apiAnchorRelabel` carries `kind`
+       * and `at` over deliberately, "re-deriving either would reorder his list
+       * every time he fixed a typo". So the two fields that moved are written
+       * from the row the server sent back, and the caret goes to the control
+       * that opened the box.
+       *
+       * `answer.anchor` is known to be a row here: `labelWrite` refuses the
+       * `{ anchor: null }` answer before `done` is reached.
+       */
+      const stored = answer.anchor;
+      anchor.label = stored.label;
+      anchor.origin = stored.origin;
+      label.textContent = stored.label;
       // **THE ROW BECOMES HIS, AND THE SCREEN SAYS SO.** Naming a point the
       // pass marked takes it out of the pass's hands — `apiAnchorRelabel` sets
       // `origin: 'owner'` precisely so the next sweep cannot quietly put his
       // label back to the grammar's. A reader who is not told that would find
       // out by the row changing under them, which is the silent half
-      // `INV-nothing-is-dropped-silently` forbids.
+      // `INV-nothing-is-dropped-silently` forbids. Said in the sentence AND
+      // drawn in the field beside the kind, because the sentence is transient
+      // and the field is what the row will still say tomorrow.
+      origin.replaceChildren(...ctx.t(stored.origin === 'owner'
+        ? 'conv.anchors.origin.owner' : 'conv.anchors.origin.automatic'));
       said.replaceChildren(...ctx.t(
-        answer !== null && typeof answer === 'object' && answer.tookOwnership === true
+        answer.tookOwnership === true
           ? 'conv.anchors.tookOwnership' : 'conv.anchors.relabelled',
       ));
       renamer.box.hidden = true;
-      onChanged();
+      rename.focus();
     },
   });
   const renameBox = renamer.box;
@@ -1789,8 +2004,10 @@ function anchorRow(ctx, anchor, onChanged) {
   });
 
   /* ── DROP ────────────────────────────────────────────────────────────── */
+  // The whole row and not its id: the take-back has to name what went, decide
+  // whether anything will ever mark it again, and know where to put it back.
   const drop = dropWrite(ctx, {
-    id: anchor.id, said, dropClass: 'convanchordrop', done: onChanged,
+    anchor, said, dropClass: 'convanchordrop', done: onChanged,
   });
 
   const actions = el('div', 'convanchoractions');
@@ -1888,7 +2105,31 @@ function mountArchiveSearch(ctx, root, sessions) {
   const sweepBox = el('div', 'convanchsweepbox');
   sweepBox.append(sweep, spaced(sweepSub), sweepSaid);
 
-  anchorsCard.append(findBar, sweepBox, anchorsBox);
+  /* ── WHAT A WRITE LEFT BEHIND, AND THE ONE WAY BACK ──────────────────────
+   *
+   * `TASK-take-it-back-deletes-immediately-with-no-confirm-no-undo-and`.
+   *
+   * **IT IS OUTSIDE `anchorsBox`, and that is the whole of why it works.**
+   * Every row carries its own `aria-live` region and a take-back writes into
+   * it — and then the list redraws and the row, the region and the sentence go
+   * together. The item records that as "no announcement", over code that
+   * plainly writes one, because nothing a reader or a screen reader could
+   * reach ever saw it. This region is mounted once, at the card, and no anchor
+   * redraw touches it.
+   *
+   * **Above the list rather than below it.** What it describes is a row that
+   * is no longer there, and a sentence about an absence placed under the list
+   * would be read after the reader has already gone looking for the row.
+   *
+   * `tabIndex = -1` so it can take the caret when there is no button to take
+   * it — focusable, and not a tab stop of its own.
+   */
+  const anchorsSaid = el('div', 'convanchsaid');
+  anchorsSaid.setAttribute('aria-live', 'polite');
+  anchorsSaid.tabIndex = -1;
+  anchorsSaid.hidden = true;
+
+  anchorsCard.append(findBar, sweepBox, anchorsSaid, anchorsBox);
   root.append(anchorsCard);
 
   const idle = () => {
@@ -1925,7 +2166,47 @@ function mountArchiveSearch(ctx, root, sessions) {
     // late — `filterBar`'s counter, for the same reason.
     if (mine !== anchorsInFlight) return;
     if (anchorState.q === null) anchorsWhole = body.anchors.length;
-    drawAnchors(ctx, anchorsBox, body, () => { void refreshAnchors(); }, anchorsWhole);
+    drawAnchors(ctx, anchorsBox, body, onAnchorChanged, anchorsWhole);
+  };
+
+  /**
+   * The caret, on the row a write just put back — or on the sentence, when
+   * that row is not on this page.
+   *
+   * A restored point can land on any page of a bounded list, and a list that
+   * silently did nothing visible would be the same defect this whole item is
+   * about. The region is always there, so there is always somewhere honest for
+   * the caret to be.
+   */
+  const focusAnchorRow = (id) => {
+    const back = anchorsBox.querySelector(
+      `.convanchor[data-anchor="${CSS.escape(id)}"] .convanchorrename`);
+    if (back !== null) { back.focus(); return; }
+    anchorsSaid.focus();
+  };
+
+  /**
+   * What the list does after one of its own writes.
+   *
+   * `taken` is the row a take-back removed, or `null` for every other change —
+   * a mark from the search card above, a sweep, a put-back. Only a removal has
+   * anything to announce here, because only a removal destroys the row that
+   * was going to do the announcing.
+   */
+  const onAnchorChanged = async (taken = null) => {
+    if (taken === null || taken === undefined) { await refreshAnchors(); return; }
+    const back = sayTakenBack(ctx, anchorsSaid, taken, 'convanchputback', async (button) => {
+      await putBackAnchor(ctx, anchorsSaid, taken, button, async (restored) => {
+        await refreshAnchors();
+        focusAnchorRow(restored.id);
+      });
+    });
+    await refreshAnchors();
+    // **THE CARET FOLLOWS THE ROW THAT IS GONE.** It was on the take-back
+    // button, which the redraw removed; before this it fell to `document.body`
+    // and the way back was twenty-four stops of tabbing. It lands on the way
+    // back where there is one, and on the sentence where there is not.
+    if (back !== null) back.focus(); else anchorsSaid.focus();
   };
 
   const findTyping = settler(ARCH_SETTLE_MS, () => {
@@ -5256,20 +5537,62 @@ export function mountDocument(ctx, host, outline, back, roster = NO_LANES, landA
    * NOT MARKED: a button that opens one field. MARKED: the label, with rename
    * and take-back beside it. The third is the one a two-state control loses —
    * a write that REFUSED — and it is drawn in place rather than swallowed.
+   *
+   * **`after` IS WHAT THE WRITE THAT CAUSED THIS REDRAW LEFT TO SAY**, and it
+   * exists because the redraw is the thing that destroys it. A write here ends
+   * in `redrawMe`, which replaces the whole bar: the sentence in `said` and the
+   * caret on the button both went out with the old element, so the caret fell
+   * to `document.body` — measured at **29 tab stops** back to this row — and
+   * nothing was announced at all. Three fields, each optional:
+   *
+   *   `say`    a keyed sentence to put in the rebuilt live region
+   *   `taken`  the row a take-back removed, which draws the sentence AND the
+   *            way back when it is a point he marked himself
+   *   `focus`  selectors tried in order against the rebuilt bar
    */
-  const markControl = (nodeIndex) => {
+  const markControl = (nodeIndex, after = null) => {
     const node = nodes[nodeIndex];
     const bar = el('div', 'tvanchorbar');
     const said = el('p', 'small tvanchorsaid');
     said.setAttribute('aria-live', 'polite');
     said.hidden = true;
 
-    const redrawMe = () => {
+    const redrawMe = (next = null) => {
       const row = live.get(nodeIndex);
       if (row === undefined) return;
       const old = row.querySelector('.tvanchorbar');
-      if (old !== null) old.replaceWith(markControl(nodeIndex));
+      if (old === null) return;
+      const built = markControl(nodeIndex, next);
+      old.replaceWith(built);
       schedule();
+      // **THE CARET IS PLACED AFTER THE BAR IS IN THE DOCUMENT**, never inside
+      // `markControl`: an element that is not in the tree cannot take focus.
+      if (next === null || next.focus === undefined) return;
+      for (const selector of next.focus) {
+        const target = built.querySelector(selector);
+        if (target !== null) { target.focus(); return; }
+      }
+    };
+
+    /**
+     * Put the previous write's sentence back into the region this redraw just
+     * rebuilt, and draw the way back when the row that went was his own.
+     */
+    const carry = () => {
+      if (after === null) return;
+      if (after.taken !== undefined) {
+        sayTakenBack(ctx, said, after.taken, 'tvjump tvanchorputback', async (button) => {
+          await putBackAnchor(ctx, said, after.taken, button, async () => {
+            await loadAnchors();
+            redrawMe({ focus: ['.tvanchorrename'], say: 'conv.anchors.putBackDone' });
+          });
+        });
+        return;
+      }
+      if (after.say !== undefined) {
+        said.hidden = false;
+        said.replaceChildren(...ctx.t(after.say));
+      }
     };
 
     const standing = anchorsHere.get(node.o);
@@ -5299,17 +5622,31 @@ export function mountDocument(ctx, host, outline, back, roster = NO_LANES, landA
         said,
         endpoint: '/api/conversations/anchors/relabel',
         body: (label) => ({ id: standing.id, label }),
-        done: async () => { await loadAnchors(); redrawMe(); },
+        done: async (answer) => {
+          await loadAnchors();
+          redrawMe({
+            focus: ['.tvanchorrename'],
+            say: answer.tookOwnership === true
+              ? 'conv.anchors.tookOwnership' : 'conv.anchors.relabelled',
+          });
+        },
       });
       const drop = dropWrite(ctx, {
-        id: standing.id,
+        anchor: standing,
         said,
         dropClass: 'tvjump tvanchordrop',
-        done: async () => { await loadAnchors(); redrawMe(); },
+        done: async (taken) => {
+          await loadAnchors();
+          // The bar that comes back is the UNMARKED one, so the way back is
+          // the first thing on it when there is one and the offer to mark the
+          // point again is the fallback.
+          redrawMe({ focus: ['.tvanchorputback', '.tvanchormark'], taken });
+        },
       });
       // A box that opens changes the row's height, so the well re-measures.
       boxToggle(rename, box, input, () => { schedule(); });
       bar.append(chip, label, rename, drop, box, said);
+      carry();
       return bar;
     }
 
@@ -5333,10 +5670,14 @@ export function mountDocument(ctx, host, outline, back, roster = NO_LANES, landA
         byteOffset: node.o,
         label,
       }),
-      done: async () => { await loadAnchors(); redrawMe(); },
+      done: async () => {
+        await loadAnchors();
+        redrawMe({ focus: ['.tvanchorrename'], say: 'conv.anchors.marked' });
+      },
     });
     boxToggle(mark, box, input, () => { schedule(); });
     bar.append(mark, box, said);
+    carry();
     return bar;
   };
 

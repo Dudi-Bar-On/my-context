@@ -16,17 +16,17 @@ tags:
   - bounded-list
   - "plan:confirm"
   - "seq:3"
-  - "state:todo"
+  - "state:done"
 origin: human
 source_file: null
 source_anchor: null
 source_checksum: null
 valid_from: 2026-09-13
 valid_until: null
-checksum: 4a5abd3dd09f08c5
+checksum: 931ef3fc2cb4cf8a
 plan: confirm
 seq: "3"
-state: todo
+state: done
 priority: "2"
 ---
 

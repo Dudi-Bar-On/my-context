@@ -341,6 +341,41 @@ export const strings = {
   'conv.anchors.saving': 'Saving…',
   'conv.anchors.drop': 'Take it back',
   'conv.anchors.dropping': 'Taking it back…',
+  /* ── WHAT A TAKE-BACK SAYS AFTERWARDS, AND THE ONE WAY BACK ────────────
+   *
+   * `TASK-take-it-back-deletes-immediately-with-no-confirm-no-undo-and`.
+   * **NO CONFIRM BEFORE THE ACT** — the owner's ruling of 2026-09-11 stands,
+   * and a bookmark does not get a dialog. What was missing was on the OTHER
+   * side of it: nothing was announced, and on the one class of point nothing
+   * can regenerate there was no route back.
+   *
+   * Two sentences and not one, because the two origins are two different
+   * facts. The automatic pass reads back every point it marked and never
+   * reads one you marked, so a point marked for you comes back by itself —
+   * and the button that brings it back is already on this card. A point you
+   * marked yourself does not, ever, which is why that one and only that one
+   * carries an undo.
+   */
+  'conv.anchors.droppedOwn': 'Taken back. You marked this point yourself, so nothing marks it again — the automatic pass never reads a point you marked. It can go back where it was:',
+  'conv.anchors.droppedAuto': 'Taken back. This point was marked for you, so the automatic pass marks it again the next time it runs — the button above this list runs it now.',
+  'conv.anchors.putBack': 'Put it back',
+  'conv.anchors.puttingBack': 'Putting it back…',
+  // **SAID RATHER THAN LEFT TO BE FOUND**: putting a point back is marking it
+  // again through the same door, so it is dated now and filed as yours. That
+  // is the whole of what differs, and a screen that hid it would be claiming
+  // an undo it does not have.
+  'conv.anchors.putBackDone': 'Put back, at the same point in the conversation and under the same name. It is dated today and counts as a point you marked, because putting one back is marking it again rather than undoing a deletion.',
+  'conv.anchors.marked': 'Marked. This point is yours — the automatic pass never changes or takes back a point you marked.',
+  /* ── THE THREE ANSWERS THE WRITE ROUTES SEND THAT NOBODY USED TO READ ───
+   *
+   * `TASK-the-anchor-write-routes-answer-indexed-false-and-no-client`. Each
+   * of these is a `200`, so nothing threw and the screen drew "Renamed" over
+   * a rename that had not happened. `INV-nothing-is-dropped-silently`.
+   */
+  'conv.anchors.dropNone': 'Nothing was taken back: this point was already gone, which is what a second press on a list that had moved on answers.',
+  'conv.anchors.writeNotIndexed': 'Not saved. This workspace has no archive index yet, so there is no point here to change — the words have never been read in. Nothing about this row has moved.',
+  'conv.anchors.writeNoRow': 'Not saved, as far as this screen can tell: the write was accepted and the point could not be read back afterwards, so what this row shows is not known to be what is stored. Reload the screen before trusting it.',
+  'conv.anchors.writeUnread': 'Not saved. The server answered in a shape this screen does not understand, so nothing here can be trusted to describe what is stored.',
   // ── RUN THE AUTOMATIC PASS — owner ruling 2026-09-12 ───────────────────
   'conv.anchors.sweep': 'Mark what is a point by nature',
   'conv.anchors.sweepSub': 'Reads the whole archive and marks every table and every ruling you gave that it finds. Safe to press again: it only ever changes points it marked itself, and never one you marked or named. On a full archive this takes about nine seconds.',

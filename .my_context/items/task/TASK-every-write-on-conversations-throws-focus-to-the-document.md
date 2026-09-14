@@ -16,17 +16,17 @@ tags:
   - write-flow
   - "plan:confirm"
   - "seq:1"
-  - "state:todo"
+  - "state:done"
 origin: human
 source_file: null
 source_anchor: null
 source_checksum: null
 valid_from: 2026-09-13
 valid_until: null
-checksum: 21f29b873f4e1573
+checksum: bff640d42b1bf7b4
 plan: confirm
 seq: "1"
-state: todo
+state: done
 priority: "2"
 ---
 

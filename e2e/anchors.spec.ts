@@ -250,7 +250,22 @@ test('a marked point shows what it carries: name, kind, who marked it, when, and
   const row = page.locator('.convanchor', { hasText: TABLE_HEADER });
   await expect(row).toHaveCount(1, { timeout: 20_000 });
   const head = row.locator('.convanchorwhere');
-  await expect(head.locator('.convanchorkind')).toHaveText('a table');
+  /**
+   * **THE WORD, AND THE MARK BESIDE IT** — corrected 2026-09-14, red since
+   * `06cb85e7` and never noticed, because that commit put a glyph on this span
+   * and this file still asked for the bare word.
+   *
+   * `toHaveText('a table')` is now WRONG to assert rather than merely failing:
+   * `glyphed` renders the mark as a real text node beside the keyed word —
+   * `aria-hidden`, bidi-isolated, and never instead of the word — so the
+   * element's text is `▦a table` by design. What the ruling actually requires
+   * is what these two assertions now say: the word is there, and the mark did
+   * not replace it.
+   */
+  await expect(head.locator('.convanchorkind')).toContainText('a table');
+  await expect(head.locator('.convanchorkind .g'),
+    'the kind is drawn as a glyph INSTEAD of its word, which is the one thing the glyph rule '
+    + 'forbids').toHaveCount(1);
   await expect(head.locator('.convanchororigin')).toHaveText('marked for you');
   // The BYTE, which is the detail that tells two marks in one session apart —
   // and the one a reader needs to check a mark against the CLI.
@@ -275,7 +290,13 @@ test('a table and a ruling are already marked, and nothing else is', async ({ pa
     + 'detector that widened, or a report detector that came back, would add a row here.',
   ).toEqual([RULING, TABLE_HEADER].sort());
 
-  const kinds = await rows.locator('.convanchorkind').allInnerTexts();
+  // The keyed words only — the glyph beside each is `.g`, asserted as a mark
+  // beside its word by the test above rather than compared as text here.
+  const kinds = await rows.locator('.convanchorkind').evaluateAll(
+    (spans) => spans.map((n) => {
+      const mark = n.querySelector('.g')?.textContent ?? '';
+      return (n.textContent ?? '').slice(mark.length).trim();
+    }));
   expect(kinds.sort()).toEqual(['a ruling you gave', 'a table']);
 
   await page.screenshot({ path: 'e2e/screens/anchors-automatic.png', fullPage: true });

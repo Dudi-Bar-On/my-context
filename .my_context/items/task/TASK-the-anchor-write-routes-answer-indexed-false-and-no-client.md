@@ -17,17 +17,17 @@ tags:
   - silent-failure
   - "plan:confirm"
   - "seq:4"
-  - "state:todo"
+  - "state:done"
 origin: human
 source_file: null
 source_anchor: null
 source_checksum: null
 valid_from: 2026-09-13
 valid_until: null
-checksum: 0cf82af98e64630b
+checksum: e480c5f070283c2c
 plan: confirm
 seq: "4"
-state: todo
+state: done
 priority: "2"
 ---
 

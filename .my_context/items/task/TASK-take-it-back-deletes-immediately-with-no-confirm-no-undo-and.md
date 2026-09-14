@@ -16,17 +16,17 @@ tags:
   - confirm
   - "plan:confirm"
   - "seq:2"
-  - "state:todo"
+  - "state:done"
 origin: human
 source_file: null
 source_anchor: null
 source_checksum: null
 valid_from: 2026-09-13
 valid_until: null
-checksum: b09b4f0d519f9631
+checksum: 03dafc1e6b49f94d
 plan: confirm
 seq: "2"
-state: todo
+state: done
 priority: "2"
 ---
 

@@ -3917,7 +3917,7 @@ wa-tree .wa-count{margin-inline-start:var(--sp-2);color:var(--dim);
 .convhitmatch{color:var(--gold);background:transparent;font-weight:600}
 .convhitmark{margin-block-start:var(--sp-1)}
 .convhitmarkbtn,.convmarksave,.convanchorrename,.convanchordrop,
-.convanchorrenamesave,.convanchsweep{
+.convanchorrenamesave,.convanchsweep,.convanchputback{
   inline-size:auto;font:600 var(--fs-00)/1.2 var(--mono);
   color:var(--dim);background:var(--panel-2);border:2px solid var(--dim);
   border-radius:var(--r-sm);padding:var(--sp-1) var(--sp-2);cursor:pointer}
@@ -3926,12 +3926,14 @@ wa-tree .wa-count{margin-inline-start:var(--sp-2);color:var(--dim);
 .convanchorrename:hover,.convanchorrename:focus-visible,
 .convanchordrop:hover,.convanchordrop:focus-visible,
 .convanchorrenamesave:hover,.convanchorrenamesave:focus-visible,
-.convanchsweep:hover,.convanchsweep:focus-visible{color:var(--gold);
+.convanchsweep:hover,.convanchsweep:focus-visible,
+.convanchputback:hover,.convanchputback:focus-visible{color:var(--gold);
   border-color:var(--gold)}
 /* A disabled control must still be legible — a write in flight that faded to
    the UA's own grey would read as a broken button rather than a busy one. */
 .convmarksave:disabled,.convanchorrename:disabled,.convanchordrop:disabled,
-.convanchorrenamesave:disabled,.convanchsweep:disabled{opacity:.55;cursor:progress}
+.convanchorrenamesave:disabled,.convanchsweep:disabled,
+.convanchputback:disabled{opacity:.55;cursor:progress}
 .convhitcmd{margin-block-start:var(--sp-1)}
 .convhitmarked{white-space:nowrap}
 .convarchidle,.convarchwait,.convarchnote,.convarchscopenote,.convarchcount,
@@ -3971,6 +3973,22 @@ wa-tree .wa-count{margin-inline-start:var(--sp-2);color:var(--dim);
 .convanchorsaid,.convmarksaid,.convanchsweepsaid,.convanchsweepsub,
 .convanchsweepcapped,.convanchcount{margin-block-start:var(--sp-1);
   color:var(--dim)}
+/* ── WHAT A WRITE LEFT BEHIND, BESIDE THE LIST AND NOT INSIDE IT ─────────
+   `TASK-take-it-back-deletes-immediately-with-no-confirm-no-undo-and`. The
+   announcement of a take-back cannot live on the row it describes, because
+   that row is exactly what the write removed: the sentence went out with the
+   element before anything could read it. So it sits between the card's
+   controls and the list, outlives the redraw, and carries the one way back.
+
+   No `display` is set, so the user agent's `[hidden]{display:none}` still
+   governs it — the trap `.convanchorrenamebox[hidden]` twenty lines up exists
+   to record. */
+.convanchsaid{margin-block:var(--sp-2);padding-inline-start:var(--sp-2);
+  border-inline-start:2px solid var(--gold);color:var(--dim)}
+.convanchsaid p{margin-block:var(--sp-1)}
+/* The name of the point that was taken back, isolated for direction: this
+   archive is half Hebrew and a label is the half a person wrote. */
+.convtakenname{font-size:var(--fs-0);overflow-wrap:anywhere}
 /* The list's own row shape, declared rather than borrowed through
    `.convfilter`: that class is a test's handle for the sessions card, and
    wearing it here made a one-card locator resolve to two. */
