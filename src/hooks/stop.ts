@@ -6,7 +6,8 @@ import {
 import { advanceMirrors, type MirrorReport } from '../core/conversation-mirror.ts';
 import { reconcileAnchors, type AnchorReconcile } from '../core/anchor-file.ts';
 import {
-  TURN_PROSE_BUDGET_MS, markAnchorsOnTurn, type TurnAnchorReport,
+  ANCHOR_PROBE_LIMIT, ANCHOR_PROBE_PAGES, TURN_PROSE_BUDGET_MS, markAnchorsOnTurn,
+  type TurnAnchorReport,
 } from '../core/anchor-pass.ts';
 import {
   occupancyStandDownLine, readOccupancy, type UnmeasurableWhy,
@@ -1227,6 +1228,29 @@ export function refreshNote(report: ConversationRefresh | null): string {
   const anchorsDeferred = ran === null ? 0 : ran.search.deferred;
   const stoodDown = auto.did === 'stood-down' ? auto.leftMs : null;
   /**
+   * **THE PASS WAS STARTED, READ NOTHING, AND THE ARCHIVE IS BEHIND ITS
+   * FILES** — `TASK-the-automatic-marking-stopped-and-said-nothing-because-a`,
+   * closing condition 2: *"it cannot silently stop again"*.
+   *
+   * This is the clause that did not exist, and its absence is the defect. A
+   * pass that could not look produced a report with no anchor numbers in it,
+   * which is byte-for-byte what an ordinary quiet turn produces — so half an
+   * hour of dead marking read as half an hour of nothing happening, on the one
+   * surface that records what each turn did.
+   *
+   * It is deliberately NOT the same clause as `deferred` beside it. Deferral
+   * is this hook's own budget declining to read a source it can see; this is
+   * the archive's rows disagreeing with the files on disk, which no budget
+   * here controls and which does not heal by waiting.
+   *
+   * **Read only when the pass READ NOTHING.** A turn that marked anchors is a
+   * turn the chain worked on, and a live transcript is always a few hundred
+   * bytes ahead of its row while it is being typed into — reporting that as a
+   * stall every turn would be the "still up to date" per-turn row `upkeepNote`
+   * exists to refuse, and would bury the case that matters.
+   */
+  const couldNotLook = ran !== null && ran.did === 'could-not-look' ? ran.stale : null;
+  /**
    * **The pass that FAILED, which had no clause at all while its neighbour
    * `stood-down` had one** —
    * `TASK-four-failure-states-are-modelled-in-the-type-and-read-by`, first
@@ -1279,6 +1303,18 @@ export function refreshNote(report: ConversationRefresh | null): string {
     + anchorsMoved + anchorsDeferred + (stoodDown === null ? 0 : 1)
     + (overranMs === null ? 0 : 1)
     + (autoFailed ? 1 : 0) + (anchorsAdopted === null ? 0 : 1) + (anchorFileFailed ? 1 : 0)
+    // **A pass that could not look counts as movement even though nothing
+    // moved**, on the refusal clause's rule below and for a stronger reason:
+    // it is the exact state this whole row failed to report for over half an
+    // hour on 2026-09-15. A turn on which the archive is behind its files and
+    // the pass therefore saw nothing must never again produce the same row as
+    // a turn on which there was genuinely nothing to mark.
+    + (couldNotLook === null ? 0 : 1)
+    // **And a probe that filled its bound**, which was computed and discarded.
+    // `capped` has existed on `AutoAnchorReport` since the pass was written
+    // and NOTHING had ever read it — so the run in which a probe could not
+    // reach every candidate looked exactly like the run in which it did.
+    + (autoAnchors?.capped === true ? 1 : 0)
     // **A refusal counts as movement even though nothing moved**, and it is
     // the one entry in this sum that is not about work done. It is the
     // opposite: it says the archive was not looked at, so every other number
@@ -1391,6 +1427,40 @@ export function refreshNote(report: ConversationRefresh | null): string {
     parts.push(
       `${anchorsDeferred} transcript(s) were left unread by the turn's search-index budget, so ` +
       'anchors in them wait for a later turn or for `mycontext conversation rebuild`',
+    );
+  }
+  // **THE STALL, and it is the clause this task exists to add.** It sits
+  // before the stand-down because it is the graver of the two and they are
+  // easily confused: a stand-down is this turn declining to spend its budget
+  // and the next turn fixes it, while this says the archive's rows are behind
+  // the files they name, which does not fix itself by waiting.
+  //
+  // The BYTES are named for `refreshNote`'s own stated reason — a number is
+  // what separates "a turn is being written into it right now" from "this has
+  // been frozen since eleven o'clock", and a reader who is told only that
+  // something is behind cannot tell those apart either.
+  if (couldNotLook !== null) {
+    const worst = couldNotLook
+      .reduce((a, b) => ((b.behind ?? Infinity) > (a.behind ?? Infinity) ? b : a));
+    const how = worst.behind === null
+      ? `${worst.file} would not answer a stat at all`
+      : `${worst.key} is ${worst.behind} byte(s) behind its transcript`;
+    parts.push(
+      `the automatic anchor pass READ NOTHING and the archive is behind the files it indexes — `
+      + `${couldNotLook.length} source(s), worst: ${how}. This is NOT "there was nothing to `
+      + 'mark": the pass was never shown the turns, so anchors in them are not late, they are '
+      + 'not coming until the archive catches up or `mycontext conversation rebuild` is run',
+    );
+  }
+  // **A probe that filled its bound**, which means there are candidates it
+  // never saw. Before 2026-09-15 this was a permanent and unreported state of
+  // this workspace — the `"|---"` probe matched 777 spans and returned 200 —
+  // and the 577 behind it could not be marked by any run at all.
+  if (autoAnchors?.capped === true) {
+    parts.push(
+      `an anchor probe filled its bound of ${ANCHOR_PROBE_PAGES * ANCHOR_PROBE_LIMIT} `
+      + 'candidate(s), so there are turns it did not reach and anchors that will not be written '
+      + 'until the bound is raised',
     );
   }
   // The stand-down, which is the budget doing its job and must still be

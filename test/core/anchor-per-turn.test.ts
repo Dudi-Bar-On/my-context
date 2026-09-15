@@ -1,4 +1,4 @@
-// @basis REQ-every-anchor-capability-is-reachable-from-the-screen-and-a
+// @basis REQ-every-anchor-capability-is-reachable-from-the-screen-and-a, TASK-the-automatic-marking-stopped-and-said-nothing-because-a, INV-a-turn-that-qualifies-for-an-automatic-mark-carries-one-when
 /**
  * **CREATION PATH 1: A TRANSCRIPT BEING APPENDED TO GETS ITS ANCHORS AS IT
  * GOES** — owner's design, 2026-09-12.
@@ -25,12 +25,17 @@
  */
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { appendFileSync, mkdirSync, mkdtempSync, writeFileSync } from 'node:fs';
+import {
+  appendFileSync, mkdirSync, mkdtempSync, renameSync, statSync, writeFileSync,
+} from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { removeTree } from '../helpers/tmp.ts';
 import { runCli } from '../../src/cli/index.ts';
-import { markAnchorsOnTurn, markAutomaticAnchors } from '../../src/core/anchor-pass.ts';
+import {
+  ANCHOR_PROBE_LIMIT, ANCHOR_PROBE_PAGES, markAnchorsOnTurn, markAutomaticAnchors,
+} from '../../src/core/anchor-pass.ts';
+import { archiveFreshness, buildSearchIndex } from '../../src/core/conversation-search.ts';
 import {
   ConversationIndex, projectDirName, rebuildConversations,
 } from '../../src/core/conversation-index.ts';
@@ -482,5 +487,272 @@ test('the sweep skips its own rows in bytes that did not move, and the rebuild s
         + 'byte floor has stopped being a deferral and become a hole',
       );
     } finally { full.close(); }
+  } finally { tidy(f); }
+});
+
+/* ══ 2026-09-15 — THE DEFECT THAT KILLED MARKING FOR HALF AN HOUR ══════════
+ *
+ * `TASK-the-automatic-marking-stopped-and-said-nothing-because-a` and
+ * `INV-a-turn-that-qualifies-for-an-automatic-mark-carries-one-when`.
+ *
+ * Everything above this line asserts the pass on an archive SMALLER than
+ * `ANCHOR_PROBE_LIMIT`, where every probe returns everything it matches and
+ * the ranking is therefore invisible. That is the whole reason the suite was
+ * green throughout: the defect only exists once an archive holds more
+ * candidates than a probe returns, and the fixtures never built one.
+ *
+ * Measured on the owner's live workspace on the day: the `"|---"` probe
+ * matched 777 spans and returned the 200 best by `bm25()`, a ranking with no
+ * opinion about recency. Of 15 turns since 10:30 that the grammar marks as
+ * tables, 6 were inside that window and exactly those 6 carried anchors.
+ */
+
+/**
+ * **THE REPRODUCTION. A new table in an archive that already holds more tables
+ * than one probe returns.**
+ *
+ * The precondition is ASSERTED rather than assumed, and that is the point of
+ * the first two assertions: a fixture that quietly stopped producing an
+ * over-full probe window would turn this into a test of nothing, passing
+ * forever over the exact defect it was written for.
+ */
+test('a turn is marked even when the archive holds more tables than one probe returns', () => {
+  const f = fixture();
+  try {
+    // More candidates than one probe may return, each a BETTER-RANKED match
+    // than the turn that arrives last: `bm25()` normalises by document length,
+    // so a bare table in a short turn outranks the same table inside a long
+    // one. That is not a trick — it is the shape of the archive this failed
+    // on, where the crowded-out turns were the ones with prose around them.
+    const heavy = '| a | b |\n| --- | --- |\n| 1 | 2 |';
+    for (let i = 0; i < ANCHOR_PROBE_LIMIT + 50; i += 1) {
+      turn(f, say('assistant', heavy, `2026-09-10T10:${String(i % 60).padStart(2, '0')}:00.000Z`));
+    }
+    assert.notEqual(markAnchorsOnTurn(f.dbPath), null,
+      'the pass must run at all before anything below means much');
+
+    // THE NEW TURN: one table, arriving last, in a long turn — the shape of
+    // every table the owner was actually looking at.
+    const fresh = 'here is the measurement, and there is a great deal of prose around it so that '
+      + 'the span is long and its term frequency low, which is exactly the shape a relevance '
+      + 'ranking puts last. it goes on for a while precisely so that the ranking has something '
+      + 'to push down, in the way a real answer with a table at the end of it does.\n\n'
+      + '| reader | sees |\n| --- | --- |\n| the table | nothing |\n';
+    turn(f, say('assistant', fresh, '2026-09-10T11:00:00.000Z'));
+
+    // ── THE PASS RUNS FIRST, AND ONLY THEN IS THE WINDOW INSPECTED ────────
+    //
+    // A first draft read the prose index here to state the preconditions, and
+    // reading it meant BUILDING it — which consumed the very tail the pass was
+    // about to be measured on, and turned the run below into `nothing-moved`.
+    // The candidate set is the same either way (the pass only adds spans, and
+    // the ranking over them is the same ranking), so the window is asked about
+    // afterwards and the pass faces the state a real turn faces.
+    const report = markAnchorsOnTurn(f.dbPath);
+    assert.notEqual(report, null, 'the pass failed outright');
+
+    const index = ConversationIndex.open(f.dbPath);
+    let outsideWindow: boolean;
+    let candidates: number;
+    try {
+      // The probe string is the one that actually matches these tables — a
+      // window computed with a probe the fixture does not produce would be
+      // empty, and an empty window contains nothing, which would make
+      // PRECONDITION 2 below pass by vacuum.
+      const all = index.matchProse('"| ---"', {}, ANCHOR_PROBE_LIMIT * ANCHOR_PROBE_PAGES);
+      candidates = all.length;
+      const window = index.matchProse('"| ---"', {}, ANCHOR_PROBE_LIMIT);
+      assert.equal(window.length, ANCHOR_PROBE_LIMIT,
+        'the relevance window did not even fill, so there is no truncation here to prove '
+        + 'anything about');
+      const newest = all.reduce((a, b) => (b.byteOffset > a.byteOffset ? b : a));
+      outsideWindow = !window.some((h) => h.byteOffset === newest.byteOffset);
+    } finally { index.close(); }
+
+    // ── PRECONDITION 1, asserted: the archive really is over-full ──────────
+    assert.ok(
+      candidates > ANCHOR_PROBE_LIMIT,
+      `the fixture built ${candidates} table span(s), which is not more than the `
+      + `${ANCHOR_PROBE_LIMIT} a probe returns — so this test is no longer standing on the `
+      + 'condition the defect needs and proves nothing about it',
+    );
+    // ── PRECONDITION 2, asserted: the newest table really is ranked out ────
+    assert.ok(
+      outsideWindow,
+      `the newest table span is inside the top-${ANCHOR_PROBE_LIMIT} relevance window, so the `
+      + 'unscoped probe would have found it anyway and this test cannot tell the fix from its '
+      + 'absence. The fixture has stopped carrying the defect.',
+    );
+
+    // ── AND THE CLAIM ─────────────────────────────────────────────────────
+    assert.equal(report!.did, 'marked', 'the pass did not run on a turn that appended a table');
+    assert.ok(
+      labels(f).includes('reader | sees'),
+      'THE DEFECT IS BACK. A table the grammar recognises was appended, the archive read it, and '
+      + 'the pass was never shown it — because the probe asked for the best '
+      + `${ANCHOR_PROBE_LIMIT} matches in the whole archive instead of the matches in what was `
+      + 'appended. This is the exact failure of 2026-09-15: every layer green, feature dead.',
+    );
+  } finally { tidy(f); }
+});
+
+/**
+ * **AND THE UNSCOPED REBUILD REACHES EVERY CANDIDATE, WHICH IT COULD NOT.**
+ *
+ * The other half of the same measurement, and the one a per-turn fix does not
+ * touch: with 777 table spans and a bound of 200, the 577 behind them could
+ * not be marked by ANY run — including `mycontext conversation rebuild`, which
+ * is the run whose whole job is to reach everything. A reader who noticed a
+ * missing bookmark and ran the rebuild would have got the same 200 back.
+ */
+test('the unscoped rebuild marks past one probe page, and says so when it cannot', () => {
+  const f = fixture();
+  try {
+    const rows = ANCHOR_PROBE_LIMIT + 40;
+    for (let i = 0; i < rows; i += 1) {
+      turn(f, say('assistant',
+        `| run ${i} | value |\n| --- | --- |\n| ${i} | ${i * 2} |`,
+        `2026-09-10T12:${String(i % 60).padStart(2, '0')}:00.000Z`));
+    }
+    const index = ConversationIndex.open(f.dbPath);
+    let report;
+    try {
+      buildSearchIndex(index);
+      report = markAutomaticAnchors(index);
+    } finally { index.close(); }
+
+    assert.ok(
+      report.marked > ANCHOR_PROBE_LIMIT,
+      `the rebuild marked ${report.marked} of ${rows} table turns. A bound of `
+      + `${ANCHOR_PROBE_LIMIT} has become a ceiling on how many bookmarks this archive can ever `
+      + 'hold, and the run that exists to reach everything reaches 200 of them',
+    );
+    assert.equal(
+      report.capped, false,
+      'the pass reports itself capped on an archive it exhausted in '
+      + `${ANCHOR_PROBE_PAGES} page(s) — which would make the disclosure meaningless by firing `
+      + 'on every ordinary rebuild',
+    );
+  } finally { tidy(f); }
+});
+
+/**
+ * **THE STALL, REPRODUCED: a frozen row against a growing file, and the
+ * product SAYS SO** — the item's closing condition 3, in its own words.
+ *
+ * *"Freeze the recorded size against a growing file and assert the product
+ * SAYS so. Any fix whose test only proves the happy path leaves exactly the
+ * hole this defect lived in — every layer was already green while the feature
+ * was dead."*
+ *
+ * Appending WITHOUT the scan is the freeze, and it is not contrived: it is
+ * exactly what a killed hook, a stood-down pass, or a refresh that lost its
+ * lock leaves behind — a conversations row that has stopped describing the
+ * file it names, while the file goes on growing.
+ */
+test('a row behind its file is reported as "could not look", never as "nothing to do"', () => {
+  const f = fixture();
+  try {
+    turn(f, say('user', `follow ${RULING}`, '2026-09-10T09:00:02.000Z'));
+    assert.equal(markAnchorsOnTurn(f.dbPath)!.anchors!.marked, 1, 'the pass must start level');
+
+    // LEVEL: nothing moved and nothing is behind. This is the answer that must
+    // stay distinguishable from the one below it.
+    const quiet = markAnchorsOnTurn(f.dbPath);
+    assert.equal(quiet!.anchors, null);
+    assert.equal(
+      quiet!.did, 'nothing-moved',
+      'an archive level with its files that read nothing had nothing to read, and calling that '
+      + 'anything else would make the disclosure below fire on every ordinary turn',
+    );
+    assert.deepEqual(quiet!.stale, [], 'and nothing is behind');
+
+    // ── THE FREEZE. The file grows; the row does not. ─────────────────────
+    const table = '| reader | sees |\n| --- | --- |\n| the table | nothing |';
+    appendFileSync(f.transcript, JSON.stringify(
+      say('assistant', table, '2026-09-10T09:00:03.000Z'),
+    ) + '\n');
+    // deliberately NO rebuildConversations — that is the stall
+
+    const stalled = markAnchorsOnTurn(f.dbPath);
+    assert.notEqual(stalled, null, 'the pass failed outright');
+    assert.equal(
+      stalled!.anchors, null,
+      'the pass cannot mark what the archive has not read, and pretending otherwise would be a '
+      + 'worse defect than the silence',
+    );
+    assert.equal(
+      stalled!.did, 'could-not-look',
+      'THE SILENCE IS BACK. The archive is behind the file it indexes and the pass answered the '
+      + 'same thing it answers on a quiet turn. Those are the two answers '
+      + '`STD-nothing-to-do-and-could-not-look-are-different-answers` forbids sharing a value, '
+      + 'and merging them is what made half an hour of dead marking invisible on 2026-09-15.',
+    );
+    const behind = stalled!.stale.find((s) => s.key === SESSION);
+    assert.notEqual(behind, undefined, 'and it must name WHICH source, not merely that one is');
+    assert.equal(
+      behind!.behind, statSync(f.transcript).size - behind!.rowBytes,
+      'the disclosure must carry the NUMBER. "behind" without "by how much" cannot separate a '
+      + 'transcript being typed into right now from one frozen for half an hour, which is the '
+      + 'distinction `INV-a-turn-that-qualifies-for-an-automatic-mark-carries-one-when` asks '
+      + 'the screen for in as many words.',
+    );
+
+    // ── AND IT HEALS, which is the "it must work again" half ─────────────
+    rebuildConversations(f.dbPath, process.env, path.dirname(path.join(f.cwd, '.my_context')));
+    const healed = markAnchorsOnTurn(f.dbPath);
+    assert.equal(healed!.did, 'marked',
+      'the scan caught up, so the pass must have been offered the turn it could not see before');
+    assert.ok(
+      labels(f).includes('reader | sees'),
+      'the table that arrived during the stall was never marked once the archive caught up — so '
+      + 'the stall does not merely delay bookmarks, it loses them',
+    );
+    assert.deepEqual(
+      markAnchorsOnTurn(f.dbPath)!.stale, [],
+      'and the archive reports itself level again — a disclosure that never clears is an alarm '
+      + 'nobody reads',
+    );
+  } finally { tidy(f); }
+});
+
+/**
+ * **A FILE THAT WILL NOT ANSWER IS NOT A FILE THAT IS LEVEL**, and this is the
+ * assertion that keeps the detector from being the defect it was written to
+ * prevent. `behind: null` and the row still returned; `0` would be a measured
+ * zero the measurement never made.
+ */
+test('a transcript that will not stat is disclosed, not silently counted as caught up', () => {
+  const f = fixture();
+  try {
+    turn(f, say('user', `follow ${RULING}`, '2026-09-10T09:00:02.000Z'));
+    markAnchorsOnTurn(f.dbPath);
+
+    const index = ConversationIndex.openReadOnlyChecked(f.dbPath);
+    try {
+      assert.deepEqual(archiveFreshness(index), [], 'level before the file goes away');
+    } finally { index.close(); }
+
+    const moved = `${f.transcript}.moved`;
+    renameSync(f.transcript, moved);
+    try {
+      const gone = ConversationIndex.openReadOnlyChecked(f.dbPath);
+      try {
+        const answer = archiveFreshness(gone);
+        const row = answer.find((s) => s.key === SESSION);
+        assert.notEqual(
+          row, undefined,
+          'a transcript the archive holds a row for and cannot stat came back as CAUGHT UP. That '
+          + 'is the substitution `STD-nothing-to-do-and-could-not-look-are-different-answers` '
+          + 'names, made by the function written to prevent it.',
+        );
+        assert.equal(row!.fileBytes, null);
+        assert.equal(
+          row!.behind, null,
+          'reported as a measured number of bytes behind. It is not behind by any number — the '
+          + 'file would not answer, and `0` here would be a measurement nobody took',
+        );
+      } finally { gone.close(); }
+    } finally { renameSync(moved, f.transcript); }
   } finally { tidy(f); }
 });

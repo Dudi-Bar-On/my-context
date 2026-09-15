@@ -690,23 +690,39 @@ test('the row says what the anchor pass marked, and says nothing on the ordinary
   };
   const search: SearchBuildReport = {
     sources: 1, indexed: 0, appended: 1, skipped: 0, removed: 0, spans: 3,
-    bytesRead: 900, read: ['s1'], readFrom: [0], deferred: 0, ms: 4,
+    bytesRead: 900, read: ['s1'], readFrom: [0], deferred: 0, stale: [], ms: 4,
   };
   const anchors: AutoAnchorReport = {
     probed: 12, found: 2, marked: 0, dropped: 0, relabelled: 0, capped: false, ms: 9,
   };
+  /**
+   * **`did` is DERIVED here exactly as `markAnchorsOnTurn` derives it**, and
+   * never taken as a parameter. A fixture that let a caller assert
+   * `did: 'could-not-look'` alongside an empty `stale` would be proving that
+   * `refreshNote` renders a field, which is not the claim — the claim is that
+   * a build which read nothing while the archive is behind its files reaches
+   * the row, and that a build which read nothing with everything level does
+   * not. Letting the fixture set the discriminant by hand is precisely the
+   * "beware a proof whose fixture carried its power" trap.
+   */
   const ran = (
     a: Partial<AutoAnchorReport> | null, s: Partial<SearchBuildReport> = {},
-  ): ConversationRefresh => ({
-    ...base,
-    autoAnchors: {
-      did: 'ran',
-      report: {
-        search: { ...search, ...s },
-        anchors: a === null ? null : { ...anchors, ...a },
+  ): ConversationRefresh => {
+    const built: SearchBuildReport = { ...search, ...s };
+    return {
+      ...base,
+      autoAnchors: {
+        did: 'ran',
+        report: {
+          search: built,
+          anchors: a === null ? null : { ...anchors, ...a },
+          did: a !== null ? 'marked'
+            : (built.stale.length === 0 ? 'nothing-moved' : 'could-not-look'),
+          stale: built.stale,
+        },
       },
-    },
-  });
+    };
+  };
 
   // **`probed` and `found` are NOT movement.** The pass looks at candidates on
   // every turn that read a byte, and a clause that fired on those would be in
@@ -763,6 +779,53 @@ test('the row says what the anchor pass marked, and says nothing on the ordinary
   assert.match(
     refreshNote({ ...base, autoAnchors: { did: 'failed' } }),
     /automatic anchor pass FAILED/,
+  );
+
+  /**
+   * **THE STALL REACHES THE ROW** —
+   * `TASK-the-automatic-marking-stopped-and-said-nothing-because-a`, closing
+   * condition 2: *"it cannot silently stop again … the stalled case must reach
+   * a surface."*
+   *
+   * On 2026-09-15 the pass read nothing for over half an hour because the
+   * archive's rows had stopped describing the files they name, and the row
+   * this function writes was byte-for-byte what an ordinary quiet turn
+   * produces. The clause below is the difference between those two turns, and
+   * it is the only place a reader could ever have found the stall.
+   *
+   * Note what the fixture does NOT do: it does not set `did` by hand. The
+   * helper derives it exactly as `markAnchorsOnTurn` does, so this asserts
+   * that a build which read nothing WHILE BEHIND reaches the row — not merely
+   * that a string renders when a field is set.
+   */
+  const stalled = refreshNote(ran(null, {
+    read: [], readFrom: [],
+    stale: [{ key: 's1', file: '/w/s1.jsonl', rowBytes: 100, fileBytes: 155_818, behind: 155_718 }],
+  }));
+  assert.match(
+    stalled, /READ NOTHING and the archive is behind the files it indexes/,
+    'a turn on which the pass could not look produced the same row as a turn on which there was '
+    + 'nothing to mark — which is the silence the item is named for',
+  );
+  assert.match(
+    stalled, /155718 byte\(s\) behind its transcript/,
+    'the clause must carry the NUMBER, or a reader cannot tell a transcript being typed into '
+    + 'right now from one frozen since this morning',
+  );
+  assert.equal(
+    refreshNote(ran(null)), '',
+    'and an archive LEVEL with its files that read nothing is still the ordinary quiet turn. A '
+    + 'stall clause that also fired here would appear on nearly every row and stop being read.',
+  );
+
+  // **A probe that filled its bound**, which `AutoAnchorReport` has carried
+  // since the pass was written and nothing had ever read. On the owner's
+  // workspace it was permanently true and permanently unreported.
+  assert.match(
+    refreshNote(ran({ capped: true })),
+    /an anchor probe filled its bound of \d+ candidate\(s\)/,
+    'the pass reported that it could not reach every candidate and the row said nothing, so a '
+    + 'run that saw 200 of 777 tables looked exactly like a run that saw all of them',
   );
 });
 

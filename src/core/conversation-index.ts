@@ -2633,14 +2633,51 @@ export class ConversationIndex {
    * session and record so that ties — which a trigram index produces often —
    * come back in a stable order rather than whatever the storage layer felt
    * like. A reader paging through results must not see them shuffle.
+   *
+   * ── `windows` AND `offset`: WHY A RELEVANCE RANKING NEEDED A DOOR PAST IT ─
+   *
+   * Added 2026-09-15 under
+   * `TASK-the-automatic-marking-stopped-and-said-nothing-because-a`, and the
+   * measurement that forced them is in `markAutomaticAnchors`' own header. In
+   * one sentence: a caller that wants *the matches in what was just appended*
+   * cannot get them out of `ORDER BY bm25 LIMIT n`, because that ranking has
+   * no opinion about recency — measured on this workspace, the `"|---"` probe
+   * matched 777 spans and the NEWEST one was not among the 200 it returned.
+   *
+   * `windows` is that caller's scope pushed INTO the query: a list of
+   * `(sourceKey, fromByte)` pairs, matched as `source_key = ? AND byte_offset
+   * >= ?` joined by `OR`. It is one query per probe however many sources
+   * moved, which is the property that keeps this affordable inside a
+   * three-second hook — a query per source would have been eight probes times
+   * a handful of transcripts, and the eight alone already cost 266-311 ms.
+   *
+   * `offset` is the other door, for the caller that wants ALL of them: a
+   * ranking is a fine way to choose 200 out of 777 and a hopeless way to reach
+   * the other 577, so a pass that owns every match pages through them. The
+   * order is a total one (score, then session, then record), so paging is
+   * stable.
    */
   matchProse(
     match: string,
-    scope: { sessionId?: string; agentId?: string | null; kind?: string } = {},
+    scope: {
+      sessionId?: string; agentId?: string | null; kind?: string;
+      windows?: { sourceKey: string; fromByte: number }[];
+      offset?: number;
+    } = {},
     limit = 200,
   ): ProseHit[] {
     const where: string[] = ['conversation_prose MATCH ?'];
     const params: (string | number)[] = [match];
+    if (scope.windows !== undefined) {
+      // **An EMPTY list of windows is a scope that admits nothing**, and it
+      // must not read as "no scope given". `1 = 0` says that in SQL rather
+      // than relying on the caller never passing one.
+      if (scope.windows.length === 0) return [];
+      where.push(
+        '(' + scope.windows.map(() => '(source_key = ? AND byte_offset >= ?)').join(' OR ') + ')',
+      );
+      for (const w of scope.windows) { params.push(w.sourceKey, w.fromByte); }
+    }
     if (scope.sessionId !== undefined) { where.push('session_id = ?'); params.push(scope.sessionId); }
     if (scope.agentId !== undefined) {
       if (scope.agentId === null) where.push('agent_id IS NULL');
@@ -2655,8 +2692,8 @@ export class ConversationIndex {
       "snippet(conversation_prose, 7, '[', ']', '…', 16) AS snip, " +
       'bm25(conversation_prose) AS score ' +
       `FROM conversation_prose WHERE ${where.join(' AND ')} ` +
-      'ORDER BY score ASC, session_id ASC, record_index ASC LIMIT ?',
-    ).all(...params, limit) as Record<string, unknown>[];
+      'ORDER BY score ASC, session_id ASC, record_index ASC LIMIT ? OFFSET ?',
+    ).all(...params, limit, scope.offset ?? 0) as Record<string, unknown>[];
     return rows.map((row) => ({
       sessionId: String(row.session_id),
       agentId: row.agent_id === null ? null : String(row.agent_id),

@@ -34,6 +34,7 @@
  * one costs its TAIL, which is the same third path `rebuildConversations`
  * argues and measures.
  */
+import { statSync } from 'node:fs';
 import {
   ConversationIndex, MAX_SCAN_BYTES, type ProseHit, type ProseSpan, type ProseSourceRow,
   classifyTurn, iterateTranscript, lineStartsAt,
@@ -62,6 +63,18 @@ export interface SearchScope {
   /** `'prompt'` for what he typed, `'answer'` for what was said back. */
   kind?: 'prompt' | 'answer';
   limit?: number;
+  /**
+   * **Only these transcripts, and only at or past these bytes.**
+   *
+   * `matchProse`'s header argues the whole of it. The short form: a caller
+   * asking *what matched in what was just appended* cannot get that answer out
+   * of a relevance ranking, so the scope is pushed into the query instead of
+   * being applied to the ranking's output. An EMPTY list matches nothing,
+   * which is what it means.
+   */
+  windows?: { sourceKey: string; fromByte: number }[];
+  /** Skip this many hits — for a caller paging past the `limit`. */
+  offset?: number;
 }
 
 /**
@@ -148,6 +161,33 @@ export interface SearchBuildReport {
    * in the report would say so. `0` on every run that had no budget at all.
    */
   deferred: number;
+  /**
+   * **Every source whose ROW is behind the FILE it names** — the measurement
+   * that turns this report's zeroes from a claim into a measured one.
+   *
+   * Added 2026-09-15 under
+   * `TASK-the-automatic-marking-stopped-and-said-nothing-because-a`, whose
+   * closing conditions name it: *"the pass must distinguish 'nothing to do'
+   * from 'I read nothing', and the stalled case must reach a surface. A
+   * `statSync` against the file a row claims to describe is affordable, and is
+   * the measurement nobody was making."*
+   *
+   * **It is filled on EVERY run, including the runs that read nothing**, which
+   * is the whole point: a source that is skipped is exactly the source this
+   * field exists to talk about. `read.length === 0` with `stale` empty is *"I
+   * looked and there was nothing"*; `read.length === 0` with `stale` non-empty
+   * is *"I could not look"*, and until this field existed those two were the
+   * same value.
+   *
+   * It is NOT an error. A live transcript is a few hundred bytes ahead of its
+   * row for the whole of the turn that is being typed into it, and that is
+   * latency rather than failure — `INV-a-turn-that-qualifies-for-an-automatic-
+   * mark-carries-one-when` is explicit that what is forbidden is a reader who
+   * cannot tell the two apart, not the latency itself. What this field makes
+   * possible is the sentence "the archive is N bytes behind", which is true in
+   * both cases and useful in one.
+   */
+  stale: StaleSource[];
   ms: number;
 }
 
@@ -191,6 +231,101 @@ interface Source {
   file: string;
   bytes: number;
   mtimeMs: number;
+  /**
+   * **The size the FILE has right now** — `null` when it would not `stat`.
+   *
+   * `bytes` above is what the archive's ROW says, and every decision in this
+   * module used to rest on it alone. This is the other number, and the two
+   * together are the only thing in the chain that can tell *"I looked and
+   * there was nothing"* from *"I could not look"*.
+   */
+  fileBytes: number | null;
+}
+
+/**
+ * **One transcript whose row is BEHIND the file it names.**
+ *
+ * `STD-nothing-to-do-and-could-not-look-are-different-answers`, written from
+ * the 2026-09-15 incident this field closes: *"the step that trusts a recorded
+ * value must, at least once, compare it against the thing it claims to
+ * describe"*. Nothing in this product was making that comparison, so a row
+ * that stopped advancing made every step below it correctly decide there was
+ * no work, for ever, while each one reported success.
+ */
+export interface StaleSource {
+  key: string;
+  file: string;
+  /** What the archive's row says it has read. */
+  rowBytes: number;
+  /** What the file actually holds, or `null` when it would not `stat`. */
+  fileBytes: number | null;
+  /** `fileBytes - rowBytes`, and `null` for a file that would not answer. */
+  behind: number | null;
+}
+
+/**
+ * **Compare every row against the file it claims to describe, and say which
+ * ones are behind.** A READ, and the cheapest measurement in this file.
+ *
+ * ── WHY IT IS ITS OWN EXPORT AND NOT A PRIVATE LINE IN THE BUILD ──────────
+ *
+ * The build reports this for the turn it ran on, which is what the Stop hook
+ * needs. A SCREEN needs the same fact without writing anything —
+ * `INV-a-turn-that-qualifies-for-an-automatic-mark-carries-one-when`'s second
+ * half is that a turn the archive has not yet read is drawn as exactly that,
+ * and *"the screen must be able to say 'the archive is N bytes behind this
+ * document' from a `statSync` it can afford"*. One function, both callers, and
+ * no second definition of what "behind" means.
+ *
+ * ── AFFORDABLE, MEASURED, BECAUSE IT RUNS ON EVERY TURN ───────────────────
+ *
+ * It is one `stat` per source and nothing else. Measured on this workspace,
+ * 2026-09-15: **452 sources (13 sessions and 439 lanes) in 9-11 ms**, against
+ * the 1,600 ms the Stop hook's whole anchor budget is. `rebuildConversations`'
+ * own header measured the same operation at 5.06 ms for 253 lanes and reached
+ * the same conclusion about affording it.
+ *
+ * ── A FILE THAT WILL NOT ANSWER IS NOT A FILE THAT IS LEVEL ───────────────
+ *
+ * `behind: null` rather than `0`, and the row is still returned. A transcript
+ * the harness pruned, a lock, a permission — every one of those is a case
+ * where the archive CANNOT KNOW whether it is behind, and reporting it as
+ * caught up would be the exact substitution this standard forbids, made by the
+ * function written to prevent it.
+ */
+export function archiveFreshness(index: ConversationIndex): StaleSource[] {
+  return staleOf(sourcesOf(index));
+}
+
+/**
+ * **THE ONE COMPARISON**, and there is exactly one of it in this product.
+ *
+ * `buildSearchIndex` reports it for the turn it ran on and `archiveFreshness`
+ * hands it to a screen; both call this. A second spelling of "behind" is the
+ * defect `CLAUDE.md` opens by describing, and it would be a particularly poor
+ * one here — the two callers would drift and the disagreement would show up as
+ * a screen and an audit row contradicting each other about whether the archive
+ * is current.
+ */
+function staleOf(sources: Source[]): StaleSource[] {
+  const behind: StaleSource[] = [];
+  for (const source of sources) {
+    if (source.fileBytes === null) {
+      behind.push({
+        key: source.key, file: source.file, rowBytes: source.bytes, fileBytes: null, behind: null,
+      });
+      continue;
+    }
+    if (source.fileBytes <= source.bytes) continue;
+    behind.push({
+      key: source.key,
+      file: source.file,
+      rowBytes: source.bytes,
+      fileBytes: source.fileBytes,
+      behind: source.fileBytes - source.bytes,
+    });
+  }
+  return behind;
 }
 
 /**
@@ -214,6 +349,7 @@ function sourcesOf(index: ConversationIndex): Source[] {
       file: row.file,
       bytes: row.bytes,
       mtimeMs: row.mtimeMs,
+      fileBytes: sizeOf(row.file),
     });
     for (const lane of index.subagentsOf(row.sessionId)) {
       found.push({
@@ -223,10 +359,23 @@ function sourcesOf(index: ConversationIndex): Source[] {
         file: lane.file,
         bytes: lane.bytes,
         mtimeMs: lane.mtimeMs,
+        fileBytes: sizeOf(lane.file),
       });
     }
   }
   return found;
+}
+
+/**
+ * **The one `statSync` that nobody was making**, and it is deliberately not
+ * inlined above: it is the single place this module touches the world rather
+ * than the index, so it is the single place a removal proof has to break.
+ *
+ * `null` for a file that would not answer, never `0` — a size of zero is a
+ * real measurement of an empty file and this is the absence of one.
+ */
+function sizeOf(file: string): number | null {
+  try { return statSync(file).size; } catch { return null; }
 }
 
 /**
@@ -342,6 +491,13 @@ export function buildSearchIndex(
     read: [],
     readFrom: [],
     deferred: 0,
+    // **Computed from the sources this run is about to consider, BEFORE it
+    // decides anything about them** — a freshness answer derived after the
+    // skips would be derived from the same recorded numbers the skips rest on,
+    // which is the circularity this field exists to break. `staleOf` and not a
+    // second comparison written out here: one definition of "behind", which is
+    // what `archiveFreshness` hands a screen.
+    stale: staleOf(sources),
     ms: 0,
   };
 
@@ -489,7 +645,11 @@ export function searchArchive(
     note: null,
     hits: index.matchProse(
       phrase,
-      { sessionId: scope.sessionId, agentId: scope.agentId, kind: scope.kind },
+      {
+        sessionId: scope.sessionId, agentId: scope.agentId, kind: scope.kind,
+        ...(scope.windows === undefined ? {} : { windows: scope.windows }),
+        ...(scope.offset === undefined ? {} : { offset: scope.offset }),
+      },
       scope.limit ?? DEFAULT_SEARCH_LIMIT,
     ),
   };

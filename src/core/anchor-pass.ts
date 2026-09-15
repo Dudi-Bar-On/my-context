@@ -32,8 +32,10 @@ import {
 import { markAnchor, unmarkAnchor, type AutomaticAnchorKind } from './anchors.ts';
 import { anchorTransaction } from './anchor-file.ts';
 import {
-  buildSearchIndex, proseOf, searchArchive, type SearchBuildReport,
+  buildSearchIndex, proseOf, searchArchive,
+  type SearchBuildReport, type SearchScope, type StaleSource,
 } from './conversation-search.ts';
+import type { ProseHit } from './conversation-index.ts';
 
 /* ══ ANCHORS — `plan:recall seq:1`, Task 4 ════════════════════════════════ */
 
@@ -402,6 +404,54 @@ const ANCHOR_PROBES: { probe: string; kind?: 'prompt' | 'answer' }[] = [
  */
 export const ANCHOR_PROBE_LIMIT = 200;
 
+/**
+ * **How many pages of `ANCHOR_PROBE_LIMIT` one probe may walk.**
+ *
+ * Added 2026-09-15 under
+ * `TASK-the-automatic-marking-stopped-and-said-nothing-because-a`, and it is
+ * the bound that replaces a TRUNCATION. See `markAutomaticAnchors`' header for
+ * the measurement; in one line, the `"|---"` probe matches 777 spans in this
+ * archive and the first 200 by relevance are not the newest 200, so the 577
+ * behind them were unreachable by any run at all — including the unbounded
+ * `mycontext conversation rebuild` that exists to reach everything.
+ *
+ * 25 pages is 5,000 candidates a probe, against the 777 measured. It is still
+ * a bound rather than "all of them", for `ANCHOR_PROBE_LIMIT`'s own stated
+ * reason — this runs on a command a person types — and `capped` still says
+ * when it binds, which now means what it says instead of meaning "your archive
+ * has more than 200 tables in it".
+ */
+export const ANCHOR_PROBE_PAGES = 25;
+
+/**
+ * **Every candidate a probe has, in pages** — the door past a ranking.
+ *
+ * `searchArchive` answers "the best `limit` matches"; this answers "the
+ * matches", and the difference is the whole of the 2026-09-15 defect. The
+ * order is a total one (score, session, record), so a page boundary is stable
+ * and a span is returned once.
+ *
+ * `capped` is the honest half: it is true when the last page this was allowed
+ * to walk came back FULL, which means there are more behind it and this run
+ * did not see them. A run that exhausted its matches ends on a short page and
+ * reports false.
+ */
+function probeCandidates(
+  index: ConversationIndex,
+  probe: string,
+  scope: SearchScope,
+): { hits: ProseHit[]; capped: boolean } {
+  const hits: ProseHit[] = [];
+  for (let page = 0; page < ANCHOR_PROBE_PAGES; page += 1) {
+    const answer = searchArchive(index, probe, {
+      ...scope, limit: ANCHOR_PROBE_LIMIT, offset: page * ANCHOR_PROBE_LIMIT,
+    });
+    for (const hit of answer.hits) hits.push(hit);
+    if (answer.hits.length < ANCHOR_PROBE_LIMIT) return { hits, capped: false };
+  }
+  return { hits, capped: true };
+}
+
 export interface AutoAnchorReport {
   /** Candidate turns the probes brought back, before the grammar saw them. */
   probed: number;
@@ -620,18 +670,75 @@ export function markAutomaticAnchors(
   // transaction is one document write, at the end, and the reconciliation at
   // the start is what stops a pass that has been running for seconds from
   // erasing an anchor the owner marked at the terminal meanwhile.
+  /**
+   * **THE SCOPE GOES INTO THE QUERY, AND THIS IS THE LINE THE FEATURE DIED
+   * ON** — `TASK-the-automatic-marking-stopped-and-said-nothing-because-a`,
+   * 2026-09-15.
+   *
+   * ── WHAT IT USED TO DO, AND WHY EVERY LAYER STAYED GREEN ────────────────
+   *
+   * The probes asked for the best `ANCHOR_PROBE_LIMIT` matches IN THE WHOLE
+   * ARCHIVE, and `only` was then applied to that answer in JavaScript. So a
+   * per-turn run's question was really *"is this turn's new table among the
+   * 200 best-ranked tables in 875 MB of transcript?"* — and `bm25()` has no
+   * opinion whatsoever about recency.
+   *
+   * Measured on the owner's live workspace, 2026-09-15, and this is the whole
+   * case:
+   *
+   * ```
+   * probe    matching spans   returned   newest match inside the window?
+   * |---              777        200     NO
+   * RULE-             295        200     yes
+   * every other       <200       all     yes
+   * ```
+   *
+   * And end to end over the two hours the owner was looking at: **15 turns
+   * whose text `anchorInTurn` marks as a table; 6 of them inside the top-200
+   * window; exactly those 6 carried an anchor; the other 9 carried nothing.**
+   * Fifteen out of fifteen — window membership predicted the mark with no
+   * exceptions. The grammar was right, the display was right, the hook ran,
+   * and the pass was simply never shown the turns.
+   *
+   * It is also why the failure looked INTERMITTENT rather than broken, which
+   * is what made it so hard to name: whether a new table lands inside a
+   * relevance window is arbitrary, so marking worked on some turns and was
+   * dead for half an hour on others, and no run of it ever looked like a
+   * defect.
+   *
+   * ── WHAT IT DOES NOW ────────────────────────────────────────────────────
+   *
+   * `only` becomes `windows` — `source_key = ? AND byte_offset >= ?` inside
+   * the SQL — so the limit is applied to *the candidates in what was appended*
+   * rather than to the archive. A turn appends a handful of spans, so the
+   * bound stops binding at all on this path, and `capped` becomes a real
+   * disclosure instead of a permanent state of the world.
+   *
+   * **One query per probe however many sources moved.** That is deliberate and
+   * measured: the eight probe queries already cost 266-311 ms of the hook's
+   * budget, so a query per source per probe — eight times a handful of moved
+   * transcripts — would have been seconds inside a three-second hook. The
+   * `OR`-joined windows keep the count at eight.
+   *
+   * ── AND THE REBUILD PAGES, because a ceiling is not a scope ─────────────
+   *
+   * With `only === null` there is no window to narrow by, and the truncation
+   * is then a plain one: 577 of this archive's 777 table spans could not be
+   * marked by ANY run, including `mycontext conversation rebuild`, which is
+   * the run whose whole job is to reach everything. `probeCandidates` pages to
+   * `ANCHOR_PROBE_PAGES` instead, which is bounded and is not 200.
+   */
+  const windows = only === null ? null
+    : [...only].map(([sourceKey, fromByte]) => ({ sourceKey, fromByte }));
+
   anchorTransaction(index, () => {
     for (const { probe, kind } of ANCHOR_PROBES) {
-      const answer = searchArchive(index, probe, {
+      const answer = probeCandidates(index, probe, {
         ...(kind === undefined ? {} : { kind }),
-        limit: ANCHOR_PROBE_LIMIT,
+        ...(windows === null ? {} : { windows }),
       });
-      if (answer.hits.length >= ANCHOR_PROBE_LIMIT) report.capped = true;
+      if (answer.capped) report.capped = true;
       for (const hit of answer.hits) {
-        if (only !== null) {
-          const from = only.get(hit.agentId ?? hit.sessionId);
-          if (from === undefined || hit.byteOffset < from) continue;
-        }
         const id = anchorIdFor(hit.sessionId, hit.agentId, hit.byteOffset);
         if (seen.has(id)) continue;
         seen.add(id);
@@ -786,6 +893,43 @@ export interface TurnAnchorReport {
    * matters for a hook: what was skipped is skipped on the record.
    */
   anchors: AutoAnchorReport | null;
+  /**
+   * **WHY the line above is what it is, and the whole reason this field
+   * exists is that `null` was answering two different questions.**
+   *
+   * `STD-nothing-to-do-and-could-not-look-are-different-answers`, written from
+   * the incident this closes, states the rule as a table:
+   *
+   * | the step means | what it must return |
+   * |---|---|
+   * | I looked at the thing, and there was no work | a measured zero |
+   * | I could not look | **a different value, and the reason** |
+   *
+   * So:
+   *
+   *  - `'marked'` — the pass ran. `anchors` is its report, zeroes included,
+   *    and a zero here is a MEASURED one: the grammar was shown what arrived
+   *    and recognised nothing in it.
+   *  - `'nothing-moved'` — no transcript's words moved, and the archive's rows
+   *    agree with the files on disk. This is the ordinary turn, and it is the
+   *    only one of the three that is allowed to be silent.
+   *  - `'could-not-look'` — the build read nothing AND at least one row is
+   *    behind the file it names. The pass was never offered the turn. This is
+   *    the value that did not exist on 2026-09-15, which is why half an hour
+   *    of dead marking was indistinguishable from half an hour of quiet.
+   *
+   * It is derived from `search` and never from a second measurement, so it
+   * cannot disagree with the report beside it.
+   */
+  did: 'marked' | 'nothing-moved' | 'could-not-look';
+  /**
+   * The rows that are behind their files, carried up from the build so a
+   * caller can say *how far* behind rather than only *that* it is —
+   * `INV-a-turn-that-qualifies-for-an-automatic-mark-carries-one-when` asks
+   * the screen for the sentence "the archive is N bytes behind this document",
+   * and N is here.
+   */
+  stale: StaleSource[];
 }
 
 export function markAnchorsOnTurn(
@@ -839,12 +983,28 @@ export function markAnchorsOnTurn(
       // `null` is the honest answer for "there was nothing to do", and it is
       // distinct from the `null` this function returns on a FAILURE — that one
       // is the whole report, this one is a field of it.
-      if (search.read.length === 0) return { search, anchors: null };
+      //
+      // **AND IT IS NO LONGER THE ONLY THING SAID ABOUT THIS TURN.** `did`
+      // beside it separates the two answers `null` used to cover: an archive
+      // level with its files that read nothing had nothing to read, and an
+      // archive BEHIND its files that read nothing could not look. The second
+      // is the state that ran for over half an hour on 2026-09-15 while every
+      // layer reported success.
+      if (search.read.length === 0) {
+        return {
+          search,
+          anchors: null,
+          did: search.stale.length === 0 ? 'nothing-moved' : 'could-not-look',
+          stale: search.stale,
+        };
+      }
       return {
         search,
         anchors: markAutomaticAnchors(index, {
           only: new Map(search.read.map((key, i) => [key, search.readFrom[i] ?? 0])),
         }),
+        did: 'marked',
+        stale: search.stale,
       };
     } finally {
       index.close();
