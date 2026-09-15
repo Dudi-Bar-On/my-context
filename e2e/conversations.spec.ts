@@ -1105,7 +1105,27 @@ test.describe('a date filter measures the reader’s day', () => {
       await page.waitForSelector('.convrow', { timeout: 20_000 });
       await expect(page.locator('#exited')).toBeHidden();
 
-      const card = page.locator('.card.pane').filter({ has: page.locator('.convfilter') });
+      /*
+       * **`.convresults` AND NOT `.convfilter`, repaired 2026-09-15.**
+       *
+       * Three tests in this file found the sessions card by filtering
+       * `.card.pane` on `has: .convfilter`, and every one of them had been
+       * failing with `strict mode violation … resolved to 2 elements` before
+       * this lane touched anything: `archiveBar` builds the archive search's
+       * own bar as `el('div', 'convfilter convarchbar')`, so `.card.pane.convarch`
+       * wears the handle too.
+       *
+       * That is precisely the trap `mountArchiveSearch` records in its own
+       * comment about `.convanchbar` — *"a class is a HANDLE as well as a
+       * style, and a new control does not get to rename an existing one by
+       * sharing it"* — and it was avoided for the anchors bar and then walked
+       * into by the archive bar. **The handle moves rather than the class**,
+       * because a class is what a stylesheet reaches for too and taking it off
+       * `archiveBar` would repaint a card for a test's convenience.
+       * `.convresults` is built once, in the sessions card, and by nothing
+       * else.
+       */
+      const card = page.locator('.card.pane').filter({ has: page.locator('.convresults') });
       const rows = card.locator('.convrow');
       await expect(rows).toHaveCount(2);
 
@@ -1330,9 +1350,31 @@ test.describe('the open document follows the session as it is written', () => {
   let liveFile: string;
   let clock = 0;
 
+  /**
+   * **THE PHRASE THAT IS CURRENTLY LAST IN THE LIVE FILE, repaired 2026-09-15.**
+   *
+   * Every test in this block shares ONE session file and appends to it, so
+   * `LAST_PHRASE` — the phrase the file shipped with — stops being the last
+   * thing in it the moment any test in the block has run. The `(he)` variant of
+   * the first test then pressed End, correctly landed on the tail, and asserted
+   * `LAST_PHRASE` was on screen: it was not, because two `(en)` tests had
+   * already appended `written while the browser was open en` and `arrived while
+   * they were reading the top en` behind it.
+   *
+   * It failed serially and in parallel, on both runs, and passed when those two
+   * tests were the only ones selected — which is the signature of an ORDER
+   * DEPENDENCY rather than a flake, and is what made it look like weather. It
+   * predates this lane: nothing outside this block appends a turn.
+   *
+   * The claim the test is making is "End lands the reader on the END of the
+   * file", so what it needs is the file's current tail, not a constant.
+   */
+  let tail = LAST_PHRASE;
+
   /** One prompt and one answer, appended to the file the browser is reading. */
   const appendTurn = (phrase: string): void => {
     clock += 1;
+    tail = phrase;
     appendFileSync(liveFile, [
       {
         type: 'user',
@@ -1408,7 +1450,9 @@ test.describe('the open document follows the session as it is written', () => {
       await expect(follows).toContainText(lang === 'he' ? 'כל שנייה' : 'every second');
 
       await page.locator('button.tvend').click();
-      await expect(page.locator('.tvscroll')).toContainText(LAST_PHRASE, { timeout: 20_000 });
+      // `tail`, not `LAST_PHRASE` — the file is shared with every other test in
+      // this block and they append to it. See `tail`'s own note above.
+      await expect(page.locator('.tvscroll')).toContainText(tail, { timeout: 20_000 });
 
       const phrase = `written while the browser was open ${lang}`;
       appendTurn(phrase);
@@ -3497,7 +3541,19 @@ test.describe('the list is browsable', () => {
 
       // THE BRANCH CHOOSER OFFERS EVERY BRANCH THE ARCHIVE HOLDS — not the
       // ones on this page, and not the ones surviving the current filter.
-      const branch = page.locator('select.convselect');
+      /*
+       * **SCOPED TO THE SESSIONS CARD, repaired 2026-09-15.** Bare
+       * `select.convselect` resolves to THREE controls — the branch chooser
+       * here and the archive search's own session and kind pickers, which
+       * `archiveBar` builds as `'convselect convarchsession'` and
+       * `'convselect convarchkind'`. Every assertion below had been failing
+       * with `resolved to 9 elements` before this lane touched anything.
+       * Same cause as the `.convfilter` repair above, same repair: the
+       * handle is narrowed rather than a style class taken off a control
+       * that needs it.
+       */
+      const card = page.locator('.card.pane').filter({ has: page.locator('.convresults') });
+      const branch = card.locator('select.convselect');
       await expect(branch.locator('option')).toHaveCount(3);
       await branch.selectOption('topic');
       await expect(page.locator('.convrow')).toHaveCount(1);
@@ -3514,18 +3570,18 @@ test.describe('the list is browsable', () => {
       await expect(page.locator('.convrow')).toHaveCount(2);
 
       // THE DATE BOUNDS ARE INCLUSIVE OF THEIR WHOLE DAY, at both ends.
-      await page.locator('input.convdate').first().fill('2026-09-05');
+      await card.locator('input.convdate').first().fill('2026-09-05');
       await expect(page.locator('.convrow')).toHaveCount(1);
       await expect(page.locator('.convrow')).toContainText('topic');
-      await page.locator('input.convdate').first().fill('');
+      await card.locator('input.convdate').first().fill('');
       await expect(page.locator('.convrow')).toHaveCount(2);
 
       // CLEAR PUTS EVERYTHING BACK, in one press.
-      await page.locator('select.convselect').selectOption('main');
+      await branch.selectOption('main');
       await expect(page.locator('.convrow')).toHaveCount(1);
-      await page.locator('button.convclear').click();
+      await card.locator('button.convclear').click();
       await expect(page.locator('.convrow')).toHaveCount(2);
-      await expect(page.locator('select.convselect')).toHaveValue('');
+      await expect(branch).toHaveValue('');
     });
   }
 
@@ -3535,7 +3591,14 @@ test.describe('the list is browsable', () => {
     // Typed, character by character, into the real box — and the assertion
     // below on the box's own value is what proves the bar was not rebuilt
     // under the reader's hands when the answer came back.
-    const find = page.locator('input.convfind');
+    //
+    // **THE SESSIONS CARD'S BOX, repaired 2026-09-15.** Bare `input.convfind`
+    // resolves to two searchboxes — "Find a session" here and the archive's
+    // "Words you remember", which `archiveBar` builds as `'convfind convarchq'`
+    // — and this test had been failing on the strict-mode violation before this
+    // lane touched anything. The third of the same family, same repair.
+    const find = page.locator('.card.pane')
+      .filter({ has: page.locator('.convresults') }).locator('input.convfind');
     await find.click();
     await find.type('sextant', { delay: 30 });
 
@@ -3557,7 +3620,7 @@ test.describe('the list is browsable', () => {
     // The scope sentence sits with the CONTROLS and not with the results,
     // deliberately: it describes what the box does, so it has to be readable
     // when the box has just answered nothing.
-    const pane = page.locator('.card.pane').filter({ has: page.locator('.convfilter') });
+    const pane = page.locator('.card.pane').filter({ has: page.locator('.convresults') });
     await expect(pane).toContainText('It does not read the transcripts');
 
     await page.screenshot({
@@ -4479,7 +4542,7 @@ test.describe('a session can be given a name of its own', () => {
    */
   test('the search finds the session by the name we gave it', async ({ page }) => {
     await openNamed(page, 'en');
-    const card = page.locator('.card.pane').filter({ has: page.locator('.convfilter') });
+    const card = page.locator('.card.pane').filter({ has: page.locator('.convresults') });
     const rows = card.locator('.convrow');
     await expect(rows).toHaveCount(1);
 

@@ -246,6 +246,14 @@ export const strings = {
   'conv.behindRow': 'Behind by {bytes}',
   'conv.current': 'Current with every file on disk.',
   'conv.refreshedBy': 'This list is refreshed at the end of each of your turns. It is also brought up to date by running:',
+  // The name of the thing that now scrolls — `TASK-the-marks-card-sits-1-3-
+  // screens-below-the-fold-under-a`. The list is bounded in height so the cards
+  // under it are reachable, which means it has become a scroll region of its
+  // own, and a scroll region with no name is one a screen reader announces as
+  // "region" and nothing else. It says WHAT scrolls rather than that it
+  // scrolls: the browser conveys the second, and only this can convey the
+  // first.
+  'conv.list.region': 'Your sessions, in a list that scrolls inside this card',
   // ── NARROWING THE LIST — plan:archive seq:10 ──────────────────────────────
   //
   // Each control names itself, because a placeholder is not an accessible
@@ -332,7 +340,13 @@ export const strings = {
   'conv.anchors.kind.note': 'a note',
   'conv.anchors.kind.table': 'a table',
   'conv.anchors.kind.report': 'a report',
-  'conv.anchors.kind.ruling': 'a ruling you gave',
+  // `kind.ruling` read "a ruling you gave" until 2026-09-15. That is
+  // PROVENANCE, not a kind — and the row already says it, one field along,
+  // in `origin.owner` / `origin.automatic`. It is the same duplication
+  // `kind.note` was moved off the same day, and it is caught now rather
+  // than remembered: `test/ui/anchor-kind-vocabulary.test.ts` holds every
+  // one of the nine to a NAME.
+  'conv.anchors.kind.ruling': 'a ruling',
   'conv.anchors.kind.decision': 'a decision',
   'conv.anchors.kind.question': 'a question',
   'conv.anchors.kind.defect': 'a defect',
@@ -596,6 +610,12 @@ export const strings = {
   'conv.menu.kinds': 'Step only through —',
   'conv.menu.noRow': 'There is no turn on screen to mark. The search above is hiding all of them — clear it, and the key works again.',
   'conv.keys.on': 'Keyboard shortcut: {mv:key}',
+  // A PAIR of keys on one control, for the kind filter — `TASK-stepping-to-
+  // the-next-mark-of-a-particular-kind-needs-its-own`. The `<select>` is the
+  // only control on the bar bound to two keys and with no button to hang a
+  // chip inside, so both are named here rather than one being shown and the
+  // other left for a reader to guess from the Shift convention.
+  'conv.keys.onPair': 'Keyboard shortcut: {mv:key} for the next kind, {mv:back} for the previous. The step keys then walk only that kind.',
   'conv.doc.region': 'The session as one scrollable document',
   'conv.doc.whole': '{turns} turns across {records} records. Scroll the whole session — there is no page to leave.',
   'conv.doc.noMatch': 'Nothing in this session matches.',

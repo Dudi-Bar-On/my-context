@@ -64,6 +64,25 @@ const choices = async (): Promise<string[]> =>
   (await browserModule<{ OWNER_KIND_CHOICES: string[] }>(
     'screens', 'conversations.js')).OWNER_KIND_CHOICES;
 
+/**
+ * **ALL NINE, not the six a person may choose.**
+ *
+ * The three tests this file opened with all read `OWNER_KIND_CHOICES`, which is
+ * the owner's own vocabulary — `note`, `decision`, `question`, `defect`,
+ * `evidence`, `todo`. The kinds the AUTOMATIC pass writes (`table`, `ruling`)
+ * and `report`, which the screen has a word for and neither core list holds,
+ * were in NO assertion here. That is how `conv.anchors.kind.ruling` came to
+ * read "a ruling you gave" — provenance, said one field along from the
+ * provenance field, in the one third of the vocabulary nothing was reading.
+ */
+const everyKind = async (): Promise<string[]> =>
+  [...(await browserModule<{ ANCHOR_KIND_KEYS: Set<string> }>(
+    'screens', 'conversations.js')).ANCHOR_KIND_KEYS];
+
+const hues = async (): Promise<Record<string, string | null>> =>
+  (await browserModule<{ ANCHOR_KIND_HUE: Record<string, string | null> }>(
+    'screens', 'conversations.js')).ANCHOR_KIND_HUE;
+
 const table = async (language: 'en' | 'he'): Promise<Record<string, string>> =>
   (await browserModule<{ strings: Record<string, string> }>(
     'strings', `${language}.js`)).strings;
@@ -144,4 +163,105 @@ test('a kind is a NAME, never a sentence about who marked it', async () => {
     .map(([kind]) => kind);
   assert.deepEqual(wordy, [],
     'an option in the kind list is a sentence rather than a name');
+});
+
+/* ══ THE KINDS THE AUTOMATIC PASS WRITES ARE PART OF THE VOCABULARY ═══════ */
+
+test('every kind the screen can DRAW has a word in both tables', async () => {
+  const kinds = await everyKind();
+  const en = await table('en');
+  const he = await table('he');
+  assert.ok(kinds.length > 6,
+    'the set the screen draws from is no larger than the set a person may choose, so this '
+    + 'file is back to measuring only the owner half and the automatic kinds are unread again');
+  const missing: string[] = [];
+  for (const kind of kinds) {
+    const key = `conv.anchors.kind.${kind}`;
+    if (typeof en[key] !== 'string' || en[key] === '') missing.push(`${key} (English)`);
+    if (typeof he[key] !== 'string' || he[key] === '') missing.push(`${key} (Hebrew)`);
+  }
+  assert.deepEqual(missing, [],
+    'a kind the screen draws has no word in a table. `anchorRow` guards this with '
+    + '`ANCHOR_KIND_KEYS.has(...)` and falls back to the raw id, so the failure is silent on '
+    + 'screen: a Hebrew reader is shown `ruling`.');
+});
+
+/**
+ * **A KIND IS A NAME, AND THIS IS THE HALF THAT WAS NOT MEASURED.**
+ *
+ * `TASK-every-kind-of-mark-is-drawn-in-the-same-grey-so-nine-kinds`, closing
+ * paragraph: *"`conv.anchors.kind.ruling` reads 'a ruling you gave' — that is
+ * provenance, not a kind, and the row already says 'marked for you' one field
+ * along. `kind.note` was moved off exactly that duplication yesterday."*
+ *
+ * The existing NAME test above reads `OWNER_KIND_CHOICES` and caps at FOUR
+ * words; "a ruling you gave" is four and is not an owner choice, so it cleared
+ * that gate on both counts. This one reads all nine and caps at three.
+ *
+ * ── WHAT IT CANNOT DO, so a green run is not overread ────────────────────
+ *
+ * **It catches the English half only, and the reason is grammatical rather
+ * than an omission.** English carries the person as a separate pronoun — "you"
+ * — which is a token a word count notices. Hebrew carries it as a VERB SUFFIX:
+ * `הכרעה שנתתם` is two words, exactly as `הכרעה` is one more than one, and no
+ * count of tokens can tell them apart. Holding the two tables to the same
+ * shape would not help either: `evidence` is one word in English and `ראיה` is
+ * one in Hebrew, but `something to do` is three against `משהו לעשות`'s two, so
+ * a parity rule would redden on a correct pair. The Hebrew half is held by
+ * translation review and by this test's English twin failing first.
+ */
+test('a kind NAMES itself and never says who marked it', async () => {
+  const kinds = await everyKind();
+  const en = await table('en');
+  const wordy = kinds
+    .map((kind) => [kind, en[`conv.anchors.kind.${kind}`] ?? ''] as const)
+    .filter(([, word]) => word.trim().split(/\s+/).length > 3)
+    .map(([kind, word]) => `${kind}: ${JSON.stringify(word)}`);
+  assert.deepEqual(wordy, [],
+    'the word for a kind is a clause rather than a name. It is read in a `<select>` and on every '
+    + 'row of a list measured at 1,155 marks, and the row already carries WHO marked it in '
+    + '`conv.anchors.origin.*` — a kind that says so again is one fact in two fields.');
+});
+
+/**
+ * **THE HUE TABLE IS TOTAL, AND THAT IS WHY `note` IS WRITTEN AS `null`.**
+ *
+ * `TASK-every-kind-of-mark-is-drawn-in-the-same-grey-so-nine-kinds`. A kind
+ * added to `ANCHOR_KIND_KEYS` with no entry here would read `undefined`,
+ * `kindHueClass` would return `''`, and the kind would draw grey — which is
+ * indistinguishable on screen from `note`'s DELIBERATE grey. A hole that looks
+ * exactly like a decision is a hole nobody finds.
+ */
+test('every kind the screen can draw has a hue group, or an explicit none', async () => {
+  const kinds = await everyKind();
+  const groups = await hues();
+  const holes = kinds.filter((kind) => !Object.hasOwn(groups, kind));
+  assert.deepEqual(holes, [],
+    'a kind has no entry in ANCHOR_KIND_HUE. Write `null` if it is deliberately ungrouped — '
+    + 'an absent key and a null one look identical on screen and only one of them is a '
+    + 'decision.');
+  const strays = Object.keys(groups).filter((kind) => !kinds.includes(kind));
+  assert.deepEqual(strays, [],
+    'ANCHOR_KIND_HUE names a kind the screen cannot draw, so a group is being kept for a '
+    + 'vocabulary that has moved on');
+});
+
+/**
+ * **THE BUDGET IS FIVE AND THE GROUPING SPENDS THREE OF THEM** —
+ * `DEC-the-meaning-hue-budget-is-five-gold-ok-carry-crit-and-warn`, which
+ * forbids a sixth meaning-hue outright.
+ *
+ * This gate is about the SET of groups, not about which kind is in which: the
+ * grouping is a design ruling and belongs in the item, but "nine kinds did not
+ * quietly become nine colours" is a property, and it is the one the decision
+ * exists to protect.
+ */
+test('the kind grouping spends at most three of the five meaning hues', async () => {
+  const groups = await hues();
+  const spent = [...new Set(Object.values(groups).filter((g): g is string => g !== null))];
+  assert.ok(spent.length <= 3,
+    `the kind grouping spends ${spent.length} hue classes (${spent.join(', ')}). The budget is `
+    + 'five for the WHOLE product and this surface is one of many; nine kinds do not get nine '
+    + 'colours, and a grouping that grows a class per kind has stopped being a grouping.');
+  assert.ok(spent.length > 0, 'no kind carries a hue at all, so every assertion here is vacuous');
 });

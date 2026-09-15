@@ -313,7 +313,13 @@ test('a table and a ruling are already marked, and nothing else is', async ({ pa
       const mark = n.querySelector('.g')?.textContent ?? '';
       return (n.textContent ?? '').slice(mark.length).trim();
     }));
-  expect(kinds.sort()).toEqual(['a ruling you gave', 'a table']);
+  // **"a ruling", not "a ruling you gave"** — moved 2026-09-15 under
+  // `TASK-every-kind-of-mark-is-drawn-in-the-same-grey-so-nine-kinds`, whose
+  // closing paragraph rules the old wording PROVENANCE rather than a kind: the
+  // row already says who marked it in `.convanchororigin`, one field along, and
+  // `kind.note` was moved off the same duplication the same day. This line is
+  // the pin that made the change visible, which is the pin working.
+  expect(kinds.sort()).toEqual(['a ruling', 'a table']);
 
   await page.screenshot({ path: 'e2e/screens/anchors-automatic.png', fullPage: true });
 });

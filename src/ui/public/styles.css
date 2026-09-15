@@ -3732,6 +3732,62 @@ wa-tree .wa-count{margin-inline-start:var(--sp-2);color:var(--dim);
 .convrow{flex-direction:column;align-items:stretch;gap:4px}
 .convhead{font-weight:600}
 
+/* ── `.convlistscroll` — THE SESSION LIST, BOUNDED IN HEIGHT ────────────────
+   `TASK-the-marks-card-sits-1-3-screens-below-the-fold-under-a`, owner report
+   2026-09-15: he could not find his marks, and he was right — 1,156 of them
+   drew correctly, 487px below the fold, under a session list taller than the
+   window.
+
+   IT IS `.cardscroll` WITH A TIGHTER CAP, not a second scroller. Everything
+   that rule argues for holds here unchanged — the heading is a SIBLING of this
+   box so it cannot travel, and `overscroll-behavior:contain` stops a reader who
+   reaches the last session from carrying on and scrolling the page underneath.
+   What differs is only the number, and 64vh is not small enough: it is a bound
+   on a card that may be the only thing on its screen, and this card has three
+   more underneath it that a reader came for.
+
+   THE ARITHMETIC, measured in this repository's corpus at 1280x1299 rather than
+   chosen. The card's own furniture — heading, filter bar, scope line, staleness
+   line and the bound line under the rows — is 369px, fixed. The search card
+   below it is 235px, and the gaps are 12px. So the marks card's top is
+   `816 + <this cap>`.
+
+   AND THE FOLD IS AT 1,162, NOT AT 1,299. This is the number that decides the
+   rule and it is not the window's: `<body>` hides its own overflow, `main.body`
+   is the grid area that scrolls, and at this viewport it starts 46px down and
+   is 1,116px tall — a header strip above it and a status strip below. A cap
+   picked against `innerHeight` would be generous by 137px, which is more than a
+   row and a half, and the first draft of this rule was wrong by exactly that:
+   30vh measured "above the fold" against 1,299 and was 44px UNDER the real one.
+
+       cap      rows visible   marks card top   clears the 1,162 fold?
+       970 (none)      13            1,786      no, by 624px
+       64vh = 831      11            1,647      no, by 485px
+       30vh = 390        5.2         1,206      no, by 44px
+       25vh = 325        4.4         1,141      yes, by 21px
+       22vh = 286        3.8         1,102      yes, by 60px
+       20vh = 260        3.5         1,076      yes, by 86px
+
+   22vh. 25 clears it and 21px is not a margin — a font that renders a line
+   taller, or one more sentence in the staleness line, spends it — and 20 buys
+   26px more at the cost of a row the picker would rather keep. `max()` and not
+   a bare `22vh` because a short window would otherwise bound the list below one
+   row and turn a picker into a peephole; 240px is three rows, which is the
+   least that still reads as a list, and at 1280x720 that floor is what binds.
+
+   THE NUMBERS ABOVE ARE THIS CORPUS'S, and the guarantee this rule can actually
+   make is narrower than they suggest: a reader with a taller search card gets a
+   smaller margin. What does not move is the CAP, which is why it is a fraction
+   of the window rather than the pixel count that made the marks card fit today,
+   and why `e2e/marks-reach.spec.ts` asserts that the card's HEADING is on the
+   screen rather than pinning a distance. */
+.cardscroll.convlistscroll{max-block-size:max(240px,22vh)}
+/* The bound is a scroll region and a scroll region takes a focus ring, for
+   `.tvscroll:focus-visible`'s own reason one file-section along: it is in the
+   tab order (`tabIndex = 0`, so a keyboard can scroll what a wheel can), and a
+   focusable thing with no visible focus is a caret a reader cannot find. */
+.convlistscroll:focus-visible{outline:2px solid var(--gold);outline-offset:2px}
+
 /* ── THE LIST ROW IS A CONTAINER WITH TWO CONTROLS IN IT ───────────────────
    `plan:archive seq:53`, and these are the rules `seq:47` was asked to write
    and correctly refused to: `.convrowwrap` and `.convlanelink` had no wearers
@@ -3973,6 +4029,56 @@ wa-tree .wa-count{margin-inline-start:var(--sp-2);color:var(--dim);
    is the same lie as a control that does nothing. */
 .convanchorsession{color:var(--ink)}
 .convanchorkind{font-size:var(--fs-00);color:var(--dim)}
+
+/* ── WHAT A MARK IS FOR, IN COLOUR — three groups, nine kinds ───────────────
+   `TASK-every-kind-of-mark-is-drawn-in-the-same-grey-so-nine-kinds`, owner
+   request 2026-09-15. Both kind fields were `color:var(--dim)` — one grey for
+   all nine, on the row and in the document alike — over an archive that is
+   1,155 marks and 67% tables, so the rare kinds he hunts were needles in it.
+
+   THE SENTENCE: colour says what a mark is FOR. Gold, a judgement that was
+   made (a ruling, a decision). Orange, something still owed (a defect, a
+   question, something to do). Blue, material the conversation produced (a
+   table, a report, evidence) — which is the 67%, deliberately all on one hue
+   so the two that are not jump out of it. A plain note keeps `--dim`, because
+   it claims nothing beyond "here".
+
+   WITHIN THE BUDGET, AND TWO HUES ARE LEFT UNSPENT ON PURPOSE.
+   `DEC-the-meaning-hue-budget-is-five-gold-ok-carry-crit-and-warn` fixes the
+   palette at five and forbids a sixth; this spends three.
+     — `--ok` is not spent because it means "fine, safe, passing" on doctor's
+       levels, the watch pulse and every chip, and not one of these nine means
+       that.
+     — `--crit` is not spent because it CANNOT BE, and that is measured rather
+       than preferred. As 12px text on the ground this card actually paints —
+       `rgb(10, 41, 50)`, the lightest flat fill inside the marks card, sampled
+       from a screenshot at 1280x1299 on 2026-09-15 — the five score:
+           gold 7.96:1   ok 6.70:1   carry 5.81:1   dim 6.42:1   warn 5.44:1
+           crit 4.06:1  — under the 4.5:1 bar `button-contrast.spec.ts` and
+                          `chip-hue-authority.spec.ts` hold every control and
+                          every chip to.
+       The decision's own body warned about this exact hue: "on `--panel-2` the
+       same colour measures 4.45:1 and FAILS". So a defect wears `--warn` with
+       the other two debts and its bug glyph is what separates it.
+
+   COLOUR IS NEVER THE ONLY CARRIER, which is the amendment of 2026-08-27 and
+   is binding: "a hue may narrow a group, never name one". The hue narrows nine
+   kinds to three postures; the GLYPH and the WORD name the kind and both stay.
+   `@media print` above flattens every one of these tokens to `#000`, and the
+   row still reads `🐞 a defect`.
+
+   TWO SELECTORS PER GROUP AND NOT A BARE `.kindowed`, deliberately. A bare
+   class would tie at (0,1,0) with `.convanchorkind`'s own `color` and be
+   decided by source order — the silent kind of win. Compounded, it is (0,2,0)
+   and cannot lose wherever these rules are moved to. It also says, in the
+   selector itself, exactly which two surfaces spend the hue: a third that
+   wants it opts in here rather than inheriting it by accident. */
+.convanchor.kindsettled{border-inline-start-color:var(--gold)}
+.convanchor.kindowed{border-inline-start-color:var(--warn)}
+.convanchor.kindfound{border-inline-start-color:var(--carry)}
+.convanchorkind.kindsettled,.tvanchorkind.kindsettled{color:var(--gold)}
+.convanchorkind.kindowed,.tvanchorkind.kindowed{color:var(--warn)}
+.convanchorkind.kindfound,.tvanchorkind.kindfound{color:var(--carry)}
 .convanchorlabel{margin:var(--sp-1) 0 0;font-size:var(--fs-0);line-height:1.5;
   overflow-wrap:anywhere}
 /* ── EVERY ANCHOR CAPABILITY ON THE ROW — owner ruling 2026-09-12 ────────

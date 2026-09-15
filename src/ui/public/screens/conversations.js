@@ -732,7 +732,61 @@ function drawList(ctx, host, body, open) {
   // is given — so it gets a container of its own rather than the card, whose
   // heading and where-it-looked line would otherwise be wiped on every page
   // step. Found by driving the screen, not by reading the signature.
-  const rows = el('div', 'rows');
+  /* ── THE LIST IS BOUNDED IN HEIGHT AS WELL AS IN ROWS ───────────────────
+   *
+   * `TASK-the-marks-card-sits-1-3-screens-below-the-fold-under-a`, owner
+   * report 2026-09-15: he opened the viewer after a rebuild and could not find
+   * his marks. All 1,156 were drawing correctly. He could not REACH the card.
+   *
+   * **MEASURED HERE, in this repository's own corpus, at 1280x1299** — the
+   * viewport the item measured at, re-measured rather than quoted, because the
+   * item's figures are a fortnight of data old and two of them have moved:
+   *
+   *     card                      item said        measured 2026-09-15
+   *     Sessions                  188, h 1,302     188, h 1,339
+   *     Search what was said      1,502, h 181     1,539, h 235
+   *     Points you marked         1,695            1,786
+   *
+   * and the screen holds FIVE cards, not the three the item names — "Reconstruct
+   * a subject" and "What has been asked before" sit below the marks card, at
+   * 4,001 and 4,427.
+   *
+   * **AND THE FOLD IS NOT WHERE THE WINDOW ENDS.** `<body>` hides its own
+   * overflow; the thing that scrolls is `main.body`, which at 1280x1299 starts
+   * 46px down and is 1,116px tall — so the fold is at **1,162**, with a status
+   * strip below it. The marks card began **624px** below that, and the screen
+   * ran to 4,529px: four screens of scroll, under a session list taller than
+   * the window. The first cap written for this was measured against 1,299 and
+   * was 44px short; `.convlistscroll`'s own comment carries that table.
+   *
+   * **OPTION 4 OF THE ITEM'S FOUR, which is the one it recommends: cap the
+   * list's height and let it scroll inside its own card.** Not option 2 (marks
+   * first) — the item forbids it in as many words, because the session picker
+   * is how a reader OPENS a conversation and that is the screen's other job,
+   * and moving it down trades one complaint for its mirror image. Not option 1
+   * (collapse past a few rows), which HIDES rows a reader scans; every row is
+   * still here and still reachable, by a gesture inside the card rather than a
+   * gesture that moves the page. Not option 3 (a jump link), which the item
+   * calls thin and `D58` is about: it adds a control and moves nothing.
+   *
+   * **`.cardscroll` IS THE SHAPE THIS PROJECT ALREADY USES**, owner request
+   * 2026-09-06 for the Tutorials roster — "do not scroll the title, only the
+   * sections below it" — heading a sibling rather than a child, so it cannot
+   * travel, and `overscroll-behavior:contain` so reaching the end does not
+   * carry the page along underneath. The one thing added is the CAP: this card
+   * takes `.convlistscroll` beside it, which is 64vh brought down to 30vh, for
+   * the arithmetic written on that rule.
+   *
+   * **A SCROLLER A KEYBOARD CANNOT REACH IS A LIST A KEYBOARD CANNOT READ**, so
+   * this takes `.tvscroll`'s own three attributes for `.tvscroll`'s own reason
+   * — `tabIndex = 0` to be focusable without being a second tab stop's worth of
+   * furniture, `role="region"` and a name, so the thing that now scrolls is a
+   * thing a screen reader can find and announce.
+   */
+  const rows = el('div', 'rows cardscroll convlistscroll');
+  rows.tabIndex = 0;
+  rows.setAttribute('role', 'region');
+  rows.setAttribute('aria-label', ctx.tFlat('conv.list.region'));
   host.append(rows);
   // **THE BOUND LINE IS PLACED, and for two weeks it was not.** `boundedList`
   // draws the rows into `rows` and RETURNS the line and the two step buttons
@@ -983,7 +1037,13 @@ const ARCH_SETTLE_MS = 250;
  * exception handling, and this way the fallback is the ordinary path for a
  * kind written by a later build.
  */
-const ANCHOR_KIND_KEYS = new Set([
+/* EXPORTED so the vocabulary gate can read all NINE rather than only the six
+ * a person may choose. `test/ui/anchor-kind-vocabulary.test.ts` held
+ * `OWNER_KIND_CHOICES` to the core's list and to both string tables, and
+ * `ruling`, `table` and `report` — the kinds the AUTOMATIC pass writes —
+ * were in none of its assertions. "a ruling you gave" survived in the table
+ * for exactly that long. */
+export const ANCHOR_KIND_KEYS = new Set([
   'note', 'table', 'report', 'ruling',
   'decision', 'question', 'defect', 'evidence', 'todo',
 ]);
@@ -1090,6 +1150,107 @@ const ANCHOR_KIND_GLYPH = {
 };
 
 /**
+ * \u2500\u2500 WHAT A MARK IS FOR, IN COLOUR \u2014 THREE GROUPS AND THE UNGROUPED NOTE \u2500\u2500\u2500\u2500
+ *
+ * `TASK-every-kind-of-mark-is-drawn-in-the-same-grey-so-nine-kinds`, owner
+ * request 2026-09-15: *"let's have the different anchores types different
+ * marking color or emoji or text (a combination is fine) to fast observe
+ * between them."*
+ *
+ * Half of it already existed \u2014 every kind has a glyph above and a word in both
+ * tables. What did not was COLOUR: `.convanchorkind` and `.tvanchorkind` were
+ * both `color:var(--dim)`, one grey for all nine, on the row and in the
+ * document alike. It matters HERE more than it would elsewhere because his
+ * archive is 1,155 marks and 779 of them are tables \u2014 67% \u2014 so the list is
+ * two-thirds one kind in one colour and the rare kinds he hunts are needles in
+ * a grey haystack.
+ *
+ * \u2500\u2500 THE SENTENCE A READER CAN STATE \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500
+ *
+ * **Colour says what a mark is FOR: gold, a judgement that was made; orange,
+ * something still owed; blue, material the conversation produced \u2014 and a plain
+ * note keeps the standing grey, because it claims nothing beyond "here".**
+ *
+ *   `--gold`   SETTLED   ruling, decision. Something was decided.
+ *   `--warn`   OWED      defect, question, todo. Something is outstanding \u2014 a
+ *                        fix, an answer, an act. Three different debts, one
+ *                        posture, and the glyph says which debt.
+ *   `--carry`  FOUND     table, report, evidence. Material the conversation
+ *                        produced or dug up. This is the 67%, and putting the
+ *                        bulk on ONE hue is the point: a list that is mostly
+ *                        one colour lets the two that are not jump out.
+ *   (none)     note      the unqualified mark. It keeps `--dim`.
+ *
+ * \u2500\u2500 WHY THREE HUES AND NOT FIVE, WHICH IS THE BUDGET \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500
+ *
+ * `DEC-the-meaning-hue-budget-is-five-gold-ok-carry-crit-and-warn` fixes the
+ * palette at gold / ok / carry / crit / warn and forbids a sixth. Nine kinds do
+ * not get nine colours; the question is only which of the five are spent.
+ *
+ * **`--crit` IS NOT AVAILABLE HERE, AND THAT IS A MEASUREMENT RATHER THAN A
+ * PREFERENCE.** Red is the obvious colour for a defect. Measured 2026-09-15 in
+ * a browser, as 12px text on the ground this card actually paints \u2014
+ * `rgb(10, 41, 50)`, the lightest flat fill inside the marks card, sampled from
+ * a screenshot rather than read off a token \u2014 `#ef4444` scores **4.06:1**,
+ * under the 4.5:1 bar `button-contrast.spec.ts` and `chip-hue-authority.spec.ts`
+ * hold every control and every chip to. The decision's own body already warned
+ * about exactly this hue: *"on `--panel-2` the same colour measures 4.45:1 and
+ * FAILS"*. So a defect wears `--warn` (5.44:1) with the other two debts, and
+ * the bug glyph is what separates it from a question.
+ *
+ * **`--ok` IS LEFT UNSPENT ON PURPOSE.** It means "fine, safe, passing" on
+ * doctor's levels, on the watch pulse and on every chip in the product. Not one
+ * of these nine kinds means that, and spending it to mean a fourth thing is how
+ * a five-hue budget stops meaning anything \u2014 the amendment's own warning.
+ *
+ * \u2500\u2500 AND COLOUR IS NEVER THE ONLY CARRIER \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500
+ *
+ * The amendment of 2026-08-27 is binding and it is narrow: *"a hue may narrow a
+ * group, never name one"*, because *gold against ok is 1.04:1 and two hues a
+ * reader cannot reliably tell apart were already being separated by the word
+ * beside them.* So the hue narrows nine kinds to three postures; the GLYPH and
+ * the WORD name the kind, both stay, and both are what survives when the hue
+ * does not \u2014 `@media print` flattens every one of these tokens to `#000`, and
+ * a reader who cannot separate orange from blue still reads `\uD83D\uDC1E a defect`.
+ * That is the same rule the review verdicts follow: rail, ground, weight AND
+ * word.
+ *
+ * **`null` is written out for `note` rather than left absent**, so the table is
+ * TOTAL over `ANCHOR_KIND_KEYS` and a kind added without a group is a hole a
+ * test can see rather than an `undefined` that silently means grey.
+ * `test/ui/anchor-kind-vocabulary.test.ts` asserts that totality.
+ *
+ * A kind this build has no word for gets no group and no glyph, for the reason
+ * written one table up: there is no colour for "unknown" either.
+ */
+export const ANCHOR_KIND_HUE = {
+  ruling: 'kindsettled',
+  decision: 'kindsettled',
+  defect: 'kindowed',
+  question: 'kindowed',
+  todo: 'kindowed',
+  table: 'kindfound',
+  report: 'kindfound',
+  evidence: 'kindfound',
+  note: null,
+};
+
+/**
+ * The group class a kind wears, or `''` \u2014 ready to be concatenated onto a base
+ * class, which is the one thing every caller does with it.
+ *
+ * **It returns a class rather than a colour**, so the hue lives in the
+ * stylesheet and nothing here restates one. `scripts/check-cssom-restatement.ts`
+ * and `chip-hue-authority`'s inline-colour assertion both exist because a
+ * colour written from a module is a colour no gate that reads a stylesheet can
+ * see.
+ */
+function kindHueClass(kind) {
+  const group = ANCHOR_KIND_HUE[kind];
+  return typeof group === 'string' ? ` ${group}` : '';
+}
+
+/**
  * ── THE KEYBOARD ROUTE TO EVERY ACTION ON A CONVERSATION DOCUMENT ──────────
  *
  * `TASK-a-reader-deep-in-a-document-cannot-reach-any-control-so`, owner
@@ -1135,6 +1296,61 @@ export const DOC_SHORTCUTS = [
   { action: 'markPrev', code: 'KeyN', shift: true, show: 'Shift+N' },
   { action: 'youNext', code: 'KeyU', shift: false, show: 'U' },
   { action: 'youPrev', code: 'KeyU', shift: true, show: 'Shift+U' },
+  /*
+   * ── THE KIND, ON A KEY — `TASK-stepping-to-the-next-mark-of-a-particular-
+   * kind-needs-its-own`, owner request 2026-09-15: *"it would be nice to be
+   * able to jump to different mark types with special keys (do not replace
+   * existing just add specifc)."*
+   *
+   * **ADDED, NOT REPLACING.** Every line above this one is untouched: `N` and
+   * `Shift+N` still walk the marks, `U` and `Shift+U` still walk his messages,
+   * `M` still writes and `/` still finds. The kind `<select>` from `anchors/6`
+   * and the `menuitemradio` rows from the right-click menu both stay. This is a
+   * THIRD route to a capability that already has two, which is `anchors/4`'s
+   * own ruling applied again.
+   *
+   * ── THE QUESTION THE ITEM SAYS MUST BE ANSWERED, AND THE ANSWER ─────────
+   *
+   * Nine kinds, and no room for nine mnemonic pairs that miss `N`, `U`, `M`
+   * and `/`. The item offers three shapes: a PREFIX key, CYCLING the filter
+   * with one key, or keys for ONLY THE FEW KINDS a reader hunts. **This is the
+   * cycle, and it is one key plus its Shift twin.**
+   *
+   * **Why not per-kind keys, which is the shape the request sounds like.** The
+   * `<select>` does not offer nine options. `fillKinds` builds it from
+   * `kindsPresent()` — THE KINDS THIS CONVERSATION ACTUALLY HOLDS — because
+   * offering `a report` on a document with no report is a control that can only
+   * answer "nothing", which is the measured-zero rule pointed at a `<select>`.
+   * So a key bound to `defect` has no option to select on a document with no
+   * defect: it would either do nothing silently, or need a SECOND vocabulary
+   * that disagrees with the one on screen. A cycle walks the list that is
+   * actually there, so every press lands on a choice the reader can see.
+   *
+   * **The item's own frequency argument survives this rather than losing to
+   * it.** His 1,155 marks are 67% tables, so the kinds worth reaching are the
+   * RARE ones — and cycling reaches them by COUNT OF KINDS, never by count of
+   * marks. A document holding tables, a ruling and one defect is a three-press
+   * ring no matter that the tables outnumber the rest 700 to 2. A per-kind key
+   * would be faster only on the document that holds all nine, and there is no
+   * such document in this archive.
+   *
+   * **And it does not run out.** Two bindings cover nine kinds and cover the
+   * tenth on the day the vocabulary grows. A per-kind table needs a key that
+   * does not exist, which is the state this table is already in.
+   *
+   * **Why not a prefix.** A prefix key is a MODE — a keystroke after which the
+   * next keystroke means something else — and a mode this screen enters
+   * silently is one a reader cannot leave, because `Escape` is spoken for
+   * twice and the item rules it unavailable. That is the one shape the
+   * constraints actually forbid rather than merely disfavour.
+   *
+   * `KeyK` for KIND, and it is free: nothing above binds it. Bound by `code`
+   * like everything else — on a Hebrew layout that key prints `ל`. `Shift+K`
+   * goes the other way, which is the direction convention `Shift+N` and
+   * `Shift+U` already set on this bar, so it is not a new thing to learn.
+   */
+  { action: 'kindNext', code: 'KeyK', shift: false, show: 'K' },
+  { action: 'kindPrev', code: 'KeyK', shift: true, show: 'Shift+K' },
 ];
 
 /**
@@ -2292,6 +2508,28 @@ function anchorRow(ctx, anchor, onChanged) {
   // written by a later build must still be readable on this one.
   const showKind = () => {
     kind.replaceChildren();
+    /*
+     * **THE GROUP CLASS IS REWRITTEN, NOT ADDED** —
+     * `TASK-every-kind-of-mark-is-drawn-in-the-same-grey-so-nine-kinds`.
+     *
+     * This function runs again after a relabel, and a relabel may CHANGE the
+     * kind — `apiAnchorRelabel` carries the new one back and `showKind` is
+     * called with it. An `add()` would leave the old group's class behind
+     * beside the new one, and with both present the stylesheet's source order
+     * would silently pick a winner: a table re-kinded to a defect would keep
+     * reading blue, which is worse than no colour at all because it is a
+     * confident wrong answer.
+     *
+     * **BOTH CARRIERS, and they are not the same carrier twice.** The ROW takes
+     * it for its rail — `.convanchor`'s 2px inline-start border, the thing a
+     * reader sees down a long list in peripheral vision without reading
+     * anything — and the KIND FIELD takes it for the word. That is the pair
+     * `DEC-the-meaning-hue-budget-is-five-…`'s amendment asks for wherever
+     * colour is spent: *rail, ground, weight AND word*.
+     */
+    const hue = kindHueClass(anchor.kind);
+    row.className = `convanchor${hue}`;
+    kind.className = `convanchorkind${hue}`;
     if (ANCHOR_KIND_KEYS.has(anchor.kind)) {
       // **The glyph is a MARK BESIDE the word, never instead of it.** `glyphed`
       // hides it from assistive tech and isolates the pair for bidi; the keyed
@@ -5710,8 +5948,39 @@ export function mountDocument(ctx, host, outline, back, roster = NO_LANES, landA
    */
   const kindPick = el('select', 'small tvnavkind');
   kindPick.setAttribute('aria-label', ctx.tFlat('conv.nav.kindLabel'));
+  /* ── AND THE KEY IS SHOWN ON THE CONTROL ────────────────────────────────
+   *
+   * `TASK-stepping-to-the-next-mark-of-a-particular-kind-needs-its-own`, its
+   * fourth constraint in its own words: *"THE KEY IS SHOWN ON THE CONTROL, or
+   * the fast path is as undiscoverable as the right-click was."*
+   *
+   * **Three carriers, exactly as `shortcutOn` spends them on a button, and for
+   * the same three readers** — the `title` for a reader who hovers, the chip
+   * for one who does not, `aria-keyshortcuts` for one who hears. The chip is
+   * `aria-hidden` so the `<select>`'s accessible name stays the sentence
+   * `conv.nav.kindLabel` gives it.
+   *
+   * **`shortcutOn` is NOT called, and that is deliberate rather than an
+   * oversight.** It returns before drawing a chip on anything that is not a
+   * `<button>` — a chip cannot be appended INTO a `<select>`, whose children
+   * are its options — and it writes the one-key sentence, which would name `K`
+   * and silently drop `Shift+K`. This control is the only one on the bar with
+   * a PAIR of keys and no button to hang them on, so it gets the pair's own
+   * sentence and a sibling chip.
+   *
+   * `span.m` on the chip for the reason every identifier on this screen wears
+   * it: a Latin legend inside a Hebrew bar lands at the wrong end of it unless
+   * it is isolated.
+   */
+  const kindNextKey = DOC_SHORTCUTS.find((binding) => binding.action === 'kindNext');
+  const kindPrevKey = DOC_SHORTCUTS.find((binding) => binding.action === 'kindPrev');
+  kindPick.setAttribute('aria-keyshortcuts', `${kindNextKey.show} ${kindPrevKey.show}`);
+  kindPick.title = ctx.tFlat('conv.keys.onPair',
+    { key: kindNextKey.show, back: kindPrevKey.show });
+  const kindChip = el('span', 'm tvkey tvnavkindkey', kindNextKey.show);
+  kindChip.setAttribute('aria-hidden', 'true');
   const markGroup = el('div', 'tvnavgroup tvnavmarks');
-  markGroup.append(kindPick, markPrev, markNext, markCount);
+  markGroup.append(kindPick, kindChip, markPrev, markNext, markCount);
   const youGroup = el('div', 'tvnavgroup tvnavyous');
   youGroup.append(youPrev, youNext, youCount);
   nav.append(navHead, markGroup, youGroup);
@@ -6261,7 +6530,25 @@ export function mountDocument(ctx, host, outline, back, roster = NO_LANES, landA
        * point of a closed set in a dense surface, and a kind this build has no
        * word for is drawn as itself — `anchorRow`'s own rule, one card over.
        */
-      const kind = el('span', 'tvanchorkind');
+      /*
+       * **THE SAME THREE GROUPS, IN THE DOCUMENT** —
+       * `TASK-every-kind-of-mark-is-drawn-in-the-same-grey-so-nine-kinds`. The
+       * item's defect is `.convanchorkind` AND `.tvanchorkind`, both
+       * `color:var(--dim)`, "on the row and in the document alike", so the fix
+       * is on both or it is on neither.
+       *
+       * **Set at construction and never rewritten**, which is the opposite of
+       * `showKind`'s rule one card over and is correct for the opposite reason:
+       * this bar is rebuilt wholesale by `redrawMe` after every write, so there
+       * is no second paint for a stale class to survive into. What the two
+       * share is the helper, so the grouping is decided in exactly one place.
+       *
+       * No rail here. `.convanchor` has a 2px inline-start border to recolour;
+       * this is an inline run inside `.tvanchorbar`, beside a `⚑ marked` chip
+       * that owns the row's left edge already — and a second coloured edge
+       * against it would be two rails disagreeing about what the row is.
+       */
+      const kind = el('span', `tvanchorkind${kindHueClass(standing.kind)}`);
       if (ANCHOR_KIND_KEYS.has(standing.kind)) {
         kind.append(glyphed(ANCHOR_KIND_GLYPH[standing.kind],
           ctx.t(`conv.anchors.kind.${standing.kind}`)));
@@ -7100,7 +7387,14 @@ export function mountDocument(ctx, host, outline, back, roster = NO_LANES, landA
    */
   const fillKinds = () => {
     const present = kindsPresent();
-    const signature = present.join(' ');
+    // **THE SEPARATOR IS WRITTEN AS AN ESCAPE, and it was a raw NUL byte in
+    // the source until 2026-09-15.** A literal NUL makes git treat this whole
+    // 9,400-line file as BINARY — no diff, no review, and a merge conflict
+    // nothing can resolve. `scripts/check-text-files.ts` reports it in those
+    // words, and it is why `grep` has been answering "Binary file … matches"
+    // over this file for weeks. The escape sends the same byte and leaves the
+    // file readable, which is the repair that gate asks for.
+    const signature = present.join('\u0000');
     if (signature === kindsDrawn) return;
     kindsDrawn = signature;
     if (markKind !== null && !present.includes(markKind)) markKind = null;
@@ -7122,10 +7416,89 @@ export function mountDocument(ctx, host, outline, back, roster = NO_LANES, landA
    * re-derived, so "stop 7" afterwards is a different place and a kept cursor
    * would step the reader somewhere they never asked to go.
    */
+  /*
+   * **AND THE NEW SUBJECT IS SAID, IN THE REGION THE WALK ALREADY SPEAKS IN**
+   * — `TASK-stepping-to-the-next-mark-of-a-particular-kind-needs-its-own`,
+   * closing sentence: *"a key that changes the subject must announce the change
+   * in the same region, or a reader will not know why the next press went
+   * somewhere unexpected."*
+   *
+   * **IT IS SAID HERE AND NOT IN THE KEY HANDLER, which is the whole point.**
+   * Three routes now set this filter — the `<select>` itself, the menu's
+   * `menuitemradio` rows, and `K`/`Shift+K` — and all three reach it through
+   * this one `change`. An announcement written in the key handler would be a
+   * sentence only the keyboard reader ever hears, and a fourth route added
+   * later would arrive with no sentence at all. One event, one announcement.
+   *
+   * **THE WORDS ARE `markCount`'S OWN**, re-used rather than written again:
+   * `conv.nav.marksKind` is exactly "N marked point(s) here of one kind — X",
+   * which is the sentence the counter beside the control is about to draw. Two
+   * spellings of one fact is the defect `confirm/3` is about, and this screen
+   * has refused it twice already.
+   *
+   * `navRefresh` runs FIRST, because it is what re-derives the stops these
+   * numbers describe — announcing before it would report the old walk.
+   */
   kindPick.addEventListener('change', () => {
     markKind = kindPick.value === '' ? null : kindPick.value;
     navRefresh();
+    const after = markStops();
+    // **SPELLED OUT RATHER THAN COMPOSED FROM A VARIABLE KEY**, for the reason
+    // `navRefresh` carries twenty lines down: `test/ui/viewmodel.test.ts` reads
+    // every key and every slot out of this file by PARSING it, and a key
+    // arriving as a variable is a key that gate cannot see.
+    if (markKind === null) {
+      sayNav('conv.nav.marks', { n: after.stops.length });
+    } else if (after.stops.length === 0 && after.hidden === 0) {
+      sayNav('conv.nav.marksNoneKind', { kind: kindWord(markKind) });
+    } else {
+      sayNav('conv.nav.marksKind', { n: after.stops.length, kind: kindWord(markKind) });
+    }
   });
+
+  /**
+   * **ONE STEP AROUND THE RING OF KINDS THIS DOCUMENT HOLDS** — `K` and
+   * `Shift+K`, `TASK-stepping-to-the-next-mark-of-a-particular-kind-needs-its-
+   * own`.
+   *
+   * **IT DRIVES THE REAL `<select>` AND DISPATCHES ITS OWN `change`**, which is
+   * the discipline every other route on this screen already keeps and the one
+   * the menu's radios were built to: *"setting the value alone leaves the walk
+   * unnarrowed"*, measured when the menu landed. So there is still exactly one
+   * `markKind`, one `markStops`, one `cursor` and one announcement — the item's
+   * "ONE WALK" constraint is kept by having no second mechanism to keep it in,
+   * rather than by two mechanisms agreeing.
+   *
+   * **THE RING INCLUDES "every kind", AND THAT IS THE WAY BACK.** The options
+   * are `['', ...kindsPresent()]`, so pressing `K` past the last kind returns
+   * to the unnarrowed walk. A ring with no way home would be a filter a
+   * keyboard reader could enter and not leave — and `Escape`, which is the
+   * gesture they would try, is spoken for twice and is not available.
+   *
+   * **IT WRAPS RATHER THAN ENDING, which is not the walk's rule and should not
+   * be.** `step` announces its ends instead of disabling, because a POSITION in
+   * a document has a first and a last and a reader needs to be told they are
+   * there. A set of choices has neither; it has a cycle. Refusing to wrap here
+   * would invent an end that nothing on screen expresses.
+   *
+   * **A DOCUMENT WITH NOTHING MARKED IS SAID, NOT SWALLOWED**, for
+   * `runShortcut`'s own stated reason one screen down: a key that silently did
+   * nothing is indistinguishable from a key that is not bound. One option means
+   * `kindsPresent()` came back empty — there is no mark here at all — and
+   * `conv.nav.noMarks` is already the sentence for exactly that.
+   */
+  const cycleKind = (by) => {
+    const options = [...kindPick.options];
+    if (options.length <= 1) { sayNav('conv.nav.noMarks'); return; }
+    const at = options.findIndex((option) => option.value === kindPick.value);
+    // `findIndex` answering -1 would make `(-1 + 1) % n` land on 1 and skip the
+    // unnarrowed option, so a value the list does not hold is treated as being
+    // AT the unnarrowed option, which is the state `fillKinds` puts it in.
+    const from = at < 0 ? 0 : at;
+    const next = (from + by + options.length) % options.length;
+    kindPick.value = options[next].value;
+    kindPick.dispatchEvent(new Event('change'));
+  };
 
   navRefresh = () => {
     // **A WALK IN PROGRESS DOES NOT SURVIVE THE LIST IT WALKS CHANGING.** A
@@ -7634,6 +8007,17 @@ export function mountDocument(ctx, host, outline, back, roster = NO_LANES, landA
     if (kindOptions.length > 1) {
       const head = el('p', 'small tvmenuhead');
       head.append(...ctx.t('conv.menu.kinds'));
+      // **AND THE HEADING TEACHES THE KEY**, which is the `.tvkey` chip's whole
+      // stated job one section along: *"the discovery path teaches the fast
+      // path."* It goes on the HEADING and not on each radio, because `K` does
+      // not select the row it would sit beside — it steps to the NEXT kind,
+      // which is a fact about the group rather than about any member of it.
+      // `aria-hidden`, so the heading's own words are what is announced, and
+      // the `<select>` on the bar carries the `aria-keyshortcuts` that a screen
+      // reader announces AS a shortcut.
+      const headKey = el('span', 'm tvkey', keyOf('kindNext').show);
+      headKey.setAttribute('aria-hidden', 'true');
+      head.append(' ', headKey);
       menu.append(head);
       for (const option of kindOptions) {
         const chosen = option.value === kindPick.value;
@@ -7772,6 +8156,8 @@ export function mountDocument(ctx, host, outline, back, roster = NO_LANES, landA
     if (action === 'markNext') { step('mark', true); return; }
     if (action === 'youPrev') { step('you', false); return; }
     if (action === 'youNext') { step('you', true); return; }
+    if (action === 'kindNext') { cycleKind(1); return; }
+    if (action === 'kindPrev') { cycleKind(-1); return; }
     const control = rowWriteControl(rowUnderCaret());
     // **A ROW THAT IS NOT THERE IS SAID, NOT SWALLOWED.** It happens on a
     // document filtered to nothing, and a key that silently did nothing would
