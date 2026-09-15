@@ -550,8 +550,15 @@ test('every work. key the English table declares is placed by the screen', async
   // sentence of the design of record that silently does not render.
   assert.deepEqual(declared.filter((key) => !named.has(key)), [],
     'these work. keys are declared and drawn nowhere');
-  assert.equal(declared.length, 30,
-    `the English table declares ${declared.length} work. key(s); it has been 30 since `
+  assert.equal(declared.length, 37,
+    `the English table declares ${declared.length} work. key(s); it has been 37 since `
+    + '`TASK-the-review-queue-explains-a-proposal-at-length-and-never` put the SHORT ANSWER '
+    + 'above the brief on every draft card — `work.rec`, `work.recNone`, the three verdict '
+    + 'words `work.recPromote`/`work.recDecline`/`work.recNeedsYou`, `work.recBackfilled` for '
+    + 'a row that was re-derived rather than captured with one, and `work.recWhyNone`. The '
+    + 'three verdict words are KEYS rather than stored English precisely so the verdict can be '
+    + 'read in Hebrew; the reason beside them is recorded prose and is not translated, exactly '
+    + 'like the brief under it. 30 since '
     + '`plan:loop seq:4` put the REVIEW BRIEF on every draft card (design §7: the brief is '
     + 'drawn inline, written at capture time, with no model call on this surface) — '
     + '`work.brief`, `work.briefNone` and `work.briefCut` — and gave the reject sentence a '

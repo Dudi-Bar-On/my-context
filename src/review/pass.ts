@@ -51,6 +51,7 @@ import {
 } from './model.ts';
 import { reviewPrompt } from './prompt.ts';
 import { NO_QUEUE_CEILING, propose, type Proposer } from './propose.ts';
+import type { Verdict } from './recommend.ts';
 import { worthAPass, type RubricVerdict } from './rubric.ts';
 
 /** The report's name under `<corpusRoot>/state/`. */
@@ -245,6 +246,15 @@ export interface DraftLine {
   target: string | null;
   title: string;
   confirmed: boolean;
+  /**
+   * **What the pass recommended doing with it, so the SPREAD is measurable
+   * from the report alone** — `TASK-the-review-queue-explains-a-proposal-at-length-and-never`
+   * makes that measurement binding: *"if the recommendation is the same value
+   * on nearly all of them, it carries no information and the item is not
+   * closed."* A verdict visible only on a screen could only be counted by
+   * opening every row, which is how a degenerate distribution goes unnoticed.
+   */
+  recommendation: Verdict;
 }
 
 /**
@@ -295,10 +305,12 @@ function writeReport(stateRoot: string, report: PassReport): boolean {
 function draftLine(p: {
   id: string | null; by: Proposer; artifact: string; category: string;
   target: string | null; title: string; confirmed: boolean;
+  recommendation: { verdict: Verdict };
 }): DraftLine {
   return {
     id: p.id, by: p.by, artifact: p.artifact, category: p.category,
     target: p.target, title: p.title, confirmed: p.confirmed,
+    recommendation: p.recommendation.verdict,
   };
 }
 

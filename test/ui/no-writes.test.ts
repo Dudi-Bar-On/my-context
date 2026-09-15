@@ -298,6 +298,12 @@ const WRITERS: Record<string, string[]> = {
   'src/review/declined.ts': ['recordDecline'],
   'src/review/decline.ts': ['declineDraft'],
   'src/review/propose.ts': ['propose', 'noteSighting'],
+  // The one-time backfill behind
+  // `TASK-the-review-queue-explains-a-proposal-at-length-and-never`. `backfill`
+  // rewrites draft files under `.drafts/`; `draftFiles` and `deriveInput`
+  // beside it only read, which is what lets `recommend.ts` — the module the
+  // READ model imports — stay a pure function with no filesystem reach at all.
+  'src/review/backfill-recommendations.ts': ['backfill'],
   // `plan:recall seq:2`, 2026-09-11 — D42 phase 2's two writing modules. Found
   // by the derivation below rather than by anybody remembering, which is the
   // direction this table was rebuilt to work in: they landed on `master` naming

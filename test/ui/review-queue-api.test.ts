@@ -28,10 +28,16 @@ import { apiReviewQueue, BRIEF_MAX_CHARS } from '../../src/ui/read-model-work.ts
 import { apiCorpusFile } from '../../src/ui/read-model.ts';
 import { isCorpusFilePath } from '../../src/doctor/checks.ts';
 import { removeTree } from '../helpers/tmp.ts';
+import {
+  backfillTag, composeBody, recommend, recommendTag,
+} from '../../src/review/recommend.ts';
 
 interface Row {
   id: string; origin: string; brief: string; briefTruncated: boolean;
   filePath: string; validFrom: string | null; deletesOnDecline: boolean;
+  recommendation: string | null;
+  recommendationWhy: string | null;
+  recommendationBackfilledAt: string | null;
 }
 
 /** A workspace holding one review-pass draft and one ingest draft. */
@@ -77,6 +83,118 @@ test('the review brief arrives with the row, whole, and nothing composes it here
       proposal.validFrom !== null,
       'and the date the age indicator is keyed on rides with it, so the row need not derive one',
     );
+  } finally {
+    removeTree(cwd);
+  }
+});
+
+// ── THE RECOMMENDATION, ABOVE THE BRIEF ────────────────────────────────────
+//
+// `TASK-the-review-queue-explains-a-proposal-at-length-and-never`. Same rule
+// as the brief and same mechanism: recorded at capture, served with the row,
+// composed nowhere on this path.
+
+/** A workspace holding one draft whose recommendation was recorded as `tags`/`body` say. */
+function corpusWithRecommendation(
+  brief: string, tags: string[], notice: string | null,
+): { cwd: string; ws: Workspace; why: string } {
+  const cwd = mkdtempSync(path.join(tmpdir(), 'myctx-queue-rec-'));
+  assert.equal(runCli(['init'], cwd, () => {}), 0);
+  const ws = resolveWorkspace(cwd);
+  const opened = openRebuiltStore(ws);
+  const rec = recommend({
+    targetKind: 'file', target: 'scripts/gate-basis.ts', targetResolves: true,
+    claim: 'whole', confirmed: false, sessionsSeen: 1, evidenceCount: 1, absent: [],
+  });
+  try {
+    createItem({ root: ws.projectRoot!, store: opened.store, config: ws.config }, {
+      type: 'task', title: 'check basis admits a test that declares none',
+      summary: 'The basis gate passes a test file carrying no @basis line at all.',
+      body: composeBody(rec, brief, notice), origin: 'review',
+      scope: ['scripts/gate-basis.ts'], tags,
+    });
+  } finally {
+    opened.store.close();
+  }
+  return { cwd, ws, why: rec.why };
+}
+
+test('the verdict is served from the TAG and the reason from the body, and the brief is untouched', () => {
+  const brief = 'A draft from the self-improvement pass. It governs nothing and is not committed.';
+  // **The tag says `decline` while the reason's prose is the `promote` one.**
+  // That disagreement is the whole assertion: an endpoint that read the verdict
+  // out of the sentence would answer `promote`, and nothing else in this file
+  // could tell. Nothing writes this state — it is constructed to prove which
+  // of the two the endpoint is actually reading.
+  const { cwd, ws } = corpusWithRecommendation(brief, ['review-pass', recommendTag('decline')], null);
+  try {
+    const row = rows(ws).find((r) => r.origin === 'review');
+    assert.ok(row);
+    assert.equal(row.recommendation, 'decline',
+      'the verdict comes off the tag — the prose beside it says the opposite and is ignored');
+    assert.ok(row.recommendationWhy !== null && row.recommendationWhy.includes('whole claim'),
+      'and the reason is the recorded prose, served as prose');
+    assert.equal(row.brief, brief,
+      'the brief is served byte-identical: the recommendation is split off, never sliced out of it');
+    assert.equal(row.briefTruncated, false);
+    assert.equal(row.recommendationBackfilledAt, null,
+      'a row with no backfill tag declares no backfill date');
+  } finally {
+    removeTree(cwd);
+  }
+});
+
+test('a draft with no rec: tag serves a NULL verdict — absent is absent, not a guess', () => {
+  const brief = 'A draft from the self-improvement pass. It governs nothing and is not committed.';
+  const { cwd, ws } = corpus(brief);
+  try {
+    const row = rows(ws).find((r) => r.origin === 'review');
+    assert.ok(row);
+    assert.equal(row.recommendation, null,
+      'every draft captured before this shipped has none, and the row says so rather than ' +
+      'falling back to promote');
+    assert.equal(row.recommendationWhy, null);
+    assert.equal(row.brief, brief, 'and its brief is untouched by the split that found no marker');
+  } finally {
+    removeTree(cwd);
+  }
+});
+
+test('a BACKFILLED row carries the date it was re-derived on, as a field', () => {
+  const brief = 'A draft from the self-improvement pass. It governs nothing and is not committed.';
+  const { cwd, ws } = corpusWithRecommendation(
+    brief, ['review-pass', recommendTag('promote'), backfillTag('2026-09-15')],
+    'BACKFILLED on 2026-09-15. This was NOT written when the draft was captured.');
+  try {
+    const row = rows(ws).find((r) => r.origin === 'review');
+    assert.ok(row);
+    assert.equal(row.recommendationBackfilledAt, '2026-09-15',
+      'a reader must be able to tell a row re-derived later from one written at capture, and ' +
+      'this is the half a screen can act on without reading a sentence');
+    assert.ok(row.recommendationWhy !== null && row.recommendationWhy.startsWith('BACKFILLED'),
+      'the prose says it too, above the verdict, so the provenance is read before the argument');
+    assert.equal(row.brief, brief, 'and the brief is still exactly what the pass wrote');
+  } finally {
+    removeTree(cwd);
+  }
+});
+
+test('BRIEF_MAX_CHARS bounds the BRIEF half, after the split — a recommendation cannot eat into it', () => {
+  // A brief exactly at the bound plus a long recommendation above it. If the
+  // endpoint sliced the stored body, the recommendation's characters would
+  // come out of the brief's allowance and the row would be short AND silent
+  // about it. The bound must still mean what its own comment says.
+  const brief = 'y'.repeat(BRIEF_MAX_CHARS);
+  const { cwd, ws } = corpusWithRecommendation(
+    brief, ['review-pass', recommendTag('needs-you')], `${'N'.repeat(600)}`);
+  try {
+    const row = rows(ws).find((r) => r.origin === 'review');
+    assert.ok(row);
+    assert.equal(row.brief.length, BRIEF_MAX_CHARS,
+      'the whole allowance still reaches the screen with a 600-character recommendation above it');
+    assert.equal(row.brief, brief);
+    assert.equal(row.briefTruncated, false,
+      'and it is not reported as cut, because it was not');
   } finally {
     removeTree(cwd);
   }

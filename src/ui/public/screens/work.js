@@ -689,11 +689,119 @@ function draftCard(ctx, draft) {
   }));
   card.append(spaced(meta));
 
+  // **Above the brief, and the order is the point.** The owner's words on
+  // 2026-09-15: the "Why this was proposed" panel "is not short and could be
+  // tedious", and he has to read it before he can decide anything. So the
+  // short answer comes first and the full reasoning stays underneath it,
+  // unedited — `TASK-the-review-queue-explains-a-proposal-at-length-and-never`
+  // is explicit that the brief is not shortened to make room.
+  card.append(recommendBlock(ctx, draft));
   card.append(briefBlock(ctx, draft));
   card.append(settlementBlock(
     ctx, 'draft', (verdict) => draftPlan(draft, verdict), draft.deletesOnDecline === true,
   ));
   return card;
+}
+
+/**
+ * The three verdicts, as THUNKS, for `LABEL`'s reason and not a variation of
+ * it: `test/ui/work-screen.test.ts` finds the keys this screen names by
+ * matching literal `t(` calls against these bytes, and a key reachable only
+ * through a variable is a key that test cannot prove is declared in the
+ * Hebrew table — which throws at render time, in Hebrew only.
+ *
+ * The keys carry `{b:…}` so the verdict is emphasised by the string table's
+ * own mechanism. A `<strong>` built here would be markup this screen invents.
+ */
+const REC_LABEL = {
+  promote: (ctx) => ctx.t('work.recPromote'),
+  decline: (ctx) => ctx.t('work.recDecline'),
+  'needs-you': (ctx) => ctx.t('work.recNeedsYou'),
+};
+
+/**
+ * **THE SHORT ANSWER, ABOVE THE REASONING** —
+ * `TASK-the-review-queue-explains-a-proposal-at-length-and-never`, filed from
+ * the owner's own words on 2026-09-15.
+ *
+ * *"the 'Why this was proposed' section is not short and could be tedious so a
+ * helpful addition would be a short recommendation including short and simple
+ * explanation of 'why you are recommending this'."*
+ *
+ * ── NOTHING HERE IS COMPOSED, AND THAT IS THE DESIGN ───────────────────────
+ *
+ * The verdict arrives on the row as `recommendation`, read off the draft's
+ * `rec:` tag; the reason arrives as `recommendationWhy`, read off the block
+ * the pass wrote above the brief. Both were written at capture, by the thing
+ * that had the transcript. This function picks a label and draws prose.
+ *
+ * A verdict composed when the queue is OPENED would be a fresh answer about a
+ * session that ended days ago, drawn one box above a brief whose own sentence
+ * promises the reader that nothing on this screen is composed now. The reader
+ * could not tell the two apart, and the screen would be asserting something
+ * nothing measured.
+ *
+ * ── A ROW WITH NO RECOMMENDATION SAYS SO ───────────────────────────────────
+ *
+ * `work.recNone`, and it is `work.briefNone`'s precedent applied without
+ * variation: a draft captured before this shipped has no recommendation, and
+ * the honest sentence says that rather than drawing an empty box or falling
+ * back to a guess (`STD-a-measured-zero-is-drawn-and-named-an-unmeasured-thing-is`).
+ *
+ * ── AND A ROW THAT WAS BACKFILLED SAYS *THAT*, BEFORE ITS VERDICT ──────────
+ *
+ * A backfilled recommendation was re-derived, on a later day, from whichever
+ * fields happened to survive on the draft — the structured record the pass
+ * held was never kept. So `work.recBackfilled` is drawn ABOVE the verdict and
+ * not below it, for the reason `briefOf` puts its provenance line first: *"a
+ * provenance note further down would be read after the argument it is supposed
+ * to qualify."*
+ */
+function recommendBlock(ctx, draft) {
+  const wrap = el('div');
+  const verdict = typeof draft.recommendation === 'string' ? draft.recommendation : '';
+  const label = REC_LABEL[verdict];
+
+  const head = el('p', 'small');
+  // Two LITERAL calls and not one `ctx.t(cond ? a : b)` — `briefBlock`'s rule,
+  // for `briefBlock`'s reason.
+  head.append(...(label === undefined ? ctx.t('work.recNone') : ctx.t('work.rec')));
+  wrap.append(spaced(head));
+  if (label === undefined) return wrap;
+
+  // Read by a driver that needs to press or assert on a verdict without
+  // depending on its WORDING, which changes with the reader's language — the
+  // same reason the settlement buttons carry `data-verdict`.
+  wrap.dataset.rec = verdict;
+
+  const at = draft.recommendationBackfilledAt;
+  if (typeof at === 'string' && at !== '') {
+    wrap.dataset.recBackfilled = at;
+    const note = el('p', 'small');
+    note.append(...ctx.t('work.recBackfilled', { date: at }));
+    wrap.append(spaced(note));
+  }
+
+  const verdictLine = el('p');
+  verdictLine.append(...label(ctx));
+  wrap.append(verdictLine);
+
+  const why = typeof draft.recommendationWhy === 'string' ? draft.recommendationWhy.trim() : '';
+  if (why === '') {
+    const none = el('p', 'small');
+    none.append(...ctx.t('work.recWhyNone'));
+    wrap.append(spaced(none));
+    return wrap;
+  }
+  // `pre` and `<bdi>` for the brief's reasons: the recorded text carries real
+  // line breaks, and it is authored content whose direction is not this
+  // screen's to assume.
+  const body = el('pre', 'reviewbrief');
+  const isolated = el('bdi');
+  isolated.textContent = why;
+  body.append(isolated);
+  wrap.append(body);
+  return wrap;
 }
 
 /**

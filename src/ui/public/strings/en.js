@@ -1396,6 +1396,24 @@ export const strings = {
   'work.brief': '{b:Why this was proposed.} Written when it was captured, by the pass that read the session. Nothing here is composed now.',
   'work.briefNone': '{b:Why this was proposed.} No brief was recorded — nothing wrote one for this draft, so the reasoning has to come from the item itself.',
   'work.briefCut': 'The brief is longer than this. Open the id above to read the whole draft.',
+  // ── WHAT TO DO ABOUT IT, ABOVE THE BRIEF ─────────────────────────────────
+  //    `TASK-the-review-queue-explains-a-proposal-at-length-and-never`, from
+  //    the owner: the panel under this one is the reasoning in full, and it is
+  //    what he has to read before he can decide anything.
+  //
+  //    The VERDICT is a key and not stored English, which is the whole reason
+  //    it travels on a `rec:` tag rather than inside the body: a word recorded
+  //    in English at capture could never be read in Hebrew. The REASON is
+  //    recorded prose and is not translated — exactly like the brief beneath
+  //    it, and for the same reason: it was written once, with the evidence in
+  //    hand, and a translation of it would be composed now.
+  'work.rec': '{b:What to do.} Decided when this draft was captured, from the draft’s own fields. Nothing here is composed now.',
+  'work.recNone': '{b:What to do.} No recommendation was recorded. This draft was captured before the pass wrote one, so there is nothing to show — and nothing is guessed.',
+  'work.recPromote': '{b:Promote it.}',
+  'work.recDecline': '{b:Decline it.}',
+  'work.recNeedsYou': '{b:This one needs you.}',
+  'work.recBackfilled': 'Backfilled on {mv:date}, and not written when this draft was captured. It was re-derived from the fields that happened to survive on the draft itself; the note below names them, and names what was gone.',
+  'work.recWhyNone': 'A verdict was recorded with no reason beside it.',
   // The reject sentence for a draft the REVIEW PASS wrote, which is deleted
   // rather than deprecated (§8). `work.discardDraft` beside it is still the
   // true sentence for a draft a person or an ingest wrote.

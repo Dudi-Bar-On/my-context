@@ -42,6 +42,9 @@ import type { Workspace } from '../core/workspace.ts';
  */
 import { STATUSES } from '../core/validate.ts';
 import { declineRefusal } from '../review/decline.ts';
+import {
+  backfilledFromTags, splitRecommendation, verdictFromTags,
+} from '../review/recommend.ts';
 import { badRequest, coverageFiles, unknownParams, withStores } from './read-model.ts';
 import { registerRoute, type ApiContext, type JsonResult } from './routes.ts';
 import {
@@ -132,7 +135,24 @@ export function apiReviewQueue(ws: Workspace, url: URL): JsonResult {
       body: {
         drafts: drafts.map((i: Item) => {
           const verdict = injection(i, ws.config);
-          const body = typeof i.body === 'string' ? i.body : '';
+          const stored = typeof i.body === 'string' ? i.body : '';
+          // ── §7 AGAIN, FOR THE BOX ABOVE THE BRIEF ────────────────────────
+          //
+          // `TASK-the-review-queue-explains-a-proposal-at-length-and-never`.
+          // The recommendation is recorded on the draft: the VERDICT on a
+          // `rec:` tag, the reason as the first block of the body. Both are
+          // read here; neither is composed here, and there is no third thing
+          // this endpoint could do — a verdict decided at read time would be a
+          // fresh answer about a session that ended days ago, drawn beside a
+          // brief whose own sentence promises the reader that nothing on this
+          // screen is composed now.
+          //
+          // **`splitRecommendation` splits on a MARKER, never on prose.** The
+          // verdict comes off the tag and only off the tag, so the two can
+          // never drift into disagreeing, and no sentence is ever read back
+          // for its meaning.
+          const split = splitRecommendation(stored);
+          const body = split.brief;
           return {
             id: i.id, type: i.type, title: i.title, severity: i.severity,
             always: i.always, scope: i.scope, origin: i.origin,
@@ -146,8 +166,28 @@ export function apiReviewQueue(ws: Workspace, url: URL): JsonResult {
             // to compose one now. A review surface that called a model would
             // break the read surface's no-writes guarantee and would put a
             // network dependency in an offline plugin.
+            // **The bound applies to the brief half, AFTER the split**, so a
+            // recommendation can never eat into what `BRIEF_MAX_CHARS` was
+            // measured to admit. The number still means what its own comment
+            // says it means: a single-evidence brief travels whole.
             brief: body.slice(0, BRIEF_MAX_CHARS),
             briefTruncated: body.length > BRIEF_MAX_CHARS,
+            // The verdict, from the tag, as one of `rec:promote` /
+            // `rec:decline` / `rec:needs-you` — or `null` for every draft
+            // captured before this shipped. `null` is the answer the screen
+            // NAMES (`work.recNone`), the way `work.briefNone` names an absent
+            // brief rather than drawing an empty box or guessing one.
+            recommendation: verdictFromTags(i.tags),
+            // The reason, as recorded prose. `null` when a verdict was stored
+            // with no reason beside it — a state nothing writes, and which is
+            // still distinguished from "no recommendation at all".
+            recommendationWhy: split.why,
+            // **The date a row's recommendation was BACKFILLED on, or `null`
+            // for one written at capture.** A backfilled row was re-derived
+            // from the fields that happened to survive, on a day long after
+            // the session it is about; a reader who could not tell the two
+            // apart would be reading a reconstruction as a record.
+            recommendationBackfilledAt: backfilledFromTags(i.tags),
             // **Where the file is, so the row can be a DOOR.** `/api/corpus/:id`
             // takes this exact string as its key — `isCorpusFilePath` admits
             // both corpus walk roots since `plan:loop seq:4`, so a draft under

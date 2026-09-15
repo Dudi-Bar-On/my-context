@@ -38,7 +38,7 @@
  *    screen with 83.2% recall on indirect prompt injection rejected 0 of 360
  *    poisoned memories (arXiv:2608.21230). These rules catch carelessness.
  */
-import { readFileSync, renameSync, rmSync, writeFileSync, mkdirSync } from 'node:fs';
+import { existsSync, readFileSync, renameSync, rmSync, writeFileSync, mkdirSync } from 'node:fs';
 import path from 'node:path';
 import { createItem, type MutationContext } from '../core/mutate.ts';
 import { SUMMARY_MAX_CHARS } from '../core/validate.ts';
@@ -48,6 +48,10 @@ import { reviewQueue } from '../core/select.ts';
 import { suppress, type Pending } from './dedupe.ts';
 import type { PassInput, Point } from './input.ts';
 import type { ModelCandidate } from './model.ts';
+import {
+  claimShapeOf, composeBody, recommend, recommendTag, targetKindOf,
+  type Recommendation, type RecommendInput,
+} from './recommend.ts';
 
 /**
  * **Which of the two proposers wrote a draft** — `plan:loop seq:6`.
@@ -372,6 +376,25 @@ export interface Proposal {
   brief: string;
   target: string | null;
   claim: string;
+  /**
+   * **The claim as a SENTENCE, which `claim` above is not.**
+   *
+   * `claim` is `claimKey`'s output: a sorted, stemmed, stopword-free token
+   * string built for comparison, which is why two proposals that differ only
+   * in word order share one. It has no punctuation and no ending, so nothing
+   * can be read off it about the shape of what was said.
+   *
+   * This is the text the proposal actually rests on — the sentence
+   * `claimSentence` selected from the transcript, or, on the model path, the
+   * summary the model composed. `recommend` reads its ENDING to tell a whole
+   * finding from a colon-introducer whose list stayed behind in the
+   * transcript, and reading `claim` for that instead answered `cut` for every
+   * proposal in existence: measured at 310 of 310 on the owner's own session
+   * before this field existed, which is the degenerate distribution
+   * `TASK-the-review-queue-explains-a-proposal-at-length-and-never` makes a
+   * failure condition rather than a caveat.
+   */
+  statement: string;
   confirmed: boolean;
   sessionsSeen: number;
   evidence: Evidence[];
@@ -379,7 +402,31 @@ export interface Proposal {
   because: string;
   /** Which proposer wrote it. See `Proposer` for why this is not `origin`. */
   by: Proposer;
+  /**
+   * **What to DO with this draft — composed HERE, while the pass still has the
+   * evidence, and never when the queue is opened.**
+   *
+   * `TASK-the-review-queue-explains-a-proposal-at-length-and-never`. The brief
+   * above ends *"Nothing here is composed now"*, and a verdict drawn beside it
+   * inherits that promise whether or not anyone meant it to. So it is written
+   * at capture and recorded on the item: the verdict as a `rec:` tag, the
+   * reason as the first block of the body. See `recommend.ts`, which holds the
+   * whole argument and every sentence.
+   */
+  recommendation: Recommendation;
 }
+
+/**
+ * A proposal before it has an id, a brief or a recommendation — what `ranked`
+ * carries, and what `briefOf` and `recommendationFor` are each handed.
+ *
+ * The three derived fields are computed together, once, at the two places a
+ * `Proposal` is actually produced (admitted and withheld), so a withheld
+ * candidate reported in `review-last-pass.json` carries the same recommendation
+ * the write would have recorded. A pass that reported one verdict and wrote
+ * another would be the report lying about the queue.
+ */
+export type RankedProposal = Omit<Proposal, 'id' | 'brief' | 'recommendation'>;
 
 /** Markdown, list markers and runs of whitespace, removed. */
 function clean(text: string): string {
@@ -453,7 +500,7 @@ function clip(text: string, max: number): string {
  * the prose before its first heading, so a heading here would silently lose
  * everything after it.
  */
-function briefOf(proposal: Omit<Proposal, 'id' | 'brief'>): string {
+function briefOf(proposal: RankedProposal): string {
   const where = proposal.evidence
     .map((e) => `${path.basename(e.source)} record ${e.recordIndex}`)
     .join('; ');
@@ -498,6 +545,61 @@ function briefOf(proposal: Omit<Proposal, 'id' | 'brief'>): string {
     `What was observed, quoted as evidence rather than as the content of this proposal:`,
     ...proposal.evidence.map((e) => `"${clip(e.quote, 400)}"`),
   ].join('\n');
+}
+
+/**
+ * **Does the thing this proposal is about still exist?** — the one signal the
+ * pass can look up that a reader of the queue cannot, and the only reason
+ * `propose` needs the filesystem here at all.
+ *
+ * It is asked at CAPTURE and answered from the workspace the pass already
+ * holds open, which is exactly why it must be asked here: by the time the
+ * queue is opened, the answer would be a fresh fact about a different day, and
+ * `work.brief`'s "nothing here is composed now" would stop being true of the
+ * box next to it.
+ *
+ * A file target is resolved against the REPOSITORY (`options.workspace` is
+ * `<repo>/.my_context`, so its parent is the repo), and an item target against
+ * the store the pass is already writing through — no second corpus read.
+ *
+ * `null` for a proposal that names nothing: the question was not asked, which
+ * `RecommendInput` keeps distinct from "asked and the answer was no".
+ */
+function subjectResolves(
+  target: string | null, options: ProposeOptions, ids: Set<string>,
+): boolean | null {
+  if (target === null) return null;
+  if (target.includes('/')) {
+    return existsSync(path.join(path.dirname(options.workspace), target));
+  }
+  return ids.has(target);
+}
+
+/**
+ * The recommendation for one ranked proposal, composed from the proposal's own
+ * fields plus the one lookup above. **Nothing here calls a model and nothing
+ * here reaches a network** — the same property `briefOf` has, for the same
+ * reason, and `test/review/recommend.test.ts` proves it by removal rather than
+ * by this sentence.
+ *
+ * `absent: []` is the whole difference between this path and the backfill. At
+ * capture every signal is in hand, so nothing is missing and the row says so
+ * by having no "not recoverable" clause at all.
+ */
+function recommendationFor(
+  proposal: RankedProposal, options: ProposeOptions, ids: Set<string>,
+): Recommendation {
+  const input: RecommendInput = {
+    targetKind: targetKindOf(proposal.target),
+    target: proposal.target,
+    targetResolves: subjectResolves(proposal.target, options, ids),
+    claim: claimShapeOf(proposal.statement),
+    confirmed: proposal.confirmed,
+    sessionsSeen: proposal.sessionsSeen,
+    evidenceCount: proposal.evidence.length,
+    absent: [],
+  };
+  return recommend(input);
 }
 
 // ── THE PASS'S PROPOSING HALF ───────────────────────────────────────────────
@@ -759,7 +861,14 @@ export async function propose(
   // accepted, so two observations of one thing inside a single pass collapse
   // to one proposal — the failure §5b names first.
   const pending: Pending[] = [];
-  const ranked: { proposal: Omit<Proposal, 'id' | 'brief'>; weight: number }[] = [];
+  const ranked: { proposal: RankedProposal; weight: number }[] = [];
+  /**
+   * Every id in the corpus, read ONCE, for the recommendation's "does the
+   * subject still exist" lookup. Built here rather than inside the per-proposal
+   * helper because `store.all()` is a full corpus read and a ration of five
+   * would have paid for it five times.
+   */
+  const corpusIds = new Set(options.ctx.store.all().map((i) => i.id));
 
   for (const point of input.points) {
     const text = clean(point.text);
@@ -852,6 +961,11 @@ export async function propose(
         summary: clip(sentence, SUMMARY_MAX_CHARS),
         target,
         claim,
+        // The sentence itself, UNCLIPPED — `title` and `summary` are both
+        // bounded copies and either can end in `…` rather than in what the
+        // sentence actually ends in, which is the one thing `recommend` reads
+        // off it.
+        statement: sentence,
         confirmed: seen.confirmed,
         sessionsSeen: seen.sessions,
         because,
@@ -982,6 +1096,12 @@ export async function propose(
           summary: clip(candidate.summary, SUMMARY_MAX_CHARS),
           target: candidate.target,
           claim,
+          // **A model COMPOSES rather than selects**, so there is no sentence
+          // lifted out of a transcript to judge the shape of. Its summary is
+          // the statement it chose to make, and that is what is read — the
+          // honest reading of the same signal for a proposer whose material is
+          // its own prose.
+          statement: candidate.summary,
           confirmed: seen.confirmed,
           sessionsSeen: seen.sessions,
           because:
@@ -1047,7 +1167,10 @@ export async function propose(
   // remains the true count and is not affected by this bound, so nothing is
   // hidden — the count and the sample disagree only in length.
   for (const { proposal } of ranked.slice(admitted.length, admitted.length + WITHHELD_CAP)) {
-    result.withheld.push({ ...proposal, id: null, brief: briefOf(proposal) });
+    result.withheld.push({
+      ...proposal, id: null, brief: briefOf(proposal),
+      recommendation: recommendationFor(proposal, options, corpusIds),
+    });
   }
   if (result.rationed > result.withheld.length) {
     result.because.push(
@@ -1058,8 +1181,13 @@ export async function propose(
 
   for (const { proposal } of admitted) {
     const brief = briefOf(proposal);
+    // Composed HERE, in the same act as the brief and from the same evidence.
+    // `TASK-the-review-queue-explains-a-proposal-at-length-and-never` makes
+    // that the design rather than the convenience: the screen must be able to
+    // say "written when it was captured" about BOTH boxes it draws.
+    const recommendation = recommendationFor(proposal, options, corpusIds);
     if (options.dryRun === true) {
-      result.proposals.push({ ...proposal, id: null, brief });
+      result.proposals.push({ ...proposal, id: null, brief, recommendation });
       continue;
     }
     // `origin: 'review'` is the whole trust boundary. It forces `draft` on any
@@ -1071,7 +1199,13 @@ export async function propose(
       type: proposal.category,
       title: proposal.title,
       summary: proposal.summary,
-      body: brief,
+      // **The recommendation, then the marker, then the brief UNTOUCHED.** The
+      // item's own words: the full brief "stays exactly where it is and is not
+      // shortened". `composeBody` joins them and `splitRecommendation` takes
+      // them apart again on the read side, so neither text is ever edited to
+      // make room for the other — and `BRIEF_MAX_CHARS` still bounds the brief
+      // half alone, after the split.
+      body: composeBody(recommendation, brief, null),
       origin: 'review',
       // `proposer:` is where provenance lives on the item. It is NOT `origin`,
       // and `Proposer`'s comment argues at length why widening that trust
@@ -1081,13 +1215,19 @@ export async function propose(
         'review-pass',
         proposerTag(proposal.by),
         proposal.confirmed ? 'confirmed' : 'unconfirmed',
+        // The VERDICT's one home. It is a tag for `proposer:`'s reason — a
+        // label that must survive, must be machine-readable, and must not be
+        // confused with a trust boundary — and because the screen renders the
+        // verdict WORD in the reader's own language, which it could not do if
+        // the word were English prose inside the body.
+        recommendTag(recommendation.verdict),
       ],
       ...(proposal.target === null || !proposal.target.includes('/')
         ? {}
         : { scope: [proposal.target] }),
     });
     if (made.created) result.created.push(made.id);
-    result.proposals.push({ ...proposal, id: made.id, brief });
+    result.proposals.push({ ...proposal, id: made.id, brief, recommendation });
   }
 
   return result;

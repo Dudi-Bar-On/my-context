@@ -17,17 +17,17 @@ tags:
   - review
   - "plan:review"
   - "seq:7"
-  - "state:todo"
+  - "state:done"
 origin: human
 source_file: null
 source_anchor: null
 source_checksum: null
 valid_from: 2026-09-15
 valid_until: null
-checksum: 69598164464b0737
+checksum: a47d44cf5217048f
 plan: review
 seq: "7"
-state: todo
+state: done
 priority: "2"
 ---
 
