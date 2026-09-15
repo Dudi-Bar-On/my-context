@@ -3966,6 +3966,12 @@ wa-tree .wa-count{margin-inline-start:var(--sp-2);color:var(--dim);
   padding-block:var(--sp-1)}
 .convanchorwhere{margin:0;color:var(--dim)}
 .convanchoropen{color:var(--gold)}
+/* The conversation's name, which stopped being the link on 2026-09-15 —
+   `TASK-every-row-in-the-mark-list-links-with-the-same-word-because`. It is
+   still the first thing on the row and it is now ordinary text, so it takes
+   the ink rather than the link colour: a word that LOOKS clickable and is not
+   is the same lie as a control that does nothing. */
+.convanchorsession{color:var(--ink)}
 .convanchorkind{font-size:var(--fs-00);color:var(--dim)}
 .convanchorlabel{margin:var(--sp-1) 0 0;font-size:var(--fs-0);line-height:1.5;
   overflow-wrap:anywhere}
@@ -4247,6 +4253,56 @@ wa-tree .wa-count{margin-inline-start:var(--sp-2);color:var(--dim);
   font-size:var(--fs-00);color:var(--dim)}
 .tvnavsaid{margin-block-start:0}
 .tvnavat{font-weight:600;color:var(--ink)}
+
+/* ── THE KIND THE MARK WALK IS OVER ───────────────────────────────────────
+   `TASK-the-six-kinds-a-mark-can-carry-have-no-reader-so-you-cannot`.
+
+   ONE CONTROL INSIDE THE PAIR'S OWN GROUP, which is the whole of why the bar
+   did not grow a line. Six kinds times two directions is twelve buttons; the
+   item names a select beside the existing pair as the shape that costs
+   nothing, and a group wraps as a unit so the select can never be orphaned
+   onto the You pair.
+
+   It takes `.tvjump`'s palette rather than the user agent's, for the reason
+   that class's own note records: this app has shipped a control at contrast
+   1.0 by letting a new element inherit the browser's background. */
+.tvnavkind{flex:0 0 auto;font:var(--fs-00)/1.2 var(--sans);color:var(--ink);
+  background:var(--panel-2);border:2px solid var(--dim);
+  border-radius:var(--r-sm);padding:0 var(--sp-1);max-inline-size:12rem}
+
+/* ── THE OTHER TWO ROUTES: THE KEY ON THE BUTTON, AND THE MENU ────────────
+   `TASK-a-reader-deep-in-a-document-cannot-reach-any-control-so`.
+
+   `.tvkey` is the binding written beside the word it belongs to. It ALSO
+   wears `.m` in the markup — `direction:ltr;unicode-bidi:isolate` — because
+   `Shift+N` inside a Hebrew button label lands at the wrong end of the label
+   otherwise; what is added here is only the size and the weight, which `.m`
+   does not say.
+
+   `.tvmenu` IS `position:fixed`, and that is the point of it rather than a
+   convenience: it opens where the pointer is, over a virtualised well whose
+   rows are evicted the moment they leave the window, so an absolutely
+   positioned menu would be placed against a scroll that is about to move.
+   Its own two insets are written from the pointer at open time through CSSOM
+   and are deliberately NOT declared here — a rule in this file would be a
+   second opinion about where it goes.
+
+   The z-index sits above the well and its sticky chrome and below the shell's
+   own dialogs (30) and the router's overlay (40): a menu opened inside a
+   document must not paint over the item pane. */
+.tvkey{margin-inline-start:var(--sp-1);font:600 var(--fs-00)/1 var(--mono);
+  color:var(--dim)}
+.tvmenuhint{margin-block:0 var(--sp-1);color:var(--dim)}
+.tvmenu{position:fixed;z-index:20;display:flex;flex-direction:column;
+  min-inline-size:15rem;padding:var(--sp-1);background:var(--panel-2);
+  border:2px solid var(--dim);border-radius:var(--r-sm)}
+.tvmenuitem{display:flex;align-items:center;justify-content:space-between;
+  gap:var(--sp-2);inline-size:100%;text-align:start;
+  font:600 var(--fs-00)/1.4 var(--mono);color:var(--ink);
+  background:var(--panel-2);border:2px solid var(--panel-2);
+  border-radius:var(--r-sm);padding:var(--sp-1) var(--sp-2);cursor:pointer}
+.tvmenuitem:hover{border-color:var(--gold);color:var(--gold)}
+.tvmenuitem:focus-visible{outline:2px solid var(--gold);outline-offset:2px}
 
 /* ── COPYING A MARKED PASSAGE ──────────────────────────────────────────────
    `TASK-a-selected-passage-copies-as-something-a-terminal-will`.

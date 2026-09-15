@@ -1089,6 +1089,87 @@ const ANCHOR_KIND_GLYPH = {
   todo: '\u2610',
 };
 
+/**
+ * ── THE KEYBOARD ROUTE TO EVERY ACTION ON A CONVERSATION DOCUMENT ──────────
+ *
+ * `TASK-a-reader-deep-in-a-document-cannot-reach-any-control-so`, owner
+ * request 2026-09-15. `mountDocument` binds these; the whole of what they mean
+ * is here, in one table, because a binding written at its call site is a
+ * binding nothing can check for a collision.
+ *
+ * **`code`, NOT `key`.** A `KeyboardEvent.code` is the PHYSICAL key and does
+ * not move with the layout; `key` is the character produced. Half this archive
+ * is Hebrew, and on a Hebrew layout the key printed `M` reports `key: 'צ'` —
+ * so a table keyed on `key` binds these for a Latin keyboard and silently
+ * unbinds every one of them for the reader the product is actually for.
+ *
+ * **`show` is what the reader is told**, and it is deliberately the Latin
+ * legend rather than the character the current layout produces: it is what is
+ * printed on the physical keycap, which is the thing a reader is looking at
+ * when they go to press it.
+ *
+ * **EXPORTED SO A COLLISION IS A TEST FAILURE.** Two actions on one binding is
+ * the defect this shape exists to make impossible to ship — one of them simply
+ * never fires, and nothing on the screen says which. `test/ui/doc-shortcuts.
+ * test.ts` reads this table.
+ *
+ * **WHAT IS DELIBERATELY NOT HERE, and each has a reason rather than an
+ * omission:**
+ *   — **Escape.** `confirm/5` bound it on the rename box and `app.js` binds it
+ *     on the item pane; the item rules a third meaning unavailable and it is
+ *     not taken.
+ *   — **Take it back.** It has no confirm, by owner ruling of 2026-09-11. A
+ *     bare letter that destroys a bookmark with nothing between the keystroke
+ *     and the act is not a fast path, it is a trap. It keeps its button and
+ *     gains the menu.
+ *   — **Top and End.** They are named in neither the item's list nor his
+ *     request, and every binding spent is a key a later one cannot have.
+ */
+export const DOC_SHORTCUTS = [
+  { action: 'find', code: 'Slash', shift: false, show: '/' },
+  // One key for the row's write, because the row has ONE write control: it
+  // reads "Mark this point" on an unmarked turn and "Rename" on a marked one,
+  // and a reader pressing this means "do the thing this turn offers".
+  { action: 'write', code: 'KeyM', shift: false, show: 'M' },
+  { action: 'markNext', code: 'KeyN', shift: false, show: 'N' },
+  { action: 'markPrev', code: 'KeyN', shift: true, show: 'Shift+N' },
+  { action: 'youNext', code: 'KeyU', shift: false, show: 'U' },
+  { action: 'youPrev', code: 'KeyU', shift: true, show: 'Shift+U' },
+];
+
+/**
+ * **THE BINDING IS SHOWN ON THE BUTTON**, which is the item's closing sentence
+ * and not a nicety: *"A keyboard route nobody can discover is the same defect
+ * as a right-click-only action. The binding belongs on the button's own title
+ * or beside it, so the discovery path teaches the fast path."*
+ *
+ * Three carriers, and they are three different readers rather than belt and
+ * braces. The `title` is the sentence, for a reader who hovers. The chip
+ * beside the word is what is seen without hovering. `aria-keyshortcuts` is the
+ * one a screen reader announces AS a shortcut rather than as part of the name
+ * — which is exactly why the chip is `aria-hidden` and the accessible name is
+ * left untouched.
+ *
+ * `span.m` on the chip for the reason every identifier on this screen wears
+ * it: `Shift+N` inside a Hebrew button label lands at the wrong end of the
+ * label unless it is isolated.
+ *
+ * **A module-level function and not a closure**, because `markControl` draws
+ * the row's own write button on every paint and is defined long before the
+ * shortcuts are wired; a helper defined down there would be in its temporal
+ * dead zone at the moment the first row is built.
+ */
+function shortcutOn(ctx, control, action) {
+  const binding = DOC_SHORTCUTS.find((entry) => entry.action === action);
+  if (binding === undefined) return;
+  control.setAttribute('aria-keyshortcuts', binding.show);
+  control.title = ctx.tFlat('conv.keys.on', { key: binding.show });
+  if (control.tagName !== 'BUTTON') return;
+  const chip = el('span', 'm tvkey', binding.show);
+  chip.setAttribute('aria-hidden', 'true');
+  control.append(' ', chip);
+}
+
 /** The controls that scope a search — Task 5. Built once, never redrawn. */
 function archiveBar(ctx, sessions, state, onChange) {
   const bar = el('div', 'convfilter convarchbar');
@@ -2172,15 +2253,36 @@ function anchorRow(ctx, anchor, onChanged) {
   // is derived from the position, so it survives a rename and a put-back.
   row.dataset.anchor = anchor.id;
   const head = el('p', 'small convanchorwhere');
-  // **THE SESSION LINK IS THE GO-TO**, and not a second control beside one
-  // that opens the same document at the top. A reader clicking the name of the
-  // conversation a bookmark is in means the bookmark.
-  const open = el('a', 'convanchoropen');
-  open.href = anchorHref(anchor);
-  open.textContent = anchor.sessionName ?? anchor.sessionTitle
+  /*
+   * **THE NAME OF THE CONVERSATION IS TEXT, NOT THE LINK** —
+   * `TASK-every-row-in-the-mark-list-links-with-the-same-word-because`, owner
+   * ruling 2026-09-15: *"on a list where 24 marks sit in one conversation, all
+   * 24 rows read the same word and none of them says what it does."*
+   *
+   * **The control did not change and none was added.** `a.convanchoropen` is
+   * still the one go-to on this row, still carrying `anchorHref`, still the
+   * element `e2e/anchors.spec.ts` drives. What moved is its TEXT: it is now
+   * the byte at the tail of this line — the one field on the row that differs
+   * between two marks in one session — and the session name it used to carry
+   * is a `<bdi>` in the same place it always read, one word earlier in the
+   * sentence. The item's own line: *"If the fix grows a control, it has gone
+   * wrong."* Nothing here grows one, and the previous lane's refusal to add a
+   * second button beside a working one still stands.
+   *
+   * **The byte is NOT drawn twice.** It was already at the end of this line as
+   * plain text; the link is now wrapped around the text that was there rather
+   * than repeating it, so the row says the position exactly once and the one
+   * clickable thing on it is that position.
+   *
+   * `<bdi>` for the reason every label on this card is one: a Hebrew session
+   * name inside an English sentence takes the sentence's direction unless it
+   * is isolated.
+   */
+  const sessionLabel = anchor.sessionName ?? anchor.sessionTitle
     ?? anchor.sessionId.slice(0, 8);
-  open.title = ctx.tFlat('conv.anchors.goto');
-  head.append(open, ' ');
+  const session = el('bdi', 'convanchorsession');
+  session.textContent = sessionLabel;
+  head.append(session, ' ');
   const kind = el('span', 'convanchorkind');
   // **A kind this build has no word for is drawn AS ITSELF**, and the set is
   // checked here rather than by asking the string table, because `t()`
@@ -2253,8 +2355,31 @@ function anchorRow(ctx, anchor, onChanged) {
     head.append(' ', mono(anchor.agentId));
   }
   head.append(' · ');
-  head.append(...ctx.t('conv.anchors.byte'));
-  head.append(' ', mono(String(anchor.byteOffset)));
+  /*
+   * **THE GO-TO, WEARING THE ONE FIELD THAT DIFFERS BETWEEN TWO MARKS IN ONE
+   * CONVERSATION.** Same element, same class, same `href`, same title — the
+   * text is the byte the anchor actually stores, which is also the number
+   * `resolveAnchor` seeks to and the one a reader pastes into the CLI.
+   *
+   * **AND THE ACCESSIBLE NAME CARRIES BOTH**, because a screen reader hears
+   * the link out of its row: on screen the surrounding sentence says which
+   * conversation, and in a links list it does not. The item is explicit that
+   * 24 links reading alike is worse there than here, so the name names the
+   * conversation AND the byte, and it is the byte that makes each one
+   * different.
+   *
+   * **Both substitutions are named rather than passed by shorthand**, and that
+   * is load-bearing rather than a style: `test/ui/viewmodel.test.ts` reads
+   * every slot out of this file by PARSING the argument object after the key,
+   * so a shorthand property is a slot that gate cannot see.
+   */
+  const open = el('a', 'convanchoropen');
+  open.href = anchorHref(anchor);
+  open.append(...ctx.t('conv.anchors.byte'), ' ', mono(String(anchor.byteOffset)));
+  open.title = ctx.tFlat('conv.anchors.goto');
+  open.setAttribute('aria-label', ctx.tFlat('conv.anchors.gotoAt',
+    { byte: String(anchor.byteOffset), where: sessionLabel }));
+  head.append(open);
   row.append(head);
 
   const label = el('p', 'convanchorlabel');
@@ -5544,12 +5669,70 @@ export function mountDocument(ctx, host, outline, back, roster = NO_LANES, landA
    * pair. Measured after the change at the same size: two lines, and the two
    * groups side by side.
    */
+  /* ── WHICH KIND OF MARK THE WALK IS OVER ────────────────────────────────
+   *
+   * **`TASK-the-six-kinds-a-mark-can-carry-have-no-reader-so-you-cannot`**,
+   * owner ruling 2026-09-15, chosen from four this screen's previous lane
+   * offered. His problem: `anchors/2` gave him six kinds and `anchors/3` gave
+   * him a walk over every mark, and *"the two do not meet"* — a reader who
+   * marked four defects across a long session had to walk every mark to find
+   * them.
+   *
+   * **ONE CONTROL, AND THE ITEM SAYS WHY IT MUST BE.** Six kinds times two
+   * directions is twelve buttons on a bar this project measured at one line;
+   * the item names a select beside the existing pair as the shape that does
+   * not cost that, and this is it. The bar's height afterwards is measured in
+   * the browser and carried in the lane's report, the way the stepper's was.
+   *
+   * **IT IS A FILTER OVER `markStops`, NOT A SECOND WALK.** The item is
+   * explicit — *"two walks that can disagree about where the reader is would
+   * be worse than no filter"* — so there is one `markStops`, one `cursor`, one
+   * `step`, and this select changes exactly one line inside the first of them.
+   * Everything the stepper earned therefore still holds with no second
+   * implementation to keep in step: a stop is a NODE and not an anchor, the
+   * caret does not move, the ends are said rather than disabled, and the walk
+   * reaches past the list's page bound because these stops never came from the
+   * list.
+   *
+   * **THE OPTIONS ARE THE KINDS THIS DOCUMENT ACTUALLY HOLDS**, not the nine
+   * the build has words for. A conversation with three notes and one defect
+   * offers two choices and an "every kind"; offering `a report` there is a
+   * control that can only ever answer "nothing", which is the measured-zero
+   * rule pointed at a `<select>`. It also keeps the automatic pass's own kinds
+   * — `table`, `report`, `ruling`, which are NOT in `OWNER_KIND_CHOICES` —
+   * reachable, because they are in the document whether or not he may write
+   * them by hand.
+   *
+   * **AND THE LIST IS ONLY REBUILT WHEN IT CHANGED.** `navRefresh` runs on
+   * every filter keystroke and after every write; replacing the options each
+   * time would shut the dropdown under a reader who had it open and throw the
+   * caret off it. The signature below is what makes that unwritable.
+   */
+  const kindPick = el('select', 'small tvnavkind');
+  kindPick.setAttribute('aria-label', ctx.tFlat('conv.nav.kindLabel'));
   const markGroup = el('div', 'tvnavgroup tvnavmarks');
-  markGroup.append(markPrev, markNext, markCount);
+  markGroup.append(kindPick, markPrev, markNext, markCount);
   const youGroup = el('div', 'tvnavgroup tvnavyous');
   youGroup.append(youPrev, youNext, youCount);
   nav.append(navHead, markGroup, youGroup);
   host.append(nav);
+
+  /**
+   * The kind the mark walk is narrowed to, or `null` for every kind.
+   *
+   * `null` and not `''`: the empty string is what the `<option>` carries, and
+   * a state that is a control's value is a state that changes meaning the day
+   * the control does.
+   */
+  let markKind = null;
+  /** The option list as last drawn, so it is only rebuilt when it moved. */
+  let kindsDrawn = null;
+  /** A kind's word in the reader's language, or the kind itself. */
+  const kindWord = (kind) => (ANCHOR_KIND_KEYS.has(kind)
+    // A kind this build has no word for is drawn AS ITSELF — `anchorRow`'s own
+    // rule, for its own reason: `t()` THROWS on a key it does not hold, and a
+    // throw inside a render leaves a tab showing nothing at all.
+    ? ctx.tFlat(`conv.anchors.kind.${kind}`) : kind);
 
   /**
    * **WHERE A STEP LANDED, ANNOUNCED OUTSIDE THE WELL.**
@@ -6092,6 +6275,10 @@ export function mountDocument(ctx, host, outline, back, roster = NO_LANES, landA
       const rename = el('button', 'tvjump tvanchorrename');
       rename.type = 'button';
       rename.append(...ctx.t('conv.anchors.relabel'));
+      // The row's write control says its key, on both of the two faces it
+      // wears — `TASK-a-reader-deep-in-a-document-cannot-reach-any-control-so`.
+      // One binding, because the reader means "do what this turn offers".
+      shortcutOn(ctx, rename, 'write');
       // **The same `labelWrite` the archive list and the search hit use**, in
       // its `'aria'` shape: a visible `<label>` would cost a line on every
       // marked turn of a scrolling document, and the name is still there.
@@ -6149,6 +6336,7 @@ export function mountDocument(ctx, host, outline, back, roster = NO_LANES, landA
     const mark = el('button', 'tvjump tvanchormark');
     mark.type = 'button';
     mark.append(...ctx.t('conv.doc.mark'));
+    shortcutOn(ctx, mark, 'write');
     const marker = labelWrite(ctx, {
       named: 'aria',
       labelKey: 'conv.doc.markLabel',
@@ -6659,6 +6847,19 @@ export function mountDocument(ctx, host, outline, back, roster = NO_LANES, landA
     const byNode = new Map();
     let hidden = 0;
     for (const anchor of anchorsHere.values()) {
+      /*
+       * **THE KIND FILTER IS APPLIED BEFORE THE VIEW TEST, AND THE ORDER IS
+       * THE DESIGN** — `TASK-the-six-kinds-a-mark-can-carry-have-no-reader-so`.
+       *
+       * `hidden` means ONE thing on this screen: *"this many more are in the
+       * conversation and the search above is hiding them"*, with a sentence
+       * that offers to clear the search. A mark of another kind is not hidden
+       * by anything — the reader chose the narrowing and the counter names it
+       * — so counting it there would put a number under a sentence that is
+       * false about it and offer a cure that does nothing. Filtered out first,
+       * it is in neither number, and the count says what it counts instead.
+       */
+      if (markKind !== null && anchor.kind !== markKind) continue;
       const at = nodeAtByte(anchor.byteOffset);
       /*
        * **A BYTE THIS DOCUMENT DOES NOT REACH IS NOT A STOP, AND IT IS NOT THE
@@ -6783,8 +6984,24 @@ export function mountDocument(ctx, host, outline, back, roster = NO_LANES, landA
   const step = (which, forward) => {
     const { stops } = which === 'mark' ? markStops() : youStops();
     const positions = which === 'mark' ? stops.map((s) => s.at) : stops;
+    /*
+     * **EVERY SENTENCE THE MARK WALK SAYS HAS A FILTERED TWIN, and that is the
+     * item's own constraint rather than thoroughness for its own sake.** *"The
+     * count must say what it counts. '3 of 24' when filtered to defects is a
+     * lie unless the sentence says defects."* The landing is the loudest case
+     * and it is not the only one: *"Nothing is marked after this point"* is
+     * equally false when four defects sit below the reader and the walk is
+     * over questions. So the KIND travels with every one of them.
+     *
+     * **SPELLED OUT RATHER THAN COMPOSED FROM A VARIABLE KEY**, for the reason
+     * `navRefresh` already carries: `test/ui/viewmodel.test.ts` reads every key
+     * and every slot out of this file by PARSING it, and a key arriving as a
+     * variable is a key that gate cannot see.
+     */
     if (positions.length === 0) {
-      sayNav(which === 'mark' ? 'conv.nav.noMarks' : 'conv.nav.noYous');
+      if (which !== 'mark') sayNav('conv.nav.noYous');
+      else if (markKind === null) sayNav('conv.nav.noMarks');
+      else sayNav('conv.nav.noMarksKind', { kind: kindWord(markKind) });
       return;
     }
     const standing = cursor[which];
@@ -6805,9 +7022,15 @@ export function mountDocument(ctx, host, outline, back, roster = NO_LANES, landA
       }
     }
     if (target === -1) {
-      sayNav(which === 'mark'
-        ? (forward ? 'conv.nav.markLast' : 'conv.nav.markFirst')
-        : (forward ? 'conv.nav.youLast' : 'conv.nav.youFirst'));
+      if (which !== 'mark') {
+        sayNav(forward ? 'conv.nav.youLast' : 'conv.nav.youFirst');
+      } else if (markKind === null) {
+        sayNav(forward ? 'conv.nav.markLast' : 'conv.nav.markFirst');
+      } else if (forward) {
+        sayNav('conv.nav.markLastKind', { kind: kindWord(markKind) });
+      } else {
+        sayNav('conv.nav.markFirstKind', { kind: kindWord(markKind) });
+      }
       return;
     }
     landOn(positions[target]);
@@ -6826,7 +7049,12 @@ export function mountDocument(ctx, host, outline, back, roster = NO_LANES, landA
     // card already holds for every label it draws.
     const named = el('bdi', 'tvnavat');
     named.textContent = stops[target].anchors.map((a) => a.label).join(' · ');
-    sayNav('conv.nav.atMark', { n: target + 1, total: positions.length }, named);
+    if (markKind === null) {
+      sayNav('conv.nav.atMark', { n: target + 1, total: positions.length }, named);
+      return;
+    }
+    sayNav('conv.nav.atMarkKind',
+      { n: target + 1, total: positions.length, kind: kindWord(markKind) }, named);
   };
 
   markPrev.addEventListener('click', () => { step('mark', false); });
@@ -6842,6 +7070,63 @@ export function mountDocument(ctx, host, outline, back, roster = NO_LANES, landA
    * answer here — a lane's transcript can genuinely hold no mark at all.
    * `STD-a-measured-zero-is-drawn-and-named`.
    */
+  /**
+   * The kinds this document actually holds, ascending, as one comparable line.
+   *
+   * Read off `anchorsHere` rather than off `view`: the SELECT is about what is
+   * in the conversation, and a kind whose only mark the find box is currently
+   * hiding is still a kind of this conversation. The counter beside it is what
+   * says how many of them the reader can reach right now, and it already has a
+   * sentence for the difference.
+   */
+  const kindsPresent = () => {
+    const seen = new Set();
+    for (const anchor of anchorsHere.values()) seen.add(anchor.kind);
+    return [...seen].sort();
+  };
+
+  /**
+   * Draw the choices, and ONLY when they moved.
+   *
+   * **A `<select>` rebuilt under an open dropdown shuts it**, and this runs on
+   * every keystroke in the find box and after every write. The signature is
+   * what makes "rebuild anyway" unwritable rather than merely discouraged.
+   *
+   * **A kind that left the document takes the filter with it.** The last
+   * defect being taken back while the walk is narrowed to defects would
+   * otherwise leave a `<select>` showing a choice it no longer offers, and a
+   * counter counting nothing with no way back to everything — so the filter
+   * falls back to every kind, which is the state the control can express.
+   */
+  const fillKinds = () => {
+    const present = kindsPresent();
+    const signature = present.join(' ');
+    if (signature === kindsDrawn) return;
+    kindsDrawn = signature;
+    if (markKind !== null && !present.includes(markKind)) markKind = null;
+    kindPick.replaceChildren();
+    const any = el('option', null, ctx.tFlat('conv.nav.kindAny'));
+    any.value = '';
+    kindPick.append(any);
+    for (const kind of present) {
+      const option = el('option', null, kindWord(kind));
+      option.value = kind;
+      kindPick.append(option);
+    }
+    kindPick.value = markKind ?? '';
+  };
+
+  /*
+   * **A CHANGE OF FILTER THROWS THE WALK AWAY**, through `navRefresh`'s own
+   * `endWalk` — for the reason written there: the list of stops has been
+   * re-derived, so "stop 7" afterwards is a different place and a kept cursor
+   * would step the reader somewhere they never asked to go.
+   */
+  kindPick.addEventListener('change', () => {
+    markKind = kindPick.value === '' ? null : kindPick.value;
+    navRefresh();
+  });
+
   navRefresh = () => {
     // **A WALK IN PROGRESS DOES NOT SURVIVE THE LIST IT WALKS CHANGING.** A
     // filter re-derives every stop, and a mark made while reading inserts one
@@ -6867,9 +7152,20 @@ export function mountDocument(ctx, host, outline, back, roster = NO_LANES, landA
     // every key and every slot out of the `t` and `tFlat` calls in this file
     // by PARSING it, so a key arriving as a variable is a key that gate cannot
     // see — and this file has six of them that exist only here.
+    fillKinds();
     const marks = markStops();
     markCount.replaceChildren();
-    if (marks.stops.length === 0 && marks.hidden === 0) {
+    if (markKind !== null) {
+      // **THE NUMBER NAMES ITS OWN SUBJECT.** `confirm/3`'s defect is a count
+      // whose meaning silently changed, and this is exactly that shape: the
+      // same "12" means every mark one second and every defect the next.
+      if (marks.stops.length === 0 && marks.hidden === 0) {
+        markCount.append(...ctx.t('conv.nav.marksNoneKind', { kind: kindWord(markKind) }));
+      } else {
+        markCount.append(...ctx.t('conv.nav.marksKind',
+          { n: marks.stops.length, kind: kindWord(markKind) }));
+      }
+    } else if (marks.stops.length === 0 && marks.hidden === 0) {
       markCount.append(...ctx.t('conv.nav.marksNone'));
     } else {
       markCount.append(...ctx.t('conv.nav.marks', { n: marks.stops.length }));
@@ -7070,6 +7366,427 @@ export function mountDocument(ctx, host, outline, back, roster = NO_LANES, landA
   for (const button of copyButtons) {
     button.addEventListener('mousedown', (event) => { event.preventDefault(); });
   }
+
+  /* ══ THE OTHER TWO ROUTES TO EVERY ACTION ═════════════════════════════════
+   *
+   * **`TASK-a-reader-deep-in-a-document-cannot-reach-any-control-so`**, owner
+   * request 2026-09-15, after using the navigation the day it shipped: *"when
+   * a user is brousing in the viewer he can not see the buttons so we have to
+   * find solutions like right mouse button, a popup window, keboard
+   * shortcuts."*
+   *
+   * The defect is narrow and real: the controls are correct and they are not
+   * WHERE HE IS. A reader thirty screens into a transcript has scrolled the
+   * bar off the top, so one click becomes a scroll up, a click and a scroll
+   * back — per action, on a surface whose whole purpose is to keep reading.
+   *
+   * ── THE RULING IS "ALSO", NOT "ONLY", AND THE BUTTONS STAY ──────────────
+   *
+   * A right-click-only action is INVISIBLE — nothing on the screen says it
+   * exists, which is `D58` (*the UI is present and changes nothing*) arriving
+   * from the other side: not a control that does nothing, but a capability
+   * with no control. So three routes, each with a job the others do badly, in
+   * the item's own words:
+   *
+   *   THE BUTTON      tells a reader the capability exists. It is how you
+   *                   learn — and it is untouched here except that it now
+   *                   SAYS its key.
+   *   THE KEYBOARD    is for someone who already knows. It is how you go fast.
+   *   THE RIGHT-CLICK acts ON THE TURN UNDER THE CURSOR, which is the one job
+   *                   neither of the others does at all.
+   *
+   * ── AND NEITHER NEW ROUTE REIMPLEMENTS ANYTHING ────────────────────────
+   *
+   * Every menu item and every shortcut ends in `.click()` on the REAL control,
+   * or in the same `step()` the buttons call. There is no second write path,
+   * no second announcement and no second focus rule, so nothing here can
+   * disagree with the button beside it — which is the failure two routes to
+   * one act invite and the reason the three copies, the stepper and the mark
+   * bar were each built as one implementation in the first place.
+   */
+
+  /**
+   * **THE BINDINGS ARE BY `event.code`, NOT BY `event.key`, AND THAT IS A BIDI
+   * DECISION** — the same one `.tvnav` made when it refused arrow glyphs.
+   *
+   * Half this archive is Hebrew and so is half its owner's typing. On a Hebrew
+   * layout the key under `M` reports `event.key === 'צ'`, so a table keyed on
+   * `key` binds the shortcuts for a Latin keyboard and silently unbinds them
+   * for the reader this product is actually for. `event.code` is the PHYSICAL
+   * key and is layout-independent, so the same finger lands on the same action
+   * in both languages.
+   */
+  const keyOf = (action) => DOC_SHORTCUTS.find((binding) => binding.action === action);
+
+  /**
+   * **INERT INSIDE A FIELD, AND IT IS ASSERTED RATHER THAN ASSUMED** — the
+   * item's first constraint, in its own words: *"a shortcut that fires while a
+   * field has focus eats the keystroke."*
+   *
+   * This screen has a find box, a rename box on every marked turn, a kind
+   * `<select>` and a note `<textarea>`; typing the word "mark" into any of
+   * them would otherwise step the document four times and mark a turn. The
+   * `<select>` is in the list because its own keys are letters — a reader
+   * picking `defect` by typing `d` must not also fire whatever `d` becomes.
+   */
+  const inField = (node) => {
+    if (node === null || node === undefined || typeof node.tagName !== 'string') return false;
+    const tag = node.tagName;
+    if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return true;
+    return node.isContentEditable === true;
+  };
+
+  /**
+   * The turn a keyboard act applies to: the row the caret is in, or — when the
+   * caret is nowhere in the well, which is the ordinary case for a reader who
+   * has been scrolling — the row at the top of the viewport.
+   *
+   * `hereNode` is reused rather than re-derived for the reason the stepper
+   * gives where it is defined: it already nudges past the rounding that makes
+   * `scrollTop` answer one row early.
+   */
+  const rowUnderCaret = () => {
+    const row = rowOf(document.activeElement);
+    if (row !== null) {
+      const at = Number(row.dataset.n);
+      if (Number.isInteger(at)) return at;
+    }
+    return hereNode();
+  };
+
+  /** The row's own write control — mark if it is unmarked, rename if it is. */
+  const rowWriteControl = (nodeIndex) => {
+    const row = live.get(nodeIndex);
+    if (row === undefined) return null;
+    return row.querySelector('.tvanchormark') ?? row.querySelector('.tvanchorrename');
+  };
+
+  /* ── THE MENU ──────────────────────────────────────────────────────────
+   *
+   * **MOUNTED OUTSIDE THE WELL**, for `.tvnavsaid`'s measured reason one
+   * control along: rows are evicted the moment they leave the window, and a
+   * menu drawn on the row it acts on would be destroyed by the paint that
+   * follows the act. It is `position:fixed`, so it is placed against the
+   * viewport rather than against a scroll that is about to move.
+   */
+  const menu = el('div', 'tvmenu');
+  menu.setAttribute('role', 'menu');
+  menu.setAttribute('aria-label', ctx.tFlat('conv.menu.region'));
+  menu.hidden = true;
+  host.append(menu);
+
+  /** Where the caret was when the menu opened. `confirm/1`'s 47 tab stops. */
+  let menuFrom = null;
+  const menuIsOpen = () => menu.hidden === false;
+
+  /**
+   * Shut it.
+   *
+   * `restore` is the difference between the two dismissals and it is the rule
+   * `closePopovers` already states in this app, applied here for the same
+   * reason: **Escape is a keyboard gesture and must hand the caret back**,
+   * while a click outside has already put the caret where the reader aimed and
+   * yanking it away would be the screen overruling them.
+   */
+  const closeMenu = (restore) => {
+    if (!menuIsOpen()) return null;
+    const back = menuFrom;
+    menuFrom = null;
+    menu.hidden = true;
+    menu.replaceChildren();
+    document.removeEventListener('pointerdown', onOutsideMenu, true);
+    if (restore && back !== null && back.isConnected) back.focus();
+    return back;
+  };
+
+  /**
+   * **THE CARET IS NEVER LEFT ON THE BODY**, which is the half of the focus
+   * rule that actually bites.
+   *
+   * The menu's items are where the caret is while it is open, and shutting it
+   * removes them — so unless something else takes focus in the same turn, the
+   * browser drops it to `document.body` and the reader is back at the top of
+   * the page. `TASK-every-write-on-conversations-throws-focus-to-the-document`
+   * measured that at 47 tab stops on this very screen.
+   *
+   * So: whatever route closed the menu, if nothing took the caret, it goes
+   * back where it came from. A click that landed on a real control keeps it.
+   */
+  const caretHome = (back) => {
+    if (back === null || !back.isConnected) return;
+    if (document.activeElement !== null && document.activeElement !== document.body) return;
+    back.focus();
+  };
+
+  function onOutsideMenu(event) {
+    if (menu.contains(event.target)) return;
+    const back = closeMenu(false);
+    // `pointerdown` fires BEFORE focus moves, so where the click landed is not
+    // known yet. Asked one turn later, when it is.
+    setTimeout(() => { caretHome(back); }, 0);
+  }
+
+  /**
+   * One row of the menu.
+   *
+   * **The key is written beside the action**, which is the teaching half of
+   * the item: a reader who reaches an action by right-clicking learns the
+   * faster route by reading the row they just used. `aria-hidden` on the chip
+   * and `aria-keyshortcuts` on the control, so it is announced as a shortcut
+   * rather than read as part of the name.
+   */
+  const menuItem = (label, binding, run) => {
+    const item = el('button', 'tvmenuitem');
+    item.type = 'button';
+    item.setAttribute('role', 'menuitem');
+    item.append(...label);
+    if (binding !== undefined && binding !== null) {
+      item.setAttribute('aria-keyshortcuts', binding.show);
+      const chip = el('span', 'm tvkey', binding.show);
+      chip.setAttribute('aria-hidden', 'true');
+      item.append(' ', chip);
+    }
+    item.addEventListener('click', () => {
+      // **SHUT FIRST, ACT SECOND.** A `.click()` on the real control may open
+      // a box and take the caret; doing that under an open menu would leave
+      // two things claiming the focus, and shutting afterwards would then take
+      // the caret back off the field the reader is meant to be typing in.
+      const back = closeMenu(false);
+      run();
+      caretHome(back);
+    });
+    return item;
+  };
+
+  /**
+   * Draw the menu for one row and place it at a point.
+   *
+   * **WHAT IS ON IT IS WHAT THAT ROW CAN ACTUALLY DO.** The row's own controls
+   * are looked up and offered only where they exist, so an unmarked turn
+   * offers "Mark this point" and a marked one offers Rename and Take it back —
+   * `markControl`'s three states, read rather than re-derived. A menu that
+   * listed all four would be four items of which two do nothing, which is the
+   * defect this whole item is a case of.
+   */
+  const openMenu = (nodeIndex, x, y) => {
+    closeMenu(false);
+    const active = document.activeElement;
+    menuFrom = active !== null && active !== document.body ? active : null;
+    menu.replaceChildren();
+
+    const row = live.get(nodeIndex);
+    const marker = row === undefined ? null : row.querySelector('.tvanchormark');
+    const renamer = row === undefined ? null : row.querySelector('.tvanchorrename');
+    const dropper = row === undefined ? null : row.querySelector('.tvanchordrop');
+    const backer = row === undefined ? null : row.querySelector('.tvanchorputback');
+    if (marker !== null) {
+      menu.append(menuItem(ctx.t('conv.doc.mark'), keyOf('write'), () => { marker.click(); }));
+    }
+    if (renamer !== null) {
+      menu.append(menuItem(ctx.t('conv.anchors.relabel'), keyOf('write'),
+        () => { renamer.click(); }));
+    }
+    if (dropper !== null) {
+      // **NO KEY, AND THAT IS DELIBERATE.** A take-back has no confirm by
+      // owner ruling, so a single letter would destroy a bookmark on a
+      // mistyped keystroke with nothing between the two. It keeps its button
+      // and gains the menu; it does not gain a bare key.
+      menu.append(menuItem(ctx.t('conv.anchors.drop'), null, () => { dropper.click(); }));
+    }
+    if (backer !== null) {
+      menu.append(menuItem(ctx.t('conv.anchors.putBack'), null, () => { backer.click(); }));
+    }
+    menu.append(menuItem(ctx.t('conv.nav.markPrev'), keyOf('markPrev'),
+      () => { step('mark', false); }));
+    menu.append(menuItem(ctx.t('conv.nav.markNext'), keyOf('markNext'),
+      () => { step('mark', true); }));
+    menu.append(menuItem(ctx.t('conv.nav.youPrev'), keyOf('youPrev'),
+      () => { step('you', false); }));
+    menu.append(menuItem(ctx.t('conv.nav.youNext'), keyOf('youNext'),
+      () => { step('you', true); }));
+    menu.append(menuItem(ctx.t('conv.doc.filter'), keyOf('find'), () => {
+      find.focus();
+      find.select();
+    }));
+
+    menu.hidden = false;
+    /*
+     * **PLACED IN LOGICAL PROPERTIES, WITH THE POINTER'S PHYSICAL X CONVERTED
+     * ONCE.** `parts.js` forbids a `style=` attribute (CSP) and this app writes
+     * geometry through CSSOM in logical properties only. A pointer, though,
+     * answers in PHYSICAL pixels from the left — so in a Hebrew page, where
+     * `inset-inline-start` is measured from the RIGHT edge, the number has to
+     * be reflected or the menu opens on the opposite side of the screen from
+     * the cursor. Clamped both ways so it cannot open off the edge.
+     */
+    const vw = document.documentElement.clientWidth;
+    const vh = document.documentElement.clientHeight;
+    const rtl = getComputedStyle(document.documentElement).direction === 'rtl';
+    const start = rtl ? vw - x : x;
+    menu.style.setProperty('inset-inline-start',
+      `${Math.round(Math.max(0, Math.min(start, vw - menu.offsetWidth)))}px`);
+    menu.style.setProperty('inset-block-start',
+      `${Math.round(Math.max(0, Math.min(y, vh - menu.offsetHeight)))}px`);
+    /*
+     * **FOCUS MOVES IN.** A dialog that opens without taking focus strands a
+     * keyboard user — `installPopovers` says it in those words — and it is
+     * worse here, because the whole point of this menu is to be reachable
+     * without a mouse.
+     */
+    menu.querySelector('.tvmenuitem')?.focus();
+    document.addEventListener('pointerdown', onOutsideMenu, true);
+  };
+
+  /**
+   * ── ESCAPE, AND WHY THIS IS NOT THE THIRD MEANING THE ITEM FORBIDS ──────
+   *
+   * The item is explicit that Escape is spoken for twice and *"is not
+   * available"*: `app.js` closes the item pane with it, and `confirm/5` bound
+   * it on the rename box with `stopPropagation` so the document-level listener
+   * never sees it. What is forbidden is a THIRD MEANING — Escape standing for
+   * some action of this screen's own.
+   *
+   * This is not that. It is the SAME meaning the two existing bindings already
+   * have — *dismiss the innermost open thing, one level per press* — extended
+   * to one more innermost thing, with the identical `stopPropagation` guard
+   * `confirm/5` established so that the pane behind it is untouched. A menu
+   * that could not be dismissed with Escape would be a keyboard trap, which is
+   * the defect one layer below the one this item is about.
+   *
+   * It is measured rather than argued: the browser suite presses Escape with
+   * the menu shut and asserts the rename box and the item pane still answer to
+   * it exactly as before.
+   */
+  menu.addEventListener('keydown', (event) => {
+    const items = [...menu.querySelectorAll('.tvmenuitem')];
+    const at = items.indexOf(document.activeElement);
+    if (event.key === 'Escape' || event.key === 'Tab') {
+      event.preventDefault();
+      event.stopPropagation();
+      closeMenu(true);
+      return;
+    }
+    if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
+      event.preventDefault();
+      event.stopPropagation();
+      if (items.length === 0) return;
+      const step1 = event.key === 'ArrowDown' ? 1 : -1;
+      const next = (at + step1 + items.length) % items.length;
+      items[next].focus();
+      return;
+    }
+    if (event.key !== 'Home' && event.key !== 'End') return;
+    event.preventDefault();
+    event.stopPropagation();
+    if (items.length === 0) return;
+    (event.key === 'Home' ? items[0] : items[items.length - 1]).focus();
+  });
+
+  /**
+   * ── SUPPRESSING THE NATIVE MENU, AND THE FOUR PLACES THIS REFUSES TO ────
+   *
+   * The item's third constraint: *"Suppressing the native menu costs the
+   * reader copy, open-in-new-tab and inspect. Suppress it only over the
+   * elements where this screen genuinely has actions, and leave it alone
+   * everywhere else."* So the browser keeps its menu:
+   *
+   *   — anywhere that is not a row of this document,
+   *   — inside a field, where the native menu is cut/copy/paste and there is
+   *     no version of this screen's menu that replaces it,
+   *   — over a link, where it is open-in-new-tab, and this document draws
+   *     lane links on the turns that dispatched them,
+   *   — **and over a live SELECTION**, which is the one worth spelling out:
+   *     the three copy controls in the bar exist precisely for a marked
+   *     passage, so a reader who has just dragged across a turn and
+   *     right-clicked means Copy. Taking that gesture to offer them a bookmark
+   *     would be the feature stealing the gesture it was built beside.
+   */
+  scroll.addEventListener('contextmenu', (event) => {
+    if (inField(event.target)) return;
+    const row = rowOf(event.target);
+    if (row === null) return;
+    if (typeof event.target.closest === 'function' && event.target.closest('a') !== null) return;
+    const selection = document.getSelection();
+    if (selection !== null && selection.rangeCount > 0 && !selection.isCollapsed) return;
+    const at = Number(row.dataset.n);
+    if (!Number.isInteger(at)) return;
+    event.preventDefault();
+    openMenu(at, event.clientX, event.clientY);
+  });
+
+  /** What one binding does. One line each, and every line ends in a control. */
+  const runShortcut = (action) => {
+    if (action === 'find') { find.focus(); find.select(); return; }
+    if (action === 'markPrev') { step('mark', false); return; }
+    if (action === 'markNext') { step('mark', true); return; }
+    if (action === 'youPrev') { step('you', false); return; }
+    if (action === 'youNext') { step('you', true); return; }
+    const control = rowWriteControl(rowUnderCaret());
+    // **A ROW THAT IS NOT THERE IS SAID, NOT SWALLOWED.** It happens on a
+    // document filtered to nothing, and a key that silently did nothing would
+    // be indistinguishable from a key that is not bound.
+    if (control === null) { sayNav('conv.menu.noRow'); return; }
+    control.click();
+  };
+
+  /**
+   * The keyboard route, on `document` rather than on the well.
+   *
+   * It has to be: the reader this item is about has been scrolling with the
+   * wheel, so the caret is on `document.body` and a listener on the well would
+   * never fire. The three guards above it are what make a document-level
+   * listener legitimate — a modifier is the browser's, a field is the
+   * reader's, and an open menu owns its own keys.
+   */
+  const onDocKey = (event) => {
+    // The well outlives nothing: a re-render replaces it without the hash
+    // moving, which `onLeave` cannot see. Same guard, same reason, as
+    // `onSelect` two screens up.
+    if (!scroll.isConnected) { document.removeEventListener('keydown', onDocKey); return; }
+    if (event.defaultPrevented || menuIsOpen()) return;
+    if (event.ctrlKey || event.metaKey || event.altKey) return;
+    if (inField(event.target)) return;
+    // **THE MOUSELESS ROUTE TO THE MENU** — the item's fourth constraint. Both
+    // gestures a browser already sends for it are honoured: the dedicated
+    // context-menu key, and Shift+F10.
+    if (event.key === 'ContextMenu' || (event.shiftKey && event.code === 'F10')) {
+      const at = rowUnderCaret();
+      const row = live.get(at);
+      const box = (row ?? scroll).getBoundingClientRect();
+      event.preventDefault();
+      openMenu(at, Math.round(box.left + 8), Math.round(box.top + 8));
+      return;
+    }
+    const binding = DOC_SHORTCUTS.find(
+      (k) => k.code === event.code && k.shift === event.shiftKey);
+    if (binding === undefined) return;
+    event.preventDefault();
+    runShortcut(binding.action);
+  };
+  document.addEventListener('keydown', onDocKey);
+
+  shortcutOn(ctx, find, 'find');
+  shortcutOn(ctx, markPrev, 'markPrev');
+  shortcutOn(ctx, markNext, 'markNext');
+  shortcutOn(ctx, youPrev, 'youPrev');
+  shortcutOn(ctx, youNext, 'youNext');
+
+  /**
+   * **AND THE ROUTE NO BUTTON CAN TEACH GETS ONE SENTENCE.**
+   *
+   * The key on a button teaches the key. Nothing on the screen can teach a
+   * gesture that has no control — which is the item's own argument for why a
+   * right-click-only action is `D58` from the other side — so the right-click
+   * and its keyboard equivalent are said once, in a line under the bar, where
+   * a reader is already looking for what this document can do.
+   *
+   * Placed before `navSaid` so it sits under the stepper rather than after the
+   * region a step announces into: a static instruction between a reader and a
+   * live sentence is a line they learn to skip.
+   */
+  const menuHint = el('p', 'small tvnote tvmenuhint');
+  menuHint.append(...ctx.t('conv.menu.hint'));
+  host.insertBefore(menuHint, navSaid);
 
   const say = (key, subs = {}) => {
     copied.replaceChildren();
@@ -7602,6 +8319,26 @@ export function mountDocument(ctx, host, outline, back, roster = NO_LANES, landA
     // they are looking at. `onSelect`'s own `isConnected` guard removes it in
     // the case this cannot see, exactly as `tick`'s does.
     document.removeEventListener('selectionchange', onSelect);
+    /*
+     * **THE TWO LISTENERS THE KEYBOARD ROUTE ADDS TO `document`, REMOVED
+     * HERE** — `TASK-a-reader-deep-in-a-document-cannot-reach-any-control-so`.
+     *
+     * `onDocKey` is on `document` by necessity: the reader this route exists
+     * for has been scrolling with the wheel, so the caret is on the body and a
+     * listener on the well would never fire. Neither of these dies with the
+     * well, so a reader who opens six conversations in one session would leave
+     * six behind and step six documents on one keystroke. `onDocKey`'s own
+     * `isConnected` guard makes each harmless — which is exactly why the leak
+     * would never be noticed, the same shape `stopFollowing` records one
+     * function up.
+     *
+     * The menu is SHUT rather than merely unlistened: a `position:fixed`
+     * element left visible would float over whatever screen the reader went
+     * to, and the caret is handed back on the way out.
+     */
+    document.removeEventListener('keydown', onDocKey);
+    document.removeEventListener('pointerdown', onOutsideMenu, true);
+    closeMenu(true);
   }
 
   /** Say the transcript can no longer be followed, and stop asking. */
