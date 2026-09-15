@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: true
 summary: The short numbers used to talk about work in progress and what each one refers to, kept as a bare map so the same number never means two things; eleven more were added on 2026-09-13 from the consolidated review findings.
-summary_of: ef8da3bc7def09bc
+summary_of: 46d5fed74e675c80
 summary_was:
   - 2026-09-13 The short numbers used to talk about work in progress and what each one refers to, kept as a bare map so the same number never means two things; D52 widened on 2026-09-13 to the log that records what was delivered.
   - 2026-09-12 The short numbers used to talk about work in progress and what each one refers to, kept as a bare map so the same number never means two things; two more were added on 2026-09-13 from the type review.
@@ -23,7 +23,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-09-07
 valid_until: null
-checksum: 575185ac01e59648
+checksum: 62089482a9b27cf1
 ---
 
 # the D numbers: what each one means, and which are only proposed
@@ -213,6 +213,37 @@ RATIFIED - the owner has used these numbers himself.
           `handover-ask.ts` (2,050), and the three dead exports. REPORT 5 RECORDED FIFTEEN
           FILES THAT STAY EXACTLY AS THEY ARE, each with its argument; these are the ones that
           had none. The `runChecks` registry guard goes in BEFORE the `checks.ts` split.
+
+  D77     search by meaning, and what it would cost to have it   MINTED 2026-09-15
+          Owner asked for "smarter search than just a simple input string with semantic
+          search". Today search is FTS5 with the TRIGRAM tokenizer and nothing else — a
+          different word for the same idea finds nothing. This row exists because the
+          refusal that stood in its way was a SENTENCE in a pinned non-goal and not a
+          subject anyone could argue with; `NOGOAL-not-a-claude-mem-replacement` was
+          amended the same day and now points here.
+          MEASURED 2026-09-15, so the decision is made against numbers and not instinct:
+            - THE INDEX IS A NON-PROBLEM. 10,445 prose spans + 1,247 items = 11,692
+              vectors. Brute-force cosine in plain JS over a Float32Array: 4.3 ms per
+              query at 384 dimensions (17 MB), 9.3 ms at 768, 27.2 ms at 1536. An ANN
+              index earns its keep at millions; at twelve thousand a loop wins.
+            - SQLITE-VEC IS LOADABLE AND STILL WRONG HERE. `node:sqlite` on Node 24.14.0
+              exposes `loadExtension`/`enableLoadExtension` and accepts `allowExtension:
+              true` — verified. But the extension is a per-platform COMPILED BINARY, so
+              taking it means a runtime dependency (`CONST-zero-runtime-dependencies`,
+              hard) or vendoring binaries into a plugin whose whole claim is that it drops
+              into any repo with no fetch. And it solves the half that is already free.
+            - THE REAL COST IS THE MODEL, NOT THE INDEX. sqlite-vec stores and searches
+              vectors; it cannot make one. Anthropic ships no embeddings endpoint. So
+              embedding means a local model (a large dependency) or sending the owner’s
+              transcripts to a third party — which collides with his own standing rule
+              that the conversation content is his property.
+          SO THE SUBJECT IS NOT "add semantic search". It is: what is the cheapest thing
+          that finds a different word for the same idea, and what is it allowed to cost?
+          Anything NOT requiring a model is in scope first and is not yet measured — a
+          synonym/alias table the owner controls, stemming, the corpus’s own relation
+          graph and tag vocabulary as query expansion. A model is the LAST resort here,
+          not the first, and taking one is an owner ruling with the costs above in front
+          of him rather than a decision made inside a feature.
 
 SIX ROWS OF THE CONSOLIDATION WERE NOT FILED, because they had already landed when this was
 written - checked in `git log` and in the item, not taken from the report. Row 4 (the two
