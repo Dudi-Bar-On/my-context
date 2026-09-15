@@ -370,13 +370,26 @@ function signalLine(input: RecommendInput): string {
 export const RECOMMENDATION_END =
   '--- the recommendation ends here; the brief as it was recorded follows, unchanged ---';
 
-/** The sentence that declares a row was re-derived rather than captured with one. */
+/**
+ * **The durable mark that a row was re-derived rather than captured with one,
+ * and it says ONLY what the screen does not.**
+ *
+ * `work.recBackfilled` already tells the reader the row was backfilled, on
+ * what date, and that it was re-derived from the fields that survived — and
+ * it promises that "the note below names them". So this note names them and
+ * stops. It used to repeat all three of those sentences first, which put the
+ * same fact on the screen twice at four lines apiece: measured 2026-09-15 by
+ * driving the Work screen, and it is the exact tedium `review/7` exists to
+ * remove, reintroduced by the fix for it.
+ *
+ * It still opens with `BACKFILLED on <date>` because this line is the SECOND
+ * of two independent marks — the first is the `rec-backfilled:` tag — and a
+ * mark that only makes sense beside the other one is not independent. Strip
+ * the tags and this sentence still says what it is.
+ */
 export function backfillNotice(isoDate: string, derivedFrom: string): string {
   return (
-    `BACKFILLED on ${isoDate}. This was NOT written when the draft was captured. The pass's ` +
-    `structured record of this proposal was never kept — only its prose rendering — so the ` +
-    `recommendation was re-derived from ${derivedFrom}. A row written at capture carries no ` +
-    `line like this one.`
+    `BACKFILLED on ${isoDate} — re-derived from ${derivedFrom}.`
   );
 }
 

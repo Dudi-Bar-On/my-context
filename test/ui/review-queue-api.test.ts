@@ -29,7 +29,7 @@ import { apiCorpusFile } from '../../src/ui/read-model.ts';
 import { isCorpusFilePath } from '../../src/doctor/checks.ts';
 import { removeTree } from '../helpers/tmp.ts';
 import {
-  backfillTag, composeBody, recommend, recommendTag,
+  backfillNotice, backfillTag, composeBody, recommend, recommendTag,
 } from '../../src/review/recommend.ts';
 
 interface Row {
@@ -164,7 +164,14 @@ test('a BACKFILLED row carries the date it was re-derived on, as a field', () =>
   const brief = 'A draft from the self-improvement pass. It governs nothing and is not committed.';
   const { cwd, ws } = corpusWithRecommendation(
     brief, ['review-pass', recommendTag('promote'), backfillTag('2026-09-15')],
-    'BACKFILLED on 2026-09-15. This was NOT written when the draft was captured.');
+    // **Built by the real producer, not typed out beside it.** This was a
+    // hand-written COPY of `backfillNotice`’s sentence, so changing that
+    // function reddened nothing here — measured 2026-09-15, when the notice was
+    // shortened and all 15 tests stayed green. The subject of this test is the
+    // read model’s split, not the wording; but a fixture that copies the thing
+    // it stands in for can go false while still passing, which is the defect
+    // `parity.ts` carried for four days.
+    backfillNotice('2026-09-15', 'this draft’s own fields'));
   try {
     const row = rows(ws).find((r) => r.origin === 'review');
     assert.ok(row);
