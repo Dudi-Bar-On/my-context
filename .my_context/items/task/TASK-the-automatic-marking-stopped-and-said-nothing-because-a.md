@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: Bookmarking stopped silently half an hour ago and kept saying there was nothing to do, because the archive quietly stopped reading new turns.
-summary_of: 0b97492b1c4bd19e
+summary_of: dcf399c39b035653
 scope:
   - src/core/conversation-index.ts
   - src/core/conversation-search.ts
@@ -25,7 +25,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-09-15
 valid_until: null
-checksum: 4d3fe79c92ea9403
+checksum: 533788c02fb25bc7
 plan: anchors
 seq: "5"
 state: todo
@@ -89,3 +89,30 @@ THE FIX HAS TWO HALVES AND THE SECOND IS NOT OPTIONAL:
 DO NOT CLOSE THIS BY RUNNING `mycontext conversation rebuild`. That will clear the gap and hide the
 cause — the stall reproduces itself over time, and a rebuild is the thing that makes it
 unobservable again.
+
+── WHAT CLOSES THIS ITEM — OWNER, 2026-09-15 ───────────────────────────────
+
+His words: "the result must be not a reason why it stopped working, that’s a lesson but it must
+work again and reliable."
+
+SO A CAUSE IS NOT A CLOSE. The diagnosis above is the starting point of this task, not its
+deliverable. This item closes when all four hold:
+
+  1. MARKING WORKS AGAIN on this workspace, demonstrated on the live archive: the unread gap goes
+     to zero and STAYS there across several turns, and new turns acquire marks. A single catch-up
+     is not evidence — the gap grew between two checks last time, so the proof is that it stops
+     growing on its own.
+
+  2. IT CANNOT SILENTLY STOP AGAIN. The pass must distinguish "nothing to do" from "I read
+     nothing", and the stalled case must reach a surface. A `statSync` against the file the row
+     claims to describe is affordable and is the measurement nobody was making.
+
+  3. A REMOVAL PROOF THAT REPRODUCES THE STALL. Freeze the recorded size against a growing file
+     and assert the product SAYS SO. Any fix whose test only proves the happy path leaves exactly
+     the hole this defect lived in — every layer was already green while the feature was dead.
+
+  4. `INV-a-turn-that-qualifies-for-an-automatic-mark-carries-one-when-a-reader` HOLDS on a real
+     document — the rule this task exists to make true.
+
+AND NOT BY REBUILD. `mycontext conversation rebuild` will clear the gap and prove nothing about the
+on-the-fly path. If a rebuild is run for any reason, the stall must be reproduced afterwards.
