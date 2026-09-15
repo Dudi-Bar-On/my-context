@@ -21,10 +21,17 @@
  *     row above it. `tableIn` is tested against the shape that fools a naive
  *     detector: a line full of pipes with no delimiter row under it, and a
  *     delimiter row whose column count does not match its header.
- *   - a **ruling** is a turn HE TYPED naming a normative corpus id — `DEC-`,
- *     `RULE-`, `INSTR-`, `STD-`, `CONST-`, `INV-`. Restricted to prompts on
- *     purpose: a ruling is something the owner gave, and an assistant turn
- *     quoting one back is a citation, not a ruling.
+ *   - a **ruling** is a turn HE TYPED carrying one of the words he rules in —
+ *     `always`, `never`, `must`, `the rule`, `i approve`. **"He typed it" is
+ *     the archive's own answer and not a text shape**: `origin.kind ===
+ *     'human'` on the record, with `isSidechain` and `isMeta` refused. It was a
+ *     normative corpus id behind a `kind === 'prompt'` guard until 2026-09-15,
+ *     and that grammar owned 377 of his 1,164 marks while marking ZERO turns he
+ *     typed — `core/anchor-pass.ts` carries the measurement where the regex
+ *     used to be.
+ *   - a **report** is a lane's LAST ANSWER, found from `subagents` and a `MAX`
+ *     over `byte_offset` with no text read at all, labelled with the lane's own
+ *     mission.
  *
  * Both are tested in BOTH directions, because a detector that fired on
  * everything would pass a test that only planted positives — and the negative
@@ -74,10 +81,20 @@ const SESSION = 'aaaaaaaa-1111-2222-3333-444444444444';
 const LANE = 'agent-anchor-lane-1';
 
 const jsonl = (rows: unknown[]): string => rows.map((r) => JSON.stringify(r)).join('\n') + '\n';
+/**
+ * One transcript record, as the harness writes one.
+ *
+ * **`origin: { kind: 'human' }` ON A USER RECORD IS NOT DECORATION** — it is
+ * the column the `ruling` grammar now reads, and a fixture without it would be
+ * a fixture in which he never typed anything. The harness writes it on every
+ * prompt a person produced and on nothing else; `ownerTyped` in
+ * `core/anchor-pass.ts` carries the count.
+ */
 const say = (role: 'user' | 'assistant', body: string, at: string): unknown => ({
   type: role,
   message: { role, content: role === 'user' ? body : [{ type: 'text', text: body }] },
   timestamp: at,
+  ...(role === 'user' ? { origin: { kind: 'human' }, promptSource: 'typed' } : {}),
 });
 
 /** Where record `n` of a transcript starts, in BYTES. */
@@ -97,8 +114,13 @@ const TABLE = [
 ].join('\n');
 
 const TURNS = [
-  say('user', 'follow RULE-a-citation-names-an-item-by-id-never-a-report-by-line-number here',
-    '2026-09-10T10:00:00.000Z'),
+  // **HIS WORDS AND AN ID IN THE SAME LINE, DELIBERATELY.** The words are what
+  // fires now; the id rides along so that `an anchor is searched by its label`
+  // still has a second label to discriminate AGAINST, and so that a reader of
+  // this fixture can see the id is no longer what decides.
+  say('user', 'from now on cite by id — follow '
+    + 'RULE-a-citation-names-an-item-by-id-never-a-report-by-line-number here',
+  '2026-09-10T10:00:00.000Z'),
   say('assistant', TABLE, '2026-09-10T10:00:01.000Z'),
   say('assistant', 'I wrote it up in reports/2026-09-10-lexical-selection-research.md today',
     '2026-09-10T10:00:02.000Z'),
@@ -314,40 +336,81 @@ test('a table anchor is labelled with a header cell a person can read, never a b
  * table and the ruling, and nothing else` — the grammar alone would not catch
  * a probe put back, and the probes alone would not catch the regex.
  */
-test('the report detector is gone: a dated narrative path is not an anchor by nature', () => {
+/** A record the harness attributes to a person — the one column `ownerTyped` reads. */
+const HIS = { type: 'user', origin: { kind: 'human' }, promptSource: 'typed' };
+/** The same turn as an assistant answer. It carries no `origin` at all. */
+const NOT_HIS = { type: 'assistant' };
+
+test('the report DETECTOR is gone: a dated narrative path is not an anchor by nature', () => {
   assert.equal(
-    anchorInTurn('answer', 'see reports/2026-09-10-lexical-selection-research.md'), null,
+    anchorInTurn({ record: NOT_HIS, laneReport: null },
+      'see reports/2026-09-10-lexical-selection-research.md'), null,
     'a turn that names a report is not a report, and 101 of the 613 anchors in his index were '
     + 'this and nothing else',
   );
   assert.equal(
-    anchorInTurn('answer', 'see docs/superpowers/plans/2026-09-10-d42-conversation-retrieval.md'),
+    anchorInTurn({ record: NOT_HIS, laneReport: null },
+      'see docs/superpowers/plans/2026-09-10-d42-conversation-retrieval.md'),
     null,
     'and the plans directory is the same shape, so removing one half would not be removing it',
   );
   assert.equal(
-    anchorInTurn('prompt', 'read reports/2026-09-10-lexical-selection-research.md please'), null,
-    'nor is it a ruling because HE typed it — the ruling grammar is about normative ids and a '
-    + 'path is not one',
+    anchorInTurn({ record: HIS, laneReport: null },
+      'read reports/2026-09-10-lexical-selection-research.md please'), null,
+    'nor is it a ruling because HE typed it — the ruling grammar is about the words he rules '
+    + 'in, and a path carries none of them',
+  );
+  // **THE KIND `report` CAME BACK ON 2026-09-15 AND THIS SAYS WHY THAT IS NOT
+  // THIS DETECTOR RETURNING.** The new one is handed its answer as a fact by
+  // the caller; no text reaches it. Same words, and the only thing that moves
+  // is whether the ARCHIVE says this turn is a lane's last answer.
+  assert.equal(
+    anchorInTurn({ record: NOT_HIS, laneReport: 'general-purpose — the anchor lane' },
+      'see reports/2026-09-10-lexical-selection-research.md')?.kind,
+    'report',
   );
 });
 
-test('a ruling is a normative id in a turn HE typed', () => {
+test('a ruling is HIS OWN WORDS in a turn the ARCHIVE says he typed', () => {
+  const ruled = 'i approve the change, and from now on the port must always be 58888';
   assert.deepEqual(
-    anchorInTurn('prompt', 'apply DEC-run-is-removed-execute-is-the-only-way-to-run-what-the'),
-    { kind: 'ruling', label: 'DEC-run-is-removed-execute-is-the-only-way-to-run-what-the' },
+    anchorInTurn({ record: HIS, laneReport: null }, ruled),
+    { kind: 'ruling', label: ruled },
+    'the label is the LINE the word is on, verbatim — a label of `must` alone would name '
+    + 'twelve of his turns identically, which is the single-header-cell defect again',
+  );
+
+  // **THE REMOVAL PROOF, AND IT IS THE ONE THAT WOULD HAVE CAUGHT THE 377.**
+  // One property moves: who the ARCHIVE says wrote the turn. Every word is the
+  // same, and the answer must come out the other way.
+  assert.equal(
+    anchorInTurn({ record: NOT_HIS, laneReport: null }, ruled), null,
+    'the same sentence in an ANSWER is an assistant quoting him — and assistants in this '
+    + 'project write `must` and `never` in nearly every turn',
   );
   assert.equal(
-    anchorInTurn('answer', 'apply DEC-run-is-removed-execute-is-the-only-way-to-run-what-the'),
-    null,
-    'the same id in an ANSWER is a citation, not a ruling — a ruling is something he gave, '
-    + 'and marking every turn that quotes one back would mark most of this archive',
+    anchorInTurn({ record: { ...HIS, isSidechain: true }, laneReport: null }, ruled), null,
+    'and the same sentence RELAYED INTO A LANE is `origin.kind: human` too — the words '
+    + 'started with him, the turn did not',
   );
   assert.equal(
-    anchorInTurn('prompt', 'do TASK-search-the-archive-properly-and-mark-the-anchors-you-want-to'),
+    anchorInTurn({ record: { ...HIS, isMeta: true }, laneReport: null }, ruled), null,
+    'the harness own "this is not user input" flag, which is the second column and catches '
+    + 'the same 13 relays independently',
+  );
+
+  assert.equal(
+    anchorInTurn({ record: HIS, laneReport: null },
+      'apply DEC-run-is-removed-execute-is-the-only-way-to-run-what-the'),
     null,
-    'a task id is not a normative id, and widening the prefix set is how this stops being a '
-    + 'grammar and starts being a guess about what matters',
+    'AND A NORMATIVE ID IS NO LONGER A RULING ON ITS OWN. In 519 turns he typed over 13 days '
+    + 'he named one ZERO times — the id could only ever find the injection block',
+  );
+  assert.equal(
+    anchorInTurn({ record: HIS, laneReport: null }, 'i think we should probably do that'),
+    null,
+    'and the MODAL list is refused: `should` scores the same worth-having share as 250 '
+    + 'characters with no keyword at all, which is the measurement that killed it',
   );
 });
 

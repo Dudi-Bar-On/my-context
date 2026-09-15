@@ -38,8 +38,8 @@ import { proseOf } from './conversation-search.ts';
 import { withAnchorWrite } from './anchor-file.ts';
 
 /**
- * **The two kinds the automatic pass is allowed to write**, and the set every
- * other kind must stay out of.
+ * **The kinds the automatic pass is allowed to write**, and the set every other
+ * kind must stay out of.
  *
  * It is here rather than in `anchor-pass.ts` because the disjointness below is
  * a fact about the two sets TOGETHER, and a fact split across two modules is
@@ -47,11 +47,22 @@ import { withAnchorWrite } from './anchor-file.ts';
  * its findings by it, so a third automatic grammar cannot be added without
  * this list growing with it.
  *
- * There were three once — `'report'` was withdrawn by the owner on 2026-09-11
- * and its grammar is gone; `anchor-pass.ts` carries that note where the regex
- * used to be.
+ * ── `'report'` IS BACK, AND IT IS NOT THE ONE HE WITHDREW ──────────────────
+ *
+ * The word was spent once and taken back. Until 2026-09-11 a `report` was a
+ * DATED PATH under `reports/` matched out of a turn's text, and he ruled it
+ * out in those terms: *"it marks a turn that MENTIONS a report, not a report"*.
+ * That grammar is still gone and `anchor-pass.ts` still carries the note where
+ * its regex used to be.
+ *
+ * What re-takes the word is the opposite shape, and that is the whole reason
+ * the owner ruled it in on 2026-09-15 after reading `anchors/11`'s counts: a
+ * lane's FINAL ANSWER, found STRUCTURALLY from `subagents` and the prose index
+ * rather than by any text match, labelled with the lane's own mission. The mark
+ * is ON the report. Nothing about it can fire on a turn that merely names one,
+ * because no text is consulted to decide it.
  */
-export const AUTOMATIC_ANCHOR_KINDS = ['table', 'ruling'] as const;
+export const AUTOMATIC_ANCHOR_KINDS = ['table', 'ruling', 'report'] as const;
 
 export type AutomaticAnchorKind = (typeof AUTOMATIC_ANCHOR_KINDS)[number];
 

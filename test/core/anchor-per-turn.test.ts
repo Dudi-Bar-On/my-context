@@ -42,12 +42,35 @@ import {
 import { markAnchor } from '../../src/core/anchors.ts';
 
 const SESSION = 'sess-per-turn';
-const RULING = 'RULE-a-citation-names-an-item-by-id-never-a-report-by-line-number';
+/**
+ * **ONE LINE HE TYPED, AND IT IS ALSO THE LABEL.**
+ *
+ * The grammar changed under this file on 2026-09-15: a `ruling` was a normative
+ * id in a `kind === 'prompt'` turn, and it is now the words he rules in on a
+ * turn the ARCHIVE says he typed, labelled with the LINE the word is on. So the
+ * fixture is a sentence rather than an id, and the id rides inside it because
+ * that is how his real turns read — the id is no longer what fires.
+ *
+ * Text and label are one constant on purpose: two constants that had to agree
+ * would be the one-fact-recorded-twice defect, and every `labels(f)` assertion
+ * below compares against this.
+ */
+const RULING = 'from now on cite by id — a report line number must never be one, '
+  + 'per RULE-a-citation-names-an-item-by-id-never-a-report-by-line-number';
 
+/**
+ * One transcript record, as the harness writes one.
+ *
+ * **`origin: { kind: 'human' }` ON A USER RECORD IS LOAD-BEARING** — it is the
+ * column `ownerTyped` reads, and a fixture without it is a fixture in which he
+ * never typed anything. The harness writes it on every prompt a person
+ * produced and on nothing else; `core/anchor-pass.ts` carries the count.
+ */
 const say = (role: 'user' | 'assistant', body: string, at: string): unknown => ({
   type: role,
   message: { role, content: role === 'user' ? body : [{ type: 'text', text: body }] },
   timestamp: at,
+  ...(role === 'user' ? { origin: { kind: 'human' }, promptSource: 'typed' } : {}),
 });
 
 const FIRST = [
@@ -98,7 +121,7 @@ test('a turn appended after the last pass is marked by the next one', () => {
       'the opening two turns are neither a table nor a ruling, so a pass that marked one of '
       + 'them would make every count below meaningless');
 
-    turn(f, say('user', `and now: follow ${RULING}`, '2026-09-10T09:00:02.000Z'));
+    turn(f, say('user', RULING, '2026-09-10T09:00:02.000Z'));
     const first = markAnchorsOnTurn(f.dbPath);
     assert.notEqual(first, null);
     assert.equal(first!.anchors!.marked, 1,
@@ -132,7 +155,7 @@ test('a point the reader marked by hand survives every per-turn pass', () => {
     //
     // Marked HERE means the point is a candidate every run, and the only thing
     // between it and being relabelled to `RULE-…`/`ruling` is that one line.
-    const ruling = say('user', `follow ${RULING}`, '2026-09-10T09:00:02.000Z');
+    const ruling = say('user', RULING, '2026-09-10T09:00:02.000Z');
     const at = FIRST.reduce<number>(
       (sum, r) => sum + Buffer.byteLength(JSON.stringify(r), 'utf8') + 1, 0);
     turn(f, ruling);
@@ -167,7 +190,7 @@ test('a point the reader marked by hand survives every per-turn pass', () => {
 test('a turn on which no transcript moved does not run the pass at all', () => {
   const f = fixture();
   try {
-    turn(f, say('user', `follow ${RULING}`, '2026-09-10T09:00:02.000Z'));
+    turn(f, say('user', RULING, '2026-09-10T09:00:02.000Z'));
     markAnchorsOnTurn(f.dbPath);
 
     // **THE MEASUREMENT THAT MADE THIS BRANCH NECESSARY, taken on the owner's
@@ -209,7 +232,7 @@ test('the pass a turn does run is scoped to the transcript that moved', () => {
     const other = path.join(
       path.dirname(f.transcript), 'sess-per-turn-other.jsonl');
     writeFileSync(other, [
-      say('user', `follow ${RULING}`, '2026-09-10T08:00:00.000Z'),
+      say('user', RULING, '2026-09-10T08:00:00.000Z'),
     ].map((r) => JSON.stringify(r)).join('\n') + '\n');
     rebuildConversations(f.dbPath, process.env, path.dirname(path.join(f.cwd, '.my_context')));
     markAnchorsOnTurn(f.dbPath);
@@ -321,7 +344,7 @@ test('a workspace nobody has scanned is answered as null, never as a new databas
 test('a turn out of time leaves a transcript completely unread, and the next run still has it', () => {
   const f = fixture();
   try {
-    turn(f, say('user', `follow ${RULING}`, '2026-09-10T09:00:02.000Z'));
+    turn(f, say('user', RULING, '2026-09-10T09:00:02.000Z'));
 
     const starved = markAnchorsOnTurn(f.dbPath, { budgetMs: 0 });
     assert.deepEqual(
@@ -354,7 +377,7 @@ test('a turn out of time leaves a transcript completely unread, and the next run
 test('a transcript too big for one turn is left for the rebuild, not read half way', () => {
   const f = fixture();
   try {
-    turn(f, say('user', `follow ${RULING}`, '2026-09-10T09:00:02.000Z'));
+    turn(f, say('user', RULING, '2026-09-10T09:00:02.000Z'));
 
     // One byte of pending read is more than this turn will take. The bound is
     // on what the source would READ — its appended tail here, not its size.
@@ -405,7 +428,7 @@ test('a transcript too big for one turn is left for the rebuild, not read half w
 test('a second turn does not re-decide the anchor the first turn already marked', () => {
   const f = fixture();
   try {
-    turn(f, say('user', `follow ${RULING}`, '2026-09-10T09:00:02.000Z'));
+    turn(f, say('user', RULING, '2026-09-10T09:00:02.000Z'));
     const first = markAnchorsOnTurn(f.dbPath);
     assert.equal(first!.anchors!.probed, 1, 'the ruling turn should be this turn\'s one candidate');
     assert.equal(first!.anchors!.marked, 1);
@@ -447,7 +470,7 @@ test('a second turn does not re-decide the anchor the first turn already marked'
 test('the sweep skips its own rows in bytes that did not move, and the rebuild still trims them', () => {
   const f = fixture();
   try {
-    turn(f, say('user', `follow ${RULING}`, '2026-09-10T09:00:02.000Z'));
+    turn(f, say('user', RULING, '2026-09-10T09:00:02.000Z'));
     assert.equal(markAnchorsOnTurn(f.dbPath)!.anchors!.marked, 1);
 
     // A row the pass OWNS, standing at byte 0 — the opening turn, which is
@@ -653,7 +676,7 @@ test('the unscoped rebuild marks past one probe page, and says so when it cannot
 test('a row behind its file is reported as "could not look", never as "nothing to do"', () => {
   const f = fixture();
   try {
-    turn(f, say('user', `follow ${RULING}`, '2026-09-10T09:00:02.000Z'));
+    turn(f, say('user', RULING, '2026-09-10T09:00:02.000Z'));
     assert.equal(markAnchorsOnTurn(f.dbPath)!.anchors!.marked, 1, 'the pass must start level');
 
     // LEVEL: nothing moved and nothing is behind. This is the answer that must
@@ -725,7 +748,7 @@ test('a row behind its file is reported as "could not look", never as "nothing t
 test('a transcript that will not stat is disclosed, not silently counted as caught up', () => {
   const f = fixture();
   try {
-    turn(f, say('user', `follow ${RULING}`, '2026-09-10T09:00:02.000Z'));
+    turn(f, say('user', RULING, '2026-09-10T09:00:02.000Z'));
     markAnchorsOnTurn(f.dbPath);
 
     const index = ConversationIndex.openReadOnlyChecked(f.dbPath);

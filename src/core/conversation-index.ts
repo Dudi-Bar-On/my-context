@@ -1449,6 +1449,32 @@ export interface SubagentRow {
   scannedAt: string;
 }
 
+/**
+ * **The last thing one lane said, as far as the archive has read** — the byte
+ * of its last answer span and that span's own timestamp.
+ *
+ * A record rather than a bare number because the anchor written at this point
+ * is stamped with the TURN's time and not with the clock at marking: a
+ * bookmark that moved to "now" every time the pass ran would reorder his list
+ * on a rebuild, which is the reason `sweepAutomaticAnchors` already carries an
+ * anchor's `at` across a relabel.
+ */
+export interface LaneLastAnswer {
+  byteOffset: number;
+  /** `null` for a span the transcript gave no timestamp — nothing invents one. */
+  at: string | null;
+}
+
+/**
+ * One prose span named by POSITION rather than by a match — what a caller needs
+ * in order to go and read the record at that byte.
+ */
+export interface ProseSpanRef {
+  sessionId: string;
+  byteOffset: number;
+  at: string | null;
+}
+
 /** What one transcript scan learned. Every field is derived; none is assumed. */
 export interface ScanResult {
   scannedBytes: number;
@@ -2648,8 +2674,10 @@ export class ConversationIndex {
    * `(sourceKey, fromByte)` pairs, matched as `source_key = ? AND byte_offset
    * >= ?` joined by `OR`. It is one query per probe however many sources
    * moved, which is the property that keeps this affordable inside a
-   * three-second hook — a query per source would have been eight probes times
-   * a handful of transcripts, and the eight alone already cost 266-311 ms.
+   * three-second hook — a query per source would have been every probe times a
+   * handful of transcripts, and the eight that ran in 2026-09-15's shape cost
+   * 266-311 ms between them. Six of those eight went with the normative-id
+   * grammar later the same day; `ownerPromptSpans` below carries that note.
    *
    * `offset` is the other door, for the caller that wants ALL of them: a
    * ranking is a fine way to choose 200 out of 777 and a hopeless way to reach
@@ -2755,6 +2783,137 @@ export class ConversationIndex {
       kind: String(row.kind) === 'prompt' ? 'prompt' : 'answer',
       at: row.at === null ? null : String(row.at),
       text: String(row.text),
+    }));
+  }
+
+  /**
+   * **WHERE EACH LANE STOPPED TALKING** — the byte of the last ANSWER span the
+   * prose index holds for every lane, keyed by `agentId`.
+   *
+   * Added 2026-09-15 for the `report` mark
+   * (`TASK-take-the-lane-report-and-the-owner-s-own-words-as-automatic`), and
+   * it is a query rather than a grammar because a lane's report has no shape.
+   * Nothing in the words of a final answer distinguishes it from the answer
+   * before it; what distinguishes it is that nothing follows. That is a `MAX`
+   * over `byte_offset`, and the index already holds every term of it.
+   *
+   * ── WHY `kind = 'answer'` AND NOT SIMPLY THE LAST SPAN ────────────────────
+   *
+   * A lane's transcript can end on a PROMPT — the coordinator sending a
+   * message, the harness relaying one, an image attachment. Measured on the
+   * owner's archive 2026-09-15: taking the last span and requiring it to be an
+   * answer, and taking the last ANSWER whatever follows it, both return **419
+   * lanes** — the two agree on this corpus. The second is chosen because it is
+   * the one that does not lose a lane's report the day a message arrives after
+   * it, and a mark that vanishes because somebody said "thanks" afterwards is a
+   * mark a reader cannot rely on.
+   *
+   * ── WHAT IT DOES NOT ANSWER, SAID HERE BECAUSE IT WAS NEARLY ASSUMED ──────
+   *
+   * **It does not say the lane FINISHED.** Nothing in this index does.
+   * `subagents.ended_at` reads like it would and does not: it is the timestamp
+   * of the LAST RECORD THE SCAN READ (`spanMs`' own header says so), which is
+   * why it is non-null for 442 of 442 lanes here — including any that were
+   * still running when the scan passed. So this answers exactly *the last thing
+   * this lane has said as far as the archive has read*, which is the fact
+   * `INV-a-turn-that-qualifies-for-an-automatic-mark-carries-one-when` is
+   * written against, and the caller owns the consequence of it moving.
+   *
+   * `agentIds` narrows it to the lanes a caller cares about — the ones whose
+   * transcript moved, on the per-turn path. **It does not make the query
+   * cheaper**, and that is measured rather than assumed: `conversation_prose`
+   * is an FTS5 table with no secondary index, so both shapes scan it —
+   * 18.1 ms unscoped against 16.3 ms for three lanes, median of nine on the
+   * owner's 10,910 spans. It narrows what the CALLER then reads at a byte,
+   * which is where the cost actually is.
+   */
+  laneLastAnswers(agentIds: readonly string[] | null = null): Map<string, LaneLastAnswer> {
+    // **An EMPTY list is a scope that admits nothing**, exactly as `matchProse`
+    // treats an empty `windows`: it must not read as "no scope given".
+    if (agentIds !== null && agentIds.length === 0) return new Map();
+    const where = ["kind = 'answer'", 'agent_id IS NOT NULL'];
+    const params: string[] = [];
+    if (agentIds !== null) {
+      where.push(`agent_id IN (${agentIds.map(() => '?').join(',')})`);
+      for (const id of agentIds) params.push(id);
+    }
+    // **`at` COMES FROM THE ROW THAT PRODUCED THE `MAX`, and that is SQLite's
+    // documented guarantee rather than a hope**: a query with a single `min()`
+    // or `max()` aggregate takes every bare column from the row that supplied
+    // it. A second query to fetch the stamp would be a second thing to
+    // disagree with the byte.
+    const rows = this.#db.prepare(
+      'SELECT agent_id, MAX(byte_offset) AS last_byte, at FROM conversation_prose '
+      + `WHERE ${where.join(' AND ')} GROUP BY agent_id`,
+    ).all(...params) as Record<string, unknown>[];
+    return new Map(rows.map((row) => [String(row.agent_id), {
+      byteOffset: Number(row.last_byte),
+      at: row.at === null ? null : String(row.at),
+    }]));
+  }
+
+  /**
+   * **EVERY PROMPT SPAN OF A SESSION'S OWN TRANSCRIPT, NAMED BY ITS BYTE** —
+   * the `ruling` grammar's candidate source, and it is a query rather than a
+   * probe.
+   *
+   * ── WHY SIX PROBES BECAME ONE QUERY, AND IT IS CHEAPER ────────────────────
+   *
+   * The old `ruling` grammar looked for a normative id, so it could be probed:
+   * `DEC-`, `RULE-`, `INSTR-`, `STD-`, `CONST-`, `INV-` were six of
+   * `ANCHOR_PROBES`' eight entries. The new one looks for the words the owner
+   * rules in — `always`, `never`, `must`, `the rule` — and probing THOSE would
+   * be twelve queries on the commonest words in the English language, which is
+   * the most expensive kind of probe there is: measured on this archive, a
+   * common word costs 7-20 ms against 1.3 ms for a rare literal, and the eight
+   * probes that ran before this cost 266-311 ms of a 250 ms per-turn budget —
+   * a budget they were already over.
+   *
+   * So the candidates are taken structurally instead. Measured 2026-09-15 on
+   * the owner's 10,910 spans: **19.3 ms unscoped, 18.4 ms windowed, 960 rows**
+   * — one query in place of six, and it deletes six probes rather than adding
+   * twelve.
+   *
+   * ── AND IT CANNOT MISS A TURN, WHICH THE PROBES COULD ────────────────────
+   *
+   * There is no `bm25()` here and no `LIMIT`. That is not a detail: on
+   * 2026-09-15 the automatic marking was dead for over half an hour because
+   * `searchArchive` answers *the best 200 matches in the archive* and a
+   * relevance ranking has no opinion about recency, so a new turn was simply
+   * never offered. A `WHERE` with no ranking returns what is in scope or
+   * nothing, and `capped` has nothing to disclose because there is no bound.
+   *
+   * ── `agent_id IS NULL` IS THE SAME FACT `isSidechain` CARRIES ────────────
+   *
+   * Asked of the column the index already has rather than of the record, so the
+   * scan never reads a lane's byte at all. The two cannot disagree: `agent_id`
+   * is written from WHERE the transcript lives — a file under `subagents/` —
+   * and `isSidechain` is the harness saying the same thing inside the record.
+   * `ownerTyped` still asks the record, because a caller may reach a byte this
+   * query never offered (the sweep does, at every one of its own rows).
+   */
+  ownerPromptSpans(
+    windows: { sourceKey: string; fromByte: number }[] | null = null,
+  ): ProseSpanRef[] {
+    // **An EMPTY list of windows is a scope that admits nothing**, exactly as
+    // `matchProse` treats one: it must not read as "no scope given".
+    if (windows !== null && windows.length === 0) return [];
+    const where = ["kind = 'prompt'", 'agent_id IS NULL'];
+    const params: (string | number)[] = [];
+    if (windows !== null) {
+      where.push(
+        '(' + windows.map(() => '(source_key = ? AND byte_offset >= ?)').join(' OR ') + ')',
+      );
+      for (const w of windows) { params.push(w.sourceKey, w.fromByte); }
+    }
+    const rows = this.#db.prepare(
+      'SELECT session_id, byte_offset, at FROM conversation_prose '
+      + `WHERE ${where.join(' AND ')} ORDER BY session_id ASC, byte_offset ASC`,
+    ).all(...params) as Record<string, unknown>[];
+    return rows.map((row) => ({
+      sessionId: String(row.session_id),
+      byteOffset: Number(row.byte_offset),
+      at: row.at === null ? null : String(row.at),
     }));
   }
 

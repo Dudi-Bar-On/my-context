@@ -484,8 +484,24 @@ test('a copy that took bytes says so in the audit row, and a current one is sile
  */
 
 /** A prompt naming a normative id — what the `ruling` grammar marks. */
-const RULING = 'RULE-a-citation-names-an-item-by-id-never-a-report-by-line-number';
+/**
+ * **ONE LINE HE TYPED, AND IT IS ALSO THE LABEL.** A `ruling` was a normative id
+ * in a `kind === 'prompt'` turn until 2026-09-15 and is now the words he rules
+ * in, labelled with the LINE the word is on — so text and label are one
+ * constant here rather than two that would have to agree.
+ */
+const RULING = 'and from now on, cite by id — never a report line number, '
+  + 'per RULE-a-citation-names-an-item-by-id-never-a-report-by-line-number';
 
+/**
+ * One prompt record, as the harness writes one.
+ *
+ * **`origin: { kind: 'human' }` IS LOAD-BEARING SINCE 2026-09-15** — it is the
+ * column the `ruling` grammar reads, and a fixture without it is a fixture in
+ * which nobody typed anything. The harness writes it on every prompt a person
+ * produced and on nothing else; `ownerTyped` in `core/anchor-pass.ts` carries
+ * the measurement.
+ */
 function prompt(text: string, at: string): unknown {
   return {
     type: 'user',
@@ -493,6 +509,8 @@ function prompt(text: string, at: string): unknown {
     timestamp: at,
     gitBranch: 'master',
     cwd: '/w',
+    origin: { kind: 'human' },
+    promptSource: 'typed',
   };
 }
 
@@ -520,7 +538,7 @@ test('a turn ending marks the anchors in what was appended, with nobody running 
     );
 
     // The session keeps going: the owner types a ruling. Nothing is run.
-    sb.append([prompt(`and from now on, follow ${RULING}`, '2026-09-03T10:00:00.000Z')]);
+    sb.append([prompt(RULING, '2026-09-03T10:00:00.000Z')]);
     const report = stopConversationRefresh({ cwd: sb.cwd });
 
     assert.notEqual(report, null, 'the hook declined in a workspace that has an index');
@@ -544,7 +562,7 @@ test('a turn on which no transcript moved does not run the pass at all', () => {
   const sb = sandbox();
   withHome(sb, () => {
     rebuildConversations(sb.dbPath, process.env, sb.cwd, {});
-    sb.append([prompt(`follow ${RULING}`, '2026-09-03T10:00:00.000Z')]);
+    sb.append([prompt(RULING, '2026-09-03T10:00:00.000Z')]);
     stopConversationRefresh({ cwd: sb.cwd });
     assert.deepEqual(anchorLabels(sb.dbPath), [RULING], 'the fixture must start with one anchor');
 
@@ -572,7 +590,7 @@ test('a pass that throws costs the turn its bookmarks and nothing else', () => {
   const sb = sandbox();
   withHome(sb, () => {
     rebuildConversations(sb.dbPath, process.env, sb.cwd, {});
-    sb.append([prompt(`follow ${RULING}`, '2026-09-03T10:00:00.000Z')]);
+    sb.append([prompt(RULING, '2026-09-03T10:00:00.000Z')]);
 
     const report = stopConversationRefresh({ cwd: sb.cwd }, {
       markAnchors: () => { throw new Error('the grammar fell over'); },
@@ -631,7 +649,7 @@ test('a hook that has already spent its budget stands the pass down, and loses n
   withHome(sb, () => {
     rebuildConversations(sb.dbPath, process.env, sb.cwd, {});
     stopConversationRefresh({ cwd: sb.cwd });
-    sb.append([prompt(`follow ${RULING}`, '2026-09-03T10:00:00.000Z')]);
+    sb.append([prompt(RULING, '2026-09-03T10:00:00.000Z')]);
 
     // **The floor EXACTLY, not a millisecond under it**, so what stands the
     // pass down is the refresh's own cost and nothing else: the scan, the

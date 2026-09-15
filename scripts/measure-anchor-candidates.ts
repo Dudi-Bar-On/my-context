@@ -22,7 +22,21 @@
  * Every row of `conversation_prose` — one row per non-machinery turn of every
  * transcript the archive has read, sessions and lanes together. On the corpus
  * this was written against that is **10,836 spans / 12.87 MB of prose across
- * 454 sources**, and the whole scan costs ~1 s.
+ * 454 sources**.
+ *
+ * **AND THE RECORD BEHIND EACH SPAN, which is new on 2026-09-15 and is what
+ * made the scan cost real money.** The grammar no longer takes a span's `kind`;
+ * it takes the transcript RECORD, because `classifyTurn`'s three words cannot
+ * say who wrote a turn (`ownerTyped` in `core/anchor-pass.ts` carries the
+ * measurement). So this reads every span's record at its own byte, exactly as
+ * `markAutomaticAnchors` does — measured on the owner's archive: **5.5 s for
+ * all 10,913, against 0.7 s for the 1,586 prompts alone.**
+ *
+ * It reads ALL of them rather than the prompts, deliberately. Reading only the
+ * prompts would rest on *"a record carrying `origin` is always classified as a
+ * prompt"* — which is true here, measured, 524 of 524 — and would make this
+ * report agree with the grammar by ASSUMING what the grammar decides. Five
+ * seconds is the price of the report not being a lookalike.
  *
  * **The span's `text` column IS the turn text the grammar sees.** `proseFrom`
  * stores `proseOf(record)` verbatim and untruncated, and `turnAt` — what
@@ -41,17 +55,21 @@
  *     down, so "% of all turns" below means % of turns that carry words, which
  *     is the population the existing grammars are also measured against.
  *  3. **A `kind='prompt'` span is not the same thing as the owner typing.**
- *     388 of this archive's 948 main-session prompts are `<task-notification>`
+ *     433 of this archive's 957 main-session prompts are `<task-notification>`
  *     blocks, skill loads, `/command` re-invocations, compaction summaries and
  *     local-command output — injected into the prompt slot by the harness.
- *     `ownerTyped` below is the filter that removes them, and any candidate
- *     that claims to measure HIS words and skips it is measuring the harness'.
- *     **The existing `ruling` grammar does not apply this filter**, which is
- *     reported in section 4 rather than repaired here.
+ *     `ownerTyped` is the filter that removes them, and any candidate that
+ *     claims to measure HIS words and skips it is measuring the harness'.
+ *
+ *     **IT IS THE SHIPPED ONE NOW.** This script carried its own `ownerTyped`
+ *     — a list of ten text shapes — until 2026-09-15, and that list leaked
+ *     twice in a 38-row sample. `core/anchor-pass.ts` now answers the question
+ *     from the archive's own columns and this imports it, so the report and the
+ *     grammar cannot come to disagree about whose words they are counting.
  */
 import { DatabaseSync } from 'node:sqlite';
-import { anchorInTurn } from '../src/core/anchor-pass.ts';
-import { ConversationIndex } from '../src/core/conversation-index.ts';
+import { anchorInTurn, laneReportAt, ownerTyped } from '../src/core/anchor-pass.ts';
+import { ConversationIndex, iterateTranscript } from '../src/core/conversation-index.ts';
 import { archiveFreshness } from '../src/core/conversation-search.ts';
 import { isMainEntry } from '../src/core/paths.ts';
 import { resolveWorkspace } from '../src/core/workspace.ts';
@@ -69,55 +87,46 @@ export interface Span {
   kind: string;
   at: string | null;
   text: string;
+  /**
+   * **The transcript record this span came from**, filled by `readRecords`, or
+   * `null` when the transcript is gone or the byte reads as nothing.
+   *
+   * It is what `ownerTyped` reads, and it is the whole reason this script now
+   * touches the transcripts at all. `null` is the safe answer everywhere: a
+   * span whose record could not be read is not counted as his.
+   */
+  record: Record<string, unknown> | null;
 }
 
 /* ══ 1. WHAT IS THE OWNER'S KEYBOARD, AND WHAT ONLY LOOKS LIKE IT ══════════ */
 
 /**
- * **The shapes the harness puts into the prompt slot**, none of which he
- * typed.
+ * ── THE TEN TEXT SHAPES THAT USED TO BE HERE, AND WHY THEY ARE NOT ────────
  *
- * Counted on his archive: 388 of 948 main-session prompt spans — **41%** —
- * match one of these. A "he ruled something" grammar built without this filter
- * would be marking task notifications and skill preambles and calling them his
- * words, which is the 2026-09-11 refusal in a new costume: a mark on a turn
- * that POINTS at something rather than on the thing.
+ * `HARNESS_PROMPT` was a list of ten regexes — `^<task-notification`,
+ * `^<system-reminder`, `^Base directory for this skill:`, and seven more — and
+ * `ownerTyped` was "a main-session prompt matching none of them, in a session
+ * with more than one prompt". It removed 388 of 948 spans and **it leaked
+ * twice in a 38-row sample**: a `/command` body and a skill preamble that the
+ * list had no shape for.
  *
- * Each entry was read off the archive rather than guessed; `--samples` prints
- * what survives the filter so the residue is checkable.
+ * `core/anchor-pass.ts` · `ownerTyped` replaced it on 2026-09-15 with three of
+ * the archive's own columns, and it is IMPORTED above rather than re-expressed
+ * here for this file's stated reason: a second copy of a predicate makes the
+ * report agree with itself while disagreeing with the grammar.
+ *
+ * Two things the structural predicate gets for nothing, and both were separate
+ * filters here before:
+ *
+ *   — **the headless runs.** Twelve one-prompt sessions in this archive are
+ *     nightly runs of the product's own lesson pass. They were named by
+ *     `conversations.prompts <= 1`; they carry `promptSource: 'sdk'` and NO
+ *     `origin` at all, so the predicate refuses them without being told about
+ *     them.
+ *   — **the lane relays.** *"The user sent a new message while you were
+ *     working: …"* is `origin.kind: 'human'` and the old list had no shape for
+ *     it either. `isSidechain` and `isMeta` each refuse all 13.
  */
-const HARNESS_PROMPT = [
-  /^\s*<task-notification/,
-  /^\s*<local-command-(stdout|stderr|caveat)/,
-  /^\s*<command-(name|message|args)/,
-  /^\s*<user-prompt-submit-hook/,
-  /^\s*<system-reminder/,
-  /^Base directory for this skill:/,
-  /^\(Re-invocation of \//,
-  /^\[Image: original \d+x\d+/,
-  /^This session is being continued from a previous conversation/,
-  /^Caveat: The messages below were generated by the user while running local commands/,
-];
-
-/**
- * True when this span is the owner's own typing rather than the harness'.
- *
- * `headless` is the SECOND filter and it is structural rather than textual:
- * this archive holds **one** interactive session (936 prompts) and **twelve**
- * one-prompt sessions, each a headless run of the product's own nightly lesson
- * pass whose "prompt" is a prompt this repository wrote. `conversations.prompts
- * <= 1` names them without a text shape, which matters — the shapes above are a
- * list that has to grow as the harness changes, and a list like that is the
- * weakest part of any candidate that rests on it.
- */
-export function ownerTyped(
-  span: { kind: string; agentId: string | null; sessionId: string; text: string },
-  headless: ReadonlySet<string> = new Set(),
-): boolean {
-  if (span.kind !== 'prompt' || span.agentId !== null) return false;
-  if (headless.has(span.sessionId)) return false;
-  return !HARNESS_PROMPT.some((shape) => shape.test(span.text));
-}
 
 /* ══ 2. THE CANDIDATES ════════════════════════════════════════════════════ */
 
@@ -331,7 +340,14 @@ export function laneMissions(dbPath: string): Map<string, string> {
   }
 }
 
-/** Sessions the archive holds that carry at most one prompt — a headless run. */
+/**
+ * Sessions the archive holds that carry at most one prompt — a headless run.
+ *
+ * **No longer a filter, and kept because it is the number that PROVES the
+ * filter is unnecessary.** `ownerTyped` refuses every one of these on
+ * `origin` alone; the report prints both counts so that agreement is visible
+ * rather than claimed.
+ */
 export function headlessSessions(dbPath: string): Set<string> {
   const db = new DatabaseSync(dbPath, { readOnly: true });
   try {
@@ -359,10 +375,47 @@ export function readSpans(dbPath: string): Span[] {
       kind: String(row.kind),
       at: row.at === null ? null : String(row.at),
       text: String(row.text),
+      record: null,
     }));
   } finally {
     db.close();
   }
+}
+
+/**
+ * **Fill each span's `record` by reading it at its own byte** — one seek and
+ * one line apiece, which is exactly what `turnAt` costs the real pass.
+ *
+ * Mutates in place rather than returning a copy: 10,913 spans each carrying a
+ * whole transcript record is the largest thing this script holds, and a second
+ * array of them for tidiness would double it for nothing.
+ *
+ * A source the archive no longer has a file for leaves its spans at `null`,
+ * which `ownerTyped` reads as "not his" — the safe direction, and the same one
+ * `markAutomaticAnchors` takes when a transcript is pruned.
+ */
+export function readRecords(dbPath: string, spans: Span[]): number {
+  const db = new DatabaseSync(dbPath, { readOnly: true });
+  let read = 0;
+  try {
+    const files = new Map<string, string>();
+    for (const row of db.prepare('SELECT session_id AS k, file FROM conversations').all() as
+      Record<string, unknown>[]) files.set(String(row.k), String(row.file));
+    for (const row of db.prepare('SELECT agent_id AS k, file FROM subagents').all() as
+      Record<string, unknown>[]) files.set(String(row.k), String(row.file));
+    for (const span of spans) {
+      const file = files.get(span.agentId ?? span.sessionId);
+      if (file === undefined) continue;
+      for (const record of iterateTranscript(file, { startByte: span.byteOffset })) {
+        span.record = record.record;
+        if (record.record !== null) read += 1;
+        break;
+      }
+    }
+  } finally {
+    db.close();
+  }
+  return read;
 }
 
 /** A span's identity, spelled the way `anchorIdFor` keys one. */
@@ -412,32 +465,60 @@ function main(): number {
   const missions = laneMissions(dbPath);
   const scanMs = Date.now() - t0;
 
+  const t1 = Date.now();
+  const recordsRead = readRecords(dbPath, spans);
+  const recordMs = Date.now() - t1;
+
+  // **The lane's last answer, from the index's own `MAX`.** It is the shipped
+  // query and the shipped predicate, for the same reason the grammar is
+  // imported: a second expression of "which turn is the report" would make
+  // section 5 a comparison against a lookalike.
+  const index = ConversationIndex.openReadOnlyChecked(dbPath);
+  const lastAnswers = (() => {
+    try { return index.laneLastAnswers(); } finally { /* closed below */ }
+  })();
+
   // The baseline: what the SHIPPED grammar says about the same spans. Imported
   // and called — never re-expressed here.
   const tabled = new Set<string>();
   const ruled = new Set<string>();
+  const reported = new Set<string>();
   for (const span of spans) {
-    const finding = anchorInTurn(span.kind, span.text);
+    const finding = anchorInTurn({
+      record: span.record,
+      laneReport: laneReportAt(index, lastAnswers, span.agentId, span.byteOffset, span.text),
+    }, span.text);
     if (finding === null) continue;
-    (finding.kind === 'table' ? tabled : ruled).add(keyOf(span));
+    if (finding.kind === 'table') tabled.add(keyOf(span));
+    else if (finding.kind === 'report') reported.add(keyOf(span));
+    else ruled.add(keyOf(span));
   }
-  const marked = new Set([...tabled, ...ruled]);
+  index.close();
+  const marked = new Set([...tabled, ...ruled, ...reported]);
 
-  const owners = spans.filter((s) => ownerTyped(s, headless));
+  const owners = spans.filter((s) => ownerTyped(s.record));
   const prompts = spans.filter((s) => s.kind === 'prompt');
 
   say('# what else is worth marking — measured on the real archive');
   say();
+  const mainPrompts = spans.filter((s) => s.kind === 'prompt' && s.agentId === null).length;
   say(`scanned: ${spans.length} prose spans, `
     + `${(spans.reduce((n, s) => n + s.text.length, 0) / 1e6).toFixed(2)} MB of text, `
     + `${scanMs} ms`);
+  say(`  and ${recordsRead} of their records, read at their own bytes, ${recordMs} ms`);
   say(`  of which prompts ${prompts.length}, answers ${spans.length - prompts.length}`);
   say(`  of which HE TYPED ${owners.length} `
-    + `(main-session prompts ${spans.filter((s) => s.kind === 'prompt' && s.agentId === null).length}`
-    + `, harness-injected ${spans.filter((s) => s.kind === 'prompt' && s.agentId === null).length - owners.length})`);
+    + `(main-session prompts ${mainPrompts}`
+    + `, harness-injected ${mainPrompts - owners.length})`);
+  // **The headless filter that is no longer needed, printed rather than
+  // deleted.** If a future harness ever files a headless run as `origin.kind:
+  // 'human'`, this line stops reading zero and says so.
+  say(`  of those he typed, in a headless (<=1 prompt) session: `
+    + `${owners.filter((s) => headless.has(s.sessionId)).length} `
+    + `— the structural predicate refuses them without being told about them`);
   say();
-  say(`the shipped grammar over the same spans: table ${tabled.size}, ruling ${ruled.size}, `
-    + `total ${marked.size}`);
+  say(`the shipped grammar over the same spans: table ${tabled.size}, `
+    + `ruling ${ruled.size}, report ${reported.size}, total ${marked.size}`);
   say();
 
   const rows: Row[] = [];
@@ -491,11 +572,11 @@ function main(): number {
     if (last === undefined || span.byteOffset > last.byteOffset) lastOf.set(a, span);
   }
 
-  /* ── 4. THE `ruling` GRAMMAR'S OWN BLIND SPOT, measured ────────────────── */
+  /* ── 4. THE `ruling` GRAMMAR, AND THE BLIND SPOT NOW CLOSED ────────────────── */
   say('## 4. what the shipped `ruling` grammar is actually marking');
   say();
   const ruledSpans = spans.filter((s) => ruled.has(keyOf(s)));
-  const ruledOwner = ruledSpans.filter((s) => ownerTyped(s, headless)).length;
+  const ruledOwner = ruledSpans.filter((s) => ownerTyped(s.record)).length;
   const ruledLane = ruledSpans.filter((s) => s.agentId !== null);
   const ruledDispatch = ruledLane.filter(
     (s) => firstOf.get(s.agentId ?? '')?.byteOffset === s.byteOffset,
@@ -507,19 +588,23 @@ function main(): number {
     + `   — of which the lane's FIRST prose span, i.e. the dispatch: ${ruledDispatch}`);
   say(`    harness-injected prompt slot: ${ruledHarness}`);
   say();
-  say('  A `ruling` mark is documented as "something the OWNER GAVE". A lane');
-  say("  dispatch is this plugin's own SubagentStart injection — the governing");
-  say('  items, delivered in full, every id among them. A `<task-notification>`');
-  say('  is the harness quoting a lane report back. Both reach the grammar');
-  say('  because `classifyTurn` calls them prompts.');
+  say('  **THE BOTTOM TWO LINES ARE THE REPAIR, AND A ZERO IS THE PASS.**');
+  say('  Until 2026-09-15 these four read 377 / 0 / 324 / 53 — a `ruling` mark');
+  say('  was documented as "something the OWNER GAVE" and marked NONE of his');
+  say("  turns, because a lane dispatch (this plugin's own SubagentStart");
+  say('  injection, every governing id among them) and a `<task-notification>`');
+  say("  both reach a `kind === 'prompt'` guard: `classifyTurn` calls them");
+  say('  prompts. That was the standard which killed the report grammar on');
+  say('  2026-09-11 — *"it marks a turn that MENTIONS a report, not a report"* —');
+  say('  turned on the rule grammar, and it failed.');
   say();
-  say('  Judged by the standard that killed the report grammar on 2026-09-11 —');
-  say('  *"it marks a turn that MENTIONS a report, not a report"* — every one of');
-  say('  these marks a turn that MENTIONS a rule.');
+  say('  The detector is now `ownerTyped` over the RECORD, so the last two lines');
+  say('  are structurally unreachable rather than merely small. If either ever');
+  say('  reads non-zero again, the guard has been widened back to the text.');
   say();
 
   /* ── 5. STRUCTURAL, not a grammar: what `subagents` already knows ──────── */
-  say('## 5. the structural candidate — lane dispatch and lane report');
+  say('## 5. the structural candidate — dispatch REFUSED, report SHIPPED');
   say();
   const dispatches = [...firstOf.values()];
   const reports = [...lastOf.values()].filter((s) => s.kind === 'answer');
@@ -544,9 +629,16 @@ function main(): number {
   say('      whether the 417 read as reports is a judgement on a sample, and');
   say('      `--samples` prints one.');
   say();
-  say('  It needs NO probe and NO grammar: the first and last prose span of a');
-  say('  lane transcript are a `min`/`max` over `byte_offset` per `agent_id`,');
-  say('  and `subagents` already carries the row. Cost is one query, not eight.');
+  say('  **THE DISPATCH IS REFUSED AND THE REPORT SHIPPED**, owner ruling');
+  say('  2026-09-15. The dispatch line above is kept because it is the SIZE OF');
+  say('  THE NOISE that was being marked: those first spans are the injection');
+  say('  block, and 296 of them wore a `ruling` mark until the detector changed.');
+  say('  It is counted here, and marked nowhere.');
+  say();
+  say('  It needs NO probe and NO grammar: the last ANSWER span of a lane');
+  say('  transcript is a `MAX` over `byte_offset` per `agent_id`, which is');
+  say('  `ConversationIndex.laneLastAnswers`, and `subagents` already carries the');
+  say('  row. Cost is one query, not eight — 16-18 ms median over these spans.');
   const described = reports.filter(
     (s) => (missions.get(s.agentId ?? '') ?? '') !== '',
   ).length;
@@ -557,7 +649,7 @@ function main(): number {
 
   /* ── 6. PROBE COST ─────────────────────────────────────────────────────── */
   if (wantCost) {
-    say('## 6. probe cost, measured against the eight that already run');
+    say('## 6. probe cost, measured against the two that still run');
     say();
     // **The hole in every count above, stated before the timings.** A candidate
     // is counted over what the archive HAS read; a source whose row is behind

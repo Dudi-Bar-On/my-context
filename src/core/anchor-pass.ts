@@ -27,7 +27,8 @@
  * ruled entry in `RULED_WRITES` with the properties that bound it.
  */
 import {
-  ConversationIndex, anchorIdFor, classifyTurn, iterateTranscript,
+  ConversationIndex, anchorIdFor, iterateTranscript, laneNameOf,
+  type LaneLastAnswer,
 } from './conversation-index.ts';
 import { markAnchor, unmarkAnchor, type AutomaticAnchorKind } from './anchors.ts';
 import { anchorTransaction } from './anchor-file.ts';
@@ -331,39 +332,280 @@ export function tableIn(text: string): string | null {
  * notice a probe put back without its regex, or a regex put back without its
  * probe.
  *
- * The RULING grammar below is untouched. He judged those the useful ones.
+ * **THE WORD `report` IS SPENT AGAIN AND THE RULING ABOVE STILL STANDS**, on
+ * 2026-09-15 under `TASK-take-the-lane-report-and-the-owner-s-own-words-as-
+ * automatic`. What he refused was a turn that NAMES a report. What he ruled in
+ * is a lane's final answer, decided from `subagents` and a `MAX(byte_offset)`
+ * with NO text consulted at all -- so the new kind cannot reach a turn that
+ * merely points at something, because it never reads a turn's words to decide.
+ * `laneReportAt` below is the whole of it.
  */
 
 /**
- * A NORMATIVE corpus id — the categories that carry a ruling.
+ * ── THE `ruling` DETECTOR THAT WAS HERE, AND WHY A NORMATIVE ID REPLACED
+ *    ITSELF WITH HIS OWN WORDS ─────────────────────────────────────────────
  *
- * `TASK-` and `REQ-` are deliberately absent. They are ids of work, not of
- * rulings, and this repository holds 728 of the former against 94 `DEC-`; a
- * prefix set widened to catch them would mark nearly every turn of a working
- * session, which is the point at which a list of bookmarks stops being one.
+ * It was `/\b(?:DEC|RULE|INSTR|STD|CONST|INV)-[a-z0-9]+(?:-[a-z0-9]+){3,}\b/`
+ * behind a `kind === 'prompt'` guard, and it is gone under
+ * `TASK-take-the-lane-report-and-the-owner-s-own-words-as-automatic`, owner
+ * ruling 2026-09-15: **replace it, do not delete it.** The KIND is the right
+ * name for the right thing — a judgement he gave, and the thing he most wants
+ * to find again. Only the detection was wrong.
+ *
+ * **HOW WRONG, measured by `anchors/11` over all 10,836 prose spans of his real
+ * archive: the id grammar owned 377 of his 1,164 marks — 32% — and marked ZERO
+ * turns he typed.** 296 were a lane's FIRST prose span, which is THIS PLUGIN'S
+ * OWN SubagentStart injection block: it delivers every governing item, so it
+ * carries every normative id there is. 28 more were later lane turns and 53
+ * were `<task-notification>` blobs and compaction summaries. Fifty-five wore
+ * the identical label `RULE-a-test-names-the-items-it-rests-on-or-says-it-
+ * rests-on-none` — an item this plugin injects into every lane. By the standard
+ * that killed the report grammar one note up, all 377 marked a turn that
+ * MENTIONS a rule.
+ *
+ * **AND REPAIRING THE GUARD WOULD HAVE MARKED NOTHING.** In 519 turns he typed
+ * over 13 days he named a normative id ZERO times. He does not speak in ids, so
+ * the id cannot find him however tightly the guard is drawn. That is why the
+ * DETECTOR changed and not the condition around it.
  */
-const RULING_ID = /\b(?:DEC|RULE|INSTR|STD|CONST|INV)-[a-z0-9]+(?:-[a-z0-9]+){3,}\b/;
+
+/**
+ * **THE WORDS HE RULES IN** — read off his own prompts, never from a thesaurus.
+ *
+ * Measured by `anchors/11` on his 519 owner-typed turns: this list marks 38 of
+ * them, about 1 in 14, with 26 of 38 clearly worth having and 34 of 38 counting
+ * corrections.
+ *
+ * ── THE MODAL LIST IS REFUSED, AND THE MEASUREMENT IS THE REASON ───────────
+ *
+ * `should` / `i want` / `need to` / `do not` marks 143 of his turns and scores
+ * the SAME worth-having share — ~40% — as *"he typed 250 characters with no
+ * keyword at all"*, which is the dumb baseline it has to beat to exist. Those
+ * words are his ordinary register, not a ruling signal. **Do not widen this
+ * because it feels thin.** Thin and precise is the point, and the number that
+ * says so is the baseline, not an opinion about the words.
+ *
+ * `nevver` is his spelling and it is here for that reason — it occurs in the
+ * archive, and a list read off a corpus carries what the corpus holds.
+ */
+const RULING_WORDS =
+  /\b(?:always|never|nevver|must|unacceptable|not allowed|forbidden|from now on|i approve|i decide|the rule|this rule|a rule|standardi[sz]e)\b/i;
+
+/**
+ * **The longest ruling label, and it is `TABLE_LABEL_CAP`'s number on purpose**
+ * — one cap for what the pass composes, so two kinds of mark cannot come to
+ * disagree about how long a name may be.
+ */
+export const RULING_LABEL_CAP = TABLE_LABEL_CAP;
+
+/**
+ * **What one ruling is CALLED: the LINE the word is on, verbatim, clipped.**
+ *
+ * The evidence and never a summary — `AutoAnchorFinding`'s own rule. A label of
+ * the matched word alone would put `always` on his list twelve times over,
+ * which is exactly the single-header-cell defect `tableLabel` was rewritten to
+ * fix on the same day.
+ *
+ * ── A LINE AND NOT A SENTENCE, AND THAT WAS MEASURED ──────────────────────
+ *
+ * Composed both ways over all 36 of his turns this list marks, 2026-09-15.
+ * Splitting on `.!?` produced five labels that begin mid-thought, because a
+ * full stop in this archive is usually a file extension: `", i have already
+ * added a rule …"`, `"json - i approve you to change it …"`, `"\" - if there is
+ * a size restriction it must be removed …"`. A newline is a unit HE typed; a
+ * sentence boundary is one guessed from punctuation he does not use that way.
+ *
+ * Exported so the label rule can be tested without a transcript, for `tableIn`'s
+ * stated reason: a composer whose only test is through the pass is a composer
+ * whose edge cases nobody checked.
+ */
+export function rulingLabel(text: string, at: number, word: string): string {
+  const from = text.lastIndexOf('\n', at) + 1;
+  const to = text.indexOf('\n', at);
+  const line = text.slice(from, to < 0 ? text.length : to).trim();
+  // A line that trims to nothing leaves the matched word as the label. It names
+  // less than the line does and it is never empty, which is the one property a
+  // list entry has to have.
+  return line === '' ? word : clip(line, RULING_LABEL_CAP);
+}
+
+/**
+ * **THE STRUCTURAL FACTS ONE TURN CARRIES, WHICH IS WHAT THE GRAMMAR READS
+ * INSTEAD OF GUESSING.**
+ *
+ * `anchorInTurn` used to take `kind: string` — `classifyTurn`'s answer — and
+ * that single parameter is the mechanical cause of every defect in the note
+ * above: `classifyTurn` calls a lane dispatch and a harness notification a
+ * "prompt", so a guard written to admit only what the owner GAVE admitted
+ * precisely what it was written to exclude.
+ *
+ * So the grammar is handed the RECORD, and asks the archive's own columns.
+ */
+export interface TurnFacts {
+  /**
+   * The transcript record that starts at this byte, or `null` when the caller
+   * could not read one.
+   *
+   * **`null` means "not his"**, which is the safe direction: a caller that
+   * cannot see the record cannot claim the owner typed the turn.
+   */
+  record: Record<string, unknown> | null;
+  /**
+   * **The lane's own mission when this turn IS that lane's report**, and `null`
+   * when it is not one. Decided by the caller from `subagents` and the prose
+   * index — see `laneReportAt`. No text is consulted to produce it.
+   */
+  laneReport: string | null;
+}
+
+/**
+ * **DID HE TYPE THIS? — asked of the archive's own columns, not of the text.**
+ *
+ * This is the risk `TASK-take-the-lane-report-and-the-owner-s-own-words-as-
+ * automatic` says must be DESIGNED AGAINST rather than noted, because every
+ * ruling mark rests on it and it is exactly what was broken. `anchors/11`'s own
+ * `ownerTyped` was a list of text shapes — `^<task-notification`,
+ * `^<system-reminder`, and eight more — and **it leaked twice in a 38-row
+ * sample**: a `/command` body and a skill preamble. A list of strings that has
+ * to grow as the harness changes rebuilds the defect in a new costume.
+ *
+ * ── THE THREE COLUMNS, AND WHAT EACH ONE REMOVES, MEASURED ────────────────
+ *
+ * Counted over all 10,910 prose spans of the owner's archive, 2026-09-15, by
+ * reading each span's record at its own byte:
+ *
+ * | column | what it is | what it removes here |
+ * |---|---|---|
+ * | `origin.kind === 'human'` | the harness's own record of WHO produced the prompt | 10,373 spans that are not a person at all |
+ * | `isSidechain !== true` | this record is in a LANE's transcript | 13 relays of his words INTO a lane |
+ * | `isMeta !== true` | the harness's own "this is not user input" | the same 13 |
+ *
+ * **537 spans carry `origin.kind === 'human'`; 524 survive all three**, and all
+ * 524 are `classifyTurn`-prompts without that ever being asked — which is the
+ * point: the kind is DERIVED from this, not a condition on it.
+ *
+ * The 13 the last two guards remove are one shape: *"The user sent a new
+ * message while you were working: …"*, the harness relaying him into a running
+ * lane. It is `origin.kind: 'human'` because the words started with him, and
+ * `isMeta` / `isSidechain` because the TURN is not his. Two independent columns
+ * catch it; either alone would do, and both are kept because they say different
+ * true things and a future harness need not keep both.
+ *
+ * ── WHAT IT DOES NOT CATCH — THE RESIDUE, REPORTED RATHER THAN PAPERED ────
+ *
+ * **Two of the 524 are slash-command envelopes** —
+ * `<command-message>mycontext:ui</command-message>…` — which the harness files
+ * as `origin.kind: 'human'` because he did invoke them. The WORDS are the
+ * harness's. Neither matches `RULING_WORDS`, so the residue marks nothing
+ * today; it is stated because it is real and it can change.
+ *
+ * **It is not closed with `promptSource`, deliberately**, though that column
+ * would remove exactly those two (522 of 524 carry one). A transcript written
+ * before the harness added that field has none, and the guard would then drop
+ * his real turns silently — a worse failure than two envelopes that mark
+ * nothing. `INV-nothing-is-dropped-silently` points the same way.
+ *
+ * `isCompactSummary` is NOT checked, and that is a measured zero rather than an
+ * oversight: all 10 compaction summaries in this archive carry no `origin` at
+ * all, so `origin.kind === 'human'` has already refused them.
+ */
+export function ownerTyped(record: Record<string, unknown> | null): boolean {
+  if (record === null) return false;
+  if (record['isSidechain'] === true) return false;
+  if (record['isMeta'] === true) return false;
+  const origin = record['origin'];
+  return typeof origin === 'object' && origin !== null
+    && (origin as { kind?: unknown }).kind === 'human';
+}
 
 /**
  * **What, if anything, makes this turn an anchor by nature.**
  *
- * The order is the precedence, and first match wins: a turn that both holds a
- * table and names a report is marked as the table, because the table is the
- * thing in the turn rather than a thing the turn points at.
+ * The order is the precedence, and first match wins.
  *
- * `kind` is the turn's own — `classifyTurn`'s, already decided one layer down.
- * A ruling is restricted to `'prompt'` because a ruling is something the owner
- * GAVE; the same id in an answer is a citation, and citations are what this
- * project's assistants write in nearly every turn.
+ * ── WHY THE TABLE STILL COMES FIRST, WITH THE `report` KIND BESIDE IT ─────
+ *
+ * 230 of the archive's 419 lane reports already carry a `table` mark, because a
+ * lane that reports in a table is this project's own house style. Putting
+ * `report` first would RELABEL all of them — and the worth of the report mark
+ * was judged, 8 out of 8, on a sample drawn from the 189 that carry NOTHING
+ * today (`anchors/11`, section 7). Applying it to turns that already wear a
+ * judged-good mark is a change nobody measured, so it is not made. The table is
+ * the thing IN the turn; it keeps the turn.
+ *
+ * The consequence is stated rather than hidden: the `report` kind names 189 of
+ * the 419 lane reports and the rest stay findable as the tables they are.
+ * Reversing it is one line here, and the unscoped rebuild's sweep would relabel
+ * them.
+ *
+ * ── AND THE RULING IS LAST, WHICH COSTS NOTHING ──────────────────────────
+ *
+ * `laneReport` is non-null only for a lane's answer and `ownerTyped` is true
+ * only in the main session, so those two are disjoint by construction. The
+ * order between them is documentation, not arbitration.
  */
-export function anchorInTurn(kind: string, text: string): AutoAnchorFinding | null {
+export function anchorInTurn(facts: TurnFacts, text: string): AutoAnchorFinding | null {
   const table = tableIn(text);
   if (table !== null) return { kind: 'table', label: table };
-  if (kind === 'prompt') {
-    const ruling = RULING_ID.exec(text);
-    if (ruling !== null) return { kind: 'ruling', label: ruling[0] };
+  if (facts.laneReport !== null) return { kind: 'report', label: facts.laneReport };
+  if (ownerTyped(facts.record)) {
+    const ruling = RULING_WORDS.exec(text);
+    if (ruling !== null) {
+      return { kind: 'ruling', label: rulingLabel(text, ruling.index, ruling[0]) };
+    }
   }
   return null;
+}
+
+/**
+ * **HOW LONG A LANE'S FINAL ANSWER HAS TO BE TO BE ITS REPORT** — measured by
+ * `anchors/11` on the owner's lanes, not chosen.
+ *
+ * A lane's last answer is **7,530 characters at the median**. Only 19 of 436
+ * fall under 400, and reading them shows what they are: *"that background
+ * command finished, no action needed"* — a trailing acknowledgement after the
+ * report, not the report. The floor refuses exactly those and keeps the rest.
+ *
+ * It is a floor on the ANSWER and not a judgement about it: nothing here reads
+ * what the lane said.
+ */
+export const LANE_REPORT_FLOOR_CHARS = 400;
+
+/**
+ * **IS THIS TURN A LANE'S REPORT, AND WHAT IS IT CALLED?** — `null` when it is
+ * not one.
+ *
+ * Three facts, all structural, none of them a grammar:
+ *
+ *   1. the turn is in a LANE's transcript (`agentId !== null`);
+ *   2. it is at the byte of that lane's LAST ANSWER, per
+ *      `ConversationIndex.laneLastAnswers`;
+ *   3. it carries at least `LANE_REPORT_FLOOR_CHARS`.
+ *
+ * **The label writes itself and is never fabricated**: `laneNameOf` is
+ * `subagents.description`, the one line the dispatcher typed — measured present
+ * for 419 of 419 lanes with a report. A lane the archive no longer holds a row
+ * for has no name, and then this answers `null` rather than inventing one:
+ * `STD-a-measured-zero-is-drawn-and-named` in the direction that matters here,
+ * which is that a bookmark called nothing is a bookmark he cannot recognise.
+ *
+ * **THE LANE DISPATCH IS REFUSED, and it is refused by construction rather than
+ * by a rule against it.** The dispatch is a lane's FIRST prose span and it is a
+ * prompt; this asks for the LAST ANSWER. There is no input for which both are
+ * true unless a lane's only answer is also its dispatch, which is not a shape a
+ * transcript has.
+ */
+export function laneReportAt(
+  index: ConversationIndex,
+  lastAnswers: ReadonlyMap<string, LaneLastAnswer>,
+  agentId: string | null,
+  byteOffset: number,
+  text: string,
+): string | null {
+  if (agentId === null) return null;
+  if (lastAnswers.get(agentId)?.byteOffset !== byteOffset) return null;
+  if (text.length < LANE_REPORT_FLOOR_CHARS) return null;
+  return laneNameOf(index, agentId);
 }
 
 /**
@@ -383,15 +625,24 @@ export function anchorInTurn(kind: string, text: string): AutoAnchorFinding | nu
  * because `tableIn` asks for a header row with a matching cell count. The
  * probe decides what is READ; the grammar decides what is MARKED.
  */
+/*
+ * **SIX OF THESE WERE THE NORMATIVE-ID PREFIXES, AND THEY ARE GONE** —
+ * `DEC-`, `RULE-`, `INSTR-`, `STD-`, `CONST-`, `INV-`, each with `kind:
+ * 'prompt'`. Removed 2026-09-15 with the grammar they fed.
+ *
+ * **The `ruling` kind did not lose its candidates; it stopped needing a probe.**
+ * Its detector is now the owner's own words, and probing THOSE would be twelve
+ * queries on the commonest words in English — 7-20 ms each against 1.3 ms for a
+ * rare literal, on top of a budget these eight already overran.
+ * `ConversationIndex.ownerPromptSpans` answers the same question with ONE
+ * unranked `WHERE` at 19 ms, and its header carries the measurement.
+ *
+ * What is left is the table, which really is a shape in the text and really
+ * does need finding by one.
+ */
 const ANCHOR_PROBES: { probe: string; kind?: 'prompt' | 'answer' }[] = [
   { probe: '|---' },
   { probe: '| ---' },
-  { probe: 'DEC-', kind: 'prompt' },
-  { probe: 'RULE-', kind: 'prompt' },
-  { probe: 'INSTR-', kind: 'prompt' },
-  { probe: 'STD-', kind: 'prompt' },
-  { probe: 'CONST-', kind: 'prompt' },
-  { probe: 'INV-', kind: 'prompt' },
 ];
 
 /**
@@ -460,8 +711,13 @@ export interface AutoAnchorReport {
   /** Anchors written — `found` minus the ones already standing at that point. */
   marked: number;
   /**
-   * Anchors the pass had written before and TOOK BACK, because the grammar it
-   * runs today does not recognise what is at that byte. Never one of his.
+   * Anchors the pass had written before and TOOK BACK. Never one of his.
+   *
+   * Two causes, counted together because they are one fact to a reader — *a
+   * bookmark this pass wrote is gone*: the grammar it runs today does not
+   * recognise what is at that byte, or the row was a lane's `report` and the
+   * lane has since said something later, so the report moved and the old mark
+   * is no longer on it.
    */
   dropped: number;
   /** Anchors the pass had written before whose label or kind it re-derived. */
@@ -487,29 +743,35 @@ export function fileOf(
 }
 
 /**
- * The words at one byte offset of one transcript, and how that turn was
- * classified — or `null` when nothing readable starts there.
+ * The words at one byte offset of one transcript AND THE RECORD THEY CAME FROM
+ * — or `null` when nothing readable starts there.
  *
  * One seek and one line, exactly as `resolveAnchor` reads: the generator's
  * `finally` closes the descriptor when the loop breaks, so this costs the
  * record and not the file.
  *
- * The classification is `classifyTurn`'s, derived here from the record itself
- * rather than read off the prose index, because the sweep below reaches
- * anchors the prose index never offered as candidates. It is the SAME call the
- * prose walk makes (`conversation-search.ts`' `proseFrom`), so the two cannot
- * come to disagree about what a prompt is.
+ * ── IT USED TO RETURN `classifyTurn`'S ANSWER, AND THAT WAS THE DEFECT ────
+ *
+ * This handed the grammar `kind: 'prompt' | 'answer' | 'machinery'` and nothing
+ * else, so a guard that meant *the owner gave this* could only ask a question
+ * that means *this record is filed under the user's side of the exchange* —
+ * which a lane dispatch and a `<task-notification>` both are. 377 of his 1,164
+ * marks came out of that one narrowing; `ownerTyped`'s header carries the
+ * count. The record is returned whole, and the grammar asks it the question it
+ * actually has.
+ *
+ * `classifyTurn` is NOT called here any more and is not called elsewhere in
+ * this module. It is still the prose walk's own filter one layer down, which is
+ * where it belongs: it decides what carries WORDS, not who wrote them.
  */
-function turnAt(file: string, byteOffset: number): { kind: string; text: string } | null {
+function turnAt(
+  file: string, byteOffset: number,
+): { record: Record<string, unknown>; text: string } | null {
   for (const record of iterateTranscript(file, { startByte: byteOffset })) {
     if (record.record === null) return null;
     const text = proseOf(record.record);
     if (text === '') return null;
-    const message = record.record['message'];
-    const content = typeof message === 'object' && message !== null
-      ? (message as { content?: unknown }).content
-      : undefined;
-    return { kind: classifyTurn(record.record['type'], content), text };
+    return { record: record.record, text };
   }
   return null;
 }
@@ -550,10 +812,19 @@ function sweepAutomaticAnchors(
   keep: Set<string>,
   report: AutoAnchorReport,
   only: Map<string, number> | null,
+  lastAnswers: ReadonlyMap<string, LaneLastAnswer>,
 ): void {
   for (const row of index.anchorRows(null)) {
     if (row.origin !== 'automatic') continue;
     if (keep.has(row.id)) continue;
+    // **A `report` ROW WHOSE LANE THIS RUN DID NOT LOOK AT IS NOT READ BACK.**
+    // Its kind rests entirely on `lastAnswers`, and over a lane out of scope
+    // that map is EMPTY rather than false — so putting the row to the grammar
+    // here would ask "is this the last answer of a lane I did not look up?",
+    // get `null`, and delete a correct bookmark. `STD-nothing-to-do-and-could-
+    // not-look-are-different-answers` is the rule and this is the shape of it:
+    // the pass could not look, so it says nothing.
+    if (row.kind === 'report' && row.agentId !== null && !lastAnswers.has(row.agentId)) continue;
 
     const key = row.agentId ?? row.sessionId;
     // **A ROW IN A TRANSCRIPT THAT DID NOT MOVE CANNOT HAVE CHANGED.** The
@@ -578,7 +849,10 @@ function sweepAutomaticAnchors(
     const turn = turnAt(file, row.byteOffset);
     if (turn === null) continue;
 
-    const finding = anchorInTurn(turn.kind, turn.text);
+    const finding = anchorInTurn({
+      record: turn.record,
+      laneReport: laneReportAt(index, lastAnswers, row.agentId, row.byteOffset, turn.text),
+    }, turn.text);
     if (finding === null) {
       unmarkAnchor(index, row.id);
       report.dropped += 1;
@@ -715,10 +989,11 @@ export function markAutomaticAnchors(
    * disclosure instead of a permanent state of the world.
    *
    * **One query per probe however many sources moved.** That is deliberate and
-   * measured: the eight probe queries already cost 266-311 ms of the hook's
-   * budget, so a query per source per probe — eight times a handful of moved
-   * transcripts — would have been seconds inside a three-second hook. The
-   * `OR`-joined windows keep the count at eight.
+   * measured: the probe queries were costing 266-311 ms of the hook's budget
+   * when there were eight of them, so a query per source per probe — eight
+   * times a handful of moved transcripts — would have been seconds inside a
+   * three-second hook. The `OR`-joined windows keep the count at ONE PER PROBE
+   * however many sources moved, which is now two.
    *
    * ── AND THE REBUILD PAGES, because a ceiling is not a scope ─────────────
    *
@@ -731,6 +1006,86 @@ export function markAutomaticAnchors(
   const windows = only === null ? null
     : [...only].map(([sourceKey, fromByte]) => ({ sourceKey, fromByte }));
 
+  /**
+   * **WHERE EACH LANE IN SCOPE STOPPED TALKING** — the `report` kind's whole
+   * candidate source, and the sweep's only way to ask whether a `report` row it
+   * owns is still on the lane's last answer.
+   *
+   * ── THE SCOPE IS `only`'S OWN KEYS, AND A SESSION KEY COSTS NOTHING ──────
+   *
+   * `only` is keyed by `agentId ?? sessionId`, so its keys are a mix of lanes
+   * and sessions. They are all handed over as they are: `agent_id IN (...)`
+   * matches the lanes and cannot match a session id, so the mix needs no
+   * sorting and no second question asked of the archive. A run with `only ===
+   * null` — the unscoped rebuild — asks for every lane, which is what that run
+   * is for.
+   *
+   * **AND A LANE OUT OF SCOPE IS INVISIBLE TO EVERY `report` DECISION BELOW**,
+   * which is the property that keeps a per-turn run from re-deciding 442 lanes:
+   * `laneReportAt` answers `null` for a lane not in this map, and both the
+   * supersede loop and the sweep skip a row whose lane is not in it rather than
+   * reading it back. That is the same argument the byte floor already makes for
+   * the probes — a grammar's answer over bytes nobody appended to cannot have
+   * changed — said for lanes nobody appended to.
+   */
+  const lastAnswers = index.laneLastAnswers(only === null ? null : [...only.keys()]);
+
+  /**
+   * **ONE CANDIDATE, WHATEVER FOUND IT** — a probe hit or a lane's last answer.
+   *
+   * It is a closure rather than two copies of the same twenty lines because the
+   * two sources differ in exactly one thing, WHICH BYTES TO LOOK AT, and in
+   * nothing else: both read the record at the byte, both put it to
+   * `anchorInTurn`, both refuse an `origin: 'owner'` row, both count the same
+   * three numbers. A second copy would be a second place for the owner-row
+   * guard to be forgotten, and that guard is the one this pass may never get
+   * wrong.
+   */
+  const consider = (
+    sessionId: string, agentId: string | null, byteOffset: number, at: string | null,
+  ): void => {
+    const id = anchorIdFor(sessionId, agentId, byteOffset);
+    if (seen.has(id)) return;
+    seen.add(id);
+    report.probed += 1;
+    const standing = mine.get(id);
+    if (standing?.origin === 'owner') return;
+
+    const key = agentId ?? sessionId;
+    if (!files.has(key)) files.set(key, fileOf(index, sessionId, agentId));
+    const file = files.get(key) ?? null;
+    if (file === null) return;
+
+    const turn = turnAt(file, byteOffset);
+    if (turn === null) return;
+
+    const finding = anchorInTurn({
+      record: turn.record,
+      laneReport: laneReportAt(index, lastAnswers, agentId, byteOffset, turn.text),
+    }, turn.text);
+    if (finding === null) return;
+    report.found += 1;
+    if (standing === undefined) report.marked += 1;
+    else if (standing.kind !== finding.kind || standing.label !== finding.label) {
+      report.relabelled += 1;
+    }
+    kept.add(id);
+    markAnchor(index, {
+      sessionId,
+      agentId,
+      byteOffset,
+      label: finding.label,
+      kind: finding.kind,
+      origin: 'automatic',
+      at: at ?? new Date().toISOString(),
+      // Carried for `sweepAutomaticAnchors`' stated reason: `markAnchor` writes
+      // the whole row, so an omitted field is `null` and not "unchanged".
+      // `undefined` for a point being marked for the first time, which
+      // `markAnchor` reads as `null`.
+      note: standing?.note ?? null,
+    });
+  };
+
   anchorTransaction(index, () => {
     for (const { probe, kind } of ANCHOR_PROBES) {
       const answer = probeCandidates(index, probe, {
@@ -739,49 +1094,83 @@ export function markAutomaticAnchors(
       });
       if (answer.capped) report.capped = true;
       for (const hit of answer.hits) {
-        const id = anchorIdFor(hit.sessionId, hit.agentId, hit.byteOffset);
-        if (seen.has(id)) continue;
-        seen.add(id);
-        report.probed += 1;
-        const standing = mine.get(id);
-        if (standing?.origin === 'owner') continue;
-
-        const key = hit.agentId ?? hit.sessionId;
-        if (!files.has(key)) files.set(key, fileOf(index, hit.sessionId, hit.agentId));
-        const file = files.get(key) ?? null;
-        if (file === null) continue;
-
-        const turn = turnAt(file, hit.byteOffset);
-        if (turn === null) continue;
-
-        const finding = anchorInTurn(turn.kind, turn.text);
-        if (finding === null) continue;
-        report.found += 1;
-        if (standing === undefined) report.marked += 1;
-        else if (standing.kind !== finding.kind || standing.label !== finding.label) {
-          report.relabelled += 1;
-        }
-        kept.add(id);
-        markAnchor(index, {
-          sessionId: hit.sessionId,
-          agentId: hit.agentId,
-          byteOffset: hit.byteOffset,
-          label: finding.label,
-          kind: finding.kind,
-          origin: 'automatic',
-          at: hit.at ?? new Date().toISOString(),
-          // Carried for `sweepAutomaticAnchors`' stated reason: `markAnchor`
-          // writes the whole row, so an omitted field is `null` and not
-          // "unchanged". `undefined` for a point being marked for the first
-          // time, which `markAnchor` reads as `null`.
-          note: standing?.note ?? null,
-        });
+        consider(hit.sessionId, hit.agentId, hit.byteOffset, hit.at);
       }
+    }
+
+    /*
+     * ── HIS OWN PROMPTS, WHICH ALSO REACH THE GRAMMAR WITHOUT A PROBE ────
+     *
+     * Every prompt span of a session's own transcript, unranked and unbounded.
+     * The grammar then asks each record whether he typed it — 960 candidates
+     * over the whole archive, and nought to two on an ordinary turn.
+     *
+     * **It is offered to the grammar rather than filtered here**, which is the
+     * probe discipline one function up said in as many words: *the probe
+     * decides what is READ; the grammar decides what is MARKED.* A `WHERE`
+     * clause that pre-judged `ownerTyped` would be a second expression of it,
+     * in SQL, out of reach of every test that holds the first.
+     */
+    for (const span of index.ownerPromptSpans(windows)) {
+      consider(span.sessionId, null, span.byteOffset, span.at);
+    }
+
+    /*
+     * ── THE LANE REPORT, AND IT REACHES THE GRAMMAR WITHOUT A PROBE ────────
+     *
+     * Every other candidate in this pass arrives through `searchArchive`,
+     * because every other grammar is a shape in the TEXT and a probe is the
+     * cheapest way to find text. The report is not a shape in the text — it is
+     * a position — so there is no substring to look for and
+     * `ConversationIndex.laneLastAnswers` answers it directly. That is the
+     * whole of its cost: ONE query, no ninth probe, measured at 16-18 ms
+     * median over 10,910 spans, inside a whole per-turn pass measured below at
+     * 77-85 ms.
+     *
+     * `capped` is untouched here and that is deliberate: this source has no
+     * bound to fill. A `MAX ... GROUP BY` returns every lane or none.
+     */
+    for (const [agentId, last] of lastAnswers) {
+      const lane = index.getSubagent(agentId);
+      // A lane the archive no longer holds a row for. Its prose is still
+      // indexed, and it has no session to key an anchor by and no name to wear
+      // — which `laneReportAt` would also refuse one line later. Skipped in
+      // silence for `sweepAutomaticAnchors`' stated reason: a pruned row is not
+      // the grammar saying no.
+      if (lane === null) continue;
+      consider(lane.sessionId, agentId, last.byteOffset, last.at);
+    }
+
+    /*
+     * ── EXACTLY ONE `report` MARK PER LANE, AND THE PASS ITSELF KEEPS IT ───
+     *
+     * **This is the churn the item warns about, paid here instead of being
+     * left to a later rebuild.** A lane that is still talking moves its own
+     * last answer, so the mark this pass wrote on Monday's answer is on the
+     * wrong turn by Tuesday. The sweep below cannot be the answer to that: on
+     * the per-turn path it deliberately skips every row standing BEHIND the
+     * byte a transcript was read from, so the superseded mark — which is always
+     * behind the new one — would never be read again and the lane would carry
+     * two reports until somebody typed `mycontext conversation rebuild`.
+     *
+     * So it is taken back HERE, by the source that superseded it, inside the
+     * same transaction. The scope is `lastAnswers`' own: a lane this run did
+     * not look at yields `undefined` and is left entirely alone, which is the
+     * same restraint the sweep keeps one function down.
+     */
+    for (const row of mine.values()) {
+      if (row.origin !== 'automatic' || row.kind !== 'report') continue;
+      if (row.agentId === null) continue;
+      if (kept.has(row.id)) continue;
+      const last = lastAnswers.get(row.agentId);
+      if (last === undefined || last.byteOffset === row.byteOffset) continue;
+      unmarkAnchor(index, row.id);
+      report.dropped += 1;
     }
 
     // And the other direction, over what the pass already owns. `kept` is the
     // ids it just re-derived, which are the only ones it need not read again.
-    sweepAutomaticAnchors(index, files, kept, report, only);
+    sweepAutomaticAnchors(index, files, kept, report, only, lastAnswers);
   });
 
   report.ms = Date.now() - startedMs;
@@ -818,8 +1207,26 @@ export function markAutomaticAnchors(
  * from are skipped, so an ordinary turn puts two or three turns to the grammar
  * rather than the 316 that came back from the probes when the scope was the
  * whole transcript. Measured 2026-09-12, same corpus, same minute: 935 ms
- * scoped by transcript, 266-311 ms scoped by byte — of which nearly all is the
- * eight probe queries themselves.
+ * scoped by transcript, 266-311 ms scoped by byte — of which nearly all was the
+ * EIGHT probe queries themselves.
+ *
+ * **RE-MEASURED 2026-09-15, AND IT WENT DOWN RATHER THAN UP.** The grammar
+ * change of that day deleted six of those eight probes — the normative-id
+ * prefixes — and replaced them with two unranked `WHERE` queries
+ * (`ownerPromptSpans` at 19.3 ms, `laneLastAnswers` at 18.1 ms). Measured on a
+ * COPY of the owner's archive, median of seven runs of `markAutomaticAnchors`
+ * in the per-turn shape:
+ *
+ * ```
+ * sources moved   before (8 probes)   after (2 probes + 2 queries)
+ * 1                                          77 ms
+ * 4               266-311 ms                 85 ms
+ * unscoped rebuild                        1,280 ms
+ * ```
+ *
+ * So the two new kinds cost the per-turn path NOTHING and gave back about
+ * three-quarters of what the old detector was spending. That is the number the
+ * item asked for, and it is the opposite sign from the one it expected.
  */
 export const TURN_PROSE_BUDGET_MS = 250;
 

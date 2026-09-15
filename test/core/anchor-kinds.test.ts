@@ -60,10 +60,19 @@ const LANE = 'agent-kinds-one';
 const LANE_NAME = 'Lane 4: rename cancel and hidden total';
 const RULING = 'RULE-a-citation-names-an-item-by-id-never-a-report-by-line-number';
 
+/**
+ * One transcript record, as the harness writes one.
+ *
+ * **`origin: { kind: 'human' }` ON A USER RECORD IS LOAD-BEARING** — it is the
+ * column `ownerTyped` reads, and a fixture without it is a fixture in which he
+ * never typed anything. The harness writes it on every prompt a person
+ * produced and on nothing else; `core/anchor-pass.ts` carries the count.
+ */
 const say = (role: 'user' | 'assistant', body: string, at: string): unknown => ({
   type: role,
   message: { role, content: role === 'user' ? body : [{ type: 'text', text: body }] },
   timestamp: at,
+  ...(role === 'user' ? { origin: { kind: 'human' }, promptSource: 'typed' } : {}),
 });
 
 /** A turn holding a table the grammar will certainly recognise and relabel. */
@@ -92,7 +101,9 @@ const UNPROBED_TURN = say(
 
 const TURNS = [
   say('user', 'begin', '2026-09-10T09:00:00.000Z'),
-  say('user', `apply ${RULING}`, '2026-09-10T09:00:01.000Z'),
+  // His words AND the id, because the WORDS are what fires now: a `ruling`
+  // stopped being a normative id on 2026-09-15 and became the line he typed.
+  say('user', `from now on you must apply ${RULING}`, '2026-09-10T09:00:01.000Z'),
   TABLE_TURN,
   UNPROBED_TURN,
 ];
