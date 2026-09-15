@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: true
 summary: The short numbers used to talk about work in progress and what each one refers to, kept as a bare map so the same number never means two things; eleven more were added on 2026-09-13 from the consolidated review findings.
-summary_of: 46d5fed74e675c80
+summary_of: 32a62709ef063768
 summary_was:
   - 2026-09-13 The short numbers used to talk about work in progress and what each one refers to, kept as a bare map so the same number never means two things; D52 widened on 2026-09-13 to the log that records what was delivered.
   - 2026-09-12 The short numbers used to talk about work in progress and what each one refers to, kept as a bare map so the same number never means two things; two more were added on 2026-09-13 from the type review.
@@ -23,7 +23,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-09-07
 valid_until: null
-checksum: 62089482a9b27cf1
+checksum: 1e100222b2a76f93
 ---
 
 # the D numbers: what each one means, and which are only proposed
@@ -244,6 +244,37 @@ RATIFIED - the owner has used these numbers himself.
           graph and tag vocabulary as query expansion. A model is the LAST resort here,
           not the first, and taking one is an owner ruling with the costs above in front
           of him rather than a decision made inside a feature.
+
+  D78     a mark is worth the reader finding it   plan:anchors seq:1-12   MINTED 2026-09-15
+          Twelve items in one day, all from the owner USING the viewer rather than from a review:
+          labels, his own vocabulary, stepping the document, the right-click menu, colour, the
+          marking stall, and the grammar that decides what is marked at all.
+
+          AND IT IS NOT A WIDENING OF D57, WHICH IS THE DECISION WORTH RECORDING. D57 asked
+          "is every anchor capability REACHABLE FROM THE SCREEN" and CLOSED 2026-09-13 with all
+          seven capabilities and all three creation paths live and proved. That closure is true
+          and stays true. This subject is the question underneath it: a capability you can reach
+          is worth nothing if what it produces cannot be recognised later. Reopening a closed D
+          to carry a different question would falsify its closure, which is exactly what the
+          stable-number rule exists to prevent — widening is legal, re-aiming is not.
+
+          WHAT IT FOUND, because the counts are the argument for the subject existing:
+            — 374 of 746 marks were labelled with ONE WORD from a table header ("id", "lane",
+              "status"). Fixed; 353 relabelled.
+            — THE PER-TURN PASS HAD STOPPED, silently, for half an hour — the probe asked for
+              the best 200 matches in the WHOLE archive and narrowed afterwards, so with 777
+              table spans the newest was ranked out. 15 of 15 predicted by window membership.
+              577 of 777 spans were unreachable by ANY run, including a rebuild.
+            — 377 of 1,164 marks — 32% — are rulings HE NEVER GAVE: 296 of them are this
+              plugin’s own injection block, because `classifyTurn` calls a lane dispatch a
+              "prompt". In 519 turns he typed he named a normative id ZERO times.
+            — Nine kinds were drawn in one grey; the marks card sat 624px below a fold nobody
+              had measured; a NUL byte had made `conversations.js` binary to git for days.
+
+          THE SUBJECT CLOSES when a reader opening a conversation can tell at a glance what was
+          marked and why it was worth marking — not when twelve items are done.
+          `INV-a-turn-that-qualifies-for-an-automatic-mark-carries-one-when` is the standing half
+          and does not close with it.
 
 SIX ROWS OF THE CONSOLIDATION WERE NOT FILED, because they had already landed when this was
 written - checked in `git log` and in the item, not taken from the report. Row 4 (the two
