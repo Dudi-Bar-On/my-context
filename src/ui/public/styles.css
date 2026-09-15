@@ -4293,6 +4293,14 @@ wa-tree .wa-count{margin-inline-start:var(--sp-2);color:var(--dim);
 .tvkey{margin-inline-start:var(--sp-1);font:600 var(--fs-00)/1 var(--mono);
   color:var(--dim)}
 .tvmenuhint{margin-block:0 var(--sp-1);color:var(--dim)}
+/* `display:flex` below beats the UA sheet’s `[hidden]{display:none}` at equal
+   specificity, so `menu.hidden = true` empties the menu and leaves its BOX — a
+   2px border, padding and a 15rem minimum, drawn over the page with nothing in
+   it. Reported by the owner as "a small leftover framework on screen after the
+   right button menue close". Same trap, same repair, as `.pop[hidden]` and the
+   `.prov [hidden]` / `.strip [hidden]` pair, whose comment above already spells
+   it out — this rule is why a fourth one was needed. */
+.tvmenu[hidden]{display:none}
 .tvmenu{position:fixed;z-index:20;display:flex;flex-direction:column;
   min-inline-size:15rem;padding:var(--sp-1);background:var(--panel-2);
   border:2px solid var(--dim);border-radius:var(--r-sm)}
