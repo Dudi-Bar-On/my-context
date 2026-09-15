@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: Bookmark a helper agent’s report, find your rulings by the words you actually use, and stop bookmarking the tool’s own instructions as though you had written them.
-summary_of: c30b7dd568dc0293
+summary_of: 9e6a424764e3303c
 scope:
   - src/core/anchor-pass.ts
   - src/core/conversation-index.ts
@@ -24,7 +24,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-09-15
 valid_until: null
-checksum: 91fd929e693992a1
+checksum: 56eab850a6385d66
 plan: anchors
 seq: "12"
 state: todo
@@ -108,3 +108,62 @@ do not paper it with a longer list.
      the one assertion that would have caught it years earlier.
   4. THE REAL RUN IS HIS. Do not rebuild his live archive; measure on a copy and tell him the
      command.
+
+── THEY MUST REACH THE FILTER, THE MENU AND THE KEY — OWNER, 2026-09-15 ──────────────
+
+He asked, before this was dispatched, whether the new kinds reach the jump navigation on the
+right-click menu and the kind filter.
+
+THE ANSWER LOOKS LIKE YES AND MUST BE PROVED RATHER THAN ASSUMED. Every one of those surfaces is
+DERIVED rather than listed:
+  — `fillKinds` builds the `<select>` from `kindsPresent()` — the kinds THIS DOCUMENT HOLDS;
+  — the menu’s `menuitemradio` rows are built from `kindPick.options`, so they inherit it;
+  — `K`/`Shift+K` cycle that same option list, which is why the ring is a ring and not a table of
+    nine bindings;
+  — `ANCHOR_KIND_HUE` already carries `report: kindfound` and `ruling: kindsettled`, so both new
+    kinds arrive coloured;
+  — `conv.anchors.kind.report` exists in BOTH string tables.
+
+So the claim is that this costs nothing. THAT CLAIM IS EXACTLY THE KIND THIS PROJECT KEEPS FINDING
+TO BE FALSE — every layer looked right while the feature was dead, twice this week. Prove it on a
+document that actually holds a `report` mark:
+  1. the kind appears in the filter’s options, with its own word;
+  2. it appears as a `menuitemradio` row in the right-click menu, and the tick follows it;
+  3. `K` cycles onto it and the count names it;
+  4. it draws in its hue in the list AND in the document;
+  5. stepping to it lands on the turn it marks.
+
+IF ANY OF THE FIVE NEEDS CODE, THAT IS PART OF THIS ITEM and not a follow-up — a new mark kind that
+cannot be filtered, reached or seen is a kind that exists only in the file.
+
+── BOTH ARE MARKED ON THE FLY, AND ONE OF THEM NEEDS A TRIGGER ───────────────────
+
+He asked, before dispatch, whether these are marked on the fly as tables and rulings are. They are,
+and `INV-a-turn-that-qualifies-for-an-automatic-mark-carries-one-when` already binds them: a turn
+the archive has read and that qualifies CARRIES ITS MARK.
+
+HIS OWN WORDS: nothing changes. It is `anchorInTurn` on the Stop hook, the same per-turn path, with
+the detector swapped. A ruling he types is marked on the turn he types it.
+
+THE LANE REPORT CARRIES A REAL QUESTION AND THE LANE MUST SETTLE IT RATHER THAN GUESS.
+"A lane’s FINAL answer" is not knowable while the lane is still running — mark the latest answer on
+the fly and the next one makes that mark wrong. Three shapes, and the cost of each:
+
+  1. MARK WHEN THE LANE ENDS. `subagents.ended_at` says so. A running lane is left alone and its
+     report lands at the moment it finishes — still on the fly, triggered by the lane ending rather
+     than by an answer appearing. RECOMMENDED unless measurement says otherwise.
+  2. MARK THE LATEST ANSWER AND LET THE PASS CORRECT ITSELF. The pass is idempotent and reads back
+     every `origin: automatic` row at its byte, so a superseded mark is taken back on the next run.
+     Honest, and it CHURNS: a long lane would move its own mark repeatedly, and every move is a
+     write to the file that is the truth.
+  3. LEAVE IT TO THE UNSCOPED REBUILD. Correct, and it breaks the invariant above — a reader
+     browsing a finished lane would see nothing until he ran a command.
+
+WHICHEVER IS CHOSEN, `ended_at` IS NULL FOR A RUNNING LANE AND THAT IS A MEASURED ZERO, not a
+missing value: a lane with no end time has not finished, and the screen must not draw it as a lane
+with no report. `STD-a-measured-zero-is-drawn-and-named`.
+
+AND THE COST GOES IN THE REPORT. The per-turn budget is `TURN_PROSE_BUDGET_MS` = 250 ms with eight
+probes already costing 266-311 ms unwindowed. A structural check against `subagents` is not a probe
+and should cost almost nothing — say what it actually cost, measured, the way `archiveFreshness`
+reported 7 ms over 452 sources.
