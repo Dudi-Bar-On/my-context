@@ -56,6 +56,33 @@ export interface Decline {
   at: string;
   /** The owner's reason, or `null`. **Read by people, never by the pass.** */
   why: string | null;
+  /**
+   * **The id the declined draft occupied** — an EXACT gate, and the half of
+   * this ledger that does not decay. See `declinedFamily` below for why it
+   * was added and what it catches that `claim` does not.
+   *
+   * Optional because every row written before this field existed has none,
+   * and a ledger that dropped those rows would forget declines the owner
+   * actually made. `null` and absent are the same thing and both mean "this
+   * decline is remembered by its claim alone".
+   */
+  id?: string | null;
+}
+
+/**
+ * The id family a declined draft belonged to — `TASK-x-2` and `TASK-x` are one
+ * family, because `createItem` allocates `base`, `base-2`, `base-3`… into it
+ * (`locateInFamily`, mutate.ts) and a re-proposal refused at `base` would
+ * otherwise simply land at `base-2`.
+ *
+ * Measured on the owner's own state, 2026-09-15: he declined
+ * `TASK-scripts-check-handover-ts-472-if-corpus-plans-has-plan` AND
+ * `…-has-plan-2` inside ninety seconds — the same subject twice, one pass. A
+ * gate on the literal id would have caught the first re-proposal and handed
+ * the second one the suffix.
+ */
+export function declinedFamily(id: string): string {
+  return id.replace(/-\d+$/, '');
 }
 
 /**
@@ -102,6 +129,11 @@ export function readDeclines(stateRoot: string): Decline[] {
       target: typeof r.target === 'string' ? r.target : null,
       at: typeof r.at === 'string' ? r.at : '',
       why: typeof r.why === 'string' ? r.why : null,
+      // Type-checked like every field beside it, and for the same reason: an
+      // `id` that arrived as a number would reach `declinedFamily`'s
+      // `String.replace` and throw, which under this module's posture would
+      // cost the whole ledger rather than the one row.
+      id: typeof r.id === 'string' && r.id !== '' ? r.id : null,
     });
   }
   return out;
@@ -180,6 +212,90 @@ export function alreadyDeclined(
   for (const decline of readDeclines(stateRoot)) {
     if ((decline.target ?? null) !== (target ?? null)) continue;
     if (sameClaim(claim, decline.claim)) return decline;
+  }
+  return null;
+}
+
+/**
+ * **The decline this proposal would re-create the FILE of, or `null`** —
+ * `TASK-a-declined-claim-comes-back-when-a-later-pass-words-it`.
+ *
+ * ── WHY A SECOND GATE, WHEN `alreadyDeclined` EXISTS ───────────────────────
+ *
+ * Because the first one is a comparison of two keys that are DERIVED FROM
+ * DIFFERENT TEXT, and nobody noticed. `propose.ts` builds its key from the
+ * transcript observation (`claimKey(title, text, target)`); `declineDraft`
+ * builds the stored key from the item's composed BODY, which begins with the
+ * recommendation. `CLAIM_KEY_TOKENS` is 24 and tokens are taken in
+ * first-occurrence order, so on the owner's own drafts the recommendation's
+ * 382 characters exhaust the cap before a single token of the 1,377-character
+ * brief is reached — measured 2026-09-15, `claimKey(title, WHOLE body)` came
+ * back BYTE-IDENTICAL to `claimKey(title, recommendation half alone)`.
+ *
+ * So the ledger stores a key for the recommendation boilerplate and the pass
+ * compares a key for the transcript. Two derivations, two answers — the exact
+ * hazard `declineDraft`'s own comment names for the TARGET ("a second
+ * derivation is a second answer"), sitting unguarded in the text beside it.
+ * The measured consequence, twice on 2026-09-15 and a third time at 10:57Z:
+ * the owner declined a draft and the next pass re-created it at the SAME
+ * FILENAME, scoring 0.277 and 0.310 against a threshold of 0.35.
+ *
+ * ── SO THIS GATE IS EXACT, AND DELIBERATELY NARROW ─────────────────────────
+ *
+ * It asks one question with no threshold in it: **would this proposal be
+ * written to a filename a person already declined?** An id is
+ * `makeId(prefix, title)` and a title is a clip of the claim sentence, so two
+ * proposals selecting the same sentence about the same subject slug
+ * identically however differently the surrounding prose reads. All three of
+ * the owner's re-proposals did exactly that.
+ *
+ * **What it does NOT catch is stated rather than implied**: the same claim
+ * found in a different session and expressed in a different sentence slugs
+ * differently and passes. That is left to `alreadyDeclined`, and the failure
+ * direction is the cheap one — the owner sees a proposal he has seen before
+ * and declines it again, which costs one reading. `NEAR_CLAIM_THRESHOLD` is
+ * deliberately NOT moved to close the gap: on two pairs there is no
+ * distribution to move it against, and suppressing a genuinely new claim is
+ * the expensive direction — the owner never sees it and nothing tells him.
+ * The 0.593/0.645 "same-pass" band that looks like headroom is boilerplate
+ * overlap between two recommendation texts, not subject overlap, so lowering
+ * the cutoff toward it would start suppressing NEW claims about a target
+ * whenever the pass gave them the same recommendation reason.
+ *
+ * ── AND IT IS GATED ON THE TARGET, EXACTLY AS `sameClaim` IS ──────────────
+ *
+ * An id carries no target — `TASK-the-roster-serves-drafts` says nothing about
+ * which file it is about — and `slugify` truncates at 60 characters, so two
+ * genuinely different long claim sentences can cut to one slug (`slug.ts` says
+ * so in as many words). The target gate is what makes that collision harmless:
+ * the same 60-character slug AND the same target is one claim, and §5b's own
+ * example — *"the same words about a different target"* — stays two.
+ *
+ * ── MATCHED ON THE SLUG, NOT ON THE WHOLE ID, AND WHY THAT IS NOT WIDER ────
+ *
+ * The caller knows the TITLE at the moment the gate is asked and does not yet
+ * know the artifact, so it does not yet know which category prefix
+ * `createItem` will mint under. Comparing the slug half — `endsWith` against
+ * the declined id — asks the same question without reordering the screens
+ * around it, and the only case it additionally catches is the same claim
+ * sentence about the same target re-proposed as a different TYPE, which is the
+ * same proposal re-typed rather than a new one.
+ */
+export function declinedAtSameId(
+  stateRoot: string, slug: string, target: string | null,
+): Decline | null {
+  if (slug === '') return null;
+  // Both sides are reduced to the family, so `TASK-x` and `TASK-x-2` are one
+  // name. A title that genuinely ends in a number loses it on BOTH sides and
+  // therefore still compares equal to itself — the collapse is symmetric, and
+  // the target gate above is what keeps it from reaching a different claim.
+  const want = declinedFamily(slug);
+  for (const decline of readDeclines(stateRoot)) {
+    if ((decline.target ?? null) !== (target ?? null)) continue;
+    const was = decline.id ?? null;
+    if (was === null) continue;
+    const had = declinedFamily(was);
+    if (had === want || had.endsWith(`-${want}`)) return decline;
   }
   return null;
 }

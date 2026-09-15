@@ -297,6 +297,12 @@ const WRITERS: Record<string, string[]> = {
   // change bytes.
   'src/review/declined.ts': ['recordDecline'],
   'src/review/decline.ts': ['declineDraft'],
+  // The other half of the same boundary. `relocatePromotedDraft` is the one
+  // function in this module that touches the filesystem — it writes the
+  // promoted item at its committed path and unlinks the draft. `itemFilePath`
+  // and `relocationSaid` beside it build a string and a sentence and reach
+  // nothing.
+  'src/review/promote.ts': ['relocatePromotedDraft'],
   'src/review/propose.ts': ['propose', 'noteSighting'],
   // The one-time backfill behind
   // `TASK-the-review-queue-explains-a-proposal-at-length-and-never`. `backfill`

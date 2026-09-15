@@ -4018,22 +4018,45 @@ export function apiDoc(ws: Workspace, url: URL, params: { id: string }): JsonRes
  *
  * **And the realpath is verified before the read.** The two guards above are
  * about the id; this one is about the FILE. A symlink at
- * `items/note/NOTE-x.md` pointing anywhere outside `items/` is a legal entry
+ * `items/note/NOTE-x.md` pointing anywhere outside the corpus is a legal entry
  * in this index — `rebuild`'s walk follows symlinks — so the resolved target
- * is required to sit under the resolved `items/` directory, and a file that
- * escapes is refused with a message saying it escaped rather than pretending
- * it is missing.
+ * is required to sit under the resolved directory it claims to be in
+ * (`corpusRootOf`, never a hardcoded `items/`), and a file that escapes is
+ * refused with a message saying it escaped rather than pretending it is
+ * missing.
  *
  * **Only Markdown, and the whole of it.** `isCorpusFilePath` admits `.md`
- * under `items/` and nothing else, so `state/` (the index and the audit
- * databases) and `config.json` are outside the roster by construction.
+ * under a CORPUS WALK ROOT and nothing else, so `state/` (the index and the
+ * audit databases) and `config.json` are outside the roster by construction.
+ *
+ * **AND THE WALK ROOTS ARE TWO, WHICH THIS PARAGRAPH USED TO DENY.** It said
+ * `items/` only, three times, and went on saying it after `CORPUS_ROOTS` was
+ * widened to `['items/', '.drafts/']` on 2026-09-11 — so this module asserted
+ * one boundary while the predicate it calls enforced another.
+ * `TASK-the-file-roster-serves-seven-unaccepted-drafts-as-corpus` found the
+ * disagreement and named this file as one of the two sides; it is the side
+ * that was wrong. `loadLayer` has had a second walk root since `plan:loop
+ * seq:3`, a draft is indexed and listed and shown like any other item, and the
+ * review surface cannot open a draft in its right pane unless this route will
+ * serve it. The reasoning, and what it deliberately makes reachable, is
+ * written out above `CORPUS_ROOTS` in `doctor/checks.ts` and is not repeated
+ * here — only the original can be superseded.
+ *
+ * **What a draft in this roster is NOT is an accepted item.** Since
+ * `mycontext review promote` moves a promoted draft into `items/`
+ * (`review/promote.ts`), every path this roster carries under `.drafts/` names
+ * something a person has not yet accepted. Before that, a promoted item stayed
+ * in the ignored region and was served from here looking exactly like a
+ * corpus item, because it was one — which is the second half of the same
+ * finding.
  *
  * ── WHAT IS NOW REACHABLE THAT WAS NOT ───────────────────────────────────
  *
- * Every `.md` file under `.my_context/items/` that this project's own index
- * holds — 950 on this repository on 2026-09-06 — read by a browser that
- * already holds the session token. Nothing else in `.my_context/` becomes
- * reachable: not `config.json`, not `state/`, not `.audit/`. Nothing outside
+ * Every `.md` file under this corpus's own walk roots that this project's own
+ * index holds — 950 under `items/` on 2026-09-06, plus whatever is staged
+ * under `.drafts/` and awaiting a person — read by a browser that already
+ * holds the session token. Nothing else in `.my_context/` becomes reachable:
+ * not `config.json`, not `state/`, not `.audit/`. Nothing outside
  * `.my_context/` changes at all; `isServableDocPath` is untouched and
  * `/api/doc` serves the same documents it served yesterday.
  *

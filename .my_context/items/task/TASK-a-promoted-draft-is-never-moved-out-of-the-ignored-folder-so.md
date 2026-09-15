@@ -17,17 +17,17 @@ tags:
   - silent-failure
   - "plan:review"
   - "seq:8"
-  - "state:todo"
+  - "state:done"
 origin: human
 source_file: null
 source_anchor: null
 source_checksum: null
 valid_from: 2026-09-15
 valid_until: null
-checksum: dfd085b0667fdd8b
+checksum: 6152b5145c8363d9
 plan: review
 seq: "8"
-state: todo
+state: done
 priority: "1"
 ---
 

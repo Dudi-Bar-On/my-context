@@ -139,7 +139,16 @@ export function declineDraft(
   // is the decline, not the deletion. So nothing is deleted, the draft is
   // still on the queue, and the owner declines it again - the survivable
   // direction the header names, now actually reachable.
-  const recorded = recordDecline(ctx.root, { claim, target, at: now.toISOString(), why });
+  // `id` is the second half of what this ledger remembers, and it is the half
+  // that cannot decay — see `declinedAtSameId`. The claim key is a function of
+  // the WORDING and the wording is what a later pass changes most; the
+  // filename is a function of the claim SENTENCE, and two passes that select
+  // the same sentence write the same name. Recorded from `item.id` rather than
+  // re-slugged from the title for this function's own stated reason: a second
+  // derivation is a second answer.
+  const recorded = recordDecline(
+    ctx.root, { claim, target, at: now.toISOString(), why, id: item.id },
+  );
   if (!recorded.written) {
     throw new Error(
       `my_context: ${item.id} is NOT declined and its draft is NOT deleted. The decline could ` +

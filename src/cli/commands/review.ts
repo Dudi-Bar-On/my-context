@@ -21,7 +21,9 @@ import {
 } from '../../core/render-item.ts';
 import type { Workspace } from '../../core/workspace.ts';
 import { readImportRecords, type ImportRecord } from '../../pack/imported-audit.ts';
+import { DRAFT_DIR } from '../../core/drafts.ts';
 import { declineDraft, declineRefusal } from '../../review/decline.ts';
+import { relocatePromotedDraft, relocationSaid } from '../../review/promote.ts';
 import { emitLoadErrors, openMutateContext } from './context.ts';
 import {
   DETAIL_FLAGS, DETAIL_USAGE, detailLevel, emitJson, paragraph, records, refuseUnknownFlag, table,
@@ -533,12 +535,20 @@ function cmdPromoteAll(
   )) return 1;
 
   const promoted: string[] = [];
+  let moved = 0;
   try {
     for (const item of promotable) {
       // The one-item path's call, unchanged: `origin: 'human'` is what makes
       // the status change legal, and it is true — a human answered one prompt
       // ago, for this set.
       updateItem(ctx, { id: item.id, status: 'active', origin: 'human' });
+      // **The other half of the same act** — see `relocatePromotedDraft`. A
+      // pack import lands in `.drafts/` like any other proposal, so every one
+      // of these is in the gitignored region until it is moved out, and a
+      // bulk promotion that left forty of them there would be the one-item
+      // defect multiplied by the pack size. `null` for a member that was
+      // already under `items/`, which is why this counts rather than assumes.
+      if (relocatePromotedDraft(ctx, ctx.store.get(item.id) as Item) !== null) moved++;
       promoted.push(item.id);
     }
   } catch (err) {
@@ -556,7 +566,12 @@ function cmdPromoteAll(
 
   say(out,
     `my_context: ${promoted.length} item(s) from pack ${JSON.stringify(record.pack)} are now ` +
-    `active — ${promoted.join(', ')}. Nothing else in the review queue was touched.`);
+    `active — ${promoted.join(', ')}. Nothing else in the review queue was touched.` +
+    // WHERE they were written, in the same breath as the fact that they were.
+    // A reader who accepted forty drafts is entitled to know that forty files
+    // moved into the committed corpus and are waiting in `git status`.
+    (moved === 0 ? '' : ` ${moved} file(s) moved out of ${DRAFT_DIR}/ into items/ — out of the ` +
+      'region git ignores, so this promotion is a change you can commit.'));
   emitLoadErrors(errors, out);
   return 0;
 }
@@ -1271,6 +1286,20 @@ function cmdReview(ws: Workspace, args: string[], out: Emit): number {
     // MutationResult carries no `.item`; the written item comes back from the
     // store, which updateItem has already upserted the new scope into.
     const updated = ctx.store.get(item.id) as Item;
+    // **THE SECOND HALF OF PROMOTING, and it used not to exist.** `updateItem`
+    // flips the field; nothing moved the bytes, so an accepted item stayed
+    // under `.drafts/`, whose `.gitignore` is a single `*` — active, indexed,
+    // governing, and in no commit. Eight of the owner's items were in that
+    // state on 2026-09-15 and `git status` was clean, because the only thing
+    // that changed was a field inside an ignored file.
+    //
+    // It throws rather than returning a flag, and the `catch` at the bottom of
+    // this function prints the message and exits 1. That is deliberate: the
+    // promotion is NOT complete when the file did not move, and an exit 0
+    // would report the exact success this item exists to stop being reported.
+    // `relocatePromotedDraft`'s message names both paths and says what the
+    // item's state actually is, so nothing is left for the reader to infer.
+    const moved = relocatePromotedDraft(ctx, updated);
     // `always` items are admitted to the pinned tier with NO scope check
     // (select.ts's `fitToBudget(fresh.filter((i) => i.always), ...)`), so the
     // pinned wording must win over the scope wording below: an unscoped
@@ -1305,7 +1334,7 @@ function cmdReview(ws: Workspace, args: string[], out: Emit): number {
         // `scopePolicy: "inert"` this line used to promise an injection that
         // will never happen.
         : emptyScopeInjection(scopePolicyFor(ws.config, item.type)).phrase;
-    out(`my_context: ${item.id} is now active (${scoping}).`);
+    out(`my_context: ${item.id} is now active (${scoping}).${relocationSaid(moved)}`);
     emitLoadErrors(errors, out);
     return 0;
   } catch (err) {

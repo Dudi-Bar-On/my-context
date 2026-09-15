@@ -465,12 +465,22 @@ test('§2: every write surface reaches the gate at runtime', () => {
  *  - `cli/commands/repair.ts` — re-stamps a checksum over bytes a human already
  *    wrote by hand. It writes no new text, and the hand edit it repairs is the
  *    case §5 says no gate at a command boundary can ever see.
+ *  - `review/promote.ts` — moves a just-promoted draft out of the gitignored
+ *    draft region. **It writes the item it was HANDED, with one field changed
+ *    (`filePath`) and not one byte of text**, at a new path, immediately after
+ *    `updateItem` wrote the same item at the old one. The claim was gated when
+ *    `createItem` wrote the draft and gated again when `updateItem` promoted
+ *    it; a move introduces nothing there is anything left to contradict. It
+ *    calls `persist` rather than `writeItem` so the index row's `file_path`
+ *    moves with the file — a row still naming `.drafts/` would point every
+ *    reader built off that column at a file that is not there.
  */
-test('§2: only three modules put item bytes on disk, and none of them writes new claims', () => {
+test('§2: only these modules put item bytes on disk, and none of them writes new claims', () => {
   const allowed = new Set([
-    // `persist.ts` DEFINES the function; the other three are the only callers.
+    // `persist.ts` DEFINES the function; the rest are the only callers.
     'src/core/persist.ts',
     'src/core/mutate.ts', 'src/core/relations.ts', 'src/cli/commands/repair.ts',
+    'src/review/promote.ts',
   ]);
   const callers = new Set<string>();
   const walk = (dir: string): void => {

@@ -43,7 +43,8 @@ import path from 'node:path';
 import { createItem, type MutationContext } from '../core/mutate.ts';
 import { SUMMARY_MAX_CHARS } from '../core/validate.ts';
 import { claimKey, sameClaim } from './claim.ts';
-import { alreadyDeclined } from './declined.ts';
+import { alreadyDeclined, declinedAtSameId } from './declined.ts';
+import { slugify } from '../core/slug.ts';
 import { reviewQueue } from '../core/select.ts';
 import { suppress, type Pending } from './dedupe.ts';
 import type { PassInput, Point } from './input.ts';
@@ -919,7 +920,15 @@ export async function propose(
     const claim = claimKey(title, text, target);
     if (claim === '') { result.empty++; continue; }
 
-    const declinedBefore = alreadyDeclined(options.workspace, claim, target);
+    const declinedBefore = alreadyDeclined(options.workspace, claim, target)
+      // **THE EXACT GATE, asked beside the fuzzy one and never instead of it.**
+      // `alreadyDeclined` compares a key built here from the transcript
+      // against a key built by `declineDraft` from the composed body, and the
+      // two were never derived from the same text — measured 0.277 and 0.310
+      // against a 0.35 threshold on claims the owner had declined minutes
+      // earlier. This asks the question that needs no threshold: would this
+      // proposal be written to a filename he already said no to?
+      ?? declinedAtSameId(options.workspace, slugify(title), target);
     if (declinedBefore !== null) {
       result.declined++;
       result.because.push(`declined before${declinedBefore.why === null ? '' : ' by the owner'}`);
@@ -1048,7 +1057,13 @@ export async function propose(
       const claim = claimKey(title, body, candidate.target);
       if (claim === '') { counts.empty++; result.empty++; continue; }
 
-      const declinedBefore = alreadyDeclined(options.workspace, claim, candidate.target);
+      // The same two gates in the same order — a model proposal goes through
+      // the deterministic screens unchanged (see the header above), and a
+      // decline the owner made must not be re-proposable merely by routing the
+      // same claim through the other proposer.
+      const declinedBefore =
+        alreadyDeclined(options.workspace, claim, candidate.target)
+        ?? declinedAtSameId(options.workspace, slugify(title), candidate.target);
       if (declinedBefore !== null) {
         counts.declined++; result.declined++;
         result.because.push(`model: declined before${declinedBefore.why === null ? '' : ' by the owner'}`);

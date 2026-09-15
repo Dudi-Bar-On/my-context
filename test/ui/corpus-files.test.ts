@@ -19,7 +19,11 @@ import assert from 'node:assert/strict';
 import { mkdtempSync, readFileSync, statSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
-import { corpusRootOf, isCorpusFilePath, isServableDocPath } from '../../src/doctor/checks.ts';
+import {
+  CORPUS_ROOTS, corpusRootOf, isCorpusFilePath, isServableDocPath,
+} from '../../src/doctor/checks.ts';
+import { isDraftFilePath } from '../../src/core/drafts.ts';
+import { withStores } from '../../src/ui/read-model.ts';
 import { apiCorpusFile, apiCorpusList } from '../../src/ui/read-model.ts';
 import { resolveWorkspace } from '../../src/core/workspace.ts';
 import { splitFrontmatter } from '../../src/core/item.ts';
@@ -149,10 +153,40 @@ test('GET /api/corpus lists this corpus\'s own item files, off the index and off
   assert.equal(body.indexed, body.files.length);
 });
 
-test('the roster reaches nothing in .my_context except Markdown under items/', () => {
+/**
+ * **THIS TEST USED TO ASSERT `items/` ALONE, AND IT WAS THE STALE HALF OF A
+ * DISAGREEMENT THIS FILE CARRIED FOR FOUR DAYS.**
+ *
+ * `plan:loop seq:3` gave `loadLayer` a second walk root; `CORPUS_ROOTS` was
+ * widened to `['items/', '.drafts/']` on 2026-09-11 with the argument written
+ * out above `isCorpusFilePath`, and the predicate test forty lines up was
+ * updated in the same commit. This one was not. So from 2026-09-11 it reddened
+ * whenever a draft existed and passed whenever the queue happened to be empty
+ * — which is how three separate lanes hit it on the night of 2026-09-13/14,
+ * each correctly proved it was not their change, and each stopped.
+ * `TASK-the-file-roster-serves-seven-unaccepted-drafts-as-corpus` filed it as
+ * "the predicate admits `.drafts/` while the docblock above it says `items/`
+ * only", and recommended narrowing the predicate. **That recommendation is
+ * refused**: the docblock above the predicate says `.drafts/`, at length, and
+ * narrowing it would revert a ruling and break the review surface's right
+ * pane, which cannot open a draft it is not allowed to read. The stale text
+ * was here, and here is where it is repaired.
+ *
+ * **AND IT GAINS THE ASSERTION THAT WOULD HAVE CAUGHT THE OTHER HALF.** A
+ * draft is a corpus file; an ACTIVE item in the draft region is not a draft at
+ * all, it is an accepted item sitting in a folder git ignores — governing this
+ * project, and in no commit. Eight of the owner's items were in that state on
+ * 2026-09-15. The roster is built off the index, so it is the one place that
+ * sees every project item's path and status at once, and asking it is cheaper
+ * than asking the filesystem.
+ */
+test('the roster reaches nothing in .my_context except Markdown under a CORPUS WALK ROOT', () => {
   const body = list();
-  const outside = body.files.filter((file) => !file.startsWith('items/') || !file.endsWith('.md'));
-  assert.deepEqual(outside, [], 'the roster reaches outside items/, or reaches a non-Markdown file');
+  const outside = body.files.filter(
+    (file) => !CORPUS_ROOTS.some((root) => file.startsWith(root)) || !file.endsWith('.md'),
+  );
+  assert.deepEqual(outside, [],
+    'the roster reaches outside the corpus walk roots, or reaches a non-Markdown file');
   // The three things a reader must never be handed, named rather than implied.
   for (const forbidden of ['config.json', 'state', '.audit']) {
     assert.equal(
@@ -161,6 +195,44 @@ test('the roster reaches nothing in .my_context except Markdown under items/', (
     );
   }
 });
+
+test('nothing in the draft region is ACTIVE — a promoted item is not left where git ignores it',
+  () => {
+    const ws = here();
+    // Off the index, because the index is what every governing surface reads:
+    // an item's status decides whether it is injected, and its `file_path`
+    // decides whether git carries it. The defect is exactly the pair
+    // `status: active` with a `.drafts/` path, so the pair is what is asked
+    // for rather than either half.
+    const stranded = withStores(ws, (store) => store.raw(
+      "SELECT id, file_path, status FROM items WHERE layer = 'project'",
+    )).filter((row) => {
+      const file = row['file_path'];
+      return typeof file === 'string' && isDraftFilePath(file) && row['status'] !== 'draft';
+    }).map((row) => `${String(row['id'])} (${String(row['status'])}) at ${String(row['file_path'])}`);
+
+    assert.deepEqual(stranded, [],
+      'an item that is no longer a draft is still in the gitignored draft region — it governs ' +
+      'this project, it is in no commit, and `git status` says nothing. `mycontext review ' +
+      'promote` now moves the file; these predate that and need moving into items/ by hand.');
+
+    // ANTI-VACUITY, and it is needed: this corpus's queue empties and refills,
+    // and on an empty queue the filter above is trivially satisfied by there
+    // being no draft-region rows AT ALL. That is a legitimately green state and
+    // is reported rather than asserted — a run where it holds proves that
+    // nothing is stranded, and proves nothing about whether it could be.
+    const inRegion = withStores(ws, (store) => store.raw(
+      "SELECT file_path FROM items WHERE layer = 'project'",
+    )).filter((row) => typeof row['file_path'] === 'string'
+      && isDraftFilePath(row['file_path'] as string)).length;
+    if (inRegion === 0) {
+      // Not a failure: an empty queue is the normal resting state.
+      // Reported, not asserted: an empty queue is the normal resting state.
+      console.log('# note: the draft region is empty on this corpus, so the assertion '
+        + 'above held vacuously. The predicate is proved on a built fixture in '
+        + 'test/review/promote-location.test.ts');
+    }
+  });
 
 test('an unknown query parameter is refused rather than ignored', () => {
   const ws = here();
