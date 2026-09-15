@@ -593,6 +593,7 @@ export const strings = {
   'conv.nav.noMarksKind': 'There is nothing of this kind — {kind} — marked in this conversation to step to. Choose every kind above to step through the rest.',
   'conv.menu.region': 'What you can do with this turn',
   'conv.menu.hint': 'Right-click any turn below for what you can do to it, or press {m:Shift+F10} to open the same menu from the keyboard. Every button here says its own key.',
+  'conv.menu.kinds': 'Step only through —',
   'conv.menu.noRow': 'There is no turn on screen to mark. The search above is hiding all of them — clear it, and the key works again.',
   'conv.keys.on': 'Keyboard shortcut: {mv:key}',
   'conv.doc.region': 'The session as one scrollable document',

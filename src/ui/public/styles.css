@@ -4310,6 +4310,8 @@ wa-tree .wa-count{margin-inline-start:var(--sp-2);color:var(--dim);
   background:var(--panel-2);border:2px solid var(--panel-2);
   border-radius:var(--r-sm);padding:var(--sp-1) var(--sp-2);cursor:pointer}
 .tvmenuitem:hover{border-color:var(--gold);color:var(--gold)}
+.tvmenuhead{margin:var(--sp-1) 0 0;padding-inline:var(--sp-2);color:var(--dim)}
+.tvmenutick{color:var(--gold)}
 .tvmenuitem:focus-visible{outline:2px solid var(--gold);outline-offset:2px}
 
 /* ── COPYING A MARKED PASSAGE ──────────────────────────────────────────────

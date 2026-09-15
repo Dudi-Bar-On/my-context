@@ -7609,6 +7609,57 @@ export function mountDocument(ctx, host, outline, back, roster = NO_LANES, landA
       find.select();
     }));
 
+    /**
+     * **THE MARK FILTER, IN THE MENU, AND IT IS A STATE RATHER THAN AN ACT.**
+     *
+     * The owner asked for it here because the `<select>` lives on the nav bar
+     * and the menu opens where he is reading — so from the menu he could step
+     * through marks without being able to see, or change, WHICH KIND he was
+     * stepping through. Every other row in this menu answers "what can I do
+     * to this turn"; these answer "what am I walking", which is why they are
+     * `menuitemradio` and carry a checked state.
+     *
+     * **They set the real `<select>` and dispatch its own `change`**, so the
+     * filter still has exactly one code path, one `markKind`, one walk and
+     * one cursor — `anchors/6` put the filter inside `markStops` for that
+     * reason and a second route must not become a second mechanism. It is
+     * the same discipline as every other row ending in `.click()` on the
+     * control it names.
+     *
+     * Drawn only when there is a choice to make: a document whose marks are
+     * all one kind gets one option and no rows, because a radio group of one
+     * is a statement, not a choice.
+     */
+    const kindOptions = [...kindPick.options];
+    if (kindOptions.length > 1) {
+      const head = el('p', 'small tvmenuhead');
+      head.append(...ctx.t('conv.menu.kinds'));
+      menu.append(head);
+      for (const option of kindOptions) {
+        const chosen = option.value === kindPick.value;
+        const pick = el('button', 'tvmenuitem');
+        pick.type = 'button';
+        pick.setAttribute('role', 'menuitemradio');
+        pick.setAttribute('aria-checked', chosen ? 'true' : 'false');
+        pick.append(option.textContent);
+        if (chosen) {
+          // Colour is never the only carrier, and neither is `aria-checked`:
+          // the tick is what a reader SEES, and it is `aria-hidden` so the
+          // accessible name stays the kind's own word.
+          const tick = el('span', 'm tvmenutick', '\u2713');
+          tick.setAttribute('aria-hidden', 'true');
+          pick.append(' ', tick);
+        }
+        pick.addEventListener('click', () => {
+          const back = closeMenu(false);
+          kindPick.value = option.value;
+          kindPick.dispatchEvent(new Event('change'));
+          caretHome(back);
+        });
+        menu.append(pick);
+      }
+    }
+
     menu.hidden = false;
     /*
      * **PLACED IN LOGICAL PROPERTIES, WITH THE POINTER'S PHYSICAL X CONVERTED
