@@ -757,6 +757,21 @@ const REC_LABEL = {
  * provenance note further down would be read after the argument it is supposed
  * to qualify."*
  */
+/**
+ * **The verdict is a HUE as well as a word, and the hues are already ruled.**
+ *
+ * `DEC-the-meaning-hue-budget-is-five` fixes the palette at gold / ok / carry
+ * / crit / warn, so this spends three of the five rather than minting a sixth:
+ * ok for promote (go), warn for decline (stop, and NOT crit — declining a
+ * draft is routine, not a fault), gold for needs-you, which is the hue this
+ * screen already uses for the thing waiting on the reader.
+ *
+ * The owner asked for it to be "observable immediatley". Colour alone is not
+ * that: the box also carries a rail, a ground and a weight, so it reads on a
+ * mono display, under `@media print` (which flattens every hue to #000), and
+ * for a reader who cannot separate green from orange.
+ */
+const REC_CLASS = { promote: 'recpromote', decline: 'recdecline', 'needs-you': 'recneedsyou' };
 function recommendBlock(ctx, draft) {
   const wrap = el('div');
   const verdict = typeof draft.recommendation === 'string' ? draft.recommendation : '';
@@ -768,6 +783,10 @@ function recommendBlock(ctx, draft) {
   head.append(...(label === undefined ? ctx.t('work.recNone') : ctx.t('work.rec')));
   wrap.append(spaced(head));
   if (label === undefined) return wrap;
+
+  // Applied only once a verdict is KNOWN, so the "nothing was recorded" row
+  // stays plain prose and cannot be mistaken for a recommendation.
+  wrap.className = `reviewrec ${REC_CLASS[verdict]}`;
 
   // Read by a driver that needs to press or assert on a verdict without
   // depending on its WORDING, which changes with the reader's language — the
@@ -782,7 +801,7 @@ function recommendBlock(ctx, draft) {
     wrap.append(spaced(note));
   }
 
-  const verdictLine = el('p');
+  const verdictLine = el('p', 'recverdict');
   verdictLine.append(...label(ctx));
   wrap.append(verdictLine);
 

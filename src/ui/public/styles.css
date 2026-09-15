@@ -2167,6 +2167,17 @@ details.help[open]>summary{margin-block-end:6px}
   font:400 12px/1.55 var(--mono);color:var(--dim);
   border-inline-start:2px solid var(--edge-3);padding-inline-start:var(--sp-2);
   max-block-size:22em;overflow-y:auto}
+/* The review verdict: a rail, a ground and a weight, not colour alone —
+   review/7, and `DEC-the-meaning-hue-budget-is-five` for the three hues. */
+.reviewrec{border-inline-start:3px solid var(--edge-3);padding:var(--sp-2);
+  border-radius:var(--r-md);background:var(--panel-2);margin-block-start:var(--sp-2)}
+.reviewrec.recpromote{border-inline-start-color:var(--ok);background:var(--okbg)}
+.reviewrec.recdecline{border-inline-start-color:var(--warn);background:var(--warnbg)}
+.reviewrec.recneedsyou{border-inline-start-color:var(--gold);background:var(--goldbg)}
+.recverdict{margin:0;font-size:var(--fs-1);font-weight:600}
+.reviewrec.recpromote .recverdict{color:var(--ok)}
+.reviewrec.recdecline .recverdict{color:var(--warn)}
+.reviewrec.recneedsyou .recverdict{color:var(--gold)}
 .segbar{display:flex;gap:6px;flex-wrap:wrap;margin-block-start:var(--sp-2)}
 .segbar button{border:1px solid var(--edge-3);background:var(--sink);border-radius:var(--r-md);
   padding-block:3px;padding-inline:var(--sp-2);font-size:var(--fs-0);cursor:pointer;color:var(--dim)}
