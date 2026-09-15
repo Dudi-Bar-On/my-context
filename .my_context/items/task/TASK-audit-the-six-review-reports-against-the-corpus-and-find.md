@@ -15,17 +15,17 @@ tags:
   - governance
   - "plan:rulings"
   - "seq:90"
-  - "state:todo"
+  - "state:done"
 origin: human
 source_file: null
 source_anchor: null
 source_checksum: null
 valid_from: 2026-09-15
 valid_until: null
-checksum: 363fb4096f7e8b29
+checksum: 5715c6a809fb7acd
 plan: rulings
 seq: "90"
-state: todo
+state: done
 priority: "1"
 ---
 
