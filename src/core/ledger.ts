@@ -1096,8 +1096,17 @@ export function readCarryOnce(root: string): { ids: string[]; error: string | nu
   try {
     const { entries, error } = readCarryOnceEntries(root);
     return { ids: entries.map((e) => e.id), error };
-  } catch {
-    return { ids: [], error: null };
+  } catch (err) {
+    // **`error: null` here was the defect** (`plan:swallow seq:11`, minor m2):
+    // every ANTICIPATED failure inside `readCarryOnceEntries` populates
+    // `error`, and this outer catch — the UNANTICIPATED one, the only failure
+    // nobody reasoned about — nulled it. So `carry --show` printed "nothing
+    // carried" for a queue it could not read, over a docstring that says in as
+    // many words "degrades to nothing is carried AND SAYS SO".
+    return {
+      ids: [],
+      error: `could not be read (${err instanceof Error ? err.message : String(err)})`,
+    };
   }
 }
 
@@ -1181,8 +1190,40 @@ export function spendCarryOnce(root: string): { ids: string[]; error: string | n
     const { entries, error } = readCarryOnceEntries(root);
     if (entries.length === 0) return { ids: [], error };
     const { error: writeError } = writeCarryOnceEntries(root, []);
+    // **The ids are still returned when the clearing write failed**, and that
+    // is deliberate: they were OFFERED to `select`, which is what spends a
+    // mark. What must not be silent is that they were not un-marked — the
+    // queue on disk still holds them, so the same items are forced into every
+    // later injection until someone notices. `error` carries that, and
+    // `carryOnceErrorNote` is the caller's sentence for it
+    // (`plan:swallow seq:11`, minor m3: the value was returned and nobody
+    // read it).
     return { ids: entries.map((e) => e.id), error: writeError ?? error };
   } catch (err) {
     return { ids: [], error: (err as Error).message };
   }
+}
+
+/**
+ * The line an injection carries when the one-shot carry queue could not be
+ * read or could not be cleared.
+ *
+ * The sibling of `focusErrorNote`, and it is here for its reason: the injected
+ * block looks identical either way. A queue that could not be READ means items
+ * a person marked are missing from a block that gives no hint of it; a queue
+ * that could not be CLEARED means a one-shot carry has quietly become a
+ * permanent pin, forced into every session from now on. Both are invisible
+ * from the text, and both are facts about the reader's own instructions.
+ *
+ * `''` when there is nothing to disclose, exactly like `focusErrorNote`, so
+ * callers stay a single `if`.
+ */
+export function carryOnceErrorNote(error: string | null): string {
+  if (error === null) return '';
+  return (
+    `_my_context: \`.my_context/state/carry-once.json\` ${error}. Items marked with ` +
+    '`mycontext carry` may be missing from the block above, or may have been marked once and ' +
+    'be forced into every session from now on — this build cannot tell you which. ' +
+    '`mycontext carry --show` reads the same file._'
+  );
 }

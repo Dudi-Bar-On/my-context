@@ -1,8 +1,10 @@
+import fs from 'node:fs';
 import {
-  appendFileSync, closeSync, mkdirSync, openSync, readFileSync, readSync, statSync,
+  appendFileSync, closeSync, mkdirSync, openSync, readFileSync, readSync,
   truncateSync, writeFileSync,
 } from 'node:fs';
 import path from 'node:path';
+import { acquireLock } from './lock.ts';
 
 // --- The append-only JSONL log, once ----------------------------------------
 //
@@ -100,6 +102,22 @@ export function ensureLogDir(dir: string): string {
 const TAIL_CHUNK = 64 * 1024;
 
 /**
+ * What one look at the tail established — or that there was no look.
+ *
+ * **Two shapes rather than one with a `torn` boolean**, because `torn: false`
+ * was the answer this function gave for a file it could not `stat` until
+ * `plan:swallow seq:11`, and a caller had no way back from it: "I looked, and
+ * the last byte is a newline" and "I could not look" were the same value, and
+ * the only consumer — `healTornTail` — correctly decided there was nothing to
+ * heal. `looked: false` carries NO `torn` field at all, so no caller can read
+ * a verdict that was never reached. Same shape, same reason, as
+ * `core/context-occupancy.ts`'s unmeasurable branch carrying no `percent`.
+ */
+type TornRead =
+  | { looked: true; torn: boolean; size: number }
+  | { looked: false; error: string };
+
+/**
  * True when the file's last byte is not a newline, i.e. a writer was killed
  * mid-append.
  *
@@ -111,22 +129,46 @@ const TAIL_CHUNK = 64 * 1024;
  * revision queue of a few dozen lines and would have been a per-tool-call cost
  * proportional to the whole audit history.
  *
- * A missing file is not torn — there is nothing to heal and `appendFileSync`
- * creates it.
+ * **Only `ENOENT` is absence.** A missing file is not torn — there is nothing
+ * to heal and `appendFileSync` creates it. Every other errno is a REFUSAL: a
+ * locked file, a permission, a directory where the log should be. Those used
+ * to answer "not torn", which let `appendJsonlLine` append onto an unhealed
+ * fragment and wedge the log against `readJsonlLog` permanently.
+ *
+ * **`fs.statSync`, not a destructured named import**, and for the reason
+ * `core/lock.ts` gives where it calls `fs.linkSync` the same way: this branch
+ * cannot be reached on this platform with real files. A directory in place of
+ * the log makes `statSync` SUCCEED (size 0), and a file used as a directory
+ * component answers `ENOENT` rather than `ENOTDIR` on Windows — so there is no
+ * arrangement of the filesystem that produces a non-`ENOENT` stat failure here.
+ * Reading the property at call time lets `test/fixtures/force-stat-failure.ts`
+ * force exactly this call to fail, in its own process, instead of the branch
+ * being written and never proved.
  */
-function isTorn(file: string): { torn: boolean; size: number } {
+function isTorn(file: string): TornRead {
   let size: number;
   try {
-    size = statSync(file).size;
-  } catch {
-    return { torn: false, size: 0 };
+    size = fs.statSync(file).size;
+  } catch (err) {
+    const code = (err as NodeJS.ErrnoException).code;
+    if (code === 'ENOENT') return { looked: true, torn: false, size: 0 };
+    return { looked: false, error: `${file} could not be measured (${code ?? (err as Error).message})` };
   }
-  if (size === 0) return { torn: false, size: 0 };
-  const fd = openSync(file, 'r');
+  if (size === 0) return { looked: true, torn: false, size: 0 };
+  let fd: number;
+  try {
+    fd = openSync(file, 'r');
+  } catch (err) {
+    const code = (err as NodeJS.ErrnoException).code;
+    return { looked: false, error: `${file} could not be opened (${code ?? (err as Error).message})` };
+  }
   try {
     const buf = Buffer.alloc(1);
     readSync(fd, buf, 0, 1, size - 1);
-    return { torn: buf[0] !== 0x0a, size };
+    return { looked: true, torn: buf[0] !== 0x0a, size };
+  } catch (err) {
+    const code = (err as NodeJS.ErrnoException).code;
+    return { looked: false, error: `${file}'s last byte could not be read (${code ?? (err as Error).message})` };
   } finally {
     closeSync(fd);
   }
@@ -153,33 +195,133 @@ function isTorn(file: string): { torn: boolean; size: number } {
  * The scan for the final newline walks BACKWARDS in `TAIL_CHUNK` blocks rather
  * than reading the file, so its cost is proportional to the length of the torn
  * tail — bounded by one record — and not to the size of the log.
+ *
+ * ── THE STALE BOUND, REPRODUCED 2026-09-15 (`plan:swallow seq:12`) ──────────
+ *
+ * This used to compute the cut from the size it read BEFORE the backwards
+ * scan, and truncate to it with no second look. `audit-db.ts` · the note that
+ * two concurrent writers is the ordinary case states that two writers is the
+ * ORDINARY case here, and the item that raised this said the race was inferred
+ * and never produced. It produces: six processes appending 150 records each to
+ * one torn log lost **32 of 900 complete records** with a ONE-BYTE torn tail,
+ * and 94 of 900 with an 8 MB one. The one-byte figure is the one that matters
+ * — the loss is not an artefact of a fixture that made the scan slow.
+ *
+ * The mechanism: A reads size S and finds the last newline at L. B heals the
+ * same tear, truncates to L, and appends complete records. A then truncates to
+ * L, which is now BEHIND B's records, and they are gone. The whole-file
+ * `truncateSync(file, 0)` fall-through is the same thing at whole-file scale.
+ *
+ * ── WHAT REPLACES IT ───────────────────────────────────────────────────────
+ *
+ * The heal is serialized on `core/lock.ts`'s lock — the project's ONE file
+ * lock, by that module's own standing rule, and pid-authoritative so a writer
+ * killed mid-heal (the only thing that produces a torn tail in the first
+ * place) leaves a lock that the next writer judges dead and reclaims rather
+ * than a wedged log.
+ *
+ * The lock is taken ONLY once the file has been established torn, so the
+ * ordinary append pays nothing for it: an untorn log still costs one `stat`
+ * and one 1-byte read and takes no lock at all. A torn one is rare by
+ * construction — it means a writer was killed — and correctness there is worth
+ * more than the microseconds.
+ *
+ * Inside the lock the bound cannot go stale, because every appender heals
+ * before it appends and every heal that sees a tear waits here. The tail is
+ * re-read INSIDE the lock rather than trusting the look that got us here: by
+ * then another holder has usually healed it already, and that is reported as
+ * `intact` rather than as a second truncate of a file that no longer needs one.
+ *
+ * A heal that could not take the lock at all reports `contended` and
+ * `appendJsonlLine` refuses to append on it, rather than writing past a
+ * fragment `readJsonlLog` will refuse forever.
  */
-export function healTornTail(file: string): void {
-  const { torn, size } = isTorn(file);
-  if (!torn) return;
+export type TailHeal =
+  | { healed: false; why: 'intact' | 'empty' }
+  | { healed: false; why: 'unreadable'; error: string }
+  | { healed: false; why: 'contended'; error: string }
+  | { healed: true; droppedBytes: number };
 
-  const fd = openSync(file, 'r');
-  try {
-    let end = size;
-    while (end > 0) {
-      const start = Math.max(0, end - TAIL_CHUNK);
-      const buf = Buffer.alloc(end - start);
-      readSync(fd, buf, 0, buf.length, start);
-      const at = buf.lastIndexOf(0x0a);
-      if (at !== -1) {
-        closeSync(fd);
-        truncateSync(file, start + at + 1);
-        return;
-      }
-      end = start;
-    }
-  } finally {
-    // Double-close is guarded: the success path above closes before
-    // truncating and returns, so this only runs when it did not.
-    try { closeSync(fd); } catch { /* already closed on the success path */ }
+/** The offset just past the last `\n` at or before `size`, or 0 if there is none. */
+function cutAfterLastNewline(fd: number, size: number): number {
+  let end = size;
+  while (end > 0) {
+    const start = Math.max(0, end - TAIL_CHUNK);
+    const buf = Buffer.alloc(end - start);
+    readSync(fd, buf, 0, buf.length, start);
+    const at = buf.lastIndexOf(0x0a);
+    if (at !== -1) return start + at + 1;
+    end = start;
   }
   // No newline anywhere: the whole file is one unfinished write.
-  truncateSync(file, 0);
+  return 0;
+}
+
+function unreadable(error: string): TailHeal {
+  return { healed: false, why: 'unreadable', error };
+}
+
+function errnoOf(err: unknown): string {
+  return (err as NodeJS.ErrnoException).code ?? (err as Error).message;
+}
+
+/** The heal, with the tear already established and the lock already held. */
+function healUnderLock(file: string): TailHeal {
+  const read = isTorn(file);
+  if (!read.looked) return unreadable(read.error);
+  // Healed by whoever held the lock before this call — the ordinary outcome of
+  // two writers arriving at one torn log, and not a second truncate.
+  if (!read.torn) return { healed: false, why: read.size === 0 ? 'empty' : 'intact' };
+
+  let fd: number;
+  try {
+    fd = openSync(file, 'r');
+  } catch (err) {
+    return unreadable(`${file} could not be opened to find its last complete record (${errnoOf(err)})`);
+  }
+  let cut: number;
+  try {
+    cut = cutAfterLastNewline(fd, read.size);
+  } catch (err) {
+    return unreadable(`${file}'s tail could not be scanned (${errnoOf(err)})`);
+  } finally {
+    closeSync(fd);
+  }
+
+  try {
+    truncateSync(file, cut);
+  } catch (err) {
+    return unreadable(`${file}'s torn tail could not be truncated (${errnoOf(err)})`);
+  }
+  return { healed: true, droppedBytes: read.size - cut };
+}
+
+export function healTornTail(file: string): TailHeal {
+  // **The look that decides whether to pay for the lock at all.** An untorn
+  // log — every append but the first after a kill — leaves here having done
+  // one `stat` and one 1-byte read, exactly what it did before.
+  const first = isTorn(file);
+  if (!first.looked) return unreadable(first.error);
+  if (!first.torn) return { healed: false, why: first.size === 0 ? 'empty' : 'intact' };
+
+  let release: () => void;
+  try {
+    release = acquireLock({
+      file: `${file}.heal.lock`,
+      name: 'jsonl-heal',
+      otherHolder: 'another process is healing the unfinished write at the end of this log',
+    });
+  } catch (err) {
+    return {
+      healed: false, why: 'contended',
+      error: err instanceof Error ? err.message : String(err),
+    };
+  }
+  try {
+    return healUnderLock(file);
+  } finally {
+    release();
+  }
 }
 
 /**
@@ -188,11 +330,32 @@ export function healTornTail(file: string): void {
  * One `appendFileSync` call, which does not interleave with a concurrent
  * process's append on either POSIX or Windows for writes this small — the
  * property that lets a writer append without holding a lock.
+ *
+ * **A heal that did not happen stops the append**, and the `TailHeal` is
+ * returned rather than discarded. Appending onto an unhealed fragment leaves a
+ * damaged line that is no longer the FINAL one, and `readJsonlLog` refuses
+ * exactly that — permanently, for every later reader. So the record is lost
+ * either way, and the two ways are not equal: a throw reaches `recordAudit`'s
+ * existing catch and becomes `written: false` with the reason, which
+ * `auditFailureNote` already puts in front of a person. Writing anyway wedges
+ * the log and says nothing.
  */
-export function appendJsonlLine(dir: string, file: string, record: unknown): void {
+export function appendJsonlLine(dir: string, file: string, record: unknown): TailHeal {
   ensureLogDir(dir);
-  healTornTail(file);
+  const heal = healTornTail(file);
+  if (heal.healed === false && (heal.why === 'unreadable' || heal.why === 'contended')) {
+    throw new Error(
+      heal.why === 'unreadable'
+        ? `${file} ends in an unfinished write and could not be healed: ${heal.error}. `
+          + `Nothing was appended — a record written past that fragment would make every later `
+          + `read of this log refuse it.`
+        : `${file} ends in an unfinished write and the heal lock could not be taken: `
+          + `${heal.error}. Nothing was appended — a record written past that fragment would `
+          + `make every later read of this log refuse it.`,
+    );
+  }
   appendFileSync(file, `${JSON.stringify(record)}\n`, 'utf8');
+  return heal;
 }
 
 function lastRowIndex(rows: string[]): number {

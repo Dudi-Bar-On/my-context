@@ -115,9 +115,13 @@ test('no note at all when the focus file is fine — the note is for failures on
 test('clearing removes the file and reports whether there was one', () => {
   const home = root();
   try {
-    assert.equal(clearFocus(home), false, 'clearing nothing must report nothing, not success');
+    assert.deepEqual(
+      clearFocus(home), { removed: false, error: null },
+      'clearing nothing must report nothing, not success — and `error: null` is what makes '
+      + 'that a MEASURED absence rather than a look that never happened',
+    );
     writeFocus(home, { tags: ['a'], categories: [], scope: [], setAt: 'now', setBy: 'human' });
-    assert.equal(clearFocus(home), true);
+    assert.deepEqual(clearFocus(home), { removed: true, error: null });
     assert.equal(readFocus(home).focus, null);
   } finally {
     removeTree(path.dirname(home));

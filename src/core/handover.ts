@@ -43,6 +43,18 @@ export type HandoverRead =
   | { state: 'off' }
   /** A key that names a file that is not there. THE LOUD CASE. */
   | { state: 'missing'; path: string }
+  /**
+   * A key that names a file that IS there and could not be read — a
+   * permission, a lock, a directory in its place, an I/O error.
+   *
+   * **A fourth state, because "missing" was answering for it**
+   * (`plan:swallow seq:11`, minor m9). `missing` is a specific, checkable
+   * claim: the file is not there. Told that, a reader goes and looks, finds
+   * the file exactly where the key says, and concludes the mechanism is
+   * broken — the alarm fires with the wrong diagnosis, which costs more than
+   * no alarm. Only `ENOENT` (and a path that is not a file) is absence.
+   */
+  | { state: 'unreadable'; path: string; error: string }
   | {
       state: 'read';
       path: string;
@@ -91,8 +103,14 @@ export function readHandover(repoRoot: string, config: HandoverConfig | null): H
     // throws a different error on every platform.
     if (!statSync(abs).isFile()) return { state: 'missing', path: config.path };
     raw = readFileSync(abs, 'utf8');
-  } catch {
-    return { state: 'missing', path: config.path };
+  } catch (err) {
+    const code = (err as NodeJS.ErrnoException).code;
+    if (code === 'ENOENT' || code === 'ENOTDIR') return { state: 'missing', path: config.path };
+    return {
+      state: 'unreadable',
+      path: config.path,
+      error: code ?? (err instanceof Error ? err.message : String(err)),
+    };
   }
 
   const lines = raw.split(/\r?\n/);
@@ -198,6 +216,11 @@ export function handoverBlock(read: HandoverRead): string {
   if (read.state === 'missing') {
     return 'my_context: handover.path is `' + read.path + '` and there is no file there. '
       + 'Nothing was carried across this boundary — either the file moved or the key is wrong.\n';
+  }
+  if (read.state === 'unreadable') {
+    return 'my_context: handover.path is `' + read.path + '` and that file IS there and could '
+      + 'not be read (' + read.error + '). Nothing was carried across this boundary — and this '
+      + 'is not the same as the file being gone: do not go looking for a missing file.\n';
   }
   const held = read.totalLines - read.deliveredLines;
   const where = read.source === 'marker' ? 'the marked section' : 'the head';

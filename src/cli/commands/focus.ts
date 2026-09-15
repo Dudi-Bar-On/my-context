@@ -190,7 +190,19 @@ function cmdFocus(ws: Workspace, args: string[], out: Emit): number {
         args, out,
         'Clear the focus? Every eligible item becomes injectable again, in every later session.',
       )) return 1;
-      const { existed, audit } = unsetFocus(root, 'human');
+      const { existed, error, audit } = unsetFocus(root, 'human');
+      // **A clear that could not look does not report "there was nothing".**
+      // Its own sentence rather than `focusErrorNote`'s: that one ends by
+      // telling the reader to run `mycontext focus --clear`, which is the
+      // command that just failed.
+      if (error !== null) {
+        out(
+          `my_context: \`.my_context/state/focus.json\` ${error}. `
+          + 'Nothing was removed, and a focus that is still on disk still narrows the next '
+          + 'injection — so this command cannot tell you nothing is hidden.',
+        );
+        return 1;
+      }
       out(existed
         ? `my_context: focus cleared. Every eligible item is injectable again.${auditFailureNote(audit)}`
         : 'my_context: there was no focus to clear. Nothing was hidden.');

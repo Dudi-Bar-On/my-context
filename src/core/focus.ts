@@ -467,16 +467,43 @@ export function writeFocus(root: string, focus: Focus): string {
   return target;
 }
 
-/** Removes the focus. Returns whether there was one to remove. */
-export function clearFocus(root: string): boolean {
+/**
+ * Removes the focus.
+ *
+ * `removed: false` with `error: null` means there was NOTHING TO REMOVE — a
+ * measured absence. `error` non-null means the file could not be looked at or
+ * could not be deleted, which is a different fact and used to be the same
+ * value (`plan:swallow seq:11`, minor m11): every errno answered `false`, so
+ * `mycontext focus --clear` told a person *"there was no focus to clear,
+ * nothing was hidden"* over a focus file that is still on disk and still in
+ * force at the next injection.
+ *
+ * `readFocus`, eighty lines above, already discriminates `ENOENT` from every
+ * other refusal. The inconsistency inside ONE file is the tell, and this is the
+ * half that was wrong.
+ */
+export function clearFocus(root: string): { removed: boolean; error: string | null } {
   const target = focusPath(root);
   try {
     readFileSync(target);
-  } catch {
-    return false;
+  } catch (err) {
+    if ((err as NodeJS.ErrnoException).code === 'ENOENT') return { removed: false, error: null };
+    return {
+      removed: false,
+      error: `could not be read (${err instanceof Error ? err.message : String(err)}), so whether `
+        + `a focus is in force could not be established and nothing was removed`,
+    };
   }
-  rmSync(target, { force: true });
-  return true;
+  try {
+    rmSync(target, { force: true });
+  } catch (err) {
+    return {
+      removed: false,
+      error: `could not be removed (${err instanceof Error ? err.message : String(err)}), so the `
+        + `focus is STILL IN FORCE and will narrow the next injection`,
+    };
+  }
+  return { removed: true, error: null };
 }
 
 /**
@@ -508,14 +535,20 @@ export function setFocus(
   return { focus, audit };
 }
 
-/** Clears the focus and records it. Records nothing when there was no focus to clear. */
+/**
+ * Clears the focus and records it. Records nothing when there was no focus to
+ * clear — and reports `error` when it could not tell, which is not the same
+ * thing and must not read as "nothing was hidden". The caller discloses:
+ * `focusErrorNote` is the sentence, and it already exists for the read side.
+ */
 export function unsetFocus(
   root: string, origin: Origin,
-): { existed: boolean; audit: AuditWriteResult } {
-  const existed = clearFocus(root);
-  if (!existed) return { existed, audit: { written: true } };
+): { existed: boolean; error: string | null; audit: AuditWriteResult } {
+  const { removed, error } = clearFocus(root);
+  if (!removed) return { existed: false, error, audit: { written: true } };
   return {
-    existed,
+    existed: true,
+    error,
     audit: recordAudit(root, { kind: 'focus', op: 'focus-clear', origin }),
   };
 }

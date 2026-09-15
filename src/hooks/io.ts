@@ -420,12 +420,40 @@ export function ledgerKey(input: HookInput): string | null {
   return input.agent_id ? `${input.session_id}::${input.agent_id}` : input.session_id;
 }
 
-/** Reads fd 0 to EOF. Returns '' when there is no stdin (interactive runs). */
-export function readStdin(): string {
+/**
+ * What fd 0 held, and whether it was read at all.
+ *
+ * **`unreadable` exists because `''` was answering for both** — the door of
+ * the whole product, and report 3's P1 calls this its cleanest instance
+ * (`plan:swallow seq:11`, minor m1). The docstring said *"Returns '' when
+ * there is no stdin (interactive runs)"*, which is true of the case it names;
+ * the `catch` was wider than the comment and returned `''` for EVERY errno,
+ * `readFileSync(0)`'s `EAGAIN` on a non-blocking pipe included — a payload
+ * that arrived and was lost. Three modules then reasoned FROM that docstring
+ * to a decision to say nothing: `io.ts`'s own `parseHookInput`,
+ * `observe.ts` and `session-end.ts` each argue that an empty payload is an
+ * interactive run and *"not a platform that stopped sending fields"*.
+ *
+ * `null` means fd 0 WAS read to EOF — including an empty read, which is a
+ * measured nothing. A string is the errno, and the caller discloses.
+ */
+export interface StdinRead {
+  /** What was read. `''` when nothing was, for either reason. */
+  text: string;
+  /** `null` when fd 0 was read. Otherwise the errno that stopped it. */
+  unreadable: string | null;
+}
+
+/** Reads fd 0 to EOF. See `StdinRead` for what `''` can and cannot mean. */
+export function readStdin(): StdinRead {
   try {
-    return readFileSync(0, 'utf8');
-  } catch {
-    return '';
+    return { text: readFileSync(0, 'utf8'), unreadable: null };
+  } catch (err) {
+    return {
+      text: '',
+      unreadable: (err as NodeJS.ErrnoException).code
+        ?? (err instanceof Error ? err.message : String(err)),
+    };
   }
 }
 
@@ -513,7 +541,30 @@ function oneLine(message: string): string {
   return flat.length > 200 ? `${flat.slice(0, 197)}...` : flat;
 }
 
-export function parseHookInput(raw: string): ParsedHookInput {
+/**
+ * `read` is what `readStdin` returned. A plain string is accepted for callers
+ * that ALREADY HAVE the text — the test suite, and any caller that read fd 0
+ * some other way — and means "this text, successfully obtained". It is not a
+ * second door onto stdin: nothing in `src/` may pass `readStdin().text` here,
+ * because that is the drop this function exists to stop.
+ */
+export function parseHookInput(read: string | StdinRead): ParsedHookInput {
+  const { text: raw, unreadable } = typeof read === 'string'
+    ? { text: read, unreadable: null }
+    : read;
+
+  // **A read that did not happen is not an empty payload.** `''` with an errno
+  // behind it means the hook is about to run with no `session_id`, no `source`
+  // and no `transcript_path` because the pipe REFUSED, not because nobody sent
+  // one — and every consequence `ParsedHookInput.parseError` documents for a
+  // malformed payload applies here identically.
+  if (unreadable !== null) {
+    return {
+      input: {},
+      parseError: `stdin could not be read (${unreadable}), so no payload arrived`,
+    };
+  }
+
   // Not an error: `readStdin` documents '' as the interactive-run answer.
   if (raw.trim() === '') return { input: {}, parseError: null };
 

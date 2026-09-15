@@ -2,7 +2,7 @@ import { recordAudit, type InjectedRef, type SpilledRef } from './audit.ts';
 import { resolveCarry, resolveSubagentCarry, type CarrySelection } from './continuity.ts';
 import { corpusRootLine, nestedCorpusNote, resolveCorpus } from './corpus-identity.ts';
 import { focusErrorNote, readFocus } from './focus.ts';
-import { readSnapshotMeta, spendCarryOnce } from './ledger.ts';
+import { carryOnceErrorNote, readSnapshotMeta, spendCarryOnce } from './ledger.ts';
 import { rebuildRoots } from './open-store.ts';
 import {
   crossLayerCollisions, loadErrorNote, loadLayer, rebuild, type LoadError,
@@ -299,10 +299,15 @@ export interface Injection {
  */
 function foldOnceCarry(
   stateRoot: string, sessionCarried: CarrySelection | null,
-): CarrySelection | null {
-  const { ids } = spendCarryOnce(stateRoot);
-  if (ids.length === 0) return sessionCarried;
-  return { sessionId: '(carry)', label: 'a one-shot carry', ids };
+): { carried: CarrySelection | null; error: string | null } {
+  // **`error` is returned, not dropped.** It used to be destructured away here
+  // — the only caller of the only producer — so a queue that could not be read
+  // and a queue with nothing in it reached the injection as the same thing
+  // (`plan:swallow seq:11`, minor m3). `carryOnceErrorNote` is the sentence;
+  // it rides beside the block exactly as `focusErrorNote` does.
+  const { ids, error } = spendCarryOnce(stateRoot);
+  if (ids.length === 0) return { carried: sessionCarried, error };
+  return { carried: { sessionId: '(carry)', label: 'a one-shot carry', ids }, error };
 }
 
 /**
@@ -696,7 +701,7 @@ export function buildInjectionResult(cwd: string, options: InjectionOptions = {}
     // which the cross-session carry above never reaches. A one-shot mark is
     // not "continue the session I was just in"; it is "deliver this the next
     // time anything is injected", and a `/LoadMyContext` is exactly that.
-    const carried = foldOnceCarry(stateRoot, sessionCarried);
+    const { carried, error: carryOnceError } = foldOnceCarry(stateRoot, sessionCarried);
 
     const selection = select(
       items,
@@ -754,6 +759,7 @@ export function buildInjectionResult(cwd: string, options: InjectionOptions = {}
     } catch { /* the note is optional; the injection is not */ }
 
     const focusError = focusErrorNote(focusState.error);
+    const carryError = carryOnceErrorNote(carryOnceError);
     /**
      * **WHICH CORPUS this block came out of** (`core/corpus-identity.ts`).
      *
@@ -842,6 +848,7 @@ export function buildInjectionResult(cwd: string, options: InjectionOptions = {}
       (parseError ? `\n${parseError}\n` : '') +
       (cleared ? `\n${cleared}\n` : '') +
       (focusError ? `\n${focusError}\n` : '') +
+      (carryError ? `\n${carryError}\n` : '') +
       (revisionNote ? `\n${revisionNote}\n` : '') +
       loadErrorNote(errors);
 

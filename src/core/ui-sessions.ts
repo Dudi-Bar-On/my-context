@@ -146,13 +146,43 @@ function isRecord(value: unknown): value is SessionRecord {
     && typeof issued === 'number' && Number.isFinite(issued);
 }
 
-function readRecords(): { records: SessionRecord[]; error: string | null } {
+/**
+ * What the store holds, the reason it does not hold it, and whether the BYTES
+ * were obtained at all.
+ *
+ * `read: false` is the one case a rewrite must not paper over. Every other
+ * failure here — not JSON, not an object, a future `version`, rows that are
+ * not records — means the bytes WERE read and are unusable, and this store is
+ * deliberately recoverable in place for those: it holds only digests of tokens
+ * already issued, so overwriting costs a still-open tab one re-opened link.
+ * A store that could not be READ is different in kind, and rewriting it from
+ * an empty base would discard every digest this server ever issued while
+ * reporting success.
+ */
+interface StoreRead { records: SessionRecord[]; error: string | null; read: boolean }
+
+function readRecords(): StoreRead {
   let raw: string;
   try {
     raw = readFileSync(sessionsPath(), 'utf8');
-  } catch {
-    // No file is the ordinary first run, and is not an error to report.
-    return { records: [], error: null };
+  } catch (err) {
+    // **Only ENOENT is the ordinary first run** (`plan:swallow seq:11`, minor
+    // m4). Every other errno is a store that IS there and was not read, and
+    // this `catch` used to answer both with `error: null` — against this
+    // module's own docstring, which says `error` is non-null whenever a file
+    // EXISTS and could not be used. The cost is exact: every open tab is
+    // locked out (no digest matches), the channel built to explain that is
+    // silent, and `recordSessionDigest` then rewrites the store from an EMPTY
+    // base, discarding every other digest this server ever issued.
+    const code = (err as NodeJS.ErrnoException).code;
+    if (code === 'ENOENT') return { records: [], error: null, read: true };
+    return {
+      records: [],
+      read: false,
+      error: `${sessionsPath()} exists and could not be read `
+        + `(${code ?? (err instanceof Error ? err.message : String(err))}). No tab opened before `
+        + `now can be recognised, and nothing was written back over it.`,
+    };
   }
   let parsed: unknown;
   try {
@@ -160,26 +190,58 @@ function readRecords(): { records: SessionRecord[]; error: string | null } {
   } catch (err) {
     return {
       records: [],
+      read: true,
       error: `${sessionsPath()} is not valid JSON (${err instanceof Error ? err.message : String(err)}). `
         + `It holds only digests of tokens already issued, so deleting it costs nothing beyond `
         + `asking any still-open tab to re-open the printed link.`,
     };
   }
-  if (typeof parsed !== 'object' || parsed === null) return { records: [], error: null };
+  if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) {
+    // A scalar, `null` or an array parses and is not this store. It used to
+    // answer `error: null`, i.e. "there is nothing here" for a file that says
+    // something this reader does not understand.
+    return {
+      records: [],
+      read: true,
+      error: `${sessionsPath()} is valid JSON but not an object, so nothing was read from it. `
+        + `It holds only digests of tokens already issued, so deleting it costs nothing beyond `
+        + `asking any still-open tab to re-open the printed link.`,
+    };
+  }
   const doc = parsed as Record<string, unknown>;
   // A future version is not guessed at. Reading it as if it were this one is
   // how a store silently starts honouring the wrong thing.
   if (doc['version'] !== VERSION) {
     return {
       records: [],
+      read: true,
       error: doc['version'] === undefined ? null
         : `${sessionsPath()} declares version ${JSON.stringify(doc['version'])}, and this build `
           + `writes version ${VERSION}. Nothing was read from it.`,
     };
   }
   const sessions = doc['sessions'];
-  if (!Array.isArray(sessions)) return { records: [], error: null };
-  return { records: sessions.filter(isRecord), error: null };
+  if (!Array.isArray(sessions)) {
+    return {
+      records: [],
+      read: true,
+      error: `${sessionsPath()} declares version ${VERSION} and carries no "sessions" array, so `
+        + `nothing was read from it. Any still-open tab must re-open the printed link.`,
+    };
+  }
+  // A row that is not a record is DROPPED, and the drop is counted rather than
+  // absorbed into the length of the list: `INV-nothing-is-dropped-silently`.
+  const kept = sessions.filter(isRecord);
+  if (kept.length !== sessions.length) {
+    return {
+      records: kept,
+      read: true,
+      error: `${sessionsPath()} holds ${sessions.length - kept.length} row(s) that are not `
+        + `session records and were skipped. A tab whose digest was one of them will not be `
+        + `recognised.`,
+    };
+  }
+  return { records: kept, error: null, read: true };
 }
 
 /** Newest first, expired dropped, capped. The one place the retention rules apply. */
@@ -223,7 +285,19 @@ export function recordSessionDigest(digest: string, now: number = Date.now()): {
         + `than written. Nothing was written.`,
     };
   }
-  const { records } = readRecords();
+  // **The read is checked before the store is rewritten.** This function
+  // REPLACES the file with what it read plus one row, so a read that failed
+  // and reported `[]` used to discard every digest already issued — locking
+  // out every open tab and leaving no trace of having done it. A store that
+  // could not be read is not a store with nothing in it.
+  const { records, error: readError, read } = readRecords();
+  if (!read) {
+    return {
+      written: false,
+      error: `${readError} Nothing was written: rewriting the store from what could not be read `
+        + `would discard every digest already issued, and report success for having done it.`,
+    };
+  }
   const kept = prune([{ digest, issued: now }, ...records.filter((r) => r.digest !== digest)], now);
   const body = `${JSON.stringify({ version: VERSION, sessions: kept }, null, 2)}\n`;
   const target = sessionsPath();

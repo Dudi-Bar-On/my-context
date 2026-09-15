@@ -1,5 +1,23 @@
 import { COMMAND_FLAGS } from '../../core/command-flags.ts';
 import { computeDecay, type DecayRow } from '../../core/decay.ts';
+
+/**
+ * The sentence for item types the config says nothing about.
+ *
+ * `''`-style empty list when there are none, exactly like `focusErrorNote`, so
+ * the caller stays a single loop. A count and the type NAME, because the remedy
+ * is in `config.json` and a reader who is not told which type cannot find it.
+ */
+function unknownCategoryLines(unknown: readonly { type: string; count: number }[]): string[] {
+  if (unknown.length === 0) return [];
+  const total = unknown.reduce((n, u) => n + u.count, 0);
+  return [
+    `my_context: ${total} active item(s) carry a type this project's config.json declares no `
+    + `category for (${unknown.map((u) => `${u.type} × ${u.count}`).join(', ')}), so no tier `
+    + `could be established for them and they are in NEITHER list below. They are not cold and `
+    + `not warm — they were not measured. Add the category, or retire the items.`,
+  ];
+}
 import { Ledger } from '../../core/ledger.ts';
 import { topUpLedger } from '../../core/ledger-replay.ts';
 import { scopePolicyFor, type Config } from '../../core/config.ts';
@@ -177,10 +195,20 @@ function cmdDecay(ws: Workspace, args: string[], out: Emit): number {
         cold: report.cold,
         warm: report.warm,
         unrestricted: report.unrestricted,
+        // What the census could NOT measure, beside what it did. A type this
+        // config's `categories` map says nothing about has no tier, so no
+        // decision about it was ever taken — see `DecayReport.unknownCategory`.
+        unknownCategory: report.unknownCategory,
         loadErrors: errors.map((e) => ({ file: e.file, message: e.message })),
       });
       return 0;
     }
+
+    // **Before the empty branch, deliberately.** "Nothing to report" over items
+    // whose category was renamed out from under them is the exact sentence this
+    // disclosure exists to prevent, and it is the reading a person is most
+    // likely to act on.
+    for (const line of unknownCategoryLines(report.unknownCategory)) out(line);
 
     if (report.cold.length === 0 && report.warm.length === 0) {
       out('my_context: nothing to report — no active normative items in this project yet.');

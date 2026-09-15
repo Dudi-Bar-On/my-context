@@ -778,7 +778,20 @@ if (isMainEntry(import.meta.filename, process.argv[1])) {
   // timeout (10s); the latency budget is enforced by the performance test
   // in Task 10, not by a runtime cutoff.
   try {
-    const output = runPreToolUse(readStdin(), process.cwd());
+    const read = readStdin();
+    // **A pipe that refused is disclosed on stderr and the hook still fails
+    // open.** Without this line a PreToolUse that received nothing because fd 0
+    // threw is indistinguishable from one a person ran by hand: no JIT
+    // injection, no deny evaluation, and no record anywhere that a payload was
+    // lost rather than absent.
+    if (read.unreadable !== null) {
+      process.stderr.write(
+        `my_context: the PreToolUse hook could not read its payload from stdin `
+        + `(${read.unreadable}), so nothing was injected and nothing was evaluated for this `
+        + `tool call. The call was NOT blocked.\n`,
+      );
+    }
+    const output = runPreToolUse(read.text, process.cwd());
     if (output) process.stdout.write(output);
   } catch {
     /* fail open */

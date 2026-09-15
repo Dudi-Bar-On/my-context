@@ -94,7 +94,8 @@
  */
 import { execFileSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
-import { cpSync, mkdtempSync, readdirSync, readFileSync, rmSync } from 'node:fs';
+import fs from 'node:fs';
+import { cpSync, mkdtempSync, readFileSync, rmSync, type Dirent } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { parseItem } from '../core/item.ts';
@@ -141,6 +142,67 @@ export interface ItemEffect {
 export class EffectRefusal extends Error {}
 
 /**
+ * What a walk found, and every directory under it the walk could not read.
+ *
+ * **Two fields, because a walk has two outcomes and they used to share one.**
+ * Each of the three walks below answered `[]`/`{}` for a directory it could not
+ * `readdir`, so "I walked it and there is nothing there" and "I could not walk
+ * it" were the same value (`plan:swallow seq:10`). The consequence is worse
+ * here than in most places: `deriveEffect`'s whole argument is that an empty
+ * effect means *the command changed nothing*, and §3.2 — `ui/execute.ts` ·
+ * the rule about a command whose effect cannot be shown — says a command whose
+ * effect cannot be shown does not get a weaker confirm, it does not run. A
+ * narrowed confirm derived from a walk that stopped early is precisely the
+ * weaker confirm that rule forbids, arriving through a shape nothing could see.
+ *
+ * `unreadable` is never merely returned: every caller turns a non-empty one
+ * into an `EffectRefusal`, which the route answers as a 400 with the reason.
+ * A field that records a refusal is not a disclosure until something reads it.
+ */
+interface Walked<T> {
+  found: T;
+  /** Absolute paths, each with the errno that stopped the walk there. */
+  unreadable: string[];
+}
+
+/**
+ * The directories one `readdirSync` could not read — `[]` when it read, and
+ * `[]` for `ENOENT`, which is the only refusal that means absence.
+ *
+ * Every other errno (`EACCES`, `EPERM`, `EBUSY`, `ENOTDIR`, `EMFILE`) is a
+ * directory that is THERE and was not looked at, and a walk that treats those
+ * as empty reports a partial answer as a complete one.
+ */
+function readDir(dir: string): { entries: Dirent[]; unreadable: string[] } {
+  try {
+    // **`fs.readdirSync`, not a destructured named import**, for the reason
+    // `core/lock.ts` gives where it calls `fs.linkSync` the same way: this
+    // branch cannot be reached with real files on this platform. `icacls /deny`
+    // does not bite for this account, and a Windows `readdir` of a path that is
+    // not there answers `ENOENT` — which IS absence and must stay so. Reading
+    // the property at call time lets `test/fixtures/force-readdir-failure.ts`
+    // fail exactly this call, instead of the branch being written and never
+    // proved.
+    return { entries: fs.readdirSync(dir, { withFileTypes: true }), unreadable: [] };
+  } catch (err) {
+    const code = (err as NodeJS.ErrnoException).code;
+    if (code === 'ENOENT') return { entries: [], unreadable: [] };
+    return { entries: [], unreadable: [`${dir} (${code ?? (err as Error).message})`] };
+  }
+}
+
+/** Turns a walk's `unreadable` list into the refusal §3.2 requires. */
+function refuseIfBlind(what: string, unreadable: readonly string[]): void {
+  if (unreadable.length === 0) return;
+  throw new EffectRefusal(
+    `${what} could not be read in full — ${unreadable.length} `
+    + `director${unreadable.length === 1 ? 'y' : 'ies'} refused the walk (${unreadable.join('; ')}). `
+    + 'The effect shown would be narrower than the command\'s, and a confirm that cannot show the '
+    + 'whole effect does not get a weaker one.',
+  );
+}
+
+/**
  * Every path under `root` that is still a SYMLINK after the copy.
  *
  * **The guard that would have caught the 2026-08-28 Critical**, and the reason
@@ -162,16 +224,13 @@ export class EffectRefusal extends Error {}
  * honouring it, and either way the next write may leave the scratch. It costs
  * one `lstat` per file, which is the price of the claim this module makes.
  */
-function symlinksUnder(root: string): string[] {
+function symlinksUnder(root: string): Walked<string[]> {
   const out: string[] = [];
+  const unreadable: string[] = [];
   const walk = (dir: string): void => {
-    let entries;
-    try {
-      entries = readdirSync(dir, { withFileTypes: true });
-    } catch {
-      return;
-    }
-    for (const entry of entries) {
+    const read = readDir(dir);
+    unreadable.push(...read.unreadable);
+    for (const entry of read.entries) {
       const full = path.join(dir, entry.name);
       // `isSymbolicLink` on the Dirent, which is an `lstat` — `isDirectory()`
       // is FALSE for a directory symlink, so a walk that only recursed on
@@ -181,27 +240,26 @@ function symlinksUnder(root: string): string[] {
     }
   };
   walk(root);
-  return out;
+  return { found: out, unreadable };
 }
 
 /** Every `*.md` under a directory, as paths relative to it. */
-function markdownUnder(root: string): string[] {
+function markdownUnder(root: string): Walked<string[]> {
   const out: string[] = [];
+  const unreadable: string[] = [];
   const walk = (dir: string): void => {
-    let entries;
-    try {
-      entries = readdirSync(dir, { withFileTypes: true });
-    } catch {
-      return;   // a directory that is not there contributes nothing
-    }
-    for (const entry of entries) {
+    // A directory that is not there contributes nothing; one that refused the
+    // walk contributes a REASON — see `readDir`.
+    const read = readDir(dir);
+    unreadable.push(...read.unreadable);
+    for (const entry of read.entries) {
       const full = path.join(dir, entry.name);
       if (entry.isDirectory()) walk(full);
       else if (entry.name.endsWith('.md')) out.push(path.relative(root, full));
     }
   };
   walk(root);
-  return out;
+  return { found: out, unreadable };
 }
 
 /**
@@ -227,17 +285,14 @@ function markdownUnder(root: string): string[] {
  * `.audit` and `.index.db` stay excluded for the reasons `worthCopying` gives —
  * they are not copied, so they cannot differ here anyway.
  */
-function elsewhereInCorpus(corpusDir: string): Map<string, string> {
+function elsewhereInCorpus(corpusDir: string): Walked<Map<string, string>> {
   const out = new Map<string, string>();
+  const unreadable: string[] = [];
   const items = path.join(corpusDir, 'items');
   const walk = (dir: string): void => {
-    let entries;
-    try {
-      entries = readdirSync(dir, { withFileTypes: true });
-    } catch {
-      return;
-    }
-    for (const entry of entries) {
+    const read = readDir(dir);
+    unreadable.push(...read.unreadable);
+    for (const entry of read.entries) {
       const full = path.join(dir, entry.name);
       if (full === items) continue;   // diffed field-by-field by `snapshot`
       // **The same exclusions the copy uses, for a second reason.** They are not
@@ -255,14 +310,17 @@ function elsewhereInCorpus(corpusDir: string): Map<string, string> {
           path.relative(corpusDir, full).split(path.sep).join('/'),
           createHash('sha256').update(readFileSync(full)).digest('hex'),
         );
-      } catch {
-        // Unreadable: recorded as absent, so it reads as a removal rather than
-        // silently matching the other side.
+      } catch (err) {
+        // It used to be recorded as absent, which the diff draws as a REMOVAL
+        // — a specific, checkable claim about a file nobody read. A file that
+        // was there a moment ago and cannot be read now is not a file this
+        // command deleted, and the confirm must not say it was.
+        unreadable.push(`${full} (${(err as NodeJS.ErrnoException).code ?? (err as Error).message})`);
       }
     }
   };
   walk(corpusDir);
-  return out;
+  return { found: out, unreadable };
 }
 
 /** What changed outside `items/`, named as files rather than as fields. */
@@ -294,13 +352,21 @@ function elsewhereEffect(
 /** Every item file's text, keyed by its path relative to the corpus directory. */
 export function snapshot(corpusDir: string): Map<string, string> {
   const items = path.join(corpusDir, 'items');
+  const walked = markdownUnder(items);
+  refuseIfBlind(`the items tree under ${items}`, walked.unreadable);
   const out = new Map<string, string>();
-  for (const rel of markdownUnder(items)) {
+  for (const rel of walked.found) {
     try {
       out.set(rel, readFileSync(path.join(items, rel), 'utf8'));
-    } catch {
-      // Unreadable mid-snapshot: absent, which the diff reports as a removal
-      // rather than silently matching the other side.
+    } catch (err) {
+      // It used to be recorded as absent, and absent on one side of the diff
+      // is drawn as a CREATION or a REMOVAL — a confident claim about an item
+      // this never read. `readItem` already refuses a file it cannot parse for
+      // the same reason; a file it cannot read is the wider version of that.
+      throw new EffectRefusal(
+        `${rel} could not be read, so its change cannot be shown `
+        + `(${(err as NodeJS.ErrnoException).code ?? String(err)})`,
+      );
     }
   }
   return out;
@@ -587,7 +653,14 @@ export function deriveEffect(
     // as "This changes nothing", a confident false statement rather than a
     // blank. An empty result must mean the command changed nothing, never that
     // there was nothing to change.
-    if (markdownUnder(path.join(scratchCorpus, 'items')).length === 0) {
+    const itemsDir = path.join(scratchCorpus, 'items');
+    const copied = markdownUnder(itemsDir);
+    // **The blind walk is refused BEFORE the count is read.** A walk that
+    // stopped on an unreadable directory can answer a non-zero count and still
+    // be missing most of the corpus, so the emptiness check below would pass
+    // over exactly the case that makes it meaningless.
+    refuseIfBlind(`the items tree of the scratch copy (${itemsDir})`, copied.unreadable);
+    if (copied.found.length === 0) {
       throw new EffectRefusal(
         'the scratch copy holds no item files, so an empty effect could not be distinguished '
         + 'from a copy that did not happen',
@@ -599,9 +672,14 @@ export function deriveEffect(
     // `findProjectRoot(repoRoot, scratchCorpus)` to `scratchCorpus`, which with
     // a non-empty override is a value compared to itself and could not fail.
     const escapes = symlinksUnder(scratchCorpus);
-    if (escapes.length > 0) {
+    // **A safety check that could not look is not a safety check.** This one
+    // asserts a NEGATIVE — that no symlink survived — so a directory it could
+    // not walk makes it answer "all clear" over the exact place the thing it
+    // hunts would hide. `a-gate-that-cannot-be-shown-to-fail-is-not-a-gate`.
+    refuseIfBlind(`the scratch copy (${scratchCorpus}), checked for surviving symlinks`, escapes.unreadable);
+    if (escapes.found.length > 0) {
       throw new EffectRefusal(
-        `${escapes.length} symlink(s) survived the copy (${escapes[0]}), so a write to the `
+        `${escapes.found.length} symlink(s) survived the copy (${escapes.found[0]}), so a write to the `
         + 'scratch could reach the real corpus through one — which is exactly what happened '
         + 'before `dereference: true`',
       );
@@ -609,6 +687,7 @@ export function deriveEffect(
 
     const before = snapshot(scratchCorpus);
     const beforeRest = elsewhereInCorpus(scratchCorpus);
+    refuseIfBlind(`the corpus outside items/ (${scratchCorpus})`, beforeRest.unreadable);
     try {
       run(process.execPath, [cliEntry, ...argv], {
         // The REAL repository, so every repository-relative path the user typed
@@ -625,9 +704,11 @@ export function deriveEffect(
       // one.
       throw new EffectRefusal(String(error instanceof Error ? error.message : error));
     }
+    const afterRest = elsewhereInCorpus(scratchCorpus);
+    refuseIfBlind(`the corpus outside items/ after the run (${scratchCorpus})`, afterRest.unreadable);
     return [
       ...effectBetween(before, snapshot(scratchCorpus)),
-      ...elsewhereEffect(beforeRest, elsewhereInCorpus(scratchCorpus)),
+      ...elsewhereEffect(beforeRest.found, afterRest.found),
     ];
   } finally {
     if (scratch !== null) rmSync(scratch, { recursive: true, force: true });

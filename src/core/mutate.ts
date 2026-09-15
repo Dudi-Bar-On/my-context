@@ -2617,8 +2617,16 @@ export function supersedeItem(ctx: MutationContext, input: SupersedeInput): Muta
       retired.id,
       testsRestingOn(path.dirname(ctx.root), retired.id, [retired, replacement]),
     );
-  } catch {
-    restingSaid = '';
+  } catch (err) {
+    // **`''` was the defect** (`plan:swallow seq:11`, minor m10). "It cannot
+    // fail the write" is argued above and is right; `''` being BYTE-IDENTICAL
+    // to "no test rests on this item" is not, and this paragraph is the only
+    // thing a person is told at the one moment they could act on it. The
+    // failure costs the answer and says so.
+    restingSaid =
+      `\n\nWhich tests rest on ${retired.id}: NOT MEASURED — the check itself failed (`
+      + `${err instanceof Error ? err.message : String(err)}). That is not the same as nothing `
+      + `resting on it, and it did not stop the retirement.`;
   }
 
   return {

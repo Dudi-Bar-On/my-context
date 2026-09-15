@@ -573,6 +573,32 @@ test('clearing removes the derived copy and the plan, and leaves the mirror', ()
     assert.equal(advanceRedaction(f.mirror, 'session'), null);
     assert.equal(readFileSync(f.mirror).equals(before), true, 'the record was touched');
     assert.equal(clearRedactions(f.mirror), false, 'clearing twice is a state, not a failure');
+
+    /**
+     * **`removed` is set on BOTH removal paths** — `plan:swallow seq:11`,
+     * minor m15. It used to live inside the `try`, so a file removed by the
+     * `rmSync` fallback answered `false` and `mycontext conversation redact`
+     * printed *"nothing was being faked in this session, so nothing changed"*
+     * having just deleted the choice AND the redacted copy.
+     *
+     * **A platform limit, stated rather than faked.** Reaching the fallback
+     * needs `unlinkSync` to fail where `rmSync` then succeeds — a file held
+     * open under a mandatory Windows lock, which one process cannot schedule
+     * against itself and which does not exist on other platforms. So the
+     * assertion is on the SHAPE, in `execute-effect.test.ts`'s idiom: the flag
+     * is outside the `try`, which is the whole of the fix and the one thing a
+     * later edit could undo.
+     */
+    const source = readFileSync(
+      path.join(import.meta.dirname, '..', '..', 'src', 'core', 'conversation-redaction.ts'),
+      'utf8',
+    );
+    assert.match(
+      source,
+      /try \{ unlinkSync\(file\); \} catch \{ rmSync\(file, \{ force: true \}\); \}\s*\n\s*removed = true;/u,
+      'clearRedactions sets `removed` inside the try again, so a plan the rmSync fallback '
+      + 'deleted reports that nothing was removed.',
+    );
     assert.ok(redactedCopyPath(f.mirror).endsWith('.redacted.jsonl'));
   } finally { f.dispose(); }
 });

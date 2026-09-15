@@ -55,6 +55,26 @@ export interface DecayReport {
    * `--full`, and `doctor`'s `scope_policy_inert` note reports it by name.
    */
   unrestricted: DecayRow[];
+  /**
+   * Item types this config's `categories` map says NOTHING about, with how
+   * many active items carry each — newest defect first, `plan:swallow seq:11`
+   * minor m13.
+   *
+   * The line that produces them reads
+   * `config.categories[item.type]?.tier !== 'normative'`, and the `?.` makes an
+   * ABSENT category answer "not normative". That is the benign branch taken by
+   * an unlisted input: rename a category in `config.json` and every item still
+   * carrying the old type silently leaves this report — not retired, not cold,
+   * not warm, not counted anywhere, and therefore never reviewed for
+   * retirement again. Nothing said so, which is why it is here: the report must
+   * be able to say *"I did not measure these, and this is why"*, in the same
+   * report that otherwise reads as a complete census.
+   *
+   * Empty is the ordinary answer and means the census covered everything
+   * eligible. It is NOT a bucket: these rows are in neither `cold` nor `warm`,
+   * precisely because no tier could be established for them.
+   */
+  unknownCategory: { type: string; count: number }[];
 }
 
 export interface DecayInput {
@@ -97,10 +117,24 @@ export function computeDecay(input: DecayInput): DecayReport {
   const cold: DecayRow[] = [];
   const warm: DecayRow[] = [];
   const unrestricted: DecayRow[] = [];
+  const unknown = new Map<string, number>();
 
   for (const item of input.items) {
+    const category = input.config.categories[item.type];
+    // **Counted BEFORE `isEligible`, and that is where the defect actually
+    // lives.** `isEligible` is `Boolean(config.categories[item.type]?.enabled)`
+    // and `isNormative` is `…?.tier === 'normative'`: both read an ABSENT
+    // category as a measured "no". So an item whose category was renamed out
+    // from under it is excluded one line earlier than the `?.tier` this item
+    // names, and asking the question after the gate would count nothing at all.
+    // An `active` item is the one this report is about; a retired one is
+    // excluded on its own merits either way.
+    if (category === undefined) {
+      if (item.status === 'active') unknown.set(item.type, (unknown.get(item.type) ?? 0) + 1);
+      continue;
+    }
     if (!isEligible(item, input.config)) continue;
-    if (input.config.categories[item.type]?.tier !== 'normative') continue;
+    if (category.tier !== 'normative') continue;
 
     const row = toRow(item, usage);
 
@@ -122,6 +156,9 @@ export function computeDecay(input: DecayInput): DecayReport {
   return {
     window: input.window,
     sessionsRecorded: input.sessionsRecorded,
+    unknownCategory: [...unknown]
+      .map(([type, count]) => ({ type, count }))
+      .sort((a, b) => a.type.localeCompare(b.type)),
     cold: cold.sort(byColdest),
     warm: warm.sort(byColdest),
     unrestricted: unrestricted.sort(byColdest),

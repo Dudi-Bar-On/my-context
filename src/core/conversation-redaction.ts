@@ -435,7 +435,15 @@ export function clearRedactions(mirror: string): boolean {
   let removed = false;
   for (const file of [plan, copy]) {
     if (!existsSync(file)) continue;
-    try { unlinkSync(file); removed = true; } catch { rmSync(file, { force: true }); }
+    // **`removed` is set on BOTH paths that remove the file** — it used to be
+    // set only inside the `try`, so a plan deleted by the `rmSync` fallback
+    // reported `false` and the command told the reader "nothing was being
+    // faked in this session, so nothing changed" having just deleted the
+    // choice and the copy it produced (`plan:swallow seq:11`, minor m15). The
+    // fallback is the SUCCESS path on Windows often enough to matter:
+    // `unlinkSync` is the one that fails on a file a reader still has open.
+    try { unlinkSync(file); } catch { rmSync(file, { force: true }); }
+    removed = true;
   }
   return removed;
 }

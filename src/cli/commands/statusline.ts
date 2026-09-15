@@ -590,7 +590,14 @@ function cmdStatusline(ws: Workspace, args: string[], out: Emit, cwd: string): n
     return 1;
   }
 
-  const raw = readStdin();
+  const { text: raw, unreadable } = readStdin();
+  // A pipe that refused is not a pipe with nothing in it: `NO_PAYLOAD` tells
+  // the reader to pipe a payload in, which is exactly the wrong instruction
+  // when they did and the read threw.
+  if (unreadable !== null) {
+    out(`mycontext: the status payload could not be read from stdin (${unreadable}).`);
+    return 1;
+  }
   if (raw.trim() === '') {
     out(NO_PAYLOAD);
     return 1;

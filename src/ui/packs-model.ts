@@ -359,8 +359,24 @@ function droppedFrom(root: string, records: readonly ImportRecord[]): Dropped[] 
     entries = readdirSync(dir, { withFileTypes: true })
       .filter((entry) => entry.isDirectory())
       .map((entry) => entry.name);
-  } catch {
-    return [];
+  } catch (err) {
+    // **`return []` was the defect** (`plan:swallow seq:11`, minor m17), and
+    // the function it was in is the one whose STATED JOB is
+    // `INV-nothing-is-dropped-silently`: it exists to name what the sibling
+    // reader skips, and it answered "nothing was skipped" for a directory it
+    // never read. A missing directory IS "no packs here" and stays so; every
+    // other errno is a refusal, and a refusal is reported as the drop it is,
+    // through the one channel this response already has for drops.
+    const code = (err as NodeJS.ErrnoException).code;
+    if (code === 'ENOENT') return [];
+    return [{
+      where: dir,
+      message:
+        `this directory could not be read (${code ?? (err as Error).message}), so nothing below `
+        + `it was examined. A half-imported pack leaves a directory here with no import.json in `
+        + `it, and this screen cannot tell you whether one is there \u2014 the list of drops is a `
+        + `statement about what was read, not about what is in the workspace.`,
+    }];
   }
   return entries
     .filter((name) => name !== UNKNOWN_PACK_DIR && !recorded.has(name))

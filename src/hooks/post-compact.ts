@@ -188,6 +188,9 @@ function handoverFields(read: HandoverRead | null): {
   if (read === null) return {};
   if (read.state === 'off') return { handoverState: 'off' };
   if (read.state === 'missing') return { handoverState: 'missing', handoverPath: read.path };
+  // A file that is THERE and refused reads differently from one that is
+  // gone, and the row a person reads later must keep them apart.
+  if (read.state === 'unreadable') return { handoverState: 'unreadable', handoverPath: read.path };
   // `totalLines`, not `deliveredLines`: this hook resolves and cannot deliver,
   // so the count it records is the document's own. What any one session was
   // actually handed is `SessionStart`'s fact, declared in the block that

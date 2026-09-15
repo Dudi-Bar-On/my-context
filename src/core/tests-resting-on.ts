@@ -184,6 +184,25 @@ export interface RestingTests {
   walked: number;
   /** Whether `TEST_FILE_LIMIT` cut the walk short. */
   truncated: boolean;
+  /**
+   * Repo-relative paths the walk could not read, each with its errno — a
+   * directory that refused `readdir`, a file that refused `readFileSync`, an
+   * entry that would not `stat`.
+   *
+   * **`truncated` was here and this was not** (`plan:swallow seq:11`, minor
+   * m12), so an unreadable test file was reported as a file that DECLARES
+   * NOTHING — folded into the count of files walked and into the sentence "no
+   * test declares @basis <id>". That answer feeds the retirement/supersede
+   * safety question at the one moment somebody could act on it, and the
+   * module's own header says a silently short answer to "which tests rest on
+   * this" is the exact shape it exists to refuse. It refused the ceiling and
+   * not the refusal.
+   *
+   * Empty is the ordinary answer and is a measurement. It never gates: the
+   * module reads and never writes, and a tree that cannot be walked costs a
+   * sentence rather than a retirement.
+   */
+  unreadable: string[];
   declaring: DeclaringTest[];
   recorded: RecordedTestPath[];
   /** The recorded paths that match no file at all — renamed, or deleted. */
@@ -192,16 +211,23 @@ export interface RestingTests {
 
 /** Every file under the test trees, repo-relative and POSIX, bounded and sorted. */
 export function testTreeFiles(repoRoot: string, limit: number = TEST_FILE_LIMIT): {
-  files: string[]; truncated: boolean;
+  files: string[]; truncated: boolean; unreadable: string[];
 } {
   const files: string[] = [];
+  const unreadable: string[] = [];
   let truncated = false;
+  const rel = (full: string): string => path.relative(repoRoot, full).split(path.sep).join('/');
   const walk = (dir: string): void => {
     if (files.length >= limit) { truncated = true; return; }
     let entries: string[];
     try {
       entries = readdirSync(dir);
-    } catch {
+    } catch (err) {
+      // A tree that is not there contributes nothing and is not a refusal:
+      // `e2e/` is absent in a project that has no browser tests. Every other
+      // errno is a directory that IS there and was not read.
+      const code = (err as NodeJS.ErrnoException).code;
+      if (code !== 'ENOENT') unreadable.push(`${rel(dir)}/ (${code ?? (err as Error).message})`);
       return;
     }
     for (const entry of entries.sort()) {
@@ -211,15 +237,17 @@ export function testTreeFiles(repoRoot: string, limit: number = TEST_FILE_LIMIT)
       let s;
       try {
         s = statSync(full);
-      } catch {
+      } catch (err) {
+        const code = (err as NodeJS.ErrnoException).code;
+        if (code !== 'ENOENT') unreadable.push(`${rel(full)} (${code ?? (err as Error).message})`);
         continue;
       }
       if (s.isDirectory()) walk(full);
-      else files.push(path.relative(repoRoot, full).split(path.sep).join('/'));
+      else files.push(rel(full));
     }
   };
   for (const tree of TEST_TREES) walk(path.join(repoRoot, tree));
-  return { files: files.sort(), truncated };
+  return { files: files.sort(), truncated, unreadable };
 }
 
 /** A `scope` entry that points into a test tree, and is therefore a claim about a test. */
@@ -247,14 +275,18 @@ export function testsRestingOn(
   id: string,
   sources: ReadonlyArray<{ id: string; scope: readonly string[] }>,
 ): RestingTests {
-  const { files, truncated } = testTreeFiles(repoRoot);
+  const { files, truncated, unreadable } = testTreeFiles(repoRoot);
   const declaring: DeclaringTest[] = [];
   for (const file of files) {
     if (!file.endsWith('.ts')) continue;
     let text: string;
     try {
       text = readFileSync(path.join(repoRoot, ...file.split('/')), 'utf8');
-    } catch {
+    } catch (err) {
+      // It used to `continue`, which made an unreadable test file
+      // indistinguishable from one that declares nothing. The file was walked
+      // a line ago, so it IS there: this is a refusal, not an absence.
+      unreadable.push(`${file} (${(err as NodeJS.ErrnoException).code ?? (err as Error).message})`);
       continue;
     }
     const tokens = basisTokens(text);
@@ -285,6 +317,7 @@ export function testsRestingOn(
   return {
     walked: files.length,
     truncated,
+    unreadable,
     declaring,
     recorded,
     unresolved: recorded.filter((r) => r.matches === 0),
@@ -307,6 +340,12 @@ export function restingTestsLine(found: RestingTests): string {
     `${found.declaring.length} test(s) declare a basis on it`,
     `${found.recorded.length} test path(s) recorded in scope`,
   ];
+  // A count that rests on files nobody could read is not the count it looks
+  // like, and the one-line form is where a reader is least likely to go and
+  // check — so it says so here too rather than only in the paragraph.
+  if (found.unreadable.length > 0) {
+    parts.push(`${found.unreadable.length} path(s) COULD NOT BE READ, so this is a floor`);
+  }
   if (found.unresolved.length > 0) {
     parts.push(`${found.unresolved.length} of those MATCH NO FILE — renamed or deleted`);
   }
@@ -348,6 +387,24 @@ export function restingTestsSaid(id: string, found: RestingTests): string {
       `  named in scope   ${r.named}  (${r.from}) -> ${r.matches === 0
         ? 'MATCHES NO FILE — renamed or deleted'
         : `${r.matches} file(s)`}`,
+    );
+  }
+  if (found.unreadable.length > 0) {
+    out.push(
+      `  ${found.unreadable.length} file(s) or director(ies) under the test trees COULD NOT BE ` +
+      `READ (${found.unreadable.slice(0, 5).join(', ')}` +
+      `${found.unreadable.length > 5 ? `, and ${found.unreadable.length - 5} more` : ''}). ` +
+      `Whatever they declare is not in the list above, so "no test declares @basis ${id}" is a ` +
+      `statement about what was read and not about what is there.`,
+    );
+  }
+  if (found.unreadable.length > 0) {
+    out.push(
+      `  ${found.unreadable.length} path(s) under the test trees COULD NOT BE READ ` +
+      `(${found.unreadable.slice(0, 5).join(', ')}` +
+      `${found.unreadable.length > 5 ? `, and ${found.unreadable.length - 5} more` : ''}). ` +
+      `Whatever they declare is not in the list above, so "no test declares @basis ${id}" is a ` +
+      `statement about what was READ and not about what is there.`,
     );
   }
   if (found.unresolved.length > 0) {

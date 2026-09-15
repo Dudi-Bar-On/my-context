@@ -29,7 +29,7 @@
  */
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdirSync, mkdtempSync, unlinkSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, unlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { runCli } from '../../src/cli/index.ts';
@@ -242,6 +242,34 @@ test('a pack directory with no import.json is disclosed — the quarantine is no
   // The real pack is still listed, and is not itself reported as dropped.
   assert.equal(body.packs.length, 1);
   assert.equal(body.packs[0].name, PACK_NAME);
+});
+
+/**
+ * `plan:swallow seq:11`, minor m17: the function whose STATED JOB is
+ * `INV-nothing-is-dropped-silently` answered `[]` for a directory it could not
+ * read — "nothing was dropped" from a walk that never happened, in the one
+ * place on this screen that exists to admit a gap.
+ *
+ * A FILE where `.audit/imported/` should be produces `ENOTDIR`, a path that
+ * exists and cannot be walked. (`icacls /deny` does not bite for this account,
+ * so a real EACCES cannot be built here; this is the same question.)
+ *
+ * @basis INV-nothing-is-dropped-silently
+ */
+test('an imported directory that could not be read is reported as a drop, not as no drops', () => {
+  const { dir } = workspaceWithPack();
+  const imported = path.join(dir, '.my_context', '.audit', 'imported');
+  removeTree(imported);
+  writeFileSync(imported, 'not a directory', 'utf8');
+
+  const { body } = packs(dir);
+  assert.equal(
+    body.dropped.length, 1,
+    'the imported directory could not be read and the screen said nothing was dropped',
+  );
+  assert.equal(body.dropped[0].where, imported);
+  assert.match(body.dropped[0].message, /could not be read/u);
+  assert.match(body.dropped[0].message, /ENOTDIR/u);
 });
 
 test('an unknown query parameter is refused rather than ignored', () => {
