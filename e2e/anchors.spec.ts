@@ -40,15 +40,31 @@ import { projectDirName } from '../src/core/conversation-index.ts';
 const SESSION = 'sess-anchors';
 
 /**
- * **The table's label is its FIRST READABLE HEADER CELL, not the joined row.**
+ * **The table's label is EVERY READABLE HEADER CELL, with the nearest heading
+ * above the table in front of it** — owner ruling 2026-09-15,
+ * `TASK-a-table-mark-is-labelled-with-one-word-from-its-header-and-a`.
  *
- * Owner ruling 2026-09-11, landed as `440710b6`: the automatic pass keeps two
- * kinds and the table labels that read as a bare `|` are fixed. `tableLabel`
- * (`src/core/anchor-pass.ts` since 2026-09-12) now answers
- * `header.find(isReadable)`, so `| tokenizer | hits |` is anchored as
- * `tokenizer` rather than as `tokenizer | hits`.
+ * It was the FIRST readable cell alone until then, which is what this file
+ * said and pinned. That was itself a repair of a worse shape — the whole
+ * header row joined, which produced 25 anchors labelled literally `|` — and
+ * the repair overshot: 376 of his 750 bookmarks came out named `id`, `lane`,
+ * `before`, `status`, `D`, and 27 of them were called `lane`. His words: *"you
+ * write Marked lane, it would be nice to see which lane, which table, which
+ * report etc for every mark you add."*
+ *
+ * **The old ruling is not undone by the new one, and the difference is one
+ * word.** `find` became `filter`, so only READABLE cells are joined and the
+ * bare-`|` defect cannot come back; a header of empty cells still draws `a
+ * table of N columns` rather than its own borders.
+ *
+ * This fixture's table carries no heading above it, so the composed label is
+ * the two cells: `tokenizer | hits`. `TABLE_HEADER` stays as the SUBSTRING a
+ * row is found by — a `hasText` filter is a search and not a claim about the
+ * whole name — and `TABLE_LABEL` is what the label actually IS, which is what
+ * every equality below now names.
  */
 const TABLE_HEADER = 'tokenizer';
+const TABLE_LABEL = 'tokenizer | hits';
 /**
  * **Still in the transcript, and deliberately NOT an anchor any more.**
  *
@@ -288,7 +304,7 @@ test('a table and a ruling are already marked, and nothing else is', async ({ pa
     + 'alongside the prose turn, the Hebrew turn and the shell pipeline: the owner retired that '
     + 'grammar on 2026-09-11 (441 of 613 anchors re-counted, `automatic/report` 101 to 0). A '
     + 'detector that widened, or a report detector that came back, would add a row here.',
-  ).toEqual([RULING, TABLE_HEADER].sort());
+  ).toEqual([RULING, TABLE_LABEL].sort());
 
   // The keyed words only — the glyph beside each is `.g`, asserted as a mark
   // beside its word by the test above rather than compared as text here.
@@ -311,7 +327,7 @@ test('the marked points are searched by name, and that is not the same box as th
   await page.locator('.convanchfind').fill(TABLE_HEADER);
   const rows = page.locator('.convanchor');
   await expect(rows).toHaveCount(1, { timeout: 20_000 });
-  await expect(rows.locator('.convanchorlabel')).toHaveText(TABLE_HEADER);
+  await expect(rows.locator('.convanchorlabel')).toHaveText(TABLE_LABEL);
 
   // **The two boxes answer different questions, and this is what says so.**
   // `PROSE` is in the transcript and in no label, so a find box that had
@@ -381,7 +397,7 @@ test('opening a marked point lands the document on it, and says which point it i
   const landed = page.locator('.tvlanded');
   await expect(landed).toBeVisible({ timeout: 20_000 });
   await expect(landed).toContainText('Opened at the point you marked');
-  await expect(landed.locator('.tvlandedlabel')).toHaveText(TABLE_HEADER);
+  await expect(landed.locator('.tvlandedlabel')).toHaveText(TABLE_LABEL);
   await page.screenshot({ path: 'e2e/screens/anchors-goto.png', fullPage: true });
 });
 
@@ -425,7 +441,7 @@ for (const lang of ['en', 'he'] as const) {
     await row.locator('.convanchorrename').click();
     const field = row.locator('.convanchorrenameinput');
     await expect(field).toBeVisible();
-    await expect(field).toHaveValue(TABLE_HEADER);
+    await expect(field).toHaveValue(TABLE_LABEL);
     await field.fill('the tokenizer measurement');
     await row.locator('.convanchorrenamesave').click();
 
@@ -545,6 +561,6 @@ test('a turn the automatic pass marked shows its name in the document, not an of
   const turn = page.locator('.tvturn', { hasText: 'Here is what was measured' });
   await expect(turn).toBeVisible({ timeout: 20_000 });
   await expect(turn.locator('.tvanchored')).toBeVisible({ timeout: 20_000 });
-  await expect(turn.locator('.tvanchorlabel')).toHaveText(TABLE_HEADER);
+  await expect(turn.locator('.tvanchorlabel')).toHaveText(TABLE_LABEL);
   await expect(turn.locator('.tvanchormark')).toHaveCount(0);
 });

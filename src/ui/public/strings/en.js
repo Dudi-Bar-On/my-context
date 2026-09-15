@@ -318,13 +318,39 @@ export const strings = {
   'conv.anchors.countOf': '{n} of {total} marked points match.',
   'conv.anchors.find': 'Find by name',
   'conv.anchors.findRegion': 'Find a marked point by name',
-  'conv.anchors.kind.note': 'you marked this',
+  // ── THE OWNER'S OWN VOCABULARY ───────────────────────────────────
+  //
+  // `TASK-a-mark-you-make-yourself-cannot-say-what-kind-it-is-so-your`, owner
+  // ruling 2026-09-15. Six words a mark you make yourself may wear, and they
+  // are the names of the KINDS rather than sentences about them: they are read
+  // in a `<select>` as well as on a row, and an option reading a whole clause is
+  // an option nobody scans.
+  //
+  // `kind.note` used to read "you marked this", which said the same thing as
+  // `origin.owner` ("you marked it") one field along — two fields on one row
+  // carrying one fact. It names the kind now, which is what the column holds.
+  'conv.anchors.kind.note': 'a note',
   'conv.anchors.kind.table': 'a table',
   'conv.anchors.kind.report': 'a report',
   'conv.anchors.kind.ruling': 'a ruling you gave',
+  'conv.anchors.kind.decision': 'a decision',
+  'conv.anchors.kind.question': 'a question',
+  'conv.anchors.kind.defect': 'a defect',
+  'conv.anchors.kind.evidence': 'evidence',
+  'conv.anchors.kind.todo': 'something to do',
   'conv.anchors.origin.owner': 'you marked it',
   'conv.anchors.origin.automatic': 'marked for you',
   'conv.anchors.inLane': 'in the helper agent',
+  // ── WHICH LANE, OR THE MAIN SESSION, OR A LANE THAT IS GONE ───────────
+  //
+  // `TASK-a-table-mark-is-labelled-with-one-word-from-its-header-and-a`, owner
+  // ruling 2026-09-15. Three states and three sentences: a mark with no agent is
+  // the MAIN SESSION and not an empty lane (364 of his 750), and a lane the
+  // archive no longer holds a row for is a third thing again.
+  'conv.anchors.inMain': 'in the main session',
+  'conv.anchors.inLaneGone': 'in a helper agent this archive no longer has a record of — its name cannot be recovered, only its id:',
+  'conv.anchors.kindLabel': 'What kind of point is it?',
+  'conv.anchors.noteLabel': 'Anything else worth remembering about it',
   'conv.anchors.byte': 'at byte',
   'conv.anchors.goto': 'Open the conversation at this point',
   'conv.anchors.relabel': 'Rename',
@@ -525,6 +551,37 @@ export const strings = {
   'conv.doc.landedNowhere': 'This link names a point past the end of what could be read of this conversation, so the document opens where it always does. Nothing was lost; it was not reached.',
   'conv.doc.top': 'Top',
   'conv.doc.end': 'End',
+  // ── STEPPING THROUGH THE MARKS AND THROUGH YOUR OWN MESSAGES ──────────
+  //
+  // `TASK-there-is-no-way-to-step-through-the-marks-or-through-your`, owner
+  // ruling 2026-09-15 option 3c. The counters are not decoration: a pair of
+  // buttons with no count beside them is a control you have to press to find
+  // out whether it does anything, and a document with nothing marked in it is
+  // a real, measured state (`STD-a-measured-zero-is-drawn-and-named`).
+  //
+  // The two "hidden" sentences exist because the find box above narrows what
+  // can be stepped to. Twelve marks becoming two must be legible as a filter
+  // and not as lost bookmarks.
+  'conv.nav.region': 'Step through this conversation',
+  'conv.nav.h': 'Step to',
+  'conv.nav.markPrev': 'Previous mark',
+  'conv.nav.markNext': 'Next mark',
+  'conv.nav.youPrev': 'Your previous message',
+  'conv.nav.youNext': 'Your next message',
+  'conv.nav.marks': '{n} marked point(s) here.',
+  'conv.nav.marksNone': 'Nothing is marked in this conversation. Mark a point on any turn below and it becomes a stop here.',
+  'conv.nav.marksHidden': '{n} more are in this conversation and the search above is hiding them — clear it to step to them.',
+  'conv.nav.yous': '{n} message(s) of yours here.',
+  'conv.nav.yousNone': 'This conversation holds no message of yours. Everything in it came from somewhere else — a helper agent’s brief, or a machine.',
+  'conv.nav.yousHidden': '{n} more are in this conversation and the search above is hiding them — clear it to step to them.',
+  'conv.nav.atMark': 'Marked point {n} of {total}:',
+  'conv.nav.atYou': 'Your message {n} of {total}.',
+  'conv.nav.markLast': 'Nothing is marked after this point. This is the last mark in the conversation, and it is still where you are.',
+  'conv.nav.markFirst': 'Nothing is marked before this point. This is the first mark in the conversation, and it is still where you are.',
+  'conv.nav.youLast': 'You said nothing after this point. This is your last message in the conversation, and it is still where you are.',
+  'conv.nav.youFirst': 'You said nothing before this point. This is your first message in the conversation, and it is still where you are.',
+  'conv.nav.noMarks': 'There is nothing marked in this conversation to step to. Mark a point on any turn below.',
+  'conv.nav.noYous': 'There is no message of yours in this conversation to step to.',
   'conv.doc.region': 'The session as one scrollable document',
   'conv.doc.whole': '{turns} turns across {records} records. Scroll the whole session — there is no page to leave.',
   'conv.doc.noMatch': 'Nothing in this session matches.',

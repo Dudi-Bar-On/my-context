@@ -3991,6 +3991,32 @@ wa-tree .wa-count{margin-inline-start:var(--sp-2);color:var(--dim);
    already dodge, three cards along. */
 .convanchorrenamebox[hidden]{display:none}
 .convanchorrenameinput{inline-size:min(36ch,100%)}
+/* ── THE TWO FIELDS THE FORM GREW — owner ruling 2026-09-15 ────────────
+   `TASK-a-mark-you-make-yourself-cannot-say-what-kind-it-is-so-your`. A kind
+   he picks and a sentence he writes, beside the name.
+
+   BOTH TAKE THE FIELD PALETTE FROM `.convanchorrenameinput`'s own row rather
+   than inventing one: `--sink` on `--edge` is what every text field on this
+   screen already is, and a control that took the user agent's background is
+   the contrast-1.0 defect this file records twice. The `<select>` is sized to
+   its content; the `<textarea>` takes the whole line, because prose in a 36ch
+   box beside a 36ch label reads as a second name.
+
+   `field-sizing` is deliberately NOT used — it is not in every engine this
+   app is driven in, and a box that silently keeps its rows elsewhere is worse
+   than one that is the same everywhere. */
+.convanchorkindpick{font:var(--fs-00)/1.2 var(--sans);color:var(--ink);
+  background:var(--sink);border:1px solid var(--edge);
+  border-radius:var(--r-sm);padding:var(--sp-1)}
+.convanchornoteinput{flex-basis:100%;min-inline-size:0;resize:vertical;
+  font:var(--fs-0)/1.4 var(--sans);color:var(--ink);background:var(--sink);
+  border:1px solid var(--edge);border-radius:var(--r-sm);
+  padding:var(--sp-1) var(--sp-2)}
+/* His free text as the row DRAWS it, and the lane's name beside the id. Both
+   are prose in an archive that is half Hebrew, so both are `<bdi>` or
+   `dir="auto"` in the markup and neither needs a direction here. */
+.convanchornote{margin:var(--sp-1) 0 0;color:var(--dim);overflow-wrap:anywhere}
+.convanchorlane{color:var(--dim)}
 .convanchorsaid,.convmarksaid,.convanchsweepsaid,.convanchsweepsub,
 .convanchsweepcapped,.convanchcount{margin-block-start:var(--sp-1);
   color:var(--dim)}
@@ -4048,6 +4074,20 @@ wa-tree .wa-count{margin-inline-start:var(--sp-2);color:var(--dim);
   padding:var(--sp-1) var(--sp-2)}
 .tvanchorsaid{flex-basis:100%;margin:0;color:var(--dim)}
 .tvanchored{white-space:nowrap}
+/* The kind and the note on a marked row of the DOCUMENT, and the two fields
+   that write them. `.tvanchorkind` is `nowrap` for `.tvanchored`'s reason one
+   line up — a two-word kind broken across a line in a bar of six controls
+   reads as two controls. The note takes the whole line: it is a sentence, and
+   a sentence squeezed between a label and a button is one nobody reads. */
+.tvanchorkind{white-space:nowrap;color:var(--dim)}
+.tvanchornote{flex-basis:100%;color:var(--dim);overflow-wrap:anywhere}
+.tvanchorkindpick{font:var(--fs-00)/1.2 var(--sans);color:var(--ink);
+  background:var(--sink);border:1px solid var(--edge);
+  border-radius:var(--r-sm);padding:var(--sp-1)}
+.tvanchornoteinput{flex-basis:100%;min-inline-size:0;resize:vertical;
+  font:var(--fs-0)/1.4 var(--sans);color:var(--ink);background:var(--sink);
+  border:1px solid var(--edge);border-radius:var(--r-sm);
+  padding:var(--sp-1) var(--sp-2)}
 /* The landing note, drawn above the well when an anchor address opened this
    document. `border-inline-start` rather than `border-left`, so the accent
    moves to the other edge under `dir="rtl"` on its own — the rule this file
@@ -4180,6 +4220,33 @@ wa-tree .wa-count{margin-inline-start:var(--sp-2);color:var(--dim);
   color:var(--dim);background:var(--panel-2);border:2px solid var(--dim);
   border-radius:var(--r-sm);padding:var(--sp-1) var(--sp-2);cursor:pointer}
 .tvcount{margin:0 0 var(--sp-1);font-size:var(--fs-00);color:var(--dim)}
+
+/* ── THE STEPPER: MARKS, AND HIS OWN MESSAGES ─────────────────────────────
+   `TASK-there-is-no-way-to-step-through-the-marks-or-through-your`.
+
+   A SECOND ROW under `.tvbar`, which already carries seven controls. It is
+   the same flex row so the two read as one block of chrome above the well,
+   and the four buttons wear `.tvjump` and take NO colour of their own — the
+   rule the copy buttons' own note states: a control that invents its palette
+   is how this app shipped a Clear button at contrast 1.0.
+
+   THE PAIRS ARE GROUPED, and that is not nesting for its own sake. Six
+   controls in one flex row put the bar at THREE lines on a 1280x720 screen and
+   let a count wrap under the WRONG pair on a narrow one — "16 message(s) of
+   yours here." sitting under Previous/Next mark. A group wraps as a unit, so
+   a count can only ever be orphaned onto the pair it describes.
+
+   `.tvnavat` is the label a step announces, and it is a `<bdi>` in the markup
+   for the reason every label on the anchors card is one: this archive is half
+   Hebrew and an isolated run keeps its own direction inside the sentence. */
+.tvnav{display:flex;flex-wrap:wrap;align-items:center;gap:var(--sp-2);
+  margin-block-end:var(--sp-1)}
+.tvnavh{flex:0 0 auto;font:var(--fs-00)/1.2 var(--sans);color:var(--dim)}
+.tvnavgroup{display:flex;flex-wrap:wrap;align-items:center;gap:var(--sp-1)}
+.tvnavcount{flex:0 1 auto;margin-inline-start:var(--sp-1);
+  font-size:var(--fs-00);color:var(--dim)}
+.tvnavsaid{margin-block-start:0}
+.tvnavat{font-weight:600;color:var(--ink)}
 
 /* ── COPYING A MARKED PASSAGE ──────────────────────────────────────────────
    `TASK-a-selected-passage-copies-as-something-a-terminal-will`.

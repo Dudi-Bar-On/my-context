@@ -983,7 +983,36 @@ const ARCH_SETTLE_MS = 250;
  * exception handling, and this way the fallback is the ordinary path for a
  * kind written by a later build.
  */
-const ANCHOR_KIND_KEYS = new Set(['note', 'table', 'report', 'ruling']);
+const ANCHOR_KIND_KEYS = new Set([
+  'note', 'table', 'report', 'ruling',
+  'decision', 'question', 'defect', 'evidence', 'todo',
+]);
+
+/**
+ * **THE KINDS HE MAY CHOOSE, IN THE ORDER THE FORM OFFERS THEM** —
+ * `TASK-a-mark-you-make-yourself-cannot-say-what-kind-it-is-so-your`, owner
+ * ruling 2026-09-15. `note` first because it is what every hand-made anchor in
+ * this workspace already carries.
+ *
+ * **IT IS A COPY OF `OWNER_ANCHOR_KINDS` AND THE COPY IS THE PROBLEM, SO IT
+ * IS MEASURED.** `src/core/anchors.ts` is TypeScript executed by Node; this
+ * file is an ES module a BROWSER loads with no build step
+ * (`CONST-node-24-no-build-step`), so it cannot import from there and there is
+ * no third place that both can read. What holds the two in step is
+ * `test/ui/anchor-kind-vocabulary.test.ts`, which imports both and asserts set
+ * equality — and also that each member has a word in BOTH string tables,
+ * because a kind offered in a `<select>` with no translation would draw its
+ * raw id to a Hebrew reader. That is the same bargain `TIP_MS` and
+ * `conv.doc.follows` already make, named where the copy is rather than left
+ * to memory.
+ *
+ * The API is the second guard and the harder one: `apiAnchorMark` checks the
+ * kind against `OWNER_ANCHOR_KINDS` itself and answers 400 naming the list, so
+ * a drift here is refused by the server rather than written.
+ */
+export const OWNER_KIND_CHOICES = [
+  'note', 'decision', 'question', 'defect', 'evidence', 'todo',
+];
 
 /**
  * ── THE GLYPH EACH ANCHOR KIND WEARS ───────────────────────────────────────
@@ -1022,11 +1051,42 @@ const ANCHOR_KIND_KEYS = new Set(['note', 'table', 'report', 'ruling']);
  * "unknown", and inventing one would be a second meaning for a glyph nobody
  * could look up. The row is still complete — it carries the kind as itself.
  */
+/**
+ * **FIVE MORE, because the owner may now choose them** —
+ * `TASK-a-mark-you-make-yourself-cannot-say-what-kind-it-is-so-your`. The set
+ * stopped being closed at four the moment `OWNER_ANCHOR_KINDS` shipped, and a
+ * kind he can pick from a list that drew no mark beside it would be the one
+ * member of a dense list nobody could scan for.
+ *
+ *   U+2611   decision  a ticked box — the thing was settled. TEXT presentation
+ *                      and no variation selector, for `table`'s stated reason
+ *                      one entry up: a geometric mark sits on the text
+ *                      baseline and needs no colour font.
+ *   U+2610   todo      the EMPTY box, which is `decision`'s own mark before
+ *                      anybody ticked it. The pair is the whole reason these
+ *                      two are legible at a glance beside each other, and it
+ *                      is why neither of them is an emoji.
+ *   U+2753   question  the ornament, and **deliberately not a bare `?`**: an
+ *                      ASCII question mark inside a label cannot be told from
+ *                      the label's own punctuation.
+ *   U+1F41E  defect    a bug. **NOT U+26A0**, which this app already means
+ *                      "warning" with on Doctor and in the shell —
+ *                      `test/ui/glyph-set.test.ts` records that one English
+ *                      word is already answered by two marks and rules a
+ *                      SECOND such clash a defect. So it is not made.
+ *   U+1F50E  evidence  a glass — something looked at closely, and kept so it
+ *                      can be looked at again.
+ */
 const ANCHOR_KIND_GLYPH = {
   note: '\u{1F4CC}',
   table: '\u25A6',
   report: '\u{1F4C4}',
   ruling: '\u2696\uFE0F',
+  decision: '\u2611',
+  question: '\u2753',
+  defect: '\u{1F41E}',
+  evidence: '\u{1F50E}',
+  todo: '\u2610',
 };
 
 /** The controls that scope a search — Task 5. Built once, never redrawn. */
@@ -1314,8 +1374,92 @@ function labelWrite(ctx, spec) {
   } else {
     input.setAttribute('aria-label', ctx.tFlat(spec.labelKey));
   }
-  if (spec.note !== undefined) box.append(spec.note);
-  box.append(field, save, cancel);
+
+  /*
+   * ── WHAT KIND OF POINT IT IS, FROM HIS OWN VOCABULARY ────────────────
+   *
+   * `TASK-a-mark-you-make-yourself-cannot-say-what-kind-it-is-so-your`, owner
+   * ruling 2026-09-15: *"does the user have the same input options so it will
+   * be documented it is marked anchores?"* The answer was no — a hand-made
+   * mark was pinned to `kind: 'note'` and he could type a label and nothing
+   * else, and he had made ONE mark in 750 while the automatic pass recorded a
+   * kind, a byte, a session, an agent and an instant for every one of its own.
+   *
+   * **A `<select>` and not a text box**, which is the item's one constraint
+   * rather than a preference: a free-text kind could be typed as `table`, and
+   * the row would then be an `origin: 'owner'` anchor wearing the automatic
+   * pass's own word for what it writes. The route is closed twice — the
+   * options come from `OWNER_KIND_CHOICES`, and `apiAnchorMark` checks what
+   * arrives against `OWNER_ANCHOR_KINDS` and answers 400 naming the list.
+   *
+   * **Named by `aria-label` in both shapes.** A visible `<label>` per control
+   * would cost two more lines on every marked row of a scrolling document,
+   * which is the measurement `named: 'aria'` already exists for; the name is
+   * still there for anything that reads the page.
+   */
+  let kindPick = null;
+  if (spec.kinds === true) {
+    kindPick = el('select', spec.kindClass);
+    kindPick.setAttribute('aria-label', ctx.tFlat('conv.anchors.kindLabel'));
+    for (const choice of OWNER_KIND_CHOICES) {
+      const option = el('option', null, ctx.tFlat(`conv.anchors.kind.${choice}`));
+      option.value = choice;
+      kindPick.append(option);
+    }
+    /*
+     * **A KIND THIS FORM CANNOT OFFER IS KEPT, NOT SILENTLY REPLACED.** A
+     * relabel carries `kind` over when the request says nothing, and the two
+     * kinds the automatic pass writes (`table`, `ruling`) are not in this
+     * list. Selecting the first option for such a row and sending it would
+     * turn every rename of an automatic mark into a re-kinding —
+     * `INV-nothing-is-dropped-silently` in the direction that costs a fact.
+     * So an unofferable kind leaves the control OUT and `run` sends nothing.
+     */
+    if (spec.kindValue !== undefined && OWNER_KIND_CHOICES.includes(spec.kindValue)) {
+      kindPick.value = spec.kindValue;
+    } else if (spec.kindValue !== undefined) {
+      kindPick = null;
+    }
+  }
+
+  /*
+   * ── HIS FREE TEXT BESIDE THE LABEL ─────────────────────────────────
+   *
+   * A label is what he recognises the point by in a list, and it has a cap and
+   * a job. This is the sentence that says WHY, and the column has existed on
+   * the row since anchors shipped with nothing on any screen writing to it or
+   * drawing it.
+   *
+   * **A `<textarea>` and not an `<input>`**, because the thing it holds is
+   * prose up to 2,000 characters and a one-line box tells a reader it wants
+   * four words. `dir="auto"` for `input`'s own reason, one control up.
+   *
+   * **NO `maxlength`, and that is deliberate.** `NOTE_CAP` lives in
+   * `src/ui/anchor-write.ts` and the route answers a 400 naming it. A second
+   * copy of the number here would be a bound this screen could silently drift
+   * from — the defect this project files as one fact recorded twice — and
+   * `post()` already throws a refusal this box draws in its own live region.
+   */
+  let detail = null;
+  if (spec.details === true) {
+    detail = el('textarea', spec.detailClass);
+    detail.rows = 2;
+    detail.value = spec.detailValue ?? '';
+    detail.setAttribute('dir', 'auto');
+    detail.setAttribute('aria-label', ctx.tFlat('conv.anchors.noteLabel'));
+    detail.placeholder = ctx.tFlat('conv.anchors.noteLabel');
+  }
+  /*
+   * **THE PARAGRAPH ABOVE THE FIELD**, which only the search hit draws. It
+   * was `spec.note` until the owner's free text arrived under that very name
+   * on the wire (`AnchorSpec.note`) — one word for two unrelated things in
+   * one function is how a caller passes the wrong one and nothing says so.
+   */
+  if (spec.lede !== undefined) box.append(spec.lede);
+  box.append(field);
+  if (kindPick !== null) box.append(kindPick);
+  if (detail !== null) box.append(detail);
+  box.append(save, cancel);
 
   /**
    * Whether the sentence now standing in `spec.said` is one THIS box put
@@ -1339,9 +1483,29 @@ function labelWrite(ctx, spec) {
     }
     save.disabled = true;
     spec.said.replaceChildren(...ctx.t(spec.busyKey));
+    /*
+     * **WHAT THE TWO NEW CONTROLS SEND, AND THE ONE THING THEY MUST NOT.**
+     *
+     * `kind` is sent only when the control is drawn; a form that does not
+     * offer it says nothing, and `apiAnchorRelabel` then carries the standing
+     * kind over — "re-deriving either would reorder his list every time he
+     * fixed a typo".
+     *
+     * `note` is `null` WHEN HE CLEARED IT and the trimmed text otherwise, and
+     * NEVER `''`. The route reads the three apart deliberately: absent keeps
+     * the existing note, `null` clears it, and a string replaces it. An empty
+     * string is a fourth spelling of "nothing" that `AnchorSpec.note` names as
+     * the defect `subagents.dispatched_by` was repaired for.
+     */
+    const more = {};
+    if (kindPick !== null) more.kind = kindPick.value;
+    if (detail !== null) {
+      const said = detail.value.trim();
+      more.note = said === '' ? null : said;
+    }
     let answer;
     try {
-      answer = await ctx.post(spec.endpoint, spec.body(label));
+      answer = await ctx.post(spec.endpoint, spec.body(label, more));
     } catch (error) {
       spec.said.replaceChildren(errorNote(error.message));
       save.disabled = false;
@@ -1367,7 +1531,15 @@ function labelWrite(ctx, spec) {
     if (event.key === 'Enter') { event.preventDefault(); void run(); }
   });
 
-  const writer = { box, input, save, cancel, run, opened: input.value, shut: null };
+  const writer = {
+    box, input, save, cancel, run, shut: null,
+    // What a cancel puts back — all three fields and not only the label,
+    // because a reader who opened a rename, changed the kind and thought
+    // better of it must get the row they opened back and not two thirds of it.
+    opened: input.value,
+    openedKind: kindPick === null ? null : kindPick.value,
+    openedDetail: detail === null ? null : detail.value,
+  };
 
   /**
    * **LEAVE WITHOUT WRITING.** The draft goes back to what the box opened
@@ -1386,6 +1558,8 @@ function labelWrite(ctx, spec) {
   const abandon = () => {
     if (box.hidden || save.disabled) return;
     input.value = writer.opened;
+    if (kindPick !== null && writer.openedKind !== null) kindPick.value = writer.openedKind;
+    if (detail !== null && writer.openedDetail !== null) detail.value = writer.openedDetail;
     if (mine) {
       spec.said.replaceChildren();
       spec.said.hidden = true;
@@ -1430,7 +1604,16 @@ function boxToggle(button, box, input, onToggle = () => {}, writer = null) {
     // What the field holds AT THE MOMENT IT OPENS, which is what a cancel puts
     // back. Read after `onToggle`, because that is where the caller that
     // restores the standing label restores it.
-    if (writer !== null) writer.opened = input.value;
+    if (writer !== null) {
+      writer.opened = input.value;
+      // The other two are read the same way and at the same moment, so a
+      // caller that restores a standing value in `onToggle` restores all of
+      // them and a cancel puts back exactly what opened.
+      const picked = box.querySelector('select');
+      const said = box.querySelector('textarea');
+      writer.openedKind = picked === null ? null : picked.value;
+      writer.openedDetail = said === null ? null : said.value;
+    }
     input.focus();
   });
   if (writer === null) return;
@@ -1663,14 +1846,17 @@ function markRow(ctx, hit, term, onMarked) {
     inputClass: 'convmarklabel',
     saveClass: 'convmarksave',
     cancelClass: 'convmarkcancel',
-    note,
+    lede: note,
     said,
+    kinds: true,
+    details: true,
     endpoint: '/api/conversations/anchors/mark',
-    body: (label) => ({
+    body: (label, more) => ({
       sessionId: hit.sessionId,
       agentId: hit.agentId,
       byteOffset: hit.byteOffset,
       label,
+      ...more,
     }),
     done: () => {
       // The row redraws as MARKED rather than saying so beside a button that
@@ -2002,16 +2188,20 @@ function anchorRow(ctx, anchor, onChanged) {
   // shape that leaves a tab showing nothing at all while every unit test
   // passes. The `anchors` table takes any `kind` string, so an anchor
   // written by a later build must still be readable on this one.
-  if (ANCHOR_KIND_KEYS.has(anchor.kind)) {
-    // **The glyph is a MARK BESIDE the word, never instead of it.** `glyphed`
-    // hides it from assistive tech and isolates the pair for bidi; the keyed
-    // word stays exactly where it was and keeps its key, so `screen-literals`
-    // and `strings-parity` measure the same thing they measured before.
-    kind.append(glyphed(ANCHOR_KIND_GLYPH[anchor.kind],
-      ctx.t(`conv.anchors.kind.${anchor.kind}`)));
-  } else {
-    kind.textContent = anchor.kind;
-  }
+  const showKind = () => {
+    kind.replaceChildren();
+    if (ANCHOR_KIND_KEYS.has(anchor.kind)) {
+      // **The glyph is a MARK BESIDE the word, never instead of it.** `glyphed`
+      // hides it from assistive tech and isolates the pair for bidi; the keyed
+      // word stays exactly where it was and keeps its key, so `screen-literals`
+      // and `strings-parity` measure the same thing they measured before.
+      kind.append(glyphed(ANCHOR_KIND_GLYPH[anchor.kind],
+        ctx.t(`conv.anchors.kind.${anchor.kind}`)));
+    } else {
+      kind.textContent = anchor.kind;
+    }
+  };
+  showKind();
   head.append(kind);
   // **WHO MARKED IT.** The same two-value fact the sweep button acts on, said
   // where a reader can see it rather than left for them to infer from the kind.
@@ -2025,9 +2215,41 @@ function anchorRow(ctx, anchor, onChanged) {
   // tell two marks in one session apart. `mono` isolates both for the reason
   // `.tvat` gives one screen along: an identifier inside a Hebrew paragraph
   // takes the paragraph's direction unless it is isolated.
-  if (anchor.agentId !== null) {
-    head.append(' · ');
+  /*
+   * **THREE STATES, AND THE MAIN SESSION IS NOT AN EMPTY LANE** —
+   * `TASK-a-table-mark-is-labelled-with-one-word-from-its-header-and-a`, owner
+   * ruling 2026-09-15: *"you write Marked lane, it would be nice to see which
+   * lane, which table, which report etc for every mark you add."*
+   *
+   *   `agentId === null`                 the MAIN SESSION marked it. 364 of
+   *                                      his 750 are this, and drawing them
+   *                                      as a lane with no name is exactly
+   *                                      what `STD-a-measured-zero-is-drawn-
+   *                                      and-named` forbids.
+   *   `agentId` set, `laneName` set      the lane, in the name its dispatcher
+   *                                      typed. `<bdi>` because a lane name
+   *                                      is prose and this archive is half
+   *                                      Hebrew.
+   *   `agentId` set, `laneName` null     a lane the archive no longer holds a
+   *                                      row for. Zero of his today, measured
+   *                                      — and it is drawn anyway, because a
+   *                                      state that is empty today is not a
+   *                                      state that cannot happen.
+   *
+   * The ID IS STILL DRAWN beside the name, and that is not redundancy: two
+   * lanes can carry the same description, and the id is what tells them apart
+   * and what a reader pastes into `mycontext conversation`.
+   */
+  head.append(' · ');
+  if (anchor.agentId === null) {
+    head.append(...ctx.t('conv.anchors.inMain'));
+  } else if (anchor.laneName !== null && anchor.laneName !== undefined) {
     head.append(...ctx.t('conv.anchors.inLane'));
+    const named = el('bdi', 'convanchorlane');
+    named.textContent = anchor.laneName;
+    head.append(' ', named, ' ', mono(anchor.agentId));
+  } else {
+    head.append(...ctx.t('conv.anchors.inLaneGone'));
     head.append(' ', mono(anchor.agentId));
   }
   head.append(' · ');
@@ -2039,6 +2261,24 @@ function anchorRow(ctx, anchor, onChanged) {
   label.setAttribute('dir', 'auto');
   label.textContent = anchor.label;
   row.append(label);
+
+  /*
+   * **HIS FREE TEXT, WHICH HAD NOWHERE TO SHOW.** The column has been on the
+   * row since anchors shipped and nothing on any screen drew it, so a note
+   * written from the CLI was invisible in the product's own list. Drawn only
+   * when there is one — an empty paragraph on 750 rows is the noise a
+   * measured zero rule is about, and the absence of a note is not a fact a
+   * reader needs stated per row.
+   */
+  const detail = el('p', 'small convanchornote');
+  detail.setAttribute('dir', 'auto');
+  const showNote = () => {
+    const said = anchor.note ?? '';
+    detail.textContent = said;
+    detail.hidden = said === '';
+  };
+  showNote();
+  row.append(detail);
 
   const said = el('p', 'small convanchorsaid');
   said.setAttribute('aria-live', 'polite');
@@ -2061,8 +2301,14 @@ function anchorRow(ctx, anchor, onChanged) {
     saveClass: 'convanchorrenamesave',
     cancelClass: 'convanchorrenamecancel',
     said,
+    kinds: true,
+    kindValue: anchor.kind,
+    kindClass: 'convanchorkindpick',
+    details: true,
+    detailValue: anchor.note ?? '',
+    detailClass: 'convanchornoteinput',
     endpoint: '/api/conversations/anchors/relabel',
-    body: (label) => ({ id: anchor.id, label }),
+    body: (label, more) => ({ id: anchor.id, label, ...more }),
     done: (answer) => {
       /*
        * **THE ROW IS CORRECTED IN PLACE AND THE LIST IS NOT REDRAWN** —
@@ -2089,7 +2335,16 @@ function anchorRow(ctx, anchor, onChanged) {
       const stored = answer.anchor;
       anchor.label = stored.label;
       anchor.origin = stored.origin;
+      // **THE FIELDS THE FORM CAN NOW MOVE ARE READ BACK FROM THE ROW THE
+      // SERVER STORED**, never from what was typed. `apiAnchorRelabel` decides
+      // what a kind and a note become — an absent note keeps the standing
+      // one, `null` clears it — so a row corrected from the FORM would be the
+      // screen describing a write it did not read.
+      anchor.kind = stored.kind;
+      anchor.note = stored.note;
       label.textContent = stored.label;
+      showKind();
+      showNote();
       // **THE ROW BECOMES HIS, AND THE SCREEN SAYS SO.** Naming a point the
       // pass marked takes it out of the pass's hands — `apiAnchorRelabel` sets
       // `origin: 'owner'` precisely so the next sweep cannot quietly put his
@@ -2113,7 +2368,15 @@ function anchorRow(ctx, anchor, onChanged) {
   // typed, shut it and came back is not handed their abandoned draft as if it
   // were the name the point has.
   boxToggle(rename, renameBox, renamer.input, (hidden) => {
-    if (!hidden) renamer.input.value = anchor.label;
+    if (hidden) return;
+    renamer.input.value = anchor.label;
+    // The same rule applied to the two fields the box grew: what the point
+    // HAS goes back in every time, so a reader who typed, shut it and came
+    // back is not handed their abandoned draft as if it were what is stored.
+    const picked = renameBox.querySelector('select');
+    if (picked !== null) picked.value = anchor.kind;
+    const said = renameBox.querySelector('textarea');
+    if (said !== null) said.value = anchor.note ?? '';
   }, renamer);
 
   /* ── DROP ────────────────────────────────────────────────────────────── */
@@ -5222,6 +5485,90 @@ export function mountDocument(ctx, host, outline, back, roster = NO_LANES, landA
   bar.append(copyLabel, copyMessage, copySeen, copyRaw, recall);
   host.append(bar);
 
+  /* ── THE STEPPER ────────────────────────────────────────────────────────
+   *
+   * **`TASK-there-is-no-way-to-step-through-the-marks-or-through-your`**,
+   * owner ruling 2026-09-15, option 3c. His words: *"jump to marks forward and
+   * backward as well as the user prompts 'You'"*.
+   *
+   * Measured before this existed: nothing in this file stepped the document by
+   * anything. Top and End are the two ends, the find box narrows, and the only
+   * other movement on the screen is the reader's own scrolling. A reader who
+   * had marked twelve points in a 61 MB session could reach them one at a time
+   * from the LIST, on another screen, losing this document each time.
+   *
+   * ── A SECOND ROW AND NOT FOUR MORE CONTROLS IN `tvbar` ─────────────────
+   *
+   * `.tvbar` already carries seven: the find box, Top, End, three copies and
+   * Reconstruct. Four more in it would put "where am I" and "what do I take"
+   * on one line, and `e2e/conversations.spec.ts` has already been broken twice
+   * by `.last()` inside that bar finding a control that moved. These are a
+   * group of their own, named as one, and each button says which it is.
+   *
+   * ── NO ARROW GLYPHS, AND THAT IS A BIDI DECISION ──────────────────────
+   *
+   * A `◂`/`▸` pair means "back"/"forward" only in a left-to-right reading
+   * order. Half this archive is Hebrew and the anchors card already isolates
+   * every identifier for that reason; a triangle that flips meaning with the
+   * page direction is a second thing to reconcile for no reader's benefit, so
+   * the buttons carry words in both languages and no mark at all.
+   */
+  const nav = el('div', 'tvnav');
+  nav.setAttribute('role', 'group');
+  nav.setAttribute('aria-label', ctx.tFlat('conv.nav.region'));
+  const navHead = el('span', 'small tvnavh');
+  navHead.append(...ctx.t('conv.nav.h'));
+  const markPrev = el('button', 'tvjump tvnavstep tvnavmarkprev');
+  markPrev.type = 'button';
+  markPrev.append(...ctx.t('conv.nav.markPrev'));
+  const markNext = el('button', 'tvjump tvnavstep tvnavmarknext');
+  markNext.type = 'button';
+  markNext.append(...ctx.t('conv.nav.markNext'));
+  const markCount = el('span', 'small tvnavcount tvnavmarkcount');
+  const youPrev = el('button', 'tvjump tvnavstep tvnavyouprev');
+  youPrev.type = 'button';
+  youPrev.append(...ctx.t('conv.nav.youPrev'));
+  const youNext = el('button', 'tvjump tvnavstep tvnavyounext');
+  youNext.type = 'button';
+  youNext.append(...ctx.t('conv.nav.youNext'));
+  const youCount = el('span', 'small tvnavcount tvnavyoucount');
+  /*
+   * **EACH PAIR AND ITS COUNT ARE ONE GROUP**, and it was laid out the other
+   * way first. With all six controls in one flex row and the counts at
+   * `flex-basis:100%`, the bar came out THREE lines tall at 1280x720 — pair,
+   * count, pair, count — above a `.tvbar` that is already two. Worse on a
+   * narrow screen: the counts and the buttons interleave, so "16 message(s) of
+   * yours" can end up sitting under the MARK pair and describing it.
+   *
+   * A group wraps as a unit and its count can never be orphaned onto the other
+   * pair. Measured after the change at the same size: two lines, and the two
+   * groups side by side.
+   */
+  const markGroup = el('div', 'tvnavgroup tvnavmarks');
+  markGroup.append(markPrev, markNext, markCount);
+  const youGroup = el('div', 'tvnavgroup tvnavyous');
+  youGroup.append(youPrev, youNext, youCount);
+  nav.append(navHead, markGroup, youGroup);
+  host.append(nav);
+
+  /**
+   * **WHERE A STEP LANDED, ANNOUNCED OUTSIDE THE WELL.**
+   *
+   * The same trap `.convanchsaid` was mounted at the card for: a sentence
+   * rendered on the ROW a step lands on is destroyed by the next `paint` —
+   * rows are evicted the moment they leave the window, and a step that moves
+   * the reader is exactly the gesture that evicts things. This region is a
+   * sibling of the bar, so nothing the scroll does can take it down.
+   *
+   * It is also the whole of how a step is legible to a reader who cannot see
+   * the scroll move: `aria-live` announces "marked point 3 of 12" with the
+   * name on it, which is the one thing that says WHICH mark this is.
+   */
+  const navSaid = el('p', 'tvnote tvnavsaid');
+  navSaid.setAttribute('aria-live', 'polite');
+  navSaid.hidden = true;
+  host.append(navSaid);
+
   const count = el('p', 'tvcount');
   count.setAttribute('aria-live', 'polite');
   host.append(count);
@@ -5619,6 +5966,12 @@ export function mountDocument(ctx, host, outline, back, roster = NO_LANES, landA
       if ((anchor.agentId ?? null) !== anchorAgentId) continue;
       anchorsHere.set(anchor.byteOffset, anchor);
     }
+    // **THE STEPPER'S COUNT IS DERIVED FROM THIS MAP AND FROM NOTHING ELSE**,
+    // so it is put back in step HERE rather than at the four call sites that
+    // write an anchor. A mark made while reading that left "3 marked points"
+    // standing beside four of them is the same two-statements-one-false defect
+    // `refreshMarks` exists to stop one control along.
+    navRefresh();
   };
 
   /**
@@ -5716,6 +6069,26 @@ export function mountDocument(ctx, host, outline, back, roster = NO_LANES, landA
       const label = el('span', 'tvanchorlabel');
       label.setAttribute('dir', 'auto');
       label.textContent = standing.label;
+      /*
+       * **THE KIND AND THE NOTE, ON THE ROW THEY BELONG TO** —
+       * `TASK-a-mark-you-make-yourself-cannot-say-what-kind-it-is-so-your`.
+       * A mark that can now BE a decision, a defect or a question must say
+       * which on the turn it sits on, or the vocabulary is one the reader can
+       * only see by opening the form that wrote it. The glyph is the whole
+       * point of a closed set in a dense surface, and a kind this build has no
+       * word for is drawn as itself — `anchorRow`'s own rule, one card over.
+       */
+      const kind = el('span', 'tvanchorkind');
+      if (ANCHOR_KIND_KEYS.has(standing.kind)) {
+        kind.append(glyphed(ANCHOR_KIND_GLYPH[standing.kind],
+          ctx.t(`conv.anchors.kind.${standing.kind}`)));
+      } else {
+        kind.textContent = standing.kind;
+      }
+      const detail = el('span', 'small tvanchornote');
+      detail.setAttribute('dir', 'auto');
+      detail.textContent = standing.note ?? '';
+      detail.hidden = (standing.note ?? '') === '';
       const rename = el('button', 'tvjump tvanchorrename');
       rename.type = 'button';
       rename.append(...ctx.t('conv.anchors.relabel'));
@@ -5734,8 +6107,14 @@ export function mountDocument(ctx, host, outline, back, roster = NO_LANES, landA
         saveClass: 'tvjump tvanchorsave',
         cancelClass: 'tvjump tvanchorcancel',
         said,
+        kinds: true,
+        kindValue: standing.kind,
+        kindClass: 'tvanchorkindpick',
+        details: true,
+        detailValue: standing.note ?? '',
+        detailClass: 'tvanchornoteinput',
         endpoint: '/api/conversations/anchors/relabel',
-        body: (label) => ({ id: standing.id, label }),
+        body: (label, more) => ({ id: standing.id, label, ...more }),
         done: async (answer) => {
           await loadAnchors();
           redrawMe({
@@ -5762,7 +6141,7 @@ export function mountDocument(ctx, host, outline, back, roster = NO_LANES, landA
       // is called on both edges rather than only on the way in.
       const { box, input } = renamer;
       boxToggle(rename, box, input, () => { schedule(); }, renamer);
-      bar.append(chip, label, rename, drop, box, said);
+      bar.append(chip, kind, label, detail, rename, drop, box, said);
       carry();
       return bar;
     }
@@ -5781,12 +6160,17 @@ export function mountDocument(ctx, host, outline, back, roster = NO_LANES, landA
       saveClass: 'tvjump tvanchorsave',
       cancelClass: 'tvjump tvanchorcancel',
       said,
+      kinds: true,
+      kindClass: 'tvanchorkindpick',
+      details: true,
+      detailClass: 'tvanchornoteinput',
       endpoint: '/api/conversations/anchors/mark',
-      body: (label) => ({
+      body: (label, more) => ({
         sessionId: anchorSessionId,
         agentId: anchorAgentId,
         byteOffset: node.o,
         label,
+        ...more,
       }),
       done: async () => {
         await loadAnchors();
@@ -6028,8 +6412,32 @@ export function mountDocument(ctx, host, outline, back, roster = NO_LANES, landA
   // inside that window would set `scrollTop` to zero and the next `paint`
   // would put the reader straight back at the end. Top is the affordance a
   // reader needs MORE once the default moves, so it says so itself.
-  toTop.addEventListener('click', () => { stickUntil = 0; scroll.scrollTop = 0; paint(); });
-  toEnd.addEventListener('click', () => { scroll.scrollTop = scroller.total; paint(); });
+  // **AND BOTH END THE STEPPER'S WALK.** They are not in the well, so the
+  // three reader-inputs bound there never see them — and a reader who pressed
+  // Top after stepping to the seventh mark and then pressed Next would be
+  // taken to the EIGHTH, which is the walk continuing from a place they have
+  // just left. `cursor` carries the whole argument.
+  toTop.addEventListener('click', () => {
+    stickUntil = 0; scroll.scrollTop = 0; endWalk(); paint();
+  });
+  toEnd.addEventListener('click', () => {
+    scroll.scrollTop = scroller.total; endWalk(); paint();
+  });
+
+  /**
+   * **THE HOOK THE STEPPER'S COUNTERS HANG ON, and it is a `let` because of
+   * the order this function is written in.**
+   *
+   * `reView` runs for the first time inside `redraw('end')`, which is called
+   * some ninety lines above the stepper is wired — so a `const` defined down
+   * there would be in its temporal dead zone at the moment the mount's first
+   * view is derived, and the document would fail to open at all. A no-op that
+   * is replaced once is the narrowest way to say "this runs on every change of
+   * view, including the ones that happen before it exists".
+   */
+  let navRefresh = () => {};
+  /** Ends the stepper's walk, so the next press reads the viewport again. */
+  let endWalk = () => {};
 
   /**
    * Re-derive `view` from the nodes and the needle, and say what it holds.
@@ -6060,6 +6468,7 @@ export function mountDocument(ctx, host, outline, back, roster = NO_LANES, landA
         shown: view.length, total: nodes.length, peek: outline.peekChars,
       }));
     }
+    navRefresh();
   };
 
   /**
@@ -6200,6 +6609,285 @@ export function mountDocument(ctx, host, outline, back, roster = NO_LANES, landA
     scroll.scrollTop = scroller.top(viewFrom(nodeIndex));
     paint();
     return true;
+  };
+
+  /* ══ STEPPING: MARKS, AND HIS OWN PROMPTS ═════════════════════════════════
+   *
+   * `TASK-there-is-no-way-to-step-through-the-marks-or-through-your`.
+   *
+   * ── WHAT A STOP IS, AND WHY IT IS A NODE AND NOT AN ANCHOR ──────────────
+   *
+   * An anchor holds a BYTE; the document draws NODES; and `nodeAtByte` already
+   * owns the join. Two anchors can therefore share one stop — a folded `work`
+   * run covers many records, and both bytes land on the fold that holds them.
+   * A stepper counted in ANCHORS would then say "3 of 12" and stop twelve
+   * times at eleven places, which is a counter that cannot be checked against
+   * the screen. So a stop is a POSITION, its anchors travel with it, and the
+   * announcement names every label at that position rather than the first —
+   * `INV-nothing-is-dropped-silently` applied to a sentence rather than to a
+   * list.
+   *
+   * ── AND THE STOPS ARE TAKEN OVER `view`, NOT OVER `nodes` ───────────────
+   *
+   * `passageSpan` makes the same choice one screen down and states its reason:
+   * with a filter typed, the sections the filter hides are not on the screen
+   * and the reader did not mark them by dragging past them. A step is the same
+   * kind of claim — it moves the reader to something they can see. What a
+   * filter is holding back is SAID rather than silently subtracted, in the
+   * counter beside the buttons, because a reader whose twelve marks became two
+   * has to be able to tell a filter from a lost bookmark.
+   *
+   * ── THE PAGE BOUND ON THE LIST DOES NOT REACH HERE ─────────────────────
+   *
+   * `drawAnchors` pages its list at `BOUND_CAP_LIST` (20). These stops come
+   * from `anchorsHere`, which `loadAnchors` fills from
+   * `GET /api/conversations/anchors?session=…` — an UNPAGED answer scoped to
+   * this transcript — so the twenty-first mark is as reachable from here as
+   * the first. Measured in the browser rather than assumed; the report carries
+   * the number.
+   */
+
+  /** Node indices in `view`, as a set, so a stop can be tested for membership. */
+  const inView = () => new Set(view);
+
+  /**
+   * Every marked position in this document, ascending, with the anchors that
+   * sit at it — and how many marks the filter is holding back.
+   */
+  const markStops = () => {
+    const shown = inView();
+    const byNode = new Map();
+    let hidden = 0;
+    for (const anchor of anchorsHere.values()) {
+      const at = nodeAtByte(anchor.byteOffset);
+      /*
+       * **A BYTE THIS DOCUMENT DOES NOT REACH IS NOT A STOP, AND IT IS NOT THE
+       * FILTER'S DOING EITHER**, so it is counted in neither number.
+       *
+       * It happens on one kind of document: one whose walk stopped at
+       * `DOCUMENT_WALK_CAP`, where the transcript runs on past the last node
+       * drawn. `conv.doc.landedNowhere` is what an ADDRESS into that region
+       * says on arrival, and `conv.doc.truncated` is already on this very page
+       * saying the document ends before the file does — so a reader whose
+       * count is short of their anchor list has the reason in front of them
+       * rather than nowhere. Naming it in the counter as well would be a
+       * fourth sentence about a state that only the capped walk produces.
+       */
+      if (at < 0) continue;
+      if (!shown.has(at)) { hidden += 1; continue; }
+      const held = byNode.get(at);
+      if (held === undefined) byNode.set(at, [anchor]); else held.push(anchor);
+    }
+    const stops = [...byNode.keys()].sort((a, b) => a - b)
+      .map((at) => ({ at, anchors: byNode.get(at) }));
+    return { stops, hidden };
+  };
+
+  /**
+   * Every turn drawn as HIS — the second half of the ruling, and it reads the
+   * same field the heading does.
+   *
+   * `DocOutlineNode.w` is who CAUSED the turn, and `drawTurn` draws `'you'` as
+   * "You". A slash command he typed is `w: 'you'` with a synthetic label, and
+   * it is here for the reason `syntheticSpeaker` gives in as many words — *"He
+   * typed the slash command. The wrapper is machinery; the ACT was his."* A
+   * task notification is `'subagent'` or `'shell'` or nobody, and is not.
+   *
+   * So this is exactly "the turns shown as You", which is what he asked for,
+   * rather than a second opinion about which of them really count.
+   */
+  const youStops = () => {
+    const stops = [];
+    let hidden = 0;
+    for (let i = 0; i < nodes.length; i += 1) {
+      if (nodes[i].k !== 'said' || nodes[i].w !== 'you') continue;
+      stops.push(i);
+    }
+    const shown = inView();
+    const kept = stops.filter((at) => shown.has(at));
+    hidden = stops.length - kept.length;
+    return { stops: kept, hidden };
+  };
+
+  /**
+   * **WHERE THE WALK IS UP TO, WHICH IS NOT THE SAME QUESTION AS "WHERE IS
+   * THE SCROLL"** — and the difference was found by driving it.
+   *
+   * The obvious implementation reads the node at the top of the viewport on
+   * every press. It stalls twice, and both are arithmetic rather than bad
+   * luck:
+   *
+   *   - **At the foot of the document the scroll CANNOT reach the last rows.**
+   *     `scrollTop` is clamped at `total - clientHeight`, so a reader standing
+   *     on the last mark has a viewport whose TOP is six rows above it. "The
+   *     next mark after the top of the viewport" is then that same mark again,
+   *     for ever, and the last two or three marks in every session become one.
+   *   - **`scrollTop` is a browser number.** Writing `scroller.top(i)` and
+   *     reading it back can give a value a fraction BELOW it, which puts the
+   *     binary search one row early and asks for "the next mark after the row
+   *     before the one I am on" — the same mark, again.
+   *
+   * So the walk keeps its own place: an index into the list of stops, set when
+   * a step lands and thrown away the moment the reader moves themselves.
+   * `wheel`, `keydown` and `pointerdown` on the well are the three inputs this
+   * file already treats as unambiguously the reader's — the follow's hold is
+   * released by exactly those three, and for the same reason. Anything else
+   * (a paint, a measurement, a correction) is the document, not the person.
+   *
+   * `-1` is "no walk in progress", and then the viewport IS the answer: a
+   * reader who scrolled to the middle and pressed Next means the middle.
+   */
+  const cursor = { mark: -1, you: -1 };
+  endWalk = () => { cursor.mark = -1; cursor.you = -1; };
+  for (const event of ['wheel', 'keydown', 'pointerdown']) {
+    scroll.addEventListener(event, endWalk, { passive: true });
+  }
+
+  /**
+   * Where the reader is: the node the top of the viewport sits in.
+   *
+   * **Nudged forward by a whisker** for the rounding above. Two pixels cannot
+   * cross a row — the shortest row this document draws is a folded run at
+   * 34px — so this changes the answer only where `scrollTop` came back a
+   * fraction short of the row it was set to.
+   */
+  const hereNode = () => (view.length === 0 ? -1 : view[scroller.at(scroll.scrollTop + 2)]);
+
+  const sayNav = (key, subs = {}, tail = null) => {
+    navSaid.hidden = false;
+    navSaid.replaceChildren(...ctx.t(key, subs));
+    if (tail !== null) navSaid.append(' ', tail);
+  };
+
+  /**
+   * One step, in one direction, over one set of stops.
+   *
+   * **THE CARET DOES NOT MOVE, and that is the discipline rather than an
+   * omission of it.** Every write on this screen returns the caret to the row
+   * it changed, because a write DESTROYS the control the reader was using. A
+   * step destroys nothing: the button is still there, still focused, and a
+   * reader stepping through twelve marks presses it twelve times. Moving the
+   * caret into the well would cost a walk back to the bar for every single
+   * step, and would put the focus on a row `paint` evicts the moment the next
+   * step scrolls past it. What the reader is owed instead is to be TOLD where
+   * they landed, and `navSaid` — outside the well, live, and never rebuilt —
+   * is where that is said.
+   *
+   * **THE ENDS ARE SAID, NOT DISABLED.** A disabled button cannot hold focus,
+   * so disabling the one the reader is pressing at the last mark would throw
+   * the caret to the body at exactly the moment they most need it — the same
+   * defect `TASK-every-write-on-conversations-throws-focus-to-the-document`
+   * measured at 29 tab stops. The button stays, and pressing it at the end
+   * says there is nothing beyond rather than appearing to be broken.
+   */
+  const step = (which, forward) => {
+    const { stops } = which === 'mark' ? markStops() : youStops();
+    const positions = which === 'mark' ? stops.map((s) => s.at) : stops;
+    if (positions.length === 0) {
+      sayNav(which === 'mark' ? 'conv.nav.noMarks' : 'conv.nav.noYous');
+      return;
+    }
+    const standing = cursor[which];
+    let target = -1;
+    if (standing >= 0 && standing < positions.length) {
+      const next = standing + (forward ? 1 : -1);
+      if (next >= 0 && next < positions.length) target = next;
+    } else {
+      const here = hereNode();
+      if (forward) {
+        for (let i = 0; i < positions.length; i += 1) {
+          if (positions[i] > here) { target = i; break; }
+        }
+      } else {
+        for (let i = positions.length - 1; i >= 0; i -= 1) {
+          if (positions[i] < here) { target = i; break; }
+        }
+      }
+    }
+    if (target === -1) {
+      sayNav(which === 'mark'
+        ? (forward ? 'conv.nav.markLast' : 'conv.nav.markFirst')
+        : (forward ? 'conv.nav.youLast' : 'conv.nav.youFirst'));
+      return;
+    }
+    landOn(positions[target]);
+    // The walk's own place, set only by a step. `landOn` writes `scrollTop`,
+    // which fires `scroll` — and `scroll` is deliberately NOT one of the three
+    // events that throw this away, for the reason the follow's hold gives one
+    // control along: *"`scroll` itself is not [the reader's], because `paint`
+    // fires it."*
+    cursor[which] = target;
+    if (which !== 'mark') {
+      sayNav('conv.nav.atYou', { n: target + 1, total: positions.length });
+      return;
+    }
+    // The NAMES, isolated: a Hebrew label inside an English sentence takes the
+    // sentence's direction unless it is, which is the convention the anchors
+    // card already holds for every label it draws.
+    const named = el('bdi', 'tvnavat');
+    named.textContent = stops[target].anchors.map((a) => a.label).join(' · ');
+    sayNav('conv.nav.atMark', { n: target + 1, total: positions.length }, named);
+  };
+
+  markPrev.addEventListener('click', () => { step('mark', false); });
+  markNext.addEventListener('click', () => { step('mark', true); });
+  youPrev.addEventListener('click', () => { step('you', false); });
+  youNext.addEventListener('click', () => { step('you', true); });
+
+  /**
+   * What there is to step through, said before anything is pressed.
+   *
+   * A pair of buttons with no count beside them is a control a reader has to
+   * press to find out whether it does anything, and a measured zero is a real
+   * answer here — a lane's transcript can genuinely hold no mark at all.
+   * `STD-a-measured-zero-is-drawn-and-named`.
+   */
+  navRefresh = () => {
+    // **A WALK IN PROGRESS DOES NOT SURVIVE THE LIST IT WALKS CHANGING.** A
+    // filter re-derives every stop, and a mark made while reading inserts one
+    // — so "stop 7" afterwards is a different place, and a cursor kept across
+    // either would step the reader somewhere they never asked to go. Thrown
+    // away rather than re-derived: the viewport is a correct answer and a
+    // guessed index is not.
+    endWalk();
+    /**
+     * **THE EMPTY SENTENCE IS ONLY DRAWN WHEN THE EMPTINESS IS REAL.**
+     *
+     * Found by driving it: with a filter typed that matched only his turns,
+     * the counter read *"Nothing is marked in this conversation. Mark a point
+     * on any turn below…"* beside *"24 more are in this conversation and the
+     * search above is hiding them"* — two sentences about one fact, the first
+     * of them false, which is the exact shape this screen refuses everywhere
+     * else. A zero that the FILTER produced is a zero here and not a zero in
+     * the conversation, so it is drawn as the number it is and the hidden
+     * count says where the rest went.
+     */
+    // **SPELLED OUT TWICE RATHER THAN PASSED AS THREE KEYS TO ONE HELPER**,
+    // and that is not a style preference: `test/ui/viewmodel.test.ts` reads
+    // every key and every slot out of the `t` and `tFlat` calls in this file
+    // by PARSING it, so a key arriving as a variable is a key that gate cannot
+    // see — and this file has six of them that exist only here.
+    const marks = markStops();
+    markCount.replaceChildren();
+    if (marks.stops.length === 0 && marks.hidden === 0) {
+      markCount.append(...ctx.t('conv.nav.marksNone'));
+    } else {
+      markCount.append(...ctx.t('conv.nav.marks', { n: marks.stops.length }));
+    }
+    if (marks.hidden > 0) {
+      markCount.append(' ', ...ctx.t('conv.nav.marksHidden', { n: marks.hidden }));
+    }
+
+    const yous = youStops();
+    youCount.replaceChildren();
+    if (yous.stops.length === 0 && yous.hidden === 0) {
+      youCount.append(...ctx.t('conv.nav.yousNone'));
+    } else {
+      youCount.append(...ctx.t('conv.nav.yous', { n: yous.stops.length }));
+    }
+    if (yous.hidden > 0) {
+      youCount.append(' ', ...ctx.t('conv.nav.yousHidden', { n: yous.hidden }));
+    }
   };
 
   redraw('end');

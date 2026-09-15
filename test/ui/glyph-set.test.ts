@@ -81,11 +81,20 @@ registerHooks({
  * as `chart` — so it is named here too rather than silently falling outside a
  * census that is supposed to be total.
  *
+ * **THREE MORE JOINED THEM ON 2026-09-15**, when the owner gained a vocabulary
+ * of six kinds for a mark he makes himself
+ * (`TASK-a-mark-you-make-yourself-cannot-say-what-kind-it-is-so-your`). U+2611
+ * and U+2610 are the ticked and empty boxes `decision` and `todo` wear, chosen
+ * in TEXT presentation for U+25A6's reason and therefore invisible to both
+ * halves of the rule; U+2753 is default-emoji-presentation with no selector,
+ * which is U+2705's case exactly. Naming them is what keeps this census total
+ * rather than total-except-for-the-marks-it-cannot-see.
+ *
  * A FUNCTION and not a shared `RegExp`, because `/g` carries `lastIndex` and a
  * shared global regex tested twice answers differently the second time. That is
  * the shape that makes a gate green on a bad build.
  */
-const NAMED = ['✅', '▦'];
+const NAMED = ['✅', '▦', '☑', '☐', '❓'];
 const mark = (): RegExp => new RegExp(`(?:[\\u{1F000}-\\u{1FAFF}]|${NAMED.join('|')}|.\\uFE0F)`, 'gu');
 const hasMark = (text: string): boolean => mark().test(text);
 
@@ -179,6 +188,48 @@ const GLYPHS: readonly Entry[] = [
     glyph: '⚖️',
     meaning: 'anchor kind: a ruling',
     word: 'conv.anchors.kind.ruling',
+    files: ['screens/conversations.js'],
+    verdict: 'sole',
+  },
+  // ── AND THE FIVE THE OWNER'S OWN VOCABULARY ADDED ──────────────────
+  //
+  // `TASK-a-mark-you-make-yourself-cannot-say-what-kind-it-is-so-your`, owner
+  // ruling 2026-09-15. The set stopped being closed at four the moment
+  // `OWNER_ANCHOR_KINDS` shipped six kinds a person may choose, and a kind
+  // offered in a form with no mark beside it would be the one member of a
+  // dense list nobody could scan for.
+  {
+    glyph: '☑',
+    meaning: 'anchor kind: a decision, which is settled',
+    word: 'conv.anchors.kind.decision',
+    files: ['screens/conversations.js'],
+    verdict: 'sole',
+  },
+  {
+    glyph: '☐',
+    meaning: 'anchor kind: something still to do',
+    word: 'conv.anchors.kind.todo',
+    files: ['screens/conversations.js'],
+    verdict: 'sole',
+  },
+  {
+    glyph: '❓',
+    meaning: 'anchor kind: a question',
+    word: 'conv.anchors.kind.question',
+    files: ['screens/conversations.js'],
+    verdict: 'sole',
+  },
+  {
+    glyph: '🐞',
+    meaning: 'anchor kind: a defect',
+    word: 'conv.anchors.kind.defect',
+    files: ['screens/conversations.js'],
+    verdict: 'sole',
+  },
+  {
+    glyph: '🔎',
+    meaning: 'anchor kind: evidence, kept so it can be looked at again',
+    word: 'conv.anchors.kind.evidence',
     files: ['screens/conversations.js'],
     verdict: 'sole',
   },
@@ -387,7 +438,14 @@ test('glyphed() draws the mark, hides it, and puts the word after it', async () 
   assert.equal(glyph.attributes['aria-hidden'], 'true',
     'without this a screen reader announces "pushpin" before the word — which is exactly what '
     + 'the retired verdict tick did on nineteen screens');
-  assert.equal(textOf(run), '\u{1F4CC}you marked this',
+  // **THE WORD IS READ OUT OF THE TABLE, not restated here.** It used to be
+  // spelled `'you marked this'` in this line, which made this assertion a
+  // SECOND copy of a string the product owns — and the day the owner's kind
+  // vocabulary renamed that kind from a sentence about WHO marked it to the
+  // name of the kind itself, this file went red over a change it holds no
+  // opinion about. What it is for is that `glyphed` puts the mark FIRST and
+  // the word after it, and that is what it now says.
+  assert.equal(textOf(run), `\u{1F4CC}${en['conv.anchors.kind.note']}`,
     'the word is the accessible name and it is still there');
 });
 
