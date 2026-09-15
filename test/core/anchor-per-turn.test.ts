@@ -112,7 +112,7 @@ test('a turn appended after the last pass is marked by the next one', () => {
       'measured.\n\n| tokenizer | hits |\n| --- | --- |\n| trigram | 14 |',
       '2026-09-10T09:00:04.000Z'));
     assert.equal(markAnchorsOnTurn(f.dbPath)!.anchors!.marked, 1);
-    assert.deepEqual(labels(f), [RULING, 'tokenizer'].sort());
+    assert.deepEqual(labels(f), [RULING, 'tokenizer | hits'].sort());
   } finally { tidy(f); }
 });
 
@@ -424,7 +424,7 @@ test('a second turn does not re-decide the anchor the first turn already marked'
       'measured.\n\n| tokenizer | hits |\n| --- | --- |\n| trigram | 14 |',
       '2026-09-10T09:00:04.000Z'));
     assert.equal(markAnchorsOnTurn(f.dbPath)!.anchors!.marked, 1);
-    assert.deepEqual(labels(f), [RULING, 'tokenizer'].sort());
+    assert.deepEqual(labels(f), [RULING, 'tokenizer | hits'].sort());
   } finally { tidy(f); }
 });
 

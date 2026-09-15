@@ -61,7 +61,10 @@
  */
 import { ConversationIndex, ConversationIndexIncompleteError, ConversationIndexUninitializedError }
   from '../core/conversation-index.ts';
-import { markAnchor, unmarkAnchor } from '../core/anchors.ts';
+import {
+  AUTOMATIC_ANCHOR_KINDS, OWNER_ANCHOR_KINDS, isOwnerAnchorKind, laneNameOf, markAnchor,
+  unmarkAnchor, type OwnerAnchorKind,
+} from '../core/anchors.ts';
 import { fileOf, markAutomaticAnchors } from '../core/anchor-pass.ts';
 import { registerRoute, type ApiContext, type JsonResult } from './routes.ts';
 import type { Workspace } from '../core/workspace.ts';
@@ -77,9 +80,78 @@ import type { Workspace } from '../core/workspace.ts';
  */
 const LABEL_CAP = 500;
 
+/**
+ * The longest free-text detail this surface will store beside a label.
+ *
+ * `TASK-a-mark-you-make-yourself-cannot-say-what-kind-it-is-so-your`: the
+ * label is the line that has to fit in a list, and this is the sentence that
+ * did not fit — so it is capped far above `LABEL_CAP` and far below the 64 KB
+ * `readBody` already allows. 2000 is several paragraphs and is not a limit he
+ * will meet by writing what he meant.
+ */
+const NOTE_CAP = 2000;
+
 /** The shape every handler answers a malformed body with. */
 function badRequest(message: string): JsonResult {
   return { status: 400, body: { error: message } };
+}
+
+/**
+ * **The owner's kind, from his own vocabulary, or a refusal naming it.**
+ *
+ * Three answers, and the third is the one that matters: `undefined` when the
+ * request said nothing, the kind when it said something legal, and a
+ * `JsonResult` when it said something this build has no word for.
+ *
+ * **The vocabulary is checked against `OWNER_ANCHOR_KINDS` and therefore
+ * cannot reach `AUTOMATIC_ANCHOR_KINDS`** — the two are disjoint by
+ * construction and `test/core/anchor-kinds.test.ts` holds them apart. That is
+ * the whole of the item's constraint: giving him a kind must not give a
+ * REQUEST a way to write `kind: 'table'`, because reconciliation would then
+ * have a row wearing the automatic pass's own word for what it writes.
+ */
+function ownerKind(body: unknown, field = 'kind'): OwnerAnchorKind | undefined | JsonResult {
+  if (body === null || typeof body !== 'object') return undefined;
+  const raw = (body as Record<string, unknown>)[field];
+  if (raw === undefined || raw === null) return undefined;
+  if (typeof raw !== 'string' || !isOwnerAnchorKind(raw)) {
+    return badRequest(
+      `${field} must be one of ${OWNER_ANCHOR_KINDS.join(', ')}. The automatic pass writes `
+      + `${AUTOMATIC_ANCHOR_KINDS.join(' and ')}, and a mark you make cannot wear one of those: `
+      + 'the two vocabularies are kept apart so that reconciliation can never mistake a bookmark '
+      + 'you made for one it made.',
+    );
+  }
+  return raw;
+}
+
+/**
+ * **The free-text detail, or a refusal** — and `null` is a REAL answer here,
+ * distinct from the field being absent.
+ *
+ * `undefined` means the request said nothing about the note, which on a
+ * relabel must carry the existing one over; `null` means he cleared it. A
+ * surface that collapsed the two would erase a paragraph every time he fixed a
+ * typo in a label, which is `INV-nothing-is-dropped-silently` in the direction
+ * that costs the most.
+ */
+function noteField(body: unknown): string | null | undefined | JsonResult {
+  if (body === null || typeof body !== 'object') return undefined;
+  const raw = (body as Record<string, unknown>)['note'];
+  if (raw === undefined) return undefined;
+  if (raw === null) return null;
+  if (typeof raw !== 'string') {
+    return badRequest('note must be a string, or null to clear it.');
+  }
+  if (raw.length > NOTE_CAP) {
+    return badRequest(`note must be at most ${NOTE_CAP} characters.`);
+  }
+  return raw;
+}
+
+/** Whether a helper above answered with a refusal rather than a value. */
+function isRefusal(value: unknown): value is JsonResult {
+  return typeof value === 'object' && value !== null && 'status' in value;
 }
 
 /**
@@ -142,11 +214,25 @@ export interface AnchorWriteView {
   sessionName: string | null;
   sessionTitle: string | null;
   agentId: string | null;
+  /**
+   * **WHICH LANE was running when this point was marked**, in the name its
+   * dispatcher typed — `"Lane N: rename cancel and hidden total"`.
+   *
+   * Derived by `laneNameOf` from `subagents.description` and stored nowhere:
+   * the join was always available and nothing showed it. Read it BESIDE
+   * `agentId`, which is what tells the three states apart — `agentId === null`
+   * is the main session and not a missing lane, and that distinction is
+   * `STD-a-measured-zero-is-drawn-and-named`, not a nicety. 386 of the owner's
+   * 750 anchors carry a lane; the other 364 he and the main session made.
+   */
+  laneName: string | null;
   byteOffset: number;
   label: string;
   kind: string;
   origin: string;
   at: string;
+  /** His free text beside the label, or `null`. Automatic anchors have none. */
+  note: string | null;
 }
 
 function viewOf(index: ConversationIndex, id: string): AnchorWriteView | null {
@@ -159,11 +245,13 @@ function viewOf(index: ConversationIndex, id: string): AnchorWriteView | null {
     sessionName: name,
     sessionTitle: index.get(row.sessionId)?.title ?? null,
     agentId: row.agentId,
+    laneName: laneNameOf(index, row.agentId),
     byteOffset: row.byteOffset,
     label: row.label,
     kind: row.kind,
     origin: row.origin,
     at: row.at,
+    note: row.note,
   };
 }
 
@@ -171,10 +259,25 @@ function viewOf(index: ConversationIndex, id: string): AnchorWriteView | null {
  * `POST /api/conversations/anchors/mark` — **creation paths 2 and 3, and the
  * one a search hit takes.**
  *
- * The body is `{ sessionId, agentId, byteOffset, label }`. `kind` and `origin`
- * are NOT accepted: a point a person marks by hand is a `note` he made, and
- * letting a request choose `origin` would let a page write a row the automatic
- * pass is forbidden to read.
+ * The body is `{ sessionId, agentId, byteOffset, label, kind?, note? }`.
+ *
+ * ── `origin` IS STILL NOT ACCEPTED, AND THAT IS THE PROPERTY BEING KEPT ────
+ *
+ * `kind` and `note` were added 2026-09-15 under
+ * `TASK-a-mark-you-make-yourself-cannot-say-what-kind-it-is-so-your` — his
+ * question was *"does the user have the same input options so it will be
+ * documented it is marked anchores?"* and the answer was no: a hand-made mark
+ * was pinned to `kind: 'note'`, he could type a label and nothing else, and he
+ * had made ONE mark in 750 while the pass recorded a kind, a byte, a session,
+ * an agent and an instant for every one of its own.
+ *
+ * **What was NOT traded away is why the pinning existed.** `origin` is still
+ * fixed to `'owner'` here and cannot be chosen, so no request can forge a row
+ * the automatic pass is forbidden to read; and `kind` is checked against
+ * `OWNER_ANCHOR_KINDS`, which is DISJOINT from `AUTOMATIC_ANCHOR_KINDS`, so no
+ * request can write `kind: 'table'` either. The vocabulary he gained is his
+ * own and reaches nothing the pass writes — `ownerKind` above says it in the
+ * refusal itself.
  *
  * **The offset is verified against a transcript the archive actually holds**
  * before anything is written. Without that, a marked point in a session the
@@ -212,6 +315,10 @@ export function apiAnchorMark(ws: Workspace, body: unknown): JsonResult {
   if (label.length > LABEL_CAP) {
     return badRequest(`label must be at most ${LABEL_CAP} characters.`);
   }
+  const kind = ownerKind(body);
+  if (isRefusal(kind)) return kind;
+  const note = noteField(body);
+  if (isRefusal(note)) return note;
 
   const index = openForWrite(ws);
   if (index === null) return NOT_INDEXED;
@@ -227,7 +334,15 @@ export function apiAnchorMark(ws: Workspace, body: unknown): JsonResult {
       };
     }
     const row = markAnchor(index, {
-      sessionId, agentId, byteOffset: rawOffset, label: label.trim(),
+      sessionId,
+      agentId,
+      byteOffset: rawOffset,
+      label: label.trim(),
+      // `'note'` is the default and not a pin: it is what every hand-made
+      // anchor in this workspace already carries, so a reader who says nothing
+      // gets exactly the row this route wrote before today.
+      kind: kind ?? 'note',
+      note: note ?? null,
     });
     return { status: 200, body: { indexed: true, anchor: viewOf(index, row.id) } };
   } finally {
@@ -241,8 +356,17 @@ export function apiAnchorMark(ws: Workspace, body: unknown): JsonResult {
  * The position is the id, so a relabel is `markAnchor` at the same point with
  * a new label. Two fields are carried over and one is deliberately not:
  *
- *   - `kind` and `at` are the anchor's own. Re-deriving either would reorder
- *     his list every time he fixed a typo.
+ *   - `kind` and `at` are the anchor's own unless he says otherwise.
+ *     Re-deriving either would reorder his list every time he fixed a typo.
+ *     `kind` and `note` may now be GIVEN — this is the only edit path an
+ *     anchor has, so a vocabulary he could set once and never correct would be
+ *     half a capability. A given `kind` is checked against
+ *     `OWNER_ANCHOR_KINDS` exactly as on `mark`.
+ *
+ *     **An ABSENT `note` carries the existing one over; an explicit `null`
+ *     clears it.** Collapsing those two would erase a paragraph every time he
+ *     fixed a typo in a label, which is `INV-nothing-is-dropped-silently` in
+ *     the direction that costs the most.
  *   - `origin` becomes `'owner'`, ALWAYS, and that is the one behaviour here
  *     that is a decision rather than an arithmetic. A label a person typed onto
  *     an `origin: 'automatic'` row would be overwritten by the next automatic
@@ -263,6 +387,10 @@ export function apiAnchorRelabel(ws: Workspace, body: unknown): JsonResult {
   if (label.length > LABEL_CAP) {
     return badRequest(`label must be at most ${LABEL_CAP} characters.`);
   }
+  const kind = ownerKind(body);
+  if (isRefusal(kind)) return kind;
+  const note = noteField(body);
+  if (isRefusal(note)) return note;
 
   const index = openForWrite(ws);
   if (index === null) return NOT_INDEXED;
@@ -277,9 +405,10 @@ export function apiAnchorRelabel(ws: Workspace, body: unknown): JsonResult {
       agentId: standing.agentId,
       byteOffset: standing.byteOffset,
       label: label.trim(),
-      kind: standing.kind,
+      kind: kind ?? standing.kind,
       origin: 'owner',
       at: standing.at,
+      note: note === undefined ? standing.note : note,
     });
     return {
       status: 200,

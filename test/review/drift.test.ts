@@ -266,7 +266,7 @@ function row(sessionId: string, agentId: string | null, byteOffset: number, labe
   return {
     id: `${sessionId}:${agentId ?? '-'}:${byteOffset}`,
     sessionId, agentId, byteOffset, label,
-    kind: 'note', origin: 'owner', at: '2026-09-11T01:00:00.000Z',
+    kind: 'note', origin: 'owner', at: '2026-09-11T01:00:00.000Z', note: null,
   };
 }
 

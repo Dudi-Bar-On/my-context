@@ -122,6 +122,7 @@ test.beforeAll(async () => {
         kind: (['note', 'table', 'report', 'ruling'] as const)[i % 4] ?? 'note',
         origin: 'owner',
         at: new Date(Date.UTC(2026, 8, 8, 9, 0, i)).toISOString(),
+        note: null,
       })));
     runCli(['conversation', 'rebuild'], cwd, () => {});
   } finally {

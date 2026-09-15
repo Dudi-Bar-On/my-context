@@ -211,8 +211,11 @@ function seed(dbPath: string, spec: {
 
 test('a table is GFM\'s delimiter row, not a line that happens to hold pipes', () => {
   assert.equal(
-    tableIn(TABLE), 'tokenizer',
-    'the first header cell names the table, so the anchor says what it points at',
+    tableIn(TABLE), 'tokenizer | hits',
+    'the header cells name the table, so the anchor says what it points at. This was the FIRST '
+    + 'readable cell ALONE until 2026-09-15, which left 376 of his 750 bookmarks named after a '
+    + 'single column heading — 27 of them called "lane" — and is the defect '
+    + '`TASK-a-table-mark-is-labelled-with-one-word-from-its-header-and-a` repairs',
   );
   assert.equal(
     tableIn('a | b | c\nthis is prose with pipes in it | and more'), null,
@@ -236,7 +239,7 @@ test('a table is GFM\'s delimiter row, not a line that happens to hold pipes', (
     + 'actually rests on the dashes',
   );
   assert.equal(
-    tableIn('| aligned | right |\n|:---|---:|\n| a | b |'), 'aligned',
+    tableIn('| aligned | right |\n|:---|---:|\n| a | b |'), 'aligned | right',
     'and the alignment colons GFM allows are still a delimiter row',
   );
 });
@@ -260,17 +263,21 @@ test('a table anchor is labelled with a header cell a person can read, never a b
     'and the three-cell shape is the " |  | " label the other five carried',
   );
   assert.equal(
-    tableIn('|  | before | after |\n| --- | --- | --- |\n| a | b | c |'), 'before',
-    'an empty FIRST cell is common — a corner cell over a row-label column — and the first '
-    + 'cell a person can read is still the table\'s own header rather than a fallback',
+    tableIn('|  | before | after |\n| --- | --- | --- |\n| a | b | c |'), 'before | after',
+    'an empty FIRST cell is common — a corner cell over a row-label column — and the cells a '
+    + 'person can read are still the table\'s own header rather than a fallback. The unreadable '
+    + 'cell is DROPPED rather than joined, which is what keeps the 2026-09-11 ruling above true '
+    + 'now that the whole header is used again: `find(isReadable)` became `filter(isReadable)`, '
+    + 'and nothing in this test can go back to `header.join(" | ")` without the two assertions '
+    + 'above it going red',
   );
   assert.equal(
-    tableIn('| # | what | state |\n| --- | --- | --- |\n| 1 | a | b |'), 'what',
+    tableIn('| # | what | state |\n| --- | --- | --- |\n| 1 | a | b |'), 'what | state',
     'a cell of pure punctuation is no more readable than an empty one, and `# | what | state` '
     + 'is a label his index actually holds',
   );
   assert.equal(
-    tableIn('| מזהה | ערך |\n| --- | --- |\n| א | ב |'), 'מזהה',
+    tableIn('| מזהה | ערך |\n| --- | --- |\n| א | ב |'), 'מזהה | ערך',
     'readable means a LETTER OR DIGIT in any script — this archive is half Hebrew, and an '
     + 'ASCII test would have thrown every Hebrew header onto the fallback',
   );
@@ -492,7 +499,7 @@ test('a rebuild marks the table and the ruling, and nothing else', () => {
     const table = automatic.find((a) => a.kind === 'table');
     assert.equal(table?.byteOffset, offsetOf(TURNS, 1),
       'and it points at the BYTE the turn holding the table starts on');
-    assert.equal(table?.label, 'tokenizer');
+    assert.equal(table?.label, 'tokenizer | hits');
     assert.equal(
       automatic.find((a) => a.kind === 'ruling')?.byteOffset, offsetOf(TURNS, 0),
       'the ruling is the turn HE typed, which is record 0 here',
@@ -679,9 +686,9 @@ test('a rebuild relabels a table anchor an earlier build labelled with a border'
 
     const repaired = anchors(f.dbPath).find((a) => a.byteOffset === hidden);
     assert.equal(
-      repaired?.label, 'seq',
-      'the label is re-derived from the table\'s own first header cell, so the bookmarks he '
-      + 'already has stop saying `|`',
+      repaired?.label, 'seq | what',
+      'the label is re-derived from the table\'s own header, so the bookmarks he already has '
+      + 'stop saying `|` — and, since 2026-09-15, stop saying only `seq`',
     );
     assert.equal(repaired?.kind, 'table', 'and it is still a table');
     assert.match(
@@ -714,7 +721,7 @@ test('the probe pass relabels what it already owns, and that is counted too', ()
     assert.equal(f.run(['conversation', 'rebuild']), 0, f.drawn());
 
     assert.equal(
-      anchors(f.dbPath).find((a) => a.byteOffset === visible)?.label, 'tokenizer',
+      anchors(f.dbPath).find((a) => a.byteOffset === visible)?.label, 'tokenizer | hits',
       'the probe pass re-derives the label of an anchor it already owns',
     );
     assert.match(

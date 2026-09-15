@@ -186,6 +186,7 @@ test.beforeAll(async () => {
         kind: 'note',
         origin: 'owner' as const,
         at: new Date(Date.UTC(2026, 8, 8, 9, 0, i)).toISOString(),
+        note: null,
       })));
     runCli(['conversation', 'rebuild'], cwd, () => {});
   } finally {

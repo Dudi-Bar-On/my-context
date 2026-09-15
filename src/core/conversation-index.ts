@@ -153,7 +153,7 @@ const CONVERSATION_TABLE_COLUMNS: [string, string[]][] = [
     'key', 'session_id', 'agent_id', 'file', 'bytes', 'mtime_ms', 'records', 'spans', 'indexed_at',
   ]],
   ['anchors', [
-    'id', 'session_id', 'agent_id', 'byte_offset', 'label', 'kind', 'origin', 'at',
+    'id', 'session_id', 'agent_id', 'byte_offset', 'label', 'kind', 'origin', 'at', 'note',
   ]],
 ];
 
@@ -488,7 +488,12 @@ CREATE TABLE IF NOT EXISTS anchors (
   label       TEXT NOT NULL,
   kind        TEXT NOT NULL,
   origin      TEXT NOT NULL,
-  at          TEXT NOT NULL
+  at          TEXT NOT NULL,
+  -- The owner's free text beside the label, and NULL for every automatic
+  -- anchor. addAnchorNote is the other half: this DDL reaches a table that
+  -- already exists not at all, because CREATE TABLE IF NOT EXISTS is a no-op
+  -- on one. (No backticks in here — this whole schema is a template literal.)
+  note        TEXT
 ) WITHOUT ROWID;
 
 CREATE INDEX IF NOT EXISTS idx_anchors_session ON anchors(session_id);
@@ -705,11 +710,27 @@ export interface AnchorRow {
   /** Bytes from the start of the transcript. Never characters. */
   byteOffset: number;
   label: string;
-  /** What KIND of thing this is — `'note'`, `'table'`, `'report'`, `'ruling'`. */
+  /**
+   * What KIND of thing this is. The automatic pass writes only `'table'` and
+   * `'ruling'`; the owner chooses from a vocabulary that is DISJOINT from
+   * those two — `OWNER_ANCHOR_KINDS` in `core/anchors.ts` carries both sets
+   * and the reason they may not overlap.
+   */
   kind: string;
   /** `'owner'` when he marked it; `'automatic'` when it was marked for him. */
   origin: string;
   at: string;
+  /**
+   * **The owner's free text beside the label**, or `null` — which is what
+   * every automatic anchor carries and what a row written before this column
+   * existed reads as.
+   *
+   * A label is the one line that has to fit in a list; this is the sentence
+   * that did not fit. `null` and `''` are not distinguished on the way in: an
+   * empty detail is no detail, and two spellings of "nothing" in one column is
+   * the two-namespaces defect `dispatched_by` was repaired for.
+   */
+  note: string | null;
 }
 
 /**
@@ -732,6 +753,51 @@ export function anchorIdFor(
   sessionId: string, agentId: string | null, byteOffset: number,
 ): string {
   return `${sessionId}:${agentId ?? '-'}:${byteOffset}`;
+}
+
+/**
+ * **WHICH LANE MARKED AN ANCHOR, in the lane's own dispatched name** —
+ * `TASK-a-table-mark-is-labelled-with-one-word-from-its-header-and-a`, owner
+ * ruling 2026-09-15: *"you write Marked lane, it would be nice to see which
+ * lane, which table, which report etc for every mark you add."*
+ *
+ * ── IT IS A DERIVATION AND MAY NEVER BECOME A COLUMN ───────────────────────
+ *
+ * The answer was already in this database and nothing showed it: `anchors.
+ * agent_id` joins `subagents.agent_id`, and `subagents.description` is the one
+ * line the dispatcher typed. Measured 2026-09-15 on the owner's own 750
+ * anchors: 386 carry a lane id, and EVERY ONE of those 386 resolves to a row
+ * with a description. Storing the name on the anchor would be a second copy of
+ * a fact this index already holds.
+ *
+ * ── THE THREE ANSWERS, AND WHY `null` IS NOT ONE OF THEM ON ITS OWN ────────
+ *
+ * The other 364 carry `agentId === null`: **the main session marked them, not
+ * a lane.** That is a fact and not a gap, and inventing an owner for it is
+ * exactly what `STD-a-measured-zero-is-drawn-and-named` forbids. So a caller
+ * reads the pair `(agentId, laneNameOf(...))`, which says all three apart
+ * without a second vocabulary:
+ *
+ *   - `agentId === null`             the session's own transcript.
+ *   - `agentId` set, name `string`   that lane, by its dispatched name.
+ *   - `agentId` set, name `null`     a lane the archive no longer holds a row
+ *                                    for, or one dispatched with no
+ *                                    description. ZERO of his today —
+ *                                    measured — and the state a pruned lane
+ *                                    reaches.
+ *
+ * ── WHY IT LIVES HERE AND NOT BESIDE `markAnchor` ──────────────────────────
+ *
+ * `anchorIdFor`'s reason above, word for word: this module is the one a
+ * READ-ONLY surface may load, and the viewer must be able to name the lane
+ * behind a bookmark without loading a module that can write one.
+ * `core/anchors.ts` re-exports it, so every writer still reaches it where it
+ * always did.
+ */
+export function laneNameOf(index: ConversationIndex, agentId: string | null): string | null {
+  if (agentId === null) return null;
+  const description = index.getSubagent(agentId)?.description ?? null;
+  return description === null || description.trim() === '' ? null : description;
 }
 
 /**
@@ -1870,6 +1936,40 @@ function fillDispatchedBy(db: DatabaseSync): void {
   for (const row of rows) update.run(dispatchingAgentId(row.parent_agent_id), row.agent_id);
 }
 
+/**
+ * **Move an existing index onto `anchors.note`** — the owner's free text beside
+ * a bookmark's label, `TASK-a-mark-you-make-yourself-cannot-say-what-kind-it-is-so-your`.
+ * A WRITE, so it is reachable only from `ConversationIndex.open`, and it is
+ * called beside `fillDispatchedBy` for that function's stated reason: `CREATE
+ * TABLE IF NOT EXISTS` is a no-op on a table that exists, so the DDL below
+ * cannot add a column to one.
+ *
+ * ── AND IT FILLS NOTHING, WHICH IS THE ONE WAY IT DIFFERS FROM ITS PRECEDENT ─
+ *
+ * `fillDispatchedBy` had to compute a value for 43 rows because the truth for
+ * that column was already inside the index. **The truth for this one is the
+ * anchors DOCUMENT** — `.my_context/.anchors.jsonl`, `plan:recall seq:6` — and
+ * `reconcileAnchors` rewrites the whole table from it at the start of every
+ * anchor write and at the end of every assistant turn. So the column is added
+ * empty and is correct one reconciliation later, from the file, for every row
+ * that has a note and every row that does not.
+ *
+ * That is the property the file was bought for, spent here for the first time:
+ * a new anchor column costs an `ALTER TABLE` and no migration at all.
+ */
+function addAnchorNote(db: DatabaseSync): void {
+  const table = db.prepare(
+    "SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'anchors'",
+  ).get() as { name: string } | undefined;
+  // A fresh index has no table yet, and `CONVERSATION_SCHEMA` creates the
+  // column together with it. Nothing to move.
+  if (table === undefined) return;
+
+  const columns = (db.prepare("SELECT name FROM pragma_table_info('anchors')")
+    .all() as { name: string }[]).map((r) => r.name);
+  if (!columns.includes('note')) db.exec('ALTER TABLE anchors ADD COLUMN note TEXT');
+}
+
 /** The read-only handle plus the tables. `open` writes; `openReadOnlyChecked` cannot. */
 export class ConversationIndex {
   #db: DatabaseSync;
@@ -1920,6 +2020,7 @@ export class ConversationIndex {
       // subagents(dispatched_by)` in `CONVERSATION_SCHEMA` would refuse on a
       // table that predates the column. See `fillDispatchedBy`.
       fillDispatchedBy(db);
+      addAnchorNote(db);
       db.exec(CONVERSATION_SCHEMA);
       return new ConversationIndex(db, dbPath);
     } catch (error) {
@@ -2696,15 +2797,16 @@ export class ConversationIndex {
    */
   putAnchor(row: AnchorRow): void {
     this.#db.prepare(
-      `INSERT INTO anchors (id, session_id, agent_id, byte_offset, label, kind, origin, at)
-       VALUES (?,?,?,?,?,?,?,?)
+      `INSERT INTO anchors (id, session_id, agent_id, byte_offset, label, kind, origin, at, note)
+       VALUES (?,?,?,?,?,?,?,?,?)
        ON CONFLICT(id) DO UPDATE SET
          session_id = excluded.session_id, agent_id = excluded.agent_id,
          byte_offset = excluded.byte_offset, label = excluded.label,
-         kind = excluded.kind, origin = excluded.origin, at = excluded.at`,
+         kind = excluded.kind, origin = excluded.origin, at = excluded.at,
+         note = excluded.note`,
     ).run(
       row.id, row.sessionId, row.agentId, row.byteOffset, row.label, row.kind,
-      row.origin, row.at,
+      row.origin, row.at, row.note,
     );
   }
 
@@ -2821,6 +2923,10 @@ function toAnchor(row: Record<string, unknown>): AnchorRow {
     kind: String(row.kind),
     origin: String(row.origin),
     at: String(row.at),
+    // `?? null` and not `String(...)`: this column is NULL for every automatic
+    // anchor and for every row written before it existed, and `String(null)`
+    // would put the four characters `null` in a field a reader draws.
+    note: typeof row.note === 'string' && row.note !== '' ? row.note : null,
   };
 }
 

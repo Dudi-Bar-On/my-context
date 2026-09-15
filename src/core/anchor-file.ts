@@ -167,6 +167,14 @@ function validate(row: JsonlRow): string | null {
   if (row.agentId !== null && typeof row.agentId !== 'string') {
     return 'has an agentId that is neither a string nor null';
   }
+  // **`note` is OPTIONAL and every line written before it existed omits it.**
+  // It is not in the required list above for that reason, and the reason is
+  // the whole shape of this file: 750 anchors were on disk the day the column
+  // was added, and a validator that demanded the field would have called every
+  // one of them damage and refused to read the bookmarks.
+  if (row.note !== undefined && row.note !== null && typeof row.note !== 'string') {
+    return 'has a note that is neither a string nor null';
+  }
   return null;
 }
 
@@ -180,6 +188,7 @@ function toRow(row: JsonlRow): AnchorRow {
     kind: String(row.kind),
     origin: String(row.origin),
     at: String(row.at),
+    note: typeof row.note === 'string' && row.note !== '' ? row.note : null,
   };
 }
 
@@ -216,11 +225,23 @@ export function readAnchorFile(file: string): AnchorFileRead {
  * Rows are written in id order so that writing the same set twice produces the
  * same bytes: a file whose line order moved on every write would be unreadable
  * as a diff, which is half of what a plain file is for.
+ *
+ * **A `null` note is OMITTED rather than written**, and that is the same
+ * argument one step on. 749 of this workspace's 750 anchors are automatic and
+ * will never carry one; writing `"note":null` on every line would add ~9 KB of
+ * nothing and, worse, would rewrite all 750 lines the day the column landed,
+ * turning a diff that should show one changed bookmark into one that shows the
+ * whole file. `toRow` reads an absent field and a `null` one as the same thing,
+ * so the round trip is closed in both directions.
  */
 export function writeAnchorFile(file: string, rows: readonly AnchorRow[]): void {
   const ordered = [...rows].sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0));
   const text = ordered
-    .map((row) => `${JSON.stringify({ protocol: ANCHOR_PROTOCOL, ...row })}\n`)
+    .map((row) => {
+      const line: Record<string, unknown> = { protocol: ANCHOR_PROTOCOL, ...row };
+      if (row.note === null) delete line['note'];
+      return `${JSON.stringify(line)}\n`;
+    })
     .join('');
   const tmp = anchorTempPath(file);
   try {

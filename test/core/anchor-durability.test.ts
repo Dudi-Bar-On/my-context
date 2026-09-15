@@ -155,6 +155,7 @@ function row(over: Partial<AnchorRow> & { id: string }): AnchorRow {
     kind: 'table',
     origin: 'automatic',
     at: '2026-09-11T06:00:00.000Z',
+    note: null,
     ...over,
   };
 }

@@ -37,6 +37,65 @@ import {
 import { proseOf } from './conversation-search.ts';
 import { withAnchorWrite } from './anchor-file.ts';
 
+/**
+ * **The two kinds the automatic pass is allowed to write**, and the set every
+ * other kind must stay out of.
+ *
+ * It is here rather than in `anchor-pass.ts` because the disjointness below is
+ * a fact about the two sets TOGETHER, and a fact split across two modules is
+ * one nothing can assert in one place. `anchor-pass.ts` imports it and types
+ * its findings by it, so a third automatic grammar cannot be added without
+ * this list growing with it.
+ *
+ * There were three once — `'report'` was withdrawn by the owner on 2026-09-11
+ * and its grammar is gone; `anchor-pass.ts` carries that note where the regex
+ * used to be.
+ */
+export const AUTOMATIC_ANCHOR_KINDS = ['table', 'ruling'] as const;
+
+export type AutomaticAnchorKind = (typeof AUTOMATIC_ANCHOR_KINDS)[number];
+
+/**
+ * **THE OWNER'S OWN VOCABULARY** —
+ * `TASK-a-mark-you-make-yourself-cannot-say-what-kind-it-is-so-your`, owner
+ * ruling 2026-09-15. His question was *"does the user have the same input
+ * options so it will be documented it is marked anchores?"* and the answer was
+ * no: a hand-made mark was forced to `kind: 'note'` and he could type a label
+ * and nothing else. He had made ONE mark in 750.
+ *
+ * ── WHY IT IS A LIST AND NOT FREE TEXT, WHICH IS THE ONE CONSTRAINT ────────
+ *
+ * The item's ruling: *"Any owner kind must sit OUTSIDE the automatic set
+ * (table, ruling) so reconciliation cannot confuse the two."* A free-text kind
+ * could be typed as `table`, and the row would then be an `origin: 'owner'`
+ * anchor wearing the automatic pass's own word for what it writes — readable
+ * as either by anything that ever comes to read `kind` without `origin` beside
+ * it. A closed list is the only version of that guarantee something can check,
+ * and `test/core/anchor-kinds.test.ts` checks it.
+ *
+ * **`origin` is still the thing that PROTECTS the row**, and that has not
+ * moved: the pass skips every `origin: 'owner'` anchor whatever kind it
+ * carries, which is why a relabel may keep an automatic row's `'table'` on a
+ * row that has become his. The disjointness is a second guarantee beside that
+ * one, not a replacement for it.
+ *
+ * ── WHY THESE SIX ─────────────────────────────────────────────────────────
+ *
+ * They are the things this archive shows him marking: `'note'` first because
+ * it is what every existing hand-made anchor already carries and a vocabulary
+ * that invalidated his one mark would be a poor way to give him more of them.
+ */
+export const OWNER_ANCHOR_KINDS = [
+  'note', 'decision', 'question', 'defect', 'evidence', 'todo',
+] as const;
+
+export type OwnerAnchorKind = (typeof OWNER_ANCHOR_KINDS)[number];
+
+/** Whether a string is one of the kinds the owner may choose. */
+export function isOwnerAnchorKind(kind: string): kind is OwnerAnchorKind {
+  return (OWNER_ANCHOR_KINDS as readonly string[]).includes(kind);
+}
+
 /** What `markAnchor` is told. Everything but the position and the label has a default. */
 export interface AnchorSpec {
   sessionId: string;
@@ -51,6 +110,16 @@ export interface AnchorSpec {
   origin?: 'owner' | 'automatic';
   /** When it was marked. Defaults to now. */
   at?: string;
+  /**
+   * The owner's free text beside the label. Defaults to `null`, which is what
+   * every automatic anchor carries.
+   *
+   * An empty or whitespace-only detail is stored as `null` rather than as
+   * `''`: two spellings of "nothing" in one column is the defect
+   * `subagents.dispatched_by` was repaired for, and a caller that trimmed in
+   * one surface and not another would put both in this one.
+   */
+  note?: string | null;
 }
 
 /** One anchor resolved against the transcript it points into. */
@@ -97,6 +166,7 @@ export { anchorIdFor } from './conversation-index.ts';
  */
 export function markAnchor(index: ConversationIndex, spec: AnchorSpec): AnchorRow {
   const agentId = spec.agentId ?? null;
+  const note = spec.note ?? null;
   const row: AnchorRow = {
     id: anchorIdFor(spec.sessionId, agentId, spec.byteOffset),
     sessionId: spec.sessionId,
@@ -106,10 +176,28 @@ export function markAnchor(index: ConversationIndex, spec: AnchorSpec): AnchorRo
     kind: spec.kind ?? 'note',
     origin: spec.origin ?? 'owner',
     at: spec.at ?? new Date().toISOString(),
+    // The trim is HERE and not in each caller, for `AnchorSpec.note`'s stated
+    // reason: a column holding both `''` and `null` for "no detail" is two
+    // namespaces in one place, which is what a caller-by-caller rule produces.
+    note: note === null || note.trim() === '' ? null : note,
   };
   withAnchorWrite(index, () => index.putAnchor(row));
   return row;
 }
+
+/**
+ * Which lane marked an anchor, in the lane's own dispatched name — the
+ * derivation `TASK-a-table-mark-is-labelled-with-one-word-from-its-header-and-a`
+ * asks for, re-exported from where it is defined.
+ *
+ * **It lives in `conversation-index.ts` for `anchorIdFor`'s reason, exactly**:
+ * the read-only viewer must be able to name the lane behind a bookmark without
+ * loading a module that can write one, and `test/ui/no-writes.test.ts` walks
+ * the import graph to make sure it cannot. This module exports `markAnchor`;
+ * a read model importing it for the lane name would spend the whole guarantee
+ * on a convenience import. Every writer still reaches it where it always was.
+ */
+export { laneNameOf } from './conversation-index.ts';
 
 /**
  * One session's anchors — its own transcript's and its lanes' — in the order

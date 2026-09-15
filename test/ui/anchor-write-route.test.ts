@@ -1,4 +1,6 @@
 // @basis REQ-every-anchor-capability-is-reachable-from-the-screen-and-a,
+// TASK-a-mark-you-make-yourself-cannot-say-what-kind-it-is-so-your,
+// TASK-a-table-mark-is-labelled-with-one-word-from-its-header-and-a,
 // INV-nothing-is-dropped-silently
 /**
  * **THE TEST THAT HOLDS THE NO-WRITES EXCEPTION.**
@@ -252,9 +254,12 @@ test('marking writes a row the CLI reads back, as a note the owner made', async 
       };
     }).anchor;
     assert.equal(view.label, 'the weather turn');
-    // **`kind` and `origin` are the ROUTE's, not the caller's**, and this is
-    // the assertion that says so: no request field sets either, so no page can
-    // forge a row the automatic pass is forbidden to read.
+    // **`origin` is the ROUTE's and can never be the caller's**, which is the
+    // property that makes the pass safe to re-run: no page can forge a row the
+    // automatic pass is forbidden to read. `kind` gained a DEFAULT on
+    // 2026-09-15 rather than losing its pin — a body that says nothing still
+    // gets the row this route wrote before that day, and the tests below cover
+    // what a body that DOES say something may ask for.
     assert.equal(view.kind, 'note');
     assert.equal(view.origin, 'owner');
     assert.equal(view.byteOffset, offsetOf(2));
@@ -534,5 +539,161 @@ test('a point marked inside a lane is filed under the lane AND its owning sessio
       // why the list on the screen shows it at all.
       assert.equal(index.anchorRows(SESSION).some((r) => r.id === view.id), true);
     } finally { index.close(); }
+  });
+});
+
+/* ══ HIS OWN INPUT OPTIONS — `TASK-a-mark-you-make-yourself-cannot-say-what-kind-it-is-so-your` ══ */
+
+/**
+ * **The defect he named:** *"does the user have the same input options so it
+ * will be documented it is marked anchores?"* — and the answer was no. A
+ * hand-made mark was pinned to `kind: 'note'`, he could type a label and
+ * nothing else, and he had made ONE mark in 750 while the pass recorded a
+ * kind, a byte, a session, an agent and an instant for every one of its own.
+ *
+ * The three tests below are the fix and its boundary, in that order: he can
+ * say what it is and add a detail; he cannot reach the pass's own vocabulary;
+ * and a relabel does not eat what he wrote.
+ */
+test('he can say what kind of thing it is, in his own words, and add a detail', async () => {
+  await withServer(async (h) => {
+    const answer = await post(h, '/api/conversations/anchors/mark', {
+      sessionId: SESSION,
+      agentId: null,
+      byteOffset: offsetOf(2),
+      label: 'the weather turn',
+      kind: 'question',
+      note: 'why is this here at all — check before the next pass runs',
+    });
+    // Read ONCE — a `Response` body is consumed by the first reader, so
+    // putting `await answer.text()` in an assertion message is how a 200 test
+    // fails with "Body is unusable" instead of with what went wrong.
+    const payload = (await answer.json()) as {
+      anchor: { kind: string; origin: string; note: string | null; laneName: string | null };
+    };
+    assert.equal(answer.status, 200, JSON.stringify(payload));
+    const view = payload.anchor;
+    assert.equal(view.kind, 'question', 'his word for what it is, kept');
+    assert.equal(
+      view.note, 'why is this here at all — check before the next pass runs',
+      'and the sentence that did not fit in the label',
+    );
+    assert.equal(
+      view.origin, 'owner',
+      'AND `origin` IS STILL THE ROUTE\'S. The vocabulary he gained does not let a request '
+      + 'choose which half of §7 the row belongs to — that pin is what makes the automatic '
+      + 'pass safe to re-run and it is not being traded away for this.',
+    );
+    assert.equal(
+      view.laneName, null,
+      'the main session marked this one, and that is a fact rather than a missing lane name',
+    );
+
+    const index = ConversationIndex.openReadOnlyChecked(
+      path.join(h.cwd, '.my_context', '.index.db'),
+    );
+    try {
+      const row = index.anchorRows(null).find((r) => r.kind === 'question');
+      assert.equal(
+        row?.note, 'why is this here at all — check before the next pass runs',
+        'the detail reached the ROW and not only the answer — a field that lived in the '
+        + 'response alone would be a capability the screen describes rather than has',
+      );
+    } finally { index.close(); }
+  });
+});
+
+test('a request cannot ask for a kind the automatic pass writes', async () => {
+  await withServer(async (h) => {
+    for (const kind of ['table', 'ruling']) {
+      const refused = await post(h, '/api/conversations/anchors/mark', {
+        sessionId: SESSION, agentId: null, byteOffset: offsetOf(2), label: 'forged', kind,
+      });
+      assert.equal(
+        refused.status, 400,
+        `a request asked for kind "${kind}" and the route allowed it. The owner's vocabulary `
+        + 'is kept DISJOINT from the automatic one so that reconciliation can never mistake a '
+        + 'bookmark he made for one it made.',
+      );
+      const body = (await refused.json()) as { error?: string };
+      assert.match(
+        body.error ?? '', /note, decision, question, defect, evidence, todo/,
+        'and the refusal NAMES what he may say instead — a 400 that does not is a door with no '
+        + 'handle on it',
+      );
+    }
+
+    const nonsense = await post(h, '/api/conversations/anchors/mark', {
+      sessionId: SESSION, agentId: null, byteOffset: offsetOf(2), label: 'x', kind: 'whatever',
+    });
+    assert.equal(nonsense.status, 400, 'and a word this build has no meaning for is refused too');
+
+    assert.deepEqual(
+      rowsOf(h.cwd).filter((r) => r.label === 'forged' || r.label === 'x'), [],
+      'AND NOTHING WAS WRITTEN. A route that refused with a 400 after putting the row in would '
+      + 'be the same defect wearing a status code.',
+    );
+
+    // The anti-vacuity half: the same route, one word different, succeeds.
+    const allowed = await post(h, '/api/conversations/anchors/mark', {
+      sessionId: SESSION, agentId: null, byteOffset: offsetOf(2), label: 'kept', kind: 'evidence',
+    });
+    assert.equal(
+      allowed.status, 200,
+      'without this the three refusals above are green on a route that refuses everything, '
+      + 'which would leave him exactly where the item found him',
+    );
+  });
+});
+
+test('relabelling keeps the detail he wrote unless he clears it himself', async () => {
+  await withServer(async (h) => {
+    const made = await post(h, '/api/conversations/anchors/mark', {
+      sessionId: SESSION,
+      agentId: null,
+      byteOffset: offsetOf(2),
+      label: 'a typo hree',
+      kind: 'defect',
+      note: 'the paragraph he did not want to type twice',
+    });
+    const id = ((await made.json()) as { anchor: { id: string } }).anchor.id;
+
+    const fixed = await post(h, '/api/conversations/anchors/relabel', {
+      id, label: 'a typo here',
+    });
+    assert.equal(fixed.status, 200);
+    const after = ((await fixed.json()) as {
+      anchor: { label: string; kind: string; note: string | null };
+    }).anchor;
+    assert.equal(after.label, 'a typo here');
+    assert.equal(
+      after.note, 'the paragraph he did not want to type twice',
+      'AN ABSENT `note` CARRIES THE EXISTING ONE OVER. A relabel that reset it would erase a '
+      + 'paragraph every time he fixed a typo, which is `INV-nothing-is-dropped-silently` in '
+      + 'the direction that costs the most.',
+    );
+    assert.equal(after.kind, 'defect', 'and the kind is his own and is carried over too');
+
+    // The anti-vacuity half, and the other state: an EXPLICIT null clears it.
+    // Without this, "absent carries over" is green on a route that ignores the
+    // field entirely, which would leave him unable to take a detail back.
+    const cleared = await post(h, '/api/conversations/anchors/relabel', {
+      id, label: 'a typo here', note: null, kind: 'note',
+    });
+    const now = ((await cleared.json()) as {
+      anchor: { note: string | null; kind: string };
+    }).anchor;
+    assert.equal(now.note, null, 'an explicit null is a clear, and is distinct from saying '
+      + 'nothing at all');
+    assert.equal(now.kind, 'note', 'and a given kind is taken, from his vocabulary');
+
+    const refused = await post(h, '/api/conversations/anchors/relabel', {
+      id, label: 'a typo here', kind: 'table',
+    });
+    assert.equal(
+      refused.status, 400,
+      'and relabel guards the vocabulary exactly as mark does — the only edit path an anchor '
+      + 'has must not be the way round the boundary',
+    );
   });
 });

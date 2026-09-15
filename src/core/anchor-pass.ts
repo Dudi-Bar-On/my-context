@@ -29,7 +29,7 @@
 import {
   ConversationIndex, anchorIdFor, classifyTurn, iterateTranscript,
 } from './conversation-index.ts';
-import { markAnchor, unmarkAnchor } from './anchors.ts';
+import { markAnchor, unmarkAnchor, type AutomaticAnchorKind } from './anchors.ts';
 import { anchorTransaction } from './anchor-file.ts';
 import {
   buildSearchIndex, proseOf, searchArchive, type SearchBuildReport,
@@ -62,12 +62,17 @@ import {
  * turn, and a wrong mark is visibly wrong rather than merely present.
  */
 export interface AutoAnchorFinding {
-  /** Which grammar matched. `'table'` or `'ruling'`. */
-  kind: string;
+  /**
+   * Which grammar matched. The type is `AutomaticAnchorKind` and not `string`
+   * so that the pass cannot write a kind outside the set `core/anchors.ts`
+   * holds — the set the OWNER's vocabulary is required to stay disjoint from.
+   */
+  kind: AutomaticAnchorKind;
   /**
    * The evidence — never a summary of the turn. A ruling's is the id,
-   * verbatim; a table's is its first readable header cell, which is the one
-   * place this stops being verbatim and says why (`tableLabel`).
+   * verbatim; a table's is the nearest heading above it and its header cells,
+   * which is the one place this stops being verbatim and says why
+   * (`tableLabel`).
    */
   label: string;
 }
@@ -96,27 +101,189 @@ function isReadable(cell: string): boolean {
   return /[\p{L}\p{N}]/u.test(cell);
 }
 
+/** Where the first GFM table of a text is, and what its header row says. */
+interface TableSite {
+  /** Index into the split lines of the HEADER row — the delimiter is below it. */
+  headerLine: number;
+  header: string[];
+}
+
 /**
- * **What one table's anchor is CALLED.**
+ * The first GFM table in these lines, or `null`.
  *
- * The owner's ruling of 2026-09-11, on reading his own list: a table anchor
- * must be labelled with something a person can read — *the table's first
- * header cell*. It was the whole header row joined with `" | "` until then,
- * which is why 25 of his anchors were labelled literally `|` and five more
- * `|  |`: a header of empty cells joins to nothing but its own borders, and a
- * bookmark called `|` is one he cannot recognise in a list.
- *
- * "First" therefore means the first cell there is anything to read IN. An
- * empty corner cell over a row-label column is ordinary, and skipping it
- * yields the table's own header rather than a fallback.
- *
- * **When no cell has anything in it, the label SAYS so** rather than drawing
- * the border characters. It is a poor name and an honest one; the alternative
- * is the defect this fixes.
+ * Split out from `tableIn` on 2026-09-15 for one reason: the label now needs
+ * the heading ABOVE the table, so it needs to know where the table is and not
+ * only what its header says.
  */
-function tableLabel(header: string[]): string {
-  const named = header.find(isReadable);
-  return named ?? `a table of ${header.length} columns`;
+function firstTableSite(lines: readonly string[]): TableSite | null {
+  for (let i = 1; i < lines.length; i += 1) {
+    const delimiter = cellsOf(lines[i] ?? '');
+    if (delimiter === null || !isDelimiter(delimiter)) continue;
+    const header = cellsOf(lines[i - 1] ?? '');
+    if (header === null || header.length !== delimiter.length || header.length < 2) continue;
+    return { headerLine: i - 1, header };
+  }
+  return null;
+}
+
+/** A Markdown heading: `#` through `######`, closing hashes tolerated. */
+const ATX_HEADING = /^\s{0,3}#{1,6}\s+(.+?)\s*#*\s*$/;
+
+/**
+ * **A bold line standing alone, which is how this archive writes most of its
+ * headings.** `**Wave 1 results**` over a table is a caption and nothing else.
+ *
+ * Measured 2026-09-15 over the 376 table anchors in the owner's corpus: ATX
+ * headings alone reach 242 of them; counting these reaches 285. The 43 it adds
+ * are captions immediately above the table, which is the position the ruling
+ * names.
+ *
+ * A trailing colon is dropped by `headingAbove`, in either of the two places a
+ * caption puts one — `**What I measured:**` and `**What I measured**:`.
+ */
+const BOLD_HEADING = /^\s{0,3}\*\*(.+?)\*\*:?\s*$/;
+
+/**
+ * **How far above a table a heading may be and still be ITS heading.**
+ *
+ * Measured 2026-09-15 on all 376 table anchors in the owner's corpus, scanning
+ * with NO window at all: the nearest heading above a table sits 2 lines up at
+ * the median, 12 at the 99th percentile, and **20 at the furthest of all 285
+ * that have one**. So 24 loses nothing that was found without a bound, and
+ * what it refuses is a heading ten screens up that belongs to a different
+ * section — which is a heading the table is under, not the table's own.
+ */
+export const HEADING_LOOKBACK_LINES = 24;
+
+/**
+ * The nearest heading above one table, or `null` when there is none within
+ * reach. First match walking UP wins, which is what "nearest" means.
+ */
+function headingAbove(lines: readonly string[], headerLine: number): string | null {
+  const floor = Math.max(0, headerLine - HEADING_LOOKBACK_LINES);
+  for (let i = headerLine - 1; i >= floor; i -= 1) {
+    const line = lines[i] ?? '';
+    const heading = (ATX_HEADING.exec(line) ?? BOLD_HEADING.exec(line))?.[1];
+    // A heading of punctuation — `## ---`, `**···**` — is `isReadable`'s own
+    // question, asked here for the same reason it is asked of a header cell:
+    // a bookmark named after border characters is one he cannot recognise.
+    // The walk CONTINUES past one rather than giving up, because such a line
+    // is a rule somebody drew and not a statement that this table has no
+    // heading.
+    if (heading !== undefined && isReadable(heading)) {
+      // A caption's trailing colon is punctuation joining it to what follows,
+      // and what follows is the table. `**What I measured:**` and `**What I
+      // measured**:` both reach here — the regex above captures the colon in
+      // the first spelling and not in the second — so it is stripped here,
+      // once, rather than in two patterns that could come to disagree.
+      return heading.trim().replace(/\s*:$/, '');
+    }
+  }
+  return null;
+}
+
+/**
+ * **The longest label the automatic pass will compose**, and the length at
+ * which it starts SAYING that it dropped something.
+ *
+ * Measured 2026-09-15 across the owner's 376 table anchors, composing every
+ * one of them: the full heading-plus-header label is 55 characters at the
+ * median, 106 at the 90th percentile, 262 at the 99th and 428 at the longest.
+ * 200 therefore leaves ~97% of his tables untouched and bounds the tail, which
+ * is the half a list has to survive. It is well under the 500 `LABEL_CAP` the
+ * write routes enforce (`src/ui/anchor-write.ts`), so nothing the pass composes
+ * can be a label the screen would have refused.
+ */
+export const TABLE_LABEL_CAP = 200;
+
+/**
+ * The share of the cap a heading may take before the header cells are starved.
+ * 120 leaves at least 77 characters for cells in the worst case.
+ */
+const HEADING_CAP = 120;
+
+/** Between the heading and the cells, and between the cells. */
+const HEADING_JOIN = ' — ';
+const CELL_JOIN = ' | ';
+
+/** `text`, or its first `cap` characters with an ellipsis where the rest was. */
+function clip(text: string, cap: number): string {
+  return text.length <= cap ? text : `${text.slice(0, cap - 1).trimEnd()}…`;
+}
+
+/**
+ * **What one table's anchor is CALLED** — rewritten 2026-09-15 under
+ * `TASK-a-table-mark-is-labelled-with-one-word-from-its-header-and-a`.
+ *
+ * ── THE DEFECT, AS HE FOUND IT ────────────────────────────────────────────
+ *
+ * This was `header.find(isReadable)` — the first readable cell and nothing
+ * else — and it left **376 of his 750 bookmarks named after a single column
+ * heading**: `"id"`, `"lane"`, `"before"`, `"status"`, `"D"`. 27 of them were
+ * called `"lane"` and 13 `"before"`, which are not names at all once there are
+ * two. His words: *"you write Marked lane, it would be nice to see which lane,
+ * which table, which report etc for every mark you add."*
+ *
+ * **OWNER RULING 2026-09-15, option 1b plus the clarification he gave when
+ * asked: the label carries the HEADER CELLS PLUS THE NEAREST HEADING ABOVE THE
+ * TABLE.**
+ *
+ * ── AND THE 2026-09-11 RULING THIS REPLACES IS NOT UNDONE ─────────────────
+ *
+ * The single cell was itself a repair: the label had been the whole header row
+ * joined with `" | "`, and 25 of his anchors came out labelled literally `|`
+ * and five more `|  |`, because a header of empty cells joins to nothing but
+ * its own borders. **That defect is not reintroduced**, and the reason is that
+ * only READABLE cells are joined — the `find` became a `filter`, which is the
+ * smallest possible change that keeps the old ruling's guarantee. When no cell
+ * is readable the label still SAYS `a table of N columns` rather than drawing
+ * the borders, and now a heading above it can rescue even that: 32 of his
+ * anchors wear the `a table of N columns` fallback today and the ones with a
+ * heading become, for instance, `📦 4 — How the store actually works — a table
+ * of 2 columns`.
+ *
+ * ── IT IS COMPOSED FROM THE TURN AT THE BYTE, AND IS NOT A STORE ───────────
+ *
+ * Every part of this reads the text the anchor points at, exactly as it did
+ * before. Nothing is cached, nothing is written beside the anchor, and a
+ * relabel is the RELABEL the pass already reports.
+ *
+ * ── A DROPPED CELL IS SAID, NOT SWALLOWED ─────────────────────────────────
+ *
+ * `TABLE_LABEL_CAP` argues the number. When cells do not fit, the label ends
+ * `+N more` rather than simply stopping — a capped answer and a complete one
+ * must not look the same, which is the rule `ANCHOR_PROBE_LIMIT` already obeys
+ * one layer up.
+ */
+function tableLabel(lines: readonly string[], site: TableSite): string {
+  const readable = site.header.filter(isReadable);
+  const cells = readable.length === 0
+    ? [`a table of ${site.header.length} columns`]
+    : readable;
+
+  const heading = headingAbove(lines, site.headerLine);
+  const head = heading === null ? '' : `${clip(heading, HEADING_CAP)}${HEADING_JOIN}`;
+  const room = TABLE_LABEL_CAP - head.length;
+
+  const kept: string[] = [];
+  let width = 0;
+  for (const cell of cells) {
+    if (kept.length === 0) {
+      // The first cell is always kept — a label of nothing but `+4 more` names
+      // nothing — and clipped to the room it has so one enormous header cell
+      // cannot carry the label past the cap on its own.
+      const first = clip(cell, room);
+      kept.push(first);
+      width = first.length;
+      continue;
+    }
+    if (width + CELL_JOIN.length + cell.length > room) break;
+    kept.push(cell);
+    width += CELL_JOIN.length + cell.length;
+  }
+
+  const dropped = cells.length - kept.length;
+  return `${head}${kept.join(CELL_JOIN)}${dropped === 0 ? '' : ` +${dropped} more`}`;
 }
 
 /**
@@ -141,14 +308,8 @@ function tableLabel(header: string[]): string {
  */
 export function tableIn(text: string): string | null {
   const lines = text.split('\n');
-  for (let i = 1; i < lines.length; i += 1) {
-    const delimiter = cellsOf(lines[i] ?? '');
-    if (delimiter === null || !isDelimiter(delimiter)) continue;
-    const header = cellsOf(lines[i - 1] ?? '');
-    if (header === null || header.length !== delimiter.length || header.length < 2) continue;
-    return tableLabel(header);
-  }
-  return null;
+  const site = firstTableSite(lines);
+  return site === null ? null : tableLabel(lines, site);
 }
 
 /**
@@ -377,6 +538,13 @@ function sweepAutomaticAnchors(
     // The timestamp is the anchor's own and is carried over: re-deriving a
     // label is not a new bookmark, and moving the stamp would reorder his list
     // every time a grammar changed.
+    //
+    // **And so is the note**, added 2026-09-15 with the column. An automatic
+    // row has none today and the sweep never reaches an `origin: 'owner'` row
+    // at all — so this line is defensive rather than load-bearing, and it is
+    // here because `markAnchor` writes the WHOLE row: an omitted field is not
+    // "unchanged", it is `null`, and that is how a relabel silently erases
+    // something. Carrying it costs a word and closes the shape.
     markAnchor(index, {
       sessionId: row.sessionId,
       agentId: row.agentId,
@@ -385,6 +553,7 @@ function sweepAutomaticAnchors(
       kind: finding.kind,
       origin: 'automatic',
       at: row.at,
+      note: row.note,
     });
     report.relabelled += 1;
   }
@@ -494,6 +663,11 @@ export function markAutomaticAnchors(
           kind: finding.kind,
           origin: 'automatic',
           at: hit.at ?? new Date().toISOString(),
+          // Carried for `sweepAutomaticAnchors`' stated reason: `markAnchor`
+          // writes the whole row, so an omitted field is `null` and not
+          // "unchanged". `undefined` for a point being marked for the first
+          // time, which `markAnchor` reads as `null`.
+          note: standing?.note ?? null,
         });
       }
     }

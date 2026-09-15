@@ -85,7 +85,8 @@
  */
 import {
   ConversationIndex, ConversationIndexIncompleteError, ConversationIndexUninitializedError,
-  anchorIdFor, classifyTurn, iterateTranscript, spanMs, staleBy, transcriptDir, truncatedScan,
+  anchorIdFor, classifyTurn, iterateTranscript, laneNameOf, spanMs, staleBy, transcriptDir,
+  truncatedScan,
   type ConversationRow, type NameRow, type PersistedRow, type SubagentRow,
 } from '../core/conversation-index.ts';
 // `anchorIdFor` comes from the INDEX module above and no longer from
@@ -2221,11 +2222,33 @@ export interface AnchorView {
   sessionName: string | null;
   sessionTitle: string | null;
   agentId: string | null;
+  /**
+   * **WHICH LANE was running when this point was marked**, in the name its
+   * dispatcher typed — `"Lane N: rename cancel and hidden total"` — or `null`.
+   *
+   * `TASK-a-table-mark-is-labelled-with-one-word-from-its-header-and-a`, owner
+   * ruling 2026-09-15: *"you write Marked lane, it would be nice to see which
+   * lane, which table, which report etc for every mark you add."* Derived by
+   * `laneNameOf` from `subagents.description`, which the join has always held
+   * and nothing showed; NOT a column on the anchor, because a second copy of a
+   * fact the archive already carries is the defect the anchors document exists
+   * to avoid rather than to repeat.
+   *
+   * **Read it BESIDE `agentId`, which is what tells the three states apart.**
+   * `agentId === null` is the MAIN SESSION and not a missing lane — 364 of the
+   * owner's 750 anchors are that, and drawing them as an absent lane name is
+   * exactly what `STD-a-measured-zero-is-drawn-and-named` forbids. `agentId`
+   * set with a `null` name is the third state: a lane the archive no longer
+   * holds a row for. Zero of his are in it today, measured.
+   */
+  laneName: string | null;
   byteOffset: number;
   label: string;
   kind: string;
   origin: string;
   at: string;
+  /** His free text beside the label, or `null`. Automatic anchors have none. */
+  note: string | null;
   dropArgv: string[];
 }
 
@@ -2303,11 +2326,13 @@ export function apiConversationAnchors(ws: Workspace, url: URL): JsonResult {
         sessionName: names.get(row.sessionId) ?? null,
         sessionTitle: index.get(row.sessionId)?.title ?? null,
         agentId: row.agentId,
+        laneName: laneNameOf(index, row.agentId),
         byteOffset: row.byteOffset,
         label: row.label,
         kind: row.kind,
         origin: row.origin,
         at: row.at,
+        note: row.note,
         dropArgv: ['mycontext', 'conversation', 'anchor', '--drop', row.id],
       })),
       total: kept.length,

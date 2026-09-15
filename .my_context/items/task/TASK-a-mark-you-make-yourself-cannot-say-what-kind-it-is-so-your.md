@@ -17,17 +17,17 @@ tags:
   - ui
   - "plan:anchors"
   - "seq:2"
-  - "state:todo"
+  - "state:done"
 origin: human
 source_file: null
 source_anchor: null
 source_checksum: null
 valid_from: 2026-09-15
 valid_until: null
-checksum: 21fe17b44bc6b1a9
+checksum: 72c9ca2af095405d
 plan: anchors
 seq: "2"
-state: todo
+state: done
 priority: "1"
 ---
 
