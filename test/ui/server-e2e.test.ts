@@ -74,7 +74,9 @@ async function api(
  * "on every response including the static assets" is the requirement and a
  * header set on the JSON path only would satisfy any test that looked at JSON.
  */
-function assertSecurityHeaders(response: Response, what: string): void {
+function assertSecurityHeaders(
+  response: Response, what: string, expectedCacheControl: 'no-store' | 'no-cache' = 'no-store',
+): void {
   // **The CSP is asserted ABSENT, on purpose.**
   //
   // Spec §2 specifies one; the owner retired it on 2026-08-22 and
@@ -93,7 +95,23 @@ function assertSecurityHeaders(response: Response, what: string): void {
   assert.equal(response.headers.get('x-frame-options'), 'DENY', what);
   assert.equal(response.headers.get('x-content-type-options'), 'nosniff', what);
   assert.equal(response.headers.get('referrer-policy'), 'no-referrer', what);
-  assert.equal(response.headers.get('cache-control'), 'no-store', what);
+  // **`no-store` everywhere EXCEPT the static surface, and the exception is
+  // the decision, not the drift.**
+  //
+  // `TASK-nothing-is-compressed-nothing-is-cached-and-no-asset-carries`, whose
+  // own words are that *"an immutable asset with no `ETag` and `no-store` is a
+  // cache policy nobody chose"*. The choice is recorded on `STATIC_HEADERS`
+  // (src/ui/security.ts) and the line it is drawn on is CONTENT: every `/api`
+  // answer carries corpus bytes and keeps `no-store`, and `src/ui/public/` —
+  // the app shell and nine vendored font faces — carries none and gets
+  // `no-cache`, which lets a browser keep the bytes and forbids it serving
+  // them without asking.
+  //
+  // The DEFAULT of this parameter is `no-store`, deliberately: every caller
+  // that does not name the exception is asserting the strict policy, so a new
+  // response kind inherits `no-store` and a second exception has to be typed
+  // out here to exist. Both callers that pass `'no-cache'` are static assets.
+  assert.equal(response.headers.get('cache-control'), expectedCacheControl, what);
 }
 
 test('handoff → token → authenticated read; the nonce is one-shot', async () => {
@@ -380,15 +398,18 @@ test('the page and static assets serve without a token; /api/meta carries git in
     assert.match(page.headers.get('content-type') ?? '', /text\/html/);
     // Task 12 shipped `serveStatic` with no `Cache-Control` and said so: the
     // interface hands it to the caller and nothing tested it. This is the
-    // caller, and this is the test.
-    assert.equal(page.headers.get('cache-control'), 'no-store');
-    assertSecurityHeaders(page, 'the page');
+    // caller, and this is the test. The value became `no-cache` on 2026-09-15
+    // — see `assertSecurityHeaders` above and `STATIC_HEADERS` for the whole
+    // argument, and `the static surface revalidates` below for the 304 that is
+    // the point of it.
+    assert.equal(page.headers.get('cache-control'), 'no-cache');
+    assertSecurityHeaders(page, 'the page', 'no-cache');
     assert.match(await page.text(), /<title>mycontext Console<\/title>/);
 
     const css = await fetch(`http://127.0.0.1:${h.port}/styles.css`);
     assert.equal(css.status, 200);
     assert.match(css.headers.get('content-type') ?? '', /text\/css/);
-    assertSecurityHeaders(css, 'the stylesheet');
+    assertSecurityHeaders(css, 'the stylesheet', 'no-cache');
 
     // Reported rather than fixed (plan Task 16's call): `.ico` is not in
     // `static.ts`'s content-type table and no favicon exists, so every browser
@@ -404,6 +425,100 @@ test('the page and static assets serve without a token; /api/meta carries git in
     assert.equal(body.projectRoot, path.join(cwd, DIR_NAME));
     assert.equal(body.repoRoot, cwd);
     assert.ok('git' in body); // null in a tmpdir with no .git — present either way
+  } finally { await h.stop(); removeTree(cwd); }
+});
+
+/**
+ * **The static surface revalidates: an `ETag`, a 304, and no body the second
+ * time.**
+ *
+ * `TASK-nothing-is-compressed-nothing-is-cached-and-no-asset-carries` measured
+ * transfer 2,653,070 B against decoded 2,642,570 B — a ratio of 1.004 — and no
+ * `ETag` on anything, so immutable font faces were re-fetched on every load.
+ * Re-measured on this repository 2026-09-15: a cold load fetches **938,336 B of
+ * static assets in 55 ms**, `app.js` 463,329 and `styles.css` 328,527 of it.
+ *
+ * WHAT IS ASSERTED, and every one of these is a FINDING with a verdict:
+ *
+ *  1. an asset carries an `ETag` at all — it did not before;
+ *  2. sending it back gets 304 **with an empty body**, which is the saving;
+ *  3. the 304 carries the same four security headers and the same policy, so a
+ *     revalidated asset is not a hole in the header table;
+ *  4. a NON-matching `If-None-Match` still gets 200 and the bytes, so the
+ *     comparison is a comparison and not an unconditional 304;
+ *  5. the `ETag` is stable across two requests for the same unchanged file.
+ *
+ * NO millisecond is asserted anywhere here. The figures above are a measurement
+ * reported in prose; the assertion is on BYTES, which read the same on a busy
+ * machine as on an idle one.
+ */
+test('a static asset carries an ETag, and sending it back gets a bodyless 304', async () => {
+  const cwd = project();
+  const h = await startUiChild(cwd);
+  try {
+    const first = await fetch(`http://127.0.0.1:${h.port}/styles.css`);
+    assert.equal(first.status, 200);
+    const etag = first.headers.get('etag');
+    const bytes = (await first.text()).length;
+    assert.ok(etag !== null && etag !== '',
+      'FINDING (1): the stylesheet carries a validator — before this it carried none, which is '
+      + 'what made `no-store` the only possible policy');
+    assert.ok(bytes > 0, 'the 200 really did carry the asset, so the 304 below has something to save');
+
+    const again = await fetch(`http://127.0.0.1:${h.port}/styles.css`);
+    assert.equal(again.headers.get('etag'), etag,
+      'FINDING (5): the validator is stable across two reads of an unchanged file');
+    await again.text();
+
+    // **On a SOCKET, not through `fetch` — and the BORROWED POWER in the
+    // "no body" half is disclosed rather than claimed, because it was
+    // measured.**
+    //
+    // `fetch` discards a 304's body by specification, so asserting
+    // `(await response.text()).length === 0` through it would be an assertion
+    // about the CLIENT. `rawGet` reads what actually arrived on the wire (see
+    // its doc in `helpers.ts`), which removes that borrowing.
+    //
+    // It does not remove the OTHER one, and the honest thing is to name it:
+    // `node:http` refuses to write a payload on a 304 at all. Measured
+    // 2026-09-15 against a five-line server — `res.writeHead(304); res.end(
+    // Buffer.from('BODYBYTES'))` puts `HTTP/1.1 304 … \r\n\r\n` on the socket
+    // and no `BODYBYTES`. So mutating THIS server to `res.end(asset.body)` on
+    // the 304 path reddens nothing here and cannot: the runtime guarantees it.
+    // What this file's code actually decides is the STATUS, and that is what
+    // the two assertions below it hold — a matching validator must produce 304
+    // (mutating the condition to `false` reddens) and a non-matching one must
+    // not (mutating it to `true` reddens). The byte assertion stays because it
+    // is the property a reader cares about and because a future move to a
+    // different server or to a manual socket write would stop being covered by
+    // the runtime, at which point it starts carrying its own weight.
+    const conditional = await rawGet(h.port, '/styles.css', {
+      headers: [`If-None-Match: ${etag}`],
+    });
+    assert.equal(conditional.status, 304, 'FINDING (2): the matching validator is honoured');
+    assert.equal(conditional.body.length, 0,
+      `FINDING (2): the 304 puts NO body on the wire — ${bytes} B of stylesheet is what a revisit `
+      + 'stops fetching, and a 304 with a body would be the saving undone');
+    assert.match(conditional.head, new RegExp(`etag: ${etag.replace(/"/g, '"')}`),
+      'the 304 carries the validator it was matched against');
+    assert.equal(/^content-type:/m.test(conditional.head), false,
+      'FINDING (3): no `content-type` on a response that deliberately sends no representation');
+    for (const header of [
+      'x-content-type-options: nosniff', 'referrer-policy: no-referrer',
+      'cache-control: no-cache', 'x-frame-options: deny',
+    ]) {
+      assert.ok(conditional.head.includes(header),
+        `FINDING (3): the 304 carries "${header}" — a revalidated asset is not a hole in the `
+        + `header table. Head was:\n${conditional.head}`);
+    }
+
+    const stale = await fetch(`http://127.0.0.1:${h.port}/styles.css`, {
+      headers: { 'if-none-match': '"0-0"' },
+    });
+    assert.equal(stale.status, 200,
+      'FINDING (4): a validator that does NOT match gets the bytes — so the 304 above is a '
+      + 'comparison and not an unconditional answer');
+    assert.equal((await stale.text()).length, bytes);
   } finally { await h.stop(); removeTree(cwd); }
 });
 

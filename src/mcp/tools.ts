@@ -1,17 +1,11 @@
 import { existsSync, readFileSync } from 'node:fs';
 import path from 'node:path';
 import {
-  AUDIT_KINDS, AUDIT_OPS, auditFailureNote, filterAudit, kindOf, parseWhen, PROGRESS_OPS,
-  readAudit, recordAudit, recordItemRead,
-  type AuditFilter, type AuditKind, type AuditOp,
+  auditFailureNote, kindOf, PROGRESS_OPS, readAudit, recordAudit, recordItemRead,
 } from '../core/audit.ts';
 import { RULE_DIRECTIVES } from '../core/command-flags.ts';
 import { askHandoverNow } from '../core/handover-ask.ts';
 import { computeDecay } from '../core/decay.ts';
-import {
-  focusReportLines, isFocusActive, readFocus, setFocus, unsetFocus,
-  type Focus, type FocusAxes,
-} from '../core/focus.ts';
 import { Ledger } from '../core/ledger.ts';
 import { topUpLedger } from '../core/ledger-replay.ts';
 import { summaryStalenessNote } from '../core/content-hash.ts';
@@ -48,11 +42,10 @@ import {
   type PendingRevision,
 } from '../core/revision.ts';
 import { filterItems, LINK_DIRECTIONS, type LinkDirection } from '../core/search.ts';
-import { mergeLayers, RETIRED_STATUSES, reviewQueue, select } from '../core/select.ts';
+import { mergeLayers, RETIRED_STATUSES, reviewQueue } from '../core/select.ts';
 import { makeId } from '../core/slug.ts';
 import { MCP_HELP_TOPICS, enumError, missingFieldError, unknownIdError } from '../core/teach.ts';
-import type { Item, Observation, Origin, Severity, Status } from '../core/types.ts';
-import { ORIGINS } from '../core/validate.ts';
+import type { Item, Severity, Status } from '../core/types.ts';
 import { VERSION } from '../core/version.ts';
 import { resolveWorkspace } from '../core/workspace.ts';
 import { exampleItem, helpTopic, toolDescriptions } from '../help/index.ts';
@@ -64,11 +57,25 @@ import { readStagingDir } from '../lesson/staging.ts';
 import { illegibleExisting, renderCollisionReport, type CollisionReport } from '../pack/collide.ts';
 import { planImport } from '../pack/import.ts';
 import { readImportRecords } from '../pack/imported-audit.ts';
-import { RULES_DIR_ENV, resolveStoreDir, workspaceIsMyContext } from '../rules/deliver.ts';
-import { storeMeta, verifyManifest } from '../rules/manifest.ts';
-import { entriesDir, loadRules } from '../rules/store.ts';
-import type { Entry } from '../rules/schema.ts';
 import { readArtefact } from '../pack/reader.ts';
+// **The argument vocabulary every spec below is written in**, moved out by
+// `TASK-26-tool-specs-keep-their-handlers-inline-where-one-already` so that a
+// handler CAN move out — see `tools/args.ts`' own header for why a coercer
+// living in this file made every other move a cycle.
+import {
+  object, optBool, optEnum, optExtra, optList, optNum, optObservations, optStr, str,
+  S_STRING, S_STRINGS, type Args,
+} from './tools/args.ts';
+// Three tool groups whose handlers moved out, in the shape `ingest.ts` set:
+// the schema and the logic live in their own module, the spec entry and its
+// docblock stay below. Each was chosen by measurement, not by size — see
+// `tools/rule-store.ts`' header for which test files draw which boundary and
+// why the other 24 specs stayed where they are.
+import { AUDIT_LOG_SCHEMA, runAuditLog } from './tools/audit.ts';
+import { FOCUS_CONTEXT_SCHEMA, runFocusContext } from './tools/focus.ts';
+import {
+  LIST_RULES_SCHEMA, VERIFY_RULES_SCHEMA, runListRules, runVerifyRules,
+} from './tools/rule-store.ts';
 import { INGEST_DOCUMENT_SCHEMA, runIngestDocument } from './tools/ingest.ts';
 import { toolResultProvenance } from './provenance.ts';
 import type { CodeIdentity } from '../core/code-identity.ts';
@@ -77,178 +84,6 @@ import type { ToolAnnotations, ToolDefinition, ToolRegistry } from './protocol.t
 const STATUSES = ['active', 'draft', 'superseded', 'deprecated', 'validated'];
 const SEVERITIES = ['hard', 'soft'];
 
-type Args = Record<string, unknown>;
-
-function str(args: Args, key: string, tool: string): string {
-  const value = args[key];
-  if (typeof value !== 'string' || value.trim() === '') {
-    throw new Error(missingFieldError(key, tool, 'capture'));
-  }
-  return value;
-}
-
-/**
- * Absent keys are fine — every field on this whole surface (`optStr`,
- * `optBool`, `optNum`, `optList`, `optEnum`, `optObservations`, `optExtra`)
- * is optional, and an explicit JSON `null` is treated the same as absent
- * everywhere: it is a common way a model spells "not set", not a
- * wrong-typed value — the same reading `optObservations`'s per-entry
- * `context: null` already relies on one level down. A *present, non-null*
- * key of the wrong type is not fine: silently ignoring it (the previous
- * behaviour) reports success while changing nothing, e.g.
- * `update_item({title: 12345})` returned "updated" without ever touching
- * the title. Every helper below applies that same reasoning to its own
- * shape — scalars, arrays, enums, or the observations/extra objects.
- */
-function optStr(args: Args, key: string): string | undefined {
-  const value = args[key];
-  if (value === undefined || value === null) return undefined;
-  if (typeof value !== 'string') {
-    throw new Error(`my_context: "${key}" must be a string. You passed ${JSON.stringify(value)}.`);
-  }
-  return value;
-}
-
-function optBool(args: Args, key: string): boolean | undefined {
-  const value = args[key];
-  if (value === undefined || value === null) return undefined;
-  if (typeof value !== 'boolean') {
-    throw new Error(`my_context: "${key}" must be a boolean. You passed ${JSON.stringify(value)}.`);
-  }
-  return value;
-}
-
-/** `undefined` or explicit `null` keeps the caller's fallback; a
- * present-and-non-null but invalid `limit` (non-number, zero, negative,
- * non-finite) is refused rather than silently replaced by the fallback, for
- * the same reason `optStr`/`optBool` refuse. */
-function optNum(args: Args, key: string, fallback: number): number {
-  const value = args[key];
-  if (value === undefined || value === null) return fallback;
-  if (typeof value !== 'number' || !Number.isFinite(value) || value <= 0) {
-    throw new Error(`my_context: "${key}" must be a positive number. You passed ${JSON.stringify(value)}.`);
-  }
-  return value;
-}
-
-/**
- * Arrays are validated rather than coerced. A model that passes a bare string
- * for `scope` has misunderstood the field, and silently wrapping it produces a
- * plausible-looking item with a glob that never matches. `null` is absent,
- * same as every other optional field on this surface — only a genuinely
- * wrong type (a string, a number, an array with a non-string element) throws.
- */
-function optList(args: Args, key: string): string[] | undefined {
-  const value = args[key];
-  if (value === undefined || value === null) return undefined;
-  if (!Array.isArray(value) || value.some((v) => typeof v !== 'string')) {
-    throw new Error(
-      `my_context: "${key}" must be an array of strings, e.g. ["src/db/**"]. ` +
-      `See mycontext_help("scope").`,
-    );
-  }
-  return value as string[];
-}
-
-/** `null` is absent, same as every other optional field on this surface —
- * only a present value that is not a string, or not a member of `allowed`,
- * is a genuine enum violation. */
-function optEnum<T extends string>(
-  args: Args, key: string, allowed: string[], topic: 'categories' | 'workflow' | 'capture',
-): T | undefined {
-  const value = args[key];
-  if (value === undefined || value === null) return undefined;
-  if (typeof value !== 'string' || !allowed.includes(value)) {
-    throw new Error(enumError(key, String(value), allowed, topic));
-  }
-  return value as T;
-}
-
-/**
- * `category` and `text` are required strings, not defaulted or coerced: a
- * missing `category` silently becoming `'note'`, or a non-string `text`
- * silently going through `String()`, is the same plausible-looking-but-wrong
- * outcome `optStr`/`optBool` refuse above — an observation the model thinks
- * it wrote correctly is instead stored as something else entirely.
- * `observations: null` (the whole field) is absent, same as every other
- * optional field on this surface; a per-entry `context: null` below is a
- * different, deliberate case — see that check — and is left exactly as is.
- */
-function optObservations(args: Args): Observation[] | undefined {
-  const value = args.observations;
-  if (value === undefined || value === null) return undefined;
-  if (!Array.isArray(value)) {
-    throw new Error(
-      'my_context: "observations" must be an array of ' +
-      '{ category, text } objects. See mycontext_help("capture").',
-    );
-  }
-  return value.map((raw, i) => {
-    const entry = (raw ?? {}) as Record<string, unknown>;
-    if (typeof entry.category !== 'string' || entry.category.trim() === '') {
-      throw new Error(
-        `my_context: observations[${i}] is missing "category", a required string. ` +
-        `See mycontext_help("capture").`,
-      );
-    }
-    if (typeof entry.text !== 'string' || entry.text.trim() === '') {
-      throw new Error(
-        `my_context: observations[${i}] is missing "text", a required string. ` +
-        `See mycontext_help("capture").`,
-      );
-    }
-    if (entry.tags !== undefined && (!Array.isArray(entry.tags) || entry.tags.some((t) => typeof t !== 'string'))) {
-      throw new Error(`my_context: observations[${i}].tags must be an array of strings.`);
-    }
-    if (entry.context !== undefined && entry.context !== null && typeof entry.context !== 'string') {
-      throw new Error(`my_context: observations[${i}].context must be a string.`);
-    }
-    return {
-      category: entry.category,
-      text: entry.text,
-      tags: (entry.tags as string[] | undefined) ?? [],
-      context: (entry.context as string | undefined) ?? null,
-    };
-  });
-}
-
-/** `update_item`'s `extra` merges into the item's existing extra fields
- * (`mutate.ts`'s `updateItem` does the merge and validates keys/collisions);
- * this only checks the shape at the boundary — an object of string values.
- * An explicit `extra: null` is treated the same as omitting `extra`
- * entirely, same as every other optional field here. */
-function optExtra(args: Args): Record<string, string> | undefined {
-  const value = args.extra;
-  if (value === undefined || value === null) return undefined;
-  if (typeof value !== 'object' || Array.isArray(value)) {
-    throw new Error(
-      'my_context: "extra" must be an object of string values, e.g. {"kind": "functional"}. ' +
-      'See mycontext_help("capture").',
-    );
-  }
-  const out: Record<string, string> = {};
-  for (const [key, v] of Object.entries(value as Record<string, unknown>)) {
-    if (typeof v !== 'string') {
-      throw new Error(`my_context: "extra.${key}" must be a string. You passed ${JSON.stringify(v)}.`);
-    }
-    // `defineProperty`, not `out[key] = v`. Plain assignment with the key
-    // `__proto__` sets `out`'s PROTOTYPE instead of creating an own
-    // property, so the field vanishes here — before `validateExtra`
-    // (mutate.ts) ever sees it, since that function iterates
-    // `Object.entries`, which lists own properties only. The refusal
-    // `validateExtra` exists to make was therefore unreachable through this
-    // surface, and `update_item` reported "updated" having silently dropped
-    // the field the caller asked for. `update_item` is the only surface that
-    // takes free-form `extra` from a model, so this is the one path where
-    // that mattered. Verified by execution before the fix: `extra` arrived
-    // as `{"__proto__": "boom"}` from `JSON.parse` of the tool call and
-    // reached `updateItem` as `{}`.
-    Object.defineProperty(out, key, {
-      value: v, writable: true, enumerable: true, configurable: true,
-    });
-  }
-  return out;
-}
 
 /**
  * Open the workspace, refresh the index from Markdown, run, close. The rebuild
@@ -638,14 +473,6 @@ export function refuseUnknownArgs(spec: ToolSpec, args: Args): void {
   );
 }
 
-function object(
-  properties: Record<string, unknown>, required: string[] = [],
-): Record<string, unknown> {
-  return { type: 'object', properties, required };
-}
-
-const S_STRING = { type: 'string' };
-const S_STRINGS = { type: 'array', items: { type: 'string' } };
 
 /**
  * Hand-written value hints for the extra fields, keyed by field name. Purely
@@ -720,97 +547,6 @@ function extraFieldSchema(config: Config): Record<string, unknown> {
  * happens at the argument gate, by name, before the handler is entered.
  */
 const DEFAULT_CONFIG = resolveConfig({});
-
-/* ─── THE RULE STORE, REACHABLE WITHOUT A TERMINAL (`mcpsurface/1`) ──────────
- *
- * There was no MCP path to the rule store at all — while `missedDoorLine`, a
- * sentence written FOR A MODEL, told it to run `mycontext rules list` and
- * `mycontext rules verify`. An agent whose Bash tool is denied could do
- * neither, so the product's own advice for "find out what you were given"
- * pointed at a door that surface does not have. Report 6 called it the largest
- * CLI-to-MCP gap in the product that nothing argues for, and `parity.ts` is
- * where the DELIBERATE absences are named — this was not among them.
- *
- * ── WHAT IS REUSED, AND WHY NONE OF IT IS REIMPLEMENTED ─────────────────────
- *
- * Every question below is answered by the function the CLI and the doors
- * already ask. `resolveStoreDir` in particular is `deliver.ts`'s, for the
- * reason `cli/commands/rules.ts` records after being caught by exactly this:
- * with `MYCONTEXT_RULES_DIR` set, resolving the store a second way would
- * describe a directory no door reads, with nothing saying so. A third
- * resolution here would be a third answer to *"which store is this"*.
- *
- * `workspaceIsMyContext` is `deliver.ts`'s export, not the CLI's private copy
- * of the same comparison — the tier decides whether developer-tier entries are
- * law, and two answers to that is the shape spec §3 exists to prevent.
- *
- * ── READ ONLY, DELIBERATELY, AND THE ABSENCE IS THE POINT ───────────────────
- *
- * `mycontext rules verify --restore` writes. `verify_rules` offers no such
- * argument and never will: `refuseUnknownArgs` refuses it by name, so a model
- * that reaches for it is told where the act lives instead of being quietly
- * ignored. The gap this item names is a READ an agent cannot perform; putting
- * a write beside the fix would be answering a different question.
- */
-
-/** The store a DOOR would read right now — never resolved a second way. */
-function ruleStoreDir(): string {
-  return resolveStoreDir();
-}
-
-/** Whether developer-tier entries are law here. `false` without a workspace. */
-function rulesReaderIsMyContext(cwd: string): boolean {
-  const ws = resolveWorkspace(cwd);
-  return ws.projectRoot ? workspaceIsMyContext(ws.projectRoot) : false;
-}
-
-/**
- * The line that says this answer is not about the installed package, or `''`.
- * Same argument as `substitutedStoreLine` and the CLI's `substitutionLines`: a
- * reader holding an answer about somewhere else needs telling, and a sentence
- * printed every time is a sentence nobody reads.
- */
-function ruleStoreSubstitution(dir: string): string {
-  return path.resolve(dir) === path.resolve(entriesDir()) ? ''
-    : `NOT the installed package: \`${RULES_DIR_ENV}\` points at ${dir}, and that is the ` +
-      'store every door reads too.\n';
-}
-
-/** `store version N, published YYYY-MM-DD`, or `''` for a store published before the field. */
-function ruleStoreVersion(dir: string): string {
-  const meta = storeMeta(dir);
-  if (meta === null) return '';
-  return `store version ${meta.version}` +
-    `${meta.publishedAt === null ? '' : `, published ${meta.publishedAt}`}\n`;
-}
-
-function ruleCheckLine(entry: Entry): string {
-  return entry.check.how === 'none' ? `none - ${entry.check.why}` : `${entry.check.how}:${entry.check.name}`;
-}
-
-/** One entry in full — the `rules show` answer, for a reader with no terminal. */
-function renderRuleEntry(entry: Entry): string {
-  const lines = [`${entry.id} · ${entry.kind} · ${entry.tier}`, entry.title, ''];
-  for (const [name, value] of Object.entries(entry.parts)) {
-    if (name === 'check' || name === 'example') continue;
-    if (Array.isArray(value)) {
-      lines.push(`${name}:`);
-      for (const step of value) lines.push(`  - ${step}`);
-      continue;
-    }
-    lines.push(`${name}: ${value}`);
-  }
-  lines.push(`example: ${entry.example}`, `check: ${ruleCheckLine(entry)}`);
-  if (entry.body !== '') lines.push('', entry.body);
-  // Spec §6, the owner's own words: "for documentation only and should not be
-  // injected to the context". This tool is a documentation surface a model
-  // asked for by name, which is the one place it belongs — the same line
-  // `mycontext rules show` draws.
-  if (entry.request !== undefined) {
-    lines.push('', 'asked for as (verbatim, never injected):', entry.request);
-  }
-  return lines.join('\n');
-}
 
 const SPECS: ToolSpec[] = [
   {
@@ -1796,78 +1532,12 @@ const SPECS: ToolSpec[] = [
      */
     name: 'audit_log',
     annotations: READS,
-    schema: object({
-      item: { ...S_STRING, description: 'Records naming this item id, in any role' },
-      session: { ...S_STRING, description: 'Records from one session id' },
-      op: { ...S_STRING, enum: AUDIT_OPS },
-      kind: { ...S_STRING, enum: AUDIT_KINDS },
-      // **`actor`, not `origin`, and the difference is a security pin rather
-      // than taste.** `test/mcp/tools.test.ts` asserts that NO tool schema
-      // exposes a property named `origin`, because a model that can name its
-      // own origin on a write tool can route around the review boundary that
-      // keeps agent-authored normative items out of injection. That guard is
-      // blanket by design, and a read-only filter is not worth carving an
-      // exception into it — a weakened pin outlives the reason it was
-      // weakened. The CLI keeps `--origin`, which matches the record field,
-      // because no such hazard exists on a human surface.
-      //
-      // The NAME is this surface's; the VALUES are `Origin`'s, so they are
-      // read from `ORIGINS` (`core/validate.ts`) rather than restated. A
-      // list retyped here would agree with the type until the day it did
-      // not, and the failure is silent: the filter would refuse a member
-      // every record is free to carry.
-      actor: { ...S_STRING, enum: ORIGINS },
-      since: { ...S_STRING, description: 'ISO-8601 instant, or a span back from now: 7d, 12h' },
-      limit: { type: 'number', description: 'The most recent N. Default 30.' },
-    }),
+    schema: AUDIT_LOG_SCHEMA,
     // Read-only, and deliberately NOT wrapped in `withWorkspace`: that helper
     // rebuilds the item index on every call, which this tool has no use for —
     // the audit log is not derived from the corpus and does not go stale when
-    // an item file changes.
-    run: (cwd, args) => {
-      const ws = resolveWorkspace(cwd);
-      if (!ws.projectRoot) {
-        throw new Error(
-          `my_context: there is no .my_context workspace at or above ${cwd}, so there is no ` +
-          `audit log to read. Ask the user to run \`mycontext init\`.`,
-        );
-      }
-      const filter: AuditFilter = { limit: optNum(args, 'limit', 30) };
-      const item = optStr(args, 'item');
-      if (item !== undefined) filter.itemId = item;
-      const session = optStr(args, 'session');
-      if (session !== undefined) filter.sessionId = session;
-      const op = optEnum(args, 'op', [...AUDIT_OPS], 'workflow');
-      if (op !== undefined) filter.op = op as AuditOp;
-      const kind = optEnum(args, 'kind', [...AUDIT_KINDS], 'workflow');
-      if (kind !== undefined) filter.kind = kind as AuditKind;
-      const actor = optEnum<Origin>(args, 'actor', ORIGINS, 'workflow');
-      if (actor !== undefined) filter.origin = actor;
-      const since = optStr(args, 'since');
-      if (since !== undefined) filter.since = parseWhen(since, 'since');
-
-      // Read straight from the JSONL, which is the authoritative record. The
-      // SQLite projection is the CLI's read path because a human filters
-      // interactively over a long history; a tool call filtered to at most a
-      // few dozen records does not need an index, and skipping it means this
-      // surface can never answer from something stale.
-      const found = filterAudit(readAudit(ws.projectRoot), filter);
-      if (found.length === 0) {
-        return (
-          'my_context: no audit records match. This log records mutations and hook actions — ' +
-          'injections by SCOPE (which items at which tier), never their text. An empty answer ' +
-          'means nothing matching has happened in this workspace, not that nothing is recorded.'
-        );
-      }
-      return [
-        `my_context: ${found.length} audit record(s), oldest first. Injections carry the ids ` +
-        `and tiers of what was delivered, never the text that was injected — plus \`tokens\`, ` +
-        `the estimated token count (chars/4) the injection budget was charged at injection ` +
-        `time. An injection record WITHOUT a \`tokens\` field predates that field: read it as ` +
-        `"not recorded", never as zero.`,
-        ...found.map((r) => JSON.stringify(r)),
-      ].join('\n');
-    },
+    // an item file changes. See `tools/audit.ts`.
+    run: (cwd, args) => runAuditLog(cwd, args),
   },
   {
     name: 'mycontext_help',
@@ -1921,97 +1591,8 @@ const SPECS: ToolSpec[] = [
      */
     name: 'focus_context',
     annotations: REPLACES,
-    schema: object({
-      tags: { ...S_STRINGS, description: 'Keep items carrying any of these tags' },
-      categories: {
-        ...S_STRINGS,
-        description: 'Keep items of these categories — see mycontext_help("categories")',
-      },
-      scope: { ...S_STRINGS, description: 'Keep items applying to these paths or globs' },
-      preview: {
-        type: 'boolean',
-        description: 'Report what the focus would hide and change nothing',
-      },
-      clear: { type: 'boolean', description: 'Remove the focus. Refused alongside axes.' },
-    }),
-    run: (cwd, args) => {
-      const ws = resolveWorkspace(cwd);
-      if (!ws.projectRoot) {
-        throw new Error(
-          `my_context: there is no .my_context workspace at or above ${cwd}, so there is no ` +
-          `focus to set. Ask the user to run \`mycontext init\`.`,
-        );
-      }
-      const root = ws.projectRoot;
-      const axes: FocusAxes = {
-        tags: optList(args, 'tags') ?? [],
-        categories: optList(args, 'categories') ?? [],
-        scope: optList(args, 'scope') ?? [],
-      };
-      const asked = isFocusActive(axes);
-
-      if (optBool(args, 'clear') === true) {
-        if (asked) {
-          throw new Error(
-            'my_context: focus_context takes either "clear" or the axes, never both. ' +
-            'Clearing and setting in one call has two readings, and honouring either would ' +
-            'drop the other without saying so. Nothing was changed.',
-          );
-        }
-        const { existed, audit } = unsetFocus(root, 'agent');
-        return existed
-          ? `my_context: focus cleared. Every eligible item is injectable again.` +
-            auditFailureNote(audit)
-          : 'my_context: there was no focus to clear. Nothing was hidden.';
-      }
-
-      // The report always comes from `select`, never from a second predicate —
-      // see the note on `SelectContext.focus`.
-      const describe = (focus: Focus | null, heading: string): string => {
-        // The same `retryOnBusy: true` every other MCP surface takes through
-        // `withWorkspace`. This site had silently drifted to no-retry — the
-        // one MCP rebuild a busy database could fail immediately — which is
-        // exactly the divergence consolidating the open-rebuild copies
-        // exists to make impossible.
-        const { store } = openRebuiltStore(ws, { retryOnBusy: true });
-        try {
-          const report = select(store.all(), { event: 'manual', focus }, ws.config).focus;
-          if (report === null) {
-            return 'my_context: no focus is set — every eligible item is injectable. Set one ' +
-              'with focus_context({tags: ["billing"]}).';
-          }
-          return [heading, ...focusReportLines(report)].join('\n');
-        } finally {
-          store.close();
-        }
-      };
-
-      if (!asked) {
-        const state = readFocus(root);
-        if (state.error !== null) {
-          throw new Error(
-            `my_context: \`.my_context/state/focus.json\` ${state.error}, so NO focus is in ` +
-            'effect and nothing is hidden. Ask the user to fix the file or to run ' +
-            '`mycontext focus --clear`.',
-          );
-        }
-        return describe(state.focus, 'my_context: the focus now in effect.');
-      }
-
-      if (optBool(args, 'preview') === true) {
-        return describe(
-          { ...axes, setAt: new Date().toISOString(), setBy: 'agent' },
-          'my_context: preview only — nothing was changed.',
-        );
-      }
-
-      const { focus, audit } = setFocus(root, axes, 'agent');
-      return describe(
-        focus,
-        'my_context: focus set. Every future injection narrows to it and says so, and ' +
-        `severity:hard items stay visible regardless.${auditFailureNote(audit)}`,
-      );
-    },
+    schema: FOCUS_CONTEXT_SCHEMA,
+    run: (cwd, args) => runFocusContext(cwd, args),
   },
   {
     name: 'ingest_document',
@@ -2891,98 +2472,17 @@ const SPECS: ToolSpec[] = [
   {
     name: 'list_rules',
     annotations: READS,
-    schema: object({
-      id: {
-        ...S_STRING,
-        description:
-          'One entry id, to read that entry in full instead of listing them. Omit it to list ' +
-          'every entry in force here.',
-      },
-    }),
-    run: (cwd, args) => {
-      const dir = ruleStoreDir();
-      const isMyContext = rulesReaderIsMyContext(cwd);
-      const { entries, refused } = loadRules(dir, isMyContext);
-      const preamble = ruleStoreSubstitution(dir) + ruleStoreVersion(dir);
-      // A blank line only when there IS a preamble — the answer must not open
-      // on whitespace in the ordinary case.
-      const head = preamble === '' ? '' : `${preamble}\n`;
-
-      const id = optStr(args, 'id');
-      if (id !== undefined) {
-        const entry = entries.find((e) => e.id === id);
-        if (entry === undefined) {
-          throw new Error(
-            `my_context: no rule entry "${id}" applies here. ` +
-            `list_rules with no id names the ${entries.length} that do.`,
-          );
-        }
-        return `${head}${renderRuleEntry(entry)}`;
-      }
-
-      // Two different truths that must not collapse into one sentence: the
-      // store holds nothing, and the store holds nothing that applies HERE.
-      // The second is the ordinary case outside my_context, and reading it as
-      // the first looks exactly like a broken install.
-      if (entries.length === 0 && refused.length === 0) {
-        return head + (isMyContext
-          ? 'my_context: the rule store is empty.'
-          : 'my_context: no rule entry applies in this workspace. Developer-tier entries apply ' +
-            'only inside my_context itself; product-tier entries apply everywhere, and there ' +
-            'are none.');
-      }
-
-      const lines = [
-        `my_context rules — ${entries.length} entry(s) in force here. ${isMyContext
-          ? 'This workspace IS my_context, so developer-tier entries apply too.'
-          : 'Developer-tier entries do not apply outside my_context and are not listed.'}`,
-        '',
-        ...entries.map((e) => `${e.id} · ${e.kind} · ${e.tier} · ${e.title}`),
-      ];
-      // A file that did not load is NAMED, never counted and dropped
-      // (`INV-nothing-is-dropped-silently`), and — as on the CLI — naming it is
-      // not the same as failing: `verify_rules` is the one that answers whether
-      // the store is intact.
-      if (refused.length > 0) {
-        lines.push('', `could not be read (${refused.length}):`);
-        for (const r of refused) lines.push(`  ${path.basename(r.path)}: ${r.error}`);
-        lines.push(
-          '',
-          'This listed what it could read. verify_rules answers whether the store is intact.',
-        );
-      }
-      return head + lines.join('\n');
-    },
+    schema: LIST_RULES_SCHEMA,
+    run: (cwd, args) => runListRules(cwd, args),
   },
   {
     name: 'verify_rules',
     annotations: READS,
     // No arguments, and `--restore` is deliberately not among them — see the
-    // block above `ruleStoreDir`. `refuseUnknownArgs` refuses one by name.
-    schema: object({}),
-    run: () => {
-      const dir = ruleStoreDir();
-      const answer = verifyManifest(dir);
-      const head = ruleStoreSubstitution(dir);
-
-      if (answer.ok) {
-        return `${head}my_context: the rule store is intact — every entry matches the checksum ` +
-          `that shipped with it.\n  ${dir}\n${ruleStoreVersion(dir)}`.trimEnd();
-      }
-      const lines = [
-        `my_context: the rule store has been changed since it was installed — ` +
-        `${answer.problems.length} problem(s). Writes to it are refused while that is true; ` +
-        `reads still work, because a damaged install is one you can still recover from.`,
-        '',
-        ...answer.problems.map((p) => `  ${p.entry} — ${p.why}: ${p.detail}`),
-        '',
-        // The act that repairs it writes, and this surface does not. Naming the
-        // command is the honest answer — not an apology for an absent argument.
-        'Putting back what shipped is `mycontext rules verify --restore` in a terminal, or a ' +
-        'reinstall of the package. Nothing on this surface writes to the store.',
-      ];
-      return head + lines.join('\n');
-    },
+    // block above `ruleStoreDir` in `tools/rule-store.ts`. `refuseUnknownArgs`
+    // refuses one by name.
+    schema: VERIFY_RULES_SCHEMA,
+    run: () => runVerifyRules(),
   },
   {
     name: 'ask_handover',

@@ -44,12 +44,22 @@
  * **What this module deliberately does NOT do:**
  *
  *   - **No `Cache-Control`, no `Content-Security-Policy`, no status other
- *     than 200.** Headers are the caller's (Task 13): a token-guarded
- *     ephemeral app sets `no-store`, and `null` here means "not a static
- *     asset", which the caller answers as 404. There is no partial content,
- *     no conditional request and no compression — the whole payload is a few
- *     tens of kilobytes from local disk, over a loopback socket, to one
- *     browser.
+ *     than 200.** Headers are the caller's (Task 13), and so is the 304: this
+ *     module produces the VALIDATOR (`etag`) and never the policy, so the
+ *     decision about what a browser may keep stays in one place,
+ *     `security.ts`' `STATIC_HEADERS`. `null` here still means "not a static
+ *     asset", which the caller answers as 404. There is no partial content.
+ *   - **No compression, and that is now MEASURED rather than assumed.** The
+ *     header this file used to carry said "a few tens of kilobytes"; it is
+ *     938,336 B — `app.js` 463,329 and `styles.css` 328,527 — fetched in 55 ms
+ *     over loopback on 2026-09-15. `gzipSync` takes the three text assets from
+ *     817,100 B to 280,270 B and costs **19 ms of CPU** to do it, on the ONE
+ *     thread `/api/status` also runs on. Against ~17 MB/s of loopback that
+ *     buys back about 31 ms of transfer for 19 ms of compute, per request,
+ *     uncompensated by any cache of the compressed bytes — roughly break-even,
+ *     and paid in the scarcest resource this server has. That is why the fix
+ *     taken here is the ETag, which removes the bytes entirely on a revisit
+ *     rather than shrinking them every time.
  *   - **No `index.html` fallback for an unknown path.** The app's router is
  *     keyed on `location.hash` (Task 16), and a fragment never reaches the
  *     server, so there are no deep links for a fallback to rescue. Serving
@@ -72,7 +82,7 @@
  * portability wart, not a hole, and the fix belongs with whoever decides
  * whether asset names are a grammar.
  */
-import { readFileSync, realpathSync } from 'node:fs';
+import { readFileSync, realpathSync, statSync } from 'node:fs';
 import path from 'node:path';
 import type { Buffer } from 'node:buffer';
 
@@ -85,6 +95,15 @@ export interface StaticAsset {
   status: number;
   contentType: string;
   body: Buffer;
+  /**
+   * A strong validator for these exact bytes, or `null` when the file could
+   * not be stat-ed (it was still served — an asset is not withheld because its
+   * metadata was unreadable, and an absent validator is simply one the caller
+   * cannot send).
+   *
+   * See `assetEtag` for what it is made of and why it is not a content hash.
+   */
+  etag: string | null;
 }
 
 /**
@@ -154,8 +173,40 @@ export function serveStatic(pathname: string, publicDir: string): StaticAsset | 
     // all — an embedded NUL, a Win32 device — by throwing rather than by
     // being enumerated here.
     if (realpathSync(resolved) !== resolved) return null;
-    return { status: 200, contentType, body: readFileSync(resolved) };
+    return { status: 200, contentType, body: readFileSync(resolved), etag: assetEtag(resolved) };
   } catch {
     return null; // missing, unreadable, or a name the OS refuses. Not a throw.
+  }
+}
+
+/**
+ * **The validator for one asset: size and mtime, not a hash of the bytes.**
+ *
+ * `TASK-nothing-is-compressed-nothing-is-cached-and-no-asset-carries`. Measured
+ * on this repository, 2026-09-15, over loopback: a cold page load fetches
+ * **938,336 B of static assets in 55 ms** — `app.js` 463,329, `styles.css`
+ * 328,527, two font faces 95,992, the shell 25,244 — and every byte of it again
+ * on the next load, because nothing carried a validator to revalidate against.
+ *
+ * **Why not a content hash.** The point of a validator is to answer a
+ * conditional request WITHOUT reading the file. `sha1` of `app.js` costs a
+ * 463 KB read and ~1 ms on the server's only thread; `statSync` costs neither.
+ * Size and mtime are what `checkIndexFreshness` and `read-model-health.ts`'
+ * fingerprint already rule on in this product, and the residual is the same one
+ * that module states: a file rewritten to the same length inside one mtime tick
+ * is invisible. For vendored fonts and a built page shell that is not a
+ * scenario; for a developer editing `styles.css` it is, and the mtime moves on
+ * every save a text editor makes.
+ *
+ * It is a STRONG validator (no `W/` prefix) because it identifies exactly one
+ * version of the bytes — `mtimeMs` carries sub-millisecond precision — and a
+ * weak one would forbid the range requests this server may want later.
+ */
+function assetEtag(absPath: string): string | null {
+  try {
+    const stat = statSync(absPath);
+    return `"${stat.size.toString(16)}-${Math.round(stat.mtimeMs).toString(16)}"`;
+  } catch {
+    return null;
   }
 }

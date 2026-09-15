@@ -32,6 +32,31 @@ import { checksum } from '../core/slug.ts';
 import type { Item } from '../core/types.ts';
 import { ACK, AUDIT_FILES, NOTHING, PERSON, type Finding } from './finding.ts';
 
+/**
+ * **How a check gets the audit log, so that one `doctor` run reads it once.**
+ *
+ * Three checks want the whole log — `checkStateUnaudited` and
+ * `checkTaskUnverified` here, `checkAssumptionOverdue` in `checks.ts` — and
+ * each called `readAudit(root)` for itself. On the owner's corpus that is
+ * **165 ms and 52,492 records** per call, measured 2026-09-15 over an 8.1 MB
+ * `audit.jsonl`, and two of the three ran on every `doctor`: 330 ms of a 700 ms
+ * sweep spent parsing the same bytes twice.
+ *
+ * `runChecks` now passes ONE memoised reader to all three. The default keeps
+ * every other caller — `ack`, the tests that call a check directly — reading
+ * for itself, so nothing outside `runChecks` changed behaviour or signature at
+ * a call site.
+ *
+ * **It is a function and not an array on purpose.** Each of the three checks
+ * reports a log it cannot read in its OWN words, as its own `*_coverage`
+ * finding, and that per-check message is the thing a reader acts on. Handing
+ * the records in would mean `runChecks` catching the throw and deciding what to
+ * say on all three checks' behalf; handing in a thunk keeps each `try`/`catch`
+ * exactly where and as it was. The memo below re-throws the same error to the
+ * second and third caller for the same reason.
+ */
+export type AuditReader = () => AuditRecord[];
+
 /** How many recorded spills, so far, is "repeatedly" for a governing item — the owner's own
  *  worked examples (`RULE-do-not-accept-a-test-that-passes-in-isolation-and-fails` at 278,
  *  `STD-a-summary-is-one-plain-sentence-for-someone-who-does-not` at 289,
@@ -341,13 +366,15 @@ export const STATE_AUDITED_FIELD = `${EXTRA_AUDITED_FIELD}.${STATE_FIELD}`;
  * reader can go and read, so the ruling it asks for is one they can actually
  * make.
  */
-export function checkStateUnaudited(root: string, items: Item[], config: Config): Finding[] {
+export function checkStateUnaudited(
+  root: string, items: Item[], config: Config, readRecords: AuditReader = () => readAudit(root),
+): Finding[] {
   const closed = workItems(items, config).filter((i) => taskState(i) === DONE_STATE);
   if (closed.length === 0) return [];
 
   let records: AuditRecord[];
   try {
-    records = readAudit(root);
+    records = readRecords();
   } catch (err) {
     // `readAudit` REFUSES a log with a damaged line rather than skipping it,
     // and that refusal must not become a `check_failed` error: doctor would go
@@ -738,7 +765,9 @@ export function taskVerifiedOn(item: Item): string {
  * Structured identically to `checkStateUnaudited` immediately above:
  * read-failure falls back to one `PERSON`-remedy disclosure.
  */
-export function checkTaskUnverified(root: string, items: Item[], config: Config): Finding[] {
+export function checkTaskUnverified(
+  root: string, items: Item[], config: Config, readRecords: AuditReader = () => readAudit(root),
+): Finding[] {
   const closed = workItems(items, config).filter((i) => taskState(i) === DONE_STATE);
   if (closed.length === 0) return [];
 
@@ -766,7 +795,7 @@ export function checkTaskUnverified(root: string, items: Item[], config: Config)
 
   let records: AuditRecord[];
   try {
-    records = readAudit(root);
+    records = readRecords();
   } catch (err) {
     return [{
       level: 'info', code: 'task_verification_coverage',

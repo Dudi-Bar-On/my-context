@@ -581,7 +581,10 @@ export function itemSummaryBasis(v: ContentShape): SummaryBasisHash {
  *    write path in this product, because `stampSummary` writes the pair
  *    together; reachable by hand-editing a file, which is exactly the case
  *    that must not read as `current`. It is a stale summary with a different
- *    reason, and `summaryIsStale` treats it as one.
+ *    reason, and `summaryStalenessNote` below says so in its own words rather
+ *    than folding the two into one boolean — a `summaryIsStale` predicate that
+ *    did exactly that was removed on 2026-09-15 with no caller it had ever had
+ *    (`TASK-three-functions-have-no-caller-anywhere-and-the-sweep-that`).
  */
 export type SummaryState = 'absent' | 'current' | 'stale' | 'unanchored';
 
@@ -589,14 +592,6 @@ export function summaryState(item: Item): SummaryState {
   if (item.summary === null) return 'absent';
   if (item.summaryOf === null) return 'unanchored';
   return item.summaryOf === itemSummaryBasis(item) ? 'current' : 'stale';
-}
-
-/** Whether a reader must not take this item's summary as describing it. Both
- * non-`current` states with a summary in them answer yes, and they are folded
- * into one predicate so no caller has to remember that `unanchored` exists. */
-export function summaryIsStale(item: Item): boolean {
-  const state = summaryState(item);
-  return state === 'stale' || state === 'unanchored';
 }
 
 /**

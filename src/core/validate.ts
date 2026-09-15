@@ -154,15 +154,6 @@ export function updatableValueError(
   );
 }
 
-/** `updatableValueError` as a throw, for the write paths that already refuse by
- * exception (`updateItem`, `projectFieldUpdate`) rather than by return. */
-export function validateUpdatableValue(
-  name: string, value: string, decl: UpdatableName,
-): void {
-  const refusal = updatableValueError(name, value, decl);
-  if (refusal !== null) throw new Error(refusal);
-}
-
 /**
  * The same check over a whole `extra` patch, against a category's merged
  * declaration (`updatesFor`, tag-projection.ts).

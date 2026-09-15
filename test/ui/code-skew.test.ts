@@ -404,10 +404,28 @@ test('the live static read-through is UNCHANGED — the ruling, not a comment', 
   // makes UI iteration fast here." A fix that bought disclosure with a cache
   // would pass every other assertion in this file.
   const staticTs = source('ui', 'static.ts');
-  assertMatches(staticTs, /return \{ status: 200, contentType, body: readFileSync\(resolved\) \};/,
+  // **The pattern is `body: readFileSync(resolved)`, not the whole return
+  // object — and the narrowing is the ruling being held rather than loosened.**
+  //
+  // `TASK-nothing-is-compressed-nothing-is-cached-and-no-asset-carries` added a
+  // fourth field, `etag: assetEtag(resolved)`, which is a `statSync` of the same
+  // path: METADATA about the file, computed on the same request, cached
+  // nowhere. The ruling is about the BYTES — "live assets are what makes UI
+  // iteration fast here" — and the bytes are still read on every request, which
+  // is exactly what this pattern now says and all it ever meant. Pinning the
+  // object literal would have made any fifth field a failure regardless of
+  // whether it cached anything, which is a pin on the punctuation rather than
+  // on the ruling.
+  assertMatches(staticTs, /body: readFileSync\(resolved\)/,
     'serveStatic must still read the file on every request');
   assert.equal(/\bCache-Control\b|\bcache\b/i.test(staticTs.replace(/^\s*\*.*$/gm, '')), false,
     'no cache was introduced into the static path');
+  // The other half of "no cache", and it is the half the word-search cannot do:
+  // a module-level store under any name. `serveStatic` holds NO state between
+  // requests, so there is nothing for a stale asset to be served out of.
+  assert.equal(/\bnew (Map|Set|WeakMap)\b|^let /m.test(staticTs.replace(/^\s*\*.*$/gm, '')), false,
+    'serveStatic keeps no module-level state — a cache spelled without the word "cache" is '
+    + 'still a cache, and this is what stops one arriving under another name');
 });
 
 test('the shell reads staleCode from BOTH channels it has', () => {

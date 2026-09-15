@@ -118,7 +118,8 @@ import {
 } from '../core/ui-server-record.ts';
 import {
   asHandoffNonce, cookieValue, CREDENTIAL_COOKIE, mintToken, NonceStore, recordNonceMint,
-  recordRefusal, SECURITY_HEADERS, TOKEN_COOKIE, TOKEN_HEADER, tokenDigest, validateApiRequest,
+  recordRefusal, SECURITY_HEADERS, STATIC_HEADERS, TOKEN_COOKIE, TOKEN_HEADER, tokenDigest,
+  validateApiRequest,
 } from './security.ts';
 import { serveStatic } from './static.ts';
 import { registerWatchRoutes } from './watch-model.ts';
@@ -1232,7 +1233,37 @@ export async function startUiServer(options: UiServerOptions): Promise<RunningUi
       }
       const asset = serveStatic(url.pathname, PUBLIC_DIR);
       if (asset === null) { sendRefusal(res, 404); return; }
-      res.writeHead(asset.status, { ...SECURITY_HEADERS, 'content-type': asset.contentType });
+      // ── THE CONDITIONAL ANSWER, AND WHY IT IS HERE AND NOT IN `static.ts` ──
+      //
+      // `TASK-nothing-is-compressed-nothing-is-cached-and-no-asset-carries`.
+      // `serveStatic` produces the VALIDATOR; the policy — what a browser may
+      // keep, and whether a request can be answered without a body — is this
+      // dispatch's, exactly as `STATIC_HEADERS` (security.ts) says. Measured
+      // 2026-09-15: a cold page load fetches 938,336 B of static assets in
+      // 55 ms and did it again on every reload, because nothing carried an
+      // `ETag` to revalidate against.
+      //
+      // `if-none-match` is compared against the whole header rather than
+      // parsed: a browser echoes back exactly what it was sent, `*` is the one
+      // other legal spelling and means "any current representation", and a
+      // comma-joined list only arises with multiple cached variants, which a
+      // server sending no `Vary` cannot have. A spelling this does not
+      // recognise falls through to the 200, which is always a correct answer.
+      const inm = req.headers['if-none-match'];
+      if (asset.etag !== null && typeof inm === 'string' &&
+          (inm === asset.etag || inm.trim() === '*')) {
+        // 304 carries the validator and the policy and NO body — and no
+        // `content-type`, which RFC 9110 reserves for the representation this
+        // response deliberately does not send.
+        res.writeHead(304, { ...STATIC_HEADERS, etag: asset.etag });
+        res.end();
+        return;
+      }
+      res.writeHead(asset.status, {
+        ...STATIC_HEADERS,
+        'content-type': asset.contentType,
+        ...(asset.etag === null ? {} : { etag: asset.etag }),
+      });
       res.end(asset.body);
       return;
     }

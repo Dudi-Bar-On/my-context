@@ -645,3 +645,38 @@ export const SECURITY_HEADERS: Record<string, string> = {
   'cache-control': 'no-store',
   'x-frame-options': 'DENY',
 };
+
+/**
+ * **The static assets' cache policy, which until now was nobody's decision.**
+ *
+ * `TASK-nothing-is-compressed-nothing-is-cached-and-no-asset-carries` states
+ * its own conclusion: *"the value here is not speed. It is that an immutable
+ * asset with no `ETag` and `no-store` is a cache policy nobody chose."* One
+ * `cache-control` line sat in `SECURITY_HEADERS` above with pages of argument
+ * attached to the CSP beside it and not a word attached to caching, and every
+ * response inherited it — the API answers, which carry corpus content, and
+ * `src/ui/public/`, which carries none.
+ *
+ * **The split, and the line it is drawn on.** `no-store` exists so a private
+ * corpus does not end up in a browser's disk cache on a shared machine. That
+ * argument is about CONTENT, and the static surface has none: `src/ui/public/`
+ * is the app shell and nine vendored open-source font faces. Every `/api`
+ * response keeps `no-store` unchanged, with nothing about this weakened.
+ *
+ * **`no-cache`, not a `max-age`.** `no-cache` lets the browser KEEP the bytes
+ * and forbids it serving them without asking — so every load still makes the
+ * request, the server still decides, and a stale asset is impossible. A
+ * `max-age` would be faster and would also mean a developer editing
+ * `styles.css` gets yesterday's page with nothing on any surface saying so,
+ * which is the class of silence this project keeps paying for. What is bought
+ * is the BODY: measured 2026-09-15 on this repository, the assets a cold load
+ * fetches are **938,336 B in 55 ms**, and with a validator a revisit fetches
+ * 0 B of it and answers 304.
+ *
+ * `must-revalidate` is deliberately absent: it governs what a cache may do
+ * once an entry is STALE, and `no-cache` leaves no entry fresh to go stale.
+ */
+export const STATIC_HEADERS: Record<string, string> = {
+  ...SECURITY_HEADERS,
+  'cache-control': 'no-cache',
+};

@@ -151,15 +151,55 @@ export interface OverlapParts {
 export function overlapParts(
   draft: { title: string; body: string }, item: { title: string; body: string },
 ): OverlapParts {
-  const a = overlapTokens(`${draft.title}\n${draft.body}`);
-  const b = overlapTokens(`${item.title}\n${item.body}`);
+  return overlapPartsOfTokens(overlapTokensOf(draft), overlapTokensOf(item));
+}
+
+/**
+ * **The tokenizer, exposed — because a pairwise sweep must not run it n² times.**
+ *
+ * `overlapParts` takes two TEXTS, so it must tokenize both on every call. That
+ * is right for the callers that compare one draft against a list (`apiOverlap`,
+ * `contradictionGate`) and catastrophic for the one that compares a list
+ * against ITSELF: `checkCorpusContradictions` (doctor/checks.ts) walks every
+ * pair of the governing in-scope items, so each item's body was re-tokenized
+ * once per PARTNER rather than once.
+ *
+ * Measured on the owner's corpus, 2026-09-15 — 1,269 items, 214 governing and
+ * in scope, 22,791 pairs. The sweep calling `overlapParts` per pair: **1,240
+ * ms**. The same sweep with each candidate tokenized once and the sets reused:
+ * **59 ms**. 45,582 tokenizations become 214.
+ *
+ * The equality is not asserted from the shape of the code: `overlapParts` above
+ * IS these two functions composed, so the tokenizer, the 0.8 scale and the
+ * `max` still live in exactly one place, and
+ * `test/doctor/contradiction-drain.test.ts` proves the composition equals a
+ * direct `overlapParts` call over every pair of a real corpus.
+ */
+export function overlapTokensOf(text: { title: string; body: string }): Set<string> {
+  return overlapTokens(`${text.title}\n${text.body}`);
+}
+
+/**
+ * The arithmetic half, over token sets whose lifetime somebody else owns.
+ *
+ * It reads the two sets and nothing else — no `Item`, no text, and deliberately
+ * no memo keyed on an object a caller could mutate underneath it. A caller that
+ * caches a set is claiming the text behind it has not changed, and this shape
+ * makes it state that claim at its own call site rather than inherit it from a
+ * cache it cannot see.
+ */
+export function overlapPartsOfTokens(a: Set<string>, b: Set<string>): OverlapParts {
   // Nothing to compare is 0, not NaN. A NaN sorts unpredictably and would put
   // an empty draft anywhere in the list.
   if (a.size === 0 || b.size === 0) {
     return { score: 0, jaccard: 0, containment: 0, aTokens: a.size, bTokens: b.size };
   }
+  // Iterate the SMALLER set. `has` is O(1) on either, so the loop length is the
+  // whole cost of a pair, and the drain sweep runs 22,791 of them.
+  const small = a.size <= b.size ? a : b;
+  const large = a.size <= b.size ? b : a;
   let common = 0;
-  for (const w of a) if (b.has(w)) common++;
+  for (const w of small) if (large.has(w)) common++;
   const jaccard = common / (a.size + b.size - common);
   const containment = common / Math.min(a.size, b.size);
   return {

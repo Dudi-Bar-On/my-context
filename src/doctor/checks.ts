@@ -14,7 +14,8 @@ import {
 // this module can read those rulings without importing the one that writes
 // items: `ui/read-model.ts` reaches this file for `/api/doctor`.
 import {
-  governsNow, inContradictionScope, latestVerdicts, overlapParts, pairKey, CONTRADICTION_THRESHOLD, OVERLAP_THRESHOLD,
+  governsNow, inContradictionScope, latestVerdicts, overlapPartsOfTokens, overlapTokensOf,
+  pairKey, CONTRADICTION_THRESHOLD, OVERLAP_THRESHOLD,
 } from '../core/overlap.ts';
 import { contradictionBasis, readVerdicts } from '../core/verdict-store.ts';
 import {
@@ -36,7 +37,9 @@ import { ingestDir, SESSION_PROTOCOL } from '../ingest/session.ts';
 import { ACK, AUDIT_FILES, DECAY, NOTHING, PERSON, REBUILD, REPAIR, refreshRemedy, stateTodoRemedy } from './finding.ts';
 import type { Finding, RemedyValues } from './finding.ts';
 import { FILE_LIMIT, SKIP_DIRS, listFilesForScopeCheck, listRepoFiles, newestMarkdownMtime } from './repo-files.ts';
-import { checkGoverningSpillPressure, checkStateUnaudited, checkTaskUnverified } from './state-verification.ts';
+import {
+  checkGoverningSpillPressure, checkStateUnaudited, checkTaskUnverified, type AuditReader,
+} from './state-verification.ts';
 import { checkBodyAgreement, checkBodyTruncation, checkCitationForm, checkLaunderedEnum } from './body-integrity.ts';
 
 // Re-exported so every existing importer of `doctor/checks.ts` keeps working: the
@@ -1734,7 +1737,9 @@ function assumptionField(item: Item, key: string): string {
  * against `new Date().toISOString().slice(0, 10)` is a correct date compare
  * without parsing either side.
  */
-export function checkAssumptionOverdue(root: string, items: Item[]): Finding[] {
+export function checkAssumptionOverdue(
+  root: string, items: Item[], readRecords: AuditReader = () => readAudit(root),
+): Finding[] {
   const today = new Date().toISOString().slice(0, 10);
   const overdue = items.filter((item) => item.type === 'assumption' && item.status !== 'superseded')
     .filter((item) => {
@@ -1745,7 +1750,7 @@ export function checkAssumptionOverdue(root: string, items: Item[]): Finding[] {
 
   let records: AuditRecord[];
   try {
-    records = readAudit(root);
+    records = readRecords();
   } catch (err) {
     return [{
       level: 'info', code: 'assumption_overdue_coverage',
@@ -2048,10 +2053,34 @@ export function checkCorpusContradictions(root: string, items: Item[]): Finding[
   // silence to be read as a verdict (`STD-a-measured-zero-is-drawn-and-named`).
   let compared = 0;
   const raised: DrainPair[] = [];
+  // ── TOKENIZED ONCE PER ITEM, NOT ONCE PER PAIR ────────────────────────────
+  //
+  // `overlapParts(a, b)` tokenizes both TEXTS, which is right where one draft
+  // is compared against a list and wrong here, where the list is compared
+  // against itself: every item's body was re-tokenized once per partner.
+  //
+  // Measured on the owner's corpus, 2026-09-15, 1,269 items and 214 candidates
+  // over 22,791 pairs: the check went from **1,453 ms to 65 ms**, and the sweep
+  // inside it from 1,240 ms to 59 ms — 45,582 tokenizations reduced to 214.
+  // `runChecks` as a whole went from 2,202 ms to 700 ms and returned the same
+  // 190 findings. This check was 66 % of `runChecks`, which is
+  // in turn ~97 % of `/api/status` and `/api/doctor`
+  // (`src/ui/read-model-health.ts` carries the endpoint measurement).
+  //
+  // The result is IDENTICAL and not approximately so: `overlapParts` is now
+  // literally `overlapPartsOfTokens(overlapTokensOf(a), overlapTokensOf(b))`
+  // (core/overlap.ts), so this is that same composition with the left half
+  // hoisted out of the inner loop. `test/doctor/contradiction-drain.test.ts`
+  // proves the two agree over every pair of a real corpus rather than over a
+  // fixture, and would redden here if the hoist ever stopped being sound —
+  // an item mutated mid-sweep, for instance, which nothing does and which the
+  // proof would catch if something started to.
+  const tokens = candidates.map((i) => overlapTokensOf(i));
   for (let i = 0; i < candidates.length; i++) {
+    const ti = tokens[i]!;
     for (let j = i + 1; j < candidates.length; j++) {
       compared++;
-      const parts = overlapParts(candidates[i]!, candidates[j]!);
+      const parts = overlapPartsOfTokens(ti, tokens[j]!);
       if (parts.score < CONTRADICTION_THRESHOLD) continue;
       raised.push({
         a: candidates[i]!, b: candidates[j]!, score: parts.score, jaccard: parts.jaccard,
@@ -2462,9 +2491,46 @@ export function firstOwnFrame(stack: string): string {
   return 'no frame outside node internals';
 }
 
+/**
+ * `read` at most once, throw included.
+ *
+ * The throw is memoised alongside the value because a log that cannot be read
+ * cannot be read twice either: re-reading it would pay the 165 ms parse again
+ * to reach the same refusal, and the three checks that ask each need to see the
+ * SAME error to write their own `*_coverage` finding about it. See
+ * `AuditReader` (doctor/state-verification.ts) for why this is a thunk rather
+ * than an array.
+ *
+ * **It takes the reader rather than the root, and that is what makes "once"
+ * provable.** A version closing over `readAudit(root)` directly could only be
+ * tested by watching a filesystem; this one is tested by counting calls —
+ * `test/doctor/audit-read-once.test.ts`. Exported for that reason and no other.
+ */
+export function auditOnce(read: AuditReader): AuditReader {
+  let records: AuditRecord[] | null = null;
+  let failure: unknown;
+  let failed = false;
+  return () => {
+    if (failed) throw failure;
+    if (records !== null) return records;
+    try {
+      records = read();
+    } catch (err) {
+      failed = true;
+      failure = err;
+      throw err;
+    }
+    return records;
+  };
+}
+
 export function runChecks(opts: {
   root: string; repoRoot: string; dbPath: string; items: Item[]; config: Config;
 }): Finding[] {
+  // One reading of the audit log for the whole sweep — `AuditReader` carries
+  // the measurement. Built even when no check reaches for it; it reads nothing
+  // until one does.
+  const audit = auditOnce(() => readAudit(opts.root));
   const checks: (() => Finding[])[] = [
     () => checkIndexFreshness(opts.root, opts.dbPath),
     () => checkOrphanRelations(opts.items),
@@ -2485,13 +2551,13 @@ export function runChecks(opts: {
     () => checkSessionIdMismatch(opts.root),
     () => checkAuditSize(opts.root),
     () => checkGoverningSpillPressure(opts.root, opts.items, opts.config),
-    () => checkStateUnaudited(opts.root, opts.items, opts.config),
-    () => checkTaskUnverified(opts.root, opts.items, opts.config),
+    () => checkStateUnaudited(opts.root, opts.items, opts.config, audit),
+    () => checkTaskUnverified(opts.root, opts.items, opts.config, audit),
     () => checkCorpusSize(opts.items),
     () => checkTagProjection(opts.items, opts.config),
     () => checkTaskNeeds(opts.items, opts.config),
     () => checkOpenQuestionBlocks(opts.items),
-    () => checkAssumptionOverdue(opts.root, opts.items),
+    () => checkAssumptionOverdue(opts.root, opts.items, audit),
     () => checkReferenceNoSource(opts.items),
     () => checkRetiredStillBinding(opts.items),
     () => checkCorpusContradictions(opts.root, opts.items),
