@@ -1,3 +1,47 @@
+## ⏭ 2026-09-16 (later) — `semantic/2` LANDED. A PHANTOM ID IS PROPAGATING AND IS OWED. TWO LANES STILL LIVE.
+
+### DO THIS FIRST
+
+1. **Fix the phantom id, as ONE act, the moment `anchors/13` lands.**
+   `STD-nothing-to-do-and-could-not-look-are-different-answers` is cited in **7 places across 5 files**
+   and **no such item exists** — it is the RULE STORE ENTRY
+   `src/rules/entries/nothing-to-do-and-could-not-look-are-different-answers.md`, cited as though it
+   were a corpus item. The established form is the **bare entry id, no prefix**
+   (`src/ui/execute-effect.ts:678` is the precedent). **It is propagating:** `check-basis` was 0 and is
+   now **1**, on `test/cli/anchor-backfill.test.ts`, whose `@basis` copied the id out of
+   `anchor-pass.ts`'s header. Four of the seven sites are in `anchors/13`'s live files, which is the
+   only reason it was not fixed today. **This is the only thing between the repo and a green
+   `check-basis`.**
+2. **Two lanes live and uncommitted:** `rulings/93` (board truth, the D map as data, the gate) and
+   `anchors/13` (first-run backfill). Commit each the moment it reports.
+
+### WHAT `semantic/2` RULED — it is research, and nothing was shipped to `src/`
+
+- **The missing feature is NEAR, not regex and not a checkbox.** Two words he types must be ADJACENT
+  and nothing lets him say *near*. `NEAR` is already in FTS5, already works under trigram, and
+  **under trigram it is a distance in CHARACTERS** — measured on 41 gaps, pinned at both boundaries,
+  documented nowhere, and a free gift from the decision Hebrew already paid for.
+- **Measured over 1,420 two-word phrases he actually typed:** phrase (what ships) **31.7%**, median 3
+  spans → `NEAR 30` **99.6%**, median **4** → AND 100%, median **38**. Containment by rowid set.
+- **`"phrase ⊆ AND" is FALSE in Hebrew`** — `"הם רשות"` finds 1 as a phrase and **0** AND-ed. That is
+  why any tiering must be **phrase-first**, not widest-first. The lane also printed its own caveat:
+  **of 524 of his prompts, exactly one contains Hebrew.**
+- **Three to ship, none a control:** tiered read (phrase → NEAR 30 → AND, labelled, first tier wins);
+  move the 3-char floor from the QUERY to the TERM and disclose it — a sub-3-char term is today a
+  **silent zero that takes the whole boolean with it**; and `-word` to exclude.
+- **Refused with reasons:** regex, whole-word (that toggle is `unicode61` smuggled back in), a case
+  toggle, prefix `*` (measured no-op under trigram), a hand-written parser, and any npm package.
+- **On the corpus the shipped path scores 0/42 @1; FTS5 OR-ed with `bm25()` scores 15/42** —
+  reproducing `semantic/1`'s hand-written BM25 by a completely different mechanism.
+
+### UNCHANGED FROM THE BLOCK BELOW
+
+The board is still not true until `rulings/93` lands; `swallow/16` is still priority 1 and unstarted;
+`rules verify` still reports intact over an entry that does not parse and is **still not filed**; and
+the owner still owes `mycontext conversation rebuild` (225 new, 378 taken back).
+
+---
+
 ## ⏭ 2026-09-16 — THE BOARD IS NOT TRUE. `rulings/93` IS LIVE FIXING IT. DO NOT DISPATCH FROM THE D TABLE UNTIL IT LANDS.
 
 ### DO THIS FIRST
