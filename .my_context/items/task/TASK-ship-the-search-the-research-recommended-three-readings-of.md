@@ -5,8 +5,10 @@ title: "ship the search the research recommended: three readings of one query, a
 status: active
 severity: soft
 always: false
-summary: Build the conversation search that finds a passage when you remember two words that are not next to each other.
-summary_of: c8743f403f5a63ca
+summary: The three readings, the per-term floor and the -word exclusion shipped on the conversation search; the corpus box was left to the ranking decision and is recorded as remaining.
+summary_of: 45acf0c9bf5ad53b
+summary_was:
+  - 2026-09-16 Build the conversation search that finds a passage when you remember two words that are not next to each other.
 scope:
   - src/core/conversation-search.ts
   - src/core/conversation-index.ts
@@ -27,7 +29,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-09-16
 valid_until: null
-checksum: 9b7a55f988993ead
+checksum: 736d69156c997cc2
 plan: semantic
 seq: "4"
 state: todo
@@ -102,3 +104,41 @@ reporting, in BOTH languages, the way `e2e/conversations.spec.ts` already does.
 
 SEMANTIC SEARCH IS NOT THIS ITEM — it is `semantic/5`, and it is an ADDITION to this. What you
 build must work with no model reachable at all.
+
+── WHAT LANE AF SHIPPED, 2026-09-16, AND WHAT IT DID NOT ─────────────────
+
+SHIPPED, on the CONVERSATION box, all three of §5, each held by a removal proof that reddened
+at its own line:
+
+  ONE — `searchArchiveTiered` in `core/conversation-search.ts`. Three readings of one query
+  (phrase, `NEAR(…, 30)`, `AND`), the union in that order, one `TierAnswer` per reading and a
+  `tier` on every hit. Fewer than two matchable words sends ONE reading, which is §5's own line.
+  `searchArchive` is UNCHANGED and is still the one-substring reading, because `anchor-pass.ts`
+  pages its probes with `offset` over `matchProse`'s total order and a union of three rankings
+  has no stable global offset to page — that function's header carries the argument.
+
+  TWO — the three-character floor moved from the QUERY to the TERM. A short word stays glued
+  into the phrase reading, never enters a boolean, and reaches the screen as a WORD rather than
+  a sentence, so the disclosure can be Hebrew. `ConversationIndex.countProse` was added so a
+  reading that fills its bound says by how much — counted through the same `WHERE` the reading
+  used, never around it.
+
+  THREE — `-word` excludes, on every reading, wrapped in parentheses. Everything else that looks
+  like syntax is a literal, and nothing throws.
+
+Ranking: `matchProse` already orders each reading by `bm25()`, so the ruling of 2026-09-16 is
+spent INSIDE a tier and the endpoint's sort keeps the tier as the outer key. Zero new controls.
+
+NOT DONE, DELIBERATELY — THE CORPUS BOX. §4 of the report is explicit that none of the three is
+worth having on `filterItems` alone ("an unranked union of three tiers over 1,282 items returns
+items in `ORDER BY id` and a reader would be handed the alphabet"), and that AND-ing FIVE terms
+is ruinous there — 2/42 against OR-ed bm25's 15/42. What the corpus needs is the RANKING that
+`RULE-search-may-rank-its-results-and-the-model-it-asks-is-the` has now allowed: §4 measures
+FTS5 + `bm25()` over the corpus at 0/42 → 15/42 at rank one for 535 ms of build time. That is a
+different build from this one, in files this item's own scope does not name, and it wants an
+item of its own rather than a quiet addition to this one.
+
+ALSO NOT DONE: `src/core/conversation-search.ts:248` still cites the phantom id
+`STD-nothing-to-do-and-could-not-look-are-different-answers`. The handover of 2026-09-16 asks
+for all seven sites to be repaired as ONE act, so this lane left its one alone rather than
+making that count harder to verify.

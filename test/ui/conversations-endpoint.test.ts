@@ -5,6 +5,7 @@
 // STD-a-measured-zero-is-drawn-and-named-an-unmeasured-thing-is,
 // TASK-search-the-archive-properly-and-mark-the-anchors-you-want-to,
 // TASK-a-date-filter-measures-the-reader-s-day-not-utc-s-because,
+// TASK-ship-the-search-the-research-recommended-three-readings-of,
 // INV-nothing-is-dropped-silently
 /**
  * `GET /api/conversations` and `GET /api/conversations/:id` — `plan:archive
@@ -50,7 +51,9 @@ import {
   type ConversationBody, type ConversationListBody, type ConversationSearchBody,
   type SubagentListBody,
 } from '../../src/ui/read-model-conversations.ts';
-import { buildSearchIndex, MIN_QUERY_CHARS } from '../../src/core/conversation-search.ts';
+import {
+  buildSearchIndex, MIN_QUERY_CHARS, SEARCH_TIERS,
+} from '../../src/core/conversation-search.ts';
 import { markAnchor } from '../../src/core/anchors.ts';
 import { apiConversationOutline } from '../../src/ui/read-model-conversation-document.ts';
 import {
@@ -1900,4 +1903,183 @@ test('a hit carries the words around it, read back from the transcript', () => {
       'and it says on both sides that it is a window into a longer turn',
     );
   } finally { b.dispose(); }
+});
+
+/**
+ * **THE THREE READINGS REACH THE SCREEN** — `semantic/4`, and this is the
+ * endpoint half of it.
+ *
+ * The core tests hold the readings themselves. What only this layer can break
+ * is the JOURNEY: the tier has to survive the per-session merge and the sort,
+ * every hit has to carry which reading found it, and the passage has to be cut
+ * around a word that IS in the turn rather than around a query that is not.
+ *
+ * The fixture gives each reading one record it alone can reach, so an endpoint
+ * that quietly sent one query would come back with one row.
+ */
+test('the search answers in tiers, and every hit says which reading found it', () => {
+  const b = box();
+  try {
+    // **THE FIXTURE IS BUILT SO THE TIER SORT CAN FAIL.** `bm25()` is computed
+    // per QUERY, so a phrase score and an AND score are not on the same scale
+    // at all — and on a small fixture the phrase reading's score happens to
+    // dominate, which means a sort that had lost the tier would come back in
+    // the right order anyway. Measured 2026-09-16: with the phrase COMMON (in
+    // five of seven turns) its bm25 is -1.49e-6 while the near-miss turn
+    // scores -3.12e-6, so a score-only sort puts the near-miss FIRST. The
+    // removal proof reddened nothing until this fixture was built; that is the
+    // fixture failing to carry a red, and it is why it looks like this.
+    const filler = ' with a good many more words after it to give the turn some length';
+    b.write('s-tier', [
+      ...[1, 2, 3, 4, 5].map((n, i) => ({
+        type: 'user',
+        message: { role: 'user', content: `the byte offset number ${n}${filler.repeat(3)}` },
+        timestamp: `2026-09-10T09:00:0${i}.000Z`,
+      })),
+      // The near-miss: the two words apart, but inside the 30-character window.
+      { type: 'user',
+        message: { role: 'user', content: 'the byte of that offset, apart' },
+        timestamp: '2026-09-10T09:00:06.000Z' },
+      // And far apart in one turn, which only the AND reading reaches.
+      { type: 'user',
+        message: { role: 'user', content: `a byte${'.'.repeat(90)}and one offset far away` },
+        timestamp: '2026-09-10T09:00:07.000Z' },
+    ]);
+    b.scan();
+    fill(b.ws.dbPath);
+
+    const body = apiConversationSearch(
+      b.ws, searchUrl('?q=byte%20offset'),
+    ).body as ConversationSearchBody;
+
+    assert.deepEqual(
+      body.tiers.map((tier) => tier.tier), ['phrase', 'near', 'both'],
+      'three readings were asked, in the order Hebrew fixes — see the report Section 3 Finding 2',
+    );
+    assert.deepEqual(
+      body.hits.map((hit) => hit.tier),
+      ['phrase', 'phrase', 'phrase', 'phrase', 'phrase', 'near', 'both'],
+      'the tier is on the HIT and it is the OUTER sort — the near-miss turn outscores every '
+      + 'phrase hit here, so a sort that kept only bm25 would hand it back first',
+    );
+    assert.equal(body.nearChars, 30);
+    assert.deepEqual(body.terms, ['byte', 'offset']);
+    assert.deepEqual(body.short, []);
+    assert.deepEqual(body.excluded, []);
+
+    // **THE PASSAGE OF A NON-ADJACENT HIT.** Its turn does not contain
+    // "byte offset" as a substring — that is the whole point of the reading —
+    // so a passage cut on the query would come back with an EMPTY match and
+    // the head of the turn, which is the "the transcript was rewritten under
+    // the index" answer and means something else entirely.
+    const far = body.hits.find((hit) => hit.tier === 'both');
+    assert.ok(far !== undefined);
+    assert.equal(far.passage?.match, 'byte', 'the window is cut on a word that is really there');
+    assert.notEqual(far.passage?.match, '', 'and not on the nothing the query itself would find');
+
+    // The removal proof for the whole tiering: ask the endpoint for one word
+    // and it sends ONE reading, so the three above are a decision this query
+    // made and not a shape the endpoint always draws.
+    const single = apiConversationSearch(
+      b.ws, searchUrl('?q=periscope'),
+    ).body as ConversationSearchBody;
+    assert.deepEqual(
+      single.tiers.map((tier) => tier.tier), ['phrase'],
+      'ONE reading, and it is still reported with its zero — a reading that was asked and '
+      + 'matched nothing is a measured zero, not an absence',
+    );
+    assert.equal(single.tiers[0]?.matched, 0);
+    assert.equal(single.hits.length, 0);
+    // And a one-word query that DOES match still sends one reading, so the `1`
+    // above is about the word count rather than about the empty answer.
+    const one = apiConversationSearch(
+      b.ws, searchUrl('?q=offset'),
+    ).body as ConversationSearchBody;
+    assert.deepEqual(one.tiers.map((tier) => tier.tier), ['phrase']);
+    assert.equal(one.tiers[0]?.matched, 7);
+  } finally { b.dispose(); }
+});
+
+/**
+ * **A WORD THE INDEX CANNOT MATCH IS SENT TO THE SCREEN AS A WORD**, not as a
+ * sentence — the screen composes the sentence, because the reader may be
+ * reading in Hebrew and a `String` built here arrives in one language whatever
+ * the page is set to.
+ */
+test('the words too short to match, and the words excluded, are named in the body', () => {
+  const b = box();
+  try {
+    b.write('s-short', [
+      { type: 'user',
+        message: { role: 'user', content: 'the ui search box is here' },
+        timestamp: '2026-09-10T09:00:00.000Z' },
+      { type: 'user',
+        message: { role: 'user', content: 'a search that needs a box' },
+        timestamp: '2026-09-10T09:00:01.000Z' },
+    ]);
+    b.scan();
+    fill(b.ws.dbPath);
+
+    const body = apiConversationSearch(
+      b.ws, searchUrl('?q=ui%20search%20box'),
+    ).body as ConversationSearchBody;
+    assert.deepEqual(body.short, ['ui'], 'the word is NAMED');
+    assert.deepEqual(body.terms, ['search', 'box']);
+    assert.equal(body.searchable, true, 'and the query is still answered, not refused');
+    assert.equal(body.hits.length, 2);
+
+    // The removal proof: the same endpoint reports NO short words for a query
+    // that has none, so the list above is a measurement and not a constant.
+    const clean = apiConversationSearch(
+      b.ws, searchUrl('?q=search%20box'),
+    ).body as ConversationSearchBody;
+    assert.deepEqual(clean.short, []);
+
+    const cut = apiConversationSearch(
+      b.ws, searchUrl('?q=search%20-here'),
+    ).body as ConversationSearchBody;
+    assert.deepEqual(cut.excluded, ['here']);
+    assert.equal(
+      cut.hits.length, 1,
+      'and the exclusion really removed one — the record holding "here" is gone',
+    );
+    assert.equal(
+      apiConversationSearch(b.ws, searchUrl('?q=search')).body
+        && (apiConversationSearch(b.ws, searchUrl('?q=search')).body as ConversationSearchBody)
+          .hits.length,
+      2,
+      'the removal proof: without the exclusion the same word finds both',
+    );
+  } finally { b.dispose(); }
+});
+
+/**
+ * **EVERY TIER NAME HAS A SENTENCE IN BOTH LANGUAGES.**
+ *
+ * `conversations.js` builds the key as `conv.arch.tier.${tier}`, which is a
+ * computed key: no scanner that looks for literal `ctx.t('…')` calls can see
+ * it, so nothing else in this repository would notice a tier shipped without a
+ * string. `t()` throws on a missing key, so the failure would be a blank card
+ * in front of a reader rather than a red test.
+ */
+test('each search tier has a string in en.js and in he.js', async () => {
+  const strings = async (file: string): Promise<Record<string, string>> => {
+    const url = new URL(`../../src/ui/public/strings/${file}`, import.meta.url).href;
+    return ((await import(url)) as { strings: Record<string, string> }).strings;
+  };
+  const en = await strings('en.js');
+  const he = await strings('he.js');
+  for (const tier of SEARCH_TIERS) {
+    assert.ok(`conv.arch.tier.${tier}` in en, `conv.arch.tier.${tier} is missing from en.js`);
+    assert.ok(`conv.arch.tier.${tier}` in he, `conv.arch.tier.${tier} is missing from he.js`);
+  }
+  for (const key of ['conv.arch.tierBounded', 'conv.arch.short', 'conv.arch.excluded']) {
+    assert.ok(key in en, `${key} is missing from en.js`);
+    assert.ok(key in he, `${key} is missing from he.js`);
+  }
+  // The removal proof: this test can fail. A key that is in neither table is
+  // reported absent, so the assertions above are reading the tables rather
+  // than reading `true`.
+  assert.equal('conv.arch.tier.nosuchtier' in en, false);
+  assert.equal('conv.arch.tier.nosuchtier' in he, false);
 });

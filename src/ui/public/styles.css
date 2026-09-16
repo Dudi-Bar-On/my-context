@@ -4014,8 +4014,21 @@ wa-tree .wa-count{margin-inline-start:var(--sp-2);color:var(--dim);
 .convhitcmd{margin-block-start:var(--sp-1)}
 .convhitmarked{white-space:nowrap}
 .convarchidle,.convarchwait,.convarchnote,.convarchscopenote,.convarchcount,
-.convarchmore,.convarchundated,.convarchindex,.convarchnomatch,.convanchnone{
+.convarchmore,.convarchundated,.convarchindex,.convarchnomatch,.convanchnone,
+.convarchshort,.convarchexcluded{
   margin-block-start:var(--sp-1);color:var(--dim)}
+/* **THE HEADING OVER ONE READING OF THE QUERY** — `semantic/4`.
+   It has to read as a heading over the rows under it rather than as one more
+   grey line beside them, because it is the only thing that says WHY a passage
+   is where it is. A rule above and the ink colour is the whole of it: the
+   feature adds no control, and it may not grow chrome either.
+   `border-block-start` and `padding-inline-start` are logical properties, so
+   the rule and the indent land on the correct side under `dir="rtl"` — half
+   this archive is Hebrew. */
+.convarchtier{margin-block-start:var(--sp-3);margin-block-end:var(--sp-1);
+  padding-block-start:var(--sp-1);border-block-start:1px solid var(--edge);
+  color:var(--ink)}
+.convarchtier .convarchtiercut{color:var(--dim)}
 .convanchors{display:flex;flex-direction:column;gap:var(--sp-2);
   margin-block-start:var(--sp-2)}
 .convanchor{border-inline-start:2px solid var(--edge);padding-inline-start:var(--sp-2);

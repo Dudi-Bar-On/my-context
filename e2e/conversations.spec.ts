@@ -23,6 +23,7 @@
 // TASK-the-reader-own-ctrl-c-still-gives-the-browser-rendered-form,
 // TASK-a-lane-is-named-by-what-it-did-and-never-by-what-it-is-so,
 // TASK-search-the-archive-properly-and-mark-the-anchors-you-want-to,
+// TASK-ship-the-search-the-research-recommended-three-readings-of,
 // INV-nothing-is-dropped-silently
 /**
  * The conversation archive, driven in a real browser in both languages —
@@ -4708,4 +4709,119 @@ test.describe('searching what was said', () => {
     await page.locator('.convarchclear').click();
     await expect(page.locator('.convarchidle')).toBeVisible({ timeout: 20_000 });
   });
+});
+
+/**
+ * **THE THREE READINGS, DRIVEN** — `semantic/4`, and it is the owner's own
+ * complaint turned into something that fails when it comes back.
+ *
+ * 2026-09-16: *"the search in conversation is not smart, it let me search for
+ * a specific string and i could not find more complex cases"*. The missing
+ * feature was that his two words had to be ADJACENT. So the load-bearing
+ * assertion here is `index report` — two words that are in one turn of this
+ * fixture and are NOT next to each other. Before this task the box answered
+ * "no turn in this archive holds those words"; the test asserts the heading
+ * that now stands over the hit, and asserts the phrase heading is ABSENT,
+ * which is what makes it a statement about the near reading rather than about
+ * the search finding something.
+ *
+ * ── AND IT IS DRIVEN IN BOTH LANGUAGES, FOR A REASON OF ITS OWN ───────────
+ *
+ * The tier heading is a sentence the SCREEN composes — the server sends the
+ * words and never the sentence, because a reader may be reading in Hebrew.
+ * Under `dir="rtl"` a heading built here and a passage whose own direction is
+ * `auto` sit in the same block, which is exactly the place this project has
+ * found a leading dot at the wrong end after every assertion passed.
+ */
+test.describe('reading one query three ways', () => {
+  const openSearch = async (page: Page, lang: 'en' | 'he'): Promise<void> => {
+    await open(page, '#/conversations', lang);
+    await page.waitForSelector('.convarchq', { timeout: 20_000 });
+  };
+
+  for (const lang of ['en', 'he'] as const) {
+    test(`two words that are not adjacent are found, and the reading is named · ${lang}`, async ({ page }) => {
+      await openSearch(page, lang);
+
+      // `read the index and report what it holds` — one turn, two words with
+      // five characters between them and nothing adjacent about them.
+      await page.locator('.convarchq').fill('index report');
+      const near = page.locator('.convarchtier[data-tier="near"]');
+      await expect(near).toBeVisible({ timeout: 20_000 });
+      await expect(
+        page.locator('.convarchtier[data-tier="phrase"]'),
+        'the words are NOT next to each other, so the first reading must have nothing to show — '
+        + 'if it did, this test would be passing on an adjacency it was written to disprove',
+      ).toHaveCount(0);
+      const hits = page.locator('.convhit');
+      await expect(hits).toHaveCount(1, { timeout: 20_000 });
+      await expect(hits.first().locator('.convhitsnip')).toContainText('report');
+      await expect(hits.first()).toHaveAttribute('data-tier', 'near');
+
+      // **THE CONTROL IS THE HEADING THAT IS NOT THERE.** The assertion above
+      // — no `phrase` heading — IS the statement that the shipped reading
+      // finds nothing for these two words, which is what the box did before
+      // this task. Stated rather than re-typed: `index and report` IS a
+      // contiguous substring of that same turn, so typing it would prove the
+      // opposite of what it looks like it proves.
+      //
+      // And the measured zero is still a measured zero: two words that share
+      // no turn at all draw the sentence that says the archive was searched.
+      await page.locator('.convarchq').fill('index periscope');
+      await expect(page.locator('.convarchnomatch')).toBeVisible({ timeout: 20_000 });
+      await expect(page.locator('.convarchtier')).toHaveCount(0);
+
+      // Two words FAR apart in one turn — 64 characters, well past the
+      // sentence window — so only the widest reading may claim them.
+      await page.locator('.convarchq').fill('terminal table');
+      await expect(page.locator('.convarchtier[data-tier="both"]')).toBeVisible({ timeout: 20_000 });
+      await expect(page.locator('.convarchtier[data-tier="near"]')).toHaveCount(0);
+
+      // And two words that ARE adjacent still come back under the first
+      // reading, unchanged — which is the property that says this cannot lose
+      // a hit the shipped search returns.
+      await page.locator('.convarchq').fill('lane report');
+      await expect(page.locator('.convarchtier[data-tier="phrase"]')).toBeVisible({ timeout: 20_000 });
+
+      await page.screenshot({ path: `e2e/screens/conversations-tiers-${lang}.png`, fullPage: true });
+    });
+
+    test(`a word too short to match is named, and a hyphen leaves one out · ${lang}`, async ({ page }) => {
+      await openSearch(page, lang);
+
+      // `ui` is two characters and this index reads runs of three, so it
+      // cannot be looked for at all. The query as a whole is long enough, so
+      // the old whole-query guard says nothing about it — which is the hole
+      // this task closed.
+      await page.locator('.convarchq').fill('ui report');
+      const short = page.locator('.convarchshort');
+      await expect(short).toBeVisible({ timeout: 20_000 });
+      await expect(short).toContainText('ui');
+      await expect(
+        page.locator('.convarchnote'),
+        'and it is NOT the whole-query refusal — the query was searched, one of its words was '
+        + 'merely unsearchable, and the two sentences mean different things',
+      ).toHaveCount(0);
+
+      // The removal proof: a query with no short word draws no such line.
+      await page.locator('.convarchq').fill('lane report');
+      await expect(page.locator('.convarchshort')).toHaveCount(0, { timeout: 20_000 });
+      await expect(page.locator('.convhit')).toHaveCount(1);
+
+      // And the exclusion, which is the only other thing that can be typed.
+      await page.locator('.convarchq').fill('report -lane');
+      const excluded = page.locator('.convarchexcluded');
+      await expect(excluded).toBeVisible({ timeout: 20_000 });
+      await expect(excluded).toContainText('lane');
+      await expect(
+        page.locator('.convhit'),
+        'the turn holding both words is gone, and the line above says so — a removal that was '
+        + 'not said is the thing the invariant is about',
+      ).toHaveCount(1);
+      await expect(page.locator('.convhit').first().locator('.convhitsnip'))
+        .not.toContainText('lane report');
+
+      await page.screenshot({ path: `e2e/screens/conversations-floor-${lang}.png`, fullPage: true });
+    });
+  }
 });

@@ -1996,6 +1996,55 @@ function addAnchorNote(db: DatabaseSync): void {
   if (!columns.includes('note')) db.exec('ALTER TABLE anchors ADD COLUMN note TEXT');
 }
 
+/** The scope a prose query stands in. One shape, two callers — see `proseWhere`. */
+export interface ProseScope {
+  sessionId?: string;
+  agentId?: string | null;
+  kind?: string;
+  windows?: { sourceKey: string; fromByte: number }[];
+  offset?: number;
+}
+
+/**
+ * **THE `WHERE` ONE PROSE QUERY STANDS ON, BUILT ONCE** — `matchProse` asks it
+ * for rows and `countProse` asks it for a number, and there is exactly one
+ * spelling of the scope between them.
+ *
+ * ── WHY IT IS ITS OWN FUNCTION AND NOT A COPY IN EACH ─────────────────────
+ *
+ * `countProse` exists to say *how much of this reading the bound did not hand
+ * back* — `INV-nothing-is-dropped-silently`, as `searchArchiveTiered` spends
+ * it. A count built from a second, separately-written scope would answer about
+ * a different set of rows than the one it is disclosing a truncation of, and
+ * the disclosure would be a number that is wrong in exactly the cases a reader
+ * consults it: one session narrowed, one lane, one kind. `CLAUDE.md` opens by
+ * describing what a second copy costs; this is that cost with a number on it.
+ *
+ * `null` is a scope that ADMITS NOTHING, which is what an empty `windows` list
+ * means. The callers answer it in their own currency — `[]` for rows, `0` for
+ * a count — rather than this deciding for them.
+ */
+function proseWhere(
+  match: string, scope: ProseScope,
+): { where: string; params: (string | number)[] } | null {
+  const where: string[] = ['conversation_prose MATCH ?'];
+  const params: (string | number)[] = [match];
+  if (scope.windows !== undefined) {
+    if (scope.windows.length === 0) return null;
+    where.push(
+      '(' + scope.windows.map(() => '(source_key = ? AND byte_offset >= ?)').join(' OR ') + ')',
+    );
+    for (const w of scope.windows) { params.push(w.sourceKey, w.fromByte); }
+  }
+  if (scope.sessionId !== undefined) { where.push('session_id = ?'); params.push(scope.sessionId); }
+  if (scope.agentId !== undefined) {
+    if (scope.agentId === null) where.push('agent_id IS NULL');
+    else { where.push('agent_id = ?'); params.push(scope.agentId); }
+  }
+  if (scope.kind !== undefined) { where.push('kind = ?'); params.push(scope.kind); }
+  return { where: where.join(' AND '), params };
+}
+
 /** The read-only handle plus the tables. `open` writes; `openReadOnlyChecked` cannot. */
 export class ConversationIndex {
   #db: DatabaseSync;
@@ -2694,24 +2743,11 @@ export class ConversationIndex {
     } = {},
     limit = 200,
   ): ProseHit[] {
-    const where: string[] = ['conversation_prose MATCH ?'];
-    const params: (string | number)[] = [match];
-    if (scope.windows !== undefined) {
-      // **An EMPTY list of windows is a scope that admits nothing**, and it
-      // must not read as "no scope given". `1 = 0` says that in SQL rather
-      // than relying on the caller never passing one.
-      if (scope.windows.length === 0) return [];
-      where.push(
-        '(' + scope.windows.map(() => '(source_key = ? AND byte_offset >= ?)').join(' OR ') + ')',
-      );
-      for (const w of scope.windows) { params.push(w.sourceKey, w.fromByte); }
-    }
-    if (scope.sessionId !== undefined) { where.push('session_id = ?'); params.push(scope.sessionId); }
-    if (scope.agentId !== undefined) {
-      if (scope.agentId === null) where.push('agent_id IS NULL');
-      else { where.push('agent_id = ?'); params.push(scope.agentId); }
-    }
-    if (scope.kind !== undefined) { where.push('kind = ?'); params.push(scope.kind); }
+    const built = proseWhere(match, scope);
+    // **An EMPTY list of windows is a scope that admits nothing**, and it must
+    // not read as "no scope given" — `proseWhere` answers `null` for it.
+    if (built === null) return [];
+    const { where, params } = built;
     const rows = this.#db.prepare(
       'SELECT session_id, agent_id, record_index, byte_offset, kind, at, ' +
       // The literal `7` is the ordinal of `text` in the table's column list,
@@ -2719,7 +2755,7 @@ export class ConversationIndex {
       // parameters — so it is written here beside the schema it counts.
       "snippet(conversation_prose, 7, '[', ']', '…', 16) AS snip, " +
       'bm25(conversation_prose) AS score ' +
-      `FROM conversation_prose WHERE ${where.join(' AND ')} ` +
+      `FROM conversation_prose WHERE ${where} ` +
       'ORDER BY score ASC, session_id ASC, record_index ASC LIMIT ? OFFSET ?',
     ).all(...params, limit, scope.offset ?? 0) as Record<string, unknown>[];
     return rows.map((row) => ({
@@ -2732,6 +2768,39 @@ export class ConversationIndex {
       snippet: String(row.snip),
       score: Number(row.score),
     }));
+  }
+
+  /**
+   * **HOW MANY SPANS ONE READING MATCHES IN SCOPE — the number behind a
+   * truncation disclosure.**
+   *
+   * `matchProse` answers *the best `limit` of them*. This answers *how many
+   * there are*, which is the other half of `INV-nothing-is-dropped-silently`:
+   * a ranked set that is cut says so AND says by how much, and "by how much"
+   * has to be counted rather than guessed. `searchArchiveTiered` is the caller
+   * and it asks only when a tier actually filled its bound — a reading that
+   * came back short has already told you its own total, and a count over it
+   * would be a query spent to learn what is already known.
+   *
+   * ── IT IS THE SAME `WHERE`, WHICH IS THE WHOLE POINT ──────────────────────
+   *
+   * `proseWhere` builds the scope for both, so the count cannot come to a
+   * different answer about which rows are in play than the query it is
+   * disclosing a bound on. `0` for a scope that admits nothing — the same
+   * answer `matchProse` gives as `[]`, in this function's currency.
+   *
+   * Measured on the owner's archive 2026-09-16 (11,161 spans, SQLite 3.51.2):
+   * a two-term `NEAR` counts in 1.6 ms and a twenty-term `AND` in 12.5 ms,
+   * against a screen a person typed into. `offset` is ignored here because a
+   * count is not a page.
+   */
+  countProse(match: string, scope: ProseScope = {}): number {
+    const built = proseWhere(match, scope);
+    if (built === null) return 0;
+    const row = this.#db.prepare(
+      `SELECT count(*) AS n FROM conversation_prose WHERE ${built.where}`,
+    ).get(...built.params) as { n: number };
+    return Number(row.n);
   }
 
   /**

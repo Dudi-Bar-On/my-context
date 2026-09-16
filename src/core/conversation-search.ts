@@ -627,24 +627,14 @@ export function searchArchive(
 ): SearchResult {
   const trimmed = query.trim();
   if (trimmed.length < MIN_QUERY_CHARS) {
-    return {
-      query: trimmed,
-      searchable: false,
-      note:
-        `my_context: "${trimmed}" is shorter than ${MIN_QUERY_CHARS} characters, and the `
-        + 'archive\'s index matches runs of three — so this cannot be searched for at all. It '
-        + 'is not an answer of "nothing found". Type at least '
-        + `${MIN_QUERY_CHARS} characters.`,
-      hits: [],
-    };
+    return { query: trimmed, searchable: false, note: tooShortNote(trimmed), hits: [] };
   }
-  const phrase = `"${trimmed.replace(/"/g, '""')}"`;
   return {
     query: trimmed,
     searchable: true,
     note: null,
     hits: index.matchProse(
-      phrase,
+      quoteTerm(trimmed),
       {
         sessionId: scope.sessionId, agentId: scope.agentId, kind: scope.kind,
         ...(scope.windows === undefined ? {} : { windows: scope.windows }),
@@ -652,5 +642,383 @@ export function searchArchive(
       },
       scope.limit ?? DEFAULT_SEARCH_LIMIT,
     ),
+  };
+}
+
+/* ── THE READER'S SEARCH: THREE READINGS OF ONE QUERY — `semantic/4` ────────
+ *
+ * `reports/2026-09-16-the-search-grammar.md` §5, committed at `c5e372dd`, is
+ * the brief and every number below is its measurement rather than a new one.
+ * The complaint it answers, in the owner's words on 2026-09-16: *"the search
+ * in conversation is not smart, it let me search for a specific string and i
+ * could not find more complex cases"*. The missing feature is not regex and
+ * not a checkbox — HIS TWO WORDS ARE REQUIRED TO BE ADJACENT and nothing lets
+ * him say *near* instead. Measured over 1,420 two-word phrases he actually
+ * typed: as a phrase 31.7% return anything (median 3 spans); as
+ * `NEAR(…, 30)` 99.6% (median 4); AND-ed 100% (median 38). The whole of the
+ * complaint sits in that row, and the answer costs no dependency, no dialog
+ * and — `§5`'s own line — **no new control at all.**
+ */
+
+/**
+ * **One term, quoted into FTS5 as DATA.**
+ *
+ * `searchArchive`'s rule one level down: `"` is doubled, so the characters
+ * FTS5 reserves — `"`, `(`, `)`, `*`, `:`, and the bare words `AND`, `OR`,
+ * `NOT`, `NEAR` — are searched for rather than obeyed. This is the single
+ * spelling of it, so a tier and the phrase it nests inside cannot escape the
+ * reader's text two different ways.
+ */
+export function quoteTerm(term: string): string {
+  return '"' + term.replace(/"/g, '""') + '"';
+}
+
+/**
+ * **The distance the middle reading admits, and it is in CHARACTERS.**
+ *
+ * §2.1, and it is documented nowhere because it is not FTS5's documented
+ * behaviour: FTS5 counts `NEAR` in TOKENS, and a trigram tokenizer emits one
+ * token per character position, so the token window IS a character window.
+ * **LAW: `NEAR(a b, N)` matches when at most `N-2` characters separate the two
+ * substrings** — held on every N tried and pinned at both boundaries in
+ * `test/core/search-grammar.test.ts`.
+ *
+ * In readable units, `NEAR(…, 12)` is *"in the same clause"*, `NEAR(…, 30)` is
+ * *"in the same sentence"*, `NEAR(…, 200)` is *"in the same paragraph"*. 30 is
+ * chosen against the measurement and not by feel: over the 1,420 two-word
+ * phrases the owner typed, `NEAR 30` reaches 99.6% of what AND reaches and
+ * hands back a TENTH as many spans (median 4 against 38). It is a free gift
+ * from the tokenizer the Hebrew measurement already paid for.
+ */
+export const NEAR_CHARS = 30;
+
+/**
+ * **The three readings of one query, as FTS5 strings, in the order they are
+ * shown.**
+ *
+ * They are strictly nested for terms of three characters or more — §2.2
+ * checked the rowid SETS on 178 pairs, phrase ⊆ NEAR 30 in 178/178 and
+ * NEAR 30 ⊆ AND in 178/178 — so an answer that shows phrase hits, then NEAR
+ * hits, then AND hits **cannot lose a hit the shipped search returns today**.
+ * That containment is the whole argument for the shape, and it is why these
+ * are one function rather than three call sites.
+ *
+ * **`phrase` is a parameter and defaults to the terms rejoined.** The reader's
+ * phrase tier is not the terms rejoined: it keeps the words this index cannot
+ * match as terms (§3 Finding 2 — `"הם רשות"` matches as one substring and
+ * matches nothing as a boolean) and it keeps the spacing he typed. The default
+ * is what `scripts/measure-search-grammar.ts` measures with, where there is no
+ * reader and no short word.
+ */
+export function tiersOf(terms: string[], near: number, phrase = terms.join(' ')): string[] {
+  const q = terms.map(quoteTerm);
+  return [quoteTerm(phrase), `NEAR(${q.join(' ')}, ${near})`, q.join(' AND ')];
+}
+
+/** Which reading a hit came back from, and it is an ORDER as well as a name. */
+export type SearchTier = 'phrase' | 'near' | 'both';
+
+/** The three, in the order they are asked and shown. Hebrew fixes it — see §3. */
+export const SEARCH_TIERS: readonly SearchTier[] = ['phrase', 'near', 'both'];
+
+/** One hit, and which of the three readings found it first. */
+export interface TieredHit extends ProseHit {
+  tier: SearchTier;
+}
+
+/**
+ * What one reading did — asked, bounded, and how much it did not hand back.
+ *
+ * `matched` is COUNTED and not inferred (`ConversationIndex.countProse`), for
+ * `INV-nothing-is-dropped-silently`: ordering is not filtering, and a set that
+ * is truncated says so AND says by how much. It is this reading's own total in
+ * scope, so it includes the spans an earlier tier already showed — the three
+ * nest, and pretending otherwise would need a fourth query per tier to
+ * subtract them.
+ */
+export interface TierAnswer {
+  tier: SearchTier;
+  /** The FTS5 expression actually sent, so a reader of a test can see it. */
+  match: string;
+  /**
+   * **Hits this reading CONTRIBUTED** — the ones an earlier reading had not
+   * already shown, which is exactly the number of rows drawn under its
+   * heading. It is not `matched` minus anything: the readings nest, so what an
+   * earlier one took is not a loss, and the screen's sentence says `shown`
+   * and `matched` as the two different things they are rather than subtracting
+   * one from the other and printing a number that is true of neither.
+   */
+  shown: number;
+  /** Spans this reading matches in scope, counted — its own total, not the union's. */
+  matched: number;
+  /** The bound stopped this reading short of `matched`. */
+  bounded: boolean;
+}
+
+/**
+ * **The reader's answer**, which is `SearchResult` plus the three things that
+ * cannot be read off a flat list of hits: which reading each hit came from,
+ * which of his words the index cannot match, and what he excluded.
+ */
+export interface TieredSearchResult {
+  /** The query as it was searched — trimmed, never rewritten. */
+  query: string;
+  /** False when nothing here could be searched at all. Then `hits` is empty. */
+  searchable: boolean;
+  /** Why not, in a sentence a reader can act on. `null` when it was searched. */
+  note: string | null;
+  /** The words that went into the boolean readings, in the order he typed. */
+  terms: string[];
+  /**
+   * **The words this index cannot match at all, kept rather than dropped.**
+   *
+   * §5 TWO: the three-character floor moves from the QUERY to the TERM and
+   * SAYS so. A short word stays glued into the phrase reading, which can still
+   * match it; what it may not do is enter a boolean, where `"ui" AND "search"`
+   * returns 0 while `"search"` alone returns 654 and NOTHING says why. 21.0%
+   * of the 104,343 words the owner has typed are under the floor, and in
+   * Hebrew it is 14.5% of word OCCURRENCES and 24.9% of adjacent word pairs.
+   */
+  short: string[];
+  /** The words written `-word`, which every reading excludes. */
+  excluded: string[];
+  /** One entry per reading asked, in `SEARCH_TIERS` order. */
+  tiers: TierAnswer[];
+  hits: TieredHit[];
+}
+
+/** One query, read into its parts. Nothing here touches the index. */
+export interface ParsedQuery {
+  /** The text of the phrase reading — his positive words, short ones kept. */
+  phrase: string;
+  /** Words long enough for a trigram index to match. */
+  terms: string[];
+  /** Words too short for it, kept in `phrase` and disclosed. */
+  short: string[];
+  /** Words he wrote `-word`. */
+  excluded: string[];
+}
+
+/**
+ * **Read one query into its parts — and there is no other syntax.** §5 THREE.
+ *
+ * A leading `-` on a whitespace-delimited word of three or more characters
+ * excludes it. It is the only operator in the whole survey that every surveyed
+ * surface has (Gmail `-`, GitHub `NOT`, notmuch `not`/`-`, ripgrep `-v`,
+ * Elasticsearch `simple_query_string` `-`) and the one thing tiering alone
+ * cannot do. It is safe because it is SUBTRACTIVE: a reader who types `-foo`
+ * and gets a smaller list learns the rule in one try.
+ *
+ * **Anything else that looks like syntax is a literal**, on Elasticsearch's
+ * rule — *"does not return errors for invalid syntax. Instead, it ignores any
+ * invalid parts of the query string"*. A `-` inside a word (`foo-bar`), a lone
+ * `-`, a `-` on a word the index could not match anyway: all of them are
+ * characters to search for. **This function cannot throw**, which is the whole
+ * difference between a grammar that can live behind a keystroke and one that
+ * cannot: lunr throws `QueryParseError` in twelve places including on a
+ * trailing colon, and a search box on its second keystroke cannot throw.
+ *
+ * Hebrew does not collide with it: Hebrew's hyphen is *maqaf* (`־`, U+05BE),
+ * not ASCII `-`.
+ *
+ * **`phrase` is the trimmed query UNCHANGED when nothing was excluded**, which
+ * is what keeps §2.2's containment true: the first reading is byte for byte
+ * the query `searchArchive` sends today, spacing and all, so the tiered answer
+ * cannot lose a hit the shipped search returns. Only an exclusion rebuilds it,
+ * because the `-word` he typed is not part of what he is looking for.
+ */
+export function parseSearchQuery(query: string): ParsedQuery {
+  const trimmed = query.trim();
+  const tokens = trimmed === '' ? [] : trimmed.split(/\s+/);
+  const positive: string[] = [];
+  const terms: string[] = [];
+  const short: string[] = [];
+  const excluded: string[] = [];
+  for (const token of tokens) {
+    if (token.startsWith('-') && token.length - 1 >= MIN_QUERY_CHARS) {
+      excluded.push(token.slice(1));
+      continue;
+    }
+    positive.push(token);
+    if (token.length >= MIN_QUERY_CHARS) terms.push(token);
+    else short.push(token);
+  }
+  return {
+    phrase: excluded.length === 0 ? trimmed : positive.join(' '),
+    terms,
+    short,
+    excluded,
+  };
+}
+
+/**
+ * **Every reading carries every exclusion.**
+ *
+ * The reading is WRAPPED before the `NOT` so that the grouping is written down
+ * rather than inherited from an operator precedence this project has not
+ * measured. **What was measured** (2026-09-16, and pinned in
+ * `test/core/conversation-search.test.ts`): for the three readings this
+ * function actually emits — a phrase, a `NEAR` and an `AND`, never an `OR` —
+ * `("a" AND "b") NOT "c"` and `"a" AND "b" NOT "c"` return the SAME rows. So
+ * the parentheses are explicitness and cost nothing; they are not a repair,
+ * and saying they were would be a claim with no number behind it. §2 measured
+ * that parentheses work on this index at all
+ * (`("byte" OR "offset") AND "trigram"` → 62).
+ */
+function excluding(match: string, excluded: readonly string[]): string {
+  return excluded.reduce((m, term) => `(${m}) NOT ${quoteTerm(term)}`, match);
+}
+
+/** The refusal a query too short for the tokenizer gets. One spelling, two callers. */
+function tooShortNote(trimmed: string): string {
+  return `my_context: "${trimmed}" is shorter than ${MIN_QUERY_CHARS} characters, and the `
+    + 'archive\'s index matches runs of three — so this cannot be searched for at all. It '
+    + `is not an answer of "nothing found". Type at least ${MIN_QUERY_CHARS} characters.`;
+}
+
+/** Where one hit is, spelled once. A lane and its session share a record index. */
+function hitKey(hit: ProseHit): string {
+  // The separator is a NUL, written as an ESCAPE. A raw NUL in the source
+  // makes the file binary to git, and this project lost the diff on
+  // `screens/conversations.js` for days that way; `npm run check:text-files`
+  // is the gate that catches it. The escape sends the identical byte.
+  return `${hit.sessionId}\u0000${hit.agentId ?? ''}\u0000${hit.byteOffset}`;
+}
+
+/**
+ * **READ ONE QUERY THREE WAYS AND ANSWER IN TIERS** — §5 ONE, the reader's
+ * search, and the only caller is `GET /api/conversations/search`.
+ *
+ * ── WHY THIS IS NOT `searchArchive` WITH A FLAG ───────────────────────────
+ *
+ * `searchArchive` is still the one-phrase reading and every other caller keeps
+ * it, because their query is not prose a person typed: `anchor-pass.ts` sends
+ * `"|---"` and `"| ---"` — machine probes — and PAGES through them with
+ * `offset` over `matchProse`'s total order, 25 pages of 200. That paging is
+ * the repair for the 2026-09-15 incident where the automatic marking stopped
+ * for half an hour, and a union of THREE orders has no stable global offset to
+ * page: page 2 of a tiered answer is not the rows after page 1. Splitting
+ * `"| ---"` on whitespace would also change what a probe means. So the reader
+ * gets a reading of a query, and a probe gets a substring, and neither is a
+ * flag on the other. `retrieval/from-selection.ts` searches item-id slugs for
+ * the same reason — they are names, not prose.
+ *
+ * ── THE SHAPE, AND WHAT EACH PART IS FOR ──────────────────────────────────
+ *
+ *   — **phrase**, *"your words, next to each other"* — today's answer,
+ *     unchanged, FIRST. §3 Finding 2 is why it is first and Hebrew is the only
+ *     reason: `"הם רשות"` matches 1 span as one substring and 0 as a boolean,
+ *     because `הם` is two characters. "Phrase is a subset of AND" is FALSE in
+ *     Hebrew, so a surface that REPLACED the substring reading would lose real
+ *     hits and say nothing.
+ *   — **near**, *"in the same sentence"* — `NEAR(…, 30)`, see `NEAR_CHARS`.
+ *   — **both**, *"both somewhere in the same turn"* — plain `AND`.
+ *
+ * **A one-word query is unchanged**: fewer than two matchable terms and only
+ * the phrase reading is sent, which is exactly today's query, plus whatever
+ * `-word` he excluded. That is deliberately AC's own line — the readings
+ * collapse, so sending three would be two queries spent to return the same
+ * rows.
+ *
+ * ── RANKING IS ALLOWED NOW, AND IT IS SPENT INSIDE A TIER ─────────────────
+ *
+ * `RULE-search-may-rank-its-results-and-the-model-it-asks-is-the`, owner
+ * ruling 2026-09-16, lifts `filterItems`' refusal. §5 was written under the
+ * old constraint and said so. **The tier is kept anyway, because it is better
+ * than a score and not a substitute for one**: a tier tells the reader WHY a
+ * result is where it is and `bm25()` cannot. What the ruling buys is the
+ * ordering WITHIN a tier, and it costs nothing to take — `matchProse` already
+ * returns `ORDER BY bm25() ASC`, so each reading arrives best-first and this
+ * function only has to not re-sort across the tiers.
+ *
+ * ── ORDERING IS NOT FILTERING ─────────────────────────────────────────────
+ *
+ * `INV-nothing-is-dropped-silently`, and the shape NOT to rebuild is
+ * `nothing-to-do-and-could-not-look-are-different-answers`: the anchor pass
+ * applied a top-200 ranking BEFORE the byte scope and silently stopped. **A
+ * bound is not a scope.** Here the scope is in the `WHERE` of every reading —
+ * `proseWhere`, one spelling — and the bound is a `LIMIT` after it, per
+ * reading, disclosed: `TierAnswer.matched` is COUNTED when a reading fills its
+ * bound, so "there are more" carries a number rather than a shrug. A reading
+ * that came back short needs no count and is not charged for one.
+ */
+export function searchArchiveTiered(
+  index: ConversationIndex,
+  query: string,
+  scope: Omit<SearchScope, 'offset'> = {},
+): TieredSearchResult {
+  const trimmed = query.trim();
+  const empty = {
+    query: trimmed,
+    terms: [] as string[],
+    short: [] as string[],
+    excluded: [] as string[],
+    tiers: [] as TierAnswer[],
+    hits: [] as TieredHit[],
+  };
+  if (trimmed.length < MIN_QUERY_CHARS) {
+    return { ...empty, searchable: false, note: tooShortNote(trimmed) };
+  }
+  const parsed = parseSearchQuery(trimmed);
+  // **An exclusion with nothing to exclude FROM.** `-foo` is four characters
+  // and passes the query floor, and there is no reading to send: the phrase is
+  // empty and `NOT "foo"` alone is not a search. It is a refusal with a reason
+  // rather than a zero, for the same reason two characters is.
+  if (parsed.phrase === '') {
+    return {
+      ...empty,
+      excluded: parsed.excluded,
+      searchable: false,
+      note:
+        'my_context: every word here is an exclusion, so there is nothing to search FOR — '
+        + `"-${parsed.excluded[0] ?? ''}" says what to leave out of an answer and no answer was `
+        + 'asked for. Type the words you remember, and put the `-` only on the ones you want gone.',
+    };
+  }
+  const limit = scope.limit ?? DEFAULT_SEARCH_LIMIT;
+  const where = {
+    sessionId: scope.sessionId, agentId: scope.agentId, kind: scope.kind,
+    ...(scope.windows === undefined ? {} : { windows: scope.windows }),
+  };
+  const readings = tiersOf(parsed.terms, NEAR_CHARS, parsed.phrase)
+    .map((match, i) => ({ tier: SEARCH_TIERS[i] as SearchTier, match: excluding(match, parsed.excluded) }))
+    // **Fewer than two matchable terms and the three collapse into one.** The
+    // boolean readings of a single term are that term, which is BROADER than
+    // the phrase he typed rather than a different reading of it.
+    .slice(0, parsed.terms.length < 2 ? 1 : SEARCH_TIERS.length);
+
+  const seen = new Set<string>();
+  const hits: TieredHit[] = [];
+  const tiers: TierAnswer[] = [];
+  for (const reading of readings) {
+    const found = index.matchProse(reading.match, where, limit);
+    let shown = 0;
+    for (const hit of found) {
+      const key = hitKey(hit);
+      // The three nest, so the first reading to return a span is the most
+      // literal one that holds it, and that is the tier it is shown under.
+      if (seen.has(key)) continue;
+      seen.add(key);
+      hits.push({ ...hit, tier: reading.tier });
+      shown += 1;
+    }
+    const bounded = found.length >= limit;
+    tiers.push({
+      tier: reading.tier,
+      match: reading.match,
+      shown,
+      matched: bounded ? index.countProse(reading.match, where) : found.length,
+      bounded,
+    });
+  }
+  return {
+    query: trimmed,
+    searchable: true,
+    note: null,
+    terms: parsed.terms,
+    short: parsed.short,
+    excluded: parsed.excluded,
+    tiers,
+    hits,
   };
 }

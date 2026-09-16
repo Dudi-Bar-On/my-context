@@ -105,7 +105,10 @@ import {
 // `test/ui/anchor-write-route.test.ts`. That split is the point: every READ
 // module still binds nothing, so this file's guarantee and the endpoint gate
 // that enforces it are unchanged.
-import { MIN_QUERY_CHARS, proseOf, searchArchive } from '../core/conversation-search.ts';
+import {
+  MIN_QUERY_CHARS, NEAR_CHARS, SEARCH_TIERS, proseOf, searchArchive, searchArchiveTiered,
+  type SearchTier, type TierAnswer,
+} from '../core/conversation-search.ts';
 import { readRedactionPlan } from '../core/conversation-redaction.ts';
 import {
   SECRET_SHAPES, scanSessionSecrets, type SecretCandidate,
@@ -1767,6 +1770,15 @@ export interface SearchHitView {
    */
   passage: { before: string; match: string; after: string } | null;
   score: number;
+  /**
+   * **WHICH READING FOUND IT** — `semantic/4`, and it is an ordering as well
+   * as a label. `phrase` is his words next to each other, `near` is within
+   * `NEAR_CHARS` characters of each other, `both` is anywhere in the same
+   * turn. It is carried per hit rather than only per tier so that a screen
+   * grouping them and a screen listing them cannot come to different answers
+   * about one row.
+   */
+  tier: SearchTier;
   anchorId: string;
   anchored: boolean;
   /** The argv the viewer offers to copy — `quoteArg` joins it for display. */
@@ -1807,6 +1819,31 @@ export interface ConversationSearchBody {
   undated: number;
   /** The index answered a full page, so there may be more behind it. */
   more: boolean;
+  /**
+   * **The words that went into the boolean readings**, in the order he typed
+   * them — `semantic/4`. Empty for a query the index could not read at all.
+   */
+  terms: string[];
+  /**
+   * **His words this index cannot match, kept and SAID.** §5 TWO of
+   * `reports/2026-09-16-the-search-grammar.md`: the three-character floor
+   * moves from the query to the term. A short word stays glued into the phrase
+   * reading — which can still match it — and never enters a boolean, where
+   * `"ui" AND "search"` returns 0 while `"search"` alone returns 654 and
+   * nothing says why. The screen draws this; it is not a sentence composed
+   * here, because the reader may be reading in Hebrew.
+   */
+  short: string[];
+  /** The words he wrote `-word`. Every reading excluded them. */
+  excluded: string[];
+  /**
+   * **One entry per reading asked, in the order shown.** `matched` is counted
+   * rather than inferred, so "there are more" carries a number —
+   * `INV-nothing-is-dropped-silently`, and ordering is not filtering.
+   */
+  tiers: TierAnswer[];
+  /** The character window `near` admits. See `NEAR_CHARS` for the law. */
+  nearChars: number;
   indexed: boolean;
   outdated: boolean;
   dir: string;
@@ -1854,9 +1891,25 @@ const PASSAGE_READ_CAP = 64 * 1024;
  * case-insensitively — `[BYTE offset]` and `[byte offset]` are both real hits
  * on this archive, seen in the browser — and a locator that only found the
  * exact case would silently window from the start of the turn instead.
+ *
+ * ── WHY IT IS A LIST OF NEEDLES AND NOT ONE QUERY ─────────────────────────
+ *
+ * `semantic/4`. The whole point of the `near` and `both` readings is that the
+ * reader's words are NOT next to each other in the turn, so the query as one
+ * substring is not in the text and never will be. Given only the query, every
+ * such hit fell into the `-1` branch below — which means *"the transcript was
+ * rewritten under the index"* — and was drawn as the head of the turn with
+ * nothing marked. So the needles are tried IN ORDER, most literal first: the
+ * whole query, then each of his words. The first one present wins, and the
+ * window is centred on it.
+ *
+ * **One mark and not all of them**, deliberately: `passage` is a
+ * before/match/after structure that the screen renders without parsing, and
+ * marking every term would change that shape and the screen with it. The tier
+ * heading above the row is what says the other word is further off.
  */
 function passageAt(
-  file: string, byteOffset: number, query: string,
+  file: string, byteOffset: number, needles: readonly string[],
 ): { before: string; match: string; after: string } | null {
   let text: string | null = null;
   for (const record of iterateTranscript(file, { startByte: byteOffset, cap: PASSAGE_READ_CAP })) {
@@ -1864,7 +1917,17 @@ function passageAt(
     break;
   }
   if (text === null || text === '') return null;
-  const at = text.toLowerCase().indexOf(query.toLowerCase());
+  const folded = text.toLowerCase();
+  let at = -1;
+  let needle = '';
+  for (const candidate of needles) {
+    if (candidate === '') continue;
+    const found = folded.indexOf(candidate.toLowerCase());
+    if (found === -1) continue;
+    at = found;
+    needle = candidate;
+    break;
+  }
   if (at === -1) {
     // The index matched and this read did not. That is a REAL state rather
     // than an impossible one — the transcript may have been rewritten under
@@ -1873,11 +1936,11 @@ function passageAt(
     return { before: '', match: '', after: text.slice(0, PASSAGE_RADIUS * 2) };
   }
   const from = Math.max(0, at - PASSAGE_RADIUS);
-  const to = Math.min(text.length, at + query.length + PASSAGE_RADIUS);
+  const to = Math.min(text.length, at + needle.length + PASSAGE_RADIUS);
   return {
     before: (from > 0 ? '…' : '') + text.slice(from, at),
-    match: text.slice(at, at + query.length),
-    after: text.slice(at + query.length, to) + (to < text.length ? '…' : ''),
+    match: text.slice(at, at + needle.length),
+    after: text.slice(at + needle.length, to) + (to < text.length ? '…' : ''),
   };
 }
 /**
@@ -2034,6 +2097,11 @@ export function apiConversationSearch(ws: Workspace, url: URL): JsonResult {
       matched: 0,
       undated: 0,
       more: false,
+      terms: [],
+      short: [],
+      excluded: [],
+      tiers: [],
+      nearChars: NEAR_CHARS,
       indexed: true,
       outdated: false,
       dir,
@@ -2107,7 +2175,7 @@ export function apiConversationSearch(ws: Workspace, url: URL): JsonResult {
     // holds one row per session somebody bothered to name — and a single
     // unscoped query filtered afterwards would silently lose the hits that
     // fell outside the limit before the filter ran.
-    const answers = sessions.map((sessionId) => searchArchive(index, askedQuery, {
+    const answers = sessions.map((sessionId) => searchArchiveTiered(index, askedQuery, {
       ...(sessionId === undefined ? {} : { sessionId }),
       ...(agentScope === undefined ? {} : { agentId: agentScope }),
       ...(askedKind === null ? {} : { kind: askedKind }),
@@ -2115,12 +2183,43 @@ export function apiConversationSearch(ws: Workspace, url: URL): JsonResult {
     }));
     const first = answers[0];
     if (first !== undefined && !first.searchable) {
-      return empty({ searchable: false, note: first.note, index: shelf });
+      return empty({
+        searchable: false, note: first.note, excluded: first.excluded, index: shelf,
+      });
     }
+
+    // ── THE TIER IS THE OUTER SORT, AND bm25 IS THE INNER ONE ─────────────
+    //
+    // `semantic/4`. Sorting the union by score alone — which is what this did
+    // when there was one reading — would shuffle a phrase hit below an AND hit
+    // and destroy the one thing the tier is for: telling the reader WHY a row
+    // is where it is. `matchProse` already returns each reading `ORDER BY
+    // bm25() ASC`, which is the ranking
+    // `RULE-search-may-rank-its-results-and-the-model-it-asks-is-the` allows
+    // and which is spent INSIDE a tier; the sort here only has to keep the
+    // tiers apart and merge the per-session answers stably.
+    const tierRank = new Map(SEARCH_TIERS.map((tier, i) => [tier, i]));
     const raw = answers.flatMap((answer) => answer.hits)
-      .sort((a, b) => (a.score - b.score)
+      .sort((a, b) => ((tierRank.get(a.tier) ?? 0) - (tierRank.get(b.tier) ?? 0))
+        || (a.score - b.score)
         || a.sessionId.localeCompare(b.sessionId)
         || (a.recordIndex - b.recordIndex));
+
+    // One row per reading, summed over the sessions a NAME narrowed to. A
+    // reading that bound in any one of them bound, and the counts add: they
+    // are counts of spans in disjoint sessions.
+    const tiers: TierAnswer[] = [];
+    for (const tier of SEARCH_TIERS) {
+      const parts = answers.flatMap((answer) => answer.tiers.filter((t) => t.tier === tier));
+      if (parts.length === 0) continue;
+      tiers.push({
+        tier,
+        match: parts[0]?.match ?? '',
+        shown: parts.reduce((n, t) => n + t.shown, 0),
+        matched: parts.reduce((n, t) => n + t.matched, 0),
+        bounded: parts.some((t) => t.bounded),
+      });
+    }
 
     // ── WHICH DAY EACH HIT IS, IN THE READER'S ZONE ───────────────────────
     //
@@ -2171,8 +2270,17 @@ export function apiConversationSearch(ws: Workspace, url: URL): JsonResult {
         at: hit.at,
         day,
         snippet: hit.snippet,
-        passage: file === null ? null : passageAt(file, hit.byteOffset, askedQuery),
+        // **The needle is the READING, not always the whole query.** A hit
+        // from the `near` or `both` reading does not contain the query as one
+        // substring — that is precisely what those readings are for — and
+        // asking for it would land every one of them in `passageAt`'s "the
+        // index matched and this read did not" branch, which means something
+        // else entirely and shows the head of the turn instead of the words.
+        passage: file === null
+          ? null
+          : passageAt(file, hit.byteOffset, [askedQuery, ...(first?.terms ?? [])]),
         score: hit.score,
+        tier: hit.tier,
         anchorId,
         anchored: marked.has(anchorId),
         anchorArgv: anchorCommandFor(
@@ -2191,10 +2299,16 @@ export function apiConversationSearch(ws: Workspace, url: URL): JsonResult {
       hits,
       matched: raw.length,
       undated,
-      // The index answered a full page for at least one scope, so there may be
-      // more behind it. Said rather than implied: a capped answer and a
-      // complete one must not look the same.
-      more: answers.some((answer) => answer.hits.length >= limit),
+      // **A reading that filled its bound, said with the number behind it.**
+      // `tiers[i].matched` is counted, so the screen can say how much a bound
+      // kept back rather than only that it did — `INV-nothing-is-dropped-
+      // silently`, and ordering is not filtering.
+      more: tiers.some((tier) => tier.bounded),
+      terms: first?.terms ?? [],
+      short: first?.short ?? [],
+      excluded: first?.excluded ?? [],
+      tiers,
+      nearChars: NEAR_CHARS,
       indexed: true,
       outdated: false,
       dir,

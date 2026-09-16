@@ -1,5 +1,7 @@
 // @basis TASK-search-the-archive-properly-and-mark-the-anchors-you-want-to,
 // TASK-the-prose-index-re-reads-95-mb-every-run-because-its-resume,
+// TASK-ship-the-search-the-research-recommended-three-readings-of,
+// RULE-search-may-rank-its-results-and-the-model-it-asks-is-the,
 // INV-nothing-is-dropped-silently, CONST-zero-runtime-dependencies
 /**
  * **An FTS5 index over the archive's prose** — `plan:recall seq:1`, Task 1 of
@@ -62,7 +64,7 @@ import {
   ConversationIndex, ConversationIndexIncompleteError, projectDirName, rebuildConversations,
 } from '../../src/core/conversation-index.ts';
 import {
-  MIN_QUERY_CHARS, buildSearchIndex, searchArchive,
+  MIN_QUERY_CHARS, buildSearchIndex, searchArchive, searchArchiveTiered,
 } from '../../src/core/conversation-search.ts';
 import { Store } from '../../src/core/store.ts';
 import { removeTree } from '../helpers/tmp.ts';
@@ -631,6 +633,463 @@ test('a prose row already ahead of its archive row is re-read once and then sett
         'and reads nothing. Before the repair this second run read the whole transcript again, '
         + 'and so did the third, and the four hundredth.',
       );
+    } finally {
+      index.close();
+    }
+  } finally {
+    f.dispose();
+  }
+});
+
+/* ══ THE READER'S SEARCH: THREE READINGS OF ONE QUERY — `semantic/4` ═══════
+ *
+ * `TASK-ship-the-search-the-research-recommended-three-readings-of`, which is
+ * the implementation of `reports/2026-09-16-the-search-grammar.md` §5
+ * (committed at `c5e372dd`). Every number these tests name is that report's
+ * measurement and none of them is re-derived here.
+ *
+ * **What is worth proving, and what is scaffolding.** The fixtures below are
+ * built so that each reading has a record only IT can reach — one where the
+ * two words are adjacent, one where they are apart but inside 30 characters,
+ * one where they are far apart in the same turn. A fixture in which every
+ * record answered every reading would pass with the tiering deleted, which is
+ * the assertion-that-cannot-fail this project has shipped twice. So every test
+ * here carries the query that must FAIL beside the one that must pass.
+ */
+
+/** The record indexes a tiered answer returned, in the order it returned them. */
+const orderOf = (found: { hits: { recordIndex: number }[] }): number[] =>
+  found.hits.map((hit) => hit.recordIndex);
+
+/** The tier names a tiered answer returned, in order. */
+const tiersIn = (found: { hits: { tier: string }[] }): string[] =>
+  found.hits.map((hit) => hit.tier);
+
+/**
+ * **THE WHOLE COMPLAINT, AND THE WHOLE ANSWER.** The owner, 2026-09-16: *"the
+ * search in conversation is not smart, it let me search for a specific string
+ * and i could not find more complex cases"*. His two words are required to be
+ * ADJACENT and nothing lets him say *near* instead — measured over 1,420
+ * two-word phrases he actually typed, as a phrase 31.7% return anything and as
+ * `NEAR(…, 30)` 99.6%.
+ *
+ * The fixture gives each reading exactly one record it alone can reach, and
+ * the test asserts the three come back IN ORDER. Record 2 is one the shipped
+ * search cannot find at all, and it is the reason this task exists.
+ */
+test('one query is read three ways, and the three come back in order', () => {
+  const f = fixture();
+  try {
+    f.session([
+      // 0 — adjacent: the phrase reading, which is what ships today.
+      say('user', 'the byte offset is the seek target', '2026-09-01T10:00:00.000Z'),
+      // 1 — apart, but well inside NEAR_CHARS of each other.
+      say('user', 'the byte at which that offset begins', '2026-09-01T10:00:01.000Z'),
+      // 2 — the same turn and far apart: only the AND reading reaches it, and
+      // the gap is deliberately longer than NEAR_CHARS so the middle reading
+      // must NOT claim it.
+      say('user', `a byte${'.'.repeat(90)}and an offset at the end`, '2026-09-01T10:00:02.000Z'),
+      // 3 — one word only. Nothing here may return it, or the boolean reading
+      // has quietly become an OR.
+      say('user', 'a byte on its own', '2026-09-01T10:00:03.000Z'),
+    ]);
+    const index = indexed(f);
+    try {
+      // **THE BASELINE, MEASURED IN THE SAME RUN.** Today's search finds ONE
+      // of the four. Without this line the assertions below would be green on
+      // a fixture where everything matched everything.
+      assert.deepEqual(
+        searchArchive(index, 'byte offset').hits.map((h) => h.recordIndex), [0],
+        'the shipped one-substring search reaches record 0 and nothing else — this is the '
+        + 'measurement the whole task rests on, taken here rather than quoted',
+      );
+
+      const found = searchArchiveTiered(index, 'byte offset');
+      assert.equal(found.searchable, true);
+      assert.deepEqual(orderOf(found), [0, 1, 2], 'all three, and record 3 is not among them');
+      assert.deepEqual(tiersIn(found), ['phrase', 'near', 'both'],
+        'and each is labelled with the reading that reached it FIRST — the three nest, so the '
+        + 'first to return a span is the most literal one that holds it');
+
+      assert.deepEqual(found.tiers.map((t) => t.tier), ['phrase', 'near', 'both']);
+      assert.equal(found.tiers[1]!.match, 'NEAR("byte" "offset", 30)');
+      assert.equal(found.tiers[2]!.match, '"byte" AND "offset"');
+
+      // **THE REMOVAL PROOF FOR THE MIDDLE READING'S BOUND.** Record 2's two
+      // words are 90 characters apart, so `NEAR(…, 30)` must refuse it. If the
+      // window were unbounded the `both` tier would be empty and the tier list
+      // above would still be green.
+      assert.equal(
+        index.countProse('NEAR("byte" "offset", 30)'), 2,
+        'the near reading reaches records 0 and 1 and NOT record 2 — so the tier labels above '
+        + 'are about a real difference between the readings, not about the order they were asked',
+      );
+      assert.equal(index.countProse('"byte" AND "offset"'), 3);
+    } finally {
+      index.close();
+    }
+  } finally {
+    f.dispose();
+  }
+});
+
+/**
+ * **A ONE-WORD QUERY IS UNCHANGED**, which is §5's own line: the three
+ * readings collapse, so sending three would be two queries spent to return the
+ * same rows.
+ */
+test('a query with fewer than two matchable words sends exactly one reading', () => {
+  const f = fixture();
+  try {
+    f.session([say('user', 'the periscope is raised', '2026-09-01T10:00:00.000Z')]);
+    const index = indexed(f);
+    try {
+      const one = searchArchiveTiered(index, 'periscope');
+      assert.equal(one.tiers.length, 1, 'one reading asked');
+      assert.deepEqual(tiersIn(one), ['phrase']);
+      assert.equal(one.tiers[0]!.match, '"periscope"');
+      // The removal proof: the same function DOES send three when there are
+      // two words, so the `1` above is a decision and not a function that can
+      // only ever send one.
+      assert.equal(searchArchiveTiered(index, 'periscope raised').tiers.length, 3);
+    } finally {
+      index.close();
+    }
+  } finally {
+    f.dispose();
+  }
+});
+
+/**
+ * **HEBREW IS WHY THE PHRASE READING IS FIRST** — §3 Finding 2, and it is the
+ * counterexample to "phrase is a subset of AND".
+ *
+ * `הם` is two characters, which this index cannot match at all. So `הם רשות`
+ * matches as ONE substring and matches NOTHING as a boolean, and a surface
+ * that REPLACED the substring reading with a boolean one would lose a real
+ * Hebrew hit and say nothing. 14.5% of Hebrew word OCCURRENCES are under the
+ * floor against 21.0% of the English words the owner types, and 24.9% of
+ * adjacent Hebrew word pairs contain one.
+ */
+test('a Hebrew pair the boolean reading cannot reach is still found, and is SAID', () => {
+  const f = fixture();
+  try {
+    f.session([
+      say('user', 'הם רשות ולא חובה', '2026-09-01T10:00:00.000Z'),
+      say('user', 'רשות הדיבור נתונה', '2026-09-01T10:00:01.000Z'),
+    ]);
+    const index = indexed(f);
+    try {
+      const found = searchArchiveTiered(index, 'הם רשות');
+      assert.deepEqual(found.short, ['הם'], 'the two-character word is named, not dropped');
+      assert.deepEqual(found.terms, ['רשות']);
+      assert.deepEqual(orderOf(found), [0], 'and the substring reading still finds the record');
+
+      // **THE REMOVAL PROOF, AND IT IS THE FINDING.** Split into a boolean the
+      // same query answers NOTHING, because the index cannot match `הם` — so
+      // the phrase reading is not a stylistic first, it is the only reading
+      // that reaches this record at all.
+      assert.equal(index.countProse('"הם" AND "רשות"'), 0);
+      assert.equal(index.countProse('"רשות"'), 2, 'and the fixture can answer, so the 0 above '
+        + 'is about the two-character word and not about an empty table');
+    } finally {
+      index.close();
+    }
+  } finally {
+    f.dispose();
+  }
+});
+
+/**
+ * **THE FLOOR MOVED FROM THE QUERY TO THE TERM, AND IT SAYS SO** — §5 TWO.
+ *
+ * `MIN_QUERY_CHARS` guards the whole query and is right for one substring. The
+ * moment a query is split it is in the wrong place: `"ui" AND "search"` is a
+ * legal, four-character query with a real answer available, and it returns
+ * nothing and raises nothing.
+ */
+test('a word too short for the index never enters a boolean, and is named', () => {
+  const f = fixture();
+  try {
+    f.session([
+      say('user', 'the ui search box is here', '2026-09-01T10:00:00.000Z'),
+      say('user', 'a search that needs a box', '2026-09-01T10:00:01.000Z'),
+    ]);
+    const index = indexed(f);
+    try {
+      const found = searchArchiveTiered(index, 'ui search box');
+      assert.deepEqual(found.short, ['ui'], 'the word the index cannot match is NAMED');
+      assert.deepEqual(found.terms, ['search', 'box'], 'and it is not one of the boolean terms');
+      assert.deepEqual(
+        orderOf(found), [0, 1],
+        'record 1 holds no "ui" at all and is reached by a boolean reading — which is only '
+        + 'possible because the short word was kept out of it',
+      );
+
+      // **THE REMOVAL PROOF.** Put the short word back into the boolean and
+      // the whole query answers zero, for ever, silently. That is the defect
+      // this test exists to hold shut.
+      assert.equal(index.countProse('"ui" AND "search" AND "box"'), 0);
+      assert.equal(index.countProse('"search" AND "box"'), 2);
+    } finally {
+      index.close();
+    }
+  } finally {
+    f.dispose();
+  }
+});
+
+/**
+ * **`-word` EXCLUDES, ON EVERY READING, AND NOTHING ELSE IS SYNTAX** — §5
+ * THREE. The only operator every surveyed surface has, and the only thing
+ * tiering alone cannot do.
+ *
+ * **The exclusion is wrapped in parentheses, and this test is where the claim
+ * about them is kept honest.** The reason to wrap is that the grouping should
+ * not depend on an operator precedence FTS5 states and this project has not
+ * measured. Measured here, on the fixture below: for the readings this
+ * function actually emits — a phrase, a `NEAR` and an `AND`, never an `OR` —
+ * the two spellings AGREE. So the parentheses are explicitness rather than a
+ * repair, and that is said rather than dressed up as a fix.
+ */
+test('a leading hyphen excludes a word from every reading, and the grouping is explicit', () => {
+  const f = fixture();
+  try {
+    f.session([
+      say('user', 'the byte offset in the harbour', '2026-09-01T10:00:00.000Z'),
+      say('user', 'the byte offset on the quay', '2026-09-01T10:00:01.000Z'),
+      // `byte` and `harbour`, no `offset`. Under FTS5's own precedence an
+      // unparenthesised `"byte" AND "offset" NOT "harbour"` RETURNS this
+      // record, which is the opposite of what the reader asked for.
+      say('user', 'a byte beside the harbour', '2026-09-01T10:00:02.000Z'),
+    ]);
+    const index = indexed(f);
+    try {
+      const kept = searchArchiveTiered(index, 'byte offset');
+      // **Sorted, deliberately.** Inside a tier the order is `bm25()`'s, which
+      // is the ranking the 2026-09-16 ruling allows and which this test has no
+      // business pinning; what it is about is WHICH records come back.
+      assert.deepEqual([...orderOf(kept)].sort(), [0, 1], 'both records, with nothing excluded');
+
+      const cut = searchArchiveTiered(index, 'byte offset -harbour');
+      assert.deepEqual(cut.excluded, ['harbour']);
+      assert.deepEqual(cut.terms, ['byte', 'offset'], 'the excluded word is not a search term');
+      assert.deepEqual(
+        orderOf(cut), [1],
+        'record 0 is excluded — the removal proof is the line above, which returns it',
+      );
+      assert.ok(
+        cut.tiers.every((tier) => tier.match.includes('NOT "harbour"')),
+        'EVERY reading carries the exclusion, not just the one that happened to be last',
+      );
+
+      // **THE GROUPING, MEASURED RATHER THAN ASSUMED.** Record 2 holds `byte`
+      // and `harbour` and no `offset`, which is the span the two spellings
+      // would disagree about if they disagreed at all. They do not: FTS5
+      // answers 1 to both. The parentheses stay because the grouping is then
+      // not resting on a precedence rule nobody here has measured, and this
+      // line is what would redden the day that answer changed.
+      assert.equal(index.countProse('("byte" AND "offset") NOT "harbour"'), 1);
+      assert.equal(index.countProse('"byte" AND "offset" NOT "harbour"'), 1);
+      // The removal proof for the fixture: record 2 is really there, and it is
+      // really the one the exclusion removes, so the 1s above are a measured
+      // agreement and not two queries over an empty table.
+      assert.equal(index.countProse('"byte" AND "harbour"'), 2);
+      assert.equal(index.countProse('"byte" AND "offset"'), 2);
+    } finally {
+      index.close();
+    }
+  } finally {
+    f.dispose();
+  }
+});
+
+/**
+ * **EVERYTHING ELSE THAT LOOKS LIKE SYNTAX IS A LITERAL** — Elasticsearch's
+ * rule, taken at its measured cost in §1: *"does not return errors for invalid
+ * syntax. Instead, it ignores any invalid parts of the query string."* A
+ * search box behind a keystroke cannot throw.
+ */
+test('a hyphen that is not an operator is a character to search for', () => {
+  const f = fixture();
+  try {
+    f.session([
+      say('user', 'the well-known byte offset', '2026-09-01T10:00:00.000Z'),
+      say('user', 'a byte offset with no hyphen', '2026-09-01T10:00:01.000Z'),
+    ]);
+    const index = indexed(f);
+    try {
+      // Inside a word: one term, not an exclusion.
+      const inside = searchArchiveTiered(index, 'well-known byte');
+      assert.deepEqual(inside.excluded, []);
+      assert.deepEqual(inside.terms, ['well-known', 'byte']);
+      assert.deepEqual(orderOf(inside), [0]);
+
+      // On a word below the floor: still not an operator. `-ui` is three
+      // characters WITH its hyphen, so it is a perfectly matchable trigram and
+      // is searched for as one — excluding `ui` would be excluding a term this
+      // index can never match, which removes nothing and teaches a rule that
+      // never ran.
+      const tooShort = searchArchiveTiered(index, 'byte -ui');
+      assert.deepEqual(tooShort.excluded, [], 'two characters after the hyphen is below the floor');
+      assert.deepEqual(tooShort.terms, ['byte', '-ui'], 'so the hyphen is part of the word');
+      assert.equal(tooShort.hits.length, 0, 'and nothing in the fixture holds that run of three');
+      // The removal proof: the same word WITHOUT the hyphen is an exclusion
+      // the moment it clears the floor, so the line above is about the floor
+      // and not about hyphens never being operators.
+      assert.deepEqual(searchArchiveTiered(index, 'byte -hyphen').excluded, ['hyphen']);
+
+      // A lone hyphen, and a query that is nothing but exclusions — neither
+      // throws, and the second is a refusal with a reason rather than a zero.
+      //
+      // A lone `-` is a literal, which §5 says in as many words, so it stays
+      // in the phrase and the phrase then holds a run of characters no turn
+      // here carries. That zero is MEASURED — the archive really does not hold
+      // `byte -` — and the line below is the removal proof that the fixture
+      // could have answered.
+      assert.equal(searchArchiveTiered(index, 'byte -').hits.length, 0);
+      assert.equal(searchArchiveTiered(index, 'byte').hits.length, 2);
+      const nothing = searchArchiveTiered(index, '-harbour');
+      assert.equal(nothing.searchable, false);
+      assert.match(String(nothing.note), /nothing to search FOR/);
+      assert.deepEqual(nothing.excluded, ['harbour']);
+    } finally {
+      index.close();
+    }
+  } finally {
+    f.dispose();
+  }
+});
+
+/**
+ * **ORDERING IS NOT FILTERING** — `INV-nothing-is-dropped-silently`, and the
+ * shape not to rebuild is `nothing-to-do-and-could-not-look-are-different-
+ * answers`: a top-200 ranking applied BEFORE a byte scope is how the anchor
+ * pass silently stopped for half an hour. A bound is not a scope.
+ */
+test('a reading cut by the bound says so, and says how many it did not hand back', () => {
+  const f = fixture();
+  try {
+    f.session([
+      say('user', 'the byte offset one', '2026-09-01T10:00:00.000Z'),
+      say('user', 'the byte offset two', '2026-09-01T10:00:01.000Z'),
+      say('user', 'the byte offset three', '2026-09-01T10:00:02.000Z'),
+      say('user', 'the byte offset four', '2026-09-01T10:00:03.000Z'),
+    ]);
+    const index = indexed(f);
+    try {
+      const cut = searchArchiveTiered(index, 'byte offset', { limit: 2 });
+      assert.equal(cut.hits.length, 2, 'the bound holds');
+      assert.equal(cut.tiers[0]!.bounded, true);
+      assert.equal(
+        cut.tiers[0]!.matched, 4,
+        'and it says how many there are — a truncation that only said "there are more" would be '
+        + 'the disclosure this invariant already refuses',
+      );
+      assert.equal(cut.tiers[0]!.shown, 2);
+
+      // The removal proof: lift the bound and the same reading reports itself
+      // complete. Without it the `true` above would be green on a function
+      // that always says `bounded`.
+      const whole = searchArchiveTiered(index, 'byte offset', { limit: 200 });
+      assert.equal(whole.tiers[0]!.bounded, false);
+      assert.equal(whole.tiers[0]!.matched, 4);
+      assert.equal(whole.hits.length, 4);
+    } finally {
+      index.close();
+    }
+  } finally {
+    f.dispose();
+  }
+});
+
+/**
+ * **THE COUNT IS INSIDE THE SCOPE, NOT AROUND IT.** The disclosure above is
+ * only honest if the number it reports counts the rows the reader's scope
+ * admits. A count taken over the whole archive and printed beside a narrowed
+ * answer would tell a reader searching what he typed that there are two more
+ * when there are none.
+ */
+test('the truncation count is taken through the reader scope, not around it', () => {
+  const f = fixture();
+  try {
+    f.session([
+      say('user', 'the byte offset one', '2026-09-01T10:00:00.000Z'),
+      say('assistant', 'the byte offset two', '2026-09-01T10:00:01.000Z'),
+      say('assistant', 'the byte offset three', '2026-09-01T10:00:02.000Z'),
+    ]);
+    const index = indexed(f);
+    try {
+      const all = searchArchiveTiered(index, 'byte offset', { limit: 1 });
+      assert.equal(all.tiers[0]!.matched, 3, 'three in the archive');
+      const typed = searchArchiveTiered(index, 'byte offset', { limit: 1, kind: 'prompt' });
+      assert.equal(
+        typed.tiers[0]!.matched, 1,
+        'and ONE among what he typed. A count built outside the scope would say 3 here, and the '
+        + 'screen would offer a reader two hits that do not exist in the box they are looking at',
+      );
+      // The removal proof for the scope itself: the narrowed answer really is
+      // narrower, so the `1` is a scope doing work rather than an empty table.
+      assert.equal(all.hits.length, 1);
+      assert.equal(searchArchiveTiered(index, 'byte offset', { kind: 'prompt' }).hits.length, 1);
+      assert.equal(searchArchiveTiered(index, 'byte offset').hits.length, 3);
+    } finally {
+      index.close();
+    }
+  } finally {
+    f.dispose();
+  }
+});
+
+/**
+ * **THE PROBES KEEP THE OLD READING, AND THAT IS NOT AN OVERSIGHT.**
+ *
+ * `anchor-pass.ts` finds its candidates through `searchArchive` and PAGES
+ * through them with `offset` over `matchProse`'s total order — 25 pages of
+ * 200, which is the repair for the 2026-09-15 incident where the automatic
+ * marking stopped for half an hour because `ORDER BY bm25 LIMIT 200` has no
+ * opinion about recency and the newest match was never in the page.
+ *
+ * A union of THREE rankings has no stable global offset to page: page 2 of a
+ * tiered answer is not the rows after page 1. So the reader's search is its
+ * own function and the probe's is left exactly as it was, and this test holds
+ * both halves of that — the paging the probe needs, and the difference in
+ * reach that is the reason the reader does not get it.
+ */
+test('searchArchive still pages one substring, which is what a probe needs', () => {
+  const f = fixture();
+  try {
+    f.session([
+      say('assistant', 'the byte offset is adjacent here', '2026-09-01T10:00:00.000Z'),
+      say('assistant', 'the byte of that offset, a little apart', '2026-09-01T10:00:01.000Z'),
+      say('assistant', 'one more byte offset line', '2026-09-01T10:00:02.000Z'),
+    ]);
+    const index = indexed(f);
+    try {
+      // **THE PAGING.** Two pages of one, and they are different records —
+      // which is the property `probeCandidates` walks 25 of and the property a
+      // tiered union cannot offer.
+      const first = searchArchive(index, 'byte', { limit: 1 });
+      const second = searchArchive(index, 'byte', { limit: 1, offset: 1 });
+      const third = searchArchive(index, 'byte', { limit: 1, offset: 2 });
+      assert.equal(first.hits.length, 1);
+      assert.notEqual(
+        first.hits[0]!.recordIndex, second.hits[0]!.recordIndex,
+        'page 2 is not page 1 — without this the pages could all be the same row and the '
+        + 'assertion below would still be green',
+      );
+      assert.deepEqual(
+        [first, second, third].map((page) => page.hits[0]!.recordIndex).sort(), [0, 1, 2],
+        'and three pages of one reach every match, which is what "the door past a ranking" means',
+      );
+
+      // **AND THE REACH IS DIFFERENT**, which is why this is a second function
+      // rather than a flag: the probe reads one substring and the reader gets
+      // the record whose two words are apart as well.
+      assert.deepEqual(
+        searchArchive(index, 'byte offset').hits.map((h) => h.recordIndex).sort(), [0, 2],
+      );
+      assert.deepEqual([...orderOf(searchArchiveTiered(index, 'byte offset'))].sort(), [0, 1, 2]);
     } finally {
       index.close();
     }

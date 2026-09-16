@@ -54,6 +54,11 @@ import { loadLayer, type LoadError } from '../src/core/rebuild.ts';
 import type { Item } from '../src/core/types.ts';
 import { isMainEntry } from '../src/core/paths.ts';
 import { resolveWorkspace } from '../src/core/workspace.ts';
+// **The three readings, the per-term floor and the quoting are now SHIPPED**
+// — `semantic/4`, `core/conversation-search.ts`. They were written in this
+// file when it was the only place they existed; they are imported now so
+// that what this script measures and what the search does cannot drift.
+import { MIN_QUERY_CHARS, quoteTerm, tiersOf } from '../src/core/conversation-search.ts';
 // **Imported, not copied.** `measure-search-floor.ts` owns the particle list
 // and the one-particle strip; a second spelling of either is the defect
 // `CLAUDE.md` opens by describing, and these two are exactly the kind of thing
@@ -90,10 +95,14 @@ const content = (s: string): string[] => words(s).filter((t) => t.length > 2 && 
  * **One term, quoted into FTS5 as DATA** — `searchArchive`'s own rule, applied
  * per TERM instead of to the whole query, which is the entire mechanical
  * difference every candidate in this file rests on.
+ *
+ * **Re-exported from `core/conversation-search.ts` rather than written here.**
+ * It was written here on 2026-09-16 because `src/` belonged to another lane
+ * and this was a measurement; `semantic/4` then shipped it, and a measurement
+ * that quotes its terms differently from the search it recommends is a
+ * measurement of something else.
  */
-export function quoteTerm(term: string): string {
-  return '"' + term.replace(/"/g, '""') + '"';
-}
+export { quoteTerm, tiersOf };
 
 /**
  * **The shortest string a trigram index can match, restated as a PER-TERM
@@ -106,7 +115,7 @@ export function quoteTerm(term: string): string {
  * section 4. It is a bound of the index, not an answer about the archive, and
  * a split that drops it on the floor reports the wrong one of those.
  */
-export const MIN_TERM_CHARS = 3;
+export const MIN_TERM_CHARS = MIN_QUERY_CHARS;
 
 /** The median of a list, or 0 for an empty one. */
 export function median(a: number[]): number {
@@ -122,14 +131,7 @@ export function median(a: number[]): number {
  * could not make any query worse. That property is the whole argument for the
  * shape, and it is why these are one function rather than three call sites.
  */
-export function tiersOf(terms: string[], near: number): string[] {
-  const q = terms.map(quoteTerm);
-  return [
-    quoteTerm(terms.join(' ')),
-    `NEAR(${q.join(' ')}, ${near})`,
-    q.join(' AND '),
-  ];
-}
+/* Shipped, and re-exported above: `core/conversation-search.ts` · `tiersOf`. */
 
 function main(): number {
   const ws = resolveWorkspace(process.cwd());

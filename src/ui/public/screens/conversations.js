@@ -2211,6 +2211,98 @@ function indexNote(ctx, body) {
 }
 
 /**
+ * **WHAT THE SEARCH DID WITH HIS WORDS** — the disclosures that belong above
+ * an answer AND above a zero, `semantic/4`.
+ *
+ * Two of them, and both exist because the alternative is silence:
+ *
+ *   — **Words too short for the index.** A trigram index matches runs of three
+ *     characters, so `ui` cannot be looked for at all. It stays in the phrase
+ *     reading, where the characters around it can still match, and it is left
+ *     out of the two boolean readings — because `"ui" AND "search"` returns 0
+ *     while `"search"` alone returns 654, and NOTHING says why. 21.0% of the
+ *     words the owner types are under the floor, and in Hebrew it is 14.5% of
+ *     word occurrences: §3 Finding 1 of the search-grammar report.
+ *   — **Words he excluded.** `-word` removes hits, and a removal that is not
+ *     said is the thing `INV-nothing-is-dropped-silently` is about.
+ *
+ * **Composed HERE and not on the server**, unlike `body.note`: this is drawn
+ * to a reader who may be reading in Hebrew, and a sentence built out of
+ * `String` on the server arrives in one language whatever the page is set to.
+ * The server sends the WORDS; the screen owns the sentence.
+ */
+function queryNotes(ctx, body) {
+  const out = [];
+  const short = body.short ?? [];
+  const excluded = body.excluded ?? [];
+  if (short.length > 0) {
+    const note = el('p', 'small convarchshort');
+    note.append(...ctx.t('conv.arch.short', {
+      words: short.join(', '), n: body.minChars ?? 3,
+    }));
+    out.push(note);
+  }
+  if (excluded.length > 0) {
+    const note = el('p', 'small convarchexcluded');
+    note.append(...ctx.t('conv.arch.excluded', { words: excluded.join(', ') }));
+    out.push(note);
+  }
+  return out;
+}
+
+/**
+ * The line above one tier's rows: what this reading is, and what it kept back.
+ *
+ * `bounded` is the half that cannot be left implicit. A reading that filled
+ * its bound says so AND says by how much — `tier.matched` is COUNTED on the
+ * server rather than guessed at, so this is a number and not a shrug.
+ * Ordering is not filtering.
+ */
+function tierHead(ctx, tier, body) {
+  const head = el('p', 'small convarchtier');
+  head.dataset.tier = tier.tier;
+  head.append(...ctx.t(`conv.arch.tier.${tier.tier}`, { n: body.nearChars ?? 30 }));
+  if (tier.bounded === true) {
+    const cut = el('span', 'convarchtiercut');
+    cut.append(...ctx.t('conv.arch.tierBounded', {
+      shown: tier.shown, matched: tier.matched,
+    }));
+    head.append(' ', cut);
+  }
+  return head;
+}
+
+/** One hit, drawn. Lifted out of `drawHits` when the answer grew tiers. */
+function hitRow(ctx, hit, term, onMarked) {
+  const row = el('div', 'convhit');
+  row.dataset.tier = hit.tier ?? '';
+  row.append(hitWhere(ctx, hit));
+  // `dir="auto"` and not the page's direction: a passage is in whatever
+  // language it was typed in, and this archive is half Hebrew. Without it a
+  // Hebrew snippet on the English page reads with its punctuation at the
+  // wrong end — `saidBody` below makes the same repair for the same reason.
+  const snip = el('p', 'convhitsnip');
+  snip.setAttribute('dir', 'auto');
+  // **The match is a STRUCTURE and not a marked string.** The index's own
+  // `snippet()` wraps its match in `[` and `]`, which are ordinary
+  // characters in this archive — a screen parsing them would draw a
+  // highlight over a bracket somebody typed. `hit.passage` arrives already
+  // cut into before/match/after, so the `<mark>` cannot land on the wrong
+  // characters. `hit.snippet` is the fallback for a record the server could
+  // not read back: narrow, and true.
+  if (hit.passage === null || hit.passage === undefined) {
+    snip.textContent = hit.snippet;
+  } else {
+    snip.append(hit.passage.before);
+    if (hit.passage.match !== '') snip.append(el('mark', 'convhitmatch', hit.passage.match));
+    snip.append(hit.passage.after);
+  }
+  row.append(snip);
+  row.append(markRow(ctx, hit, term, onMarked));
+  return row;
+}
+
+/**
  * One answer from `/api/conversations/search`, drawn.
  *
  * `term` is the words that were searched for and it travels down to
@@ -2240,6 +2332,13 @@ function drawHits(ctx, host, body, term = null, onMarked = () => {}) {
     host.append(...indexNote(ctx, body));
     return;
   }
+  // **WHAT WAS DONE WITH HIS WORDS, BEFORE THE ANSWER AND BEFORE THE ZERO.**
+  // A word this index cannot match is the commonest reason for an empty
+  // answer and it is invisible in one — `INV-nothing-is-dropped-silently`, and
+  // §5 TWO of `reports/2026-09-16-the-search-grammar.md`: the three-character
+  // floor moved from the query to the TERM, and it says so.
+  host.append(...queryNotes(ctx, body));
+
   if (body.hits.length === 0) {
     const zero = el('span', 'chip unmeas glyphed');
     zero.dataset.g = '◌';
@@ -2260,35 +2359,36 @@ function drawHits(ctx, host, body, term = null, onMarked = () => {}) {
   count.append(...ctx.t('conv.arch.matched', { n: body.hits.length }));
   host.append(count);
 
-  const list = el('div', 'convhits');
-  for (const hit of body.hits) {
-    const row = el('div', 'convhit');
-    row.append(hitWhere(ctx, hit));
-    // `dir="auto"` and not the page's direction: a passage is in whatever
-    // language it was typed in, and this archive is half Hebrew. Without it a
-    // Hebrew snippet on the English page reads with its punctuation at the
-    // wrong end — `saidBody` below makes the same repair for the same reason.
-    const snip = el('p', 'convhitsnip');
-    snip.setAttribute('dir', 'auto');
-    // **The match is a STRUCTURE and not a marked string.** The index's own
-    // `snippet()` wraps its match in `[` and `]`, which are ordinary
-    // characters in this archive — a screen parsing them would draw a
-    // highlight over a bracket somebody typed. `hit.passage` arrives already
-    // cut into before/match/after, so the `<mark>` cannot land on the wrong
-    // characters. `hit.snippet` is the fallback for a record the server could
-    // not read back: narrow, and true.
-    if (hit.passage === null || hit.passage === undefined) {
-      snip.textContent = hit.snippet;
-    } else {
-      snip.append(hit.passage.before);
-      if (hit.passage.match !== '') snip.append(el('mark', 'convhitmatch', hit.passage.match));
-      snip.append(hit.passage.after);
-    }
-    row.append(snip);
-    row.append(markRow(ctx, hit, term, onMarked));
-    list.append(row);
+  // ── THE ANSWER IN TIERS — `semantic/4`, §5 ONE ──────────────────────────
+  //
+  // One heading per reading that returned anything, and the rows under it, in
+  // the order the server asked them: his words next to each other, then in the
+  // same sentence, then anywhere in the same turn. **The heading is what a
+  // relevance score cannot be**: it says WHY a row is where it is. Inside a
+  // tier the rows are the server's `bm25()` order, which is the ranking
+  // `RULE-search-may-rank-its-results-and-the-model-it-asks-is-the` allows.
+  //
+  // **NO NEW CONTROL, and that is the whole shape of this feature.** §5's own
+  // line: the failure mode is a Find dialog with nine checkboxes nobody ticks,
+  // and the right number of new controls here is zero.
+  for (const tier of body.tiers ?? []) {
+    const rows = body.hits.filter((hit) => hit.tier === tier.tier);
+    // A reading that matched nothing draws NO heading. An empty block under a
+    // heading reads as a promise the archive broke; the tier simply did not
+    // find anything the one above it had not already shown.
+    if (rows.length === 0) continue;
+    host.append(tierHead(ctx, tier, body));
+    const list = el('div', 'convhits');
+    for (const hit of rows) list.append(hitRow(ctx, hit, term, onMarked));
+    host.append(list);
   }
-  host.append(list);
+  // A server that answered without tiers at all — an older one behind a
+  // reloaded screen — still draws its hits rather than an empty card.
+  if ((body.tiers ?? []).length === 0) {
+    const list = el('div', 'convhits');
+    for (const hit of body.hits) list.append(hitRow(ctx, hit, term, onMarked));
+    host.append(list);
+  }
 
   if (body.more === true) {
     const note = el('p', 'small convarchmore');
