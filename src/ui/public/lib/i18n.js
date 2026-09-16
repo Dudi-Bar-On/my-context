@@ -32,6 +32,43 @@ export function pickLanguage(stored, navigatorLang) {
 // and `{i:}` scan for the MATCHING one and recurse into what they enclose.
 const MARKER = /^\{(mv|m|b|i):/;
 
+/**
+ * **A VALUE SLOT THAT HOLDS A NUMBER IS MARKED, AND THEREFORE GETS WEIGHT** —
+ * `semantic/11`, and it is the owner's own third ask in his own words: *"Bold
+ * the count and other numeric values you display"*.
+ *
+ * ── WHY IT IS DONE HERE AND NOT BY EDITING THE STRINGS ────────────────────
+ *
+ * `{b:{turns}}` in a template would work, and it would have to be written into
+ * every sentence that names a quantity, in TWO string tables, for ever — and
+ * the first sentence a later lane adds without it would be the one that looks
+ * different. **The rule he stated is about the KIND of thing, not about a
+ * list of places**: a number a reader's eye goes to is bold. A slot already
+ * says "this is a value the code substituted"; asking whether that value is a
+ * number is the whole of the rule, and asking it once is the only way it stays
+ * true of sentences nobody has written yet.
+ *
+ * ── WHAT COUNTS AS A NUMBER, AND IT IS DELIBERATELY NARROW ────────────────
+ *
+ * Digits, with optional grouping separators, one optional decimal part, an
+ * optional sign and an optional `%`. Not `3 ms`, not `v2.1.4`, not `2026-09-16`
+ * — a version and a date are identifiers that happen to be spelt in digits,
+ * and bolding them would be weight spent on something the sentence is not
+ * counting. Where a unit belongs to a number the unit is in the TEMPLATE
+ * (`{ms} ms`), so the number bolds and the unit does not, which is exactly
+ * what he asked for: *"the NUMBER, not the sentence"*.
+ *
+ * ── AND IT IS SAFE IN HEBREW, WHICH IS WHERE THIS KIND OF CHANGE GOES WRONG ─
+ *
+ * The class is added to the SAME span that already carries `unicode-bidi:
+ * isolate`. A bolded numeral inside an RTL sentence is therefore one isolated
+ * directional run whose weight changed and whose boundaries did not — rather
+ * than a `<b>` wrapped AROUND the isolate, which would put a second element
+ * boundary in the middle of a bidi run and is the shape that reorders digits
+ * and punctuation on screen. Driven in both languages before it shipped.
+ */
+const NUMERIC = /^[+-]?\d+(?:[,\u00a0\u202f]\d{3})*(?:\.\d+)?%?$/;
+
 /** The `}` that closes the run opening at `open`, or -1. Emphasis only. */
 function closer(template, open, end) {
   let depth = 0;
@@ -129,10 +166,37 @@ export function t(strings, key, subs = {}, doc = globalThis.document) {
     return String(subs[name]);
   };
   // `m` is monospace + direction:ltr + unicode-bidi:isolate; `v` is the
-  // isolation alone. These are the mockup's `slotNode` classes, exactly.
+  // isolation alone. These are the mockup's `slotNode` classes, exactly, and
+  // `semantic/11` deliberately did not add a third — see below.
   const run = (className, text) => {
     const el = doc.createElement('span');
     el.className = className;
+    /*
+     * **AN ATTRIBUTE AND NOT A SECOND CLASS, AND A GATE IS THE REASON.**
+     *
+     * `e2e/screen-parity.spec.ts` reads every visible element as
+     * `tag.class1.class2` and compares the app's set against the design of
+     * record's. A `num` CLASS makes `span.v.num` a different KIND from the
+     * `span.v` the mockup draws — and the first run of this change reported
+     * `span.v` as newly ABSENT on six screens whose only value slot happens to
+     * hold a number. The gate was right and the class was wrong: in this
+     * codebase a class names what a thing IS, and a value slot holding a
+     * number is still a value slot. Whether its text is a number is a STATE,
+     * which is what a data attribute is for — `[data-f]` on the strip and
+     * `[data-p]` on a screen section are the same shape.
+     *
+     * **AND THE `typeof` GUARD IS NOT DEFENSIVE PROGRAMMING.** This module's
+     * `doc` is documented two methods wide — `createTextNode` and
+     * `createElement` — and nineteen test files pass a stand-in built to that
+     * contract, as does `FLAT_DOC` below and `slots()`' scanner. Requiring a
+     * third method would break every one of them for a mark that is purely
+     * presentational: a stand-in exists to read TEXT, and text is unchanged by
+     * this line. `test/ui/viewmodel.test.ts` passes one that DOES carry
+     * attributes, so the mark is asserted rather than assumed, and the
+     * browser — which is the only place the weight is drawn — always has it.
+     */
+    if (className.includes('v') && NUMERIC.test(text)
+      && typeof el.setAttribute === 'function') el.setAttribute('data-num', '');
     el.textContent = text;
     return el;
   };

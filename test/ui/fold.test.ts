@@ -1,4 +1,5 @@
 // @basis TASK-typing-three-dots-finds-half-of-what-it-should-and-a-hit-you,
+// TASK-the-find-panel-offers-regular-expressions-and-no-help-and,
 // INV-nothing-is-dropped-silently,
 // CONST-zero-runtime-dependencies,
 // CONST-node-24-no-build-step
@@ -50,16 +51,26 @@ interface Asked {
   ok: boolean;
   error: string | null;
   slow: boolean;
+  /** `semantic/11`: a CODE for a query the mode could not read. Never a sentence. */
+  why: string | null;
+  mode: string;
   regex: boolean;
   unicode: boolean;
   find?: (text: string, limit?: number) => Hit[];
 }
-interface Options { caseSensitive?: boolean; wholeWord?: boolean; regex?: boolean }
-const { foldedMatches, foldedHolds, findQuery, nestedQuantifier } = (await import(FOLD)) as {
+interface Options {
+  mode?: string; caseSensitive?: boolean; wholeWord?: boolean; regex?: boolean;
+}
+const {
+  foldedMatches, foldedHolds, findQuery, nestedQuantifier, MODES, NEAR_CHARS, NEAR_MAX,
+} = (await import(FOLD)) as {
   foldedMatches: (text: string, query: string, limit?: number) => Hit[];
   foldedHolds: (text: string, query: string) => boolean;
   findQuery: (query: string, options?: Options) => Asked;
   nestedQuantifier: (source: string) => boolean;
+  MODES: string[];
+  NEAR_CHARS: number;
+  NEAR_MAX: number;
 };
 
 /**
@@ -498,5 +509,331 @@ describe('a pattern that repeats a repeat is refused before it is run', () => {
     assert.equal(nestedQuantifier(String.raw`(\w+){1,}`), true);
     // A quantifier inside a class is two literal characters, not a repeat.
     assert.equal(nestedQuantifier(String.raw`(a[+]b)+`), false);
+  });
+});
+
+
+/**
+ * **WILDCARDS** — `semantic/11`,
+ * `TASK-the-find-panel-offers-regular-expressions-and-no-help-and`, and the
+ * owner's own words: *"alternatives to regex A - wildcard character pattern
+ * matching in expressions"*.
+ *
+ * ── THE ONE THING TO HOLD, BECAUSE IT IS THE WHOLE ARGUMENT FOR THE MODE ──
+ *
+ * **A wildcard FOLDS and a regular expression does not.** The obvious build
+ * translates `*` to `.*` and hands it to `RegExp`, and a regular expression
+ * reads the text as written — so a mode advertised as *the simple one* would
+ * quietly find LESS than the plain mode it is offered as an alternative to.
+ * The assertion that holds it is `b*t...` reaching `byte…`, below, and it is
+ * the one that reddens if anyone ever reaches for the translation.
+ *
+ * The second half is a consequence: because there is no `RegExp` in the path,
+ * a wildcard cannot be the `(X+)+` shape and the refusal cannot fire in this
+ * mode. That is asserted too — and measured on the live session, where the
+ * worst wildcard this lane could construct, `a*a*a*a*a*a`, cost 389 ms over
+ * 4,615 spans against `(X+)+`'s 108,785 ms inside ONE.
+ */
+describe('wildcards are stitched from folded pieces, not compiled to a pattern', () => {
+  const wild = (text: string, query: string, options: Options = {}, limit?: number): Hit[] =>
+    findAll(text, query, { ...options, mode: 'wildcard' }, limit);
+  const said = (text: string, query: string, options: Options = {}): string[] =>
+    wild(text, query, options).map((h) => text.slice(h.from, h.to));
+
+  it('`*` is any run and `?` is exactly one character', () => {
+    assert.deepEqual(said('byte offset and budget', 'b*t'), ['byt', 'budget']);
+    assert.deepEqual(said('byte and byte offsets', 'by?e'), ['byte', 'byte']);
+    // `?` is a CODE POINT and not a UTF-16 unit, which is the difference
+    // between matching one emoji and matching half of one.
+    assert.deepEqual(said('a\u{1F600}b', 'a?b'), ['a\u{1F600}b']);
+  });
+
+  it('THE PIECES FOLD, which is the whole reason this is not a regular expression',
+    () => {
+      // Three dots reach the `…` this product writes 3,062 times, THROUGH a
+      // wildcard. A translation to `.*`/`.` would answer nothing here, because
+      // a pattern reads the text exactly as written.
+      assert.deepEqual(said('the byte… here', 'b*e...'), ['byte…']);
+      assert.deepEqual(said('a … b', '...'), ['…']);
+    });
+
+  it('a wildcard can never be refused for its shape, because no pattern is built', () => {
+    // The shape the regular-expression mode refuses, written with stars.
+    for (const query of ['*a*a*a*a*a*', 'a*b*c*d*e*f*g', '?*?*?*?*']) {
+      const asked = findQuery(query, { mode: 'wildcard' });
+      assert.equal(asked.ok, true, `${query} was refused and cannot be`);
+      assert.equal(asked.slow, false, query);
+      assert.equal(asked.error, null, query);
+    }
+    // And the parentheses and plus signs that MAKE that shape are literal
+    // characters here, so a reader cannot smuggle one in.
+    assert.deepEqual(said('x (a+)+b y', '(a+)+b'), ['(a+)+b']);
+  });
+
+  it('a leading or trailing `*` paints nothing, and a `?` at an end paints one', () => {
+    // Unanchored, so a star at either end asks for text that is already
+    // allowed to be there. `*byte*` and `byte` are the same answer.
+    assert.deepEqual(said('a byte here', '*byte*'), ['byte']);
+    assert.deepEqual(said('a byte here', 'byte'), ['byte']);
+    // A `?` is different: it REQUIRES a character and paints it.
+    assert.deepEqual(said('a byte here', '?byte'), [' byte']);
+    assert.deepEqual(said('byte here', '?byte'), []);
+  });
+
+  it('an exact gap is exact, and an open gap is a floor', () => {
+    assert.deepEqual(said('ab acb axxb', 'a?b'), ['acb']);
+    assert.deepEqual(said('ab acb axxb', 'a??b'), ['axxb']);
+    assert.deepEqual(said('ab acb', 'a*b'), ['ab', 'acb']);
+    // **AND A LEADING `?` KEEPS THE MATCHES FROM OVERLAPPING.** `ab` occurs at
+    // 1 and at 3 in `aabab`; the first match runs 0..3, so the second would
+    // start at 2 and sit inside it. A build that checked the floor against the
+    // PIECE rather than against the range's own start emits both.
+    assert.deepEqual(said('aabab', '?ab'), ['aab']);
+    // `?*` is "at least one, then any run", which is a floor and not a pin —
+    // so from the `a` at 0 the nearest `b` that is at least one character
+    // along is the one in `acb`, and the match spans what lies between.
+    assert.deepEqual(said('ab acb axxb', 'a?*b'), ['ab acb', 'axxb']);
+  });
+
+  it('a pattern with no literal at all is answered rather than refused', () => {
+    // `*` alone is the whole turn; `???` is every window of three characters,
+    // which is what regex `.{3}` means and is the same honest answer.
+    assert.deepEqual(said('abc', '*'), ['abc']);
+    assert.deepEqual(said('abcdefg', '???'), ['abc', 'def']);
+    assert.deepEqual(said('', '*'), []);
+  });
+
+  it('a backslash escapes the next character, and a lone one is a backslash', () => {
+    assert.deepEqual(said('a*b acb', 'a\\*b'), ['a*b']);
+    assert.deepEqual(said('a?b acb', 'a\\?b'), ['a?b']);
+    // **A REMOVAL PROOF FOUND THIS.** A first draft refused a source with no
+    // literal, no `*` and no `?` as `empty` — and the branch is unreachable,
+    // because a lone `\` escapes nothing and stays a literal backslash. It
+    // answers 410 turns on this repository's own session, so it is a real
+    // query and the guard was deleted rather than left unrunnable.
+    assert.deepEqual(said('a \\ b', '\\'), ['\\']);
+  });
+
+  it('Match case and Whole word mean here exactly what they mean in the plain mode', () => {
+    assert.deepEqual(said('Byte byte', 'b*e', { caseSensitive: true }), ['byte']);
+    assert.deepEqual(said('Byte byte', 'b*e'), ['Byte', 'byte']);
+    // Whole word is applied to the WHOLE stitched match, at both of its ends.
+    assert.deepEqual(said('cat category', 'ca?', { wholeWord: true }), ['cat']);
+  });
+
+  it('bounds the answer, and a rejected hit does not consume the text under it', () => {
+    assert.equal(wild('a1 a2 a3 a4', 'a?', {}, 2).length, 2);
+    // `ba-a-a `: the occurrence at 1 is glued to a `b` and refused; the one at
+    // 3 OVERLAPS it and IS a whole word, because a hyphen is not a word
+    // character. A build that emptied its list on a REJECTED hit loses it.
+    assert.deepEqual(said('ba-a-a ', 'a?a', { wholeWord: true }), ['a-a']);
+  });
+
+  it('the byte offsets are UTF-8 and are taken on one walk', () => {
+    const text = 'a…b byte';
+    const [hit] = wild(text, 'b*e');
+    assert.ok(hit);
+    assert.equal(hit.byteFrom, utf8(text.slice(0, hit.from)));
+    assert.equal(hit.byteTo, utf8(text.slice(0, hit.to)));
+  });
+});
+
+/**
+ * **THE LOGICAL OPERATORS, AND WHAT A HIT IS UNDER THEM** — `semantic/11`.
+ *
+ * He named `AND OR LIKE NEAR` and guessed they would come from SQLite. They do
+ * not: this surface has no index and never touches one. The consequence the
+ * assertions below pin is the good half of that — an operator implemented in
+ * the scan composes with Match case and with NFKD folding, and an FTS5
+ * operator would compose with neither.
+ *
+ * ── THE HARD QUESTION THE ITEM POSES, ANSWERED IN ASSERTIONS ─────────────
+ *
+ * *"Under `AND` a TURN matches but no single range does. Decide and state:
+ * does `AND` paint both terms wherever they occur, and does the count count
+ * TURNS or OCCURRENCES?"*
+ *
+ * **Both terms are painted wherever they occur, and the two counts keep the
+ * meanings they already had** — turns are turns, times are ranges painted.
+ * They cannot come apart, because `findInDocument` counts turns as spans whose
+ * range list is non-empty and times as the LENGTH of that list. The assertion
+ * that holds it is the last one here, and it is the one that would redden if
+ * anyone made `AND` return a single range or an empty one.
+ */
+describe('AND, OR, NOT and NEAR are implemented in the scan and say what a hit is', () => {
+  const logic = (text: string, query: string, options: Options = {}, limit?: number): Hit[] =>
+    findAll(text, query, { ...options, mode: 'logical' }, limit);
+  const said = (text: string, query: string, options: Options = {}): string[] =>
+    logic(text, query, options).map((h) => text.slice(h.from, h.to));
+  const TEXT = 'the budget was 5000 ms and the offset was late';
+
+  it('AND paints BOTH terms, and only in a turn that holds both', () => {
+    assert.deepEqual(said(TEXT, 'budget AND offset'), ['budget', 'offset']);
+    assert.deepEqual(said(TEXT, 'budget AND nowhere'), []);
+    // Juxtaposition is AND, which is FTS5's own spelling and is what makes
+    // `byte offset` in this mode two words rather than a phrase.
+    assert.deepEqual(said(TEXT, 'budget offset'), ['budget', 'offset']);
+    // And the phrase is available, in quotation marks.
+    assert.deepEqual(said(TEXT, '"the budget"'), ['the budget']);
+  });
+
+  it('OR paints the side that is there, and never the side that is not', () => {
+    assert.deepEqual(said(TEXT, 'budget OR nowhere'), ['budget']);
+    assert.deepEqual(said(TEXT, 'nowhere OR offset'), ['offset']);
+    assert.deepEqual(said(TEXT, 'budget OR offset'), ['budget', 'offset']);
+    assert.deepEqual(said(TEXT, 'nowhere OR neither'), []);
+  });
+
+  it('NOT keeps the left and paints nothing for the right, because it is not there', () => {
+    assert.deepEqual(said(TEXT, 'budget NOT nowhere'), ['budget']);
+    assert.deepEqual(said(TEXT, 'budget NOT offset'), []);
+  });
+
+  it('NEAR is measured in CHARACTERS and paints only the pairs that are near', () => {
+    // `budget` ends at 10 and `ms` begins at 20 — ten characters apart, which
+    // is inside the default 30. `offset` is 25 characters past `ms`.
+    assert.deepEqual(said(TEXT, 'budget NEAR ms'), ['budget', 'ms']);
+    assert.deepEqual(said(TEXT, 'budget NEAR/4 ms'), []);
+    /*
+     * **A LONE OCCURRENCE TOO FAR FROM ANY PARTNER IS NOT PAINTED**, and this
+     * is the assertion that separates NEAR from AND. `budget` at 0 is 200
+     * characters from the nearest `ms`; the pair at the end of the span is
+     * adjacent. AND paints all four occurrences; NEAR paints the three that
+     * take part in a pair and leaves the first `budget` alone.
+     */
+    const far = `budget ${'x'.repeat(200)} ms and budget ms`;
+    assert.deepEqual(logic(far, 'budget AND ms').map((h) => h.from), [0, 208, 215, 222]);
+    assert.deepEqual(logic(far, 'budget NEAR ms').map((h) => h.from), [208, 215, 222]);
+    assert.equal(NEAR_CHARS, 30,
+      'the default NEAR distance is the archive search’s own 30, in the same unit');
+    /*
+     * **AND A CHARACTER IS A CODE POINT, WHICH NEEDED ITS OWN FIXTURE.** A
+     * removal proof found that counting UTF-16 UNITS instead reddened only a
+     * WILDCARD line: every NEAR fixture above is ASCII, where the two units
+     * agree. Four astral characters are four characters and eight units, so
+     * `NEAR/5` reaches across them and a build counting units does not.
+     */
+    const astral = `a${'\u{1F600}'.repeat(4)}b`;
+    assert.deepEqual(said(astral, 'a NEAR/5 b'), ['a', 'b']);
+    assert.deepEqual(said(astral, 'a NEAR/3 b'), []);
+  });
+
+  it('an operator is an operator only in CAPITALS', () => {
+    // Which is what lets a reader look for the word `and` at all.
+    assert.deepEqual(said('this and that', 'and'), ['and']);
+    assert.deepEqual(said('this and that', 'this AND that'), ['this', 'that']);
+  });
+
+  it('brackets group, and OR binds looser than AND', () => {
+    const text = 'alpha gamma';
+    // Without brackets this is `alpha AND (beta OR gamma)` only if AND binds
+    // tighter than OR, which it does: `alpha AND beta OR gamma` is
+    // `(alpha AND beta) OR gamma`, and gamma alone satisfies it.
+    assert.deepEqual(said(text, 'alpha AND beta OR gamma'), ['gamma']);
+    assert.deepEqual(said(text, 'alpha AND (beta OR gamma)'), ['alpha', 'gamma']);
+  });
+
+  it('the terms fold and obey Match case and Whole word', () => {
+    assert.deepEqual(said('a … b and dots', '... AND dots'), ['…', 'dots']);
+    assert.deepEqual(said('Byte byte AND', 'Byte AND byte', { caseSensitive: true }),
+      ['Byte', 'byte']);
+    assert.deepEqual(said('cat category dog', 'cat AND dog', { wholeWord: true }),
+      ['cat', 'dog']);
+    assert.deepEqual(said('category dog', 'cat AND dog', { wholeWord: true }), []);
+  });
+
+  it('overlapping ranges from two terms are painted once, earliest first', () => {
+    // A range can wear one highlight. `by` and `byte` under an OR overlap, so
+    // the earlier one wins and the later is dropped rather than both painted.
+    const hits = logic('byte', 'by OR byte');
+    assert.deepEqual(hits.map((h) => [h.from, h.to]), [[0, 2]]);
+  });
+
+  it('LIKE is refused BY NAME, as the wildcard mode under another spelling', () => {
+    const asked = findQuery('byte LIKE b%', { mode: 'logical' });
+    assert.equal(asked.ok, false);
+    assert.equal(asked.why, 'like');
+    // Not an error and not a refusal for slowness: a third answer with its own
+    // sentence, which the panel turns into "that is the Wildcards mode".
+    assert.equal(asked.error, null);
+    assert.equal(asked.slow, false);
+  });
+
+  it('a query the grammar cannot read answers a CODE, never a sentence', () => {
+    // `fold.js` has no string table and must not grow one: the words have to
+    // exist in two languages and this file runs in two runtimes.
+    const why = (query: string): string | null =>
+      findQuery(query, { mode: 'logical' }).why;
+    assert.equal(why('byte AND'), 'operand');
+    assert.equal(why('AND byte'), 'operand');
+    assert.equal(why('"byte'), 'quote');
+    assert.equal(why('(byte'), 'paren');
+    assert.equal(why('byte)'), 'paren');
+    assert.equal(why('""'), 'empty');
+    assert.equal(why(`byte NEAR/${NEAR_MAX + 1} offset`), 'nearRange');
+    assert.equal(why('byte NEAR/0 offset'), 'nearRange');
+    // And a readable one says nothing at all.
+    assert.equal(why('byte AND offset'), null);
+  });
+
+  it('THE TWO COUNTS CANNOT DISAGREE, because times IS the length of the list', () => {
+    // The item: *"The panel already draws both numbers and they must not start
+    // disagreeing."* `findInDocument` counts a turn when this list is
+    // non-empty and counts times as `list.length`, so the invariant is a
+    // property of this function: a matching span returns at least one range,
+    // and a non-matching span returns exactly none.
+    const spans = [TEXT, 'budget alone', 'offset alone', 'neither here'];
+    const asked = findQuery('budget AND offset', { mode: 'logical' });
+    assert.equal(asked.ok, true);
+    const lists = spans.map((span) => asked.find!(span, 500));
+    assert.deepEqual(lists.map((l) => l.length), [2, 0, 0, 0]);
+    assert.equal(lists.filter((l) => l.length > 0).length, 1, 'turns');
+    assert.equal(lists.reduce((n, l) => n + l.length, 0), 2, 'times');
+  });
+});
+
+/**
+ * **THE MODE IS ONE OF FOUR AND THE FOUR ARE EXCLUSIVE** — `semantic/11`.
+ *
+ * Notepad++, which the owner named, uses a RADIO GROUP for this and not four
+ * checkboxes, and `MODES` is the list the panel's radios, the route's
+ * parameter vocabulary and this dispatcher all read. What is asserted here is
+ * the part a browser test cannot see: that the old spelling still works, so
+ * `semantic/9`'s panel and every test written against it are unchanged.
+ */
+describe('the four ways of reading a query are exclusive and named once', () => {
+  it('the list is the one both runtimes read', () => {
+    assert.deepEqual(MODES, ['normal', 'wildcard', 'logical', 'regex']);
+  });
+
+  it('`regex: true` with no mode is still the regular-expression mode', () => {
+    const asked = findQuery(String.raw`byte\s+offset`, { regex: true });
+    assert.equal(asked.mode, 'regex');
+    assert.equal(asked.regex, true);
+    assert.deepEqual(asked.find!('byte  offset').map((h) => [h.from, h.to]), [[0, 12]]);
+  });
+
+  it('an unknown mode falls back to the plain one rather than to the last one set', () => {
+    // The ROUTE refuses an unknown mode with a 400; this is the matcher's own
+    // floor for a caller that is not the route. It must be `normal` and not
+    // "whatever `regex` happens to say", because a page asking for a mode this
+    // build does not have must not be answered as though it had asked for a
+    // pattern.
+    const asked = findQuery('byte offset', { mode: 'nonsense' });
+    assert.equal(asked.mode, 'normal');
+    assert.equal(asked.regex, false);
+    assert.deepEqual(asked.find!('a byte offset b').map((h) => [h.from, h.to]), [[2, 13]]);
+  });
+
+  it('every mode answers the same shape, so nothing downstream branches on it', () => {
+    for (const mode of MODES) {
+      const asked = findQuery('byte', { mode });
+      assert.equal(asked.ok, true, mode);
+      assert.equal(asked.mode, mode);
+      const hits = asked.find!('a byte b', 500);
+      assert.deepEqual(hits.map((h) => [h.from, h.to, h.precise]), [[2, 6, true]], mode);
+      assert.equal(hits[0]!.byteFrom, 2, mode);
+      assert.equal(hits[0]!.byteTo, 6, mode);
+    }
   });
 });

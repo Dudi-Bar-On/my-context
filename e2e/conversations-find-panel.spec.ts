@@ -1,4 +1,5 @@
 // @basis TASK-the-find-options-the-owner-asked-for-twice-in-a-floating,
+// TASK-the-find-panel-offers-regular-expressions-and-no-help-and,
 // INV-nothing-is-dropped-silently,
 // REQ-the-conversation-archive-is-a-terminal-you-can-scroll-not-a
 /**
@@ -32,6 +33,13 @@
  *   — **One Hebrew turn carrying `שורה` and the glued `השורה`**, because that
  *     is the one place Whole word means something different from what a Latin
  *     reader expects, and the panel draws a sentence about it.
+ *   — **`semantic/11` added four turns and no more.** `alpha7beta
+ *     alpha77beta alphabeta` is the only shape where `?` and `*` give
+ *     DIFFERENT answers, so a wildcard test on it cannot pass by accident; and
+ *     three turns over `tango` and `quebec` — both, one, the other — are the
+ *     minimum for AND, OR and NOT to each have a number that moves. None of
+ *     them holds `byte`, `offset` or a Hebrew letter, so every number
+ *     `semantic/9` asserted above is unchanged.
  */
 import { test, expect } from '@playwright/test';
 import type { Page } from '@playwright/test';
@@ -81,6 +89,25 @@ function transcript(): unknown[] {
       content: [{ type: 'text', text: `${filler}${HEB_GLUED} וגם ${HEB}. ${filler}` }],
     },
     timestamp: at(200),
+  });
+  // `semantic/11`. Each of these four is the SMALLEST fixture that makes one
+  // of the new answers move; see the header.
+  const extra = [
+    // `alpha?beta` reaches exactly one of these three and `alpha*beta` all
+    // three, which is the whole difference between the two wildcards.
+    'alpha7beta alpha77beta alphabeta',
+    // `tango and quebec` — five characters between them, so NEAR/5 pairs them
+    // and NEAR/2 does not, and the unit being CHARACTERS is what that proves.
+    'tango and quebec stand together',
+    'tango stands here without the other one',
+    'quebec stands here without the other one',
+  ];
+  extra.forEach((text, i) => {
+    rows.push({
+      type: 'assistant',
+      message: { role: 'assistant', content: [{ type: 'text', text: `${filler}${text}. ${filler}` }] },
+      timestamp: at(210 + i),
+    });
   });
   return rows;
 }
@@ -154,6 +181,23 @@ async function option(page: Page, which: string, on: boolean): Promise<void> {
   const box = page.locator(`.${which} input`);
   if (await box.isChecked() !== on) await box.setChecked(on);
   await page.waitForTimeout(2_500);
+}
+
+/**
+ * Choose one of the four ways of reading a query — `semantic/11`.
+ *
+ * A RADIO and not a checkbox, which is the shape of the whole change: exactly
+ * one is in force and choosing one gives the previous one up, with no state to
+ * set to `false`.
+ */
+async function mode(page: Page, which: string): Promise<void> {
+  await page.locator(`.mcmode${which} input`).check();
+  await page.waitForTimeout(2_500);
+}
+
+/** How many ranges are painted over the rows that are drawn right now. */
+async function painted(page: Page): Promise<number> {
+  return page.evaluate(() => [...(CSS.highlights.get('mycontextfind') ?? [])].length);
 }
 
 /** How many turns the stepper says hold the query. */
@@ -378,7 +422,7 @@ for (const lang of ['en', 'he'] as const) {
   test(`a regular expression runs, and says what it cannot do (${lang})`, async ({ page }) => {
     await openDocument(page, lang);
     await openPanel(page);
-    await option(page, 'mcoptre', true);
+    await mode(page, 'regex');
     await find(page, 'byte\\s+offsets?');
     expect(await held(page), 'one pattern reaches all three shapes').toBe(12);
     // The two sentences a pattern always carries: what mode this is, and that
@@ -386,14 +430,14 @@ for (const lang of ['en', 'he'] as const) {
     await expect(page.locator('.mcnotere')).toBeVisible();
     await expect(page.locator('.mcnoterefold')).toBeVisible();
     // And the measurement the item asks for, on the screen.
-    await expect(page.locator('.mcnoterecost')).toBeVisible();
-    console.log(`[regex ${lang}] ${(await page.locator('.mcnoterecost').textContent())?.trim()}`);
+    await expect(page.locator('.mcnotecost')).toBeVisible();
+    console.log(`[regex ${lang}] ${(await page.locator('.mcnotecost').textContent())?.trim()}`);
 
     // **A BROKEN PATTERN IS THE ENGINE'S OWN MESSAGE**, not a rewrite of it
     // and not an empty result the reader cannot tell from "not there".
     await find(page, '[');
     await expect(page.locator('.mcnoterebad')).toBeVisible();
-    await expect(page.locator('.mcnoterecost'),
+    await expect(page.locator('.mcnotecost'),
       'a pattern that did not compile scanned nothing, so nothing may claim a cost').toBeHidden();
 
     /*
@@ -447,5 +491,329 @@ for (const lang of ['en', 'he'] as const) {
     await page.waitForTimeout(600);
     expect((await registry()).now,
       'the current-match colour outlived the walk it belongs to').toEqual([]);
+  });
+
+  /* ══ 7 — FOUR WAYS TO READ A QUERY, AND EXACTLY ONE AT A TIME ════════════ */
+
+  test(`the four modes are a radio group, so exactly one is ever in force (${lang})`, async ({ page }) => {
+    await openDocument(page, lang);
+    await openPanel(page);
+    /*
+     * **THE SHAPE, AND IT IS THE ITEM'S OWN QUESTION.** *"What must NOT happen
+     * is four checkboxes tickable in combinations nobody defined."* Notepad++,
+     * which the owner named, uses a radio group for exactly this; what is
+     * asserted here is the property that makes it one — choosing a mode gives
+     * the previous one up, with nothing to unset and no state in between.
+     */
+    const boxes = page.locator('.mcpanelmodes input');
+    await expect(boxes).toHaveCount(4);
+    const kinds = await boxes.evaluateAll((els) =>
+      [...new Set(els.map((e) => (e as HTMLInputElement).type))]);
+    expect(kinds, 'a mode is a radio, not a checkbox').toEqual(['radio']);
+    const on = async (): Promise<string[]> => boxes.evaluateAll((els) => els
+      .filter((e) => (e as HTMLInputElement).checked)
+      .map((e) => (e as HTMLInputElement).value));
+    expect(await on(), 'the plain mode is the one that shipped').toEqual(['normal']);
+    for (const which of ['wildcard', 'logical', 'regex', 'normal']) {
+      await page.locator(`.mcmode${which} input`).check();
+      expect(await on(), `${which} did not take the selection alone`).toEqual([which]);
+    }
+    // And the two questions that are NOT about reading stay independent boxes,
+    // which is the other half of the shape.
+    const opts = page.locator('.mcpanelopts input');
+    await expect(opts).toHaveCount(2);
+    expect(await opts.evaluateAll((els) =>
+      [...new Set(els.map((e) => (e as HTMLInputElement).type))])).toEqual(['checkbox']);
+  });
+
+  /* ══ 8 — WILDCARDS, AND `?` IS NOT `*` ═══════════════════════════════════ */
+
+  test(`a wildcard is stitched from folded pieces over the whole transcript (${lang})`, async ({ page }) => {
+    await openDocument(page, lang);
+    await openPanel(page);
+    await mode(page, 'wildcard');
+
+    /*
+     * **THE TWO WILDCARDS GIVE DIFFERENT ANSWERS ON ONE TURN**, which is what
+     * makes this a test of `?` rather than a test that something ran.
+     * `alpha7beta alpha77beta alphabeta` is in one turn: `*` reaches all three
+     * and `?` reaches only the one with exactly one character in the gap.
+     */
+    await find(page, 'alpha*beta');
+    expect(await held(page), 'the star did not reach the turn').toBe(1);
+    const stars = await painted(page);
+    await find(page, 'alpha?beta');
+    expect(await held(page)).toBe(1);
+    const ones = await painted(page);
+    console.log(`[wildcard ${lang}] * painted ${stars}, ? painted ${ones}`);
+    expect(ones, '`?` must be exactly one character, not any run').toBeLessThan(stars);
+
+    // **AND THE PIECES FOLD**, which is the whole reason this is not compiled
+    // to a regular expression: `by?e offset` reaches every casing over the
+    // whole transcript while fewer rows than that are drawn.
+    await find(page, 'by?e offset');
+    expect(await held(page)).toBe(12);
+    expect(await page.locator('.tvrow').count()).toBeLessThan(12);
+    await expect(page.locator('.mcnotewild')).toBeVisible();
+    await expect(page.locator('.mcnotewildfold')).toBeVisible();
+    await expect(page.locator('.mcnotecost')).toBeVisible();
+
+    /*
+     * **A WILDCARD CANNOT BE REFUSED FOR ITS SHAPE.** The star-heavy source
+     * below is the shape `nestedQuantifier` refuses as a pattern; here it is
+     * five literal pieces and it runs. The refusal note staying down is the
+     * assertion — the item forbids showing a reader a regular expression they
+     * never typed.
+     */
+    await find(page, '*a*a*a*a*');
+    await expect(page.locator('.mcnoterefused')).toBeHidden();
+    await expect(page.locator('.mcnoterebad')).toBeHidden();
+  });
+
+  /* ══ 9 — THE OPERATORS, AND WHAT THE TWO COUNTS MEAN UNDER `AND` ═════════ */
+
+  test(`AND, OR, NOT and NEAR are answered by the scan, not by the page (${lang})`, async ({ page }) => {
+    await openDocument(page, lang);
+    await openPanel(page);
+    await mode(page, 'logical');
+
+    // Three turns: one holds both, one holds each. Each operator therefore has
+    // a number that MOVES, which is what a fixture has to buy.
+    await find(page, 'tango AND quebec');
+    expect(await held(page), 'AND must narrow to the turn holding both').toBe(1);
+    const bothPainted = await painted(page);
+    expect(bothPainted, 'AND paints BOTH terms — the item asks this directly')
+      .toBeGreaterThanOrEqual(2);
+
+    await find(page, 'tango OR quebec');
+    expect(await held(page), 'OR is a union of the three turns').toBe(3);
+    await find(page, 'tango NOT quebec');
+    expect(await held(page), 'NOT keeps the left and drops the turn holding both').toBe(1);
+
+    /*
+     * **`NEAR`'s UNIT IS CHARACTERS, AND THIS IS WHERE THAT IS PINNED.**
+     * `tango and quebec` has five characters between the two words, so a
+     * distance of 5 pairs them and a distance of 2 does not. A build that
+     * counted WORDS would pass both lines, so the pair is the assertion.
+     */
+    await find(page, 'tango NEAR/5 quebec');
+    expect(await held(page), 'five characters apart is within five').toBe(1);
+    await find(page, 'tango NEAR/2 quebec');
+    expect(await held(page), 'and not within two — so the unit is characters').toBe(0);
+
+    // **THE COUNT IS OVER THE WHOLE TRANSCRIPT**, which is the constraint the
+    // item calls the hardest: a mode implemented in the page would see only
+    // the rows the virtualiser drew.
+    await find(page, 'byte OR question');
+    expect(await held(page)).toBeGreaterThan(await page.locator('.tvrow').count());
+
+    await expect(page.locator('.mcnotelog')).toBeVisible();
+    await expect(page.locator('.mcnotelogcount')).toBeVisible();
+    await expect(page.locator('.mcnotelognear')).toBeVisible();
+
+    // **AND `LIKE` IS REFUSED BY NAME**, as the wildcard mode under another
+    // spelling — not read as a word, and not an engine error either.
+    await find(page, 'tango LIKE t%');
+    await expect(page.locator('.mcnotewhy')).toBeVisible();
+    await expect(page.locator('.mcnoterebad'),
+      'there is no engine here to quote, so nothing may claim one spoke').toBeHidden();
+    await expect(page.locator('.mcnotecost'),
+      'nothing was searched for, so nothing may claim a cost').toBeHidden();
+    // A grammar failure is a different sentence from `LIKE`, and a readable
+    // query takes both down again.
+    await find(page, 'tango AND');
+    await expect(page.locator('.mcnotewhy')).toBeVisible();
+    await find(page, 'tango AND quebec');
+    await expect(page.locator('.mcnotewhy')).toBeHidden();
+  });
+
+  /* ══ 10 — THE HELP, AND EVERY EXAMPLE IN IT IS A BUTTON THAT RUNS ════════ */
+
+  test(`the help changes with the mode and its examples run when clicked (${lang})`, async ({ page }) => {
+    await openDocument(page, lang);
+    await openPanel(page);
+    const help = page.locator('.mcpanelhelp');
+    await expect(help, 'the help is shut until it is asked for')
+      .not.toHaveAttribute('open', /.*/);
+    await help.locator('summary').click();
+    await expect(help).toHaveAttribute('open', /.*/);
+
+    // Each mode brings its own examples, and they are not the same list.
+    const examples = async (): Promise<string[]> =>
+      page.locator('.mcpanelegq').allTextContents();
+    const plain = await examples();
+    expect(plain.length).toBeGreaterThan(0);
+    await mode(page, 'regex');
+    const pattern = await examples();
+    expect(pattern, 'the help did not follow the mode').not.toEqual(plain);
+    // The help stays OPEN across a mode change: a reader who asked for it is
+    // still reading it.
+    await expect(help).toHaveAttribute('open', /.*/);
+
+    /*
+     * **CLICKING AN EXAMPLE PUTS IT IN THE BOX AND RUNS IT**, which the item
+     * asks for in as many words. The LAST pattern example is the shape that is
+     * REFUSED, and that is deliberate: it is how a reader who met the refusal
+     * finds out why. Clicking it must produce the refusal and not an error.
+     */
+    const last = page.locator('.mcpanelegq').last();
+    const text = await last.textContent();
+    await last.click();
+    await page.waitForTimeout(2_500);
+    expect(await page.locator('.tvfind').inputValue()).toBe(text);
+    await expect(page.locator('.mcnoterefused'),
+      'the help example for the refusal did not produce it').toBeVisible();
+    await expect(page.locator('.mcnoterebad')).toBeHidden();
+    // And the sentence that says WHY it is refused is in the help itself, not
+    // only in the warning under the box.
+    await expect(page.locator('.mcpanelhelpbody')).toContainText('108,785');
+
+    // A working example runs and answers. `\d+ ms` finds nothing in this
+    // fixture, so the one asserted is that the query really reached the scan.
+    await mode(page, 'wildcard');
+    const first = page.locator('.mcpanelegq').first();
+    const wild = await first.textContent();
+    await first.click();
+    await page.waitForTimeout(2_500);
+    expect(await page.locator('.tvfind').inputValue()).toBe(wild);
+    await expect(page.locator('.tvnavfoundcount')).toBeVisible();
+  });
+
+  /* ══ 10a — AND IT STAYS ON THE SCREEN, WHATEVER THE HELP ADDS ═══════════ */
+
+  test(`the panel never runs off the bottom of the screen (${lang})`, async ({ page }) => {
+    await openDocument(page, lang);
+    await openPanel(page);
+    /*
+     * **FOUND BY LOOKING AT A SCREENSHOT**, which is the second time on this
+     * panel: `reports/2026-09-16-the-find-panel.md` §5.5 is the first, a find
+     * field 470 px tall that sixteen green browser tests did not care about.
+     *
+     * `styles.css` bounds the panel with `calc(100vh - 4rem)`, which bounds its
+     * HEIGHT and not where its bottom LANDS. Opened 284 px down with the help
+     * open, it was 936 px tall in a 1000 px viewport — the stepper and the
+     * count line, which are the two things the reader came for, 220 px below
+     * the bottom edge of a `position:fixed` box that does not scroll with the
+     * page. A fixed element cannot be bounded against its own top in CSS and
+     * the top is not a constant, so `lib/panel.js` writes the bound on every
+     * placement.
+     *
+     * The help is opened first because that is what makes the panel tall
+     * enough to reach the edge at all; with it shut the panel is ~406 px and
+     * this assertion would pass on the broken build.
+     */
+    await page.locator('.mcpanelhelp summary').click();
+    await mode(page, 'logical');
+    await find(page, 'byte AND question');
+
+    /*
+     * **AND IT IS DRAGGED DOWN FIRST, BECAUSE THE FIRST DRAFT OF THIS TEST
+     * REDDENED NOTHING.** The proof was run — the bound deleted from
+     * `lib/panel.js`, this file re-run — and it passed, because in THIS
+     * fixture the bar is short and the panel opens near the top, where the
+     * static `calc(100vh - 4rem)` already keeps it on screen. On the live
+     * session the bar is 284 px down and that is the whole defect. So the
+     * panel is put where the defect lives: as far down as the frame's own
+     * clamp allows, which is `KEEP_VISIBLE_PX` from the bottom.
+     */
+    const grip = await page.locator('.mcpanelhead').boundingBox();
+    expect(grip).not.toBeNull();
+    await page.mouse.move(grip!.x + grip!.width / 2, grip!.y + grip!.height / 2);
+    await page.mouse.down();
+    await page.mouse.move(grip!.x + grip!.width / 2, grip!.y + grip!.height / 2 + 260,
+      { steps: 8 });
+    await page.mouse.up();
+    await page.waitForTimeout(400);
+
+    const fits = await page.locator('dialog.mcpanel').evaluate((d) => {
+      const box = d.getBoundingClientRect();
+      return { top: Math.round(box.top), bottom: Math.round(box.bottom),
+        height: Math.round(box.height),
+        viewport: window.innerHeight, scrolls: d.scrollHeight > d.clientHeight };
+    });
+    console.log(`[fit ${lang}] ${JSON.stringify(fits)}`);
+    expect(fits.top, 'the panel was not dragged down, so this cannot see the defect')
+      .toBeGreaterThan(100);
+    expect(fits.height, 'the help did not make the panel tall enough for this to mean anything')
+      .toBeGreaterThan(200);
+    expect(fits.bottom, 'the panel runs off the bottom of the screen and cannot be scrolled to')
+      .toBeLessThanOrEqual(fits.viewport);
+    expect(fits.scrolls,
+      'it fits by dropping content rather than by scrolling it').toBe(true);
+  });
+
+  /* ══ 10b — THE BOX READS THE WAY WHAT YOU TYPED READS ═══════════════════ */
+
+  test(`the find box takes its direction from the query, not from the page (${lang})`, async ({ page }) => {
+    await openDocument(page, lang);
+    await openPanel(page);
+    /*
+     * **FOUND IN A HEBREW SCREENSHOT** — `semantic/11`. With the page RTL and
+     * the field carrying no direction of its own, a trailing NEUTRAL resolves
+     * against the paragraph: `b*t offse?` was drawn as `?b*t offse`, a pattern
+     * the reader did not type, in a mode whose whole subject is punctuation.
+     *
+     * The field cannot be pinned LTR either — half this archive is Hebrew and
+     * a Hebrew query must read right to left. `dir="auto"` reads the first
+     * strong character of the VALUE, which is the only thing that knows, and
+     * this test asserts BOTH directions on one field so a build that pinned
+     * either one reddens.
+     */
+    const reads = async (): Promise<string> => page.locator('.tvfind')
+      .evaluate((el) => getComputedStyle(el).direction);
+    await mode(page, 'wildcard');
+    await find(page, 'b*t offse?');
+    expect(await reads(), 'a pattern is drawn with its punctuation moved to the other end')
+      .toBe('ltr');
+    await find(page, HEB);
+    expect(await reads(), 'a Hebrew query stopped reading right to left').toBe('rtl');
+  });
+
+  /* ══ 11 — THE NUMBERS ARE BOLD, AND ONLY THE NUMBERS ═════════════════════ */
+
+  test(`every quantity is bold and nothing else is (${lang})`, async ({ page }) => {
+    await openDocument(page, lang);
+    await openPanel(page);
+    await find(page, 'byte offset');
+
+    /*
+     * **HIS THIRD ASK, IN HIS OWN WORDS:** *"Bold the count and other numeric
+     * values you display"*. `lib/i18n.js` marks a value slot whose text is a
+     * number with `data-num`, so this reaches every sentence that names a
+     * quantity rather than a list of places somebody remembered to edit — and
+     * it is an ATTRIBUTE rather than a class because `screen-parity.spec.ts`
+     * reads the class list as the element's KIND, and reddened on a `num`
+     * class for six screens whose only value slot holds a number.
+     */
+    const counted = page.locator('p.tvcount .v[data-num]');
+    const numbers = await counted.allTextContents();
+    console.log(`[bold ${lang}] ${JSON.stringify(numbers)}`);
+    expect(numbers.length, 'no quantity in the count line is marked').toBeGreaterThan(3);
+    for (const said of numbers) {
+      expect(said, `"${said}" is marked as a number and is not one`).toMatch(/^[\d,. ]+$/);
+    }
+    const weight = await counted.first().evaluate((el) =>
+      Number(getComputedStyle(el).fontWeight));
+    const around = await page.locator('p.tvcount').evaluate((el) =>
+      Number(getComputedStyle(el).fontWeight));
+    expect(weight, 'the number is not heavier than the sentence around it')
+      .toBeGreaterThan(around);
+    // The stepper too — "N turn(s) here hold what you typed" is a quantity the
+    // eye goes to, and it is drawn somewhere else entirely.
+    expect(await page.locator('.tvnavfoundcount .v[data-num]').count()).toBeGreaterThan(0);
+
+    /*
+     * **AND THE CONTROL, WHICH IS THE HALF THAT MAKES THIS A PROOF.** A rule
+     * that marked EVERY value slot would satisfy every line above. The
+     * engine's own message about a broken pattern is a value slot and is not a
+     * number, and it must carry no mark.
+     */
+    await mode(page, 'regex');
+    await find(page, '[');
+    await expect(page.locator('.mcnoterebad')).toBeVisible();
+    expect(await page.locator('.mcnoterebad .v').count(),
+      'the engine message must still be a value slot').toBeGreaterThan(0);
+    expect(await page.locator('.mcnoterebad .v[data-num]').count(),
+      'a sentence was marked as a number').toBe(0);
   });
 }

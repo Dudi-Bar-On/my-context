@@ -1295,8 +1295,13 @@ test('emphasis builds b and i, and value slots survive INSIDE them', async () =>
     createTextNode: (text: string) => ({ kind: 'text', className: '', textContent: text }),
     createElement: (tag: string) => {
       const kids: { className: string; textContent: string }[] = [];
+      // `semantic/11`: this stand-in carries ATTRIBUTES as well as children,
+      // which the nineteen others do not, so the numeric mark can be asserted
+      // somewhere rather than only drawn in a browser.
+      const attrs: Record<string, string> = {};
       const node = {
-        kind: 'element', tag, className: '',
+        kind: 'element', tag, className: '', attrs,
+        setAttribute: (name: string, value: string): void => { attrs[name] = value; },
         append: (...ns: never[]): void => { kids.push(...ns); },
         get textContent(): string { return kids.map((n) => n.textContent).join(''); },
         set textContent(v: string) {
@@ -1336,6 +1341,42 @@ test('emphasis builds b and i, and value slots survive INSIDE them', async () =>
   assert.equal(nested[0]!.textContent, '"3 of 5" is counted, never stored');
   assert.equal(nested[1]!.textContent, ' beside it',
     'and the sentence must continue AFTER the bold, not inside it');
+
+  /*
+   * **THE NUMERIC MARK, AND ITS CONTROL** — `semantic/11`, and the owner's
+   * third ask in his own words: *"Bold the count and other numeric values you
+   * display"*.
+   *
+   * `lib/i18n.js` marks a VALUE SLOT whose substituted text is a number with
+   * `data-num`, and `styles.css` gives that weight. It is done in the renderer
+   * rather than by wrapping `{b:{turns}}` around every quantity in two string
+   * tables, because the rule he stated is about the KIND of thing and not
+   * about a list of places — a sentence a later lane writes gets it too.
+   *
+   * **AN ATTRIBUTE AND NOT A SECOND CLASS**, and a gate is the reason: with a
+   * `num` class, `e2e/screen-parity.spec.ts` read `span.v.num` as a different
+   * KIND from the `span.v` the design of record draws and reported `span.v`
+   * newly absent on six screens. In this codebase a class names what a thing
+   * IS; holding a number is a state.
+   *
+   * **THE CONTROL IS THE HALF THAT MAKES THIS A PROOF.** A rule that marked
+   * every slot would satisfy the first two assertions. `{branch}` is a value
+   * and is not a number; `{m:active}` above is a monospace LITERAL and is not
+   * a value at all. Neither may carry the mark.
+   */
+  const marked = t({
+    'a.count': '{shown} of {total} — {branch} at {version}',
+  }, 'a.count', {
+    shown: 3, total: '16,058', branch: 'master', version: 'v2.1.4',
+  }, doc);
+  const attrOf = (n: object): Record<string, string> =>
+    (n as { attrs?: Record<string, string> }).attrs ?? {};
+  assert.deepEqual(
+    marked.filter((n) => (n as { kind?: string }).kind === 'element')
+      .map((n) => [n.textContent, 'data-num' in attrOf(n)]),
+    [['3', true], ['16,058', true], ['master', false], ['v2.1.4', false]],
+    'a value that is a number is marked, and a value that is not is not',
+  );
 
   // A monospace literal nested in emphasis, which is the other shape the
   // mockup uses.

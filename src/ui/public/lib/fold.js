@@ -690,6 +690,537 @@ export function nestedQuantifier(source) {
   return false;
 }
 
+/*
+ * ═══════════════════════════════════════════════════════════════════════════
+ * **TWO MORE WAYS TO TYPE A QUERY** — `semantic/11`,
+ * `TASK-the-find-panel-offers-regular-expressions-and-no-help-and`.
+ *
+ * The owner, 2026-09-16, having used the panel `semantic/9` shipped: *"regex
+ * is complex … alternatives to regex A - wildcard character pattern matching
+ * in expressions … B - some logical ops the user could use especially if
+ * supportd by sqlite like AND OR LIKE NEAR etc"*.
+ *
+ * ── AND `supportd by sqlite` IS THE ONE ASSUMPTION THAT IS WRONG ──────────
+ *
+ * **THIS SURFACE NEVER TOUCHES SQLITE.** `findInDocument` scans every prose
+ * span in JavaScript, deliberately, on two measurements `semantic/8` and
+ * `semantic/9` took: the FTS5 index is UNFOLDED, so it cannot see that `...`
+ * matches `…` (463 spans against 1,024), and FTS5 cannot return in-document
+ * offsets at all — `offsets()` answers *"unable to use function offsets in the
+ * requested context"*.
+ *
+ * So AND / OR / NOT / NEAR here are implemented IN THE SCAN, below. That is
+ * not a downgrade and the help says why: an operator written here composes
+ * with Match case and with NFKD folding, and an FTS5 operator would compose
+ * with neither. The box that DOES use FTS5 is the archive search on the
+ * conversations list, which reads one query in three tiers
+ * (`reports/2026-09-16-the-search-grammar.md` §4); none of that is duplicated
+ * here and the two surfaces are not the same surface.
+ * ═══════════════════════════════════════════════════════════════════════════
+ */
+
+/**
+ * **THE FOUR WAYS TO READ A QUERY, AND THEY ARE EXCLUSIVE.**
+ *
+ * One list, exported, so the panel's radio group, the route's parameter
+ * vocabulary and this dispatcher cannot come to disagree about what a mode
+ * is. Order is the order they are offered on screen, which is the order of
+ * how much a reader has to know: nothing, two characters, four words, a
+ * language.
+ */
+export const MODES = ['normal', 'wildcard', 'logical', 'regex'];
+
+/**
+ * The index `n` code points forward from `i`, or `-1` past the end.
+ *
+ * **CODE POINTS AND NOT UTF-16 UNITS**, which is the difference between `?`
+ * matching one emoji and `?` matching half of one. The same unit the folded
+ * matcher's `precise` flag is about.
+ */
+function forwardCodePoints(text, i, n) {
+  let at = i;
+  for (let k = 0; k < n; k += 1) {
+    if (at >= text.length) return -1;
+    const code = text.codePointAt(at);
+    at += code >= 0x10000 ? 2 : 1;
+  }
+  return at;
+}
+
+/** The index `n` code points BACK from `i`, or `-1` before the start. */
+function backCodePoints(text, i, n) {
+  let at = i;
+  for (let k = 0; k < n; k += 1) {
+    if (at <= 0) return -1;
+    const low = text.charCodeAt(at - 1);
+    at -= (low >= 0xdc00 && low <= 0xdfff && at >= 2
+      && text.charCodeAt(at - 2) >= 0xd800 && text.charCodeAt(at - 2) <= 0xdbff) ? 2 : 1;
+  }
+  return at;
+}
+
+/** The first hit in `list` (ascending by `from`) whose `from` is >= `pos`. */
+function firstFrom(list, pos) {
+  let lo = 0;
+  let hi = list.length;
+  while (lo < hi) {
+    const mid = (lo + hi) >> 1;
+    if (list[mid].from < pos) lo = mid + 1; else hi = mid;
+  }
+  return lo < list.length ? lo : -1;
+}
+
+/** The hit in `list` starting exactly at `pos`, or `null`. */
+function exactAt(list, pos) {
+  const at = firstFrom(list, pos);
+  return at >= 0 && list[at].from === pos ? list[at] : null;
+}
+
+/**
+ * **HOW MANY OCCURRENCES OF ONE PIECE ARE COLLECTED INSIDE ONE TURN.**
+ *
+ * A bound and not a scope, the same bargain `FIND_HITS_PER_TURN` (500) makes
+ * one layer up. `a*b` has to know every place `a` occurs before it can know
+ * which of them is followed by a `b`, and one turn of terminal output can hold
+ * tens of thousands of a single letter. 20,000 is forty times the answer that
+ * can ever be drawn for one turn, so a wildcard or an operand that hits this
+ * has already been cut off by the caller's own limit.
+ */
+export const PIECE_CAP = 20_000;
+
+/*
+ * ─── A — WILDCARDS, WHICH ARE THE MODE FOR A READER WHO DOES NOT WANT A
+ *     LANGUAGE ────────────────────────────────────────────────────────────
+ *
+ * `*` is any run of characters including none, `?` is exactly one character,
+ * `\` escapes either, and everything else is itself. Unanchored: a pattern is
+ * looked for ANYWHERE in a turn, so `bud*ms` finds `budget was 5000 ms`
+ * without a star at each end.
+ *
+ * ── AND IT IS **NOT** COMPILED TO A REGULAR EXPRESSION, WHICH IS THE WHOLE
+ *    REASON IT IS WORTH HAVING ──────────────────────────────────────────────
+ *
+ * The obvious implementation translates `*` to `.*` and hands the result to
+ * `RegExp`. It was refused here for a measured reason and a semantic one:
+ *
+ *   1. **It would lose the folding.** A regular expression reads the text AS
+ *      WRITTEN — that is `conv.find.reFold` on the screen — so `bud*` under a
+ *      translation would stop finding the `…`, `‑`, `≠` and `µ` this product
+ *      writes and a keyboard does not. 806 of 11,251 archive spans change
+ *      under NFKD. A mode advertised as *the simple one* that quietly finds
+ *      LESS than the simple mode is the worst of the three outcomes.
+ *   2. **It would inherit the `(X+)+` refusal for a shape a reader cannot
+ *      type.** `nestedQuantifier` refuses a repeated group containing an
+ *      unbounded repeat; a wildcard has no groups at all, so a translation
+ *      could only ever produce `.*.*.*`, which is polynomial rather than
+ *      exponential — and the reader would be shown a refusal about a regular
+ *      expression they never wrote, which the item forbids in as many words.
+ *
+ * So a wildcard is matched by STITCHING the literal pieces, each found by the
+ * ordinary folded matcher, with the gaps between them checked in code points.
+ * The pieces fold, so `b*t...` finds `byte…` exactly as the ordinary mode
+ * does, and there is no backtracking engine in the path to explode: the work
+ * is bounded by (occurrences of the first piece) x (number of pieces).
+ */
+
+/**
+ * `*`, `?` and literal runs, in order. `\` escapes the next character.
+ */
+function wildcardItems(source) {
+  const items = [];
+  let lit = '';
+  const flush = () => { if (lit !== '') { items.push({ lit }); lit = ''; } };
+  for (let i = 0; i < source.length; i += 1) {
+    const ch = source[i];
+    if (ch === '\\' && i + 1 < source.length) { lit += source[i + 1]; i += 1; continue; }
+    if (ch === '*') { flush(); items.push({ star: true }); continue; }
+    if (ch === '?') { flush(); items.push({ any: true }); continue; }
+    lit += ch;
+  }
+  flush();
+  return items;
+}
+
+/**
+ * The items, folded into the shape the matcher walks:
+ * literal pieces with a GAP before, between and after each.
+ *
+ * A gap is `{ min, open }` — at least `min` characters (one per `?`) and any
+ * number more when a `*` is in it. `lits` is empty for a pattern with no
+ * literal characters at all (`*`, `???`), which is a real query and is
+ * answered rather than refused.
+ */
+function wildcardPlan(source) {
+  let gap = { min: 0, open: false };
+  const lits = [];
+  const gaps = [];
+  let lead = null;
+  for (const item of wildcardItems(source)) {
+    if (item.lit !== undefined) {
+      if (lead === null) lead = gap; else gaps.push(gap);
+      gap = { min: 0, open: false };
+      lits.push(item.lit);
+      continue;
+    }
+    if (item.star === true) gap.open = true; else gap.min += 1;
+  }
+  return { lits, gaps, lead: lead ?? { min: 0, open: false }, trail: gap };
+}
+
+/**
+ * **EVERY PLACE A WILDCARD PATTERN MATCHES `text`**, non-overlapping, in
+ * document order.
+ *
+ * ── WHAT A LEADING OR TRAILING `*` MEANS, WHICH HAD TO BE DECIDED ────────
+ *
+ * The match is unanchored, so a `*` at either end asks for text that is
+ * already allowed to be there and CONTRIBUTES NOTHING TO THE RANGE. `*byte*`
+ * and `byte` paint exactly the same ranges and report the same count; a `*`
+ * that swallowed the rest of the turn would paint the whole turn for a query
+ * about one word. A leading or trailing `?` is different and does count: it
+ * REQUIRES a character and paints it, so `?byte` finds `a byte` and not a turn
+ * that opens with `byte`.
+ *
+ * ── AND WHY THE SEARCH FOR A START CAN STOP EARLY ────────────────────────
+ *
+ * When every gap is a plain `*` the chain is monotone: if the piece after the
+ * current one has no occurrence past here, it has none past anywhere later
+ * either. So a failure ends the scan rather than advancing to the next start —
+ * which is what keeps `a*b*c*d` over a span with ten thousand `a`s linear
+ * instead of quadratic. A gap with a `?` in it pins an exact distance, so that
+ * shortcut is not available and the start does advance; `exact` is the flag
+ * that tells the two apart.
+ */
+function wildcardMatches(plan, text, limit, keepCase, accept) {
+  const out = [];
+  const { lits, gaps, lead, trail } = plan;
+  const take = (hit) => {
+    if (accept !== null && !accept(text, hit)) return false;
+    out.push(hit);
+    return true;
+  };
+  if (lits.length === 0) {
+    // No literal at all. `*` (and `?*`, `*?`) is the whole turn; `???` is
+    // every window of that many characters, which is what regex `.{3}` means
+    // and is answered the same honest way.
+    if (trail.open) {
+      const end = forwardCodePoints(text, 0, trail.min);
+      if (end >= 0 && text.length > 0) {
+        take({ from: 0, to: text.length, byteFrom: 0, byteTo: 0, precise: true });
+      }
+      return out.length === 0 ? out : bytesFor(text, out);
+    }
+    if (trail.min === 0) return out;
+    let at = 0;
+    while (out.length < limit) {
+      const end = forwardCodePoints(text, at, trail.min);
+      if (end < 0) break;
+      const hit = { from: at, to: end, byteFrom: 0, byteTo: 0, precise: true };
+      if (take(hit)) at = end;
+      else at = forwardCodePoints(text, at, 1);
+      if (at < 0) break;
+    }
+    return out.length === 0 ? out : bytesFor(text, out);
+  }
+  const occ = lits.map((lit) => foldedMatches(text, lit, PIECE_CAP, keepCase, null));
+  for (const list of occ) if (list.length === 0) return out;
+  const first = occ[0];
+  let ai = 0;
+  let floor = 0;
+  while (ai < first.length && out.length < limit) {
+    const head = first[ai];
+    const start = lead.min === 0 ? head.from : backCodePoints(text, head.from, lead.min);
+    /*
+     * **THE FLOOR IS CHECKED ON THE RANGE'S START AND NOT ON THE PIECE, AND A
+     * REMOVAL PROOF IS WHY.** A first draft checked `head.from < floor` as
+     * well, and that check reddened NOTHING: after a hit is taken `ai` is
+     * advanced to the first piece at or past `end`, so a head before the floor
+     * cannot be reached at all. It was deleted rather than left standing as a
+     * branch no proof could reach. What IS load-bearing is this line — a
+     * LEADING `?` moves the range's start BACK from the piece, so a head that
+     * is past the floor can still produce a match overlapping the one before
+     * it. `?ab` over `aabab` is that case, and it is pinned in
+     * `test/ui/fold.test.ts`.
+     */
+    if (start < 0 || start < floor) { ai += 1; continue; }
+    let prevTo = head.to;
+    let precise = head.precise;
+    let exact = false;
+    let ok = true;
+    for (let i = 1; i < lits.length; i += 1) {
+      const gap = gaps[i - 1];
+      let found = null;
+      if (gap.open) {
+        const floorAt = gap.min === 0 ? prevTo : forwardCodePoints(text, prevTo, gap.min);
+        const at = floorAt < 0 ? -1 : firstFrom(occ[i], floorAt);
+        found = at < 0 ? null : occ[i][at];
+      } else {
+        exact = true;
+        const want = forwardCodePoints(text, prevTo, gap.min);
+        found = want < 0 ? null : exactAt(occ[i], want);
+      }
+      if (found === null) { ok = false; break; }
+      prevTo = found.to;
+      precise = precise && found.precise;
+    }
+    const end = ok && trail.min > 0 ? forwardCodePoints(text, prevTo, trail.min)
+      : (ok ? prevTo : -1);
+    if (!ok || end < 0) {
+      // See the header: with no exact gap the chain is monotone, so a failure
+      // here is a failure for every later start too.
+      if (!exact && trail.min === 0) return out.length === 0 ? out : bytesFor(text, out);
+      ai += 1;
+      continue;
+    }
+    if (take({ from: start, to: end, byteFrom: 0, byteTo: 0, precise })) {
+      floor = end;
+      const next = firstFrom(first, end);
+      if (next < 0) break;
+      ai = next;
+    } else {
+      // A REJECTED hit consumed nothing — `foldedMatches`' own asymmetry, for
+      // the same reason: a later match that began inside it is still a match.
+      ai += 1;
+    }
+  }
+  return out.length === 0 ? out : bytesFor(text, out);
+}
+
+/*
+ * ─── B — THE LOGICAL OPERATORS, AND WHAT A HIT IS UNDER THEM ─────────────
+ *
+ * `AND`, `OR`, `NOT`, `NEAR`, parentheses, `"a phrase in quotes"`, and
+ * juxtaposition meaning `AND` the way FTS5 spells it. Each OPERAND is read as
+ * ordinary text — the same folded matcher the Normal mode uses — so Match case
+ * and Whole word mean here exactly what they mean there.
+ *
+ * ── THE HARD QUESTION: UNDER `AND` A TURN MATCHES AND NO SINGLE RANGE DOES ─
+ *
+ * Decided, and stated on the screen in the same words:
+ *
+ *   — **`AND` paints BOTH terms wherever they occur in a turn that holds
+ *     both.** Painting neither would leave a reader looking at a turn with no
+ *     colour in it; painting only the first would be an answer to a query
+ *     nobody typed.
+ *   — **The two numbers keep the meanings they already had.** Turns are turns
+ *     that MATCH. Times are RANGES PAINTED. They cannot come apart, because
+ *     the count of times is by construction the length of the list of ranges
+ *     this function returns, and the count of turns is by construction the
+ *     number of spans for which that list is non-empty — which is exactly
+ *     what `findInDocument` already does for every other mode.
+ *   — **A term under `NOT` paints nothing**, which needs no rule: it is not in
+ *     the turn. That is what made the turn match.
+ *   — **`NEAR` paints only the occurrences that are actually near one
+ *     another**, not every occurrence of both terms. A pair is what the
+ *     operator is about, so a lone `budget` forty screens from the only `ms`
+ *     is not part of the answer and is not coloured as though it were.
+ *
+ * ── `NEAR`'s UNIT IS CHARACTERS, AND IT IS SAID EVERY TIME IT IS DRAWN ────
+ *
+ * The default is **30 characters between the two**, which is the same number
+ * AND the same unit as the archive search's second tier, `NEAR(…, 30)`. That
+ * is not a coincidence and it is not an inheritance: under the TRIGRAM
+ * tokenizer FTS5's `NEAR` distance is counted in CHARACTERS rather than in
+ * tokens — undocumented upstream and measured by this project — so the tier
+ * over there has always meant characters too. Two surfaces saying `NEAR` and
+ * meaning two different units would be worse than either choice.
+ *
+ * `NEAR/120` sets it, in characters, per operator.
+ *
+ * ── AND `LIKE` IS REFUSED, WHICH IS THE ANSWER AND NOT A GAP ─────────────
+ *
+ * He named it. `LIKE` is SQL's WILDCARD — `%` for any run and `_` for one
+ * character — so it is the Wildcard mode above under another spelling, and
+ * shipping both would be two grammars for one idea with a promise to keep
+ * them in step for ever. Typing it here is answered by name (`why: 'like'`)
+ * and pointed at the mode that already does it, rather than being read as a
+ * word to search for.
+ */
+
+/** The default distance for a bare `NEAR`, in CHARACTERS. See above. */
+export const NEAR_CHARS = 30;
+
+/** The most an explicit `NEAR/n` may ask for. A bound, and it is disclosed. */
+export const NEAR_MAX = 4_000;
+
+/**
+ * The query as operators, parentheses and terms.
+ *
+ * **An operator is only an operator in CAPITALS**, which is FTS5's own rule
+ * and is what lets a reader search for the word `and` at all. Answered as
+ * `{ why }` rather than as a thrown error, because every refusal on this
+ * screen is a sentence the panel draws beside the box.
+ */
+function logicalTokens(source) {
+  const out = [];
+  let i = 0;
+  while (i < source.length) {
+    const ch = source[i];
+    if (ch === ' ' || ch === '\t' || ch === '\n' || ch === '\r') { i += 1; continue; }
+    if (ch === '(' || ch === ')') { out.push({ kind: ch }); i += 1; continue; }
+    if (ch === '"') {
+      const close = source.indexOf('"', i + 1);
+      if (close === -1) return { why: 'quote' };
+      const text = source.slice(i + 1, close);
+      if (text !== '') out.push({ kind: 'term', text });
+      i = close + 1;
+      continue;
+    }
+    let j = i;
+    while (j < source.length && !' \t\n\r()"'.includes(source[j])) j += 1;
+    const word = source.slice(i, j);
+    i = j;
+    if (word === 'AND' || word === 'OR' || word === 'NOT') { out.push({ kind: word }); continue; }
+    if (word === 'NEAR') { out.push({ kind: 'NEAR', chars: NEAR_CHARS }); continue; }
+    const near = /^NEAR\/(\d{1,5})$/.exec(word);
+    if (near !== null) {
+      const chars = Number(near[1]);
+      if (chars < 1 || chars > NEAR_MAX) return { why: 'nearRange' };
+      out.push({ kind: 'NEAR', chars });
+      continue;
+    }
+    if (word === 'LIKE') return { why: 'like' };
+    out.push({ kind: 'term', text: word });
+  }
+  return { tokens: out };
+}
+
+/**
+ * Tokens to a tree. `OR` binds loosest, then `AND` (and `NOT`, which is
+ * `AND NOT` — FTS5's spelling), then `NEAR`, then a term or a bracket.
+ *
+ * Juxtaposition is `AND`: `byte offset` in this mode is two terms both of
+ * which must be present, NOT the phrase — which is why `"byte offset"` exists
+ * and why the help leads with it.
+ */
+function logicalParse(tokens) {
+  let at = 0;
+  const peek = () => tokens[at] ?? null;
+  let orExpr = null;
+  const primary = () => {
+    const tok = peek();
+    if (tok === null) return { why: 'operand' };
+    if (tok.kind === 'term') { at += 1; return { node: { kind: 'term', text: tok.text } }; }
+    if (tok.kind === '(') {
+      at += 1;
+      const inner = orExpr();
+      if (inner.why !== undefined) return inner;
+      if (peek() === null || peek().kind !== ')') return { why: 'paren' };
+      at += 1;
+      return inner;
+    }
+    return { why: 'operand' };
+  };
+  const nearExpr = () => {
+    let left = primary();
+    if (left.why !== undefined) return left;
+    while (peek() !== null && peek().kind === 'NEAR') {
+      const { chars } = peek();
+      at += 1;
+      const right = primary();
+      if (right.why !== undefined) return right;
+      left = { node: { kind: 'near', left: left.node, right: right.node, chars } };
+    }
+    return left;
+  };
+  const andExpr = () => {
+    let left = nearExpr();
+    if (left.why !== undefined) return left;
+    for (;;) {
+      const tok = peek();
+      if (tok === null || tok.kind === ')' || tok.kind === 'OR') break;
+      let kind = 'and';
+      if (tok.kind === 'AND') at += 1;
+      else if (tok.kind === 'NOT') { kind = 'not'; at += 1; }
+      const right = nearExpr();
+      if (right.why !== undefined) return right;
+      left = { node: { kind, left: left.node, right: right.node } };
+    }
+    return left;
+  };
+  orExpr = () => {
+    let left = andExpr();
+    if (left.why !== undefined) return left;
+    while (peek() !== null && peek().kind === 'OR') {
+      at += 1;
+      const right = andExpr();
+      if (right.why !== undefined) return right;
+      left = { node: { kind: 'or', left: left.node, right: right.node } };
+    }
+    return left;
+  };
+  if (tokens.length === 0) return { why: 'empty' };
+  const tree = orExpr();
+  if (tree.why !== undefined) return tree;
+  if (at !== tokens.length) return { why: 'paren' };
+  return tree;
+}
+
+/** The pairs of `left` and `right` that stand within `chars` of each other. */
+function nearPairs(text, left, right, chars) {
+  const kept = new Set();
+  for (const a of left) {
+    const ahead = forwardCodePoints(text, a.to, chars);
+    const behind = backCodePoints(text, a.from, chars);
+    for (const b of right) {
+      // Overlapping counts as zero apart, which is the honest reading of
+      // "how far between them" when there is nothing between them.
+      const near = (b.from >= a.to ? (ahead >= 0 ? b.from <= ahead : true)
+        : (b.to <= a.from ? (behind >= 0 ? b.to >= behind : false) : true));
+      if (near) { kept.add(a); kept.add(b); }
+    }
+  }
+  return [...kept];
+}
+
+/**
+ * Evaluate the tree over one span. `null` means this span does not match;
+ * an array means it does, and holds every range that should be painted.
+ *
+ * An array is never EMPTY for a matching span, and that is what keeps the two
+ * counts from disagreeing: every leaf that contributes to a match contributes
+ * at least one occurrence, and a leaf that contributes nothing is either under
+ * a `NOT` (so it is absent) or on the losing side of an `OR` (so it is not in
+ * the answer).
+ */
+function logicalEval(node, text, term) {
+  if (node.kind === 'term') return term(node.text);
+  const left = logicalEval(node.left, text, term);
+  if (node.kind === 'or') {
+    const right = logicalEval(node.right, text, term);
+    if (left === null && right === null) return null;
+    return (left ?? []).concat(right ?? []);
+  }
+  if (left === null) return null;
+  const right = logicalEval(node.right, text, term);
+  if (node.kind === 'not') return right === null ? left : null;
+  if (right === null) return null;
+  if (node.kind === 'and') return left.concat(right);
+  const pairs = nearPairs(text, left, right, node.chars);
+  return pairs.length === 0 ? null : pairs;
+}
+
+/**
+ * Ranges from several terms, in document order, with overlaps dropped.
+ *
+ * A range can wear one highlight, so two terms that overlap in the text — `by`
+ * and `byte` under an `OR` — must not both be painted over the same
+ * characters. The earlier one wins, which is the same rule `foldedMatches`
+ * applies to a query that begins again inside itself.
+ */
+function mergeRanges(hits, limit) {
+  hits.sort((a, b) => (a.from - b.from) || (a.to - b.to));
+  const out = [];
+  let end = -1;
+  for (const hit of hits) {
+    if (hit.from < end) continue;
+    out.push(hit);
+    end = hit.to;
+    if (out.length >= limit) break;
+  }
+  return out;
+}
+
 /**
  * **COMPILE ONCE, SCAN MANY** — the entry point both runtimes call.
  *
@@ -700,61 +1231,109 @@ export function nestedQuantifier(source) {
  * none. So the pattern is compiled ONCE, here, and what comes back is either
  * a matcher or the reason there is not one.
  *
- * `options` is `{ caseSensitive, wholeWord, regex }`, every field optional and
- * every missing field `false` — so `findQuery(q)` with no options is exactly
+ * `options` is `{ mode, caseSensitive, wholeWord, regex }`, every field
+ * optional — so `findQuery(q)` with no options is exactly
  * `foldedMatches(text, q, limit)` and the whole of `semantic/8` is unchanged
- * by this file gaining three flags.
+ * by this file gaining four ways to read a query.
+ *
+ * **`mode` IS ONE OF FOUR AND THEY ARE EXCLUSIVE** — `semantic/11`, and the
+ * exclusivity is the point. Notepad++, which the owner named, does not offer
+ * its reading modes as checkboxes: it offers `Normal / Extended / Regular
+ * expression` as a RADIO GROUP with Match case and Whole word as independent
+ * boxes beside it, because "how do I read this string" has exactly one answer
+ * at a time and "is case significant" is a different question. So:
+ *
+ *     'normal'    the folded literal `semantic/8` shipped
+ *     'wildcard'  `*` and `?`, folded, stitched — never a regular expression
+ *     'logical'   AND / OR / NOT / NEAR over folded terms
+ *     'regex'     `RegExp` over the text as written
+ *
+ * `regex: true` with no `mode` still means `'regex'`, so every caller written
+ * against `semantic/9` keeps working and `test/ui/fold.test.ts`' option rows
+ * are unchanged.
  *
  * The answer:
  *
- *   `{ ok: true, regex, unicode, find(text, limit) }`
- *   `{ ok: false, error }`  — the engine's own message, drawn verbatim.
+ *   `{ ok: true, mode, regex, unicode, find(text, limit) }`
+ *   `{ ok: false, error }`  — the ENGINE's own message, drawn verbatim. Regex
+ *     only; nothing else here has an engine to quote.
  *   `{ ok: false, slow: true }` — a LEGAL pattern this scan will not run,
  *     because `nestedQuantifier` says it is the shape that took 108,785 ms.
  *     Not an error and not an empty box: a third answer, on purpose —
  *     `nothing-to-do-and-could-not-look-are-different-answers`, one more
  *     time, with a third door.
+ *   `{ ok: false, why }` — a CODE for a query this mode cannot read: `like`,
+ *     `quote`, `paren`, `operand`, `empty`, `nearRange`. A code and never a
+ *     sentence, because this file has no string table and must not grow one:
+ *     the panel owns the words and owns them in both languages.
  *
- * An EMPTY query is `ok: false` with `error: null` and `slow: false`: there is
- * nothing wrong and there is nothing to find, which is neither of the above.
+ * An EMPTY query is `ok: false` with `error: null`, `slow: false` and
+ * `why: null`: there is nothing wrong and there is nothing to find, which is
+ * none of the above.
  */
 export function findQuery(query, options = {}) {
   const keepCase = options.caseSensitive === true;
   const whole = options.wholeWord === true;
   const accept = whole ? wholeWordAt : null;
-  if (typeof query !== 'string' || query === '') {
-    return {
-      ok: false, error: null, slow: false,
-      regex: options.regex === true, unicode: false,
-    };
+  const mode = MODES.includes(options.mode) ? options.mode
+    : (options.regex === true ? 'regex' : 'normal');
+  const no = (rest) => ({
+    ok: false, error: null, slow: false, why: null,
+    mode, regex: mode === 'regex', unicode: false, ...rest,
+  });
+  const yes = (find, rest = {}) => ({
+    ok: true, error: null, slow: false, why: null,
+    mode, regex: mode === 'regex', unicode: false, find, ...rest,
+  });
+  if (typeof query !== 'string' || query === '') return no({});
+  if (mode === 'normal') {
+    return yes((text, limit = Number.POSITIVE_INFINITY) => foldedMatches(
+      text, query, limit, keepCase, accept,
+    ));
   }
-  if (options.regex !== true) {
-    return {
-      ok: true,
-      regex: false,
-      unicode: false,
-      error: null,
-      slow: false,
-      find: (text, limit = Number.POSITIVE_INFINITY) => foldedMatches(
-        text, query, limit, keepCase, accept,
-      ),
-    };
+  if (mode === 'wildcard') {
+    /*
+     * **THERE IS NO "UNREADABLE WILDCARD", AND THAT WAS CHECKED RATHER THAN
+     * ASSUMED.** A first draft refused a pattern with no literal, no `*` and
+     * no `?` as `empty` — and driving it found the branch is unreachable: a
+     * lone `\` escapes nothing, so `wildcardItems` keeps it as a literal
+     * backslash, which is a real query and answers 410 turns on this
+     * repository's own session. Every other non-empty source produces at least
+     * one item too. The guard was deleted rather than left standing as a
+     * branch no proof could redden.
+     */
+    const plan = wildcardPlan(query);
+    return yes((text, limit = Number.POSITIVE_INFINITY) => wildcardMatches(
+      plan, text, limit, keepCase, accept,
+    ));
+  }
+  if (mode === 'logical') {
+    const read = logicalTokens(query);
+    if (read.why !== undefined) return no({ why: read.why });
+    const parsed = logicalParse(read.tokens);
+    if (parsed.why !== undefined) return no({ why: parsed.why });
+    const tree = parsed.node;
+    return yes((text, limit = Number.POSITIVE_INFINITY) => {
+      // Memoised per SPAN, so `a AND (a OR b)` reads the span for `a` once.
+      const seen = new Map();
+      const term = (text2) => {
+        if (!seen.has(text2)) {
+          const hits = foldedMatches(text, text2, PIECE_CAP, keepCase, accept);
+          seen.set(text2, hits.length === 0 ? null : hits);
+        }
+        return seen.get(text2);
+      };
+      const ranges = logicalEval(tree, text, term);
+      return ranges === null ? [] : mergeRanges(ranges.slice(), limit);
+    });
   }
   // **CHECKED BEFORE IT IS COMPILED, LET ALONE RUN.** See `nestedQuantifier`:
   // the measured freeze was 108,785 ms and nothing at runtime can stop one.
-  if (nestedQuantifier(query)) {
-    return { ok: false, error: null, slow: true, regex: true, unicode: false };
-  }
+  if (nestedQuantifier(query)) return no({ slow: true });
   const { re, unicode, error } = compileRegex(query, keepCase);
-  if (re === null) {
-    return { ok: false, error, slow: false, regex: true, unicode: false };
-  }
-  return {
-    slow: false,
-    ok: true,
-    regex: true,
-    unicode,
-    error: null,
-    find: (text, limit = Number.POSITIVE_INFINITY) => regexMatches(re, text, limit, accept),
-  };
+  if (re === null) return no({ error });
+  return yes(
+    (text, limit = Number.POSITIVE_INFINITY) => regexMatches(re, text, limit, accept),
+    { unicode },
+  );
 }

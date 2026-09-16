@@ -145,7 +145,7 @@ import {
   type ConversationRow, type NameRow, type SubagentRow, type TranscriptCursor,
 } from '../core/conversation-index.ts';
 import {
-  findInDocument, FIND_HITS_PER_TURN, FIND_SCAN_CAP,
+  findInDocument, FIND_HITS_PER_TURN, FIND_SCAN_CAP, FIND_MODES,
   type DocumentFind,
 } from '../core/conversation-search.ts';
 import { anchorFilePath } from '../core/anchor-file.ts';
@@ -2779,13 +2779,28 @@ export function apiConversationFind(
    * `'false'` as on, and a reader who has unticked a box must never be served
    * the ticked answer because a query string spelt it a second way.
    */
-  const bad = unknownParams(url, ['q', 'case', 'word', 're']);
+  const bad = unknownParams(url, ['q', 'case', 'word', 're', 'mode']);
   if (bad !== null) return badRequest(bad);
   const query = (url.searchParams.get('q') ?? '').trim();
+  /*
+   * **`mode` IS VALIDATED AGAINST THE MATCHER'S OWN LIST** — `semantic/11`.
+   * `FIND_MODES` is re-exported from `fold.js`, so a mode the matcher does not
+   * have is a `400` here rather than a silent fall back to the plain find: a
+   * panel asking for a mode this build has never heard of must not be answered
+   * as though it had asked for the ordinary one.
+   *
+   * `re=1` is still read, and is still `regex`, because `semantic/9`'s panel
+   * and every test written against it send it.
+   */
+  const asked = url.searchParams.get('mode');
+  if (asked !== null && !FIND_MODES.includes(asked)) {
+    return badRequest(`unknown find mode "${asked}" — one of ${FIND_MODES.join(', ')}.`);
+  }
   const options = {
     caseSensitive: url.searchParams.get('case') === '1',
     wholeWord: url.searchParams.get('word') === '1',
     regex: url.searchParams.get('re') === '1',
+    ...(asked === null ? {} : { mode: asked }),
   };
 
   let index: ConversationIndex;

@@ -61,7 +61,7 @@ import {
   zonedStampOf,
 } from './parts.js';
 import { estimateHeight, matchesNode, Scroller } from '../lib/transcript-scroll.js';
-import { findQuery, foldedMatches } from '../lib/fold.js';
+import { findQuery, foldedMatches, MODES, NEAR_CHARS, NEAR_MAX } from '../lib/fold.js';
 import { createPanel } from '../lib/panel.js';
 import { helpDisclosure } from '../lib/disclosure.js';
 import { LOOK_GAP_MS, attachLook, shouldPing } from '../lib/heartbeat.js';
@@ -6080,6 +6080,22 @@ export function mountDocument(ctx, host, outline, back, roster = NO_LANES, landA
   find.placeholder = ctx.tFlat('conv.doc.filter');
   // A placeholder alone is not an accessible name.
   find.setAttribute('aria-label', ctx.tFlat('conv.doc.filter'));
+  /*
+   * **`dir="auto"`, WHICH THE ANCHOR SEARCH FIELD HAS ALWAYS HAD AND THIS ONE
+   * DID NOT** — `semantic/11`, found by taking a Hebrew screenshot.
+   *
+   * With the page RTL, a field with no direction of its own is RTL, and a
+   * query whose trailing character is a NEUTRAL has that character resolved
+   * against the paragraph and drawn at the far end. `b*t offse?` was drawn as
+   * `?b*t offse`: the reader sees a pattern they did not type, in a mode whose
+   * whole subject is punctuation. Hebrew queries must stay RTL — half this
+   * archive is Hebrew — so the direction cannot be pinned either way; `auto`
+   * resolves it from the first strong character of the VALUE, which is the
+   * only thing that knows. `convanchfind` one screen along already does this,
+   * so this is the house pattern arriving where it was missed rather than a
+   * new idea.
+   */
+  find.setAttribute('dir', 'auto');
   bar.append(find);
 
   // **`tvtop` AND `tvend` ARE HANDLES, and they exist because counting broke
@@ -6628,7 +6644,7 @@ export function mountDocument(ctx, host, outline, back, roster = NO_LANES, landA
    * built. A `const` down there would be in its temporal dead zone at that
    * moment and the document would fail to open at all.
    */
-  const findOptions = { caseSensitive: false, wholeWord: false, regex: false };
+  const findOptions = { mode: 'normal', caseSensitive: false, wholeWord: false };
   /**
    * Redraw the panel's option notes. A no-op until the panel exists, for the
    * same reason and by the same device as `navRefresh`: `askFind` can be
@@ -7586,7 +7602,8 @@ export function mountDocument(ctx, host, outline, back, roster = NO_LANES, landA
      * `transcript-scroll.js` is untouched by three flags it should not have
      * to know about.
      */
-    const plain = !findOptions.caseSensitive && !findOptions.wholeWord && !findOptions.regex;
+    const plain = findOptions.mode === 'normal'
+      && !findOptions.caseSensitive && !findOptions.wholeWord;
     const asked = plain || needle === '' ? null : findQuery(find.value.trim(), findOptions);
     const holds = asked === null ? null
       : (asked.ok === true ? (hay) => asked.find(hay, 1).length > 0 : () => false);
@@ -7796,7 +7813,12 @@ export function mountDocument(ctx, host, outline, back, roster = NO_LANES, landA
       const on = [];
       if (findOptions.caseSensitive) on.push('&case=1');
       if (findOptions.wholeWord) on.push('&word=1');
-      if (findOptions.regex) on.push('&re=1');
+      // **THE MODE TRAVELS BY NAME AND ONLY WHEN IT IS NOT THE PLAIN ONE** —
+      // `semantic/11`. The route validates the name against `fold.js`' own
+      // `MODES`, so a mode this build does not have is a 400 rather than a
+      // quiet fall back to the ordinary find, and the plain mode is still the
+      // URL it always was.
+      if (findOptions.mode !== 'normal') on.push(`&mode=${findOptions.mode}`);
       body = await ctx.api(
         `/api/conversations/${encodeURIComponent(outline.sessionId)}/find`
         + `?q=${encodeURIComponent(asked)}${on.join('')}`);
@@ -8907,13 +8929,43 @@ export function mountDocument(ctx, host, outline, back, roster = NO_LANES, landA
   const noteCase = findNote('mcnotecase');
   const noteWord = findNote('mcnoteword');
   const noteWordHeb = findNote('mcnotewordheb');
+  // `semantic/11`'s two new modes. Each says what it changed, for the reason
+  // the three options already do: every one of these changes the ANSWER and
+  // not only the query.
+  const noteWild = findNote('mcnotewild');
+  const noteWildFold = findNote('mcnotewildfold');
+  const noteLog = findNote('mcnotelog');
+  const noteLogCount = findNote('mcnotelogcount');
+  const noteLogNear = findNote('mcnotelognear');
+  const noteWhy = findNote('tvwarn mcnotewhy');
   const noteRe = findNote('mcnotere');
   const noteReFold = findNote('mcnoterefold');
-  const noteReCost = findNote('mcnoterecost');
+  // Not `mcnoterecost` any more: `semantic/11` draws this for every mode
+  // that reads every span, which is three of the four.
+  const noteCost = findNote('mcnotecost');
   const noteReBad = findNote('tvwarn mcnoterebad');
   const noteReUnits = findNote('mcnotereunits');
   const noteReSlow = findNote('tvwarn mcnotereslow');
   const noteReRefused = findNote('tvwarn mcnoterefused');
+
+  /**
+   * A refusal code from the matcher, as a string key — `semantic/11`.
+   *
+   * **DECLARED UP HERE WITH THE NOTES AND NOT BESIDE THE PANEL THAT DRAWS
+   * THEM**, for `findOptions`' own recorded reason two thousand lines up:
+   * `drawFindNotes` is ASSIGNED here and a `const` built further down would
+   * be in its temporal dead zone for any call that reached the assignment
+   * first. The panel is built after this point, so the table has to be
+   * before it.
+   */
+  const WHY_SAYS = {
+    like: 'conv.find.whyLike',
+    quote: 'conv.find.whyQuote',
+    paren: 'conv.find.whyParen',
+    operand: 'conv.find.whyOperand',
+    empty: 'conv.find.whyEmpty',
+    nearRange: 'conv.find.whyNearRange',
+  };
 
   /** Written into a note, or the note taken down. One writer per line. */
   const sayNote = (line, on, nodes) => {
@@ -8943,12 +8995,22 @@ export function mountDocument(ctx, host, outline, back, roster = NO_LANES, landA
    */
   drawFindNotes = () => {
     const typed = find.value.trim();
+    const mode = findOptions.mode;
     sayNote(noteCase, findOptions.caseSensitive, () => ctx.t('conv.find.caseNote'));
     sayNote(noteWord, findOptions.wholeWord, () => ctx.t('conv.find.wordNote'));
     sayNote(noteWordHeb, findOptions.wholeWord && hebrewIn(typed),
       () => ctx.t('conv.find.wordHeb'));
-    sayNote(noteRe, findOptions.regex, () => ctx.t('conv.find.reNote'));
-    sayNote(noteReFold, findOptions.regex, () => ctx.t('conv.find.reFold'));
+    sayNote(noteWild, mode === 'wildcard', () => ctx.t('conv.find.wildNote'));
+    sayNote(noteWildFold, mode === 'wildcard', () => ctx.t('conv.find.wildFold'));
+    sayNote(noteLog, mode === 'logical', () => ctx.t('conv.find.logNote'));
+    sayNote(noteLogCount, mode === 'logical', () => ctx.t('conv.find.logCount'));
+    // **THE UNIT IS DRAWN WITH THE NUMBER, EVERY TIME.** `NEAR_CHARS` comes
+    // from the matcher rather than from this file, so the sentence that says
+    // *"within 30 characters"* and the code that enforces it are one number.
+    sayNote(noteLogNear, mode === 'logical',
+      () => ctx.t('conv.find.logNear', { n: NEAR_CHARS }));
+    sayNote(noteRe, mode === 'regex', () => ctx.t('conv.find.reNote'));
+    sayNote(noteReFold, mode === 'regex', () => ctx.t('conv.find.reFold'));
     // The four below are the SERVER's answer about this query, so each is
     // drawn only when there is one. `findBody === null` is "the scan has not
     // answered", which is not the same as "it answered no".
@@ -8958,10 +9020,25 @@ export function mountDocument(ctx, host, outline, back, roster = NO_LANES, landA
     // 0 turns" under "nothing was searched for" is a measurement of a thing
     // that did not happen, which is the shape
     // `nothing-to-do-and-could-not-look-are-different-answers` forbids.
+    //
+    // **AND `why` JOINS THEM** — `semantic/11`. A wildcard of nothing but
+    // escapes, or `byte AND` with nothing after it, read no span either, and a
+    // cost sentence under "nothing was searched for" would be a measurement of
+    // something that did not happen.
     const scanned = body !== null && body.refused !== true
-      && (body.error === null || body.error === undefined);
-    sayNote(noteReCost, findOptions.regex && scanned && typed !== '',
-      () => ctx.t('conv.find.reCost', { ms: body.ms, scanned: body.scanned }));
+      && (body.error === null || body.error === undefined)
+      && (body.why === null || body.why === undefined);
+    /*
+     * **THE COST IS DRAWN FOR EVERY MODE THAT HAS ONE, NOT ONLY FOR REGEX.**
+     * `semantic/9` drew it beside the pattern toggle because that was the mode
+     * that could be slow. Wildcards and operators read every span too — and
+     * the plain mode's 48-61 ms is the number a reader needs to compare them
+     * against, so the plain mode is the only one that does NOT draw it: it is
+     * the baseline, it has never been slow, and a bound on a screen that has
+     * never once been approached teaches the wrong thing.
+     */
+    sayNote(noteCost, mode !== 'normal' && scanned && typed !== '',
+      () => ctx.t('conv.find.scanCost', { ms: body.ms, scanned: body.scanned }));
     sayNote(noteReBad, body !== null && typeof body.error === 'string' && body.error !== '',
       () => ctx.t('conv.find.reBad', { why: body.error }));
     sayNote(noteReUnits, body !== null && body.codeUnitMode === true,
@@ -8973,6 +9050,20 @@ export function mountDocument(ctx, host, outline, back, roster = NO_LANES, landA
     // would be a lie on its own; this is the sentence that makes it true.
     sayNote(noteReRefused, body !== null && body.refused === true,
       () => ctx.t('conv.find.reRefused'));
+    /*
+     * **A QUERY THE MODE COULD NOT READ, BY NAME** — `semantic/11`.
+     *
+     * The matcher answers a CODE and this table turns it into a sentence,
+     * because `lib/fold.js` has no string table and must not grow one: the
+     * words have to exist in two languages and the matcher runs in two
+     * runtimes. An unknown code draws NOTHING rather than a placeholder — a
+     * newer server talking to an older page is a real shape here, and an
+     * English key on a Hebrew screen would be worse than silence.
+     */
+    const whyKey = body === null || typeof body.why !== 'string'
+      ? null : (WHY_SAYS[body.why] ?? null);
+    sayNote(noteWhy, whyKey !== null,
+      () => ctx.t(whyKey, whyKey === 'conv.find.whyNearRange' ? { max: NEAR_MAX } : {}));
   };
 
   /**
@@ -9010,13 +9101,191 @@ export function mountDocument(ctx, host, outline, back, roster = NO_LANES, landA
     (on) => { findOptions.caseSensitive = on; });
   const optWord = optionBox('mcoptword', 'conv.find.word',
     (on) => { findOptions.wholeWord = on; });
-  const optRe = optionBox('mcoptre', 'conv.find.re',
-    (on) => { findOptions.regex = on; });
+
+  /*
+   * ── HOW THE FOUR WAYS OF TYPING A QUERY COEXIST, AND THE ANSWER IS THAT
+   *    THEY DO NOT ──────────────────────────────────────────────────────────
+   *
+   * `semantic/11`. **A RADIO GROUP, NOT A FOURTH CHECKBOX**, and the shape is
+   * Notepad++'s own — the tool the owner named twice. It offers `Normal /
+   * Extended / Regular expression` as radios, with Match case and Whole word
+   * as independent boxes beside them, and that is the whole answer to the
+   * question the item poses: "how do I read this string" has exactly ONE
+   * answer at a time, and "does case count" is a different question that
+   * applies whichever answer is in force.
+   *
+   * What this replaces is `semantic/9`'s `Regular expression` CHECKBOX, which
+   * has become the fourth radio. Four tickable boxes would be sixteen states,
+   * twelve of which nobody has defined — the failure the grammar report named
+   * as *"a Find dialog with nine checkboxes nobody ticks"*, arriving by the
+   * other door.
+   *
+   * ── THE `name`, WHICH IS THE ONE PROMISE THIS MAKES ABOUT THE PAGE ───────
+   *
+   * Radios group by `name` within a document, so unlike every other control on
+   * this screen these cannot avoid naming something page-wide. It is safe
+   * because the panel is built once per mounted document screen and this shell
+   * mounts one at a time; it is written here rather than left implicit so that
+   * a second conversation screen on one page — if one is ever built — finds
+   * the reason stated instead of two groups quietly sharing a selection.
+   */
+  const MODE_SAYS = {
+    normal: 'conv.find.mNormal',
+    wildcard: 'conv.find.mWildcard',
+    logical: 'conv.find.mLogical',
+    regex: 'conv.find.re',
+  };
+  const modeRadio = (value) => {
+    const label = el('label', `mcpanelopt mcmode${value}`);
+    const box = el('input');
+    box.type = 'radio';
+    box.name = 'mcfindmode';
+    box.value = value;
+    box.checked = findOptions.mode === value;
+    const words = el('span');
+    words.append(...ctx.t(MODE_SAYS[value]));
+    label.append(box, words);
+    box.addEventListener('change', () => {
+      // A radio fires `change` on the one that came ON. The one that went off
+      // fires nothing, so there is no second handler racing this one.
+      if (!box.checked) return;
+      findOptions.mode = value;
+      /*
+       * **ALL THREE, IN THIS ORDER**, exactly as a tick box does above:
+       * `applyFilter` re-derives the view from the outline predicate and
+       * repaints, `askFind` asks the server for the whole-transcript answer
+       * under the new mode, and the help and the notes are redrawn from the
+       * mode that is now in force. A mode that repainted without re-asking
+       * would leave the COUNT describing the old mode under highlights drawn
+       * with the new one.
+       */
+      applyFilter();
+      void askFind();
+      drawHelp();
+      drawFindNotes();
+    });
+    return { label, box };
+  };
+  // Built from the matcher's own list, so a fifth mode is a fifth radio with
+  // nothing to remember here.
+  const modeRow = el('div', 'mcpanelmodes');
+  modeRow.setAttribute('role', 'radiogroup');
+  const modesHead = el('legend', 'small tvnavh mcpanelmodesh');
+  modesHead.append(...ctx.t('conv.find.modes'));
+  modeRow.append(modesHead, ...MODES.map((m) => modeRadio(m).label));
+  modeRow.setAttribute('aria-label', ctx.tFlat('conv.find.modes'));
 
   const optionsHead = el('p', 'small tvnavh mcpanelopth');
   optionsHead.append(...ctx.t('conv.find.options'));
   const optionsRow = el('div', 'mcpanelopts');
-  optionsRow.append(optCase.label, optWord.label, optRe.label);
+  optionsRow.append(optCase.label, optWord.label);
+
+  /*
+   * ── THE HELP, AND EVERY EXAMPLE IN IT RUNS AGAINST HIS OWN ARCHIVE ───────
+   *
+   * `semantic/11`, and the item is exact about the standard: *"`\d+` matches
+   * digits teaches nothing; `\d+ ms` finds every timing this session printed
+   * is worth reading."* So no example here is a textbook one. Each was typed
+   * into this panel against this repository's own 139 MB session before it was
+   * written down, and the report carries what each returned.
+   *
+   * **CLICKING ONE PUTS IT IN THE BOX AND RUNS IT**, which the item asks for
+   * in as many words — and it is a real `<button>`, so a reader stepping the
+   * panel with a keyboard has the same capability as one with a mouse.
+   *
+   * The LAST regular-expression example is the shape that is REFUSED. That is
+   * deliberate and it is the answer to the item's other requirement: a reader
+   * who meets the refusal should be able to find out why, and the place they
+   * will look is the help. Clicking it produces the refusal, in the panel,
+   * with `conv.find.helpReRefuse` above it saying what was measured.
+   */
+  const EXAMPLES = {
+    normal: [
+      ['...', 'conv.find.egN1'],
+      ['byte offset', 'conv.find.egN2'],
+      ['\u05e9\u05d5\u05e8\u05d4', 'conv.find.egN3'],
+    ],
+    wildcard: [
+      ['*.ts', 'conv.find.egW1'],
+      ['semantic/?', 'conv.find.egW2'],
+      ['reports/2026-09-16-*.md', 'conv.find.egW3'],
+      ['b*t...', 'conv.find.egW4'],
+    ],
+    logical: [
+      ['budget AND ms', 'conv.find.egL1'],
+      ['"byte offset" OR "prose span"', 'conv.find.egL2'],
+      ['regex NOT wildcard', 'conv.find.egL3'],
+      ['budget NEAR ms', 'conv.find.egL4'],
+    ],
+    regex: [
+      ['\\d+ ms', 'conv.find.egR1'],
+      ['[\\w.-]+@[\\w.-]+', 'conv.find.egR2'],
+      ['(\\d{4})-(\\d{2})-(\\d{2})', 'conv.find.egR3'],
+      ['^(\\w+\\s?)+$', 'conv.find.egR4'],
+    ],
+  };
+  const HELP_LEAD = {
+    normal: 'conv.find.helpNormal',
+    wildcard: 'conv.find.helpWild',
+    logical: 'conv.find.helpLog',
+    regex: 'conv.find.helpRe',
+  };
+  /** The sentence a mode owes a reader beyond its examples. Two do. */
+  const HELP_MORE = {
+    wildcard: 'conv.find.helpWildSafe',
+    regex: 'conv.find.helpReRefuse',
+  };
+  const help = el('details', 'mcpanelhelp');
+  const helpHead = el('summary');
+  helpHead.append(...ctx.t('conv.find.help'));
+  const helpBody = el('div', 'mcpanelhelpbody');
+  help.append(helpHead, helpBody);
+
+  /**
+   * Redraw the help for the mode that is in force. Whole, and from one state,
+   * for `drawFindNotes`' own reason: an example list left over from the
+   * previous mode is a set of patterns that would now be read some other way.
+   *
+   * **The open/shut state is NOT touched**, so a reader who opened the help
+   * and then changed the mode goes on reading help rather than being asked to
+   * open it again.
+   */
+  const drawHelp = () => {
+    const mode = findOptions.mode;
+    const lead = el('p', 'small mcpanelegsay');
+    lead.append(...ctx.t(HELP_LEAD[mode]));
+    const list = el('ul', 'mcpanelegs');
+    for (const [query, key] of EXAMPLES[mode]) {
+      const item = el('li', 'mcpaneleg');
+      const button = el('button', 'mcpanelegq', query);
+      button.type = 'button';
+      button.addEventListener('click', () => {
+        find.value = query;
+        // The two halves a keystroke would run, without the 250 ms settle: a
+        // click is not a stream of characters and there is nothing to wait
+        // for. Same pair, same order, same reason as the mode radios above.
+        applyFilter();
+        void askFind();
+        drawFindNotes();
+        find.focus();
+      });
+      const say = el('p', 'small mcpanelegsay');
+      say.append(...ctx.t(key, key === 'conv.find.egL4' ? { n: NEAR_CHARS } : {}));
+      item.append(button, say);
+      list.append(item);
+    }
+    const kids = [lead, list];
+    const more = HELP_MORE[mode];
+    if (more !== undefined) {
+      const said = el('p', 'small mcpanelegsay');
+      said.append(...ctx.t(more));
+      kids.push(said);
+    }
+    const click = el('p', 'small mcpanelegsay');
+    click.append(...ctx.t('conv.find.helpClick'));
+    kids.push(click);
+    helpBody.replaceChildren(...kids);
+  };
 
   const panelHint = el('p', 'small tvnote mcpanelhint');
   panelHint.append(...ctx.t('conv.find.hint'));
@@ -9053,7 +9322,8 @@ export function mountDocument(ctx, host, outline, back, roster = NO_LANES, landA
   const openFindPanel = () => {
     const already = findPanel.isOpen();
     findPanel.body.replaceChildren(
-      find, optionsHead, optionsRow, findNotes, foundGroup, count, panelHint,
+      find, modeRow, optionsHead, optionsRow, help, findNotes,
+      foundGroup, count, panelHint,
     );
     if (!already) {
       /*
@@ -9066,6 +9336,7 @@ export function mountDocument(ctx, host, outline, back, roster = NO_LANES, landA
       const box = bar.getBoundingClientRect();
       findPanel.open({ start: 24, top: Math.round(box.bottom + 8) });
     }
+    drawHelp();
     drawFindNotes();
     find.focus();
     find.select();

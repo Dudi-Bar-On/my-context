@@ -1381,13 +1381,21 @@ export const FIND_HITS_PER_TURN = 500;
  * middle of an ordering that has none. `allowJs` is off, so a static import
  * of a `.js` file cannot typecheck and the cast is what the boundary costs.
  */
-const { findQuery } = (await import(
+const { findQuery, MODES: FIND_MODES_RAW } = (await import(
   new URL('../ui/public/lib/fold.js', import.meta.url).href
 )) as {
+  MODES: string[];
   findQuery: (query: string, options?: FindOptions) => {
     ok: boolean;
     error: string | null;
     slow: boolean;
+    /**
+     * A CODE for a query the chosen mode cannot read — `like`, `quote`,
+     * `paren`, `operand`, `empty`, `nearRange` — never a sentence. `fold.js`
+     * has no string table and the panel owns the words, in both languages.
+     */
+    why: string | null;
+    mode: string;
     regex: boolean;
     unicode: boolean;
     find?: (
@@ -1395,6 +1403,15 @@ const { findQuery } = (await import(
     ) => { from: number; to: number; byteFrom: number; byteTo: number; precise: boolean }[];
   };
 };
+
+/**
+ * **THE FOUR WAYS A QUERY MAY BE READ, AND THE LIST IS `fold.js`'.**
+ *
+ * Re-exported rather than re-declared, so the route's parameter vocabulary,
+ * the panel's radio group and the matcher's dispatcher are one list. A fifth
+ * mode added in `fold.js` is a fifth mode here with nothing to remember.
+ */
+export const FIND_MODES: readonly string[] = FIND_MODES_RAW;
 
 /**
  * **THE THREE THE OWNER ASKED FOR TWICE** — `semantic/9`. Every field
@@ -1407,11 +1424,23 @@ const { findQuery } = (await import(
  * the screen that the highlights under it disagree with.
  */
 export interface FindOptions {
+  /**
+   * **HOW THE QUERY IS READ, AND IT IS ONE OF FOUR** — `semantic/11`.
+   *
+   * `normal` | `wildcard` | `logical` | `regex`. Exclusive, because "how do I
+   * read this string" has one answer at a time; `caseSensitive` and
+   * `wholeWord` are a different question and stay independent of it. That is
+   * Notepad++'s own shape, which is the tool the owner named.
+   *
+   * Left out, `regex: true` still means `regex` and everything else means
+   * `normal`, so every `semantic/9` caller is unchanged.
+   */
+  mode?: string;
   /** `Byte` is not `byte`. NFKD folding is UNAFFECTED — two axes, not one. */
   caseSensitive?: boolean;
   /** A boundary at each end that is itself a word character. */
   wholeWord?: boolean;
-  /** The query is a regular expression over the text AS WRITTEN, unfolded. */
+  /** Deprecated spelling of `mode: 'regex'`, kept so `semantic/9` still runs. */
   regex?: boolean;
 }
 
@@ -1520,6 +1549,18 @@ export interface DocumentFind {
    * `nothing-to-do-and-could-not-look-are-different-answers`.
    */
   refused: boolean;
+  /** Which of the four ways the query was read. Echoed, never inferred. */
+  mode: string;
+  /**
+   * **A QUERY THE CHOSEN MODE CANNOT READ, AS A CODE** — `semantic/11`.
+   *
+   * `like`, `quote`, `paren`, `operand`, `empty`, `nearRange`. A CODE and not
+   * a sentence, because the sentence has to exist in two languages and the
+   * matcher has no string table: `error` is the regex ENGINE's own words and
+   * is quoted verbatim, and this is the case where there is no engine to
+   * quote. `null` whenever the query was read.
+   */
+  why: string | null;
 }
 
 /**
@@ -1551,6 +1592,8 @@ export function findInDocument(
   options: FindOptions = {},
 ): DocumentFind {
   const trimmed = query.trim();
+  const mode = FIND_MODES.includes(options.mode ?? '') ? (options.mode as string)
+    : (options.regex === true ? 'regex' : 'normal');
   const blank: DocumentFind = {
     query: trimmed,
     scanned: 0,
@@ -1562,6 +1605,8 @@ export function findInDocument(
     codeUnitMode: false,
     timedOut: false,
     refused: false,
+    mode,
+    why: null,
   };
   // **No floor of three characters here, and that is deliberate.**
   // `MIN_QUERY_CHARS` is a property of the TRIGRAM INDEX, which this does not
@@ -1587,6 +1632,7 @@ export function findInDocument(
       error: compiled.error,
       codeUnitMode: false,
       refused: compiled.slow === true,
+      why: compiled.why ?? null,
     };
   }
   const { find } = compiled;
@@ -1597,11 +1643,22 @@ export function findInDocument(
   let matches = 0;
   let timedOut = false;
   const began = performance.now();
-  // The clock is only consulted in regex mode. A literal scan is bounded by
-  // the text — 160 ms on the largest transcript here — so a budget over it
-  // would be a bound that has never once been reached, drawn on a screen as
-  // though it might be.
-  const deadline = options.regex === true ? began + FIND_REGEX_BUDGET_MS : Infinity;
+  /*
+   * The clock is only consulted OUTSIDE the plain mode. A literal scan is
+   * bounded by the text — 160 ms on the largest transcript here — so a budget
+   * over it would be a bound that has never once been reached, drawn on a
+   * screen as though it might be.
+   *
+   * **AND `semantic/11` WIDENED IT FROM REGEX TO THE OTHER TWO**, which is a
+   * decision and not a tidy-up. A wildcard is bounded by (occurrences of its
+   * first piece) x (pieces) and a logical query by (terms) x (span), so both
+   * are polynomial rather than exponential and neither can freeze one span the
+   * way `(X+)+` did. But `a*a*a*a*a*a` over a transcript of terminal output is
+   * a real multiplication across 4,582 spans, and a bound that exists for one
+   * polynomial mode and not for its two neighbours would be a bound nobody
+   * could state.
+   */
+  const deadline = mode === 'normal' ? Infinity : began + FIND_REGEX_BUDGET_MS;
   for (const span of spans) {
     if (performance.now() > deadline) { timedOut = true; break; }
     const found = find(span.text, FIND_HITS_PER_TURN);
@@ -1636,5 +1693,7 @@ export function findInDocument(
     codeUnitMode: compiled.regex === true && compiled.unicode !== true,
     timedOut,
     refused: false,
+    mode,
+    why: null,
   };
 }

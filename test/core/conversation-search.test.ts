@@ -66,7 +66,7 @@ import {
   ConversationIndex, ConversationIndexIncompleteError, projectDirName, rebuildConversations,
 } from '../../src/core/conversation-index.ts';
 import {
-  FIND_SCAN_CAP, MIN_QUERY_CHARS, buildSearchIndex, findInDocument, searchArchive,
+  FIND_MODES, FIND_SCAN_CAP, MIN_QUERY_CHARS, buildSearchIndex, findInDocument, searchArchive,
   searchArchiveTiered,
 } from '../../src/core/conversation-search.ts';
 import { Store } from '../../src/core/store.ts';
@@ -1495,6 +1495,188 @@ test('every option off is the scan that shipped, and it says what it cost', () =
       assert.equal(shipped.codeUnitMode, false);
       assert.equal(shipped.timedOut, false);
       assert.equal(Number.isInteger(shipped.ms), true);
+    } finally {
+      index.close();
+    }
+  } finally {
+    f.dispose();
+  }
+});
+
+
+/* ══ THE TWO NEW WAYS TO TYPE A QUERY — `semantic/11` ═════════════════
+ *
+ * `TASK-the-find-panel-offers-regular-expressions-and-no-help-and`. The owner
+ * asked for wildcards and for `AND OR LIKE NEAR`, *"especially if supportd by
+ * sqlite"* — and this surface never touches SQLite, so both are implemented in
+ * the same scan the other two modes use.
+ *
+ * **WHAT HAS TO BE PROVED HERE AND NOT IN `test/ui/fold.test.ts`** is the part
+ * that is about the SERVER: that a mode reaches the whole transcript rather
+ * than the rows a page happens to hold, that the two counts the panel draws
+ * come from one list, and that a query the mode cannot read scans nothing and
+ * says which of the three ways it failed.
+ */
+
+/** The turn the wildcard has to reach. Hoisted so the proof below asserts on
+ * the SAME string the fixture holds rather than on a copy of it. */
+const ELLIPSED = 'the byte\u2026and the rest';
+
+test('a wildcard reaches the whole transcript, and its pieces still fold', () => {
+  const f = fixture();
+  try {
+    f.session([
+      say('user', 'open the archive', '2026-09-01T10:00:00.000Z'),
+      say('assistant', ELLIPSED, '2026-09-01T10:00:01.000Z'),
+      say('assistant', 'a budget of five', '2026-09-01T10:00:02.000Z'),
+      say('assistant', 'nothing of interest', '2026-09-01T10:00:03.000Z'),
+    ]);
+    const index = indexed(f);
+    const scope = { sessionId: SESSION, agentId: null };
+    try {
+      /*
+       * **THE FIXTURE IS THE REMOVAL PROOF.** The first turn holds `byte\u2026`
+       * and no literal `...` anywhere, so a wildcard whose literal pieces did
+       * NOT fold finds nothing here — and not folding is exactly what a
+       * translation to `RegExp` would give, because a pattern reads the text
+       * as written (`conv.find.reFold`, on the screen). That is the whole
+       * argument for stitching folded pieces instead, and this is the
+       * assertion that reddens if anyone reaches for the translation.
+       */
+      assert.equal(ELLIPSED.includes('...'), false,
+        'the fixture must hold no literal three dots, or this proves nothing');
+      assert.equal(ELLIPSED.includes('\u2026'), true, 'and it must hold the ellipsis');
+      const folded = findInDocument(index, 'b*e...', scope, { mode: 'wildcard' });
+      assert.equal(folded.turns.length, 1);
+      assert.equal(folded.matches, 1);
+      assert.equal(folded.mode, 'wildcard');
+      // `?` is one character, and the scan is over every prose span rather
+      // than over anything a page holds.
+      const one = findInDocument(index, 'b?dget', scope, { mode: 'wildcard' });
+      assert.equal(one.turns.length, 1);
+      assert.ok(one.scanned >= 4, 'every prose span was read');
+      // A wildcard cannot be the shape that is refused, because no pattern is
+      // built from it — the star-heavy source below is `slow` as a regular
+      // expression would never be and is run here.
+      const stars = findInDocument(index, '*b*e*', scope, { mode: 'wildcard' });
+      assert.equal(stars.refused, false);
+      assert.equal(stars.error, null);
+      assert.equal(stars.why, null);
+    } finally {
+      index.close();
+    }
+  } finally {
+    f.dispose();
+  }
+});
+
+test('AND counts turns and times from ONE list, so the two numbers cannot disagree', () => {
+  const f = fixture();
+  try {
+    f.session([
+      say('user', 'open the archive', '2026-09-01T10:00:00.000Z'),
+      // Holds BOTH, and holds `budget` twice — so turns and times differ and
+      // a build that counted one as the other is visible.
+      say('assistant', 'the budget was 50 ms and the budget held',
+        '2026-09-01T10:00:01.000Z'),
+      say('assistant', 'a budget with no unit', '2026-09-01T10:00:02.000Z'),
+      say('assistant', 'just 50 ms here', '2026-09-01T10:00:03.000Z'),
+    ]);
+    const index = indexed(f);
+    const scope = { sessionId: SESSION, agentId: null };
+    try {
+      /*
+       * **THE ITEM'S HARD QUESTION, ANSWERED IN NUMBERS.** *"Under `AND` a
+       * TURN matches but no single range does … does `AND` paint both terms
+       * wherever they occur, and does the count count TURNS or OCCURRENCES?"*
+       *
+       * One turn matches. THREE ranges are painted in it — both occurrences
+       * of `budget` and the one `ms` — and `matches` is exactly that list's
+       * length, which is the invariant that keeps the panel's two numbers
+       * from drifting apart.
+       */
+      const both = findInDocument(index, 'budget AND ms', scope, { mode: 'logical' });
+      assert.equal(both.turns.length, 1, 'turns are TURNS');
+      assert.equal(both.matches, 3, 'times are RANGES PAINTED, both terms, every occurrence');
+      assert.equal(both.turns[0]?.matches, 3);
+      // OR is a union and not a sum: three turns hold one or the other.
+      const either = findInDocument(index, 'budget OR ms', scope, { mode: 'logical' });
+      assert.equal(either.turns.length, 3);
+      // NOT keeps the left and paints nothing for the right, which is not there.
+      const without = findInDocument(index, 'budget NOT ms', scope, { mode: 'logical' });
+      assert.equal(without.turns.length, 1);
+      assert.equal(without.matches, 1);
+      // NEAR is narrower than AND on the same span, and its unit is characters.
+      const near = findInDocument(index, 'budget NEAR/8 ms', scope, { mode: 'logical' });
+      assert.equal(near.turns.length, 1);
+      assert.equal(near.matches, 2, 'only the pair that really is near');
+    } finally {
+      index.close();
+    }
+  } finally {
+    f.dispose();
+  }
+});
+
+test('a query the mode cannot read scans nothing and says which way it failed', () => {
+  const f = fixture();
+  try {
+    f.session([
+      say('user', 'open the archive', '2026-09-01T10:00:00.000Z'),
+      say('assistant', 'byte offset here', '2026-09-01T10:00:01.000Z'),
+    ]);
+    const index = indexed(f);
+    const scope = { sessionId: SESSION, agentId: null };
+    try {
+      // **`LIKE` IS REFUSED BY NAME.** He named it; it is SQL's wildcard, so
+      // it IS the wildcard mode under another spelling, and shipping both
+      // would be two grammars for one idea.
+      const like = findInDocument(index, 'byte LIKE b%', scope, { mode: 'logical' });
+      assert.equal(like.why, 'like');
+      assert.equal(like.error, null, 'not an engine message — there is no engine to quote');
+      assert.equal(like.refused, false, 'and not the slow-shape refusal either');
+      assert.equal(like.scanned, 0, 'nothing was read, so nothing may be claimed as read');
+
+      // Three answers, three codes, all distinct from each other and from the
+      // control below. A `why` is a CODE and never a sentence: the words have
+      // to exist in two languages and the matcher has no string table.
+      assert.equal(findInDocument(index, 'byte AND', scope, { mode: 'logical' }).why, 'operand');
+      assert.equal(findInDocument(index, '"byte', scope, { mode: 'logical' }).why, 'quote');
+      assert.equal(findInDocument(index, '(byte', scope, { mode: 'logical' }).why, 'paren');
+
+      // THE CONTROL. A readable query that finds nothing has no `why` at all
+      // and DID read the spans —
+      // `nothing-to-do-and-could-not-look-are-different-answers`.
+      const looked = findInDocument(index, 'zebra AND quagga', scope, { mode: 'logical' });
+      assert.equal(looked.why, null);
+      assert.equal(looked.turns.length, 0);
+      assert.ok(looked.scanned > 0, 'it looked, and found nothing');
+    } finally {
+      index.close();
+    }
+  } finally {
+    f.dispose();
+  }
+});
+
+test('the mode is echoed, and an absent one is the plain scan that shipped', () => {
+  const f = fixture();
+  try {
+    f.session([
+      say('user', 'open the archive', '2026-09-01T10:00:00.000Z'),
+      say('assistant', 'the head of it\u2026and the rest', '2026-09-01T10:00:01.000Z'),
+    ]);
+    const index = indexed(f);
+    const scope = { sessionId: SESSION, agentId: null };
+    try {
+      const shipped = findInDocument(index, '...', scope);
+      assert.equal(shipped.mode, 'normal');
+      assert.equal(shipped.why, null);
+      // `regex: true` with no mode is still the pattern mode, so `semantic/9`
+      // and every caller written against it are unchanged by four modes.
+      assert.equal(findInDocument(index, '.', scope, { regex: true }).mode, 'regex');
+      // And the list is the matcher's own, re-exported rather than restated.
+      assert.deepEqual([...FIND_MODES], ['normal', 'wildcard', 'logical', 'regex']);
     } finally {
       index.close();
     }

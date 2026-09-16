@@ -49,7 +49,7 @@ import { createServer } from 'node:http';
 import { listenOnSafePort } from '../helpers/safe-port.ts';
 import {
   DOCUMENT_WALK_CAP, WORK_RUN_CAP, buildOutline, parseAnswers, readNodes, serveSpill,
-  apiConversationOutline, apiConversationNodes, apiConversationTip,
+  apiConversationOutline, apiConversationNodes, apiConversationTip, apiConversationFind,
   type DocOutlineBody, type DocOutlineNode, type DocStep, type DocTipBody,
 } from '../../src/ui/read-model-conversation-document.ts';
 import type { ApiContext } from '../../src/ui/routes.ts';
@@ -681,6 +681,55 @@ test('the outline endpoint serves the whole document and says how far it read', 
     assert.equal(body.truncated, false);
     assert.equal(body.uncounted, null, 'a whole walk has nothing to explain away');
     assert.ok(body.walkedBytes > 0, 'and it says how many bytes it read');
+  } finally { b.dispose(); }
+});
+
+/**
+ * **THE FIND ROUTE'S MODE PARAMETER** — `semantic/11`,
+ * `TASK-the-find-panel-offers-regular-expressions-and-no-help-and`.
+ *
+ * `mode` is validated against `FIND_MODES`, which is `fold.js`' own list
+ * re-exported through `core/conversation-search.ts` — so the panel's radio
+ * group, this route's vocabulary and the matcher's dispatcher are one list.
+ *
+ * **WHY A 400 AND NOT A FALL BACK.** A page asking for a mode this build does
+ * not have is a page and a server that disagree about what the product is; a
+ * quiet fall back to the plain scan would answer it with a DIFFERENT question's
+ * answer and nothing on the screen would say so. The same reason
+ * `unknownParams` refuses `&limit=` one route along.
+ */
+test('the find endpoint takes a mode by name, refuses one it does not have, and answers in it', () => {
+  const b = box();
+  try {
+    b.write('sess-doc', SESSION);
+    b.scan();
+    const call = (q: string) => apiConversationFind(
+      b.ws, new URL(`http://localhost/api/conversations/sess-doc/find${q}`), { id: 'sess-doc' });
+
+    assert.equal(call('?q=a&mode=nonsense').status, 400,
+      'a mode this build does not have must not be answered as though it were the plain one');
+    assert.equal(call('?q=a&style=wildcard').status, 400,
+      'and the parameter is named `mode`, which is the only spelling declared');
+
+    // Each of the four is accepted and ECHOED, so a caller can tell which
+    // question was answered rather than inferring it from what it sent.
+    for (const mode of ['normal', 'wildcard', 'logical', 'regex']) {
+      const got = call(`?q=said&mode=${mode}`);
+      assert.equal(got.status, 200, mode);
+      assert.equal((got.body as { mode: string }).mode, mode, mode);
+    }
+
+    // **AND `re=1` STILL MEANS THE PATTERN MODE**, which is what keeps
+    // `semantic/9`'s panel and every test written against it working.
+    assert.equal((call('?q=s.id&re=1').body as { mode: string }).mode, 'regex');
+
+    // A query the mode cannot read is a 200 with a `why`, not a 400: the
+    // REQUEST is well formed and it is the QUERY that could not be read, and
+    // the panel draws a sentence for the second and an error page for neither.
+    const like = call('?q=a%20LIKE%20b&mode=logical');
+    assert.equal(like.status, 200);
+    assert.equal((like.body as { why: string | null }).why, 'like');
+    assert.equal((like.body as { scanned: number }).scanned, 0);
   } finally { b.dispose(); }
 });
 

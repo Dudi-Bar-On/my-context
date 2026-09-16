@@ -245,6 +245,28 @@ export function createPanel({
     const safe = clampPlace(place, { w: box.width, h: box.height }, view());
     dialog.style.setProperty('inset-inline-start', `${safe.start}px`);
     dialog.style.setProperty('inset-block-start', `${safe.top}px`);
+    /*
+     * **THE HEIGHT BOUND IS WRITTEN HERE BECAUSE CSS CANNOT READ THE TOP** —
+     * `semantic/11`, and it was found by LOOKING AT A SCREENSHOT, which is the
+     * second time on this panel that a defect survived a green browser suite
+     * and was caught by an eye (`reports/2026-09-16-the-find-panel.md` §5.5
+     * is the first, a find field 470 px tall).
+     *
+     * `styles.css` bounds the panel with `max-block-size: calc(100vh - 4rem)`,
+     * which is a bound on the panel's HEIGHT and not on where its bottom
+     * lands. This panel opens 284 px down and the help makes it 936 px tall,
+     * so it was 936 px of content ending 220 px BELOW a 1000 px viewport —
+     * with the match stepper and the count line, which are the two things the
+     * reader came for, off the bottom of the screen and unreachable, because a
+     * `position:fixed` box does not scroll with the page.
+     *
+     * A fixed element cannot be bounded against its own top in CSS, and the
+     * top is not a constant: the reader drags this. So the bound is rewritten
+     * on every placement — open, drag and clamp all arrive here — and the
+     * dialog's own `overflow:auto` then scrolls what does not fit. `1rem` of
+     * air below, which is the inset the panel opens with above.
+     */
+    dialog.style.setProperty('max-block-size', `calc(100vh - ${safe.top}px - 1rem)`);
     return safe;
   };
 

@@ -421,6 +421,26 @@ bdi{unicode-bidi:isolate}
 /* A VALUE SLOT: the isolation and nothing else — carries no colour or weight
    of its own, so marking a value changes nothing on screen by itself. */
 .v{unicode-bidi:isolate}
+/* ─── A VALUE THAT IS A NUMBER — `semantic/11`, and his own words: "Bold the
+   count and other numeric values you display".
+
+   `lib/i18n.js` marks a value slot whose substituted text is a number with
+   `data-num` and marks no other run, so this rule reaches EVERY sentence that
+   names a quantity — the find count, the mark and You counts, "Match 3 of 33", the
+   record totals — in both languages and in sentences nobody has written yet.
+   Its header carries what counts as a number, why a version or a date does
+   not, and why this is an ATTRIBUTE rather than a second class — a class here
+   names what a thing IS, and `e2e/screen-parity.spec.ts` reads the class list
+   as the element's kind.
+
+   600 and not `bold`: the sans face here ships 400/600/700, and `bold` resolves
+   to 700, which against this body weight reads as a shout rather than as
+   emphasis. Tabular figures so a number that changes under the reader's eye —
+   the stepper counts up as they walk — does not move the words after it. The
+   colour is deliberately NOT changed: `--ink` is what the sentence around it
+   is, and a hue here would be a sixth meaning colour on a screen whose five
+   are ruled at line ~1100. */
+.v[data-num]{font-weight:600;font-variant-numeric:tabular-nums}
 /* ─── THE GLYPH RUN — `parts.js`' `glyphed()`, and the reason it is a WRAPPER
    and not a margin on the glyph alone.
    (`TASK-a-glyph-makes-a-kind-recognisable-without-reading-in-every`)
@@ -4480,6 +4500,11 @@ wa-tree .wa-count{margin-inline-start:var(--sp-2);color:var(--dim);
    `z-index` is written by `lib/panel.js` from a counter so that clicking a
    panel brings it to the front; the value here is only the floor, and it is
    above `.tvmenu`'s 20 because the menu is what opens the panel. */
+/* `max-block-size` here is the FLOOR and `lib/panel.js` writes the real one on
+   every placement, because CSS cannot read a fixed element's own top and the
+   reader drags this one: a 936px panel opened 284px down ended 220px below a
+   1000px viewport, with the stepper and the count off the screen. Found in a
+   screenshot, which is where this panel's defects keep being found. */
 .mcpanel{position:fixed;inset:auto;margin:0;z-index:40;
   inline-size:min(28rem,calc(100vw - 2rem));max-block-size:calc(100vh - 4rem);
   overflow:auto;padding:0;
@@ -4539,6 +4564,51 @@ wa-tree .wa-count{margin-inline-start:var(--sp-2);color:var(--dim);
 .mcpanelnotes{display:flex;flex-direction:column;gap:var(--sp-1)}
 .mcpanelnote{margin:0}
 .mcpanelhint{margin:var(--sp-1) 0 0;color:var(--dim)}
+/* ── HOW TO READ WHAT YOU TYPED — a RADIO GROUP and not four boxes.
+   `semantic/11`.
+
+   Notepad++, which the owner named, offers `Normal / Extended / Regular
+   expression` as radios with Match case and Whole word as independent
+   checkboxes beside them, and that shape is the answer to "how do four ways of
+   reading one string coexist": they do not coexist, exactly one is in force,
+   and the two questions that are NOT about reading stay boxes. A `fieldset`
+   because that is what a radio group is, with its border and padding removed —
+   the group already reads as a group through its legend and its spacing, and a
+   box drawn inside a 28rem panel would be a second frame inside a frame.
+
+   COLUMN, not the wrapping row the checkboxes use: a mode carries a name long
+   enough to wrap ("AND / OR / NOT / NEAR"), and four items that rewrap as the
+   panel is dragged make the group look like it changed. */
+.mcpanelmodes{display:flex;flex-direction:column;gap:2px;
+  margin:var(--sp-1) 0 0;padding:0;border:0;min-inline-size:0}
+.mcpanelmodesh{margin:0 0 var(--sp-1);padding:0;
+  font:var(--fs-00)/1.3 var(--sans);color:var(--dim)}
+/* ── THE HELP, AND IT IS SHUT UNTIL IT IS ASKED FOR.
+   A reader who knows the mode does not want six examples between the box and
+   the count; a reader who does not know it has nowhere else to find out. A
+   `<details>` is the one control that serves both, and the summary names the
+   CURRENT mode so what is inside is never a surprise. */
+.mcpanelhelp{margin:0;font:var(--fs-00)/1.4 var(--sans)}
+.mcpanelhelp>summary{cursor:pointer;color:var(--gold);padding:2px 0}
+.mcpanelhelp>summary:focus-visible{outline:2px solid var(--gold);outline-offset:2px}
+.mcpanelhelpbody{display:flex;flex-direction:column;gap:var(--sp-1);
+  margin:var(--sp-1) 0 0}
+.mcpanelegs{display:flex;flex-direction:column;gap:var(--sp-1);margin:0;padding:0;
+  list-style:none}
+.mcpaneleg{display:flex;flex-direction:column;gap:2px}
+/* THE EXAMPLE IS A BUTTON, because clicking it puts it in the box — the item
+   asks for exactly that. A `<button>` and not a styled span: it is reachable
+   by Tab and by Enter, and a reader stepping the panel with a keyboard gets
+   the same capability as one with a mouse. `text-align:start` because the
+   default `center` would put a pattern in the middle of its own row. */
+.mcpanelegq{align-self:flex-start;max-inline-size:100%;
+  font-family:var(--mono);font-size:.87em;direction:ltr;unicode-bidi:isolate;
+  text-align:start;overflow-wrap:anywhere;
+  background:var(--paper);color:var(--ink);border:1px solid var(--edge);
+  border-radius:var(--r-1);padding:2px 6px;cursor:pointer}
+.mcpanelegq:hover{border-color:var(--gold);color:var(--gold)}
+.mcpanelegq:focus-visible{outline:2px solid var(--gold);outline-offset:2px}
+.mcpanelegsay{margin:0;color:var(--dim)}
 /* The borrowed stepper is a row of its own in here rather than a group in a
    wrapping bar, and the count sits under it rather than beside it: the panel
    is 28rem and a count sentence beside two buttons would wrap every time. */
