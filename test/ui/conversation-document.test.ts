@@ -42,7 +42,7 @@
  */
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { appendFileSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
+import { appendFileSync, mkdirSync, mkdtempSync, readFileSync, utimesSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { createServer } from 'node:http';
@@ -54,6 +54,7 @@ import {
 } from '../../src/ui/read-model-conversation-document.ts';
 import type { ApiContext } from '../../src/ui/routes.ts';
 import { iterateTranscript, projectDirName, rebuildConversations } from '../../src/core/conversation-index.ts';
+import { ANCHOR_FILE_NAME } from '../../src/core/anchor-file.ts';
 import { registeredRoutes } from '../../src/ui/routes.ts';
 import { registerReadRoutes } from '../../src/ui/server.ts';
 import { Store } from '../../src/core/store.ts';
@@ -919,6 +920,111 @@ test('a pruned transcript answers the tip as a state, never as a failure', () =>
       { id: 'sess-gone-tip' });
     assert.equal(got.status, 200, 'a session the harness pruned is a state the screen draws');
     assert.equal((got.body as DocTipBody).present, false);
+  } finally { b.dispose(); }
+});
+
+/* ══ A MARK MUST REACH AN OPEN PAGE ═══════════════════════════════════════ */
+
+/**
+ * **RESTS ON** `TASK-the-automatic-marking-stopped-and-said-nothing-because-a`
+ * for what the per-turn pass is, and on
+ * `nothing-to-do-and-could-not-look-are-different-answers` (store) for why the
+ * third answer below is a separate value.
+ *
+ * The owner, 2026-09-16: *"i want to see marks as soon as they are created"*.
+ * He asked it having caught the screen: his page said `576 marked point(s)
+ * here` in two screenshots three minutes apart while the turn counter beside
+ * it moved 4,295 → 4,300, and inside that window the pass marked a table he
+ * was looking at. Turns followed, marks did not, because `loadAnchors` ran at
+ * mount and after the reader's OWN write and nothing else ever called it.
+ *
+ * The signal rides on `/tip` — the one probe the document already runs every
+ * second — rather than on a poll of its own, because the anchors route is
+ * UNPAGED: it returns every row for the session, 578 of them on this
+ * workspace, and asking for all of that once a second per tab to learn whether
+ * one was added is the sweep `apiConversationTip`'s own measurement refuses.
+ */
+test('the tip carries a token for the anchor store, and it moves when a point is marked', () => {
+  const b = box();
+  try {
+    b.write('sess-marks', SESSION);
+    b.scan();
+    const store = path.join(b.cwd, ANCHOR_FILE_NAME);
+    writeFileSync(store, '{"protocol":"my_context/anchor@1"}\n');
+
+    const ask = (): DocTipBody => apiConversationTip(
+      b.ws, new URL('http://localhost/api/conversations/sess-marks/tip'),
+      { id: 'sess-marks' }).body as DocTipBody;
+
+    const before = ask().marks;
+    assert.notEqual(before, null, 'a store that stats is an answer, never a refusal');
+    assert.equal(before?.present, true);
+
+    appendFileSync(store, '{"protocol":"my_context/anchor@1","kind":"table"}\n');
+    const after = ask().marks;
+    assert.ok((after?.bytes ?? 0) > (before?.bytes ?? 0),
+      'the screen compares `bytes:mtimeMs` and refetches its anchors when it moves — without '
+      + 'this the page goes on saying the count it was born with while the pass marks the very '
+      + 'turn on screen');
+  } finally { b.dispose(); }
+});
+
+/**
+ * **A REWRITE THAT DOES NOT CHANGE THE LENGTH IS STILL A CHANGE**, which is
+ * why the token is the PAIR and not the size.
+ *
+ * `withAnchorWrite` publishes the store by rewriting the document whole, so a
+ * RELABEL — the same row, a different name — can land on exactly the byte
+ * count it replaced. A token made of `bytes` alone would call that "nothing
+ * happened" and the reader would keep the old name on screen until reload.
+ * `utimesSync` sets the mtime rather than trusting the filesystem's clock to
+ * tick between two writes microseconds apart, so this asserts the rule rather
+ * than the timer resolution of whatever disk it runs on.
+ */
+test('the token moves for a rewrite of the SAME length, because the mtime is half of it', () => {
+  const b = box();
+  try {
+    b.write('sess-relabel', SESSION);
+    b.scan();
+    const store = path.join(b.cwd, ANCHOR_FILE_NAME);
+    writeFileSync(store, '{"label":"aaaa"}\n');
+
+    const ask = (): DocTipBody => apiConversationTip(
+      b.ws, new URL('http://localhost/api/conversations/sess-relabel/tip'),
+      { id: 'sess-relabel' }).body as DocTipBody;
+
+    const before = ask().marks;
+    writeFileSync(store, '{"label":"bbbb"}\n');
+    utimesSync(store, new Date(), new Date((before?.mtimeMs ?? 0) + 5_000));
+    const after = ask().marks;
+
+    assert.equal(after?.bytes, before?.bytes, 'the fixture must carry the defect: same length');
+    assert.notEqual(after?.mtimeMs, before?.mtimeMs,
+      'so the mtime is the only thing that can carry a relabel, and it must be in the token');
+  } finally { b.dispose(); }
+});
+
+/**
+ * **NOTHING MARKED YET IS A MEASURED ZERO, AND IT IS NOT THE SAME VALUE AS
+ * "I COULD NOT LOOK"** — `nothing-to-do-and-could-not-look-are-different-answers`.
+ *
+ * A workspace nobody has marked in has no store file, and that is the state
+ * every new install is in. It answers `present: false` — a fact — where a
+ * refusal answers `null`. Collapsing the two is the defect that rule names: a
+ * screen that read a refusal as `{bytes: 0}` would adopt that token, compare
+ * every later tick against it, and never refetch again.
+ */
+test('a workspace with nothing marked answers absence, not a refusal', () => {
+  const b = box();
+  try {
+    b.write('sess-nomarks', SESSION);
+    b.scan();
+    const got = apiConversationTip(
+      b.ws, new URL('http://localhost/api/conversations/sess-nomarks/tip'),
+      { id: 'sess-nomarks' }).body as DocTipBody;
+    assert.notEqual(got.marks, null,
+      '`null` is reserved for a stat that refused for a reason that is not absence');
+    assert.equal(got.marks?.present, false, 'no store file, because nothing here was ever marked');
   } finally { b.dispose(); }
 });
 

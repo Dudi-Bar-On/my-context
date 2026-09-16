@@ -144,6 +144,7 @@ import {
   transcriptDir,
   type ConversationRow, type NameRow, type SubagentRow, type TranscriptCursor,
 } from '../core/conversation-index.ts';
+import { anchorFilePath } from '../core/anchor-file.ts';
 import { workspaceCwd } from './read-model-conversations.ts';
 import { registerRoute, type ApiContext, type JsonResult } from './routes.ts';
 import { SECURITY_HEADERS } from './security.ts';
@@ -533,6 +534,83 @@ export interface DocTipBody {
   present: boolean;
   bytes: number;
   mtimeMs: number;
+  /**
+   * **HAS ANYTHING BEEN MARKED SINCE THE LAST TICK?** — owner, 2026-09-16:
+   * "i want to see marks as soon as they are created".
+   *
+   * He asked it having caught the screen in the act. His page said `576
+   * marked point(s) here` in two screenshots three minutes apart while the
+   * turn counter beside it moved 4,295 → 4,300 and the records 51,144 →
+   * 51,222 — and in that window the per-turn pass wrote a `table` mark on a
+   * turn he was looking at. Turns followed; marks did not. `loadAnchors` ran
+   * at mount and after the reader's OWN write, and nothing else ever called
+   * it, so a mark made on the fly was in the store, in the index, and
+   * invisible until reload.
+   *
+   * It rides on `/tip` rather than getting a poll of its own **because the
+   * anchors route is unpaged**: `GET /api/conversations/anchors?session=…`
+   * returns every row for the session — 578 of them on this workspace — and a
+   * screen asking for all of that once a second per open tab to learn whether
+   * ONE was added is the sweep this route's own measurement exists to refuse.
+   * A `statSync` on the store is 0.007 ms, the same probe and the same budget
+   * `apiConversationTip` already argues for above.
+   */
+  marks: DocTipMarks | null;
+}
+
+/**
+ * The anchor store as `/tip` found it — a change token, not a count.
+ *
+ * **The three answers are three values, and the third is the one that matters**
+ * — `nothing-to-do-and-could-not-look-are-different-answers`. `present: false`
+ * is a MEASURED absence: the store file is not there because nothing in this
+ * workspace has ever been marked, which is a real state a new install is in
+ * and not a failure. `null` in `DocTipBody.marks` is the other one: the stat
+ * refused for a reason that is not absence, so this tick learned nothing about
+ * the store and says so rather than reporting a zero the screen would read as
+ * "no new marks" forever.
+ *
+ * `bytes` and `mtimeMs` together rather than a count, because the store is
+ * append-only JSONL and counting means reading it. The pair moves when a row
+ * is appended and when the pass REWRITES the document whole at its close —
+ * which is the case a size alone would miss, since a relabel can leave the
+ * length unchanged.
+ *
+ * **It is the whole workspace's store, not this session's.** One file holds
+ * every session's anchors, so a mark written in another conversation moves
+ * this token too and costs the reader one extra unpaged fetch. That is the
+ * right trade at this cadence: the alternative is reading the file to filter
+ * it, which is the exact cost the route is avoiding.
+ */
+export interface DocTipMarks {
+  /** `false` — no store file, because nothing here has ever been marked. */
+  present: boolean;
+  bytes: number;
+  mtimeMs: number;
+}
+
+/**
+ * The anchor store's change token, or `null` when this tick could not look.
+ *
+ * ENOENT is narrowed deliberately: it is the only errno that means the store
+ * is absent. Every other refusal — a permission, a racing rename, an I/O
+ * error — is a tick that did not learn, and it must not be flattened into the
+ * same value absence gets, because the screen acts on the two differently.
+ */
+function markStoreTip(ws: Workspace): DocTipMarks | null {
+  const file = anchorFilePath(ws.dbPath);
+  // An in-memory index has nowhere durable to keep anchors, so there is no
+  // store to watch. That is `anchorFilePath`'s own documented off-workspace
+  // answer and a measured absence, not a refusal.
+  if (file === null) return { present: false, bytes: 0, mtimeMs: 0 };
+  try {
+    const stat = statSync(file);
+    return { present: true, bytes: stat.size, mtimeMs: Math.floor(stat.mtimeMs) };
+  } catch (error) {
+    const code = (error as NodeJS.ErrnoException).code;
+    if (code === 'ENOENT') return { present: false, bytes: 0, mtimeMs: 0 };
+    return null;
+  }
 }
 
 /**
@@ -2282,6 +2360,7 @@ export function apiConversationTip(
     const body: DocTipBody = {
       sessionId: file.sessionId, present: true,
       bytes: file.bytes, mtimeMs: file.mtimeMs,
+      marks: markStoreTip(ws),
     };
     return { status: 200, body };
   }
@@ -2296,6 +2375,7 @@ export function apiConversationTip(
     const body: DocTipBody = {
       sessionId: row.sessionId, present: true,
       bytes: stat.size, mtimeMs: Math.floor(stat.mtimeMs),
+      marks: markStoreTip(ws),
     };
     return { status: 200, body };
   } catch {
@@ -2306,6 +2386,7 @@ export function apiConversationTip(
     const body: DocTipBody = {
       sessionId: row.sessionId, present: false,
       bytes: row.bytes, mtimeMs: row.mtimeMs,
+      marks: markStoreTip(ws),
     };
     return { status: 200, body };
   }

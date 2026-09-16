@@ -8687,6 +8687,23 @@ export function mountDocument(ctx, host, outline, back, roster = NO_LANES, landA
    */
   let seenBytes = outline.bytes;
   let seenMtime = outline.mtimeMs;
+  /**
+   * **THE ANCHOR STORE AS THE LAST TICK FOUND IT** — `"bytes:mtime"`, or
+   * `null` for "not compared yet".
+   *
+   * The owner, 2026-09-16: "i want to see marks as soon as they are created".
+   * Before this, `loadAnchors` ran at mount and after the reader's own write,
+   * and nothing else ever called it — so the pass could mark the very turn on
+   * screen and the page would go on saying `576 marked point(s) here` until
+   * it was reloaded. He caught exactly that, three minutes after the per-turn
+   * pass marked a table he was looking at.
+   *
+   * `null` is deliberately NOT a token any comparison can match, so the first
+   * tick that carries `marks` adopts it and does not refetch. Adopting it as
+   * `''` would make the first tick look like a change and cost every opened
+   * document one unpaged anchors fetch it does not need.
+   */
+  let seenMarks = null;
   /** Nodes appended while the reader was NOT at the tail. */
   let unseen = 0;
   /** A refill is in flight; a second tick must not start another. */
@@ -9054,6 +9071,27 @@ export function mountDocument(ctx, host, outline, back, roster = NO_LANES, landA
           return;
         }
         if (tip.bytes > seenBytes) void refill();
+        // **A MARK IS ITS OWN KIND OF ARRIVAL, SO IT IS ASKED ABOUT
+        // SEPARATELY.** Not folded into the growth branch above, because the
+        // two events do not coincide: the per-turn pass runs at the Stop hook
+        // and writes its row AFTER the bytes it read are already on disk, so a
+        // reader who refetched anchors only when the file grew would fetch
+        // them a moment too early and still not see the mark. And a relabel or
+        // a take-back moves the store while the transcript does not move at
+        // all.
+        //
+        // `tip.marks === null` is the server saying it COULD NOT LOOK, and it
+        // is handled by doing nothing: the token is left as it was, so the
+        // next tick that does get an answer compares against the last one this
+        // screen actually trusted rather than against a gap.
+        if (tip.marks !== null && tip.marks !== undefined) {
+          const token = `${tip.marks.bytes}:${tip.marks.mtimeMs}`;
+          if (seenMarks === null) seenMarks = token;
+          else if (seenMarks !== token) {
+            seenMarks = token;
+            void loadAnchors().then(refreshMarks);
+          }
+        }
       })
       .catch(() => {
         // `api()` raises `#exited` itself when the server is gone, which is a
