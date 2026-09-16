@@ -1324,6 +1324,14 @@ const UNCATALOGUED: Record<string, string> = {
   query: 'a read that takes SQL. Offering a text box that composes arbitrary SQL into a command '
     + 'line is a design decision about the Composer, not a missing row.',
   ready: 'a read with no screen. Readiness is derived per run and nothing in this UI renders it.',
+  // `mycontext path`, 2026-09-16, `rulings/93`. Named here the day it shipped,
+  // which is the sequence `contribution` above records the cost of not
+  // following: it sat red long enough that four lanes worked around it.
+  path: 'a read with no screen, for the same reason `ready` has none and one more of its '
+    + 'own: every number it reports is derived per run, and what it groups them BY is a '
+    + 'subject map this repository keeps in one reference item. A def must name a screen or '
+    + 'an endpoint, and there is neither — nor should there be one until the map is '
+    + 'something a project other than this one can have.',
   // `plan:store seq:1`, 2026-09-10 — the product rule store's own surface. All
   // three rows are NOT-YETs rather than decisions, and they share one blocker
   // that is real work on the catalogue rather than on the store: a `kind: 'read'`

@@ -128,6 +128,10 @@ function commandsAdvertising(flag: string, cwd: string): string[] {
  */
 const ALL_SENSE: Record<string, { sense: 'read' | 'write'; argv: string[]; bound: string }> = {
   decay: { sense: 'read', argv: ['decay', '--all'], bound: '' },
+  // `mycontext path` defaults to the subjects with something still owed on
+  // them; `--all` adds the finished ones. A READ, in the sense this table
+  // fixes — it writes nothing and it widens no write.
+  path: { sense: 'read', argv: ['path', '--all'], bound: '' },
   todo: { sense: 'read', argv: ['todo', '--all'], bound: '' },
   ack: { sense: 'write', argv: ['ack', '--all'], bound: '--code' },
   review: { sense: 'write', argv: ['review', 'promote', '--all'], bound: '--pack' },

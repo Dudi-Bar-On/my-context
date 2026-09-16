@@ -5,8 +5,10 @@ title: take the lane report and the owner’s own words as automatic marks, and 
 status: active
 severity: soft
 always: false
-summary: Bookmark a helper agent’s report, find your rulings by the words you actually use, and stop bookmarking the tool’s own instructions as though you had written them.
-summary_of: 9e6a424764e3303c
+summary: Bookmarks labelled as your own rulings were mostly our own injected text; that is fixed and proved, and one choice about which label wins when a message is both is still yours.
+summary_of: 93ec3c8fa024d9d4
+summary_was:
+  - 2026-09-16 Bookmark a helper agent’s report, find your rulings by the words you actually use, and stop bookmarking the tool’s own instructions as though you had written them.
 scope:
   - src/core/anchor-pass.ts
   - src/core/conversation-index.ts
@@ -24,7 +26,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-09-15
 valid_until: null
-checksum: 56eab850a6385d66
+checksum: 319bd3a5f732cefc
 plan: anchors
 seq: "12"
 state: todo
@@ -167,3 +169,15 @@ AND THE COST GOES IN THE REPORT. The per-turn budget is `TURN_PROSE_BUDGET_MS` =
 probes already costing 266-311 ms unwindowed. A structural check against `subagents` is not a probe
 and should cost almost nothing — say what it actually cost, measured, the way `archiveFreshness`
 reported 7 ms over 452 sources.
+
+── STILL OPEN 2026-09-16, AND THIS IS WHAT REMAINS ─────────────────────
+
+NAMED-BUT-OPEN c382b7a5 — every closing condition above is met; it stays open on ONE decision that is the owner's, and on the rebuild that is his to run
+
+WHAT LANDED, all four closing conditions and the five reach-checks: the structural signal is `origin.kind === 'human'` on the record with `isSidechain` and `isMeta` both not true — not `classifyTurn`'s word, which is what admitted 296 injection blocks as rulings. Over 10,910 spans read at their bytes, 537 carry it and 524 survive all three. On a copy of his archive: 1,172 marks became 1,019, newly marked 225, taken back 378, and a second pass moved nothing at all, so it is idempotent on real data. The net is NEGATIVE, as required. Cost went DOWN: 266–311 ms became 85 ms at four sources moved, and neither new query is ranked or bounded, so neither can repeat the recency defect found the same morning.
+
+THE ITEM'S RECOMMENDED TRIGGER WAS REFUSED WITH A MEASUREMENT, which settles option 1 above: `subagents.ended_at` is not "the lane finished" — it is the timestamp of the last record the scan read, and it is non-null for 442 of 442 lanes including ones still running. So the report is the lane's last answer as read, and the source that SUPERSEDES a report takes the old mark back in the same transaction.
+
+WHY IT IS STILL OPEN, and it is not work: 230 of 419 lane reports are findable ONLY as tables, because the table grammar claims a turn that is both. Reversing the precedence is one line and moves 230 marks. That is the owner's call and it is filed as `OPENQ-does-the-table-mark-or-the-lane-report-mark-win-when-one`, so `mycontext path` draws this subject as WAITING ON HIM rather than as open work to dispatch. The second thing owed to him is the rebuild of his live archive, which this lane deliberately did not run.
+
+The `NAMED-BUT-OPEN` line above is read by `npm run check:board`.

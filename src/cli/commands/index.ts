@@ -19,6 +19,7 @@ import './ingest.ts';
 import './lesson.ts';
 import './link.ts';
 import './pack.ts';
+import './path.ts';
 import './procedure.ts';
 import './query.ts';
 import './ready.ts';

@@ -5,12 +5,12 @@ title: "the D numbers: what each one means, and which are only proposed"
 status: active
 severity: soft
 always: true
-summary: The short numbers used to talk about work in progress and what each one refers to, kept as a bare map so the same number never means two things; eleven more were added on 2026-09-13 from the consolidated review findings.
-summary_of: 32a62709ef063768
+summary: The short numbers used to talk about work in progress and what each one refers to, kept as a bare map so the same number never means two things; a version a program can read was added on 2026-09-16 so no progress report has to guess at the words.
+summary_of: 38d0daf1e27a4e21
 summary_was:
+  - 2026-09-16 The short numbers used to talk about work in progress and what each one refers to, kept as a bare map so the same number never means two things; eleven more were added on 2026-09-13 from the consolidated review findings.
   - 2026-09-13 The short numbers used to talk about work in progress and what each one refers to, kept as a bare map so the same number never means two things; D52 widened on 2026-09-13 to the log that records what was delivered.
   - 2026-09-12 The short numbers used to talk about work in progress and what each one refers to, kept as a bare map so the same number never means two things; two more were added on 2026-09-13 from the type review.
-  - 2026-09-12 The short numbers used to talk about work in progress and what each one refers to, kept as a bare map so the same number never means two things; a number for the symbols on screen was added on 2026-09-13.
 acknowledged:
   - reference_no_source@8e51ecb88264cf81
 scope: []
@@ -23,7 +23,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-09-07
 valid_until: null
-checksum: 1e100222b2a76f93
+checksum: 3ecd2bd714608a4c
 ---
 
 # the D numbers: what each one means, and which are only proposed
@@ -304,3 +304,123 @@ because the D number was used in conversation and the work was never filed again
 to D5, D7, D13b, D14, D15, D18, D19, D23, D24-D26. Do not invent one to make the table look even.
 Fill a row only from evidence. Where such a row now carries one, that reference is
 the OPEN work that widened the subject, not its origin.
+
+── THE MAP AS DATA, BESIDE THE ARGUMENT ─────────────────────────────────
+
+EVERYTHING ABOVE IS THE ARGUMENT AND STAYS. What follows is the same map in a
+form a program can read, because every progress table this campaign produced
+was a REGEX OVER THE PROSE ABOVE and two rows came out wrong on 2026-09-16:
+D78 was reported CLOSED because its text QUOTES D57's closure, and D57 was
+reported 0/3 because it matched that day's `anchors/` items by name.
+
+A ROW IS `D | status | members`. `plan/*` is the whole plan — preferred
+wherever a subject owns one, because A PLAN GROWS and a hand-written range
+silently stops covering the subject (D78 was minted over `seq:1-12` and the
+plan held thirteen items two days later). Where a subject owns scattered items
+in a plan other subjects also draw from — fourteen of them draw on `walk` —
+the members are individual addresses. An item id is admitted for D57 alone,
+whose work is a REQUIREMENT and has no address.
+
+THE STATUS IS A RULING AND IS NEVER DERIVED. D78's own row says why: *"THE
+SUBJECT CLOSES when a reader opening a conversation can tell at a glance what
+was marked and why it was worth marking — not when twelve items are done."*
+`open` therefore covers both "the prose writes OPEN" and "the prose records
+no closure"; they are the same claim. `not-filed` is a number with no plan
+work behind it at all.
+
+AND NO COUNT IS WRITTEN HERE. How many of a subject's items are done, which
+are ready and which are held is DERIVED on every run by `mycontext path`,
+exactly as `mycontext ready` derives readiness — a recorded count is a second
+place for a fact to be wrong.
+
+`npm run check:board` fails and names the line if a row does not parse, if a
+D number repeats, if a member names nothing this corpus holds, or if one item
+falls under two subjects. It also REPORTS, without failing, the open work no
+row claims.
+
+TWO ROWS ARE RECORDED HERE FOR THE FIRST TIME and are not transcriptions of the
+prose above, because the prose never named a plan for either. D40 is
+`ui-gates/2`, the item `b7df52fd` filed for it. D77 is `semantic/*`: the
+number was minted 2026-09-15 with its measurements and no plan, and `semantic`
+is the plan its work was filed under the next day.
+
+[D-MAP]
+D1     | not-filed     | -
+D2     | not-filed     | -
+D3     | not-filed     | -
+D4     | not-filed     | -
+D5     | not-filed     | -
+D6     | open          | rulings/64, rulings/38, rulings/47, rulings/67, walk/143, rulings/75
+D7     | not-filed     | -
+D8     | open          | docsys/12
+D9     | not-filed     | -
+D10    | not-filed     | -
+D11    | open          | builder/16, builder/10, builder/12, builder/18
+D12    | open          | builder/11, walk/129, screens/25
+D13a/b | open          | library/1
+D14    | open          | handover/19
+D15    | not-filed     | -
+D16    | open          | governance/5
+D17    | open          | handover/17
+D18    | not-filed     | -
+D19    | not-filed     | -
+D20    | open          | builder/13
+D21    | open          | builder/14
+D22    | open          | builder/15
+D23    | open          | handover/16
+D24    | not-filed     | -
+D25    | not-filed     | -
+D26    | not-filed     | -
+D27    | open          | library/6
+D28    | open          | docsys/11
+D29    | open          | governance/6
+D30    | open          | port/99, port/100, port/101, rulings/63
+D31    | open          | walk/140
+D32    | open          | walk/141, walk/76, walk/100, ui3/15
+D33    | open          | contra/2, contra/3, contra/5
+D34    | open          | restore/*
+D35    | open          | basis/*
+D36    | open          | loop/*
+D37    | closed        | archive/*
+D38    | open          | governance/8, contra/4, rulings/65
+D39    | deferred      | -
+D40    | open          | ui-gates/2
+D41    | open          | store/*
+D42    | open          | recall/*
+D43    | not-filed     | -
+D44    | open          | port/93, port/98, walk/4, walk/15, walk/55, ui-gates/1, ui2/5r, walk/152, walk/153, walk/154, walk/155, walk/156, walk/157, walk/158, walk/159, walk/160
+D45    | open          | walk/11, walk/12, walk/32, walk/33, ui2/10p, walk/161, walk/162
+D46    | open          | screens/24, walk/57, walk/89, walk/139, walk/145, walk/146, walk/147, walk/148, walk/149, walk/150, walk/151
+D47    | open          | walk/43, walk/102, walk/105, walk/163, walk/164
+D48    | open          | budget/6, ui2/13, walk/14, walk/18, walk/106, walk/165
+D49    | open          | walk/8, walk/59, ui1/17b
+D50    | open          | screens/23, walk/39, walk/119, walk/144, walk/166, walk/167, walk/168
+D51    | open          | tuts/9, repaint/12, rulings/33d, rulings/49, rulings/53, rulings/55, rulings/66, hooks/12q, rulings/76, rulings/77, rulings/78, rulings/79
+D52    | open          | budget/15, walk/66, live/24, rulings/71, rulings/80, rulings/81, rulings/82
+D53    | open          | live/20
+D54    | open          | review/3, review/4
+D55    | open          | hooks/22, hooks/35
+D56    | open          | live/25, live/26, live/28
+D57    | closed        | REQ-every-anchor-capability-is-reachable-from-the-screen-and-a
+D58    | open          | rulings/21, rulings/83, rulings/84
+D59    | open          | walk/82
+D60    | open          | walk/142
+D61    | open          | walk/2
+D62    | open          | walk/134
+D63    | open          | screens/26, screens/27
+D64    | open          | rulings/69, rulings/85, rulings/86, rulings/87, rulings/88, rulings/89
+D65    | open          | rulings/70
+D66    | open          | swallow/*
+D67    | held-by-owner | wcag/*
+D68    | open          | cliscript/*
+D69    | open          | confirm/*
+D70    | open          | unread/*
+D71    | open          | gates/*
+D72    | open          | readmodel/*
+D73    | open          | invariant/*
+D74    | open          | mcpsurface/*
+D75    | open          | dxfindings/*
+D76    | open          | accretion/*
+D77    | open          | semantic/*
+D78    | open          | anchors/*
+[END D-MAP]

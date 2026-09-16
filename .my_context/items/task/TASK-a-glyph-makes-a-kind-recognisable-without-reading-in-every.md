@@ -5,8 +5,10 @@ title: a glyph makes a kind recognisable without reading, in every viewer case w
 status: active
 severity: soft
 always: false
-summary: In the viewer a reader tells one kind of thing from another only by reading the word; a small, consistent set of symbols would make them recognisable at a glance.
-summary_of: 96678cb9d537c31a
+summary: Symbols now tell the kinds of bookmark apart and the misleading ticks beside screen headings are gone; the survey of every other place in the viewer is still to do.
+summary_of: 1f7a4bd3f11ec654
+summary_was:
+  - 2026-09-16 In the viewer a reader tells one kind of thing from another only by reading the word; a small, consistent set of symbols would make them recognisable at a glance.
 scope:
   - src/ui/public/**
   - e2e/**
@@ -19,10 +21,10 @@ tags:
 origin: human
 source_file: "C:/Users/UserC/AppData/Local/Temp/emoji-body.md"
 source_anchor: null
-source_checksum: eb02b8163a420571
+source_checksum: null
 valid_from: 2026-09-12
 valid_until: null
-checksum: 68ac7180b1b6b5c7
+checksum: a40f7723694be38b
 plan: screens
 seq: "26"
 state: todo
@@ -54,6 +56,16 @@ priority: "2"
 > 5. THE SCREEN-HEADING VERDICTS ARE SETTLED IN THE SAME PASS - keep, hide or reword - because they are the existing glyph usage and they are the one the review called misleading.
 >
 > WHERE THIS MUST NOT GO: a glyph is not a substitute for a sentence that is missing. `walk/144` records that 75 buttons across the screens carry 5 titles between them, and D50 is the subject for surfaces built to carry an explanation that nothing fills. AN EMOJI ON A CONTROL THAT STILL CANNOT SAY WHAT IT DOES IS THE DEFECT WEARING A NEW HAT.
+
+── STILL OPEN 2026-09-16, AND THIS IS WHAT REMAINS ─────────────────────
+
+NAMED-BUT-OPEN 06cb85e7 — the heading verdicts are settled and ten marks ship; the SURVEY this item asks for first, over every viewer case, is not done
+
+WHAT LANDED: point 5 in full and point 1 in part. `screenHead` LOST ITS `glyph` PARAMETER ENTIRELY — there is no longer a door to pass one through — and every screen verdict is now a keyed chip, across seventeen call sites (measured, not nineteen: four screens never called it). The default hue is the NEUTRAL and not green, on the argument that an `ok` green on sixteen headings is the same health claim in a second channel. Where the review said DELETE four internal verdicts and the owner ruled "reword — not keep, not hide", the owner won, because deleting four is hiding four. Ten marks ship, each beside its word, each `aria-hidden`, each isolated for bidi, and `glyphed()` THROWS IF GIVEN NO WORD, so point 3 is enforced in code rather than documented.
+
+WHAT REMAINS is the larger half this item calls the survey: naming every case in the viewer where a reader tells two things apart BY READING A WORD — twenty rail screens, the audit stream's record kinds, doctor's severities, the review queue, decay, status, the item pane's categories, the composer's field states — and saying for each whether a glyph helps or is decoration, citing the rubric. Point 1 says explicitly that this comes BEFORE a single glyph is added, and the ten that shipped were the closed set the owner named directly.
+
+The `NAMED-BUT-OPEN` line above is read by `npm run check:board`.
 
 ## Request
 

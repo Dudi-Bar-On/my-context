@@ -108,8 +108,8 @@ test('the reader finds the steps release.yml already had', () => {
  * act that goes with it.
  */
 test('the reader matches step lines ONLY — not the comments that name the same scripts', () => {
-  assert.equal(CI_STEPS.length, 13, `ci.yml step scripts: ${CI_STEPS.join(', ')}`);
-  assert.equal(RELEASE_STEPS.length, 12, `release.yml step scripts: ${RELEASE_STEPS.join(', ')}`);
+  assert.equal(CI_STEPS.length, 14, `ci.yml step scripts: ${CI_STEPS.join(', ')}`);
+  assert.equal(RELEASE_STEPS.length, 13, `release.yml step scripts: ${RELEASE_STEPS.join(', ')}`);
 });
 
 test('a comment naming a script is not read as a step', () => {
@@ -153,6 +153,31 @@ test('check:needs-cycles runs in both workflows', () => {
 test('check:handover runs in both workflows', () => {
   assert.ok(CI_STEPS.includes('check:handover'), 'check:handover is not a step in ci.yml');
   assert.ok(RELEASE_STEPS.includes('check:handover'), 'check:handover is not a step in release.yml');
+});
+
+/**
+ * **The sixth gate, and the one whose wiring was the hardest to argue for.**
+ *
+ * `check:board` carries TWO tiers. The D map tier genuinely gates — an
+ * unparsed row, a repeated number, a member naming nothing, one item under two
+ * subjects. The drift tier — a commit named an item and the item is still open
+ * — can never set an exit code, because a filing commit names its own item and
+ * a partial landing is legitimate.
+ *
+ * A tier that cannot go red is EXACTLY what keeps `check:cited-items` out of
+ * both workflows two tests above, and the distinction that admits this one is
+ * that it does not travel alone: it rides a step whose other half fails the
+ * run, so its output lands in a log whose greenness means something. That is
+ * asserted here rather than left to the reader, by requiring the STEP to exist
+ * AND the script it names to be the one that gates.
+ */
+test('check:board runs in both workflows', () => {
+  assert.ok(CI_STEPS.includes('check:board'), 'check:board is not a step in ci.yml');
+  assert.ok(RELEASE_STEPS.includes('check:board'), 'check:board is not a step in release.yml');
+  assert.equal(
+    SCRIPTS['check:board'], 'node scripts/check-board.ts',
+    'the step runs a different script from the one whose gating tier admits it to a workflow',
+  );
 });
 
 // ── 2. The one that is absent on purpose ───────────────────────────────────

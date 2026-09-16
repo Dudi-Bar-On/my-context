@@ -39,6 +39,7 @@
     "check:dependencies": "node scripts/check-dependency-budget.ts",
     "check:cited-items": "node scripts/check-cited-items.ts",
     "check:basis": "node scripts/check-basis.ts",
+    "check:board": "node scripts/check-board.ts",
     "hooks:install": "git config core.hooksPath .githooks"
   },
   "devDependencies": {

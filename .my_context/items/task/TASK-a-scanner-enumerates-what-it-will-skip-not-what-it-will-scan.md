@@ -5,8 +5,10 @@ title: a scanner enumerates what it will skip, not what it will scan, at eightee
 status: active
 severity: soft
 always: false
-summary: Checks across the project list the cases they know about and wave everything else through, so the input nobody thought of is the one that is never checked.
-summary_of: b483fc213b21727d
+summary: A scanner lists what it will skip instead of what it will scan, at a number of places this item states too confidently; the work is untouched.
+summary_of: 703c8b16f118eea7
+summary_was:
+  - 2026-09-16 Checks across the project list the cases they know about and wave everything else through, so the input nobody thought of is the one that is never checked.
 scope:
   - scripts/**
   - src/core/**
@@ -25,7 +27,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-09-13
 valid_until: null
-checksum: 8861d042f18a9074
+checksum: 5c241a052c80aaf7
 plan: rulings
 seq: "85"
 state: todo
@@ -47,3 +49,13 @@ THE RULE THE THREE REPORTS CONVERGE ON, and the reason this is one item rather t
 THE CONSEQUENCE. A gate that exists to stop something answers "no problem" for precisely the input nobody anticipated, which is the input that needed a gate.
 
 THIS IS THE SUBJECT D64 NAMES -- the class, not the case. The `status` cast member is closed at `rulings/69`; these are the rest.
+
+── STILL OPEN 2026-09-16, AND THIS IS WHAT REMAINS ─────────────────────
+
+NAMED-BUT-OPEN a9ffa990 — untouched; that commit corrected this item's COUNT and did none of its work
+
+THE COUNT IN THIS ITEM MUST NOT BE QUOTED AS MEASURED. The audit in that commit re-measured it: this says "eighteen sites" where at most seventeen are findable, and the body names six. The CLASS is real and the number is not.
+
+Nothing else in that commit touched this work — it filed eleven items and wrote a report.
+
+The `NAMED-BUT-OPEN` line above is read by `npm run check:board`.

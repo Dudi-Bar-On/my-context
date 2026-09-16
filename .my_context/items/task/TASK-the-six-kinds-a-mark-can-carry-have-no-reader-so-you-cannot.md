@@ -5,8 +5,10 @@ title: the six kinds a mark can carry have no reader, so you cannot step to the 
 status: active
 severity: soft
 always: false
-summary: You can now say what kind of thing you bookmarked, but nothing lets you walk to the next one of that kind.
-summary_of: b24371d8527d3263
+summary: You can now step through only the bookmarks of one kind, and the count on screen says which kind you are walking.
+summary_of: 0ccb9d3b3ad5b9a6
+summary_was:
+  - 2026-09-16 You can now say what kind of thing you bookmarked, but nothing lets you walk to the next one of that kind.
 scope:
   - src/ui/public/screens/conversations.js
   - src/ui/public/strings/**
@@ -17,18 +19,19 @@ tags:
   - recall
   - "plan:anchors"
   - "seq:6"
-  - "state:todo"
+  - "state:done"
 origin: human
 source_file: null
 source_anchor: null
 source_checksum: null
 valid_from: 2026-09-15
 valid_until: null
-checksum: 7d22e7a3c5ada0ac
+checksum: 9b2264f894e25845
 plan: anchors
 seq: "6"
-state: todo
+state: done
 priority: "2"
+verified_on: 2026-09-16
 ---
 
 # the six kinds a mark can carry have no reader, so you cannot step to the next defect or the next question
@@ -63,3 +66,9 @@ AND IT MUST NOT BECOME SIX CONTROLS. Six kinds times two directions is twelve bu
 measured at 26px and one line. Whatever shape is chosen — a select beside the existing pair, a
 cycling filter, something else — the lane measures the bar afterwards and reports its height, the
 way the stepper did.
+
+── CLOSED 2026-09-16 BY THE RECONCILIATION, NOT BY THE LANE ────────────
+
+DONE IN `2622410f`, `f2f66c70`. ONE LINE INSIDE `markStops`, as this item required — one walk, one cursor, one step — with the options built from the kinds THIS DOCUMENT HOLDS, so a kind with no marks is never offered. Eight sentences so the kind travels with the count, the landing, both ends and both empties. `f2f66c70` then put the same filter in the right-click menu as `menuitemradio` rows that set the real select and dispatch its own `change`.
+
+THE SECOND COMMIT'S REMOVAL PROOF IS THE ONE TO READ: with `kindPick.dispatchEvent(new Event('change'))` removed the select's value still moved — the menu sets it — and the count stayed at "571 marked point(s) here" with no narrowing at all. Setting the value is cosmetic; the control's own change path is the whole mechanism. Closed by the reconciliation in `rulings/93`.

@@ -5,8 +5,10 @@ title: a reader deep in a document cannot reach any control, so actions need a r
 status: active
 severity: soft
 always: false
-summary: The buttons are off the screen when you are deep in a document, so every action needs to be reachable where you are — by right-click and by keyboard, without taking the buttons away.
-summary_of: e1c084b7a94c0061
+summary: You can now reach every action from wherever you are reading, by right-click and by keyboard, as well as from the buttons that were already there.
+summary_of: bc0e401832a89a7b
+summary_was:
+  - 2026-09-16 The buttons are off the screen when you are deep in a document, so every action needs to be reachable where you are — by right-click and by keyboard, without taking the buttons away.
 scope:
   - src/ui/public/screens/conversations.js
   - src/ui/public/strings/**
@@ -19,18 +21,19 @@ tags:
   - a11y
   - "plan:anchors"
   - "seq:4"
-  - "state:todo"
+  - "state:done"
 origin: human
 source_file: null
 source_anchor: null
 source_checksum: null
 valid_from: 2026-09-15
 valid_until: null
-checksum: ccca52d94f6e1e1e
+checksum: e821a87e45cf4c57
 plan: anchors
 seq: "4"
-state: todo
+state: done
 priority: "1"
+verified_on: 2026-09-16
 ---
 
 # a reader deep in a document cannot reach any control, so actions need a right-click menu and keyboard shortcuts as well as buttons
@@ -92,3 +95,9 @@ discovery path teaches the fast path.
 NOT IN SCOPE, said plainly: this is the Conversations screen. Whether the same treatment is owed on
 Library, Composer and the rest is a separate question and a bigger one — answer it after this has
 been used.
+
+── CLOSED 2026-09-16 BY THE RECONCILIATION, NOT BY THE LANE ────────────
+
+DONE IN `2622410f`. Shortcuts bound by `event.code` and NOT `event.key`, which is the finding: on a Hebrew layout the key printed M reports `key: 'צ'`, so a `key` table would have silently unbound the shortcuts for half this archive. Ruled ALSO and not ONLY, so the buttons stay and every menu item ends in `.click()` on the real control — no second write path, no second announcement, no second focus rule.
+
+The native menu is suppressed only over a turn — not in a field, not over a link, not outside the well, and NOT OVER A LIVE SELECTION, because the three copy controls exist for exactly that gesture. Escape is the meaning already in force rather than a new one, and take-back deliberately gets no bare key. Closed by the reconciliation in `rulings/93`.

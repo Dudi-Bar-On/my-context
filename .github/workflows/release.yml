@@ -77,6 +77,11 @@ jobs:
       - run: npm run check:dependencies
       - run: npm run check:needs-cycles
       - run: npm run check:handover
+      # Here for the superset reason the paragraph above gives: a tag must
+      # verify at least what the commit it is cut from verified. Its map tier
+      # genuinely gates, so this is not the never-red step that keeps
+      # `check:cited-items` out of both workflows.
+      - run: npm run check:board
       # Moved ABOVE `npm test` from the bottom of this list. It costs two
       # seconds and the suite costs twelve minutes, and `ci.yml` already argues
       # the ordering in its own words: the cheap check fails first. Nothing

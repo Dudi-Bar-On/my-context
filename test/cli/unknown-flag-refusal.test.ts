@@ -72,6 +72,11 @@ function run(args: string[], cwd: string): { code: number; out: string } {
  * discovery half found it, and this list was updated deliberately rather than
  * the assertion relaxed.
  *
+ * `path` is the tenth (`rulings/93`, 2026-09-16, the per-subject reading).
+ * Same sequence once more: it advertises the detail levels, the discovery half
+ * found it, and this list was updated deliberately rather than the assertion
+ * relaxed.
+ *
  * The discovery half is what makes this self-updating; the equality assertion
  * below is what stops the discovery half from silently matching nothing.
  */
@@ -95,12 +100,13 @@ const PREFIX: Record<string, string[]> = { search: ['--text', 'a'] };
 test('the reporting commands this guard covers are the ones the README names', () => {
   assert.deepEqual(
     DISCOVERED,
-    ['contribution', 'decay', 'doctor', 'ingest-status', 'list', 'ready', 'search', 'status', 'todo'],
+    ['contribution', 'decay', 'doctor', 'ingest-status', 'list', 'path', 'ready', 'search',
+      'status', 'todo'],
   );
   assert.deepEqual(
     REPORTING,
-    ['contribution', 'decay', 'doctor', 'ingest-status', 'list', 'ready', 'review', 'search',
-      'status', 'todo'],
+    ['contribution', 'decay', 'doctor', 'ingest-status', 'list', 'path', 'ready', 'review',
+      'search', 'status', 'todo'],
   );
 });
 

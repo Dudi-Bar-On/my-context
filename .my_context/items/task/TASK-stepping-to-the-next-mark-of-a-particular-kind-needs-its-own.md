@@ -5,8 +5,10 @@ title: stepping to the next mark of a particular kind needs its own key, alongsi
 status: active
 severity: soft
 always: false
-summary: You can filter the walk to one kind with a dropdown, but there is no key for "take me to the next defect".
-summary_of: 9a121003e0c384d4
+summary: Two keys now step through the bookmarks of one kind at a time, alongside the keys and the picker that already existed.
+summary_of: c983f9506988dffd
+summary_was:
+  - 2026-09-16 You can filter the walk to one kind with a dropdown, but there is no key for "take me to the next defect".
 scope:
   - src/ui/public/screens/conversations.js
   - src/ui/public/strings/**
@@ -17,18 +19,19 @@ tags:
   - ui
   - "plan:anchors"
   - "seq:10"
-  - "state:todo"
+  - "state:done"
 origin: human
 source_file: null
 source_anchor: null
 source_checksum: null
 valid_from: 2026-09-15
 valid_until: null
-checksum: 6098e0719582e74d
+checksum: 927c1a98ed3c8b98
 plan: anchors
 seq: "10"
-state: todo
+state: done
 priority: "2"
+verified_on: 2026-09-16
 ---
 
 # stepping to the next mark of a particular kind needs its own key, alongside the keys that already exist
@@ -60,3 +63,9 @@ the opposite of what frequency would suggest, and the lane should say which it c
 AND WHATEVER IS CHOSEN MUST SAY WHAT IT IS DOING. The count already names its subject when filtered
 (`anchors/6`); a key that changes the subject must announce the change in the same region, or a
 reader will not know why the next press went somewhere unexpected.
+
+── CLOSED 2026-09-16 BY THE RECONCILIATION, NOT BY THE LANE ────────────
+
+DONE IN `2f25357c`. ADD, DO NOT REPLACE, as the owner's quoted instruction required: `K` and `Shift+K` CYCLE A RING rather than nine bindings. The reason is structural and not a shortage of letters — the picker is built from the kinds THIS DOCUMENT holds, so a key bound to one kind would do nothing silently on a document without it, or need a second vocabulary that disagrees with the one on screen.
+
+The item's frequency argument survives rather than losing: cycling costs count of KINDS and never count of marks, so 786 tables against 2 rulings costs nothing. Proved bound by `event.code` with a synthetic `code:'KeyK', key:'ל'`; inert in the find box AND in the select; the subject change announced from the ONE `change` handler, so the select, the menu radios and the key all say the same sentence. Closed by the reconciliation in `rulings/93`.

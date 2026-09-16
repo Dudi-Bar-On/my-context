@@ -5,8 +5,10 @@ title: semantic search, asked of the model the user already has — and the thre
 status: active
 severity: soft
 always: false
-summary: Let the search find a passage that means what you asked even when it uses different words, by asking the Claude the user is already running.
-summary_of: e84eb809e3ea14e1
+summary: Let the search find a passage that means what you asked even when it uses different words, by asking the Claude the user is already running - now measured, and the measurement decides its shape.
+summary_of: 2ac6b158c2363646
+summary_was:
+  - 2026-09-16 Let the search find a passage that means what you asked even when it uses different words, by asking the Claude the user is already running.
 scope:
   - src/core/conversation-search.ts
   - src/core/**
@@ -25,7 +27,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-09-16
 valid_until: null
-checksum: 8320f9a4b9aec6b5
+checksum: 76b34faa18e4560b
 plan: semantic
 seq: "5"
 state: todo
@@ -100,3 +102,61 @@ passage where I decided X" when none of X’s words appear. They compose.
     build around it.
   — NO SILENT SPEND. A call that costs the owner tokens is not made by a keystroke he did not
     aim. Say what triggers it.
+
+── PHASE 1 IS DONE. MEASURED 2026-09-16 BY LANE AG · `reports/2026-09-16-claude-p-measured.md` ───
+
+27 real `claude -p` calls, $0.4717 spent, seven-day quota 0.95 → 0.96. Do not re-derive these.
+
+RECURSION: CONFIRMED, AND IT IS WORSE THAN THE ITEM GUESSED. Three naive calls from this repo's
+cwd each: loaded this plugin and took the corpus through `SessionStart`; ran their own `Stop`,
+so `rebuildConversations` + `reconcileAnchors` + `markAnchorsOnTurn` all fired; wrote a ~496 KB
+transcript under `~/.claude/projects/`; added a row to `conversations`, rows to
+`conversation_prose` and `prose_sources`; left two files each in `.my_context/state/`; and
+rewrote `.anchors.jsonl` (byte-identical, mtime moved — which is the concurrent-writer defect the
+anchor-store commit of this same week was about). THE QUERY BECOMES A SEARCHABLE CONVERSATION.
+The child also CONNECTED EVERY MCP SERVER the user has, Playwright and chrome-devtools included.
+
+NEUTRALISED BY `--safe-mode --no-session-persistence --model claude-haiku-4-5 --tools ""`, and
+verified over 16 calls: no transcript, no state file, no row, `.anchors.jsonl` untouched.
+`--bare` is the TRAP — it also skips hooks but reads neither OAuth nor keychain, which breaks the
+one premise the ruling rests on. `--safe-mode` keeps auth.
+
+LATENCY: 8.2 s MEDIAN (n=16, wall clock, neutralised, haiku), p25 5.8 s, p75 9.9 s, min 4.4 s,
+max 12.4 s; floor 2.4 s for a forty-token answer; 8.8–13.2 s naive. The "1–3 seconds" guess was
+wrong by 3–8×. IT IS A BUTTON WITH VISIBLE PROGRESS, NOT A TIER. Startup overhead is bimodal,
+1.5–1.9 s or 4.4–4.6 s, consistent within a run and UNEXPLAINED — pinning the fast path is worth
+3 s of the median.
+
+TOKENS: 465 in / 428 out median per expansion (~90% of output is thinking), ZERO cacheable,
+mean $0.0037. Naive: 37,400–43,800 in, up to $0.296 on inherited Opus — 80× the tokens of the
+question. Reranking 20 candidates measured at 4,034 in, 12.5–15.6 s, $0.0135.
+
+PRIVACY, BOTH HALVES ANSWERED. Same account and config: YES by default — `apiKeySource: "none"`,
+resolves `~/.claude`, writes beside the transcripts being searched — but `CLAUDE_CONFIG_DIR`
+picks credentials AND archive with one value, this project already repoints it in four test
+files, and an empty one makes `claude -p` exit 1 with "Not logged in" rather than falling back.
+THE UI SERVER IS THE HAZARD: a search from it would spawn with that long-lived process's env.
+Nothing from another project: FALSE IN THE NAIVE SHAPE, TRUE UNDER `--safe-mode`. The naive child
+carried the user's GLOBAL `~/.claude/CLAUDE.md`, his auto-memory `MEMORY.md` and his `userEmail`.
+Reported, not designed around; the owner rules on his own property.
+
+A FOURTH UNAVAILABILITY STATE EXISTS AND THE RULE NAMES ONLY THREE: rate-limited. It returns
+`terminal_reason: "api_error"` — THE SAME FIELD as not-logged-in — so discriminate on exit code +
+`is_error` + `result` text, never on `terminal_reason`. Measured: not-on-PATH is ENOENT/127 at
+47 ms and $0; not-authenticated is exit 1, `is_error: true`, `"Not logged in · Please run /login"`,
+$0, 1.2 s; answered-with-nothing is exit 0 at full price.
+
+SHAPE CHOSEN: QUERY EXPANSION. Reranking is 8.7× the input tokens, 3.7× the cost and ~1.7× the
+latency — and asked in plain words to order 20 candidates and DROP NONE it returned `5, 6` and
+then `5, 6, 4`, breaking `INV-nothing-is-dropped-silently` twice out of two. Reranking needs a
+permutation guard first and is a SEPARATE item. Because expansion's call precedes the search,
+show the deterministic results at 4.3 ms and fold the expanded hits in when they land.
+
+── WHAT PHASE 2 STILL OWES ──────────────────────────────────────
+
+  1. Does `--safe-mode` alone suppress the transcript, or is `--no-session-persistence` needed?
+     One call decomposes it; both were applied together.
+  2. Spawn with an EXPLICIT `CLAUDE_CONFIG_DIR`, never an inherited one.
+  3. Four unavailability values, not three, and the READER of each.
+  4. Whether the bimodal startup overhead is controllable.
+  5. The permutation guard, if reranking is ever taken up.

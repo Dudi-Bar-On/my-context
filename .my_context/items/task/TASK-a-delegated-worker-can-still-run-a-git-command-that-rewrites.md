@@ -5,8 +5,10 @@ title: a delegated worker can still run a git command that rewrites the shared t
 status: active
 severity: soft
 always: false
-summary: The instruction forbidding workers from writing with git has now failed twice, and the second time it silently undid work nobody noticed.
-summary_of: 37da2d18dd045c7b
+summary: A delegated worker can still run a command that rewrites the shared code history, and writing the rule down has not stopped it; the obvious fix costs more than it looks.
+summary_of: ac5dbd7b72026a6f
+summary_was:
+  - 2026-09-16 The instruction forbidding workers from writing with git has now failed twice, and the second time it silently undid work nobody noticed.
 scope:
   - src/hooks/pre-tool-use.ts
 tags:
@@ -23,7 +25,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-09-05
 valid_until: null
-checksum: 7a43797e2e4ac224
+checksum: 930cac1586264d18
 plan: live
 seq: "20"
 state: todo
@@ -58,3 +60,13 @@ log and show are how a worker checks its own work and are not the hazard.
 TWO THINGS TO GET RIGHT. The check must identify a WORKER rather than the assistant, since the
 assistant commits and must keep being able to. And a refusal must be legible enough that a worker
 reroutes rather than looking for another spelling of the same command.
+
+── STILL OPEN 2026-09-16, AND THIS IS WHAT REMAINS ─────────────────────
+
+NAMED-BUT-OPEN a537c99c — REFUSED RATHER THAN FORCED — the fix needs Bash on the PreToolUse matcher, which costs a process spawn on every Bash call in every session and perturbs a documented design
+
+WHY THE LANE REFUSED IT RATHER THAN SHIPPING IT, recorded so the next one starts from the objection instead of rediscovering it: the fix is adding `Bash` to the `PreToolUse` matcher. That costs a process spawn on EVERY Bash call in EVERY session, and it perturbs a documented design — the file's own comment says the missed-door assertion relies on that matcher NOT covering Bash.
+
+So this item is not small and must not be picked up as if it were. Whatever lands here has to answer both costs, and the missed-door assertion has to be rewritten rather than quietly broken.
+
+The `NAMED-BUT-OPEN` line above is read by `npm run check:board`.

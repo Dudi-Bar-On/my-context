@@ -5,8 +5,10 @@ title: every kind of mark is drawn in the same grey, so nine kinds are indisting
 status: active
 severity: soft
 always: false
-summary: A table, a ruling, a defect and a note all look identical in the list — you have to read each one to tell them apart.
-summary_of: 49c06ed4a97ea1f3
+summary: Bookmarks are no longer all drawn in the same grey; colour now says what a mark is for, in four groups, and the symbol and the word still carry it when colour cannot.
+summary_of: b9288aed0a67212c
+summary_was:
+  - 2026-09-16 A table, a ruling, a defect and a note all look identical in the list — you have to read each one to tell them apart.
 scope:
   - src/ui/public/styles.css
   - src/ui/public/screens/conversations.js
@@ -18,18 +20,19 @@ tags:
   - ui
   - "plan:anchors"
   - "seq:9"
-  - "state:todo"
+  - "state:done"
 origin: human
 source_file: null
 source_anchor: null
 source_checksum: null
 valid_from: 2026-09-15
 valid_until: null
-checksum: c78a08e35928f18b
+checksum: 2264e98a15dff657
 plan: anchors
 seq: "9"
-state: todo
+state: done
 priority: "1"
+verified_on: 2026-09-16
 ---
 
 # every kind of mark is drawn in the same grey, so nine kinds are indistinguishable at a glance
@@ -63,3 +66,9 @@ along. `kind.note` was moved off exactly that duplication on 2026-09-15.
 THE MEASUREMENT THAT CLOSES IT: a list holding several kinds, and a statement of how a reader tells
 two of them apart WITHOUT READING THE WORD — at the same contrast the rest of the screen is held
 to, in both themes, and in Hebrew where the glyph and the word swap sides.
+
+── CLOSED 2026-09-16 BY THE RECONCILIATION, NOT BY THE LANE ────────────
+
+DONE IN `2f25357c`. THE GROUPING, IN ONE SENTENCE: colour says what a mark is FOR. Gold, a judgement that was made; orange, something still owed; blue, material the conversation produced; and a plain note keeps the standing grey, because it claims nothing beyond "here". Three hues spent of the five the palette allows, two left on purpose — so nine kinds did not get nine colours, which this item forbade.
+
+AND `--crit` IS NOT SPENT BECAUSE IT CANNOT BE: measured 4.06:1 against the marks card's REAL ground, under the 4.5 bar this project holds every control to, so a defect wears `--warn` with the other debts and its glyph separates it. Gold 8.07, dim 6.51, carry 5.89, warn 5.52, with ΔE76 between any pair 31–118. Print flattens to one ink and the glyph and the word both stay. Closed by the reconciliation in `rulings/93`.

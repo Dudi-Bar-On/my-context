@@ -5,8 +5,10 @@ title: every row in the mark list links with the same word, because the go-to co
 status: active
 severity: soft
 always: false
-summary: In a list of marks from one conversation, every "go to" link reads the same, so none of them tells you where it goes.
-summary_of: ab0244a2e82ac630
+summary: Every row in the bookmark list now links with its own text, where before all of them read the same word.
+summary_of: df06ae092116b1a3
+summary_was:
+  - 2026-09-16 In a list of marks from one conversation, every "go to" link reads the same, so none of them tells you where it goes.
 scope:
   - src/ui/public/screens/conversations.js
   - src/ui/public/strings/**
@@ -17,18 +19,19 @@ tags:
   - recall
   - "plan:anchors"
   - "seq:7"
-  - "state:todo"
+  - "state:done"
 origin: human
 source_file: null
 source_anchor: null
 source_checksum: null
 valid_from: 2026-09-15
 valid_until: null
-checksum: 73b9a1315c0b8504
+checksum: 82c8ee03514c0022
 plan: anchors
 seq: "7"
-state: todo
+state: done
 priority: "2"
+verified_on: 2026-09-16
 ---
 
 # every row in the mark list links with the same word, because the go-to control is the session name
@@ -52,3 +55,9 @@ CONSTRAINTS: the sentence needs a key in BOTH string tables and must mirror in H
 Latin or numeric part isolated, as the anchors card already does. And the accessible name is what
 a screen reader announces — 24 links reading alike is worse there than on screen, where at least
 the surrounding row differs.
+
+── CLOSED 2026-09-16 BY THE RECONCILIATION, NOT BY THE LANE ────────────
+
+DONE IN `2622410f`. IT GREW NO CONTROL, which this item demanded twice: same element, same href, same title, and only the TEXT changed to the byte, with the session name kept as a plain `bdi` where it always read. Measured: 20 drawn rows now have 20 DISTINCT link texts and 20 distinct accessible names.
+
+A REMOVAL PROOF CHANGED THE WORK. The accessible-name assertion stayed GREEN with `aria-label` deleted, because the computed name fell back to the link's text — which is now the byte and already distinct. The assertion was measuring the wrong thing; it now also requires the name to carry the conversation, and the mutation reddens it. Closed by the reconciliation in `rulings/93`.

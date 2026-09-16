@@ -131,6 +131,7 @@
     "cli": [
       "ack.ts",
       "doctor.ts",
+      "path.ts",
       "ready.ts",
       "status.ts"
     ],

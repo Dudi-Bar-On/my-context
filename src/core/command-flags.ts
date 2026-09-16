@@ -56,11 +56,11 @@
  * store's own read-and-verify surface — `plan:store seq:1`), and again 2026-09-11
  * (`mycontext restore`, the session summary staged to disk and delivered after the
  * owner clears — `plan:restore seq:2`),
- * over the **48** commands
- * the CLI dispatches: 41 registered by `cli/commands/index.ts`'s column of side-effect
+ * over the **49** commands
+ * the CLI dispatches: 42 registered by `cli/commands/index.ts`'s column of side-effect
  * imports, and 7 more registered in `cli/index.ts` itself.
  *
- *   | 45 | have a SEPARABLE flag spec — a declarative list, liftable as it is |
+ *   | 46 | have a SEPARABLE flag spec — a declarative list, liftable as it is |
  *   |  0 | read their flags INLINE where they are used, with no spec to lift  |
  *   |  1 | resists: `edit`, whose accepted set is computed per workspace      |
  *   |  2 | take no flags at all — `rebuild` and `help`                        |
@@ -89,7 +89,7 @@
  * commands named as absent, plus the keys of `COMMAND_FLAGS`, must be exactly
  * the registered set, so a command cannot arrive and be silently uncounted.
  *
- * **38** of the 45 are here. Twenty-one arrived with the first lift, and they
+ * **39** of the 46 are here. Twenty-one arrived with the first lift, and they
  * are the ones whose spec was already a declarative constant over a FLAT
  * surface — one command, one flag set. The other four arrived with
  * `plan:builder seq:1b` and came out of `src/cli/index.ts` itself — the entry
@@ -418,6 +418,22 @@ export const COMMAND_FLAGS: Record<string, FlagSpec> = {
    * because it names the detail levels it does NOT take. The spec it refuses
    * against is this one.
    */
+  /**
+   * `--d` narrows to ONE subject and `--all` widens to the subjects with
+   * nothing open, which is the opposite trade `ready` refuses next door and
+   * is admitted here for a different question: `ready` answers "what can I
+   * start", where finished work is noise; `path` answers "where is this
+   * subject up to", where a finished subject is a real answer and the default
+   * hides it only to keep the reading short.
+   *
+   * `--register` exists so a test can point this at a planted map. Without
+   * it every assertion about a broken row would have to break the real
+   * register to make one, which is the mutation-on-the-checked-in-corpus
+   * shape this project has already been bitten by.
+   */
+  path: {
+    allowed: ['d', 'all', 'register', ...DETAIL_FLAGS], values: ['d', 'register'],
+  },
   query: { allowed: ['json', 'limit'], values: ['limit'] },
   /**
    * `--plan` narrows to one plan; `--held` adds the rows the report would
@@ -1197,6 +1213,22 @@ export const FLAG_DECLARATIONS: Record<string, FlagDeclarations> = {
   },
   // No flags — see COMMAND_FLAGS.link and cli/commands/link.ts.
   link: {},
+  path: {
+    ...DETAIL,
+    d: {
+      format: 'one subject number, with or without its D',
+      example: '72',
+      note: 'Only this subject. A number the register does not carry is refused by name.',
+    },
+    all: {
+      note: 'Also show the subjects with no open work, which the report otherwise leaves out.',
+    },
+    register: {
+      format: 'the id of the item carrying the [D-MAP] block',
+      example: 'REF-the-d-numbers-what-each-one-means-and-which-are-only',
+      note: 'Read the subject map from another item. For pointing a test at a planted map.',
+    },
+  },
   query: {
     json: DETAIL.json,
     limit: { ...LIMIT, note: 'How many rows at most. The hard cap is 1000 either way.' },

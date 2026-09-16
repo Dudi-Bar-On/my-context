@@ -1985,7 +1985,7 @@ draft, retiring a governing item. How far that separation actually holds is
 ```mermaid
 flowchart TB
   U(["<b>You</b>"]) --> SL["<b>/mycontext:…</b><br/>91 slash commands"]
-  U --> CL["<b>mycontext …</b><br/>48 CLI commands"]
+  U --> CL["<b>mycontext …</b><br/>49 CLI commands"]
   A(["<b>Claude</b>"]) --> TL["<b>MCP tools</b><br/>twenty-eight, served over stdio"]
   SL -->|"add-* · search · link · LoadMyContext"| TL
   SL -->|"list-* · review · status · edit · query"| CL
@@ -2272,7 +2272,7 @@ listed with one. The remaining absences are in [section 8](#one-surface-for-ever
 
 ### What you run: the CLI
 
-48 commands. `mycontext help` prints the same list from the program itself, and
+49 commands. `mycontext help` prints the same list from the program itself, and
 `mycontext help <topic>` explains one of seven. Four are concepts — `categories`, `scope`,
 `capture`, `workflow` — and three are one page per invocation surface: `cli`, `tools` and
 `slash`, each generated from the registry, schema or directory it describes rather than
@@ -2350,6 +2350,7 @@ a success.
 | `mycontext show <id>` | one item in full, exactly as it is on disk. `--json` prints the same item as one JSON document, carrying every note the Markdown form prints beside it — a summary that no longer describes the item, an audit append that failed, a file that could not be read |
 | `mycontext todo` | the inbox: everything captured as `todo`, in the id order every other listing uses. `--tag`, `--all`, `--limit`. Retired ones are hidden and counted, not dropped. This is not the review queue — nothing in it is waiting to govern |
 | `mycontext ready` | open tasks whose `needs` are all `done`, highest priority first — `--plan`, `--held`, `--limit`. It answers "what can I start now" for a project whose category declares `plan`, `seq` and `state`; a project with no such category is told that rather than shown an empty list. Readiness is **derived on every run** from `needs` and the states of what it names, so there is no `ready` state to go stale, and every open task it cannot clear is counted by reason and listed with `--held` |
+| `mycontext path` | per subject: how many of its items are done, which are ready now, which are held by a blocker that has not landed, and — the category nothing else can see — which are **waiting on you**. `--d`, `--all`. A subject is a D number; which plans it owns is read from the `[D-MAP]` block in the project's own register item, and every count beside it is **derived on every run** from the states of the items that block names. Nothing is stored, so there is no progress file to go stale. A project that keeps no such register is told so and exits 0 |
 | `mycontext query "SELECT …"` | read-only SQL over the index — [the schema, and worked queries](#the-index-schema-and-how-to-query-it) |
 | `mycontext examples <category>` | a complete, correct example item of that type |
 | `mycontext help [topic]` | guidance: categories, scope, capture, workflow, cli, tools, slash |
@@ -6390,7 +6391,7 @@ command, or both; the map is `src/plugin/parity.ts` and `test/plugin/parity.test
 it against the usage banner the program prints and the files in `commands/`.
 
 What is left is asymmetry in the other direction — commands with no slash command — and it
-is **listed rather than discovered**. 19 of the 48 CLI commands have none, each for a reason
+is **listed rather than discovered**. 20 of the 49 CLI commands have none, each for a reason
 recorded beside it in `CLI_WITHOUT_SLASH`:
 
 - `ack` records that a **person** read a `doctor` finding and ruled on it, so a slash command
@@ -6668,7 +6669,7 @@ command prints; that the injected output quoted in sections 3, 4 and 6 is what t
 emit; that every section the table of contents links either has a line in the capabilities
 summary near the top or is listed, with a reason, as something the product does not *do*; and
 that both documents carry the same heading sequence and the same examples in the same order.
-Of those, `counts.test.ts` computes the "19 of the 48 CLI commands" ratio above from the
+Of those, `counts.test.ts` computes the "20 of the 49 CLI commands" ratio above from the
 running program and fails in **both** languages if either half drifts — it had drifted twice
 before the test existed — and it computes this paragraph's own file count the same way.
 `parity.test.ts` holds this section's heading sequence to the Hebrew mirror's. This paragraph

@@ -5,8 +5,10 @@ title: the marks card sits 1.3 screens below the fold, under a session list tall
 status: active
 severity: soft
 always: false
-summary: Your bookmarks are on the Conversations screen but you have to scroll past everything else to reach them.
-summary_of: 34a459e194eb9aed
+summary: The bookmarks card is no longer more than a screen below the top of the page; the list above it is capped so both are reachable.
+summary_of: 615cb4808b3226d7
+summary_was:
+  - 2026-09-16 Your bookmarks are on the Conversations screen but you have to scroll past everything else to reach them.
 scope:
   - src/ui/public/screens/conversations.js
   - src/ui/public/styles.css
@@ -17,18 +19,19 @@ tags:
   - ui
   - "plan:anchors"
   - "seq:8"
-  - "state:todo"
+  - "state:done"
 origin: human
 source_file: null
 source_anchor: null
 source_checksum: null
 valid_from: 2026-09-15
 valid_until: null
-checksum: 29a01ed2b42ef6be
+checksum: 0c71586fe63087e1
 plan: anchors
 seq: "8"
-state: todo
+state: done
 priority: "1"
+verified_on: 2026-09-16
 ---
 
 # the marks card sits 1.3 screens below the fold, under a session list taller than the viewport
@@ -67,3 +70,9 @@ shape this screen already uses for the mark list itself (`BOUND_CAP_LIST`).
 THE MEASUREMENT THAT CLOSES IT: from a cold load of Conversations, the marks card is reachable
 without scrolling, or reachable in one gesture that the screen names. Measured, at the same
 viewport, and reported as a number the way this one was.
+
+── CLOSED 2026-09-16 BY THE RECONCILIATION, NOT BY THE LANE ────────────
+
+DONE IN `2f25357c`. It took this item's own option 4 — cap the session list — and says why it refused the other three. The rows region went 970 px to 286, the marks card 1,786 to 1,102 with its heading ending at 1,135, and the page scroll 4,529 to 3,864.
+
+THE ITEM'S NUMBERS WERE RIGHT IN SHAPE AND WRONG IN DETAIL, and the correction matters for the next reader: the fold is 1,162 and NOT 1,299, because `<body>` hides its own overflow and `main.body` is what scrolls, 46 px down and 1,116 px tall. So the card sat 624 px below the fold. The lane's first cap cleared 1,299 and missed the real fold by 44 px, caught by its own spec. Removal proof in the same run: deleting the one cap rule from the live CSSOM puts the card back to 1,648. Closed by the reconciliation in `rulings/93`.

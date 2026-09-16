@@ -522,3 +522,345 @@ export function readyReport(items: Item[], config: Config): ReadyReport {
   held.sort(compareRows);
   return { ready, held, open: ready.length + held.length };
 }
+
+/* -------------------------------------------------------------------------- *
+ * THE D MAP — A SUBJECT'S MEMBERSHIP, AS DATA
+ *
+ * A "D number" is this project's name for a SUBJECT of work. The register that
+ * mints them — `REF-the-d-numbers-what-each-one-means-and-which-are-only` — is
+ * PROSE, and every progress table this campaign has produced was a regex over
+ * that prose. TWO ROWS WERE WRONG ON 2026-09-16: `D78` was reported CLOSED
+ * because its text QUOTES D57's closure, and `D57` was reported 0/3 because it
+ * matched that day's `anchors/` items by name. A path the owner is meant to
+ * rely on cannot rest on a parser that guesses.
+ *
+ * So the register carries a DELIMITED BLOCK of rows beside its prose, and this
+ * module reads it. The prose is the argument and stays; the block is the map.
+ *
+ * ── WHAT THE BLOCK MAY CARRY, AND WHAT IT MUST NOT ─────────────────────────
+ *
+ * **Membership and a ruling. Never a count.** `D72 | open | readmodel/*` says
+ * which plan the subject owns and that nobody has closed it. How many of its
+ * items are done is DERIVED on every read, exactly as `readyReport` derives
+ * readiness — because a recorded count is a second place for a fact to be
+ * wrong, which is the defect this product exists to prevent.
+ *
+ * **And the status is a RULING, which is why it cannot be derived either.**
+ * `D78`'s own row says so in as many words: *"THE SUBJECT CLOSES when a reader
+ * opening a conversation can tell at a glance what was marked and why it was
+ * worth marking — not when twelve items are done."* A subject whose every item
+ * is done is a subject somebody should LOOK at; `dBoard` reports exactly that
+ * and never decides it.
+ *
+ * ── WHY EVERY LINE INSIDE THE BLOCK MUST PARSE ─────────────────────────────
+ *
+ * A row that does not parse is a subject that has silently left the board, and
+ * that is the whole failure this replaces. So the block is DELIMITED rather
+ * than pattern-matched out of the prose: anything between the two sentinels is
+ * a row or it is a defect, and `scripts/check-board.ts` fails naming the line.
+ * A parser that skipped what it did not understand would rebuild the regex it
+ * was written to replace.
+ *
+ * Everything here is PURE, the discipline the rest of this module keeps: the
+ * caller supplies the body text and the items.
+ * -------------------------------------------------------------------------- */
+
+/** The sentinels. Anything between them is a row, or it is a defect. */
+export const D_MAP_OPEN = '[D-MAP]';
+export const D_MAP_CLOSE = '[END D-MAP]';
+
+/**
+ * The five words a row's status column may carry.
+ *
+ * `open` covers both "the register writes OPEN" and "the register records no
+ * closure" — they are the same claim, and splitting them would put provenance
+ * in a column somebody has to maintain by hand. `not-filed` is the row with no
+ * plan work behind it at all, which is a real and common state for the early
+ * numbers and must not be confused with a subject that has work and is
+ * finished.
+ */
+export const D_STATUSES = ['open', 'closed', 'deferred', 'held-by-owner', 'not-filed'] as const;
+export type DStatus = (typeof D_STATUSES)[number];
+
+/**
+ * One member of a subject, as written.
+ *
+ * `plan/*` is the whole plan and is preferred wherever a subject owns one,
+ * because A PLAN GROWS: `D78` was minted over `plan:anchors seq:1-12` and the
+ * plan held thirteen items two days later. A range written out by hand would
+ * have silently stopped covering the subject. Where a subject owns scattered
+ * items inside a plan that other subjects also draw from — `walk` is drawn on
+ * by fourteen of them — the members are individual addresses.
+ *
+ * An item ID is admitted for the one case that has no address: `D57`'s work is
+ * a REQUIREMENT, which declares no `plan` and no `seq`, and the register
+ * records that in the owner's own ruling.
+ */
+export interface DMember {
+  /** Exactly as written, so a finding can be grepped for. */
+  raw: string;
+  kind: 'plan' | 'task' | 'item';
+  /** Lowercased plan name, for `plan` and `task`. */
+  plan: string | null;
+  /** Lowercased seq, for `task` only. */
+  seq: string | null;
+  /** The item id, for `item` only. */
+  id: string | null;
+}
+
+export interface DRow {
+  /** The number exactly as the register writes it — `66`, `13a/b`. */
+  d: string;
+  status: DStatus;
+  members: DMember[];
+  /** 1-based line within the body, so a finding can be found. */
+  line: number;
+}
+
+/** A line inside the block that is not a row. */
+export interface DMapDefect {
+  line: number;
+  text: string;
+  why: string;
+}
+
+export interface DMapReading {
+  /** Whether the block was found at all. A missing block is not an empty one. */
+  found: boolean;
+  rows: DRow[];
+  /** Unparsed lines and duplicate numbers — everything that GATES. */
+  defects: DMapDefect[];
+}
+
+/** `D66`, `D13a/b` — digits first, then whatever suffix the register uses. */
+const D_ID = /^D([0-9]+[0-9a-z/]*)$/;
+/** `swallow/*`. */
+const MEMBER_PLAN = /^([a-z][a-z0-9_-]*)\/\*$/;
+/** `walk/152`, `ui2/5r`. Both halves lowercase, for `REF_SHAPE`'s reason. */
+const MEMBER_TASK = /^([a-z][a-z0-9_-]*)\/([a-z0-9][a-z0-9_-]*)$/;
+/** `REQ-every-anchor-capability-…`, shaped as `ITEM_ID` (check-handover.ts). */
+const MEMBER_ITEM = /^[A-Z][A-Z0-9]{1,9}-[a-z0-9][a-z0-9-]{3,}$/;
+
+function parseMember(raw: string): DMember | string {
+  const planOnly = MEMBER_PLAN.exec(raw);
+  if (planOnly !== null) {
+    return { raw, kind: 'plan', plan: planOnly[1]!.toLowerCase(), seq: null, id: null };
+  }
+  const task = MEMBER_TASK.exec(raw.toLowerCase());
+  if (task !== null) {
+    return { raw, kind: 'task', plan: task[1]!, seq: task[2]!, id: null };
+  }
+  if (MEMBER_ITEM.test(raw)) return { raw, kind: 'item', plan: null, seq: null, id: raw };
+  return `"${raw}" is not plan/*, plan/seq or an item id`;
+}
+
+/**
+ * Read the block out of an item body.
+ *
+ * Blank lines inside are skipped and NOTHING ELSE IS. A line that is not a row
+ * becomes a defect carrying its own line number, because "the checker named
+ * the row" is the property the whole design turns on.
+ */
+export function parseDMap(body: string): DMapReading {
+  const lines = body.split(/\r?\n/);
+  const rows: DRow[] = [];
+  const defects: DMapDefect[] = [];
+  let open = -1;
+  let close = -1;
+  for (const [i, line] of lines.entries()) {
+    const text = line.trim();
+    if (text === D_MAP_OPEN && open === -1) open = i;
+    else if (text === D_MAP_CLOSE && open !== -1 && close === -1) close = i;
+  }
+  if (open === -1 || close === -1) return { found: false, rows, defects };
+
+  const seen = new Map<string, number>();
+  for (let i = open + 1; i < close; i++) {
+    const text = lines[i]!.trim();
+    const line = i + 1;
+    if (text === '') continue;
+    const cells = text.split('|').map((c) => c.trim());
+    if (cells.length !== 3) {
+      defects.push({ line, text, why: 'a row is three cells: D | status | members' });
+      continue;
+    }
+    const id = D_ID.exec(cells[0]!);
+    if (id === null) {
+      defects.push({ line, text, why: `"${cells[0]}" is not a D number` });
+      continue;
+    }
+    const status = cells[1]! as DStatus;
+    if (!(D_STATUSES as readonly string[]).includes(status)) {
+      defects.push({ line, text, why: `"${cells[1]}" is not one of ${D_STATUSES.join(', ')}` });
+      continue;
+    }
+    const members: DMember[] = [];
+    let bad = false;
+    if (cells[2] !== '-') {
+      for (const piece of cells[2]!.split(',')) {
+        const entry = piece.trim();
+        if (entry === '') continue;
+        const member = parseMember(entry);
+        if (typeof member === 'string') {
+          defects.push({ line, text, why: member });
+          bad = true;
+          break;
+        }
+        members.push(member);
+      }
+    }
+    if (bad) continue;
+    const d = id[1]!;
+    const first = seen.get(d);
+    if (first !== undefined) {
+      defects.push({ line, text, why: `D${d} is already a row at line ${first}` });
+      continue;
+    }
+    seen.set(d, line);
+    rows.push({ d, status, members, line });
+  }
+  return { found: true, rows, defects };
+}
+
+/** One subject, resolved against the corpus. Every number here is derived. */
+export interface DSubject {
+  row: DRow;
+  /** Every work item the members name, de-duplicated. */
+  items: WorkItem[];
+  done: number;
+  /** Open work under this subject, split exactly as `readyReport` splits it. */
+  ready: ReadyRow[];
+  held: HeldRow[];
+}
+
+/** A member naming nothing this corpus holds. Always a gate — see `dBoard`. */
+export interface DMapUnresolved {
+  d: string;
+  line: number;
+  member: string;
+  why: string;
+}
+
+/** One item under two subjects. Always a gate — see `dBoard`. */
+export interface DMapDoubleClaim {
+  id: string;
+  key: string | null;
+  ds: string[];
+}
+
+export interface DBoard {
+  subjects: DSubject[];
+  unresolved: DMapUnresolved[];
+  doubleClaimed: DMapDoubleClaim[];
+  /** Open work items no row claims. Reported, never gated — see below. */
+  orphans: WorkItem[];
+}
+
+/**
+ * **What every subject is worth right now, computed on this run.**
+ *
+ * Three findings come out of here and the difference between them is the whole
+ * of why this is not one list:
+ *
+ *   - **`unresolved`** — a member naming nothing. A subject pointing at work
+ *     that does not exist cannot be dispatched, and it looks exactly like a
+ *     subject with nothing left to do. It GATES.
+ *   - **`doubleClaimed`** — one item under two subjects. Both rows then count
+ *     it and the board's totals stop adding up, which is how a progress table
+ *     starts lying while every individual row still looks right. It GATES.
+ *   - **`orphans`** — open work no subject claims. REPORTED and never gated,
+ *     because filing an item before its number is minted is ordinary and
+ *     legitimate; what is not legitimate is nobody being told.
+ *
+ * **`readyReport` is called ONCE and its rows are distributed** rather than
+ * readiness being re-decided per subject: two readings of "what can be
+ * started" that could disagree is the defect this module's own header is
+ * about.
+ */
+export function dBoard(reading: DMapReading, items: Item[], config: Config): DBoard {
+  const index = buildTaskIndex(items, config);
+  const byPlan = new Map<string, WorkItem[]>();
+  for (const item of workItems(items, config)) {
+    const plan = (item.extra[PLAN_FIELD] ?? '').trim().toLowerCase();
+    if (plan === '') continue;
+    const bucket = byPlan.get(plan);
+    if (bucket === undefined) byPlan.set(plan, [item]);
+    else bucket.push(item);
+  }
+  const byId = new Map<string, Item>();
+  for (const item of items) byId.set(item.id, item);
+
+  const report = readyReport(items, config);
+  const readyOf = new Map<string, ReadyRow>();
+  for (const row of report.ready) readyOf.set(row.item.id, row);
+  const heldOf = new Map<string, HeldRow>();
+  for (const row of report.held) heldOf.set(row.item.id, row);
+
+  const unresolved: DMapUnresolved[] = [];
+  const claimedBy = new Map<string, string[]>();
+  const subjects: DSubject[] = [];
+
+  for (const row of reading.rows) {
+    const mine = new Map<string, WorkItem>();
+    for (const member of row.members) {
+      let hits: WorkItem[] = [];
+      if (member.kind === 'plan') {
+        hits = byPlan.get(member.plan!) ?? [];
+        if (hits.length === 0) {
+          unresolved.push({
+            d: row.d, line: row.line, member: member.raw,
+            why: 'no work item in this corpus carries that plan',
+          });
+        }
+      } else if (member.kind === 'task') {
+        hits = index.get(`${member.plan}/${member.seq}`) ?? [];
+        if (hits.length === 0) {
+          unresolved.push({
+            d: row.d, line: row.line, member: member.raw,
+            why: 'nothing in this corpus answers to that address',
+          });
+        }
+      } else if (byId.get(member.id!) === undefined) {
+        unresolved.push({
+          d: row.d, line: row.line, member: member.raw, why: 'no item has that id',
+        });
+      }
+      // An item-id member contributes NO work items even when it resolves, and
+      // that is deliberate: `D57`'s requirement declares no `state`, so
+      // counting it would make a finished subject read "0 of 1 done" forever.
+      for (const hit of hits) mine.set(hit.id, hit);
+    }
+    const mineItems = [...mine.values()];
+    for (const item of mineItems) {
+      const owners = claimedBy.get(item.id);
+      if (owners === undefined) claimedBy.set(item.id, [row.d]);
+      else if (!owners.includes(row.d)) owners.push(row.d);
+    }
+    subjects.push({
+      row,
+      items: mineItems,
+      done: mineItems.filter((i) => taskState(i) === DONE_STATE).length,
+      ready: mineItems.map((i) => readyOf.get(i.id)).filter((r): r is ReadyRow => r !== undefined),
+      held: mineItems.map((i) => heldOf.get(i.id)).filter((r): r is HeldRow => r !== undefined),
+    });
+  }
+
+  const doubleClaimed: DMapDoubleClaim[] = [];
+  for (const [id, ds] of claimedBy) {
+    if (ds.length < 2) continue;
+    const item = byId.get(id);
+    doubleClaimed.push({
+      id,
+      key: item === undefined ? null : taskKey(item as WorkItem),
+      ds: [...ds].sort(),
+    });
+  }
+  doubleClaimed.sort((a, b) => a.id.localeCompare(b.id));
+
+  const orphans = [...report.ready, ...report.held]
+    .map((r) => r.item)
+    .filter((i) => !claimedBy.has(i.id))
+    .sort((a, b) => a.id.localeCompare(b.id));
+
+  return { subjects, unresolved, doubleClaimed, orphans };
+}

@@ -203,6 +203,15 @@ export const TOOL_PARITY: ToolParity[] = [
  * an entry with no reason and refuses a command that is missing from the list.
  */
 export const CLI_WITHOUT_SLASH: Record<string, string> = {
+  path: 'Reads a convention THIS REPOSITORY keeps and the product does not. Every other '
+    + 'reporting command answers from fields the shipped catalogue declares; this one answers '
+    + 'from a [D-MAP] block inside one reference item, which exists in exactly one corpus on '
+    + 'earth. A slash command is a door in a menu, and in every install but this one it would '
+    + 'open on "this project keeps no subject map" — an advertised capability that is correct '
+    + 'and useless, which is the empty-surface defect D58 is the subject for. The absence is '
+    + 'therefore INTENDED-FOR-NOW rather than principled: the day a subject map is something '
+    + 'mycontext init can create, this row is the thing to delete, and that is an owner '
+    + 'decision about the product rather than a lane decision about a report.',
   ack: 'Records that a PERSON read a doctor finding and ruled on it, so the acknowledgement is ' +
     'only worth anything if a person made it. `acknowledgeFinding` (core/mutate.ts) refuses ' +
     'every origin but `human`, and a slash command is a model typing the command - which is ' +
@@ -382,6 +391,17 @@ export interface ToolAbsence {
  * comparison and every self-check keyed to a row below.
  */
 export const CLI_WITHOUT_TOOL: Record<string, ToolAbsence> = {
+  path: {
+    disposition: 'intended',
+    reason:
+      'Same fact `CLI_WITHOUT_SLASH.path` cites, and it bites harder here. A tool is '
+      + 'ADVERTISED in every session of every install: `tools/list` names it before anybody '
+      + 'asks, so a model in a project with no subject map would be handed a capability whose '
+      + 'only possible answer is that the project does not keep one. `ready` already answers '
+      + '"what can I start" over any corpus and HAS a tool; what this adds on top is a '
+      + 'grouping by a number this project mints by hand. Widen the convention first, then '
+      + 'the tool — the other order ships a door with no room behind it.',
+  },
   carry: {
     disposition: 'intended',
     reason:

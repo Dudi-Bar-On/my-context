@@ -5,8 +5,10 @@ title: the automatic marking stopped and said nothing, because a stale row makes
 status: active
 severity: soft
 always: false
-summary: Bookmarking stopped silently half an hour ago and kept saying there was nothing to do, because the archive quietly stopped reading new turns.
-summary_of: dcf399c39b035653
+summary: Automatic bookmarking had quietly stopped; the real cause was found, fixed and demonstrated, and the pass can now say when it could not read anything at all.
+summary_of: cecf6e768ef96fa8
+summary_was:
+  - 2026-09-16 Bookmarking stopped silently half an hour ago and kept saying there was nothing to do, because the archive quietly stopped reading new turns.
 scope:
   - src/core/conversation-index.ts
   - src/core/conversation-search.ts
@@ -18,18 +20,19 @@ tags:
   - silent-failure
   - "plan:anchors"
   - "seq:5"
-  - "state:todo"
+  - "state:done"
 origin: human
 source_file: null
 source_anchor: null
 source_checksum: null
 valid_from: 2026-09-15
 valid_until: null
-checksum: 533788c02fb25bc7
+checksum: 4a4c1a02858791c7
 plan: anchors
 seq: "5"
-state: todo
+state: done
 priority: "1"
+verified_on: 2026-09-16
 ---
 
 # the automatic marking stopped and said nothing, because a stale row makes every step below it correctly decide there is no work
@@ -116,3 +119,9 @@ deliverable. This item closes when all four hold:
 
 AND NOT BY REBUILD. `mycontext conversation rebuild` will clear the gap and prove nothing about the
 on-the-fly path. If a rebuild is run for any reason, the stall must be reproduced afterwards.
+
+── CLOSED 2026-09-16 BY THE RECONCILIATION, NOT BY THE LANE ────────────
+
+DONE IN `0ce8460f`. ALL FOUR CLOSING CONDITIONS ABOVE ARE MET, AND THE DIAGNOSIS IN THIS ITEM WAS WRONG. The stale row did not starve the pass. The probes asked `searchArchive` for the best 200 matches IN THE WHOLE ARCHIVE ranked by `bm25()`, which has no opinion about recency, and applied the per-turn scope afterwards — so with 777 spans matching the table probe the newest table was ranked out. Window membership predicted the mark 15 times out of 15.
+
+Condition 2 is `TurnAnchorReport.did`, now `marked | nothing-moved | could-not-look`, plus `archiveFreshness` — one `statSync` per source against the row that claims to describe it. Condition 1 and 4 were demonstrated over ten consecutive rounds while two sessions kept appending: the gap went to zero in nine of ten and NEVER GREW, and the first round's new mark is a turn acquiring its mark on the fly. Measured on COPIES so his own files were never written, which is condition 4's own instruction. Closed by the reconciliation in `rulings/93`; the rebuild that recovers the historical marks is his to run and is not a condition of this item.

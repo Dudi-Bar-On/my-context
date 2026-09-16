@@ -364,6 +364,49 @@ const SETUPS: Record<string, (cwd: string) => string[]> = {
     return [];
   },
 
+  // A subject map AND a task under it, so the command reaches its TABLE branch
+  // rather than the "this project keeps no subject map" disclosure — two
+  // separate paths through `cmdPath`, and an empty setup would only ever
+  // exercise the one this repository never sees. The register is written under
+  // the id `path` looks for by default, as a file, because the block lives in
+  // an item's BODY and the corrupt item planted beside it is the point.
+  path: (cwd) => {
+    writeFileSync(
+      path.join(cwd, '.my_context', 'config.json'),
+      JSON.stringify({
+        categories: {
+          task: {
+            tier: 'rationale', prefix: 'TASK', description: 'A unit of planned work.',
+            extraFields: ['plan', 'seq', 'state', 'priority', 'needs'],
+          },
+        },
+      }, null, 2) + '\n',
+    );
+    mkdirSync(path.join(cwd, '.my_context', 'items', 'task'), { recursive: true });
+    writeFileSync(
+      path.join(cwd, '.my_context', 'items', 'task', 'TASK-f2.md'),
+      '---\nid: TASK-f2\ntype: task\ntitle: a task under a subject for the F2 guard\n'
+      + 'status: active\nseverity: soft\nalways: false\nscope: []\ntags: []\norigin: human\n'
+      + 'plan: "f2"\nseq: "1"\nstate: "todo"\npriority: "1"\n---\n\n'
+      + '# a task under a subject for the F2 guard\n',
+      'utf8',
+    );
+    mkdirSync(path.join(cwd, '.my_context', 'items', 'reference'), { recursive: true });
+    writeFileSync(
+      path.join(
+        cwd, '.my_context', 'items', 'reference',
+        'REF-the-d-numbers-what-each-one-means-and-which-are-only.md',
+      ),
+      '---\nid: REF-the-d-numbers-what-each-one-means-and-which-are-only\ntype: reference\n'
+      + 'title: the D numbers\nstatus: active\nseverity: soft\nalways: false\nscope: []\n'
+      + 'tags: []\norigin: human\n---\n\n# the D numbers\n\n'
+      + '[D-MAP]\nD1 | open | f2/*\n[END D-MAP]\n',
+      'utf8',
+    );
+    plantUnrelatedCorruptItem(cwd);
+    return [];
+  },
+
   // A real corpus and a real destination, not `--dry-run`: the dry run and
   // the write are two paths through `cmdExport`, and the one that could
   // plausibly want to fail on a bad corpus is the one that writes. The

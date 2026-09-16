@@ -5,8 +5,10 @@ title: five perf files index the percentile one rank high and their baselines we
 status: active
 severity: soft
 always: false
-summary: Five speed measurements report a slightly worse figure than the one they name, and the recorded baselines were all worked out the same wrong way.
-summary_of: f90d1819cfd6f741
+summary: Five timing baselines were derived through the same one-rank-high reading they are meant to check, and re-deriving them needs a machine nobody has had free.
+summary_of: f27c85426e04f5dc
+summary_was:
+  - 2026-09-16 Five speed measurements report a slightly worse figure than the one they name, and the recorded baselines were all worked out the same wrong way.
 scope: []
 tags:
   - v2
@@ -19,10 +21,10 @@ tags:
 origin: human
 source_file: "C:/Users/UserC/AppData/Local/Temp/rank.md"
 source_anchor: null
-source_checksum: 94bd631c803c7562
+source_checksum: null
 valid_from: 2026-08-30
 valid_until: null
-checksum: 8c21fa72e5ee8bbe
+checksum: 2b32131d077fa824
 plan: hooks
 seq: 12q
 state: todo
@@ -59,3 +61,13 @@ source: "found by plan:hooks seq:12p, 2026-08-30"
 > **And the standing debt this belongs to**
 >
 > `plan:hooks seq:12p` left `subagent-start`'s 500 ms ceiling **honest but uncertified** for the same reason: red on all nine runs, and the untouched `session-start` file measured the same shape on the same box, so the redness is the machine and not the code. **An idle-machine run is owed on both.** The right moment is when no agents are dispatched — which is a scheduling decision, not a code one.
+
+── STILL OPEN 2026-09-16, AND THIS IS WHAT REMAINS ─────────────────────
+
+NAMED-BUT-OPEN a537c99c — REFUSED RATHER THAN FORCED — this item's own "done when" requires baselines re-derived on a QUIET machine, and that night was not one
+
+WHY THE LANE REFUSED IT, recorded so the next one does not take it on a busy box: this item's own closing condition requires the baselines re-derived on a QUIET MACHINE, and three separate lanes that week reported timings they could not trust with 26–33 node processes on the host.
+
+So the precondition is a scheduling fact and not a coding one, and a lane that takes this while others are running will produce numbers that have to be thrown away.
+
+The `NAMED-BUT-OPEN` line above is read by `npm run check:board`.

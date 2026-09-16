@@ -110,7 +110,12 @@ const CLUSTERS: Cluster[] = [
     id: 'checking-on-the-corpus',
     title: "Check whether your corpus is healthy, and what's ready to work on",
     tier: 'basic',
-    cli: ['status.ts', 'doctor.ts', 'ready.ts', 'ack.ts'],
+    // `path.ts` joins this tutorial rather than getting one of its own: it is
+    // the same question as `ready` asked one level up — what is left, and what
+    // can be started — and a reader who has just met `ready` is the reader who
+    // wants it. A tutorial per command is how thirty-nine skills stopped being
+    // readable (D54).
+    cli: ['status.ts', 'doctor.ts', 'ready.ts', 'path.ts', 'ack.ts'],
     slash: ['status.md', 'doctor.md', 'ready.md'],
     screens: ['status.js', 'doctor.js'],
   },

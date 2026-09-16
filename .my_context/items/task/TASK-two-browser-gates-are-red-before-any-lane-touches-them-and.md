@@ -5,8 +5,10 @@ title: two browser gates are red before any lane touches them, and one of them i
 status: active
 severity: soft
 always: false
-summary: Two of the visual checks fail on the current code for reasons unrelated to the work in progress, so they cannot flag anything new until they are dealt with.
-summary_of: bbf3b605f108de63
+summary: Two browser checks are red before anybody touches them, and one of them hides how big the problem is; the first failure was confirmed still true and nothing was changed.
+summary_of: 5eabbe8d46ffe4a8
+summary_was:
+  - 2026-09-16 Two of the visual checks fail on the current code for reasons unrelated to the work in progress, so they cannot flag anything new until they are dealt with.
 scope:
   - e2e/**
   - src/ui/public/**
@@ -19,10 +21,10 @@ tags:
 origin: human
 source_file: "C:/Users/UserC/AppData/Local/Temp/claude/D--Users-UserC-source-repos-my-context/595db3b1-a481-4553-b4c0-7248c31b2655/scratchpad/gates.md"
 source_anchor: null
-source_checksum: e6d1c6ed12f46b0d
+source_checksum: null
 valid_from: 2026-09-08
 valid_until: null
-checksum: 7a463e7185889592
+checksum: 6d1a6d85ad859a67
 plan: ui-gates
 seq: "1"
 state: todo
@@ -79,3 +81,13 @@ priority: "2"
 > WHAT THIS ITEM IS FOR: someone has to decide, per screen, whether each missing element is work to do
 > or a gap to record, and that is a judgement per plan rather than one commit. Until then these two
 > gates cannot tell a new regression from the standing one, which is the cost being carried.
+
+── STILL OPEN 2026-09-16, AND THIS IS WHAT REMAINS ─────────────────────
+
+NAMED-BUT-OPEN a537c99c — confirmed still true at HEAD and deliberately not fixed — the lane that looked was closing four other items and had no browser
+
+WHAT THAT COMMIT ESTABLISHED, recorded here so nobody re-derives it: this plan is the only one at 0% and IT IS REAL WORK, NOT A STUB. Its first failure was confirmed still true at HEAD WITHOUT A BROWSER — the simulate screen appends the sentence as a SIBLING of the chip, so the chip's own text is empty, which is exactly the reported empty-chip finding.
+
+WHAT REMAINS: all of it. The confirmation is a starting point, not a delivery.
+
+The `NAMED-BUT-OPEN` line above is read by `npm run check:board`, which is what surfaced this item's naming in the first place.

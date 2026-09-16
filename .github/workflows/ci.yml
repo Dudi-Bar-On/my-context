@@ -131,6 +131,18 @@ jobs:
       # handover is a historical document and a block written before a retirement
       # was true when it was written.
       - run: npm run check:handover
+      # The D map GATES and the drift tier REPORTS, in one step on purpose. The
+      # map half fails the run when a row does not parse, when a D number
+      # repeats, when a member names work this corpus does not hold, or when one
+      # item falls under two subjects — a silently unparsed row is how a subject
+      # leaves the board, which is the failure this replaces. The drift half —
+      # a commit named an item and the item is still open — can never fail a
+      # run, because a filing commit names its own item and a partial landing is
+      # legitimate. It is in this step rather than a step of its own precisely
+      # because of the ruling above `check:cited-items`: a never-gating check on
+      # its own line prints into a green log and manufactures the appearance of
+      # coverage. Here it prints inside a run whose greenness means something.
+      - run: npm run check:board
       # Before `npm test` because it is two seconds, and in CI at all because the
       # alternative is what this repository just lived through: it exits on the
       # DOCUMENTATION tier only, it was red on 2026-09-13, and `release.yml` was
