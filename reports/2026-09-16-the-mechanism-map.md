@@ -96,8 +96,14 @@ tree within a day. An item can self-silence one drift finding with `NAMED-BUT-OP
 in its body, which expires the moment a *later* commit names the item again.
 
 **None of this** — the map format, `dBoard`, `mycontext path`, or the two-tier gate — exists in any
-capabilities chapter, spec or tutorial. The only prior documentation is the 200-line header comment
-in `needs.ts` and two corpus reference items.
+capabilities chapter, spec or tutorial. The only prior documentation is the header comment in
+`needs.ts` and two corpus reference items.
+
+> **Correction, same day.** The mapper called that header "200-line"; it is **48 lines**
+> (`needs.ts:1-48`), verified independently after the verification pass caught the same figure
+> repeated in chapter 16. Left visible rather than silently edited: this is the third time in one
+> day a count travelled from one document into another without being read from the tree, and the
+> map is not exempt from the thing it documents.
 
 ---
 
