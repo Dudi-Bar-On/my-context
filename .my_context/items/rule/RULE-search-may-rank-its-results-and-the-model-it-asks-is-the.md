@@ -2,8 +2,8 @@
 id: RULE-search-may-rank-its-results-and-the-model-it-asks-is-the
 type: rule
 title: search may rank its results, and the model it asks is the user’s own `claude -p` rather than one this project ships
-status: active
-severity: hard
+status: superseded
+severity: soft
 always: false
 summary: The owner ruled that search may order results by relevance and that semantic search ships from the start, using the user’s own Claude CLI rather than a bundled model.
 summary_of: f12cf8beb70b0f9c
@@ -22,8 +22,8 @@ source_file: null
 source_anchor: null
 source_checksum: null
 valid_from: 2026-09-16
-valid_until: null
-checksum: c39281aa35312da5
+valid_until: 2026-09-16
+checksum: c2477d3bcde7d45a
 ---
 
 # search may rank its results, and the model it asks is the user’s own `claude -p` rather than one this project ships
@@ -97,9 +97,11 @@ Semantic is an ADDITION to a search that already works, never the thing that mak
 
 ## Observations
 - [supersession] Replaces OPENQ-may-search-rank-its-results-and-is-a-model-worth-a-runtime: The owner answered both halves on 2026-09-16: search may rank, and the model is his own `claude -p` rather than a bundled one. The question's measurements are not lost — the rule restates the ones that still bind and names the three the ruling did not settle.
+- [supersession] Stood down on 2026-09-16 when RULE-search-may-rank-its-results-and-semantic-search-is-not superseded it: the binding severity was dropped, so "severity" is now "soft" instead of "hard". Nothing else was changed and nothing was deleted — a retired item keeps its file, its body, its observations and its relations, and stops claiming to govern.
 
 ## Relations
 - supersedes [[OPENQ-may-search-rank-its-results-and-is-a-model-worth-a-runtime]]
+- superseded_by [[RULE-search-may-rank-its-results-and-semantic-search-is-not]]
 
 ## Request
 

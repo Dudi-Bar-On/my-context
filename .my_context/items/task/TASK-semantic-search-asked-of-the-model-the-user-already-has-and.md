@@ -2,7 +2,7 @@
 id: TASK-semantic-search-asked-of-the-model-the-user-already-has-and
 type: task
 title: semantic search, asked of the model the user already has — and the three numbers nobody has taken before it is built
-status: active
+status: superseded
 severity: soft
 always: false
 summary: Let the search find a passage that means what you asked even when it uses different words, by asking the Claude the user is already running - now measured, and the measurement decides its shape.
@@ -26,8 +26,8 @@ source_file: null
 source_anchor: null
 source_checksum: null
 valid_from: 2026-09-16
-valid_until: null
-checksum: 76b34faa18e4560b
+valid_until: 2026-09-16
+checksum: d86507288952d30b
 plan: semantic
 seq: "5"
 state: todo
@@ -160,3 +160,6 @@ show the deterministic results at 4.3 ms and fold the expanded hits in when they
   3. Four unavailability values, not three, and the READER of each.
   4. Whether the bimodal startup overhead is controllable.
   5. The permutation guard, if reranking is ever taken up.
+
+## Relations
+- superseded_by [[RULE-search-may-rank-its-results-and-semantic-search-is-not]]
