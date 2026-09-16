@@ -958,6 +958,14 @@ const READ_ROUTES = (from: { item: string; session: string | null }): Probe[] =>
   // can hold, so each takes the 404 this sweep accepts.
   '/api/conversations/not-a-real-session-id/outline',
   '/api/conversations/not-a-real-session-id/nodes?at=0&from=0&node=0&count=2',
+  // `semantic/8`, the find bar's server half. It is the one route here that
+  // reads EVERY prose span of a transcript rather than a window of it —
+  // `findInDocument` asks `proseSpans` for up to `FIND_SCAN_CAP` rows and
+  // scans them in JavaScript — so if the read-only index door were ever
+  // opened for writing, this is the route that would touch it hardest. The
+  // session id no index can hold takes the 404 this sweep accepts, which is
+  // enough: the door is opened before the id is resolved.
+  '/api/conversations/not-a-real-session-id/find?q=nothing-in-any-archive-matches-this',
   // `plan:archive seq:19`. The cheap probe an open document polls: ONE
   // `stat()` on the transcript, which is the whole reason it is a route of its
   // own rather than a field on `/api/ping`. It is in this sweep for the same

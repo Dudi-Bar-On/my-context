@@ -245,7 +245,7 @@ interface Source {
 /**
  * **One transcript whose row is BEHIND the file it names.**
  *
- * `STD-nothing-to-do-and-could-not-look-are-different-answers`, written from
+ * `nothing-to-do-and-could-not-look-are-different-answers`, written from
  * the 2026-09-15 incident this field closes: *"the step that trusts a recorded
  * value must, at least once, compare it against the thing it claims to
  * describe"*. Nothing in this product was making that comparison, so a row
@@ -1020,5 +1020,218 @@ export function searchArchiveTiered(
     excluded: parsed.excluded,
     tiers,
     hits,
+  };
+}
+
+/* ── FIND IN THE DOCUMENT I AM READING — `semantic/8` ──────────────────────
+ *
+ * `TASK-typing-three-dots-finds-half-of-what-it-should-and-a-hit-you`, owner
+ * ruling 2026-09-16. Two halves; this file owns the first and
+ * `screens/conversations.js` owns the second.
+ *
+ * ── WHY THIS IS NOT `searchArchiveTiered`, AND NOT A FLAG ON IT ───────────
+ *
+ * `semantic/4`'s tiered search is the ARCHIVE's answer and it stays exactly
+ * as it landed. Its own lane flagged the collision for this one: **it
+ * de-duplicates ACROSS tiers, and a find bar needs DOCUMENT ORDER.** Those
+ * are two orderings of one result set, so here the tier is not consulted at
+ * all and the answer comes back in record order. Nothing about
+ * `searchArchiveTiered` changes, and nothing here replaces it.
+ *
+ * ── AND WHY IT DOES NOT ASK FTS5 ─────────────────────────────────────────
+ *
+ * Because FTS5 cannot answer it, twice over:
+ *
+ *   1. **It has no `offsets()`.** Verified against this live index by lane AI:
+ *      `offsets(conversation_prose)` fails with *"unable to use function
+ *      offsets in the requested context"* — it is an FTS3/4 function.
+ *      `highlight()` and `snippet()` return marked-up TEXT, not positions. A
+ *      highlight needs positions.
+ *   2. **The index is not folded.** That is the whole task. Measured on this
+ *      repository's own archive today, 11,364 prose spans:
+ *
+ *          "..."   FTS5 trigram   463 spans
+ *          "..."   plain indexOf  463 spans
+ *          "..."   folded       1,024 spans     <- 2.21x
+ *          ".."    FTS5 trigram     0 spans     <- under the trigram floor
+ *          ".."    folded       1,041 spans
+ *
+ *      A two-stage shape that asked FTS5 first would hand this function 463
+ *      of the 1,024 spans and lose the other 561 SILENTLY, which is the exact
+ *      defect the feature exists to remove (`INV-nothing-is-dropped-silently`).
+ *      So the scan is over every prose span in the transcript, and the cost of
+ *      that is measured below rather than feared.
+ *
+ * ── WHAT IT COSTS, MEASURED ON THE LARGEST SESSION IN THIS ARCHIVE ───────
+ *
+ * 11,336 prose spans, 13,206,532 characters, median of 9 runs, 2026-09-16:
+ *
+ *     proseSpans read                 159.3 ms
+ *     scan for "..."                  116.5 ms
+ *     scan for "byte offset"          111.5 ms
+ *     scan for "the"                  159.9 ms
+ *
+ * Behind the 250 ms settle the find box already has, one whole-session scan a
+ * query. That is affordable and it is the honest shape; the alternative is an
+ * index that cannot answer the question being asked.
+ */
+
+/**
+ * **HOW MANY PROSE SPANS ONE FIND MAY READ.**
+ *
+ * A bound, not a scope — `nothing-to-do-and-could-not-look-are-different-answers`,
+ * and the distinction is why `DocumentFind.capped` exists beside it. The
+ * largest transcript in this archive holds 11,336 prose spans, so this is
+ * three and a half times the worst case seen; a document that exceeded it
+ * would be answered honestly rather than quietly short.
+ */
+export const FIND_SCAN_CAP = 40_000;
+
+/**
+ * **HOW MANY HITS ARE COUNTED INSIDE ONE TURN.**
+ *
+ * A single turn of terminal output can hold thousands of occurrences of a
+ * common letter, and nothing on the screen would ever draw them all. The
+ * count stops here and the turn says it stopped, which is the same bargain
+ * `TierAnswer.bounded` makes one surface along.
+ */
+export const FIND_HITS_PER_TURN = 500;
+
+/**
+ * **THE MATCHER, LOADED ONCE SO THIS FUNCTION STAYS SYNCHRONOUS.**
+ *
+ * `src/ui/public/lib/fold.js` is plain JavaScript that the BROWSER also
+ * imports, and that is the point of it: the count this function returns and
+ * the highlights `screens/conversations.js` paints are computed by the same
+ * code, so they cannot come to different answers about what a hit is. Two
+ * matchers would be two definitions of the feature.
+ *
+ * Loaded with a top-level `await import()` exactly as `ui/execute-catalogue.ts`
+ * loads `public/lib/palette-defs.js`, and for the reason its header gives: a
+ * request handler that had to await a lookup would put an `await` in the
+ * middle of an ordering that has none. `allowJs` is off, so a static import
+ * of a `.js` file cannot typecheck and the cast is what the boundary costs.
+ */
+const { foldedMatches } = (await import(
+  new URL('../ui/public/lib/fold.js', import.meta.url).href
+)) as {
+  foldedMatches: (
+    text: string, query: string, limit?: number,
+  ) => { from: number; to: number; byteFrom: number; byteTo: number; precise: boolean }[];
+};
+
+/** One turn of a transcript that holds what the reader typed. */
+export interface FoundTurn {
+  sessionId: string;
+  agentId: string | null;
+  recordIndex: number;
+  /** Bytes from the start of THAT transcript — what `nodeAtByte` joins on. */
+  byteOffset: number;
+  kind: string;
+  /** Occurrences inside this turn's own words, folded. */
+  matches: number;
+  /** True when `matches` stopped at `FIND_HITS_PER_TURN` rather than running out. */
+  bounded: boolean;
+  /**
+   * Where the first one starts, in BYTES from the start of the turn's TEXT —
+   * never characters, and never from the start of the file. It is the offset
+   * currency every anchor and every seek in this project is in, so a caller
+   * that wants to mark the point can add it to `byteOffset` without a second
+   * opinion about what an offset means.
+   */
+  firstByte: number;
+}
+
+/**
+ * What a find over one transcript answers with.
+ *
+ * **`scanned` and `capped` are the disclosure, and they are not decoration.**
+ * A count that silently meant *"in the spans I happened to read"* is worse
+ * than no count at all; these two say exactly which spans were read.
+ */
+export interface DocumentFind {
+  /** The query as it was searched — trimmed, never rewritten. */
+  query: string;
+  /** Prose spans actually read and scanned. */
+  scanned: number;
+  /** True when `FIND_SCAN_CAP` was reached, so spans exist that were not read. */
+  capped: boolean;
+  /** The turns that hold it, in DOCUMENT ORDER. */
+  turns: FoundTurn[];
+  /** Occurrences over all of them, each turn bounded by `FIND_HITS_PER_TURN`. */
+  matches: number;
+}
+
+/**
+ * **EVERY TURN OF ONE TRANSCRIPT THAT HOLDS WHAT THE READER TYPED, FOLDED.**
+ *
+ * ── WHAT THIS COUNTS, SAID HERE SO THE SCREEN CAN SAY IT TOO ─────────────
+ *
+ * It counts **prose spans** — the turns `classifyTurn` calls `prompt` or
+ * `answer`. It does NOT count machinery: 47,910 of one session's 52,292
+ * records are tool calls, results and hooks, they are in no index, and lane
+ * AI's report closes on exactly this gap (*"only 1.08% of the scanned archive
+ * is searchable... nothing on any surface tells a reader the scope of what
+ * they just searched"*). So the number is *"turns of words that hold it"* and
+ * the screen is required to say so — a count a reader reads as "everywhere in
+ * this conversation" would be false by two orders of magnitude.
+ *
+ * ── AND IT IS A TRANSCRIPT, NOT A SESSION ────────────────────────────────
+ *
+ * `agentId` is passed EXPLICITLY, `null` meaning the session's own
+ * transcript, because `proseSpans` reads a session AND its lanes when the
+ * field is left out. The document screen draws one file; a count that
+ * silently included 263 lanes' turns would describe a document the reader is
+ * not looking at.
+ */
+export function findInDocument(
+  index: ConversationIndex,
+  query: string,
+  scope: { sessionId: string; agentId: string | null },
+): DocumentFind {
+  const trimmed = query.trim();
+  const empty: DocumentFind = {
+    query: trimmed, scanned: 0, capped: false, turns: [], matches: 0,
+  };
+  // **No floor of three characters here, and that is deliberate.**
+  // `MIN_QUERY_CHARS` is a property of the TRIGRAM INDEX, which this does not
+  // use: a JavaScript scan matches one character as happily as ten, and 14.5%
+  // of the Hebrew occurrences in this corpus are words under three characters
+  // (`reports/2026-09-16-the-search-grammar.md` §3 Finding 1). Refusing them
+  // here would import a bound from a mechanism that is not involved.
+  if (trimmed === '') return empty;
+
+  const spans = index.proseSpans({ sessionId: scope.sessionId, agentId: scope.agentId },
+    FIND_SCAN_CAP);
+  const turns: FoundTurn[] = [];
+  let matches = 0;
+  for (const span of spans) {
+    const found = foldedMatches(span.text, trimmed, FIND_HITS_PER_TURN);
+    if (found.length === 0) continue;
+    matches += found.length;
+    turns.push({
+      sessionId: span.sessionId,
+      agentId: span.agentId,
+      recordIndex: span.recordIndex,
+      byteOffset: span.byteOffset,
+      kind: span.kind,
+      matches: found.length,
+      bounded: found.length >= FIND_HITS_PER_TURN,
+      firstByte: found[0]?.byteFrom ?? 0,
+    });
+  }
+  // **DOCUMENT ORDER, and it is restored rather than asked for.**
+  // `proseSpans` answers `ORDER BY at DESC` because its own caller wants what
+  // was worked on lately; a find bar wants the first hit in the file to be
+  // first. `recordIndex` is the transcript's own ordinal, which is what the
+  // document screen draws in, so sorting on it here is the same order the
+  // reader is scrolling through.
+  turns.sort((a, b) => a.recordIndex - b.recordIndex);
+  return {
+    query: trimmed,
+    scanned: spans.length,
+    capped: spans.length >= FIND_SCAN_CAP,
+    turns,
+    matches,
   };
 }

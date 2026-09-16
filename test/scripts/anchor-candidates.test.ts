@@ -34,7 +34,7 @@
  */
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { anchorInTurn, ownerTyped } from '../../src/core/anchor-pass.ts';
+import { anchorsInTurn, ownerTyped } from '../../src/core/anchor-pass.ts';
 import { longestFence, unitCount } from '../../scripts/measure-anchor-candidates.ts';
 
 /**
@@ -69,7 +69,7 @@ const HIS = { type: 'user', origin: { kind: 'human' }, promptSource: 'typed' };
  * REMOVAL PROOF — **this plugin's own injection block is no longer marked**,
  * and it was 296 of the `ruling` grammar's 377 marks on the owner's archive.
  *
- * `anchorInTurn` restricted a ruling to `kind === 'prompt'` because *"a ruling
+ * `anchorsInTurn` restricted a ruling to `kind === 'prompt'` because *"a ruling
  * is something the owner GAVE"*. A lane's transcript opens with the dispatch,
  * `classifyTurn` calls it a prompt, and the dispatch carries every governing id
  * verbatim — so the restriction admitted exactly the turns it was written to
@@ -82,15 +82,15 @@ const HIS = { type: 'user', origin: { kind: 'human' }, promptSource: 'typed' };
  */
 test('the injection block this plugin writes into every lane is not a ruling', () => {
   assert.equal(
-    anchorInTurn({ record: DISPATCH_RECORD, laneReport: null }, LANE_DISPATCH), null,
+    anchorsInTurn({ record: DISPATCH_RECORD, laneReport: null }, LANE_DISPATCH).length, 0,
     'the block carries `CONST-node-24-no-build-step` AND the word `must`, and neither is a '
     + 'reason to mark it: nobody typed it',
   );
 
   // The detector can still see a red. One property moves: whose record it is.
-  const asHis = anchorInTurn({ record: HIS, laneReport: null }, LANE_DISPATCH);
-  assert.equal(asHis?.kind, 'ruling');
-  assert.match(asHis?.label ?? '', /must carry an explicit \.ts extension/);
+  const asHis = anchorsInTurn({ record: HIS, laneReport: null }, LANE_DISPATCH);
+  assert.deepEqual(asHis.map((f) => f.kind), ['ruling']);
+  assert.match(asHis[0]?.label ?? '', /must carry an explicit \.ts extension/);
 });
 
 /**
@@ -110,7 +110,7 @@ test('a harness task-notification is not a ruling, and the same words typed are'
   const notification = `<task-notification>\n<task-id>abc123</task-id>\n${body}\n</task-notification>`;
   const record = { type: 'user', origin: { kind: 'task-notification' }, promptSource: 'system' };
 
-  assert.equal(anchorInTurn({ record, laneReport: null }, notification), null);
+  assert.equal(anchorsInTurn({ record, laneReport: null }, notification).length, 0);
   assert.equal(
     ownerTyped(record), false,
     'the archive says who produced it, and it was not him — that is the filter the shipped '
@@ -121,8 +121,8 @@ test('a harness task-notification is not a ruling, and the same words typed are'
   // everything, this half would be false.
   assert.equal(ownerTyped(HIS), true);
   assert.deepEqual(
-    anchorInTurn({ record: HIS, laneReport: null }, body),
-    { kind: 'ruling', label: body },
+    anchorsInTurn({ record: HIS, laneReport: null }, body),
+    [{ kind: 'ruling', label: body }],
   );
 });
 
@@ -146,9 +146,9 @@ test('a headless run is refused on the record, with no session filter at all', (
 
   assert.equal(ownerTyped(sdk), false);
   assert.equal(ownerTyped(HIS), true);
-  assert.equal(anchorInTurn({ record: sdk, laneReport: null }, `${text} — it must`), null);
+  assert.equal(anchorsInTurn({ record: sdk, laneReport: null }, `${text} — it must`).length, 0);
   assert.equal(
-    anchorInTurn({ record: HIS, laneReport: null }, `${text} — it must`)?.kind, 'ruling',
+    anchorsInTurn({ record: HIS, laneReport: null }, `${text} — it must`)[0]?.kind, 'ruling',
   );
 });
 
@@ -169,7 +169,7 @@ test('origin must say `human`, and a plausible near-miss is refused', () => {
   assert.equal(ownerTyped({}), false);
   assert.equal(ownerTyped(null), false, 'a record the pass could not read is never his');
   // And the red the detector must still be able to see.
-  assert.equal(anchorInTurn({ record: HIS, laneReport: null }, ruled)?.kind, 'ruling');
+  assert.equal(anchorsInTurn({ record: HIS, laneReport: null }, ruled)[0]?.kind, 'ruling');
 });
 
 /**

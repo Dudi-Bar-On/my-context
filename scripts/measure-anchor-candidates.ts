@@ -14,7 +14,7 @@
  * `ConversationIndex.open`, which is a door that migrates and therefore
  * writes. Nothing here calls `markAnchor`, `buildSearchIndex` or
  * `markAutomaticAnchors`, and the shipped grammar is IMPORTED and called, not
- * copied — a second expression of `anchorInTurn` would make the overlap column
+ * copied — a second expression of `anchorsInTurn` would make the overlap column
  * a comparison against a lookalike.
  *
  * ── WHAT IS SCANNED, SAID EXACTLY, BECAUSE A COUNT IS A CLAIM ──────────────
@@ -40,7 +40,7 @@
  *
  * **The span's `text` column IS the turn text the grammar sees.** `proseFrom`
  * stores `proseOf(record)` verbatim and untruncated, and `turnAt` — what
- * `markAutomaticAnchors` puts to `anchorInTurn` — calls the same `proseOf` on
+ * `markAutomaticAnchors` puts to `anchorsInTurn` — calls the same `proseOf` on
  * the same record. So counting over this table is not an approximation of
  * re-reading 123 MB of transcript; it is the same string, which is why no
  * candidate below needed a transcript walk at all.
@@ -68,7 +68,7 @@
  *     grammar cannot come to disagree about whose words they are counting.
  */
 import { DatabaseSync } from 'node:sqlite';
-import { anchorInTurn, laneReportAt, ownerTyped } from '../src/core/anchor-pass.ts';
+import { anchorsInTurn, laneReportAt, ownerTyped } from '../src/core/anchor-pass.ts';
 import { ConversationIndex, iterateTranscript } from '../src/core/conversation-index.ts';
 import { archiveFreshness } from '../src/core/conversation-search.ts';
 import { isMainEntry } from '../src/core/paths.ts';
@@ -78,7 +78,7 @@ const out: string[] = [];
 const say = (s = ''): void => { out.push(s); };
 const flush = (): void => { process.stdout.write(out.join('\n') + '\n'); };
 
-/** One turn as the prose index holds it — the same string `anchorInTurn` gets. */
+/** One turn as the prose index holds it — the same string `anchorsInTurn` gets. */
 export interface Span {
   sourceKey: string;
   sessionId: string;
@@ -484,14 +484,18 @@ function main(): number {
   const ruled = new Set<string>();
   const reported = new Set<string>();
   for (const span of spans) {
-    const finding = anchorInTurn({
+    // **EVERY KIND THE TURN CARRIES, not the first one** — a turn that is both
+    // a table and a lane report is in BOTH sets after 2026-09-16, which is what
+    // makes the overlap column below a measurement of the shipped pass rather
+    // than of a precedence it no longer keeps.
+    for (const finding of anchorsInTurn({
       record: span.record,
       laneReport: laneReportAt(index, lastAnswers, span.agentId, span.byteOffset, span.text),
-    }, span.text);
-    if (finding === null) continue;
-    if (finding.kind === 'table') tabled.add(keyOf(span));
-    else if (finding.kind === 'report') reported.add(keyOf(span));
-    else ruled.add(keyOf(span));
+    }, span.text)) {
+      if (finding.kind === 'table') tabled.add(keyOf(span));
+      else if (finding.kind === 'report') reported.add(keyOf(span));
+      else ruled.add(keyOf(span));
+    }
   }
   index.close();
   const marked = new Set([...tabled, ...ruled, ...reported]);

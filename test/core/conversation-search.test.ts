@@ -1,6 +1,7 @@
 // @basis TASK-search-the-archive-properly-and-mark-the-anchors-you-want-to,
 // TASK-the-prose-index-re-reads-95-mb-every-run-because-its-resume,
 // TASK-ship-the-search-the-research-recommended-three-readings-of,
+// TASK-typing-three-dots-finds-half-of-what-it-should-and-a-hit-you,
 // RULE-search-may-rank-its-results-and-the-model-it-asks-is-the,
 // INV-nothing-is-dropped-silently, CONST-zero-runtime-dependencies
 /**
@@ -64,7 +65,8 @@ import {
   ConversationIndex, ConversationIndexIncompleteError, projectDirName, rebuildConversations,
 } from '../../src/core/conversation-index.ts';
 import {
-  MIN_QUERY_CHARS, buildSearchIndex, searchArchive, searchArchiveTiered,
+  FIND_SCAN_CAP, MIN_QUERY_CHARS, buildSearchIndex, findInDocument, searchArchive,
+  searchArchiveTiered,
 } from '../../src/core/conversation-search.ts';
 import { Store } from '../../src/core/store.ts';
 import { removeTree } from '../helpers/tmp.ts';
@@ -1090,6 +1092,226 @@ test('searchArchive still pages one substring, which is what a probe needs', () 
         searchArchive(index, 'byte offset').hits.map((h) => h.recordIndex).sort(), [0, 2],
       );
       assert.deepEqual([...orderOf(searchArchiveTiered(index, 'byte offset'))].sort(), [0, 1, 2]);
+    } finally {
+      index.close();
+    }
+  } finally {
+    f.dispose();
+  }
+});
+
+
+/* ══ FIND IN THE DOCUMENT I AM READING — `semantic/8` ════════════════════════
+ *
+ * `TASK-typing-three-dots-finds-half-of-what-it-should-and-a-hit-you`.
+ * `findInDocument` is the SERVER half of the find bar: it scans every prose
+ * span of ONE transcript with the folded matcher and answers in document
+ * order. What is worth proving here is the three things a reader could not
+ * tell were wrong by looking:
+ *
+ *   1. **It reaches what the index cannot.** The whole feature is that a
+ *      reader types `...` and the archive wrote `…`. The fixtures below hold
+ *      the ellipsis character and the test asserts that both the FTS5 reading
+ *      and a plain substring miss it, so the assertion cannot pass on a build
+ *      that dropped the folding.
+ *   2. **DOCUMENT ORDER.** `proseSpans` answers `ORDER BY at DESC` because
+ *      `list-subjects` wants what was worked on lately. A find bar wants the
+ *      first hit in the file first, and lane AF flagged the same collision
+ *      from the other side: `searchArchiveTiered` de-duplicates across tiers,
+ *      so its order is a ranking. The fixture is written so the two orders
+ *      DISAGREE — the later record carries the earlier timestamp.
+ *   3. **One transcript, not a session and its lanes.** `proseSpans` reads
+ *      both when `agentId` is left out, and a count that silently included a
+ *      lane would describe a document nobody is looking at.
+ */
+
+test('a reader typing three dots reaches the ellipsis this product actually writes', () => {
+  const f = fixture();
+  try {
+    f.session([
+      say('user', 'open the archive', '2026-09-01T10:00:00.000Z'),
+      say('assistant', 'the head of it\u2026and the rest', '2026-09-01T10:00:01.000Z'),
+    ]);
+    const index = indexed(f);
+    try {
+      // THE REMOVAL PROOF IS THE FIXTURE ITSELF: the text holds no literal
+      // `...` at all, so a build with no folding has nothing to find.
+      const found = findInDocument(index, '...', { sessionId: SESSION, agentId: null });
+      assert.equal(found.turns.length, 1);
+      assert.equal(found.matches, 1);
+      assert.equal(
+        searchArchive(index, '...', { sessionId: SESSION }).hits.length, 0,
+        'and the FTS5 trigram reading reaches none of it, which is why this function exists',
+      );
+      assert.equal(
+        searchArchiveTiered(index, '...', { sessionId: SESSION }).hits.length, 0,
+        'nor does the tiered reading — the index holds the text unfolded',
+      );
+    } finally {
+      index.close();
+    }
+  } finally {
+    f.dispose();
+  }
+});
+
+test('a find answers in DOCUMENT order, even when the timestamps run the other way', () => {
+  const f = fixture();
+  try {
+    /*
+     * **THIS FIXTURE WAS BUILT WRONG THE FIRST TIME, AND THE CROSSOVER IS
+     * RECORDED RATHER THAN QUIETLY REPAIRED.** It first gave record 1 the
+     * LATER stamp, which is the order `ORDER BY at DESC` answers in anyway —
+     * so deleting the sort under test reddened nothing and the proof was
+     * empty. The stamps now run the other way: record 2 is the most recent, so
+     * the source hands back [2, 1] and only the sort makes it [1, 2].
+     */
+    f.session([
+      say('user', 'open the archive', '2026-09-01T10:00:00.000Z'),
+      say('assistant', 'the first byte offset', '2026-09-01T11:00:00.000Z'),
+      say('assistant', 'the second byte offset', '2026-09-01T12:00:00.000Z'),
+    ]);
+    const index = indexed(f);
+    try {
+      const found = findInDocument(index, 'byte offset', { sessionId: SESSION, agentId: null });
+      assert.deepEqual(found.turns.map((t) => t.recordIndex), [1, 2]);
+      assert.deepEqual(
+        index.proseSpans({ sessionId: SESSION, agentId: null }, 50)
+          .filter((span) => span.text.includes('byte offset')).map((span) => span.recordIndex),
+        [2, 1],
+        'and THIS is the order the source answers in, which is what makes the sort load-bearing',
+      );
+    } finally {
+      index.close();
+    }
+  } finally {
+    f.dispose();
+  }
+});
+
+test('a find over a session does not answer with its lanes\u0027 turns', () => {
+  const f = fixture();
+  try {
+    f.session([
+      say('user', 'open the archive', '2026-09-01T10:00:00.000Z'),
+      say('assistant', 'the session says byte offset', '2026-09-01T10:00:01.000Z'),
+    ]);
+    f.lane('agent-one', { agentType: 'general-purpose', description: 'a lane' }, [
+      say('user', 'a brief', '2026-09-01T10:01:00.000Z'),
+      say('assistant', 'the lane says byte offset too', '2026-09-01T10:01:01.000Z'),
+    ]);
+    const index = indexed(f);
+    try {
+      const session = findInDocument(index, 'byte offset', { sessionId: SESSION, agentId: null });
+      assert.equal(session.turns.length, 1);
+      assert.deepEqual(session.turns.map((t) => t.agentId), [null]);
+      // The lane's own document is a separate answer, and it exists — a
+      // fixture whose lane held nothing would pass with no scope at all.
+      const lane = findInDocument(index, 'byte offset', { sessionId: SESSION, agentId: 'agent-one' });
+      assert.equal(lane.turns.length, 1);
+      assert.deepEqual(lane.turns.map((t) => t.agentId), ['agent-one']);
+    } finally {
+      index.close();
+    }
+  } finally {
+    f.dispose();
+  }
+});
+
+test('a find says how much it read, so a count can never silently mean "what I had"', () => {
+  const f = fixture();
+  try {
+    f.session([
+      say('user', 'open the archive', '2026-09-01T10:00:00.000Z'),
+      say('assistant', 'byte offset here', '2026-09-01T10:00:01.000Z'),
+      machineryWithText('byte offset in machinery', '2026-09-01T10:00:02.000Z'),
+      toolResult('byte offset in a tool result', '2026-09-01T10:00:03.000Z'),
+    ]);
+    const index = indexed(f);
+    try {
+      const found = findInDocument(index, 'byte offset', { sessionId: SESSION, agentId: null });
+      assert.equal(found.scanned, 2, 'two PROSE spans — the machinery is in no index');
+      assert.equal(found.capped, false);
+      assert.equal(found.turns.length, 1);
+      // **AND THE MACHINERY REALLY DOES CARRY THE WORDS**, which is what makes
+      // `scanned` a disclosure rather than a restatement of `turns`.
+      assert.ok(FIND_SCAN_CAP > 2);
+    } finally {
+      index.close();
+    }
+  } finally {
+    f.dispose();
+  }
+});
+
+test('a hit says where in the turn it is, in BYTES from the turn\u0027s own start', () => {
+  const f = fixture();
+  try {
+    // Hebrew before the match, so a character offset and a byte offset cannot
+    // be the same number — the same construction this file\u0027s first test uses
+    // for the record offset, one level down.
+    f.session([
+      say('user', 'open the archive', '2026-09-01T10:00:00.000Z'),
+      say('assistant', '\u05e9\u05dc\u05d5\u05dd byte offset', '2026-09-01T10:00:01.000Z'),
+    ]);
+    const index = indexed(f);
+    try {
+      const found = findInDocument(index, 'byte offset', { sessionId: SESSION, agentId: null });
+      const turn = found.turns[0];
+      assert.ok(turn !== undefined);
+      assert.equal(turn.firstByte, 9, 'four Hebrew characters are eight bytes, plus the space');
+      assert.notEqual(turn.firstByte, 5, 'and five is what a CHARACTER offset would have said');
+      // The record offset it is relative to is the transcript\u0027s own, and the
+      // two are different currencies of different things. Both are bytes.
+      assert.ok(turn.byteOffset > 0);
+    } finally {
+      index.close();
+    }
+  } finally {
+    f.dispose();
+  }
+});
+
+test('an empty query finds nothing rather than everything, and reads nothing to say so', () => {
+  const f = fixture();
+  try {
+    f.session([
+      say('user', 'open the archive', '2026-09-01T10:00:00.000Z'),
+      say('assistant', 'byte offset here', '2026-09-01T10:00:01.000Z'),
+    ]);
+    const index = indexed(f);
+    try {
+      const found = findInDocument(index, '   ', { sessionId: SESSION, agentId: null });
+      assert.deepEqual(found.turns, []);
+      assert.equal(found.scanned, 0);
+      assert.equal(found.matches, 0);
+    } finally {
+      index.close();
+    }
+  } finally {
+    f.dispose();
+  }
+});
+
+test('a term below the trigram floor is found here, because no index is involved', () => {
+  const f = fixture();
+  try {
+    // `MIN_QUERY_CHARS` refuses this to `searchArchive`, correctly: the
+    // tokenizer cannot match it. A JavaScript scan can, and 14.5% of the
+    // Hebrew OCCURRENCES in this corpus are words shorter than three
+    // characters (`reports/2026-09-16-the-search-grammar.md` §3 Finding 1).
+    f.session([
+      say('user', 'open the archive', '2026-09-01T10:00:00.000Z'),
+      say('assistant', '\u05d4\u05dd \u05e8\u05e9\u05d5\u05ea', '2026-09-01T10:00:01.000Z'),
+    ]);
+    const index = indexed(f);
+    try {
+      assert.equal(
+        searchArchive(index, '\u05d4\u05dd', { sessionId: SESSION }).searchable, false,
+        'the removal proof: the indexed reading refuses this query outright',
+      );
+      const found = findInDocument(index, '\u05d4\u05dd', { sessionId: SESSION, agentId: null });
+      assert.equal(found.turns.length, 1);
     } finally {
       index.close();
     }

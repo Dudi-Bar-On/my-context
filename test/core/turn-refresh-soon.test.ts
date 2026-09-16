@@ -27,7 +27,10 @@
 
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, writeFileSync } from 'node:fs';
+// `removeTree` and not a bare `rmSync`: it carries the retry budget Windows
+// needs, and `test/no-bare-rmsync.test.ts` holds it as the one owner of that.
+import { removeTree } from '../helpers/tmp.ts';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import {
@@ -154,7 +157,7 @@ test('refreshSoonCheck reads a real file, writes the baseline, and becomes due o
     const moved = readRefreshSoonState(refreshSoonStatePath(root, sessionId));
     assert.equal(moved?.size, 1_000 + REFRESH_SOON_GROWTH_BYTES,
       'the baseline moves ON THE SPAWN, so the next gap is measured from this refresh');
-  } finally { rmSync(root, { recursive: true, force: true }); }
+  } finally { removeTree(root); }
 });
 
 /**
@@ -182,7 +185,7 @@ test('a transcript that is not there reads as absent, never as could-not-look', 
     assert.equal(got.due === false ? got.why : '', 'absent',
       'ENOENT is the only errno that means absence; every other refusal is a tick that '
       + 'did not learn, and the two must not share a value');
-  } finally { rmSync(root, { recursive: true, force: true }); }
+  } finally { removeTree(root); }
 });
 
 /**
@@ -197,7 +200,7 @@ test('a payload with no transcript path is answered as such, not as nothing-to-d
     });
     assert.equal(got.due, false);
     assert.equal(got.due === false ? got.why : '', 'no-transcript-path');
-  } finally { rmSync(root, { recursive: true, force: true }); }
+  } finally { removeTree(root); }
 });
 
 /**
@@ -220,5 +223,5 @@ test('an unwritable state directory does not throw', () => {
         sessionId: 'sess-3', now: NOW,
       });
     });
-  } finally { rmSync(root, { recursive: true, force: true }); }
+  } finally { removeTree(root); }
 });

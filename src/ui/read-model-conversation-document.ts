@@ -144,6 +144,10 @@ import {
   transcriptDir,
   type ConversationRow, type NameRow, type SubagentRow, type TranscriptCursor,
 } from '../core/conversation-index.ts';
+import {
+  findInDocument, FIND_HITS_PER_TURN, FIND_SCAN_CAP,
+  type DocumentFind,
+} from '../core/conversation-search.ts';
 import { anchorFilePath } from '../core/anchor-file.ts';
 import { workspaceCwd } from './read-model-conversations.ts';
 import { registerRoute, type ApiContext, type JsonResult } from './routes.ts';
@@ -2707,11 +2711,119 @@ export function serveSpill(ctx: ApiContext, res: ServerResponse): void {
   stream.pipe(res);
 }
 
+/**
+ * What `GET /api/conversations/:id/find` answers with.
+ *
+ * **Every number here says what it is a number OF**, because the one thing
+ * this endpoint must not do is hand back a figure a reader will take for
+ * something else. `turns` is turns of WORDS in THIS transcript; `scanned` is
+ * how many were read; `capped` says whether that was all of them; `prose` and
+ * `records` are the two halves that make the scope legible at a glance.
+ */
+interface DocFindBody extends DocumentFind {
+  sessionId: string;
+  /** The lane this document is, or `null` for a session's own transcript. */
+  agentId: string | null;
+  /**
+   * Records in this transcript ALTOGETHER — prose and machinery together.
+   *
+   * It is served beside `scanned` so the screen can state the gap without a
+   * second request. Lane AI's report closes on exactly this: *"only 1.08% of
+   * the scanned archive is searchable … nothing on any surface tells a reader
+   * the scope of what they just searched"*, which is the shape
+   * `INV-nothing-is-dropped-silently` covers.
+   */
+  records: number;
+  /** The per-turn bound, so the screen can name it rather than hard-code it. */
+  perTurn: number;
+  /** The scan bound, for the same reason. */
+  scanCap: number;
+}
+
+/**
+ * `GET /api/conversations/:id/find?q=…` — **WHERE THE READER'S WORDS ARE IN
+ * THE DOCUMENT HE IS READING**, `semantic/8`.
+ *
+ * ── WHY A NEW ROUTE AND NOT `?q=` ON `/nodes` ────────────────────────────
+ *
+ * `/nodes` serves a WINDOW — the rows the virtualiser is about to draw — and
+ * that is the whole reason this feature needs a server at all: **a find that
+ * walked the DOM would see only the rows currently drawn** and would report a
+ * count that silently meant *"in what I happen to have"*. The two questions
+ * have opposite shapes: one is bounded to a window on purpose, the other must
+ * not be bounded to a window at all. Hanging the second on the first would
+ * make the bound invisible.
+ *
+ * ── AND IT IS ONE TRANSCRIPT, RESOLVED THE WAY EVERY ROUTE HERE RESOLVES ──
+ *
+ * `:id` is a session id for a session and an agent id for a lane, exactly as
+ * `rowFor` reads it. The prose index keys a lane's spans by the OWNING
+ * session plus the agent id, so a lane is looked up as
+ * `{ sessionId: owner, agentId: id }` and a session as
+ * `{ sessionId: id, agentId: null }`. Left to default, `proseSpans` would
+ * read a session AND all of its lanes, and a session with 263 lanes would be
+ * given a count describing a document nobody is looking at.
+ */
+export function apiConversationFind(
+  ws: Workspace, url: URL, params: { id: string },
+): JsonResult {
+  const bad = unknownParams(url, ['q']);
+  if (bad !== null) return badRequest(bad);
+  const query = (url.searchParams.get('q') ?? '').trim();
+
+  let index: ConversationIndex;
+  try {
+    index = ConversationIndex.openReadOnlyChecked(ws.dbPath);
+  } catch (err) {
+    if (err instanceof ConversationIndexUninitializedError
+      || err instanceof ConversationIndexIncompleteError) {
+      return {
+        status: 404,
+        body: {
+          error: 'no conversation index in this workspace — nothing has been scanned.',
+          rebuild: REBUILD_COMMAND,
+        },
+      };
+    }
+    throw err;
+  }
+  try {
+    const row = index.get(params.id);
+    const lane = row === null ? index.getSubagent(params.id) : null;
+    if (row === null && lane === null) {
+      return { status: 404, body: { error: `no indexed conversation or subagent "${params.id}".` } };
+    }
+    const scope = lane === null
+      ? { sessionId: params.id, agentId: null }
+      : { sessionId: lane.sessionId, agentId: lane.agentId };
+    // **An empty query is answered, not refused.** The find box is cleared by
+    // backspacing, and the last keystroke of that is a request to go back to
+    // the whole document rather than an error to draw under it.
+    const found = findInDocument(index, query, scope);
+    const body: DocFindBody = {
+      ...found,
+      sessionId: scope.sessionId,
+      agentId: scope.agentId,
+      records: (row ?? lane)?.records ?? 0,
+      perTurn: FIND_HITS_PER_TURN,
+      scanCap: FIND_SCAN_CAP,
+    };
+    return { status: 200, body };
+  } finally {
+    index.close();
+  }
+}
+
 export function registerConversationDocumentRoutes(): void {
   registerRoute('GET', '/api/conversations/:id/outline', {
     kind: 'json',
     handle: (ctx: ApiContext) =>
       apiConversationOutline(ctx.ws, ctx.url, { id: ctx.params['id'] ?? '' }),
+  });
+  registerRoute('GET', '/api/conversations/:id/find', {
+    kind: 'json',
+    handle: (ctx: ApiContext) =>
+      apiConversationFind(ctx.ws, ctx.url, { id: ctx.params['id'] ?? '' }),
   });
   registerRoute('GET', '/api/conversations/:id/nodes', {
     kind: 'json',

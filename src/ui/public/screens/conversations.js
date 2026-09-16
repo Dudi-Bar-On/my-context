@@ -61,6 +61,7 @@ import {
   zonedStampOf,
 } from './parts.js';
 import { estimateHeight, matchesNode, Scroller } from '../lib/transcript-scroll.js';
+import { foldedMatches } from '../lib/fold.js';
 import { helpDisclosure } from '../lib/disclosure.js';
 import { LOOK_GAP_MS, attachLook, shouldPing } from '../lib/heartbeat.js';
 import { markdownNodes } from '../lib/markdown.js';
@@ -2024,7 +2025,25 @@ function sayTakenBack(ctx, said, anchor, backClass, onPutBack) {
   const name = el('p', 'small convtakenname');
   name.setAttribute('dir', 'auto');
   name.textContent = anchor.label;
-  const kids = [line, name];
+  /**
+   * **WHICH OF THE TURN'S MARKS WENT, and after 2026-09-16 a turn can have
+   * two** — `TASK-a-turn-that-is-both-a-table-and-a-lane-report-is-one-thing`.
+   *
+   * The label alone answered it while a point could only ever carry one mark.
+   * It cannot now: a reader who pressed Take it back on the report of a turn
+   * that is also a table would read a sentence and a name and still not know
+   * which of the two rows in front of them had gone. The kind is the thing
+   * that tells them apart on the bar, so it is the thing that names the one
+   * that left — same glyph, same word, same hue as the row it came off.
+   *
+   * It is OUTSIDE `name`, which carries `dir="auto"`: a glyph in front of a
+   * Hebrew label would decide that paragraph's direction from the glyph.
+   */
+  const went = el('p', `small convtakenkind${kindHueClass(anchor.kind)}`);
+  went.append(ANCHOR_KIND_KEYS.has(anchor.kind)
+    ? glyphed(ANCHOR_KIND_GLYPH[anchor.kind], ctx.t(`conv.anchors.kind.${anchor.kind}`))
+    : document.createTextNode(anchor.kind));
+  const kids = [line, went, name];
   let back = null;
   if (own) {
     back = el('button', backClass);
@@ -3957,6 +3976,81 @@ function waiting(ctx, key) {
 /* ══ THE DOCUMENT: MEASUREMENT AND ARITHMETIC ══════════════════════════════ */
 
 /** Nodes kept in the DOM above and below the viewport, so a scroll is smooth. */
+/**
+ * **CAN THIS BROWSER PAINT A HIGHLIGHT WITHOUT TOUCHING THE PAGE?**
+ *
+ * The CSS Custom Highlight API — `CSS.highlights` plus `::highlight()` —
+ * paints `Range`s with NO wrapper elements, no reflow and nothing to unwind.
+ * Baseline "newly available" since June 2025 (Chrome/Edge 105, Safari 17.2,
+ * Firefox 140) and an Interop 2026 focus area.
+ *
+ * **It is the only highlighter this screen can use, and the reason is the
+ * virtualiser rather than taste.** Every library of that kind — `mark.js` and
+ * its descendants — wraps a match in a `<mark>`, which mutates the DOM inside
+ * a scroll whose rows are absolutely positioned from a measured model. A
+ * wrapper re-measures the row it is in, `paint`'s anchor arithmetic then holds
+ * a position that has moved, and the well can end up blank — the defect
+ * `tvinner`'s own comment records from the two-spacer draft. A `Range` changes
+ * no layout at all, so a highlight cannot move a row.
+ *
+ * A browser that lacks it gets everything else and is TOLD the colour is
+ * missing, rather than being handed a find box that silently does half of
+ * what the line above it claims (`INV-nothing-is-dropped-silently`).
+ */
+const CAN_HIGHLIGHT = typeof CSS !== 'undefined'
+  && typeof CSS.highlights !== 'undefined'
+  && typeof Highlight === 'function';
+
+/**
+ * The name the stylesheet paints. One spelling, because `::highlight(name)`
+ * and `CSS.highlights.set(name, …)` are joined by nothing but this string.
+ */
+const FIND_HIGHLIGHT = 'mycontextfind';
+
+/**
+ * **HOW MANY HIGHLIGHTS ONE ROW MAY CARRY.**
+ *
+ * A single turn of terminal output holds thousands of occurrences of a common
+ * letter, and a reader cannot see a thousand highlights in one row. It is a
+ * bound on the DRAWING and not on the answer: the count beside the find box
+ * comes from the server's scan of the whole transcript and is not affected by
+ * it, which is the only reason a bound here is allowed to be silent.
+ */
+const FIND_PAINT_PER_ROW = 300;
+
+/**
+ * How far below the top of the well a stepped-to match is put.
+ *
+ * Enough that the line above it is readable, which is what tells a reader
+ * they are inside a turn rather than at the head of one. Not centred: the
+ * eye goes to the top third of a well and a centred landing costs a screen
+ * of context above the thing that was looked for.
+ */
+const MATCH_MARGIN_PX = 80;
+
+/**
+ * **THE ELEMENTS A MATCH MAY NOT RUN ACROSS.**
+ *
+ * A row's text is read by walking its text nodes and JOINING them, because
+ * `markdownNodes` splits a sentence the moment it carries emphasis — *"the
+ * **byte** offset"* is three text nodes — and a reader searching for `byte
+ * offset` means the sentence they can see, not the fragment between two
+ * tags. Joined blindly, though, the last word of one paragraph and the first
+ * of the next become one string and a match can be found in a gap that has no
+ * text in it at all.
+ *
+ * So a separator is inserted wherever the nearest ancestor in this list
+ * changes. The list is what `markdownNodes`, `drawTurn`, `drawDeed` and
+ * `drawWork` actually emit rather than a general idea of block-level: a tag
+ * missing from it costs a false match ACROSS a boundary, never a lost one,
+ * and `test/ui/conversations-find.test.ts` pins the paragraph case.
+ */
+const FIND_BLOCKS = new Set([
+  'P', 'DIV', 'PRE', 'LI', 'UL', 'OL', 'TABLE', 'TR', 'TD', 'TH', 'BLOCKQUOTE',
+  'H1', 'H2', 'H3', 'H4', 'H5', 'H6', 'ARTICLE', 'SECTION', 'HEADER', 'FOOTER',
+  'DETAILS', 'SUMMARY', 'FIGURE', 'FIGCAPTION', 'HR', 'BR',
+]);
+
 const OVERSCAN = 6;
 
 /** Node bodies one fetch asks for. The endpoint caps at 80. */
@@ -6100,6 +6194,16 @@ export function mountDocument(ctx, host, outline, back, roster = NO_LANES, landA
    * A group wraps as a unit and its count can never be orphaned onto the other
    * pair. Measured after the change at the same size: two lines, and the two
    * groups side by side.
+   *
+   * **AND THERE ARE THREE GROUPS SINCE 2026-09-16, so that measurement is
+   * re-taken rather than left standing.** `semantic/8` added the find walk's
+   * own pair. Measured at 1280x1000: the bar is 60.8 px with nothing typed and
+   * **162.8 px with a query in the box** (95.2 px in Hebrew, whose sentences
+   * are shorter), and the groups sit on three lines rather than two. The
+   * property this comment exists to protect is unchanged and is the reason the
+   * growth is acceptable: each pair still wraps with its own count, so no
+   * count can describe the pair above it. The height is on the lane's report
+   * as the owner's to look at.
    */
   /* ── WHICH KIND OF MARK THE WALK IS OVER ────────────────────────────────
    *
@@ -6177,7 +6281,30 @@ export function mountDocument(ctx, host, outline, back, roster = NO_LANES, landA
   markGroup.append(kindPick, kindChip, markPrev, markNext, markCount);
   const youGroup = el('div', 'tvnavgroup tvnavyous');
   youGroup.append(youPrev, youNext, youCount);
-  nav.append(navHead, markGroup, youGroup);
+  /*
+   * **AND A THIRD PAIR, FOR WHAT THE FIND BOX FOUND** — `semantic/8`.
+   *
+   * The item asks for the count and the position together: *"a reader needs
+   * to know how many there are and where he is in them"*. The marks pair and
+   * the "You" pair already answer that shape, so this is the same shape a
+   * third time rather than a new control language — one group, two buttons
+   * and a count that says what it counts, wrapping as a unit for the reason
+   * `markGroup` records above.
+   *
+   * **No glyphs**, which is the bidi decision this bar already took: half
+   * this archive is Hebrew and a triangle means "forward" only in a
+   * left-to-right reading order.
+   */
+  const foundPrev = el('button', 'tvjump tvnavstep tvnavfoundprev');
+  foundPrev.type = 'button';
+  foundPrev.append(...ctx.t('conv.nav.foundPrev'));
+  const foundNext = el('button', 'tvjump tvnavstep tvnavfoundnext');
+  foundNext.type = 'button';
+  foundNext.append(...ctx.t('conv.nav.foundNext'));
+  const foundCount = el('span', 'small tvnavcount tvnavfoundcount');
+  const foundGroup = el('div', 'tvnavgroup tvnavfounds');
+  foundGroup.append(foundPrev, foundNext, foundCount);
+  nav.append(navHead, markGroup, youGroup, foundGroup);
   host.append(nav);
 
   /**
@@ -6408,6 +6535,54 @@ export function mountDocument(ctx, host, outline, back, roster = NO_LANES, landA
   const bodies = new Map();
   /** Node indices a fetch is already in flight for. */
   const inflight = new Set();
+  /**
+   * **WHERE THE READER'S WORDS ARE IN THE WHOLE TRANSCRIPT** — `semantic/8`.
+   *
+   * Node index to the number of times the server found the query in that
+   * turn's own words. Filled from `GET /api/conversations/:id/find`, which
+   * scans EVERY prose span of this transcript rather than the rows that
+   * happen to be drawn — the distinction the whole feature rests on, because
+   * `bodies` is a windowed and deliberately non-monotonic cache and a find
+   * that walked it would report a count meaning *"in what I have"*.
+   */
+  const foundAt = new Map();
+  /** The find answer as served, or `null` when nothing has been asked yet. */
+  let findBody = null;
+  /**
+   * Turns the server found that this document cannot reach.
+   *
+   * Real, and only on one kind of document: one whose walk stopped at
+   * `DOCUMENT_WALK_CAP`, where the transcript runs on past the last node
+   * drawn. The index has those turns and the outline does not, so they are
+   * counted and SAID rather than quietly missing from a total.
+   */
+  let findUnreached = 0;
+  /**
+   * Which find request is the current one.
+   *
+   * A scan of the largest transcript here costs about 160 ms, and a reader
+   * types faster than that. Without this, a slow answer to `byt` arrives
+   * after a fast answer to `byte offset` and overwrites it — the count and
+   * the highlights would then describe a query nobody has on screen.
+   */
+  let findGen = 0;
+  /**
+   * **THE READER HAS NOT VISITED THE MATCH THEY ARE STANDING ON.**
+   *
+   * Found by driving it. `applyFilter` puts the reader at `scrollTop = 0`,
+   * which is the FIRST match — so the mark walk's rule, *"the next stop after
+   * the one under the viewport"*, made the first press of Next announce
+   * "Match 2 of 12" and left match 1 reachable only by pressing Previous.
+   * That is correct for a mark, which the reader placed and can see, and
+   * wrong for a match they have only just asked for.
+   *
+   * So the FIRST step after a query settles is allowed to land on the match at
+   * the viewport rather than past it, and exactly once: `endWalk` clears this,
+   * and `endWalk` is what `wheel`, `keydown` and `pointerdown` on the well
+   * already call. A reader who has scrolled is back under the mark walk's
+   * rule, which is the rule that does not stall.
+   */
+  let findFresh = false;
   /** Rows in the DOM right now, keyed by node index. */
   const live = new Map();
   /**
@@ -6592,8 +6767,21 @@ export function mountDocument(ctx, host, outline, back, roster = NO_LANES, landA
   const anchorSessionId = outline.ownerSessionId ?? outline.sessionId;
   const anchorAgentId = outline.source === 'subagent' ? outline.sessionId : null;
 
-  /** Every anchor in THIS document, by byte offset. Refilled on every change. */
+  /**
+   * **Every anchor in THIS document, by byte offset — a LIST per byte.**
+   * Refilled on every change.
+   *
+   * It held ONE anchor per byte until 2026-09-16, because the store could not
+   * hold two: `anchorIdFor` derives the id from the position. It is a list now
+   * because `TASK-a-turn-that-is-both-a-table-and-a-lane-report-is-one-thing`
+   * made a turn able to carry two marks — a table AND the lane report it is —
+   * and a `Map#set` per byte would have silently kept whichever arrived last,
+   * which is the drawing half of exactly the precedence the owner rejected.
+   */
   const anchorsHere = new Map();
+
+  /** Every anchor in this document, marks not positions, in no particular order. */
+  const everyAnchorHere = () => [...anchorsHere.values()].flat();
 
   const loadAnchors = async () => {
     let body;
@@ -6610,7 +6798,13 @@ export function mountDocument(ctx, host, outline, back, roster = NO_LANES, landA
     anchorsHere.clear();
     for (const anchor of body.anchors ?? []) {
       if ((anchor.agentId ?? null) !== anchorAgentId) continue;
-      anchorsHere.set(anchor.byteOffset, anchor);
+      // **APPENDED AND NOT SET**, which is the whole of the two-mark change on
+      // this side: a turn that is both a table and a lane report answers with
+      // two rows at one byte, and the second `set` would have thrown the first
+      // away without anything on the screen saying so.
+      const held = anchorsHere.get(anchor.byteOffset);
+      if (held === undefined) anchorsHere.set(anchor.byteOffset, [anchor]);
+      else held.push(anchor);
     }
     // **THE STEPPER'S COUNT IS DERIVED FROM THIS MAP AND FROM NOTHING ELSE**,
     // so it is put back in step HERE rather than at the four call sites that
@@ -6707,8 +6901,38 @@ export function mountDocument(ctx, host, outline, back, roster = NO_LANES, landA
       }
     };
 
-    const standing = anchorsHere.get(node.o);
-    if (standing !== undefined) {
+    /**
+     * **ONE MARK OF THIS TURN, AND A TURN MAY NOW HAVE TWO** —
+     * `TASK-a-turn-that-is-both-a-table-and-a-lane-report-is-one-thing`, owner
+     * ruling 2026-09-16: *"table & report - if required make them 2 different
+     * anchor types with 2 distinguished marks"*.
+     *
+     * Every line of the body below stood inline in `markControl` and drew THE
+     * mark; it is a function now and draws A mark, called once per row standing
+     * at this byte. Nothing inside it changed, which is deliberate: a second
+     * drawing of a bookmark is a second place for the kind, the note, the
+     * rename and the take-back to drift apart.
+     *
+     * ── HOW THE TWO ARE TOLD APART, AND WHY NOT BY COLOUR ────────────────
+     *
+     * `table` and `report` are both in the `kindfound` hue group — material the
+     * conversation produced — and they stay there. `DEC-the-meaning-hue-budget-
+     * is-five` forbids a sixth hue, and the amendment of 2026-08-27 already
+     * settles which carrier names a kind: *"a hue may narrow a group, never
+     * name one"*. So the hue says POSTURE and the GLYPH and the WORD say which
+     * kind — `▦ a table` against `📄 a report`, one under the other, each with
+     * its own label, its own Rename and its own Take it back. That is the
+     * distinction the ruling asks for, drawn with what the screen already has.
+     *
+     * ── AND THE FLAG IS DRAWN ONCE ───────────────────────────────────────
+     *
+     * `first` is what decides it. `⚑ Marked` is a claim about the TURN — *there
+     * is a bookmark here* — and a turn with two bookmarks is not marked twice
+     * over. Repeating the chip is what would make two marks read as a bug,
+     * which is the one thing the item says they must not do.
+     */
+    const drawMark = (standing, first) => {
+      const one = el('div', 'tvanchorone');
       const chip = el('span', 'chip ok glyphed tvanchored');
       chip.dataset.g = '⚑';
       chip.append(...ctx.t('conv.doc.marked'));
@@ -6832,7 +7056,27 @@ export function mountDocument(ctx, host, outline, back, roster = NO_LANES, landA
        */
       const acts = el('div', 'tvanchoracts');
       acts.append(rename, drop);
-      bar.append(chip, kind, label, detail, acts, box, said);
+      if (first) one.append(chip);
+      one.append(kind, label, detail, acts, box);
+      return one;
+    };
+
+    /**
+     * **THE MARKS AT THIS BYTE, IN THE ORDER THE STORE HOLDS THEM.**
+     *
+     * `anchorRows` orders by `at DESC, id ASC`, and two marks written by one
+     * pass at one point share a stamp — so the tie breaks on the id, and the
+     * id of the mark that OWNS the point sorts before the one suffixed with its
+     * kind (`anchorIdBeside`). The table therefore draws above the report, the
+     * same way round the grammar found them, on every row and every reload.
+     *
+     * `said` is the BAR's and not a mark's: it is one live region for one row,
+     * and a take-back announces which mark went by naming it.
+     */
+    const standing = anchorsHere.get(node.o) ?? [];
+    if (standing.length > 0) {
+      standing.forEach((anchor, at) => { bar.append(drawMark(anchor, at === 0)); });
+      bar.append(said);
       carry();
       return bar;
     }
@@ -6893,6 +7137,96 @@ export function mountDocument(ctx, host, outline, back, roster = NO_LANES, landA
     // on two of the three kinds would be a rule nobody could state.
     row.append(markControl(nodeIndex));
     return row;
+  };
+
+  /**
+   * Every visible run of text in one drawn row, JOINED, with a way back from
+   * an offset in the join to the text node it came from.
+   *
+   * **The join is the point.** `markdownNodes` splits *"the **byte** offset"*
+   * into three text nodes, and a matcher run per node would find neither of
+   * the two phrases a reader can plainly see. A separator goes in wherever
+   * the nearest `FIND_BLOCKS` ancestor changes, so a match still cannot run
+   * from the end of one paragraph into the start of the next.
+   */
+  const rowText = (row) => {
+    const parts = [];
+    let whole = '';
+    let block = null;
+    const walker = document.createTreeWalker(row, NodeFilter.SHOW_TEXT);
+    for (let node = walker.nextNode(); node !== null; node = walker.nextNode()) {
+      if (node.data === '') continue;
+      let owner = node.parentNode;
+      while (owner !== null && owner !== row && !FIND_BLOCKS.has(owner.nodeName)) {
+        owner = owner.parentNode;
+      }
+      if (block !== null && owner !== block) whole += '\n';
+      block = owner;
+      parts.push({ node, at: whole.length });
+      whole += node.data;
+    }
+    return { parts, whole };
+  };
+
+  /**
+   * **PAINT EVERY MATCH IN EVERY ROW THAT IS DRAWN, AND OWN NOTHING.**
+   *
+   * The owner's second requirement in his own words: *"every found search
+   * result in my viewer should be highlited"*.
+   *
+   * ── WHY IT IS REBUILT WHOLE ON EVERY PAINT ──────────────────────────────
+   *
+   * A `Range` holds live node references, and this scroll RECYCLES rows: a
+   * row scrolled out of the window is removed from the DOM and a row scrolled
+   * back in is BUILT AGAIN (`paint`, and `live` is the register of which are
+   * real right now). A highlight registry kept across that would hold ranges
+   * into detached nodes — which paint nothing, silently, for ever. Rebuilding
+   * from `live` costs one walk of about twenty rows and cannot go stale,
+   * which is the same bargain `place()` makes for row positions two functions
+   * up. **Driven in the browser rather than assumed**: a match was scrolled
+   * out of the window and back, and it is coloured again on arrival.
+   *
+   * ── AND IT IS THE SAME MATCHER THE SERVER COUNTED WITH ─────────────────
+   *
+   * `foldedMatches` from `lib/fold.js`, imported here and loaded by
+   * `core/conversation-search.ts` over there. What it paints is the RENDERED
+   * text and what the server counted is the RECORD's text, and those are not
+   * the same string — Markdown syntax is in one and not the other. That is
+   * why the count beside the box counts TURNS and never occurrences: a number
+   * of occurrences would be a promise about painted ranges that the rendering
+   * is free to break.
+   */
+  const paintFinds = () => {
+    if (!CAN_HIGHLIGHT) return;
+    const needle = find.value.trim();
+    if (needle === '') { CSS.highlights.delete(FIND_HIGHLIGHT); return; }
+    const ranges = [];
+    for (const [, row] of live) {
+      const { parts, whole } = rowText(row);
+      if (parts.length === 0) continue;
+      const place = (offset) => {
+        let lo = 0;
+        let hi = parts.length - 1;
+        while (lo < hi) {
+          const mid = (lo + hi + 1) >> 1;
+          if (parts[mid].at <= offset) lo = mid; else hi = mid - 1;
+        }
+        return parts[lo];
+      };
+      for (const hit of foldedMatches(whole, needle, FIND_PAINT_PER_ROW)) {
+        const from = place(hit.from);
+        const to = place(hit.to);
+        const range = document.createRange();
+        // A separator this function inserted is not in any text node, so an
+        // offset can land one past the end of the part it belongs to. Clamped
+        // rather than thrown: `setStart` raises on an out-of-range offset and
+        // a throw inside `paint` leaves the well blank.
+        range.setStart(from.node, Math.min(hit.from - from.at, from.node.data.length));
+        range.setEnd(to.node, Math.min(hit.to - to.at, to.node.data.length));
+        ranges.push(range);
+      }
+    }
+    CSS.highlights.set(FIND_HIGHLIGHT, new Highlight(...ranges));
   };
 
   /**
@@ -7057,6 +7391,12 @@ export function mountDocument(ctx, host, outline, back, roster = NO_LANES, landA
     // that correction holds the reader's OLD position still and the whole
     // point here is that their position is the end, which has just moved.
     if (stickUntil > Date.now()) scroll.scrollTop = scroller.total;
+
+    // **LAST, BECAUSE THE ROWS ARE ONLY FINAL HERE.** A highlight is a
+    // `Range` into a text node, and the block above can still have built,
+    // moved or evicted rows. Painting earlier would range into nodes this
+    // pass is about to remove.
+    paintFinds();
   }
 
   /**
@@ -7145,7 +7485,14 @@ export function mountDocument(ctx, host, outline, back, roster = NO_LANES, landA
     for (let i = 0; i < nodes.length; i += 1) {
       // A folded run is machinery; a reader filtering for a phrase wants the
       // TURNS. With an empty needle everything shows, which is the document.
-      if (needle === '' || matchesNode(nodes[i], needle)) view.push(i);
+      //
+      // **`foundAt` is an OR and never a replacement** — `semantic/8`. The
+      // outline predicate reads a turn's opening and the TOOLS it ran, and
+      // `foundAt` reads the words of the turn itself; each finds rows the
+      // other cannot. Narrowing to the server's answer alone would lose every
+      // machinery row a reader can find by the command it ran, which is a
+      // capability this box already has.
+      if (needle === '' || matchesNode(nodes[i], needle) || foundAt.has(i)) view.push(i);
     }
     rebuild();
     count.replaceChildren();
@@ -7155,10 +7502,44 @@ export function mountDocument(ctx, host, outline, back, roster = NO_LANES, landA
       }));
     } else if (view.length === 0) {
       count.append(...ctx.t('conv.doc.noMatch'));
-    } else {
+    } else if (findBody === null) {
+      // The answer has not come back yet. The sentence says only what this
+      // side actually knows, because the fuller one below names numbers that
+      // do not exist until the scan does.
       count.append(...ctx.t('conv.doc.matched', {
         shown: view.length, total: nodes.length, peek: outline.peekChars,
       }));
+    } else {
+      /*
+       * **THE SENTENCE NAMES WHAT THE NUMBER IS A NUMBER OF**, and that is the
+       * half of this task the owner emphasised second: *"a count that silently
+       * means 'in the rows I have drawn' is worse than no count at all"*.
+       *
+       *   — `turns` is turns OF WORDS that hold the query, over the whole
+       *     transcript. It is the server's, from a scan of every prose span.
+       *   — `scanned` against `records` is the scope, and the gap is enormous
+       *     and invisible without it: **47,910 of one session's 52,292
+       *     records are machinery**, in no index, findable here only by the
+       *     tools they ran. Lane AI's report closes on exactly this.
+       *   — `shown` is rows on the screen, which is the two readings joined.
+       */
+      count.append(...ctx.t('conv.doc.matchedFull', {
+        shown: view.length,
+        total: nodes.length,
+        turns: findBody.turns.length,
+        matches: findBody.matches,
+        scanned: findBody.scanned,
+        records: findBody.records,
+      }));
+      // Drawn only when real — `STD-a-measured-zero-is-drawn-and-named` binds a
+      // measurement a reader asked for, and these are qualifications on one.
+      if (findBody.capped === true) {
+        count.append(' ', ...ctx.t('conv.doc.findCapped', { cap: findBody.scanCap }));
+      }
+      if (findUnreached > 0) {
+        count.append(' ', ...ctx.t('conv.doc.findUnreached', { n: findUnreached }));
+      }
+      if (!CAN_HIGHLIGHT) count.append(' ', ...ctx.t('conv.doc.findNoPaint'));
     }
     navRefresh();
   };
@@ -7260,7 +7641,87 @@ export function mountDocument(ctx, host, outline, back, roster = NO_LANES, landA
    * justify. `settler` is the shared mechanism, so there is no fourth copy of
    * it.
    */
-  const typing = settler(FILTER_SETTLE_MS, applyFilter);
+  /**
+   * **ASK THE SERVER WHERE THE WORDS ARE, OVER THE WHOLE TRANSCRIPT.**
+   *
+   * `semantic/8`. This is the half that cannot be done in the browser: the
+   * session is ~133 MB over ~52,000 records and this page holds an outline
+   * plus a windowed `bodies` cache, so a find that walked the DOM would see
+   * only the rows currently drawn and would report a wrong count SILENTLY.
+   *
+   * **And the endpoint folds, which is the other half.** Measured on this
+   * repository's own archive, 2026-09-16: a reader typing `...` reaches 463
+   * spans as a plain substring and as an FTS5 trigram query, and **1,024**
+   * folded, because this product writes `…` and a keyboard does not.
+   *
+   * A failure draws nothing and changes nothing. The outline filter above is
+   * still a real answer to a real question, and a screen that emptied itself
+   * because a second, better search could not be reached would be worse than
+   * one that quietly keeps the first — the count line then still says what it
+   * counted, which is the outline reading, because `findBody` stays `null`.
+   */
+  const askFind = async () => {
+    const asked = find.value.trim();
+    findGen += 1;
+    const mine = findGen;
+    if (asked === '') {
+      foundAt.clear();
+      findBody = null;
+      findUnreached = 0;
+      return;
+    }
+    let body;
+    try {
+      body = await ctx.api(
+        `/api/conversations/${encodeURIComponent(outline.sessionId)}/find`
+        + `?q=${encodeURIComponent(asked)}`);
+    } catch {
+      /*
+       * **A FAILED SCAN FORGETS THE PREVIOUS ONE, and returning here quietly
+       * was a real defect until it was read back.** The first draft just
+       * returned, which leaves `findBody` and `foundAt` holding the answer to
+       * a query the reader has since replaced: the count line would have gone
+       * on describing the OLD words under the NEW ones, which is a wrong
+       * answer with nothing on the screen saying so.
+       *
+       * Cleared, and the count line falls back to the outline reading it can
+       * still honestly make — `findBody === null` is the branch that says the
+       * whole-text search has not answered.
+       */
+      if (mine !== findGen) return;
+      foundAt.clear();
+      findBody = null;
+      findUnreached = 0;
+      reView();
+      paint();
+      return;
+    }
+    // A stale answer is DROPPED rather than drawn late. `findGen` moved
+    // because the reader typed again, and the words on the screen are the
+    // newer ones.
+    if (mine !== findGen) return;
+    foundAt.clear();
+    findUnreached = 0;
+    for (const turn of body.turns ?? []) {
+      const at = nodeAtByte(turn.byteOffset);
+      // `-1` is a byte this document's walk never reached. It is not a hit
+      // that can be stepped to and it is not nothing — it is counted, and the
+      // count line says so beside `conv.doc.truncated`, which is already on
+      // the page for the same reason.
+      if (at < 0) { findUnreached += 1; continue; }
+      foundAt.set(at, (foundAt.get(at) ?? 0) + turn.matches);
+    }
+    findBody = body;
+    reView();
+    paint();
+    // AFTER `reView`, which runs `navRefresh` and therefore `endWalk`.
+    findFresh = true;
+  };
+
+  const typing = settler(FILTER_SETTLE_MS, () => {
+    applyFilter();
+    void askFind();
+  });
   find.addEventListener('input', typing.settle);
 
   /**
@@ -7349,8 +7810,12 @@ export function mountDocument(ctx, host, outline, back, roster = NO_LANES, landA
   const markStops = () => {
     const shown = inView();
     const byNode = new Map();
-    let hidden = 0;
-    for (const anchor of anchorsHere.values()) {
+    const hiddenAt = new Set();
+    // **OVER MARKS AND NOT OVER POSITIONS.** A turn that is both a table and a
+    // lane report holds two of them at one byte, and the kind filter has to be
+    // able to reach it under EITHER — which is the whole point of the second
+    // mark. `byNode` then groups them back, so the STOPS stay positions.
+    for (const anchor of everyAnchorHere()) {
       /*
        * **THE KIND FILTER IS APPLIED BEFORE THE VIEW TEST, AND THE ORDER IS
        * THE DESIGN** — `TASK-the-six-kinds-a-mark-can-carry-have-no-reader-so`.
@@ -7379,13 +7844,35 @@ export function mountDocument(ctx, host, outline, back, roster = NO_LANES, landA
        * fourth sentence about a state that only the capped walk produces.
        */
       if (at < 0) continue;
-      if (!shown.has(at)) { hidden += 1; continue; }
+      // **HIDDEN IS COUNTED IN POSITIONS, THE SAME UNIT AS `stops`**, and that
+      // became a real distinction on 2026-09-16: a turn with two marks is ONE
+      // thing the search is holding back, and counting it twice would put a
+      // number under "N more are in this conversation" that no amount of
+      // clearing the search could ever produce as stops.
+      if (!shown.has(at)) { hiddenAt.add(at); continue; }
       const held = byNode.get(at);
       if (held === undefined) byNode.set(at, [anchor]); else held.push(anchor);
     }
     const stops = [...byNode.keys()].sort((a, b) => a - b)
       .map((at) => ({ at, anchors: byNode.get(at) }));
-    return { stops, hidden };
+    /**
+     * **HOW MANY OF THE STOPS CARRY MORE THAN ONE MARK** — the disclosure
+     * `TASK-a-turn-that-is-both-a-table-and-a-lane-report-is-one-thing` asks
+     * for, and the reason it is needed rather than tidy.
+     *
+     * `conv.nav.marks` says *"N marked point(s) here"*, and a POINT is a place
+     * in the conversation: the stepper stops at places, and the item forbids it
+     * landing on the same turn twice without saying why. So a two-mark turn
+     * counts ONCE and the sentence stays true of the walk.
+     *
+     * But the archive list counts ROWS, and after this change the two numbers
+     * can differ — 240 turns' worth on the owner's own archive. A count whose
+     * meaning silently changed is `confirm/3`'s defect exactly, so the
+     * difference is SAID beside the number rather than left for a reader to
+     * discover by comparing two screens.
+     */
+    const doubled = stops.filter((stop) => stop.anchors.length > 1).length;
+    return { stops, hidden: hiddenAt.size, doubled };
   };
 
   /**
@@ -7412,6 +7899,28 @@ export function mountDocument(ctx, host, outline, back, roster = NO_LANES, landA
     const kept = stops.filter((at) => shown.has(at));
     hidden = stops.length - kept.length;
     return { stops: kept, hidden };
+  };
+
+  /**
+   * **EVERY TURN THE SERVER FOUND, ASCENDING** — `semantic/8`.
+   *
+   * `foundAt` is keyed by node index already, so this is a sort and a view
+   * test and nothing else. **`hidden` is always zero and is returned anyway**,
+   * and that is deliberate rather than dead: `reView` puts every found node
+   * into the view by construction, so a found turn the filter is hiding
+   * cannot exist today — and a later edit that narrowed the view would make
+   * it possible in one line, with the counter already able to say so. The
+   * turns this document genuinely cannot reach are counted in
+   * `findUnreached`, which is a different fact and has its own sentence.
+   */
+  const foundStops = () => {
+    const shown = inView();
+    const stops = [];
+    let hidden = 0;
+    for (const at of [...foundAt.keys()].sort((a, b) => a - b)) {
+      if (shown.has(at)) stops.push(at); else hidden += 1;
+    }
+    return { stops, hidden };
   };
 
   /**
@@ -7442,8 +7951,8 @@ export function mountDocument(ctx, host, outline, back, roster = NO_LANES, landA
    * `-1` is "no walk in progress", and then the viewport IS the answer: a
    * reader who scrolled to the middle and pressed Next means the middle.
    */
-  const cursor = { mark: -1, you: -1 };
-  endWalk = () => { cursor.mark = -1; cursor.you = -1; };
+  const cursor = { mark: -1, you: -1, found: -1 };
+  endWalk = () => { cursor.mark = -1; cursor.you = -1; cursor.found = -1; findFresh = false; };
   for (const event of ['wheel', 'keydown', 'pointerdown']) {
     scroll.addEventListener(event, endWalk, { passive: true });
   }
@@ -7457,6 +7966,70 @@ export function mountDocument(ctx, host, outline, back, roster = NO_LANES, landA
    * fraction short of the row it was set to.
    */
   const hereNode = () => (view.length === 0 ? -1 : view[scroller.at(scroll.scrollTop + 2)]);
+
+  /**
+   * **A STEP THAT LANDS ON A TURN HAS NOT LANDED ON THE MATCH** — found by
+   * driving it, and it is the difference between the feature working and
+   * appearing to.
+   *
+   * `landOn` writes `scroller.top(row)`, which is the TOP of the turn. Turns
+   * in this archive run to tens of thousands of characters, so stepping to a
+   * match in one of them put the reader at the head of a wall of text with
+   * the highlight several screens below the fold — highlighted, and not where
+   * he is looking, which is exactly what the item says a hit that cannot be
+   * seen is worth.
+   *
+   * So the row's first match is measured where it actually IS — a `Range`'s
+   * own box, in the layout, after the paint — and the scroll is nudged only
+   * if it is outside the well. Never centred and never moved when it is
+   * already visible: a step that re-scrolled a match the reader can already
+   * see would move the page for nothing.
+   *
+   * **It reads the DRAWN row and can honestly find nothing.** The server
+   * matched the RECORD's text and this matches what Markdown rendered from
+   * it, and the two are not the same string — `**byte**` is in one and not
+   * the other. When the rendered text does not carry the match, the turn is
+   * still the right turn and the head of it is still the right landing, so
+   * this returns and says nothing rather than inventing a position.
+   */
+  const showMatch = (nodeIndex) => {
+    const needle = find.value.trim();
+    if (needle === '') return;
+    const row = live.get(nodeIndex);
+    if (row === undefined) return;
+    const { parts, whole } = rowText(row);
+    if (parts.length === 0) return;
+    const hit = foldedMatches(whole, needle, 1)[0];
+    if (hit === undefined) return;
+    let lo = 0;
+    let hi = parts.length - 1;
+    while (lo < hi) {
+      const mid = (lo + hi + 1) >> 1;
+      if (parts[mid].at <= hit.from) lo = mid; else hi = mid - 1;
+    }
+    const range = document.createRange();
+    range.setStart(parts[lo].node, Math.min(hit.from - parts[lo].at, parts[lo].node.data.length));
+    range.collapse(true);
+    const box = range.getBoundingClientRect();
+    const rect = scroll.getBoundingClientRect();
+    /*
+     * **THE WELL IS NOT THE SAME THING AS THE PART OF IT YOU CAN SEE**, and
+     * measuring it was what found this: on a 1280x800 window `.tvscroll`'s own
+     * box runs to y=1040, past the bottom of the viewport, because the page
+     * scrolls as well as the well does. Tested against the well alone, a match
+     * at y=795 is "visible" and the reader is looking at 800 pixels of screen
+     * that does not contain it. So the test is against the INTERSECTION, which
+     * is the only rectangle a reader actually has.
+     */
+    const top = Math.max(rect.top, 0);
+    const bottom = Math.min(rect.bottom, window.innerHeight || rect.bottom);
+    // A collapsed range in a row that is drawn but positioned outside the
+    // window answers with an empty box. Nothing to aim at, so nothing moves.
+    if (box.top === 0 && box.bottom === 0) return;
+    if (box.top >= top && box.bottom <= bottom) return;
+    scroll.scrollTop += box.top - top - MATCH_MARGIN_PX;
+    paint();
+  };
 
   const sayNav = (key, subs = {}, tail = null) => {
     navSaid.hidden = false;
@@ -7486,7 +8059,8 @@ export function mountDocument(ctx, host, outline, back, roster = NO_LANES, landA
    * says there is nothing beyond rather than appearing to be broken.
    */
   const step = (which, forward) => {
-    const { stops } = which === 'mark' ? markStops() : youStops();
+    const { stops } = which === 'mark' ? markStops()
+      : which === 'you' ? youStops() : foundStops();
     const positions = which === 'mark' ? stops.map((s) => s.at) : stops;
     /*
      * **EVERY SENTENCE THE MARK WALK SAYS HAS A FILTERED TWIN, and that is the
@@ -7503,7 +8077,8 @@ export function mountDocument(ctx, host, outline, back, roster = NO_LANES, landA
      * variable is a key that gate cannot see.
      */
     if (positions.length === 0) {
-      if (which !== 'mark') sayNav('conv.nav.noYous');
+      if (which === 'found') sayNav('conv.nav.noFounds');
+      else if (which === 'you') sayNav('conv.nav.noYous');
       else if (markKind === null) sayNav('conv.nav.noMarks');
       else sayNav('conv.nav.noMarksKind', { kind: kindWord(markKind) });
       return;
@@ -7515,9 +8090,13 @@ export function mountDocument(ctx, host, outline, back, roster = NO_LANES, landA
       if (next >= 0 && next < positions.length) target = next;
     } else {
       const here = hereNode();
+      // `>=` for the first step of a fresh find, and `>` for everything else.
+      // See `findFresh`: a match under the viewport has not been visited, a
+      // mark under it has.
+      const first = which === 'found' && findFresh;
       if (forward) {
         for (let i = 0; i < positions.length; i += 1) {
-          if (positions[i] > here) { target = i; break; }
+          if (first ? positions[i] >= here : positions[i] > here) { target = i; break; }
         }
       } else {
         for (let i = positions.length - 1; i >= 0; i -= 1) {
@@ -7526,7 +8105,9 @@ export function mountDocument(ctx, host, outline, back, roster = NO_LANES, landA
       }
     }
     if (target === -1) {
-      if (which !== 'mark') {
+      if (which === 'found') {
+        sayNav(forward ? 'conv.nav.foundLast' : 'conv.nav.foundFirst');
+      } else if (which === 'you') {
         sayNav(forward ? 'conv.nav.youLast' : 'conv.nav.youFirst');
       } else if (markKind === null) {
         sayNav(forward ? 'conv.nav.markLast' : 'conv.nav.markFirst');
@@ -7538,13 +8119,18 @@ export function mountDocument(ctx, host, outline, back, roster = NO_LANES, landA
       return;
     }
     landOn(positions[target]);
+    if (which === 'found') { findFresh = false; showMatch(positions[target]); }
     // The walk's own place, set only by a step. `landOn` writes `scrollTop`,
     // which fires `scroll` — and `scroll` is deliberately NOT one of the three
     // events that throw this away, for the reason the follow's hold gives one
     // control along: *"`scroll` itself is not [the reader's], because `paint`
     // fires it."*
     cursor[which] = target;
-    if (which !== 'mark') {
+    if (which === 'found') {
+      sayNav('conv.nav.atFound', { n: target + 1, total: positions.length });
+      return;
+    }
+    if (which === 'you') {
       sayNav('conv.nav.atYou', { n: target + 1, total: positions.length });
       return;
     }
@@ -7565,6 +8151,8 @@ export function mountDocument(ctx, host, outline, back, roster = NO_LANES, landA
   markNext.addEventListener('click', () => { step('mark', true); });
   youPrev.addEventListener('click', () => { step('you', false); });
   youNext.addEventListener('click', () => { step('you', true); });
+  foundPrev.addEventListener('click', () => { step('found', false); });
+  foundNext.addEventListener('click', () => { step('found', true); });
 
   /**
    * What there is to step through, said before anything is pressed.
@@ -7585,7 +8173,10 @@ export function mountDocument(ctx, host, outline, back, roster = NO_LANES, landA
    */
   const kindsPresent = () => {
     const seen = new Set();
-    for (const anchor of anchorsHere.values()) seen.add(anchor.kind);
+    // Over MARKS. A turn that is both a table and a lane report puts BOTH kinds
+    // in this list, which is what makes it selectable — and reachable — under
+    // either one.
+    for (const anchor of everyAnchorHere()) seen.add(anchor.kind);
     return [...seen].sort();
   };
 
@@ -7763,6 +8354,23 @@ export function mountDocument(ctx, host, outline, back, roster = NO_LANES, landA
     if (marks.hidden > 0) {
       markCount.append(' ', ...ctx.t('conv.nav.marksHidden', { n: marks.hidden }));
     }
+    /**
+     * **AND WHERE THE NUMBER DIFFERS FROM THE NUMBER OF MARKS, IT SAYS SO.**
+     *
+     * Drawn only when it is real, like `marksHidden` above and for the same
+     * reason: a sentence saying *"0 of them carry two marks"* on 1,059 turns
+     * out of 1,059 would be a line nobody reads, standing where a line that
+     * matters has to be noticed. `STD-a-measured-zero-is-drawn-and-named` binds
+     * a measurement a reader asked for; this is a qualification on one.
+     *
+     * It is skipped under a kind filter, and that is not an omission: with the
+     * walk narrowed to `report`, every stop shows one mark of that kind and the
+     * count is a count of marks again. The two numbers only come apart when the
+     * walk is unnarrowed.
+     */
+    if (markKind === null && marks.doubled > 0) {
+      markCount.append(' ', ...ctx.t('conv.nav.marksDoubled', { n: marks.doubled }));
+    }
 
     const yous = youStops();
     youCount.replaceChildren();
@@ -7773,6 +8381,34 @@ export function mountDocument(ctx, host, outline, back, roster = NO_LANES, landA
     }
     if (yous.hidden > 0) {
       youCount.append(' ', ...ctx.t('conv.nav.yousHidden', { n: yous.hidden }));
+    }
+    /*
+     * **AND THE THIRD COUNT SAYS WHERE IT CAME FROM** — `semantic/8`.
+     *
+     * A find bar's count is the one number on this screen a reader is most
+     * likely to read as *"everywhere in this conversation"*, and it is not:
+     * it is turns of WORDS, over the whole transcript, from the server's own
+     * scan. The long sentence lives on the count line beside the find box,
+     * which is where the scope belongs; this one is the short form beside the
+     * buttons it describes, and it is the number of stops the walk actually
+     * has, which is the only thing these two buttons can promise.
+     *
+     * **A measured zero is drawn and named.** With nothing typed the pair
+     * would otherwise be a control a reader has to press to discover it does
+     * nothing — `STD-a-measured-zero-is-drawn-and-named`, the same reason the
+     * marks counter has an empty sentence of its own.
+     */
+    const founds = foundStops();
+    foundCount.replaceChildren();
+    if (find.value.trim() === '') {
+      foundCount.append(...ctx.t('conv.nav.foundsIdle'));
+    } else if (founds.stops.length === 0) {
+      foundCount.append(...ctx.t('conv.nav.foundsNone'));
+    } else {
+      foundCount.append(...ctx.t('conv.nav.founds', { n: founds.stops.length }));
+    }
+    if (findUnreached > 0) {
+      foundCount.append(' ', ...ctx.t('conv.nav.foundsUnreached', { n: findUnreached }));
     }
   };
 
@@ -7803,7 +8439,9 @@ export function mountDocument(ctx, host, outline, back, roster = NO_LANES, landA
         return;
       }
       refreshMarks();
-      const anchor = anchorsHere.get(nodes[at].o);
+      // The FIRST mark at the byte the address named — the one holding the
+      // point's own id, which is the one the address was composed from.
+      const anchor = (anchorsHere.get(nodes[at].o) ?? [])[0];
       if (anchor === undefined) {
         note.append(...ctx.t('conv.doc.landedUnmarked'));
         return;

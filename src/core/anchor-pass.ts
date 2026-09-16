@@ -27,7 +27,7 @@
  * ruled entry in `RULED_WRITES` with the properties that bound it.
  */
 import {
-  ConversationIndex, anchorIdFor, iterateTranscript, laneNameOf,
+  ConversationIndex, anchorIdBeside, anchorIdFor, iterateTranscript, laneNameOf,
   type LaneLastAnswer,
 } from './conversation-index.ts';
 import { markAnchor, unmarkAnchor, type AutomaticAnchorKind } from './anchors.ts';
@@ -519,42 +519,94 @@ export function ownerTyped(record: Record<string, unknown> | null): boolean {
 }
 
 /**
- * **What, if anything, makes this turn an anchor by nature.**
+ * **EVERYTHING THAT MAKES THIS TURN AN ANCHOR BY NATURE** — every grammar that
+ * recognises it, not the first one that does.
  *
- * The order is the precedence, and first match wins.
+ * ── IT USED TO BE `anchorInTurn` AND IT USED TO RETURN ONE ────────────────
  *
- * ── WHY THE TABLE STILL COMES FIRST, WITH THE `report` KIND BESIDE IT ─────
+ * `OPENQ-does-the-table-mark-or-the-lane-report-mark-win-when-one` asked the
+ * owner which of the two grammars should win a turn that is both, and on
+ * 2026-09-16 **he rejected the question as posed**: *"table & report - if
+ * required make them 2 different anchor types with 2 distinguished marks"*.
+ * Both branches the question offered were a precedence — one grammar wins, the
+ * other never gets the mark — and he chose neither. A turn that qualifies as
+ * both CARRIES BOTH.
  *
- * 230 of the archive's 419 lane reports already carry a `table` mark, because a
- * lane that reports in a table is this project's own house style. Putting
- * `report` first would RELABEL all of them — and the worth of the report mark
- * was judged, 8 out of 8, on a sample drawn from the 189 that carry NOTHING
- * today (`anchors/11`, section 7). Applying it to turns that already wear a
- * judged-good mark is a change nobody measured, so it is not made. The table is
- * the thing IN the turn; it keeps the turn.
+ * Measured on this archive, 2026-09-16, and this is the whole reason it
+ * mattered: of 432 lane reports, **240 are also tables**. Under the precedence
+ * those 240 were findable only as `table` and the `report` kind named 192 of
+ * 432 — the minority of the thing it is named after.
  *
- * The consequence is stated rather than hidden: the `report` kind names 189 of
- * the 419 lane reports and the rest stay findable as the tables they are.
- * Reversing it is one line here, and the unscoped rebuild's sweep would relabel
- * them.
+ * ── THE ORDER SURVIVES AND MEANS SOMETHING SMALLER ───────────────────────
+ *
+ * The list is still in grammar order, and the first entry still takes the
+ * point's bare id (`anchorIdBeside` carries why a second mark is suffixed
+ * rather than every id widened). **That is an id-allocation rule and no longer
+ * an exclusion**: both findings are marked, both drawn, both stepped to, both
+ * taken back on their own.
+ *
+ * The table stays first for the reason it was first before, now costing the
+ * report nothing: 240 turns already wear a judged-good `table` mark at the
+ * point's own id, and leaving them there makes this change PURELY ADDITIVE —
+ * 240 rows gained on this corpus, 0 rewritten, and nothing moves in
+ * `.anchors.jsonl`.
  *
  * ── AND THE RULING IS LAST, WHICH COSTS NOTHING ──────────────────────────
  *
  * `laneReport` is non-null only for a lane's answer and `ownerTyped` is true
- * only in the main session, so those two are disjoint by construction. The
- * order between them is documentation, not arbitration.
+ * only in the main session, so those two are disjoint by construction. A
+ * `ruling` therefore never shares a turn with a `report`, and the ruling
+ * grammar reads the owner's own prompts, which are not lane answers and carry
+ * no tables he did not type. The order between them is documentation, not
+ * arbitration — and this list can hold at most two entries today for exactly
+ * that reason, which is a fact about the three grammars rather than a bound
+ * anything enforces.
  */
-export function anchorInTurn(facts: TurnFacts, text: string): AutoAnchorFinding | null {
+export function anchorsInTurn(facts: TurnFacts, text: string): AutoAnchorFinding[] {
+  const found: AutoAnchorFinding[] = [];
   const table = tableIn(text);
-  if (table !== null) return { kind: 'table', label: table };
-  if (facts.laneReport !== null) return { kind: 'report', label: facts.laneReport };
+  if (table !== null) found.push({ kind: 'table', label: table });
+  if (facts.laneReport !== null) found.push({ kind: 'report', label: facts.laneReport });
   if (ownerTyped(facts.record)) {
     const ruling = RULING_WORDS.exec(text);
     if (ruling !== null) {
-      return { kind: 'ruling', label: rulingLabel(text, ruling.index, ruling[0]) };
+      found.push({ kind: 'ruling', label: rulingLabel(text, ruling.index, ruling[0]) });
     }
   }
-  return null;
+  return found;
+}
+
+/** One finding and the row it becomes: the id it takes, and which slot that is. */
+export interface AnchorSlot {
+  id: string;
+  /** `true` for a SECOND mark at the point — `AnchorSpec.beside`. */
+  beside: boolean;
+  finding: AutoAnchorFinding;
+}
+
+/**
+ * **WHICH ROW EACH FINDING BECOMES — the one place the slot rule is written.**
+ *
+ * The first finding takes the point's own id and the rest are suffixed with
+ * their kind (`anchorIdBeside`, which carries the argument). It is a function
+ * and not two lines inside `consider` because the SWEEP has to ask the same
+ * question in reverse — *is the row I own still one of the slots this turn
+ * produces?* — and a slot rule spelled twice is a pass that can write a row it
+ * will then delete on the next run.
+ */
+export function anchorSlots(
+  sessionId: string,
+  agentId: string | null,
+  byteOffset: number,
+  findings: readonly AutoAnchorFinding[],
+): AnchorSlot[] {
+  return findings.map((finding, at) => ({
+    id: at === 0
+      ? anchorIdFor(sessionId, agentId, byteOffset)
+      : anchorIdBeside(sessionId, agentId, byteOffset, finding.kind),
+    beside: at > 0,
+    finding,
+  }));
 }
 
 /**
@@ -734,7 +786,17 @@ export interface AutoAnchorReport {
   probed: number;
   /** Turns the grammar recognised. */
   found: number;
-  /** Anchors written — `found` minus the ones already standing at that point. */
+  /**
+   * **Anchors written — MARKS, and not turns**, which is the difference the
+   * two-mark turn introduced on 2026-09-16
+   * (`TASK-a-turn-that-is-both-a-table-and-a-lane-report-is-one-thing`).
+   *
+   * It used to read "`found` minus the ones already standing at that point",
+   * and that arithmetic is gone rather than merely inaccurate: a turn that is
+   * both a table and a lane report is ONE recognised turn and TWO new marks,
+   * so `marked` can now exceed `found`. `byKind` still sums to this number,
+   * because both are counted per MARK.
+   */
   marked: number;
   /**
    * Anchors the pass had written before and TOOK BACK. Never one of his.
@@ -909,10 +971,29 @@ function sweepAutomaticAnchors(
     const turn = turnAt(file, row.byteOffset);
     if (turn === null) continue;
 
-    const finding = anchorInTurn({
+    const findings = anchorsInTurn({
       record: turn.record,
       laneReport: laneReportAt(index, lastAnswers, row.agentId, row.byteOffset, turn.text),
     }, turn.text);
+    /**
+     * **THE ROW IS MATCHED TO ITS OWN SLOT, NOT TO THE TURN'S FIRST FINDING.**
+     *
+     * A turn can now produce two rows and the pass owns both, so the question
+     * this sweep asks has to be *is the row I am holding still one of the slots
+     * this turn produces?* rather than *does this turn still lead with my
+     * kind?*. Asked the old way, the `#report` row of a table-and-report turn
+     * would be put against the TABLE finding, disagree with it on kind and
+     * label, and be relabelled into a duplicate table every single run.
+     *
+     * `anchorSlots` is the same function `consider` allocates with, which is
+     * what makes the two halves incapable of disagreeing — and it is why a
+     * finding that has moved SLOTS (a grammar change, never a transcript
+     * change) drops this row rather than rewriting it: the id it should now
+     * wear is another row's, and `consider` writes that one.
+     */
+    const slot = anchorSlots(row.sessionId, row.agentId, row.byteOffset, findings)
+      .find((each) => each.id === row.id) ?? null;
+    const finding = slot?.finding ?? null;
     if (finding === null) {
       // **A PLAN COUNTS THE TAKE-BACK AND DOES NOT PERFORM IT.** The count is
       // the half a reader needs — a run that would remove bookmarks is a
@@ -946,6 +1027,10 @@ function sweepAutomaticAnchors(
       origin: 'automatic',
       at: row.at,
       note: row.note,
+      // The slot the row already stands in, carried so a relabel rewrites THAT
+      // row rather than writing a second one beside it. `slot` is non-null
+      // wherever `finding` is — they come off the same object.
+      beside: slot?.beside === true,
     });
     report.relabelled += 1;
   }
@@ -1172,40 +1257,55 @@ export function markAutomaticAnchors(
     const turn = turnAt(file, byteOffset);
     if (turn === null) return;
 
-    const finding = anchorInTurn({
+    const findings = anchorsInTurn({
       record: turn.record,
       laneReport: laneReportAt(index, lastAnswers, agentId, byteOffset, turn.text),
     }, turn.text);
-    if (finding === null) return;
+    if (findings.length === 0) return;
+    // **`found` COUNTS TURNS AND `marked` COUNTS MARKS**, and after 2026-09-16
+    // those are different numbers: a turn that is both a table and a lane
+    // report is one recognition and two bookmarks. The increment stays HERE,
+    // outside the loop, so the word keeps meaning what the field says.
     report.found += 1;
-    if (standing === undefined) {
-      report.marked += 1;
-      // Beside `marked`'s own increment and never derived a second way: a
-      // per-kind total that disagreed with the total it splits would be worse
-      // than no split at all.
-      report.byKind[finding.kind] += 1;
-      if (report.byKind[finding.kind] <= PLAN_SAMPLES_PER_KIND) {
-        report.samples.push({ kind: finding.kind, label: finding.label });
+
+    for (const slot of anchorSlots(sessionId, agentId, byteOffset, findings)) {
+      // **THE OWNER-ROW GUARD IS ASKED OF EVERY SLOT, not only of the point.**
+      // The check above refuses a point whose OWN id is his — a mark he made
+      // while reading. This one refuses the second row when a relabel took
+      // ownership of it (`anchors/6`: a relabel makes the row his), which is
+      // the only way an `origin: 'owner'` row can wear a suffixed id.
+      const held = mine.get(slot.id);
+      if (held?.origin === 'owner') continue;
+      if (held === undefined) {
+        report.marked += 1;
+        // Beside `marked`'s own increment and never derived a second way: a
+        // per-kind total that disagreed with the total it splits would be worse
+        // than no split at all.
+        report.byKind[slot.finding.kind] += 1;
+        if (report.byKind[slot.finding.kind] <= PLAN_SAMPLES_PER_KIND) {
+          report.samples.push({ kind: slot.finding.kind, label: slot.finding.label });
+        }
+      } else if (held.kind !== slot.finding.kind || held.label !== slot.finding.label) {
+        report.relabelled += 1;
       }
-    } else if (standing.kind !== finding.kind || standing.label !== finding.label) {
-      report.relabelled += 1;
+      kept.add(slot.id);
+      if (!write) continue;
+      markAnchor(index, {
+        sessionId,
+        agentId,
+        byteOffset,
+        label: slot.finding.label,
+        kind: slot.finding.kind,
+        origin: 'automatic',
+        at: at ?? new Date().toISOString(),
+        // Carried for `sweepAutomaticAnchors`' stated reason: `markAnchor` writes
+        // the whole row, so an omitted field is `null` and not "unchanged".
+        // `undefined` for a point being marked for the first time, which
+        // `markAnchor` reads as `null`.
+        note: held?.note ?? null,
+        beside: slot.beside,
+      });
     }
-    kept.add(id);
-    if (!write) return;
-    markAnchor(index, {
-      sessionId,
-      agentId,
-      byteOffset,
-      label: finding.label,
-      kind: finding.kind,
-      origin: 'automatic',
-      at: at ?? new Date().toISOString(),
-      // Carried for `sweepAutomaticAnchors`' stated reason: `markAnchor` writes
-      // the whole row, so an omitted field is `null` and not "unchanged".
-      // `undefined` for a point being marked for the first time, which
-      // `markAnchor` reads as `null`.
-      note: standing?.note ?? null,
-    });
   };
 
   const walk = (): void => {

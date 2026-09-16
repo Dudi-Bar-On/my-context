@@ -4084,14 +4084,21 @@ wa-tree .wa-count{margin-inline-start:var(--sp-2);color:var(--dim);
    class would tie at (0,1,0) with `.convanchorkind`'s own `color` and be
    decided by source order — the silent kind of win. Compounded, it is (0,2,0)
    and cannot lose wherever these rules are moved to. It also says, in the
-   selector itself, exactly which two surfaces spend the hue: a third that
-   wants it opts in here rather than inheriting it by accident. */
+   selector itself, exactly which surfaces spend the hue: one that wants it
+   opts in here rather than inheriting it by accident. `.convtakenkind` is the
+   third, added 2026-09-16 — the take-back sentence now names WHICH of a turn's
+   marks went, because a turn can carry two
+   (`TASK-a-turn-that-is-both-a-table-and-a-lane-report-is-one-thing`) and a
+   label alone no longer tells them apart. */
 .convanchor.kindsettled{border-inline-start-color:var(--gold)}
 .convanchor.kindowed{border-inline-start-color:var(--warn)}
 .convanchor.kindfound{border-inline-start-color:var(--carry)}
-.convanchorkind.kindsettled,.tvanchorkind.kindsettled{color:var(--gold)}
-.convanchorkind.kindowed,.tvanchorkind.kindowed{color:var(--warn)}
-.convanchorkind.kindfound,.tvanchorkind.kindfound{color:var(--carry)}
+.convanchorkind.kindsettled,.tvanchorkind.kindsettled,
+.convtakenkind.kindsettled{color:var(--gold)}
+.convanchorkind.kindowed,.tvanchorkind.kindowed,
+.convtakenkind.kindowed{color:var(--warn)}
+.convanchorkind.kindfound,.tvanchorkind.kindfound,
+.convtakenkind.kindfound{color:var(--carry)}
 .convanchorlabel{margin:var(--sp-1) 0 0;font-size:var(--fs-0);line-height:1.5;
   overflow-wrap:anywhere}
 /* ── EVERY ANCHOR CAPABILITY ON THE ROW — owner ruling 2026-09-12 ────────
@@ -4161,6 +4168,12 @@ wa-tree .wa-count{margin-inline-start:var(--sp-2);color:var(--dim);
 /* The name of the point that was taken back, isolated for direction: this
    archive is half Hebrew and a label is the half a person wrote. */
 .convtakenname{font-size:var(--fs-0);overflow-wrap:anywhere}
+/* WHICH of the turn's marks went, since 2026-09-16 a turn can carry two
+   (`TASK-a-turn-that-is-both-a-table-and-a-lane-report-is-one-thing`). It wears
+   the same three hue groups as `.tvanchorkind` — declared on that rule, not
+   restated here — and `nowrap` for that rule's own reason: a two-word kind
+   broken across a line reads as two things. */
+.convtakenkind{white-space:nowrap;color:var(--dim)}
 /* The list's own row shape, declared rather than borrowed through
    `.convfilter`: that class is a test's handle for the sessions card, and
    wearing it here made a one-card locator resolve to two. */
@@ -4185,6 +4198,21 @@ wa-tree .wa-count{margin-inline-start:var(--sp-2);color:var(--dim);
    is declared for them here. */
 .tvanchorbar{display:flex;flex-wrap:wrap;align-items:center;gap:var(--sp-1);
   margin-block-start:var(--sp-1);font-size:var(--fs-00)}
+/* ONE MARK OF THE TURN, and a turn may carry two —
+   `TASK-a-turn-that-is-both-a-table-and-a-lane-report-is-one-thing`, owner
+   ruling 2026-09-16 ("2 distinguished marks"). `flex-basis:100%` is
+   `.tvanchoracts`' own idiom one rule down: a mark claims a line, so a second
+   one starts below the first rather than running on after its controls, where
+   it would read as more buttons belonging to the first.
+
+   It is a flex container itself, so every rule below — the kind, the label, the
+   full-line note, the controls, the write box — goes on meaning exactly what it
+   meant when they were children of the bar. Nothing here restates a colour: the
+   two kinds are told apart by their glyph and their word, and by the hue group
+   `.tvanchorkind` already wears. */
+.tvanchorone{display:flex;flex-wrap:wrap;align-items:center;gap:var(--sp-1);
+  flex-basis:100%}
+.tvanchorone + .tvanchorone{margin-block-start:var(--sp-1)}
 .tvanchorlabel{color:var(--dim);overflow-wrap:anywhere}
 /* The mark’s controls, on a line of their own. `flex-basis:100%` is what
    gives them a constant place under a label whose length is not bounded —
@@ -4377,6 +4405,30 @@ wa-tree .wa-count{margin-inline-start:var(--sp-2);color:var(--dim);
   font-size:var(--fs-00);color:var(--dim)}
 .tvnavsaid{margin-block-start:0}
 .tvnavat{font-weight:600;color:var(--ink)}
+
+/* ── EVERY MATCH, PAINTED WITHOUT TOUCHING THE PAGE ───────────────────────
+   `semantic/8`, owner ruling 2026-09-16: "every found search result in my
+   viewer should be highlited".
+
+   `::highlight()` paints the `Range`s `CSS.highlights.set('mycontextfind', …)`
+   registers. NO element is created, so nothing reflows — which is the only
+   reason a highlight is allowed inside `.tvscroll` at all: every row there is
+   absolutely positioned from a measured model, and a `<mark>` wrapper would
+   re-measure the row it sits in and move every row below it.
+
+   BACKGROUND AND NOT COLOUR ALONE. `.convhitmatch` one card along may spend
+   `--gold` on the ink because it marks one short run inside a snippet the
+   reader is already looking at. Here a match can be one word in a paragraph
+   of prose, and colour alone would be the only carrier — distinction by more
+   than colour is this app's standing rule. The pair is `--gold` behind
+   `--paper`'s own ink, which is the same pairing `.mark` uses at 578 and is
+   legible in both themes because both tokens are redefined by each.
+
+   `::highlight()` honours a short list of properties — colour, background,
+   text-decoration, text-shadow, text-stroke — and silently drops the rest, so
+   nothing here asks for padding, a radius or a weight. A rule that did would
+   look fine in this file and paint nothing. */
+::highlight(mycontextfind){background-color:var(--gold);color:#17171c}
 
 /* ── THE KIND THE MARK WALK IS OVER ───────────────────────────────────────
    `TASK-the-six-kinds-a-mark-can-carry-have-no-reader-so-you-cannot`.

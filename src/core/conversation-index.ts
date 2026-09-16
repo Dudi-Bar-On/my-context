@@ -756,6 +756,54 @@ export function anchorIdFor(
 }
 
 /**
+ * **THE ID OF A SECOND MARK AT A POINT THAT ALREADY HAS ONE** —
+ * `TASK-a-turn-that-is-both-a-table-and-a-lane-report-is-one-thing`, owner
+ * ruling 2026-09-16: *"table & report - if required make them 2 different
+ * anchor types with 2 distinguished marks"*.
+ *
+ * ── THE POINT KEEPS ITS ID, AND THE SECOND MARK CARRIES THE KIND ───────────
+ *
+ * `anchorIdFor` above is `(sessionId, agentId, byteOffset)` and a turn that is
+ * both a table and a lane report needs two rows at one byte, which is one row
+ * on that key. The widening could have gone two ways and the two are not
+ * equally cheap:
+ *
+ *   - **Put the kind in EVERY id.** One rule, no slots — and every anchor in
+ *     every workspace changes its id. Measured on this corpus, 2026-09-16:
+ *     1,059 rows, all of which would move in `.anchors.jsonl` (written in id
+ *     order) on the first write after the upgrade. Worse, it takes the
+ *     derivation away from the READ-ONLY surface: `read-model-conversations.ts`
+ *     answers *"is this search hit already marked"* by deriving the id from the
+ *     hit's POSITION, which is all a hit has — it does not know what kind a
+ *     mark at that point would wear, so it could no longer name the row.
+ *   - **Give the point its id and the SECOND mark a suffixed one.** Nothing
+ *     that stands today moves, the read-only derivation keeps meaning exactly
+ *     what it meant — *the id of the mark that owns this point* — and the
+ *     change is purely additive: 240 new rows on this corpus and 0 rewritten.
+ *
+ * The second is what this is. It is the same argument `writeAnchorFile` makes
+ * for omitting a `null` note rather than writing it: the absent segment is the
+ * ordinary case, and spelling it out on every row would rewrite the whole file
+ * to say nothing new.
+ *
+ * ── WHICH MARK OWNS THE POINT IS NOT A PRECEDENCE OVER THE MARK ────────────
+ *
+ * `anchorsInTurn` returns its findings in grammar order and the FIRST takes the
+ * point's bare id; the rest are `beside`. That ordering used to decide which
+ * kind got a mark AT ALL, and the owner rejected exactly that. It now decides
+ * only which of two rows spells its id with a suffix — both are written, both
+ * are drawn, both are stepped to, both can be taken back on their own.
+ *
+ * `#` separates, and it cannot collide: the segment before it is a decimal byte
+ * offset, so nothing a session id or a lane id can contain reaches across it.
+ */
+export function anchorIdBeside(
+  sessionId: string, agentId: string | null, byteOffset: number, kind: string,
+): string {
+  return `${anchorIdFor(sessionId, agentId, byteOffset)}#${kind}`;
+}
+
+/**
  * **WHICH LANE MARKED AN ANCHOR, in the lane's own dispatched name** —
  * `TASK-a-table-mark-is-labelled-with-one-word-from-its-header-and-a`, owner
  * ruling 2026-09-15: *"you write Marked lane, it would be nice to see which

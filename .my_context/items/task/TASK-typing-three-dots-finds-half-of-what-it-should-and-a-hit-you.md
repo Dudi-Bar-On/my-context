@@ -5,8 +5,10 @@ title: typing three dots finds half of what it should, and a hit you cannot see 
 status: active
 severity: soft
 always: false
-summary: Make search match text that is written with typographic characters, and show every match highlighted where the reader is looking.
-summary_of: bbdc63aa77636074
+summary: Search now folds typographic characters the way SearchCursor does, and every match is painted in the document by the CSS Custom Highlight API under a count that says it counts turns of words over the whole transcript.
+summary_of: 47791ef082780466
+summary_was:
+  - 2026-09-16 Make search match text that is written with typographic characters, and show every match highlighted where the reader is looking.
 scope:
   - src/core/conversation-search.ts
   - src/ui/public/screens/conversations.js
@@ -18,77 +20,75 @@ tags:
   - recall
   - "plan:semantic"
   - "seq:8"
-  - "state:todo"
+  - "state:done"
 origin: human
 source_file: null
 source_anchor: null
 source_checksum: null
 valid_from: 2026-09-16
 valid_until: null
-checksum: 9820880e488d8856
+checksum: 42c99ec5f0f85ff6
 plan: semantic
 seq: "8"
-state: todo
+state: done
 priority: "1"
 ---
 
 # typing three dots finds half of what it should, and a hit you cannot see on the page is not a hit
 
-THE OWNER RULED, 2026-09-16: "3 write 40 lines of code - just verify it works the same as the
-original code intended and every found search result in my viewer should be highlited".
+BOTH HALVES SHIPPED, 2026-09-16 (lane AJ). The record is
+`reports/2026-09-16-folding-and-highlight.md`.
 
-TWO THINGS, and the second is the one he emphasised.
+ONE — THE FOLDING. `src/ui/public/lib/fold.js`, 102 lines of plain JavaScript that the browser
+imports and `core/conversation-search.ts` loads with a top-level `await import()`, so the count
+computed on the server and the highlight painted in the browser come from ONE matcher.
 
-── ONE: FOLD THE TEXT, IN ABOUT FORTY LINES ─────────────────────────
+"Verify it works the same as the original code intended" was discharged by EXECUTION rather than by
+reading. `SearchCursor` (@codemirror/search 6.7.2) and the three `@codemirror/state` char helpers
+were extracted from the published tarballs into a scratch directory, given the three-line duck-typed
+`text` lane AI identified, and run beside this matcher: 24 of 24 synthetic cases and 11,364 real
+archive spans x 20 queries — 1,775,487 hits, ZERO differences in `from`, `to` or `precise`, and ZERO
+byte mismatches. That run's output is the golden table in `test/ui/fold.test.ts`. Upstream's source
+is NOT in the repository; vendoring it would need a licence file and a pin for a library the owner
+ruled out. Nothing was added to `package.json`.
 
-Lane AI recommended vendoring `SearchCursor` from `@codemirror/search` (MIT, ~148 lines) and
-the owner chose to WRITE IT instead — read `reports/2026-09-16-search-adopt-or-build.md` §4,
-which costs exactly this choice and says the hand-written version is ~40 lines.
+What it buys, re-measured on the live index today: `...` reaches 463 spans as a substring, 463
+through FTS5, and 1,024 folded — 2.21x. `..` reaches 1,041 folded and 0 through FTS5, which is below
+the trigram floor. 817 of 11,364 spans change under NFKD and 791 change LENGTH.
 
-WHAT IT BUYS, measured: a reader typing `...` reaches 456 spans today and 1,012 with NFKD
-folding, BECAUSE THIS PRODUCT WRITES `…` 3,062 TIMES. The same applies to the quotes, dashes
-and spaces a model emits and a keyboard does not.
+The offsets are carried, never mapped back — a partial match records the ORIGINAL offset it began
+at, which is upstream's design and is why there is no arithmetic to get wrong. UTF-8 BYTES are
+accumulated on the same walk as the UTF-16 units, so the two cannot disagree.
 
-AND THE HARD PART IS NOT THE FOLDING, IT IS THE ARITHMETIC. One line of `.normalize('NFKD')`
-captures the ellipsis win. The other ~40 lines are mapping a match found in NORMALISED text
-back to a BYTE offset in the original, and 376 spans in one session CHANGE LENGTH under
-normalisation. Get that wrong and every offset after the first folded character is wrong —
-silently, because a wrong offset lands mid-record and reports `unreadable` rather than
-throwing. BYTE offsets, never character offsets. Hebrew is half this corpus.
+TWO — EVERY HIT HIGHLIGHTED. `GET /api/conversations/:id/find` scans every prose span of ONE
+transcript with the folded matcher (`findInDocument`) and answers in DOCUMENT order, so the tier
+`searchArchiveTiered` carries is never consulted here and the archive answer is untouched. FTS5 is
+not asked, and not only because it has no `offsets()`: the index holds the text UNFOLDED, so a
+two-stage shape would have handed the second stage 463 of the 1,024 spans and lost 561 silently.
 
-"VERIFY IT WORKS THE SAME AS THE ORIGINAL CODE INTENDED" IS A REQUIREMENT AND NOT A NICETY.
-`SearchCursor` is MIT and readable; read what it actually does about normalisation and about
-mapping back, and show your version reaching the same answers on the same inputs. Where you
-deliberately do LESS than it does, say which case you dropped and why it does not arise here.
+`CSS.highlights` paints every match in every drawn row, rebuilt from `live` on every paint. That is
+not caution — it was measured: a `Range` into a row the virtualiser evicts does NOT go inert, it
+COLLAPSES to (parent, 0) and stays connected, so a kept registry would paint nothing while
+`CSS.highlights.has()` still answered true.
 
-── TWO: EVERY HIT IS HIGHLIGHTED WHERE HE IS LOOKING ──────────────────
+THE COUNT COUNTS TURNS OF WORDS in this transcript, from the server's scan, and the line says so
+along with how many turns were read out of how many records — the 1.08% gap lane AI's report closes
+on. It is turns and not occurrences because the server matches the RECORD's text and the browser
+paints the RENDERED text, and Markdown syntax is in one and not the other.
 
-His words: "every found search result in my viewer should be highlited". Today a hit is a row
-in a list; he wants to SEE it in the document.
+Held by 20 removal proofs, each shown to redden at its own named test. THREE reddened nothing on the
+first run and all three are recorded rather than hidden: a document-order fixture built backwards so
+the sort under test was a no-op, a bound only ever exercised on the ASCII path, and one guard that
+is genuinely not load-bearing and is now labelled as such. Driven in Playwright in both languages,
+by hand against this repository's live 133 MB session and by
+`e2e/conversations-find.spec.ts` (7 tests x 2 languages).
 
-THE OBSTACLE IS THE ONE THAT DISQUALIFIED EVERY EDITOR COMPONENT: THE DOCUMENT IS NOT IN THE
-BROWSER. The session is ~133 MB over ~52,000 records and `conversations.js` holds an outline
-plus a WINDOWED, explicitly non-monotonic `bodies` cache. So a find that walks the DOM sees
-only the rows currently drawn — and a DOM walker in a virtualised scroll reports a wrong count
-SILENTLY, which is the defect this project exists to refuse.
+TWO DEFECTS FOUND BY DRIVING IT AND FIXED: a step landed on the TURN rather than on the match, which
+on a turn of tens of thousands of characters put the highlight screens below the fold; and the first
+press of Next skipped match 1, because the reader stands on it the moment a query settles.
 
-Lane AI measured the way out and it needs no library: THE CSS CUSTOM HIGHLIGHT API (Baseline
-since June 2025) paints `Range`s without touching the DOM — no wrapper elements, no reflow,
-nothing to unwind, and it survives the virtualiser recycling a row. Verify that claim yourself
-before building on it, including what happens when a highlighted row is evicted and redrawn.
-
-AND THE COUNT IS PART OF THE FEATURE. A reader needs to know how many there are and where he
-is in them. FTS5 CANNOT PRODUCE THAT COUNT — lane AI verified `offsets()` fails with "unable
-to use function offsets in the requested context" — so say where the number comes from and
-what it is a count OF. A count that silently means "in the rows I have drawn" is worse than no
-count at all.
-
-── AND MIND WHAT LANE AF JUST SHIPPED ──────────────────────────
-
-It flagged this for you: `searchArchiveTiered` DE-DUPLICATES ACROSS TIERS, and a find bar needs
-DOCUMENT ORDER. So the tier must become a LABEL on a hit rather than its sort key for this
-surface. Do not undo the tiers — `semantic/4` is the archive answer and it is proved in both
-languages. Read `reports/2026-09-16-the-search-shipped.md` before touching that file.
-
-Held by removal proofs, one per assertion, each shown to redden at its own line. Driven in
-Playwright in both languages before anything is reported, because it is a UI change.
+WHAT REMAINS, and it is the owner's to schedule rather than this lane's to take:
+  — the stepper bar is now three lines of groups instead of two (162.8 px with a query typed in
+    English, 95.2 px in Hebrew, against 60.8 px idle). Named in the report for his eye.
+  — machinery is still unsearchable on this surface. It now SAYS so on every count line, which is a
+    disclosure and not a fix; the fix is lane AI's finding 1 and is a different build.

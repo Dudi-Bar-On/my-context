@@ -1,4 +1,5 @@
 // @basis TASK-take-the-lane-report-and-the-owner-s-own-words-as-automatic,
+// TASK-a-turn-that-is-both-a-table-and-a-lane-report-is-one-thing,
 // INV-a-turn-that-qualifies-for-an-automatic-mark-carries-one-when,
 // TASK-find-out-what-else-in-a-transcript-is-worth-marking,
 // STD-a-measured-zero-is-drawn-and-named-an-unmeasured-thing-is,
@@ -54,8 +55,9 @@ import {
   LANE_REPORT_FLOOR_CHARS, markAnchorsOnTurn, markAutomaticAnchors, rulingLabel,
 } from '../../src/core/anchor-pass.ts';
 import {
-  ConversationIndex, projectDirName, rebuildConversations,
+  ConversationIndex, anchorIdBeside, anchorIdFor, projectDirName, rebuildConversations,
 } from '../../src/core/conversation-index.ts';
+import { unmarkAnchor } from '../../src/core/anchors.ts';
 
 const SESSION = 'sess-anchor-report';
 /** The lane whose last answer is long enough to be a report. */
@@ -225,13 +227,19 @@ function tidy(f: Fixture): void {
   removeTree(f.home);
 }
 
-interface Row { kind: string; label: string; agentId: string | null; byteOffset: number }
+interface Row {
+  id: string; kind: string; label: string; agentId: string | null; byteOffset: number;
+}
 
 function rows(dbPath: string): Row[] {
   const index = ConversationIndex.openReadOnlyChecked(dbPath);
   try {
     return index.anchorRows(null).map((row) => ({
-      kind: row.kind, label: row.label, agentId: row.agentId, byteOffset: row.byteOffset,
+      id: row.id,
+      kind: row.kind,
+      label: row.label,
+      agentId: row.agentId,
+      byteOffset: row.byteOffset,
     }));
   } finally { index.close(); }
 }
@@ -278,9 +286,9 @@ test('the pass writes NOTHING at a lane dispatch carrying a normative id', () =>
       + 'label is the LINE he typed rather than a keyword',
     );
     assert.equal(
-      marks.filter((row) => row.kind === 'report').length, 1,
-      'and the one lane whose last answer clears the floor AND holds no table carries a report '
-      + '— the tabular lane keeps its table mark, which is the precedence asserted below',
+      marks.filter((row) => row.kind === 'report').length, 2,
+      'and BOTH lanes whose last answer clears the floor carry a report — the tabular one too, '
+      + 'beside the table mark it keeps. Owner ruling 2026-09-16, and the count asserted below.',
     );
   } finally { tidy(f); }
 });
@@ -330,26 +338,114 @@ test('a trailing acknowledgement is under the floor and is not a report', () => 
   } finally { tidy(f); }
 });
 
-test('a table in the final answer keeps the turn, and the report kind yields', () => {
+/**
+ * **A TURN THAT IS BOTH CARRIES BOTH** —
+ * `TASK-a-turn-that-is-both-a-table-and-a-lane-report-is-one-thing`, owner
+ * ruling 2026-09-16: *"table & report - if required make them 2 different
+ * anchor types with 2 distinguished marks"*.
+ *
+ * This test asserted the opposite until that ruling — `['table']`, with the
+ * sentence *"one turn, one mark: two kinds at one byte is not a state this
+ * store can even hold, and a test that expected two would be asserting a bug"*.
+ * That sentence was true about the STORE and it is exactly the thing that
+ * changed: `anchorIdBeside` is the second slot, and it is why the assertion
+ * below can be written at all.
+ *
+ * ── AND THE CHANGE IS ADDITIVE, WHICH IS WHAT THE ID ASSERTION PROVES ─────
+ *
+ * The table mark keeps the point's OWN id, so the 240 marks of this shape on
+ * the owner's archive did not move when the second mark arrived — nothing was
+ * relabelled, nothing was renumbered, and `.anchors.jsonl` gained lines rather
+ * than being rewritten whole into a new numbering. An id assertion is the only
+ * place that property is visible; a test that counted kinds alone would pass
+ * over a scheme that renumbered every bookmark in the workspace.
+ */
+test('a turn that is both a table and a lane report carries both marks', () => {
   const f = fixture();
   try {
     const onTabular = rows(f.dbPath).filter((row) => row.agentId === TABULAR);
+    /*
+     * **LOOKED UP BY KIND AND NOT BY POSITION**, so that each assertion below
+     * rests on one thing. The row ORDER is a claim in its own right and it is
+     * asserted as one, further down; reading `onTabular[0]` for the label would
+     * have made every proof of the order redden the label too, and a proof that
+     * reddens six assertions says nothing about which line it broke.
+     */
+    const table = onTabular.find((row) => row.kind === 'table');
+    const report = onTabular.find((row) => row.kind === 'report');
     assert.deepEqual(
-      onTabular.map((row) => row.kind), ['table'],
-      'THE PRECEDENCE, and it is a decision rather than an accident: 230 of his 419 lane '
-      + 'reports already carry a table mark, and the worth of the report mark was judged 8/8 on '
-      + 'a sample drawn from the 189 that carry NOTHING. Relabelling turns that already wear a '
-      + 'judged-good mark is a change nobody measured.',
+      onTabular.map((row) => row.kind).sort(), ['report', 'table'],
+      'BOTH GRAMMARS RECOGNISE THIS TURN AND BOTH NOW MARK IT. 240 of the 432 lane reports on '
+      + 'his archive are this shape, measured 2026-09-16, and under the precedence that stood '
+      + 'here they were findable only as tables — so the `report` kind named the MINORITY of '
+      + 'the thing it is named after.',
     );
     assert.equal(
-      onTabular[0]?.label, 'What the pass counted — what | n',
-      'and it keeps the TABLE\'s label — the nearest heading above it joined to its header '
+      table?.label, 'What the pass counted — what | n',
+      'the table mark keeps the TABLE label — the nearest heading above it joined to its header '
       + 'cells, which is what `tableLabel` composes and is not the lane mission',
     );
     assert.equal(
-      onTabular.length, 1,
-      'one turn, one mark — the id is derived from the byte, so two kinds at one byte is not a '
-      + 'state this store can even hold, and a test that expected two would be asserting a bug',
+      report?.label, TABULAR_MISSION,
+      'and the report mark keeps the LANE MISSION, which is the whole worth of the second one: '
+      + 'it answers "what did that lane conclude" rather than "what does this table say"',
+    );
+
+    /* ── THE KEY, WHICH IS THE LOAD-BEARING HALF ───────────────────────── */
+    const index = ConversationIndex.openReadOnlyChecked(f.dbPath);
+    let lastByte = -1;
+    try {
+      lastByte = index.laneLastAnswers([TABULAR]).get(TABULAR)?.byteOffset ?? -1;
+    } finally { index.close(); }
+    assert.equal(
+      table?.id, anchorIdFor(SESSION, TABULAR, lastByte),
+      'THE TABLE MARK KEEPS THE POINT OWN ID, unchanged and unrenumbered — which is what makes '
+      + 'this change purely additive over a workspace that already has bookmarks: 240 rows '
+      + 'gained on his archive, 0 rewritten, and nothing moved in the anchors document.',
+    );
+    assert.equal(
+      report?.id, anchorIdBeside(SESSION, TABULAR, lastByte, 'report'),
+      'and the SECOND mark is the one that carries a suffix. Both rows sit at the same byte, '
+      + 'which is the collision the old key could not hold.',
+    );
+    assert.deepEqual(
+      onTabular.map((row) => row.kind), ['table', 'report'],
+      'AND THE ORDER IS THE ONE THE DOCUMENT DRAWS. `anchorRows` sorts by `at DESC, id ASC`, '
+      + 'two marks written by one pass share a stamp, and the point own id sorts before the '
+      + 'suffixed one — so the table is drawn above the report on every row and every reload '
+      + 'rather than swapping places between them.',
+    );
+    assert.equal(
+      table?.byteOffset, report?.byteOffset,
+      'ONE TURN. Two ids at two bytes would be two bookmarks in two places, which is not what '
+      + 'was asked for and is not what a reader would see.',
+    );
+  } finally { tidy(f); }
+});
+
+/**
+ * **TAKING ONE BACK DOES NOT TAKE THE OTHER** — the item's own take-back
+ * requirement, asserted at the store because that is where the two rows either
+ * are or are not independent of each other.
+ */
+test('one of a two-mark turn can be taken back and the other stands', () => {
+  const f = fixture();
+  try {
+    const index = ConversationIndex.open(f.dbPath);
+    let before: string[] = [];
+    let after: string[] = [];
+    try {
+      before = index.anchorRows(null)
+        .filter((row) => row.agentId === TABULAR).map((row) => row.id);
+      assert.equal(before.length, 2, 'the fixture must carry two or the removal proves nothing');
+      assert.equal(unmarkAnchor(index, before[1] as string), true);
+      after = index.anchorRows(null)
+        .filter((row) => row.agentId === TABULAR).map((row) => row.id);
+    } finally { index.close(); }
+    assert.deepEqual(
+      after, [before[0]],
+      'the table mark stands. A key that could not tell the two rows apart would have taken '
+      + 'both, or neither, and a reader who meant to drop one report would have lost the table.',
     );
   } finally { tidy(f); }
 });

@@ -1603,11 +1603,11 @@ function cmdConversationForget(ws: Workspace, root: string, args: string[], out:
  * (`REQ-every-anchor-capability-is-reachable-from-the-screen-and-a`), and
  * nothing under `src/ui/` may import this module: it calls `registerCommand`
  * at load, so merely reaching it puts the whole mutating command surface in
- * the process. Every caller that had `markAutomaticAnchors`, `anchorInTurn`
+ * the process. Every caller that had `markAutomaticAnchors`, `anchorsInTurn`
  * or `tableIn` from this file still has them, at the same names.
  */
 export {
-  ANCHOR_PROBE_LIMIT, anchorInTurn, markAutomaticAnchors, tableIn,
+  ANCHOR_PROBE_LIMIT, anchorsInTurn, markAutomaticAnchors, tableIn,
   type AutoAnchorFinding, type AutoAnchorReport,
 } from '../../core/anchor-pass.ts';
 

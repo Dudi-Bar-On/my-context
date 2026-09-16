@@ -1,6 +1,5 @@
 /**
- * @basis TASK-every-anchor-write-inside-a-lane-document-is-refused-because
- * @basis REQ-every-anchor-capability-is-reachable-from-the-screen-and-a
+ * @basis TASK-every-anchor-write-inside-a-lane-document-is-refused-because, REQ-every-anchor-capability-is-reachable-from-the-screen-and-a
  *
  * ── THE CONTRACT BETWEEN A WINDOW AND THE VIEWER IT IMPORTS ────────────────
  *

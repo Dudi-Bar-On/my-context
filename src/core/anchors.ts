@@ -32,7 +32,7 @@
  * (`ui/read-model-conversation-document.ts`).
  */
 import {
-  ConversationIndex, anchorIdFor, type AnchorRow, iterateTranscript,
+  ConversationIndex, anchorIdBeside, anchorIdFor, type AnchorRow, iterateTranscript,
 } from './conversation-index.ts';
 import { proseOf } from './conversation-search.ts';
 import { withAnchorWrite } from './anchor-file.ts';
@@ -131,6 +131,24 @@ export interface AnchorSpec {
    * one surface and not another would put both in this one.
    */
   note?: string | null;
+  /**
+   * **`true` when this mark SHARES its turn with a mark of another kind and is
+   * not the one holding the point's bare id** —
+   * `TASK-a-turn-that-is-both-a-table-and-a-lane-report-is-one-thing`.
+   *
+   * A turn that is both a table and a lane report carries BOTH marks, by owner
+   * ruling of 2026-09-16, and two rows at one byte is one row on the key
+   * `anchorIdFor` derives. `anchorIdBeside` is the second slot and this is the
+   * flag that reaches it; `conversation-index.ts` carries the argument for a
+   * suffixed second id rather than a kind segment on every id, and it is not
+   * restated here.
+   *
+   * **It is a boolean and not the kind**, because the kind is already on the
+   * spec: a second field holding the same string is a second thing to disagree
+   * with the first, which is the defect this project keeps paying for.
+   * `markAnchor` reads the kind off the row it is building.
+   */
+  beside?: boolean;
 }
 
 /** One anchor resolved against the transcript it points into. */
@@ -162,6 +180,17 @@ export interface ResolvedAnchor {
 export { anchorIdFor } from './conversation-index.ts';
 
 /**
+ * **The id of the SECOND mark at a point** — re-exported from where it is
+ * defined, for `anchorIdFor`'s reason one line up and for no other.
+ *
+ * A turn that is both a table and a lane report carries both marks
+ * (`TASK-a-turn-that-is-both-a-table-and-a-lane-report-is-one-thing`), and the
+ * viewer must be able to name the second row without loading a module that can
+ * write one. The argument for the id shape is in `conversation-index.ts`.
+ */
+export { anchorIdBeside } from './conversation-index.ts';
+
+/**
  * Mark one point, or move the label on the one already there. A WRITE.
  *
  * Returns the row as it now stands, so a caller that needs the id — to resolve
@@ -178,13 +207,19 @@ export { anchorIdFor } from './conversation-index.ts';
 export function markAnchor(index: ConversationIndex, spec: AnchorSpec): AnchorRow {
   const agentId = spec.agentId ?? null;
   const note = spec.note ?? null;
+  const kind = spec.kind ?? 'note';
   const row: AnchorRow = {
-    id: anchorIdFor(spec.sessionId, agentId, spec.byteOffset),
+    // **The point's own id, unless this mark is the SECOND at the point** —
+    // `AnchorSpec.beside`, and the whole argument for the two spellings is in
+    // `anchorIdBeside`'s header rather than here.
+    id: spec.beside === true
+      ? anchorIdBeside(spec.sessionId, agentId, spec.byteOffset, kind)
+      : anchorIdFor(spec.sessionId, agentId, spec.byteOffset),
     sessionId: spec.sessionId,
     agentId,
     byteOffset: spec.byteOffset,
     label: spec.label,
-    kind: spec.kind ?? 'note',
+    kind,
     origin: spec.origin ?? 'owner',
     at: spec.at ?? new Date().toISOString(),
     // The trim is HERE and not in each caller, for `AnchorSpec.note`'s stated

@@ -1928,6 +1928,30 @@ const DYNAMIC_EDGES: Record<string, string> = {
   // is no write API anywhere down this edge: the vendor file is a parser, and
   // `subjects.ts` binds `readFileSync` and nothing else.
   'src/core/retrieval/subjects.ts': 'src/ui/public/lib/vendor/markdown-it.esm.min.js',
+  // ── THE FOURTH ARRIVED ON 2026-09-16, AND ALSO AS A FAILURE ─────────────
+  //
+  // `src/core/conversation-search.ts` reaches `src/ui/public/lib/fold.js` —
+  // the folded matcher `semantic/8` built — through a URL computed from
+  // `import.meta.url`, which is the same bridge `execute-catalogue.ts` builds
+  // to `palette-defs.js` two entries up and for the same two reasons:
+  // `allowJs` is off, so a static import of a `.js` file cannot typecheck, and
+  // a top-level `await import` is what keeps `findInDocument` SYNCHRONOUS.
+  //
+  // **Why that file and not a second copy in `src/core/`.** The BROWSER
+  // imports it too — `screens/conversations.js` paints its highlights with the
+  // same `foldedMatches` this scans with — and a count computed on the server
+  // and a highlight painted in the browser by two different matchers would
+  // disagree about what a hit is, with nothing on the screen saying which was
+  // right. One spelling, two runtimes, and this edge is the price.
+  //
+  // **What it loads has no write API of any kind and could not acquire one
+  // unseen.** `fold.js` is a pure function over two strings: no import, no
+  // DOM, no `node:` anything, no string table. `test/ui/fold.test.ts` is the
+  // test that holds it — 36 assertions including a golden table taken by
+  // running `@codemirror/search`'s own `SearchCursor` beside it — and
+  // `scripts/check-text-files.ts` and the browser's own module loader both
+  // read the same bytes this edge does.
+  'src/core/conversation-search.ts': 'src/ui/public/lib/fold.js',
 };
 
 test('no dynamic escape hatch anywhere in the reachable graph', () => {

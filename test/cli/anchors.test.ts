@@ -72,7 +72,7 @@ import { runCli } from '../../src/cli/index.ts';
 import {
   ConversationIndex, projectDirName, rebuildConversations,
 } from '../../src/core/conversation-index.ts';
-import { anchorInTurn, tableIn } from '../../src/cli/commands/conversation.ts';
+import { anchorsInTurn, tableIn } from '../../src/cli/commands/conversation.ts';
 import { markAnchor } from '../../src/core/anchors.ts';
 import { resolveWorkspace } from '../../src/core/workspace.ts';
 import { removeTree } from '../helpers/tmp.ts';
@@ -343,20 +343,20 @@ const NOT_HIS = { type: 'assistant' };
 
 test('the report DETECTOR is gone: a dated narrative path is not an anchor by nature', () => {
   assert.equal(
-    anchorInTurn({ record: NOT_HIS, laneReport: null },
-      'see reports/2026-09-10-lexical-selection-research.md'), null,
+    anchorsInTurn({ record: NOT_HIS, laneReport: null },
+      'see reports/2026-09-10-lexical-selection-research.md').length, 0,
     'a turn that names a report is not a report, and 101 of the 613 anchors in his index were '
     + 'this and nothing else',
   );
   assert.equal(
-    anchorInTurn({ record: NOT_HIS, laneReport: null },
-      'see docs/superpowers/plans/2026-09-10-d42-conversation-retrieval.md'),
-    null,
+    anchorsInTurn({ record: NOT_HIS, laneReport: null },
+      'see docs/superpowers/plans/2026-09-10-d42-conversation-retrieval.md').length,
+    0,
     'and the plans directory is the same shape, so removing one half would not be removing it',
   );
   assert.equal(
-    anchorInTurn({ record: HIS, laneReport: null },
-      'read reports/2026-09-10-lexical-selection-research.md please'), null,
+    anchorsInTurn({ record: HIS, laneReport: null },
+      'read reports/2026-09-10-lexical-selection-research.md please').length, 0,
     'nor is it a ruling because HE typed it — the ruling grammar is about the words he rules '
     + 'in, and a path carries none of them',
   );
@@ -365,8 +365,8 @@ test('the report DETECTOR is gone: a dated narrative path is not an anchor by na
   // the caller; no text reaches it. Same words, and the only thing that moves
   // is whether the ARCHIVE says this turn is a lane's last answer.
   assert.equal(
-    anchorInTurn({ record: NOT_HIS, laneReport: 'general-purpose — the anchor lane' },
-      'see reports/2026-09-10-lexical-selection-research.md')?.kind,
+    anchorsInTurn({ record: NOT_HIS, laneReport: 'general-purpose — the anchor lane' },
+      'see reports/2026-09-10-lexical-selection-research.md')[0]?.kind,
     'report',
   );
 });
@@ -374,8 +374,8 @@ test('the report DETECTOR is gone: a dated narrative path is not an anchor by na
 test('a ruling is HIS OWN WORDS in a turn the ARCHIVE says he typed', () => {
   const ruled = 'i approve the change, and from now on the port must always be 58888';
   assert.deepEqual(
-    anchorInTurn({ record: HIS, laneReport: null }, ruled),
-    { kind: 'ruling', label: ruled },
+    anchorsInTurn({ record: HIS, laneReport: null }, ruled),
+    [{ kind: 'ruling', label: ruled }],
     'the label is the LINE the word is on, verbatim — a label of `must` alone would name '
     + 'twelve of his turns identically, which is the single-header-cell defect again',
   );
@@ -384,31 +384,31 @@ test('a ruling is HIS OWN WORDS in a turn the ARCHIVE says he typed', () => {
   // One property moves: who the ARCHIVE says wrote the turn. Every word is the
   // same, and the answer must come out the other way.
   assert.equal(
-    anchorInTurn({ record: NOT_HIS, laneReport: null }, ruled), null,
+    anchorsInTurn({ record: NOT_HIS, laneReport: null }, ruled).length, 0,
     'the same sentence in an ANSWER is an assistant quoting him — and assistants in this '
     + 'project write `must` and `never` in nearly every turn',
   );
   assert.equal(
-    anchorInTurn({ record: { ...HIS, isSidechain: true }, laneReport: null }, ruled), null,
+    anchorsInTurn({ record: { ...HIS, isSidechain: true }, laneReport: null }, ruled).length, 0,
     'and the same sentence RELAYED INTO A LANE is `origin.kind: human` too — the words '
     + 'started with him, the turn did not',
   );
   assert.equal(
-    anchorInTurn({ record: { ...HIS, isMeta: true }, laneReport: null }, ruled), null,
+    anchorsInTurn({ record: { ...HIS, isMeta: true }, laneReport: null }, ruled).length, 0,
     'the harness own "this is not user input" flag, which is the second column and catches '
     + 'the same 13 relays independently',
   );
 
   assert.equal(
-    anchorInTurn({ record: HIS, laneReport: null },
-      'apply DEC-run-is-removed-execute-is-the-only-way-to-run-what-the'),
-    null,
+    anchorsInTurn({ record: HIS, laneReport: null },
+      'apply DEC-run-is-removed-execute-is-the-only-way-to-run-what-the').length,
+    0,
     'AND A NORMATIVE ID IS NO LONGER A RULING ON ITS OWN. In 519 turns he typed over 13 days '
     + 'he named one ZERO times — the id could only ever find the injection block',
   );
   assert.equal(
-    anchorInTurn({ record: HIS, laneReport: null }, 'i think we should probably do that'),
-    null,
+    anchorsInTurn({ record: HIS, laneReport: null }, 'i think we should probably do that').length,
+    0,
     'and the MODAL list is refused: `should` scores the same worth-having share as 250 '
     + 'characters with no keyword at all, which is the measurement that killed it',
   );
