@@ -565,6 +565,719 @@ $ node src/cli/index.ts rules verify      # מול החותם. --restore מחז�
 
 </div>
 
+<div dir="rtl">
+
+### 4.7 כלי התחזוקה — ארבעה מסכים, ואין לו כפתור הפעלה
+
+הסעיפים שעד כאן הסבירו **מה** הכללים ו**מי** רשאי לשנות אותם. הסעיף הזה מראה את
+הכלי שאדם פותח בפועל כדי לשנות אחד. הוא קיים, הוא מלא, והוא גדול יותר ממה שנשמע:
+1,002 שורות בשישה קבצים.
+
+</div>
+
+<div dir="rtl">
+
+| קובץ | שורות | מה הוא |
+|---|---|---|
+| <span dir="ltr">`src/ui/maintenance/server.ts`</span> | 206 | הסוקט, ושני הסירובים שלפניו |
+| <span dir="ltr">`src/ui/maintenance/router.ts`</span> | 212 | פונקציה טהורה אחת מבקשה לתשובה — <span dir="ltr">`handle(ctx, method, url, body)`</span> |
+| <span dir="ltr">`src/ui/maintenance/screens/list.ts`</span> | 112 | מסך הרשימה, ובו התקציב |
+| <span dir="ltr">`src/ui/maintenance/screens/form.ts`</span> | 296 | הטופס, השמירה, והעברה בין דרגים |
+| <span dir="ltr">`src/ui/maintenance/screens/page.ts`</span> | 91 | מעטפת HTML אחת, סרגל ניווט אחד, ומחלץ־תווים אחד |
+| <span dir="ltr">`src/ui/maintenance/screens/publish.ts`</span> | 85 | מסך הפרסום: diff, ושאלה |
+
+</div>
+
+<div dir="rtl">
+
+**ההפרדה בין השרת לנתב אינה סידור קבצים.** הנתב מכריע כל מה שבקשה *אומרת*
+באופן סינכרוני ומתוך ערכים בלבד, ולכן טסט ב-Node ודפדפן אמיתי מריצים **נתיב קוד
+אחד** ולא שניים שמסכימים היום.
+
+#### איך הכלי הזה הורם כדי לצלם את המסכים שלהלן
+
+**במדידה ב-2026-09-16: אין לו נקודת הפעלה כלשהי.** לא פקודת CLI, לא סקריפט
+<span dir="ltr">`npm`</span>. <span dir="ltr">`startMaintenanceServer`</span>
+מיוצא, ושלושת המקומות היחידים בעץ שקוראים לו הם
+<span dir="ltr">`e2e/rules-maintenance.spec.ts`</span>,
+<span dir="ltr">`test/rules/maintenance-absent.test.ts`</span> — וקובץ הזמני
+שנכתב כדי לצלם את המסמך הזה. זה המצב, והוא לא תוקן כאן: נקודת הפעלה נשלחת היא
+החלטה של הבעלים, לא תוצר לוואי של צילום מסך.
+
+**מה שכן נעשה**, במלואו, כדי שאף תמונה כאן לא תהיה ציור של מסך שאיש לא פתח —
+קובץ בן כמה שורות מחוץ למאגר, שקורא לפונקציה המיוצאת ומקבל שני שרתים: אחד על
+המאגר האמיתי לצורך מסכי קריאה בלבד, ואחד על **עותק** בתיקייה זמנית לכל דבר
+שכותב.
+
+</div>
+
+```ts
+// לא בתוך המאגר — קובץ זמני, שנמחק אחרי הצילום.
+const { startMaintenanceServer } = await import(
+  new URL(`file:///${REPO}/src/ui/maintenance/server.ts`).href
+);
+const real = await startMaintenanceServer({ port: 58991 });                    // קריאה בלבד
+const copy = await startMaintenanceServer({ port: 58992, storeDir: COPY_DIR }); // כתיבות
+```
+
+<div dir="rtl">
+
+והיעדר ההפעלה הזה אינו סקרנות: הוא **הסיבה המכנית** לתקלה ג בסעיף 5 — ארבע
+הרשומות האחרונות נוספו בעריכה ידנית של הקבצים ושל המניפסט, כי לא היה כלי שאפשר
+היה לפתוח.
+
+#### שני סירובים, לפני שנפתח סוקט
+
+הכלי מסרב **לפני** ה-bind ולא בודק אחריו, ושתי הסיבות שונות. שרת שנקשר ואז
+מתלונן כבר האזין על הממשק הלא נכון; ופורט שנדחה רק כשהוא תפוס היה נקשר ל-58888
+בשמחה ביום שבו השרת של הבעלים כבוי, ועונה במקומו.
+
+</div>
+
+```
+startMaintenanceServer({ host: '0.0.0.0' })
+  → refusing to bind 0.0.0.0 — this tool serves 127.0.0.1 only. It has no authentication,
+    which is safe only because it does not ship and is not reachable from the network.
+
+startMaintenanceServer({ port: 58888 })
+  → refusing port 58888 — that is the owner's UI server. This tool takes a free port
+    chosen at start; pass no port, or any port other than 58888.
+```
+
+<div dir="rtl">
+
+#### המסך הראשון: הרשימה
+
+זה מה שנפתח על <span dir="ltr">`/`</span>. צולם מול המאגר האמיתי ב-2026-09-16:
+
+</div>
+
+<div dir="rtl">
+
+[![מסך הרשימה של כלי התחזוקה](the-store.he/01-list.png)](the-store.he/01-list.png)
+
+</div>
+
+<div dir="rtl">
+
+ארבעה דברים בתמונה הזאת שווים אמירה:
+
+1. **התקציב יושב על מסך הרשימה, לא על רשומה.** התקציב הוא עובדה על ה**סט**;
+   מסך שמראה את גודלה של כל רשומה ואינו מראה סכום הוא מסך שבו אי אפשר לענות
+   "האם חרגנו".
+2. **דרג <span dir="ltr">`product`</span> נמדד ודרג <span dir="ltr">`developer`</span>
+   מוצג ואינו נספר**, והשניים מצוירים אחרת כדי שזה יהיה **נראה** ולא רק נכון.
+   1,298 מול 20,000 בסרגל; 40,657 בשורה שמתחתיו, ללא סרגל.
+3. **כל שורה נושאת כפתור "<span dir="ltr">move to</span>" אל הדרג השני.** זהו
+   מנגנון ההסרה מסעיף 3.3 כפי שהוא נראה: הורדה מדרג אינה מחיקה, והיא הפיכה.
+4. **קובץ שלא נטען מקבל כותרת משלו** —
+   <span dir="ltr">`did not load`</span> — ונקרא בשמו עם סיבת הסירוב. בצילום
+   הזה אין כזה, כי המאגר תקין; הכותרת מופיעה רק כשיש.
+
+#### כתיבה עונה בהפניה, לעולם לא בדף
+
+שמירה מוצלחת אינה מציירת דף — היא מחזירה
+<span dir="ltr">`303`</span> אל המסך שעליו פעלתם, ושם מחכה משפט התוצאה. לכן
+רענון אחרי שמירה אינו שומר שוב, והמסך מראה את המצב החדש בלי שביקשו ממנו.
+**סירוב** הוא המקרה היחיד שעונה בדף, כי הדף נושא את המילים שצריך ואת הערכים
+שהוקלדו.
+
+</div>
+
+<div dir="rtl">
+
+[![הודעת התוצאה אחרי שמירה](the-store.he/05-saved-notice.png)](the-store.he/05-saved-notice.png)
+
+</div>
+
+<div dir="rtl">
+
+*שימו לב לנתיב בראש המסך הזה: זהו העותק בתיקייה הזמנית, לא
+<span dir="ltr">`src/rules/entries/`</span>. כל תמונה במסמך הזה שמראה כתיבה
+צולמה על עותק, וכל תמונה שמראה קריאה — על המאגר האמיתי. הרשימה ומסך הפרסום
+מדפיסים את התיקייה שהם עובדים עליה, וזה בדיוק בשביל ההבחנה הזאת.*
+
+</div>
+
+<div dir="rtl">
+
+### 4.8 התבניות — אחת לכל סוג, ממולאת
+
+סעיף 3.1 אמר ש**התבנית היא הסכימה**, ונתן את הטבלה. מה שהוא לא נתן הוא את
+התבנית עצמה. הסעיף הזה נותן: לכל אחד מחמשת הסוגים — שדות החובה, מה הטופס שואל
+בכל שדה, רשומה אמיתית מהמאגר ממולאת, ומה הטופס **מסרב**.
+
+#### המסגרת, שזהה לכל הסוגים
+
+לפני השדות של הסוג יש ארבעה שדות שכל רשומה נושאת, וארבעה שהיא רשאית לשאת. הם
+אינם חלק של אף תבנית, והמפענח נוקב בהם בשתי רשימות משלו.
+
+</div>
+
+<div dir="rtl">
+
+| שדה | חובה? | מה הטופס שואל |
+|---|---|---|
+| `id` | חובה | <span dir="ltr">*lowercase words joined by hyphens — this is how the entry is cited*</span> |
+| `kind` | חובה | נבחר בקישור, לא בשמירה — בחירת סוג משנה אילו שדות קיימים, ולכן הטופס נטען מחדש |
+| `tier` | חובה | <span dir="ltr">*product reaches every user; developer applies only inside my_context itself*</span> |
+| `title` | חובה | <span dir="ltr">*one line, in plain words*</span> |
+| `request` | רשות | מילות הבעלים, מילה במילה — **נרשם, לעולם לא מוזרק** (סעיף 3.7) |
+| `movedFrom` | רשות | פריט הקורפוס שהרשומה הוצאה ממנו — מוצג לדרג <span dir="ltr">`developer`</span> בלבד |
+| `movedOn` | רשות | תאריך אותה העברה. **לבדו הוא מסורב** |
+| `body` | רשות | הפרוזה שמתחת ל-frontmatter |
+
+</div>
+
+<div dir="rtl">
+
+**<span dir="ltr">`id`</span> הוא סירוב, לא ניקוי.** שם שנכתב לא כהלכה אינו
+מתוקן בשקט, כי רשומה שנשמרה תחת שם שאיש לא בחר היא רשומה שאיש לא ימצא. זה גם
+מה שמונע מה-id לנקוב בנתיב: הכלי כותב
+<span dir="ltr">`<id>.md`</span> לתיקיית המאגר ולשום מקום אחר.
+
+**כל שדה שהטופס מצייר, הוא מצייר כי הוא חייב.** השמירה מרכיבה רשומה **שלמה**
+ממה שנשלח, ולכן שדה שהטופס אינו מצייר הוא שדה שהשמירה הבאה **מוחקת** — בשקט,
+תוך כדי עריכה על נושא אחר. זה הנימוק שמצייר את
+<span dir="ltr">`movedFrom`</span> ואת <span dir="ltr">`request`</span> גם
+כשהם ריקים.
+
+**התבנית היא תקרה, לא רק רצפה.** שדה שהסוג לא נוקב בשמו נדחה גם אם הוא תמים —
+כי <span dir="ltr">`fact`</span> שנושא <span dir="ltr">`why`</span> הוא או איסור
+שהוגש כעובדה או שדה שאיש אינו קורא, והמפענח יודע לומר איזה מהשניים:
+
+</div>
+
+```
+why: because…        על `fact`
+  → `why` is not a field a `fact` has. `why` belongs to a `prohibition` — this entry
+    may be filed under the wrong kind.
+
+status: active       על כל רשומה
+  → `status` is not a field a `fact` has. The store has no lifecycle: no status, no
+    supersedes, no always, no valid_until. These are constants, not items with a life.
+```
+
+<div dir="rtl">
+
+#### הטופס **הוא** התבנית, ואין בו רשימת שדות
+
+זה נשמע כמו סגנון והוא מנגנון. אין בקובץ הטופס שום רשימת שדות: הוא הולך על
+<span dir="ltr">`partsOf(kind)`</span> ומצייר פקד אחד לכל חלק, מתויג במילות
+ה-<span dir="ltr">`asks`</span> של אותו חלק עצמו. חלק שיתווסף לטבלה מחר יופיע
+בטופס, ייכתב לדיסק וייאכף בשמירה **בלי עריכה** של הטופס.
+
+וכך נראה טופס ריק של <span dir="ltr">`prohibition`</span>. כל תווית וכל שורת
+הסבר בתמונה הזאת הגיעה מ-<span dir="ltr">`TEMPLATE`</span>, ולא הוקלדה שם:
+
+</div>
+
+<div dir="rtl">
+
+[![טופס איסור חדש](the-store.he/02-new-prohibition.png)](the-store.he/02-new-prohibition.png)
+
+</div>
+
+<div dir="rtl">
+
+והנה אותו מנגנון על רשומה קיימת — <span dir="ltr">`standard`</span> אמיתי
+מהמאגר, נטען לעריכה. ה-<span dir="ltr">`id`</span> נעול, כי שינוי סוג של רשומה
+קיימת היה משליך בשקט את החלקים שהסוג הישן דרש:
+
+</div>
+
+<div dir="rtl">
+
+[![עריכת תקן קיים](the-store.he/09-edit-standard.png)](the-store.he/09-edit-standard.png)
+
+</div>
+
+<div dir="rtl">
+
+#### הסירוב הוא הסירוב של הסכימה, תו בתו
+
+הטופס אינו מנסח הודעת שגיאה משלו. הוא מחזיר את המשפט של
+<span dir="ltr">`parseEntry`</span> כפי שהוא, והטסט
+<span dir="ltr">`test/rules/maintenance-form.test.ts`</span> משווה את שתי
+המחרוזות תו בתו. הנימוק: משפט שני הוא **מאמת שני עם פנים נחמדות**, וביום
+שהשניים חולקים הטופס אומר דבר אחד והמאגר עושה אחר — ורק אחד מהם הוא מה שבאמת
+נטען.
+
+כך זה נראה. איסור בלי <span dir="ltr">`why`</span>, ושום דבר לא נכתב לדיסק:
+
+</div>
+
+<div dir="rtl">
+
+[![סירוב: איסור בלי נימוק](the-store.he/03-refusal-why.png)](the-store.he/03-refusal-why.png)
+
+</div>
+
+<div dir="rtl">
+
+#### שני השדות שכל סוג חייב, וכאן רואים למה
+
+סעיף 3.2 נימק מדוע <span dir="ltr">`example`</span> ו-<span dir="ltr">`check`</span>
+הם חובה. בטופס הנימוק הופך למכני: אלה שני החלקים שמצוירים בכל אחד מחמשת
+הטפסים, כי הם מגיעים מ-<span dir="ltr">`ALWAYS`</span> ולא מהתבנית של הסוג
+כלשהו.
+
+וזה ההבדל בין כלל לדעה, בשורה אחת כל אחד:
+
+- <span dir="ltr">**`example`**</span> הוא מה שמונע מהרשומה להיות ניתנת
+  לוויכוח. היא מפסיקה לטעון מה נכון ומתחילה לנקוב במה שקרה.
+- <span dir="ltr">**`check`**</span> הוא מה שהופך אותה לנמדדת. רשומה
+  ש**יכלה** להיבדק ואינה נבדקת בחרה בצורה החלשה, ושדה חובה הופך את הבחירה
+  הזאת לגלויה.
+
+ולכן <span dir="ltr">`none`</span> חשוף נדחה. הוא תשובה חוקית עם נימוק, ואי־תשובה
+בלעדיו:
+
+</div>
+
+<div dir="rtl">
+
+[![סירוב: none בלי נימוק](the-store.he/04-refusal-check-none.png)](the-store.he/04-refusal-check-none.png)
+
+</div>
+
+```
+check: maybe
+  → `check` must be `preventive:<name>`, `detective:<name>`, or `none - <reason>`
+    (got "maybe"). preventive refuses before the fact and is available only where we own
+    the write path; detective reports after the fact from the archive, and is the only
+    kind available for a rule about the assistant's own output.
+```
+
+<div dir="rtl">
+
+#### עובדה — <span dir="ltr">`fact`</span>
+
+**חובה:** <span dir="ltr">`truth`, `breaks`</span>, ועוד
+<span dir="ltr">`example`, `check`</span>.
+
+**מה הטופס שואל:** <span dir="ltr">*what is true about how the tool behaves*</span> ·
+<span dir="ltr">*what breaks if you assume otherwise*</span>.
+
+ממולא — וזו במקרה **הרשומה היחידה במאגר שדרגה <span dir="ltr">`product`</span>**,
+כלומר היחידה שמגיעה למי שהתקין:
+
+</div>
+
+```yaml
+id: an-unknown-category-means-a-possible-wrong-corpus
+kind: fact
+tier: product
+title: an unknown-category error may mean the wrong corpus, not a misspelled flag
+truth: categories are per-corpus configuration, so a name valid in one corpus is invalid in
+  another. The refusal names the accepted list and never names the corpus it consulted, so
+  one message carries two meanings.
+breaks: the flag gets respelled until something is accepted, against a corpus that was never
+  the intended one — and the write lands somewhere nobody is looking.
+example: check which `.my_context` answered before changing the spelling of the flag.
+check: none - the refusal would have to name the corpus it consulted for this to be checkable,
+  and it does not. That is a fix to the message rather than a check on the reader.
+movedFrom: RULE-read-an-unknown-category-error-as-a-possible-wrong-corpus
+movedOn: 2026-09-11
+```
+
+```
+מה הטופס מסרב:
+  a `fact` requires `truth` — what is true about how the tool behaves — and this entry has none.
+```
+
+<div dir="rtl">
+
+#### איסור — <span dir="ltr">`prohibition`</span>
+
+**חובה:** <span dir="ltr">`prohibition`, `why`</span>, ועוד
+<span dir="ltr">`example`, `check`</span>.
+
+**מה הטופס שואל:** <span dir="ltr">*what must not be done*</span> ·
+<span dir="ltr">*why — an unreasoned prohibition gets rationalised away*</span>.
+
+</div>
+
+```yaml
+id: commit-with-a-pathspec
+kind: prohibition
+tier: developer
+title: the dispatching session commits by explicit path, never by the shared index
+prohibition: with a lane running, never `git commit` bare and never stage the whole index —
+  use `git commit -- <paths>`, or read `git diff --cached` first and know what is in it.
+why: the index is shared with every lane on the machine. A bare commit takes whatever is
+  staged, including work a lane staged for a different subject, and the commit message then
+  describes a change it does not contain.
+example: a bare `git commit` on 2026-09-09 swept another lane's staged work into a commit
+  about a table border.
+check: none - git offers no hook that can tell a deliberate pathspec from a lucky one, and
+  the archive sees the command only when it was run in a tool call it recorded.
+movedFrom: LESSON-stage-what-an-agent-reported-touching-not-what-you-told-it
+movedOn: 2026-09-11
+```
+
+```
+מה הטופס מסרב:
+  a `prohibition` requires `why` — why — an unreasoned prohibition gets rationalised away —
+  and this entry has none.
+```
+
+<div dir="rtl">
+
+#### תקן — <span dir="ltr">`standard`</span>
+
+**חובה:** <span dir="ltr">`trigger`, `shape`</span>, ועוד
+<span dir="ltr">`example`, `check`</span>.
+
+**מה הטופס שואל:** <span dir="ltr">*the act this governs — "asking the owner to decide"*</span> ·
+<span dir="ltr">*how it must look*</span>.
+
+זו הרשומה הראשונה שנכתבה למאגר, ונבחרה בכוונה: היא מפעילה את כל הצורה מקצה
+לקצה — תבנית, <span dir="ltr">`trigger`</span>, דוגמה, ובדיקה **מגלה** אמיתית —
+על משהו קטן. ויש בה <span dir="ltr">`request`</span>, כלומר מילות הבעלים עצמו:
+
+</div>
+
+```yaml
+id: numbered-options-on-a-question-put-to-the-owner
+kind: standard
+tier: developer
+title: a question put to the owner carries numbered options and one marked recommendation
+trigger: putting a decision to the owner
+shape: options numbered `1 —`, `2 —`, each on its own line; the recommendation first and
+  marked as the recommendation
+example: the 2026-09-10 question that produced this ruling — the options were a bare prose
+  list, he answered "1 is ok", and nothing could say which option he had counted as 1
+check: "detective:scripts/check-ask-numbering.ts — every question put to the owner in the
+  archive carries options numbered `1 —` and exactly one marked recommendation, and it is
+  the first"
+request: there should be numbers on the options so i can answer by number, and say which one
+  you recommend
+```
+
+```
+מה הטופס מסרב:
+  a `standard` requires `trigger` — the act this governs — "asking the owner to decide" —
+  and this entry has none.
+```
+
+<div dir="rtl">
+
+#### הגדרה — <span dir="ltr">`definition`</span>
+
+**חובה:** <span dir="ltr">`term`, `means`, `confusedWith`</span>, ועוד
+<span dir="ltr">`example`, `check`</span>.
+
+**מה הטופס שואל:** <span dir="ltr">*the word*</span> ·
+<span dir="ltr">*what it means here*</span> ·
+<span dir="ltr">*what it is confused with*</span>.
+
+<span dir="ltr">`confusedWith`</span> הוא שדה חובה ולא נדיבות: הגדרה שאינה
+נוקבת במה שמבלבלים אותה איתו אינה עושה את העבודה שבגללה מישהו פתח אותה. שמונה
+מתוך שש־עשרה הרשומות הן הגדרות, וזה הסוג הנפוץ ביותר במאגר.
+
+</div>
+
+```yaml
+id: def-known-red
+kind: definition
+tier: developer
+title: known-red means already failing at HEAD, counted, and recorded with a reason
+term: known-red
+means: "a test or gate that was ALREADY failing before your change — verified at HEAD,
+  counted, and recorded with the reason it is red. The point of the label is the count: if
+  the baseline is eleven, any twelfth failure is yours."
+confusedWith: a flaky test, and a failure you may ignore. A flaky test fails sometimes and
+  is a defect of the test; a known-red fails deterministically and is a defect somebody has
+  named. And known-red is a MEASUREMENT, not a permission — the label without a reason
+  attached is what lets a lane work around a gate instead of reading it.
+example: archive/47's lane recorded four separate lanes working around a red gate because it
+  was labelled "known-red" with no reason attached.
+check: none - nothing can tell a pre-existing failure from a new one except running the suite
+  at HEAD, which is a thing a lane does rather than a thing a gate observes. […]
+```
+
+```
+מה הטופס מסרב:
+  a `definition` requires `confusedWith` — what it is confused with — and this entry has none.
+```
+
+<div dir="rtl">
+
+#### נוהל — <span dir="ltr">`procedure`</span>
+
+**חובה:** <span dir="ltr">`steps`, `proof`</span>, ועוד
+<span dir="ltr">`example`, `check`</span>.
+
+**מה הטופס שואל:** <span dir="ltr">*the steps, in order*</span> ·
+<span dir="ltr">*how you know it worked*</span>.
+
+**ולסוג הזה אין דוגמה מהמאגר, כי אין בו אף נוהל** — אפס, כפי שסעיף 2 מודד. אז
+במקום להמציא רשומה ולהציג אותה כאילו נלקחה משם, הנה **הטופס עצמו**, שהוא כאן
+התבנית היחידה שקיימת בפועל:
+
+</div>
+
+<div dir="rtl">
+
+[![טופס נוהל חדש](the-store.he/10-new-procedure.png)](the-store.he/10-new-procedure.png)
+
+</div>
+
+<div dir="rtl">
+
+<span dir="ltr">`steps`</span> הוא השדה היחיד בכל חמש התבניות שצורתו **רשימה**
+ולא טקסט, ולכן הוא הפקד היחיד שנושא רמז משלו —
+<span dir="ltr">*one step per line*</span>. וזה נאכף:
+
+</div>
+
+```yaml
+steps: do it          # שורה אחת, ולא רשימה
+```
+
+```
+  → `steps` on a `procedure` is a list — the steps, in order — and this entry writes it as
+    a single value. Written as one sentence the ordering that makes it a procedure is gone.
+```
+
+<div dir="rtl">
+
+וכשהטופס שולח כמה שורות, <span dir="ltr">`composeEntry`</span> כותב אותן כרשימת
+YAML אמיתית — נמדד ב-2026-09-16 על עותק:
+
+</div>
+
+```yaml
+steps:
+  - the first step
+  - the second step
+  - the third step
+proof: p
+example: e
+check: none - r
+```
+
+<div dir="rtl">
+
+### 4.9 מפיתוח לייצור — הדרך של רשומה אחת, מקצה לקצה
+
+סעיפים 4.2 ו-4.3 נתנו את המנגנון. הסעיף הזה הולך את הדרך כרצף אחד, כפי שאדם
+אחד עובר אותה, ומסיים במלכודת שמחכה בסופה.
+
+</div>
+
+```mermaid
+flowchart TB
+  D["<b>1 · טיוטה</b><br/>שדות בטופס בדפדפן<br/><i>לא קיימת בשום מקום</i>"]
+  D -->|"save"| R{"<b>parseEntry</b><br/>מסרב?"}
+  R -->|"כן"| D
+  R -->|"לא"| W["<b>2 · על הדיסק</b><br/>entries/&lt;id&gt;.md<br/>+ שורה ב-<b>manifest.working</b>"]
+  W --> P["<b>3 · planPublish</b><br/>diff מול manifest.entries<br/><i>מציג, לא מזיז</i>"]
+  P --> B{"דרג product<br/>מעל 20,000 בתים?"}
+  B -->|"כן"| X["<b>פרסום מסורב</b><br/>ונוקב במה להעביר"]
+  B -->|"לא"| PUB["<b>4 · publishStore</b><br/>גרסה +1 · שורת changelog<br/>· manifest.entries נכתב מחדש<br/>· working נעלם"]
+  PUB --> T{"<b>5 · הדרג</b>"}
+  T -->|"product"| U(["כל התקנה בעולם"])
+  T -->|"developer"| M(["רק סביבת העבודה הזאת"])
+```
+
+<div dir="rtl">
+
+#### שלב 1 — הטיוטה, שאינה קיימת בשום מקום
+
+אין ישות "טיוטה" במאגר. מה שיש בטופס יושב בדפדפן בלבד עד שנלחץ
+<span dir="ltr">`save`</span>, ואם השמירה מסורבת **לא נכתב דבר** — לא קובץ חלקי,
+לא רשומה שהטופס דחה. זה נאמר במפורש כי המימוש המתבקש — לכתוב, לאמת, למחוק —
+משאיר חלון שבו המאגר מחזיק רשומה שהטופס סירב.
+
+#### שלב 2 — <span dir="ltr">`working`</span>, והאינווריאנט שהוא מגן עליו
+
+<span dir="ltr">`manifest.json`</span> נושא **שתי** רשימות של סכומי ביקורת,
+והן עונות על שתי שאלות שונות:
+
+</div>
+
+<div dir="rtl">
+
+| הרשימה | מה היא אומרת | מי כותב אותה |
+|---|---|---|
+| <span dir="ltr">`entries`</span> | המצב ש**פורסם** לאחרונה. זה מה ש-<span dir="ltr">`planPublish`</span> משווה מולו, וזה מה ש-<span dir="ltr">`rules verify`</span> עונה עליו | <span dir="ltr">`publishStore`</span> בלבד |
+| <span dir="ltr">`working`</span> | כל שינוי שנעשה **בנתיב המאושר** מאז הפרסום האחרון | כל <span dir="ltr">`writeEntry`</span> |
+
+</div>
+
+<div dir="rtl">
+
+וזאת המדידה, שנעשתה ב-2026-09-16 על עותק: שמירה אחת דרך הכלי על
+<span dir="ltr">`def-spill`</span>, ואז פרסום.
+
+</div>
+
+```
+אחרי השמירה
+  manifest.working        [ { file: "def-spill.md", checksum: "fe9c0c18…" } ]
+  manifest.entries[…]     checksum: "eb68212d…"      ← עדיין הסכום שפורסם
+  planPublish             changed def-spill          ← ולכן יש מה להראות
+
+אחרי הפרסום
+  manifest.working        לא קיים — השדה נמחק כולו
+  manifest.entries[…]     checksum: "fe9c0c18…"      ← עכשיו תואם לדיסק
+  store.version           5 → 6
+```
+
+<div dir="rtl">
+
+**זה מסביר למה <span dir="ltr">`working`</span> קיים בכלל.** בלעדיו, העריכה
+הראשונה הייתה משאירה את המאגר חלוק על המניפסט שלו, ו-<span dir="ltr">`assertStoreWritable`</span>
+היה מסרב את העריכה ה**שנייה** — מנגנון הבטיחות יורה על עבודתו של הבעלים עצמו,
+בכלי היחיד שכל תכליתו לשנות את המאגר. ולכן האינווריאנט הוא לא *"המניפסט תואם
+למה שנשלח"* אלא **"המניפסט תואם לכל שינוי שנעשה בנתיב המאושר"**.
+
+ובכיוון השני: קובץ ששונה על ידי משהו אחר אינו תואם **לא** ל-`entries`
+ו**לא** ל-`working`, ולכן הכתיבה הבאה מסורבת ב-<span dir="ltr">`StoreDamagedError`</span>.
+זה גם המקום היחיד שבו הסירוב מגיע **למסך** ולא ל-stderr: לשרת יש
+<span dir="ltr">`try/catch`</span> שהופך זריקה לדף, אחרי שנמצא בדפדפן שבלעדיו
+הבקשה פשוט לא נענית והלשונית תלויה.
+
+#### שלב 3 — <span dir="ltr">`planPublish`</span>: מראה, ולא מזיז
+
+<span dir="ltr">`planPublish`</span> אינו כותב דבר. הוא משווה כל קובץ
+<span dir="ltr">`.md`</span> בתיקייה מול שורת ה-<span dir="ltr">`entries`</span>
+שלו ומחזיר שלושה סוגי שינוי — <span dir="ltr">`added`, `changed`, `removed`</span> —
+ולצידם דוח התקציב. זה מסך הפרסום כשיש מה לפרסם, על עותק שאליו נוסף איסור אחד:
+
+</div>
+
+<div dir="rtl">
+
+[![מסך הפרסום עם diff](the-store.he/06-publish-diff.png)](the-store.he/06-publish-diff.png)
+
+</div>
+
+<div dir="rtl">
+
+שני פרטים בתמונה הזאת נבחרו במפורש, וכל אחד מהם הוא סירוב:
+
+- **התקציב נאכף כאן, ולעולם לא בהתקנה של משתמש.** כשדרג
+  <span dir="ltr">`product`</span> חורג, כפתור האישור **נעלם** — הוא אינו מושבת.
+  פקד מושבת הוא פקד שמישהו מחזיר לחיים בקונסולה; פקד שאיננו אין מה להחזיר,
+  ובמקומו יושב המשפט שנוקב במה להעביר לדרג <span dir="ltr">`developer`</span>.
+- **שדה ה-<span dir="ltr">`note`</span> אינו קישוט.** מה שנכתב בו הולך לשורת
+  ה-changelog, והוא הדבר היחיד בשורה הזאת שנכתב במילים של אדם.
+
+#### שלב 4 — <span dir="ltr">`publishStore`</span>: מה בדיוק זז
+
+</div>
+
+<div dir="rtl">
+
+| מה | מ | אל |
+|---|---|---|
+| <span dir="ltr">`store.version`</span> | 5 | 6 — תמיד <span dir="ltr">`+1`</span>, ואינו קשור לגרסת המוצר |
+| <span dir="ltr">`store.publishedAt`</span> | חותמת קודמת | <span dir="ltr">ISO</span> של הרגע הזה |
+| <span dir="ltr">`store.changelog`</span> | 5 שורות | 6 — השורה החדשה **בראש**, עם <span dir="ltr">`added` / `changed` / `removed`</span> וה-note |
+| <span dir="ltr">`entries[]`</span> | סכומי הפרסום הקודם | נכתב מחדש מכל מה שעל הדיסק |
+| <span dir="ltr">`working`</span> | שורה לכל שמירה | נמחק |
+
+</div>
+
+<div dir="rtl">
+
+וכך נראית שורת ה-changelog שנוצרה במדידה הזאת:
+
+</div>
+
+```json
+{
+  "version": 6,
+  "at": "2026-09-16T15:29:21.139Z",
+  "note": "a lane never binds the port the owner's own server is on — written on a copy of the store, for the documentation of this screen.",
+  "added": ["a-lane-never-binds-the-owners-port"],
+  "changed": [],
+  "removed": []
+}
+```
+
+<div dir="rtl">
+
+[![אחרי הפרסום](the-store.he/07-published.png)](the-store.he/07-published.png)
+
+</div>
+
+<div dir="rtl">
+
+**ממה נחתמים הסכומים.** מכל תוכן הקובץ — frontmatter וגוף — אחרי נרמול סופי
+שורה (סעיף 3.6). **גם קובץ שבור מדי מכדי להיפענח מקבל שורה**, ובכוונה: השמטתו
+הייתה עושה את המניפסט תואם למאגר שהוא אינו יכול לתאר, והרשומה הייתה נקראת
+<span dir="ltr">`unexpected`</span> במקום מה שהיא — רשומה שבורה.
+
+**ושימו לב לכתיבה אחת שאינה מגודרת.** כל כתיבה ל*רשומה* עוברת דרך
+<span dir="ltr">`writeEntry`</span> ונחסמת במאגר פגום, אבל
+<span dir="ltr">`writeManifest`</span> — הכתיבה שהפרסום עושה — אינה מגודרת כך.
+זה מכוון: יצירת המניפסט מחדש היא בדיוק **הדרך שבה מאגר פגום מתוקן**, בידי
+הבעלים אחרי שהסתכל על ה-diff, וגידור שלה היה הופך נזק למבוי סתום.
+
+#### שלב 5 — הדרג מכריע מי אי פעם יראה את זה
+
+זה השלב שמפריד בין "פורסם" לבין "הגיע". גרסה חדשה של המאגר נשלחת בחבילה **כולה**,
+ואז, בכל דלת, <span dir="ltr">`deliverAtDoor`</span> מסנן לפי הדרג:
+
+- **<span dir="ltr">`product`</span>** — נמסר בכל סביבת עבודה בעולם, ולכן הוא
+  הדבר היחיד שהתקציב שומר עליו. היום: רשומה אחת, 1,298 בתים.
+- **<span dir="ltr">`developer`</span>** — נמסר רק כשסביבת העבודה היא my_context
+  עצמה, לפי השוואת **נתיבים** (סעיף 3.3). היום: 15 רשומות, 40,657 בתים.
+
+ולכן **הורדת דרג היא מנגנון ההסרה**: כפתור אחד במסך הרשימה מוציא רשומה מהסט
+הנשלח בלי למחוק אותה ובלי לאבד את ההיסטוריה שלה, והוא הפיך. ההעברה עורכת שורה
+אחת בקובץ במקום להרכיב אותו מחדש מהחלקים שנפענחו — הרכבה מחדש הייתה מעצבת מחדש
+פרוזה שהבעלים כתב, והורדה־ואז־העלאה לא הייתה מחזירה את הקובץ לבתים שממנם יצא.
+
+#### והמלכודת: היום <span dir="ltr">`planPublish`</span> מדווח על אפס שינויים
+
+מי שיפתח את מסך הפרסום מול המאגר האמיתי כרגע יראה את זה:
+
+</div>
+
+<div dir="rtl">
+
+[![מסך הפרסום מול המאגר האמיתי: אין שינויים](the-store.he/08-publish-zero-changes.png)](the-store.he/08-publish-zero-changes.png)
+
+</div>
+
+<div dir="rtl">
+
+**זה לא תקלה שנגרמה עכשיו, ואי אפשר לתקן אותה בפרסום.** הסיבה בסעיף 5, תקלה ג:
+ארבע הרשומות האחרונות נוספו בעריכה ידנית של הקבצים ושל
+<span dir="ltr">`manifest.entries`</span>, כי לכלי אין נקודת הפעלה (סעיף 4.7).
+העריכה הידנית עדכנה גם את הסכומים — ולכן הם **נכונים**, אין הפרש, ואין מה
+לפרסם.
+
+שימו לב ששני המסכים בסעיף הזה נושאים **אותו משפט בדיוק** —
+<span dir="ltr">*"nothing: the store on disk is the store that was published"*</span> —
+ומשמעותם הפוכה. בתמונה של העותק הוא נכון: זה עתה פורסם הכול. בתמונה של המאגר
+האמיתי הוא נכון על הסכומים ושקרי על ההיסטוריה: חמש רשומות מעולם לא הופיעו
+בשום רשימת <span dir="ltr">`added`</span>.
+
+ואפילו מי שינסה בכל זאת ייתקל בסירוב מנומק במקום בגרסה ריקה:
+
+</div>
+
+```
+publishStore(dir, { confirm: true })
+  → there is nothing to publish: the store on disk is the store that was published.
+    Cutting a version for no change would have every install download a store it already
+    has, and would put a row in the changelog naming nothing.
+```
+
+<div dir="rtl">
+
+**ולכן מי שהולך בדרך הזאת לא שבר כלום.** הפער ביומן השינויים ייסגר בהחלטה של
+הבעלים על איך לתקן היסטוריה, לא בלחיצה על "פרסם" — והצעד שמונע את ההישנות הוא
+נקודת ההפעלה שאין לכלי.
+
+</div>
+
 ---
 
 <div dir="rtl">
