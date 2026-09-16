@@ -3,7 +3,9 @@
 ### DO THIS FIRST
 
 1. **Fix the phantom id, as ONE act, the moment `anchors/13` lands.**
-   `STD-nothing-to-do-and-could-not-look-are-different-answers` is cited in **7 places across 5 files**
+   The STD- prefixed spelling of the store entry nothing-to-do-and-could-not-look-are-different-answers
+   (written here without backticks, because it is not an id and a checker that resolves it is right to say so)
+   was cited in **7 places across 5 files**
    and **no such item exists** — it is the RULE STORE ENTRY
    `src/rules/entries/nothing-to-do-and-could-not-look-are-different-answers.md`, cited as though it
    were a corpus item. The established form is the **bare entry id, no prefix**
