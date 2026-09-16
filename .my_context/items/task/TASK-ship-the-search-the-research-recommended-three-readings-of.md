@@ -22,17 +22,17 @@ tags:
   - search
   - "plan:semantic"
   - "seq:4"
-  - "state:todo"
+  - "state:done"
 origin: human
 source_file: null
 source_anchor: null
 source_checksum: null
 valid_from: 2026-09-16
 valid_until: null
-checksum: 736d69156c997cc2
+checksum: 2aa7fef0e4a37710
 plan: semantic
 seq: "4"
-state: todo
+state: done
 priority: "1"
 ---
 
