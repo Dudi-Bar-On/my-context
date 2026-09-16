@@ -295,6 +295,14 @@ export const strings = {
   'conv.anchors.sweepDone': '{marked} סומנו עכשיו, ל‑{relabelled} שונה השם, {dropped} בוטלו — ב‑{ms} מילישניות. בשום דבר שסימנתם בעצמכם לא נגעו.',
   'conv.anchors.sweepNone': 'שום דבר לא השתנה: כל טבלה וכל הכרעה שהארכיון הזה מחזיק כבר מסומנות. זה בדיוק מה שהרצה שנייה אמורה לומר.',
   'conv.anchors.sweepCapped': 'לפחות אחד מהמעברים הגיע לגבול שלו, ולכן ייתכן שיש עוד בארכיון שהוא לא הסתכל עליו. שום דבר לא אבד; פשוט לא הגיעו אליו.',
+  // הלחיצה הראשונה, מוצגת לפני שהיא קורית —
+  // `TASK-a-user-who-installs-mycontext-mid-project-has-conversations`.
+  'conv.anchors.sweepPlanning': 'בודק מה הוא היה מסמן…',
+  'conv.anchors.sweepPlan': 'עדיין לא נכתב דבר. יש כאן {marked} נקודות שהוא יכול לסמן, והוא מעולם לא סימן דבר בפרויקט הזה — כלומר זו כל ההיסטוריה בבת אחת.',
+  'conv.anchors.sweepPlanSamples': 'כמה מהן, כדי שתראו איך הן נראות:',
+  'conv.anchors.sweepPlanGo': 'סמנו את כל ה‑{marked}',
+  'conv.anchors.sweepPlanNo': 'לא עכשיו',
+  'conv.anchors.sweepPlanNone': 'שום דבר לא סומן. הכפתור נשאר כאן למתי שתרצו.',
   /* -- RECONSTRUCT: `plan:recall seq:2`, Tasks 11-12 -- */
   'conv.recall.h': 'שחזור נושא',
   'conv.recall.sub': 'הדביקו קטע שאתם זוכרים, או שאלו במה עבדנו. זה לא עונה לכם מתוך הארכיון — הוא כותב מסמך הנחיות לעוזר שקורא בחלון משלו, בודק את מה שהוא מוצא מול הקוד ומול ההיסטוריה, וכותב בחזרה קובץ קצר עם אסמכתאות. שום דבר לא מגיע להקשר שלכם עד שתבחרו בו.',

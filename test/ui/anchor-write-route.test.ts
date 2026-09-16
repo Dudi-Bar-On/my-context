@@ -355,6 +355,49 @@ test('the sweep reports what it changed, and a second run reports nothing', asyn
   });
 });
 
+/**
+ * **`{ plan: true }` — THE FIRST PRESS, ANSWERED WITHOUT BEING PERFORMED.**
+ *
+ * `TASK-a-user-who-installs-mycontext-mid-project-has-conversations`: the
+ * first press of the sweep button in a repository whose conversations predate
+ * this plugin marks a whole history at once — 1,213 points measured
+ * 2026-09-16 over a foreign project's real archive on this machine. The screen
+ * therefore asks what it WOULD do before it does it, and this holds the route
+ * half of that.
+ *
+ * FINDING (green): a planning POST answers with the same counts the run
+ * produces, split by kind, and changes no row; the default `{}` POST is
+ * untouched, which is what every other assertion in this file still sends.
+ *
+ * **BORROWED POWER, disclosed:** what is in the archive here is the harness's
+ * fixture and the counts are the pass's own. The claim held is the DIFFERENCE
+ * between the two calls, which is why the same numbers are read twice.
+ */
+test('a planning sweep answers with the counts and writes nothing', async () => {
+  await withServer(async (h) => {
+    const before = rowsOf(h.cwd);
+    const planned = await post(h, '/api/conversations/anchors/sweep', { plan: true });
+    assert.equal(planned.status, 200);
+    const body = (await planned.json()) as {
+      firstRun: boolean;
+      report: { planned: boolean; found: number; byKind: Record<string, number> };
+    };
+    assert.equal(body.report.planned, true, 'the report says it is a plan');
+    assert.ok(body.report.found > 0,
+      'the plan recognised nothing at all, so "wrote nothing" below would be the nothing of a '
+      + 'pass that never ran');
+    assert.equal(
+      Object.values(body.report.byKind).reduce((a, b) => a + b, 0), 0,
+      'the harness already ran the pass, so a plan here has nothing NEW to offer — and the '
+      + 'per-kind split is still present rather than absent',
+    );
+    assert.deepEqual(rowsOf(h.cwd), before, 'and not one row moved');
+    assert.equal(body.firstRun, false,
+      'the harness has marked rows already, so this press is not a first one — which is what '
+      + 'the screen reads to decide whether to ask');
+  });
+});
+
 test('the sweep takes back what it no longer recognises, and never a row the reader made', async () => {
   await withServer(async (h) => {
     // A point the grammar does not recognise, marked BY HAND. The pass reads

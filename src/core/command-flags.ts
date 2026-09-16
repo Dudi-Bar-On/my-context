@@ -1749,7 +1749,19 @@ export const SUBCOMMAND_FLAGS: Record<string, Record<string, FlagSpec>> = {
    * row count.
    */
   conversation: {
-    rebuild: { allowed: ['full', 'json'], values: [] },
+    // `--plan` arrived 2026-09-16 with the first-run disclosure
+    // (`TASK-a-user-who-installs-mycontext-mid-project-has-conversations`):
+    // the FIRST automatic pass in a workspace is a bulk act — 1,213 marks
+    // measured over a foreign archive of 13,375 turns — so it says what it is
+    // about to do, and this is the same answer on demand. It never writes.
+    //
+    // **AND IT DELIBERATELY TAKES NO `--yes`.** `approvalBoundary()` derives
+    // the deny list this plugin recommends from which commands accept that
+    // flag, so a `--yes` here would put `mycontext conversation rebuild` on the
+    // list a project is told to deny — the command every empty archive screen
+    // tells a reader to run. The first run asks at a terminal and proceeds for
+    // a caller nobody can ask; `backfillConsent` argues that choice.
+    rebuild: { allowed: ['full', 'plan', 'json'], values: [] },
     list: { allowed: ['limit', 'json'], values: ['limit'] },
     // `subagents` (`plan:archive seq:12`) takes a POSITIONAL session id rather
     // than a flag, and no `--limit`: it lists the lanes of one session, which
@@ -1799,9 +1811,23 @@ export const SUBCOMMAND_FLAGS: Record<string, Record<string, FlagSpec>> = {
     // rows by the same ids, and a second verb would be a second place to keep
     // the id space in step. It takes no `--yes`: `--drop` removes one bookmark
     // from this workspace's own index and the same command puts it back.
+    //
+    // **`--drop-automatic` IS GATED, AND THE GATE IS `--count <n>` RATHER THAN
+    // `--yes`.** Added 2026-09-16 with the first-run disclosure
+    // (`TASK-a-user-who-installs-mycontext-mid-project-has-conversations`): a
+    // first pass over a history that predates this plugin marks in bulk —
+    // 1,213 points measured on a foreign archive — and "the same command puts
+    // it back" is only true of ONE bookmark, so the bulk act needs a bulk undo.
+    //
+    // The count is `mycontext ack --all`'s own idiom and is taken for its
+    // reasons, in its words: *"the count is the consent, and it is deliberately
+    // not a one-token flag: a number cannot be typed by accident."* It also
+    // keeps `mycontext conversation anchor` — the CLI half of every anchor
+    // capability, which the owner ruled is a PEER of the screen and not a
+    // vestige — off the `--yes`-derived deny list this plugin recommends.
     anchor: {
-      allowed: ['label', 'agent', 'find', 'drop', 'json'],
-      values: ['label', 'agent', 'find', 'drop'],
+      allowed: ['label', 'agent', 'find', 'drop', 'drop-automatic', 'count', 'json'],
+      values: ['label', 'agent', 'find', 'drop', 'count'],
     },
     // `forget` (`plan:archive seq:9`) is the OFF position of the archive's
     // opt-in and takes `--yes` for the reason every other destructive command
@@ -1938,6 +1964,12 @@ export const SUBCOMMAND_FLAG_DECLARATIONS: Record<string, FlagDeclarations> = {
         + 'since the last scan. Both forms end at the same rows; this one pays for the '
         + 'guarantee rather than inferring it from the file not having moved.',
     },
+    plan: {
+      note: 'Index the archive and its words, then say what the automatic pass WOULD mark — a '
+        + 'count per kind and a few labels of each — without marking anything. Meant for the '
+        + 'first run in a repository that already had months of conversations before this '
+        + 'plugin: that run marks in bulk, and a bulk act is one to look at before it happens.',
+    },
     limit: {
       format: 'a positive whole number of rows', example: '50',
       note: 'How many indexed conversations to print. The rest are counted and named as not '
@@ -1966,6 +1998,21 @@ export const SUBCOMMAND_FLAG_DECLARATIONS: Record<string, FlagDeclarations> = {
       example: 'session:-:94425015',
       note: 'Take one anchor back. An id that is not marked is answered as such rather than '
         + 'failing, because "it is already not there" is the outcome you asked for.',
+    },
+    count: {
+      format: 'the number of marks the command just told you it would take back', example: '1213',
+      note: 'The consent for `--drop-automatic`, and it is a number rather than a `--yes` for '
+        + '`mycontext ack --all`\'s reason: a number cannot be typed by accident, and it stops '
+        + 'being the right number the moment the set changes under you. Run the command without '
+        + 'it first — it counts what it would take back, names the kinds, and prints the exact '
+        + 'line to rerun.',
+    },
+    'drop-automatic': {
+      note: 'Take back EVERY mark this tool made for you, in one act, and leave every mark you '
+        + 'made yourself exactly where it is. This is the undo for a first run over a history '
+        + 'that predates the plugin — it can mark a thousand points at once, and a thousand '
+        + '`--drop <id>` calls is not an undo. Nothing is lost that cannot be re-derived: the '
+        + 'next `mycontext conversation rebuild` marks them again from the same grammar.',
     },
   },
   pack: {

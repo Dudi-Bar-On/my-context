@@ -2955,52 +2955,146 @@ function mountArchiveSearch(ctx, root, sessions) {
   });
   find.addEventListener('input', findTyping.settle);
 
+  /**
+   * **THE FIRST PRESS IN A WORKSPACE THE PASS HAS NEVER MARKED IS A BULK ACT,
+   * SO IT IS SHOWN BEFORE IT HAPPENS** —
+   * `TASK-a-user-who-installs-mycontext-mid-project-has-conversations`, owner
+   * request 2026-09-16.
+   *
+   * Nobody starts a project by installing this plugin. The ordinary case is a
+   * repository with months of Claude Code sessions already on disk, and this
+   * button is one of the two doors those conversations come through. Measured
+   * that day on a DIFFERENT real project's archive on this machine — 13,375
+   * turns, 575 helper agents — that first press marks **1,213 points at once**:
+   * 907 tables, 275 lane reports, 31 rulings. `anchors/9` measured that 1,155
+   * marks was already enough to make the rare kinds hard to find.
+   *
+   * **"Safe to press twice" is still true and is not the point.** A press that
+   * can be undone is not the same as a press whose size the reader expected.
+   * So the first one asks the server what it WOULD do, draws the count per
+   * kind and a label of each, and waits. Every later press is exactly what it
+   * was: one press, one run, no confirm — `report.firstRun` from the route is
+   * what tells the two apart, and it is the server's own count of the rows the
+   * pass owns rather than anything this screen infers from a paged list.
+   */
+  const runSweep = async () => {
+    sweep.disabled = true;
+    sweepSaid.hidden = false;
+    sweepSaid.replaceChildren(...ctx.t('conv.anchors.sweepRunning'));
+    let answer;
+    try {
+      answer = await ctx.post('/api/conversations/anchors/sweep', {});
+    } catch (error) {
+      sweepSaid.replaceChildren(errorNote(error.message));
+      sweep.disabled = false;
+      return;
+    }
+    sweep.disabled = false;
+    drawSweepReport(answer);
+  };
+
+  /** The plan, drawn as something a reader can refuse. */
+  const drawSweepPlan = (report) => {
+    const said = [];
+    const head = el('p', 'small');
+    head.append(...ctx.t('conv.anchors.sweepPlan', { marked: report.marked }));
+    said.push(head);
+    const kinds = el('ul', 'small convanchsweepkinds');
+    for (const kind of ['table', 'report', 'ruling']) {
+      const n = report.byKind === undefined ? 0 : report.byKind[kind];
+      if (!n) continue;
+      const row = el('li');
+      row.append(`${n} × `, ...ctx.t(`conv.anchors.kind.${kind}`));
+      kinds.append(row);
+    }
+    said.push(kinds);
+    if (Array.isArray(report.samples) && report.samples.length > 0) {
+      const lead = el('p', 'small');
+      lead.append(...ctx.t('conv.anchors.sweepPlanSamples'));
+      said.push(lead);
+      const list = el('ul', 'small convanchsweepsamples');
+      for (const sample of report.samples) {
+        const row = el('li');
+        row.append(sample.label);
+        list.append(row);
+      }
+      said.push(list);
+    }
+    const go = el('button', 'convanchsweepgo');
+    go.type = 'button';
+    go.append(...ctx.t('conv.anchors.sweepPlanGo', { marked: report.marked }));
+    go.addEventListener('click', () => { void runSweep(); });
+    const no = el('button', 'convanchsweepno');
+    no.type = 'button';
+    no.append(...ctx.t('conv.anchors.sweepPlanNo'));
+    no.addEventListener('click', () => {
+      sweepSaid.replaceChildren(...ctx.t('conv.anchors.sweepPlanNone'));
+    });
+    const row = el('p', 'convanchsweepchoice');
+    row.append(go, no);
+    said.push(row);
+    sweepSaid.replaceChildren(...said);
+  };
+
   sweep.addEventListener('click', () => {
     void (async () => {
       sweep.disabled = true;
       sweepSaid.hidden = false;
-      sweepSaid.replaceChildren(...ctx.t('conv.anchors.sweepRunning'));
-      let answer;
+      sweepSaid.replaceChildren(...ctx.t('conv.anchors.sweepPlanning'));
+      let plan;
       try {
-        answer = await ctx.post('/api/conversations/anchors/sweep', {});
+        plan = await ctx.post('/api/conversations/anchors/sweep', { plan: true });
       } catch (error) {
         sweepSaid.replaceChildren(errorNote(error.message));
         sweep.disabled = false;
         return;
       }
       sweep.disabled = false;
-      const report = answer === null || typeof answer !== 'object' ? null : answer.report;
-      if (report === null || report === undefined) {
-        sweepSaid.replaceChildren(...ctx.t('conv.arch.neverIndexed'));
+      const planned = plan === null || typeof plan !== 'object' ? null : plan.report;
+      if (planned !== null && planned !== undefined
+        && plan.firstRun === true && planned.marked > 0) {
+        drawSweepPlan(planned);
         return;
       }
-      const said = [];
-      // **THE THREE COUNTS, ALWAYS**, including when every one of them is
-      // zero: "nothing changed" is the answer that proves the pass is
-      // idempotent, and a screen that drew nothing on a run that changed
-      // nothing would be indistinguishable from one whose button did not work.
-      const line = el('p', 'small');
-      line.append(...ctx.t(
-        report.marked === 0 && report.relabelled === 0 && report.dropped === 0
-          ? 'conv.anchors.sweepNone' : 'conv.anchors.sweepDone',
-        {
-          marked: report.marked, relabelled: report.relabelled,
-          dropped: report.dropped, ms: report.ms,
-        },
-      ));
-      said.push(line);
-      // A capped pass and a complete one must not look the same — the same
-      // disclosure `searchLines` makes at the terminal, on the screen that now
-      // starts the pass.
-      if (report.capped === true) {
-        const capped = el('p', 'small convanchsweepcapped');
-        capped.append(...ctx.t('conv.anchors.sweepCapped'));
-        said.push(capped);
-      }
-      sweepSaid.replaceChildren(...said);
-      void refreshAnchors();
+      // Not a first press, or a first press with nothing to mark: the button
+      // behaves exactly as it did before this item — one press, one run.
+      await runSweep();
     })();
   });
+
+  /** What the run said, drawn — unchanged since 2026-09-12 but for its name. */
+  function drawSweepReport(answer) {
+    const report = answer === null || typeof answer !== 'object' ? null : answer.report;
+    if (report === null || report === undefined) {
+      sweepSaid.replaceChildren(...ctx.t('conv.arch.neverIndexed'));
+      return;
+    }
+    const said = [];
+    // **THE THREE COUNTS, ALWAYS**, including when every one of them is
+    // zero: "nothing changed" is the answer that proves the pass is
+    // idempotent, and a screen that drew nothing on a run that changed
+    // nothing would be indistinguishable from one whose button did not work.
+    const line = el('p', 'small');
+    line.append(...ctx.t(
+      report.marked === 0 && report.relabelled === 0 && report.dropped === 0
+        ? 'conv.anchors.sweepNone' : 'conv.anchors.sweepDone',
+      {
+        marked: report.marked, relabelled: report.relabelled,
+        dropped: report.dropped, ms: report.ms,
+      },
+    ));
+    said.push(line);
+    // A capped pass and a complete one must not look the same — the same
+    // disclosure `searchLines` makes at the terminal, on the screen that now
+    // starts the pass.
+    if (report.capped === true) {
+      const capped = el('p', 'small convanchsweepcapped');
+      capped.append(...ctx.t('conv.anchors.sweepCapped'));
+      said.push(capped);
+    }
+    sweepSaid.replaceChildren(...said);
+    void refreshAnchors();
+  }
 
   const refresh = async (next) => {
     Object.assign(state, next);

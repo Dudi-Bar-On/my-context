@@ -9,7 +9,8 @@ import {
 } from '../../core/anchors.ts';
 import { anchorTransaction, reconcileAnchors } from '../../core/anchor-file.ts';
 import {
-  ANCHOR_PROBE_LIMIT, fileOf, markAutomaticAnchors, type AutoAnchorReport,
+  ANCHOR_PROBE_LIMIT, automaticAnchorsStanding, fileOf, markAutomaticAnchors,
+  previewAutomaticAnchors, type AutoAnchorReport,
 } from '../../core/anchor-pass.ts';
 import {
   buildSearchIndex, type SearchBuildReport,
@@ -56,14 +57,15 @@ export const SUBCOMMANDS = [
   'rebuild', 'list', 'subagents', 'secrets', 'persist', 'name', 'anchor', 'forget',
 ] as const;
 
-const USAGE = `usage: mycontext conversation rebuild [--full] [--json]
+const USAGE = `usage: mycontext conversation rebuild [--full] [--plan] [--yes] [--json]
        mycontext conversation list [--limit <n>] [--json]
        mycontext conversation subagents [<session>] [--json]
        mycontext conversation secrets [<session>] [--json]
        mycontext conversation persist [<session>] [--replace <ids>] [--off] [--yes] [--json]
        mycontext conversation name [<session>] [<name>] [--clear] [--json]
        mycontext conversation anchor [<session>] [<byte offset>] [--label "<why>"]
-                                     [--agent <id>] [--find <term>] [--drop <id>] [--json]
+                                     [--agent <id>] [--find <term>] [--drop <id>]
+                                     [--drop-automatic [--count <n>]] [--json]
        mycontext conversation forget [--yes] [--json]`;
 
 const CONVERSATION_FLAGS = SUBCOMMAND_FLAGS['conversation'];
@@ -300,6 +302,14 @@ function cmdConversationRebuild(ws: Workspace, root: string, args: string[], out
   const index = ConversationIndex.open(ws.dbPath);
   let search: SearchBuildReport;
   let auto: AutoAnchorReport;
+  /**
+   * **What the first run is about to do, or `null` when this is not one.**
+   *
+   * Composed BEFORE the pass writes anything and printed before it does — see
+   * `firstRunLines`, which is the disclosure, and `backfillConsent`, which is
+   * the refusal a reader is entitled to.
+   */
+  let plan: AutoAnchorReport | null = null;
   try {
     // **The anchors come back from their file BEFORE anything else touches
     // them** — `plan:recall seq:6`, the rebuild re-deriving the table the way
@@ -310,13 +320,49 @@ function cmdConversationRebuild(ws: Workspace, root: string, args: string[], out
     // anchor he made by hand behind.
     reconcileAnchors(index);
     search = buildSearchIndex(index, { full: hasFlag(args, 'full') });
-    auto = markAutomaticAnchors(index);
+
+    /*
+     * ── THE FIRST RUN IS THE ONE THAT IS ANNOUNCED ─────────────────────────
+     *
+     * `TASK-a-user-who-installs-mycontext-mid-project-has-conversations`,
+     * 2026-09-16. Nobody starts a project by installing this plugin: the
+     * ordinary case is a repository with months of Claude Code sessions
+     * already in `~/.claude/projects/`, and this command is the door those
+     * conversations come through. Measured on a foreign archive on this
+     * machine the same day — 13,375 turns, 575 lanes — that door marks
+     * **1,213 points in one act**, and `anchors/9` measured that 1,155 marks
+     * was already enough to make the rare kinds hard to find.
+     *
+     * So the first run, and only the first, plans before it writes. Every
+     * later run is incremental and small, which is why re-asking would be a
+     * prompt nobody reads — `automaticAnchorsStanding` carries that argument.
+     *
+     * `--plan` asks the same question at any time and never writes.
+     */
+    const planOnly = hasFlag(args, 'plan');
+    const firstRun = automaticAnchorsStanding(index) === 0;
+    if (planOnly || firstRun) plan = previewAutomaticAnchors(index);
+
+    if (planOnly) {
+      auto = plan as AutoAnchorReport;
+    } else if (plan !== null && plan.marked > 0) {
+      // The disclosure goes out BEFORE the question, and before the write, on
+      // every path including `--json` — where it is the `plan` field of the
+      // document rather than a line, because a machine reader parses one
+      // object and would never see a sentence.
+      if (!wantsJson(args)) for (const line of firstRunLines(plan)) out(line);
+      auto = backfillConsent(args, out, plan.marked)
+        ? markAutomaticAnchors(index)
+        : plan;
+    } else {
+      auto = markAutomaticAnchors(index);
+    }
   } finally {
     index.close();
   }
 
   if (wantsJson(args)) {
-    emitJson(out, { ...report, mirror, search, anchors: auto });
+    emitJson(out, { ...report, mirror, search, anchors: auto, plan });
     return 0;
   }
   for (const line of reportLines(report)) out(line);
@@ -1565,6 +1611,110 @@ export {
   type AutoAnchorFinding, type AutoAnchorReport,
 } from '../../core/anchor-pass.ts';
 
+/**
+ * **WHAT EACH KIND IS, IN ONE LINE A STRANGER CAN JUDGE.**
+ *
+ * The first run is the one moment a reader has never seen one of these marks,
+ * so a count beside a bare word — `table 907` — asks them to consent to
+ * something they cannot picture. Each sentence says what the GRAMMAR reads,
+ * because that is what they are being asked to accept for their whole history.
+ *
+ * Measured 2026-09-16 on a foreign project's real archive (13,375 turns): 907
+ * tables, 275 reports, 31 rulings. **Not one of the 907 tables sat in a turn
+ * the person typed** — they were drawn by Claude and by its lanes — which is
+ * why the table sentence names who writes them.
+ */
+const KIND_MEANS: Record<'table' | 'report' | 'ruling', string> = {
+  table: 'a table in the answer — Claude and its helper agents draw these; the label is the '
+    + 'header cells and the heading above them',
+  report: "a helper agent's final answer, labelled with the mission it was given",
+  ruling: 'a turn YOU typed carrying always / never / must / the rule / i approve — the label '
+    + 'is your own line, verbatim',
+};
+
+/**
+ * **THE FIRST RUN, SAID BEFORE IT HAPPENS** — a count, per kind, and three
+ * labels of each so a reader can refuse on evidence rather than on a total.
+ *
+ * `TASK-a-user-who-installs-mycontext-mid-project-has-conversations`: *"A
+ * first run over a long history is not a thing to start silently."*
+ *
+ * The undo is in the same breath as the offer, and it is not a consolation:
+ * every row this writes is `origin: 'automatic'`, which is the one kind the
+ * pass is allowed to take back — so a backfill is reversible BY DESIGN and a
+ * reader who accepts is not making a decision they cannot unmake.
+ */
+function firstRunLines(plan: AutoAnchorReport): string[] {
+  const lines = [
+    `my_context: this is the first automatic pass in this workspace, and it has ${plan.marked} ` +
+    'point(s) to mark in conversations that were here before my_context was:',
+  ];
+  for (const kind of ['table', 'report', 'ruling'] as const) {
+    const n = plan.byKind[kind];
+    if (n === 0) continue;
+    lines.push(`  ${String(n).padStart(6)}  ${kind.padEnd(6)}  ${KIND_MEANS[kind]}`);
+  }
+  if (plan.samples.length > 0) {
+    lines.push('my_context: and here are the first few, so you can judge the rest:');
+    for (const sample of plan.samples) {
+      lines.push(`  ${sample.kind.padEnd(6)}  ${firstLine(sample.label)}`);
+    }
+  }
+  if (plan.dropped > 0) {
+    lines.push(
+      `my_context: it would also take back ${plan.dropped} mark(s) an earlier pass wrote and ` +
+      'this grammar no longer recognises. Nothing you marked yourself is ever read by it.',
+    );
+  }
+  lines.push(
+    'my_context: every one is marked as made FOR you, never BY you, and all of them can be ' +
+    'taken back in one act — `mycontext conversation anchor --drop-automatic`, or `--drop <id>` ' +
+    'for a single one. Nothing you mark by hand is ever read by this pass.',
+  );
+  return lines;
+}
+
+/**
+ * **MAY THE FIRST RUN WRITE?** — and the three answers are three different
+ * situations, not one gate with a loophole.
+ *
+ *   - `y` at an interactive terminal: a person said so.
+ *   - **not a terminal: it proceeds, and says that nobody was asked.** This is
+ *     the deliberate half. `confirmAction` refuses on a non-TTY, which is
+ *     right for `forget` and `persist` — those destroy rows and write files
+ *     outside the project — and wrong here: a script, a hook or a lane is not
+ *     a reader who can refuse, the disclosure has already been printed above
+ *     with the count and the samples, and every row written is
+ *     `origin: 'automatic'` and reversible in one act. Refusing instead would
+ *     mean a workspace whose archive is indexed and whose marks never appear,
+ *     with the reason in a line nobody was watching.
+ *   - `n` at a terminal: nothing is written, and the plan stands as the
+ *     report.
+ *
+ * **THERE IS NO `--yes` HERE, AND ITS ABSENCE IS A DECISION.** `approval
+ * Boundary()` derives the deny list this plugin recommends from which commands
+ * accept that flag, so putting one on `conversation rebuild` would recommend
+ * denying the command that every never-indexed archive screen tells a reader to
+ * run. `--plan` is what a reader uses to look first.
+ *
+ * `--json` is treated as "not a reader": a machine parsing one document cannot
+ * answer a prompt, and the whole plan is in the document it gets.
+ */
+function backfillConsent(args: string[], out: Emit, marks: number): boolean {
+  if (wantsJson(args) || !process.stdin.isTTY) {
+    if (!wantsJson(args)) {
+      out(
+        'my_context: nobody could be asked — this is not an interactive terminal — so the ' +
+        'points above were marked. `mycontext conversation anchor --drop-automatic` takes all ' +
+        'of them back in one act, and `mycontext conversation rebuild --plan` shows what a ' +
+        'pass would do without doing it.',
+      );
+    }
+    return true;
+  }
+  return confirmAction(args, out, `Mark these ${marks} point(s) now?`);
+}
+
 /** What `rebuild` says about the two passes it now runs after the scan. */
 function searchLines(search: SearchBuildReport, auto: AutoAnchorReport): string[] {
   const lines = [
@@ -1577,6 +1727,21 @@ function searchLines(search: SearchBuildReport, auto: AutoAnchorReport): string[
       `my_context: ${search.removed} transcript(s) left the archive, and their words left ` +
       'with them.',
     );
+  }
+  // **A PLAN IS REPORTED IN THE CONDITIONAL, AND THE SENTENCES BELOW IT ARE
+  // SKIPPED.** `auto` is the same shape either way, so without this the run
+  // that wrote nothing would say "N new anchor(s) were marked for you" with
+  // the count of what it declined to mark — the exact shape of lie
+  // `nothing-to-do-and-could-not-look-are-different-answers` exists to
+  // refuse, one surface along.
+  if (auto.planned) {
+    lines.push(
+      `my_context: nothing was marked. ${auto.marked} point(s) WOULD be — ` +
+      `${auto.byKind['table']} table(s), ${auto.byKind['report']} lane report(s), ` +
+      `${auto.byKind['ruling']} ruling(s) — and \`mycontext conversation rebuild\` without ` +
+      '`--plan` is what marks them. The archive and its words were indexed either way.',
+    );
+    return lines;
   }
   lines.push(
     `my_context: ${auto.marked} new anchor(s) were marked for you and ${auto.found - auto.marked} ` +
@@ -1616,6 +1781,9 @@ function searchLines(search: SearchBuildReport, auto: AutoAnchorReport): string[
  *     mycontext conversation anchor --find <term>        by label
  *     mycontext conversation anchor <session> <byte> --label "..."   mark one
  *     mycontext conversation anchor --drop <id>          take one back
+ *     mycontext conversation anchor --drop-automatic     take back every one
+ *                                                        made FOR you, keeping
+ *                                                        every one you made
  *
  * **The position is a BYTE offset and the command says so when it is wrong**,
  * because a character offset lands inside a record rather than at the start of
@@ -1637,7 +1805,10 @@ function searchLines(search: SearchBuildReport, auto: AutoAnchorReport): string[
  */
 function cmdConversationAnchor(ws: Workspace, args: string[], out: Emit): number {
   const json = wantsJson(args);
-  const rest = positionals(args, ['label', 'agent', 'find', 'drop']).slice(1);
+  // `count` is in the value list for the same reason the other four are: its
+  // argument is the NEXT token, and a parser that did not know that would read
+  // `1213` as a positional byte offset and then complain about the session id.
+  const rest = positionals(args, ['label', 'agent', 'find', 'drop', 'count']).slice(1);
   const label = flag(args, 'label');
   const agentId = flag(args, 'agent');
   const find = flag(args, 'find');
@@ -1659,6 +1830,84 @@ function cmdConversationAnchor(ws: Workspace, args: string[], out: Emit): number
     // been deleted since the last turn must show the bookmarks rather than an
     // empty table with nothing said about it.
     reconcileAnchors(index);
+    /*
+     * ── THE BULK UNDO, AND IT IS THE OTHER HALF OF THE FIRST RUN ───────────
+     *
+     * `TASK-a-user-who-installs-mycontext-mid-project-has-conversations`
+     * requires the backfill to BE UNDOABLE. Every row the pass writes is
+     * `origin: 'automatic'`, so the undo is expressible — but expressible is
+     * not the same as reachable: the first run marked 1,213 points on the
+     * archive it was measured against, and `--drop <id>` takes back one.
+     *
+     * **It never reads an `origin: 'owner'` row**, which is the standing
+     * property of everything automatic in this module, held here by the
+     * filter rather than by the caller being careful.
+     *
+     * **And nothing is lost.** These rows are derived: the next rebuild
+     * re-marks every one of them from the same grammar over the same bytes.
+     * That is why this is the one destructive act here whose report can
+     * honestly say how to get them back.
+     */
+    if (hasFlag(args, 'drop-automatic')) {
+      const mine = index.anchorRows(null).filter((row) => row.origin === 'automatic');
+      if (mine.length === 0) {
+        if (json) {
+          emitJson(out, { dropped: 0, kept: index.anchorRows(null).length });
+          return 0;
+        }
+        out('my_context: nothing was marked for you, so there was nothing to take back. ' +
+          '`mycontext conversation anchor` lists what is marked.');
+        return 0;
+      }
+      const byKind = new Map<string, number>();
+      for (const row of mine) byKind.set(row.kind, (byKind.get(row.kind) ?? 0) + 1);
+      const breakdown = [...byKind].map(([kind, n]) => `${n} ${kind}`).join(', ');
+      const kept = index.anchorRows(null).length - mine.length;
+      if (!json) {
+        out(`my_context: about to take back ${mine.length} mark(s) made FOR you — ` +
+          `${breakdown}. The ${kept} you made yourself are not touched.`);
+      }
+      /*
+       * **THE COUNT IS THE CONSENT** — `mycontext ack --all`'s idiom, taken
+       * whole and for its own stated reason: *"a number cannot be typed by
+       * accident"*, and it stops being the right number the moment the set
+       * changes under the reader. It answers the same way from a terminal and
+       * from a script, which `--yes` plus a TTY check does not, and it keeps
+       * this command off the `--yes`-derived deny list — `mycontext
+       * conversation anchor` is the CLI half of every anchor capability, ruled
+       * a PEER of the screen and not a vestige.
+       *
+       * The refusal states its unblocking condition, with the number in it:
+       * `REQ-a-refusal-must-state-its-unblocking-condition-where-a-gate`.
+       */
+      const said = flag(args, 'count');
+      if (said === null || said !== String(mine.length)) {
+        const why = said === null
+          ? 'this takes back every mark at once, so it asks for the number as the consent'
+          : `--count says ${said} and there are ${mine.length}`;
+        if (json) {
+          emitJson(out, { dropped: 0, wouldDrop: mine.length, kept, needs: String(mine.length) });
+          return 1;
+        }
+        out(`my_context: ${why}. Read the line above and rerun with the count:`);
+        out(`  mycontext conversation anchor --drop-automatic --count ${mine.length}`);
+        return 1;
+      }
+      // One transaction and one document write — `anchorTransaction`'s own
+      // header argues the number; a thousand `unmarkAnchor` calls outside one
+      // would be a thousand rewrites of `.anchors.jsonl`.
+      anchorTransaction(index, () => {
+        for (const row of mine) unmarkAnchor(index, row.id);
+      });
+      if (json) {
+        emitJson(out, { dropped: mine.length, kept, kinds: Object.fromEntries(byKind) });
+        return 0;
+      }
+      out(`my_context: took back ${mine.length} mark(s). ` +
+        '`mycontext conversation rebuild` marks them again from the same grammar, so nothing ' +
+        'here is lost — it is re-derivable, which is what made it safe to drop.');
+      return 0;
+    }
     if (drop !== null) {
       const gone = unmarkAnchor(index, drop);
       if (json) {

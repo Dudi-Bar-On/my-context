@@ -424,6 +424,19 @@ export const strings = {
   'conv.anchors.sweepDone': '{marked} newly marked, {relabelled} renamed, {dropped} taken back — in {ms} ms. Nothing you marked yourself was touched.',
   'conv.anchors.sweepNone': 'Nothing changed: every table and every ruling this archive holds is already marked. That is what running it twice is supposed to say.',
   'conv.anchors.sweepCapped': 'At least one of the passes reached its bound, so there may be more in the archive it did not look at. Nothing was lost; it was not reached.',
+  // ── THE FIRST PRESS, SHOWN BEFORE IT HAPPENS ─────────────────────────────
+  //
+  // `TASK-a-user-who-installs-mycontext-mid-project-has-conversations`. Most
+  // people install this into a repository that already has months of
+  // conversations, and the first press then marks a whole history at once —
+  // 1,213 points measured on another real project on this machine. Every later
+  // press is one press and no question; these strings are only for the first.
+  'conv.anchors.sweepPlanning': 'Looking at what it would mark…',
+  'conv.anchors.sweepPlan': 'Nothing has been written yet. There are {marked} points here it can mark, and it has never marked anything in this project — so this is the whole history at once.',
+  'conv.anchors.sweepPlanSamples': 'A few of them, so you can see what they look like:',
+  'conv.anchors.sweepPlanGo': 'Mark all {marked}',
+  'conv.anchors.sweepPlanNo': 'Not now',
+  'conv.anchors.sweepPlanNone': 'Nothing was marked. The button is still here when you want it.',
   /* -- RECONSTRUCT: `plan:recall seq:2`, Tasks 11 and 12 -------------------
    *
    * The screen does NOT answer out of the archive. It writes a MISSION for a

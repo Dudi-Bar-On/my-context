@@ -712,6 +712,11 @@ test('the row says what the anchor pass marked, and says nothing on the ordinary
   };
   const anchors: AutoAnchorReport = {
     probed: 12, found: 2, marked: 0, dropped: 0, relabelled: 0, capped: false, ms: 9,
+    // The three fields the first-run disclosure added on 2026-09-16
+    // (`TASK-a-user-who-installs-mycontext-mid-project-has-conversations`).
+    // Zeroed and empty here on purpose: this fixture is the ORDINARY turn,
+    // which marks nothing, and `planned: false` says the pass really ran.
+    byKind: { table: 0, ruling: 0, report: 0 }, samples: [], planned: false,
   };
   /**
    * **`did` is DERIVED here exactly as `markAnchorsOnTurn` derives it**, and

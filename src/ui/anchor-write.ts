@@ -65,7 +65,9 @@ import {
   AUTOMATIC_ANCHOR_KINDS, OWNER_ANCHOR_KINDS, isOwnerAnchorKind, laneNameOf, markAnchor,
   unmarkAnchor, type OwnerAnchorKind,
 } from '../core/anchors.ts';
-import { fileOf, markAutomaticAnchors } from '../core/anchor-pass.ts';
+import {
+  automaticAnchorsStanding, fileOf, markAutomaticAnchors, previewAutomaticAnchors,
+} from '../core/anchor-pass.ts';
 import { registerRoute, type ApiContext, type JsonResult } from './routes.ts';
 import type { Workspace } from '../core/workspace.ts';
 
@@ -459,12 +461,35 @@ export function apiAnchorDrop(ws: Workspace, body: unknown): JsonResult {
  * `origin: 'owner'` row, and a second run immediately after a first reports 0
  * new, 0 taken back, 0 relabelled — idempotent in both directions, measured
  * 2026-09-11.
+ *
+ * ── `{ plan: true }` — THE FIRST PRESS IN A WORKSPACE THAT HAS NEVER HAD ONE
+ *
+ * Added 2026-09-16 under `TASK-a-user-who-installs-mycontext-mid-project-has-
+ * conversations`. "Safe to press twice" stays true and is not what the first
+ * press needs: measured that day on a foreign project's real archive, the
+ * first press over a history that predates this plugin marks **1,213 points
+ * in one act** — 907 tables, 275 lane reports, 31 rulings — and `anchors/9`
+ * measured that 1,155 marks was already enough to make the rare kinds hard to
+ * find. Reversible is not the same as expected.
+ *
+ * So the screen asks for a PLAN first and shows what is about to happen. The
+ * body decides, and the DEFAULT IS UNCHANGED: `{}` still runs the pass in one
+ * press, which is what every later press does and what every existing caller
+ * sends. `firstRun` rides along so the screen can tell a bulk first press from
+ * the ordinary one without asking a second question.
  */
-export function apiAnchorSweep(ws: Workspace): JsonResult {
+export function apiAnchorSweep(ws: Workspace, body: unknown = null): JsonResult {
   const index = openForWrite(ws);
   if (index === null) return NOT_INDEXED;
   try {
-    return { status: 200, body: { indexed: true, report: markAutomaticAnchors(index) } };
+    const wantsPlan = typeof body === 'object' && body !== null
+      && (body as { plan?: unknown }).plan === true;
+    // **THE COUNT IS TAKEN BEFORE THE PASS**, on both paths, because after it
+    // has run the answer is always "not a first run" and the screen would
+    // never be able to say what it had just done.
+    const firstRun = automaticAnchorsStanding(index) === 0;
+    const report = wantsPlan ? previewAutomaticAnchors(index) : markAutomaticAnchors(index);
+    return { status: 200, body: { indexed: true, firstRun, report } };
   } finally {
     index.close();
   }
@@ -493,6 +518,6 @@ export function registerAnchorWriteRoutes(): void {
     kind: 'json', handle: (ctx: ApiContext) => apiAnchorDrop(ctx.ws, ctx.body),
   });
   registerRoute('POST', '/api/conversations/anchors/sweep', {
-    kind: 'json', handle: (ctx: ApiContext) => apiAnchorSweep(ctx.ws),
+    kind: 'json', handle: (ctx: ApiContext) => apiAnchorSweep(ctx.ws, ctx.body),
   });
 }

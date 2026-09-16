@@ -708,7 +708,7 @@ test('a row behind its file is reported as "could not look", never as "nothing t
       stalled!.did, 'could-not-look',
       'THE SILENCE IS BACK. The archive is behind the file it indexes and the pass answered the '
       + 'same thing it answers on a quiet turn. Those are the two answers '
-      + '`STD-nothing-to-do-and-could-not-look-are-different-answers` forbids sharing a value, '
+      + '`nothing-to-do-and-could-not-look-are-different-answers` forbids sharing a value, '
       + 'and merging them is what made half an hour of dead marking invisible on 2026-09-15.',
     );
     const behind = stalled!.stale.find((s) => s.key === SESSION);
@@ -766,7 +766,7 @@ test('a transcript that will not stat is disclosed, not silently counted as caug
         assert.notEqual(
           row, undefined,
           'a transcript the archive holds a row for and cannot stat came back as CAUGHT UP. That '
-          + 'is the substitution `STD-nothing-to-do-and-could-not-look-are-different-answers` '
+          + 'is the substitution `nothing-to-do-and-could-not-look-are-different-answers` '
           + 'names, made by the function written to prevent it.',
         );
         assert.equal(row!.fileBytes, null);

@@ -703,6 +703,32 @@ function probeCandidates(
   return { hits, capped: true };
 }
 
+/**
+ * **HOW MANY OF EACH KIND A PLAN SHOWS, AND WHY IT IS A SAMPLE AND NOT A
+ * LIST.**
+ *
+ * A first run over somebody's whole history is a bulk act, and what makes it
+ * refusable is not the total — a reader cannot judge `1,213` — but seeing what
+ * one of them looks like. Measured 2026-09-16 on a foreign archive (see
+ * `markAutomaticAnchors`' header): three labels of each kind is enough to tell
+ * a table mark from a lane report at a glance, and the whole disclosure still
+ * fits in the terminal a person typed the command into.
+ *
+ * **They are the FIRST of each kind the run met, in the order it met them, and
+ * that is said rather than dressed up as a draw.** The pass streams its
+ * candidates; keeping an even sample would mean holding every label of a run
+ * that finds thousands, which is memory spent to make three lines look more
+ * representative than they are. A reader judging three is judging the GRAMMAR,
+ * which is the question a first run actually asks.
+ */
+export const PLAN_SAMPLES_PER_KIND = 3;
+
+/** One label a plan shows, so a reader can judge the kind by an example. */
+export interface AutoAnchorSample {
+  kind: AutomaticAnchorKind;
+  label: string;
+}
+
 export interface AutoAnchorReport {
   /** Candidate turns the probes brought back, before the grammar saw them. */
   probed: number;
@@ -725,6 +751,39 @@ export interface AutoAnchorReport {
   /** At least one probe filled its bound, so there may be more behind it. */
   capped: boolean;
   ms: number;
+  /**
+   * **`marked`, SPLIT BY KIND — the disclosure a bulk run is refusable on.**
+   *
+   * `marked` alone says *1,213 bookmarks are about to appear in your list*,
+   * which is a number a reader can only accept or abandon. Per kind it becomes
+   * a judgement they can make: *907 of those are tables Claude drew, 275 are
+   * lane reports, 31 are things I said* — and each of the three is a different
+   * decision, because the three grammars are independent and any one of them
+   * could be the one that does not suit this project.
+   *
+   * It counts NEW marks only, so `table + ruling + report === marked` and a
+   * relabel of a bookmark that already stands is not counted as something
+   * about to appear. Nothing here is a second measurement: the increment sits
+   * beside `marked`'s own.
+   */
+  byKind: Record<AutomaticAnchorKind, number>;
+  /**
+   * The first `PLAN_SAMPLES_PER_KIND` labels of each kind this run newly
+   * marked — what a reader looks at to decide whether the rest are worth
+   * having. Empty when the run marked nothing new.
+   */
+  samples: AutoAnchorSample[];
+  /**
+   * **NOTHING WAS WRITTEN.** True for a plan — the pass ran its whole
+   * enumeration and its whole grammar and made no change at all, so every
+   * count beside this one says what WOULD happen rather than what did.
+   *
+   * It is a field of the report rather than a second report type for
+   * `nothing-to-do-and-could-not-look-are-different-answers`' reason one
+   * step along: a caller holding an `AutoAnchorReport` must not be able to
+   * read `marked: 1213` without also being able to see that nothing is marked.
+   */
+  planned: boolean;
 }
 
 /**
@@ -813,6 +872,7 @@ function sweepAutomaticAnchors(
   report: AutoAnchorReport,
   only: Map<string, number> | null,
   lastAnswers: ReadonlyMap<string, LaneLastAnswer>,
+  write: boolean,
 ): void {
   for (const row of index.anchorRows(null)) {
     if (row.origin !== 'automatic') continue;
@@ -821,9 +881,9 @@ function sweepAutomaticAnchors(
     // Its kind rests entirely on `lastAnswers`, and over a lane out of scope
     // that map is EMPTY rather than false — so putting the row to the grammar
     // here would ask "is this the last answer of a lane I did not look up?",
-    // get `null`, and delete a correct bookmark. `STD-nothing-to-do-and-could-
-    // not-look-are-different-answers` is the rule and this is the shape of it:
-    // the pass could not look, so it says nothing.
+    // get `null`, and delete a correct bookmark.
+    // `nothing-to-do-and-could-not-look-are-different-answers` is the rule and
+    // this is the shape of it: the pass could not look, so it says nothing.
     if (row.kind === 'report' && row.agentId !== null && !lastAnswers.has(row.agentId)) continue;
 
     const key = row.agentId ?? row.sessionId;
@@ -854,11 +914,19 @@ function sweepAutomaticAnchors(
       laneReport: laneReportAt(index, lastAnswers, row.agentId, row.byteOffset, turn.text),
     }, turn.text);
     if (finding === null) {
-      unmarkAnchor(index, row.id);
+      // **A PLAN COUNTS THE TAKE-BACK AND DOES NOT PERFORM IT.** The count is
+      // the half a reader needs — a run that would remove bookmarks is a
+      // different proposition from one that only adds — and `write` is the
+      // only line between the two.
+      if (write) unmarkAnchor(index, row.id);
       report.dropped += 1;
       continue;
     }
     if (finding.kind === row.kind && finding.label === row.label) continue;
+    if (!write) {
+      report.relabelled += 1;
+      continue;
+    }
     // The timestamp is the anchor's own and is carried over: re-deriving a
     // label is not a new bookmark, and moving the stamp would reorder his list
     // every time a grammar changed.
@@ -896,9 +964,49 @@ function sweepAutomaticAnchors(
  * **It never overwrites one HE made.** An anchor whose row says `origin:
  * 'owner'` is left exactly as it is, label and all: the automatic half is
  * allowed to add bookmarks and is not allowed to rewrite his.
+ *
+ * ── `plan: true` — THE SAME RUN, WITH THE TWO WRITES TAKEN OUT ─────────────
+ *
+ * Added 2026-09-16 under `TASK-a-user-who-installs-mycontext-mid-project-has-
+ * conversations`, and it is an option on THIS function rather than a second
+ * function beside it for the reason `consider` is a closure: a plan that
+ * enumerated its candidates differently from the run would be a plan about a
+ * different pass, and the number it showed a reader would be a number the run
+ * never produced. Same probes, same `ownerPromptSpans`, same `laneLastAnswers`,
+ * same grammar, same owner-row guard. `markAnchor`, `unmarkAnchor` and the
+ * anchors DOCUMENT write are what `plan` removes, and nothing else.
+ *
+ * `anchorTransaction` is not entered at all on that path, deliberately: it
+ * rewrites `.anchors.jsonl` whole at its close even when the body changed
+ * nothing, so a plan wrapped in one would touch the one file this project
+ * treats as the truth. A plan writes nothing, including nothing that looks
+ * like nothing.
+ *
+ * ── WHY A PLAN EXISTS AT ALL, MEASURED ON SOMEBODY ELSE'S ARCHIVE ─────────
+ *
+ * The case is a person who installs this plugin into a repository that has
+ * months of Claude Code sessions already sitting in `~/.claude/projects/`. The
+ * archive indexes those immediately and the pass then marks all of them in one
+ * act. Measured 2026-09-16 on a DIFFERENT project's real transcripts on this
+ * machine — one session, 575 lanes, 13,375 prose spans, 726 of them turns the
+ * person typed — with the grammar exactly as it stands:
+ *
+ * | kind | marks | per 1,000 turns | share |
+ * |---|---|---|---|
+ * | table | 907 | 67.8 | 74.8% |
+ * | report | 275 | 20.6 | 22.7% |
+ * | ruling | 31 | 2.3 | 2.6% |
+ * | **all three** | **1,213** | **90.7** | |
+ *
+ * **1,213 bookmarks in one command, and `anchors/9` measured that 1,155 over
+ * thirteen days was already enough to make the rare kinds hard to find.** The
+ * grammar is not what is wrong there — every one of the three transfers, and
+ * `anchorInTurn`'s own headers carry why — what is wrong is a first sight of
+ * the feature that is a list nobody asked for. So the run is disclosed before
+ * it happens, per kind, and `byKind` is what that disclosure is made of.
  */
 export function markAutomaticAnchors(
-  index: ConversationIndex, options: { only?: Map<string, number> } = {},
+  index: ConversationIndex, options: { only?: Map<string, number>; plan?: boolean } = {},
 ): AutoAnchorReport {
   /**
    * **WHERE this run is allowed to look: each transcript it may read, and the
@@ -925,9 +1033,14 @@ export function markAutomaticAnchors(
    * which the unscoped rebuild is exactly the run for.
    */
   const only = options.only ?? null;
+  /** False for a plan, and the only thing a plan changes. */
+  const write = options.plan !== true;
   const startedMs = Date.now();
   const report: AutoAnchorReport = {
     probed: 0, found: 0, marked: 0, dropped: 0, relabelled: 0, capped: false, ms: 0,
+    byKind: { table: 0, ruling: 0, report: 0 },
+    samples: [],
+    planned: !write,
   };
   // The WHOLE row and not just its origin: `relabelled` is a count of anchors
   // whose label actually moved, and the probe pass re-marks every candidate it
@@ -1065,11 +1178,20 @@ export function markAutomaticAnchors(
     }, turn.text);
     if (finding === null) return;
     report.found += 1;
-    if (standing === undefined) report.marked += 1;
-    else if (standing.kind !== finding.kind || standing.label !== finding.label) {
+    if (standing === undefined) {
+      report.marked += 1;
+      // Beside `marked`'s own increment and never derived a second way: a
+      // per-kind total that disagreed with the total it splits would be worse
+      // than no split at all.
+      report.byKind[finding.kind] += 1;
+      if (report.byKind[finding.kind] <= PLAN_SAMPLES_PER_KIND) {
+        report.samples.push({ kind: finding.kind, label: finding.label });
+      }
+    } else if (standing.kind !== finding.kind || standing.label !== finding.label) {
       report.relabelled += 1;
     }
     kept.add(id);
+    if (!write) return;
     markAnchor(index, {
       sessionId,
       agentId,
@@ -1086,7 +1208,7 @@ export function markAutomaticAnchors(
     });
   };
 
-  anchorTransaction(index, () => {
+  const walk = (): void => {
     for (const { probe, kind } of ANCHOR_PROBES) {
       const answer = probeCandidates(index, probe, {
         ...(kind === undefined ? {} : { kind }),
@@ -1164,17 +1286,77 @@ export function markAutomaticAnchors(
       if (kept.has(row.id)) continue;
       const last = lastAnswers.get(row.agentId);
       if (last === undefined || last.byteOffset === row.byteOffset) continue;
-      unmarkAnchor(index, row.id);
+      if (write) unmarkAnchor(index, row.id);
       report.dropped += 1;
     }
 
     // And the other direction, over what the pass already owns. `kept` is the
     // ids it just re-derived, which are the only ones it need not read again.
-    sweepAutomaticAnchors(index, files, kept, report, only, lastAnswers);
-  });
+    sweepAutomaticAnchors(index, files, kept, report, only, lastAnswers, write);
+  };
+
+  // **A PLAN IS NOT WRAPPED, AND THAT IS THE WHOLE OF ITS GUARANTEE.**
+  // `anchorTransaction` rewrites the anchors document at its close whatever the
+  // body did, so entering one for a plan would touch `.anchors.jsonl` — the
+  // file this project rebuilds the table FROM. A plan leaves both untouched.
+  if (write) anchorTransaction(index, walk);
+  else walk();
 
   report.ms = Date.now() - startedMs;
   return report;
+}
+
+/**
+ * **WHAT THE PASS WOULD DO, WITHOUT DOING ANY OF IT.**
+ *
+ * The same run as `markAutomaticAnchors` with `markAnchor`, `unmarkAnchor` and
+ * the anchors document write removed — see that function's `plan: true` note,
+ * which is where the argument for one implementation lives.
+ *
+ * It is exported under its own name rather than left as an option because the
+ * two surfaces that ask for it — `mycontext conversation rebuild` and the
+ * viewer's sweep — are asking a question, not passing a switch, and a named
+ * question is one a reader of either call site can see the shape of.
+ *
+ * **THE ONE PLACE A PLAN CAN OVERSTATE, SAID RATHER THAN PAPERED OVER.** The
+ * run reconciles the anchors document into the table before it decides what is
+ * already marked (`anchorTransaction`); the plan does not, because that
+ * reconciliation CAN WRITE — it adopts the table into the file when the file is
+ * absent — and a plan writes nothing. So over an index that has fallen behind
+ * its document, a plan counts rows the run would find already standing, and
+ * reports more than the run then marks. The run's number is the one the report
+ * carries afterwards, and `mycontext conversation rebuild` reconciles on the
+ * line above either way, which is the path this actually runs on.
+ */
+export function previewAutomaticAnchors(index: ConversationIndex): AutoAnchorReport {
+  return markAutomaticAnchors(index, { plan: true });
+}
+
+/**
+ * **HOW MANY BOOKMARKS THE PASS ALREADY OWNS — the first-run question, asked
+ * of the archive rather than remembered.**
+ *
+ * Zero means no run of the automatic pass has ever left a mark in this
+ * workspace, which is exactly the state a person is in the moment they install
+ * this plugin into a repository that already has months of transcripts. That
+ * is the one run whose size nobody has seen yet, and the one that is disclosed
+ * before it happens.
+ *
+ * **It counts `origin: 'automatic'` and nothing else.** A workspace where the
+ * owner has marked points by hand and the pass has never run is still a first
+ * run for the pass, and asking "are there any anchors" would call it a later
+ * one and mark 1,213 points without a word. The two origins are the whole
+ * distinction this module is built on; it holds here too.
+ *
+ * A second run is NOT re-disclosed, and that is the point rather than an
+ * omission: from then on the pass is incremental — `markAnchorsOnTurn` puts
+ * two or three turns to the grammar — so every later run is small, and a
+ * consent prompt on every rebuild would be a prompt nobody reads.
+ */
+export function automaticAnchorsStanding(index: ConversationIndex): number {
+  let count = 0;
+  for (const row of index.anchorRows(null)) if (row.origin === 'automatic') count += 1;
+  return count;
 }
 
 /**
@@ -1304,7 +1486,7 @@ export interface TurnAnchorReport {
    * **WHY the line above is what it is, and the whole reason this field
    * exists is that `null` was answering two different questions.**
    *
-   * `STD-nothing-to-do-and-could-not-look-are-different-answers`, written from
+   * `nothing-to-do-and-could-not-look-are-different-answers`, written from
    * the incident this closes, states the rule as a table:
    *
    * | the step means | what it must return |
