@@ -17,8 +17,16 @@ is imported, is exercised by `test/review/*`, and runs today in this very
 repository's own hook path — it runs, decides there is nothing to do (or that
 it isn't even switched on), and returns. The engineering is finished; the
 authorization is granted one dial at a time, and **this repository has now
-turned two of the three** (`enabled: true`, `maxProposalsPerPass: 5`; `model`
-is unset). A fresh install still has all three closed.
+turned on all three** — confirmed directly against `.my_context/config.json`
+on 2026-09-16: `enabled: true`, `maxProposalsPerPass: 5`, `model:
+"claude-opus-5"`. (An earlier version of this chapter said only two of the
+three were on and that `model` was unset; that stopped being true at some
+point after 2026-09-13 and this chapter had not been re-read against the live
+config since. Every place below that describes `model` as unset in *this*
+workspace is corrected in place, flagged rather than silently fixed, because a
+config value this load-bearing deserves the flag.) A fresh install still has
+all three closed — the distinction between what the product ships and what
+this repository sets is the one this whole section exists to keep separate.
 
 **Source root:** `src/review/` holds **thirteen** modules at HEAD (`870e57c5`) —
 `trigger.ts`, `pass.ts`, `input.ts`, `rubric.ts`, `propose.ts`, `dedupe.ts`,
@@ -364,9 +372,15 @@ a person actually reads, and a `by` column on every row of
 `review-last-pass.json`.
 
 **Measured:** two live runs on 2026-09-13, 79.2 s, returning 2 candidates the
-rule-based half could not have composed. **Nothing activates in this
-workspace** — `review.model` is unset in `.my_context/config.json`, so the loop
-behaves exactly as the rest of this chapter describes.
+rule-based half could not have composed. **Corrected 2026-09-16: this is no
+longer true.** `.my_context/config.json` sets `review.model:
+"claude-opus-5"` in this workspace — confirmed by reading the file directly —
+so the model path is live here, not dormant. The 2026-09-13 measurement above
+is still a real, reproducible run of the mechanism; what changed is only
+whether *this specific repository* currently has the switch on. Do not trust
+the sentence "nothing activates in this workspace" anywhere else in this
+chapter without checking the live config first — see the correction at the
+top of this chapter.
 
 ## The ration — the exact mechanism, and why it is not a budget
 
@@ -530,12 +544,17 @@ wired into the real hook path — and shipped off by two independent defaults**
   refusal (no anchor, an anchor with no name in it, a stretch the rubric
   declined) is stated rather than returned as a bare `false`.
 - **A model CAN now be called, and `review.model` defaults to `null` so that
-  nothing reaches one.** This bullet used to read "No model is ever called";
-  `870e57c5` (2026-09-13) made that false. `src/review/model.ts` spawns the
-  harness's own CLI headless and `src/review/prompt.ts` — unimported by the
-  product for days — is now what it sends. See "Reaching a model" above. What
-  remains off is the **switch**: `DEFAULT_REVIEW.model` is `null`, which means
-  no model is reached by any path, and this workspace does not set it.
+  nothing reaches one — as a product default.** This bullet used to read "No
+  model is ever called"; `870e57c5` (2026-09-13) made that false.
+  `src/review/model.ts` spawns the harness's own CLI headless and
+  `src/review/prompt.ts` — unimported by the product for days — is now what
+  it sends. See "Reaching a model" above. The **switch** itself,
+  `DEFAULT_REVIEW.model`, is `null` in the shipped default — but **this
+  workspace does set it**: `.my_context/config.json` carries `review.model:
+  "claude-opus-5"`, confirmed 2026-09-16. So the accurate sentence for *this
+  repository* is "a model is reached, on this repository's own configuration,"
+  not "no model is reached by any path." A fresh install still gets the
+  off-by-default `null`.
 - **`src/review/drift.ts` is still imported by nothing but tests** — its only
   importers anywhere are `test/review/drift.test.ts` and
   `test/core/retrieval-return.test.ts`. At 18.5 KB it is the larger of the two

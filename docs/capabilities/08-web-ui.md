@@ -26,8 +26,8 @@ states a "mutator-free rule", and `src/ui/security.ts`'s header says explicitly 
 guarantee (a static test asserting which modules under `src/ui/` are allowed to bind a writing
 symbol at all), not a runtime promise taken on faith.
 
-**The enforced number is twelve, not three.** `RULED_WRITES` in `test/ui/no-writes.test.ts:567`
-is a literal list of twelve binding strings, and the assertion at `:2030` is
+**The enforced number is twelve, not three.** `RULED_WRITES` in `test/ui/no-writes.test.ts:590`
+is a literal list of twelve binding strings, and the assertion at `:2077` is
 `assert.deepEqual(bound.sort(), RULED_WRITES, …)` — **set equality**, so twelve is the exact
 admitted set, not a floor and not a ceiling a reader should round down. Adding a thirteenth fails
 the build; so does removing one without editing the list. The twelve sit in **five files**:
@@ -72,7 +72,7 @@ the count above matters. Both were ruled by the owner under one sentence —
 copies to a terminal is not the UI having a capability, it is the UI describing one.*
 
 **`src/ui/anchor-write.ts`** registers four routes —
-`POST /api/conversations/anchors/{mark,relabel,drop,sweep}` (`:357–366`) — and its own header says
+`POST /api/conversations/anchors/{mark,relabel,drop,sweep}` (`:511–522`) — and its own header says
 in capitals what distinguishes it from the Composer: *"NOTHING HERE COMPOSES A COMMAND OR STARTS A
 PROCESS. There is no argv, no nonce, no child. The whole write is one row."* Four properties bound
 it, stated in that header: it goes through the **same seam the CLI uses** (`markAnchor` /
@@ -85,7 +85,7 @@ hand-made anchor is `kind: 'note'`, `origin: 'owner'`, so no request can forge a
 pass is forbidden to touch); and **it cannot turn the archive on** — every handler opens the read
 door first and answers the never-indexed state rather than creating a database.
 
-**`src/ui/retrieval-write.ts`** registers three (`:420–427`): `POST /api/retrieval/stage`,
+**`src/ui/retrieval-write.ts`** registers three (`:425–434`): `POST /api/retrieval/stage`,
 `GET /api/retrieval/approve/confirm`, `POST /api/retrieval/approve`. This is a **second
 confirm+nonce pair, outside `execute.ts`** — so the Composer's "there is no second code path" is a
 statement about `execute.ts`'s interior, not about the server. The nonce here comes from
@@ -115,7 +115,16 @@ TENSE... in the mockup's own order"):
 | `nav.read`| *"Read"* | conversations, library, learn |
 
 4 + 6 + 7 + 3 = **20**, which is exactly the count the task brief names, and each of the 20 route
-ids resolves 1:1 to the 20 given screen names via `strings/en.js`'s `s.<id>` keys:
+ids resolves 1:1 to the 20 given screen names via `strings/en.js`'s `s.<id>` keys. **Confirmed
+again 2026-09-16, against two code comments that disagree with the array beneath them**:
+`app.js:283` reads `// them. TWENTY-ONE OF TWENTY-ONE.` and `app.js:289` — six lines *below* it,
+not above — reads `// FOUR groups, by TENSE, and ALL TWENTY-ONE SCREENS`; `NAV` itself starts at
+`:303`, fourteen lines further down again. (An earlier pass over this same finding had the two
+comments' relative order backwards and both distances wrong; corrected here against the file
+directly.) The array beneath both comments still holds exactly 20 entries (4+6+7+3, counted
+directly above). This chapter's count was already correct before this pass; the stale number lives
+only in the two source comments, which this documentation pass did not touch — repairing them is a
+one-line code fix for whoever owns `app.js` next, not a documentation change.
 
 | id | Label | Backing module(s) |
 |---|---|---|
@@ -253,14 +262,25 @@ previewing packs before import (chapter 12).
 
 **Conversations** (`conversations`) — backed by `read-model-conversations.ts` and
 `read-model-conversation-document.ts`; the UI view of the conversation archive (chapter 4,
-[`./04-conversation-archive.md`](./04-conversation-archive.md)) and anchors (chapter 5,
+[`./04-conversation-archive.md`](./04-conversation-archive.md)), its search grammar (chapter 14,
+[`./14-search-over-the-archive.md`](./14-search-over-the-archive.md)) and anchors (chapter 5,
 [`./05-anchors.md`](./05-anchors.md)). Opening a transcript document opens `/lane.html` — a
-dedicated page outside the SPA shell, not a rail screen — for reading one conversation in full.
-**It sits in the `nav.read` ("Read") group and is nevertheless the product's largest write
-surface**: it performs four anchor writes (`screens/conversations.js:1215, 1562, 1598, 1757`,
-and again from the `/lane.html`-side handlers at `:5215, 5235, 5277`) and a retrieval
-stage/confirm/approve cycle (`:2375, 2419, 2462`). The group label describes the tense of what the
-screen is *about*, not the reachability of a write from it.
+dedicated page outside the SPA shell, not a rail screen — for reading one conversation in full;
+that document and lane view is where the find bar, the floating find panel (case/whole-word/regex,
+shipped 2026-09-16), and the marks-in-the-margin controls actually live — see chapter 15,
+[`./15-document-and-lane-viewer.md`](./15-document-and-lane-viewer.md), for the whole surface
+rather than duplicating it here. **It sits in the `nav.read` ("Read") group and is nevertheless the
+product's largest write surface**: it calls all four of `anchor-write.ts`'s routes — `mark` (e.g.
+`screens/conversations.js:2084`, `:2170`, `:7172`), `relabel` (`:2793`, `:7077`), `drop` (`:1988`)
+and `sweep` (`:3106`, `:3166`) — and drives a retrieval stage/confirm/approve cycle: the mission
+request at `:3494`, its return at `:3667`, stage at `:3797`, the approve-confirm navigation at
+`:3841`, and approve itself at `:3884`. (An earlier version of this paragraph cited ten line
+numbers, none of which pointed at a write call — the file had grown past 11,000 lines and the
+citations were never re-resolved after a splice edited the surrounding prose; every number above
+was re-read against the file directly for this repair, and this is a representative sample of call
+sites per operation, not an exhaustive list — several of these operations are called from more than
+one place in the file.) The group label describes the tense of what the screen is *about*, not the
+reachability of a write from it.
 
 **Help** (`library`) — per its own file header, this is deliberately **the one console page that
 replaces what used to be separate Documentation and Tutorials screens** (owner ruling
@@ -270,8 +290,12 @@ TITLE, never by file path, with the measured EN/HE state beside each. Opening on
 page in a new browser tab. The console stops trying to be a documentation site."*). A second
 ruling the same day (`DEC-the-document-page-wears-github-styling-lists-the-readmes-and`) narrowed
 the *list* (not the viewer) to the two READMEs and the tutorials — "not 166 internal specs, plans
-and reports" — while the actual document viewer at `/doc.html` still opens any of the ~190 tracked
-Markdown files if a link inside a listed document points at one. This screen also hosts the
+and reports" — while the actual document viewer at `/doc.html` still opens any of the **274**
+tracked Markdown files (`git ls-files` under `docs/` or `reports/`, plus `README.md` — the same set
+`isServableDocPath`, `src/doctor/checks.ts`, admits) if a link inside a listed document points at
+one. **This is ~44% more than the "~190" this section previously said** — `reports/` in particular
+grows daily, so treat 274 as a 2026-09-16 reading rather than a constant, and expect it to be low
+again by the time anyone re-counts. This screen also hosts the
 `cli-help.js` pane (`mycontext help <topic>` rendered as a browsable console).
 
 **Learn** (`learn`) — a guided-tour/onboarding screen, kept distinct from Help.
@@ -338,16 +362,20 @@ Injection preview, a node in Relations, a queue entry in Review queue, or a matc
 
 Every user-facing string in the UI is looked up by key from `src/ui/public/strings/en.js` and
 `src/ui/public/strings/he.js`, rather than hard-coded in the screen modules. `grep -c "^\s*'"`
-extracts **1,314 key lines from each** (measured 2026-09-13; the files themselves are 2,386 and
-1,629 lines, most of the difference being comment prose in the English table). That is a
-measurement, not the enforcement.
+extracts **1,462 key lines from each**, re-measured 2026-09-16 directly against the tree (both
+tables still hold exactly the same count — key parity is the property `strings-parity.test.ts`
+enforces, see below); the files themselves are now **2,648** and **1,790** lines, most of the
+difference being comment prose in the English table. (A 2026-09-13 reading of 1,314/2,386/1,629
+was carried forward unchanged through this pass; both tables grew by roughly 11% in the intervening
+days, which is itself a data point about how fast this surface moves.) That is a measurement, not
+the enforcement.
 
 The enforcement is a named test, and it is not in `scripts/`: **`test/ui/strings-parity.test.ts`**
 has existed since 2026-08-20 — its first commit is titled "…with key-parity test" — and asserts
 three separate things. Key sets, **in both directions**: *"en and he string tables declare
 identical key sets — in both directions"* diffs `enKeys \ heKeys` and `heKeys \ enKeys` and
-requires both to be empty (`:116–123`). Monospace slots (`{m:…}`) match key for key (`:204`).
-Value slots (`{name}`) match key for key (`:229`), with the comment recording why the second was
+requires both to be empty (`:116–123`). Monospace slots (`{m:…}`) match key for key (`:195`).
+Value slots (`{name}`) match key for key (`:215`), with the comment recording why the second was
 added: `t()` substitutes by *name*, so a renamed slot leaves a literal `{lines}` on screen and a
 dropped one loses the number the sentence is about. Four sibling parity tests live in the same
 directory — `strip-parity`, `styles-parity`, `duration-parity`, `zoned-stamp-parity`.
@@ -370,8 +398,13 @@ directory — `strip-parity`, `styles-parity`, `duration-parity`, `zoned-stamp-p
   cannot be added silently: the assertion is set equality, so an unruled binding fails the build
   and so does a removal the list was not told about. What this does *not* say is that twelve is
   small — see the count and the two command-free surfaces above.
-- **This chapter does not cover most of the HTTP surface.** `src/ui/` registers **76 routes**
-  (`grep -c 'registerRoute(' src/ui/*.ts`, 2026-09-13); this chapter names sixteen distinct
+- **This chapter does not cover most of the HTTP surface.** `src/ui/` registers **77 routes**
+  (`grep -c 'registerRoute(' src/ui/*.ts`, re-counted 2026-09-16 — it was 76 on 2026-09-13). The
+  generated `docs/cli-ui-coverage.md` separately states **67 registered UI read routes** — a
+  different, narrower figure from a different tool (`scripts/gen-cli-ui-coverage.ts`), and this
+  chapter did not verify exactly which dozen routes account for the gap; treat the two counts as
+  measuring related but not identical things rather than assuming either supersedes the other.
+  This chapter names sixteen distinct
   paths. Uncovered families include the whole `/api/watch/*` SSE stream set, `/api/ask/*`,
   `/api/render`, `/api/glob`, `/api/overlap`, `/api/command/check`, `/api/config/{check,preview}`
   and `/api/handoff`.
@@ -403,4 +436,6 @@ directory — `strip-parity`, `styles-parity`, `duration-parity`, `zoned-stamp-p
 - [Index](./00-index.md)
 - [Injection](./02-injection.md) — what the Injection preview/Injected now screens actually show
 - [Anchors](./05-anchors.md) — the Conversations screen's provenance mechanism
+- [Search over the archive](./14-search-over-the-archive.md) — the grammar behind the Conversations screen's search box
+- [The document and lane viewer](./15-document-and-lane-viewer.md) — the find bar, the floating find panel, and marks-in-the-margin, none of which is described in this chapter
 - [The CLI and the MCP server](./09-cli-and-mcp.md) — the commands the Composer ultimately composes and runs

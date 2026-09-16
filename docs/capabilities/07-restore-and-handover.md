@@ -55,7 +55,7 @@ the top of `restore.ts`):
 
 **Step 7 is narrower than "the next session start", and the gap matters given
 how this chapter opens.** Delivery is gated on `!manual && !subagent &&
-!compacting` (`src/core/inject.ts:566–568`), so **a PostCompact start, a
+!compacting` (`src/core/inject.ts:571–573`), so **a PostCompact start, a
 subagent start and a manual injection all get nothing.** A reader who took the
 opening sentence — a window ends "cleared **or** compacts" — to mean `restore`
 covers both boundaries would be wrong: `restore` covers the **cleared**
@@ -374,27 +374,36 @@ project's own words call "not coverage, it is the appearance of coverage."
   it is hard or because it is impossible") — but it's exactly the shape the
   `isServableDocPath` incident had, so it's surfaced by name.
 
-**Worked example — real output, run against this repository right now**
+**Worked example — real output, run against this repository right now, 2026-09-16**
 (`check-handover.ts` is a pure reader: it opens the corpus read-only and
 writes only to stdout, so it was safe to run for this chapter):
 
 ```
 $ node scripts/check-handover.ts
 ...
-CARRIED  reports/V2-HANDOVER.md:110
+CARRIED  reports/V2-HANDOVER.md:395
+         library/6 → library/6 [todo]
+         carried in 10 of 49 blocks and still open
+CARRIED  reports/V2-HANDOVER.md:395
+         docsys/11 → docsys/11 [todo]
+         carried in 10 of 49 blocks and still open
+CARRIED  reports/V2-HANDOVER.md:234
+         walk/119 → walk/119 [todo]
+         carried in 8 of 49 blocks and still open
+CARRIED  reports/V2-HANDOVER.md:310
          port/99 → port/99 [todo]
-         carried in 8 of 45 blocks and still open
-CARRIED  reports/V2-HANDOVER.md:48
+         carried in 8 of 49 blocks and still open
+CARRIED  reports/V2-HANDOVER.md:248
          port/98 → port/98 [todo]
-         carried in 4 of 45 blocks and still open
-CARRIED  reports/V2-HANDOVER.md:48
+         carried in 4 of 49 blocks and still open
+CARRIED  reports/V2-HANDOVER.md:248
          port/93 → port/93 [todo]
-         carried in 3 of 45 blocks and still open
-CARRIED  reports/V2-HANDOVER.md:195
+         carried in 3 of 49 blocks and still open
+CARRIED  reports/V2-HANDOVER.md:395
          walk/141 → walk/141 [todo]
-         carried in 3 of 45 blocks and still open
+         carried in 3 of 49 blocks and still open
 
-4682 line(s), 45 block(s) · 218 distinct pointer(s): 134 lane, 84 item · 0 resolving to nothing, 4 naming retired work
+4882 line(s), 49 block(s) · 250 distinct pointer(s): 165 lane, 85 item · 0 resolving to nothing, 4 naming retired work
 every pointer in the handover names something that exists.
 
 4 pointer(s) name work that was RETIRED with a successor. REPORTED, never gated: ...
@@ -406,16 +415,33 @@ only), and seven CARRIED-3+-times instructions (a signal worth a human's
 attention, but not a failure). The check's exit code in this run is **0**,
 because only DANGLING gates it.
 
+**Every number in this block moved between the two verification passes this reference has had** —
+4,682 lines / 45 blocks / 218 pointers on 2026-09-13 versus 4,882 / 49 / 250 here — which is not a
+correction so much as the document living up to its own description: `reports/V2-HANDOVER.md` is
+prepended to on every write (§7.4), so re-running this worked example at any later date will print
+different numbers again, and that is the expected behaviour, not drift to chase.
+
 ## 7.4 Why `reports/V2-HANDOVER.md` is prepended to, and what that means for citations
 
-`reports/V2-HANDOVER.md` is a **historical, append-at-the-top document** — a
-real look at line 1 of the file confirms the newest block sits first:
+`reports/V2-HANDOVER.md` is a **historical, append-at-the-top document**. This is a *structural*
+property — every write inserts a new `##`/`###` block at the top of the file — and this chapter
+deliberately does **not** quote line 1's current content to demonstrate it: a previous version of
+this exact chapter did exactly that, pasting the newest block's heading verbatim, and by the time
+this pass re-read it the quoted heading named a state of the project three days gone and a section
+count that had grown from 45 to 49 — a live excerpt, frozen at the moment of writing, going stale
+inside the document that exists to describe that exact failure mode. Confirm the property yourself,
+which stays true regardless of what the top block currently says:
 
 ```
-## ⏭ 2026-09-12 — D41 CLOSED, 20 OF 25 DONE. `recall/2` IS RUNNING AND CLOSES D42. ...
+$ head -c 200 reports/V2-HANDOVER.md
 ```
 
-with 44 more `##`/`###` blocks following it, oldest last. Because every write
+will always print a line beginning `## ⏭` followed by a short, present-tense title — because the
+newest entry is always written there, never appended at the end. What the title *says* is not this
+chapter's business to assert; it changes on every handover write, sometimes within the same hour.
+
+with more `##`/`###` blocks following it, oldest last — 49 of them in total as of the worked
+example above (§7.3), and that count itself is a dated reading, not a constant. Because every write
 inserts a new block at the top, **every line number below it moves on the
 next write** — which is precisely why this document's own governing rule,
 [`RULE-a-citation-names-an-item-by-id-never-a-report-by-line-number`](../../.my_context/items/rule),
@@ -438,7 +464,7 @@ document is stale before the next commit.
   empty), so no real `--approve` review-form example could be captured
   without creating one — left undemonstrated rather than fabricated.
 - **`restore` does not cover the compaction boundary.** Delivery is excluded on
-  `manual`, `subagent` and `compacting` starts (`inject.ts:566–568`), so a
+  `manual`, `subagent` and `compacting` starts (`inject.ts:571–573`), so a
   session resumed after a compaction receives nothing from `restore`. This is
   the one place where the chapter's opening framing ("cleared **or** compacts")
   and the code disagree, and the code is right.

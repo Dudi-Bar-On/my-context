@@ -70,11 +70,15 @@ again even with anchors in it).
 ## 5.3 `origin: automatic` vs. `origin: owner`
 
 Every anchor row carries one of exactly two origin values — confirmed on this workspace's own
-636-line file:
+file, re-measured 2026-09-16 **at the same moment as the `kind` count below it**, so the two
+figures describe one file at one instant rather than two different days (a defect in an earlier
+version of this chapter, corrected here — see the note at the end of this section):
 
 ```
+$ wc -l .my_context/.anchors.jsonl
+1345 .my_context/.anchors.jsonl
 $ grep -o '"origin":"[a-z]*"' .my_context/.anchors.jsonl | sort | uniq -c
-    635 "origin":"automatic"
+   1344 "origin":"automatic"
       1 "origin":"owner"
 ```
 
@@ -93,17 +97,25 @@ direction: `apiAnchorMark` does not accept a `kind` or `origin` in the request b
 point marked by hand through the screen is unconditionally `kind: 'note'`, `origin: 'owner'` — so
 no request can forge a row that the automatic pass would later be entitled to erase.
 
-`kind` on this workspace's file, similarly real:
+`kind` on this same file, this same instant:
 
 ```
 $ grep -o '"kind":"[a-z_]*"' .my_context/.anchors.jsonl | sort | uniq -c
       1 "kind":"note"
-    299 "kind":"ruling"
-    336 "kind":"table"
+    442 "kind":"report"
+     40 "kind":"ruling"
+    862 "kind":"table"
 ```
 
-`note` is the default kind for a hand-marked anchor. `table` and `ruling` are the two grammars the
-automatic pass recognizes (§5.4) — and the one hand-marked anchor on this workspace is the `note`.
+1 + 442 + 40 + 862 = 1,345, matching the `origin` count and the file's own line count above —
+three readings of one file agreeing, which is the property the previous version of this section
+lacked (it paired a 2026-09-16 `kind` reading against a stale 2026-09-12 `origin` reading and a
+2026-09-13 line count from a different section, three different days inside one paragraph). (An
+earlier `kind` snapshot, 2026-09-13: 1 `note`, 299 `ruling`, 336 `table`, no `report` — see §5.4a
+below for why `report` exists at all now.) `note` is the default kind for a hand-marked anchor —
+but as of 2026-09-15 it is one of **six** a person may now choose, not the only one (§5.4b).
+`table`, `ruling` and **`report`** are the three grammars the automatic pass recognizes (§5.4) —
+and the one hand-marked anchor on this workspace is still the single `note`.
 
 ## 5.4 What "automatic by nature" means — the grammar, not a judgement
 
@@ -112,29 +124,130 @@ automatic pass recognizes (§5.4) — and the one hand-marked anchor on this wor
 > a lexical signal/noise classifier measured **AUC 0.499** on this corpus — a coin flip — and a
 > two-rule version of the best single feature still admitted 47% of the noise.
 
-Instead it runs two fixed, syntactic grammars over turn text, first match wins:
+**It runs three fixed, structural grammars over turn text, and — since `anchorsInTurn` was rewritten
+2026-09-16 — returns EVERY grammar that matches, not the first.** This is not a minor correction:
+an earlier version of this section said "first match wins," which was true before 2026-09-16 and
+is the exact behaviour §5.6a below (in the same chapter) describes being deliberately replaced. The
+function's own header states the current rule directly: *"EVERYTHING THAT MAKES THIS TURN AN
+ANCHOR BY NATURE — every grammar that recognises it, not the first one that does."* A turn can
+therefore carry a `table` mark and a `report` mark and a `ruling` mark at once, in principle, though
+the source notes the list "can hold at most two entries today" given what can co-occur in practice.
 
 1. **`table`** — the turn's text contains a GFM Markdown table: a delimiter row (all-dash cells,
    optional alignment colons) directly under a header row of the *same* cell count. The label is
    the first readable header cell (`tableLabel`), because the naive "whole header row joined"
    scheme produced 25 anchors literally labelled `|` before the owner's 2026-09-11 ruling fixed it.
-2. **`ruling`** — *only* in a `prompt` turn (something the owner said, never something an assistant
-   answered with, since assistants cite ids in nearly every turn) — text containing a normative
-   corpus id matching `\b(?:DEC|RULE|INSTR|STD|CONST|INV)-[a-z0-9]+(?:-[a-z0-9]+){3,}\b`.
-   `TASK-` and `REQ-` ids are deliberately excluded: this repository holds 728 `TASK-` items
-   against 94 `DEC-`, and including work ids would anchor nearly every working turn.
+2. **`report`** — a lane's FINAL answer, found *structurally* from `subagents` and the prose index
+   (which lane, which is its last turn), labelled with the lane's own mission — never by matching
+   text in the turn. See §5.4a: this is not the grammar that was withdrawn on 2026-09-11.
+3. **`ruling`** — **rewritten 2026-09-15, and the description below is of the CURRENT grammar, not
+   the one this section described until this repair.** The original detector matched a normative
+   corpus id (`\b(?:DEC|RULE|INSTR|STD|CONST|INV)-[a-z0-9]+(?:-[a-z0-9]+){3,}\b`) inside a `prompt`
+   turn. `anchor-pass.ts` now carries that detector's own obituary, in the past tense, with the
+   measurement that killed it: over all 10,836 prose spans of the owner's real archive, the id
+   grammar owned 377 of 1,164 marks and **marked zero turns he actually typed** — 296 of the 377
+   were this plugin's own `SubagentStart` injection block (which recites every governing item, so
+   it carries ids in bulk), and even a perfectly tightened version of the guard would have matched
+   nothing, because across 519 turns he typed over 13 days he named a normative id **zero times**.
+   **What ships now** is `ownerTyped(record)` — true only when a record's own `origin.kind ===
+   'human'`, i.e. the owner actually typed it, not a sidechain and not a meta record — combined
+   with a fixed word list read off his own real turns, `RULING_WORDS`:
+   ```
+   /\b(?:always|never|nevver|must|unacceptable|not allowed|forbidden|from now on|
+        i approve|i decide|the rule|this rule|a rule|standardi[sz]e)\b/i
+   ```
+   (`nevver` is his own spelling, kept because a list read off a real corpus carries what the
+   corpus holds.) A broader "modal" list (`should`/`i want`/`need to`/`do not`) was measured and
+   refused: it marks 143 of his turns at the *same* ~40% worth-having rate as the dumb baseline of
+   "250 characters with no keyword at all" — thin and precise beat wide and average.
 
-A **third grammar — `report`** (a dated path under `reports/` or `docs/superpowers/{specs,plans}/`)
-existed and was *withdrawn*. It had produced 101 of a first overnight run's 613 anchors; the owner
-read them on 2026-09-11 and ruled it marks "a turn that *mentions* a report, not a report" — not
-worth having. The regex and its two probes are gone, and the pass actively takes back any
-previously-written `report`-kind anchor it finds standing (§5.4, the sweep). This is a documented
-built-and-then-removed capability — see §5.7.
+`AUTOMATIC_ANCHOR_KINDS = ['table', 'ruling', 'report']` (`src/core/anchors.ts`) is the closed list
+these three write to, asserted disjoint from the owner's own vocabulary (§5.4b) so that
+reconciliation can never confuse a mark the pass made for one a person made.
 
-Cost containment: eight cheap substring "probes" (`|---`, `DEC-`, `RULE-`, etc., each capped at
-`ANCHOR_PROBE_LIMIT = 200` hits) narrow the prose-search index to candidates before the grammar is
-run over the full turn text — walking the whole ~875 MB archive on every pass would defeat the
-argument for running it at all.
+**Cost containment is two probes, not eight, and neither is `DEC-`/`RULE-` any more** — those went
+with the id grammar above. `ANCHOR_PROBES` (`src/core/anchor-pass.ts`), verified directly against
+source:
+```ts
+const ANCHOR_PROBES = [ { probe: '|---' }, { probe: '| ---' } ];
+```
+Both probes narrow the search index to *table*-shaped candidates only, each capped at
+`ANCHOR_PROBE_LIMIT = 200` hits. **The `ruling` grammar is no longer probed at all** — it now reads
+every `prompt` span of a session's own transcript directly, unranked and unbounded
+(`anchor-pass.ts`), because `ownerTyped` plus a word match is cheap enough per turn that the
+probe-then-grammar shape the `table` detector still needs was never required for it.
+
+## 5.4a `report` was withdrawn, and then a *different* `report` shipped
+
+A grammar named `report` **existed, was withdrawn, and then re-shipped as a different mechanism
+wearing the same word** — read the two halves as separate facts, because conflating them is the
+easiest way to get this subject wrong.
+
+**What was withdrawn, 2026-09-11.** A `report` anchor was originally a *dated path* under
+`reports/` or `docs/superpowers/{specs,plans}/`, matched as text inside a turn — the turn merely
+had to *mention* such a path. It produced 101 of a first overnight run's 613 anchors; the owner
+read them and ruled it marks "a turn that *mentions* a report, not a report" — not worth having.
+That regex and its two probes are gone, permanently, and the pass actively takes back any
+previously-written `report`-kind anchor it finds standing from that era, on every sweep.
+
+**What shipped in its place, 2026-09-15.** `src/core/anchors.ts`'s own header states this as
+directly as any comment in the codebase: *"`'report'` IS BACK, AND IT IS NOT THE ONE HE
+WITHDREW."* The word was re-spent on the *opposite* shape — a lane's own FINAL ANSWER, identified
+structurally from the `subagents` table and the prose index (which lane, and that this is its last
+turn), never by any text pattern. The mark sits *on* the report itself; nothing about the mechanism
+can fire on a turn that merely names or links to one, because no text is ever consulted to decide
+it. This is why the closed list above can hold `'report'` again without reviving the defect the
+owner ruled out: the two `report`s test for entirely different things, and the second one cannot
+reproduce the first's failure mode by construction.
+
+Re-measured 2026-09-16: `report` is now the **second most common kind on this workspace's own
+anchor file**, 440 of 1,342 rows (§5.3) — up from 192 of 432 lane-report turns being named `report`
+at all when the owner asked for this on 2026-09-15, to all of them.
+
+## 5.4b The owner's own vocabulary — six kinds a person may choose, not just `note`
+
+Until 2026-09-15 every hand-made anchor was forced to `kind: 'note'` — the only choice a person
+had was a label. The owner's question that changed it: *"does the user have the same input options
+so it will be documented it is marked anchores?"* He had made **one** mark in 750 at the time.
+
+`OWNER_ANCHOR_KINDS` (`src/core/anchors.ts`) is now a closed list of **six**:
+
+```
+note   decision   question   defect   evidence   todo
+```
+
+`note` stays first and stays the default, because it is what every pre-existing hand-made anchor
+already carried, and a vocabulary that invalidated the owner's one existing mark would be a poor
+way to give him five more. The list is closed rather than free text **on the owner's own ruling**:
+*"Any owner kind must sit OUTSIDE the automatic set (table, ruling[, report]) so reconciliation
+cannot confuse the two"* — a free-text kind typed as `table` would be an `origin: 'owner'` row
+wearing the automatic pass's own word for what it writes, readable as either by any later code that
+trusts `kind` without checking `origin` beside it. `isOwnerAnchorKind` is the guard, and
+`test/core/anchor-kinds.test.ts` holds the disjointness between the two lists directly.
+
+**`origin` still protects the row**, unchanged: the automatic pass skips every `origin: 'owner'`
+anchor whatever kind it carries — which is also why a relabel may leave an automatic row wearing its
+original `'table'`/`'ruling'`/`'report'` kind even after it becomes the owner's. The six-kind
+vocabulary is a second, independent guarantee, not a replacement for the first.
+
+**On the screen**, each of the nine possible kind strings (three automatic, six owner) resolves to
+one of three hue groups plus an unhued fourth. `ANCHOR_KIND_HUE`
+(`src/ui/public/screens/conversations.js`), read directly rather than paraphrased:
+
+```
+ruling: kindsettled     decision: kindsettled
+defect: kindowed        question: kindowed      todo: kindowed
+table:  kindfound       report:   kindfound     evidence: kindfound
+note:   null
+```
+
+So `ruling` and `decision` **share** the first group — an earlier version of this section said
+`decision` gets its own group, which both undercounts the group (leaving `ruling` unaccounted for)
+and overstates `decision`'s distinctiveness; `defect`/`question`/`todo` share a second; `table`/
+`report`/`evidence` share a third; `note` carries no hue at all. **No sixth meaning-colour was
+minted for this** (`DEC-the-meaning-hue-budget-is-five` is still five) — a hue says *posture*,
+never *which kind*, and the glyph plus the word say which kind, per the 2026-08-27 amendment quoted
+in chapter 15.
 
 ## 5.5 The id is derived from the position — never from a clock or a counter
 
@@ -166,11 +279,41 @@ refresh report; per the header, this was withdrawn once already for cost reasons
 was independently repaired — `test/core/anchor-per-turn.test.ts` measures the steady state directly
 rather than trusting the earlier claim.
 
+**"On the fly" was measured directly, 2026-09-16, and it holds — with one caveat that is not
+where the complaint about it pointed.** `reports/2026-09-16-marks-on-the-fly-measured.md` drove a
+real browser against a spare server for 31m 41s and timed every link from a store write to a
+repaint: the store's own `(present, bytes, mtimeMs)` token moves within 78–350 ms, the page
+refetches `/anchors` on the next `/tip` poll (`TIP_MS`, 1 Hz), and the visible count repaints
+267–674 ms after the store file changes — every main-document mark created in the validated window
+reached the open page unprompted, with no reload, and none was ever missed. **The actual delay
+people report is upstream of that path**: marks are **flushed to `.anchors.jsonl` in batches**, and
+a mark stamped when a table appeared was measured sitting unflushed in the writer for up to
+**5m 37s** before the store moved at all — so "nothing appeared" is usually "nothing was created
+yet" or "it is still sitting in the writer," not the reader failing to notice a write it already
+saw. The same report also found that **a UI server restart silently kills an open page's live
+updates** — the tab's token dies with the process, every `/tip` then fails, and the page keeps
+showing its last count with nothing on screen saying so — which is a plausible reader-facing
+explanation for "marks stopped updating" that has nothing to do with the flush delay above.
+
 **Path 2 — one catch-up run.** `mycontext conversation rebuild` calls `markAutomaticAnchors`
 unscoped — every probe, every one of the pass's own previously-marked rows re-read at its own byte
 — which is the run a *changed grammar* (a code change, not a new turn) needs in order to trim
 stale anchors. Measured on this workspace: ~550 ms in steady state (574 probe candidates + 621 of
 the pass's own rows, each a seek).
+
+**The first run over a workspace's archive is a different act, and it asks first.** Nobody starts a
+project with this plugin already installed — the ordinary case is months of Claude Code sessions
+already on disk, and `conversation rebuild` is the door those pre-existing conversations come
+through. Measured on a foreign archive the day this shipped (2026-09-16) — 13,375 turns, 575 lanes
+— that door would mark **1,213 points in one act**, and §5.3's own measurement is that even 1,342
+marks is already enough to make the rarer kinds hard to find by scrolling. So `automaticAnchorsStanding(index) === 0` is
+detected as "this is a first run," and only a first run **plans before it writes**: it composes the
+same report a real run would produce, discloses it in full (every line, before the write, including
+on `--json` — as the `plan` field rather than a sentence a machine reader would never see), and then
+asks for consent to proceed. `--plan` asks the identical question at any time and never writes,
+whether or not this is a first run. Every later run is incremental and small enough that re-asking
+would be a prompt nobody reads, which is the argument `automaticAnchorsStanding` exists to make —
+the consent gate is deliberately a first-run-only cost, not a permanent tax on the command.
 
 **Path 3 — by hand.** A person marks a point directly, two ways:
 - **CLI**: `mycontext conversation anchor <session> <byte> --label "<why>"` (see §5.8).
@@ -188,13 +331,53 @@ impossible rather than merely discouraged — a caller that got this wrong would
 bookmark at the very next reconciliation. This is asserted, not just designed: `test/ui/anchor-write-route.test.ts` runs a whole anchor round trip through the UI routes and checks
 that **every byte of the corpus except the anchors document and the index** is untouched.
 
+## 5.6a A turn can wear two marks — one turn, two rows, one stop
+
+Shipped 2026-09-16, closing an open question the owner answered by rejecting the question as
+posed. Asked which grammar should win when one turn qualifies as both a `table` and a lane's
+`report`, he ruled: *"table & report - if required make them 2 different anchor types with 2
+distinguished marks."* Neither branch on offer was a precedence rule; he chose to keep both.
+
+**The key.** An anchor row is keyed by `(sessionId, agentId, byteOffset)` (`anchorIdFor`), which is
+what makes marking idempotent by construction — the same point marked twice produces the same row,
+never a duplicate. A second mark at an already-owned point needed a second id without changing what
+the first one means, so `anchorIdBeside(sessionId, agentId, byteOffset, kind)` — the same string
+with `#<kind>` appended — names the *other* mark at that point. `anchorIdFor` itself is untouched:
+it still names whichever mark **owns** the point, which is what lets an unrelated surface (a search
+hit asking "is this point already marked") keep deriving an id from a byte offset alone, with no
+need to know what kind of mark might be there.
+
+**What it costs, and why it is purely additive.** The table grammar keeps first claim on the bare
+id — 861 turns already carried a judged-good table mark at the point's own id when this shipped —
+so adding the report grammar beside it gained rows and rewrote none: **+240 rows, 0 rewritten**, on
+this workspace's own archive the day it landed (measured again 2026-09-16: 861 `table` + 440
+`report`, up from 336/192 respectively on 2026-09-13's mixed grammar).
+
+**The count stays honest about what changed.** A turn with two marks counts **once** in "N marked
+point(s) here" — the stepper's job is "take me to the next *place*," and it must never land on the
+same turn twice without saying why. The marks *list*, by contrast, counts rows, and the two numbers
+can now differ: the screen discloses exactly that, *"{n} of them carry two marks,"* drawn only when
+non-zero, rather than leaving a reader to notice a mismatch between two screens by comparing them
+by hand. Under a kind filter the two numbers converge again — narrowed to `report`, every stop
+shows one mark of that kind and the count is a count of marks once more.
+
+**The trade, both halves, stated rather than only celebrated.** `report` goes from naming a minority
+of lane-report turns (192 of 432, 44%) to naming all of them (100%), and `table`'s share of the
+unfiltered marks list falls from 78% to roughly two-thirds. What gets worse: an unfiltered scroll of
+the marks list is longer by exactly the number of doubled turns, so the rarest kinds (`ruling`,
+`note`) are a smaller share of it than before — the kind filter, which is the actual tool for
+finding a rare kind, is unaffected. **The document itself gains zero new stops**: every doubled
+turn already had a stop at that point, so nothing new appears to scroll past.
+
 ## 5.7 What's NOT built / built but off
 
-- **The `report` grammar is built-then-removed**, not merely never-built — a documented case of the
-  project measuring a feature, shipping it, watching it produce 101 useless bookmarks in one night,
-  and deliberately deleting the regex and its probes rather than tuning them (§5.4). `test/cli/anchors.test.ts` holds the removal from both directions (the grammar answers `null` for a
-  report-shaped path; a rebuild over a fixture naming two such paths writes no anchor at either
-  byte) — specifically so a probe restored without its regex, or vice versa, would be caught.
+- **The original text-matching `report` grammar remains built-then-removed and stays gone** — a
+  documented case of the project measuring a feature, shipping it, watching it produce 101 useless
+  bookmarks in one night, and deliberately deleting the regex and its probes rather than tuning
+  them (§5.4a). `test/cli/anchors.test.ts` holds *that* removal from both directions. **A different
+  `report` grammar, structural rather than text-matching, shipped 2026-09-15 and is very much
+  built** — see §5.4a. Do not read "report is built-then-removed" as still true of the kind name
+  itself; it is true only of the specific text-matching mechanism that once wore it.
 - **No scoring/ML classification** for what counts as an anchor — ruled out on measured evidence
   (AUC 0.499), not merely undone; see §5.4.
 - **No anchor ordinal is reported.** `resolveAnchor` deliberately answers only "the record at this
@@ -217,8 +400,17 @@ that **every byte of the corpus except the anchors document and the index** is u
   (`src/ui/read-model-retrieval.ts:105`, with the fixed-point handling at `:517`). It is reachable
   **only from the retrieval surface** — not from `mycontext conversation anchor`, which lists the
   file. See [06 — Retrieval](./06-retrieval.md).
-- **The anchor count moves constantly** — 636 on 2026-09-12, 715 on 2026-09-13, because the
-  automatic pass runs every turn. Read any figure in this chapter as a dated reading.
+- **The anchor count moves constantly** — 636 on 2026-09-12, 715 on 2026-09-13, 1,342 on
+  2026-09-16, because the automatic pass runs every turn and a new automatic grammar (`report`,
+  §5.4a) landed in between. Read any figure in this chapter as a dated reading.
+- **The writer batches its flush, and that is the actual "on the fly" delay** (§5.6, Path 1) —
+  measured up to 5m 37s from a turn being written to its anchor reaching `.anchors.jsonl`, against
+  a reader-facing repaint of well under a second once the store does move. A future lane shortening
+  "as soon as they are created" has this number to beat, not the read path, which was directly
+  measured and cleared.
+- **A UI server restart silently kills an open page's live anchor updates** (§5.6, Path 1) — the
+  tab's token dies with the process, `/tip` then fails on every poll, and nothing on screen says
+  so. Filed as a defect, not fixed here.
 
 ## 5.8 Worked examples
 
@@ -234,11 +426,11 @@ the code's own comment, "marking a bookmark is not a way to turn the archive on.
 ```
 $ mycontext conversation anchor --find "D42"
 ```
-Searches anchor *labels* only — a different question from searching the archive's **prose**, which
-(chapter 4) has **no CLI surface at all**: `searchArchive` is reachable from the Conversations
-screen in the web UI and from the automatic pass, and `mycontext conversation` has no `search`
-subcommand. `--find` is therefore the only text query over the archive a terminal offers, and what
-it matches is the label a person wrote, not the transcript.
+Searches anchor *labels* only — a different question from searching the archive's **prose**.
+Until 2026-09-16 that prose search had no CLI surface at all; `mycontext conversation search`
+(chapter 14) now reaches it directly. `--find` remains a genuinely different tool even so: it
+matches the label a *person* wrote, not the transcript, and it exists to *place or locate a
+bookmark* rather than to return a ranked result set.
 
 **Mark one by hand:**
 ```
@@ -256,16 +448,21 @@ $ mycontext conversation anchor --drop <anchor-id>
 ```
 
 **Use case.** Mid-session, the owner is told the archive holds a ruling he gave weeks ago about a
-budget number. He finds the turn by searching the archive's prose **on the Conversations screen** —
-that search has no CLI form — and rather than re-running it every time it matters, he anchors the
-exact byte with a label. From then on `mycontext conversation anchor --find "budget"` takes him
-straight back **from a terminal**, without re-walking the transcript or re-trusting search ranking
-to surface the same hit twice. That asymmetry is the practical value of an anchor: it is the one
-handle on the archive that both surfaces can hold.
+budget number. He finds the turn by searching the archive's prose — on the Conversations screen, or
+now from a terminal with `mycontext conversation search "budget"` (chapter 14) — and rather than
+re-running that search every time it matters, he anchors the exact byte with a label. From then on
+`mycontext conversation anchor --find "budget"` takes him straight back **from a terminal**,
+without re-walking the transcript or re-trusting search ranking to surface the same hit twice.
+That is the practical value of an anchor even now that both surfaces can search: a search re-ranks
+as the archive grows, and an anchor is a fixed point that does not move under it.
 
 ## See also
 
 - [00 — Index](./00-index.md)
+- [14 — Search over the archive](./14-search-over-the-archive.md) — the query grammar the automatic
+  pass's probes are built on, and the CLI's own `conversation search`
+- [15 — The document and lane viewer](./15-document-and-lane-viewer.md) — the marks-in-the-margin
+  and take-back controls this chapter's mechanism draws on screen
 - [04 — The conversation archive](./04-conversation-archive.md) — what the transcripts an anchor
   points into actually are, and how prose search finds candidates for the automatic pass.
 - [06 — Retrieval](./06-retrieval.md) — how a pasted passage is reconstructed back to a source,

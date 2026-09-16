@@ -19,15 +19,34 @@ This is enforced, not just argued: `src/rules/` is permitted to import exactly o
 Run directly against this repository:
 
 ```
-$ wc -c src/rules/entries/*.md | tail -1     # 2026-09-13; it was 23,101 on 2026-09-12
-32516 total
+$ wc -c src/rules/entries/*.md | tail -1     # 2026-09-16; it was 32,516 on 2026-09-13 and 23,101 on 2026-09-12
+41955 total
 $ ls src/rules/entries/*.md | wc -l
-15
+16
 ```
 
-**Fifteen entries, 32,516 bytes, as of 2026-09-13** — one `product` and fourteen `developer`. The store grew by three that day (`72584fd0`, 20:21, "three lessons enter the product"): `a-fixture-must-not-be-what-makes-a-proof-pass`, `a-gate-that-cannot-be-shown-to-fail-is-not-a-gate` and `a-scanner-names-what-it-skips-not-what-it-scans`, all `standard`/`developer`. `mycontext rules list` confirms fifteen live. Read the count as a dated reading: this store is small enough that one owner ruling moves it.
+**Sixteen entries, 41,955 bytes, as of 2026-09-16** — one `product` and fifteen `developer`. Fifteen
+entries was the 2026-09-13 count (three had landed that day, `72584fd0`, 20:21, "three lessons
+enter the product": `a-fixture-must-not-be-what-makes-a-proof-pass`,
+`a-gate-that-cannot-be-shown-to-fail-is-not-a-gate` and
+`a-scanner-names-what-it-skips-not-what-it-scans`, all `standard`/`developer`). A sixteenth landed
+2026-09-15: `nothing-to-do-and-could-not-look-are-different-answers` (`standard`/`developer`) — the
+rule that a step able to decide "there is no work" must also be able to say "I could not look",
+and the two must never share a return value. Its own `example` field is the incident that produced
+it: the per-turn anchor pass (chapter 5) went quiet for half an hour on 2026-09-15 because a
+probe's own `capped` field — set the day the pass was written — had never once been read.
+`mycontext rules list` confirms sixteen live. Read the count as a dated reading: this store is
+small enough that one owner ruling moves it.
 
-`src/rules/store.ts` (136), `src/rules/deliver.ts` (659) and `src/rules/delivered.ts` (384) are **1,179 lines** of loader/renderer/ledger code around those fifteen small Markdown files; `manifest.ts` (645) and `schema.ts` (432) bring the directory to 2,256.
+`src/rules/store.ts` (155), `src/rules/deliver.ts` (785) and `src/rules/delivered.ts` (430) are
+**1,370 lines** of loader/renderer/ledger code around those sixteen small Markdown files, re-counted
+2026-09-16 (an earlier version of this sentence gave 136/659/384 = 1,179, which had drifted);
+`manifest.ts` (493, not the 645 an earlier draft carried — see why below) and `schema.ts` (432)
+bring the running total to 2,295. **The directory also holds `integrity.ts` (243 lines)**, which
+this chapter's own manifest-seal section below explains was split *out of* `manifest.ts` — exactly
+why `manifest.ts` shrank from 645 to 493 between the two readings. Including it, the directory is
+**2,538 lines** in total, not the 2,256 an earlier pass stated (which both used the stale
+`manifest.ts` figure and omitted `integrity.ts` entirely).
 
 ## The schema: five kinds, and the template *is* the schema
 
@@ -80,11 +99,11 @@ The filter itself lives in the loader:
 if (parsed.tier === 'developer' && !workspaceIsMyContext) continue;
 ```
 
-Of the fifteen shipped entries, **exactly one** (`an-unknown-category-means-a-possible-wrong-corpus`, a `fact`) is `product`; the other **fourteen** are `developer`. So in any ordinary consumer project, exactly one entry is ever in force; in this repository, all fifteen are. Confirmed live, 2026-09-13:
+Of the sixteen shipped entries, **exactly one** (`an-unknown-category-means-a-possible-wrong-corpus`, a `fact`) is `product`; the other **fifteen** are `developer`. So in any ordinary consumer project, exactly one entry is ever in force; in this repository, all sixteen are. Confirmed live, 2026-09-16:
 
 ```
 $ node src/cli/index.ts rules list
-my_context rules — 15 entry(s) in force here. This workspace IS my_context, so developer-tier
+my_context rules — 16 entry(s) in force here. This workspace IS my_context, so developer-tier
 entries apply too.
 ```
 
@@ -112,7 +131,7 @@ Both limits below were real and are recorded as they were, because the repair is
 
 **It used to be that nothing consulted the manifest unless a person asked it to.** `verifyManifest` had exactly one caller in `src/` outside the maintenance-only `assertStoreWritable`/`writeEntry` pair — `cmdRulesVerify`, a CLI command a person chooses to run. No hook, no door, no `doctor` check and no CI step consulted it, and `loadRules` `readdirSync`s the entries directory and still never asks the manifest, so **any `.md` dropped into `src/rules/entries/` was parsed and delivered as a governing constant** with nothing said about it. Report 6 proved it in a scratch copy: `verifyManifest` reported `evil.md` as `unexpected` and `loadRules` delivered it (`store/6`).
 
-**What changed is the door, not the read path.** `deliverAtDoor` now calls `renderStoreIntegrity(dir)` (`src/rules/deliver.ts`) and prepends the result, so every session start, compact-restore and subagent start is told when the entries it is being handed disagree with the manifest — named file by file, the way `renderRefusals` already names an entry that did not load. **Disclosing is not blocking, and the ruling above is untouched**: every entry still loads and is still delivered, unexpected ones included, because *"blocking reads punishes a user for a damaged install they can still recover from."* `loadRules` still never calls `verifyManifest`. Cost on the shipped 15-entry store: **p50 1.74 ms, p95 2.77 ms** per door.
+**What changed is the door, not the read path.** `deliverAtDoor` now calls `renderStoreIntegrity(dir)` (`src/rules/deliver.ts`) and prepends the result, so every session start, compact-restore and subagent start is told when the entries it is being handed disagree with the manifest — named file by file, the way `renderRefusals` already names an entry that did not load. **Disclosing is not blocking, and the ruling above is untouched**: every entry still loads and is still delivered, unexpected ones included, because *"blocking reads punishes a user for a damaged install they can still recover from."* `loadRules` still never calls `verifyManifest`. Cost on the shipped 15-entry store: **p50 1.74 ms, p95 2.77 ms** per door (measured 2026-09-14, against the store as it stood that day; not re-measured for this pass, and the store has since grown to 16 entries).
 
 That required splitting `src/rules/integrity.ts` out of `manifest.ts`. `test/rules/budget.test.ts` forbids `store.ts` and `deliver.ts` from reaching the module that holds the budget — *"a user's install NEVER refuses on size"* — and while verification lived beside the budget, that gate also forbade a door from ever asking whether its entries were the ones that shipped. Reading the manifest is a read a door may do; the budget, the publish step and every write stay in `manifest.ts` and stay unreachable from delivery. The gate is unchanged, still passes, and now also names the budget **symbols**, so moving them into `integrity.ts` would fail rather than go quiet.
 
@@ -151,11 +170,11 @@ src/hooks/subagent-start.ts:316:    const store = deliverAtDoor({...
 
 The `Door` type itself (`src/rules/delivered.ts:165`) is a closed union — `'session-start' | 'compact-restore' | 'subagent-start' | 'manual'` — and its comment states outright: *"`pre-compact` is NOT here, and its absence is a measurement rather than an oversight."*
 
-**`'manual'` is a member of the type that nothing in the product ever writes.** `deliverAtDoor` has exactly two callers in `src/` and neither can emit it: `session-start.ts:131` emits `'compact-restore' | 'session-start'`, `subagent-start.ts:318` emits `'subagent-start'`. No delivery row in `.rules/delivered.jsonl` has ever carried `door: 'manual'` from a product path. (The `'manual'` that *does* fire is `core/inject.ts`'s **corpus injection event** — a different mechanism, a different type, and the `/LoadMyContext` skill reaches that one, not this.) The union member is reserved surface, not a described behaviour.
+**`'manual'` is a member of the type that nothing in the product ever writes.** `deliverAtDoor` has exactly two callers in `src/` and neither can emit it: `session-start.ts:134` emits `'compact-restore' | 'session-start'`, `subagent-start.ts:319` emits `'subagent-start'`. No delivery row in `.rules/delivered.jsonl` has ever carried `door: 'manual'` from a product path. (The `'manual'` that *does* fire is `core/inject.ts`'s **corpus injection event** — a different mechanism, a different type, and the `/LoadMyContext` skill reaches that one, not this.) The union member is reserved surface, not a described behaviour.
 
 **Assertion** (`assertDoor` → `assertDelivered`, `src/rules/delivered.ts`) does not deliver anything. It checks whether the current session/subagent key already has a recorded delivery row in the ledger, and if not, produces a "missed door" sentence. It is called from exactly two places:
-- `pre-compact.ts:219` — right before a compaction, to catch a session that somehow never got its opening delivery.
-- `pre-tool-use.ts:703` — the earliest hook that runs *after* every door. **Not on every tool call**: `PreToolUse` is registered in `hooks/hooks.json` with matcher `Read|Edit|MultiEdit|Write|NotebookEdit|Agent`, so it fires on six tool names. A `Bash` call does not reach it.
+- `pre-compact.ts:225` — right before a compaction, to catch a session that somehow never got its opening delivery.
+- `pre-tool-use.ts:708` — the earliest hook that runs *after* every door. **Not on every tool call**: `PreToolUse` is registered in `hooks/hooks.json` with matcher `Read|Edit|MultiEdit|Write|NotebookEdit|Agent`, so it fires on six tool names. A `Bash` call does not reach it.
 
 **Where the "missed door" sentence goes is not into the model's context.** `pre-tool-use.ts:741` writes it with `process.stderr.write` — it is addressed to the person at the terminal, not to the agent, which is why a missed door is a thing a human notices rather than a thing a session is told.
 
@@ -204,12 +223,15 @@ The reasoning, from `deliver.ts`'s comment: a `developer`-tier entry is only eve
 | 4 | 2026-09-11 08:40 | three corpus items retired and promoted into the store: the unknown-category fact, the never-write-the-shared-tree prohibition, and the commit-by-pathspec prohibition |
 | 5 | 2026-09-11 09:50 | provenance moved from prose in the body into the dedicated `movedFrom`/`movedOn` fields, and disclosure restricted to the developer tier (the ruling described above) |
 
-**The changelog does not reconstruct the store, and the gap is not a rounding error.** Replaying every `added` list from empty, in order, yields **11** entries against a directory of **15**. Four entries appear in no `added` list, ever:
+**The changelog does not reconstruct the store, and the gap is not a rounding error — and it has widened since 2026-09-13.** Replaying every `added` list from empty, in order, yields **11** entries that still exist in the current directory of **16** (computed 2026-09-16 by walking `manifest.json`'s own `store.changelog` and `entries` arrays — the raw `added` set actually contains 12 distinct strings, but one of them, `def-lane`, is the pre-rename name from v1 and no longer names any file in `src/rules/entries/`, since v3 renamed it to `def-a-lane`; counting it as a reconstructed entry would be counting a name that does not exist today). Five entries appear in no `added` list, ever:
 
 - `numbered-options-on-a-question-put-to-the-owner` — present under v1's `changed`, never under an `added`. (The row-1 gloss "the numbering standard, plus 8 `def-*` definitions" is what conceals this: the numbering standard is the entry, and it is not in v1's `added`.)
-- `a-fixture-must-not-be-what-makes-a-proof-pass`, `a-gate-that-cannot-be-shown-to-fail-is-not-a-gate`, `a-scanner-names-what-it-skips-not-what-it-scans` — added by `72584fd0` on **2026-09-13**, which updated `manifest.json`'s `entries` (and therefore its checksums — `rules verify` passes) but added **no changelog row**. The store still publishes itself as version 5.
+- `a-fixture-must-not-be-what-makes-a-proof-pass`, `a-gate-that-cannot-be-shown-to-fail-is-not-a-gate`, `a-scanner-names-what-it-skips-not-what-it-scans` — added by `72584fd0` on **2026-09-13**, which updated `manifest.json`'s `entries` (and therefore its checksums — `rules verify` passes) but added **no changelog row**.
+- `nothing-to-do-and-could-not-look-are-different-answers` — added **2026-09-15**, same pattern: `entries` grew, `store.changelog` did not.
 
-So `manifest.json` has two halves that answer different questions, and only one of them is current: `entries` (15, checksummed, correct) and `store.changelog` (5 versions, 11 reconstructible entries, behind). A reader treating the changelog as the store's history will be missing four entries and one version bump.
+The store still publishes itself as **version 5**, unchanged since 2026-09-11 09:50, through two more days of real growth.
+
+So `manifest.json` has two halves that answer different questions, and only one of them is current: `entries` (16, checksummed, correct) and `store.changelog` (5 versions, 11 reconstructible entries, behind). A reader treating the changelog as the store's history will be missing five entries and at least one version bump — and the gap grew by one entry between this reference's two most recent audits (2026-09-13 → 2026-09-16), which is itself evidence that nothing regenerates the changelog automatically and nothing gates it against drifting further.
 
 ## `mycontext rules verify|list|show` — the CLI surface
 
@@ -380,9 +402,20 @@ Already quoted in full above. Notable as the store's own self-measurement: over 
 - The corpus's own tooling (`doctor`, `list`, `ready`, decay, the injection selector) is *deliberately* built to know nothing about this store at all — this is not a gap, it is the isolation the whole design argues for, and `test/rules/isolation.test.ts` exists specifically to keep it that way.
 - ~~**Nothing verifies the seal automatically**~~ — **closed 2026-09-14 (`store/6`)**: every door now calls `renderStoreIntegrity` and names an unlisted or altered entry in the block it delivers. `loadRules` still never asks the manifest, and an unlisted `.md` is still DELIVERED — disclosing is not blocking — but it is no longer delivered silently. Still open: **nothing runs `mycontext rules verify` as a gate** — not a hook, not `doctor`, not CI. That half belongs to the "gate that is not a gate" subject (**D71**) and to `doctor`, whose `checks.ts` was another lane's this afternoon.
 - ~~**`rules verify --restore` is unreachable code**~~ — **reachable as of 2026-09-14 (`store/8`)** whenever `MYCONTEXT_RULES_DIR` names a store other than the package's. `StoreDamagedError`'s remedy can now fire; for a damaged *installed* store the answer is still to reinstall, and the command says so.
-- **There is no MCP path to the rule store at all** — `rules verify|list|show` are CLI-only. That matters more than it sounds, because the "missed door" sentence is text written *for a model* and it tells the reader to run `mycontext rules list`; an agent that only has tool calls cannot follow its own remedy. (And that sentence goes to **stderr**, to the person, not into the model's context — `pre-tool-use.ts:741`.)
+- ~~**There is no MCP path to the rule store at all — `rules verify|list|show` are CLI-only.**~~
+  **False, and corrected 2026-09-16.** `list_rules` and `verify_rules` are real, registered MCP
+  tools (`src/mcp/tools/rule-store.ts`), and `list_rules(id)` specifically covers `rules show` as
+  well as `rules list` — see [chapter 9](./09-cli-and-mcp.md), which carried the identical error
+  twice and is corrected there too. What *is* still true, and is the genuinely narrower version of
+  this bullet: **`--restore` has no MCP equivalent**, excluded by name from `verify_rules`'s
+  schema rather than by omission. The "missed door" sentence is still text written *for a model*
+  and still tells the reader to run `mycontext rules list` at a shell rather than naming
+  `list_rules` — that half of the original point survives: an agent that reads the sentence and
+  has only tool calls available still has to translate it, even though a tool exists that would
+  serve the same answer. (That sentence goes to **stderr**, to the person, not into the model's
+  context — `pre-tool-use.ts:741`.)
 - **The delivered block omits the tier that `rules show` prints** (`deliver.ts:200`), so a reader of a delivery cannot tell a `product` constant from a `developer` one.
-- ~~**Store version and changelog are readable only from `src/ui/maintenance/`**~~ — **closed 2026-09-14 (`store/9`)**: `rules verify` and `rules list` print the version, the publish date and the latest changelog note, and both carry `storeVersion`/`publishedAt` in `--json`. The maintenance tool's exclusion is untouched, which is the point — the repair was a shipped surface, not a smaller exclusion. **Still true and not fixed here:** the changelog is four entries and one version behind the directory (`store/10`), so a reader who now CAN consult it is consulting something stale.
+- ~~**Store version and changelog are readable only from `src/ui/maintenance/`**~~ — **closed 2026-09-14 (`store/9`)**: `rules verify` and `rules list` print the version, the publish date and the latest changelog note, and both carry `storeVersion`/`publishedAt` in `--json`. The maintenance tool's exclusion is untouched, which is the point — the repair was a shipped surface, not a smaller exclusion. **Still true and not fixed here:** the changelog is five entries and at least one version behind the directory as of 2026-09-16 (`store/10`; it was four entries behind on 2026-09-13 — see "The full manifest changelog" above), so a reader who now CAN consult it is consulting something stale, and the gap is actively widening rather than fixed at four.
 - **`RuleSet.refused` rendering** — what a consumer actually sees when an entry fails to parse — is not described in this chapter.
 - **`def-a-door`'s own `means` names `PreCompact` as a door**, and the code excludes it from `Door` and asserts there instead. This chapter cites `def-a-door` twice as the authority for the delivery/assertion split it contradicts. That is a constant and an implementation disagreeing about the product's own vocabulary; it needs an owner ruling, and [chapter 2](./02-injection.md) names it too rather than either chapter picking a side.
 

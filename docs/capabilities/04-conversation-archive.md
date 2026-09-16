@@ -13,7 +13,7 @@ archive": `REQ-the-conversation-archive-is-a-terminal-you-can-scroll-not-a` stat
 is held to — a terminal the owner can scroll and search, not a black box he has to `grep` by hand.
 
 The reason this is worth a whole subsystem rather than "search the files with `grep`": the archive
-is Hebrew from early on — "Hebrew from record 5", `src/core/conversation-index.ts:317` — it is huge
+is Hebrew from early on — "Hebrew from record 5", `src/core/conversation-index.ts:333` — it is huge
 (one live session here measured **106,591,470 bytes / 43,854 records on 2026-09-11**, and a live
 session only grows: the same `sessionId` was past 112 MB and 45,900 records two days later, so
 treat every figure in this chapter's live blocks as a dated reading and not as current state), and
@@ -36,13 +36,42 @@ branch      : master   cwd: D:\Users\UserC\source\repos\my-context
 title       : "MyContext V2.0"   titleSource: custom
 ```
 
-Every record is classified by `classifyTurn` (`src/core/conversation-index.ts:1390`) into
+Every record is classified by `classifyTurn` (`src/core/conversation-index.ts:1658`) into
 `prompt`, `answer`, or `machinery` — the same thirteen lines the list screen's own counts rest on,
 reused rather than re-implemented so "what counts as noise" cannot mean two different things on two
-screens. Only `prompt` and `answer` text is indexed for search. Measured on this workspace on
-2026-09-11, across 2 sessions and 298 lane transcripts: **856,905,563 bytes of transcripts on disk,
-162,611 records, and only 8,402,679 bytes (7,750 spans, 0.98%) is prose** — which is why full-text
-indexing the archive is not a performance problem here.
+screens. Measured on this workspace on 2026-09-11, across 2 sessions and 298 lane transcripts:
+**856,905,563 bytes of transcripts on disk, 162,611 records, and only 8,402,679 bytes (7,750
+spans, 0.98%) was prose** — which is why full-text indexing the archive was not a performance
+problem here.
+
+**That figure is dated, and it changed shape on 2026-09-16, not just size.** Until that day the
+prose index held exactly two span kinds, `prompt` and `answer` — "what was said" — and everything
+`classifyTurn` calls `machinery` (tool calls, their results, and the model's own `thinking`) was
+outside every index, at any scope. A third kind, `'ran'`, now indexes `tool_use` blocks — a tool's
+name and its arguments, rendered as `key: value` lines and capped at 2,000 characters per argument
+— beside the two that were always there. Re-measured on this workspace's real archive the same day
+(474 transcripts, 1,269,256,560 bytes): **13.58 M searchable characters widened to 43.87 M, 3.2x**,
+and the reader now chooses `said` (the default — `prompt` + `answer`, unchanged from before this
+date), `ran` (the new kind), or `both`. `tool_result` and `thinking` (16.4% of the archive's
+characters on its own) remain entirely unindexed, at any scope, and every search answer says so.
+`tool_result`'s own share — a separate figure from `thinking`'s 16.4% — is stated two different
+ways by the product's own source; see the note immediately below.
+
+**The product's own source disagrees with itself about `tool_result`'s share, and this reference
+follows the more precisely sourced figure rather than silently picking one.** `tool_result`'s
+docblock in `conversation-index.ts` (near line 316) states it as **78.9%**, asserted with no
+script cited. `conversation-search.ts` (near line 78) states **67.0%**, explicitly measured by
+`scripts/measure-tool-indexing.ts` against this workspace's archive on 2026-09-16 and reproduced
+in `reports/2026-09-16-indexing-what-was-done.md` §2 with the full character breakdown by block
+type. This chapter and chapter 14 both use **67.0%**, because it is the figure with a re-runnable
+measurement behind it; `conversation-index.ts`'s `78.9%` looks like an earlier or looser estimate
+that was never reconciled with the later, precise one. This is a real inconsistency inside the
+product's own source comments, not a copying error in this reference — flagged here rather than
+quietly resolved, because picking a side without saying so would be exactly the kind of silent
+correction this reference exists to refuse.
+
+[Chapter 14 — Search over the archive](./14-search-over-the-archive.md) is the whole mechanism;
+this chapter keeps the indexing/classification story and defers the query grammar to it.
 
 Subagent ("lane") transcripts live one level down, under a `subagents/` folder keyed by the
 session id. `conversation subagents --json` returns one row per lane, e.g.:
@@ -88,9 +117,10 @@ CREATE VIRTUAL TABLE IF NOT EXISTS conversation_prose USING fts5(
 );
 ```
 
-(`src/core/conversation-index.ts:459–468`). Node 24 bundles SQLite 3.51.2 with `ENABLE_FTS5`,
+(`src/core/conversation-index.ts:473–483`). Node 24 bundles SQLite 3.51.2 with `ENABLE_FTS5`,
 `bm25()`, porter *and* trigram tokenizers built in, and `node:sqlite` was already imported in
-~14 files — so full-text search over the archive is a `CREATE VIRTUAL TABLE` and nothing else,
+16 files (re-counted 2026-09-16: `grep -rl node:sqlite src/`) — so full-text search over the
+archive is a `CREATE VIRTUAL TABLE` and nothing else,
 which is what lets it exist under `CONST-zero-runtime-dependencies` and `CONST-node-24-no-build-step`
 without adding a dependency or a build step.
 
@@ -136,47 +166,68 @@ are obeyed as literal text rather than parsed as query syntax — a reader typin
 literal-text match, not an `fts5: syntax error`. Because the tokenizer is `trigram`, a quoted phrase
 search is a genuine contiguous-substring match, which is exactly the property the Hebrew case needs.
 
-**How you actually reach it — and it is not the CLI.**
+**How you actually reach it.**
 
-This is the sharpest asymmetry in the product, and it needs saying plainly: **there is no CLI path
-to FTS5 archive search at all.** `mycontext search` searches the *Markdown item corpus* only —
-`src/cli/commands/search.ts` imports `filterItems` from `core/search.ts` and never imports or
-calls `searchArchive`. And `mycontext conversation`'s own `USAGE` (`src/cli/commands/conversation.ts:59–67`)
-has no `search` subcommand: its eight subcommands are `rebuild`, `list`, `subagents`, `secrets`,
-`persist`, `name`, `anchor`, `forget`.
+**This asymmetry was real through 2026-09-13 and it is fixed now: `mycontext conversation search`
+exists.** Until 2026-09-16 there was no CLI path to FTS5 archive search at all — `mycontext search`
+reached only the Markdown item corpus (`src/cli/commands/search.ts` imported `filterItems`/
+`searchItems` from `core/rank.ts`/`core/search.ts` and never touched the archive), and
+`mycontext conversation`'s `USAGE` had no `search` subcommand. **That has shipped.** Confirmed live
+against this repository:
 
-`searchArchive` (`src/core/conversation-search.ts`) has **zero callers under `src/cli/`**. Its
-callers are:
+```
+$ node src/cli/index.ts conversation search "byte offset" --sources ran --limit 3
+```
 
-- `src/core/anchor-pass.ts:456` — the per-turn automatic anchor pass (chapter 5);
-- `src/ui/read-model-conversations.ts:2109` — the Conversations screen's search box;
-- `src/ui/read-model-retrieval.ts:371` — subject reconstruction (chapter 6).
+`src/cli/commands/conversation.ts:58` now lists nine subcommands — `rebuild`, `list`, `subagents`,
+`secrets`, `persist`, `name`, `anchor`, `forget`, **`search`** — and `searchArchiveTiered`
+(`core/conversation-search.ts`) has a real CLI caller for the first time.
+[Chapter 14 — Search over the archive](./14-search-over-the-archive.md) is the full grammar: three
+readings of one query (phrase, near, both), the `said`/`ran`/`both` sources switch described
+above, the three-character floor, `-word` exclusion, and the ranking rule that governs it.
 
-So the trigram measurement above is real and it is what those three surfaces get. A reader who
-wants to run a query themselves does it **in the browser**, on the Conversations screen
-(`mycontext ui`, chapter 8), not at a shell.
+`searchArchive`/`searchArchiveTiered` (`src/core/conversation-search.ts`) is still also called
+from:
 
-**What the CLI does give you:**
+- `src/core/anchor-pass.ts` — the per-turn automatic anchor pass (chapter 5);
+- `src/ui/read-model-conversations.ts` — the Conversations screen's search box, and its floating
+  find panel (chapter 15);
+- `src/ui/read-model-retrieval.ts` — subject reconstruction (chapter 6).
+
+So a reader now has two doors onto the same mechanism — a terminal and a browser — where before
+2026-09-16 there was only the one in the browser. `mycontext ui` (chapter 8) is still the richer
+surface: it is where the find panel's regex/whole-word/case options and the document-level find bar
+live, and neither has a CLI equivalent (chapter 15).
+
+**What the CLI gives you, in full:**
 
 ```
 mycontext search "some words" [--type|--tag|--path|--status|--relation|--linked-to|--direction|--limit|--text]
+mycontext conversation search "<query>" [--sources said|ran|both] [--session <id>] [--agent <id>]
+                              [--limit <n>] [--json]
 mycontext conversation list [--limit <n>] [--json]
 mycontext conversation subagents [<session>] [--json]
 mycontext conversation anchor [<session>] [<byte offset>] [--label "<why>"] [--agent <id>]
                               [--find <term>] [--drop <id>] [--json]
 ```
 
-`search` is the item corpus; `conversation list`/`subagents` are the archive's own inventory
-views; `conversation anchor --find <term>` is the nearest thing to an archive text query on the
-CLI, and it resolves a term to a position in order to place an anchor rather than returning a
-result set.
+`search` is the item corpus (chapter 14 is about the archive, not this command); `conversation
+search` is the archive's own trigram search, tiered, described fully in chapter 14;
+`conversation list`/`subagents` are the archive's inventory views; `conversation anchor --find
+<term>` remains a *different* query — it searches anchor **labels**, text a person wrote, not
+transcript prose, and it resolves a term to a position in order to place or find an anchor rather
+than returning a ranked result set.
 
 ## Byte offsets, never character offsets
 
 Positions into a transcript — where a record starts, where an anchor points — are stored as **byte
 offsets into the file**, never character offsets, and this is asserted directly in code comments as
-a correctness requirement, not a style preference (`src/core/conversation-index.ts:369–377`,
-`:1417–1436`). The reason: `iterateTranscript` (`src/core/conversation-index.ts:1506`) walks the
+a correctness requirement, not a style preference. **Cited by symbol rather than by line, because a
+2026-09-13 line-range citation here had drifted by the time this pass re-verified it**: the
+argument appears in the `anchors` table's own design comment in `src/core/conversation-index.ts`
+(look for *"`byte_offset` is the position, and it is the ONLY position"*), and again inside
+`iterateTranscript`'s implementation, which is where the walk this paragraph describes actually
+happens. The reason: `iterateTranscript` (`src/core/conversation-index.ts:1774`) walks the
 file as a raw `Buffer` in 1 MiB chunks, finds the newline delimiter *inside the buffer*, and decodes
 each line individually — because splitting an already-decoded string on `'\n'` loses byte positions
 the moment a record contains a non-ASCII character, and this corpus is half Hebrew: **every offset
@@ -212,7 +263,7 @@ fixture that drifted by one byte cannot make the suite green by no longer testin
 
 Today the four are one: `LINE_WALK_CHUNK_BYTES = 1024 * 1024`, with `eachLine` (a generator) and
 `forEachLine` (a callback) exported from `src/core/line-walk.ts:70, 109, 172`. `iterateTranscript`
-delegates to `eachLine` (`conversation-index.ts:110, 1552`) — deliberately the generator rather
+delegates to `eachLine` (imported at `conversation-index.ts:110`, called at `:1820`) — deliberately the generator rather
 than `forEachLine`, because `iterateTranscript` is itself lazy and a callback driver would read a
 whole 52 MB transcript to answer a question about its first page. The importers are
 `conversation-index.ts`, `conversation-redaction.ts`, `session-summary.ts` and
@@ -314,9 +365,10 @@ that cache, and they do different, narrower things than a rebuild:
 - **`conversation forget [--yes] [--json]`** drops the session/subagent **inventory** for the
   workspace, without touching a single transcript file on disk. Be precise about what it removes,
   because the name is wider than the act: `forgetConversations`
-  (`src/core/conversation-index.ts:3096–3102`) issues exactly four `DROP TABLE IF EXISTS`
-  statements — `conversations`, `subagents`, `persisted`, `named`. The conversation schema has
-  **seven** tables (`:384, 408, 444, 453, 459, 471, 483`). **`conversation_prose` — the ~42 MB FTS5
+  (`src/core/conversation-index.ts:3681`) issues exactly four `DROP TABLE IF EXISTS`
+  statements, at `:3708–3714` — `conversations`, `subagents`, `persisted`, `named`. The
+  conversation schema has **seven** tables in total (`conversation-index.ts:398, 422, 458, 467,
+  473, 485, 497`). **`conversation_prose` — the ~42 MB FTS5
   table this chapter's longest section is about — survives, and so do `prose_sources` and
   `anchors`.** So `forget` does not un-index the archive's prose; it removes the inventory and the
   freshness bookkeeping's consumers.
@@ -338,17 +390,23 @@ persisted/indexed state, which is outside a documentation pass's remit.
 
 ## What's NOT built / built but off
 
-- **There is no CLI path to FTS5 archive search.** This is the largest missing surface in the
-  chapter's own subject: `searchArchive` has zero callers under `src/cli/`, `mycontext search` is
-  the item corpus only, and `conversation` has no `search` subcommand. The capability is reachable
-  from the web UI and from the automatic anchor pass, and from nowhere else. See "How you actually
-  reach it" above.
+- ~~**There is no CLI path to FTS5 archive search.**~~ **Fixed 2026-09-16.** `mycontext
+  conversation search` reaches `searchArchiveTiered` from a terminal now, with the same three-tier
+  grammar and `said`/`ran`/`both` sources switch the web UI's search box uses. See "How you
+  actually reach it" above and [chapter 14](./14-search-over-the-archive.md). What is still
+  CLI-only-absent: the find panel's **regex**, **whole word** and **case-sensitive** options
+  (chapter 15) — those exist only inside a document already open in the browser, because they
+  scan one transcript's prose spans directly rather than querying the FTS5 index, and there is no
+  CLI surface onto that scan.
 - **`conversation forget` does not drop `conversation_prose`.** Four of seven tables go. A reader
   wanting the FTS5 index gone needs to delete `.my_context/.index.db`, not run `forget`.
 - There is no automatic redaction on display or on export — confirmed directly from the module's
   own design rationale: automatic scrubbing was considered and explicitly rejected.
 - Trigram search has a hard floor: queries under three characters return zero results, always, by
-  construction — this is not a bug to be fixed, it is a documented property of the tokenizer.
+  construction — this is not a bug to be fixed, it is a documented property of the tokenizer. As of
+  2026-09-16 the floor moved from the *query* to the *term* — a short word inside a longer query is
+  named and excluded from the ranked readings rather than silently emptying the whole answer; see
+  [chapter 14](./14-search-over-the-archive.md).
 - This chapter did not verify the full mechanics of how an accepted `secrets` candidate list flows
   into an actual `export`'s placeholder substitution (see `TASK-an-export-offers-to-swap-secrets-for-obvious-fakes-and-never`,
   read as a title only) — do not treat the export-side wiring as confirmed by this document.
@@ -364,3 +422,5 @@ persisted/indexed state, which is outside a documentation pass's remit.
 - [`00-index.md`](./00-index.md) — full document index
 - [`05-anchors.md`](./05-anchors.md) — the `anchors` table this same conversation index carries, and why `byte_offset` is its only position too
 - [`06-retrieval.md`](./06-retrieval.md) — reconstructing a subject from a pasted passage, which also searches this archive as FTS5 queries
+- [`14-search-over-the-archive.md`](./14-search-over-the-archive.md) — the query grammar in full: three readings, `said`/`ran`/`both`, the per-term floor, `-word` exclusion and the ranking rule
+- [`15-document-and-lane-viewer.md`](./15-document-and-lane-viewer.md) — the find bar and the floating find panel that read a single open transcript directly, outside the FTS5 index

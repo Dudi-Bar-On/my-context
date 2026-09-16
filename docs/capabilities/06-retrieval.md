@@ -38,10 +38,14 @@ words, tags, paths or relations, and its matches are safe to inject because item
 distilled, governed record. Retrieval works one layer down — over the raw **conversation
 archive** (transcripts, not items) — which is exactly the layer that is *not* safe to put in front
 of a model unfiltered, because it is mostly machinery and repetition. Archive **prose search**
-(`searchArchive`, chapter 4 — reachable from the Conversations screen and from the automatic anchor
-pass, and from **no CLI command**) finds *turns* in the archive by FTS5 text match; this
-retrieval pipeline is the layer above that turns a turn (or a copied passage) into a bounded,
-verified, citable account of a *subject*, and refuses to let the raw material travel with it.
+(`searchArchive`/`searchArchiveTiered`, chapters 4 and 14 — reachable from the Conversations
+screen, from the automatic anchor pass, and — since 2026-09-16 — from `mycontext conversation
+search` at a terminal) finds *turns* in the archive by FTS5 text match; this retrieval pipeline is
+the layer above that turns a turn (or a copied passage) into a bounded, verified, citable account
+of a *subject*, and refuses to let the raw material travel with it. This module specifically still
+calls the older, untiered `searchArchive` rather than the new tiered function — see chapter 14
+§14.2 for why the two are not interchangeable (retrieval and the automatic anchor pass both depend
+on a stable paging offset the tiered union does not provide).
 
 ## Status: built, and wired on two of three surfaces
 
