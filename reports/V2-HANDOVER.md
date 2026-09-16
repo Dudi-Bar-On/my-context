@@ -1,3 +1,48 @@
+## ⏭ 2026-09-16 — THE BOARD IS NOT TRUE. `rulings/93` IS LIVE FIXING IT. DO NOT DISPATCH FROM THE D TABLE UNTIL IT LANDS.
+
+### DO THIS FIRST
+
+1. **23 of 153 open items already have shipped work.** `readmodel/1` and `accretion/1` are confirmed
+   in HEAD at `aebc76f0` and both still read `state: todo`. So **D72 reports 0/4 with two of four
+   shipped**, and any dispatch taken from that table sends a lane at work already done. `rulings/93`
+   is reconciling it, making the D→plan map DATA rather than prose, and wiring a gate. **Wait for it.**
+2. **Three lanes are live and their work is UNCOMMITTED. Commit each the moment it reports:**
+   `rulings/93` (board truth), `semantic/2` (deep search research — Notepad++, ripgrep, and what FTS5
+   actually supports under the TRIGRAM tokenizer), `anchors/13` (first-run backfill for a project
+   where mycontext was installed mid-development).
+3. **The owner must run `mycontext conversation rebuild`** — `anchors/12` replaced the ruling grammar
+   and it is expected to report **225 newly marked, 378 taken back**. His live archive was not touched.
+
+### WHAT WAS RULED, AND WHY — none of it is re-derivable from the code
+
+- **`anchors/12`: 377 of his 1,164 marks were rulings he never gave** — 296 of them this plugin's own
+  SubagentStart injection block, because `classifyTurn` calls a lane dispatch a "prompt". In 519 turns
+  he typed, he named a normative id **zero times**. A ruling is now a turn he typed, found structurally
+  by `origin.kind === 'human'`, and the per-turn cost FELL from 266–311 ms to 85 ms.
+- **D78 minted** — *"a mark is worth the reader finding it"*, owning `plan:anchors` seq 1–13.
+  Deliberately **not** a widening of D57: that closed on a different question, and re-aiming a closed
+  subject falsifies its closure. Widening is legal; re-aiming is not.
+- **`rulings/90` audited the six reviews.** ZERO of 119 rows were never filed — but **13 findings were
+  dropped by the consolidation itself**: it carried instances faithfully and lost mechanisms. 11 items
+  filed. Reports 2 and 6 lost nothing; they are the two that enumerate in one flat scheme.
+
+### OWED, AND UNSTARTED
+
+- **`swallow/16` is priority 1.** Eight of D66's closed repairs disclose on **stderr**, and
+  `session-end.ts` says the platform discards a successful hook's stderr while `session-start.ts`
+  treats it as the channel. **If session-end is right, a third of D66 discloses into nothing.**
+- **`mycontext rules verify` reports the store intact and exits 0 while an entry does not parse.**
+  Reproduced (`loadRules: 15 entries, 1 refused` beside `exit=0`), not fixed, **not yet filed** — at
+  the verification door of the store every one of these lanes is measured against.
+
+### WAITING ON THE OWNER — and no command can tell him
+
+**D67** is held by his own ruling. **`semantic/1`** ends in his decision on whether search may rank and
+whether a model is worth a dependency. **`anchors/12`** leaves him the table-versus-report precedence:
+230 of 419 lane reports are findable only as tables, and reversing it is one line.
+
+---
+
 ## ⏭ 2026-09-14 00:25 — WAVE 1 LANDED AND IS COMMITTED. WAVE 2 IS RUNNING. THE NIGHT RUNS TO 06:00.
 
 ### DO THIS FIRST
