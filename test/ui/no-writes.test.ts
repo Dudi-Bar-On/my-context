@@ -144,6 +144,17 @@ const WRITERS: Record<string, string[]> = {
   'src/core/audit.ts': ['recordAudit'],
   'src/core/focus.ts': ['writeFocus', 'clearFocus', 'setFocus', 'unsetFocus'],
   'src/core/seen-file.ts': ['appendSeen'],
+  // **Added 2026-09-16 with `turn-refresh-soon.ts` itself, and the gate is why.**
+  // That module is reached only from `src/hooks/post-tool-use.ts`, never from
+  // `src/ui/` — but this registry is not a list of what the UI binds, it is the
+  // list this file's `isWriter` consults, and an unnamed writer makes `isWriter`
+  // answer NO for every symbol in the file. So a module the UI does not bind
+  // today would silently become bindable tomorrow with this test still green,
+  // which is exactly how `core/ui-server-record.ts` and `ui/execute-effect.ts`
+  // got in. The reader half — `refreshSoonCheck`, `refreshSoonDecision`,
+  // `readRefreshSoonState` — is safe for anything to bind; the writer is named
+  // here so binding IT is what goes red.
+  'src/core/turn-refresh-soon.ts': ['writeRefreshSoonState', 'refreshSoonCheck'],
   // Reached from 2026-08-22, when `/api/select` began passing the hook's fifth
   // narrowing input and bound `resolveCarry`. Both modules are the same shape
   // as `focus.ts` and `seen-file.ts`: a reader the UI needs, sitting in a file
