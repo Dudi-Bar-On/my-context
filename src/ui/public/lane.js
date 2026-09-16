@@ -30,11 +30,21 @@
  *      from him. That is the ruling's "the shape follows from WHAT is being
  *      opened" spent rather than restated: no mode, no preference, no
  *      parameter that selects a shape.
- *   4. **The four-field `ctx`.** `t`, `tFlat`, `api` and `navigate` are
- *      everything `mountDocument` and its subtree reach for — measured over
- *      the file, and the one caller that wants more (`commandActions`, in the
- *      secrets fold) is drawn on a session and never on a lane. So this page
- *      hands over four functions and imports the viewer whole.
+ *   4. **The five-field `ctx`.** `t`, `tFlat`, `api`, `post` and `navigate`.
+ *      The one caller that wants more (`commandActions`, in the secrets fold)
+ *      is drawn on a session and never on a lane, so this page hands over five
+ *      functions and imports the viewer whole.
+ *
+ *      **It said FOUR until 2026-09-16, and said the four were "everything
+ *      `mountDocument` and its subtree reach for — measured over the file".**
+ *      That measurement was wrong, and the sentence is kept here in its
+ *      corrected form rather than quietly rewritten, because the error is the
+ *      instructive part: `mountDocument` draws four anchor write controls and
+ *      every one of them calls `ctx.post`, so all four threw on their first
+ *      click in this window while a docstring asserted they could not exist.
+ *      A claim that a set is complete is a claim a reader will act on; this one
+ *      was acted on for a week. See `postJson` for what it cost and for the
+ *      measurement that replaced the assumption.
  *
  * ── WHAT IS DELIBERATELY NOT FORKED ──────────────────────────────────────
  *
@@ -119,6 +129,71 @@ async function readJson(url) {
 }
 
 /**
+ * One write, with the cookie and nothing else — `readJson`'s shape, one verb
+ * along, and deliberately not more than that.
+ *
+ * ── WHY THIS WINDOW MAY WRITE AFTER ALL ────────────────────────────────────
+ *
+ * `readJson`'s header says this page is NOT `app.js`' `request()` because that
+ * function owns the shell's disconnected banner, its token memory and its skew
+ * latch — "three pieces of state this page has none of and must not pretend
+ * to". That argument was read as forbidding a write, and the cost was measured
+ * on 2026-09-16: `mountDocument` draws all four anchor controls here — Mark
+ * this point, Rename, Take it back, Put it back — and every one of them threw
+ * `ctx.post is not a function` on the first click. **704 of 1,310 marks carry a
+ * lane id**, `anchorHref` sends a lane's mark to this window, and the app has
+ * no route of its own to a lane document. So more than half the bookmarks in
+ * the archive sat on turns the reader could only reach in the one window whose
+ * write controls did not work.
+ *
+ * **The argument forbade the STATE, not the verb.** None of the three pieces
+ * it names is needed to send a POST: this adds no banner, remembers no token
+ * and latches no skew. A refusal is thrown with the server's own words and
+ * `errorNote` draws it in the document, which is exactly what `readJson` does
+ * and exactly what "a window with one document in it says its refusals in the
+ * document" asks for.
+ *
+ * ── AND THE COOKIE REALLY IS ENOUGH, WHICH WAS MEASURED, NOT ASSUMED ───────
+ *
+ * `security.ts` calls the custom header the CSRF defence, so a cookie-only
+ * POST looked like the thing that would be refused. Driven on 2026-09-16 from
+ * this very page against a real server: `POST /api/conversations/anchors/drop`
+ * with `credentials: 'same-origin'` and no header answered **400 "id is
+ * required."** — the route's own validation, not 401 and not 403. The token
+ * cookie carries `SameSite=Strict`, which is what makes that safe: a
+ * cross-site form post never sends it at all.
+ *
+ * The alternative was to stop drawing controls that cannot work, and it was
+ * refused because it makes `REQ-every-anchor-capability-is-reachable-from-the-
+ * screen-and-a` false for every mark in a lane — the owner's own ruling,
+ * traded away to save one function.
+ */
+async function postJson(url, body) {
+  const response = await fetch(url, {
+    method: 'POST',
+    credentials: 'same-origin',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body ?? {}),
+  });
+  let answer = null;
+  try {
+    answer = await response.json();
+  } catch {
+    answer = null;
+  }
+  if (!response.ok) {
+    // `readJson`'s rule, kept identical on purpose: the SERVER'S OWN words
+    // where it sent any. A write's refusal is the one a reader most needs
+    // spelled out — "id is required" tells them something a 400 does not.
+    const said = answer !== null && typeof answer === 'object' && typeof answer.error === 'string'
+      ? answer.error
+      : `${response.status}`;
+    throw new Error(said);
+  }
+  return answer;
+}
+
+/**
  * The screen contract, minus everything a window with no shell cannot honour.
  *
  * `navigate` is the one that changes meaning here. In the app it moves the
@@ -132,6 +207,7 @@ const ctx = {
   t: (key, subs) => translate(table.strings, key, subs, document),
   tFlat: (key, subs) => flat(table.strings, key, subs),
   api: (path) => readJson(path),
+  post: (path, body) => postJson(path, body),
   navigate: (hash) => { window.location.assign(new URL(String(hash), `${window.location.origin}/`).href); },
   get lang() { return table === null ? 'en' : table.lang; },
 };
