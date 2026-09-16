@@ -41,6 +41,7 @@ import {
   agentRevisionNotice, itemRevisionNotice, pendingRevisionLine, pendingRevisions,
   type PendingRevision,
 } from '../core/revision.ts';
+import { searchItems } from '../core/rank.ts';
 import { filterItems, LINK_DIRECTIONS, type LinkDirection } from '../core/search.ts';
 import { mergeLayers, RETIRED_STATUSES, reviewQueue } from '../core/select.ts';
 import { makeId } from '../core/slug.ts';
@@ -1139,7 +1140,14 @@ const SPECS: ToolSpec[] = [
           'side of THAT item\'s edges to answer with, and there is no item here to answer about.',
         );
       }
-      const hits = filterItems(ctx.store.all(), {
+      // **RANKED, through the one function the CLI and /api/search also call**
+      // (`core/rank.ts` · `searchItems`) —
+      // `TASK-the-corpus-box-refuses-to-rank-so-it-returns-the-right-item`.
+      // The structured filters are the SCOPE and go through `filterItems`
+      // unchanged; `text` is then matched inside that scope and the result is
+      // ordered. A model reading a capped list off the top is the caller this
+      // matters most to: before this it was reading the alphabet.
+      const outcome = searchItems(ctx.store.all(), {
         type: optStr(args, 'type'),
         status: optEnum<Status>(args, 'status', STATUSES, 'workflow'),
         tag: optStr(args, 'tag'),
@@ -1150,12 +1158,22 @@ const SPECS: ToolSpec[] = [
         direction,
       }, ctx.config);
 
-      return listOf(
-        hits, ctx.config, optNum(args, 'limit', 20),
+      const listed = listOf(
+        outcome.items, ctx.config, optNum(args, 'limit', 20),
         'my_context: no items match that query. Try fewer filters, or ' +
         'mycontext_help("categories") to check the type name.',
         pendingRevisions(ctx),
       );
+      // Said out loud for the same reason the CLI says it: a ranked list and an
+      // alphabetical one are the same text otherwise, and an agent that read
+      // the first row as "the match" when the order was `ORDER BY id` is the
+      // failure this whole task exists to end. The widened count is the weaker
+      // half of the claim and is named as such.
+      if (!outcome.ranked || outcome.items.length === 0) return listed;
+      return listed + '\n\nOrdered by relevance, most relevant first — '
+        + `${outcome.exact} of ${outcome.items.length} contain that text as one phrase, `
+        + `${outcome.widened} share at least one of its words. `
+        + `Searched ${outcome.scope} item(s).`;
     }),
   },
   {

@@ -24,6 +24,7 @@ import { injection } from '../cli/commands/injection.ts';
 // of this file and what would break if a second copy of it ever appeared here.
 import { overlapScore, OVERLAP_CAP, OVERLAP_THRESHOLD } from '../core/overlap.ts';
 import { matchesAnyGlob } from '../core/paths.ts';
+import { searchItems } from '../core/rank.ts';
 import {
   anyFilterSet, filterItems, searchableRelationTypes, type ItemFilters,
 } from '../core/search.ts';
@@ -289,7 +290,18 @@ export function apiSearch(ws: Workspace, url: URL): JsonResult {
     if (relation !== null && !askable.includes(relation)) {
       return badRequest(`relation must be one of ${askable.join(', ')} (got ${JSON.stringify(relation)})`);
     }
-    const matched = filterItems(all, filters, ws.config);
+    // **RANKED — the same change `mycontext search` took, through the same one
+    // function** (`core/rank.ts` · `searchItems`). It applies these filters as a
+    // SCOPE through `filterItems` and orders what they leave; the bound below is
+    // applied to the ORDERED set and is still reported, so `total` and
+    // `truncated` keep meaning exactly what they meant.
+    //
+    // `ranked`, `exact` and `widened` travel with the answer because a ranked
+    // list and an alphabetical one are the same JSON otherwise, and a client
+    // that drew "most relevant first" over an unranked answer would be making a
+    // claim the server never made — `ranked` is false when no `text` was given.
+    const outcome = searchItems(all, filters, ws.config);
+    const matched = outcome.items;
     return {
       status: 200,
       body: {
@@ -303,6 +315,10 @@ export function apiSearch(ws: Workspace, url: URL): JsonResult {
         }),
         total: matched.length,
         truncated: matched.length > limit,
+        ranked: outcome.ranked,
+        exact: outcome.exact,
+        widened: outcome.widened,
+        searched: outcome.scope,
       },
     };
   });

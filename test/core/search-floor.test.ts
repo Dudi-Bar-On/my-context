@@ -15,6 +15,21 @@
  * or written the one way the predicate can read — and that half must find the
  * item. A green here therefore means "the detector works and the gap is real",
  * and a fixture that lost its power reddens on the positive half.
+ *
+ * ── FOUR OF THESE GAPS ARE CLOSED, AND NOT HERE ────────────────────────────
+ *
+ * 2026-09-16, `semantic/7`: the summary, the tags, the id and the two-words-not-
+ * adjoined miss are all answered by `searchItems` (`src/core/rank.ts`), and each
+ * is re-asserted as a CLOSURE in `test/core/corpus-rank.test.ts` — the same
+ * fixture, the same word, now found.
+ *
+ * **Every test below still tests `filterItems`, and every one is still true of
+ * it.** `filterItems` is deliberately unchanged: `searchItems` calls it for the
+ * scope and again for the substring floor, so these findings describe the layer
+ * they always described. They are left standing rather than deleted because the
+ * shape of the miss is what makes the ranked layer necessary, and a deleted
+ * finding cannot be checked against the thing that replaced it. The one still
+ * genuinely OPEN is `request`, which is the owner's to rule on.
  */
 import { test } from 'node:test';
 import assert from 'node:assert/strict';

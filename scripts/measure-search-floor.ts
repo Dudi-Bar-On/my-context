@@ -69,63 +69,27 @@ const say = (s = ''): void => { out.push(s); };
 const flush = (): void => { process.stdout.write(out.join('\n') + '\n'); };
 
 /**
- * **A conflation key, written here rather than taken from npm** — a few dozen
- * lines is the whole of what `CONST-zero-runtime-dependencies` allows, and a
- * stemmer small enough to read is a stemmer whose mistakes are visible.
+ * **The conflation key, the stop list and the folding this measurement was
+ * built on now SHIP, and this script imports them rather than keeping a
+ * second copy.**
  *
- * **The ASCII guard is the first line and it is not decoration.** The archive
- * index is FTS5 TRIGRAM and not `unicode61` because Hebrew glues particles
- * onto word FRONTS, and any scheme that assumes English word shape is worse
- * than what already ships. Measured in section 6: with the guard, this rewrites
- * 0 of 3,547 Hebrew word types; it is cheap insurance rather than a proven
- * necessity for THESE rules, and it is the necessity for any rule that trims by
- * length rather than by suffix.
+ * They were authored here, in this file, because a measurement may not depend
+ * on the thing it measures. They moved to `src/core/rank.ts` on 2026-09-16,
+ * when `semantic/7` shipped the ranker, and the import replaced the
+ * definitions on the same day rather than leaving two spellings of one rule
+ * to drift — this project’s most-repeated defect, and the one `filterItems`
+ * own header names.
  *
- * **The trailing-`e` strip is the line that does the work, and that was
- * established by removing it rather than by reasoning.** The plural rule strips
- * `s` and then a trailing `e`, instead of special-casing `es` after a sibilant.
- * The first draft argued that the textbook `es` rule would break `phases`, and
- * the mutation says otherwise — with the `e` strip in place both spellings
- * reach `phas` either way. What the `e` strip actually rescues is `batches` /
- * `batch` and `codebases` / `codebase`: delete that one line and
- * `test/core/search-floor.test.ts` reddens on exactly those pairs. The claim
- * here is the one that survived its own removal proof, not the one that read
- * better.
+ * **The proof that the move changed nothing is this script’s own output**,
+ * captured before the move and compared after it. Re-exported because
+ * `test/core/search-floor.test.ts` imports `conflate` and `hebrewVariants`
+ * FROM HERE, and that test names this file as where the claim was measured.
  */
-export function conflate(term: string): string {
-  if (!/^[a-z]+$/.test(term)) return term;              // the ASCII guard
-  let s = term;
-  if (s.length > 4 && s.endsWith('ies')) s = s.slice(0, -3) + 'y';
-  else if (s.length > 4 && s.endsWith('s') && !s.endsWith('ss')) s = s.slice(0, -1);
-  if (s.length > 5 && s.endsWith('ing')) s = s.slice(0, -3);
-  else if (s.length > 4 && s.endsWith('ed') && !s.endsWith('eed')) s = s.slice(0, -2);
-  if (s.length > 4 && s.endsWith('e')) s = s.slice(0, -1);
-  if (s.length > 4 && s.endsWith('ly')) s = s.slice(0, -2);
-  return s;
-}
+import {
+  conflate, content, fold, HEBREW, HEBREW_PARTICLES, hebrewVariants, words,
+} from '../src/core/rank.ts';
 
-/** Hebrew particles that glue to a word's FRONT — the reason the index is trigram. */
-export const HEBREW_PARTICLES = ['ו', 'ה', 'ב', 'כ', 'ל', 'מ', 'ש'];
-const HEBREW = /[\u0590-\u05FF]/;
-
-/** The query as written, plus the one form with a single front particle removed. */
-export function hebrewVariants(term: string): string[] {
-  if (!HEBREW.test(term) || term.length < 4 || !HEBREW_PARTICLES.includes(term[0])) return [term];
-  return [term, term.slice(1)];
-}
-
-const STOP = new Set((
-  'a an the and or but if then so that this these those there here is are was were be been being am '
-  + 'do does did done doing have has had having i you he she it we they me him her them my your his its our their us '
-  + 'for of to in on at by with from into over under about as not no yes very just also only some any all each every '
-  + 'what which who whom whose when where why how can could should would will shall may might must now again too '
-  + 'more most other another same such own much many few both please thanks thank ok okay go going want '
-  + 'need needs like get got make made let lets see look show tell say said give take put use used using one two '
-  + 'still even ever always new old best').split(/\s+/));
-
-const fold = (s: string): string => s.toLowerCase().replace(/[^\p{L}\p{N}]+/gu, ' ').replace(/\s+/g, ' ').trim();
-const words = (s: string): string[] => fold(s).split(' ').filter((t) => t.length > 0);
-const content = (s: string): string[] => words(s).filter((t) => t.length > 2 && !STOP.has(t));
+export { conflate, hebrewVariants, HEBREW_PARTICLES };
 
 function main(): number {
   const ws = resolveWorkspace(process.cwd());

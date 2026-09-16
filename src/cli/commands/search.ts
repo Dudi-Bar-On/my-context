@@ -3,8 +3,9 @@ import { scopePolicyFor } from '../../core/config.ts';
 import type { LoadError } from '../../core/rebuild.ts';
 import { STATUSES } from '../../core/validate.ts';
 import { scopeCell } from '../../core/render-item.ts';
+import { searchItems } from '../../core/rank.ts';
 import {
-  anyFilterSet, filterItems, LINK_DIRECTIONS, searchableRelationTypes,
+  anyFilterSet, LINK_DIRECTIONS, searchableRelationTypes,
   type ItemFilters, type LinkDirection,
 } from '../../core/search.ts';
 import { enumError } from '../../core/teach.ts';
@@ -57,9 +58,14 @@ const USAGE = `usage: mycontext search "<words>" ${DETAIL_USAGE}
                         [--limit <n>] ${DETAIL_USAGE}
 
 A bare positional is the --text filter, so \`mycontext search "connection pool"\` and
-\`mycontext search --text "connection pool"\` are the same search. Filters are AND-ed;
---text matches a substring of the title, body, any observation or any extra value,
-      case-insensitively. --path asks what
+\`mycontext search --text "connection pool"\` are the same search. Every other filter is
+a SCOPE and they are AND-ed; --text is then matched inside that scope and the result is
+ORDERED BY RELEVANCE, most relevant first.
+--text matches the whole phrase as a substring, case-insensitively, AND any item sharing
+      at least one of its words — over title, summary, tags, id, body, observations and
+      extra values. A match in a title or a summary outranks the same word in a body.
+      Nothing is dropped: the count of what matched, and of what fits, is always printed.
+      --path asks what
 governs a file and therefore returns the UNSCOPED items too, because an item with no
 scope applies everywhere. --linked-to <id> answers "what points at (or from) this item" —
 in|out|both, --direction default both — the backlink query relationDegrees and apiGraph
@@ -209,7 +215,17 @@ function cmdSearch(ws: Workspace, args: string[], out: Emit): number {
     }
   }
 
-  const hits = filterItems(all, filters, ws.config);
+  // **RANKED, and the ORDER is the whole of what changed here** —
+  // `TASK-the-corpus-box-refuses-to-rank-so-it-returns-the-right-item`,
+  // `RULE-search-may-rank-its-results-and-semantic-search-is-not`.
+  //
+  // `searchItems` (core/rank.ts) applies these same filters through the same
+  // `filterItems` and then orders what they left by relevance — scope first,
+  // bound last, which is the order the anchor-pass defect was written about.
+  // It is also WIDER than the substring predicate, and the two counts it
+  // returns are what lets the sentence below say which half answered.
+  const outcome = searchItems(all, filters, ws.config);
+  const hits = outcome.items;
   const shown = hits.slice(0, limit);
   const truncated = hits.length > shown.length;
 
@@ -224,6 +240,14 @@ function cmdSearch(ws: Workspace, args: string[], out: Emit): number {
       matched: hits.length,
       truncated,
       limit,
+      // The order, and which half of the match earned each row. `ranked` is
+      // false when no --text was given, because there is nothing to be
+      // relevant TO and calling the id order "relevance" would be a lie a
+      // script could act on.
+      ranked: outcome.ranked,
+      exact: outcome.exact,
+      widened: outcome.widened,
+      searched: outcome.scope,
       loadErrors: errors.map((e: LoadError) => ({ file: e.file, message: e.message })),
     });
     return 0;
@@ -268,6 +292,24 @@ function cmdSearch(ws: Workspace, args: string[], out: Emit): number {
     // already has.
     : table(['id', 'type', 'status'], shown.map((i) => [i.id, i.type, i.status]));
   for (const line of lines) out(line);
+
+  // **WHAT THE ORDER MEANS, said rather than assumed.** A ranked list looks
+  // exactly like an unranked one, so a reader who is not told will read the
+  // first row as "the first item alphabetically" — which is what this command
+  // printed until today. And the two counts are not decoration: the widened
+  // half is items that share SOME of the words rather than the phrase, which
+  // is a weaker claim and the reader is entitled to know how many of the rows
+  // rest on it.
+  if (outcome.ranked && hits.length > 0) {
+    out('');
+    say(out, outcome.exact === 0
+      ? `Ordered by relevance, most relevant first. No item contains that text as one ` +
+        `phrase; all ${hits.length} share at least one of its words. ` +
+        `Searched ${outcome.scope} item(s).`
+      : `Ordered by relevance, most relevant first. ${outcome.exact} contain(s) that text as ` +
+        `one phrase; ${outcome.widened} more share at least one of its words. ` +
+        `Searched ${outcome.scope} item(s).`);
+  }
 
   if (truncated) {
     out('');

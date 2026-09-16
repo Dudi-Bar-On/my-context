@@ -18,17 +18,17 @@ tags:
   - recall
   - "plan:semantic"
   - "seq:7"
-  - "state:todo"
+  - "state:done"
 origin: human
 source_file: null
 source_anchor: null
 source_checksum: null
 valid_from: 2026-09-16
 valid_until: null
-checksum: baac1f3ce3f6879e
+checksum: 0b4cb01e252861d1
 plan: semantic
 seq: "7"
-state: todo
+state: done
 priority: "1"
 ---
 

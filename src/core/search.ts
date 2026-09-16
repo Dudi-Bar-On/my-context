@@ -164,9 +164,29 @@ export function relationLinks(items: Item[], anchorId: string): Map<string, Rela
  *
  * Every field is AND-ed, and an absent field filters nothing. Nothing here
  * ranks: the result is in the order it was given, which for both callers is
- * `store.all()`'s `ORDER BY id`. A relevance score would be a claim about
- * which item answers the question best, and there is no signal in a corpus
- * this size to support one.
+ * `store.all()`'s `ORDER BY id`.
+ *
+ * ── THE REFUSAL THAT STOOD HERE IS LIFTED, AND IT WAS WRONG ────────────────
+ *
+ * This paragraph used to end: *"A relevance score would be a claim about which
+ * item answers the question best, and there is no signal in a corpus this size
+ * to support one."* It was an argument, it was never measured, and it was
+ * measured on 2026-09-15 and found false
+ * (`reports/2026-09-15-the-search-floor.md`). Over 42 owner-authored (request,
+ * item) pairs the predicate below returns the item the request produced **0
+ * times out of 42**; the same corpus, the same fields, ordered by BM25, returns
+ * it at rank one fifteen times. The signal was there. Nothing was reading it.
+ *
+ * `RULE-search-may-rank-its-results-and-semantic-search-is-not` lifted the
+ * refusal, and `src/core/rank.ts` is the order. **This function is unchanged
+ * and stays unchanged**: `searchItems` calls it TWICE — once with the
+ * structured filters as the SCOPE, once with `text` as the floor of the match
+ * — so the set it can find is a subset of the set that is ranked, and "an item
+ * findable today is still findable" is structural rather than promised.
+ *
+ * Which is why `pack/bundle.ts` still selects with THIS function and not with
+ * the ranked one. A bundle is a set, not an answer to a question: it wants the
+ * strict predicate and has no use for an order.
  */
 export interface ItemFilters {
   /** Category name, exactly — no fuzzy match. */
@@ -220,9 +240,13 @@ export interface ItemFilters {
  * field is exactly what a user would search for, and it sat outside the
  * predicate.
  *
- * Still no ranking. The decision recorded at the top of this file is about
- * relevance scoring and is untouched: widening WHAT is matched is not ordering
- * what matched.
+ * Still no ranking HERE, and that is now a division of labour rather than a
+ * refusal: `rank.ts`'s `searchItems` orders what this returns, and reads a
+ * wider field set to do it (summary, tags and the de-slugged id, none of which
+ * this function sees). The sentence that used to stand here — *"the decision
+ * recorded at the top of this file is about relevance scoring and is
+ * untouched"* — described a decision that has since been measured and
+ * reversed; see the header.
  */
 function searchableText(item: Item): string {
   const parts: string[] = [item.title, item.body];
