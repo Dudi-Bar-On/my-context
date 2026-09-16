@@ -6615,7 +6615,30 @@ export function mountDocument(ctx, host, outline, back, roster = NO_LANES, landA
       // is called on both edges rather than only on the way in.
       const { box, input } = renamer;
       boxToggle(rename, box, input, () => { schedule(); }, renamer);
-      bar.append(chip, kind, label, detail, rename, drop, box, said);
+      /**
+       * **THE CONTROLS GET THEIR OWN LINE, SO THEY HAVE A CONSTANT PLACE.**
+       *
+       * Owner, 2026-09-16, after the labels grew: "because now the text is
+       * long it makes the buttons (rename, take it back) to move and not
+       * apear in a constant place". Every child used to be a sibling in one
+       * wrapping flex row, so Rename sat wherever the label happened to end
+       * — and the labels got much longer the same week, first when a table
+       * mark became its header cells plus the heading above it, then when a
+       * lane report took its mission as its name.
+       *
+       * `flex-basis: 100%` on the group is the whole mechanism, and it is
+       * `.tvanchorbox`’s own idiom one control along — the write box already
+       * claims a full line for exactly this reason. The head (flag, kind,
+       * label, note) still wraps as it likes; the controls start a new line
+       * whatever it does.
+       *
+       * The ORDER of the children is unchanged, so the tab order a reader
+       * walks and every `focus` selector `redrawMe` is handed still resolve
+       * to the same controls in the same sequence.
+       */
+      const acts = el('div', 'tvanchoracts');
+      acts.append(rename, drop);
+      bar.append(chip, kind, label, detail, acts, box, said);
       carry();
       return bar;
     }

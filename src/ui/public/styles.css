@@ -4173,6 +4173,11 @@ wa-tree .wa-count{margin-inline-start:var(--sp-2);color:var(--dim);
 .tvanchorbar{display:flex;flex-wrap:wrap;align-items:center;gap:var(--sp-1);
   margin-block-start:var(--sp-1);font-size:var(--fs-00)}
 .tvanchorlabel{color:var(--dim);overflow-wrap:anywhere}
+/* The mark’s controls, on a line of their own. `flex-basis:100%` is what
+   gives them a constant place under a label whose length is not bounded —
+   the same claim `.tvanchorbox` below makes for the write box. */
+.tvanchoracts{display:flex;flex-wrap:wrap;align-items:center;gap:var(--sp-1);
+  flex-basis:100%;margin-block-start:2px}
 .tvanchorbox{display:flex;flex-wrap:wrap;align-items:center;gap:var(--sp-1);
   flex-basis:100%}
 /* `.convanchorrenamebox[hidden]`'s reason, in the document: an author
