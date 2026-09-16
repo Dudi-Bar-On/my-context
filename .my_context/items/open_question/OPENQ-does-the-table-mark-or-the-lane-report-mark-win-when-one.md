@@ -2,7 +2,7 @@
 id: OPENQ-does-the-table-mark-or-the-lane-report-mark-win-when-one
 type: open_question
 title: does the table mark or the lane-report mark win when one turn qualifies as both, and which way round is right?
-status: active
+status: superseded
 severity: soft
 always: false
 summary: When one message is both a table and a helper's final answer, only one bookmark is kept — which of the two should it be?
@@ -18,8 +18,8 @@ source_file: null
 source_anchor: null
 source_checksum: null
 valid_from: 2026-09-16
-valid_until: null
-checksum: 0ae000bbdccc845b
+valid_until: 2026-09-16
+checksum: 043962b831f08a8c
 blocks: anchors/12
 ---
 
@@ -49,3 +49,6 @@ two claims a turn that qualifies as both.
 
 AND THE COUNTS MOVE EITHER WAY, so the answer should be given against them rather than against an
 instinct: today `table 793 · report 189`; reversed, roughly `table 563 · report 419`.
+
+## Relations
+- superseded_by [[TASK-a-turn-that-is-both-a-table-and-a-lane-report-is-one-thing]]
