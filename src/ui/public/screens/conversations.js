@@ -61,7 +61,8 @@ import {
   zonedStampOf,
 } from './parts.js';
 import { estimateHeight, matchesNode, Scroller } from '../lib/transcript-scroll.js';
-import { foldedMatches } from '../lib/fold.js';
+import { findQuery, foldedMatches } from '../lib/fold.js';
+import { createPanel } from '../lib/panel.js';
 import { helpDisclosure } from '../lib/disclosure.js';
 import { LOOK_GAP_MS, attachLook, shouldPing } from '../lib/heartbeat.js';
 import { markdownNodes } from '../lib/markdown.js';
@@ -4008,6 +4009,21 @@ const CAN_HIGHLIGHT = typeof CSS !== 'undefined'
 const FIND_HIGHLIGHT = 'mycontextfind';
 
 /**
+ * **AND THE ONE THE READER IS STANDING ON** — `semantic/9`, and the owner
+ * reported this himself: every match wore the same colour, so Next moved the
+ * page and nothing on it said WHICH of the thirty-three highlights he had
+ * just arrived at.
+ *
+ * A second registry entry holding exactly one `Range` — the first match in
+ * the turn the found-walk last landed on, which is the match `showMatch`
+ * scrolled to and therefore the one under his eye. It is registered with
+ * `priority = 1`, because two highlights over one range are painted in
+ * priority order and a tie is broken by registration order, which
+ * `paintFinds` rebuilds on every paint and must not be made to depend on.
+ */
+const FIND_NOW_HIGHLIGHT = 'mycontextfindnow';
+
+/**
  * **HOW MANY HIGHLIGHTS ONE ROW MAY CARRY.**
  *
  * A single turn of terminal output holds thousands of occurrences of a common
@@ -6583,6 +6599,43 @@ export function mountDocument(ctx, host, outline, back, roster = NO_LANES, landA
    * rule, which is the rule that does not stall.
    */
   let findFresh = false;
+  /**
+   * **WHICH MATCH THE READER IS STANDING ON** — `semantic/9`, and he reported
+   * the absence himself: every highlight wore one colour, so Next moved the
+   * page and nothing on it said which of the thirty-three he had arrived at.
+   *
+   * The NODE INDEX the found-walk last landed on, or `-1` for "no walk in
+   * progress". It is a node and not a hit because the walk is over TURNS —
+   * `foundStops` returns node indices, and `showMatch` scrolls to that turn's
+   * FIRST match, so the first match of this node is by construction the one
+   * under the reader's eye. `paintFinds` gives that one range its own
+   * registry entry; every other match keeps the colour it had.
+   *
+   * Cleared by `endWalk`, which is what `wheel`, `keydown` and `pointerdown`
+   * on the well already call: a reader who has scrolled away is no longer
+   * standing on it, and a highlight that went on claiming they were would be
+   * a second thing on the screen disagreeing with the stepper's own sentence.
+   */
+  let foundNow = -1;
+  /**
+   * **THE THREE OPTIONS THE OWNER ASKED FOR TWICE** — `semantic/9`. All three
+   * off is the find that shipped, byte for byte.
+   *
+   * **DECLARED HERE, WITH THE STATE, AND NOT BESIDE THE PANEL THAT DRAWS
+   * THEM**, for the reason `navRefresh` records forty lines down: `reView`
+   * and `paintFinds` both read this and both run inside `redraw('end')`
+   * during the mount, which is some two thousand lines above the panel is
+   * built. A `const` down there would be in its temporal dead zone at that
+   * moment and the document would fail to open at all.
+   */
+  const findOptions = { caseSensitive: false, wholeWord: false, regex: false };
+  /**
+   * Redraw the panel's option notes. A no-op until the panel exists, for the
+   * same reason and by the same device as `navRefresh`: `askFind` can be
+   * reached before the panel is built and a sentence nobody can draw yet is
+   * not an error.
+   */
+  let drawFindNotes = () => {};
   /** Rows in the DOM right now, keyed by node index. */
   const live = new Map();
   /**
@@ -7199,9 +7252,27 @@ export function mountDocument(ctx, host, outline, back, roster = NO_LANES, landA
   const paintFinds = () => {
     if (!CAN_HIGHLIGHT) return;
     const needle = find.value.trim();
-    if (needle === '') { CSS.highlights.delete(FIND_HIGHLIGHT); return; }
+    /*
+     * **THE PATTERN IS COMPILED ONCE PER PAINT, NOT ONCE PER ROW** —
+     * `semantic/9`. `findQuery` is the one place a tick box becomes a matcher,
+     * and it is the SAME call `core/conversation-search.ts` makes on the
+     * server. Two readings of one checkbox would put a count on the screen
+     * that the highlights under it disagree with, which is precisely the pair
+     * `semantic/8` built this module to keep together.
+     *
+     * `ok: false` covers an empty box AND an unreadable regular expression.
+     * Both mean there is nothing to paint; which of the two it was is said in
+     * words by `drawFindNotes`, never by the absence of colour.
+     */
+    const asked = findQuery(needle, findOptions);
+    if (asked.ok !== true) {
+      CSS.highlights.delete(FIND_HIGHLIGHT);
+      CSS.highlights.delete(FIND_NOW_HIGHLIGHT);
+      return;
+    }
     const ranges = [];
-    for (const [, row] of live) {
+    let standing = null;
+    for (const [nodeIndex, row] of live) {
       const { parts, whole } = rowText(row);
       if (parts.length === 0) continue;
       const place = (offset) => {
@@ -7213,7 +7284,8 @@ export function mountDocument(ctx, host, outline, back, roster = NO_LANES, landA
         }
         return parts[lo];
       };
-      for (const hit of foldedMatches(whole, needle, FIND_PAINT_PER_ROW)) {
+      let first = true;
+      for (const hit of asked.find(whole, FIND_PAINT_PER_ROW)) {
         const from = place(hit.from);
         const to = place(hit.to);
         const range = document.createRange();
@@ -7223,10 +7295,29 @@ export function mountDocument(ctx, host, outline, back, roster = NO_LANES, landA
         // a throw inside `paint` leaves the well blank.
         range.setStart(from.node, Math.min(hit.from - from.at, from.node.data.length));
         range.setEnd(to.node, Math.min(hit.to - to.at, to.node.data.length));
-        ranges.push(range);
+        // The FIRST match of the turn the walk is standing on is the one
+        // `showMatch` scrolled to, so it is the one the reader is looking at.
+        // It goes into its own registry entry rather than into `ranges`: one
+        // range can only wear one highlight's colour, and registering it in
+        // both would make which colour wins depend on registration order.
+        if (first && nodeIndex === foundNow) standing = range;
+        else ranges.push(range);
+        first = false;
       }
     }
     CSS.highlights.set(FIND_HIGHLIGHT, new Highlight(...ranges));
+    if (standing === null) {
+      CSS.highlights.delete(FIND_NOW_HIGHLIGHT);
+      return;
+    }
+    const here = new Highlight(standing);
+    // **PRIORITY IS SET RATHER THAN INHERITED.** Two highlights over one range
+    // paint in priority order and ties break by registration order — and this
+    // function rebuilds the whole registry on every paint, so registration
+    // order is a thing that changes under the feature rather than a thing it
+    // may rest on.
+    here.priority = 1;
+    CSS.highlights.set(FIND_NOW_HIGHLIGHT, here);
   };
 
   /**
@@ -7481,6 +7572,24 @@ export function mountDocument(ctx, host, outline, back, roster = NO_LANES, landA
    */
   const reView = () => {
     const needle = find.value.trim().toLowerCase();
+    /*
+     * **THE OUTLINE PREDICATE OBEYS THE OPTIONS TOO** — `semantic/9`, and it
+     * is not an afterthought: `matchesNode` reads a turn's OPENING and the
+     * tools it ran, `foundAt` reads the words of the turn, and the two are
+     * OR-ed. Left alone, a reader who ticked "Match case" would go on being
+     * shown rows the outline matched case-insensitively — one half of the
+     * filter obeying the box and the other ignoring it, with nothing saying
+     * which rows came from where.
+     *
+     * `null` when every option is off, which is the shipped path byte for
+     * byte: `matchesNode` then does its own plain lowercase `includes`, and
+     * `transcript-scroll.js` is untouched by three flags it should not have
+     * to know about.
+     */
+    const plain = !findOptions.caseSensitive && !findOptions.wholeWord && !findOptions.regex;
+    const asked = plain || needle === '' ? null : findQuery(find.value.trim(), findOptions);
+    const holds = asked === null ? null
+      : (asked.ok === true ? (hay) => asked.find(hay, 1).length > 0 : () => false);
     view = [];
     for (let i = 0; i < nodes.length; i += 1) {
       // A folded run is machinery; a reader filtering for a phrase wants the
@@ -7492,7 +7601,7 @@ export function mountDocument(ctx, host, outline, back, roster = NO_LANES, landA
       // other cannot. Narrowing to the server's answer alone would lose every
       // machinery row a reader can find by the command it ran, which is a
       // capability this box already has.
-      if (needle === '' || matchesNode(nodes[i], needle) || foundAt.has(i)) view.push(i);
+      if (needle === '' || matchesNode(nodes[i], needle, holds) || foundAt.has(i)) view.push(i);
     }
     rebuild();
     count.replaceChildren();
@@ -7668,13 +7777,29 @@ export function mountDocument(ctx, host, outline, back, roster = NO_LANES, landA
       foundAt.clear();
       findBody = null;
       findUnreached = 0;
+      foundNow = -1;
+      drawFindNotes();
       return;
     }
     let body;
     try {
+      /*
+       * **THE OPTIONS TRAVEL WITH THE QUERY, BECAUSE THE SCAN IS THE SERVER'S**
+       * — `semantic/9`, and the item is explicit about why: an option applied
+       * in the PAGE would apply to the rows the virtualiser happens to have
+       * drawn. The session here is ~139 MB over ~54,500 records and the page
+       * holds twenty rows.
+       *
+       * Sent only when ON, so the ordinary find is the URL it always was and
+       * the route's own `unknownParams` list is the whole vocabulary.
+       */
+      const on = [];
+      if (findOptions.caseSensitive) on.push('&case=1');
+      if (findOptions.wholeWord) on.push('&word=1');
+      if (findOptions.regex) on.push('&re=1');
       body = await ctx.api(
         `/api/conversations/${encodeURIComponent(outline.sessionId)}/find`
-        + `?q=${encodeURIComponent(asked)}`);
+        + `?q=${encodeURIComponent(asked)}${on.join('')}`);
     } catch {
       /*
        * **A FAILED SCAN FORGETS THE PREVIOUS ONE, and returning here quietly
@@ -7692,8 +7817,10 @@ export function mountDocument(ctx, host, outline, back, roster = NO_LANES, landA
       foundAt.clear();
       findBody = null;
       findUnreached = 0;
+      foundNow = -1;
       reView();
       paint();
+      drawFindNotes();
       return;
     }
     // A stale answer is DROPPED rather than drawn late. `findGen` moved
@@ -7716,6 +7843,11 @@ export function mountDocument(ctx, host, outline, back, roster = NO_LANES, landA
     paint();
     // AFTER `reView`, which runs `navRefresh` and therefore `endWalk`.
     findFresh = true;
+    // And the notes come last, from the body that is now current. Drawn on
+    // every answer including a clean one, because taking a sentence DOWN is
+    // as much of the disclosure as putting one up: a `reBad` left standing
+    // under a pattern the reader has since repaired would be a lie.
+    drawFindNotes();
   };
 
   const typing = settler(FILTER_SETTLE_MS, () => {
@@ -7952,7 +8084,19 @@ export function mountDocument(ctx, host, outline, back, roster = NO_LANES, landA
    * reader who scrolled to the middle and pressed Next means the middle.
    */
   const cursor = { mark: -1, you: -1, found: -1 };
-  endWalk = () => { cursor.mark = -1; cursor.you = -1; cursor.found = -1; findFresh = false; };
+  endWalk = () => {
+    cursor.mark = -1;
+    cursor.you = -1;
+    cursor.found = -1;
+    findFresh = false;
+    // **AND THE DISTINGUISHED HIGHLIGHT GOES WITH THE WALK** — `semantic/9`.
+    // A reader who has scrolled away is not standing on that match any more,
+    // and a colour that went on saying they were would be a second thing on
+    // the screen contradicting the stepper's own sentence. `paintFinds` reads
+    // this, so the next paint takes it down; nothing here touches the
+    // registry, because there is exactly one writer of it.
+    foundNow = -1;
+  };
   for (const event of ['wheel', 'keydown', 'pointerdown']) {
     scroll.addEventListener(event, endWalk, { passive: true });
   }
@@ -7999,7 +8143,11 @@ export function mountDocument(ctx, host, outline, back, roster = NO_LANES, landA
     if (row === undefined) return;
     const { parts, whole } = rowText(row);
     if (parts.length === 0) return;
-    const hit = foldedMatches(whole, needle, 1)[0];
+    // The same compiled matcher the count and the highlights use, so a
+    // stepped-to position cannot disagree with the colour under it.
+    const asked = findQuery(needle, findOptions);
+    if (asked.ok !== true) return;
+    const hit = asked.find(whole, 1)[0];
     if (hit === undefined) return;
     let lo = 0;
     let hi = parts.length - 1;
@@ -8119,7 +8267,14 @@ export function mountDocument(ctx, host, outline, back, roster = NO_LANES, landA
       return;
     }
     landOn(positions[target]);
-    if (which === 'found') { findFresh = false; showMatch(positions[target]); }
+    if (which === 'found') {
+      findFresh = false;
+      // Set BEFORE `showMatch`, which repaints: the paint it causes is the
+      // one that must already know which match is the current one.
+      foundNow = positions[target];
+      showMatch(positions[target]);
+      paintFinds();
+    }
     // The walk's own place, set only by a step. `landOn` writes `scrollTop`,
     // which fires `scroll` — and `scroll` is deliberately NOT one of the three
     // events that throw this away, for the reason the follow's hold gives one
@@ -8689,6 +8844,233 @@ export function mountDocument(ctx, host, outline, back, roster = NO_LANES, landA
     return row.querySelector('.tvanchormark') ?? row.querySelector('.tvanchorrename');
   };
 
+  /* ── THE SEARCH PANEL ──────────────────────────────────────────────────
+   *
+   * **`TASK-the-find-options-the-owner-asked-for-twice-in-a-floating`**,
+   * `semantic/9`. He asked for Notepad++'s options twice and was told twice
+   * that the right number of new controls here was zero
+   * (`reports/2026-09-16-the-search-grammar.md` §5). **He overruled it**, and
+   * specified the shape himself: *"three different subjects on three
+   * different dialogs opend from the right mouse button menu, could be a
+   * little bit transparent, movable on screen, stays on screen while you can
+   * look at the viewer and closed uppon clicking it's close button as a
+   * standard window."*
+   *
+   * SEARCH is the first of the three. The frame is `lib/panel.js`, which is
+   * where `show()`-not-`showModal()`, the drag, the stored place and Escape
+   * live, so that NAVIGATION and COPY are a second and third caller rather
+   * than two more boxes to reverse-engineer.
+   *
+   * ── IT BORROWS CONTROLS RATHER THAN GROWING ITS OWN ────────────────────
+   *
+   * The find box, the match stepper and the count line are MOVED into the
+   * panel while it is open and put back where they came from when it closes.
+   * Two reasons, and the second is the load-bearing one:
+   *
+   *   — **The bar must shrink as the panel fills.** Measured on this
+   *     repository's own 139 MB session at 1280x1000 before any of this
+   *     existed: `.tvnav` is 60.8 px idle and **162.8 px with a query**, and
+   *     372.7 px of chrome stands between the top of the bar and the top of
+   *     the well. That crowding is what he is complaining about, and a panel
+   *     that added a fourth surface while leaving the strip alone would have
+   *     made it worse.
+   *   — **One control, one mechanism.** A second query field inside the panel
+   *     would be two inputs, two listeners and two states for one query —
+   *     and the day they disagreed, nothing on the screen would say which was
+   *     right. `.tvfind` is the same element in both places, so there is
+   *     nothing to keep in step.
+   */
+  /**
+   * Where each borrowed control lives when the panel is shut.
+   *
+   * Recorded as (parent, nextSibling) rather than as an index: `.tvbar` and
+   * `.tvnav` both gain and lose children — the copy buttons enable, the kind
+   * `<select>` is rebuilt — and an index would put a control back in the
+   * wrong place the first time one of those moved. `insertBefore(node, null)`
+   * is an append, which is the honest answer when the control was last.
+   */
+  const lent = [find, foundGroup, count].map((node) => ({
+    node, parent: node.parentNode, next: node.nextSibling,
+  }));
+  const giveBack = () => {
+    for (const { node, parent, next } of lent) parent.insertBefore(node, next);
+  };
+
+  /** The sentences that say what each ticked option changed. */
+  const findNotes = el('div', 'mcpanelnotes');
+  const findNote = (cls) => {
+    const line = el('p', `small tvnote mcpanelnote ${cls}`);
+    line.hidden = true;
+    findNotes.append(line);
+    return line;
+  };
+  const noteCase = findNote('mcnotecase');
+  const noteWord = findNote('mcnoteword');
+  const noteWordHeb = findNote('mcnotewordheb');
+  const noteRe = findNote('mcnotere');
+  const noteReFold = findNote('mcnoterefold');
+  const noteReCost = findNote('mcnoterecost');
+  const noteReBad = findNote('tvwarn mcnoterebad');
+  const noteReUnits = findNote('mcnotereunits');
+  const noteReSlow = findNote('tvwarn mcnotereslow');
+  const noteReRefused = findNote('tvwarn mcnoterefused');
+
+  /** Written into a note, or the note taken down. One writer per line. */
+  const sayNote = (line, on, nodes) => {
+    line.hidden = !on;
+    line.replaceChildren();
+    if (on) line.append(...nodes());
+  };
+
+  /**
+   * **A HEBREW LETTER IN THE QUERY**, which is what decides whether the whole
+   * word note's Hebrew half is drawn.
+   *
+   * `֐-׿` is the Hebrew block. Tested on the QUERY and not on the
+   * page's language: a reader with the English UI searching a Hebrew turn is
+   * the case the note exists for, and a Hebrew reader typing `byte` does not
+   * need to be told about a particle that is not in what he typed.
+   */
+  const hebrewIn = (text) => /[֐-׿]/.test(text);
+
+  /**
+   * Every sentence that qualifies the current answer, redrawn together.
+   *
+   * Together, and from ONE state, because these are exactly the lines that go
+   * stale: `findBody` is replaced by every keystroke, and a note left up from
+   * the previous query would be a sentence about words the reader has since
+   * replaced — which is the defect `askFind`'s own `catch` was rewritten for.
+   */
+  drawFindNotes = () => {
+    const typed = find.value.trim();
+    sayNote(noteCase, findOptions.caseSensitive, () => ctx.t('conv.find.caseNote'));
+    sayNote(noteWord, findOptions.wholeWord, () => ctx.t('conv.find.wordNote'));
+    sayNote(noteWordHeb, findOptions.wholeWord && hebrewIn(typed),
+      () => ctx.t('conv.find.wordHeb'));
+    sayNote(noteRe, findOptions.regex, () => ctx.t('conv.find.reNote'));
+    sayNote(noteReFold, findOptions.regex, () => ctx.t('conv.find.reFold'));
+    // The four below are the SERVER's answer about this query, so each is
+    // drawn only when there is one. `findBody === null` is "the scan has not
+    // answered", which is not the same as "it answered no".
+    const body = findBody;
+    // **AND NOT BESIDE AN ERROR.** A pattern that did not compile scanned
+    // nothing, so `ms` and `scanned` are both 0 — and "this one took 0 ms over
+    // 0 turns" under "nothing was searched for" is a measurement of a thing
+    // that did not happen, which is the shape
+    // `nothing-to-do-and-could-not-look-are-different-answers` forbids.
+    const scanned = body !== null && body.refused !== true
+      && (body.error === null || body.error === undefined);
+    sayNote(noteReCost, findOptions.regex && scanned && typed !== '',
+      () => ctx.t('conv.find.reCost', { ms: body.ms, scanned: body.scanned }));
+    sayNote(noteReBad, body !== null && typeof body.error === 'string' && body.error !== '',
+      () => ctx.t('conv.find.reBad', { why: body.error }));
+    sayNote(noteReUnits, body !== null && body.codeUnitMode === true,
+      () => ctx.t('conv.find.reUnits'));
+    sayNote(noteReSlow, body !== null && body.timedOut === true,
+      () => ctx.t('conv.find.reSlow', { ms: body.ms }));
+    // **A PATTERN THAT WAS NOT RUN IS NOT A PATTERN THAT FOUND NOTHING.** The
+    // stepper beside this says "no turn here holds what you typed", which
+    // would be a lie on its own; this is the sentence that makes it true.
+    sayNote(noteReRefused, body !== null && body.refused === true,
+      () => ctx.t('conv.find.reRefused'));
+  };
+
+  /**
+   * One option, as a real `<input type="checkbox">` inside its own `<label>`.
+   *
+   * A label WRAPPING the box rather than a `for=`/`id=` pair: an `id` is a
+   * promise about the whole page, and this screen is mounted into a page that
+   * already carries a rail, a pane and a strip. The wrap needs no id at all
+   * and makes the whole row the hit target.
+   */
+  const optionBox = (cls, labelKey, apply) => {
+    const label = el('label', `mcpanelopt ${cls}`);
+    const box = el('input');
+    box.type = 'checkbox';
+    const words = el('span');
+    words.append(...ctx.t(labelKey));
+    label.append(box, words);
+    box.addEventListener('change', () => {
+      apply(box.checked);
+      /*
+       * **BOTH HALVES RE-RUN, AND IN THIS ORDER.** `applyFilter` re-derives
+       * the view from the outline predicate and repaints; `askFind` asks the
+       * server for the whole-transcript answer under the new options. A tick
+       * that repainted without re-asking would leave the COUNT describing the
+       * old options under highlights drawn with the new ones.
+       */
+      applyFilter();
+      void askFind();
+      drawFindNotes();
+    });
+    return { label, box };
+  };
+
+  const optCase = optionBox('mcoptcase', 'conv.find.case',
+    (on) => { findOptions.caseSensitive = on; });
+  const optWord = optionBox('mcoptword', 'conv.find.word',
+    (on) => { findOptions.wholeWord = on; });
+  const optRe = optionBox('mcoptre', 'conv.find.re',
+    (on) => { findOptions.regex = on; });
+
+  const optionsHead = el('p', 'small tvnavh mcpanelopth');
+  optionsHead.append(...ctx.t('conv.find.options'));
+  const optionsRow = el('div', 'mcpanelopts');
+  optionsRow.append(optCase.label, optWord.label, optRe.label);
+
+  const panelHint = el('p', 'small tvnote mcpanelhint');
+  panelHint.append(...ctx.t('conv.find.hint'));
+
+  const findPanel = createPanel({
+    name: 'search',
+    title: ctx.t('conv.find.h'),
+    closeLabel: ctx.tFlat('conv.find.close'),
+    /*
+     * **ONE RESTORE PATH FOR THREE ROUTES OUT.** The close button, Escape and
+     * anything that later calls `close()` all arrive here, so the borrowed
+     * controls cannot be left inside a closed dialog by whichever route the
+     * reader happened to take.
+     */
+    onClose: () => { giveBack(); },
+    /*
+     * **WHERE THE CARET STANDS AFTER IT SHUTS**, and it is the find box
+     * because the find box is what the panel borrowed: a reader who closes
+     * the search is standing on the search. Measured before this was passed:
+     * closing left `document.activeElement` on `BODY`, which is the
+     * 47-tab-stop defect this screen has already been repaired for once.
+     */
+    fallbackFocus: () => find,
+  });
+  host.append(findPanel.dialog);
+
+  /**
+   * Open it, and put the caret where the reader expects it.
+   *
+   * The controls are moved in EVERY time rather than once at mount: they are
+   * only in the panel while it is open, so a reader who never opens it has
+   * the bar exactly as it shipped.
+   */
+  const openFindPanel = () => {
+    const already = findPanel.isOpen();
+    findPanel.body.replaceChildren(
+      find, optionsHead, optionsRow, findNotes, foundGroup, count, panelHint,
+    );
+    if (!already) {
+      /*
+       * **WHERE IT OPENS THE FIRST TIME**, and only the first time: after a
+       * drag the stored place wins. Under the bar and inset from the start
+       * edge, which is near where the box it borrows was — a panel that
+       * opened in the middle of the well would cover the turns the reader is
+       * about to search.
+       */
+      const box = bar.getBoundingClientRect();
+      findPanel.open({ start: 24, top: Math.round(box.bottom + 8) });
+    }
+    drawFindNotes();
+    find.focus();
+    find.select();
+  };
+
   /* ── THE MENU ──────────────────────────────────────────────────────────
    *
    * **MOUNTED OUTSIDE THE WELL**, for `.tvnavsaid`'s measured reason one
@@ -8832,10 +9214,15 @@ export function mountDocument(ctx, host, outline, back, roster = NO_LANES, landA
       () => { step('you', false); }));
     menu.append(menuItem(ctx.t('conv.nav.youNext'), keyOf('youNext'),
       () => { step('you', true); }));
-    menu.append(menuItem(ctx.t('conv.doc.filter'), keyOf('find'), () => {
-      find.focus();
-      find.select();
-    }));
+    /*
+     * **THE SEARCH PANEL IS OPENED FROM HERE** — `semantic/9`, and from here
+     * is the owner's own instruction: *"three different subjects on three
+     * different dialogs opend from the right mouse button menu"*. The row
+     * that used to focus the box in the bar now opens the panel the box is
+     * in, which is the same act with the options attached — one route, not a
+     * second one beside it.
+     */
+    menu.append(menuItem(ctx.t('conv.find.open'), keyOf('find'), () => { openFindPanel(); }));
 
     /**
      * **THE MARK FILTER, IN THE MENU, AND IT IS A STATE RATHER THAN AN ACT.**
@@ -9006,7 +9393,11 @@ export function mountDocument(ctx, host, outline, back, roster = NO_LANES, landA
 
   /** What one binding does. One line each, and every line ends in a control. */
   const runShortcut = (action) => {
-    if (action === 'find') { find.focus(); find.select(); return; }
+    // **THE KEY OPENS THE PANEL AND LANDS IN THE BOX.** It used to focus the
+    // box where it stood; the box now lives in the panel while the panel is
+    // open, so "put the caret in the find box" and "open the search" are one
+    // act and `openFindPanel` is the one implementation of it.
+    if (action === 'find') { openFindPanel(); return; }
     if (action === 'markPrev') { step('mark', false); return; }
     if (action === 'markNext') { step('mark', true); return; }
     if (action === 'youPrev') { step('you', false); return; }

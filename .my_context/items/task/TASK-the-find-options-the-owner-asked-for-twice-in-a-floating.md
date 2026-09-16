@@ -5,10 +5,13 @@ title: the find options the owner asked for twice, in a floating panel that give
 status: active
 severity: soft
 always: false
-summary: Give the conversation search a proper options panel you can drag aside, with case, whole word and regular expressions.
-summary_of: a3184859891c0169
+summary: The conversation search now opens as a floating panel you can drag aside, with case, whole word and regular expressions, and the bar above the viewer gives back a third of its height.
+summary_of: 116e13c11f63ef1e
+summary_was:
+  - 2026-09-16 Give the conversation search a proper options panel you can drag aside, with case, whole word and regular expressions.
 scope:
   - src/ui/public/screens/conversations.js
+  - src/ui/public/lib/**
   - src/ui/public/styles.css
   - src/ui/public/strings/**
   - src/core/conversation-search.ts
@@ -21,21 +24,23 @@ tags:
   - search
   - "plan:semantic"
   - "seq:9"
-  - "state:todo"
+  - "state:done"
 origin: human
 source_file: null
 source_anchor: null
 source_checksum: null
 valid_from: 2026-09-16
 valid_until: null
-checksum: 0749ac42bc5f51ee
+checksum: e39337db7d2959e6
 plan: semantic
 seq: "9"
-state: todo
+state: done
 priority: "1"
 ---
 
 # the find options the owner asked for twice, in a floating panel that gives the screen its room back
+
+DONE 2026-09-16, lane AM. `reports/2026-09-16-the-find-panel.md` is the record.
 
 THE OWNER ASKED FOR THIS TWICE AND DID NOT GET IT, AND THAT IS THE FIRST THING TO UNDERSTAND
 BEFORE READING THE RESEARCH.
@@ -48,66 +53,53 @@ whole word, regex and much more, thats why i have asked you to search the intern
 open source implemented search including the ui component but you ignored and brought the first
 simple implementation you found".
 
-`reports/2026-09-16-the-search-grammar.md` §5 RECOMMENDED AGAINST EXACTLY THIS — "the failure
-mode to avoid is a Find dialog with nine checkboxes nobody ticks... the right number of new
-controls here is zero" — and the main session ENDORSED that and shipped it. **THE OWNER HAS
-OVERRULED IT.** Read §5 and §6 for the measurements, which are good; do not read them as
-permission to refuse a control he has now asked for twice. If a specific option cannot work
-here, SAY SO WITH THE REASON — that is different from declining it on taste.
+`reports/2026-09-16-the-search-grammar.md` §5 RECOMMENDED AGAINST EXACTLY THIS and the main
+session endorsed it. **HE OVERRULED IT, AND ALL THREE OPTIONS SHIPPED.**
 
-── THE SHAPE HE SPECIFIED, AND HE WAS PRECISE ───────────────────────
+── WHAT LANDED ──────────────────────────────────────────
 
-"three different subjects on three different dialogs opend from the right mouse button menu,
-could be a little bit transparent, movable on screen, stays on screen while you can look at the
-viewer and closed uppon clicking it’s close button as a standard window."
+A floating **Search** panel — `<dialog class="mcpanel">`, opened with **`show()` and never
+`showModal()`**, so the viewer behind it stays live. Opened from the right-click menu in the
+conversation viewer or with `/`. Closed by its own button AND by Escape, which `show()` does not
+give you and which is therefore wired by hand. Dragged by its header, remembered per viewer in
+`localStorage`, clamped back onto a narrower screen, brought to the front on a click. Several may
+be open at once.
 
-THIS ITEM BUILDS ONE OF THE THREE — SEARCH — and it is the TEMPLATE for the other two
-(navigation, copy), which follow once he has judged this one. So the panel frame is a reusable
-thing with one caller, not a bespoke box.
+It holds the find box, the match stepper and the count line — MOVED in while it is open and put
+back when it closes, so there is one query field rather than two states for one query.
 
-THE ELEMENT IS `<dialog>` AND THE METHOD IS `show()`, NOT `showModal()`. That is the whole
-technical crux of "stays on screen while you can look at the viewer": a MODAL dialog blocks the
-page behind it, which would make the viewer unusable while the panel is open. `show()` is
-non-modal and leaves the document live.
+THREE OPTIONS, EVERY ONE IMPLEMENTED IN THE SERVER SCAN:
+  — **Match case**, a second axis OVER the NFKD folding, never conflated with it.
+  — **Whole word**, `\p{L}\p{N}_`, required only at an end that is itself a word character — so
+    a reader who ticks it and types `...` does not get zero for ever.
+  — **Regular expression**, over the text as written, with the cost printed on the screen.
 
-AND THE CONSEQUENCE HAS TO BE HANDLED RATHER THAN DISCOVERED: **Escape only closes a dialog
-automatically when it is MODAL.** With `show()` nothing closes on Escape unless you wire it. He
-asked for a close button; ship both, because Escape is what a person expects.
+── THE MEASUREMENTS THAT MATTER ─────────────────────────
 
-Decided by the main session and his to overrule: several panels may be open at once; each
-remembers where it was dragged (per-viewer, `localStorage`, and it must render correctly when
-that read throws or returns nothing); clicking a panel brings it to the front.
+**THE STRIP GAVE ITS ROOM BACK.** Live 139 MB session, 1280x1000, same query in the box:
+`.tvnav` 162.75px -> 128.36px, `.tvbar` 62.58px -> 26.39px, and the whole chrome between the top
+of the bar and the top of the viewer 372.69px -> 230.53px. **38% less.** In Hebrew the strip
+returns to exactly its idle height. The browser suite ASSERTS the shrink in both languages.
 
-This is the FIRST dialog in this product — measured: no `showModal`, no `<dialog>`, no dialog
-styling anywhere under `src/ui/public/`. Nothing to be consistent with, and nothing to break.
+**REGEX IS FASTER HERE, WHICH IS THE OPPOSITE OF WHAT THE RESEARCH PREDICTED.** `byte offset` as
+a literal costs 48 ms over 4,582 prose spans; the same words as a pattern cost **3 ms**. §6
+refused regex because it "cannot use the index" — true, and this box never used the index.
 
-── WHAT GOES IN IT ──────────────────────────────────────
+**AND ONE DEFECT NO BUDGET CAN FIX.** `^(\w+\s?)+$` froze the scan for **108,785 ms**. The time
+budget is checked between spans; the freeze is inside one, in V8's regex engine, which cannot be
+interrupted from JavaScript. A runtime canary was written and MEASURED TO BE UNSOUND — `(a*)*b`
+does not return on twelve characters. So the `(X+)+` shape is now refused statically, before
+anything is read, as its own answer on the wire (`refused`, not `error`, not an empty result).
 
-The find field and its options. From his own list and Notepad++’s: CASE SENSITIVE, WHOLE WORD,
-REGULAR EXPRESSION, and the count and next/previous that already exist. §1 of the grammar report
-enumerates the rest of the tradition (extended escapes, backward search, mark all, search in
-selection) — judge each on whether it WORKS here, not on whether a dialog should be small.
+── WHAT IS LEFT, AND IT IS HIS ──────────────────────────
 
-AND THE BAR MUST SHRINK AS THE PANEL FILLS. Measured on the live screen: the navigation strip
-goes from 61px idle to **163px with a query**, three rows deep, and that is the crowding he is
-complaining about. Moving these controls into the panel is supposed to GIVE THE SCREEN ITS ROOM
-BACK — report the before and after height, and if the strip does not shrink, the change has not
-landed.
-
-── WHAT IS HARD HERE, SO IT IS NOT DISCOVERED LATE ───────────────────
-
-  — THE FIND IS SERVER-SIDE. `findInDocument` scans every prose span (~160 ms) and the browser
-    paints ranges; the options have to be implemented IN THAT SCAN, not in the page, or they
-    will silently apply to the rendered rows only — the virtualised-DOM defect this project
-    refuses. `reports/2026-09-16-folding-and-highlight.md` is the map.
-  — REGEX CANNOT USE THE INDEX. FTS5 has no regex, so a regular expression is a SCAN. Measure
-    what it costs on the real 133 MB session and say so on the screen if it is slow.
-  — WHOLE WORD IS NOT MEANINGFUL EVERYWHERE. The index is trigram, deliberately: Hebrew glues
-    particles to the front of words, which is why unicode61 was rejected at 51x worse. A "whole
-    word" toggle that quietly does nothing in Hebrew is worse than one that says it cannot.
-  — CASE AND FOLDING INTERACT. `src/ui/public/lib/fold.js` already NFKD-folds; case sensitivity
-    is a second axis over it and the two must not be conflated.
-
-Held by removal proofs, one per assertion, each reddening at its own line. Driven in Playwright
-in BOTH languages before anything is reported — including dragging the panel, closing it, and
-reopening it where it was left.
+  1. The strip is 128px and not 61px with the panel open, and the residue is the MARK and YOU
+     counts, which belong to the NAVIGATION panel — the second of his three. Report §2.3.
+  2. `(a|a)+` — ambiguous alternation inside a repeat — is still reachable and still exponential.
+     The real fixes are a killable child process or a linear-time engine (a dependency, which is
+     his to relax). Report §7.1.
+  3. Search-in-selection, extended escapes, backward search, wrap-around, mark-all, `.` matches
+     newline and prefix `*` were each REFUSED WITH A REASON AND A NUMBER. Report §6. Each is a
+     paragraph he can overrule.
+  4. The panel frame is `src/ui/public/lib/panel.js` and report §3 says exactly what the second
+     and third callers supply. Navigation and copy are two items, not two builds.

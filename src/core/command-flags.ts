@@ -1836,6 +1836,16 @@ export const SUBCOMMAND_FLAGS: Record<string, Record<string, FlagSpec>> = {
     // emptied but not dropped is one the Stop hook still refreshes, which
     // would be an opt-out that silently undid itself.
     forget: { allowed: ['yes', 'json'], values: [] },
+    // `search` (`semantic/10`, 2026-09-16) is the READER'S search on the
+    // command line, and `--sources` is the switch the item required to exist:
+    // said, ran, or both. It takes no `--yes` and never will — it writes
+    // nothing, and a `--yes` here would put a read on the deny list this
+    // plugin recommends, because `approvalBoundary()` derives that list from
+    // which commands accept the flag.
+    search: {
+      allowed: ['sources', 'session', 'agent', 'limit', 'json'],
+      values: ['sources', 'session', 'agent', 'limit'],
+    },
   },
   /** `cli/commands/pack.ts`. `import` is the whole surface; `list` reports. */
   pack: {
@@ -1972,9 +1982,9 @@ export const SUBCOMMAND_FLAG_DECLARATIONS: Record<string, FlagDeclarations> = {
     },
     limit: {
       format: 'a positive whole number of rows', example: '50',
-      note: 'How many indexed conversations to print. The rest are counted and named as not '
-        + 'shown rather than left out silently, so raising it can only reveal rows the '
-        + 'previous run already told you were there.',
+      note: 'How many rows to print — indexed conversations for `list`, hits per reading for '
+        + '`search`. The rest are counted and named as not shown rather than left out silently, '
+        + 'so raising it can only reveal rows the previous run already told you were there.',
     },
     label: {
       format: 'a short line saying why you kept this point', example: 'the tokenizer measurement',
@@ -1984,8 +1994,9 @@ export const SUBCOMMAND_FLAG_DECLARATIONS: Record<string, FlagDeclarations> = {
     },
     agent: {
       format: 'a helper agent id from `conversation subagents`', example: 'agent-a2352511',
-      note: 'Mark a point inside a HELPER AGENT\'s transcript rather than the session\'s own. '
-        + 'Most of this archive is lanes, so most points worth marking are in one.',
+      note: 'One HELPER AGENT\'s transcript rather than the session\'s own — the point to mark '
+        + 'for `anchor`, the transcript to search for `search`. Most of this archive is lanes, '
+        + 'so most of what is worth marking or finding is in one.',
     },
     find: {
       format: 'any part of an anchor\'s label', example: 'tokenizer',
@@ -2013,6 +2024,23 @@ export const SUBCOMMAND_FLAG_DECLARATIONS: Record<string, FlagDeclarations> = {
         + 'that predates the plugin — it can mark a thousand points at once, and a thousand '
         + '`--drop <id>` calls is not an undo. Nothing is lost that cannot be re-derived: the '
         + 'next `mycontext conversation rebuild` marks them again from the same grammar.',
+    },
+    sources: {
+      format: 'said, ran, or both', example: 'ran',
+      note: 'WHICH HALF OF THE ARCHIVE to search. `said` is what you and Claude typed, which '
+        + 'is what every search here answered until 2026-09-16 and is still the default. '
+        + '`ran` is the tool calls — the commands, the paths and the arguments — which is '
+        + 'what answers "what command did I run" and "which file did I touch". `both` is the '
+        + 'two together, and it is not the default because what was run is three and a half '
+        + 'times what was said and would bury a question about words. Whichever you choose, '
+        + 'the answer counts what the other half holds rather than leaving you to guess.',
+    },
+    session: {
+      format: 'a session id, as `conversation list` prints it',
+      example: '595db3b1-a481-4553-b4c0-7248c31b2655',
+      note: 'Search one session and its lanes instead of the whole archive. A session the '
+        + 'archive does not hold is answered as no hits in it, which is a fact about the '
+        + 'scope rather than about your words.',
     },
   },
   pack: {

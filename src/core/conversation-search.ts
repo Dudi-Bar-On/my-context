@@ -36,7 +36,8 @@
  */
 import { statSync } from 'node:fs';
 import {
-  ConversationIndex, MAX_SCAN_BYTES, type ProseHit, type ProseSpan, type ProseSourceRow,
+  ConversationIndex, MAX_SCAN_BYTES, PROSE_KINDS, RAN_KINDS, SAID_KINDS,
+  type ProseHit, type ProseKind, type ProseSpan, type ProseSourceRow,
   classifyTurn, iterateTranscript, lineStartsAt,
 } from './conversation-index.ts';
 
@@ -54,14 +55,89 @@ export const MIN_QUERY_CHARS = 3;
 /** How many hits a search returns when the caller does not say. */
 export const DEFAULT_SEARCH_LIMIT = 200;
 
+/* ── SAID, RAN, OR BOTH — `semantic/10` ────────────────────────────────────
+ *
+ * `TASK-the-archive-indexes-what-was-said-and-none-of-what-was-done`, owner
+ * ruling 2026-09-16: *"Index the tool calls"*. The index now holds them
+ * (`toolProseOf`), and this is the half of that item that decides whether it
+ * is an improvement at all.
+ *
+ * **A SEARCH THAT RETURNS EVERYTHING IS NOT BETTER THAN ONE THAT RETURNS TOO
+ * LITTLE.** What was run is 3.6x what was said, and it is a different KIND of
+ * text: paths, flags, ids, the same command a hundred times. Poured into one
+ * undifferentiated result list it would bury a prose query under command
+ * noise, and the reader would have lost a search to gain one. So the reader
+ * says WHICH, in his own two words, and the answer says what it read.
+ */
+
+/**
+ * **WHAT NO SEARCH HERE CAN REACH, AND IT IS SERVED WITH EVERY ANSWER.**
+ *
+ * `tool_result` is what every command PRINTED and `thinking` is what the model
+ * thought. Measured over this workspace's own archive 2026-09-16
+ * (`scripts/measure-tool-indexing.ts`): 67.0% and 16.4% of its characters,
+ * 83.4% together, and neither is in the index at any cap.
+ *
+ * It is a LIST OF BLOCK TYPES rather than a sentence about "some things"
+ * because a reader who has just been handed a count needs to know what the
+ * count is not about — `INV-nothing-is-dropped-silently` is about the SCOPE of
+ * an answer and not only about its truncation. One definition, and both
+ * surfaces print it: a CLI and a screen disagreeing about what the archive
+ * cannot find would be two answers to the reader's most important question.
+ */
+export const UNINDEXED_BLOCKS: readonly string[] = ['tool_result', 'thinking'];
+
+/** The reader's word for which half of the archive a query is over. */
+export type SearchSources = 'said' | 'ran' | 'both';
+
+/** The three words, in the order a surface offers them. */
+export const SEARCH_SOURCES: readonly SearchSources[] = ['said', 'ran', 'both'];
+
+/**
+ * The reader's word, as the kinds a query stands on. One spelling, every
+ * caller, and the three lists themselves live beside the column they describe
+ * (`conversation-index.ts` · `SAID_KINDS`, `RAN_KINDS`, `PROSE_KINDS`).
+ *
+ * **The default everywhere in this file is `said`, and it is a choice with a
+ * cost.** It is what keeps every caller written before 2026-09-16 reading
+ * exactly the rows it read. What it costs is that a reader who types a command
+ * he ran into a *said* search is answered `0`, which has the same shape as
+ * "the archive does not contain this" — so no search here is allowed to stop
+ * at that: `TieredSearchResult.elsewhere` counts what the kinds he did NOT ask
+ * for hold, on every query. `INV-nothing-is-dropped-silently`.
+ */
+export function kindsOf(sources: SearchSources): readonly ProseKind[] {
+  if (sources === 'said') return SAID_KINDS;
+  if (sources === 'ran') return RAN_KINDS;
+  return PROSE_KINDS;
+}
+
+/**
+ * **THE KINDS A QUERY DID NOT ASK FOR** — the complement, so a surface can say
+ * what it did not look in without a second list of what exists.
+ *
+ * Empty when the query already covered all three, which is the one case where
+ * there is nothing to disclose.
+ */
+export function kindsBesides(asked: readonly string[]): readonly ProseKind[] {
+  return PROSE_KINDS.filter((kind) => !asked.includes(kind));
+}
+
 /** Where to look. Omitting everything searches this workspace's whole archive. */
 export interface SearchScope {
   /** One session — and its lanes, unless `agentId` narrows further. */
   sessionId?: string;
   /** One lane, or `null` for a session's own transcript only. */
   agentId?: string | null;
-  /** `'prompt'` for what he typed, `'answer'` for what was said back. */
-  kind?: 'prompt' | 'answer';
+  /**
+   * **Which kinds of span** — one, or a set. `SAID_KINDS` when the caller does
+   * not say, which is what keeps every pre-2026-09-16 caller unchanged.
+   *
+   * A surface takes the reader's word and passes `kindsOf(word)`; there is no
+   * second field for the word itself, because two fields meaning one thing is
+   * two places for a query's scope to be decided.
+   */
+  kind?: ProseKind | readonly ProseKind[];
   limit?: number;
   /**
    * **Only these transcripts, and only at or past these bytes.**
@@ -197,9 +273,10 @@ export interface SearchBuildReport {
  * A prompt with nothing attached is a plain string; the same prompt carrying
  * files is an array with a `text` block in it, and an answer is always the
  * array form. Anything else — a `tool_use`, a `tool_result`, a `thinking`
- * block — contributes nothing, which is deliberate and is NOT this build's
- * definition of noise: `classifyTurn` has already decided that one record
- * earlier, and this only reads what the record says.
+ * block — contributes nothing HERE, which is deliberate: `classifyTurn` has
+ * already decided that one record earlier, and this only reads what the record
+ * says. What a record RAN is read by `toolProseOf` beside this, into a span of
+ * its own kind, so that the reader can ask for one without the other.
  */
 export function proseOf(record: Record<string, unknown> | null): string {
   if (record === null) return '';
@@ -215,6 +292,117 @@ export function proseOf(record: Record<string, unknown> | null): string {
     if (typed.type === 'text' && typeof typed.text === 'string') parts.push(typed.text);
   }
   return parts.join('\n');
+}
+
+/**
+ * **HOW MUCH OF ONE ARGUMENT IS INDEXED**, in characters, and it is a cap on
+ * the VALUE rather than on the block.
+ *
+ * ── WHY THERE IS A CAP AT ALL ─────────────────────────────────────────────
+ *
+ * `tool_use` is 106,728,078 characters of this archive against 29,301,746 of
+ * text, and almost the whole of the difference is two arguments: `Write`'s
+ * `content` and `Edit`'s `old_string`/`new_string`, which carry WHOLE FILES.
+ * A file that was written through a tool is a file on disk; indexing its body
+ * a second time buys a reader nothing he cannot get from the file, and it is
+ * the same "file dump" cost that keeps `tool_result` out of the index
+ * entirely.
+ *
+ * ── WHY IT IS PER VALUE AND NOT PER BLOCK ─────────────────────────────────
+ *
+ * The question this index now answers is *what command did I run, on which
+ * path*. `Write`'s input is `{file_path, content}` and `Edit`'s is
+ * `{file_path, old_string, new_string}` — a cap on the BLOCK spends its whole
+ * budget on the first long value and can drop `file_path` entirely, which is
+ * the one argument the reader was looking for. Capping each value keeps every
+ * KEY and the head of every value, so a hundred-kilobyte `Write` still
+ * indexes its path, its tool name and the first lines of what it wrote.
+ *
+ * The number is measured, not chosen: `scripts/measure-tool-indexing.ts`
+ * prints the cap curve over the real archive, and
+ * `reports/2026-09-16-indexing-what-was-done.md` carries the row this was read
+ * off.
+ */
+export const TOOL_VALUE_CAP = 2_000;
+
+/** Written into the text where a value was cut, so a reader sees the cut. */
+export const TOOL_TRUNCATED = '…';
+
+/**
+ * **WHAT ONE RECORD RAN, rendered into something a trigram index can match** —
+ * the tool's NAME, then one `key: value` line per argument.
+ *
+ * `''` for a record that called nothing, which is most of them.
+ *
+ * ── THE SHAPE IS THE ANSWER TO THE QUESTIONS IT EXISTS FOR ────────────────
+ *
+ * *"what command did I run"*, *"which file did I touch"*, *"when did I last
+ * run that script"*. All three are the tool's name and its arguments, so both
+ * are rendered and neither is summarised: a `Bash` block becomes
+ *
+ *     Bash
+ *     command: node --test test/core/conversation-search.test.ts
+ *     description: Run the search tests
+ *
+ * and a reader typing `conversation-search.test` finds it as a substring, which
+ * is what this tokenizer is for. **The JSON is NOT indexed as JSON.** Quoting
+ * and escaping would put `\"` and `\\n` between the characters a reader types,
+ * and on a trigram index a query is matched as a contiguous run — a path
+ * spelled `src\\core\\x.ts` in the raw record is not the `src/core/x.ts` he
+ * would type. So strings are rendered as their own characters, and only a
+ * value that is not a string is `JSON.stringify`d, because there is nothing
+ * else it could be.
+ *
+ * ── ONE SPAN PER RECORD, NOT ONE PER BLOCK ────────────────────────────────
+ *
+ * A record can carry several `tool_use` blocks and they share a byte offset,
+ * which is the only seek target a hit can carry. Rendering them into one text
+ * keeps the index's promise that a span is a place in a file.
+ */
+export function toolProseOf(
+  record: Record<string, unknown> | null, cap = TOOL_VALUE_CAP,
+): string {
+  if (record === null) return '';
+  const message = record.message;
+  if (typeof message !== 'object' || message === null) return '';
+  const content = (message as { content?: unknown }).content;
+  if (!Array.isArray(content)) return '';
+  const parts: string[] = [];
+  for (const block of content) {
+    if (typeof block !== 'object' || block === null) continue;
+    const typed = block as { type?: unknown; name?: unknown; input?: unknown };
+    if (typed.type !== 'tool_use') continue;
+    const lines: string[] = [];
+    if (typeof typed.name === 'string' && typed.name !== '') lines.push(typed.name);
+    if (typeof typed.input === 'object' && typed.input !== null && !Array.isArray(typed.input)) {
+      for (const [key, value] of Object.entries(typed.input as Record<string, unknown>)) {
+        lines.push(`${key}: ${clip(render(value), cap)}`);
+      }
+    }
+    if (lines.length !== 0) parts.push(lines.join('\n'));
+  }
+  return parts.join('\n');
+}
+
+/** A value as its own characters — `JSON.stringify` only for what is not text. */
+function render(value: unknown): string {
+  if (typeof value === 'string') return value;
+  if (value === null || value === undefined) return '';
+  if (typeof value === 'number' || typeof value === 'boolean') return String(value);
+  try { return JSON.stringify(value) ?? ''; } catch { return ''; }
+}
+
+/**
+ * Cut at `cap` CHARACTERS and say so.
+ *
+ * Characters and not bytes, and this is the one place in this project where
+ * that is right rather than a defect: the cap is a bound on how much of an
+ * argument is worth indexing, not an offset anybody seeks to. Cutting on a
+ * byte would split a Hebrew character or an emoji in half and hand FTS5 a lone
+ * surrogate. Every OFFSET this module produces is still a byte offset.
+ */
+function clip(text: string, cap: number): string {
+  return text.length <= cap ? text : text.slice(0, cap) + TOOL_TRUNCATED;
 }
 
 /** A record's own timestamp, when it carried one. */
@@ -395,24 +583,34 @@ function proseFrom(
   for (const record of iterateTranscript(source.file, { startByte, startIndex, cap, cursor })) {
     records = record.index + 1;
     if (record.record === null) continue;
-    const kind = classifyTurn(record.record.type, (record.record.message as
+    const at = stampOf(record.record);
+    const put = (kind: ProseKind, text: string): void => {
+      if (text.trim() === '') return;
+      spans.push({
+        sourceKey: source.key,
+        sessionId: source.sessionId,
+        agentId: source.agentId,
+        recordIndex: record.index,
+        byteOffset: record.byteOffset,
+        kind,
+        at,
+        text,
+      });
+    };
+    const said = classifyTurn(record.record.type, (record.record.message as
       { content?: unknown } | undefined)?.content);
-    // **The filter is `classifyTurn` and nothing else.** A second definition of
-    // what counts as words would drift from the one the list screen's prompt
-    // and answer columns already rest on.
-    if (kind === 'machinery') continue;
-    const text = proseOf(record.record);
-    if (text.trim() === '') continue;
-    spans.push({
-      sourceKey: source.key,
-      sessionId: source.sessionId,
-      agentId: source.agentId,
-      recordIndex: record.index,
-      byteOffset: record.byteOffset,
-      kind,
-      at: stampOf(record.record),
-      text,
-    });
+    // **The filter for WHAT WAS SAID is `classifyTurn` and nothing else.** A
+    // second definition of what counts as words would drift from the one the
+    // list screen's prompt and answer columns already rest on.
+    if (said !== 'machinery') put(said, proseOf(record.record));
+    // **AND THE SAME RECORD IS READ AGAIN FOR WHAT IT RAN.** It is a second
+    // `put` rather than an `else`, and that is the whole of the 2026-09-16
+    // change: a record that says something and then calls a tool is BOTH, and
+    // the record `classifyTurn` calls `machinery` is precisely the one this
+    // index used to drop on the floor. Two spans at one byte offset is a
+    // deliberate shape — see `ProseSpan` — and it is why `hitKey` carries the
+    // kind.
+    put('ran', toolProseOf(record.record));
   }
   return { spans, records, bytesRead: cursor.scannedBytes };
 }
@@ -636,7 +834,7 @@ export function searchArchive(
     hits: index.matchProse(
       quoteTerm(trimmed),
       {
-        sessionId: scope.sessionId, agentId: scope.agentId, kind: scope.kind,
+        sessionId: scope.sessionId, agentId: scope.agentId, kind: scope.kind ?? SAID_KINDS,
         ...(scope.windows === undefined ? {} : { windows: scope.windows }),
         ...(scope.offset === undefined ? {} : { offset: scope.offset }),
       },
@@ -785,6 +983,27 @@ export interface TieredSearchResult {
   /** One entry per reading asked, in `SEARCH_TIERS` order. */
   tiers: TierAnswer[];
   hits: TieredHit[];
+  /** **Which kinds of span this answer is over** — see `SearchScope.kind`. */
+  kinds: ProseKind[];
+  /**
+   * **WHAT THE KINDS HE DID NOT ASK FOR HOLD**, counted — `null` when he asked
+   * for all of them and there is nothing left out.
+   *
+   * `semantic/10`, and it is the line that makes a default of *said* honest
+   * rather than a quiet refusal. A reader typing a command he ran into a
+   * search that reads only what was SAID gets zero hits, and zero is the same
+   * shape as "the archive does not contain this". This is the difference, and
+   * it is a COUNT rather than a flag because *"and 47 more in what you ran"*
+   * is actionable and *"there might be more somewhere"* is not.
+   * `INV-nothing-is-dropped-silently`, and `SearchResult.searchable` is the
+   * same bargain one layer down.
+   *
+   * It is counted over the BROADEST reading that was sent, which is the widest
+   * net this query casts, so the number cannot understate what switching would
+   * find. One `countProse` per search — measured on the real archive in
+   * `reports/2026-09-16-indexing-what-was-done.md`.
+   */
+  elsewhere: { kinds: ProseKind[]; matched: number } | null;
 }
 
 /** One query, read into its parts. Nothing here touches the index. */
@@ -876,13 +1095,23 @@ function tooShortNote(trimmed: string): string {
     + `is not an answer of "nothing found". Type at least ${MIN_QUERY_CHARS} characters.`;
 }
 
-/** Where one hit is, spelled once. A lane and its session share a record index. */
+/**
+ * Where one hit is, spelled once. A lane and its session share a record index.
+ *
+ * **`kind` is part of the key, since 2026-09-16.** A record that says
+ * something and then calls a tool is TWO spans at ONE byte offset
+ * (`ProseSpan`), so a key over position alone makes the second of them
+ * invisible: the tier loop treats it as already seen and drops it without a
+ * word, which is the silent loss `INV-nothing-is-dropped-silently` forbids —
+ * and it would fall on the NEW kind, so the feature would half-work and look
+ * like it had worked.
+ */
 function hitKey(hit: ProseHit): string {
   // The separator is a NUL, written as an ESCAPE. A raw NUL in the source
   // makes the file binary to git, and this project lost the diff on
   // `screens/conversations.js` for days that way; `npm run check:text-files`
   // is the gate that catches it. The escape sends the identical byte.
-  return `${hit.sessionId}\u0000${hit.agentId ?? ''}\u0000${hit.byteOffset}`;
+  return `${hit.sessionId}\u0000${hit.agentId ?? ''}\u0000${hit.byteOffset}\u0000${hit.kind}`;
 }
 
 /**
@@ -948,6 +1177,11 @@ export function searchArchiveTiered(
   scope: Omit<SearchScope, 'offset'> = {},
 ): TieredSearchResult {
   const trimmed = query.trim();
+  // **The kinds are decided BEFORE the refusals**, so a query that is too
+  // short still says which half of the archive it would have searched. A
+  // reader who has switched to *ran* and then types two characters is told the
+  // floor, not silently moved back to *said*.
+  const kinds = asKinds(scope.kind ?? SAID_KINDS);
   const empty = {
     query: trimmed,
     terms: [] as string[],
@@ -955,6 +1189,8 @@ export function searchArchiveTiered(
     excluded: [] as string[],
     tiers: [] as TierAnswer[],
     hits: [] as TieredHit[],
+    kinds: [...kinds],
+    elsewhere: null,
   };
   if (trimmed.length < MIN_QUERY_CHARS) {
     return { ...empty, searchable: false, note: tooShortNote(trimmed) };
@@ -977,7 +1213,7 @@ export function searchArchiveTiered(
   }
   const limit = scope.limit ?? DEFAULT_SEARCH_LIMIT;
   const where = {
-    sessionId: scope.sessionId, agentId: scope.agentId, kind: scope.kind,
+    sessionId: scope.sessionId, agentId: scope.agentId, kind: kinds,
     ...(scope.windows === undefined ? {} : { windows: scope.windows }),
   };
   const readings = tiersOf(parsed.terms, NEAR_CHARS, parsed.phrase)
@@ -1020,7 +1256,40 @@ export function searchArchiveTiered(
     excluded: parsed.excluded,
     tiers,
     hits,
+    kinds: [...kinds],
+    // **THE ONE EXTRA QUERY, AND WHAT IT BUYS.** `readings` is ordered
+    // narrowest-first, so its LAST entry is the broadest net this query casts
+    // — counting the unasked kinds over that reading cannot understate what
+    // switching would find. `null` when nothing was left out, so a surface
+    // that prints this line only prints it when there is something to say.
+    elsewhere: elsewhereOf(index, readings.at(-1)?.match ?? null, where, kinds),
   };
+}
+
+/** Kinds as a list, whichever way the caller spelled them. */
+function asKinds(kind: ProseKind | readonly ProseKind[]): readonly ProseKind[] {
+  return typeof kind === 'string' ? [kind] : kind;
+}
+
+/**
+ * **How much the kinds this query did NOT ask for hold**, over the same scope
+ * and the same reading — see `TieredSearchResult.elsewhere`.
+ *
+ * The scope is reused with only `kind` swapped, which is what makes the number
+ * comparable to the one beside it: a count taken over a differently-built
+ * `WHERE` would be a disclosure about a different set of rows, and
+ * `proseWhere`'s own header is about exactly that cost.
+ */
+function elsewhereOf(
+  index: ConversationIndex,
+  match: string | null,
+  where: { sessionId?: string; agentId?: string | null; kind: readonly ProseKind[];
+    windows?: { sourceKey: string; fromByte: number }[] },
+  asked: readonly ProseKind[],
+): { kinds: ProseKind[]; matched: number } | null {
+  const rest = kindsBesides(asked);
+  if (rest.length === 0 || match === null) return null;
+  return { kinds: [...rest], matched: index.countProse(match, { ...where, kind: rest }) };
 }
 
 /* ── FIND IN THE DOCUMENT I AM READING — `semantic/8` ──────────────────────
@@ -1112,13 +1381,57 @@ export const FIND_HITS_PER_TURN = 500;
  * middle of an ordering that has none. `allowJs` is off, so a static import
  * of a `.js` file cannot typecheck and the cast is what the boundary costs.
  */
-const { foldedMatches } = (await import(
+const { findQuery } = (await import(
   new URL('../ui/public/lib/fold.js', import.meta.url).href
 )) as {
-  foldedMatches: (
-    text: string, query: string, limit?: number,
-  ) => { from: number; to: number; byteFrom: number; byteTo: number; precise: boolean }[];
+  findQuery: (query: string, options?: FindOptions) => {
+    ok: boolean;
+    error: string | null;
+    slow: boolean;
+    regex: boolean;
+    unicode: boolean;
+    find?: (
+      text: string, limit?: number,
+    ) => { from: number; to: number; byteFrom: number; byteTo: number; precise: boolean }[];
+  };
 };
+
+/**
+ * **THE THREE THE OWNER ASKED FOR TWICE** — `semantic/9`. Every field
+ * defaults to `false`, and all three `false` is exactly the find that shipped
+ * with `semantic/8`.
+ *
+ * They are DECIDED in `src/ui/public/lib/fold.js` and only threaded here, for
+ * the reason that file's header gives: the browser paints with the same
+ * matcher this counts with, so a tick box read two ways would put a count on
+ * the screen that the highlights under it disagree with.
+ */
+export interface FindOptions {
+  /** `Byte` is not `byte`. NFKD folding is UNAFFECTED — two axes, not one. */
+  caseSensitive?: boolean;
+  /** A boundary at each end that is itself a word character. */
+  wholeWord?: boolean;
+  /** The query is a regular expression over the text AS WRITTEN, unfolded. */
+  regex?: boolean;
+}
+
+/**
+ * **HOW LONG ONE REGULAR EXPRESSION MAY SCAN FOR.**
+ *
+ * A literal scan of the largest transcript here costs ~160 ms and is bounded
+ * by the text. A regular expression is bounded by the PATTERN: `(a+)+b` over
+ * one long span is exponential, and a reader can type that without knowing it
+ * — ripgrep's own FAQ is a note about exactly this class
+ * (*"a guarantee [of] linear worst case time complexity on all inputs"*, which
+ * `RegExp` does not give). So the scan is checked against a clock between
+ * spans and stops, with `DocumentFind.timedOut` saying it did.
+ *
+ * **It cannot interrupt one span**, and that is the honest bound of a
+ * single-threaded scan: a pathological pattern over a 900 KB span is inside
+ * the engine and this code is not running. What this buys is that a document
+ * of 4,580 spans cannot multiply a slow pattern by 4,580.
+ */
+export const FIND_REGEX_BUDGET_MS = 5_000;
 
 /** One turn of a transcript that holds what the reader typed. */
 export interface FoundTurn {
@@ -1160,6 +1473,53 @@ export interface DocumentFind {
   turns: FoundTurn[];
   /** Occurrences over all of them, each turn bounded by `FIND_HITS_PER_TURN`. */
   matches: number;
+  /**
+   * **WHAT THE SCAN COST, IN MILLISECONDS** — `semantic/9`.
+   *
+   * Served on every answer and not only the slow ones, because a number that
+   * appears only when something is wrong teaches a reader nothing about what
+   * right looks like. The screen draws it where the item requires it to:
+   * beside the regular-expression toggle, which is the mode that can be slow
+   * and the one the owner is owed a number for.
+   */
+  ms: number;
+  /**
+   * The regular expression could not be compiled, and this is the ENGINE's own
+   * message — never a rewrite of it.
+   *
+   * `null` in every other case, including a valid pattern that matched
+   * nothing. A pattern that is wrong and a pattern that is right and finds
+   * nothing are two different answers
+   * (`nothing-to-do-and-could-not-look-are-different-answers`) and this is the
+   * field that keeps them apart.
+   */
+  error: string | null;
+  /**
+   * **THE PATTERN COMPILED WITHOUT THE `u` FLAG**, so `.` is one UTF-16 unit
+   * rather than one character and an astral character is two of them.
+   *
+   * Only ever `true` in regex mode, and only for a pattern `u` refuses (see
+   * `compileRegex` in `fold.js`, which tries `u` first precisely so that this
+   * is rare). It is SERVED rather than swallowed because it changes what the
+   * reader's own pattern means, and a matching mode that quietly downgraded
+   * itself is the silent-failure shape this file's neighbours are full of.
+   */
+  codeUnitMode: boolean;
+  /** `FIND_REGEX_BUDGET_MS` ran out, so spans exist that were not read. */
+  timedOut: boolean;
+  /**
+   * **A LEGAL PATTERN THAT WAS NOT RUN**, because `fold.js`'
+   * `nestedQuantifier` recognises it as the `(X+)+` shape that took
+   * **108,785 ms** over this repository's own session on 2026-09-16 — a
+   * freeze no budget here can end, because it happens inside one span, inside
+   * V8's regex engine, which cannot be interrupted from JavaScript.
+   *
+   * It is its own field and not an `error`, because it is not an error: the
+   * pattern is valid and a different engine would run it. Three answers where
+   * a weaker design would have one empty result —
+   * `nothing-to-do-and-could-not-look-are-different-answers`.
+   */
+  refused: boolean;
 }
 
 /**
@@ -1188,10 +1548,20 @@ export function findInDocument(
   index: ConversationIndex,
   query: string,
   scope: { sessionId: string; agentId: string | null },
+  options: FindOptions = {},
 ): DocumentFind {
   const trimmed = query.trim();
-  const empty: DocumentFind = {
-    query: trimmed, scanned: 0, capped: false, turns: [], matches: 0,
+  const blank: DocumentFind = {
+    query: trimmed,
+    scanned: 0,
+    capped: false,
+    turns: [],
+    matches: 0,
+    ms: 0,
+    error: null,
+    codeUnitMode: false,
+    timedOut: false,
+    refused: false,
   };
   // **No floor of three characters here, and that is deliberate.**
   // `MIN_QUERY_CHARS` is a property of the TRIGRAM INDEX, which this does not
@@ -1199,14 +1569,42 @@ export function findInDocument(
   // of the Hebrew occurrences in this corpus are words under three characters
   // (`reports/2026-09-16-the-search-grammar.md` §3 Finding 1). Refusing them
   // here would import a bound from a mechanism that is not involved.
-  if (trimmed === '') return empty;
+  if (trimmed === '') return blank;
+
+  /*
+   * **COMPILED ONCE, BEFORE A SINGLE SPAN IS READ** — `semantic/9`.
+   *
+   * Two things follow from putting this here rather than inside the loop. A
+   * pattern costs one `new RegExp` for a 4,580-span document instead of
+   * 4,580. And an INVALID pattern is one answer with the engine's message on
+   * it, drawn beside the box, rather than 4,580 silent catches that leave the
+   * reader looking at an empty result they cannot tell from "not there".
+   */
+  const compiled = findQuery(trimmed, options);
+  if (compiled.ok !== true || compiled.find === undefined) {
+    return {
+      ...blank,
+      error: compiled.error,
+      codeUnitMode: false,
+      refused: compiled.slow === true,
+    };
+  }
+  const { find } = compiled;
 
   const spans = index.proseSpans({ sessionId: scope.sessionId, agentId: scope.agentId },
     FIND_SCAN_CAP);
   const turns: FoundTurn[] = [];
   let matches = 0;
+  let timedOut = false;
+  const began = performance.now();
+  // The clock is only consulted in regex mode. A literal scan is bounded by
+  // the text — 160 ms on the largest transcript here — so a budget over it
+  // would be a bound that has never once been reached, drawn on a screen as
+  // though it might be.
+  const deadline = options.regex === true ? began + FIND_REGEX_BUDGET_MS : Infinity;
   for (const span of spans) {
-    const found = foldedMatches(span.text, trimmed, FIND_HITS_PER_TURN);
+    if (performance.now() > deadline) { timedOut = true; break; }
+    const found = find(span.text, FIND_HITS_PER_TURN);
     if (found.length === 0) continue;
     matches += found.length;
     turns.push({
@@ -1233,5 +1631,10 @@ export function findInDocument(
     capped: spans.length >= FIND_SCAN_CAP,
     turns,
     matches,
+    ms: Math.round(performance.now() - began),
+    error: null,
+    codeUnitMode: compiled.regex === true && compiled.unicode !== true,
+    timedOut,
+    refused: false,
   };
 }

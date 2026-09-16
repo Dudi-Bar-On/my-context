@@ -4430,6 +4430,122 @@ wa-tree .wa-count{margin-inline-start:var(--sp-2);color:var(--dim);
    look fine in this file and paint nothing. */
 ::highlight(mycontextfind){background-color:var(--gold);color:#17171c}
 
+/* ── AND THE ONE YOU ARE STANDING ON ──────────────────────────────────────
+   `semantic/9`, and the owner reported the absence himself: every match wore
+   `--gold`, so Next moved the page and nothing on it said WHICH of thirty-
+   three highlights he had just arrived at.
+
+   NO SIXTH HUE, which is this stylesheet's own rule at line 1100 — the five
+   meaning colours are `--gold`, `--ok`, `--carry`, `--crit` and `--warn`, and
+   spending one of them here would say "carried" or "critical" about a search
+   hit. The current match is the PAGE INVERTED instead: `--ink` behind
+   `--paper`, which both themes already redefine together, so it is the one
+   highlight that is not gold at all rather than a second shade of it.
+
+   AND IT IS NOT COLOUR ALONE, which is this app's standing rule.
+   `text-decoration` is one of the few properties `::highlight()` actually
+   honours — colour, background, text-decoration, text-shadow, text-stroke,
+   and it silently drops the rest — so the current match is also the only
+   underlined one. A reader who cannot separate the two grounds still has it.
+
+   `priority` is set in `paintFinds` rather than here: it is a property of the
+   `Highlight` OBJECT and has no CSS spelling at all. */
+::highlight(mycontextfindnow){background-color:var(--ink);color:var(--paper);
+  text-decoration:underline}
+
+/* ── THE FLOATING PANEL ───────────────────────────────────────────────────
+   `TASK-the-find-options-the-owner-asked-for-twice-in-a-floating`,
+   `semantic/9`. THE FIRST DIALOG IN THIS PRODUCT — measured before it was
+   written: no `showModal`, no `<dialog>` and no dialog styling anywhere under
+   `src/ui/public/`. So there was nothing to be consistent with and nothing to
+   break, and what is here is the house pattern from now on, for the
+   navigation and copy panels that follow.
+
+   `position:fixed` IS LOAD-BEARING AND NOT A PREFERENCE. A non-modal
+   `<dialog>` — `show()`, which is the whole point, see `lib/panel.js` — is
+   `position:absolute` by default, so it would scroll away with the page. The
+   owner asked for one that "stays on screen while you can look at the
+   viewer", and that is this line plus `show()`.
+
+   AND THE UA SHEET SETS `inset:0` AND `margin:auto` ON `dialog`. Both are
+   reset here, or the panel centres itself and the placement `lib/panel.js`
+   writes into `inset-inline-start` is fought by an `inset-inline-end` nobody
+   asked for.
+
+   "COULD BE A LITTLE BIT TRANSPARENT" — his words. `--panel-2` at 0.94
+   through `color-mix`, which leaves the turn behind it legible as a shape
+   without the text under it competing with the text in it. Not `opacity`,
+   which would fade the panel's OWN words by the same amount.
+
+   `z-index` is written by `lib/panel.js` from a counter so that clicking a
+   panel brings it to the front; the value here is only the floor, and it is
+   above `.tvmenu`'s 20 because the menu is what opens the panel. */
+.mcpanel{position:fixed;inset:auto;margin:0;z-index:40;
+  inline-size:min(28rem,calc(100vw - 2rem));max-block-size:calc(100vh - 4rem);
+  overflow:auto;padding:0;
+  color:var(--ink);
+  background:color-mix(in srgb, var(--panel-2) 94%, transparent);
+  border:2px solid var(--dim);border-radius:var(--r-sm)}
+/* AND THE BACKDROP PSEUDO-ELEMENT IS NOT STYLED HERE, WHICH IS A STATEMENT
+   RATHER THAN AN OMISSION. It is painted only for an element in the TOP
+   LAYER, and `show()` never puts a dialog there — so a rule would be dead
+   code that read as though this panel might dim the page behind it. One WAS
+   written here, and `test/ui/pane-float.test.ts` reddened: that test asserts
+   this whole stylesheet never names it, for the item pane's own reason ("a
+   modal would take the screen hostage to solve a reading-width problem"). It
+   is the correct assertion and this panel passes it honestly — the rule is
+   deleted, and its own name is spelt out nowhere below, because the gate is a
+   text match over the file and a comment would trip it just as a rule does. */
+
+/* THE HEADER IS THE DRAG HANDLE, so it says so with a cursor and holds the
+   only control that is not part of the search. `touch-action:none` is what
+   makes the pointer events arrive at all on a touch screen — without it the
+   browser claims the gesture as a scroll and `pointermove` never fires. */
+.mcpanelhead{display:flex;align-items:center;justify-content:space-between;
+  gap:var(--sp-2);padding:var(--sp-1) var(--sp-2);
+  background:var(--panel-2);border-block-end:2px solid var(--dim);
+  cursor:move;touch-action:none;user-select:none}
+.mcpanelname{margin:0;font:600 var(--fs-0)/1.3 var(--sans);color:var(--ink)}
+/* `.tvjump`'s treatment rather than a colour of its own: this app has shipped
+   a Clear button at contrast ~1.0 by letting a new control inherit the user
+   agent's background, and a close button nobody can see is that defect in the
+   one place a reader most needs it. */
+.mcpanelclose{flex:0 0 auto;min-inline-size:2rem;
+  font:600 var(--fs-0)/1 var(--mono);color:var(--ink);
+  background:var(--panel-2);border:2px solid var(--dim);
+  border-radius:var(--r-sm);padding:2px var(--sp-1);cursor:pointer}
+.mcpanelclose:hover{border-color:var(--gold);color:var(--gold)}
+.mcpanelclose:focus-visible{outline:2px solid var(--gold);outline-offset:2px}
+
+.mcpanelbody{display:flex;flex-direction:column;gap:var(--sp-1);
+  padding:var(--sp-2)}
+/* THE BORROWED FIND BOX FILLS THE PANEL'S WIDTH AND NOT ITS HEIGHT, and the
+   second half of that is a real defect this line exists to close. `.tvfind`
+   carries `flex:1 1 220px` because it lives in `.tvbar`, which is a ROW: the
+   grow is what makes it take the space the buttons beside it do not want. In
+   here the container is a COLUMN, and the same `flex-grow:1` made the input
+   470px tall — a text field the height of the panel, found in a screenshot
+   rather than by any assertion, because every test in the browser suite reads
+   its value and none of them reads its box. `flex:0 0 auto` is the column's
+   answer; the width is asked for separately, which is what `inline-size` is. */
+.mcpanelbody .tvfind{flex:0 0 auto;inline-size:100%}
+.mcpanelopth{margin:var(--sp-1) 0 0}
+.mcpanelopts{display:flex;flex-wrap:wrap;gap:var(--sp-1) var(--sp-2)}
+/* The LABEL wraps the box, so the whole row is the hit target and no `id` is
+   promised about a page this screen does not own. */
+.mcpanelopt{display:flex;align-items:center;gap:var(--sp-1);
+  font:var(--fs-00)/1.3 var(--sans);color:var(--ink);cursor:pointer}
+.mcpanelopt input{margin:0;accent-color:var(--gold);cursor:pointer}
+.mcpanelnotes{display:flex;flex-direction:column;gap:var(--sp-1)}
+.mcpanelnote{margin:0}
+.mcpanelhint{margin:var(--sp-1) 0 0;color:var(--dim)}
+/* The borrowed stepper is a row of its own in here rather than a group in a
+   wrapping bar, and the count sits under it rather than beside it: the panel
+   is 28rem and a count sentence beside two buttons would wrap every time. */
+.mcpanelbody .tvnavfounds{flex-wrap:wrap}
+.mcpanelbody .tvnavcount{margin-inline-start:0}
+.mcpanelbody .tvcount{margin:0}
+
 /* ── THE KIND THE MARK WALK IS OVER ───────────────────────────────────────
    `TASK-the-six-kinds-a-mark-can-carry-have-no-reader-so-you-cannot`.
 

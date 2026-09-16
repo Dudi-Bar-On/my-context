@@ -302,11 +302,25 @@ const CONVERSATION_TABLE_COLUMNS: [string, string[]][] = [
  * VIRTUAL TABLE` and nothing else — against `CONST-zero-runtime-dependencies`
  * and `CONST-node-24-no-build-step`.
  *
- * **PROSE ONLY, and the filter is `classifyTurn`.** A prompt or an answer in
- * words is indexed; machinery is not. That is the same thirteen lines the list
- * screen's counts already rest on, reused rather than restated, so "what is
- * noise" cannot come to mean two different things on two screens. Measured on
- * this workspace 2026-09-11, over 2 sessions and 298 lane transcripts:
+ * **WHAT WAS SAID, AND SINCE 2026-09-16 WHAT WAS RUN.** `classifyTurn` is
+ * still the filter for the first — a prompt or an answer in words is a
+ * `'prompt'` or `'answer'` span, and that is the same thirteen lines the list
+ * screen's counts rest on, reused rather than restated, so "what is noise"
+ * cannot mean two things on two screens. Beside them now sits a `'ran'` span
+ * per record that called a tool (`ProseSpan`, and `toolProseOf` in
+ * `conversation-search.ts`), because indexing 4.6% of the archive's characters
+ * and calling the other 95.4% unsearchable was a CHOICE and the owner reversed
+ * it: *"Index the tool calls"*,
+ * `TASK-the-archive-indexes-what-was-said-and-none-of-what-was-done`.
+ *
+ * **`tool_result` is still out, and that is the deliberate part.** It is 78.9%
+ * of the archive's characters on its own and is overwhelmingly file dumps and
+ * test output; `reports/2026-09-16-indexing-what-was-done.md` measures a capped
+ * variant of it for the owner to rule on. Nothing here pretends it is indexed:
+ * a search says which kinds it read.
+ *
+ * The 2026-09-11 measurement that shaped the original decision, over 2 sessions
+ * and 298 lane transcripts:
  *
  *     transcripts on disk      856,905,563 bytes   162,611 records
  *     prose                      8,402,679 bytes     7,750 spans   0.98%
@@ -641,8 +655,29 @@ export interface NameRow {
 }
 
 /**
- * One span of prose, as it is stored in `conversation_prose` — a single
- * record's words, with the seek target they live at.
+ * **WHAT A SPAN IS, AND THERE ARE NOW THREE KINDS OF ONE.**
+ *
+ * `'prompt'` and `'answer'` are what `classifyTurn` calls a turn somebody
+ * TOOK — they are WHAT WAS SAID, and until 2026-09-16 they were the whole
+ * index. `'ran'` is WHAT WAS DONE: the `tool_use` blocks of a record, rendered
+ * by `conversation-search.ts`' `toolProseOf` — the tool's name, and its
+ * arguments as `key: value` lines.
+ *
+ * **The owner asked for it in one sentence** — *"Index the tool calls"*,
+ * 2026-09-16, `TASK-the-archive-indexes-what-was-said-and-none-of-what-was-done`
+ * — after being shown that the archive indexed 4.6% of its own characters. It
+ * is a THIRD VALUE rather than a widening of the other two, and that is what
+ * makes every query written before it still mean what it meant: `kind =
+ * 'answer'` (`lastAnswerBytes`) and `kind = 'prompt'` (`proseSpanRefs`) match
+ * exactly the rows they matched, and a caller that names no kind is handed
+ * `SAID_KINDS` by `conversation-search.ts` rather than a silently larger set.
+ *
+ * **ONE RECORD CAN PRODUCE TWO SPANS.** An assistant record that says
+ * something and then calls a tool is one `'answer'` span and one `'ran'` span,
+ * at the SAME `byteOffset`, because they are two readings of one record and
+ * the reader asked for one of them. Anything that keys a hit by position alone
+ * would collapse the pair — `conversation-search.ts`' `hitKey` carries the
+ * kind for exactly that reason.
  *
  * `sourceKey` is the transcript: the session id, or the agent id for a lane.
  * One key, one file, and it is what a re-index deletes by.
@@ -656,10 +691,58 @@ export interface ProseSpan {
   recordIndex: number;
   /** Where this record's first byte sits in the file. A seek target. */
   byteOffset: number;
-  kind: 'prompt' | 'answer';
+  kind: ProseKind;
   /** The record's own timestamp, or `null` when it carried none. */
   at: string | null;
   text: string;
+}
+
+/**
+ * **THE THREE VALUES `conversation_prose.kind` HOLDS.** See `ProseSpan`.
+ *
+ * It is a union rather than a string so that a surface cannot invent a fourth
+ * by typo and have it silently match nothing: `kind = 'tool'` against a column
+ * that holds `'ran'` is an empty answer with no error, which is the shape
+ * `INV-nothing-is-dropped-silently` forbids.
+ */
+export type ProseKind = 'prompt' | 'answer' | 'ran';
+
+/**
+ * The three, written down once so a query can NAME them rather than omit a
+ * scope and hope. `conversation-search.ts` groups them into the two words a
+ * reader uses — *said* and *ran* — and does not spell this list a second time.
+ */
+export const PROSE_KINDS: readonly ProseKind[] = ['prompt', 'answer', 'ran'];
+
+/**
+ * **WHAT WAS SAID** — the two kinds `classifyTurn` produces, and the set every
+ * query in this product stood on before 2026-09-16.
+ *
+ * It is the DEFAULT of `proseSpans` and of every search in
+ * `conversation-search.ts`, and that default is the whole compatibility story
+ * of adding a third kind: the anchor pass's table probes, the item-id lookups
+ * in `retrieval/from-selection.ts`, `read-model-retrieval.ts`' subjects pass
+ * and the document find bar all read EXACTLY the rows they read before, with
+ * no edit to any of them and no chance of a silent widening. A reader asks for
+ * more by NAMING more.
+ */
+export const SAID_KINDS: readonly ProseKind[] = ['prompt', 'answer'];
+
+/** **WHAT WAS RUN** — the `tool_use` spans `toolProseOf` renders. */
+export const RAN_KINDS: readonly ProseKind[] = ['ran'];
+
+/**
+ * **A stored `kind` read back, narrowed — and an unknown one is NOT guessed.**
+ *
+ * The row comes from a database a PREVIOUS release wrote, so the value is data
+ * and not a type. `null` for anything that is not one of the three, rather
+ * than a fallback to whichever is most common: substituting `'answer'` for an
+ * unrecognised value is how `proseSpans` used to report a `'ran'` span, and a
+ * kind that is silently rewritten on the way out of the database is a filter
+ * that lies to the reader who set it.
+ */
+export function proseKindOf(value: unknown): ProseKind | null {
+  return value === 'prompt' || value === 'answer' || value === 'ran' ? value : null;
 }
 
 /** One search hit, in the shape the FTS table answers with. */
@@ -2048,7 +2131,22 @@ function addAnchorNote(db: DatabaseSync): void {
 export interface ProseScope {
   sessionId?: string;
   agentId?: string | null;
-  kind?: string;
+  /**
+   * **One kind, or a SET of them — and there is only this one field for it.**
+   *
+   * The set arrived 2026-09-16 with `'ran'` (`ProseSpan`). A reader asking for
+   * *what was said* is asking for two of the three values, and the alternative
+   * was a second field beside this one — `kinds` — which would have made
+   * "which kinds is this query over" a question with two answers and a
+   * precedence rule between them. `CLAUDE.md` opens by describing that defect.
+   *
+   * An EMPTY list admits nothing, exactly as an empty `windows` list does, and
+   * is answered the same way: `null`, and the caller says it in its own
+   * currency. It is a real state — the complement of "all three" — and reading
+   * it as "no scope given" would turn the narrowest possible query into the
+   * widest.
+   */
+  kind?: string | readonly string[];
   windows?: { sourceKey: string; fromByte: number }[];
   offset?: number;
 }
@@ -2089,7 +2187,35 @@ function proseWhere(
     if (scope.agentId === null) where.push('agent_id IS NULL');
     else { where.push('agent_id = ?'); params.push(scope.agentId); }
   }
-  if (scope.kind !== undefined) { where.push('kind = ?'); params.push(scope.kind); }
+  if (scope.kind !== undefined) {
+    if (typeof scope.kind === 'string') { where.push('kind = ?'); params.push(scope.kind); }
+    else {
+      /**
+       * **An empty set admits nothing** — the same answer `windows` gives, and
+       * for the same reason: it is the complement of "everything", not the
+       * absence of a scope.
+       *
+       * **AND ITS REMOVAL PROOF REDDENS NOTHING, which is recorded rather than
+       * hidden.** Deleting this line leaves `kind IN ()`, and SQLite accepts
+       * an empty `IN` list and matches nothing — measured 2026-09-16,
+       * `SELECT count(*) FROM t WHERE k IN ()` over two rows answers 0. So the
+       * behaviour survives without it and the assertion that pins it
+       * (`test/core/conversation-tool-index.test.ts`, *an empty set of kinds
+       * admits nothing*) stays green.
+       *
+       * It stays for two reasons, neither of which is the behaviour. The
+       * assertion is NOT powerless — a mutation that reads the empty list as
+       * *no scope at all* reddens it, in `proseWhere` and in `proseSpans`
+       * alike — so what the proof shows is that the answer currently rests on
+       * a DIALECT DETAIL rather than on anything written here. And `null` is
+       * cheaper than a query that cannot match: the callers answer it in their
+       * own currency without asking SQLite at all.
+       */
+      if (scope.kind.length === 0) return null;
+      where.push(`kind IN (${scope.kind.map(() => '?').join(', ')})`);
+      for (const k of scope.kind) params.push(k);
+    }
+  }
   return { where: where.join(' AND '), params };
 }
 
@@ -2784,11 +2910,11 @@ export class ConversationIndex {
    */
   matchProse(
     match: string,
-    scope: {
-      sessionId?: string; agentId?: string | null; kind?: string;
-      windows?: { sourceKey: string; fromByte: number }[];
-      offset?: number;
-    } = {},
+    // **`ProseScope` itself, not a second spelling of it.** It carried one
+    // inline until 2026-09-16, and the two drifted the moment `kind` learned
+    // to be a SET: the shape `proseWhere` accepts and the shape this advertises
+    // were different types for the same argument. One name, one place.
+    scope: ProseScope = {},
     limit = 200,
   ): ProseHit[] {
     const built = proseWhere(match, scope);
@@ -2874,7 +3000,10 @@ export class ConversationIndex {
    * It READS. Nothing here writes, which is what lets `src/ui/` bind it.
    */
   proseSpans(
-    scope: { sessionId?: string | null; agentId?: string | null } = {}, limit = 400,
+    scope: {
+      sessionId?: string | null; agentId?: string | null; kind?: readonly ProseKind[];
+    } = {},
+    limit = 400,
   ): ProseSpan[] {
     const where: string[] = [];
     const params: (string | number)[] = [];
@@ -2886,21 +3015,40 @@ export class ConversationIndex {
       if (scope.agentId === null) where.push('agent_id IS NULL');
       else { where.push('agent_id = ?'); params.push(scope.agentId); }
     }
+    // **THE KINDS ARE ALWAYS NAMED, even when the caller named none**, and
+    // what an unnamed caller gets is `SAID_KINDS` — the rows this table held
+    // before `'ran'` existed. Two things follow. The narrowing below is total
+    // by construction: a row carrying a value this release does not know is
+    // excluded by a stated scope a reader can see, never dropped by a cast on
+    // the way out. And every caller written before the third kind reads the
+    // same spans it always read — `findInDocument`'s `scanned` still counts
+    // *turns of words*, which is what the document screen's sentence promises.
+    // An empty list is a scope that admits nothing, as everywhere else here.
+    const kinds = scope.kind ?? SAID_KINDS;
+    if (kinds.length === 0) return [];
+    where.push(`kind IN (${kinds.map(() => '?').join(', ')})`);
+    for (const k of kinds) params.push(k);
     const rows = this.#db.prepare(
       'SELECT source_key, session_id, agent_id, record_index, byte_offset, kind, at, text '
       + `FROM conversation_prose${where.length === 0 ? '' : ` WHERE ${where.join(' AND ')}`} `
       + 'ORDER BY at DESC, session_id ASC, record_index DESC LIMIT ?',
     ).all(...params, limit) as Record<string, unknown>[];
-    return rows.map((row) => ({
-      sourceKey: String(row.source_key),
-      sessionId: String(row.session_id),
-      agentId: row.agent_id === null ? null : String(row.agent_id),
-      recordIndex: Number(row.record_index),
-      byteOffset: Number(row.byte_offset),
-      kind: String(row.kind) === 'prompt' ? 'prompt' : 'answer',
-      at: row.at === null ? null : String(row.at),
-      text: String(row.text),
-    }));
+    const spans: ProseSpan[] = [];
+    for (const row of rows) {
+      const kind = proseKindOf(row.kind);
+      if (kind === null) continue;
+      spans.push({
+        sourceKey: String(row.source_key),
+        sessionId: String(row.session_id),
+        agentId: row.agent_id === null ? null : String(row.agent_id),
+        recordIndex: Number(row.record_index),
+        byteOffset: Number(row.byte_offset),
+        kind,
+        at: row.at === null ? null : String(row.at),
+        text: String(row.text),
+      });
+    }
+    return spans;
   }
 
   /**

@@ -1217,6 +1217,14 @@ const UNCATALOGUED: Record<string, string> = {
     + 'worth having in the terminal at all because the whole point of the feature is that a '
     + 'person JUDGES the list, and a person who lives in a terminal should not have to open a '
     + 'browser to be offered one.',
+  'conversation search': 'the READER\'S SEARCH in the terminal (`semantic/10`, 2026-09-16) — '
+    + 'the same `searchArchiveTiered` the Conversations screen calls, with the same three '
+    + 'readings and the same disclosure, plus `--sources said|ran|both`. It is '
+    + '`conversation list`\'s case exactly: a read whose answer is on the screen the reader is '
+    + 'already looking at, worth having in the terminal because somebody who lives in one '
+    + 'should not have to open a browser to search his own archive. The def is withheld rather '
+    + 'than absent, and the SCREEN\'s own half of the said/ran/both switch is still to be '
+    + 'built — the viewer half of `semantic/10`, which its own report names.',
   'conversation subagents': 'the lanes one session dispatched, in the terminal '
     + '(`plan:archive seq:12`). It is `conversation list`\'s case exactly and is withheld for '
     + 'the same reason — a def would compose a read whose answer is on the screen the reader '

@@ -66,17 +66,30 @@
  *     a JavaScript string — `conversation_prose.text` on the server, a text
  *     node's `data` in the browser — so the iterator would be a one-element
  *     loop around what is already in hand.
- *   — **No `test` callback.** Upstream uses it for whole-word search. This
- *     archive's index is FTS5 with the **trigram** tokenizer, which has no
- *     word boundaries at all, and half this corpus is Hebrew, where a glued
- *     front particle means the boundary a Latin reader imagines is not there
- *     (`reports/2026-09-16-the-search-grammar.md` §3 Finding 4). A word
- *     boundary here would be a rule nobody could state.
  *   — **No `nextOverlapping`.** A find bar paints non-overlapping hits;
  *     upstream's own `next()` drops overlaps for the same reason.
- *   — **No `RegExpCursor`.** It needs the rope (`lineAt`, `slice`,
- *     `charCodeAt`, `iter.lineBreak`), and §6 of the grammar report already
- *     refused regex on the stronger ground that it cannot use the index.
+ *
+ * **TWO ROWS OF THAT TABLE WERE REVERSED ON 2026-09-16 BY THE OWNER, and they
+ * are rewritten here rather than left standing beside a file that no longer
+ * obeys them** — a copy of a superseded rule is the defect this project
+ * measures. What they said, and what is true now:
+ *
+ *   — *"No `test` callback — upstream uses it for whole-word search … a word
+ *     boundary here would be a rule nobody could state."* **A rule is stated
+ *     now**, in `wholeWordAt` below: `\p{L}\p{N}_`, required only at an end
+ *     that is itself a word character. What the old row was right about is
+ *     kept and moved to the SCREEN instead of being used to refuse the
+ *     control — in Hebrew the rule excludes the glued front particle, so
+ *     `שורה` with Whole word on no longer finds `השורה`, and the panel says
+ *     so with the number.
+ *   — *"No `RegExpCursor` … §6 already refused regex on the stronger ground
+ *     that it cannot use the index."* **Still no `RegExpCursor`** — it needs
+ *     the rope (`lineAt`, `slice`, `charCodeAt`, `iter.lineBreak`) that a
+ *     plain JavaScript string here is not. The regex support below is
+ *     `RegExp` itself over the span, in `regexMatches`. And §6's ground is
+ *     unchanged and still holds for the surface it was about: regex cannot
+ *     use the FTS5 index, so it is not offered on the conversations LIST,
+ *     only on this document scan, which never used the index either.
  *
  * ── AND IT ANSWERS IN BYTES AS WELL AS IN CHARACTERS ──────────────────────
  *
@@ -111,9 +124,20 @@
  * `read-model-conversations.ts`' `passageAt` already locates
  * case-insensitively for that exact reason. A find that folded `…` but not
  * case would answer a different question from the search above it.
+ *
+ * ── AND `keepCase` IS THE SECOND AXIS, NOT A SECOND MATCHER ───────────────
+ *
+ * `semantic/9`, the owner's Find panel. **NFKD folding and case folding are
+ * two axes and the whole reason this takes a flag rather than a branch is
+ * that they must not be conflated.** Turning case sensitivity ON does NOT
+ * turn NFKD off: a reader who ticks "Match case" is saying `Byte` is not
+ * `byte`, and is saying nothing whatever about whether `…` is three dots. The
+ * composition order is upstream's and is unchanged — NFKD first, case second,
+ * and `keepCase` removes only the second step.
  */
-function fold(text) {
-  return text.normalize('NFKD').toLowerCase();
+function fold(text, keepCase) {
+  const nfkd = text.normalize('NFKD');
+  return keepCase === true ? nfkd : nfkd.toLowerCase();
 }
 
 /** UTF-8 length of one code point. The four ranges, written out. */
@@ -186,10 +210,19 @@ function feed(partials, query, unit, at, atByte, atPrecise, end, endByte, endPre
  * one-letter query over a 5.6 MB session has 62,767 hits
  * (`reports/2026-09-16-search-adopt-or-build.md` §2.3) and no reader wants
  * them, but nothing here decides that silently on their behalf.
+ *
+ * `keepCase` and `accept` are `semantic/9`'s two options, and the default of
+ * each is the behaviour that shipped: `keepCase === false` folds case as it
+ * always did, and `accept === null` takes every hit. **Callers do not pass
+ * them** — `findQuery` at the foot of this file is the entry point that turns
+ * an options bag into these two arguments, once, so that the browser and the
+ * server cannot read a tick box differently.
  */
-export function foldedMatches(text, query, limit = Number.POSITIVE_INFINITY) {
+export function foldedMatches(
+  text, query, limit = Number.POSITIVE_INFINITY, keepCase = false, accept = null,
+) {
   const out = [];
-  const folded = fold(query);
+  const folded = fold(query, keepCase);
   /*
    * **A FAST PATH AND NOT A CORRECTNESS GATE**, and that is said because a
    * removal proof found it: deleting `folded === ''` here reddens NOTHING.
@@ -226,10 +259,17 @@ export function foldedMatches(text, query, limit = Number.POSITIVE_INFINITY) {
       const end = pos + 1;
       const endByte = byte + 1;
       const hit = feed(
-        partials, folded, code >= 0x41 && code <= 0x5a ? code + 0x20 : code,
+        partials, folded,
+        !keepCase && code >= 0x41 && code <= 0x5a ? code + 0x20 : code,
         pos, byte, true, end, endByte, true,
       );
-      if (hit !== null) {
+      // **A REJECTED HIT DOES NOT EMPTY THE PARTIAL LIST, and that asymmetry
+      // is the whole of what `accept` costs.** A hit that is TAKEN consumes
+      // the text under it, so every partial still in flight overlaps it and
+      // upstream drops them. A hit the caller REFUSES — `wholeWord` saying
+      // this occurrence is glued to a letter — consumed nothing, so a later
+      // match that began inside it is still a match a reader wants.
+      if (hit !== null && (accept === null || accept(text, hit))) {
         out.push(hit);
         partials.length = 0;
         if (out.length >= limit) return out;
@@ -239,7 +279,7 @@ export function foldedMatches(text, query, limit = Number.POSITIVE_INFINITY) {
       continue;
     }
     const raw = String.fromCodePoint(code);
-    const norm = fold(raw);
+    const norm = fold(raw, keepCase);
     const end = pos + raw.length;
     const endByte = byte + utf8Len(code);
     let at = pos;
@@ -250,7 +290,7 @@ export function foldedMatches(text, query, limit = Number.POSITIVE_INFINITY) {
         partials, folded, norm.charCodeAt(i),
         at, atByte, atPrecise, end, endByte, i === norm.length - 1,
       );
-      if (hit !== null) {
+      if (hit !== null && (accept === null || accept(text, hit))) {
         out.push(hit);
         // `SearchCursor.next` empties the partial list for the same reason: a
         // hit that overlaps the one just returned is not a second hit.
@@ -307,4 +347,414 @@ export function foldedMatches(text, query, limit = Number.POSITIVE_INFINITY) {
  */
 export function foldedHolds(text, query) {
   return foldedMatches(text, query, 1).length > 0;
+}
+
+/*
+ * ═══════════════════════════════════════════════════════════════════════════
+ * **THE THREE OPTIONS THE OWNER ASKED FOR TWICE** — `semantic/9`,
+ * `TASK-the-find-options-the-owner-asked-for-twice-in-a-floating`.
+ *
+ * *"there are many options there including lower case, upper case, whole word,
+ * regex and much more"* — 2026-09-16, his second ask, after the first did not
+ * arrive.
+ *
+ * ── WHY THEY LIVE HERE, WHICH IS THE ONLY PLACE THEY CAN ─────────────────
+ *
+ * `reports/2026-09-16-the-search-grammar.md` §6 refused all three, and its
+ * refusals are CORRECT ABOUT THE SURFACE THEY WERE WRITTEN ABOUT and wrong
+ * about this one. Every one of them is an argument about **the FTS5 trigram
+ * index** behind `searchArchive`:
+ *
+ *   — *"Regular expressions … cannot use the index at all"* — true, and the
+ *     find bar does not use the index. `findInDocument` is already a
+ *     JavaScript SCAN of every prose span, measured at ~160 ms, precisely
+ *     because a trigram index cannot answer "where in this document".
+ *   — *"whole word … would have to be a post-filter in JS over every hit"* —
+ *     true, and a post-filter over a scan that is already running is the
+ *     cheapest thing in this file. The §6 objection is that it is expensive
+ *     over an INDEX query, which returns rows it did not read.
+ *   — *"Making [case] optional would mean a second index or a post-filter"* —
+ *     the same sentence, and again there is no index here to double.
+ *
+ * So the three options are implemented **in the scan**, which is the item's
+ * own instruction and the reason it is an instruction: an option implemented
+ * in the page would apply to the rows the virtualiser happens to have drawn,
+ * which is the defect this whole product exists to refuse.
+ *
+ * **What §6 is still right about, and is recorded rather than quietly
+ * dropped:** none of this reaches `searchArchive`, the box on the
+ * conversations LIST that does use the index. Those three refusals stand
+ * there unchanged, and this file is not imported by it.
+ *
+ * ── AND WHAT EACH ONE COSTS A READER WHO TICKS IT ────────────────────────
+ *
+ * Every one of them changes the ANSWER, not just the query, so each is drawn
+ * with the sentence that says how. `screens/conversations.js` draws them;
+ * this file is where the semantics are decided, once, for both runtimes.
+ * ═══════════════════════════════════════════════════════════════════════════
+ */
+
+/**
+ * What counts as being INSIDE a word, for `wholeWord`.
+ *
+ * `\p{L}\p{N}_` and not `\w`: `\w` is `[A-Za-z0-9_]`, so every Hebrew letter
+ * in this archive is a non-word character to it and "whole word" would report
+ * that every Hebrew word in the corpus is already whole. Half this corpus is
+ * Hebrew, so that is not an edge case, it is the common one.
+ */
+const WORD = /[\p{L}\p{N}_]/u;
+
+/** Is the code point starting at `i` a word character? `false` past the end. */
+function wordAt(text, i) {
+  const code = text.codePointAt(i);
+  return code === undefined ? false : WORD.test(String.fromCodePoint(code));
+}
+
+/**
+ * Is the code point ENDING at `i` a word character? `false` at the start.
+ *
+ * A surrogate pair is stepped back over as one character rather than read as
+ * its low half: `charCodeAt(i-1)` on an astral character answers a lone
+ * surrogate, which `\p{L}` matches for no language at all.
+ */
+function wordBefore(text, i) {
+  if (i <= 0) return false;
+  const low = text.charCodeAt(i - 1);
+  const at = (low >= 0xdc00 && low <= 0xdfff && i >= 2
+    && text.charCodeAt(i - 2) >= 0xd800 && text.charCodeAt(i - 2) <= 0xdbff) ? i - 2 : i - 1;
+  return wordAt(text, at);
+}
+
+/**
+ * **IS THIS OCCURRENCE A WHOLE WORD**, and the rule is `\b`'s rather than
+ * "the query is surrounded by spaces".
+ *
+ * The boundary is required only at an END THAT IS ITSELF A WORD CHARACTER.
+ * That is not a nicety: without it, a reader who ticks Whole word and then
+ * types `...` gets zero hits for ever, because the character before `…` is a
+ * letter and `.` is not a word character — the option would silently break
+ * the one query `semantic/8` was built for. Same for `-word`, `=`, `|`.
+ *
+ * It is tested on THIS text — the original, not the folded form — because
+ * that is the string the reader is looking at and the only one whose
+ * neighbours mean anything. The match's own first and last characters decide
+ * whether each end is checked, so the rule is identical for a literal query
+ * and for a regular expression, which have no query text in common.
+ */
+function wholeWordAt(text, hit) {
+  if (wordAt(text, hit.from) && wordBefore(text, hit.from)) return false;
+  if (wordBefore(text, hit.to) && wordAt(text, hit.to)) return false;
+  return true;
+}
+
+/**
+ * The UTF-8 byte offsets of a list of character ranges, filled in by ONE walk.
+ *
+ * The literal matcher accumulates bytes on the same walk it matches on, which
+ * is `semantic/8`'s design and the reason it has no arithmetic to get wrong. A
+ * `RegExp` cannot: it answers in UTF-16 indices and nothing else. So the walk
+ * happens here instead — still once over the text, still by code point, still
+ * `utf8Len` and never `TextEncoder` on a slice, which would be a second
+ * opinion about where a character begins.
+ *
+ * Only ever called when there is at least one match, so a span with nothing in
+ * it costs the regex engine's pass and no more.
+ *
+ * **An edge INSIDE a surrogate pair snaps FORWARD to the character's own
+ * boundary**, which a non-`u` pattern can produce and `u` cannot. There is no
+ * byte offset half way through a four-byte sequence to report, so the choice
+ * is between a boundary and an invention; `precise` is `false` on any hit
+ * whose edge had to move, which is the same bargain the folded matcher makes
+ * for a range that covers more than what matched.
+ */
+function bytesFor(text, hits) {
+  let pos = 0;
+  let byte = 0;
+  let next = 0;
+  const edges = [];
+  // `from` and `to` are already ascending across non-overlapping matches in
+  // document order, which is what `RegExp` with `g` produces.
+  for (const hit of hits) edges.push(hit.from, hit.to);
+  while (next < edges.length) {
+    if (edges[next] <= pos || pos >= text.length) { edges[next] = byte; next += 1; continue; }
+    const code = text.codePointAt(pos);
+    byte += utf8Len(code);
+    pos += code >= 0x10000 ? 2 : 1;
+  }
+  for (let i = 0; i < hits.length; i += 1) {
+    hits[i].byteFrom = edges[i * 2];
+    hits[i].byteTo = edges[i * 2 + 1];
+  }
+  return hits;
+}
+
+/** Does index `i` fall between the two halves of one surrogate pair? */
+function splitsPair(text, i) {
+  if (i <= 0 || i >= text.length) return false;
+  const high = text.charCodeAt(i - 1);
+  const low = text.charCodeAt(i);
+  return high >= 0xd800 && high <= 0xdbff && low >= 0xdc00 && low <= 0xdfff;
+}
+
+/**
+ * **EVERY PLACE A REGULAR EXPRESSION MATCHES `text`.**
+ *
+ * ── IT READS THE ORIGINAL TEXT, NOT THE FOLDED FORM, AND THAT IS SAID ON
+ *    THE SCREEN ─────────────────────────────────────────────────────────────
+ *
+ * The literal matcher folds NFKD so that a reader typing `...` finds the `…`
+ * this product writes 3,062 times. A regular expression cannot: `...` in
+ * regex means *any three characters*, `\.` means a literal dot, and folding
+ * the text under a pattern would change what every one of the pattern's own
+ * offsets refers to. So regex mode searches the text AS WRITTEN, the NFKD
+ * expansion is off, and `conv.find.reFold` says so beside the toggle rather
+ * than leaving a reader to discover that one mode finds `…` and the other
+ * does not.
+ *
+ * `precise` is therefore `true` on every hit whose ends are real character
+ * boundaries — nothing expanded, so the range is exactly what matched — and
+ * `false` on the one case a non-`u` pattern can produce, an end between the
+ * two halves of a surrogate pair. See `bytesFor`.
+ *
+ * ── ZERO-LENGTH MATCHES ARE SKIPPED AND `lastIndex` IS ADVANCED BY HAND ───
+ *
+ * `/a*​/g` matches the empty string at every position. Painting a collapsed
+ * range is painting nothing, and a `g` regex whose match is empty does not
+ * advance `lastIndex`, so the obvious loop never terminates. Both are handled
+ * in the same two lines.
+ */
+function regexMatches(re, text, limit, accept) {
+  const out = [];
+  re.lastIndex = 0;
+  let found = re.exec(text);
+  while (found !== null) {
+    const from = found.index;
+    const to = from + found[0].length;
+    if (to === from) {
+      re.lastIndex = from + 1;
+      if (re.lastIndex > text.length) break;
+    } else {
+      const hit = {
+        from,
+        to,
+        byteFrom: 0,
+        byteTo: 0,
+        precise: !splitsPair(text, from) && !splitsPair(text, to),
+      };
+      /*
+       * **`accept` IS APPLIED HERE AND NOT BY THE CALLER, so that `limit`
+       * bounds the KEPT hits.** Filtering afterwards would mean collecting
+       * every occurrence first: `\w+` with Whole word on, over a 900 KB turn
+       * of terminal output, is tens of thousands of objects built to keep
+       * five hundred. The bound is on the answer either way; this is where it
+       * costs nothing.
+       */
+      if (accept === null || accept(text, hit)) {
+        out.push(hit);
+        if (out.length >= limit) break;
+      }
+      re.lastIndex = to;
+    }
+    found = re.exec(text);
+  }
+  return out.length === 0 ? out : bytesFor(text, out);
+}
+
+/**
+ * **THE FLAGS, AND WHY `u` IS TRIED AND NOT REQUIRED.**
+ *
+ * `u` is what makes `.` one character rather than one UTF-16 unit, and half a
+ * surrogate pair is half a four-byte sequence — exactly the mid-character
+ * offset `semantic/8`'s header calls the silent defect. So it is asked for
+ * first.
+ *
+ * It is not REQUIRED, because `u` also outlaws syntax a reader may reasonably
+ * type: `\d` inside a class is fine but `[\w-]` unescaped, `\-`, `\p` without
+ * a property and `{` on its own are all errors under `u` that a non-`u`
+ * engine accepts. Refusing those patterns outright would be this screen
+ * deciding that a reader's working expression is invalid because of a flag
+ * they never asked for. So the pattern is compiled with `u`, and on failure
+ * WITHOUT it — and `unicode` on the answer says which happened, so the panel
+ * can tell a reader that this pattern is being read one UTF-16 unit at a time.
+ */
+function compileRegex(source, keepCase) {
+  const base = keepCase ? 'g' : 'gi';
+  try {
+    return { re: new RegExp(source, `${base}u`), unicode: true, error: null };
+  } catch {
+    try {
+      return { re: new RegExp(source, base), unicode: false, error: null };
+    } catch (err) {
+      return { re: null, unicode: false, error: err instanceof Error ? err.message : String(err) };
+    }
+  }
+}
+
+/**
+ * **A QUANTIFIED GROUP THAT CONTAINS AN UNBOUNDED QUANTIFIER — `(X+)+` — AND
+ * WHY THAT SHAPE IS REFUSED RATHER THAN RUN.**
+ *
+ * This exists because a measurement found the defect, not because somebody
+ * worried about one. Typed into the panel against this repository's own
+ * 139 MB session on 2026-09-16, with the between-span clock already in place:
+ *
+ *     ^(\w+\s?)+$        108,785 ms        timedOut: true
+ *
+ * **The time budget did not save it and CANNOT.** `FIND_REGEX_BUDGET_MS` is
+ * checked BETWEEN spans; that was one span, inside V8's regular expression
+ * engine, which has no backtrack limit and cannot be interrupted from
+ * JavaScript. A hundred and nine seconds is not "slow" — it is the owner's
+ * server not answering, and the browser half would freeze his tab the same
+ * way.
+ *
+ * ── AND A RUNTIME CANARY WAS TRIED FIRST AND MEASURED TO BE UNSOUND ───────
+ *
+ * The obvious defence is to run the pattern on a short string and time it.
+ * It was written, and then it was measured, and it does not work: the input
+ * at which these patterns explode is far shorter than any string a canary
+ * could learn anything from. `'word '` repeated, `^(\w+\s?)+$`:
+ *
+ *     4 words,  21 chars           2 ms
+ *     8 words,  41 chars       3,848 ms
+ *    12 words,  61 chars    >  6,000 ms (killed)
+ *
+ * and `(a*)*b` over **twelve** characters did not return at all. A canary
+ * long enough to separate a bad pattern from a good one is long enough to
+ * hang on the bad one, which moves the freeze rather than removing it. That
+ * attempt is recorded here rather than deleted, because the next person to
+ * have the idea deserves the measurement.
+ *
+ * ── SO THE CHECK IS STATIC, AND IT IS EXACT ABOUT WHAT IT REFUSES ─────────
+ *
+ * A group that is itself repeated — `)` followed by `+`, `*` or `{n,}` — and
+ * whose body contains an UNBOUNDED quantifier. That is the shape whose cost
+ * is exponential in the input length, because the engine must try every way
+ * of partitioning the same text between the inner repetition and the outer
+ * one. Every pattern measured above is this shape: `(\w+\s?)+`, `(a+)+`,
+ * `(a*)*`, `(x+x+)+`.
+ *
+ * **What it deliberately does NOT refuse**, so the refusal stays narrow:
+ *
+ *   — `[\w.-]+@[\w.-]+` — two repeats, neither inside the other.
+ *   — `\bbyte\s+offset\b` — no quantified group at all.
+ *   — `(\d{4})-(\d{2})-(\d{2})` — the groups are not repeated, and `{4}` is
+ *     BOUNDED, which is the distinction `{2,}` fails and `{2,4}` passes.
+ *   — `(foo|bar)+` — repeated, but its body holds no quantifier.
+ *
+ * **And what it can still miss, said out loud.** Ambiguous ALTERNATION inside
+ * a repeat — the textbook `(a|a)+` — is exponential with no inner quantifier
+ * at all, and deciding whether two branches overlap is not a thing a scanner
+ * can do. Measured on the shapes above it is orders of magnitude tamer, and
+ * the between-span budget still bounds the multiplication across 4,582 spans;
+ * but it is a residue, it is on the report, and it is the owner's to rule on
+ * against the real fix, which is a killable child process or an engine with a
+ * linear-time guarantee.
+ */
+export function nestedQuantifier(source) {
+  // Each open group pushes whether an unbounded quantifier has been seen at
+  // its own depth. `inClass` because `[+*]` is two literal characters.
+  const stack = [];
+  let loose = false;
+  let inClass = false;
+  for (let i = 0; i < source.length; i += 1) {
+    const ch = source[i];
+    if (ch === '\\') { i += 1; continue; }
+    if (inClass) { if (ch === ']') inClass = false; continue; }
+    if (ch === '[') { inClass = true; continue; }
+    if (ch === '(') { stack.push(loose); loose = false; continue; }
+    if (ch === ')') {
+      const body = loose;
+      loose = stack.pop() ?? false;
+      const after = source[i + 1];
+      if (after === '+' || after === '*') { if (body) return true; loose = true; i += 1; continue; }
+      if (after === '{') {
+        const close = source.indexOf('}', i + 1);
+        const spec = close === -1 ? '' : source.slice(i + 2, close);
+        // `{n,}` is unbounded; `{n}` and `{n,m}` are not, and a group repeated
+        // a bounded number of times is a bounded amount of backtracking.
+        const open = /^\d+,$/.test(spec);
+        if (open) { if (body) return true; loose = true; }
+        if (close !== -1) i = close;
+        continue;
+      }
+      continue;
+    }
+    if (ch === '+' || ch === '*') { loose = true; continue; }
+    if (ch === '{') {
+      const close = source.indexOf('}', i + 1);
+      const spec = close === -1 ? '' : source.slice(i + 1, close);
+      if (/^\d+,$/.test(spec)) loose = true;
+      if (close !== -1) i = close;
+    }
+  }
+  return false;
+}
+
+/**
+ * **COMPILE ONCE, SCAN MANY** — the entry point both runtimes call.
+ *
+ * `findInDocument` reads 4,580 prose spans of this repository's own session
+ * and `paintFinds` reads every drawn row on every paint. A `new RegExp` per
+ * span would be the dominant cost of the feature and a `try`/`catch` per span
+ * would be a decision about an invalid pattern taken 4,580 times and reported
+ * none. So the pattern is compiled ONCE, here, and what comes back is either
+ * a matcher or the reason there is not one.
+ *
+ * `options` is `{ caseSensitive, wholeWord, regex }`, every field optional and
+ * every missing field `false` — so `findQuery(q)` with no options is exactly
+ * `foldedMatches(text, q, limit)` and the whole of `semantic/8` is unchanged
+ * by this file gaining three flags.
+ *
+ * The answer:
+ *
+ *   `{ ok: true, regex, unicode, find(text, limit) }`
+ *   `{ ok: false, error }`  — the engine's own message, drawn verbatim.
+ *   `{ ok: false, slow: true }` — a LEGAL pattern this scan will not run,
+ *     because `nestedQuantifier` says it is the shape that took 108,785 ms.
+ *     Not an error and not an empty box: a third answer, on purpose —
+ *     `nothing-to-do-and-could-not-look-are-different-answers`, one more
+ *     time, with a third door.
+ *
+ * An EMPTY query is `ok: false` with `error: null` and `slow: false`: there is
+ * nothing wrong and there is nothing to find, which is neither of the above.
+ */
+export function findQuery(query, options = {}) {
+  const keepCase = options.caseSensitive === true;
+  const whole = options.wholeWord === true;
+  const accept = whole ? wholeWordAt : null;
+  if (typeof query !== 'string' || query === '') {
+    return {
+      ok: false, error: null, slow: false,
+      regex: options.regex === true, unicode: false,
+    };
+  }
+  if (options.regex !== true) {
+    return {
+      ok: true,
+      regex: false,
+      unicode: false,
+      error: null,
+      slow: false,
+      find: (text, limit = Number.POSITIVE_INFINITY) => foldedMatches(
+        text, query, limit, keepCase, accept,
+      ),
+    };
+  }
+  // **CHECKED BEFORE IT IS COMPILED, LET ALONE RUN.** See `nestedQuantifier`:
+  // the measured freeze was 108,785 ms and nothing at runtime can stop one.
+  if (nestedQuantifier(query)) {
+    return { ok: false, error: null, slow: true, regex: true, unicode: false };
+  }
+  const { re, unicode, error } = compileRegex(query, keepCase);
+  if (re === null) {
+    return { ok: false, error, slow: false, regex: true, unicode: false };
+  }
+  return {
+    slow: false,
+    ok: true,
+    regex: true,
+    unicode,
+    error: null,
+    find: (text, limit = Number.POSITIVE_INFINITY) => regexMatches(re, text, limit, accept),
+  };
 }

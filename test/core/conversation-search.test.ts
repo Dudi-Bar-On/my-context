@@ -2,6 +2,7 @@
 // TASK-the-prose-index-re-reads-95-mb-every-run-because-its-resume,
 // TASK-ship-the-search-the-research-recommended-three-readings-of,
 // TASK-typing-three-dots-finds-half-of-what-it-should-and-a-hit-you,
+// TASK-the-find-options-the-owner-asked-for-twice-in-a-floating,
 // RULE-search-may-rank-its-results-and-the-model-it-asks-is-the,
 // INV-nothing-is-dropped-silently, CONST-zero-runtime-dependencies
 /**
@@ -1312,6 +1313,188 @@ test('a term below the trigram floor is found here, because no index is involved
       );
       const found = findInDocument(index, '\u05d4\u05dd', { sessionId: SESSION, agentId: null });
       assert.equal(found.turns.length, 1);
+    } finally {
+      index.close();
+    }
+  } finally {
+    f.dispose();
+  }
+});
+
+
+/* ══ THE THREE OPTIONS, IN THE SCAN — `semantic/9` ═══════════════════════════
+ *
+ * `TASK-the-find-options-the-owner-asked-for-twice-in-a-floating`. The item's
+ * hardest constraint is not any of the three options; it is WHERE they are
+ * implemented: *"Every option must be implemented IN THAT SCAN. An option
+ * implemented in the page would silently apply only to the rendered rows —
+ * the virtualised-DOM defect this project exists to refuse."*
+ *
+ * So these assertions are about `findInDocument` and not about the matcher —
+ * `test/ui/fold.test.ts` owns the semantics, and what is proved here is that
+ * the scan carries them, and that its new answers stay separate answers: a
+ * scan that ran, a pattern that could not compile, and a pattern that WAS NOT
+ * RUN.
+ */
+
+test('an option changes the scan, not just the browser', () => {
+  const f = fixture();
+  try {
+    f.session([
+      say('user', 'open the archive', '2026-09-01T10:00:00.000Z'),
+      say('assistant', 'Byte offset here', '2026-09-01T10:00:01.000Z'),
+      say('assistant', 'byte offset there', '2026-09-01T10:00:02.000Z'),
+      say('assistant', 'byte offsets everywhere', '2026-09-01T10:00:03.000Z'),
+    ]);
+    const index = indexed(f);
+    const scope = { sessionId: SESSION, agentId: null };
+    try {
+      assert.equal(findInDocument(index, 'byte offset', scope).turns.length, 3);
+      // CASE — two of the three are lower case.
+      assert.equal(
+        findInDocument(index, 'byte offset', scope, { caseSensitive: true }).turns.length, 2);
+      assert.equal(
+        findInDocument(index, 'Byte offset', scope, { caseSensitive: true }).turns.length, 1);
+      // WHOLE WORD — `offsets` is not `offset`.
+      assert.equal(findInDocument(index, 'offset', scope).turns.length, 3);
+      assert.equal(
+        findInDocument(index, 'offset', scope, { wholeWord: true }).turns.length, 2);
+      // REGEX — and it reaches all three through one pattern the literal
+      // reading cannot express at all.
+      assert.equal(
+        findInDocument(index, 'byte\\s+offsets?', scope, { regex: true }).turns.length, 3);
+      assert.equal(
+        findInDocument(index, '^Byte', scope, { regex: true, caseSensitive: true }).turns.length,
+        1);
+    } finally {
+      index.close();
+    }
+  } finally {
+    f.dispose();
+  }
+});
+
+test('the Hebrew front particle is what whole word costs, and the number is real', () => {
+  const f = fixture();
+  try {
+    // `reports/2026-09-16-the-search-grammar.md` §3 Finding 4: Hebrew glues
+    // the particle to the front of the word, which is why the index is
+    // trigram. A whole-word boundary drops the glued form BY DEFINITION — so
+    // the option ships and the panel says what it drops, rather than the
+    // option being refused because Hebrew is hard.
+    f.session([
+      say('user', 'open the archive', '2026-09-01T10:00:00.000Z'),
+      say('assistant', 'השורה וגם שורה.',
+        '2026-09-01T10:00:01.000Z'),
+      say('assistant', 'השורה בלבד',
+        '2026-09-01T10:00:02.000Z'),
+    ]);
+    const index = indexed(f);
+    const scope = { sessionId: SESSION, agentId: null };
+    try {
+      const plain = findInDocument(index, 'שורה', scope);
+      assert.equal(plain.turns.length, 2);
+      assert.equal(plain.matches, 3, 'the bare word once, the glued form twice');
+      const whole = findInDocument(index, 'שורה', scope, { wholeWord: true });
+      assert.equal(whole.turns.length, 1);
+      assert.equal(whole.matches, 1, 'only the bare word survives a word boundary');
+    } finally {
+      index.close();
+    }
+  } finally {
+    f.dispose();
+  }
+});
+
+test('a pattern that will not compile is an error, not an empty result', () => {
+  const f = fixture();
+  try {
+    f.session([
+      say('user', 'open the archive', '2026-09-01T10:00:00.000Z'),
+      say('assistant', 'byte offset here', '2026-09-01T10:00:01.000Z'),
+    ]);
+    const index = indexed(f);
+    const scope = { sessionId: SESSION, agentId: null };
+    try {
+      // The control, and it is the half that matters: a VALID pattern that
+      // finds nothing. Same empty turn list, and the two must not be one
+      // answer — `nothing-to-do-and-could-not-look-are-different-answers`.
+      const nothing = findInDocument(index, 'zebraquagga', scope, { regex: true });
+      assert.equal(nothing.turns.length, 0);
+      assert.equal(nothing.error, null);
+      assert.equal(nothing.refused, false);
+      assert.ok(nothing.scanned > 0, 'it looked, and found nothing');
+
+      const broken = findInDocument(index, '[', scope, { regex: true });
+      assert.equal(broken.turns.length, 0);
+      assert.match(String(broken.error), /Unterminated character class/);
+      assert.equal(broken.scanned, 0, 'nothing was read, so nothing may be claimed as read');
+    } finally {
+      index.close();
+    }
+  } finally {
+    f.dispose();
+  }
+});
+
+test('the pattern shape that froze the scan is refused, and refusal is its own answer', () => {
+  const f = fixture();
+  try {
+    f.session([
+      say('user', 'open the archive', '2026-09-01T10:00:00.000Z'),
+      say('assistant', 'a line of words here', '2026-09-01T10:00:01.000Z'),
+    ]);
+    const index = indexed(f);
+    const scope = { sessionId: SESSION, agentId: null };
+    try {
+      /*
+       * **108,785 ms, MEASURED ON THIS REPOSITORY'S OWN SESSION** on
+       * 2026-09-16, with `FIND_REGEX_BUDGET_MS` already in place. The budget
+       * is checked BETWEEN spans; that freeze was inside one, in V8's regex
+       * engine, which cannot be interrupted from JavaScript. So the shape is
+       * refused before anything is read.
+       */
+      const refused = findInDocument(index, '^(\\w+\\s?)+$', scope, { regex: true });
+      assert.equal(refused.refused, true);
+      assert.equal(refused.error, null, 'not a broken pattern — a legal one, deliberately not run');
+      assert.equal(refused.scanned, 0);
+      // And the narrowness of the refusal is the half worth asserting: a
+      // check that refused everything would pass the line above and quietly
+      // destroy the feature.
+      const run = findInDocument(index, '[a-z.-]+\\s+of\\s+[a-z]+', scope, { regex: true });
+      assert.equal(run.refused, false);
+      assert.equal(run.turns.length, 1);
+    } finally {
+      index.close();
+    }
+  } finally {
+    f.dispose();
+  }
+});
+
+test('every option off is the scan that shipped, and it says what it cost', () => {
+  const f = fixture();
+  try {
+    f.session([
+      say('user', 'open the archive', '2026-09-01T10:00:00.000Z'),
+      say('assistant', 'the head of it…and the rest', '2026-09-01T10:00:01.000Z'),
+    ]);
+    const index = indexed(f);
+    const scope = { sessionId: SESSION, agentId: null };
+    try {
+      const shipped = findInDocument(index, '...', scope);
+      const explicit = findInDocument(index, '...', scope,
+        { caseSensitive: false, wholeWord: false, regex: false });
+      assert.deepEqual(explicit.turns, shipped.turns);
+      assert.equal(explicit.matches, shipped.matches);
+      // The four new fields on an ordinary answer, each STATING the absence
+      // of a thing rather than being absent. `ms` is a measurement and is not
+      // compared against a number: what is asserted is that there is one.
+      assert.equal(shipped.error, null);
+      assert.equal(shipped.refused, false);
+      assert.equal(shipped.codeUnitMode, false);
+      assert.equal(shipped.timedOut, false);
+      assert.equal(Number.isInteger(shipped.ms), true);
     } finally {
       index.close();
     }

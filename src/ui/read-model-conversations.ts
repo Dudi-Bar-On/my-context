@@ -106,7 +106,8 @@ import {
 // module still binds nothing, so this file's guarantee and the endpoint gate
 // that enforces it are unchanged.
 import {
-  MIN_QUERY_CHARS, NEAR_CHARS, SEARCH_TIERS, proseOf, searchArchive, searchArchiveTiered,
+  MIN_QUERY_CHARS, NEAR_CHARS, SEARCH_SOURCES, SEARCH_TIERS, UNINDEXED_BLOCKS, kindsOf, proseOf,
+  searchArchive, searchArchiveTiered,
   type SearchTier, type TierAnswer,
 } from '../core/conversation-search.ts';
 import { readRedactionPlan } from '../core/conversation-redaction.ts';
@@ -1785,11 +1786,37 @@ export interface SearchHitView {
   anchorArgv: string[];
 }
 
+/**
+ * The counts of what the reader did not ask for, added across the sessions a
+ * NAME narrowed to — `null` when nothing was left out.
+ *
+ * Summing rather than taking the first is the same rule `tiers` follows and
+ * for the same reason: the sessions are disjoint, so their counts are terms of
+ * one total, and a screen printing the first would understate by however many
+ * sessions the name matched.
+ */
+function elsewhereTotal(
+  answers: readonly { elsewhere: { kinds: string[]; matched: number } | null }[],
+): { kinds: string[]; matched: number } | null {
+  const parts = answers.map((a) => a.elsewhere).filter((e) => e !== null);
+  const first = parts[0];
+  if (first === undefined) return null;
+  return { kinds: first.kinds, matched: parts.reduce((n, e) => n + e.matched, 0) };
+}
+
 export interface ConversationSearchScope {
   session: string | null;
   name: string | null;
   agent: string | null;
   kind: string | null;
+  /**
+   * **WHICH HALF OF THE ARCHIVE** — `said`, `ran`, or `both`. `semantic/10`.
+   *
+   * `said` when the reader did not choose, which is what every answer served
+   * before 2026-09-16 was. It is echoed in the scope rather than only obeyed
+   * so that a screen drawing "N results" can say what they are results IN.
+   */
+  sources: string;
   since: string | null;
   until: string | null;
   tz: string | null;
@@ -1850,6 +1877,27 @@ export interface ConversationSearchBody {
   rebuild: string;
   /** What the prose index holds, so a stale answer is disclosed and not silent. */
   index: { sources: number; spans: number; indexedAt: string | null };
+  /**
+   * **WHAT THE HALF HE DID NOT ASK FOR HOLDS**, counted — `null` when he asked
+   * for all of it.
+   *
+   * `semantic/10`, and it is the field that keeps a `said` default from
+   * reading as an answer about the archive. A reader who types a command he
+   * ran and gets zero is looking at a scope, not at an absence, and this is
+   * the number that says so. Summed over the sessions a NAME narrowed to, the
+   * same way `tiers` is.
+   */
+  elsewhere: { kinds: string[]; matched: number } | null;
+  /**
+   * **WHAT IS IN NO INDEX AT ALL**, named, on every answer.
+   *
+   * `tool_result` is 67.0% of this archive's characters and `thinking` is
+   * 16.4% (`scripts/measure-tool-indexing.ts`, 2026-09-16). Neither is
+   * searchable at any cap, and a surface that says how many turns it searched
+   * without saying which turns exist is answering a narrower question than the
+   * reader asked. `INV-nothing-is-dropped-silently`.
+   */
+  unindexed: string[];
 }
 
 
@@ -2055,6 +2103,32 @@ export function apiConversationSearch(ws: Workspace, url: URL): JsonResult {
       + 'accepted and ignored would search everything while the screen said it had narrowed.',
     );
   }
+  // ── SAID, RAN, OR BOTH — `semantic/10` ─────────────────────────────────
+  //
+  // Absent means `said`, which is what this endpoint answered before the index
+  // held a third kind. A value it does not know is REFUSED rather than
+  // defaulted, for `kind`'s own reason one line up: a screen that had narrowed
+  // to what was RUN and was quietly served everything would be drawing a
+  // heading that is not true of its own rows.
+  const askedSources = url.searchParams.get('sources') ?? 'said';
+  if (!(SEARCH_SOURCES as readonly string[]).includes(askedSources)) {
+    return badRequest(
+      `sources is "${askedSources.slice(0, 40)}" and takes one of: `
+      + `${SEARCH_SOURCES.join(', ')}. "said" is what was typed on either side, "ran" is the `
+      + 'tool calls the archive indexes, "both" is the two together.',
+    );
+  }
+  // **`kind` NARROWS WITHIN said, and `sources` CHOOSES BETWEEN halves.** Sent
+  // together they are two answers to one question — `kind=prompt&sources=ran`
+  // has no meaning that is not a guess — so they are refused together for the
+  // same reason `session` and `name` are.
+  if (askedKind !== null && askedSources !== 'said') {
+    return badRequest(
+      'kind and sources are two scopes over the same column, so only one of them can be sent. '
+      + 'kind picks prompt or answer out of what was SAID; sources picks between what was said '
+      + 'and what was run.',
+    );
+  }
   const askedSince = dateParam(url, 'since');
   if (askedSince === null) return badRequest('since must be a date written YYYY-MM-DD.');
   const askedUntil = dateParam(url, 'until');
@@ -2078,6 +2152,7 @@ export function apiConversationSearch(ws: Workspace, url: URL): JsonResult {
     name: askedName ?? null,
     agent: askedAgent ?? null,
     kind: askedKind,
+    sources: askedSources,
     since: askedSince ?? null,
     until: askedUntil ?? null,
     tz: askedZone ?? null,
@@ -2107,6 +2182,8 @@ export function apiConversationSearch(ws: Workspace, url: URL): JsonResult {
       dir,
       rebuild: REBUILD_COMMAND,
       index: { sources: 0, spans: 0, indexedAt: null },
+      elsewhere: null,
+      unindexed: [...UNINDEXED_BLOCKS],
       ...over,
     } as ConversationSearchBody,
   });
@@ -2178,7 +2255,7 @@ export function apiConversationSearch(ws: Workspace, url: URL): JsonResult {
     const answers = sessions.map((sessionId) => searchArchiveTiered(index, askedQuery, {
       ...(sessionId === undefined ? {} : { sessionId }),
       ...(agentScope === undefined ? {} : { agentId: agentScope }),
-      ...(askedKind === null ? {} : { kind: askedKind }),
+      kind: askedKind === null ? kindsOf(askedSources as 'said' | 'ran' | 'both') : askedKind,
       limit,
     }));
     const first = answers[0];
@@ -2314,6 +2391,10 @@ export function apiConversationSearch(ws: Workspace, url: URL): JsonResult {
       dir,
       rebuild: REBUILD_COMMAND,
       index: shelf,
+      // Summed over the sessions a NAME narrowed to, exactly as `tiers` is:
+      // they are counts of spans in disjoint sessions, so they add.
+      elsewhere: elsewhereTotal(answers),
+      unindexed: [...UNINDEXED_BLOCKS],
     };
     return { status: 200, body };
   } finally {

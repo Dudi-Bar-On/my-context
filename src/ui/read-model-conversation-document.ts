@@ -2767,9 +2767,26 @@ interface DocFindBody extends DocumentFind {
 export function apiConversationFind(
   ws: Workspace, url: URL, params: { id: string },
 ): JsonResult {
-  const bad = unknownParams(url, ['q']);
+  /*
+   * **THE THREE OPTIONS ARE PARAMETERS OF THE SCAN, NOT OF THE PAGE** —
+   * `semantic/9`, and `unknownParams` is why the list is written out here.
+   * A screen that sent `&case=1` to a route that did not declare it would be
+   * answered `400` rather than quietly ignored, which is exactly how this
+   * project wants an option to fail while it is being wired.
+   *
+   * Each is read as the single character `1`, which is what the panel sends,
+   * and ANYTHING ELSE IS FALSE. Not `Boolean(value)` — that reads `'0'` and
+   * `'false'` as on, and a reader who has unticked a box must never be served
+   * the ticked answer because a query string spelt it a second way.
+   */
+  const bad = unknownParams(url, ['q', 'case', 'word', 're']);
   if (bad !== null) return badRequest(bad);
   const query = (url.searchParams.get('q') ?? '').trim();
+  const options = {
+    caseSensitive: url.searchParams.get('case') === '1',
+    wholeWord: url.searchParams.get('word') === '1',
+    regex: url.searchParams.get('re') === '1',
+  };
 
   let index: ConversationIndex;
   try {
@@ -2799,7 +2816,7 @@ export function apiConversationFind(
     // **An empty query is answered, not refused.** The find box is cleared by
     // backspacing, and the last keystroke of that is a request to go back to
     // the whole document rather than an error to draw under it.
-    const found = findInDocument(index, query, scope);
+    const found = findInDocument(index, query, scope, options);
     const body: DocFindBody = {
       ...found,
       sessionId: scope.sessionId,

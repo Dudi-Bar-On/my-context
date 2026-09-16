@@ -72,9 +72,23 @@ export function estimateHeight(node) {
  * not have and does not pretend to — `INV-nothing-is-dropped-silently` applies
  * to a search's reach as much as to a count's.
  */
-export function matchesNode(node, needle) {
+export function matchesNode(node, needle, holds = null) {
   if (needle === '') return true;
   const hay = `${node.p ?? ''} ${(node.x ?? []).join(' ')} ${node.y ?? ''} ${node.w ?? ''}`;
+  /*
+   * **`holds` IS THE FIND PANEL'S OPTIONS, HANDED IN RATHER THAN IMPORTED** —
+   * `semantic/9`. Case, whole word and regular expression are decided once, in
+   * `lib/fold.js`, and the caller closes over them; this module stays what it
+   * was, which is arithmetic and a substring test with no opinion about what a
+   * match is.
+   *
+   * `null` is the shipped path and is byte for byte what it always did: a
+   * plain lowercase `includes`, which is the OUTLINE reading — a turn's
+   * opening and the tools it ran — and is deliberately simpler than the
+   * whole-text scan the server answers with. The two are OR-ed by the caller
+   * and each finds rows the other cannot.
+   */
+  if (holds !== null) return holds(hay);
   return hay.toLowerCase().includes(needle);
 }
 

@@ -640,6 +640,37 @@ export const strings = {
   'conv.menu.hint': 'Right-click any turn below for what you can do to it, or press {m:Shift+F10} to open the same menu from the keyboard. Every button here says its own key.',
   'conv.menu.kinds': 'Step only through —',
   'conv.menu.noRow': 'There is no turn on screen to mark. The search above is hiding all of them — clear it, and the key works again.',
+  // ── THE SEARCH PANEL ─────────────────────────────────────────────────
+  //
+  // `TASK-the-find-options-the-owner-asked-for-twice-in-a-floating`,
+  // `semantic/9`. He asked twice for Notepad++'s options and was told twice
+  // that the right number of new controls was zero. He overruled it.
+  //
+  // **EVERY OPTION CARRIES THE SENTENCE THAT SAYS WHAT IT CHANGES**, and
+  // that is not decoration: each of these three changes the ANSWER, not only
+  // the query, and two of them change it differently in Hebrew than in
+  // English. A tick box whose effect a reader has to infer from a number
+  // going down is the shape `INV-nothing-is-dropped-silently` forbids.
+  'conv.find.h': 'Search this conversation',
+  'conv.find.open': 'Search in this conversation',
+  'conv.find.close': 'Close the search panel',
+  'conv.find.hint': 'Drag this panel by its title to put it where you want it. It stays where you leave it, it stays open while you read, and it closes on its own button or on Escape.',
+  'conv.find.moved': 'The find box and the match stepper are in the search panel while it is open.',
+  'conv.find.options': 'How to read what you typed',
+  'conv.find.case': 'Match case',
+  'conv.find.caseNote': 'On, {m:Byte} is not {m:byte}. Case and folding are two different things and folding stays on either way, so three dots still find the {m:…} this product writes.',
+  'conv.find.word': 'Whole word only',
+  'conv.find.wordNote': 'On, a match must begin and end at a word boundary, so {m:cat} stops finding {m:category}. A word you typed that has no letter at one end — three dots, a dash — is unaffected at that end.',
+  'conv.find.wordHeb': 'IN HEBREW THIS ALSO DROPS THE GLUED FRONT PARTICLE: {m:שורה} stops finding {m:השורה}. That is what a word boundary is, and it is the reason the index behind the other search is trigram rather than word-based.',
+  'conv.find.re': 'Regular expression',
+  'conv.find.reNote': 'On, what you typed is a pattern rather than words to look for.',
+  'conv.find.reFold': 'A pattern reads the text exactly as written, so {m:...} means any three characters here rather than the {m:…} that three dots find in the ordinary mode.',
+  'conv.find.reCost': 'A pattern cannot use the index, so every turn of words in this transcript is read one at a time. This one took {ms} ms over {scanned} of them.',
+  'conv.find.reBad': 'That is not a pattern this browser can read, so nothing was searched for. The browser says: {mv:why}',
+  'conv.find.reUnits': 'This browser could not read that pattern one character at a time, so it is reading it one UTF-16 unit at a time: {m:.} can match half of an emoji.',
+  'conv.find.reSlow': 'The search stopped after {ms} ms without finishing, so there are turns further down that were not read. A narrower pattern will finish.',
+  'conv.find.reRefused': 'This browser can run that pattern, and this search will not: it repeats a group that itself repeats — {m:(X+)+} — and on a transcript this size that shape took 108,785 ms and had to be abandoned. Nothing was searched for. Repeating one of the two is enough.',
+  'conv.find.matchHere': 'The match you are on',
   'conv.keys.on': 'Keyboard shortcut: {mv:key}',
   // A PAIR of keys on one control, for the kind filter — `TASK-stepping-to-
   // the-next-mark-of-a-particular-kind-needs-its-own`. The `<select>` is the

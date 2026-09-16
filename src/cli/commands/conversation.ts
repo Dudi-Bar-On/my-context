@@ -13,7 +13,8 @@ import {
   previewAutomaticAnchors, type AutoAnchorReport,
 } from '../../core/anchor-pass.ts';
 import {
-  buildSearchIndex, type SearchBuildReport,
+  SEARCH_SOURCES, UNINDEXED_BLOCKS, buildSearchIndex, kindsOf, searchArchiveTiered,
+  type SearchBuildReport, type SearchSources, type TieredSearchResult,
 } from '../../core/conversation-search.ts';
 import {
   NotIndexedError, advanceMirrors, mirrorDir, mirrorPath, persistSession, unpersistSession,
@@ -54,7 +55,7 @@ import { flag, hasFlag, listFlag, positionals, registerCommand, type Emit } from
  */
 
 export const SUBCOMMANDS = [
-  'rebuild', 'list', 'subagents', 'secrets', 'persist', 'name', 'anchor', 'forget',
+  'rebuild', 'list', 'subagents', 'secrets', 'persist', 'name', 'anchor', 'forget', 'search',
 ] as const;
 
 const USAGE = `usage: mycontext conversation rebuild [--full] [--plan] [--yes] [--json]
@@ -66,6 +67,8 @@ const USAGE = `usage: mycontext conversation rebuild [--full] [--plan] [--yes] [
        mycontext conversation anchor [<session>] [<byte offset>] [--label "<why>"]
                                      [--agent <id>] [--find <term>] [--drop <id>]
                                      [--drop-automatic [--count <n>]] [--json]
+       mycontext conversation search <query> [--sources said|ran|both] [--session <id>]
+                                     [--agent <id>] [--limit <n>] [--json]
        mycontext conversation forget [--yes] [--json]`;
 
 const CONVERSATION_FLAGS = SUBCOMMAND_FLAGS['conversation'];
@@ -1500,6 +1503,159 @@ function borrowedPhrase(row: ConversationRow): string {
     : `"${row.title}", which was set in Claude Code`;
 }
 
+/**
+ * `mycontext conversation search <query>` — **THE SURFACE THAT ASKS FOR SAID,
+ * RAN, OR BOTH**, and the first one in this product that can.
+ *
+ * `TASK-the-archive-indexes-what-was-said-and-none-of-what-was-done`
+ * (`semantic/10`). The index learned a third kind of span on 2026-09-16 —
+ * `'ran'`, what a turn DID — and the item is explicit that the kind is only
+ * worth having if a reader can choose it: *"A SEARCH THAT RETURNS EVERYTHING
+ * IS NOT BETTER THAN ONE THAT RETURNS TOO LITTLE."*
+ *
+ * ── AND IT IS THE FIRST READ-ONLY SEARCH SURFACE ON THIS COMMAND ──────────
+ *
+ * It runs the reader's own search — the same `searchArchiveTiered` the web
+ * surface calls, with the same three readings and the same disclosure — so the
+ * two cannot come to different answers about what the archive holds. It opens
+ * the index through `openReadOnlyChecked`, which cannot create a table, so a
+ * workspace that has never scanned is told so rather than handed an empty
+ * index it would read as an empty archive.
+ *
+ * ── WHAT IT PRINTS AND WHY EVERY LINE OF IT IS THERE ──────────────────────
+ *
+ *   — the hits, each with its TIER and its KIND, so *why this result is here*
+ *     and *which half of the archive it came from* are on the row rather than
+ *     in a ranking nobody can see;
+ *   — what each reading matched and whether the bound cut it;
+ *   — **what the kinds he did not ask for hold**, counted — the line that
+ *     stops a `said` default from reading as "the archive does not have this";
+ *   — **what is not indexed at all**, named, because
+ *     `INV-nothing-is-dropped-silently` is about the SCOPE of an answer and
+ *     not only about its truncation.
+ */
+function cmdConversationSearch(ws: Workspace, root: string, args: string[], out: Emit): number {
+  const [, ...words] = positionals(args, ['limit', 'sources', 'session', 'agent']);
+  const query = words.join(' ').trim();
+  if (query === '') {
+    out('my_context: `conversation search` needs something to look for.');
+    out('');
+    out(USAGE);
+    return 1;
+  }
+
+  const asked = flag(args, 'sources') ?? 'said';
+  if (!(SEARCH_SOURCES as readonly string[]).includes(asked)) {
+    out(
+      `my_context: --sources takes ${SEARCH_SOURCES.join(', ')} — "${asked}" is none of them. `
+      + '`said` is what he and Claude typed, `ran` is the tool calls, `both` is the two together.',
+    );
+    return 1;
+  }
+  const sources = asked as SearchSources;
+  const limitRaw = flag(args, 'limit');
+  const limit = limitRaw === null ? 20 : Number(limitRaw);
+  if (!Number.isInteger(limit) || limit < 1) {
+    out(`my_context: --limit takes a whole number of rows — "${String(limitRaw)}" is not one.`);
+    return 1;
+  }
+  const session = flag(args, 'session');
+  const agent = flag(args, 'agent');
+
+  let index: ConversationIndex;
+  try {
+    index = ConversationIndex.openReadOnlyChecked(ws.dbPath);
+  } catch (err) {
+    if (err instanceof ConversationIndexUninitializedError
+      || err instanceof ConversationIndexIncompleteError) {
+      const dir = transcriptDir(process.env, workspaceCwd(root));
+      if (wantsJson(args)) {
+        emitJson(out, { query, sources, hits: [], indexed: false, dir });
+        return 0;
+      }
+      out('my_context: nothing is indexed in this workspace yet.');
+      out(`my_context: run \`mycontext conversation rebuild\` to scan ${dir}`);
+      return 0;
+    }
+    throw err;
+  }
+
+  try {
+    const found = searchArchiveTiered(index, query, {
+      kind: kindsOf(sources),
+      limit,
+      ...(session === null ? {} : { sessionId: session }),
+      ...(agent === null ? {} : { agentId: agent }),
+    });
+    if (wantsJson(args)) {
+      emitJson(out, { sources, ...found, unindexed: UNINDEXED_BLOCKS });
+      return 0;
+    }
+    for (const line of searchAnswerLines(found, sources)) out(line);
+    return found.searchable ? 0 : 1;
+  } finally {
+    index.close();
+  }
+}
+
+/** The answer as a person reads it. One function, so a test can read it too. */
+function searchAnswerLines(found: TieredSearchResult, sources: SearchSources): string[] {
+  const lines: string[] = [];
+  if (!found.searchable) {
+    lines.push(found.note ?? 'my_context: that could not be searched.');
+    return lines;
+  }
+  const what = sources === 'said'
+    ? 'what was said'
+    : (sources === 'ran' ? 'what was run' : 'what was said and what was run');
+  if (found.hits.length === 0) {
+    lines.push(`my_context: nothing in ${what} holds "${found.query}".`);
+  } else {
+    for (const line of table(
+      ['tier', 'kind', 'when', 'session', 'lane', 'byte', 'match'],
+      found.hits.map((hit) => [
+        hit.tier,
+        hit.kind,
+        hit.at === null ? '—' : (zonedStamp(hit.at) ?? hit.at),
+        hit.sessionId.slice(0, 8),
+        hit.agentId === null ? '—' : hit.agentId.slice(0, 8),
+        String(hit.byteOffset),
+        firstLine(hit.snippet).slice(0, 96),
+      ]),
+    )) lines.push(line);
+    lines.push(
+      `my_context: ${found.hits.length} hit(s) in ${what}, over `
+      + `${found.kinds.join(' and ')} spans.`,
+    );
+  }
+  for (const tier of found.tiers) {
+    lines.push(
+      `my_context:   ${tier.tier}: ${tier.shown} shown of ${tier.matched} matched`
+      + `${tier.bounded ? ' — the bound cut this reading' : ''}.`,
+    );
+  }
+  if (found.short.length > 0) {
+    lines.push(
+      `my_context: ${found.short.join(', ')} — shorter than the index's three-character floor, `
+      + 'so they were searched for only inside the phrase.',
+    );
+  }
+  // **THE LINE THAT MAKES A `said` DEFAULT HONEST.** A zero in one half of the
+  // archive is not a zero in the archive, and this is the difference, counted.
+  if (found.elsewhere !== null && found.elsewhere.matched > 0) {
+    const ran = found.elsewhere.kinds.includes('ran');
+    lines.push(
+      `my_context: and ${found.elsewhere.matched} more in what was ${ran ? 'RUN' : 'SAID'} — add `
+      + `\`--sources ${ran ? 'ran' : 'said'}\` to see them, or \`--sources both\`.`,
+    );
+  }
+  lines.push(
+    `my_context: ${UNINDEXED_BLOCKS.join(' and ')} blocks are NOT indexed at all, so what a `
+    + 'command PRINTED and what the model thought cannot be found by any search here.',
+  );
+  return lines;
+}
+
 /** Every name this project has given, and the answer to a bare `name`. */
 function listNames(ws: Workspace, out: Emit, json: boolean): number {
   if (!indexExists(ws, out)) return 1;
@@ -2045,6 +2201,7 @@ function cmdConversation(ws: Workspace, args: string[], out: Emit): number {
     if (subcommand === 'name') return cmdConversationName(ws, root, args, out);
     if (subcommand === 'anchor') return cmdConversationAnchor(ws, args, out);
     if (subcommand === 'forget') return cmdConversationForget(ws, root, args, out);
+    if (subcommand === 'search') return cmdConversationSearch(ws, root, args, out);
     return cmdConversationList(ws, root, args, out);
   } catch (err) {
     out(toCliMessage(err));
