@@ -1,5 +1,8 @@
 import path from 'node:path';
+import { spawn } from 'node:child_process';
+import { fileURLToPath } from 'node:url';
 import { recordAudit } from '../core/audit.ts';
+import { refreshSoonCheck } from '../core/turn-refresh-soon.ts';
 import { bumpCounter } from '../core/review-counter.ts';
 import { isMainEntry, managedSplit, matchesAnyGlob, relPosix, toPosix } from '../core/paths.ts';
 import { configLoadFailure, findProjectRoot, resolveWorkspace } from '../core/workspace.ts';
@@ -346,6 +349,75 @@ export function reviewCount(input: HookInput, fallbackCwd: string): void {
  * empty `additionalContext` on each of them is a hook that speaks constantly
  * and says nothing.
  */
+/**
+ * **THE ONE THING THIS HOOK DOES THAT IS NOT AUDIT-ONLY, AND IT DOES ALMOST
+ * NONE OF IT ITSELF.**
+ *
+ * The owner, 2026-09-16: *"you can still mark at stop but at post tool check if
+ * flush required (it's cheap) and if yes, do it async so the hook could be
+ * released very fast"*, widened a minute later to *"you should flush in general
+ * not only because of a mark was added"*.
+ *
+ * WHAT IT FIXES. `stopConversationRefresh` is wired in exactly one place —
+ * `src/hooks/stop.ts` — so the transcript scan, the mirror and the anchor pass
+ * all happen at END OF TURN and nowhere else. A table written in the first
+ * minute of a six-minute turn is not indexed, not mirrored and not marked
+ * until minute six. **Measured on the turn that prompted this: 85 records and
+ * 277,601 bytes were written between one table appearing and its mark
+ * existing.** Nothing was broken — the work was simply scheduled at the moment
+ * furthest from when it became possible.
+ *
+ * WHAT IT COSTS HERE, WHICH IS THE WHOLE REASON IT IS SHAPED THIS WAY. This
+ * hook fired **85 times** in that turn, so anything it does is paid for
+ * eighty-five times. It does one `statSync` — 0.007 ms on a 133 MB file —
+ * against a recorded pair, and on all but a handful of firings that is the
+ * entire cost. `refreshSoonCheck` owns that decision and its two measured
+ * thresholds.
+ *
+ * WHEN IT IS DUE, THE WORK LEAVES THIS PROCESS. `detached` + `stdio: 'ignore'`
+ * + `unref()` is what lets the hook return without waiting: a hook is a process
+ * that must exit, and work left pending in it either keeps it alive — the exact
+ * delay this removes — or dies with it, which is worse than not starting.
+ *
+ * AND IT CANNOT FAIL THE TURN. `INV-hooks-fail-open`. Every branch is inside
+ * the caller's `try`, a spawn that throws is swallowed, and MISSING A SPAWN
+ * COSTS NOTHING BUT LATENCY because `Stop` still runs the identical refresh at
+ * the end of the turn. That backstop is what makes it safe for the thresholds
+ * to be stingy and for this function to be silent.
+ */
+export function refreshSoon(input: HookInput, fallbackCwd: string): void {
+  // A lane's own tool calls must not drive the main session's refresh: `Stop`
+  // does not refresh for an agent either (`stopConversationRefresh` returns
+  // null when `agent_id` is set), and a spawn per lane tool call is the cost
+  // this design exists to avoid multiplying.
+  if (input.agent_id !== undefined) return;
+  const cwd = input.cwd ?? fallbackCwd;
+  const root = findProjectRoot(cwd);
+  if (root === null) return;
+
+  const decision = refreshSoonCheck({
+    transcriptPath: input.transcript_path,
+    projectRoot: root,
+    sessionId: input.session_id,
+  });
+  if (!decision.due) return;
+
+  const worker = fileURLToPath(new URL('./turn-refresh-worker.ts', import.meta.url));
+  const child = spawn(process.execPath, [worker, cwd, input.session_id ?? ''], {
+    detached: true,
+    stdio: 'ignore',
+    // The owner met a stray console window once already, from the UI server's
+    // own spawn. A refresh that flashes a window on every long turn would be
+    // the same defect at four times the frequency.
+    windowsHide: true,
+  });
+  // A `ChildProcess` whose spawn failed emits `'error'` on a LATER tick, and an
+  // EventEmitter with no listener for it rethrows as an uncaught exception —
+  // which would turn a latency optimisation into a hook that crashes the turn.
+  child.on('error', () => { /* `Stop` is the backstop; see the header */ });
+  child.unref();
+}
+
 export function buildOutput(text: string): string {
   if (text === '') return '';
   return hookContext('PostToolUse', text);
@@ -401,6 +473,9 @@ if (isMainEntry(import.meta.filename, process.argv[1])) {
       // likewise gated so it does nothing at all on every workspace that has
       // not opted in, which today is all of them. See `reviewCount`.
       reviewCount(parsed, process.cwd());
+      // The only non-audit act here, and on all but a handful of firings it is
+      // one `statSync`. See `refreshSoon`.
+      refreshSoon(parsed, process.cwd());
     })
     .catch(() => { /* fail open */ })
     .finally(() => { process.exitCode = 0; });
