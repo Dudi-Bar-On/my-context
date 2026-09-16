@@ -5,9 +5,10 @@ title: The shipped plugin has zero runtime dependencies
 status: active
 severity: hard
 always: true
-summary: Nothing the plugin needs at run time is downloaded, and an automated check now enforces that rather than a reviewer noticing.
-summary_of: 7c4c0ca03a76e154
+summary: Nothing the plugin needs at run time is downloaded — source embedded in the repository is not a download and is allowed — and an automated check enforces it.
+summary_of: 5e353df8d12cc777
 summary_was:
+  - 2026-09-16 Nothing the plugin needs at run time is downloaded, and an automated check now enforces that rather than a reviewer noticing.
   - 2026-09-06 Nothing the plugin needs at run time is downloaded, which is what lets it start in milliseconds and drop into any repository.
 scope: []
 tags:
@@ -18,7 +19,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-08-13
 valid_until: null
-checksum: dee0bfdb75c8b36c
+checksum: f6fc7b8f2bcdcd4b
 ---
 
 # The shipped plugin has zero runtime dependencies
@@ -29,6 +30,40 @@ nor `bundledDependencies` (or its `bundleDependencies` spelling) carries one
 either; every one of those is a fetch a consumer would pay for. A plugin that
 installs cleanly without a package fetch is what makes hooks start in tens of
 milliseconds and what lets the plugin be dropped into any repo.
+
+EMBEDDED SOURCE IS NOT A RUNTIME DEPENDENCY, AND THIS SENTENCE IS HERE BECAUSE ITS
+ABSENCE ALREADY COST SOMETHING. The owner, 2026-09-16: *"importing a library and or
+source code and embedding it in our code is not considered runtime dependency"*.
+
+Read the rule by what it protects: a consumer installing this plugin pays for a
+FETCH. A package named in `dependencies` is a fetch. Source copied into this
+repository is not — it arrives with the clone, adds nothing to install time, and
+cannot break because a registry moved. So vendoring is permitted and always was;
+what is forbidden is the `dependencies` entry.
+
+AND IT IS NOT A NEW PERMISSION — IT IS WHAT THIS PROJECT ALREADY DOES.
+`src/ui/public/lib/vendor/` holds `markdown-it.esm.min.js` (137,975 B, MIT),
+`github-markdown-light.css` (22,219 B, MIT) and twenty-six chunks of Web Awesome,
+each with its licence file, all pinned, with a re-fetch route and a 22 KB
+`VENDOR.md` that says why each one and why only that part of it.
+`DEC-markdown-it-is-vendored-as-the-tokeniser-and-the-drawings` is the ruling,
+taken 2026-09-05 on measured evidence.
+
+WHAT WENT WRONG WITHOUT THIS PARAGRAPH: on 2026-09-16 a research lane surveyed every
+candidate search library and RECOMMENDED NONE, citing this constraint — reading a
+rule about downloads as a rule about libraries. The answer it could have given was
+legal the whole time and sitting beside three examples of itself. **An item that
+governs must say what it does NOT forbid**, because a reader obeying it cannot see
+the practice it omits.
+
+THE COSTS THAT ARE REAL, so this is not read as "vendoring is free":
+  - `CONST-node-24-no-build-step` still binds, and it is now the sharper edge. Source
+    runs as shipped — the vendored assets are browser ESM the page loads directly.
+    A library that needs a bundler or a transpile does not fit, however small it is.
+  - The LICENCE travels with the code and its file goes beside it.
+  - Upstream fixes stop arriving. Vendored code is this project’s to maintain, which
+    is why every entry is pinned and has a documented way to be re-fetched.
+  - Take the PART, never the library. Every heading in `VENDOR.md` says *only*.
 
 devDependencies are permitted and enumerated. Today they are four:
 `typescript`, `@types/node`, `@playwright/test`, `mermaid`.
