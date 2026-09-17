@@ -16,17 +16,17 @@ tags:
   - ui
   - "plan:rulings"
   - "seq:100"
-  - "state:blocked"
+  - "state:done"
 origin: human
 source_file: null
 source_anchor: null
 source_checksum: null
 valid_from: 2026-09-17
 valid_until: null
-checksum: 418f38baa139a04e
+checksum: fd5ee75a3ed5d28b
 plan: rulings
 seq: "100"
-state: blocked
+state: done
 priority: "1"
 needs: semantic/12,semantic/13,semantic/14
 ---

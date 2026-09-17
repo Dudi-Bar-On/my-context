@@ -18,17 +18,17 @@ tags:
   - gates
   - "plan:rulings"
   - "seq:107"
-  - "state:todo"
+  - "state:done"
 origin: human
 source_file: null
 source_anchor: null
 source_checksum: null
 valid_from: 2026-09-17
 valid_until: null
-checksum: 90738068a7cefd80
+checksum: 63f105c743566dad
 plan: rulings
 seq: "107"
-state: todo
+state: done
 priority: "1"
 ---
 

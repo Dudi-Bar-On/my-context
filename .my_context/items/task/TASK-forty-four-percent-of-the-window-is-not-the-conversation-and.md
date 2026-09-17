@@ -2,7 +2,7 @@
 id: TASK-forty-four-percent-of-the-window-is-not-the-conversation-and
 type: task
 title: forty-four percent of the window is not the conversation, and the card he asked me to shrink is twenty-nine pixels of it
-status: active
+status: deprecated
 severity: soft
 always: false
 summary: Redesign everything between the app header and the viewer into one compact band, losing no information, and measure what the shared status bands would cost to change.
@@ -27,8 +27,8 @@ source_file: null
 source_anchor: null
 source_checksum: null
 valid_from: 2026-09-17
-valid_until: null
-checksum: fe2d629294843e02
+valid_until: 2026-09-17
+checksum: b8b792e376f42348
 plan: semantic
 seq: "16"
 state: todo

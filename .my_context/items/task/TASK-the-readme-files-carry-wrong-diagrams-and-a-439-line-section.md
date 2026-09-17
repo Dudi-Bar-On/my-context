@@ -15,17 +15,17 @@ tags:
   - docs
   - "plan:rulings"
   - "seq:102"
-  - "state:todo"
+  - "state:done"
 origin: human
 source_file: null
 source_anchor: null
 source_checksum: null
 valid_from: 2026-09-17
 valid_until: null
-checksum: e6ae2d0753af1b92
+checksum: d6684f6a256ddcf1
 plan: rulings
 seq: "102"
-state: todo
+state: done
 priority: "1"
 ---
 
