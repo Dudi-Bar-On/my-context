@@ -150,11 +150,13 @@ const contentsAnchors = {
  * The major sections the summary deliberately does not name, each with the
  * reason it is not a capability line.
  *
- * `8-not-yet-available` is deliberately absent: the summary's own opening
- * sentence links it, to say that nothing on the list below is unbuilt. A
- * *capability line* for a section 8 entry would be the plan's own defect
- * committed in the most-read part of the document; a pointer saying "the
- * unbuilt things are over there" is the opposite.
+ * There is no longer a "Not yet available" section to exempt. It was retired on
+ * 2026-09-17 — each live limitation moved beside the feature it limits, and the
+ * three entries that were permanent decisions were restated as decisions where
+ * that feature is described. A chapter titled "not yet" told a reader those
+ * three were coming, which is a document contradicting the code. The only
+ * section that replaced it, `how-this-document-is-checked`, is exempt below for
+ * the reason given there: it is about this file, not about the product.
  *
  * This list is the whole point of the second test. Adding a section to the
  * contents without giving it a line fails until somebody either writes the line
@@ -163,6 +165,7 @@ const contentsAnchors = {
  */
 const NOT_A_CAPABILITY = new Map<string, string>([
   ['what-it-can-do', 'the summary itself'],
+  ['how-this-document-is-checked', 'how to distrust this document, not a thing the product does'],
   ['1-the-problem', 'the problem the product answers, not something it does'],
   ['2-the-idea', 'the normative/rationale split the capabilities rest on'],
   ['3-how-it-works-in-three-steps', 'a container; its three steps each have a line'],
@@ -170,7 +173,7 @@ const NOT_A_CAPABILITY = new Map<string, string>([
   ['5-using-it', 'a container; its four surfaces have lines'],
   ['6-configuration', 'a container; the categories sections have lines'],
   ['7-the-trust-boundary', 'a container; review, revisions and the boundary have lines'],
-  ['9-glossary', 'the vocabulary of the document, not a capability'],
+  ['8-glossary', 'the vocabulary of the document, not a capability'],
   ['installing-it', 'how to get it, which is not what it can do'],
   ['every-flag-in-one-place', 'a reference index of the flags the other sections name'],
 ]);

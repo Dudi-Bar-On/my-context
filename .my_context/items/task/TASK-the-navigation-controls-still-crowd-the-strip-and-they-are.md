@@ -5,8 +5,10 @@ title: the navigation controls still crowd the strip, and they are the second of
 status: active
 severity: soft
 always: false
-summary: Move the mark stepper, the message stepper and their counts into a floating panel of their own.
+summary: The steppers and their counts now live in a floating navigation panel, and the counts are lent rather than moved, so closing it puts every disclosure back in the strip.
 summary_of: d4625a7784caa4d2
+summary_was:
+  - 2026-09-17 Move the mark stepper, the message stepper and their counts into a floating panel of their own.
 scope:
   - src/ui/public/screens/conversations.js
   - src/ui/public/lib/panel.js
@@ -20,17 +22,17 @@ tags:
   - ui
   - "plan:semantic"
   - "seq:12"
-  - "state:todo"
+  - "state:done"
 origin: human
 source_file: null
 source_anchor: null
 source_checksum: null
 valid_from: 2026-09-17
 valid_until: null
-checksum: 3765122aa735a450
+checksum: 2309caf920ea8079
 plan: semantic
 seq: "12"
-state: todo
+state: done
 priority: "1"
 ---
 

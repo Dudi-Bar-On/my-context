@@ -54,8 +54,14 @@ sections 1 and 2.
 5. [Using it](#5-using-it) — [installing it](#installing-it), [slash commands](#what-you-type-the-slash-commands), [the CLI](#what-you-run-the-cli), [the index schema](#the-index-schema-and-how-to-query-it), [MCP tools](#what-the-model-calls-the-mcp-tools), [the skill](#what-the-model-reads-the-skill), [every flag](#every-flag-in-one-place)
 6. [Configuration](#6-configuration) — [what each category means](#what-each-category-means), [categories you define yourself](#categories-you-define-yourself), then one section per key
 7. [The trust boundary](#7-the-trust-boundary) — [draft and active](#draft-and-active-and-why-review-exists), [pending revisions](#what-a-pending-revision-is-and-what-it-cannot-do), [the approval boundary](#the-approval-boundary--read-this-before-trusting-it)
-8. [Not yet available](#8-not-yet-available) — the one section describing what this project does **not** do
-9. [Glossary](#9-glossary) — every term this document gives a particular meaning to
+8. [Glossary](#8-glossary) — every term this document gives a particular meaning to
+
+**Nothing here describes behaviour this project does not have.** Where a capability is
+limited, the limit is written beside that capability; where something was decided against, it
+is written as a decision where the feature it constrains is described. There is no chapter of
+unbuilt behaviour, because a reader cannot tell one from a roadmap.
+[How this document is checked](#how-this-document-is-checked) names the tests that hold both
+documents to the program, and says what they cannot see.
 
 **Two guides sit beside this one**, for reading rather than for looking things up:
 [the quickstart](docs/TUTORIAL.md) takes twenty minutes and ends with one constraint
@@ -67,9 +73,45 @@ and every block of output in both was executed, not illustrated.
 > [!TIP]
 > **If a word or a `--flag` here is not obvious, it is explained somewhere you can jump
 > straight to.** Every term this document gives a particular meaning to is defined in the
-> [glossary](#9-glossary), and every command-line option is in one table:
+> [glossary](#8-glossary), and every command-line option is in one table:
 > [every flag, in one place](#every-flag-in-one-place). Terms are also defined in plain
 > language where they first appear, so reading front to back never requires either.
+
+## How this document is checked
+
+Do not trust a sentence here to have been updated. Run `mycontext help` for the real command
+list, `claude plugin details mycontext@mycontext` for the real component inventory, and
+`mycontext help categories` for the categories actually enabled.
+
+**12 test files under `test/docs/` hold these two documents to the program.** Between them
+they check that every CLI command, slash command and MCP tool is named in `README.md` and
+that nothing is named that does not exist; that every worked example is re-executed against a
+committed fixture and diffed, whole, against what the command prints; that the injected
+output quoted in sections 3, 4 and 6 is what the hooks emit; that every section the table of
+contents links either has a line in the capabilities summary below or is listed, with a
+reason, as something the product does not *do*; and that both documents carry the same
+heading sequence and the same examples in the same order. Of those, `counts.test.ts` computes
+the "20 of the 49 CLI commands" ratio in
+[section 5](#what-you-type-the-slash-commands) from the running program and fails in **both**
+languages if either half drifts — it had drifted twice before the test existed — and it
+computes this paragraph's own file count the same way. `parity.test.ts` holds this document's
+heading sequence to the Hebrew mirror's.
+
+Two more, outside `test/docs/`, hold the surface itself rather than the prose about it:
+`test/plugin/parity.test.ts` checks that every MCP tool has a command and that every
+asymmetry this document declares is declared in the program too, and
+`test/plugin/write-commands.test.ts` runs the dry run each write command names and asserts it
+previews, declines and writes nothing.
+
+Being checked is not being verified, and the limits are worth naming one at a time. Parity
+compares structure and never meaning: Hebrew left behind by an English edit passes every
+assertion in the suite, and that file demonstrates the blindness rather than merely claiming
+it. The inventory test reads the whole English file, so a command named in the
+[flag reference](#every-flag-in-one-place) or the [glossary](#8-glossary) is checked to exist
+like any other — but no test anywhere checks whether a *flag* behaves as its row says. And
+every pin that works by requiring a phrase is satisfied by a negation placed in front of that
+phrase; only the example blocks, which are compared whole, are immune. Reading this document
+against a working tree is the only way to know it is right.
 
 ## 1. The problem
 
@@ -263,8 +305,9 @@ each of its four limits has an answer here.
 ### Everything, one line each
 
 Everything below works today, and each line links to the section that covers it in full.
-[Section 8](#8-not-yet-available) is the one place where behaviour that does **not** exist
-yet is written down; nothing on this list is there.
+Where one of them is limited, the limit is written in the section that covers it — this
+document has no chapter of behaviour that does **not** exist, because a reader cannot tell a
+chapter like that from a delivery plan.
 
 - **Capture a rule by hand** — one `mycontext add` from the terminal, or ask Claude to
   record it and it lands as a draft for you to promote.
@@ -349,7 +392,12 @@ worth pinning down before anything is built on them.
   with nobody asking for it. That is the whole mechanism: not a search you run, but text
   that is already there when the model starts reading.
 - An item **governs** when it is eligible to be injected and is phrased as an instruction —
-  something the model is expected to comply with rather than merely know about.
+  something the model is expected to comply with rather than merely know about. Read that
+  mechanically and it is wrong: **nothing here enforces an item.** No hook, tool or command
+  reads an item — or its severity — to decide whether an action may proceed, and the two
+  hooks that do block read a path and a dispatch gate instead. Governing is about what
+  reaches the model, never about what a tool is allowed to do; the gap is stated in full
+  where [`severity` is explained](#step-2--it-is-stored-as-markdown-you-can-read-diff-and-review).
 - **Tier** is the word for the normative/rationale split. Every category — `constraint`,
   `decision`, `rule`, `lesson`, and the rest — carries one, and you can change which
   ([section 6](#6-configuration)). Watch out for a second, unrelated use of the same word:
@@ -414,10 +462,10 @@ approval boundary, and its limits, are described in full in
 flowchart LR
   Y["<b>You</b><br/>mycontext add"] --> MD
   M["<b>Claude</b><br/>create_item"] --> MD["<b>.my_context/items/</b><br/>one Markdown file per item<br/><i>the source of truth</i>"]
-  MD -->|"rebuild"| DB[("<b>.index.db</b><br/>derived cache")]
-  DB --> SEL["<b>selection</b><br/>what is eligible,<br/>what fits the budget"]
-  SEL --> HK["<b>hooks</b><br/>session start · before a file<br/>· before a compaction"]
+  MD --> SEL["<b>selection</b><br/>pure over the parsed items —<br/>no database on this path"]
+  SEL --> HK["<b>hooks</b><br/>session start, incl. after a<br/>compaction · subagent start<br/>· before a file"]
   HK --> CX["Claude's context"]
+  MD -.->|"refreshed afterward,<br/>best-effort, skipped for a subagent"| DB[("<b>.index.db</b><br/>derived cache — read by<br/>search, list, query; never by injection")]
 ```
 
 ### Step 1 — you capture it
@@ -1145,7 +1193,7 @@ Claude can run both legs itself with the `ingest_document` tool, which carries t
 candidates and the callback in one call. `/mycontext:ingest` drives the same flow from
 inside a session, so ingest has three surfaces rather than two — `ingest-apply` and
 `ingest-status` are steps *within* that command rather than commands of their own
-([section 8](#one-surface-for-every-operation)).
+(see [the slash commands](#what-you-type-the-slash-commands)).
 
 #### From a file to a reference
 
@@ -1324,7 +1372,7 @@ and the body is what Claude actually reads. Field by field:
 |---|---|
 | `id` | the item's name, derived from the title. Ids are how everything else refers to it |
 | `type` | its category — `constraint`, `decision`, `rule` and so on. The category decides the tier |
-| `status` | `draft`, `active`, `superseded`, `deprecated` or `validated`. **Only `active` is ever injected**; see the [glossary](#9-glossary) for what each of the other four means |
+| `status` | `draft`, `active`, `superseded`, `deprecated` or `validated`. **Only `active` is ever injected**; see the [glossary](#8-glossary) for what each of the other four means |
 | `severity` | `hard` or `soft`. Within a tier it sets the order, not whether an item is injected: hard items are admitted to a budget first. It decides one thing about *whether* — `mycontext focus` never hides a `severity: hard` item, so a focus that excludes it injects it anyway |
 | `always` | `true` pins the item — injected in full at every session start, whatever files you touch |
 | `scope` | the file globs this item is restricted to. Empty means unrestricted: it applies to every file — unless the category's `scopePolicy` says otherwise ([section 6](#6-configuration)) |
@@ -1337,6 +1385,19 @@ and the body is what Claude actually reads. Field by field:
 Some categories add one more field of their own — a `rule` carries `directive: do` or
 `directive: dont`, for instance. `mycontext examples <category>` prints a correct specimen
 of any type, extra fields included.
+
+> [!IMPORTANT]
+> **Nothing enforces `severity: hard`.** It changes selection and nothing else: hard items are
+> admitted to a tier's budget before soft ones, and a hard item is exempt from session focus —
+> focus never hides one. **No hook, no tool and no command reads an item's severity to decide
+> whether an action may proceed.** A hook here blocks exactly two things, and neither reads
+> severity: a write into `.my_context/` itself, and — only where a project has switched
+> [`dispatchGate`](#dispatchgate--requiring-a-dispatch-to-name-the-item-it-is-for) on — an
+> `Agent` dispatch that names no task item this corpus has.
+> [Section 2](#2-the-idea) describes normative knowledge as what *must hold* and asks "what am
+> I not allowed to get wrong here?", and a reader can reasonably take that mechanically. The
+> `create_item` schema's "a future enforcement candidate" is the accurate reading, and this is
+> where the gap is stated rather than implied by a hedge.
 
 This shape is deliberate. Your project's rules live in git, so they show up in a pull
 request diff, they get reviewed like code, they branch and merge with the code they describe,
@@ -1484,7 +1545,7 @@ spelled `jit`.
 | **pinned** | every session start, every subagent dispatch, and again after a compaction | every active normative item marked `always: true`, in full |
 | **just in time** | Claude is about to read or edit a file the item applies to — one matching its `scope`, or any file at all if it declares no scope | that item, in full |
 | **restored** | after a compaction | the items that were in context before it |
-| **continuity** | every session start and again after a compaction | every active item marked `continuity: true`, in full — the one tier that does not ask whether the item is normative, so a `reference` can carry it |
+| **continuity** | every session start, every subagent dispatch, and again after a compaction | every active item marked `continuity: true`, in full — the one tier that does not ask whether the item is normative, so a `reference` can carry it |
 | **index** | every session start, every subagent dispatch, and after a compaction | one line per remaining normative item, plus counts for the rest |
 
 ```mermaid
@@ -1492,13 +1553,15 @@ flowchart LR
   S(["A session starts"]) --> Q{"always: true?"}
   Q -->|yes| PIN["<b>pinned</b><br/>injected in full"]
   Q -->|no| IDX["<b>index</b><br/>one line: id · type · title"]
+  S --> CONT["<b>continuity</b><br/>every continuity: true item, in full"]
   F(["Claude is about to read<br/>or edit a file"]) --> G{"does the item<br/>declare a scope?"}
-  G -->|"no — unrestricted"| JIT["<b>just in time</b><br/>injected in full, once per context window"]
-  G -->|"yes, and it matches"| JIT
+  G -->|"yes, and it matches —<br/>offered first"| JIT["<b>just in time</b><br/>injected in full, once per session"]
+  G -->|"no — unrestricted,<br/>offered only after every<br/>scoped item already fit"| JIT
   G -->|"yes, no match"| NO["nothing — the item stays<br/>out of the way"]
   C(["The session is compacted"]) --> RES["<b>restored</b><br/>what was in context before"]
   C --> PIN
   C --> IDX
+  C --> CONT
 ```
 
 ### Pinned — the handful that always apply
@@ -1623,13 +1686,14 @@ Three details a developer will want:
   operation, so a corpus with many large unscoped items will spill — visibly, see
   [the budget](#the-budget-and-what-happens-when-it-does-not-fit) — rather than silently
   crowding out the item that actually named the file.
-- **Each item arrives once per context window.** my_context records what it has already
-  injected, so editing ten billing files does not deliver the same invariant ten times. A
+- **Each item arrives once per session — a compaction does not reset the count.** my_context
+  records what it has already injected, so editing ten billing files does not deliver the same
+  invariant ten times. A
   subagent shares the session's id but starts with an empty window of its own, so the record
   is kept per subagent: the parent having seen an item does not starve a subagent of it, and
-  each subagent receives it at most once. A subagent also receives the pinned tier and the
-  index at the moment it is dispatched, from a hook of its own — see
-  [section 8](#a-subagent-does-not-receive-the-session-start-injection).
+  each subagent receives it at most once. A subagent also receives the pinned tier, the
+  continuity tier and the index at the moment it is dispatched, from a hook of its own — see
+  [§4, "A subagent, at birth"](#a-subagent-at-birth).
   The record behind this is a per-session seen file — `.my_context/state/<session>.seen.jsonl`,
   machine-local generated state, pruned on a 30-day retention by `mycontext rebuild` and again
   at every session start — not the SQLite index. When that file cannot be read, my_context
@@ -1637,6 +1701,20 @@ Three details a developer will want:
   disclosed and cheap; a missed rule is neither.
 - **This tier carries no index.** A file-triggered injection contains the items that applied
   and nothing else. The index is a per-session cost, not a per-file one.
+
+> [!WARNING]
+> **A just-in-time injection trusts any index it can read, including a stale one.** The
+> just-in-time hook serves from the Markdown itself in exactly two cases: the read-only open
+> of `.my_context/.index.db` fails, or the index's recorded schema version is not the one this
+> build expects. An index that opens cleanly with the right schema is trusted — including a
+> **stale** one that no longer matches the Markdown because an edit or a rebuild never reached
+> it. In that state the hook serves what the index remembers: the injection happens, so this
+> is not a miss, but what arrives is the index's answer rather than the corpus's — a
+> wrong-but-plausible answer, which is a different failure class from the silent miss the
+> hooks are built to prevent — and nothing in the injected block or the audit record marks it.
+> Session start is unaffected: it injects from the Markdown itself and only refreshes the
+> index afterwards, best-effort. `mycontext doctor` reports index freshness, but only when
+> someone runs it. Recorded for 1.1 (`docs/ROADMAP.md`, E21) rather than fixed in 1.0.0.
 
 ### Restored — after the context window is compacted
 
@@ -1860,10 +1938,17 @@ there.
 
 #### Creating one, today
 
-> **No command creates a global layer, and no command writes to one.** `mycontext init`
+> **No command creates a global layer, and no command writes to one.** The layer is read on
+> every command and every injection, and nothing creates or writes one. `mycontext init`
 > creates `.my_context` in the directory you run it in, so `cd ~ && mycontext init` produces
-> `~/.my_context` — the underscore spelling, which nothing reads. This is a gap, not a
-> design; it is recorded in [section 8](#8-not-yet-available).
+> `~/.my_context` — the underscore spelling, which nothing reads. The one flag `init` takes is
+> `--pack <path>`: `mycontext init --global` is **refused**, and the refusal names the global
+> root — `~/.my-context`, with a hyphen — and the route that works, rather than silently
+> creating a project layer in the wrong place. Every write path refuses a non-project item,
+> and `mycontext repair` names the global items it declined to re-stamp and tells you to run
+> it "from the global layer's own workspace" — a workspace no command makes. **This is a gap,
+> not a design.** A `mycontext init --global`, and a way to direct a capture or an edit at the
+> global layer, would close it. Neither exists.
 
 What works is to build the corpus as an **ordinary workspace** and then move the directory
 it made into the global root:
@@ -1884,7 +1969,9 @@ unsupported step. To change something later, move it back, edit it as an ordinar
 and move it out again; that is also what `mycontext repair` means when it tells you to run
 it "from the global layer's own workspace", since there is no such workspace until you make
 one. The workspace's own `config.json` and `.index.db` come along with it; neither is read
-from the global root, and neither does any harm.
+from the global root, and neither does any harm. It is a real route, and every item it
+produces is written by the code that writes any item — but a move is not a supported surface,
+and a capability read on every command and every injection should not need one.
 
 ### The budget, and what happens when it does not fit
 
@@ -1963,6 +2050,27 @@ the *index itself* runs out of budget, the lines that do not fit are replaced by
 The count is never wrong, and `mycontext list` shows the whole corpus from the terminal — but
 inside that session Claude sees the number rather than the names. Everywhere else, what was
 excluded is named where it was excluded.
+
+### A subagent, at birth
+
+A subagent — the `Task` tool's own, separate context window — never sees a `SessionStart`: it
+inherits the parent's `session_id` verbatim, and only `agent_id` in the hook payload tells the
+two apart. `SubagentStart` is what stands in for it, and it selects exactly as an ordinary
+session start does: **pinned, continuity and index**, plus the cross-session carry resolved
+from the *parent's* session by id (not "the most recent session," which would hand a subagent
+an unrelated window's items). Its block says so on arrival — a preamble naming the plugin and
+pointing at the Markdown files behind it — because unattributed text arriving in a fresh
+context window reads as an attack, and a subagent has reported exactly that about its own
+injection before this was added.
+
+**The real gap left is latency, not delivery.** `SubagentStart` blocks the dispatch it fires
+for — measured, a hook that ran 3,018 ms delayed the subagent's first tool call by that much —
+and Claude Code kills a hook that runs past the five seconds `hooks/hooks.json` declares. A
+subagent whose hook was killed starts with none of this project's knowledge, and nothing about
+the selection itself is bounded in-process to guarantee it finishes first. That is disclosed,
+not silent: the audit log records `delivery=attempted` before the work and `delivery=complete`
+after, under the parent's `session_id`, so an attempt with no matching completion is exactly a
+subagent that started with nothing.
 
 ## 5. Using it
 
@@ -2053,7 +2161,7 @@ The eighteen hooks, and what each one is for:
 | Hook | Fires | What my_context does with it | `timeout` |
 |---|---|---|---|
 | `SessionStart` | a session starts, resumes, is cleared, is forked, or comes back from a compaction | selects and injects the pinned tier and the index, restores what a compaction dropped, clears a destroyed window's state, and sweeps stale files out of `state/` | 10 |
-| `SubagentStart` | a subagent is dispatched | injects the pinned tier and the index into the subagent's empty window, framed with an account of where the block came from | 5 |
+| `SubagentStart` | a subagent is dispatched | selects as a session start and injects the pinned tier, the continuity tier and the index into the subagent's empty window, framed with an account of where the block came from | 5 |
 | `PreToolUse` | before `Read`, `Edit`, `MultiEdit`, `Write` or `NotebookEdit` | the just-in-time tier, and the one refusal in the product: a direct write anywhere under `.my_context/` is denied, with a reason naming what to use instead | 10 |
 | `PreCompact` | before a compaction | records what the window was holding, so the next session start can restore it | 10 |
 | `PostCompact` | after a compaction, once its summary exists | one audit row saying the compaction FINISHED, with its `trigger` and three counts: what `PreCompact` captured, what the restore tier re-delivered, and how many of those ids the summary still names on its own. Injects nothing — the platform declares no output envelope for this event | 5 |
@@ -2157,9 +2265,25 @@ the same way `/mycontext:edit` falls back to a search when you have not named an
 `/mycontext:session-name` gives a session a handle you can type back later instead of its
 hex id; `/mycontext:session-carry` chooses which earlier session a *new* session carries
 items forward from — a standing choice about future sessions, not the one-shot
-`mycontext carry <id>` (deliberately no slash command; see [section
-8](#one-surface-for-every-operation)). Neither writes an audit record: both change session
+`mycontext carry <id>` (deliberately no slash command; see
+[the slash commands](#what-you-type-the-slash-commands)). Neither writes an audit record: both change session
 metadata, not anything this project's items assert.
+
+**Naming a session is a manual step, and that was declined rather than left undone.**
+`UserPromptExpansion` fires the moment one of this plugin's own `/mycontext:*` commands is
+typed, and the event carries `command_name` and `session_id` — so the hook writes one audit
+row recording which command ran and in which session. **That is recognition, not naming.** The
+hook does not call `mycontext session name` for you, and there is no route from "I just ran a
+slash command" to a name you can type instead of a hex prefix that skips the two ordinary
+steps: `mycontext session list` to find the session, then
+`mycontext session name <id> <name>`, with the id copied by hand. The one thing an automatic
+write would do is exactly what `mycontext session name` already does explicitly, so the gain
+is saving a copied id rather than enabling something new — and the store it would write to,
+`.my_context/state/session-names.json`, is the same store that was losing writes under
+concurrency until this week. Every hook here is also written under the invariant that it must
+never block a prompt: it fails open. A write that fails open is a write that sometimes does
+not happen, and a session name that is sometimes set is a worse property than one that is
+always typed by hand.
 
 **Review.** `/mycontext:review` walks the queue of drafts and prints, for each, what it
 would govern. `/mycontext:promote` and `/mycontext:discard` settle one. All three stop
@@ -2235,6 +2359,14 @@ so and asks for nothing.
 /mycontext:LoadMyContext
 ```
 
+**The 29 `/mycontext:add-<type>` and 29 `/mycontext:list-<type>` commands *are* the category
+picker.** That is why they are generated per category rather than taking a `<type>` argument:
+autocomplete filters the list as you type, and nothing in a plugin can put a menu on an
+argument. `/mycontext:add` takes the argument instead, and is not a retreat from that —
+naming works only for the categories the generator knew about, so the argument form is what
+remains for [a category you defined yourself](#categories-you-define-yourself), one command
+beside the 29 rather than in place of them.
+
 There is one `add-<type>` and one `list-<type>` per **enabled** category — 58 today — plus
 the 32 that are not per-category: `add`, `search`, `session-carry`, `session-name`, `show`,
 `todo`, `ready`, `doctor`, `decay`,
@@ -2268,7 +2400,32 @@ discovered.** `src/plugin/parity.ts` declares which command answers which MCP to
 `test/plugin/parity.test.ts` checks that declaration against the running program: every tool
 must have a CLI command or a slash command — there is no exception list for that half —
 every one-sided row carries its reason, and every CLI command with no slash command is
-listed with one. The remaining absences are in [section 8](#one-surface-for-every-operation).
+listed with one. **This is now satisfied, and enforced by a test rather than by review.**
+Every one of the twenty-eight MCP tools has a CLI command, a slash command, or both.
+
+What is left is asymmetry in the other direction — commands with no slash command — and it is
+**listed rather than discovered**: `CLI_WITHOUT_SLASH` in `src/plugin/parity.ts` names
+20 of the 49 CLI commands and states, per command, why. Every entry is one of two shapes: a command
+that runs once, before there is a session for a slash command to run in (`init`, `rebuild`), or
+a command whose write a slash command would let a model make on a person's behalf, which the
+command exists specifically to keep with the person — `ack` and `carry` (a judgement a person
+made about what a hook already surfaced), `config` and `repair` (both on the recommended deny
+list, each with a preview a person has to read before consenting), `export` and `pack` (a
+destination, or a stranger's corpus, a slash command cannot choose safely for someone),
+`restore` (an owner-only approval — `core/restore-stage.ts`'s own words: *"an agent may propose
+and may build; only the owner injects"*), `lesson-accept`/`lesson-discard` (the approval gate a
+staged lesson is printed for, not run by), `rules` and `statusline` (a tamper check and an
+editor's own settings, each honest only when a person reads it), `contribution` and
+`conversation` (a measurement of the machinery, or a browsing surface, where the one reader it
+must not be is the model it is about), `ingest-apply`/`ingest-status` (steps inside
+`/mycontext:ingest`, not commands of their own), and `help`/`examples` (answered by
+`mycontext_help`/`mycontext_examples` instead). `path`, added since, reads a convention this
+repository keeps that the product does not ship — a `[D-MAP]` block inside one reference item —
+so a slash command would open, on every other install, onto "this project keeps no subject map":
+correct and useless, and named `CLI_WITHOUT_SLASH` calls out as *intended-for-now* rather than
+principled. One row is deliberate future work rather than a closed door: `pack`'s two gates
+could be answered by a slash command that only previews an import, in the shape
+`/mycontext:lesson-stage` already uses.
 
 ### What you run: the CLI
 
@@ -2277,6 +2434,15 @@ listed with one. The remaining absences are in [section 8](#one-surface-for-ever
 `capture`, `workflow` — and three are one page per invocation surface: `cli`, `tools` and
 `slash`, each generated from the registry, schema or directory it describes rather than
 written out beside it.
+
+**Two topics do not exist**: `mycontext help query` and `mycontext help config` are both
+refused by name. Neither subject is undocumented —
+[the index schema](#the-index-schema-and-how-to-query-it) carries worked `SELECT`s and
+[section 6](#6-configuration) covers every configuration key — but `mycontext_help` is the
+tool an agent reaches for without leaving the session, and these two subjects, how to query
+the corpus and what a configuration key does, are the ones it cannot answer. The count moved
+from four topics to seven and the gap did not, which is the part worth keeping: the three
+added since were the three *invocation surfaces*, and neither of these subjects is one.
 
 **Capture and change.**
 
@@ -2340,6 +2506,15 @@ may be *written* — removing it there too would leave exactly the edges most in
 cleaning up with no way out. It is repeatable, composes with any other flag in one preview
 and one confirmation, and an unlink that matches nothing is refused rather than reported as
 a success.
+
+**`observations` cannot be edited by anyone, at any surface, by any origin.** They are set at
+capture and never afterwards; `update_item` has no such argument and neither does
+`mycontext edit`. Correcting one means superseding the item that carries it.
+
+**Deletion will not be added at all.** `NOGOAL-no-agent-hard-delete` is an active item in this
+repository's own corpus, recording that as a deliberate non-goal rather than as work nobody
+has reached. Retirement is supersession — `mycontext supersede <id> --by <id>`, which exists —
+and it keeps the item, its body and its history on disk where a reviewer can still read them.
 
 **Find and read.**
 
@@ -2829,6 +3004,12 @@ it is a deliberate limit as much as a feature:
   eligible and did not fit.
 - It cannot answer *"what did that item say at the time?"*. The item's own file answers
   that, and its history is git's if you commit `.my_context/`.
+- It is the only thing that can answer *"when was this item created, or last changed?"*.
+  **Items carry no `created_at`/`updated_at` frontmatter fields**, so the log knows when every
+  change happened and a single item's Markdown does not.
+  `REQ-changes-are-timestamped-and-audited` — an operation history that does not depend on git
+  — is implemented by this log, and that one clause of it is still unmet; the corpus item says
+  so in its own body.
 
 The reason is not only size. A second copy of every governing item, living in a file no
 checksum covers, is the one shape this project rules out everywhere else — it would be a
@@ -3755,7 +3936,7 @@ surface.
 | `list_drafts` | list what is waiting for human review, newest first — not to promote it, which it cannot do |
 | `audit_log` | read the [run-time audit log](#the-audit-log--what-my_context-actually-did): what has been changed in this workspace and by whom, and which items a session was shown, by scope — ids and tiers, never the injected text. Filter by item, session, op, actor or time. The argument is `actor`, not `origin`: no tool schema on this surface exposes a property named `origin`, and that pin is not worth carving an exception into for a read filter |
 | `load_context` | inject the pinned items and index now, exactly as a session start does. This is what `/mycontext:LoadMyContext` calls |
-| `mycontext_help` | read guidance on one topic: categories, scope, capture, workflow, tools, slash. That is every topic `mycontext help` serves except `cli`, and the schema's enum is derived from the list rather than kept by hand — see [the one help topic it does not offer](#the-one-help-topic-mycontext_help-does-not-offer) <!-- `core/teach.ts` · `export const MCP_HELP_TOPICS: HelpTopic[] = HELP_TOPICS.filter((t) => t !== 'cli');` · ~36 --> |
+| `mycontext_help` | read guidance on one topic: categories, scope, capture, workflow, tools, slash. That is every topic `mycontext help` serves except `cli` — withheld because the CLI's own command registry never loads on this surface, so the topic would otherwise render a command section that names nothing — and the schema's enum is derived from the list rather than kept by hand <!-- `core/teach.ts` · `export const MCP_HELP_TOPICS: HelpTopic[] = HELP_TOPICS.filter((t) => t !== 'cli');` · ~36 --> |
 | `mycontext_examples` | show a complete example item of a given type, to copy the shape from |
 | `focus_context` | narrow what my_context injects — see [session focus](#session-focus--narrowing-what-loads) — to given tags, categories or scopes, and read back what that hides: how many items, and how many load-bearing relations are left dangling. `preview` reports without changing anything; `clear` removes the focus. It cannot hide a `severity: hard` item, and every focus change is recorded in the audit log with its origin, so a model narrowing its own context leaves a trail |
 | `ingest_document` | extract normative items from a document, in the same two-call shape as the CLI's ingest commands |
@@ -5386,9 +5567,14 @@ choose your own:
 { "categories": { "slo": { "tier": "normative", "description": "…", "prefix": "SLO" } } }
 ```
 
-Two names sharing their first six letters and digits — `standard_ops` and `standardize` —
-resolve to the same prefix, and nothing warns, so set `prefix` explicitly when that would
-happen. **`prefix` works on a built-in too**: `{ "rule": { "prefix": "POLICY" } }` mints new
+**Two categories can share an id prefix, and nothing says so.** Two names sharing their first
+six letters and digits — `standard_ops` and `standardize` — resolve to the same prefix, and an
+explicit `prefix` collides just as quietly: give `rule` and `invariant` both
+`{"prefix": "POLICY"}` and the second item minted is `POLICY-…-2`, with no error, no warning
+and no `doctor` finding. The ids then stop telling a reader what category an item is, which is
+most of what an id prefix is for. Refusing the collision at config load is the fix, and it is
+not built — so set `prefix` explicitly, and check it against the prefixes already in use.
+**`prefix` works on a built-in too**: `{ "rule": { "prefix": "POLICY" } }` mints new
 rules as `POLICY-…`. Ids already on disk keep the ones they were created with — an id is
 fixed at capture — so a project that changes this ends up with both, and `mycontext list
 rule` finds them all either way. The value must be one to twelve letters or digits and
@@ -5442,7 +5628,10 @@ for every enabled category in whatever configuration it is handed, custom ones i
 and refuses two names that would produce the same command file. But `commands/` is
 generated and committed when the plugin is built, from the default configuration, so a
 category you declare has no slash command in your project. Capture it with `mycontext add`,
-or ask the model to, which reaches `create_item` — that surface takes any enabled type.
+or ask the model to, which reaches `create_item` — that surface takes any enabled type, so the
+category is fully usable and what is missing is the one surface generated ahead of time.
+Closing it means generating the commands from a project's own config, which is a
+plugin-packaging question rather than a configuration one, and it is not built.
 
 ### The two profiles, and the one that was removed
 
@@ -5865,8 +6054,11 @@ stateDiagram-v2
   [*] --> draft: Claude captures a normative item<br/>(create_item, origin stamped agent)
   [*] --> active: you capture it yourself<br/>(mycontext add, with an explicit yes)
   draft --> active: mycontext review promote<br/>a human decision
-  draft --> deprecated: mycontext review discard
+  draft --> deprecated: mycontext review discard<br/>(any other draft)
+  draft --> deleted: mycontext review discard<br/>(a review-pass draft — never governed,<br/>so it is deleted, not deprecated)
+  active --> deprecated: mycontext edit --status deprecated<br/>a human decision
   active --> superseded: mycontext supersede, naming a replacement<br/>a human decision
+  deleted --> [*]
   note right of draft
     Not selected for any tier.
     Counted in the index, injected nowhere.
@@ -5971,6 +6163,30 @@ An item can carry more than one pending revision, and each records the text it w
 against. Promoting one leaves stale any other revision **that proposed the same field**,
 rather than stacking them, and the promotion names exactly which ones it just invalidated.
 A revision about a different field is untouched, and the preview says so.
+
+**The store keeps everything, in one place, unwatched.** Three facts about
+`.my_context/.revisions/`, recorded rather than fixed. Its log is append-only and never
+pruned, so a project that stages and settles many revisions accumulates a file that only
+grows. `mycontext doctor` has no check for the directory at all, so nothing reports on its
+size or on a revision left pending for months. And the directory carries a `.gitignore`
+containing `*`, written by the code that creates it — so a revision an agent stages is local
+to the machine it was staged on, invisible to a reviewer on any other checkout, and the log
+that never deletes a proposal is not in version control at all. The
+[audit log](#the-audit-log--what-my_context-actually-did) shares the first and third of those
+and closes the second: it rotates at 8 MiB and still never deletes, so its total growth is
+unbounded too, but unlike the revision store it has a `doctor` check that reports its size.
+The revision store still has none.
+
+**A committable revision log was considered and declined.** The log is one append-only JSONL
+file whose torn-tail heal assumes a single writer on a single machine, and every settlement —
+every promote, every discard — appends to it. Committed, it would meet another machine's
+appends as a merge conflict, and resolving a merge conflict means rewriting history inside the
+one store whose promise is that a recorded proposal is never rewritten. What a reviewer on
+another checkout actually needs already travels: a promoted revision is the item's new text,
+committed like any other item. So a staged proposal remains a conversation with the human at
+the machine it was staged on. It is also not a small change — it needs a merge story for
+append-only JSONL, revision-id rules across machines, and a heal that can tell a torn tail
+from a merge artefact, none of which exist.
 
 ### The approval boundary — read this before trusting it
 
@@ -6158,9 +6374,9 @@ executable — the reads, the writes, and the ones that change what governs this
 
 > [!NOTE]
 > **The screens offer the button.** This note used to say they did not, and it was left
-> standing after the control shipped — the exact defect this document's [section
-> 8](#8-not-yet-available) exists to prevent, in the section that describes running commands
-> on your machine. The Copy-and-Execute control is one implementation
+> standing after the control shipped — a document contradicting the code, the exact defect
+> this project exists to prevent, in the section that describes running commands on your
+> machine. The Copy-and-Execute control is one implementation
 > (`src/ui/public/lib/command-actions.js`) reused by every screen that composes a command,
 > rather than a transcription per screen, because the confirm is the security boundary and
 > nine copies of it would be nine chances to get it wrong.
@@ -6253,445 +6469,7 @@ text produce the same finding.
 `mycontext repair` re-stamps the checksum after a deliberate hand edit; it makes the
 recorded checksum agree with the file, and it cannot recover anything the edit removed.
 
-## 8. Not yet available
-
-> [!NOTE]
-> **This is the only section of this document where unbuilt behaviour appears.** Everything
-> above describes what the code does today. Every entry below names something this project
-> does not have — either never built, or declared somewhere and verifiably not in effect —
-> and no sentence below claims otherwise. Where a present-tense sentence appears, it states
-> what is missing or broken today, never what is planned.
-
-That separation is deliberate rather than tidy. A tool whose entire premise is that
-injected knowledge is true cannot afford a README describing a feature it does not have,
-and this project has a recorded history of exactly that defect, which is why the rule is a
-rule rather than an intention.
-
-**The rule has a second half, learned here.** Nothing stays in this section once it ships.
-This section spent several rounds of work carrying four entries that described capabilities
-the project had already built — the quarantine inverted, the section written to prevent false
-claims making four of them. Behaviour that ships but is defective belongs beside the thing
-that is defective — the way the warning about `lesson-accept` sits under
-[the flow it is about](#from-an-incident-to-a-rule) — not in a list of what does not exist.
-
-Entries are in no particular order, and this section states no delivery order. It used to
-number each one into a "wave", and those numbers named a sequencing document this file never
-linked, went stale as the work moved, and in one case pointed at a wave containing no such
-row. The current sequencing is
-[`docs/superpowers/plans/2026-08-16-production-grade.md`](docs/superpowers/plans/2026-08-16-production-grade.md),
-which is revised whenever a decision changes it. Read it there, where it is maintained.
-
-### Nothing enforces a hard item
-
-`severity: hard` changes two things, both about selection: hard items are admitted to a
-tier's budget before soft ones, and a hard item is exempt from session focus — focus never
-hides one. **No hook, no tool and no command reads an item's severity to decide whether an
-action may proceed.** A hook here blocks exactly two things, and neither reads severity: a
-write into `.my_context/` itself, and — only where a project has switched
-[`dispatchGate`](#dispatchgate--requiring-a-dispatch-to-name-the-item-it-is-for) on — an
-`Agent` dispatch that names no task item this corpus has.
-[Section 2](#2-the-idea) describes normative knowledge as what *must hold* and asks
-"what am I not allowed to get wrong here?", and a reader can reasonably take that
-mechanically; the `create_item` schema's "a future enforcement candidate" is the accurate reading,
-and this entry is where the gap is stated rather than implied by a hedge.
-
-### A subagent does not receive the session-start injection
-
-A subagent — the Task tool's separate context window — never sees the pinned tier, the
-index, or a compaction restore. This is a property of Claude Code, established by
-measurement rather than read from documentation: a probe hook under a real `claude -p` run
-whose prompt dispatched a subagent logged no `SessionStart` firing for the subagent at all,
-and the subagent's own tool calls arriving with the *parent's* `session_id` verbatim —
-`agent_id` in the hook payload was the only field that told them apart, and
-`CLAUDE_CODE_SESSION_ID` in the environment is inherited unchanged.
-
-**Corrected 2026-08-19.** This paragraph used to end *"There is no hook that fires at a
-subagent's birth for my_context to answer."* That was true when it was measured and is no
-longer true. Re-measured against Claude Code **2.1.234** by the same method — a probe hook
-under a real `claude -p` run whose prompt dispatched a subagent — **`SubagentStart` fires**,
-carrying `session_id`, `transcript_path`, `cwd`, `prompt_id`, `agent_id` and `agent_type`.
-Its `agent_id` is **identical** to the one the subagent's own `PreToolUse` payload carries,
-so the two join.
-
-Everything else in the paragraph above still holds: `SessionStart` still does not fire for a
-subagent, so the sentence this section is titled for is unchanged — a subagent still does not
-receive the session-*start* injection. What has changed is that a hook now exists at which
-my_context can answer, and **it now answers**.
-
-**What a subagent receives at birth.** `SubagentStart` delivers the pinned tier in full plus
-the index — deliberately the same selection a session start makes, because "what gets
-injected" must have exactly one answer and a second copy of that decision is the divergence
-this design exists to prevent. Its index carries the
-[cross-session carry](#the-index--so-nothing-is-invisible) like any other, with one rule of
-its own: a subagent carries from **the session that dispatched it**, by id. Every other
-event asks for the most recent session other than itself; a subagent has no session of its
-own — it inherits the parent's `session_id` verbatim — so that rule would have handed it an
-unrelated window's items under a label naming a session nobody in the dispatch was in.
-
-**The block says where it came from, and that is not decoration.** A subagent's injection
-opens with a preamble naming the plugin, saying the block was added before its first turn and
-is not part of the message that dispatched it, and pointing at the Markdown files it can read
-for itself. Unattributed text arriving in a context window was reported by a real subagent to
-its parent as a possible out-of-band attack, which is the correct reading of unattributed
-text arriving in a context window. So a subagent's block is not byte-identical to a session
-start's; the selection behind it is.
-
-It also gets the
-[just-in-time tier](#just-in-time--the-ones-that-apply-to-what-you-are-touching):
-its file-touching tool calls fire `PreToolUse` like anyone else's. The per-session dedupe
-record keys deliveries on `session_id` plus `agent_id`, so each subagent is its own dedupe
-scope — an item the parent already received still arrives for a subagent, once, because the
-subagent's window contains none of what the parent was shown. Before that keying existed,
-the shared `session_id` meant a subagent was served *nothing* the session had already seen,
-while the record claimed delivery — the exact false-coverage state this section exists to
-quarantine elsewhere. The birth injection dedupes under that same composite key, so the
-subagent's first tool call does not re-deliver what it was just handed. When a payload
-arrives with no `agent_id` there is no key to write under, and my_context writes **no** seen
-entry rather than the parent's: that costs one re-delivery to the subagent, where writing the
-parent's file would have suppressed the parent's own next injection.
-
-**The remaining gap has changed shape: it is a latency and kill gap now, not a delivery gap.**
-`SubagentStart` blocks the dispatch it fires for — measured, a 3,018 ms hook delayed the
-subagent's first tool call until it returned — so every dispatch in the project pays for this
-before its first turn, and nothing about the selection is bounded in-process. The only thing
-that ends the hook is Claude Code killing it at the five seconds `hooks/hooks.json` declares,
-and a subagent whose hook was killed starts with none of this project's knowledge. That is
-not silent: the audit record is written **before** the work, saying `delivery=attempted` with
-the `agent_id`, and a second record says `delivery=complete` after. Both carry the parent's
-`session_id`, so `mycontext audit --session <parent>` shows the pair side by side, and an
-attempt with no completion for the same `agent_id` is exactly a subagent that started with
-nothing. Anything counting `subagent-start` rows counts each dispatch twice unless it reads
-the note, which is the price of one op rather than two.
-
-### A slash command is recognised, but naming its session is still a manual step
-
-`UserPromptExpansion` fires the moment one of this plugin's own `/mycontext:*` commands is
-typed, and the event carries `command_name` and `session_id` — so the hook writes one audit
-row recording which command ran and in which session. **That is recognition, not naming.**
-The hook does not call `mycontext session name` for you, and there is no route from "I just
-ran a slash command" to a name you can type instead of a hex prefix that skips the two
-ordinary steps: `mycontext session list` to find the session, then
-`mycontext session name <id> <name>`, with the id copied by hand.
-
-This was declined, not left undone. The one thing an automatic write would do is exactly
-what `mycontext session name` already does explicitly, so the gain is saving a copied id
-rather than enabling something new — and the store it would write to,
-`.my_context/state/session-names.json`, is the same store that was losing writes under
-concurrency until this week. Every hook here is also written under the invariant that it
-must never block a prompt: it fails open. A write that fails open is a write that
-sometimes does not happen, and a session name that is sometimes set is a worse property
-than one that is always typed by hand.
-
-### One surface for every operation
-
-**The requirement, in the user's words:** anything the model can do through a tool, you
-should be able to do through a command. **This is now satisfied, and enforced by a test
-rather than by review.** Every one of the twenty-eight MCP tools has a CLI command, a slash
-command, or both; the map is `src/plugin/parity.ts` and `test/plugin/parity.test.ts` checks
-it against the usage banner the program prints and the files in `commands/`.
-
-What is left is asymmetry in the other direction — commands with no slash command — and it
-is **listed rather than discovered**. 20 of the 49 CLI commands have none, each for a reason
-recorded beside it in `CLI_WITHOUT_SLASH`:
-
-- `ack` records that a **person** read a `doctor` finding and ruled on it, so a slash command
-  would be the one caller the write exists to exclude: `acknowledgeFinding` refuses every
-  origin but a human, and there is no MCP tool either. You read the finding out of
-  `mycontext doctor` and type the acknowledgement yourself.
-- `carry` is the same shape of judgement one level up: a **person** looked at what the last
-  injection spilled and decided one item was needed *now*. It marks that one id for the very
-  next injection and forgets it, whether or not the line was admitted — a slash command or a
-  tool would let a model make that call for itself, which is exactly the choice this command
-  exists to keep with you.
-- `contribution` reports how often each item has actually been delivered, and the one reader it
-  must not have is the model whose deliveries it counts: a corpus that edits itself in response to
-  its own contribution numbers is the failure the measurement exists to **detect** rather than to
-  feed. It writes nothing and governs nothing, so a slash command would only put a table in front
-  of the thing the table is about. `--json` is the machine surface, for a script a person runs.
-- `conversation` indexes and lists the transcripts Claude Code has already written on disk.
-  A model has no use for it — the conversation it would be asking about is the one it is
-  having — and the browsing it exists to serve was ruled a web feature, on the
-  Conversations screen. The person who runs `mycontext conversation rebuild` is filling
-  the index before opening that screen, because the web UI never writes.
-- `init` and `rebuild` run before, or outside, a session that could carry a slash command.
-- `repair` is on the recommended deny list, and its preview is a page of consequences a
-  person has to read. A slash command for it would be a prompt whose only honest content is
-  "do not let me do this".
-- `config` is on the recommended deny list for the same reason: `--delete` and `--disable`
-  each carry a preview naming the real number of items the category already carries, and a
-  slash command for either would be that same prompt whose only honest content is "do not
-  let me do this".
-- `help` and `examples` are answered for you by `mycontext help <topic>` and
-  `mycontext examples <category>`, and by this document, which is longer and better
-  organised than a command file could be. Those are also the two MCP tools —
-  `mycontext_help`, `mycontext_examples` — with no slash command, for the same reason.
-- `ingest-apply` and `ingest-status` are steps *inside* `/mycontext:ingest`, not commands of
-  their own: split out, they would offer you a step with no session id to pass it.
-- `lesson-accept` and `lesson-discard` are the approval gate. `/mycontext:lesson-stage`
-  prints them for you and stops. A slash command that ran either would be the model settling
-  a rule on your behalf, which is the act the whole flow exists to preserve.
-- `export` writes an artefact to a path outside the workspace, and the destination is the
-  whole decision. A slash command cannot choose one on your behalf, and a prompt that
-  guessed would be writing a stranger-readable copy of the corpus somewhere you did not
-  name.
-- `pack` imports a stranger's corpus into yours, behind two confirmations — the second of
-  which is the only route by which something you wrote is replaced by something someone
-  else wrote. A slash command that ran it would be the model taking that act on your
-  behalf. This one is deliberate future work rather than a closed door: a slash command
-  that only *previewed* an import and then printed the `mycontext pack import` for you to
-  run is the shape `/mycontext:lesson-stage` already uses, and it is what this row is
-  waiting for.
-- `rules` reads the constants that ship inside the package — not your corpus — and checks them
-  against the checksums that shipped with them. A slash command would be the model asking whether
-  the rules it is being given are the real ones, which is a question only its answer can be
-  trusted on: the honest reader of a tamper check is the person who installed the tool. There is
-  no MCP tool either, and for the same reason.
-- `restore` summarises an earlier conversation from its own transcript and — once you approve
-  it — hands that summary to the next session that starts. The approval is a person deciding
-  what a whole context window receives out of a verbatim record of a conversation, and a slash
-  command would be a model taking that decision on its own: the reason `carry` has none,
-  exactly. The half that is automatic, `--build`, already needs no approval and stages a
-  proposal that reaches no session until you act on it. There is no MCP tool either, and for
-  the same reason.
-- `statusline` is Claude Code's own configuration rather than anything in this corpus. Run
-  bare it reads a payload only Claude Code sends, on stdin, which a slash command has no way
-  to produce; and `statusline install` edits `settings.json`, which is a decision about the
-  user's own editor. A slash command for it would be the model reconfiguring the tool it is
-  running inside.
-
-One more one-sided row, deliberate. `load_context` has no CLI counterpart because
-injection happens into a session and a terminal is not one — the absence is a property of
-the act.
-
-`link_items` used to be the other one-sided row, and no longer is: `mycontext link
-<from> <relation> <to>` gives the terminal the CLI counterpart it lacked, closing a real
-gap — a terminal user could not write a relation at all. Its *removal* still goes the
-other way: there is no `unlink_items` tool, only `mycontext edit --unlink`, because
-removing an edge can weaken what a governing item asserts and adding one cannot — the
-asymmetry is in which write is gated, not in which surface has a CLI command.
-
-### Choosing a value instead of remembering it
-
-**The requirement:** wherever a field has a fixed set of values — category, status, severity,
-relation type — you should pick from the set rather than recall the spelling. It is now met
-in two ways, and neither of them is a widget, because **there is still no picker and no way
-to ship one**: a slash command's `argument-hint` frontmatter field supplies placeholder text
-on the argument line, and nothing in a plugin can put a menu on `--severity`.
-
-**By naming.** The 29 `/mycontext:add-<type>` and 29 `/mycontext:list-<type>` commands *are*
-the category selector, which is why they are generated per category rather than taking a
-`<type>` argument; autocomplete filters the list as you type. `/mycontext:add` takes the
-argument instead, and is not a retreat from that: naming works only for the categories the
-generator knew about, so the argument form is what remains for [a category you defined
-yourself](#categories-you-define-yourself) — which is why it is one command beside the 29
-rather than in place of them. The same applies to the four
-values people set constantly: `/mycontext:pin`, `/mycontext:unpin`, `/mycontext:harden` and
-`/mycontext:soften` are `mycontext edit --always` and `--severity` under names you can find
-by typing. They are one implementation with two spellings — the CLI command rewrites its
-arguments into `edit`, and the slash command is generated from the same list the CLI
-registers them from — so the gate, the preview and every refusal are `edit`'s, and one test
-enumerates that list rather than checking four files separately.
-
-**By asking.** A slash command runs through Claude, so it can present the values as a
-numbered list and wait for an answer. `/mycontext:edit` does that for `severity`, `status`
-and `always`; `/mycontext:link` does it for the relation vocabulary; `/mycontext:unlink`
-does it for the relations an item actually carries, read off the item first. Every one of
-those lists is generated from the enum in the source, so it cannot come to offer a value the
-program refuses — and `superseded` is deliberately absent from the status list, because
-`mycontext edit --status superseded` is refused: a retirement records its replacement in
-both directions, and `/mycontext:supersede` is the command that does it.
-
-What a numbered list is not: an interface. You still type the answer, and a long enum is
-still a long list. This is the most a plugin can do with the mechanisms Claude Code has, and
-saying so is more useful than implying a control that does not exist.
-
-### Three recorded requirements this section used to carry, and where each one went
-
-This subsection existed because of the one state a knowledge base must never be in:
-**injecting its own requirement, as a binding instruction, while not satisfying it.** Three
-items were in that state. None is today, and each came out of it in a different, nameable
-way rather than by the list being quietly shortened.
-
-| Recorded requirement | What it required | Where it went |
-|---|---|---|
-| `REQ-changes-are-timestamped-and-audited` | an operation history that does not depend on git | **Implemented** — the [audit log](#the-audit-log--what-my_context-actually-did). One clause is still unmet and the corpus item says so in its own body: items carry no `created_at`/`updated_at` frontmatter fields, so the log knows when every change happened but a single item's Markdown does not |
-| `REQ-items-carry-a-domain` | one declared domain above the category — a closed set in `config.json`, an indexed column, filters on the commands | **Retired by decision.** `NOGOAL-no-domain-axis-on-items` supersedes it: scope globs, tags, categories and SQL already slice the corpus four ways. It is `superseded`, so nothing injects it |
-| `REQ-session-focus-controls-what-loads` | a session can narrow what loads, disclosing what it hid rather than hiding it silently | **Implemented** — [session focus](#session-focus--narrowing-what-loads), and the corpus item was annotated in the same change. Two differences from what it asked for are recorded in the item rather than glossed: it narrows on tags, categories and scope rather than on domains, which were retired the same day; and the focus is scoped to the workspace rather than the session, for the measured reason that section gives |
-
-`OPENQ-how-do-filters-respect-dependencies` — the open question that blocked the third of
-these by design, saying "design this before implementing it" — is superseded by the decision
-that answered it: focus discloses and allows.
-
-This table is maintained by hand. It is a record of three specific items, not a fresh census
-of the corpus: the item that says a requirement is unmet is the requirement itself, and
-`mycontext list requirement` is what enumerates them.
-
-### Editing — what still has no route
-
-- **`observations` cannot be edited by anyone, at any surface, by any origin.** They are set
-  at capture and never afterwards; `update_item` has no such argument and neither does
-  `mycontext edit`. Correcting one means superseding the item that carries it.
-- **Deletion will not be added at all.** `NOGOAL-no-agent-hard-delete` is an active item in
-  this repository's own corpus, recording that as a deliberate non-goal. Retirement is
-  supersession — `mycontext supersede <id> --by <id>`, which exists — and it keeps the item,
-  its body and its history on disk where a reviewer can still read them.
-
-### The revision store keeps everything, in one place, unwatched
-
-Three facts about `.my_context/.revisions/`, recorded rather than fixed. Its log is
-append-only and never pruned, so a project that stages and settles many revisions accumulates
-a file that only grows. `mycontext doctor` has no check for the directory at all, so nothing
-reports on its size or on a revision left pending for months. And the directory carries a
-`.gitignore` containing `*`, written by the code that creates it — so a revision an agent
-stages is local to the machine it was staged on, invisible to a reviewer on any other
-checkout, and the log that "never deletes a proposal" is not in version control at all.
-
-The [audit log](#the-audit-log--what-my_context-actually-did) shares the first and third of
-those and closes the second. It is gitignored for the same reason and, in this release, with
-the same consequence — stated where it is documented rather than left here, together with
-the v2.0 decision that a corpus export is to carry the mutation half of the log and leave
-the rest behind, which **shipped**: `mycontext export` writes a `history.jsonl` of mutations
-and of nothing else, and this sentence said "decided and not built" for months after it did.
-It rotates at 8 MiB but still never
-deletes, so its total growth is unbounded too; and unlike the revision store, it has a
-`doctor` check that reports its size. The revision store still has none.
-
-**The third fact is now a decision, not a gap** (Phase 5 closed it as one — `docs/ROADMAP.md`,
-E6). The log is one append-only JSONL file whose torn-tail heal assumes a single writer on a
-single machine, and every settlement — every promote, every discard — appends to it.
-Committed, it would meet another machine's appends as a merge conflict, and resolving a merge
-conflict means rewriting history inside the one store whose promise is that a recorded
-proposal is never rewritten. What a reviewer on another checkout actually needs already
-travels: a promoted revision is the item's new text, committed like any other item. So a
-staged proposal remains a conversation with the human at the machine it was staged on, and an
-opt-in committable log was considered and declined — it is not a small change, because it
-needs a merge story for append-only JSONL, revision-id rules across machines, and a heal that
-can tell a torn tail from a merge artifact, none of which exist.
-
-### Custom categories: two gaps, one of them silent
-
-- **Two categories can share an id prefix, and nothing says so.** [Section 6](#6-configuration)
-  names the derived case — `standard_ops` and `standardize` both reduce to `STANDA` — and an
-  explicit `prefix` collides just as quietly: give `rule` and `invariant` both
-  `{"prefix": "POLICY"}` and the second item minted is `POLICY-…-2`, with no error, no
-  warning and no `doctor` finding. The ids stop telling a reader what category an item is,
-  which is most of what an id prefix is for. Refusing the collision at config load is the
-  fix, and it is not built.
-- **A category you declare gets no slash command.** The generator handles a custom category
-  correctly, but `commands/` is generated from the **default** configuration when the plugin
-  is built, so nothing in it follows your project's config. `mycontext add` and the
-  `create_item` tool both take a custom type, so the category is fully usable; what is
-  missing is the one surface generated ahead of time. Closing it means generating commands
-  from a project's own config, which is a plugin-packaging question rather than a config one.
-
-### Two help topics that do not exist
-
-`mycontext help` takes seven topics — `categories`, `scope`, `capture`, `workflow`, `cli`,
-`tools`, `slash` — and `mycontext help query` and `mycontext help config` are both refused by
-name. Neither subject is undocumented: [section 5](#the-index-schema-and-how-to-query-it)
-carries the index schema and worked `SELECT`s, and [section 6](#6-configuration) covers every
-configuration key. But `mycontext_help` is the MCP tool an agent reaches for without leaving
-the session, and these two subjects — how to query the corpus, and what a configuration key
-does — are the ones it cannot answer.
-
-The count moved from four to seven and the gap did not, which is the point worth keeping:
-the three topics added since were the three *invocation surfaces*, and neither of these two
-subjects is one.
-
-### The one help topic `mycontext_help` does not offer
-
-`mycontext help <topic>` serves all seven. The `mycontext_help` **tool** offers six of them,
-and the one it withholds is `cli`.
-
-That withholding is correct and cannot be otherwise. The `cli` topic's command section is
-generated from the CLI's own command registry, which `src/cli/index.ts` fills as a side
-effect of loading; the MCP server never loads it, so the registry is empty there and the
-topic **refuses to render** rather than printing a command section that names nothing.
-Advertising `cli` on that surface would advertise a topic the server cannot serve.
-
-**This entry used to name three, and two of them have since been closed.** `tools` and
-`slash` were withheld for no reason but a hand-written enum that nobody widened when they
-landed — `tools` renders from the tool registry and `slash` from the committed `commands/`
-directory, and neither needs a side effect to populate. The schema's enum is now derived
-(`MCP_HELP_TOPICS` is `HELP_TOPICS` minus `cli`, and nothing else), so a topic added to the
-CLI reaches the tool by default rather than by somebody remembering.
-`test/help/tools-topic.test.ts` pins the withheld set to exactly `cli`, in both directions:
-a topic added to it, and an empty set, both fail.
-<!-- `test/help/tools-topic.test.ts` · `[...withheld].sort(), ['cli'],` · ~490 -->
-
-What remains is the entry above: `query` and `config` are subjects neither surface has a
-topic for.
-
-### Creating and writing a global layer
-
-The [global layer](#the-global-layer--knowledge-that-follows-you-across-projects) is read on
-every command and every injection, and there is no command that creates one or writes to one.
-`mycontext init` creates `.my_context` in the directory it is run in, and the one flag it takes
-is `--pack <path>`:
-`mycontext init --global` is **refused**, and the refusal names the global root — `~/.my-context`,
-with a hyphen — and the route that works, rather than silently creating a project layer in the
-wrong place. Every write path refuses a non-project item, and `mycontext repair` names the
-global items it declined to re-stamp and tells you to run it "from the global layer's own
-workspace" — a workspace no command makes.
-
-The route that works today is in [that section](#creating-one-today): build the corpus as an
-ordinary workspace and move the directory into place. It is a real route, and every item it
-produces is written by the code that writes any item — but a move is not a supported surface,
-and a capability this central should not need one. A `mycontext init --global`, and a way to
-direct a capture or an edit at the global layer, would close it. Neither exists.
-
-### A just-in-time injection trusts any index it can read
-
-The just-in-time hook serves from the Markdown itself in exactly two cases: the read-only
-open of `.my_context/.index.db` fails, or the index's recorded schema version is not the
-one this build expects. An index that opens cleanly with the right schema is trusted —
-including a **stale** one that no longer matches the Markdown because an edit or a rebuild
-never reached it. In that state the hook serves what the index remembers: the injection
-happens, so this is not a miss, but what arrives is the index's answer rather than the
-corpus's — a wrong-but-plausible answer, which is a different failure class from the
-silent miss the hooks are built to prevent — and nothing in the injected block or the
-audit record marks it. Session start is unaffected: it injects from the Markdown itself
-and only refreshes the index afterwards, best-effort. `mycontext doctor` reports index
-freshness, but only when someone runs it. Recorded for 1.1 (`docs/ROADMAP.md`, E21)
-rather than fixed in 1.0.0.
-
-### How to tell whether something here has shipped
-
-Do not trust this section to have been updated. Run `mycontext help` for the real command
-list, `claude plugin details mycontext@mycontext` for the real component inventory, and
-`mycontext help categories` for the categories actually enabled.
-
-**12 test files under `test/docs/` hold these two documents to the program, and two of them
-reach into this section.** Between them they check that every CLI command, slash command and
-MCP tool is named in `README.md` and that nothing is named that does not exist; that every
-worked example is re-executed against a committed fixture and diffed, whole, against what the
-command prints; that the injected output quoted in sections 3, 4 and 6 is what the hooks
-emit; that every section the table of contents links either has a line in the capabilities
-summary near the top or is listed, with a reason, as something the product does not *do*; and
-that both documents carry the same heading sequence and the same examples in the same order.
-Of those, `counts.test.ts` computes the "20 of the 49 CLI commands" ratio above from the
-running program and fails in **both** languages if either half drifts — it had drifted twice
-before the test existed — and it computes this paragraph's own file count the same way.
-`parity.test.ts` holds this section's heading sequence to the Hebrew mirror's. This paragraph
-read "no test checks this section" while both of those already did.
-
-Two more, outside `test/docs/`, hold the surface itself rather than the prose about it:
-`test/plugin/parity.test.ts` checks that every MCP tool has a command and that every
-asymmetry above is declared, and `test/plugin/write-commands.test.ts` runs the dry run each
-write command names and asserts it previews, declines and writes nothing.
-
-Being checked is not being verified, and the limits are worth naming one at a time. Parity
-compares structure and never meaning: Hebrew left behind by an English edit passes every
-assertion in the suite, and that file demonstrates the blindness rather than merely claiming
-it. The inventory test reads the whole English file, so a command named in the
-[flag reference](#every-flag-in-one-place) or the [glossary](#9-glossary) is checked to exist
-like any other — but no test anywhere checks whether a *flag* behaves as its row says. And
-every pin that works by requiring a phrase is satisfied by a negation placed in front of that
-phrase; only the example blocks, which are compared whole, are immune. Reading this section
-against a working tree is the only way to know it is right, and it is the part of this
-document to distrust first.
-
-## 9. Glossary
+## 8. Glossary
 
 Every word this document gives a particular meaning to, in one alphabetical list, so that
 landing in the middle of a section never requires reading the sections above it. Each entry

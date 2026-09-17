@@ -21,17 +21,17 @@ tags:
   - search
   - "plan:semantic"
   - "seq:14"
-  - "state:todo"
+  - "state:done"
 origin: human
 source_file: null
 source_anchor: null
 source_checksum: null
 valid_from: 2026-09-17
 valid_until: null
-checksum: badf5ec07f474dfe
+checksum: 9df030d40fb40143
 plan: semantic
 seq: "14"
-state: todo
+state: done
 priority: "1"
 ---
 

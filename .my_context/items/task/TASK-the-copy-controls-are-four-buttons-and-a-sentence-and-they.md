@@ -5,8 +5,10 @@ title: the copy controls are four buttons and a sentence, and they are the third
 status: active
 severity: soft
 always: false
-summary: Move the copy-what-you-marked controls into a floating panel of their own.
+summary: The four copy controls are in a floating panel of their own, each drawn with the sentence that says what it takes, and the panel says why three of them are grey.
 summary_of: ad476455787d0bab
+summary_was:
+  - 2026-09-17 Move the copy-what-you-marked controls into a floating panel of their own.
 scope:
   - src/ui/public/screens/conversations.js
   - src/ui/public/lib/panel.js
@@ -20,17 +22,17 @@ tags:
   - ui
   - "plan:semantic"
   - "seq:13"
-  - "state:todo"
+  - "state:done"
 origin: human
 source_file: null
 source_anchor: null
 source_checksum: null
 valid_from: 2026-09-17
 valid_until: null
-checksum: a1f9d324c65a357f
+checksum: 7371a71f7e0db109
 plan: semantic
 seq: "13"
-state: todo
+state: done
 priority: "1"
 ---
 
