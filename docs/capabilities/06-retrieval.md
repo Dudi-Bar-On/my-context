@@ -32,6 +32,30 @@ mechanisms:
    person reads it and chooses, claim by claim, what — if anything — comes back, and what comes
    back is unmistakably marked as a past record, checked against whether it still holds.
 
+The two promises above are two dead ends drawn into one pipeline — the passage's own text and the
+archive's own text each stop propagating at a named function, well before anything resembling
+"conversation material" could reach a context window:
+
+```mermaid
+flowchart TB
+  PASS["a pasted passage"] --> Q["queryFromPassage:<br/>shape-matched only — an id, a plan/seq ref,<br/>a path, a backticked name, a commit hash,<br/>a heading — no shape match, no fuzzy guess"]
+  Q -.->|"the passage's own text<br/>never goes further than this"| X1(["dead end"])
+  Q --> MS["matchSubjects against conversation spans<br/>(the vocabulary is built from the project's<br/>own Markdown, never from the passage)"]
+  MS --> NOISE["removeNoise: keep 'said', keep a tool call<br/>only if prose-bearing, drop everything else;<br/>drop exact-duplicate runs of text"]
+  NOISE --> MISSION["a MISSION file:<br/>pointers only — session, byte offset,<br/>stance, tool — missionText() never<br/>serialises the matched text itself"]
+  MISSION -.->|"the archive's own text<br/>never goes further than this"| X2(["dead end"])
+  MISSION --> SUB["a subagent, in its OWN fresh<br/>context window, reads the mission,<br/>opens the transcript itself, and verifies<br/>against the codebase and git — never the corpus"]
+  SUB --> RESULT["one claim per line, each cited —<br/>an uncited line is never written at all"]
+  RESULT --> PERSON{"a person chooses specific<br/>claim numbers — an empty<br/>choice is refused, not defaulted"}
+  PERSON --> STAGE["the one function on this whole path<br/>that writes to disk"]
+  STAGE -.->|"reaches the ORIGINAL window<br/>only at its next ordinary<br/>session start"| ORIG(["your original<br/>context window"])
+```
+
+Everything left of `MISSION` runs inside the caller's own window and never touches conversation
+text; everything right of `SUB` runs inside a subagent's own, separate window that the caller never
+shares. The only path back to the window that asked is the bottom row — a person's explicit choice,
+staged, delivered later, the same shape as [restore](./07-restore-and-handover.md)'s own carrier.
+
 This is a genuinely different capability from item **search** (`mycontext search "<words>"`,
 covered in [`09-cli-and-mcp.md`](./09-cli-and-mcp.md)): `search` finds *items in the corpus* by
 words, tags, paths or relations, and its matches are safe to inject because items are already the

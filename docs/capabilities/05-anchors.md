@@ -352,6 +352,25 @@ impossible rather than merely discouraged — a caller that got this wrong would
 bookmark at the very next reconciliation. This is asserted, not just designed: `test/ui/anchor-write-route.test.ts` runs a whole anchor round trip through the UI routes and checks
 that **every byte of the corpus except the anchors document and the index** is untouched.
 
+```mermaid
+flowchart TD
+  P1["Path 1 — per-turn<br/>Stop hook: markAnchorsOnTurn"] --> AUTO
+  P2["Path 2 — catch-up run<br/>conversation rebuild: markAutomaticAnchors"] --> AUTO["origin: automatic<br/>written directly on a grammar match —<br/>table · report · ruling —<br/>and revised or taken back on a later sweep"]
+  P3["Path 3 — by hand<br/>CLI conversation anchor ·<br/>web UI POST /anchors/mark"] --> OWNER["origin: owner<br/>written directly by a person —<br/>never touched by the automatic<br/>pass again, whatever the grammar says"]
+  AUTO --> MARK["markAnchor / unmarkAnchor<br/>(core/anchors.ts) — the only legal route"]
+  OWNER --> MARK
+  MARK --> TXN["one transaction:<br/>.anchors.jsonl rewritten whole (truth)<br/>+ .index.db anchor row (derived) —<br/>both, or neither"]
+```
+
+**This is not a propose/approve queue** — worth stating plainly, because "the grammar proposes, a
+person disposes" reads that way and the mechanism is narrower than that. There is no staged,
+pending anchor awaiting a human decision the way a `draft` normative item does
+([chapter 3](./03-creation-and-gates.md)). Each lane above writes directly. What makes this an
+*ownership boundary* rather than two paths to the same thing is the asymmetry after the write: the
+automatic lane may revise or withdraw its own `automatic` rows on a later sweep, and can never touch
+an `owner` row "whatever the grammar says about the turn under it" — the person's lane is written
+once and stands.
+
 ## 5.6a A turn can wear two marks — one turn, two rows, one stop
 
 Shipped 2026-09-16, closing an open question the owner answered by rejecting the question as

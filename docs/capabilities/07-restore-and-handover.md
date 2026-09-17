@@ -65,6 +65,25 @@ boundary. The compaction boundary is `handover`'s and the continuity tier's
 the injected block rather than swallowed, because "your summary did not arrive"
 is otherwise indistinguishable from "you staged nothing".
 
+```mermaid
+sequenceDiagram
+  participant P as Person
+  participant CLI as mycontext restore
+  participant Stage as .staging/ record
+  participant Inj as core/inject.ts
+  participant Next as the next ordinary<br/>session start
+  P->>CLI: "this window lost something" — a sentence, no code
+  CLI->>Stage: --build reads the transcript,<br/>writes PROPOSED, approves nothing
+  Stage-->>P: numbered review form under a coverage headline
+  P->>CLI: --approve &lt;key&gt; — owner only, no --agent flag
+  CLI->>Stage: writes the record, then re-reads it<br/>off disk to prove it survived
+  Stage-->>P: "SAFE TO CLEAR"
+  P->>P: clears the window — no command does this
+  Next->>Inj: SessionStart, gated !manual && !subagent && !compacting
+  Inj->>Stage: reads the approved, staged summary
+  Inj-->>Next: delivers once — or discloses the failure,<br/>never swallows it
+```
+
 Only steps 2–5 have commands. Step 1 is a sentence a person types; step 6 is
 an action Claude Code's UI takes, not something `restore` could do even if it
 wanted to — building a "clear" command would let a mistaken belief that a
@@ -258,6 +277,26 @@ becomes a user-facing banner the model never sees a byte of. `SessionStart`'s
 stdout, by contrast, is appended to context verbatim. So `PostCompact`
 *resolves and records* (updates freshness bookkeeping) and `SessionStart`
 *delivers*.
+
+This is a genuinely different boundary from `restore`'s — one document, read fresh every time,
+crossing the **compaction** boundary rather than the cleared one, and the two hooks either side of
+that boundary do not share the one job a reader might expect them to share:
+
+```mermaid
+sequenceDiagram
+  participant Work as mid-session work
+  participant PC as PreCompact
+  participant PoC as PostCompact
+  participant SS as SessionStart<br/>(the next window)
+  participant Doc as reports/V2-HANDOVER.md
+  Work->>PC: the window is about to compact
+  PC->>Doc: resolves freshness, records staleness —<br/>cannot deliver text to the model at all<br/>(no hookSpecificOutput for this event)
+  PC->>PoC: compaction happens
+  PoC->>Doc: records freshness bookkeeping only —<br/>anything it prints is a banner, never context
+  PoC->>SS: the next window begins
+  SS->>Doc: reads the marked section (or the head),<br/>capped to budgetTokens
+  Doc-->>SS: delivered verbatim — and what was<br/>left behind is declared, never silent
+```
 
 ### The on-demand side: `mycontext handover ask`
 

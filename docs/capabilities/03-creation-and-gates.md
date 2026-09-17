@@ -238,6 +238,38 @@ new wording is meant to replace the old one outright, `--supersedes` does
 both jobs — answers the gate and starts the item's life as the old one's
 successor.
 
+## What refuses a write, and in what order
+
+The two gates above sit at different depths for a reason stated already, and that
+difference in depth is also a difference in *order*: the summary gate can only refuse a
+write that arrives through one of the five authored surfaces (`add`, `edit`,
+`create_item`, `update_item`, `lesson-accept`); the contradiction gate lives inside
+`createItem`/`updateItem` themselves, so it also catches the mechanical callers the
+summary gate never sees — `ingest`, pack import, `inbox-promote`.
+
+```mermaid
+flowchart TD
+  W(["A write reaches add · edit ·<br/>create_item · update_item · lesson-accept<br/>— or a mechanical caller: ingest, pack import, inbox-promote"]) --> SURF{"an authored surface?<br/>(the five named above)"}
+  SURF -->|"no"| CI
+  SURF -->|"yes"| SG{"does the write change what<br/>itemSummaryBasis covers,<br/>with no fresh --summary?"}
+  SG -->|"yes, no escape hatch"| R1["REFUSED<br/>summaryAtCreateRefusal / summaryRequired"]
+  SG -->|"--summary-omitted (create)<br/>or --summary-unchanged (edit)<br/>or a fresh --summary supplied"| CI
+  SG -->|"no — unsummarised field,<br/>or summary still matches"| CI
+  CI{"createItem / updateItem<br/>— every write path, no exceptions"} --> OV{"lexical overlap above threshold<br/>against something already governing?"}
+  OV -->|"no"| DONE["write lands"]
+  OV -->|"yes, already dispositioned<br/>— carryVerdicts carries a live verdict<br/>across an edit that doesn't change meaning"| DONE
+  OV -->|"yes, undispositioned"| D{"--distinct &lt;id&gt; or<br/>--supersedes &lt;id&gt; supplied?"}
+  D -->|"neither"| R2["REFUSED — candidate pair<br/>and overlap score named"]
+  D -->|"--distinct (repeatable)"| V["verdict recorded:<br/>both stand"]
+  D -->|"--supersedes, in contradiction<br/>scope and governing, and the id<br/>was raised as a candidate"| S["supersedeItem:<br/>edges written, always/hard cleared,<br/>verdict recorded"]
+  V --> DONE
+  S --> DONE
+```
+
+A write that never enters contradiction scope at all (a `draft`, a non-normative
+category) skips the rightmost branch entirely and lands once the summary gate — where it
+applies — is satisfied.
+
 ## Checksums and content identity
 
 **There are three different hashes here, over three different shapes, and

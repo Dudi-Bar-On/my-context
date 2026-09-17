@@ -31,6 +31,24 @@ so the three readings nest rather than triple-counting:
 3. **`both`** — every word present, anywhere in the same turn — an `AND` across terms rather than
    a phrase or proximity match.
 
+The three readings run in a fixed order against the same `conversation_prose` table, and each one
+only claims what the readings before it left unclaimed:
+
+```mermaid
+flowchart LR
+  Q(["one query"]) --> P["<b>phrase</b><br/>words exactly as typed, adjacent"]
+  P -->|"spans this tier claims"| U["union, tagged by tier"]
+  P -->|"spans left unclaimed"| N["<b>near</b><br/>NEAR(…, 30) — within 30 chars"]
+  N -->|"spans this tier claims"| U
+  N -->|"spans left unclaimed"| B["<b>both</b><br/>every word, anywhere in the turn"]
+  B -->|"spans this tier claims"| U
+```
+
+A span already claimed by `phrase` is never re-counted by `near` or `both` — the three tiers nest,
+they do not run independently and get unioned blind. (This is orthogonal to the `said` / `ran` /
+`both` **sources** switch a few paragraphs below — that "both" means every source scope, a
+different axis from this "both" tier, and the two are not the same choice.)
+
 **Nothing new was added to any screen for this.** The three readings are computed and disclosed
 with a heading over each block (`conv.arch.tier*` strings, both languages) — a reader does not
 choose a mode; they get the most literal answer first and progressively looser ones after it,

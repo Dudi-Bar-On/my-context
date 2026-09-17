@@ -24,6 +24,23 @@ id is self-describing and never has to be looked up. On this repository, real id
 `RULE-1-1-with-the-mockup-and-the-owner-says-when-it-is-done` or
 `REQ-every-category-declares-what-may-be-updated-on-its-items-and`.
 
+An item exists to break a loop every prior approach to project context repeats:
+
+```mermaid
+flowchart TB
+  A["You explain the rule"] --> B["Claude applies it"]
+  B --> C["The session ends,<br/>and the rule ends with it"]
+  C -->|"next session"| A
+  A -.->|"capture it once"| D["<b>.my_context/</b><br/>Markdown in your repository"]
+  D -.->|"pinned at session start, or<br/>when a file it scopes is opened"| B
+  linkStyle 3,4 stroke:#2e7d32
+```
+
+The solid arrows are a rule re-explained every session because nothing kept it. The dotted arrows are
+what an item does instead: written once as a Markdown file under `.my_context/items/`, and returned to
+context on its own — at a session start if it is pinned, or when a file its `scope` names is about to be
+touched (`./02-injection.md`) — without anyone re-typing it.
+
 ## Categories: 29 shipped, 16 in use here
 
 The task brief that requested this document names 14 categories as if that were the whole set. It is not.
@@ -166,6 +183,35 @@ what keeps `status` as the one field every category shares and `state` as one `t
 | `extra` | map | Category-specific fields — `directive` on `rule`, `waives`/`until`/`granted_by`/`reason` on `exception`, `state`/`plan`/`seq`/`priority`/`needs`/`verified_on` on `task`, etc. |
 | `request` (body section, not frontmatter) | free text | The person's own words when they asked for this item, verbatim, captured **before** any body/summary is derived — "documentation only… should not be injected." Structurally excluded from rendering, from the summary basis, and from the checksum. |
 | body | prose | What the item actually says; median 1,693 characters in this corpus. |
+
+`status` is the field that decides whether any of the rest of this table matters — a `draft`
+carries a full frontmatter and body like any other item, and none of it governs until a human
+acts on it:
+
+```mermaid
+stateDiagram-v2
+  direction LR
+  [*] --> draft: Claude captures a normative item<br/>(create_item, origin stamped agent)
+  [*] --> active: you capture it yourself<br/>(mycontext add, with an explicit yes)
+  draft --> active: mycontext review promote<br/>a human decision
+  draft --> deprecated: mycontext review discard
+  active --> superseded: mycontext supersede, naming a replacement<br/>a human decision
+  note right of draft
+    Not selected for any tier.
+    Counted in the index, injected nowhere.
+  end note
+  note right of active
+    Injected: pinned, just in time, or restored.
+  end note
+```
+
+(Reused from the README's own §7 — the mechanism does not differ between the pitch and this
+reference. `validated` is a fifth legal value of `status` this diagram omits: nothing in this
+chapter or [chapter 3](./03-creation-and-gates.md) traces a command that produces it, so drawing
+a transition into it here would be inventing one.) The gate this diagram draws — why a
+machine-authored normative item lands unable to govern anything until a person looks at it — is
+[chapter 3](./03-creation-and-gates.md)'s subject in full; `origin` above is what the gate reads
+to decide `draft` versus `active` at capture time.
 
 Two fields the table above does not carry, and both are load-bearing:
 

@@ -57,6 +57,31 @@ when this module was written, and another project may call the same idea `story`
 the checks require is a plan, a position in it, and a state; that is what is asked for, by shape,
 never by name.
 
+The three questions above are kept separate rather than collapsed, and dispatchability is what
+falls out once every reference on a task has answered all three:
+
+```mermaid
+flowchart TD
+  T["a task's needs: field —<br/>comma-separated plan/seq references"] --> SHAPE{"well-shaped?<br/>(plan/seq)"}
+  SHAPE -->|"no"| MALFORMED["needs_malformed<br/>(doctor finding)"]
+  SHAPE -->|"yes"| RESOLVE{"does anything in the<br/>corpus answer to it?"}
+  RESOLVE -->|"no"| NOTE["unresolved — a note, never an error:<br/>plans are written before every<br/>task inside them exists"]
+  RESOLVE -->|"yes"| ISDONE{"is what it resolves to<br/>done?"}
+  ISDONE -->|"pending"| PEND["this reference is<br/>not yet satisfied"]
+  ISDONE -->|"done"| SAT["this reference<br/>is satisfied"]
+  NOTE --> AGG
+  PEND --> AGG
+  SAT --> AGG{"every needs reference<br/>on this task satisfied?"}
+  AGG -->|"yes"| READY["dispatchable —<br/>mycontext ready lists it"]
+  AGG -->|"no"| WAITING["not listed by ready"]
+```
+
+Nothing in this graph is cached — `mycontext ready` (below) walks it fresh on every run. **`held`**
+(`ready --held`) is a separate, sibling classification this diagram does not draw: it names a task
+blocked by something other than an unresolved `needs` reference — the live example below states the
+cause as prose ("a blocker has not landed"), not as a formal rule this graph could represent
+correctly, so it is described in §16.3 rather than forced into this diagram.
+
 ## 16.3 `mycontext ready` — what is dispatchable, computed fresh on every run
 
 `ready [--plan <p>] [--held] [--questions] [--limit <n>]` lists every open task whose every `needs`

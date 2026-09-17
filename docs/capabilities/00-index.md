@@ -20,6 +20,25 @@ Two more stores sit alongside the corpus and are documented here in full: a sear
 **conversation archive** of session transcripts, and a **product rule store** (`src/rules/`)
 of sixteen entries (2026-09-16) shipped inside the plugin itself rather than authored per project.
 
+Every chapter in this reference is a deeper reading of one stage of the same pipeline:
+
+```mermaid
+flowchart LR
+  Y["<b>You</b><br/>mycontext add"] --> MD
+  M["<b>Claude</b><br/>create_item"] --> MD["<b>.my_context/items/</b><br/>one Markdown file per item<br/><i>the source of truth</i>"]
+  MD -->|"rebuild"| DB[("<b>.index.db</b><br/>derived cache")]
+  DB --> SEL["<b>selection</b><br/>what is eligible,<br/>what fits the budget"]
+  SEL --> HK["<b>hooks</b><br/>session start · before a file<br/>· before a compaction"]
+  HK --> CX["Claude's context"]
+```
+
+(Reused from the README's own §3.) Chapter 1 is the leftmost box — what an item and the
+corpus are. Chapter 2 is `selection` and `hooks` — the budget and the doors. Chapters 3
+through 16 are everything that sits beside this spine: the gates a write passes through
+before it reaches `.my_context/items/`, the two stores injection does not touch at all
+(the conversation archive, the rule store), and the surfaces — CLI, MCP, the web UI —
+that read or write any of it.
+
 ## How this reference was built
 
 Every claim in every chapter was pulled from the source tree, the live corpus of this

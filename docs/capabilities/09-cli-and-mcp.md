@@ -10,6 +10,25 @@ my_context has two entry surfaces into the same engine: a **CLI** (`node src/cli
 
 This chapter is the full command/tool reference. Commands and tools with deep independent mechanics get their own chapter elsewhere and only a summary line here; every other command gets full treatment.
 
+```mermaid
+flowchart TB
+  U(["<b>You</b>"]) --> SL["<b>/mycontext:…</b><br/>91 slash commands"]
+  U --> CL["<b>mycontext …</b><br/>49 CLI commands"]
+  A(["<b>Claude</b>"]) --> TL["<b>MCP tools</b><br/>twenty-eight, served over stdio"]
+  SL -->|"add-* · search · link · LoadMyContext"| TL
+  SL -->|"list-* · review · status · edit · query"| CL
+  TL --> CO["<b>.my_context/</b><br/>one corpus of Markdown,<br/>in your repository"]
+  CL --> CO
+```
+
+(Reused from the README's own §5 — CLI and MCP are the two surfaces this diagram already
+names, and 49/28 match the counts below. Slash commands are a third, client-side surface
+this chapter does not otherwise cover — see
+[chapter 12](./12-packs-export-import-procedures.md#skills-and-slash-commands) for the
+91-file count.) What the diagram does **not** show is that the two surfaces are not
+symmetric: several CLI commands have no MCP counterpart at all — see §4 below, which names
+each one.
+
 ---
 
 ## 1. How commands are registered

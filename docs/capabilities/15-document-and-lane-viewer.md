@@ -16,6 +16,44 @@ never the FTS5 archive index chapter 14 describes. It answers a different questi
 *this* document") and pays a different, much smaller, cost to answer it (one transcript's prose
 spans, not the whole archive).
 
+## 15.0 What stays out of memory — the outline, the window, and the scroll
+
+Every mechanism in the rest of this chapter runs against a transcript that can be very large — a
+live session on this machine has run to hundreds of megabytes across tens of thousands of records,
+and a live figure quoted anywhere in this chapter is a reading from one such session, not a
+constant. No chapter's prose describes how the viewer stays scrollable against a document that
+size — chapter 4's own "What's NOT built" section names the file it lives in
+(`src/ui/public/screens/conversations.js`) and says plainly that neither it nor chapter 8 describes
+it. The mechanism itself spans that file and `src/ui/public/lib/transcript-scroll.js`; this section
+is read directly from both, since no chapter's prose already covers it.
+
+```mermaid
+flowchart TB
+  DISK["transcript on disk —<br/>can run to hundreds of MB,<br/>tens of thousands of records"] -->|"fetched once, at mount"| OUT["the outline: one lightweight entry<br/>per node — kind, byte offset, char count.<br/>No body text in it."]
+  OUT -.->|"every node's POSITION is known<br/>from here, drawn or not"| REST(["the rest of the transcript:<br/>text never fetched until<br/>a row actually needs it"])
+  OUT --> SCR["a prefix-sum of estimated pixel<br/>heights — a scroll position maps to<br/>a row index by binary search,<br/>not a walk of every row"]
+  SCR --> WIN["the visible window:<br/>viewport rows, plus a few rows<br/>of buffer on each side"]
+  WIN --> ROWS{"for each node<br/>in the window"}
+  ROWS -->|"already drawn,<br/>still wanted"| KEEP["left alone, never rebuilt —<br/>an open detail or a selection survives"]
+  ROWS -->|"left the window"| DROP["removed from the DOM"]
+  ROWS -->|"newly entered<br/>the window"| FETCH["one page of body text<br/>fetched around this node,<br/>then built and drawn"]
+```
+
+Three things worth stating precisely, because each is easy to get wrong from the shape alone:
+
+- **The outline is built once, at mount, and never rebuilt on scroll.** Only the *estimated* height
+  of a node is corrected in place, as rows are actually drawn and measured — the outline itself is
+  never re-fetched.
+- **A node's position and a node's text are two different facts with two different lifetimes.**
+  Every node's position is known from the outline the moment the document opens, whether or not it
+  has ever been drawn. Its text is fetched only once a row for it is actually built, one page at a
+  time, around the node being scrolled to.
+- **"Recycling" here does not mean a fixed pool of DOM rows stamped with new content.** A row
+  already in the DOM and still wanted is left untouched; a row that scrolled out of the window is
+  removed; only a row newly entering the window is built. The reason is stated directly in the
+  source: a `<details>` element a reader opened, or a text selection, must survive a scroll of two
+  pixels, and rebuilding the row would close or clear it.
+
 ## 15.1 The find bar — always present, folding-aware, and server-counted
 
 Every open document carries a find box in its `.tvbar` strip. Typing into it does two things at

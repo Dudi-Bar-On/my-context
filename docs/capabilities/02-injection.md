@@ -62,6 +62,30 @@ Two consequences a reader should not have to derive:
   deliberately gains no member: a distinct one would need three new branches in `select`
   to arrive at the same answer."*
 
+Which of the five tiers an item can reach is a question with one decision per firing
+site — not a menu, a branch:
+
+```mermaid
+flowchart LR
+  S(["A session starts"]) --> Q{"always: true?"}
+  Q -->|yes| PIN["<b>pinned</b><br/>injected in full"]
+  Q -->|no| IDX["<b>index</b><br/>one line: id · type · title"]
+  F(["Claude is about to read<br/>or edit a file"]) --> G{"does the item<br/>declare a scope?"}
+  G -->|"no — unrestricted"| JIT["<b>just in time</b><br/>injected in full, once per context window"]
+  G -->|"yes, and it matches"| JIT
+  G -->|"yes, no match"| NO["nothing — the item stays<br/>out of the way"]
+  C(["The session is compacted"]) --> RES["<b>restored</b><br/>what was in context before"]
+  C --> PIN
+  C --> IDX
+```
+
+(This is the same tier-firing diagram as
+[the README's §4](../../README.md#4-when-it-comes-back-and-what) — the decision it draws does
+not change between the pitch and this reference, so it is reused rather than redrawn. The
+**continuity** tier is a sixth, orthogonal route with no branch of its own here — see
+[chapter 1](./01-items-and-corpus.md) — and the diagram omits it for the same reason the
+table above omits it: continuity does not ask `always`, `scope`, or normative status at all.)
+
 ### `PreCompact`, and a disagreement this chapter does not resolve
 
 `PreCompact` (`src/hooks/pre-compact.ts`) writes a *snapshot* of what item ids were in
@@ -113,6 +137,26 @@ exists.
 | `TaskCreated` | — | `task-created.ts` | 3 |
 | `TaskCompleted` | — | `task-completed.ts` | 3 |
 | `UserPromptExpansion` | `^mycontext:` | `user-prompt-expansion.ts` | 3 |
+
+Six of the eighteen sit on one lifecycle — a context window opening, filling, and being
+rebuilt — and carry two independent obligations that do not always coincide: **delivers**
+(the product rule store's door vocabulary, chapter 10), and **corpus injection site**
+(this chapter's own vocabulary, "The doors" above). The other twelve serve unrelated
+surfaces (file-change nudges, task events, config changes, …) and are omitted below —
+the table above is where they are named; a diagram repeating all eighteen boxes would
+restate that table, not explain anything the table does not already say.
+
+```mermaid
+flowchart LR
+  SS(["SessionStart<br/>startup · resume · clear"]) -->|"DELIVERS rule store<br/>injects: pinned · continuity · index"| OPEN["window is open"]
+  SA(["SubagentStart<br/>(no SessionStart fires<br/>for a subagent)"]) -->|"DELIVERS rule store<br/>injects: pinned · index only"| OPEN
+  OPEN -->|"a Read/Edit/MultiEdit/<br/>Write/NotebookEdit/Agent call"| PTU(["PreToolUse"])
+  PTU -->|"ASSERTS a door already fired<br/>(not a door itself)<br/>injects: JIT tier"| OPEN
+  OPEN -->|"the window fills"| PC(["PreCompact"])
+  PC -->|"ASSERTS rule store<br/>snapshots corpus item ids for restore<br/>(NOT a corpus injection site —<br/>and disputed as a door, see below)"| POC(["PostCompact<br/>bookkeeping only,<br/>injects nothing"])
+  POC --> SSC(["SessionStart<br/>source: compact"])
+  SSC -->|"DELIVERS rule store<br/>injects: pinned · restored · continuity · index"| OPEN
+```
 
 **The matcher on `PreToolUse` matters and is easy to miss**: it fires on six tool names,
 not on every tool call. A `Bash` call reaches `PostToolUse` and not `PreToolUse`.
@@ -304,6 +348,22 @@ other budget number (tokens used, items admitted) can look healthy while this on
 high. It is the number the spare-band ruling cites as its own before/after
 (82 → 69), and it is why a document about this project's *quality*, not just its
 mechanism, would track this count over time rather than raw admission counts.
+
+Put together, one tier's admission pass is a packing problem, and the fall-through from a
+missed pack is where a governing item can end up: full text, a title, or nothing at all.
+
+```mermaid
+flowchart TB
+  CAND["Candidates for this tier's budget<br/>sorted by priority — severity first"] --> FIT{"fitToBudget:<br/>first-fit, not strict truncation"}
+  FIT -->|"fits within the tier's budget"| FULL["Selection.full<br/>admitted in full<br/>tier: pinned · jit · restored · continuity"]
+  FIT -->|"over budget —<br/>skipped, not a hard stop:<br/>a later, smaller item can still fit"| GOV{"governs(item)?<br/>rule · constraint · invariant ·<br/>instruction · requirement · standard"}
+  GOV -->|"no"| DROP["drops from this tier<br/>(may still reach the index tier<br/>on its own candidacy)"]
+  GOV -->|"yes"| SPARE{"pinned tier only, and only when<br/>every always:true item already fit:<br/>room in the spare band?"}
+  SPARE -->|"yes"| FULL
+  SPARE -->|"no — not the pinned tier,<br/>or the spare band is full"| IDX{"fits budget.index?"}
+  IDX -->|"yes"| TITLED["GoverningSpill.titled<br/>one title-only line —<br/>id · type · title, no body"]
+  IDX -->|"no"| UNTITLED["GoverningSpill.untitled<br/>reaches this session<br/>in no form at all"]
+```
 
 ## Worked example — reading a real Selection
 

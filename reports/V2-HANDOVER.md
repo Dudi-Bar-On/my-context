@@ -1,3 +1,31 @@
+## ⏭ 2026-09-17 (later) — THE CHAPTERS ARE DRAWN. ONE BUG IS UNCONFIRMED. HIS SERVER IS CURRENT AGAIN.
+
+1. **`rulings/99` IS HALF DONE AND BOTH HALVES ARE COMMITTED.** `docs/system/` took 6 diagrams
+   (3 declined, deliberately). `docs/capabilities/` took **16 across 12 chapters** — all five README
+   diagrams placed in the chapter that explains the same thing, twelve newly drawn. It carried a
+   value beyond the count: **it corrected the brief.** The main session described anchors as "a
+   grammar proposes, a person disposes"; the lane read the code and found direct-write with
+   asymmetric protection, **not** a review queue, and drew what is there.
+
+2. **A BUG IS REPORTED AND NOT YET REPRODUCED — do not fix it until it is.**
+   The owner: *"the next match and preious match stopped working after the first use"*. His server
+   had started 2026-09-16 16:06 while `semantic/11` landed 20:42, so his page was running NEW client
+   JS against an OLD `findInDocument`. **His server was restarted at 2026-09-17 10:26 and is now
+   current**; the next reading from him decides whether this is code or was staleness. `semantic/14`
+   holds it and has been told to reproduce first.
+
+3. **THE CLEAR BUTTON IS REAL AND MISSING** — he looked and it is not there. `semantic/14` is
+   building it on the archive box's existing `.convarchclear` pattern rather than inventing a second;
+   clearing must also drop the highlights, reset the counts, and return the caret to the query field.
+
+4. **STILL LIVE: `semantic/12` + `semantic/13`** (navigation and copy panels, one lane) and
+   **`semantic/14`**. Both are in `conversations.js` and `styles.css` — **explicit pathspec at
+   commit, never `git add` a directory.**
+
+5. **A PROCESS ERROR WORTH NOT REPEATING.** The previous handover was dispatched to a background
+   subagent and then killed a minute later, because a background agent cannot return inside the turn
+   that needs the block. **Write the handover yourself.** Nothing was lost; the block landed.
+
 ## ⏭ 2026-09-17 — THE DOCUMENTATION LOOP RAN TWICE AND HELD. FOUR LANES LIVE. TWO DECISIONS ARE HIS.
 
 ### DO THIS FIRST

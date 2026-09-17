@@ -101,6 +101,25 @@ the same way the archive's own scan does.
 
 ## Search: FTS5 with the `trigram` tokenizer, and it costs nothing
 
+Everything above — the walk, the classification, the freshness check — feeds one pipeline from a
+transcript on disk to a searchable row:
+
+```mermaid
+flowchart LR
+  T["transcript .jsonl<br/>on disk"] --> W["iterateTranscript<br/>1 MiB Buffer chunks,<br/>byte offsets, never decoded<br/>as one string first"]
+  W --> CL{"classifyTurn<br/>per record"}
+  CL -->|"prompt · answer<br/>= 'said'"| SP["span: byte_offset<br/>recorded per span"]
+  CL -->|"tool_use<br/>= 'ran' (since 2026-09-16)"| SP
+  CL -->|"tool_result · thinking<br/>= machinery"| UN["not indexed,<br/>at any scope"]
+  SP --> FTS[("conversation_prose<br/>FTS5 virtual table<br/>tokenize = trigram")]
+  T -.->|"a separate, parallel,<br/>read-only pass"| SEC["conversation secrets<br/>proposes only,<br/>never writes to the index"]
+```
+
+`conversation_prose` is what chapter 14's three-tiered query reads; it is also one of the tables
+`conversation forget` does **not** drop (`conversations`, `subagents`, `persisted` and `named` are
+the four it clears — the prose index, its freshness table, and `.anchors.jsonl`/its derived table
+all survive a forget).
+
 The full-text index is a real SQLite `FTS5` virtual table:
 
 ```sql
