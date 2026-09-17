@@ -278,7 +278,6 @@ test/docs/capabilities.test.ts
 test/docs/categories.test.ts
 test/docs/compaction-claim.test.ts
 test/docs/counts.test.ts
-test/docs/doc-system.test.ts
 test/docs/examples.test.ts
 test/docs/fixture.test.ts
 test/docs/injection.test.ts

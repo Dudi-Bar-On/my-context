@@ -1,4 +1,4 @@
-// @basis TASK-code-and-tests-that-speak-with-a-retired-item-s-authority, TASK-std-absent-vs-zero-is-a-nickname-22-citations-use-and-no, RULE-a-citation-names-an-item-by-id-never-a-report-by-line-number, RULE-a-test-names-the-items-it-rests-on-or-says-it-rests-on-none
+// @basis TASK-code-and-tests-that-speak-with-a-retired-item-s-authority, TASK-std-absent-vs-zero-is-a-nickname-22-citations-use-and-no, RULE-a-citation-names-an-item-by-id-never-a-report-by-line-number, RULE-a-test-names-the-items-it-rests-on-or-says-it-rests-on-none, TASK-ten-thousand-lines-of-documentation-are-held-by-one-gate
 /**
  * **The retired-authority check, proved by planting what it must name.**
  *
@@ -42,10 +42,11 @@ import { loadLayer } from '../../src/core/rebuild.ts';
 import { resolveWorkspace } from '../../src/core/workspace.ts';
 import { RETIRED_STATUSES } from '../../src/core/select.ts';
 import { SUPERSEDED_BY } from '../../src/core/relations.ts';
-import { readCorpus, type Corpus } from '../../scripts/check-handover.ts';
+import { readCorpus, resolveId, type Corpus } from '../../scripts/check-handover.ts';
+import { documentsUnder } from '../../scripts/check-diagrams-parse.ts';
 import {
-  SOURCE_ROOTS, build, isSourceFile, liveSites, paragraphAround, scanFile, successorChain,
-  walkSources,
+  DOC_ROOTS, SOURCE_ROOTS, build, isSourceFile, liveSites, paragraphAround, scanFile,
+  successorChain, walkSources,
 } from '../../scripts/check-cited-items.ts';
 import { removeTree } from '../helpers/tmp.ts';
 import type { Item } from '../../src/core/types.ts';
@@ -500,4 +501,216 @@ test('scanFile reads a shortened id and skips an English compound', () => {
   assert.equal(hits.length, 1, 'the shortened id resolves and the compounds are skipped');
   assert.equal(hits[0]!.id, 'DEC-focus-discloses-and-allows-rather-than-refusing');
   assert.equal(hits[0]!.raw, 'DEC-focus-discloses-and-allows');
+});
+
+// ── 5. The documents, added 2026-09-17 by `rulings/111` ────────────────────
+
+/**
+ * **`SOURCE_ROOTS` never held `docs/`, so twenty-five reference chapters and
+ * two READMEs cited this corpus by id with nothing resolving one of them.**
+ *
+ * `docs/system/06-ingest.md` had written the gap down itself before anybody
+ * closed it: *"And no gate checks the ids cited in these chapters at all …
+ * Every id in `docs/system/` was verified by hand in this pass and in the one
+ * before it, which is a reading with a date on it and not a standing
+ * guarantee."*
+ *
+ * The plants below prove the one thing the walk change could get wrong: a
+ * document is not a source file, and reading it with `COMMENT_PREFIX` would
+ * have classified EVERY line of every chapter as `code` — the tag this script
+ * prints for a string literal that makes no authority claim. That would have
+ * turned the entire documentation backlog into thirty silent rows nobody is
+ * asked to read, which is the failure mode this script's own header spends a
+ * page refusing. So prose is `comment` and a fenced block is `code`, and each
+ * direction is planted here rather than asserted in a comment.
+ */
+
+/** The `…`-truncated ids `docs/system/` writes on purpose, inside diagram labels. */
+const TRUNCATED_IN_DIAGRAMS: Array<[string, string]> = [
+  ['REF-the-d-numbers', 'REF-the-d-numbers-what-each-one-means-and-which-are-only'],
+  ['DEC-the-meaning-hue-budget-is-five', 'DEC-the-meaning-hue-budget-is-five-gold-ok-carry-crit-and-warn'],
+];
+
+/**
+ * **THE RED PROOF for the documents**, in both directions, because only one of
+ * them can be shown by the real tree: the chapters DO cite retired items today,
+ * so the positive direction would pass even if the fence discrimination were
+ * broken, and the negative direction has no real counterexample to point at.
+ */
+test('a retired id in a chapter is a claim; the same id in pasted output is not', () => {
+  const items = [
+    fakeItem('DEC-old-ruling-nobody-should-follow', 'superseded', [
+      { type: SUPERSEDED_BY, target: 'DEC-what-replaced-it' },
+    ]),
+    fakeItem('DEC-what-replaced-it', 'active'),
+  ];
+
+  const prose = reportFor(
+    'A chapter paragraph naming `DEC-old-ruling-nobody-should-follow` as the rule.\n',
+    items, 'chapter.md',
+  );
+  assert.equal(prose.findings.length, 1, 'a chapter naming a retired item must be a finding');
+  assert.equal(prose.findings[0]!.sites[0]!.where, 'comment', 'a chapter paragraph IS the claim');
+  assert.equal(liveSites(prose.findings[0]!).length, 1, 'and it reads as a live ruling');
+  assert.equal(prose.documentsWalked, 1, 'the report must count the document it walked');
+
+  const quoted = reportFor(
+    [
+      'The chapter pastes what the command printed:',
+      '',
+      '```text',
+      'CARRIED  DEC-old-ruling-nobody-should-follow',
+      '```',
+      '',
+    ].join('\n'),
+    items, 'chapter.md',
+  );
+  assert.equal(quoted.findings.length, 1, 'the citation is still counted, and still reported');
+  assert.equal(
+    quoted.findings[0]!.sites[0]!.where, 'code',
+    'a line inside a fenced block is pasted output — dated evidence, not a claim that the ruling '
+    + 'still governs. docs/capabilities/07-restore-and-handover.md pastes seven such lines.',
+  );
+  assert.equal(liveSites(quoted.findings[0]!).length, 0, 'so it must not read as a live ruling');
+
+  // The same text as a `.ts` file reads the old way, unchanged: the extension
+  // is the only thing that switched, and nothing about source files moved.
+  const asSource = reportFor(
+    'const x = "DEC-old-ruling-nobody-should-follow";\n', items, 'planted.ts',
+  );
+  assert.equal(asSource.findings[0]!.sites[0]!.where, 'code', 'a string literal is still code');
+  assert.equal(asSource.documentsWalked, 0, 'a .ts file is not a document');
+});
+
+/**
+ * The five-backtick example block, which both READMEs really carry and which a
+ * `/^```/` toggle reads backwards. `test/helpers/markdown.ts` records measuring
+ * that the toggle "happened to flip an even number of times, so the parity
+ * assertions still saw the real headings" — it stayed green by luck, and the
+ * luck is what this refuses to inherit.
+ */
+test('a fence nested inside a five-backtick example block does not leak into the prose', () => {
+  const items = [fakeItem('DEC-old-ruling-nobody-should-follow', 'superseded')];
+  const report = reportFor(
+    [
+      '`````text',
+      '```json',
+      '{ "cites": "DEC-old-ruling-nobody-should-follow" }',
+      '```',
+      '`````',
+      '',
+      'And then prose naming `DEC-old-ruling-nobody-should-follow` again.',
+      '',
+    ].join('\n'),
+    items, 'chapter.md',
+  );
+  assert.deepEqual(
+    report.findings[0]!.sites.map((s) => `${s.line}:${s.where}`),
+    ['7:comment', '3:code'],
+    'the id inside the example block is quoted and the one in the paragraph below it is a claim',
+  );
+});
+
+/**
+ * Disclosure over a MARKDOWN paragraph rather than a comment paragraph.
+ *
+ * The rule is the script's own and does not change here: a site that says the
+ * ruling moved is tagged and never suppressed. What changes is where the
+ * paragraph ends — a blank line and a fence, rather than a bare `*`.
+ */
+test('a chapter that names the successor in the same paragraph is marked as saying so', () => {
+  const items = [
+    fakeItem('DEC-old-ruling-nobody-should-follow', 'superseded', [
+      { type: SUPERSEDED_BY, target: 'DEC-what-replaced-it' },
+    ]),
+    fakeItem('DEC-what-replaced-it', 'active'),
+  ];
+  const report = reportFor(
+    [
+      'This chapter was written under `DEC-old-ruling-nobody-should-follow`,',
+      'which `DEC-what-replaced-it` has since superseded.',
+      '',
+      'A later paragraph names `DEC-old-ruling-nobody-should-follow` and nothing else.',
+      '',
+    ].join('\n'),
+    items, 'chapter.md',
+  );
+  const sites = report.findings[0]!.sites;
+  assert.equal(sites.length, 2);
+  assert.equal(
+    sites.find((s) => s.line === 1)!.disclosed, true,
+    'the successor is named on the NEXT LINE of the same paragraph, which is the unit',
+  );
+  assert.equal(
+    sites.find((s) => s.line === 4)!.disclosed, false,
+    'a paragraph two blank lines away does not tell this reader anything',
+  );
+});
+
+/**
+ * **Anti-vacuity: the real documents, walked.** Every plant above is worthless
+ * if `DOC_ROOTS` stopped resolving — a renamed directory would report zero
+ * document citations and read as good news, which is the exact shape
+ * `rulings/111` was filed about.
+ */
+test('the real walk reads the real documents', () => {
+  assert.deepEqual(
+    DOC_ROOTS, ['README.md', 'docs/README.he.md', 'docs/capabilities', 'docs/system'],
+    'DOC_ROOTS is check-diagrams-parse.ts\'s DOC_SOURCES, imported rather than restated',
+  );
+  const docs = documentsUnder(REPO);
+  assert.ok(docs.length >= 40, `expected the reference documentation, walked ${docs.length} file(s)`);
+  assert.ok(docs.includes('README.md') && docs.includes('docs/system/06-ingest.md'));
+
+  const files = docs.map((f) => path.join(REPO, ...f.split('/')));
+  const report = build(files, CORPUS!, ITEMS);
+  assert.equal(report.documentsWalked, files.length, 'every walked document must count as one');
+  assert.ok(
+    report.citations > 200,
+    `expected hundreds of item citations in the documents, saw ${report.citations}`,
+  );
+  assert.ok(
+    report.findings.length > 0,
+    'the chapters cite retired items today; zero findings means the document walk is blind',
+  );
+  for (const f of report.findings) {
+    for (const s of f.sites) {
+      const lines = readFileSync(path.join(REPO, s.file), 'utf8').split(/\r?\n/);
+      assert.ok((lines[s.line - 1] ?? '').includes(s.raw), `${s.file}:${s.line} does not contain "${s.raw}"`);
+    }
+  }
+});
+
+/**
+ * **The two deliberate shapes `docs/system/` writes, which this must not force
+ * to be wrong.** Both are already handled by `resolveId`, and asserting it here
+ * is what keeps a future "improvement" to the resolver from quietly breaking a
+ * document that is correct as written.
+ *
+ *   - A `…`-TRUNCATED id inside a diagram label. A visible ellipsis claims
+ *     nothing where an invented suffix would look complete, so the truncation
+ *     is the honest form; the prefix rule resolves it to the real item with no
+ *     exemption written anywhere.
+ *   - An OVER-LONG id quoted as the defect being described. It is longer than
+ *     the real id rather than shorter, the prefix rule does not reach it, and it
+ *     lands in `--unresolved` — uncounted and ungated, exactly where
+ *     `06-ingest.md` says it lands.
+ */
+test('a truncated id in a diagram label resolves and an over-long id stays unresolved', () => {
+  for (const [written, real] of TRUNCATED_IN_DIAGRAMS) {
+    const r = resolveId(CORPUS!, written);
+    assert.equal(r.id, real, `"${written}…" is written on purpose and must resolve to ${real}`);
+  }
+
+  const chapter = readFileSync(path.join(REPO, 'docs', 'system', '06-ingest.md'), 'utf8');
+  const overLong = 'INV-a-validator-that-gates-writes-must-be-a-complete-precondition-for-the-write';
+  assert.ok(chapter.includes(overLong), '06-ingest.md quotes the over-long id as the defect it describes');
+  const found = scanFile(chapter, 'docs/system/06-ingest.md', CORPUS!, 'markdown')
+    .filter((h) => h.raw === overLong);
+  assert.equal(found.length, 1, 'the scanner must see it');
+  assert.equal(found[0]!.id, null, 'and must not resolve it to the real, shorter id');
+  assert.equal(found[0]!.why, 'no item answers to it', 'so it is unresolved, which is ungated');
+
+  const real = readFileSync(path.join(REPO, 'docs', 'system', '01-the-board.md'), 'utf8');
+  assert.ok(real.includes(`${TRUNCATED_IN_DIAGRAMS[0]![0]}…`), 'the truncated id is still written with its ellipsis');
 });

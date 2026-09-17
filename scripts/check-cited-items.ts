@@ -157,6 +157,55 @@
  * the sixteen real findings with them. `--unresolved` prints them for whoever
  * wants to read them; nothing counts them.
  *
+ * ── THE DOCUMENTS, ADDED 2026-09-17 BY `rulings/111` ───────────────────────
+ *
+ * `SOURCE_ROOTS` never held `docs/`, so twenty-five reference chapters and two
+ * READMEs — every one of which cites this corpus by id, in prose, as authority
+ * — were unchecked. `docs/system/06-ingest.md` had already written the gap down
+ * itself: *"And no gate checks the ids cited in these chapters at all … Every id
+ * in `docs/system/` was verified by hand in this pass and in the one before it,
+ * which is a reading with a date on it and not a standing guarantee."*
+ *
+ * `DOC_ROOTS` closes it, and the walk is one walk: a chapter and a comment make
+ * the same claim about the corpus and belong in the same report. **What changed
+ * for a document is only how its lines are READ** — `fileKind`, `markdownFenced`
+ * and `markdownParagraphAround`, and nothing else in this file knows the
+ * difference. Prose is `comment`, because a paragraph naming an id is the
+ * document asserting something; a fenced block is `code`, because pasted
+ * `mycontext restore` output quoting an id claims nothing about what still
+ * governs.
+ *
+ * **WHAT THE FIRST RUN FOUND, WRITTEN DOWN RATHER THAN REPAIRED**, because a
+ * gate turned on and immediately quieted by a sweep is worth less than one
+ * turned on with its findings recorded: **20 sites in 14 documents name 7
+ * retired items, 13 of them reading as a live ruling.** Two of those seven
+ * record no successor at all. The repair is the one this whole script asks for
+ * — name the successor where the reader is — and it belongs to whoever owns
+ * `docs/`, not here.
+ *
+ * **AND TWO DELIBERATE SHAPES THIS MUST NOT CALL WRONG, both checked:**
+ *
+ *   - `docs/system/01-the-board.md:161` and
+ *     `03-the-palette-and-the-drawn-language.md:70` write an id TRUNCATED with a
+ *     visible `…` inside a diagram label, on purpose: a visible ellipsis claims
+ *     nothing where an invented suffix would look complete. `resolveId`'s prefix
+ *     rule resolves both to the real item with no exemption written anywhere —
+ *     they are ordinary citations here, which is the correct answer.
+ *   - `docs/system/06-ingest.md:145` quotes an OVER-LONG id *as the defect it is
+ *     describing*. It is longer than the real id rather than shorter, so the
+ *     prefix rule does not reach it, and it lands in `--unresolved` — uncounted,
+ *     ungated, exactly where that chapter says it lands.
+ *
+ * The `--unresolved` firehose is why that second shape is safe, and the
+ * documents make the case for it again: 353 of the 2,974 id-shaped strings
+ * nothing answers to are in the documents, and 282 of those are the READMEs'
+ * own worked example — a fictional bookstore corpus, `INV-prices-are-integer-`
+ * `cents`, `LESSON-retry-storms-need-jitter`. Of the 25 in the chapters
+ * themselves, every one is an illustrative example (`RULE-some-id`,
+ * `DEC-old-approach`, a `PAT-`/`GLOSS-` custom category) or the 06-ingest quote
+ * above. **Not one is a typo**, which is the measurement that says the chapters
+ * were in fact hand-verified and that this gate's job is to keep them that way.
+ *
  * ── RUNNING IT ──────────────────────────────────────────────────────────────
  *
  *     npm run check:cited-items
@@ -178,6 +227,7 @@ import { resolveWorkspace } from '../src/core/workspace.ts';
 import { RETIRED_STATUSES } from '../src/core/select.ts';
 import { SUPERSEDED_BY } from '../src/core/relations.ts';
 import { ITEM_ID, readCorpus, resolveId, type Corpus } from './check-handover.ts';
+import { DOC_SOURCES, documentsUnder } from './check-diagrams-parse.ts';
 import type { Item } from '../src/core/types.ts';
 
 const REPO = path.resolve(import.meta.dirname, '..');
@@ -189,6 +239,105 @@ const REPO = path.resolve(import.meta.dirname, '..');
  * cannot be imported at all.
  */
 export const SOURCE_ROOTS = ['src', 'test', 'scripts', 'e2e'];
+
+/**
+ * **The DOCUMENTS walked, added 2026-09-17 by `rulings/111`, and imported
+ * rather than written out.**
+ *
+ * `docs/system/06-ingest.md` says the gap in its own words, and it is the
+ * reason this list exists: *"And no gate checks the ids cited in these chapters
+ * at all. `check-cited-items.ts`'s `SOURCE_ROOTS` is `['src', 'test',
+ * 'scripts', 'e2e']` — `docs/` is not walked. Every id in `docs/system/` was
+ * verified by hand in this pass and in the one before it, which is a reading
+ * with a date on it and not a standing guarantee."* Twenty-five chapters and
+ * two READMEs cite this corpus by id in prose, and until now nothing resolved
+ * one of them.
+ *
+ * **`DOC_SOURCES` is IMPORTED from `check-diagrams-parse.ts`, not restated.**
+ * That gate already owns the answer to "which documents are the reference
+ * documentation" — `README.md`, `docs/README.he.md`, `docs/capabilities`,
+ * `docs/system`, the last two walked for `.md` so the Hebrew mirrors come with
+ * them — and `check-dependency-budget.ts` states the rule this follows: *"two
+ * lists that must be edited together are two lists that will disagree."* A
+ * chapter added tomorrow is swept by both gates or by neither, and there is no
+ * third outcome in which one of them quietly stops looking.
+ *
+ * It is a DIFFERENT list from `SOURCE_ROOTS` rather than four more entries on
+ * it, because the two are read differently: a `.ts` file's claim lives in its
+ * comments and `COMMENT_PREFIX` finds them, while a document IS prose and its
+ * fenced blocks are the quoted part. `fileKind` below is where that difference
+ * is decided, once.
+ */
+export const DOC_ROOTS = DOC_SOURCES;
+
+/**
+ * How a file's lines are read: a `.ts`/`.js` file's prose is in its comments, a
+ * document's prose is the file with its fenced blocks taken out.
+ *
+ * Derived from the extension rather than passed down from the walk, so that
+ * `build()` keeps taking a plain list of paths and every existing caller — the
+ * script's own `main`, and `test/scripts/cited-items.test.ts`'s four
+ * independent re-walks — is unchanged by this addition.
+ */
+export const fileKind = (file: string): 'source' | 'markdown' =>
+  file.endsWith('.md') ? 'markdown' : 'source';
+
+/** A fence opener or closer, by the CommonMark rule `test/helpers/markdown.ts` states. */
+const MD_FENCE = /^ {0,3}(`{3,}|~{3,})[ \t]*(\S*)/;
+
+/**
+ * **In a document, which lines are the author's own claim and which are
+ * quotation.**
+ *
+ * The `where` vocabulary this script already prints — `comment` for prose that
+ * makes an authority claim, `code` for a string literal that makes none — maps
+ * onto a document exactly once the fences are found. A paragraph naming an item
+ * id is the document asserting something about the corpus. A line inside a
+ * fenced block is pasted command output or quoted source: real, dated, and
+ * making no claim that the id it contains still governs. `docs/capabilities/07-`
+ * `restore-and-handover.md` carries seven `CARRIED reports/V2-HANDOVER.md:395`
+ * lines of `mycontext restore` output for exactly that reason.
+ *
+ * A CommonMark tracker rather than a `/^```/` toggle, for the reason
+ * `test/helpers/markdown.ts` records measuring: both READMEs carry five-backtick
+ * example blocks whose bodies hold three- and four-backtick fences, and a toggle
+ * flips on every one of them. It happened to flip an even number of times and
+ * stayed green by luck.
+ */
+export function markdownFenced(lines: string[]): boolean[] {
+  const out: boolean[] = [];
+  let open: string | null = null;
+  for (const line of lines) {
+    const m = MD_FENCE.exec(line);
+    if (open === null) {
+      if (m !== null) { open = m[1]!; out.push(true); continue; }
+      out.push(false);
+      continue;
+    }
+    out.push(true);
+    if (m !== null && m[1]![0] === open[0] && m[1]!.length >= open.length && m[2] === '') open = null;
+  }
+  return out;
+}
+
+/**
+ * The markdown paragraph around line `n` — the author's own unit here for the
+ * same reason `paragraphAround` picks it in a source file, and blank-line
+ * delimited because that is what a paragraph IS in Markdown.
+ *
+ * A fence line ends a paragraph as firmly as a blank line does: the sentence
+ * above a pasted block and the block itself are not one claim.
+ */
+export function markdownParagraphAround(lines: string[], n: number): string {
+  const fenced = markdownFenced(lines);
+  const stop = (i: number): boolean => lines[i]!.trim() === '' || fenced[i] === true;
+  if (stop(n)) return lines[n]!;
+  let a = n;
+  let b = n;
+  while (a > 0 && !stop(a - 1)) a--;
+  while (b < lines.length - 1 && !stop(b + 1)) b++;
+  return lines.slice(a, b + 1).join(' ');
+}
 
 /**
  * A file a person wrote and cites from. `.js` is not build output in this
@@ -266,6 +415,13 @@ export interface Finding {
 
 export interface Report {
   filesWalked: number;
+  /**
+   * How many of `filesWalked` were DOCUMENTS rather than source files. Reported
+   * separately because the two are read differently and because a zero here is
+   * the shape `rulings/111` was filed about: the chapters going unwalked while
+   * the summary still said a number.
+   */
+  documentsWalked: number;
   /** Every id occurrence that resolved to a real item. */
   citations: number;
   /** Distinct items named by source. */
@@ -411,9 +567,14 @@ interface Hit {
  * exactly what `resolveId`'s prefix rule already resolves. Joining would buy
  * nothing and would cost the true line number of every finding.
  */
-export function scanFile(text: string, file: string, corpus: Corpus): Hit[] {
+export function scanFile(
+  text: string, file: string, corpus: Corpus, kind: 'source' | 'markdown' = 'source',
+): Hit[] {
   const out: Hit[] = [];
   const lines = text.split(/\r?\n/);
+  // Computed once per FILE and only for a document: the fence state of line 900
+  // depends on every line above it, so a per-line answer cannot be had cheaply.
+  const fenced = kind === 'markdown' ? markdownFenced(lines) : null;
   for (let i = 0; i < lines.length; i++) {
     const line = lines[i]!;
     let where: Where | null = null;
@@ -423,7 +584,12 @@ export function scanFile(text: string, file: string, corpus: Corpus): Hit[] {
       if (r.skip) continue;
       // Computed once per LINE and only for a line that turned out to carry an
       // id: `paragraphAround` walks outward and most lines carry nothing.
-      if (where === null) where = COMMENT_PREFIX.test(line) ? 'comment' : 'code';
+      if (where === null) {
+        where = fenced === null
+          ? (COMMENT_PREFIX.test(line) ? 'comment' : 'code')
+          // A document's prose is the claim; its fenced blocks are quotation.
+          : (fenced[i] === true ? 'code' : 'comment');
+      }
       out.push({
         file,
         line: i + 1,
@@ -457,7 +623,8 @@ export function build(files: string[], corpus: Corpus, items: Item[]): Report {
       continue;
     }
     const lines = text.split(/\r?\n/);
-    for (const found of scanFile(text, file, corpus)) {
+    const kind = fileKind(file);
+    for (const found of scanFile(text, file, corpus, kind)) {
       if (found.id === null) {
         if (found.why !== null) {
           unresolved.push({ file: found.file, line: found.line, raw: found.raw, why: found.why });
@@ -472,7 +639,11 @@ export function build(files: string[], corpus: Corpus, items: Item[]): Report {
       // Disclosure is asked only where it can be answered, and only of the
       // sites that will be printed — a string literal discloses nothing, and
       // the paragraph walk is the one expensive step here.
-      const paragraph = found.where === 'comment' ? paragraphAround(lines, found.line - 1) : '';
+      const paragraph = found.where !== 'comment'
+        ? ''
+        : kind === 'markdown'
+          ? markdownParagraphAround(lines, found.line - 1)
+          : paragraphAround(lines, found.line - 1);
       const chain = successorChain(item, byId);
       const site: Site = {
         file: found.file,
@@ -528,6 +699,7 @@ export function build(files: string[], corpus: Corpus, items: Item[]): Report {
 
   return {
     filesWalked: files.length,
+    documentsWalked: files.filter((f) => fileKind(f) === 'markdown').length,
     citations,
     citedItems: cited.size,
     retiredItems: retired.length,
@@ -590,7 +762,8 @@ export function summary(report: Report, showUnresolved: boolean): string {
   const live = report.findings.flatMap((f) => liveSites(f));
   const out: string[] = [];
   out.push(
-    `${report.citations} item citation(s) across ${report.filesWalked} source file(s), naming ` +
+    `${report.citations} item citation(s) across ${report.filesWalked - report.documentsWalked} ` +
+      `source file(s) and ${report.documentsWalked} document(s), naming ` +
       `${report.citedItems} distinct item(s) · ${report.retiredItems} of the corpus's items are retired`,
   );
   if (report.findings.length === 0) {
@@ -683,6 +856,19 @@ function main(): number {
     );
     return 1;
   }
+
+  // The documents, appended to the same walk rather than reported separately:
+  // an id that stopped existing is the same defect in a chapter as in a
+  // comment, and one report is what makes the two comparable.
+  const docs = documentsUnder(REPO).map((f) => path.join(REPO, ...f.split('/')));
+  if (docs.length === 0) {
+    write(
+      `my_context: no documents under ${DOC_ROOTS.join(', ')} — nothing was checked there, ` +
+        'which is not the same as nothing being wrong.',
+    );
+    return 1;
+  }
+  files.push(...docs);
 
   const report = build(files, corpus, items);
 
