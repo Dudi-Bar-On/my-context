@@ -107,13 +107,26 @@ transcript on disk to a searchable row:
 ```mermaid
 flowchart LR
   T["transcript .jsonl<br/>on disk"] --> W["iterateTranscript<br/>1 MiB Buffer chunks,<br/>byte offsets, never decoded<br/>as one string first"]
-  W --> CL{"classifyTurn<br/>per record"}
-  CL -->|"prompt · answer<br/>= 'said'"| SP["span: byte_offset<br/>recorded per span"]
-  CL -->|"tool_use<br/>= 'ran' (since 2026-09-16)"| SP
-  CL -->|"tool_result · thinking<br/>= machinery"| UN["not indexed,<br/>at any scope"]
-  SP --> FTS[("conversation_prose<br/>FTS5 virtual table<br/>tokenize = trigram")]
+  W --> REC{"one record"}
+  REC --> CL{"classifyTurn"}
+  CL -->|"prompt · answer"| SAID["'said' span"]
+  CL -->|"machinery —<br/>tool_result · thinking"| UN["not indexed,<br/>at any scope"]
+  REC --> TP{"toolProseOf:<br/>a tool_use block<br/>in this record?"}
+  TP -->|"yes"| RAN["'ran' span<br/>(since 2026-09-16)"]
+  TP -->|"no — most records<br/>carry none"| UN
+  SAID --> FTS[("conversation_prose<br/>FTS5 virtual table<br/>tokenize = trigram")]
+  RAN --> FTS
   T -.->|"a separate, parallel,<br/>read-only pass"| SEC["conversation secrets<br/>proposes only,<br/>never writes to the index"]
 ```
+
+`classifyTurn` itself returns exactly `prompt | answer | machinery` — `'ran'` is not one of its
+outcomes. It is rendered separately by `toolProseOf` (`conversation-search.ts:362`), which reads a
+record's own `tool_use` block independently of `classifyTurn`'s verdict on the same record — the
+diagram draws it as a sibling branch rather than a fourth arrow out of `classifyTurn` for exactly
+that reason. The two branches are not mutually exclusive: an assistant record that both says
+something and calls a tool produces **two spans at the same `byte_offset`** — one `'answer'`, one
+`'ran'` — "two readings of one record," in the source's own words, which is why a hit lookup keyed
+on position alone would silently collapse the pair.
 
 `conversation_prose` is what chapter 14's three-tiered query reads; it is also one of the tables
 `conversation forget` does **not** drop (`conversations`, `subagents`, `persisted` and `named` are

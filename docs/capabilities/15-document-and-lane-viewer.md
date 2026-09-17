@@ -29,30 +29,44 @@ is read directly from both, since no chapter's prose already covers it.
 
 ```mermaid
 flowchart TB
-  DISK["transcript on disk —<br/>can run to hundreds of MB,<br/>tens of thousands of records"] -->|"fetched once, at mount"| OUT["the outline: one lightweight entry<br/>per node — kind, byte offset, char count.<br/>No body text in it."]
-  OUT -.->|"every node's POSITION is known<br/>from here, drawn or not"| REST(["the rest of the transcript:<br/>text never fetched until<br/>a row actually needs it"])
+  DISK["transcript on disk —<br/>can run to hundreds of MB,<br/>tens of thousands of records"] -->|"fetched once, at mount"| OUT["the outline: one lightweight entry<br/>per node — kind, byte offset, char count,<br/>and a 140-char PEEK_CHARS peek of the text"]
+  DISK -.->|"the file grew"| REFILL["the tail is fetched again<br/>and spliced onto the same outline —<br/>extended, never rebuilt whole"]
+  REFILL --> OUT
+  OUT -.->|"every node's POSITION (and its peek)<br/>is known from here, drawn or not"| REST(["the rest of a node's body:<br/>not fetched until<br/>a row actually needs it"])
   OUT --> SCR["a prefix-sum of estimated pixel<br/>heights — a scroll position maps to<br/>a row index by binary search,<br/>not a walk of every row"]
   SCR --> WIN["the visible window:<br/>viewport rows, plus a few rows<br/>of buffer on each side"]
   WIN --> ROWS{"for each node<br/>in the window"}
-  ROWS -->|"already drawn,<br/>still wanted"| KEEP["left alone, never rebuilt —<br/>an open detail or a selection survives"]
-  ROWS -->|"left the window"| DROP["removed from the DOM"]
+  ROWS -->|"already drawn, still wanted,<br/>body already arrived"| KEEP["left alone, never rebuilt —<br/>an open detail or a selection survives"]
+  ROWS -->|"a placeholder whose<br/>body has since arrived"| SWAP["rebuilt — the placeholder<br/>text is replaced"]
+  ROWS -->|"left the window,<br/>and not held"| DROP["removed from the DOM"]
+  ROWS -->|"left the window,<br/>but the reader marked it (held)"| KEEP
   ROWS -->|"newly entered<br/>the window"| FETCH["one page of body text<br/>fetched around this node,<br/>then built and drawn"]
 ```
 
-Three things worth stating precisely, because each is easy to get wrong from the shape alone:
+Four things worth stating precisely, because each is easy to get wrong from the shape alone — and
+three of them corrected a first draft of this section, 2026-09-17:
 
-- **The outline is built once, at mount, and never rebuilt on scroll.** Only the *estimated* height
-  of a node is corrected in place, as rows are actually drawn and measured — the outline itself is
-  never re-fetched.
-- **A node's position and a node's text are two different facts with two different lifetimes.**
-  Every node's position is known from the outline the moment the document opens, whether or not it
-  has ever been drawn. Its text is fetched only once a row for it is actually built, one page at a
-  time, around the node being scrolled to.
-- **"Recycling" here does not mean a fixed pool of DOM rows stamped with new content.** A row
-  already in the DOM and still wanted is left untouched; a row that scrolled out of the window is
-  removed; only a row newly entering the window is built. The reason is stated directly in the
-  source: a `<details>` element a reader opened, or a text selection, must survive a scroll of two
-  pixels, and rebuilding the row would close or clear it.
+- **The outline carries a peek of the text, not none.** Every node ships a `p` field — the first
+  `PEEK_CHARS = 140` characters of what was said, or of what a tool call asked
+  (`read-model-conversation-document.ts:185`, `:1797`, `:1820`) — and it is load-bearing, not
+  incidental: the find bar searches exactly that field, which is what lets it match *the whole
+  session* without a body having ever been drawn.
+- **The outline is fetched once at mount, and *extended*, not rebuilt, when the file grows.** A live
+  document's follow poll re-fetches only the tail and splices it onto the same array
+  (`conversations.js`'s `refill`). It is never re-fetched whole and never rebuilt from scratch — the
+  distinction that matters is "whole" versus "tail," not "once" versus "never again."
+- **A node's position (and its peek) and a node's full body are different facts with different
+  lifetimes.** Every node's position and 140-character peek are known from the outline the moment
+  the document opens, whether or not it has ever been drawn. The rest of its text is fetched only
+  once a row for it is actually built, one page at a time, around the node being scrolled to.
+- **"Recycling" here does not mean a fixed pool of DOM rows stamped with new content, and it is not
+  an absolute "never rebuilt" either.** A row already drawn, still wanted, and holding real text is
+  left untouched. A row the reader has explicitly marked (`held`) survives leaving the window
+  instead of being removed. But a **placeholder** — a row still reading "Reading…" — *is* torn down
+  and rebuilt the moment its body arrives, held or not: there is no text worth keeping a selection
+  in yet, and leaving it would pin the placeholder forever. The reason ordinary rows are left alone
+  is stated directly in the source: a `<details>` element a reader opened, or a text selection, must
+  survive a scroll of two pixels, and rebuilding the row would close or clear it.
 
 ## 15.1 The find bar — always present, folding-aware, and server-counted
 

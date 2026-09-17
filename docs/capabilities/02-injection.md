@@ -40,7 +40,7 @@ them is how the previous draft of this table went wrong. A **door** is a place w
 |---|---|---|---|
 | Session start (new/resumed/cleared) | `src/hooks/session-start.ts` | `'session-start'` | Full injection: pinned tier, continuity tier, index — via `buildInjectionResult` (shared verbatim with the MCP `load_context` tool, per that file's own header) |
 | Session start after compaction | same file, `source: 'compact'` | **`'compact'`** | The real re-injection point after a compaction — `post-compact.ts` itself does *not* inject; it is bookkeeping (audit records, `restoredFor` accounting) around the boundary that `SessionStart(source: 'compact')` re-opens |
-| Subagent start | `src/hooks/subagent-start.ts` | **`'session-start'`** | The pinned tier plus the index, into a subagent's empty window — a subagent inherits none of the parent's context and no `SessionStart` fires for it, so this hook is, in the file's own words, the only thing standing between a dispatched subagent and "no knowledge of the project's own constraints" |
+| Subagent start | `src/hooks/subagent-start.ts` | **`'session-start'`** | Selecting as a session start means `tiersRun` pushes the same set a plain one does: **pinned, continuity and index** (`select.ts:1486-1494`), into a subagent's empty window — a subagent inherits none of the parent's context and no `SessionStart` fires for it, so this hook is, in the file's own words, the only thing standing between a dispatched subagent and "no knowledge of the project's own constraints" |
 | A tool call, mid-session | `src/hooks/pre-tool-use.ts` (`select(...)` at line 308) | `'tool'` | The **JIT tier** — items scoped to the path the tool is about to touch, offered in two bands (`DEC-the-jit-tier-offers-path-scoped-items-first-in-two-bands`). This row is an injection site and **not a door**: the rule store's pass here is an *assertion* (`assertDoor`, `pre-tool-use.ts:703`), not a delivery. |
 
 **`SelectEvent` has exactly four members** —
@@ -70,21 +70,27 @@ flowchart LR
   S(["A session starts"]) --> Q{"always: true?"}
   Q -->|yes| PIN["<b>pinned</b><br/>injected in full"]
   Q -->|no| IDX["<b>index</b><br/>one line: id · type · title"]
+  S --> CONT["<b>continuity</b><br/>every continuity: true item, in full"]
   F(["Claude is about to read<br/>or edit a file"]) --> G{"does the item<br/>declare a scope?"}
-  G -->|"no — unrestricted"| JIT["<b>just in time</b><br/>injected in full, once per context window"]
-  G -->|"yes, and it matches"| JIT
+  G -->|"yes, and it matches —<br/>offered first"| JIT["<b>just in time</b><br/>injected in full, once per session"]
+  G -->|"no — unrestricted,<br/>offered only after every<br/>scoped item already fit"| JIT
   G -->|"yes, no match"| NO["nothing — the item stays<br/>out of the way"]
   C(["The session is compacted"]) --> RES["<b>restored</b><br/>what was in context before"]
   C --> PIN
   C --> IDX
+  C --> CONT
 ```
 
 (This is the same tier-firing diagram as
-[the README's §4](../../README.md#4-when-it-comes-back-and-what) — the decision it draws does
-not change between the pitch and this reference, so it is reused rather than redrawn. The
-**continuity** tier is a sixth, orthogonal route with no branch of its own here — see
-[chapter 1](./01-items-and-corpus.md) — and the diagram omits it for the same reason the
-table above omits it: continuity does not ask `always`, `scope`, or normative status at all.)
+[the README's §4](../../README.md#4-when-it-comes-back-and-what) — reused rather than redrawn, and
+corrected here and there together on 2026-09-17 against three drifted claims: the JIT tier offers a
+*scoped, matching* item before an *unscoped* one, not the same outcome
+(`DEC-the-jit-tier-offers-path-scoped-items-first-in-two-bands`, `select.ts:1749-1752`); the
+**continuity** tier fires at both a plain session start and after a compaction, and is drawn here
+rather than omitted, since leaving it out reads as "it does not fire then" rather than "this
+diagram is about a different axis"; and the JIT dedupe is **per session**, not per context
+window — the per-session seen file survives a compaction (`core/seen-file.ts:11`), and `restored`
+is what puts an item back, not a reset of what was already seen.)
 
 ### `PreCompact`, and a disagreement this chapter does not resolve
 
@@ -148,8 +154,8 @@ restate that table, not explain anything the table does not already say.
 
 ```mermaid
 flowchart LR
-  SS(["SessionStart<br/>startup · resume · clear"]) -->|"DELIVERS rule store<br/>injects: pinned · continuity · index"| OPEN["window is open"]
-  SA(["SubagentStart<br/>(no SessionStart fires<br/>for a subagent)"]) -->|"DELIVERS rule store<br/>injects: pinned · index only"| OPEN
+  SS(["SessionStart<br/>startup · resume · clear · fork"]) -->|"DELIVERS rule store<br/>injects: pinned · continuity · index"| OPEN["window is open"]
+  SA(["SubagentStart<br/>(no SessionStart fires<br/>for a subagent)"]) -->|"selects as a session start —<br/>DELIVERS rule store<br/>injects: pinned · continuity · index"| OPEN
   OPEN -->|"a Read/Edit/MultiEdit/<br/>Write/NotebookEdit/Agent call"| PTU(["PreToolUse"])
   PTU -->|"ASSERTS a door already fired<br/>(not a door itself)<br/>injects: JIT tier"| OPEN
   OPEN -->|"the window fills"| PC(["PreCompact"])
@@ -349,20 +355,29 @@ high. It is the number the spare-band ruling cites as its own before/after
 (82 → 69), and it is why a document about this project's *quality*, not just its
 mechanism, would track this count over time rather than raw admission counts.
 
-Put together, one tier's admission pass is a packing problem, and the fall-through from a
-missed pack is where a governing item can end up: full text, a title, or nothing at all.
+Put together, the pinned tier's admission pass is a packing problem in two bands handed to one
+`fitToBudget` call, and the fall-through from a missed pack is where a governing item can end up:
+full text, a title, or nothing at all. `governs(item)` — the predicate `byPriority` ranks
+**above** severity, not below it — is `GOVERNING_TYPES.has(item.type)` (`rule`, `constraint`,
+`invariant`, `instruction`, `requirement`, `standard`) **or** `isOpenWork(item)` (`select.ts:807-809`);
+this diagram is specifically the pinned tier's own mechanics, where the spare band lives — every
+other full-text tier (`jit`, `restored`, `continuity`) runs `fitToBudget` over one band, plain.
 
 ```mermaid
 flowchart TB
-  CAND["Candidates for this tier's budget<br/>sorted by priority — severity first"] --> FIT{"fitToBudget:<br/>first-fit, not strict truncation"}
-  FIT -->|"fits within the tier's budget"| FULL["Selection.full<br/>admitted in full<br/>tier: pinned · jit · restored · continuity"]
-  FIT -->|"over budget —<br/>skipped, not a hard stop:<br/>a later, smaller item can still fit"| GOV{"governs(item)?<br/>rule · constraint · invariant ·<br/>instruction · requirement · standard"}
-  GOV -->|"no"| DROP["drops from this tier<br/>(may still reach the index tier<br/>on its own candidacy)"]
-  GOV -->|"yes"| SPARE{"pinned tier only, and only when<br/>every always:true item already fit:<br/>room in the spare band?"}
-  SPARE -->|"yes"| FULL
-  SPARE -->|"no — not the pinned tier,<br/>or the spare band is full"| IDX{"fits budget.index?"}
-  IDX -->|"yes"| TITLED["GoverningSpill.titled<br/>one title-only line —<br/>id · type · title, no body"]
-  IDX -->|"no"| UNTITLED["GoverningSpill.untitled<br/>reaches this session<br/>in no form at all"]
+  ALWAYS["band 0: every always: true item,<br/>priced in full"] --> WHOLE{"does the WHOLE set<br/>fit budget.pinned?"}
+  WHOLE -->|"no"| NOBAND["band 1 is not built at all —<br/>nothing else is offered<br/>the pinned tier this call"]
+  WHOLE -->|"yes"| BAND1["band 1, the spare band:<br/>non-pinned governing items<br/>(governs(item) true, always: false —<br/>never a pinned candidate)"]
+  ALWAYS --> FTB{"fitToBudget([band 0, band 1], budget.pinned):<br/>band 0 admitted first, in full;<br/>each band sorted by byPriority —<br/>governs() first, THEN severity"}
+  NOBAND --> FTB
+  BAND1 --> FTB
+  FTB -->|"a band-0 item doesn't fit"| PINSPILL["PinnedSpill —<br/>disclosed, written to stderr,<br/>the alarm for a broken always promise"]
+  FTB -->|"a band-1 item doesn't fit"| NOSPILL["no spill recorded —<br/>it was offered leftover room,<br/>never promised a place"]
+  FTB -->|"admitted, either band"| FULL["Selection.full — tier: pinned"]
+  PINSPILL --> GATHER
+  NOSPILL --> GATHER{"any governing item, from any tier,<br/>not admitted in full anywhere?"}
+  GATHER -->|"fits budget.index"| TITLED["GoverningSpill.titled —<br/>id · type · title, no body"]
+  GATHER -->|"does not fit budget.index"| UNTITLED["GoverningSpill.untitled —<br/>reaches this session in no form at all"]
 ```
 
 ## Worked example — reading a real Selection

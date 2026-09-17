@@ -75,10 +75,14 @@ sequenceDiagram
   P->>CLI: "this window lost something" — a sentence, no code
   CLI->>Stage: --build reads the transcript,<br/>writes PROPOSED, approves nothing
   Stage-->>P: numbered review form under a coverage headline
-  P->>CLI: --approve &lt;key&gt; — owner only, no --agent flag
+  P->>CLI: --approve <key> — owner only, no --agent flag
   CLI->>Stage: writes the record, then re-reads it<br/>off disk to prove it survived
-  Stage-->>P: "SAFE TO CLEAR"
-  P->>P: clears the window — no command does this
+  alt re-read matches what was written
+    Stage-->>P: "SAFE TO CLEAR"
+    P->>P: clears the window — no command does this
+  else re-read disagrees
+    Stage-->>P: "NOT SAFE TO CLEAR — <reason>"
+  end
   Next->>Inj: SessionStart, gated !manual && !subagent && !compacting
   Inj->>Stage: reads the approved, staged summary
   Inj-->>Next: delivers once — or discloses the failure,<br/>never swallows it

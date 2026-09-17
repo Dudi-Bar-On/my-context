@@ -194,8 +194,11 @@ stateDiagram-v2
   [*] --> draft: Claude captures a normative item<br/>(create_item, origin stamped agent)
   [*] --> active: you capture it yourself<br/>(mycontext add, with an explicit yes)
   draft --> active: mycontext review promote<br/>a human decision
-  draft --> deprecated: mycontext review discard
+  draft --> deprecated: mycontext review discard<br/>(any other draft)
+  draft --> deleted: mycontext review discard<br/>(a review-pass draft — never governed,<br/>so it is deleted, not deprecated)
+  active --> deprecated: mycontext edit --status deprecated<br/>a human decision
   active --> superseded: mycontext supersede, naming a replacement<br/>a human decision
+  deleted --> [*]
   note right of draft
     Not selected for any tier.
     Counted in the index, injected nowhere.
@@ -205,11 +208,18 @@ stateDiagram-v2
   end note
 ```
 
-(Reused from the README's own §7 — the mechanism does not differ between the pitch and this
-reference. `validated` is a fifth legal value of `status` this diagram omits: nothing in this
-chapter or [chapter 3](./03-creation-and-gates.md) traces a command that produces it, so drawing
-a transition into it here would be inventing one.) The gate this diagram draws — why a
-machine-authored normative item lands unable to govern anything until a person looks at it — is
+(Reused from the README's own §7, corrected 2026-09-17 — the mechanism does not differ between the
+pitch and this reference. `mycontext review discard` has two outcomes, not one:
+`cli/commands/review.ts:1106` branches on `declineRefusal(item)` — a review-pass draft (`origin:
+'review'`, project layer, still in the draft region) is **deleted**, "written by the review pass
+and has never governed anything, so it is DELETED rather than deprecated"; any other draft is
+stood down to `deprecated` through the ordinary retirement path. `active → deprecated` is a third,
+previously undrawn edge — `mycontext edit <id> --status deprecated` reaches retirement through
+`updateItem` exactly as `supersede` does, per `mutate.ts`'s own comment on the four commands that
+converge there. `validated` is a fifth legal value of `status` this diagram still omits: nothing in
+this chapter or [chapter 3](./03-creation-and-gates.md) traces a command that produces it, so
+drawing a transition into it here would still be inventing one.) The gate this diagram draws — why
+a machine-authored normative item lands unable to govern anything until a person looks at it — is
 [chapter 3](./03-creation-and-gates.md)'s subject in full; `origin` above is what the gate reads
 to decide `draft` versus `active` at capture time.
 

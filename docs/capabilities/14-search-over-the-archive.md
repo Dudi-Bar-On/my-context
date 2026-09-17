@@ -26,19 +26,31 @@ the union, each hit tagged with which reading found it, first reading to claim a
 so the three readings nest rather than triple-counting:
 
 1. **`phrase`** — the words exactly as typed, adjacent. What the old search always meant.
-2. **`near`** — `NEAR(…, 30)` (`NEAR_CHARS = 30`): the words within 30 characters of each other,
-   roughly "the same sentence."
+2. **`near`** — `NEAR(…, 30)` (`NEAR_CHARS = 30`): **within 28 characters** of each other, roughly
+   "the same sentence." The constant passed to FTS5 is 30, but the distance it actually admits is
+   `N-2` — *"LAW: `NEAR(a b, N)` matches when at most `N-2` characters separate the two
+   substrings"* (`conversation-search.ts:874`, pinned on both boundaries by
+   `test/core/search-grammar.test.ts`) — because FTS5 counts `NEAR` in tokens and a trigram
+   tokenizer emits one token per character position, so the token window *is* the character window.
 3. **`both`** — every word present, anywhere in the same turn — an `AND` across terms rather than
    a phrase or proximity match.
 
+**Fewer than two matchable terms and the three collapse into one.** A single word's `near`/`both`
+readings would only be *broader* than the phrase reading, never a different reading of it, so
+`searchArchiveTiered` runs only `phrase` in that case (`conversation-search.ts:1224`,
+`.slice(0, parsed.terms.length < 2 ? 1 : SEARCH_TIERS.length)`).
+
 The three readings run in a fixed order against the same `conversation_prose` table, and each one
-only claims what the readings before it left unclaimed:
+only claims what the readings before it left unclaimed — drawn here for the ordinary case of two or
+more matchable terms:
 
 ```mermaid
 flowchart LR
-  Q(["one query"]) --> P["<b>phrase</b><br/>words exactly as typed, adjacent"]
+  Q(["one query"]) --> N2{"fewer than two<br/>matchable terms?"}
+  N2 -->|"yes"| PONLY["only <b>phrase</b> runs —<br/>near/both would only be BROADER,<br/>never a different reading"]
+  N2 -->|"no"| P["<b>phrase</b><br/>words exactly as typed, adjacent"]
   P -->|"spans this tier claims"| U["union, tagged by tier"]
-  P -->|"spans left unclaimed"| N["<b>near</b><br/>NEAR(…, 30) — within 30 chars"]
+  P -->|"spans left unclaimed"| N["<b>near</b><br/>within 28 characters<br/>(NEAR(…, 30), N-2 admitted)"]
   N -->|"spans this tier claims"| U
   N -->|"spans left unclaimed"| B["<b>both</b><br/>every word, anywhere in the turn"]
   B -->|"spans this tier claims"| U

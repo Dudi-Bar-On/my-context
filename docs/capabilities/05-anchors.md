@@ -355,8 +355,9 @@ that **every byte of the corpus except the anchors document and the index** is u
 ```mermaid
 flowchart TD
   P1["Path 1 — per-turn<br/>Stop hook: markAnchorsOnTurn"] --> AUTO
-  P2["Path 2 — catch-up run<br/>conversation rebuild: markAutomaticAnchors"] --> AUTO["origin: automatic<br/>written directly on a grammar match —<br/>table · report · ruling —<br/>and revised or taken back on a later sweep"]
-  P3["Path 3 — by hand<br/>CLI conversation anchor ·<br/>web UI POST /anchors/mark"] --> OWNER["origin: owner<br/>written directly by a person —<br/>never touched by the automatic<br/>pass again, whatever the grammar says"]
+  P2["Path 2 — catch-up run<br/>conversation rebuild: markAutomaticAnchors"] --> AUTO
+  P4["Path 4 — UI sweep<br/>POST /api/conversations/anchors/sweep<br/>— the same pass, on demand"] --> AUTO["origin: automatic<br/>written directly on a match —<br/>table (structural) · ruling (word list) ·<br/>report (structural, not text-matched) —<br/>and revised or taken back on a later sweep"]
+  P3["Path 3 — by hand<br/>CLI conversation anchor ·<br/>web UI POST /api/conversations/anchors/mark"] --> OWNER["origin: owner<br/>written directly by a person —<br/>never touched by the automatic<br/>pass again, whatever the grammar says"]
   AUTO --> MARK["markAnchor / unmarkAnchor<br/>(core/anchors.ts) — the only legal route"]
   OWNER --> MARK
   MARK --> TXN["one transaction:<br/>.anchors.jsonl rewritten whole (truth)<br/>+ .index.db anchor row (derived) —<br/>both, or neither"]

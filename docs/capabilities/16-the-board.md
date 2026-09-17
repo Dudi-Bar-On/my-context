@@ -62,25 +62,37 @@ falls out once every reference on a task has answered all three:
 
 ```mermaid
 flowchart TD
-  T["a task's needs: field —<br/>comma-separated plan/seq references"] --> SHAPE{"well-shaped?<br/>(plan/seq)"}
-  SHAPE -->|"no"| MALFORMED["needs_malformed<br/>(doctor finding)"]
-  SHAPE -->|"yes"| RESOLVE{"does anything in the<br/>corpus answer to it?"}
-  RESOLVE -->|"no"| NOTE["unresolved — a note, never an error:<br/>plans are written before every<br/>task inside them exists"]
-  RESOLVE -->|"yes"| ISDONE{"is what it resolves to<br/>done?"}
-  ISDONE -->|"pending"| PEND["this reference is<br/>not yet satisfied"]
-  ISDONE -->|"done"| SAT["this reference<br/>is satisfied"]
-  NOTE --> AGG
-  PEND --> AGG
-  SAT --> AGG{"every needs reference<br/>on this task satisfied?"}
-  AGG -->|"yes"| READY["dispatchable —<br/>mycontext ready lists it"]
-  AGG -->|"no"| WAITING["not listed by ready"]
+  START(["a task — before `needs` is<br/>read at all"]) --> DONE{"state: done?"}
+  DONE -->|"yes"| SKIP["excluded entirely —<br/>not work, not held"]
+  DONE -->|"no"| DEP{"status: deprecated?<br/>(cancelled before it was built)"}
+  DEP -->|"yes"| SKIP
+  DEP -->|"no"| READN["readNeeds(item): classifies every<br/>needs reference — malformed? resolved?<br/>if resolved, done or pending?"]
+  READN --> M{"any reference<br/>malformed?"}
+  M -->|"yes"| H1["held: malformed"]
+  M -->|"no"| P{"any reference<br/>pending — resolved,<br/>not done?"}
+  P -->|"yes"| H2["held: pending —<br/>'a blocker has not landed'"]
+  P -->|"no"| U{"any reference<br/>unresolved — names nothing<br/>in the corpus yet, legitimate?"}
+  U -->|"yes"| H3["held: unresolved —<br/>'names a task this corpus does not have'"]
+  U -->|"no"| B{"state: blocked, and<br/>not one satisfied<br/>needs reference?"}
+  B -->|"yes"| H4["held: blocked_without_needs —<br/>'says blocked and names nothing'"]
+  B -->|"no"| READY["ready — every needs<br/>reference resolves to done,<br/>or there were none"]
+  H1 --> WAITING["the held table —<br/>mycontext ready --held"]
+  H2 --> WAITING
+  H3 --> WAITING
+  H4 --> WAITING
 ```
 
-Nothing in this graph is cached — `mycontext ready` (below) walks it fresh on every run. **`held`**
-(`ready --held`) is a separate, sibling classification this diagram does not draw: it names a task
-blocked by something other than an unresolved `needs` reference — the live example below states the
-cause as prose ("a blocker has not landed"), not as a formal rule this graph could represent
-correctly, so it is described in §16.3 rather than forced into this diagram.
+Nothing in this graph is cached — `mycontext ready` (below) walks it fresh on every run, in this
+priority order: `malformed` outranks `pending`, which outranks `unresolved`, which outranks
+`blocked_without_needs` (`needs.ts:513-517`) — a task with more than one problem is held for the
+first one found, not all of them. **`held` is one array with four reasons, and three of the four
+*are* `needs`-reference reasons** (`malformed`, `pending`, `unresolved`); only
+`blocked_without_needs` names a block that is not about `needs` at all — a `state: blocked` task
+with no satisfied reference to point at, rendered as "says blocked and names nothing" rather than
+one of the three `needs`-reference reasons. All four held rows in the live example below actually
+carry `pending`'s own text, "a blocker has not landed" — the `--limit 3` note beside that example
+already says the table is not what a fresh run would show, and this diagram draws all four reasons
+regardless of which one the current corpus happens to exercise.
 
 ## 16.3 `mycontext ready` — what is dispatchable, computed fresh on every run
 

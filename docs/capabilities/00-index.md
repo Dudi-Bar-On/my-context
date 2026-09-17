@@ -26,18 +26,20 @@ Every chapter in this reference is a deeper reading of one stage of the same pip
 flowchart LR
   Y["<b>You</b><br/>mycontext add"] --> MD
   M["<b>Claude</b><br/>create_item"] --> MD["<b>.my_context/items/</b><br/>one Markdown file per item<br/><i>the source of truth</i>"]
-  MD -->|"rebuild"| DB[("<b>.index.db</b><br/>derived cache")]
-  DB --> SEL["<b>selection</b><br/>what is eligible,<br/>what fits the budget"]
-  SEL --> HK["<b>hooks</b><br/>session start · before a file<br/>· before a compaction"]
+  MD --> SEL["<b>selection</b><br/>pure over the parsed items —<br/>no database on this path"]
+  SEL --> HK["<b>hooks</b><br/>session start, incl. after a<br/>compaction · subagent start<br/>· before a file"]
   HK --> CX["Claude's context"]
+  MD -.->|"refreshed afterward,<br/>best-effort, skipped for a subagent"| DB[("<b>.index.db</b><br/>derived cache — read by<br/>search, list, query; never by injection")]
 ```
 
-(Reused from the README's own §3.) Chapter 1 is the leftmost box — what an item and the
-corpus are. Chapter 2 is `selection` and `hooks` — the budget and the doors. Chapters 3
-through 16 are everything that sits beside this spine: the gates a write passes through
-before it reaches `.my_context/items/`, the two stores injection does not touch at all
-(the conversation archive, the rule store), and the surfaces — CLI, MCP, the web UI —
-that read or write any of it.
+(Reused from the README's own §3, corrected 2026-09-17: `select` reads the parsed items directly —
+`src/core/inject.ts:372`, *"No database on the injection-critical path"* — and `.index.db` is
+refreshed only afterward, as a best-effort side task the source itself skips for a subagent.)
+Chapter 1 is the leftmost box — what an item and the corpus are. Chapter 2 is `selection` and
+`hooks` — the budget and the doors. Chapters 3 through 16 are everything that sits beside this
+spine: the gates a write passes through before it reaches `.my_context/items/`, the two stores
+injection does not touch at all (the conversation archive, the rule store), and the surfaces —
+CLI, MCP, the web UI — that read or write any of it.
 
 ## How this reference was built
 

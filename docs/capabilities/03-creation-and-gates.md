@@ -261,9 +261,13 @@ flowchart TD
   OV -->|"yes, undispositioned"| D{"--distinct &lt;id&gt; or<br/>--supersedes &lt;id&gt; supplied?"}
   D -->|"neither"| R2["REFUSED — candidate pair<br/>and overlap score named"]
   D -->|"--distinct (repeatable)"| V["verdict recorded:<br/>both stand"]
-  D -->|"--supersedes, in contradiction<br/>scope and governing, and the id<br/>was raised as a candidate"| S["supersedeItem:<br/>edges written, always/hard cleared,<br/>verdict recorded"]
+  D -->|"--supersedes &lt;id&gt; —<br/>the id names ANY real item,<br/>not necessarily one raised<br/>on THIS call"| WRITE["the gate is answered —<br/>write lands"]
   V --> DONE
+  WRITE --> RAISED{"was that id actually raised<br/>as a candidate on this call,<br/>in contradiction scope and governing?"}
+  RAISED -->|"yes"| S["supersedeItem:<br/>edges written, always/hard cleared,<br/>verdict recorded"]
+  RAISED -->|"no"| SILENT["nothing is retired —<br/>the write still lands"]
   S --> DONE
+  SILENT --> DONE
 ```
 
 A write that never enters contradiction scope at all (a `draft`, a non-normative

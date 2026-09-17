@@ -38,18 +38,30 @@ archive's own text each stop propagating at a named function, well before anythi
 
 ```mermaid
 flowchart TB
-  PASS["a pasted passage"] --> Q["queryFromPassage:<br/>shape-matched only — an id, a plan/seq ref,<br/>a path, a backticked name, a commit hash,<br/>a heading — no shape match, no fuzzy guess"]
+  VOC["vocabulary — built from the project's<br/>own Markdown (titles, headings,<br/>inline code), never from the passage"] --> Q
+  VOC --> MS
+  PASS["a pasted passage"] --> Q["queryFromPassage(passage, vocabulary.terms):<br/>shape-matched only — an id, a plan/seq ref,<br/>a path, a backticked name, a commit hash,<br/>a heading — no shape match, no fuzzy guess"]
   Q -.->|"the passage's own text<br/>never goes further than this"| X1(["dead end"])
-  Q --> MS["matchSubjects against conversation spans<br/>(the vocabulary is built from the project's<br/>own Markdown, never from the passage)"]
-  MS --> NOISE["removeNoise: keep 'said', keep a tool call<br/>only if prose-bearing, drop everything else;<br/>drop exact-duplicate runs of text"]
-  NOISE --> MISSION["a MISSION file:<br/>pointers only — session, byte offset,<br/>stance, tool — missionText() never<br/>serialises the matched text itself"]
+  MS["matchSubjects(vocabulary, spans) —<br/>a sibling entry point for 'I am lost',<br/>never downstream of a passage query"]
+  Q --> PF["pointersFor(index, query.names<br/>+ query.terms, scope)"]
+  MS --> PF
+  PF --> NOISE["removeNoise: keep 'said', keep a tool call<br/>only if prose-bearing, drop everything else;<br/>drop exact-duplicate runs of text"]
+  NOISE --> MISSION["writeMission() writes a MISSION file:<br/>pointers only — session, byte offset,<br/>stance, tool — missionText() never<br/>serialises the matched text itself"]
   MISSION -.->|"the archive's own text<br/>never goes further than this"| X2(["dead end"])
   MISSION --> SUB["a subagent, in its OWN fresh<br/>context window, reads the mission,<br/>opens the transcript itself, and verifies<br/>against the codebase and git — never the corpus"]
-  SUB --> RESULT["one claim per line, each cited —<br/>an uncited line is never written at all"]
+  SUB --> RESULT["writeResult() writes one claim<br/>per line, each cited —<br/>an uncited line is never written at all"]
   RESULT --> PERSON{"a person chooses specific<br/>claim numbers — an empty<br/>choice is refused, not defaulted"}
-  PERSON --> STAGE["the one function on this whole path<br/>that writes to disk"]
+  PERSON --> STAGE["return-stage.ts — the only writer on<br/>the RETURN half of this path<br/>(the mission and the result files above<br/>were already written, upstream)"]
   STAGE -.->|"reaches the ORIGINAL window<br/>only at its next ordinary<br/>session start"| ORIG(["your original<br/>context window"])
 ```
+
+Two entry points feed the same `pointersFor` call, and they are not stages of one pipeline: a
+passage query (`from-selection`/`free-text`) shape-matches the pasted text against the vocabulary's
+own terms, while `list-subjects` (*"I am lost"*, no passage) matches the vocabulary against
+conversation spans directly. `matchSubjects` is never downstream of `queryFromPassage`. And the
+mission and the result are both files written to disk earlier, by design — the "only writer" claim
+belongs to `return-stage.ts` alone, on the narrower **return** half of the path, not to the pipeline
+as a whole.
 
 Everything left of `MISSION` runs inside the caller's own window and never touches conversation
 text; everything right of `SUB` runs inside a subagent's own, separate window that the caller never
