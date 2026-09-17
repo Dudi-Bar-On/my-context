@@ -1,4 +1,5 @@
 // @basis TASK-an-exiting-server-deletes-the-liveness-record-without,
+// TASK-any-throwaway-server-takes-the-owner-s-ui-record-and-deletes,
 // TASK-the-upkeep-stops-the-ui-server-before-it-knows-a-replacement,
 // REQ-the-ui-server-is-running-whenever-the-owner-looks-or-it-says,
 // RULE-anything-you-start-for-a-human-to-look-at-must-outlive-the
@@ -122,6 +123,25 @@ async function closeAll(servers: RunningUiServer[]): Promise<void> {
   }
 }
 
+/**
+ * ── WHICH SERVER HOLDS THE RECORD, RE-STAGED 2026-09-17 ───────────────────
+ *
+ * This case used to say "the second server wrote its own record over the
+ * first's — the normal, correct state: one file per machine, last writer names
+ * itself", and then exited the FIRST one. Last-writer-wins stopped being true
+ * that day: `claimUiServerRecord` connects to whoever the record names and
+ * leaves a server that ANSWERS alone
+ * (`TASK-any-throwaway-server-takes-the-owner-s-ui-record-and-deletes` — a
+ * throwaway lane server took the owner's record on 58888 and removed it on the
+ * way out, and `test/ui/server-record-claim.test.ts` is that guard's proof).
+ *
+ * **So the roles swap and the defect under test does not.** The record is held
+ * by the server that got there first and is still up; the one that must not
+ * delete it on the way out is now the SECOND one. The assertion is the same
+ * assertion — an exiting server may only take back its own record — staged
+ * through the sequence production actually produces rather than through a race
+ * for the file.
+ */
 test('a second server`s exit cannot erase a live one`s record', async () => {
   await inOneRoot(async (root) => {
     const cwd = project();
@@ -134,27 +154,26 @@ test('a second server`s exit cannot erase a live one`s record', async () => {
       assert.notEqual(first.port, second.port,
         'both servers bound the same port, so this case cannot distinguish them');
 
-      // The second server wrote its own record over the first's. That is the
-      // normal, correct state: one file per machine, last writer names itself.
-      assert.equal(readUiServerRecord(root)?.port, second.port,
-        'the second server did not take over the record, so the case that follows is not set up');
+      // The first server holds the record and the second declined to take it.
+      assert.equal(readUiServerRecord(root)?.port, first.port,
+        'the record does not name the first server, so the case that follows is not set up');
 
       // ── THE HEADLINE ───────────────────────────────────────────────────
-      // The FIRST server exits. The second is listening, serving, and its
-      // record must survive — this is the exact sequence that left the owner's
-      // server invisible on 2026-09-12.
-      await first.close();
+      // The SECOND server exits — the one that does not own the record. The
+      // first is listening, serving, and its record must survive: this is the
+      // exact sequence that left the owner's server invisible on 2026-09-12.
+      await second.close();
 
       assert.equal(existsSync(uiServerRecordPath(root)), true,
         'the exiting server deleted the record of a server that is still listening: nothing can '
         + 'find that server now, and the upkeep hook will not put it back when it does exit');
-      assert.equal(readUiServerRecord(root)?.port, second.port,
+      assert.equal(readUiServerRecord(root)?.port, first.port,
         'the record no longer names the live server — it was erased or rewritten by the one that '
         + 'exited, which is the defect this file exists for');
 
       // …and the guard has not simply frozen the file: the server that DOES
       // own the record still takes it back on its way out.
-      await second.close();
+      await first.close();
       assert.equal(readUiServerRecord(root), null,
         'the owning server failed to take its own record back, so every exit now leaks a stale '
         + 'claim — the opposite failure, bought with the fix for this one');

@@ -370,15 +370,34 @@ test('a record naming another workspace is refused, never minted from', async (t
  * must come from the latter. That also keeps the refusal above actionable: the
  * one address a person wrote down is still tried, exactly as it is when the
  * record is missing altogether.
+ *
+ * ── WHY `theirs` STARTS FIRST NOW, AND WHY THAT IS THE HONEST ORDER ────────
+ *
+ * It used to start LAST, because "whichever wrote last holds the record" was
+ * the whole of the rule and starting last was how a fixture claimed the file.
+ * That stopped being true on 2026-09-17: a server whose start meets a record
+ * naming a server that still ANSWERS leaves it alone
+ * (`claimUiServerRecord`, `core/ui-server-probe.ts`, and
+ * `TASK-any-throwaway-server-takes-the-owner-s-ui-record-and-deletes` for the
+ * measurement — a throwaway lane server took the owner's record and then
+ * removed it on the way out). So the record is now held by whoever got there
+ * FIRST and is still up, and the fixture stages that instead.
+ *
+ * Nothing this test asserts has changed, and that is the point: the state
+ * under test is "the record names another workspace's live server". It is now
+ * reached by the order that actually produces it rather than by a race, and
+ * the ruling it proves — `--nonce` answers for THIS workspace, never for
+ * whichever server the record happens to name — is untouched.
  */
 test('with two servers up, --nonce answers for this workspace, not for the newest record', async (t) => {
   const theirs = project(t);
   const mine = project(t);
-  const ours = await startUiChild(mine);
   const h = await startUiChild(theirs);
+  const ours = await startUiChild(mine);
   try {
     assert.equal(readUiServerRecord()?.port, h.port,
-      'the fixture needs the record to name the OTHER server — theirs must have started last');
+      'the fixture needs the record to name the OTHER server — theirs started first and is '
+      + 'still answering, so ours must have declined to take the record from it');
     setConfiguredPort(mine, ours.port);
 
     const run = runNonce(mine, ['--no-open']);

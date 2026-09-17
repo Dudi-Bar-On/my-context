@@ -113,8 +113,9 @@ import { registerConfigRoutes } from './read-model-config.ts';
 import { registerWorkRoutes } from './read-model-work.ts';
 import { matchRoute, registerRoute, type ApiContext, type JsonResult } from './routes.ts';
 import { loadSessionDigests, recordSessionDigest } from '../core/ui-sessions.ts';
+import { claimUiServerRecord } from '../core/ui-server-probe.ts';
 import {
-  clearUiServerRecord, uiServerRecordPath, writeUiServerRecord,
+  clearUiServerRecord, uiServerRecordPath, type UiServerRecord,
 } from '../core/ui-server-record.ts';
 import {
   asHandoffNonce, cookieValue, CREDENTIAL_COOKIE, mintToken, NonceStore, recordNonceMint,
@@ -857,6 +858,51 @@ function readBody(req: IncomingMessage): Promise<string> {
 }
 
 /**
+ * **What this server says when it is not allowed to write itself down, because
+ * somebody else's server is still answering.**
+ *
+ * ── WHY THE SENTENCE IS THIS LONG ─────────────────────────────────────────
+ *
+ * The reader is, by construction, running a SECOND server on a machine that
+ * already has one — a lane, a measurement, a second workspace. On 2026-09-17
+ * that reader was silently handed the owner's record twice: the throwaway
+ * server took it, `mycontext ui --nonce` then answered for the throwaway, and
+ * the record left with it. Nobody noticed either time, because nothing said
+ * anything. A refusal that merely said "record not written" would leave exactly
+ * the same person with exactly the same wrong model of which server is theirs,
+ * which is the failure `foreignServerLine` in `src/cli/commands/ui.ts` argues
+ * at length and refuses for the same reason.
+ *
+ * So it names every fact needed to act: which file, which server holds it,
+ * where that server is and what it is serving, what this server has lost by not
+ * being written down, and — the part the owner asked for by name — **the
+ * supported way to run a server without touching the shared record at all.**
+ * `MYCONTEXT_UI_SESSIONS_DIR` is not new and is not a workaround: it is what
+ * `ui-server-record.ts` already reads for its directory and what the test suite
+ * already pins for the whole run. It has simply never been said anywhere a lane
+ * would meet it, and "it holds until someone forgets" is what made a silent
+ * convention the second half of this defect.
+ *
+ * Exported so `test/ui/server-record-claim.test.ts` can read the sentence
+ * without staging two servers, the habit `startedLines` set in
+ * `src/cli/commands/ui.ts`.
+ */
+export function refusedClaimLine(incumbent: UiServerRecord): string {
+  return `did NOT write ${uiServerRecordPath()}: it already names port ${incumbent.port} `
+    + `(pid ${incumbent.pid}, serving ${incumbent.workspace}), and that server ANSWERED when `
+    + 'this one connected to it — so the record was left alone rather than taken. This server '
+    + 'is running and this page works; what it does not have is an entry in the one file per '
+    + 'user that says where a UI server is. `mycontext ui --nonce` will keep answering for the '
+    + 'server named above, and the upkeep hook will neither probe this one nor put it back '
+    + 'after it exits. **If this server is a throwaway — a lane, a measurement, a second '
+    + 'workspace — set `MYCONTEXT_UI_SESSIONS_DIR` to a temporary directory before starting '
+    + 'it.** That gives it a record of its own, and is the supported way to run a server '
+    + 'beside somebody else\'s without competing for theirs. If this server is meant to be THE '
+    + 'one, stop the server on port '
+    + `${incumbent.port} first.`;
+}
+
+/**
  * Start the server. **Never throws synchronously** — every failure arrives as a
  * rejection, which is why this is `async`.
  *
@@ -1509,6 +1555,24 @@ export async function startUiServer(options: UiServerOptions): Promise<RunningUi
    * printer, and until it was, the notice would go nowhere — a disclosure
    * channel with no listener is the silent drop wearing a name.
    *
+   * ── AND IT ASKS BEFORE IT TAKES, SINCE 2026-09-17 ───────────────────────
+   *
+   * `claimUiServerRecord` and not `writeUiServerRecord`, and the difference is
+   * the whole of `TASK-any-throwaway-server-takes-the-owner-s-ui-record-and-
+   * deletes`. The record is ONE file per user, so writing it unconditionally is
+   * how a throwaway server on 58991 took the owner's server on 58888 out of the
+   * only file that says where a UI server is — twice in one day. The claim
+   * connects to whoever the existing record names and declines to replace a
+   * server that answers; a record whose port answers nothing is still replaced,
+   * because a crashed server that locked this file forever would be the same
+   * outage arriving by the opposite route. `core/ui-server-probe.ts` argues
+   * both halves and owns the connecting.
+   *
+   * **A refusal is not a failure and does not come through the `catch`.** It is
+   * an outcome with its own sentence (`refusedClaimLine`), on the same
+   * `onSessionStoreIssue` channel and for the same reason the write failure
+   * uses it: the cost lands later and elsewhere, so it has to be said now.
+   *
    * It is also caught because of WHERE it runs: inside `listen`'s callback,
    * which is not the promise executor. A throw here is not a rejection anything
    * can catch — it is an uncaught exception that takes the process down with a
@@ -1516,9 +1580,9 @@ export async function startUiServer(options: UiServerOptions): Promise<RunningUi
    * would never be cleared, and the failure to write a record would present as
    * a crashed server.
    */
-  function recordListeningAt(port: number): void {
+  async function recordListeningAt(port: number): Promise<void> {
     try {
-      writeUiServerRecord({
+      const claim = await claimUiServerRecord({
         version: 1,
         pid: process.pid,
         host,
@@ -1531,6 +1595,7 @@ export async function startUiServer(options: UiServerOptions): Promise<RunningUi
         // to decide where to re-spawn `mycontext ui`, and that is a cwd.
         workspace: repoRoot,
       });
+      if (claim.state === 'refused') options.onSessionStoreIssue?.(refusedClaimLine(claim.incumbent));
     } catch (err) {
       options.onSessionStoreIssue?.(
         `could not write ${uiServerRecordPath()} `
@@ -1551,19 +1616,41 @@ export async function startUiServer(options: UiServerOptions): Promise<RunningUi
     server.once('error', reject);
     server.listen(options.port ?? 0, host, () => {
       boundPort = (server.address() as AddressInfo).port;
+      // ── AND THE START WAITS FOR IT, WHICH IT DID NOT HAVE TO BEFORE ──────
+      //
+      // `recordListeningAt` became async on 2026-09-17, because deciding
+      // whether this server MAY take the record means connecting to whoever
+      // holds it (`claimUiServerRecord`). `listen`'s callback cannot await, so
+      // the resolve moves inside the continuation rather than racing it.
+      //
+      // **Resolving first and recording later would be the flake with a
+      // motive.** `startUiServer()` resolving is what every caller treats as
+      // "the server is up and written down" — `test/ui/server-record.test.ts`
+      // reads the record on the next line — so a resolve that outran the write
+      // would turn a guarantee into a 50/50. The cost is the connect, and only
+      // when a foreign record is actually there to check: an absent record and
+      // a record naming this server's own port are both decided without a
+      // socket, which is every ordinary start and every upkeep restart.
+      //
+      // `recordListeningAt` catches everything it can throw and returns a
+      // promise that cannot reject, so `void` here is not a dropped rejection —
+      // there is none to drop, and `server.once('error', reject)` above is
+      // still the only route to a rejected start.
+      //
       // After the read-back, never before it. See `recordListeningAt`.
-      recordListeningAt(boundPort);
-      idle.touch();
-      idle.start();
-      resolve({
-        port: boundPort,
-        urlWithNonce: (ttlMs: number) =>
-          `http://127.0.0.1:${boundPort}/#${nonces.mint(nonceTtl ?? ttlMs)}`,
-        close: () => new Promise<void>((done) => {
-          idle.stop();
-          server.close(() => { options.onExit?.('closed'); done(); });
-          server.closeAllConnections();
-        }),
+      void recordListeningAt(boundPort).then(() => {
+        idle.touch();
+        idle.start();
+        resolve({
+          port: boundPort,
+          urlWithNonce: (ttlMs: number) =>
+            `http://127.0.0.1:${boundPort}/#${nonces.mint(nonceTtl ?? ttlMs)}`,
+          close: () => new Promise<void>((done) => {
+            idle.stop();
+            server.close(() => { options.onExit?.('closed'); done(); });
+            server.closeAllConnections();
+          }),
+        });
       });
     });
   });

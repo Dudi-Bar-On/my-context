@@ -1,6 +1,8 @@
 import { Agent, request as httpRequest } from 'node:http';
 import net from 'node:net';
-import { clearUiServerRecord, readUiServerRecord } from './ui-server-record.ts';
+import {
+  clearUiServerRecord, readUiServerRecord, writeUiServerRecord, type UiServerRecord,
+} from './ui-server-record.ts';
 
 // --- Is a UI server actually there? -----------------------------------------
 //
@@ -162,6 +164,129 @@ export function portAccepts(
     socket.once('connect', () => done(true));
     socket.once('error', () => done(false));
   });
+}
+
+// --- May this server write itself down at all? ------------------------------
+
+/**
+ * What `claimUiServerRecord` did.
+ *
+ * `refused` carries the incumbent it refused for, because the caller's only
+ * useful response is a sentence naming WHO holds the record — a refusal that
+ * says "somebody else" leaves the reader with the same missing fact that made
+ * the defect invisible in the first place.
+ */
+export type ClaimOutcome =
+  /** The record now names the caller. */
+  | { state: 'claimed' }
+  /**
+   * A DIFFERENT server is answering where the existing record points. Nothing
+   * was written, nothing was removed, and the record still names that server.
+   */
+  | { state: 'refused'; incumbent: UiServerRecord };
+
+/**
+ * **Write this server's record — unless the record already there names a
+ * server that is still answering.**
+ *
+ * ── THE MEASUREMENT, 2026-09-17, TWICE IN ONE DAY ─────────────────────────
+ *
+ * `~/.my-context/ui-server.json` is ONE file per user, and until this function
+ * existed every server start wrote it unconditionally. A lane started a
+ * throwaway server on 58991. That write took the record from the owner's server
+ * on 58888, and the two consequences were both observed rather than reasoned
+ * about:
+ *
+ *   - while the lane ran, `mycontext ui --nonce` handed out a credential for
+ *     the LANE's server. It worked, it opened a real server on the same corpus,
+ *     and it looked entirely correct — which is worse than an error;
+ *   - when the lane exited it took the record with it, correctly: by then the
+ *     record was its own. The owner's server was left answering 200 and
+ *     undiscoverable, and the upkeep hook had nothing to put back.
+ *
+ * `clearUiServerRecord` has refused to unlink a record it does not own since
+ * 2026-09-12, and that guard held here: the lane removed a record it had
+ * written. **The theft was the WRITE.** An overwrite is a deletion that leaves
+ * a file behind, and it was the one removal of another server's claim still
+ * performed by a process that had not written it.
+ *
+ * ── WHY THE PORT COMPARISON COMES BEFORE THE CONNECT ──────────────────────
+ *
+ * **A record naming the caller's OWN bound port is always replaceable, and no
+ * probe is performed for it.** This runs after `listen` has succeeded, so the
+ * caller HOLDS that port; nothing else can be answering on it, and a connect
+ * aimed there would be answered by the claimant itself and read as an
+ * incumbent. That is not a hypothetical: `ui-server-upkeep.ts` replaces a
+ * stale-code server by stopping it and starting a replacement **on the same
+ * configured port**, and the replacement meets the stopped server's record with
+ * its own socket already bound. Probing first would have made every upkeep
+ * restart invisible — the exact outage this guard exists to prevent, caused by
+ * the guard.
+ *
+ * A record naming the same pid AND the same port is the same case and needs no
+ * separate branch: the port test already admits it.
+ *
+ * ── WHY A DEAD RECORD MUST STILL BE REPLACEABLE, AND IS ───────────────────
+ *
+ * This is the case where refusing is WRONG, and it is the first one the proofs
+ * assert. A server that was killed, or that went with the machine, leaves a
+ * perfectly readable record behind — that is this module's whole opening
+ * argument. If the presence of a record were enough to refuse, one crash would
+ * lock the file for the life of the user's home directory and no server could
+ * ever record itself again. A protection that cannot tell dead from alive has
+ * only exchanged one silent outage for another, slower one.
+ *
+ * So the decider is the connect, exactly as it is for `probeUiServer`, and for
+ * the same reason its header gives: **liveness is proved by connecting, never
+ * by the file.** The pid is not consulted here at all — `probeUiServer` uses it
+ * as a cheap short-circuit toward `dead`, and a short-circuit toward REFUSING
+ * would be a refusal decided by a recycled number.
+ *
+ * ── WHAT IT DOES NOT CLOSE ────────────────────────────────────────────────
+ *
+ * Read-then-write is not atomic, and the filesystem offers no compare-and-swap.
+ * A server that writes its record inside the up-to-`timeoutMs` connect above
+ * still loses it. That is the bound `clearUiServerRecord` already names for its
+ * own read-then-remove, and the window is the same size: the atomic
+ * temp-plus-rename in `writeUiServerRecord` makes the loser of that race a
+ * whole record rather than a corrupted one. What is removed is the window that
+ * was the entire lifetime of a foreign process.
+ *
+ * It also cannot tell a UI server from anything else that answers on that port.
+ * A connect is the narrow reading this module commits to everywhere, and the
+ * cost of the false refusal is one server that is not written down — a hint
+ * lost, disclosed by the caller — against the cost of the false claim, which is
+ * the owner's live server going missing. The caller's refusal message names
+ * `MYCONTEXT_UI_SESSIONS_DIR`, which is the answer for anyone deliberately
+ * running a second server.
+ *
+ * **Throws whatever `writeUiServerRecord` throws**, unchanged: that function
+ * returns `void` and hands the failure to its caller on purpose, and swallowing
+ * it here would be the silent drop this project refuses. A refusal is not a
+ * failure and is not thrown — it is an outcome, because the caller has a
+ * different and longer thing to say about it.
+ */
+export async function claimUiServerRecord(
+  record: UiServerRecord,
+  globalRoot?: string,
+  timeoutMs: number = PROBE_TIMEOUT_MS,
+): Promise<ClaimOutcome> {
+  const incumbent = readUiServerRecord(globalRoot);
+  // Nothing readable is nothing to take. `readUiServerRecord` answers `null`
+  // for an absent file and for one it cannot fully understand, and neither can
+  // be shown to name a server worth protecting — the same reading
+  // `clearUiServerRecord` gives the same two cases.
+  if (incumbent === null) {
+    writeUiServerRecord(record, globalRoot);
+    return { state: 'claimed' };
+  }
+  // The caller's own port. It holds that socket; see the header.
+  if (incumbent.port !== record.port
+    && await portAccepts(incumbent.host, incumbent.port, timeoutMs)) {
+    return { state: 'refused', incumbent };
+  }
+  writeUiServerRecord(record, globalRoot);
+  return { state: 'claimed' };
 }
 
 // --- Is the server that answered still running the code on disk? ------------

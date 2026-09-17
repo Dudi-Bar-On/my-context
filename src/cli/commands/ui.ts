@@ -779,9 +779,13 @@ function foreignServerLine(
     'stop a process that is not yours — which is what happened on 2026-09-05. There is one ' +
     'record per user, because a pid and a port are facts about this machine rather than about ' +
     `a corpus, so a second server is an unrecorded one.${tried} Run \`mycontext ui\` in this ` +
-    'workspace to start one — that rewrites the record — or, if a server for THIS workspace is ' +
-    'already up, set `ui.port` in .my_context/config.json to its port and run ' +
-    '`mycontext ui --nonce` again.';
+    'workspace to start one — that rewrites the record IF the server named above has stopped ' +
+    'answering by then, and leaves it alone if it has not (`claimUiServerRecord`, ' +
+    'core/ui-server-probe.ts) — or, if a server for THIS workspace is already up, set ' +
+    '`ui.port` in .my_context/config.json to its port and run `mycontext ui --nonce` again. ' +
+    '**If the server you want is a throwaway — a lane, a measurement, a second workspace — ' +
+    'set `MYCONTEXT_UI_SESSIONS_DIR` to a temporary directory before starting it, and both it ' +
+    'and this command will read a record of their own instead of competing for the one above.**';
 }
 
 /**

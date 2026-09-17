@@ -2,6 +2,8 @@
  * Structural parity between every chapter of `docs/system/` and its Hebrew
  * mirror `docs/system/NN-*.he.md`.
  *
+ * @basis INV-nothing-is-dropped-silently RULE-a-citation-names-an-item-by-id-never-a-report-by-line-number
+ *
  * `parity.test.ts` holds `README.md` to `docs/README.he.md` and is the model
  * for this file, but it is deliberately NOT extended in place and NOT copied
  * wholesale, for two reasons found by reading it against these documents rather
@@ -117,8 +119,7 @@ async function pastedBlocks(file: string, text: string): Promise<string[]> {
   let current: string[] | null = null;
   for (const line of lines) {
     const within = inside(line);
-    if (within && current === null) current = [line];
-    else if (within) current.push(line);
+    if (within) { if (current === null) current = [line]; else current.push(line); }
     else if (current !== null) { blocks.push(current.join('\n')); current = null; }
   }
   if (current !== null) blocks.push(current.join('\n'));

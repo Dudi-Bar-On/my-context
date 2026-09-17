@@ -190,6 +190,14 @@ const WRITERS: Record<string, string[]> = {
   // `uiServerRecordPath` is bound by `src/ui/server.ts` too and is deliberately
   // NOT here: it builds a path for a disclosure message and writes nothing.
   'src/core/ui-server-record.ts': ['writeUiServerRecord', 'clearUiServerRecord'],
+  // `claimUiServerRecord` is the GUARDED write of that same record, added
+  // 2026-09-17: it performs `writeUiServerRecord` itself, but only after
+  // connecting to whoever the existing record names and finding nobody there.
+  // It is named here for `isWriter`'s sake — it writes a file, so a `src/ui/`
+  // module binding it must be ruled in rather than pass unnoticed — and it is
+  // in `WRITES_WITHOUT_FS` because the module holds no `node:fs` call of its
+  // own for the membership scan to see; the write is one import away.
+  'src/core/ui-server-probe.ts': ['claimUiServerRecord'],
   // Owner ruling, 2026-08-27 — `DEC-the-ui-writes-budgets-and-the-simulator-always-meant-to`,
   // reversing `DEC-should-the-web-ui-be-allowed-to-write-config-json` narrowly:
   // "the UI writes BUDGETS… budgets ONLY." `writeBudgets` overwrites exactly the
@@ -563,6 +571,11 @@ const WRITERS: Record<string, string[]> = {
  * its entry is still earning its place.
  */
 const WRITES_WITHOUT_FS = new Set([
+  // Writes `~/.my-context/ui-server.json` through `writeUiServerRecord`, which
+  // it imports from `core/ui-server-record.ts`. The module's own `node:fs`
+  // surface is empty — it deals in sockets — so the membership scan, which
+  // recognises a write by the `node:fs` API it calls, cannot see this one.
+  'src/core/ui-server-probe.ts',
   // Writes the conversation index — `ConversationIndex.open` creates the
   // tables, `rebuildConversations` fills them and `forgetConversations` drops
   // them, all through `node:sqlite`. `.my_context/.index.db` is a file, and no
@@ -780,6 +793,17 @@ const RULED_WRITES = [
   // a record left behind by an exit is exactly the stale claim the probe exists
   // to catch, and leaving the removal unruled would have made the tidy path the
   // undeclared one.
+  // **`claimUiServerRecord`, not `writeUiServerRecord`, since 2026-09-17**, and
+  // the swap is the whole of `TASK-any-throwaway-server-takes-the-owner-s-ui-
+  // record-and-deletes`. The record is one file per user, so an unconditional
+  // write is how a throwaway server on 58991 took the owner's server on 58888
+  // out of the only file that says where a UI server is. The claim connects to
+  // the incumbent first and declines to replace one that answers; a record
+  // whose port answers nothing is still replaced, or a single crash would lock
+  // the file forever. `src/ui/server.ts` no longer binds the unguarded write at
+  // all, which is what keeps the guard from being something a caller can
+  // forget: this list is where forgetting it would show.
+  'src/ui/server.ts binds claimUiServerRecord (defined in src/core/ui-server-probe.ts)',
   'src/ui/server.ts binds clearUiServerRecord (defined in src/core/ui-server-record.ts)',
   // Owner ruling, 2026-08-23. `startUiServer` records `sha256(token)` for the
   // token it mints, so the NEXT process still recognises a tab that was open
@@ -803,7 +827,6 @@ const RULED_WRITES = [
   //     assertion is the one that would otherwise have caught this, and it
   //     still means what it says.
   'src/ui/server.ts binds recordSessionDigest (defined in src/core/ui-sessions.ts)',
-  'src/ui/server.ts binds writeUiServerRecord (defined in src/core/ui-server-record.ts)',
 ];
 
 /**
