@@ -181,7 +181,7 @@ my_context: about to export 1235 item(s) as a full export
 
 $ node src/cli/index.ts export --dry-run --as-pack --pack-name test-preview --pack-version 1.0.0
 my_context: about to export 1235 item(s) as a pack named "test-preview", version "1.0.0"
-  adr 3   constraint 7   decision 99   ...   task 866
+  adr 3   constraint 7   decision 99   # ... the remaining categories cut here   task 866
   history: 4466 mutation record(s), filtered to mutations and joined to these items
   not travelling: injections, hook actions, focus records, the index, session state,
                   revisions, ingest sessions and staged lessons

@@ -222,7 +222,7 @@ of dating it rather than asserting it.)
   citing them as still open.
 - **No diagram outside the two READMEs is *drawn* — but every one under `docs/` is now *parsed*.**
   `DIAGRAM_SOURCES` is still `['README.md', 'docs/README.he.md']`, so the twelve diagrams in
-  `docs/system/` and the sixteen in `docs/capabilities/` exist only as fences a viewer renders; the
+  `docs/system/` and the seventeen in `docs/capabilities/` exist only as fences a viewer renders; the
   question of whether they should also be committed as SVGs is the owner's and is still open,
   costed at ~1.5–1.8 MiB (§5). What is **no longer** open is whether a broken one can ship
   unnoticed: `npm run check:diagrams` refuses it, in CI, in about a second. The previous version of

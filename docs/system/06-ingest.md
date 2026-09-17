@@ -133,7 +133,9 @@ draft is.
 
 ## 5. What is known wrong or unfinished here
 
-No item under `.my_context/items/known_issue/` mentions ingest by name — re-checked 2026-09-17 with
+No item under `.my_context/items/known_issue/` mentioned ingest by name until 2026-09-17, when this
+very pass filed one — which falsified the sentence 68 seconds after it was written, and is left here
+as the record of it. Re-checked 2026-09-17 with
 a case-insensitive grep over the whole directory, which returned nothing.
 
 **`src/ingest/schema.ts:340` cites an item id that resolves to nothing**, and it is the origin of a
@@ -145,7 +147,8 @@ to nothing. `npm run check:cited-items` *does* see it — it prints
 `UNKNOWN src/ingest/schema.ts:340 … no item answers to it` — but that check is **reported, never
 gated**, exits 0 either way, and prints this line only under `--unresolved`, among 2,621 id-shaped
 strings that are mostly test fixtures inventing ids. So the gate is not wrong; the finding is
-simply not in front of anyone. Four more instances of the same over-long id sit in
+simply not in front of anyone. Four more instances of a DIFFERENT over-long id — one word longer than the real id, three words
+shorter than `schema.ts:340`’s — sit in
 `test/cli/format-table.test.ts`, where they are fixture text rather than a citation.
 
 **And no gate checks the ids cited in these chapters at all.** `check-cited-items.ts`'s

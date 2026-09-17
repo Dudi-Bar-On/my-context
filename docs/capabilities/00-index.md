@@ -239,7 +239,7 @@ this reference; those chapters describe it from source instead and say so.
 
 ---
 
-*17 files, 8,915 lines, 639,654 bytes (639.7 kB decimal / 624.7 KiB), re-measured **2026-09-17**, after the additive pass described at the foot of this note —
+*17 files, 8,937 lines, 641,963 bytes (642.0 kB decimal / 626.9 KiB), re-measured **2026-09-17**, after the additive pass described at the foot of this note —
 **this figure changes with every edit to this reference, including this one, so treat it as a
 lower bound rather than a constant**; `wc -l docs/capabilities/*.md` and
 `wc -c docs/capabilities/*.md` reproduce it on any later checkout. First written

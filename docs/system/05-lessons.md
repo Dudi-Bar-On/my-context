@@ -90,7 +90,7 @@ Three further subcommands exist beyond the flags shown above: `lesson-stage <id>
   comment three lines above the tool — staged candidates *"are inert until a HUMAN runs `mycontext
   lesson-accept`, which is the only call site of `createItem` anywhere in this module and hardcodes
   `origin: 'human'` with no override"*. `CLI_WITHOUT_TOOL['lesson-accept']` carries
-  `disposition: 'intended'` and that reasoning verbatim (`plugin/parity.ts:516–523`), and
+  `disposition: 'intended'` and that same reasoning in its own words (`plugin/parity.ts:516–523`), and
   `acceptStagedRule` is called from exactly one file in the tree, `cli/commands/lesson.ts`. So the
   conclusion stands and is better sourced than the premise was: **creating a rule from a lesson
   requires a person.** What does not stand is the wider claim that all three post-lesson steps are

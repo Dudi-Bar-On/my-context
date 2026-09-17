@@ -522,11 +522,13 @@ turn already had a stop at that point, so nothing new appears to scroll past.
   automatic grammar (`report`, §5.4a) landed in between. This chapter states the exact count in
   exactly one place (§5.3) for exactly this reason; treat any other number in this chapter that
   looks like a row count as either a fixed historical fact (labelled as such) or an error to report.
-- **The writer batches its flush, and that is the actual "on the fly" delay** (§5.6, Path 1) —
-  measured up to 5m 37s from a turn being written to its anchor reaching `.anchors.jsonl`, against
-  a reader-facing repaint of well under a second once the store does move. A future lane shortening
-  "as soon as they are created" has this number to beat, not the read path, which was directly
-  measured and cleared.
+- **The writer does NOT batch, and the 5m 37s was never a flush delay** (§5.6, Path 1) — this
+  bullet asserted the opposite until 2026-09-17 and §5.6 withdrew it in the same pass while this
+  summary kept repeating it. `src/core/anchors.ts` contains no `flush`, `batch` or `queue` at all.
+  The measurement was real and was read wrong: `at` is the TURN’s timestamp, not the write time, so
+  a long turn puts minutes between `at` and the append while the record itself lands immediately —
+  six consecutive marks matched their record to the millisecond. The real defect was that the
+  refresh was scheduled only on Stop, which `turn-refresh-soon.ts` fixed.
 - **A UI server restart silently kills an open page's live anchor updates** (§5.6, Path 1) — the
   tab's token dies with the process, `/tip` then fails on every poll, and nothing on screen says
   so. Filed as a defect, not fixed here.

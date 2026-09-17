@@ -2,7 +2,7 @@
 
 `docs/system/00-index.md`
 
-This subject was the most scattered of the five this pass covers — pieces of it are mentioned in
+This subject was the most scattered of the seven this pass covers — pieces of it are mentioned in
 two capabilities chapters and two tutorials, but nothing owns it as one subject, and that absence
 of an owner is itself part of why it is easy to misread. This chapter treats it as three readings of
 **one** append-only log, because that relationship — one source of truth, two disposable

@@ -22,12 +22,12 @@ one of them wrong, a claim that was acted on for a week before someone measured 
 false, a hue that shipped before anyone ruled on it. Reference chapters cite the outcome. These
 chapters keep the argument.
 
-## What is here, and why these five
+## What is here, and why these seven
 
 `reports/2026-09-16-the-subjects-of-this-system.md` inventoried 32 subjects and marked, for each,
 what documentation exists today. **Seven of the 32 had no chapter at all** — not a stale chapter,
 not one needing an update, and for three of them not even a tutorial. They are covered here in
-**five** chapters, because lessons, ingest and focus share one row below and get one chapter each.
+**seven** chapters, because lessons, ingest and focus share one row below and get one chapter each.
 The inventory's own marks, quoted: row 6 (the board) *"NOTHING of the right shape"*, row 9 (the
 viewer) *"NOTHING"*, row 30 (the palette) *"Effectively NOTHING in prose"*, row 17 (decay,
 contribution and the audit log) *"Scattered, with no owner"*, and rows 18, 19 and 20 (lessons,
@@ -83,6 +83,6 @@ this directory can offer.
 - [`docs/capabilities/00-index.md`](../capabilities/00-index.md) — the reference this directory
   complements
 - [`reports/2026-09-16-the-subjects-of-this-system.md`](../../reports/2026-09-16-the-subjects-of-this-system.md) —
-  the inventory that identified these five gaps
+  the inventory that identified these seven gaps
 - [`reports/2026-09-16-the-mechanism-map.md`](../../reports/2026-09-16-the-mechanism-map.md) — the
   code-level trace this directory's board, viewer and palette chapters were built from

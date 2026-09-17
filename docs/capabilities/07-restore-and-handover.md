@@ -461,8 +461,13 @@ CARRIED  reports/V2-HANDOVER.md:395
 4882 line(s), 49 block(s) · 250 distinct pointer(s): 165 lane, 85 item · 0 resolving to nothing, 4 naming retired work
 every pointer in the handover names something that exists.
 
-4 pointer(s) name work that was RETIRED with a successor. REPORTED, never gated: ...
-7 instruction(s) carried into 3+ blocks with the work still open. REPORTED, never gated: ...
+4 pointer(s) name work that was RETIRED with a successor. REPORTED, never gated: the handover is a
+  historical document, and a block written before a retirement was true when it was written.
+  # ... the rest of this paragraph, and its WHAT WOULD MAKE IT A GATE clause, cut here
+8 instruction(s) carried into 3+ blocks with the work still open. REPORTED, never gated: repetition
+  is a question about the work, and only a person knows whether a line has been repeated five times
+  because it is hard or because it is impossible.
+  # ... the WHAT WOULD MAKE IT A GATE clause and one closing line cut here
 ```
 
 Zero DANGLING pointers, four RETIRED-but-successor-named (harmless, reported

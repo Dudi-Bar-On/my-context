@@ -232,7 +232,7 @@ Use case: the first command to run at the start of a session to get a one-screen
 
 **`list [category]`** and **`show <id>`** — the basic read path; `list` without a category lists everything (respecting `--full|--short|--summary`), `show <id>` prints one item's full rendered Markdown. These are the two commands nearly every other chapter's worked examples are built on top of.
 
-**`search "<words>"`** — full-text-ish item search (distinct subsystem from the conversation-archive trigram search in Chapter 4/14 — this one searches item title/body/tags, not transcript prose) with `--type`, `--tag`, `--path`, `--status`, `--relation`, `--linked-to`, `--direction` filters. Real output, 2026-09-16:
+**`search "<words>"`** — full-text-ish item search (distinct subsystem from the conversation-archive trigram search in Chapter 4/14 — this one searches item title/body/tags, not transcript prose) with `--type`, `--tag`, `--path`, `--status`, `--relation`, `--linked-to`, `--direction` filters. Real output, 2026-09-17:
 
 ```
 $ node src/cli/index.ts search "budget" --limit 3     # 2026-09-17, captured by redirecting the command to a file
