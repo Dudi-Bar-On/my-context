@@ -238,14 +238,14 @@ above, the three-character floor, `-word` exclusion, and the ranking rule that g
 from:
 
 - `src/core/anchor-pass.ts` — the per-turn automatic anchor pass (chapter 5);
-- `src/ui/read-model-conversations.ts` — the Conversations screen's search box, and its floating
-  find panel (chapter 15);
+- `src/ui/read-model-conversations.ts` — the Conversations screen's search box, and the Search
+  panel inside an open document (chapter 15);
 - `src/ui/read-model-retrieval.ts` — subject reconstruction (chapter 6).
 
 So a reader now has two doors onto the same mechanism — a terminal and a browser — where before
 2026-09-16 there was only the one in the browser. `mycontext ui` (chapter 8) is still the richer
-surface: it is where the find panel's regex/whole-word/case options and the document-level find bar
-live, and neither has a CLI equivalent (chapter 15).
+surface: it is where the find surface's four reading modes and its case/whole-word boxes live,
+inside the Search panel (chapter 15), and none of them has a CLI equivalent.
 
 **What the CLI gives you, in full:**
 
@@ -442,7 +442,8 @@ persisted/indexed state, which is outside a documentation pass's remit.
   conversation search` reaches `searchArchiveTiered` from a terminal now, with the same three-tier
   grammar and `said`/`ran`/`both` sources switch the web UI's search box uses. See "How you
   actually reach it" above and [chapter 14](./14-search-over-the-archive.md). What is still
-  CLI-only-absent: the find panel's **regex**, **whole word** and **case-sensitive** options
+  CLI-only-absent: the Search panel's four reading modes — **plain**, **wildcard**, **logical** and
+  **regular expression** — and its **whole word** and **case-sensitive** boxes
   (chapter 15) — those exist only inside a document already open in the browser, because they
   scan one transcript's prose spans directly rather than querying the FTS5 index, and there is no
   CLI surface onto that scan.
@@ -471,4 +472,4 @@ persisted/indexed state, which is outside a documentation pass's remit.
 - [`05-anchors.md`](./05-anchors.md) — the `anchors` table this same conversation index carries, and why `byte_offset` is its only position too
 - [`06-retrieval.md`](./06-retrieval.md) — reconstructing a subject from a pasted passage, which also searches this archive as FTS5 queries
 - [`14-search-over-the-archive.md`](./14-search-over-the-archive.md) — the query grammar in full: three readings, `said`/`ran`/`both`, the per-term floor, `-word` exclusion and the ranking rule
-- [`15-document-and-lane-viewer.md`](./15-document-and-lane-viewer.md) — the find bar and the floating find panel that read a single open transcript directly, outside the FTS5 index
+- [`15-document-and-lane-viewer.md`](./15-document-and-lane-viewer.md) — the find surface and the three floating panels that read a single open transcript directly, outside the FTS5 index

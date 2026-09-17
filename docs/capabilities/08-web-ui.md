@@ -266,8 +266,10 @@ previewing packs before import (chapter 12).
 [`./14-search-over-the-archive.md`](./14-search-over-the-archive.md)) and anchors (chapter 5,
 [`./05-anchors.md`](./05-anchors.md)). Opening a transcript document opens `/lane.html` — a
 dedicated page outside the SPA shell, not a rail screen — for reading one conversation in full;
-that document and lane view is where the find bar, the floating find panel (case/whole-word/regex,
-shipped 2026-09-16), and the marks-in-the-margin controls actually live — see chapter 15,
+that document and lane view is where the find surface, the **three floating panels** (search,
+step-through and copy — the first shipped 2026-09-16, the other two on 2026-09-17, and between them
+they now hold every control that used to stand in a strip above the document), the cut-down
+right-click menu and the marks-in-the-margin controls actually live — see chapter 15,
 [`./15-document-and-lane-viewer.md`](./15-document-and-lane-viewer.md), for the whole surface
 rather than duplicating it here. **It sits in the `nav.read` ("Read") group and is nevertheless the
 product's largest write surface**: it calls all four of `anchor-write.ts`'s routes — `mark` (e.g.
@@ -437,5 +439,5 @@ directory — `strip-parity`, `styles-parity`, `duration-parity`, `zoned-stamp-p
 - [Injection](./02-injection.md) — what the Injection preview/Injected now screens actually show
 - [Anchors](./05-anchors.md) — the Conversations screen's provenance mechanism
 - [Search over the archive](./14-search-over-the-archive.md) — the grammar behind the Conversations screen's search box
-- [The document and lane viewer](./15-document-and-lane-viewer.md) — the find bar, the floating find panel, and marks-in-the-margin, none of which is described in this chapter
+- [The document and lane viewer](./15-document-and-lane-viewer.md) — the find surface, the three floating panels, the right-click menu and marks-in-the-margin, none of which is described in this chapter
 - [The CLI and the MCP server](./09-cli-and-mcp.md) — the commands the Composer ultimately composes and runs

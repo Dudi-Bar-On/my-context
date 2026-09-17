@@ -263,7 +263,7 @@ Ranking the *archive* and ranking the *item corpus* are two different mechanisms
 
 - **`tool_result` is in no index, at any cap.** §14.5. A person's ruling is required before it
   ships; the cost table for four candidate caps is in the source report.
-- **The document find bar and the floating find panel (chapter 15) do not go through this
+- **The in-document find surface and its three floating panels (chapter 15) do not go through this
   mechanism at all.** They scan one already-open transcript's prose spans directly in
   JavaScript/TypeScript, with no FTS5 index involved — a fundamentally different tool for a
   fundamentally different question ("where in *this* document," not "which turns in the whole
@@ -293,5 +293,5 @@ Ranking the *archive* and ranking the *item corpus* are two different mechanisms
   (untouched) rather than the tiered function this chapter describes
 - [09 — CLI and MCP](./09-cli-and-mcp.md) — `conversation search` in the full command reference,
   and the item-corpus ranking change this chapter distinguishes itself from
-- [15 — The document and lane viewer](./15-document-and-lane-viewer.md) — the find bar and find
-  panel, which search one open document directly rather than querying this index
+- [15 — The document and lane viewer](./15-document-and-lane-viewer.md) — the find surface and the
+  three floating panels, which search one open document directly rather than querying this index

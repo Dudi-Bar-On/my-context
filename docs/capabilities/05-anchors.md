@@ -302,7 +302,9 @@ is the defect a heading is least often checked for.
 
 **Path 1 — per-turn, as the conversation grows.** `markAnchorsOnTurn` (`core/anchor-pass.ts`) is
 wired into `stopConversationRefresh` in `src/hooks/stop.ts`, after `rebuildConversations`, inside
-the Stop hook that fires at the end of every assistant turn. It is **scoped**: it costs nothing on
+the Stop hook that fires at the end of every assistant turn — **and, since 2026-09-16, also inside
+a long turn rather than only at its end**; see *"The five and a half minutes was the TURN"* below
+for what runs it mid-turn and on what two thresholds. It is **scoped**: it costs nothing on
 a turn where no transcript moved (a `(bytes, mtimeMs)` comparison, ~3-6 ms in steady state), and is
 bounded — `TURN_PROSE_BUDGET_MS = 250` ms and `TURN_PROSE_SOURCE_BYTES = 16 MiB` — because it runs
 inside the platform's 3-second hook timeout, past which the hook is killed and the turn's whole
@@ -318,15 +320,58 @@ real browser against a spare server for 31m 41s and timed every link from a stor
 repaint: the store's own `(present, bytes, mtimeMs)` token moves within 78–350 ms, the page
 refetches `/anchors` on the next `/tip` poll (`TIP_MS`, 1 Hz), and the visible count repaints
 267–674 ms after the store file changes — every main-document mark created in the validated window
-reached the open page unprompted, with no reload, and none was ever missed. **The actual delay
-people report is upstream of that path**: marks are **flushed to `.anchors.jsonl` in batches**, and
-a mark stamped when a table appeared was measured sitting unflushed in the writer for up to
-**5m 37s** before the store moved at all — so "nothing appeared" is usually "nothing was created
-yet" or "it is still sitting in the writer," not the reader failing to notice a write it already
-saw. The same report also found that **a UI server restart silently kills an open page's live
-updates** — the tab's token dies with the process, every `/tip` then fails, and the page keeps
-showing its last count with nothing on screen saying so — which is a plausible reader-facing
-explanation for "marks stopped updating" that has nothing to do with the flush delay above.
+reached the open page unprompted, with no reload, and none was ever missed. The same report also
+found that **a UI server restart silently kills an open page's live updates** — the tab's token
+dies with the process, every `/tip` then fails, and the page keeps showing its last count with
+nothing on screen saying so — which is a plausible reader-facing explanation for "marks stopped
+updating" that has nothing to do with anything below.
+
+### The five and a half minutes was the TURN, not a flush — and Path 1 no longer waits for it
+
+**An earlier revision of this section said marks are "flushed to `.anchors.jsonl` in batches" and
+that one sat unflushed for up to 5m 37s. The writer does not batch, and that claim is withdrawn.**
+`src/core/turn-refresh-soon.ts`'s header states the correction and the measurement behind it: an
+anchor row's `at` is the timestamp of the **turn it points at**, copied verbatim out of the index
+(`anchor-pass.ts` passes `hit.at` / `span.at` / `last.at` into `consider`, and the `new Date()`
+there is only a fallback), and checked against the transcript on six consecutive marks **all six
+matched their record's own timestamp to the millisecond**. What the 5m 37s actually was: between
+the marked record at 08:48:26.710 and the store write at 08:54:03.826, **85 records were written**
+— 33 assistant, 20 attachments, 15 user, tool traffic throughout. The turn was still running.
+
+**The real defect is the one that survives that correction, and it is now fixed.**
+`stopConversationRefresh` was wired in exactly one place — `src/hooks/stop.ts` — so the index scan,
+the mirror and the anchor pass all happened at **end of turn and nowhere else**. A table written in
+the first minute of a six-minute turn was not indexed, not mirrored and not marked until minute
+six. Nothing was broken; the work was simply scheduled at the one moment furthest from when it
+became possible. The owner, 2026-09-16: *"if the post tool use hook is expensive you can still mark
+at stop but at post tool check if flush required (it's cheap) and if yes, do it async so the hook
+could be released very fast"* — and then, widening it: *"you should flush in general not only
+because of a mark was added."*
+
+**So `PostToolUse` now asks the cheap question and spawns the expensive answer detached.**
+
+| | |
+|---|---|
+| what the hook does | one `statSync` on the transcript (**0.007 ms** on a 133 MB file, per the module's own header) against a recorded `(size, at)` pair — `refreshSoonCheck` |
+| when it spawns | **both** conditions must hold: at least `REFRESH_SOON_GAP_MS = 15_000` ms since the last spawn, and at least `REFRESH_SOON_GROWTH_BYTES = 8_192` bytes of growth since it |
+| what it spawns | `src/hooks/turn-refresh-worker.ts`, **detached**, `stdio: 'ignore'` — it calls `stopConversationRefresh` and nothing else, so there is no second copy of that sequence whose order could be got wrong |
+| what it costs the hook | nothing beyond the `stat`. The hook does not wait for the child and cannot fail because of it (`INV-hooks-fail-open`) |
+| what a missed spawn costs | **latency only.** `Stop` still runs the identical refresh at the end of the turn, which is what makes it safe to be stingy here |
+
+Both thresholds are measured off the turn that prompted the work rather than chosen: that turn ran
+5m 37s and grew the transcript by 277,601 bytes, about 16,300 bytes per twenty seconds of real
+work. The 15-second gap bounds the cost at **at most four spawns a minute** however hard a turn
+works — the eighty-five `PostToolUse` firings of that turn could have produced at most twenty-two
+refreshes, and in practice fewer, because both conditions must hold. The 8 KiB growth floor sits
+deliberately below that 16 KiB slice (so a turn doing real work crosses it inside one gap) and
+above any single prose message (so a turn that emits one short answer and waits pays nothing and is
+caught by `Stop` as before).
+
+**This is not an anchor path**, and the widening is the reason: it is the same function `Stop`
+calls, doing the same three things in the same order — the transcript scan, the mirror, then the
+anchors, which must come last because the pass reads the index and the index is only level once the
+scan has run. A failure in the child is swallowed, because the hook that spawned it exited long ago
+and there is nobody to tell.
 
 **Path 2 — one catch-up run.** `mycontext conversation rebuild` calls `markAutomaticAnchors`
 unscoped — every probe, every one of the pass's own previously-marked rows re-read at its own byte
@@ -367,7 +412,7 @@ that **every byte of the corpus except the anchors document and the index** is u
 
 ```mermaid
 flowchart TD
-  P1["Path 1 — per-turn<br/>Stop hook: markAnchorsOnTurn"] --> AUTO
+  P1["Path 1 — per-turn<br/>stopConversationRefresh: markAnchorsOnTurn —<br/>run by the Stop hook at end of turn, and since<br/>2026-09-16 also mid-turn, by a worker that<br/>PostToolUse spawns detached when the<br/>transcript has grown enough"] --> AUTO
   P2["Path 2 — catch-up run<br/>conversation rebuild: markAutomaticAnchors"] --> AUTO
   P4["Path 4 — UI sweep<br/>POST /api/conversations/anchors/sweep<br/>— the same pass, on demand"] --> AUTO["origin: automatic<br/>written directly on a match —<br/>table (a shape in the turn's OWN text) ·<br/>ruling (owner-typed record FIRST, then a word list) ·<br/>report (the archive's own columns, not the text) —<br/>and revised or taken back on a later sweep"]
   P3["Path 3 — by hand<br/>CLI conversation anchor ·<br/>web UI POST /api/conversations/anchors/mark"] --> OWNER["origin: owner<br/>written directly by a person —<br/>never touched by the automatic<br/>pass again, whatever the grammar says"]

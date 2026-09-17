@@ -312,17 +312,22 @@ corpus this documentation is being generated from.
 
 ## The `check:*` gates
 
-Nine scripts, run from `package.json`'s `check:*` family. Each targets one
-invisible-by-construction failure mode; five are pure read-only checkers this
-pass ran for real (output pasted below), four were read from source only
-because running them either mutates state or duplicates work another chapter
-already verified live.
+**Eleven scripts**, run from `package.json`'s `check:*` family — counted directly out of
+`package.json` on **2026-09-17**; nine when this section was first written on 2026-09-13, plus
+`check:board` (2026-09-16) and `check:diagrams` (2026-09-17). Each targets one
+invisible-by-construction failure mode. Of the original nine, five are pure read-only checkers the
+2026-09-12/13 pass ran for real (output pasted below) and four were read from source only, because
+running them either mutates state or duplicates work another chapter already verified live. Of the
+two newer ones: **`check:diagrams` was run for real on 2026-09-17** and its output is pasted below
+with the rest; `check:board` is described in [16 · The board](./16-the-board.md), which runs it
+there rather than a second time here.
 
 ### Where each one runs — which is a different question from whether it works
 
 This chapter previously described nine gates and never said **where any of them
-ran**, which is precisely the vacuous-gate failure the rest of it is about. As
-of `deb3d809` (2026-09-13):
+ran**, which is precisely the vacuous-gate failure the rest of it is about. The
+table below was first taken at `deb3d809` (2026-09-13) and **re-read from both
+workflow files and the hook on 2026-09-17**, when it gained its last two rows:
 
 | Gate | `ci.yml` | `release.yml` | `.githooks/pre-commit` |
 |---|---|---|---|
@@ -334,10 +339,20 @@ of `deb3d809` (2026-09-13):
 | `check:dependencies` | yes | yes | **yes** |
 | `check:needs-cycles` | yes | yes | — |
 | `check:handover` | yes | yes | — |
+| `check:board` | yes | yes | — |
+| `check:diagrams` | yes, **ubuntu only** | yes, **ubuntu only** | — |
 | `check:cited-items` | **no, deliberately** | no | — |
 
 Plus `verify:citations`, then `typecheck`, `npm test` and `test:perf` in both
 workflows, and `test:e2e` in `ci.yml` only.
+
+**`check:diagrams` is ubuntu-only for a reason that is not a preference**: mermaid is a browser
+library and there is no Node renderer, so the gate needs the headless Chromium the browser block
+installs, and only the ubuntu job has one. It is placed **first** within that block, because it
+costs about two seconds against that suite's twelve minutes — the same cheap-fails-first ordering
+every other step in the file argues for. On a tag cut it is worth its own 275 MB `--only-shell`
+download, on the reasoning stated in `release.yml` itself: **a tag is when the documents ship**, so
+of all the gates this is the one whose subject is exactly what a release page points at.
 
 **Before that commit, four of them ran nowhere.** `check:needs-cycles`,
 `check:handover`, `check:dependencies` and `check:cited-items` were in neither
@@ -398,6 +413,8 @@ is asking); and `git commit --no-verify` skips it, as it skips every hook.
 | `check-cited-items.ts` | The inverse of `scripts/verify-citations.ts`. That script proves a citation like `` `file` · `fragment` · ~line `` still lands on real code; this one proves the *item* a comment cites still governs. A comment in `e2e/app.ts` cited a decision as "the owner's standing ruling" for weeks after it had been superseded — the item was correctly never injected (zero mentions in `SessionStart` output), but a live source comment kept citing it as current, and a session reasoned from it for hours. Reported, never gated — deleting the superseded item would leave the comment pointing at nothing, which is worse. |
 | `check-basis.ts` | Covered in its own section above. |
 | `check-handover.ts` | Covered in [07 · Restore and handover](./07-restore-and-handover.md). |
+| `check-board.ts` | Covered in [16 · The board](./16-the-board.md) — the gate that twice caught the board itself lying to a reader. New 2026-09-16. |
+| `check-diagrams-parse.ts` | That every ```` ```mermaid ```` fence under `README.md`, `docs/README.he.md`, `docs/capabilities/` and `docs/system/` actually **parses**, in real mermaid, in a real browser. New 2026-09-17, and it exists because of a measured failure of exactly the kind this chapter is about — see below. |
 
 **Real output, all four re-run 2026-09-17.** Two of the four reproduce their previous capture
 exactly (`check-vendor`: 28 files; `check-dependency-budget`: the same four devDependencies) and two
@@ -439,6 +456,60 @@ which is the whole subject of this chapter.
 `check-cited-items.ts` and `check-test-glob.ts` were read from source only
 (the former's read half is already exercised safely by `check-basis.ts`
 importing it; the latter needs no live run to state its rule precisely).
+
+### `check:diagrams` — the gate that fails on purpose before it reports a pass
+
+New on 2026-09-17, and it belongs in this chapter rather than in a documentation one because it is
+the clearest instance of this chapter's own thesis in the tree.
+
+**The failure it exists for.** `docs/capabilities/07-restore-and-handover.md:78` carried
+`&lt;key&gt;`, whose `&` ends mermaid's lexer, and it drew an error box on the page for as long as
+it existed. Its author reported *"every fence parses"* — having checked **bracket balance**, not
+rendering — and that was relayed upward without anyone asking how it had been checked. **Balance is
+not parsing.** Nothing caught it because `scripts/gen-diagrams.ts`'s `DIAGRAM_SOURCES` lists only
+the two READMEs, so no fence under `docs/` was generated, committed or gated at all.
+
+| | |
+|---|---|
+| what it does | extracts fences with the product's own `mermaidBlocks` (`src/ui/public/lib/markdown.js` — the same function the browser renders through, so there is no second scanner to disagree with the first), then `mermaid.parse()` under `gen-diagrams.ts`'s own config |
+| what it does **not** do | **draw anything.** Owner ruling, 2026-09-17, choosing between widening `DIAGRAM_SOURCES` and a parse-only gate, in two words: *"the parse-only gate"*. Drawing the undrawn fences was measured at ~1.5–1.8 MiB, taking `src/ui/public` from 5.04 MB to ~6.7 MB — past a size budget already rejected once |
+| the two source lists | deliberately allowed to disagree: this gate's list is **wider** than `DIAGRAM_SOURCES` and is not read from it, because the whole defect was that the drawing list is short |
+| why a script, not a test | it needs a browser, and `test/` is barred from Playwright — `npm test` runs on Windows and ubuntu and only ubuntu has a Chromium |
+
+**The anti-vacuity move, and it is the reason this gate is worth reading.** The first thing every
+run does is **fail on purpose**: the pre-repair chapter-7 fence, recoverable verbatim from
+`471b13b3^`, is pushed through the same extraction, the same parse and the same verdict as the real
+documents, and the run aborts non-zero if mermaid *accepts* it. **A red path that has never run is a
+green light with no bulb behind it** — which is precisely what this chapter's `@basis` and
+removal-proof sections are about, arriving at a gate.
+
+Real output, this repository, **2026-09-17** — captured by running the command and redirecting
+stdout and stderr to a file, and pasting that file's bytes:
+
+```
+$ npm run check:diagrams                       # 2026-09-17
+red proof — the RED path, run before any number below is believed. The pre-repair
+chapter 7 fence (git 471b13b3^) must be refused, and is:
+DOES NOT PARSE  471b13b3^:docs/capabilities/07-restore-and-handover.md:78
+     the fence opens: sequenceDiagram  (at 471b13b3^:docs/capabilities/07-restore-and-handover.md:69)
+[… 4 further lines are not shown: mermaid's own parse-error text for that fence — the line, the
+offending token, and the set of tokens it expected instead. Nothing above or below this marker is
+cut, reflowed or retyped, and the two npm banner lines above the output are replaced by the
+command line at the top. …]
+
+39 fence(s) across 21 of 27 document(s) (README.md, docs/README.he.md, docs/capabilities, docs/system): 39 parse, 0 do not — 1.2s.
+nothing was drawn, and nothing needed to be: every fence in the documents parses.
+```
+
+**The tally moves and the timing moves.** `39 of 39` is the reading on 2026-09-17; the fence count
+changes with every diagram any lane adds to any of the four sources, and `1.2s` is one run on one
+machine. Re-run it rather than trusting either.
+
+**It has already caught a real failure rather than only a constructed one.** A repair pass on
+2026-09-17 wrote a `;` into a `sequenceDiagram` message label; mermaid reads that as a statement
+separator and the fence stopped parsing. Bracket-balance checking — the thing that had been
+mistaken for verification in the first place — would have passed it. The gate named the fence, the
+line and the token in under two seconds.
 
 ## No-writes
 
@@ -580,33 +651,6 @@ this gap was found.
   is the weaker fact, stated as the weaker fact: nine scripts no test file so much as
   mentions. A script that IS mentioned may still be uncovered.
 - **`test/rules/*` (18 files as of 2026-09-17) is not described here**, though
-  `test/rules/isolation.test.ts` is what makes chapter 10's isolation claim
-  checkable rather than argued.
-- **The UTF-8 chunk-seam fixture guard is a `@basis`-shaped proof this chapter
-  does not carry.** `test/core/chunk-seam-utf8.test.ts` is written in Hebrew
-  precisely because on ASCII the defect it catches *cannot* fail a test, and it
-  asserts that byte 1,048,576 of its own fixture is a UTF-8 continuation byte —
-  so a fixture that drifted by one byte cannot go green by no longer testing
-  anything. That is `a-fixture-must-not-be-what-makes-a-proof-pass` (the product
-  rule store, [chapter 10](./10-rule-store.md)) in one file. See
-  [chapter 4](./04-conversation-archive.md).
-- **`check-retired.ts`'s retired-phrase contract only covers documents that
-  opt in** with an explicit `<!-- retired-phrases -->` HTML comment block —
-  it does not scan every document for staleness generally.
-
-## See also
-
-- [00 · Index](./00-index.md)
-- [03 · Creation and the gates](./03-creation-and-gates.md) — the summary
-  and contradiction gates that govern corpus items; this chapter's gates
-  govern the test suite that verifies them.
-- [06 · Retrieval](./06-retrieval.md) — the dynamic no-writes proof
-  (`approvedRestore`, the nonce, the planted-importer controls) that pairs
-  with this chapter's static `no-writes.test.ts` coverage.
-- [08 · The web UI](./08-web-ui.md) — the no-writes guarantee itself, and its
-  named exceptions, as a product property rather than a test.
-- [07 · Restore and handover](./07-restore-and-handover.md) — `check:handover`.
- | wc -l`, 2026-09-17) is not described here**, though
   `test/rules/isolation.test.ts` is what makes chapter 10's isolation claim
   checkable rather than argued.
 - **The UTF-8 chunk-seam fixture guard is a `@basis`-shaped proof this chapter

@@ -85,10 +85,41 @@ command that produces it is shown so a reader can re-derive it rather than trust
 | 10 | [The product rule store](./10-rule-store.md) | `src/rules/` in full: sixteen entries, the checksum seal (and why nothing checks it automatically), the `product` / `developer` tier split (one entry applies in a consumer repo; all sixteen apply in this one), `MYCONTEXT_RULES_DIR`, and delivery (session-start / subagent-start) vs. assertion (pre-compact / pre-tool-use). |
 | 11 | [The self-improvement loop](./11-self-improvement-loop.md) | Instrumentation, trigger, proposals, the review queue, retirement, the ration, and the model path (`review/model.ts`, 2026-09-13) — shipped with `enabled: false`, `maxProposalsPerPass: 0` and `model: null`, three independent dials each at the value that does nothing. |
 | 12 | [Packs, export/import, procedures, tutorials, skills](./12-packs-export-import-procedures.md) | Portable packs imported as drafts, `export --format dir\|zip --as-pack --dry-run`, the procedure/runbook one-shot-vs-repeatable distinction, tutorials, and the Claude Code skills this plugin ships. |
-| 13 | [The testing discipline](./13-testing-discipline.md) | Removal proofs, `// @basis` declarations, seeded throwaway twins, every `check:*` gate **and where each one runs** (CI, release, or the pre-commit hook), no-writes, and the parity ledgers — as a documented capability of the project, not an implementation detail. |
+| 13 | [The testing discipline](./13-testing-discipline.md) | Removal proofs, `// @basis` declarations, seeded throwaway twins, all **eleven** `check:*` gates **and where each one runs** (CI, release, or the pre-commit hook) — including `check:diagrams`, the parse-only mermaid gate that proves its own red path before every green report — no-writes, and the parity ledgers, as a documented capability of the project rather than an implementation detail. |
 | 14 | [Search over the archive](./14-search-over-the-archive.md) | New 2026-09-16. The query grammar behind `conversation search` and the Conversations screen's search box: three tiered readings of one query (phrase / near / both), the per-term three-character floor, `-word` exclusion, the `said`/`ran`/`both` sources switch that indexes tool calls for the first time, and the ranking rule that governs both this and the item corpus's own new BM25 search. |
-| 15 | [The document and lane viewer](./15-document-and-lane-viewer.md) | New 2026-09-16. The find bar's NFKD folding and CSS-highlight painting, verified by execution against `@codemirror/search`'s own algorithm; the floating find panel's case/whole-word/regex options, each shipped or refused against a measurement; and the catastrophic-backtracking regex refusal that no time budget alone can catch. |
+| 15 | [The document and lane viewer](./15-document-and-lane-viewer.md) | New 2026-09-16, **half of it rewritten 2026-09-17**. The find surface's NFKD folding and CSS-highlight painting, verified by execution against `@codemirror/search`'s own algorithm; the four ways to type a query and the two boxes that apply to all four; the 22 worked examples and the 34-row regular-expression reference; **the three floating panels** — search, step-through, copy — and the right-click menu cut down to what acts on the turn under the cursor; the card that gave up its controls and the `⤢` that takes the viewer to the whole screen; and the catastrophic-backtracking regex refusal that no time budget alone can catch. |
 | 16 | [The board — plans, `needs`, `ready`, `path`, the D-numbers](./16-the-board.md) | The largest documentation gap this audit found: how work is chosen from the corpus's own `needs:` field, what `ready` and the new `path` command each compute (and store nowhere), the D-number subject map, and `check:board` — the gate that twice caught the board itself lying to a reader. |
+
+## The other half of the documentation: `docs/system/`
+
+**This reference is not the only document set, and until 2026-09-17 this index did not say so.**
+`docs/system/` exists, it has eight files, and it answers a different question.
+
+> `docs/capabilities/` answers **what can it do**. `docs/system/` answers **how does this actually
+> work** — not the flag list, but the mechanism underneath it, the decision that shaped it, and the
+> failure that decision was a response to.
+
+A reference chapter can be complete and still leave a reader unable to answer *"why does it work
+like this and not the obvious other way."* The answer is almost always a specific measured failure,
+and those chapters keep the argument where these chapters cite the outcome.
+
+| | |
+|---|---|
+| [`docs/system/00-index.md`](../system/00-index.md) | what that directory is for, and why these subjects |
+| [`01-the-board.md`](../system/01-the-board.md) | the governance story behind chapter 16's commands |
+| [`02-the-document-and-lane-viewer.md`](../system/02-the-document-and-lane-viewer.md) | the read model, the shared matcher, the panel frame and the highlight layer — the mechanism half of chapter 15 |
+| [`03-the-palette-and-the-drawn-language.md`](../system/03-the-palette-and-the-drawn-language.md) | the five-hue meaning budget, chips, icons, generated diagrams |
+| [`04-the-audit-log-decay-and-contribution.md`](../system/04-the-audit-log-decay-and-contribution.md) | what the project records about its own running, and two readings derived from it |
+| [`05-lessons.md`](../system/05-lessons.md) · [`06-ingest.md`](../system/06-ingest.md) · [`07-focus.md`](../system/07-focus.md) | three small doors: a mistake becomes a candidate rule; a document becomes draft items; a session narrows what it sees |
+
+**Neither set repeats the other, deliberately** — a copy of a fact cannot be superseded, only the
+original can. Where the two sets cover one surface, the capability chapter points at the system
+chapter for the mechanism and the system chapter points back for the command reference; chapter 15
+and `docs/system/02` are the pair where that split is most load-bearing, because both were written
+in the same week about the same screen.
+
+Both directories are under the same mermaid gate: `npm run check:diagrams` parses every fence in
+`README.md`, `docs/README.he.md`, `docs/capabilities/` and `docs/system/`.
 
 ## Reading paths
 
@@ -102,10 +133,12 @@ command that produces it is shown so a reader can re-derive it rather than trust
   13, 7, and 11, since the last three describe mechanisms that are either partly unfinished
   (11) or exist specifically to keep this project's own claims from drifting from its own code
   (7, 13).
-- **Catching up on what shipped this week**: 14 → 15 → 5 → 4. Search over the archive and the
-  document/lane viewer are the two largest single-week additions this reference has ever had to
-  absorb; anchors and the archive chapter each carry real content from the same week folded in
-  rather than a separate note.
+- **Catching up on what shipped this week**: 15 → 14 → 5 → 4. **Chapter 15 first**, because the
+  three floating panels, the cut-down right-click menu and the card that gave up its controls are
+  the newest work in the product and the largest single day's change this reference has absorbed;
+  then 14 for the archive search it is deliberately *not* built on, then 5 for the marks it draws —
+  including the mid-turn refresh that now puts a mark on an open page without waiting for the end
+  of the turn — and 4 for the byte offsets underneath all of it.
 - **Auditing what's real vs. aspirational**: read the "What's NOT built / built but off"
   section at the end of every chapter first; chapter 11 is built almost entirely around one
   such fact (the loop is wired and gated by dials, not by unfinished code).
@@ -206,7 +239,7 @@ this reference; those chapters describe it from source instead and say so.
 
 ---
 
-*17 files, 8,130 lines, 568,622 bytes (568.6 kB decimal / 555.3 KiB), re-measured **2026-09-17** —
+*17 files, 8,915 lines, 639,654 bytes (639.7 kB decimal / 624.7 KiB), re-measured **2026-09-17**, after the additive pass described at the foot of this note —
 **this figure changes with every edit to this reference, including this one, so treat it as a
 lower bound rather than a constant**; `wc -l docs/capabilities/*.md` and
 `wc -c docs/capabilities/*.md` reproduce it on any later checkout. First written
@@ -261,7 +294,22 @@ running: repairing 38 produced 21 new findings, repairing 28 produced 15, repair
 `reports/2026-09-17-capabilities-repaired-again.md`, which records for every sentence it wrote
 whether that sentence was checked against the code or carried from the verifier's list.
 
-So: **five verification passes and three repairs, not three passes through.** A reader should take
+**And then a pass that was not a repair, which is why it is listed separately.** On 2026-09-17,
+after the three repairs above had closed, `rulings/97` and `rulings/100` were run together as one
+writing job on the premise that **nothing that shipped after 2026-09-13 was in this reference at
+all** — five verification passes had been measuring the accuracy of sentences already on the page
+and none had asked what was missing from it. What that pass added rather than corrected:
+chapter 15's three floating panels, the right-click menu's new shape, the card's lost controls and
+the whole-screen toggle, the help and the regular-expression reference; chapter 5's mid-turn
+refresh, together with the withdrawal of a batching claim the code explicitly disproves; chapter
+13's two ungated gates; and this index's first pointer at `docs/system/`, which had existed
+unmentioned here for a day. It is recorded in `reports/2026-09-17-capabilities-refreshed.md` with
+the same checked-or-carried mark per block that the repairs carry, and it left four screenshot
+placeholders rather than screenshots, because photographing the screens is a separate item that
+drives the real tool.
+
+So: **five verification passes, three repairs, and one additive pass — not three passes through.**
+A reader should take
 this reference as heavily checked and still not as certified — the last measured error rate on
 newly written repair text was fifteen claims per repair, and it has not fallen. There is now a gate
 for one class of it: `npm run check:diagrams` parses every fence in `README.md`,

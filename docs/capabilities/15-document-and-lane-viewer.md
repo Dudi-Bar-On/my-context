@@ -2,13 +2,20 @@
 
 `docs/capabilities/00-index.md` · previous: [`14-search-over-the-archive.md`](./14-search-over-the-archive.md) · next: [`08-web-ui.md`](./08-web-ui.md)
 
-**This chapter did not exist before 2026-09-16, and everything in it is that day's work.** The
+**This chapter was written on 2026-09-16 and half of it was superseded the next day.** The
 Conversations screen's document view (`/doc.html`, `doc.js`) and lane view (`/lane.html`, `lane.js`)
-render one open transcript for reading — folding, hit highlighting, a find bar, and now a floating
-find panel with regex/whole-word/case options, plus the marks-in-the-margin controls chapter 5
-describes. None of it was documented anywhere before this pass; the source is three same-day
-reports (`reports/2026-09-16-folding-and-highlight.md`, `-the-find-panel.md`, and
-`-two-marks-one-turn.md`, which chapter 5 already covers) read directly against the shipped code.
+render one open transcript for reading — folding, hit highlighting, a find surface, the
+marks-in-the-margin controls chapter 5 describes, and, since 2026-09-17, **three floating panels
+that between them now hold every control this screen used to keep in a strip above the document**.
+
+**What changed on 2026-09-17, and it is why §15.2 onward reads differently from §15.0 and §15.1.**
+The 2026-09-16 text described one panel (Search) that *borrowed* controls out of two strips,
+`.tvbar` and `.tvnav`, and put them back when it closed. **Neither strip exists any more.** The
+other two panels the owner asked for were built, the controls moved into them permanently, the
+right-click menu was cut down to what acts on the turn under the cursor, and the viewer gained a
+whole-screen toggle. Every sentence in §15.2–§15.6 below was read off the shipped code on
+2026-09-17; where a figure is carried from a lane's own measurement rather than re-derived here,
+it says so on the line.
 
 **The one fact to hold onto across this whole chapter**: everything here reads **one already-open
 transcript**, directly, in JavaScript on the server side and the browser side of the same file —
@@ -53,7 +60,7 @@ three of them corrected a first draft of this section, 2026-09-17:
   tool names, instead — and on a long transcript those runs are the bulk of the node count. The
   peek itself is `PEEK_CHARS = 140` characters (`:185`). **An earlier revision of this bullet said
   "every node ships a `p` field", which is untrue of a whole node kind.**
-- **What the find bar searches is four fields, and the peek is one of them.** The outline predicate
+- **What the find box searches is four fields, and the peek is one of them.** The outline predicate
   is `matchesNode` (`src/ui/public/lib/transcript-scroll.js:75-77`), and its haystack is:
 
   ```js
@@ -82,18 +89,24 @@ three of them corrected a first draft of this section, 2026-09-17:
   instead of being removed — and only those two rows: `held` is cleared and refilled from
   `boundaryRows()` inside the `selectionchange` handler (`screens/conversations.js:9551-9552`), under
   a declaration that explicitly refuses to pin every marked row because `measure` would then force a
-  layout per pinned row (`:6979-6987`). An **anchor** mark — §15.3's sense of "marked" — holds no row
+  layout per pinned row (`:6979-6987`). An **anchor** mark — §15.7's sense of "marked" — holds no row
   at all. But a **placeholder** — a row still reading "Reading…" — *is* torn down
   and rebuilt the moment its body arrives, held or not: there is no text worth keeping a selection
   in yet, and leaving it would pin the placeholder forever. The reason ordinary rows are left alone
   is stated directly in the source: a `<details>` element a reader opened, or a text selection, must
   survive a scroll of two pixels, and rebuilding the row would close or clear it.
 
-## 15.1 The find bar — always present, folding-aware, and server-counted
+## 15.1 The find surface — folding-aware, server-counted, and no longer in a strip
 
-Every open document carries a find box in its `.tvbar` strip. Typing into it does two things at
-once, computed the same way in two different runtimes from one shared module,
-`src/ui/public/lib/fold.js`:
+**Where the find box is, as of 2026-09-17: inside the Search panel, and nowhere else.** This
+section was written when it stood in a `.tvbar` strip above the document; that strip is gone
+(§15.5), the box is built once at mount into the Search panel's body, and the only route to it is
+to open that panel — from the right-click menu, or with `/`. Everything below about *what typing
+into it does* is unchanged by the move, because the matcher and the scan never knew where the box
+was drawn.
+
+Typing into it does two things at once, computed the same way in two different runtimes from one
+shared module, `src/ui/public/lib/fold.js`:
 
 - **paints** every match in the currently-drawn rows, via the CSS Custom Highlight API;
 - **counts** every match across the *whole* transcript, via a server-side scan.
@@ -130,7 +143,7 @@ never characters (chapter 4), and this archive is half Hebrew, where a naive nor
 approach is wrong for every offset after the first folded character, silently.
 
 **What was measured, not assumed, before it shipped**: a two-character query (`..`) is a silent
-zero on the FTS5 trigram index (chapter 14's floor) but the find bar has **no such floor**, because
+zero on the FTS5 trigram index (chapter 14's floor) but the find box has **no such floor**, because
 no index is involved — `..` folds and finds `…` here just as `...` does. Re-measured on the live
 archive (11,364 prose spans, the day this shipped): plain `indexOf` on `...` finds 463 spans, FTS5
 finds the same 463, and the folded matcher finds **1,024 — 2.21x** — the extra 561 are recall the
@@ -178,9 +191,9 @@ than keeping one across paints — costing one walk of about twenty rows, and a 
 (mutation E3 in the source report) exists specifically to catch a future "optimisation" that caches
 the registry instead.
 
-## 15.2 The floating find panel — four read modes, plus case and whole word
+## 15.2 Four ways to type a query, and two boxes that apply to all four
 
-**How you read the query is now one choice among four, not a set of independent checkboxes.**
+**How you read the query is one choice among four, not a set of independent checkboxes.**
 `MODES = ['normal', 'wildcard', 'logical', 'regex']` (`src/ui/public/lib/fold.js`) are **exclusive**
 — a radio group, not tick-boxes — with `caseSensitive` and `wholeWord` as two independent booleans
 beside them (`FindOptions`, shared by `fold.js` and `conversation-search.ts`). The source comment
@@ -200,31 +213,34 @@ every caller written against the panel's first shipped shape keeps working uncha
 
 Every mode answers one of four shapes, not just hit-or-miss — `{ ok: true, find }`,
 `{ ok: false, error }` (the regex engine's own message), `{ ok: false, slow: true }` (a legal
-pattern `nestedQuantifier` refuses before it is ever run — §15.2.3 below), or
+pattern `nestedQuantifier` refuses before it is ever run — *"The one defect that cannot be budgeted
+away"* below), or
 `{ ok: false, why }` (a mode-specific code — `like`, `quote`, `paren`, `operand`, `empty`,
 `nearRange` — for a query the mode cannot read, e.g. unbalanced parentheses in `logical`) — a fourth
 distinct answer for "this pattern is syntactically fine but this mode cannot execute it," on the
 same `nothing-to-do-and-could-not-look-are-different-answers` principle chapter 10's newest rule
 entry states generally.
 
-Right-click a turn → *"Search in this conversation /"* opens a floating **Search** panel: the same
-find box, plus the mode radio group and the case/whole-word boxes, plus a match stepper and count
-line, all *moved into* the panel (not duplicated — see §15.3) while it is open.
+The four are drawn as a **radio group** (`role="radiogroup"`, legend *"How to read what you
+typed"*), built from `MODES` itself — `modeRow.append(modesHead, ...MODES.map((m) =>
+modeRadio(m).label))` — so a fifth mode would be a fifth radio with nothing to remember at the
+screen. **Match case** and **Whole word only** sit below it under their own heading, whose English
+text is the rule stated on the screen rather than in a manual: *"Both of these apply whichever of
+the four you choose."* Changing any of the three re-asks the server and redraws the help and the
+option notes from the mode now in force, rather than repainting — a mode that repainted without
+re-asking would leave the count describing the old mode under highlights drawn under the new one.
 
-| | |
-|---|---|
-| element | `<dialog class="mcpanel">`, opened with **`show()`**, never `showModal()` |
-| closed by | its own `×`, or **Escape** (which `show()` alone does not give a dialog) |
-| dragged by | its header, in **logical** pixels, reflected once at the RTL boundary |
-| remembered | `localStorage`, per panel, every read/write guarded against a private window throwing |
-| several panels | can be open and dragged independently; nothing in the frame closes a sibling |
-
-This was **the first dialog element this product ever used** — verified before it was written that
-no `showModal`, no `<dialog>` and no dialog styling existed anywhere under `src/ui/public/`, so the
-frame that landed, `src/ui/public/lib/panel.js` (measured at **429 lines** on 2026-09-16, up from
-the 320 the source report estimated when it shipped, for the same reason `fold.js` grew — later
-work extended a shared module), is now the house pattern for the two
-more panels planned beside it (navigation, copy).
+**And this surface never touches SQLite, which is the one thing a reader is most likely to assume
+wrong.** The owner's own request for the logical mode said *"especially if supportd by sqlite like
+AND OR LIKE NEAR etc"*, and `fold.js`'s header answers it directly: `AND`, `OR`, `NOT` and `NEAR`
+here are implemented **in the JavaScript scan**, because the FTS5 index is unfolded (it cannot see
+that `...` matches `…` — 463 spans against 1,024, §15.1) and because **FTS5 cannot return
+in-document offsets at all**: `offsets()` answers *"unable to use function offsets in the requested
+context"*. That is not a downgrade and the help says why — an operator written here composes with
+Match case and with NFKD folding, and an FTS5 operator would compose with neither. **The box that
+does use FTS5 is the archive search on the conversations list** (chapter 14), which is a different
+surface answering a different question; nothing is shared between them but the shape of a text
+field.
 
 ### Case and whole word, and the measurement behind each
 
@@ -295,38 +311,311 @@ overlap is not something a scanner can do — and this residue is recorded as op
 fixes (a killable child process, or a linear-time engine like RE2) both named as the owner's to
 choose, since the second is a dependency and `CONST-zero-runtime-dependencies` is his to relax.
 
-### The strip, measured before and after
+## 15.3 The help, and the regular-expression reference
 
-The item's own acceptance test: report the find strip's height before and after, or the change has
-not landed. Measured by hand on the live 139 MB session, 1280×1000, English:
+**Two instruments, not one, and the panel carries both.** They are separate `<details>` folds
+under the option boxes, and the difference between them is the difference between a first use and a
+fiftieth.
 
+**The help** (*"Help and examples for this way of typing"*) redraws whenever the mode changes: a
+lead sentence for the mode in force, then that mode's worked examples, then — for the two modes
+that owe a reader a sentence beyond their examples — one extra paragraph. **Counted directly out of
+`EXAMPLES` on 2026-09-17: 22 worked examples — 3 plain, 5 wildcard, 5 logical, 9 regular
+expression.** Clicking one is not decoration: each is a real `<button>` that puts the query in the
+box and runs it, so a reader stepping the panel with a keyboard reaches them exactly as a reader
+with a mouse does.
+
+**Every example in that list was run against this repository's own archive before it was written
+down**, which is the standing rule for the list rather than a claim about this pass. The source
+states the standard in the owner's terms — *"`\d+` matches digits teaches nothing; `\d+ ms` finds
+every timing this session printed is worth reading"* — and one of the original four regular-expression
+examples was replaced when it was found to return nothing. What each of the newest five returned on
+the live 139 MB session on 2026-09-17 is recorded in
+`reports/2026-09-17-the-find-panel-counts-and-reference.md`; the smallest of them is 41 turns.
+**That per-example tally is carried from that report, not re-run here.**
+
+**The last regular-expression example is deliberately the shape that is refused** — `^(\w+\s?)+$`.
+Clicking it produces the refusal, inside the panel, with the paragraph that says what was measured.
+A reader who meets the refusal by accident will look in the help, so the help is where the refusal
+is demonstrated.
+
+**The reference** (*"Full regular-expression syntax — every construct in one table"*) is the
+fiftieth-use instrument, and it exists because fifteen worked examples had already shipped and the
+owner still asked: *"about regex - add more examples and also add a full syntax help because it is
+complicated and hard to remember."* An example teaches the first use of a construct; a lookup table
+serves the reader who knows exactly what they want and cannot remember how it is spelt.
+
+| | |
+|---|---|
+| shape | one `<table>`, **34 rows in 6 sections** (`REGEX_REF`, counted 2026-09-17) |
+| sections | characters · character classes · how many · where · groups and alternatives · **what is true here and nowhere else** |
+| drawn | only in `regex` mode — `reference.hidden = mode !== 'regex'` — because in the plain mode every character in that table is a character to look for |
+| built | **once, at mount**, not per mode change: the regular-expression language does not move, and rebuilding would throw away a reader's scroll position inside it |
+| left column | the construct itself, as a literal in a `span.m` (monospace, `direction:ltr`, `unicode-bidi:isolate`) — **syntax is not translated**, so only the sentence beside it is a string key |
+
+**The last section is the one that makes the table honest, and it is the reason to read it even if
+you know regular expressions.** Five of its six rows are things a general reference would get wrong
+*here*: the unit of a match is one **turn**, so `^` and `$` are that turn's ends and `.` can never
+cross a turn; **Match case** is this engine's `i` flag and there are no flag letters to type;
+`\u{1f600}` matches one emoji because the scan counts code points. And the sixth row is `(X+)+`,
+carrying its own refusal and the 108,785 ms beside it — **a reference that listed a construct the
+scan refuses would be worse than no reference at all**, so the refusal is a row of the table rather
+than only a sentence in the prose above it.
+
+> **SCREENSHOT PLACEHOLDER — `rulings/101` owns this.** *The Search panel with the `regex` radio
+> selected and the reference fold open*, English, against the real session. It should show, in one
+> frame: the find box with its Clear button, the count line and `1 of 15` position line under it,
+> the four mode radios with `Regular expression` selected, Match case and Whole word only below
+> them, and the reference table scrolled far enough to show the final section heading and the
+> `(X+)+` row. This is the single image that carries §15.2 and §15.3 together.
+
+## 15.4 The three floating panels
+
+**This is the newest thing in the viewer, and it is the shape the owner specified himself**, in his
+own words on 2026-09-16: *"three different subjects on three different dialogs opend from the right
+mouse button menu, could be a little bit transparent, movable on screen, stays on screen while you
+can look at the viewer and closed uppon clicking it's close button as a standard window."* All
+three now exist.
+
+| panel | `name` | its subject | what is in it |
+|---|---|---|---|
+| **Search this conversation** | `search` | the query | the find box and its **Clear** button; the match stepper (Previous / Next match), its count and its `1 of 15` position line; the four mode radios; Match case and Whole word only; the help fold; the regular-expression reference fold; the option notes |
+| **Step through this conversation** | `navigate` | movement through the document | the kind picker and the mark stepper; the your-messages stepper; both counts and both position lines; **Top** and **End** as a row of their own; and the plain total — *"1044 turns across 52027 records"* |
+| **Copy what you have marked** | `copy` | a marked passage | the three copies, each under its own sentence; *Reconstruct a subject* under a heading that says it is **not** a copy; and the line that explains the grey, drawn only while the three are actually disabled |
+
+**The one governing principle, and it decides anything the list above does not name.** A floating
+panel has no *"this turn"* — it does not know where the pointer came from. **So everything that
+acts on the DOCUMENT lives in a panel, and everything that acts on the thing under the cursor stays
+in the right-click menu** (§15.5). That is why `Top` and `End` are in the step panel rather than in
+the menu, and why Rename and Take it back are in the menu rather than in a panel.
+
+```mermaid
+flowchart TD
+  ACT["a control the reader can reach<br/>on this screen"] --> Q{"what does it act on?"}
+  Q -->|"the DOCUMENT as a whole —<br/>the query, movement through it,<br/>a passage already marked"| PANEL["a floating panel.<br/>It has no this turn, so it<br/>does not need one"]
+  Q -->|"the THING UNDER THE CURSOR —<br/>mark this point, rename it,<br/>take it back, put it back"| MENU["the right-click menu.<br/>Only the acts this row<br/>can actually do are offered"]
+  PANEL --> P1["Search this conversation"]
+  PANEL --> P2["Step through this conversation"]
+  PANEL --> P3["Copy what you have marked"]
+  MENU --> OPEN["and the menu is also<br/>the door to all three panels —<br/>three opener rows, then a<br/>separator, then the acts"]
+  OPEN -.->|"opens"| PANEL
+  P1 --> KEY["and none of this is the only route:<br/>the eight DOC_SHORTCUTS keys call<br/>step, cycleKind and openFindPanel<br/>directly, with every panel shut"]
+  P2 --> KEY
+  MENU --> KEY
 ```
-                     idle      query, panel closed      query, panel open
-  .tvbar             62.58 px          62.58 px                 26.39 px
-  .tvnav             60.78 px         162.75 px                128.36 px
-  chrome above well       —           372.69 px                230.53 px
-```
 
-**142 px came back — 38% less chrome between the reader and the document.** The residue (128.36 px
-rather than the 60.78 px idle height) is not mostly the find controls: it is that a narrowing query
-makes the mark-count and you-count clauses each grow a line, and those two belong to the
-*navigation* panel — the second of three panels planned, not yet built — so the strip is expected
-to shrink further once that one lands.
+**The keys are the half of the picture most easily lost.** Deleting a strip or a menu row deletes a
+*route*, never a binding — which is what made it safe to delete twelve menu rows and two strips in
+one day.
 
-### The reusable frame
+### What the frame gives every panel
 
-`panel.js` owns: `show()`/Escape/focus hand-back, drag with pointer capture and one write per
-gesture, logical-property placement with a single RTL reflection, on-screen clamping, bring-to-front
-ordering, and the close button's accessible name. A caller supplies only a name, title, and what to
-do on close. The Search panel's own contribution beyond the frame is *borrowing*: `openFindPanel`
-moves the existing find box and count line into the panel body (recorded as `(parent, nextSibling)`
-so both bars can gain and lose children) rather than duplicating them — a second query field would
-be two inputs, two listeners, and two states for one query, with no way to say which was
-authoritative the day they disagreed. The frame deliberately has no modal mode, no resize handle, no
-minimise, and does not remember being open — a panel that mounted open would draw itself over a
-document the reader has not asked it about.
+| | |
+|---|---|
+| element | `<dialog class="mcpanel">`, opened with **`show()`**, never `showModal()` |
+| why not modal | *"stays on screen while you can look at the viewer"* — `showModal()` makes everything behind it inert, which is the one thing he asked it not to be |
+| closed by | its own `×`, or **Escape** — hand-wired, because a non-modal `<dialog>` receives no `cancel` event and does nothing on Escape at all; `stopPropagation` so the item pane behind it keeps its own meaning of the key |
+| positioned | `position: fixed` in CSS, because a non-modal `<dialog>` is `position:absolute` by default and would scroll away with the page |
+| dragged by | its header, with **pointer capture** (so a pointer that leaves the window still delivers its `pointerup`), in **logical** pixels, the physical delta reflected once at the RTL boundary |
+| remembered | `localStorage`, one key per panel (`mycontext.panel.<name>`), **one write per drag** rather than one per `pointermove`, and the value stored is the *clamped* place |
+| guarded | every read and write; reading `globalThis.localStorage` can throw before any method is called on it, and a page that fell over there would fall over on the machines least able to report it |
+| clamped | `clampPlace`: horizontally the panel may not leave the viewport at all (and a panel wider than the viewport clamps to `0`, the start edge, because that is where the title and the close button are); vertically at least `KEEP_VISIBLE_PX = 48` stays on screen. So a place dragged on a 2560-wide monitor is still grabbable on a laptop |
+| stacked | several open at once; nothing closes a sibling; clicking one raises it (on `pointerdown`, so a button in the back panel comes forward *before* it acts) |
+| height-bounded | `max-block-size` is rewritten on every placement, because CSS cannot bound a fixed element against its own top and the reader drags that top |
 
-## 15.3 Marks in the margin
+**Each opens at its own place the first time and at its remembered place after that** — a 32 px
+cascade (`CASCADE_STEP`) from just inside the top of the well, so three panels opened in a row do
+not land on top of each other.
+
+**None of them borrows anything, and that is the 2026-09-17 change rather than an omission.** Each
+panel's body is built **once, at mount**. The 2026-09-16 design lent controls out of the strips and
+restored them on close; with no strips left there is nothing to lend, so `borrow()`, `tidyStrip()`
+and the three `onClose` restore paths were deleted with them — and the whole class of defect they
+existed to manage (two panels lending out of one strip, a recorded next sibling another panel is
+holding) cannot occur, because **no control has two homes**.
+
+### Where the caret goes, which is the half that was measured
+
+Closing a panel removes the controls the reader was using, and unless something takes focus in the
+same turn the browser drops it to `document.body` — measured on this very screen at **47 tab
+stops** (`TASK-every-write-on-conversations-throws-focus-to-the-document`). So the frame hands the
+caret back to wherever it came from, and each panel supplies a `fallbackFocus` for when it came
+from nowhere. **All three now answer the same thing: the well** — the document itself, which is
+focusable (`scroll.tabIndex = 0`) precisely so a keyboard reader can scroll it.
+
+Two subtleties the source records because both were found by driving the browser rather than by
+reading:
+
+- **Focus left inside a closed dialog is focus nowhere.** At the moment `dialog.close()` returns,
+  `document.activeElement` is still the close button that was just hidden, so a bare
+  `!== document.body` test reads *"somebody has the caret"* and strands the reader. The frame tests
+  `dialog.contains(active)` as well. It passed in English and reddened in Hebrew on the same build.
+- **The Copy panel deliberately does not put the caret on a control.** Three of its four buttons are
+  disabled whenever it is opened the ordinary way, and `.focus()` on a disabled button lands on
+  nothing — the same 47-stop defect by a new route.
+
+### One constraint on the Copy panel, and it is real
+
+**It cannot be opened while a passage is marked.** The `contextmenu` handler yields to the
+browser's own menu over a live selection, deliberately — *"a reader who has just dragged across a
+turn and right-clicked means Copy"*. So the order is: **open the panel, then mark**. With the strip
+gone there is no longer a second route for a reader who marked first; they reach the four controls
+by right-clicking somewhere with nothing marked, or by `Shift+F10`. That is a real narrowing and it
+is stated here rather than absorbed in silence.
+
+> **SCREENSHOT PLACEHOLDER — `rulings/101` owns this.** *All three panels open at once over a live
+> document*, English, showing the cascade offset, three distinct titles, three close buttons, and
+> enough of the transcript visible behind and between them to demonstrate that the viewer is still
+> live. This is the image that proves the non-modal claim, and it cannot be made from any one panel
+> alone.
+
+> **SCREENSHOT PLACEHOLDER — `rulings/101` owns this.** *The step panel mid-walk*, English, with
+> the position line reading something of the form `You are on 3 of the 40 turns that hold it.` and
+> the standing turn emphasised in the document behind it. It should be taken after pressing Next at
+> least twice, so the counter is demonstrably not at 1.
+
+### The reusable frame, and what a caller supplies
+
+`src/ui/public/lib/panel.js` (**429 lines**, 2026-09-17 — unchanged from the 2026-09-16 reading)
+owns everything in the table above. A caller supplies only a `name`, a `title`, the close button's
+accessible name, a `fallbackFocus`, and optionally an `onClose`; it gets back
+`{ dialog, body, head, open, close, isOpen }`. It has **three callers today** and had one when it
+was written — which is why it was built as a frame rather than as a box inside the screen.
+
+The frame deliberately has **no modal mode, no resize handle, no minimise, and no memory of being
+open**: a panel that mounted open would draw itself over a document the reader has not asked it
+about. Its DOM-free half — `readPlace`, `writePlace`, `clampPlace` — is exported and pure
+specifically so every way a store can lie (`null`, `Infinity` from `'1e999'`, a half-written value,
+a throw on read) is drivable in Node without a browser.
+
+**The panel frame's mechanism is documented once, in `docs/system/02-the-document-and-lane-viewer.md`
+§6, and this chapter deliberately does not repeat it.** This chapter says what the panels *do*;
+that one says how the frame works and what is known wrong with it.
+
+## 15.5 The right-click menu, cut down to what acts on this turn
+
+The menu is reached by right-clicking any turn, or from the keyboard with **`Shift+F10`** or the
+`ContextMenu` key. On 2026-09-17 the owner ruled on it directly: *"the right menue should be
+updated, remove any option that is already implemented on the dialog it will leave there almost
+only the open dialogs and maybe 1 or 2 more commands"*.
+
+**What it holds now, in order:**
+
+1. *Search in this conversation* — opens the Search panel. Carries the `/` key chip.
+2. *Step through this conversation* — opens the step panel. No key.
+3. *Copy what you have marked* — opens the Copy panel. No key.
+4. **A separator** — a real `<hr role="separator" aria-orientation="horizontal">`, not a styled
+   `div`, because a rule a screen reader cannot see is not a separator. It is drawn **only when
+   there is something after it**: a trailing rule under the last row would be a group boundary with
+   one group on one side of it.
+5. **The acts on this turn**, and only the ones this turn can actually do. Four rows exist —
+   *Mark this point*, *Rename*, *Take it back*, *Put it back* — and the menu offers each only where
+   the row's own control for it exists, read off the row rather than re-derived: an unmarked turn
+   offers *Mark this point*, a marked one offers *Rename* and *Take it back*. A menu that listed all
+   four would be four items of which two do nothing, which is the defect this whole change is a case
+   of. *Take it back* deliberately carries no key: a take-back has no confirm by owner ruling, so a
+   single letter would destroy a bookmark on a mistyped keystroke with nothing in between.
+
+**Seven rows were removed, and every one of them was already inside a panel**: Previous mark, Next
+mark, Your previous message, Your next message, and the three *"Step only through —"* radios, which
+were driving by hand the `<select>` the step panel now carries.
+
+**Not one key binding went with them.** `DOC_SHORTCUTS` is eight entries — `/`, `M`, `N`,
+`Shift+N`, `U`, `Shift+U`, `K`, `Shift+K` — and `runShortcut` dispatches them to `step(…)`,
+`cycleKind(…)` and `openFindPanel()` **directly**, never through a menu row or a button. Removing a
+menu row does not remove a key binding.
+
+**How much of that is actually proved in a browser, counted rather than taken from the source's own
+claim** (2026-09-17): `e2e/conversations-panels.spec.ts` carries a test named *"every key still acts
+with all three panels shut, and with them open"*, and it presses **three** of the eight — `n`, `k`
+and `u`. Across the whole file `Shift+N` is pressed once more, in a different test. **`/`, `M`,
+`Shift+U` and `Shift+K` are pressed nowhere in it.** The claim that the keys survive the deletion is
+architectural — they never went through the deleted rows — and it is **partly**, not wholly,
+demonstrated by that suite. A source comment in `screens/conversations.js` says the spec proves
+*"each of the six named keys"*; it proves three with every panel shut, and that comment is wrong.
+
+**Two of the three openers carry no key, and that is a decision rather than a gap.** `/` opens
+Search because `/` was already bound to the find box and the panel simply became where that box
+lives — the key kept a meaning rather than gaining one. Binding two fresh letters for the other two
+would spend two of the few this screen has left. The menu itself is reachable without a mouse, so
+this is not a mouse-only capability, which is the thing that would be refused.
+
+> **SCREENSHOT PLACEHOLDER — `rulings/101` owns this.** *The right-click menu open over a marked
+> turn*, English, showing all three opener rows with the `/` chip on the first, the horizontal
+> separator, and the act rows below it (*Rename*, *Take it back*). A second frame over an **un**marked
+> turn, showing *Mark this point* instead, would demonstrate the "only what this row can do" rule —
+> `rulings/101`'s call whether that is worth a second image.
+
+## 15.6 The card gives up its controls, and the viewer takes the screen
+
+**Two strips stood between the reader and the document, and both are gone.** `.tvbar` carried the
+find box, Top, End and the three copies; `.tvnav` carried the steppers and their counts. Neither
+element is created any more — every control that was in them is appended once, at mount, to the
+panel that owns its subject. (The `.tvbar` and `.tvnav` rules are still present in
+`src/ui/public/styles.css`; they style nothing, and removing them is named in this pass's report as
+work for whoever owns that file.)
+
+**What that bought, measured on the owner's own server at 1280×1000, English** — every figure in
+this block is **carried** from `reports/2026-09-17-the-card-gives-up-its-controls.md`, which drove
+the browser; none of it was re-derived here, and §15.8 says why:
+
+| | before | after |
+|---|---|---|
+| chrome above the viewer | **298.9 px** | **67.5 px** |
+| the viewer itself (`.tvscroll` height) | **559.1 px** | **650.9 px** — 65.1% of the window |
+| the same in Hebrew | 230.2 px of chrome | **67.5 px** — the same number in both languages |
+
+The 67.5 px that remain are the head, its margin and the collapsed secrets fold — the card's
+identity, not its controls.
+
+**The count line is drawn only when something is actually being hidden**, which is the other half
+of the same ruling. `drawDisclosure` composes the line from facts about the *document and the
+filters* — the needle, the view, the two walks' hidden counts, the kind filter — and
+**`findPanel.isOpen()` is not consulted anywhere in it**. With no search and no kind filter the
+element carries no children and takes itself down (`count.hidden = count.childNodes.length === 0`),
+so an ordinary card has no count line at all. The condition is *"is something hidden"*, never *"is
+a panel open"* — a count that disappeared because a panel happened to be open is exactly the
+failure this replaced.
+
+The split that follows from it, stated once so it is not re-derived per sentence:
+
+- **Disclosures live on the card**, where a reader with every panel shut can see them: what the
+  search is not showing, how many marks and how many of your own messages it is holding back, and
+  whether the mark walk is narrowed to one kind (`K` narrows it from the keyboard without opening
+  anything).
+- **Plain totals live in the step panel and nowhere else** — *"1044 turns across 52027 records"*,
+  *"641 marked point(s) here."*, *"605 message(s) of yours here."* They hide nothing from anybody,
+  so by the owner's ruling they have no claim on the card.
+
+### `⤢` — the viewer on the whole screen
+
+One control in the card's head toggles `doc-wide` on `.app`, which hides the header, the rail, the
+provenance line and the status strip. **It is `#panefloat`'s pattern re-used verbatim** — the same
+glyph, the same `.icon` class, the same `aria-pressed` on the same control, the same class on
+`.app` — rather than a second mechanism invented for this screen, and the control that expands is
+the control that restores.
+
+- **Escape is not bound to it**, deliberately: on this screen Escape already means *close the
+  panel* and *close the rename box*, and a third meaning is ruled out.
+- **The mode is not remembered.** `render()` removes the class on the way through, whichever route
+  is being drawn — left standing after *"Back to all sessions"* it would be a sessions list with no
+  shell and no control anywhere to bring the shell back, because the toggle went with the document.
+  `styles.css` gates the same rules on a visible `.tvroot` as well, for the navigation `render()`
+  never sees.
+- **The panels survive it untouched**, and that is a property of the frame rather than anything
+  wired here: `.mcpanel` is `position:fixed`, so it is placed against the viewport, which this
+  expansion does not change. Nothing re-clamps, because nothing moved.
+
+**Expanded, the viewer is 833.9 px tall and 1248 px wide**, from 650.9 × 1034 — carried from the
+same report, same window, same measurement run.
+
+> **SCREENSHOT PLACEHOLDER — `rulings/101` owns this.** *The card before and after*, English, as a
+> pair at 1280×1000: one frame of the viewer in the ordinary shell with no search typed — which
+> should show **no count line at all** — and one frame with `⤢` pressed. The pair is the evidence
+> for this whole section, and the "no count line" frame is the only image that can demonstrate the
+> drawn-only-when-hiding rule.
+
+## 15.7 Marks in the margin
 
 The document and lane viewer is also where every anchor capability chapter 5 describes is actually
 drawn and operated: the `⚑ Marked` flag, the kind badge and hue, Rename, Take it back, the stepper
@@ -340,11 +629,31 @@ drawn as the page's own colours inverted (`--ink` on `--paper`) plus an underlin
 colour budget — per the 2026-08-27 amendment: *"a hue may narrow a group, never name one."* A hue
 says posture; the glyph and the word say which kind of thing this is.
 
-## 15.4 What's NOT built / built but off
+**And since 2026-09-16 a mark reaches an open page while the turn is still running, rather than at
+the end of it.** The pass that creates automatic marks runs inside `stopConversationRefresh`, which
+was wired in exactly one place — the `Stop` hook — so everything it does happened at end of turn and
+nowhere else. `PostToolUse` now asks one cheap question on every firing (has the transcript grown
+enough, and has it been long enough) and spawns the same refresh detached when the answer is yes.
+Chapter 5 carries the mechanism, the two thresholds, and the measurement that corrected what this
+delay was previously blamed on.
 
-- **Two of the three panels the owner asked for (navigation, copy) are not built.** `panel.js` is
-  written specifically so the next two are cheap; §15.2 names exactly what each will supply versus
-  reuse.
+## 15.8 What's NOT built / built but off
+
+- **The match walk steps through TURNS, not occurrences, and that is a limit of the feature.**
+  `foundStops()` returns one stop per turn and `showMatch` lands on the *first* match inside it, so
+  a turn holding four occurrences is one stop and the other three cannot be reached by Previous /
+  Next match at all. `1 of 15` therefore means one of fifteen **turns**, on a query the count line
+  above it may report as far more times — and the sentence says `turns` in as many words rather
+  than leaving a reader to pick which of the two numbers it belongs to.
+- **Nothing wraps.** Stepping past the last stop announces that it is the last and leaves the
+  reader where they are, in all three walks; the code takes the next index only
+  `if (next >= 0 && next < positions.length)`. Wrap-around was refused with a reason (§15.2's
+  refusal table) and the position counter is built on the same decision.
+- **Before the first press there is no position at all, and the counter says so in words.**
+  `0 of 15` is a lie (there is no zeroth mark) and `1 of 15` is worse (it claims a place the reader
+  has not gone, and the first Next would then skip one), so the idle state names the button
+  instead. Scrolling the well by hand puts it back to that state rather than leaving a stale
+  number standing.
 - **`(a|a)+`-shaped catastrophic regex is not refused.** §15.2. A residue, recorded, and the two
   real fixes both cost something the owner has not yet ruled on.
 - **This whole surface has no CLI or MCP equivalent.** The four-mode radio group
@@ -359,9 +668,27 @@ says posture; the glyph and the word say which kind of thing this is.
   separate mechanisms that happen to share a search box's general shape.** A reader should not
   assume an option available in one exists in the other; chapter 14 §14.7 states the asymmetry from
   its own side.
-- **The strip's residual height with a query typed (128 px) will shrink once the navigation panel
-  ships** — see §15.2's own measurement; not fixed here because the mechanism it depends on does
-  not exist yet.
+- **Four of the eight keyboard shortcuts are pressed by no browser test in the panels suite.**
+  `/`, `M`, `Shift+U` and `Shift+K` appear nowhere in `e2e/conversations-panels.spec.ts`
+  (counted 2026-09-17). The architectural argument that they survived the menu and strip deletions
+  is sound — they never went through either — but it is an argument, and the suite demonstrates it
+  for three keys with every panel shut plus one more elsewhere. §15.5. **A source comment in
+  `screens/conversations.js` claims the spec proves six**, which is the claim this bullet exists to
+  correct; the comment is in another lane's file and is named in this pass's report rather than
+  edited here.
+- **The Copy panel cannot be opened over a live selection**, so a reader who marks a passage first
+  and then right-clicks gets the browser's own menu. §15.4 states the route that remains; it is a
+  real narrowing that arrived with the strip's removal and it has not been ruled on.
+- **`.tvbar` and `.tvnav` still have CSS rules that style nothing.** The elements are gone; the
+  rules in `src/ui/public/styles.css` are not. Harmless, and named here rather than left to be
+  rediscovered as evidence the strips still exist.
+- **Every pixel figure in §15.6 is carried, not re-derived.** Reproducing them needs Playwright
+  driven against a live session on the owner's own server, which this pass is out of bounds for;
+  they come from `reports/2026-09-17-the-card-gives-up-its-controls.md`, which took them. The same
+  is true of the per-example hit counts in §15.3.
+- **No screenshot in this chapter exists yet.** Four placeholders are marked in §15.3–§15.6, each
+  saying what its image must show. `rulings/101` owns them, drives the real tool, and runs after
+  this pass — a drawing of a screen nobody opened is the claim this project refuses.
 - Every timing and pixel measurement in this chapter is against one specific session
   (139,272,173 bytes, 54,524 records, 4,582 prose spans) at one specific window width (1280 px) on
   one specific build of V8. A different session, a different width, or a different engine changes
@@ -375,6 +702,12 @@ says posture; the glyph and the word say which kind of thing this is.
 - [05 — Anchors](./05-anchors.md) — the marks this viewer draws and operates, including a turn
   wearing two at once
 - [14 — Search over the archive](./14-search-over-the-archive.md) — the FTS5-backed, whole-archive
-  alternative this chapter's find bar and find panel are deliberately not built on
+  alternative this chapter's find surface is deliberately not built on
 - [08 — The web UI](./08-web-ui.md) — the Conversations screen this viewer is reached from, and the
   no-writes guarantee's exceptions for the anchor controls drawn here
+- [13 — The testing discipline](./13-testing-discipline.md) — `check:diagrams`, the gate that proves
+  every mermaid fence in this chapter parses before a reader meets it as an error box
+- `docs/system/02-the-document-and-lane-viewer.md` — **the mechanism half of this chapter.** This
+  chapter says what the viewer and its three panels *do*; that one says how the read model, the
+  shared matcher, the panel frame and the highlight layer *work*, and what is known wrong with each.
+  Neither repeats the other, deliberately.
